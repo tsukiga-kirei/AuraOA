@@ -1,0 +1,72 @@
+# ===== OS =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ===== Go =====
+go-service/bin/
+go-service/tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# ===== Python =====
+ai-service/__pycache__/
+ai-service/**/__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.Python
+ai-service/.venv/
+ai-service/venv/
+ai-service/env/
+ai-service/.env
+*.egg-info/
+dist/
+build/
+
+# ===== Node / Nuxt =====
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.output/
+frontend/.nitro/
+frontend/.cache/
+frontend/dist/
+node_modules/
+
+# ===== Docker =====
+docker-compose.override.yml
+
+# ===== Environment =====
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ===== Logs =====
+*.log
+logs/
+
+# ===== Database =====
+*.sqlite
+*.sqlite3
+pgdata/
+mongodata/
+
+# ===== Test / Coverage =====
+coverage/
+.coverage
+htmlcov/
+.pytest_cache/

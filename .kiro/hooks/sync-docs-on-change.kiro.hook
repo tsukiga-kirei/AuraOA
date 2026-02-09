@@ -1,0 +1,29 @@
+{
+  "enabled": true,
+  "name": "源码变更同步文档",
+  "description": "当源文件被编辑时，自动审查变更内容并同步更新 docs 文件夹下的文档、CHANGELOG.md 或 README.md。不会创建无关的说明文档。",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "*.go",
+      "*.py",
+      "*.vue",
+      "*.ts",
+      "*.tsx",
+      "*.js",
+      "*.sh",
+      "*.sql",
+      "*.yaml",
+      "*.yml",
+      "*.toml",
+      "*.env",
+      "*.mod",
+      "*.sum"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "有源文件刚被修改。请审查本次变更，判断是否需要同步更新项目文档。规则如下：\n1. 文档统一放在 /docs 文件夹下，如果该文件夹不存在则创建。\n2. 除 /docs 文件夹外，只允许修改根目录的 CHANGELOG.md 和 README.md。\n3. 严禁创建无用的说明文档或总结文档，只更新与本次变更直接相关的内容。\n4. 不要改写无关章节，保持最小改动。"
+  }
+}
