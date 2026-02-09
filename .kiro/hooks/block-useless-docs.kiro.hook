@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "name": "禁止创建无用文档",
+  "description": "当新文件被创建时，检查是否为无用的说明文档或总结文档。只允许在 /docs 文件夹、CHANGELOG.md、README.md 中写文档，其他位置不允许创建非代码的说明性 markdown 文件。",
+  "version": "1",
+  "when": {
+    "type": "fileCreated",
+    "patterns": [
+      "*.md",
+      "*.txt",
+      "*.rst"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "有新文件刚被创建。请检查该文件是否属于无用的说明文档或总结文档。执行以下规则：\\n1. 文档只允许存放在 /docs 文件夹下、或者是根目录的 CHANGELOG.md 和 README.md。\\n2. 如果新创建的文件是位于其他位置的说明性 markdown/文本文件（非代码、非配置、非模板），则立即删除该文件并告知用户原因。\\n3. 代码文件、配置文件、模板文件不受此规则限制。\\n4. .gemini/skills/ 下的 SKILL.md 和 stages/templates/references 目录中的 md 文件属于技能定义，不算无用文档，予以保留。"
+  }
+}
