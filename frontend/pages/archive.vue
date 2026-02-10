@@ -45,9 +45,9 @@ const clearFilters = () => {
 }
 
 const recommendationConfig: Record<string, { color: string; bg: string; icon: any; label: string }> = {
-  approve: { color: '#10b981', bg: '#ecfdf5', icon: CheckCircleOutlined, label: '通过' },
-  reject: { color: '#ef4444', bg: '#fef2f2', icon: CloseCircleOutlined, label: '驳回' },
-  revise: { color: '#f59e0b', bg: '#fffbeb', icon: EditOutlined, label: '修改' },
+  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: '通过' },
+  reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: '驳回' },
+  revise: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EditOutlined, label: '修改' },
 }
 
 const departments = ['IT部', '销售部', '研发部', '行政部', '人力资源部', '市场部']

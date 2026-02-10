@@ -4,16 +4,13 @@ import {
   DashboardOutlined,
   ClockCircleOutlined,
   FolderOpenOutlined,
-  SettingOutlined,
-  MonitorOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   BellOutlined,
   UserOutlined,
   SafetyCertificateOutlined,
-  AppstoreOutlined,
-  TeamOutlined,
+  SettingOutlined,
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -22,7 +19,7 @@ const mobileMenuOpen = ref(false)
 const isMobile = ref(false)
 
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
-const { logout } = useAuth()
+const { logout, userRole } = useAuth()
 
 onMounted(() => {
   restoreTheme()
@@ -41,18 +38,10 @@ const checkMobile = () => {
 
 const selectedKeys = computed(() => [route.path])
 
-// Front-end business menu
 const businessMenuItems = [
-  { key: '/dashboard', icon: DashboardOutlined, label: '审核工作台' },
-  { key: '/cron', icon: ClockCircleOutlined, label: '定时任务' },
-  { key: '/archive', icon: FolderOpenOutlined, label: '归档复盘' },
-]
-
-// Admin menu
-const adminMenuItems = [
-  { key: '/admin/tenant', icon: AppstoreOutlined, label: '租户配置' },
-  { key: '/admin/system', icon: TeamOutlined, label: '系统管理' },
-  { key: '/admin/monitor', icon: MonitorOutlined, label: '全局监控' },
+  { key: '/dashboard', icon: DashboardOutlined, label: '审核工作台', badge: 6 },
+  { key: '/cron', icon: ClockCircleOutlined, label: '定时任务', badge: 0 },
+  { key: '/archive', icon: FolderOpenOutlined, label: '归档复盘', badge: 0 },
 ]
 
 const handleMenuClick = (path: string) => {
@@ -100,24 +89,24 @@ watch(route, () => {
             <transition name="fade">
               <span v-if="!collapsed" class="sidebar-item-label">{{ item.label }}</span>
             </transition>
+            <transition name="fade">
+              <span v-if="!collapsed && item.badge" class="sidebar-item-badge">{{ item.badge }}</span>
+            </transition>
             <div v-if="selectedKeys.includes(item.key)" class="sidebar-item-indicator" />
           </div>
         </div>
 
+        <!-- Admin entry -->
         <div class="sidebar-section">
-          <div v-if="!collapsed" class="sidebar-section-title">系统管理</div>
+          <div v-if="!collapsed" class="sidebar-section-title">管理</div>
           <div
-            v-for="item in adminMenuItems"
-            :key="item.key"
             class="sidebar-item"
-            :class="{ 'sidebar-item--active': selectedKeys.includes(item.key) }"
-            @click="handleMenuClick(item.key)"
+            @click="navigateTo('/admin/tenant')"
           >
-            <component :is="item.icon" class="sidebar-item-icon" />
+            <SettingOutlined class="sidebar-item-icon" />
             <transition name="fade">
-              <span v-if="!collapsed" class="sidebar-item-label">{{ item.label }}</span>
+              <span v-if="!collapsed" class="sidebar-item-label">管理后台</span>
             </transition>
-            <div v-if="selectedKeys.includes(item.key)" class="sidebar-item-indicator" />
           </div>
         </div>
       </nav>
@@ -175,11 +164,11 @@ watch(route, () => {
               <a-avatar :size="32" class="header-avatar">
                 <template #icon><UserOutlined /></template>
               </a-avatar>
-              <span class="header-username">管理员</span>
+              <span class="header-username">审核员</span>
             </div>
             <template #overlay>
               <a-menu>
-                <a-menu-item key="profile">个人设置</a-menu-item>
+                <a-menu-item key="profile" @click="navigateTo('/settings')">个人设置</a-menu-item>
                 <a-menu-divider />
                 <a-menu-item key="logout" @click="logout">退出登录</a-menu-item>
               </a-menu>
@@ -200,32 +189,7 @@ watch(route, () => {
 .app-layout {
   display: flex;
   min-height: 100vh;
-  background: var(--color-bg-page, #f8fafc);
-}
-
-/* Ensure CSS variables have fallbacks */
-:deep(*) {
-  --sidebar-width: 260px;
-  --sidebar-collapsed-width: 72px;
-  --header-height: 64px;
-  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
-  --radius-md: 8px;
-  --radius-full: 9999px;
-  --color-bg-page: #f8fafc;
-  --color-bg-card: #ffffff;
-  --color-bg-hover: #f1f5f9;
-  --color-bg-sidebar: #0f172a;
-  --color-bg-sidebar-hover: #1e293b;
-  --color-bg-sidebar-active: rgba(79, 70, 229, 0.15);
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-tertiary: #94a3b8;
-  --color-text-sidebar: #94a3b8;
-  --color-text-sidebar-active: #ffffff;
-  --color-border-light: #f1f5f9;
-  --color-primary-lighter: #818cf8;
-  --space-page: 24px;
+  background: var(--color-bg-page);
 }
 
 /* ===== Sidebar ===== */
@@ -343,6 +307,21 @@ watch(route, () => {
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
+  flex: 1;
+}
+
+.sidebar-item-badge {
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--color-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .sidebar-item-indicator {
@@ -397,7 +376,6 @@ watch(route, () => {
 /* ===== Header ===== */
 .app-header {
   height: var(--header-height);
-  background: var(--color-bg-card);
   border-bottom: 1px solid var(--color-border-light);
   display: flex;
   align-items: center;
@@ -407,7 +385,8 @@ watch(route, () => {
   top: 0;
   z-index: 50;
   backdrop-filter: blur(12px);
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--color-bg-card);
+  background: color-mix(in srgb, var(--color-bg-card) 85%, transparent);
 }
 
 .app-header-left {

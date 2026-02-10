@@ -57,9 +57,9 @@ const createTask = () => {
 }
 
 const taskTypeConfig: Record<string, { label: string; color: string; bg: string }> = {
-  batch_audit: { label: '批量审核', color: '#4f46e5', bg: '#eef2ff' },
-  daily_report: { label: '日报推送', color: '#06b6d4', bg: '#ecfeff' },
-  weekly_report: { label: '周报推送', color: '#8b5cf6', bg: '#f5f3ff' },
+  batch_audit: { label: '批量审核', color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' },
+  daily_report: { label: '日报推送', color: 'var(--color-accent)', bg: 'var(--color-info-bg)' },
+  weekly_report: { label: '周报推送', color: '#8b5cf6', bg: 'var(--color-primary-bg)' },
 }
 
 const taskTypeOptions = [

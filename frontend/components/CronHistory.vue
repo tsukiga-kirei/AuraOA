@@ -19,8 +19,8 @@ defineProps<{
     </div>
     <div v-for="item in history" :key="item.task_id + item.executed_at" class="history-item">
       <div class="history-status">
-        <CheckCircleOutlined v-if="item.success" style="color: #10b981;" />
-        <CloseCircleOutlined v-else style="color: #ef4444;" />
+        <CheckCircleOutlined v-if="item.success" style="color: var(--color-success);" />
+        <CloseCircleOutlined v-else style="color: var(--color-danger);" />
       </div>
       <div class="history-content">
         <div class="history-message">{{ item.message }}</div>
