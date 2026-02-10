@@ -154,6 +154,52 @@ export interface AuditRule {
   enabled: boolean
 }
 
+export interface FlowNode {
+  node_id: string
+  node_name: string
+  approver: string
+  action: 'approve' | 'reject' | 'revise'
+  action_time: string
+  opinion: string
+}
+
+export interface ArchivedProcess {
+  process_id: string
+  title: string
+  applicant: string
+  department: string
+  process_type: string
+  amount?: number
+  submit_time: string
+  archive_time: string
+  status: 'archived'
+  flow_nodes: FlowNode[]
+  fields: Record<string, string>
+}
+
+export interface FlowNodeAuditResult {
+  node_id: string
+  node_name: string
+  compliant: boolean
+  reasoning: string
+}
+
+export interface ArchiveAuditResult {
+  trace_id: string
+  process_id: string
+  overall_compliance: 'compliant' | 'non_compliant' | 'partially_compliant'
+  overall_score: number
+  duration_ms: number
+  flow_audit: {
+    is_complete: boolean
+    missing_nodes: string[]
+    node_results: FlowNodeAuditResult[]
+  }
+  field_audit: { field_name: string; passed: boolean; reasoning: string }[]
+  rule_audit: { rule_id: string; rule_name: string; passed: boolean; reasoning: string }[]
+  ai_summary: string
+}
+
 export interface DashboardStats {
   todayAudits: number
   todayApproved: number
@@ -163,6 +209,18 @@ export interface DashboardStats {
   avgResponseMs: number
   successRate: number
   weeklyTrend: { date: string; count: number }[]
+}
+
+// ============================================================
+// Archive Review types (归档复盘 - 全流程合规复核)
+// ============================================================
+// FlowNode, ArchivedProcess, FlowNodeAuditResult, ArchiveAuditResult
+// are defined above in the Business mock data section.
+
+export interface FieldAuditResult {
+  field_name: string
+  passed: boolean
+  reasoning: string
 }
 
 export const useMockData = () => {
@@ -361,6 +419,217 @@ export const useMockData = () => {
     },
   }
 
+  // ============================================================
+  // Archive Review (归档复盘) - Full process compliance re-audit
+  // ============================================================
+
+  // Archived processes that have completed all approval nodes
+  const mockArchivedProcesses: ArchivedProcess[] = [
+    {
+      process_id: 'WF-2025-050',
+      title: '2025年度服务器集群采购',
+      applicant: '王强',
+      department: 'IT部',
+      process_type: '采购审批',
+      amount: 1200000,
+      submit_time: '2025-04-15 09:00',
+      archive_time: '2025-05-20 17:30',
+      status: 'archived',
+      flow_nodes: [
+        { node_id: 'N1', node_name: '部门经理审批', approver: '李明', action: 'approve', action_time: '2025-04-16 10:00', opinion: '同意，符合年度IT规划' },
+        { node_id: 'N2', node_name: '财务总监审批', approver: '张华', action: 'approve', action_time: '2025-04-18 14:30', opinion: '预算充足，同意' },
+        { node_id: 'N3', node_name: '总经理审批', approver: '刘总', action: 'approve', action_time: '2025-04-20 09:15', opinion: '批准' },
+      ],
+      fields: { supplier: 'XX云计算有限公司', contract_no: 'HT-2025-0088', delivery_date: '2025-06-30', payment_terms: '分期付款（30%/40%/30%）' },
+    },
+    {
+      process_id: 'WF-2025-038',
+      title: '华东区域市场推广费用报销',
+      applicant: '陈伟',
+      department: '市场部',
+      process_type: '费用报销',
+      amount: 85000,
+      submit_time: '2025-03-20 11:00',
+      archive_time: '2025-04-10 16:00',
+      status: 'archived',
+      flow_nodes: [
+        { node_id: 'N1', node_name: '部门经理审批', approver: '周磊', action: 'approve', action_time: '2025-03-21 09:30', opinion: '费用合理' },
+        { node_id: 'N2', node_name: '财务审核', approver: '张华', action: 'revise', action_time: '2025-03-22 14:00', opinion: '部分发票不清晰，请补充' },
+        { node_id: 'N3', node_name: '财务审核（重审）', approver: '张华', action: 'approve', action_time: '2025-03-25 10:00', opinion: '材料已补齐，通过' },
+      ],
+      fields: { event_name: '华东春季产品发布会', venue: '上海国际会议中心', attendees: '320人' },
+    },
+    {
+      process_id: 'WF-2025-025',
+      title: '外包开发合同签署 - CRM系统二期',
+      applicant: '赵丽',
+      department: '研发部',
+      process_type: '合同审批',
+      amount: 680000,
+      submit_time: '2025-02-10 14:00',
+      archive_time: '2025-03-15 11:00',
+      status: 'archived',
+      flow_nodes: [
+        { node_id: 'N1', node_name: '部门经理审批', approver: '张明', action: 'approve', action_time: '2025-02-11 09:00', opinion: '技术方案可行' },
+        { node_id: 'N2', node_name: '法务审核', approver: '孙律', action: 'revise', action_time: '2025-02-15 16:00', opinion: '知识产权条款需修改' },
+        { node_id: 'N3', node_name: '法务审核（重审）', approver: '孙律', action: 'approve', action_time: '2025-02-20 11:00', opinion: '条款已修正，通过' },
+        { node_id: 'N4', node_name: '财务总监审批', approver: '张华', action: 'approve', action_time: '2025-02-22 14:30', opinion: '预算范围内' },
+        { node_id: 'N5', node_name: '总经理审批', approver: '刘总', action: 'approve', action_time: '2025-02-25 10:00', opinion: '批准' },
+      ],
+      fields: { vendor: 'YY软件科技', contract_period: '2025-03-01 至 2025-08-31', deliverables: 'CRM系统二期全部功能模块' },
+    },
+    {
+      process_id: 'WF-2025-012',
+      title: '新员工批量入职审批 - 2025春招',
+      applicant: '赵丽',
+      department: '人力资源部',
+      process_type: '人事审批',
+      submit_time: '2025-01-20 09:00',
+      archive_time: '2025-02-28 17:00',
+      status: 'archived',
+      flow_nodes: [
+        { node_id: 'N1', node_name: 'HR经理审批', approver: '赵丽', action: 'approve', action_time: '2025-01-20 10:00', opinion: '招聘计划内' },
+        { node_id: 'N2', node_name: '用人部门确认', approver: '各部门经理', action: 'approve', action_time: '2025-01-25 16:00', opinion: '确认接收' },
+        { node_id: 'N3', node_name: 'HR总监审批', approver: '王总监', action: 'approve', action_time: '2025-01-28 09:30', opinion: '同意' },
+      ],
+      fields: { headcount: '15人', positions: '开发工程师x8, 产品经理x3, 测试工程师x4', onboard_date: '2025-03-01' },
+    },
+    {
+      process_id: 'WF-2025-008',
+      title: '办公楼层装修改造工程',
+      applicant: '刘洋',
+      department: '行政部',
+      process_type: '工程审批',
+      amount: 450000,
+      submit_time: '2025-01-10 10:00',
+      archive_time: '2025-02-15 14:00',
+      status: 'archived',
+      flow_nodes: [
+        { node_id: 'N1', node_name: '行政经理审批', approver: '刘洋', action: 'approve', action_time: '2025-01-10 14:00', opinion: '方案合理' },
+        { node_id: 'N2', node_name: '财务总监审批', approver: '张华', action: 'approve', action_time: '2025-01-12 10:00', opinion: '预算可控' },
+        { node_id: 'N3', node_name: '总经理审批', approver: '刘总', action: 'reject', action_time: '2025-01-15 09:00', opinion: '施工时间与业务高峰冲突，请调整' },
+        { node_id: 'N4', node_name: '行政经理重新提交', approver: '刘洋', action: 'approve', action_time: '2025-01-18 11:00', opinion: '已调整至春节假期施工' },
+        { node_id: 'N5', node_name: '总经理审批（重审）', approver: '刘总', action: 'approve', action_time: '2025-01-20 09:30', opinion: '时间调整合理，批准' },
+      ],
+      fields: { floor: '3楼、5楼', contractor: 'ZZ装饰工程公司', construction_period: '2025-01-25 至 2025-02-10' },
+    },
+  ]
+
+  // Full-process compliance re-audit result
+  const mockArchiveAuditResult: ArchiveAuditResult = {
+    trace_id: 'ATR-20250610-X1Y2',
+    process_id: 'WF-2025-050',
+    overall_compliance: 'compliant',
+    overall_score: 92,
+    duration_ms: 3200,
+    flow_audit: {
+      is_complete: true,
+      missing_nodes: [],
+      node_results: [
+        { node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批权限匹配，审批时效正常（1个工作日内）' },
+        { node_id: 'N2', node_name: '财务总监审批', compliant: true, reasoning: '金额超100万需财务总监审批，流程正确' },
+        { node_id: 'N3', node_name: '总经理审批', compliant: true, reasoning: '金额超50万需总经理审批，流程正确' },
+      ],
+    },
+    field_audit: [
+      { field_name: '供应商资质', passed: true, reasoning: '供应商在合格名录中，资质有效期至2026-12-31' },
+      { field_name: '合同编号', passed: true, reasoning: '合同编号格式正确，已在合同管理系统中登记' },
+      { field_name: '交付日期', passed: true, reasoning: '交付日期在合同约定范围内' },
+      { field_name: '付款条件', passed: false, reasoning: '分期付款比例（30%/40%/30%）与公司标准（30%/30%/40%）不一致，需确认是否有特批' },
+    ],
+    rule_audit: [
+      { rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '采购金额在年度IT预算范围内' },
+      { rule_id: 'R002', rule_name: '供应商比价', passed: true, reasoning: '已提供3家供应商比价报告' },
+      { rule_id: 'R004', rule_name: '合同条款完整性', passed: true, reasoning: '合同包含所有必要条款' },
+    ],
+    ai_summary: '该采购流程整体合规，审批链完整，各节点审批权限匹配。\n\n主要发现：\n1. 审批流程完整，三级审批均在合理时效内完成\n2. 供应商资质有效，比价流程规范\n3. 付款条件与公司标准略有差异（分期比例不同），建议确认是否有特批记录\n\n合规评级：基本合规（92分），建议关注付款条件差异项。',
+  }
+
+  // ============================================================
+  // Archived processes for dashboard "归档" tab
+  // These are completed processes (final result = approved) with multi-round audit chains
+  // ============================================================
+  const mockArchivedOAProcesses: OAProcess[] = [
+    { process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', submit_time: '2025-04-15 09:00', process_type: '采购审批', status: 'archived', amount: 1200000, urgency: 'high' },
+    { process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', applicant: '陈伟', department: '市场部', submit_time: '2025-03-20 11:00', process_type: '费用报销', status: 'archived', amount: 85000, urgency: 'medium' },
+    { process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', submit_time: '2025-02-10 14:00', process_type: '合同审批', status: 'archived', amount: 680000, urgency: 'high' },
+    { process_id: 'WF-2025-012', title: '新员工批量入职审批 - 2025春招', applicant: '赵丽', department: '人力资源部', submit_time: '2025-01-20 09:00', process_type: '人事审批', status: 'archived', urgency: 'low' },
+    { process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', submit_time: '2025-01-10 10:00', process_type: '工程审批', status: 'archived', amount: 450000, urgency: 'medium' },
+  ]
+
+  // Multi-round audit chain snapshots for archived processes (final round always approve)
+  const mockArchivedAuditChains: Record<string, AuditSnapshot[]> = {
+    'WF-2025-050': [
+      { snapshot_id: 'SN-A001', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', recommendation: 'revise', score: 68, created_at: '2025-04-16 10:30', adopted: true },
+      { snapshot_id: 'SN-A002', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', recommendation: 'revise', score: 82, created_at: '2025-04-25 14:00', adopted: true },
+      { snapshot_id: 'SN-A003', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', recommendation: 'approve', score: 95, created_at: '2025-05-10 09:15', adopted: true },
+    ],
+    'WF-2025-038': [
+      { snapshot_id: 'SN-A004', process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', applicant: '陈伟', department: '市场部', recommendation: 'reject', score: 42, created_at: '2025-03-22 15:00', adopted: true },
+      { snapshot_id: 'SN-A005', process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', applicant: '陈伟', department: '市场部', recommendation: 'approve', score: 90, created_at: '2025-03-28 11:30', adopted: true },
+    ],
+    'WF-2025-025': [
+      { snapshot_id: 'SN-A006', process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', recommendation: 'revise', score: 55, created_at: '2025-02-12 10:00', adopted: true },
+      { snapshot_id: 'SN-A007', process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', recommendation: 'revise', score: 78, created_at: '2025-02-18 16:00', adopted: true },
+      { snapshot_id: 'SN-A008', process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', recommendation: 'approve', score: 92, created_at: '2025-02-24 09:30', adopted: true },
+    ],
+    'WF-2025-012': [
+      { snapshot_id: 'SN-A009', process_id: 'WF-2025-012', title: '新员工批量入职审批 - 2025春招', applicant: '赵丽', department: '人力资源部', recommendation: 'approve', score: 96, created_at: '2025-01-22 11:00', adopted: true },
+    ],
+    'WF-2025-008': [
+      { snapshot_id: 'SN-A010', process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', recommendation: 'reject', score: 38, created_at: '2025-01-12 14:00', adopted: true },
+      { snapshot_id: 'SN-A011', process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', recommendation: 'revise', score: 71, created_at: '2025-01-16 10:30', adopted: true },
+      { snapshot_id: 'SN-A012', process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', recommendation: 'approve', score: 89, created_at: '2025-01-19 15:00', adopted: true },
+    ],
+  }
+
+  // Historical audit results for archived processes (final approved result)
+  const mockArchivedHistoricalResults: Record<string, AuditResult> = {
+    'WF-2025-050': {
+      trace_id: 'TR-20250510-M1N2', process_id: 'WF-2025-050', recommendation: 'approve', score: 95, duration_ms: 2100,
+      details: [
+        { rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '采购金额在年度IT预算范围内', is_locked: true },
+        { rule_id: 'R002', rule_name: '供应商比价', passed: true, reasoning: '已提供3家供应商比价报告' },
+        { rule_id: 'R003', rule_name: '合同条款完整性', passed: true, reasoning: '合同包含所有必要条款' },
+      ],
+      ai_reasoning: '该采购申请经过两轮修改后完全合规，预算合理、审批链完整、供应商资质齐全。建议通过。',
+    },
+    'WF-2025-038': {
+      trace_id: 'TR-20250328-P3Q4', process_id: 'WF-2025-038', recommendation: 'approve', score: 90, duration_ms: 1650,
+      details: [
+        { rule_id: 'R003', rule_name: '费用标准校验', passed: true, reasoning: '报销金额符合市场推广费用标准' },
+        { rule_id: 'R006', rule_name: '审批材料完整性', passed: true, reasoning: '发票、活动方案、参会名单齐全' },
+      ],
+      ai_reasoning: '费用报销申请材料已补齐，金额合理，符合公司市场推广费用管理制度。建议通过。',
+    },
+    'WF-2025-025': {
+      trace_id: 'TR-20250224-R5S6', process_id: 'WF-2025-025', recommendation: 'approve', score: 92, duration_ms: 1880,
+      details: [
+        { rule_id: 'R004', rule_name: '合同法务审核', passed: true, reasoning: '知识产权条款已修正，法务已会签', is_locked: true },
+        { rule_id: 'R008', rule_name: '供应商准入', passed: true, reasoning: '外包供应商已通过准入评审' },
+        { rule_id: 'R009', rule_name: '预算审批', passed: true, reasoning: '合同金额已纳入年度预算' },
+      ],
+      ai_reasoning: '合同经过法务条款修正后合规，供应商资质齐全，预算在规划范围内。建议通过。',
+    },
+    'WF-2025-012': {
+      trace_id: 'TR-20250122-T7U8', process_id: 'WF-2025-012', recommendation: 'approve', score: 96, duration_ms: 1200,
+      details: [
+        { rule_id: 'R005', rule_name: 'HC审批校验', passed: true, reasoning: '招聘人数在年度HC计划内' },
+        { rule_id: 'R010', rule_name: '用人部门确认', passed: true, reasoning: '各部门经理已确认接收' },
+      ],
+      ai_reasoning: '批量入职审批完全合规，招聘计划内，各部门已确认。建议通过。',
+    },
+    'WF-2025-008': {
+      trace_id: 'TR-20250119-V9W0', process_id: 'WF-2025-008', recommendation: 'approve', score: 89, duration_ms: 1750,
+      details: [
+        { rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '装修费用在行政预算范围内' },
+        { rule_id: 'R011', rule_name: '施工时间合理性', passed: true, reasoning: '已调整至春节假期施工，不影响业务' },
+        { rule_id: 'R012', rule_name: '承包商资质', passed: true, reasoning: '承包商具备相应施工资质' },
+      ],
+      ai_reasoning: '装修方案经调整后合规，施工时间不影响业务运营，预算可控。建议通过。',
+    },
+  }
+
   return {
     mockProcesses,
     mockApprovedProcesses,
@@ -372,5 +641,10 @@ export const useMockData = () => {
     mockTenants,
     mockRules,
     mockDashboardStats,
+    mockArchivedProcesses,
+    mockArchiveAuditResult,
+    mockArchivedOAProcesses,
+    mockArchivedAuditChains,
+    mockArchivedHistoricalResults,
   }
 }
