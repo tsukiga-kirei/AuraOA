@@ -1,7 +1,61 @@
 /**
  * Mock data for development - simulates API responses
+ * All mock/virtual data lives here. Business code only references this file.
  */
 
+// ============================================================
+// Mock user accounts for login
+// ============================================================
+export type UserRole = 'business' | 'tenant_admin' | 'system_admin'
+
+export interface MockUser {
+  username: string
+  password: string
+  tenant_id: string
+  role: UserRole
+  display_name: string
+}
+
+export const MOCK_USERS: MockUser[] = [
+  { username: 'zhangming', password: '123456', tenant_id: 'default', role: 'business', display_name: '张明' },
+  { username: 'user', password: '123456', tenant_id: 'default', role: 'business', display_name: '测试用户' },
+  { username: 'tenantadmin', password: '123456', tenant_id: 'default', role: 'tenant_admin', display_name: '租户管理员' },
+  { username: 'admin', password: '123456', tenant_id: 'default', role: 'system_admin', display_name: '系统管理员' },
+  { username: 'lifang', password: '123456', tenant_id: 'T-002', role: 'business', display_name: '李芳' },
+]
+
+// ============================================================
+// Mock menus by role (RBAC)
+// ============================================================
+export interface MockMenuItem {
+  key: string
+  label: string
+  icon?: string
+  path: string
+  children?: MockMenuItem[]
+}
+
+export function getMockMenusByRole(role: UserRole): MockMenuItem[] {
+  const base: MockMenuItem[] = [
+    { key: 'dashboard', label: '审核工作台', path: '/dashboard' },
+    { key: 'cron', label: '定时任务', path: '/cron' },
+    { key: 'archive', label: '归档复盘', path: '/archive' },
+  ]
+  const tenant: MockMenuItem[] = [
+    { key: 'tenant', label: '租户配置', path: '/admin/tenant' },
+  ]
+  const sys: MockMenuItem[] = [
+    { key: 'system', label: '系统管理', path: '/admin/system' },
+    { key: 'monitor', label: '全局监控', path: '/admin/monitor' },
+  ]
+  if (role === 'system_admin') return [...base, ...tenant, ...sys]
+  if (role === 'tenant_admin') return [...base, ...tenant]
+  return base
+}
+
+// ============================================================
+// Business mock data
+// ============================================================
 export interface OAProcess {
   process_id: string
   title: string

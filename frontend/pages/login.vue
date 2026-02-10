@@ -12,7 +12,7 @@ import {
 
 definePageMeta({ layout: false })
 
-const { login, getMenu, setUserRole } = useAuth()
+const { login, getMenu, setUserRole, isMockMode, MOCK_USERS } = useAuth()
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
 
 onMounted(() => restoreTheme())
@@ -31,6 +31,17 @@ const loading = ref(false)
 const rememberMe = ref(false)
 const currentPortal = computed(() => portals.find(p => p.key === activePortal.value)!)
 
+// Quick-fill accounts filtered by current portal role
+const quickAccounts = computed(() =>
+  MOCK_USERS.filter(u => u.role === activePortal.value),
+)
+
+const fillAccount = (user: typeof MOCK_USERS[0]) => {
+  form.value.username = user.username
+  form.value.password = user.password
+  form.value.tenant_id = user.tenant_id
+}
+
 const handleLogin = async () => {
   if (!form.value.username || !form.value.password) {
     message.warning('请输入用户名和密码')
@@ -45,7 +56,7 @@ const handleLogin = async () => {
       message.success('登录成功，正在跳转...')
       navigateTo(activePortal.value === 'business' ? '/dashboard' : '/admin/tenant')
     } else {
-      message.error('登录失败，请检查凭证')
+      message.error('登录失败，请检查用户名或密码')
     }
   } finally {
     loading.value = false
@@ -128,6 +139,21 @@ const handleLogin = async () => {
             <div class="login-options">
               <a-checkbox v-model:checked="rememberMe">记住登录</a-checkbox>
             </div>
+
+            <!-- Mock mode: quick-fill test accounts -->
+            <div v-if="isMockMode" class="mock-accounts">
+              <div class="mock-accounts-label">测试账号（点击快速填充）：</div>
+              <div class="mock-accounts-list">
+                <a-tag
+                  v-for="acc in quickAccounts" :key="acc.username"
+                  class="mock-account-tag" color="blue"
+                  @click="fillAccount(acc)"
+                >
+                  {{ acc.display_name }}（{{ acc.username }}）
+                </a-tag>
+              </div>
+            </div>
+
             <a-form-item>
               <a-button
                 type="primary" block size="large" :loading="loading"
@@ -309,6 +335,20 @@ const handleLogin = async () => {
 }
 
 .login-footer { text-align: center; margin-top: 24px; color: var(--color-text-tertiary); font-size: 13px; }
+
+/* Mock accounts quick-fill */
+.mock-accounts {
+  margin-bottom: 16px; padding: 12px;
+  background: color-mix(in srgb, var(--color-primary, #4f46e5) 5%, var(--color-bg-card));
+  border: 1px dashed color-mix(in srgb, var(--color-primary, #4f46e5) 30%, transparent);
+  border-radius: var(--radius-lg);
+}
+.mock-accounts-label {
+  font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 8px;
+}
+.mock-accounts-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.mock-account-tag { cursor: pointer; font-size: 12px; }
+.mock-account-tag:hover { opacity: 0.8; }
 
 .login-mobile-brand {
   display: none; position: absolute; top: 24px; left: 24px; z-index: 2;

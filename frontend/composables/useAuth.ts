@@ -1,3 +1,6 @@
+import { MOCK_USERS, getMockMenusByRole } from './useMockData'
+import type { MockUser, MockMenuItem, UserRole } from './useMockData'
+
 interface LoginRequest {
   username: string
   password: string
@@ -10,40 +13,43 @@ interface TokenResponse {
   expires_in: number
 }
 
-interface MenuItem {
-  key: string
-  label: string
-  icon?: string
-  path: string
-  children?: MenuItem[]
-}
-
-type UserRole = 'business' | 'tenant_admin' | 'system_admin'
+export type { MockUser, MockMenuItem, UserRole }
 
 export const useAuth = () => {
   const config = useRuntimeConfig()
   const token = useState<string | null>('auth_token', () => null)
   const refreshToken = useState<string | null>('auth_refresh', () => null)
-  const menus = useState<MenuItem[]>('auth_menus', () => [])
+  const menus = useState<MockMenuItem[]>('auth_menus', () => [])
   const userRole = useState<UserRole>('auth_role', () => 'business')
+  const currentUser = useState<{ username: string; display_name: string; tenant_id: string } | null>('auth_user', () => null)
 
   const isMockMode = computed(() => config.public.mockMode === true || config.public.mockMode === 'true')
 
   const setUserRole = (role: UserRole) => {
     userRole.value = role
-    if (import.meta.client) {
-      localStorage.setItem('user_role', role)
-    }
+    if (import.meta.client) localStorage.setItem('user_role', role)
   }
 
   const login = async (req: LoginRequest): Promise<boolean> => {
     if (isMockMode.value) {
+      const matched = MOCK_USERS.find(
+        u => u.username === req.username && u.password === req.password
+          && (req.tenant_id === u.tenant_id || req.tenant_id === 'default'),
+      )
+      if (!matched) return false
+
       const mockToken = 'mock_token_' + Date.now()
       token.value = mockToken
       refreshToken.value = 'mock_refresh_' + Date.now()
+      currentUser.value = {
+        username: matched.username,
+        display_name: matched.display_name,
+        tenant_id: matched.tenant_id,
+      }
       if (import.meta.client) {
         localStorage.setItem('token', mockToken)
-        localStorage.setItem('refresh_token', refreshToken.value)
+        localStorage.setItem('refresh_token', refreshToken.value!)
+        localStorage.setItem('current_user', JSON.stringify(currentUser.value))
       }
       return true
     }
@@ -65,22 +71,14 @@ export const useAuth = () => {
     }
   }
 
-  const getMenu = async (): Promise<MenuItem[]> => {
+  const getMenu = async (): Promise<MockMenuItem[]> => {
     if (isMockMode.value) {
-      const mockMenus: MenuItem[] = [
-        { key: 'dashboard', label: '审核工作台', path: '/dashboard' },
-        { key: 'cron', label: '定时任务', path: '/cron' },
-        { key: 'archive', label: '归档复盘', path: '/archive' },
-        { key: 'tenant', label: '租户配置', path: '/admin/tenant' },
-        { key: 'system', label: '系统管理', path: '/admin/system' },
-        { key: 'monitor', label: '全局监控', path: '/admin/monitor' },
-      ]
-      menus.value = mockMenus
-      return mockMenus
+      const m = getMockMenusByRole(userRole.value)
+      menus.value = m
+      return m
     }
-
     try {
-      const data = await $fetch<{ menus: MenuItem[] }>(`${config.public.apiBase}/api/auth/menu`, {
+      const data = await $fetch<{ menus: MockMenuItem[] }>(`${config.public.apiBase}/api/auth/menu`, {
         headers: { Authorization: `Bearer ${token.value}` },
       })
       menus.value = data.menus
@@ -95,10 +93,12 @@ export const useAuth = () => {
     refreshToken.value = null
     menus.value = []
     userRole.value = 'business'
+    currentUser.value = null
     if (import.meta.client) {
       localStorage.removeItem('token')
       localStorage.removeItem('refresh_token')
       localStorage.removeItem('user_role')
+      localStorage.removeItem('current_user')
     }
     navigateTo('/login')
   }
@@ -113,11 +113,16 @@ export const useAuth = () => {
       if (savedRefresh) refreshToken.value = savedRefresh
       const savedRole = localStorage.getItem('user_role') as UserRole | null
       if (savedRole) userRole.value = savedRole
+      const savedUser = localStorage.getItem('current_user')
+      if (savedUser) {
+        try { currentUser.value = JSON.parse(savedUser) } catch { /* ignore */ }
+      }
     }
   }
 
   return {
-    token, refreshToken, menus, userRole,
+    token, refreshToken, menus, userRole, currentUser,
     login, getMenu, logout, isAuthenticated, restore, isMockMode, setUserRole,
+    MOCK_USERS,
   }
 }
