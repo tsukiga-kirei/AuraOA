@@ -90,11 +90,12 @@
   }
   ```
 
-### 2.2 获取已通过/已驳回流程列表
+### 2.2 获取已通过/已驳回/已归档流程列表
 - **GET** `/api/audit/history`
 - **Headers**: `Authorization: Bearer {token}`
-- **Query**: `?status=approved|rejected&page=1&size=20`
-- **响应**: 同 2.1 结构，status 为 `approved` 或 `rejected`
+- **Query**: `?status=approved|rejected|archived&page=1&size=20`
+- **响应**: 同 2.1 结构，status 为 `approved`、`rejected` 或 `archived`
+- **说明**: 已归档流程同时可通过 4.2 归档接口获取完整审批链与字段详情
 
 ### 2.3 执行 AI 审核
 - **POST** `/api/audit/execute`
@@ -223,7 +224,95 @@
   }
   ```
 
-### 4.2 导出审核记录
+### 4.2 获取归档流程列表
+- **GET** `/api/archive/processes`
+- **Headers**: `Authorization: Bearer {token}`
+- **Query**: `?process_type=采购审批&department=IT部&date_from=2025-01-01&date_to=2025-06-30&page=1&size=20`
+- **响应**:
+  ```json
+  {
+    "processes": [
+      {
+        "process_id": "WF-2025-050",
+        "title": "2025年度服务器集群采购",
+        "applicant": "王强",
+        "department": "IT部",
+        "process_type": "采购审批",
+        "amount": 1200000,
+        "submit_time": "2025-04-15 09:00",
+        "archive_time": "2025-05-20 17:30",
+        "status": "archived",
+        "flow_nodes": [
+          {
+            "node_id": "N1",
+            "node_name": "部门经理审批",
+            "approver": "李明",
+            "action": "approve | reject | revise",
+            "action_time": "2025-04-16 10:00",
+            "opinion": "同意，符合年度IT规划"
+          }
+        ],
+        "fields": {
+          "supplier": "XX云计算有限公司",
+          "contract_no": "HT-2025-0088"
+        }
+      }
+    ],
+    "total": 50,
+    "page": 1,
+    "size": 20
+  }
+  ```
+
+### 4.3 执行归档合规复审
+- **POST** `/api/archive/re-audit`
+- **Headers**: `Authorization: Bearer {token}`
+- **请求体**:
+  ```json
+  {
+    "process_id": "WF-2025-050"
+  }
+  ```
+- **响应**:
+  ```json
+  {
+    "trace_id": "ATR-20250610-X1Y2",
+    "process_id": "WF-2025-050",
+    "overall_compliance": "compliant | non_compliant | partially_compliant",
+    "overall_score": 92,
+    "duration_ms": 3200,
+    "flow_audit": {
+      "is_complete": true,
+      "missing_nodes": [],
+      "node_results": [
+        {
+          "node_id": "N1",
+          "node_name": "部门经理审批",
+          "compliant": true,
+          "reasoning": "审批权限匹配，审批时效正常"
+        }
+      ]
+    },
+    "field_audit": [
+      {
+        "field_name": "供应商资质",
+        "passed": true,
+        "reasoning": "供应商在合格名录中"
+      }
+    ],
+    "rule_audit": [
+      {
+        "rule_id": "R001",
+        "rule_name": "预算额度校验",
+        "passed": true,
+        "reasoning": "采购金额在年度IT预算范围内"
+      }
+    ],
+    "ai_summary": "该采购流程整体合规，审批链完整..."
+  }
+  ```
+
+### 4.4 导出审核记录
 - **GET** `/api/archive/export`
 - **Query**: `?format=json|csv|excel&department=IT部`
 - **响应**: 文件下载流

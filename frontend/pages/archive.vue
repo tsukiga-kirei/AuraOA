@@ -1,61 +1,101 @@
 <script setup lang="ts">
 import {
   SearchOutlined,
-  DownloadOutlined,
   FilterOutlined,
-  EyeOutlined,
+  DownloadOutlined,
+  SafetyCertificateOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  EditOutlined,
+  ExclamationCircleOutlined,
   ExportOutlined,
+  AuditOutlined,
+  NodeIndexOutlined,
+  FileProtectOutlined,
+  FieldTimeOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
+import type { ArchivedProcess, ArchiveAuditResult } from '~/composables/useMockData'
 
 definePageMeta({ middleware: 'auth' })
 
-const { mockSnapshots } = useMockData()
+const { mockArchivedProcesses, mockArchiveAuditResult } = useMockData()
 
-const results = ref([...mockSnapshots])
+const processList = ref<ArchivedProcess[]>([...mockArchivedProcesses])
+const selectedProcess = ref<ArchivedProcess | null>(null)
+const auditResult = ref<ArchiveAuditResult | null>(null)
 const loading = ref(false)
+const searchText = ref('')
 const showFilters = ref(false)
-const selectedSnapshot = ref<any>(null)
-
 const filters = ref({
   department: undefined as string | undefined,
-  recommendation: undefined as string | undefined,
-  dateRange: null as any,
+  processType: undefined as string | undefined,
 })
 
-const filteredResults = computed(() => {
-  let data = [...results.value]
+const departments = [...new Set(mockArchivedProcesses.map(p => p.department))]
+const processTypes = [...new Set(mockArchivedProcesses.map(p => p.process_type))]
+
+const filteredList = computed(() => {
+  let list = [...processList.value]
+  if (searchText.value) {
+    const q = searchText.value.toLowerCase()
+    list = list.filter(p =>
+      p.title.toLowerCase().includes(q) ||
+      p.applicant.toLowerCase().includes(q) ||
+      p.process_id.toLowerCase().includes(q)
+    )
+  }
   if (filters.value.department) {
-    data = data.filter(r => r.department === filters.value.department)
+    list = list.filter(p => p.department === filters.value.department)
   }
-  if (filters.value.recommendation) {
-    data = data.filter(r => r.recommendation === filters.value.recommendation)
+  if (filters.value.processType) {
+    list = list.filter(p => p.process_type === filters.value.processType)
   }
-  return data
+  return list
 })
-
-const search = () => {
-  loading.value = true
-  setTimeout(() => { loading.value = false }, 500)
-}
 
 const clearFilters = () => {
-  filters.value = { department: undefined, recommendation: undefined, dateRange: null }
+  filters.value = { department: undefined, processType: undefined }
+  searchText.value = ''
 }
 
-const recommendationConfig: Record<string, { color: string; bg: string; icon: any; label: string }> = {
-  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: '通过' },
-  reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: '驳回' },
-  revise: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EditOutlined, label: '修改' },
+const selectProcess = (proc: ArchivedProcess) => {
+  selectedProcess.value = proc
+  auditResult.value = null
 }
 
-const departments = ['IT部', '销售部', '研发部', '行政部', '人力资源部', '市场部']
+const startComplianceAudit = async () => {
+  if (!selectedProcess.value) return
+  loading.value = true
+  auditResult.value = null
+  // Simulate AI processing
+  await new Promise(resolve => setTimeout(resolve, 2200))
+  // Return mock result, adjusting process_id to match selected
+  auditResult.value = {
+    ...mockArchiveAuditResult,
+    process_id: selectedProcess.value.process_id,
+  }
+  loading.value = false
+}
+
+const handleExport = (format: string) => {
+  message.success(`正在导出 ${format.toUpperCase()} 格式的合规复核报告...`)
+}
 
 const jumpToOA = (processId: string) => {
   message.info(`正在跳转 OA 系统查看流程 ${processId}...`)
+}
+
+const complianceConfig: Record<string, { color: string; bg: string; label: string }> = {
+  compliant: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: '合规' },
+  non_compliant: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', label: '不合规' },
+  partially_compliant: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: '部分合规' },
+}
+
+const actionConfig: Record<string, { color: string; label: string }> = {
+  approve: { color: 'var(--color-success)', label: '通过' },
+  reject: { color: 'var(--color-danger)', label: '驳回' },
+  revise: { color: 'var(--color-warning)', label: '退回修改' },
 }
 </script>
 
@@ -64,21 +104,21 @@ const jumpToOA = (processId: string) => {
     <div class="page-header">
       <div>
         <h1 class="page-title">归档复盘</h1>
-        <p class="page-subtitle">历史审核记录检索与合规复核</p>
+        <p class="page-subtitle">已归档流程的全流程合规复核 · AI 重新审计</p>
       </div>
       <div class="page-header-actions">
         <a-button @click="showFilters = !showFilters">
           <FilterOutlined /> 筛选
         </a-button>
-        <a-dropdown>
+        <a-dropdown v-if="auditResult">
           <a-button>
-            <DownloadOutlined /> 导出
+            <DownloadOutlined /> 导出报告
           </a-button>
           <template #overlay>
             <a-menu>
-              <a-menu-item key="json">导出 JSON</a-menu-item>
-              <a-menu-item key="csv">导出 CSV</a-menu-item>
-              <a-menu-item key="excel">导出 Excel</a-menu-item>
+              <a-menu-item key="json" @click="handleExport('json')">导出 JSON</a-menu-item>
+              <a-menu-item key="csv" @click="handleExport('csv')">导出 CSV</a-menu-item>
+              <a-menu-item key="excel" @click="handleExport('excel')">导出 Excel</a-menu-item>
             </a-menu>
           </template>
         </a-dropdown>
@@ -88,98 +128,284 @@ const jumpToOA = (processId: string) => {
     <!-- Filters -->
     <transition name="slide">
       <div v-if="showFilters" class="filter-bar">
-        <a-select
-          v-model:value="filters.department"
-          placeholder="选择部门"
+        <a-input
+          v-model:value="searchText"
+          placeholder="搜索流程名称、申请人、流程号..."
           allow-clear
-          style="width: 160px;"
+          style="width: 260px;"
         >
+          <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+        </a-input>
+        <a-select v-model:value="filters.department" placeholder="部门" allow-clear style="width: 140px;">
           <a-select-option v-for="d in departments" :key="d" :value="d">{{ d }}</a-select-option>
         </a-select>
-        <a-select
-          v-model:value="filters.recommendation"
-          placeholder="审核建议"
-          allow-clear
-          style="width: 140px;"
-        >
-          <a-select-option value="approve">通过</a-select-option>
-          <a-select-option value="reject">驳回</a-select-option>
-          <a-select-option value="revise">修改</a-select-option>
+        <a-select v-model:value="filters.processType" placeholder="流程类型" allow-clear style="width: 140px;">
+          <a-select-option v-for="t in processTypes" :key="t" :value="t">{{ t }}</a-select-option>
         </a-select>
-        <a-button type="primary" @click="search" :loading="loading">
-          <SearchOutlined /> 检索
-        </a-button>
         <a-button @click="clearFilters">重置</a-button>
       </div>
     </transition>
 
-    <!-- Results -->
-    <div class="archive-list">
-      <div
-        v-for="item in filteredResults"
-        :key="item.snapshot_id"
-        class="archive-item"
-      >
-        <div class="archive-item-left">
+    <!-- Main layout: left list + right detail -->
+    <div class="archive-grid">
+      <!-- Left: Archived process list -->
+      <div class="list-panel">
+        <div class="panel-header">
+          <h3 class="panel-title">
+            <FileProtectOutlined style="color: var(--color-primary);" />
+            已归档流程
+            <a-badge :count="filteredList.length" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
+          </h3>
+        </div>
+        <div class="process-list">
           <div
-            class="archive-item-indicator"
-            :style="{ background: recommendationConfig[item.recommendation]?.color }"
-          />
-          <div class="archive-item-info">
-            <div class="archive-item-title">{{ item.title }}</div>
-            <div class="archive-item-meta">
-              <span>{{ item.applicant }}</span>
-              <span class="meta-dot">·</span>
-              <span>{{ item.department }}</span>
-              <span class="meta-dot">·</span>
-              <span>{{ item.created_at }}</span>
-              <span class="meta-dot">·</span>
-              <span style="font-family: var(--font-mono); font-size: 11px;">{{ item.process_id }}</span>
+            v-for="proc in filteredList"
+            :key="proc.process_id"
+            class="process-item"
+            :class="{ 'process-item--selected': selectedProcess?.process_id === proc.process_id }"
+            @click="selectProcess(proc)"
+          >
+            <div class="process-item-main">
+              <div class="process-item-title">{{ proc.title }}</div>
+              <div class="process-item-meta">
+                <span>{{ proc.applicant }}</span>
+                <span class="meta-dot">·</span>
+                <span>{{ proc.department }}</span>
+                <span class="meta-dot">·</span>
+                <span>{{ proc.process_type }}</span>
+              </div>
+              <div class="process-item-meta">
+                <FieldTimeOutlined />
+                <span>归档于 {{ proc.archive_time }}</span>
+              </div>
+            </div>
+            <div class="process-item-right">
+              <span v-if="proc.amount" class="process-item-amount">¥{{ proc.amount.toLocaleString() }}</span>
+              <span class="process-item-nodes">{{ proc.flow_nodes.length }} 个节点</span>
             </div>
           </div>
-        </div>
-        <div class="archive-item-right">
-          <div class="archive-item-score">
-            <span class="score-value">{{ item.score }}</span>
-            <span class="score-label">分</span>
+          <div v-if="filteredList.length === 0" class="list-empty">
+            <a-empty description="暂无匹配的归档流程" />
           </div>
-          <span
-            class="recommendation-tag"
-            :style="{
-              color: recommendationConfig[item.recommendation]?.color,
-              background: recommendationConfig[item.recommendation]?.bg,
-            }"
-          >
-            <component :is="recommendationConfig[item.recommendation]?.icon" />
-            {{ recommendationConfig[item.recommendation]?.label }}
-          </span>
-          <span
-            v-if="item.adopted !== null"
-            class="adopted-tag"
-            :class="item.adopted ? 'adopted-tag--yes' : 'adopted-tag--no'"
-          >
-            {{ item.adopted ? '已采纳' : '未采纳' }}
-          </span>
-          <button class="view-btn" @click="selectedSnapshot = item">
-            <EyeOutlined /> 详情
-          </button>
-          <button class="view-btn" @click.stop="jumpToOA(item.process_id)" title="跳转 OA 系统">
-            <ExportOutlined /> OA
-          </button>
         </div>
       </div>
 
-      <div v-if="filteredResults.length === 0" style="padding: 48px;">
-        <a-empty description="暂无匹配记录" />
+      <!-- Right: Detail & audit result -->
+      <div class="detail-panel">
+        <div class="panel-header">
+          <h3 class="panel-title">
+            <AuditOutlined style="color: var(--color-primary);" />
+            合规复核
+          </h3>
+        </div>
+
+        <div class="detail-content">
+          <!-- Empty state -->
+          <div v-if="!selectedProcess" class="detail-empty">
+            <div class="detail-empty-icon"><SafetyCertificateOutlined /></div>
+            <h4>选择归档流程进行合规复核</h4>
+            <p>从左侧列表选择一个已归档的流程，查看审批链详情并启动 AI 全流程合规审计</p>
+          </div>
+
+          <!-- Process selected: show detail -->
+          <template v-else>
+            <!-- Process info header -->
+            <div class="process-info-card">
+              <div class="process-info-header">
+                <div>
+                  <h4 class="process-info-title">{{ selectedProcess.title }}</h4>
+                  <div class="process-info-meta">
+                    {{ selectedProcess.applicant }} · {{ selectedProcess.department }} · {{ selectedProcess.process_type }}
+                    <span v-if="selectedProcess.amount"> · ¥{{ selectedProcess.amount.toLocaleString() }}</span>
+                  </div>
+                  <div class="process-info-meta" style="margin-top: 4px;">
+                    提交: {{ selectedProcess.submit_time }} → 归档: {{ selectedProcess.archive_time }}
+                  </div>
+                </div>
+                <div class="process-info-actions">
+                  <a-button @click="jumpToOA(selectedProcess.process_id)">
+                    <ExportOutlined /> OA
+                  </a-button>
+                  <a-button type="primary" :loading="loading" @click="startComplianceAudit">
+                    <ThunderboltOutlined /> 开始合规复核
+                  </a-button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Flow timeline -->
+            <div class="section-block">
+              <h4 class="section-title"><NodeIndexOutlined /> 审批链（{{ selectedProcess.flow_nodes.length }} 个节点）</h4>
+              <div class="flow-timeline">
+                <div
+                  v-for="(node, idx) in selectedProcess.flow_nodes"
+                  :key="node.node_id"
+                  class="flow-node"
+                >
+                  <div class="flow-node-timeline">
+                    <div class="flow-node-dot" :style="{ background: actionConfig[node.action]?.color }" />
+                    <div v-if="idx < selectedProcess.flow_nodes.length - 1" class="flow-node-line" />
+                  </div>
+                  <div class="flow-node-card">
+                    <div class="flow-node-header">
+                      <span class="flow-node-name">{{ node.node_name }}</span>
+                      <span
+                        class="flow-action-tag"
+                        :style="{ color: actionConfig[node.action]?.color }"
+                      >
+                        {{ actionConfig[node.action]?.label }}
+                      </span>
+                    </div>
+                    <div class="flow-node-meta">{{ node.approver }} · {{ node.action_time }}</div>
+                    <div class="flow-node-opinion">{{ node.opinion }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Fields -->
+            <div class="section-block">
+              <h4 class="section-title"><FileProtectOutlined /> 关键字段</h4>
+              <div class="fields-grid">
+                <div v-for="(val, key) in selectedProcess.fields" :key="key" class="field-item">
+                  <span class="field-label">{{ key }}</span>
+                  <span class="field-value">{{ val }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Loading state -->
+            <div v-if="loading" class="audit-loading">
+              <div class="loading-animation">
+                <div class="loading-pulse" />
+                <div class="loading-text">AI 正在进行全流程合规复核...</div>
+                <div class="loading-subtext">审批链校验 · 字段校验 · 规则校验</div>
+              </div>
+            </div>
+
+            <!-- Audit result -->
+            <template v-if="auditResult && !loading">
+              <!-- Overall compliance banner -->
+              <div
+                class="compliance-banner"
+                :style="{
+                  background: complianceConfig[auditResult.overall_compliance]?.bg,
+                  borderColor: complianceConfig[auditResult.overall_compliance]?.color,
+                }"
+              >
+                <SafetyCertificateOutlined
+                  class="compliance-banner-icon"
+                  :style="{ color: complianceConfig[auditResult.overall_compliance]?.color }"
+                />
+                <div class="compliance-banner-info">
+                  <div
+                    class="compliance-banner-title"
+                    :style="{ color: complianceConfig[auditResult.overall_compliance]?.color }"
+                  >
+                    {{ complianceConfig[auditResult.overall_compliance]?.label }}
+                  </div>
+                  <div class="compliance-banner-meta">
+                    综合评分 {{ auditResult.overall_score }} 分 · 耗时 {{ auditResult.duration_ms }}ms · {{ auditResult.trace_id }}
+                  </div>
+                </div>
+                <div class="compliance-score" :style="{ color: complianceConfig[auditResult.overall_compliance]?.color }">
+                  {{ auditResult.overall_score }}
+                </div>
+              </div>
+
+              <!-- Flow audit section -->
+              <div class="section-block">
+                <h4 class="section-title">
+                  <NodeIndexOutlined /> 审批链合规
+                  <span class="section-badge" :class="auditResult.flow_audit.is_complete ? 'section-badge--pass' : 'section-badge--fail'">
+                    {{ auditResult.flow_audit.is_complete ? '完整' : '缺失节点' }}
+                  </span>
+                </h4>
+                <div v-if="auditResult.flow_audit.missing_nodes.length > 0" class="missing-nodes-alert">
+                  <ExclamationCircleOutlined /> 缺失节点: {{ auditResult.flow_audit.missing_nodes.join('、') }}
+                </div>
+                <div class="audit-checks">
+                  <div
+                    v-for="nr in auditResult.flow_audit.node_results"
+                    :key="nr.node_id"
+                    class="audit-check-item"
+                    :class="nr.compliant ? 'audit-check-item--pass' : 'audit-check-item--fail'"
+                  >
+                    <div class="audit-check-status">
+                      <CheckCircleOutlined v-if="nr.compliant" style="color: var(--color-success);" />
+                      <CloseCircleOutlined v-else style="color: var(--color-danger);" />
+                    </div>
+                    <div class="audit-check-content">
+                      <div class="audit-check-name">{{ nr.node_name }}</div>
+                      <div class="audit-check-reasoning">{{ nr.reasoning }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Field audit section -->
+              <div class="section-block">
+                <h4 class="section-title"><FileProtectOutlined /> 字段校验</h4>
+                <div class="audit-checks">
+                  <div
+                    v-for="fa in auditResult.field_audit"
+                    :key="fa.field_name"
+                    class="audit-check-item"
+                    :class="fa.passed ? 'audit-check-item--pass' : 'audit-check-item--fail'"
+                  >
+                    <div class="audit-check-status">
+                      <CheckCircleOutlined v-if="fa.passed" style="color: var(--color-success);" />
+                      <CloseCircleOutlined v-else style="color: var(--color-danger);" />
+                    </div>
+                    <div class="audit-check-content">
+                      <div class="audit-check-name">{{ fa.field_name }}</div>
+                      <div class="audit-check-reasoning">{{ fa.reasoning }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Rule audit section -->
+              <div class="section-block">
+                <h4 class="section-title"><SafetyCertificateOutlined /> 规则校验</h4>
+                <div class="audit-checks">
+                  <div
+                    v-for="ra in auditResult.rule_audit"
+                    :key="ra.rule_id"
+                    class="audit-check-item"
+                    :class="ra.passed ? 'audit-check-item--pass' : 'audit-check-item--fail'"
+                  >
+                    <div class="audit-check-status">
+                      <CheckCircleOutlined v-if="ra.passed" style="color: var(--color-success);" />
+                      <CloseCircleOutlined v-else style="color: var(--color-danger);" />
+                    </div>
+                    <div class="audit-check-content">
+                      <div class="audit-check-name">{{ ra.rule_name }}</div>
+                      <div class="audit-check-reasoning">{{ ra.reasoning }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- AI Summary -->
+              <div class="section-block">
+                <h4 class="section-title"><ThunderboltOutlined /> AI 综合分析</h4>
+                <div class="ai-summary">
+                  <pre>{{ auditResult.ai_summary }}</pre>
+                </div>
+              </div>
+            </template>
+          </template>
+        </div>
       </div>
     </div>
-
-    <!-- Detail drawer -->
-    <SnapshotDetail :snapshot="selectedSnapshot" @close="selectedSnapshot = null" />
   </div>
 </template>
 
 <style scoped>
+.archive-page { animation: fadeIn 0.3s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -187,193 +413,199 @@ const jumpToOA = (processId: string) => {
   margin-bottom: 24px;
 }
 
-.page-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  margin: 0;
-}
-
-.page-subtitle {
-  font-size: 14px;
-  color: var(--color-text-tertiary);
-  margin: 4px 0 0;
-}
-
-.page-header-actions {
-  display: flex;
-  gap: 8px;
-}
+.page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; letter-spacing: -0.02em; }
+.page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
+.page-header-actions { display: flex; gap: 8px; }
 
 /* Filters */
 .filter-bar {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 16px 20px;
-  background: var(--color-bg-card);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-light);
-  margin-bottom: 20px;
-  flex-wrap: wrap;
+  display: flex; gap: 12px; align-items: center; padding: 16px 20px;
+  background: var(--color-bg-card); border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light); margin-bottom: 20px; flex-wrap: wrap;
+}
+.slide-enter-active, .slide-leave-active { transition: all 0.2s ease; }
+.slide-enter-from, .slide-leave-to { opacity: 0; transform: translateY(-8px); }
+
+/* Main grid */
+.archive-grid {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 24px;
+  align-items: start;
 }
 
-.slide-enter-active,
-.slide-leave-active {
-  transition: all 0.2s ease;
-}
-
-.slide-enter-from,
-.slide-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-
-/* Archive list */
-.archive-list {
+/* Panels */
+.list-panel, .detail-panel {
   background: var(--color-bg-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light);
   overflow: hidden;
 }
 
-.archive-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.panel-header {
   padding: 16px 20px;
   border-bottom: 1px solid var(--color-border-light);
+}
+
+.panel-title {
+  font-size: 15px; font-weight: 600; color: var(--color-text-primary);
+  margin: 0; display: flex; align-items: center; gap: 8px;
+}
+
+/* Process list */
+.process-list { max-height: calc(100vh - 280px); overflow-y: auto; }
+
+.process-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; cursor: pointer; transition: all var(--transition-fast);
+  border-bottom: 1px solid var(--color-border-light); gap: 12px;
+}
+.process-item:last-child { border-bottom: none; }
+.process-item:hover { background: var(--color-bg-hover); }
+.process-item--selected { background: var(--color-primary-bg); border-left: 3px solid var(--color-primary); }
+
+.process-item-main { flex: 1; min-width: 0; }
+.process-item-title {
+  font-size: 14px; font-weight: 500; color: var(--color-text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;
+}
+.process-item-meta {
+  font-size: 12px; color: var(--color-text-tertiary);
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+}
+.meta-dot { color: var(--color-border); }
+
+.process-item-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.process-item-amount { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.process-item-nodes { font-size: 11px; color: var(--color-text-tertiary); padding: 2px 8px; background: var(--color-bg-hover); border-radius: var(--radius-full); }
+
+.list-empty { padding: 48px 20px; }
+
+/* Detail panel */
+.detail-content { padding: 20px; }
+
+.detail-empty { text-align: center; padding: 60px 20px; }
+.detail-empty-icon {
+  width: 64px; height: 64px; border-radius: 50%; background: var(--color-primary-bg);
+  color: var(--color-primary); font-size: 28px; display: flex; align-items: center;
+  justify-content: center; margin: 0 auto 16px;
+}
+.detail-empty h4 { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px; }
+.detail-empty p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 auto; max-width: 320px; }
+
+/* Process info card */
+.process-info-card {
+  padding: 16px 20px; background: var(--color-bg-page);
+  border-radius: var(--radius-lg); border: 1px solid var(--color-border-light); margin-bottom: 20px;
+}
+.process-info-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.process-info-title { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 6px; }
+.process-info-meta { font-size: 13px; color: var(--color-text-tertiary); }
+.process-info-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* Section blocks */
+.section-block { margin-bottom: 20px; }
+.section-title {
+  font-size: 14px; font-weight: 600; color: var(--color-text-primary);
+  margin: 0 0 12px; display: flex; align-items: center; gap: 8px;
+}
+.section-badge {
+  font-size: 11px; font-weight: 600; padding: 2px 10px; border-radius: var(--radius-full);
+}
+.section-badge--pass { background: var(--color-success-bg); color: var(--color-success); }
+.section-badge--fail { background: var(--color-danger-bg); color: var(--color-danger); }
+
+/* Flow timeline */
+.flow-timeline { display: flex; flex-direction: column; }
+.flow-node { display: flex; gap: 14px; }
+.flow-node-timeline { display: flex; flex-direction: column; align-items: center; width: 18px; flex-shrink: 0; }
+.flow-node-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+.flow-node-line { width: 2px; flex: 1; background: var(--color-border-light); min-height: 16px; }
+.flow-node-card {
+  flex: 1; padding: 10px 14px; border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md); margin-bottom: 8px; transition: background var(--transition-fast);
+}
+.flow-node-card:hover { background: var(--color-bg-hover); }
+.flow-node-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.flow-node-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.flow-action-tag { font-size: 12px; font-weight: 600; }
+.flow-node-meta { font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 4px; }
+.flow-node-opinion { font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; }
+
+/* Fields grid */
+.fields-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.field-item {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 14px;
+  background: var(--color-bg-page); border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
+}
+.field-label { font-size: 11px; font-weight: 600; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; }
+.field-value { font-size: 13px; color: var(--color-text-primary); word-break: break-all; }
+
+/* Loading */
+.audit-loading { display: flex; justify-content: center; padding: 40px 0; }
+.loading-animation { text-align: center; }
+.loading-pulse {
+  width: 48px; height: 48px; border-radius: 50%; background: var(--color-primary);
+  margin: 0 auto 16px; animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.15); opacity: 1; } }
+.loading-text { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 4px; }
+.loading-subtext { font-size: 13px; color: var(--color-text-tertiary); }
+
+/* Compliance banner */
+.compliance-banner {
+  display: flex; align-items: center; padding: 16px 20px;
+  border-radius: var(--radius-lg); border-left: 4px solid; margin-bottom: 24px; gap: 14px;
+}
+.compliance-banner-icon { font-size: 28px; flex-shrink: 0; }
+.compliance-banner-info { flex: 1; }
+.compliance-banner-title { font-size: 16px; font-weight: 700; }
+.compliance-banner-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+.compliance-score { font-size: 36px; font-weight: 800; line-height: 1; }
+
+/* Missing nodes alert */
+.missing-nodes-alert {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  background: var(--color-danger-bg); color: var(--color-danger);
+  border-radius: var(--radius-md); font-size: 13px; font-weight: 500; margin-bottom: 12px;
+}
+
+/* Audit checks */
+.audit-checks { display: flex; flex-direction: column; gap: 8px; }
+.audit-check-item {
+  display: flex; gap: 12px; padding: 12px 16px;
+  border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
   transition: background var(--transition-fast);
-  gap: 16px;
+}
+.audit-check-item:hover { background: var(--color-bg-hover); }
+.audit-check-item--pass { border-left: 3px solid var(--color-success); }
+.audit-check-item--fail { border-left: 3px solid var(--color-danger); background: var(--color-danger-bg); }
+.audit-check-status { font-size: 18px; flex-shrink: 0; padding-top: 1px; }
+.audit-check-content { flex: 1; min-width: 0; }
+.audit-check-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+.audit-check-reasoning { font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; }
+
+/* AI Summary */
+.ai-summary {
+  background: var(--color-bg-page); border-radius: var(--radius-md);
+  padding: 16px; border: 1px solid var(--color-border-light);
+}
+.ai-summary pre {
+  white-space: pre-wrap; word-break: break-word; font-family: var(--font-sans);
+  font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); margin: 0;
 }
 
-.archive-item:last-child {
-  border-bottom: none;
+/* Responsive */
+@media (max-width: 1024px) {
+  .archive-grid { grid-template-columns: 1fr; }
 }
-
-.archive-item:hover {
-  background: var(--color-bg-hover);
-}
-
-.archive-item-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex: 1;
-  min-width: 0;
-}
-
-.archive-item-indicator {
-  width: 4px;
-  height: 36px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-.archive-item-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-  margin-bottom: 4px;
-}
-
-.archive-item-meta {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.meta-dot {
-  color: var(--color-border);
-}
-
-.archive-item-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.archive-item-score {
-  text-align: center;
-}
-
-.score-value {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.score-label {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  margin-left: 2px;
-}
-
-.recommendation-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 4px 12px;
-  border-radius: var(--radius-full);
-}
-
-.adopted-tag {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 3px 10px;
-  border-radius: var(--radius-full);
-}
-
-.adopted-tag--yes {
-  background: var(--color-success-bg);
-  color: var(--color-success);
-}
-
-.adopted-tag--no {
-  background: var(--color-bg-hover);
-  color: var(--color-text-tertiary);
-}
-
-.view-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 14px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-card);
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.view-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background: var(--color-primary-bg);
-}
-
 @media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .archive-item {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .archive-item-right {
-    flex-wrap: wrap;
-    margin-top: 8px;
-  }
+  .page-header { flex-direction: column; gap: 16px; }
+  .process-info-header { flex-direction: column; }
+  .process-info-actions { width: 100%; }
 }
 </style>

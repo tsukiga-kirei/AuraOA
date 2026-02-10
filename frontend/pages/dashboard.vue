@@ -10,33 +10,80 @@ import {
   ExportOutlined,
   ReloadOutlined,
   HistoryOutlined,
+  EyeOutlined,
+  RightOutlined,
+  FolderOpenOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 
 definePageMeta({ middleware: 'auth' })
 
-const { mockProcesses, mockApprovedProcesses, mockRejectedProcesses, mockHistoricalResults, mockAuditResult, mockDashboardStats } = useMockData()
+const {
+  mockProcesses, mockApprovedProcesses, mockRejectedProcesses,
+  mockHistoricalResults, mockAuditResult, mockDashboardStats, mockSnapshots,
+  mockArchivedOAProcesses, mockArchivedAuditChains, mockArchivedHistoricalResults,
+} = useMockData()
 
 const todoList = ref(mockProcesses)
 const approvedList = ref(mockApprovedProcesses)
 const rejectedList = ref(mockRejectedProcesses)
+const archivedList = ref(mockArchivedOAProcesses)
 const currentResult = ref<typeof mockAuditResult | null>(null)
 const loading = ref(false)
 const selectedProcess = ref<string | null>(null)
 const searchText = ref('')
 const stats = ref(mockDashboardStats)
 
-// View mode: 'todo' | 'approved' | 'rejected'
-const viewMode = ref<'todo' | 'approved' | 'rejected'>('todo')
+// View mode: 'todo' | 'approved' | 'rejected' | 'archived'
+const viewMode = ref<'todo' | 'approved' | 'rejected' | 'archived'>('todo')
 
 // Whether current view is history-only (no audit actions)
 const isHistoryMode = computed(() => viewMode.value !== 'todo')
+
+// Audit history chain: multiple audit snapshots for a single process
+const showHistoryChain = ref(false)
+const historyChainProcessId = ref<string | null>(null)
+
+// Get audit chain for a process (multi-round audit snapshots)
+const getAuditChain = (processId: string) => {
+  // Check archived chains first
+  const archivedChain = mockArchivedAuditChains[processId]
+  if (archivedChain && archivedChain.length > 0) return archivedChain
+  // Then check regular snapshots
+  const snapshots = mockSnapshots.filter(s => s.process_id === processId)
+  if (snapshots.length > 0) return snapshots
+  // Fallback: generate from historical result
+  const hist = mockHistoricalResults[processId] || mockArchivedHistoricalResults[processId]
+  if (!hist) return []
+  return [{
+    snapshot_id: `SN-${processId}`,
+    process_id: processId,
+    title: selectedProcessInfo.value?.title || '',
+    applicant: selectedProcessInfo.value?.applicant || '',
+    department: selectedProcessInfo.value?.department || '',
+    recommendation: hist.recommendation,
+    score: hist.score,
+    created_at: selectedProcessInfo.value?.submit_time || '',
+    adopted: true,
+  }]
+}
+
+const currentAuditChain = computed(() => {
+  if (!historyChainProcessId.value) return []
+  return getAuditChain(historyChainProcessId.value)
+})
+
+const openHistoryChain = (processId: string) => {
+  historyChainProcessId.value = processId
+  showHistoryChain.value = true
+}
 
 const filteredList = computed(() => {
   let list: typeof todoList.value
   switch (viewMode.value) {
     case 'approved': list = approvedList.value; break
     case 'rejected': list = rejectedList.value; break
+    case 'archived': list = archivedList.value; break
     default: list = todoList.value
   }
   if (searchText.value) {
@@ -51,8 +98,8 @@ const filteredList = computed(() => {
 const handleSelectProcess = (processId: string) => {
   selectedProcess.value = processId
   if (isHistoryMode.value) {
-    // Auto-load historical result for approved/rejected
-    const hist = mockHistoricalResults[processId]
+    // Auto-load historical result for approved/rejected/archived
+    const hist = mockHistoricalResults[processId] || mockArchivedHistoricalResults[processId]
     currentResult.value = hist ? { ...hist } : null
   } else {
     currentResult.value = null
@@ -76,14 +123,14 @@ const jumpToOA = (processId: string) => {
   message.info(`正在跳转 OA 系统查看流程 ${processId}...`)
 }
 
-const switchView = (mode: 'todo' | 'approved' | 'rejected') => {
+const switchView = (mode: 'todo' | 'approved' | 'rejected' | 'archived') => {
   viewMode.value = mode
   selectedProcess.value = null
   currentResult.value = null
 }
 
 const selectedProcessInfo = computed(() => {
-  const all = [...todoList.value, ...approvedList.value, ...rejectedList.value]
+  const all = [...todoList.value, ...approvedList.value, ...rejectedList.value, ...archivedList.value]
   return all.find(p => p.process_id === selectedProcess.value)
 })
 
@@ -91,6 +138,7 @@ const viewModeLabel = computed(() => {
   switch (viewMode.value) {
     case 'approved': return '已通过流程'
     case 'rejected': return '已驳回流程'
+    case 'archived': return '已归档流程'
     default: return '待办流程'
   }
 })
@@ -153,6 +201,17 @@ const recommendationConfig = {
           <span class="stat-card-label">已驳回</span>
         </div>
       </div>
+      <div
+        class="stat-card stat-card--archived"
+        :class="{ 'stat-card--selected': viewMode === 'archived' }"
+        @click="switchView('archived')"
+      >
+        <div class="stat-card-icon"><FolderOpenOutlined /></div>
+        <div class="stat-card-info">
+          <span class="stat-card-value">{{ archivedList.length }}</span>
+          <span class="stat-card-label">已归档</span>
+        </div>
+      </div>
     </div>
 
     <!-- Main content area -->
@@ -162,6 +221,7 @@ const recommendationConfig = {
         <div class="panel-header">
           <h3 class="panel-title">
             <FireOutlined v-if="viewMode === 'todo'" style="color: var(--color-primary);" />
+            <FolderOpenOutlined v-else-if="viewMode === 'archived'" style="color: var(--color-info);" />
             <HistoryOutlined v-else style="color: var(--color-text-tertiary);" />
             {{ viewModeLabel }}
             <a-badge :count="filteredList.length" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
@@ -226,8 +286,9 @@ const recommendationConfig = {
         <div class="panel-header">
           <h3 class="panel-title">
             <ThunderboltOutlined v-if="!isHistoryMode" style="color: var(--color-primary);" />
+            <FolderOpenOutlined v-else-if="viewMode === 'archived'" style="color: var(--color-info);" />
             <HistoryOutlined v-else style="color: var(--color-text-tertiary);" />
-            {{ isHistoryMode ? '历史审核结果' : '审核结果' }}
+            {{ viewMode === 'archived' ? '归档审核记录' : isHistoryMode ? '历史审核结果' : '审核结果' }}
           </h3>
         </div>
 
@@ -275,11 +336,16 @@ const recommendationConfig = {
           <template v-else-if="currentResult">
             <!-- Action bar - different for history vs todo -->
             <div class="result-action-bar">
-              <!-- History mode: only OA jump -->
+              <!-- History mode: OA jump + audit chain -->
               <template v-if="isHistoryMode">
                 <div class="history-badge">
-                  <HistoryOutlined /> 历史记录（只读）
+                  <FolderOpenOutlined v-if="viewMode === 'archived'" />
+                  <HistoryOutlined v-else />
+                  {{ viewMode === 'archived' ? '归档记录（只读）' : '历史记录（只读）' }}
                 </div>
+                <a-button @click="openHistoryChain(currentResult.process_id)">
+                  <EyeOutlined /> 审核链
+                </a-button>
                 <a-button type="primary" @click="jumpToOA(currentResult.process_id)">
                   <ExportOutlined /> 跳转 OA
                 </a-button>
@@ -362,14 +428,71 @@ const recommendationConfig = {
           <div v-else class="result-empty">
             <div class="result-empty-icon">
               <ThunderboltOutlined v-if="!isHistoryMode" />
+              <FolderOpenOutlined v-else-if="viewMode === 'archived'" />
               <HistoryOutlined v-else />
             </div>
-            <h4>{{ isHistoryMode ? '选择流程查看历史审核结果' : '选择待办流程开始审核' }}</h4>
-            <p>{{ isHistoryMode ? '点击左侧列表中的流程，查看 AI 历史审核记录' : '点击左侧列表中的流程，AI 将自动进行规则校验并给出审核建议' }}</p>
+            <h4>{{ viewMode === 'archived' ? '选择归档流程查看审核链' : isHistoryMode ? '选择流程查看历史审核结果' : '选择待办流程开始审核' }}</h4>
+            <p>{{ viewMode === 'archived' ? '点击左侧归档流程，查看完整的多轮 AI 审核记录链' : isHistoryMode ? '点击左侧列表中的流程，查看 AI 历史审核记录' : '点击左侧列表中的流程，AI 将自动进行规则校验并给出审核建议' }}</p>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- Audit History Chain Drawer -->
+    <Teleport to="body">
+      <transition name="drawer">
+        <div v-if="showHistoryChain" class="drawer-overlay" @click.self="showHistoryChain = false">
+          <div class="drawer-panel">
+            <div class="drawer-header">
+              <h3>审核历史链</h3>
+              <button class="drawer-close" @click="showHistoryChain = false">✕</button>
+            </div>
+            <div class="drawer-body">
+              <p class="chain-desc">该流程的所有 AI 审核记录（按时间倒序）</p>
+              <div v-if="currentAuditChain.length === 0" style="padding: 40px; text-align: center;">
+                <a-empty description="暂无审核记录" />
+              </div>
+              <div v-else class="audit-chain">
+                <div
+                  v-for="(snap, idx) in currentAuditChain"
+                  :key="snap.snapshot_id"
+                  class="chain-node"
+                >
+                  <div class="chain-timeline">
+                    <div
+                      class="chain-dot"
+                      :style="{ background: recommendationConfig[snap.recommendation]?.color }"
+                    />
+                    <div v-if="idx < currentAuditChain.length - 1" class="chain-line" />
+                  </div>
+                  <div class="chain-card">
+                    <div class="chain-card-header">
+                      <span
+                        class="chain-tag"
+                        :style="{
+                          color: recommendationConfig[snap.recommendation]?.color,
+                          background: recommendationConfig[snap.recommendation]?.bg,
+                        }"
+                      >
+                        <component :is="recommendationConfig[snap.recommendation]?.icon" />
+                        {{ recommendationConfig[snap.recommendation]?.label }}
+                      </span>
+                      <span class="chain-score">{{ snap.score }}分</span>
+                    </div>
+                    <div class="chain-card-meta">
+                      {{ snap.created_at }}
+                      <span v-if="snap.adopted !== null" class="chain-adopted" :class="snap.adopted ? 'chain-adopted--yes' : 'chain-adopted--no'">
+                        {{ snap.adopted ? '已采纳' : '未采纳' }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
   </div>
 </template>
 
@@ -382,7 +505,7 @@ const recommendationConfig = {
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
 
 /* Stats row */
-.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
 .stat-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg); padding: 20px;
   display: flex; align-items: center; gap: 16px; border: 2px solid var(--color-border-light);
@@ -397,6 +520,7 @@ const recommendationConfig = {
 .stat-card--primary .stat-card-icon { background: var(--color-primary-bg); color: var(--color-primary); }
 .stat-card--success .stat-card-icon { background: var(--color-success-bg); color: var(--color-success); }
 .stat-card--danger .stat-card-icon { background: var(--color-danger-bg); color: var(--color-danger); }
+.stat-card--archived .stat-card-icon { background: var(--color-info-bg); color: var(--color-info); }
 .stat-card-info { display: flex; flex-direction: column; }
 .stat-card-value { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
 .stat-card-label { font-size: 13px; color: var(--color-text-tertiary); margin-top: 2px; }
@@ -522,11 +646,66 @@ const recommendationConfig = {
 
 @media (max-width: 1024px) {
   .dashboard-grid { grid-template-columns: 1fr; }
-  .stats-row { grid-template-columns: repeat(3, 1fr); }
+  .stats-row { grid-template-columns: repeat(4, 1fr); }
 }
 @media (max-width: 640px) {
-  .stats-row { grid-template-columns: 1fr; gap: 12px; }
+  .stats-row { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .stat-card { padding: 14px; }
   .stat-card-value { font-size: 22px; }
 }
+
+/* Drawer */
+.drawer-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(4px); z-index: 1000; display: flex; justify-content: flex-end;
+}
+.drawer-panel {
+  width: 480px; max-width: 100vw; background: var(--color-bg-card);
+  height: 100%; display: flex; flex-direction: column; box-shadow: -8px 0 30px rgba(0,0,0,0.12);
+}
+.drawer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px; border-bottom: 1px solid var(--color-border-light); flex-shrink: 0;
+}
+.drawer-header h3 { font-size: 16px; font-weight: 600; margin: 0; }
+.drawer-close {
+  width: 32px; height: 32px; border: none; background: transparent;
+  border-radius: var(--radius-md); cursor: pointer; display: flex;
+  align-items: center; justify-content: center; color: var(--color-text-tertiary);
+  font-size: 16px; transition: all var(--transition-fast);
+}
+.drawer-close:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+.drawer-body { flex: 1; overflow-y: auto; padding: 24px; }
+.chain-desc { font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 20px; }
+
+/* Audit chain timeline */
+.audit-chain { display: flex; flex-direction: column; }
+.chain-node { display: flex; gap: 16px; }
+.chain-timeline { display: flex; flex-direction: column; align-items: center; width: 20px; flex-shrink: 0; }
+.chain-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.chain-line { width: 2px; flex: 1; background: var(--color-border-light); min-height: 20px; }
+.chain-card {
+  flex: 1; padding: 14px 16px; border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md); margin-bottom: 12px; transition: background var(--transition-fast);
+}
+.chain-card:hover { background: var(--color-bg-hover); }
+.chain-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.chain-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-full);
+}
+.chain-score { font-size: 18px; font-weight: 700; color: var(--color-text-primary); }
+.chain-card-meta { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 8px; }
+.chain-adopted { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: var(--radius-full); }
+.chain-adopted--yes { background: var(--color-success-bg); color: var(--color-success); }
+.chain-adopted--no { background: var(--color-bg-hover); color: var(--color-text-tertiary); }
+
+.drawer-enter-active { transition: opacity 0.2s ease; }
+.drawer-enter-active .drawer-panel { transition: transform 0.3s cubic-bezier(0.16,1,0.3,1); }
+.drawer-leave-active { transition: opacity 0.2s ease 0.1s; }
+.drawer-leave-active .drawer-panel { transition: transform 0.2s ease; }
+.drawer-enter-from { opacity: 0; }
+.drawer-enter-from .drawer-panel { transform: translateX(100%); }
+.drawer-leave-to { opacity: 0; }
+.drawer-leave-to .drawer-panel { transform: translateX(100%); }
 </style>
