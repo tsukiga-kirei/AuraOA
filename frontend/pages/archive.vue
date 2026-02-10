@@ -7,7 +7,9 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   EditOutlined,
+  ExportOutlined,
 } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -51,6 +53,10 @@ const recommendationConfig: Record<string, { color: string; bg: string; icon: an
 }
 
 const departments = ['IT部', '销售部', '研发部', '行政部', '人力资源部', '市场部']
+
+const jumpToOA = (processId: string) => {
+  message.info(`正在跳转 OA 系统查看流程 ${processId}...`)
+}
 </script>
 
 <template>
@@ -156,6 +162,9 @@ const departments = ['IT部', '销售部', '研发部', '行政部', '人力资�
           </span>
           <button class="view-btn" @click="selectedSnapshot = item">
             <EyeOutlined /> 详情
+          </button>
+          <button class="view-btn" @click.stop="jumpToOA(item.process_id)" title="跳转 OA 系统">
+            <ExportOutlined /> OA
           </button>
         </div>
       </div>

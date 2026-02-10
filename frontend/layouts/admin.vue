@@ -2,7 +2,6 @@
 import { ref, computed, watch } from 'vue'
 import {
   SettingOutlined,
-  MonitorOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -10,11 +9,9 @@ import {
   UserOutlined,
   SafetyCertificateOutlined,
   AppstoreOutlined,
-  TeamOutlined,
   RobotOutlined,
   ApartmentOutlined,
   DatabaseOutlined,
-  ControlOutlined,
   ArrowLeftOutlined,
 } from '@ant-design/icons-vue'
 
@@ -24,7 +21,7 @@ const mobileMenuOpen = ref(false)
 const isMobile = ref(false)
 
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
-const { logout, userRole } = useAuth()
+const { logout, currentUser } = useAuth()
 
 onMounted(() => {
   restoreTheme()
@@ -43,7 +40,6 @@ const checkMobile = () => {
 
 const selectedKeys = computed(() => [route.path])
 
-// Tenant admin menu
 const tenantMenuItems = [
   { key: '/admin/tenant', icon: AppstoreOutlined, label: '规则配置' },
   { key: '/admin/tenant/org', icon: ApartmentOutlined, label: '组织人员' },
@@ -51,12 +47,7 @@ const tenantMenuItems = [
   { key: '/admin/tenant/kb', icon: DatabaseOutlined, label: '知识库' },
 ]
 
-// System admin menu
-const systemMenuItems = [
-  { key: '/admin/system', icon: TeamOutlined, label: '租户管理' },
-  { key: '/admin/monitor', icon: MonitorOutlined, label: '全局监控' },
-  { key: '/admin/system/settings', icon: ControlOutlined, label: '系统设置' },
-]
+const displayName = computed(() => currentUser.value?.display_name || '租户管理员')
 
 const handleMenuClick = (path: string) => {
   navigateTo(path)
@@ -70,7 +61,6 @@ watch(route, () => {
 
 <template>
   <div class="admin-layout" :class="{ 'admin-layout--collapsed': collapsed }">
-    <!-- Sidebar -->
     <aside
       class="admin-sidebar"
       :class="{
@@ -78,20 +68,18 @@ watch(route, () => {
         'admin-sidebar--mobile-open': mobileMenuOpen,
       }"
     >
-      <!-- Logo -->
       <div class="sidebar-logo" @click="navigateTo('/admin/tenant')">
         <div class="sidebar-logo-icon">
           <SettingOutlined />
         </div>
         <transition name="fade">
-          <span v-if="!collapsed" class="sidebar-logo-text">管理后台</span>
+          <span v-if="!collapsed" class="sidebar-logo-text">租户管理</span>
         </transition>
       </div>
 
-      <!-- Navigation -->
       <nav class="sidebar-nav">
         <div class="sidebar-section">
-          <div v-if="!collapsed" class="sidebar-section-title">租户管理</div>
+          <div v-if="!collapsed" class="sidebar-section-title">配置管理</div>
           <div
             v-for="item in tenantMenuItems"
             :key="item.key"
@@ -106,26 +94,8 @@ watch(route, () => {
             <div v-if="selectedKeys.includes(item.key)" class="sidebar-item-indicator" />
           </div>
         </div>
-
-        <div class="sidebar-section">
-          <div v-if="!collapsed" class="sidebar-section-title">系统管理</div>
-          <div
-            v-for="item in systemMenuItems"
-            :key="item.key"
-            class="sidebar-item"
-            :class="{ 'sidebar-item--active': selectedKeys.includes(item.key) }"
-            @click="handleMenuClick(item.key)"
-          >
-            <component :is="item.icon" class="sidebar-item-icon" />
-            <transition name="fade">
-              <span v-if="!collapsed" class="sidebar-item-label">{{ item.label }}</span>
-            </transition>
-            <div v-if="selectedKeys.includes(item.key)" class="sidebar-item-indicator" />
-          </div>
-        </div>
       </nav>
 
-      <!-- Sidebar footer -->
       <div class="sidebar-footer">
         <div class="sidebar-item" @click="navigateTo('/dashboard')">
           <ArrowLeftOutlined class="sidebar-item-icon" />
@@ -142,16 +112,13 @@ watch(route, () => {
       </div>
     </aside>
 
-    <!-- Mobile overlay -->
     <div
       v-if="mobileMenuOpen && isMobile"
       class="sidebar-overlay"
       @click="mobileMenuOpen = false"
     />
 
-    <!-- Main content -->
     <div class="admin-main">
-      <!-- Header -->
       <header class="admin-header">
         <div class="admin-header-left">
           <button
@@ -165,7 +132,7 @@ watch(route, () => {
           <div class="header-breadcrumb">
             <SafetyCertificateOutlined style="color: var(--color-primary); font-size: 14px;" />
             <span class="breadcrumb-sep">/</span>
-            <span>管理后台</span>
+            <span>租户管理</span>
           </div>
         </div>
 
@@ -174,19 +141,15 @@ watch(route, () => {
             <span v-if="isDark" style="font-size: 18px;">🌙</span>
             <span v-else style="font-size: 18px;">☀️</span>
           </button>
-
-          <a-badge :count="1" :offset="[-4, 4]">
-            <button class="header-action">
-              <BellOutlined />
-            </button>
+          <a-badge :count="0" :offset="[-4, 4]">
+            <button class="header-action"><BellOutlined /></button>
           </a-badge>
-
           <a-dropdown>
             <div class="header-user">
               <a-avatar :size="32" class="header-avatar">
                 <template #icon><UserOutlined /></template>
               </a-avatar>
-              <span class="header-username">管理员</span>
+              <span class="header-username">{{ displayName }}</span>
             </div>
             <template #overlay>
               <a-menu>
@@ -199,346 +162,117 @@ watch(route, () => {
         </div>
       </header>
 
-      <!-- Page content -->
-      <main class="admin-content">
-        <slot />
-      </main>
+      <main class="admin-content"><slot /></main>
     </div>
   </div>
 </template>
 
 <style scoped>
-.admin-layout {
-  display: flex;
-  min-height: 100vh;
-  background: var(--color-bg-page);
-}
+.admin-layout { display: flex; min-height: 100vh; background: var(--color-bg-page); }
 
-/* ===== Sidebar ===== */
 .admin-sidebar {
-  width: var(--sidebar-width);
-  background: #1a1a2e;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  z-index: 100;
-  transition: width var(--transition-slow);
-  overflow: hidden;
+  width: var(--sidebar-width); background: var(--color-bg-sidebar);
+  border-right: 1px solid var(--color-sidebar-border);
+  display: flex; flex-direction: column; position: fixed;
+  top: 0; left: 0; bottom: 0; z-index: 100;
+  transition: width var(--transition-slow); overflow: hidden;
 }
-
-[data-theme="dark"] .admin-sidebar {
-  background: #020617;
-}
-
-.admin-sidebar--collapsed {
-  width: var(--sidebar-collapsed-width);
-}
+.admin-sidebar--collapsed { width: var(--sidebar-collapsed-width); }
 
 .sidebar-logo {
-  height: var(--header-height);
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  gap: 12px;
-  cursor: pointer;
-  flex-shrink: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  height: var(--header-height); display: flex; align-items: center;
+  padding: 0 20px; gap: 12px; cursor: pointer; flex-shrink: 0;
+  border-bottom: 1px solid var(--color-sidebar-border);
 }
-
 .sidebar-logo-icon {
-  width: 36px;
-  height: 36px;
-  background: linear-gradient(135deg, #f59e0b, #ef4444);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 18px;
-  flex-shrink: 0;
+  width: 36px; height: 36px; background: linear-gradient(135deg, #f59e0b, #ef4444);
+  border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 18px; flex-shrink: 0;
 }
-
 .sidebar-logo-text {
-  font-size: 18px;
-  font-weight: 700;
-  color: #f1f5f9;
-  white-space: nowrap;
-  letter-spacing: -0.02em;
+  font-size: 18px; font-weight: 700; color: var(--color-sidebar-logo-text);
+  white-space: nowrap; letter-spacing: -0.02em;
 }
 
-.sidebar-nav {
-  flex: 1;
-  padding: 12px 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.sidebar-section {
-  margin-bottom: 8px;
-}
-
+.sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; overflow-x: hidden; }
+.sidebar-section { margin-bottom: 8px; }
 .sidebar-section-title {
-  padding: 8px 24px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #475569;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  white-space: nowrap;
+  padding: 8px 24px 6px; font-size: 11px; font-weight: 600;
+  color: var(--color-sidebar-section-title); text-transform: uppercase;
+  letter-spacing: 0.08em; white-space: nowrap;
 }
 
 .sidebar-item {
-  display: flex;
-  align-items: center;
-  padding: 0 16px;
-  height: 44px;
-  margin: 2px 8px;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  position: relative;
-  gap: 12px;
-  color: #94a3b8;
+  display: flex; align-items: center; padding: 0 16px; height: 44px;
+  margin: 2px 8px; border-radius: 10px; cursor: pointer;
+  transition: all var(--transition-fast); position: relative;
+  gap: 12px; color: var(--color-text-sidebar);
 }
+.sidebar-item:hover { background: var(--color-bg-sidebar-hover); color: var(--color-text-primary); }
+.sidebar-item--active { background: var(--color-bg-sidebar-active); color: var(--color-text-sidebar-active); }
+.sidebar-item--active .sidebar-item-icon { color: var(--color-primary); }
+.sidebar-item-icon { font-size: 18px; flex-shrink: 0; width: 20px; display: flex; align-items: center; justify-content: center; }
+.sidebar-item-label { font-size: 14px; font-weight: 500; white-space: nowrap; }
+.sidebar-item-indicator { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 20px; background: var(--color-primary); border-radius: 3px 0 0 3px; }
+.sidebar-item--logout { color: var(--color-text-tertiary); }
+.sidebar-item--logout:hover { color: #ef4444; background: rgba(239, 68, 68, 0.08); }
 
-.sidebar-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #e2e8f0;
-}
+.sidebar-footer { padding: 8px 0 16px; border-top: 1px solid var(--color-sidebar-border); }
+.sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; backdrop-filter: blur(4px); }
 
-.sidebar-item--active {
-  background: rgba(245, 158, 11, 0.15);
-  color: #ffffff;
-}
+.admin-main { flex: 1; margin-left: var(--sidebar-width); transition: margin-left var(--transition-slow); display: flex; flex-direction: column; min-height: 100vh; }
+.admin-layout--collapsed .admin-main { margin-left: var(--sidebar-collapsed-width); }
 
-.sidebar-item--active .sidebar-item-icon {
-  color: #f59e0b;
-}
-
-.sidebar-item-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-  width: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.sidebar-item-label {
-  font-size: 14px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.sidebar-item-indicator {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 20px;
-  background: #f59e0b;
-  border-radius: 3px 0 0 3px;
-}
-
-.sidebar-item--logout {
-  color: #64748b;
-}
-
-.sidebar-item--logout:hover {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.sidebar-footer {
-  padding: 8px 0 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.sidebar-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 99;
-  backdrop-filter: blur(4px);
-}
-
-/* ===== Main ===== */
-.admin-main {
-  flex: 1;
-  margin-left: var(--sidebar-width);
-  transition: margin-left var(--transition-slow);
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-.admin-layout--collapsed .admin-main {
-  margin-left: var(--sidebar-collapsed-width);
-}
-
-/* ===== Header ===== */
 .admin-header {
-  height: var(--header-height);
-  border-bottom: 1px solid var(--color-border-light);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  backdrop-filter: blur(12px);
-  background: var(--color-bg-card);
-  background: color-mix(in srgb, var(--color-bg-card) 85%, transparent);
+  height: var(--header-height); border-bottom: 1px solid var(--color-border-light);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px; position: sticky; top: 0; z-index: 50;
+  backdrop-filter: blur(12px); background: color-mix(in srgb, var(--color-bg-card) 85%, transparent);
 }
-
-.admin-header-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.admin-header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.admin-header-left { display: flex; align-items: center; gap: 16px; }
+.admin-header-right { display: flex; align-items: center; gap: 8px; }
 
 .header-toggle {
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  color: var(--color-text-secondary);
-  transition: all var(--transition-fast);
+  width: 36px; height: 36px; border: none; background: transparent;
+  border-radius: var(--radius-md); cursor: pointer; display: flex;
+  align-items: center; justify-content: center; font-size: 18px;
+  color: var(--color-text-secondary); transition: all var(--transition-fast);
 }
+.header-toggle:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
 
-.header-toggle:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-}
-
-.header-breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  font-weight: 500;
-}
-
-.breadcrumb-sep {
-  color: var(--color-text-tertiary);
-}
+.header-breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-secondary); font-weight: 500; }
+.breadcrumb-sep { color: var(--color-text-tertiary); }
 
 .header-action {
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  color: var(--color-text-secondary);
-  transition: all var(--transition-fast);
+  width: 36px; height: 36px; border: none; background: transparent;
+  border-radius: var(--radius-md); cursor: pointer; display: flex;
+  align-items: center; justify-content: center; font-size: 18px;
+  color: var(--color-text-secondary); transition: all var(--transition-fast);
 }
-
-.header-action:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-}
+.header-action:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
 
 .header-user {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 12px 4px 4px;
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-  margin-left: 4px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 12px 4px 4px; border-radius: var(--radius-full);
+  cursor: pointer; transition: background var(--transition-fast); margin-left: 4px;
 }
+.header-user:hover { background: var(--color-bg-hover); }
+.header-avatar { background: linear-gradient(135deg, #f59e0b, #ef4444) !important; }
+.header-username { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
 
-.header-user:hover {
-  background: var(--color-bg-hover);
-}
+.admin-content { flex: 1; padding: var(--space-page); max-width: 1400px; width: 100%; margin: 0 auto; }
 
-.header-avatar {
-  background: linear-gradient(135deg, #f59e0b, #ef4444) !important;
-}
+.fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 
-.header-username {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-}
-
-/* ===== Content ===== */
-.admin-content {
-  flex: 1;
-  padding: var(--space-page);
-  max-width: 1400px;
-  width: 100%;
-  margin: 0 auto;
-}
-
-/* Transitions */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-/* ===== Responsive ===== */
 @media (max-width: 768px) {
-  .admin-sidebar {
-    transform: translateX(-100%);
-    width: var(--sidebar-width);
-  }
-
-  .admin-sidebar--mobile-open {
-    transform: translateX(0);
-  }
-
-  .admin-sidebar--collapsed {
-    width: var(--sidebar-width);
-  }
-
-  .admin-main {
-    margin-left: 0 !important;
-  }
-
-  .admin-header {
-    padding: 0 16px;
-  }
-
-  .admin-content {
-    padding: 16px;
-  }
-
-  .header-username {
-    display: none;
-  }
-
-  .header-breadcrumb {
-    display: none;
-  }
+  .admin-sidebar { transform: translateX(-100%); width: var(--sidebar-width); }
+  .admin-sidebar--mobile-open { transform: translateX(0); }
+  .admin-sidebar--collapsed { width: var(--sidebar-width); }
+  .admin-main { margin-left: 0 !important; }
+  .admin-header { padding: 0 16px; }
+  .admin-content { padding: 16px; }
+  .header-username { display: none; }
+  .header-breadcrumb { display: none; }
 }
 </style>

@@ -11,6 +11,7 @@ import {
   UserOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
+  ControlOutlined,
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -19,7 +20,7 @@ const mobileMenuOpen = ref(false)
 const isMobile = ref(false)
 
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
-const { logout, userRole } = useAuth()
+const { logout, userRole, currentUser } = useAuth()
 
 onMounted(() => {
   restoreTheme()
@@ -43,6 +44,16 @@ const businessMenuItems = [
   { key: '/cron', icon: ClockCircleOutlined, label: '定时任务', badge: 0 },
   { key: '/archive', icon: FolderOpenOutlined, label: '归档复盘', badge: 0 },
 ]
+
+// Only show tenant admin entry if user is tenant_admin or system_admin
+const showTenantAdmin = computed(() =>
+  userRole.value === 'tenant_admin' || userRole.value === 'system_admin'
+)
+
+// Only show system admin entry if user is system_admin
+const showSystemAdmin = computed(() => userRole.value === 'system_admin')
+
+const displayName = computed(() => currentUser.value?.display_name || '用户')
 
 const handleMenuClick = (path: string) => {
   navigateTo(path)
@@ -96,17 +107,32 @@ watch(route, () => {
           </div>
         </div>
 
-        <!-- Admin entry -->
-        <div class="sidebar-section">
+        <!-- Admin entries - permission based -->
+        <div v-if="showTenantAdmin || showSystemAdmin" class="sidebar-section">
           <div v-if="!collapsed" class="sidebar-section-title">管理</div>
           <div
+            v-if="showTenantAdmin"
             class="sidebar-item"
-            @click="navigateTo('/admin/tenant')"
+            :class="{ 'sidebar-item--active': route.path.startsWith('/admin/tenant') }"
+            @click="handleMenuClick('/admin/tenant')"
           >
             <SettingOutlined class="sidebar-item-icon" />
             <transition name="fade">
-              <span v-if="!collapsed" class="sidebar-item-label">管理后台</span>
+              <span v-if="!collapsed" class="sidebar-item-label">租户管理</span>
             </transition>
+            <div v-if="route.path.startsWith('/admin/tenant')" class="sidebar-item-indicator" />
+          </div>
+          <div
+            v-if="showSystemAdmin"
+            class="sidebar-item"
+            :class="{ 'sidebar-item--active': route.path === '/admin/system' || route.path === '/admin/monitor' }"
+            @click="handleMenuClick('/admin/system')"
+          >
+            <ControlOutlined class="sidebar-item-icon" />
+            <transition name="fade">
+              <span v-if="!collapsed" class="sidebar-item-label">系统管理</span>
+            </transition>
+            <div v-if="route.path === '/admin/system' || route.path === '/admin/monitor'" class="sidebar-item-indicator" />
           </div>
         </div>
       </nav>
@@ -145,26 +171,23 @@ watch(route, () => {
         </div>
 
         <div class="app-header-right">
-          <!-- Theme toggle -->
           <button class="header-action" @click="toggleTheme" :title="isDark ? '切换亮色' : '切换暗色'">
             <span v-if="isDark" style="font-size: 18px;">🌙</span>
             <span v-else style="font-size: 18px;">☀️</span>
           </button>
 
-          <!-- Notifications -->
           <a-badge :count="3" :offset="[-4, 4]">
             <button class="header-action">
               <BellOutlined />
             </button>
           </a-badge>
 
-          <!-- User avatar -->
           <a-dropdown>
             <div class="header-user">
               <a-avatar :size="32" class="header-avatar">
                 <template #icon><UserOutlined /></template>
               </a-avatar>
-              <span class="header-username">审核员</span>
+              <span class="header-username">{{ displayName }}</span>
             </div>
             <template #overlay>
               <a-menu>
@@ -192,10 +215,11 @@ watch(route, () => {
   background: var(--color-bg-page);
 }
 
-/* ===== Sidebar ===== */
+/* ===== Sidebar - Light-friendly ===== */
 .sidebar {
   width: var(--sidebar-width);
   background: var(--color-bg-sidebar);
+  border-right: 1px solid var(--color-sidebar-border);
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -220,7 +244,7 @@ watch(route, () => {
   gap: 12px;
   cursor: pointer;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--color-sidebar-border);
 }
 
 .sidebar-logo-icon {
@@ -239,7 +263,7 @@ watch(route, () => {
 .sidebar-logo-text {
   font-size: 18px;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--color-sidebar-logo-text);
   white-space: nowrap;
   letter-spacing: -0.02em;
 }
@@ -260,7 +284,7 @@ watch(route, () => {
   padding: 8px 24px 6px;
   font-size: 11px;
   font-weight: 600;
-  color: #475569;
+  color: var(--color-sidebar-section-title);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   white-space: nowrap;
@@ -282,7 +306,7 @@ watch(route, () => {
 
 .sidebar-item:hover {
   background: var(--color-bg-sidebar-hover);
-  color: #e2e8f0;
+  color: var(--color-text-primary);
 }
 
 .sidebar-item--active {
@@ -291,7 +315,7 @@ watch(route, () => {
 }
 
 .sidebar-item--active .sidebar-item-icon {
-  color: var(--color-primary-lighter);
+  color: var(--color-primary);
 }
 
 .sidebar-item-icon {
@@ -331,23 +355,23 @@ watch(route, () => {
   transform: translateY(-50%);
   width: 3px;
   height: 20px;
-  background: var(--color-primary-lighter);
+  background: var(--color-primary);
   border-radius: 3px 0 0 3px;
 }
 
 .sidebar-item--logout {
-  color: #64748b;
+  color: var(--color-text-tertiary);
 }
 
 .sidebar-item--logout:hover {
   color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(239, 68, 68, 0.08);
 }
 
 /* Sidebar footer */
 .sidebar-footer {
   padding: 8px 0 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--color-sidebar-border);
 }
 
 /* Sidebar overlay for mobile */
@@ -385,7 +409,6 @@ watch(route, () => {
   top: 0;
   z-index: 50;
   backdrop-filter: blur(12px);
-  background: var(--color-bg-card);
   background: color-mix(in srgb, var(--color-bg-card) 85%, transparent);
 }
 

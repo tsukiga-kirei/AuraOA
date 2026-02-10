@@ -6,38 +6,94 @@ import {
   CloseCircleOutlined,
   EditOutlined,
   ClockCircleOutlined,
-  RiseOutlined,
   FireOutlined,
-  ArrowUpOutlined,
+  ExportOutlined,
+  ReloadOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
 
 definePageMeta({ middleware: 'auth' })
 
-const { mockProcesses, mockAuditResult, mockDashboardStats } = useMockData()
+const { mockProcesses, mockApprovedProcesses, mockRejectedProcesses, mockHistoricalResults, mockAuditResult, mockDashboardStats } = useMockData()
 
 const todoList = ref(mockProcesses)
+const approvedList = ref(mockApprovedProcesses)
+const rejectedList = ref(mockRejectedProcesses)
 const currentResult = ref<typeof mockAuditResult | null>(null)
 const loading = ref(false)
 const selectedProcess = ref<string | null>(null)
 const searchText = ref('')
 const stats = ref(mockDashboardStats)
 
+// View mode: 'todo' | 'approved' | 'rejected'
+const viewMode = ref<'todo' | 'approved' | 'rejected'>('todo')
+
+// Whether current view is history-only (no audit actions)
+const isHistoryMode = computed(() => viewMode.value !== 'todo')
+
 const filteredList = computed(() => {
-  if (!searchText.value) return todoList.value
-  const q = searchText.value.toLowerCase()
-  return todoList.value.filter(
-    p => p.title.toLowerCase().includes(q) || p.applicant.toLowerCase().includes(q)
-  )
+  let list: typeof todoList.value
+  switch (viewMode.value) {
+    case 'approved': list = approvedList.value; break
+    case 'rejected': list = rejectedList.value; break
+    default: list = todoList.value
+  }
+  if (searchText.value) {
+    const q = searchText.value.toLowerCase()
+    list = list.filter(
+      p => p.title.toLowerCase().includes(q) || p.applicant.toLowerCase().includes(q)
+    )
+  }
+  return list
 })
 
-const handleAudit = async (processId: string) => {
+const handleSelectProcess = (processId: string) => {
   selectedProcess.value = processId
+  if (isHistoryMode.value) {
+    // Auto-load historical result for approved/rejected
+    const hist = mockHistoricalResults[processId]
+    currentResult.value = hist ? { ...hist } : null
+  } else {
+    currentResult.value = null
+  }
+}
+
+const handleAudit = async (processId: string) => {
   loading.value = true
-  // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 1500))
   currentResult.value = { ...mockAuditResult, process_id: processId }
   loading.value = false
 }
+
+const handleReAudit = async () => {
+  if (!selectedProcess.value) return
+  currentResult.value = null
+  await handleAudit(selectedProcess.value)
+}
+
+const jumpToOA = (processId: string) => {
+  message.info(`正在跳转 OA 系统查看流程 ${processId}...`)
+}
+
+const switchView = (mode: 'todo' | 'approved' | 'rejected') => {
+  viewMode.value = mode
+  selectedProcess.value = null
+  currentResult.value = null
+}
+
+const selectedProcessInfo = computed(() => {
+  const all = [...todoList.value, ...approvedList.value, ...rejectedList.value]
+  return all.find(p => p.process_id === selectedProcess.value)
+})
+
+const viewModeLabel = computed(() => {
+  switch (viewMode.value) {
+    case 'approved': return '已通过流程'
+    case 'rejected': return '已驳回流程'
+    default: return '待办流程'
+  }
+})
 
 const urgencyConfig = {
   high: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', label: '紧急' },
@@ -62,39 +118,36 @@ const recommendationConfig = {
       </div>
     </div>
 
-    <!-- Stats row -->
+    <!-- Stats row - clickable cards -->
     <div class="stats-row">
-      <div class="stat-card stat-card--primary">
-        <div class="stat-card-icon">
-          <ClockCircleOutlined />
-        </div>
+      <div
+        class="stat-card stat-card--primary"
+        :class="{ 'stat-card--selected': viewMode === 'todo' }"
+        @click="switchView('todo')"
+      >
+        <div class="stat-card-icon"><ClockCircleOutlined /></div>
         <div class="stat-card-info">
           <span class="stat-card-value">{{ stats.pendingCount }}</span>
           <span class="stat-card-label">待审核</span>
         </div>
       </div>
-      <div class="stat-card stat-card--success">
-        <div class="stat-card-icon">
-          <CheckCircleOutlined />
-        </div>
+      <div
+        class="stat-card stat-card--success"
+        :class="{ 'stat-card--selected': viewMode === 'approved' }"
+        @click="switchView('approved')"
+      >
+        <div class="stat-card-icon"><CheckCircleOutlined /></div>
         <div class="stat-card-info">
           <span class="stat-card-value">{{ stats.todayApproved }}</span>
           <span class="stat-card-label">已通过</span>
         </div>
       </div>
-      <div class="stat-card stat-card--warning">
-        <div class="stat-card-icon">
-          <EditOutlined />
-        </div>
-        <div class="stat-card-info">
-          <span class="stat-card-value">{{ stats.todayRevised }}</span>
-          <span class="stat-card-label">需修改</span>
-        </div>
-      </div>
-      <div class="stat-card stat-card--danger">
-        <div class="stat-card-icon">
-          <CloseCircleOutlined />
-        </div>
+      <div
+        class="stat-card stat-card--danger"
+        :class="{ 'stat-card--selected': viewMode === 'rejected' }"
+        @click="switchView('rejected')"
+      >
+        <div class="stat-card-icon"><CloseCircleOutlined /></div>
         <div class="stat-card-info">
           <span class="stat-card-value">{{ stats.todayRejected }}</span>
           <span class="stat-card-label">已驳回</span>
@@ -104,12 +157,13 @@ const recommendationConfig = {
 
     <!-- Main content area -->
     <div class="dashboard-grid">
-      <!-- Left: Todo list -->
+      <!-- Left: Process list -->
       <div class="todo-panel">
         <div class="panel-header">
           <h3 class="panel-title">
-            <FireOutlined style="color: var(--color-primary);" />
-            待办流程
+            <FireOutlined v-if="viewMode === 'todo'" style="color: var(--color-primary);" />
+            <HistoryOutlined v-else style="color: var(--color-text-tertiary);" />
+            {{ viewModeLabel }}
             <a-badge :count="filteredList.length" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
           </h3>
           <a-input
@@ -128,7 +182,7 @@ const recommendationConfig = {
             :key="item.process_id"
             class="todo-item"
             :class="{ 'todo-item--selected': selectedProcess === item.process_id }"
-            @click="handleAudit(item.process_id)"
+            @click="handleSelectProcess(item.process_id)"
           >
             <div class="todo-item-main">
               <div class="todo-item-title">{{ item.title }}</div>
@@ -141,36 +195,39 @@ const recommendationConfig = {
               </div>
             </div>
             <div class="todo-item-right">
-              <span
-                v-if="item.amount"
-                class="todo-item-amount"
-              >
+              <span v-if="item.amount" class="todo-item-amount">
                 ¥{{ item.amount.toLocaleString() }}
               </span>
-              <span
-                class="urgency-tag"
-                :style="{
-                  color: urgencyConfig[item.urgency].color,
-                  background: urgencyConfig[item.urgency].bg,
-                }"
-              >
-                {{ urgencyConfig[item.urgency].label }}
-              </span>
+              <div class="todo-item-tags">
+                <span
+                  class="urgency-tag"
+                  :style="{
+                    color: urgencyConfig[item.urgency].color,
+                    background: urgencyConfig[item.urgency].bg,
+                  }"
+                >
+                  {{ urgencyConfig[item.urgency].label }}
+                </span>
+                <button class="oa-jump-btn" @click.stop="jumpToOA(item.process_id)" title="跳转 OA 系统">
+                  <ExportOutlined />
+                </button>
+              </div>
             </div>
           </div>
 
           <div v-if="filteredList.length === 0" class="todo-empty">
-            <a-empty description="暂无待办流程" />
+            <a-empty description="暂无流程" />
           </div>
         </div>
       </div>
 
-      <!-- Right: Audit result -->
+      <!-- Right: Audit result / Action panel -->
       <div class="result-panel">
         <div class="panel-header">
           <h3 class="panel-title">
-            <ThunderboltOutlined style="color: var(--color-primary);" />
-            审核结果
+            <ThunderboltOutlined v-if="!isHistoryMode" style="color: var(--color-primary);" />
+            <HistoryOutlined v-else style="color: var(--color-text-tertiary);" />
+            {{ isHistoryMode ? '历史审核结果' : '审核结果' }}
           </h3>
         </div>
 
@@ -184,8 +241,60 @@ const recommendationConfig = {
             </div>
           </div>
 
-          <!-- Result display -->
+          <!-- TODO mode: Selected but not yet audited - show action prompt -->
+          <template v-else-if="!isHistoryMode && selectedProcess && !currentResult">
+            <div class="action-prompt">
+              <div class="action-prompt-info">
+                <h4>{{ selectedProcessInfo?.title }}</h4>
+                <p>{{ selectedProcessInfo?.applicant }} · {{ selectedProcessInfo?.department }} · {{ selectedProcessInfo?.submit_time }}</p>
+              </div>
+              <div class="action-prompt-buttons">
+                <a-button type="primary" size="large" @click="handleAudit(selectedProcess!)">
+                  <ThunderboltOutlined /> 开始 AI 审核
+                </a-button>
+                <a-button size="large" @click="jumpToOA(selectedProcess!)">
+                  <ExportOutlined /> 跳转 OA 系统
+                </a-button>
+              </div>
+            </div>
+          </template>
+
+          <!-- History mode: Selected but no historical result found -->
+          <template v-else-if="isHistoryMode && selectedProcess && !currentResult">
+            <div class="result-empty">
+              <div class="result-empty-icon"><HistoryOutlined /></div>
+              <h4>暂无历史审核记录</h4>
+              <p>该流程尚未生成 AI 审核结果</p>
+              <a-button style="margin-top: 16px;" @click="jumpToOA(selectedProcess!)">
+                <ExportOutlined /> 跳转 OA 系统查看
+              </a-button>
+            </div>
+          </template>
+
+          <!-- Result display (both modes) -->
           <template v-else-if="currentResult">
+            <!-- Action bar - different for history vs todo -->
+            <div class="result-action-bar">
+              <!-- History mode: only OA jump -->
+              <template v-if="isHistoryMode">
+                <div class="history-badge">
+                  <HistoryOutlined /> 历史记录（只读）
+                </div>
+                <a-button type="primary" @click="jumpToOA(currentResult.process_id)">
+                  <ExportOutlined /> 跳转 OA
+                </a-button>
+              </template>
+              <!-- Todo mode: OA jump + re-audit -->
+              <template v-else>
+                <a-button @click="jumpToOA(currentResult.process_id)">
+                  <ExportOutlined /> 跳转 OA
+                </a-button>
+                <a-button @click="handleReAudit">
+                  <ReloadOutlined /> 重新审核
+                </a-button>
+              </template>
+            </div>
+
             <!-- Recommendation banner -->
             <div
               class="result-banner"
@@ -252,10 +361,11 @@ const recommendationConfig = {
           <!-- Empty state -->
           <div v-else class="result-empty">
             <div class="result-empty-icon">
-              <ThunderboltOutlined />
+              <ThunderboltOutlined v-if="!isHistoryMode" />
+              <HistoryOutlined v-else />
             </div>
-            <h4>选择待办流程开始审核</h4>
-            <p>点击左侧列表中的流程，AI 将自动进行规则校验并给出审核建议</p>
+            <h4>{{ isHistoryMode ? '选择流程查看历史审核结果' : '选择待办流程开始审核' }}</h4>
+            <p>{{ isHistoryMode ? '点击左侧列表中的流程，查看 AI 历史审核记录' : '点击左侧列表中的流程，AI 将自动进行规则校验并给出审核建议' }}</p>
           </div>
         </div>
       </div>
@@ -264,459 +374,159 @@ const recommendationConfig = {
 </template>
 
 <style scoped>
-.dashboard {
-  animation: fadeIn 0.3s ease-out;
-}
+.dashboard { animation: fadeIn 0.3s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* Page header */
-.page-header {
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  margin: 0;
-  letter-spacing: -0.02em;
-}
-
-.page-subtitle {
-  font-size: 14px;
-  color: var(--color-text-tertiary);
-  margin: 4px 0 0;
-}
+.page-header { margin-bottom: 24px; }
+.page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; letter-spacing: -0.02em; }
+.page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
 
 /* Stats row */
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
+.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
 .stat-card {
-  background: var(--color-bg-card);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  border: 1px solid var(--color-border-light);
-  transition: all var(--transition-base);
+  background: var(--color-bg-card); border-radius: var(--radius-lg); padding: 20px;
+  display: flex; align-items: center; gap: 16px; border: 2px solid var(--color-border-light);
+  transition: all var(--transition-base); cursor: pointer; user-select: none;
 }
-
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
+.stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.stat-card--selected { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }
 .stat-card-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-lg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  flex-shrink: 0;
+  width: 48px; height: 48px; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;
 }
-
-.stat-card--primary .stat-card-icon {
-  background: var(--color-primary-bg);
-  color: var(--color-primary);
-}
-
-.stat-card--success .stat-card-icon {
-  background: var(--color-success-bg);
-  color: var(--color-success);
-}
-
-.stat-card--warning .stat-card-icon {
-  background: var(--color-warning-bg);
-  color: var(--color-warning);
-}
-
-.stat-card--danger .stat-card-icon {
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
-}
-
-.stat-card-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.stat-card-value {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  line-height: 1.2;
-}
-
-.stat-card-label {
-  font-size: 13px;
-  color: var(--color-text-tertiary);
-  margin-top: 2px;
-}
+.stat-card--primary .stat-card-icon { background: var(--color-primary-bg); color: var(--color-primary); }
+.stat-card--success .stat-card-icon { background: var(--color-success-bg); color: var(--color-success); }
+.stat-card--danger .stat-card-icon { background: var(--color-danger-bg); color: var(--color-danger); }
+.stat-card-info { display: flex; flex-direction: column; }
+.stat-card-value { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
+.stat-card-label { font-size: 13px; color: var(--color-text-tertiary); margin-top: 2px; }
 
 /* Dashboard grid */
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: 420px 1fr;
-  gap: 24px;
-  align-items: start;
+.dashboard-grid { display: grid; grid-template-columns: 420px 1fr; gap: 24px; align-items: start; }
+.todo-panel, .result-panel {
+  background: var(--color-bg-card); border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light); overflow: hidden;
 }
-
-/* Panels */
-.todo-panel,
-.result-panel {
-  background: var(--color-bg-card);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-light);
-  overflow: hidden;
-}
-
 .panel-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--color-border-light);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  padding: 16px 20px; border-bottom: 1px solid var(--color-border-light);
+  display: flex; flex-direction: column; gap: 12px;
 }
-
 .panel-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  font-size: 15px; font-weight: 600; color: var(--color-text-primary);
+  margin: 0; display: flex; align-items: center; gap: 8px;
 }
-
-.search-input {
-  height: 36px;
-}
+.search-input { height: 36px; }
 
 /* Todo list */
-.todo-list {
-  max-height: calc(100vh - 380px);
-  overflow-y: auto;
-}
-
+.todo-list { max-height: calc(100vh - 380px); overflow-y: auto; }
 .todo-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  border-bottom: 1px solid var(--color-border-light);
-  gap: 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; cursor: pointer; transition: all var(--transition-fast);
+  border-bottom: 1px solid var(--color-border-light); gap: 12px;
 }
-
-.todo-item:last-child {
-  border-bottom: none;
-}
-
-.todo-item:hover {
-  background: var(--color-bg-hover);
-}
-
-.todo-item--selected {
-  background: var(--color-primary-bg);
-  border-left: 3px solid var(--color-primary);
-}
-
-.todo-item-main {
-  flex: 1;
-  min-width: 0;
-}
-
+.todo-item:last-child { border-bottom: none; }
+.todo-item:hover { background: var(--color-bg-hover); }
+.todo-item--selected { background: var(--color-primary-bg); border-left: 3px solid var(--color-primary); }
+.todo-item-main { flex: 1; min-width: 0; }
 .todo-item-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 4px;
+  font-size: 14px; font-weight: 500; color: var(--color-text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;
 }
-
-.todo-item-meta {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
+.todo-item-meta { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.todo-item-dot { color: var(--color-border); }
+.todo-item-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.todo-item-amount { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.todo-item-tags { display: flex; align-items: center; gap: 6px; }
+.urgency-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full); }
+.oa-jump-btn {
+  width: 24px; height: 24px; border: 1px solid var(--color-border);
+  background: transparent; border-radius: var(--radius-sm); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--color-text-tertiary); transition: all var(--transition-fast);
 }
-
-.todo-item-dot {
-  color: var(--color-border);
-}
-
-.todo-item-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.todo-item-amount {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.urgency-tag {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-}
-
-.todo-empty {
-  padding: 48px 20px;
-}
+.oa-jump-btn:hover { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-bg); }
+.todo-empty { padding: 48px 20px; }
 
 /* Result panel */
-.result-content {
-  padding: 20px;
+.result-content { padding: 20px; }
+
+/* Action prompt */
+.action-prompt { text-align: center; padding: 40px 20px; }
+.action-prompt-info h4 { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px; }
+.action-prompt-info p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 24px; }
+.action-prompt-buttons { display: flex; gap: 12px; justify-content: center; }
+
+/* Result action bar */
+.result-action-bar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
+
+/* History badge */
+.history-badge {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+  padding: 4px 12px; border-radius: var(--radius-full);
+  background: var(--color-bg-hover); color: var(--color-text-tertiary); margin-right: auto;
 }
 
 /* Loading */
-.result-loading {
-  display: flex;
-  justify-content: center;
-  padding: 60px 0;
-}
-
-.loading-animation {
-  text-align: center;
-}
-
+.result-loading { display: flex; justify-content: center; padding: 60px 0; }
+.loading-animation { text-align: center; }
 .loading-pulse {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  margin: 0 auto 16px;
-  animation: pulse 1.5s ease-in-out infinite;
+  width: 48px; height: 48px; border-radius: 50%; background: var(--color-primary);
+  margin: 0 auto 16px; animation: pulse 1.5s ease-in-out infinite;
 }
-
-@keyframes pulse {
-  0%, 100% { transform: scale(1); opacity: 0.6; }
-  50% { transform: scale(1.15); opacity: 1; }
-}
-
-.loading-text {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 4px;
-}
-
-.loading-subtext {
-  font-size: 13px;
-  color: var(--color-text-tertiary);
-}
+@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.15); opacity: 1; } }
+.loading-text { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 4px; }
+.loading-subtext { font-size: 13px; color: var(--color-text-tertiary); }
 
 /* Result banner */
 .result-banner {
-  display: flex;
-  align-items: center;
-  padding: 16px 20px;
-  border-radius: var(--radius-lg);
-  border-left: 4px solid;
-  margin-bottom: 24px;
-  gap: 14px;
+  display: flex; align-items: center; padding: 16px 20px;
+  border-radius: var(--radius-lg); border-left: 4px solid; margin-bottom: 24px; gap: 14px;
 }
-
-.result-banner-icon {
-  font-size: 28px;
-  flex-shrink: 0;
-}
-
-.result-banner-info {
-  flex: 1;
-}
-
-.result-banner-title {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.result-banner-meta {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  margin-top: 2px;
-}
-
-.result-score {
-  font-size: 36px;
-  font-weight: 800;
-  line-height: 1;
-}
+.result-banner-icon { font-size: 28px; flex-shrink: 0; }
+.result-banner-info { flex: 1; }
+.result-banner-title { font-size: 16px; font-weight: 700; }
+.result-banner-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+.result-score { font-size: 36px; font-weight: 800; line-height: 1; }
 
 /* Rule checks */
-.result-section {
-  margin-bottom: 24px;
-}
-
-.result-section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin: 0 0 12px;
-}
-
-.rule-checks {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
+.result-section { margin-bottom: 24px; }
+.result-section-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 12px; }
+.rule-checks { display: flex; flex-direction: column; gap: 8px; }
 .rule-check-item {
-  display: flex;
-  gap: 12px;
-  padding: 12px 16px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-light);
+  display: flex; gap: 12px; padding: 12px 16px;
+  border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
   transition: background var(--transition-fast);
 }
-
-.rule-check-item:hover {
-  background: var(--color-bg-hover);
-}
-
-.rule-check-item--pass {
-  border-left: 3px solid var(--color-success);
-}
-
-.rule-check-item--fail {
-  border-left: 3px solid var(--color-danger);
-  background: var(--color-danger-bg);
-}
-
-.rule-check-status {
-  font-size: 18px;
-  flex-shrink: 0;
-  padding-top: 1px;
-}
-
-.rule-check-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.rule-check-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-  margin-bottom: 4px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.rule-locked-badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: var(--radius-full);
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
-}
-
-.rule-check-reasoning {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-}
+.rule-check-item:hover { background: var(--color-bg-hover); }
+.rule-check-item--pass { border-left: 3px solid var(--color-success); }
+.rule-check-item--fail { border-left: 3px solid var(--color-danger); background: var(--color-danger-bg); }
+.rule-check-status { font-size: 18px; flex-shrink: 0; padding-top: 1px; }
+.rule-check-content { flex: 1; min-width: 0; }
+.rule-check-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.rule-locked-badge { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-danger-bg); color: var(--color-danger); }
+.rule-check-reasoning { font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; }
 
 /* AI Reasoning */
-.ai-reasoning {
-  background: var(--color-bg-page);
-  border-radius: var(--radius-md);
-  padding: 16px;
-  border: 1px solid var(--color-border-light);
-}
-
-.ai-reasoning pre {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--color-text-secondary);
-  margin: 0;
-}
+.ai-reasoning { background: var(--color-bg-page); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--color-border-light); }
+.ai-reasoning pre { white-space: pre-wrap; word-break: break-word; font-family: var(--font-sans); font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); margin: 0; }
 
 /* Empty state */
-.result-empty {
-  text-align: center;
-  padding: 60px 20px;
-}
-
+.result-empty { text-align: center; padding: 60px 20px; }
 .result-empty-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: var(--color-primary-bg);
-  color: var(--color-primary);
-  font-size: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 16px;
+  width: 64px; height: 64px; border-radius: 50%; background: var(--color-primary-bg);
+  color: var(--color-primary); font-size: 28px; display: flex; align-items: center;
+  justify-content: center; margin: 0 auto 16px;
 }
+.result-empty h4 { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px; }
+.result-empty p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 auto; max-width: 280px; }
 
-.result-empty h4 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin: 0 0 8px;
-}
-
-.result-empty p {
-  font-size: 13px;
-  color: var(--color-text-tertiary);
-  margin: 0;
-  max-width: 280px;
-  margin: 0 auto;
-}
-
-/* Responsive */
 @media (max-width: 1024px) {
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .stats-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .dashboard-grid { grid-template-columns: 1fr; }
+  .stats-row { grid-template-columns: repeat(3, 1fr); }
 }
-
 @media (max-width: 640px) {
-  .stats-row {
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-
-  .stat-card {
-    padding: 14px;
-  }
-
-  .stat-card-value {
-    font-size: 22px;
-  }
+  .stats-row { grid-template-columns: 1fr; gap: 12px; }
+  .stat-card { padding: 14px; }
+  .stat-card-value { font-size: 22px; }
 }
 </style>

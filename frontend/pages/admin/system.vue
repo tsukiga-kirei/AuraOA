@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 
-definePageMeta({ middleware: 'auth', layout: 'admin' })
+definePageMeta({ middleware: 'auth', layout: 'admin-system' })
 
 const { mockTenants } = useMockData()
 

@@ -54,7 +54,7 @@ const handleLogin = async () => {
       setUserRole(activePortal.value)
       await getMenu()
       message.success('登录成功，正在跳转...')
-      navigateTo(activePortal.value === 'business' ? '/dashboard' : '/admin/tenant')
+      navigateTo(activePortal.value === 'business' ? '/dashboard' : activePortal.value === 'tenant_admin' ? '/admin/tenant' : '/admin/system')
     } else {
       message.error('登录失败，请检查用户名或密码')
     }
