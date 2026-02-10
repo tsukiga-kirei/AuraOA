@@ -18,16 +18,25 @@ interface MenuItem {
   children?: MenuItem[]
 }
 
+type UserRole = 'business' | 'tenant_admin' | 'system_admin'
+
 export const useAuth = () => {
   const config = useRuntimeConfig()
   const token = useState<string | null>('auth_token', () => null)
   const refreshToken = useState<string | null>('auth_refresh', () => null)
   const menus = useState<MenuItem[]>('auth_menus', () => [])
+  const userRole = useState<UserRole>('auth_role', () => 'business')
 
-  const isMockMode = computed(() => config.public.mockMode === true)
+  const isMockMode = computed(() => config.public.mockMode === true || config.public.mockMode === 'true')
+
+  const setUserRole = (role: UserRole) => {
+    userRole.value = role
+    if (import.meta.client) {
+      localStorage.setItem('user_role', role)
+    }
+  }
 
   const login = async (req: LoginRequest): Promise<boolean> => {
-    // Mock mode - accept any credentials
     if (isMockMode.value) {
       const mockToken = 'mock_token_' + Date.now()
       token.value = mockToken
@@ -39,7 +48,6 @@ export const useAuth = () => {
       return true
     }
 
-    // Real API call
     try {
       const data = await $fetch<TokenResponse>(`${config.public.apiBase}/api/auth/login`, {
         method: 'POST',
@@ -58,7 +66,6 @@ export const useAuth = () => {
   }
 
   const getMenu = async (): Promise<MenuItem[]> => {
-    // Mock mode - return static menu
     if (isMockMode.value) {
       const mockMenus: MenuItem[] = [
         { key: 'dashboard', label: '审核工作台', path: '/dashboard' },
@@ -72,7 +79,6 @@ export const useAuth = () => {
       return mockMenus
     }
 
-    // Real API call
     try {
       const data = await $fetch<{ menus: MenuItem[] }>(`${config.public.apiBase}/api/auth/menu`, {
         headers: { Authorization: `Bearer ${token.value}` },
@@ -88,9 +94,11 @@ export const useAuth = () => {
     token.value = null
     refreshToken.value = null
     menus.value = []
+    userRole.value = 'business'
     if (import.meta.client) {
       localStorage.removeItem('token')
       localStorage.removeItem('refresh_token')
+      localStorage.removeItem('user_role')
     }
     navigateTo('/login')
   }
@@ -103,8 +111,13 @@ export const useAuth = () => {
       if (saved) token.value = saved
       const savedRefresh = localStorage.getItem('refresh_token')
       if (savedRefresh) refreshToken.value = savedRefresh
+      const savedRole = localStorage.getItem('user_role') as UserRole | null
+      if (savedRole) userRole.value = savedRole
     }
   }
 
-  return { token, refreshToken, menus, login, getMenu, logout, isAuthenticated, restore, isMockMode }
+  return {
+    token, refreshToken, menus, userRole,
+    login, getMenu, logout, isAuthenticated, restore, isMockMode, setUserRole,
+  }
 }

@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 
-definePageMeta({ middleware: 'auth' })
+definePageMeta({ middleware: 'auth', layout: 'admin' })
 
 const { mockRules } = useMockData()
 
@@ -23,9 +23,9 @@ const editingRule = ref<any>(null)
 const kbMode = ref('rules_only')
 
 const scopeConfig: Record<string, { label: string; color: string; bg: string; icon: any }> = {
-  mandatory: { label: '强制执行', color: '#ef4444', bg: '#fef2f2', icon: LockOutlined },
-  default_on: { label: '默认开启', color: '#4f46e5', bg: '#eef2ff', icon: UnlockOutlined },
-  default_off: { label: '默认关闭', color: '#94a3b8', bg: '#f1f5f9', icon: UnlockOutlined },
+  mandatory: { label: '强制执行', color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: LockOutlined },
+  default_on: { label: '默认开启', color: 'var(--color-primary)', bg: 'var(--color-primary-bg)', icon: UnlockOutlined },
+  default_off: { label: '默认关闭', color: 'var(--color-text-tertiary)', bg: 'var(--color-bg-hover)', icon: UnlockOutlined },
 }
 
 const handleSaveRule = (rule: any) => {

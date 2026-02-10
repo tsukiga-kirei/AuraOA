@@ -1,16 +1,21 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import {
-  DashboardOutlined,
-  ClockCircleOutlined,
-  FolderOpenOutlined,
+  SettingOutlined,
+  MonitorOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   BellOutlined,
   UserOutlined,
   SafetyCertificateOutlined,
-  SettingOutlined,
+  AppstoreOutlined,
+  TeamOutlined,
+  RobotOutlined,
+  ApartmentOutlined,
+  DatabaseOutlined,
+  ControlOutlined,
+  ArrowLeftOutlined,
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -38,10 +43,19 @@ const checkMobile = () => {
 
 const selectedKeys = computed(() => [route.path])
 
-const businessMenuItems = [
-  { key: '/dashboard', icon: DashboardOutlined, label: '审核工作台', badge: 6 },
-  { key: '/cron', icon: ClockCircleOutlined, label: '定时任务', badge: 0 },
-  { key: '/archive', icon: FolderOpenOutlined, label: '归档复盘', badge: 0 },
+// Tenant admin menu
+const tenantMenuItems = [
+  { key: '/admin/tenant', icon: AppstoreOutlined, label: '规则配置' },
+  { key: '/admin/tenant/org', icon: ApartmentOutlined, label: '组织人员' },
+  { key: '/admin/tenant/ai', icon: RobotOutlined, label: 'AI 设置' },
+  { key: '/admin/tenant/kb', icon: DatabaseOutlined, label: '知识库' },
+]
+
+// System admin menu
+const systemMenuItems = [
+  { key: '/admin/system', icon: TeamOutlined, label: '租户管理' },
+  { key: '/admin/monitor', icon: MonitorOutlined, label: '全局监控' },
+  { key: '/admin/system/settings', icon: ControlOutlined, label: '系统设置' },
 ]
 
 const handleMenuClick = (path: string) => {
@@ -55,31 +69,31 @@ watch(route, () => {
 </script>
 
 <template>
-  <div class="app-layout" :class="{ 'app-layout--collapsed': collapsed }">
+  <div class="admin-layout" :class="{ 'admin-layout--collapsed': collapsed }">
     <!-- Sidebar -->
     <aside
-      class="sidebar"
+      class="admin-sidebar"
       :class="{
-        'sidebar--collapsed': collapsed,
-        'sidebar--mobile-open': mobileMenuOpen,
+        'admin-sidebar--collapsed': collapsed,
+        'admin-sidebar--mobile-open': mobileMenuOpen,
       }"
     >
       <!-- Logo -->
-      <div class="sidebar-logo" @click="navigateTo('/dashboard')">
+      <div class="sidebar-logo" @click="navigateTo('/admin/tenant')">
         <div class="sidebar-logo-icon">
-          <SafetyCertificateOutlined />
+          <SettingOutlined />
         </div>
         <transition name="fade">
-          <span v-if="!collapsed" class="sidebar-logo-text">OA智审</span>
+          <span v-if="!collapsed" class="sidebar-logo-text">管理后台</span>
         </transition>
       </div>
 
       <!-- Navigation -->
       <nav class="sidebar-nav">
         <div class="sidebar-section">
-          <div v-if="!collapsed" class="sidebar-section-title">业务功能</div>
+          <div v-if="!collapsed" class="sidebar-section-title">租户管理</div>
           <div
-            v-for="item in businessMenuItems"
+            v-for="item in tenantMenuItems"
             :key="item.key"
             class="sidebar-item"
             :class="{ 'sidebar-item--active': selectedKeys.includes(item.key) }"
@@ -89,30 +103,36 @@ watch(route, () => {
             <transition name="fade">
               <span v-if="!collapsed" class="sidebar-item-label">{{ item.label }}</span>
             </transition>
-            <transition name="fade">
-              <span v-if="!collapsed && item.badge" class="sidebar-item-badge">{{ item.badge }}</span>
-            </transition>
             <div v-if="selectedKeys.includes(item.key)" class="sidebar-item-indicator" />
           </div>
         </div>
 
-        <!-- Admin entry -->
         <div class="sidebar-section">
-          <div v-if="!collapsed" class="sidebar-section-title">管理</div>
+          <div v-if="!collapsed" class="sidebar-section-title">系统管理</div>
           <div
+            v-for="item in systemMenuItems"
+            :key="item.key"
             class="sidebar-item"
-            @click="navigateTo('/admin/tenant')"
+            :class="{ 'sidebar-item--active': selectedKeys.includes(item.key) }"
+            @click="handleMenuClick(item.key)"
           >
-            <SettingOutlined class="sidebar-item-icon" />
+            <component :is="item.icon" class="sidebar-item-icon" />
             <transition name="fade">
-              <span v-if="!collapsed" class="sidebar-item-label">管理后台</span>
+              <span v-if="!collapsed" class="sidebar-item-label">{{ item.label }}</span>
             </transition>
+            <div v-if="selectedKeys.includes(item.key)" class="sidebar-item-indicator" />
           </div>
         </div>
       </nav>
 
       <!-- Sidebar footer -->
       <div class="sidebar-footer">
+        <div class="sidebar-item" @click="navigateTo('/dashboard')">
+          <ArrowLeftOutlined class="sidebar-item-icon" />
+          <transition name="fade">
+            <span v-if="!collapsed" class="sidebar-item-label">返回前台</span>
+          </transition>
+        </div>
         <div class="sidebar-item sidebar-item--logout" @click="logout">
           <LogoutOutlined class="sidebar-item-icon" />
           <transition name="fade">
@@ -130,10 +150,10 @@ watch(route, () => {
     />
 
     <!-- Main content -->
-    <div class="main-wrapper">
+    <div class="admin-main">
       <!-- Header -->
-      <header class="app-header">
-        <div class="app-header-left">
+      <header class="admin-header">
+        <div class="admin-header-left">
           <button
             class="header-toggle"
             @click="isMobile ? (mobileMenuOpen = !mobileMenuOpen) : (collapsed = !collapsed)"
@@ -142,29 +162,31 @@ watch(route, () => {
             <MenuFoldOutlined v-else-if="!isMobile" />
             <MenuUnfoldOutlined v-else />
           </button>
+          <div class="header-breadcrumb">
+            <SafetyCertificateOutlined style="color: var(--color-primary); font-size: 14px;" />
+            <span class="breadcrumb-sep">/</span>
+            <span>管理后台</span>
+          </div>
         </div>
 
-        <div class="app-header-right">
-          <!-- Theme toggle -->
+        <div class="admin-header-right">
           <button class="header-action" @click="toggleTheme" :title="isDark ? '切换亮色' : '切换暗色'">
             <span v-if="isDark" style="font-size: 18px;">🌙</span>
             <span v-else style="font-size: 18px;">☀️</span>
           </button>
 
-          <!-- Notifications -->
-          <a-badge :count="3" :offset="[-4, 4]">
+          <a-badge :count="1" :offset="[-4, 4]">
             <button class="header-action">
               <BellOutlined />
             </button>
           </a-badge>
 
-          <!-- User avatar -->
           <a-dropdown>
             <div class="header-user">
               <a-avatar :size="32" class="header-avatar">
                 <template #icon><UserOutlined /></template>
               </a-avatar>
-              <span class="header-username">审核员</span>
+              <span class="header-username">管理员</span>
             </div>
             <template #overlay>
               <a-menu>
@@ -178,7 +200,7 @@ watch(route, () => {
       </header>
 
       <!-- Page content -->
-      <main class="app-content">
+      <main class="admin-content">
         <slot />
       </main>
     </div>
@@ -186,16 +208,16 @@ watch(route, () => {
 </template>
 
 <style scoped>
-.app-layout {
+.admin-layout {
   display: flex;
   min-height: 100vh;
   background: var(--color-bg-page);
 }
 
 /* ===== Sidebar ===== */
-.sidebar {
+.admin-sidebar {
   width: var(--sidebar-width);
-  background: var(--color-bg-sidebar);
+  background: #1a1a2e;
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -207,11 +229,14 @@ watch(route, () => {
   overflow: hidden;
 }
 
-.sidebar--collapsed {
+[data-theme="dark"] .admin-sidebar {
+  background: #020617;
+}
+
+.admin-sidebar--collapsed {
   width: var(--sidebar-collapsed-width);
 }
 
-/* Logo */
 .sidebar-logo {
   height: var(--header-height);
   display: flex;
@@ -226,7 +251,7 @@ watch(route, () => {
 .sidebar-logo-icon {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -244,7 +269,6 @@ watch(route, () => {
   letter-spacing: -0.02em;
 }
 
-/* Navigation */
 .sidebar-nav {
   flex: 1;
   padding: 12px 0;
@@ -277,21 +301,21 @@ watch(route, () => {
   transition: all var(--transition-fast);
   position: relative;
   gap: 12px;
-  color: var(--color-text-sidebar);
+  color: #94a3b8;
 }
 
 .sidebar-item:hover {
-  background: var(--color-bg-sidebar-hover);
+  background: rgba(255, 255, 255, 0.06);
   color: #e2e8f0;
 }
 
 .sidebar-item--active {
-  background: var(--color-bg-sidebar-active);
-  color: var(--color-text-sidebar-active);
+  background: rgba(245, 158, 11, 0.15);
+  color: #ffffff;
 }
 
 .sidebar-item--active .sidebar-item-icon {
-  color: var(--color-primary-lighter);
+  color: #f59e0b;
 }
 
 .sidebar-item-icon {
@@ -307,21 +331,6 @@ watch(route, () => {
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
-  flex: 1;
-}
-
-.sidebar-item-badge {
-  font-size: 11px;
-  font-weight: 700;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 10px;
-  background: var(--color-primary);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .sidebar-item-indicator {
@@ -331,7 +340,7 @@ watch(route, () => {
   transform: translateY(-50%);
   width: 3px;
   height: 20px;
-  background: var(--color-primary-lighter);
+  background: #f59e0b;
   border-radius: 3px 0 0 3px;
 }
 
@@ -344,13 +353,11 @@ watch(route, () => {
   background: rgba(239, 68, 68, 0.1);
 }
 
-/* Sidebar footer */
 .sidebar-footer {
   padding: 8px 0 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* Sidebar overlay for mobile */
 .sidebar-overlay {
   position: fixed;
   inset: 0;
@@ -359,8 +366,8 @@ watch(route, () => {
   backdrop-filter: blur(4px);
 }
 
-/* ===== Main wrapper ===== */
-.main-wrapper {
+/* ===== Main ===== */
+.admin-main {
   flex: 1;
   margin-left: var(--sidebar-width);
   transition: margin-left var(--transition-slow);
@@ -369,12 +376,12 @@ watch(route, () => {
   min-height: 100vh;
 }
 
-.app-layout--collapsed .main-wrapper {
+.admin-layout--collapsed .admin-main {
   margin-left: var(--sidebar-collapsed-width);
 }
 
 /* ===== Header ===== */
-.app-header {
+.admin-header {
   height: var(--header-height);
   border-bottom: 1px solid var(--color-border-light);
   display: flex;
@@ -389,13 +396,13 @@ watch(route, () => {
   background: color-mix(in srgb, var(--color-bg-card) 85%, transparent);
 }
 
-.app-header-left {
+.admin-header-left {
   display: flex;
   align-items: center;
   gap: 16px;
 }
 
-.app-header-right {
+.admin-header-right {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -419,6 +426,19 @@ watch(route, () => {
 .header-toggle:hover {
   background: var(--color-bg-hover);
   color: var(--color-text-primary);
+}
+
+.header-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.breadcrumb-sep {
+  color: var(--color-text-tertiary);
 }
 
 .header-action {
@@ -457,7 +477,7 @@ watch(route, () => {
 }
 
 .header-avatar {
-  background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
+  background: linear-gradient(135deg, #f59e0b, #ef4444) !important;
 }
 
 .header-username {
@@ -467,7 +487,7 @@ watch(route, () => {
 }
 
 /* ===== Content ===== */
-.app-content {
+.admin-content {
   flex: 1;
   padding: var(--space-page);
   max-width: 1400px;
@@ -488,32 +508,36 @@ watch(route, () => {
 
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
-  .sidebar {
+  .admin-sidebar {
     transform: translateX(-100%);
     width: var(--sidebar-width);
   }
 
-  .sidebar--mobile-open {
+  .admin-sidebar--mobile-open {
     transform: translateX(0);
   }
 
-  .sidebar--collapsed {
+  .admin-sidebar--collapsed {
     width: var(--sidebar-width);
   }
 
-  .main-wrapper {
+  .admin-main {
     margin-left: 0 !important;
   }
 
-  .app-header {
+  .admin-header {
     padding: 0 16px;
   }
 
-  .app-content {
+  .admin-content {
     padding: 16px;
   }
 
   .header-username {
+    display: none;
+  }
+
+  .header-breadcrumb {
     display: none;
   }
 }

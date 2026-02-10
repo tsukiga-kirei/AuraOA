@@ -41,8 +41,8 @@ const toggle = (ruleId: string) => {
     >
       <div class="rule-item-header">
         <div class="rule-item-status">
-          <CheckCircleOutlined v-if="item.passed" style="color: #10b981; font-size: 18px;" />
-          <CloseCircleOutlined v-else style="color: #ef4444; font-size: 18px;" />
+          <CheckCircleOutlined v-if="item.passed" style="color: var(--color-success); font-size: 18px;" />
+          <CloseCircleOutlined v-else style="color: var(--color-danger); font-size: 18px;" />
         </div>
         <div class="rule-item-content">
           <span class="rule-item-name">{{ item.rule_name || item.content || item.rule_id }}</span>
@@ -80,11 +80,11 @@ const toggle = (ruleId: string) => {
 }
 
 .rule-item--pass {
-  border-left: 3px solid #10b981;
+  border-left: 3px solid var(--color-success);
 }
 
 .rule-item--fail {
-  border-left: 3px solid #ef4444;
+  border-left: 3px solid var(--color-danger);
   background: rgba(239, 68, 68, 0.03);
 }
 

@@ -40,15 +40,15 @@ const handleAudit = async (processId: string) => {
 }
 
 const urgencyConfig = {
-  high: { color: '#ef4444', bg: '#fef2f2', label: '紧急' },
-  medium: { color: '#f59e0b', bg: '#fffbeb', label: '一般' },
-  low: { color: '#10b981', bg: '#ecfdf5', label: '低' },
+  high: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', label: '紧急' },
+  medium: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: '一般' },
+  low: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: '低' },
 }
 
 const recommendationConfig = {
-  approve: { color: '#10b981', bg: '#ecfdf5', icon: CheckCircleOutlined, label: '建议通过' },
-  reject: { color: '#ef4444', bg: '#fef2f2', icon: CloseCircleOutlined, label: '建议驳回' },
-  revise: { color: '#f59e0b', bg: '#fffbeb', icon: EditOutlined, label: '建议修改' },
+  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: '建议通过' },
+  reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: '建议驳回' },
+  revise: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EditOutlined, label: '建议修改' },
 }
 </script>
 
@@ -118,7 +118,7 @@ const recommendationConfig = {
             allow-clear
             class="search-input"
           >
-            <template #prefix><SearchOutlined style="color: #94a3b8;" /></template>
+            <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
           </a-input>
         </div>
 
@@ -226,8 +226,8 @@ const recommendationConfig = {
                   :class="{ 'rule-check-item--pass': rule.passed, 'rule-check-item--fail': !rule.passed }"
                 >
                   <div class="rule-check-status">
-                    <CheckCircleOutlined v-if="rule.passed" style="color: #10b981;" />
-                    <CloseCircleOutlined v-else style="color: #ef4444;" />
+                    <CheckCircleOutlined v-if="rule.passed" style="color: var(--color-success);" />
+                    <CloseCircleOutlined v-else style="color: var(--color-danger);" />
                   </div>
                   <div class="rule-check-content">
                     <div class="rule-check-name">
@@ -598,12 +598,12 @@ const recommendationConfig = {
 }
 
 .rule-check-item--pass {
-  border-left: 3px solid #10b981;
+  border-left: 3px solid var(--color-success);
 }
 
 .rule-check-item--fail {
-  border-left: 3px solid #ef4444;
-  background: #fef2f2;
+  border-left: 3px solid var(--color-danger);
+  background: var(--color-danger-bg);
 }
 
 .rule-check-status {

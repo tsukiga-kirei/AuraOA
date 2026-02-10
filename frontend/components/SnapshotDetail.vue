@@ -15,9 +15,9 @@ const emit = defineEmits<{
 }>()
 
 const recommendationConfig: Record<string, { color: string; bg: string; icon: any; label: string }> = {
-  approve: { color: '#10b981', bg: '#ecfdf5', icon: CheckCircleOutlined, label: '建议通过' },
-  reject: { color: '#ef4444', bg: '#fef2f2', icon: CloseCircleOutlined, label: '建议驳回' },
-  revise: { color: '#f59e0b', bg: '#fffbeb', icon: EditOutlined, label: '建议修改' },
+  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: '建议通过' },
+  reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: '建议驳回' },
+  revise: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EditOutlined, label: '建议修改' },
 }
 </script>
 
