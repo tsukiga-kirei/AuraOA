@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import {
-  SettingOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   BellOutlined,
   UserOutlined,
   SafetyCertificateOutlined,
-  AppstoreOutlined,
-  RobotOutlined,
-  ApartmentOutlined,
-  DatabaseOutlined,
+  ControlOutlined,
+  TeamOutlined,
+  MonitorOutlined,
+  SettingOutlined,
   ArrowLeftOutlined,
 } from '@ant-design/icons-vue'
 
@@ -40,14 +39,13 @@ const checkMobile = () => {
 
 const selectedKeys = computed(() => [route.path])
 
-const tenantMenuItems = [
-  { key: '/admin/tenant', icon: AppstoreOutlined, label: '规则配置' },
-  { key: '/admin/tenant/org', icon: ApartmentOutlined, label: '组织人员' },
-  { key: '/admin/tenant/ai', icon: RobotOutlined, label: 'AI 设置' },
-  { key: '/admin/tenant/kb', icon: DatabaseOutlined, label: '知识库' },
+const systemMenuItems = [
+  { key: '/admin/system', icon: TeamOutlined, label: '租户管理' },
+  { key: '/admin/monitor', icon: MonitorOutlined, label: '全局监控' },
+  { key: '/admin/system/settings', icon: SettingOutlined, label: '系统设置' },
 ]
 
-const displayName = computed(() => currentUser.value?.display_name || '租户管理员')
+const displayName = computed(() => currentUser.value?.display_name || '系统管理员')
 
 const handleMenuClick = (path: string) => {
   navigateTo(path)
@@ -68,20 +66,20 @@ watch(route, () => {
         'admin-sidebar--mobile-open': mobileMenuOpen,
       }"
     >
-      <div class="sidebar-logo" @click="navigateTo('/admin/tenant')">
+      <div class="sidebar-logo" @click="navigateTo('/admin/system')">
         <div class="sidebar-logo-icon">
-          <SettingOutlined />
+          <ControlOutlined />
         </div>
         <transition name="fade">
-          <span v-if="!collapsed" class="sidebar-logo-text">租户管理</span>
+          <span v-if="!collapsed" class="sidebar-logo-text">系统管理</span>
         </transition>
       </div>
 
       <nav class="sidebar-nav">
         <div class="sidebar-section">
-          <div v-if="!collapsed" class="sidebar-section-title">配置管理</div>
+          <div v-if="!collapsed" class="sidebar-section-title">系统功能</div>
           <div
-            v-for="item in tenantMenuItems"
+            v-for="item in systemMenuItems"
             :key="item.key"
             class="sidebar-item"
             :class="{ 'sidebar-item--active': selectedKeys.includes(item.key) }"
@@ -130,9 +128,9 @@ watch(route, () => {
             <MenuUnfoldOutlined v-else />
           </button>
           <div class="header-breadcrumb">
-            <SafetyCertificateOutlined style="color: var(--color-primary); font-size: 14px;" />
+            <ControlOutlined style="color: var(--color-danger); font-size: 14px;" />
             <span class="breadcrumb-sep">/</span>
-            <span>租户管理</span>
+            <span>系统管理</span>
           </div>
         </div>
 
@@ -185,7 +183,7 @@ watch(route, () => {
   border-bottom: 1px solid var(--color-sidebar-border);
 }
 .sidebar-logo-icon {
-  width: 36px; height: 36px; background: linear-gradient(135deg, #f59e0b, #ef4444);
+  width: 36px; height: 36px; background: linear-gradient(135deg, #ef4444, #dc2626);
   border-radius: 10px; display: flex; align-items: center; justify-content: center;
   color: #fff; font-size: 18px; flex-shrink: 0;
 }
@@ -257,7 +255,7 @@ watch(route, () => {
   cursor: pointer; transition: background var(--transition-fast); margin-left: 4px;
 }
 .header-user:hover { background: var(--color-bg-hover); }
-.header-avatar { background: linear-gradient(135deg, #f59e0b, #ef4444) !important; }
+.header-avatar { background: linear-gradient(135deg, #ef4444, #dc2626) !important; }
 .header-username { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
 
 .admin-content { flex: 1; padding: var(--space-page); max-width: 1400px; width: 100%; margin: 0 auto; }

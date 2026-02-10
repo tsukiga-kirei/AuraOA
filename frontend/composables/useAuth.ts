@@ -1,4 +1,4 @@
-import { MOCK_USERS, getMockMenusByRole } from './useMockData'
+import { MOCK_USERS, getMockMenusByRole, hasPagePermission } from './useMockData'
 import type { MockUser, MockMenuItem, UserRole } from './useMockData'
 
 interface LoginRequest {
@@ -14,6 +14,7 @@ interface TokenResponse {
 }
 
 export type { MockUser, MockMenuItem, UserRole }
+export { hasPagePermission }
 
 export const useAuth = () => {
   const config = useRuntimeConfig()

@@ -361,7 +361,8 @@ body {
 }
 
 .ant-tooltip-inner {
-  background: var(--color-bg-sidebar) !important;
+  background: var(--color-bg-card) !important;
+  color: var(--color-text-primary) !important;
 }
 
 /* Dropdown */

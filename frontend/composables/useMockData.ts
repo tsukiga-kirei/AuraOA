@@ -35,6 +35,30 @@ export interface MockMenuItem {
   children?: MockMenuItem[]
 }
 
+/**
+ * Permission matrix: which roles can access which pages.
+ * Used by middleware and layouts to control visibility.
+ */
+export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
+  '/dashboard': ['business', 'tenant_admin', 'system_admin'],
+  '/cron': ['business', 'tenant_admin', 'system_admin'],
+  '/archive': ['business', 'tenant_admin', 'system_admin'],
+  '/settings': ['business', 'tenant_admin', 'system_admin'],
+  '/admin/tenant': ['tenant_admin', 'system_admin'],
+  '/admin/tenant/org': ['tenant_admin', 'system_admin'],
+  '/admin/tenant/ai': ['tenant_admin', 'system_admin'],
+  '/admin/tenant/kb': ['tenant_admin', 'system_admin'],
+  '/admin/system': ['system_admin'],
+  '/admin/monitor': ['system_admin'],
+  '/admin/system/settings': ['system_admin'],
+}
+
+export function hasPagePermission(path: string, role: UserRole): boolean {
+  const allowed = PAGE_PERMISSIONS[path]
+  if (!allowed) return true // pages not in the map are accessible by all
+  return allowed.includes(role)
+}
+
 export function getMockMenusByRole(role: UserRole): MockMenuItem[] {
   const base: MockMenuItem[] = [
     { key: 'dashboard', label: '审核工作台', path: '/dashboard' },
@@ -276,8 +300,72 @@ export const useMockData = () => {
     ],
   }
 
+  // Approved processes - historical, read-only
+  const mockApprovedProcesses: OAProcess[] = [
+    { process_id: 'WF-2025-098', title: '年度IT设备采购', applicant: '王强', department: 'IT部', submit_time: '2025-06-09 16:30', process_type: '采购审批', status: 'approved', amount: 320000, urgency: 'medium' },
+    { process_id: 'WF-2025-096', title: '新产品研发立项', applicant: '张明', department: '研发部', submit_time: '2025-06-09 14:10', process_type: '项目审批', status: 'approved', urgency: 'high' },
+    { process_id: 'WF-2025-094', title: '员工培训费用申请', applicant: '赵丽', department: '人力资源部', submit_time: '2025-06-08 17:00', process_type: '费用报销', status: 'approved', amount: 45000, urgency: 'low' },
+  ]
+
+  // Rejected processes - historical, read-only
+  const mockRejectedProcesses: OAProcess[] = [
+    { process_id: 'WF-2025-097', title: '客户招待费报销', applicant: '李芳', department: '销售部', submit_time: '2025-06-09 15:20', process_type: '费用报销', status: 'rejected', amount: 28000, urgency: 'medium' },
+    { process_id: 'WF-2025-091', title: '未经审批的外包合同', applicant: '陈伟', department: '市场部', submit_time: '2025-06-08 10:00', process_type: '合同审批', status: 'rejected', amount: 150000, urgency: 'high' },
+  ]
+
+  // Historical audit results keyed by process_id
+  const mockHistoricalResults: Record<string, AuditResult> = {
+    'WF-2025-098': {
+      trace_id: 'TR-20250609-B1C2', process_id: 'WF-2025-098', recommendation: 'approve', score: 95, duration_ms: 1420,
+      details: [
+        { rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '采购金额在部门年度预算范围内', is_locked: true },
+        { rule_id: 'R002', rule_name: '审批层级校验', passed: true, reasoning: '审批链完整，已获得所有必要签批' },
+        { rule_id: 'R003', rule_name: '供应商资质校验', passed: true, reasoning: '供应商在合格名录中，资质有效期内' },
+      ],
+      ai_reasoning: '该采购申请完全符合公司采购管理制度要求，预算合理、审批链完整、供应商资质齐全。建议通过。',
+    },
+    'WF-2025-096': {
+      trace_id: 'TR-20250609-D3E4', process_id: 'WF-2025-096', recommendation: 'approve', score: 88, duration_ms: 1680,
+      details: [
+        { rule_id: 'R010', rule_name: '立项必要性评估', passed: true, reasoning: '市场调研数据充分，立项理由成立' },
+        { rule_id: 'R011', rule_name: '预算可行性', passed: true, reasoning: '研发预算在年度规划范围内' },
+        { rule_id: 'R012', rule_name: '人员配置合理性', passed: false, reasoning: '项目团队缺少测试工程师角色，但不影响立项' },
+      ],
+      ai_reasoning: '研发立项申请整体合规，市场调研充分，预算合理。建议补充测试人员配置后通过。',
+    },
+    'WF-2025-094': {
+      trace_id: 'TR-20250608-F5G6', process_id: 'WF-2025-094', recommendation: 'approve', score: 91, duration_ms: 1150,
+      details: [
+        { rule_id: 'R003', rule_name: '费用标准校验', passed: true, reasoning: '培训费用符合公司标准' },
+        { rule_id: 'R004', rule_name: '培训计划审核', passed: true, reasoning: '培训内容与岗位需求匹配' },
+      ],
+      ai_reasoning: '员工培训费用申请合规，培训内容与业务需求高度相关，费用在标准范围内。建议通过。',
+    },
+    'WF-2025-097': {
+      trace_id: 'TR-20250609-H7I8', process_id: 'WF-2025-097', recommendation: 'reject', score: 35, duration_ms: 1320,
+      details: [
+        { rule_id: 'R003', rule_name: '费用标准校验', passed: false, reasoning: '招待费用超出公司标准上限 200%', is_locked: true },
+        { rule_id: 'R006', rule_name: '审批材料完整性', passed: false, reasoning: '缺少客户拜访记录和招待事由说明' },
+        { rule_id: 'R007', rule_name: '发票合规性', passed: false, reasoning: '部分发票日期与申报时间不符' },
+      ],
+      ai_reasoning: '该报销申请存在多项严重违规：费用严重超标、材料不完整、发票存疑。建议驳回并要求重新整理材料。',
+    },
+    'WF-2025-091': {
+      trace_id: 'TR-20250608-J9K0', process_id: 'WF-2025-091', recommendation: 'reject', score: 22, duration_ms: 1560,
+      details: [
+        { rule_id: 'R004', rule_name: '合同审批前置条件', passed: false, reasoning: '合同签署前未经过法务审核', is_locked: true },
+        { rule_id: 'R008', rule_name: '供应商准入', passed: false, reasoning: '外包供应商未通过准入评审' },
+        { rule_id: 'R009', rule_name: '预算审批', passed: false, reasoning: '合同金额未纳入年度预算' },
+      ],
+      ai_reasoning: '该合同存在严重合规问题：未经法务审核即签署、供应商未准入、预算未审批。建议驳回并启动合规调查。',
+    },
+  }
+
   return {
     mockProcesses,
+    mockApprovedProcesses,
+    mockRejectedProcesses,
+    mockHistoricalResults,
     mockAuditResult,
     mockCronTasks,
     mockSnapshots,
