@@ -24,7 +24,22 @@ export const useAuth = () => {
   const refreshToken = useState<string | null>('auth_refresh', () => null)
   const menus = useState<MenuItem[]>('auth_menus', () => [])
 
+  const isMockMode = computed(() => config.public.mockMode === true)
+
   const login = async (req: LoginRequest): Promise<boolean> => {
+    // Mock mode - accept any credentials
+    if (isMockMode.value) {
+      const mockToken = 'mock_token_' + Date.now()
+      token.value = mockToken
+      refreshToken.value = 'mock_refresh_' + Date.now()
+      if (import.meta.client) {
+        localStorage.setItem('token', mockToken)
+        localStorage.setItem('refresh_token', refreshToken.value)
+      }
+      return true
+    }
+
+    // Real API call
     try {
       const data = await $fetch<TokenResponse>(`${config.public.apiBase}/api/auth/login`, {
         method: 'POST',
@@ -43,6 +58,21 @@ export const useAuth = () => {
   }
 
   const getMenu = async (): Promise<MenuItem[]> => {
+    // Mock mode - return static menu
+    if (isMockMode.value) {
+      const mockMenus: MenuItem[] = [
+        { key: 'dashboard', label: '审核工作台', path: '/dashboard' },
+        { key: 'cron', label: '定时任务', path: '/cron' },
+        { key: 'archive', label: '归档复盘', path: '/archive' },
+        { key: 'tenant', label: '租户配置', path: '/admin/tenant' },
+        { key: 'system', label: '系统管理', path: '/admin/system' },
+        { key: 'monitor', label: '全局监控', path: '/admin/monitor' },
+      ]
+      menus.value = mockMenus
+      return mockMenus
+    }
+
+    // Real API call
     try {
       const data = await $fetch<{ menus: MenuItem[] }>(`${config.public.apiBase}/api/auth/menu`, {
         headers: { Authorization: `Bearer ${token.value}` },
@@ -67,7 +97,6 @@ export const useAuth = () => {
 
   const isAuthenticated = computed(() => !!token.value)
 
-  // Restore token from localStorage on client
   const restore = () => {
     if (import.meta.client) {
       const saved = localStorage.getItem('token')
@@ -77,5 +106,5 @@ export const useAuth = () => {
     }
   }
 
-  return { token, refreshToken, menus, login, getMenu, logout, isAuthenticated, restore }
+  return { token, refreshToken, menus, login, getMenu, logout, isAuthenticated, restore, isMockMode }
 }
