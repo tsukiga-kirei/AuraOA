@@ -70,3 +70,29 @@ coverage/
 .coverage
 htmlcov/
 .pytest_cache/
+
+# ===== Package Managers =====
+# npm
+package-lock.json
+
+# yarn
+yarn.lock
+.yarn/
+.yarnrc.yml
+
+# pnpm
+pnpm-lock.yaml
+.pnpm-store/
+
+# bun
+bun.lockb
+
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# poetry
+poetry.lock
+
+# Go modules
+go.sum
