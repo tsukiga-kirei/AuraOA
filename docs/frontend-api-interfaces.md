@@ -379,8 +379,7 @@
         "user_permissions": {
           "allow_custom_fields": false,
           "allow_custom_rules": true,
-          "allow_modify_strictness": true,
-          "allow_modify_prompt": false
+          "allow_modify_strictness": true
         }
       }
     ],
@@ -511,8 +510,7 @@
     "user_permissions": {
       "allow_custom_fields": true,
       "allow_custom_rules": true,
-      "allow_modify_strictness": false,
-      "allow_modify_prompt": false
+      "allow_modify_strictness": false
     }
   }
   ```
@@ -520,7 +518,44 @@
 ### 6.7 更新流程审核配置
 - **PUT** `/api/tenant/process-config/{process_type}`
 - **Headers**: `Authorization: Bearer {token}`
-- **请求体**: 同 6.5 响应结构
+- **请求体**: 同 6.6 响应结构
+
+### 6.8 新增流程审核配置
+- **POST** `/api/tenant/process-configs`
+- **Headers**: `Authorization: Bearer {token}`
+- **说明**: 创建一个新的流程审核配置。`process_type` 和 `flow_path` 为必填，其余字段使用默认值（field_mode: selected, kb_mode: rules_only, 默认 AI 配置, 用户权限全部关闭）。
+- **请求体**:
+  ```json
+  {
+    "process_type": "string (必填)",
+    "flow_path": "string (选填，默认'待配置')"
+  }
+  ```
+- **响应**:
+  ```json
+  {
+    "id": "PAC-xxx",
+    "process_type": "新流程名称",
+    "flow_path": "待配置",
+    "fields": [],
+    "field_mode": "selected",
+    "rules": [],
+    "kb_mode": "rules_only",
+    "ai_config": {
+      "ai_provider": "本地部署",
+      "model_name": "Qwen2.5-72B",
+      "audit_strictness": "standard",
+      "system_prompt": "",
+      "context_window": 8192,
+      "temperature": 0.3
+    },
+    "user_permissions": {
+      "allow_custom_fields": false,
+      "allow_custom_rules": false,
+      "allow_modify_strictness": false
+    }
+  }
+  ```
 
 ---
 

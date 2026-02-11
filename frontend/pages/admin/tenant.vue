@@ -25,6 +25,44 @@ const { mockProcessAuditConfigs } = useMockData()
 
 const processConfigs = ref<ProcessAuditConfig[]>(JSON.parse(JSON.stringify(mockProcessAuditConfigs)))
 const selectedProcessId = ref(processConfigs.value[0]?.id || '')
+
+// ===== Add new process =====
+const showAddProcess = ref(false)
+const newProcessForm = ref({ process_type: '', flow_path: '' })
+
+const handleAddProcess = () => {
+  if (!newProcessForm.value.process_type.trim()) {
+    message.warning('请输入流程名称')
+    return
+  }
+  const newConfig: ProcessAuditConfig = {
+    id: `PAC-${Date.now()}`,
+    process_type: newProcessForm.value.process_type.trim(),
+    flow_path: newProcessForm.value.flow_path.trim() || '待配置',
+    field_mode: 'selected',
+    fields: [],
+    rules: [],
+    kb_mode: 'rules_only',
+    ai_config: {
+      ai_provider: '本地部署',
+      model_name: 'Qwen2.5-72B',
+      audit_strictness: 'standard',
+      system_prompt: '',
+      context_window: 8192,
+      temperature: 0.3,
+    },
+    user_permissions: {
+      allow_custom_fields: false,
+      allow_custom_rules: false,
+      allow_modify_strictness: false,
+    },
+  }
+  processConfigs.value.push(newConfig)
+  selectedProcessId.value = newConfig.id
+  showAddProcess.value = false
+  newProcessForm.value = { process_type: '', flow_path: '' }
+  message.success('流程已添加')
+}
 const activeTab = ref('fields')
 
 const selectedConfig = computed(() =>
@@ -114,7 +152,6 @@ const permissionLabels: Record<string, { label: string; desc: string }> = {
   allow_custom_fields: { label: '自定义审核字段', desc: '允许用户新增或切换参与审核的字段' },
   allow_custom_rules: { label: '自定义审核规则', desc: '允许用户新增、修改个人审核规则' },
   allow_modify_strictness: { label: '调整审核尺度', desc: '允许用户调整 AI 审核的严格/宽松程度' },
-  allow_modify_prompt: { label: '修改提示词', desc: '允许用户自定义 AI 审核提示词模板' },
 }
 
 const handleSave = () => {
@@ -126,7 +163,7 @@ const handleSave = () => {
   <div class="tenant-page fade-in">
     <div class="page-header">
       <div>
-        <h1 class="page-title">审核工作台配置</h1>
+        <h1 class="page-title">智能审核配置</h1>
         <p class="page-subtitle">以流程为维度，配置字段、规则、AI 参数及用户权限</p>
       </div>
     </div>
@@ -137,6 +174,9 @@ const handleSave = () => {
         <div class="process-nav-header">
           <SettingOutlined />
           <span>审核流程</span>
+          <button class="add-process-btn" @click="showAddProcess = true" title="新增流程">
+            <PlusOutlined />
+          </button>
         </div>
         <div
           v-for="cfg in processConfigs"
@@ -435,6 +475,24 @@ const handleSave = () => {
       @close="showRuleEditor = false; editingRule = null"
       @save="handleSaveRule"
     />
+
+    <!-- Add process modal -->
+    <a-modal
+      v-model:open="showAddProcess"
+      title="新增审核流程"
+      @ok="handleAddProcess"
+      ok-text="确认"
+      cancel-text="取消"
+    >
+      <a-form layout="vertical" style="margin-top: 16px;">
+        <a-form-item label="流程名称" required>
+          <a-input v-model:value="newProcessForm.process_type" placeholder="如：采购审批、费用报销" />
+        </a-form-item>
+        <a-form-item label="审批路径">
+          <a-input v-model:value="newProcessForm.flow_path" placeholder="如：部门经理 → 财务总监 → 总经理" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -456,6 +514,13 @@ const handleSave = () => {
   font-size: 14px; font-weight: 600; color: var(--color-text-primary);
   display: flex; align-items: center; gap: 8px;
 }
+.add-process-btn {
+  margin-left: auto; width: 26px; height: 26px; border-radius: var(--radius-md);
+  border: 1px dashed var(--color-border); background: transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--color-text-tertiary); font-size: 12px; transition: all var(--transition-fast);
+}
+.add-process-btn:hover { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-bg); }
 .process-nav-item {
   padding: 12px 16px; cursor: pointer; transition: all var(--transition-fast);
   border-bottom: 1px solid var(--color-border-light);

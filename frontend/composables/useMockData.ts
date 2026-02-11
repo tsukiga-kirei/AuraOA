@@ -66,7 +66,7 @@ export function getMockMenusByRole(role: UserRole): MockMenuItem[] {
     { key: 'archive', label: '归档复盘', path: '/archive' },
   ]
   const tenant: MockMenuItem[] = [
-    { key: 'tenant', label: '审核工作台配置', path: '/admin/tenant' },
+    { key: 'tenant', label: '智能审核配置', path: '/admin/tenant' },
   ]
   const sys: MockMenuItem[] = [
     { key: 'system', label: '系统管理', path: '/admin/system' },
@@ -246,7 +246,6 @@ export interface UserPermissions {
   allow_custom_fields: boolean
   allow_custom_rules: boolean
   allow_modify_strictness: boolean
-  allow_modify_prompt: boolean
 }
 
 export interface ProcessAuditConfig {
@@ -295,7 +294,6 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
       allow_custom_fields: false,
       allow_custom_rules: true,
       allow_modify_strictness: true,
-      allow_modify_prompt: false,
     },
   },
   {
@@ -329,7 +327,6 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
       allow_custom_fields: true,
       allow_custom_rules: true,
       allow_modify_strictness: false,
-      allow_modify_prompt: false,
     },
   },
   {
@@ -363,7 +360,6 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
       allow_custom_fields: false,
       allow_custom_rules: false,
       allow_modify_strictness: false,
-      allow_modify_prompt: false,
     },
   },
   {
@@ -396,7 +392,6 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
       allow_custom_fields: true,
       allow_custom_rules: true,
       allow_modify_strictness: true,
-      allow_modify_prompt: true,
     },
   },
 ]

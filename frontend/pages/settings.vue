@@ -547,6 +547,8 @@ const workbenchSection = ref('fields')
 .icon-btn--danger:hover { border-color: var(--color-danger); color: var(--color-danger); }
 
 .add-rule-row { display: flex; gap: 8px; }
+.add-rule-row :deep(.ant-btn-primary) { font-weight: 600; min-width: 80px; }
+.add-rule-row :deep(.ant-btn-primary[disabled]) { background: var(--color-primary); opacity: 0.5; color: #fff; }
 
 /* Strictness options */
 .strictness-options { display: flex; flex-direction: column; gap: 8px; }
