@@ -66,7 +66,7 @@ export function getMockMenusByRole(role: UserRole): MockMenuItem[] {
     { key: 'archive', label: '归档复盘', path: '/archive' },
   ]
   const tenant: MockMenuItem[] = [
-    { key: 'tenant', label: '智能审核配置', path: '/admin/tenant' },
+    { key: 'tenant', label: '规则配置', path: '/admin/tenant' },
   ]
   const sys: MockMenuItem[] = [
     { key: 'system', label: '系统管理', path: '/admin/system' },

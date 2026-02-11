@@ -163,7 +163,7 @@ const handleSave = () => {
   <div class="tenant-page fade-in">
     <div class="page-header">
       <div>
-        <h1 class="page-title">智能审核配置</h1>
+        <h1 class="page-title">规则配置</h1>
         <p class="page-subtitle">以流程为维度，配置字段、规则、AI 参数及用户权限</p>
       </div>
     </div>
