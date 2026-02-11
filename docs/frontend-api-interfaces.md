@@ -338,46 +338,75 @@
 
 ### 5.3 获取用户审核工作台配置
 - **GET** `/api/user/audit-config`
+- **说明**: 返回用户可见的流程审核配置列表（复用租户 `ProcessAuditConfig` 结构），以及用户的个性化覆盖（自定义规则、字段覆盖）。用户可操作范围受各流程 `user_permissions` 控制。
 - **响应**:
   ```json
   {
-    "assigned_processes": [
+    "process_configs": [
       {
-        "id": "AP-001",
+        "id": "PAC-001",
         "process_type": "采购审批",
         "flow_path": "部门经理 → 财务总监 → 总经理",
-        "audit_strictness": "standard",
-        "system_rules": [
+        "fields": [
           {
-            "id": "R001",
-            "content": "单笔采购金额不得超过部门季度预算上限",
-            "scope": "mandatory",
-            "enabled": true,
-            "locked": true
+            "field_key": "amount",
+            "field_name": "采购金额",
+            "field_type": "number",
+            "selected": true
           }
         ],
-        "custom_rules": [
+        "field_mode": "all | selected",
+        "rules": [
           {
-            "id": "CR-001",
-            "content": "供应商必须在合格名录中",
-            "enabled": true
+            "id": "R001",
+            "process_type": "采购审批",
+            "rule_content": "单笔采购金额不得超过部门季度预算上限",
+            "rule_scope": "mandatory | default_on | default_off",
+            "priority": 100,
+            "enabled": true,
+            "source": "manual | file_import"
           }
-        ]
+        ],
+        "kb_mode": "rules_only | rag_only | hybrid",
+        "ai_config": {
+          "ai_provider": "string",
+          "model_name": "string",
+          "audit_strictness": "strict | standard | loose",
+          "system_prompt": "string",
+          "context_window": 8192,
+          "temperature": 0.3
+        },
+        "user_permissions": {
+          "allow_custom_fields": false,
+          "allow_custom_rules": true,
+          "allow_modify_strictness": true,
+          "allow_modify_prompt": false
+        }
       }
-    ]
+    ],
+    "user_custom_rules": {
+      "PAC-001": [
+        { "id": "UCR-001", "content": "供应商必须在合格名录中", "enabled": true }
+      ]
+    },
+    "user_field_overrides": {
+      "PAC-004": ["salary_range"]
+    }
   }
   ```
 
-### 5.4 更新审核工作台配置
-- **PUT** `/api/user/audit-config/{process_id}`
+### 5.4 更新用户审核工作台配置
+- **PUT** `/api/user/audit-config/{process_config_id}`
+- **说明**: 保存用户对某个流程的个性化配置。可提交的字段受该流程 `user_permissions` 控制：仅当对应权限开启时，相关字段才会被后端接受。
 - **请求体**:
   ```json
   {
     "audit_strictness": "strict | standard | loose",
     "custom_rules": [
-      { "content": "string", "enabled": true }
+      { "id": "UCR-001", "content": "string", "enabled": true }
     ],
-    "system_rule_overrides": [
+    "field_overrides": ["salary_range"],
+    "rule_toggle_overrides": [
       { "rule_id": "R003", "enabled": false }
     ]
   }
@@ -387,8 +416,11 @@
 
 ## 6. 租户管理模块（租户管理员）
 
-### 6.1 获取审核规则列表
+> 租户管理页面（`/admin/tenant`）已重构为**以流程为维度**的配置模式。页面左侧为流程列表导航，右侧按流程展示四个配置 Tab：字段配置、审核规则、AI 配置、用户权限。主要使用 6.5/6.6 流程审核配置接口，旧的扁平规则接口（6.1-6.4）仅作为兼容保留。
+
+### 6.1 获取审核规则列表（兼容接口）
 - **GET** `/api/tenant/rules`
+- **说明**: 返回所有流程的规则扁平列表。前端已改为按流程维度管理规则（见 6.5），此接口仅作兼容保留。
 - **响应**:
   ```json
   {
@@ -399,28 +431,96 @@
         "rule_content": "单笔采购金额不得超过部门季度预算上限",
         "rule_scope": "mandatory | default_on | default_off",
         "priority": 100,
-        "enabled": true
+        "enabled": true,
+        "source": "manual | file_import"
       }
     ]
   }
   ```
 
-### 6.2 创建/更新规则
+### 6.2 创建/更新规则（兼容接口）
 - **POST** `/api/tenant/rules`
 - **PUT** `/api/tenant/rules/{rule_id}`
+- **说明**: 前端已改为通过 6.6 更新流程级配置来管理规则，此接口仅作兼容保留。
 
-### 6.3 删除规则
+### 6.3 删除规则（兼容接口）
 - **DELETE** `/api/tenant/rules/{rule_id}`
+- **说明**: 同上，前端已改为流程级操作。
 
-### 6.4 获取/设置知识库模式
+### 6.4 获取/设置知识库模式（兼容接口）
 - **GET** `/api/tenant/kb-mode`
 - **PUT** `/api/tenant/kb-mode`
 - **请求体**: `{ "mode": "rules_only | rag_only | hybrid" }`
+- **说明**: 知识库模式已纳入流程审核配置（6.5 中的 `kb_mode` 字段），此接口仅作兼容保留。
 
-### 6.5 获取/设置日志留存策略
-- **GET** `/api/tenant/retention`
-- **PUT** `/api/tenant/retention`
-- **请求体**: `{ "policy": "permanent | 1095 | 365" }`
+### 6.5 获取流程审核配置列表
+- **GET** `/api/tenant/process-configs`
+- **Headers**: `Authorization: Bearer {token}`
+- **说明**: 返回当前租户下所有流程的审核配置，用于页面左侧流程导航列表。
+- **响应**:
+  ```json
+  {
+    "configs": [
+      {
+        "id": "PAC-001",
+        "process_type": "采购审批",
+        "flow_path": "部门经理 → 财务总监 → 总经理"
+      }
+    ]
+  }
+  ```
+
+### 6.6 获取单个流程审核配置
+- **GET** `/api/tenant/process-config/{process_type}`
+- **Headers**: `Authorization: Bearer {token}`
+- **响应**:
+  ```json
+  {
+    "id": "PC-001",
+    "process_type": "采购审批",
+    "flow_path": "部门经理 → 财务总监 → 总经理",
+    "fields": [
+      {
+        "field_key": "amount",
+        "field_name": "采购金额",
+        "field_type": "number",
+        "selected": true
+      }
+    ],
+    "field_mode": "all | selected",
+    "rules": [
+      {
+        "id": "R001",
+        "process_type": "采购审批",
+        "rule_content": "单笔采购金额不得超过部门季度预算上限",
+        "rule_scope": "mandatory | default_on | default_off",
+        "priority": 100,
+        "enabled": true,
+        "source": "manual | file_import"
+      }
+    ],
+    "kb_mode": "rules_only | rag_only | hybrid",
+    "ai_config": {
+      "ai_provider": "openai",
+      "model_name": "gpt-4",
+      "audit_strictness": "strict | standard | loose",
+      "system_prompt": "string",
+      "context_window": 8192,
+      "temperature": 0.3
+    },
+    "user_permissions": {
+      "allow_custom_fields": true,
+      "allow_custom_rules": true,
+      "allow_modify_strictness": false,
+      "allow_modify_prompt": false
+    }
+  }
+  ```
+
+### 6.7 更新流程审核配置
+- **PUT** `/api/tenant/process-config/{process_type}`
+- **Headers**: `Authorization: Bearer {token}`
+- **请求体**: 同 6.5 响应结构
 
 ---
 
@@ -505,6 +605,7 @@
     "todayAudits": 42,
     "todayApproved": 28,
     "todayRejected": 6,
+    "todayRevised": 8,
     "pendingCount": 6,
     "avgResponseMs": 1850,
     "successRate": 99.2,
