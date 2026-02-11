@@ -280,6 +280,43 @@ export interface UserPermissions {
   allow_modify_strictness: boolean
 }
 
+// ============================================================
+// Archive Review config types (归档复盘配置)
+// ============================================================
+export interface FlowRuleConfig {
+  id: string
+  rule_content: string
+  rule_scope: 'mandatory' | 'default_on' | 'default_off'
+  priority: number
+  enabled: boolean
+  source: 'manual' | 'file_import'
+}
+
+export interface ArchiveReviewConfig {
+  id: string
+  process_type: string
+  flow_path: string
+  fields: ProcessField[]
+  field_mode: 'all' | 'selected'
+  rules: (AuditRule & { source: 'manual' | 'file_import' })[]
+  flow_rules: FlowRuleConfig[]
+  kb_mode: 'rules_only' | 'rag_only' | 'hybrid'
+  ai_config: ProcessAIConfig
+  user_permissions: {
+    allow_custom_fields: boolean
+    allow_custom_rules: boolean
+    allow_custom_flow_rules: boolean
+    allow_modify_strictness: boolean
+  }
+}
+
+export interface ArchiveUserPermissions {
+  allow_custom_fields: boolean
+  allow_custom_rules: boolean
+  allow_custom_flow_rules: boolean
+  allow_modify_strictness: boolean
+}
+
 export interface ProcessAuditConfig {
   id: string
   process_type: string
@@ -423,6 +460,157 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     user_permissions: {
       allow_custom_fields: true,
       allow_custom_rules: true,
+      allow_modify_strictness: true,
+    },
+  },
+]
+
+// ============================================================
+// Archive Review configs (归档复盘配置 - 租户管理)
+// ============================================================
+export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
+  {
+    id: 'ARC-001',
+    process_type: '采购审批',
+    flow_path: '部门经理 → 财务总监 → 总经理',
+    field_mode: 'selected',
+    fields: [
+      { field_key: 'amount', field_name: '采购金额', field_type: 'number', selected: true },
+      { field_key: 'supplier', field_name: '供应商名称', field_type: 'text', selected: true },
+      { field_key: 'contract_no', field_name: '合同编号', field_type: 'text', selected: true },
+      { field_key: 'delivery_date', field_name: '交付日期', field_type: 'date', selected: false },
+      { field_key: 'payment_terms', field_name: '付款条件', field_type: 'text', selected: true },
+    ],
+    rules: [
+      { id: 'AR001', process_type: '采购审批', rule_content: '采购金额须在年度预算范围内', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual' },
+      { id: 'AR002', process_type: '采购审批', rule_content: '超过10万元须提供至少3家供应商比价', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'manual' },
+      { id: 'AR003', process_type: '采购审批', rule_content: '供应商须在合格供应商名录中', rule_scope: 'default_on', priority: 85, enabled: true, source: 'file_import' },
+      { id: 'AR004', process_type: '采购审批', rule_content: '付款条件须符合公司标准比例', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual' },
+    ],
+    flow_rules: [
+      { id: 'FR001', rule_content: '审批链须完整，不得跳过任何必要节点', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual' },
+      { id: 'FR002', rule_content: '金额超过50万须经总经理审批', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'manual' },
+      { id: 'FR003', rule_content: '各节点审批时效不超过3个工作日', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual' },
+      { id: 'FR004', rule_content: '退回修改后须重新走完整审批链', rule_scope: 'default_off', priority: 70, enabled: false, source: 'manual' },
+    ],
+    kb_mode: 'rules_only',
+    ai_config: {
+      ai_provider: '本地部署',
+      model_name: 'Qwen2.5-72B',
+      audit_strictness: 'standard',
+      system_prompt: '你是一个专业的归档合规复核助手。请对已归档的采购审批流程进行全流程合规复核，包括审批链完整性、字段合规性和规则校验。',
+      context_window: 8192,
+      temperature: 0.2,
+    },
+    user_permissions: {
+      allow_custom_fields: false,
+      allow_custom_rules: true,
+      allow_custom_flow_rules: false,
+      allow_modify_strictness: true,
+    },
+  },
+  {
+    id: 'ARC-002',
+    process_type: '费用报销',
+    flow_path: '部门经理 → 财务审核',
+    field_mode: 'selected',
+    fields: [
+      { field_key: 'amount', field_name: '报销金额', field_type: 'number', selected: true },
+      { field_key: 'expense_type', field_name: '费用类型', field_type: 'select', selected: true },
+      { field_key: 'invoice_count', field_name: '发票数量', field_type: 'number', selected: true },
+      { field_key: 'reason', field_name: '报销事由', field_type: 'textarea', selected: false },
+    ],
+    rules: [
+      { id: 'AR005', process_type: '费用报销', rule_content: '报销金额超过5000元须附发票原件', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual' },
+      { id: 'AR006', process_type: '费用报销', rule_content: '发票日期须在报销申请日期前90天内', rule_scope: 'mandatory', priority: 85, enabled: true, source: 'file_import' },
+    ],
+    flow_rules: [
+      { id: 'FR005', rule_content: '审批链须完整', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual' },
+      { id: 'FR006', rule_content: '财务审核须在部门经理审批之后', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual' },
+    ],
+    kb_mode: 'rules_only',
+    ai_config: {
+      ai_provider: '本地部署',
+      model_name: 'Qwen2.5-72B',
+      audit_strictness: 'standard',
+      system_prompt: '你是一个专业的归档合规复核助手。请对已归档的费用报销流程进行全流程合规复核。',
+      context_window: 4096,
+      temperature: 0.2,
+    },
+    user_permissions: {
+      allow_custom_fields: true,
+      allow_custom_rules: true,
+      allow_custom_flow_rules: false,
+      allow_modify_strictness: false,
+    },
+  },
+  {
+    id: 'ARC-003',
+    process_type: '合同审批',
+    flow_path: '部门经理 → 法务审核 → 财务总监 → 总经理',
+    field_mode: 'all',
+    fields: [
+      { field_key: 'contract_amount', field_name: '合同金额', field_type: 'number', selected: true },
+      { field_key: 'vendor', field_name: '合作方', field_type: 'text', selected: true },
+      { field_key: 'contract_period', field_name: '合同期限', field_type: 'text', selected: true },
+      { field_key: 'deliverables', field_name: '交付物', field_type: 'textarea', selected: true },
+    ],
+    rules: [
+      { id: 'AR007', process_type: '合同审批', rule_content: '合同金额超过50万须法务部会签', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual' },
+      { id: 'AR008', process_type: '合同审批', rule_content: '合作方须通过准入评审', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'file_import' },
+    ],
+    flow_rules: [
+      { id: 'FR007', rule_content: '法务审核须在财务审批之前完成', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual' },
+      { id: 'FR008', rule_content: '合同金额超过100万须总经理审批', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'manual' },
+      { id: 'FR009', rule_content: '知识产权条款修改后须法务重新审核', rule_scope: 'default_on', priority: 85, enabled: true, source: 'manual' },
+    ],
+    kb_mode: 'rules_only',
+    ai_config: {
+      ai_provider: '云端API',
+      model_name: 'GPT-4o',
+      audit_strictness: 'strict',
+      system_prompt: '你是一个专业的归档合规复核助手。请对已归档的合同审批流程进行全流程合规复核，重点关注法务审核完整性和合同条款合规性。',
+      context_window: 16384,
+      temperature: 0.1,
+    },
+    user_permissions: {
+      allow_custom_fields: false,
+      allow_custom_rules: false,
+      allow_custom_flow_rules: false,
+      allow_modify_strictness: false,
+    },
+  },
+  {
+    id: 'ARC-004',
+    process_type: '人事审批',
+    flow_path: 'HR经理 → 用人部门 → HR总监',
+    field_mode: 'selected',
+    fields: [
+      { field_key: 'position', field_name: '岗位名称', field_type: 'text', selected: true },
+      { field_key: 'headcount', field_name: '招聘人数', field_type: 'number', selected: true },
+      { field_key: 'department', field_name: '用人部门', field_type: 'text', selected: true },
+      { field_key: 'onboard_date', field_name: '入职日期', field_type: 'date', selected: false },
+    ],
+    rules: [
+      { id: 'AR009', process_type: '人事审批', rule_content: '招聘人数须在年度HC计划范围内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual' },
+    ],
+    flow_rules: [
+      { id: 'FR010', rule_content: '用人部门须确认接收', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'manual' },
+      { id: 'FR011', rule_content: 'HR总监须为最终审批节点', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual' },
+    ],
+    kb_mode: 'rules_only',
+    ai_config: {
+      ai_provider: '本地部署',
+      model_name: 'Qwen2.5-32B',
+      audit_strictness: 'loose',
+      system_prompt: '你是一个专业的归档合规复核助手。请对已归档的人事审批流程进行全流程合规复核。',
+      context_window: 4096,
+      temperature: 0.3,
+    },
+    user_permissions: {
+      allow_custom_fields: true,
+      allow_custom_rules: true,
+      allow_custom_flow_rules: true,
       allow_modify_strictness: true,
     },
   },
@@ -931,5 +1119,6 @@ export const useMockData = () => {
     mockArchivedAuditChains,
     mockArchivedHistoricalResults,
     mockProcessAuditConfigs: [...mockProcessAuditConfigs],
+    mockArchiveReviewConfigs: [...mockArchiveReviewConfigs],
   }
 }

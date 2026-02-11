@@ -13,6 +13,9 @@ import {
   FileProtectOutlined,
   FieldTimeOutlined,
   ThunderboltOutlined,
+  RightOutlined,
+  ReloadOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ArchivedProcess, ArchiveAuditResult } from '~/composables/useMockData'
@@ -27,10 +30,15 @@ const auditResult = ref<ArchiveAuditResult | null>(null)
 const loading = ref(false)
 const searchText = ref('')
 const showFilters = ref(false)
+const showAuditModal = ref(false)
+const batchLoading = ref(false)
 const filters = ref({
   department: undefined as string | undefined,
   processType: undefined as string | undefined,
 })
+
+// Track audit records per process_id
+const auditRecords = ref<Record<string, ArchiveAuditResult>>({})
 
 const departments = [...new Set(mockArchivedProcesses.map(p => p.department))]
 const processTypes = [...new Set(mockArchivedProcesses.map(p => p.process_type))]
@@ -54,6 +62,9 @@ const filteredList = computed(() => {
   return list
 })
 
+// Count how many in current filtered list have been audited
+const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.value[p.process_id]).length)
+
 const clearFilters = () => {
   filters.value = { department: undefined, processType: undefined }
   searchText.value = ''
@@ -61,21 +72,68 @@ const clearFilters = () => {
 
 const selectProcess = (proc: ArchivedProcess) => {
   selectedProcess.value = proc
-  auditResult.value = null
+  // Load existing audit record if available
+  auditResult.value = auditRecords.value[proc.process_id] || null
+}
+
+// Generate a mock audit result for a given process
+const generateAuditResult = (proc: ArchivedProcess): ArchiveAuditResult => {
+  const complianceOptions: ArchiveAuditResult['overall_compliance'][] = ['compliant', 'non_compliant', 'partially_compliant']
+  // Deterministic-ish based on process_id hash
+  const hash = proc.process_id.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
+  const compliance = complianceOptions[hash % 3]
+  const score = compliance === 'compliant' ? 85 + (hash % 15) : compliance === 'partially_compliant' ? 55 + (hash % 25) : 20 + (hash % 30)
+
+  return {
+    ...mockArchiveAuditResult,
+    trace_id: `ATR-${Date.now().toString(36).toUpperCase()}`,
+    process_id: proc.process_id,
+    overall_compliance: compliance,
+    overall_score: score,
+    duration_ms: 1500 + (hash % 3000),
+    flow_audit: {
+      ...mockArchiveAuditResult.flow_audit,
+      node_results: proc.flow_nodes.map(n => ({
+        node_id: n.node_id,
+        node_name: n.node_name,
+        compliant: hash % 5 !== 0 || n.action === 'approve',
+        reasoning: n.action === 'approve' ? '审批权限匹配，审批时效正常' : `${n.node_name}操作为${n.action}，需关注`,
+      })),
+    },
+  }
 }
 
 const startComplianceAudit = async () => {
   if (!selectedProcess.value) return
+  showAuditModal.value = true
   loading.value = true
   auditResult.value = null
-  // Simulate AI processing
   await new Promise(resolve => setTimeout(resolve, 2200))
-  // Return mock result, adjusting process_id to match selected
-  auditResult.value = {
-    ...mockArchiveAuditResult,
-    process_id: selectedProcess.value.process_id,
-  }
+  const result = generateAuditResult(selectedProcess.value)
+  auditResult.value = result
+  auditRecords.value[selectedProcess.value.process_id] = result
   loading.value = false
+}
+
+const batchComplianceAudit = async () => {
+  const unaudited = filteredList.value.filter(p => !auditRecords.value[p.process_id])
+  if (unaudited.length === 0) {
+    message.info('当前列表中所有流程均已完成合规复核')
+    return
+  }
+  batchLoading.value = true
+  message.loading({ content: `正在批量复核 ${unaudited.length} 个流程...`, key: 'batch', duration: 0 })
+  for (let i = 0; i < unaudited.length; i++) {
+    await new Promise(resolve => setTimeout(resolve, 800))
+    const result = generateAuditResult(unaudited[i])
+    auditRecords.value[unaudited[i].process_id] = result
+    // If this process is currently selected, update the view
+    if (selectedProcess.value?.process_id === unaudited[i].process_id) {
+      auditResult.value = result
+    }
+  }
+  message.success({ content: `已完成 ${unaudited.length} 个流程的批量合规复核`, key: 'batch' })
+  batchLoading.value = false
 }
 
 const handleExport = (format: string) => {
@@ -109,6 +167,15 @@ const actionConfig: Record<string, { color: string; label: string }> = {
       <div class="page-header-actions">
         <a-button @click="showFilters = !showFilters">
           <FilterOutlined /> 筛选
+        </a-button>
+        <a-button :loading="batchLoading" @click="batchComplianceAudit">
+          <UnorderedListOutlined /> 批量复核
+          <a-badge
+            v-if="filteredList.length - auditedCount > 0"
+            :count="filteredList.length - auditedCount"
+            :number-style="{ backgroundColor: 'var(--color-warning)', fontSize: '10px', marginLeft: '4px' }"
+            :offset="[4, -2]"
+          />
         </a-button>
         <a-dropdown v-if="auditResult">
           <a-button>
@@ -156,6 +223,9 @@ const actionConfig: Record<string, { color: string; label: string }> = {
             已归档流程
             <a-badge :count="filteredList.length" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
           </h3>
+          <span v-if="auditedCount > 0" class="panel-header-hint">
+            已复核 {{ auditedCount }}/{{ filteredList.length }}
+          </span>
         </div>
         <div class="process-list">
           <div
@@ -166,7 +236,21 @@ const actionConfig: Record<string, { color: string; label: string }> = {
             @click="selectProcess(proc)"
           >
             <div class="process-item-main">
-              <div class="process-item-title">{{ proc.title }}</div>
+              <div class="process-item-title-row">
+                <span class="process-item-title">{{ proc.title }}</span>
+                <span
+                  v-if="auditRecords[proc.process_id]"
+                  class="process-audit-badge"
+                  :style="{
+                    color: complianceConfig[auditRecords[proc.process_id].overall_compliance]?.color,
+                    background: complianceConfig[auditRecords[proc.process_id].overall_compliance]?.bg,
+                  }"
+                >
+                  <SafetyCertificateOutlined />
+                  {{ complianceConfig[auditRecords[proc.process_id].overall_compliance]?.label }}
+                  {{ auditRecords[proc.process_id].overall_score }}分
+                </span>
+              </div>
               <div class="process-item-meta">
                 <span>{{ proc.applicant }}</span>
                 <span class="meta-dot">·</span>
@@ -226,10 +310,49 @@ const actionConfig: Record<string, { color: string; label: string }> = {
                   <a-button @click="jumpToOA(selectedProcess.process_id)">
                     <ExportOutlined /> OA
                   </a-button>
-                  <a-button type="primary" :loading="loading" @click="startComplianceAudit">
-                    <ThunderboltOutlined /> 开始合规复核
+                  <a-button
+                    type="primary"
+                    :loading="loading"
+                    @click="startComplianceAudit"
+                  >
+                    <template v-if="auditRecords[selectedProcess.process_id]">
+                      <ReloadOutlined /> 重新复核
+                    </template>
+                    <template v-else>
+                      <ThunderboltOutlined /> 开始合规复核
+                    </template>
                   </a-button>
                 </div>
+              </div>
+            </div>
+
+            <!-- Inline audit result hint (clickable to open modal) -->
+            <div v-if="auditResult && !loading" class="audit-result-hint" @click="showAuditModal = true">
+              <div
+                class="audit-result-hint-banner"
+                :style="{
+                  background: complianceConfig[auditResult.overall_compliance]?.bg,
+                  borderColor: complianceConfig[auditResult.overall_compliance]?.color,
+                }"
+              >
+                <SafetyCertificateOutlined :style="{ color: complianceConfig[auditResult.overall_compliance]?.color, fontSize: '20px' }" />
+                <div style="flex: 1;">
+                  <div :style="{ color: complianceConfig[auditResult.overall_compliance]?.color, fontWeight: 700, fontSize: '14px' }">
+                    {{ complianceConfig[auditResult.overall_compliance]?.label }} · {{ auditResult.overall_score }} 分
+                  </div>
+                  <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px;">
+                    点击查看完整合规复核报告
+                  </div>
+                </div>
+                <RightOutlined style="color: var(--color-text-tertiary);" />
+              </div>
+            </div>
+
+            <!-- AI Summary (moved above flow timeline) -->
+            <div v-if="auditResult && !loading" class="section-block">
+              <h4 class="section-title"><ThunderboltOutlined /> AI 综合分析</h4>
+              <div class="ai-summary">
+                <pre>{{ auditResult.ai_summary }}</pre>
               </div>
             </div>
 
@@ -273,132 +396,158 @@ const actionConfig: Record<string, { color: string; label: string }> = {
                 </div>
               </div>
             </div>
-
-            <!-- Loading state -->
-            <div v-if="loading" class="audit-loading">
-              <div class="loading-animation">
-                <div class="loading-pulse" />
-                <div class="loading-text">AI 正在进行全流程合规复核...</div>
-                <div class="loading-subtext">审批链校验 · 字段校验 · 规则校验</div>
-              </div>
-            </div>
-
-            <!-- Audit result -->
-            <template v-if="auditResult && !loading">
-              <!-- Overall compliance banner -->
-              <div
-                class="compliance-banner"
-                :style="{
-                  background: complianceConfig[auditResult.overall_compliance]?.bg,
-                  borderColor: complianceConfig[auditResult.overall_compliance]?.color,
-                }"
-              >
-                <SafetyCertificateOutlined
-                  class="compliance-banner-icon"
-                  :style="{ color: complianceConfig[auditResult.overall_compliance]?.color }"
-                />
-                <div class="compliance-banner-info">
-                  <div
-                    class="compliance-banner-title"
-                    :style="{ color: complianceConfig[auditResult.overall_compliance]?.color }"
-                  >
-                    {{ complianceConfig[auditResult.overall_compliance]?.label }}
-                  </div>
-                  <div class="compliance-banner-meta">
-                    综合评分 {{ auditResult.overall_score }} 分 · 耗时 {{ auditResult.duration_ms }}ms · {{ auditResult.trace_id }}
-                  </div>
-                </div>
-                <div class="compliance-score" :style="{ color: complianceConfig[auditResult.overall_compliance]?.color }">
-                  {{ auditResult.overall_score }}
-                </div>
-              </div>
-
-              <!-- Flow audit section -->
-              <div class="section-block">
-                <h4 class="section-title">
-                  <NodeIndexOutlined /> 审批链合规
-                  <span class="section-badge" :class="auditResult.flow_audit.is_complete ? 'section-badge--pass' : 'section-badge--fail'">
-                    {{ auditResult.flow_audit.is_complete ? '完整' : '缺失节点' }}
-                  </span>
-                </h4>
-                <div v-if="auditResult.flow_audit.missing_nodes.length > 0" class="missing-nodes-alert">
-                  <ExclamationCircleOutlined /> 缺失节点: {{ auditResult.flow_audit.missing_nodes.join('、') }}
-                </div>
-                <div class="audit-checks">
-                  <div
-                    v-for="nr in auditResult.flow_audit.node_results"
-                    :key="nr.node_id"
-                    class="audit-check-item"
-                    :class="nr.compliant ? 'audit-check-item--pass' : 'audit-check-item--fail'"
-                  >
-                    <div class="audit-check-status">
-                      <CheckCircleOutlined v-if="nr.compliant" style="color: var(--color-success);" />
-                      <CloseCircleOutlined v-else style="color: var(--color-danger);" />
-                    </div>
-                    <div class="audit-check-content">
-                      <div class="audit-check-name">{{ nr.node_name }}</div>
-                      <div class="audit-check-reasoning">{{ nr.reasoning }}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Field audit section -->
-              <div class="section-block">
-                <h4 class="section-title"><FileProtectOutlined /> 字段校验</h4>
-                <div class="audit-checks">
-                  <div
-                    v-for="fa in auditResult.field_audit"
-                    :key="fa.field_name"
-                    class="audit-check-item"
-                    :class="fa.passed ? 'audit-check-item--pass' : 'audit-check-item--fail'"
-                  >
-                    <div class="audit-check-status">
-                      <CheckCircleOutlined v-if="fa.passed" style="color: var(--color-success);" />
-                      <CloseCircleOutlined v-else style="color: var(--color-danger);" />
-                    </div>
-                    <div class="audit-check-content">
-                      <div class="audit-check-name">{{ fa.field_name }}</div>
-                      <div class="audit-check-reasoning">{{ fa.reasoning }}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Rule audit section -->
-              <div class="section-block">
-                <h4 class="section-title"><SafetyCertificateOutlined /> 规则校验</h4>
-                <div class="audit-checks">
-                  <div
-                    v-for="ra in auditResult.rule_audit"
-                    :key="ra.rule_id"
-                    class="audit-check-item"
-                    :class="ra.passed ? 'audit-check-item--pass' : 'audit-check-item--fail'"
-                  >
-                    <div class="audit-check-status">
-                      <CheckCircleOutlined v-if="ra.passed" style="color: var(--color-success);" />
-                      <CloseCircleOutlined v-else style="color: var(--color-danger);" />
-                    </div>
-                    <div class="audit-check-content">
-                      <div class="audit-check-name">{{ ra.rule_name }}</div>
-                      <div class="audit-check-reasoning">{{ ra.reasoning }}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- AI Summary -->
-              <div class="section-block">
-                <h4 class="section-title"><ThunderboltOutlined /> AI 综合分析</h4>
-                <div class="ai-summary">
-                  <pre>{{ auditResult.ai_summary }}</pre>
-                </div>
-              </div>
-            </template>
           </template>
         </div>
       </div>
     </div>
+
+    <!-- Compliance Audit Modal -->
+    <a-modal
+      v-model:open="showAuditModal"
+      :title="selectedProcess ? `合规复核 - ${selectedProcess.title}` : '合规复核'"
+      :width="720"
+      :footer="null"
+      :bodyStyle="{ maxHeight: '70vh', overflowY: 'auto', padding: '24px' }"
+      centered
+    >
+      <!-- Loading state -->
+      <div v-if="loading" class="audit-loading">
+        <div class="loading-animation">
+          <div class="loading-pulse" />
+          <div class="loading-text">AI 正在进行全流程合规复核...</div>
+          <div class="loading-subtext">审批链校验 · 字段校验 · 规则校验</div>
+        </div>
+      </div>
+
+      <!-- Audit result -->
+      <template v-if="auditResult && !loading">
+        <!-- Overall compliance banner -->
+        <div
+          class="compliance-banner"
+          :style="{
+            background: complianceConfig[auditResult.overall_compliance]?.bg,
+            borderColor: complianceConfig[auditResult.overall_compliance]?.color,
+          }"
+        >
+          <SafetyCertificateOutlined
+            class="compliance-banner-icon"
+            :style="{ color: complianceConfig[auditResult.overall_compliance]?.color }"
+          />
+          <div class="compliance-banner-info">
+            <div
+              class="compliance-banner-title"
+              :style="{ color: complianceConfig[auditResult.overall_compliance]?.color }"
+            >
+              {{ complianceConfig[auditResult.overall_compliance]?.label }}
+            </div>
+            <div class="compliance-banner-meta">
+              综合评分 {{ auditResult.overall_score }} 分 · 耗时 {{ auditResult.duration_ms }}ms · {{ auditResult.trace_id }}
+            </div>
+          </div>
+          <div class="compliance-score" :style="{ color: complianceConfig[auditResult.overall_compliance]?.color }">
+            {{ auditResult.overall_score }}
+          </div>
+        </div>
+
+        <!-- AI Summary (first in modal) -->
+        <div class="section-block">
+          <h4 class="section-title"><ThunderboltOutlined /> AI 综合分析</h4>
+          <div class="ai-summary">
+            <pre>{{ auditResult.ai_summary }}</pre>
+          </div>
+        </div>
+
+        <!-- Flow audit section -->
+        <div class="section-block">
+          <h4 class="section-title">
+            <NodeIndexOutlined /> 审批链合规
+            <span class="section-badge" :class="auditResult.flow_audit.is_complete ? 'section-badge--pass' : 'section-badge--fail'">
+              {{ auditResult.flow_audit.is_complete ? '完整' : '缺失节点' }}
+            </span>
+          </h4>
+          <div v-if="auditResult.flow_audit.missing_nodes.length > 0" class="missing-nodes-alert">
+            <ExclamationCircleOutlined /> 缺失节点: {{ auditResult.flow_audit.missing_nodes.join('、') }}
+          </div>
+          <div class="audit-checks">
+            <div
+              v-for="nr in auditResult.flow_audit.node_results"
+              :key="nr.node_id"
+              class="audit-check-item"
+              :class="nr.compliant ? 'audit-check-item--pass' : 'audit-check-item--fail'"
+            >
+              <div class="audit-check-status">
+                <CheckCircleOutlined v-if="nr.compliant" style="color: var(--color-success);" />
+                <CloseCircleOutlined v-else style="color: var(--color-danger);" />
+              </div>
+              <div class="audit-check-content">
+                <div class="audit-check-name">{{ nr.node_name }}</div>
+                <div class="audit-check-reasoning">{{ nr.reasoning }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Field audit section -->
+        <div class="section-block">
+          <h4 class="section-title"><FileProtectOutlined /> 字段校验</h4>
+          <div class="audit-checks">
+            <div
+              v-for="fa in auditResult.field_audit"
+              :key="fa.field_name"
+              class="audit-check-item"
+              :class="fa.passed ? 'audit-check-item--pass' : 'audit-check-item--fail'"
+            >
+              <div class="audit-check-status">
+                <CheckCircleOutlined v-if="fa.passed" style="color: var(--color-success);" />
+                <CloseCircleOutlined v-else style="color: var(--color-danger);" />
+              </div>
+              <div class="audit-check-content">
+                <div class="audit-check-name">{{ fa.field_name }}</div>
+                <div class="audit-check-reasoning">{{ fa.reasoning }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rule audit section -->
+        <div class="section-block">
+          <h4 class="section-title"><SafetyCertificateOutlined /> 规则校验</h4>
+          <div class="audit-checks">
+            <div
+              v-for="ra in auditResult.rule_audit"
+              :key="ra.rule_id"
+              class="audit-check-item"
+              :class="ra.passed ? 'audit-check-item--pass' : 'audit-check-item--fail'"
+            >
+              <div class="audit-check-status">
+                <CheckCircleOutlined v-if="ra.passed" style="color: var(--color-success);" />
+                <CloseCircleOutlined v-else style="color: var(--color-danger);" />
+              </div>
+              <div class="audit-check-content">
+                <div class="audit-check-name">{{ ra.rule_name }}</div>
+                <div class="audit-check-reasoning">{{ ra.reasoning }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Export actions in modal -->
+        <div class="modal-export-actions">
+          <a-dropdown>
+            <a-button type="primary">
+              <DownloadOutlined /> 导出报告
+            </a-button>
+            <template #overlay>
+              <a-menu>
+                <a-menu-item key="json" @click="handleExport('json')">导出 JSON</a-menu-item>
+                <a-menu-item key="csv" @click="handleExport('csv')">导出 CSV</a-menu-item>
+                <a-menu-item key="excel" @click="handleExport('excel')">导出 Excel</a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
+        </div>
+      </template>
+    </a-modal>
   </div>
 </template>
 
@@ -415,7 +564,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
 
 .page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
-.page-header-actions { display: flex; gap: 8px; }
+.page-header-actions { display: flex; gap: 8px; align-items: center; }
 
 /* Filters */
 .filter-bar {
@@ -445,6 +594,9 @@ const actionConfig: Record<string, { color: string; label: string }> = {
 .panel-header {
   padding: 16px 20px;
   border-bottom: 1px solid var(--color-border-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .panel-title {
@@ -452,11 +604,15 @@ const actionConfig: Record<string, { color: string; label: string }> = {
   margin: 0; display: flex; align-items: center; gap: 8px;
 }
 
+.panel-header-hint {
+  font-size: 12px; color: var(--color-text-tertiary);
+}
+
 /* Process list */
 .process-list { max-height: calc(100vh - 280px); overflow-y: auto; }
 
 .process-item {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: flex-start; justify-content: space-between;
   padding: 14px 20px; cursor: pointer; transition: all var(--transition-fast);
   border-bottom: 1px solid var(--color-border-light); gap: 12px;
 }
@@ -465,9 +621,17 @@ const actionConfig: Record<string, { color: string; label: string }> = {
 .process-item--selected { background: var(--color-primary-bg); border-left: 3px solid var(--color-primary); }
 
 .process-item-main { flex: 1; min-width: 0; }
+.process-item-title-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;
+}
 .process-item-title {
   font-size: 14px; font-weight: 500; color: var(--color-text-primary);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.process-audit-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: var(--radius-full);
+  white-space: nowrap; flex-shrink: 0;
 }
 .process-item-meta {
   font-size: 12px; color: var(--color-text-tertiary);
@@ -598,6 +762,18 @@ const actionConfig: Record<string, { color: string; label: string }> = {
   white-space: pre-wrap; word-break: break-word; font-family: var(--font-sans);
   font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); margin: 0;
 }
+
+/* Audit result hint */
+.audit-result-hint { margin-bottom: 20px; cursor: pointer; }
+.audit-result-hint-banner {
+  display: flex; align-items: center; padding: 14px 18px;
+  border-radius: var(--radius-lg); border-left: 4px solid; gap: 12px;
+  transition: all var(--transition-fast);
+}
+.audit-result-hint-banner:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+
+/* Modal export actions */
+.modal-export-actions { display: flex; justify-content: flex-end; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--color-border-light); }
 
 /* Responsive */
 @media (max-width: 1024px) {
