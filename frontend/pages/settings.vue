@@ -11,14 +11,16 @@ import {
   CheckOutlined,
   EditOutlined,
   ClockCircleOutlined,
+  SafetyCertificateOutlined,
+  NodeIndexOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig } from '~/composables/useMockData'
+import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig } from '~/composables/useMockData'
 
 definePageMeta({ middleware: 'auth' })
 
 const { userRole } = useAuth()
-const { mockProcessAuditConfigs, mockCronTaskTypeConfigs } = useMockData()
+const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs } = useMockData()
 
 const activeTab = ref('profile')
 
@@ -148,6 +150,90 @@ const cronTaskTypeLabels: Record<string, string> = {
 }
 
 const cronSection = ref('push')
+
+// ===== Archive review personal settings =====
+const userArchiveConfigs = ref<ArchiveReviewConfig[]>(
+  JSON.parse(JSON.stringify(mockArchiveReviewConfigs))
+)
+const selectedArchiveId = ref<string>(userArchiveConfigs.value[0]?.id || '')
+const selectedArchiveConfig = computed(() =>
+  userArchiveConfigs.value.find(c => c.id === selectedArchiveId.value)
+)
+const archivePermissions = computed(() => selectedArchiveConfig.value?.user_permissions)
+const archiveSection = ref('fields')
+
+// User's custom archive rules
+const userArchiveCustomRules = ref<Record<string, { id: string; content: string; enabled: boolean }[]>>({
+  'ARC-001': [{ id: 'UACR-001', content: '付款条件须与公司标准一致', enabled: true }],
+  'ARC-002': [],
+  'ARC-003': [],
+  'ARC-004': [{ id: 'UACR-002', content: 'HR总监审批须在用人部门确认之后', enabled: true }],
+})
+
+// User's custom flow rules
+const userArchiveFlowRules = ref<Record<string, { id: string; content: string; enabled: boolean }[]>>({
+  'ARC-001': [],
+  'ARC-002': [],
+  'ARC-003': [],
+  'ARC-004': [{ id: 'UAFR-001', content: '入职审批须在招聘计划审批之后', enabled: true }],
+})
+
+const newArchiveRuleContent = ref('')
+const newArchiveFlowRuleContent = ref('')
+
+const addArchiveCustomRule = () => {
+  if (!newArchiveRuleContent.value.trim() || !selectedArchiveConfig.value) return
+  const pid = selectedArchiveConfig.value.id
+  if (!userArchiveCustomRules.value[pid]) userArchiveCustomRules.value[pid] = []
+  userArchiveCustomRules.value[pid].push({
+    id: `UACR-${Date.now()}`,
+    content: newArchiveRuleContent.value.trim(),
+    enabled: true,
+  })
+  newArchiveRuleContent.value = ''
+  message.success('自定义复核规则已添加')
+}
+
+const removeArchiveCustomRule = (ruleId: string) => {
+  if (!selectedArchiveConfig.value) return
+  const pid = selectedArchiveConfig.value.id
+  userArchiveCustomRules.value[pid] = (userArchiveCustomRules.value[pid] || []).filter(r => r.id !== ruleId)
+  message.success('已删除')
+}
+
+const currentArchiveCustomRules = computed(() =>
+  userArchiveCustomRules.value[selectedArchiveConfig.value?.id || ''] || []
+)
+
+const addArchiveFlowRule = () => {
+  if (!newArchiveFlowRuleContent.value.trim() || !selectedArchiveConfig.value) return
+  const pid = selectedArchiveConfig.value.id
+  if (!userArchiveFlowRules.value[pid]) userArchiveFlowRules.value[pid] = []
+  userArchiveFlowRules.value[pid].push({
+    id: `UAFR-${Date.now()}`,
+    content: newArchiveFlowRuleContent.value.trim(),
+    enabled: true,
+  })
+  newArchiveFlowRuleContent.value = ''
+  message.success('自定义审批流规则已添加')
+}
+
+const removeArchiveFlowRule = (ruleId: string) => {
+  if (!selectedArchiveConfig.value) return
+  const pid = selectedArchiveConfig.value.id
+  userArchiveFlowRules.value[pid] = (userArchiveFlowRules.value[pid] || []).filter(r => r.id !== ruleId)
+  message.success('已删除')
+}
+
+const currentArchiveFlowRules = computed(() =>
+  userArchiveFlowRules.value[selectedArchiveConfig.value?.id || ''] || []
+)
+
+const toggleArchiveField = (field: ProcessField) => {
+  if (!selectedArchiveConfig.value || !archivePermissions.value?.allow_custom_fields) return
+  if (selectedArchiveConfig.value.field_mode === 'all') return
+  field.selected = !field.selected
+}
 </script>
 
 <template>
@@ -166,6 +252,7 @@ const cronSection = ref('push')
           { key: 'profile', label: '基本信息' },
           { key: 'workbench', label: '审核工作台' },
           { key: 'cron', label: '定时任务' },
+          { key: 'archive', label: '归档复盘' },
         ]"
         :key="tab.key"
         class="tab-btn"
@@ -624,6 +711,272 @@ const cronSection = ref('push')
 
         <div v-else class="process-config-empty">
           <a-empty description="请选择左侧任务类型查看配置" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Archive review personal settings tab -->
+    <div v-if="activeTab === 'archive'" class="tab-content">
+      <div class="workbench-layout">
+        <!-- Left: process list -->
+        <div class="process-list-panel">
+          <div class="process-list-header">
+            <SafetyCertificateOutlined />
+            <span>复核流程</span>
+          </div>
+          <div
+            v-for="cfg in userArchiveConfigs"
+            :key="cfg.id"
+            class="process-list-item"
+            :class="{ 'process-list-item--active': selectedArchiveId === cfg.id }"
+            @click="selectedArchiveId = cfg.id"
+          >
+            <div class="process-list-item-name">{{ cfg.process_type }}</div>
+            <div class="process-list-item-path">{{ cfg.flow_path }}</div>
+          </div>
+        </div>
+
+        <!-- Right: config detail -->
+        <div v-if="selectedArchiveConfig" class="process-config-panel">
+          <h3 class="config-title">{{ selectedArchiveConfig.process_type }} - 个人复核配置</h3>
+          <p class="config-subtitle">流程路径：{{ selectedArchiveConfig.flow_path }}</p>
+
+          <!-- Sub-section nav -->
+          <div class="section-nav">
+            <button
+              v-for="sec in [
+                { key: 'fields', label: '复核字段' },
+                { key: 'rules', label: '复核规则' },
+                { key: 'flow_rules', label: '审批流规则' },
+                { key: 'ai', label: '复核尺度' },
+              ]"
+              :key="sec.key"
+              class="section-nav-btn"
+              :class="{ 'section-nav-btn--active': archiveSection === sec.key }"
+              @click="archiveSection = sec.key"
+            >
+              {{ sec.label }}
+            </button>
+          </div>
+
+          <!-- ===== Fields section ===== -->
+          <div v-if="archiveSection === 'fields'" class="config-section">
+            <div class="section-header-row">
+              <h4 class="config-section-title">复核字段</h4>
+              <span v-if="!archivePermissions?.allow_custom_fields" class="locked-tag">
+                <LockOutlined /> 管理员已锁定
+              </span>
+            </div>
+            <p class="config-section-desc">
+              {{ selectedArchiveConfig.field_mode === 'all' ? '当前为全部字段模式' : '以下为参与归档复核的字段配置' }}
+              <template v-if="archivePermissions?.allow_custom_fields && selectedArchiveConfig.field_mode === 'selected'">
+                ，您可以切换字段的选中状态
+              </template>
+            </p>
+
+            <div class="field-grid">
+              <div
+                v-for="field in selectedArchiveConfig.fields"
+                :key="field.field_key"
+                class="field-card"
+                :class="{
+                  'field-card--selected': field.selected || selectedArchiveConfig.field_mode === 'all',
+                  'field-card--readonly': !archivePermissions?.allow_custom_fields || selectedArchiveConfig.field_mode === 'all',
+                }"
+                @click="toggleArchiveField(field)"
+              >
+                <div class="field-card-check">
+                  <CheckOutlined v-if="field.selected || selectedArchiveConfig.field_mode === 'all'" />
+                </div>
+                <div class="field-card-info">
+                  <div class="field-card-name">{{ field.field_name }}</div>
+                  <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== Rules section ===== -->
+          <div v-if="archiveSection === 'rules'" class="config-section">
+            <!-- System rules -->
+            <div class="section-header-row">
+              <h4 class="config-section-title">通用复核规则（租户配置）</h4>
+            </div>
+            <div class="rule-config-list">
+              <div v-for="rule in selectedArchiveConfig.rules" :key="rule.id" class="rule-config-item">
+                <div class="rule-config-content">
+                  <span class="rule-config-text">{{ rule.rule_content }}</span>
+                  <span
+                    class="rule-scope-tag"
+                    :class="{
+                      'rule-scope-tag--mandatory': rule.rule_scope === 'mandatory',
+                      'rule-scope-tag--on': rule.rule_scope === 'default_on',
+                      'rule-scope-tag--off': rule.rule_scope === 'default_off',
+                    }"
+                  >{{ scopeConfig[rule.rule_scope]?.label }}</span>
+                </div>
+                <a-switch
+                  v-model:checked="rule.enabled"
+                  size="small"
+                  :disabled="rule.rule_scope === 'mandatory'"
+                />
+              </div>
+            </div>
+
+            <!-- Custom rules -->
+            <div class="section-header-row" style="margin-top: 20px;">
+              <h4 class="config-section-title">个人自定义复核规则</h4>
+              <span v-if="!archivePermissions?.allow_custom_rules" class="locked-tag">
+                <LockOutlined /> 管理员已锁定
+              </span>
+            </div>
+            <p class="config-section-desc">
+              {{ archivePermissions?.allow_custom_rules ? '您可以为此流程添加个人复核规则' : '当前流程不允许添加个人规则' }}
+            </p>
+
+            <div class="rule-config-list" v-if="currentArchiveCustomRules.length > 0">
+              <div v-for="rule in currentArchiveCustomRules" :key="rule.id" class="rule-config-item">
+                <div class="rule-config-content">
+                  <span class="rule-config-text">{{ rule.content }}</span>
+                  <span class="rule-scope-tag rule-scope-tag--custom">个人</span>
+                </div>
+                <div class="rule-config-actions">
+                  <a-switch v-model:checked="rule.enabled" size="small" />
+                  <a-popconfirm v-if="archivePermissions?.allow_custom_rules" title="确认删除？" @confirm="removeArchiveCustomRule(rule.id)">
+                    <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
+                  </a-popconfirm>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="archivePermissions?.allow_custom_rules" class="add-rule-row">
+              <a-input
+                v-model:value="newArchiveRuleContent"
+                placeholder="输入自定义复核规则内容..."
+                @pressEnter="addArchiveCustomRule"
+              />
+              <a-button type="primary" :disabled="!newArchiveRuleContent.trim()" @click="addArchiveCustomRule">
+                <PlusOutlined /> 添加
+              </a-button>
+            </div>
+          </div>
+
+          <!-- ===== Flow rules section ===== -->
+          <div v-if="archiveSection === 'flow_rules'" class="config-section">
+            <!-- System flow rules -->
+            <div class="section-header-row">
+              <h4 class="config-section-title">通用审批流规则（租户配置）</h4>
+            </div>
+            <p class="config-section-desc">审批流程合规性校验规则，如审批链完整性、节点顺序等</p>
+            <div class="rule-config-list">
+              <div v-for="rule in selectedArchiveConfig.flow_rules" :key="rule.id" class="rule-config-item">
+                <div class="rule-config-content">
+                  <span class="rule-config-text">{{ rule.rule_content }}</span>
+                  <span
+                    class="rule-scope-tag"
+                    :class="{
+                      'rule-scope-tag--mandatory': rule.rule_scope === 'mandatory',
+                      'rule-scope-tag--on': rule.rule_scope === 'default_on',
+                      'rule-scope-tag--off': rule.rule_scope === 'default_off',
+                    }"
+                  >{{ scopeConfig[rule.rule_scope]?.label }}</span>
+                </div>
+                <a-switch
+                  v-model:checked="rule.enabled"
+                  size="small"
+                  :disabled="rule.rule_scope === 'mandatory'"
+                />
+              </div>
+            </div>
+
+            <!-- Custom flow rules -->
+            <div class="section-header-row" style="margin-top: 20px;">
+              <h4 class="config-section-title">个人自定义审批流规则</h4>
+              <span v-if="!archivePermissions?.allow_custom_flow_rules" class="locked-tag">
+                <LockOutlined /> 管理员已锁定
+              </span>
+            </div>
+            <p class="config-section-desc">
+              {{ archivePermissions?.allow_custom_flow_rules ? '您可以为此流程添加个人审批流合规规则' : '当前流程不允许添加个人审批流规则' }}
+            </p>
+
+            <div class="rule-config-list" v-if="currentArchiveFlowRules.length > 0">
+              <div v-for="rule in currentArchiveFlowRules" :key="rule.id" class="rule-config-item">
+                <div class="rule-config-content">
+                  <span class="rule-config-text">{{ rule.content }}</span>
+                  <span class="rule-scope-tag rule-scope-tag--custom">个人</span>
+                </div>
+                <div class="rule-config-actions">
+                  <a-switch v-model:checked="rule.enabled" size="small" />
+                  <a-popconfirm v-if="archivePermissions?.allow_custom_flow_rules" title="确认删除？" @confirm="removeArchiveFlowRule(rule.id)">
+                    <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
+                  </a-popconfirm>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="archivePermissions?.allow_custom_flow_rules" class="add-rule-row">
+              <a-input
+                v-model:value="newArchiveFlowRuleContent"
+                placeholder="输入自定义审批流规则内容..."
+                @pressEnter="addArchiveFlowRule"
+              />
+              <a-button type="primary" :disabled="!newArchiveFlowRuleContent.trim()" @click="addArchiveFlowRule">
+                <PlusOutlined /> 添加
+              </a-button>
+            </div>
+          </div>
+
+          <!-- ===== AI strictness section ===== -->
+          <div v-if="archiveSection === 'ai'" class="config-section">
+            <div class="section-header-row">
+              <h4 class="config-section-title">复核尺度</h4>
+              <span v-if="!archivePermissions?.allow_modify_strictness" class="locked-tag">
+                <LockOutlined /> 管理员已锁定
+              </span>
+            </div>
+            <p class="config-section-desc">
+              当前 AI 模型：{{ selectedArchiveConfig.ai_config.model_name }}（{{ selectedArchiveConfig.ai_config.ai_provider }}）
+            </p>
+            <div class="strictness-options">
+              <div
+                v-for="opt in strictnessOptions"
+                :key="opt.value"
+                class="strictness-option"
+                :class="{
+                  'strictness-option--active': selectedArchiveConfig.ai_config.audit_strictness === opt.value,
+                  'strictness-option--disabled': !archivePermissions?.allow_modify_strictness,
+                }"
+                @click="archivePermissions?.allow_modify_strictness && (selectedArchiveConfig.ai_config.audit_strictness = opt.value as any)"
+              >
+                <div class="strictness-option-radio" />
+                <div>
+                  <div class="strictness-option-label">{{ opt.label }}</div>
+                  <div class="strictness-option-desc">{{ opt.desc }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+              <h4 class="config-section-title">知识库模式</h4>
+              <p class="config-section-desc">
+                当前模式：<span style="font-weight: 600;">
+                  {{ selectedArchiveConfig.kb_mode === 'rules_only' ? '仅规则库' : selectedArchiveConfig.kb_mode === 'rag_only' ? '仅制度库' : '混合模式' }}
+                </span>
+                （由管理员配置）
+              </p>
+            </div>
+          </div>
+
+          <div class="settings-actions">
+            <a-button type="primary" size="large" :loading="saving" @click="handleSave">
+              <SaveOutlined /> 保存配置
+            </a-button>
+          </div>
+        </div>
+
+        <div v-else class="process-config-empty">
+          <a-empty description="请选择左侧流程查看复核配置" />
         </div>
       </div>
     </div>

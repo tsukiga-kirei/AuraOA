@@ -565,6 +565,108 @@
   }
   ```
 
+### 5.7 获取用户归档复盘配置
+- **GET** `/api/user/archive-review-config`
+- **Headers**: `Authorization: Bearer {token}`
+- **说明**: 返回用户可见的归档复盘配置列表（复用租户 `ArchiveReviewConfig` 结构），以及用户的个性化覆盖（自定义规则、自定义审批流规则、字段覆盖、复核尺度）。用户可操作范围受各流程 `user_permissions` 控制。
+- **响应**:
+  ```json
+  {
+    "archive_configs": [
+      {
+        "id": "ARC-001",
+        "process_type": "采购审批",
+        "flow_path": "部门经理 → 财务总监 → 总经理",
+        "fields": [
+          {
+            "field_key": "amount",
+            "field_name": "采购金额",
+            "field_type": "number",
+            "selected": true
+          }
+        ],
+        "field_mode": "all | selected",
+        "rules": [
+          {
+            "id": "AR001",
+            "rule_content": "采购金额超过50万需总经理审批记录",
+            "rule_scope": "mandatory | default_on | default_off",
+            "priority": 100,
+            "enabled": true
+          }
+        ],
+        "flow_rules": [
+          {
+            "id": "FR001",
+            "rule_name": "审批链完整性",
+            "rule_content": "审批流程必须经过所有必要节点，不得跳过",
+            "rule_scope": "mandatory | default_on | default_off",
+            "priority": 100,
+            "enabled": true
+          }
+        ],
+        "kb_mode": "rules_only | rag_only | hybrid",
+        "ai_config": {
+          "ai_provider": "string",
+          "model_name": "string",
+          "audit_strictness": "strict | standard | loose",
+          "system_prompt": "string",
+          "context_window": 8192,
+          "temperature": 0.3
+        },
+        "user_permissions": {
+          "allow_custom_fields": true,
+          "allow_custom_rules": true,
+          "allow_modify_strictness": true,
+          "allow_custom_flow_rules": false
+        }
+      }
+    ],
+    "user_custom_rules": {
+      "ARC-001": [
+        { "id": "UCAR-001", "content": "归档前需确认所有附件完整", "enabled": true }
+      ]
+    },
+    "user_custom_flow_rules": {
+      "ARC-001": [
+        { "id": "UCFR-001", "content": "审批流程中需包含法务审核节点", "enabled": true }
+      ]
+    },
+    "user_field_overrides": {
+      "ARC-002": ["contract_no"]
+    },
+    "user_strictness_overrides": {
+      "ARC-001": "strict"
+    }
+  }
+  ```
+- **字段说明**:
+  - `user_custom_rules`: 用户自定义的归档审核规则（仅 `allow_custom_rules` 为 `true` 时可提交）
+  - `user_custom_flow_rules`: 用户自定义的审批流规则（仅 `allow_custom_flow_rules` 为 `true` 时可提交）
+  - `user_field_overrides`: 用户自定义的字段覆盖（仅 `allow_custom_fields` 为 `true` 时可提交）
+  - `user_strictness_overrides`: 用户自定义的复核尺度覆盖（仅 `allow_modify_strictness` 为 `true` 时可提交）
+
+### 5.8 更新用户归档复盘配置
+- **PUT** `/api/user/archive-review-config/{config_id}`
+- **Headers**: `Authorization: Bearer {token}`
+- **说明**: 保存用户对某个流程的归档复盘个性化配置。可提交的字段受该流程 `user_permissions` 控制。
+- **请求体**:
+  ```json
+  {
+    "audit_strictness": "strict | standard | loose",
+    "custom_rules": [
+      { "id": "UCAR-001", "content": "string", "enabled": true }
+    ],
+    "custom_flow_rules": [
+      { "id": "UCFR-001", "content": "string", "enabled": true }
+    ],
+    "field_overrides": ["contract_no"],
+    "rule_toggle_overrides": [
+      { "rule_id": "AR003", "enabled": false }
+    ]
+  }
+  ```
+
 ---
 
 ## 6. 租户管理模块（租户管理员）
@@ -710,6 +812,82 @@
     }
   }
   ```
+
+### 6.9 获取归档复盘配置列表
+- **GET** `/api/tenant/archive-review-configs`
+- **Headers**: `Authorization: Bearer {token}`
+- **说明**: 返回当前租户下所有流程的归档复盘配置，用于租户管理页面"归档复盘"页签。包含字段配置、审核规则、审批流规则、AI 配置和用户权限五个维度。
+- **响应**:
+  ```json
+  {
+    "configs": [
+      {
+        "id": "ARC-001",
+        "process_type": "采购审批",
+        "flow_path": "部门经理 → 财务总监 → 总经理",
+        "fields": [
+          {
+            "field_key": "amount",
+            "field_name": "采购金额",
+            "field_type": "number",
+            "selected": true
+          }
+        ],
+        "field_mode": "all | selected",
+        "rules": [
+          {
+            "id": "AR001",
+            "process_type": "采购审批",
+            "rule_content": "采购金额超过50万需总经理审批记录",
+            "rule_scope": "mandatory | default_on | default_off",
+            "priority": 100,
+            "enabled": true,
+            "source": "manual | file_import"
+          }
+        ],
+        "flow_rules": [
+          {
+            "id": "FR001",
+            "rule_name": "审批链完整性",
+            "rule_content": "审批流程必须经过所有必要节点，不得跳过",
+            "rule_scope": "mandatory | default_on | default_off",
+            "priority": 100,
+            "enabled": true
+          }
+        ],
+        "kb_mode": "rules_only | rag_only | hybrid",
+        "ai_config": {
+          "ai_provider": "string",
+          "model_name": "string",
+          "audit_strictness": "strict | standard | loose",
+          "system_prompt": "string",
+          "context_window": 8192,
+          "temperature": 0.3
+        },
+        "user_permissions": {
+          "allow_custom_fields": true,
+          "allow_custom_rules": true,
+          "allow_modify_strictness": true,
+          "allow_custom_flow_rules": false
+        }
+      }
+    ]
+  }
+  ```
+- **字段说明**:
+  - `flow_rules`: 审批流规则配置，用于校验整个审批流程是否符合要求（如审批链完整性、节点顺序、审批时效等）
+  - `allow_custom_flow_rules`: 是否允许用户自定义审批流规则
+
+### 6.10 获取单个归档复盘配置
+- **GET** `/api/tenant/archive-review-config/{config_id}`
+- **Headers**: `Authorization: Bearer {token}`
+- **响应**: 同 6.9 响应中单个配置对象结构
+
+### 6.11 更新归档复盘配置
+- **PUT** `/api/tenant/archive-review-config/{config_id}`
+- **Headers**: `Authorization: Bearer {token}`
+- **请求体**: 同 6.9 响应中单个配置对象结构
+- **说明**: 更新指定流程的归档复盘配置，包括字段、审核规则、审批流规则、AI 配置和用户权限。
 
 ---
 
