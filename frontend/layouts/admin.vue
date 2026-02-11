@@ -9,7 +9,6 @@ import {
   UserOutlined,
   SafetyCertificateOutlined,
   AppstoreOutlined,
-  RobotOutlined,
   ApartmentOutlined,
   DatabaseOutlined,
   ArrowLeftOutlined,
@@ -43,8 +42,7 @@ const selectedKeys = computed(() => [route.path])
 const tenantMenuItems = [
   { key: '/admin/tenant', icon: AppstoreOutlined, label: '规则配置' },
   { key: '/admin/tenant/org', icon: ApartmentOutlined, label: '组织人员' },
-  { key: '/admin/tenant/ai', icon: RobotOutlined, label: 'AI 设置' },
-  { key: '/admin/tenant/kb', icon: DatabaseOutlined, label: '知识库' },
+  { key: '/admin/tenant/data', icon: DatabaseOutlined, label: '数据信息' },
 ]
 
 const displayName = computed(() => currentUser.value?.display_name || '租户管理员')

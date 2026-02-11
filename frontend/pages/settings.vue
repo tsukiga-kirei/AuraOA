@@ -20,11 +20,33 @@ import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, A
 definePageMeta({ middleware: 'auth' })
 
 const { userRole } = useAuth()
-const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs } = useMockData()
+const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs, mockOrgRoles, mockOrgMembers } = useMockData()
 
 const activeTab = ref('profile')
 
 // ===== Profile tab =====
+// Find current user's org member record to show role-based permissions
+const currentMember = computed(() => {
+  const { currentUser } = useAuth()
+  return mockOrgMembers.find(m => m.username === currentUser.value?.username) || null
+})
+const currentOrgRole = computed(() => {
+  if (!currentMember.value) return null
+  return mockOrgRoles.find(r => r.id === currentMember.value!.role_id) || null
+})
+
+const allPageLabels: Record<string, string> = {
+  '/dashboard': '审核工作台',
+  '/cron': '定时任务',
+  '/archive': '归档复盘',
+  '/settings': '个人设置',
+  '/admin/tenant': '规则配置',
+  '/admin/tenant/org': '组织人员',
+  '/admin/tenant/data': '数据信息',
+  '/admin/system': '系统管理',
+  '/admin/monitor': '全局监控',
+}
+
 const profile = ref({
   nickname: '张明',
   email: 'zhangming@example.com',
@@ -311,6 +333,39 @@ const toggleArchiveField = (field: ProcessField) => {
             <SaveOutlined /> 保存
           </a-button>
         </div>
+      </div>
+
+      <!-- Role & Permissions card -->
+      <div class="settings-card" style="margin-top: 20px;">
+        <h4 class="perm-card-title">
+          <SafetyCertificateOutlined style="color: var(--color-primary);" />
+          角色与权限
+        </h4>
+        <div class="perm-info-row">
+          <span class="perm-info-label">当前角色</span>
+          <span class="perm-role-badge">{{ currentOrgRole?.name || roleLabels[userRole] || '业务用户' }}</span>
+        </div>
+        <div v-if="currentOrgRole?.description" class="perm-info-row">
+          <span class="perm-info-label">角色说明</span>
+          <span class="perm-info-value">{{ currentOrgRole.description }}</span>
+        </div>
+        <div v-if="currentMember" class="perm-info-row">
+          <span class="perm-info-label">所属部门</span>
+          <span class="perm-info-value">{{ currentMember.department_name }}</span>
+        </div>
+        <div class="perm-pages-section">
+          <span class="perm-info-label">可访问页面</span>
+          <div class="perm-page-tags">
+            <span
+              v-for="p in (currentOrgRole?.page_permissions || ['/dashboard', '/cron', '/settings'])"
+              :key="p"
+              class="perm-page-tag"
+            >
+              {{ allPageLabels[p] || p }}
+            </span>
+          </div>
+        </div>
+        <p class="perm-hint-text">权限由管理员在「组织人员」中配置，如需调整请联系租户管理员</p>
       </div>
     </div>
     <!-- Audit workbench tab -->
@@ -1156,5 +1211,34 @@ const toggleArchiveField = (field: ProcessField) => {
   .form-row { grid-template-columns: 1fr; }
   .workbench-layout { grid-template-columns: 1fr; }
   .field-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* Permission card in profile */
+.perm-card-title {
+  font-size: 15px; font-weight: 600; color: var(--color-text-primary);
+  margin: 0 0 16px; display: flex; align-items: center; gap: 8px;
+}
+.perm-info-row {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+}
+.perm-info-label {
+  font-size: 13px; font-weight: 500; color: var(--color-text-secondary); min-width: 72px;
+}
+.perm-info-value { font-size: 13px; color: var(--color-text-primary); }
+.perm-role-badge {
+  font-size: 12px; font-weight: 600; padding: 2px 12px; border-radius: var(--radius-full);
+  background: var(--color-primary-bg); color: var(--color-primary);
+}
+.perm-pages-section {
+  display: flex; align-items: flex-start; gap: 12px; margin-top: 12px;
+}
+.perm-page-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.perm-page-tag {
+  font-size: 11px; padding: 2px 10px; border-radius: var(--radius-sm);
+  background: var(--color-bg-hover); color: var(--color-text-secondary); font-weight: 500;
+}
+.perm-hint-text {
+  font-size: 12px; color: var(--color-text-tertiary); margin: 14px 0 0;
+  padding-top: 12px; border-top: 1px solid var(--color-border-light);
 }
 </style>

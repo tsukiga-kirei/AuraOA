@@ -46,8 +46,7 @@ export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
   '/settings': ['business', 'tenant_admin', 'system_admin'],
   '/admin/tenant': ['tenant_admin', 'system_admin'],
   '/admin/tenant/org': ['tenant_admin', 'system_admin'],
-  '/admin/tenant/ai': ['tenant_admin', 'system_admin'],
-  '/admin/tenant/kb': ['tenant_admin', 'system_admin'],
+  '/admin/tenant/data': ['tenant_admin', 'system_admin'],
   '/admin/system': ['system_admin'],
   '/admin/monitor': ['system_admin'],
   '/admin/system/settings': ['system_admin'],
@@ -328,6 +327,159 @@ export interface ProcessAuditConfig {
   ai_config: ProcessAIConfig
   user_permissions: UserPermissions
 }
+
+// ============================================================
+// Organization & Personnel types (组织人员)
+// ============================================================
+export interface Department {
+  id: string
+  name: string
+  parent_id: string | null
+  manager: string
+  member_count: number
+}
+
+export interface OrgRole {
+  id: string
+  name: string
+  description: string
+  page_permissions: string[]  // paths like '/dashboard', '/cron', etc.
+  is_system: boolean          // system roles cannot be deleted
+}
+
+export interface OrgMember {
+  id: string
+  name: string
+  username: string
+  department_id: string
+  department_name: string
+  role_id: string
+  role_name: string
+  email: string
+  phone: string
+  position: string
+  status: 'active' | 'disabled'
+  created_at: string
+}
+
+export const mockDepartments: Department[] = [
+  { id: 'D-001', name: '研发部', parent_id: null, manager: '张明', member_count: 12 },
+  { id: 'D-002', name: '销售部', parent_id: null, manager: '周磊', member_count: 8 },
+  { id: 'D-003', name: '市场部', parent_id: null, manager: '陈伟', member_count: 6 },
+  { id: 'D-004', name: '人力资源部', parent_id: null, manager: '赵丽', member_count: 5 },
+  { id: 'D-005', name: 'IT部', parent_id: null, manager: '王强', member_count: 7 },
+  { id: 'D-006', name: '财务部', parent_id: null, manager: '张华', member_count: 4 },
+  { id: 'D-007', name: '行政部', parent_id: null, manager: '刘洋', member_count: 3 },
+  { id: 'D-008', name: '法务部', parent_id: null, manager: '孙律', member_count: 2 },
+]
+
+export const mockOrgRoles: OrgRole[] = [
+  {
+    id: 'ROLE-001', name: '业务用户', description: '普通业务人员，可使用审核工作台、定时任务等前台功能',
+    page_permissions: ['/dashboard', '/cron', '/settings'],
+    is_system: true,
+  },
+  {
+    id: 'ROLE-002', name: '审计管理员', description: '可查看归档复盘页签，进行合规复核',
+    page_permissions: ['/dashboard', '/cron', '/archive', '/settings'],
+    is_system: false,
+  },
+  {
+    id: 'ROLE-003', name: '租户管理员', description: '可进入后台管理，配置规则、组织人员、数据信息',
+    page_permissions: ['/dashboard', '/cron', '/archive', '/settings', '/admin/tenant', '/admin/tenant/org', '/admin/tenant/data'],
+    is_system: true,
+  },
+  {
+    id: 'ROLE-004', name: '系统管理员', description: '拥有所有权限，包括系统管理和全局监控',
+    page_permissions: ['/dashboard', '/cron', '/archive', '/settings', '/admin/tenant', '/admin/tenant/org', '/admin/tenant/data', '/admin/system', '/admin/monitor'],
+    is_system: true,
+  },
+  {
+    id: 'ROLE-005', name: '只读用户', description: '仅可查看审核工作台，不可执行审核操作',
+    page_permissions: ['/dashboard', '/settings'],
+    is_system: false,
+  },
+]
+
+export const mockOrgMembers: OrgMember[] = [
+  { id: 'M-001', name: '张明', username: 'zhangming', department_id: 'D-001', department_name: '研发部', role_id: 'ROLE-002', role_name: '审计管理员', email: 'zhangming@example.com', phone: '138****8888', position: '高级工程师', status: 'active', created_at: '2024-03-15' },
+  { id: 'M-002', name: '李芳', username: 'lifang', department_id: 'D-002', department_name: '销售部', role_id: 'ROLE-001', role_name: '业务用户', email: 'lifang@example.com', phone: '139****6666', position: '销售经理', status: 'active', created_at: '2024-04-20' },
+  { id: 'M-003', name: '王强', username: 'wangqiang', department_id: 'D-005', department_name: 'IT部', role_id: 'ROLE-002', role_name: '审计管理员', email: 'wangqiang@example.com', phone: '137****5555', position: 'IT主管', status: 'active', created_at: '2024-02-10' },
+  { id: 'M-004', name: '赵丽', username: 'zhaoli', department_id: 'D-004', department_name: '人力资源部', role_id: 'ROLE-001', role_name: '业务用户', email: 'zhaoli@example.com', phone: '136****4444', position: 'HR经理', status: 'active', created_at: '2024-05-08' },
+  { id: 'M-005', name: '陈伟', username: 'chenwei', department_id: 'D-003', department_name: '市场部', role_id: 'ROLE-001', role_name: '业务用户', email: 'chenwei@example.com', phone: '135****3333', position: '市场总监', status: 'active', created_at: '2024-01-20' },
+  { id: 'M-006', name: '刘洋', username: 'liuyang', department_id: 'D-007', department_name: '行政部', role_id: 'ROLE-001', role_name: '业务用户', email: 'liuyang@example.com', phone: '134****2222', position: '行政主管', status: 'active', created_at: '2024-06-01' },
+  { id: 'M-007', name: '张华', username: 'zhanghua', department_id: 'D-006', department_name: '财务部', role_id: 'ROLE-002', role_name: '审计管理员', email: 'zhanghua@example.com', phone: '133****1111', position: '财务总监', status: 'active', created_at: '2024-01-05' },
+  { id: 'M-008', name: '孙律', username: 'sunlv', department_id: 'D-008', department_name: '法务部', role_id: 'ROLE-005', role_name: '只读用户', email: 'sunlv@example.com', phone: '132****0000', position: '法务顾问', status: 'active', created_at: '2024-07-15' },
+  { id: 'M-009', name: '周磊', username: 'zhoulei', department_id: 'D-002', department_name: '销售部', role_id: 'ROLE-001', role_name: '业务用户', email: 'zhoulei@example.com', phone: '131****9999', position: '销售总监', status: 'active', created_at: '2024-03-01' },
+  { id: 'M-010', name: '租户管理员', username: 'tenantadmin', department_id: 'D-005', department_name: 'IT部', role_id: 'ROLE-003', role_name: '租户管理员', email: 'tenantadmin@example.com', phone: '130****7777', position: '系统管理', status: 'active', created_at: '2024-01-01' },
+  { id: 'M-011', name: '系统管理员', username: 'admin', department_id: 'D-005', department_name: 'IT部', role_id: 'ROLE-004', role_name: '系统管理员', email: 'admin@example.com', phone: '129****8888', position: '超级管理员', status: 'active', created_at: '2024-01-01' },
+  { id: 'M-012', name: '测试用户', username: 'user', department_id: 'D-001', department_name: '研发部', role_id: 'ROLE-001', role_name: '业务用户', email: 'user@example.com', phone: '128****6666', position: '测试工程师', status: 'disabled', created_at: '2024-08-01' },
+]
+
+// ============================================================
+// Data management types (数据信息)
+// ============================================================
+export interface AuditLog {
+  id: string
+  process_id: string
+  title: string
+  operator: string
+  action: 'ai_audit' | 'manual_approve' | 'manual_reject' | 'feedback'
+  action_label: string
+  result: string
+  created_at: string
+}
+
+export interface CronLog {
+  id: string
+  task_id: string
+  task_type: string
+  task_label: string
+  status: 'success' | 'failed' | 'running'
+  recipients: string
+  started_at: string
+  finished_at: string | null
+  message: string
+}
+
+export interface ArchiveLog {
+  id: string
+  process_id: string
+  title: string
+  operator: string
+  action: 're_audit' | 'export' | 'view'
+  action_label: string
+  compliance: string
+  created_at: string
+}
+
+export const mockAuditLogs: AuditLog[] = [
+  { id: 'AL-001', process_id: 'WF-2025-001', title: '办公设备采购申请', operator: '张明', action: 'ai_audit', action_label: 'AI 审核', result: '建议修改（72分）', created_at: '2025-06-10 09:35' },
+  { id: 'AL-002', process_id: 'WF-2025-002', title: '差旅费报销', operator: '李芳', action: 'ai_audit', action_label: 'AI 审核', result: '建议通过（88分）', created_at: '2025-06-10 10:20' },
+  { id: 'AL-003', process_id: 'WF-2025-003', title: '年度服务器租赁合同续签', operator: '王强', action: 'ai_audit', action_label: 'AI 审核', result: '建议驳回（45分）', created_at: '2025-06-10 11:10' },
+  { id: 'AL-004', process_id: 'WF-2025-098', title: '年度IT设备采购', operator: '王强', action: 'manual_approve', action_label: '手动通过', result: '已通过', created_at: '2025-06-09 17:00' },
+  { id: 'AL-005', process_id: 'WF-2025-097', title: '客户招待费报销', operator: '张华', action: 'manual_reject', action_label: '手动驳回', result: '已驳回', created_at: '2025-06-09 16:00' },
+  { id: 'AL-006', process_id: 'WF-2025-001', title: '办公设备采购申请', operator: '张明', action: 'feedback', action_label: '反馈', result: '采纳AI建议', created_at: '2025-06-10 10:00' },
+  { id: 'AL-007', process_id: 'WF-2025-004', title: '新员工入职审批', operator: '赵丽', action: 'ai_audit', action_label: 'AI 审核', result: '建议通过（91分）', created_at: '2025-06-10 14:30' },
+  { id: 'AL-008', process_id: 'WF-2025-005', title: '市场推广活动预算申请', operator: '陈伟', action: 'ai_audit', action_label: 'AI 审核', result: '建议修改（65分）', created_at: '2025-06-10 16:00' },
+]
+
+export const mockCronLogs: CronLog[] = [
+  { id: 'CL-001', task_id: 'CT-BUILTIN-001', task_type: 'batch_audit', task_label: '批量审核', status: 'success', recipients: 'zhangming@example.com', started_at: '2025-06-10 09:00', finished_at: '2025-06-10 09:05', message: '成功审核 12 条流程' },
+  { id: 'CL-002', task_id: 'CT-002', task_type: 'daily_report', task_label: '日报推送', status: 'success', recipients: 'zhangming@example.com', started_at: '2025-06-09 18:00', finished_at: '2025-06-09 18:02', message: '日报已推送' },
+  { id: 'CL-003', task_id: 'CT-003', task_type: 'weekly_report', task_label: '周报推送', status: 'success', recipients: 'all@example.com', started_at: '2025-06-09 10:00', finished_at: '2025-06-09 10:08', message: '周报已推送至 15 人' },
+  { id: 'CL-004', task_id: 'CT-BUILTIN-001', task_type: 'batch_audit', task_label: '批量审核', status: 'failed', recipients: 'zhangming@example.com', started_at: '2025-06-08 09:00', finished_at: '2025-06-08 09:01', message: 'AI 服务连接超时' },
+  { id: 'CL-005', task_id: 'CT-002', task_type: 'daily_report', task_label: '日报推送', status: 'success', recipients: 'zhangming@example.com', started_at: '2025-06-08 18:00', finished_at: '2025-06-08 18:03', message: '日报已推送' },
+  { id: 'CL-006', task_id: 'CT-004', task_type: 'batch_audit', task_label: '批量审核', status: 'success', recipients: 'admin@example.com', started_at: '2025-06-08 02:00', finished_at: '2025-06-08 02:10', message: '成功审核 8 条流程' },
+]
+
+export const mockArchiveLogs: ArchiveLog[] = [
+  { id: 'ARL-001', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', operator: '张华', action: 're_audit', action_label: '合规复核', compliance: '合规（92分）', created_at: '2025-06-10 10:30' },
+  { id: 'ARL-002', process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', operator: '陈伟', action: 'view', action_label: '查看', compliance: '-', created_at: '2025-06-10 09:15' },
+  { id: 'ARL-003', process_id: 'WF-2025-025', title: '外包开发合同签署', operator: '张华', action: 're_audit', action_label: '合规复核', compliance: '部分合规（78分）', created_at: '2025-06-09 15:00' },
+  { id: 'ARL-004', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', operator: '王强', action: 'export', action_label: '导出', compliance: '-', created_at: '2025-06-09 11:00' },
+  { id: 'ARL-005', process_id: 'WF-2025-012', title: '新员工批量入职审批', operator: '赵丽', action: 'view', action_label: '查看', compliance: '-', created_at: '2025-06-08 16:30' },
+]
 
 export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
   {
@@ -1120,5 +1272,11 @@ export const useMockData = () => {
     mockArchivedHistoricalResults,
     mockProcessAuditConfigs: [...mockProcessAuditConfigs],
     mockArchiveReviewConfigs: [...mockArchiveReviewConfigs],
+    mockDepartments: [...mockDepartments],
+    mockOrgRoles: [...mockOrgRoles],
+    mockOrgMembers: [...mockOrgMembers],
+    mockAuditLogs: [...mockAuditLogs],
+    mockCronLogs: [...mockCronLogs],
+    mockArchiveLogs: [...mockArchiveLogs],
   }
 }

@@ -891,9 +891,186 @@
 
 ---
 
-## 7. 系统管理模块（系统管理员）
+## 7. 组织人员模块（租户管理员）
 
-### 7.1 获取租户列表
+### 7.1 获取部门列表
+- **GET** `/api/tenant/departments`
+- **Headers**: `Authorization: Bearer {token}`
+- **响应**:
+  ```json
+  {
+    "departments": [
+      {
+        "id": "D-001",
+        "name": "研发部",
+        "parent_id": null,
+        "manager": "张明",
+        "member_count": 12
+      }
+    ]
+  }
+  ```
+
+### 7.2 创建/更新/删除部门
+- **POST** `/api/tenant/departments`
+- **PUT** `/api/tenant/departments/{dept_id}`
+- **DELETE** `/api/tenant/departments/{dept_id}`
+- **说明**: 删除部门前需确保部门下无成员
+
+### 7.3 获取角色列表
+- **GET** `/api/tenant/roles`
+- **Headers**: `Authorization: Bearer {token}`
+- **响应**:
+  ```json
+  {
+    "roles": [
+      {
+        "id": "ROLE-001",
+        "name": "业务用户",
+        "description": "普通业务人员",
+        "page_permissions": ["/dashboard", "/cron", "/settings"],
+        "is_system": true
+      }
+    ]
+  }
+  ```
+
+### 7.4 创建/更新/删除角色
+- **POST** `/api/tenant/roles`
+- **PUT** `/api/tenant/roles/{role_id}`
+- **DELETE** `/api/tenant/roles/{role_id}`
+- **说明**: 系统角色（`is_system: true`）不可删除；删除角色前需确保无成员使用该角色
+
+### 7.5 获取组织成员列表
+- **GET** `/api/tenant/members`
+- **Headers**: `Authorization: Bearer {token}`
+- **Query**: `?department_id=D-001&role_id=ROLE-001&search=keyword&page=1&size=20`
+- **响应**:
+  ```json
+  {
+    "members": [
+      {
+        "id": "M-001",
+        "name": "张明",
+        "username": "zhangming",
+        "department_id": "D-001",
+        "department_name": "研发部",
+        "role_id": "ROLE-001",
+        "role_name": "业务用户",
+        "email": "zhangming@example.com",
+        "phone": "138****8888",
+        "position": "高级工程师",
+        "status": "active | disabled",
+        "created_at": "2024-03-15"
+      }
+    ],
+    "total": 12,
+    "page": 1,
+    "size": 20
+  }
+  ```
+
+### 7.6 创建/更新/删除/切换成员状态
+- **POST** `/api/tenant/members`
+- **PUT** `/api/tenant/members/{member_id}`
+- **DELETE** `/api/tenant/members/{member_id}`
+- **PATCH** `/api/tenant/members/{member_id}/toggle`
+
+---
+
+## 8. 数据信息模块（租户管理员）
+
+### 8.1 获取审核操作日志
+- **GET** `/api/tenant/data/audit-logs`
+- **Headers**: `Authorization: Bearer {token}`
+- **Query**: `?action=ai_audit&search=keyword&page=1&size=20`
+- **响应**:
+  ```json
+  {
+    "logs": [
+      {
+        "id": "AL-001",
+        "process_id": "WF-2025-001",
+        "title": "办公设备采购申请",
+        "operator": "张明",
+        "action": "ai_audit | manual_approve | manual_reject | feedback",
+        "action_label": "AI 审核",
+        "result": "建议修改（72分）",
+        "created_at": "2025-06-10 09:35"
+      }
+    ],
+    "total": 100,
+    "page": 1,
+    "size": 20
+  }
+  ```
+
+### 8.2 获取定时任务执行日志
+- **GET** `/api/tenant/data/cron-logs`
+- **Headers**: `Authorization: Bearer {token}`
+- **Query**: `?status=success&search=keyword&page=1&size=20`
+- **响应**:
+  ```json
+  {
+    "logs": [
+      {
+        "id": "CL-001",
+        "task_id": "CT-BUILTIN-001",
+        "task_type": "batch_audit",
+        "task_label": "批量审核",
+        "status": "success | failed | running",
+        "recipients": "zhangming@example.com",
+        "started_at": "2025-06-10 09:00",
+        "finished_at": "2025-06-10 09:05",
+        "message": "成功审核 12 条流程"
+      }
+    ],
+    "total": 50,
+    "page": 1,
+    "size": 20
+  }
+  ```
+
+### 8.3 获取归档操作日志
+- **GET** `/api/tenant/data/archive-logs`
+- **Headers**: `Authorization: Bearer {token}`
+- **Query**: `?action=re_audit&search=keyword&page=1&size=20`
+- **响应**:
+  ```json
+  {
+    "logs": [
+      {
+        "id": "ARL-001",
+        "process_id": "WF-2025-050",
+        "title": "2025年度服务器集群采购",
+        "operator": "张华",
+        "action": "re_audit | export | view",
+        "action_label": "合规复核",
+        "compliance": "合规（92分）",
+        "created_at": "2025-06-10 10:30"
+      }
+    ],
+    "total": 30,
+    "page": 1,
+    "size": 20
+  }
+  ```
+
+### 8.4 删除日志记录
+- **DELETE** `/api/tenant/data/audit-logs/{log_id}`
+- **DELETE** `/api/tenant/data/cron-logs/{log_id}`
+- **DELETE** `/api/tenant/data/archive-logs/{log_id}`
+
+### 8.5 导出日志
+- **GET** `/api/tenant/data/export`
+- **Query**: `?type=audit|cron|archive&format=json|csv|excel`
+- **响应**: 文件下载流
+
+---
+
+## 9. 系统管理模块（系统管理员）
+
+### 9.1 获取租户列表
 - **GET** `/api/system/tenants`
 - **响应**:
   ```json
@@ -913,13 +1090,13 @@
   }
   ```
 
-### 7.2 创建租户
+### 9.2 创建租户
 - **POST** `/api/system/tenants`
 
-### 7.3 切换租户状态
+### 9.3 切换租户状态
 - **PATCH** `/api/system/tenants/{tenant_id}/toggle`
 
-### 7.4 获取全局监控指标
+### 9.4 获取全局监控指标
 - **GET** `/api/system/metrics`
 - **响应**:
   ```json
@@ -946,7 +1123,7 @@
   }
   ```
 
-### 7.5 获取 OA 集成状态
+### 9.5 获取 OA 集成状态
 - **GET** `/api/system/oa-status`
 - **响应**:
   ```json
@@ -962,9 +1139,9 @@
 
 ---
 
-## 8. 仪表盘统计
+## 10. 仪表盘统计
 
-### 8.1 获取工作台统计
+### 10.1 获取工作台统计
 - **GET** `/api/dashboard/stats`
 - **响应**:
   ```json
