@@ -66,7 +66,7 @@ export function getMockMenusByRole(role: UserRole): MockMenuItem[] {
     { key: 'archive', label: '归档复盘', path: '/archive' },
   ]
   const tenant: MockMenuItem[] = [
-    { key: 'tenant', label: '租户配置', path: '/admin/tenant' },
+    { key: 'tenant', label: '审核工作台配置', path: '/admin/tenant' },
   ]
   const sys: MockMenuItem[] = [
     { key: 'system', label: '系统管理', path: '/admin/system' },
@@ -223,6 +223,184 @@ export interface FieldAuditResult {
   reasoning: string
 }
 
+// ============================================================
+// Process-centric audit config types (审核工作台配置)
+// ============================================================
+export interface ProcessField {
+  field_key: string
+  field_name: string
+  field_type: 'text' | 'number' | 'date' | 'select' | 'textarea' | 'file'
+  selected: boolean
+}
+
+export interface ProcessAIConfig {
+  ai_provider: string
+  model_name: string
+  audit_strictness: 'strict' | 'standard' | 'loose'
+  system_prompt: string
+  context_window: number
+  temperature: number
+}
+
+export interface UserPermissions {
+  allow_custom_fields: boolean
+  allow_custom_rules: boolean
+  allow_modify_strictness: boolean
+  allow_modify_prompt: boolean
+}
+
+export interface ProcessAuditConfig {
+  id: string
+  process_type: string
+  flow_path: string
+  fields: ProcessField[]
+  field_mode: 'all' | 'selected'
+  rules: (AuditRule & { source: 'manual' | 'file_import' })[]
+  kb_mode: 'rules_only' | 'rag_only' | 'hybrid'
+  ai_config: ProcessAIConfig
+  user_permissions: UserPermissions
+}
+
+export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
+  {
+    id: 'PAC-001',
+    process_type: '采购审批',
+    flow_path: '部门经理 → 财务总监 → 总经理',
+    field_mode: 'selected',
+    fields: [
+      { field_key: 'amount', field_name: '采购金额', field_type: 'number', selected: true },
+      { field_key: 'supplier', field_name: '供应商名称', field_type: 'text', selected: true },
+      { field_key: 'category', field_name: '采购类别', field_type: 'select', selected: true },
+      { field_key: 'reason', field_name: '采购事由', field_type: 'textarea', selected: true },
+      { field_key: 'delivery_date', field_name: '交付日期', field_type: 'date', selected: false },
+      { field_key: 'contract_no', field_name: '合同编号', field_type: 'text', selected: false },
+      { field_key: 'attachment', field_name: '附件材料', field_type: 'file', selected: false },
+    ],
+    rules: [
+      { id: 'R001', process_type: '采购审批', rule_content: '单笔采购金额不得超过部门季度预算上限', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual' },
+      { id: 'R002', process_type: '采购审批', rule_content: '超过10万元需提供至少3家供应商比价', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'manual' },
+      { id: 'R013', process_type: '采购审批', rule_content: '供应商须在合格供应商名录中', rule_scope: 'default_on', priority: 85, enabled: true, source: 'file_import' },
+      { id: 'R014', process_type: '采购审批', rule_content: '合同条款须包含付款条件、交付时间、售后条款', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual' },
+    ],
+    kb_mode: 'rules_only',
+    ai_config: {
+      ai_provider: '本地部署',
+      model_name: 'Qwen2.5-72B',
+      audit_strictness: 'standard',
+      system_prompt: '你是一个专业的采购审核助手。请根据以下规则对采购申请进行合规性审核，逐条检查并给出判断理由。对于不合规项，请明确指出问题并给出修改建议。',
+      context_window: 8192,
+      temperature: 0.3,
+    },
+    user_permissions: {
+      allow_custom_fields: false,
+      allow_custom_rules: true,
+      allow_modify_strictness: true,
+      allow_modify_prompt: false,
+    },
+  },
+  {
+    id: 'PAC-002',
+    process_type: '费用报销',
+    flow_path: '部门经理 → 财务审核',
+    field_mode: 'selected',
+    fields: [
+      { field_key: 'amount', field_name: '报销金额', field_type: 'number', selected: true },
+      { field_key: 'expense_type', field_name: '费用类型', field_type: 'select', selected: true },
+      { field_key: 'invoice_count', field_name: '发票数量', field_type: 'number', selected: true },
+      { field_key: 'reason', field_name: '报销事由', field_type: 'textarea', selected: true },
+      { field_key: 'trip_date', field_name: '出差日期', field_type: 'date', selected: false },
+      { field_key: 'invoice_file', field_name: '发票附件', field_type: 'file', selected: false },
+    ],
+    rules: [
+      { id: 'R003', process_type: '费用报销', rule_content: '单次报销金额超过5000元需附发票原件', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual' },
+      { id: 'R006', process_type: '费用报销', rule_content: '差旅住宿标准不超过城市限额', rule_scope: 'default_off', priority: 60, enabled: false, source: 'manual' },
+      { id: 'R015', process_type: '费用报销', rule_content: '发票日期须在报销申请日期前90天内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'file_import' },
+    ],
+    kb_mode: 'rules_only',
+    ai_config: {
+      ai_provider: '本地部署',
+      model_name: 'Qwen2.5-72B',
+      audit_strictness: 'standard',
+      system_prompt: '你是一个专业的费用报销审核助手。请根据以下规则对报销申请进行合规性审核，重点关注金额合理性、发票合规性和审批材料完整性。',
+      context_window: 4096,
+      temperature: 0.2,
+    },
+    user_permissions: {
+      allow_custom_fields: true,
+      allow_custom_rules: true,
+      allow_modify_strictness: false,
+      allow_modify_prompt: false,
+    },
+  },
+  {
+    id: 'PAC-003',
+    process_type: '合同审批',
+    flow_path: '部门经理 → 法务审核 → 财务总监 → 总经理',
+    field_mode: 'all',
+    fields: [
+      { field_key: 'contract_amount', field_name: '合同金额', field_type: 'number', selected: true },
+      { field_key: 'vendor', field_name: '合作方', field_type: 'text', selected: true },
+      { field_key: 'contract_period', field_name: '合同期限', field_type: 'text', selected: true },
+      { field_key: 'contract_type', field_name: '合同类型', field_type: 'select', selected: true },
+      { field_key: 'deliverables', field_name: '交付物', field_type: 'textarea', selected: true },
+      { field_key: 'contract_file', field_name: '合同文件', field_type: 'file', selected: true },
+    ],
+    rules: [
+      { id: 'R004', process_type: '合同审批', rule_content: '合同金额超过50万需法务部会签', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual' },
+      { id: 'R016', process_type: '合同审批', rule_content: '合同须包含知识产权归属条款', rule_scope: 'default_on', priority: 85, enabled: true, source: 'manual' },
+      { id: 'R017', process_type: '合同审批', rule_content: '合作方须通过准入评审', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'file_import' },
+    ],
+    kb_mode: 'rules_only',
+    ai_config: {
+      ai_provider: '云端API',
+      model_name: 'GPT-4o',
+      audit_strictness: 'strict',
+      system_prompt: '你是一个专业的合同审核助手。请根据以下规则对合同进行全面审核，重点关注法律条款完整性、金额合理性和合作方资质。对于高风险条款请特别标注。',
+      context_window: 16384,
+      temperature: 0.1,
+    },
+    user_permissions: {
+      allow_custom_fields: false,
+      allow_custom_rules: false,
+      allow_modify_strictness: false,
+      allow_modify_prompt: false,
+    },
+  },
+  {
+    id: 'PAC-004',
+    process_type: '人事审批',
+    flow_path: 'HR经理 → 用人部门 → HR总监',
+    field_mode: 'selected',
+    fields: [
+      { field_key: 'position', field_name: '岗位名称', field_type: 'text', selected: true },
+      { field_key: 'headcount', field_name: '招聘人数', field_type: 'number', selected: true },
+      { field_key: 'department', field_name: '用人部门', field_type: 'text', selected: true },
+      { field_key: 'onboard_date', field_name: '入职日期', field_type: 'date', selected: true },
+      { field_key: 'salary_range', field_name: '薪资范围', field_type: 'text', selected: false },
+      { field_key: 'job_desc', field_name: '岗位职责', field_type: 'textarea', selected: false },
+    ],
+    rules: [
+      { id: 'R005', process_type: '人事审批', rule_content: '新增HC需部门负责人和HR总监双签', rule_scope: 'default_on', priority: 75, enabled: true, source: 'manual' },
+      { id: 'R018', process_type: '人事审批', rule_content: '招聘人数须在年度HC计划范围内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual' },
+    ],
+    kb_mode: 'rules_only',
+    ai_config: {
+      ai_provider: '本地部署',
+      model_name: 'Qwen2.5-32B',
+      audit_strictness: 'loose',
+      system_prompt: '你是一个专业的人事审批审核助手。请根据以下规则对人事申请进行审核，关注HC计划匹配度、审批链完整性和岗位合理性。',
+      context_window: 4096,
+      temperature: 0.3,
+    },
+    user_permissions: {
+      allow_custom_fields: true,
+      allow_custom_rules: true,
+      allow_modify_strictness: true,
+      allow_modify_prompt: true,
+    },
+  },
+]
+
 export const useMockData = () => {
   const mockProcesses: OAProcess[] = [
     {
@@ -330,14 +508,8 @@ export const useMockData = () => {
     { id: 'T-003', name: '测试租户', oa_type: 'weaver_e9', token_quota: 10000, token_used: 3100, max_concurrency: 5, status: 'inactive', created_at: '2025-03-10' },
   ]
 
-  const mockRules: AuditRule[] = [
-    { id: 'R001', process_type: '采购审批', rule_content: '单笔采购金额不得超过部门季度预算上限', rule_scope: 'mandatory', priority: 100, enabled: true },
-    { id: 'R002', process_type: '采购审批', rule_content: '超过10万元需提供至少3家供应商比价', rule_scope: 'mandatory', priority: 95, enabled: true },
-    { id: 'R003', process_type: '费用报销', rule_content: '单次报销金额超过5000元需附发票原件', rule_scope: 'default_on', priority: 80, enabled: true },
-    { id: 'R004', process_type: '合同审批', rule_content: '合同金额超过50万需法务部会签', rule_scope: 'mandatory', priority: 100, enabled: true },
-    { id: 'R005', process_type: '人事审批', rule_content: '新增HC需部门负责人和HR总监双签', rule_scope: 'default_on', priority: 75, enabled: true },
-    { id: 'R006', process_type: '费用报销', rule_content: '差旅住宿标准不超过城市限额', rule_scope: 'default_off', priority: 60, enabled: false },
-  ]
+  // Derive rules from process audit configs for backward compatibility
+  const mockRules: AuditRule[] = mockProcessAuditConfigs.flatMap(c => c.rules)
 
   const mockDashboardStats: DashboardStats = {
     todayAudits: 42,
@@ -646,5 +818,6 @@ export const useMockData = () => {
     mockArchivedOAProcesses,
     mockArchivedAuditChains,
     mockArchivedHistoricalResults,
+    mockProcessAuditConfigs: [...mockProcessAuditConfigs],
   }
 }
