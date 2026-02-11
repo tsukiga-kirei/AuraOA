@@ -120,6 +120,38 @@ export interface CronTask {
   created_at: string
   success_count: number
   fail_count: number
+  is_builtin?: boolean
+  push_email?: string
+}
+
+// ============================================================
+// Cron task configuration types (定时任务配置 - 租户管理)
+// ============================================================
+export interface CronTaskTypeConfig {
+  task_type: 'batch_audit' | 'daily_report' | 'weekly_report'
+  label: string
+  enabled: boolean
+  push_format: 'html' | 'markdown' | 'plain'
+  content_template: {
+    subject: string
+    header: string
+    body_template: string
+    footer: string
+    include_ai_summary: boolean
+    include_statistics: boolean
+    include_detail_list: boolean
+  }
+  ai_config: {
+    model_name: string
+    ai_provider: string
+    system_prompt: string
+  }
+  user_permissions: {
+    allow_modify_email: boolean
+    allow_modify_schedule: boolean
+    allow_modify_prompt: boolean
+    allow_modify_template: boolean
+  }
 }
 
 export interface AuditSnapshot {
@@ -482,10 +514,94 @@ export const useMockData = () => {
   }
 
   const mockCronTasks: CronTask[] = [
-    { id: 'CT-001', cron_expression: '0 9 * * 1-5', task_type: 'batch_audit', is_active: true, last_run_at: '2025-06-10 09:00', next_run_at: '2025-06-11 09:00', created_at: '2025-05-01', success_count: 28, fail_count: 1 },
-    { id: 'CT-002', cron_expression: '0 18 * * 1-5', task_type: 'daily_report', is_active: true, last_run_at: '2025-06-09 18:00', next_run_at: '2025-06-10 18:00', created_at: '2025-05-01', success_count: 30, fail_count: 0 },
-    { id: 'CT-003', cron_expression: '0 10 * * 1', task_type: 'weekly_report', is_active: true, last_run_at: '2025-06-09 10:00', next_run_at: '2025-06-16 10:00', created_at: '2025-05-15', success_count: 4, fail_count: 0 },
-    { id: 'CT-004', cron_expression: '0 2 * * *', task_type: 'batch_audit', is_active: false, last_run_at: '2025-06-08 02:00', next_run_at: '-', created_at: '2025-04-20', success_count: 15, fail_count: 3 },
+    { id: 'CT-BUILTIN-001', cron_expression: '0 9 * * 1-5', task_type: 'batch_audit', is_active: true, last_run_at: '2025-06-10 09:00', next_run_at: '2025-06-11 09:00', created_at: '2025-05-01', success_count: 28, fail_count: 1, is_builtin: true, push_email: 'zhangming@example.com' },
+    { id: 'CT-002', cron_expression: '0 18 * * 1-5', task_type: 'daily_report', is_active: true, last_run_at: '2025-06-09 18:00', next_run_at: '2025-06-10 18:00', created_at: '2025-05-01', success_count: 30, fail_count: 0, push_email: 'zhangming@example.com' },
+    { id: 'CT-003', cron_expression: '0 10 * * 1', task_type: 'weekly_report', is_active: true, last_run_at: '2025-06-09 10:00', next_run_at: '2025-06-16 10:00', created_at: '2025-05-15', success_count: 4, fail_count: 0, push_email: '' },
+    { id: 'CT-004', cron_expression: '0 2 * * *', task_type: 'batch_audit', is_active: false, last_run_at: '2025-06-08 02:00', next_run_at: '-', created_at: '2025-04-20', success_count: 15, fail_count: 3, push_email: '' },
+  ]
+
+  // ============================================================
+  // Cron task type configs (租户管理 - 定时任务配置)
+  // ============================================================
+  const mockCronTaskTypeConfigs: CronTaskTypeConfig[] = [
+    {
+      task_type: 'batch_audit',
+      label: '批量审核',
+      enabled: true,
+      push_format: 'html',
+      content_template: {
+        subject: '【OA智审】批量审核结果通知 - {{date}}',
+        header: '以下是今日批量审核的结果汇总：',
+        body_template: '共审核 {{total}} 条流程，通过 {{approved}} 条，驳回 {{rejected}} 条，建议修改 {{revised}} 条。',
+        footer: '如有疑问请联系管理员。此邮件由系统自动发送，请勿直接回复。',
+        include_ai_summary: true,
+        include_statistics: true,
+        include_detail_list: true,
+      },
+      ai_config: {
+        model_name: 'Qwen2.5-72B',
+        ai_provider: '本地部署',
+        system_prompt: '你是一个专业的批量审核助手。请对以下待审批流程逐一进行合规性审核，输出每条流程的审核结论和理由。',
+      },
+      user_permissions: {
+        allow_modify_email: true,
+        allow_modify_schedule: true,
+        allow_modify_prompt: false,
+        allow_modify_template: false,
+      },
+    },
+    {
+      task_type: 'daily_report',
+      label: '日报推送',
+      enabled: true,
+      push_format: 'html',
+      content_template: {
+        subject: '【OA智审】审核日报 - {{date}}',
+        header: '今日审核工作概览：',
+        body_template: '今日共处理 {{total}} 条审核，通过率 {{pass_rate}}%。重点关注事项如下：',
+        footer: '以上数据截至 {{time}}，详情请登录系统查看。',
+        include_ai_summary: true,
+        include_statistics: true,
+        include_detail_list: false,
+      },
+      ai_config: {
+        model_name: 'Qwen2.5-72B',
+        ai_provider: '本地部署',
+        system_prompt: '你是一个专业的审核日报生成助手。请根据今日审核数据生成简洁的日报摘要，包含审核总量、通过率、主要问题和建议。',
+      },
+      user_permissions: {
+        allow_modify_email: true,
+        allow_modify_schedule: false,
+        allow_modify_prompt: false,
+        allow_modify_template: false,
+      },
+    },
+    {
+      task_type: 'weekly_report',
+      label: '周报推送',
+      enabled: true,
+      push_format: 'markdown',
+      content_template: {
+        subject: '【OA智审】审核周报 - 第{{week}}周（{{date_range}}）',
+        header: '本周审核工作总结：',
+        body_template: '本周共处理 {{total}} 条审核，较上周{{trend}}。合规率 {{compliance_rate}}%，环比{{compliance_trend}}。',
+        footer: '报告生成时间：{{time}}。如需详细数据请导出归档记录。',
+        include_ai_summary: true,
+        include_statistics: true,
+        include_detail_list: true,
+      },
+      ai_config: {
+        model_name: 'GPT-4o',
+        ai_provider: '云端API',
+        system_prompt: '你是一个专业的审核周报生成助手。请根据本周审核数据生成详细的周报，包含趋势分析、异常流程汇总、合规率变化和改进建议。',
+      },
+      user_permissions: {
+        allow_modify_email: true,
+        allow_modify_schedule: true,
+        allow_modify_prompt: false,
+        allow_modify_template: true,
+      },
+    },
   ]
 
   const mockSnapshots: AuditSnapshot[] = [
@@ -804,6 +920,7 @@ export const useMockData = () => {
     mockHistoricalResults,
     mockAuditResult,
     mockCronTasks,
+    mockCronTaskTypeConfigs,
     mockSnapshots,
     mockTenants,
     mockRules,

@@ -169,11 +169,16 @@
         "next_run_at": "2025-06-11 09:00",
         "created_at": "2025-05-01",
         "success_count": 28,
-        "fail_count": 1
+        "fail_count": 1,
+        "is_builtin": false,
+        "push_email": "user@example.com"
       }
     ]
   }
   ```
+- **字段说明**:
+  - `is_builtin`（可选）: 是否为系统内置任务，内置任务不可删除
+  - `push_email`（可选）: 任务推送邮箱地址，为空时使用用户默认邮箱
 
 ### 3.2 创建任务
 - **POST** `/api/cron/tasks`
@@ -181,18 +186,86 @@
   ```json
   {
     "cron_expression": "0 9 * * 1-5",
-    "task_type": "batch_audit"
+    "task_type": "batch_audit",
+    "push_email": "user@example.com"
   }
   ```
+- **字段说明**: `push_email` 为可选字段
 
-### 3.3 删除任务
+### 3.3 更新任务
+- **PUT** `/api/cron/tasks/{task_id}`
+- **Headers**: `Authorization: Bearer {token}`
+- **请求体**:
+  ```json
+  {
+    "cron_expression": "0 9 * * 1-5",
+    "task_type": "batch_audit",
+    "push_email": "user@example.com"
+  }
+  ```
+- **说明**: 所有字段均为可选，仅提交需要修改的字段。内置任务（`is_builtin: true`）的 `task_type` 不可修改。
+
+### 3.4 删除任务
 - **DELETE** `/api/cron/tasks/{task_id}`
+- **说明**: 内置任务（`is_builtin: true`）不可删除，返回 403。
 
-### 3.4 切换任务状态
+### 3.5 切换任务状态
 - **PATCH** `/api/cron/tasks/{task_id}/toggle`
 
-### 3.5 立即执行任务
+### 3.6 立即执行任务
 - **POST** `/api/cron/tasks/{task_id}/execute`
+
+### 3.7 复制任务
+- **POST** `/api/cron/tasks/{task_id}/copy`
+- **Headers**: `Authorization: Bearer {token}`
+- **说明**: 基于已有任务创建副本，副本默认为暂停状态（`is_active: false`），`is_builtin` 强制为 `false`，统计计数归零。
+- **响应**: 同 3.1 中单个任务结构
+
+### 3.8 获取定时任务类型配置列表（租户管理）
+- **GET** `/api/tenant/cron-task-configs`
+- **Headers**: `Authorization: Bearer {token}`
+- **说明**: 返回当前租户下各定时任务类型的配置，包括推送格式、内容模板、AI 配置和用户权限控制。仅租户管理员可访问。
+- **响应**:
+  ```json
+  {
+    "configs": [
+      {
+        "task_type": "batch_audit | daily_report | weekly_report",
+        "label": "批量审核",
+        "enabled": true,
+        "push_format": "html | markdown | plain",
+        "content_template": {
+          "subject": "【OA智审】批量审核结果通知 - {{date}}",
+          "header": "以下是今日批量审核的结果汇总：",
+          "body_template": "共审核 {{total}} 条流程...",
+          "footer": "如有疑问请联系管理员。",
+          "include_ai_summary": true,
+          "include_statistics": true,
+          "include_detail_list": true
+        },
+        "ai_config": {
+          "model_name": "Qwen2.5-72B",
+          "ai_provider": "本地部署",
+          "system_prompt": "string"
+        },
+        "user_permissions": {
+          "allow_modify_email": true,
+          "allow_modify_schedule": true,
+          "allow_modify_prompt": false,
+          "allow_modify_template": false
+        }
+      }
+    ]
+  }
+  ```
+- **字段说明**:
+  - `content_template`: 推送内容模板配置，包含邮件主题、头部、正文模板、底部及内容模块开关
+  - `allow_modify_template`: 是否允许用户自定义推送内容模板
+
+### 3.9 更新定时任务类型配置（租户管理）
+- **PUT** `/api/tenant/cron-task-configs/{task_type}`
+- **Headers**: `Authorization: Bearer {token}`
+- **请求体**: 同 3.8 响应中单个配置对象结构
 
 ---
 
@@ -408,6 +481,87 @@
     "rule_toggle_overrides": [
       { "rule_id": "R003", "enabled": false }
     ]
+  }
+  ```
+
+### 5.5 获取用户定时任务配置
+- **GET** `/api/user/cron-config`
+- **Headers**: `Authorization: Bearer {token}`
+- **说明**: 返回用户可见的定时任务类型配置列表（复用租户 `CronTaskTypeConfig` 结构），以及用户的个性化设置（默认推送邮箱等）。用户可操作范围受各任务类型 `user_permissions` 控制。提示词内容仅在 `allow_modify_prompt` 为 `true` 时返回。内容模板仅在 `allow_modify_template` 为 `true` 时可编辑。
+- **响应**:
+  ```json
+  {
+    "default_push_email": "user@example.com",
+    "task_type_configs": [
+      {
+        "task_type": "batch_audit",
+        "label": "批量审核",
+        "enabled": true,
+        "push_format": "html",
+        "content_template": {
+          "subject": "【OA智审】批量审核结果通知 - {{date}}",
+          "header": "以下是今日批量审核的结果汇总：",
+          "body_template": "共审核 {{total}} 条流程...",
+          "footer": "如有疑问请联系管理员。",
+          "include_ai_summary": true,
+          "include_statistics": true,
+          "include_detail_list": true
+        },
+        "ai_config": {
+          "model_name": "Qwen2.5-72B",
+          "ai_provider": "本地部署",
+          "system_prompt": "string（仅 allow_modify_prompt 为 true 时返回）"
+        },
+        "user_permissions": {
+          "allow_modify_email": true,
+          "allow_modify_schedule": true,
+          "allow_modify_prompt": false,
+          "allow_modify_template": false
+        }
+      }
+    ],
+    "user_email_overrides": {
+      "daily_report": "custom-email@example.com"
+    },
+    "user_template_overrides": {
+      "weekly_report": {
+        "subject": "自定义主题",
+        "header": "自定义头部",
+        "body_template": "自定义正文",
+        "footer": "自定义底部",
+        "include_ai_summary": true,
+        "include_statistics": true,
+        "include_detail_list": false
+      }
+    }
+  }
+  ```
+- **字段说明**:
+  - `content_template`: 推送内容模板（始终返回，用于展示当前配置）
+  - `user_template_overrides`: 用户自定义的模板覆盖（仅 `allow_modify_template` 为 `true` 的任务类型可提交）
+
+### 5.6 更新用户定时任务配置
+- **PUT** `/api/user/cron-config`
+- **Headers**: `Authorization: Bearer {token}`
+- **说明**: 保存用户的定时任务个性化配置。可提交的字段受各任务类型 `user_permissions` 控制。`template_overrides` 仅在 `allow_modify_template` 为 `true` 时被后端接受。
+- **请求体**:
+  ```json
+  {
+    "default_push_email": "user@example.com",
+    "email_overrides": {
+      "daily_report": "custom-email@example.com"
+    },
+    "template_overrides": {
+      "weekly_report": {
+        "subject": "自定义主题",
+        "header": "自定义头部",
+        "body_template": "自定义正文",
+        "footer": "自定义底部",
+        "include_ai_summary": true,
+        "include_statistics": true,
+        "include_detail_list": false
+      }
+    }
   }
   ```
 

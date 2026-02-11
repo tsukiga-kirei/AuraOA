@@ -15,13 +15,55 @@ import {
   EyeOutlined,
   EyeInvisibleOutlined,
   ControlOutlined,
+  ClockCircleOutlined,
+  MailOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { ProcessAuditConfig, ProcessField, AuditRule } from '~/composables/useMockData'
+import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig } from '~/composables/useMockData'
 
 definePageMeta({ middleware: 'auth', layout: 'admin' })
 
-const { mockProcessAuditConfigs } = useMockData()
+const { mockProcessAuditConfigs, mockCronTaskTypeConfigs } = useMockData()
+
+// ===== Top-level tab: 审核工作台 vs 定时任务配置 =====
+const topTab = ref<'audit' | 'cron'>('audit')
+
+// ===== Cron task type configs =====
+const cronConfigs = ref<CronTaskTypeConfig[]>(JSON.parse(JSON.stringify(mockCronTaskTypeConfigs)))
+const selectedCronType = ref<string>(cronConfigs.value[0]?.task_type || '')
+
+const selectedCronConfig = computed(() =>
+  cronConfigs.value.find(c => c.task_type === selectedCronType.value)
+)
+
+const cronAiProviders = [
+  { value: '本地部署', label: '本地部署' },
+  { value: '云端API', label: '云端 API' },
+]
+
+const cronModelOptions: Record<string, string[]> = {
+  '本地部署': ['Qwen2.5-72B', 'Qwen2.5-32B', 'ChatGLM4-9B', 'DeepSeek-V3'],
+  '云端API': ['GPT-4o', 'GPT-4o-mini', 'Claude-3.5-Sonnet', 'Gemini-2.0-Flash'],
+}
+
+const pushFormatOptions = [
+  { value: 'html', label: 'HTML 邮件' },
+  { value: 'markdown', label: 'Markdown' },
+  { value: 'plain', label: '纯文本' },
+]
+
+const cronPermissionLabels: Record<string, { label: string; desc: string }> = {
+  allow_modify_email: { label: '修改推送邮箱', desc: '允许用户设置个人推送邮箱地址' },
+  allow_modify_schedule: { label: '修改执行计划', desc: '允许用户调整定时任务的 Cron 表达式' },
+  allow_modify_prompt: { label: '修改提示词', desc: '允许用户查看和修改 AI 提示词内容' },
+  allow_modify_template: { label: '修改内容模板', desc: '允许用户自定义推送内容的模板结构' },
+}
+
+const cronActiveTab = ref('template')
+
+const handleSaveCronConfig = () => {
+  message.success('定时任务配置已保存')
+}
 
 const processConfigs = ref<ProcessAuditConfig[]>(JSON.parse(JSON.stringify(mockProcessAuditConfigs)))
 const selectedProcessId = ref(processConfigs.value[0]?.id || '')
@@ -164,11 +206,28 @@ const handleSave = () => {
     <div class="page-header">
       <div>
         <h1 class="page-title">规则配置</h1>
-        <p class="page-subtitle">以流程为维度，配置字段、规则、AI 参数及用户权限</p>
+        <p class="page-subtitle">以流程为维度，配置审核规则与定时任务参数</p>
       </div>
     </div>
 
-    <div class="main-layout">
+    <!-- Top-level tab: 审核工作台 / 定时任务配置 -->
+    <div class="top-tab-nav">
+      <button
+        v-for="tab in [
+          { key: 'audit', label: '审核工作台' },
+          { key: 'cron', label: '定时任务配置' },
+        ]"
+        :key="tab.key"
+        class="top-tab-btn"
+        :class="{ 'top-tab-btn--active': topTab === tab.key }"
+        @click="topTab = tab.key as any"
+      >
+        {{ tab.label }}
+      </button>
+    </div>
+
+    <!-- ==================== 审核工作台配置 ==================== -->
+    <div v-if="topTab === 'audit'" class="main-layout">
       <!-- Left: process list -->
       <div class="process-nav">
         <div class="process-nav-header">
@@ -493,6 +552,212 @@ const handleSave = () => {
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- ==================== 定时任务配置 ==================== -->
+    <div v-if="topTab === 'cron'" class="main-layout">
+      <!-- Left: task type list -->
+      <div class="process-nav">
+        <div class="process-nav-header">
+          <ClockCircleOutlined />
+          <span>任务类型</span>
+        </div>
+        <div
+          v-for="cfg in cronConfigs"
+          :key="cfg.task_type"
+          class="process-nav-item"
+          :class="{ 'process-nav-item--active': selectedCronType === cfg.task_type }"
+          @click="selectedCronType = cfg.task_type"
+        >
+          <div class="process-nav-name">{{ cfg.label }}</div>
+          <div class="process-nav-path">
+            <span :class="cfg.enabled ? 'status-dot status-dot--active' : 'status-dot'" />
+            {{ cfg.enabled ? '已启用' : '已禁用' }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: cron config panel -->
+      <div v-if="selectedCronConfig" class="config-panel">
+        <div class="config-panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <h2 class="config-panel-title">{{ selectedCronConfig.label }}</h2>
+            <p class="config-panel-subtitle">配置该类型定时任务的内容模板、AI 参数及用户权限</p>
+          </div>
+          <a-switch
+            v-model:checked="selectedCronConfig.enabled"
+            :checked-children="'启用'"
+            :un-checked-children="'禁用'"
+          />
+        </div>
+
+        <!-- Sub tabs -->
+        <div class="tab-nav">
+          <button
+            v-for="tab in [
+              { key: 'template', label: '内容模板' },
+              { key: 'ai', label: 'AI 配置' },
+              { key: 'permissions', label: '用户权限' },
+            ]"
+            :key="tab.key"
+            class="tab-btn"
+            :class="{ 'tab-btn--active': cronActiveTab === tab.key }"
+            @click="cronActiveTab = tab.key"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
+
+        <!-- ========== Content template tab ========== -->
+        <div v-if="cronActiveTab === 'template'" class="tab-content">
+          <div class="section-header">
+            <div>
+              <h4 class="section-title">推送内容模板</h4>
+              <p class="section-desc">配置推送邮件/消息的内容结构，支持变量占位符（如 <code>{<!-- -->{date}}</code>、<code>{<!-- -->{total}}</code>）</p>
+            </div>
+          </div>
+
+          <!-- Push format -->
+          <div class="ai-form-group" style="margin-bottom: 20px;">
+            <label class="ai-form-label">内容格式</label>
+            <div class="push-format-options">
+              <div
+                v-for="fmt in pushFormatOptions"
+                :key="fmt.value"
+                class="push-format-option"
+                :class="{ 'push-format-option--active': selectedCronConfig.push_format === fmt.value }"
+                @click="selectedCronConfig.push_format = fmt.value as any"
+              >
+                <div class="push-format-radio" />
+                <span>{{ fmt.label }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ai-form">
+            <div class="ai-form-group">
+              <label class="ai-form-label">邮件主题</label>
+              <a-input v-model:value="selectedCronConfig.content_template.subject" size="large" placeholder="如：【OA智审】批量审核结果通知 - {{date}}" />
+            </div>
+            <div class="ai-form-group">
+              <label class="ai-form-label">头部内容</label>
+              <a-input v-model:value="selectedCronConfig.content_template.header" size="large" placeholder="邮件开头的引导文字" />
+            </div>
+            <div class="ai-form-group">
+              <label class="ai-form-label">正文模板</label>
+              <a-textarea
+                v-model:value="selectedCronConfig.content_template.body_template"
+                :rows="4"
+                placeholder="正文内容模板，支持变量占位符..."
+              />
+            </div>
+            <div class="ai-form-group">
+              <label class="ai-form-label">底部内容</label>
+              <a-input v-model:value="selectedCronConfig.content_template.footer" size="large" placeholder="邮件底部的附加说明" />
+            </div>
+          </div>
+
+          <!-- Content modules toggle -->
+          <div style="margin-top: 20px;">
+            <label class="ai-form-label" style="margin-bottom: 10px; display: block;">包含内容模块</label>
+            <div class="permissions-list">
+              <div class="permission-item">
+                <div class="permission-info">
+                  <div class="permission-label">AI 智能摘要</div>
+                  <div class="permission-desc">在推送内容中包含 AI 生成的分析摘要</div>
+                </div>
+                <a-switch v-model:checked="selectedCronConfig.content_template.include_ai_summary" :checked-children="'包含'" :un-checked-children="'不含'" />
+              </div>
+              <div class="permission-item">
+                <div class="permission-info">
+                  <div class="permission-label">统计数据</div>
+                  <div class="permission-desc">在推送内容中包含审核数量、通过率等统计信息</div>
+                </div>
+                <a-switch v-model:checked="selectedCronConfig.content_template.include_statistics" :checked-children="'包含'" :un-checked-children="'不含'" />
+              </div>
+              <div class="permission-item">
+                <div class="permission-info">
+                  <div class="permission-label">明细列表</div>
+                  <div class="permission-desc">在推送内容中包含每条流程的审核明细</div>
+                </div>
+                <a-switch v-model:checked="selectedCronConfig.content_template.include_detail_list" :checked-children="'包含'" :un-checked-children="'不含'" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== AI config tab ========== -->
+        <div v-if="cronActiveTab === 'ai'" class="tab-content">
+          <div class="section-header">
+            <div>
+              <h4 class="section-title">AI 审核配置</h4>
+              <p class="section-desc">配置该任务类型使用的 AI 模型和提示词</p>
+            </div>
+          </div>
+          <div class="ai-form">
+            <div class="ai-form-row">
+              <div class="ai-form-group">
+                <label class="ai-form-label">AI 服务商</label>
+                <a-select v-model:value="selectedCronConfig.ai_config.ai_provider" style="width: 100%;" size="large">
+                  <a-select-option v-for="p in cronAiProviders" :key="p.value" :value="p.value">{{ p.label }}</a-select-option>
+                </a-select>
+              </div>
+              <div class="ai-form-group">
+                <label class="ai-form-label">模型</label>
+                <a-select v-model:value="selectedCronConfig.ai_config.model_name" style="width: 100%;" size="large">
+                  <a-select-option
+                    v-for="m in (cronModelOptions[selectedCronConfig.ai_config.ai_provider] || [])"
+                    :key="m" :value="m"
+                  >{{ m }}</a-select-option>
+                </a-select>
+              </div>
+            </div>
+            <div class="ai-form-group">
+              <label class="ai-form-label">系统提示词（System Prompt）</label>
+              <a-textarea
+                v-model:value="selectedCronConfig.ai_config.system_prompt"
+                :rows="5"
+                placeholder="输入该任务类型的 AI 提示词..."
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== Permissions tab ========== -->
+        <div v-if="cronActiveTab === 'permissions'" class="tab-content">
+          <div class="section-header">
+            <div>
+              <h4 class="section-title">用户自定义权限</h4>
+              <p class="section-desc">控制业务用户在个人设置中可以自定义的定时任务配置范围</p>
+            </div>
+          </div>
+          <div class="permissions-list">
+            <div
+              v-for="(perm, key) in cronPermissionLabels"
+              :key="key"
+              class="permission-item"
+            >
+              <div class="permission-info">
+                <div class="permission-label">{{ perm.label }}</div>
+                <div class="permission-desc">{{ perm.desc }}</div>
+              </div>
+              <a-switch
+                v-model:checked="(selectedCronConfig.user_permissions as any)[key]"
+                :checked-children="'允许'"
+                :un-checked-children="'禁止'"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="config-actions">
+          <a-button type="primary" size="large" @click="handleSaveCronConfig">保存配置</a-button>
+        </div>
+      </div>
+
+      <div v-else class="config-empty">
+        <a-empty description="请选择左侧任务类型查看配置" />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -500,6 +765,19 @@ const handleSave = () => {
 .page-header { margin-bottom: 24px; }
 .page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; }
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
+
+/* Top-level tabs */
+.top-tab-nav {
+  display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
+  border-radius: var(--radius-lg); margin-bottom: 24px; width: fit-content;
+}
+.top-tab-btn {
+  padding: 8px 24px; border: none; background: transparent; border-radius: var(--radius-md);
+  font-size: 14px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.top-tab-btn:hover { color: var(--color-text-primary); }
+.top-tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
 
 /* Main layout */
 .main-layout { display: grid; grid-template-columns: 240px 1fr; gap: 20px; align-items: start; }
@@ -715,5 +993,30 @@ const handleSave = () => {
   .strictness-options { flex-direction: column; }
   .tab-nav { width: 100%; overflow-x: auto; }
   .tab-btn { flex-shrink: 0; }
+  .push-format-options { flex-direction: column; }
 }
+
+/* Cron config sections */
+.cron-config-section { margin-bottom: 24px; }
+
+.status-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--color-text-tertiary); margin-right: 4px;
+}
+.status-dot--active { background: var(--color-success); }
+
+.push-format-options { display: flex; gap: 10px; }
+.push-format-option {
+  display: flex; align-items: center; gap: 10px; padding: 10px 16px; flex: 1;
+  border: 2px solid var(--color-border-light); border-radius: var(--radius-md);
+  cursor: pointer; transition: all var(--transition-fast);
+  font-size: 13px; font-weight: 500; color: var(--color-text-primary);
+}
+.push-format-option:hover { border-color: var(--color-primary-lighter); }
+.push-format-option--active { border-color: var(--color-primary); background: var(--color-primary-bg); }
+.push-format-radio {
+  width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--color-border);
+  flex-shrink: 0; transition: all var(--transition-fast);
+}
+.push-format-option--active .push-format-radio { border-color: var(--color-primary); border-width: 5px; }
 </style>
