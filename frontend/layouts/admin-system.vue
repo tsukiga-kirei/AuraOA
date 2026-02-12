@@ -78,7 +78,7 @@ watch(route, () => {
     >
       <div class="sidebar-logo" @click="navigateTo('/admin/system')">
         <div class="sidebar-logo-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
         </div>
         <transition name="fade">
           <span v-if="!collapsed" class="sidebar-logo-text">系统管理</span>
@@ -193,9 +193,9 @@ watch(route, () => {
   border-bottom: 1px solid var(--color-sidebar-border);
 }
 .sidebar-logo-icon {
-  width: 36px; height: 36px; background: linear-gradient(135deg, #6366f1, #818cf8);
+  width: 36px; height: 36px; background: var(--color-bg-hover);
   border-radius: 10px; display: flex; align-items: center; justify-content: center;
-  color: #fff; font-size: 18px; flex-shrink: 0;
+  color: var(--color-primary); font-size: 18px; flex-shrink: 0;
 }
 .sidebar-logo-text {
   font-size: 18px; font-weight: 700; color: var(--color-sidebar-logo-text);
@@ -265,7 +265,7 @@ watch(route, () => {
   cursor: pointer; transition: background var(--transition-fast); margin-left: 4px;
 }
 .header-user:hover { background: var(--color-bg-hover); }
-.header-avatar { background: linear-gradient(135deg, #6366f1, #818cf8) !important; }
+.header-avatar { background: var(--color-primary) !important; }
 .header-username { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
 
 .admin-content { flex: 1; padding: var(--space-page); max-width: 1400px; width: 100%; margin: 0 auto; }
