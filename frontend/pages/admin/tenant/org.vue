@@ -107,8 +107,9 @@ const allPages = [
   { path: '/admin/tenant', label: '规则配置' },
   { path: '/admin/tenant/org', label: '组织人员' },
   { path: '/admin/tenant/data', label: '数据信息' },
-  { path: '/admin/system', label: '系统管理' },
-  { path: '/admin/monitor', label: '全局监控' },
+  { path: '/admin/system', label: '全局监控' },
+  { path: '/admin/system/tenants', label: '租户管理' },
+  { path: '/admin/system/settings', label: '系统设置' },
 ]
 
 const openAddRole = () => {

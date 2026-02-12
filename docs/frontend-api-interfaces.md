@@ -1070,6 +1070,8 @@
 
 ## 9. 系统管理模块（系统管理员）
 
+> 系统管理模块包含三大功能：**租户管理**（含 JDBC 连接、AI 模型配置、配额策略）、**全局监控**、**系统设置**（OA 系统管理、AI 模型管理、平台配置）。
+
 ### 9.1 获取租户列表
 - **GET** `/api/system/tenants`
 - **响应**:
@@ -1079,12 +1081,43 @@
       {
         "id": "T-001",
         "name": "示例集团总部",
+        "code": "DEMO_HQ",
         "oa_type": "weaver_e9",
         "token_quota": 100000,
         "token_used": 42350,
         "max_concurrency": 20,
         "status": "active | inactive",
-        "created_at": "2025-01-15"
+        "created_at": "2025-01-15",
+        "contact_name": "张明",
+        "contact_email": "zhangming@demo-group.com",
+        "contact_phone": "138****8888",
+        "description": "示例集团总部",
+        "jdbc_config": {
+          "driver": "mysql | postgresql | oracle | sqlserver",
+          "host": "192.168.1.100",
+          "port": 3306,
+          "database": "ecology",
+          "username": "oa_reader",
+          "password": "********（前端展示脱敏）",
+          "pool_size": 20,
+          "connection_timeout": 30,
+          "test_on_borrow": true
+        },
+        "ai_config": {
+          "default_provider": "本地部署",
+          "default_model": "Qwen2.5-72B",
+          "fallback_provider": "云端API",
+          "fallback_model": "GPT-4o",
+          "max_tokens_per_request": 8192,
+          "temperature": 0.3,
+          "timeout_seconds": 60,
+          "retry_count": 3
+        },
+        "log_retention_days": 365,
+        "data_retention_days": 1095,
+        "allow_custom_model": true,
+        "sso_enabled": true,
+        "sso_endpoint": "https://sso.demo-group.com/oauth2"
       }
     ]
   }
@@ -1092,11 +1125,27 @@
 
 ### 9.2 创建租户
 - **POST** `/api/system/tenants`
+- **请求体**: 同 9.1 中单个租户结构（不含 `id`、`token_used`、`created_at`）
 
-### 9.3 切换租户状态
+### 9.3 更新租户配置
+- **PUT** `/api/system/tenants/{tenant_id}`
+- **请求体**: 同 9.1 中单个租户结构
+
+### 9.4 切换租户状态
 - **PATCH** `/api/system/tenants/{tenant_id}/toggle`
 
-### 9.4 获取全局监控指标
+### 9.5 测试租户数据库连接
+- **POST** `/api/system/tenants/{tenant_id}/test-jdbc`
+- **响应**:
+  ```json
+  {
+    "success": true,
+    "message": "连接成功",
+    "latency_ms": 45
+  }
+  ```
+
+### 9.6 获取全局监控指标
 - **GET** `/api/system/metrics`
 - **响应**:
   ```json
@@ -1123,21 +1172,93 @@
   }
   ```
 
-### 9.5 获取 OA 集成状态
-- **GET** `/api/system/oa-status`
+### 9.7 获取 OA 系统配置列表
+- **GET** `/api/system/oa-configs`
 - **响应**:
   ```json
   {
-    "connected": true,
-    "oa_type": "weaver_e9",
-    "connection_method": "JDBC",
-    "sync_interval_seconds": 30,
-    "last_sync_at": "2025-06-10 15:30:22",
-    "version": "E9 v10.x"
+    "oa_systems": [
+      {
+        "id": "OA-001",
+        "name": "泛微 E9",
+        "type": "weaver_e9 | weaver_ebridge | zhiyuan_a8 | landray_ekp | custom",
+        "type_label": "泛微 Ecology E9",
+        "version": "v10.x",
+        "status": "connected | disconnected | testing",
+        "description": "说明文本",
+        "adapter_version": "2.1.0",
+        "last_sync": "2026-02-12 15:30:22",
+        "sync_interval": 30,
+        "enabled": true
+      }
+    ]
   }
   ```
 
+### 9.8 切换 OA 系统启用状态
+- **PATCH** `/api/system/oa-configs/{oa_id}/toggle`
+
+### 9.9 测试 OA 系统连接
+- **POST** `/api/system/oa-configs/{oa_id}/test`
+
+### 9.10 获取 AI 模型配置列表
+- **GET** `/api/system/ai-models`
+- **响应**:
+  ```json
+  {
+    "models": [
+      {
+        "id": "AI-001",
+        "provider": "本地部署",
+        "model_name": "Qwen2.5-72B",
+        "display_name": "Qwen2.5-72B（本地）",
+        "type": "local | cloud",
+        "endpoint": "http://192.168.1.50:8000/v1",
+        "api_key_configured": false,
+        "max_tokens": 8192,
+        "context_window": 131072,
+        "cost_per_1k_tokens": 0,
+        "status": "online | offline | maintenance",
+        "enabled": true,
+        "description": "模型说明",
+        "capabilities": ["text", "code", "reasoning", "analysis"]
+      }
+    ]
+  }
+  ```
+
+### 9.11 切换 AI 模型启用状态
+- **PATCH** `/api/system/ai-models/{model_id}/toggle`
+
+### 9.12 获取系统平台配置
+- **GET** `/api/system/general-config`
+- **响应**:
+  ```json
+  {
+    "platform_name": "OA流程智能审核平台",
+    "platform_version": "v1.2.0",
+    "default_language": "zh-CN",
+    "session_timeout": 120,
+    "max_upload_size": 50,
+    "enable_audit_trail": true,
+    "enable_data_encryption": true,
+    "backup_enabled": true,
+    "backup_cron": "0 2 * * *",
+    "backup_retention_days": 30,
+    "notification_email": "admin@oa-smart-audit.com",
+    "smtp_host": "smtp.example.com",
+    "smtp_port": 465,
+    "smtp_username": "noreply@oa-smart-audit.com",
+    "smtp_ssl": true
+  }
+  ```
+
+### 9.13 更新系统平台配置
+- **PUT** `/api/system/general-config`
+- **请求体**: 同 9.12 响应结构
+
 ---
+
 
 ## 10. 仪表盘统计
 

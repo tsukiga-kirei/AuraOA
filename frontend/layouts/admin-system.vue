@@ -40,10 +40,20 @@ const checkMobile = () => {
 const selectedKeys = computed(() => [route.path])
 
 const systemMenuItems = [
-  { key: '/admin/system', icon: TeamOutlined, label: '租户管理' },
-  { key: '/admin/monitor', icon: MonitorOutlined, label: '全局监控' },
+  { key: '/admin/system', icon: MonitorOutlined, label: '全局监控' },
+  { key: '/admin/system/tenants', icon: TeamOutlined, label: '租户管理' },
   { key: '/admin/system/settings', icon: SettingOutlined, label: '系统设置' },
 ]
+
+// Match menu item as active: exact match or prefix match for nested routes
+const isMenuActive = (itemKey: string) => {
+  const path = route.path
+  if (itemKey === '/admin/system') {
+    // 全局监控 only matches exact /admin/system
+    return path === '/admin/system'
+  }
+  return path.startsWith(itemKey)
+}
 
 const displayName = computed(() => currentUser.value?.display_name || '系统管理员')
 
@@ -82,14 +92,14 @@ watch(route, () => {
             v-for="item in systemMenuItems"
             :key="item.key"
             class="sidebar-item"
-            :class="{ 'sidebar-item--active': selectedKeys.includes(item.key) }"
+            :class="{ 'sidebar-item--active': isMenuActive(item.key) }"
             @click="handleMenuClick(item.key)"
           >
             <component :is="item.icon" class="sidebar-item-icon" />
             <transition name="fade">
               <span v-if="!collapsed" class="sidebar-item-label">{{ item.label }}</span>
             </transition>
-            <div v-if="selectedKeys.includes(item.key)" class="sidebar-item-indicator" />
+            <div v-if="isMenuActive(item.key)" class="sidebar-item-indicator" />
           </div>
         </div>
       </nav>

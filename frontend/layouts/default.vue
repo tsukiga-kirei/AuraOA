@@ -125,14 +125,14 @@ watch(route, () => {
           <div
             v-if="showSystemAdmin"
             class="sidebar-item"
-            :class="{ 'sidebar-item--active': route.path === '/admin/system' || route.path === '/admin/monitor' }"
+            :class="{ 'sidebar-item--active': route.path.startsWith('/admin/system') }"
             @click="handleMenuClick('/admin/system')"
           >
             <ControlOutlined class="sidebar-item-icon" />
             <transition name="fade">
               <span v-if="!collapsed" class="sidebar-item-label">系统管理</span>
             </transition>
-            <div v-if="route.path === '/admin/system' || route.path === '/admin/monitor'" class="sidebar-item-indicator" />
+            <div v-if="route.path.startsWith('/admin/system')" class="sidebar-item-indicator" />
           </div>
         </div>
       </nav>

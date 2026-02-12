@@ -48,7 +48,7 @@ export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
   '/admin/tenant/org': ['tenant_admin', 'system_admin'],
   '/admin/tenant/data': ['tenant_admin', 'system_admin'],
   '/admin/system': ['system_admin'],
-  '/admin/monitor': ['system_admin'],
+  '/admin/system/tenants': ['system_admin'],
   '/admin/system/settings': ['system_admin'],
 }
 
@@ -68,8 +68,9 @@ export function getMockMenusByRole(role: UserRole): MockMenuItem[] {
     { key: 'tenant', label: '规则配置', path: '/admin/tenant' },
   ]
   const sys: MockMenuItem[] = [
-    { key: 'system', label: '系统管理', path: '/admin/system' },
-    { key: 'monitor', label: '全局监控', path: '/admin/monitor' },
+    { key: 'monitor', label: '全局监控', path: '/admin/system' },
+    { key: 'tenants', label: '租户管理', path: '/admin/system/tenants' },
+    { key: 'settings', label: '系统设置', path: '/admin/system/settings' },
   ]
   if (role === 'system_admin') return [...base, ...tenant, ...sys]
   if (role === 'tenant_admin') return [...base, ...tenant]
@@ -165,16 +166,104 @@ export interface AuditSnapshot {
   adopted: boolean | null
 }
 
+export interface TenantJdbcConfig {
+  driver: 'mysql' | 'postgresql' | 'oracle' | 'sqlserver'
+  host: string
+  port: number
+  database: string
+  username: string
+  password: string
+  pool_size: number
+  connection_timeout: number  // seconds
+  test_on_borrow: boolean
+}
+
+export interface TenantAIConfig {
+  default_provider: string
+  default_model: string
+  fallback_provider: string
+  fallback_model: string
+  max_tokens_per_request: number
+  temperature: number
+  timeout_seconds: number
+  retry_count: number
+}
+
 export interface TenantInfo {
   id: string
   name: string
+  code: string                // tenant code for identification
   oa_type: string
   token_quota: number
   token_used: number
   max_concurrency: number
   status: 'active' | 'inactive'
   created_at: string
+  contact_name: string
+  contact_email: string
+  contact_phone: string
+  description: string
+  jdbc_config: TenantJdbcConfig
+  ai_config: TenantAIConfig
+  log_retention_days: number  // how many days to keep logs
+  data_retention_days: number // how many days to keep audit data
+  allow_custom_model: boolean // whether tenant users can override AI model
+  sso_enabled: boolean
+  sso_endpoint: string
 }
+
+// ============================================================
+// System Settings types (系统设置)
+// ============================================================
+export interface OASystemConfig {
+  id: string
+  name: string
+  type: 'weaver_e9' | 'weaver_ebridge' | 'zhiyuan_a8' | 'landray_ekp' | 'custom'
+  type_label: string
+  version: string
+  status: 'connected' | 'disconnected' | 'testing'
+  description: string
+  adapter_version: string
+  last_sync: string
+  sync_interval: number  // seconds
+  enabled: boolean
+}
+
+export interface AIModelConfig {
+  id: string
+  provider: string
+  model_name: string
+  display_name: string
+  type: 'local' | 'cloud'
+  endpoint: string
+  api_key_configured: boolean
+  max_tokens: number
+  context_window: number
+  cost_per_1k_tokens: number  // cost in RMB
+  status: 'online' | 'offline' | 'maintenance'
+  enabled: boolean
+  description: string
+  capabilities: string[]  // e.g. ['text', 'code', 'reasoning']
+}
+
+export interface SystemGeneralConfig {
+  platform_name: string
+  platform_version: string
+  default_language: string
+  session_timeout: number  // minutes
+  max_upload_size: number  // MB
+  enable_audit_trail: boolean
+  enable_data_encryption: boolean
+  backup_enabled: boolean
+  backup_cron: string
+  backup_retention_days: number
+  notification_email: string
+  smtp_host: string
+  smtp_port: number
+  smtp_username: string
+  smtp_ssl: boolean
+}
+
 
 export interface AuditRule {
   id: string
@@ -391,7 +480,7 @@ export const mockOrgRoles: OrgRole[] = [
   },
   {
     id: 'ROLE-004', name: '系统管理员', description: '拥有所有权限，包括系统管理和全局监控',
-    page_permissions: ['/dashboard', '/cron', '/archive', '/settings', '/admin/tenant', '/admin/tenant/org', '/admin/tenant/data', '/admin/system', '/admin/monitor'],
+    page_permissions: ['/dashboard', '/cron', '/archive', '/settings', '/admin/tenant', '/admin/tenant/org', '/admin/tenant/data', '/admin/system', '/admin/system/tenants', '/admin/system/settings'],
     is_system: true,
   },
   {
@@ -954,10 +1043,150 @@ export const useMockData = () => {
   ]
 
   const mockTenants: TenantInfo[] = [
-    { id: 'T-001', name: '示例集团总部', oa_type: 'weaver_e9', token_quota: 100000, token_used: 42350, max_concurrency: 20, status: 'active', created_at: '2025-01-15' },
-    { id: 'T-002', name: '华东分公司', oa_type: 'weaver_e9', token_quota: 50000, token_used: 18200, max_concurrency: 10, status: 'active', created_at: '2025-02-20' },
-    { id: 'T-003', name: '测试租户', oa_type: 'weaver_e9', token_quota: 10000, token_used: 3100, max_concurrency: 5, status: 'inactive', created_at: '2025-03-10' },
+    {
+      id: 'T-001', name: '示例集团总部', code: 'DEMO_HQ', oa_type: 'weaver_e9',
+      token_quota: 100000, token_used: 42350, max_concurrency: 20, status: 'active', created_at: '2025-01-15',
+      contact_name: '张明', contact_email: 'zhangming@demo-group.com', contact_phone: '138****8888',
+      description: '示例集团总部，使用泛微E9 OA系统，主要用于采购、合同、报销等流程审核',
+      jdbc_config: {
+        driver: 'mysql', host: '192.168.1.100', port: 3306, database: 'ecology',
+        username: 'oa_reader', password: '********', pool_size: 20,
+        connection_timeout: 30, test_on_borrow: true,
+      },
+      ai_config: {
+        default_provider: '本地部署', default_model: 'Qwen2.5-72B',
+        fallback_provider: '云端API', fallback_model: 'GPT-4o',
+        max_tokens_per_request: 8192, temperature: 0.3, timeout_seconds: 60, retry_count: 3,
+      },
+      log_retention_days: 365, data_retention_days: 1095,
+      allow_custom_model: true, sso_enabled: true, sso_endpoint: 'https://sso.demo-group.com/oauth2',
+    },
+    {
+      id: 'T-002', name: '华东分公司', code: 'EAST_BRANCH', oa_type: 'weaver_e9',
+      token_quota: 50000, token_used: 18200, max_concurrency: 10, status: 'active', created_at: '2025-02-20',
+      contact_name: '李芳', contact_email: 'lifang@demo-east.com', contact_phone: '139****6666',
+      description: '华东区域分公司，与总部共享OA基础配置，独立Token配额',
+      jdbc_config: {
+        driver: 'mysql', host: '192.168.2.100', port: 3306, database: 'ecology_east',
+        username: 'oa_reader', password: '********', pool_size: 10,
+        connection_timeout: 30, test_on_borrow: true,
+      },
+      ai_config: {
+        default_provider: '本地部署', default_model: 'Qwen2.5-72B',
+        fallback_provider: '', fallback_model: '',
+        max_tokens_per_request: 4096, temperature: 0.3, timeout_seconds: 45, retry_count: 2,
+      },
+      log_retention_days: 180, data_retention_days: 730,
+      allow_custom_model: false, sso_enabled: false, sso_endpoint: '',
+    },
+    {
+      id: 'T-003', name: '测试租户', code: 'TEST_TENANT', oa_type: 'weaver_e9',
+      token_quota: 10000, token_used: 3100, max_concurrency: 5, status: 'inactive', created_at: '2025-03-10',
+      contact_name: '系统管理员', contact_email: 'admin@test.com', contact_phone: '130****7777',
+      description: '用于系统测试和演示的租户环境',
+      jdbc_config: {
+        driver: 'postgresql', host: 'localhost', port: 5432, database: 'ecology_test',
+        username: 'test_reader', password: '********', pool_size: 5,
+        connection_timeout: 15, test_on_borrow: false,
+      },
+      ai_config: {
+        default_provider: '本地部署', default_model: 'Qwen2.5-32B',
+        fallback_provider: '', fallback_model: '',
+        max_tokens_per_request: 2048, temperature: 0.5, timeout_seconds: 30, retry_count: 1,
+      },
+      log_retention_days: 30, data_retention_days: 90,
+      allow_custom_model: true, sso_enabled: false, sso_endpoint: '',
+    },
   ]
+
+  // ============================================================
+  // System Settings mock data (系统设置)
+  // ============================================================
+  const mockOASystemConfigs: OASystemConfig[] = [
+    {
+      id: 'OA-001', name: '泛微 E9', type: 'weaver_e9', type_label: '泛微 Ecology E9',
+      version: 'v10.x', status: 'connected', description: '泛微协同办公平台 E9 版本，支持 JDBC 直连和 REST API 两种数据获取方式',
+      adapter_version: '2.1.0', last_sync: '2026-02-12 15:30:22', sync_interval: 30, enabled: true,
+    },
+    {
+      id: 'OA-002', name: '泛微 E-Bridge', type: 'weaver_ebridge', type_label: '泛微 E-Bridge',
+      version: 'v3.x', status: 'disconnected', description: '泛微 E-Bridge 集成平台，通过标准 API 接口对接',
+      adapter_version: '1.0.0', last_sync: '', sync_interval: 60, enabled: false,
+    },
+    {
+      id: 'OA-003', name: '致远 A8+', type: 'zhiyuan_a8', type_label: '致远互联 A8+',
+      version: 'v8.1', status: 'disconnected', description: '致远互联 A8+ 协同管理平台，支持 REST API 接入',
+      adapter_version: '1.0.0-beta', last_sync: '', sync_interval: 60, enabled: false,
+    },
+    {
+      id: 'OA-004', name: '蓝凌 EKP', type: 'landray_ekp', type_label: '蓝凌 EKP',
+      version: 'v16.x', status: 'disconnected', description: '蓝凌数智化工作平台 EKP，支持多种数据集成方式',
+      adapter_version: '0.9.0-alpha', last_sync: '', sync_interval: 120, enabled: false,
+    },
+  ]
+
+  const mockAIModelConfigs: AIModelConfig[] = [
+    {
+      id: 'AI-001', provider: '本地部署', model_name: 'Qwen2.5-72B', display_name: 'Qwen2.5-72B（本地）',
+      type: 'local', endpoint: 'http://192.168.1.50:8000/v1', api_key_configured: false,
+      max_tokens: 8192, context_window: 131072, cost_per_1k_tokens: 0,
+      status: 'online', enabled: true,
+      description: '通义千问2.5 72B 参数大模型，本地私有部署，数据不出域',
+      capabilities: ['text', 'code', 'reasoning', 'analysis'],
+    },
+    {
+      id: 'AI-002', provider: '本地部署', model_name: 'Qwen2.5-32B', display_name: 'Qwen2.5-32B（本地）',
+      type: 'local', endpoint: 'http://192.168.1.50:8000/v1', api_key_configured: false,
+      max_tokens: 4096, context_window: 65536, cost_per_1k_tokens: 0,
+      status: 'online', enabled: true,
+      description: '通义千问2.5 32B 参数大模型，适合轻量级审核任务',
+      capabilities: ['text', 'code', 'reasoning'],
+    },
+    {
+      id: 'AI-003', provider: '云端API', model_name: 'GPT-4o', display_name: 'GPT-4o（OpenAI）',
+      type: 'cloud', endpoint: 'https://api.openai.com/v1', api_key_configured: true,
+      max_tokens: 16384, context_window: 128000, cost_per_1k_tokens: 0.15,
+      status: 'online', enabled: true,
+      description: 'OpenAI GPT-4o 多模态大模型，适合复杂合同和法务审核',
+      capabilities: ['text', 'code', 'reasoning', 'vision', 'analysis'],
+    },
+    {
+      id: 'AI-004', provider: '云端API', model_name: 'Claude-3.5-Sonnet', display_name: 'Claude-3.5-Sonnet（Anthropic）',
+      type: 'cloud', endpoint: 'https://api.anthropic.com/v1', api_key_configured: true,
+      max_tokens: 8192, context_window: 200000, cost_per_1k_tokens: 0.18,
+      status: 'online', enabled: false,
+      description: 'Anthropic Claude-3.5 Sonnet，超长上下文支持，适合大文档分析',
+      capabilities: ['text', 'code', 'reasoning', 'analysis'],
+    },
+    {
+      id: 'AI-005', provider: '本地部署', model_name: 'DeepSeek-V3', display_name: 'DeepSeek-V3（本地）',
+      type: 'local', endpoint: 'http://192.168.1.51:8000/v1', api_key_configured: false,
+      max_tokens: 8192, context_window: 65536, cost_per_1k_tokens: 0,
+      status: 'maintenance', enabled: false,
+      description: 'DeepSeek V3 大模型，擅长代码和推理任务',
+      capabilities: ['text', 'code', 'reasoning'],
+    },
+  ]
+
+  const mockSystemGeneralConfig: SystemGeneralConfig = {
+    platform_name: 'OA流程智能审核平台',
+    platform_version: 'v1.2.0',
+    default_language: 'zh-CN',
+    session_timeout: 120,
+    max_upload_size: 50,
+    enable_audit_trail: true,
+    enable_data_encryption: true,
+    backup_enabled: true,
+    backup_cron: '0 2 * * *',
+    backup_retention_days: 30,
+    notification_email: 'admin@oa-smart-audit.com',
+    smtp_host: 'smtp.example.com',
+    smtp_port: 465,
+    smtp_username: 'noreply@oa-smart-audit.com',
+    smtp_ssl: true,
+  }
+
+
 
   // Derive rules from process audit configs for backward compatibility
   const mockRules: AuditRule[] = mockProcessAuditConfigs.flatMap(c => c.rules)
@@ -1278,5 +1507,8 @@ export const useMockData = () => {
     mockAuditLogs: [...mockAuditLogs],
     mockCronLogs: [...mockCronLogs],
     mockArchiveLogs: [...mockArchiveLogs],
+    mockOASystemConfigs: [...mockOASystemConfigs],
+    mockAIModelConfigs: [...mockAIModelConfigs],
+    mockSystemGeneralConfig: { ...mockSystemGeneralConfig },
   }
 }

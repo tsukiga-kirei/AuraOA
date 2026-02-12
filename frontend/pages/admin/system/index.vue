@@ -9,8 +9,6 @@ import {
   AlertOutlined,
 } from '@ant-design/icons-vue'
 
-definePageMeta({ middleware: 'auth', layout: 'admin-system' })
-
 const { mockDashboardStats } = useMockData()
 
 const metrics = ref({
