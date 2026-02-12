@@ -13,6 +13,14 @@ import {
   ClockCircleOutlined,
   SafetyCertificateOutlined,
   NodeIndexOutlined,
+  DashboardOutlined,
+  FolderOpenOutlined,
+  AppstoreOutlined,
+  FileTextOutlined,
+  RobotOutlined,
+  ControlOutlined,
+  SendOutlined,
+  AuditOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig } from '~/composables/useMockData'
@@ -272,16 +280,17 @@ const toggleArchiveField = (field: ProcessField) => {
     <div class="tab-nav">
       <button
         v-for="tab in [
-          { key: 'profile', label: '基本信息' },
-          { key: 'workbench', label: '审核工作台' },
-          { key: 'cron', label: '定时任务' },
-          { key: 'archive', label: '归档复盘' },
+          { key: 'profile', label: '基本信息', icon: UserOutlined },
+          { key: 'workbench', label: '审核工作台', icon: DashboardOutlined },
+          { key: 'cron', label: '定时任务', icon: ClockCircleOutlined },
+          { key: 'archive', label: '归档复盘', icon: FolderOpenOutlined },
         ]"
         :key="tab.key"
         class="tab-btn"
         :class="{ 'tab-btn--active': activeTab === tab.key }"
         @click="activeTab = tab.key"
       >
+        <component :is="tab.icon" />
         {{ tab.label }}
       </button>
     </div>
@@ -399,15 +408,16 @@ const toggleArchiveField = (field: ProcessField) => {
           <div class="section-nav">
             <button
               v-for="sec in [
-                { key: 'fields', label: '审核字段' },
-                { key: 'rules', label: '审核规则' },
-                { key: 'ai', label: '审核尺度' },
+                { key: 'fields', label: '审核字段', icon: AppstoreOutlined },
+                { key: 'rules', label: '审核规则', icon: NodeIndexOutlined },
+                { key: 'ai', label: '审核尺度', icon: ControlOutlined },
               ]"
               :key="sec.key"
               class="section-nav-btn"
               :class="{ 'section-nav-btn--active': workbenchSection === sec.key }"
               @click="workbenchSection = sec.key"
             >
+              <component :is="sec.icon" />
               {{ sec.label }}
             </button>
           </div>
@@ -610,15 +620,16 @@ const toggleArchiveField = (field: ProcessField) => {
           <div class="section-nav">
             <button
               v-for="sec in [
-                { key: 'push', label: '推送设置' },
-                { key: 'template', label: '内容模板' },
-                { key: 'ai', label: 'AI 配置' },
+                { key: 'push', label: '推送设置', icon: SendOutlined },
+                { key: 'template', label: '内容模板', icon: FileTextOutlined },
+                { key: 'ai', label: 'AI 配置', icon: RobotOutlined },
               ]"
               :key="sec.key"
               class="section-nav-btn"
               :class="{ 'section-nav-btn--active': cronSection === sec.key }"
               @click="cronSection = sec.key"
             >
+              <component :is="sec.icon" />
               {{ sec.label }}
             </button>
           </div>
@@ -801,16 +812,17 @@ const toggleArchiveField = (field: ProcessField) => {
           <div class="section-nav">
             <button
               v-for="sec in [
-                { key: 'fields', label: '复核字段' },
-                { key: 'rules', label: '复核规则' },
-                { key: 'flow_rules', label: '审批流规则' },
-                { key: 'ai', label: '复核尺度' },
+                { key: 'fields', label: '复核字段', icon: AppstoreOutlined },
+                { key: 'rules', label: '复核规则', icon: AuditOutlined },
+                { key: 'flow_rules', label: '审批流规则', icon: NodeIndexOutlined },
+                { key: 'ai', label: '复核尺度', icon: ControlOutlined },
               ]"
               :key="sec.key"
               class="section-nav-btn"
               :class="{ 'section-nav-btn--active': archiveSection === sec.key }"
               @click="archiveSection = sec.key"
             >
+              <component :is="sec.icon" />
               {{ sec.label }}
             </button>
           </div>
@@ -1050,6 +1062,7 @@ const toggleArchiveField = (field: ProcessField) => {
   border-radius: var(--radius-lg); margin-bottom: 24px; width: fit-content;
 }
 .tab-btn {
+  display: flex; align-items: center; gap: 6px;
   padding: 8px 20px; border: none; background: transparent; border-radius: var(--radius-md);
   font-size: 14px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer;
   transition: all var(--transition-fast);
@@ -1114,6 +1127,7 @@ const toggleArchiveField = (field: ProcessField) => {
   border-radius: var(--radius-md); margin-bottom: 20px; width: fit-content;
 }
 .section-nav-btn {
+  display: flex; align-items: center; gap: 5px;
   padding: 6px 16px; border: none; background: transparent; border-radius: var(--radius-sm);
   font-size: 13px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer;
   transition: all var(--transition-fast);

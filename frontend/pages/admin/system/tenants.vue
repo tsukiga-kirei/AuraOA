@@ -387,8 +387,8 @@ const onDriverChange = (driver: string) => {
         <div v-if="detailActiveTab === 'jdbc'" class="detail-section">
           <div class="section-header">
             <h3><DatabaseOutlined /> 数据库连接配置</h3>
-            <a-button type="primary" ghost :loading="testingConnection" @click="testConnection">
-              <SyncOutlined /> 测试连接
+            <a-button type="primary" ghost :disabled="testingConnection" @click="testConnection">
+              <SyncOutlined :spin="testingConnection" /> {{ testingConnection ? '测试中...' : '测试连接' }}
             </a-button>
           </div>
           <div class="jdbc-hint">

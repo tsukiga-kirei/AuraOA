@@ -198,14 +198,12 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               un-checked-children="停用"
             />
             <a-button
-              type="primary"
-              ghost
               size="small"
-              :loading="sys.status === 'testing'"
-              :disabled="!sys.enabled"
+              :disabled="!sys.enabled || sys.status === 'testing'"
               @click="testOAConnection(sys.id)"
+              class="test-conn-btn"
             >
-              <SyncOutlined /> 测试连接
+              <SyncOutlined :spin="sys.status === 'testing'" /> {{ sys.status === 'testing' ? '测试中...' : '测试连接' }}
             </a-button>
           </div>
         </div>
@@ -678,6 +676,23 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
   align-items: center;
   padding-top: 14px;
   border-top: 1px solid var(--color-border-light);
+}
+
+.test-conn-btn {
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+  font-weight: 500;
+}
+
+.test-conn-btn:hover:not(:disabled) {
+  background: var(--color-primary) !important;
+  color: #fff !important;
+  border-color: var(--color-primary) !important;
+}
+
+.test-conn-btn:disabled {
+  border-color: var(--color-border) !important;
+  color: var(--color-text-tertiary) !important;
 }
 
 /* AI Grid */

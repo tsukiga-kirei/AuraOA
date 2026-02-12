@@ -68,7 +68,7 @@ watch(route, () => {
     >
       <div class="sidebar-logo" @click="navigateTo('/admin/tenant')">
         <div class="sidebar-logo-icon">
-          <SettingOutlined />
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         </div>
         <transition name="fade">
           <span v-if="!collapsed" class="sidebar-logo-text">租户管理</span>
@@ -136,8 +136,8 @@ watch(route, () => {
 
         <div class="admin-header-right">
           <button class="header-action" @click="toggleTheme" :title="isDark ? '切换亮色' : '切换暗色'">
-            <span v-if="isDark" style="font-size: 18px;">🌙</span>
-            <span v-else style="font-size: 18px;">☀️</span>
+            <svg v-if="isDark" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
           </button>
           <a-badge :count="0" :offset="[-4, 4]">
             <button class="header-action"><BellOutlined /></button>
@@ -183,7 +183,7 @@ watch(route, () => {
   border-bottom: 1px solid var(--color-sidebar-border);
 }
 .sidebar-logo-icon {
-  width: 36px; height: 36px; background: linear-gradient(135deg, #f59e0b, #ef4444);
+  width: 36px; height: 36px; background: linear-gradient(135deg, #d97706, #f59e0b);
   border-radius: 10px; display: flex; align-items: center; justify-content: center;
   color: #fff; font-size: 18px; flex-shrink: 0;
 }
@@ -255,7 +255,7 @@ watch(route, () => {
   cursor: pointer; transition: background var(--transition-fast); margin-left: 4px;
 }
 .header-user:hover { background: var(--color-bg-hover); }
-.header-avatar { background: linear-gradient(135deg, #f59e0b, #ef4444) !important; }
+.header-avatar { background: linear-gradient(135deg, #d97706, #f59e0b) !important; }
 .header-username { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
 
 .admin-content { flex: 1; padding: var(--space-page); max-width: 1400px; width: 100%; margin: 0 auto; }

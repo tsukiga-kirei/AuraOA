@@ -17,6 +17,12 @@ import {
   ControlOutlined,
   ClockCircleOutlined,
   MailOutlined,
+  DashboardOutlined,
+  FolderOpenOutlined,
+  AppstoreOutlined,
+  AuditOutlined,
+  SafetyCertificateOutlined,
+  TeamOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig, FlowRuleConfig } from '~/composables/useMockData'
@@ -316,15 +322,16 @@ const handleSave = () => {
     <div class="top-tab-nav">
       <button
         v-for="tab in [
-          { key: 'audit', label: '审核工作台' },
-          { key: 'cron', label: '定时任务配置' },
-          { key: 'archive', label: '归档复盘' },
+          { key: 'audit', label: '审核工作台', icon: DashboardOutlined },
+          { key: 'cron', label: '定时任务配置', icon: ClockCircleOutlined },
+          { key: 'archive', label: '归档复盘', icon: FolderOpenOutlined },
         ]"
         :key="tab.key"
         class="top-tab-btn"
         :class="{ 'top-tab-btn--active': topTab === tab.key }"
         @click="topTab = tab.key as any"
       >
+        <component :is="tab.icon" />
         {{ tab.label }}
       </button>
     </div>
@@ -363,16 +370,17 @@ const handleSave = () => {
         <div class="tab-nav">
           <button
             v-for="tab in [
-              { key: 'fields', label: '字段配置' },
-              { key: 'rules', label: '审核规则' },
-              { key: 'ai', label: 'AI 配置' },
-              { key: 'permissions', label: '用户权限' },
+              { key: 'fields', label: '字段配置', icon: AppstoreOutlined },
+              { key: 'rules', label: '审核规则', icon: AuditOutlined },
+              { key: 'ai', label: 'AI 配置', icon: RobotOutlined },
+              { key: 'permissions', label: '用户权限', icon: SafetyCertificateOutlined },
             ]"
             :key="tab.key"
             class="tab-btn"
             :class="{ 'tab-btn--active': activeTab === tab.key }"
             @click="activeTab = tab.key"
           >
+            <component :is="tab.icon" />
             {{ tab.label }}
           </button>
         </div>
@@ -697,15 +705,16 @@ const handleSave = () => {
         <div class="tab-nav">
           <button
             v-for="tab in [
-              { key: 'template', label: '内容模板' },
-              { key: 'ai', label: 'AI 配置' },
-              { key: 'permissions', label: '用户权限' },
+              { key: 'template', label: '内容模板', icon: MailOutlined },
+              { key: 'ai', label: 'AI 配置', icon: RobotOutlined },
+              { key: 'permissions', label: '用户权限', icon: SafetyCertificateOutlined },
             ]"
             :key="tab.key"
             class="tab-btn"
             :class="{ 'tab-btn--active': cronActiveTab === tab.key }"
             @click="cronActiveTab = tab.key"
           >
+            <component :is="tab.icon" />
             {{ tab.label }}
           </button>
         </div>
@@ -893,17 +902,18 @@ const handleSave = () => {
         <div class="tab-nav">
           <button
             v-for="tab in [
-              { key: 'fields', label: '字段配置' },
-              { key: 'rules', label: '审核规则' },
-              { key: 'flow_rules', label: '审批流规则' },
-              { key: 'ai', label: 'AI 配置' },
-              { key: 'permissions', label: '用户权限' },
+              { key: 'fields', label: '字段配置', icon: AppstoreOutlined },
+              { key: 'rules', label: '审核规则', icon: AuditOutlined },
+              { key: 'flow_rules', label: '审批流规则', icon: ControlOutlined },
+              { key: 'ai', label: 'AI 配置', icon: RobotOutlined },
+              { key: 'permissions', label: '用户权限', icon: SafetyCertificateOutlined },
             ]"
             :key="tab.key"
             class="tab-btn"
             :class="{ 'tab-btn--active': archiveActiveTab === tab.key }"
             @click="archiveActiveTab = tab.key"
           >
+            <component :is="tab.icon" />
             {{ tab.label }}
           </button>
         </div>
@@ -1259,6 +1269,7 @@ const handleSave = () => {
   border-radius: var(--radius-lg); margin-bottom: 24px; width: fit-content;
 }
 .top-tab-btn {
+  display: flex; align-items: center; gap: 6px;
   padding: 8px 24px; border: none; background: transparent; border-radius: var(--radius-md);
   font-size: 14px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer;
   transition: all var(--transition-fast);
@@ -1315,6 +1326,7 @@ const handleSave = () => {
   border-radius: var(--radius-lg); margin-bottom: 24px; width: fit-content;
 }
 .tab-btn {
+  display: flex; align-items: center; gap: 6px;
   padding: 8px 20px; border: none; background: transparent; border-radius: var(--radius-md);
   font-size: 14px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer;
   transition: all var(--transition-fast);
