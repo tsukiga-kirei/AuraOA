@@ -32,11 +32,15 @@ definePageMeta({
   layout: false,
 })
 
+const { sourceLayout, restoreSourceLayout } = useLayoutPrefs()
+
+onMounted(() => {
+  restoreSourceLayout()
+})
+
 const settingsLayout = computed(() => {
-  if (!import.meta.client) return 'default'
-  const src = localStorage.getItem('settings_source_layout')
-  if (src === 'admin-system') return 'admin-system'
-  if (src === 'admin') return 'admin'
+  if (sourceLayout.value === 'admin') return 'admin'
+  if (sourceLayout.value === 'admin-system') return 'admin-system'
   return 'default'
 })
 

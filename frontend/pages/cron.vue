@@ -412,10 +412,10 @@ const taskTypeOptions = [
     >
       <a-form layout="vertical" style="margin-top: 16px;">
         <a-form-item label="任务类型">
-          <a-select v-model:value="newTask.task_type" :options="taskTypeOptions" size="large" />
+          <a-select v-model:value="newTask.task_type" :options="taskTypeOptions" size="large" placeholder="选择任务类型" />
         </a-form-item>
         <a-form-item label="执行计划">
-          <a-select v-model:value="newTask.cron_mode" size="large" style="width: 100%;">
+          <a-select v-model:value="newTask.cron_mode" size="large" style="width: 100%;" placeholder="选择或自定义执行时间">
             <a-select-option v-for="p in cronPresets" :key="p.value" :value="p.value">
               {{ p.label }}
               <span v-if="p.value !== 'custom'" style="color: var(--color-text-tertiary); margin-left: 8px; font-family: monospace; font-size: 12px;">{{ p.value }}</span>
@@ -485,10 +485,10 @@ const taskTypeOptions = [
     >
       <a-form v-if="editingTask" layout="vertical" style="margin-top: 16px;">
         <a-form-item label="任务类型">
-          <a-select v-model:value="editingTask.task_type" :options="taskTypeOptions" size="large" />
+          <a-select v-model:value="editingTask.task_type" :options="taskTypeOptions" size="large" placeholder="选择任务类型" />
         </a-form-item>
         <a-form-item label="执行计划">
-          <a-select v-model:value="editCronMode" size="large" style="width: 100%;">
+          <a-select v-model:value="editCronMode" size="large" style="width: 100%;" placeholder="选择或自定义执行时间">
             <a-select-option v-for="p in cronPresets" :key="p.value" :value="p.value">
               {{ p.label }}
               <span v-if="p.value !== 'custom'" style="color: var(--color-text-tertiary); margin-left: 8px; font-family: monospace; font-size: 12px;">{{ p.value }}</span>
