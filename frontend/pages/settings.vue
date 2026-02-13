@@ -1062,14 +1062,15 @@ const toggleArchiveField = (field: ProcessField) => {
 
 /* Tabs */
 .tab-nav {
-  display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
+  display: flex; flex-direction: row; flex-wrap: nowrap; gap: 4px;
+  background: var(--color-bg-hover); padding: 4px;
   border-radius: var(--radius-lg); margin-bottom: 24px; width: fit-content;
 }
 .tab-btn {
-  display: flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
   padding: 8px 20px; border: none; background: transparent; border-radius: var(--radius-md);
   font-size: 14px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-fast); flex-shrink: 0;
 }
 .tab-btn:hover { color: var(--color-text-primary); }
 .tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
@@ -1127,14 +1128,15 @@ const toggleArchiveField = (field: ProcessField) => {
 
 /* Section nav */
 .section-nav {
-  display: flex; gap: 4px; background: var(--color-bg-hover); padding: 3px;
+  display: flex; flex-direction: row; flex-wrap: nowrap; gap: 4px;
+  background: var(--color-bg-hover); padding: 3px;
   border-radius: var(--radius-md); margin-bottom: 20px; width: fit-content;
 }
 .section-nav-btn {
-  display: flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
   padding: 6px 16px; border: none; background: transparent; border-radius: var(--radius-sm);
   font-size: 13px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-fast); flex-shrink: 0;
 }
 .section-nav-btn:hover { color: var(--color-text-primary); }
 .section-nav-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
@@ -1230,6 +1232,40 @@ const toggleArchiveField = (field: ProcessField) => {
   .form-row { grid-template-columns: 1fr; }
   .workbench-layout { grid-template-columns: 1fr; }
   .field-grid { grid-template-columns: 1fr 1fr; }
+  .tab-nav {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+  }
+  .tab-nav::-webkit-scrollbar { display: none; }
+  .tab-btn { flex-shrink: 0; padding: 8px 14px; font-size: 13px; }
+  .section-nav {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+  }
+  .section-nav::-webkit-scrollbar { display: none; }
+  .section-nav-btn { flex-shrink: 0; white-space: nowrap; }
+  .settings-card { padding: 16px; }
+  .process-config-panel { padding: 16px; }
+  .strictness-options { gap: 6px; }
+  .strictness-option { padding: 10px 12px; }
+  .add-rule-row { flex-direction: column; }
+  .add-rule-row .ant-btn { width: 100%; }
+  .rule-config-item { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+  .perm-info-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .perm-pages-section { flex-direction: column; gap: 8px; }
+}
+@media (max-width: 480px) {
+  .page-title { font-size: 20px; }
+  .tab-btn { padding: 6px 10px; font-size: 12px; gap: 4px; }
+  .field-grid { grid-template-columns: 1fr; }
+  .profile-avatar-section { flex-direction: column; text-align: center; }
+  .settings-card { padding: 14px; }
 }
 
 /* Permission card in profile */

@@ -88,6 +88,63 @@
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 }
 
+/* ===== Theme Transition ===== */
+/* Smooth color transitions when switching themes */
+html[data-theme] {
+  transition: background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html[data-theme] body,
+html[data-theme] .app-layout,
+html[data-theme] .sidebar,
+html[data-theme] .app-header,
+html[data-theme] .app-content {
+  transition: background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Cards, panels, and containers */
+html[data-theme] .ant-card,
+html[data-theme] .ant-modal-content,
+html[data-theme] .ant-drawer-content,
+html[data-theme] [class*="panel"],
+html[data-theme] [class*="card"],
+html[data-theme] [class*="settings-card"] {
+  transition: background-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Text elements */
+html[data-theme] h1, html[data-theme] h2, html[data-theme] h3,
+html[data-theme] h4, html[data-theme] p, html[data-theme] span,
+html[data-theme] label, html[data-theme] a {
+  transition: color 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Interactive elements — keep their own fast transitions, just add color */
+html[data-theme] .ant-btn,
+html[data-theme] .ant-switch,
+html[data-theme] input,
+html[data-theme] textarea,
+html[data-theme] select {
+  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.15s ease,
+              opacity 0.15s ease;
+}
+
+/* SVG icons */
+html[data-theme] svg {
+  transition: fill 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              stroke 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* Dark Theme */
 [data-theme="dark"] {
   --color-bg-page: #0f172a;

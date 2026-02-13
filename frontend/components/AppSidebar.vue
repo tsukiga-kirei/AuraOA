@@ -46,6 +46,19 @@ const handleMenuClick = (path: string) => {
       <transition name="fade">
         <span v-if="!collapsed" class="sidebar-logo-text">OA智审</span>
       </transition>
+      <!-- Mobile close button -->
+      <button
+        v-if="mobileMenuOpen"
+        class="sidebar-close-btn"
+        @click.stop="emit('update:mobileMenuOpen', false)"
+        aria-label="关闭菜单"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
     </div>
 
     <!-- Navigation sections driven purely by permissions -->
@@ -121,7 +134,7 @@ const handleMenuClick = (path: string) => {
   display: flex; flex-direction: column;
   position: fixed; top: 0; left: 0; bottom: 0;
   z-index: 100;
-  transition: width var(--transition-slow);
+  transition: width var(--transition-slow), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
   overflow: hidden;
 }
 .sidebar--collapsed { width: var(--sidebar-collapsed-width); }
@@ -144,6 +157,23 @@ const handleMenuClick = (path: string) => {
   font-size: 18px; font-weight: 700;
   color: var(--color-sidebar-logo-text);
   white-space: nowrap; letter-spacing: -0.02em;
+}
+
+.sidebar-close-btn {
+  display: none;
+  width: 32px; height: 32px;
+  border: none; background: var(--color-bg-hover);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  align-items: center; justify-content: center;
+  color: var(--color-text-secondary);
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+.sidebar-close-btn:hover {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
 }
 
 .sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; overflow-x: hidden; }
@@ -221,8 +251,51 @@ const handleMenuClick = (path: string) => {
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 @media (max-width: 768px) {
-  .sidebar { transform: translateX(-100%); width: var(--sidebar-width); }
-  .sidebar--mobile-open { transform: translateX(0); }
-  .sidebar--collapsed { width: var(--sidebar-width); }
+  .sidebar {
+    transform: translateX(-100%);
+    width: 280px;
+    box-shadow: none;
+  }
+  .sidebar--mobile-open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
+  }
+  /* On mobile, always show full sidebar (not collapsed) */
+  .sidebar--collapsed {
+    width: 280px;
+  }
+  .sidebar--collapsed .sidebar-logo-text,
+  .sidebar--collapsed .sidebar-item-label,
+  .sidebar--collapsed .sidebar-item-badge,
+  .sidebar--collapsed .sidebar-section-title,
+  .sidebar--collapsed .sidebar-user-info {
+    display: block !important;
+    opacity: 1 !important;
+  }
+  .sidebar--collapsed .sidebar-item {
+    padding: 0 16px;
+    gap: 12px;
+  }
+  .sidebar--collapsed .sidebar-item--active {
+    box-shadow: none;
+    background: var(--color-bg-sidebar-active);
+  }
+  .sidebar--collapsed .sidebar-item--active .sidebar-item-icon {
+    transform: none;
+  }
+  .sidebar--collapsed .sidebar-user-profile {
+    justify-content: flex-start;
+    padding: 8px 12px;
+  }
+  .sidebar--collapsed .sidebar-user-profile .sidebar-user-info {
+    display: flex !important;
+  }
+  .sidebar--collapsed .sidebar-logo {
+    padding: 0 20px;
+    gap: 12px;
+  }
+  .sidebar-close-btn {
+    display: flex;
+  }
 }
 </style>

@@ -443,6 +443,235 @@ body {
     --space-page: 16px;
     --space-card: 16px;
   }
+
+  /* Improve touch targets on mobile */
+  .ant-btn {
+    min-height: 40px !important;
+    padding: 6px 16px !important;
+  }
+
+  .ant-input,
+  .ant-input-affix-wrapper,
+  .ant-select-selector,
+  .ant-picker {
+    min-height: 40px !important;
+  }
+
+  /* Better table scrolling on mobile */
+  .ant-table-wrapper {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Stack form rows on mobile */
+  .form-row {
+    flex-direction: column !important;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --space-page: 12px;
+    --space-card: 12px;
+  }
+
+  body {
+    font-size: 13px;
+  }
+}
+
+/* ===== Pagination Styles ===== */
+.pagination-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px 20px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.pagination-wrapper .ant-pagination {
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+}
+
+/* Modern pill-shaped pagination items */
+.ant-pagination-item {
+  border-radius: var(--radius-full) !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  line-height: 32px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease !important;
+}
+
+.ant-pagination-item a {
+  color: var(--color-text-secondary) !important;
+  font-size: 13px !important;
+}
+
+.ant-pagination-item:hover {
+  background: var(--color-bg-hover) !important;
+}
+
+.ant-pagination-item:hover a {
+  color: var(--color-primary) !important;
+}
+
+.ant-pagination-item-active {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3) !important;
+}
+
+.ant-pagination-item-active a {
+  color: #fff !important;
+}
+
+.ant-pagination-item-active:hover {
+  background: var(--color-primary-light) !important;
+}
+
+.ant-pagination-item-active:hover a {
+  color: #fff !important;
+}
+
+/* Prev/Next buttons */
+.ant-pagination-prev .ant-pagination-item-link,
+.ant-pagination-next .ant-pagination-item-link {
+  border-radius: var(--radius-full) !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--color-text-secondary) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  transition: all 0.2s ease !important;
+}
+
+.ant-pagination-prev:hover .ant-pagination-item-link,
+.ant-pagination-next:hover .ant-pagination-item-link {
+  background: var(--color-bg-hover) !important;
+  color: var(--color-primary) !important;
+}
+
+.ant-pagination-disabled .ant-pagination-item-link {
+  color: var(--color-text-tertiary) !important;
+  opacity: 0.5 !important;
+}
+
+/* Jump ellipsis */
+.ant-pagination-jump-prev .ant-pagination-item-container .ant-pagination-item-ellipsis,
+.ant-pagination-jump-next .ant-pagination-item-container .ant-pagination-item-ellipsis {
+  color: var(--color-text-tertiary) !important;
+}
+
+/* Pagination options container — spacing between size changer & quick jumper */
+.ant-pagination-options {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  margin-inline-start: 12px !important;
+}
+
+/* Size changer select */
+.ant-pagination-options .ant-select {
+  height: 32px !important;
+}
+
+.ant-pagination-options .ant-select-selector {
+  border-radius: var(--radius-full) !important;
+  height: 32px !important;
+  min-width: 90px !important;
+  font-size: 13px !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 0 12px !important;
+}
+
+.ant-pagination-options .ant-select-selection-item {
+  line-height: 30px !important;
+  font-size: 13px !important;
+  padding-inline-end: 18px !important;
+}
+
+/* Quick jumper input */
+.ant-pagination-options-quick-jumper {
+  font-size: 13px !important;
+  color: var(--color-text-secondary) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  height: 32px !important;
+  white-space: nowrap !important;
+  margin-inline-start: 0 !important;
+}
+
+.ant-pagination-options-quick-jumper input {
+  width: 48px !important;
+  height: 28px !important;
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--color-border) !important;
+  background: var(--color-bg-input) !important;
+  color: var(--color-text-primary) !important;
+  text-align: center !important;
+  font-size: 13px !important;
+  margin: 0 2px !important;
+  padding: 0 4px !important;
+  transition: border-color 0.2s ease !important;
+}
+
+.ant-pagination-options-quick-jumper input:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1) !important;
+  outline: none !important;
+}
+
+/* Total text */
+.ant-pagination-total-text {
+  color: var(--color-text-tertiary) !important;
+  font-size: 13px !important;
+}
+
+/* Small pagination variant */
+.ant-pagination-mini .ant-pagination-item {
+  min-width: 28px !important;
+  height: 28px !important;
+  line-height: 28px !important;
+}
+
+.ant-pagination-mini .ant-pagination-prev .ant-pagination-item-link,
+.ant-pagination-mini .ant-pagination-next .ant-pagination-item-link {
+  min-width: 28px !important;
+  height: 28px !important;
+}
+
+@media (max-width: 640px) {
+  .pagination-wrapper {
+    justify-content: center;
+    padding: 12px 8px;
+  }
+
+  .ant-pagination-item {
+    min-width: 28px !important;
+    height: 28px !important;
+    line-height: 28px !important;
+  }
+
+  .ant-pagination-item a {
+    font-size: 12px !important;
+  }
+
+  .ant-pagination-options {
+    display: none !important;
+  }
 }
 
 /* ===== Global Focus Styles ===== */

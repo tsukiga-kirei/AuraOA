@@ -37,6 +37,9 @@ const filteredMembers = computed(() => {
   })
 })
 
+// Pagination for members
+const { paged: pagedMembers, current: memberPage, pageSize: memberPageSize, total: memberTotal, onChange: onMemberPageChange } = usePagination(filteredMembers, 10)
+
 const showMemberModal = ref(false)
 const editingMember = ref<OrgMember | null>(null)
 const memberForm = ref({
@@ -271,7 +274,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
             </tr>
           </thead>
           <tbody>
-            <tr v-for="m in filteredMembers" :key="m.id">
+            <tr v-for="m in pagedMembers" :key="m.id">
               <td>
                 <div class="member-name-cell">
                   <a-avatar :size="28" class="member-avatar"><template #icon><UserOutlined /></template></a-avatar>
@@ -308,6 +311,21 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Pagination -->
+      <div v-if="memberTotal > memberPageSize" class="pagination-wrapper">
+        <a-pagination
+          :current="memberPage"
+          :page-size="memberPageSize"
+          :total="memberTotal"
+          size="small"
+          show-size-changer
+          show-quick-jumper
+          :page-size-options="['10', '20', '50']"
+          @change="onMemberPageChange"
+          @showSizeChange="onMemberPageChange"
+        />
       </div>
     </div>
 
@@ -567,6 +585,13 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
 @media (max-width: 768px) {
   .role-grid { grid-template-columns: 1fr; }
   .dept-grid { grid-template-columns: 1fr; }
-  .data-table-card { overflow-x: auto; }
+  .data-table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .data-table { min-width: 700px; }
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar-left { flex-direction: column; }
+  .toolbar-left > * { width: 100% !important; }
+  .page-title { font-size: 20px; }
+  .tab-nav { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab-btn { flex-shrink: 0; padding: 8px 14px; font-size: 13px; }
 }
 </style>
