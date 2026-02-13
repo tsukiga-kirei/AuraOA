@@ -9,6 +9,7 @@ import {
   MenuUnfoldOutlined,
   BellOutlined,
   UserOutlined,
+  SettingOutlined,
   AppstoreOutlined,
   ApartmentOutlined,
   DatabaseOutlined,
@@ -18,7 +19,7 @@ import {
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
-const collapsed = ref(false)
+const { sidebarCollapsed: collapsed, restore: restoreLayoutPrefs } = useLayoutPrefs()
 const mobileMenuOpen = ref(false)
 const isMobile = ref(false)
 
@@ -27,6 +28,7 @@ const { logout, userRole, currentUser } = useAuth()
 
 onMounted(() => {
   restoreTheme()
+  restoreLayoutPrefs()
   checkMobile()
   window.addEventListener('resize', checkMobile)
 })
@@ -164,8 +166,8 @@ watch(route, () => {
               </template>
 
               <!-- Common Actions -->
-              <div class="dropdown-item" @click="navigateTo('/settings')">
-                <UserOutlined class="dropdown-item-icon" />
+              <div class="dropdown-item" @click="localStorage.setItem('settings_source_layout', 'default'); navigateTo('/settings')">
+                <SettingOutlined class="dropdown-item-icon" />
                 <span>个人设置</span>
               </div>
               <div class="dropdown-item dropdown-item--danger" @click="logout">
@@ -210,6 +212,12 @@ watch(route, () => {
             <MenuFoldOutlined v-else-if="!isMobile" />
             <MenuUnfoldOutlined v-else />
           </button>
+          <div class="header-breadcrumb">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-primary);">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              <path d="M9 12l2 2 4-4"></path>
+            </svg>
+          </div>
         </div>
 
         <div class="app-header-right">

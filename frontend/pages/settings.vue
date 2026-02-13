@@ -25,7 +25,20 @@ import {
 import { message } from 'ant-design-vue'
 import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig } from '~/composables/useMockData'
 
-definePageMeta({ middleware: 'auth' })
+// Dynamically determine layout based on where user came from.
+// This prevents "jumping back to front-end" when user is in admin context.
+definePageMeta({
+  middleware: 'auth',
+  layout: false,
+})
+
+const settingsLayout = computed(() => {
+  if (!import.meta.client) return 'default'
+  const src = localStorage.getItem('settings_source_layout')
+  if (src === 'admin-system') return 'admin-system'
+  if (src === 'admin') return 'admin'
+  return 'default'
+})
 
 const { userRole } = useAuth()
 const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs, mockOrgRoles, mockOrgMembers } = useMockData()
@@ -268,6 +281,7 @@ const toggleArchiveField = (field: ProcessField) => {
 </script>
 
 <template>
+  <NuxtLayout :name="settingsLayout">
   <div class="settings-page fade-in">
     <div class="page-header">
       <div>
@@ -1049,6 +1063,7 @@ const toggleArchiveField = (field: ProcessField) => {
       </div>
     </div>
   </div>
+  </NuxtLayout>
 </template>
 
 <style scoped>
