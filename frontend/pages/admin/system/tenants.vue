@@ -345,21 +345,21 @@ const onDriverChange = (driver: string) => {
             <a-row :gutter="16">
               <a-col :span="8">
                 <a-form-item label="联系人">
-                  <a-input v-model:value="selectedTenant.contact_name">
+                  <a-input v-model:value="selectedTenant.contact_name" placeholder="请输入联系人">
                     <template #prefix><UserOutlined /></template>
                   </a-input>
                 </a-form-item>
               </a-col>
               <a-col :span="8">
                 <a-form-item label="联系邮箱">
-                  <a-input v-model:value="selectedTenant.contact_email">
+                  <a-input v-model:value="selectedTenant.contact_email" placeholder="请输入联系邮箱">
                     <template #prefix><MailOutlined /></template>
                   </a-input>
                 </a-form-item>
               </a-col>
               <a-col :span="8">
                 <a-form-item label="联系电话">
-                  <a-input v-model:value="selectedTenant.contact_phone">
+                  <a-input v-model:value="selectedTenant.contact_phone" placeholder="请输入联系电话">
                     <template #prefix><PhoneOutlined /></template>
                   </a-input>
                 </a-form-item>

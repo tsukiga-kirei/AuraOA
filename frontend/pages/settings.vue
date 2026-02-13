@@ -317,19 +317,19 @@ const toggleArchiveField = (field: ProcessField) => {
         <a-form layout="vertical" class="settings-form">
           <div class="form-row">
             <a-form-item label="昵称" class="form-col">
-              <a-input v-model:value="profile.nickname" size="large">
+              <a-input v-model:value="profile.nickname" size="large" placeholder="请输入昵称">
                 <template #prefix><UserOutlined class="input-icon" /></template>
               </a-input>
             </a-form-item>
             <a-form-item label="邮箱" class="form-col">
-              <a-input v-model:value="profile.email" size="large">
+              <a-input v-model:value="profile.email" size="large" placeholder="请输入邮箱">
                 <template #prefix><MailOutlined class="input-icon" /></template>
               </a-input>
             </a-form-item>
           </div>
           <div class="form-row">
             <a-form-item label="手机号" class="form-col">
-              <a-input v-model:value="profile.phone" size="large">
+              <a-input v-model:value="profile.phone" size="large" placeholder="请输入手机号">
                 <template #prefix><PhoneOutlined class="input-icon" /></template>
               </a-input>
             </a-form-item>
