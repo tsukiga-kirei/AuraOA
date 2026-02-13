@@ -96,7 +96,7 @@ const filteredList = computed(() => {
 })
 
 // Pagination
-const { paged: pagedList, current: listPage, pageSize: listPageSize, total: listTotal, onChange: onListPageChange } = usePagination(filteredList, 8)
+const { paged: pagedList, current: listPage, pageSize: listPageSize, total: listTotal, onChange: onListPageChange } = usePagination(filteredList, 10)
 
 const handleSelectProcess = (processId: string) => {
   selectedProcess.value = processId
@@ -287,7 +287,7 @@ const recommendationConfig = {
         </div>
 
         <!-- Pagination -->
-        <div v-if="listTotal > listPageSize" class="pagination-wrapper">
+        <div class="pagination-wrapper">
           <a-pagination
             :current="listPage"
             :page-size="listPageSize"
@@ -295,7 +295,7 @@ const recommendationConfig = {
             size="small"
             show-size-changer
             show-quick-jumper
-            :page-size-options="['8', '20', '50']"
+            :page-size-options="['10', '20', '50']"
             @change="onListPageChange"
             @showSizeChange="onListPageChange"
           />

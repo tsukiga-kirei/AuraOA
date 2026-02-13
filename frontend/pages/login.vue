@@ -187,6 +187,7 @@ const handleLogin = async () => {
 .login-page {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
   position: relative; overflow: hidden; background: var(--color-bg-sidebar);
+  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .login-theme-toggle {
   position: absolute; top: 20px; right: 20px; z-index: 10;
@@ -318,6 +319,11 @@ const handleLogin = async () => {
   border: 1.5px solid var(--color-border) !important;
   background: var(--color-bg-input) !important;
   font-size: 14px !important; transition: all 0.2s ease !important;
+  display: flex !important; align-items: center !important;
+}
+.login-input :deep(input) {
+  height: 100% !important;
+  line-height: normal !important; /* Allow flex container to center */
 }
 .login-input:hover { border-color: var(--color-text-tertiary) !important; }
 :deep(.ant-input-affix-wrapper:focus),
@@ -365,13 +371,27 @@ const handleLogin = async () => {
 
 @media (max-width: 768px) {
   .login-branding { display: none; }
-  .login-container { min-height: auto; border-radius: 20px; }
+  .login-container {
+    min-height: auto;
+    border-radius: 20px;
+    height: auto; /* Allow content to dictate height */
+    margin: 20px 0; /* Add margin to prevent sticking to edges */
+  }
   .login-form-wrapper { padding: 32px 24px; border-radius: 20px; }
   .login-mobile-brand { display: flex; }
 }
+
 @media (max-width: 480px) {
-  .login-container { max-width: calc(100vw - 24px); }
-  .login-form-wrapper { padding: 28px 20px; }
+  .login-page { align-items: flex-start; overflow-y: auto; } /* Allow scrolling on small screens */
+  .login-container {
+    max-width: calc(100vw - 24px);
+    margin: 60px auto 20px; /* Top margin for mobile brand */
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15); /* Softer shadow */
+  }
+  .login-form-wrapper { padding: 24px 20px; }
   .portal-pill-title { font-size: 12px; }
+  .login-form-header h2 { font-size: 20px; }
+  .login-input { height: 44px !important; padding: 0 11px !important; }
+  .login-btn { height: 42px !important; }
 }
 </style>

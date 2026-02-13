@@ -47,7 +47,7 @@ const auditActionOptions = [
 // ===== Cron logs =====
 const cronLogs = ref<CronLog[]>(JSON.parse(JSON.stringify(mockCronLogs)))
 const cronSearch = ref('')
-const cronStatusFilter = ref<string>('')
+const cronStatusFilter = ref<string | undefined>(undefined)
 
 const filteredCronLogs = computed(() => {
   return cronLogs.value.filter(l => {
@@ -63,7 +63,7 @@ const { paged: pagedCronLogs, current: cronPage, pageSize: cronPageSize, total: 
 // ===== Archive logs =====
 const archiveLogs = ref<ArchiveLog[]>(JSON.parse(JSON.stringify(mockArchiveLogs)))
 const archiveSearch = ref('')
-const archiveActionFilter = ref<string>('')
+const archiveActionFilter = ref<string | undefined>(undefined)
 
 const filteredArchiveLogs = computed(() => {
   return archiveLogs.value.filter(l => {
@@ -191,7 +191,7 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
         </table>
       </div>
 
-      <div v-if="auditTotal > auditPageSize" class="pagination-wrapper">
+      <div class="pagination-wrapper">
         <a-pagination
           :current="auditPage"
           :page-size="auditPageSize"
@@ -282,7 +282,7 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
         </table>
       </div>
 
-      <div v-if="cronTotal > cronPageSize" class="pagination-wrapper">
+      <div class="pagination-wrapper">
         <a-pagination
           :current="cronPage"
           :page-size="cronPageSize"
@@ -363,7 +363,7 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
         </table>
       </div>
 
-      <div v-if="archiveTotal > archivePageSize" class="pagination-wrapper">
+      <div class="pagination-wrapper">
         <a-pagination
           :current="archivePage"
           :page-size="archivePageSize"

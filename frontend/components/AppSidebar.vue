@@ -44,7 +44,7 @@ const handleMenuClick = (path: string) => {
         </svg>
       </div>
       <transition name="fade">
-        <span v-if="!collapsed" class="sidebar-logo-text">OA智审</span>
+        <span v-if="!collapsed || mobileMenuOpen" class="sidebar-logo-text">OA智审</span>
       </transition>
       <!-- Mobile close button -->
       <button
@@ -64,7 +64,7 @@ const handleMenuClick = (path: string) => {
     <!-- Navigation sections driven purely by permissions -->
     <nav class="sidebar-nav">
       <div v-for="section in sections" :key="section.id" class="sidebar-section">
-        <div v-if="!collapsed" class="sidebar-section-title">{{ section.title }}</div>
+        <div v-if="!collapsed || mobileMenuOpen" class="sidebar-section-title">{{ section.title }}</div>
         <a-tooltip
           v-for="item in section.items"
           :key="item.key"
@@ -79,10 +79,10 @@ const handleMenuClick = (path: string) => {
           >
             <component :is="item.icon" class="sidebar-item-icon" />
             <transition name="fade">
-              <span v-if="!collapsed" class="sidebar-item-label">{{ item.label }}</span>
+              <span v-if="!collapsed || mobileMenuOpen" class="sidebar-item-label">{{ item.label }}</span>
             </transition>
             <transition name="fade">
-              <span v-if="!collapsed && item.badge" class="sidebar-item-badge">{{ item.badge }}</span>
+              <span v-if="!collapsed && item.badge || mobileMenuOpen && item.badge" class="sidebar-item-badge">{{ item.badge }}</span>
             </transition>
             <div v-if="isMenuActive(item.key)" class="sidebar-item-indicator" />
           </div>
@@ -116,7 +116,7 @@ const handleMenuClick = (path: string) => {
           <a-avatar :size="36" class="sidebar-avatar">
             <template #icon><UserOutlined /></template>
           </a-avatar>
-          <div v-if="!collapsed" class="sidebar-user-info">
+          <div v-if="!collapsed || mobileMenuOpen" class="sidebar-user-info">
             <div class="sidebar-user-name">{{ displayName }}</div>
             <div class="sidebar-user-role">{{ roleLabel }}</div>
           </div>

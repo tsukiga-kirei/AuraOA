@@ -314,7 +314,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
       </div>
 
       <!-- Pagination -->
-      <div v-if="memberTotal > memberPageSize" class="pagination-wrapper">
+      <div class="pagination-wrapper">
         <a-pagination
           :current="memberPage"
           :page-size="memberPageSize"

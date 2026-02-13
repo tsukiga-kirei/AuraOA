@@ -63,7 +63,7 @@ const filteredList = computed(() => {
 })
 
 // Pagination for archive process list
-const { paged: pagedArchiveList, current: archivePage, pageSize: archivePageSize, total: archiveTotal, onChange: onArchivePageChange } = usePagination(filteredList, 8)
+const { paged: pagedArchiveList, current: archivePage, pageSize: archivePageSize, total: archiveTotal, onChange: onArchivePageChange } = usePagination(filteredList, 10)
 
 // Count how many in current filtered list have been audited
 const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.value[p.process_id]).length)
@@ -277,7 +277,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
         </div>
 
         <!-- Pagination -->
-        <div v-if="archiveTotal > archivePageSize" class="pagination-wrapper">
+        <div class="pagination-wrapper">
           <a-pagination
             :current="archivePage"
             :page-size="archivePageSize"
@@ -285,7 +285,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
             size="small"
             show-size-changer
             show-quick-jumper
-            :page-size-options="['8', '20', '50']"
+            :page-size-options="['10', '20', '50']"
             @change="onArchivePageChange"
             @showSizeChange="onArchivePageChange"
           />
@@ -578,11 +578,14 @@ const actionConfig: Record<string, { color: string; label: string }> = {
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 24px;
+  flex-wrap: wrap; /* Allow wrapping */
+  gap: 16px; /* Space when wrapped */
 }
 
+/* ... existing title styles ... */
 .page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
-.page-header-actions { display: flex; gap: 8px; align-items: center; }
+.page-header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } /* Allow buttons to wrap */
 
 /* Filters */
 .filter-bar {
