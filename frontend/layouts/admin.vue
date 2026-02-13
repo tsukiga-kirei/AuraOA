@@ -91,7 +91,7 @@ const handleSettingsClick = () => {
 
       <nav class="sidebar-nav">
         <div class="sidebar-section">
-          <div v-if="!collapsed" class="sidebar-section-title">配置管理</div>
+          <div v-if="!collapsed" class="sidebar-section-title">租户管理</div>
           <a-tooltip
             v-for="item in tenantMenuItems"
             :key="item.key"
