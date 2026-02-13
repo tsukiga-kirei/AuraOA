@@ -1032,10 +1032,11 @@ const onDriverChange = (driver: string) => {
   border-top: 1px solid var(--color-border-light);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .page-header {
     flex-direction: column;
     gap: 12px;
+    align-items: stretch;
   }
 
   .tenant-grid {
@@ -1046,6 +1047,12 @@ const onDriverChange = (driver: string) => {
     flex-wrap: nowrap;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
+  .detail-tabs::-webkit-scrollbar { display: none; }
+}
+
+@media (max-width: 480px) {
+  .page-title { font-size: 20px; }
 }
 </style>

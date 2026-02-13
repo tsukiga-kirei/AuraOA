@@ -1490,9 +1490,22 @@ const handleSave = () => {
   .kb-modes { grid-template-columns: 1fr; }
   .ai-form-row { grid-template-columns: 1fr; }
   .strictness-options { flex-direction: column; }
-  .tab-nav { width: 100%; overflow-x: auto; }
+  .tab-nav {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tab-nav::-webkit-scrollbar { display: none; }
   .tab-btn { flex-shrink: 0; }
   .push-format-options { flex-direction: column; }
+  .permission-item { flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 14px; }
+  .config-panel { padding: 16px; }
+}
+@media (max-width: 480px) {
+  .page-title { font-size: 20px; }
+  .tab-btn { padding: 6px 10px; font-size: 12px; }
+  .field-card { padding: 8px 10px; }
 }
 
 /* Cron config sections */

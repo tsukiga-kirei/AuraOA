@@ -857,18 +857,67 @@ const taskTypeOptions = [
   margin-top: 4px;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .page-header {
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
+    align-items: stretch;
   }
 
   .task-grid {
     grid-template-columns: 1fr;
   }
 
+  .task-card {
+    padding: 16px;
+  }
+
+  .task-stats {
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  .task-actions {
+    flex-wrap: wrap;
+  }
+
   .cron-builder-row {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .cron-builder-weekdays {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-title { font-size: 20px; }
+
+  .task-card { padding: 14px; }
+
+  .task-cron {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .cron-desc {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .task-action-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .cron-builder-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .weekday-chip {
+    font-size: 11px;
+    padding: 2px 8px;
   }
 }
 </style>

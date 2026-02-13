@@ -37,11 +37,13 @@ watch(route, () => {
     />
 
     <!-- Mobile overlay -->
-    <div
-      v-if="mobileMenuOpen && isMobile"
-      class="sidebar-overlay"
-      @click="mobileMenuOpen = false"
-    />
+    <transition name="overlay-fade">
+      <div
+        v-if="mobileMenuOpen && isMobile"
+        class="sidebar-overlay"
+        @click="mobileMenuOpen = false"
+      />
+    </transition>
 
     <!-- Main content -->
     <div class="main-wrapper">
@@ -64,10 +66,16 @@ watch(route, () => {
 
 .sidebar-overlay {
   position: fixed; inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.45);
   z-index: 99;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
+
+.overlay-fade-enter-active { transition: opacity 0.3s ease; }
+.overlay-fade-leave-active { transition: opacity 0.25s ease; }
+.overlay-fade-enter-from,
+.overlay-fade-leave-to { opacity: 0; }
 
 .main-wrapper {
   flex: 1;
@@ -89,5 +97,8 @@ watch(route, () => {
 @media (max-width: 768px) {
   .main-wrapper { margin-left: 0 !important; }
   .app-content { padding: 16px; }
+}
+@media (max-width: 480px) {
+  .app-content { padding: 12px; }
 }
 </style>

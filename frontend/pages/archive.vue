@@ -62,6 +62,9 @@ const filteredList = computed(() => {
   return list
 })
 
+// Pagination for archive process list
+const { paged: pagedArchiveList, current: archivePage, pageSize: archivePageSize, total: archiveTotal, onChange: onArchivePageChange } = usePagination(filteredList, 8)
+
 // Count how many in current filtered list have been audited
 const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.value[p.process_id]).length)
 
@@ -229,7 +232,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
         </div>
         <div class="process-list">
           <div
-            v-for="proc in filteredList"
+            v-for="proc in pagedArchiveList"
             :key="proc.process_id"
             class="process-item"
             :class="{ 'process-item--selected': selectedProcess?.process_id === proc.process_id }"
@@ -271,6 +274,21 @@ const actionConfig: Record<string, { color: string; label: string }> = {
           <div v-if="filteredList.length === 0" class="list-empty">
             <a-empty description="暂无匹配的归档流程" />
           </div>
+        </div>
+
+        <!-- Pagination -->
+        <div v-if="archiveTotal > archivePageSize" class="pagination-wrapper">
+          <a-pagination
+            :current="archivePage"
+            :page-size="archivePageSize"
+            :total="archiveTotal"
+            size="small"
+            show-size-changer
+            show-quick-jumper
+            :page-size-options="['8', '20', '50']"
+            @change="onArchivePageChange"
+            @showSizeChange="onArchivePageChange"
+          />
         </div>
       </div>
 
@@ -778,10 +796,30 @@ const actionConfig: Record<string, { color: string; label: string }> = {
 /* Responsive */
 @media (max-width: 1024px) {
   .archive-grid { grid-template-columns: 1fr; }
+  .process-list { max-height: none; }
 }
 @media (max-width: 768px) {
-  .page-header { flex-direction: column; gap: 16px; }
-  .process-info-header { flex-direction: column; }
+  .page-header { flex-direction: column; gap: 12px; align-items: stretch; }
+  .page-header-actions { flex-wrap: wrap; }
+  .filter-bar { flex-direction: column; align-items: stretch; }
+  .filter-bar .ant-input,
+  .filter-bar .ant-select { width: 100% !important; }
+  .process-info-header { flex-direction: column; gap: 12px; }
   .process-info-actions { width: 100%; }
+  .process-info-actions .ant-btn { flex: 1; }
+  .fields-grid { grid-template-columns: 1fr; }
+  .flow-node-card { padding: 8px 10px; }
+  .compliance-banner { flex-wrap: wrap; padding: 12px 14px; }
+  .compliance-score { font-size: 28px; }
+  .detail-content { padding: 14px; }
+  .panel-header { padding: 12px 14px; }
+}
+@media (max-width: 480px) {
+  .page-title { font-size: 20px; }
+  .page-header-actions { gap: 6px; }
+  .page-header-actions .ant-btn { font-size: 12px; padding: 4px 10px; }
+  .process-item { padding: 10px 14px; }
+  .process-item-right { display: none; }
+  .process-audit-badge { font-size: 10px; padding: 1px 6px; }
 }
 </style>

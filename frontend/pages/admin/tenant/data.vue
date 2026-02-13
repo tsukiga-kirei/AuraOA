@@ -24,7 +24,7 @@ const topTab = ref<'audit' | 'cron' | 'archive'>('audit')
 // ===== Audit logs =====
 const auditLogs = ref<AuditLog[]>(JSON.parse(JSON.stringify(mockAuditLogs)))
 const auditSearch = ref('')
-const auditActionFilter = ref<string>('')
+const auditActionFilter = ref<string | undefined>(undefined)
 
 const filteredAuditLogs = computed(() => {
   return auditLogs.value.filter(l => {
@@ -33,6 +33,9 @@ const filteredAuditLogs = computed(() => {
     return true
   })
 })
+
+// Pagination for audit logs
+const { paged: pagedAuditLogs, current: auditPage, pageSize: auditPageSize, total: auditTotal, onChange: onAuditPageChange } = usePagination(filteredAuditLogs, 10)
 
 const auditActionOptions = [
   { value: 'ai_audit', label: 'AI 审核' },
@@ -54,6 +57,9 @@ const filteredCronLogs = computed(() => {
   })
 })
 
+// Pagination for cron logs
+const { paged: pagedCronLogs, current: cronPage, pageSize: cronPageSize, total: cronTotal, onChange: onCronPageChange } = usePagination(filteredCronLogs, 10)
+
 // ===== Archive logs =====
 const archiveLogs = ref<ArchiveLog[]>(JSON.parse(JSON.stringify(mockArchiveLogs)))
 const archiveSearch = ref('')
@@ -66,6 +72,9 @@ const filteredArchiveLogs = computed(() => {
     return true
   })
 })
+
+// Pagination for archive logs
+const { paged: pagedArchiveLogs, current: archivePage, pageSize: archivePageSize, total: archiveTotal, onChange: onArchivePageChange } = usePagination(filteredArchiveLogs, 10)
 
 const archiveActionOptions = [
   { value: 're_audit', label: '合规复核' },
@@ -159,7 +168,7 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="l in filteredAuditLogs" :key="l.id">
+            <tr v-for="l in pagedAuditLogs" :key="l.id">
               <td class="text-mono">{{ l.process_id }}</td>
               <td>{{ l.title }}</td>
               <td>{{ l.operator }}</td>
@@ -180,6 +189,20 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div v-if="auditTotal > auditPageSize" class="pagination-wrapper">
+        <a-pagination
+          :current="auditPage"
+          :page-size="auditPageSize"
+          :total="auditTotal"
+          size="small"
+          show-size-changer
+          show-quick-jumper
+          :page-size-options="['10', '20', '50']"
+          @change="onAuditPageChange"
+          @showSizeChange="onAuditPageChange"
+        />
       </div>
     </div>
 
@@ -229,7 +252,7 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="l in filteredCronLogs" :key="l.id">
+            <tr v-for="l in pagedCronLogs" :key="l.id">
               <td class="text-mono">{{ l.task_id }}</td>
               <td>{{ l.task_label }}</td>
               <td>
@@ -257,6 +280,20 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div v-if="cronTotal > cronPageSize" class="pagination-wrapper">
+        <a-pagination
+          :current="cronPage"
+          :page-size="cronPageSize"
+          :total="cronTotal"
+          size="small"
+          show-size-changer
+          show-quick-jumper
+          :page-size-options="['10', '20', '50']"
+          @change="onCronPageChange"
+          @showSizeChange="onCronPageChange"
+        />
       </div>
     </div>
 
@@ -303,7 +340,7 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="l in filteredArchiveLogs" :key="l.id">
+            <tr v-for="l in pagedArchiveLogs" :key="l.id">
               <td class="text-mono">{{ l.process_id }}</td>
               <td>{{ l.title }}</td>
               <td>{{ l.operator }}</td>
@@ -324,6 +361,20 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div v-if="archiveTotal > archivePageSize" class="pagination-wrapper">
+        <a-pagination
+          :current="archivePage"
+          :page-size="archivePageSize"
+          :total="archiveTotal"
+          size="small"
+          show-size-changer
+          show-quick-jumper
+          :page-size-options="['10', '20', '50']"
+          @change="onArchivePageChange"
+          @showSizeChange="onArchivePageChange"
+        />
       </div>
     </div>
   </div>
@@ -411,6 +462,14 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
 
 @media (max-width: 768px) {
   .stats-row { flex-direction: column; }
-  .data-table-card { overflow-x: auto; }
+  .data-table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .data-table { min-width: 600px; }
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar-left { flex-direction: column; }
+  .toolbar-left > * { width: 100% !important; }
+  .page-title { font-size: 20px; }
+  .tab-nav { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab-btn { flex-shrink: 0; padding: 8px 14px; font-size: 13px; }
+  .stat-card { min-width: auto; }
 }
 </style>

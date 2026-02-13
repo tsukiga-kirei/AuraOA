@@ -95,6 +95,9 @@ const filteredList = computed(() => {
   return list
 })
 
+// Pagination
+const { paged: pagedList, current: listPage, pageSize: listPageSize, total: listTotal, onChange: onListPageChange } = usePagination(filteredList, 8)
+
 const handleSelectProcess = (processId: string) => {
   selectedProcess.value = processId
   if (isHistoryMode.value) {
@@ -127,6 +130,7 @@ const switchView = (mode: 'todo' | 'approved' | 'rejected' | 'archived') => {
   viewMode.value = mode
   selectedProcess.value = null
   currentResult.value = null
+  listPage.value = 1
 }
 
 const selectedProcessInfo = computed(() => {
@@ -238,7 +242,7 @@ const recommendationConfig = {
 
         <div class="todo-list">
           <div
-            v-for="item in filteredList"
+            v-for="item in pagedList"
             :key="item.process_id"
             class="todo-item"
             :class="{ 'todo-item--selected': selectedProcess === item.process_id }"
@@ -280,6 +284,21 @@ const recommendationConfig = {
           <div v-if="filteredList.length === 0" class="todo-empty">
             <a-empty description="暂无流程" />
           </div>
+        </div>
+
+        <!-- Pagination -->
+        <div v-if="listTotal > listPageSize" class="pagination-wrapper">
+          <a-pagination
+            :current="listPage"
+            :page-size="listPageSize"
+            :total="listTotal"
+            size="small"
+            show-size-changer
+            show-quick-jumper
+            :page-size-options="['8', '20', '50']"
+            @change="onListPageChange"
+            @showSizeChange="onListPageChange"
+          />
         </div>
       </div>
 
@@ -665,10 +684,27 @@ const recommendationConfig = {
   .dashboard-grid { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: repeat(4, 1fr); }
 }
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .stats-row { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .stat-card { padding: 14px; }
   .stat-card-value { font-size: 22px; }
+  .stat-card-icon { width: 40px; height: 40px; font-size: 18px; }
+  .page-title { font-size: 20px; }
+  .dashboard-grid { gap: 16px; }
+  .panel-header { padding: 12px 16px; }
+  .todo-item { padding: 12px 16px; }
+  .result-content { padding: 16px; }
+  .action-prompt-buttons { flex-direction: column; }
+}
+@media (max-width: 480px) {
+  .stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card { padding: 12px; gap: 10px; }
+  .stat-card-value { font-size: 20px; }
+  .stat-card-label { font-size: 11px; }
+  .stat-card-icon { width: 36px; height: 36px; font-size: 16px; }
+  .todo-item-right { display: none; }
+  .result-banner { flex-wrap: wrap; padding: 12px 14px; }
+  .result-score { font-size: 28px; }
 }
 
 /* Drawer */
