@@ -268,7 +268,7 @@ const recommendationConfig = {
                 >
                   {{ urgencyConfig[item.urgency].label }}
                 </span>
-                <button class="oa-jump-btn" @click.stop="jumpToOA(item.process_id)" title="跳转 OA 系统">
+                <button class="oa-jump-btn" @click.stop="jumpToOA(item.process_id)" aria-label="跳转 OA 系统">
                   <ExportOutlined />
                 </button>
               </div>
@@ -566,9 +566,24 @@ const recommendationConfig = {
   width: 24px; height: 24px; border: 1px solid var(--color-border);
   background: transparent; border-radius: var(--radius-sm); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  font-size: 12px; color: var(--color-text-tertiary); transition: all var(--transition-fast);
+  font-size: 12px; color: var(--color-text-tertiary);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
 }
-.oa-jump-btn:hover { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-bg); }
+.oa-jump-btn:hover {
+  border-color: var(--color-primary); color: var(--color-primary);
+  background: var(--color-primary-bg);
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.15);
+}
+.oa-jump-btn:focus-visible {
+  border-color: var(--color-primary); color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+  background: var(--color-primary-bg);
+}
+.oa-jump-btn:active {
+  transform: scale(0.95);
+}
 .todo-empty { padding: 48px 20px; }
 
 /* Result panel */

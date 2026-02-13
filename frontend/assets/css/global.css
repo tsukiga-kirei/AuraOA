@@ -194,7 +194,7 @@ body {
   color: var(--color-text-primary) !important;
 }
 
-.ant-table-thead > tr > th {
+.ant-table-thead>tr>th {
   background: var(--color-bg-page) !important;
   font-weight: 600 !important;
   font-size: 13px !important;
@@ -204,13 +204,13 @@ body {
   border-bottom: 1px solid var(--color-border) !important;
 }
 
-.ant-table-tbody > tr > td {
+.ant-table-tbody>tr>td {
   border-bottom: 1px solid var(--color-border-light) !important;
   color: var(--color-text-primary) !important;
   background: var(--color-bg-card) !important;
 }
 
-.ant-table-tbody > tr:hover > td {
+.ant-table-tbody>tr:hover>td {
   background: var(--color-bg-hover) !important;
 }
 
@@ -381,7 +381,7 @@ body {
 }
 
 /* Form */
-.ant-form-item-label > label {
+.ant-form-item-label>label {
   color: var(--color-text-primary) !important;
 }
 
@@ -426,8 +426,15 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Responsive */
@@ -436,4 +443,65 @@ body {
     --space-page: 16px;
     --space-card: 16px;
   }
+}
+
+/* ===== Global Focus Styles ===== */
+/* Consistent, beautiful focus indicators for all interactive elements */
+
+/* Remove ALL tooltip/popover arrows globally */
+.ant-tooltip-arrow,
+.ant-popover-arrow,
+.ant-dropdown-arrow {
+  display: none !important;
+}
+
+/* Make tooltips cleaner without arrow */
+.ant-tooltip-inner {
+  border-radius: 8px !important;
+  padding: 6px 12px !important;
+  font-size: 12px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Ant Design Button focus */
+.ant-btn:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px var(--color-bg-card), 0 0 0 4px rgba(79, 70, 229, 0.3) !important;
+}
+
+.ant-btn-primary:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-bg-card), 0 0 0 4px rgba(79, 70, 229, 0.4) !important;
+}
+
+/* Generic button focus - uses ring style, no outline */
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-bg-card), 0 0 0 4px rgba(79, 70, 229, 0.3);
+}
+
+/* Remove native browser tooltip styling for interactive elements with title */
+button[title]:focus-visible,
+div[title]:focus-visible,
+a[title]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-bg-card), 0 0 0 4px rgba(79, 70, 229, 0.3);
+}
+
+/* Select/Input focus refinement */
+.ant-select:focus-within .ant-select-selector {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1) !important;
+}
+
+.ant-input:focus,
+.ant-input-affix-wrapper:focus-within {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1) !important;
+}
+
+/* Link focus */
+a:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.3);
+  border-radius: 4px;
 }

@@ -102,6 +102,9 @@ const alertLevelConfig: Record<string, { color: string; bg: string }> = {
                   <span class="chart-tooltip-label">条审核</span>
                 </div>
               </Transition>
+              <div class="chart-bar-count" :class="{ 'chart-bar-count--active': hoveredBar === item.date }">
+                {{ item.count }}
+              </div>
               <div class="chart-bar-track">
                 <div
                   class="chart-bar-fill"
@@ -219,7 +222,8 @@ const alertLevelConfig: Record<string, { color: string; bg: string }> = {
 }
 .chart-grid-label {
   position: absolute; left: -36px; top: -8px;
-  font-size: 10px; color: var(--color-text-tertiary);
+  font-size: 10px; color: var(--color-text-secondary);
+  font-weight: 500;
   width: 30px; text-align: right;
 }
 
@@ -236,21 +240,29 @@ const alertLevelConfig: Record<string, { color: string; bg: string }> = {
 /* Tooltip */
 .chart-tooltip {
   position: absolute; top: -8px; left: 50%; transform: translate(-50%, -100%);
-  background: var(--color-bg-sidebar); color: #fff;
+  background: #1e293b; color: #fff;
   padding: 6px 10px; border-radius: 8px;
   font-size: 12px; white-space: nowrap; z-index: 10;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
   display: flex; align-items: baseline; gap: 3px;
   pointer-events: none;
 }
-.chart-tooltip::after {
-  content: ''; position: absolute; bottom: -4px; left: 50%;
-  transform: translateX(-50%) rotate(45deg); width: 8px; height: 8px;
-  background: var(--color-bg-sidebar);
-  border-radius: 1px;
-}
+/* Arrow removed for clean style */
 .chart-tooltip-value { font-weight: 700; font-size: 14px; }
 .chart-tooltip-label { font-size: 10px; opacity: 0.7; }
+
+/* Permanent count above bar */
+.chart-bar-count {
+  font-size: 11px; font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px; text-align: center;
+  transition: all 0.2s ease;
+  min-height: 16px;
+}
+.chart-bar-count--active {
+  color: var(--color-primary);
+  transform: scale(1.1);
+}
 
 .tooltip-fade-enter-active { transition: all 0.2s ease; }
 .tooltip-fade-leave-active { transition: all 0.15s ease; }
@@ -279,7 +291,8 @@ const alertLevelConfig: Record<string, { color: string; bg: string }> = {
 }
 
 .chart-bar-label {
-  font-size: 11px; color: var(--color-text-tertiary);
+  font-size: 11px; color: var(--color-text-secondary);
+  font-weight: 500;
   margin-top: 8px; transition: all 0.2s ease;
 }
 .chart-bar-label--active {
