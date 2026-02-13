@@ -27,7 +27,7 @@ import {
 import { message } from 'ant-design-vue'
 import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig, FlowRuleConfig } from '~/composables/useMockData'
 
-definePageMeta({ middleware: 'auth', layout: 'admin' })
+definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs } = useMockData()
 

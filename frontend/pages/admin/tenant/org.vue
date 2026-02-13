@@ -15,7 +15,7 @@ import {
 import { message } from 'ant-design-vue'
 import type { Department, OrgRole, OrgMember } from '~/composables/useMockData'
 
-definePageMeta({ middleware: 'auth', layout: 'admin' })
+definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { mockDepartments, mockOrgRoles, mockOrgMembers } = useMockData()
 

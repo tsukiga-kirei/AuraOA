@@ -10,9 +10,11 @@ import {
   ControlOutlined,
 } from '@ant-design/icons-vue'
 
+import { getDefaultPage } from '~/composables/useMockData'
+
 definePageMeta({ layout: false })
 
-const { login, getMenu, setUserRole, isMockMode, MOCK_USERS } = useAuth()
+const { login, getMenu, setUserRole, setUserPermissions, isMockMode, MOCK_USERS } = useAuth()
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
 
 onMounted(() => restoreTheme())
@@ -54,7 +56,9 @@ const handleLogin = async () => {
       setUserRole(activePortal.value)
       await getMenu()
       message.success('登录成功，正在跳转...')
-      navigateTo(activePortal.value === 'business' ? '/dashboard' : activePortal.value === 'tenant_admin' ? '/admin/tenant' : '/admin/system')
+      // Always redirect to the first accessible page based on user's permissions
+      const { userPermissions } = useAuth()
+      navigateTo(getDefaultPage(userPermissions.value))
     } else {
       message.error('登录失败，请检查用户名或密码')
     }

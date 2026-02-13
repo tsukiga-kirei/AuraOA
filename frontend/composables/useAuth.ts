@@ -1,5 +1,5 @@
-import { MOCK_USERS, getMockMenusByRole, hasPagePermission } from './useMockData'
-import type { MockUser, MockMenuItem, UserRole } from './useMockData'
+import { MOCK_USERS, getMockMenusByRole, getMockMenusByPermissions, hasPagePermission, getDefaultPage } from './useMockData'
+import type { MockUser, MockMenuItem, UserRole, PermissionGroup } from './useMockData'
 
 interface LoginRequest {
   username: string
@@ -13,8 +13,8 @@ interface TokenResponse {
   expires_in: number
 }
 
-export type { MockUser, MockMenuItem, UserRole }
-export { hasPagePermission }
+export type { MockUser, MockMenuItem, UserRole, PermissionGroup }
+export { hasPagePermission, getDefaultPage }
 
 export const useAuth = () => {
   const config = useRuntimeConfig()
@@ -22,13 +22,24 @@ export const useAuth = () => {
   const refreshToken = useState<string | null>('auth_refresh', () => null)
   const menus = useState<MockMenuItem[]>('auth_menus', () => [])
   const userRole = useState<UserRole>('auth_role', () => 'business')
-  const currentUser = useState<{ username: string; display_name: string; tenant_id: string } | null>('auth_user', () => null)
+  const userPermissions = useState<PermissionGroup[]>('auth_permissions', () => ['business'])
+  const currentUser = useState<{
+    username: string
+    display_name: string
+    tenant_id: string
+    role_label: string
+  } | null>('auth_user', () => null)
 
-  const isMockMode = computed(() => config.public.mockMode === true || config.public.mockMode === 'true')
+  const isMockMode = computed(() => String(config.public.mockMode) === 'true')
 
   const setUserRole = (role: UserRole) => {
     userRole.value = role
     if (import.meta.client) localStorage.setItem('user_role', role)
+  }
+
+  const setUserPermissions = (perms: PermissionGroup[]) => {
+    userPermissions.value = perms
+    if (import.meta.client) localStorage.setItem('user_permissions', JSON.stringify(perms))
   }
 
   const login = async (req: LoginRequest): Promise<boolean> => {
@@ -46,7 +57,10 @@ export const useAuth = () => {
         username: matched.username,
         display_name: matched.display_name,
         tenant_id: matched.tenant_id,
+        role_label: matched.role_label,
       }
+      // Store permissions from the matched user
+      setUserPermissions(matched.permissions)
       if (import.meta.client) {
         localStorage.setItem('token', mockToken)
         localStorage.setItem('refresh_token', refreshToken.value!)
@@ -74,7 +88,7 @@ export const useAuth = () => {
 
   const getMenu = async (): Promise<MockMenuItem[]> => {
     if (isMockMode.value) {
-      const m = getMockMenusByRole(userRole.value)
+      const m = getMockMenusByPermissions(userPermissions.value)
       menus.value = m
       return m
     }
@@ -94,11 +108,13 @@ export const useAuth = () => {
     refreshToken.value = null
     menus.value = []
     userRole.value = 'business'
+    userPermissions.value = ['business']
     currentUser.value = null
     if (import.meta.client) {
       localStorage.removeItem('token')
       localStorage.removeItem('refresh_token')
       localStorage.removeItem('user_role')
+      localStorage.removeItem('user_permissions')
       localStorage.removeItem('current_user')
     }
     navigateTo('/login')
@@ -114,6 +130,10 @@ export const useAuth = () => {
       if (savedRefresh) refreshToken.value = savedRefresh
       const savedRole = localStorage.getItem('user_role') as UserRole | null
       if (savedRole) userRole.value = savedRole
+      const savedPerms = localStorage.getItem('user_permissions')
+      if (savedPerms) {
+        try { userPermissions.value = JSON.parse(savedPerms) } catch { /* ignore */ }
+      }
       const savedUser = localStorage.getItem('current_user')
       if (savedUser) {
         try { currentUser.value = JSON.parse(savedUser) } catch { /* ignore */ }
@@ -122,8 +142,8 @@ export const useAuth = () => {
   }
 
   return {
-    token, refreshToken, menus, userRole, currentUser,
-    login, getMenu, logout, isAuthenticated, restore, isMockMode, setUserRole,
+    token, refreshToken, menus, userRole, userPermissions, currentUser,
+    login, getMenu, logout, isAuthenticated, restore, isMockMode, setUserRole, setUserPermissions,
     MOCK_USERS,
   }
 }

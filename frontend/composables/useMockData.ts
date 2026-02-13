@@ -8,20 +8,39 @@
 // ============================================================
 export type UserRole = 'business' | 'tenant_admin' | 'system_admin'
 
+/** Permission groups that control sidebar section visibility */
+export type PermissionGroup = 'business' | 'tenant_admin' | 'system_admin'
+
 export interface MockUser {
   username: string
   password: string
   tenant_id: string
   role: UserRole
   display_name: string
+  role_label: string
+  /** Which sidebar sections this user can see */
+  permissions: PermissionGroup[]
 }
 
 export const MOCK_USERS: MockUser[] = [
-  { username: 'zhangming', password: '123456', tenant_id: 'default', role: 'business', display_name: '张明' },
-  { username: 'user', password: '123456', tenant_id: 'default', role: 'business', display_name: '测试用户' },
-  { username: 'tenantadmin', password: '123456', tenant_id: 'default', role: 'tenant_admin', display_name: '租户管理员' },
-  { username: 'admin', password: '123456', tenant_id: 'default', role: 'system_admin', display_name: '系统管理员' },
-  { username: 'lifang', password: '123456', tenant_id: 'T-002', role: 'business', display_name: '李芳' },
+  // === Business users (only workbench) ===
+  { username: 'zhangming', password: '123456', tenant_id: 'default', role: 'business', display_name: '张明', role_label: '普通用户', permissions: ['business'] },
+  { username: 'user', password: '123456', tenant_id: 'default', role: 'business', display_name: '测试用户', role_label: '普通用户', permissions: ['business'] },
+  { username: 'lifang', password: '123456', tenant_id: 'T-002', role: 'business', display_name: '李芳', role_label: '普通用户', permissions: ['business'] },
+
+  // === Tenant admins ===
+  // Has both business + tenant admin access
+  { username: 'tenantadmin', password: '123456', tenant_id: 'default', role: 'tenant_admin', display_name: '赵伟（租户管理员）', role_label: '租户管理员', permissions: ['business', 'tenant_admin'] },
+  // Tenant admin only — no business workbench access
+  { username: 'tenantadmin2', password: '123456', tenant_id: 'default', role: 'tenant_admin', display_name: '孙丽（纯租户管理）', role_label: '租户管理员', permissions: ['tenant_admin'] },
+
+  // === System admins ===
+  // Full access: business + tenant + system
+  { username: 'admin', password: '123456', tenant_id: 'default', role: 'system_admin', display_name: '陈刚（超级管理员）', role_label: '系统管理员', permissions: ['business', 'tenant_admin', 'system_admin'] },
+  // System admin with tenant access but no business workbench
+  { username: 'sysadmin2', password: '123456', tenant_id: 'default', role: 'system_admin', display_name: '周敏（系统+租户）', role_label: '系统管理员', permissions: ['tenant_admin', 'system_admin'] },
+  // System admin only — pure system management
+  { username: 'sysadmin3', password: '123456', tenant_id: 'default', role: 'system_admin', display_name: '吴强（纯系统管理）', role_label: '系统管理员', permissions: ['system_admin'] },
 ]
 
 // ============================================================
@@ -36,45 +55,86 @@ export interface MockMenuItem {
 }
 
 /**
- * Permission matrix: which roles can access which pages.
+ * Permission matrix: which permission groups can access which pages.
  * Used by middleware and layouts to control visibility.
  */
-export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
-  '/dashboard': ['business', 'tenant_admin', 'system_admin'],
-  '/cron': ['business', 'tenant_admin', 'system_admin'],
-  '/archive': ['business', 'tenant_admin', 'system_admin'],
+export const PAGE_PERMISSIONS: Record<string, PermissionGroup[]> = {
+  '/dashboard': ['business'],
+  '/cron': ['business'],
+  '/archive': ['business'],
   '/settings': ['business', 'tenant_admin', 'system_admin'],
-  '/admin/tenant': ['tenant_admin', 'system_admin'],
-  '/admin/tenant/org': ['tenant_admin', 'system_admin'],
-  '/admin/tenant/data': ['tenant_admin', 'system_admin'],
+  '/admin/tenant': ['tenant_admin'],
+  '/admin/tenant/org': ['tenant_admin'],
+  '/admin/tenant/data': ['tenant_admin'],
   '/admin/system': ['system_admin'],
   '/admin/system/tenants': ['system_admin'],
   '/admin/system/settings': ['system_admin'],
 }
 
-export function hasPagePermission(path: string, role: UserRole): boolean {
-  const allowed = PAGE_PERMISSIONS[path]
-  if (!allowed) return true // pages not in the map are accessible by all
-  return allowed.includes(role)
+/**
+ * Check if a user with given permissions can access a page.
+ * For backward compat, also accepts UserRole and converts to permissions.
+ */
+export function hasPagePermission(path: string, roleOrPerms: UserRole | PermissionGroup[]): boolean {
+  const requiredPerms = PAGE_PERMISSIONS[path]
+  if (!requiredPerms) return true // pages not in the map are accessible by all
+
+  // Convert legacy role to permissions array
+  const userPerms: PermissionGroup[] = Array.isArray(roleOrPerms)
+    ? roleOrPerms
+    : roleToPermissions(roleOrPerms)
+
+  return requiredPerms.some(p => userPerms.includes(p))
+}
+
+/** Fallback: convert a role to default permissions (for backward compat) */
+function roleToPermissions(role: UserRole): PermissionGroup[] {
+  if (role === 'system_admin') return ['business', 'tenant_admin', 'system_admin']
+  if (role === 'tenant_admin') return ['business', 'tenant_admin']
+  return ['business']
+}
+
+/** Get the first accessible page for a user (used for default redirect after login) */
+export function getDefaultPage(permissions: PermissionGroup[]): string {
+  if (permissions.includes('business')) return '/dashboard'
+  if (permissions.includes('tenant_admin')) return '/admin/tenant'
+  if (permissions.includes('system_admin')) return '/admin/system'
+  return '/dashboard'
 }
 
 export function getMockMenusByRole(role: UserRole): MockMenuItem[] {
-  const base: MockMenuItem[] = [
-    { key: 'dashboard', label: '审核工作台', path: '/dashboard' },
-    { key: 'cron', label: '定时任务', path: '/cron' },
-    { key: 'archive', label: '归档复盘', path: '/archive' },
-  ]
-  const tenant: MockMenuItem[] = [
-    { key: 'tenant', label: '规则配置', path: '/admin/tenant' },
-  ]
-  const sys: MockMenuItem[] = [
-    { key: 'monitor', label: '全局监控', path: '/admin/system' },
-    { key: 'tenants', label: '租户管理', path: '/admin/system/tenants' },
-    { key: 'settings', label: '系统设置', path: '/admin/system/settings' },
-  ]
-  if (role === 'system_admin') return [...base, ...tenant, ...sys]
-  if (role === 'tenant_admin') return [...base, ...tenant]
-  return base
+  // Use default role-to-permissions mapping for backward compat
+  return getMockMenusByPermissions(
+    role === 'system_admin' ? ['business', 'tenant_admin', 'system_admin']
+    : role === 'tenant_admin' ? ['business', 'tenant_admin']
+    : ['business']
+  )
+}
+
+export function getMockMenusByPermissions(permissions: PermissionGroup[]): MockMenuItem[] {
+  const result: MockMenuItem[] = []
+  if (permissions.includes('business')) {
+    result.push(
+      { key: 'dashboard', label: '审核工作台', icon: 'DashboardOutlined', path: '/dashboard' },
+      { key: 'cron', label: '定时任务', icon: 'ClockCircleOutlined', path: '/cron' },
+      { key: 'archive', label: '归档复盘', icon: 'FolderOpenOutlined', path: '/archive' },
+    )
+  }
+  if (permissions.includes('tenant_admin')) {
+    result.push(
+      { key: 'tenant', label: '规则配置', icon: 'AppstoreOutlined', path: '/admin/tenant' },
+      { key: 'tenant-org', label: '组织人员', icon: 'ApartmentOutlined', path: '/admin/tenant/org' },
+      { key: 'tenant-data', label: '数据信息', icon: 'DatabaseOutlined', path: '/admin/tenant/data' },
+    )
+  }
+  if (permissions.includes('system_admin')) {
+    result.push(
+      { key: 'monitor', label: '全局监控', icon: 'MonitorOutlined', path: '/admin/system' },
+      { key: 'tenants', label: '租户管理', icon: 'TeamOutlined', path: '/admin/system/tenants' },
+      { key: 'settings', label: '系统设置', icon: 'SettingOutlined', path: '/admin/system/settings' },
+    )
+  }
+  return result
 }
 
 // ============================================================

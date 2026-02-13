@@ -51,13 +51,17 @@
     "display_name": "string",
     "tenant_id": "string",
     "role": "business | tenant_admin | system_admin",
+    "role_label": "string（角色显示名称，如'普通用户'、'租户管理员'、'系统管理员'）",
     "department": "string",
     "position": "string",
     "email": "string",
     "phone": "string",
-    "permissions": ["dashboard", "cron", "archive"]
+    "permissions": ["business", "tenant_admin", "system_admin"]
   }
   ```
+- **字段说明**:
+  - `role_label`: 角色的中文显示名称，用于前端界面展示
+  - `permissions`: 权限组数组，取值为 `business`（前台工作台）、`tenant_admin`（租户管理）、`system_admin`（系统管理）。前端据此控制侧边栏菜单分区可见性及页面访问权限。不同角色可拥有任意权限组合（如租户管理员可仅有 `tenant_admin` 而无 `business`）
 
 ---
 
