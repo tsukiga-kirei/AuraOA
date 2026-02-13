@@ -97,7 +97,7 @@ const handleSettingsClick = () => {
       <!-- Navigation -->
       <nav class="sidebar-nav">
         <div class="sidebar-section">
-          <div v-if="!collapsed" class="sidebar-section-title">业务功能</div>
+          <div v-if="!collapsed" class="sidebar-section-title">工作台</div>
           <a-tooltip
             v-for="item in businessMenuItems"
             :key="item.key"
