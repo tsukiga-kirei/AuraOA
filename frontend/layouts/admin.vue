@@ -11,7 +11,14 @@ import {
   AppstoreOutlined,
   ApartmentOutlined,
   DatabaseOutlined,
+  MonitorOutlined,
+  TeamOutlined,
   ArrowLeftOutlined,
+  UpOutlined,
+  DashboardOutlined,
+  ClockCircleOutlined,
+  FolderOpenOutlined,
+  ControlOutlined
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -46,6 +53,11 @@ const tenantMenuItems = [
 ]
 
 const displayName = computed(() => currentUser.value?.display_name || '租户管理员')
+const userRole = computed(() => currentUser.value?.role || 'tenant_admin') // Mock if needed, or useAuth hook should return it
+
+// Mock these for admin layout if not available directly, or assume admin has access
+const showTenantAdmin = true
+const showSystemAdmin = computed(() => userRole.value === 'system_admin')
 
 const handleMenuClick = (path: string) => {
   navigateTo(path)
@@ -78,35 +90,102 @@ watch(route, () => {
       <nav class="sidebar-nav">
         <div class="sidebar-section">
           <div v-if="!collapsed" class="sidebar-section-title">配置管理</div>
-          <div
+          <a-tooltip
             v-for="item in tenantMenuItems"
             :key="item.key"
-            class="sidebar-item"
-            :class="{ 'sidebar-item--active': selectedKeys.includes(item.key) }"
-            @click="handleMenuClick(item.key)"
+            :title="collapsed ? item.label : ''"
+            placement="right"
+            :mouse-enter-delay="0.1"
           >
-            <component :is="item.icon" class="sidebar-item-icon" />
-            <transition name="fade">
-              <span v-if="!collapsed" class="sidebar-item-label">{{ item.label }}</span>
-            </transition>
-            <div v-if="selectedKeys.includes(item.key)" class="sidebar-item-indicator" />
-          </div>
+            <div
+              class="sidebar-item"
+              :class="{ 'sidebar-item--active': selectedKeys.includes(item.key) }"
+              @click="handleMenuClick(item.key)"
+            >
+              <component :is="item.icon" class="sidebar-item-icon" />
+              <transition name="fade">
+                <span v-if="!collapsed" class="sidebar-item-label">{{ item.label }}</span>
+              </transition>
+              <div v-if="selectedKeys.includes(item.key)" class="sidebar-item-indicator" />
+            </div>
+          </a-tooltip>
         </div>
       </nav>
 
       <div class="sidebar-footer">
-        <div class="sidebar-item" @click="navigateTo('/dashboard')">
-          <ArrowLeftOutlined class="sidebar-item-icon" />
-          <transition name="fade">
-            <span v-if="!collapsed" class="sidebar-item-label">返回前台</span>
-          </transition>
-        </div>
-        <div class="sidebar-item sidebar-item--logout" @click="logout">
-          <LogoutOutlined class="sidebar-item-icon" />
-          <transition name="fade">
-            <span v-if="!collapsed" class="sidebar-item-label">退出登录</span>
-          </transition>
-        </div>
+        <a-popover
+          placement="rightBottom"
+          trigger="click"
+          overlayClassName="user-profile-popover"
+          :arrow="false"
+        >
+          <template #content>
+            <div class="user-dropdown-panel">
+              <!-- Back to Business (Dashboard) -->
+              <div class="dropdown-item" @click="navigateTo('/dashboard')">
+                <DashboardOutlined class="dropdown-item-icon" />
+                <span>返回工作台</span>
+              </div>
+              <div class="dropdown-divider" />
+
+              <!-- Tenant Admin Section (Current) -->
+              <div class="dropdown-section-title">租户管理</div>
+              <div class="dropdown-item" @click="navigateTo('/admin/tenant')">
+                <AppstoreOutlined class="dropdown-item-icon" />
+                <span>规则配置</span>
+              </div>
+              <div class="dropdown-item" @click="navigateTo('/admin/tenant/org')">
+                <ApartmentOutlined class="dropdown-item-icon" />
+                <span>组织人员</span>
+              </div>
+              <div class="dropdown-item" @click="navigateTo('/admin/tenant/data')">
+                <DatabaseOutlined class="dropdown-item-icon" />
+                <span>数据信息</span>
+              </div>
+              <div class="dropdown-divider" />
+
+              <!-- System Admin Section -->
+              <template v-if="showSystemAdmin">
+                <div class="dropdown-section-title">系统管理</div>
+                <div class="dropdown-item" @click="navigateTo('/admin/system')">
+                  <MonitorOutlined class="dropdown-item-icon" />
+                  <span>全局监控</span>
+                </div>
+                <div class="dropdown-item" @click="navigateTo('/admin/system/tenants')">
+                  <TeamOutlined class="dropdown-item-icon" />
+                  <span>租户管理</span>
+                </div>
+                <div class="dropdown-item" @click="navigateTo('/admin/system/settings')">
+                  <SettingOutlined class="dropdown-item-icon" />
+                  <span>系统设置</span>
+                </div>
+                <div class="dropdown-divider" />
+              </template>
+
+              <!-- Common Actions -->
+              <div class="dropdown-item" @click="navigateTo('/settings')">
+                <UserOutlined class="dropdown-item-icon" />
+                <span>个人设置</span>
+              </div>
+              <div class="dropdown-item dropdown-item--danger" @click="logout">
+                <LogoutOutlined class="dropdown-item-icon" />
+                <span>退出登录</span>
+              </div>
+            </div>
+          </template>
+          
+          <div class="sidebar-user-profile" :class="{ 'sidebar-user-profile--collapsed': collapsed }">
+            <a-avatar :size="36" class="sidebar-avatar">
+              <template #icon><UserOutlined /></template>
+            </a-avatar>
+            <div v-if="!collapsed" class="sidebar-user-info">
+              <div class="sidebar-user-name">{{ displayName }}</div>
+              <div class="sidebar-user-role">
+                {{ userRole === 'system_admin' ? '系统管理员' : userRole === 'tenant_admin' ? '租户管理员' : '普通用户' }}
+              </div>
+            </div>
+          </div>
+        </a-popover>
       </div>
     </aside>
 
@@ -135,28 +214,19 @@ watch(route, () => {
         </div>
 
         <div class="admin-header-right">
-          <button class="header-action" @click="toggleTheme" aria-label="切换主题">
-            <svg v-if="isDark" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-            <svg v-else xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-          </button>
-          <a-badge :count="0" :offset="[-4, 4]">
-            <button class="header-action"><BellOutlined /></button>
-          </a-badge>
-          <a-dropdown>
-            <div class="header-user">
-              <a-avatar :size="32" class="header-avatar">
-                <template #icon><UserOutlined /></template>
-              </a-avatar>
-              <span class="header-username">{{ displayName }}</span>
-            </div>
-            <template #overlay>
-              <a-menu>
-                <a-menu-item key="profile" @click="navigateTo('/settings')">个人设置</a-menu-item>
-                <a-menu-divider />
-                <a-menu-item key="logout" @click="logout">退出登录</a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
+          <a-tooltip title="切换主题" placement="bottom" :mouse-enter-delay="0.5">
+            <button class="header-action" @click="toggleTheme">
+              <transition name="rotate-icon" mode="out-in">
+                <svg v-if="isDark" key="moon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                <svg v-else key="sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+              </transition>
+            </button>
+          </a-tooltip>
+          <a-tooltip title="消息通知" placement="bottom" :mouse-enter-delay="0.5">
+            <a-badge :count="0" :offset="[-4, 4]">
+              <button class="header-action"><BellOutlined /></button>
+            </a-badge>
+          </a-tooltip>
         </div>
       </header>
 
@@ -215,7 +285,7 @@ watch(route, () => {
 .sidebar-item--logout { color: var(--color-text-tertiary); }
 .sidebar-item--logout:hover { color: #ef4444; background: rgba(239, 68, 68, 0.08); }
 
-.sidebar-footer { padding: 8px 0 16px; border-top: 1px solid var(--color-sidebar-border); }
+
 .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; backdrop-filter: blur(4px); }
 
 .admin-main { flex: 1; margin-left: var(--sidebar-width); transition: margin-left var(--transition-slow); display: flex; flex-direction: column; min-height: 100vh; }

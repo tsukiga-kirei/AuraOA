@@ -9,14 +9,12 @@ import {
   MenuUnfoldOutlined,
   BellOutlined,
   UserOutlined,
-  SafetyCertificateOutlined,
-  SettingOutlined,
-  ControlOutlined,
   AppstoreOutlined,
   ApartmentOutlined,
   DatabaseOutlined,
   MonitorOutlined,
   TeamOutlined,
+  UpOutlined,
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -94,38 +92,101 @@ watch(route, () => {
       <nav class="sidebar-nav">
         <div class="sidebar-section">
           <div v-if="!collapsed" class="sidebar-section-title">业务功能</div>
-          <div
+          <a-tooltip
             v-for="item in businessMenuItems"
             :key="item.key"
-            class="sidebar-item"
-            :class="{ 'sidebar-item--active': selectedKeys.includes(item.key) }"
-            :title="collapsed ? item.label : undefined"
-            @click="handleMenuClick(item.key)"
+            :title="collapsed ? item.label : ''"
+            placement="right"
+            :mouse-enter-delay="0.1"
           >
-            <component :is="item.icon" class="sidebar-item-icon" />
-            <transition name="fade">
-              <span v-if="!collapsed" class="sidebar-item-label">{{ item.label }}</span>
-            </transition>
-            <transition name="fade">
-              <span v-if="!collapsed && item.badge" class="sidebar-item-badge">{{ item.badge }}</span>
-            </transition>
-            <div v-if="selectedKeys.includes(item.key)" class="sidebar-item-indicator" />
-          </div>
+            <div
+              class="sidebar-item"
+              :class="{ 'sidebar-item--active': selectedKeys.includes(item.key) }"
+              @click="handleMenuClick(item.key)"
+            >
+              <component :is="item.icon" class="sidebar-item-icon" />
+              <transition name="fade">
+                <span v-if="!collapsed" class="sidebar-item-label">{{ item.label }}</span>
+              </transition>
+              <transition name="fade">
+                <span v-if="!collapsed && item.badge" class="sidebar-item-badge">{{ item.badge }}</span>
+              </transition>
+              <div v-if="selectedKeys.includes(item.key)" class="sidebar-item-indicator" />
+            </div>
+          </a-tooltip>
         </div>
       </nav>
 
-      <!-- Sidebar footer -->
+      <!-- Sidebar footer with User Profile -->
       <div class="sidebar-footer">
-        <div
-          class="sidebar-item sidebar-item--logout"
-          :title="collapsed ? '退出登录' : undefined"
-          @click="logout"
+        <a-popover
+          placement="rightBottom"
+          trigger="click"
+          overlayClassName="user-profile-popover"
+          :arrow="false"
         >
-          <LogoutOutlined class="sidebar-item-icon" />
-          <transition name="fade">
-            <span v-if="!collapsed" class="sidebar-item-label">退出登录</span>
-          </transition>
-        </div>
+          <template #content>
+            <div class="user-dropdown-panel">
+              <!-- Tenant Admin Section -->
+              <template v-if="showTenantAdmin">
+                <div class="dropdown-section-title">租户管理</div>
+                <div class="dropdown-item" @click="navigateTo('/admin/tenant')">
+                  <AppstoreOutlined class="dropdown-item-icon" />
+                  <span>规则配置</span>
+                </div>
+                <div class="dropdown-item" @click="navigateTo('/admin/tenant/org')">
+                  <ApartmentOutlined class="dropdown-item-icon" />
+                  <span>组织人员</span>
+                </div>
+                <div class="dropdown-item" @click="navigateTo('/admin/tenant/data')">
+                  <DatabaseOutlined class="dropdown-item-icon" />
+                  <span>数据信息</span>
+                </div>
+                <div class="dropdown-divider" />
+              </template>
+
+              <!-- System Admin Section -->
+              <template v-if="showSystemAdmin">
+                <div class="dropdown-section-title">系统管理</div>
+                <div class="dropdown-item" @click="navigateTo('/admin/system')">
+                  <MonitorOutlined class="dropdown-item-icon" />
+                  <span>全局监控</span>
+                </div>
+                <div class="dropdown-item" @click="navigateTo('/admin/system/tenants')">
+                  <TeamOutlined class="dropdown-item-icon" />
+                  <span>租户管理</span>
+                </div>
+                <div class="dropdown-item" @click="navigateTo('/admin/system/settings')">
+                  <SettingOutlined class="dropdown-item-icon" />
+                  <span>系统设置</span>
+                </div>
+                <div class="dropdown-divider" />
+              </template>
+
+              <!-- Common Actions -->
+              <div class="dropdown-item" @click="navigateTo('/settings')">
+                <UserOutlined class="dropdown-item-icon" />
+                <span>个人设置</span>
+              </div>
+              <div class="dropdown-item dropdown-item--danger" @click="logout">
+                <LogoutOutlined class="dropdown-item-icon" />
+                <span>退出登录</span>
+              </div>
+            </div>
+          </template>
+          
+          <div class="sidebar-user-profile" :class="{ 'sidebar-user-profile--collapsed': collapsed }">
+            <a-avatar :size="36" class="sidebar-avatar">
+              <template #icon><UserOutlined /></template>
+            </a-avatar>
+            <div v-if="!collapsed" class="sidebar-user-info">
+              <div class="sidebar-user-name">{{ displayName }}</div>
+              <div class="sidebar-user-role">
+                {{ userRole === 'system_admin' ? '系统管理员' : userRole === 'tenant_admin' ? '租户管理员' : '普通用户' }}
+              </div>
+            </div>
+          </div>
+        </a-popover>
       </div>
     </aside>
 
@@ -152,91 +213,22 @@ watch(route, () => {
         </div>
 
         <div class="app-header-right">
-          <button class="header-action" @click="toggleTheme" aria-label="切换主题">
-            <svg v-if="isDark" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-            <svg v-else xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-          </button>
-
-          <a-badge :count="3" :offset="[-4, 4]">
-            <button class="header-action" aria-label="通知">
-              <BellOutlined />
+          <a-tooltip title="切换主题" placement="bottom" :mouse-enter-delay="0.5">
+            <button class="header-action" @click="toggleTheme">
+              <transition name="rotate-icon" mode="out-in">
+                <svg v-if="isDark" key="moon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                <svg v-else key="sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+              </transition>
             </button>
-          </a-badge>
+          </a-tooltip>
 
-          <a-dropdown :trigger="['click']">
-            <div class="header-user">
-              <a-avatar :size="32" class="header-avatar">
-                <template #icon><UserOutlined /></template>
-              </a-avatar>
-              <span class="header-username">{{ displayName }}</span>
-            </div>
-            <template #overlay>
-              <div class="user-dropdown-panel">
-                <!-- User info header -->
-                <div class="dropdown-user-info">
-                  <a-avatar :size="40" class="header-avatar">
-                    <template #icon><UserOutlined /></template>
-                  </a-avatar>
-                  <div class="dropdown-user-detail">
-                    <div class="dropdown-user-name">{{ displayName }}</div>
-                    <div class="dropdown-user-role">
-                      {{ userRole === 'system_admin' ? '系统管理员' : userRole === 'tenant_admin' ? '租户管理员' : '普通用户' }}
-                    </div>
-                  </div>
-                </div>
-
-                <div class="dropdown-divider" />
-
-                <!-- Personal -->
-                <div class="dropdown-item" @click="navigateTo('/settings')">
-                  <UserOutlined class="dropdown-item-icon" />
-                  <span>个人设置</span>
-                </div>
-
-                <!-- Tenant Admin Section -->
-                <template v-if="showTenantAdmin">
-                  <div class="dropdown-divider" />
-                  <div class="dropdown-section-title">租户管理</div>
-                  <div class="dropdown-item" @click="navigateTo('/admin/tenant')">
-                    <AppstoreOutlined class="dropdown-item-icon" />
-                    <span>规则配置</span>
-                  </div>
-                  <div class="dropdown-item" @click="navigateTo('/admin/tenant/org')">
-                    <ApartmentOutlined class="dropdown-item-icon" />
-                    <span>组织人员</span>
-                  </div>
-                  <div class="dropdown-item" @click="navigateTo('/admin/tenant/data')">
-                    <DatabaseOutlined class="dropdown-item-icon" />
-                    <span>数据信息</span>
-                  </div>
-                </template>
-
-                <!-- System Admin Section -->
-                <template v-if="showSystemAdmin">
-                  <div class="dropdown-divider" />
-                  <div class="dropdown-section-title">系统管理</div>
-                  <div class="dropdown-item" @click="navigateTo('/admin/system')">
-                    <MonitorOutlined class="dropdown-item-icon" />
-                    <span>全局监控</span>
-                  </div>
-                  <div class="dropdown-item" @click="navigateTo('/admin/system/tenants')">
-                    <TeamOutlined class="dropdown-item-icon" />
-                    <span>租户管理</span>
-                  </div>
-                  <div class="dropdown-item" @click="navigateTo('/admin/system/settings')">
-                    <SettingOutlined class="dropdown-item-icon" />
-                    <span>系统设置</span>
-                  </div>
-                </template>
-
-                <div class="dropdown-divider" />
-                <div class="dropdown-item dropdown-item--danger" @click="logout">
-                  <LogoutOutlined class="dropdown-item-icon" />
-                  <span>退出登录</span>
-                </div>
-              </div>
-            </template>
-          </a-dropdown>
+          <a-tooltip title="消息通知" placement="bottom" :mouse-enter-delay="0.5">
+            <a-badge :count="3" :offset="[-4, 4]">
+              <button class="header-action">
+                <BellOutlined />
+              </button>
+            </a-badge>
+          </a-tooltip>
         </div>
       </header>
 
@@ -420,11 +412,7 @@ watch(route, () => {
   background: rgba(239, 68, 68, 0.08);
 }
 
-/* Sidebar footer */
-.sidebar-footer {
-  padding: 8px 0 16px;
-  border-top: 1px solid var(--color-sidebar-border);
-}
+
 
 /* Sidebar overlay for mobile */
 .sidebar-overlay {
@@ -621,8 +609,44 @@ watch(route, () => {
   background: var(--color-danger-bg);
 }
 
-.dropdown-item--danger:hover .dropdown-item-icon {
-  color: var(--color-danger);
+
+
+/* Popup style override */
+:global(.user-profile-popover .ant-popover-inner) {
+  padding: 0;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+:global(.user-profile-popover .ant-popover-inner-content) {
+  padding: 0;
+}
+
+/* Rotate animation for theme icon */
+.rotate-icon-enter-active,
+.rotate-icon-leave-active {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rotate-icon-enter-from {
+  opacity: 0;
+  transform: rotate(-120deg) scale(0.5);
+}
+
+.rotate-icon-leave-to {
+  opacity: 0;
+  transform: rotate(120deg) scale(0.5);
+}
+
+/* User Dropdown Panel Styling (Reused) */
+.user-dropdown-panel {
+  background: var(--color-bg-card);
+  min-width: 240px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 8px 0;
 }
 
 /* ===== Content ===== */

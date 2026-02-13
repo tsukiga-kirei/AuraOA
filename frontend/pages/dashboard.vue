@@ -268,9 +268,11 @@ const recommendationConfig = {
                 >
                   {{ urgencyConfig[item.urgency].label }}
                 </span>
-                <button class="oa-jump-btn" @click.stop="jumpToOA(item.process_id)" aria-label="跳转 OA 系统">
-                  <ExportOutlined />
-                </button>
+                <a-tooltip title="跳转 OA 系统" :mouse-enter-delay="0.5">
+                  <button class="oa-jump-btn" @click.stop="jumpToOA(item.process_id)">
+                    <ExportOutlined />
+                  </button>
+                </a-tooltip>
               </div>
             </div>
           </div>
