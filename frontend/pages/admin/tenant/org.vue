@@ -25,8 +25,8 @@ const topTab = ref<'members' | 'roles' | 'departments'>('members')
 // ===== Members =====
 const members = ref<OrgMember[]>(JSON.parse(JSON.stringify(mockOrgMembers)))
 const memberSearch = ref('')
-const memberDeptFilter = ref<string>('')
-const memberRoleFilter = ref<string>('')
+const memberDeptFilter = ref<string | undefined>(undefined)
+const memberRoleFilter = ref<string | undefined>(undefined)
 
 const filteredMembers = computed(() => {
   return members.value.filter(m => {
