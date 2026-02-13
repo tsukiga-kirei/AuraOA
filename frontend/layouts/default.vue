@@ -19,7 +19,7 @@ import {
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
-const { sidebarCollapsed: collapsed, restore: restoreLayoutPrefs } = useLayoutPrefs()
+const { sidebarCollapsed: collapsed, restore: restoreLayoutPrefs, setSourceLayout } = useLayoutPrefs()
 const mobileMenuOpen = ref(false)
 const isMobile = ref(false)
 
@@ -68,6 +68,10 @@ const handleMenuClick = (path: string) => {
 watch(route, () => {
   if (isMobile.value) mobileMenuOpen.value = false
 })
+const handleSettingsClick = () => {
+  setSourceLayout('default')
+  navigateTo('/settings')
+}
 </script>
 
 <template>
@@ -166,7 +170,7 @@ watch(route, () => {
               </template>
 
               <!-- Common Actions -->
-              <div class="dropdown-item" @click="localStorage.setItem('settings_source_layout', 'default'); navigateTo('/settings')">
+              <div class="dropdown-item" @click="handleSettingsClick">
                 <SettingOutlined class="dropdown-item-icon" />
                 <span>个人设置</span>
               </div>
@@ -448,7 +452,6 @@ watch(route, () => {
 /* ===== Header ===== */
 .app-header {
   height: var(--header-height);
-  border-bottom: 1px solid var(--color-border-light);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -456,8 +459,7 @@ watch(route, () => {
   position: sticky;
   top: 0;
   z-index: 50;
-  backdrop-filter: blur(12px);
-  background: color-mix(in srgb, var(--color-bg-card) 85%, transparent);
+  background: var(--color-bg-page);
 }
 
 .app-header-left {

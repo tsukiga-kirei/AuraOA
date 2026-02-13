@@ -48,8 +48,29 @@ export const useLayoutPrefs = () => {
         },
     })
 
+    // --- Source Layout Context (for Settings Page) ---
+    // Use useState to share state across components immediately
+    const sourceLayout = useState<string>('settings_source_layout_state', () => 'default')
+
+    const setSourceLayout = (layout: string) => {
+        sourceLayout.value = layout
+        if (import.meta.client) {
+            localStorage.setItem('settings_source_layout', layout)
+        }
+    }
+
+    const restoreSourceLayout = () => {
+        if (import.meta.client) {
+            const stored = localStorage.getItem('settings_source_layout')
+            if (stored) sourceLayout.value = stored
+        }
+    }
+
     return {
         sidebarCollapsed,
         restore,
+        sourceLayout,
+        setSourceLayout,
+        restoreSourceLayout,
     }
 }

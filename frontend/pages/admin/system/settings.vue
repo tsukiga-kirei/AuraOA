@@ -321,7 +321,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               </a-col>
               <a-col :span="6">
                 <a-form-item label="默认语言">
-                  <a-select v-model:value="generalConfig.default_language" size="large">
+                  <a-select v-model:value="generalConfig.default_language" size="large" placeholder="选择语言">
                     <a-select-option value="zh-CN">简体中文</a-select-option>
                     <a-select-option value="en-US">English</a-select-option>
                   </a-select>

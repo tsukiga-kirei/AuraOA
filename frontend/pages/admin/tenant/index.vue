@@ -531,13 +531,13 @@ const handleSave = () => {
             <div class="ai-form-row">
               <div class="ai-form-group">
                 <label class="ai-form-label">AI 服务商</label>
-                <a-select v-model:value="selectedConfig.ai_config.ai_provider" style="width: 100%;" size="large">
+                <a-select v-model:value="selectedConfig.ai_config.ai_provider" style="width: 100%;" size="large" placeholder="选择服务商">
                   <a-select-option v-for="p in aiProviders" :key="p.value" :value="p.value">{{ p.label }}</a-select-option>
                 </a-select>
               </div>
               <div class="ai-form-group">
                 <label class="ai-form-label">模型</label>
-                <a-select v-model:value="selectedConfig.ai_config.model_name" style="width: 100%;" size="large">
+                <a-select v-model:value="selectedConfig.ai_config.model_name" style="width: 100%;" size="large" placeholder="选择模型">
                   <a-select-option
                     v-for="m in (modelOptions[selectedConfig.ai_config.ai_provider] || [])"
                     :key="m" :value="m"
@@ -809,13 +809,13 @@ const handleSave = () => {
             <div class="ai-form-row">
               <div class="ai-form-group">
                 <label class="ai-form-label">AI 服务商</label>
-                <a-select v-model:value="selectedCronConfig.ai_config.ai_provider" style="width: 100%;" size="large">
+                <a-select v-model:value="selectedCronConfig.ai_config.ai_provider" style="width: 100%;" size="large" placeholder="选择服务商">
                   <a-select-option v-for="p in cronAiProviders" :key="p.value" :value="p.value">{{ p.label }}</a-select-option>
                 </a-select>
               </div>
               <div class="ai-form-group">
                 <label class="ai-form-label">模型</label>
-                <a-select v-model:value="selectedCronConfig.ai_config.model_name" style="width: 100%;" size="large">
+                <a-select v-model:value="selectedCronConfig.ai_config.model_name" style="width: 100%;" size="large" placeholder="选择模型">
                   <a-select-option
                     v-for="m in (cronModelOptions[selectedCronConfig.ai_config.ai_provider] || [])"
                     :key="m" :value="m"
@@ -1106,13 +1106,13 @@ const handleSave = () => {
             <div class="ai-form-row">
               <div class="ai-form-group">
                 <label class="ai-form-label">AI 服务商</label>
-                <a-select v-model:value="selectedArchiveConfig.ai_config.ai_provider" style="width: 100%;" size="large">
+                <a-select v-model:value="selectedArchiveConfig.ai_config.ai_provider" style="width: 100%;" size="large" placeholder="选择服务商">
                   <a-select-option v-for="p in aiProviders" :key="p.value" :value="p.value">{{ p.label }}</a-select-option>
                 </a-select>
               </div>
               <div class="ai-form-group">
                 <label class="ai-form-label">模型</label>
-                <a-select v-model:value="selectedArchiveConfig.ai_config.model_name" style="width: 100%;" size="large">
+                <a-select v-model:value="selectedArchiveConfig.ai_config.model_name" style="width: 100%;" size="large" placeholder="选择模型">
                   <a-select-option
                     v-for="m in (modelOptions[selectedArchiveConfig.ai_config.ai_provider] || [])"
                     :key="m" :value="m"

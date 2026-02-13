@@ -254,7 +254,7 @@ const onDriverChange = (driver: string) => {
           </a-col>
         </a-row>
         <a-form-item label="OA 类型">
-          <a-select v-model:value="newTenant.oa_type" size="large">
+          <a-select v-model:value="newTenant.oa_type" size="large" placeholder="选择 OA 类型">
             <a-select-option value="weaver_e9">泛微 E9</a-select-option>
             <a-select-option value="weaver_ebridge">泛微 E-Bridge</a-select-option>
             <a-select-option value="zhiyuan_a8">致远 A8+</a-select-option>
@@ -366,7 +366,7 @@ const onDriverChange = (driver: string) => {
             <a-row :gutter="16">
               <a-col :span="12">
                 <a-form-item label="OA 类型">
-                  <a-select v-model:value="selectedTenant.oa_type" size="large">
+                  <a-select v-model:value="selectedTenant.oa_type" size="large" placeholder="选择 OA 类型">
                     <a-select-option value="weaver_e9">泛微 E9</a-select-option>
                     <a-select-option value="weaver_ebridge">泛微 E-Bridge</a-select-option>
                     <a-select-option value="zhiyuan_a8">致远 A8+</a-select-option>
@@ -399,6 +399,7 @@ const onDriverChange = (driver: string) => {
               <a-select
                 v-model:value="selectedTenant.jdbc_config.driver"
                 size="large"
+                placeholder="选择数据库驱动"
                 @change="onDriverChange"
               >
                 <a-select-option v-for="opt in driverOptions" :key="opt.value" :value="opt.value">
@@ -473,7 +474,7 @@ const onDriverChange = (driver: string) => {
               <a-row :gutter="16">
                 <a-col :span="12">
                   <a-form-item label="AI 服务商">
-                    <a-select v-model:value="selectedTenant.ai_config.default_provider" size="large">
+                    <a-select v-model:value="selectedTenant.ai_config.default_provider" size="large" placeholder="选择服务商">
                       <a-select-option value="本地部署">本地部署</a-select-option>
                       <a-select-option value="云端API">云端API</a-select-option>
                     </a-select>
@@ -481,7 +482,7 @@ const onDriverChange = (driver: string) => {
                 </a-col>
                 <a-col :span="12">
                   <a-form-item label="模型名称">
-                    <a-select v-model:value="selectedTenant.ai_config.default_model" size="large">
+                    <a-select v-model:value="selectedTenant.ai_config.default_model" size="large" placeholder="选择模型">
                       <a-select-option v-for="m in availableModels" :key="m.model_name" :value="m.model_name">
                         {{ m.display_name }}
                       </a-select-option>
