@@ -4,7 +4,7 @@
  * Sidebar always shows ALL sections the user has access to, regardless of
  * which page they're currently on. No route-context switching.
  *
- * Login always lands on /dashboard (the first menu item).
+ * Login always lands on /overview (the overview dashboard).
  * User dropdown only shows "个人设置" and "退出登录" (no duplicate nav).
  */
 import {
@@ -17,6 +17,7 @@ import {
   MonitorOutlined,
   TeamOutlined,
   SettingOutlined,
+  PieChartOutlined,
 } from '@ant-design/icons-vue'
 import type { Component } from 'vue'
 
@@ -32,6 +33,10 @@ export interface SidebarSection {
   title: string
   items: SidebarMenuItem[]
 }
+
+const OVERVIEW_ITEMS: SidebarMenuItem[] = [
+  { key: '/overview', icon: PieChartOutlined, label: '仪表盘' },
+]
 
 const BUSINESS_ITEMS: SidebarMenuItem[] = [
   { key: '/dashboard', icon: DashboardOutlined, label: '审核工作台', badge: 6 },
@@ -61,6 +66,9 @@ export const useSidebarMenu = () => {
     const perms = userPermissions.value
     const result: SidebarSection[] = []
 
+    // Overview dashboard is always visible to all authenticated users
+    result.push({ id: 'overview', title: '仪表盘', items: OVERVIEW_ITEMS })
+
     if (perms.includes('business')) {
       result.push({ id: 'business', title: '工作台', items: BUSINESS_ITEMS })
     }
@@ -77,14 +85,14 @@ export const useSidebarMenu = () => {
   /** Check if a menu item is active */
   const isMenuActive = (itemKey: string) => {
     const path = route.path
-    if (itemKey === '/admin/system' || itemKey === '/admin/tenant' || itemKey === '/dashboard') {
+    if (itemKey === '/admin/system' || itemKey === '/admin/tenant' || itemKey === '/dashboard' || itemKey === '/overview') {
       return path === itemKey
     }
     return path.startsWith(itemKey)
   }
 
-  /** Logo always goes to dashboard */
-  const logoTarget = '/dashboard'
+  /** Logo always goes to overview dashboard */
+  const logoTarget = '/overview'
 
   return {
     sections,

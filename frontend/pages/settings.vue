@@ -21,9 +21,13 @@ import {
   ControlOutlined,
   SendOutlined,
   AuditOutlined,
+  PieChartOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig } from '~/composables/useMockData'
+import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig, OverviewWidgetId } from '~/composables/useMockData'
+import { OVERVIEW_WIDGETS } from '~/composables/useMockData'
 
 // All layouts now use the same unified sidebar, so just use default.
 definePageMeta({
@@ -31,10 +35,42 @@ definePageMeta({
   layout: 'default',
 })
 
-const { userRole } = useAuth()
-const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs, mockOrgRoles, mockOrgMembers } = useMockData()
+const { userRole, userPermissions, currentUser } = useAuth()
+const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs, mockOrgRoles, mockOrgMembers, mockUserDashboardPrefs } = useMockData()
 
 const activeTab = ref('profile')
+
+// ===== Dashboard prefs tab =====
+const dashboardAvailableWidgets = computed(() => {
+  const perms = userPermissions.value
+  return OVERVIEW_WIDGETS.filter(w => w.requiredPermissions.some(p => perms.includes(p)))
+})
+const dashboardEnabledWidgets = ref<OverviewWidgetId[]>([])
+
+onMounted(() => {
+  const uname = currentUser.value?.username || ''
+  const saved = mockUserDashboardPrefs[uname]
+  if (saved) {
+    dashboardEnabledWidgets.value = [...saved.enabledWidgets]
+  } else {
+    dashboardEnabledWidgets.value = dashboardAvailableWidgets.value
+      .filter(w => w.defaultEnabled)
+      .map(w => w.id)
+  }
+})
+
+const isDashWidgetEnabled = (id: OverviewWidgetId) => dashboardEnabledWidgets.value.includes(id)
+const toggleDashWidget = (id: OverviewWidgetId) => {
+  const idx = dashboardEnabledWidgets.value.indexOf(id)
+  if (idx >= 0) dashboardEnabledWidgets.value.splice(idx, 1)
+  else dashboardEnabledWidgets.value.push(id)
+}
+const resetDashboardPrefs = () => {
+  dashboardEnabledWidgets.value = dashboardAvailableWidgets.value
+    .filter(w => w.defaultEnabled)
+    .map(w => w.id)
+  message.success('已恢复默认布局')
+}
 
 // ===== Profile tab =====
 // Find current user's org member record to show role-based permissions
@@ -48,6 +84,7 @@ const currentOrgRole = computed(() => {
 })
 
 const allPageLabels: Record<string, string> = {
+  '/overview': '仪表盘',
   '/dashboard': '审核工作台',
   '/cron': '定时任务',
   '/archive': '归档复盘',
@@ -286,6 +323,7 @@ const toggleArchiveField = (field: ProcessField) => {
       <button
         v-for="tab in [
           { key: 'profile', label: '基本信息', icon: UserOutlined },
+          { key: 'dashboard_prefs', label: '仪表盘', icon: PieChartOutlined },
           { key: 'workbench', label: '审核工作台', icon: DashboardOutlined },
           { key: 'cron', label: '定时任务', icon: ClockCircleOutlined },
           { key: 'archive', label: '归档复盘', icon: FolderOpenOutlined },
@@ -298,6 +336,46 @@ const toggleArchiveField = (field: ProcessField) => {
         <component :is="tab.icon" />
         {{ tab.label }}
       </button>
+    </div>
+
+    <!-- Dashboard prefs tab -->
+    <div v-if="activeTab === 'dashboard_prefs'" class="tab-content">
+      <div class="settings-card">
+        <div class="section-header-row" style="margin-bottom: 16px;">
+          <h4 class="config-section-title">仪表盘组件配置</h4>
+          <a-button size="small" @click="resetDashboardPrefs">恢复默认</a-button>
+        </div>
+        <p class="config-section-desc" style="margin-bottom: 20px;">
+          选择您希望在仪表盘中显示的组件，不同权限可见的组件有所不同
+        </p>
+        <div class="dash-widget-list">
+          <div
+            v-for="w in dashboardAvailableWidgets"
+            :key="w.id"
+            class="dash-widget-item"
+            :class="{ 'dash-widget-item--active': isDashWidgetEnabled(w.id) }"
+            @click="toggleDashWidget(w.id)"
+          >
+            <div class="dash-widget-check">
+              <CheckOutlined v-if="isDashWidgetEnabled(w.id)" />
+            </div>
+            <div class="dash-widget-info">
+              <div class="dash-widget-name">{{ w.title }}</div>
+              <div class="dash-widget-desc">{{ w.description }}</div>
+            </div>
+            <div class="dash-widget-perms">
+              <span v-for="p in w.requiredPermissions" :key="p" class="dash-perm-tag">
+                {{ p === 'business' ? '业务' : p === 'tenant_admin' ? '租户' : '系统' }}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="settings-actions">
+          <a-button type="primary" size="large" :loading="saving" @click="handleSave">
+            <SaveOutlined /> 保存配置
+          </a-button>
+        </div>
+      </div>
     </div>
 
     <!-- Profile tab -->
@@ -1296,5 +1374,32 @@ const toggleArchiveField = (field: ProcessField) => {
 .perm-hint-text {
   font-size: 12px; color: var(--color-text-tertiary); margin: 14px 0 0;
   padding-top: 12px; border-top: 1px solid var(--color-border-light);
+}
+
+/* Dashboard widget prefs */
+.dash-widget-list { display: flex; flex-direction: column; gap: 8px; }
+.dash-widget-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px; border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light); background: var(--color-bg-page);
+  cursor: pointer; transition: all var(--transition-fast);
+}
+.dash-widget-item:hover { border-color: var(--color-primary); }
+.dash-widget-item--active { background: var(--color-primary-bg); border-color: var(--color-primary); }
+.dash-widget-check {
+  width: 28px; height: 28px; border-radius: var(--radius-sm);
+  border: 2px solid var(--color-border); display: flex; align-items: center; justify-content: center;
+  color: transparent; flex-shrink: 0; transition: all var(--transition-fast);
+}
+.dash-widget-item--active .dash-widget-check {
+  background: var(--color-primary); border-color: var(--color-primary); color: #fff;
+}
+.dash-widget-info { flex: 1; min-width: 0; }
+.dash-widget-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
+.dash-widget-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+.dash-widget-perms { display: flex; gap: 4px; flex-shrink: 0; }
+.dash-perm-tag {
+  font-size: 11px; padding: 2px 8px; border-radius: var(--radius-full);
+  background: var(--color-bg-hover); color: var(--color-text-tertiary);
 }
 </style>

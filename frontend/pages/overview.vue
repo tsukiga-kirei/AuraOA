@@ -1,0 +1,509 @@
+<script setup lang="ts">
+import {
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  EditOutlined,
+  ClockCircleOutlined,
+  ThunderboltOutlined,
+  RiseOutlined,
+  TeamOutlined,
+  SafetyCertificateOutlined,
+  CloudServerOutlined,
+  ApiOutlined,
+  SettingOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
+} from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
+import { OVERVIEW_WIDGETS } from '~/composables/useMockData'
+import type { OverviewWidgetId } from '~/composables/useMockData'
+
+definePageMeta({ middleware: 'auth' })
+
+const { userPermissions, currentUser } = useAuth()
+const { mockOverviewData, mockUserDashboardPrefs } = useMockData()
+const data = ref(mockOverviewData)
+
+const username = computed(() => currentUser.value?.username || '')
+const defaultPrefs = computed(() => {
+  const perms = userPermissions.value
+  return OVERVIEW_WIDGETS
+    .filter(w => w.requiredPermissions.some(p => perms.includes(p)) && w.defaultEnabled)
+    .map(w => w.id)
+})
+const enabledWidgets = ref<OverviewWidgetId[]>([])
+
+onMounted(() => {
+  const saved = mockUserDashboardPrefs[username.value]
+  enabledWidgets.value = saved ? [...saved.enabledWidgets] : [...defaultPrefs.value]
+})
+
+const availableWidgets = computed(() => {
+  const perms = userPermissions.value
+  return OVERVIEW_WIDGETS.filter(w => w.requiredPermissions.some(p => perms.includes(p)))
+})
+const isEnabled = (id: OverviewWidgetId) => enabledWidgets.value.includes(id)
+
+const customizing = ref(false)
+const toggleWidget = (id: OverviewWidgetId) => {
+  if (!customizing.value) return
+  const idx = enabledWidgets.value.indexOf(id)
+  if (idx >= 0) enabledWidgets.value.splice(idx, 1)
+  else enabledWidgets.value.push(id)
+}
+const savePrefs = () => { customizing.value = false; message.success('仪表盘布局已保存') }
+
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  return h < 6 ? '夜深了' : h < 12 ? '早上好' : h < 14 ? '中午好' : h < 18 ? '下午好' : '晚上好'
+})
+
+const formatNum = (n: number) => n >= 10000 ? (n / 1000).toFixed(1) + 'K' : n.toLocaleString()
+
+const activityStyle: Record<string, { color: string; bg: string }> = {
+  audit: { color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' },
+  cron: { color: 'var(--color-accent)', bg: 'rgba(6,182,212,0.1)' },
+  system: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' },
+  config: { color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
+}
+
+const healthColor = (s: string) => s === 'healthy' ? 'var(--color-success)' : s === 'degraded' ? 'var(--color-warning)' : 'var(--color-danger)'
+const healthLabel = (s: string) => s === 'healthy' ? '正常' : s === 'degraded' ? '降级' : '异常'
+const trendMax = computed(() => Math.max(...data.value.weeklyTrend.map(t => t.count), 1))
+const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => d.count), 1))
+</script>
+
+<template>
+  <div class="overview-page fade-in">
+    <div class="ov-header">
+      <div>
+        <h1 class="ov-title">{{ greeting }}，{{ currentUser?.display_name || '用户' }}</h1>
+        <p class="ov-subtitle">这是您的工作概览，快速了解当前状态</p>
+      </div>
+      <a-button :type="customizing ? 'primary' : 'default'" @click="customizing ? savePrefs() : (customizing = true)">
+        <SettingOutlined /> {{ customizing ? '保存布局' : '自定义仪表盘' }}
+      </a-button>
+    </div>
+
+    <!-- Customize panel -->
+    <transition name="slide-down">
+      <div v-if="customizing" class="customize-panel">
+        <p class="customize-hint">点击切换显示/隐藏，完成后点击「保存布局」</p>
+        <div class="customize-grid">
+          <div v-for="w in availableWidgets" :key="w.id" class="customize-chip" :class="{ 'customize-chip--active': isEnabled(w.id) }" @click="toggleWidget(w.id)">
+            <component :is="isEnabled(w.id) ? EyeOutlined : EyeInvisibleOutlined" />
+            <span>{{ w.title }}</span>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <div class="widget-grid">
+      <!-- ===== Audit Summary (business) ===== -->
+      <div v-if="isEnabled('audit_summary')" class="widget widget--lg">
+        <div class="widget-title"><ThunderboltOutlined /> 今日审核概览</div>
+        <div class="summary-cards">
+          <div class="summary-card summary-card--total">
+            <div class="summary-num">{{ data.auditSummary.total }}</div>
+            <div class="summary-label">总审核</div>
+          </div>
+          <div class="summary-card summary-card--approved">
+            <CheckCircleOutlined class="summary-icon" />
+            <div class="summary-num">{{ data.auditSummary.approved }}</div>
+            <div class="summary-label">通过</div>
+          </div>
+          <div class="summary-card summary-card--rejected">
+            <CloseCircleOutlined class="summary-icon" />
+            <div class="summary-num">{{ data.auditSummary.rejected }}</div>
+            <div class="summary-label">驳回</div>
+          </div>
+          <div class="summary-card summary-card--revised">
+            <EditOutlined class="summary-icon" />
+            <div class="summary-num">{{ data.auditSummary.revised }}</div>
+            <div class="summary-label">修改</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Pending Tasks (business) ===== -->
+      <div v-if="isEnabled('pending_tasks')" class="widget widget--sm">
+        <div class="widget-title"><ClockCircleOutlined /> 待办任务</div>
+        <div class="pending-big">
+          <div class="pending-num">{{ data.pendingCount }}</div>
+          <div class="pending-label">条待处理</div>
+        </div>
+        <a-button type="link" size="small" @click="navigateTo('/dashboard')">前往工作台 →</a-button>
+      </div>
+
+      <!-- ===== Weekly Trend (business) ===== -->
+      <div v-if="isEnabled('weekly_trend')" class="widget widget--md">
+        <div class="widget-title"><RiseOutlined /> 审核趋势（近7天）</div>
+        <div class="bar-chart">
+          <div v-for="t in data.weeklyTrend" :key="t.date" class="bar-col">
+            <div class="bar-value">{{ t.count }}</div>
+            <div class="bar" :style="{ height: (t.count / trendMax * 120) + 'px' }" />
+            <div class="bar-label">{{ t.date }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Dept Distribution (business) ===== -->
+      <div v-if="isEnabled('dept_distribution')" class="widget widget--md">
+        <div class="widget-title"><TeamOutlined /> 部门分布</div>
+        <div class="dept-list">
+          <div v-for="d in data.deptDistribution" :key="d.department" class="dept-row">
+            <span class="dept-name">{{ d.department }}</span>
+            <div class="dept-bar-wrap">
+              <div class="dept-bar" :style="{ width: (d.count / deptMax * 100) + '%', background: d.color }" />
+            </div>
+            <span class="dept-count">{{ d.count }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Recent Activity (all) ===== -->
+      <div v-if="isEnabled('recent_activity')" class="widget widget--md">
+        <div class="widget-title"><ClockCircleOutlined /> 最近动态</div>
+        <div class="activity-list">
+          <div v-for="a in data.recentActivity" :key="a.id" class="activity-item">
+            <div class="activity-dot" :style="{ background: activityStyle[a.type]?.color }" />
+            <div class="activity-body">
+              <span class="activity-action">{{ a.action }}</span>
+              <span class="activity-target">{{ a.target }}</span>
+            </div>
+            <div class="activity-meta">
+              <span class="activity-user">{{ a.user }}</span>
+              <span class="activity-time">{{ a.time }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== AI Performance (business+tenant) ===== -->
+      <div v-if="isEnabled('ai_performance')" class="widget widget--md">
+        <div class="widget-title"><ThunderboltOutlined /> AI 模型表现</div>
+        <div class="ai-stats">
+          <div class="ai-stat">
+            <div class="ai-stat-num">{{ data.aiPerformance.avgResponseMs }}ms</div>
+            <div class="ai-stat-label">平均响应</div>
+          </div>
+          <div class="ai-stat">
+            <div class="ai-stat-num">{{ data.aiPerformance.successRate }}%</div>
+            <div class="ai-stat-label">成功率</div>
+          </div>
+          <div class="ai-stat">
+            <div class="ai-stat-num">{{ formatNum(data.aiPerformance.totalCalls) }}</div>
+            <div class="ai-stat-label">总调用</div>
+          </div>
+        </div>
+        <div class="bar-chart bar-chart--small">
+          <div v-for="s in data.aiPerformance.dailyStats" :key="s.date" class="bar-col">
+            <div class="bar-value">{{ s.avgMs }}</div>
+            <div class="bar bar--accent" :style="{ height: (s.avgMs / 2500 * 80) + 'px' }" />
+            <div class="bar-label">{{ s.date }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Tenant Usage (tenant_admin) ===== -->
+      <div v-if="isEnabled('tenant_usage')" class="widget widget--md">
+        <div class="widget-title"><CloudServerOutlined /> 租户资源用量</div>
+        <div class="usage-rows">
+          <div class="usage-row">
+            <span class="usage-label">Token 用量</span>
+            <div class="usage-bar-wrap">
+              <div class="usage-bar" :style="{ width: (data.tenantUsage.tokenUsed / data.tenantUsage.tokenQuota * 100) + '%' }" />
+            </div>
+            <span class="usage-text">{{ formatNum(data.tenantUsage.tokenUsed) }} / {{ formatNum(data.tenantUsage.tokenQuota) }}</span>
+          </div>
+          <div class="usage-row">
+            <span class="usage-label">存储空间</span>
+            <div class="usage-bar-wrap">
+              <div class="usage-bar usage-bar--info" :style="{ width: (data.tenantUsage.storageUsedMB / data.tenantUsage.storageQuotaMB * 100) + '%' }" />
+            </div>
+            <span class="usage-text">{{ data.tenantUsage.storageUsedMB }}MB / {{ data.tenantUsage.storageQuotaMB }}MB</span>
+          </div>
+          <div class="usage-row">
+            <span class="usage-label">活跃用户</span>
+            <div class="usage-bar-wrap">
+              <div class="usage-bar usage-bar--success" :style="{ width: (data.tenantUsage.activeUsers / data.tenantUsage.totalUsers * 100) + '%' }" />
+            </div>
+            <span class="usage-text">{{ data.tenantUsage.activeUsers }} / {{ data.tenantUsage.totalUsers }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Rule Coverage (tenant_admin) ===== -->
+      <div v-if="isEnabled('rule_coverage')" class="widget widget--md">
+        <div class="widget-title"><SafetyCertificateOutlined /> 规则覆盖率</div>
+        <div class="coverage-list">
+          <div v-for="r in data.ruleCoverage" :key="r.processType" class="coverage-row">
+            <div class="coverage-info">
+              <span class="coverage-type">{{ r.processType }}</span>
+              <span class="coverage-count">{{ r.ruleCount }} 条规则</span>
+            </div>
+            <div class="coverage-bar-wrap">
+              <div class="coverage-bar" :style="{ width: r.coveragePercent + '%' }" />
+            </div>
+            <span class="coverage-pct">{{ r.coveragePercent }}%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== User Activity (tenant_admin) ===== -->
+      <div v-if="isEnabled('user_activity')" class="widget widget--md">
+        <div class="widget-title"><TeamOutlined /> 用户活跃排行</div>
+        <div class="rank-list">
+          <div v-for="(u, i) in data.userActivity" :key="u.username" class="rank-item">
+            <span class="rank-num" :class="{ 'rank-num--top': i < 3 }">{{ i + 1 }}</span>
+            <div class="rank-info">
+              <span class="rank-name">{{ u.displayName }}</span>
+              <span class="rank-dept">{{ u.department }}</span>
+            </div>
+            <span class="rank-count">{{ u.auditCount }} 次</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== System Health (system_admin) ===== -->
+      <div v-if="isEnabled('system_health')" class="widget widget--lg">
+        <div class="widget-title"><CloudServerOutlined /> 系统健康</div>
+        <div class="health-grid">
+          <div v-for="s in data.systemHealth" :key="s.service" class="health-card">
+            <div class="health-header">
+              <span class="health-name">{{ s.service }}</span>
+              <span class="health-badge" :style="{ color: healthColor(s.status), background: s.status === 'healthy' ? 'var(--color-success-bg)' : s.status === 'degraded' ? 'var(--color-warning-bg)' : 'var(--color-danger-bg)' }">
+                {{ healthLabel(s.status) }}
+              </span>
+            </div>
+            <div class="health-metrics">
+              <div class="health-metric">
+                <span class="health-metric-label">CPU</span>
+                <div class="health-bar-wrap"><div class="health-bar" :style="{ width: s.cpu + '%', background: s.cpu > 80 ? 'var(--color-danger)' : s.cpu > 60 ? 'var(--color-warning)' : 'var(--color-success)' }" /></div>
+                <span class="health-metric-val">{{ s.cpu }}%</span>
+              </div>
+              <div class="health-metric">
+                <span class="health-metric-label">内存</span>
+                <div class="health-bar-wrap"><div class="health-bar" :style="{ width: s.memory + '%', background: s.memory > 80 ? 'var(--color-danger)' : s.memory > 60 ? 'var(--color-warning)' : 'var(--color-success)' }" /></div>
+                <span class="health-metric-val">{{ s.memory }}%</span>
+              </div>
+            </div>
+            <div class="health-uptime">运行 {{ s.uptime }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Tenant Overview (system_admin) ===== -->
+      <div v-if="isEnabled('tenant_overview')" class="widget widget--md">
+        <div class="widget-title"><TeamOutlined /> 租户总览</div>
+        <div class="tenant-table">
+          <div class="tenant-row tenant-row--header">
+            <span>租户</span><span>用户</span><span>审核量</span><span>状态</span>
+          </div>
+          <div v-for="t in data.tenantOverview" :key="t.tenantId" class="tenant-row">
+            <span class="tenant-name">{{ t.tenantName }}</span>
+            <span>{{ t.userCount }}</span>
+            <span>{{ formatNum(t.auditCount) }}</span>
+            <span class="tenant-status" :style="{ color: t.status === 'active' ? 'var(--color-success)' : 'var(--color-warning)' }">
+              {{ t.status === 'active' ? '活跃' : '已暂停' }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== API Metrics (system_admin) ===== -->
+      <div v-if="isEnabled('api_metrics')" class="widget widget--md">
+        <div class="widget-title"><ApiOutlined /> API 调用指标</div>
+        <div class="api-table">
+          <div class="api-row api-row--header">
+            <span>接口</span><span>调用量</span><span>延迟</span><span>成功率</span>
+          </div>
+          <div v-for="a in data.apiMetrics" :key="a.endpoint" class="api-row">
+            <span class="api-endpoint">{{ a.endpoint }}</span>
+            <span>{{ formatNum(a.calls) }}</span>
+            <span>{{ a.avgMs }}ms</span>
+            <span :style="{ color: a.successRate >= 99 ? 'var(--color-success)' : a.successRate >= 95 ? 'var(--color-warning)' : 'var(--color-danger)' }">{{ a.successRate }}%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.overview-page { max-width: 1400px; }
+
+.ov-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 16px; flex-wrap: wrap; }
+.ov-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; }
+.ov-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin-top: 4px; }
+
+/* Customize panel */
+.customize-panel {
+  background: var(--color-bg-card); border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 20px;
+}
+.customize-hint { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 12px; }
+.customize-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.customize-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: var(--radius-full);
+  border: 1px solid var(--color-border); background: var(--color-bg-page);
+  font-size: 13px; color: var(--color-text-secondary); cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.customize-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.customize-chip--active { background: var(--color-primary-bg); border-color: var(--color-primary); color: var(--color-primary); font-weight: 500; }
+
+.slide-down-enter-active { transition: all 0.25s ease; }
+.slide-down-leave-active { transition: all 0.2s ease; }
+.slide-down-enter-from, .slide-down-leave-to { opacity: 0; transform: translateY(-8px); }
+
+/* Widget grid */
+.widget-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+.widget {
+  background: var(--color-bg-card); border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg); padding: 20px;
+  box-shadow: var(--shadow-xs); transition: box-shadow var(--transition-base);
+}
+.widget:hover { box-shadow: var(--shadow-sm); }
+.widget--sm { grid-column: span 4; }
+.widget--md { grid-column: span 6; }
+.widget--lg { grid-column: span 12; }
+.widget-title {
+  font-size: 14px; font-weight: 600; color: var(--color-text-primary);
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+
+/* Audit summary */
+.summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.summary-card {
+  text-align: center; padding: 16px 8px; border-radius: var(--radius-md);
+  background: var(--color-bg-page);
+}
+.summary-card--total { background: var(--color-primary-bg); }
+.summary-card--approved .summary-icon { color: var(--color-success); font-size: 20px; }
+.summary-card--rejected .summary-icon { color: var(--color-danger); font-size: 20px; }
+.summary-card--revised .summary-icon { color: var(--color-warning); font-size: 20px; }
+.summary-num { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
+.summary-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
+.summary-card--total .summary-num { color: var(--color-primary); }
+
+/* Pending */
+.pending-big { text-align: center; padding: 20px 0 12px; }
+.pending-num { font-size: 48px; font-weight: 700; color: var(--color-primary); line-height: 1; }
+.pending-label { font-size: 14px; color: var(--color-text-tertiary); margin-top: 8px; }
+
+/* Bar chart */
+.bar-chart { display: flex; align-items: flex-end; gap: 8px; justify-content: space-between; padding-top: 8px; }
+.bar-chart--small { margin-top: 16px; }
+.bar-col { display: flex; flex-direction: column; align-items: center; flex: 1; }
+.bar-value { font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 4px; }
+.bar {
+  width: 100%; max-width: 40px; min-height: 4px;
+  background: var(--color-primary); border-radius: 4px 4px 0 0;
+  transition: height 0.5s ease;
+}
+.bar--accent { background: var(--color-accent); }
+.bar-label { font-size: 11px; color: var(--color-text-tertiary); margin-top: 6px; }
+
+/* Dept distribution */
+.dept-list { display: flex; flex-direction: column; gap: 10px; }
+.dept-row { display: flex; align-items: center; gap: 10px; }
+.dept-name { font-size: 13px; color: var(--color-text-secondary); width: 72px; flex-shrink: 0; text-align: right; }
+.dept-bar-wrap { flex: 1; height: 20px; background: var(--color-bg-page); border-radius: 4px; overflow: hidden; }
+.dept-bar { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+.dept-count { font-size: 13px; font-weight: 600; color: var(--color-text-primary); width: 28px; text-align: right; }
+
+/* Activity */
+.activity-list { display: flex; flex-direction: column; gap: 0; }
+.activity-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--color-border-light);
+}
+.activity-item:last-child { border-bottom: none; }
+.activity-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.activity-body { flex: 1; min-width: 0; }
+.activity-action { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.activity-target { font-size: 13px; color: var(--color-text-secondary); margin-left: 6px; }
+.activity-meta { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
+.activity-user { font-size: 12px; color: var(--color-text-tertiary); }
+.activity-time { font-size: 11px; color: var(--color-text-tertiary); }
+
+/* AI stats */
+.ai-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.ai-stat { text-align: center; padding: 12px 0; background: var(--color-bg-page); border-radius: var(--radius-md); }
+.ai-stat-num { font-size: 20px; font-weight: 700; color: var(--color-text-primary); }
+.ai-stat-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+
+/* Usage bars */
+.usage-rows { display: flex; flex-direction: column; gap: 16px; }
+.usage-row { display: flex; align-items: center; gap: 12px; }
+.usage-label { font-size: 13px; color: var(--color-text-secondary); width: 72px; flex-shrink: 0; }
+.usage-bar-wrap { flex: 1; height: 12px; background: var(--color-bg-page); border-radius: 6px; overflow: hidden; }
+.usage-bar { height: 100%; background: var(--color-primary); border-radius: 6px; transition: width 0.5s ease; }
+.usage-bar--info { background: var(--color-info); }
+.usage-bar--success { background: var(--color-success); }
+.usage-text { font-size: 12px; color: var(--color-text-tertiary); width: 120px; text-align: right; flex-shrink: 0; }
+
+/* Coverage */
+.coverage-list { display: flex; flex-direction: column; gap: 14px; }
+.coverage-row { display: flex; align-items: center; gap: 10px; }
+.coverage-info { width: 100px; flex-shrink: 0; }
+.coverage-type { font-size: 13px; font-weight: 500; color: var(--color-text-primary); display: block; }
+.coverage-count { font-size: 11px; color: var(--color-text-tertiary); }
+.coverage-bar-wrap { flex: 1; height: 10px; background: var(--color-bg-page); border-radius: 5px; overflow: hidden; }
+.coverage-bar { height: 100%; background: var(--color-success); border-radius: 5px; transition: width 0.5s ease; }
+.coverage-pct { font-size: 13px; font-weight: 600; color: var(--color-text-primary); width: 40px; text-align: right; }
+
+/* Rank */
+.rank-list { display: flex; flex-direction: column; gap: 0; }
+.rank-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--color-border-light); }
+.rank-item:last-child { border-bottom: none; }
+.rank-num {
+  width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; background: var(--color-bg-page); color: var(--color-text-tertiary); flex-shrink: 0;
+}
+.rank-num--top { background: var(--color-primary-bg); color: var(--color-primary); }
+.rank-info { flex: 1; min-width: 0; }
+.rank-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.rank-dept { font-size: 12px; color: var(--color-text-tertiary); margin-left: 8px; }
+.rank-count { font-size: 13px; font-weight: 600; color: var(--color-primary); flex-shrink: 0; }
+
+/* Health grid */
+.health-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.health-card { background: var(--color-bg-page); border-radius: var(--radius-md); padding: 14px; }
+.health-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.health-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.health-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full); }
+.health-metrics { display: flex; flex-direction: column; gap: 8px; }
+.health-metric { display: flex; align-items: center; gap: 8px; }
+.health-metric-label { font-size: 12px; color: var(--color-text-tertiary); width: 32px; }
+.health-bar-wrap { flex: 1; height: 6px; background: var(--color-bg-card); border-radius: 3px; overflow: hidden; }
+.health-bar { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+.health-metric-val { font-size: 12px; color: var(--color-text-secondary); width: 36px; text-align: right; }
+.health-uptime { font-size: 11px; color: var(--color-text-tertiary); margin-top: 8px; }
+
+/* Tenant table */
+.tenant-table, .api-table { display: flex; flex-direction: column; }
+.tenant-row, .api-row {
+  display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px;
+  padding: 8px 0; border-bottom: 1px solid var(--color-border-light);
+  font-size: 13px; color: var(--color-text-secondary); align-items: center;
+}
+.tenant-row:last-child, .api-row:last-child { border-bottom: none; }
+.tenant-row--header, .api-row--header { font-weight: 600; color: var(--color-text-tertiary); font-size: 12px; }
+.tenant-name { font-weight: 500; color: var(--color-text-primary); }
+.tenant-status { font-weight: 500; }
+.api-endpoint { font-family: var(--font-mono); font-size: 12px; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 1024px) {
+  .widget--sm, .widget--md { grid-column: span 6; }
+  .summary-cards { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+  .widget--sm, .widget--md, .widget--lg { grid-column: span 12; }
+  .summary-cards { grid-template-columns: repeat(2, 1fr); }
+  .health-grid { grid-template-columns: 1fr; }
+  .ov-header { flex-direction: column; }
+}
+</style>
