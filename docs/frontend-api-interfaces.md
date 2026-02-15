@@ -980,6 +980,129 @@
 - **DELETE** `/api/tenant/members/{member_id}`
 - **PATCH** `/api/tenant/members/{member_id}/toggle`
 
+### 7.7 获取用户个人配置概览列表
+- **GET** `/api/tenant/members/personal-configs`
+- **Headers**: `Authorization: Bearer {token}`
+- **Query**: `?department=研发部&search=keyword&page=1&size=20`
+- **说明**: 返回当前租户下所有用户的个人配置汇总信息，供租户管理员查看各用户的个性化配置情况（自定义规则数、字段覆盖数、审核尺度覆盖数、推送邮箱、模板覆盖数、归档自定义规则数等）。
+- **响应**:
+  ```json
+  {
+    "configs": [
+      {
+        "id": "UPC-001",
+        "user_id": "M-001",
+        "username": "zhangming",
+        "display_name": "张明",
+        "department": "研发部",
+        "custom_rules_count": 1,
+        "field_overrides_count": 0,
+        "strictness_overrides_count": 1,
+        "custom_push_email": "zhangming@example.com",
+        "template_overrides_count": 0,
+        "archive_custom_rules_count": 1,
+        "archive_flow_rules_count": 0,
+        "last_modified": "2025-06-10 14:30",
+        "total_config_items": 3
+      }
+    ],
+    "total": 8,
+    "page": 1,
+    "size": 20
+  }
+  ```
+- **字段说明**:
+  - `custom_rules_count`: 审核工作台用户自定义规则数
+  - `field_overrides_count`: 审核工作台用户修改过的字段选择数
+  - `strictness_overrides_count`: 审核工作台用户修改过审核尺度的流程数
+  - `custom_push_email`: 定时任务用户自定义推送邮箱
+  - `template_overrides_count`: 定时任务用户修改过的模板数
+  - `archive_custom_rules_count`: 归档复盘用户自定义复核规则数
+  - `archive_flow_rules_count`: 归档复盘用户自定义审批流规则数
+  - `total_config_items`: 配置项总数
+
+### 7.8 获取用户个人配置详情
+- **GET** `/api/tenant/members/personal-configs/{user_id}`
+- **Headers**: `Authorization: Bearer {token}`
+- **说明**: 返回指定用户的完整个人配置详情，包含审核工作台、定时任务、归档复盘三个模块的逐条配置明细。供租户管理员在「用户偏好分析」页面查看详情时使用。
+- **响应**:
+  ```json
+  {
+    "id": "UPC-001",
+    "user_id": "M-001",
+    "username": "zhangming",
+    "display_name": "张明",
+    "department": "研发部",
+    "custom_rules_count": 1,
+    "field_overrides_count": 0,
+    "strictness_overrides_count": 1,
+    "custom_push_email": "zhangming@example.com",
+    "template_overrides_count": 0,
+    "archive_custom_rules_count": 1,
+    "archive_flow_rules_count": 0,
+    "last_modified": "2025-06-10 14:30",
+    "total_config_items": 3,
+    "audit_details": [
+      {
+        "process_type": "采购审批",
+        "custom_rules": [
+          { "id": "UCR-001", "content": "供应商必须在合格名录中", "enabled": true }
+        ],
+        "field_overrides": [],
+        "strictness_override": "strict | standard | loose | null",
+        "rule_toggle_overrides": [
+          { "rule_id": "R006", "rule_content": "差旅住宿标准不超过城市限额", "enabled": true }
+        ]
+      }
+    ],
+    "cron_details": [
+      {
+        "task_type": "batch_audit",
+        "task_label": "批量审核",
+        "email_override": "zhangming@example.com",
+        "template_override": {
+          "subject": "自定义主题",
+          "header": "自定义头部",
+          "body_template": "自定义正文",
+          "footer": "自定义底部",
+          "include_ai_summary": true,
+          "include_statistics": true,
+          "include_detail_list": true
+        },
+        "prompt_override": ""
+      }
+    ],
+    "archive_details": [
+      {
+        "process_type": "采购审批",
+        "custom_rules": [
+          { "id": "UACR-001", "content": "付款条件须与公司标准一致", "enabled": true }
+        ],
+        "custom_flow_rules": [
+          { "id": "UAFR-001", "content": "IT部门须参与验收节点", "enabled": true }
+        ],
+        "field_overrides": [],
+        "strictness_override": "strict | standard | loose | null"
+      }
+    ]
+  }
+  ```
+- **字段说明**:
+  - `audit_details`: 审核工作台各流程的用户自定义配置明细
+    - `custom_rules`: 用户添加的自定义审核规则
+    - `field_overrides`: 用户修改过的字段名列表
+    - `strictness_override`: 用户覆盖的审核尺度，`null` 表示未覆盖
+    - `rule_toggle_overrides`: 用户对租户规则的开关覆盖
+  - `cron_details`: 定时任务各任务类型的用户自定义配置明细
+    - `email_override`: 用户自定义推送邮箱，空字符串表示使用默认
+    - `template_override`: 用户自定义的模板覆盖，`null` 表示未覆盖
+    - `prompt_override`: 用户自定义的提示词覆盖，空字符串表示未覆盖
+  - `archive_details`: 归档复盘各流程的用户自定义配置明细
+    - `custom_rules`: 用户添加的自定义复核规则
+    - `custom_flow_rules`: 用户添加的自定义审批流规则
+    - `field_overrides`: 用户修改过的字段名列表
+    - `strictness_override`: 用户覆盖的复核尺度，`null` 表示未覆盖
+
 ---
 
 ## 8. 数据信息模块（租户管理员）
