@@ -43,6 +43,7 @@ const TENANT_ITEMS: SidebarMenuItem[] = [
   { key: '/admin/tenant', icon: AppstoreOutlined, label: '规则配置' },
   { key: '/admin/tenant/org', icon: ApartmentOutlined, label: '组织人员' },
   { key: '/admin/tenant/data', icon: DatabaseOutlined, label: '数据信息' },
+  { key: '/admin/tenant/user-configs', icon: SettingOutlined, label: '用户偏好' },
 ]
 
 const SYSTEM_ITEMS: SidebarMenuItem[] = [

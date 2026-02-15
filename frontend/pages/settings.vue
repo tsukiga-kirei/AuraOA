@@ -55,6 +55,7 @@ const allPageLabels: Record<string, string> = {
   '/admin/tenant': '规则配置',
   '/admin/tenant/org': '组织人员',
   '/admin/tenant/data': '数据信息',
+  '/admin/tenant/user-configs': '用户偏好',
   '/admin/system': '全局监控',
   '/admin/system/tenants': '租户管理',
   '/admin/system/settings': '系统设置',

@@ -66,6 +66,7 @@ export const PAGE_PERMISSIONS: Record<string, PermissionGroup[]> = {
   '/admin/tenant': ['tenant_admin'],
   '/admin/tenant/org': ['tenant_admin'],
   '/admin/tenant/data': ['tenant_admin'],
+  '/admin/tenant/user-configs': ['tenant_admin'],
   '/admin/system': ['system_admin'],
   '/admin/system/tenants': ['system_admin'],
   '/admin/system/settings': ['system_admin'],
@@ -125,6 +126,7 @@ export function getMockMenusByPermissions(permissions: PermissionGroup[]): MockM
       { key: 'tenant', label: '规则配置', icon: 'AppstoreOutlined', path: '/admin/tenant' },
       { key: 'tenant-org', label: '组织人员', icon: 'ApartmentOutlined', path: '/admin/tenant/org' },
       { key: 'tenant-data', label: '数据信息', icon: 'DatabaseOutlined', path: '/admin/tenant/data' },
+      { key: 'tenant-user-configs', label: '用户偏好', icon: 'SettingOutlined', path: '/admin/tenant/user-configs' },
     )
   }
   if (permissions.includes('system_admin')) {
@@ -535,12 +537,12 @@ export const mockOrgRoles: OrgRole[] = [
   },
   {
     id: 'ROLE-003', name: '租户管理员', description: '可进入后台管理，配置规则、组织人员、数据信息',
-    page_permissions: ['/dashboard', '/cron', '/archive', '/settings', '/admin/tenant', '/admin/tenant/org', '/admin/tenant/data'],
+    page_permissions: ['/dashboard', '/cron', '/archive', '/settings', '/admin/tenant', '/admin/tenant/org', '/admin/tenant/data', '/admin/tenant/user-configs'],
     is_system: true,
   },
   {
     id: 'ROLE-004', name: '系统管理员', description: '拥有所有权限，包括系统管理和全局监控',
-    page_permissions: ['/dashboard', '/cron', '/archive', '/settings', '/admin/tenant', '/admin/tenant/org', '/admin/tenant/data', '/admin/system', '/admin/system/tenants', '/admin/system/settings'],
+    page_permissions: ['/dashboard', '/cron', '/archive', '/settings', '/admin/tenant', '/admin/tenant/org', '/admin/tenant/data', '/admin/tenant/user-configs', '/admin/system', '/admin/system/tenants', '/admin/system/settings'],
     is_system: true,
   },
   {
@@ -563,6 +565,300 @@ export const mockOrgMembers: OrgMember[] = [
   { id: 'M-010', name: '租户管理员', username: 'tenantadmin', department_id: 'D-005', department_name: 'IT部', role_id: 'ROLE-003', role_name: '租户管理员', email: 'tenantadmin@example.com', phone: '130****7777', position: '系统管理', status: 'active', created_at: '2024-01-01' },
   { id: 'M-011', name: '系统管理员', username: 'admin', department_id: 'D-005', department_name: 'IT部', role_id: 'ROLE-004', role_name: '系统管理员', email: 'admin@example.com', phone: '129****8888', position: '超级管理员', status: 'active', created_at: '2024-01-01' },
   { id: 'M-012', name: '测试用户', username: 'user', department_id: 'D-001', department_name: '研发部', role_id: 'ROLE-001', role_name: '业务用户', email: 'user@example.com', phone: '128****6666', position: '测试工程师', status: 'disabled', created_at: '2024-08-01' },
+]
+
+// ============================================================
+// User personal config types (用户偏好分析 - 租户管理)
+// ============================================================
+
+/** 审核工作台 - 单个流程的用户自定义配置 */
+export interface UserAuditProcessDetail {
+  process_type: string
+  custom_rules: { id: string; content: string; enabled: boolean }[]
+  field_overrides: string[]  // field names the user toggled
+  strictness_override: 'strict' | 'standard' | 'loose' | null  // null = no override
+  rule_toggle_overrides: { rule_id: string; rule_content: string; enabled: boolean }[]
+}
+
+/** 定时任务 - 用户自定义配置 */
+export interface UserCronDetail {
+  task_type: string
+  task_label: string
+  email_override: string
+  template_override: {
+    subject?: string
+    header?: string
+    body_template?: string
+    footer?: string
+    include_ai_summary?: boolean
+    include_statistics?: boolean
+    include_detail_list?: boolean
+  } | null
+  prompt_override: string
+}
+
+/** 归档复盘 - 单个流程的用户自定义配置 */
+export interface UserArchiveProcessDetail {
+  process_type: string
+  custom_rules: { id: string; content: string; enabled: boolean }[]
+  custom_flow_rules: { id: string; content: string; enabled: boolean }[]
+  field_overrides: string[]
+  strictness_override: 'strict' | 'standard' | 'loose' | null
+}
+
+export interface UserPersonalConfig {
+  id: string
+  user_id: string
+  username: string
+  display_name: string
+  department: string
+  /** 审核工作台：用户自定义规则数 */
+  custom_rules_count: number
+  /** 审核工作台：用户修改过的字段选择数 */
+  field_overrides_count: number
+  /** 审核工作台：用户修改过审核尺度的流程数 */
+  strictness_overrides_count: number
+  /** 定时任务：用户自定义推送邮箱 */
+  custom_push_email: string
+  /** 定时任务：用户修改过的模板数 */
+  template_overrides_count: number
+  /** 归档复盘：用户自定义复核规则数 */
+  archive_custom_rules_count: number
+  /** 归档复盘：用户自定义审批流规则数 */
+  archive_flow_rules_count: number
+  /** 最后修改时间 */
+  last_modified: string
+  /** 配置项总数 */
+  total_config_items: number
+  /** 审核工作台详细配置 */
+  audit_details: UserAuditProcessDetail[]
+  /** 定时任务详细配置 */
+  cron_details: UserCronDetail[]
+  /** 归档复盘详细配置 */
+  archive_details: UserArchiveProcessDetail[]
+}
+
+export const mockUserPersonalConfigs: UserPersonalConfig[] = [
+  {
+    id: 'UPC-001', user_id: 'M-001', username: 'zhangming', display_name: '张明', department: '研发部',
+    custom_rules_count: 1, field_overrides_count: 0, strictness_overrides_count: 1,
+    custom_push_email: 'zhangming@example.com', template_overrides_count: 0,
+    archive_custom_rules_count: 1, archive_flow_rules_count: 0,
+    last_modified: '2025-06-10 14:30', total_config_items: 3,
+    audit_details: [
+      {
+        process_type: '采购审批',
+        custom_rules: [{ id: 'UCR-001', content: '供应商必须在合格名录中', enabled: true }],
+        field_overrides: [],
+        strictness_override: 'strict',
+        rule_toggle_overrides: [],
+      },
+    ],
+    cron_details: [
+      { task_type: 'batch_audit', task_label: '批量审核', email_override: 'zhangming@example.com', template_override: null, prompt_override: '' },
+    ],
+    archive_details: [
+      {
+        process_type: '采购审批',
+        custom_rules: [{ id: 'UACR-001', content: '付款条件须与公司标准一致', enabled: true }],
+        custom_flow_rules: [],
+        field_overrides: [],
+        strictness_override: null,
+      },
+    ],
+  },
+  {
+    id: 'UPC-002', user_id: 'M-002', username: 'lifang', display_name: '李芳', department: '销售部',
+    custom_rules_count: 0, field_overrides_count: 2, strictness_overrides_count: 0,
+    custom_push_email: 'lifang-personal@example.com', template_overrides_count: 1,
+    archive_custom_rules_count: 0, archive_flow_rules_count: 0,
+    last_modified: '2025-06-09 16:20', total_config_items: 3,
+    audit_details: [
+      {
+        process_type: '费用报销',
+        custom_rules: [],
+        field_overrides: ['出差日期', '发票附件'],
+        strictness_override: null,
+        rule_toggle_overrides: [{ rule_id: 'R006', rule_content: '差旅住宿标准不超过城市限额', enabled: true }],
+      },
+    ],
+    cron_details: [
+      { task_type: 'daily_report', task_label: '日报推送', email_override: 'lifang-personal@example.com', template_override: null, prompt_override: '' },
+      {
+        task_type: 'weekly_report', task_label: '周报推送', email_override: '',
+        template_override: { subject: '【销售部】审核周报 - 第{{week}}周', header: '本周销售部审核概览：', include_detail_list: true },
+        prompt_override: '',
+      },
+    ],
+    archive_details: [],
+  },
+  {
+    id: 'UPC-003', user_id: 'M-003', username: 'wangqiang', display_name: '王强', department: 'IT部',
+    custom_rules_count: 3, field_overrides_count: 1, strictness_overrides_count: 2,
+    custom_push_email: '', template_overrides_count: 0,
+    archive_custom_rules_count: 2, archive_flow_rules_count: 1,
+    last_modified: '2025-06-10 09:45', total_config_items: 9,
+    audit_details: [
+      {
+        process_type: '采购审批',
+        custom_rules: [
+          { id: 'UCR-W01', content: 'IT设备采购须附技术评估报告', enabled: true },
+          { id: 'UCR-W02', content: '服务器采购须经IT架构评审', enabled: true },
+        ],
+        field_overrides: ['合同编号'],
+        strictness_override: 'strict',
+        rule_toggle_overrides: [],
+      },
+      {
+        process_type: '合同审批',
+        custom_rules: [{ id: 'UCR-W03', content: 'SLA条款须明确响应时间', enabled: true }],
+        field_overrides: [],
+        strictness_override: 'strict',
+        rule_toggle_overrides: [],
+      },
+    ],
+    cron_details: [
+      { task_type: 'batch_audit', task_label: '批量审核', email_override: '', template_override: null, prompt_override: '' },
+    ],
+    archive_details: [
+      {
+        process_type: '采购审批',
+        custom_rules: [
+          { id: 'UACR-W01', content: '供应商交付记录须完整', enabled: true },
+          { id: 'UACR-W02', content: '验收报告须附测试数据', enabled: true },
+        ],
+        custom_flow_rules: [{ id: 'UAFR-W01', content: 'IT部门须参与验收节点', enabled: true }],
+        field_overrides: [],
+        strictness_override: null,
+      },
+    ],
+  },
+  {
+    id: 'UPC-004', user_id: 'M-004', username: 'zhaoli', display_name: '赵丽', department: '人力资源部',
+    custom_rules_count: 0, field_overrides_count: 0, strictness_overrides_count: 0,
+    custom_push_email: 'zhaoli-hr@example.com', template_overrides_count: 0,
+    archive_custom_rules_count: 0, archive_flow_rules_count: 1,
+    last_modified: '2025-06-08 11:00', total_config_items: 2,
+    audit_details: [],
+    cron_details: [
+      { task_type: 'daily_report', task_label: '日报推送', email_override: 'zhaoli-hr@example.com', template_override: null, prompt_override: '' },
+    ],
+    archive_details: [
+      {
+        process_type: '人事审批',
+        custom_rules: [],
+        custom_flow_rules: [{ id: 'UAFR-Z01', content: '入职审批须在招聘计划审批之后', enabled: true }],
+        field_overrides: [],
+        strictness_override: null,
+      },
+    ],
+  },
+  {
+    id: 'UPC-005', user_id: 'M-005', username: 'chenwei', display_name: '陈伟', department: '市场部',
+    custom_rules_count: 2, field_overrides_count: 0, strictness_overrides_count: 1,
+    custom_push_email: '', template_overrides_count: 2,
+    archive_custom_rules_count: 0, archive_flow_rules_count: 0,
+    last_modified: '2025-06-10 17:10', total_config_items: 5,
+    audit_details: [
+      {
+        process_type: '采购审批',
+        custom_rules: [{ id: 'UCR-C01', content: '市场推广物料采购须附活动方案', enabled: true }],
+        field_overrides: [],
+        strictness_override: 'loose',
+        rule_toggle_overrides: [],
+      },
+      {
+        process_type: '费用报销',
+        custom_rules: [{ id: 'UCR-C02', content: '活动费用须附参会人员名单', enabled: true }],
+        field_overrides: [],
+        strictness_override: null,
+        rule_toggle_overrides: [],
+      },
+    ],
+    cron_details: [
+      {
+        task_type: 'daily_report', task_label: '日报推送', email_override: '',
+        template_override: { subject: '【市场部】审核日报 - {{date}}', header: '今日市场部审核概览：' },
+        prompt_override: '',
+      },
+      {
+        task_type: 'weekly_report', task_label: '周报推送', email_override: '',
+        template_override: { subject: '【市场部】审核周报 - 第{{week}}周', include_ai_summary: true, include_statistics: true, include_detail_list: true },
+        prompt_override: '',
+      },
+    ],
+    archive_details: [],
+  },
+  {
+    id: 'UPC-006', user_id: 'M-007', username: 'zhanghua', display_name: '张华', department: '财务部',
+    custom_rules_count: 1, field_overrides_count: 3, strictness_overrides_count: 0,
+    custom_push_email: 'zhanghua-finance@example.com', template_overrides_count: 0,
+    archive_custom_rules_count: 1, archive_flow_rules_count: 0,
+    last_modified: '2025-06-09 10:30', total_config_items: 5,
+    audit_details: [
+      {
+        process_type: '费用报销',
+        custom_rules: [{ id: 'UCR-ZH01', content: '大额报销须附审批截图', enabled: true }],
+        field_overrides: ['出差日期', '发票附件'],
+        strictness_override: null,
+        rule_toggle_overrides: [{ rule_id: 'R006', rule_content: '差旅住宿标准不超过城市限额', enabled: true }],
+      },
+      {
+        process_type: '采购审批',
+        custom_rules: [],
+        field_overrides: ['交付日期'],
+        strictness_override: null,
+        rule_toggle_overrides: [],
+      },
+    ],
+    cron_details: [
+      { task_type: 'batch_audit', task_label: '批量审核', email_override: 'zhanghua-finance@example.com', template_override: null, prompt_override: '' },
+    ],
+    archive_details: [
+      {
+        process_type: '费用报销',
+        custom_rules: [{ id: 'UACR-ZH01', content: '发票金额须与报销金额一致', enabled: true }],
+        custom_flow_rules: [],
+        field_overrides: [],
+        strictness_override: null,
+      },
+    ],
+  },
+  {
+    id: 'UPC-007', user_id: 'M-009', username: 'zhoulei', display_name: '周磊', department: '销售部',
+    custom_rules_count: 0, field_overrides_count: 0, strictness_overrides_count: 0,
+    custom_push_email: '', template_overrides_count: 0,
+    archive_custom_rules_count: 0, archive_flow_rules_count: 0,
+    last_modified: '', total_config_items: 0,
+    audit_details: [],
+    cron_details: [],
+    archive_details: [],
+  },
+  {
+    id: 'UPC-008', user_id: 'M-006', username: 'liuyang', display_name: '刘洋', department: '行政部',
+    custom_rules_count: 0, field_overrides_count: 1, strictness_overrides_count: 1,
+    custom_push_email: 'liuyang-admin@example.com', template_overrides_count: 1,
+    archive_custom_rules_count: 0, archive_flow_rules_count: 0,
+    last_modified: '2025-06-07 15:40', total_config_items: 4,
+    audit_details: [
+      {
+        process_type: '采购审批',
+        custom_rules: [],
+        field_overrides: ['附件材料'],
+        strictness_override: 'loose',
+        rule_toggle_overrides: [],
+      },
+    ],
+    cron_details: [
+      { task_type: 'batch_audit', task_label: '批量审核', email_override: 'liuyang-admin@example.com', template_override: null, prompt_override: '' },
+      {
+        task_type: 'weekly_report', task_label: '周报推送', email_override: '',
+        template_override: { subject: '【行政部】审核周报 - 第{{week}}周', footer: '行政部审核管理组' },
+        prompt_override: '',
+      },
+    ],
+    archive_details: [],
+  },
 ]
 
 // ============================================================
@@ -1726,6 +2022,7 @@ export const useMockData = () => {
     mockAuditLogs: [...mockAuditLogs],
     mockCronLogs: [...mockCronLogs],
     mockArchiveLogs: [...mockArchiveLogs],
+    mockUserPersonalConfigs: [...mockUserPersonalConfigs],
     mockOASystemConfigs: [...mockOASystemConfigs],
     mockAIModelConfigs: [...mockAIModelConfigs],
     mockSystemGeneralConfig: { ...mockSystemGeneralConfig },
