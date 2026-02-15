@@ -61,7 +61,7 @@
   ```
 - **字段说明**:
   - `role_label`: 角色的中文显示名称，用于前端界面展示
-  - `permissions`: 权限组数组，取值为 `business`（前台工作台）、`tenant_admin`（租户管理）、`system_admin`（系统管理）。前端据此控制侧边栏菜单分区可见性及页面访问权限。不同角色可拥有任意权限组合（如租户管理员可仅有 `tenant_admin` 而无 `business`）
+  - `permissions`: 权限组数组，取值为 `business`（前台工作台）、`tenant_admin`（租户管理）、`system_admin`（系统管理）。前端据此控制侧边栏菜单分区可见性及页面访问权限。不同角色可拥有任意权限组合（如租户管理员可仅有 `tenant_admin` 而无 `business`）。注意：「仪表盘」（`/overview`）为全局入口，所有已认证用户均可见，不受 `permissions` 控制
 
 ---
 
@@ -413,7 +413,31 @@
   }
   ```
 
-### 5.3 获取用户审核工作台配置
+### 5.3 获取用户仪表盘偏好
+- **GET** `/api/user/dashboard-prefs`
+- **Headers**: `Authorization: Bearer {token}`
+- **说明**: 返回用户的仪表盘 Widget 显示偏好。若用户未自定义，返回基于角色权限的默认配置。
+- **响应**:
+  ```json
+  {
+    "enabled_widgets": ["audit_summary", "pending_tasks", "weekly_trend", "recent_activity"]
+  }
+  ```
+- **字段说明**:
+  - `enabled_widgets`: 用户启用的 Widget ID 列表，可选值包括 `audit_summary`、`pending_tasks`、`weekly_trend`、`dept_distribution`、`recent_activity`、`ai_performance`、`tenant_usage`、`rule_coverage`、`user_activity`、`system_health`、`tenant_overview`、`api_metrics`。各 Widget 可见性受用户权限控制。
+
+### 5.4 更新用户仪表盘偏好
+- **PUT** `/api/user/dashboard-prefs`
+- **Headers**: `Authorization: Bearer {token}`
+- **请求体**:
+  ```json
+  {
+    "enabled_widgets": ["audit_summary", "pending_tasks", "weekly_trend"]
+  }
+  ```
+- **说明**: 保存用户自定义的仪表盘 Widget 显示偏好。仅保存用户有权限查看的 Widget ID，无权限的 ID 会被后端忽略。
+
+### 5.5 获取用户审核工作台配置
 - **GET** `/api/user/audit-config`
 - **说明**: 返回用户可见的流程审核配置列表（复用租户 `ProcessAuditConfig` 结构），以及用户的个性化覆盖（自定义规则、字段覆盖）。用户可操作范围受各流程 `user_permissions` 控制。
 - **响应**:
@@ -471,7 +495,7 @@
   }
   ```
 
-### 5.4 更新用户审核工作台配置
+### 5.6 更新用户审核工作台配置
 - **PUT** `/api/user/audit-config/{process_config_id}`
 - **说明**: 保存用户对某个流程的个性化配置。可提交的字段受该流程 `user_permissions` 控制：仅当对应权限开启时，相关字段才会被后端接受。
 - **请求体**:
@@ -488,7 +512,7 @@
   }
   ```
 
-### 5.5 获取用户定时任务配置
+### 5.7 获取用户定时任务配置
 - **GET** `/api/user/cron-config`
 - **Headers**: `Authorization: Bearer {token}`
 - **说明**: 返回用户可见的定时任务类型配置列表（复用租户 `CronTaskTypeConfig` 结构），以及用户的个性化设置（默认推送邮箱等）。用户可操作范围受各任务类型 `user_permissions` 控制。提示词内容仅在 `allow_modify_prompt` 为 `true` 时返回。内容模板仅在 `allow_modify_template` 为 `true` 时可编辑。
@@ -544,7 +568,7 @@
   - `content_template`: 推送内容模板（始终返回，用于展示当前配置）
   - `user_template_overrides`: 用户自定义的模板覆盖（仅 `allow_modify_template` 为 `true` 的任务类型可提交）
 
-### 5.6 更新用户定时任务配置
+### 5.8 更新用户定时任务配置
 - **PUT** `/api/user/cron-config`
 - **Headers**: `Authorization: Bearer {token}`
 - **说明**: 保存用户的定时任务个性化配置。可提交的字段受各任务类型 `user_permissions` 控制。`template_overrides` 仅在 `allow_modify_template` 为 `true` 时被后端接受。
@@ -569,7 +593,7 @@
   }
   ```
 
-### 5.7 获取用户归档复盘配置
+### 5.9 获取用户归档复盘配置
 - **GET** `/api/user/archive-review-config`
 - **Headers**: `Authorization: Bearer {token}`
 - **说明**: 返回用户可见的归档复盘配置列表（复用租户 `ArchiveReviewConfig` 结构），以及用户的个性化覆盖（自定义规则、自定义审批流规则、字段覆盖、复核尺度）。用户可操作范围受各流程 `user_permissions` 控制。
@@ -650,7 +674,7 @@
   - `user_field_overrides`: 用户自定义的字段覆盖（仅 `allow_custom_fields` 为 `true` 时可提交）
   - `user_strictness_overrides`: 用户自定义的复核尺度覆盖（仅 `allow_modify_strictness` 为 `true` 时可提交）
 
-### 5.8 更新用户归档复盘配置
+### 5.10 更新用户归档复盘配置
 - **PUT** `/api/user/archive-review-config/{config_id}`
 - **Headers**: `Authorization: Bearer {token}`
 - **说明**: 保存用户对某个流程的归档复盘个性化配置。可提交的字段受该流程 `user_permissions` 控制。
@@ -1387,7 +1411,7 @@
 ---
 
 
-## 10. 仪表盘统计
+## 10. 仪表盘模块
 
 ### 10.1 获取工作台统计
 - **GET** `/api/dashboard/stats`
@@ -1406,6 +1430,54 @@
     ]
   }
   ```
+
+### 10.2 获取仪表盘概览数据
+- **GET** `/api/overview/data`
+- **Headers**: `Authorization: Bearer {token}`
+- **说明**: 根据用户权限返回对应的仪表盘数据。业务用户返回审核概览、待办、趋势、部门分布等；租户管理员额外返回资源用量、规则覆盖、用户活跃排行；系统管理员额外返回系统健康、租户总览、API 指标
+- **响应**:
+  ```json
+  {
+    "auditSummary": { "approved": 28, "rejected": 6, "revised": 8, "total": 42 },
+    "pendingCount": 6,
+    "weeklyTrend": [{ "date": "06-04", "count": 35 }],
+    "deptDistribution": [{ "department": "研发部", "count": 12, "color": "#4f46e5" }],
+    "recentActivity": [{ "id": "RA-001", "action": "AI 审核完成", "target": "办公设备采购申请", "user": "张明", "time": "09:35", "type": "audit" }],
+    "aiPerformance": { "avgResponseMs": 1850, "successRate": 99.2, "totalCalls": 1247, "dailyStats": [{ "date": "06-04", "avgMs": 1920, "calls": 35 }] },
+    "tenantUsage": { "tokenUsed": 284500, "tokenQuota": 500000, "storageUsedMB": 1240, "storageQuotaMB": 5120, "activeUsers": 18, "totalUsers": 25 },
+    "ruleCoverage": [{ "processType": "采购审批", "ruleCount": 4, "coveragePercent": 95 }],
+    "userActivity": [{ "username": "zhangming", "displayName": "张明", "department": "研发部", "auditCount": 156, "lastActive": "2025-06-10 09:35" }],
+    "systemHealth": [{ "service": "Go 业务中台", "status": "healthy", "cpu": 23, "memory": 45, "uptime": "15d 8h" }],
+    "tenantOverview": [{ "tenantId": "T-001", "tenantName": "默认租户", "userCount": 25, "auditCount": 1247, "tokenUsed": 284500, "status": "active" }],
+    "apiMetrics": [{ "endpoint": "/api/audit/execute", "calls": 1247, "avgMs": 1850, "successRate": 99.2 }]
+  }
+  ```
+- **字段说明**:
+  - `auditSummary`/`pendingCount`/`weeklyTrend`/`deptDistribution`/`recentActivity`/`aiPerformance`: 业务用户及以上可见
+  - `tenantUsage`/`ruleCoverage`/`userActivity`: 租户管理员及以上可见
+  - `systemHealth`/`tenantOverview`/`apiMetrics`: 仅系统管理员可见
+
+### 10.3 获取用户仪表盘偏好
+- **GET** `/api/overview/prefs`
+- **Headers**: `Authorization: Bearer {token}`
+- **响应**:
+  ```json
+  {
+    "enabledWidgets": ["audit_summary", "pending_tasks", "weekly_trend", "dept_distribution", "recent_activity", "ai_performance"]
+  }
+  ```
+- **字段说明**: `enabledWidgets` 为用户选择显示的组件 ID 列表，顺序决定布局排列
+
+### 10.4 保存用户仪表盘偏好
+- **PUT** `/api/overview/prefs`
+- **Headers**: `Authorization: Bearer {token}`
+- **请求体**:
+  ```json
+  {
+    "enabledWidgets": ["audit_summary", "pending_tasks", "weekly_trend"]
+  }
+  ```
+- **响应**: `{ "success": true }`
 
 ---
 
