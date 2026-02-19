@@ -584,6 +584,13 @@ export default {
     'cronHistory.duration': 'Duration',
     'cronHistory.noHistory': 'No execution history',
 
+    // ===== Capabilities =====
+    'admin.settings.capability.text': 'Text Generation',
+    'admin.settings.capability.code': 'Code Generation',
+    'admin.settings.capability.reasoning': 'Reasoning',
+    'admin.settings.capability.vision': 'Visual Analysis',
+    'admin.settings.capability.analysis': 'Data Analysis',
+
     // ===== Cron page extended =====
     'cron.pageTitle': 'Scheduled Task Center',
     'cron.pageSubtitle': 'Cron batch audit & push management',

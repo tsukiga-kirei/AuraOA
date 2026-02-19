@@ -584,6 +584,13 @@ export default {
     'cronHistory.duration': '耗时',
     'cronHistory.noHistory': '暂无执行记录',
 
+    // ===== Capabilities =====
+    'admin.settings.capability.text': '文本生成',
+    'admin.settings.capability.code': '代码生成',
+    'admin.settings.capability.reasoning': '逻辑推理',
+    'admin.settings.capability.vision': '视觉分析',
+    'admin.settings.capability.analysis': '数据分析',
+
     // ===== Cron page extended =====
     'cron.pageTitle': '定时任务中心',
     'cron.pageSubtitle': 'Cron 批量审核与推送管理',

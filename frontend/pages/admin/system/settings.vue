@@ -173,15 +173,14 @@ const showAddAIModel = ref(false)
 const editingAIModel = ref<AIModelConfig | null>(null)
 
 const newAIModel = ref<Partial<AIModelConfig>>({
-  provider: '本地部署', model_name: '', display_name: '', type: 'local',
+  provider: t('admin.ruleConfig.localDeploy'), model_name: '', display_name: '', type: 'local',
   endpoint: '', api_key_configured: false, max_tokens: 4096, context_window: 65536,
   cost_per_1k_tokens: 0, status: 'offline', enabled: true, description: '',
   capabilities: ['text'],
 })
-
 const resetNewAIModel = () => {
   newAIModel.value = {
-    provider: '本地部署', model_name: '', display_name: '', type: 'local',
+    provider: t('admin.ruleConfig.localDeploy'), model_name: '', display_name: '', type: 'local',
     endpoint: '', api_key_configured: false, max_tokens: 4096, context_window: 65536,
     cost_per_1k_tokens: 0, status: 'offline', enabled: true, description: '',
     capabilities: ['text'],
@@ -196,21 +195,21 @@ const openAddAIModel = () => {
 
 const onModelTypeChange = (val: string) => {
   if (val === 'local') {
-    newAIModel.value.provider = '本地部署'
+    newAIModel.value.provider = t('admin.ruleConfig.localDeploy')
     newAIModel.value.cost_per_1k_tokens = 0
     newAIModel.value.api_key_configured = false
   } else {
-    newAIModel.value.provider = '云端API'
+    newAIModel.value.provider = t('admin.ruleConfig.cloudAPI')
   }
 }
 
-const capabilityOptions = [
-  { value: 'text', label: 'Text' },
-  { value: 'code', label: 'Code' },
-  { value: 'reasoning', label: 'Reasoning' },
-  { value: 'vision', label: 'Vision' },
-  { value: 'analysis', label: 'Analysis' },
-]
+const capabilityOptions = computed(() => [
+  { value: 'text', label: t('admin.settings.capability.text') },
+  { value: 'code', label: t('admin.settings.capability.code') },
+  { value: 'reasoning', label: t('admin.settings.capability.reasoning') },
+  { value: 'vision', label: t('admin.settings.capability.vision') },
+  { value: 'analysis', label: t('admin.settings.capability.analysis') },
+])
 
 const saveAIModel = () => {
   if (!newAIModel.value.display_name?.trim()) {
@@ -223,7 +222,7 @@ const saveAIModel = () => {
   }
   const newModel: AIModelConfig = {
     id: `AI-${Date.now()}`,
-    provider: newAIModel.value.provider || '本地部署',
+    provider: newAIModel.value.provider || t('admin.ruleConfig.localDeploy'),
     model_name: newAIModel.value.model_name!,
     display_name: newAIModel.value.display_name!,
     type: newAIModel.value.type || 'local',
@@ -475,7 +474,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
 
           <div class="ai-capabilities">
             <span v-for="cap in model.capabilities" :key="cap" class="capability-tag">
-              {{ cap === 'text' ? t('admin.settings.text') : cap === 'code' ? t('admin.settings.code') : cap === 'reasoning' ? t('admin.settings.reasoning') : cap === 'vision' ? t('admin.settings.vision') : cap === 'analysis' ? t('admin.settings.analysis') : cap }}
+              {{ t('admin.settings.capability.' + cap) }}
             </span>
           </div>
 

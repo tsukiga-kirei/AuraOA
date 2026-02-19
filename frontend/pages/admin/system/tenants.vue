@@ -79,7 +79,7 @@ const createTenant = () => {
     contact_phone: '',
     description: newTenant.value.description,
     ai_config: {
-      default_provider: '本地部署', default_model: 'Qwen2.5-72B',
+      default_provider: t('admin.ruleConfig.localDeploy'), default_model: 'Qwen2.5-72B',
       fallback_provider: '', fallback_model: '',
       max_tokens_per_request: 4096, temperature: 0.3,
       timeout_seconds: 60, retry_count: 2,
