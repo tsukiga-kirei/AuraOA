@@ -1,6 +1,9 @@
 <script setup lang="ts">
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
+import { useI18n } from '~/composables/useI18n'
+const { t } = useI18n()
+
 import {
   PlusOutlined,
   TeamOutlined,
@@ -45,10 +48,10 @@ const newTenant = ref({
 
 const createTenant = () => {
   if (!newTenant.value.name || !newTenant.value.code) {
-    message.warning('请填写租户名称和租户编码')
+    message.warning(t('admin.tenants.fillRequired'))
     return
   }
-  const t: TenantInfo = {
+  const tenantObj: TenantInfo = {
     id: `T-${Date.now()}`,
     name: newTenant.value.name,
     code: newTenant.value.code,
@@ -68,7 +71,7 @@ const createTenant = () => {
       connection_timeout: 30, test_on_borrow: true,
     },
     ai_config: {
-      default_provider: '本地部署', default_model: 'Qwen2.5-72B',
+      default_provider: t('admin.ruleConfig.localDeploy'), default_model: 'Qwen2.5-72B',
       fallback_provider: '', fallback_model: '',
       max_tokens_per_request: 4096, temperature: 0.3,
       timeout_seconds: 60, retry_count: 2,
@@ -79,12 +82,12 @@ const createTenant = () => {
     sso_enabled: false,
     sso_endpoint: '',
   }
-  tenants.value.push(t)
+  tenants.value.push(tenantObj)
   showCreate.value = false
-  message.success('租户创建成功')
+  message.success(t('admin.tenants.createSuccess'))
   newTenant.value = { name: '', code: '', oa_type: 'weaver_e9', token_quota: 10000, max_concurrency: 10, contact_name: '', contact_email: '', description: '' }
   // Auto-open the new tenant for configuration
-  openDetail(t)
+  openDetail(tenantObj)
 }
 
 const openDetail = (tenant: TenantInfo) => {
@@ -100,14 +103,14 @@ const saveTenantDetail = () => {
     tenants.value[idx] = { ...selectedTenant.value }
   }
   showDetail.value = false
-  message.success('租户配置已保存')
+  message.success(t('admin.tenants.saveSuccess'))
 }
 
 const toggleTenantStatus = (id: string) => {
-  const t = tenants.value.find(t => t.id === id)
-  if (t) {
-    t.status = t.status === 'active' ? 'inactive' : 'active'
-    message.success(t.status === 'active' ? '已启用' : '已停用')
+  const tVal = tenants.value.find(x => x.id === id)
+  if (tVal) {
+    tVal.status = tVal.status === 'active' ? 'inactive' : 'active'
+    message.success(tVal.status === 'active' ? t('admin.tenants.enabled') : t('admin.tenants.disabled'))
   }
 }
 
@@ -116,9 +119,9 @@ const testConnection = async () => {
   await new Promise(resolve => setTimeout(resolve, 2000))
   testingConnection.value = false
   if (selectedTenant.value?.jdbc_config.host) {
-    message.success('数据库连接测试成功')
+    message.success(t('admin.tenants.connSuccess'))
   } else {
-    message.error('请先配置数据库连接参数')
+    message.error(t('admin.tenants.connFillFirst'))
   }
 }
 
@@ -142,9 +145,9 @@ const getDriverPort = (driver: string) => {
   return ports[driver] || 3306
 }
 
-const onDriverChange = (driver: string) => {
+const onDriverChange = (driver: any) => {
   if (selectedTenant.value) {
-    selectedTenant.value.jdbc_config.port = getDriverPort(driver)
+    selectedTenant.value.jdbc_config.port = getDriverPort(driver as string)
   }
 }
 </script>
@@ -153,11 +156,11 @@ const onDriverChange = (driver: string) => {
   <div class="system-page fade-in">
     <div class="page-header">
       <div>
-        <h1 class="page-title">租户管理</h1>
-        <p class="page-subtitle">管理租户开通、数据库连接、AI模型配置与资源配额</p>
+        <h1 class="page-title">{{ t('admin.tenants.title') }}</h1>
+        <p class="page-subtitle">{{ t('admin.tenants.subtitle') }}</p>
       </div>
       <a-button type="primary" size="large" @click="showCreate = true">
-        <PlusOutlined /> 新增租户
+        <PlusOutlined /> {{ t('admin.tenants.addTenant') }}
       </a-button>
     </div>
 
@@ -177,7 +180,7 @@ const onDriverChange = (driver: string) => {
             :class="tenant.status === 'active' ? 'tenant-status--active' : 'tenant-status--inactive'"
           >
             <span class="tenant-status-dot" />
-            {{ tenant.status === 'active' ? '运行中' : '已停用' }}
+            {{ tenant.status === 'active' ? t('admin.tenants.running') : t('admin.tenants.stopped') }}
           </div>
         </div>
 
@@ -197,13 +200,13 @@ const onDriverChange = (driver: string) => {
         <!-- Stats Row -->
         <div class="tenant-stats">
           <div class="stat-item">
-            <span class="stat-label">Token 用量</span>
+            <span class="stat-label">{{ t('admin.tenants.tokenUsage') }}</span>
             <span class="stat-value">
               {{ (tenant.token_used / 1000).toFixed(1) }}K / {{ (tenant.token_quota / 1000).toFixed(0) }}K
             </span>
           </div>
           <div class="stat-item">
-            <span class="stat-label">最大并发</span>
+            <span class="stat-label">{{ t('admin.tenants.maxConcurrency') }}</span>
             <span class="stat-value">{{ tenant.max_concurrency }}</span>
           </div>
         </div>
@@ -230,10 +233,10 @@ const onDriverChange = (driver: string) => {
           </span>
           <div class="tenant-card-actions" @click.stop>
             <a-button size="small" type="text" @click="openDetail(tenant)">
-              <EditOutlined /> 配置
+              <EditOutlined /> {{ t('admin.tenants.configure') }}
             </a-button>
             <a-button size="small" type="text" @click="toggleTenantStatus(tenant.id)">
-              {{ tenant.status === 'active' ? '停用' : '启用' }}
+              {{ tenant.status === 'active' ? t('admin.tenants.stop') : t('admin.tenants.enable') }}
             </a-button>
           </div>
         </div>
@@ -241,22 +244,22 @@ const onDriverChange = (driver: string) => {
     </div>
 
     <!-- Create Tenant Modal -->
-    <a-modal v-model:open="showCreate" title="新增租户" @ok="createTenant" okText="创建" cancelText="取消" width="560px">
+    <a-modal v-model:open="showCreate" :title="t('admin.tenants.createTenant')" @ok="createTenant" :okText="t('admin.tenants.create')" :cancelText="t('admin.tenants.cancel')" width="560px">
       <a-form layout="vertical" style="margin-top: 16px;">
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item label="租户名称" required>
-              <a-input v-model:value="newTenant.name" placeholder="如：XX集团总部" size="large" />
+            <a-form-item :label="t('admin.tenants.tenantName')" required>
+              <a-input v-model:value="newTenant.name" :placeholder="t('admin.tenants.tenantNamePlaceholder')" size="large" />
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="租户编码" required>
-              <a-input v-model:value="newTenant.code" placeholder="如：HQ_001" size="large" />
+            <a-form-item :label="t('admin.tenants.tenantCode')" required>
+              <a-input v-model:value="newTenant.code" :placeholder="t('admin.tenants.tenantCodePlaceholder')" size="large" />
             </a-form-item>
           </a-col>
         </a-row>
-        <a-form-item label="OA 类型">
-          <a-select v-model:value="newTenant.oa_type" size="large" placeholder="选择 OA 类型">
+        <a-form-item :label="t('admin.tenants.oaType')">
+          <a-select v-model:value="newTenant.oa_type" size="large" :placeholder="t('admin.tenants.selectOAType')">
             <a-select-option value="weaver_e9">泛微 E9</a-select-option>
             <a-select-option value="weaver_ebridge">泛微 E-Bridge</a-select-option>
             <a-select-option value="zhiyuan_a8">致远 A8+</a-select-option>
@@ -265,30 +268,30 @@ const onDriverChange = (driver: string) => {
         </a-form-item>
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item label="Token 配额">
+            <a-form-item :label="t('admin.tenants.tokenQuota')">
               <a-input-number v-model:value="newTenant.token_quota" :min="1000" :step="1000" style="width: 100%;" size="large" />
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="最大并发数">
+            <a-form-item :label="t('admin.tenants.maxConcurrencyLabel')">
               <a-input-number v-model:value="newTenant.max_concurrency" :min="1" :max="100" style="width: 100%;" size="large" />
             </a-form-item>
           </a-col>
         </a-row>
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item label="联系人">
-              <a-input v-model:value="newTenant.contact_name" placeholder="管理员姓名" size="large" />
+            <a-form-item :label="t('admin.tenants.contact')">
+              <a-input v-model:value="newTenant.contact_name" :placeholder="t('admin.tenants.contactPlaceholder')" size="large" />
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="联系邮箱">
+            <a-form-item :label="t('admin.tenants.contactEmail')">
               <a-input v-model:value="newTenant.contact_email" placeholder="admin@example.com" size="large" />
             </a-form-item>
           </a-col>
         </a-row>
-        <a-form-item label="描述">
-          <a-textarea v-model:value="newTenant.description" :rows="2" placeholder="租户用途简述" />
+        <a-form-item :label="t('admin.tenants.description')">
+          <a-textarea v-model:value="newTenant.description" :rows="2" :placeholder="t('admin.tenants.descPlaceholder')" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -296,7 +299,7 @@ const onDriverChange = (driver: string) => {
     <!-- Tenant Detail Drawer -->
     <a-drawer
       v-model:open="showDetail"
-      :title="selectedTenant?.name + ' — 租户配置'"
+      :title="selectedTenant?.name + t('admin.tenants.tenantConfig', '')"
       placement="right"
       :width="720"
       @close="showDetail = false"
@@ -305,11 +308,11 @@ const onDriverChange = (driver: string) => {
         <div class="detail-tabs">
           <button
             v-for="tab in [
-              { key: 'basic', label: '基本信息', icon: InfoCircleOutlined },
-              { key: 'jdbc', label: '数据库连接', icon: DatabaseOutlined },
-              { key: 'ai', label: 'AI 模型', icon: RobotOutlined },
-              { key: 'quota', label: '配额与策略', icon: ThunderboltOutlined },
-              { key: 'security', label: '安全设置', icon: SafetyCertificateOutlined },
+              { key: 'basic', label: t('admin.tenants.tabBasic'), icon: InfoCircleOutlined },
+              { key: 'jdbc', label: t('admin.tenants.tabJdbc'), icon: DatabaseOutlined },
+              { key: 'ai', label: t('admin.tenants.tabAI'), icon: RobotOutlined },
+              { key: 'quota', label: t('admin.tenants.tabQuota'), icon: ThunderboltOutlined },
+              { key: 'security', label: t('admin.tenants.tabSecurity'), icon: SafetyCertificateOutlined },
             ]"
             :key="tab.key"
             class="detail-tab-btn"
@@ -324,42 +327,42 @@ const onDriverChange = (driver: string) => {
         <!-- Basic Info Tab -->
         <div v-if="detailActiveTab === 'basic'" class="detail-section">
           <div class="section-header">
-            <h3><UserOutlined /> 基本信息</h3>
+            <h3><UserOutlined /> {{ t('admin.tenants.basicInfo') }}</h3>
           </div>
           <a-form layout="vertical">
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item label="租户名称">
+                <a-form-item :label="t('admin.tenants.tenantName')">
                   <a-input v-model:value="selectedTenant.name" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="12">
-                <a-form-item label="租户编码">
+                <a-form-item :label="t('admin.tenants.tenantCode')">
                   <a-input v-model:value="selectedTenant.code" size="large" disabled />
                 </a-form-item>
               </a-col>
             </a-row>
-            <a-form-item label="描述">
+            <a-form-item :label="t('admin.tenants.description')">
               <a-textarea v-model:value="selectedTenant.description" :rows="3" />
             </a-form-item>
             <a-row :gutter="16">
               <a-col :span="8">
-                <a-form-item label="联系人">
-                  <a-input v-model:value="selectedTenant.contact_name" placeholder="请输入联系人">
+                <a-form-item :label="t('admin.tenants.contact')">
+                  <a-input v-model:value="selectedTenant.contact_name" :placeholder="t('admin.tenants.contactNamePlaceholder')">
                     <template #prefix><UserOutlined /></template>
                   </a-input>
                 </a-form-item>
               </a-col>
               <a-col :span="8">
-                <a-form-item label="联系邮箱">
-                  <a-input v-model:value="selectedTenant.contact_email" placeholder="请输入联系邮箱">
+                <a-form-item :label="t('admin.tenants.contactEmail')">
+                  <a-input v-model:value="selectedTenant.contact_email" :placeholder="t('admin.tenants.contactEmailPlaceholder')">
                     <template #prefix><MailOutlined /></template>
                   </a-input>
                 </a-form-item>
               </a-col>
               <a-col :span="8">
-                <a-form-item label="联系电话">
-                  <a-input v-model:value="selectedTenant.contact_phone" placeholder="请输入联系电话">
+                <a-form-item :label="t('admin.tenants.contactPhone')">
+                  <a-input v-model:value="selectedTenant.contact_phone" :placeholder="t('admin.tenants.contactPhonePlaceholder')">
                     <template #prefix><PhoneOutlined /></template>
                   </a-input>
                 </a-form-item>
@@ -367,8 +370,8 @@ const onDriverChange = (driver: string) => {
             </a-row>
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item label="OA 类型">
-                  <a-select v-model:value="selectedTenant.oa_type" size="large" placeholder="选择 OA 类型">
+                <a-form-item :label="t('admin.tenants.oaType')">
+                  <a-select v-model:value="selectedTenant.oa_type" size="large" :placeholder="t('admin.tenants.selectOAType')">
                     <a-select-option value="weaver_e9">泛微 E9</a-select-option>
                     <a-select-option value="weaver_ebridge">泛微 E-Bridge</a-select-option>
                     <a-select-option value="zhiyuan_a8">致远 A8+</a-select-option>
@@ -377,7 +380,7 @@ const onDriverChange = (driver: string) => {
                 </a-form-item>
               </a-col>
               <a-col :span="12">
-                <a-form-item label="创建日期">
+                <a-form-item :label="t('admin.tenants.createdDate')">
                   <a-input :value="selectedTenant.created_at" size="large" disabled />
                 </a-form-item>
               </a-col>
@@ -388,20 +391,20 @@ const onDriverChange = (driver: string) => {
         <!-- JDBC Config Tab -->
         <div v-if="detailActiveTab === 'jdbc'" class="detail-section">
           <div class="section-header">
-            <h3><DatabaseOutlined /> 数据库连接配置</h3>
+            <h3><DatabaseOutlined /> {{ t('admin.tenants.jdbcConfig') }}</h3>
             <a-button type="primary" ghost :disabled="testingConnection" @click="testConnection">
-              <SyncOutlined :spin="testingConnection" /> {{ testingConnection ? '测试中...' : '测试连接' }}
+              <SyncOutlined :spin="testingConnection" /> {{ testingConnection ? t('admin.tenants.testingConn') : t('admin.tenants.testConnection') }}
             </a-button>
           </div>
           <div class="jdbc-hint">
-            <InfoCircleOutlined /> 配置当前租户 OA 系统的数据库连接信息，用于流程数据同步
+            <InfoCircleOutlined /> {{ t('admin.tenants.jdbcHint') }}
           </div>
           <a-form layout="vertical">
-            <a-form-item label="数据库驱动">
+            <a-form-item :label="t('admin.tenants.dbDriver')">
               <a-select
                 v-model:value="selectedTenant.jdbc_config.driver"
                 size="large"
-                placeholder="选择数据库驱动"
+                :placeholder="t('admin.tenants.selectDriver')"
                 @change="onDriverChange"
               >
                 <a-select-option v-for="opt in driverOptions" :key="opt.value" :value="opt.value">
@@ -411,51 +414,51 @@ const onDriverChange = (driver: string) => {
             </a-form-item>
             <a-row :gutter="16">
               <a-col :span="16">
-                <a-form-item label="主机地址">
+                <a-form-item :label="t('admin.tenants.hostAddress')">
                   <a-input v-model:value="selectedTenant.jdbc_config.host" placeholder="192.168.1.100 或 db.example.com" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="8">
-                <a-form-item label="端口">
+                <a-form-item :label="t('admin.tenants.port')">
                   <a-input-number v-model:value="selectedTenant.jdbc_config.port" :min="1" :max="65535" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
             </a-row>
-            <a-form-item label="数据库名称">
+            <a-form-item :label="t('admin.tenants.dbName')">
               <a-input v-model:value="selectedTenant.jdbc_config.database" placeholder="ecology" size="large" />
             </a-form-item>
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item label="用户名">
+                <a-form-item :label="t('admin.tenants.username')">
                   <a-input v-model:value="selectedTenant.jdbc_config.username" placeholder="oa_reader" size="large">
                     <template #prefix><UserOutlined /></template>
                   </a-input>
                 </a-form-item>
               </a-col>
               <a-col :span="12">
-                <a-form-item label="密码">
-                  <a-input-password v-model:value="selectedTenant.jdbc_config.password" placeholder="数据库密码" size="large">
+                <a-form-item :label="t('admin.tenants.password')">
+                  <a-input-password v-model:value="selectedTenant.jdbc_config.password" :placeholder="t('admin.tenants.dbPassword')" size="large">
                     <template #prefix><KeyOutlined /></template>
                   </a-input-password>
                 </a-form-item>
               </a-col>
             </a-row>
-            <a-divider>连接池设置</a-divider>
+            <a-divider>{{ t('admin.tenants.connPoolSettings') }}</a-divider>
             <a-row :gutter="16">
               <a-col :span="8">
-                <a-form-item label="连接池大小">
+                <a-form-item :label="t('admin.tenants.poolSize')">
                   <a-input-number v-model:value="selectedTenant.jdbc_config.pool_size" :min="1" :max="100" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="8">
-                <a-form-item label="连接超时(秒)">
+                <a-form-item :label="t('admin.tenants.connTimeout')">
                   <a-input-number v-model:value="selectedTenant.jdbc_config.connection_timeout" :min="5" :max="300" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="8">
-                <a-form-item label="借用时测试">
+                <a-form-item :label="t('admin.tenants.testOnBorrow')">
                   <a-switch v-model:checked="selectedTenant.jdbc_config.test_on_borrow" />
-                  <span class="switch-label">{{ selectedTenant.jdbc_config.test_on_borrow ? '已开启' : '已关闭' }}</span>
+                  <span class="switch-label">{{ selectedTenant.jdbc_config.test_on_borrow ? t('admin.tenants.opened') : t('admin.tenants.closed') }}</span>
                 </a-form-item>
               </a-col>
             </a-row>
@@ -465,26 +468,26 @@ const onDriverChange = (driver: string) => {
         <!-- AI Model Tab -->
         <div v-if="detailActiveTab === 'ai'" class="detail-section">
           <div class="section-header">
-            <h3><RobotOutlined /> AI 模型选择</h3>
+            <h3><RobotOutlined /> {{ t('admin.tenants.aiModelSelect') }}</h3>
           </div>
           <div class="jdbc-hint">
-            <InfoCircleOutlined /> 从系统设置中已注册的模型中选择当前租户使用的 AI 模型（模型注册请到<a @click="navigateTo('/admin/system/settings')" style="cursor: pointer; margin: 0 4px;">系统设置</a>）
+            <InfoCircleOutlined /> {{ t('admin.tenants.aiModelHint') }}<a @click="navigateTo('/admin/system/settings')" style="cursor: pointer; margin: 0 4px;">{{ t('admin.tenants.systemSettings') }}</a>)
           </div>
           <a-form layout="vertical">
             <div class="config-group">
-              <div class="config-group-title">主模型</div>
+              <div class="config-group-title">{{ t('admin.tenants.primaryModel') }}</div>
               <a-row :gutter="16">
                 <a-col :span="12">
-                  <a-form-item label="AI 服务商">
-                    <a-select v-model:value="selectedTenant.ai_config.default_provider" size="large" placeholder="选择服务商">
-                      <a-select-option value="本地部署">本地部署</a-select-option>
-                      <a-select-option value="云端API">云端API</a-select-option>
+                  <a-form-item :label="t('admin.tenants.aiProvider')">
+                    <a-select v-model:value="selectedTenant.ai_config.default_provider" size="large" :placeholder="t('admin.tenants.selectProvider')">
+                      <a-select-option :value="t('admin.ruleConfig.localDeploy')">{{ t('admin.ruleConfig.localDeploy') }}</a-select-option>
+                      <a-select-option :value="t('admin.ruleConfig.cloudAPI')">{{ t('admin.ruleConfig.cloudAPI') }}</a-select-option>
                     </a-select>
                   </a-form-item>
                 </a-col>
                 <a-col :span="12">
-                  <a-form-item label="模型名称">
-                    <a-select v-model:value="selectedTenant.ai_config.default_model" size="large" placeholder="选择模型">
+                  <a-form-item :label="t('admin.tenants.modelName')">
+                    <a-select v-model:value="selectedTenant.ai_config.default_model" size="large" :placeholder="t('admin.tenants.selectModel')">
                       <a-select-option v-for="m in availableModels" :key="m.model_name" :value="m.model_name">
                         {{ m.display_name }}
                       </a-select-option>
@@ -495,19 +498,19 @@ const onDriverChange = (driver: string) => {
             </div>
 
             <div class="config-group">
-              <div class="config-group-title">备用模型（主模型不可用时自动切换）</div>
+              <div class="config-group-title">{{ t('admin.tenants.fallbackModel') }}</div>
               <a-row :gutter="16">
                 <a-col :span="12">
-                  <a-form-item label="备用服务商">
-                    <a-select v-model:value="selectedTenant.ai_config.fallback_provider" size="large" allowClear placeholder="不配置">
-                      <a-select-option value="本地部署">本地部署</a-select-option>
-                      <a-select-option value="云端API">云端API</a-select-option>
+                  <a-form-item :label="t('admin.tenants.fallbackProvider')">
+                    <a-select v-model:value="selectedTenant.ai_config.fallback_provider" size="large" allowClear :placeholder="t('admin.tenants.noConfig')">
+                      <a-select-option :value="t('admin.ruleConfig.localDeploy')">{{ t('admin.ruleConfig.localDeploy') }}</a-select-option>
+                      <a-select-option :value="t('admin.ruleConfig.cloudAPI')">{{ t('admin.ruleConfig.cloudAPI') }}</a-select-option>
                     </a-select>
                   </a-form-item>
                 </a-col>
                 <a-col :span="12">
-                  <a-form-item label="备用模型">
-                    <a-select v-model:value="selectedTenant.ai_config.fallback_model" size="large" allowClear placeholder="不配置">
+                  <a-form-item :label="t('admin.tenants.fallbackModelLabel')">
+                    <a-select v-model:value="selectedTenant.ai_config.fallback_model" size="large" allowClear :placeholder="t('admin.tenants.noConfig')">
                       <a-select-option v-for="m in availableModels" :key="m.model_name" :value="m.model_name">
                         {{ m.display_name }}
                       </a-select-option>
@@ -517,15 +520,15 @@ const onDriverChange = (driver: string) => {
               </a-row>
             </div>
 
-            <a-divider>调用参数</a-divider>
+            <a-divider>{{ t('admin.tenants.callParams') }}</a-divider>
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item label="最大Token/请求">
+                <a-form-item :label="t('admin.tenants.maxTokenPerReq')">
                   <a-input-number v-model:value="selectedTenant.ai_config.max_tokens_per_request" :min="512" :max="32768" :step="512" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="12">
-                <a-form-item label="温度 (Temperature)">
+                <a-form-item :label="t('admin.tenants.temperature')">
                   <a-slider v-model:value="selectedTenant.ai_config.temperature" :min="0" :max="1" :step="0.1" />
                   <span class="slider-value">{{ selectedTenant.ai_config.temperature }}</span>
                 </a-form-item>
@@ -533,19 +536,19 @@ const onDriverChange = (driver: string) => {
             </a-row>
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item label="超时时间(秒)">
+                <a-form-item :label="t('admin.tenants.timeout')">
                   <a-input-number v-model:value="selectedTenant.ai_config.timeout_seconds" :min="10" :max="300" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="12">
-                <a-form-item label="重试次数">
+                <a-form-item :label="t('admin.tenants.retryCount')">
                   <a-input-number v-model:value="selectedTenant.ai_config.retry_count" :min="0" :max="10" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
             </a-row>
-            <a-form-item label="允许用户自选模型">
+            <a-form-item :label="t('admin.tenants.allowCustomModel')">
               <a-switch v-model:checked="selectedTenant.allow_custom_model" />
-              <span class="switch-label">{{ selectedTenant.allow_custom_model ? '允许租户内用户在流程配置中覆盖默认模型' : '仅使用租户默认模型' }}</span>
+              <span class="switch-label">{{ selectedTenant.allow_custom_model ? t('admin.tenants.allowCustomModelDesc') : t('admin.tenants.onlyDefaultModel') }}</span>
             </a-form-item>
           </a-form>
         </div>
@@ -553,19 +556,19 @@ const onDriverChange = (driver: string) => {
         <!-- Quota & Policy Tab -->
         <div v-if="detailActiveTab === 'quota'" class="detail-section">
           <div class="section-header">
-            <h3><ThunderboltOutlined /> 配额与策略</h3>
+            <h3><ThunderboltOutlined /> {{ t('admin.tenants.quotaPolicy') }}</h3>
           </div>
           <a-form layout="vertical">
             <div class="config-group">
-              <div class="config-group-title">资源配额</div>
+              <div class="config-group-title">{{ t('admin.tenants.resourceQuota') }}</div>
               <a-row :gutter="16">
                 <a-col :span="12">
-                  <a-form-item label="Token 配额">
+                  <a-form-item :label="t('admin.tenants.tokenQuota')">
                     <a-input-number v-model:value="selectedTenant.token_quota" :min="1000" :step="1000" style="width: 100%;" size="large" />
                   </a-form-item>
                 </a-col>
                 <a-col :span="12">
-                  <a-form-item label="最大并发数">
+                  <a-form-item :label="t('admin.tenants.maxConcurrency')">
                     <a-input-number v-model:value="selectedTenant.max_concurrency" :min="1" :max="100" style="width: 100%;" size="large" />
                   </a-form-item>
                 </a-col>
@@ -573,7 +576,7 @@ const onDriverChange = (driver: string) => {
               <!-- Current usage display -->
               <div class="usage-display">
                 <div class="usage-info">
-                  <span>已使用 {{ selectedTenant.token_used.toLocaleString() }} / {{ selectedTenant.token_quota.toLocaleString() }} Token</span>
+                  <span>{{ t('admin.tenants.usedTokens', [selectedTenant.token_used.toLocaleString(), selectedTenant.token_quota.toLocaleString()]) }}</span>
                   <span :style="{ color: getQuotaColor(getQuotaPercent(selectedTenant.token_used, selectedTenant.token_quota)) }">
                     {{ getQuotaPercent(selectedTenant.token_used, selectedTenant.token_quota) }}%
                   </span>
@@ -591,18 +594,18 @@ const onDriverChange = (driver: string) => {
             </div>
 
             <div class="config-group">
-              <div class="config-group-title">数据保留策略</div>
+              <div class="config-group-title">{{ t('admin.tenants.dataRetention') }}</div>
               <a-row :gutter="16">
                 <a-col :span="12">
-                  <a-form-item label="日志保留天数">
+                  <a-form-item :label="t('admin.tenants.logRetention')">
                     <a-input-number v-model:value="selectedTenant.log_retention_days" :min="7" :max="3650" style="width: 100%;" size="large" />
-                    <div class="form-hint">AI推理日志、操作日志的保留时长</div>
+                    <div class="form-hint">{{ t('admin.tenants.logRetentionHint') }}</div>
                   </a-form-item>
                 </a-col>
                 <a-col :span="12">
-                  <a-form-item label="审核数据保留天数">
+                  <a-form-item :label="t('admin.tenants.auditDataRetention')">
                     <a-input-number v-model:value="selectedTenant.data_retention_days" :min="30" :max="3650" style="width: 100%;" size="large" />
-                    <div class="form-hint">审核快照、推理过程等数据的保留时长</div>
+                    <div class="form-hint">{{ t('admin.tenants.auditDataRetentionHint') }}</div>
                   </a-form-item>
                 </a-col>
               </a-row>
@@ -613,34 +616,34 @@ const onDriverChange = (driver: string) => {
         <!-- Security Tab -->
         <div v-if="detailActiveTab === 'security'" class="detail-section">
           <div class="section-header">
-            <h3><SafetyCertificateOutlined /> 安全设置</h3>
+            <h3><SafetyCertificateOutlined /> {{ t('admin.tenants.securitySettings') }}</h3>
           </div>
           <a-form layout="vertical">
             <div class="config-group">
-              <div class="config-group-title">单点登录 (SSO)</div>
-              <a-form-item label="启用 SSO">
+              <div class="config-group-title">{{ t('admin.tenants.sso') }}</div>
+              <a-form-item :label="t('admin.tenants.enableSSO')">
                 <a-switch v-model:checked="selectedTenant.sso_enabled" />
-                <span class="switch-label">{{ selectedTenant.sso_enabled ? '已启用单点登录' : '未启用' }}</span>
+                <span class="switch-label">{{ selectedTenant.sso_enabled ? t('admin.tenants.ssoEnabled') : t('admin.tenants.ssoDisabled') }}</span>
               </a-form-item>
-              <a-form-item v-if="selectedTenant.sso_enabled" label="SSO 端点">
+              <a-form-item v-if="selectedTenant.sso_enabled" :label="t('admin.tenants.ssoEndpoint')">
                 <a-input v-model:value="selectedTenant.sso_endpoint" placeholder="https://sso.example.com/oauth2" size="large" />
               </a-form-item>
             </div>
 
             <div class="config-group">
-              <div class="config-group-title">租户状态</div>
+              <div class="config-group-title">{{ t('admin.tenants.tenantStatus') }}</div>
               <div class="status-display">
                 <div class="status-info">
-                  <span>当前状态：</span>
+                  <span>{{ t('admin.tenants.currentStatus') }}</span>
                   <a-tag :color="selectedTenant.status === 'active' ? 'green' : 'default'">
-                    {{ selectedTenant.status === 'active' ? '运行中' : '已停用' }}
+                    {{ selectedTenant.status === 'active' ? t('admin.tenants.running') : t('admin.tenants.stopped') }}
                   </a-tag>
                 </div>
                 <a-button
                   :danger="selectedTenant.status === 'active'"
                   @click="toggleTenantStatus(selectedTenant.id); selectedTenant.status = selectedTenant.status === 'active' ? 'inactive' : 'active'"
                 >
-                  {{ selectedTenant.status === 'active' ? '停用租户' : '启用租户' }}
+                  {{ selectedTenant.status === 'active' ? t('admin.tenants.disableTenant') : t('admin.tenants.enableTenant') }}
                 </a-button>
               </div>
             </div>
@@ -649,8 +652,8 @@ const onDriverChange = (driver: string) => {
 
         <!-- Footer Actions -->
         <div class="detail-footer">
-          <a-button @click="showDetail = false">取消</a-button>
-          <a-button type="primary" @click="saveTenantDetail">保存配置</a-button>
+          <a-button @click="showDetail = false">{{ t('admin.tenants.cancel') }}</a-button>
+          <a-button type="primary" @click="saveTenantDetail">{{ t('admin.tenants.saveConfig') }}</a-button>
         </div>
       </template>
     </a-drawer>

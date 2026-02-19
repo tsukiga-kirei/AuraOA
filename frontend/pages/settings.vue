@@ -24,21 +24,104 @@ import {
   PieChartOutlined,
   EyeOutlined,
   EyeInvisibleOutlined,
+  GlobalOutlined,
+  KeyOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig, OverviewWidgetId } from '~/composables/useMockData'
 import { OVERVIEW_WIDGETS } from '~/composables/useMockData'
+import type { Locale } from '~/composables/useI18n'
 
-// All layouts now use the same unified sidebar, so just use default.
 definePageMeta({
   middleware: 'auth',
   layout: 'default',
 })
 
 const { userRole, userPermissions, currentUser } = useAuth()
-const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs, mockOrgRoles, mockOrgMembers, mockUserDashboardPrefs } = useMockData()
+const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs, mockOrgRoles, mockOrgMembers, mockUserDashboardPrefs, mockUserSecurityInfo, mockUserLocalePrefs } = useMockData()
+const { t, locale, setLocale, availableLocales } = useI18n()
 
 const activeTab = ref('profile')
+
+// ===== Language & Region tab =====
+const userDateFormat = ref('YYYY-MM-DD')
+onMounted(() => {
+  const uname = currentUser.value?.username || ''
+  const prefs = mockUserLocalePrefs[uname]
+  if (prefs) {
+    userDateFormat.value = prefs.dateFormat
+  }
+})
+
+const handleLocaleChange = (newLocale: Locale) => {
+  setLocale(newLocale)
+  message.success(t('settings.language.switchSuccess'))
+}
+
+const dateFormatOptions = [
+  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2026-02-19)' },
+  { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY (02/19/2026)' },
+  { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (19/02/2026)' },
+]
+
+// ===== Security / Password tab =====
+const passwordForm = ref({
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: '',
+})
+const passwordChanging = ref(false)
+const showCurrentPassword = ref(false)
+const showNewPassword = ref(false)
+
+const passwordStrength = computed(() => {
+  const pwd = passwordForm.value.newPassword
+  if (!pwd) return null
+  if (pwd.length < 6) return 'weak'
+  const hasUpper = /[A-Z]/.test(pwd)
+  const hasLower = /[a-z]/.test(pwd)
+  const hasNum = /[0-9]/.test(pwd)
+  const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(pwd)
+  const score = [hasUpper, hasLower, hasNum, hasSpecial].filter(Boolean).length
+  if (pwd.length >= 10 && score >= 3) return 'strong'
+  if (pwd.length >= 6 && score >= 2) return 'medium'
+  return 'weak'
+})
+
+const strengthConfig: Record<string, { color: string; percent: number }> = {
+  weak: { color: 'var(--color-danger)', percent: 33 },
+  medium: { color: 'var(--color-warning)', percent: 66 },
+  strong: { color: 'var(--color-success)', percent: 100 },
+}
+
+const securityInfo = computed(() => {
+  const uname = currentUser.value?.username || ''
+  return mockUserSecurityInfo[uname] || { password_last_changed: '-', login_history: [] }
+})
+
+const handleChangePassword = async () => {
+  const { currentPassword, newPassword, confirmPassword } = passwordForm.value
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    message.error(t('settings.security.changeError.empty')); return
+  }
+  if (newPassword.length < 6) {
+    message.error(t('settings.security.changeError.tooShort')); return
+  }
+  if (newPassword !== confirmPassword) {
+    message.error(t('settings.security.changeError.mismatch')); return
+  }
+  // Mock: verify current password
+  const { MOCK_USERS } = useAuth()
+  const user = MOCK_USERS.find(u => u.username === currentUser.value?.username)
+  if (user && user.password !== currentPassword) {
+    message.error(t('settings.security.changeError.wrongCurrent')); return
+  }
+  passwordChanging.value = true
+  await new Promise(r => setTimeout(r, 1000))
+  passwordChanging.value = false
+  passwordForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' }
+  message.success(t('settings.security.changeSuccess'))
+}
 
 // ===== Dashboard prefs tab =====
 const dashboardAvailableWidgets = computed(() => {
@@ -69,7 +152,7 @@ const resetDashboardPrefs = () => {
   dashboardEnabledWidgets.value = dashboardAvailableWidgets.value
     .filter(w => w.defaultEnabled)
     .map(w => w.id)
-  message.success('已恢复默认布局')
+  message.success(t('settings.dashboard.restoreSuccess'))
 }
 
 // ===== Profile tab =====
@@ -83,20 +166,7 @@ const currentOrgRole = computed(() => {
   return mockOrgRoles.find(r => r.id === currentMember.value!.role_id) || null
 })
 
-const allPageLabels: Record<string, string> = {
-  '/overview': '仪表盘',
-  '/dashboard': '审核工作台',
-  '/cron': '定时任务',
-  '/archive': '归档复盘',
-  '/settings': '个人设置',
-  '/admin/tenant': '规则配置',
-  '/admin/tenant/org': '组织人员',
-  '/admin/tenant/data': '数据信息',
-  '/admin/tenant/user-configs': '用户偏好',
-  '/admin/system': '全局监控',
-  '/admin/system/tenants': '租户管理',
-  '/admin/system/settings': '系统设置',
-}
+const getPageLabel = (path: string) => t(`page.${path}`, path)
 
 const profile = ref({
   nickname: '张明',
@@ -106,10 +176,9 @@ const profile = ref({
   position: '高级工程师',
 })
 
-const roleLabels: Record<string, string> = {
-  business: '业务用户',
-  tenant_admin: '租户管理员',
-  system_admin: '系统管理员',
+const getRoleLabel = (role: string) => {
+  const map: Record<string, string> = { business: 'role.business', tenant_admin: 'role.tenantAdmin', system_admin: 'role.systemAdmin' }
+  return t(map[role] || 'role.business')
 }
 
 // ===== Audit workbench tab =====
@@ -140,23 +209,30 @@ const selectedConfig = computed(() =>
 const permissions = computed(() => selectedConfig.value?.user_permissions)
 
 // Field type labels
-const fieldTypeLabels: Record<string, string> = {
-  text: '文本', number: '数字', date: '日期', select: '下拉选择', textarea: '多行文本', file: '文件',
-}
+const fieldTypeLabels = computed<Record<string, string>>(() => ({
+  text: t('field.type.text'),
+  number: t('field.type.number'),
+  date: t('field.type.date'),
+  money: t('field.type.money'),
+  select: t('field.type.select'),
+  user: t('field.type.user'),
+  dept: t('field.type.dept'),
+  rich_text: t('field.type.richText'),
+}))
 
 // Scope config
-const scopeConfig: Record<string, { label: string; color: string }> = {
-  mandatory: { label: '强制', color: 'var(--color-danger)' },
-  default_on: { label: '默认开启', color: 'var(--color-primary)' },
-  default_off: { label: '默认关闭', color: 'var(--color-text-tertiary)' },
-}
+const scopeConfig = computed<Record<string, { label: string; color?: string }>>(() => ({
+  mandatory: { label: t('rule.scope.mandatory') },
+  default_on: { label: t('rule.scope.defaultOn') },
+  default_off: { label: t('rule.scope.defaultOff') },
+}))
 
 // Strictness
-const strictnessOptions = [
-  { value: 'strict', label: '严格', desc: '所有规则严格执行，零容忍' },
-  { value: 'standard', label: '标准', desc: '按规则默认配置执行' },
-  { value: 'loose', label: '宽松', desc: '仅校验强制规则，其余提示' },
-]
+const strictnessOptions = computed(() => [
+  { value: 'strict', label: t('settings.workbench.strict'), desc: t('settings.workbench.strictDesc') },
+  { value: 'standard', label: t('settings.workbench.standard'), desc: t('settings.workbench.standardDesc') },
+  { value: 'loose', label: t('settings.workbench.loose'), desc: t('settings.workbench.looseDesc') },
+])
 
 // Toggle user field override
 const toggleUserField = (field: ProcessField) => {
@@ -178,14 +254,14 @@ const addCustomRule = () => {
     enabled: true,
   })
   newRuleContent.value = ''
-  message.success('自定义规则已添加')
+  message.success(t('settings.workbench.ruleAdded'))
 }
 
 const removeCustomRule = (ruleId: string) => {
   if (!selectedConfig.value) return
   const pid = selectedConfig.value.id
   userCustomRules.value[pid] = (userCustomRules.value[pid] || []).filter(r => r.id !== ruleId)
-  message.success('已删除')
+  message.success(t('settings.workbench.deleted'))
 }
 
 const currentCustomRules = computed(() =>
@@ -197,7 +273,7 @@ const handleSave = async () => {
   saving.value = true
   await new Promise(r => setTimeout(r, 800))
   saving.value = false
-  message.success('设置已保存')
+  message.success(t('settings.profile.saveSuccess'))
 }
 
 // Active workbench sub-section
@@ -216,11 +292,7 @@ const cronPermissions = computed(() => selectedCronConfig.value?.user_permission
 // User's default push email for cron tasks
 const cronDefaultEmail = ref('zhangming@example.com')
 
-const cronTaskTypeLabels: Record<string, string> = {
-  batch_audit: '批量审核',
-  daily_report: '日报推送',
-  weekly_report: '周报推送',
-}
+// Cron task type labels now use i18n via t()
 
 const cronSection = ref('push')
 
@@ -264,14 +336,14 @@ const addArchiveCustomRule = () => {
     enabled: true,
   })
   newArchiveRuleContent.value = ''
-  message.success('自定义复核规则已添加')
+  message.success(t('settings.archive.ruleAdded'))
 }
 
 const removeArchiveCustomRule = (ruleId: string) => {
   if (!selectedArchiveConfig.value) return
   const pid = selectedArchiveConfig.value.id
   userArchiveCustomRules.value[pid] = (userArchiveCustomRules.value[pid] || []).filter(r => r.id !== ruleId)
-  message.success('已删除')
+  message.success(t('settings.workbench.deleted'))
 }
 
 const currentArchiveCustomRules = computed(() =>
@@ -288,14 +360,14 @@ const addArchiveFlowRule = () => {
     enabled: true,
   })
   newArchiveFlowRuleContent.value = ''
-  message.success('自定义审批流规则已添加')
+  message.success(t('settings.archive.flowRuleAdded'))
 }
 
 const removeArchiveFlowRule = (ruleId: string) => {
   if (!selectedArchiveConfig.value) return
   const pid = selectedArchiveConfig.value.id
   userArchiveFlowRules.value[pid] = (userArchiveFlowRules.value[pid] || []).filter(r => r.id !== ruleId)
-  message.success('已删除')
+  message.success(t('settings.workbench.deleted'))
 }
 
 const currentArchiveFlowRules = computed(() =>
@@ -313,8 +385,8 @@ const toggleArchiveField = (field: ProcessField) => {
   <div class="settings-page fade-in">
     <div class="page-header">
       <div>
-        <h1 class="page-title">个人设置</h1>
-        <p class="page-subtitle">管理您的账户信息与审核偏好</p>
+        <h1 class="page-title">{{ t('settings.title') }}</h1>
+        <p class="page-subtitle">{{ t('settings.subtitle') }}</p>
       </div>
     </div>
 
@@ -322,11 +394,11 @@ const toggleArchiveField = (field: ProcessField) => {
     <div class="tab-nav">
       <button
         v-for="tab in [
-          { key: 'profile', label: '基本信息', icon: UserOutlined },
-          { key: 'dashboard_prefs', label: '仪表盘', icon: PieChartOutlined },
-          { key: 'workbench', label: '审核工作台', icon: DashboardOutlined },
-          { key: 'cron', label: '定时任务', icon: ClockCircleOutlined },
-          { key: 'archive', label: '归档复盘', icon: FolderOpenOutlined },
+          { key: 'profile', label: t('settings.tab.profile'), icon: UserOutlined },
+          { key: 'dashboard_prefs', label: t('settings.tab.dashboardPrefs'), icon: PieChartOutlined },
+          { key: 'workbench', label: t('settings.tab.workbench'), icon: DashboardOutlined },
+          { key: 'cron', label: t('settings.tab.cron'), icon: ClockCircleOutlined },
+          { key: 'archive', label: t('settings.tab.archive'), icon: FolderOpenOutlined },
         ]"
         :key="tab.key"
         class="tab-btn"
@@ -342,11 +414,11 @@ const toggleArchiveField = (field: ProcessField) => {
     <div v-if="activeTab === 'dashboard_prefs'" class="tab-content">
       <div class="settings-card">
         <div class="section-header-row" style="margin-bottom: 16px;">
-          <h4 class="config-section-title">仪表盘组件配置</h4>
-          <a-button size="small" @click="resetDashboardPrefs">恢复默认</a-button>
+          <h4 class="config-section-title">{{ t('settings.dashboard.widgetConfig') }}</h4>
+          <a-button size="small" @click="resetDashboardPrefs">{{ t('settings.dashboard.restoreDefault') }}</a-button>
         </div>
         <p class="config-section-desc" style="margin-bottom: 20px;">
-          选择您希望在仪表盘中显示的组件，不同权限可见的组件有所不同
+          {{ t('settings.dashboard.widgetDesc') }}
         </p>
         <div class="dash-widget-list">
           <div
@@ -365,14 +437,14 @@ const toggleArchiveField = (field: ProcessField) => {
             </div>
             <div class="dash-widget-perms">
               <span v-for="p in w.requiredPermissions" :key="p" class="dash-perm-tag">
-                {{ p === 'business' ? '业务' : p === 'tenant_admin' ? '租户' : '系统' }}
+                {{ p === 'business' ? t('settings.dashboard.permBusiness') : p === 'tenant_admin' ? t('settings.dashboard.permTenant') : t('settings.dashboard.permSystem') }}
               </span>
             </div>
           </div>
         </div>
         <div class="settings-actions">
           <a-button type="primary" size="large" :loading="saving" @click="handleSave">
-            <SaveOutlined /> 保存配置
+            <SaveOutlined /> {{ t('settings.dashboard.saveConfig') }}
           </a-button>
         </div>
       </div>
@@ -388,42 +460,42 @@ const toggleArchiveField = (field: ProcessField) => {
           <div class="profile-avatar-info">
             <div class="profile-name">{{ profile.nickname }}</div>
             <div class="profile-role">
-              <span class="role-badge">{{ roleLabels[userRole] || '业务用户' }}</span>
+              <span class="role-badge">{{ getRoleLabel(userRole) }}</span>
             </div>
           </div>
         </div>
 
         <a-form layout="vertical" class="settings-form">
           <div class="form-row">
-            <a-form-item label="昵称" class="form-col">
-              <a-input v-model:value="profile.nickname" size="large" placeholder="请输入昵称">
+            <a-form-item :label="t('settings.profile.nickname')" class="form-col">
+              <a-input v-model:value="profile.nickname" size="large" :placeholder="t('settings.profile.nicknamePlaceholder')">
                 <template #prefix><UserOutlined class="input-icon" /></template>
               </a-input>
             </a-form-item>
-            <a-form-item label="邮箱" class="form-col">
-              <a-input v-model:value="profile.email" size="large" placeholder="请输入邮箱">
+            <a-form-item :label="t('settings.profile.email')" class="form-col">
+              <a-input v-model:value="profile.email" size="large" :placeholder="t('settings.profile.emailPlaceholder')">
                 <template #prefix><MailOutlined class="input-icon" /></template>
               </a-input>
             </a-form-item>
           </div>
           <div class="form-row">
-            <a-form-item label="手机号" class="form-col">
-              <a-input v-model:value="profile.phone" size="large" placeholder="请输入手机号">
+            <a-form-item :label="t('settings.profile.phone')" class="form-col">
+              <a-input v-model:value="profile.phone" size="large" :placeholder="t('settings.profile.phonePlaceholder')">
                 <template #prefix><PhoneOutlined class="input-icon" /></template>
               </a-input>
             </a-form-item>
-            <a-form-item label="部门" class="form-col">
+            <a-form-item :label="t('settings.profile.department')" class="form-col">
               <a-input v-model:value="profile.department" size="large" disabled />
             </a-form-item>
           </div>
-          <a-form-item label="职位">
+          <a-form-item :label="t('settings.profile.position')">
             <a-input v-model:value="profile.position" size="large" disabled />
           </a-form-item>
         </a-form>
 
         <div class="settings-actions">
           <a-button type="primary" size="large" :loading="saving" @click="handleSave">
-            <SaveOutlined /> 保存
+            <SaveOutlined /> {{ t('settings.profile.save') }}
           </a-button>
         </div>
       </div>
@@ -432,33 +504,127 @@ const toggleArchiveField = (field: ProcessField) => {
       <div class="settings-card" style="margin-top: 20px;">
         <h4 class="perm-card-title">
           <SafetyCertificateOutlined style="color: var(--color-primary);" />
-          角色与权限
+          {{ t('settings.profile.roleAndPermissions') }}
         </h4>
         <div class="perm-info-row">
-          <span class="perm-info-label">当前角色</span>
-          <span class="perm-role-badge">{{ currentOrgRole?.name || roleLabels[userRole] || '业务用户' }}</span>
+          <span class="perm-info-label">{{ t('settings.profile.currentRole') }}</span>
+          <span class="perm-role-badge">{{ currentOrgRole?.name || getRoleLabel(userRole) }}</span>
         </div>
         <div v-if="currentOrgRole?.description" class="perm-info-row">
-          <span class="perm-info-label">角色说明</span>
+          <span class="perm-info-label">{{ t('settings.profile.roleDescription') }}</span>
           <span class="perm-info-value">{{ currentOrgRole.description }}</span>
         </div>
         <div v-if="currentMember" class="perm-info-row">
-          <span class="perm-info-label">所属部门</span>
+          <span class="perm-info-label">{{ t('settings.profile.belongDepartment') }}</span>
           <span class="perm-info-value">{{ currentMember.department_name }}</span>
         </div>
         <div class="perm-pages-section">
-          <span class="perm-info-label">可访问页面</span>
+          <span class="perm-info-label">{{ t('settings.profile.accessiblePages') }}</span>
           <div class="perm-page-tags">
             <span
               v-for="p in (currentOrgRole?.page_permissions || ['/dashboard', '/cron', '/settings'])"
               :key="p"
               class="perm-page-tag"
             >
-              {{ allPageLabels[p] || p }}
+              {{ getPageLabel(p) }}
             </span>
           </div>
         </div>
-        <p class="perm-hint-text">权限由管理员在「组织人员」中配置，如需调整请联系租户管理员</p>
+        <p class="perm-hint-text">{{ t('settings.profile.permissionHint') }}</p>
+      </div>
+
+      <!-- Language setting (integrated into profile) -->
+      <div class="settings-card" style="margin-top: 20px;">
+        <h4 class="perm-card-title">
+          <GlobalOutlined style="color: var(--color-primary);" />
+          {{ t('settings.language.title') }}
+        </h4>
+        <p class="config-section-desc" style="margin-bottom: 16px;">{{ t('settings.language.subtitle') }}</p>
+        <div class="language-options">
+          <div
+            v-for="loc in availableLocales"
+            :key="loc.value"
+            class="language-option"
+            :class="{ 'language-option--active': locale === loc.value }"
+            @click="handleLocaleChange(loc.value)"
+          >
+            <span class="language-flag">{{ loc.flag }}</span>
+            <span class="language-label">{{ loc.label }}</span>
+            <CheckOutlined v-if="locale === loc.value" class="language-check" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Security / Password (integrated into profile) -->
+      <div class="settings-card" style="margin-top: 20px;">
+        <h4 class="perm-card-title">
+          <LockOutlined style="color: var(--color-primary);" />
+          {{ t('settings.security.title') }}
+        </h4>
+        <p class="config-section-desc" style="margin-bottom: 16px;">{{ t('settings.security.subtitle') }}</p>
+
+        <a-form layout="vertical" class="settings-form" style="max-width: 480px;">
+          <a-form-item :label="t('settings.security.currentPassword')">
+            <a-input-password
+              v-model:value="passwordForm.currentPassword"
+              size="large"
+              :placeholder="t('settings.security.currentPasswordPlaceholder')"
+              :visibility-toggle="true"
+            />
+          </a-form-item>
+          <a-form-item :label="t('settings.security.newPassword')">
+            <a-input-password
+              v-model:value="passwordForm.newPassword"
+              size="large"
+              :placeholder="t('settings.security.newPasswordPlaceholder')"
+              :visibility-toggle="true"
+            />
+            <div v-if="passwordStrength" class="password-strength">
+              <div class="strength-bar">
+                <div class="strength-fill" :style="{ width: strengthConfig[passwordStrength].percent + '%', background: strengthConfig[passwordStrength].color }" />
+              </div>
+              <span class="strength-label" :style="{ color: strengthConfig[passwordStrength].color }">
+                {{ t('settings.security.passwordStrength') }}: {{ t(`settings.security.strength.${passwordStrength}`) }}
+              </span>
+            </div>
+          </a-form-item>
+          <a-form-item :label="t('settings.security.confirmPassword')">
+            <a-input-password
+              v-model:value="passwordForm.confirmPassword"
+              size="large"
+              :placeholder="t('settings.security.confirmPasswordPlaceholder')"
+              :visibility-toggle="true"
+            />
+          </a-form-item>
+          <a-button type="primary" size="large" :loading="passwordChanging" @click="handleChangePassword">
+            <LockOutlined /> {{ t('settings.security.changePassword') }}
+          </a-button>
+        </a-form>
+
+        <div class="settings-divider" />
+
+        <div class="security-info">
+          <div class="security-info-row">
+            <span class="perm-info-label">{{ t('settings.security.lastChanged') }}</span>
+            <span class="perm-info-value">{{ securityInfo.password_last_changed }}</span>
+          </div>
+        </div>
+
+        <div v-if="securityInfo.login_history.length" class="login-history">
+          <h4 class="config-section-title" style="margin-top: 24px;">{{ t('settings.security.loginHistory') }}</h4>
+          <div class="login-history-list">
+            <div v-for="(entry, idx) in securityInfo.login_history" :key="idx" class="login-history-item">
+              <div class="login-history-time">{{ entry.time }}</div>
+              <div class="login-history-details">
+                <span>{{ entry.device }}</span>
+                <span class="login-history-sep">·</span>
+                <span>{{ entry.ip }}</span>
+                <span class="login-history-sep">·</span>
+                <span>{{ entry.location }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <!-- Audit workbench tab -->
@@ -1402,4 +1568,58 @@ const toggleArchiveField = (field: ProcessField) => {
   font-size: 11px; padding: 2px 8px; border-radius: var(--radius-full);
   background: var(--color-bg-hover); color: var(--color-text-tertiary);
 }
+/* Language & Region tab */
+.language-options { display: flex; gap: 12px; flex-wrap: wrap; }
+.language-option {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 24px; border-radius: var(--radius-lg);
+  border: 2px solid var(--color-border);
+  cursor: pointer; transition: all 0.2s ease;
+  min-width: 180px; position: relative;
+}
+.language-option:hover { border-color: var(--color-primary-light); background: var(--color-bg-hover); }
+.language-option--active {
+  border-color: var(--color-primary); background: var(--color-primary-bg);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+.language-flag { font-size: 24px; }
+.language-label { font-size: 15px; font-weight: 600; color: var(--color-text-primary); }
+.language-check { color: var(--color-primary); font-size: 16px; margin-left: auto; }
+
+.settings-divider {
+  height: 1px; background: var(--color-border-light);
+  margin: 24px 0;
+}
+.timezone-display {
+  font-size: 14px; font-weight: 500; color: var(--color-text-primary);
+  padding: 10px 16px; background: var(--color-bg-hover);
+  border-radius: var(--radius-md); display: inline-block; margin-top: 8px;
+}
+
+/* Security tab */
+.password-strength { margin-top: 8px; }
+.strength-bar {
+  height: 4px; background: var(--color-bg-hover);
+  border-radius: 2px; overflow: hidden; margin-bottom: 4px;
+}
+.strength-fill {
+  height: 100%; border-radius: 2px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+.strength-label { font-size: 12px; font-weight: 500; }
+.security-info { margin-top: 16px; }
+.security-info-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 0;
+}
+.login-history-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.login-history-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-radius: var(--radius-md);
+  background: var(--color-bg-hover); transition: background 0.2s ease;
+}
+.login-history-item:hover { background: var(--color-bg-active); }
+.login-history-time { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.login-history-details { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 6px; }
+.login-history-sep { opacity: 0.4; }
 </style>

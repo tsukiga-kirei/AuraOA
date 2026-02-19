@@ -19,6 +19,7 @@ import {
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { UserPersonalConfig } from '~/composables/useMockData'
+import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
@@ -67,14 +68,16 @@ const openDetail = (c: UserPersonalConfig) => {
   showDetail.value = true
 }
 
-const strictnessLabels: Record<string, { label: string; color: string }> = {
-  strict: { label: '严格', color: 'var(--color-danger)' },
-  standard: { label: '标准', color: 'var(--color-primary)' },
-  loose: { label: '宽松', color: 'var(--color-warning)' },
-}
+const { t } = useI18n()
+
+const strictnessLabels = computed(() => ({
+  strict: { label: t('admin.ruleConfig.strict'), color: 'var(--color-danger)' },
+  standard: { label: t('admin.ruleConfig.standard'), color: 'var(--color-primary)' },
+  loose: { label: t('admin.ruleConfig.loose'), color: 'var(--color-warning)' },
+}))
 
 const handleExport = () => {
-  message.success('用户偏好数据导出中...')
+  message.success(t('admin.userConfigs.exporting', 'User preference data exporting...'))
 }
 </script>
 
@@ -82,43 +85,43 @@ const handleExport = () => {
   <div class="data-page fade-in">
     <div class="page-header">
       <div>
-        <h1 class="page-title">用户偏好</h1>
-        <p class="page-subtitle">查看租户内用户在「个人设置」中的自定义配置情况，用于偏好分析与配置审计</p>
+        <h1 class="page-title">{{ t('admin.userConfigs.title') }}</h1>
+        <p class="page-subtitle">{{ t('admin.userConfigs.subtitle') }}</p>
       </div>
     </div>
 
     <div class="toolbar">
       <div class="toolbar-left">
-        <a-input v-model:value="search" placeholder="搜索用户名/姓名" allow-clear style="width: 200px;">
+        <a-input v-model:value="search" :placeholder="t('admin.userConfigs.searchPlaceholder')" allow-clear style="width: 200px;">
           <template #prefix><SearchOutlined /></template>
         </a-input>
-        <a-select v-model:value="deptFilter" placeholder="部门" allow-clear style="width: 140px;">
+        <a-select v-model:value="deptFilter" :placeholder="t('admin.userConfigs.department')" allow-clear style="width: 140px;">
           <a-select-option v-for="d in departments" :key="d" :value="d">{{ d }}</a-select-option>
         </a-select>
-        <a-select v-model:value="hasConfigFilter" placeholder="配置状态" allow-clear style="width: 140px;">
-          <a-select-option value="configured">有自定义配置</a-select-option>
-          <a-select-option value="none">无自定义配置</a-select-option>
+        <a-select v-model:value="hasConfigFilter" :placeholder="t('admin.userConfigs.configStatus')" allow-clear style="width: 140px;">
+          <a-select-option value="configured">{{ t('admin.userConfigs.hasConfig') }}</a-select-option>
+          <a-select-option value="none">{{ t('admin.userConfigs.noConfig') }}</a-select-option>
         </a-select>
       </div>
-      <a-button @click="handleExport"><ExportOutlined /> 导出</a-button>
+      <a-button @click="handleExport"><ExportOutlined /> {{ t('admin.userConfigs.export') }}</a-button>
     </div>
 
     <div class="stats-row">
       <div class="stat-card">
         <div class="stat-value">{{ totalUsers }}</div>
-        <div class="stat-label">用户总数</div>
+        <div class="stat-label">{{ t('admin.userConfigs.totalUsers') }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">{{ configuredUsers }}</div>
-        <div class="stat-label">有自定义配置</div>
+        <div class="stat-label">{{ t('admin.userConfigs.configuredUsers') }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">{{ totalCustomRules }}</div>
-        <div class="stat-label">自定义规则总数</div>
+        <div class="stat-label">{{ t('admin.userConfigs.totalCustomRules') }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">{{ totalFieldOverrides }}</div>
-        <div class="stat-label">字段覆盖总数</div>
+        <div class="stat-label">{{ t('admin.userConfigs.totalFieldOverrides') }}</div>
       </div>
     </div>
 
@@ -126,15 +129,15 @@ const handleExport = () => {
       <table class="data-table">
         <thead>
           <tr>
-            <th>用户</th>
-            <th>部门</th>
-            <th>自定义规则</th>
-            <th>字段覆盖</th>
-            <th>尺度调整</th>
-            <th>推送邮箱</th>
-            <th>配置项</th>
-            <th>最后修改</th>
-            <th>操作</th>
+            <th>{{ t('admin.userConfigs.thUser') }}</th>
+            <th>{{ t('admin.userConfigs.thDepartment') }}</th>
+            <th>{{ t('admin.userConfigs.thCustomRules') }}</th>
+            <th>{{ t('admin.userConfigs.thFieldOverrides') }}</th>
+            <th>{{ t('admin.userConfigs.thStrictnessOverrides') }}</th>
+            <th>{{ t('admin.userConfigs.thPushEmail') }}</th>
+            <th>{{ t('admin.userConfigs.thConfigItems') }}</th>
+            <th>{{ t('admin.userConfigs.thLastModified') }}</th>
+            <th>{{ t('admin.userConfigs.thAction') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -167,21 +170,21 @@ const handleExport = () => {
             </td>
             <td>
               <span v-if="c.custom_push_email" class="text-mono" style="font-size: 12px;">{{ c.custom_push_email }}</span>
-              <span v-else class="text-secondary">默认</span>
+              <span v-else class="text-secondary">{{ t('admin.userConfigs.default') }}</span>
             </td>
             <td>
-              <span v-if="c.total_config_items > 0" class="config-total">{{ c.total_config_items }} 项</span>
-              <span v-else class="text-secondary">无</span>
+              <span v-if="c.total_config_items > 0" class="config-total">{{ t('admin.userConfigs.items', [c.total_config_items]) }}</span>
+              <span v-else class="text-secondary">{{ t('admin.userConfigs.none') }}</span>
             </td>
             <td class="text-secondary">{{ c.last_modified || '-' }}</td>
             <td>
               <div class="action-btns">
-                <button class="icon-btn" title="查看详情" @click="openDetail(c)"><EyeOutlined /></button>
+                <button class="icon-btn" :title="t('admin.userConfigs.viewDetail')" @click="openDetail(c)"><EyeOutlined /></button>
               </div>
             </td>
           </tr>
           <tr v-if="filteredConfigs.length === 0">
-            <td colspan="9" class="empty-cell">暂无数据</td>
+            <td colspan="9" class="empty-cell">{{ t('admin.userConfigs.noData') }}</td>
           </tr>
         </tbody>
       </table>
@@ -204,7 +207,7 @@ const handleExport = () => {
     <!-- Detail Drawer -->
     <a-drawer
       v-model:open="showDetail"
-      :title="detailConfig ? detailConfig.display_name + ' 的偏好配置详情' : ''"
+      :title="detailConfig ? t('admin.userConfigs.prefDetail', [detailConfig.display_name]) : ''"
       width="600"
       placement="right"
     >
@@ -219,22 +222,22 @@ const handleExport = () => {
             <div class="detail-user-meta">{{ detailConfig.username }} · {{ detailConfig.department }}</div>
           </div>
           <div class="detail-user-stats">
-            <span class="config-total">{{ detailConfig.total_config_items }} 项配置</span>
+            <span class="config-total">{{ t('admin.userConfigs.itemsConfig', [detailConfig.total_config_items]) }}</span>
           </div>
         </div>
 
         <!-- No config state -->
         <div v-if="detailConfig.total_config_items === 0" class="detail-empty">
-          <a-empty description="该用户未做任何自定义配置" />
+          <a-empty :description="t('admin.userConfigs.noCustomConfig')" />
         </div>
 
         <!-- Tab nav -->
         <div v-else class="detail-tab-nav">
           <button
             v-for="tab in [
-              { key: 'audit', label: '审核工作台', icon: AppstoreOutlined, count: detailConfig.audit_details.length },
-              { key: 'cron', label: '定时任务', icon: ClockCircleOutlined, count: detailConfig.cron_details.length },
-              { key: 'archive', label: '归档复盘', icon: FolderOpenOutlined, count: detailConfig.archive_details.length },
+              { key: 'audit', label: t('admin.userConfigs.tabAudit'), icon: AppstoreOutlined, count: detailConfig.audit_details.length },
+              { key: 'cron', label: t('admin.userConfigs.tabCron'), icon: ClockCircleOutlined, count: detailConfig.cron_details.length },
+              { key: 'archive', label: t('admin.userConfigs.tabArchive'), icon: FolderOpenOutlined, count: detailConfig.archive_details.length },
             ]"
             :key="tab.key"
             class="detail-tab-btn"
@@ -250,7 +253,7 @@ const handleExport = () => {
         <!-- ===== Audit workbench details ===== -->
         <div v-if="detailTab === 'audit' && detailConfig.total_config_items > 0" class="detail-content">
           <div v-if="detailConfig.audit_details.length === 0" class="detail-empty-tab">
-            未修改审核工作台配置
+            {{ t('admin.userConfigs.noAuditConfig') }}
           </div>
           <div v-for="proc in detailConfig.audit_details" :key="proc.process_type" class="detail-process-card">
             <div class="detail-process-header">
@@ -259,30 +262,30 @@ const handleExport = () => {
 
             <!-- Strictness override -->
             <div v-if="proc.strictness_override" class="detail-config-block">
-              <div class="detail-config-label"><ControlOutlined /> 审核尺度</div>
+              <div class="detail-config-label"><ControlOutlined /> {{ t('admin.userConfigs.auditStrictness') }}</div>
               <div class="detail-config-value">
                 <span class="strictness-tag" :style="{ color: strictnessLabels[proc.strictness_override]?.color }">
                   {{ strictnessLabels[proc.strictness_override]?.label }}
                 </span>
-                <span class="text-secondary" style="font-size: 12px; margin-left: 4px;">（用户自定义）</span>
+                <span class="text-secondary" style="font-size: 12px; margin-left: 4px;">{{ t('admin.userConfigs.userCustom') }}</span>
               </div>
             </div>
 
             <!-- Custom rules -->
             <div v-if="proc.custom_rules.length > 0" class="detail-config-block">
-              <div class="detail-config-label"><NodeIndexOutlined /> 自定义规则</div>
+              <div class="detail-config-label"><NodeIndexOutlined /> {{ t('admin.userConfigs.customRules') }}</div>
               <div class="detail-rule-list">
                 <div v-for="rule in proc.custom_rules" :key="rule.id" class="detail-rule-item">
                   <span class="detail-rule-dot" :class="rule.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
                   <span class="detail-rule-text">{{ rule.content }}</span>
-                  <span class="detail-rule-status">{{ rule.enabled ? '启用' : '禁用' }}</span>
+                  <span class="detail-rule-status">{{ rule.enabled ? t('admin.ruleConfig.enable') : t('admin.ruleConfig.disable') }}</span>
                 </div>
               </div>
             </div>
 
             <!-- Field overrides -->
             <div v-if="proc.field_overrides.length > 0" class="detail-config-block">
-              <div class="detail-config-label"><AppstoreOutlined /> 字段选择变更</div>
+              <div class="detail-config-label"><AppstoreOutlined /> {{ t('admin.userConfigs.fieldChanges') }}</div>
               <div class="detail-tag-list">
                 <span v-for="f in proc.field_overrides" :key="f" class="detail-field-tag">{{ f }}</span>
               </div>
@@ -290,18 +293,18 @@ const handleExport = () => {
 
             <!-- Rule toggle overrides -->
             <div v-if="proc.rule_toggle_overrides.length > 0" class="detail-config-block">
-              <div class="detail-config-label"><SwapOutlined /> 规则开关变更</div>
+              <div class="detail-config-label"><SwapOutlined /> {{ t('admin.userConfigs.ruleToggleChanges') }}</div>
               <div class="detail-rule-list">
                 <div v-for="r in proc.rule_toggle_overrides" :key="r.rule_id" class="detail-rule-item">
                   <span class="detail-rule-dot" :class="r.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
                   <span class="detail-rule-text">{{ r.rule_content }}</span>
-                  <span class="detail-rule-status">{{ r.enabled ? '开启' : '关闭' }}</span>
+                  <span class="detail-rule-status">{{ r.enabled ? t('admin.ruleConfig.enable') : t('admin.ruleConfig.disable') }}</span>
                 </div>
               </div>
             </div>
 
             <div v-if="!proc.strictness_override && proc.custom_rules.length === 0 && proc.field_overrides.length === 0 && proc.rule_toggle_overrides.length === 0" class="detail-empty-tab">
-              该流程无自定义配置
+              {{ t('admin.userConfigs.noProcessConfig') }}
             </div>
           </div>
         </div>
@@ -309,7 +312,7 @@ const handleExport = () => {
         <!-- ===== Cron details ===== -->
         <div v-if="detailTab === 'cron' && detailConfig.total_config_items > 0" class="detail-content">
           <div v-if="detailConfig.cron_details.length === 0" class="detail-empty-tab">
-            未修改定时任务配置
+            {{ t('admin.userConfigs.noAuditConfig') }}
           </div>
           <div v-for="cron in detailConfig.cron_details" :key="cron.task_type" class="detail-process-card">
             <div class="detail-process-header">
@@ -318,53 +321,53 @@ const handleExport = () => {
 
             <!-- Email override -->
             <div v-if="cron.email_override" class="detail-config-block">
-              <div class="detail-config-label"><MailOutlined /> 自定义推送邮箱</div>
+              <div class="detail-config-label"><MailOutlined /> {{ t('admin.userConfigs.customPushEmail') }}</div>
               <div class="detail-config-value text-mono">{{ cron.email_override }}</div>
             </div>
 
             <!-- Template override -->
             <div v-if="cron.template_override" class="detail-config-block">
-              <div class="detail-config-label"><FileTextOutlined /> 模板自定义</div>
+              <div class="detail-config-label"><FileTextOutlined /> {{ t('admin.userConfigs.templateCustom') }}</div>
               <div class="detail-template-list">
                 <div v-if="cron.template_override.subject" class="detail-template-item">
-                  <span class="detail-template-key">邮件主题</span>
+                  <span class="detail-template-key">{{ t('admin.userConfigs.emailSubject') }}</span>
                   <span class="detail-template-val">{{ cron.template_override.subject }}</span>
                 </div>
                 <div v-if="cron.template_override.header" class="detail-template-item">
-                  <span class="detail-template-key">头部内容</span>
+                  <span class="detail-template-key">{{ t('admin.userConfigs.headerContent') }}</span>
                   <span class="detail-template-val">{{ cron.template_override.header }}</span>
                 </div>
                 <div v-if="cron.template_override.body_template" class="detail-template-item">
-                  <span class="detail-template-key">正文模板</span>
+                  <span class="detail-template-key">{{ t('admin.userConfigs.bodyTemplate') }}</span>
                   <span class="detail-template-val">{{ cron.template_override.body_template }}</span>
                 </div>
                 <div v-if="cron.template_override.footer" class="detail-template-item">
-                  <span class="detail-template-key">底部内容</span>
+                  <span class="detail-template-key">{{ t('admin.userConfigs.footerContent') }}</span>
                   <span class="detail-template-val">{{ cron.template_override.footer }}</span>
                 </div>
                 <div v-if="cron.template_override.include_ai_summary !== undefined" class="detail-template-item">
-                  <span class="detail-template-key">AI 摘要</span>
-                  <span class="detail-template-val">{{ cron.template_override.include_ai_summary ? '包含' : '不包含' }}</span>
+                  <span class="detail-template-key">{{ t('admin.userConfigs.aiSummary') }}</span>
+                  <span class="detail-template-val">{{ cron.template_override.include_ai_summary ? t('admin.userConfigs.include') : t('admin.userConfigs.exclude') }}</span>
                 </div>
                 <div v-if="cron.template_override.include_statistics !== undefined" class="detail-template-item">
-                  <span class="detail-template-key">统计数据</span>
-                  <span class="detail-template-val">{{ cron.template_override.include_statistics ? '包含' : '不包含' }}</span>
+                  <span class="detail-template-key">{{ t('admin.userConfigs.statistics') }}</span>
+                  <span class="detail-template-val">{{ cron.template_override.include_statistics ? t('admin.userConfigs.include') : t('admin.userConfigs.exclude') }}</span>
                 </div>
                 <div v-if="cron.template_override.include_detail_list !== undefined" class="detail-template-item">
-                  <span class="detail-template-key">明细列表</span>
-                  <span class="detail-template-val">{{ cron.template_override.include_detail_list ? '包含' : '不包含' }}</span>
+                  <span class="detail-template-key">{{ t('admin.userConfigs.detailList') }}</span>
+                  <span class="detail-template-val">{{ cron.template_override.include_detail_list ? t('admin.userConfigs.include') : t('admin.userConfigs.exclude') }}</span>
                 </div>
               </div>
             </div>
 
             <!-- Prompt override -->
             <div v-if="cron.prompt_override" class="detail-config-block">
-              <div class="detail-config-label"><EditOutlined /> 提示词自定义</div>
+              <div class="detail-config-label"><EditOutlined /> {{ t('admin.ruleConfig.modifyPrompt') }}</div>
               <div class="detail-config-value" style="white-space: pre-wrap; font-size: 12px;">{{ cron.prompt_override }}</div>
             </div>
 
             <div v-if="!cron.email_override && !cron.template_override && !cron.prompt_override" class="detail-empty-tab">
-              该任务类型无自定义配置
+              {{ t('admin.userConfigs.noProcessConfig') }}
             </div>
           </div>
         </div>
@@ -372,7 +375,7 @@ const handleExport = () => {
         <!-- ===== Archive details ===== -->
         <div v-if="detailTab === 'archive' && detailConfig.total_config_items > 0" class="detail-content">
           <div v-if="detailConfig.archive_details.length === 0" class="detail-empty-tab">
-            未修改归档复盘配置
+            {{ t('admin.userConfigs.noAuditConfig') }}
           </div>
           <div v-for="arc in detailConfig.archive_details" :key="arc.process_type" class="detail-process-card">
             <div class="detail-process-header">
@@ -381,56 +384,56 @@ const handleExport = () => {
 
             <!-- Strictness override -->
             <div v-if="arc.strictness_override" class="detail-config-block">
-              <div class="detail-config-label"><ControlOutlined /> 复核尺度</div>
+              <div class="detail-config-label"><ControlOutlined /> {{ t('admin.ruleConfig.reviewStrictness') }}</div>
               <div class="detail-config-value">
                 <span class="strictness-tag" :style="{ color: strictnessLabels[arc.strictness_override]?.color }">
                   {{ strictnessLabels[arc.strictness_override]?.label }}
                 </span>
-                <span class="text-secondary" style="font-size: 12px; margin-left: 4px;">（用户自定义）</span>
+                <span class="text-secondary" style="font-size: 12px; margin-left: 4px;">{{ t('admin.userConfigs.userCustom') }}</span>
               </div>
             </div>
 
             <!-- Custom rules -->
             <div v-if="arc.custom_rules.length > 0" class="detail-config-block">
-              <div class="detail-config-label"><NodeIndexOutlined /> 自定义复核规则</div>
+              <div class="detail-config-label"><NodeIndexOutlined /> {{ t('admin.ruleConfig.customReviewRules') }}</div>
               <div class="detail-rule-list">
                 <div v-for="rule in arc.custom_rules" :key="rule.id" class="detail-rule-item">
                   <span class="detail-rule-dot" :class="rule.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
                   <span class="detail-rule-text">{{ rule.content }}</span>
-                  <span class="detail-rule-status">{{ rule.enabled ? '启用' : '禁用' }}</span>
+                  <span class="detail-rule-status">{{ rule.enabled ? t('admin.ruleConfig.enable') : t('admin.ruleConfig.disable') }}</span>
                 </div>
               </div>
             </div>
 
             <!-- Custom flow rules -->
             <div v-if="arc.custom_flow_rules.length > 0" class="detail-config-block">
-              <div class="detail-config-label"><ApartmentOutlined /> 自定义审批流规则</div>
+              <div class="detail-config-label"><ApartmentOutlined /> {{ t('admin.ruleConfig.customFlowRules') }}</div>
               <div class="detail-rule-list">
                 <div v-for="rule in arc.custom_flow_rules" :key="rule.id" class="detail-rule-item">
                   <span class="detail-rule-dot" :class="rule.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
                   <span class="detail-rule-text">{{ rule.content }}</span>
-                  <span class="detail-rule-status">{{ rule.enabled ? '启用' : '禁用' }}</span>
+                  <span class="detail-rule-status">{{ rule.enabled ? t('admin.ruleConfig.enable') : t('admin.ruleConfig.disable') }}</span>
                 </div>
               </div>
             </div>
 
             <!-- Field overrides -->
             <div v-if="arc.field_overrides.length > 0" class="detail-config-block">
-              <div class="detail-config-label"><AppstoreOutlined /> 字段选择变更</div>
+              <div class="detail-config-label"><AppstoreOutlined /> {{ t('admin.userConfigs.fieldChanges') }}</div>
               <div class="detail-tag-list">
                 <span v-for="f in arc.field_overrides" :key="f" class="detail-field-tag">{{ f }}</span>
               </div>
             </div>
 
             <div v-if="!arc.strictness_override && arc.custom_rules.length === 0 && arc.custom_flow_rules.length === 0 && arc.field_overrides.length === 0" class="detail-empty-tab">
-              该流程无自定义配置
+              {{ t('admin.userConfigs.noProcessConfig') }}
             </div>
           </div>
         </div>
 
         <!-- Footer -->
         <div v-if="detailConfig.last_modified" class="detail-footer-info">
-          最后修改时间：{{ detailConfig.last_modified }}
+          {{ t('admin.userConfigs.thLastModified') }}：{{ detailConfig.last_modified }}
         </div>
       </template>
     </a-drawer>

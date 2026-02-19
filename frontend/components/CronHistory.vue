@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons-vue'
+import { useI18n } from '~/composables/useI18n'
+
+const { t } = useI18n()
 
 defineProps<{
   history: Array<{
@@ -15,7 +18,7 @@ defineProps<{
 <template>
   <div class="cron-history">
     <div v-if="history.length === 0" class="history-empty">
-      暂无执行记录
+      {{ t('cron.history.noRecords') }}
     </div>
     <div v-for="item in history" :key="item.task_id + item.executed_at" class="history-item">
       <div class="history-status">
@@ -25,7 +28,7 @@ defineProps<{
       <div class="history-content">
         <div class="history-message">{{ item.message }}</div>
         <div class="history-meta">
-          {{ item.executed_at }} · 处理 {{ item.item_count }} 条
+          {{ item.executed_at }} · {{ t('cron.history.processed', [item.item_count]) }}
         </div>
       </div>
     </div>

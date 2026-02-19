@@ -14,9 +14,11 @@ import {
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { CronTask } from '~/composables/useMockData'
+import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ middleware: 'auth' })
 
+const { t } = useI18n()
 const { mockCronTasks } = useMockData()
 
 const tasks = ref<CronTask[]>(JSON.parse(JSON.stringify(mockCronTasks)))
@@ -26,25 +28,25 @@ const showEdit = ref(false)
 const editingTask = ref<CronTask | null>(null)
 
 // ===== Cron expression builder =====
-const cronPresets = [
-  { label: '工作日每天上午9点', value: '0 9 * * 1-5' },
-  { label: '工作日每天下午6点', value: '0 18 * * 1-5' },
-  { label: '每天凌晨2点', value: '0 2 * * *' },
-  { label: '每周一上午10点', value: '0 10 * * 1' },
-  { label: '每月1号上午9点', value: '0 9 1 * *' },
-  { label: '每小时', value: '0 * * * *' },
-  { label: '每天中午12点', value: '0 12 * * *' },
-  { label: '自定义', value: 'custom' },
-]
+const cronPresets = computed(() => [
+  { label: t('cron.preset.weekday9'), value: '0 9 * * 1-5' },
+  { label: t('cron.preset.weekday18'), value: '0 18 * * 1-5' },
+  { label: t('cron.preset.daily2'), value: '0 2 * * *' },
+  { label: t('cron.preset.monday10'), value: '0 10 * * 1' },
+  { label: t('cron.preset.monthly1_9'), value: '0 9 1 * *' },
+  { label: t('cron.preset.hourly'), value: '0 * * * *' },
+  { label: t('cron.preset.daily12'), value: '0 12 * * *' },
+  { label: t('cron.preset.custom'), value: 'custom' },
+])
 
 const cronParts = ref({ minute: '0', hour: '9', day: '*', month: '*', weekday: '1-5' })
 
-const weekdayOptions = [
-  { label: '周一', value: '1' }, { label: '周二', value: '2' },
-  { label: '周三', value: '3' }, { label: '周四', value: '4' },
-  { label: '周五', value: '5' }, { label: '周六', value: '6' },
-  { label: '周日', value: '0' },
-]
+const weekdayOptions = computed(() => [
+  { label: t('cron.weekday.mon'), value: '1' }, { label: t('cron.weekday.tue'), value: '2' },
+  { label: t('cron.weekday.wed'), value: '3' }, { label: t('cron.weekday.thu'), value: '4' },
+  { label: t('cron.weekday.fri'), value: '5' }, { label: t('cron.weekday.sat'), value: '6' },
+  { label: t('cron.weekday.sun'), value: '0' },
+])
 
 // Default push email from personal settings
 const defaultPushEmail = 'zhangming@example.com'
@@ -116,14 +118,14 @@ watch(() => newTask.value.cron_mode, (val) => {
 // ===== Cron description & next run =====
 const describeCron = (expr: string): string => {
   const map: Record<string, string> = {
-    '0 9 * * 1-5': '工作日每天上午 9:00',
-    '0 18 * * 1-5': '工作日每天下午 6:00',
-    '0 2 * * *': '每天凌晨 2:00',
-    '0 10 * * 1': '每周一上午 10:00',
-    '0 9 1 * *': '每月1号上午 9:00',
-    '0 * * * *': '每小时整点',
-    '0 12 * * *': '每天中午 12:00',
-    '0 16 * * *': '每天下午 4:00',
+    '0 9 * * 1-5': t('cron.describe.weekday9'),
+    '0 18 * * 1-5': t('cron.describe.weekday18'),
+    '0 2 * * *': t('cron.describe.daily2'),
+    '0 10 * * 1': t('cron.describe.monday10'),
+    '0 9 1 * *': t('cron.describe.monthly1_9'),
+    '0 * * * *': t('cron.describe.hourly'),
+    '0 12 * * *': t('cron.describe.daily12'),
+    '0 16 * * *': t('cron.describe.daily16'),
   }
   return map[expr] || expr
 }
@@ -131,11 +133,11 @@ const describeCron = (expr: string): string => {
 const calcNextRuns = (expr: string, count: number = 3): string[] => {
   const now = new Date(2026, 1, 11, 10, 0) // Feb 11, 2026 (Wednesday)
   const parts = expr.split(' ')
-  if (parts.length !== 5) return ['表达式格式错误']
+  if (parts.length !== 5) return [t('cron.describe.exprError')]
   const [minStr, hourStr, dayStr, monthStr, weekdayStr] = parts
   const h = parseInt(hourStr)
   const m = parseInt(minStr)
-  if (isNaN(h) || isNaN(m)) return ['待计算']
+  if (isNaN(h) || isNaN(m)) return [t('cron.describe.pending')]
 
   const allowedWeekdays = expandWeekdays(weekdayStr)
   const hasMonthFilter = monthStr !== '*'
@@ -167,7 +169,7 @@ const calcNextRuns = (expr: string, count: number = 3): string[] => {
     }
     candidate.setDate(candidate.getDate() + 1)
   }
-  return results.length ? results : ['无匹配的执行时间']
+  return results.length ? results : [t('cron.describe.noMatch')]
 }
 
 const previewNextRuns = computed(() => calcNextRuns(newTask.value.cron_expression))
@@ -196,24 +198,24 @@ watch(editCronMode, (val) => {
 const deleteTask = (id: string) => {
   const task = tasks.value.find(t => t.id === id)
   if (task?.is_builtin) {
-    message.warning('内置任务不可删除')
+    message.warning(t('cron.builtinDeleteWarn'))
     return
   }
   tasks.value = tasks.value.filter(t => t.id !== id)
-  message.success('已删除')
+  message.success(t('cron.deleted'))
 }
 
 const executeTask = async (id: string) => {
-  message.loading({ content: '执行中...', key: 'exec' })
+  message.loading({ content: t('cron.executing'), key: 'exec' })
   await new Promise(r => setTimeout(r, 1000))
-  message.success({ content: '执行完成', key: 'exec' })
+  message.success({ content: t('cron.executeDone'), key: 'exec' })
 }
 
 const toggleTask = (id: string) => {
   const task = tasks.value.find(t => t.id === id)
   if (task) {
     task.is_active = !task.is_active
-    message.success(task.is_active ? '已启用' : '已暂停')
+    message.success(task.is_active ? t('cron.enabled') : t('cron.paused'))
   }
 }
 
@@ -225,14 +227,14 @@ const createTask = () => {
     push_email: newTask.value.push_email,
     is_active: true,
     last_run_at: null,
-    next_run_at: calcNextRuns(newTask.value.cron_expression, 1)[0] || '待计算',
+    next_run_at: calcNextRuns(newTask.value.cron_expression, 1)[0] || t('cron.describe.pending'),
     created_at: new Date().toISOString().slice(0, 10),
     success_count: 0,
     fail_count: 0,
   })
   showCreate.value = false
   newTask.value = { cron_expression: '0 9 * * 1-5', cron_mode: '0 9 * * 1-5', task_type: 'batch_audit', push_email: defaultPushEmail }
-  message.success('任务创建成功')
+  message.success(t('cron.taskCreated'))
 }
 
 const openEdit = (task: CronTask) => {
@@ -257,11 +259,11 @@ const saveEdit = () => {
   if (!editingTask.value) return
   const idx = tasks.value.findIndex(t => t.id === editingTask.value!.id)
   if (idx >= 0) {
-    tasks.value[idx] = { ...editingTask.value, next_run_at: calcNextRuns(editingTask.value.cron_expression, 1)[0] || '待计算' }
+    tasks.value[idx] = { ...editingTask.value, next_run_at: calcNextRuns(editingTask.value.cron_expression, 1)[0] || t('cron.describe.pending') }
   }
   showEdit.value = false
   editingTask.value = null
-  message.success('任务已更新')
+  message.success(t('cron.taskUpdated'))
 }
 
 const copyTask = (task: CronTask) => {
@@ -276,31 +278,31 @@ const copyTask = (task: CronTask) => {
     created_at: new Date().toISOString().slice(0, 10),
   }
   tasks.value.push(copied)
-  message.success('任务已复制')
+  message.success(t('cron.taskCopied'))
 }
 
-const taskTypeConfig: Record<string, { label: string; color: string; bg: string }> = {
-  batch_audit: { label: '批量审核', color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' },
-  daily_report: { label: '日报推送', color: 'var(--color-accent)', bg: 'var(--color-info-bg)' },
-  weekly_report: { label: '周报推送', color: '#8b5cf6', bg: 'var(--color-primary-bg)' },
-}
+const taskTypeConfig = computed(() => ({
+  batch_audit: { label: t('cron.batchAudit'), color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' },
+  daily_report: { label: t('cron.dailyReport'), color: 'var(--color-accent)', bg: 'var(--color-info-bg)' },
+  weekly_report: { label: t('cron.weeklyReport'), color: '#8b5cf6', bg: 'var(--color-primary-bg)' },
+}))
 
-const taskTypeOptions = [
-  { value: 'batch_audit', label: '批量审核' },
-  { value: 'daily_report', label: '日报推送' },
-  { value: 'weekly_report', label: '周报推送' },
-]
+const taskTypeOptions = computed(() => [
+  { value: 'batch_audit', label: t('cron.batchAudit') },
+  { value: 'daily_report', label: t('cron.dailyReport') },
+  { value: 'weekly_report', label: t('cron.weeklyReport') },
+])
 </script>
 
 <template>
   <div class="cron-page fade-in">
     <div class="page-header">
       <div>
-        <h1 class="page-title">定时任务中心</h1>
-        <p class="page-subtitle">Cron 批量审核与推送管理</p>
+        <h1 class="page-title">{{ t('cron.pageTitle') }}</h1>
+        <p class="page-subtitle">{{ t('cron.pageSubtitle') }}</p>
       </div>
       <a-button type="primary" size="large" @click="showCreate = true">
-        <PlusOutlined /> 新建任务
+        <PlusOutlined /> {{ t('cron.createTask') }}
       </a-button>
     </div>
 
@@ -324,12 +326,12 @@ const taskTypeOptions = [
               {{ taskTypeConfig[task.task_type]?.label || task.task_type }}
             </span>
             <span v-if="task.is_builtin" class="builtin-tag">
-              <LockOutlined /> 内置
+              <LockOutlined /> {{ t('cron.builtin') }}
             </span>
           </div>
           <div class="task-status" :class="task.is_active ? 'task-status--active' : 'task-status--paused'">
             <span class="task-status-dot" />
-            {{ task.is_active ? '运行中' : '已暂停' }}
+            {{ task.is_active ? t('cron.running') : t('cron.paused') }}
           </div>
         </div>
 
@@ -347,52 +349,52 @@ const taskTypeOptions = [
         <div class="task-stats">
           <div class="task-stat">
             <span class="task-stat-value" style="color: var(--color-success);">{{ task.success_count }}</span>
-            <span class="task-stat-label">成功</span>
+            <span class="task-stat-label">{{ t('cron.success') }}</span>
           </div>
           <div class="task-stat">
             <span class="task-stat-value" style="color: var(--color-danger);">{{ task.fail_count }}</span>
-            <span class="task-stat-label">失败</span>
+            <span class="task-stat-label">{{ t('cron.fail') }}</span>
           </div>
           <div class="task-stat">
             <span class="task-stat-value">{{ task.last_run_at || '—' }}</span>
-            <span class="task-stat-label">上次执行</span>
+            <span class="task-stat-label">{{ t('cron.lastExec') }}</span>
           </div>
         </div>
 
         <div class="task-actions">
-          <a-tooltip title="立即执行">
+          <a-tooltip :title="t('cron.executeNow')">
             <button class="task-action-btn task-action-btn--run" @click="executeTask(task.id)">
               <PlayCircleOutlined />
             </button>
           </a-tooltip>
-          <a-tooltip :title="task.is_active ? '暂停' : '启用'">
+          <a-tooltip :title="task.is_active ? t('cron.pause') : t('cron.enable')">
             <button class="task-action-btn task-action-btn--toggle" @click="toggleTask(task.id)">
               <PauseCircleOutlined v-if="task.is_active" />
               <CheckCircleOutlined v-else />
             </button>
           </a-tooltip>
-          <a-tooltip title="编辑">
+          <a-tooltip :title="t('cron.edit')">
             <button class="task-action-btn" @click="openEdit(task)">
               <EditOutlined />
             </button>
           </a-tooltip>
-          <a-tooltip title="复制">
+          <a-tooltip :title="t('cron.copy')">
             <button class="task-action-btn" @click="copyTask(task)">
               <CopyOutlined />
             </button>
           </a-tooltip>
           <a-popconfirm
             v-if="!task.is_builtin"
-            title="确认删除此任务？"
+            :title="t('cron.deleteConfirm')"
             @confirm="deleteTask(task.id)"
           >
-            <a-tooltip title="删除">
+            <a-tooltip :title="t('cron.delete')">
               <button class="task-action-btn task-action-btn--delete">
                 <DeleteOutlined />
               </button>
             </a-tooltip>
           </a-popconfirm>
-          <a-tooltip v-else title="内置任务不可删除">
+          <a-tooltip v-else :title="t('cron.builtinNoDelete')">
             <button class="task-action-btn task-action-btn--disabled" disabled>
               <DeleteOutlined />
             </button>
@@ -404,18 +406,18 @@ const taskTypeOptions = [
     <!-- Create modal -->
     <a-modal
       v-model:open="showCreate"
-      title="新建定时任务"
+      :title="t('cron.createTitle')"
       @ok="createTask"
-      :okText="'创建'"
-      :cancelText="'取消'"
+      :okText="t('cron.create')"
+      :cancelText="t('cron.cancel')"
       :width="560"
     >
       <a-form layout="vertical" style="margin-top: 16px;">
-        <a-form-item label="任务类型">
-          <a-select v-model:value="newTask.task_type" :options="taskTypeOptions" size="large" placeholder="选择任务类型" />
+        <a-form-item :label="t('cron.taskType')">
+          <a-select v-model:value="newTask.task_type" :options="taskTypeOptions" size="large" :placeholder="t('cron.selectTaskType')" />
         </a-form-item>
-        <a-form-item label="执行计划">
-          <a-select v-model:value="newTask.cron_mode" size="large" style="width: 100%;" placeholder="选择或自定义执行时间">
+        <a-form-item :label="t('cron.executePlan')">
+          <a-select v-model:value="newTask.cron_mode" size="large" style="width: 100%;" :placeholder="t('cron.selectOrCustom')">
             <a-select-option v-for="p in cronPresets" :key="p.value" :value="p.value">
               {{ p.label }}
               <span v-if="p.value !== 'custom'" style="color: var(--color-text-tertiary); margin-left: 8px; font-family: monospace; font-size: 12px;">{{ p.value }}</span>
@@ -425,24 +427,24 @@ const taskTypeOptions = [
         <div v-if="newTask.cron_mode === 'custom'" class="cron-builder">
           <div class="cron-builder-row">
             <div class="cron-builder-field">
-              <label>分钟</label>
-              <a-input v-model:value="cronParts.minute" placeholder="0-59 或 *" size="small" />
+              <label>{{ t('cron.minute') }}</label>
+              <a-input v-model:value="cronParts.minute" placeholder="0-59 / *" size="small" />
             </div>
             <div class="cron-builder-field">
-              <label>小时</label>
-              <a-input v-model:value="cronParts.hour" placeholder="0-23 或 *" size="small" />
+              <label>{{ t('cron.hour') }}</label>
+              <a-input v-model:value="cronParts.hour" placeholder="0-23 / *" size="small" />
             </div>
             <div class="cron-builder-field">
-              <label>日</label>
-              <a-input v-model:value="cronParts.day" placeholder="1-31 或 *" size="small" />
+              <label>{{ t('cron.day') }}</label>
+              <a-input v-model:value="cronParts.day" placeholder="1-31 / *" size="small" />
             </div>
             <div class="cron-builder-field">
-              <label>月</label>
-              <a-input v-model:value="cronParts.month" placeholder="1-12 或 *" size="small" />
+              <label>{{ t('cron.month') }}</label>
+              <a-input v-model:value="cronParts.month" placeholder="1-12 / *" size="small" />
             </div>
             <div class="cron-builder-field">
-              <label>星期</label>
-              <a-input v-model:value="cronParts.weekday" placeholder="0-6 或 *" size="small" />
+              <label>{{ t('cron.weekday') }}</label>
+              <a-input v-model:value="cronParts.weekday" placeholder="0-6 / *" size="small" />
             </div>
           </div>
           <div class="cron-builder-weekdays">
@@ -461,15 +463,15 @@ const taskTypeOptions = [
         <div class="next-run-preview">
           <ScheduleOutlined />
           <div>
-            <div class="next-run-title">下次执行时间预览</div>
+            <div class="next-run-title">{{ t('cron.nextRunPreview') }}</div>
             <div v-for="(run, i) in previewNextRuns" :key="i" class="next-run-item">{{ run }}</div>
           </div>
         </div>
-        <a-form-item label="推送邮箱">
-          <a-input v-model:value="newTask.push_email" placeholder="接收推送结果的邮箱地址，多个邮箱使用英文逗号分隔" size="large">
+        <a-form-item :label="t('cron.pushEmail')">
+          <a-input v-model:value="newTask.push_email" :placeholder="t('cron.emailPlaceholder')" size="large">
             <template #prefix><MailOutlined style="color: var(--color-text-tertiary);" /></template>
           </a-input>
-          <div class="email-hint">多个邮箱请使用英文逗号（,）分隔</div>
+          <div class="email-hint">{{ t('cron.emailHint') }}</div>
         </a-form-item>
       </a-form>
     </a-modal>
@@ -477,18 +479,18 @@ const taskTypeOptions = [
     <!-- Edit modal -->
     <a-modal
       v-model:open="showEdit"
-      title="编辑定时任务"
+      :title="t('cron.editTitle')"
       @ok="saveEdit"
-      :okText="'保存'"
-      :cancelText="'取消'"
+      :okText="t('cron.save')"
+      :cancelText="t('cron.cancel')"
       :width="560"
     >
       <a-form v-if="editingTask" layout="vertical" style="margin-top: 16px;">
-        <a-form-item label="任务类型">
-          <a-select v-model:value="editingTask.task_type" :options="taskTypeOptions" size="large" placeholder="选择任务类型" />
+        <a-form-item :label="t('cron.taskType')">
+          <a-select v-model:value="editingTask.task_type" :options="taskTypeOptions" size="large" :placeholder="t('cron.selectTaskType')" />
         </a-form-item>
-        <a-form-item label="执行计划">
-          <a-select v-model:value="editCronMode" size="large" style="width: 100%;" placeholder="选择或自定义执行时间">
+        <a-form-item :label="t('cron.executePlan')">
+          <a-select v-model:value="editCronMode" size="large" style="width: 100%;" :placeholder="t('cron.selectOrCustom')">
             <a-select-option v-for="p in cronPresets" :key="p.value" :value="p.value">
               {{ p.label }}
               <span v-if="p.value !== 'custom'" style="color: var(--color-text-tertiary); margin-left: 8px; font-family: monospace; font-size: 12px;">{{ p.value }}</span>
@@ -498,24 +500,24 @@ const taskTypeOptions = [
         <div v-if="editCronMode === 'custom'" class="cron-builder">
           <div class="cron-builder-row">
             <div class="cron-builder-field">
-              <label>分钟</label>
-              <a-input v-model:value="editCronParts.minute" placeholder="0-59 或 *" size="small" />
+              <label>{{ t('cron.minute') }}</label>
+              <a-input v-model:value="editCronParts.minute" placeholder="0-59 / *" size="small" />
             </div>
             <div class="cron-builder-field">
-              <label>小时</label>
-              <a-input v-model:value="editCronParts.hour" placeholder="0-23 或 *" size="small" />
+              <label>{{ t('cron.hour') }}</label>
+              <a-input v-model:value="editCronParts.hour" placeholder="0-23 / *" size="small" />
             </div>
             <div class="cron-builder-field">
-              <label>日</label>
-              <a-input v-model:value="editCronParts.day" placeholder="1-31 或 *" size="small" />
+              <label>{{ t('cron.day') }}</label>
+              <a-input v-model:value="editCronParts.day" placeholder="1-31 / *" size="small" />
             </div>
             <div class="cron-builder-field">
-              <label>月</label>
-              <a-input v-model:value="editCronParts.month" placeholder="1-12 或 *" size="small" />
+              <label>{{ t('cron.month') }}</label>
+              <a-input v-model:value="editCronParts.month" placeholder="1-12 / *" size="small" />
             </div>
             <div class="cron-builder-field">
-              <label>星期</label>
-              <a-input v-model:value="editCronParts.weekday" placeholder="0-6 或 *" size="small" />
+              <label>{{ t('cron.weekday') }}</label>
+              <a-input v-model:value="editCronParts.weekday" placeholder="0-6 / *" size="small" />
             </div>
           </div>
           <div class="cron-builder-weekdays">
@@ -534,15 +536,15 @@ const taskTypeOptions = [
         <div class="next-run-preview">
           <ScheduleOutlined />
           <div>
-            <div class="next-run-title">下次执行时间预览</div>
+            <div class="next-run-title">{{ t('cron.nextRunPreview') }}</div>
             <div v-for="(run, i) in editPreviewNextRuns" :key="i" class="next-run-item">{{ run }}</div>
           </div>
         </div>
-        <a-form-item label="推送邮箱">
-          <a-input v-model:value="editingTask.push_email" placeholder="接收推送结果的邮箱地址，多个邮箱使用英文逗号分隔" size="large">
+        <a-form-item :label="t('cron.pushEmail')">
+          <a-input v-model:value="editingTask.push_email" :placeholder="t('cron.emailPlaceholder')" size="large">
             <template #prefix><MailOutlined style="color: var(--color-text-tertiary);" /></template>
           </a-input>
-          <div class="email-hint">多个邮箱请使用英文逗号（,）分隔</div>
+          <div class="email-hint">{{ t('cron.emailHint') }}</div>
         </a-form-item>
       </a-form>
     </a-modal>

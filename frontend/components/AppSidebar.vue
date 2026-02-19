@@ -16,9 +16,10 @@ const emit = defineEmits<{
 
 const { currentUser, logout } = useAuth()
 const { sections, isMenuActive, logoTarget } = useSidebarMenu()
+const { t } = useI18n()
 
-const displayName = computed(() => currentUser.value?.display_name || '用户')
-const roleLabel = computed(() => currentUser.value?.role_label || '用户')
+const displayName = computed(() => currentUser.value?.display_name || t('sidebar.defaultUser'))
+const roleLabel = computed(() => currentUser.value?.role_label || t('sidebar.defaultUser'))
 
 const handleMenuClick = (path: string) => {
   navigateTo(path)
@@ -44,14 +45,14 @@ const handleMenuClick = (path: string) => {
         </svg>
       </div>
       <transition name="fade">
-        <span v-if="!collapsed || mobileMenuOpen" class="sidebar-logo-text">OA智审</span>
+        <span v-if="!collapsed || mobileMenuOpen" class="sidebar-logo-text">{{ t('app.name') }}</span>
       </transition>
       <!-- Mobile close button -->
       <button
         v-if="mobileMenuOpen"
         class="sidebar-close-btn"
         @click.stop="emit('update:mobileMenuOpen', false)"
-        aria-label="关闭菜单"
+        :aria-label="t('sidebar.closeMenu')"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -64,29 +65,47 @@ const handleMenuClick = (path: string) => {
     <!-- Navigation sections driven purely by permissions -->
     <nav class="sidebar-nav">
       <div v-for="section in sections" :key="section.id" class="sidebar-section">
-        <div v-if="!collapsed || mobileMenuOpen" class="sidebar-section-title">{{ section.title }}</div>
-        <a-tooltip
-          v-for="item in section.items"
-          :key="item.key"
-          :title="collapsed ? item.label : ''"
-          placement="right"
-          :mouse-enter-delay="0.1"
-        >
+        <div v-if="!collapsed || mobileMenuOpen" class="sidebar-section-title">{{ t(section.titleKey) }}</div>
+        <template v-for="item in section.items" :key="item.key">
+          <!-- Collapsed state: Wrap with Tooltip -->
+          <a-tooltip
+            v-if="collapsed && !mobileMenuOpen"
+            :key="'tooltip-' + item.key"
+            :title="t(item.labelKey)"
+            placement="right"
+            :mouse-enter-delay="0.1"
+            :arrow="false"
+          >
+            <div
+              class="sidebar-item"
+              :class="{ 'sidebar-item--active': isMenuActive(item.key) }"
+              @click="handleMenuClick(item.key)"
+            >
+              <component :is="item.icon" class="sidebar-item-icon" />
+              <!-- Content hidden in collapsed state usually -->
+              <!-- But we keep structure consistent -->
+              <div v-if="isMenuActive(item.key)" class="sidebar-item-indicator" />
+            </div>
+          </a-tooltip>
+
+          <!-- Expanded/Mobile state: No Tooltip -->
           <div
+            v-else
+            :key="'item-' + item.key"
             class="sidebar-item"
             :class="{ 'sidebar-item--active': isMenuActive(item.key) }"
             @click="handleMenuClick(item.key)"
           >
             <component :is="item.icon" class="sidebar-item-icon" />
             <transition name="fade">
-              <span v-if="!collapsed || mobileMenuOpen" class="sidebar-item-label">{{ item.label }}</span>
+              <span class="sidebar-item-label">{{ t(item.labelKey) }}</span>
             </transition>
             <transition name="fade">
-              <span v-if="!collapsed && item.badge || mobileMenuOpen && item.badge" class="sidebar-item-badge">{{ item.badge }}</span>
+              <span v-if="item.badge" class="sidebar-item-badge">{{ item.badge }}</span>
             </transition>
             <div v-if="isMenuActive(item.key)" class="sidebar-item-indicator" />
           </div>
-        </a-tooltip>
+        </template>
       </div>
     </nav>
 
@@ -102,12 +121,12 @@ const handleMenuClick = (path: string) => {
           <div class="user-dropdown-panel">
             <div class="dropdown-item" @click="handleMenuClick('/settings')">
               <SettingOutlined class="dropdown-item-icon" />
-              <span>个人设置</span>
+              <span>{{ t('sidebar.personalSettings') }}</span>
             </div>
             <div class="dropdown-divider" />
             <div class="dropdown-item dropdown-item--danger" @click="logout">
               <LogoutOutlined class="dropdown-item-icon" />
-              <span>退出登录</span>
+              <span>{{ t('sidebar.logout') }}</span>
             </div>
           </div>
         </template>

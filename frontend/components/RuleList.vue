@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { CheckCircleOutlined, CloseCircleOutlined, LockOutlined } from '@ant-design/icons-vue'
+import { useI18n } from '~/composables/useI18n'
+
+const { t } = useI18n()
 
 interface RuleResult {
   rule_id: string
@@ -47,7 +50,7 @@ const toggle = (ruleId: string) => {
         <div class="rule-item-content">
           <span class="rule-item-name">{{ item.rule_name || item.content || item.rule_id }}</span>
           <span v-if="item.is_locked" class="rule-locked-tag">
-            <LockOutlined /> 强制
+            <LockOutlined /> {{ t('rule.mandatory') }}
           </span>
         </div>
       </div>

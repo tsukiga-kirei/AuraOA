@@ -1,6 +1,9 @@
 <script setup lang="ts">
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
+import { useI18n } from '~/composables/useI18n'
+const { t } = useI18n()
+
 import {
   LinkOutlined,
   CheckCircleOutlined,
@@ -37,7 +40,7 @@ const toggleOASystem = (id: string) => {
   const sys = oaSystems.value.find(s => s.id === id)
   if (sys) {
     sys.enabled = !sys.enabled
-    message.success(sys.enabled ? `已启用 ${sys.name}` : `已停用 ${sys.name}`)
+    message.success(sys.enabled ? t('admin.settings.enabled', sys.name) : t('admin.settings.disabled', sys.name))
   }
 }
 
@@ -49,10 +52,10 @@ const testOAConnection = async (id: string) => {
   if (sys.enabled) {
     sys.status = 'connected'
     sys.last_sync = new Date().toLocaleString('zh-CN')
-    message.success(`${sys.name} 连接测试成功`)
+    message.success(t('admin.settings.connSuccess', sys.name))
   } else {
     sys.status = 'disconnected'
-    message.warning(`${sys.name} 未启用`)
+    message.warning(t('admin.settings.notEnabled', sys.name))
   }
 }
 
@@ -61,33 +64,33 @@ const toggleAIModel = (id: string) => {
   const model = aiModels.value.find(m => m.id === id)
   if (model) {
     model.enabled = !model.enabled
-    message.success(model.enabled ? `已启用 ${model.display_name}` : `已停用 ${model.display_name}`)
+    message.success(model.enabled ? t('admin.settings.enabled', model.display_name) : t('admin.settings.disabled', model.display_name))
   }
 }
 
 const getStatusConfig = (status: string) => {
   const configs: Record<string, { color: string; bg: string; label: string; icon: any }> = {
-    connected: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: '已连接', icon: CheckCircleOutlined },
-    disconnected: { color: 'var(--color-text-tertiary)', bg: 'var(--color-bg-hover)', label: '未连接', icon: CloseCircleOutlined },
-    testing: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: '测试中', icon: SyncOutlined },
-    online: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: '在线', icon: CheckCircleOutlined },
-    offline: { color: 'var(--color-text-tertiary)', bg: 'var(--color-bg-hover)', label: '离线', icon: CloseCircleOutlined },
-    maintenance: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: '维护中', icon: ToolOutlined },
+    connected: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: t('admin.settings.connected'), icon: CheckCircleOutlined },
+    disconnected: { color: 'var(--color-text-tertiary)', bg: 'var(--color-bg-hover)', label: t('admin.settings.disconnected'), icon: CloseCircleOutlined },
+    testing: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: t('admin.settings.testing'), icon: SyncOutlined },
+    online: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: t('admin.settings.online'), icon: CheckCircleOutlined },
+    offline: { color: 'var(--color-text-tertiary)', bg: 'var(--color-bg-hover)', label: t('admin.settings.offline'), icon: CloseCircleOutlined },
+    maintenance: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: t('admin.settings.maintenance'), icon: ToolOutlined },
   }
   return configs[status] || configs.disconnected
 }
 
 const getModelTypeTag = (type: string) => {
   return type === 'local'
-    ? { label: '本地部署', color: 'var(--color-success)', bg: 'var(--color-success-bg)' }
-    : { label: '云端API', color: 'var(--color-info)', bg: 'var(--color-info-bg)' }
+    ? { label: t('admin.ruleConfig.localDeploy'), color: 'var(--color-success)', bg: 'var(--color-success-bg)' }
+    : { label: t('admin.ruleConfig.cloudAPI'), color: 'var(--color-info)', bg: 'var(--color-info-bg)' }
 }
 
 const saveGeneralConfig = async () => {
   saving.value = true
   await new Promise(resolve => setTimeout(resolve, 1000))
   saving.value = false
-  message.success('系统配置已保存')
+  message.success(t('admin.settings.saved'))
 }
 
 const enabledOASystems = computed(() => oaSystems.value.filter(s => s.enabled).length)
@@ -99,8 +102,8 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
   <div class="settings-page fade-in">
     <div class="page-header">
       <div>
-        <h1 class="page-title">系统设置</h1>
-        <p class="page-subtitle">配置 OA 系统集成、AI 模型管理与平台全局参数</p>
+        <h1 class="page-title">{{ t('admin.settings.title') }}</h1>
+        <p class="page-subtitle">{{ t('admin.settings.subtitle') }}</p>
       </div>
     </div>
 
@@ -112,7 +115,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         </div>
         <div class="overview-stat-info">
           <div class="overview-stat-value">{{ enabledOASystems }} / {{ oaSystems.length }}</div>
-          <div class="overview-stat-label">已启用 OA 系统</div>
+          <div class="overview-stat-label">{{ t('admin.settings.enabledOA') }}</div>
         </div>
       </div>
       <div class="overview-stat">
@@ -121,7 +124,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         </div>
         <div class="overview-stat-info">
           <div class="overview-stat-value">{{ onlineAIModels }} / {{ enabledAIModels }}</div>
-          <div class="overview-stat-label">在线 AI 模型</div>
+          <div class="overview-stat-label">{{ t('admin.settings.onlineAI') }}</div>
         </div>
       </div>
       <div class="overview-stat">
@@ -130,7 +133,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         </div>
         <div class="overview-stat-info">
           <div class="overview-stat-value">{{ generalConfig.platform_version }}</div>
-          <div class="overview-stat-label">平台版本</div>
+          <div class="overview-stat-label">{{ t('admin.settings.platformVersion') }}</div>
         </div>
       </div>
     </div>
@@ -139,9 +142,9 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
     <div class="tab-nav">
       <button
         v-for="tab in [
-          { key: 'oa', label: 'OA 系统管理', icon: LinkOutlined },
-          { key: 'ai', label: 'AI 模型管理', icon: RobotOutlined },
-          { key: 'general', label: '平台配置', icon: SettingOutlined },
+          { key: 'oa', label: t('admin.settings.tabOA'), icon: LinkOutlined },
+          { key: 'ai', label: t('admin.settings.tabAI'), icon: RobotOutlined },
+          { key: 'general', label: t('admin.settings.tabGeneral'), icon: SettingOutlined },
         ]"
         :key="tab.key"
         class="tab-btn"
@@ -156,7 +159,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
     <!-- OA Systems Tab -->
     <div v-if="activeTab === 'oa'" class="tab-content">
       <div class="tab-content-header">
-        <p class="tab-desc">管理已适配和计划适配的 OA 系统，启用后可供租户选择并配置连接</p>
+        <p class="tab-desc">{{ t('admin.settings.oaDesc') }}</p>
       </div>
 
       <div class="oa-grid">
@@ -179,15 +182,15 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
 
           <div class="oa-card-meta">
             <div class="oa-meta-item">
-              <span class="oa-meta-label">适配器版本</span>
+              <span class="oa-meta-label">{{ t('admin.settings.adapterVersion') }}</span>
               <span class="oa-meta-value">{{ sys.adapter_version }}</span>
             </div>
             <div class="oa-meta-item">
-              <span class="oa-meta-label">同步间隔</span>
+              <span class="oa-meta-label">{{ t('admin.settings.syncInterval') }}</span>
               <span class="oa-meta-value">{{ sys.sync_interval }}s</span>
             </div>
             <div v-if="sys.last_sync" class="oa-meta-item">
-              <span class="oa-meta-label">最后同步</span>
+              <span class="oa-meta-label">{{ t('admin.settings.lastSync') }}</span>
               <span class="oa-meta-value">{{ sys.last_sync }}</span>
             </div>
           </div>
@@ -196,8 +199,8 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             <a-switch
               :checked="sys.enabled"
               @change="toggleOASystem(sys.id)"
-              checked-children="启用"
-              un-checked-children="停用"
+              :checked-children="t('admin.ruleConfig.enable')"
+              :un-checked-children="t('admin.ruleConfig.disable')"
             />
             <a-button
               size="small"
@@ -205,7 +208,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               @click="testOAConnection(sys.id)"
               class="test-conn-btn"
             >
-              <SyncOutlined :spin="sys.status === 'testing'" /> {{ sys.status === 'testing' ? '测试中...' : '测试连接' }}
+              <SyncOutlined :spin="sys.status === 'testing'" /> {{ sys.status === 'testing' ? t('admin.settings.testingConn') : t('admin.settings.testConnection') }}
             </a-button>
           </div>
         </div>
@@ -215,7 +218,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
     <!-- AI Models Tab -->
     <div v-if="activeTab === 'ai'" class="tab-content">
       <div class="tab-content-header">
-        <p class="tab-desc">管理平台可用的 AI 大模型，启用后可供租户和流程配置选用</p>
+        <p class="tab-desc">{{ t('admin.settings.aiDesc') }}</p>
       </div>
 
       <div class="ai-grid">
@@ -245,35 +248,35 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
           <!-- Capabilities -->
           <div class="ai-capabilities">
             <span v-for="cap in model.capabilities" :key="cap" class="capability-tag">
-              {{ cap === 'text' ? '文本' : cap === 'code' ? '代码' : cap === 'reasoning' ? '推理' : cap === 'vision' ? '视觉' : cap === 'analysis' ? '分析' : cap }}
+              {{ cap === 'text' ? t('admin.settings.text') : cap === 'code' ? t('admin.settings.code') : cap === 'reasoning' ? t('admin.settings.reasoning') : cap === 'vision' ? t('admin.settings.vision') : cap === 'analysis' ? t('admin.settings.analysis') : cap }}
             </span>
           </div>
 
           <div class="ai-card-meta">
             <div class="ai-meta-row">
               <div class="ai-meta-item">
-                <span class="ai-meta-label">上下文窗口</span>
+                <span class="ai-meta-label">{{ t('admin.settings.contextWindow') }}</span>
                 <span class="ai-meta-value">{{ (model.context_window / 1024).toFixed(0) }}K</span>
               </div>
               <div class="ai-meta-item">
-                <span class="ai-meta-label">最大Token</span>
+                <span class="ai-meta-label">{{ t('admin.settings.maxTokens') }}</span>
                 <span class="ai-meta-value">{{ (model.max_tokens / 1024).toFixed(0) }}K</span>
               </div>
               <div class="ai-meta-item">
-                <span class="ai-meta-label">成本/千Token</span>
-                <span class="ai-meta-value">{{ model.cost_per_1k_tokens > 0 ? '¥' + model.cost_per_1k_tokens.toFixed(2) : '免费' }}</span>
+                <span class="ai-meta-label">{{ t('admin.settings.costPerToken') }}</span>
+                <span class="ai-meta-value">{{ model.cost_per_1k_tokens > 0 ? '¥' + model.cost_per_1k_tokens.toFixed(2) : t('admin.settings.free') }}</span>
               </div>
             </div>
             <div class="ai-meta-row">
               <div class="ai-meta-item">
-                <span class="ai-meta-label">端点</span>
+                <span class="ai-meta-label">{{ t('admin.settings.endpoint') }}</span>
                 <span class="ai-meta-value ai-meta-value--mono">{{ model.endpoint }}</span>
               </div>
               <div class="ai-meta-item">
                 <span class="ai-meta-label">API Key</span>
                 <span class="ai-meta-value">
                   <CheckCircleOutlined v-if="model.api_key_configured" style="color: var(--color-success);" /> 
-                  {{ model.api_key_configured ? '已配置' : model.type === 'local' ? '无需配置' : '未配置' }}
+                  {{ model.api_key_configured ? t('admin.settings.apiKeyConfigured') : model.type === 'local' ? t('admin.settings.apiKeyLocal') : t('admin.settings.apiKeyMissing') }}
                 </span>
               </div>
             </div>
@@ -283,8 +286,8 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             <a-switch
               :checked="model.enabled"
               @change="toggleAIModel(model.id)"
-              checked-children="启用"
-              un-checked-children="停用"
+              :checked-children="t('admin.ruleConfig.enable')"
+              :un-checked-children="t('admin.ruleConfig.disable')"
             />
           </div>
         </div>
@@ -294,7 +297,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
     <!-- General Config Tab -->
     <div v-if="activeTab === 'general'" class="tab-content">
       <div class="tab-content-header">
-        <p class="tab-desc">配置平台全局参数，包括安全策略、邮件通知和数据备份</p>
+        <p class="tab-desc">{{ t('admin.settings.generalDesc') }}</p>
       </div>
 
       <div class="config-sections">
@@ -305,26 +308,26 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               <GlobalOutlined />
             </div>
             <div>
-              <h3>平台基本信息</h3>
-              <p>平台名称、版本与语言设置</p>
+              <h3>{{ t('admin.settings.platformInfo') }}</h3>
+              <p>{{ t('admin.settings.platformInfoDesc') }}</p>
             </div>
           </div>
           <a-form layout="vertical">
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item label="平台名称">
+                <a-form-item :label="t('admin.settings.platformName')">
                   <a-input v-model:value="generalConfig.platform_name" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="6">
-                <a-form-item label="版本号">
+                <a-form-item :label="t('admin.settings.version')">
                   <a-input v-model:value="generalConfig.platform_version" size="large" disabled />
                 </a-form-item>
               </a-col>
               <a-col :span="6">
-                <a-form-item label="默认语言">
-                  <a-select v-model:value="generalConfig.default_language" size="large" placeholder="选择语言">
-                    <a-select-option value="zh-CN">简体中文</a-select-option>
+                <a-form-item :label="t('admin.settings.defaultLanguage')">
+                  <a-select v-model:value="generalConfig.default_language" size="large" :placeholder="t('admin.settings.selectLanguage')">
+                    <a-select-option value="zh-CN">{{ t('admin.settings.zhCN') }}</a-select-option>
                     <a-select-option value="en-US">English</a-select-option>
                   </a-select>
                 </a-form-item>
@@ -332,12 +335,12 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             </a-row>
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item label="会话超时(分钟)">
+                <a-form-item :label="t('admin.settings.sessionTimeout')">
                   <a-input-number v-model:value="generalConfig.session_timeout" :min="5" :max="1440" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="12">
-                <a-form-item label="最大上传大小(MB)">
+                <a-form-item :label="t('admin.settings.maxUpload')">
                   <a-input-number v-model:value="generalConfig.max_upload_size" :min="1" :max="500" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
@@ -352,22 +355,22 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               <SafetyCertificateOutlined />
             </div>
             <div>
-              <h3>安全与合规</h3>
-              <p>审计追踪、数据加密等安全策略</p>
+              <h3>{{ t('admin.settings.security') }}</h3>
+              <p>{{ t('admin.settings.securityDesc') }}</p>
             </div>
           </div>
           <div class="toggle-grid">
             <div class="toggle-item">
               <div class="toggle-info">
-                <div class="toggle-label">审计追踪</div>
-                <div class="toggle-desc">记录所有用户操作和系统事件</div>
+                <div class="toggle-label">{{ t('admin.settings.auditTrail') }}</div>
+                <div class="toggle-desc">{{ t('admin.settings.auditTrailDesc') }}</div>
               </div>
               <a-switch v-model:checked="generalConfig.enable_audit_trail" />
             </div>
             <div class="toggle-item">
               <div class="toggle-info">
-                <div class="toggle-label">数据加密</div>
-                <div class="toggle-desc">对敏感字段进行加密存储</div>
+                <div class="toggle-label">{{ t('admin.settings.encryption') }}</div>
+                <div class="toggle-desc">{{ t('admin.settings.encryptionDesc') }}</div>
               </div>
               <a-switch v-model:checked="generalConfig.enable_data_encryption" />
             </div>
@@ -381,27 +384,27 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               <DatabaseOutlined />
             </div>
             <div>
-              <h3>数据备份</h3>
-              <p>自动备份策略与保留周期配置</p>
+              <h3>{{ t('admin.settings.backup') }}</h3>
+              <p>{{ t('admin.settings.backupDesc') }}</p>
             </div>
           </div>
           <a-form layout="vertical">
             <div class="toggle-item" style="margin-bottom: 16px;">
               <div class="toggle-info">
-                <div class="toggle-label">启用自动备份</div>
-                <div class="toggle-desc">按 Cron 表达式定时执行数据库备份</div>
+                <div class="toggle-label">{{ t('admin.settings.enableBackup') }}</div>
+                <div class="toggle-desc">{{ t('admin.settings.enableBackupDesc') }}</div>
               </div>
               <a-switch v-model:checked="generalConfig.backup_enabled" />
             </div>
             <a-row v-if="generalConfig.backup_enabled" :gutter="16">
               <a-col :span="12">
-                <a-form-item label="备份计划 (Cron)">
+                <a-form-item :label="t('admin.settings.backupCron')">
                   <a-input v-model:value="generalConfig.backup_cron" size="large" placeholder="0 2 * * *" />
-                  <div class="form-hint">默认每天凌晨 2 点执行</div>
+                  <div class="form-hint">{{ t('admin.settings.backupDefault') }}</div>
                 </a-form-item>
               </a-col>
               <a-col :span="12">
-                <a-form-item label="备份保留天数">
+                <a-form-item :label="t('admin.settings.backupRetention')">
                   <a-input-number v-model:value="generalConfig.backup_retention_days" :min="1" :max="365" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
@@ -416,34 +419,34 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               <MailOutlined />
             </div>
             <div>
-              <h3>邮件通知</h3>
-              <p>SMTP 服务器配置，用于系统通知和报告推送</p>
+              <h3>{{ t('admin.settings.email') }}</h3>
+              <p>{{ t('admin.settings.emailDesc') }}</p>
             </div>
           </div>
           <a-form layout="vertical">
-            <a-form-item label="通知邮箱">
+            <a-form-item :label="t('admin.settings.notifEmail')">
               <a-input v-model:value="generalConfig.notification_email" size="large" placeholder="admin@example.com" />
             </a-form-item>
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item label="SMTP 主机">
+                <a-form-item :label="t('admin.settings.smtpHost')">
                   <a-input v-model:value="generalConfig.smtp_host" size="large" placeholder="smtp.example.com" />
                 </a-form-item>
               </a-col>
               <a-col :span="6">
-                <a-form-item label="端口">
+                <a-form-item :label="t('admin.settings.smtpPort')">
                   <a-input-number v-model:value="generalConfig.smtp_port" :min="1" :max="65535" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="6">
                 <a-form-item label="SSL/TLS">
                   <a-switch v-model:checked="generalConfig.smtp_ssl" />
-                  <span class="switch-label-inline">{{ generalConfig.smtp_ssl ? '已启用' : '未启用' }}</span>
+                  <span class="switch-label-inline">{{ generalConfig.smtp_ssl ? t('admin.settings.sslEnabled') : t('admin.settings.sslDisabled') }}</span>
                 </a-form-item>
               </a-col>
             </a-row>
-            <a-form-item label="SMTP 用户名">
-              <a-input v-model:value="generalConfig.smtp_username" size="large" placeholder="发件人地址" />
+            <a-form-item :label="t('admin.settings.smtpUsername')">
+              <a-input v-model:value="generalConfig.smtp_username" size="large" :placeholder="t('admin.settings.smtpUserPlaceholder')" />
             </a-form-item>
           </a-form>
         </div>
@@ -451,7 +454,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         <!-- Save Button -->
         <div class="config-save">
           <a-button type="primary" size="large" :loading="saving" @click="saveGeneralConfig">
-            <SaveOutlined /> 保存所有设置
+            <SaveOutlined /> {{ t('admin.settings.saveAll') }}
           </a-button>
         </div>
       </div>

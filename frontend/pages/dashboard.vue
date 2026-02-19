@@ -15,8 +15,11 @@ import {
   FolderOpenOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
+import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ middleware: 'auth' })
+
+const { t } = useI18n()
 
 const {
   mockProcesses, mockApprovedProcesses, mockRejectedProcesses,
@@ -123,7 +126,7 @@ const handleReAudit = async () => {
 }
 
 const jumpToOA = (processId: string) => {
-  message.info(`正在跳转 OA 系统查看流程 ${processId}...`)
+  message.info(t('dashboard.jumpingToOA', `Jumping to OA: ${processId}...`))
 }
 
 const switchView = (mode: 'todo' | 'approved' | 'rejected' | 'archived') => {
@@ -140,24 +143,24 @@ const selectedProcessInfo = computed(() => {
 
 const viewModeLabel = computed(() => {
   switch (viewMode.value) {
-    case 'approved': return '已通过流程'
-    case 'rejected': return '已驳回流程'
-    case 'archived': return '已归档流程'
-    default: return '待办流程'
+    case 'approved': return t('dashboard.viewMode.approved')
+    case 'rejected': return t('dashboard.viewMode.rejected')
+    case 'archived': return t('dashboard.viewMode.archived')
+    default: return t('dashboard.viewMode.todo')
   }
 })
 
-const urgencyConfig = {
-  high: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', label: '紧急' },
-  medium: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: '一般' },
-  low: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: '低' },
-}
+const urgencyConfig = computed<Record<string, { color: string; bg: string; label: string }>>(() => ({
+  high: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', label: t('dashboard.urgency.high') },
+  medium: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: t('dashboard.urgency.medium') },
+  low: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: t('dashboard.urgency.low') },
+}))
 
-const recommendationConfig = {
-  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: '建议通过' },
-  reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: '建议驳回' },
-  revise: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EditOutlined, label: '建议修改' },
-}
+const recommendationConfig = computed<Record<string, { color: string; bg: string; icon: any; label: string }>>(() => ({
+  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
+  reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: t('dashboard.rec.reject') },
+  revise: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EditOutlined, label: t('dashboard.rec.revise') },
+}))
 </script>
 
 <template>
@@ -165,8 +168,8 @@ const recommendationConfig = {
     <!-- Page header -->
     <div class="page-header">
       <div>
-        <h1 class="page-title">审核工作台</h1>
-        <p class="page-subtitle">智能待办审核 · 今日已处理 {{ stats.todayAudits }} 条</p>
+        <h1 class="page-title">{{ t('dashboard.title') }}</h1>
+        <p class="page-subtitle">{{ t('dashboard.subtitleWithCount', `${stats.todayAudits}`) }}</p>
       </div>
     </div>
 
@@ -180,7 +183,7 @@ const recommendationConfig = {
         <div class="stat-card-icon"><ClockCircleOutlined /></div>
         <div class="stat-card-info">
           <span class="stat-card-value">{{ stats.pendingCount }}</span>
-          <span class="stat-card-label">待审核</span>
+          <span class="stat-card-label">{{ t('dashboard.tab.pending') }}</span>
         </div>
       </div>
       <div
@@ -191,7 +194,7 @@ const recommendationConfig = {
         <div class="stat-card-icon"><CheckCircleOutlined /></div>
         <div class="stat-card-info">
           <span class="stat-card-value">{{ stats.todayApproved }}</span>
-          <span class="stat-card-label">已通过</span>
+          <span class="stat-card-label">{{ t('dashboard.tab.approved') }}</span>
         </div>
       </div>
       <div
@@ -202,7 +205,7 @@ const recommendationConfig = {
         <div class="stat-card-icon"><CloseCircleOutlined /></div>
         <div class="stat-card-info">
           <span class="stat-card-value">{{ stats.todayRejected }}</span>
-          <span class="stat-card-label">已驳回</span>
+          <span class="stat-card-label">{{ t('dashboard.tab.rejected') }}</span>
         </div>
       </div>
       <div
@@ -213,7 +216,7 @@ const recommendationConfig = {
         <div class="stat-card-icon"><FolderOpenOutlined /></div>
         <div class="stat-card-info">
           <span class="stat-card-value">{{ archivedList.length }}</span>
-          <span class="stat-card-label">已归档</span>
+          <span class="stat-card-label">{{ t('dashboard.tab.archived') }}</span>
         </div>
       </div>
     </div>
@@ -232,7 +235,7 @@ const recommendationConfig = {
           </h3>
           <a-input
             v-model:value="searchText"
-            placeholder="搜索流程或申请人..."
+            :placeholder="t('dashboard.searchPlaceholder')"
             allow-clear
             class="search-input"
           >
@@ -272,7 +275,7 @@ const recommendationConfig = {
                 >
                   {{ urgencyConfig[item.urgency].label }}
                 </span>
-                <a-tooltip title="跳转 OA 系统" :mouse-enter-delay="0.5">
+                <a-tooltip :title="t('dashboard.jumpToOA')" :mouse-enter-delay="0.5">
                   <button class="oa-jump-btn" @click.stop="jumpToOA(item.process_id)">
                     <ExportOutlined />
                   </button>
@@ -282,7 +285,7 @@ const recommendationConfig = {
           </div>
 
           <div v-if="filteredList.length === 0" class="todo-empty">
-            <a-empty description="暂无流程" />
+            <a-empty :description="t('dashboard.noData')" />
           </div>
         </div>
 
@@ -309,7 +312,7 @@ const recommendationConfig = {
             <ThunderboltOutlined v-if="!isHistoryMode" style="color: var(--color-primary);" />
             <FolderOpenOutlined v-else-if="viewMode === 'archived'" style="color: var(--color-info);" />
             <HistoryOutlined v-else style="color: var(--color-text-tertiary);" />
-            {{ viewMode === 'archived' ? '归档审核记录' : isHistoryMode ? '历史审核结果' : '审核结果' }}
+            {{ viewMode === 'archived' ? t('dashboard.archivedResult') : isHistoryMode ? t('dashboard.historyResult') : t('dashboard.auditResult') }}
           </h3>
         </div>
 
@@ -318,8 +321,8 @@ const recommendationConfig = {
           <div v-if="loading" class="result-loading">
             <div class="loading-animation">
               <div class="loading-pulse" />
-              <div class="loading-text">AI 正在分析审核中...</div>
-              <div class="loading-subtext">正在校验规则并生成建议</div>
+              <div class="loading-text">{{ t('dashboard.aiAnalyzing') }}</div>
+              <div class="loading-subtext">{{ t('dashboard.aiAnalyzingSub') }}</div>
             </div>
           </div>
 
@@ -332,10 +335,10 @@ const recommendationConfig = {
               </div>
               <div class="action-prompt-buttons">
                 <a-button type="primary" size="large" @click="handleAudit(selectedProcess!)">
-                  <ThunderboltOutlined /> 开始 AI 审核
+                  <ThunderboltOutlined /> {{ t('dashboard.startAIAudit') }}
                 </a-button>
                 <a-button size="large" @click="jumpToOA(selectedProcess!)">
-                  <ExportOutlined /> 跳转 OA 系统
+                  <ExportOutlined /> {{ t('dashboard.jumpToOASystem') }}
                 </a-button>
               </div>
             </div>
@@ -345,10 +348,10 @@ const recommendationConfig = {
           <template v-else-if="isHistoryMode && selectedProcess && !currentResult">
             <div class="result-empty">
               <div class="result-empty-icon"><HistoryOutlined /></div>
-              <h4>暂无历史审核记录</h4>
-              <p>该流程尚未生成 AI 审核结果</p>
+              <h4>{{ t('dashboard.noHistoryTitle') }}</h4>
+              <p>{{ t('dashboard.noHistoryDesc') }}</p>
               <a-button style="margin-top: 16px;" @click="jumpToOA(selectedProcess!)">
-                <ExportOutlined /> 跳转 OA 系统查看
+                <ExportOutlined /> {{ t('dashboard.jumpToOAView') }}
               </a-button>
             </div>
           </template>
@@ -362,22 +365,22 @@ const recommendationConfig = {
                 <div class="history-badge">
                   <FolderOpenOutlined v-if="viewMode === 'archived'" />
                   <HistoryOutlined v-else />
-                  {{ viewMode === 'archived' ? '归档记录（只读）' : '历史记录（只读）' }}
+                  {{ viewMode === 'archived' ? t('dashboard.archivedReadonly') : t('dashboard.historyReadonly') }}
                 </div>
                 <a-button @click="openHistoryChain(currentResult.process_id)">
-                  <EyeOutlined /> 审核链
+                  <EyeOutlined /> {{ t('dashboard.auditChain') }}
                 </a-button>
                 <a-button type="primary" @click="jumpToOA(currentResult.process_id)">
-                  <ExportOutlined /> 跳转 OA
+                  <ExportOutlined /> {{ t('dashboard.jumpOA') }}
                 </a-button>
               </template>
               <!-- Todo mode: OA jump + re-audit -->
               <template v-else>
                 <a-button @click="jumpToOA(currentResult.process_id)">
-                  <ExportOutlined /> 跳转 OA
+                  <ExportOutlined /> {{ t('dashboard.jumpOA') }}
                 </a-button>
                 <a-button @click="handleReAudit">
-                  <ReloadOutlined /> 重新审核
+                  <ReloadOutlined /> {{ t('dashboard.reAudit') }}
                 </a-button>
               </template>
             </div>
@@ -403,7 +406,7 @@ const recommendationConfig = {
                   {{ recommendationConfig[currentResult.recommendation].label }}
                 </div>
                 <div class="result-banner-meta">
-                  综合评分 {{ currentResult.score }} 分 · 耗时 {{ currentResult.duration_ms }}ms · {{ currentResult.trace_id }}
+                  {{ t('dashboard.overallScore') }} {{ currentResult.score }} {{ t('dashboard.points') }} · {{ t('dashboard.duration') }} {{ currentResult.duration_ms }}ms · {{ currentResult.trace_id }}
                 </div>
               </div>
               <div class="result-score" :style="{ color: recommendationConfig[currentResult.recommendation].color }">
@@ -413,7 +416,7 @@ const recommendationConfig = {
 
             <!-- Rule checks -->
             <div class="result-section">
-              <h4 class="result-section-title">规则校验详情</h4>
+              <h4 class="result-section-title">{{ t('dashboard.ruleCheckDetail') }}</h4>
               <div class="rule-checks">
                 <div
                   v-for="rule in currentResult.details"
@@ -428,7 +431,7 @@ const recommendationConfig = {
                   <div class="rule-check-content">
                     <div class="rule-check-name">
                       {{ rule.rule_name }}
-                      <span v-if="rule.is_locked" class="rule-locked-badge">强制</span>
+                      <span v-if="rule.is_locked" class="rule-locked-badge">{{ t('rule.scope.mandatory') }}</span>
                     </div>
                     <div class="rule-check-reasoning">{{ rule.reasoning }}</div>
                   </div>
@@ -438,7 +441,7 @@ const recommendationConfig = {
 
             <!-- AI Reasoning -->
             <div class="result-section">
-              <h4 class="result-section-title">AI 推理分析</h4>
+              <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
               <div class="ai-reasoning">
                 <pre>{{ currentResult.ai_reasoning }}</pre>
               </div>
@@ -452,8 +455,8 @@ const recommendationConfig = {
               <FolderOpenOutlined v-else-if="viewMode === 'archived'" />
               <HistoryOutlined v-else />
             </div>
-            <h4>{{ viewMode === 'archived' ? '选择归档流程查看审核链' : isHistoryMode ? '选择流程查看历史审核结果' : '选择待办流程开始审核' }}</h4>
-            <p>{{ viewMode === 'archived' ? '点击左侧归档流程，查看完整的多轮 AI 审核记录链' : isHistoryMode ? '点击左侧列表中的流程，查看 AI 历史审核记录' : '点击左侧列表中的流程，AI 将自动进行规则校验并给出审核建议' }}</p>
+            <h4>{{ viewMode === 'archived' ? t('dashboard.emptyArchived') : isHistoryMode ? t('dashboard.emptyHistory') : t('dashboard.emptyTodo') }}</h4>
+            <p>{{ viewMode === 'archived' ? t('dashboard.emptyArchivedDesc') : isHistoryMode ? t('dashboard.emptyHistoryDesc') : t('dashboard.emptyTodoDesc') }}</p>
           </div>
         </div>
       </div>
@@ -465,13 +468,13 @@ const recommendationConfig = {
         <div v-if="showHistoryChain" class="drawer-overlay" @click.self="showHistoryChain = false">
           <div class="drawer-panel">
             <div class="drawer-header">
-              <h3>审核历史链</h3>
+              <h3>{{ t('dashboard.auditHistoryChain') }}</h3>
               <button class="drawer-close" @click="showHistoryChain = false">✕</button>
             </div>
             <div class="drawer-body">
-              <p class="chain-desc">该流程的所有 AI 审核记录（按时间倒序）</p>
+              <p class="chain-desc">{{ t('dashboard.chainDesc') }}</p>
               <div v-if="currentAuditChain.length === 0" style="padding: 40px; text-align: center;">
-                <a-empty description="暂无审核记录" />
+                <a-empty :description="t('dashboard.noAuditRecords')" />
               </div>
               <div v-else class="audit-chain">
                 <div
@@ -498,12 +501,12 @@ const recommendationConfig = {
                         <component :is="recommendationConfig[snap.recommendation]?.icon" />
                         {{ recommendationConfig[snap.recommendation]?.label }}
                       </span>
-                      <span class="chain-score">{{ snap.score }}分</span>
+                      <span class="chain-score">{{ snap.score }}{{ t('dashboard.points') }}</span>
                     </div>
                     <div class="chain-card-meta">
                       {{ snap.created_at }}
                       <span v-if="snap.adopted !== null" class="chain-adopted" :class="snap.adopted ? 'chain-adopted--yes' : 'chain-adopted--no'">
-                        {{ snap.adopted ? '已采纳' : '未采纳' }}
+                        {{ snap.adopted ? t('dashboard.adopted') : t('dashboard.notAdopted') }}
                       </span>
                     </div>
                   </div>

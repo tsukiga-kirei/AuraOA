@@ -6,6 +6,11 @@ import {
   CloseOutlined,
 } from '@ant-design/icons-vue'
 
+import { computed } from 'vue' // Start of added/modified lines
+import { useI18n } from '~/composables/useI18n'
+
+const { t } = useI18n()
+
 defineProps<{
   snapshot: any | null
 }>()
@@ -14,11 +19,11 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const recommendationConfig: Record<string, { color: string; bg: string; icon: any; label: string }> = {
-  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: '建议通过' },
-  reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: '建议驳回' },
-  revise: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EditOutlined, label: '建议修改' },
-}
+const recommendationConfig = computed<Record<string, { color: string; bg: string; icon: any; label: string }>>(() => ({
+  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
+  reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: t('dashboard.rec.reject') },
+  revise: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EditOutlined, label: t('dashboard.rec.revise') },
+}))
 </script>
 
 <template>
@@ -27,7 +32,7 @@ const recommendationConfig: Record<string, { color: string; bg: string; icon: an
       <div v-if="snapshot" class="drawer-overlay" @click.self="emit('close')">
         <div class="drawer-panel">
           <div class="drawer-header">
-            <h3>审核快照详情</h3>
+            <h3>{{ t('snapshot.title') }}</h3>
             <button class="drawer-close" @click="emit('close')">
               <CloseOutlined />
             </button>
@@ -55,7 +60,7 @@ const recommendationConfig: Record<string, { color: string; bg: string; icon: an
                     {{ recommendationConfig[snapshot.recommendation]?.label }}
                   </div>
                   <div class="detail-banner-score">
-                    综合评分: {{ snapshot.score }} 分
+                    {{ t('snapshot.score', [snapshot.score]) }}
                   </div>
                 </div>
               </div>
@@ -63,39 +68,39 @@ const recommendationConfig: Record<string, { color: string; bg: string; icon: an
 
             <!-- Info grid -->
             <div class="detail-section">
-              <h4 class="section-title">基本信息</h4>
+              <h4 class="section-title">{{ t('snapshot.basicInfo') }}</h4>
               <div class="info-grid">
                 <div class="info-item">
-                  <span class="info-label">快照 ID</span>
+                  <span class="info-label">{{ t('snapshot.snapshotId') }}</span>
                   <span class="info-value mono">{{ snapshot.snapshot_id }}</span>
                 </div>
                 <div class="info-item">
-                  <span class="info-label">流程 ID</span>
+                  <span class="info-label">{{ t('snapshot.processId') }}</span>
                   <span class="info-value mono">{{ snapshot.process_id }}</span>
                 </div>
                 <div class="info-item">
-                  <span class="info-label">申请人</span>
+                  <span class="info-label">{{ t('snapshot.applicant') }}</span>
                   <span class="info-value">{{ snapshot.applicant }}</span>
                 </div>
                 <div class="info-item">
-                  <span class="info-label">部门</span>
+                  <span class="info-label">{{ t('snapshot.department') }}</span>
                   <span class="info-value">{{ snapshot.department }}</span>
                 </div>
                 <div class="info-item">
-                  <span class="info-label">审核时间</span>
+                  <span class="info-label">{{ t('snapshot.auditTime') }}</span>
                   <span class="info-value">{{ snapshot.created_at }}</span>
                 </div>
                 <div class="info-item">
-                  <span class="info-label">用户采纳</span>
+                  <span class="info-label">{{ t('snapshot.userAdoption') }}</span>
                   <span class="info-value">
                     <span
                       v-if="snapshot.adopted !== null"
                       class="adopted-badge"
                       :class="snapshot.adopted ? 'adopted-badge--yes' : 'adopted-badge--no'"
                     >
-                      {{ snapshot.adopted ? '已采纳' : '未采纳' }}
+                      {{ snapshot.adopted ? t('snapshot.adopted') : t('snapshot.notAdopted') }}
                     </span>
-                    <span v-else class="text-muted">暂无反馈</span>
+                    <span v-else class="text-muted">{{ t('snapshot.noFeedback') }}</span>
                   </span>
                 </div>
               </div>
@@ -103,9 +108,9 @@ const recommendationConfig: Record<string, { color: string; bg: string; icon: an
 
             <!-- Placeholder for rule details -->
             <div class="detail-section">
-              <h4 class="section-title">审核说明</h4>
+              <h4 class="section-title">{{ t('snapshot.auditReason') }}</h4>
               <div class="reasoning-block">
-                该流程已通过 AI 智能审核引擎进行规则校验，审核结果基于当前租户配置的规则库生成。详细的规则校验明细和 AI 推理过程请在完整审核记录中查看。
+                {{ t('snapshot.auditDisclaimer') }}
               </div>
             </div>
           </div>
