@@ -19,8 +19,11 @@ import {
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ArchivedProcess, ArchiveAuditResult } from '~/composables/useMockData'
+import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ middleware: 'auth' })
+
+const { t } = useI18n()
 
 const { mockArchivedProcesses, mockArchiveAuditResult } = useMockData()
 
@@ -100,7 +103,7 @@ const generateAuditResult = (proc: ArchivedProcess): ArchiveAuditResult => {
         node_id: n.node_id,
         node_name: n.node_name,
         compliant: hash % 5 !== 0 || n.action === 'approve',
-        reasoning: n.action === 'approve' ? '审批权限匹配，审批时效正常' : `${n.node_name}操作为${n.action}，需关注`,
+        reasoning: n.action === 'approve' ? t('archive.auditReason.approve') : t('archive.auditReason.attention', [n.node_name, n.action]),
       })),
     },
   }
@@ -121,11 +124,11 @@ const startComplianceAudit = async () => {
 const batchComplianceAudit = async () => {
   const unaudited = filteredList.value.filter(p => !auditRecords.value[p.process_id])
   if (unaudited.length === 0) {
-    message.info('当前列表中所有流程均已完成合规复核')
+    message.info(t('archive.allReviewed'))
     return
   }
   batchLoading.value = true
-  message.loading({ content: `正在批量复核 ${unaudited.length} 个流程...`, key: 'batch', duration: 0 })
+  message.loading({ content: t('archive.batchProgress', `${unaudited.length}`), key: 'batch', duration: 0 })
   for (let i = 0; i < unaudited.length; i++) {
     await new Promise(resolve => setTimeout(resolve, 800))
     const result = generateAuditResult(unaudited[i])
@@ -135,44 +138,44 @@ const batchComplianceAudit = async () => {
       auditResult.value = result
     }
   }
-  message.success({ content: `已完成 ${unaudited.length} 个流程的批量合规复核`, key: 'batch' })
+  message.success({ content: t('archive.batchDone', `${unaudited.length}`), key: 'batch' })
   batchLoading.value = false
 }
 
 const handleExport = (format: string) => {
-  message.success(`正在导出 ${format.toUpperCase()} 格式的合规复核报告...`)
+  message.success(t('archive.exporting', format.toUpperCase()))
 }
 
 const jumpToOA = (processId: string) => {
-  message.info(`正在跳转 OA 系统查看流程 ${processId}...`)
+  message.info(t('archive.jumpingToOA', processId))
 }
 
-const complianceConfig: Record<string, { color: string; bg: string; label: string }> = {
-  compliant: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: '合规' },
-  non_compliant: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', label: '不合规' },
-  partially_compliant: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: '部分合规' },
-}
+const complianceConfig = computed(() => ({
+  compliant: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: t('archive.compliant') },
+  non_compliant: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', label: t('archive.nonCompliant') },
+  partially_compliant: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: t('archive.partiallyCompliant') },
+}))
 
-const actionConfig: Record<string, { color: string; label: string }> = {
-  approve: { color: 'var(--color-success)', label: '通过' },
-  reject: { color: 'var(--color-danger)', label: '驳回' },
-  revise: { color: 'var(--color-warning)', label: '退回修改' },
-}
+const actionConfig = computed(() => ({
+  approve: { color: 'var(--color-success)', label: t('archive.actionApprove') },
+  reject: { color: 'var(--color-danger)', label: t('archive.actionReject') },
+  revise: { color: 'var(--color-warning)', label: t('archive.actionRevise') },
+}))
 </script>
 
 <template>
   <div class="archive-page fade-in">
     <div class="page-header">
       <div>
-        <h1 class="page-title">归档复盘</h1>
-        <p class="page-subtitle">已归档流程的全流程合规复核 · AI 重新审计</p>
+        <h1 class="page-title">{{ t('archive.title') }}</h1>
+        <p class="page-subtitle">{{ t('archive.subtitle') }}</p>
       </div>
       <div class="page-header-actions">
         <a-button @click="showFilters = !showFilters">
-          <FilterOutlined /> 筛选
+          <FilterOutlined /> {{ t('archive.filter') }}
         </a-button>
         <a-button :loading="batchLoading" @click="batchComplianceAudit">
-          <UnorderedListOutlined /> 批量复核
+          <UnorderedListOutlined /> {{ t('archive.batchAudit') }}
           <a-badge
             v-if="filteredList.length - auditedCount > 0"
             :count="filteredList.length - auditedCount"
@@ -182,13 +185,13 @@ const actionConfig: Record<string, { color: string; label: string }> = {
         </a-button>
         <a-dropdown v-if="auditResult">
           <a-button>
-            <DownloadOutlined /> 导出报告
+            <DownloadOutlined /> {{ t('archive.exportReport') }}
           </a-button>
           <template #overlay>
             <a-menu>
-              <a-menu-item key="json" @click="handleExport('json')">导出 JSON</a-menu-item>
-              <a-menu-item key="csv" @click="handleExport('csv')">导出 CSV</a-menu-item>
-              <a-menu-item key="excel" @click="handleExport('excel')">导出 Excel</a-menu-item>
+              <a-menu-item key="json" @click="handleExport('json')">{{ t('archive.exportJSON') }}</a-menu-item>
+              <a-menu-item key="csv" @click="handleExport('csv')">{{ t('archive.exportCSV') }}</a-menu-item>
+              <a-menu-item key="excel" @click="handleExport('excel')">{{ t('archive.exportExcel') }}</a-menu-item>
             </a-menu>
           </template>
         </a-dropdown>
@@ -200,19 +203,19 @@ const actionConfig: Record<string, { color: string; label: string }> = {
       <div v-if="showFilters" class="filter-bar">
         <a-input
           v-model:value="searchText"
-          placeholder="搜索流程名称、申请人、流程号..."
+          :placeholder="t('archive.searchPlaceholder')"
           allow-clear
           style="width: 260px;"
         >
           <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
         </a-input>
-        <a-select v-model:value="filters.department" placeholder="部门" allow-clear style="width: 140px;">
+        <a-select v-model:value="filters.department" :placeholder="t('archive.department')" allow-clear style="width: 140px;">
           <a-select-option v-for="d in departments" :key="d" :value="d">{{ d }}</a-select-option>
         </a-select>
-        <a-select v-model:value="filters.processType" placeholder="流程类型" allow-clear style="width: 140px;">
+        <a-select v-model:value="filters.processType" :placeholder="t('archive.processType')" allow-clear style="width: 140px;">
           <a-select-option v-for="t in processTypes" :key="t" :value="t">{{ t }}</a-select-option>
         </a-select>
-        <a-button @click="clearFilters">重置</a-button>
+        <a-button @click="clearFilters">{{ t('archive.reset') }}</a-button>
       </div>
     </transition>
 
@@ -223,11 +226,11 @@ const actionConfig: Record<string, { color: string; label: string }> = {
         <div class="panel-header">
           <h3 class="panel-title">
             <FileProtectOutlined style="color: var(--color-primary);" />
-            已归档流程
+            {{ t('archive.archivedProcesses') }}
             <a-badge :count="filteredList.length" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
           </h3>
           <span v-if="auditedCount > 0" class="panel-header-hint">
-            已复核 {{ auditedCount }}/{{ filteredList.length }}
+            {{ t('archive.reviewed') }} {{ auditedCount }}/{{ filteredList.length }}
           </span>
         </div>
         <div class="process-list">
@@ -251,7 +254,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
                 >
                   <SafetyCertificateOutlined />
                   {{ complianceConfig[auditRecords[proc.process_id].overall_compliance]?.label }}
-                  {{ auditRecords[proc.process_id].overall_score }}分
+                  {{ auditRecords[proc.process_id].overall_score }}{{ t('archive.score') }}
                 </span>
               </div>
               <div class="process-item-meta">
@@ -263,16 +266,16 @@ const actionConfig: Record<string, { color: string; label: string }> = {
               </div>
               <div class="process-item-meta">
                 <FieldTimeOutlined />
-                <span>归档于 {{ proc.archive_time }}</span>
+                <span>{{ t('archive.archivedAt') }} {{ proc.archive_time }}</span>
               </div>
             </div>
             <div class="process-item-right">
               <span v-if="proc.amount" class="process-item-amount">¥{{ proc.amount.toLocaleString() }}</span>
-              <span class="process-item-nodes">{{ proc.flow_nodes.length }} 个节点</span>
+              <span class="process-item-nodes">{{ proc.flow_nodes.length }} {{ t('archive.nodes') }}</span>
             </div>
           </div>
           <div v-if="filteredList.length === 0" class="list-empty">
-            <a-empty description="暂无匹配的归档流程" />
+            <a-empty :description="t('archive.noMatch')" />
           </div>
         </div>
 
@@ -297,7 +300,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
         <div class="panel-header">
           <h3 class="panel-title">
             <AuditOutlined style="color: var(--color-primary);" />
-            合规复核
+            {{ t('archive.complianceTitle') }}
           </h3>
         </div>
 
@@ -305,8 +308,8 @@ const actionConfig: Record<string, { color: string; label: string }> = {
           <!-- Empty state -->
           <div v-if="!selectedProcess" class="detail-empty">
             <div class="detail-empty-icon"><SafetyCertificateOutlined /></div>
-            <h4>选择归档流程进行合规复核</h4>
-            <p>从左侧列表选择一个已归档的流程，查看审批链详情并启动 AI 全流程合规审计</p>
+            <h4>{{ t('archive.selectProcess') }}</h4>
+            <p>{{ t('archive.selectProcessDesc') }}</p>
           </div>
 
           <!-- Process selected: show detail -->
@@ -321,7 +324,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
                     <span v-if="selectedProcess.amount"> · ¥{{ selectedProcess.amount.toLocaleString() }}</span>
                   </div>
                   <div class="process-info-meta" style="margin-top: 4px;">
-                    提交: {{ selectedProcess.submit_time }} → 归档: {{ selectedProcess.archive_time }}
+                    {{ t('archive.submitLabel') }}: {{ selectedProcess.submit_time }} → {{ t('archive.archiveLabel') }}: {{ selectedProcess.archive_time }}
                   </div>
                 </div>
                 <div class="process-info-actions">
@@ -334,10 +337,10 @@ const actionConfig: Record<string, { color: string; label: string }> = {
                     @click="startComplianceAudit"
                   >
                     <template v-if="auditRecords[selectedProcess.process_id]">
-                      <ReloadOutlined /> 重新复核
+                      <ReloadOutlined /> {{ t('archive.reAudit') }}
                     </template>
                     <template v-else>
-                      <ThunderboltOutlined /> 开始合规复核
+                      <ThunderboltOutlined /> {{ t('archive.startAudit') }}
                     </template>
                   </a-button>
                 </div>
@@ -359,7 +362,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
                     {{ complianceConfig[auditResult.overall_compliance]?.label }} · {{ auditResult.overall_score }} 分
                   </div>
                   <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px;">
-                    点击查看完整合规复核报告
+                    {{ t('archive.viewReport') }}
                   </div>
                 </div>
                 <RightOutlined style="color: var(--color-text-tertiary);" />
@@ -368,7 +371,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
 
             <!-- AI Summary (moved above flow timeline) -->
             <div v-if="auditResult && !loading" class="section-block">
-              <h4 class="section-title"><ThunderboltOutlined /> AI 综合分析</h4>
+              <h4 class="section-title"><ThunderboltOutlined /> {{ t('archive.aiSummary') }}</h4>
               <div class="ai-summary">
                 <pre>{{ auditResult.ai_summary }}</pre>
               </div>
@@ -376,7 +379,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
 
             <!-- Flow timeline -->
             <div class="section-block">
-              <h4 class="section-title"><NodeIndexOutlined /> 审批链（{{ selectedProcess.flow_nodes.length }} 个节点）</h4>
+              <h4 class="section-title"><NodeIndexOutlined /> {{ t('archive.flowChain') }}（{{ selectedProcess.flow_nodes.length }} {{ t('archive.nodes') }}）</h4>
               <div class="flow-timeline">
                 <div
                   v-for="(node, idx) in selectedProcess.flow_nodes"
@@ -406,7 +409,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
 
             <!-- Fields -->
             <div class="section-block">
-              <h4 class="section-title"><FileProtectOutlined /> 关键字段</h4>
+              <h4 class="section-title"><FileProtectOutlined /> {{ t('archive.keyFields') }}</h4>
               <div class="fields-grid">
                 <div v-for="(val, key) in selectedProcess.fields" :key="key" class="field-item">
                   <span class="field-label">{{ key }}</span>
@@ -422,7 +425,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
     <!-- Compliance Audit Modal -->
     <a-modal
       v-model:open="showAuditModal"
-      :title="selectedProcess ? `合规复核 - ${selectedProcess.title}` : '合规复核'"
+      :title="selectedProcess ? `${t('archive.complianceTitle')} - ${selectedProcess.title}` : t('archive.complianceTitle')"
       :width="720"
       :footer="null"
       :bodyStyle="{ maxHeight: '70vh', overflowY: 'auto', padding: '24px' }"
@@ -432,8 +435,8 @@ const actionConfig: Record<string, { color: string; label: string }> = {
       <div v-if="loading" class="audit-loading">
         <div class="loading-animation">
           <div class="loading-pulse" />
-          <div class="loading-text">AI 正在进行全流程合规复核...</div>
-          <div class="loading-subtext">审批链校验 · 字段校验 · 规则校验</div>
+          <div class="loading-text">{{ t('archive.aiAuditing') }}</div>
+          <div class="loading-subtext">{{ t('archive.auditChecks') }}</div>
         </div>
       </div>
 
@@ -459,7 +462,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
               {{ complianceConfig[auditResult.overall_compliance]?.label }}
             </div>
             <div class="compliance-banner-meta">
-              综合评分 {{ auditResult.overall_score }} 分 · 耗时 {{ auditResult.duration_ms }}ms · {{ auditResult.trace_id }}
+              {{ t('archive.overallScore') }} {{ auditResult.overall_score }} {{ t('archive.score') }} · {{ t('archive.durationLabel') }} {{ auditResult.duration_ms }}ms · {{ auditResult.trace_id }}
             </div>
           </div>
           <div class="compliance-score" :style="{ color: complianceConfig[auditResult.overall_compliance]?.color }">
@@ -469,7 +472,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
 
         <!-- AI Summary (first in modal) -->
         <div class="section-block">
-          <h4 class="section-title"><ThunderboltOutlined /> AI 综合分析</h4>
+          <h4 class="section-title"><ThunderboltOutlined /> {{ t('archive.aiSummary') }}</h4>
           <div class="ai-summary">
             <pre>{{ auditResult.ai_summary }}</pre>
           </div>
@@ -478,13 +481,13 @@ const actionConfig: Record<string, { color: string; label: string }> = {
         <!-- Flow audit section -->
         <div class="section-block">
           <h4 class="section-title">
-            <NodeIndexOutlined /> 审批链合规
+            <NodeIndexOutlined /> {{ t('archive.flowCompliance') }}
             <span class="section-badge" :class="auditResult.flow_audit.is_complete ? 'section-badge--pass' : 'section-badge--fail'">
-              {{ auditResult.flow_audit.is_complete ? '完整' : '缺失节点' }}
+              {{ auditResult.flow_audit.is_complete ? t('archive.flowComplete') : t('archive.flowMissing') }}
             </span>
           </h4>
           <div v-if="auditResult.flow_audit.missing_nodes.length > 0" class="missing-nodes-alert">
-            <ExclamationCircleOutlined /> 缺失节点: {{ auditResult.flow_audit.missing_nodes.join('、') }}
+            <ExclamationCircleOutlined /> {{ t('archive.missingNodes') }}: {{ auditResult.flow_audit.missing_nodes.join('、') }}
           </div>
           <div class="audit-checks">
             <div
@@ -507,7 +510,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
 
         <!-- Field audit section -->
         <div class="section-block">
-          <h4 class="section-title"><FileProtectOutlined /> 字段校验</h4>
+          <h4 class="section-title"><FileProtectOutlined /> {{ t('archive.fieldAudit') }}</h4>
           <div class="audit-checks">
             <div
               v-for="fa in auditResult.field_audit"
@@ -529,7 +532,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
 
         <!-- Rule audit section -->
         <div class="section-block">
-          <h4 class="section-title"><SafetyCertificateOutlined /> 规则校验</h4>
+          <h4 class="section-title"><SafetyCertificateOutlined /> {{ t('archive.ruleAudit') }}</h4>
           <div class="audit-checks">
             <div
               v-for="ra in auditResult.rule_audit"
@@ -553,13 +556,13 @@ const actionConfig: Record<string, { color: string; label: string }> = {
         <div class="modal-export-actions">
           <a-dropdown>
             <a-button type="primary">
-              <DownloadOutlined /> 导出报告
+              <DownloadOutlined /> {{ t('archive.exportReport') }}
             </a-button>
             <template #overlay>
               <a-menu>
-                <a-menu-item key="json" @click="handleExport('json')">导出 JSON</a-menu-item>
-                <a-menu-item key="csv" @click="handleExport('csv')">导出 CSV</a-menu-item>
-                <a-menu-item key="excel" @click="handleExport('excel')">导出 Excel</a-menu-item>
+                <a-menu-item key="json" @click="handleExport('json')">{{ t('archive.exportJSON') }}</a-menu-item>
+                <a-menu-item key="csv" @click="handleExport('csv')">{{ t('archive.exportCSV') }}</a-menu-item>
+                <a-menu-item key="excel" @click="handleExport('excel')">{{ t('archive.exportExcel') }}</a-menu-item>
               </a-menu>
             </template>
           </a-dropdown>

@@ -11,27 +11,29 @@ import {
 } from '@ant-design/icons-vue'
 
 import { getDefaultPage } from '~/composables/useMockData'
+import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ layout: false })
 
 const { login, getMenu, setUserRole, setUserPermissions, isMockMode, MOCK_USERS } = useAuth()
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
+const { t } = useI18n()
 
 onMounted(() => restoreTheme())
 
 type PortalType = 'business' | 'tenant_admin' | 'system_admin'
 
-const portals = [
-  { key: 'business' as PortalType, icon: DashboardOutlined, title: '业务用户', desc: '审核工作台 · 定时任务 · 归档复盘', color: '#4f46e5' },
-  { key: 'tenant_admin' as PortalType, icon: SettingOutlined, title: '租户管理员', desc: '规则配置 · 知识库 · 组织管理', color: '#f59e0b' },
-  { key: 'system_admin' as PortalType, icon: ControlOutlined, title: '系统管理员', desc: '租户管理 · 全局监控 · 系统设置', color: '#ef4444' },
-]
+const portals = computed(() => [
+  { key: 'business' as PortalType, icon: DashboardOutlined, title: t('login.portal.business'), desc: t('login.portal.businessDesc'), color: '#4f46e5' },
+  { key: 'tenant_admin' as PortalType, icon: SettingOutlined, title: t('login.portal.tenantAdmin'), desc: t('login.portal.tenantAdminDesc'), color: '#f59e0b' },
+  { key: 'system_admin' as PortalType, icon: ControlOutlined, title: t('login.portal.systemAdmin'), desc: t('login.portal.systemAdminDesc'), color: '#ef4444' },
+])
 
 const activePortal = ref<PortalType>('business')
 const form = ref({ username: '', password: '', tenant_id: 'default' })
 const loading = ref(false)
 const rememberMe = ref(false)
-const currentPortal = computed(() => portals.find(p => p.key === activePortal.value)!)
+const currentPortal = computed(() => portals.value.find(p => p.key === activePortal.value)!)
 
 // Quick-fill accounts filtered by current portal role
 const quickAccounts = computed(() =>
@@ -46,7 +48,7 @@ const fillAccount = (user: typeof MOCK_USERS[0]) => {
 
 const handleLogin = async () => {
   if (!form.value.username || !form.value.password) {
-    message.warning('请输入用户名和密码')
+    message.warning(t('login.emptyWarning'))
     return
   }
   loading.value = true
@@ -55,12 +57,12 @@ const handleLogin = async () => {
     if (ok) {
       setUserRole(activePortal.value)
       await getMenu()
-      message.success('登录成功，正在跳转...')
+      message.success(t('login.successRedirect'))
       // Always redirect to the first accessible page based on user's permissions
       const { userPermissions } = useAuth()
       navigateTo(getDefaultPage(userPermissions.value))
     } else {
-      message.error('登录失败，请检查用户名或密码')
+      message.error(t('login.failed'))
     }
   } finally {
     loading.value = false
@@ -88,12 +90,12 @@ const handleLogin = async () => {
           <div class="login-logo">
             <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>
           </div>
-          <h1 class="login-brand-title">OA智审</h1>
-          <p class="login-brand-subtitle">流程智能审核平台</p>
+          <h1 class="login-brand-title">{{ t('app.name') }}</h1>
+          <p class="login-brand-subtitle">{{ t('login.subtitle') }}</p>
           <div class="login-features">
-            <div class="login-feature-item"><span class="login-feature-dot" /><span>AI 驱动的智能审批辅助</span></div>
-            <div class="login-feature-item"><span class="login-feature-dot" /><span>多维度规则自动校验</span></div>
-            <div class="login-feature-item"><span class="login-feature-dot" /><span>全流程可追溯审计</span></div>
+            <div class="login-feature-item"><span class="login-feature-dot" /><span>{{ t('login.feature1') }}</span></div>
+            <div class="login-feature-item"><span class="login-feature-dot" /><span>{{ t('login.feature2') }}</span></div>
+            <div class="login-feature-item"><span class="login-feature-dot" /><span>{{ t('login.feature3') }}</span></div>
           </div>
         </div>
       </div>
@@ -102,8 +104,8 @@ const handleLogin = async () => {
       <div class="login-form-wrapper">
         <div class="login-form-inner">
           <div class="login-form-header">
-            <h2>欢迎回来</h2>
-            <p>选择登录身份以继续</p>
+            <h2>{{ t('login.welcomeBack') }}</h2>
+            <p>{{ t('login.selectIdentity') }}</p>
           </div>
 
           <!-- Portal selector: horizontal pill tabs, fixed size -->
@@ -129,27 +131,27 @@ const handleLogin = async () => {
 
           <a-form layout="vertical" class="login-form">
             <a-form-item v-if="activePortal !== 'system_admin'">
-              <a-input v-model:value="form.tenant_id" placeholder="请输入租户 ID" size="large" class="login-input">
+              <a-input v-model:value="form.tenant_id" :placeholder="t('login.tenantPlaceholder')" size="large" class="login-input">
                 <template #prefix><SafetyCertificateOutlined class="login-input-icon" /></template>
               </a-input>
             </a-form-item>
             <a-form-item>
-              <a-input v-model:value="form.username" placeholder="请输入用户名" size="large" class="login-input">
+              <a-input v-model:value="form.username" :placeholder="t('login.usernamePlaceholder')" size="large" class="login-input">
                 <template #prefix><UserOutlined class="login-input-icon" /></template>
               </a-input>
             </a-form-item>
             <a-form-item>
-              <a-input-password v-model:value="form.password" placeholder="请输入密码" size="large" class="login-input">
+              <a-input-password v-model:value="form.password" :placeholder="t('login.passwordPlaceholder')" size="large" class="login-input">
                 <template #prefix><LockOutlined class="login-input-icon" /></template>
               </a-input-password>
             </a-form-item>
             <div class="login-options">
-              <a-checkbox v-model:checked="rememberMe">记住登录</a-checkbox>
+              <a-checkbox v-model:checked="rememberMe">{{ t('login.rememberMe') }}</a-checkbox>
             </div>
 
             <!-- Mock mode: quick-fill test accounts -->
             <div v-if="isMockMode" class="mock-accounts">
-              <div class="mock-accounts-label">测试账号（点击快速填充）：</div>
+              <div class="mock-accounts-label">{{ t('login.testAccounts') }}</div>
               <div class="mock-accounts-list">
                 <a-tag
                   v-for="acc in quickAccounts" :key="acc.username"
@@ -168,17 +170,17 @@ const handleLogin = async () => {
                 :style="{ background: `linear-gradient(135deg, ${currentPortal.color}, ${currentPortal.color}dd)` }"
                 @click="handleLogin"
               >
-                {{ loading ? '登录中...' : `以${currentPortal.title}身份登录` }}
+                {{ loading ? t('login.logging') : t('login.loginAs', currentPortal.title) }}
               </a-button>
             </a-form-item>
           </a-form>
-          <div class="login-footer"><span>OA智审 © 2025</span></div>
+          <div class="login-footer"><span>{{ t('app.name') }} © 2025</span></div>
         </div>
       </div>
     </div>
 
     <div class="login-mobile-brand">
-      <SafetyCertificateOutlined class="login-mobile-logo" /><span>OA智审</span>
+      <SafetyCertificateOutlined class="login-mobile-logo" /><span>{{ t('app.name') }}</span>
     </div>
   </div>
 </template>

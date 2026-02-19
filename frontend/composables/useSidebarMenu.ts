@@ -5,7 +5,9 @@
  * which page they're currently on. No route-context switching.
  *
  * Login always lands on /overview (the overview dashboard).
- * User dropdown only shows "个人设置" and "退出登录" (no duplicate nav).
+ * User dropdown only shows "Personal Settings" and "Logout" (no duplicate nav).
+ *
+ * All labels use i18n keys for internationalization.
  */
 import {
   DashboardOutlined,
@@ -24,37 +26,39 @@ import type { Component } from 'vue'
 export interface SidebarMenuItem {
   key: string
   icon: Component
-  label: string
+  /** i18n key for the label */
+  labelKey: string
   badge?: number
 }
 
 export interface SidebarSection {
   id: string
-  title: string
+  /** i18n key for the section title */
+  titleKey: string
   items: SidebarMenuItem[]
 }
 
 const OVERVIEW_ITEMS: SidebarMenuItem[] = [
-  { key: '/overview', icon: PieChartOutlined, label: '仪表盘' },
+  { key: '/overview', icon: PieChartOutlined, labelKey: 'menu.overview' },
 ]
 
 const BUSINESS_ITEMS: SidebarMenuItem[] = [
-  { key: '/dashboard', icon: DashboardOutlined, label: '审核工作台', badge: 6 },
-  { key: '/cron', icon: ClockCircleOutlined, label: '定时任务' },
-  { key: '/archive', icon: FolderOpenOutlined, label: '归档复盘' },
+  { key: '/dashboard', icon: DashboardOutlined, labelKey: 'menu.dashboard', badge: 6 },
+  { key: '/cron', icon: ClockCircleOutlined, labelKey: 'menu.cron' },
+  { key: '/archive', icon: FolderOpenOutlined, labelKey: 'menu.archive' },
 ]
 
 const TENANT_ITEMS: SidebarMenuItem[] = [
-  { key: '/admin/tenant', icon: AppstoreOutlined, label: '规则配置' },
-  { key: '/admin/tenant/org', icon: ApartmentOutlined, label: '组织人员' },
-  { key: '/admin/tenant/data', icon: DatabaseOutlined, label: '数据信息' },
-  { key: '/admin/tenant/user-configs', icon: SettingOutlined, label: '用户偏好' },
+  { key: '/admin/tenant', icon: AppstoreOutlined, labelKey: 'menu.tenant.rules' },
+  { key: '/admin/tenant/org', icon: ApartmentOutlined, labelKey: 'menu.tenant.org' },
+  { key: '/admin/tenant/data', icon: DatabaseOutlined, labelKey: 'menu.tenant.data' },
+  { key: '/admin/tenant/user-configs', icon: SettingOutlined, labelKey: 'menu.tenant.userConfigs' },
 ]
 
 const SYSTEM_ITEMS: SidebarMenuItem[] = [
-  { key: '/admin/system', icon: MonitorOutlined, label: '全局监控' },
-  { key: '/admin/system/tenants', icon: TeamOutlined, label: '租户管理' },
-  { key: '/admin/system/settings', icon: SettingOutlined, label: '系统设置' },
+  { key: '/admin/system', icon: MonitorOutlined, labelKey: 'menu.system.monitor' },
+  { key: '/admin/system/tenants', icon: TeamOutlined, labelKey: 'menu.system.tenants' },
+  { key: '/admin/system/settings', icon: SettingOutlined, labelKey: 'menu.system.settings' },
 ]
 
 export const useSidebarMenu = () => {
@@ -67,16 +71,16 @@ export const useSidebarMenu = () => {
     const result: SidebarSection[] = []
 
     // Overview dashboard is always visible to all authenticated users
-    result.push({ id: 'overview', title: '仪表盘', items: OVERVIEW_ITEMS })
+    result.push({ id: 'overview', titleKey: 'sidebar.section.overview', items: OVERVIEW_ITEMS })
 
     if (perms.includes('business')) {
-      result.push({ id: 'business', title: '工作台', items: BUSINESS_ITEMS })
+      result.push({ id: 'business', titleKey: 'sidebar.section.business', items: BUSINESS_ITEMS })
     }
     if (perms.includes('tenant_admin')) {
-      result.push({ id: 'tenant', title: '租户管理', items: TENANT_ITEMS })
+      result.push({ id: 'tenant', titleKey: 'sidebar.section.tenant', items: TENANT_ITEMS })
     }
     if (perms.includes('system_admin')) {
-      result.push({ id: 'system', title: '系统管理', items: SYSTEM_ITEMS })
+      result.push({ id: 'system', titleKey: 'sidebar.section.system', items: SYSTEM_ITEMS })
     }
 
     return result

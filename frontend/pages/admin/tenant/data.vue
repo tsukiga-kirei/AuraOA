@@ -11,15 +11,24 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   SyncOutlined,
+  AppstoreOutlined, // Added for new tab icon
 } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
-import type { AuditLog, CronLog, ArchiveLog } from '~/composables/useMockData'
+import { message, Modal } from 'ant-design-vue'
+import * as XLSX from 'xlsx'
+import { useI18n } from '~/composables/useI18n'
+import { usePagination } from '~/composables/usePagination'
+import {
+  mockAuditLogs,
+  mockCronLogs, // Kept this as mockCronLogs, not mockCronTaskLogs as in the instruction, to match existing variable name
+  mockArchiveLogs
+} from '~/composables/useMockData'
+import type { AuditLog, CronLog, ArchiveLog } from '~/composables/useMockData' // Keep types
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
-const { mockAuditLogs, mockCronLogs, mockArchiveLogs } = useMockData()
+// Removed: const { mockAuditLogs, mockCronLogs, mockArchiveLogs } = useMockData() as it's now imported directly
 
-const topTab = ref<'audit' | 'cron' | 'archive'>('audit')
+const activeTab = ref<'audit' | 'cron' | 'archive'>('audit') // Renamed topTab to activeTab
 
 // ===== Audit logs =====
 const auditLogs = ref<AuditLog[]>(JSON.parse(JSON.stringify(mockAuditLogs)))
@@ -34,16 +43,6 @@ const filteredAuditLogs = computed(() => {
   })
 })
 
-// Pagination for audit logs
-const { paged: pagedAuditLogs, current: auditPage, pageSize: auditPageSize, total: auditTotal, onChange: onAuditPageChange } = usePagination(filteredAuditLogs, 10)
-
-const auditActionOptions = [
-  { value: 'ai_audit', label: 'AI 审核' },
-  { value: 'manual_approve', label: '手动通过' },
-  { value: 'manual_reject', label: '手动驳回' },
-  { value: 'feedback', label: '反馈' },
-]
-
 // ===== Cron logs =====
 const cronLogs = ref<CronLog[]>(JSON.parse(JSON.stringify(mockCronLogs)))
 const cronSearch = ref('')
@@ -56,9 +55,6 @@ const filteredCronLogs = computed(() => {
     return true
   })
 })
-
-// Pagination for cron logs
-const { paged: pagedCronLogs, current: cronPage, pageSize: cronPageSize, total: cronTotal, onChange: onCronPageChange } = usePagination(filteredCronLogs, 10)
 
 // ===== Archive logs =====
 const archiveLogs = ref<ArchiveLog[]>(JSON.parse(JSON.stringify(mockArchiveLogs)))
@@ -73,24 +69,75 @@ const filteredArchiveLogs = computed(() => {
   })
 })
 
-// Pagination for archive logs
-const { paged: pagedArchiveLogs, current: archivePage, pageSize: archivePageSize, total: archiveTotal, onChange: onArchivePageChange } = usePagination(filteredArchiveLogs, 10)
+// Pagination for logs
+const auditLogPagination = usePagination(filteredAuditLogs, 10)
+const cronLogPagination = usePagination(filteredCronLogs, 10)
+const archiveLogPagination = usePagination(filteredArchiveLogs, 10)
 
-const archiveActionOptions = [
-  { value: 're_audit', label: '合规复核' },
-  { value: 'export', label: '导出' },
-  { value: 'view', label: '查看' },
-]
+const { t } = useI18n()
 
-const handleExport = (tab: string) => {
-  message.success(`${tab}数据导出中...`)
+// Options for filters
+const auditActionOptions = computed(() => [
+  { value: 'ai_audit', label: t('admin.data.aiAudit') },
+  { value: 'manual_approve', label: t('admin.data.manualApprove') },
+  { value: 'manual_reject', label: t('admin.data.manualReject') },
+  { value: 'feedback', label: t('admin.data.feedback') },
+])
+const archiveActionOptions = computed(() => [
+  { value: 're_audit', label: t('admin.data.reAudit') },
+  { value: 'export', label: t('admin.data.exportAction') },
+  { value: 'view', label: t('admin.data.viewAction') },
+])
+
+// Mapping labels for display
+const auditActionMap = computed(() => auditActionOptions.value.reduce((acc, cur) => {
+  acc[cur.value] = cur.label
+  return acc
+}, {} as Record<string, string>))
+
+const archiveActionMap = computed(() => archiveActionOptions.value.reduce((acc, cur) => {
+  acc[cur.value] = cur.label
+  return acc
+}, {} as Record<string, string>))
+
+const handleExport = (type: 'audit' | 'cron' | 'archive') => {
+  if (type === 'audit') {
+    message.loading(t('admin.data.exportingAudit'), 1)
+    setTimeout(() => {
+      const ws = XLSX.utils.json_to_sheet(auditLogPagination.paginatedData.value)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'AuditLogs')
+      XLSX.writeFile(wb, `audit_logs_${new Date().getTime()}.xlsx`)
+    }, 1000)
+  } else if (type === 'cron') {
+    message.loading(t('admin.data.exportingCron'), 1)
+    setTimeout(() => {
+      const ws = XLSX.utils.json_to_sheet(cronLogPagination.paginatedData.value)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'CronLogs')
+      XLSX.writeFile(wb, `cron_logs_${new Date().getTime()}.xlsx`)
+    }, 1000)
+  } else {
+    message.loading(t('admin.data.exportingArchive'), 1)
+    setTimeout(() => {
+      const ws = XLSX.utils.json_to_sheet(archiveLogPagination.paginatedData.value)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'ArchiveLogs')
+      XLSX.writeFile(wb, `archive_logs_${new Date().getTime()}.xlsx`)
+    }, 1000)
+  }
 }
 
-const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
-  if (tab === 'audit') auditLogs.value = auditLogs.value.filter(l => l.id !== id)
-  else if (tab === 'cron') cronLogs.value = cronLogs.value.filter(l => l.id !== id)
-  else archiveLogs.value = archiveLogs.value.filter(l => l.id !== id)
-  message.success('已删除')
+const handleDeleteLog = (id: string, type: 'audit' | 'cron' | 'archive') => {
+  Modal.confirm({
+    title: t('admin.data.confirmDelete'),
+    onOk() {
+      if (type === 'audit') auditLogs.value = auditLogs.value.filter(l => l.id !== id)
+      else if (type === 'cron') cronLogs.value = cronLogs.value.filter(l => l.id !== id)
+      else archiveLogs.value = archiveLogs.value.filter(l => l.id !== id)
+      message.success(t('admin.data.deleted'))
+    }
+  })
 }
 </script>
 
@@ -98,8 +145,8 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
   <div class="data-page fade-in">
     <div class="page-header">
       <div>
-        <h1 class="page-title">数据信息</h1>
-        <p class="page-subtitle">统一管理审核记录、任务日志与归档操作历史</p>
+        <h1 class="page-title">{{ t('admin.data.title') }}</h1>
+        <p class="page-subtitle">{{ t('admin.data.subtitle') }}</p>
       </div>
     </div>
 
@@ -107,14 +154,14 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
     <div class="tab-nav">
       <button
         v-for="tab in [
-          { key: 'audit', label: '审核工作台', icon: FileTextOutlined },
-          { key: 'cron', label: '定时任务', icon: ClockCircleOutlined },
-          { key: 'archive', label: '归档复盘', icon: FolderOpenOutlined },
+          { key: 'audit', label: t('admin.data.tabAudit'), icon: AppstoreOutlined },
+          { key: 'cron', label: t('admin.data.tabCron'), icon: ClockCircleOutlined },
+          { key: 'archive', label: t('admin.data.tabArchive'), icon: FolderOpenOutlined },
         ]"
         :key="tab.key"
         class="tab-btn"
-        :class="{ 'tab-btn--active': topTab === tab.key }"
-        @click="topTab = tab.key as any"
+        :class="{ 'tab-btn--active': activeTab === tab.key }"
+        @click="activeTab = tab.key as any"
       >
         <component :is="tab.icon" style="font-size: 14px;" />
         {{ tab.label }}
@@ -122,35 +169,35 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
     </div>
 
     <!-- ===== Audit Logs Tab ===== -->
-    <div v-if="topTab === 'audit'" class="tab-content">
+    <div v-if="activeTab === 'audit'" class="tab-content">
       <div class="toolbar">
         <div class="toolbar-left">
-          <a-input v-model:value="auditSearch" placeholder="搜索流程/操作人" allow-clear style="width: 220px;">
+          <a-input v-model:value="auditSearch" :placeholder="t('admin.data.searchAudit')" allow-clear style="width: 220px;">
             <template #prefix><SearchOutlined /></template>
           </a-input>
-          <a-select v-model:value="auditActionFilter" placeholder="操作类型" allow-clear style="width: 140px;">
+          <a-select v-model:value="auditActionFilter" :placeholder="t('admin.data.actionType')" allow-clear style="width: 140px;">
             <a-select-option v-for="o in auditActionOptions" :key="o.value" :value="o.value">{{ o.label }}</a-select-option>
           </a-select>
         </div>
-        <a-button @click="handleExport('审核日志')"><ExportOutlined /> 导出</a-button>
+        <a-button @click="handleExport('audit')"><ExportOutlined /> {{ t('admin.data.export') }}</a-button>
       </div>
 
       <div class="stats-row">
         <div class="stat-card">
           <div class="stat-value">{{ auditLogs.length }}</div>
-          <div class="stat-label">总记录数</div>
+          <div class="stat-label">{{ t('admin.data.totalRecords') }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">{{ auditLogs.filter(l => l.action === 'ai_audit').length }}</div>
-          <div class="stat-label">AI 审核</div>
+          <div class="stat-label">{{ t('admin.data.aiAudit') }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">{{ auditLogs.filter(l => l.action === 'manual_approve').length }}</div>
-          <div class="stat-label">手动通过</div>
+          <div class="stat-label">{{ t('admin.data.manualApprove') }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">{{ auditLogs.filter(l => l.action === 'manual_reject').length }}</div>
-          <div class="stat-label">手动驳回</div>
+          <div class="stat-label">{{ t('admin.data.manualReject') }}</div>
         </div>
       </div>
 
@@ -158,34 +205,34 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
         <table class="data-table">
           <thead>
             <tr>
-              <th>流程编号</th>
-              <th>流程标题</th>
-              <th>操作人</th>
-              <th>操作类型</th>
-              <th>结果</th>
-              <th>时间</th>
-              <th>操作</th>
+              <th>{{ t('admin.data.thProcessId') }}</th>
+              <th>{{ t('admin.data.thProcessTitle') }}</th>
+              <th>{{ t('admin.data.thOperator') }}</th>
+              <th>{{ t('admin.data.thActionType') }}</th>
+              <th>{{ t('admin.data.thResult') }}</th>
+              <th>{{ t('admin.data.thTime') }}</th>
+              <th>{{ t('admin.data.thAction') }}</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="l in pagedAuditLogs" :key="l.id">
+            <tr v-for="l in auditLogPagination.paged.value" :key="l.id">
               <td class="text-mono">{{ l.process_id }}</td>
               <td>{{ l.title }}</td>
               <td>{{ l.operator }}</td>
-              <td><span class="action-tag" :class="'action-tag--' + l.action">{{ l.action_label }}</span></td>
+              <td><span class="action-tag" :class="'action-tag--' + l.action">{{ auditActionMap[l.action] }}</span></td>
               <td class="text-secondary">{{ l.result }}</td>
               <td class="text-secondary">{{ l.created_at }}</td>
               <td>
                 <div class="action-btns">
-                  <button class="icon-btn" title="查看详情"><EyeOutlined /></button>
-                  <a-popconfirm title="确认删除？" @confirm="handleDeleteLog('audit', l.id)">
+                  <button class="icon-btn" :title="t('admin.data.viewDetail')"><EyeOutlined /></button>
+                  <a-popconfirm :title="t('admin.data.confirmDelete')" @confirm="handleDeleteLog(l.id, 'audit')">
                     <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
                   </a-popconfirm>
                 </div>
               </td>
             </tr>
-            <tr v-if="filteredAuditLogs.length === 0">
-              <td colspan="7" class="empty-cell">暂无数据</td>
+            <tr v-if="auditLogPagination.paged.value.length === 0">
+              <td colspan="7" class="empty-cell">{{ t('admin.data.noData') }}</td>
             </tr>
           </tbody>
         </table>
@@ -193,47 +240,50 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
 
       <div class="pagination-wrapper">
         <a-pagination
-          :current="auditPage"
-          :page-size="auditPageSize"
-          :total="auditTotal"
+          v-model:current="auditLogPagination.current.value"
+          :page-size="auditLogPagination.pageSize.value"
+          :total="auditLogPagination.total.value"
           size="small"
           show-size-changer
           show-quick-jumper
           :page-size-options="['10', '20', '50']"
-          @change="onAuditPageChange"
-          @showSizeChange="onAuditPageChange"
+          @change="auditLogPagination.onChange"
+          @showSizeChange="auditLogPagination.onPageSizeChange"
         />
       </div>
     </div>
 
-    <!-- ===== Cron Logs Tab ===== -->
-    <div v-if="topTab === 'cron'" class="tab-content">
-      <div class="toolbar">
-        <div class="toolbar-left">
-          <a-input v-model:value="cronSearch" placeholder="搜索任务" allow-clear style="width: 220px;">
-            <template #prefix><SearchOutlined /></template>
-          </a-input>
-          <a-select v-model:value="cronStatusFilter" placeholder="执行状态" allow-clear style="width: 140px;">
-            <a-select-option value="success">成功</a-select-option>
-            <a-select-option value="failed">失败</a-select-option>
-            <a-select-option value="running">运行中</a-select-option>
-          </a-select>
+    <!-- Tab Content: Cron -->
+      <div v-if="activeTab === 'cron'" class="tab-content fade-in">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <a-input v-model:value="cronSearch" :placeholder="t('admin.data.searchCron')" allow-clear style="width: 200px;">
+              <template #prefix><SearchOutlined /></template>
+            </a-input>
+            <a-select v-model:value="cronStatusFilter" :placeholder="t('admin.data.execStatus')" allow-clear style="width: 140px;">
+              <a-select-option value="success">{{ t('admin.data.success') }}</a-select-option>
+              <a-select-option value="failed">{{ t('admin.data.failed') }}</a-select-option>
+              <a-select-option value="running">{{ t('admin.data.running') }}</a-select-option>
+            </a-select>
+          </div>
+          <div class="toolbar-right">
+            <span class="data-count">{{ t('admin.data.totalExec') }}: {{ cronLogPagination.total.value }}</span>
+            <a-button @click="handleExport('cron')"><ExportOutlined /> {{ t('admin.data.export') }}</a-button>
+          </div>
         </div>
-        <a-button @click="handleExport('任务日志')"><ExportOutlined /> 导出</a-button>
-      </div>
 
       <div class="stats-row">
         <div class="stat-card">
           <div class="stat-value">{{ cronLogs.length }}</div>
-          <div class="stat-label">总执行次数</div>
+          <div class="stat-label">{{ t('admin.data.totalExecutions') }}</div>
         </div>
         <div class="stat-card stat-card--success">
           <div class="stat-value">{{ cronLogs.filter(l => l.status === 'success').length }}</div>
-          <div class="stat-label">成功</div>
+          <div class="stat-label">{{ t('admin.data.success') }}</div>
         </div>
         <div class="stat-card stat-card--danger">
           <div class="stat-value">{{ cronLogs.filter(l => l.status === 'failed').length }}</div>
-          <div class="stat-label">失败</div>
+          <div class="stat-label">{{ t('admin.data.failed') }}</div>
         </div>
       </div>
 
@@ -241,18 +291,18 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
         <table class="data-table">
           <thead>
             <tr>
-              <th>任务ID</th>
-              <th>任务类型</th>
-              <th>状态</th>
-              <th>接收人</th>
-              <th>开始时间</th>
-              <th>结束时间</th>
-              <th>消息</th>
-              <th>操作</th>
+              <th>{{ t('admin.data.thTaskId') }}</th>
+              <th>{{ t('admin.data.thTaskType') }}</th>
+              <th>{{ t('admin.data.thStatus') }}</th>
+              <th>{{ t('admin.data.thRecipients') }}</th>
+              <th>{{ t('admin.data.thStartTime') }}</th>
+              <th>{{ t('admin.data.thEndTime') }}</th>
+              <th>{{ t('admin.data.thMessage') }}</th>
+              <th>{{ t('admin.data.thAction') }}</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="l in pagedCronLogs" :key="l.id">
+            <tr v-for="l in cronLogPagination.paged.value" :key="l.id">
               <td class="text-mono">{{ l.task_id }}</td>
               <td>{{ l.task_label }}</td>
               <td>
@@ -260,7 +310,7 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
                   <CheckCircleOutlined v-if="l.status === 'success'" />
                   <CloseCircleOutlined v-else-if="l.status === 'failed'" />
                   <SyncOutlined v-else spin />
-                  {{ l.status === 'success' ? '成功' : l.status === 'failed' ? '失败' : '运行中' }}
+                  {{ l.status === 'success' ? t('admin.data.success') : l.status === 'failed' ? t('admin.data.failed') : t('admin.data.running') }}
                 </span>
               </td>
               <td class="text-secondary">{{ l.recipients }}</td>
@@ -269,14 +319,14 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
               <td class="text-secondary">{{ l.message }}</td>
               <td>
                 <div class="action-btns">
-                  <a-popconfirm title="确认删除？" @confirm="handleDeleteLog('cron', l.id)">
+                  <a-popconfirm :title="t('admin.data.confirmDelete')" @confirm="handleDeleteLog(l.id, 'cron')">
                     <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
                   </a-popconfirm>
                 </div>
               </td>
             </tr>
-            <tr v-if="filteredCronLogs.length === 0">
-              <td colspan="8" class="empty-cell">暂无数据</td>
+            <tr v-if="cronLogPagination.paged.value.length === 0">
+              <td colspan="8" class="empty-cell">{{ t('admin.data.noData') }}</td>
             </tr>
           </tbody>
         </table>
@@ -284,80 +334,80 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
 
       <div class="pagination-wrapper">
         <a-pagination
-          :current="cronPage"
-          :page-size="cronPageSize"
-          :total="cronTotal"
+          v-model:current="cronLogPagination.current.value"
+          :page-size="cronLogPagination.pageSize.value"
+          :total="cronLogPagination.total.value"
           size="small"
           show-size-changer
           show-quick-jumper
           :page-size-options="['10', '20', '50']"
-          @change="onCronPageChange"
-          @showSizeChange="onCronPageChange"
+          @change="cronLogPagination.onChange"
+          @showSizeChange="cronLogPagination.onPageSizeChange"
         />
       </div>
     </div>
 
-    <!-- ===== Archive Logs Tab ===== -->
-    <div v-if="topTab === 'archive'" class="tab-content">
-      <div class="toolbar">
-        <div class="toolbar-left">
-          <a-input v-model:value="archiveSearch" placeholder="搜索流程" allow-clear style="width: 220px;">
-            <template #prefix><SearchOutlined /></template>
-          </a-input>
-          <a-select v-model:value="archiveActionFilter" placeholder="操作类型" allow-clear style="width: 140px;">
+    <!-- Tab Content: Archive -->
+      <div v-if="activeTab === 'archive'" class="tab-content fade-in">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <a-input v-model:value="archiveSearch" :placeholder="t('admin.data.searchArchive')" allow-clear style="width: 200px;">
+              <template #prefix><SearchOutlined /></template>
+            </a-input>
+            <a-select v-model:value="archiveActionFilter" :placeholder="t('admin.data.actionType')" allow-clear style="width: 140px;">
             <a-select-option v-for="o in archiveActionOptions" :key="o.value" :value="o.value">{{ o.label }}</a-select-option>
           </a-select>
         </div>
-        <a-button @click="handleExport('归档日志')"><ExportOutlined /> 导出</a-button>
+        <a-button @click="handleExport('archive')"><ExportOutlined /> {{ t('admin.data.export') }}</a-button>
       </div>
 
       <div class="stats-row">
         <div class="stat-card">
           <div class="stat-value">{{ archiveLogs.length }}</div>
-          <div class="stat-label">总记录数</div>
+          <div class="stat-label">{{ t('admin.data.totalRecords') }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">{{ archiveLogs.filter(l => l.action === 're_audit').length }}</div>
-          <div class="stat-label">合规复核</div>
+          <div class="stat-label">{{ t('admin.data.reAudit') }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">{{ archiveLogs.filter(l => l.action === 'export').length }}</div>
-          <div class="stat-label">导出</div>
+          <div class="stat-label">{{ t('admin.data.exportAction') }}</div>
         </div>
       </div>
 
       <div class="data-table-card">
         <table class="data-table">
-          <thead>
-            <tr>
-              <th>流程编号</th>
-              <th>流程标题</th>
-              <th>操作人</th>
-              <th>操作类型</th>
-              <th>合规结果</th>
-              <th>时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
+            <thead>
+              <tr>
+                <th>{{ t('admin.data.thProcessId') }}</th>
+                <th>{{ t('admin.data.thProcessTitle') }}</th>
+                <th>{{ t('admin.data.thOperator') }}</th>
+                <th>{{ t('admin.data.thActionType') }}</th>
+                <th>{{ t('admin.data.thCompliance') }}</th>
+                <th>{{ t('admin.data.thTime') }}</th>
+                <th>{{ t('admin.data.thAction') }}</th>
+              </tr>
+            </thead>
           <tbody>
-            <tr v-for="l in pagedArchiveLogs" :key="l.id">
+            <tr v-for="l in archiveLogPagination.paged.value" :key="l.id">
               <td class="text-mono">{{ l.process_id }}</td>
               <td>{{ l.title }}</td>
               <td>{{ l.operator }}</td>
-              <td><span class="action-tag" :class="'action-tag--' + l.action">{{ l.action_label }}</span></td>
+              <td><span class="action-tag" :class="'action-tag--' + l.action">{{ archiveActionMap[l.action] }}</span></td>
               <td class="text-secondary">{{ l.compliance }}</td>
               <td class="text-secondary">{{ l.created_at }}</td>
               <td>
                 <div class="action-btns">
-                  <button class="icon-btn" title="查看详情"><EyeOutlined /></button>
-                  <a-popconfirm title="确认删除？" @confirm="handleDeleteLog('archive', l.id)">
+                  <button class="icon-btn" :title="t('admin.data.viewDetail')"><EyeOutlined /></button>
+                  <a-popconfirm :title="t('admin.data.confirmDelete')" @confirm="handleDeleteLog(l.id, 'archive')">
                     <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
                   </a-popconfirm>
                 </div>
               </td>
             </tr>
-            <tr v-if="filteredArchiveLogs.length === 0">
-              <td colspan="7" class="empty-cell">暂无数据</td>
+            <tr v-if="archiveLogPagination.paged.value.length === 0">
+              <td colspan="7" class="empty-cell">{{ t('admin.data.noData') }}</td>
             </tr>
           </tbody>
         </table>
@@ -365,15 +415,15 @@ const handleDeleteLog = (tab: 'audit' | 'cron' | 'archive', id: string) => {
 
       <div class="pagination-wrapper">
         <a-pagination
-          :current="archivePage"
-          :page-size="archivePageSize"
-          :total="archiveTotal"
+          v-model:current="archiveLogPagination.current.value"
+          :page-size="archiveLogPagination.pageSize.value"
+          :total="archiveLogPagination.total.value"
           size="small"
           show-size-changer
           show-quick-jumper
           :page-size-options="['10', '20', '50']"
-          @change="onArchivePageChange"
-          @showSizeChange="onArchivePageChange"
+          @change="archiveLogPagination.onChange"
+          @showSizeChange="archiveLogPagination.onPageSizeChange"
         />
       </div>
     </div>

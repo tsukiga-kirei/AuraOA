@@ -5,6 +5,7 @@ import {
   EditOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons-vue'
+import { useI18n } from '~/composables/useI18n'
 
 interface ChecklistResult {
   rule_id: string
@@ -29,11 +30,13 @@ defineProps<{
   loading: boolean
 }>()
 
-const recommendationConfig = {
-  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: '建议通过' },
-  reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: '建议驳回' },
-  revise: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EditOutlined, label: '建议修改' },
-}
+const { t } = useI18n()
+
+const recommendationConfig = computed(() => ({
+  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
+  reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: t('dashboard.rec.reject') },
+  revise: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EditOutlined, label: t('dashboard.rec.revise') },
+}))
 </script>
 
 <template>
@@ -41,7 +44,7 @@ const recommendationConfig = {
     <!-- Loading -->
     <div v-if="loading" class="panel-loading">
       <div class="loading-pulse" />
-      <p class="loading-text">AI 正在分析中...</p>
+      <p class="loading-text">{{ t('auditPanel.auditing') }}</p>
     </div>
 
     <!-- Result -->
@@ -76,12 +79,12 @@ const recommendationConfig = {
       </div>
 
       <div class="section">
-        <h4 class="section-title">规则校验</h4>
+        <h4 class="section-title">{{ t('auditPanel.ruleResults') }}</h4>
         <RuleList :rules="result.details" />
       </div>
 
       <div class="section">
-        <h4 class="section-title">AI 推理过程</h4>
+        <h4 class="section-title">{{ t('auditPanel.aiReasoning') }}</h4>
         <div class="reasoning-block">
           <pre>{{ result.ai_reasoning }}</pre>
         </div>
@@ -93,7 +96,7 @@ const recommendationConfig = {
       <div class="empty-icon">
         <ThunderboltOutlined />
       </div>
-      <p>选择待办流程开始审核</p>
+      <p>{{ t('auditPanel.startAudit') }}</p>
     </div>
   </div>
 </template>

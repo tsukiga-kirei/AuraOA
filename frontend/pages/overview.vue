@@ -16,12 +16,14 @@ import {
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { OVERVIEW_WIDGETS } from '~/composables/useMockData'
+import { useI18n } from '~/composables/useI18n'
 import type { OverviewWidgetId } from '~/composables/useMockData'
 
 definePageMeta({ middleware: 'auth' })
 
 const { userPermissions, currentUser } = useAuth()
 const { mockOverviewData, mockUserDashboardPrefs } = useMockData()
+const { t } = useI18n()
 const data = ref(mockOverviewData)
 
 const username = computed(() => currentUser.value?.username || '')
@@ -51,11 +53,11 @@ const toggleWidget = (id: OverviewWidgetId) => {
   if (idx >= 0) enabledWidgets.value.splice(idx, 1)
   else enabledWidgets.value.push(id)
 }
-const savePrefs = () => { customizing.value = false; message.success('仪表盘布局已保存') }
+const savePrefs = () => { customizing.value = false; message.success(t('overview.layoutSaved')) }
 
 const greeting = computed(() => {
   const h = new Date().getHours()
-  return h < 6 ? '夜深了' : h < 12 ? '早上好' : h < 14 ? '中午好' : h < 18 ? '下午好' : '晚上好'
+  return h < 6 ? t('overview.greeting.lateNight') : h < 12 ? t('overview.greeting.morning') : h < 14 ? t('overview.greeting.noon') : h < 18 ? t('overview.greeting.afternoon') : t('overview.greeting.evening')
 })
 
 const formatNum = (n: number) => n >= 10000 ? (n / 1000).toFixed(1) + 'K' : n.toLocaleString()
@@ -68,7 +70,7 @@ const activityStyle: Record<string, { color: string; bg: string }> = {
 }
 
 const healthColor = (s: string) => s === 'healthy' ? 'var(--color-success)' : s === 'degraded' ? 'var(--color-warning)' : 'var(--color-danger)'
-const healthLabel = (s: string) => s === 'healthy' ? '正常' : s === 'degraded' ? '降级' : '异常'
+const healthLabel = (s: string) => s === 'healthy' ? t('overview.health.healthy') : s === 'degraded' ? t('overview.health.degraded') : t('overview.health.error')
 const trendMax = computed(() => Math.max(...data.value.weeklyTrend.map(t => t.count), 1))
 const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => d.count), 1))
 </script>
@@ -77,18 +79,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
   <div class="overview-page fade-in">
     <div class="ov-header">
       <div>
-        <h1 class="ov-title">{{ greeting }}，{{ currentUser?.display_name || '用户' }}</h1>
-        <p class="ov-subtitle">这是您的工作概览，快速了解当前状态</p>
+        <h1 class="ov-title">{{ greeting }}，{{ currentUser?.display_name || t('sidebar.defaultUser') }}</h1>
+        <p class="ov-subtitle">{{ t('overview.subtitle') }}</p>
       </div>
       <a-button :type="customizing ? 'primary' : 'default'" @click="customizing ? savePrefs() : (customizing = true)">
-        <SettingOutlined /> {{ customizing ? '保存布局' : '自定义仪表盘' }}
+        <SettingOutlined /> {{ customizing ? t('overview.saveLayout') : t('overview.customizeDashboard') }}
       </a-button>
     </div>
 
     <!-- Customize panel -->
     <transition name="slide-down">
       <div v-if="customizing" class="customize-panel">
-        <p class="customize-hint">点击切换显示/隐藏，完成后点击「保存布局」</p>
+        <p class="customize-hint">{{ t('overview.customizeHint') }}</p>
         <div class="customize-grid">
           <div v-for="w in availableWidgets" :key="w.id" class="customize-chip" :class="{ 'customize-chip--active': isEnabled(w.id) }" @click="toggleWidget(w.id)">
             <component :is="isEnabled(w.id) ? EyeOutlined : EyeInvisibleOutlined" />
@@ -101,43 +103,43 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
     <div class="widget-grid">
       <!-- ===== Audit Summary (business) ===== -->
       <div v-if="isEnabled('audit_summary')" class="widget widget--lg">
-        <div class="widget-title"><ThunderboltOutlined /> 今日审核概览</div>
+        <div class="widget-title"><ThunderboltOutlined /> {{ t('overview.auditOverview') }}</div>
         <div class="summary-cards">
           <div class="summary-card summary-card--total">
             <div class="summary-num">{{ data.auditSummary.total }}</div>
-            <div class="summary-label">总审核</div>
+            <div class="summary-label">{{ t('overview.totalAudits') }}</div>
           </div>
           <div class="summary-card summary-card--approved">
             <CheckCircleOutlined class="summary-icon" />
             <div class="summary-num">{{ data.auditSummary.approved }}</div>
-            <div class="summary-label">通过</div>
+            <div class="summary-label">{{ t('overview.approved') }}</div>
           </div>
           <div class="summary-card summary-card--rejected">
             <CloseCircleOutlined class="summary-icon" />
             <div class="summary-num">{{ data.auditSummary.rejected }}</div>
-            <div class="summary-label">驳回</div>
+            <div class="summary-label">{{ t('overview.rejected') }}</div>
           </div>
           <div class="summary-card summary-card--revised">
             <EditOutlined class="summary-icon" />
             <div class="summary-num">{{ data.auditSummary.revised }}</div>
-            <div class="summary-label">修改</div>
+            <div class="summary-label">{{ t('overview.revised') }}</div>
           </div>
         </div>
       </div>
 
       <!-- ===== Pending Tasks (business) ===== -->
       <div v-if="isEnabled('pending_tasks')" class="widget widget--sm">
-        <div class="widget-title"><ClockCircleOutlined /> 待办任务</div>
+        <div class="widget-title"><ClockCircleOutlined /> {{ t('overview.pendingTasks') }}</div>
         <div class="pending-big">
           <div class="pending-num">{{ data.pendingCount }}</div>
-          <div class="pending-label">条待处理</div>
+          <div class="pending-label">{{ t('overview.itemsPending') }}</div>
         </div>
-        <a-button type="link" size="small" @click="navigateTo('/dashboard')">前往工作台 →</a-button>
+        <a-button type="link" size="small" @click="navigateTo('/dashboard')">{{ t('overview.goToWorkbench') }} →</a-button>
       </div>
 
       <!-- ===== Weekly Trend (business) ===== -->
       <div v-if="isEnabled('weekly_trend')" class="widget widget--md">
-        <div class="widget-title"><RiseOutlined /> 审核趋势（近7天）</div>
+        <div class="widget-title"><RiseOutlined /> {{ t('overview.auditTrend7d') }}</div>
         <div class="bar-chart">
           <div v-for="t in data.weeklyTrend" :key="t.date" class="bar-col">
             <div class="bar-value">{{ t.count }}</div>
@@ -149,7 +151,7 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
 
       <!-- ===== Dept Distribution (business) ===== -->
       <div v-if="isEnabled('dept_distribution')" class="widget widget--md">
-        <div class="widget-title"><TeamOutlined /> 部门分布</div>
+        <div class="widget-title"><TeamOutlined /> {{ t('overview.deptDistribution') }}</div>
         <div class="dept-list">
           <div v-for="d in data.deptDistribution" :key="d.department" class="dept-row">
             <span class="dept-name">{{ d.department }}</span>
@@ -163,7 +165,7 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
 
       <!-- ===== Recent Activity (all) ===== -->
       <div v-if="isEnabled('recent_activity')" class="widget widget--md">
-        <div class="widget-title"><ClockCircleOutlined /> 最近动态</div>
+        <div class="widget-title"><ClockCircleOutlined /> {{ t('overview.recentActivity') }}</div>
         <div class="activity-list">
           <div v-for="a in data.recentActivity" :key="a.id" class="activity-item">
             <div class="activity-dot" :style="{ background: activityStyle[a.type]?.color }" />
@@ -181,19 +183,19 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
 
       <!-- ===== AI Performance (business+tenant) ===== -->
       <div v-if="isEnabled('ai_performance')" class="widget widget--md">
-        <div class="widget-title"><ThunderboltOutlined /> AI 模型表现</div>
+        <div class="widget-title"><ThunderboltOutlined /> {{ t('overview.aiPerformance') }}</div>
         <div class="ai-stats">
           <div class="ai-stat">
             <div class="ai-stat-num">{{ data.aiPerformance.avgResponseMs }}ms</div>
-            <div class="ai-stat-label">平均响应</div>
+            <div class="ai-stat-label">{{ t('overview.avgResponse') }}</div>
           </div>
           <div class="ai-stat">
             <div class="ai-stat-num">{{ data.aiPerformance.successRate }}%</div>
-            <div class="ai-stat-label">成功率</div>
+            <div class="ai-stat-label">{{ t('overview.successRate') }}</div>
           </div>
           <div class="ai-stat">
             <div class="ai-stat-num">{{ formatNum(data.aiPerformance.totalCalls) }}</div>
-            <div class="ai-stat-label">总调用</div>
+            <div class="ai-stat-label">{{ t('overview.totalCalls') }}</div>
           </div>
         </div>
         <div class="bar-chart bar-chart--small">
@@ -207,24 +209,24 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
 
       <!-- ===== Tenant Usage (tenant_admin) ===== -->
       <div v-if="isEnabled('tenant_usage')" class="widget widget--md">
-        <div class="widget-title"><CloudServerOutlined /> 租户资源用量</div>
+        <div class="widget-title"><CloudServerOutlined /> {{ t('overview.tenantUsage') }}</div>
         <div class="usage-rows">
           <div class="usage-row">
-            <span class="usage-label">Token 用量</span>
+            <span class="usage-label">{{ t('overview.tokenUsage') }}</span>
             <div class="usage-bar-wrap">
               <div class="usage-bar" :style="{ width: (data.tenantUsage.tokenUsed / data.tenantUsage.tokenQuota * 100) + '%' }" />
             </div>
             <span class="usage-text">{{ formatNum(data.tenantUsage.tokenUsed) }} / {{ formatNum(data.tenantUsage.tokenQuota) }}</span>
           </div>
           <div class="usage-row">
-            <span class="usage-label">存储空间</span>
+            <span class="usage-label">{{ t('overview.storageUsage') }}</span>
             <div class="usage-bar-wrap">
               <div class="usage-bar usage-bar--info" :style="{ width: (data.tenantUsage.storageUsedMB / data.tenantUsage.storageQuotaMB * 100) + '%' }" />
             </div>
             <span class="usage-text">{{ data.tenantUsage.storageUsedMB }}MB / {{ data.tenantUsage.storageQuotaMB }}MB</span>
           </div>
           <div class="usage-row">
-            <span class="usage-label">活跃用户</span>
+            <span class="usage-label">{{ t('overview.activeUsers') }}</span>
             <div class="usage-bar-wrap">
               <div class="usage-bar usage-bar--success" :style="{ width: (data.tenantUsage.activeUsers / data.tenantUsage.totalUsers * 100) + '%' }" />
             </div>
@@ -235,12 +237,12 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
 
       <!-- ===== Rule Coverage (tenant_admin) ===== -->
       <div v-if="isEnabled('rule_coverage')" class="widget widget--md">
-        <div class="widget-title"><SafetyCertificateOutlined /> 规则覆盖率</div>
+        <div class="widget-title"><SafetyCertificateOutlined /> {{ t('overview.ruleCoverage') }}</div>
         <div class="coverage-list">
           <div v-for="r in data.ruleCoverage" :key="r.processType" class="coverage-row">
             <div class="coverage-info">
               <span class="coverage-type">{{ r.processType }}</span>
-              <span class="coverage-count">{{ r.ruleCount }} 条规则</span>
+              <span class="coverage-count">{{ r.ruleCount }} {{ t('overview.rules') }}</span>
             </div>
             <div class="coverage-bar-wrap">
               <div class="coverage-bar" :style="{ width: r.coveragePercent + '%' }" />
@@ -252,7 +254,7 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
 
       <!-- ===== User Activity (tenant_admin) ===== -->
       <div v-if="isEnabled('user_activity')" class="widget widget--md">
-        <div class="widget-title"><TeamOutlined /> 用户活跃排行</div>
+        <div class="widget-title"><TeamOutlined /> {{ t('overview.userActivityRank') }}</div>
         <div class="rank-list">
           <div v-for="(u, i) in data.userActivity" :key="u.username" class="rank-item">
             <span class="rank-num" :class="{ 'rank-num--top': i < 3 }">{{ i + 1 }}</span>
@@ -260,14 +262,14 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
               <span class="rank-name">{{ u.displayName }}</span>
               <span class="rank-dept">{{ u.department }}</span>
             </div>
-            <span class="rank-count">{{ u.auditCount }} 次</span>
+            <span class="rank-count">{{ u.auditCount }} {{ t('overview.times') }}</span>
           </div>
         </div>
       </div>
 
       <!-- ===== System Health (system_admin) ===== -->
       <div v-if="isEnabled('system_health')" class="widget widget--lg">
-        <div class="widget-title"><CloudServerOutlined /> 系统健康</div>
+        <div class="widget-title"><CloudServerOutlined /> {{ t('overview.systemHealth') }}</div>
         <div class="health-grid">
           <div v-for="s in data.systemHealth" :key="s.service" class="health-card">
             <div class="health-header">
@@ -283,29 +285,29 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
                 <span class="health-metric-val">{{ s.cpu }}%</span>
               </div>
               <div class="health-metric">
-                <span class="health-metric-label">内存</span>
+                <span class="health-metric-label">{{ t('overview.memory') }}</span>
                 <div class="health-bar-wrap"><div class="health-bar" :style="{ width: s.memory + '%', background: s.memory > 80 ? 'var(--color-danger)' : s.memory > 60 ? 'var(--color-warning)' : 'var(--color-success)' }" /></div>
                 <span class="health-metric-val">{{ s.memory }}%</span>
               </div>
             </div>
-            <div class="health-uptime">运行 {{ s.uptime }}</div>
+            <div class="health-uptime">{{ t('overview.uptime') }} {{ s.uptime }}</div>
           </div>
         </div>
       </div>
 
       <!-- ===== Tenant Overview (system_admin) ===== -->
       <div v-if="isEnabled('tenant_overview')" class="widget widget--md">
-        <div class="widget-title"><TeamOutlined /> 租户总览</div>
+        <div class="widget-title"><TeamOutlined /> {{ t('overview.tenantOverview') }}</div>
         <div class="tenant-table">
           <div class="tenant-row tenant-row--header">
-            <span>租户</span><span>用户</span><span>审核量</span><span>状态</span>
+            <span>{{ t('overview.tenant') }}</span><span>{{ t('overview.users') }}</span><span>{{ t('overview.auditVolume') }}</span><span>{{ t('common.status') }}</span>
           </div>
-          <div v-for="t in data.tenantOverview" :key="t.tenantId" class="tenant-row">
-            <span class="tenant-name">{{ t.tenantName }}</span>
-            <span>{{ t.userCount }}</span>
-            <span>{{ formatNum(t.auditCount) }}</span>
-            <span class="tenant-status" :style="{ color: t.status === 'active' ? 'var(--color-success)' : 'var(--color-warning)' }">
-              {{ t.status === 'active' ? '活跃' : '已暂停' }}
+          <div v-for="tenant in data.tenantOverview" :key="tenant.tenantId" class="tenant-row">
+            <span class="tenant-name">{{ tenant.tenantName }}</span>
+            <span>{{ tenant.userCount }}</span>
+            <span>{{ formatNum(tenant.auditCount) }}</span>
+            <span class="tenant-status" :style="{ color: tenant.status === 'active' ? 'var(--color-success)' : 'var(--color-warning)' }">
+              {{ tenant.status === 'active' ? t('overview.active') : t('overview.suspended') }}
             </span>
           </div>
         </div>
@@ -313,10 +315,10 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
 
       <!-- ===== API Metrics (system_admin) ===== -->
       <div v-if="isEnabled('api_metrics')" class="widget widget--md">
-        <div class="widget-title"><ApiOutlined /> API 调用指标</div>
+        <div class="widget-title"><ApiOutlined /> {{ t('overview.apiMetrics') }}</div>
         <div class="api-table">
           <div class="api-row api-row--header">
-            <span>接口</span><span>调用量</span><span>延迟</span><span>成功率</span>
+            <span>{{ t('overview.endpoint') }}</span><span>{{ t('overview.calls') }}</span><span>{{ t('overview.latency') }}</span><span>{{ t('overview.successRate') }}</span>
           </div>
           <div v-for="a in data.apiMetrics" :key="a.endpoint" class="api-row">
             <span class="api-endpoint">{{ a.endpoint }}</span>

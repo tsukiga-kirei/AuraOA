@@ -17,6 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const { isDark, toggle: toggleTheme } = useTheme()
+const { t } = useI18n()
 </script>
 
 <template>
@@ -33,12 +34,12 @@ const { isDark, toggle: toggleTheme } = useTheme()
     </div>
 
     <div class="app-header-right">
-      <a-tooltip title="切换主题" placement="bottom" :mouse-enter-delay="0.5">
+      <a-tooltip :title="t('header.toggleTheme')" placement="bottom" :mouse-enter-delay="0.5">
         <button
           class="header-action theme-toggle-btn"
           :class="{ 'theme-toggle-btn--dark': isDark }"
           @click="toggleTheme"
-          :aria-label="isDark ? '切换到浅色模式' : '切换到深色模式'"
+          :aria-label="isDark ? t('header.lightMode') : t('header.darkMode')"
         >
           <span class="theme-toggle-track">
             <span class="theme-toggle-thumb">
@@ -51,7 +52,7 @@ const { isDark, toggle: toggleTheme } = useTheme()
         </button>
       </a-tooltip>
 
-      <a-tooltip title="消息通知" placement="bottom" :mouse-enter-delay="0.5">
+      <a-tooltip :title="t('header.notifications')" placement="bottom" :mouse-enter-delay="0.5">
         <a-badge :count="notificationCount ?? 0" :offset="[-4, 4]">
           <button class="header-action">
             <BellOutlined />

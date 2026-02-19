@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useI18n } from '~/composables/useI18n'
+import { usePagination } from '~/composables/usePagination'
 import {
   TeamOutlined,
   UserOutlined,
@@ -13,10 +15,12 @@ import {
   KeyOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
+import { useMockData } from '~/composables/useMockData'
 import type { Department, OrgRole, OrgMember } from '~/composables/useMockData'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
+const { t } = useI18n()
 const { mockDepartments, mockOrgRoles, mockOrgMembers } = useMockData()
 
 // Top-level tab
@@ -60,7 +64,7 @@ const openEditMember = (m: OrgMember) => {
 
 const handleSaveMember = () => {
   if (!memberForm.value.name.trim() || !memberForm.value.username.trim()) {
-    message.warning('请填写姓名和用户名')
+    message.warning(t('admin.org.fillNameRequired'))
     return
   }
   const dept = departments.value.find(d => d.id === memberForm.value.department_id)
@@ -71,7 +75,7 @@ const handleSaveMember = () => {
       department_name: dept?.name || '',
       role_name: role?.name || '',
     })
-    message.success('人员信息已更新')
+    message.success(t('admin.org.memberUpdated'))
   } else {
     members.value.push({
       id: `M-${Date.now()}`,
@@ -81,19 +85,19 @@ const handleSaveMember = () => {
       status: 'active',
       created_at: new Date().toISOString().slice(0, 10),
     })
-    message.success('人员已添加')
+    message.success(t('admin.org.memberAdded'))
   }
   showMemberModal.value = false
 }
 
 const toggleMemberStatus = (m: OrgMember) => {
   m.status = m.status === 'active' ? 'disabled' : 'active'
-  message.success(m.status === 'active' ? '已启用' : '已禁用')
+  message.success(m.status === 'active' ? t('admin.org.memberEnabled') : t('admin.org.memberDisabled'))
 }
 
 const deleteMember = (m: OrgMember) => {
   members.value = members.value.filter(x => x.id !== m.id)
-  message.success('已删除')
+  message.success(t('admin.org.memberDeleted'))
 }
 
 // ===== Roles =====
@@ -102,18 +106,18 @@ const showRoleModal = ref(false)
 const editingRole = ref<OrgRole | null>(null)
 const roleForm = ref({ name: '', description: '', page_permissions: [] as string[] })
 
-const allPages = [
-  { path: '/dashboard', label: '审核工作台' },
-  { path: '/cron', label: '定时任务' },
-  { path: '/archive', label: '归档复盘' },
-  { path: '/settings', label: '个人设置' },
-  { path: '/admin/tenant', label: '规则配置' },
-  { path: '/admin/tenant/org', label: '组织人员' },
-  { path: '/admin/tenant/data', label: '数据信息' },
-  { path: '/admin/system', label: '全局监控' },
-  { path: '/admin/system/tenants', label: '租户管理' },
-  { path: '/admin/system/settings', label: '系统设置' },
-]
+const allPages = computed(() => [
+  { path: '/dashboard', label: t('admin.org.page.dashboard') },
+  { path: '/cron', label: t('admin.org.page.cron') },
+  { path: '/archive', label: t('admin.org.page.archive') },
+  { path: '/settings', label: t('admin.org.page.settings') },
+  { path: '/admin/tenant', label: t('admin.org.page.tenantConfig') },
+  { path: '/admin/tenant/org', label: t('admin.org.page.tenantOrg') },
+  { path: '/admin/tenant/data', label: t('admin.org.page.tenantData') },
+  { path: '/admin/system', label: t('admin.org.page.sysMonitor') },
+  { path: '/admin/system/tenants', label: t('admin.org.page.sysTenants') },
+  { path: '/admin/system/settings', label: t('admin.org.page.sysSettings') },
+])
 
 const openAddRole = () => {
   editingRole.value = null
@@ -129,7 +133,7 @@ const openEditRole = (r: OrgRole) => {
 
 const handleSaveRole = () => {
   if (!roleForm.value.name.trim()) {
-    message.warning('请填写角色名称')
+    message.warning(t('admin.org.fillRoleName'))
     return
   }
   if (editingRole.value) {
@@ -138,24 +142,24 @@ const handleSaveRole = () => {
     members.value.forEach(m => {
       if (m.role_id === editingRole.value!.id) m.role_name = roleForm.value.name
     })
-    message.success('角色已更新')
+    message.success(t('admin.org.roleUpdated'))
   } else {
     roles.value.push({
       id: `ROLE-${Date.now()}`,
       ...roleForm.value,
       is_system: false,
     })
-    message.success('角色已添加')
+    message.success(t('admin.org.roleAdded'))
   }
   showRoleModal.value = false
 }
 
 const deleteRole = (r: OrgRole) => {
-  if (r.is_system) { message.warning('系统角色不可删除'); return }
+  if (r.is_system) { message.warning(t('admin.org.systemRoleProtected')); return }
   const usedBy = members.value.filter(m => m.role_id === r.id)
-  if (usedBy.length > 0) { message.warning(`该角色下有 ${usedBy.length} 名成员，请先调整`); return }
+  if (usedBy.length > 0) { message.warning(t('admin.org.roleHasMembers', [usedBy.length])); return }
   roles.value = roles.value.filter(x => x.id !== r.id)
-  message.success('角色已删除')
+  message.success(t('admin.org.roleDeleted'))
 }
 
 const getRoleMemberCount = (roleId: string) => members.value.filter(m => m.role_id === roleId).length
@@ -180,7 +184,7 @@ const openEditDept = (d: Department) => {
 
 const handleSaveDept = () => {
   if (!deptForm.value.name.trim()) {
-    message.warning('请填写部门名称')
+    message.warning(t('admin.org.fillDeptName'))
     return
   }
   if (editingDept.value) {
@@ -190,7 +194,7 @@ const handleSaveDept = () => {
     members.value.forEach(m => {
       if (m.department_id === editingDept.value!.id) m.department_name = deptForm.value.name
     })
-    message.success('部门已更新')
+    message.success(t('admin.org.deptUpdated'))
   } else {
     const newDept: Department = {
       id: `D-${Date.now()}`,
@@ -200,16 +204,16 @@ const handleSaveDept = () => {
       member_count: 0,
     }
     departments.value.push(newDept)
-    message.success('部门已添加')
+    message.success(t('admin.org.deptAdded'))
   }
   showDeptModal.value = false
 }
 
 const deleteDept = (d: Department) => {
   const usedBy = members.value.filter(m => m.department_id === d.id)
-  if (usedBy.length > 0) { message.warning(`该部门下有 ${usedBy.length} 名成员，请先调整`); return }
+  if (usedBy.length > 0) { message.warning(t('admin.org.deptHasMembers', [usedBy.length])); return }
   departments.value = departments.value.filter(x => x.id !== d.id)
-  message.success('部门已删除')
+  message.success(t('admin.org.deptDeleted'))
 }
 
 const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.department_id === deptId).length
@@ -219,8 +223,8 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
   <div class="org-page fade-in">
     <div class="page-header">
       <div>
-        <h1 class="page-title">组织人员</h1>
-        <p class="page-subtitle">管理组织架构、角色权限与人员信息</p>
+        <h1 class="page-title">{{ t('admin.org.title') }}</h1>
+        <p class="page-subtitle">{{ t('admin.org.subtitle') }}</p>
       </div>
     </div>
 
@@ -228,9 +232,9 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
     <div class="tab-nav">
       <button
         v-for="tab in [
-          { key: 'members', label: '人员管理', icon: TeamOutlined },
-          { key: 'roles', label: '角色权限', icon: KeyOutlined },
-          { key: 'departments', label: '部门管理', icon: ApartmentOutlined },
+          { key: 'members', label: t('admin.org.tabMembers'), icon: TeamOutlined },
+          { key: 'roles', label: t('admin.org.tabRoles'), icon: KeyOutlined },
+          { key: 'departments', label: t('admin.org.tabDepts'), icon: ApartmentOutlined },
         ]"
         :key="tab.key"
         class="tab-btn"
@@ -246,31 +250,31 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
     <div v-if="topTab === 'members'" class="tab-content">
       <div class="toolbar">
         <div class="toolbar-left">
-          <a-input v-model:value="memberSearch" placeholder="搜索姓名/用户名" allow-clear style="width: 200px;">
+          <a-input v-model:value="memberSearch" :placeholder="t('admin.org.searchMember')" allow-clear style="width: 200px;">
             <template #prefix><SearchOutlined /></template>
           </a-input>
-          <a-select v-model:value="memberDeptFilter" placeholder="部门筛选" allow-clear style="width: 150px;">
+          <a-select v-model:value="memberDeptFilter" :placeholder="t('admin.org.deptFilter')" allow-clear style="width: 150px;">
             <a-select-option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</a-select-option>
           </a-select>
-          <a-select v-model:value="memberRoleFilter" placeholder="角色筛选" allow-clear style="width: 150px;">
+          <a-select v-model:value="memberRoleFilter" :placeholder="t('admin.org.roleFilter')" allow-clear style="width: 150px;">
             <a-select-option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</a-select-option>
           </a-select>
         </div>
-        <a-button type="primary" @click="openAddMember"><PlusOutlined /> 添加人员</a-button>
+        <a-button type="primary" @click="openAddMember"><PlusOutlined /> {{ t('admin.org.addMember') }}</a-button>
       </div>
 
       <div class="data-table-card">
         <table class="data-table">
           <thead>
             <tr>
-              <th>姓名</th>
-              <th>用户名</th>
-              <th>部门</th>
-              <th>角色</th>
-              <th>职位</th>
-              <th>邮箱</th>
-              <th>状态</th>
-              <th>操作</th>
+              <th>{{ t('admin.org.thName') }}</th>
+              <th>{{ t('admin.org.thUsername') }}</th>
+              <th>{{ t('admin.org.thDepartment') }}</th>
+              <th>{{ t('admin.org.thRole') }}</th>
+              <th>{{ t('admin.org.thPosition') }}</th>
+              <th>{{ t('admin.org.thEmail') }}</th>
+              <th>{{ t('admin.org.thStatus') }}</th>
+              <th>{{ t('admin.org.thAction') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -288,26 +292,26 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
               <td class="text-secondary">{{ m.email }}</td>
               <td>
                 <span class="status-tag" :class="m.status === 'active' ? 'status-tag--active' : 'status-tag--disabled'">
-                  {{ m.status === 'active' ? '正常' : '已禁用' }}
+                  {{ m.status === 'active' ? t('admin.org.active') : t('admin.org.disabled') }}
                 </span>
               </td>
               <td>
                 <div class="action-btns">
-                  <button class="icon-btn" title="编辑" @click="openEditMember(m)"><EditOutlined /></button>
-                  <a-popconfirm :title="m.status === 'active' ? '确认禁用？' : '确认启用？'" @confirm="toggleMemberStatus(m)">
-                    <button class="icon-btn" :title="m.status === 'active' ? '禁用' : '启用'">
+                  <button class="icon-btn" :title="t('admin.org.edit')" @click="openEditMember(m)"><EditOutlined /></button>
+                  <a-popconfirm :title="m.status === 'active' ? t('admin.org.confirmDisable') : t('admin.org.confirmEnable')" @confirm="toggleMemberStatus(m)">
+                    <button class="icon-btn" :title="m.status === 'active' ? t('admin.org.disable') : t('admin.org.enable')">
                       <StopOutlined v-if="m.status === 'active'" />
                       <CheckOutlined v-else />
                     </button>
                   </a-popconfirm>
-                  <a-popconfirm title="确认删除该人员？" @confirm="deleteMember(m)">
+                  <a-popconfirm :title="t('admin.org.confirmDeleteMember')" @confirm="deleteMember(m)">
                     <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
                   </a-popconfirm>
                 </div>
               </td>
             </tr>
             <tr v-if="filteredMembers.length === 0">
-              <td colspan="8" class="empty-cell">暂无数据</td>
+              <td colspan="8" class="empty-cell">{{ t('admin.org.noData') }}</td>
             </tr>
           </tbody>
         </table>
@@ -333,9 +337,9 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
     <div v-if="topTab === 'roles'" class="tab-content">
       <div class="toolbar">
         <div class="toolbar-left">
-          <span class="toolbar-hint">定义角色并分配页面访问权限，角色与人员关联后生效</span>
+          <span class="toolbar-hint">{{ t('admin.org.rolesHint') }}</span>
         </div>
-        <a-button type="primary" @click="openAddRole"><PlusOutlined /> 新建角色</a-button>
+        <a-button type="primary" @click="openAddRole"><PlusOutlined /> {{ t('admin.org.addRole') }}</a-button>
       </div>
 
       <div class="role-grid">
@@ -344,19 +348,19 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
             <div class="role-card-title">
               <SafetyCertificateOutlined class="role-card-icon" />
               <span>{{ r.name }}</span>
-              <span v-if="r.is_system" class="system-tag">系统</span>
+              <span v-if="r.is_system" class="system-tag">{{ t('admin.org.system') }}</span>
             </div>
             <div class="role-card-actions">
               <button class="icon-btn" @click="openEditRole(r)"><EditOutlined /></button>
-              <a-popconfirm v-if="!r.is_system" title="确认删除？" @confirm="deleteRole(r)">
+              <a-popconfirm v-if="!r.is_system" :title="t('admin.org.confirmDelete')" @confirm="deleteRole(r)">
                 <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
               </a-popconfirm>
             </div>
           </div>
           <p class="role-card-desc">{{ r.description }}</p>
           <div class="role-card-meta">
-            <span class="role-meta-item"><TeamOutlined /> {{ getRoleMemberCount(r.id) }} 人</span>
-            <span class="role-meta-item"><KeyOutlined /> {{ r.page_permissions.length }} 项权限</span>
+            <span class="role-meta-item"><TeamOutlined /> {{ t('admin.org.members', [getRoleMemberCount(r.id)]) }}</span>
+            <span class="role-meta-item"><KeyOutlined /> {{ t('admin.org.permissions', [r.page_permissions.length]) }}</span>
           </div>
           <div class="role-card-perms">
             <span v-for="p in r.page_permissions" :key="p" class="perm-tag">
@@ -371,9 +375,9 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
     <div v-if="topTab === 'departments'" class="tab-content">
       <div class="toolbar">
         <div class="toolbar-left">
-          <span class="toolbar-hint">管理组织部门结构</span>
+          <span class="toolbar-hint">{{ t('admin.org.deptsHint') }}</span>
         </div>
-        <a-button type="primary" @click="openAddDept"><PlusOutlined /> 新建部门</a-button>
+        <a-button type="primary" @click="openAddDept"><PlusOutlined /> {{ t('admin.org.addDept') }}</a-button>
       </div>
 
       <div class="dept-grid">
@@ -383,67 +387,67 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
             <span class="dept-card-name">{{ d.name }}</span>
             <div class="dept-card-actions">
               <button class="icon-btn" @click="openEditDept(d)"><EditOutlined /></button>
-              <a-popconfirm title="确认删除？" @confirm="deleteDept(d)">
+              <a-popconfirm :title="t('admin.org.confirmDelete')" @confirm="deleteDept(d)">
                 <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
               </a-popconfirm>
             </div>
           </div>
           <div class="dept-card-body">
-            <div class="dept-meta"><UserOutlined /> 负责人：{{ d.manager || '未设置' }}</div>
-            <div class="dept-meta"><TeamOutlined /> 成员：{{ getDeptMemberCount(d.id) }} 人</div>
+            <div class="dept-meta"><UserOutlined /> {{ t('admin.org.manager', [d.manager || t('admin.org.notSet')]) }}</div>
+            <div class="dept-meta"><TeamOutlined /> {{ t('admin.org.deptMembers', [getDeptMemberCount(d.id)]) }}</div>
           </div>
         </div>
       </div>
     </div>
 
     <!-- ===== Member Modal ===== -->
-    <a-modal v-model:open="showMemberModal" :title="editingMember ? '编辑人员' : '添加人员'" @ok="handleSaveMember" ok-text="保存" cancel-text="取消" :width="520">
+    <a-modal v-model:open="showMemberModal" :title="editingMember ? t('admin.org.editMember') : t('admin.org.addMemberTitle')" @ok="handleSaveMember" :ok-text="t('admin.org.save')" :cancel-text="t('admin.org.cancel')" :width="520">
       <a-form layout="vertical" style="margin-top: 16px;">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <a-form-item label="姓名" required>
-            <a-input v-model:value="memberForm.name" placeholder="请输入姓名" />
+          <a-form-item :label="t('admin.org.name')" required>
+            <a-input v-model:value="memberForm.name" :placeholder="t('admin.org.namePlaceholder')" />
           </a-form-item>
-          <a-form-item label="用户名" required>
-            <a-input v-model:value="memberForm.username" placeholder="请输入用户名" :disabled="!!editingMember" />
+          <a-form-item :label="t('admin.org.username')" required>
+            <a-input v-model:value="memberForm.username" :placeholder="t('admin.org.usernamePlaceholder')" :disabled="!!editingMember" />
           </a-form-item>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <a-form-item label="部门">
-            <a-select v-model:value="memberForm.department_id" placeholder="选择部门">
+          <a-form-item :label="t('admin.org.department')">
+            <a-select v-model:value="memberForm.department_id" :placeholder="t('admin.org.selectDept')">
               <a-select-option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</a-select-option>
             </a-select>
           </a-form-item>
-          <a-form-item label="角色">
-            <a-select v-model:value="memberForm.role_id" placeholder="选择角色">
+          <a-form-item :label="t('admin.org.role')">
+            <a-select v-model:value="memberForm.role_id" :placeholder="t('admin.org.selectRole')">
               <a-select-option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</a-select-option>
             </a-select>
           </a-form-item>
         </div>
-        <a-form-item label="职位">
-          <a-input v-model:value="memberForm.position" placeholder="请输入职位" />
+        <a-form-item :label="t('admin.org.position')">
+          <a-input v-model:value="memberForm.position" :placeholder="t('admin.org.positionPlaceholder')" />
         </a-form-item>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <a-form-item label="邮箱">
-            <a-input v-model:value="memberForm.email" placeholder="请输入邮箱" />
+          <a-form-item :label="t('admin.org.email')">
+            <a-input v-model:value="memberForm.email" :placeholder="t('admin.org.emailPlaceholder')" />
           </a-form-item>
-          <a-form-item label="手机号">
-            <a-input v-model:value="memberForm.phone" placeholder="请输入手机号" />
+          <a-form-item :label="t('admin.org.phone')">
+            <a-input v-model:value="memberForm.phone" :placeholder="t('admin.org.phonePlaceholder')" />
           </a-form-item>
         </div>
       </a-form>
     </a-modal>
 
     <!-- ===== Role Modal ===== -->
-    <a-modal v-model:open="showRoleModal" :title="editingRole ? '编辑角色' : '新建角色'" @ok="handleSaveRole" ok-text="保存" cancel-text="取消" :width="560">
+    <a-modal v-model:open="showRoleModal" :title="editingRole ? t('admin.org.editRole') : t('admin.org.addRoleTitle')" @ok="handleSaveRole" :ok-text="t('admin.org.save')" :cancel-text="t('admin.org.cancel')" :width="560">
       <a-form layout="vertical" style="margin-top: 16px;">
-        <a-form-item label="角色名称" required>
-          <a-input v-model:value="roleForm.name" placeholder="请输入角色名称" />
+        <a-form-item :label="t('admin.org.roleName')" required>
+          <a-input v-model:value="roleForm.name" :placeholder="t('admin.org.roleNamePlaceholder')" />
         </a-form-item>
-        <a-form-item label="角色描述">
-          <a-textarea v-model:value="roleForm.description" placeholder="请输入角色描述" :rows="2" />
+        <a-form-item :label="t('admin.org.roleDesc')">
+          <a-textarea v-model:value="roleForm.description" :placeholder="t('admin.org.roleDescPlaceholder')" :rows="2" />
         </a-form-item>
-        <a-form-item label="页面访问权限">
-          <p class="perm-hint">勾选该角色可访问的页面</p>
+        <a-form-item :label="t('admin.org.pagePermissions')">
+          <p class="perm-hint">{{ t('admin.org.permHint') }}</p>
           <div class="perm-check-grid">
             <label v-for="page in allPages" :key="page.path" class="perm-check-item">
               <a-checkbox
@@ -462,13 +466,13 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
     </a-modal>
 
     <!-- ===== Department Modal ===== -->
-    <a-modal v-model:open="showDeptModal" :title="editingDept ? '编辑部门' : '新建部门'" @ok="handleSaveDept" ok-text="保存" cancel-text="取消" :width="440">
+    <a-modal v-model:open="showDeptModal" :title="editingDept ? t('admin.org.editDept') : t('admin.org.addDeptTitle')" @ok="handleSaveDept" :ok-text="t('admin.org.save')" :cancel-text="t('admin.org.cancel')" :width="440">
       <a-form layout="vertical" style="margin-top: 16px;">
-        <a-form-item label="部门名称" required>
-          <a-input v-model:value="deptForm.name" placeholder="请输入部门名称" />
+        <a-form-item :label="t('admin.org.deptName')" required>
+          <a-input v-model:value="deptForm.name" :placeholder="t('admin.org.deptNamePlaceholder')" />
         </a-form-item>
-        <a-form-item label="负责人">
-          <a-input v-model:value="deptForm.manager" placeholder="请输入负责人姓名" />
+        <a-form-item :label="t('admin.org.managerLabel')">
+          <a-input v-model:value="deptForm.manager" :placeholder="t('admin.org.managerPlaceholder')" />
         </a-form-item>
       </a-form>
     </a-modal>

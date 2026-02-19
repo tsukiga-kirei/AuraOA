@@ -26,9 +26,11 @@ import {
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig, FlowRuleConfig } from '~/composables/useMockData'
+import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
+const { t } = useI18n()
 const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs } = useMockData()
 
 // ===== Top-level tab: 审核工作台 vs 定时任务配置 vs 归档复盘 =====
@@ -42,33 +44,33 @@ const selectedCronConfig = computed(() =>
   cronConfigs.value.find(c => c.task_type === selectedCronType.value)
 )
 
-const cronAiProviders = [
-  { value: '本地部署', label: '本地部署' },
-  { value: '云端API', label: '云端 API' },
-]
+const cronAiProviders = computed(() => [
+  { value: '本地部署', label: t('admin.ruleConfig.localDeploy') },
+  { value: '云端API', label: t('admin.ruleConfig.cloudAPI') },
+])
 
 const cronModelOptions: Record<string, string[]> = {
   '本地部署': ['Qwen2.5-72B', 'Qwen2.5-32B', 'ChatGLM4-9B', 'DeepSeek-V3'],
   '云端API': ['GPT-4o', 'GPT-4o-mini', 'Claude-3.5-Sonnet', 'Gemini-2.0-Flash'],
 }
 
-const pushFormatOptions = [
-  { value: 'html', label: 'HTML 邮件' },
-  { value: 'markdown', label: 'Markdown' },
-  { value: 'plain', label: '纯文本' },
-]
+const pushFormatOptions = computed(() => [
+  { value: 'html', label: t('admin.ruleConfig.htmlEmail') },
+  { value: 'markdown', label: t('admin.ruleConfig.markdown') },
+  { value: 'plain', label: t('admin.ruleConfig.plainText') },
+])
 
-const cronPermissionLabels: Record<string, { label: string; desc: string }> = {
-  allow_modify_email: { label: '修改推送邮箱', desc: '允许用户设置个人推送邮箱地址' },
-  allow_modify_schedule: { label: '修改执行计划', desc: '允许用户调整定时任务的 Cron 表达式' },
-  allow_modify_prompt: { label: '修改提示词', desc: '允许用户查看和修改 AI 提示词内容' },
-  allow_modify_template: { label: '修改内容模板', desc: '允许用户自定义推送内容的模板结构' },
-}
+const cronPermissionLabels = computed(() => ({
+  allow_modify_email: { label: t('admin.ruleConfig.modifyEmail'), desc: t('admin.ruleConfig.modifyEmailDesc') },
+  allow_modify_schedule: { label: t('admin.ruleConfig.modifySchedule'), desc: t('admin.ruleConfig.modifyScheduleDesc') },
+  allow_modify_prompt: { label: t('admin.ruleConfig.modifyPrompt'), desc: t('admin.ruleConfig.modifyPromptDesc') },
+  allow_modify_template: { label: t('admin.ruleConfig.modifyTemplate'), desc: t('admin.ruleConfig.modifyTemplateDesc') },
+}))
 
 const cronActiveTab = ref('template')
 
 const handleSaveCronConfig = () => {
-  message.success('定时任务配置已保存')
+  message.success(t('admin.ruleConfig.cronSaved'))
 }
 
 const processConfigs = ref<ProcessAuditConfig[]>(JSON.parse(JSON.stringify(mockProcessAuditConfigs)))
@@ -80,13 +82,13 @@ const newProcessForm = ref({ process_type: '', flow_path: '' })
 
 const handleAddProcess = () => {
   if (!newProcessForm.value.process_type.trim()) {
-    message.warning('请输入流程名称')
+    message.warning(t('admin.ruleConfig.enterProcessName'))
     return
   }
   const newConfig: ProcessAuditConfig = {
     id: `PAC-${Date.now()}`,
     process_type: newProcessForm.value.process_type.trim(),
-    flow_path: newProcessForm.value.flow_path.trim() || '待配置',
+    flow_path: newProcessForm.value.flow_path.trim() || t('admin.ruleConfig.pending'),
     field_mode: 'selected',
     fields: [],
     rules: [],
@@ -109,7 +111,7 @@ const handleAddProcess = () => {
   selectedProcessId.value = newConfig.id
   showAddProcess.value = false
   newProcessForm.value = { process_type: '', flow_path: '' }
-  message.success('流程已添加')
+  message.success(t('admin.ruleConfig.processAdded'))
 }
 const activeTab = ref('fields')
 
@@ -118,9 +120,9 @@ const selectedConfig = computed(() =>
 )
 
 // ===== Field config =====
-const fieldTypeLabels: Record<string, string> = {
-  text: '文本', number: '数字', date: '日期', select: '下拉选择', textarea: '多行文本', file: '文件',
-}
+const fieldTypeLabels = computed(() => ({
+  text: t('fieldType.text'), number: t('fieldType.number'), date: t('fieldType.date'), select: t('fieldType.select'), textarea: t('fieldType.textarea'), file: t('fieldType.file'),
+}))
 
 const toggleFieldSelection = (field: ProcessField) => {
   if (selectedConfig.value?.field_mode === 'all') return
@@ -132,11 +134,11 @@ const selectedFieldCount = computed(() =>
 )
 
 // ===== Rules config =====
-const scopeConfig: Record<string, { label: string; color: string; bg: string; icon: any }> = {
-  mandatory: { label: '强制执行', color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: LockOutlined },
-  default_on: { label: '默认开启', color: 'var(--color-primary)', bg: 'var(--color-primary-bg)', icon: UnlockOutlined },
-  default_off: { label: '默认关闭', color: 'var(--color-text-tertiary)', bg: 'var(--color-bg-hover)', icon: UnlockOutlined },
-}
+const scopeConfig = computed(() => ({
+  mandatory: { label: t('admin.ruleConfig.mandatory'), color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: LockOutlined },
+  default_on: { label: t('admin.ruleConfig.defaultOn'), color: 'var(--color-primary)', bg: 'var(--color-primary-bg)', icon: UnlockOutlined },
+  default_off: { label: t('admin.ruleConfig.defaultOff'), color: 'var(--color-text-tertiary)', bg: 'var(--color-bg-hover)', icon: UnlockOutlined },
+}))
 
 const showRuleEditor = ref(false)
 const editingRule = ref<AuditRule | null>(null)
@@ -159,36 +161,36 @@ const handleSaveRule = (rule: any) => {
   }
   showRuleEditor.value = false
   editingRule.value = null
-  message.success('规则已保存')
+  message.success(t('admin.ruleConfig.ruleSaved'))
 }
 
 const deleteRule = (id: string) => {
   if (!selectedConfig.value) return
   selectedConfig.value.rules = selectedConfig.value.rules.filter(r => r.id !== id)
-  message.success('已删除')
+  message.success(t('admin.ruleConfig.deleted'))
 }
 
 const handleImportRules = () => {
-  message.info('文件识别导入功能开发中，将支持从 PDF/Word/Excel 中提取规则')
+  message.info(t('admin.ruleConfig.fileImportDev'))
 }
 
-const kbModes = [
-  { key: 'rules_only', icon: FileTextOutlined, title: '仅规则库', desc: '结构化 Checklist 审核', available: true },
-  { key: 'rag_only', icon: DatabaseOutlined, title: '仅制度库 (RAG)', desc: 'PDF/Word 文档检索增强', available: false },
-  { key: 'hybrid', icon: ThunderboltOutlined, title: '混合模式', desc: '规则库 + 制度库联合审核', available: false },
-]
+const kbModes = computed(() => [
+  { key: 'rules_only', icon: FileTextOutlined, title: t('admin.ruleConfig.rulesOnlyTitle'), desc: t('admin.ruleConfig.rulesOnlyDesc'), available: true },
+  { key: 'rag_only', icon: DatabaseOutlined, title: t('admin.ruleConfig.ragOnlyTitle'), desc: t('admin.ruleConfig.ragOnlyDesc'), available: false },
+  { key: 'hybrid', icon: ThunderboltOutlined, title: t('admin.ruleConfig.hybridTitle'), desc: t('admin.ruleConfig.hybridDesc'), available: false },
+])
 
 // ===== AI config =====
-const strictnessOptions = [
-  { value: 'strict', label: '严格', desc: '所有规则严格执行，零容忍' },
-  { value: 'standard', label: '标准', desc: '按规则默认配置执行' },
-  { value: 'loose', label: '宽松', desc: '仅校验强制规则，其余仅提示' },
-]
+const strictnessOptions = computed(() => [
+  { value: 'strict', label: t('admin.ruleConfig.strict'), desc: t('admin.ruleConfig.strictDesc') },
+  { value: 'standard', label: t('admin.ruleConfig.standard'), desc: t('admin.ruleConfig.standardDesc') },
+  { value: 'loose', label: t('admin.ruleConfig.loose'), desc: t('admin.ruleConfig.looseDesc') },
+])
 
-const aiProviders = [
-  { value: '本地部署', label: '本地部署' },
-  { value: '云端API', label: '云端 API' },
-]
+const aiProviders = computed(() => [
+  { value: '本地部署', label: t('admin.ruleConfig.localDeploy') },
+  { value: '云端API', label: t('admin.ruleConfig.cloudAPI') },
+])
 
 const modelOptions: Record<string, string[]> = {
   '本地部署': ['Qwen2.5-72B', 'Qwen2.5-32B', 'ChatGLM4-9B', 'DeepSeek-V3'],
@@ -235,13 +237,13 @@ const handleSaveArchiveRule = (rule: any) => {
   }
   showArchiveRuleEditor.value = false
   editingArchiveRule.value = null
-  message.success('规则已保存')
+  message.success(t('admin.ruleConfig.ruleSaved'))
 }
 
 const deleteArchiveRule = (id: string) => {
   if (!selectedArchiveConfig.value) return
   selectedArchiveConfig.value.rules = selectedArchiveConfig.value.rules.filter(r => r.id !== id)
-  message.success('已删除')
+  message.success(t('admin.ruleConfig.deleted'))
 }
 
 // Flow rules
@@ -278,34 +280,34 @@ const handleSaveFlowRule = () => {
   }
   showFlowRuleEditor.value = false
   editingFlowRule.value = null
-  message.success('审批流规则已保存')
+  message.success(t('admin.ruleConfig.flowRuleSaved'))
 }
 
 const deleteFlowRule = (id: string) => {
   if (!selectedArchiveConfig.value) return
   selectedArchiveConfig.value.flow_rules = selectedArchiveConfig.value.flow_rules.filter(r => r.id !== id)
-  message.success('已删除')
+  message.success(t('admin.ruleConfig.deleted'))
 }
 
-const archivePermissionLabels: Record<string, { label: string; desc: string }> = {
-  allow_custom_fields: { label: '自定义复核字段', desc: '允许用户新增或切换参与复核的字段' },
-  allow_custom_rules: { label: '自定义复核规则', desc: '允许用户新增、修改个人复核规则' },
-  allow_custom_flow_rules: { label: '自定义审批流规则', desc: '允许用户新增个人审批流合规规则' },
-  allow_modify_strictness: { label: '调整复核尺度', desc: '允许用户调整 AI 复核的严格/宽松程度' },
-}
+const archivePermissionLabels = computed(() => ({
+  allow_custom_fields: { label: t('admin.ruleConfig.customReviewFields'), desc: t('admin.ruleConfig.customReviewFieldsDesc') },
+  allow_custom_rules: { label: t('admin.ruleConfig.customReviewRules'), desc: t('admin.ruleConfig.customReviewRulesDesc') },
+  allow_custom_flow_rules: { label: t('admin.ruleConfig.customFlowRules'), desc: t('admin.ruleConfig.customFlowRulesDesc') },
+  allow_modify_strictness: { label: t('admin.ruleConfig.modReviewStrictness'), desc: t('admin.ruleConfig.modReviewStrictnessDesc') },
+}))
 
 const handleSaveArchiveConfig = () => {
-  message.success('归档复盘配置已保存')
+  message.success(t('admin.ruleConfig.archiveSaved'))
 }
 
-const permissionLabels: Record<string, { label: string; desc: string }> = {
-  allow_custom_fields: { label: '自定义审核字段', desc: '允许用户新增或切换参与审核的字段' },
-  allow_custom_rules: { label: '自定义审核规则', desc: '允许用户新增、修改个人审核规则' },
-  allow_modify_strictness: { label: '调整审核尺度', desc: '允许用户调整 AI 审核的严格/宽松程度' },
-}
+const permissionLabels = computed(() => ({
+  allow_custom_fields: { label: t('admin.ruleConfig.allowCustomFields'), desc: t('admin.ruleConfig.allowCustomFieldsDesc') },
+  allow_custom_rules: { label: t('admin.ruleConfig.allowCustomRules'), desc: t('admin.ruleConfig.allowCustomRulesDesc') },
+  allow_modify_strictness: { label: t('admin.ruleConfig.allowModStrictness'), desc: t('admin.ruleConfig.allowModStrictnessDesc') },
+}))
 
 const handleSave = () => {
-  message.success('配置已保存')
+  message.success(t('admin.ruleConfig.configSaved'))
 }
 </script>
 
@@ -313,8 +315,8 @@ const handleSave = () => {
   <div class="tenant-page fade-in">
     <div class="page-header">
       <div>
-        <h1 class="page-title">规则配置</h1>
-        <p class="page-subtitle">以流程为维度，配置审核规则、定时任务参数与归档复盘</p>
+        <h1 class="page-title">{{ t('admin.ruleConfig.title') }}</h1>
+        <p class="page-subtitle">{{ t('admin.ruleConfig.subtitle') }}</p>
       </div>
     </div>
 
@@ -322,9 +324,9 @@ const handleSave = () => {
     <div class="top-tab-nav">
       <button
         v-for="tab in [
-          { key: 'audit', label: '审核工作台', icon: DashboardOutlined },
-          { key: 'cron', label: '定时任务配置', icon: ClockCircleOutlined },
-          { key: 'archive', label: '归档复盘', icon: FolderOpenOutlined },
+          { key: 'audit', label: t('admin.ruleConfig.tabAudit'), icon: DashboardOutlined },
+          { key: 'cron', label: t('admin.ruleConfig.tabCron'), icon: ClockCircleOutlined },
+          { key: 'archive', label: t('admin.ruleConfig.tabArchive'), icon: FolderOpenOutlined },
         ]"
         :key="tab.key"
         class="top-tab-btn"
@@ -342,8 +344,8 @@ const handleSave = () => {
       <div class="process-nav">
         <div class="process-nav-header">
           <SettingOutlined />
-          <span>审核流程</span>
-          <button class="add-process-btn" @click="showAddProcess = true" title="新增流程">
+          <span>{{ t('admin.ruleConfig.auditProcess') }}</span>
+          <button class="add-process-btn" @click="showAddProcess = true" :title="t('admin.ruleConfig.addProcess')">
             <PlusOutlined />
           </button>
         </div>
@@ -370,10 +372,10 @@ const handleSave = () => {
         <div class="tab-nav">
           <button
             v-for="tab in [
-              { key: 'fields', label: '字段配置', icon: AppstoreOutlined },
-              { key: 'rules', label: '审核规则', icon: AuditOutlined },
-              { key: 'ai', label: 'AI 配置', icon: RobotOutlined },
-              { key: 'permissions', label: '用户权限', icon: SafetyCertificateOutlined },
+              { key: 'fields', label: t('admin.ruleConfig.tabFields'), icon: AppstoreOutlined },
+              { key: 'rules', label: t('admin.ruleConfig.tabRules'), icon: AuditOutlined },
+              { key: 'ai', label: t('admin.ruleConfig.tabAI'), icon: RobotOutlined },
+              { key: 'permissions', label: t('admin.ruleConfig.tabPerms'), icon: SafetyCertificateOutlined },
             ]"
             :key="tab.key"
             class="tab-btn"
@@ -389,8 +391,8 @@ const handleSave = () => {
         <div v-if="activeTab === 'fields'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">传输 AI 的字段</h4>
-              <p class="section-desc">选择参与 AI 审核的字段。全部字段模式下提示效果不如专门字段精准。</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.fieldTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.fieldDesc') }}</p>
             </div>
           </div>
 
@@ -402,8 +404,8 @@ const handleSave = () => {
             >
               <div class="field-mode-radio" />
               <div>
-                <div class="field-mode-label">选择字段</div>
-                <div class="field-mode-desc">手动选择参与审核的字段（推荐）</div>
+                <div class="field-mode-label">{{ t('admin.ruleConfig.selectFields') }}</div>
+                <div class="field-mode-desc">{{ t('admin.ruleConfig.selectFieldsDesc') }}</div>
               </div>
             </div>
             <div
@@ -413,8 +415,8 @@ const handleSave = () => {
             >
               <div class="field-mode-radio" />
               <div>
-                <div class="field-mode-label">全部字段</div>
-                <div class="field-mode-desc">所有字段均传输给 AI（信息量大，精准度可能下降）</div>
+                <div class="field-mode-label">{{ t('admin.ruleConfig.allFields') }}</div>
+                <div class="field-mode-desc">{{ t('admin.ruleConfig.allFieldsDesc') }}</div>
               </div>
             </div>
           </div>
@@ -452,8 +454,8 @@ const handleSave = () => {
         <div v-if="activeTab === 'rules'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">审核规则</h4>
-              <p class="section-desc">为当前流程配置审核规则，支持手工添加或文件识别导入</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.rulesTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.rulesDesc') }}</p>
             </div>
           </div>
 
@@ -480,10 +482,10 @@ const handleSave = () => {
           </div>
 
           <div class="rules-toolbar">
-            <span class="rules-count">共 {{ selectedConfig.rules.length }} 条规则</span>
+            <span class="rules-count">{{ t('admin.ruleConfig.totalRules', `${selectedConfig.rules.length}`) }}</span>
             <div class="rules-toolbar-actions">
               <a-button @click="handleImportRules">
-                <UploadOutlined /> 文件识别导入
+                <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
               </a-button>
               <a-button type="primary" @click="openRuleEditor()">
                 <PlusOutlined /> 手工添加
@@ -510,7 +512,7 @@ const handleSave = () => {
               <div class="rule-card-actions">
                 <a-switch v-model:checked="rule.enabled" size="small" />
                 <button class="icon-btn" @click="openRuleEditor(rule)"><EditOutlined /></button>
-                <a-popconfirm title="确认删除此规则？" @confirm="deleteRule(rule.id)">
+                <a-popconfirm :title="t('admin.ruleConfig.deleteRuleConfirm')" @confirm="deleteRule(rule.id)">
                   <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
                 </a-popconfirm>
               </div>
@@ -522,22 +524,22 @@ const handleSave = () => {
         <div v-if="activeTab === 'ai'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">AI 审核配置</h4>
-              <p class="section-desc">配置对接的 AI 系统、审核尺度及提示词模板</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.aiTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.aiDesc') }}</p>
             </div>
           </div>
 
           <div class="ai-form">
             <div class="ai-form-row">
               <div class="ai-form-group">
-                <label class="ai-form-label">AI 服务商</label>
-                <a-select v-model:value="selectedConfig.ai_config.ai_provider" style="width: 100%;" size="large" placeholder="选择服务商">
+                <label class="ai-form-label">{{ t('admin.ruleConfig.aiProvider') }}</label>
+                <a-select v-model:value="selectedConfig.ai_config.ai_provider" style="width: 100%;" size="large" :placeholder="t('admin.ruleConfig.selectProvider')">
                   <a-select-option v-for="p in aiProviders" :key="p.value" :value="p.value">{{ p.label }}</a-select-option>
                 </a-select>
               </div>
               <div class="ai-form-group">
-                <label class="ai-form-label">模型</label>
-                <a-select v-model:value="selectedConfig.ai_config.model_name" style="width: 100%;" size="large" placeholder="选择模型">
+                <label class="ai-form-label">{{ t('admin.ruleConfig.model') }}</label>
+                <a-select v-model:value="selectedConfig.ai_config.model_name" style="width: 100%;" size="large" :placeholder="t('admin.ruleConfig.selectModel')">
                   <a-select-option
                     v-for="m in (modelOptions[selectedConfig.ai_config.ai_provider] || [])"
                     :key="m" :value="m"
@@ -547,7 +549,7 @@ const handleSave = () => {
             </div>
 
             <div class="ai-form-group">
-              <label class="ai-form-label">审核尺度</label>
+              <label class="ai-form-label">{{ t('admin.ruleConfig.strictness') }}</label>
               <div class="strictness-options">
                 <div
                   v-for="opt in strictnessOptions"
@@ -566,11 +568,11 @@ const handleSave = () => {
             </div>
 
             <div class="ai-form-group">
-              <label class="ai-form-label">系统提示词（System Prompt）</label>
+              <label class="ai-form-label">{{ t('admin.ruleConfig.systemPrompt') }}</label>
               <a-textarea
                 v-model:value="selectedConfig.ai_config.system_prompt"
                 :rows="6"
-                placeholder="输入 AI 审核的系统提示词..."
+                :placeholder="t('admin.ruleConfig.promptPlaceholder')"
               />
             </div>
 
@@ -591,9 +593,9 @@ const handleSave = () => {
                   :min="0" :max="1" :step="0.1"
                 />
                 <div class="slider-labels">
-                  <span>精确 (0)</span>
-                  <span>当前: {{ selectedConfig.ai_config.temperature }}</span>
-                  <span>创意 (1)</span>
+                  <span>{{ t('admin.ruleConfig.precise') }}</span>
+                  <span>{{ t('admin.ruleConfig.current') }}: {{ selectedConfig.ai_config.temperature }}</span>
+                  <span>{{ t('admin.ruleConfig.creative') }}</span>
                 </div>
               </div>
             </div>
@@ -604,8 +606,8 @@ const handleSave = () => {
         <div v-if="activeTab === 'permissions'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">用户自定义权限</h4>
-              <p class="section-desc">控制业务用户在个人设置中可以自定义的内容范围，以流程为维度独立管控</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.permTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.permDesc') }}</p>
             </div>
           </div>
 
@@ -629,12 +631,12 @@ const handleSave = () => {
         </div>
 
         <div class="config-actions">
-          <a-button type="primary" size="large" @click="handleSave">保存配置</a-button>
+          <a-button type="primary" size="large" @click="handleSave">{{ t('admin.ruleConfig.saveConfig') }}</a-button>
         </div>
       </div>
 
       <div v-else class="config-empty">
-        <a-empty description="请选择左侧流程查看配置" />
+        <a-empty :description="t('admin.ruleConfig.selectProcess')" />
       </div>
     </div>
 
@@ -649,17 +651,17 @@ const handleSave = () => {
     <!-- Add process modal -->
     <a-modal
       v-model:open="showAddProcess"
-      title="新增审核流程"
+      :title="t('admin.ruleConfig.addProcessTitle')"
       @ok="handleAddProcess"
-      ok-text="确认"
-      cancel-text="取消"
+      :ok-text="t('admin.ruleConfig.confirm')"
+      :cancel-text="t('admin.ruleConfig.cancel')"
     >
       <a-form layout="vertical" style="margin-top: 16px;">
-        <a-form-item label="流程名称" required>
-          <a-input v-model:value="newProcessForm.process_type" placeholder="如：采购审批、费用报销" />
+        <a-form-item :label="t('admin.ruleConfig.processName')" required>
+          <a-input v-model:value="newProcessForm.process_type" :placeholder="t('admin.ruleConfig.processNamePlaceholder')" />
         </a-form-item>
-        <a-form-item label="审批路径">
-          <a-input v-model:value="newProcessForm.flow_path" placeholder="如：部门经理 → 财务总监 → 总经理" />
+        <a-form-item :label="t('admin.ruleConfig.flowPath')">
+          <a-input v-model:value="newProcessForm.flow_path" :placeholder="t('admin.ruleConfig.flowPathPlaceholder')" />
         </a-form-item>
       </a-form>
     </a-modal>

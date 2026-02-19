@@ -11,28 +11,24 @@ import {
   AlertOutlined,
 } from '@ant-design/icons-vue'
 
-const { mockDashboardStats } = useMockData()
+const { t, locale } = useI18n()
+const { mockDashboardStats, mockSystemMonitorMetrics, mockSystemMonitorAlerts } = useMockData()
 
-const metrics = ref({
-  system_health: 'healthy',
-  api_success_rate: 99.2,
-  avg_model_response_ms: 1250,
-  active_tenants: 3,
-  total_audits_today: mockDashboardStats.todayAudits,
-  uptime: '99.97%',
-  p95_latency: 2100,
-  total_requests_24h: 1847,
-})
+const metrics = ref(mockSystemMonitorMetrics)
 
 const weeklyTrend = ref(mockDashboardStats.weeklyTrend)
 const maxCount = computed(() => Math.max(...weeklyTrend.value.map(i => i.count), 1))
 const hoveredBar = ref<string | null>(null)
 
-const alerts = ref([
-  { id: 1, level: 'warning', message: '租户"华东分公司" Token 用量已达 70%', time: '10 分钟前' },
-  { id: 2, level: 'info', message: '系统自动完成每日数据备份', time: '2 小时前' },
-  { id: 3, level: 'info', message: 'AI 模型响应时间恢复正常', time: '5 小时前' },
-])
+const alerts = ref(mockSystemMonitorAlerts)
+
+// Resolve alert message based on current locale
+const getAlertMessage = (alert: typeof mockSystemMonitorAlerts[0]) => {
+  return locale.value === 'en-US' ? alert.messageEn : alert.messageZh
+}
+const getAlertTime = (alert: typeof mockSystemMonitorAlerts[0]) => {
+  return locale.value === 'en-US' ? alert.time : alert.timeZh
+}
 
 const alertLevelConfig: Record<string, { color: string; bg: string }> = {
   warning: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' },
@@ -45,12 +41,12 @@ const alertLevelConfig: Record<string, { color: string; bg: string }> = {
   <div class="monitor-page fade-in">
     <div class="page-header">
       <div>
-        <h1 class="page-title">全局监控</h1>
-        <p class="page-subtitle">系统健康度与关键运行指标</p>
+        <h1 class="page-title">{{ t('monitor.title') }}</h1>
+        <p class="page-subtitle">{{ t('monitor.subtitle') }}</p>
       </div>
       <div class="health-badge">
         <CheckCircleOutlined />
-        系统健康
+        {{ t('monitor.systemHealthy') }}
       </div>
     </div>
 
@@ -58,12 +54,12 @@ const alertLevelConfig: Record<string, { color: string; bg: string }> = {
     <div class="metrics-grid">
       <div
         v-for="(m, i) in [
-          { icon: ApiOutlined, value: metrics.api_success_rate, unit: '%', label: 'API 成功率', variant: 'success' },
-          { icon: ClockCircleOutlined, value: metrics.avg_model_response_ms, unit: 'ms', label: '模型平均响应', variant: 'primary' },
-          { icon: ThunderboltOutlined, value: metrics.p95_latency, unit: 'ms', label: 'P95 延迟', variant: 'warning' },
-          { icon: RiseOutlined, value: metrics.total_requests_24h, unit: '', label: '24h 请求数', variant: 'info' },
-          { icon: TeamOutlined, value: metrics.active_tenants, unit: '', label: '活跃租户', variant: 'success' },
-          { icon: CheckCircleOutlined, value: metrics.uptime, unit: '', label: '系统可用率', variant: 'primary' },
+          { icon: ApiOutlined, value: metrics.api_success_rate, unit: '%', labelKey: 'monitor.apiSuccessRate', variant: 'success' },
+          { icon: ClockCircleOutlined, value: metrics.avg_model_response_ms, unit: 'ms', labelKey: 'monitor.avgModelResponse', variant: 'primary' },
+          { icon: ThunderboltOutlined, value: metrics.p95_latency, unit: 'ms', labelKey: 'monitor.p95Latency', variant: 'warning' },
+          { icon: RiseOutlined, value: metrics.total_requests_24h, unit: '', labelKey: 'monitor.requests24h', variant: 'info' },
+          { icon: TeamOutlined, value: metrics.active_tenants, unit: '', labelKey: 'monitor.activeTenants', variant: 'success' },
+          { icon: CheckCircleOutlined, value: metrics.uptime, unit: '', labelKey: 'monitor.systemUptime', variant: 'primary' },
         ]"
         :key="i"
         class="metric-card"
@@ -73,7 +69,7 @@ const alertLevelConfig: Record<string, { color: string; bg: string }> = {
         </div>
         <div class="metric-info">
           <div class="metric-value">{{ m.value }}<span v-if="m.unit" class="metric-unit">{{ m.unit }}</span></div>
-          <div class="metric-label">{{ m.label }}</div>
+          <div class="metric-label">{{ t(m.labelKey) }}</div>
         </div>
       </div>
     </div>
@@ -81,7 +77,7 @@ const alertLevelConfig: Record<string, { color: string; bg: string }> = {
     <div class="monitor-grid">
       <!-- Weekly trend chart -->
       <div class="monitor-card">
-        <h3 class="card-title">近 7 日审核趋势</h3>
+        <h3 class="card-title">{{ t('monitor.weeklyTrend') }}</h3>
         <div class="chart-area">
           <!-- Y-axis grid lines -->
           <div class="chart-grid">
@@ -101,7 +97,7 @@ const alertLevelConfig: Record<string, { color: string; bg: string }> = {
               <Transition name="tooltip-fade">
                 <div v-if="hoveredBar === item.date" class="chart-tooltip">
                   <span class="chart-tooltip-value">{{ item.count }}</span>
-                  <span class="chart-tooltip-label">条审核</span>
+                  <span class="chart-tooltip-label">{{ t('monitor.auditCount') }}</span>
                 </div>
               </Transition>
               <div class="chart-bar-count" :class="{ 'chart-bar-count--active': hoveredBar === item.date }">
@@ -126,7 +122,7 @@ const alertLevelConfig: Record<string, { color: string; bg: string }> = {
       <div class="monitor-card">
         <h3 class="card-title">
           <AlertOutlined style="color: var(--color-warning);" />
-          最近告警
+          {{ t('monitor.recentAlerts') }}
         </h3>
         <div class="alerts-list">
           <div
@@ -137,13 +133,13 @@ const alertLevelConfig: Record<string, { color: string; bg: string }> = {
           >
             <div class="alert-dot" :style="{ background: alertLevelConfig[alert.level]?.color }" />
             <div class="alert-content">
-              <div class="alert-message">{{ alert.message }}</div>
-              <div class="alert-time">{{ alert.time }}</div>
+              <div class="alert-message">{{ getAlertMessage(alert) }}</div>
+              <div class="alert-time">{{ getAlertTime(alert) }}</div>
             </div>
           </div>
         </div>
         <div v-if="alerts.length === 0" style="padding: 32px; text-align: center;">
-          <a-empty description="暂无告警" />
+          <a-empty :description="t('monitor.noAlerts')" />
         </div>
       </div>
     </div>
