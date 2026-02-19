@@ -107,6 +107,7 @@ const editingRole = ref<OrgRole | null>(null)
 const roleForm = ref({ name: '', description: '', page_permissions: [] as string[] })
 
 const allPages = computed(() => [
+  { path: '/overview', label: t('menu.overview') },
   { path: '/dashboard', label: t('admin.org.page.dashboard') },
   { path: '/cron', label: t('admin.org.page.cron') },
   { path: '/archive', label: t('admin.org.page.archive') },
@@ -114,6 +115,7 @@ const allPages = computed(() => [
   { path: '/admin/tenant', label: t('admin.org.page.tenantConfig') },
   { path: '/admin/tenant/org', label: t('admin.org.page.tenantOrg') },
   { path: '/admin/tenant/data', label: t('admin.org.page.tenantData') },
+  { path: '/admin/tenant/user-configs', label: t('menu.tenant.userConfigs') },
   { path: '/admin/system', label: t('admin.org.page.sysMonitor') },
   { path: '/admin/system/tenants', label: t('admin.org.page.sysTenants') },
   { path: '/admin/system/settings', label: t('admin.org.page.sysSettings') },

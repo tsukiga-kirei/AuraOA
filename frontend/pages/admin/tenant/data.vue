@@ -104,7 +104,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
   if (type === 'audit') {
     message.loading(t('admin.data.exportingAudit'), 1)
     setTimeout(() => {
-      const ws = XLSX.utils.json_to_sheet(auditLogPagination.paginatedData.value)
+      const ws = XLSX.utils.json_to_sheet(auditLogPagination.paged.value)
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'AuditLogs')
       XLSX.writeFile(wb, `audit_logs_${new Date().getTime()}.xlsx`)
@@ -112,7 +112,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
   } else if (type === 'cron') {
     message.loading(t('admin.data.exportingCron'), 1)
     setTimeout(() => {
-      const ws = XLSX.utils.json_to_sheet(cronLogPagination.paginatedData.value)
+      const ws = XLSX.utils.json_to_sheet(cronLogPagination.paged.value)
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'CronLogs')
       XLSX.writeFile(wb, `cron_logs_${new Date().getTime()}.xlsx`)
@@ -120,7 +120,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
   } else {
     message.loading(t('admin.data.exportingArchive'), 1)
     setTimeout(() => {
-      const ws = XLSX.utils.json_to_sheet(archiveLogPagination.paginatedData.value)
+      const ws = XLSX.utils.json_to_sheet(archiveLogPagination.paged.value)
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'ArchiveLogs')
       XLSX.writeFile(wb, `archive_logs_${new Date().getTime()}.xlsx`)
@@ -248,7 +248,7 @@ const handleDeleteLog = (id: string, type: 'audit' | 'cron' | 'archive') => {
           show-quick-jumper
           :page-size-options="['10', '20', '50']"
           @change="auditLogPagination.onChange"
-          @showSizeChange="auditLogPagination.onPageSizeChange"
+          @showSizeChange="auditLogPagination.onChange"
         />
       </div>
     </div>
@@ -267,7 +267,6 @@ const handleDeleteLog = (id: string, type: 'audit' | 'cron' | 'archive') => {
             </a-select>
           </div>
           <div class="toolbar-right">
-            <span class="data-count">{{ t('admin.data.totalExec') }}: {{ cronLogPagination.total.value }}</span>
             <a-button @click="handleExport('cron')"><ExportOutlined /> {{ t('admin.data.export') }}</a-button>
           </div>
         </div>
@@ -275,7 +274,7 @@ const handleDeleteLog = (id: string, type: 'audit' | 'cron' | 'archive') => {
       <div class="stats-row">
         <div class="stat-card">
           <div class="stat-value">{{ cronLogs.length }}</div>
-          <div class="stat-label">{{ t('admin.data.totalExecutions') }}</div>
+          <div class="stat-label">{{ t('admin.data.totalExec') }}</div>
         </div>
         <div class="stat-card stat-card--success">
           <div class="stat-value">{{ cronLogs.filter(l => l.status === 'success').length }}</div>
@@ -342,7 +341,7 @@ const handleDeleteLog = (id: string, type: 'audit' | 'cron' | 'archive') => {
           show-quick-jumper
           :page-size-options="['10', '20', '50']"
           @change="cronLogPagination.onChange"
-          @showSizeChange="cronLogPagination.onPageSizeChange"
+          @showSizeChange="cronLogPagination.onChange"
         />
       </div>
     </div>
@@ -423,7 +422,7 @@ const handleDeleteLog = (id: string, type: 'audit' | 'cron' | 'archive') => {
           show-quick-jumper
           :page-size-options="['10', '20', '50']"
           @change="archiveLogPagination.onChange"
-          @showSizeChange="archiveLogPagination.onPageSizeChange"
+          @showSizeChange="archiveLogPagination.onChange"
         />
       </div>
     </div>
