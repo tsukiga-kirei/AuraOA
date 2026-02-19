@@ -1221,7 +1221,7 @@
 
 ## 9. 系统管理模块（系统管理员）
 
-> 系统管理模块包含三大功能：**租户管理**（含 JDBC 连接、AI 模型配置、配额策略）、**全局监控**、**系统设置**（OA 系统管理、AI 模型管理、平台配置）。
+> 系统管理模块包含三大功能：**租户管理**（含 OA 数据库连接关联、AI 模型配置、配额策略）、**全局监控**、**系统设置**（OA 系统管理、AI 模型管理、平台配置）。
 
 ### 9.1 获取租户列表
 - **GET** `/api/system/tenants`
@@ -1233,7 +1233,7 @@
         "id": "T-001",
         "name": "示例集团总部",
         "code": "DEMO_HQ",
-        "oa_type": "weaver_e9",
+        "oa_type": "weaver_e9（只读，由关联的 oa_db_connection_id 自动派生）",
         "token_quota": 100000,
         "token_used": 42350,
         "max_concurrency": 20,
@@ -1243,17 +1243,7 @@
         "contact_email": "zhangming@demo-group.com",
         "contact_phone": "138****8888",
         "description": "示例集团总部",
-        "jdbc_config": {
-          "driver": "mysql | postgresql | oracle | sqlserver",
-          "host": "192.168.1.100",
-          "port": 3306,
-          "database": "ecology",
-          "username": "oa_reader",
-          "password": "********（前端展示脱敏）",
-          "pool_size": 20,
-          "connection_timeout": 30,
-          "test_on_borrow": true
-        },
+        "oa_db_connection_id": "OADB-001（关联系统级 OA 数据库连接）",
         "ai_config": {
           "default_provider": "本地部署",
           "default_model": "Qwen2.5-72B",
@@ -1276,17 +1266,20 @@
 
 ### 9.2 创建租户
 - **POST** `/api/system/tenants`
-- **请求体**: 同 9.1 中单个租户结构（不含 `id`、`token_used`、`created_at`）
+- **请求体**: 同 9.1 中单个租户结构（不含 `id`、`token_used`、`created_at`、`oa_type`）
+- **说明**: `oa_type` 为只读字段，由 `oa_db_connection_id` 关联的 OA 数据库连接自动派生，创建时无需提交
 
 ### 9.3 更新租户配置
 - **PUT** `/api/system/tenants/{tenant_id}`
 - **请求体**: 同 9.1 中单个租户结构
+- **说明**: `oa_type` 为只读字段，前端通过选择 `oa_db_connection_id` 间接确定 OA 类型，无需直接提交 `oa_type`
 
 ### 9.4 切换租户状态
 - **PATCH** `/api/system/tenants/{tenant_id}/toggle`
 
-### 9.5 测试租户数据库连接
-- **POST** `/api/system/tenants/{tenant_id}/test-jdbc`
+### 9.5 测试租户 OA 数据库连接
+- **POST** `/api/system/tenants/{tenant_id}/test-db`
+- **说明**: 通过租户关联的 `oa_db_connection_id` 测试对应 OA 数据库连接是否可用
 - **响应**:
   ```json
   {
@@ -1378,10 +1371,34 @@
   }
   ```
 
-### 9.11 切换 AI 模型启用状态
+### 9.11 创建 AI 模型配置
+- **POST** `/api/system/ai-models`
+- **请求体**:
+  ```json
+  {
+    "provider": "本地部署 | 云端API",
+    "model_name": "string（模型标识）",
+    "display_name": "string（显示名称）",
+    "type": "local | cloud",
+    "endpoint": "string",
+    "api_key_configured": false,
+    "max_tokens": 4096,
+    "context_window": 65536,
+    "cost_per_1k_tokens": 0,
+    "description": "string",
+    "capabilities": ["text", "code", "reasoning", "vision", "analysis"]
+  }
+  ```
+- **响应**: 同 9.10 中单个模型结构（含生成的 `id`，`status` 默认 `offline`，`enabled` 默认 `true`）
+
+### 9.12 切换 AI 模型启用状态
 - **PATCH** `/api/system/ai-models/{model_id}/toggle`
 
-### 9.12 获取系统平台配置
+### 9.13 删除 AI 模型配置
+- **DELETE** `/api/system/ai-models/{model_id}`
+- **说明**: 删除前需确认该模型未被租户引用为默认模型或备用模型
+
+### 9.14 获取系统平台配置
 - **GET** `/api/system/general-config`
 - **响应**:
   ```json
@@ -1404,9 +1421,9 @@
   }
   ```
 
-### 9.13 更新系统平台配置
+### 9.15 更新系统平台配置
 - **PUT** `/api/system/general-config`
-- **请求体**: 同 9.12 响应结构
+- **请求体**: 同 9.14 响应结构
 
 ---
 

@@ -259,6 +259,7 @@ export interface TenantInfo {
   name: string
   code: string                // tenant code for identification
   oa_type: string
+  oa_db_connection_id: string // reference to system-level OA database connection
   token_quota: number
   token_used: number
   max_concurrency: number
@@ -268,7 +269,6 @@ export interface TenantInfo {
   contact_email: string
   contact_phone: string
   description: string
-  jdbc_config: TenantJdbcConfig
   ai_config: TenantAIConfig
   log_retention_days: number  // how many days to keep logs
   data_retention_days: number // how many days to keep audit data
@@ -292,6 +292,21 @@ export interface OASystemConfig {
   last_sync: string
   sync_interval: number  // seconds
   enabled: boolean
+}
+
+/** OA Database Connection - system-level, shared across tenants */
+export interface OADatabaseConnection {
+  id: string
+  name: string                // user-defined display name
+  oa_type: 'weaver_e9' | 'weaver_ebridge' | 'zhiyuan_a8' | 'landray_ekp' | 'custom'
+  oa_type_label: string
+  jdbc_config: TenantJdbcConfig
+  status: 'connected' | 'disconnected' | 'testing'
+  last_sync: string
+  sync_interval: number
+  enabled: boolean
+  created_at: string
+  description: string
 }
 
 export interface AIModelConfig {
@@ -1534,14 +1549,10 @@ export const useMockData = () => {
   const mockTenants: TenantInfo[] = [
     {
       id: 'T-001', name: '示例集团总部', code: 'DEMO_HQ', oa_type: 'weaver_e9',
+      oa_db_connection_id: 'OADB-001',
       token_quota: 100000, token_used: 42350, max_concurrency: 20, status: 'active', created_at: '2025-01-15',
       contact_name: '张明', contact_email: 'zhangming@demo-group.com', contact_phone: '138****8888',
       description: '示例集团总部，使用泛微E9 OA系统，主要用于采购、合同、报销等流程审核',
-      jdbc_config: {
-        driver: 'mysql', host: '192.168.1.100', port: 3306, database: 'ecology',
-        username: 'oa_reader', password: '********', pool_size: 20,
-        connection_timeout: 30, test_on_borrow: true,
-      },
       ai_config: {
         default_provider: '本地部署', default_model: 'Qwen2.5-72B',
         fallback_provider: '云端API', fallback_model: 'GPT-4o',
@@ -1552,14 +1563,10 @@ export const useMockData = () => {
     },
     {
       id: 'T-002', name: '华东分公司', code: 'EAST_BRANCH', oa_type: 'weaver_e9',
+      oa_db_connection_id: 'OADB-002',
       token_quota: 50000, token_used: 18200, max_concurrency: 10, status: 'active', created_at: '2025-02-20',
       contact_name: '李芳', contact_email: 'lifang@demo-east.com', contact_phone: '139****6666',
       description: '华东区域分公司，与总部共享OA基础配置，独立Token配额',
-      jdbc_config: {
-        driver: 'mysql', host: '192.168.2.100', port: 3306, database: 'ecology_east',
-        username: 'oa_reader', password: '********', pool_size: 10,
-        connection_timeout: 30, test_on_borrow: true,
-      },
       ai_config: {
         default_provider: '本地部署', default_model: 'Qwen2.5-72B',
         fallback_provider: '', fallback_model: '',
@@ -1570,14 +1577,10 @@ export const useMockData = () => {
     },
     {
       id: 'T-003', name: '测试租户', code: 'TEST_TENANT', oa_type: 'weaver_e9',
+      oa_db_connection_id: 'OADB-003',
       token_quota: 10000, token_used: 3100, max_concurrency: 5, status: 'inactive', created_at: '2025-03-10',
       contact_name: '系统管理员', contact_email: 'admin@test.com', contact_phone: '130****7777',
       description: '用于系统测试和演示的租户环境',
-      jdbc_config: {
-        driver: 'postgresql', host: 'localhost', port: 5432, database: 'ecology_test',
-        username: 'test_reader', password: '********', pool_size: 5,
-        connection_timeout: 15, test_on_borrow: false,
-      },
       ai_config: {
         default_provider: '本地部署', default_model: 'Qwen2.5-32B',
         fallback_provider: '', fallback_model: '',
@@ -1611,6 +1614,39 @@ export const useMockData = () => {
       id: 'OA-004', name: '蓝凌 EKP', type: 'landray_ekp', type_label: '蓝凌 EKP',
       version: 'v16.x', status: 'disconnected', description: '蓝凌数智化工作平台 EKP，支持多种数据集成方式',
       adapter_version: '0.9.0-alpha', last_sync: '', sync_interval: 120, enabled: false,
+    },
+  ]
+
+  const mockOADatabaseConnections: OADatabaseConnection[] = [
+    {
+      id: 'OADB-001', name: '总部泛微E9数据库', oa_type: 'weaver_e9', oa_type_label: '泛微 Ecology E9',
+      jdbc_config: {
+        driver: 'mysql', host: '192.168.1.100', port: 3306, database: 'ecology',
+        username: 'oa_reader', password: '********', pool_size: 20,
+        connection_timeout: 30, test_on_borrow: true,
+      },
+      status: 'connected', last_sync: '2026-02-12 15:30:22', sync_interval: 30, enabled: true,
+      created_at: '2025-01-10', description: '总部泛微E9 OA系统主数据库，用于流程数据同步',
+    },
+    {
+      id: 'OADB-002', name: '华东分公司E9数据库', oa_type: 'weaver_e9', oa_type_label: '泛微 Ecology E9',
+      jdbc_config: {
+        driver: 'mysql', host: '192.168.2.100', port: 3306, database: 'ecology_east',
+        username: 'oa_reader', password: '********', pool_size: 10,
+        connection_timeout: 30, test_on_borrow: true,
+      },
+      status: 'connected', last_sync: '2026-02-12 14:20:10', sync_interval: 60, enabled: true,
+      created_at: '2025-02-15', description: '华东分公司泛微E9数据库',
+    },
+    {
+      id: 'OADB-003', name: '测试环境数据库', oa_type: 'weaver_e9', oa_type_label: '泛微 Ecology E9',
+      jdbc_config: {
+        driver: 'postgresql', host: 'localhost', port: 5432, database: 'ecology_test',
+        username: 'test_reader', password: '********', pool_size: 5,
+        connection_timeout: 15, test_on_borrow: false,
+      },
+      status: 'disconnected', last_sync: '', sync_interval: 120, enabled: false,
+      created_at: '2025-03-05', description: '用于系统测试和演示的OA数据库连接',
     },
   ]
 
@@ -2238,6 +2274,7 @@ export const useMockData = () => {
     mockArchiveLogs: [...mockArchiveLogs],
     mockUserPersonalConfigs: [...mockUserPersonalConfigs],
     mockOASystemConfigs: [...mockOASystemConfigs],
+    mockOADatabaseConnections: [...mockOADatabaseConnections],
     mockAIModelConfigs: [...mockAIModelConfigs],
     mockSystemGeneralConfig: { ...mockSystemGeneralConfig },
     mockSystemMonitorMetrics,

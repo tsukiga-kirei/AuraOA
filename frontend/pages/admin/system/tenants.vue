@@ -1,44 +1,55 @@
 <script setup lang="ts">
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
-import { useI18n } from '~/composables/useI18n'
-const { t } = useI18n()
-
+import {useI18n} from '~/composables/useI18n'
 import {
-  PlusOutlined,
-  TeamOutlined,
-  EditOutlined,
-  DatabaseOutlined,
-  RobotOutlined,
-  SafetyCertificateOutlined,
-  SyncOutlined,
-  InfoCircleOutlined,
-  KeyOutlined,
   ClockCircleOutlined,
+  DatabaseOutlined,
+  EditOutlined,
+  InfoCircleOutlined,
+  LinkOutlined,
   MailOutlined,
   PhoneOutlined,
-  UserOutlined,
+  PlusOutlined,
+  RobotOutlined,
+  SafetyCertificateOutlined,
+  TeamOutlined,
   ThunderboltOutlined,
+  UserOutlined,
 } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
-import type { TenantInfo } from '~/composables/useMockData'
+import {message} from 'ant-design-vue'
+import type {TenantInfo} from '~/composables/useMockData'
 
-const { mockTenants, mockAIModelConfigs } = useMockData()
+const { t } = useI18n()
 
-const tenants = ref<TenantInfo[]>([...mockTenants])
+const { mockTenants, mockAIModelConfigs, mockOADatabaseConnections } = useMockData()
+
+const tenants = ref<TenantInfo[]>(JSON.parse(JSON.stringify(mockTenants)))
 const selectedTenant = ref<TenantInfo | null>(null)
 const showCreate = ref(false)
 const showDetail = ref(false)
 const detailActiveTab = ref('basic')
-const testingConnection = ref(false)
 
 // Available AI models for tenant config dropdowns
 const availableModels = computed(() => mockAIModelConfigs.filter(m => m.enabled))
 
+// Available OA database connections from system settings
+const availableOADbs = computed(() => mockOADatabaseConnections.filter(c => c.enabled))
+
+// Get OA DB connection name by id
+const getOADbName = (id: string) => {
+  const conn = mockOADatabaseConnections.find(c => c.id === id)
+  return conn ? conn.name : t('admin.tenants.notConfigured')
+}
+
+const getOADbInfo = (id: string) => {
+  return mockOADatabaseConnections.find(c => c.id === id) || null
+}
+
 const newTenant = ref({
   name: '',
   code: '',
-  oa_type: 'weaver_e9',
+  oa_db_connection_id: '',
   token_quota: 10000,
   max_concurrency: 10,
   contact_name: '',
@@ -51,11 +62,13 @@ const createTenant = () => {
     message.warning(t('admin.tenants.fillRequired'))
     return
   }
+  const selectedOADb = mockOADatabaseConnections.find(c => c.id === newTenant.value.oa_db_connection_id)
   const tenantObj: TenantInfo = {
     id: `T-${Date.now()}`,
     name: newTenant.value.name,
     code: newTenant.value.code,
-    oa_type: newTenant.value.oa_type,
+    oa_type: selectedOADb?.oa_type || 'weaver_e9',
+    oa_db_connection_id: newTenant.value.oa_db_connection_id,
     token_quota: newTenant.value.token_quota,
     token_used: 0,
     max_concurrency: newTenant.value.max_concurrency,
@@ -65,13 +78,8 @@ const createTenant = () => {
     contact_email: newTenant.value.contact_email,
     contact_phone: '',
     description: newTenant.value.description,
-    jdbc_config: {
-      driver: 'mysql', host: '', port: 3306, database: '',
-      username: '', password: '', pool_size: 10,
-      connection_timeout: 30, test_on_borrow: true,
-    },
     ai_config: {
-      default_provider: t('admin.ruleConfig.localDeploy'), default_model: 'Qwen2.5-72B',
+      default_provider: '本地部署', default_model: 'Qwen2.5-72B',
       fallback_provider: '', fallback_model: '',
       max_tokens_per_request: 4096, temperature: 0.3,
       timeout_seconds: 60, retry_count: 2,
@@ -85,13 +93,12 @@ const createTenant = () => {
   tenants.value.push(tenantObj)
   showCreate.value = false
   message.success(t('admin.tenants.createSuccess'))
-  newTenant.value = { name: '', code: '', oa_type: 'weaver_e9', token_quota: 10000, max_concurrency: 10, contact_name: '', contact_email: '', description: '' }
-  // Auto-open the new tenant for configuration
+  newTenant.value = { name: '', code: '', oa_db_connection_id: '', token_quota: 10000, max_concurrency: 10, contact_name: '', contact_email: '', description: '' }
   openDetail(tenantObj)
 }
 
 const openDetail = (tenant: TenantInfo) => {
-  selectedTenant.value = { ...tenant, jdbc_config: { ...tenant.jdbc_config }, ai_config: { ...tenant.ai_config } }
+  selectedTenant.value = { ...tenant, ai_config: { ...tenant.ai_config } }
   detailActiveTab.value = 'basic'
   showDetail.value = true
 }
@@ -115,14 +122,7 @@ const toggleTenantStatus = (id: string) => {
 }
 
 const testConnection = async () => {
-  testingConnection.value = true
-  await new Promise(resolve => setTimeout(resolve, 2000))
-  testingConnection.value = false
-  if (selectedTenant.value?.jdbc_config.host) {
-    message.success(t('admin.tenants.connSuccess'))
-  } else {
-    message.error(t('admin.tenants.connFillFirst'))
-  }
+  // No longer needed - connections managed at system level
 }
 
 const getQuotaPercent = (used: number, total: number) => Math.round((used / total) * 100)
@@ -131,24 +131,6 @@ const getQuotaColor = (percent: number) => {
   if (percent >= 90) return '#ef4444'
   if (percent >= 70) return '#f59e0b'
   return '#10b981'
-}
-
-const driverOptions = [
-  { label: 'MySQL', value: 'mysql' },
-  { label: 'PostgreSQL', value: 'postgresql' },
-  { label: 'Oracle', value: 'oracle' },
-  { label: 'SQL Server', value: 'sqlserver' },
-]
-
-const getDriverPort = (driver: string) => {
-  const ports: Record<string, number> = { mysql: 3306, postgresql: 5432, oracle: 1521, sqlserver: 1433 }
-  return ports[driver] || 3306
-}
-
-const onDriverChange = (driver: any) => {
-  if (selectedTenant.value) {
-    selectedTenant.value.jdbc_config.port = getDriverPort(driver as string)
-  }
 }
 </script>
 
@@ -187,7 +169,7 @@ const onDriverChange = (driver: any) => {
         <!-- Quick Info Tags -->
         <div class="tenant-tags">
           <span class="info-tag info-tag--primary">
-            <DatabaseOutlined /> {{ tenant.jdbc_config.driver.toUpperCase() }}
+            <DatabaseOutlined /> {{ getOADbName(tenant.oa_db_connection_id) }}
           </span>
           <span class="info-tag info-tag--info">
             <RobotOutlined /> {{ tenant.ai_config.default_model }}
@@ -258,13 +240,16 @@ const onDriverChange = (driver: any) => {
             </a-form-item>
           </a-col>
         </a-row>
-        <a-form-item :label="t('admin.tenants.oaType')">
-          <a-select v-model:value="newTenant.oa_type" size="large" :placeholder="t('admin.tenants.selectOAType')">
-            <a-select-option value="weaver_e9">泛微 E9</a-select-option>
-            <a-select-option value="weaver_ebridge">泛微 E-Bridge</a-select-option>
-            <a-select-option value="zhiyuan_a8">致远 A8+</a-select-option>
-            <a-select-option value="landray_ekp">蓝凌 EKP</a-select-option>
+        <a-form-item :label="t('admin.tenants.oaDbConnection')">
+          <a-select v-model:value="newTenant.oa_db_connection_id" size="large" :placeholder="t('admin.tenants.selectOADb')" allowClear>
+            <a-select-option v-for="conn in availableOADbs" :key="conn.id" :value="conn.id">
+              {{ conn.name }} ({{ conn.oa_type_label }})
+            </a-select-option>
           </a-select>
+          <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px;">
+            {{ t('admin.tenants.oaDbHint') }}
+            <a @click="navigateTo('/admin/system/settings')" style="cursor: pointer;">{{ t('admin.tenants.systemSettings') }}</a>
+          </div>
         </a-form-item>
         <a-row :gutter="16">
           <a-col :span="12">
@@ -309,7 +294,7 @@ const onDriverChange = (driver: any) => {
           <button
             v-for="tab in [
               { key: 'basic', label: t('admin.tenants.tabBasic'), icon: InfoCircleOutlined },
-              { key: 'jdbc', label: t('admin.tenants.tabJdbc'), icon: DatabaseOutlined },
+              { key: 'oadb', label: t('admin.tenants.tabOADb'), icon: DatabaseOutlined },
               { key: 'ai', label: t('admin.tenants.tabAI'), icon: RobotOutlined },
               { key: 'quota', label: t('admin.tenants.tabQuota'), icon: ThunderboltOutlined },
               { key: 'security', label: t('admin.tenants.tabSecurity'), icon: SafetyCertificateOutlined },
@@ -370,12 +355,11 @@ const onDriverChange = (driver: any) => {
             </a-row>
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item :label="t('admin.tenants.oaType')">
-                  <a-select v-model:value="selectedTenant.oa_type" size="large" :placeholder="t('admin.tenants.selectOAType')">
-                    <a-select-option value="weaver_e9">泛微 E9</a-select-option>
-                    <a-select-option value="weaver_ebridge">泛微 E-Bridge</a-select-option>
-                    <a-select-option value="zhiyuan_a8">致远 A8+</a-select-option>
-                    <a-select-option value="landray_ekp">蓝凌 EKP</a-select-option>
+                <a-form-item :label="t('admin.tenants.oaDbConnection')">
+                  <a-select v-model:value="selectedTenant.oa_db_connection_id" size="large" :placeholder="t('admin.tenants.selectOADb')" allowClear>
+                    <a-select-option v-for="conn in availableOADbs" :key="conn.id" :value="conn.id">
+                      {{ conn.name }} ({{ conn.oa_type_label }})
+                    </a-select-option>
                   </a-select>
                 </a-form-item>
               </a-col>
@@ -388,80 +372,57 @@ const onDriverChange = (driver: any) => {
           </a-form>
         </div>
 
-        <!-- JDBC Config Tab -->
-        <div v-if="detailActiveTab === 'jdbc'" class="detail-section">
+        <!-- OA Database Connection Tab -->
+        <div v-if="detailActiveTab === 'oadb'" class="detail-section">
           <div class="section-header">
-            <h3><DatabaseOutlined /> {{ t('admin.tenants.jdbcConfig') }}</h3>
-            <a-button type="primary" ghost :disabled="testingConnection" @click="testConnection">
-              <SyncOutlined :spin="testingConnection" /> {{ testingConnection ? t('admin.tenants.testingConn') : t('admin.tenants.testConnection') }}
-            </a-button>
+            <h3><DatabaseOutlined /> {{ t('admin.tenants.oaDbConfig') }}</h3>
           </div>
           <div class="jdbc-hint">
-            <InfoCircleOutlined /> {{ t('admin.tenants.jdbcHint') }}
+            <InfoCircleOutlined /> {{ t('admin.tenants.oaDbSelectHint') }}
+            <a @click="navigateTo('/admin/system/settings')" style="cursor: pointer; margin: 0 4px;">{{ t('admin.tenants.systemSettings') }}</a>
           </div>
           <a-form layout="vertical">
-            <a-form-item :label="t('admin.tenants.dbDriver')">
-              <a-select
-                v-model:value="selectedTenant.jdbc_config.driver"
-                size="large"
-                :placeholder="t('admin.tenants.selectDriver')"
-                @change="onDriverChange"
-              >
-                <a-select-option v-for="opt in driverOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
+            <a-form-item :label="t('admin.tenants.oaDbConnection')">
+              <a-select v-model:value="selectedTenant.oa_db_connection_id" size="large" :placeholder="t('admin.tenants.selectOADb')" allowClear>
+                <a-select-option v-for="conn in availableOADbs" :key="conn.id" :value="conn.id">
+                  {{ conn.name }} ({{ conn.oa_type_label }})
                 </a-select-option>
               </a-select>
             </a-form-item>
-            <a-row :gutter="16">
-              <a-col :span="16">
-                <a-form-item :label="t('admin.tenants.hostAddress')">
-                  <a-input v-model:value="selectedTenant.jdbc_config.host" placeholder="192.168.1.100 或 db.example.com" size="large" />
-                </a-form-item>
-              </a-col>
-              <a-col :span="8">
-                <a-form-item :label="t('admin.tenants.port')">
-                  <a-input-number v-model:value="selectedTenant.jdbc_config.port" :min="1" :max="65535" style="width: 100%;" size="large" />
-                </a-form-item>
-              </a-col>
-            </a-row>
-            <a-form-item :label="t('admin.tenants.dbName')">
-              <a-input v-model:value="selectedTenant.jdbc_config.database" placeholder="ecology" size="large" />
-            </a-form-item>
-            <a-row :gutter="16">
-              <a-col :span="12">
-                <a-form-item :label="t('admin.tenants.username')">
-                  <a-input v-model:value="selectedTenant.jdbc_config.username" placeholder="oa_reader" size="large">
-                    <template #prefix><UserOutlined /></template>
-                  </a-input>
-                </a-form-item>
-              </a-col>
-              <a-col :span="12">
-                <a-form-item :label="t('admin.tenants.password')">
-                  <a-input-password v-model:value="selectedTenant.jdbc_config.password" :placeholder="t('admin.tenants.dbPassword')" size="large">
-                    <template #prefix><KeyOutlined /></template>
-                  </a-input-password>
-                </a-form-item>
-              </a-col>
-            </a-row>
-            <a-divider>{{ t('admin.tenants.connPoolSettings') }}</a-divider>
-            <a-row :gutter="16">
-              <a-col :span="8">
-                <a-form-item :label="t('admin.tenants.poolSize')">
-                  <a-input-number v-model:value="selectedTenant.jdbc_config.pool_size" :min="1" :max="100" style="width: 100%;" size="large" />
-                </a-form-item>
-              </a-col>
-              <a-col :span="8">
-                <a-form-item :label="t('admin.tenants.connTimeout')">
-                  <a-input-number v-model:value="selectedTenant.jdbc_config.connection_timeout" :min="5" :max="300" style="width: 100%;" size="large" />
-                </a-form-item>
-              </a-col>
-              <a-col :span="8">
-                <a-form-item :label="t('admin.tenants.testOnBorrow')">
-                  <a-switch v-model:checked="selectedTenant.jdbc_config.test_on_borrow" />
-                  <span class="switch-label">{{ selectedTenant.jdbc_config.test_on_borrow ? t('admin.tenants.opened') : t('admin.tenants.closed') }}</span>
-                </a-form-item>
-              </a-col>
-            </a-row>
+
+            <!-- Show selected connection details (read-only) -->
+            <div v-if="selectedTenant.oa_db_connection_id && getOADbInfo(selectedTenant.oa_db_connection_id)" class="oadb-detail-card">
+              <div class="oadb-detail-header">
+                <LinkOutlined />
+                <span>{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.name }}</span>
+                <span class="oadb-detail-type">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.oa_type_label }}</span>
+              </div>
+              <div class="oadb-detail-meta">
+                <div class="oadb-meta-item">
+                  <span class="oadb-meta-label">{{ t('admin.tenants.dbDriver') }}</span>
+                  <span class="oadb-meta-value">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.jdbc_config.driver.toUpperCase() }}</span>
+                </div>
+                <div class="oadb-meta-item">
+                  <span class="oadb-meta-label">{{ t('admin.tenants.hostAddress') }}</span>
+                  <span class="oadb-meta-value">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.jdbc_config.host }}:{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.jdbc_config.port }}</span>
+                </div>
+                <div class="oadb-meta-item">
+                  <span class="oadb-meta-label">{{ t('admin.tenants.dbName') }}</span>
+                  <span class="oadb-meta-value">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.jdbc_config.database }}</span>
+                </div>
+                <div class="oadb-meta-item">
+                  <span class="oadb-meta-label">{{ t('admin.settings.syncInterval') }}</span>
+                  <span class="oadb-meta-value">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.sync_interval }}s</span>
+                </div>
+              </div>
+              <div v-if="getOADbInfo(selectedTenant.oa_db_connection_id)!.description" class="oadb-detail-desc">
+                {{ getOADbInfo(selectedTenant.oa_db_connection_id)!.description }}
+              </div>
+            </div>
+
+            <div v-else-if="!selectedTenant.oa_db_connection_id" class="oadb-empty">
+              <InfoCircleOutlined /> {{ t('admin.tenants.noOADbSelected') }}
+            </div>
           </a-form>
         </div>
 
@@ -1033,6 +994,58 @@ const onDriverChange = (driver: any) => {
   margin-top: 32px;
   padding-top: 20px;
   border-top: 1px solid var(--color-border-light);
+}
+
+/* OA DB detail card in tenant drawer */
+.oadb-detail-card {
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-top: 12px;
+}
+.oadb-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 12px;
+}
+.oadb-detail-type {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+.oadb-detail-meta {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+}
+.oadb-meta-item { }
+.oadb-meta-label { font-size: 11px; color: var(--color-text-tertiary); display: block; }
+.oadb-meta-value { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin-top: 2px; display: block; }
+.oadb-detail-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 8px; }
+.oadb-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  padding: 20px;
+  text-align: center;
+  justify-content: center;
+  background: var(--color-bg-page);
+  border-radius: var(--radius-md);
+  margin-top: 12px;
 }
 
 @media (max-width: 768px) {
