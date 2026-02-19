@@ -855,7 +855,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
 .tab-desc { font-size: 14px; color: var(--color-text-secondary); margin: 0; }
 
 .oa-grid, .ai-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 20px; }
-.oa-card, .ai-card { background: var(--color-bg-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-xl); padding: 22px; transition: all 0.3s ease; }
+.oa-card, .ai-card { background: var(--color-bg-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-xl); padding: 22px; transition: all 0.3s ease; display: flex; flex-direction: column; }
 .oa-card:hover, .ai-card:hover { box-shadow: var(--shadow-md); }
 .oa-card--disabled, .ai-card--disabled { opacity: 0.65; }
 
@@ -870,7 +870,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
 .oa-card-meta { display: flex; gap: 20px; padding: 10px 14px; background: var(--color-bg-page); border-radius: var(--radius-md); margin-bottom: 14px; flex-wrap: wrap; }
 .oa-meta-label { font-size: 11px; color: var(--color-text-tertiary); display: block; }
 .oa-meta-value { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin-top: 2px; display: block; }
-.oa-card-actions { display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid var(--color-border-light); }
+.oa-card-actions { display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid var(--color-border-light); margin-top: auto; }
 .oa-card-btns { display: flex; gap: 4px; align-items: center; }
 
 .test-conn-btn { border-color: var(--color-primary) !important; color: var(--color-primary) !important; font-weight: 500; }
@@ -895,7 +895,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
 .ai-meta-label { font-size: 11px; color: var(--color-text-tertiary); display: block; }
 .ai-meta-value { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin-top: 2px; display: block; }
 .ai-meta-value--mono { font-family: var(--font-mono); font-size: 12px; }
-.ai-card-actions { display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid var(--color-border-light); }
+.ai-card-actions { display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid var(--color-border-light); margin-top: auto; }
 
 .config-sections { display: flex; flex-direction: column; gap: 24px; }
 .config-section { background: var(--color-bg-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-xl); padding: 24px; }
