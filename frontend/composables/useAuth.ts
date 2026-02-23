@@ -1,5 +1,5 @@
-import { MOCK_USERS, getMockMenusByRole, getMockMenusByPermissions, hasPagePermission, getDefaultPage } from './useMockData'
-import type { MockUser, MockMenuItem, UserRole, PermissionGroup } from './useMockData'
+import { MOCK_USERS, getMockMenusByRole, getMockMenusByPermissions, getMockMenusByActiveRole, hasPagePermission, getDefaultPage, getDefaultPageForRole } from './useMockData'
+import type { MockUser, MockMenuItem, UserRole, PermissionGroup, UserRoleAssignment } from './useMockData'
 
 interface LoginRequest {
   username: string
@@ -13,8 +13,8 @@ interface TokenResponse {
   expires_in: number
 }
 
-export type { MockUser, MockMenuItem, UserRole, PermissionGroup }
-export { hasPagePermission, getDefaultPage }
+export type { MockUser, MockMenuItem, UserRole, PermissionGroup, UserRoleAssignment }
+export { hasPagePermission, getDefaultPage, getDefaultPageForRole }
 
 export const useAuth = () => {
   const config = useRuntimeConfig()
@@ -22,10 +22,16 @@ export const useAuth = () => {
   const refreshToken = useState<string | null>('auth_refresh', () => null)
   const menus = useState<MockMenuItem[]>('auth_menus', () => [])
   const userRole = useState<UserRole>('auth_role', () => 'business')
-  /** Full permissions from login — never mutated after login */
-  const fullPermissions = useState<PermissionGroup[]>('auth_full_permissions', () => ['business'])
-  /** Active permissions — changed by role switching to filter menus/pages */
+
+  /** All role assignments this user has (never modified after login) */
+  const allRoles = useState<UserRoleAssignment[]>('auth_all_roles', () => [])
+  /** Currently active role assignment */
+  const activeRole = useState<UserRoleAssignment | null>('auth_active_role', () => null)
+  /** Active permission group (derived from activeRole) */
   const userPermissions = useState<PermissionGroup[]>('auth_permissions', () => ['business'])
+  /** Full permissions — kept for backward compat but now derived from allRoles */
+  const fullPermissions = useState<PermissionGroup[]>('auth_full_permissions', () => ['business'])
+
   const currentUser = useState<{
     username: string
     display_name: string
@@ -50,6 +56,33 @@ export const useAuth = () => {
     if (import.meta.client) localStorage.setItem('full_permissions', JSON.stringify(perms))
   }
 
+  const setAllRoles = (roles: UserRoleAssignment[]) => {
+    allRoles.value = roles
+    if (import.meta.client) localStorage.setItem('all_roles', JSON.stringify(roles))
+  }
+
+  const setActiveRole = (role: UserRoleAssignment) => {
+    activeRole.value = role
+    // Derive permissions: only the active role's permission group
+    userPermissions.value = [role.role]
+    if (import.meta.client) {
+      localStorage.setItem('active_role', JSON.stringify(role))
+      localStorage.setItem('user_permissions', JSON.stringify([role.role]))
+    }
+  }
+
+  /** Switch to a specific role by its assignment ID */
+  const switchRole = async (roleId: string): Promise<boolean> => {
+    const target = allRoles.value.find(r => r.id === roleId)
+    if (!target) return false
+    setActiveRole(target)
+    // Regenerate menus based on the new active role
+    if (isMockMode.value) {
+      menus.value = getMockMenusByActiveRole(target)
+    }
+    return true
+  }
+
   const login = async (req: LoginRequest): Promise<boolean> => {
     if (isMockMode.value) {
       const matched = MOCK_USERS.find(
@@ -60,15 +93,28 @@ export const useAuth = () => {
       const mockToken = 'mock_token_' + Date.now()
       token.value = mockToken
       refreshToken.value = 'mock_refresh_' + Date.now()
+
+      // Store all roles from the user
+      setAllRoles(matched.roles)
+
+      // Determine default active role (priority: system_admin > tenant_admin > business)
+      const sysRole = matched.roles.find(r => r.role === 'system_admin')
+      const tenantRole = matched.roles.find(r => r.role === 'tenant_admin')
+      const defaultRole = sysRole || tenantRole || matched.roles[0]
+      setActiveRole(defaultRole)
+
+      // Set current user info
       currentUser.value = {
         username: matched.username,
         display_name: matched.display_name,
-        tenant_id: matched.tenant_id,
-        role_label: matched.role_label,
+        tenant_id: defaultRole.tenant_id || '',
+        role_label: defaultRole.label,
       }
-      // Store both full and active permissions from the matched user
-      setFullPermissions(matched.permissions)
-      setUserPermissions(matched.permissions)
+
+      // Compute full permissions (all unique role types) for backward compat
+      const allPerms = [...new Set(matched.roles.map(r => r.role))] as PermissionGroup[]
+      setFullPermissions(allPerms)
+
       if (import.meta.client) {
         localStorage.setItem('token', mockToken)
         localStorage.setItem('refresh_token', refreshToken.value!)
@@ -96,7 +142,11 @@ export const useAuth = () => {
 
   const getMenu = async (): Promise<MockMenuItem[]> => {
     if (isMockMode.value) {
-      const m = getMockMenusByPermissions(userPermissions.value)
+      // Use activeRole for menu generation
+      const role = activeRole.value
+      const m = role
+        ? getMockMenusByActiveRole(role)
+        : getMockMenusByPermissions(userPermissions.value)
       menus.value = m
       return m
     }
@@ -116,6 +166,8 @@ export const useAuth = () => {
     refreshToken.value = null
     menus.value = []
     userRole.value = 'business'
+    allRoles.value = []
+    activeRole.value = null
     fullPermissions.value = ['business']
     userPermissions.value = ['business']
     currentUser.value = null
@@ -125,6 +177,8 @@ export const useAuth = () => {
       localStorage.removeItem('user_role')
       localStorage.removeItem('user_permissions')
       localStorage.removeItem('full_permissions')
+      localStorage.removeItem('all_roles')
+      localStorage.removeItem('active_role')
       localStorage.removeItem('current_user')
     }
     navigateTo('/login')
@@ -140,6 +194,14 @@ export const useAuth = () => {
       if (savedRefresh) refreshToken.value = savedRefresh
       const savedRole = localStorage.getItem('user_role') as UserRole | null
       if (savedRole) userRole.value = savedRole
+      const savedAllRoles = localStorage.getItem('all_roles')
+      if (savedAllRoles) {
+        try { allRoles.value = JSON.parse(savedAllRoles) } catch { /* ignore */ }
+      }
+      const savedActiveRole = localStorage.getItem('active_role')
+      if (savedActiveRole) {
+        try { activeRole.value = JSON.parse(savedActiveRole) } catch { /* ignore */ }
+      }
       const savedFullPerms = localStorage.getItem('full_permissions')
       if (savedFullPerms) {
         try { fullPermissions.value = JSON.parse(savedFullPerms) } catch { /* ignore */ }
@@ -157,7 +219,9 @@ export const useAuth = () => {
 
   return {
     token, refreshToken, menus, userRole, fullPermissions, userPermissions, currentUser,
-    login, getMenu, logout, isAuthenticated, restore, isMockMode, setUserRole, setUserPermissions, setFullPermissions,
+    allRoles, activeRole,
+    login, getMenu, logout, isAuthenticated, restore, isMockMode,
+    setUserRole, setUserPermissions, setFullPermissions, setAllRoles, setActiveRole, switchRole,
     MOCK_USERS,
   }
 }

@@ -574,7 +574,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               </a-col>
               <a-col :span="12">
                 <a-form-item :label="t('admin.settings.version')">
-                  <a-input v-model:value="generalConfig.platform_version" size="large" disabled />
+                  <a-input v-model:value="generalConfig.platform_version" size="large" />
                 </a-form-item>
               </a-col>
             </a-row>

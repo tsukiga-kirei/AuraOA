@@ -4,43 +4,98 @@
  */
 
 // ============================================================
-// Mock user accounts for login
+// Role & Permission types
 // ============================================================
 export type UserRole = 'business' | 'tenant_admin' | 'system_admin'
 
 /** Permission groups that control sidebar section visibility */
 export type PermissionGroup = 'business' | 'tenant_admin' | 'system_admin'
 
+/** A single role assignment — binds a user to a role within a tenant context */
+export interface UserRoleAssignment {
+  /** Unique id for this assignment */
+  id: string
+  /** Role type */
+  role: UserRole
+  /** Tenant ID (null for system_admin which is global) */
+  tenant_id: string | null
+  /** Tenant name for display */
+  tenant_name: string | null
+  /** Human-readable label, e.g. "示例集团总部 · 业务用户" */
+  label: string
+}
+
 export interface MockUser {
   username: string
   password: string
-  tenant_id: string
-  role: UserRole
   display_name: string
-  role_label: string
-  /** Which sidebar sections this user can see */
-  permissions: PermissionGroup[]
+  /** All role assignments this user has across all tenants */
+  roles: UserRoleAssignment[]
 }
 
 export const MOCK_USERS: MockUser[] = [
-  // === Business users (only workbench) ===
-  { username: 'zhangming', password: '123456', tenant_id: 'default', role: 'business', display_name: '张明', role_label: '普通用户', permissions: ['business'] },
-  { username: 'user', password: '123456', tenant_id: 'default', role: 'business', display_name: '测试用户', role_label: '普通用户', permissions: ['business'] },
-  { username: 'lifang', password: '123456', tenant_id: 'T-002', role: 'business', display_name: '李芳', role_label: '普通用户', permissions: ['business'] },
-
-  // === Tenant admins ===
-  // Has both business + tenant admin access
-  { username: 'tenantadmin', password: '123456', tenant_id: 'default', role: 'tenant_admin', display_name: '赵伟（租户管理员）', role_label: '租户管理员', permissions: ['business', 'tenant_admin'] },
-  // Tenant admin only — no business workbench access
-  { username: 'tenantadmin2', password: '123456', tenant_id: 'default', role: 'tenant_admin', display_name: '孙丽（纯租户管理）', role_label: '租户管理员', permissions: ['tenant_admin'] },
-
-  // === System admins ===
-  // Full access: business + tenant + system
-  { username: 'admin', password: '123456', tenant_id: 'default', role: 'system_admin', display_name: '陈刚（超级管理员）', role_label: '系统管理员', permissions: ['business', 'tenant_admin', 'system_admin'] },
-  // System admin with tenant access but no business workbench
-  { username: 'sysadmin2', password: '123456', tenant_id: 'default', role: 'system_admin', display_name: '周敏（系统+租户）', role_label: '系统管理员', permissions: ['tenant_admin', 'system_admin'] },
-  // System admin only — pure system management
-  { username: 'sysadmin3', password: '123456', tenant_id: 'default', role: 'system_admin', display_name: '吴强（纯系统管理）', role_label: '系统管理员', permissions: ['system_admin'] },
+  // === 1. 超级管理员：系统管理员 + 总部租户管理员 + 总部业务用户 ===
+  {
+    username: 'admin', password: '123456', display_name: '陈刚',
+    roles: [
+      { id: 'admin-r1', role: 'system_admin', tenant_id: null, tenant_name: null, label: '系统管理员' },
+      { id: 'admin-r2', role: 'tenant_admin', tenant_id: 'T-001', tenant_name: '示例集团总部', label: '示例集团总部 · 租户管理员' },
+      { id: 'admin-r3', role: 'business', tenant_id: 'T-001', tenant_name: '示例集团总部', label: '示例集团总部 · 业务用户' },
+    ],
+  },
+  // === 2. 系统管理员 + 华东分公司管理员 ===
+  {
+    username: 'sysadmin2', password: '123456', display_name: '周敏',
+    roles: [
+      { id: 'sys2-r1', role: 'system_admin', tenant_id: null, tenant_name: null, label: '系统管理员' },
+      { id: 'sys2-r2', role: 'tenant_admin', tenant_id: 'T-002', tenant_name: '华东分公司', label: '华东分公司 · 租户管理员' },
+    ],
+  },
+  // === 3. 纯系统管理员 ===
+  {
+    username: 'sysadmin3', password: '123456', display_name: '吴强',
+    roles: [
+      { id: 'sys3-r1', role: 'system_admin', tenant_id: null, tenant_name: null, label: '系统管理员' },
+    ],
+  },
+  // === 4. 总部租户管理员 + 总部业务用户 ===
+  {
+    username: 'tenantadmin', password: '123456', display_name: '赵伟',
+    roles: [
+      { id: 'ta1-r1', role: 'tenant_admin', tenant_id: 'T-001', tenant_name: '示例集团总部', label: '示例集团总部 · 租户管理员' },
+      { id: 'ta1-r2', role: 'business', tenant_id: 'T-001', tenant_name: '示例集团总部', label: '示例集团总部 · 业务用户' },
+    ],
+  },
+  // === 5. 跨租户角色：华东管理员 + 总部业务用户 ===
+  {
+    username: 'wanggang', password: '123456', display_name: '王刚',
+    roles: [
+      { id: 'wg-r1', role: 'tenant_admin', tenant_id: 'T-002', tenant_name: '华东分公司', label: '华东分公司 · 租户管理员' },
+      { id: 'wg-r2', role: 'business', tenant_id: 'T-001', tenant_name: '示例集团总部', label: '示例集团总部 · 业务用户' },
+    ],
+  },
+  // === 6. 单租户业务用户 ===
+  {
+    username: 'zhangming', password: '123456', display_name: '张明',
+    roles: [
+      { id: 'zm-r1', role: 'business', tenant_id: 'T-001', tenant_name: '示例集团总部', label: '示例集团总部 · 业务用户' },
+    ],
+  },
+  // === 7. 多租户业务用户 ===
+  {
+    username: 'lifang', password: '123456', display_name: '李芳',
+    roles: [
+      { id: 'lf-r1', role: 'business', tenant_id: 'T-001', tenant_name: '示例集团总部', label: '示例集团总部 · 业务用户' },
+      { id: 'lf-r2', role: 'business', tenant_id: 'T-002', tenant_name: '华东分公司', label: '华东分公司 · 业务用户' },
+    ],
+  },
+  // === 8. 测试用户 ===
+  {
+    username: 'user', password: '123456', display_name: '测试用户',
+    roles: [
+      { id: 'u-r1', role: 'business', tenant_id: 'T-001', tenant_name: '示例集团总部', label: '示例集团总部 · 业务用户' },
+    ],
+  },
 ]
 
 // ============================================================
@@ -140,6 +195,47 @@ export function getMockMenusByPermissions(permissions: PermissionGroup[]): MockM
     )
   }
   return result
+}
+
+/**
+ * Generate menus for a specific active role assignment.
+ * KEY DIFFERENCE from getMockMenusByPermissions:
+ * Only shows menus relevant to THIS role type, not all roles the user has.
+ */
+export function getMockMenusByActiveRole(role: UserRoleAssignment): MockMenuItem[] {
+  const result: MockMenuItem[] = []
+  // Overview/dashboard is always shown
+  result.push(
+    { key: 'overview', label: '仪表盘', icon: 'PieChartOutlined', path: '/overview' },
+  )
+  if (role.role === 'business') {
+    result.push(
+      { key: 'dashboard', label: '审核工作台', icon: 'DashboardOutlined', path: '/dashboard' },
+      { key: 'cron', label: '定时任务', icon: 'ClockCircleOutlined', path: '/cron' },
+      { key: 'archive', label: '归档复盘', icon: 'FolderOpenOutlined', path: '/archive' },
+    )
+  }
+  if (role.role === 'tenant_admin') {
+    result.push(
+      { key: 'tenant', label: '规则配置', icon: 'AppstoreOutlined', path: '/admin/tenant' },
+      { key: 'tenant-org', label: '组织人员', icon: 'ApartmentOutlined', path: '/admin/tenant/org' },
+      { key: 'tenant-data', label: '数据信息', icon: 'DatabaseOutlined', path: '/admin/tenant/data' },
+      { key: 'tenant-user-configs', label: '用户偏好', icon: 'SettingOutlined', path: '/admin/tenant/user-configs' },
+    )
+  }
+  if (role.role === 'system_admin') {
+    result.push(
+      { key: 'monitor', label: '全局监控', icon: 'MonitorOutlined', path: '/admin/system' },
+      { key: 'tenants', label: '租户管理', icon: 'TeamOutlined', path: '/admin/system/tenants' },
+      { key: 'settings', label: '系统设置', icon: 'SettingOutlined', path: '/admin/system/settings' },
+    )
+  }
+  return result
+}
+
+/** Get the default page for a specific role assignment */
+export function getDefaultPageForRole(role: UserRoleAssignment): string {
+  return '/overview'
 }
 
 // ============================================================

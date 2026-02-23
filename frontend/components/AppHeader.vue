@@ -20,77 +20,39 @@ const emit = defineEmits<{
 
 const { isDark, toggle: toggleTheme } = useTheme()
 const { t } = useI18n()
-const { fullPermissions, userPermissions, currentUser, setUserPermissions, getMenu } = useAuth()
+const { allRoles, activeRole, switchRole, getMenu } = useAuth()
+
+import type { UserRoleAssignment } from '~/composables/useMockData'
 
 // ===== Role Switching =====
-// Build switch options based on the user's FULL permissions (never lost)
-type RoleOption = { key: string; label: string; icon: string; desc: string; permissions: PermissionGroup[] }
+// Group roles by type for organized display
+const systemRoles = computed(() => allRoles.value.filter(r => r.role === 'system_admin'))
+const tenantAdminRoles = computed(() => allRoles.value.filter(r => r.role === 'tenant_admin'))
+const businessRoles = computed(() => allRoles.value.filter(r => r.role === 'business'))
 
-import type { PermissionGroup } from '~/composables/useMockData'
-import { getDefaultPage } from '~/composables/useMockData'
+// Show switcher when user has more than one role assignment
+const showRoleSwitcher = computed(() => allRoles.value.length > 1)
 
-const roleOptions = computed<RoleOption[]>(() => {
-  const full = fullPermissions.value
-  const options: RoleOption[] = []
+const activeRoleId = computed(() => activeRole.value?.id || '')
+const activeRoleLabel = computed(() => activeRole.value?.label || '')
 
-  // Business user view — only if has 'business'
-  if (full.includes('business')) {
-    options.push({
-      key: 'business',
-      label: t('login.portal.business'),
-      icon: '📊',
-      desc: t('login.portal.businessDesc'),
-      permissions: ['business'],
-    })
-  }
+const roleTypeLabel = (role: string) => {
+  if (role === 'system_admin') return t('login.portal.systemAdmin')
+  if (role === 'tenant_admin') return t('login.portal.tenantAdmin')
+  return t('login.portal.business')
+}
 
-  // Tenant admin view — only if has 'tenant_admin'
-  if (full.includes('tenant_admin')) {
-    const tenantName = currentUser.value?.display_name || ''
-    options.push({
-      key: 'tenant_admin',
-      label: t('login.portal.tenantAdmin'),
-      icon: '⚙️',
-      desc: tenantName ? `${tenantName}` : t('login.portal.tenantAdminDesc'),
-      permissions: ['business', 'tenant_admin'],
-    })
-  }
+const roleTypeIcon = (role: string) => {
+  if (role === 'system_admin') return '🛡️'
+  if (role === 'tenant_admin') return '⚙️'
+  return '📊'
+}
 
-  // System admin view — only if has 'system_admin'
-  if (full.includes('system_admin')) {
-    options.push({
-      key: 'system_admin',
-      label: t('login.portal.systemAdmin'),
-      icon: '🛡️',
-      desc: t('login.portal.systemAdminDesc'),
-      permissions: ['business', 'tenant_admin', 'system_admin'],
-    })
-  }
-
-  return options
-})
-
-// Show switcher when there are at least 2 role options
-const showRoleSwitcher = computed(() => roleOptions.value.length > 1)
-
-// Determine current active role based on userPermissions (active view)
-const currentRoleKey = computed(() => {
-  const perms = userPermissions.value
-  if (perms.includes('system_admin')) return 'system_admin'
-  if (perms.includes('tenant_admin')) return 'tenant_admin'
-  return 'business'
-})
-
-const currentRoleOption = computed(() => {
-  return roleOptions.value.find(r => r.key === currentRoleKey.value)
-})
-
-const switchRole = async (option: RoleOption) => {
-  if (option.key === currentRoleKey.value) return
-  // Only change userPermissions — fullPermissions stays intact
-  setUserPermissions(option.permissions)
+const handleSwitchRole = async (role: UserRoleAssignment) => {
+  if (role.id === activeRoleId.value) return
+  await switchRole(role.id)
   await getMenu()
-  navigateTo(getDefaultPage(option.permissions))
+  navigateTo('/overview')
 }
 </script>
 
@@ -130,25 +92,73 @@ const switchRole = async (option: RoleOption) => {
       <a-dropdown v-if="showRoleSwitcher" placement="bottomRight" :trigger="['click']">
         <button class="header-action role-switch-btn" :title="t('header.switchRole')">
           <SwapOutlined />
-          <span class="role-switch-label">{{ currentRoleOption?.label }}</span>
+          <span class="role-switch-label">{{ activeRoleLabel }}</span>
         </button>
         <template #overlay>
           <div class="role-dropdown">
             <div class="role-dropdown-title">{{ t('header.switchRole') }}</div>
-            <div
-              v-for="opt in roleOptions"
-              :key="opt.key"
-              class="role-dropdown-item"
-              :class="{ 'role-dropdown-item--active': opt.key === currentRoleKey }"
-              @click="switchRole(opt)"
-            >
-              <span class="role-dropdown-icon">{{ opt.icon }}</span>
-              <div class="role-dropdown-info">
-                <div class="role-dropdown-name">{{ opt.label }}</div>
-                <div class="role-dropdown-desc">{{ opt.desc }}</div>
+
+            <!-- System Admin roles -->
+            <template v-if="systemRoles.length">
+              <div class="role-dropdown-group">
+                <span class="role-dropdown-group-icon">🛡️</span>
+                <span>{{ t('login.portal.systemAdmin') }}</span>
               </div>
-              <CheckOutlined v-if="opt.key === currentRoleKey" class="role-dropdown-check" />
-            </div>
+              <div
+                v-for="role in systemRoles"
+                :key="role.id"
+                class="role-dropdown-item"
+                :class="{ 'role-dropdown-item--active': role.id === activeRoleId }"
+                @click="handleSwitchRole(role)"
+              >
+                <div class="role-dropdown-info">
+                  <div class="role-dropdown-name">{{ role.label }}</div>
+                </div>
+                <CheckOutlined v-if="role.id === activeRoleId" class="role-dropdown-check" />
+              </div>
+            </template>
+
+            <!-- Tenant Admin roles -->
+            <template v-if="tenantAdminRoles.length">
+              <div class="role-dropdown-group">
+                <span class="role-dropdown-group-icon">⚙️</span>
+                <span>{{ t('login.portal.tenantAdmin') }}</span>
+              </div>
+              <div
+                v-for="role in tenantAdminRoles"
+                :key="role.id"
+                class="role-dropdown-item"
+                :class="{ 'role-dropdown-item--active': role.id === activeRoleId }"
+                @click="handleSwitchRole(role)"
+              >
+                <div class="role-dropdown-info">
+                  <div class="role-dropdown-name">{{ role.tenant_name }}</div>
+                  <div class="role-dropdown-desc">租户管理员</div>
+                </div>
+                <CheckOutlined v-if="role.id === activeRoleId" class="role-dropdown-check" />
+              </div>
+            </template>
+
+            <!-- Business roles -->
+            <template v-if="businessRoles.length">
+              <div class="role-dropdown-group">
+                <span class="role-dropdown-group-icon">📊</span>
+                <span>{{ t('login.portal.business') }}</span>
+              </div>
+              <div
+                v-for="role in businessRoles"
+                :key="role.id"
+                class="role-dropdown-item"
+                :class="{ 'role-dropdown-item--active': role.id === activeRoleId }"
+                @click="handleSwitchRole(role)"
+              >
+                <div class="role-dropdown-info">
+                  <div class="role-dropdown-name">{{ role.tenant_name }}</div>
+                  <div class="role-dropdown-desc">业务用户</div>
+                </div>
+                <CheckOutlined v-if="role.id === activeRoleId" class="role-dropdown-check" />
+              </div>
+            </template>
           </div>
         </template>
       </a-dropdown>
@@ -218,7 +228,7 @@ const switchRole = async (option: RoleOption) => {
 .role-switch-label {
   font-size: 12px;
   font-weight: 500;
-  max-width: 120px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -232,20 +242,43 @@ const switchRole = async (option: RoleOption) => {
   box-shadow: var(--shadow-lg);
   padding: 8px;
   min-width: 260px;
+  max-width: 320px;
 }
 .role-dropdown-title {
-  padding: 8px 12px 6px;
+  padding: 8px 12px 4px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--color-text-tertiary);
 }
+
+/* Group header */
+.role-dropdown-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-top: 1px solid var(--color-border-light);
+  margin-top: 4px;
+}
+.role-dropdown-group:first-of-type {
+  border-top: none;
+  margin-top: 0;
+}
+.role-dropdown-group-icon {
+  font-size: 14px;
+}
+
+/* Individual role item */
 .role-dropdown-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 8px 12px 8px 28px;
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -259,29 +292,18 @@ const switchRole = async (option: RoleOption) => {
 .role-dropdown-item--active:hover {
   background: var(--color-primary-bg);
 }
-.role-dropdown-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  background: var(--color-bg-hover);
-}
-.role-dropdown-item--active .role-dropdown-icon {
-  background: rgba(79, 70, 229, 0.12);
-}
 .role-dropdown-info {
   flex: 1;
   min-width: 0;
 }
 .role-dropdown-name {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text-primary);
   line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .role-dropdown-desc {
   font-size: 11px;

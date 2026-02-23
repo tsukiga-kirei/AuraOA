@@ -15,7 +15,7 @@ import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ layout: false })
 
-const { login, getMenu, setUserRole, setUserPermissions, isMockMode, MOCK_USERS } = useAuth()
+const { login, getMenu, setUserRole, isMockMode, MOCK_USERS } = useAuth()
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
 const { t } = useI18n()
 const { mockTenants } = useMockData()
@@ -36,15 +36,14 @@ const loading = ref(false)
 const rememberMe = ref(false)
 const currentPortal = computed(() => portals.value.find(p => p.key === activePortal.value)!)
 
-// Quick-fill accounts filtered by current portal role
+// Quick-fill accounts: show users who have the selected portal role type
 const quickAccounts = computed(() =>
-  MOCK_USERS.filter(u => u.role === activePortal.value),
+  MOCK_USERS.filter(u => u.roles.some(r => r.role === activePortal.value)),
 )
 
 const fillAccount = (user: typeof MOCK_USERS[0]) => {
   form.value.username = user.username
   form.value.password = user.password
-  form.value.tenant_id = user.tenant_id
 }
 
 const handleLogin = async () => {
@@ -56,12 +55,9 @@ const handleLogin = async () => {
   try {
     const ok = await login(form.value)
     if (ok) {
-      setUserRole(activePortal.value)
       await getMenu()
       message.success(t('login.successRedirect'))
-      // Always redirect to the first accessible page based on user's permissions
-      const { userPermissions } = useAuth()
-      navigateTo(getDefaultPage(userPermissions.value))
+      navigateTo('/overview')
     } else {
       message.error(t('login.failed'))
     }

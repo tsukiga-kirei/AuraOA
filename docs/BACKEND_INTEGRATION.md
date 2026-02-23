@@ -6,35 +6,36 @@
 
 ## 1. 租户角色与权限体系
 
+> ⚠️ 角色架构的完整设计文档请参阅 [ROLE_ARCHITECTURE.md](./ROLE_ARCHITECTURE.md)
+
 ### 1.1 角色定义
 
-| 角色 | 标识 | 权限组 | 说明 |
+| 角色 | 标识 | 作用域 | 说明 |
 |------|------|--------|------|
-| 系统管理员 | `system_admin` | `['user', 'tenant', 'system']` | 可管理所有租户、系统设置、全局监控 |
-| 租户管理员 | `tenant_admin` | `['user', 'tenant']` | 可管理本租户的规则配置、组织人员、数据信息 |
-| 业务用户 | `business` | `['user']` | 可使用审核工作台、定时任务、归档复盘、个人设置 |
+| 系统管理员 | `system_admin` | 全局 | 可管理所有租户、系统设置、全局监控 |
+| 租户管理员 | `tenant_admin` | 租户级 | 可管理本租户的规则配置、组织人员、数据信息 |
+| 业务用户 | `business` | 租户级 | 可使用审核工作台、定时任务、归档复盘、个人设置 |
 
-### 1.2 权限验证规则
+### 1.2 多租户多角色
 
-- 每个用户归属一个租户（通过 `tenant_id` 关联）
-- 用户的权限组决定其可访问的功能模块
-- 系统管理员拥有所有权限，可跨租户操作
-- 租户管理员在创建租户时指定（`tenant_admin_id` 字段）
-- 租户管理员拥有本租户的组织管理权限（增删成员、角色分配）
-- 用户可拥有多个角色/权限，支持**角色切换**（前端 Header 已实现切换按钮）
+- 一个用户可以在**多个租户**拥有不同角色（多对多关系）
+- `business` 和 `tenant_admin` 角色必须绑定具体租户（`tenant_id`）
+- `system_admin` 是全局角色，不绑定租户（`tenant_id` 为 null）
+- 角色切换基于 **角色分配 ID**（`role_id`），而非角色类型
+- 切换后只展示该角色类型对应的菜单
 
 ### 1.3 角色切换机制
 
-**前端实现**：Header 组件中的 SwapOutlined 按钮，根据用户权限组动态生成可切换角色列表。
+**前端实现**：Header 组件中的角色切换下拉面板，按类型分组显示所有角色分配。
 
 **后端需求**：
 ```
 POST /api/auth/switch-role
-Request: { "target_role": "tenant_admin" }
+Request: { "role_id": "admin-r2" }
 Response: {
-  "permissions": ["user", "tenant"],
+  "active_role": { "id": "admin-r2", "role": "tenant_admin", "tenant_id": "T-001", ... },
   "menus": [...],
-  "default_page": "/admin/tenant"
+  "default_page": "/overview"
 }
 ```
 
@@ -284,7 +285,7 @@ POST   /api/auth/login
 Request: {
   username: string,
   password: string,
-  tenant_id: string    // 租户编码或 "default"
+  tenant_id: string    // 租户编码（非必须，用于日志记录）
 }
 Response: {
   access_token: string,
@@ -293,9 +294,13 @@ Response: {
   user: {
     username: string,
     display_name: string,
-    tenant_id: string,
-    role_label: string,
-    permissions: string[]
+    roles: [{
+      id: string,
+      role: 'business' | 'tenant_admin' | 'system_admin',
+      tenant_id: string | null,
+      tenant_name: string | null,
+      label: string
+    }]
   }
 }
 
@@ -308,9 +313,9 @@ Response: [{
 }]
 
 POST   /api/auth/switch-role     角色切换
-Request: { target_role: string }
+Request: { role_id: string }
 Response: {
-  permissions: string[],
+  active_role: UserRoleAssignment,
   menus: MenuItem[],
   default_page: string
 }
