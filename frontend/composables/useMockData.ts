@@ -275,6 +275,7 @@ export interface TenantInfo {
   allow_custom_model: boolean // whether tenant users can override AI model
   sso_enabled: boolean
   sso_endpoint: string
+  tenant_admin_id?: string    // reference to MOCK_USERS username for tenant admin
 }
 
 // ============================================================
@@ -1555,11 +1556,12 @@ export const useMockData = () => {
       description: '示例集团总部，使用泛微E9 OA系统，主要用于采购、合同、报销等流程审核',
       ai_config: {
         default_provider: '本地部署', default_model: 'Qwen2.5-72B',
-        fallback_provider: '云端API', fallback_model: 'GPT-4o',
+        fallback_provider: '云端API', fallback_model: 'qwen-plus',
         max_tokens_per_request: 8192, temperature: 0.3, timeout_seconds: 60, retry_count: 3,
       },
       log_retention_days: 365, data_retention_days: 1095,
       allow_custom_model: true, sso_enabled: true, sso_endpoint: 'https://sso.demo-group.com/oauth2',
+      tenant_admin_id: 'tenantadmin',
     },
     {
       id: 'T-002', name: '华东分公司', code: 'EAST_BRANCH', oa_type: 'weaver_e9',
@@ -1574,6 +1576,7 @@ export const useMockData = () => {
       },
       log_retention_days: 180, data_retention_days: 730,
       allow_custom_model: false, sso_enabled: false, sso_endpoint: '',
+      tenant_admin_id: 'tenantadmin2',
     },
     {
       id: 'T-003', name: '测试租户', code: 'TEST_TENANT', oa_type: 'weaver_e9',
@@ -1596,24 +1599,9 @@ export const useMockData = () => {
   // ============================================================
   const mockOASystemConfigs: OASystemConfig[] = [
     {
-      id: 'OA-001', name: '泛微 E9', type: 'weaver_e9', type_label: '泛微 Ecology E9',
+      id: 'OA-001', name: '泛微 Ecology E9', type: 'weaver_e9', type_label: '泛微 Ecology E9',
       version: 'v10.x', status: 'connected', description: '泛微协同办公平台 E9 版本，支持 JDBC 直连和 REST API 两种数据获取方式',
-      adapter_version: '2.1.0', last_sync: '2026-02-12 15:30:22', sync_interval: 30, enabled: true,
-    },
-    {
-      id: 'OA-002', name: '泛微 E-Bridge', type: 'weaver_ebridge', type_label: '泛微 E-Bridge',
-      version: 'v3.x', status: 'disconnected', description: '泛微 E-Bridge 集成平台，通过标准 API 接口对接',
-      adapter_version: '1.0.0', last_sync: '', sync_interval: 60, enabled: false,
-    },
-    {
-      id: 'OA-003', name: '致远 A8+', type: 'zhiyuan_a8', type_label: '致远互联 A8+',
-      version: 'v8.1', status: 'disconnected', description: '致远互联 A8+ 协同管理平台，支持 REST API 接入',
-      adapter_version: '1.0.0-beta', last_sync: '', sync_interval: 60, enabled: false,
-    },
-    {
-      id: 'OA-004', name: '蓝凌 EKP', type: 'landray_ekp', type_label: '蓝凌 EKP',
-      version: 'v16.x', status: 'disconnected', description: '蓝凌数智化工作平台 EKP，支持多种数据集成方式',
-      adapter_version: '0.9.0-alpha', last_sync: '', sync_interval: 120, enabled: false,
+      adapter_version: '2.1.0', last_sync: '2026/2/23 12:17:04', sync_interval: 30, enabled: true,
     },
   ]
 
@@ -1625,7 +1613,7 @@ export const useMockData = () => {
         username: 'oa_reader', password: '********', pool_size: 20,
         connection_timeout: 30, test_on_borrow: true,
       },
-      status: 'connected', last_sync: '2026-02-12 15:30:22', sync_interval: 30, enabled: true,
+      status: 'connected', last_sync: '2026/2/23 12:17:04', sync_interval: 30, enabled: true,
       created_at: '2025-01-10', description: '总部泛微E9 OA系统主数据库，用于流程数据同步',
     },
     {
@@ -1635,13 +1623,13 @@ export const useMockData = () => {
         username: 'oa_reader', password: '********', pool_size: 10,
         connection_timeout: 30, test_on_borrow: true,
       },
-      status: 'connected', last_sync: '2026-02-12 14:20:10', sync_interval: 60, enabled: true,
+      status: 'connected', last_sync: '2026/2/23 11:20:10', sync_interval: 60, enabled: true,
       created_at: '2025-02-15', description: '华东分公司泛微E9数据库',
     },
     {
       id: 'OADB-003', name: '测试环境数据库', oa_type: 'weaver_e9', oa_type_label: '泛微 Ecology E9',
       jdbc_config: {
-        driver: 'postgresql', host: 'localhost', port: 5432, database: 'ecology_test',
+        driver: 'oracle', host: 'localhost', port: 1521, database: 'ecology_test',
         username: 'test_reader', password: '********', pool_size: 5,
         connection_timeout: 15, test_on_borrow: false,
       },
@@ -1652,43 +1640,43 @@ export const useMockData = () => {
 
   const mockAIModelConfigs: AIModelConfig[] = [
     {
-      id: 'AI-001', provider: '本地部署', model_name: 'Qwen2.5-72B', display_name: 'Qwen2.5-72B（本地）',
-      type: 'local', endpoint: 'http://192.168.1.50:8000/v1', api_key_configured: false,
+      id: 'AI-001', provider: 'Xinference', model_name: 'Qwen2.5-72B', display_name: 'Qwen2.5-72B（本地）',
+      type: 'local', endpoint: 'http://192.168.1.50:9997/v1', api_key_configured: false,
       max_tokens: 8192, context_window: 131072, cost_per_1k_tokens: 0,
       status: 'online', enabled: true,
-      description: '通义千问2.5 72B 参数大模型，本地私有部署，数据不出域',
+      description: '通义千问2.5 72B 参数大模型，通过 Xinference 本地私有部署，数据不出域',
       capabilities: ['text', 'code', 'reasoning', 'analysis'],
     },
     {
-      id: 'AI-002', provider: '本地部署', model_name: 'Qwen2.5-32B', display_name: 'Qwen2.5-32B（本地）',
-      type: 'local', endpoint: 'http://192.168.1.50:8000/v1', api_key_configured: false,
+      id: 'AI-002', provider: 'Xinference', model_name: 'Qwen2.5-32B', display_name: 'Qwen2.5-32B（本地）',
+      type: 'local', endpoint: 'http://192.168.1.50:9997/v1', api_key_configured: false,
       max_tokens: 4096, context_window: 65536, cost_per_1k_tokens: 0,
       status: 'online', enabled: true,
-      description: '通义千问2.5 32B 参数大模型，适合轻量级审核任务',
+      description: '通义千问2.5 32B 参数大模型，通过 Xinference 部署，适合轻量级审核任务',
       capabilities: ['text', 'code', 'reasoning'],
     },
     {
-      id: 'AI-003', provider: '云端API', model_name: 'GPT-4o', display_name: 'GPT-4o（OpenAI）',
-      type: 'cloud', endpoint: 'https://api.openai.com/v1', api_key_configured: true,
-      max_tokens: 16384, context_window: 128000, cost_per_1k_tokens: 0.15,
+      id: 'AI-003', provider: '阿里云百炼', model_name: 'qwen-plus', display_name: 'Qwen-Plus（阿里云百炼）',
+      type: 'cloud', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', api_key_configured: true,
+      max_tokens: 16384, context_window: 131072, cost_per_1k_tokens: 0.008,
       status: 'online', enabled: true,
-      description: 'OpenAI GPT-4o 多模态大模型，适合复杂合同和法务审核',
-      capabilities: ['text', 'code', 'reasoning', 'vision', 'analysis'],
-    },
-    {
-      id: 'AI-004', provider: '云端API', model_name: 'Claude-3.5-Sonnet', display_name: 'Claude-3.5-Sonnet（Anthropic）',
-      type: 'cloud', endpoint: 'https://api.anthropic.com/v1', api_key_configured: true,
-      max_tokens: 8192, context_window: 200000, cost_per_1k_tokens: 0.18,
-      status: 'online', enabled: false,
-      description: 'Anthropic Claude-3.5 Sonnet，超长上下文支持，适合大文档分析',
+      description: '阿里云百炼 Qwen-Plus 大模型，云端部署，性价比高',
       capabilities: ['text', 'code', 'reasoning', 'analysis'],
     },
     {
-      id: 'AI-005', provider: '本地部署', model_name: 'DeepSeek-V3', display_name: 'DeepSeek-V3（本地）',
-      type: 'local', endpoint: 'http://192.168.1.51:8000/v1', api_key_configured: false,
+      id: 'AI-004', provider: '阿里云百炼', model_name: 'qwen-max', display_name: 'Qwen-Max（阿里云百炼）',
+      type: 'cloud', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', api_key_configured: true,
+      max_tokens: 8192, context_window: 131072, cost_per_1k_tokens: 0.02,
+      status: 'online', enabled: false,
+      description: '阿里云百炼 Qwen-Max 旗舰模型，适合复杂合同和法务审核',
+      capabilities: ['text', 'code', 'reasoning', 'vision', 'analysis'],
+    },
+    {
+      id: 'AI-005', provider: 'Xinference', model_name: 'DeepSeek-V3', display_name: 'DeepSeek-V3（本地）',
+      type: 'local', endpoint: 'http://192.168.1.51:9997/v1', api_key_configured: false,
       max_tokens: 8192, context_window: 65536, cost_per_1k_tokens: 0,
       status: 'maintenance', enabled: false,
-      description: 'DeepSeek V3 大模型，擅长代码和推理任务',
+      description: 'DeepSeek V3 大模型，通过 Xinference 部署，擅长代码和推理任务',
       capabilities: ['text', 'code', 'reasoning'],
     },
   ]

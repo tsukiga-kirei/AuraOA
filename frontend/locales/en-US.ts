@@ -37,6 +37,7 @@ export default {
     'header.lightMode': 'Switch to Light Mode',
     'header.darkMode': 'Switch to Dark Mode',
     'header.notifications': 'Notifications',
+    'header.switchRole': 'Switch Role',
 
     // ===== Settings page =====
     'settings.title': 'Personal Settings',
@@ -324,6 +325,7 @@ export default {
     'login.passwordPlaceholder': 'Enter password',
     'login.tenant': 'Tenant',
     'login.tenantPlaceholder': 'Select tenant',
+    'login.defaultTenant': 'Default Tenant',
     'login.login': 'Login',
     'login.logging': 'Logging in...',
     'login.failed': 'Invalid username or password',
@@ -988,6 +990,11 @@ export default {
     'admin.settings.aiModelAdded': 'AI model added',
     'admin.settings.aiModelDeleted': 'AI model deleted',
     'admin.settings.confirmDeleteAIModel': 'Confirm delete this AI model?',
+    'admin.settings.fillHostFirst': 'Please fill in host address first',
+    'admin.settings.fillEndpointFirst': 'Please fill in endpoint address first',
+    'admin.settings.dbConnSuccess': 'Database connection test successful',
+    'admin.settings.dbConnFailed': 'Database connection test failed, please check configuration',
+    'admin.settings.modelConnSuccess': 'AI model endpoint connection test successful',
 
     // ===== Admin - Tenant User Configs =====
     'admin.userConfigs.title': 'User Preferences',
