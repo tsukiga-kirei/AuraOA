@@ -31,7 +31,7 @@ const portals = computed(() => [
 ])
 
 const activePortal = ref<PortalType>('business')
-const form = ref({ username: '', password: '', tenant_id: 'default' })
+const form = ref({ username: '', password: '', tenant_id: mockTenants[0]?.code || 'default' })
 const loading = ref(false)
 const rememberMe = ref(false)
 const currentPortal = computed(() => portals.value.find(p => p.key === activePortal.value)!)
@@ -132,8 +132,7 @@ const handleLogin = async () => {
 
           <a-form layout="vertical" class="login-form">
             <a-form-item v-if="activePortal !== 'system_admin'">
-              <a-select v-model:value="form.tenant_id" :placeholder="t('login.tenantPlaceholder')" size="large" class="login-input">
-                <a-select-option value="default">{{ t('login.defaultTenant') }}</a-select-option>
+              <a-select v-model:value="form.tenant_id" :placeholder="t('login.tenantPlaceholder')" size="large" class="login-select">
                 <a-select-option v-for="tenant in mockTenants" :key="tenant.id" :value="tenant.code">
                   {{ tenant.name }}（{{ tenant.code }}）
                 </a-select-option>
@@ -338,6 +337,27 @@ const handleLogin = async () => {
   box-shadow: 0 0 0 3px rgba(79,70,229,0.1) !important;
 }
 .login-input-icon { color: var(--color-text-tertiary); font-size: 15px; }
+.login-select {
+  width: 100% !important;
+}
+.login-select :deep(.ant-select-selector) {
+  height: 46px !important;
+  border-radius: var(--radius-lg) !important;
+  border: 1.5px solid var(--color-border) !important;
+  background: var(--color-bg-input) !important;
+  font-size: 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 0 14px !important;
+  transition: all 0.2s ease !important;
+}
+.login-select:hover :deep(.ant-select-selector) {
+  border-color: var(--color-text-tertiary) !important;
+}
+.login-select.ant-select-focused :deep(.ant-select-selector) {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px rgba(79,70,229,0.1) !important;
+}
 .login-options { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 
 .login-btn {

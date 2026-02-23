@@ -86,7 +86,7 @@ const openEditOADb = (conn: OADatabaseConnection) => {
   showAddOADb.value = true
 }
 
-const onOATypeChange = (val: string) => {
+const onOATypeChange = (val: any) => {
   const opt = oaTypeOptions.find(o => o.value === val)
   if (opt) newOADb.value.oa_type_label = opt.label
 }
@@ -188,7 +188,7 @@ const openAddAIModel = () => {
   showAddAIModel.value = true
 }
 
-const onModelTypeChange = (val: string) => {
+const onModelTypeChange = (val: any) => {
   if (val === 'local') {
     newAIModel.value.provider = 'Xinference'
     newAIModel.value.cost_per_1k_tokens = 0
@@ -568,13 +568,13 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
           <a-form layout="vertical">
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item :label="t('admin.settings.sessionTimeout')">
-                  <a-input-number v-model:value="generalConfig.session_timeout" :min="5" :max="1440" style="width: 100%;" size="large" />
+                <a-form-item :label="t('admin.settings.platformName')">
+                  <a-input v-model:value="generalConfig.platform_name" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="12">
-                <a-form-item :label="t('admin.settings.maxUpload')">
-                  <a-input-number v-model:value="generalConfig.max_upload_size" :min="1" :max="500" style="width: 100%;" size="large" />
+                <a-form-item :label="t('admin.settings.version')">
+                  <a-input v-model:value="generalConfig.platform_version" size="large" disabled />
                 </a-form-item>
               </a-col>
             </a-row>
@@ -699,9 +699,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
     <a-modal
       v-model:open="showAddOADb"
       :title="editingOADb ? t('admin.settings.editOADb') : t('admin.settings.addOADb')"
-      @ok="saveOADb"
-      :okText="editingOADb ? t('admin.settings.saveAll') : t('admin.tenants.create')"
-      :cancelText="t('admin.tenants.cancel')"
+      :footer="null"
       width="640px"
     >
       <a-form layout="vertical" style="margin-top: 16px;">
@@ -775,21 +773,23 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         <a-form-item :label="t('admin.tenants.description')">
           <a-textarea v-model:value="newOADb.description" :rows="2" :placeholder="t('admin.settings.oaDbDescPlaceholder')" />
         </a-form-item>
-        <div style="display: flex; justify-content: flex-end; padding-top: 8px; border-top: 1px solid var(--color-border-light);">
-          <a-button type="primary" ghost :loading="testingDbConn" @click="testDbConnection">
-            <ApiOutlined /> {{ t('admin.settings.testConnection') }}
-          </a-button>
-        </div>
       </a-form>
+      <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--color-border-light); margin-top: 8px;">
+        <a-button :loading="testingDbConn" @click="testDbConnection">
+          <ApiOutlined /> {{ t('admin.settings.testConnection') }}
+        </a-button>
+        <div style="display: flex; gap: 8px;">
+          <a-button @click="showAddOADb = false">{{ t('admin.tenants.cancel') }}</a-button>
+          <a-button type="primary" @click="saveOADb">{{ editingOADb ? t('admin.settings.saveAll') : t('admin.tenants.create') }}</a-button>
+        </div>
+      </div>
     </a-modal>
 
     <!-- Add AI Model Modal -->
     <a-modal
       v-model:open="showAddAIModel"
       :title="t('admin.settings.addAIModel')"
-      @ok="saveAIModel"
-      :okText="t('admin.tenants.create')"
-      :cancelText="t('admin.tenants.cancel')"
+      :footer="null"
       width="640px"
     >
       <a-form layout="vertical" style="margin-top: 16px;">
@@ -851,12 +851,16 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         <a-form-item :label="t('admin.tenants.description')">
           <a-textarea v-model:value="newAIModel.description" :rows="2" :placeholder="t('admin.settings.aiModelDescPlaceholder')" />
         </a-form-item>
-        <div style="display: flex; justify-content: flex-end; padding-top: 8px; border-top: 1px solid var(--color-border-light);">
-          <a-button type="primary" ghost :loading="testingModelConn" @click="testModelConnection">
-            <ApiOutlined /> {{ t('admin.settings.testConnection') }}
-          </a-button>
-        </div>
       </a-form>
+      <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--color-border-light); margin-top: 8px;">
+        <a-button :loading="testingModelConn" @click="testModelConnection">
+          <ApiOutlined /> {{ t('admin.settings.testConnection') }}
+        </a-button>
+        <div style="display: flex; gap: 8px;">
+          <a-button @click="showAddAIModel = false">{{ t('admin.tenants.cancel') }}</a-button>
+          <a-button type="primary" @click="saveAIModel">{{ t('admin.tenants.create') }}</a-button>
+        </div>
+      </div>
     </a-modal>
   </div>
 </template>

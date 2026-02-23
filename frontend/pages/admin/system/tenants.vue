@@ -699,8 +699,11 @@ const onNewTenantProviderChange = () => {
 /* Tenant grid */
 .tenant-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 20px;
+}
+@media (max-width: 900px) {
+  .tenant-grid { grid-template-columns: 1fr; }
 }
 
 .tenant-card {
