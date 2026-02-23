@@ -18,6 +18,7 @@ definePageMeta({ layout: false })
 const { login, getMenu, setUserRole, setUserPermissions, isMockMode, MOCK_USERS } = useAuth()
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
 const { t } = useI18n()
+const { mockTenants } = useMockData()
 
 onMounted(() => restoreTheme())
 
@@ -131,9 +132,12 @@ const handleLogin = async () => {
 
           <a-form layout="vertical" class="login-form">
             <a-form-item v-if="activePortal !== 'system_admin'">
-              <a-input v-model:value="form.tenant_id" :placeholder="t('login.tenantPlaceholder')" size="large" class="login-input">
-                <template #prefix><SafetyCertificateOutlined class="login-input-icon" /></template>
-              </a-input>
+              <a-select v-model:value="form.tenant_id" :placeholder="t('login.tenantPlaceholder')" size="large" class="login-input">
+                <a-select-option value="default">{{ t('login.defaultTenant') }}</a-select-option>
+                <a-select-option v-for="tenant in mockTenants" :key="tenant.id" :value="tenant.code">
+                  {{ tenant.name }}（{{ tenant.code }}）
+                </a-select-option>
+              </a-select>
             </a-form-item>
             <a-form-item>
               <a-input v-model:value="form.username" :placeholder="t('login.usernamePlaceholder')" size="large" class="login-input">

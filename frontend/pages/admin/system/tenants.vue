@@ -54,7 +54,10 @@ const newTenant = ref({
   max_concurrency: 10,
   contact_name: '',
   contact_email: '',
+  contact_phone: '',
   description: '',
+  ai_provider: 'Xinference',
+  ai_model: '',
 })
 
 const createTenant = () => {
@@ -76,10 +79,10 @@ const createTenant = () => {
     created_at: new Date().toISOString().slice(0, 10),
     contact_name: newTenant.value.contact_name,
     contact_email: newTenant.value.contact_email,
-    contact_phone: '',
+    contact_phone: newTenant.value.contact_phone,
     description: newTenant.value.description,
     ai_config: {
-      default_provider: t('admin.ruleConfig.localDeploy'), default_model: 'Qwen2.5-72B',
+      default_provider: newTenant.value.ai_provider, default_model: newTenant.value.ai_model || 'Qwen2.5-72B',
       fallback_provider: '', fallback_model: '',
       max_tokens_per_request: 4096, temperature: 0.3,
       timeout_seconds: 60, retry_count: 2,
@@ -93,7 +96,7 @@ const createTenant = () => {
   tenants.value.push(tenantObj)
   showCreate.value = false
   message.success(t('admin.tenants.createSuccess'))
-  newTenant.value = { name: '', code: '', oa_db_connection_id: '', token_quota: 10000, max_concurrency: 10, contact_name: '', contact_email: '', description: '' }
+  newTenant.value = { name: '', code: '', oa_db_connection_id: '', token_quota: 10000, max_concurrency: 10, contact_name: '', contact_email: '', contact_phone: '', description: '', ai_provider: 'Xinference', ai_model: '' }
   openDetail(tenantObj)
 }
 
@@ -131,6 +134,45 @@ const getQuotaColor = (percent: number) => {
   if (percent >= 90) return '#ef4444'
   if (percent >= 70) return '#f59e0b'
   return '#10b981'
+}
+
+// ===== AI Model filtering by provider =====
+const providerOptions = ['Xinference', '阿里云百炼']
+
+const filteredModelsForProvider = (provider: string) => {
+  if (provider === 'Xinference') return availableModels.value.filter(m => m.type === 'local')
+  if (provider === '阿里云百炼') return availableModels.value.filter(m => m.type === 'cloud')
+  return availableModels.value
+}
+
+const primaryFilteredModels = computed(() => {
+  if (!selectedTenant.value) return availableModels.value
+  return filteredModelsForProvider(selectedTenant.value.ai_config.default_provider)
+})
+
+const fallbackFilteredModels = computed(() => {
+  if (!selectedTenant.value) return availableModels.value
+  return filteredModelsForProvider(selectedTenant.value.ai_config.fallback_provider)
+})
+
+const newTenantFilteredModels = computed(() => {
+  return filteredModelsForProvider(newTenant.value.ai_provider)
+})
+
+const onPrimaryProviderChange = () => {
+  if (selectedTenant.value) {
+    selectedTenant.value.ai_config.default_model = ''
+  }
+}
+
+const onFallbackProviderChange = () => {
+  if (selectedTenant.value) {
+    selectedTenant.value.ai_config.fallback_model = ''
+  }
+}
+
+const onNewTenantProviderChange = () => {
+  newTenant.value.ai_model = ''
 }
 </script>
 
@@ -264,14 +306,37 @@ const getQuotaColor = (percent: number) => {
           </a-col>
         </a-row>
         <a-row :gutter="16">
-          <a-col :span="12">
+          <a-col :span="8">
             <a-form-item :label="t('admin.tenants.contact')">
               <a-input v-model:value="newTenant.contact_name" :placeholder="t('admin.tenants.contactPlaceholder')" size="large" />
             </a-form-item>
           </a-col>
-          <a-col :span="12">
+          <a-col :span="8">
             <a-form-item :label="t('admin.tenants.contactEmail')">
               <a-input v-model:value="newTenant.contact_email" placeholder="admin@example.com" size="large" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item :label="t('admin.tenants.contactPhone')">
+              <a-input v-model:value="newTenant.contact_phone" :placeholder="t('admin.tenants.contactPhonePlaceholder')" size="large" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item :label="t('admin.tenants.aiProvider')">
+              <a-select v-model:value="newTenant.ai_provider" size="large" @change="onNewTenantProviderChange">
+                <a-select-option v-for="p in providerOptions" :key="p" :value="p">{{ p }}</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item :label="t('admin.tenants.modelName')">
+              <a-select v-model:value="newTenant.ai_model" size="large" :placeholder="t('admin.tenants.selectModel')">
+                <a-select-option v-for="m in newTenantFilteredModels" :key="m.model_name" :value="m.model_name">
+                  {{ m.display_name }}
+                </a-select-option>
+              </a-select>
             </a-form-item>
           </a-col>
         </a-row>
@@ -355,15 +420,6 @@ const getQuotaColor = (percent: number) => {
             </a-row>
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item :label="t('admin.tenants.oaDbConnection')">
-                  <a-select v-model:value="selectedTenant.oa_db_connection_id" size="large" :placeholder="t('admin.tenants.selectOADb')" allowClear>
-                    <a-select-option v-for="conn in availableOADbs" :key="conn.id" :value="conn.id">
-                      {{ conn.name }} ({{ conn.oa_type_label }})
-                    </a-select-option>
-                  </a-select>
-                </a-form-item>
-              </a-col>
-              <a-col :span="12">
                 <a-form-item :label="t('admin.tenants.createdDate')">
                   <a-input :value="selectedTenant.created_at" size="large" disabled />
                 </a-form-item>
@@ -440,16 +496,15 @@ const getQuotaColor = (percent: number) => {
               <a-row :gutter="16">
                 <a-col :span="12">
                   <a-form-item :label="t('admin.tenants.aiProvider')">
-                    <a-select v-model:value="selectedTenant.ai_config.default_provider" size="large" :placeholder="t('admin.tenants.selectProvider')">
-                      <a-select-option :value="t('admin.ruleConfig.localDeploy')">{{ t('admin.ruleConfig.localDeploy') }}</a-select-option>
-                      <a-select-option :value="t('admin.ruleConfig.cloudAPI')">{{ t('admin.ruleConfig.cloudAPI') }}</a-select-option>
+                    <a-select v-model:value="selectedTenant.ai_config.default_provider" size="large" :placeholder="t('admin.tenants.selectProvider')" @change="onPrimaryProviderChange">
+                      <a-select-option v-for="p in providerOptions" :key="p" :value="p">{{ p }}</a-select-option>
                     </a-select>
                   </a-form-item>
                 </a-col>
                 <a-col :span="12">
                   <a-form-item :label="t('admin.tenants.modelName')">
                     <a-select v-model:value="selectedTenant.ai_config.default_model" size="large" :placeholder="t('admin.tenants.selectModel')">
-                      <a-select-option v-for="m in availableModels" :key="m.model_name" :value="m.model_name">
+                      <a-select-option v-for="m in primaryFilteredModels" :key="m.model_name" :value="m.model_name">
                         {{ m.display_name }}
                       </a-select-option>
                     </a-select>
@@ -463,16 +518,15 @@ const getQuotaColor = (percent: number) => {
               <a-row :gutter="16">
                 <a-col :span="12">
                   <a-form-item :label="t('admin.tenants.fallbackProvider')">
-                    <a-select v-model:value="selectedTenant.ai_config.fallback_provider" size="large" allowClear :placeholder="t('admin.tenants.noConfig')">
-                      <a-select-option :value="t('admin.ruleConfig.localDeploy')">{{ t('admin.ruleConfig.localDeploy') }}</a-select-option>
-                      <a-select-option :value="t('admin.ruleConfig.cloudAPI')">{{ t('admin.ruleConfig.cloudAPI') }}</a-select-option>
+                    <a-select v-model:value="selectedTenant.ai_config.fallback_provider" size="large" allowClear :placeholder="t('admin.tenants.noConfig')" @change="onFallbackProviderChange">
+                      <a-select-option v-for="p in providerOptions" :key="p" :value="p">{{ p }}</a-select-option>
                     </a-select>
                   </a-form-item>
                 </a-col>
                 <a-col :span="12">
                   <a-form-item :label="t('admin.tenants.fallbackModelLabel')">
                     <a-select v-model:value="selectedTenant.ai_config.fallback_model" size="large" allowClear :placeholder="t('admin.tenants.noConfig')">
-                      <a-select-option v-for="m in availableModels" :key="m.model_name" :value="m.model_name">
+                      <a-select-option v-for="m in fallbackFilteredModels" :key="m.model_name" :value="m.model_name">
                         {{ m.display_name }}
                       </a-select-option>
                     </a-select>

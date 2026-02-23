@@ -42,21 +42,15 @@ const testingOADbId = ref<string | null>(null)
 
 const oaTypeOptions = [
   { value: 'weaver_e9', label: '泛微 Ecology E9' },
-  { value: 'weaver_ebridge', label: '泛微 E-Bridge' },
-  { value: 'zhiyuan_a8', label: '致远互联 A8+' },
-  { value: 'landray_ekp', label: '蓝凌 EKP' },
-  { value: 'custom', label: '自定义' },
 ]
 
 const driverOptions = [
   { label: 'MySQL', value: 'mysql' },
-  { label: 'PostgreSQL', value: 'postgresql' },
   { label: 'Oracle', value: 'oracle' },
-  { label: 'SQL Server', value: 'sqlserver' },
 ]
 
 const getDriverPort = (driver: string) => {
-  const ports: Record<string, number> = { mysql: 3306, postgresql: 5432, oracle: 1521, sqlserver: 1433 }
+  const ports: Record<string, number> = { mysql: 3306, oracle: 1521 }
   return ports[driver] || 3306
 }
 
@@ -159,7 +153,8 @@ const testOADbConnection = async (id: string) => {
   await new Promise(resolve => setTimeout(resolve, 2000))
   if (conn.enabled && conn.jdbc_config.host) {
     conn.status = 'connected'
-    conn.last_sync = new Date().toLocaleString('zh-CN')
+    const now = new Date()
+    conn.last_sync = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
     message.success(t('admin.settings.connSuccess', conn.name))
   } else {
     conn.status = 'disconnected'
@@ -173,14 +168,14 @@ const showAddAIModel = ref(false)
 const editingAIModel = ref<AIModelConfig | null>(null)
 
 const newAIModel = ref<Partial<AIModelConfig>>({
-  provider: t('admin.ruleConfig.localDeploy'), model_name: '', display_name: '', type: 'local',
+  provider: 'Xinference', model_name: '', display_name: '', type: 'local',
   endpoint: '', api_key_configured: false, max_tokens: 4096, context_window: 65536,
   cost_per_1k_tokens: 0, status: 'offline', enabled: true, description: '',
   capabilities: ['text'],
 })
 const resetNewAIModel = () => {
   newAIModel.value = {
-    provider: t('admin.ruleConfig.localDeploy'), model_name: '', display_name: '', type: 'local',
+    provider: 'Xinference', model_name: '', display_name: '', type: 'local',
     endpoint: '', api_key_configured: false, max_tokens: 4096, context_window: 65536,
     cost_per_1k_tokens: 0, status: 'offline', enabled: true, description: '',
     capabilities: ['text'],
@@ -195,11 +190,11 @@ const openAddAIModel = () => {
 
 const onModelTypeChange = (val: string) => {
   if (val === 'local') {
-    newAIModel.value.provider = t('admin.ruleConfig.localDeploy')
+    newAIModel.value.provider = 'Xinference'
     newAIModel.value.cost_per_1k_tokens = 0
     newAIModel.value.api_key_configured = false
   } else {
-    newAIModel.value.provider = t('admin.ruleConfig.cloudAPI')
+    newAIModel.value.provider = '阿里云百炼'
   }
 }
 
@@ -222,7 +217,7 @@ const saveAIModel = () => {
   }
   const newModel: AIModelConfig = {
     id: `AI-${Date.now()}`,
-    provider: newAIModel.value.provider || t('admin.ruleConfig.localDeploy'),
+    provider: newAIModel.value.provider || 'Xinference',
     model_name: newAIModel.value.model_name!,
     display_name: newAIModel.value.display_name!,
     type: newAIModel.value.type || 'local',
@@ -252,6 +247,36 @@ const toggleAIModel = (id: string) => {
 const deleteAIModel = (id: string) => {
   aiModels.value = aiModels.value.filter(m => m.id !== id)
   message.success(t('admin.settings.aiModelDeleted'))
+}
+
+// ===== Test Connection for DB modal =====
+const testingDbConn = ref(false)
+const testDbConnection = async () => {
+  if (!newOADb.value.jdbc_config?.host) {
+    message.warning(t('admin.settings.fillHostFirst'))
+    return
+  }
+  testingDbConn.value = true
+  await new Promise(resolve => setTimeout(resolve, 1800))
+  testingDbConn.value = false
+  if (newOADb.value.jdbc_config?.host && newOADb.value.jdbc_config?.database) {
+    message.success(t('admin.settings.dbConnSuccess'))
+  } else {
+    message.error(t('admin.settings.dbConnFailed'))
+  }
+}
+
+// ===== Test Connection for AI Model modal =====
+const testingModelConn = ref(false)
+const testModelConnection = async () => {
+  if (!newAIModel.value.endpoint) {
+    message.warning(t('admin.settings.fillEndpointFirst'))
+    return
+  }
+  testingModelConn.value = true
+  await new Promise(resolve => setTimeout(resolve, 1500))
+  testingModelConn.value = false
+  message.success(t('admin.settings.modelConnSuccess'))
 }
 
 // ===== OA System toggle (legacy) =====
@@ -412,7 +437,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               <a-button size="small" type="text" @click="openEditOADb(conn)">
                 <EditOutlined />
               </a-button>
-              <a-popconfirm :title="t('admin.settings.confirmDeleteOADb')" @confirm="deleteOADb(conn.id)" :okText="t('admin.tenants.create')" :cancelText="t('admin.tenants.cancel')">
+              <a-popconfirm :title="t('admin.settings.confirmDeleteOADb')" @confirm="deleteOADb(conn.id)" :okText="t('admin.ruleConfig.confirm')" :cancelText="t('admin.tenants.cancel')">
                 <a-button size="small" type="text" danger>
                   <DeleteOutlined />
                 </a-button>
@@ -515,7 +540,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               :checked-children="t('admin.ruleConfig.enable')"
               :un-checked-children="t('admin.ruleConfig.disable')"
             />
-            <a-popconfirm :title="t('admin.settings.confirmDeleteAIModel')" @confirm="deleteAIModel(model.id)" :okText="t('admin.tenants.create')" :cancelText="t('admin.tenants.cancel')">
+            <a-popconfirm :title="t('admin.settings.confirmDeleteAIModel')" @confirm="deleteAIModel(model.id)" :okText="t('admin.ruleConfig.confirm')" :cancelText="t('admin.tenants.cancel')">
               <a-button size="small" type="text" danger>
                 <DeleteOutlined />
               </a-button>
@@ -543,21 +568,13 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
           <a-form layout="vertical">
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item :label="t('admin.settings.platformName')">
-                  <a-input v-model:value="generalConfig.platform_name" size="large" />
+                <a-form-item :label="t('admin.settings.sessionTimeout')">
+                  <a-input-number v-model:value="generalConfig.session_timeout" :min="5" :max="1440" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
-              <a-col :span="6">
-                <a-form-item :label="t('admin.settings.version')">
-                  <a-input v-model:value="generalConfig.platform_version" size="large" disabled />
-                </a-form-item>
-              </a-col>
-              <a-col :span="6">
-                <a-form-item :label="t('admin.settings.defaultLanguage')">
-                  <a-select v-model:value="generalConfig.default_language" size="large" :placeholder="t('admin.settings.selectLanguage')">
-                    <a-select-option value="zh-CN">{{ t('admin.settings.zhCN') }}</a-select-option>
-                    <a-select-option value="en-US">English</a-select-option>
-                  </a-select>
+              <a-col :span="12">
+                <a-form-item :label="t('admin.settings.maxUpload')">
+                  <a-input-number v-model:value="generalConfig.max_upload_size" :min="1" :max="500" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
             </a-row>
@@ -758,6 +775,11 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         <a-form-item :label="t('admin.tenants.description')">
           <a-textarea v-model:value="newOADb.description" :rows="2" :placeholder="t('admin.settings.oaDbDescPlaceholder')" />
         </a-form-item>
+        <div style="display: flex; justify-content: flex-end; padding-top: 8px; border-top: 1px solid var(--color-border-light);">
+          <a-button type="primary" ghost :loading="testingDbConn" @click="testDbConnection">
+            <ApiOutlined /> {{ t('admin.settings.testConnection') }}
+          </a-button>
+        </div>
       </a-form>
     </a-modal>
 
@@ -794,7 +816,10 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
           </a-col>
           <a-col :span="12">
             <a-form-item :label="t('admin.settings.aiModelProvider')">
-              <a-input v-model:value="newAIModel.provider" size="large" />
+              <a-select v-model:value="newAIModel.provider" size="large">
+                <a-select-option v-if="newAIModel.type === 'local'" value="Xinference">Xinference</a-select-option>
+                <a-select-option v-if="newAIModel.type === 'cloud'" value="阿里云百炼">阿里云百炼</a-select-option>
+              </a-select>
             </a-form-item>
           </a-col>
         </a-row>
@@ -826,6 +851,11 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         <a-form-item :label="t('admin.tenants.description')">
           <a-textarea v-model:value="newAIModel.description" :rows="2" :placeholder="t('admin.settings.aiModelDescPlaceholder')" />
         </a-form-item>
+        <div style="display: flex; justify-content: flex-end; padding-top: 8px; border-top: 1px solid var(--color-border-light);">
+          <a-button type="primary" ghost :loading="testingModelConn" @click="testModelConnection">
+            <ApiOutlined /> {{ t('admin.settings.testConnection') }}
+          </a-button>
+        </div>
       </a-form>
     </a-modal>
   </div>

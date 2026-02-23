@@ -36,7 +36,8 @@ export default {
     'header.toggleTheme': '切换主题',
     'header.lightMode': '切换到浅色模式',
     'header.darkMode': '切换到深色模式',
-    'header.notifications': '消息通知',
+    'header.notifications': '通知',
+    'header.switchRole': '切换角色',
 
     // ===== Settings page =====
     'settings.title': '个人设置',
@@ -324,6 +325,7 @@ export default {
     'login.passwordPlaceholder': '请输入密码',
     'login.tenant': '租户',
     'login.tenantPlaceholder': '选择租户',
+    'login.defaultTenant': '默认租户',
     'login.login': '登录',
     'login.logging': '登录中...',
     'login.failed': '用户名或密码错误',
@@ -989,6 +991,11 @@ export default {
     'admin.settings.aiModelAdded': 'AI 模型已添加',
     'admin.settings.aiModelDeleted': 'AI 模型已删除',
     'admin.settings.confirmDeleteAIModel': '确认删除此 AI 模型？',
+    'admin.settings.fillHostFirst': '请先填写主机地址',
+    'admin.settings.fillEndpointFirst': '请先填写端点地址',
+    'admin.settings.dbConnSuccess': '数据库连接测试成功',
+    'admin.settings.dbConnFailed': '数据库连接测试失败，请检查配置',
+    'admin.settings.modelConnSuccess': 'AI 模型端点连接测试成功',
 
     // ===== Admin - Tenant User Configs =====
     'admin.userConfigs.title': '个人设置',

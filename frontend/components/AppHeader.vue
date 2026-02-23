@@ -3,6 +3,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   BellOutlined,
+  SwapOutlined,
 } from '@ant-design/icons-vue'
 
 defineProps<{
@@ -18,6 +19,46 @@ const emit = defineEmits<{
 
 const { isDark, toggle: toggleTheme } = useTheme()
 const { t } = useI18n()
+const { userPermissions, setUserPermissions, getMenu } = useAuth()
+
+// ===== Role Switching =====
+type RoleOption = { key: string; label: string; icon: string; permissions: string[] }
+
+const roleOptions = computed<RoleOption[]>(() => {
+  const perms = userPermissions.value
+  const options: RoleOption[] = []
+  if (perms.includes('business')) {
+    options.push({ key: 'business', label: t('login.portal.business'), icon: '📊', permissions: ['business'] })
+  }
+  if (perms.includes('tenant_admin')) {
+    options.push({ key: 'tenant_admin', label: t('login.portal.tenantAdmin'), icon: '⚙️', permissions: ['business', 'tenant_admin'] })
+  }
+  if (perms.includes('system_admin')) {
+    options.push({ key: 'system_admin', label: t('login.portal.systemAdmin'), icon: '🛡️', permissions: ['business', 'tenant_admin', 'system_admin'] })
+  }
+  return options
+})
+
+const showRoleSwitcher = computed(() => roleOptions.value.length > 1)
+
+const currentRoleKey = computed(() => {
+  const perms = userPermissions.value
+  if (perms.includes('system_admin')) return 'system_admin'
+  if (perms.includes('tenant_admin')) return 'tenant_admin'
+  return 'business'
+})
+
+const currentRoleLabel = computed(() => {
+  return roleOptions.value.find(r => r.key === currentRoleKey.value)?.label || ''
+})
+
+const switchRole = async (option: RoleOption) => {
+  if (option.key === currentRoleKey.value) return
+  setUserPermissions(option.permissions as any[])
+  await getMenu()
+  const { getDefaultPage } = await import('~/composables/useMockData')
+  navigateTo(getDefaultPage(option.permissions as any[]))
+}
 </script>
 
 <template>
@@ -51,6 +92,30 @@ const { t } = useI18n()
           </span>
         </button>
       </a-tooltip>
+
+      <!-- Role Switcher -->
+      <a-dropdown v-if="showRoleSwitcher" placement="bottomRight" :trigger="['click']">
+        <a-tooltip :title="t('header.switchRole')" placement="bottom" :mouse-enter-delay="0.5">
+          <button class="header-action role-switch-btn">
+            <SwapOutlined />
+            <span class="role-switch-label">{{ currentRoleLabel }}</span>
+          </button>
+        </a-tooltip>
+        <template #overlay>
+          <a-menu>
+            <a-menu-item
+              v-for="opt in roleOptions"
+              :key="opt.key"
+              :class="{ 'role-menu-active': opt.key === currentRoleKey }"
+              @click="switchRole(opt)"
+            >
+              <span class="role-menu-icon">{{ opt.icon }}</span>
+              <span>{{ opt.label }}</span>
+              <span v-if="opt.key === currentRoleKey" class="role-menu-current">✓</span>
+            </a-menu-item>
+          </a-menu>
+        </template>
+      </a-dropdown>
 
       <a-tooltip :title="t('header.notifications')" placement="bottom" :mouse-enter-delay="0.5">
         <a-badge :count="notificationCount ?? 0" :offset="[-4, 4]">
@@ -96,6 +161,43 @@ const { t } = useI18n()
   background: var(--color-bg-hover);
   color: var(--color-primary);
   box-shadow: 0 0 0 2px var(--color-primary-bg), 0 0 0 4px rgba(79, 70, 229, 0.25);
+}
+
+/* Role Switcher */
+.role-switch-btn {
+  width: auto !important;
+  padding: 0 10px !important;
+  gap: 6px;
+  font-size: 13px;
+  border: 1px solid var(--color-border) !important;
+  border-radius: var(--radius-md) !important;
+  height: 32px !important;
+}
+.role-switch-btn:hover {
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+}
+.role-switch-label {
+  font-size: 12px;
+  font-weight: 500;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.role-menu-icon {
+  margin-right: 8px;
+  font-size: 14px;
+}
+.role-menu-active {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+.role-menu-current {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--color-primary);
+  font-weight: 700;
 }
 
 /* Theme toggle pill switch */
@@ -155,12 +257,8 @@ const { t } = useI18n()
   transform: rotate(90deg) scale(0.5);
 }
 
-.rotate-icon-enter-active,
-.rotate-icon-leave-active { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-.rotate-icon-enter-from { opacity: 0; transform: rotate(-120deg) scale(0.5); }
-.rotate-icon-leave-to { opacity: 0; transform: rotate(120deg) scale(0.5); }
-
 @media (max-width: 768px) {
   .app-header { padding: 0 16px; }
+  .role-switch-label { display: none; }
 }
 </style>
