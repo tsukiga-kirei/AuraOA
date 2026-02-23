@@ -924,7 +924,7 @@ export default {
     'admin.settings.analysis': '分析',
     'admin.settings.generalDesc': '配置平台全局参数，包括安全策略、邮件通知和数据备份',
     'admin.settings.platformInfo': '平台基本信息',
-    'admin.settings.platformInfoDesc': '平台名称、版本与语言设置',
+    'admin.settings.platformInfoDesc': '平台名称、版本设置',
     'admin.settings.platformName': '平台名称',
     'admin.settings.version': '版本号',
     'admin.settings.defaultLanguage': '默认语言',

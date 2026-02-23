@@ -22,6 +22,9 @@ export const useAuth = () => {
   const refreshToken = useState<string | null>('auth_refresh', () => null)
   const menus = useState<MockMenuItem[]>('auth_menus', () => [])
   const userRole = useState<UserRole>('auth_role', () => 'business')
+  /** Full permissions from login — never mutated after login */
+  const fullPermissions = useState<PermissionGroup[]>('auth_full_permissions', () => ['business'])
+  /** Active permissions — changed by role switching to filter menus/pages */
   const userPermissions = useState<PermissionGroup[]>('auth_permissions', () => ['business'])
   const currentUser = useState<{
     username: string
@@ -42,11 +45,15 @@ export const useAuth = () => {
     if (import.meta.client) localStorage.setItem('user_permissions', JSON.stringify(perms))
   }
 
+  const setFullPermissions = (perms: PermissionGroup[]) => {
+    fullPermissions.value = perms
+    if (import.meta.client) localStorage.setItem('full_permissions', JSON.stringify(perms))
+  }
+
   const login = async (req: LoginRequest): Promise<boolean> => {
     if (isMockMode.value) {
       const matched = MOCK_USERS.find(
-        u => u.username === req.username && u.password === req.password
-          && (req.tenant_id === u.tenant_id || req.tenant_id === 'default'),
+        u => u.username === req.username && u.password === req.password,
       )
       if (!matched) return false
 
@@ -59,7 +66,8 @@ export const useAuth = () => {
         tenant_id: matched.tenant_id,
         role_label: matched.role_label,
       }
-      // Store permissions from the matched user
+      // Store both full and active permissions from the matched user
+      setFullPermissions(matched.permissions)
       setUserPermissions(matched.permissions)
       if (import.meta.client) {
         localStorage.setItem('token', mockToken)
@@ -108,6 +116,7 @@ export const useAuth = () => {
     refreshToken.value = null
     menus.value = []
     userRole.value = 'business'
+    fullPermissions.value = ['business']
     userPermissions.value = ['business']
     currentUser.value = null
     if (import.meta.client) {
@@ -115,6 +124,7 @@ export const useAuth = () => {
       localStorage.removeItem('refresh_token')
       localStorage.removeItem('user_role')
       localStorage.removeItem('user_permissions')
+      localStorage.removeItem('full_permissions')
       localStorage.removeItem('current_user')
     }
     navigateTo('/login')
@@ -130,6 +140,10 @@ export const useAuth = () => {
       if (savedRefresh) refreshToken.value = savedRefresh
       const savedRole = localStorage.getItem('user_role') as UserRole | null
       if (savedRole) userRole.value = savedRole
+      const savedFullPerms = localStorage.getItem('full_permissions')
+      if (savedFullPerms) {
+        try { fullPermissions.value = JSON.parse(savedFullPerms) } catch { /* ignore */ }
+      }
       const savedPerms = localStorage.getItem('user_permissions')
       if (savedPerms) {
         try { userPermissions.value = JSON.parse(savedPerms) } catch { /* ignore */ }
@@ -142,8 +156,8 @@ export const useAuth = () => {
   }
 
   return {
-    token, refreshToken, menus, userRole, userPermissions, currentUser,
-    login, getMenu, logout, isAuthenticated, restore, isMockMode, setUserRole, setUserPermissions,
+    token, refreshToken, menus, userRole, fullPermissions, userPermissions, currentUser,
+    login, getMenu, logout, isAuthenticated, restore, isMockMode, setUserRole, setUserPermissions, setFullPermissions,
     MOCK_USERS,
   }
 }

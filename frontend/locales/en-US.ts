@@ -923,7 +923,7 @@ export default {
     'admin.settings.analysis': 'Analysis',
     'admin.settings.generalDesc': 'Configure global parameters including security, email and backup',
     'admin.settings.platformInfo': 'Platform Information',
-    'admin.settings.platformInfoDesc': 'Platform name, version and language settings',
+    'admin.settings.platformInfoDesc': 'Platform name and version settings',
     'admin.settings.platformName': 'Platform Name',
     'admin.settings.version': 'Version',
     'admin.settings.defaultLanguage': 'Default Language',
