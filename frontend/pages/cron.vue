@@ -244,7 +244,7 @@ const openEdit = (task: CronTask) => {
     editingTask.value!.push_email = defaultPushEmail
   }
   // Determine cron mode
-  const isPreset = cronPresets.find(p => p.value === task.cron_expression && p.value !== 'custom')
+  const isPreset = cronPresets.value.find(p => p.value === task.cron_expression && p.value !== 'custom')
   editCronMode.value = isPreset ? task.cron_expression : 'custom'
   if (!isPreset) {
     const parts = task.cron_expression.split(' ')
@@ -281,7 +281,7 @@ const copyTask = (task: CronTask) => {
   message.success(t('cron.taskCopied'))
 }
 
-const taskTypeConfig = computed(() => ({
+const taskTypeConfig = computed<Record<string, { label: string; color: string; bg: string; }>>(() => ({
   batch_audit: { label: t('cron.batchAudit'), color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' },
   daily_report: { label: t('cron.dailyReport'), color: 'var(--color-accent)', bg: 'var(--color-info-bg)' },
   weekly_report: { label: t('cron.weeklyReport'), color: '#8b5cf6', bg: 'var(--color-primary-bg)' },

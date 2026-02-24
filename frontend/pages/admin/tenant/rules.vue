@@ -249,13 +249,13 @@ const deleteArchiveRule = (id: string) => {
 // Flow rules
 const showFlowRuleEditor = ref(false)
 const editingFlowRule = ref<FlowRuleConfig | null>(null)
-const flowRuleForm = ref({ rule_content: '', rule_scope: 'default_on' as string, priority: 50 })
+const flowRuleForm = ref<{ rule_content: string; rule_scope: 'mandatory' | 'default_on' | 'default_off'; priority: number }>({ rule_content: '', rule_scope: 'default_on', priority: 50 })
 
 const openFlowRuleEditor = (rule?: FlowRuleConfig) => {
   editingFlowRule.value = rule || null
   flowRuleForm.value = rule
     ? { rule_content: rule.rule_content, rule_scope: rule.rule_scope, priority: rule.priority }
-    : { rule_content: '', rule_scope: 'default_on', priority: 50 }
+    : { rule_content: '', rule_scope: 'default_on' as const, priority: 50 }
   showFlowRuleEditor.value = true
 }
 
@@ -273,7 +273,7 @@ const handleSaveFlowRule = () => {
     selectedArchiveConfig.value.flow_rules.push({
       id: `FR${Date.now()}`,
       ...flowRuleForm.value,
-      rule_scope: flowRuleForm.value.rule_scope as any,
+      rule_scope: flowRuleForm.value.rule_scope,
       enabled: true,
       source: 'manual',
     })
@@ -583,7 +583,7 @@ const handleSave = () => {
                   v-model:value="selectedConfig.ai_config.context_window"
                   :min="1024" :max="131072" :step="1024"
                   style="width: 100%;" size="large"
-                  :formatter="(v: number) => `${v} tokens`"
+                  :formatter="(v: any) => `${v} tokens`"
                 />
               </div>
               <div class="ai-form-group">
@@ -1158,7 +1158,7 @@ const handleSave = () => {
                   v-model:value="selectedArchiveConfig.ai_config.context_window"
                   :min="1024" :max="131072" :step="1024"
                   style="width: 100%;" size="large"
-                  :formatter="(v: number) => `${v} tokens`"
+                  :formatter="(v: any) => `${v} tokens`"
                 />
               </div>
               <div class="ai-form-group">
