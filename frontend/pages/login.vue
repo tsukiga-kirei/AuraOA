@@ -53,7 +53,10 @@ const handleLogin = async () => {
   }
   loading.value = true
   try {
-    const ok = await login(form.value)
+    const ok = await login({
+      ...form.value,
+      preferred_role: activePortal.value
+    })
     if (ok) {
       await getMenu()
       message.success(t('login.successRedirect'))

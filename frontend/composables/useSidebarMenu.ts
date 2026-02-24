@@ -49,14 +49,14 @@ const BUSINESS_ITEMS: SidebarMenuItem[] = [
 ]
 
 const TENANT_ITEMS: SidebarMenuItem[] = [
-  { key: '/admin/tenant', icon: AppstoreOutlined, labelKey: 'menu.tenant.rules' },
+  { key: '/admin/tenant/rules', icon: AppstoreOutlined, labelKey: 'menu.tenant.rules' },
   { key: '/admin/tenant/org', icon: ApartmentOutlined, labelKey: 'menu.tenant.org' },
   { key: '/admin/tenant/data', icon: DatabaseOutlined, labelKey: 'menu.tenant.data' },
   { key: '/admin/tenant/user-configs', icon: SettingOutlined, labelKey: 'menu.tenant.userConfigs' },
 ]
 
 const SYSTEM_ITEMS: SidebarMenuItem[] = [
-  { key: '/admin/system', icon: MonitorOutlined, labelKey: 'menu.system.monitor' },
+  { key: '/admin/system/monitor', icon: MonitorOutlined, labelKey: 'menu.system.monitor' },
   { key: '/admin/system/tenants', icon: TeamOutlined, labelKey: 'menu.system.tenants' },
   { key: '/admin/system/settings', icon: SettingOutlined, labelKey: 'menu.system.settings' },
 ]
@@ -89,7 +89,7 @@ export const useSidebarMenu = () => {
   /** Check if a menu item is active */
   const isMenuActive = (itemKey: string) => {
     const path = route.path
-    if (itemKey === '/admin/system' || itemKey === '/admin/tenant' || itemKey === '/dashboard' || itemKey === '/overview') {
+    if (itemKey === '/admin/system/monitor' || itemKey === '/admin/tenant/rules' || itemKey === '/dashboard' || itemKey === '/overview') {
       return path === itemKey
     }
     return path.startsWith(itemKey)

@@ -19,7 +19,43 @@
   {
     "access_token": "string",
     "refresh_token": "string",
-    "expires_in": 3600
+    "expires_in": 3600,
+    "user": {
+      "username": "string",
+      "display_name": "string",
+      "roles": [
+        {
+          "id": "string",
+          "role": "business | tenant_admin | system_admin",
+          "tenant_id": "string | null",
+          "tenant_name": "string | null",
+          "label": "string"
+        }
+      ]
+    }
+  }
+  ```
+
+### 1.1.1 切换角色
+- **POST** `/api/auth/switch-role`
+- **请求体**:
+  ```json
+  {
+    "role_id": "string"
+  }
+  ```
+- **响应**:
+  ```json
+  {
+    "active_role": {
+      "id": "string",
+      "role": "business | tenant_admin | system_admin",
+      "tenant_id": "string | null",
+      "tenant_name": "string | null",
+      "label": "string"
+    },
+    "menus": [],
+    "default_page": "/overview"
   }
   ```
 
@@ -49,19 +85,19 @@
   {
     "username": "string",
     "display_name": "string",
-    "tenant_id": "string",
+    "tenant_id": "string | null",
     "role": "business | tenant_admin | system_admin",
-    "role_label": "string（角色显示名称，如'普通用户'、'租户管理员'、'系统管理员'）",
+    "role_label": "string",
     "department": "string",
     "position": "string",
     "email": "string",
-    "phone": "string",
-    "permissions": ["business", "tenant_admin", "system_admin"]
+    "phone": "string"
   }
   ```
 - **字段说明**:
+  - 此接口返回当前激活角色（`active_role`）下的用户信息
   - `role_label`: 角色的中文显示名称，用于前端界面展示
-  - `permissions`: 权限组数组，取值为 `business`（前台工作台）、`tenant_admin`（租户管理）、`system_admin`（系统管理）。前端据此控制侧边栏菜单分区可见性及页面访问权限。不同角色可拥有任意权限组合（如租户管理员可仅有 `tenant_admin` 而无 `business`）。注意：「仪表盘」（`/overview`）为全局入口，所有已认证用户均可见，不受 `permissions` 控制
+  - `tenant_id`: 当前激活角色所属租户，若为系统管理员则可能为 null
 
 ---
 

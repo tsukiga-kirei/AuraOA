@@ -119,11 +119,11 @@ userPermissions: PermissionGroup[]  // 只有一个元素
 /cron              → business
 /archive           → business
 /settings          → 所有角色可见（个人设置）
-/admin/tenant      → tenant_admin
+/admin/tenant/rules → tenant_admin
 /admin/tenant/org  → tenant_admin
 /admin/tenant/data → tenant_admin
 /admin/tenant/user-configs → tenant_admin
-/admin/system      → system_admin
+/admin/system/monitor → system_admin
 /admin/system/tenants → system_admin
 /admin/system/settings → system_admin
 ```
@@ -233,7 +233,7 @@ Request: {
 Response: {
   "active_role": { ... },
   "menus": [ ... ],
-  "default_page": "/admin/tenant"
+  "default_page": "/overview"
 }
 ```
 

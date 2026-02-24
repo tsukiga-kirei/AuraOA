@@ -266,11 +266,11 @@ export default {
     'page./cron': '定时任务',
     'page./archive': '归档复盘',
     'page./settings': '个人设置',
-    'page./admin/tenant': '规则配置',
+    'page./admin/tenant/rules': '规则配置',
     'page./admin/tenant/org': '组织人员',
     'page./admin/tenant/data': '数据信息',
     'page./admin/tenant/user-configs': '用户偏好',
-    'page./admin/system': '全局监控',
+    'page./admin/system/monitor': '全局监控',
     'page./admin/system/tenants': '租户管理',
     'page./admin/system/settings': '系统设置',
 

@@ -119,11 +119,11 @@ export const PAGE_PERMISSIONS: Record<string, PermissionGroup[]> = {
   '/cron': ['business'],
   '/archive': ['business'],
   '/settings': ['business', 'tenant_admin', 'system_admin'],
-  '/admin/tenant': ['tenant_admin'],
+  '/admin/tenant/rules': ['tenant_admin'],
   '/admin/tenant/org': ['tenant_admin'],
   '/admin/tenant/data': ['tenant_admin'],
   '/admin/tenant/user-configs': ['tenant_admin'],
-  '/admin/system': ['system_admin'],
+  '/admin/system/monitor': ['system_admin'],
   '/admin/system/tenants': ['system_admin'],
   '/admin/system/settings': ['system_admin'],
 }
@@ -181,7 +181,7 @@ export function getMockMenusByPermissions(permissions: PermissionGroup[]): MockM
   }
   if (permissions.includes('tenant_admin')) {
     result.push(
-      { key: 'tenant', label: '规则配置', icon: 'AppstoreOutlined', path: '/admin/tenant' },
+      { key: 'tenant-rules', label: '规则配置', icon: 'AppstoreOutlined', path: '/admin/tenant/rules' },
       { key: 'tenant-org', label: '组织人员', icon: 'ApartmentOutlined', path: '/admin/tenant/org' },
       { key: 'tenant-data', label: '数据信息', icon: 'DatabaseOutlined', path: '/admin/tenant/data' },
       { key: 'tenant-user-configs', label: '用户偏好', icon: 'SettingOutlined', path: '/admin/tenant/user-configs' },
@@ -189,7 +189,7 @@ export function getMockMenusByPermissions(permissions: PermissionGroup[]): MockM
   }
   if (permissions.includes('system_admin')) {
     result.push(
-      { key: 'monitor', label: '全局监控', icon: 'MonitorOutlined', path: '/admin/system' },
+      { key: 'monitor', label: '全局监控', icon: 'MonitorOutlined', path: '/admin/system/monitor' },
       { key: 'tenants', label: '租户管理', icon: 'TeamOutlined', path: '/admin/system/tenants' },
       { key: 'settings', label: '系统设置', icon: 'SettingOutlined', path: '/admin/system/settings' },
     )
@@ -217,7 +217,7 @@ export function getMockMenusByActiveRole(role: UserRoleAssignment): MockMenuItem
   }
   if (role.role === 'tenant_admin') {
     result.push(
-      { key: 'tenant', label: '规则配置', icon: 'AppstoreOutlined', path: '/admin/tenant' },
+      { key: 'tenant-rules', label: '规则配置', icon: 'AppstoreOutlined', path: '/admin/tenant/rules' },
       { key: 'tenant-org', label: '组织人员', icon: 'ApartmentOutlined', path: '/admin/tenant/org' },
       { key: 'tenant-data', label: '数据信息', icon: 'DatabaseOutlined', path: '/admin/tenant/data' },
       { key: 'tenant-user-configs', label: '用户偏好', icon: 'SettingOutlined', path: '/admin/tenant/user-configs' },
@@ -225,7 +225,7 @@ export function getMockMenusByActiveRole(role: UserRoleAssignment): MockMenuItem
   }
   if (role.role === 'system_admin') {
     result.push(
-      { key: 'monitor', label: '全局监控', icon: 'MonitorOutlined', path: '/admin/system' },
+      { key: 'monitor', label: '全局监控', icon: 'MonitorOutlined', path: '/admin/system/monitor' },
       { key: 'tenants', label: '租户管理', icon: 'TeamOutlined', path: '/admin/system/tenants' },
       { key: 'settings', label: '系统设置', icon: 'SettingOutlined', path: '/admin/system/settings' },
     )

@@ -112,11 +112,11 @@ const allPages = computed(() => [
   { path: '/cron', label: t('admin.org.page.cron') },
   { path: '/archive', label: t('admin.org.page.archive') },
   { path: '/settings', label: t('admin.org.page.settings') },
-  { path: '/admin/tenant', label: t('admin.org.page.tenantConfig') },
+  { path: '/admin/tenant/rules', label: t('admin.org.page.tenantConfig') },
   { path: '/admin/tenant/org', label: t('admin.org.page.tenantOrg') },
   { path: '/admin/tenant/data', label: t('admin.org.page.tenantData') },
   { path: '/admin/tenant/user-configs', label: t('menu.tenant.userConfigs') },
-  { path: '/admin/system', label: t('admin.org.page.sysMonitor') },
+  { path: '/admin/system/monitor', label: t('admin.org.page.sysMonitor') },
   { path: '/admin/system/tenants', label: t('admin.org.page.sysTenants') },
   { path: '/admin/system/settings', label: t('admin.org.page.sysSettings') },
 ])

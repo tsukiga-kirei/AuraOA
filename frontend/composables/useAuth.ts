@@ -5,6 +5,8 @@ interface LoginRequest {
   username: string
   password: string
   tenant_id: string
+  /** 用户在登录页选择的入口类型，用于决定默认激活哪个角色 */
+  preferred_role?: UserRole
 }
 
 interface TokenResponse {
@@ -97,10 +99,18 @@ export const useAuth = () => {
       // Store all roles from the user
       setAllRoles(matched.roles)
 
-      // Determine default active role (priority: system_admin > tenant_admin > business)
-      const sysRole = matched.roles.find(r => r.role === 'system_admin')
-      const tenantRole = matched.roles.find(r => r.role === 'tenant_admin')
-      const defaultRole = sysRole || tenantRole || matched.roles[0]
+      // 根据用户在登录页选择的入口类型，优先激活匹配的角色
+      // 例：用户选了"租户管理员"入口 → 优先激活 tenant_admin 角色
+      let defaultRole: UserRoleAssignment | undefined
+      if (req.preferred_role) {
+        defaultRole = matched.roles.find(r => r.role === req.preferred_role)
+      }
+      // 回退：如果没有匹配的角色，按优先级选择
+      if (!defaultRole) {
+        const sysRole = matched.roles.find(r => r.role === 'system_admin')
+        const tenantRole = matched.roles.find(r => r.role === 'tenant_admin')
+        defaultRole = sysRole || tenantRole || matched.roles[0]
+      }
       setActiveRole(defaultRole)
 
       // Set current user info

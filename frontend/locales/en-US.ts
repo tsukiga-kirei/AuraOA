@@ -266,11 +266,11 @@ export default {
     'page./cron': 'Scheduled Tasks',
     'page./archive': 'Archive Review',
     'page./settings': 'Personal Settings',
-    'page./admin/tenant': 'Rule Config',
+    'page./admin/tenant/rules': 'Rule Config',
     'page./admin/tenant/org': 'Organization',
     'page./admin/tenant/data': 'Data Info',
     'page./admin/tenant/user-configs': 'User Prefs',
-    'page./admin/system': 'Global Monitor',
+    'page./admin/system/monitor': 'Global Monitor',
     'page./admin/system/tenants': 'Tenant Mgmt',
     'page./admin/system/settings': 'System Settings',
 
