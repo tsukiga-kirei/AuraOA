@@ -570,6 +570,8 @@ export interface OverviewDashboardData {
 export interface UserDashboardPrefs {
   /** Widget IDs the user has enabled (order matters for layout) */
   enabledWidgets: OverviewWidgetId[]
+  /** Optional custom sizes for widgets */
+  widgetSizes?: Partial<Record<OverviewWidgetId, 'sm' | 'md' | 'lg'>>
 }
 
 // ============================================================

@@ -34,6 +34,7 @@ const defaultPrefs = computed(() => {
     .map(w => w.id)
 })
 const enabledWidgets = ref<OverviewWidgetId[]>([])
+const widgetSizes = ref<Partial<Record<OverviewWidgetId, 'sm' | 'md' | 'lg'>>>({})
 
 const availableWidgets = computed(() => {
   const perms = userPermissions.value
@@ -46,14 +47,17 @@ watch(userPermissions, () => {
   
   if (saved) {
     enabledWidgets.value = [...saved.enabledWidgets]
+    widgetSizes.value = { ...(saved.widgetSizes || {}) }
   } else {
     const generalSaved = mockUserDashboardPrefs[username.value]
     if (generalSaved) {
        const validGeneral = generalSaved.enabledWidgets.filter(id => availableWidgets.value.some(w => w.id === id))
        const merged = [...new Set([...validGeneral, ...defaultPrefs.value])]
        enabledWidgets.value = merged
+       widgetSizes.value = { ...(generalSaved.widgetSizes || {}) }
     } else {
        enabledWidgets.value = [...defaultPrefs.value]
+       widgetSizes.value = {}
     }
   }
 }, { immediate: true })
@@ -72,8 +76,23 @@ const toggleWidget = (id: OverviewWidgetId) => {
 const savePrefs = () => { 
   customizing.value = false
   const prefsKey = `${username.value}_${userPermissions.value[0] || 'business'}`
-  mockUserDashboardPrefs[prefsKey] = { enabledWidgets: [...enabledWidgets.value] }
+  mockUserDashboardPrefs[prefsKey] = { 
+    enabledWidgets: [...enabledWidgets.value],
+    widgetSizes: { ...widgetSizes.value }
+  }
   message.success(t('overview.layoutSaved')) 
+}
+
+const getWidgetSize = (id: OverviewWidgetId) => {
+  if (widgetSizes.value[id]) return widgetSizes.value[id]
+  const w = OVERVIEW_WIDGETS.find(x => x.id === id)
+  return w?.size || 'md'
+}
+
+const cycleWidgetSize = (id: OverviewWidgetId) => {
+  const current = getWidgetSize(id)
+  const nextSize = current === 'sm' ? 'md' : current === 'md' ? 'lg' : 'sm'
+  widgetSizes.value[id] = nextSize
 }
 
 const greeting = computed(() => {
@@ -94,6 +113,36 @@ const healthColor = (s: string) => s === 'healthy' ? 'var(--color-success)' : s 
 const healthLabel = (s: string) => s === 'healthy' ? t('overview.health.healthy') : s === 'degraded' ? t('overview.health.degraded') : t('overview.health.error')
 const trendMax = computed(() => Math.max(...data.value.weeklyTrend.map(t => t.count), 1))
 const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => d.count), 1))
+const getWidgetOrder = (id: OverviewWidgetId) => {
+  const index = enabledWidgets.value.indexOf(id)
+  return index >= 0 ? index : 999
+}
+
+const draggedWidget = ref<OverviewWidgetId | null>(null)
+
+const onDragStart = (e: DragEvent, id: OverviewWidgetId) => {
+  if (!customizing.value) return
+  draggedWidget.value = id
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.dropEffect = 'move'
+    e.dataTransfer.setData('text/plain', id)
+  }
+}
+
+const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
+  if (!customizing.value || !draggedWidget.value) return
+  if (draggedWidget.value === targetId) return
+
+  const dragIndex = enabledWidgets.value.indexOf(draggedWidget.value)
+  const targetIndex = enabledWidgets.value.indexOf(targetId)
+
+  if (dragIndex >= 0 && targetIndex >= 0) {
+    const [item] = enabledWidgets.value.splice(dragIndex, 1)
+    enabledWidgets.value.splice(targetIndex, 0, item)
+  }
+  draggedWidget.value = null
+}
 </script>
 
 <template>
@@ -123,8 +172,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
 
     <div class="widget-grid">
       <!-- ===== Audit Summary (business) ===== -->
-      <div v-if="isEnabled('audit_summary')" class="widget widget--lg">
-        <div class="widget-title"><ThunderboltOutlined /> {{ t('overview.auditOverview') }}</div>
+      <div v-if="isEnabled('audit_summary')"
+       :class="['widget', `widget--${getWidgetSize('audit_summary')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('audit_summary') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'audit_summary')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'audit_summary')">
+        <div class="widget-title">
+          <div class="widget-title-left"><ThunderboltOutlined /> {{ t('overview.auditOverview') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('audit_summary')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="summary-cards">
           <div class="summary-card summary-card--total">
             <div class="summary-num">{{ data.auditSummary.total }}</div>
@@ -149,8 +208,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
       </div>
 
       <!-- ===== Pending Tasks (business) ===== -->
-      <div v-if="isEnabled('pending_tasks')" class="widget widget--md">
-        <div class="widget-title"><ClockCircleOutlined /> {{ t('overview.pendingTasks') }}</div>
+      <div v-if="isEnabled('pending_tasks')"
+       :class="['widget', `widget--${getWidgetSize('pending_tasks')}`, { 'widget--editing': customizing }]" 
+       :style="{ order: getWidgetOrder('pending_tasks') }" 
+       :draggable="customizing" 
+       @dragstart="onDragStart($event, 'pending_tasks')" 
+       @dragover.prevent 
+       @dragenter.prevent 
+       @drop="onDrop($event, 'pending_tasks')">
+        <div class="widget-title">
+          <div class="widget-title-left"><ClockCircleOutlined /> {{ t('overview.pendingTasks') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('pending_tasks')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="pending-big">
           <div class="pending-num">{{ data.pendingCount }}</div>
           <div class="pending-label">{{ t('overview.itemsPending') }}</div>
@@ -159,8 +228,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
       </div>
 
       <!-- ===== Weekly Trend (business) ===== -->
-      <div v-if="isEnabled('weekly_trend')" class="widget widget--md">
-        <div class="widget-title"><RiseOutlined /> {{ t('overview.auditTrend7d') }}</div>
+      <div v-if="isEnabled('weekly_trend')"
+       :class="['widget', `widget--${getWidgetSize('weekly_trend')}`, { 'widget--editing': customizing }]" 
+       :style="{ order: getWidgetOrder('weekly_trend') }" 
+       :draggable="customizing" 
+       @dragstart="onDragStart($event, 'weekly_trend')" 
+       @dragover.prevent 
+       @dragenter.prevent 
+       @drop="onDrop($event, 'weekly_trend')">
+        <div class="widget-title">
+          <div class="widget-title-left"><RiseOutlined /> {{ t('overview.auditTrend7d') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('weekly_trend')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="bar-chart">
           <div v-for="t in data.weeklyTrend" :key="t.date" class="bar-col">
             <div class="bar-value">{{ t.count }}</div>
@@ -171,8 +250,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
       </div>
 
       <!-- ===== Dept Distribution (business) ===== -->
-      <div v-if="isEnabled('dept_distribution')" class="widget widget--md">
-        <div class="widget-title"><TeamOutlined /> {{ t('overview.deptDistribution') }}</div>
+      <div v-if="isEnabled('dept_distribution')"
+       :class="['widget', `widget--${getWidgetSize('dept_distribution')}`, { 'widget--editing': customizing }]" 
+       :style="{ order: getWidgetOrder('dept_distribution') }" 
+       :draggable="customizing" 
+       @dragstart="onDragStart($event, 'dept_distribution')" 
+       @dragover.prevent 
+       @dragenter.prevent 
+       @drop="onDrop($event, 'dept_distribution')">
+        <div class="widget-title">
+          <div class="widget-title-left"><TeamOutlined /> {{ t('overview.deptDistribution') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('dept_distribution')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="dept-list">
           <div v-for="d in data.deptDistribution" :key="d.department" class="dept-row">
             <span class="dept-name">{{ d.department }}</span>
@@ -185,8 +274,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
       </div>
 
       <!-- ===== Cron Tasks (business) ===== -->
-      <div v-if="isEnabled('cron_tasks')" class="widget widget--md">
-        <div class="widget-title"><ClockCircleOutlined /> 定时任务任务列表</div>
+      <div v-if="isEnabled('cron_tasks')"
+       :class="['widget', `widget--${getWidgetSize('cron_tasks')}`, { 'widget--editing': customizing }]" 
+       :style="{ order: getWidgetOrder('cron_tasks') }" 
+       :draggable="customizing" 
+       @dragstart="onDragStart($event, 'cron_tasks')" 
+       @dragover.prevent 
+       @dragenter.prevent 
+       @drop="onDrop($event, 'cron_tasks')">
+        <div class="widget-title">
+          <div class="widget-title-left"><ClockCircleOutlined /> 定时任务任务列表</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('cron_tasks')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="rank-list" style="margin-top: 10px;">
           <div v-for="c in mockCronTasks.slice(0, 5)" :key="c.id" class="rank-item">
             <div class="rank-info">
@@ -199,8 +298,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
       </div>
 
       <!-- ===== Archive Review (business) ===== -->
-      <div v-if="isEnabled('archive_review')" class="widget widget--md">
-        <div class="widget-title"><SafetyCertificateOutlined /> 归档复盘最新记录</div>
+      <div v-if="isEnabled('archive_review')"
+       :class="['widget', `widget--${getWidgetSize('archive_review')}`, { 'widget--editing': customizing }]" 
+       :style="{ order: getWidgetOrder('archive_review') }" 
+       :draggable="customizing" 
+       @dragstart="onDragStart($event, 'archive_review')" 
+       @dragover.prevent 
+       @dragenter.prevent 
+       @drop="onDrop($event, 'archive_review')">
+        <div class="widget-title">
+          <div class="widget-title-left"><SafetyCertificateOutlined /> 归档复盘最新记录</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('archive_review')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="activity-list" style="margin-top: 10px;">
           <div v-for="a in mockArchiveLogs.slice(0, 4)" :key="a.id" class="activity-item">
             <div class="activity-dot" :style="{ background: 'var(--color-primary)' }" />
@@ -217,8 +326,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
       </div>
 
       <!-- ===== Recent Activity (all) ===== -->
-      <div v-if="isEnabled('recent_activity')" class="widget widget--md">
-        <div class="widget-title"><ClockCircleOutlined /> {{ t('overview.recentActivity') }}</div>
+      <div v-if="isEnabled('recent_activity')"
+       :class="['widget', `widget--${getWidgetSize('recent_activity')}`, { 'widget--editing': customizing }]" 
+       :style="{ order: getWidgetOrder('recent_activity') }" 
+       :draggable="customizing" 
+       @dragstart="onDragStart($event, 'recent_activity')" 
+       @dragover.prevent 
+       @dragenter.prevent 
+       @drop="onDrop($event, 'recent_activity')">
+        <div class="widget-title">
+          <div class="widget-title-left"><ClockCircleOutlined /> {{ t('overview.recentActivity') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('recent_activity')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="activity-list">
           <div v-for="a in data.recentActivity" :key="a.id" class="activity-item">
             <div class="activity-dot" :style="{ background: activityStyle[a.type]?.color }" />
@@ -235,8 +354,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
       </div>
 
       <!-- ===== AI Performance (business+tenant) ===== -->
-      <div v-if="isEnabled('ai_performance')" class="widget widget--md">
-        <div class="widget-title"><ThunderboltOutlined /> {{ t('overview.aiPerformance') }}</div>
+      <div v-if="isEnabled('ai_performance')"
+       :class="['widget', `widget--${getWidgetSize('ai_performance')}`, { 'widget--editing': customizing }]" 
+       :style="{ order: getWidgetOrder('ai_performance') }" 
+       :draggable="customizing" 
+       @dragstart="onDragStart($event, 'ai_performance')" 
+       @dragover.prevent 
+       @dragenter.prevent 
+       @drop="onDrop($event, 'ai_performance')">
+        <div class="widget-title">
+          <div class="widget-title-left"><ThunderboltOutlined /> {{ t('overview.aiPerformance') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('ai_performance')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="ai-stats">
           <div class="ai-stat">
             <div class="ai-stat-num">{{ data.aiPerformance.avgResponseMs }}ms</div>
@@ -261,8 +390,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
       </div>
 
       <!-- ===== Tenant Usage (tenant_admin) ===== -->
-      <div v-if="isEnabled('tenant_usage')" class="widget widget--md">
-        <div class="widget-title"><CloudServerOutlined /> {{ t('overview.tenantUsage') }}</div>
+      <div v-if="isEnabled('tenant_usage')"
+       :class="['widget', `widget--${getWidgetSize('tenant_usage')}`, { 'widget--editing': customizing }]" 
+       :style="{ order: getWidgetOrder('tenant_usage') }" 
+       :draggable="customizing" 
+       @dragstart="onDragStart($event, 'tenant_usage')" 
+       @dragover.prevent 
+       @dragenter.prevent 
+       @drop="onDrop($event, 'tenant_usage')">
+        <div class="widget-title">
+          <div class="widget-title-left"><CloudServerOutlined /> {{ t('overview.tenantUsage') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('tenant_usage')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="usage-rows">
           <div class="usage-row">
             <span class="usage-label">{{ t('overview.tokenUsage') }}</span>
@@ -289,8 +428,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
       </div>
 
       <!-- ===== User Activity (tenant_admin) ===== -->
-      <div v-if="isEnabled('user_activity')" class="widget widget--md">
-        <div class="widget-title"><TeamOutlined /> {{ t('overview.userActivityRank') }}</div>
+      <div v-if="isEnabled('user_activity')"
+       :class="['widget', `widget--${getWidgetSize('user_activity')}`, { 'widget--editing': customizing }]" 
+       :style="{ order: getWidgetOrder('user_activity') }" 
+       :draggable="customizing" 
+       @dragstart="onDragStart($event, 'user_activity')" 
+       @dragover.prevent 
+       @dragenter.prevent 
+       @drop="onDrop($event, 'user_activity')">
+        <div class="widget-title">
+          <div class="widget-title-left"><TeamOutlined /> {{ t('overview.userActivityRank') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('user_activity')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="rank-list">
           <div v-for="(u, i) in data.userActivity" :key="u.username" class="rank-item">
             <span class="rank-num" :class="{ 'rank-num--top': i < 3 }">{{ i + 1 }}</span>
@@ -304,8 +453,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
       </div>
 
       <!-- ===== System Health (system_admin) ===== -->
-      <div v-if="isEnabled('system_health')" class="widget widget--lg">
-        <div class="widget-title"><CloudServerOutlined /> {{ t('overview.systemHealth') }}</div>
+      <div v-if="isEnabled('system_health')"
+       :class="['widget', `widget--${getWidgetSize('system_health')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('system_health') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'system_health')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'system_health')">
+        <div class="widget-title">
+          <div class="widget-title-left"><CloudServerOutlined /> {{ t('overview.systemHealth') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('system_health')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="health-grid">
           <div v-for="s in data.systemHealth" :key="s.service" class="health-card">
             <div class="health-header">
@@ -332,8 +491,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
       </div>
 
       <!-- ===== Tenant Overview (system_admin) ===== -->
-      <div v-if="isEnabled('tenant_overview')" class="widget widget--md">
-        <div class="widget-title"><TeamOutlined /> {{ t('overview.tenantOverview') }}</div>
+      <div v-if="isEnabled('tenant_overview')"
+       :class="['widget', `widget--${getWidgetSize('tenant_overview')}`, { 'widget--editing': customizing }]" 
+       :style="{ order: getWidgetOrder('tenant_overview') }" 
+       :draggable="customizing" 
+       @dragstart="onDragStart($event, 'tenant_overview')" 
+       @dragover.prevent 
+       @dragenter.prevent 
+       @drop="onDrop($event, 'tenant_overview')">
+        <div class="widget-title">
+          <div class="widget-title-left"><TeamOutlined /> {{ t('overview.tenantOverview') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('tenant_overview')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="tenant-table">
           <div class="tenant-row tenant-row--header">
             <span>{{ t('overview.tenant') }}</span><span>{{ t('overview.users') }}</span><span>{{ t('overview.auditVolume') }}</span><span>{{ t('common.status') }}</span>
@@ -350,8 +519,18 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
       </div>
 
       <!-- ===== API Metrics (system_admin) ===== -->
-      <div v-if="isEnabled('api_metrics')" class="widget widget--md">
-        <div class="widget-title"><ApiOutlined /> {{ t('overview.apiMetrics') }}</div>
+      <div v-if="isEnabled('api_metrics')"
+       :class="['widget', `widget--${getWidgetSize('api_metrics')}`, { 'widget--editing': customizing }]" 
+       :style="{ order: getWidgetOrder('api_metrics') }" 
+       :draggable="customizing" 
+       @dragstart="onDragStart($event, 'api_metrics')" 
+       @dragover.prevent 
+       @dragenter.prevent 
+       @drop="onDrop($event, 'api_metrics')">
+        <div class="widget-title">
+          <div class="widget-title-left"><ApiOutlined /> {{ t('overview.apiMetrics') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('api_metrics')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
         <div class="api-table">
           <div class="api-row api-row--header">
             <span>{{ t('overview.endpoint') }}</span><span>{{ t('overview.calls') }}</span><span>{{ t('overview.latency') }}</span><span>{{ t('overview.successRate') }}</span>
@@ -397,6 +576,10 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
 .slide-down-enter-from, .slide-down-leave-to { opacity: 0; transform: translateY(-8px); }
 
 /* Widget grid */
+.widget-title { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+.widget-title-left { flex: 1; display: flex; align-items: center; gap: 8px; }
+.widget-actions { flex-shrink: 0; padding: 4px; border-radius: 4px; transition: background 0.2s; }
+.widget-actions:hover { background: rgba(0,0,0,0.05); }
 .widget-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
 .widget {
   background: var(--color-bg-card); border: 1px solid var(--color-border-light);
@@ -404,6 +587,16 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
   box-shadow: var(--shadow-xs); transition: box-shadow var(--transition-base);
 }
 .widget:hover { box-shadow: var(--shadow-sm); }
+
+.widget--editing {
+  border: 1px dashed var(--color-primary);
+  cursor: grab;
+  transform: scale(0.99);
+}
+.widget--editing:active {
+  cursor: grabbing;
+}
+
 .widget--sm { grid-column: span 4; }
 .widget--md { grid-column: span 6; }
 .widget--lg { grid-column: span 12; }

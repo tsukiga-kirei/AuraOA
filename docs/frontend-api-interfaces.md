@@ -456,11 +456,17 @@
 - **响应**:
   ```json
   {
-    "enabled_widgets": ["audit_summary", "pending_tasks", "weekly_trend", "recent_activity"]
+    "enabled_widgets": ["audit_summary", "pending_tasks", "weekly_trend", "recent_activity"],
+    "widget_sizes": {
+      "audit_summary": "lg",
+      "pending_tasks": "sm",
+      "recent_activity": "md"
+    }
   }
   ```
 - **字段说明**:
-  - `enabled_widgets`: 用户启用的 Widget ID 列表，可选值包括 `audit_summary`、`pending_tasks`、`weekly_trend`、`cron_tasks`、`archive_review`、`recent_activity`、`dept_distribution`、`ai_performance`、`tenant_usage`、`user_activity`、`system_health`、`tenant_overview`、`api_metrics`。各 Widget 可见性受用户权限控制。
+  - `enabled_widgets`: 用户启用的 Widget ID 列表，可选值包括 `audit_summary`、`pending_tasks`、`weekly_trend`、`cron_tasks`、`archive_review`、`recent_activity`、`dept_distribution`、`ai_performance`、`tenant_usage`、`user_activity`、`system_health`、`tenant_overview`、`api_metrics`。各 Widget 可见性受用户权限控制，数组顺序即为仪表盘卡片的排列顺序。
+  - `widget_sizes`: (可选) 用户为特定 Widget 选择的自定义尺寸。允许的值为 `sm`、`md`、`lg`。未定义的将使用系统默认尺寸。
 
 ### 5.4 更新用户仪表盘偏好
 - **PUT** `/api/user/dashboard-prefs`
@@ -468,10 +474,13 @@
 - **请求体**:
   ```json
   {
-    "enabled_widgets": ["audit_summary", "pending_tasks", "weekly_trend"]
+    "enabled_widgets": ["audit_summary", "pending_tasks", "weekly_trend"],
+    "widget_sizes": {
+      "audit_summary": "lg"
+    }
   }
   ```
-- **说明**: 保存用户自定义的仪表盘 Widget 显示偏好。仅保存用户有权限查看的 Widget ID，无权限的 ID 会被后端忽略。
+- **说明**: 保存用户自定义的仪表盘 Widget 显示偏好（包括可见的组件、排布顺序和修改的组件尺寸）。仅保存用户有权限查看的 Widget ID，无权限的 ID 会被后端忽略。
 
 ### 5.5 获取用户审核工作台配置
 - **GET** `/api/user/audit-config`
