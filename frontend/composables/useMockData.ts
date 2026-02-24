@@ -189,7 +189,6 @@ export function getMockMenusByPermissions(permissions: PermissionGroup[]): MockM
   }
   if (permissions.includes('system_admin')) {
     result.push(
-      { key: 'monitor', label: '全局监控', icon: 'MonitorOutlined', path: '/admin/system/monitor' },
       { key: 'tenants', label: '租户管理', icon: 'TeamOutlined', path: '/admin/system/tenants' },
       { key: 'settings', label: '系统设置', icon: 'SettingOutlined', path: '/admin/system/settings' },
     )
@@ -225,7 +224,6 @@ export function getMockMenusByActiveRole(role: UserRoleAssignment): MockMenuItem
   }
   if (role.role === 'system_admin') {
     result.push(
-      { key: 'monitor', label: '全局监控', icon: 'MonitorOutlined', path: '/admin/system/monitor' },
       { key: 'tenants', label: '租户管理', icon: 'TeamOutlined', path: '/admin/system/tenants' },
       { key: 'settings', label: '系统设置', icon: 'SettingOutlined', path: '/admin/system/settings' },
     )
@@ -515,15 +513,16 @@ export type OverviewWidgetId =
   | 'audit_summary'       // business: today's audit stats
   | 'pending_tasks'       // business: pending task count
   | 'weekly_trend'        // business: weekly audit trend chart
-  | 'dept_distribution'   // business: audit distribution by department
+  | 'dept_distribution'   // tenant_admin: audit distribution by department
   | 'recent_activity'     // all: recent activity feed
-  | 'ai_performance'      // business+tenant: AI model performance
+  | 'ai_performance'      // tenant_admin: AI model performance
   | 'tenant_usage'        // tenant_admin: tenant resource usage
-  | 'rule_coverage'       // tenant_admin: rule coverage stats
   | 'user_activity'       // tenant_admin: user activity ranking
   | 'system_health'       // system_admin: system health overview
   | 'tenant_overview'     // system_admin: all tenants overview
   | 'api_metrics'         // system_admin: API call metrics
+  | 'cron_tasks'          // business: scheduled tasks
+  | 'archive_review'      // business: archive review
 
 export interface OverviewWidget {
   id: OverviewWidgetId
@@ -538,14 +537,15 @@ export interface OverviewWidget {
 }
 
 export const OVERVIEW_WIDGETS: OverviewWidget[] = [
-  { id: 'audit_summary', title: '今日审核概览', description: '今日审核通过/驳回/修改数量统计', requiredPermissions: ['business'], defaultEnabled: true, size: 'lg' },
+  { id: 'audit_summary', title: '审核概览', description: '审核通过/驳回/已归档数量统计', requiredPermissions: ['business'], defaultEnabled: true, size: 'lg' },
   { id: 'pending_tasks', title: '待办任务', description: '当前待处理的审核流程数量', requiredPermissions: ['business'], defaultEnabled: true, size: 'sm' },
-  { id: 'weekly_trend', title: '审核趋势', description: '近7天审核数量变化趋势', requiredPermissions: ['business'], defaultEnabled: true, size: 'md' },
-  { id: 'dept_distribution', title: '部门分布', description: '各部门审核流程数量分布', requiredPermissions: ['business'], defaultEnabled: true, size: 'md' },
+  { id: 'weekly_trend', title: '审核趋势', description: '个人的使用智能审核进行审批的流程数', requiredPermissions: ['business'], defaultEnabled: true, size: 'md' },
+  { id: 'cron_tasks', title: '定时任务', description: '定时任务执行情况概览', requiredPermissions: ['business'], defaultEnabled: true, size: 'md' },
+  { id: 'archive_review', title: '归档复盘', description: '归档流程合规复核情况', requiredPermissions: ['business'], defaultEnabled: true, size: 'md' },
+  { id: 'dept_distribution', title: '部门分布使用情况', description: '各部门审核流程数量与使用分布', requiredPermissions: ['tenant_admin'], defaultEnabled: true, size: 'md' },
   { id: 'recent_activity', title: '最近动态', description: '最近的审核操作与系统事件', requiredPermissions: ['business', 'tenant_admin', 'system_admin'], defaultEnabled: true, size: 'md' },
-  { id: 'ai_performance', title: 'AI 模型表现', description: 'AI 审核响应时间与准确率', requiredPermissions: ['business', 'tenant_admin'], defaultEnabled: true, size: 'md' },
+  { id: 'ai_performance', title: 'AI 模型表现', description: 'AI 审核响应时间与准确率', requiredPermissions: ['tenant_admin'], defaultEnabled: true, size: 'md' },
   { id: 'tenant_usage', title: '租户资源用量', description: 'Token 消耗、存储用量等', requiredPermissions: ['tenant_admin'], defaultEnabled: true, size: 'md' },
-  { id: 'rule_coverage', title: '规则覆盖率', description: '各流程类型的规则配置覆盖情况', requiredPermissions: ['tenant_admin'], defaultEnabled: true, size: 'md' },
   { id: 'user_activity', title: '用户活跃排行', description: '租户内用户审核活跃度排名', requiredPermissions: ['tenant_admin'], defaultEnabled: true, size: 'md' },
   { id: 'system_health', title: '系统健康', description: '各服务运行状态与资源占用', requiredPermissions: ['system_admin'], defaultEnabled: true, size: 'lg' },
   { id: 'tenant_overview', title: '租户总览', description: '所有租户的使用情况汇总', requiredPermissions: ['system_admin'], defaultEnabled: true, size: 'md' },
@@ -553,14 +553,13 @@ export const OVERVIEW_WIDGETS: OverviewWidget[] = [
 ]
 
 export interface OverviewDashboardData {
-  auditSummary: { approved: number; rejected: number; revised: number; total: number }
+  auditSummary: { approved: number; rejected: number; archived: number; total: number }
   pendingCount: number
   weeklyTrend: { date: string; count: number }[]
   deptDistribution: { department: string; count: number; color: string }[]
   recentActivity: { id: string; action: string; target: string; user: string; time: string; type: 'audit' | 'cron' | 'system' | 'config' }[]
   aiPerformance: { avgResponseMs: number; successRate: number; totalCalls: number; dailyStats: { date: string; avgMs: number; calls: number }[] }
   tenantUsage: { tokenUsed: number; tokenQuota: number; storageUsedMB: number; storageQuotaMB: number; activeUsers: number; totalUsers: number }
-  ruleCoverage: { processType: string; ruleCount: number; coveragePercent: number }[]
   userActivity: { username: string; displayName: string; department: string; auditCount: number; lastActive: string }[]
   systemHealth: { service: string; status: 'healthy' | 'degraded' | 'down'; cpu: number; memory: number; uptime: string }[]
   tenantOverview: { tenantId: string; tenantName: string; userCount: number; auditCount: number; tokenUsed: number; status: 'active' | 'suspended' }[]
@@ -1819,85 +1818,6 @@ export const useMockData = () => {
     ],
   }
 
-  const mockOverviewData: OverviewDashboardData = {
-    auditSummary: { approved: 28, rejected: 6, revised: 8, total: 42 },
-    pendingCount: 6,
-    weeklyTrend: [
-      { date: '06-04', count: 35 }, { date: '06-05', count: 41 },
-      { date: '06-06', count: 38 }, { date: '06-07', count: 22 },
-      { date: '06-08', count: 15 }, { date: '06-09', count: 44 },
-      { date: '06-10', count: 42 },
-    ],
-    deptDistribution: [
-      { department: '研发部', count: 12, color: '#4f46e5' },
-      { department: '销售部', count: 9, color: '#06b6d4' },
-      { department: '市场部', count: 7, color: '#f59e0b' },
-      { department: 'IT部', count: 6, color: '#10b981' },
-      { department: '人力资源部', count: 4, color: '#ef4444' },
-      { department: '行政部', count: 3, color: '#8b5cf6' },
-      { department: '财务部', count: 1, color: '#ec4899' },
-    ],
-    recentActivity: [
-      { id: 'RA-001', action: 'AI 审核完成', target: '办公设备采购申请', user: '张明', time: '09:35', type: 'audit' },
-      { id: 'RA-002', action: '手动通过', target: '年度IT设备采购', user: '王强', time: '09:20', type: 'audit' },
-      { id: 'RA-003', action: '批量审核执行', target: '12 条流程', user: '系统', time: '09:05', type: 'cron' },
-      { id: 'RA-004', action: '规则配置更新', target: '采购审批规则', user: '赵伟', time: '08:50', type: 'config' },
-      { id: 'RA-005', action: 'AI 审核完成', target: '差旅费报销', user: '李芳', time: '08:30', type: 'audit' },
-      { id: 'RA-006', action: '日报推送成功', target: '全员日报', user: '系统', time: '08:00', type: 'cron' },
-      { id: 'RA-007', action: '新用户加入', target: '刘洋（行政部）', user: '赵伟', time: '昨天 17:30', type: 'system' },
-      { id: 'RA-008', action: '合规复核', target: '服务器集群采购', user: '张华', time: '昨天 16:00', type: 'audit' },
-    ],
-    aiPerformance: {
-      avgResponseMs: 1850, successRate: 99.2, totalCalls: 1247,
-      dailyStats: [
-        { date: '06-04', avgMs: 1920, calls: 35 }, { date: '06-05', avgMs: 1780, calls: 41 },
-        { date: '06-06', avgMs: 1850, calls: 38 }, { date: '06-07', avgMs: 2100, calls: 22 },
-        { date: '06-08', avgMs: 1650, calls: 15 }, { date: '06-09', avgMs: 1900, calls: 44 },
-        { date: '06-10', avgMs: 1850, calls: 42 },
-      ],
-    },
-    tenantUsage: { tokenUsed: 284500, tokenQuota: 500000, storageUsedMB: 1240, storageQuotaMB: 5120, activeUsers: 18, totalUsers: 25 },
-    ruleCoverage: [
-      { processType: '采购审批', ruleCount: 4, coveragePercent: 95 },
-      { processType: '费用报销', ruleCount: 3, coveragePercent: 88 },
-      { processType: '合同审批', ruleCount: 3, coveragePercent: 82 },
-      { processType: '人事审批', ruleCount: 2, coveragePercent: 75 },
-    ],
-    userActivity: [
-      { username: 'zhangming', displayName: '张明', department: '研发部', auditCount: 156, lastActive: '2025-06-10 09:35' },
-      { username: 'wangqiang', displayName: '王强', department: 'IT部', auditCount: 132, lastActive: '2025-06-10 09:20' },
-      { username: 'lifang', displayName: '李芳', department: '销售部', auditCount: 98, lastActive: '2025-06-10 08:30' },
-      { username: 'zhaoli', displayName: '赵丽', department: '人力资源部', auditCount: 87, lastActive: '2025-06-09 17:00' },
-      { username: 'chenwei', displayName: '陈伟', department: '市场部', auditCount: 76, lastActive: '2025-06-09 16:00' },
-    ],
-    systemHealth: [
-      { service: 'Go 业务中台', status: 'healthy', cpu: 23, memory: 45, uptime: '15d 8h' },
-      { service: 'Python AI 引擎', status: 'healthy', cpu: 58, memory: 72, uptime: '15d 8h' },
-      { service: 'PostgreSQL', status: 'healthy', cpu: 12, memory: 38, uptime: '30d 2h' },
-      { service: 'Nuxt 前端', status: 'healthy', cpu: 5, memory: 22, uptime: '15d 8h' },
-      { service: 'OA 数据同步', status: 'degraded', cpu: 8, memory: 15, uptime: '3d 12h' },
-    ],
-    tenantOverview: [
-      { tenantId: 'T-001', tenantName: '默认租户', userCount: 25, auditCount: 1247, tokenUsed: 284500, status: 'active' },
-      { tenantId: 'T-002', tenantName: '华东分公司', userCount: 18, auditCount: 856, tokenUsed: 195000, status: 'active' },
-      { tenantId: 'T-003', tenantName: '华南分公司', userCount: 12, auditCount: 423, tokenUsed: 98000, status: 'active' },
-      { tenantId: 'T-004', tenantName: '测试租户', userCount: 3, auditCount: 56, tokenUsed: 12000, status: 'suspended' },
-    ],
-    apiMetrics: [
-      { endpoint: '/api/audit/execute', calls: 1247, avgMs: 1850, successRate: 99.2 },
-      { endpoint: '/api/audit/todo', calls: 3560, avgMs: 120, successRate: 99.8 },
-      { endpoint: '/api/auth/login', calls: 892, avgMs: 85, successRate: 98.5 },
-      { endpoint: '/api/cron/execute', calls: 156, avgMs: 5200, successRate: 97.4 },
-      { endpoint: '/api/archive/review', calls: 234, avgMs: 2100, successRate: 99.1 },
-    ],
-  }
-
-  /** Default dashboard prefs per user (keyed by username) */
-  const mockUserDashboardPrefs: Record<string, UserDashboardPrefs> = {
-    zhangming: { enabledWidgets: ['audit_summary', 'pending_tasks', 'weekly_trend', 'dept_distribution', 'recent_activity', 'ai_performance'] },
-    tenantadmin: { enabledWidgets: ['audit_summary', 'pending_tasks', 'weekly_trend', 'recent_activity', 'ai_performance', 'tenant_usage', 'rule_coverage', 'user_activity'] },
-    admin: { enabledWidgets: ['audit_summary', 'pending_tasks', 'weekly_trend', 'recent_activity', 'ai_performance', 'tenant_usage', 'rule_coverage', 'user_activity', 'system_health', 'tenant_overview', 'api_metrics'] },
-  }
 
   // Approved processes - historical, read-only
   const mockApprovedProcesses: OAProcess[] = [
@@ -2327,6 +2247,80 @@ export const useMockData = () => {
     tenantadmin: { locale: 'zh-CN', dateFormat: 'YYYY-MM-DD' },
     user: { locale: 'zh-CN', dateFormat: 'YYYY-MM-DD' },
     lifang: { locale: 'zh-CN', dateFormat: 'YYYY-MM-DD' },
+  }
+
+  const mockOverviewData: OverviewDashboardData = {
+    auditSummary: { approved: mockApprovedProcesses.length, rejected: mockRejectedProcesses.length, archived: mockArchivedOAProcesses.length, total: mockApprovedProcesses.length + mockRejectedProcesses.length + mockArchivedOAProcesses.length },
+    pendingCount: mockProcesses.length,
+    weeklyTrend: [
+      { date: '06-04', count: 35 }, { date: '06-05', count: 41 },
+      { date: '06-06', count: 38 }, { date: '06-07', count: 22 },
+      { date: '06-08', count: 15 }, { date: '06-09', count: 44 },
+      { date: '06-10', count: 42 },
+    ],
+    deptDistribution: [
+      { department: '研发部', count: 12, color: '#4f46e5' },
+      { department: '销售部', count: 9, color: '#06b6d4' },
+      { department: '市场部', count: 7, color: '#f59e0b' },
+      { department: 'IT部', count: 6, color: '#10b981' },
+      { department: '人力资源部', count: 4, color: '#ef4444' },
+      { department: '行政部', count: 3, color: '#8b5cf6' },
+      { department: '财务部', count: 1, color: '#ec4899' },
+    ],
+    recentActivity: [
+      { id: 'RA-001', action: 'AI 审核完成', target: '办公设备采购申请', user: '张明', time: '09:35', type: 'audit' },
+      { id: 'RA-002', action: '手动通过', target: '年度IT设备采购', user: '王强', time: '09:20', type: 'audit' },
+      { id: 'RA-003', action: '批量审核执行', target: '12 条流程', user: '系统', time: '09:05', type: 'cron' },
+      { id: 'RA-004', action: '规则配置更新', target: '采购审批规则', user: '赵伟', time: '08:50', type: 'config' },
+      { id: 'RA-005', action: 'AI 审核完成', target: '差旅费报销', user: '李芳', time: '08:30', type: 'audit' },
+      { id: 'RA-006', action: '日报推送成功', target: '全员日报', user: '系统', time: '08:00', type: 'cron' },
+      { id: 'RA-007', action: '新用户加入', target: '刘洋（行政部）', user: '赵伟', time: '昨天 17:30', type: 'system' },
+      { id: 'RA-008', action: '合规复核', target: '服务器集群采购', user: '张华', time: '昨天 16:00', type: 'audit' },
+    ],
+    aiPerformance: {
+      avgResponseMs: 1850, successRate: 99.2, totalCalls: 1247,
+      dailyStats: [
+        { date: '06-04', avgMs: 1920, calls: 35 }, { date: '06-05', avgMs: 1780, calls: 41 },
+        { date: '06-06', avgMs: 1850, calls: 38 }, { date: '06-07', avgMs: 2100, calls: 22 },
+        { date: '06-08', avgMs: 1650, calls: 15 }, { date: '06-09', avgMs: 1900, calls: 44 },
+        { date: '06-10', avgMs: 1850, calls: 42 },
+      ],
+    },
+    tenantUsage: { tokenUsed: 284500, tokenQuota: 500000, storageUsedMB: 1240, storageQuotaMB: 5120, activeUsers: 18, totalUsers: 25 },
+    userActivity: [
+      { username: 'zhangming', displayName: '张明', department: '研发部', auditCount: 156, lastActive: '2025-06-10 09:35' },
+      { username: 'wangqiang', displayName: '王强', department: 'IT部', auditCount: 132, lastActive: '2025-06-10 09:20' },
+      { username: 'lifang', displayName: '李芳', department: '销售部', auditCount: 98, lastActive: '2025-06-10 08:30' },
+      { username: 'zhaoli', displayName: '赵丽', department: '人力资源部', auditCount: 87, lastActive: '2025-06-09 17:00' },
+      { username: 'chenwei', displayName: '陈伟', department: '市场部', auditCount: 76, lastActive: '2025-06-09 16:00' },
+    ],
+    systemHealth: [
+      { service: 'Go 业务中台', status: 'healthy', cpu: 23, memory: 45, uptime: '15d 8h' },
+      { service: 'Python AI 引擎', status: 'healthy', cpu: 58, memory: 72, uptime: '15d 8h' },
+      { service: 'PostgreSQL', status: 'healthy', cpu: 12, memory: 38, uptime: '30d 2h' },
+      { service: 'Nuxt 前端', status: 'healthy', cpu: 5, memory: 22, uptime: '15d 8h' },
+      { service: 'OA 数据同步', status: 'degraded', cpu: 8, memory: 15, uptime: '3d 12h' },
+    ],
+    tenantOverview: [
+      { tenantId: 'T-001', tenantName: '默认租户', userCount: 25, auditCount: 1247, tokenUsed: 284500, status: 'active' },
+      { tenantId: 'T-002', tenantName: '华东分公司', userCount: 18, auditCount: 856, tokenUsed: 195000, status: 'active' },
+      { tenantId: 'T-003', tenantName: '华南分公司', userCount: 12, auditCount: 423, tokenUsed: 98000, status: 'active' },
+      { tenantId: 'T-004', tenantName: '测试租户', userCount: 3, auditCount: 56, tokenUsed: 12000, status: 'suspended' },
+    ],
+    apiMetrics: [
+      { endpoint: '/api/audit/execute', calls: 1247, avgMs: 1850, successRate: 99.2 },
+      { endpoint: '/api/audit/todo', calls: 3560, avgMs: 120, successRate: 99.8 },
+      { endpoint: '/api/auth/login', calls: 892, avgMs: 85, successRate: 98.5 },
+      { endpoint: '/api/cron/execute', calls: 156, avgMs: 5200, successRate: 97.4 },
+      { endpoint: '/api/archive/review', calls: 234, avgMs: 2100, successRate: 99.1 },
+    ],
+  }
+
+  /** Default dashboard prefs per user (keyed by username) */
+  const mockUserDashboardPrefs: Record<string, UserDashboardPrefs> = {
+    zhangming: { enabledWidgets: ['audit_summary', 'pending_tasks', 'weekly_trend', 'cron_tasks', 'archive_review', 'recent_activity'] },
+    tenantadmin: { enabledWidgets: ['dept_distribution', 'recent_activity', 'ai_performance', 'tenant_usage', 'user_activity'] },
+    admin: { enabledWidgets: ['recent_activity', 'system_health', 'tenant_overview', 'api_metrics'] },
   }
 
   return {

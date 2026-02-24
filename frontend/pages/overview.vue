@@ -22,7 +22,7 @@ import type { OverviewWidgetId } from '~/composables/useMockData'
 definePageMeta({ middleware: 'auth' })
 
 const { userPermissions, currentUser } = useAuth()
-const { mockOverviewData, mockUserDashboardPrefs } = useMockData()
+const { mockOverviewData, mockUserDashboardPrefs, mockCronTasks, mockArchiveLogs } = useMockData()
 const { t } = useI18n()
 const data = ref(mockOverviewData)
 
@@ -35,16 +35,32 @@ const defaultPrefs = computed(() => {
 })
 const enabledWidgets = ref<OverviewWidgetId[]>([])
 
-onMounted(() => {
-  const saved = mockUserDashboardPrefs[username.value]
-  enabledWidgets.value = saved ? [...saved.enabledWidgets] : [...defaultPrefs.value]
-})
-
 const availableWidgets = computed(() => {
   const perms = userPermissions.value
   return OVERVIEW_WIDGETS.filter(w => w.requiredPermissions.some(p => perms.includes(p)))
 })
-const isEnabled = (id: OverviewWidgetId) => enabledWidgets.value.includes(id)
+
+watch(userPermissions, () => {
+  const prefsKey = `${username.value}_${userPermissions.value[0] || 'business'}`
+  const saved = mockUserDashboardPrefs[prefsKey]
+  
+  if (saved) {
+    enabledWidgets.value = [...saved.enabledWidgets]
+  } else {
+    const generalSaved = mockUserDashboardPrefs[username.value]
+    if (generalSaved) {
+       const validGeneral = generalSaved.enabledWidgets.filter(id => availableWidgets.value.some(w => w.id === id))
+       const merged = [...new Set([...validGeneral, ...defaultPrefs.value])]
+       enabledWidgets.value = merged
+    } else {
+       enabledWidgets.value = [...defaultPrefs.value]
+    }
+  }
+}, { immediate: true })
+
+const isEnabled = (id: OverviewWidgetId) => {
+  return enabledWidgets.value.includes(id) && availableWidgets.value.some(w => w.id === id)
+}
 
 const customizing = ref(false)
 const toggleWidget = (id: OverviewWidgetId) => {
@@ -53,7 +69,12 @@ const toggleWidget = (id: OverviewWidgetId) => {
   if (idx >= 0) enabledWidgets.value.splice(idx, 1)
   else enabledWidgets.value.push(id)
 }
-const savePrefs = () => { customizing.value = false; message.success(t('overview.layoutSaved')) }
+const savePrefs = () => { 
+  customizing.value = false
+  const prefsKey = `${username.value}_${userPermissions.value[0] || 'business'}`
+  mockUserDashboardPrefs[prefsKey] = { enabledWidgets: [...enabledWidgets.value] }
+  message.success(t('overview.layoutSaved')) 
+}
 
 const greeting = computed(() => {
   const h = new Date().getHours()
@@ -119,16 +140,16 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
             <div class="summary-num">{{ data.auditSummary.rejected }}</div>
             <div class="summary-label">{{ t('overview.rejected') }}</div>
           </div>
-          <div class="summary-card summary-card--revised">
-            <EditOutlined class="summary-icon" />
-            <div class="summary-num">{{ data.auditSummary.revised }}</div>
-            <div class="summary-label">{{ t('overview.revised') }}</div>
+          <div class="summary-card summary-card--archived">
+            <CheckCircleOutlined class="summary-icon" />
+            <div class="summary-num">{{ data.auditSummary.archived }}</div>
+            <div class="summary-label">{{ t('dashboard.tab.archived') }}</div>
           </div>
         </div>
       </div>
 
       <!-- ===== Pending Tasks (business) ===== -->
-      <div v-if="isEnabled('pending_tasks')" class="widget widget--sm">
+      <div v-if="isEnabled('pending_tasks')" class="widget widget--md">
         <div class="widget-title"><ClockCircleOutlined /> {{ t('overview.pendingTasks') }}</div>
         <div class="pending-big">
           <div class="pending-num">{{ data.pendingCount }}</div>
@@ -159,6 +180,38 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
               <div class="dept-bar" :style="{ width: (d.count / deptMax * 100) + '%', background: d.color }" />
             </div>
             <span class="dept-count">{{ d.count }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Cron Tasks (business) ===== -->
+      <div v-if="isEnabled('cron_tasks')" class="widget widget--md">
+        <div class="widget-title"><ClockCircleOutlined /> 定时任务任务列表</div>
+        <div class="rank-list" style="margin-top: 10px;">
+          <div v-for="c in mockCronTasks.slice(0, 5)" :key="c.id" class="rank-item">
+            <div class="rank-info">
+              <span class="rank-name">{{ c.task_type === 'batch_audit' ? '批量审核' : c.task_type === 'daily_report' ? '日报推送' : '周报推送' }}</span>
+              <span class="rank-dept">{{ c.cron_expression }}</span>
+            </div>
+            <span class="rank-count" :style="{ color: c.is_active ? 'var(--color-success)' : 'var(--color-text-tertiary)' }">{{ c.is_active ? '运行中' : '已停用' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Archive Review (business) ===== -->
+      <div v-if="isEnabled('archive_review')" class="widget widget--md">
+        <div class="widget-title"><SafetyCertificateOutlined /> 归档复盘最新记录</div>
+        <div class="activity-list" style="margin-top: 10px;">
+          <div v-for="a in mockArchiveLogs.slice(0, 4)" :key="a.id" class="activity-item">
+            <div class="activity-dot" :style="{ background: 'var(--color-primary)' }" />
+            <div class="activity-body">
+              <span class="activity-action">{{ a.action_label }}</span>
+              <span class="activity-target">{{ a.title }}</span>
+            </div>
+            <div class="activity-meta">
+              <span class="activity-user">{{ a.operator }}</span>
+              <span class="activity-time">{{ a.created_at }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -231,23 +284,6 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
               <div class="usage-bar usage-bar--success" :style="{ width: (data.tenantUsage.activeUsers / data.tenantUsage.totalUsers * 100) + '%' }" />
             </div>
             <span class="usage-text">{{ data.tenantUsage.activeUsers }} / {{ data.tenantUsage.totalUsers }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ===== Rule Coverage (tenant_admin) ===== -->
-      <div v-if="isEnabled('rule_coverage')" class="widget widget--md">
-        <div class="widget-title"><SafetyCertificateOutlined /> {{ t('overview.ruleCoverage') }}</div>
-        <div class="coverage-list">
-          <div v-for="r in data.ruleCoverage" :key="r.processType" class="coverage-row">
-            <div class="coverage-info">
-              <span class="coverage-type">{{ r.processType }}</span>
-              <span class="coverage-count">{{ r.ruleCount }} {{ t('overview.rules') }}</span>
-            </div>
-            <div class="coverage-bar-wrap">
-              <div class="coverage-bar" :style="{ width: r.coveragePercent + '%' }" />
-            </div>
-            <span class="coverage-pct">{{ r.coveragePercent }}%</span>
           </div>
         </div>
       </div>
@@ -385,7 +421,7 @@ const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => 
 .summary-card--total { background: var(--color-primary-bg); }
 .summary-card--approved .summary-icon { color: var(--color-success); font-size: 20px; }
 .summary-card--rejected .summary-icon { color: var(--color-danger); font-size: 20px; }
-.summary-card--revised .summary-icon { color: var(--color-warning); font-size: 20px; }
+.summary-card--archived .summary-icon { color: var(--color-warning); font-size: 20px; }
 .summary-num { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
 .summary-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
 .summary-card--total .summary-num { color: var(--color-primary); }

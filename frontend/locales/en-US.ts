@@ -371,7 +371,7 @@ export default {
     'overview.itemsPending': 'items pending',
     'overview.goToWorkbench': 'Go to Workbench',
     'overview.auditTrend7d': 'Audit Trend (7 Days)',
-    'overview.deptDistribution': 'Dept Distribution',
+    'overview.deptDistribution': 'Department Usage Distribution',
     'overview.recentActivity': 'Recent Activity',
     'overview.aiPerformance': 'AI Model Performance',
     'overview.avgResponse': 'Avg Response',

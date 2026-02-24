@@ -371,7 +371,7 @@ export default {
     'overview.itemsPending': '条待处理',
     'overview.goToWorkbench': '前往工作台',
     'overview.auditTrend7d': '审核趋势（近7天）',
-    'overview.deptDistribution': '部门分布',
+    'overview.deptDistribution': '部门分布使用情况',
     'overview.recentActivity': '最近动态',
     'overview.aiPerformance': 'AI 模型表现',
     'overview.avgResponse': '平均响应',

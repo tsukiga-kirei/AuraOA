@@ -460,7 +460,7 @@
   }
   ```
 - **字段说明**:
-  - `enabled_widgets`: 用户启用的 Widget ID 列表，可选值包括 `audit_summary`、`pending_tasks`、`weekly_trend`、`dept_distribution`、`recent_activity`、`ai_performance`、`tenant_usage`、`rule_coverage`、`user_activity`、`system_health`、`tenant_overview`、`api_metrics`。各 Widget 可见性受用户权限控制。
+  - `enabled_widgets`: 用户启用的 Widget ID 列表，可选值包括 `audit_summary`、`pending_tasks`、`weekly_trend`、`cron_tasks`、`archive_review`、`recent_activity`、`dept_distribution`、`ai_performance`、`tenant_usage`、`user_activity`、`system_health`、`tenant_overview`、`api_metrics`。各 Widget 可见性受用户权限控制。
 
 ### 5.4 更新用户仪表盘偏好
 - **PUT** `/api/user/dashboard-prefs`

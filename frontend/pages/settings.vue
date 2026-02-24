@@ -123,37 +123,7 @@ const handleChangePassword = async () => {
   message.success(t('settings.security.changeSuccess'))
 }
 
-// ===== Dashboard prefs tab =====
-const dashboardAvailableWidgets = computed(() => {
-  const perms = userPermissions.value
-  return OVERVIEW_WIDGETS.filter(w => w.requiredPermissions.some(p => perms.includes(p)))
-})
-const dashboardEnabledWidgets = ref<OverviewWidgetId[]>([])
 
-onMounted(() => {
-  const uname = currentUser.value?.username || ''
-  const saved = mockUserDashboardPrefs[uname]
-  if (saved) {
-    dashboardEnabledWidgets.value = [...saved.enabledWidgets]
-  } else {
-    dashboardEnabledWidgets.value = dashboardAvailableWidgets.value
-      .filter(w => w.defaultEnabled)
-      .map(w => w.id)
-  }
-})
-
-const isDashWidgetEnabled = (id: OverviewWidgetId) => dashboardEnabledWidgets.value.includes(id)
-const toggleDashWidget = (id: OverviewWidgetId) => {
-  const idx = dashboardEnabledWidgets.value.indexOf(id)
-  if (idx >= 0) dashboardEnabledWidgets.value.splice(idx, 1)
-  else dashboardEnabledWidgets.value.push(id)
-}
-const resetDashboardPrefs = () => {
-  dashboardEnabledWidgets.value = dashboardAvailableWidgets.value
-    .filter(w => w.defaultEnabled)
-    .map(w => w.id)
-  message.success(t('settings.dashboard.restoreSuccess'))
-}
 
 // ===== Profile tab =====
 // Find current user's org member record to show role-based permissions
@@ -395,7 +365,6 @@ const toggleArchiveField = (field: ProcessField) => {
       <button
         v-for="tab in [
           { key: 'profile', label: t('settings.tab.profile'), icon: UserOutlined },
-          { key: 'dashboard_prefs', label: t('settings.tab.dashboardPrefs'), icon: PieChartOutlined },
           { key: 'workbench', label: t('settings.tab.workbench'), icon: DashboardOutlined },
           { key: 'cron', label: t('settings.tab.cron'), icon: ClockCircleOutlined },
           { key: 'archive', label: t('settings.tab.archive'), icon: FolderOpenOutlined },
@@ -410,45 +379,6 @@ const toggleArchiveField = (field: ProcessField) => {
       </button>
     </div>
 
-    <!-- Dashboard prefs tab -->
-    <div v-if="activeTab === 'dashboard_prefs'" class="tab-content">
-      <div class="settings-card">
-        <div class="section-header-row" style="margin-bottom: 16px;">
-          <h4 class="config-section-title">{{ t('settings.dashboard.widgetConfig') }}</h4>
-          <a-button size="small" @click="resetDashboardPrefs">{{ t('settings.dashboard.restoreDefault') }}</a-button>
-        </div>
-        <p class="config-section-desc" style="margin-bottom: 20px;">
-          {{ t('settings.dashboard.widgetDesc') }}
-        </p>
-        <div class="dash-widget-list">
-          <div
-            v-for="w in dashboardAvailableWidgets"
-            :key="w.id"
-            class="dash-widget-item"
-            :class="{ 'dash-widget-item--active': isDashWidgetEnabled(w.id) }"
-            @click="toggleDashWidget(w.id)"
-          >
-            <div class="dash-widget-check">
-              <CheckOutlined v-if="isDashWidgetEnabled(w.id)" />
-            </div>
-            <div class="dash-widget-info">
-              <div class="dash-widget-name">{{ w.title }}</div>
-              <div class="dash-widget-desc">{{ w.description }}</div>
-            </div>
-            <div class="dash-widget-perms">
-              <span v-for="p in w.requiredPermissions" :key="p" class="dash-perm-tag">
-                {{ p === 'business' ? t('settings.dashboard.permBusiness') : p === 'tenant_admin' ? t('settings.dashboard.permTenant') : t('settings.dashboard.permSystem') }}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="settings-actions">
-          <a-button type="primary" size="large" :loading="saving" @click="handleSave">
-            <SaveOutlined /> {{ t('settings.dashboard.saveConfig') }}
-          </a-button>
-        </div>
-      </div>
-    </div>
 
     <!-- Profile tab -->
     <div v-if="activeTab === 'profile'" class="tab-content">
