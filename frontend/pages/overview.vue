@@ -13,6 +13,7 @@ import {
   SettingOutlined,
   EyeOutlined,
   EyeInvisibleOutlined,
+  AlertOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { OVERVIEW_WIDGETS } from '~/composables/useMockData'
@@ -23,8 +24,17 @@ definePageMeta({ middleware: 'auth' })
 
 const { userPermissions, currentUser } = useAuth()
 const { mockOverviewData, mockUserDashboardPrefs, mockCronTasks, mockArchiveLogs } = useMockData()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const data = ref(mockOverviewData)
+
+// Alert helpers for monitor_alerts widget
+const alertLevelConfig: Record<string, { color: string; bg: string }> = {
+  warning: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' },
+  error: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)' },
+  info: { color: 'var(--color-info)', bg: 'var(--color-info-bg)' },
+}
+const getAlertMessage = (alert: typeof data.value.monitorAlerts[0]) => locale.value === 'en-US' ? alert.messageEn : alert.messageZh
+const getAlertTime = (alert: typeof data.value.monitorAlerts[0]) => locale.value === 'en-US' ? alert.timeEn : alert.timeZh
 
 const username = computed(() => currentUser.value?.username || '')
 const defaultPrefs = computed(() => {
@@ -543,6 +553,97 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
           </div>
         </div>
       </div>
+
+      <!-- ===== Monitor Metrics (system_admin) ===== -->
+      <div v-if="isEnabled('monitor_metrics')"
+       :class="['widget', `widget--${getWidgetSize('monitor_metrics')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('monitor_metrics') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'monitor_metrics')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'monitor_metrics')">
+        <div class="widget-title">
+          <div class="widget-title-left"><ThunderboltOutlined /> {{ t('overview.monitorMetrics') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('monitor_metrics')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
+        <div class="monitor-metrics-grid">
+          <div class="monitor-metric-card">
+            <div class="monitor-metric-icon monitor-metric-icon--success"><ApiOutlined /></div>
+            <div class="monitor-metric-info">
+              <div class="monitor-metric-value">{{ data.monitorMetrics.apiSuccessRate }}<span class="monitor-metric-unit">%</span></div>
+              <div class="monitor-metric-label">{{ t('overview.monitor.apiSuccessRate') }}</div>
+            </div>
+          </div>
+          <div class="monitor-metric-card">
+            <div class="monitor-metric-icon monitor-metric-icon--primary"><ClockCircleOutlined /></div>
+            <div class="monitor-metric-info">
+              <div class="monitor-metric-value">{{ data.monitorMetrics.avgModelResponseMs }}<span class="monitor-metric-unit">ms</span></div>
+              <div class="monitor-metric-label">{{ t('overview.monitor.avgModelResponse') }}</div>
+            </div>
+          </div>
+          <div class="monitor-metric-card">
+            <div class="monitor-metric-icon monitor-metric-icon--warning"><ThunderboltOutlined /></div>
+            <div class="monitor-metric-info">
+              <div class="monitor-metric-value">{{ data.monitorMetrics.p95Latency }}<span class="monitor-metric-unit">ms</span></div>
+              <div class="monitor-metric-label">{{ t('overview.monitor.p95Latency') }}</div>
+            </div>
+          </div>
+          <div class="monitor-metric-card">
+            <div class="monitor-metric-icon monitor-metric-icon--info"><RiseOutlined /></div>
+            <div class="monitor-metric-info">
+              <div class="monitor-metric-value">{{ formatNum(data.monitorMetrics.totalRequests24h) }}</div>
+              <div class="monitor-metric-label">{{ t('overview.monitor.requests24h') }}</div>
+            </div>
+          </div>
+          <div class="monitor-metric-card">
+            <div class="monitor-metric-icon monitor-metric-icon--success"><TeamOutlined /></div>
+            <div class="monitor-metric-info">
+              <div class="monitor-metric-value">{{ data.monitorMetrics.activeTenants }}</div>
+              <div class="monitor-metric-label">{{ t('overview.monitor.activeTenants') }}</div>
+            </div>
+          </div>
+          <div class="monitor-metric-card">
+            <div class="monitor-metric-icon monitor-metric-icon--primary"><CheckCircleOutlined /></div>
+            <div class="monitor-metric-info">
+              <div class="monitor-metric-value">{{ data.monitorMetrics.uptime }}</div>
+              <div class="monitor-metric-label">{{ t('overview.monitor.uptime') }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Monitor Alerts (system_admin) ===== -->
+      <div v-if="isEnabled('monitor_alerts')"
+       :class="['widget', `widget--${getWidgetSize('monitor_alerts')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('monitor_alerts') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'monitor_alerts')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'monitor_alerts')">
+        <div class="widget-title">
+          <div class="widget-title-left"><AlertOutlined style="color: var(--color-warning);" /> {{ t('overview.monitor.recentAlerts') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('monitor_alerts')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
+        <div class="monitor-alerts-list">
+          <div
+            v-for="alert in data.monitorAlerts"
+            :key="alert.id"
+            class="monitor-alert-item"
+            :style="{ borderLeftColor: alertLevelConfig[alert.level]?.color }"
+          >
+            <div class="monitor-alert-dot" :style="{ background: alertLevelConfig[alert.level]?.color }" />
+            <div class="monitor-alert-content">
+              <div class="monitor-alert-message">{{ getAlertMessage(alert) }}</div>
+              <div class="monitor-alert-time">{{ getAlertTime(alert) }}</div>
+            </div>
+          </div>
+        </div>
+        <div v-if="data.monitorAlerts.length === 0" style="padding: 32px; text-align: center;">
+          <a-empty :description="t('overview.monitor.noAlerts')" />
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -727,14 +828,54 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .tenant-status { font-weight: 500; }
 .api-endpoint { font-family: var(--font-mono); font-size: 12px; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Monitor metrics grid */
+.monitor-metrics-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+}
+.monitor-metric-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px;
+  background: var(--color-bg-page);
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+}
+.monitor-metric-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-xs); }
+.monitor-metric-icon {
+  width: 40px; height: 40px; border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+.monitor-metric-icon--primary { background: var(--color-primary-bg); color: var(--color-primary); }
+.monitor-metric-icon--success { background: var(--color-success-bg); color: var(--color-success); }
+.monitor-metric-icon--warning { background: var(--color-warning-bg); color: var(--color-warning); }
+.monitor-metric-icon--info { background: var(--color-info-bg); color: var(--color-info); }
+.monitor-metric-value { font-size: 20px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
+.monitor-metric-unit { font-size: 12px; font-weight: 500; color: var(--color-text-tertiary); margin-left: 2px; }
+.monitor-metric-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+
+/* Monitor alerts */
+.monitor-alerts-list { display: flex; flex-direction: column; gap: 10px; }
+.monitor-alert-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 14px; border-radius: var(--radius-md);
+  background: var(--color-bg-page); border-left: 3px solid;
+  transition: background 0.2s ease;
+}
+.monitor-alert-item:hover { background: var(--color-bg-hover); }
+.monitor-alert-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+.monitor-alert-message { font-size: 13px; color: var(--color-text-primary); line-height: 1.4; }
+.monitor-alert-time { font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px; }
+
 @media (max-width: 1024px) {
   .widget--sm, .widget--md { grid-column: span 6; }
   .summary-cards { grid-template-columns: repeat(2, 1fr); }
+  .monitor-metrics-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
   .widget--sm, .widget--md, .widget--lg { grid-column: span 12; }
   .summary-cards { grid-template-columns: repeat(2, 1fr); }
   .health-grid { grid-template-columns: 1fr; }
+  .monitor-metrics-grid { grid-template-columns: 1fr; }
   .ov-header { flex-direction: column; }
 }
 </style>

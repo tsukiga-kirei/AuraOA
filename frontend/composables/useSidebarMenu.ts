@@ -16,7 +16,6 @@ import {
   AppstoreOutlined,
   ApartmentOutlined,
   DatabaseOutlined,
-  MonitorOutlined,
   TeamOutlined,
   SettingOutlined,
   PieChartOutlined,
@@ -56,7 +55,6 @@ const TENANT_ITEMS: SidebarMenuItem[] = [
 ]
 
 const SYSTEM_ITEMS: SidebarMenuItem[] = [
-  { key: '/admin/system/monitor', icon: MonitorOutlined, labelKey: 'menu.system.monitor' },
   { key: '/admin/system/tenants', icon: TeamOutlined, labelKey: 'menu.system.tenants' },
   { key: '/admin/system/settings', icon: SettingOutlined, labelKey: 'menu.system.settings' },
 ]
@@ -89,7 +87,7 @@ export const useSidebarMenu = () => {
   /** Check if a menu item is active */
   const isMenuActive = (itemKey: string) => {
     const path = route.path
-    if (itemKey === '/admin/system/monitor' || itemKey === '/admin/tenant/rules' || itemKey === '/dashboard' || itemKey === '/overview') {
+    if (itemKey === '/admin/tenant/rules' || itemKey === '/dashboard' || itemKey === '/overview') {
       return path === itemKey
     }
     return path.startsWith(itemKey)

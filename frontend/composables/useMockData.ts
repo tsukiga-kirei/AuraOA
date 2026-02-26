@@ -123,7 +123,6 @@ export const PAGE_PERMISSIONS: Record<string, PermissionGroup[]> = {
   '/admin/tenant/org': ['tenant_admin'],
   '/admin/tenant/data': ['tenant_admin'],
   '/admin/tenant/user-configs': ['tenant_admin'],
-  '/admin/system/monitor': ['system_admin'],
   '/admin/system/tenants': ['system_admin'],
   '/admin/system/settings': ['system_admin'],
 }
@@ -521,6 +520,8 @@ export type OverviewWidgetId =
   | 'system_health'       // system_admin: system health overview
   | 'tenant_overview'     // system_admin: all tenants overview
   | 'api_metrics'         // system_admin: API call metrics
+  | 'monitor_metrics'     // system_admin: key operational metrics (from global monitor)
+  | 'monitor_alerts'      // system_admin: recent alerts (from global monitor)
   | 'cron_tasks'          // business: scheduled tasks
   | 'archive_review'      // business: archive review
 
@@ -550,6 +551,8 @@ export const OVERVIEW_WIDGETS: OverviewWidget[] = [
   { id: 'system_health', title: '系统健康', description: '各服务运行状态与资源占用', requiredPermissions: ['system_admin'], defaultEnabled: true, size: 'lg' },
   { id: 'tenant_overview', title: '租户总览', description: '所有租户的使用情况汇总', requiredPermissions: ['system_admin'], defaultEnabled: true, size: 'md' },
   { id: 'api_metrics', title: 'API 调用指标', description: 'API 调用量、成功率、延迟分布', requiredPermissions: ['system_admin'], defaultEnabled: true, size: 'md' },
+  { id: 'monitor_metrics', title: '运行指标', description: '系统关键运行指标概览（API 成功率、模型响应、延迟等）', requiredPermissions: ['system_admin'], defaultEnabled: true, size: 'lg' },
+  { id: 'monitor_alerts', title: '最近告警', description: '系统告警与异常事件', requiredPermissions: ['system_admin'], defaultEnabled: true, size: 'md' },
 ]
 
 export interface OverviewDashboardData {
@@ -564,6 +567,8 @@ export interface OverviewDashboardData {
   systemHealth: { service: string; status: 'healthy' | 'degraded' | 'down'; cpu: number; memory: number; uptime: string }[]
   tenantOverview: { tenantId: string; tenantName: string; userCount: number; auditCount: number; tokenUsed: number; status: 'active' | 'suspended' }[]
   apiMetrics: { endpoint: string; calls: number; avgMs: number; successRate: number }[]
+  monitorMetrics: { apiSuccessRate: number; avgModelResponseMs: number; p95Latency: number; totalRequests24h: number; activeTenants: number; uptime: string }
+  monitorAlerts: { id: number; level: string; messageZh: string; messageEn: string; timeZh: string; timeEn: string }[]
 }
 
 /** User's dashboard widget preferences (stored per user) */
@@ -722,7 +727,7 @@ export const mockOrgRoles: OrgRole[] = [
     is_system: true,
   },
   {
-    id: 'ROLE-004', name: '系统管理员', description: '拥有所有权限，包括系统管理和全局监控',
+    id: 'ROLE-004', name: '系统管理员', description: '拥有所有权限，包括系统管理',
     page_permissions: ['/overview', '/dashboard', '/cron', '/archive', '/settings', '/admin/tenant', '/admin/tenant/org', '/admin/tenant/data', '/admin/tenant/user-configs', '/admin/system', '/admin/system/tenants', '/admin/system/settings'],
     is_system: true,
   },
@@ -2316,13 +2321,26 @@ export const useMockData = () => {
       { endpoint: '/api/cron/execute', calls: 156, avgMs: 5200, successRate: 97.4 },
       { endpoint: '/api/archive/review', calls: 234, avgMs: 2100, successRate: 99.1 },
     ],
+    monitorMetrics: {
+      apiSuccessRate: 99.2,
+      avgModelResponseMs: 1250,
+      p95Latency: 2100,
+      totalRequests24h: 1847,
+      activeTenants: 3,
+      uptime: '99.97%',
+    },
+    monitorAlerts: [
+      { id: 1, level: 'warning', messageZh: '租户"华东分公司" Token 用量已达 70%', messageEn: 'Tenant "East Division" token usage reached 70%', timeZh: '10 分钟前', timeEn: '10 min ago' },
+      { id: 2, level: 'info', messageZh: '系统自动完成每日数据备份', messageEn: 'Daily data backup completed', timeZh: '2 小时前', timeEn: '2 hours ago' },
+      { id: 3, level: 'info', messageZh: 'AI 模型响应时间恢复正常', messageEn: 'AI model response time recovered', timeZh: '5 小时前', timeEn: '5 hours ago' },
+    ],
   }
 
   /** Default dashboard prefs per user (keyed by username) */
   const mockUserDashboardPrefs: Record<string, UserDashboardPrefs> = {
     zhangming: { enabledWidgets: ['audit_summary', 'pending_tasks', 'weekly_trend', 'cron_tasks', 'archive_review', 'recent_activity'] },
     tenantadmin: { enabledWidgets: ['dept_distribution', 'recent_activity', 'ai_performance', 'tenant_usage', 'user_activity'] },
-    admin: { enabledWidgets: ['recent_activity', 'system_health', 'tenant_overview', 'api_metrics'] },
+    admin: { enabledWidgets: ['monitor_metrics', 'recent_activity', 'system_health', 'tenant_overview', 'api_metrics', 'monitor_alerts'] },
   }
 
   return {
@@ -2357,8 +2375,6 @@ export const useMockData = () => {
     mockOADatabaseConnections: [...mockOADatabaseConnections],
     mockAIModelConfigs: [...mockAIModelConfigs],
     mockSystemGeneralConfig: { ...mockSystemGeneralConfig },
-    mockSystemMonitorMetrics,
-    mockSystemMonitorAlerts,
     mockUserSecurityInfo,
     mockUserLocalePrefs,
   }

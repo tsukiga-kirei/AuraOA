@@ -116,7 +116,6 @@ const allPages = computed(() => [
   { path: '/admin/tenant/org', label: t('admin.org.page.tenantOrg') },
   { path: '/admin/tenant/data', label: t('admin.org.page.tenantData') },
   { path: '/admin/tenant/user-configs', label: t('menu.tenant.userConfigs') },
-  { path: '/admin/system/monitor', label: t('admin.org.page.sysMonitor') },
   { path: '/admin/system/tenants', label: t('admin.org.page.sysTenants') },
   { path: '/admin/system/settings', label: t('admin.org.page.sysSettings') },
 ])

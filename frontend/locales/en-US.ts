@@ -22,7 +22,6 @@ export default {
     'menu.tenant.org': 'Organization',
     'menu.tenant.data': 'Data Info',
     'menu.tenant.userConfigs': 'User Prefs',
-    'menu.system.monitor': 'Global Monitor',
     'menu.system.tenants': 'Tenant Mgmt',
     'menu.system.settings': 'System Settings',
 
@@ -245,20 +244,17 @@ export default {
     'ruleEditor.priorityCurrent': 'Current',
     'ruleEditor.priorityHigh': 'High',
 
-    // ===== System Monitor page =====
-    'monitor.title': 'Global Monitor',
-    'monitor.subtitle': 'System health and key operational metrics',
-    'monitor.systemHealthy': 'System Healthy',
-    'monitor.apiSuccessRate': 'API Success Rate',
-    'monitor.avgModelResponse': 'Avg Model Response',
-    'monitor.p95Latency': 'P95 Latency',
-    'monitor.requests24h': '24h Requests',
-    'monitor.activeTenants': 'Active Tenants',
-    'monitor.systemUptime': 'System Uptime',
-    'monitor.weeklyTrend': '7-Day Audit Trend',
-    'monitor.auditCount': 'audits',
-    'monitor.recentAlerts': 'Recent Alerts',
-    'monitor.noAlerts': 'No alerts',
+    // ===== System Monitor (merged into dashboard) =====
+    'overview.monitorMetrics': 'Operational Metrics',
+    'overview.resizeWidget': 'Resize widget',
+    'overview.monitor.apiSuccessRate': 'API Success Rate',
+    'overview.monitor.avgModelResponse': 'Avg Model Response',
+    'overview.monitor.p95Latency': 'P95 Latency',
+    'overview.monitor.requests24h': '24h Requests',
+    'overview.monitor.activeTenants': 'Active Tenants',
+    'overview.monitor.uptime': 'System Uptime',
+    'overview.monitor.recentAlerts': 'Recent Alerts',
+    'overview.monitor.noAlerts': 'No alerts',
 
     // ===== Page labels (for permissions display) =====
     'page./overview': 'Dashboard',
@@ -270,7 +266,6 @@ export default {
     'page./admin/tenant/org': 'Organization',
     'page./admin/tenant/data': 'Data Info',
     'page./admin/tenant/user-configs': 'User Prefs',
-    'page./admin/system/monitor': 'Global Monitor',
     'page./admin/system/tenants': 'Tenant Mgmt',
     'page./admin/system/settings': 'System Settings',
 
@@ -1316,7 +1311,6 @@ export default {
     'admin.org.page.tenantConfig': 'Rule Config',
     'admin.org.page.tenantOrg': 'Organization',
     'admin.org.page.tenantData': 'Data Info',
-    'admin.org.page.sysMonitor': 'Global Monitor',
     'admin.org.page.sysTenants': 'Tenant Management',
     'admin.org.page.sysSettings': 'System Settings',
 

@@ -22,7 +22,6 @@ export default {
     'menu.tenant.org': '组织人员',
     'menu.tenant.data': '数据信息',
     'menu.tenant.userConfigs': '用户偏好',
-    'menu.system.monitor': '全局监控',
     'menu.system.tenants': '租户管理',
     'menu.system.settings': '系统设置',
 
@@ -245,20 +244,17 @@ export default {
     'ruleEditor.priorityCurrent': '当前',
     'ruleEditor.priorityHigh': '高',
 
-    // ===== System Monitor page =====
-    'monitor.title': '全局监控',
-    'monitor.subtitle': '系统健康度与关键运行指标',
-    'monitor.systemHealthy': '系统健康',
-    'monitor.apiSuccessRate': 'API 成功率',
-    'monitor.avgModelResponse': '模型平均响应',
-    'monitor.p95Latency': 'P95 延迟',
-    'monitor.requests24h': '24h 请求数',
-    'monitor.activeTenants': '活跃租户',
-    'monitor.systemUptime': '系统可用率',
-    'monitor.weeklyTrend': '近 7 日审核趋势',
-    'monitor.auditCount': '条审核',
-    'monitor.recentAlerts': '最近告警',
-    'monitor.noAlerts': '暂无告警',
+    // ===== System Monitor (merged into dashboard) =====
+    'overview.monitorMetrics': '运行指标',
+    'overview.resizeWidget': '调整组件大小',
+    'overview.monitor.apiSuccessRate': 'API 成功率',
+    'overview.monitor.avgModelResponse': '模型平均响应',
+    'overview.monitor.p95Latency': 'P95 延迟',
+    'overview.monitor.requests24h': '24h 请求数',
+    'overview.monitor.activeTenants': '活跃租户',
+    'overview.monitor.uptime': '系统可用率',
+    'overview.monitor.recentAlerts': '最近告警',
+    'overview.monitor.noAlerts': '暂无告警',
 
     // ===== Page labels (for permissions display) =====
     'page./overview': '仪表盘',
@@ -270,7 +266,6 @@ export default {
     'page./admin/tenant/org': '组织人员',
     'page./admin/tenant/data': '数据信息',
     'page./admin/tenant/user-configs': '用户偏好',
-    'page./admin/system/monitor': '全局监控',
     'page./admin/system/tenants': '租户管理',
     'page./admin/system/settings': '系统设置',
 
@@ -1317,7 +1312,6 @@ export default {
     'admin.org.page.tenantConfig': '规则配置',
     'admin.org.page.tenantOrg': '组织人员',
     'admin.org.page.tenantData': '数据信息',
-    'admin.org.page.sysMonitor': '全局监控',
     'admin.org.page.sysTenants': '租户管理',
     'admin.org.page.sysSettings': '系统设置',
 

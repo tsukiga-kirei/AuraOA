@@ -123,7 +123,6 @@ userPermissions: PermissionGroup[]  // 只有一个元素
 /admin/tenant/org  → tenant_admin
 /admin/tenant/data → tenant_admin
 /admin/tenant/user-configs → tenant_admin
-/admin/system/monitor → system_admin
 /admin/system/tenants → system_admin
 /admin/system/settings → system_admin
 ```
