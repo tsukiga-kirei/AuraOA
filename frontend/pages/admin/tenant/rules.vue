@@ -64,28 +64,28 @@ const cronActiveTab = ref('template')
 const cronTemplateVariables = computed(() => {
   if (selectedCronConfig.value?.task_type === 'daily_report') {
     return [
-      { key: '{{date}}', desc: '当前日期，如 2026-02-27' },
-      { key: '{{time}}', desc: '数据截止时间，如 18:00' },
-      { key: '{{total}}', desc: '今日审核总数' },
-      { key: '{{approved}}', desc: '通过数量' },
-      { key: '{{rejected}}', desc: '驳回数量' },
-      { key: '{{revised}}', desc: '建议修改数量' },
-      { key: '{{pass_rate}}', desc: '通过率百分比' },
-      { key: '{{detail_list}}', desc: '审核明细列表' },
-      { key: '{{statistics}}', desc: '统计数据汇总' },
+      { key: '{{date}}', desc: t('admin.ruleConfig.varDate') },
+      { key: '{{time}}', desc: t('admin.ruleConfig.varTimeCutoff') },
+      { key: '{{total}}', desc: t('admin.ruleConfig.varTotalDaily') },
+      { key: '{{approved}}', desc: t('admin.ruleConfig.varApproved') },
+      { key: '{{rejected}}', desc: t('admin.ruleConfig.varRejected') },
+      { key: '{{revised}}', desc: t('admin.ruleConfig.varRevised') },
+      { key: '{{pass_rate}}', desc: t('admin.ruleConfig.varPassRate') },
+      { key: '{{detail_list}}', desc: t('admin.ruleConfig.varDetailList') },
+      { key: '{{statistics}}', desc: t('admin.ruleConfig.varStatistics') },
     ]
   }
   if (selectedCronConfig.value?.task_type === 'weekly_report') {
     return [
-      { key: '{{week}}', desc: '当前周数' },
-      { key: '{{date_range}}', desc: '周起止日期范围' },
-      { key: '{{time}}', desc: '报告生成时间' },
-      { key: '{{total}}', desc: '本周审核总数' },
-      { key: '{{trend}}', desc: '较上周增减描述' },
-      { key: '{{compliance_rate}}', desc: '合规率百分比' },
-      { key: '{{compliance_trend}}', desc: '合规率环比变化' },
-      { key: '{{detail_list}}', desc: '审核明细列表' },
-      { key: '{{statistics}}', desc: '统计数据汇总' },
+      { key: '{{week}}', desc: t('admin.ruleConfig.varWeek') },
+      { key: '{{date_range}}', desc: t('admin.ruleConfig.varDateRange') },
+      { key: '{{time}}', desc: t('admin.ruleConfig.varTimeGenerated') },
+      { key: '{{total}}', desc: t('admin.ruleConfig.varTotalWeekly') },
+      { key: '{{trend}}', desc: t('admin.ruleConfig.varTrend') },
+      { key: '{{compliance_rate}}', desc: t('admin.ruleConfig.varComplianceRate') },
+      { key: '{{compliance_trend}}', desc: t('admin.ruleConfig.varComplianceTrend') },
+      { key: '{{detail_list}}', desc: t('admin.ruleConfig.varDetailList') },
+      { key: '{{statistics}}', desc: t('admin.ruleConfig.varStatistics') },
     ]
   }
   return []
@@ -174,7 +174,7 @@ const handleAddProcess = () => {
   newProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
   message.success(t('admin.ruleConfig.processAdded'))
 }
-const activeTab = ref('fields')
+const activeTab = ref('info')
 
 const selectedConfig = computed(() =>
   processConfigs.value.find(c => c.id === selectedProcessId.value)
@@ -473,7 +473,7 @@ const handleSavePresets = async () => {
 const { mockOrgRoles, mockOrgMembers, mockDepartments } = useMockData()
 const archiveConfigs = ref<ArchiveReviewConfig[]>(JSON.parse(JSON.stringify(mockArchiveReviewConfigs)))
 const selectedArchiveId = ref(archiveConfigs.value[0]?.id || '')
-const archiveActiveTab = ref('fields')
+const archiveActiveTab = ref('info')
 
 const selectedArchiveConfig = computed(() =>
   archiveConfigs.value.find(c => c.id === selectedArchiveId.value)
@@ -819,7 +819,7 @@ const handleSave = async () => {
         <div class="tab-nav">
           <button
             v-for="tab in [
-              { key: 'info', label: '基本信息', icon: InfoCircleOutlined },
+              { key: 'info', label: t('admin.ruleConfig.infoTab'), icon: InfoCircleOutlined },
               { key: 'fields', label: t('admin.ruleConfig.tabFields'), icon: AppstoreOutlined },
               { key: 'rules', label: t('admin.ruleConfig.tabRules'), icon: AuditOutlined },
               { key: 'ai', label: t('admin.ruleConfig.tabAI'), icon: RobotOutlined },
@@ -839,23 +839,23 @@ const handleSave = async () => {
         <div v-if="activeTab === 'info'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">基本信息</h4>
-              <p class="section-desc">流程的基础配置信息，包括名称、类型和主表标识</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.infoTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.infoDesc') }}</p>
             </div>
           </div>
           <a-form layout="vertical" class="info-form">
-            <a-form-item label="流程名称">
-              <a-input v-model:value="selectedConfig!.process_type" placeholder="如：采购申请审批" />
+            <a-form-item :label="t('admin.ruleConfig.processNameLabel')">
+              <a-input v-model:value="selectedConfig!.process_type" :placeholder="t('admin.ruleConfig.processNameInputPlaceholder')" />
             </a-form-item>
-            <a-form-item label="流程类型">
+            <a-form-item :label="t('admin.ruleConfig.processTypeLabel')">
               <a-input
                 :value="selectedConfig!.process_type_label ?? ''"
                 @update:value="(v: string) => { if (selectedConfig) selectedConfig.process_type_label = v }"
-                placeholder="如：采购类、费用类、合同类"
+                :placeholder="t('admin.ruleConfig.processTypeLabelPlaceholder')"
               />
             </a-form-item>
-            <a-form-item label="主表名称">
-              <a-input v-model:value="selectedConfig!.main_table_name" placeholder="OA 主表名称，如 formtable_main_001" />
+            <a-form-item :label="t('admin.ruleConfig.mainTableLabel')">
+              <a-input v-model:value="selectedConfig!.main_table_name" :placeholder="t('admin.ruleConfig.mainTableInputPlaceholder')" />
             </a-form-item>
           </a-form>
         </div>
@@ -958,7 +958,7 @@ const handleSave = async () => {
                 <div class="kb-mode-desc">{{ mode.desc }}</div>
               </div>
               <div v-if="selectedConfig.kb_mode === mode.key" class="kb-mode-check">✓</div>
-              <div v-if="!mode.available" class="kb-mode-badge">即将推出</div>
+              <div v-if="!mode.available" class="kb-mode-badge">{{ t('admin.ruleConfig.comingSoon') }}</div>
             </div>
           </div>
 
@@ -969,7 +969,7 @@ const handleSave = async () => {
                 <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
               </a-button>
               <a-button type="primary" @click="openRuleEditor()">
-                <PlusOutlined /> 手工添加
+                <PlusOutlined /> {{ t('admin.ruleConfig.manualAddBtn') }}
               </a-button>
             </div>
           </div>
@@ -984,8 +984,8 @@ const handleSave = async () => {
                 <div class="rule-card-body">
                   <div class="rule-card-content">{{ rule.rule_content }}</div>
                   <div class="rule-card-meta">
-                    <span v-if="rule.source === 'file_import'" class="rule-source-tag">文件导入</span>
-                    <span v-else class="rule-source-tag rule-source-tag--manual">手工添加</span>
+                    <span v-if="rule.source === 'file_import'" class="rule-source-tag">{{ t('admin.ruleConfig.fileImportTag') }}</span>
+                    <span v-else class="rule-source-tag rule-source-tag--manual">{{ t('admin.ruleConfig.manualAddTag') }}</span>
                     <span v-if="(rule as any).related_flow" class="rule-flow-tag">
                       <NodeIndexOutlined /> {{ t('admin.ruleConfig.relatedFlow') }}
                     </span>
@@ -1125,8 +1125,8 @@ const handleSave = async () => {
               </div>
               <a-switch
                 v-model:checked="(selectedConfig.user_permissions as any)[key]"
-                :checked-children="'允许'"
-                :un-checked-children="'禁止'"
+                :checked-children="t('admin.ruleConfig.switchAllow')"
+                :un-checked-children="t('admin.ruleConfig.switchDeny')"
               />
             </div>
           </div>
@@ -1166,8 +1166,8 @@ const handleSave = async () => {
         <a-form-item :label="t('admin.ruleConfig.processName')" required>
           <a-input v-model:value="newProcessForm.process_type" :placeholder="t('admin.ruleConfig.processNamePlaceholder')" />
         </a-form-item>
-        <a-form-item label="流程类型">
-          <a-input v-model:value="newProcessForm.process_type_label" placeholder="如：采购类、费用类、合同类" />
+        <a-form-item :label="t('admin.ruleConfig.processTypeLabel')">
+          <a-input v-model:value="newProcessForm.process_type_label" :placeholder="t('admin.ruleConfig.processTypeLabelPlaceholder')" />
         </a-form-item>
         <a-form-item :label="t('admin.ruleConfig.mainTableName')">
           <a-input v-model:value="newProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" />
@@ -1261,7 +1261,7 @@ const handleSave = async () => {
       <div class="process-nav">
         <div class="process-nav-header">
           <ClockCircleOutlined />
-          <span>任务类型</span>
+          <span>{{ t('admin.ruleConfig.cronTaskTypes') }}</span>
         </div>
         <div
           v-for="cfg in cronConfigs"
@@ -1273,7 +1273,7 @@ const handleSave = async () => {
           <div class="process-nav-name">{{ cfg.label }}</div>
           <div class="process-nav-path">
             <span :class="cfg.enabled ? 'status-dot status-dot--active' : 'status-dot'" />
-            {{ cfg.enabled ? '已启用' : '已禁用' }}
+            {{ cfg.enabled ? t('admin.ruleConfig.cronEnabled') : t('admin.ruleConfig.cronDisabled') }}
           </div>
         </div>
       </div>
@@ -1285,14 +1285,14 @@ const handleSave = async () => {
             <h2 class="config-panel-title">{{ selectedCronConfig.label }}</h2>
             <p class="config-panel-subtitle">
               {{ selectedCronConfig.task_type === 'batch_audit'
-                ? '配置批量审核的执行参数，通过定时任务自动执行审核工作台的待办 AI 审批'
-                : '配置推送邮件的内容模板，通过定时任务执行审核工作台获取数据后组装邮件' }}
+                ? t('admin.ruleConfig.batchAuditSubtitle')
+                : t('admin.ruleConfig.reportSubtitle') }}
             </p>
           </div>
           <a-switch
             v-model:checked="selectedCronConfig.enabled"
-            :checked-children="'启用'"
-            :un-checked-children="'禁用'"
+            :checked-children="t('admin.ruleConfig.cronEnabled')"
+            :un-checked-children="t('admin.ruleConfig.cronDisabled')"
           />
         </div>
 
@@ -1300,13 +1300,13 @@ const handleSave = async () => {
         <div v-if="selectedCronConfig.task_type === 'batch_audit'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">批量审核配置</h4>
-              <p class="section-desc">批量审核通过定时任务自动执行审核工作台的待办 AI 审批，配置单次允许处理的待办数量上限</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.batchAuditConfigTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.batchAuditConfigDesc') }}</p>
             </div>
           </div>
           <div class="ai-form">
             <div class="ai-form-group">
-              <label class="ai-form-label">单次执行上限</label>
+              <label class="ai-form-label">{{ t('admin.ruleConfig.batchLimitLabel') }}</label>
               <a-input-number
                 v-model:value="selectedCronConfig.batch_limit"
                 :min="1"
@@ -1314,7 +1314,7 @@ const handleSave = async () => {
                 size="large"
                 style="width: 200px;"
               />
-              <p class="section-desc" style="margin-top: 4px;">每次定时任务最多处理的待办流程数量（1-500），超出部分将在下次执行时处理</p>
+              <p class="section-desc" style="margin-top: 4px;">{{ t('admin.ruleConfig.batchLimitDesc') }}</p>
             </div>
           </div>
         </div>
@@ -1323,8 +1323,8 @@ const handleSave = async () => {
         <div v-if="selectedCronConfig.task_type !== 'batch_audit'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">推送内容模板</h4>
-              <p class="section-desc">配置推送邮件的内容结构，通过定时任务执行审核工作台获取审核数据后，按模板组装邮件内容。点击变量标签可插入到当前编辑的输入框中。</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.pushTemplateTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.pushTemplateDesc') }}</p>
             </div>
           </div>
 
@@ -1338,7 +1338,7 @@ const handleSave = async () => {
 
           <!-- Push format -->
           <div class="ai-form-group" style="margin-bottom: 20px;">
-            <label class="ai-form-label">内容格式</label>
+            <label class="ai-form-label">{{ t('admin.ruleConfig.pushFormatLabel') }}</label>
             <div class="push-format-options">
               <div
                 v-for="fmt in pushFormatOptions"
@@ -1355,42 +1355,42 @@ const handleSave = async () => {
 
           <div class="ai-form">
             <div class="ai-form-group">
-              <label class="ai-form-label">邮件主题</label>
+              <label class="ai-form-label">{{ t('admin.ruleConfig.emailSubjectLabel') }}</label>
               <a-input
                 ref="cronSubjectRef"
                 v-model:value="selectedCronConfig.content_template.subject"
                 size="large"
-                placeholder="如：【OA智审】审核日报 - {{date}}"
+                :placeholder="t('admin.ruleConfig.emailSubjectPlaceholder')"
                 @focus="cronActiveField = 'subject'"
               />
             </div>
             <div class="ai-form-group">
-              <label class="ai-form-label">头部内容</label>
+              <label class="ai-form-label">{{ t('admin.ruleConfig.emailHeaderLabel') }}</label>
               <a-input
                 ref="cronHeaderRef"
                 v-model:value="selectedCronConfig.content_template.header"
                 size="large"
-                placeholder="邮件开头的引导文字"
+                :placeholder="t('admin.ruleConfig.emailHeaderPlaceholder')"
                 @focus="cronActiveField = 'header'"
               />
             </div>
             <div class="ai-form-group">
-              <label class="ai-form-label">正文模板</label>
+              <label class="ai-form-label">{{ t('admin.ruleConfig.emailBodyLabel') }}</label>
               <a-textarea
                 ref="cronBodyRef"
                 v-model:value="selectedCronConfig.content_template.body_template"
                 :rows="6"
-                placeholder="正文内容模板，点击上方变量标签插入..."
+                :placeholder="t('admin.ruleConfig.emailBodyPlaceholder')"
                 @focus="cronActiveField = 'body_template'"
               />
             </div>
             <div class="ai-form-group">
-              <label class="ai-form-label">底部内容</label>
+              <label class="ai-form-label">{{ t('admin.ruleConfig.emailFooterLabel') }}</label>
               <a-input
                 ref="cronFooterRef"
                 v-model:value="selectedCronConfig.content_template.footer"
                 size="large"
-                placeholder="邮件底部的附加说明"
+                :placeholder="t('admin.ruleConfig.emailFooterPlaceholder')"
                 @focus="cronActiveField = 'footer'"
               />
             </div>
@@ -1401,13 +1401,13 @@ const handleSave = async () => {
           <a-button type="primary" size="large" :disabled="savingCron" @click="handleSaveCronConfig">
             <LoadingOutlined v-if="savingCron" spin />
             <SaveOutlined v-else />
-            保存配置
+            {{ t('admin.ruleConfig.cronSaveConfig') }}
           </a-button>
         </div>
       </div>
 
       <div v-else class="config-empty">
-        <a-empty description="请选择左侧任务类型查看配置" />
+        <a-empty :description="t('admin.ruleConfig.cronSelectHint')" />
       </div>
     </div>
 
@@ -1445,7 +1445,7 @@ const handleSave = async () => {
         <div class="tab-nav">
           <button
             v-for="tab in [
-              { key: 'info', label: '基本信息', icon: InfoCircleOutlined },
+              { key: 'info', label: t('admin.ruleConfig.infoTab'), icon: InfoCircleOutlined },
               { key: 'fields', label: t('admin.ruleConfig.tabFields'), icon: AppstoreOutlined },
               { key: 'rules', label: t('admin.ruleConfig.tabRules'), icon: AuditOutlined },
               { key: 'ai', label: t('admin.ruleConfig.tabAI'), icon: RobotOutlined },
@@ -1465,23 +1465,23 @@ const handleSave = async () => {
         <div v-if="archiveActiveTab === 'info'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">基本信息</h4>
-              <p class="section-desc">归档复盘流程的基础配置信息</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.infoTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.archiveInfoDesc') }}</p>
             </div>
           </div>
           <a-form layout="vertical" class="info-form">
-            <a-form-item label="流程名称">
-              <a-input v-model:value="selectedArchiveConfig!.process_type" placeholder="如：采购申请审批" />
+            <a-form-item :label="t('admin.ruleConfig.processNameLabel')">
+              <a-input v-model:value="selectedArchiveConfig!.process_type" :placeholder="t('admin.ruleConfig.processNameInputPlaceholder')" />
             </a-form-item>
-            <a-form-item label="流程类型">
+            <a-form-item :label="t('admin.ruleConfig.processTypeLabel')">
               <a-input
                 :value="selectedArchiveConfig!.process_type_label ?? ''"
                 @update:value="(v: string) => { if (selectedArchiveConfig) selectedArchiveConfig.process_type_label = v }"
-                placeholder="如：采购类、费用类、合同类"
+                :placeholder="t('admin.ruleConfig.processTypeLabelPlaceholder')"
               />
             </a-form-item>
-            <a-form-item label="主表名称">
-              <a-input v-model:value="selectedArchiveConfig!.main_table_name" placeholder="OA 主表名称，如 formtable_main_001" />
+            <a-form-item :label="t('admin.ruleConfig.mainTableLabel')">
+              <a-input v-model:value="selectedArchiveConfig!.main_table_name" :placeholder="t('admin.ruleConfig.mainTableInputPlaceholder')" />
             </a-form-item>
           </a-form>
         </div>
@@ -1660,15 +1660,15 @@ const handleSave = async () => {
                 </div>
               </div>
               <!-- Show current preset instruction preview -->
-              <div v-if="strictnessPresets.find(p => p.strictness === selectedArchiveConfig.ai_config.audit_strictness)" class="strictness-preset-preview">
+              <div v-if="strictnessPresets.find(p => p.strictness === selectedArchiveConfig?.ai_config.audit_strictness)" class="strictness-preset-preview">
                 <div class="preset-preview-label">{{ t('admin.ruleConfig.currentPresetHint') }}</div>
                 <div class="preset-preview-row">
                   <span class="preset-preview-tag preset-preview-tag--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
-                  <span class="preset-preview-text">{{ strictnessPresets.find(p => p.strictness === selectedArchiveConfig.ai_config.audit_strictness)?.reasoning_instruction }}</span>
+                  <span class="preset-preview-text">{{ strictnessPresets.find(p => p.strictness === selectedArchiveConfig?.ai_config.audit_strictness)?.reasoning_instruction }}</span>
                 </div>
                 <div class="preset-preview-row">
                   <span class="preset-preview-tag preset-preview-tag--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
-                  <span class="preset-preview-text">{{ strictnessPresets.find(p => p.strictness === selectedArchiveConfig.ai_config.audit_strictness)?.extraction_instruction }}</span>
+                  <span class="preset-preview-text">{{ strictnessPresets.find(p => p.strictness === selectedArchiveConfig?.ai_config.audit_strictness)?.extraction_instruction }}</span>
                 </div>
               </div>
             </div>
@@ -1852,8 +1852,8 @@ const handleSave = async () => {
         <a-form-item :label="t('admin.ruleConfig.processName')" required>
           <a-input v-model:value="newArchiveProcessForm.process_type" :placeholder="t('admin.ruleConfig.processNamePlaceholder')" />
         </a-form-item>
-        <a-form-item label="流程类型">
-          <a-input v-model:value="newArchiveProcessForm.process_type_label" placeholder="如：采购类、费用类、合同类" />
+        <a-form-item :label="t('admin.ruleConfig.processTypeLabel')">
+          <a-input v-model:value="newArchiveProcessForm.process_type_label" :placeholder="t('admin.ruleConfig.processTypeLabelPlaceholder')" />
         </a-form-item>
         <a-form-item :label="t('admin.ruleConfig.mainTableName')">
           <a-input v-model:value="newArchiveProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" />
