@@ -1439,6 +1439,12 @@ export default {
     'admin.ruleConfig.archiveAccessDesc': '配置哪些角色或人员可以访问此归档复盘流程',
     'admin.ruleConfig.archiveAllowedRoles': '允许访问的角色',
     'admin.ruleConfig.archiveAllowedMembers': '允许访问的人员',
+    'admin.ruleConfig.archiveAllowedDepts': '允许访问的部门',
+    'admin.ruleConfig.archiveAccessSearch': '搜索...',
+
+    // ===== Archive page extended (select/batch) =====
+    'archive.selectAll': '全选',
+    'archive.selected': '已选 {0} 项',
 
     // ===== Settings archive field picker =====
     'settings.archive.fieldPickerTitle': '选择复核字段',

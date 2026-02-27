@@ -675,7 +675,6 @@ export interface FlowRuleConfig {
 export interface ArchiveReviewConfig {
   id: string
   process_type: string
-  flow_path: string
   main_table_name?: string
   main_fields?: ProcessField[]
   detail_tables?: DetailTable[]
@@ -691,10 +690,12 @@ export interface ArchiveReviewConfig {
     allow_custom_flow_rules: boolean
     allow_modify_strictness: boolean
   }
-  /** Roles/members allowed to access this archive process (org role IDs or member IDs) */
+  /** Roles/members/departments allowed to access this archive process */
   allowed_roles: string[]
   /** Member IDs explicitly allowed (in addition to roles) */
   allowed_members: string[]
+  /** Department IDs explicitly allowed */
+  allowed_departments?: string[]
 }
 
 export interface ArchiveUserPermissions {
@@ -1355,7 +1356,6 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
   {
     id: 'ARC-001',
     process_type: '采购审批',
-    flow_path: '部门经理 → 财务总监 → 总经理',
     main_table_name: 'formtable_main_001',
     main_fields: [
       { field_key: 'amount', field_name: '采购金额', field_type: 'number', selected: true },
@@ -1406,11 +1406,11 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
     },
     allowed_roles: ['ROLE-002', 'ROLE-003', 'ROLE-004'],
     allowed_members: ['M-003', 'M-007'],
+    allowed_departments: ['D-001', 'D-005', 'D-006'],
   },
   {
     id: 'ARC-002',
     process_type: '费用报销',
-    flow_path: '部门经理 → 财务审核',
     main_table_name: 'formtable_main_002',
     main_fields: [
       { field_key: 'amount', field_name: '报销金额', field_type: 'number', selected: true },
@@ -1456,11 +1456,11 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
     },
     allowed_roles: ['ROLE-002', 'ROLE-003', 'ROLE-004'],
     allowed_members: ['M-007'],
+    allowed_departments: ['D-002', 'D-003', 'D-006'],
   },
   {
     id: 'ARC-003',
     process_type: '合同审批',
-    flow_path: '部门经理 → 法务审核 → 财务总监 → 总经理',
     main_table_name: 'formtable_main_003',
     main_fields: [
       { field_key: 'contract_amount', field_name: '合同金额', field_type: 'number', selected: true },
@@ -1495,11 +1495,11 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
     },
     allowed_roles: ['ROLE-002', 'ROLE-003', 'ROLE-004'],
     allowed_members: ['M-001', 'M-007'],
+    allowed_departments: ['D-001', 'D-008'],
   },
   {
     id: 'ARC-004',
     process_type: '人事审批',
-    flow_path: 'HR经理 → 用人部门 → HR总监',
     main_table_name: 'formtable_main_004',
     main_fields: [
       { field_key: 'position', field_name: '岗位名称', field_type: 'text', selected: true },
@@ -1532,6 +1532,7 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
     },
     allowed_roles: ['ROLE-002', 'ROLE-003', 'ROLE-004'],
     allowed_members: ['M-004'],
+    allowed_departments: ['D-004'],
   },
 ]
 

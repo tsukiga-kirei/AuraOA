@@ -1438,6 +1438,12 @@ export default {
     'admin.ruleConfig.archiveAccessDesc': 'Configure which roles or members can access this archive review process',
     'admin.ruleConfig.archiveAllowedRoles': 'Allowed Roles',
     'admin.ruleConfig.archiveAllowedMembers': 'Allowed Members',
+    'admin.ruleConfig.archiveAllowedDepts': 'Allowed Departments',
+    'admin.ruleConfig.archiveAccessSearch': 'Search...',
+
+    // ===== Archive page extended (select/batch) =====
+    'archive.selectAll': 'Select All',
+    'archive.selected': '{0} selected',
 
     // ===== Settings archive field picker =====
     'settings.archive.fieldPickerTitle': 'Select Review Fields',

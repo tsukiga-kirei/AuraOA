@@ -1129,14 +1129,12 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             @click="selectedArchiveId = cfg.id"
           >
             <div class="process-list-item-name">{{ cfg.process_type }}</div>
-            <div class="process-list-item-path">{{ cfg.flow_path }}</div>
           </div>
         </div>
 
         <!-- Right: config detail -->
         <div v-if="selectedArchiveConfig" class="process-config-panel">
           <h3 class="config-title">{{ selectedArchiveConfig.process_type }} - 个人复核配置</h3>
-          <p class="config-subtitle">流程路径：{{ selectedArchiveConfig.flow_path }}</p>
 
           <!-- Sub-section nav -->
           <div class="section-nav">

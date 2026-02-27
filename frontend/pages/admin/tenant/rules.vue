@@ -468,7 +468,7 @@ const handleSavePresets = async () => {
 
 // ===== User permissions =====
 // ===== Archive review configs =====
-const { mockOrgRoles, mockOrgMembers } = useMockData()
+const { mockOrgRoles, mockOrgMembers, mockDepartments } = useMockData()
 const archiveConfigs = ref<ArchiveReviewConfig[]>(JSON.parse(JSON.stringify(mockArchiveReviewConfigs)))
 const selectedArchiveId = ref(archiveConfigs.value[0]?.id || '')
 const archiveActiveTab = ref('fields')
@@ -489,7 +489,6 @@ const handleAddArchiveProcess = () => {
   const newConfig: ArchiveReviewConfig = {
     id: `ARC-${Date.now()}`,
     process_type: newArchiveProcessForm.value.process_type.trim(),
-    flow_path: newArchiveProcessForm.value.main_table_name.trim() || t('admin.ruleConfig.pending'),
     main_table_name: newArchiveProcessForm.value.main_table_name.trim() || '',
     main_fields: [],
     detail_tables: [],
@@ -651,9 +650,13 @@ const archiveReasoningPromptVariables = computed(() => [
   { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
   { key: '{{detail_tables}}', desc: t('admin.ruleConfig.varDetailTablesDesc') },
   { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
+  { key: '{{flow_history}}', desc: t('admin.ruleConfig.varFlowHistoryDesc') },
+  { key: '{{flow_graph}}', desc: t('admin.ruleConfig.varFlowGraphDesc') },
+  { key: '{{current_node}}', desc: t('admin.ruleConfig.varCurrentNodeDesc') },
 ])
 const archiveExtractionPromptVariables = computed(() => [
   { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
+  { key: '{{flow_graph}}', desc: t('admin.ruleConfig.varFlowGraphDesc') },
 ])
 
 const archiveReasoningTextareaRef = ref<any>(null)
@@ -683,6 +686,28 @@ const archivePermissionLabels = computed(() => ({
 }))
 
 // Access control: roles and members
+const archiveRoleSearch = ref('')
+const archiveMemberSearch = ref('')
+const archiveDeptSearch = ref('')
+
+const filteredArchiveRoles = computed(() => {
+  const q = archiveRoleSearch.value.toLowerCase().trim()
+  if (!q) return mockOrgRoles
+  return mockOrgRoles.filter(r => r.name.toLowerCase().includes(q))
+})
+
+const filteredArchiveMembers = computed(() => {
+  const q = archiveMemberSearch.value.toLowerCase().trim()
+  if (!q) return mockOrgMembers
+  return mockOrgMembers.filter(m => m.name.toLowerCase().includes(q) || m.department_name.toLowerCase().includes(q))
+})
+
+const filteredArchiveDepts = computed(() => {
+  const q = archiveDeptSearch.value.toLowerCase().trim()
+  if (!q) return mockDepartments
+  return mockDepartments.filter(d => d.name.toLowerCase().includes(q))
+})
+
 const toggleArchiveRole = (roleId: string) => {
   if (!selectedArchiveConfig.value) return
   const idx = selectedArchiveConfig.value.allowed_roles.indexOf(roleId)
@@ -695,6 +720,14 @@ const toggleArchiveMember = (memberId: string) => {
   const idx = selectedArchiveConfig.value.allowed_members.indexOf(memberId)
   if (idx >= 0) selectedArchiveConfig.value.allowed_members.splice(idx, 1)
   else selectedArchiveConfig.value.allowed_members.push(memberId)
+}
+
+const toggleArchiveDept = (deptId: string) => {
+  if (!selectedArchiveConfig.value) return
+  if (!selectedArchiveConfig.value.allowed_departments) selectedArchiveConfig.value.allowed_departments = []
+  const idx = selectedArchiveConfig.value.allowed_departments.indexOf(deptId)
+  if (idx >= 0) selectedArchiveConfig.value.allowed_departments.splice(idx, 1)
+  else selectedArchiveConfig.value.allowed_departments.push(deptId)
 }
 
 const handleSaveArchiveConfig = async () => {
@@ -1549,6 +1582,9 @@ const handleSave = async () => {
             <div class="ai-form-group">
               <div class="strictness-label-row">
                 <label class="ai-form-label">{{ t('admin.ruleConfig.strictness') }}</label>
+                <a-button size="small" type="link" @click="openPresetEditor">
+                  <EditOutlined /> {{ t('admin.ruleConfig.editPresets') }}
+                </a-button>
               </div>
               <div class="strictness-options">
                 <div
@@ -1563,6 +1599,18 @@ const handleSave = async () => {
                     <div class="strictness-option-label">{{ opt.label }}</div>
                     <div class="strictness-option-desc">{{ opt.desc }}</div>
                   </div>
+                </div>
+              </div>
+              <!-- Show current preset instruction preview -->
+              <div v-if="strictnessPresets.find(p => p.strictness === selectedArchiveConfig.ai_config.audit_strictness)" class="strictness-preset-preview">
+                <div class="preset-preview-label">{{ t('admin.ruleConfig.currentPresetHint') }}</div>
+                <div class="preset-preview-row">
+                  <span class="preset-preview-tag preset-preview-tag--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
+                  <span class="preset-preview-text">{{ strictnessPresets.find(p => p.strictness === selectedArchiveConfig.ai_config.audit_strictness)?.reasoning_instruction }}</span>
+                </div>
+                <div class="preset-preview-row">
+                  <span class="preset-preview-tag preset-preview-tag--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
+                  <span class="preset-preview-text">{{ strictnessPresets.find(p => p.strictness === selectedArchiveConfig.ai_config.audit_strictness)?.extraction_instruction }}</span>
                 </div>
               </div>
             </div>
@@ -1649,9 +1697,14 @@ const handleSave = async () => {
           <div class="access-control-section">
             <div class="access-control-group">
               <div class="access-control-label"><TeamOutlined /> {{ t('admin.ruleConfig.archiveAllowedRoles') }}</div>
+              <div class="access-control-search">
+                <a-input v-model:value="archiveRoleSearch" :placeholder="t('admin.ruleConfig.archiveAccessSearch')" allow-clear size="small">
+                  <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                </a-input>
+              </div>
               <div class="access-control-tags">
                 <div
-                  v-for="role in mockOrgRoles"
+                  v-for="role in filteredArchiveRoles"
                   :key="role.id"
                   class="access-tag"
                   :class="{ 'access-tag--active': selectedArchiveConfig.allowed_roles.includes(role.id) }"
@@ -1664,9 +1717,14 @@ const handleSave = async () => {
             </div>
             <div class="access-control-group" style="margin-top: 16px;">
               <div class="access-control-label"><UserOutlined /> {{ t('admin.ruleConfig.archiveAllowedMembers') }}</div>
+              <div class="access-control-search">
+                <a-input v-model:value="archiveMemberSearch" :placeholder="t('admin.ruleConfig.archiveAccessSearch')" allow-clear size="small">
+                  <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                </a-input>
+              </div>
               <div class="access-control-tags">
                 <div
-                  v-for="member in mockOrgMembers"
+                  v-for="member in filteredArchiveMembers"
                   :key="member.id"
                   class="access-tag"
                   :class="{ 'access-tag--active': selectedArchiveConfig.allowed_members.includes(member.id) }"
@@ -1675,6 +1733,27 @@ const handleSave = async () => {
                   <CheckOutlined v-if="selectedArchiveConfig.allowed_members.includes(member.id)" class="access-tag-check" />
                   {{ member.name }}
                   <span class="access-tag-dept">{{ member.department_name }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="access-control-group" style="margin-top: 16px;">
+              <div class="access-control-label"><AppstoreOutlined /> {{ t('admin.ruleConfig.archiveAllowedDepts') }}</div>
+              <div class="access-control-search">
+                <a-input v-model:value="archiveDeptSearch" :placeholder="t('admin.ruleConfig.archiveAccessSearch')" allow-clear size="small">
+                  <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                </a-input>
+              </div>
+              <div class="access-control-tags">
+                <div
+                  v-for="dept in filteredArchiveDepts"
+                  :key="dept.id"
+                  class="access-tag"
+                  :class="{ 'access-tag--active': (selectedArchiveConfig.allowed_departments || []).includes(dept.id) }"
+                  @click="toggleArchiveDept(dept.id)"
+                >
+                  <CheckOutlined v-if="(selectedArchiveConfig.allowed_departments || []).includes(dept.id)" class="access-tag-check" />
+                  {{ dept.name }}
+                  <span class="access-tag-dept">{{ dept.member_count }}人</span>
                 </div>
               </div>
             </div>
@@ -2285,6 +2364,7 @@ const handleSave = async () => {
   font-size: 13px; font-weight: 600; color: var(--color-text-secondary);
   display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
 }
+.access-control-search { margin-bottom: 8px; }
 .access-control-tags { display: flex; flex-wrap: wrap; gap: 8px; }
 .access-tag {
   display: inline-flex; align-items: center; gap: 5px;
