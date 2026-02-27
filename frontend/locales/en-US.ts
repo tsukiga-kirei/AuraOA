@@ -452,6 +452,12 @@ export default {
     'dashboard.ms': 'ms',
     'dashboard.score': '{0} pts',
     'dashboard.viewSnapshotDetail': 'View Details',
+    'dashboard.suggestApprove': 'Approve',
+    'dashboard.suggestReject': 'Reject',
+    'dashboard.suggestRevise': 'Revise',
+    'dashboard.suggestReturn': 'Return',
+    'dashboard.suggestReview': 'Review',
+    'dashboard.auditingItem': 'Auditing...',
 
     // Login page extras
     'login.emptyWarning': 'Please enter username and password',

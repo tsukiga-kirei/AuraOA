@@ -452,6 +452,12 @@ export default {
     'dashboard.ms': 'ms',
     'dashboard.score': '{0} 分',
     'dashboard.viewSnapshotDetail': '查看详情',
+    'dashboard.suggestApprove': '建议通过',
+    'dashboard.suggestReject': '建议驳回',
+    'dashboard.suggestRevise': '建议修改',
+    'dashboard.suggestReturn': '建议退回',
+    'dashboard.suggestReview': '建议复核',
+    'dashboard.auditingItem': '审核中...',
 
     // Login page extras
     'login.emptyWarning': '请输入用户名和密码',

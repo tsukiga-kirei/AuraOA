@@ -1715,6 +1715,52 @@ export const useMockData = () => {
     ],
   }
 
+  // Pre-computed audit results for some todo processes (simulates already-audited items)
+  const mockTodoAuditResults: Record<string, AuditResult> = {
+    'WF-2025-001': { ...mockAuditResult },
+    'WF-2025-002': {
+      trace_id: 'TR-20250610-B2D4', process_id: 'WF-2025-002', recommendation: 'approve', score: 88, duration_ms: 1280,
+      details: [
+        { rule_id: 'R006', rule_name: '差旅标准校验', passed: true, reasoning: '差旅费用在公司标准范围内', is_locked: true },
+        { rule_id: 'R007', rule_name: '发票合规性', passed: true, reasoning: '发票信息完整，日期与行程匹配' },
+        { rule_id: 'R008', rule_name: '审批材料完整性', passed: true, reasoning: '出差申请单、行程单、发票齐全' },
+      ],
+      ai_reasoning: '该差旅费报销申请完全合规，费用在标准范围内，材料齐全，发票合规。建议通过。',
+      action_label: '建议通过', confidence: 0.92, risk_points: [],
+      suggestions: ['建议后续出差提前提交预算申请'],
+      ai_summary: '差旅费报销合规，材料齐全。',
+      model_used: 'Qwen2.5-72B', interaction_mode: 'single_pass', phase1_duration_ms: 1280, phase2_duration_ms: 0,
+    },
+    'WF-2025-003': {
+      trace_id: 'TR-20250610-C3E5', process_id: 'WF-2025-003', recommendation: 'review', score: 65, duration_ms: 2100,
+      details: [
+        { rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '合同金额在年度IT预算范围内' },
+        { rule_id: 'R004', rule_name: '合同条款完整性', passed: false, reasoning: 'SLA条款缺少故障响应时间约定', is_locked: true },
+        { rule_id: 'R009', rule_name: '续签合理性评估', passed: true, reasoning: '服务商过去一年服务记录良好' },
+        { rule_id: 'R010', rule_name: '比价要求', passed: false, reasoning: '续签合同金额较上年增长15%，建议补充市场比价' },
+      ],
+      ai_reasoning: '该合同续签整体可行，但存在两个需关注的问题：SLA条款不完整和价格涨幅较大。建议人工复核后决定。',
+      action_label: '建议复核', confidence: 0.78,
+      risk_points: ['SLA条款缺少故障响应时间', '合同金额较上年增长15%'],
+      suggestions: ['补充SLA故障响应时间条款', '要求供应商提供涨价依据', '考虑引入竞争性报价'],
+      ai_summary: '合同续签可行但需关注SLA和价格问题。',
+      model_used: 'Qwen2.5-72B', interaction_mode: 'two_phase', phase1_duration_ms: 1300, phase2_duration_ms: 800,
+    },
+    'WF-2025-005': {
+      trace_id: 'TR-20250610-D4F6', process_id: 'WF-2025-005', recommendation: 'approve', score: 95, duration_ms: 1050,
+      details: [
+        { rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '预算金额在市场部年度预算范围内', is_locked: true },
+        { rule_id: 'R011', rule_name: '活动方案完整性', passed: true, reasoning: '推广方案包含目标、渠道、预期ROI等完整信息' },
+        { rule_id: 'R012', rule_name: '审批层级校验', passed: true, reasoning: '金额超过20万，已获得部门经理和财务总监签批' },
+      ],
+      ai_reasoning: '市场推广预算申请完全合规，方案详实，预算合理，审批链完整。建议通过。',
+      action_label: '建议通过', confidence: 0.96, risk_points: [],
+      suggestions: ['建议活动结束后提交效果评估报告'],
+      ai_summary: '市场推广预算申请完全合规。',
+      model_used: 'Qwen2.5-72B', interaction_mode: 'single_pass', phase1_duration_ms: 1050, phase2_duration_ms: 0,
+    },
+  }
+
   const mockCronTasks: CronTask[] = [    { id: 'CT-BUILTIN-001', cron_expression: '0 9 * * 1-5', task_type: 'batch_audit', is_active: true, last_run_at: '2025-06-10 09:00', next_run_at: '2025-06-11 09:00', created_at: '2025-05-01', success_count: 28, fail_count: 1, is_builtin: true },
     { id: 'CT-002', cron_expression: '0 18 * * 1-5', task_type: 'daily_report', is_active: true, last_run_at: '2025-06-09 18:00', next_run_at: '2025-06-10 18:00', created_at: '2025-05-01', success_count: 30, fail_count: 0, push_email: 'zhangming@example.com' },
     { id: 'CT-003', cron_expression: '0 10 * * 1', task_type: 'weekly_report', is_active: true, last_run_at: '2025-06-09 10:00', next_run_at: '2025-06-16 10:00', created_at: '2025-05-15', success_count: 4, fail_count: 0, push_email: 'zhangming@example.com' },
@@ -2522,6 +2568,7 @@ export const useMockData = () => {
     mockUserSecurityInfo,
     mockUserLocalePrefs,
     mockBatchAuditResult,
+    mockTodoAuditResults,
   }
 }
 
