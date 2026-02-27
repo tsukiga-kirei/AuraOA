@@ -371,16 +371,7 @@ const userArchiveCustomRules = ref<Record<string, { id: string; content: string;
   'ARC-004': [{ id: 'UACR-002', content: 'HR总监审批须在用人部门确认之后', enabled: true }],
 })
 
-// User's custom flow rules
-const userArchiveFlowRules = ref<Record<string, { id: string; content: string; enabled: boolean }[]>>({
-  'ARC-001': [],
-  'ARC-002': [],
-  'ARC-003': [],
-  'ARC-004': [{ id: 'UAFR-001', content: '入职审批须在招聘计划审批之后', enabled: true }],
-})
-
 const newArchiveRuleContent = ref('')
-const newArchiveFlowRuleContent = ref('')
 
 const addArchiveCustomRule = () => {
   if (!newArchiveRuleContent.value.trim() || !selectedArchiveConfig.value) return
@@ -406,34 +397,92 @@ const currentArchiveCustomRules = computed(() =>
   userArchiveCustomRules.value[selectedArchiveConfig.value?.id || ''] || []
 )
 
-const addArchiveFlowRule = () => {
-  if (!newArchiveFlowRuleContent.value.trim() || !selectedArchiveConfig.value) return
-  const pid = selectedArchiveConfig.value.id
-  if (!userArchiveFlowRules.value[pid]) userArchiveFlowRules.value[pid] = []
-  userArchiveFlowRules.value[pid].push({
-    id: `UAFR-${Date.now()}`,
-    content: newArchiveFlowRuleContent.value.trim(),
-    enabled: true,
+// ===== Archive field picker modal =====
+const showArchiveFieldPicker = ref(false)
+const archiveFieldSearchQuery = ref('')
+
+const archiveSettingsGroupedFields = computed<SettingsFieldGroup[]>(() => {
+  if (!selectedArchiveConfig.value) return []
+  const groups: SettingsFieldGroup[] = []
+  const mainFields = selectedArchiveConfig.value.main_fields || selectedArchiveConfig.value.fields
+  groups.push({
+    source: 'main',
+    sourceLabel: t('settings.workbench.mainTableFields'),
+    fields: mainFields.map(f => ({ ...f, source: 'main', sourceLabel: t('settings.workbench.mainTableFields') })),
   })
-  newArchiveFlowRuleContent.value = ''
-  message.success(t('settings.archive.flowRuleAdded'))
-}
+  if (selectedArchiveConfig.value.detail_tables) {
+    selectedArchiveConfig.value.detail_tables.forEach((dt, idx) => {
+      groups.push({
+        source: dt.table_name,
+        sourceLabel: `${t('settings.workbench.detailTableLabel')} ${idx + 1}`,
+        fields: dt.fields.map(f => ({ ...f, source: dt.table_name, sourceLabel: `${t('settings.workbench.detailTableLabel')} ${idx + 1}` })),
+      })
+    })
+  }
+  return groups
+})
 
-const removeArchiveFlowRule = (ruleId: string) => {
-  if (!selectedArchiveConfig.value) return
-  const pid = selectedArchiveConfig.value.id
-  userArchiveFlowRules.value[pid] = (userArchiveFlowRules.value[pid] || []).filter(r => r.id !== ruleId)
-  message.success(t('settings.workbench.deleted'))
-}
-
-const currentArchiveFlowRules = computed(() =>
-  userArchiveFlowRules.value[selectedArchiveConfig.value?.id || ''] || []
+const archiveSettingsAllFields = computed<SettingsPickerField[]>(() =>
+  archiveSettingsGroupedFields.value.flatMap(g => g.fields)
 )
 
-const toggleArchiveField = (field: ProcessField) => {
-  if (!selectedArchiveConfig.value || !archivePermissions.value?.allow_custom_fields) return
-  if (selectedArchiveConfig.value.field_mode === 'all') return
-  field.selected = !field.selected
+const archiveSettingsSelectedCount = computed(() =>
+  archiveSettingsAllFields.value.filter(f => f.selected).length
+)
+
+const archiveSettingsGroupedUnselected = computed<SettingsFieldGroup[]>(() => {
+  const q = archiveFieldSearchQuery.value.toLowerCase().trim()
+  return archiveSettingsGroupedFields.value
+    .map(g => ({
+      ...g,
+      fields: g.fields.filter(f => {
+        if (f.selected) return false
+        if (!q) return true
+        return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
+      }),
+    }))
+    .filter(g => g.fields.length > 0)
+})
+
+const archiveSettingsGroupedSelected = computed<SettingsFieldGroup[]>(() =>
+  archiveSettingsGroupedFields.value
+    .map(g => ({ ...g, fields: g.fields.filter(f => f.selected) }))
+    .filter(g => g.fields.length > 0)
+)
+
+const openArchiveSettingsFieldPicker = () => {
+  archiveFieldSearchQuery.value = ''
+  showArchiveFieldPicker.value = true
+}
+
+const archiveSettingsPickField = (field: { field_key: string; source: string }) => {
+  if (!selectedArchiveConfig.value) return
+  const mainFields = selectedArchiveConfig.value.main_fields || selectedArchiveConfig.value.fields
+  const mf = mainFields.find(f => f.field_key === field.field_key)
+  if (mf && field.source === 'main') { mf.selected = true; return }
+  if (selectedArchiveConfig.value.detail_tables) {
+    for (const dt of selectedArchiveConfig.value.detail_tables) {
+      if (dt.table_name === field.source) {
+        const df = dt.fields.find(f => f.field_key === field.field_key)
+        if (df) { df.selected = true; return }
+      }
+    }
+  }
+}
+
+const archiveSettingsUnpickField = (field: { field_key: string; source: string }) => {
+  if (!selectedArchiveConfig.value) return
+  const mainFields = selectedArchiveConfig.value.main_fields || selectedArchiveConfig.value.fields
+  const mf = mainFields.find(f => f.field_key === field.field_key)
+  if (mf && field.source === 'main') { mf.selected = false; return }
+  if (selectedArchiveConfig.value.detail_tables) {
+    for (const dt of selectedArchiveConfig.value.detail_tables) {
+      if (dt.table_name === field.source) {
+        const df = dt.fields.find(f => f.field_key === field.field_key)
+        if (df) { df.selected = false; return }
+      }
+    }
+  }
 }
 </script>
 
@@ -983,6 +1032,86 @@ const toggleArchiveField = (field: ProcessField) => {
       </div>
     </div>
 
+    <!-- Archive field picker modal -->
+    <a-modal
+      v-model:open="showArchiveFieldPicker"
+      :title="t('settings.archive.fieldPickerTitle')"
+      :width="720"
+      :footer="null"
+      @cancel="showArchiveFieldPicker = false"
+    >
+      <div class="field-picker-modal">
+        <div class="field-picker-left">
+          <div class="field-picker-panel-header">
+            <span>可选字段</span>
+          </div>
+          <div class="field-picker-search">
+            <a-input
+              v-model:value="archiveFieldSearchQuery"
+              placeholder="搜索字段名称或字段键..."
+              allow-clear
+              size="small"
+            >
+              <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+            </a-input>
+          </div>
+          <div class="field-picker-list">
+            <template v-for="group in archiveSettingsGroupedUnselected" :key="group.source">
+              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
+              <div
+                v-for="field in group.fields"
+                :key="field.field_key + field.source"
+                class="field-picker-item"
+                @click="archiveSettingsPickField(field)"
+              >
+                <div class="field-picker-item-info">
+                  <div class="field-picker-item-name">{{ field.field_name }}</div>
+                  <div class="field-picker-item-meta">
+                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                    <span class="field-key">{{ field.field_key }}</span>
+                  </div>
+                </div>
+                <SwapRightOutlined class="field-picker-arrow" />
+              </div>
+            </template>
+            <div v-if="!archiveSettingsGroupedUnselected.length" class="field-picker-empty">
+              {{ archiveFieldSearchQuery ? '无匹配字段' : '所有字段已添加' }}
+            </div>
+          </div>
+        </div>
+        <div class="field-picker-right">
+          <div class="field-picker-panel-header">
+            <span>已选字段</span>
+            <span class="field-picker-count">{{ archiveSettingsSelectedCount }}</span>
+          </div>
+          <div class="field-picker-list">
+            <template v-for="group in archiveSettingsGroupedSelected" :key="group.source">
+              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
+              <div
+                v-for="field in group.fields"
+                :key="field.field_key + field.source"
+                class="field-picker-item field-picker-item--selected"
+              >
+                <div class="field-picker-item-info">
+                  <div class="field-picker-item-name">{{ field.field_name }}</div>
+                  <div class="field-picker-item-meta">
+                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                    <span class="field-key">{{ field.field_key }}</span>
+                  </div>
+                </div>
+                <button class="field-picker-remove" @click="archiveSettingsUnpickField(field)">
+                  <CloseOutlined />
+                </button>
+              </div>
+            </template>
+            <div v-if="!archiveSettingsGroupedSelected.length" class="field-picker-empty">
+              暂未选择字段
+            </div>
+          </div>
+        </div>
+      </div>
+    </a-modal>
+
     <!-- Archive review personal settings tab -->
     <div v-if="activeTab === 'archive'" class="tab-content">
       <div class="workbench-layout">
@@ -1015,7 +1144,6 @@ const toggleArchiveField = (field: ProcessField) => {
               v-for="sec in [
                 { key: 'fields', label: '复核字段', icon: AppstoreOutlined },
                 { key: 'rules', label: '复核规则', icon: AuditOutlined },
-                { key: 'flow_rules', label: '审批流规则', icon: NodeIndexOutlined },
                 { key: 'ai', label: '复核尺度', icon: ControlOutlined },
               ]"
               :key="sec.key"
@@ -1039,30 +1167,42 @@ const toggleArchiveField = (field: ProcessField) => {
             <p class="config-section-desc">
               {{ selectedArchiveConfig.field_mode === 'all' ? '当前为全部字段模式' : '以下为参与归档复核的字段配置' }}
               <template v-if="archivePermissions?.allow_custom_fields && selectedArchiveConfig.field_mode === 'selected'">
-                ，您可以切换字段的选中状态
+                ，您可以通过弹框切换字段的选中状态
               </template>
             </p>
 
-            <div class="field-grid">
-              <div
-                v-for="field in selectedArchiveConfig.fields"
-                :key="field.field_key"
-                class="field-card"
-                :class="{
-                  'field-card--selected': field.selected || selectedArchiveConfig.field_mode === 'all',
-                  'field-card--readonly': !archivePermissions?.allow_custom_fields || selectedArchiveConfig.field_mode === 'all',
-                }"
-                @click="toggleArchiveField(field)"
-              >
-                <div class="field-card-check">
-                  <CheckOutlined v-if="field.selected || selectedArchiveConfig.field_mode === 'all'" />
-                </div>
-                <div class="field-card-info">
-                  <div class="field-card-name">{{ field.field_name }}</div>
-                  <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                </div>
+            <template v-if="selectedArchiveConfig.field_mode === 'selected'">
+              <div class="field-picker-toolbar">
+                <span class="field-count">已选 {{ archiveSettingsSelectedCount }} / {{ archiveSettingsAllFields.length }} 个字段</span>
+                <a-button
+                  v-if="archivePermissions?.allow_custom_fields"
+                  type="primary"
+                  size="small"
+                  @click="openArchiveSettingsFieldPicker"
+                >
+                  <AppstoreOutlined /> 选择字段
+                </a-button>
               </div>
-            </div>
+              <template v-if="archiveSettingsGroupedSelected.length">
+                <div v-for="group in archiveSettingsGroupedSelected" :key="group.source" class="selected-field-group">
+                  <div class="field-group-label">{{ group.sourceLabel }}</div>
+                  <div class="selected-fields-display">
+                    <div
+                      v-for="field in group.fields"
+                      :key="field.field_key + field.source"
+                      class="selected-field-tag"
+                    >
+                      <span class="selected-field-name">{{ field.field_name }}</span>
+                      <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <div v-else class="field-empty-hint">暂未选择字段</div>
+            </template>
+            <template v-else>
+              <div class="field-count" style="margin-top: 8px;">全部字段模式：所有主表及明细表字段均参与复核</div>
+            </template>
           </div>
 
           <!-- ===== Rules section ===== -->
@@ -1130,72 +1270,6 @@ const toggleArchiveField = (field: ProcessField) => {
             </div>
           </div>
 
-          <!-- ===== Flow rules section ===== -->
-          <div v-if="archiveSection === 'flow_rules'" class="config-section">
-            <!-- System flow rules -->
-            <div class="section-header-row">
-              <h4 class="config-section-title">通用审批流规则（租户配置）</h4>
-            </div>
-            <p class="config-section-desc">审批流程合规性校验规则，如审批链完整性、节点顺序等</p>
-            <div class="rule-config-list">
-              <div v-for="rule in selectedArchiveConfig.flow_rules" :key="rule.id" class="rule-config-item">
-                <div class="rule-config-content">
-                  <span class="rule-config-text">{{ rule.rule_content }}</span>
-                  <span
-                    class="rule-scope-tag"
-                    :class="{
-                      'rule-scope-tag--mandatory': rule.rule_scope === 'mandatory',
-                      'rule-scope-tag--on': rule.rule_scope === 'default_on',
-                      'rule-scope-tag--off': rule.rule_scope === 'default_off',
-                    }"
-                  >{{ scopeConfig[rule.rule_scope]?.label }}</span>
-                </div>
-                <a-switch
-                  v-model:checked="rule.enabled"
-                  size="small"
-                  :disabled="rule.rule_scope === 'mandatory'"
-                />
-              </div>
-            </div>
-
-            <!-- Custom flow rules -->
-            <div class="section-header-row" style="margin-top: 20px;">
-              <h4 class="config-section-title">个人自定义审批流规则</h4>
-              <span v-if="!archivePermissions?.allow_custom_flow_rules" class="locked-tag">
-                <LockOutlined /> 管理员已锁定
-              </span>
-            </div>
-            <p class="config-section-desc">
-              {{ archivePermissions?.allow_custom_flow_rules ? '您可以为此流程添加个人审批流合规规则' : '当前流程不允许添加个人审批流规则' }}
-            </p>
-
-            <div class="rule-config-list" v-if="currentArchiveFlowRules.length > 0">
-              <div v-for="rule in currentArchiveFlowRules" :key="rule.id" class="rule-config-item">
-                <div class="rule-config-content">
-                  <span class="rule-config-text">{{ rule.content }}</span>
-                  <span class="rule-scope-tag rule-scope-tag--custom">个人</span>
-                </div>
-                <div class="rule-config-actions">
-                  <a-switch v-model:checked="rule.enabled" size="small" />
-                  <a-popconfirm v-if="archivePermissions?.allow_custom_flow_rules" title="确认删除？" @confirm="removeArchiveFlowRule(rule.id)">
-                    <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
-                  </a-popconfirm>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="archivePermissions?.allow_custom_flow_rules" class="add-rule-row">
-              <a-input
-                v-model:value="newArchiveFlowRuleContent"
-                placeholder="输入自定义审批流规则内容..."
-                @pressEnter="addArchiveFlowRule"
-              />
-              <a-button type="primary" :disabled="!newArchiveFlowRuleContent.trim()" @click="addArchiveFlowRule">
-                <PlusOutlined /> 添加
-              </a-button>
-            </div>
-          </div>
-
           <!-- ===== AI strictness section ===== -->
           <div v-if="archiveSection === 'ai'" class="config-section">
             <div class="section-header-row">
@@ -1204,9 +1278,7 @@ const toggleArchiveField = (field: ProcessField) => {
                 <LockOutlined /> 管理员已锁定
               </span>
             </div>
-            <p class="config-section-desc">
-              当前 AI 模型：{{ selectedArchiveConfig.ai_config.model_name }}（{{ selectedArchiveConfig.ai_config.ai_provider }}）
-            </p>
+            <p class="config-section-desc">复核尺度影响 AI 建议倾向，由管理员或个人设置</p>
             <div class="strictness-options">
               <div
                 v-for="opt in strictnessOptions"

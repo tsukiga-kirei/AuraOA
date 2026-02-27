@@ -29,9 +29,10 @@ import {
   CloseOutlined,
   SaveOutlined,
   LoadingOutlined,
+  UserOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig, FlowRuleConfig } from '~/composables/useMockData'
+import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig } from '~/composables/useMockData'
 import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
@@ -467,6 +468,7 @@ const handleSavePresets = async () => {
 
 // ===== User permissions =====
 // ===== Archive review configs =====
+const { mockOrgRoles, mockOrgMembers } = useMockData()
 const archiveConfigs = ref<ArchiveReviewConfig[]>(JSON.parse(JSON.stringify(mockArchiveReviewConfigs)))
 const selectedArchiveId = ref(archiveConfigs.value[0]?.id || '')
 const archiveActiveTab = ref('fields')
@@ -475,15 +477,145 @@ const selectedArchiveConfig = computed(() =>
   archiveConfigs.value.find(c => c.id === selectedArchiveId.value)
 )
 
-const archiveFieldCount = computed(() =>
-  selectedArchiveConfig.value?.fields.filter(f => f.selected).length || 0
-)
+// ===== Add new archive process =====
+const showAddArchiveProcess = ref(false)
+const newArchiveProcessForm = ref({ process_type: '', main_table_name: '' })
 
-const toggleArchiveField = (field: ProcessField) => {
-  if (selectedArchiveConfig.value?.field_mode === 'all') return
-  field.selected = !field.selected
+const handleAddArchiveProcess = () => {
+  if (!newArchiveProcessForm.value.process_type.trim()) {
+    message.warning(t('admin.ruleConfig.enterProcessName'))
+    return
+  }
+  const newConfig: ArchiveReviewConfig = {
+    id: `ARC-${Date.now()}`,
+    process_type: newArchiveProcessForm.value.process_type.trim(),
+    flow_path: newArchiveProcessForm.value.main_table_name.trim() || t('admin.ruleConfig.pending'),
+    main_table_name: newArchiveProcessForm.value.main_table_name.trim() || '',
+    main_fields: [],
+    detail_tables: [],
+    field_mode: 'selected',
+    fields: [],
+    rules: [],
+    flow_rules: [],
+    kb_mode: 'rules_only',
+    ai_config: {
+      audit_strictness: 'standard',
+      reasoning_prompt: '',
+      extraction_prompt: '',
+    },
+    user_permissions: {
+      allow_custom_fields: false,
+      allow_custom_rules: true,
+      allow_custom_flow_rules: false,
+      allow_modify_strictness: false,
+    },
+    allowed_roles: [],
+    allowed_members: [],
+  }
+  archiveConfigs.value.push(newConfig)
+  selectedArchiveId.value = newConfig.id
+  showAddArchiveProcess.value = false
+  newArchiveProcessForm.value = { process_type: '', main_table_name: '' }
+  message.success(t('admin.ruleConfig.processAdded'))
 }
 
+// ===== Archive field picker =====
+const showArchiveFieldPicker = ref(false)
+const archiveFieldSearchQuery = ref('')
+
+interface ArchivePickerField {
+  field_key: string; field_name: string; field_type: string; selected: boolean
+  source: string; sourceLabel: string
+}
+interface ArchiveFieldGroup {
+  source: string; sourceLabel: string; fields: ArchivePickerField[]
+}
+
+const archiveGroupedAvailableFields = computed<ArchiveFieldGroup[]>(() => {
+  if (!selectedArchiveConfig.value) return []
+  const groups: ArchiveFieldGroup[] = []
+  const mainFields = selectedArchiveConfig.value.main_fields || selectedArchiveConfig.value.fields
+  groups.push({
+    source: 'main',
+    sourceLabel: t('admin.ruleConfig.mainTableFields'),
+    fields: mainFields.map(f => ({ ...f, source: 'main', sourceLabel: t('admin.ruleConfig.mainTableFields') })),
+  })
+  if (selectedArchiveConfig.value.detail_tables) {
+    selectedArchiveConfig.value.detail_tables.forEach((dt, idx) => {
+      groups.push({
+        source: dt.table_name,
+        sourceLabel: `${t('admin.ruleConfig.detailTableLabel')} ${idx + 1}`,
+        fields: dt.fields.map(f => ({ ...f, source: dt.table_name, sourceLabel: `${t('admin.ruleConfig.detailTableLabel')} ${idx + 1}` })),
+      })
+    })
+  }
+  return groups
+})
+
+const archiveAllAvailableFields = computed<ArchivePickerField[]>(() =>
+  archiveGroupedAvailableFields.value.flatMap(g => g.fields)
+)
+
+const archiveSelectedFieldCount = computed(() =>
+  archiveAllAvailableFields.value.filter(f => f.selected).length
+)
+
+const archiveGroupedUnselected = computed<ArchiveFieldGroup[]>(() => {
+  const q = archiveFieldSearchQuery.value.toLowerCase().trim()
+  return archiveGroupedAvailableFields.value
+    .map(g => ({
+      ...g,
+      fields: g.fields.filter(f => {
+        if (f.selected) return false
+        if (!q) return true
+        return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
+      }),
+    }))
+    .filter(g => g.fields.length > 0)
+})
+
+const archiveGroupedSelected = computed<ArchiveFieldGroup[]>(() =>
+  archiveGroupedAvailableFields.value
+    .map(g => ({ ...g, fields: g.fields.filter(f => f.selected) }))
+    .filter(g => g.fields.length > 0)
+)
+
+const openArchiveFieldPicker = () => {
+  archiveFieldSearchQuery.value = ''
+  showArchiveFieldPicker.value = true
+}
+
+const archivePickField = (field: { field_key: string; source: string }) => {
+  if (!selectedArchiveConfig.value) return
+  const mainFields = selectedArchiveConfig.value.main_fields || selectedArchiveConfig.value.fields
+  const mf = mainFields.find(f => f.field_key === field.field_key)
+  if (mf && field.source === 'main') { mf.selected = true; return }
+  if (selectedArchiveConfig.value.detail_tables) {
+    for (const dt of selectedArchiveConfig.value.detail_tables) {
+      if (dt.table_name === field.source) {
+        const df = dt.fields.find(f => f.field_key === field.field_key)
+        if (df) { df.selected = true; return }
+      }
+    }
+  }
+}
+
+const archiveUnpickField = (field: { field_key: string; source: string }) => {
+  if (!selectedArchiveConfig.value) return
+  const mainFields = selectedArchiveConfig.value.main_fields || selectedArchiveConfig.value.fields
+  const mf = mainFields.find(f => f.field_key === field.field_key)
+  if (mf && field.source === 'main') { mf.selected = false; return }
+  if (selectedArchiveConfig.value.detail_tables) {
+    for (const dt of selectedArchiveConfig.value.detail_tables) {
+      if (dt.table_name === field.source) {
+        const df = dt.fields.find(f => f.field_key === field.field_key)
+        if (df) { df.selected = false; return }
+      }
+    }
+  }
+}
+
+// ===== Archive rules =====
 const showArchiveRuleEditor = ref(false)
 const editingArchiveRule = ref<AuditRule | null>(null)
 
@@ -514,55 +646,56 @@ const deleteArchiveRule = (id: string) => {
   message.success(t('admin.ruleConfig.deleted'))
 }
 
-// Flow rules
-const showFlowRuleEditor = ref(false)
-const editingFlowRule = ref<FlowRuleConfig | null>(null)
-const flowRuleForm = ref<{ rule_content: string; rule_scope: 'mandatory' | 'default_on' | 'default_off'; priority: number }>({ rule_content: '', rule_scope: 'default_on', priority: 50 })
+// ===== Archive AI prompt variables (same as audit workbench) =====
+const archiveReasoningPromptVariables = computed(() => [
+  { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
+  { key: '{{detail_tables}}', desc: t('admin.ruleConfig.varDetailTablesDesc') },
+  { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
+])
+const archiveExtractionPromptVariables = computed(() => [
+  { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
+])
 
-const openFlowRuleEditor = (rule?: FlowRuleConfig) => {
-  editingFlowRule.value = rule || null
-  flowRuleForm.value = rule
-    ? { rule_content: rule.rule_content, rule_scope: rule.rule_scope, priority: rule.priority }
-    : { rule_content: '', rule_scope: 'default_on' as const, priority: 50 }
-  showFlowRuleEditor.value = true
-}
+const archiveReasoningTextareaRef = ref<any>(null)
+const archiveExtractionTextareaRef = ref<any>(null)
 
-const handleSaveFlowRule = () => {
-  if (!selectedArchiveConfig.value || !flowRuleForm.value.rule_content.trim()) return
-  if (editingFlowRule.value) {
-    const idx = selectedArchiveConfig.value.flow_rules.findIndex(r => r.id === editingFlowRule.value!.id)
-    if (idx >= 0) {
-      selectedArchiveConfig.value.flow_rules[idx] = {
-        ...editingFlowRule.value,
-        ...flowRuleForm.value,
-      }
-    }
-  } else {
-    selectedArchiveConfig.value.flow_rules.push({
-      id: `FR${Date.now()}`,
-      ...flowRuleForm.value,
-      rule_scope: flowRuleForm.value.rule_scope,
-      enabled: true,
-      source: 'manual',
-    })
-  }
-  showFlowRuleEditor.value = false
-  editingFlowRule.value = null
-  message.success(t('admin.ruleConfig.flowRuleSaved'))
-}
-
-const deleteFlowRule = (id: string) => {
+const insertArchiveAtCursor = (textareaRef: any, field: 'reasoning_prompt' | 'extraction_prompt', variable: string) => {
   if (!selectedArchiveConfig.value) return
-  selectedArchiveConfig.value.flow_rules = selectedArchiveConfig.value.flow_rules.filter(r => r.id !== id)
-  message.success(t('admin.ruleConfig.deleted'))
+  const el: HTMLTextAreaElement | null = textareaRef?.value?.$el?.querySelector?.('textarea')
+    || textareaRef?.value?.resizableTextArea?.textArea || null
+  const currentVal = selectedArchiveConfig.value.ai_config[field] || ''
+  if (el) {
+    const start = el.selectionStart ?? currentVal.length
+    const end = el.selectionEnd ?? currentVal.length
+    const newVal = currentVal.slice(0, start) + variable + currentVal.slice(end)
+    selectedArchiveConfig.value.ai_config[field] = newVal
+    nextTick(() => { const pos = start + variable.length; el.focus(); el.setSelectionRange(pos, pos) })
+  } else {
+    selectedArchiveConfig.value.ai_config[field] = currentVal + variable
+  }
 }
 
+// ===== Archive permissions (user customization + access control) =====
 const archivePermissionLabels = computed(() => ({
   allow_custom_fields: { label: t('admin.ruleConfig.customReviewFields'), desc: t('admin.ruleConfig.customReviewFieldsDesc') },
   allow_custom_rules: { label: t('admin.ruleConfig.customReviewRules'), desc: t('admin.ruleConfig.customReviewRulesDesc') },
-  allow_custom_flow_rules: { label: t('admin.ruleConfig.customFlowRules'), desc: t('admin.ruleConfig.customFlowRulesDesc') },
   allow_modify_strictness: { label: t('admin.ruleConfig.modReviewStrictness'), desc: t('admin.ruleConfig.modReviewStrictnessDesc') },
 }))
+
+// Access control: roles and members
+const toggleArchiveRole = (roleId: string) => {
+  if (!selectedArchiveConfig.value) return
+  const idx = selectedArchiveConfig.value.allowed_roles.indexOf(roleId)
+  if (idx >= 0) selectedArchiveConfig.value.allowed_roles.splice(idx, 1)
+  else selectedArchiveConfig.value.allowed_roles.push(roleId)
+}
+
+const toggleArchiveMember = (memberId: string) => {
+  if (!selectedArchiveConfig.value) return
+  const idx = selectedArchiveConfig.value.allowed_members.indexOf(memberId)
+  if (idx >= 0) selectedArchiveConfig.value.allowed_members.splice(idx, 1)
+  else selectedArchiveConfig.value.allowed_members.push(memberId)
+}
 
 const handleSaveArchiveConfig = async () => {
   savingArchive.value = true
@@ -1218,8 +1351,11 @@ const handleSave = async () => {
       <!-- Left: process list -->
       <div class="process-nav">
         <div class="process-nav-header">
-          <SettingOutlined />
-          <span>复核流程</span>
+          <FolderOpenOutlined />
+          <span>{{ t('admin.ruleConfig.archiveProcess') }}</span>
+          <button class="add-process-btn" @click="showAddArchiveProcess = true" :title="t('admin.ruleConfig.addArchiveProcess')">
+            <PlusOutlined />
+          </button>
         </div>
         <div
           v-for="cfg in archiveConfigs"
@@ -1229,26 +1365,25 @@ const handleSave = async () => {
           @click="selectedArchiveId = cfg.id"
         >
           <div class="process-nav-name">{{ cfg.process_type }}</div>
-          <div class="process-nav-path">{{ cfg.flow_path }}</div>
+          <div class="process-nav-path">{{ cfg.main_table_name || t('admin.ruleConfig.pending') }}</div>
         </div>
       </div>
 
       <!-- Right: archive config panel -->
       <div v-if="selectedArchiveConfig" class="config-panel">
         <div class="config-panel-header">
-          <h2 class="config-panel-title">{{ selectedArchiveConfig.process_type }} - 归档复盘配置</h2>
-          <p class="config-panel-subtitle">{{ selectedArchiveConfig.flow_path }}</p>
+          <h2 class="config-panel-title">{{ selectedArchiveConfig.process_type }}</h2>
+          <p class="config-panel-subtitle">{{ selectedArchiveConfig.main_table_name || t('admin.ruleConfig.pending') }}</p>
         </div>
 
-        <!-- Sub tabs -->
+        <!-- Sub tabs: 删除审批流规则，与审核工作台对齐 -->
         <div class="tab-nav">
           <button
             v-for="tab in [
-              { key: 'fields', label: '字段配置', icon: AppstoreOutlined },
-              { key: 'rules', label: '审核规则', icon: AuditOutlined },
-              { key: 'flow_rules', label: '审批流规则', icon: ControlOutlined },
-              { key: 'ai', label: 'AI 配置', icon: RobotOutlined },
-              { key: 'permissions', label: '用户权限', icon: SafetyCertificateOutlined },
+              { key: 'fields', label: t('admin.ruleConfig.tabFields'), icon: AppstoreOutlined },
+              { key: 'rules', label: t('admin.ruleConfig.tabRules'), icon: AuditOutlined },
+              { key: 'ai', label: t('admin.ruleConfig.tabAI'), icon: RobotOutlined },
+              { key: 'permissions', label: t('admin.ruleConfig.tabPerms'), icon: SafetyCertificateOutlined },
             ]"
             :key="tab.key"
             class="tab-btn"
@@ -1264,8 +1399,8 @@ const handleSave = async () => {
         <div v-if="archiveActiveTab === 'fields'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">复核字段</h4>
-              <p class="section-desc">选择参与归档合规复核的字段，用于字段校验环节</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.fieldTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.archiveFieldDesc') }}</p>
             </div>
           </div>
 
@@ -1277,8 +1412,8 @@ const handleSave = async () => {
             >
               <div class="field-mode-radio" />
               <div>
-                <div class="field-mode-label">选择字段</div>
-                <div class="field-mode-desc">手动选择参与复核的字段（推荐）</div>
+                <div class="field-mode-label">{{ t('admin.ruleConfig.selectFields') }}</div>
+                <div class="field-mode-desc">{{ t('admin.ruleConfig.selectFieldsDesc') }}</div>
               </div>
             </div>
             <div
@@ -1288,47 +1423,55 @@ const handleSave = async () => {
             >
               <div class="field-mode-radio" />
               <div>
-                <div class="field-mode-label">全部字段</div>
-                <div class="field-mode-desc">所有字段均参与复核</div>
+                <div class="field-mode-label">{{ t('admin.ruleConfig.allFields') }}</div>
+                <div class="field-mode-desc">{{ t('admin.ruleConfig.allFieldsDesc') }}</div>
               </div>
             </div>
           </div>
 
-          <div class="field-count" v-if="selectedArchiveConfig.field_mode === 'selected'">
-            已选 {{ archiveFieldCount }} / {{ selectedArchiveConfig.fields.length }} 个字段
-          </div>
+          <!-- Selected fields display + picker trigger -->
+          <template v-if="selectedArchiveConfig.field_mode === 'selected'">
+            <div class="field-picker-toolbar">
+              <span class="field-count">{{ t('admin.ruleConfig.selectedCount', [`${archiveSelectedFieldCount}`, `${archiveAllAvailableFields.length}`]) }}</span>
+              <a-button type="primary" @click="openArchiveFieldPicker">
+                <AppstoreOutlined /> {{ t('admin.ruleConfig.selectFieldsModal') }}
+              </a-button>
+            </div>
 
-          <div class="field-grid">
-            <div
-              v-for="field in selectedArchiveConfig.fields"
-              :key="field.field_key"
-              class="field-card"
-              :class="{
-                'field-card--selected': field.selected || selectedArchiveConfig.field_mode === 'all',
-                'field-card--disabled': selectedArchiveConfig.field_mode === 'all',
-              }"
-              @click="toggleArchiveField(field)"
-            >
-              <div class="field-card-check">
-                <CheckOutlined v-if="field.selected || selectedArchiveConfig.field_mode === 'all'" />
-              </div>
-              <div class="field-card-info">
-                <div class="field-card-name">{{ field.field_name }}</div>
-                <div class="field-card-meta">
-                  <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                  <span class="field-key">{{ field.field_key }}</span>
+            <!-- Selected fields grouped by table -->
+            <template v-if="archiveGroupedSelected.length">
+              <div v-for="group in archiveGroupedSelected" :key="group.source" class="selected-field-group">
+                <div class="field-group-label">{{ group.sourceLabel }}</div>
+                <div class="selected-fields-display">
+                  <div
+                    v-for="field in group.fields"
+                    :key="field.field_key + field.source"
+                    class="selected-field-tag"
+                  >
+                    <span class="selected-field-name">{{ field.field_name }}</span>
+                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                  </div>
                 </div>
               </div>
+            </template>
+            <div v-else class="field-empty-hint">
+              {{ t('admin.ruleConfig.noFieldsSelected') }}
             </div>
-          </div>
+          </template>
+
+          <template v-else>
+            <div class="field-count" style="margin-top: 8px;">
+              {{ t('admin.ruleConfig.allFieldsHint') }}
+            </div>
+          </template>
         </div>
 
         <!-- ========== Rules tab ========== -->
         <div v-if="archiveActiveTab === 'rules'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">复核规则</h4>
-              <p class="section-desc">配置归档合规复核的字段校验和业务规则</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.rulesTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.reviewRulesDesc') }}</p>
             </div>
           </div>
 
@@ -1350,15 +1493,18 @@ const handleSave = async () => {
                 <div class="kb-mode-desc">{{ mode.desc }}</div>
               </div>
               <div v-if="selectedArchiveConfig.kb_mode === mode.key" class="kb-mode-check">✓</div>
-              <div v-if="!mode.available" class="kb-mode-badge">即将推出</div>
+              <div v-if="!mode.available" class="kb-mode-badge">{{ t('admin.ruleConfig.comingSoon') }}</div>
             </div>
           </div>
 
           <div class="rules-toolbar">
-            <span class="rules-count">共 {{ selectedArchiveConfig.rules.length }} 条规则</span>
+            <span class="rules-count">{{ t('admin.ruleConfig.totalRules', `${selectedArchiveConfig.rules.length}`) }}</span>
             <div class="rules-toolbar-actions">
+              <a-button @click="handleImportRules">
+                <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
+              </a-button>
               <a-button type="primary" @click="openArchiveRuleEditor()">
-                <PlusOutlined /> 手工添加
+                <PlusOutlined /> {{ t('admin.ruleConfig.manualAdd') }}
               </a-button>
             </div>
           </div>
@@ -1373,15 +1519,15 @@ const handleSave = async () => {
                 <div class="rule-card-body">
                   <div class="rule-card-content">{{ rule.rule_content }}</div>
                   <div class="rule-card-meta">
-                    <span v-if="rule.source === 'file_import'" class="rule-source-tag">文件导入</span>
-                    <span v-else class="rule-source-tag rule-source-tag--manual">手工添加</span>
+                    <span v-if="rule.source === 'file_import'" class="rule-source-tag">{{ t('admin.ruleConfig.fileSource') }}</span>
+                    <span v-else class="rule-source-tag rule-source-tag--manual">{{ t('admin.ruleConfig.manualSource') }}</span>
                   </div>
                 </div>
               </div>
               <div class="rule-card-actions">
                 <a-switch v-model:checked="rule.enabled" size="small" />
                 <button class="icon-btn" @click="openArchiveRuleEditor(rule)"><EditOutlined /></button>
-                <a-popconfirm title="确认删除此规则？" @confirm="deleteArchiveRule(rule.id)">
+                <a-popconfirm :title="t('admin.ruleConfig.deleteRuleConfirm')" @confirm="deleteArchiveRule(rule.id)">
                   <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
                 </a-popconfirm>
               </div>
@@ -1389,80 +1535,21 @@ const handleSave = async () => {
           </div>
         </div>
 
-        <!-- ========== Flow rules tab ========== -->
-        <div v-if="archiveActiveTab === 'flow_rules'" class="tab-content">
-          <div class="section-header">
-            <div>
-              <h4 class="section-title">审批流规则</h4>
-              <p class="section-desc">配置整个审批流程是否符合要求的合规规则，如审批链完整性、节点顺序、时效等</p>
-            </div>
-          </div>
-
-          <div class="rules-toolbar">
-            <span class="rules-count">共 {{ selectedArchiveConfig.flow_rules.length }} 条审批流规则</span>
-            <div class="rules-toolbar-actions">
-              <a-button type="primary" @click="openFlowRuleEditor()">
-                <PlusOutlined /> 添加审批流规则
-              </a-button>
-            </div>
-          </div>
-
-          <div class="rules-list">
-            <div v-for="rule in selectedArchiveConfig.flow_rules" :key="rule.id" class="rule-card">
-              <div class="rule-card-left">
-                <div class="rule-scope-badge" :style="{ color: scopeConfig[rule.rule_scope]?.color, background: scopeConfig[rule.rule_scope]?.bg }">
-                  <component :is="scopeConfig[rule.rule_scope]?.icon" />
-                  {{ scopeConfig[rule.rule_scope]?.label }}
-                </div>
-                <div class="rule-card-body">
-                  <div class="rule-card-content">{{ rule.rule_content }}</div>
-                  <div class="rule-card-meta">
-                    <span v-if="rule.source === 'file_import'" class="rule-source-tag">文件导入</span>
-                    <span v-else class="rule-source-tag rule-source-tag--manual">手工添加</span>
-                  </div>
-                </div>
-              </div>
-              <div class="rule-card-actions">
-                <a-switch v-model:checked="rule.enabled" size="small" />
-                <button class="icon-btn" @click="openFlowRuleEditor(rule)"><EditOutlined /></button>
-                <a-popconfirm title="确认删除此规则？" @confirm="deleteFlowRule(rule.id)">
-                  <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
-                </a-popconfirm>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ========== AI tab ========== -->
+        <!-- ========== AI tab (两阶段 prompt) ========== -->
         <div v-if="archiveActiveTab === 'ai'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">AI 复核配置</h4>
-              <p class="section-desc">配置归档合规复核使用的 AI 系统、审核尺度及提示词模板</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.aiTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.aiDescNew') }}</p>
             </div>
           </div>
 
           <div class="ai-form">
-            <div class="ai-form-row">
-              <div class="ai-form-group">
-                <label class="ai-form-label">AI 服务商</label>
-                <a-select v-model:value="selectedArchiveConfig.ai_config.ai_provider" style="width: 100%;" size="large" placeholder="选择服务商">
-                  <a-select-option v-for="p in aiProviders" :key="p.value" :value="p.value">{{ p.label }}</a-select-option>
-                </a-select>
-              </div>
-              <div class="ai-form-group">
-                <label class="ai-form-label">模型</label>
-                <a-select v-model:value="selectedArchiveConfig.ai_config.model_name" style="width: 100%;" size="large" placeholder="选择模型">
-                  <a-select-option
-                    v-for="m in (modelOptions[selectedArchiveConfig.ai_config.ai_provider] || [])"
-                    :key="m" :value="m"
-                  >{{ m }}</a-select-option>
-                </a-select>
-              </div>
-            </div>
-
+            <!-- Strictness -->
             <div class="ai-form-group">
-              <label class="ai-form-label">复核尺度</label>
+              <div class="strictness-label-row">
+                <label class="ai-form-label">{{ t('admin.ruleConfig.strictness') }}</label>
+              </div>
               <div class="strictness-options">
                 <div
                   v-for="opt in strictnessOptions"
@@ -1480,65 +1567,116 @@ const handleSave = async () => {
               </div>
             </div>
 
+            <!-- Reasoning prompt -->
             <div class="ai-form-group">
-              <label class="ai-form-label">系统提示词（System Prompt）</label>
+              <div class="prompt-section-header">
+                <div class="prompt-section-title">
+                  <span class="prompt-phase-badge prompt-phase-badge--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
+                  <label class="ai-form-label">{{ t('admin.ruleConfig.reasoningPrompt') }}</label>
+                </div>
+                <div class="prompt-section-desc">{{ t('admin.ruleConfig.reasoningPromptDesc') }}</div>
+              </div>
+              <div class="prompt-variables">
+                <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
+                <a-tooltip v-for="v in archiveReasoningPromptVariables" :key="v.key" :title="v.desc">
+                  <button class="variable-btn" @click="insertArchiveAtCursor(archiveReasoningTextareaRef, 'reasoning_prompt', v.key)">{{ v.key }}</button>
+                </a-tooltip>
+              </div>
               <a-textarea
-                v-model:value="selectedArchiveConfig.ai_config.system_prompt"
-                :rows="6"
-                placeholder="输入 AI 归档复核的系统提示词..."
+                ref="archiveReasoningTextareaRef"
+                v-model:value="selectedArchiveConfig.ai_config.reasoning_prompt"
+                :rows="8"
+                :placeholder="t('admin.ruleConfig.reasoningPromptPlaceholder')"
               />
             </div>
 
-            <div class="ai-form-row">
-              <div class="ai-form-group">
-                <label class="ai-form-label">上下文窗口</label>
-                <a-input-number
-                  v-model:value="selectedArchiveConfig.ai_config.context_window"
-                  :min="1024" :max="131072" :step="1024"
-                  style="width: 100%;" size="large"
-                  :formatter="(v: any) => `${v} tokens`"
-                />
-              </div>
-              <div class="ai-form-group">
-                <label class="ai-form-label">Temperature</label>
-                <a-slider
-                  v-model:value="selectedArchiveConfig.ai_config.temperature"
-                  :min="0" :max="1" :step="0.1"
-                />
-                <div class="slider-labels">
-                  <span>精确 (0)</span>
-                  <span>当前: {{ selectedArchiveConfig.ai_config.temperature }}</span>
-                  <span>创意 (1)</span>
+            <!-- Extraction prompt -->
+            <div class="ai-form-group">
+              <div class="prompt-section-header">
+                <div class="prompt-section-title">
+                  <span class="prompt-phase-badge prompt-phase-badge--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
+                  <label class="ai-form-label">{{ t('admin.ruleConfig.extractionPrompt') }}</label>
                 </div>
+                <div class="prompt-section-desc">{{ t('admin.ruleConfig.extractionPromptDesc') }}</div>
               </div>
+              <div class="prompt-variables">
+                <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
+                <a-tooltip v-for="v in archiveExtractionPromptVariables" :key="v.key" :title="v.desc">
+                  <button class="variable-btn" @click="insertArchiveAtCursor(archiveExtractionTextareaRef, 'extraction_prompt', v.key)">{{ v.key }}</button>
+                </a-tooltip>
+              </div>
+              <a-textarea
+                ref="archiveExtractionTextareaRef"
+                v-model:value="selectedArchiveConfig.ai_config.extraction_prompt"
+                :rows="6"
+                :placeholder="t('admin.ruleConfig.extractionPromptPlaceholder')"
+              />
             </div>
           </div>
         </div>
 
-        <!-- ========== Permissions tab ========== -->
+        <!-- ========== Permissions tab (用户自定义权限 + 访问控制) ========== -->
         <div v-if="archiveActiveTab === 'permissions'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">用户自定义权限</h4>
-              <p class="section-desc">控制业务用户在个人设置中可以自定义的归档复盘配置范围</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.archivePermTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.archivePermDesc') }}</p>
             </div>
           </div>
 
           <div class="permissions-list">
-            <div
-              v-for="(perm, key) in archivePermissionLabels"
-              :key="key"
-              class="permission-item"
-            >
+            <div v-for="(perm, key) in archivePermissionLabels" :key="key" class="permission-item">
               <div class="permission-info">
                 <div class="permission-label">{{ perm.label }}</div>
                 <div class="permission-desc">{{ perm.desc }}</div>
               </div>
               <a-switch
                 v-model:checked="(selectedArchiveConfig.user_permissions as any)[key]"
-                :checked-children="'允许'"
-                :un-checked-children="'禁止'"
+                :checked-children="t('admin.ruleConfig.allow')"
+                :un-checked-children="t('admin.ruleConfig.deny')"
               />
+            </div>
+          </div>
+
+          <!-- 访问控制 -->
+          <div class="section-header" style="margin-top: 28px;">
+            <div>
+              <h4 class="section-title">{{ t('admin.ruleConfig.archiveAccessTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.archiveAccessDesc') }}</p>
+            </div>
+          </div>
+
+          <div class="access-control-section">
+            <div class="access-control-group">
+              <div class="access-control-label"><TeamOutlined /> {{ t('admin.ruleConfig.archiveAllowedRoles') }}</div>
+              <div class="access-control-tags">
+                <div
+                  v-for="role in mockOrgRoles"
+                  :key="role.id"
+                  class="access-tag"
+                  :class="{ 'access-tag--active': selectedArchiveConfig.allowed_roles.includes(role.id) }"
+                  @click="toggleArchiveRole(role.id)"
+                >
+                  <CheckOutlined v-if="selectedArchiveConfig.allowed_roles.includes(role.id)" class="access-tag-check" />
+                  {{ role.name }}
+                </div>
+              </div>
+            </div>
+            <div class="access-control-group" style="margin-top: 16px;">
+              <div class="access-control-label"><UserOutlined /> {{ t('admin.ruleConfig.archiveAllowedMembers') }}</div>
+              <div class="access-control-tags">
+                <div
+                  v-for="member in mockOrgMembers"
+                  :key="member.id"
+                  class="access-tag"
+                  :class="{ 'access-tag--active': selectedArchiveConfig.allowed_members.includes(member.id) }"
+                  @click="toggleArchiveMember(member.id)"
+                >
+                  <CheckOutlined v-if="selectedArchiveConfig.allowed_members.includes(member.id)" class="access-tag-check" />
+                  {{ member.name }}
+                  <span class="access-tag-dept">{{ member.department_name }}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1547,13 +1685,13 @@ const handleSave = async () => {
           <a-button type="primary" size="large" :disabled="savingArchive" @click="handleSaveArchiveConfig">
             <LoadingOutlined v-if="savingArchive" spin />
             <SaveOutlined v-else />
-            保存配置
+            {{ t('admin.ruleConfig.saveConfig') }}
           </a-button>
         </div>
       </div>
 
       <div v-else class="config-empty">
-        <a-empty description="请选择左侧流程查看归档复盘配置" />
+        <a-empty :description="t('admin.ruleConfig.selectArchiveProcess')" />
       </div>
     </div>
 
@@ -1565,39 +1703,102 @@ const handleSave = async () => {
       @save="handleSaveArchiveRule"
     />
 
-    <!-- Flow rule editor modal -->
+    <!-- Add archive process modal -->
     <a-modal
-      v-model:open="showFlowRuleEditor"
-      :title="editingFlowRule ? '编辑审批流规则' : '新增审批流规则'"
-      @ok="handleSaveFlowRule"
-      ok-text="保存"
-      cancel-text="取消"
-      :width="520"
+      v-model:open="showAddArchiveProcess"
+      :title="t('admin.ruleConfig.addArchiveProcessTitle')"
+      @ok="handleAddArchiveProcess"
+      :ok-text="t('admin.ruleConfig.confirm')"
+      :cancel-text="t('admin.ruleConfig.cancel')"
     >
       <a-form layout="vertical" style="margin-top: 16px;">
-        <a-form-item label="规则内容">
-          <a-textarea
-            v-model:value="flowRuleForm.rule_content"
-            :rows="3"
-            placeholder="如：审批链须完整，不得跳过任何必要节点"
-          />
+        <a-form-item :label="t('admin.ruleConfig.processName')" required>
+          <a-input v-model:value="newArchiveProcessForm.process_type" :placeholder="t('admin.ruleConfig.processNamePlaceholder')" />
         </a-form-item>
-        <a-form-item label="规则级别">
-          <a-radio-group v-model:value="flowRuleForm.rule_scope" button-style="solid">
-            <a-radio-button value="mandatory">强制执行</a-radio-button>
-            <a-radio-button value="default_on">默认开启</a-radio-button>
-            <a-radio-button value="default_off">默认关闭</a-radio-button>
-          </a-radio-group>
-        </a-form-item>
-        <a-form-item label="优先级">
-          <a-slider v-model:value="flowRuleForm.priority" :min="0" :max="100" />
-          <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--color-text-tertiary);">
-            <span>低</span>
-            <span>当前: {{ flowRuleForm.priority }}</span>
-            <span>高</span>
-          </div>
+        <a-form-item :label="t('admin.ruleConfig.mainTableName')">
+          <a-input v-model:value="newArchiveProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" />
         </a-form-item>
       </a-form>
+    </a-modal>
+
+    <!-- Archive field picker modal -->
+    <a-modal
+      v-model:open="showArchiveFieldPicker"
+      :title="t('admin.ruleConfig.selectFieldsModal')"
+      :width="720"
+      :footer="null"
+      @cancel="showArchiveFieldPicker = false"
+    >
+      <div class="field-picker-modal">
+        <div class="field-picker-left">
+          <div class="field-picker-panel-header">
+            <span>{{ t('admin.ruleConfig.availableFields') }}</span>
+          </div>
+          <div class="field-picker-search">
+            <a-input
+              v-model:value="archiveFieldSearchQuery"
+              :placeholder="t('admin.ruleConfig.searchFieldPlaceholder')"
+              allow-clear
+              size="small"
+            >
+              <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+            </a-input>
+          </div>
+          <div class="field-picker-list">
+            <template v-for="group in archiveGroupedUnselected" :key="group.source">
+              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
+              <div
+                v-for="field in group.fields"
+                :key="field.field_key + field.source"
+                class="field-picker-item"
+                @click="archivePickField(field)"
+              >
+                <div class="field-picker-item-info">
+                  <div class="field-picker-item-name">{{ field.field_name }}</div>
+                  <div class="field-picker-item-meta">
+                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                    <span class="field-key">{{ field.field_key }}</span>
+                  </div>
+                </div>
+                <SwapRightOutlined class="field-picker-arrow" />
+              </div>
+            </template>
+            <div v-if="!archiveGroupedUnselected.length" class="field-picker-empty">
+              {{ archiveFieldSearchQuery ? t('admin.ruleConfig.noSearchResult') : t('admin.ruleConfig.allFieldsAdded') }}
+            </div>
+          </div>
+        </div>
+        <div class="field-picker-right">
+          <div class="field-picker-panel-header">
+            <span>{{ t('admin.ruleConfig.selectedFields') }}</span>
+            <span class="field-picker-count">{{ archiveSelectedFieldCount }}</span>
+          </div>
+          <div class="field-picker-list">
+            <template v-for="group in archiveGroupedSelected" :key="group.source">
+              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
+              <div
+                v-for="field in group.fields"
+                :key="field.field_key + field.source"
+                class="field-picker-item field-picker-item--selected"
+              >
+                <div class="field-picker-item-info">
+                  <div class="field-picker-item-name">{{ field.field_name }}</div>
+                  <div class="field-picker-item-meta">
+                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                    <span class="field-key">{{ field.field_key }}</span>
+                  </div>
+                </div>
+                <button class="field-picker-remove" @click="archiveUnpickField(field)">
+                  <CloseOutlined />
+                </button>
+              </div>
+            </template>
+            <div v-if="!archiveGroupedSelected.length" class="field-picker-empty">
+              {{ t('admin.ruleConfig.noFieldsSelected') }}
+            </div>
+          </div>
+        </div>
+      </div>
     </a-modal>
 
     <!-- Strictness preset editor modal -->
@@ -2075,5 +2276,28 @@ const handleSave = async () => {
 .field-picker-remove:hover { background: var(--color-danger-bg); color: var(--color-danger); }
 .field-picker-empty {
   padding: 32px 16px; text-align: center; color: var(--color-text-tertiary); font-size: 13px;
+}
+
+/* Access control */
+.access-control-section { display: flex; flex-direction: column; gap: 0; }
+.access-control-group { }
+.access-control-label {
+  font-size: 13px; font-weight: 600; color: var(--color-text-secondary);
+  display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
+}
+.access-control-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.access-tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: var(--radius-full);
+  border: 1px solid var(--color-border-light); background: var(--color-bg-hover);
+  font-size: 12px; font-weight: 500; color: var(--color-text-secondary);
+  cursor: pointer; transition: all var(--transition-fast);
+}
+.access-tag:hover { border-color: var(--color-primary-lighter); color: var(--color-primary); }
+.access-tag--active { border-color: var(--color-primary); background: var(--color-primary-bg); color: var(--color-primary); }
+.access-tag-check { font-size: 10px; }
+.access-tag-dept {
+  font-size: 10px; color: var(--color-text-tertiary); margin-left: 2px;
+  padding-left: 6px; border-left: 1px solid var(--color-border-light);
 }
 </style>
