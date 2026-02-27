@@ -713,14 +713,13 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             @click="selectedProcessId = proc.id"
           >
             <div class="process-list-item-name">{{ proc.process_type }}</div>
-            <div class="process-list-item-path">{{ proc.main_table_name || '待配置' }}</div>
+            <div v-if="proc.process_type_label" class="process-list-item-path">{{ proc.process_type_label }}</div>
           </div>
         </div>
 
         <!-- Right: config detail -->
         <div v-if="selectedConfig" class="process-config-panel">
           <h3 class="config-title">{{ selectedConfig.process_type }} - 个人审核配置</h3>
-          <p class="config-subtitle">{{ selectedConfig.main_table_name || '待配置' }}</p>
 
           <!-- Sub-section nav -->
           <div class="section-nav">
@@ -1129,6 +1128,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             @click="selectedArchiveId = cfg.id"
           >
             <div class="process-list-item-name">{{ cfg.process_type }}</div>
+            <div v-if="cfg.process_type_label" class="process-list-item-path">{{ cfg.process_type_label }}</div>
           </div>
         </div>
 

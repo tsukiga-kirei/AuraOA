@@ -59,7 +59,11 @@ const filterProcessType = ref<string[]>([])
 const processTypeOptions = computed(() => {
   const all = [...todoList.value, ...approvedList.value, ...returnedList.value, ...archivedList.value]
   const types = [...new Set(all.map(p => p.process_type))]
-  return types.map(t => ({ label: t, value: t }))
+  return types.map(t => {
+    const cfg = mockProcessAuditConfigs.find(c => c.process_type === t)
+    const labelSuffix = cfg?.process_type_label ? ` · ${cfg.process_type_label}` : ''
+    return { label: t + labelSuffix, value: t }
+  })
 })
 const departmentOptions = computed(() => {
   const all = [...todoList.value, ...approvedList.value, ...returnedList.value, ...archivedList.value]
@@ -490,6 +494,7 @@ const getShortRecLabel = (rec: string) => {
                       'todo-item-node--info': item.status === 'archived',
                     }"
                   >{{ item.current_node }}</span>
+                  <span v-if="isHistoryMode" class="todo-item-process-type">{{ item.process_type }}</span>
                 </div>
                 <div class="todo-item-audit-right">
                   <!-- Per-item loading animation during batch -->
@@ -563,22 +568,34 @@ const getShortRecLabel = (rec: string) => {
         </div>
 
         <div class="result-content">
-          <!-- Loading state -->
+          <!-- Loading state: two-phase card style (matches archive.vue audit-progress) -->
           <div v-if="loading" class="result-loading">
-            <div class="loading-animation">
-              <div class="loading-pulse" />
-              <div class="loading-text">
-                {{ phase1Done ? t('dashboard.phase2') : t('dashboard.phase1') }}
+            <!-- Process basic info above animation -->
+            <div v-if="selectedProcessInfo" class="loading-process-info">
+              <div class="loading-process-title">{{ selectedProcessInfo.title }}</div>
+              <div class="loading-process-meta">
+                {{ selectedProcessInfo.applicant }} · {{ selectedProcessInfo.department }} · {{ selectedProcessInfo.submit_time }}
               </div>
-              <div class="loading-subtext">{{ t('dashboard.aiAnalyzingSub') }}</div>
-              <div class="phase-steps">
-                <div class="phase-step" :class="{ 'phase-step--done': phase1Done, 'phase-step--active': !phase1Done }">
-                  <span class="phase-step-dot" />
-                  <span>{{ t('dashboard.phase1Duration') }}</span>
+            </div>
+            <div class="audit-progress">
+              <div class="audit-phase" :class="{ 'audit-phase--done': phase1Done, 'audit-phase--active': !phase1Done }">
+                <div class="audit-phase-dot">
+                  <LoadingOutlined v-if="!phase1Done" />
+                  <CheckCircleOutlined v-else style="color: var(--color-success);" />
                 </div>
-                <div class="phase-step" :class="{ 'phase-step--active': phase1Done }">
-                  <span class="phase-step-dot" />
-                  <span>{{ t('dashboard.phase2Duration') }}</span>
+                <div class="audit-phase-info">
+                  <div class="audit-phase-title">{{ t('dashboard.phase1') }}</div>
+                  <div class="audit-phase-desc">{{ t('dashboard.phase1Duration') }}</div>
+                </div>
+              </div>
+              <div class="audit-phase" :class="{ 'audit-phase--active': phase1Done, 'audit-phase--pending': !phase1Done }">
+                <div class="audit-phase-dot">
+                  <LoadingOutlined v-if="phase1Done" />
+                  <div v-else class="phase-pending-dot" />
+                </div>
+                <div class="audit-phase-info">
+                  <div class="audit-phase-title">{{ t('dashboard.phase2') }}</div>
+                  <div class="audit-phase-desc">{{ t('dashboard.phase2Duration') }}</div>
                 </div>
               </div>
             </div>
@@ -785,6 +802,8 @@ const getShortRecLabel = (rec: string) => {
                     </div>
                     <div v-if="expandedChainNodes.has(snap.snapshot_id)" class="chain-detail">
                       <template v-if="mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id]">
+                        <!-- Rule checks -->
+                        <div class="chain-section-title">{{ t('dashboard.ruleCheckDetail') }}</div>
                         <div v-for="rule in (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.details" :key="rule.rule_id" class="chain-rule-item" :class="rule.passed ? 'chain-rule--pass' : 'chain-rule--fail'">
                           <component :is="rule.passed ? CheckCircleOutlined : CloseCircleOutlined" :style="{ color: rule.passed ? 'var(--color-success)' : 'var(--color-danger)' }" />
                           <div>
@@ -792,6 +811,33 @@ const getShortRecLabel = (rec: string) => {
                             <div class="chain-rule-reasoning">{{ rule.reasoning }}</div>
                           </div>
                         </div>
+                        <!-- Risk points & suggestions -->
+                        <div
+                          v-if="(mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.risk_points?.length || (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.suggestions?.length"
+                          class="risk-suggest-row"
+                          style="margin-top: 10px;"
+                        >
+                          <div v-if="(mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.risk_points?.length" class="insight-card insight-card--risk">
+                            <div class="insight-card-header">
+                              <CloseCircleOutlined style="color: var(--color-danger);" />
+                              <span>{{ t('dashboard.riskPoints') }}</span>
+                            </div>
+                            <ul class="insight-card-list">
+                              <li v-for="(rp, i) in (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.risk_points" :key="i">{{ rp }}</li>
+                            </ul>
+                          </div>
+                          <div v-if="(mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.suggestions?.length" class="insight-card insight-card--suggest">
+                            <div class="insight-card-header">
+                              <InfoCircleOutlined style="color: var(--color-primary);" />
+                              <span>{{ t('dashboard.suggestions') }}</span>
+                            </div>
+                            <ul class="insight-card-list">
+                              <li v-for="(sg, i) in (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.suggestions" :key="i">{{ sg }}</li>
+                            </ul>
+                          </div>
+                        </div>
+                        <!-- AI Reasoning -->
+                        <div class="chain-section-title" style="margin-top: 10px;">{{ t('dashboard.aiReasoning') }}</div>
                         <div class="chain-reasoning">
                           <pre>{{ (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.ai_reasoning }}</pre>
                         </div>
@@ -922,6 +968,11 @@ const getShortRecLabel = (rec: string) => {
 .todo-item-node--info {
   background: var(--color-info-bg); color: var(--color-info); font-weight: 600;
 }
+.todo-item-process-type {
+  font-size: 11px; padding: 2px 7px; border-radius: var(--radius-full);
+  background: var(--color-bg-hover); color: var(--color-text-tertiary);
+  border: 1px solid var(--color-border-light); white-space: nowrap;
+}
 .oa-jump-btn {
   width: 24px; height: 24px; border: 1px solid var(--color-border);
   background: transparent; border-radius: var(--radius-sm); cursor: pointer;
@@ -981,15 +1032,35 @@ const getShortRecLabel = (rec: string) => {
 }
 
 /* Loading */
-.result-loading { display: flex; justify-content: center; padding: 60px 0; }
-.loading-animation { text-align: center; }
-.loading-pulse {
-  width: 48px; height: 48px; border-radius: 50%; background: var(--color-primary);
-  margin: 0 auto 16px; animation: pulse 1.5s ease-in-out infinite;
+.result-loading { display: flex; flex-direction: column; align-items: center; padding: 40px 20px; gap: 20px; }
+.loading-process-info { text-align: center; }
+.loading-process-title { font-size: 15px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 4px; }
+.loading-process-meta { font-size: 13px; color: var(--color-text-tertiary); }
+
+/* Two-phase audit progress cards (matches archive.vue style) */
+.audit-progress { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 400px; }
+.audit-phase {
+  display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px;
+  border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
+  background: var(--color-bg-page); transition: all 0.3s ease;
 }
-@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.15); opacity: 1; } }
-.loading-text { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 4px; }
-.loading-subtext { font-size: 13px; color: var(--color-text-tertiary); }
+.audit-phase--active {
+  border-color: var(--color-primary); background: var(--color-primary-bg);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1);
+}
+.audit-phase--done { border-color: var(--color-success); background: var(--color-success-bg); }
+.audit-phase--pending { opacity: 0.5; }
+.audit-phase-dot {
+  width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-size: 16px; flex-shrink: 0;
+  background: var(--color-bg-hover);
+}
+.audit-phase--active .audit-phase-dot { background: var(--color-primary-bg); color: var(--color-primary); }
+.audit-phase--done .audit-phase-dot { background: var(--color-success-bg); color: var(--color-success); }
+.phase-pending-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-border); }
+.audit-phase-info { flex: 1; }
+.audit-phase-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 2px; }
+.audit-phase-desc { font-size: 12px; color: var(--color-text-tertiary); }
 
 /* Result banner */
 .result-banner {
@@ -1071,21 +1142,6 @@ const getShortRecLabel = (rec: string) => {
   display: flex; align-items: center; justify-content: space-between;
   padding: 6px 0; gap: 8px;
 }
-
-/* Two-phase loading steps */
-.phase-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; text-align: left; }
-.phase-step {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 13px; color: var(--color-text-tertiary);
-}
-.phase-step-dot {
-  width: 8px; height: 8px; border-radius: 50%; background: var(--color-border);
-  flex-shrink: 0; transition: background 0.3s;
-}
-.phase-step--active .phase-step-dot { background: var(--color-primary); animation: pulse 1s infinite; }
-.phase-step--active { color: var(--color-primary); font-weight: 600; }
-.phase-step--done .phase-step-dot { background: var(--color-success); }
-.phase-step--done { color: var(--color-success); }
 
 /* Pagination */
 .pagination-wrapper { padding: 12px 20px; border-top: 1px solid var(--color-border-light); display: flex; justify-content: center; }
@@ -1189,4 +1245,5 @@ const getShortRecLabel = (rec: string) => {
 .chain-reasoning { background: var(--color-bg-page); border-radius: var(--radius-sm); padding: 10px; }
 .chain-reasoning pre { font-size: 12px; line-height: 1.6; color: var(--color-text-secondary); margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--font-sans); }
 .chain-no-detail { font-size: 12px; color: var(--color-text-tertiary); text-align: center; padding: 12px; }
+.chain-section-title { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 6px; }
 </style>

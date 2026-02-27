@@ -30,6 +30,7 @@ import {
   SaveOutlined,
   LoadingOutlined,
   UserOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig } from '~/composables/useMockData'
@@ -140,7 +141,7 @@ const selectedProcessId = ref(processConfigs.value[0]?.id || '')
 
 // ===== Add new process =====
 const showAddProcess = ref(false)
-const newProcessForm = ref({ process_type: '', main_table_name: '' })
+const newProcessForm = ref({ process_type: '', process_type_label: '', main_table_name: '' })
 
 const handleAddProcess = () => {
   if (!newProcessForm.value.process_type.trim()) {
@@ -150,6 +151,7 @@ const handleAddProcess = () => {
   const newConfig: ProcessAuditConfig = {
     id: `PAC-${Date.now()}`,
     process_type: newProcessForm.value.process_type.trim(),
+    process_type_label: newProcessForm.value.process_type_label.trim() || undefined,
     flow_path: newProcessForm.value.main_table_name.trim() || t('admin.ruleConfig.pending'),
     field_mode: 'selected',
     fields: [],
@@ -169,7 +171,7 @@ const handleAddProcess = () => {
   processConfigs.value.push(newConfig)
   selectedProcessId.value = newConfig.id
   showAddProcess.value = false
-  newProcessForm.value = { process_type: '', main_table_name: '' }
+  newProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
   message.success(t('admin.ruleConfig.processAdded'))
 }
 const activeTab = ref('fields')
@@ -479,7 +481,7 @@ const selectedArchiveConfig = computed(() =>
 
 // ===== Add new archive process =====
 const showAddArchiveProcess = ref(false)
-const newArchiveProcessForm = ref({ process_type: '', main_table_name: '' })
+const newArchiveProcessForm = ref({ process_type: '', process_type_label: '', main_table_name: '' })
 
 const handleAddArchiveProcess = () => {
   if (!newArchiveProcessForm.value.process_type.trim()) {
@@ -489,6 +491,7 @@ const handleAddArchiveProcess = () => {
   const newConfig: ArchiveReviewConfig = {
     id: `ARC-${Date.now()}`,
     process_type: newArchiveProcessForm.value.process_type.trim(),
+    process_type_label: newArchiveProcessForm.value.process_type_label.trim() || undefined,
     main_table_name: newArchiveProcessForm.value.main_table_name.trim() || '',
     main_fields: [],
     detail_tables: [],
@@ -514,7 +517,7 @@ const handleAddArchiveProcess = () => {
   archiveConfigs.value.push(newConfig)
   selectedArchiveId.value = newConfig.id
   showAddArchiveProcess.value = false
-  newArchiveProcessForm.value = { process_type: '', main_table_name: '' }
+  newArchiveProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
   message.success(t('admin.ruleConfig.processAdded'))
 }
 
@@ -801,7 +804,7 @@ const handleSave = async () => {
           @click="selectedProcessId = cfg.id"
         >
           <div class="process-nav-name">{{ cfg.process_type }}</div>
-          <div class="process-nav-path">{{ cfg.main_table_name || t('admin.ruleConfig.pending') }}</div>
+          <div v-if="cfg.process_type_label" class="process-nav-path">{{ cfg.process_type_label }}</div>
         </div>
       </div>
 
@@ -809,13 +812,14 @@ const handleSave = async () => {
       <div v-if="selectedConfig" class="config-panel">
         <div class="config-panel-header">
           <h2 class="config-panel-title">{{ selectedConfig.process_type }}</h2>
-          <p class="config-panel-subtitle">{{ selectedConfig.main_table_name || t('admin.ruleConfig.pending') }}</p>
+          <p v-if="selectedConfig.process_type_label" class="config-panel-subtitle">{{ selectedConfig.process_type_label }}</p>
         </div>
 
         <!-- Sub tabs -->
         <div class="tab-nav">
           <button
             v-for="tab in [
+              { key: 'info', label: '基本信息', icon: InfoCircleOutlined },
               { key: 'fields', label: t('admin.ruleConfig.tabFields'), icon: AppstoreOutlined },
               { key: 'rules', label: t('admin.ruleConfig.tabRules'), icon: AuditOutlined },
               { key: 'ai', label: t('admin.ruleConfig.tabAI'), icon: RobotOutlined },
@@ -829,6 +833,31 @@ const handleSave = async () => {
             <component :is="tab.icon" />
             {{ tab.label }}
           </button>
+        </div>
+
+        <!-- ========== Info tab ========== -->
+        <div v-if="activeTab === 'info'" class="tab-content">
+          <div class="section-header">
+            <div>
+              <h4 class="section-title">基本信息</h4>
+              <p class="section-desc">流程的基础配置信息，包括名称、类型和主表标识</p>
+            </div>
+          </div>
+          <a-form layout="vertical" class="info-form">
+            <a-form-item label="流程名称">
+              <a-input v-model:value="selectedConfig!.process_type" placeholder="如：采购申请审批" />
+            </a-form-item>
+            <a-form-item label="流程类型">
+              <a-input
+                :value="selectedConfig!.process_type_label ?? ''"
+                @update:value="(v: string) => { if (selectedConfig) selectedConfig.process_type_label = v }"
+                placeholder="如：采购类、费用类、合同类"
+              />
+            </a-form-item>
+            <a-form-item label="主表名称">
+              <a-input v-model:value="selectedConfig!.main_table_name" placeholder="OA 主表名称，如 formtable_main_001" />
+            </a-form-item>
+          </a-form>
         </div>
 
         <!-- ========== Fields tab ========== -->
@@ -1137,6 +1166,9 @@ const handleSave = async () => {
         <a-form-item :label="t('admin.ruleConfig.processName')" required>
           <a-input v-model:value="newProcessForm.process_type" :placeholder="t('admin.ruleConfig.processNamePlaceholder')" />
         </a-form-item>
+        <a-form-item label="流程类型">
+          <a-input v-model:value="newProcessForm.process_type_label" placeholder="如：采购类、费用类、合同类" />
+        </a-form-item>
         <a-form-item :label="t('admin.ruleConfig.mainTableName')">
           <a-input v-model:value="newProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" />
         </a-form-item>
@@ -1398,7 +1430,7 @@ const handleSave = async () => {
           @click="selectedArchiveId = cfg.id"
         >
           <div class="process-nav-name">{{ cfg.process_type }}</div>
-          <div class="process-nav-path">{{ cfg.main_table_name || t('admin.ruleConfig.pending') }}</div>
+          <div v-if="cfg.process_type_label" class="process-nav-path">{{ cfg.process_type_label }}</div>
         </div>
       </div>
 
@@ -1406,13 +1438,14 @@ const handleSave = async () => {
       <div v-if="selectedArchiveConfig" class="config-panel">
         <div class="config-panel-header">
           <h2 class="config-panel-title">{{ selectedArchiveConfig.process_type }}</h2>
-          <p class="config-panel-subtitle">{{ selectedArchiveConfig.main_table_name || t('admin.ruleConfig.pending') }}</p>
+          <p v-if="selectedArchiveConfig.process_type_label" class="config-panel-subtitle">{{ selectedArchiveConfig.process_type_label }}</p>
         </div>
 
         <!-- Sub tabs: 删除审批流规则，与审核工作台对齐 -->
         <div class="tab-nav">
           <button
             v-for="tab in [
+              { key: 'info', label: '基本信息', icon: InfoCircleOutlined },
               { key: 'fields', label: t('admin.ruleConfig.tabFields'), icon: AppstoreOutlined },
               { key: 'rules', label: t('admin.ruleConfig.tabRules'), icon: AuditOutlined },
               { key: 'ai', label: t('admin.ruleConfig.tabAI'), icon: RobotOutlined },
@@ -1426,6 +1459,31 @@ const handleSave = async () => {
             <component :is="tab.icon" />
             {{ tab.label }}
           </button>
+        </div>
+
+        <!-- ========== Info tab ========== -->
+        <div v-if="archiveActiveTab === 'info'" class="tab-content">
+          <div class="section-header">
+            <div>
+              <h4 class="section-title">基本信息</h4>
+              <p class="section-desc">归档复盘流程的基础配置信息</p>
+            </div>
+          </div>
+          <a-form layout="vertical" class="info-form">
+            <a-form-item label="流程名称">
+              <a-input v-model:value="selectedArchiveConfig!.process_type" placeholder="如：采购申请审批" />
+            </a-form-item>
+            <a-form-item label="流程类型">
+              <a-input
+                :value="selectedArchiveConfig!.process_type_label ?? ''"
+                @update:value="(v: string) => { if (selectedArchiveConfig) selectedArchiveConfig.process_type_label = v }"
+                placeholder="如：采购类、费用类、合同类"
+              />
+            </a-form-item>
+            <a-form-item label="主表名称">
+              <a-input v-model:value="selectedArchiveConfig!.main_table_name" placeholder="OA 主表名称，如 formtable_main_001" />
+            </a-form-item>
+          </a-form>
         </div>
 
         <!-- ========== Fields tab ========== -->
@@ -1698,11 +1756,11 @@ const handleSave = async () => {
             <div class="access-control-group">
               <div class="access-control-label"><TeamOutlined /> {{ t('admin.ruleConfig.archiveAllowedRoles') }}</div>
               <div class="access-control-search">
-                <a-input v-model:value="archiveRoleSearch" :placeholder="t('admin.ruleConfig.archiveAccessSearch')" allow-clear size="small">
+                <a-input v-model:value="archiveRoleSearch" :placeholder="t('admin.ruleConfig.archiveAccessSearch')" allow-clear size="small" style="max-width: 280px;">
                   <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
                 </a-input>
               </div>
-              <div class="access-control-tags">
+              <div class="access-control-tags" style="gap: 8px;">
                 <div
                   v-for="role in filteredArchiveRoles"
                   :key="role.id"
@@ -1718,11 +1776,11 @@ const handleSave = async () => {
             <div class="access-control-group" style="margin-top: 16px;">
               <div class="access-control-label"><UserOutlined /> {{ t('admin.ruleConfig.archiveAllowedMembers') }}</div>
               <div class="access-control-search">
-                <a-input v-model:value="archiveMemberSearch" :placeholder="t('admin.ruleConfig.archiveAccessSearch')" allow-clear size="small">
+                <a-input v-model:value="archiveMemberSearch" :placeholder="t('admin.ruleConfig.archiveAccessSearch')" allow-clear size="small" style="max-width: 280px;">
                   <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
                 </a-input>
               </div>
-              <div class="access-control-tags">
+              <div class="access-control-tags" style="gap: 8px;">
                 <div
                   v-for="member in filteredArchiveMembers"
                   :key="member.id"
@@ -1739,11 +1797,11 @@ const handleSave = async () => {
             <div class="access-control-group" style="margin-top: 16px;">
               <div class="access-control-label"><AppstoreOutlined /> {{ t('admin.ruleConfig.archiveAllowedDepts') }}</div>
               <div class="access-control-search">
-                <a-input v-model:value="archiveDeptSearch" :placeholder="t('admin.ruleConfig.archiveAccessSearch')" allow-clear size="small">
+                <a-input v-model:value="archiveDeptSearch" :placeholder="t('admin.ruleConfig.archiveAccessSearch')" allow-clear size="small" style="max-width: 280px;">
                   <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
                 </a-input>
               </div>
-              <div class="access-control-tags">
+              <div class="access-control-tags" style="gap: 8px;">
                 <div
                   v-for="dept in filteredArchiveDepts"
                   :key="dept.id"
@@ -1793,6 +1851,9 @@ const handleSave = async () => {
       <a-form layout="vertical" style="margin-top: 16px;">
         <a-form-item :label="t('admin.ruleConfig.processName')" required>
           <a-input v-model:value="newArchiveProcessForm.process_type" :placeholder="t('admin.ruleConfig.processNamePlaceholder')" />
+        </a-form-item>
+        <a-form-item label="流程类型">
+          <a-input v-model:value="newArchiveProcessForm.process_type_label" placeholder="如：采购类、费用类、合同类" />
         </a-form-item>
         <a-form-item :label="t('admin.ruleConfig.mainTableName')">
           <a-input v-model:value="newArchiveProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" />
@@ -2290,6 +2351,10 @@ const handleSave = async () => {
 .field-picker-toolbar {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
 }
+
+/* Info form */
+.info-form { max-width: 480px; }
+.info-form :deep(.ant-form-item) { margin-bottom: 16px; }
 
 /* Selected fields display */
 .selected-fields-display {

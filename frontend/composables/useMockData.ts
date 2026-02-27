@@ -261,37 +261,7 @@ export interface ChecklistResult {
   related_flow?: boolean
 }
 
-/** New structured audit result matching AI_INTERACTION_API.md */
-export interface AuditResultV2 {
-  trace_id: string
-  process_id: string
-  status: 'completed' | 'in_progress' | 'failed'
-  recommendation: {
-    action: 'approve' | 'return' | 'review'
-    action_label: string
-    score: number
-    confidence: number
-  }
-  rule_checks: {
-    total: number
-    passed: number
-    failed: number
-    details: (ChecklistResult & { related_flow?: boolean })[]
-  }
-  ai_analysis: {
-    summary: string
-    risk_points: string[]
-    suggestions: string[]
-    full_reasoning: string
-  }
-  meta: {
-    duration_ms: number
-    model_used: string
-    interaction_mode: 'two_phase' | 'single_pass'
-    phase1_duration_ms: number
-    phase2_duration_ms: number
-  }
-}
+
 
 /** Legacy AuditResult - kept for backward compat */
 export interface AuditResult {
@@ -675,6 +645,8 @@ export interface FlowRuleConfig {
 export interface ArchiveReviewConfig {
   id: string
   process_type: string
+  /** 流程类型标签，如"采购类"、"费用类"，用于分类展示 */
+  process_type_label?: string
   main_table_name?: string
   main_fields?: ProcessField[]
   detail_tables?: DetailTable[]
@@ -713,6 +685,8 @@ export interface DetailTable {
 export interface ProcessAuditConfig {
   id: string
   process_type: string
+  /** 流程类型标签，如"采购类"、"费用类"，用于分类展示 */
+  process_type_label?: string
   flow_path: string
   main_table_name?: string
   main_fields?: ProcessField[]
@@ -1168,6 +1142,7 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
   {
     id: 'PAC-001',
     process_type: '采购审批',
+    process_type_label: '采购类',
     flow_path: '部门经理 → 财务总监 → 总经理',
     main_table_name: 'formtable_main_001',
     main_fields: [
@@ -1223,6 +1198,7 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
   {
     id: 'PAC-002',
     process_type: '费用报销',
+    process_type_label: '费用类',
     flow_path: '部门经理 → 财务审核',
     main_table_name: 'formtable_main_002',
     main_fields: [
@@ -1273,6 +1249,7 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
   {
     id: 'PAC-003',
     process_type: '合同审批',
+    process_type_label: '合同类',
     flow_path: '部门经理 → 法务审核 → 财务总监 → 总经理',
     main_table_name: 'formtable_main_003',
     main_fields: [
@@ -1312,6 +1289,7 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
   {
     id: 'PAC-004',
     process_type: '人事审批',
+    process_type_label: '人事类',
     flow_path: 'HR经理 → 用人部门 → HR总监',
     main_table_name: 'formtable_main_004',
     main_fields: [
@@ -1356,6 +1334,7 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
   {
     id: 'ARC-001',
     process_type: '采购审批',
+    process_type_label: '采购类',
     main_table_name: 'formtable_main_001',
     main_fields: [
       { field_key: 'amount', field_name: '采购金额', field_type: 'number', selected: true },
@@ -1411,6 +1390,7 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
   {
     id: 'ARC-002',
     process_type: '费用报销',
+    process_type_label: '费用类',
     main_table_name: 'formtable_main_002',
     main_fields: [
       { field_key: 'amount', field_name: '报销金额', field_type: 'number', selected: true },
@@ -1461,6 +1441,7 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
   {
     id: 'ARC-003',
     process_type: '合同审批',
+    process_type_label: '合同类',
     main_table_name: 'formtable_main_003',
     main_fields: [
       { field_key: 'contract_amount', field_name: '合同金额', field_type: 'number', selected: true },
@@ -1500,6 +1481,7 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
   {
     id: 'ARC-004',
     process_type: '人事审批',
+    process_type_label: '人事类',
     main_table_name: 'formtable_main_004',
     main_fields: [
       { field_key: 'position', field_name: '岗位名称', field_type: 'text', selected: true },

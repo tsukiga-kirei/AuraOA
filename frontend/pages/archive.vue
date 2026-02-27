@@ -74,7 +74,10 @@ const filterAuditStatus = ref<string | undefined>(undefined)
 
 const departmentOptions = computed(() => [...new Set(processList.value.map(p => p.department))])
 const processTypeOptions = computed(() =>
-  accessibleProcessTypes.value.map(t => ({ label: t, value: t }))
+  accessibleConfigs.value.map(c => {
+    const labelSuffix = c.process_type_label ? ` · ${c.process_type_label}` : ''
+    return { label: c.process_type + labelSuffix, value: c.process_type }
+  })
 )
 
 const hasActiveFilters = computed(() =>
@@ -403,9 +406,11 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
                 <span v-if="processAuditLoading[proc.process_id]" class="process-auditing">
                   <LoadingOutlined style="font-size: 11px;" /> {{ t('archive.auditingItem') }}
                 </span>
-                <a-button size="small" type="text" class="oa-jump-btn" @click.stop="jumpToOA(proc.process_id)" :title="t('archive.jumpOA')">
-                  <ExportOutlined />
-                </a-button>
+                <a-tooltip :title="t('archive.jumpOA')" :mouse-enter-delay="0.5">
+                  <button class="oa-jump-btn" @click.stop="jumpToOA(proc.process_id)">
+                    <ExportOutlined />
+                  </button>
+                </a-tooltip>
               </div>
             </div>
           </div>
@@ -815,7 +820,26 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
   font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); margin: 0;
 }
 
-/* No result hint */
+.oa-jump-btn {
+  width: 24px; height: 24px; border: 1px solid var(--color-border);
+  background: transparent; border-radius: var(--radius-sm); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--color-text-tertiary);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none; flex-shrink: 0;
+}
+.oa-jump-btn:hover {
+  border-color: var(--color-primary); color: var(--color-primary);
+  background: var(--color-primary-bg);
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.15);
+}
+.oa-jump-btn:focus-visible {
+  border-color: var(--color-primary); color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+  background: var(--color-primary-bg);
+}
+.oa-jump-btn:active { transform: scale(0.95); }
 .no-result-hint {
   text-align: center; padding: 40px 20px;
   color: var(--color-text-tertiary); display: flex; flex-direction: column; align-items: center; gap: 12px;
