@@ -246,8 +246,10 @@ export interface OAProcess {
   submit_time: string
   process_type: string
   status: string
-  amount?: number
-  urgency: 'high' | 'medium' | 'low'
+  current_node: string  // current approval node (replaces amount display)
+  amount?: number       // deprecated, kept for backward compat
+  urgency?: 'high' | 'medium' | 'low'  // deprecated
+  oa_url?: string
 }
 
 export interface ChecklistResult {
@@ -256,16 +258,60 @@ export interface ChecklistResult {
   passed: boolean
   reasoning: string
   is_locked?: boolean
+  related_flow?: boolean
 }
 
+/** New structured audit result matching AI_INTERACTION_API.md */
+export interface AuditResultV2 {
+  trace_id: string
+  process_id: string
+  status: 'completed' | 'in_progress' | 'failed'
+  recommendation: {
+    action: 'approve' | 'return' | 'reject' | 'review'
+    action_label: string
+    score: number
+    confidence: number
+  }
+  rule_checks: {
+    total: number
+    passed: number
+    failed: number
+    details: (ChecklistResult & { related_flow?: boolean })[]
+  }
+  ai_analysis: {
+    summary: string
+    risk_points: string[]
+    suggestions: string[]
+    full_reasoning: string
+  }
+  meta: {
+    duration_ms: number
+    model_used: string
+    interaction_mode: 'two_phase' | 'single_pass'
+    phase1_duration_ms: number
+    phase2_duration_ms: number
+  }
+}
+
+/** Legacy AuditResult - kept for backward compat */
 export interface AuditResult {
   trace_id: string
   process_id: string
-  recommendation: 'approve' | 'reject' | 'revise'
+  recommendation: 'approve' | 'reject' | 'revise' | 'return' | 'review'
   score: number
   details: ChecklistResult[]
   ai_reasoning: string
   duration_ms: number
+  // New fields (v2)
+  action_label?: string
+  confidence?: number
+  risk_points?: string[]
+  suggestions?: string[]
+  ai_summary?: string
+  model_used?: string
+  interaction_mode?: 'two_phase' | 'single_pass'
+  phase1_duration_ms?: number
+  phase2_duration_ms?: number
 }
 
 export interface CronTask {
@@ -446,6 +492,7 @@ export interface AuditRule {
   rule_scope: 'mandatory' | 'default_on' | 'default_off'
   priority: number
   enabled: boolean
+  related_flow?: boolean
 }
 
 export interface FlowNode {
@@ -602,12 +649,15 @@ export interface ProcessField {
 }
 
 export interface ProcessAIConfig {
-  ai_provider: string
-  model_name: string
   audit_strictness: 'strict' | 'standard' | 'loose'
-  system_prompt: string
-  context_window: number
-  temperature: number
+  reasoning_prompt: string
+  extraction_prompt: string
+  // Legacy fields kept for backward compatibility with other modules
+  ai_provider?: string
+  model_name?: string
+  system_prompt?: string
+  context_window?: number
+  temperature?: number
 }
 
 export interface UserPermissions {
@@ -653,13 +703,22 @@ export interface ArchiveUserPermissions {
   allow_modify_strictness: boolean
 }
 
+export interface DetailTable {
+  table_name: string
+  table_label: string
+  fields: ProcessField[]
+}
+
 export interface ProcessAuditConfig {
   id: string
   process_type: string
   flow_path: string
+  main_table_name?: string
+  main_fields?: ProcessField[]
+  detail_tables?: DetailTable[]
   fields: ProcessField[]
   field_mode: 'all' | 'selected'
-  rules: (AuditRule & { source: 'manual' | 'file_import' })[]
+  rules: (AuditRule & { source: 'manual' | 'file_import'; related_flow?: boolean })[]
   kb_mode: 'rules_only' | 'rag_only' | 'hybrid'
   ai_config: ProcessAIConfig
   user_permissions: UserPermissions
@@ -1117,6 +1176,28 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     id: 'PAC-001',
     process_type: '采购审批',
     flow_path: '部门经理 → 财务总监 → 总经理',
+    main_table_name: 'formtable_main_001',
+    main_fields: [
+      { field_key: 'amount', field_name: '采购金额', field_type: 'number', selected: true },
+      { field_key: 'supplier', field_name: '供应商名称', field_type: 'text', selected: true },
+      { field_key: 'category', field_name: '采购类别', field_type: 'select', selected: true },
+      { field_key: 'reason', field_name: '采购事由', field_type: 'textarea', selected: true },
+      { field_key: 'delivery_date', field_name: '交付日期', field_type: 'date', selected: false },
+      { field_key: 'contract_no', field_name: '合同编号', field_type: 'text', selected: false },
+      { field_key: 'attachment', field_name: '附件材料', field_type: 'file', selected: false },
+    ],
+    detail_tables: [
+      {
+        table_name: 'formtable_main_001_dt1',
+        table_label: '采购明细',
+        fields: [
+          { field_key: 'item_name', field_name: '物品名称', field_type: 'text', selected: true },
+          { field_key: 'item_qty', field_name: '数量', field_type: 'number', selected: true },
+          { field_key: 'unit_price', field_name: '单价', field_type: 'number', selected: true },
+          { field_key: 'item_spec', field_name: '规格型号', field_type: 'text', selected: false },
+        ],
+      },
+    ],
     field_mode: 'selected',
     fields: [
       { field_key: 'amount', field_name: '采购金额', field_type: 'number', selected: true },
@@ -1128,19 +1209,17 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
       { field_key: 'attachment', field_name: '附件材料', field_type: 'file', selected: false },
     ],
     rules: [
-      { id: 'R001', process_type: '采购审批', rule_content: '单笔采购金额不得超过部门季度预算上限', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual' },
-      { id: 'R002', process_type: '采购审批', rule_content: '超过10万元需提供至少3家供应商比价', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'manual' },
-      { id: 'R013', process_type: '采购审批', rule_content: '供应商须在合格供应商名录中', rule_scope: 'default_on', priority: 85, enabled: true, source: 'file_import' },
-      { id: 'R014', process_type: '采购审批', rule_content: '合同条款须包含付款条件、交付时间、售后条款', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual' },
+      { id: 'R001', process_type: '采购审批', rule_content: '单笔采购金额不得超过部门季度预算上限', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual', related_flow: false },
+      { id: 'R002', process_type: '采购审批', rule_content: '超过10万元需提供至少3家供应商比价', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'manual', related_flow: false },
+      { id: 'R013', process_type: '采购审批', rule_content: '供应商须在合格供应商名录中', rule_scope: 'default_on', priority: 85, enabled: true, source: 'file_import', related_flow: false },
+      { id: 'R014', process_type: '采购审批', rule_content: '合同条款须包含付款条件、交付时间、售后条款', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual', related_flow: false },
+      { id: 'R019', process_type: '采购审批', rule_content: '金额超过50万需总经理审批节点', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual', related_flow: true },
     ],
     kb_mode: 'rules_only',
     ai_config: {
-      ai_provider: '本地部署',
-      model_name: 'Qwen2.5-72B',
       audit_strictness: 'standard',
-      system_prompt: '你是一个专业的采购审核助手。请根据以下规则对采购申请进行合规性审核，逐条检查并给出判断理由。对于不合规项，请明确指出问题并给出修改建议。',
-      context_window: 8192,
-      temperature: 0.3,
+      reasoning_prompt: '你是一个专业的采购审核助手。请根据以下规则对采购申请进行合规性审核，逐条检查并给出判断理由。对于不合规项，请明确指出问题并给出修改建议。\n\n审核尺度：{{audit_strictness}}\n流程类型：{{process_type}}\n主表数据：{{main_table}}\n明细表数据：{{detail_tables}}\n审核规则：{{rules}}\n审批流历史：{{flow_history}}\n流程图：{{flow_graph}}\n当前节点：{{current_node}}',
+      extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作（approve/return/reject/review）及置信度\n2. rule_checks：逐条规则校验结果（rule_id、是否通过、判断理由）\n3. risk_points：发现的风险点列表\n4. suggestions：改进建议列表\n\n原始规则列表：{{rules}}',
     },
     user_permissions: {
       allow_custom_fields: false,
@@ -1152,6 +1231,26 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     id: 'PAC-002',
     process_type: '费用报销',
     flow_path: '部门经理 → 财务审核',
+    main_table_name: 'formtable_main_002',
+    main_fields: [
+      { field_key: 'amount', field_name: '报销金额', field_type: 'number', selected: true },
+      { field_key: 'expense_type', field_name: '费用类型', field_type: 'select', selected: true },
+      { field_key: 'invoice_count', field_name: '发票数量', field_type: 'number', selected: true },
+      { field_key: 'reason', field_name: '报销事由', field_type: 'textarea', selected: true },
+      { field_key: 'trip_date', field_name: '出差日期', field_type: 'date', selected: false },
+    ],
+    detail_tables: [
+      {
+        table_name: 'formtable_main_002_dt1',
+        table_label: '发票明细',
+        fields: [
+          { field_key: 'invoice_no', field_name: '发票号码', field_type: 'text', selected: true },
+          { field_key: 'invoice_amount', field_name: '发票金额', field_type: 'number', selected: true },
+          { field_key: 'invoice_date', field_name: '发票日期', field_type: 'date', selected: true },
+          { field_key: 'invoice_file', field_name: '发票附件', field_type: 'file', selected: false },
+        ],
+      },
+    ],
     field_mode: 'selected',
     fields: [
       { field_key: 'amount', field_name: '报销金额', field_type: 'number', selected: true },
@@ -1162,18 +1261,15 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
       { field_key: 'invoice_file', field_name: '发票附件', field_type: 'file', selected: false },
     ],
     rules: [
-      { id: 'R003', process_type: '费用报销', rule_content: '单次报销金额超过5000元需附发票原件', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual' },
-      { id: 'R006', process_type: '费用报销', rule_content: '差旅住宿标准不超过城市限额', rule_scope: 'default_off', priority: 60, enabled: false, source: 'manual' },
-      { id: 'R015', process_type: '费用报销', rule_content: '发票日期须在报销申请日期前90天内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'file_import' },
+      { id: 'R003', process_type: '费用报销', rule_content: '单次报销金额超过5000元需附发票原件', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual', related_flow: false },
+      { id: 'R006', process_type: '费用报销', rule_content: '差旅住宿标准不超过城市限额', rule_scope: 'default_off', priority: 60, enabled: false, source: 'manual', related_flow: false },
+      { id: 'R015', process_type: '费用报销', rule_content: '发票日期须在报销申请日期前90天内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'file_import', related_flow: false },
     ],
     kb_mode: 'rules_only',
     ai_config: {
-      ai_provider: '本地部署',
-      model_name: 'Qwen2.5-72B',
       audit_strictness: 'standard',
-      system_prompt: '你是一个专业的费用报销审核助手。请根据以下规则对报销申请进行合规性审核，重点关注金额合理性、发票合规性和审批材料完整性。',
-      context_window: 4096,
-      temperature: 0.2,
+      reasoning_prompt: '你是一个专业的费用报销审核助手。请根据以下规则对报销申请进行合规性审核，重点关注金额合理性、发票合规性和审批材料完整性。\n\n审核尺度：{{audit_strictness}}\n流程类型：{{process_type}}\n主表数据：{{main_table}}\n明细表数据：{{detail_tables}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}',
+      extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作及置信度\n2. rule_checks：逐条规则校验结果\n3. risk_points：风险点\n4. suggestions：改进建议\n\n原始规则列表：{{rules}}',
     },
     user_permissions: {
       allow_custom_fields: true,
@@ -1185,6 +1281,15 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     id: 'PAC-003',
     process_type: '合同审批',
     flow_path: '部门经理 → 法务审核 → 财务总监 → 总经理',
+    main_table_name: 'formtable_main_003',
+    main_fields: [
+      { field_key: 'contract_amount', field_name: '合同金额', field_type: 'number', selected: true },
+      { field_key: 'vendor', field_name: '合作方', field_type: 'text', selected: true },
+      { field_key: 'contract_period', field_name: '合同期限', field_type: 'text', selected: true },
+      { field_key: 'contract_type', field_name: '合同类型', field_type: 'select', selected: true },
+      { field_key: 'deliverables', field_name: '交付物', field_type: 'textarea', selected: true },
+      { field_key: 'contract_file', field_name: '合同文件', field_type: 'file', selected: true },
+    ],
     field_mode: 'all',
     fields: [
       { field_key: 'contract_amount', field_name: '合同金额', field_type: 'number', selected: true },
@@ -1195,18 +1300,15 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
       { field_key: 'contract_file', field_name: '合同文件', field_type: 'file', selected: true },
     ],
     rules: [
-      { id: 'R004', process_type: '合同审批', rule_content: '合同金额超过50万需法务部会签', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual' },
-      { id: 'R016', process_type: '合同审批', rule_content: '合同须包含知识产权归属条款', rule_scope: 'default_on', priority: 85, enabled: true, source: 'manual' },
-      { id: 'R017', process_type: '合同审批', rule_content: '合作方须通过准入评审', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'file_import' },
+      { id: 'R004', process_type: '合同审批', rule_content: '合同金额超过50万需法务部会签', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual', related_flow: true },
+      { id: 'R016', process_type: '合同审批', rule_content: '合同须包含知识产权归属条款', rule_scope: 'default_on', priority: 85, enabled: true, source: 'manual', related_flow: false },
+      { id: 'R017', process_type: '合同审批', rule_content: '合作方须通过准入评审', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'file_import', related_flow: false },
     ],
     kb_mode: 'rules_only',
     ai_config: {
-      ai_provider: '云端API',
-      model_name: 'GPT-4o',
       audit_strictness: 'strict',
-      system_prompt: '你是一个专业的合同审核助手。请根据以下规则对合同进行全面审核，重点关注法律条款完整性、金额合理性和合作方资质。对于高风险条款请特别标注。',
-      context_window: 16384,
-      temperature: 0.1,
+      reasoning_prompt: '你是一个专业的合同审核助手。请根据以下规则对合同进行全面审核，重点关注法律条款完整性、金额合理性和合作方资质。对于高风险条款请特别标注。\n\n审核尺度：{{audit_strictness}}\n流程类型：{{process_type}}\n主表数据：{{main_table}}\n审核规则：{{rules}}\n审批流历史：{{flow_history}}\n流程图：{{flow_graph}}',
+      extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作（approve/return/reject/review）及置信度\n2. rule_checks：逐条规则校验结果\n3. risk_points：风险点\n4. suggestions：改进建议\n\n原始规则列表：{{rules}}',
     },
     user_permissions: {
       allow_custom_fields: false,
@@ -1218,6 +1320,15 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     id: 'PAC-004',
     process_type: '人事审批',
     flow_path: 'HR经理 → 用人部门 → HR总监',
+    main_table_name: 'formtable_main_004',
+    main_fields: [
+      { field_key: 'position', field_name: '岗位名称', field_type: 'text', selected: true },
+      { field_key: 'headcount', field_name: '招聘人数', field_type: 'number', selected: true },
+      { field_key: 'department', field_name: '用人部门', field_type: 'text', selected: true },
+      { field_key: 'onboard_date', field_name: '入职日期', field_type: 'date', selected: true },
+      { field_key: 'salary_range', field_name: '薪资范围', field_type: 'text', selected: false },
+      { field_key: 'job_desc', field_name: '岗位职责', field_type: 'textarea', selected: false },
+    ],
     field_mode: 'selected',
     fields: [
       { field_key: 'position', field_name: '岗位名称', field_type: 'text', selected: true },
@@ -1228,17 +1339,14 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
       { field_key: 'job_desc', field_name: '岗位职责', field_type: 'textarea', selected: false },
     ],
     rules: [
-      { id: 'R005', process_type: '人事审批', rule_content: '新增HC需部门负责人和HR总监双签', rule_scope: 'default_on', priority: 75, enabled: true, source: 'manual' },
-      { id: 'R018', process_type: '人事审批', rule_content: '招聘人数须在年度HC计划范围内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual' },
+      { id: 'R005', process_type: '人事审批', rule_content: '新增HC需部门负责人和HR总监双签', rule_scope: 'default_on', priority: 75, enabled: true, source: 'manual', related_flow: true },
+      { id: 'R018', process_type: '人事审批', rule_content: '招聘人数须在年度HC计划范围内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual', related_flow: false },
     ],
     kb_mode: 'rules_only',
     ai_config: {
-      ai_provider: '本地部署',
-      model_name: 'Qwen2.5-32B',
       audit_strictness: 'loose',
-      system_prompt: '你是一个专业的人事审批审核助手。请根据以下规则对人事申请进行审核，关注HC计划匹配度、审批链完整性和岗位合理性。',
-      context_window: 4096,
-      temperature: 0.3,
+      reasoning_prompt: '你是一个专业的人事审批审核助手。请根据以下规则对人事申请进行审核，关注HC计划匹配度、审批链完整性和岗位合理性。\n\n审核尺度：{{audit_strictness}}\n流程类型：{{process_type}}\n主表数据：{{main_table}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}\n当前节点：{{current_node}}',
+      extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作及置信度\n2. rule_checks：逐条规则校验结果\n3. risk_points：风险点\n4. suggestions：改进建议\n\n原始规则列表：{{rules}}',
     },
     user_permissions: {
       allow_custom_fields: true,
@@ -1409,6 +1517,7 @@ export const useMockData = () => {
       submit_time: '2025-06-10 09:30',
       process_type: '采购审批',
       status: 'pending',
+      current_node: '财务总监审批',
       amount: 156000,
       urgency: 'medium',
     },
@@ -1420,6 +1529,7 @@ export const useMockData = () => {
       submit_time: '2025-06-10 10:15',
       process_type: '费用报销',
       status: 'pending',
+      current_node: '部门经理审批',
       amount: 8500,
       urgency: 'low',
     },
@@ -1431,6 +1541,7 @@ export const useMockData = () => {
       submit_time: '2025-06-10 11:00',
       process_type: '合同审批',
       status: 'pending',
+      current_node: '法务审核',
       amount: 480000,
       urgency: 'high',
     },
@@ -1442,6 +1553,7 @@ export const useMockData = () => {
       submit_time: '2025-06-10 14:20',
       process_type: '人事审批',
       status: 'pending',
+      current_node: 'HR经理审批',
       urgency: 'medium',
     },
     {
@@ -1452,6 +1564,7 @@ export const useMockData = () => {
       submit_time: '2025-06-10 15:45',
       process_type: '预算审批',
       status: 'pending',
+      current_node: '财务总监审批',
       amount: 250000,
       urgency: 'high',
     },
@@ -1463,6 +1576,7 @@ export const useMockData = () => {
       submit_time: '2025-06-09 16:30',
       process_type: '工程审批',
       status: 'pending',
+      current_node: '部门经理审批',
       amount: 320000,
       urgency: 'low',
     },
@@ -1474,6 +1588,7 @@ export const useMockData = () => {
       submit_time: '2025-06-09 14:00',
       process_type: '费用报销',
       status: 'pending',
+      current_node: '财务审核',
       amount: 35000,
       urgency: 'medium',
     },
@@ -1485,6 +1600,7 @@ export const useMockData = () => {
       submit_time: '2025-06-09 11:20',
       process_type: '预算审批',
       status: 'pending',
+      current_node: '总经理审批',
       amount: 120000,
       urgency: 'low',
     },
@@ -1496,6 +1612,7 @@ export const useMockData = () => {
       submit_time: '2025-06-09 09:45',
       process_type: '采购审批',
       status: 'pending',
+      current_node: '财务总监审批',
       amount: 280000,
       urgency: 'high',
     },
@@ -1507,6 +1624,7 @@ export const useMockData = () => {
       submit_time: '2025-06-08 16:30',
       process_type: '人事审批',
       status: 'pending',
+      current_node: 'HR总监审批',
       urgency: 'medium',
     },
     {
@@ -1517,6 +1635,7 @@ export const useMockData = () => {
       submit_time: '2025-06-08 14:10',
       process_type: '合同审批',
       status: 'pending',
+      current_node: '总经理审批',
       amount: 560000,
       urgency: 'high',
     },
@@ -1528,6 +1647,7 @@ export const useMockData = () => {
       submit_time: '2025-06-08 10:00',
       process_type: '工程审批',
       status: 'pending',
+      current_node: '部门经理审批',
       amount: 185000,
       urgency: 'low',
     },
@@ -1536,9 +1656,9 @@ export const useMockData = () => {
   const mockAuditResult: AuditResult = {
     trace_id: 'TR-20250610-A3F8',
     process_id: 'WF-2025-001',
-    recommendation: 'revise',
+    recommendation: 'return',
     score: 72,
-    duration_ms: 1850,
+    duration_ms: 3850,
     details: [
       { rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '采购金额 ¥156,000 未超过部门季度预算上限 ¥200,000', is_locked: true },
       { rule_id: 'R002', rule_name: '审批层级校验', passed: true, reasoning: '金额在 10-20 万区间，需部门经理 + 财务总监双签，审批链完整' },
@@ -1547,10 +1667,33 @@ export const useMockData = () => {
       { rule_id: 'R005', rule_name: '合同条款完整性', passed: true, reasoning: '合同包含付款条件、交付时间、售后条款等必要条款' },
     ],
     ai_reasoning: '该采购申请整体合规性尚可，但存在两个关键问题需要修正：\n\n1. 供应商资质问题：所选供应商未在企业合格供应商名录中登记，存在合规风险。建议申请人补充供应商资质材料或从已认证供应商中选择。\n\n2. 比价流程缺失：根据公司采购管理制度第 12 条，单笔采购金额超过 10 万元需进行竞争性比价（至少 3 家），当前申请仅提供了单一报价。\n\n建议：退回修改，要求补充比价材料和供应商资质证明后重新提交。',
+    // v2 fields
+    action_label: '建议退回',
+    confidence: 0.85,
+    risk_points: ['供应商未在合格名录中', '缺少竞争性比价材料'],
+    suggestions: ['补充供应商资质证明', '提供至少3家供应商报价'],
+    ai_summary: '该采购申请整体合规性尚可，但存在两个关键问题需要修正。',
+    model_used: 'Qwen2.5-72B',
+    interaction_mode: 'two_phase',
+    phase1_duration_ms: 2200,
+    phase2_duration_ms: 1650,
   }
 
-  const mockCronTasks: CronTask[] = [
-    { id: 'CT-BUILTIN-001', cron_expression: '0 9 * * 1-5', task_type: 'batch_audit', is_active: true, last_run_at: '2025-06-10 09:00', next_run_at: '2025-06-11 09:00', created_at: '2025-05-01', success_count: 28, fail_count: 1, is_builtin: true, push_email: 'zhangming@example.com' },
+  const mockBatchAuditResult = {
+    batch_id: 'BATCH-20250610-001',
+    total: 3,
+    completed: 2,
+    failed: 0,
+    status: 'processing' as const,
+    progress_percent: 66,
+    results: [
+      { process_id: 'WF-2025-001', status: 'completed', recommendation: 'return', action_label: '建议退回', score: 72 },
+      { process_id: 'WF-2025-002', status: 'completed', recommendation: 'approve', action_label: '建议通过', score: 88 },
+      { process_id: 'WF-2025-003', status: 'in_progress', recommendation: null, action_label: null, score: null },
+    ],
+  }
+
+  const mockCronTasks: CronTask[] = [    { id: 'CT-BUILTIN-001', cron_expression: '0 9 * * 1-5', task_type: 'batch_audit', is_active: true, last_run_at: '2025-06-10 09:00', next_run_at: '2025-06-11 09:00', created_at: '2025-05-01', success_count: 28, fail_count: 1, is_builtin: true, push_email: 'zhangming@example.com' },
     { id: 'CT-002', cron_expression: '0 18 * * 1-5', task_type: 'daily_report', is_active: true, last_run_at: '2025-06-09 18:00', next_run_at: '2025-06-10 18:00', created_at: '2025-05-01', success_count: 30, fail_count: 0, push_email: 'zhangming@example.com' },
     { id: 'CT-003', cron_expression: '0 10 * * 1', task_type: 'weekly_report', is_active: true, last_run_at: '2025-06-09 10:00', next_run_at: '2025-06-16 10:00', created_at: '2025-05-15', success_count: 4, fail_count: 0, push_email: '' },
     { id: 'CT-004', cron_expression: '0 2 * * *', task_type: 'batch_audit', is_active: false, last_run_at: '2025-06-08 02:00', next_run_at: '-', created_at: '2025-04-20', success_count: 15, fail_count: 3, push_email: '' },
@@ -1828,23 +1971,23 @@ export const useMockData = () => {
 
   // Approved processes - historical, read-only
   const mockApprovedProcesses: OAProcess[] = [
-    { process_id: 'WF-2025-098', title: '年度IT设备采购', applicant: '王强', department: 'IT部', submit_time: '2025-06-09 16:30', process_type: '采购审批', status: 'approved', amount: 320000, urgency: 'medium' },
-    { process_id: 'WF-2025-096', title: '新产品研发立项', applicant: '张明', department: '研发部', submit_time: '2025-06-09 14:10', process_type: '项目审批', status: 'approved', urgency: 'high' },
-    { process_id: 'WF-2025-094', title: '员工培训费用申请', applicant: '赵丽', department: '人力资源部', submit_time: '2025-06-08 17:00', process_type: '费用报销', status: 'approved', amount: 45000, urgency: 'low' },
-    { process_id: 'WF-2025-090', title: '办公家具批量采购', applicant: '刘洋', department: '行政部', submit_time: '2025-06-07 10:00', process_type: '采购审批', status: 'approved', amount: 98000, urgency: 'low' },
-    { process_id: 'WF-2025-088', title: '年度广告投放合同', applicant: '陈伟', department: '市场部', submit_time: '2025-06-06 15:30', process_type: '合同审批', status: 'approved', amount: 750000, urgency: 'high' },
-    { process_id: 'WF-2025-085', title: '销售团队季度奖金发放', applicant: '李芳', department: '销售部', submit_time: '2025-06-06 09:00', process_type: '费用报销', status: 'approved', amount: 180000, urgency: 'medium' },
-    { process_id: 'WF-2025-082', title: '网络安全设备采购', applicant: '王强', department: 'IT部', submit_time: '2025-06-05 14:20', process_type: '采购审批', status: 'approved', amount: 420000, urgency: 'high' },
-    { process_id: 'WF-2025-079', title: '实习生转正审批（3人）', applicant: '赵丽', department: '人力资源部', submit_time: '2025-06-05 11:00', process_type: '人事审批', status: 'approved', urgency: 'medium' },
-    { process_id: 'WF-2025-076', title: '会议室音视频系统升级', applicant: '刘洋', department: '行政部', submit_time: '2025-06-04 16:00', process_type: '工程审批', status: 'approved', amount: 135000, urgency: 'low' },
+    { process_id: 'WF-2025-098', title: '年度IT设备采购', applicant: '王强', department: 'IT部', submit_time: '2025-06-09 16:30', process_type: '采购审批', status: 'approved', current_node: '已完成', amount: 320000, urgency: 'medium' },
+    { process_id: 'WF-2025-096', title: '新产品研发立项', applicant: '张明', department: '研发部', submit_time: '2025-06-09 14:10', process_type: '项目审批', status: 'approved', current_node: '已完成', urgency: 'high' },
+    { process_id: 'WF-2025-094', title: '员工培训费用申请', applicant: '赵丽', department: '人力资源部', submit_time: '2025-06-08 17:00', process_type: '费用报销', status: 'approved', current_node: '已完成', amount: 45000, urgency: 'low' },
+    { process_id: 'WF-2025-090', title: '办公家具批量采购', applicant: '刘洋', department: '行政部', submit_time: '2025-06-07 10:00', process_type: '采购审批', status: 'approved', current_node: '已完成', amount: 98000, urgency: 'low' },
+    { process_id: 'WF-2025-088', title: '年度广告投放合同', applicant: '陈伟', department: '市场部', submit_time: '2025-06-06 15:30', process_type: '合同审批', status: 'approved', current_node: '已完成', amount: 750000, urgency: 'high' },
+    { process_id: 'WF-2025-085', title: '销售团队季度奖金发放', applicant: '李芳', department: '销售部', submit_time: '2025-06-06 09:00', process_type: '费用报销', status: 'approved', current_node: '已完成', amount: 180000, urgency: 'medium' },
+    { process_id: 'WF-2025-082', title: '网络安全设备采购', applicant: '王强', department: 'IT部', submit_time: '2025-06-05 14:20', process_type: '采购审批', status: 'approved', current_node: '已完成', amount: 420000, urgency: 'high' },
+    { process_id: 'WF-2025-079', title: '实习生转正审批（3人）', applicant: '赵丽', department: '人力资源部', submit_time: '2025-06-05 11:00', process_type: '人事审批', status: 'approved', current_node: '已完成', urgency: 'medium' },
+    { process_id: 'WF-2025-076', title: '会议室音视频系统升级', applicant: '刘洋', department: '行政部', submit_time: '2025-06-04 16:00', process_type: '工程审批', status: 'approved', current_node: '已完成', amount: 135000, urgency: 'low' },
   ]
 
   // Rejected processes - historical, read-only
   const mockRejectedProcesses: OAProcess[] = [
-    { process_id: 'WF-2025-097', title: '客户招待费报销', applicant: '李芳', department: '销售部', submit_time: '2025-06-09 15:20', process_type: '费用报销', status: 'rejected', amount: 28000, urgency: 'medium' },
-    { process_id: 'WF-2025-091', title: '未经审批的外包合同', applicant: '陈伟', department: '市场部', submit_time: '2025-06-08 10:00', process_type: '合同审批', status: 'rejected', amount: 150000, urgency: 'high' },
-    { process_id: 'WF-2025-087', title: '超标准差旅费报销', applicant: '张明', department: '研发部', submit_time: '2025-06-07 09:30', process_type: '费用报销', status: 'rejected', amount: 42000, urgency: 'low' },
-    { process_id: 'WF-2025-083', title: '未备案供应商采购申请', applicant: '刘洋', department: '行政部', submit_time: '2025-06-06 11:00', process_type: '采购审批', status: 'rejected', amount: 95000, urgency: 'medium' },
+    { process_id: 'WF-2025-097', title: '客户招待费报销', applicant: '李芳', department: '销售部', submit_time: '2025-06-09 15:20', process_type: '费用报销', status: 'rejected', current_node: '已驳回', amount: 28000, urgency: 'medium' },
+    { process_id: 'WF-2025-091', title: '未经审批的外包合同', applicant: '陈伟', department: '市场部', submit_time: '2025-06-08 10:00', process_type: '合同审批', status: 'rejected', current_node: '已驳回', amount: 150000, urgency: 'high' },
+    { process_id: 'WF-2025-087', title: '超标准差旅费报销', applicant: '张明', department: '研发部', submit_time: '2025-06-07 09:30', process_type: '费用报销', status: 'rejected', current_node: '已驳回', amount: 42000, urgency: 'low' },
+    { process_id: 'WF-2025-083', title: '未备案供应商采购申请', applicant: '刘洋', department: '行政部', submit_time: '2025-06-06 11:00', process_type: '采购审批', status: 'rejected', current_node: '已驳回', amount: 95000, urgency: 'medium' },
   ]
 
   // Historical audit results keyed by process_id
@@ -1857,6 +2000,10 @@ export const useMockData = () => {
         { rule_id: 'R003', rule_name: '供应商资质校验', passed: true, reasoning: '供应商在合格名录中，资质有效期内' },
       ],
       ai_reasoning: '该采购申请完全符合公司采购管理制度要求，预算合理、审批链完整、供应商资质齐全。建议通过。',
+      action_label: '建议通过', confidence: 0.95, risk_points: [],
+      suggestions: ['可考虑在合同中增加售后服务条款'],
+      ai_summary: '该采购申请完全符合公司采购管理制度要求。',
+      model_used: 'Qwen2.5-72B', interaction_mode: 'two_phase', phase1_duration_ms: 850, phase2_duration_ms: 570,
     },
     'WF-2025-096': {
       trace_id: 'TR-20250609-D3E4', process_id: 'WF-2025-096', recommendation: 'approve', score: 88, duration_ms: 1680,
@@ -1866,6 +2013,10 @@ export const useMockData = () => {
         { rule_id: 'R012', rule_name: '人员配置合理性', passed: false, reasoning: '项目团队缺少测试工程师角色，但不影响立项' },
       ],
       ai_reasoning: '研发立项申请整体合规，市场调研充分，预算合理。建议补充测试人员配置后通过。',
+      action_label: '建议通过', confidence: 0.88, risk_points: ['项目团队缺少测试工程师角色'],
+      suggestions: ['建议在项目启动前补充测试工程师配置'],
+      ai_summary: '研发立项申请整体合规，市场调研充分，预算合理。',
+      model_used: 'Qwen2.5-72B', interaction_mode: 'two_phase', phase1_duration_ms: 1020, phase2_duration_ms: 660,
     },
     'WF-2025-094': {
       trace_id: 'TR-20250608-F5G6', process_id: 'WF-2025-094', recommendation: 'approve', score: 91, duration_ms: 1150,
@@ -1874,6 +2025,10 @@ export const useMockData = () => {
         { rule_id: 'R004', rule_name: '培训计划审核', passed: true, reasoning: '培训内容与岗位需求匹配' },
       ],
       ai_reasoning: '员工培训费用申请合规，培训内容与业务需求高度相关，费用在标准范围内。建议通过。',
+      action_label: '建议通过', confidence: 0.92, risk_points: [],
+      suggestions: [],
+      ai_summary: '员工培训费用申请合规，费用在标准范围内。',
+      model_used: 'Qwen2.5-72B', interaction_mode: 'single_pass', phase1_duration_ms: 1150, phase2_duration_ms: 0,
     },
     'WF-2025-097': {
       trace_id: 'TR-20250609-H7I8', process_id: 'WF-2025-097', recommendation: 'reject', score: 35, duration_ms: 1320,
@@ -1883,6 +2038,10 @@ export const useMockData = () => {
         { rule_id: 'R007', rule_name: '发票合规性', passed: false, reasoning: '部分发票日期与申报时间不符' },
       ],
       ai_reasoning: '该报销申请存在多项严重违规：费用严重超标、材料不完整、发票存疑。建议驳回并要求重新整理材料。',
+      action_label: '建议驳回', confidence: 0.93, risk_points: ['招待费用超出标准上限200%', '缺少客户拜访记录', '发票日期存疑'],
+      suggestions: ['重新整理合规发票', '补充客户拜访记录', '按公司标准重新申报'],
+      ai_summary: '该报销申请存在多项严重违规，建议驳回。',
+      model_used: 'Qwen2.5-72B', interaction_mode: 'two_phase', phase1_duration_ms: 780, phase2_duration_ms: 540,
     },
     'WF-2025-091': {
       trace_id: 'TR-20250608-J9K0', process_id: 'WF-2025-091', recommendation: 'reject', score: 22, duration_ms: 1560,
@@ -1892,6 +2051,10 @@ export const useMockData = () => {
         { rule_id: 'R009', rule_name: '预算审批', passed: false, reasoning: '合同金额未纳入年度预算' },
       ],
       ai_reasoning: '该合同存在严重合规问题：未经法务审核即签署、供应商未准入、预算未审批。建议驳回并启动合规调查。',
+      action_label: '建议驳回', confidence: 0.97, risk_points: ['未经法务审核', '供应商未通过准入评审', '合同金额未纳入预算'],
+      suggestions: ['启动合规调查', '补充法务审核流程', '完成供应商准入评审'],
+      ai_summary: '该合同存在严重合规问题，建议驳回并启动合规调查。',
+      model_used: 'Qwen2.5-72B', interaction_mode: 'two_phase', phase1_duration_ms: 950, phase2_duration_ms: 610,
     },
   }
 
@@ -2112,11 +2275,11 @@ export const useMockData = () => {
   // These are completed processes (final result = approved) with multi-round audit chains
   // ============================================================
   const mockArchivedOAProcesses: OAProcess[] = [
-    { process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', submit_time: '2025-04-15 09:00', process_type: '采购审批', status: 'archived', amount: 1200000, urgency: 'high' },
-    { process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', applicant: '陈伟', department: '市场部', submit_time: '2025-03-20 11:00', process_type: '费用报销', status: 'archived', amount: 85000, urgency: 'medium' },
-    { process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', submit_time: '2025-02-10 14:00', process_type: '合同审批', status: 'archived', amount: 680000, urgency: 'high' },
-    { process_id: 'WF-2025-012', title: '新员工批量入职审批 - 2025春招', applicant: '赵丽', department: '人力资源部', submit_time: '2025-01-20 09:00', process_type: '人事审批', status: 'archived', urgency: 'low' },
-    { process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', submit_time: '2025-01-10 10:00', process_type: '工程审批', status: 'archived', amount: 450000, urgency: 'medium' },
+    { process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', submit_time: '2025-04-15 09:00', process_type: '采购审批', status: 'archived', current_node: '已归档', amount: 1200000, urgency: 'high' },
+    { process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', applicant: '陈伟', department: '市场部', submit_time: '2025-03-20 11:00', process_type: '费用报销', status: 'archived', current_node: '已归档', amount: 85000, urgency: 'medium' },
+    { process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', submit_time: '2025-02-10 14:00', process_type: '合同审批', status: 'archived', current_node: '已归档', amount: 680000, urgency: 'high' },
+    { process_id: 'WF-2025-012', title: '新员工批量入职审批 - 2025春招', applicant: '赵丽', department: '人力资源部', submit_time: '2025-01-20 09:00', process_type: '人事审批', status: 'archived', current_node: '已归档', urgency: 'low' },
+    { process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', submit_time: '2025-01-10 10:00', process_type: '工程审批', status: 'archived', current_node: '已归档', amount: 450000, urgency: 'medium' },
   ]
 
   // Multi-round audit chain snapshots for archived processes (final round always approve)
@@ -2377,6 +2540,7 @@ export const useMockData = () => {
     mockSystemGeneralConfig: { ...mockSystemGeneralConfig },
     mockUserSecurityInfo,
     mockUserLocalePrefs,
+    mockBatchAuditResult,
   }
 }
 

@@ -23,6 +23,12 @@ import {
   AuditOutlined,
   SafetyCertificateOutlined,
   TeamOutlined,
+  NodeIndexOutlined,
+  SearchOutlined,
+  SwapRightOutlined,
+  CloseOutlined,
+  SaveOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig, FlowRuleConfig } from '~/composables/useMockData'
@@ -69,7 +75,10 @@ const cronPermissionLabels = computed(() => ({
 
 const cronActiveTab = ref('template')
 
-const handleSaveCronConfig = () => {
+const handleSaveCronConfig = async () => {
+  savingCron.value = true
+  await new Promise(r => setTimeout(r, 800))
+  savingCron.value = false
   message.success(t('admin.ruleConfig.cronSaved'))
 }
 
@@ -78,7 +87,7 @@ const selectedProcessId = ref(processConfigs.value[0]?.id || '')
 
 // ===== Add new process =====
 const showAddProcess = ref(false)
-const newProcessForm = ref({ process_type: '', flow_path: '' })
+const newProcessForm = ref({ process_type: '', main_table_name: '' })
 
 const handleAddProcess = () => {
   if (!newProcessForm.value.process_type.trim()) {
@@ -88,18 +97,15 @@ const handleAddProcess = () => {
   const newConfig: ProcessAuditConfig = {
     id: `PAC-${Date.now()}`,
     process_type: newProcessForm.value.process_type.trim(),
-    flow_path: newProcessForm.value.flow_path.trim() || t('admin.ruleConfig.pending'),
+    flow_path: newProcessForm.value.main_table_name.trim() || t('admin.ruleConfig.pending'),
     field_mode: 'selected',
     fields: [],
     rules: [],
     kb_mode: 'rules_only',
     ai_config: {
-      ai_provider: '本地部署',
-      model_name: 'Qwen2.5-72B',
       audit_strictness: 'standard',
-      system_prompt: '',
-      context_window: 8192,
-      temperature: 0.3,
+      reasoning_prompt: '',
+      extraction_prompt: '',
     },
     user_permissions: {
       allow_custom_fields: false,
@@ -110,7 +116,7 @@ const handleAddProcess = () => {
   processConfigs.value.push(newConfig)
   selectedProcessId.value = newConfig.id
   showAddProcess.value = false
-  newProcessForm.value = { process_type: '', flow_path: '' }
+  newProcessForm.value = { process_type: '', main_table_name: '' }
   message.success(t('admin.ruleConfig.processAdded'))
 }
 const activeTab = ref('fields')
@@ -120,7 +126,7 @@ const selectedConfig = computed(() =>
 )
 
 // ===== Field config =====
-const fieldTypeLabels = computed(() => ({
+const fieldTypeLabels = computed<Record<string, string>>(() => ({
   text: t('fieldType.text'), number: t('fieldType.number'), date: t('fieldType.date'), select: t('fieldType.select'), textarea: t('fieldType.textarea'), file: t('fieldType.file'),
 }))
 
@@ -129,9 +135,106 @@ const toggleFieldSelection = (field: ProcessField) => {
   field.selected = !field.selected
 }
 
-const selectedFieldCount = computed(() =>
-  selectedConfig.value?.fields.filter(f => f.selected).length || 0
+// ===== Field picker modal =====
+const showFieldPicker = ref(false)
+const fieldSearchQuery = ref('')
+
+// All available fields (main + detail tables) for the current process, grouped by table
+interface PickerField {
+  field_key: string; field_name: string; field_type: string; selected: boolean
+  source: string; sourceLabel: string
+}
+interface FieldGroup {
+  source: string; sourceLabel: string; fields: PickerField[]
+}
+
+const groupedAvailableFields = computed<FieldGroup[]>(() => {
+  if (!selectedConfig.value) return []
+  const groups: FieldGroup[] = []
+  const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
+  groups.push({
+    source: 'main',
+    sourceLabel: t('admin.ruleConfig.mainTableFields'),
+    fields: mainFields.map(f => ({ ...f, source: 'main', sourceLabel: t('admin.ruleConfig.mainTableFields') })),
+  })
+  if (selectedConfig.value.detail_tables) {
+    selectedConfig.value.detail_tables.forEach((dt, idx) => {
+      groups.push({
+        source: dt.table_name,
+        sourceLabel: `${t('admin.ruleConfig.detailTableLabel')} ${idx + 1}`,
+        fields: dt.fields.map(f => ({ ...f, source: dt.table_name, sourceLabel: `${t('admin.ruleConfig.detailTableLabel')} ${idx + 1}` })),
+      })
+    })
+  }
+  return groups
+})
+
+const allAvailableFields = computed<PickerField[]>(() =>
+  groupedAvailableFields.value.flatMap(g => g.fields)
 )
+
+const selectedFieldCount = computed(() =>
+  allAvailableFields.value.filter(f => f.selected).length
+)
+
+// Filtered unselected fields grouped by table (left side of picker)
+const groupedUnselectedFields = computed<FieldGroup[]>(() => {
+  const q = fieldSearchQuery.value.toLowerCase().trim()
+  return groupedAvailableFields.value
+    .map(g => ({
+      ...g,
+      fields: g.fields.filter(f => {
+        if (f.selected) return false
+        if (!q) return true
+        return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
+      }),
+    }))
+    .filter(g => g.fields.length > 0)
+})
+
+// Selected fields grouped by table (right side of picker)
+const groupedSelectedFields = computed<FieldGroup[]>(() =>
+  groupedAvailableFields.value
+    .map(g => ({ ...g, fields: g.fields.filter(f => f.selected) }))
+    .filter(g => g.fields.length > 0)
+)
+
+const openFieldPicker = () => {
+  fieldSearchQuery.value = ''
+  showFieldPicker.value = true
+}
+
+const pickField = (field: { field_key: string; source: string }) => {
+  if (!selectedConfig.value) return
+  // Find and toggle in main_fields
+  const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
+  const mf = mainFields.find(f => f.field_key === field.field_key)
+  if (mf && field.source === 'main') { mf.selected = true; return }
+  // Find in detail tables
+  if (selectedConfig.value.detail_tables) {
+    for (const dt of selectedConfig.value.detail_tables) {
+      if (dt.table_name === field.source) {
+        const df = dt.fields.find(f => f.field_key === field.field_key)
+        if (df) { df.selected = true; return }
+      }
+    }
+  }
+}
+
+const unpickField = (field: { field_key: string; source: string }) => {
+  if (!selectedConfig.value) return
+  const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
+  const mf = mainFields.find(f => f.field_key === field.field_key)
+  if (mf && field.source === 'main') { mf.selected = false; return }
+  if (selectedConfig.value.detail_tables) {
+    for (const dt of selectedConfig.value.detail_tables) {
+      if (dt.table_name === field.source) {
+        const df = dt.fields.find(f => f.field_key === field.field_key)
+        if (df) { df.selected = false; return }
+      }
+    }
+  }
+}
 
 // ===== Rules config =====
 const scopeConfig = computed(() => ({
@@ -156,7 +259,7 @@ const handleSaveRule = (rule: any) => {
   } else {
     selectedConfig.value.rules.push({
       id: `R${Date.now()}`, process_type: selectedConfig.value.process_type,
-      ...rule, enabled: true, source: 'manual' as const,
+      priority: 50, ...rule, enabled: true, source: 'manual' as const,
     })
   }
   showRuleEditor.value = false
@@ -182,9 +285,9 @@ const kbModes = computed(() => [
 
 // ===== AI config =====
 const strictnessOptions = computed(() => [
-  { value: 'strict', label: t('admin.ruleConfig.strict'), desc: t('admin.ruleConfig.strictDesc') },
-  { value: 'standard', label: t('admin.ruleConfig.standard'), desc: t('admin.ruleConfig.standardDesc') },
-  { value: 'loose', label: t('admin.ruleConfig.loose'), desc: t('admin.ruleConfig.looseDesc') },
+  { value: 'strict', label: t('admin.ruleConfig.strict'), desc: t('admin.ruleConfig.strictDescNew') },
+  { value: 'standard', label: t('admin.ruleConfig.standard'), desc: t('admin.ruleConfig.standardDescNew') },
+  { value: 'loose', label: t('admin.ruleConfig.loose'), desc: t('admin.ruleConfig.looseDescNew') },
 ])
 
 const aiProviders = computed(() => [
@@ -192,9 +295,49 @@ const aiProviders = computed(() => [
   { value: '云端API', label: t('admin.ruleConfig.cloudAPI') },
 ])
 
-const modelOptions: Record<string, string[]> = {
-  '本地部署': ['Qwen2.5-72B', 'Qwen2.5-32B', 'ChatGLM4-9B', 'DeepSeek-V3'],
-  '云端API': ['GPT-4o', 'GPT-4o-mini', 'Claude-3.5-Sonnet', 'Gemini-2.0-Flash'],
+const { mockAIModelConfigs } = useMockData()
+
+// Build model options from mockAIModelConfigs
+const modelOptions = computed(() => {
+  const map: Record<string, string[]> = {}
+  for (const m of mockAIModelConfigs) {
+    const key = m.type === 'local' ? '本地部署' : '云端API'
+    if (!map[key]) map[key] = []
+    map[key].push(m.model_name)
+  }
+  return map
+})
+
+const interactionModeOptions = computed(() => [
+  { value: 'two_phase', label: t('admin.ruleConfig.twoPhase') },
+  { value: 'single_pass', label: t('admin.ruleConfig.singlePass') },
+])
+
+// Prompt variables with descriptions for reasoning phase
+const reasoningPromptVariables = computed(() => [
+  { key: '{{process_type}}', desc: t('admin.ruleConfig.varProcessTypeDesc') },
+  { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
+  { key: '{{detail_tables}}', desc: t('admin.ruleConfig.varDetailTablesDesc') },
+  { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
+  { key: '{{flow_history}}', desc: t('admin.ruleConfig.varFlowHistoryDesc') },
+  { key: '{{flow_graph}}', desc: t('admin.ruleConfig.varFlowGraphDesc') },
+  { key: '{{current_node}}', desc: t('admin.ruleConfig.varCurrentNodeDesc') },
+  { key: '{{audit_strictness}}', desc: t('admin.ruleConfig.varAuditStrictnessDesc') },
+])
+
+// Prompt variables for extraction phase
+const extractionPromptVariables = computed(() => [
+  { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
+])
+
+const insertReasoningVariable = (variable: string) => {
+  if (!selectedConfig.value) return
+  selectedConfig.value.ai_config.reasoning_prompt = (selectedConfig.value.ai_config.reasoning_prompt || '') + variable
+}
+
+const insertExtractionVariable = (variable: string) => {
+  if (!selectedConfig.value) return
+  selectedConfig.value.ai_config.extraction_prompt = (selectedConfig.value.ai_config.extraction_prompt || '') + variable
 }
 
 // ===== User permissions =====
@@ -296,7 +439,10 @@ const archivePermissionLabels = computed(() => ({
   allow_modify_strictness: { label: t('admin.ruleConfig.modReviewStrictness'), desc: t('admin.ruleConfig.modReviewStrictnessDesc') },
 }))
 
-const handleSaveArchiveConfig = () => {
+const handleSaveArchiveConfig = async () => {
+  savingArchive.value = true
+  await new Promise(r => setTimeout(r, 800))
+  savingArchive.value = false
   message.success(t('admin.ruleConfig.archiveSaved'))
 }
 
@@ -306,7 +452,14 @@ const permissionLabels = computed(() => ({
   allow_modify_strictness: { label: t('admin.ruleConfig.allowModStrictness'), desc: t('admin.ruleConfig.allowModStrictnessDesc') },
 }))
 
-const handleSave = () => {
+const saving = ref(false)
+const savingCron = ref(false)
+const savingArchive = ref(false)
+
+const handleSave = async () => {
+  saving.value = true
+  await new Promise(r => setTimeout(r, 800))
+  saving.value = false
   message.success(t('admin.ruleConfig.configSaved'))
 }
 </script>
@@ -357,7 +510,7 @@ const handleSave = () => {
           @click="selectedProcessId = cfg.id"
         >
           <div class="process-nav-name">{{ cfg.process_type }}</div>
-          <div class="process-nav-path">{{ cfg.flow_path }}</div>
+          <div class="process-nav-path">{{ cfg.main_table_name || t('admin.ruleConfig.pending') }}</div>
         </div>
       </div>
 
@@ -365,7 +518,7 @@ const handleSave = () => {
       <div v-if="selectedConfig" class="config-panel">
         <div class="config-panel-header">
           <h2 class="config-panel-title">{{ selectedConfig.process_type }}</h2>
-          <p class="config-panel-subtitle">{{ selectedConfig.flow_path }}</p>
+          <p class="config-panel-subtitle">{{ selectedConfig.main_table_name || t('admin.ruleConfig.pending') }}</p>
         </div>
 
         <!-- Sub tabs -->
@@ -421,33 +574,41 @@ const handleSave = () => {
             </div>
           </div>
 
-          <div class="field-count" v-if="selectedConfig.field_mode === 'selected'">
-            已选 {{ selectedFieldCount }} / {{ selectedConfig.fields.length }} 个字段
-          </div>
+          <!-- Selected fields display + picker trigger -->
+          <template v-if="selectedConfig.field_mode === 'selected'">
+            <div class="field-picker-toolbar">
+              <span class="field-count">{{ t('admin.ruleConfig.selectedCount', [`${selectedFieldCount}`, `${allAvailableFields.length}`]) }}</span>
+              <a-button type="primary" @click="openFieldPicker">
+                <AppstoreOutlined /> {{ t('admin.ruleConfig.selectFieldsModal') }}
+              </a-button>
+            </div>
 
-          <div class="field-grid">
-            <div
-              v-for="field in selectedConfig.fields"
-              :key="field.field_key"
-              class="field-card"
-              :class="{
-                'field-card--selected': field.selected || selectedConfig.field_mode === 'all',
-                'field-card--disabled': selectedConfig.field_mode === 'all',
-              }"
-              @click="toggleFieldSelection(field)"
-            >
-              <div class="field-card-check">
-                <CheckOutlined v-if="field.selected || selectedConfig.field_mode === 'all'" />
-              </div>
-              <div class="field-card-info">
-                <div class="field-card-name">{{ field.field_name }}</div>
-                <div class="field-card-meta">
-                  <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                  <span class="field-key">{{ field.field_key }}</span>
+            <!-- Selected fields grouped by table -->
+            <template v-if="groupedSelectedFields.length">
+              <div v-for="group in groupedSelectedFields" :key="group.source" class="selected-field-group">
+                <div class="field-group-label">{{ group.sourceLabel }}</div>
+                <div class="selected-fields-display">
+                  <div
+                    v-for="field in group.fields"
+                    :key="field.field_key + field.source"
+                    class="selected-field-tag"
+                  >
+                    <span class="selected-field-name">{{ field.field_name }}</span>
+                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                  </div>
                 </div>
               </div>
+            </template>
+            <div v-else class="field-empty-hint">
+              {{ t('admin.ruleConfig.noFieldsSelected') }}
             </div>
-          </div>
+          </template>
+
+          <template v-else>
+            <div class="field-count" style="margin-top: 8px;">
+              {{ t('admin.ruleConfig.allFieldsHint') }}
+            </div>
+          </template>
         </div>
 
         <!-- ========== Rules tab ========== -->
@@ -505,7 +666,9 @@ const handleSave = () => {
                   <div class="rule-card-meta">
                     <span v-if="rule.source === 'file_import'" class="rule-source-tag">文件导入</span>
                     <span v-else class="rule-source-tag rule-source-tag--manual">手工添加</span>
-                    <span>优先级: {{ rule.priority }}</span>
+                    <span v-if="(rule as any).related_flow" class="rule-flow-tag">
+                      <NodeIndexOutlined /> {{ t('admin.ruleConfig.relatedFlow') }}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -525,29 +688,12 @@ const handleSave = () => {
           <div class="section-header">
             <div>
               <h4 class="section-title">{{ t('admin.ruleConfig.aiTitle') }}</h4>
-              <p class="section-desc">{{ t('admin.ruleConfig.aiDesc') }}</p>
+              <p class="section-desc">{{ t('admin.ruleConfig.aiDescNew') }}</p>
             </div>
           </div>
 
           <div class="ai-form">
-            <div class="ai-form-row">
-              <div class="ai-form-group">
-                <label class="ai-form-label">{{ t('admin.ruleConfig.aiProvider') }}</label>
-                <a-select v-model:value="selectedConfig.ai_config.ai_provider" style="width: 100%;" size="large" :placeholder="t('admin.ruleConfig.selectProvider')">
-                  <a-select-option v-for="p in aiProviders" :key="p.value" :value="p.value">{{ p.label }}</a-select-option>
-                </a-select>
-              </div>
-              <div class="ai-form-group">
-                <label class="ai-form-label">{{ t('admin.ruleConfig.model') }}</label>
-                <a-select v-model:value="selectedConfig.ai_config.model_name" style="width: 100%;" size="large" :placeholder="t('admin.ruleConfig.selectModel')">
-                  <a-select-option
-                    v-for="m in (modelOptions[selectedConfig.ai_config.ai_provider] || [])"
-                    :key="m" :value="m"
-                  >{{ m }}</a-select-option>
-                </a-select>
-              </div>
-            </div>
-
+            <!-- Audit strictness -->
             <div class="ai-form-group">
               <label class="ai-form-label">{{ t('admin.ruleConfig.strictness') }}</label>
               <div class="strictness-options">
@@ -565,39 +711,57 @@ const handleSave = () => {
                   </div>
                 </div>
               </div>
+              <div class="strictness-hint">{{ t('admin.ruleConfig.strictnessHint') }}</div>
             </div>
 
+            <!-- Reasoning prompt -->
             <div class="ai-form-group">
-              <label class="ai-form-label">{{ t('admin.ruleConfig.systemPrompt') }}</label>
+              <div class="prompt-section-header">
+                <div class="prompt-section-title">
+                  <span class="prompt-phase-badge prompt-phase-badge--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
+                  <label class="ai-form-label">{{ t('admin.ruleConfig.reasoningPrompt') }}</label>
+                </div>
+                <div class="prompt-section-desc">{{ t('admin.ruleConfig.reasoningPromptDesc') }}</div>
+              </div>
+              <div class="prompt-variables">
+                <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
+                <a-tooltip v-for="v in reasoningPromptVariables" :key="v.key" :title="v.desc">
+                  <button
+                    class="variable-btn"
+                    @click="insertReasoningVariable(v.key)"
+                  >{{ v.key }}</button>
+                </a-tooltip>
+              </div>
               <a-textarea
-                v-model:value="selectedConfig.ai_config.system_prompt"
-                :rows="6"
-                :placeholder="t('admin.ruleConfig.promptPlaceholder')"
+                v-model:value="selectedConfig.ai_config.reasoning_prompt"
+                :rows="8"
+                :placeholder="t('admin.ruleConfig.reasoningPromptPlaceholder')"
               />
             </div>
 
-            <div class="ai-form-row">
-              <div class="ai-form-group">
-                <label class="ai-form-label">上下文窗口</label>
-                <a-input-number
-                  v-model:value="selectedConfig.ai_config.context_window"
-                  :min="1024" :max="131072" :step="1024"
-                  style="width: 100%;" size="large"
-                  :formatter="(v: any) => `${v} tokens`"
-                />
-              </div>
-              <div class="ai-form-group">
-                <label class="ai-form-label">Temperature</label>
-                <a-slider
-                  v-model:value="selectedConfig.ai_config.temperature"
-                  :min="0" :max="1" :step="0.1"
-                />
-                <div class="slider-labels">
-                  <span>{{ t('admin.ruleConfig.precise') }}</span>
-                  <span>{{ t('admin.ruleConfig.current') }}: {{ selectedConfig.ai_config.temperature }}</span>
-                  <span>{{ t('admin.ruleConfig.creative') }}</span>
+            <!-- Extraction prompt -->
+            <div class="ai-form-group">
+              <div class="prompt-section-header">
+                <div class="prompt-section-title">
+                  <span class="prompt-phase-badge prompt-phase-badge--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
+                  <label class="ai-form-label">{{ t('admin.ruleConfig.extractionPrompt') }}</label>
                 </div>
+                <div class="prompt-section-desc">{{ t('admin.ruleConfig.extractionPromptDesc') }}</div>
               </div>
+              <div class="prompt-variables">
+                <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
+                <a-tooltip v-for="v in extractionPromptVariables" :key="v.key" :title="v.desc">
+                  <button
+                    class="variable-btn"
+                    @click="insertExtractionVariable(v.key)"
+                  >{{ v.key }}</button>
+                </a-tooltip>
+              </div>
+              <a-textarea
+                v-model:value="selectedConfig.ai_config.extraction_prompt"
+                :rows="6"
+                :placeholder="t('admin.ruleConfig.extractionPromptPlaceholder')"
+              />
             </div>
           </div>
         </div>
@@ -631,7 +795,11 @@ const handleSave = () => {
         </div>
 
         <div class="config-actions">
-          <a-button type="primary" size="large" @click="handleSave">{{ t('admin.ruleConfig.saveConfig') }}</a-button>
+          <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
+            <LoadingOutlined v-if="saving" spin />
+            <SaveOutlined v-else />
+            {{ t('admin.ruleConfig.saveConfig') }}
+          </a-button>
         </div>
       </div>
 
@@ -660,10 +828,90 @@ const handleSave = () => {
         <a-form-item :label="t('admin.ruleConfig.processName')" required>
           <a-input v-model:value="newProcessForm.process_type" :placeholder="t('admin.ruleConfig.processNamePlaceholder')" />
         </a-form-item>
-        <a-form-item :label="t('admin.ruleConfig.flowPath')">
-          <a-input v-model:value="newProcessForm.flow_path" :placeholder="t('admin.ruleConfig.flowPathPlaceholder')" />
+        <a-form-item :label="t('admin.ruleConfig.mainTableName')">
+          <a-input v-model:value="newProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" />
         </a-form-item>
       </a-form>
+    </a-modal>
+
+    <!-- Field picker modal -->
+    <a-modal
+      v-model:open="showFieldPicker"
+      :title="t('admin.ruleConfig.selectFieldsModal')"
+      :width="720"
+      :footer="null"
+      @cancel="showFieldPicker = false"
+    >
+      <div class="field-picker-modal">
+        <div class="field-picker-left">
+          <div class="field-picker-panel-header">
+            <span>{{ t('admin.ruleConfig.availableFields') }}</span>
+          </div>
+          <div class="field-picker-search">
+            <a-input
+              v-model:value="fieldSearchQuery"
+              :placeholder="t('admin.ruleConfig.searchFieldPlaceholder')"
+              allow-clear
+              size="small"
+            >
+              <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+            </a-input>
+          </div>
+          <div class="field-picker-list">
+            <template v-for="group in groupedUnselectedFields" :key="group.source">
+              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
+              <div
+                v-for="field in group.fields"
+                :key="field.field_key + field.source"
+                class="field-picker-item"
+                @click="pickField(field)"
+              >
+                <div class="field-picker-item-info">
+                  <div class="field-picker-item-name">{{ field.field_name }}</div>
+                  <div class="field-picker-item-meta">
+                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                    <span class="field-key">{{ field.field_key }}</span>
+                  </div>
+                </div>
+                <SwapRightOutlined class="field-picker-arrow" />
+              </div>
+            </template>
+            <div v-if="!groupedUnselectedFields.length" class="field-picker-empty">
+              {{ fieldSearchQuery ? t('admin.ruleConfig.noSearchResult') : t('admin.ruleConfig.allFieldsAdded') }}
+            </div>
+          </div>
+        </div>
+        <div class="field-picker-right">
+          <div class="field-picker-panel-header">
+            <span>{{ t('admin.ruleConfig.selectedFields') }}</span>
+            <span class="field-picker-count">{{ selectedFieldCount }}</span>
+          </div>
+          <div class="field-picker-list">
+            <template v-for="group in groupedSelectedFields" :key="group.source">
+              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
+              <div
+                v-for="field in group.fields"
+                :key="field.field_key + field.source"
+                class="field-picker-item field-picker-item--selected"
+              >
+                <div class="field-picker-item-info">
+                  <div class="field-picker-item-name">{{ field.field_name }}</div>
+                  <div class="field-picker-item-meta">
+                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                    <span class="field-key">{{ field.field_key }}</span>
+                  </div>
+                </div>
+                <button class="field-picker-remove" @click="unpickField(field)">
+                  <CloseOutlined />
+                </button>
+              </div>
+            </template>
+            <div v-if="!groupedSelectedFields.length" class="field-picker-empty">
+              {{ t('admin.ruleConfig.noFieldsSelected') }}
+            </div>
+          </div>
+        </div>
+      </div>
     </a-modal>
 
     <!-- ==================== 定时任务配置 ==================== -->
@@ -864,7 +1112,11 @@ const handleSave = () => {
         </div>
 
         <div class="config-actions">
-          <a-button type="primary" size="large" @click="handleSaveCronConfig">保存配置</a-button>
+          <a-button type="primary" size="large" :disabled="savingCron" @click="handleSaveCronConfig">
+            <LoadingOutlined v-if="savingCron" spin />
+            <SaveOutlined v-else />
+            保存配置
+          </a-button>
         </div>
       </div>
 
@@ -1035,7 +1287,6 @@ const handleSave = () => {
                   <div class="rule-card-meta">
                     <span v-if="rule.source === 'file_import'" class="rule-source-tag">文件导入</span>
                     <span v-else class="rule-source-tag rule-source-tag--manual">手工添加</span>
-                    <span>优先级: {{ rule.priority }}</span>
                   </div>
                 </div>
               </div>
@@ -1080,7 +1331,6 @@ const handleSave = () => {
                   <div class="rule-card-meta">
                     <span v-if="rule.source === 'file_import'" class="rule-source-tag">文件导入</span>
                     <span v-else class="rule-source-tag rule-source-tag--manual">手工添加</span>
-                    <span>优先级: {{ rule.priority }}</span>
                   </div>
                 </div>
               </div>
@@ -1206,7 +1456,11 @@ const handleSave = () => {
         </div>
 
         <div class="config-actions">
-          <a-button type="primary" size="large" @click="handleSaveArchiveConfig">保存配置</a-button>
+          <a-button type="primary" size="large" :disabled="savingArchive" @click="handleSaveArchiveConfig">
+            <LoadingOutlined v-if="savingArchive" spin />
+            <SaveOutlined v-else />
+            保存配置
+          </a-button>
         </div>
       </div>
 
@@ -1533,4 +1787,116 @@ const handleSave = () => {
   flex-shrink: 0; transition: all var(--transition-fast);
 }
 .push-format-option--active .push-format-radio { border-color: var(--color-primary); border-width: 5px; }
+
+.field-group-label {
+  font-size: 13px; font-weight: 600; color: var(--color-text-secondary);
+  margin: 16px 0 8px; padding-left: 4px;
+  border-left: 3px solid var(--color-primary);
+}
+.rule-flow-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 500; padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-info-bg); color: var(--color-info);
+}
+.prompt-label-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 6px; flex-wrap: wrap; gap: 8px;
+}
+.prompt-variables { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.prompt-variables-hint { font-size: 12px; color: var(--color-text-tertiary); }
+.variable-btn {
+  font-size: 11px; font-family: monospace; padding: 2px 8px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  background: var(--color-bg-hover); color: var(--color-primary);
+  cursor: pointer; transition: all var(--transition-fast);
+}
+.variable-btn:hover { background: var(--color-primary-bg); border-color: var(--color-primary); }
+
+/* Prompt section styles */
+.prompt-section-header { margin-bottom: 8px; }
+.prompt-section-title { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.prompt-section-desc { font-size: 12px; color: var(--color-text-tertiary); line-height: 1.5; }
+.prompt-phase-badge {
+  display: inline-flex; align-items: center; font-size: 11px; font-weight: 600;
+  padding: 2px 10px; border-radius: var(--radius-full); white-space: nowrap;
+}
+.prompt-phase-badge--reasoning { background: var(--color-primary-bg); color: var(--color-primary); }
+.prompt-phase-badge--extraction { background: var(--color-info-bg); color: var(--color-info); }
+.strictness-hint {
+  margin-top: 8px; font-size: 12px; color: var(--color-text-tertiary);
+  padding: 8px 12px; background: var(--color-bg-hover); border-radius: var(--radius-sm);
+  line-height: 1.5;
+}
+
+/* Field picker toolbar */
+.field-picker-toolbar {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+}
+
+/* Selected fields display */
+.selected-fields-display {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.selected-field-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: var(--radius-md);
+  background: var(--color-primary-bg); border: 1px solid var(--color-primary-lighter);
+  font-size: 13px; color: var(--color-text-primary);
+}
+.selected-field-name { font-weight: 500; }
+.selected-field-group { margin-bottom: 12px; }
+.field-empty-hint {
+  padding: 24px; text-align: center; color: var(--color-text-tertiary);
+  font-size: 13px; background: var(--color-bg-hover); border-radius: var(--radius-md);
+}
+
+/* Field picker modal */
+.field-picker-modal {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  min-height: 400px; margin-top: 12px;
+}
+.field-picker-left, .field-picker-right {
+  border: 1px solid var(--color-border-light); border-radius: var(--radius-md);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.field-picker-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--color-bg-hover);
+  font-size: 13px; font-weight: 600; color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border-light);
+}
+.field-picker-count {
+  font-size: 11px; font-weight: 500; padding: 1px 8px;
+  border-radius: var(--radius-full); background: var(--color-primary-bg); color: var(--color-primary);
+}
+.field-picker-search { padding: 8px 10px; border-bottom: 1px solid var(--color-border-light); }
+.field-picker-list { flex: 1; overflow-y: auto; padding: 4px; }
+.field-picker-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer;
+  transition: all var(--transition-fast); gap: 8px;
+}
+.field-picker-item:hover { background: var(--color-bg-hover); }
+.field-picker-item--selected { cursor: default; }
+.field-picker-item--selected:hover { background: transparent; }
+.field-picker-item-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.field-picker-item-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.field-picker-group-label {
+  font-size: 12px; font-weight: 600; color: var(--color-text-secondary);
+  padding: 6px 10px 2px; margin-top: 4px;
+  border-left: 3px solid var(--color-primary);
+}
+.field-picker-arrow { color: var(--color-primary); font-size: 14px; flex-shrink: 0; }
+.field-picker-remove {
+  width: 22px; height: 22px; border: none; background: transparent;
+  border-radius: var(--radius-sm); cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  color: var(--color-text-tertiary); font-size: 11px;
+  transition: all var(--transition-fast); flex-shrink: 0;
+}
+.field-picker-remove:hover { background: var(--color-danger-bg); color: var(--color-danger); }
+.field-picker-empty {
+  padding: 32px 16px; text-align: center; color: var(--color-text-tertiary); font-size: 13px;
+}
 </style>

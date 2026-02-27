@@ -151,7 +151,12 @@
   {
     "trace_id": "TR-20250610-A3F8",
     "process_id": "WF-2025-001",
-    "recommendation": "approve | reject | revise",
+    "recommendation": {
+      "action": "return",
+      "action_label": "建议退回",
+      "score": 72,
+      "confidence": 0.85
+    },
     "score": 72,
     "duration_ms": 1850,
     "details": [
@@ -163,9 +168,27 @@
         "is_locked": true
       }
     ],
-    "ai_reasoning": "该采购申请整体合规性尚可..."
+    "ai_reasoning": "该采购申请整体合规性尚可...",
+    "ai_analysis": {
+      "summary": "该采购申请整体合规性尚可，但存在两个关键问题需要修正。",
+      "risk_points": ["供应商未在合格名录中", "缺少竞争性比价材料"],
+      "suggestions": ["补充供应商资质证明", "提供至少3家供应商报价"],
+      "full_reasoning": "该采购申请整体合规性尚可..."
+    },
+    "meta": {
+      "model_used": "Qwen2.5-72B",
+      "interaction_mode": "two_phase",
+      "phase1_duration_ms": 2200,
+      "phase2_duration_ms": 1650
+    }
   }
   ```
+- **字段说明**:
+  - `recommendation`: 结构化审核建议，`action` 枚举值为 `approve | return | reject | review`
+  - `score`（顶层）: 已废弃，保留兼容，请使用 `recommendation.score`
+  - `ai_reasoning`: 已废弃，保留兼容，请使用 `ai_analysis.full_reasoning`
+  - `ai_analysis`: AI 分析结果，含摘要、风险点、改进建议和完整推理
+  - `meta`: 可选，模型元信息（使用模型、交互模式、各阶段耗时）
 
 ### 2.4 提交审核反馈
 - **POST** `/api/audit/feedback`
@@ -510,6 +533,7 @@
             "rule_scope": "mandatory | default_on | default_off",
             "priority": 100,
             "enabled": true,
+            "related_flow": false,
             "source": "manual | file_import"
           }
         ],
@@ -517,6 +541,7 @@
         "ai_config": {
           "ai_provider": "string",
           "model_name": "string",
+          "interaction_mode": "two_phase | single_pass",
           "audit_strictness": "strict | standard | loose",
           "system_prompt": "string",
           "context_window": 8192,
@@ -665,7 +690,8 @@
             "rule_content": "采购金额超过50万需总经理审批记录",
             "rule_scope": "mandatory | default_on | default_off",
             "priority": 100,
-            "enabled": true
+            "enabled": true,
+            "related_flow": true
           }
         ],
         "flow_rules": [
@@ -682,6 +708,7 @@
         "ai_config": {
           "ai_provider": "string",
           "model_name": "string",
+          "interaction_mode": "two_phase | single_pass",
           "audit_strictness": "strict | standard | loose",
           "system_prompt": "string",
           "context_window": 8192,
@@ -760,6 +787,7 @@
         "rule_scope": "mandatory | default_on | default_off",
         "priority": 100,
         "enabled": true,
+        "related_flow": false,
         "source": "manual | file_import"
       }
     ]
@@ -824,6 +852,7 @@
         "rule_scope": "mandatory | default_on | default_off",
         "priority": 100,
         "enabled": true,
+        "related_flow": false,
         "source": "manual | file_import"
       }
     ],
@@ -831,6 +860,7 @@
     "ai_config": {
       "ai_provider": "openai",
       "model_name": "gpt-4",
+      "interaction_mode": "two_phase | single_pass",
       "audit_strictness": "strict | standard | loose",
       "system_prompt": "string",
       "context_window": 8192,
@@ -873,6 +903,7 @@
     "ai_config": {
       "ai_provider": "本地部署",
       "model_name": "Qwen2.5-72B",
+      "interaction_mode": "two_phase",
       "audit_strictness": "standard",
       "system_prompt": "",
       "context_window": 8192,
@@ -915,6 +946,7 @@
             "rule_scope": "mandatory | default_on | default_off",
             "priority": 100,
             "enabled": true,
+            "related_flow": true,
             "source": "manual | file_import"
           }
         ],
@@ -932,6 +964,7 @@
         "ai_config": {
           "ai_provider": "string",
           "model_name": "string",
+          "interaction_mode": "two_phase | single_pass",
           "audit_strictness": "strict | standard | loose",
           "system_prompt": "string",
           "context_window": 8192,

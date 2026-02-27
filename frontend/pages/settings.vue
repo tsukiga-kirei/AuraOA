@@ -26,6 +26,10 @@ import {
   EyeInvisibleOutlined,
   GlobalOutlined,
   KeyOutlined,
+  SearchOutlined,
+  SwapRightOutlined,
+  CloseOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig, OverviewWidgetId } from '~/composables/useMockData'
@@ -158,10 +162,10 @@ const userProcessConfigs = ref<ProcessAuditConfig[]>(
 )
 
 // User's custom rules per process (separate from tenant rules)
-const userCustomRules = ref<Record<string, { id: string; content: string; enabled: boolean }[]>>({
-  'PAC-001': [{ id: 'UCR-001', content: '供应商必须在合格名录中', enabled: true }],
+const userCustomRules = ref<Record<string, { id: string; content: string; enabled: boolean; related_flow: boolean }[]>>({
+  'PAC-001': [{ id: 'UCR-001', content: '供应商必须在合格名录中', enabled: true, related_flow: false }],
   'PAC-002': [],
-  'PAC-003': [{ id: 'UCR-002', content: '合同期限超过2年需额外审批', enabled: true }],
+  'PAC-003': [{ id: 'UCR-002', content: '合同期限超过2年需额外审批', enabled: true, related_flow: true }],
   'PAC-004': [],
 })
 
@@ -211,8 +215,105 @@ const toggleUserField = (field: ProcessField) => {
   field.selected = !field.selected
 }
 
+// ===== Field picker modal (settings) =====
+const showFieldPicker = ref(false)
+const fieldSearchQuery = ref('')
+
+interface SettingsPickerField {
+  field_key: string; field_name: string; field_type: string; selected: boolean
+  source: string; sourceLabel: string
+}
+interface SettingsFieldGroup {
+  source: string; sourceLabel: string; fields: SettingsPickerField[]
+}
+
+const settingsGroupedFields = computed<SettingsFieldGroup[]>(() => {
+  if (!selectedConfig.value) return []
+  const groups: SettingsFieldGroup[] = []
+  const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
+  groups.push({
+    source: 'main',
+    sourceLabel: t('settings.workbench.mainTableFields'),
+    fields: mainFields.map(f => ({ ...f, source: 'main', sourceLabel: t('settings.workbench.mainTableFields') })),
+  })
+  if (selectedConfig.value.detail_tables) {
+    selectedConfig.value.detail_tables.forEach((dt, idx) => {
+      groups.push({
+        source: dt.table_name,
+        sourceLabel: `${t('settings.workbench.detailTableLabel')} ${idx + 1}`,
+        fields: dt.fields.map(f => ({ ...f, source: dt.table_name, sourceLabel: `${t('settings.workbench.detailTableLabel')} ${idx + 1}` })),
+      })
+    })
+  }
+  return groups
+})
+
+const settingsAllFields = computed<SettingsPickerField[]>(() =>
+  settingsGroupedFields.value.flatMap(g => g.fields)
+)
+
+const settingsSelectedCount = computed(() =>
+  settingsAllFields.value.filter(f => f.selected).length
+)
+
+const settingsGroupedUnselected = computed<SettingsFieldGroup[]>(() => {
+  const q = fieldSearchQuery.value.toLowerCase().trim()
+  return settingsGroupedFields.value
+    .map(g => ({
+      ...g,
+      fields: g.fields.filter(f => {
+        if (f.selected) return false
+        if (!q) return true
+        return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
+      }),
+    }))
+    .filter(g => g.fields.length > 0)
+})
+
+const settingsGroupedSelected = computed<SettingsFieldGroup[]>(() =>
+  settingsGroupedFields.value
+    .map(g => ({ ...g, fields: g.fields.filter(f => f.selected) }))
+    .filter(g => g.fields.length > 0)
+)
+
+const openSettingsFieldPicker = () => {
+  fieldSearchQuery.value = ''
+  showFieldPicker.value = true
+}
+
+const settingsPickField = (field: { field_key: string; source: string }) => {
+  if (!selectedConfig.value) return
+  const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
+  const mf = mainFields.find(f => f.field_key === field.field_key)
+  if (mf && field.source === 'main') { mf.selected = true; return }
+  if (selectedConfig.value.detail_tables) {
+    for (const dt of selectedConfig.value.detail_tables) {
+      if (dt.table_name === field.source) {
+        const df = dt.fields.find(f => f.field_key === field.field_key)
+        if (df) { df.selected = true; return }
+      }
+    }
+  }
+}
+
+const settingsUnpickField = (field: { field_key: string; source: string }) => {
+  if (!selectedConfig.value) return
+  const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
+  const mf = mainFields.find(f => f.field_key === field.field_key)
+  if (mf && field.source === 'main') { mf.selected = false; return }
+  if (selectedConfig.value.detail_tables) {
+    for (const dt of selectedConfig.value.detail_tables) {
+      if (dt.table_name === field.source) {
+        const df = dt.fields.find(f => f.field_key === field.field_key)
+        if (df) { df.selected = false; return }
+      }
+    }
+  }
+}
+
 // Custom rules
 const newRuleContent = ref('')
+const newRuleRelatedFlow = ref(false)
 
 const addCustomRule = () => {
   if (!newRuleContent.value.trim() || !selectedConfig.value) return
@@ -222,8 +323,10 @@ const addCustomRule = () => {
     id: `UCR-${Date.now()}`,
     content: newRuleContent.value.trim(),
     enabled: true,
+    related_flow: newRuleRelatedFlow.value,
   })
   newRuleContent.value = ''
+  newRuleRelatedFlow.value = false
   message.success(t('settings.workbench.ruleAdded'))
 }
 
@@ -424,8 +527,10 @@ const toggleArchiveField = (field: ProcessField) => {
         </a-form>
 
         <div class="settings-actions">
-          <a-button type="primary" size="large" :loading="saving" @click="handleSave">
-            <SaveOutlined /> {{ t('settings.profile.save') }}
+          <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
+            <LoadingOutlined v-if="saving" spin />
+            <SaveOutlined v-else />
+            {{ t('settings.profile.save') }}
           </a-button>
         </div>
       </div>
@@ -526,8 +631,10 @@ const toggleArchiveField = (field: ProcessField) => {
               :visibility-toggle="true"
             />
           </a-form-item>
-          <a-button type="primary" size="large" :loading="passwordChanging" @click="handleChangePassword">
-            <LockOutlined /> {{ t('settings.security.changePassword') }}
+          <a-button type="primary" size="large" :disabled="passwordChanging" @click="handleChangePassword">
+            <LoadingOutlined v-if="passwordChanging" spin />
+            <LockOutlined v-else />
+            {{ t('settings.security.changePassword') }}
           </a-button>
         </a-form>
 
@@ -574,14 +681,14 @@ const toggleArchiveField = (field: ProcessField) => {
             @click="selectedProcessId = proc.id"
           >
             <div class="process-list-item-name">{{ proc.process_type }}</div>
-            <div class="process-list-item-path">{{ proc.flow_path }}</div>
+            <div class="process-list-item-path">{{ proc.main_table_name || '待配置' }}</div>
           </div>
         </div>
 
         <!-- Right: config detail -->
         <div v-if="selectedConfig" class="process-config-panel">
           <h3 class="config-title">{{ selectedConfig.process_type }} - 个人审核配置</h3>
-          <p class="config-subtitle">流程路径：{{ selectedConfig.flow_path }}</p>
+          <p class="config-subtitle">{{ selectedConfig.main_table_name || '待配置' }}</p>
 
           <!-- Sub-section nav -->
           <div class="section-nav">
@@ -612,30 +719,49 @@ const toggleArchiveField = (field: ProcessField) => {
             <p class="config-section-desc">
               {{ selectedConfig.field_mode === 'all' ? '当前为全部字段模式' : '以下为参与 AI 审核的字段配置' }}
               <template v-if="permissions?.allow_custom_fields && selectedConfig.field_mode === 'selected'">
-                ，您可以切换字段的选中状态
+                ，您可以通过弹框切换字段的选中状态
               </template>
             </p>
 
-            <div class="field-grid">
-              <div
-                v-for="field in selectedConfig.fields"
-                :key="field.field_key"
-                class="field-card"
-                :class="{
-                  'field-card--selected': field.selected || selectedConfig.field_mode === 'all',
-                  'field-card--readonly': !permissions?.allow_custom_fields || selectedConfig.field_mode === 'all',
-                }"
-                @click="toggleUserField(field)"
-              >
-                <div class="field-card-check">
-                  <CheckOutlined v-if="field.selected || selectedConfig.field_mode === 'all'" />
-                </div>
-                <div class="field-card-info">
-                  <div class="field-card-name">{{ field.field_name }}</div>
-                  <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                </div>
+            <template v-if="selectedConfig.field_mode === 'selected'">
+              <div class="field-picker-toolbar">
+                <span class="field-count">已选 {{ settingsSelectedCount }} / {{ settingsAllFields.length }} 个字段</span>
+                <a-button
+                  v-if="permissions?.allow_custom_fields"
+                  type="primary"
+                  size="small"
+                  @click="openSettingsFieldPicker"
+                >
+                  <AppstoreOutlined /> 选择字段
+                </a-button>
               </div>
-            </div>
+
+              <!-- Selected fields grouped by table -->
+              <template v-if="settingsGroupedSelected.length">
+                <div v-for="group in settingsGroupedSelected" :key="group.source" class="selected-field-group">
+                  <div class="field-group-label">{{ group.sourceLabel }}</div>
+                  <div class="selected-fields-display">
+                    <div
+                      v-for="field in group.fields"
+                      :key="field.field_key + field.source"
+                      class="selected-field-tag"
+                    >
+                      <span class="selected-field-name">{{ field.field_name }}</span>
+                      <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <div v-else class="field-empty-hint">
+                暂未选择字段
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="field-count" style="margin-top: 8px;">
+                全部字段模式：所有主表及明细表字段均传输给 AI
+              </div>
+            </template>
           </div>
 
           <!-- ===== Rules section ===== -->
@@ -648,6 +774,9 @@ const toggleArchiveField = (field: ProcessField) => {
               <div v-for="rule in selectedConfig.rules" :key="rule.id" class="rule-config-item">
                 <div class="rule-config-content">
                   <span class="rule-config-text">{{ rule.rule_content }}</span>
+                  <span v-if="(rule as any).related_flow" class="rule-flow-tag">
+                    <NodeIndexOutlined /> {{ t('settings.workbench.relatedFlow') }}
+                  </span>
                   <span
                     class="rule-scope-tag"
                     :class="{
@@ -680,6 +809,9 @@ const toggleArchiveField = (field: ProcessField) => {
               <div v-for="rule in currentCustomRules" :key="rule.id" class="rule-config-item">
                 <div class="rule-config-content">
                   <span class="rule-config-text">{{ rule.content }}</span>
+                  <span v-if="rule.related_flow" class="rule-flow-tag">
+                    <NodeIndexOutlined /> {{ t('settings.workbench.relatedFlow') }}
+                  </span>
                   <span class="rule-scope-tag rule-scope-tag--custom">个人</span>
                 </div>
                 <div class="rule-config-actions">
@@ -697,6 +829,15 @@ const toggleArchiveField = (field: ProcessField) => {
                 placeholder="输入自定义规则内容..."
                 @pressEnter="addCustomRule"
               />
+              <a-tooltip title="关联审批流：该规则需要审批流节点信息才能校验">
+                <button
+                  class="icon-btn"
+                  :class="{ 'icon-btn--active': newRuleRelatedFlow }"
+                  @click="newRuleRelatedFlow = !newRuleRelatedFlow"
+                >
+                  <NodeIndexOutlined />
+                </button>
+              </a-tooltip>
               <a-button type="primary" :disabled="!newRuleContent.trim()" @click="addCustomRule">
                 <PlusOutlined /> 添加
               </a-button>
@@ -712,7 +853,7 @@ const toggleArchiveField = (field: ProcessField) => {
               </span>
             </div>
             <p class="config-section-desc">
-              当前 AI 模型：{{ selectedConfig.ai_config.model_name }}（{{ selectedConfig.ai_config.ai_provider }}）
+              {{ t('settings.workbench.strictnessDesc', '审核尺度影响 AI 建议倾向，由管理员或个人设置') }}
             </p>
             <div class="strictness-options">
               <div
@@ -746,8 +887,10 @@ const toggleArchiveField = (field: ProcessField) => {
           </div>
 
           <div class="settings-actions">
-            <a-button type="primary" size="large" :loading="saving" @click="handleSave">
-              <SaveOutlined /> 保存配置
+            <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
+              <LoadingOutlined v-if="saving" spin />
+              <SaveOutlined v-else />
+              保存配置
             </a-button>
           </div>
         </div>
@@ -757,6 +900,86 @@ const toggleArchiveField = (field: ProcessField) => {
         </div>
       </div>
     </div>
+
+    <!-- Settings field picker modal -->
+    <a-modal
+      v-model:open="showFieldPicker"
+      title="选择字段"
+      :width="720"
+      :footer="null"
+      @cancel="showFieldPicker = false"
+    >
+      <div class="field-picker-modal">
+        <div class="field-picker-left">
+          <div class="field-picker-panel-header">
+            <span>可选字段</span>
+          </div>
+          <div class="field-picker-search">
+            <a-input
+              v-model:value="fieldSearchQuery"
+              placeholder="搜索字段名称或字段键..."
+              allow-clear
+              size="small"
+            >
+              <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+            </a-input>
+          </div>
+          <div class="field-picker-list">
+            <template v-for="group in settingsGroupedUnselected" :key="group.source">
+              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
+              <div
+                v-for="field in group.fields"
+                :key="field.field_key + field.source"
+                class="field-picker-item"
+                @click="settingsPickField(field)"
+              >
+                <div class="field-picker-item-info">
+                  <div class="field-picker-item-name">{{ field.field_name }}</div>
+                  <div class="field-picker-item-meta">
+                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                    <span class="field-key">{{ field.field_key }}</span>
+                  </div>
+                </div>
+                <SwapRightOutlined class="field-picker-arrow" />
+              </div>
+            </template>
+            <div v-if="!settingsGroupedUnselected.length" class="field-picker-empty">
+              {{ fieldSearchQuery ? '无匹配字段' : '所有字段已添加' }}
+            </div>
+          </div>
+        </div>
+        <div class="field-picker-right">
+          <div class="field-picker-panel-header">
+            <span>已选字段</span>
+            <span class="field-picker-count">{{ settingsSelectedCount }}</span>
+          </div>
+          <div class="field-picker-list">
+            <template v-for="group in settingsGroupedSelected" :key="group.source">
+              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
+              <div
+                v-for="field in group.fields"
+                :key="field.field_key + field.source"
+                class="field-picker-item field-picker-item--selected"
+              >
+                <div class="field-picker-item-info">
+                  <div class="field-picker-item-name">{{ field.field_name }}</div>
+                  <div class="field-picker-item-meta">
+                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                    <span class="field-key">{{ field.field_key }}</span>
+                  </div>
+                </div>
+                <button class="field-picker-remove" @click="settingsUnpickField(field)">
+                  <CloseOutlined />
+                </button>
+              </div>
+            </template>
+            <div v-if="!settingsGroupedSelected.length" class="field-picker-empty">
+              暂未选择字段
+            </div>
+          </div>
+        </div>
+      </div>
+    </a-modal>
 
     <!-- Cron personal settings tab -->
     <div v-if="activeTab === 'cron'" class="tab-content">
@@ -949,8 +1172,10 @@ const toggleArchiveField = (field: ProcessField) => {
           </div>
 
           <div class="settings-actions">
-            <a-button type="primary" size="large" :loading="saving" @click="handleSave">
-              <SaveOutlined /> 保存配置
+            <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
+              <LoadingOutlined v-if="saving" spin />
+              <SaveOutlined v-else />
+              保存配置
             </a-button>
           </div>
         </div>
@@ -1216,8 +1441,10 @@ const toggleArchiveField = (field: ProcessField) => {
           </div>
 
           <div class="settings-actions">
-            <a-button type="primary" size="large" :loading="saving" @click="handleSave">
-              <SaveOutlined /> 保存配置
+            <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
+              <LoadingOutlined v-if="saving" spin />
+              <SaveOutlined v-else />
+              保存配置
             </a-button>
           </div>
         </div>
@@ -1374,6 +1601,7 @@ const toggleArchiveField = (field: ProcessField) => {
   justify-content: center; color: var(--color-text-tertiary); transition: all var(--transition-fast);
 }
 .icon-btn--danger:hover { border-color: var(--color-danger); color: var(--color-danger); }
+.icon-btn--active { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-bg); }
 
 .add-rule-row { display: flex; gap: 8px; }
 .add-rule-row :deep(.ant-btn-primary) { font-weight: 600; min-width: 80px; }
@@ -1552,4 +1780,85 @@ const toggleArchiveField = (field: ProcessField) => {
 .login-history-time { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
 .login-history-details { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 6px; }
 .login-history-sep { opacity: 0.4; }
+
+.field-group-label {
+  font-size: 13px; font-weight: 600; color: var(--color-text-secondary);
+  margin: 12px 0 8px; padding-left: 4px;
+  border-left: 3px solid var(--color-primary);
+}
+.rule-flow-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 500; padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-info-bg); color: var(--color-info);
+}
+
+/* Field picker toolbar */
+.field-picker-toolbar {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+}
+
+/* Selected fields display */
+.selected-fields-display { display: flex; flex-wrap: wrap; gap: 8px; }
+.selected-field-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: var(--radius-md);
+  background: var(--color-primary-bg); border: 1px solid var(--color-primary-lighter);
+  font-size: 13px; color: var(--color-text-primary);
+}
+.selected-field-name { font-weight: 500; }
+.selected-field-group { margin-bottom: 12px; }
+.field-empty-hint {
+  padding: 24px; text-align: center; color: var(--color-text-tertiary);
+  font-size: 13px; background: var(--color-bg-hover); border-radius: var(--radius-md);
+}
+
+/* Field picker modal */
+.field-picker-modal {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  min-height: 400px; margin-top: 12px;
+}
+.field-picker-left, .field-picker-right {
+  border: 1px solid var(--color-border-light); border-radius: var(--radius-md);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.field-picker-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--color-bg-hover);
+  font-size: 13px; font-weight: 600; color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border-light);
+}
+.field-picker-count {
+  font-size: 11px; font-weight: 500; padding: 1px 8px;
+  border-radius: var(--radius-full); background: var(--color-primary-bg); color: var(--color-primary);
+}
+.field-picker-search { padding: 8px 10px; border-bottom: 1px solid var(--color-border-light); }
+.field-picker-list { flex: 1; overflow-y: auto; padding: 4px; }
+.field-picker-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer;
+  transition: all var(--transition-fast); gap: 8px;
+}
+.field-picker-item:hover { background: var(--color-bg-hover); }
+.field-picker-item--selected { cursor: default; }
+.field-picker-item--selected:hover { background: transparent; }
+.field-picker-item-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.field-picker-item-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.field-picker-group-label {
+  font-size: 12px; font-weight: 600; color: var(--color-text-secondary);
+  padding: 6px 10px 2px; margin-top: 4px;
+  border-left: 3px solid var(--color-primary);
+}
+.field-picker-arrow { color: var(--color-primary); font-size: 14px; flex-shrink: 0; }
+.field-picker-remove {
+  width: 22px; height: 22px; border: none; background: transparent;
+  border-radius: var(--radius-sm); cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  color: var(--color-text-tertiary); font-size: 11px;
+  transition: all var(--transition-fast); flex-shrink: 0;
+}
+.field-picker-remove:hover { background: var(--color-danger-bg); color: var(--color-danger); }
+.field-picker-empty {
+  padding: 32px 16px; text-align: center; color: var(--color-text-tertiary); font-size: 13px;
+}
 </style>

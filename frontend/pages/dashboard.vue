@@ -13,6 +13,9 @@ import {
   EyeOutlined,
   RightOutlined,
   FolderOpenOutlined,
+  DownOutlined,
+  UpOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { useI18n } from '~/composables/useI18n'
@@ -25,6 +28,7 @@ const {
   mockProcesses, mockApprovedProcesses, mockRejectedProcesses,
   mockHistoricalResults, mockAuditResult, mockDashboardStats, mockSnapshots,
   mockArchivedOAProcesses, mockArchivedAuditChains, mockArchivedHistoricalResults,
+  mockBatchAuditResult,
 } = useMockData()
 
 const todoList = ref(mockProcesses)
@@ -33,29 +37,75 @@ const rejectedList = ref(mockRejectedProcesses)
 const archivedList = ref(mockArchivedOAProcesses)
 const currentResult = ref<typeof mockAuditResult | null>(null)
 const loading = ref(false)
+const phase1Done = ref(false)
 const selectedProcess = ref<string | null>(null)
 const searchText = ref('')
 const stats = ref(mockDashboardStats)
 
-// View mode: 'todo' | 'approved' | 'rejected' | 'archived'
+// View mode
 const viewMode = ref<'todo' | 'approved' | 'rejected' | 'archived'>('todo')
-
-// Whether current view is history-only (no audit actions)
 const isHistoryMode = computed(() => viewMode.value !== 'todo')
 
-// Audit history chain: multiple audit snapshots for a single process
+// Process type filter
+const filterProcessType = ref<string[]>([])
+const processTypeOptions = computed(() => {
+  const all = [...todoList.value, ...approvedList.value, ...rejectedList.value, ...archivedList.value]
+  const types = [...new Set(all.map(p => p.process_type))]
+  return types.map(t => ({ label: t, value: t }))
+})
+
+// Batch audit
+const selectedProcessIds = ref<string[]>([])
+const batchAuditing = ref(false)
+const batchProgress = ref(0)
+const batchResult = ref<typeof mockBatchAuditResult | null>(null)
+const showBatchResult = ref(false)
+
+const toggleSelectProcess = (processId: string) => {
+  const idx = selectedProcessIds.value.indexOf(processId)
+  if (idx >= 0) selectedProcessIds.value.splice(idx, 1)
+  else selectedProcessIds.value.push(processId)
+}
+
+const toggleSelectAll = () => {
+  if (selectedProcessIds.value.length === filteredList.value.length) {
+    selectedProcessIds.value = []
+  } else {
+    selectedProcessIds.value = filteredList.value.map(p => p.process_id)
+  }
+}
+
+const handleBatchAudit = async () => {
+  if (selectedProcessIds.value.length === 0) return
+  batchAuditing.value = true
+  batchProgress.value = 0
+  showBatchResult.value = true
+  // Simulate progress
+  for (let i = 0; i <= 100; i += 10) {
+    await new Promise(r => setTimeout(r, 150))
+    batchProgress.value = i
+  }
+  batchResult.value = { ...mockBatchAuditResult, total: selectedProcessIds.value.length, completed: selectedProcessIds.value.length, status: 'done' as any, progress_percent: 100 }
+  batchAuditing.value = false
+  selectedProcessIds.value = []
+  message.success(t('dashboard.batchDone'))
+}
+
+// Audit history chain
 const showHistoryChain = ref(false)
 const historyChainProcessId = ref<string | null>(null)
+const expandedChainNodes = ref<Set<string>>(new Set())
 
-// Get audit chain for a process (multi-round audit snapshots)
+const toggleChainNode = (snapshotId: string) => {
+  if (expandedChainNodes.value.has(snapshotId)) expandedChainNodes.value.delete(snapshotId)
+  else expandedChainNodes.value.add(snapshotId)
+}
+
 const getAuditChain = (processId: string) => {
-  // Check archived chains first
   const archivedChain = mockArchivedAuditChains[processId]
   if (archivedChain && archivedChain.length > 0) return archivedChain
-  // Then check regular snapshots
   const snapshots = mockSnapshots.filter(s => s.process_id === processId)
   if (snapshots.length > 0) return snapshots
-  // Fallback: generate from historical result
   const hist = mockHistoricalResults[processId] || mockArchivedHistoricalResults[processId]
   if (!hist) return []
   return [{
@@ -78,6 +128,7 @@ const currentAuditChain = computed(() => {
 
 const openHistoryChain = (processId: string) => {
   historyChainProcessId.value = processId
+  expandedChainNodes.value = new Set()
   showHistoryChain.value = true
 }
 
@@ -89,32 +140,37 @@ const filteredList = computed(() => {
     case 'archived': list = archivedList.value; break
     default: list = todoList.value
   }
+  if (filterProcessType.value.length > 0) {
+    list = list.filter(p => filterProcessType.value.includes(p.process_type))
+  }
   if (searchText.value) {
     const q = searchText.value.toLowerCase()
-    list = list.filter(
-      p => p.title.toLowerCase().includes(q) || p.applicant.toLowerCase().includes(q)
-    )
+    list = list.filter(p => p.title.toLowerCase().includes(q) || p.applicant.toLowerCase().includes(q))
   }
   return list
 })
 
-// Pagination
 const { paged: pagedList, current: listPage, pageSize: listPageSize, total: listTotal, onChange: onListPageChange } = usePagination(filteredList, 10)
 
 const handleSelectProcess = (processId: string) => {
   selectedProcess.value = processId
   if (isHistoryMode.value) {
-    // Auto-load historical result for approved/rejected/archived
     const hist = mockHistoricalResults[processId] || mockArchivedHistoricalResults[processId]
     currentResult.value = hist ? { ...hist } : null
   } else {
     currentResult.value = null
+    phase1Done.value = false
   }
 }
 
 const handleAudit = async (processId: string) => {
   loading.value = true
-  await new Promise(resolve => setTimeout(resolve, 1500))
+  phase1Done.value = false
+  // Phase 1: reasoning
+  await new Promise(resolve => setTimeout(resolve, 2200))
+  phase1Done.value = true
+  // Phase 2: extraction
+  await new Promise(resolve => setTimeout(resolve, 1650))
   currentResult.value = { ...mockAuditResult, process_id: processId }
   loading.value = false
 }
@@ -134,6 +190,7 @@ const switchView = (mode: 'todo' | 'approved' | 'rejected' | 'archived') => {
   selectedProcess.value = null
   currentResult.value = null
   listPage.value = 1
+  selectedProcessIds.value = []
 }
 
 const selectedProcessInfo = computed(() => {
@@ -160,6 +217,8 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
   reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: t('dashboard.rec.reject') },
   revise: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EditOutlined, label: t('dashboard.rec.revise') },
+  return: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: ReloadOutlined, label: t('dashboard.rec.return') },
+  review: { color: 'var(--color-info)', bg: 'var(--color-info-bg)', icon: EyeOutlined, label: t('dashboard.rec.review') },
 }))
 </script>
 
@@ -241,6 +300,49 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
           >
             <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
           </a-input>
+          <!-- Process type filter -->
+          <a-select
+            v-model:value="filterProcessType"
+            mode="multiple"
+            :placeholder="t('dashboard.filterProcessTypePlaceholder')"
+            allow-clear
+            style="width: 100%;"
+            :options="processTypeOptions"
+          />
+          <!-- Batch audit toolbar (todo mode only) -->
+          <div v-if="viewMode === 'todo'" class="batch-toolbar">
+            <a-checkbox
+              :checked="selectedProcessIds.length === filteredList.length && filteredList.length > 0"
+              :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < filteredList.length"
+              @change="toggleSelectAll"
+            >
+              {{ selectedProcessIds.length > 0 ? t('dashboard.selected', `${selectedProcessIds.length}`) : t('dashboard.selectAll') }}
+            </a-checkbox>
+            <a-button
+              v-if="selectedProcessIds.length > 0"
+              type="primary"
+              size="small"
+              :loading="batchAuditing"
+              @click="handleBatchAudit"
+            >
+              <ThunderboltOutlined /> {{ t('dashboard.batchAudit') }}
+            </a-button>
+          </div>
+        </div>
+
+        <!-- Batch progress -->
+        <div v-if="showBatchResult" class="batch-progress-bar">
+          <div class="batch-progress-header">
+            <span>{{ t('dashboard.batchAuditTitle') }}</span>
+            <button class="batch-close-btn" @click="showBatchResult = false">✕</button>
+          </div>
+          <a-progress :percent="batchResult?.progress_percent ?? batchProgress" :status="batchAuditing ? 'active' : 'success'" />
+          <div v-if="batchResult && !batchAuditing" class="batch-summary">
+            <span>{{ t('dashboard.batchTotal') }}: {{ batchResult.total }}</span>
+            <span>{{ t('dashboard.batchCompleted') }}: {{ batchResult.completed }}</span>
+            <span v-if="batchResult.failed > 0" style="color: var(--color-danger);">{{ t('dashboard.batchFailed') }}: {{ batchResult.failed }}</span>
+          </div>
+          <div v-else-if="batchAuditing" class="batch-summary">{{ t('dashboard.batchProcessing') }}</div>
         </div>
 
         <div class="todo-list">
@@ -251,6 +353,9 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
             :class="{ 'todo-item--selected': selectedProcess === item.process_id }"
             @click="handleSelectProcess(item.process_id)"
           >
+            <div v-if="viewMode === 'todo'" class="todo-item-checkbox" @click.stop="toggleSelectProcess(item.process_id)">
+              <a-checkbox :checked="selectedProcessIds.includes(item.process_id)" />
+            </div>
             <div class="todo-item-main">
               <div class="todo-item-title">{{ item.title }}</div>
               <div class="todo-item-meta">
@@ -262,19 +367,8 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
               </div>
             </div>
             <div class="todo-item-right">
-              <span v-if="item.amount" class="todo-item-amount">
-                ¥{{ item.amount.toLocaleString() }}
-              </span>
+              <span class="todo-item-node">{{ item.current_node }}</span>
               <div class="todo-item-tags">
-                <span
-                  class="urgency-tag"
-                  :style="{
-                    color: urgencyConfig[item.urgency].color,
-                    background: urgencyConfig[item.urgency].bg,
-                  }"
-                >
-                  {{ urgencyConfig[item.urgency].label }}
-                </span>
                 <a-tooltip :title="t('dashboard.jumpToOA')" :mouse-enter-delay="0.5">
                   <button class="oa-jump-btn" @click.stop="jumpToOA(item.process_id)">
                     <ExportOutlined />
@@ -321,8 +415,20 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
           <div v-if="loading" class="result-loading">
             <div class="loading-animation">
               <div class="loading-pulse" />
-              <div class="loading-text">{{ t('dashboard.aiAnalyzing') }}</div>
+              <div class="loading-text">
+                {{ phase1Done ? t('dashboard.phase2') : t('dashboard.phase1') }}
+              </div>
               <div class="loading-subtext">{{ t('dashboard.aiAnalyzingSub') }}</div>
+              <div class="phase-steps">
+                <div class="phase-step" :class="{ 'phase-step--done': phase1Done, 'phase-step--active': !phase1Done }">
+                  <span class="phase-step-dot" />
+                  <span>{{ t('dashboard.phase1Duration') }}</span>
+                </div>
+                <div class="phase-step" :class="{ 'phase-step--active': phase1Done }">
+                  <span class="phase-step-dot" />
+                  <span>{{ t('dashboard.phase2Duration') }}</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -399,19 +505,71 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
                 :style="{ color: recommendationConfig[currentResult.recommendation].color }"
               />
               <div class="result-banner-info">
-                <div
-                  class="result-banner-title"
-                  :style="{ color: recommendationConfig[currentResult.recommendation].color }"
-                >
+                <div class="result-banner-title" :style="{ color: recommendationConfig[currentResult.recommendation].color }">
                   {{ recommendationConfig[currentResult.recommendation].label }}
                 </div>
                 <div class="result-banner-meta">
-                  {{ t('dashboard.overallScore') }} {{ currentResult.score }} {{ t('dashboard.points') }} · {{ t('dashboard.duration') }} {{ currentResult.duration_ms }}ms · {{ currentResult.trace_id }}
+                  {{ t('dashboard.overallScore') }} {{ currentResult.score }}{{ t('dashboard.points') }}
+                  · {{ t('dashboard.duration') }} {{ currentResult.duration_ms }}ms
                 </div>
               </div>
               <div class="result-score" :style="{ color: recommendationConfig[currentResult.recommendation].color }">
                 {{ currentResult.score }}
               </div>
+            </div>
+
+            <!-- v2 meta info -->
+            <div v-if="currentResult.confidence != null" class="result-meta-row">
+              <div class="result-meta-item">
+                <span class="result-meta-label">{{ t('dashboard.confidence') }}</span>
+                <a-progress
+                  type="circle"
+                  :percent="Math.round((currentResult.confidence ?? 0) * 100)"
+                  :width="44"
+                  :stroke-color="(currentResult.confidence ?? 0) >= 0.8 ? 'var(--color-success)' : 'var(--color-warning)'"
+                />
+              </div>
+              <div class="result-meta-item">
+                <span class="result-meta-label">{{ t('dashboard.modelUsed') }}</span>
+                <span class="result-meta-value">{{ currentResult.model_used }}</span>
+              </div>
+              <div class="result-meta-item">
+                <span class="result-meta-label">{{ t('dashboard.interactionMode') }}</span>
+                <span class="result-meta-value">
+                  {{ currentResult.interaction_mode === 'two_phase' ? t('dashboard.twoPhase') : t('dashboard.singlePass') }}
+                </span>
+              </div>
+              <div v-if="currentResult.phase1_duration_ms" class="result-meta-item">
+                <span class="result-meta-label">{{ t('dashboard.phase1Duration') }}</span>
+                <span class="result-meta-value">{{ currentResult.phase1_duration_ms }}{{ t('dashboard.ms') }}</span>
+              </div>
+              <div v-if="currentResult.phase2_duration_ms" class="result-meta-item">
+                <span class="result-meta-label">{{ t('dashboard.phase2Duration') }}</span>
+                <span class="result-meta-value">{{ currentResult.phase2_duration_ms }}{{ t('dashboard.ms') }}</span>
+              </div>
+              <div class="result-meta-item result-meta-item--full">
+                <span class="result-meta-label">{{ t('dashboard.traceId') }}</span>
+                <span class="result-meta-value result-meta-mono">{{ currentResult.trace_id }}</span>
+              </div>
+            </div>
+
+            <!-- Risk points & suggestions -->
+            <div v-if="currentResult.risk_points?.length" class="result-section">
+              <h4 class="result-section-title" style="color: var(--color-danger);">
+                <CloseCircleOutlined /> {{ t('dashboard.riskPoints') }}
+              </h4>
+              <ul class="result-list result-list--danger">
+                <li v-for="(rp, i) in currentResult.risk_points" :key="i">{{ rp }}</li>
+              </ul>
+            </div>
+
+            <div v-if="currentResult.suggestions?.length" class="result-section">
+              <h4 class="result-section-title" style="color: var(--color-primary);">
+                <InfoCircleOutlined /> {{ t('dashboard.suggestions') }}
+              </h4>
+              <ul class="result-list result-list--primary">
+                <li v-for="(sg, i) in currentResult.suggestions" :key="i">{{ sg }}</li>
+              </ul>
             </div>
 
             <!-- Rule checks -->
@@ -483,31 +641,45 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
                   class="chain-node"
                 >
                   <div class="chain-timeline">
-                    <div
-                      class="chain-dot"
-                      :style="{ background: recommendationConfig[snap.recommendation]?.color }"
-                    />
+                    <div class="chain-dot" :style="{ background: recommendationConfig[snap.recommendation]?.color }" />
                     <div v-if="idx < currentAuditChain.length - 1" class="chain-line" />
                   </div>
                   <div class="chain-card">
-                    <div class="chain-card-header">
+                    <div class="chain-card-header" @click="toggleChainNode(snap.snapshot_id)" style="cursor: pointer;">
                       <span
                         class="chain-tag"
-                        :style="{
-                          color: recommendationConfig[snap.recommendation]?.color,
-                          background: recommendationConfig[snap.recommendation]?.bg,
-                        }"
+                        :style="{ color: recommendationConfig[snap.recommendation]?.color, background: recommendationConfig[snap.recommendation]?.bg }"
                       >
                         <component :is="recommendationConfig[snap.recommendation]?.icon" />
                         {{ recommendationConfig[snap.recommendation]?.label }}
                       </span>
                       <span class="chain-score">{{ snap.score }}{{ t('dashboard.points') }}</span>
+                      <span class="chain-expand-btn">
+                        <DownOutlined v-if="!expandedChainNodes.has(snap.snapshot_id)" />
+                        <UpOutlined v-else />
+                      </span>
                     </div>
                     <div class="chain-card-meta">
                       {{ snap.created_at }}
                       <span v-if="snap.adopted !== null" class="chain-adopted" :class="snap.adopted ? 'chain-adopted--yes' : 'chain-adopted--no'">
                         {{ snap.adopted ? t('dashboard.adopted') : t('dashboard.notAdopted') }}
                       </span>
+                    </div>
+                    <!-- Expanded detail -->
+                    <div v-if="expandedChainNodes.has(snap.snapshot_id)" class="chain-detail">
+                      <template v-if="mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id]">
+                        <div v-for="rule in (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.details" :key="rule.rule_id" class="chain-rule-item" :class="rule.passed ? 'chain-rule--pass' : 'chain-rule--fail'">
+                          <component :is="rule.passed ? CheckCircleOutlined : CloseCircleOutlined" :style="{ color: rule.passed ? 'var(--color-success)' : 'var(--color-danger)' }" />
+                          <div>
+                            <div class="chain-rule-name">{{ rule.rule_name }}</div>
+                            <div class="chain-rule-reasoning">{{ rule.reasoning }}</div>
+                          </div>
+                        </div>
+                        <div class="chain-reasoning">
+                          <pre>{{ (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.ai_reasoning }}</pre>
+                        </div>
+                      </template>
+                      <div v-else class="chain-no-detail">{{ t('dashboard.noHistoryDesc') }}</div>
                     </div>
                   </div>
                 </div>
@@ -764,4 +936,85 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
 .drawer-enter-from .drawer-panel { transform: translateX(100%); }
 .drawer-leave-to { opacity: 0; }
 .drawer-leave-to .drawer-panel { transform: translateX(100%); }
+
+/* Batch toolbar */
+.batch-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 0; gap: 8px;
+}
+.batch-progress-bar {
+  padding: 12px 20px; border-bottom: 1px solid var(--color-border-light);
+  background: var(--color-bg-hover);
+}
+.batch-progress-header {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 8px;
+}
+.batch-close-btn {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--color-text-tertiary); font-size: 14px; padding: 2px 6px;
+}
+.batch-summary {
+  display: flex; gap: 16px; font-size: 12px; color: var(--color-text-tertiary); margin-top: 6px;
+}
+.todo-item-checkbox { flex-shrink: 0; }
+
+/* Two-phase loading steps */
+.phase-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; text-align: left; }
+.phase-step {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--color-text-tertiary);
+}
+.phase-step-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--color-border);
+  flex-shrink: 0; transition: background 0.3s;
+}
+.phase-step--active .phase-step-dot { background: var(--color-primary); animation: pulse 1s infinite; }
+.phase-step--active { color: var(--color-primary); font-weight: 600; }
+.phase-step--done .phase-step-dot { background: var(--color-success); }
+.phase-step--done { color: var(--color-success); }
+
+/* v2 result meta */
+.result-meta-row {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+  padding: 12px 16px; background: var(--color-bg-hover);
+  border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
+}
+.result-meta-item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 80px;
+}
+.result-meta-item--full { flex-direction: row; align-items: center; gap: 8px; width: 100%; min-width: unset; }
+.result-meta-label { font-size: 11px; color: var(--color-text-tertiary); }
+.result-meta-value { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.result-meta-mono { font-family: monospace; font-size: 12px; color: var(--color-text-secondary); }
+
+/* Risk / suggestion lists */
+.result-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.result-list li { font-size: 13px; line-height: 1.6; }
+.result-list--danger li { color: var(--color-danger); }
+.result-list--primary li { color: var(--color-text-secondary); }
+
+/* Chain expand */
+.chain-expand-btn { margin-left: auto; font-size: 12px; color: var(--color-text-tertiary); }
+.chain-detail {
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border-light);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.chain-rule-item {
+  display: flex; gap: 8px; font-size: 12px; padding: 6px 8px;
+  border-radius: var(--radius-sm); border: 1px solid var(--color-border-light);
+}
+.chain-rule--fail { background: var(--color-danger-bg); }
+.chain-rule-name { font-weight: 600; color: var(--color-text-primary); margin-bottom: 2px; }
+.chain-rule-reasoning { color: var(--color-text-secondary); }
+.chain-reasoning { background: var(--color-bg-page); border-radius: var(--radius-sm); padding: 10px; }
+.chain-reasoning pre { font-size: 12px; line-height: 1.6; color: var(--color-text-secondary); margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--font-sans); }
+.chain-no-detail { font-size: 12px; color: var(--color-text-tertiary); text-align: center; padding: 12px; }
+
+/* Node tag */
+.todo-item-node {
+  font-size: 11px; font-weight: 500; padding: 2px 8px;
+  border-radius: var(--radius-full); background: var(--color-bg-hover);
+  color: var(--color-text-secondary); white-space: nowrap;
+}
 </style>
