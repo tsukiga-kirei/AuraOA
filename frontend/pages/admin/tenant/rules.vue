@@ -50,30 +50,82 @@ const selectedCronConfig = computed(() =>
   cronConfigs.value.find(c => c.task_type === selectedCronType.value)
 )
 
-const cronAiProviders = computed(() => [
-  { value: '本地部署', label: t('admin.ruleConfig.localDeploy') },
-  { value: '云端API', label: t('admin.ruleConfig.cloudAPI') },
-])
-
-const cronModelOptions: Record<string, string[]> = {
-  '本地部署': ['Qwen2.5-72B', 'Qwen2.5-32B', 'ChatGLM4-9B', 'DeepSeek-V3'],
-  '云端API': ['GPT-4o', 'GPT-4o-mini', 'Claude-3.5-Sonnet', 'Gemini-2.0-Flash'],
-}
-
 const pushFormatOptions = computed(() => [
   { value: 'html', label: t('admin.ruleConfig.htmlEmail') },
   { value: 'markdown', label: t('admin.ruleConfig.markdown') },
   { value: 'plain', label: t('admin.ruleConfig.plainText') },
 ])
 
-const cronPermissionLabels = computed(() => ({
-  allow_modify_email: { label: t('admin.ruleConfig.modifyEmail'), desc: t('admin.ruleConfig.modifyEmailDesc') },
-  allow_modify_schedule: { label: t('admin.ruleConfig.modifySchedule'), desc: t('admin.ruleConfig.modifyScheduleDesc') },
-  allow_modify_prompt: { label: t('admin.ruleConfig.modifyPrompt'), desc: t('admin.ruleConfig.modifyPromptDesc') },
-  allow_modify_template: { label: t('admin.ruleConfig.modifyTemplate'), desc: t('admin.ruleConfig.modifyTemplateDesc') },
-}))
-
 const cronActiveTab = ref('template')
+
+// Template variables for daily/weekly report content templates
+const cronTemplateVariables = computed(() => {
+  if (selectedCronConfig.value?.task_type === 'daily_report') {
+    return [
+      { key: '{{date}}', desc: '当前日期，如 2026-02-27' },
+      { key: '{{time}}', desc: '数据截止时间，如 18:00' },
+      { key: '{{total}}', desc: '今日审核总数' },
+      { key: '{{approved}}', desc: '通过数量' },
+      { key: '{{rejected}}', desc: '驳回数量' },
+      { key: '{{revised}}', desc: '建议修改数量' },
+      { key: '{{pass_rate}}', desc: '通过率百分比' },
+      { key: '{{detail_list}}', desc: '审核明细列表' },
+      { key: '{{statistics}}', desc: '统计数据汇总' },
+    ]
+  }
+  if (selectedCronConfig.value?.task_type === 'weekly_report') {
+    return [
+      { key: '{{week}}', desc: '当前周数' },
+      { key: '{{date_range}}', desc: '周起止日期范围' },
+      { key: '{{time}}', desc: '报告生成时间' },
+      { key: '{{total}}', desc: '本周审核总数' },
+      { key: '{{trend}}', desc: '较上周增减描述' },
+      { key: '{{compliance_rate}}', desc: '合规率百分比' },
+      { key: '{{compliance_trend}}', desc: '合规率环比变化' },
+      { key: '{{detail_list}}', desc: '审核明细列表' },
+      { key: '{{statistics}}', desc: '统计数据汇总' },
+    ]
+  }
+  return []
+})
+
+// Textarea refs for cron template variable insertion
+const cronSubjectRef = ref<any>(null)
+const cronHeaderRef = ref<any>(null)
+const cronBodyRef = ref<any>(null)
+const cronFooterRef = ref<any>(null)
+const cronActiveField = ref<'subject' | 'header' | 'body_template' | 'footer'>('body_template')
+
+const insertCronVariable = (variable: string) => {
+  if (!selectedCronConfig.value) return
+  const field = cronActiveField.value
+  const refMap: Record<string, any> = {
+    subject: cronSubjectRef,
+    header: cronHeaderRef,
+    body_template: cronBodyRef,
+    footer: cronFooterRef,
+  }
+  const textareaRef = refMap[field]
+  const el: HTMLTextAreaElement | HTMLInputElement | null =
+    textareaRef?.value?.$el?.querySelector?.('textarea')
+    || textareaRef?.value?.$el?.querySelector?.('input')
+    || textareaRef?.value?.resizableTextArea?.textArea
+    || null
+  const currentVal = selectedCronConfig.value.content_template[field] || ''
+  if (el) {
+    const start = el.selectionStart ?? currentVal.length
+    const end = el.selectionEnd ?? currentVal.length
+    const newVal = currentVal.slice(0, start) + variable + currentVal.slice(end)
+    selectedCronConfig.value.content_template[field] = newVal
+    nextTick(() => {
+      const pos = start + variable.length
+      el.focus()
+      el.setSelectionRange(pos, pos)
+    })
+  } else {
+    selectedCronConfig.value.content_template[field] = currentVal + variable
+  }
+}
 
 const handleSaveCronConfig = async () => {
   savingCron.value = true
@@ -1033,7 +1085,11 @@ const handleSave = async () => {
         <div class="config-panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
           <div>
             <h2 class="config-panel-title">{{ selectedCronConfig.label }}</h2>
-            <p class="config-panel-subtitle">配置该类型定时任务的内容模板、AI 参数及用户权限</p>
+            <p class="config-panel-subtitle">
+              {{ selectedCronConfig.task_type === 'batch_audit'
+                ? '配置批量审核的执行参数，通过定时任务自动执行审核工作台的待办 AI 审批'
+                : '配置推送邮件的内容模板，通过定时任务执行审核工作台获取数据后组装邮件' }}
+            </p>
           </div>
           <a-switch
             v-model:checked="selectedCronConfig.enabled"
@@ -1042,31 +1098,44 @@ const handleSave = async () => {
           />
         </div>
 
-        <!-- Sub tabs -->
-        <div class="tab-nav">
-          <button
-            v-for="tab in [
-              { key: 'template', label: '内容模板', icon: MailOutlined },
-              { key: 'ai', label: 'AI 配置', icon: RobotOutlined },
-              { key: 'permissions', label: '用户权限', icon: SafetyCertificateOutlined },
-            ]"
-            :key="tab.key"
-            class="tab-btn"
-            :class="{ 'tab-btn--active': cronActiveTab === tab.key }"
-            @click="cronActiveTab = tab.key"
-          >
-            <component :is="tab.icon" />
-            {{ tab.label }}
-          </button>
+        <!-- ========== batch_audit: only batch limit config ========== -->
+        <div v-if="selectedCronConfig.task_type === 'batch_audit'" class="tab-content">
+          <div class="section-header">
+            <div>
+              <h4 class="section-title">批量审核配置</h4>
+              <p class="section-desc">批量审核通过定时任务自动执行审核工作台的待办 AI 审批，配置单次允许处理的待办数量上限</p>
+            </div>
+          </div>
+          <div class="ai-form">
+            <div class="ai-form-group">
+              <label class="ai-form-label">单次执行上限</label>
+              <a-input-number
+                v-model:value="selectedCronConfig.batch_limit"
+                :min="1"
+                :max="500"
+                size="large"
+                style="width: 200px;"
+              />
+              <p class="section-desc" style="margin-top: 4px;">每次定时任务最多处理的待办流程数量（1-500），超出部分将在下次执行时处理</p>
+            </div>
+          </div>
         </div>
 
-        <!-- ========== Content template tab ========== -->
-        <div v-if="cronActiveTab === 'template'" class="tab-content">
+        <!-- ========== daily_report / weekly_report: content template with variable insertion ========== -->
+        <div v-if="selectedCronConfig.task_type !== 'batch_audit'" class="tab-content">
           <div class="section-header">
             <div>
               <h4 class="section-title">推送内容模板</h4>
-              <p class="section-desc">配置推送邮件/消息的内容结构，支持变量占位符（如 <code>{<!-- -->{date}}</code>、<code>{<!-- -->{total}}</code>）</p>
+              <p class="section-desc">配置推送邮件的内容结构，通过定时任务执行审核工作台获取审核数据后，按模板组装邮件内容。点击变量标签可插入到当前编辑的输入框中。</p>
             </div>
+          </div>
+
+          <!-- Variable insertion bar -->
+          <div class="prompt-variables" style="margin-bottom: 16px;">
+            <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
+            <a-tooltip v-for="v in cronTemplateVariables" :key="v.key" :title="v.desc">
+              <button class="variable-btn" @click="insertCronVariable(v.key)">{{ v.key }}</button>
+            </a-tooltip>
           </div>
 
           <!-- Push format -->
@@ -1089,114 +1158,42 @@ const handleSave = async () => {
           <div class="ai-form">
             <div class="ai-form-group">
               <label class="ai-form-label">邮件主题</label>
-              <a-input v-model:value="selectedCronConfig.content_template.subject" size="large" placeholder="如：【OA智审】批量审核结果通知 - {{date}}" />
+              <a-input
+                ref="cronSubjectRef"
+                v-model:value="selectedCronConfig.content_template.subject"
+                size="large"
+                placeholder="如：【OA智审】审核日报 - {{date}}"
+                @focus="cronActiveField = 'subject'"
+              />
             </div>
             <div class="ai-form-group">
               <label class="ai-form-label">头部内容</label>
-              <a-input v-model:value="selectedCronConfig.content_template.header" size="large" placeholder="邮件开头的引导文字" />
+              <a-input
+                ref="cronHeaderRef"
+                v-model:value="selectedCronConfig.content_template.header"
+                size="large"
+                placeholder="邮件开头的引导文字"
+                @focus="cronActiveField = 'header'"
+              />
             </div>
             <div class="ai-form-group">
               <label class="ai-form-label">正文模板</label>
               <a-textarea
+                ref="cronBodyRef"
                 v-model:value="selectedCronConfig.content_template.body_template"
-                :rows="4"
-                placeholder="正文内容模板，支持变量占位符..."
+                :rows="6"
+                placeholder="正文内容模板，点击上方变量标签插入..."
+                @focus="cronActiveField = 'body_template'"
               />
             </div>
             <div class="ai-form-group">
               <label class="ai-form-label">底部内容</label>
-              <a-input v-model:value="selectedCronConfig.content_template.footer" size="large" placeholder="邮件底部的附加说明" />
-            </div>
-          </div>
-
-          <!-- Content modules toggle -->
-          <div style="margin-top: 20px;">
-            <label class="ai-form-label" style="margin-bottom: 10px; display: block;">包含内容模块</label>
-            <div class="permissions-list">
-              <div class="permission-item">
-                <div class="permission-info">
-                  <div class="permission-label">AI 智能摘要</div>
-                  <div class="permission-desc">在推送内容中包含 AI 生成的分析摘要</div>
-                </div>
-                <a-switch v-model:checked="selectedCronConfig.content_template.include_ai_summary" :checked-children="'包含'" :un-checked-children="'不含'" />
-              </div>
-              <div class="permission-item">
-                <div class="permission-info">
-                  <div class="permission-label">统计数据</div>
-                  <div class="permission-desc">在推送内容中包含审核数量、通过率等统计信息</div>
-                </div>
-                <a-switch v-model:checked="selectedCronConfig.content_template.include_statistics" :checked-children="'包含'" :un-checked-children="'不含'" />
-              </div>
-              <div class="permission-item">
-                <div class="permission-info">
-                  <div class="permission-label">明细列表</div>
-                  <div class="permission-desc">在推送内容中包含每条流程的审核明细</div>
-                </div>
-                <a-switch v-model:checked="selectedCronConfig.content_template.include_detail_list" :checked-children="'包含'" :un-checked-children="'不含'" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ========== AI config tab ========== -->
-        <div v-if="cronActiveTab === 'ai'" class="tab-content">
-          <div class="section-header">
-            <div>
-              <h4 class="section-title">AI 审核配置</h4>
-              <p class="section-desc">配置该任务类型使用的 AI 模型和提示词</p>
-            </div>
-          </div>
-          <div class="ai-form">
-            <div class="ai-form-row">
-              <div class="ai-form-group">
-                <label class="ai-form-label">AI 服务商</label>
-                <a-select v-model:value="selectedCronConfig.ai_config.ai_provider" style="width: 100%;" size="large" placeholder="选择服务商">
-                  <a-select-option v-for="p in cronAiProviders" :key="p.value" :value="p.value">{{ p.label }}</a-select-option>
-                </a-select>
-              </div>
-              <div class="ai-form-group">
-                <label class="ai-form-label">模型</label>
-                <a-select v-model:value="selectedCronConfig.ai_config.model_name" style="width: 100%;" size="large" placeholder="选择模型">
-                  <a-select-option
-                    v-for="m in (cronModelOptions[selectedCronConfig.ai_config.ai_provider] || [])"
-                    :key="m" :value="m"
-                  >{{ m }}</a-select-option>
-                </a-select>
-              </div>
-            </div>
-            <div class="ai-form-group">
-              <label class="ai-form-label">系统提示词（System Prompt）</label>
-              <a-textarea
-                v-model:value="selectedCronConfig.ai_config.system_prompt"
-                :rows="5"
-                placeholder="输入该任务类型的 AI 提示词..."
-              />
-            </div>
-          </div>
-        </div>
-
-        <!-- ========== Permissions tab ========== -->
-        <div v-if="cronActiveTab === 'permissions'" class="tab-content">
-          <div class="section-header">
-            <div>
-              <h4 class="section-title">用户自定义权限</h4>
-              <p class="section-desc">控制业务用户在个人设置中可以自定义的定时任务配置范围</p>
-            </div>
-          </div>
-          <div class="permissions-list">
-            <div
-              v-for="(perm, key) in cronPermissionLabels"
-              :key="key"
-              class="permission-item"
-            >
-              <div class="permission-info">
-                <div class="permission-label">{{ perm.label }}</div>
-                <div class="permission-desc">{{ perm.desc }}</div>
-              </div>
-              <a-switch
-                v-model:checked="(selectedCronConfig.user_permissions as any)[key]"
-                :checked-children="'允许'"
-                :un-checked-children="'禁止'"
+              <a-input
+                ref="cronFooterRef"
+                v-model:value="selectedCronConfig.content_template.footer"
+                size="large"
+                placeholder="邮件底部的附加说明"
+                @focus="cronActiveField = 'footer'"
               />
             </div>
           </div>

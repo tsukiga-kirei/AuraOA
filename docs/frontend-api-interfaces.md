@@ -287,7 +287,7 @@
 ### 3.8 获取定时任务类型配置列表（租户管理）
 - **GET** `/api/tenant/cron-task-configs`
 - **Headers**: `Authorization: Bearer {token}`
-- **说明**: 返回当前租户下各定时任务类型的配置，包括推送格式、内容模板、AI 配置和用户权限控制。仅租户管理员可访问。
+- **说明**: 返回当前租户下各定时任务类型的配置。批量审核仅包含执行上限配置；日报/周报推送包含内容模板配置（支持变量插入）。仅租户管理员可访问。已移除 AI 配置和用户权限控制（定时任务不再独立使用 AI，而是通过审核工作台执行）。
 - **响应**:
   ```json
   {
@@ -296,34 +296,22 @@
         "task_type": "batch_audit | daily_report | weekly_report",
         "label": "批量审核",
         "enabled": true,
+        "batch_limit": 50,
         "push_format": "html | markdown | plain",
         "content_template": {
-          "subject": "【OA智审】批量审核结果通知 - {{date}}",
-          "header": "以下是今日批量审核的结果汇总：",
-          "body_template": "共审核 {{total}} 条流程...",
-          "footer": "如有疑问请联系管理员。",
-          "include_ai_summary": true,
-          "include_statistics": true,
-          "include_detail_list": true
-        },
-        "ai_config": {
-          "model_name": "Qwen2.5-72B",
-          "ai_provider": "本地部署",
-          "system_prompt": "string"
-        },
-        "user_permissions": {
-          "allow_modify_email": true,
-          "allow_modify_schedule": true,
-          "allow_modify_prompt": false,
-          "allow_modify_template": false
+          "subject": "【OA智审】审核日报 - {{date}}",
+          "header": "今日审核工作概览：",
+          "body_template": "今日共处理 {{total}} 条审核...",
+          "footer": "详情请登录系统查看。"
         }
       }
     ]
   }
   ```
 - **字段说明**:
-  - `content_template`: 推送内容模板配置，包含邮件主题、头部、正文模板、底部及内容模块开关
-  - `allow_modify_template`: 是否允许用户自定义推送内容模板
+  - `batch_limit`: 仅 `batch_audit` 类型有效，单次执行最多处理的待办流程数量
+  - `content_template`: 推送内容模板配置（仅 `daily_report`/`weekly_report` 有效），支持变量占位符
+  - 已移除字段：`ai_config`、`user_permissions`、`content_template.include_ai_summary`、`content_template.include_statistics`、`content_template.include_detail_list`
 
 ### 3.9 更新定时任务类型配置（租户管理）
 - **PUT** `/api/tenant/cron-task-configs/{task_type}`
@@ -585,81 +573,24 @@
 ### 5.7 获取用户定时任务配置
 - **GET** `/api/user/cron-config`
 - **Headers**: `Authorization: Bearer {token}`
-- **说明**: 返回用户可见的定时任务类型配置列表（复用租户 `CronTaskTypeConfig` 结构），以及用户的个性化设置（默认推送邮箱等）。用户可操作范围受各任务类型 `user_permissions` 控制。提示词内容仅在 `allow_modify_prompt` 为 `true` 时返回。内容模板仅在 `allow_modify_template` 为 `true` 时可编辑。
+- **说明**: 返回用户的定时任务个人设置。当前仅包含默认推送邮箱配置，用户不再可以修改定时任务的内容模板、AI 配置等（这些由租户管理员统一配置）。
 - **响应**:
   ```json
   {
-    "default_push_email": "user@example.com",
-    "task_type_configs": [
-      {
-        "task_type": "batch_audit",
-        "label": "批量审核",
-        "enabled": true,
-        "push_format": "html",
-        "content_template": {
-          "subject": "【OA智审】批量审核结果通知 - {{date}}",
-          "header": "以下是今日批量审核的结果汇总：",
-          "body_template": "共审核 {{total}} 条流程...",
-          "footer": "如有疑问请联系管理员。",
-          "include_ai_summary": true,
-          "include_statistics": true,
-          "include_detail_list": true
-        },
-        "ai_config": {
-          "model_name": "Qwen2.5-72B",
-          "ai_provider": "本地部署",
-          "system_prompt": "string（仅 allow_modify_prompt 为 true 时返回）"
-        },
-        "user_permissions": {
-          "allow_modify_email": true,
-          "allow_modify_schedule": true,
-          "allow_modify_prompt": false,
-          "allow_modify_template": false
-        }
-      }
-    ],
-    "user_email_overrides": {
-      "daily_report": "custom-email@example.com"
-    },
-    "user_template_overrides": {
-      "weekly_report": {
-        "subject": "自定义主题",
-        "header": "自定义头部",
-        "body_template": "自定义正文",
-        "footer": "自定义底部",
-        "include_ai_summary": true,
-        "include_statistics": true,
-        "include_detail_list": false
-      }
-    }
+    "default_push_email": "user@example.com"
   }
   ```
 - **字段说明**:
-  - `content_template`: 推送内容模板（始终返回，用于展示当前配置）
-  - `user_template_overrides`: 用户自定义的模板覆盖（仅 `allow_modify_template` 为 `true` 的任务类型可提交）
+  - `default_push_email`: 日报/周报推送的默认接收邮箱，批量审核任务不涉及邮件推送
 
 ### 5.8 更新用户定时任务配置
 - **PUT** `/api/user/cron-config`
 - **Headers**: `Authorization: Bearer {token}`
-- **说明**: 保存用户的定时任务个性化配置。可提交的字段受各任务类型 `user_permissions` 控制。`template_overrides` 仅在 `allow_modify_template` 为 `true` 时被后端接受。
+- **说明**: 保存用户的定时任务推送邮箱配置。
 - **请求体**:
   ```json
   {
-    "default_push_email": "user@example.com",
-    "email_overrides": {
-      "daily_report": "custom-email@example.com"
-    },
-    "template_overrides": {
-      "weekly_report": {
-        "subject": "自定义主题",
-        "header": "自定义头部",
-        "body_template": "自定义正文",
-        "footer": "自定义底部",
-        "include_ai_summary": true,
-        "include_statistics": true,
-        "include_detail_list": false
-      }
-    }
+    "default_push_email": "user@example.com"
   }
   ```
 

@@ -345,28 +345,11 @@ const handleExport = () => {
                   <span class="detail-template-key">{{ t('admin.userConfigs.footerContent') }}</span>
                   <span class="detail-template-val">{{ cron.template_override.footer }}</span>
                 </div>
-                <div v-if="cron.template_override.include_ai_summary !== undefined" class="detail-template-item">
-                  <span class="detail-template-key">{{ t('admin.userConfigs.aiSummary') }}</span>
-                  <span class="detail-template-val">{{ cron.template_override.include_ai_summary ? t('admin.userConfigs.include') : t('admin.userConfigs.exclude') }}</span>
-                </div>
-                <div v-if="cron.template_override.include_statistics !== undefined" class="detail-template-item">
-                  <span class="detail-template-key">{{ t('admin.userConfigs.statistics') }}</span>
-                  <span class="detail-template-val">{{ cron.template_override.include_statistics ? t('admin.userConfigs.include') : t('admin.userConfigs.exclude') }}</span>
-                </div>
-                <div v-if="cron.template_override.include_detail_list !== undefined" class="detail-template-item">
-                  <span class="detail-template-key">{{ t('admin.userConfigs.detailList') }}</span>
-                  <span class="detail-template-val">{{ cron.template_override.include_detail_list ? t('admin.userConfigs.include') : t('admin.userConfigs.exclude') }}</span>
-                </div>
               </div>
             </div>
 
-            <!-- Prompt override -->
-            <div v-if="cron.prompt_override" class="detail-config-block">
-              <div class="detail-config-label"><EditOutlined /> {{ t('admin.ruleConfig.modifyPrompt') }}</div>
-              <div class="detail-config-value" style="white-space: pre-wrap; font-size: 12px;">{{ cron.prompt_override }}</div>
-            </div>
 
-            <div v-if="!cron.email_override && !cron.template_override && !cron.prompt_override" class="detail-empty-tab">
+            <div v-if="!cron.email_override && !cron.template_override" class="detail-empty-tab">
               {{ t('admin.userConfigs.noProcessConfig') }}
             </div>
           </div>

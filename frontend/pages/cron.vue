@@ -19,9 +19,15 @@ import { useI18n } from '~/composables/useI18n'
 definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
-const { mockCronTasks } = useMockData()
+const { mockCronTasks, mockCronTaskTypeConfigs } = useMockData()
 
 const tasks = ref<CronTask[]>(JSON.parse(JSON.stringify(mockCronTasks)))
+
+// batch_audit config from tenant settings
+const batchAuditConfig = computed(() =>
+  mockCronTaskTypeConfigs.find(c => c.task_type === 'batch_audit')
+)
+const batchLimit = computed(() => batchAuditConfig.value?.batch_limit ?? 0)
 const loading = ref(false)
 const showCreate = ref(false)
 const showEdit = ref(false)
@@ -57,6 +63,12 @@ const newTask = ref({
   task_type: 'batch_audit',
   push_email: defaultPushEmail,
 })
+
+// Whether the current new task type needs email push
+const newTaskNeedsEmail = computed(() => newTask.value.task_type !== 'batch_audit')
+
+// Whether a given task type needs email push
+const taskNeedsEmail = (taskType: string) => taskType !== 'batch_audit'
 
 const buildCronFromParts = () => {
   return `${cronParts.value.minute} ${cronParts.value.hour} ${cronParts.value.day} ${cronParts.value.month} ${cronParts.value.weekday}`
@@ -341,7 +353,7 @@ const taskTypeOptions = computed(() => [
           <span class="cron-desc">{{ describeCron(task.cron_expression) }}</span>
         </div>
 
-        <div v-if="task.push_email" class="task-email">
+        <div v-if="task.push_email && taskNeedsEmail(task.task_type)" class="task-email">
           <MailOutlined />
           <span>{{ task.push_email }}</span>
         </div>
@@ -415,6 +427,18 @@ const taskTypeOptions = computed(() => [
       <a-form layout="vertical" style="margin-top: 16px;">
         <a-form-item :label="t('cron.taskType')">
           <a-select v-model:value="newTask.task_type" :options="taskTypeOptions" size="large" :placeholder="t('cron.selectTaskType')" />
+          <div v-if="newTask.task_type === 'batch_audit'" class="email-hint" style="margin-top: 8px;">
+            {{ t('cron.batchAuditDesc') }}
+            <div style="margin-top: 6px; color: var(--color-text-secondary);">
+              {{ t('cron.batchLimitHint', batchLimit) }}
+            </div>
+          </div>
+          <div v-if="newTask.task_type === 'daily_report'" class="email-hint" style="margin-top: 8px;">
+            {{ t('cron.dailyReportDesc') }}
+          </div>
+          <div v-if="newTask.task_type === 'weekly_report'" class="email-hint" style="margin-top: 8px;">
+            {{ t('cron.weeklyReportDesc') }}
+          </div>
         </a-form-item>
         <a-form-item :label="t('cron.executePlan')">
           <a-select v-model:value="newTask.cron_mode" size="large" style="width: 100%;" :placeholder="t('cron.selectOrCustom')">
@@ -467,7 +491,7 @@ const taskTypeOptions = computed(() => [
             <div v-for="(run, i) in previewNextRuns" :key="i" class="next-run-item">{{ run }}</div>
           </div>
         </div>
-        <a-form-item :label="t('cron.pushEmail')">
+        <a-form-item v-if="newTaskNeedsEmail" :label="t('cron.pushEmail')">
           <a-input v-model:value="newTask.push_email" :placeholder="t('cron.emailPlaceholder')" size="large">
             <template #prefix><MailOutlined style="color: var(--color-text-tertiary);" /></template>
           </a-input>
@@ -540,7 +564,7 @@ const taskTypeOptions = computed(() => [
             <div v-for="(run, i) in editPreviewNextRuns" :key="i" class="next-run-item">{{ run }}</div>
           </div>
         </div>
-        <a-form-item :label="t('cron.pushEmail')">
+        <a-form-item v-if="editingTask && taskNeedsEmail(editingTask.task_type)" :label="t('cron.pushEmail')">
           <a-input v-model:value="editingTask.push_email" :placeholder="t('cron.emailPlaceholder')" size="large">
             <template #prefix><MailOutlined style="color: var(--color-text-tertiary);" /></template>
           </a-input>

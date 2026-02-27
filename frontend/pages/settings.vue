@@ -16,10 +16,7 @@ import {
   DashboardOutlined,
   FolderOpenOutlined,
   AppstoreOutlined,
-  FileTextOutlined,
-  RobotOutlined,
   ControlOutlined,
-  SendOutlined,
   AuditOutlined,
   PieChartOutlined,
   EyeOutlined,
@@ -32,7 +29,7 @@ import {
   LoadingOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig, OverviewWidgetId } from '~/composables/useMockData'
+import type { ProcessAuditConfig, ProcessField, AuditRule, ArchiveReviewConfig, OverviewWidgetId } from '~/composables/useMockData'
 import { OVERVIEW_WIDGETS } from '~/composables/useMockData'
 import type { Locale } from '~/composables/useI18n'
 
@@ -42,7 +39,7 @@ definePageMeta({
 })
 
 const { userRole, userPermissions, currentUser } = useAuth()
-const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs, mockOrgRoles, mockOrgMembers, mockUserDashboardPrefs, mockUserSecurityInfo, mockUserLocalePrefs } = useMockData()
+const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockOrgRoles, mockOrgMembers, mockUserDashboardPrefs, mockUserSecurityInfo, mockUserLocalePrefs } = useMockData()
 const { t, locale, setLocale, availableLocales } = useI18n()
 
 const activeTab = ref('profile')
@@ -353,21 +350,7 @@ const handleSave = async () => {
 const workbenchSection = ref('fields')
 
 // ===== Cron personal settings =====
-const userCronConfigs = ref<CronTaskTypeConfig[]>(
-  JSON.parse(JSON.stringify(mockCronTaskTypeConfigs))
-)
-const selectedCronType = ref<string>(userCronConfigs.value[0]?.task_type || '')
-const selectedCronConfig = computed(() =>
-  userCronConfigs.value.find(c => c.task_type === selectedCronType.value)
-)
-const cronPermissions = computed(() => selectedCronConfig.value?.user_permissions)
-
-// User's default push email for cron tasks
 const cronDefaultEmail = ref('zhangming@example.com')
-
-// Cron task type labels now use i18n via t()
-
-const cronSection = ref('push')
 
 // ===== Archive review personal settings =====
 const userArchiveConfigs = ref<ArchiveReviewConfig[]>(
@@ -983,205 +966,19 @@ const toggleArchiveField = (field: ProcessField) => {
 
     <!-- Cron personal settings tab -->
     <div v-if="activeTab === 'cron'" class="tab-content">
-      <div class="settings-card" style="max-width: 700px; margin-bottom: 20px;">
+      <div class="settings-card" style="max-width: 700px;">
         <h4 class="config-section-title" style="margin-bottom: 12px;">默认推送邮箱</h4>
-        <p class="config-section-desc">所有定时任务的推送结果将发送至此邮箱</p>
+        <p class="config-section-desc">日报推送和周报推送的结果将发送至此邮箱，批量审核任务不涉及邮件推送</p>
         <a-input v-model:value="cronDefaultEmail" placeholder="输入默认推送邮箱，多个邮箱使用英文逗号分隔" size="large">
           <template #prefix><MailOutlined class="input-icon" /></template>
         </a-input>
         <p class="config-section-desc" style="margin-top: 4px; margin-bottom: 0;">多个邮箱请使用英文逗号（,）分隔</p>
-      </div>
-
-      <div class="workbench-layout">
-        <!-- Left: cron task type list -->
-        <div class="process-list-panel">
-          <div class="process-list-header">
-            <ClockCircleOutlined />
-            <span>定时任务类型</span>
-          </div>
-          <div
-            v-for="cfg in userCronConfigs"
-            :key="cfg.task_type"
-            class="process-list-item"
-            :class="{ 'process-list-item--active': selectedCronType === cfg.task_type }"
-            @click="selectedCronType = cfg.task_type"
-          >
-            <div class="process-list-item-name">{{ cfg.label }}</div>
-            <div class="process-list-item-path">
-              {{ cfg.enabled ? '已启用' : '已禁用' }}
-            </div>
-          </div>
-        </div>
-
-        <!-- Right: cron config detail -->
-        <div v-if="selectedCronConfig" class="process-config-panel">
-          <h3 class="config-title">{{ selectedCronConfig.label }} - 个人配置</h3>
-          <p class="config-subtitle">管理员允许的配置项</p>
-
-          <!-- Sub-section nav (tab style like workbench) -->
-          <div class="section-nav">
-            <button
-              v-for="sec in [
-                { key: 'push', label: '推送设置', icon: SendOutlined },
-                { key: 'template', label: '内容模板', icon: FileTextOutlined },
-                { key: 'ai', label: 'AI 配置', icon: RobotOutlined },
-              ]"
-              :key="sec.key"
-              class="section-nav-btn"
-              :class="{ 'section-nav-btn--active': cronSection === sec.key }"
-              @click="cronSection = sec.key"
-            >
-              <component :is="sec.icon" />
-              {{ sec.label }}
-            </button>
-          </div>
-
-          <!-- ===== Push settings section ===== -->
-          <div v-if="cronSection === 'push'" class="config-section">
-            <!-- Email override -->
-            <div v-if="cronPermissions?.allow_modify_email">
-              <div class="section-header-row">
-                <h4 class="config-section-title">推送邮箱</h4>
-              </div>
-              <p class="config-section-desc">为该任务类型单独设置推送邮箱（留空则使用默认邮箱）</p>
-              <a-input placeholder="留空使用默认邮箱" size="large">
-                <template #prefix><MailOutlined class="input-icon" /></template>
-              </a-input>
-            </div>
-            <div v-else>
-              <div class="section-header-row">
-                <h4 class="config-section-title">推送邮箱</h4>
-                <span class="locked-tag"><LockOutlined /> 管理员已锁定</span>
-              </div>
-              <p class="config-section-desc">使用默认推送邮箱：{{ cronDefaultEmail }}</p>
-            </div>
-
-            <!-- Schedule -->
-            <div style="margin-top: 20px;">
-              <div v-if="cronPermissions?.allow_modify_schedule">
-                <div class="section-header-row">
-                  <h4 class="config-section-title">执行计划</h4>
-                </div>
-                <p class="config-section-desc">您可以在定时任务中心调整该任务的执行时间</p>
-              </div>
-              <div v-else>
-                <div class="section-header-row">
-                  <h4 class="config-section-title">执行计划</h4>
-                  <span class="locked-tag"><LockOutlined /> 管理员已锁定</span>
-                </div>
-                <p class="config-section-desc">执行计划由管理员统一配置</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- ===== Content template section ===== -->
-          <div v-if="cronSection === 'template'" class="config-section">
-            <div v-if="cronPermissions?.allow_modify_template">
-              <div class="section-header-row">
-                <h4 class="config-section-title">内容模板</h4>
-              </div>
-              <p class="config-section-desc">自定义推送内容的模板结构，支持变量占位符</p>
-
-              <div style="display: flex; flex-direction: column; gap: 14px; margin-top: 8px;">
-                <div>
-                  <label class="template-label">邮件主题</label>
-                  <a-input v-model:value="selectedCronConfig.content_template.subject" size="large" />
-                </div>
-                <div>
-                  <label class="template-label">头部内容</label>
-                  <a-input v-model:value="selectedCronConfig.content_template.header" size="large" />
-                </div>
-                <div>
-                  <label class="template-label">正文模板</label>
-                  <a-textarea v-model:value="selectedCronConfig.content_template.body_template" :rows="3" />
-                </div>
-                <div>
-                  <label class="template-label">底部内容</label>
-                  <a-input v-model:value="selectedCronConfig.content_template.footer" size="large" />
-                </div>
-              </div>
-
-              <div style="margin-top: 16px;">
-                <label class="template-label" style="margin-bottom: 8px; display: block;">包含内容模块</label>
-                <div class="rule-config-list">
-                  <div class="rule-config-item">
-                    <span class="rule-config-text">AI 智能摘要</span>
-                    <a-switch v-model:checked="selectedCronConfig.content_template.include_ai_summary" size="small" />
-                  </div>
-                  <div class="rule-config-item">
-                    <span class="rule-config-text">统计数据</span>
-                    <a-switch v-model:checked="selectedCronConfig.content_template.include_statistics" size="small" />
-                  </div>
-                  <div class="rule-config-item">
-                    <span class="rule-config-text">明细列表</span>
-                    <a-switch v-model:checked="selectedCronConfig.content_template.include_detail_list" size="small" />
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-else>
-              <div class="section-header-row">
-                <h4 class="config-section-title">内容模板</h4>
-                <span class="locked-tag"><LockOutlined /> 管理员已锁定</span>
-              </div>
-              <p class="config-section-desc">内容模板由管理员统一配置，当前内容格式：<span style="font-weight: 600;">{{ selectedCronConfig.push_format === 'html' ? 'HTML 邮件' : selectedCronConfig.push_format === 'markdown' ? 'Markdown' : '纯文本' }}</span></p>
-              <div class="rule-config-list" style="margin-top: 8px;">
-                <div class="rule-config-item">
-                  <span class="rule-config-text">AI 智能摘要</span>
-                  <span :style="{ color: selectedCronConfig.content_template.include_ai_summary ? 'var(--color-success)' : 'var(--color-text-tertiary)' }">{{ selectedCronConfig.content_template.include_ai_summary ? '已包含' : '未包含' }}</span>
-                </div>
-                <div class="rule-config-item">
-                  <span class="rule-config-text">统计数据</span>
-                  <span :style="{ color: selectedCronConfig.content_template.include_statistics ? 'var(--color-success)' : 'var(--color-text-tertiary)' }">{{ selectedCronConfig.content_template.include_statistics ? '已包含' : '未包含' }}</span>
-                </div>
-                <div class="rule-config-item">
-                  <span class="rule-config-text">明细列表</span>
-                  <span :style="{ color: selectedCronConfig.content_template.include_detail_list ? 'var(--color-success)' : 'var(--color-text-tertiary)' }">{{ selectedCronConfig.content_template.include_detail_list ? '已包含' : '未包含' }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- ===== AI config section ===== -->
-          <div v-if="cronSection === 'ai'" class="config-section">
-            <div class="section-header-row">
-              <h4 class="config-section-title">AI 模型</h4>
-            </div>
-            <p class="config-section-desc">
-              当前模型：<span style="font-weight: 600;">{{ selectedCronConfig.ai_config.model_name }}</span>
-              （{{ selectedCronConfig.ai_config.ai_provider }}）— 由管理员配置
-            </p>
-
-            <div style="margin-top: 16px;">
-              <div class="section-header-row">
-                <h4 class="config-section-title">AI 提示词</h4>
-                <span v-if="!cronPermissions?.allow_modify_prompt" class="locked-tag">
-                  <LockOutlined /> 不可见
-                </span>
-              </div>
-              <p class="config-section-desc">
-                {{ cronPermissions?.allow_modify_prompt ? '您可以查看和修改该任务的 AI 提示词' : '提示词内容由管理员配置，用户不可见' }}
-              </p>
-              <a-textarea
-                v-if="cronPermissions?.allow_modify_prompt"
-                v-model:value="selectedCronConfig.ai_config.system_prompt"
-                :rows="4"
-                placeholder="AI 提示词..."
-              />
-            </div>
-          </div>
-
-          <div class="settings-actions">
-            <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
-              <LoadingOutlined v-if="saving" spin />
-              <SaveOutlined v-else />
-              保存配置
-            </a-button>
-          </div>
-        </div>
-
-        <div v-else class="process-config-empty">
-          <a-empty description="请选择左侧任务类型查看配置" />
+        <div class="settings-actions" style="margin-top: 20px;">
+          <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
+            <LoadingOutlined v-if="saving" spin />
+            <SaveOutlined v-else />
+            保存配置
+          </a-button>
         </div>
       </div>
     </div>
