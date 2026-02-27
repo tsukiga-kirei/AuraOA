@@ -1408,4 +1408,38 @@ export default {
     'settings.workbench.detailTableFields': 'Detail Table Fields',
     'settings.workbench.relatedFlow': 'Related Flow',
 
+    // ===== Archive page new keys =====
+    'archive.statTotal': 'Total Archived',
+    'archive.statCompliant': 'Compliant',
+    'archive.statPartial': 'Partial',
+    'archive.statNonCompliant': 'Non-compliant',
+    'archive.filterStatus': 'Compliance Status',
+    'archive.statusUnaudited': 'Not Reviewed',
+    'archive.auditingItem': 'Reviewing...',
+    'archive.jumpOA': 'Jump to OA',
+    'archive.phase1Title': 'Phase 1: Deep Analysis',
+    'archive.phase1Desc': 'AI is analyzing approval chain and field compliance...',
+    'archive.phase2Title': 'Phase 2: Structured Extraction',
+    'archive.phase2Desc': 'AI is generating structured review conclusions...',
+    'archive.riskPoints': 'Risk Points',
+    'archive.suggestions': 'Suggestions',
+    'archive.noRiskPoints': 'No risk points found',
+    'archive.reviewSuggestion': 'Review Suggestion',
+    'archive.noResultHint': 'No review result yet, click "Start Compliance Review"',
+    'archive.noRules': 'No review rules for this process',
+    'archive.missingNode': 'Missing Node',
+
+    // ===== Admin ruleConfig archive new keys =====
+    'admin.ruleConfig.archiveProcess': 'Archive Review Process',
+    'admin.ruleConfig.addArchiveProcess': 'Add Archive Process',
+    'admin.ruleConfig.addArchiveProcessTitle': 'Add Archive Review Process',
+    'admin.ruleConfig.archiveFieldDesc': 'Select fields for archive compliance review, supports main and detail table fields',
+    'admin.ruleConfig.archiveAccessTitle': 'Access Control',
+    'admin.ruleConfig.archiveAccessDesc': 'Configure which roles or members can access this archive review process',
+    'admin.ruleConfig.archiveAllowedRoles': 'Allowed Roles',
+    'admin.ruleConfig.archiveAllowedMembers': 'Allowed Members',
+
+    // ===== Settings archive field picker =====
+    'settings.archive.fieldPickerTitle': 'Select Review Fields',
+
 } as Record<string, string>

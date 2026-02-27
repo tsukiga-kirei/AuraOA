@@ -1409,4 +1409,38 @@ export default {
     'settings.workbench.detailTableFields': '明细表字段',
     'settings.workbench.relatedFlow': '关联审批流',
 
+    // ===== Archive page new keys =====
+    'archive.statTotal': '归档总数',
+    'archive.statCompliant': '合规',
+    'archive.statPartial': '部分合规',
+    'archive.statNonCompliant': '不合规',
+    'archive.filterStatus': '合规状态',
+    'archive.statusUnaudited': '未复核',
+    'archive.auditingItem': '复核中...',
+    'archive.jumpOA': '跳转 OA',
+    'archive.phase1Title': '阶段一：深度分析',
+    'archive.phase1Desc': 'AI 正在分析审批链与字段合规性...',
+    'archive.phase2Title': '阶段二：结构化提取',
+    'archive.phase2Desc': 'AI 正在生成结构化复核结论...',
+    'archive.riskPoints': '风险点',
+    'archive.suggestions': '改进建议',
+    'archive.noRiskPoints': '未发现风险点',
+    'archive.reviewSuggestion': '复核建议',
+    'archive.noResultHint': '暂无复核结果，请点击「开始合规复核」',
+    'archive.noRules': '该流程暂无复核规则',
+    'archive.missingNode': '缺失节点',
+
+    // ===== Admin ruleConfig archive new keys =====
+    'admin.ruleConfig.archiveProcess': '归档复盘流程',
+    'admin.ruleConfig.addArchiveProcess': '新增归档流程',
+    'admin.ruleConfig.addArchiveProcessTitle': '新增归档复盘流程',
+    'admin.ruleConfig.archiveFieldDesc': '选择参与归档合规复核的字段，支持主表和明细表字段',
+    'admin.ruleConfig.archiveAccessTitle': '访问控制',
+    'admin.ruleConfig.archiveAccessDesc': '配置哪些角色或人员可以访问此归档复盘流程',
+    'admin.ruleConfig.archiveAllowedRoles': '允许访问的角色',
+    'admin.ruleConfig.archiveAllowedMembers': '允许访问的人员',
+
+    // ===== Settings archive field picker =====
+    'settings.archive.fieldPickerTitle': '选择复核字段',
+
 } as Record<string, string>
