@@ -458,6 +458,16 @@ export default {
     'dashboard.suggestReturn': '建议退回',
     'dashboard.suggestReview': '建议复核',
     'dashboard.auditingItem': '审核中...',
+    'dashboard.filter': '筛选',
+    'dashboard.filterDepartment': '选择部门',
+    'dashboard.filterReset': '重置',
+    'dashboard.filterAuditStatus': 'AI审核状态',
+    'dashboard.auditStatus.unaudited': '未审核',
+    'dashboard.auditStatus.approve': '建议通过',
+    'dashboard.auditStatus.return': '建议退回',
+    'dashboard.auditStatus.revise': '建议修改',
+    'dashboard.auditStatus.reject': '建议驳回',
+    'dashboard.auditStatus.review': '建议复核',
 
     // Login page extras
     'login.emptyWarning': '请输入用户名和密码',

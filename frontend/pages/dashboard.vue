@@ -17,6 +17,7 @@ import {
   UpOutlined,
   InfoCircleOutlined,
   LoadingOutlined,
+  FilterOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { useI18n } from '~/composables/useI18n'
@@ -42,6 +43,7 @@ const phase1Done = ref(false)
 const selectedProcess = ref<string | null>(null)
 const searchText = ref('')
 const stats = ref(mockDashboardStats)
+const showFilters = ref(false)
 
 // Per-process audit results cache (for showing score/recommendation in list)
 const processAuditCache = ref<Record<string, typeof mockAuditResult>>({ ...mockTodoAuditResults })
@@ -59,6 +61,22 @@ const processTypeOptions = computed(() => {
   const types = [...new Set(all.map(p => p.process_type))]
   return types.map(t => ({ label: t, value: t }))
 })
+const departmentOptions = computed(() => {
+  const all = [...todoList.value, ...approvedList.value, ...rejectedList.value, ...archivedList.value]
+  return [...new Set(all.map(p => p.department))]
+})
+const filterDepartment = ref<string | undefined>(undefined)
+
+// AI audit status filter: 'unaudited' | 'approve' | 'reject' | 'revise' | 'return' | 'review'
+const filterAuditStatus = ref<string | undefined>(undefined)
+
+const clearFilters = () => {
+  searchText.value = ''
+  filterProcessType.value = []
+  filterDepartment.value = undefined
+  filterAuditStatus.value = undefined
+}
+const hasActiveFilters = computed(() => !!searchText.value || filterProcessType.value.length > 0 || !!filterDepartment.value || !!filterAuditStatus.value)
 
 // Batch audit
 const selectedProcessIds = ref<string[]>([])
@@ -180,9 +198,20 @@ const filteredList = computed(() => {
   if (filterProcessType.value.length > 0) {
     list = list.filter(p => filterProcessType.value.includes(p.process_type))
   }
+  if (filterDepartment.value) {
+    list = list.filter(p => p.department === filterDepartment.value)
+  }
   if (searchText.value) {
     const q = searchText.value.toLowerCase()
     list = list.filter(p => p.title.toLowerCase().includes(q) || p.applicant.toLowerCase().includes(q))
+  }
+  // AI audit status filter
+  if (filterAuditStatus.value) {
+    if (filterAuditStatus.value === 'unaudited') {
+      list = list.filter(p => !processAuditCache.value[p.process_id])
+    } else {
+      list = list.filter(p => processAuditCache.value[p.process_id]?.recommendation === filterAuditStatus.value)
+    }
   }
   return list
 })
@@ -343,33 +372,64 @@ const getShortRecLabel = (rec: string) => {
       <!-- Left: Process list -->
       <div class="todo-panel">
         <div class="panel-header">
-          <h3 class="panel-title">
-            <FireOutlined v-if="viewMode === 'todo'" style="color: var(--color-primary);" />
-            <FolderOpenOutlined v-else-if="viewMode === 'archived'" style="color: var(--color-info);" />
-            <HistoryOutlined v-else style="color: var(--color-text-tertiary);" />
-            {{ viewModeLabel }}
-            <a-badge :count="filteredList.length" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
-          </h3>
-          <!-- Opt1: Search + filter in one row -->
-          <div class="search-filter-row">
-            <a-input
-              v-model:value="searchText"
-              :placeholder="t('dashboard.searchPlaceholder')"
-              allow-clear
-              class="search-input"
-            >
-              <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
-            </a-input>
-            <a-select
-              v-model:value="filterProcessType"
-              mode="multiple"
-              :placeholder="t('dashboard.filterProcessTypePlaceholder')"
-              allow-clear
-              style="flex: 1; min-width: 140px;"
-              :options="processTypeOptions"
-              :max-tag-count="1"
-            />
+          <div class="panel-header-row">
+            <h3 class="panel-title">
+              <FireOutlined v-if="viewMode === 'todo'" style="color: var(--color-primary);" />
+              <FolderOpenOutlined v-else-if="viewMode === 'archived'" style="color: var(--color-info);" />
+              <HistoryOutlined v-else style="color: var(--color-text-tertiary);" />
+              {{ viewModeLabel }}
+              <a-badge :count="filteredList.length" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
+            </h3>
+            <a-button size="small" type="default" @click="showFilters = !showFilters" class="filter-toggle-btn" :class="{ 'filter-toggle-btn--active': hasActiveFilters }">
+              <FilterOutlined />
+              {{ t('dashboard.filter') }}
+              <span v-if="hasActiveFilters" class="filter-active-dot" />
+            </a-button>
           </div>
+          <!-- Collapsible filter bar -->
+          <transition name="slide">
+            <div v-if="showFilters" class="filter-bar">
+              <a-select
+                v-model:value="filterDepartment"
+                :placeholder="t('dashboard.filterDepartment')"
+                allow-clear
+                style="flex: 1; min-width: 100px;"
+              >
+                <a-select-option v-for="d in departmentOptions" :key="d" :value="d">{{ d }}</a-select-option>
+              </a-select>
+              <a-input
+                v-model:value="searchText"
+                :placeholder="t('dashboard.searchPlaceholder')"
+                allow-clear
+                style="flex: 2; min-width: 160px;"
+              >
+                <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+              </a-input>
+              <a-select
+                v-model:value="filterProcessType"
+                mode="multiple"
+                :placeholder="t('dashboard.filterProcessTypePlaceholder')"
+                allow-clear
+                style="flex: 1; min-width: 120px;"
+                :options="processTypeOptions"
+                :max-tag-count="1"
+              />
+              <a-select
+                v-model:value="filterAuditStatus"
+                :placeholder="t('dashboard.filterAuditStatus')"
+                allow-clear
+                style="flex: 1; min-width: 120px;"
+              >
+                <a-select-option value="unaudited">{{ t('dashboard.auditStatus.unaudited') }}</a-select-option>
+                <a-select-option value="approve">{{ t('dashboard.auditStatus.approve') }}</a-select-option>
+                <a-select-option value="return">{{ t('dashboard.auditStatus.return') }}</a-select-option>
+                <a-select-option value="revise">{{ t('dashboard.auditStatus.revise') }}</a-select-option>
+                <a-select-option value="reject">{{ t('dashboard.auditStatus.reject') }}</a-select-option>
+                <a-select-option value="review">{{ t('dashboard.auditStatus.review') }}</a-select-option>
+              </a-select>
+              <a-button size="small" @click="clearFilters">{{ t('dashboard.filterReset') }}</a-button>
+            </div>
+          </transition>
           <!-- Batch audit toolbar (todo mode only) -->
           <div v-if="viewMode === 'todo'" class="batch-toolbar">
             <a-checkbox
@@ -386,7 +446,6 @@ const getShortRecLabel = (rec: string) => {
               :disabled="batchAuditing"
               @click="handleBatchAudit"
             >
-              <!-- Opt2: Replace icon during batch audit -->
               <LoadingOutlined v-if="batchAuditing" />
               <ThunderboltOutlined v-else />
               {{ t('dashboard.batchAudit') }}
@@ -399,14 +458,28 @@ const getShortRecLabel = (rec: string) => {
             v-for="item in pagedList"
             :key="item.process_id"
             class="todo-item"
-            :class="{ 'todo-item--selected': selectedProcess === item.process_id }"
+            :class="{
+              'todo-item--selected': selectedProcess === item.process_id,
+              'todo-item--audited-approve': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'approve',
+              'todo-item--audited-return': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'return',
+              'todo-item--audited-revise': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'revise',
+              'todo-item--audited-reject': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'reject',
+              'todo-item--audited-review': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'review',
+            }"
             @click="handleSelectProcess(item.process_id)"
           >
             <div v-if="viewMode === 'todo'" class="todo-item-checkbox" @click.stop="toggleSelectProcess(item.process_id)">
               <a-checkbox :checked="selectedProcessIds.includes(item.process_id)" />
             </div>
             <div class="todo-item-main">
-              <div class="todo-item-title">{{ item.title }}</div>
+              <div class="todo-item-title">
+                <CheckCircleOutlined
+                  v-if="viewMode === 'todo' && processAuditCache[item.process_id]"
+                  class="todo-item-audited-icon"
+                  :style="{ color: recommendationConfig[processAuditCache[item.process_id].recommendation]?.color }"
+                />
+                {{ item.title }}
+              </div>
               <div class="todo-item-meta">
                 <span>{{ item.applicant }}</span>
                 <span class="todo-item-dot">·</span>
@@ -788,11 +861,24 @@ const getShortRecLabel = (rec: string) => {
   margin: 0; display: flex; align-items: center; gap: 8px;
 }
 
-/* Opt1: Search + filter in one row */
-.search-filter-row {
-  display: flex; gap: 8px; align-items: center;
+/* Panel header row */
+.panel-header-row {
+  display: flex; align-items: center; justify-content: space-between;
 }
-.search-input { flex: 1; height: 36px; min-width: 0; }
+
+/* Collapsible filter bar */
+.filter-toggle-btn { position: relative; }
+.filter-toggle-btn--active { color: var(--color-primary); border-color: var(--color-primary); }
+.filter-active-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--color-primary); margin-left: 4px; vertical-align: middle;
+}
+.filter-bar {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 10px 0 0;
+}
+.slide-enter-active, .slide-leave-active { transition: all 0.2s ease; }
+.slide-enter-from, .slide-leave-to { opacity: 0; transform: translateY(-8px); }
 
 /* Todo list */
 .todo-list { max-height: calc(100vh - 380px); overflow-y: auto; }
@@ -804,10 +890,21 @@ const getShortRecLabel = (rec: string) => {
 .todo-item:last-child { border-bottom: none; }
 .todo-item:hover { background: var(--color-bg-hover); }
 .todo-item--selected { background: var(--color-primary-bg); border-left: 3px solid var(--color-primary); }
+.todo-item--audited-approve { background: rgba(34, 197, 94, 0.03); border-left: 3px solid var(--color-success); }
+.todo-item--audited-return, .todo-item--audited-revise { background: rgba(245, 158, 11, 0.03); border-left: 3px solid var(--color-warning); }
+.todo-item--audited-reject { background: rgba(239, 68, 68, 0.03); border-left: 3px solid var(--color-danger); }
+.todo-item--audited-review { background: rgba(59, 130, 246, 0.03); border-left: 3px solid var(--color-info); }
+.todo-item--audited-approve.todo-item--selected,
+.todo-item--audited-return.todo-item--selected,
+.todo-item--audited-revise.todo-item--selected,
+.todo-item--audited-reject.todo-item--selected,
+.todo-item--audited-review.todo-item--selected { background: var(--color-primary-bg); border-left: 3px solid var(--color-primary); }
+.todo-item-audited-icon { font-size: 13px; flex-shrink: 0; }
 .todo-item-main { flex: 1; min-width: 0; }
 .todo-item-title {
   font-size: 14px; font-weight: 500; color: var(--color-text-primary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;
+  display: flex; align-items: center; gap: 6px;
 }
 .todo-item-meta { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
 .todo-item-dot { color: var(--color-border); }
@@ -1020,7 +1117,7 @@ const getShortRecLabel = (rec: string) => {
   .result-content { padding: 16px; }
   .action-prompt-buttons { flex-direction: column; }
   .risk-suggest-row { grid-template-columns: 1fr; }
-  .search-filter-row { flex-direction: column; }
+  .filter-bar { flex-direction: column; align-items: stretch; }
 }
 @media (max-width: 480px) {
   .stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }

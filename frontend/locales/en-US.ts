@@ -458,6 +458,16 @@ export default {
     'dashboard.suggestReturn': 'Return',
     'dashboard.suggestReview': 'Review',
     'dashboard.auditingItem': 'Auditing...',
+    'dashboard.filter': 'Filter',
+    'dashboard.filterDepartment': 'Department',
+    'dashboard.filterReset': 'Reset',
+    'dashboard.filterAuditStatus': 'AI Audit Status',
+    'dashboard.auditStatus.unaudited': 'Not Audited',
+    'dashboard.auditStatus.approve': 'Suggest Approve',
+    'dashboard.auditStatus.return': 'Suggest Return',
+    'dashboard.auditStatus.revise': 'Suggest Revise',
+    'dashboard.auditStatus.reject': 'Suggest Reject',
+    'dashboard.auditStatus.review': 'Suggest Review',
 
     // Login page extras
     'login.emptyWarning': 'Please enter username and password',
