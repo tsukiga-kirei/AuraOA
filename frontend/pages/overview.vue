@@ -204,9 +204,9 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
             <div class="summary-num">{{ data.auditSummary.approved }}</div>
             <div class="summary-label">{{ t('overview.approved') }}</div>
           </div>
-          <div class="summary-card summary-card--rejected">
+          <div class="summary-card summary-card--returned">
             <CloseCircleOutlined class="summary-icon" />
-            <div class="summary-num">{{ data.auditSummary.rejected }}</div>
+            <div class="summary-num">{{ data.auditSummary.returned }}</div>
             <div class="summary-label">{{ t('overview.rejected') }}</div>
           </div>
           <div class="summary-card summary-card--archived">
@@ -714,7 +714,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 }
 .summary-card--total { background: var(--color-primary-bg); }
 .summary-card--approved .summary-icon { color: var(--color-success); font-size: 20px; }
-.summary-card--rejected .summary-icon { color: var(--color-danger); font-size: 20px; }
+.summary-card--returned .summary-icon { color: var(--color-danger); font-size: 20px; }
 .summary-card--archived .summary-icon { color: var(--color-warning); font-size: 20px; }
 .summary-num { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
 .summary-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }

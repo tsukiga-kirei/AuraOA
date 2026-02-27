@@ -27,7 +27,7 @@ definePageMeta({ middleware: 'auth' })
 const { t } = useI18n()
 
 const {
-  mockProcesses, mockApprovedProcesses, mockRejectedProcesses,
+  mockProcesses, mockApprovedProcesses, mockReturnedProcesses,
   mockHistoricalResults, mockAuditResult, mockDashboardStats, mockSnapshots,
   mockArchivedOAProcesses, mockArchivedAuditChains, mockArchivedHistoricalResults,
   mockBatchAuditResult, mockTodoAuditResults,
@@ -35,7 +35,7 @@ const {
 
 const todoList = ref(mockProcesses)
 const approvedList = ref(mockApprovedProcesses)
-const rejectedList = ref(mockRejectedProcesses)
+const returnedList = ref(mockReturnedProcesses)
 const archivedList = ref(mockArchivedOAProcesses)
 const currentResult = ref<typeof mockAuditResult | null>(null)
 const loading = ref(false)
@@ -51,23 +51,23 @@ const processAuditCache = ref<Record<string, typeof mockAuditResult>>({ ...mockT
 const processAuditLoading = ref<Record<string, boolean>>({})
 
 // View mode
-const viewMode = ref<'todo' | 'approved' | 'rejected' | 'archived'>('todo')
+const viewMode = ref<'todo' | 'approved' | 'returned' | 'archived'>('todo')
 const isHistoryMode = computed(() => viewMode.value !== 'todo')
 
 // Process type filter
 const filterProcessType = ref<string[]>([])
 const processTypeOptions = computed(() => {
-  const all = [...todoList.value, ...approvedList.value, ...rejectedList.value, ...archivedList.value]
+  const all = [...todoList.value, ...approvedList.value, ...returnedList.value, ...archivedList.value]
   const types = [...new Set(all.map(p => p.process_type))]
   return types.map(t => ({ label: t, value: t }))
 })
 const departmentOptions = computed(() => {
-  const all = [...todoList.value, ...approvedList.value, ...rejectedList.value, ...archivedList.value]
+  const all = [...todoList.value, ...approvedList.value, ...returnedList.value, ...archivedList.value]
   return [...new Set(all.map(p => p.department))]
 })
 const filterDepartment = ref<string | undefined>(undefined)
 
-// AI audit status filter: 'unaudited' | 'approve' | 'reject' | 'revise' | 'return' | 'review'
+// AI audit status filter: 'unaudited' | 'approve' | 'return' | 'review'
 const filterAuditStatus = ref<string | undefined>(undefined)
 
 const clearFilters = () => {
@@ -99,7 +99,7 @@ const toggleSelectAll = () => {
 // Generate a mock audit result for a process that doesn't have one yet
 const generateMockResult = (processId: string): typeof mockAuditResult => {
   const hash = processId.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
-  const recs: Array<'approve' | 'reject' | 'revise' | 'return' | 'review'> = ['approve', 'return', 'review', 'approve', 'revise']
+  const recs: Array<'approve' | 'return' | 'review'> = ['approve', 'return', 'review', 'approve', 'return']
   const rec = recs[hash % recs.length]
   const score = rec === 'approve' ? 80 + (hash % 20) : rec === 'return' ? 50 + (hash % 25) : 55 + (hash % 30)
   return {
@@ -108,7 +108,7 @@ const generateMockResult = (processId: string): typeof mockAuditResult => {
     process_id: processId,
     recommendation: rec,
     score,
-    action_label: rec === 'approve' ? '建议通过' : rec === 'return' ? '建议退回' : rec === 'review' ? '建议复核' : rec === 'revise' ? '建议修改' : '建议驳回',
+    action_label: rec === 'approve' ? '建议通过' : rec === 'return' ? '建议退回' : '建议复核',
     confidence: 0.7 + (hash % 25) / 100,
     risk_points: rec === 'approve' ? [] : ['存在待确认的合规风险项'],
     suggestions: rec === 'approve' ? ['建议定期复核'] : ['建议补充相关材料后重新提交'],
@@ -191,7 +191,7 @@ const filteredList = computed(() => {
   let list: typeof todoList.value
   switch (viewMode.value) {
     case 'approved': list = approvedList.value; break
-    case 'rejected': list = rejectedList.value; break
+    case 'returned': list = returnedList.value; break
     case 'archived': list = archivedList.value; break
     default: list = todoList.value
   }
@@ -260,7 +260,7 @@ const jumpToOA = (processId: string) => {
   message.info(t('dashboard.jumpingToOA', `Jumping to OA: ${processId}...`))
 }
 
-const switchView = (mode: 'todo' | 'approved' | 'rejected' | 'archived') => {
+const switchView = (mode: 'todo' | 'approved' | 'returned' | 'archived') => {
   viewMode.value = mode
   selectedProcess.value = null
   currentResult.value = null
@@ -269,14 +269,14 @@ const switchView = (mode: 'todo' | 'approved' | 'rejected' | 'archived') => {
 }
 
 const selectedProcessInfo = computed(() => {
-  const all = [...todoList.value, ...approvedList.value, ...rejectedList.value, ...archivedList.value]
+  const all = [...todoList.value, ...approvedList.value, ...returnedList.value, ...archivedList.value]
   return all.find(p => p.process_id === selectedProcess.value)
 })
 
 const viewModeLabel = computed(() => {
   switch (viewMode.value) {
     case 'approved': return t('dashboard.viewMode.approved')
-    case 'rejected': return t('dashboard.viewMode.rejected')
+    case 'returned': return t('dashboard.viewMode.returned')
     case 'archived': return t('dashboard.viewMode.archived')
     default: return t('dashboard.viewMode.todo')
   }
@@ -290,8 +290,6 @@ const urgencyConfig = computed<Record<string, { color: string; bg: string; label
 
 const recommendationConfig = computed<Record<string, { color: string; bg: string; icon: any; label: string }>>(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
-  reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: t('dashboard.rec.reject') },
-  revise: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EditOutlined, label: t('dashboard.rec.revise') },
   return: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: ReloadOutlined, label: t('dashboard.rec.return') },
   review: { color: 'var(--color-info)', bg: 'var(--color-info-bg)', icon: EyeOutlined, label: t('dashboard.rec.review') },
 }))
@@ -300,8 +298,6 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
 const getShortRecLabel = (rec: string) => {
   const map: Record<string, string> = {
     approve: t('dashboard.suggestApprove'),
-    reject: t('dashboard.suggestReject'),
-    revise: t('dashboard.suggestRevise'),
     return: t('dashboard.suggestReturn'),
     review: t('dashboard.suggestReview'),
   }
@@ -345,13 +341,13 @@ const getShortRecLabel = (rec: string) => {
       </div>
       <div
         class="stat-card stat-card--danger"
-        :class="{ 'stat-card--selected': viewMode === 'rejected' }"
-        @click="switchView('rejected')"
+        :class="{ 'stat-card--selected': viewMode === 'returned' }"
+        @click="switchView('returned')"
       >
         <div class="stat-card-icon"><CloseCircleOutlined /></div>
         <div class="stat-card-info">
-          <span class="stat-card-value">{{ stats.todayRejected }}</span>
-          <span class="stat-card-label">{{ t('dashboard.tab.rejected') }}</span>
+          <span class="stat-card-value">{{ stats.todayReturned }}</span>
+          <span class="stat-card-label">{{ t('dashboard.tab.returned') }}</span>
         </div>
       </div>
       <div
@@ -423,8 +419,6 @@ const getShortRecLabel = (rec: string) => {
                 <a-select-option value="unaudited">{{ t('dashboard.auditStatus.unaudited') }}</a-select-option>
                 <a-select-option value="approve">{{ t('dashboard.auditStatus.approve') }}</a-select-option>
                 <a-select-option value="return">{{ t('dashboard.auditStatus.return') }}</a-select-option>
-                <a-select-option value="revise">{{ t('dashboard.auditStatus.revise') }}</a-select-option>
-                <a-select-option value="reject">{{ t('dashboard.auditStatus.reject') }}</a-select-option>
                 <a-select-option value="review">{{ t('dashboard.auditStatus.review') }}</a-select-option>
               </a-select>
               <a-button size="small" @click="clearFilters">{{ t('dashboard.filterReset') }}</a-button>
@@ -462,8 +456,6 @@ const getShortRecLabel = (rec: string) => {
               'todo-item--selected': selectedProcess === item.process_id,
               'todo-item--audited-approve': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'approve',
               'todo-item--audited-return': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'return',
-              'todo-item--audited-revise': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'revise',
-              'todo-item--audited-reject': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'reject',
               'todo-item--audited-review': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'review',
             }"
             @click="handleSelectProcess(item.process_id)"
@@ -494,7 +486,7 @@ const getShortRecLabel = (rec: string) => {
                     class="todo-item-node"
                     :class="{
                       'todo-item-node--success': item.status === 'approved',
-                      'todo-item-node--danger': item.status === 'rejected',
+                      'todo-item-node--danger': item.status === 'returned',
                       'todo-item-node--info': item.status === 'archived',
                     }"
                   >{{ item.current_node }}</span>
@@ -517,7 +509,7 @@ const getShortRecLabel = (rec: string) => {
                     {{ processAuditCache[item.process_id].score }}{{ t('dashboard.points') }}
                     {{ getShortRecLabel(processAuditCache[item.process_id].recommendation) }}
                   </span>
-                  <!-- Show historical score for approved/rejected/archived -->
+                  <!-- Show historical score for approved/returned/archived -->
                   <span
                     v-else-if="isHistoryMode && (mockHistoricalResults[item.process_id] || mockArchivedHistoricalResults[item.process_id])"
                     class="todo-item-score-badge"
@@ -891,13 +883,10 @@ const getShortRecLabel = (rec: string) => {
 .todo-item:hover { background: var(--color-bg-hover); }
 .todo-item--selected { background: var(--color-primary-bg); border-left: 3px solid var(--color-primary); }
 .todo-item--audited-approve { background: rgba(34, 197, 94, 0.03); border-left: 3px solid var(--color-success); }
-.todo-item--audited-return, .todo-item--audited-revise { background: rgba(245, 158, 11, 0.03); border-left: 3px solid var(--color-warning); }
-.todo-item--audited-reject { background: rgba(239, 68, 68, 0.03); border-left: 3px solid var(--color-danger); }
+.todo-item--audited-return { background: rgba(245, 158, 11, 0.03); border-left: 3px solid var(--color-warning); }
 .todo-item--audited-review { background: rgba(59, 130, 246, 0.03); border-left: 3px solid var(--color-info); }
 .todo-item--audited-approve.todo-item--selected,
 .todo-item--audited-return.todo-item--selected,
-.todo-item--audited-revise.todo-item--selected,
-.todo-item--audited-reject.todo-item--selected,
 .todo-item--audited-review.todo-item--selected { background: var(--color-primary-bg); border-left: 3px solid var(--color-primary); }
 .todo-item-audited-icon { font-size: 13px; flex-shrink: 0; }
 .todo-item-main { flex: 1; min-width: 0; }

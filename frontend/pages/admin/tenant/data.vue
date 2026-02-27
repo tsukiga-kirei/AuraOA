@@ -80,7 +80,7 @@ const { t } = useI18n()
 const auditActionOptions = computed(() => [
   { value: 'ai_audit', label: t('admin.data.aiAudit') },
   { value: 'manual_approve', label: t('admin.data.manualApprove') },
-  { value: 'manual_reject', label: t('admin.data.manualReject') },
+  { value: 'manual_return', label: t('admin.data.manualReturn') },
   { value: 'feedback', label: t('admin.data.feedback') },
 ])
 const archiveActionOptions = computed(() => [
@@ -196,8 +196,8 @@ const handleDeleteLog = (id: string, type: 'audit' | 'cron' | 'archive') => {
           <div class="stat-label">{{ t('admin.data.manualApprove') }}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value">{{ auditLogs.filter(l => l.action === 'manual_reject').length }}</div>
-          <div class="stat-label">{{ t('admin.data.manualReject') }}</div>
+          <div class="stat-value">{{ auditLogs.filter(l => l.action === 'manual_return').length }}</div>
+          <div class="stat-label">{{ t('admin.data.manualReturn') }}</div>
         </div>
       </div>
 
@@ -486,7 +486,7 @@ const handleDeleteLog = (id: string, type: 'audit' | 'cron' | 'archive') => {
 }
 .action-tag--ai_audit { background: var(--color-primary-bg); color: var(--color-primary); }
 .action-tag--manual_approve { background: var(--color-success-bg); color: var(--color-success); }
-.action-tag--manual_reject { background: var(--color-danger-bg); color: var(--color-danger); }
+.action-tag--manual_return { background: var(--color-danger-bg); color: var(--color-danger); }
 .action-tag--feedback { background: var(--color-info-bg); color: var(--color-info); }
 .action-tag--re_audit { background: var(--color-primary-bg); color: var(--color-primary); }
 .action-tag--export { background: var(--color-warning-bg); color: var(--color-warning); }

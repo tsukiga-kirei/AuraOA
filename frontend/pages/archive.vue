@@ -158,8 +158,7 @@ const complianceConfig = computed(() => ({
 
 const actionConfig = computed(() => ({
   approve: { color: 'var(--color-success)', label: t('archive.actionApprove') },
-  reject: { color: 'var(--color-danger)', label: t('archive.actionReject') },
-  revise: { color: 'var(--color-warning)', label: t('archive.actionRevise') },
+  return: { color: 'var(--color-warning)', label: t('archive.actionReturn') },
 }))
 </script>
 

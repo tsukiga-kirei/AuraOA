@@ -267,7 +267,7 @@ export interface AuditResultV2 {
   process_id: string
   status: 'completed' | 'in_progress' | 'failed'
   recommendation: {
-    action: 'approve' | 'return' | 'reject' | 'review'
+    action: 'approve' | 'return' | 'review'
     action_label: string
     score: number
     confidence: number
@@ -297,7 +297,7 @@ export interface AuditResultV2 {
 export interface AuditResult {
   trace_id: string
   process_id: string
-  recommendation: 'approve' | 'reject' | 'revise' | 'return' | 'review'
+  recommendation: 'approve' | 'return' | 'review'
   score: number
   details: ChecklistResult[]
   ai_reasoning: string
@@ -487,7 +487,7 @@ export interface FlowNode {
   node_id: string
   node_name: string
   approver: string
-  action: 'approve' | 'reject' | 'revise'
+  action: 'approve' | 'return'
   action_time: string
   opinion: string
 }
@@ -532,8 +532,7 @@ export interface ArchiveAuditResult {
 export interface DashboardStats {
   todayAudits: number
   todayApproved: number
-  todayRejected: number
-  todayRevised: number
+  todayReturned: number
   pendingCount: number
   avgResponseMs: number
   successRate: number
@@ -573,7 +572,7 @@ export interface OverviewWidget {
 }
 
 export const OVERVIEW_WIDGETS: OverviewWidget[] = [
-  { id: 'audit_summary', title: '审核概览', description: '审核通过/驳回/已归档数量统计', requiredPermissions: ['business'], defaultEnabled: true, size: 'lg' },
+  { id: 'audit_summary', title: '审核概览', description: '审核通过/退回/已归档数量统计', requiredPermissions: ['business'], defaultEnabled: true, size: 'lg' },
   { id: 'pending_tasks', title: '待办任务', description: '当前待处理的审核流程数量', requiredPermissions: ['business'], defaultEnabled: true, size: 'sm' },
   { id: 'weekly_trend', title: '审核趋势', description: '个人的使用智能审核进行审批的流程数', requiredPermissions: ['business'], defaultEnabled: true, size: 'md' },
   { id: 'cron_tasks', title: '定时任务', description: '定时任务执行情况概览', requiredPermissions: ['business'], defaultEnabled: true, size: 'md' },
@@ -591,7 +590,7 @@ export const OVERVIEW_WIDGETS: OverviewWidget[] = [
 ]
 
 export interface OverviewDashboardData {
-  auditSummary: { approved: number; rejected: number; archived: number; total: number }
+  auditSummary: { approved: number; returned: number; archived: number; total: number }
   pendingCount: number
   weeklyTrend: { date: string; count: number }[]
   deptDistribution: { department: string; count: number; color: string }[]
@@ -1101,7 +1100,7 @@ export interface AuditLog {
   process_id: string
   title: string
   operator: string
-  action: 'ai_audit' | 'manual_approve' | 'manual_reject' | 'feedback'
+  action: 'ai_audit' | 'manual_approve' | 'manual_return' | 'feedback'
   action_label: string
   result: string
   created_at: string
@@ -1133,9 +1132,9 @@ export interface ArchiveLog {
 export const mockAuditLogs: AuditLog[] = [
   { id: 'AL-001', process_id: 'WF-2025-001', title: '办公设备采购申请', operator: '张明', action: 'ai_audit', action_label: 'AI 审核', result: '建议修改（72分）', created_at: '2025-06-10 09:35' },
   { id: 'AL-002', process_id: 'WF-2025-002', title: '差旅费报销', operator: '李芳', action: 'ai_audit', action_label: 'AI 审核', result: '建议通过（88分）', created_at: '2025-06-10 10:20' },
-  { id: 'AL-003', process_id: 'WF-2025-003', title: '年度服务器租赁合同续签', operator: '王强', action: 'ai_audit', action_label: 'AI 审核', result: '建议驳回（45分）', created_at: '2025-06-10 11:10' },
+  { id: 'AL-003', process_id: 'WF-2025-003', title: '年度服务器租赁合同续签', operator: '王强', action: 'ai_audit', action_label: 'AI 审核', result: '建议退回（45分）', created_at: '2025-06-10 11:10' },
   { id: 'AL-004', process_id: 'WF-2025-098', title: '年度IT设备采购', operator: '王强', action: 'manual_approve', action_label: '手动通过', result: '已通过', created_at: '2025-06-09 17:00' },
-  { id: 'AL-005', process_id: 'WF-2025-097', title: '客户招待费报销', operator: '张华', action: 'manual_reject', action_label: '手动驳回', result: '已驳回', created_at: '2025-06-09 16:00' },
+  { id: 'AL-005', process_id: 'WF-2025-097', title: '客户招待费报销', operator: '张华', action: 'manual_return', action_label: '手动退回', result: '已退回', created_at: '2025-06-09 16:00' },
   { id: 'AL-006', process_id: 'WF-2025-001', title: '办公设备采购申请', operator: '张明', action: 'feedback', action_label: '反馈', result: '采纳AI建议', created_at: '2025-06-10 10:00' },
   { id: 'AL-007', process_id: 'WF-2025-004', title: '新员工入职审批', operator: '赵丽', action: 'ai_audit', action_label: 'AI 审核', result: '建议通过（91分）', created_at: '2025-06-10 14:30' },
   { id: 'AL-008', process_id: 'WF-2025-005', title: '市场推广活动预算申请', operator: '陈伟', action: 'ai_audit', action_label: 'AI 审核', result: '建议修改（65分）', created_at: '2025-06-10 16:00' },
@@ -1206,7 +1205,7 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     ai_config: {
       audit_strictness: 'standard',
       reasoning_prompt: '你是一个专业的采购审核助手。请根据以下规则对采购申请进行合规性审核，逐条检查并给出判断理由。对于不合规项，请明确指出问题并给出修改建议。\n\n主表数据：{{main_table}}\n明细表数据：{{detail_tables}}\n审核规则：{{rules}}\n审批流历史：{{flow_history}}\n流程图：{{flow_graph}}\n当前节点：{{current_node}}',
-      extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作（approve/return/reject/review）及置信度\n2. rule_checks：逐条规则校验结果（rule_id、是否通过、判断理由）\n3. risk_points：发现的风险点列表\n4. suggestions：改进建议列表\n\n原始规则列表：{{rules}}',
+      extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作（approve/return/review）及置信度\n2. rule_checks：逐条规则校验结果（rule_id、是否通过、判断理由）\n3. risk_points：发现的风险点列表\n4. suggestions：改进建议列表\n\n原始规则列表：{{rules}}',
     },
     user_permissions: {
       allow_custom_fields: false,
@@ -1295,7 +1294,7 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     ai_config: {
       audit_strictness: 'strict',
       reasoning_prompt: '你是一个专业的合同审核助手。请根据以下规则对合同进行全面审核，重点关注法律条款完整性、金额合理性和合作方资质。对于高风险条款请特别标注。\n\n主表数据：{{main_table}}\n审核规则：{{rules}}\n审批流历史：{{flow_history}}\n流程图：{{flow_graph}}',
-      extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作（approve/return/reject/review）及置信度\n2. rule_checks：逐条规则校验结果\n3. risk_points：风险点\n4. suggestions：改进建议\n\n原始规则列表：{{rules}}',
+      extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作（approve/return/review）及置信度\n2. rule_checks：逐条规则校验结果\n3. risk_points：风险点\n4. suggestions：改进建议\n\n原始规则列表：{{rules}}',
     },
     user_permissions: {
       allow_custom_fields: false,
@@ -1500,8 +1499,8 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
 export const mockStrictnessPresets: StrictnessPromptPreset[] = [
   {
     strictness: 'strict',
-    reasoning_instruction: '请以最严格的标准审核，任何疑点均应标记为不合规。宁可误判也不放过，对所有可疑项逐一深入分析，给出明确的退回或驳回建议。',
-    extraction_instruction: '请以最严格标准提取结论：任何存疑项均应判定为不通过，建议操作倾向于 reject 或 return，仅在完全合规时才建议 approve。',
+    reasoning_instruction: '请以最严格的标准审核，任何疑点均应标记为不合规。宁可误判也不放过，对所有可疑项逐一深入分析，给出明确的退回建议。',
+    extraction_instruction: '请以最严格标准提取结论：任何存疑项均应判定为不通过，建议操作倾向于 return，仅在完全合规时才建议 approve。',
   },
   {
     strictness: 'standard',
@@ -1792,7 +1791,7 @@ export const useMockData = () => {
       content_template: {
         subject: '【OA智审】审核日报 - {{date}}',
         header: '今日审核工作概览：',
-        body_template: '今日共处理 {{total}} 条审核，通过 {{approved}} 条，驳回 {{rejected}} 条，建议修改 {{revised}} 条。通过率 {{pass_rate}}%。\n\n{{detail_list}}\n\n以上数据截至 {{time}}。',
+        body_template: '今日共处理 {{total}} 条审核，通过 {{approved}} 条，退回 {{returned}} 条。通过率 {{pass_rate}}%。\n\n{{detail_list}}\n\n以上数据截至 {{time}}。',
         footer: '详情请登录系统查看。此邮件由系统自动发送，请勿直接回复。',
       },
     },
@@ -1812,11 +1811,11 @@ export const useMockData = () => {
 
   const mockSnapshots: AuditSnapshot[] = [
     { snapshot_id: 'SN-001', process_id: 'WF-2025-098', title: '年度IT设备采购', applicant: '王强', department: 'IT部', recommendation: 'approve', score: 95, created_at: '2025-06-09 16:30', adopted: true },
-    { snapshot_id: 'SN-002', process_id: 'WF-2025-097', title: '客户招待费报销', applicant: '李芳', department: '销售部', recommendation: 'reject', score: 35, created_at: '2025-06-09 15:20', adopted: true },
+    { snapshot_id: 'SN-002', process_id: 'WF-2025-097', title: '客户招待费报销', applicant: '李芳', department: '销售部', recommendation: 'return', score: 35, created_at: '2025-06-09 15:20', adopted: true },
     { snapshot_id: 'SN-003', process_id: 'WF-2025-096', title: '新产品研发立项', applicant: '张明', department: '研发部', recommendation: 'approve', score: 88, created_at: '2025-06-09 14:10', adopted: true },
-    { snapshot_id: 'SN-004', process_id: 'WF-2025-095', title: '办公用品批量采购', applicant: '刘洋', department: '行政部', recommendation: 'revise', score: 62, created_at: '2025-06-09 11:45', adopted: false },
+    { snapshot_id: 'SN-004', process_id: 'WF-2025-095', title: '办公用品批量采购', applicant: '刘洋', department: '行政部', recommendation: 'return', score: 62, created_at: '2025-06-09 11:45', adopted: false },
     { snapshot_id: 'SN-005', process_id: 'WF-2025-094', title: '员工培训费用申请', applicant: '赵丽', department: '人力资源部', recommendation: 'approve', score: 91, created_at: '2025-06-08 17:00', adopted: true },
-    { snapshot_id: 'SN-006', process_id: 'WF-2025-093', title: '广告投放合同签署', applicant: '陈伟', department: '市场部', recommendation: 'revise', score: 58, created_at: '2025-06-08 14:30', adopted: null },
+    { snapshot_id: 'SN-006', process_id: 'WF-2025-093', title: '广告投放合同签署', applicant: '陈伟', department: '市场部', recommendation: 'return', score: 58, created_at: '2025-06-08 14:30', adopted: null },
   ]
 
   const mockTenants: TenantInfo[] = [
@@ -1979,8 +1978,7 @@ export const useMockData = () => {
   const mockDashboardStats: DashboardStats = {
     todayAudits: 42,
     todayApproved: 28,
-    todayRejected: 6,
-    todayRevised: 8,
+    todayReturned: 14,
     pendingCount: 6,
     avgResponseMs: 1850,
     successRate: 99.2,
@@ -2009,12 +2007,12 @@ export const useMockData = () => {
     { process_id: 'WF-2025-076', title: '会议室音视频系统升级', applicant: '刘洋', department: '行政部', submit_time: '2025-06-04 16:00', process_type: '工程审批', status: 'approved', current_node: '已完成', amount: 135000, urgency: 'low' },
   ]
 
-  // Rejected processes - historical, read-only
-  const mockRejectedProcesses: OAProcess[] = [
-    { process_id: 'WF-2025-097', title: '客户招待费报销', applicant: '李芳', department: '销售部', submit_time: '2025-06-09 15:20', process_type: '费用报销', status: 'rejected', current_node: '已驳回', amount: 28000, urgency: 'medium' },
-    { process_id: 'WF-2025-091', title: '未经审批的外包合同', applicant: '陈伟', department: '市场部', submit_time: '2025-06-08 10:00', process_type: '合同审批', status: 'rejected', current_node: '已驳回', amount: 150000, urgency: 'high' },
-    { process_id: 'WF-2025-087', title: '超标准差旅费报销', applicant: '张明', department: '研发部', submit_time: '2025-06-07 09:30', process_type: '费用报销', status: 'rejected', current_node: '已驳回', amount: 42000, urgency: 'low' },
-    { process_id: 'WF-2025-083', title: '未备案供应商采购申请', applicant: '刘洋', department: '行政部', submit_time: '2025-06-06 11:00', process_type: '采购审批', status: 'rejected', current_node: '已驳回', amount: 95000, urgency: 'medium' },
+  // Returned processes - historical, read-only
+  const mockReturnedProcesses: OAProcess[] = [
+    { process_id: 'WF-2025-097', title: '客户招待费报销', applicant: '李芳', department: '销售部', submit_time: '2025-06-09 15:20', process_type: '费用报销', status: 'returned', current_node: '已退回', amount: 28000, urgency: 'medium' },
+    { process_id: 'WF-2025-091', title: '未经审批的外包合同', applicant: '陈伟', department: '市场部', submit_time: '2025-06-08 10:00', process_type: '合同审批', status: 'returned', current_node: '已退回', amount: 150000, urgency: 'high' },
+    { process_id: 'WF-2025-087', title: '超标准差旅费报销', applicant: '张明', department: '研发部', submit_time: '2025-06-07 09:30', process_type: '费用报销', status: 'returned', current_node: '已退回', amount: 42000, urgency: 'low' },
+    { process_id: 'WF-2025-083', title: '未备案供应商采购申请', applicant: '刘洋', department: '行政部', submit_time: '2025-06-06 11:00', process_type: '采购审批', status: 'returned', current_node: '已退回', amount: 95000, urgency: 'medium' },
   ]
 
   // Historical audit results keyed by process_id
@@ -2058,29 +2056,29 @@ export const useMockData = () => {
       model_used: 'Qwen2.5-72B', interaction_mode: 'single_pass', phase1_duration_ms: 1150, phase2_duration_ms: 0,
     },
     'WF-2025-097': {
-      trace_id: 'TR-20250609-H7I8', process_id: 'WF-2025-097', recommendation: 'reject', score: 35, duration_ms: 1320,
+      trace_id: 'TR-20250609-H7I8', process_id: 'WF-2025-097', recommendation: 'return', score: 35, duration_ms: 1320,
       details: [
         { rule_id: 'R003', rule_name: '费用标准校验', passed: false, reasoning: '招待费用超出公司标准上限 200%', is_locked: true },
         { rule_id: 'R006', rule_name: '审批材料完整性', passed: false, reasoning: '缺少客户拜访记录和招待事由说明' },
         { rule_id: 'R007', rule_name: '发票合规性', passed: false, reasoning: '部分发票日期与申报时间不符' },
       ],
-      ai_reasoning: '该报销申请存在多项严重违规：费用严重超标、材料不完整、发票存疑。建议驳回并要求重新整理材料。',
-      action_label: '建议驳回', confidence: 0.93, risk_points: ['招待费用超出标准上限200%', '缺少客户拜访记录', '发票日期存疑'],
+      ai_reasoning: '该报销申请存在多项严重违规：费用严重超标、材料不完整、发票存疑。建议退回并要求重新整理材料。',
+      action_label: '建议退回', confidence: 0.93, risk_points: ['招待费用超出标准上限200%', '缺少客户拜访记录', '发票日期存疑'],
       suggestions: ['重新整理合规发票', '补充客户拜访记录', '按公司标准重新申报'],
-      ai_summary: '该报销申请存在多项严重违规，建议驳回。',
+      ai_summary: '该报销申请存在多项严重违规，建议退回。',
       model_used: 'Qwen2.5-72B', interaction_mode: 'two_phase', phase1_duration_ms: 780, phase2_duration_ms: 540,
     },
     'WF-2025-091': {
-      trace_id: 'TR-20250608-J9K0', process_id: 'WF-2025-091', recommendation: 'reject', score: 22, duration_ms: 1560,
+      trace_id: 'TR-20250608-J9K0', process_id: 'WF-2025-091', recommendation: 'return', score: 22, duration_ms: 1560,
       details: [
         { rule_id: 'R004', rule_name: '合同审批前置条件', passed: false, reasoning: '合同签署前未经过法务审核', is_locked: true },
         { rule_id: 'R008', rule_name: '供应商准入', passed: false, reasoning: '外包供应商未通过准入评审' },
         { rule_id: 'R009', rule_name: '预算审批', passed: false, reasoning: '合同金额未纳入年度预算' },
       ],
-      ai_reasoning: '该合同存在严重合规问题：未经法务审核即签署、供应商未准入、预算未审批。建议驳回并启动合规调查。',
-      action_label: '建议驳回', confidence: 0.97, risk_points: ['未经法务审核', '供应商未通过准入评审', '合同金额未纳入预算'],
+      ai_reasoning: '该合同存在严重合规问题：未经法务审核即签署、供应商未准入、预算未审批。建议退回并启动合规调查。',
+      action_label: '建议退回', confidence: 0.97, risk_points: ['未经法务审核', '供应商未通过准入评审', '合同金额未纳入预算'],
       suggestions: ['启动合规调查', '补充法务审核流程', '完成供应商准入评审'],
-      ai_summary: '该合同存在严重合规问题，建议驳回并启动合规调查。',
+      ai_summary: '该合同存在严重合规问题，建议退回并启动合规调查。',
       model_used: 'Qwen2.5-72B', interaction_mode: 'two_phase', phase1_duration_ms: 950, phase2_duration_ms: 610,
     },
   }
@@ -2120,7 +2118,7 @@ export const useMockData = () => {
       status: 'archived',
       flow_nodes: [
         { node_id: 'N1', node_name: '部门经理审批', approver: '周磊', action: 'approve', action_time: '2025-03-21 09:30', opinion: '费用合理' },
-        { node_id: 'N2', node_name: '财务审核', approver: '张华', action: 'revise', action_time: '2025-03-22 14:00', opinion: '部分发票不清晰，请补充' },
+        { node_id: 'N2', node_name: '财务审核', approver: '张华', action: 'return', action_time: '2025-03-22 14:00', opinion: '部分发票不清晰，请补充' },
         { node_id: 'N3', node_name: '财务审核（重审）', approver: '张华', action: 'approve', action_time: '2025-03-25 10:00', opinion: '材料已补齐，通过' },
       ],
       fields: { event_name: '华东春季产品发布会', venue: '上海国际会议中心', attendees: '320人' },
@@ -2137,7 +2135,7 @@ export const useMockData = () => {
       status: 'archived',
       flow_nodes: [
         { node_id: 'N1', node_name: '部门经理审批', approver: '张明', action: 'approve', action_time: '2025-02-11 09:00', opinion: '技术方案可行' },
-        { node_id: 'N2', node_name: '法务审核', approver: '孙律', action: 'revise', action_time: '2025-02-15 16:00', opinion: '知识产权条款需修改' },
+        { node_id: 'N2', node_name: '法务审核', approver: '孙律', action: 'return', action_time: '2025-02-15 16:00', opinion: '知识产权条款需修改' },
         { node_id: 'N3', node_name: '法务审核（重审）', approver: '孙律', action: 'approve', action_time: '2025-02-20 11:00', opinion: '条款已修正，通过' },
         { node_id: 'N4', node_name: '财务总监审批', approver: '张华', action: 'approve', action_time: '2025-02-22 14:30', opinion: '预算范围内' },
         { node_id: 'N5', node_name: '总经理审批', approver: '刘总', action: 'approve', action_time: '2025-02-25 10:00', opinion: '批准' },
@@ -2173,7 +2171,7 @@ export const useMockData = () => {
       flow_nodes: [
         { node_id: 'N1', node_name: '行政经理审批', approver: '刘洋', action: 'approve', action_time: '2025-01-10 14:00', opinion: '方案合理' },
         { node_id: 'N2', node_name: '财务总监审批', approver: '张华', action: 'approve', action_time: '2025-01-12 10:00', opinion: '预算可控' },
-        { node_id: 'N3', node_name: '总经理审批', approver: '刘总', action: 'reject', action_time: '2025-01-15 09:00', opinion: '施工时间与业务高峰冲突，请调整' },
+        { node_id: 'N3', node_name: '总经理审批', approver: '刘总', action: 'return', action_time: '2025-01-15 09:00', opinion: '施工时间与业务高峰冲突，请调整' },
         { node_id: 'N4', node_name: '行政经理重新提交', approver: '刘洋', action: 'approve', action_time: '2025-01-18 11:00', opinion: '已调整至春节假期施工' },
         { node_id: 'N5', node_name: '总经理审批（重审）', approver: '刘总', action: 'approve', action_time: '2025-01-20 09:30', opinion: '时间调整合理，批准' },
       ],
@@ -2209,7 +2207,7 @@ export const useMockData = () => {
       flow_nodes: [
         { node_id: 'N1', node_name: '项目经理确认', approver: '张明', action: 'approve', action_time: '2024-11-20 14:00', opinion: '功能验收通过' },
         { node_id: 'N2', node_name: '测试负责人确认', approver: '周磊', action: 'approve', action_time: '2024-11-25 11:00', opinion: '测试用例全部通过' },
-        { node_id: 'N3', node_name: '业务方验收', approver: '李芳', action: 'revise', action_time: '2024-12-01 15:00', opinion: '报表导出功能需优化' },
+        { node_id: 'N3', node_name: '业务方验收', approver: '李芳', action: 'return', action_time: '2024-12-01 15:00', opinion: '报表导出功能需优化' },
         { node_id: 'N4', node_name: '业务方验收（重审）', approver: '李芳', action: 'approve', action_time: '2024-12-15 10:00', opinion: '问题已修复，验收通过' },
       ],
       fields: { project_name: 'CRM一期', vendor: 'YY软件科技', modules: '客户管理、商机跟踪、报表分析' },
@@ -2243,7 +2241,7 @@ export const useMockData = () => {
       status: 'archived',
       flow_nodes: [
         { node_id: 'N1', node_name: '市场总监审批', approver: '周磊', action: 'approve', action_time: '2024-09-16 10:00', opinion: '方案可行' },
-        { node_id: 'N2', node_name: '财务总监审批', approver: '张华', action: 'revise', action_time: '2024-09-18 15:00', opinion: '线下活动预算偏高，建议缩减' },
+        { node_id: 'N2', node_name: '财务总监审批', approver: '张华', action: 'return', action_time: '2024-09-18 15:00', opinion: '线下活动预算偏高，建议缩减' },
         { node_id: 'N3', node_name: '财务总监审批（重审）', approver: '张华', action: 'approve', action_time: '2024-09-22 11:00', opinion: '调整后预算合理' },
         { node_id: 'N4', node_name: '总经理审批', approver: '刘总', action: 'approve', action_time: '2024-09-25 09:00', opinion: '批准执行' },
       ],
@@ -2312,25 +2310,25 @@ export const useMockData = () => {
   // Multi-round audit chain snapshots for archived processes (final round always approve)
   const mockArchivedAuditChains: Record<string, AuditSnapshot[]> = {
     'WF-2025-050': [
-      { snapshot_id: 'SN-A001', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', recommendation: 'revise', score: 68, created_at: '2025-04-16 10:30', adopted: true },
-      { snapshot_id: 'SN-A002', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', recommendation: 'revise', score: 82, created_at: '2025-04-25 14:00', adopted: true },
+      { snapshot_id: 'SN-A001', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', recommendation: 'return', score: 68, created_at: '2025-04-16 10:30', adopted: true },
+      { snapshot_id: 'SN-A002', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', recommendation: 'return', score: 82, created_at: '2025-04-25 14:00', adopted: true },
       { snapshot_id: 'SN-A003', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', recommendation: 'approve', score: 95, created_at: '2025-05-10 09:15', adopted: true },
     ],
     'WF-2025-038': [
-      { snapshot_id: 'SN-A004', process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', applicant: '陈伟', department: '市场部', recommendation: 'reject', score: 42, created_at: '2025-03-22 15:00', adopted: true },
+      { snapshot_id: 'SN-A004', process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', applicant: '陈伟', department: '市场部', recommendation: 'return', score: 42, created_at: '2025-03-22 15:00', adopted: true },
       { snapshot_id: 'SN-A005', process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', applicant: '陈伟', department: '市场部', recommendation: 'approve', score: 90, created_at: '2025-03-28 11:30', adopted: true },
     ],
     'WF-2025-025': [
-      { snapshot_id: 'SN-A006', process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', recommendation: 'revise', score: 55, created_at: '2025-02-12 10:00', adopted: true },
-      { snapshot_id: 'SN-A007', process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', recommendation: 'revise', score: 78, created_at: '2025-02-18 16:00', adopted: true },
+      { snapshot_id: 'SN-A006', process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', recommendation: 'return', score: 55, created_at: '2025-02-12 10:00', adopted: true },
+      { snapshot_id: 'SN-A007', process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', recommendation: 'return', score: 78, created_at: '2025-02-18 16:00', adopted: true },
       { snapshot_id: 'SN-A008', process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', recommendation: 'approve', score: 92, created_at: '2025-02-24 09:30', adopted: true },
     ],
     'WF-2025-012': [
       { snapshot_id: 'SN-A009', process_id: 'WF-2025-012', title: '新员工批量入职审批 - 2025春招', applicant: '赵丽', department: '人力资源部', recommendation: 'approve', score: 96, created_at: '2025-01-22 11:00', adopted: true },
     ],
     'WF-2025-008': [
-      { snapshot_id: 'SN-A010', process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', recommendation: 'reject', score: 38, created_at: '2025-01-12 14:00', adopted: true },
-      { snapshot_id: 'SN-A011', process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', recommendation: 'revise', score: 71, created_at: '2025-01-16 10:30', adopted: true },
+      { snapshot_id: 'SN-A010', process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', recommendation: 'return', score: 38, created_at: '2025-01-12 14:00', adopted: true },
+      { snapshot_id: 'SN-A011', process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', recommendation: 'return', score: 71, created_at: '2025-01-16 10:30', adopted: true },
       { snapshot_id: 'SN-A012', process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', recommendation: 'approve', score: 89, created_at: '2025-01-19 15:00', adopted: true },
     ],
   }
@@ -2447,7 +2445,7 @@ export const useMockData = () => {
   }
 
   const mockOverviewData: OverviewDashboardData = {
-    auditSummary: { approved: mockApprovedProcesses.length, rejected: mockRejectedProcesses.length, archived: mockArchivedOAProcesses.length, total: mockApprovedProcesses.length + mockRejectedProcesses.length + mockArchivedOAProcesses.length },
+    auditSummary: { approved: mockApprovedProcesses.length, returned: mockReturnedProcesses.length, archived: mockArchivedOAProcesses.length, total: mockApprovedProcesses.length + mockReturnedProcesses.length + mockArchivedOAProcesses.length },
     pendingCount: mockProcesses.length,
     weeklyTrend: [
       { date: '06-04', count: 35 }, { date: '06-05', count: 41 },
@@ -2536,7 +2534,7 @@ export const useMockData = () => {
   return {
     mockProcesses,
     mockApprovedProcesses,
-    mockRejectedProcesses,
+    mockReturnedProcesses,
     mockHistoricalResults,
     mockAuditResult,
     mockCronTasks,
