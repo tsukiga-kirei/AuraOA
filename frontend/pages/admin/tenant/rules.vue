@@ -315,14 +315,12 @@ const interactionModeOptions = computed(() => [
 
 // Prompt variables with descriptions for reasoning phase
 const reasoningPromptVariables = computed(() => [
-  { key: '{{process_type}}', desc: t('admin.ruleConfig.varProcessTypeDesc') },
   { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
   { key: '{{detail_tables}}', desc: t('admin.ruleConfig.varDetailTablesDesc') },
   { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
   { key: '{{flow_history}}', desc: t('admin.ruleConfig.varFlowHistoryDesc') },
   { key: '{{flow_graph}}', desc: t('admin.ruleConfig.varFlowGraphDesc') },
   { key: '{{current_node}}', desc: t('admin.ruleConfig.varCurrentNodeDesc') },
-  { key: '{{audit_strictness}}', desc: t('admin.ruleConfig.varAuditStrictnessDesc') },
 ])
 
 // Prompt variables for extraction phase
@@ -330,14 +328,89 @@ const extractionPromptVariables = computed(() => [
   { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
 ])
 
-const insertReasoningVariable = (variable: string) => {
+// Textarea refs for cursor-position insertion
+const reasoningTextareaRef = ref<any>(null)
+const extractionTextareaRef = ref<any>(null)
+
+const insertAtCursor = (textareaRef: any, field: 'reasoning_prompt' | 'extraction_prompt', variable: string) => {
   if (!selectedConfig.value) return
-  selectedConfig.value.ai_config.reasoning_prompt = (selectedConfig.value.ai_config.reasoning_prompt || '') + variable
+  // Get the native textarea element from ant-design-vue's a-textarea
+  const el: HTMLTextAreaElement | null = textareaRef?.value?.$el?.querySelector?.('textarea')
+    || textareaRef?.value?.resizableTextArea?.textArea
+    || null
+  const currentVal = selectedConfig.value.ai_config[field] || ''
+  if (el) {
+    const start = el.selectionStart ?? currentVal.length
+    const end = el.selectionEnd ?? currentVal.length
+    const newVal = currentVal.slice(0, start) + variable + currentVal.slice(end)
+    selectedConfig.value.ai_config[field] = newVal
+    // Restore cursor position after Vue re-renders
+    nextTick(() => {
+      const pos = start + variable.length
+      el.focus()
+      el.setSelectionRange(pos, pos)
+    })
+  } else {
+    // Fallback: append at end
+    selectedConfig.value.ai_config[field] = currentVal + variable
+  }
+}
+
+const insertReasoningVariable = (variable: string) => {
+  insertAtCursor(reasoningTextareaRef, 'reasoning_prompt', variable)
 }
 
 const insertExtractionVariable = (variable: string) => {
+  insertAtCursor(extractionTextareaRef, 'extraction_prompt', variable)
+}
+
+// ===== Strictness prompt presets =====
+import { fetchStrictnessPresets, saveStrictnessPresets, type StrictnessPromptPreset } from '~/composables/useMockData'
+
+const strictnessPresets = ref<StrictnessPromptPreset[]>([])
+const loadingPresets = ref(false)
+const showPresetEditor = ref(false)
+const editingPresets = ref<StrictnessPromptPreset[]>([])
+const savingPresets = ref(false)
+
+// Load presets on mount
+onMounted(async () => {
+  loadingPresets.value = true
+  try {
+    strictnessPresets.value = await fetchStrictnessPresets()
+  } finally {
+    loadingPresets.value = false
+  }
+})
+
+// Get current preset for the selected strictness
+const currentStrictnessPreset = computed(() =>
+  strictnessPresets.value.find(p => p.strictness === selectedConfig.value?.ai_config.audit_strictness)
+)
+
+// When strictness changes, show the corresponding preset instruction as a hint
+const handleStrictnessChange = (value: string) => {
   if (!selectedConfig.value) return
-  selectedConfig.value.ai_config.extraction_prompt = (selectedConfig.value.ai_config.extraction_prompt || '') + variable
+  selectedConfig.value.ai_config.audit_strictness = value as any
+}
+
+// Open preset editor
+const openPresetEditor = () => {
+  editingPresets.value = JSON.parse(JSON.stringify(strictnessPresets.value))
+  showPresetEditor.value = true
+}
+
+// Save presets
+const handleSavePresets = async () => {
+  savingPresets.value = true
+  try {
+    await saveStrictnessPresets('current-tenant', editingPresets.value)
+    strictnessPresets.value = JSON.parse(JSON.stringify(editingPresets.value))
+    showPresetEditor.value = false
+    message.success(t('admin.ruleConfig.presetsSaved'))
+  } finally {
+    savingPresets.value = false
+  }
 }
 
 // ===== User permissions =====
@@ -695,14 +768,19 @@ const handleSave = async () => {
           <div class="ai-form">
             <!-- Audit strictness -->
             <div class="ai-form-group">
-              <label class="ai-form-label">{{ t('admin.ruleConfig.strictness') }}</label>
+              <div class="strictness-label-row">
+                <label class="ai-form-label">{{ t('admin.ruleConfig.strictness') }}</label>
+                <a-button size="small" type="link" @click="openPresetEditor">
+                  <EditOutlined /> {{ t('admin.ruleConfig.editPresets') }}
+                </a-button>
+              </div>
               <div class="strictness-options">
                 <div
                   v-for="opt in strictnessOptions"
                   :key="opt.value"
                   class="strictness-option"
                   :class="{ 'strictness-option--active': selectedConfig.ai_config.audit_strictness === opt.value }"
-                  @click="selectedConfig.ai_config.audit_strictness = opt.value as any"
+                  @click="handleStrictnessChange(opt.value)"
                 >
                   <div class="strictness-option-radio" />
                   <div>
@@ -711,7 +789,18 @@ const handleSave = async () => {
                   </div>
                 </div>
               </div>
-              <div class="strictness-hint">{{ t('admin.ruleConfig.strictnessHint') }}</div>
+              <!-- Show current preset instruction preview -->
+              <div v-if="currentStrictnessPreset" class="strictness-preset-preview">
+                <div class="preset-preview-label">{{ t('admin.ruleConfig.currentPresetHint') }}</div>
+                <div class="preset-preview-row">
+                  <span class="preset-preview-tag preset-preview-tag--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
+                  <span class="preset-preview-text">{{ currentStrictnessPreset.reasoning_instruction }}</span>
+                </div>
+                <div class="preset-preview-row">
+                  <span class="preset-preview-tag preset-preview-tag--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
+                  <span class="preset-preview-text">{{ currentStrictnessPreset.extraction_instruction }}</span>
+                </div>
+              </div>
             </div>
 
             <!-- Reasoning prompt -->
@@ -733,6 +822,7 @@ const handleSave = async () => {
                 </a-tooltip>
               </div>
               <a-textarea
+                ref="reasoningTextareaRef"
                 v-model:value="selectedConfig.ai_config.reasoning_prompt"
                 :rows="8"
                 :placeholder="t('admin.ruleConfig.reasoningPromptPlaceholder')"
@@ -758,6 +848,7 @@ const handleSave = async () => {
                 </a-tooltip>
               </div>
               <a-textarea
+                ref="extractionTextareaRef"
                 v-model:value="selectedConfig.ai_config.extraction_prompt"
                 :rows="6"
                 :placeholder="t('admin.ruleConfig.extractionPromptPlaceholder')"
@@ -1511,6 +1602,44 @@ const handleSave = async () => {
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- Strictness preset editor modal -->
+    <a-modal
+      v-model:open="showPresetEditor"
+      :title="t('admin.ruleConfig.editPresetsTitle')"
+      :width="720"
+      :ok-text="t('admin.ruleConfig.saveConfig')"
+      :cancel-text="t('admin.ruleConfig.cancel')"
+      :confirm-loading="savingPresets"
+      @ok="handleSavePresets"
+    >
+      <div class="preset-editor">
+        <p class="preset-editor-desc">{{ t('admin.ruleConfig.editPresetsDesc') }}</p>
+        <div v-for="preset in editingPresets" :key="preset.strictness" class="preset-editor-item">
+          <div class="preset-editor-header">
+            <span class="preset-editor-badge" :class="`preset-editor-badge--${preset.strictness}`">
+              {{ strictnessOptions.find(o => o.value === preset.strictness)?.label }}
+            </span>
+          </div>
+          <div class="preset-editor-fields">
+            <div class="preset-editor-field">
+              <label class="preset-editor-label">
+                <span class="preset-preview-tag preset-preview-tag--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
+                {{ t('admin.ruleConfig.presetReasoningLabel') }}
+              </label>
+              <a-textarea v-model:value="preset.reasoning_instruction" :rows="3" />
+            </div>
+            <div class="preset-editor-field">
+              <label class="preset-editor-label">
+                <span class="preset-preview-tag preset-preview-tag--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
+                {{ t('admin.ruleConfig.presetExtractionLabel') }}
+              </label>
+              <a-textarea v-model:value="preset.extraction_instruction" :rows="3" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -1827,6 +1956,57 @@ const handleSave = async () => {
   margin-top: 8px; font-size: 12px; color: var(--color-text-tertiary);
   padding: 8px 12px; background: var(--color-bg-hover); border-radius: var(--radius-sm);
   line-height: 1.5;
+}
+
+/* Strictness label row */
+.strictness-label-row {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;
+}
+
+/* Strictness preset preview */
+.strictness-preset-preview {
+  margin-top: 10px; padding: 12px 14px; background: var(--color-bg-hover);
+  border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
+}
+.preset-preview-label {
+  font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 8px;
+}
+.preset-preview-row {
+  display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px;
+}
+.preset-preview-row:last-child { margin-bottom: 0; }
+.preset-preview-tag {
+  display: inline-flex; align-items: center; font-size: 10px; font-weight: 600;
+  padding: 1px 8px; border-radius: var(--radius-full); white-space: nowrap; flex-shrink: 0; margin-top: 2px;
+}
+.preset-preview-tag--reasoning { background: var(--color-primary-bg); color: var(--color-primary); }
+.preset-preview-tag--extraction { background: var(--color-info-bg); color: var(--color-info); }
+.preset-preview-text {
+  font-size: 12px; color: var(--color-text-tertiary); line-height: 1.5;
+}
+
+/* Preset editor modal */
+.preset-editor-desc {
+  font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 16px;
+}
+.preset-editor-item {
+  margin-bottom: 20px; padding: 16px; background: var(--color-bg-page);
+  border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
+}
+.preset-editor-item:last-child { margin-bottom: 0; }
+.preset-editor-header { margin-bottom: 12px; }
+.preset-editor-badge {
+  display: inline-flex; font-size: 13px; font-weight: 600; padding: 2px 12px;
+  border-radius: var(--radius-full);
+}
+.preset-editor-badge--strict { background: var(--color-danger-bg); color: var(--color-danger); }
+.preset-editor-badge--standard { background: var(--color-primary-bg); color: var(--color-primary); }
+.preset-editor-badge--loose { background: var(--color-bg-hover); color: var(--color-text-secondary); }
+.preset-editor-fields { display: flex; flex-direction: column; gap: 12px; }
+.preset-editor-field { display: flex; flex-direction: column; gap: 4px; }
+.preset-editor-label {
+  font-size: 12px; font-weight: 500; color: var(--color-text-secondary);
+  display: flex; align-items: center; gap: 6px;
 }
 
 /* Field picker toolbar */

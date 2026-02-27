@@ -660,6 +660,13 @@ export interface ProcessAIConfig {
   temperature?: number
 }
 
+// Strictness prompt presets — per-tenant configurable, fetched from API
+export interface StrictnessPromptPreset {
+  strictness: 'strict' | 'standard' | 'loose'
+  reasoning_instruction: string
+  extraction_instruction: string
+}
+
 export interface UserPermissions {
   allow_custom_fields: boolean
   allow_custom_rules: boolean
@@ -1218,7 +1225,7 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     kb_mode: 'rules_only',
     ai_config: {
       audit_strictness: 'standard',
-      reasoning_prompt: '你是一个专业的采购审核助手。请根据以下规则对采购申请进行合规性审核，逐条检查并给出判断理由。对于不合规项，请明确指出问题并给出修改建议。\n\n审核尺度：{{audit_strictness}}\n流程类型：{{process_type}}\n主表数据：{{main_table}}\n明细表数据：{{detail_tables}}\n审核规则：{{rules}}\n审批流历史：{{flow_history}}\n流程图：{{flow_graph}}\n当前节点：{{current_node}}',
+      reasoning_prompt: '你是一个专业的采购审核助手。请根据以下规则对采购申请进行合规性审核，逐条检查并给出判断理由。对于不合规项，请明确指出问题并给出修改建议。\n\n主表数据：{{main_table}}\n明细表数据：{{detail_tables}}\n审核规则：{{rules}}\n审批流历史：{{flow_history}}\n流程图：{{flow_graph}}\n当前节点：{{current_node}}',
       extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作（approve/return/reject/review）及置信度\n2. rule_checks：逐条规则校验结果（rule_id、是否通过、判断理由）\n3. risk_points：发现的风险点列表\n4. suggestions：改进建议列表\n\n原始规则列表：{{rules}}',
     },
     user_permissions: {
@@ -1268,7 +1275,7 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     kb_mode: 'rules_only',
     ai_config: {
       audit_strictness: 'standard',
-      reasoning_prompt: '你是一个专业的费用报销审核助手。请根据以下规则对报销申请进行合规性审核，重点关注金额合理性、发票合规性和审批材料完整性。\n\n审核尺度：{{audit_strictness}}\n流程类型：{{process_type}}\n主表数据：{{main_table}}\n明细表数据：{{detail_tables}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}',
+      reasoning_prompt: '你是一个专业的费用报销审核助手。请根据以下规则对报销申请进行合规性审核，重点关注金额合理性、发票合规性和审批材料完整性。\n\n主表数据：{{main_table}}\n明细表数据：{{detail_tables}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}',
       extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作及置信度\n2. rule_checks：逐条规则校验结果\n3. risk_points：风险点\n4. suggestions：改进建议\n\n原始规则列表：{{rules}}',
     },
     user_permissions: {
@@ -1307,7 +1314,7 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     kb_mode: 'rules_only',
     ai_config: {
       audit_strictness: 'strict',
-      reasoning_prompt: '你是一个专业的合同审核助手。请根据以下规则对合同进行全面审核，重点关注法律条款完整性、金额合理性和合作方资质。对于高风险条款请特别标注。\n\n审核尺度：{{audit_strictness}}\n流程类型：{{process_type}}\n主表数据：{{main_table}}\n审核规则：{{rules}}\n审批流历史：{{flow_history}}\n流程图：{{flow_graph}}',
+      reasoning_prompt: '你是一个专业的合同审核助手。请根据以下规则对合同进行全面审核，重点关注法律条款完整性、金额合理性和合作方资质。对于高风险条款请特别标注。\n\n主表数据：{{main_table}}\n审核规则：{{rules}}\n审批流历史：{{flow_history}}\n流程图：{{flow_graph}}',
       extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作（approve/return/reject/review）及置信度\n2. rule_checks：逐条规则校验结果\n3. risk_points：风险点\n4. suggestions：改进建议\n\n原始规则列表：{{rules}}',
     },
     user_permissions: {
@@ -1345,7 +1352,7 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     kb_mode: 'rules_only',
     ai_config: {
       audit_strictness: 'loose',
-      reasoning_prompt: '你是一个专业的人事审批审核助手。请根据以下规则对人事申请进行审核，关注HC计划匹配度、审批链完整性和岗位合理性。\n\n审核尺度：{{audit_strictness}}\n流程类型：{{process_type}}\n主表数据：{{main_table}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}\n当前节点：{{current_node}}',
+      reasoning_prompt: '你是一个专业的人事审批审核助手。请根据以下规则对人事申请进行审核，关注HC计划匹配度、审批链完整性和岗位合理性。\n\n主表数据：{{main_table}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}\n当前节点：{{current_node}}',
       extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作及置信度\n2. rule_checks：逐条规则校验结果\n3. risk_points：风险点\n4. suggestions：改进建议\n\n原始规则列表：{{rules}}',
     },
     user_permissions: {
@@ -1506,6 +1513,41 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
     },
   },
 ]
+
+// ============================================================
+// Strictness prompt presets (审核尺度预设提示词 - 按租户区分)
+// ============================================================
+export const mockStrictnessPresets: StrictnessPromptPreset[] = [
+  {
+    strictness: 'strict',
+    reasoning_instruction: '请以最严格的标准审核，任何疑点均应标记为不合规。宁可误判也不放过，对所有可疑项逐一深入分析，给出明确的退回或驳回建议。',
+    extraction_instruction: '请以最严格标准提取结论：任何存疑项均应判定为不通过，建议操作倾向于 reject 或 return，仅在完全合规时才建议 approve。',
+  },
+  {
+    strictness: 'standard',
+    reasoning_instruction: '请以常规标准审核，明确违规项标记为不合规并说明理由，存疑项需详细说明疑点并给出改进建议。整体评估应客观公正。',
+    extraction_instruction: '请以常规标准提取结论：明确违规项判定为不通过并建议 return，合规项判定为通过，存疑项说明理由。建议操作应综合考虑整体合规情况。',
+  },
+  {
+    strictness: 'loose',
+    reasoning_instruction: '请以宽松标准审核，仅明显违规项标记为不合规，轻微问题可标注但不作为不合规依据。重点关注重大风险，对小问题保持宽容。',
+    extraction_instruction: '请以宽松标准提取结论：仅明显违规项判定为不通过，轻微问题标注但不影响最终建议。建议操作倾向于 approve，仅严重问题才建议 return。',
+  },
+]
+
+// Mock API: fetch strictness presets for a tenant
+export const fetchStrictnessPresets = async (_tenantId?: string): Promise<StrictnessPromptPreset[]> => {
+  await new Promise(r => setTimeout(r, 300))
+  return JSON.parse(JSON.stringify(mockStrictnessPresets))
+}
+
+// Mock API: save strictness presets for a tenant
+export const saveStrictnessPresets = async (_tenantId: string, presets: StrictnessPromptPreset[]): Promise<boolean> => {
+  await new Promise(r => setTimeout(r, 500))
+  // In real implementation, this would persist to backend
+  mockStrictnessPresets.splice(0, mockStrictnessPresets.length, ...presets)
+  return true
+}
 
 export const useMockData = () => {
   const mockProcesses: OAProcess[] = [

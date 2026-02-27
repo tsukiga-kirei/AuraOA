@@ -824,14 +824,21 @@ export default {
     'admin.ruleConfig.extractionPromptPlaceholder': '输入提取阶段的系统提示词，AI 将基于此提示词输出结构化结论...',
 
     // Variable descriptions
-    'admin.ruleConfig.varProcessTypeDesc': '流程类型名称，如"采购审批"、"费用报销"',
     'admin.ruleConfig.varMainTableDesc': '主表字段数据（JSON 格式），包含流程表单的主要字段信息',
     'admin.ruleConfig.varDetailTablesDesc': '明细表数据（JSON 数组），可能包含多个明细表的详细记录',
     'admin.ruleConfig.varRulesDesc': '当前生效的规则列表（JSON），包含规则内容、优先级和启用状态',
     'admin.ruleConfig.varFlowHistoryDesc': '已过审批流节点信息（JSON），仅当有规则关联审批流时注入',
     'admin.ruleConfig.varFlowGraphDesc': '流程图完整节点信息（JSON），包含流程的全部审批节点、顺序和状态',
     'admin.ruleConfig.varCurrentNodeDesc': '当前审批节点名称，标识流程当前所处的审批环节',
-    'admin.ruleConfig.varAuditStrictnessDesc': '当前审核尺度设置（strict/standard/loose），影响 AI 判断的宽严程度',
+
+    // Strictness preset editor
+    'admin.ruleConfig.editPresets': '编辑预设提示词',
+    'admin.ruleConfig.editPresetsTitle': '审核尺度预设提示词',
+    'admin.ruleConfig.editPresetsDesc': '每种审核尺度对应一组预设指令，后端会自动追加到推理和提取提示词末尾。修改后保存即可生效。',
+    'admin.ruleConfig.presetsSaved': '预设提示词已保存',
+    'admin.ruleConfig.presetReasoningLabel': '推理阶段追加指令',
+    'admin.ruleConfig.presetExtractionLabel': '提取阶段追加指令',
+    'admin.ruleConfig.currentPresetHint': '当前尺度预设指令（后端自动追加）',
     'admin.ruleConfig.contextWindow': '上下文窗口',
     'admin.ruleConfig.precise': '精确 (0)',
     'admin.ruleConfig.current': '当前',

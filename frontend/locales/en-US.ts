@@ -823,14 +823,21 @@ export default {
     'admin.ruleConfig.extractionPromptPlaceholder': 'Enter extraction phase system prompt. AI will output structured conclusions based on this prompt...',
 
     // Variable descriptions
-    'admin.ruleConfig.varProcessTypeDesc': 'Process type name, e.g. "Purchase Approval", "Expense Reimbursement"',
     'admin.ruleConfig.varMainTableDesc': 'Main table field data (JSON), containing primary form field information',
     'admin.ruleConfig.varDetailTablesDesc': 'Detail table data (JSON array), may contain multiple detail table records',
     'admin.ruleConfig.varRulesDesc': 'Currently active rules list (JSON), including rule content, priority and status',
     'admin.ruleConfig.varFlowHistoryDesc': 'Completed approval flow node info (JSON), injected only when rules reference flow',
     'admin.ruleConfig.varFlowGraphDesc': 'Complete flow graph node info (JSON), all approval nodes, sequence and status',
     'admin.ruleConfig.varCurrentNodeDesc': 'Current approval node name, identifies the current stage in the approval process',
-    'admin.ruleConfig.varAuditStrictnessDesc': 'Current audit strictness setting (strict/standard/loose), affects AI judgment severity',
+
+    // Strictness preset editor
+    'admin.ruleConfig.editPresets': 'Edit Preset Prompts',
+    'admin.ruleConfig.editPresetsTitle': 'Strictness Preset Prompts',
+    'admin.ruleConfig.editPresetsDesc': 'Each strictness level has preset instructions that the backend auto-appends to reasoning and extraction prompts. Changes take effect after saving.',
+    'admin.ruleConfig.presetsSaved': 'Preset prompts saved',
+    'admin.ruleConfig.presetReasoningLabel': 'Reasoning phase appended instruction',
+    'admin.ruleConfig.presetExtractionLabel': 'Extraction phase appended instruction',
+    'admin.ruleConfig.currentPresetHint': 'Current strictness preset (auto-appended by backend)',
     'admin.ruleConfig.contextWindow': 'Context Window',
     'admin.ruleConfig.precise': 'Precise (0)',
     'admin.ruleConfig.current': 'Current',
