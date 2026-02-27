@@ -414,31 +414,53 @@ const getShortRecLabel = (rec: string) => {
                 <span class="todo-item-dot">·</span>
                 <span>{{ item.submit_time }}</span>
               </div>
-              <!-- Opt3: Show score + recommendation for audited items -->
+              <!-- Node + OA jump left, score badge right -->
               <div class="todo-item-audit-info">
-                <span class="todo-item-node">{{ item.current_node }}</span>
-                <a-tooltip :title="t('dashboard.jumpToOA')" :mouse-enter-delay="0.5">
-                  <button class="oa-jump-btn" @click.stop="jumpToOA(item.process_id)">
-                    <ExportOutlined />
-                  </button>
-                </a-tooltip>
-                <!-- Opt4: Per-item loading animation during batch -->
-                <span v-if="processAuditLoading[item.process_id]" class="todo-item-auditing">
-                  <LoadingOutlined style="font-size: 12px;" />
-                  <span>{{ t('dashboard.auditingItem') }}</span>
-                </span>
-                <!-- Show score badge when audit is done -->
-                <span
-                  v-else-if="processAuditCache[item.process_id] && viewMode === 'todo'"
-                  class="todo-item-score-badge"
-                  :style="{
-                    color: recommendationConfig[processAuditCache[item.process_id].recommendation]?.color,
-                    background: recommendationConfig[processAuditCache[item.process_id].recommendation]?.bg,
-                  }"
-                >
-                  {{ processAuditCache[item.process_id].score }}{{ t('dashboard.points') }}
-                  {{ getShortRecLabel(processAuditCache[item.process_id].recommendation) }}
-                </span>
+                <div class="todo-item-audit-left">
+                  <span
+                    class="todo-item-node"
+                    :class="{
+                      'todo-item-node--success': item.status === 'approved',
+                      'todo-item-node--danger': item.status === 'rejected',
+                      'todo-item-node--info': item.status === 'archived',
+                    }"
+                  >{{ item.current_node }}</span>
+                </div>
+                <div class="todo-item-audit-right">
+                  <!-- Per-item loading animation during batch -->
+                  <span v-if="processAuditLoading[item.process_id]" class="todo-item-auditing">
+                    <LoadingOutlined style="font-size: 12px;" />
+                    <span>{{ t('dashboard.auditingItem') }}</span>
+                  </span>
+                  <!-- Show score badge when audit is done (todo mode) -->
+                  <span
+                    v-else-if="processAuditCache[item.process_id] && viewMode === 'todo'"
+                    class="todo-item-score-badge"
+                    :style="{
+                      color: recommendationConfig[processAuditCache[item.process_id].recommendation]?.color,
+                      background: recommendationConfig[processAuditCache[item.process_id].recommendation]?.bg,
+                    }"
+                  >
+                    {{ processAuditCache[item.process_id].score }}{{ t('dashboard.points') }}
+                    {{ getShortRecLabel(processAuditCache[item.process_id].recommendation) }}
+                  </span>
+                  <!-- Show historical score for approved/rejected/archived -->
+                  <span
+                    v-else-if="isHistoryMode && (mockHistoricalResults[item.process_id] || mockArchivedHistoricalResults[item.process_id])"
+                    class="todo-item-score-badge"
+                    :style="{
+                      color: recommendationConfig[(mockHistoricalResults[item.process_id] || mockArchivedHistoricalResults[item.process_id]).recommendation]?.color,
+                      background: recommendationConfig[(mockHistoricalResults[item.process_id] || mockArchivedHistoricalResults[item.process_id]).recommendation]?.bg,
+                    }"
+                  >
+                    {{ (mockHistoricalResults[item.process_id] || mockArchivedHistoricalResults[item.process_id]).score }}{{ t('dashboard.points') }}
+                  </span>
+                  <a-tooltip :title="t('dashboard.jumpToOA')" :mouse-enter-delay="0.5">
+                    <button class="oa-jump-btn" @click.stop="jumpToOA(item.process_id)">
+                      <ExportOutlined />
+                    </button>
+                  </a-tooltip>
+                </div>
               </div>
             </div>
           </div>
@@ -790,14 +812,29 @@ const getShortRecLabel = (rec: string) => {
 .todo-item-meta { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
 .todo-item-dot { color: var(--color-border); }
 
-/* Opt3: Audit info row below meta */
+/* Opt3: Audit info row below meta — left/right layout */
 .todo-item-audit-info {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.todo-item-audit-left {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+}
+.todo-item-audit-right {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
 }
 .todo-item-node {
   font-size: 11px; font-weight: 500; padding: 2px 8px;
   border-radius: var(--radius-full); background: var(--color-bg-hover);
   color: var(--color-text-secondary); white-space: nowrap;
+}
+.todo-item-node--success {
+  background: var(--color-success-bg); color: var(--color-success); font-weight: 600;
+}
+.todo-item-node--danger {
+  background: var(--color-danger-bg); color: var(--color-danger); font-weight: 600;
+}
+.todo-item-node--info {
+  background: var(--color-info-bg); color: var(--color-info); font-weight: 600;
 }
 .oa-jump-btn {
   width: 24px; height: 24px; border: 1px solid var(--color-border);
