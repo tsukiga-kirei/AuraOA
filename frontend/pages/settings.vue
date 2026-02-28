@@ -137,7 +137,7 @@ const currentMember = computed(() => {
 /** All business roles this member has in the current tenant */
 const currentOrgRoles = computed(() => {
   if (!currentMember.value) return []
-  const rIds = currentMember.value.role_ids?.length ? currentMember.value.role_ids : [currentMember.value.role_id]
+  const rIds = currentMember.value.role_ids
   return mockOrgRoles.filter(r => rIds.includes(r.id))
 })
 /** Merged page permissions from all business roles */
@@ -149,7 +149,7 @@ const currentOrgPagePermissions = computed(() => {
 // Keep backward compat
 const currentOrgRole = computed(() => {
   if (!currentMember.value) return null
-  return mockOrgRoles.find(r => r.id === currentMember.value!.role_id) || null
+  return mockOrgRoles.find(r => currentMember.value!.role_ids.includes(r.id)) || null
 })
 
 const getPageLabel = (path: string) => t(`page.${path}`, path)
@@ -357,11 +357,12 @@ const currentCustomRules = computed(() =>
 const visibleTabs = computed(() => {
   const role = currentRoleType.value
   const perms = currentOrgPagePermissions.value
+  const isBizOrAdmin = role === 'business'
   return [
     { key: 'profile', label: t('settings.tab.profile'), icon: UserOutlined, show: true },
-    { key: 'workbench', label: t('settings.tab.workbench'), icon: DashboardOutlined, show: role === 'business' && perms.includes('/dashboard') },
-    { key: 'cron', label: t('settings.tab.cron'), icon: ClockCircleOutlined, show: role === 'business' && perms.includes('/cron') },
-    { key: 'archive', label: t('settings.tab.archive'), icon: FolderOpenOutlined, show: role === 'business' && perms.includes('/archive') },
+    { key: 'workbench', label: t('settings.tab.workbench'), icon: DashboardOutlined, show: isBizOrAdmin && perms.includes('/dashboard') },
+    { key: 'cron', label: t('settings.tab.cron'), icon: ClockCircleOutlined, show: isBizOrAdmin && perms.includes('/cron') },
+    { key: 'archive', label: t('settings.tab.archive'), icon: FolderOpenOutlined, show: isBizOrAdmin && perms.includes('/archive') },
   ].filter(tab => tab.show)
 })
 

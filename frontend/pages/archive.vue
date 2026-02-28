@@ -42,8 +42,8 @@ const accessibleConfigs = computed<ArchiveReviewConfig[]>(() => {
   const member = mockOrgMembers.find(m => m.username === uname)
   if (!member) return []
   return mockArchiveReviewConfigs.filter(cfg => {
-    // Check role-based access
-    if (cfg.allowed_roles.includes(member.role_id)) return true
+    // Check role-based access (any of member's roles)
+    if (member.role_ids.some(rid => cfg.allowed_roles.includes(rid))) return true
     // Check member-based access
     if (cfg.allowed_members.includes(member.id)) return true
     return false

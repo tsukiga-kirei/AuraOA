@@ -70,7 +70,7 @@ export const useSidebarMenu = () => {
     if (!uname) return new Set()
     const member = mockOrgMembers.find(m => m.username === uname)
     if (!member) return new Set()
-    const rIds = member.role_ids?.length ? member.role_ids : [member.role_id]
+    const rIds = member.role_ids
     const perms = new Set<string>()
     mockOrgRoles.filter(r => rIds.includes(r.id)).forEach(r => r.page_permissions.forEach(p => perms.add(p)))
     return perms
@@ -92,7 +92,14 @@ export const useSidebarMenu = () => {
       }
     }
     if (perms.includes('tenant_admin')) {
-      result.push({ id: 'tenant', titleKey: 'sidebar.section.tenant', items: TENANT_ITEMS })
+      // Filter tenant admin items by the tenant_admin business role's page_permissions
+      const pagePerms = businessPagePerms.value
+      const filtered = pagePerms.size > 0
+        ? TENANT_ITEMS.filter(item => pagePerms.has(item.key))
+        : TENANT_ITEMS
+      if (filtered.length) {
+        result.push({ id: 'tenant', titleKey: 'sidebar.section.tenant', items: filtered })
+      }
     }
     if (perms.includes('system_admin')) {
       result.push({ id: 'system', titleKey: 'sidebar.section.system', items: SYSTEM_ITEMS })

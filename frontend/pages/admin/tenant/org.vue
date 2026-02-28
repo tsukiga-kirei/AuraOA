@@ -37,7 +37,7 @@ const filteredMembers = computed(() => {
   return members.value.filter(m => {
     if (memberSearch.value && !m.name.includes(memberSearch.value) && !m.username.includes(memberSearch.value)) return false
     if (memberDeptFilter.value && m.department_id !== memberDeptFilter.value) return false
-    if (memberRoleFilter.value && !(m.role_ids || []).includes(memberRoleFilter.value)) return false
+    if (memberRoleFilter.value && !m.role_ids.includes(memberRoleFilter.value)) return false
     return true
   })
 })
@@ -61,7 +61,7 @@ const openEditMember = (m: OrgMember) => {
   editingMember.value = m
   memberForm.value = {
     name: m.name, username: m.username, department_id: m.department_id,
-    role_ids: m.role_ids?.length ? [...m.role_ids] : [m.role_id],
+    role_ids: [...m.role_ids],
     email: m.email, phone: m.phone, position: m.position,
   }
   showMemberModal.value = true
@@ -79,17 +79,12 @@ const handleSaveMember = () => {
   }
   const dept = departments.value.find(d => d.id === memberForm.value.department_id)
   const rNames = resolveRoleNames(memberForm.value.role_ids)
-  // Keep backward-compat role_id/role_name as first role
-  const primaryRoleId = memberForm.value.role_ids[0] || ''
-  const primaryRoleName = rNames[0] || ''
   if (editingMember.value) {
     Object.assign(editingMember.value, {
       name: memberForm.value.name,
       username: memberForm.value.username,
       department_id: memberForm.value.department_id,
       department_name: dept?.name || '',
-      role_id: primaryRoleId,
-      role_name: primaryRoleName,
       role_ids: [...memberForm.value.role_ids],
       role_names: rNames,
       email: memberForm.value.email,
@@ -104,8 +99,6 @@ const handleSaveMember = () => {
       username: memberForm.value.username,
       department_id: memberForm.value.department_id,
       department_name: dept?.name || '',
-      role_id: primaryRoleId,
-      role_name: primaryRoleName,
       role_ids: [...memberForm.value.role_ids],
       role_names: rNames,
       email: memberForm.value.email,
@@ -203,8 +196,7 @@ const handleSaveRole = () => {
     Object.assign(editingRole.value, roleForm.value)
     // Update member role names for anyone who has this role
     members.value.forEach(m => {
-      if (m.role_id === editingRole.value!.id) m.role_name = roleForm.value.name
-      const idx = (m.role_ids || []).indexOf(editingRole.value!.id)
+      const idx = m.role_ids.indexOf(editingRole.value!.id)
       if (idx >= 0 && m.role_names) m.role_names[idx] = roleForm.value.name
     })
     message.success(t('admin.org.roleUpdated'))
@@ -221,13 +213,13 @@ const handleSaveRole = () => {
 
 const deleteRole = (r: OrgRole) => {
   if (r.is_system) { message.warning(t('admin.org.systemRoleProtected')); return }
-  const usedBy = members.value.filter(m => (m.role_ids || []).includes(r.id))
+  const usedBy = members.value.filter(m => m.role_ids.includes(r.id))
   if (usedBy.length > 0) { message.warning(t('admin.org.roleHasMembers', [usedBy.length])); return }
   roles.value = roles.value.filter(x => x.id !== r.id)
   message.success(t('admin.org.roleDeleted'))
 }
 
-const getRoleMemberCount = (roleId: string) => members.value.filter(m => (m.role_ids || [m.role_id]).includes(roleId)).length
+const getRoleMemberCount = (roleId: string) => members.value.filter(m => m.role_ids.includes(roleId)).length
 
 // ===== Departments =====
 const departments = ref<Department[]>(JSON.parse(JSON.stringify(mockDepartments)))
@@ -353,7 +345,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
               <td class="text-secondary">{{ m.username }}</td>
               <td>{{ m.department_name }}</td>
               <td>
-                <span v-for="rn in (m.role_names?.length ? m.role_names : [m.role_name])" :key="rn" class="role-tag" style="margin-right: 4px;">{{ rn }}</span>
+                <span v-for="rn in m.role_names" :key="rn" class="role-tag" style="margin-right: 4px;">{{ rn }}</span>
               </td>
               <td class="text-secondary">{{ m.position }}</td>
               <td class="text-secondary">{{ m.email }}</td>
