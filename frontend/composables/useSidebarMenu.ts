@@ -61,9 +61,22 @@ const SYSTEM_ITEMS: SidebarMenuItem[] = [
 
 export const useSidebarMenu = () => {
   const route = useRoute()
-  const { userPermissions } = useAuth()
+  const { userPermissions, currentUser, activeRole } = useAuth()
+  const { mockOrgMembers, mockOrgRoles } = useMockData()
 
-  /** Sidebar sections — purely permission-driven, always the same regardless of route */
+  /** Merged page permissions from the current user's business roles */
+  const businessPagePerms = computed<Set<string>>(() => {
+    const uname = currentUser.value?.username
+    if (!uname) return new Set()
+    const member = mockOrgMembers.find(m => m.username === uname)
+    if (!member) return new Set()
+    const rIds = member.role_ids?.length ? member.role_ids : [member.role_id]
+    const perms = new Set<string>()
+    mockOrgRoles.filter(r => rIds.includes(r.id)).forEach(r => r.page_permissions.forEach(p => perms.add(p)))
+    return perms
+  })
+
+  /** Sidebar sections — permission-driven, business items filtered by page_permissions */
   const sections = computed<SidebarSection[]>(() => {
     const perms = userPermissions.value
     const result: SidebarSection[] = []
@@ -72,7 +85,11 @@ export const useSidebarMenu = () => {
     result.push({ id: 'overview', titleKey: 'sidebar.section.overview', items: OVERVIEW_ITEMS })
 
     if (perms.includes('business')) {
-      result.push({ id: 'business', titleKey: 'sidebar.section.business', items: BUSINESS_ITEMS })
+      const pagePerms = businessPagePerms.value
+      const filtered = BUSINESS_ITEMS.filter(item => pagePerms.has(item.key))
+      if (filtered.length) {
+        result.push({ id: 'business', titleKey: 'sidebar.section.business', items: filtered })
+      }
     }
     if (perms.includes('tenant_admin')) {
       result.push({ id: 'tenant', titleKey: 'sidebar.section.tenant', items: TENANT_ITEMS })

@@ -128,7 +128,6 @@ const handleSwitchRole = async (role: UserRoleAssignment) => {
               >
                 <div class="role-dropdown-info">
                   <div class="role-dropdown-name">{{ role.tenant_name }}</div>
-                  <div class="role-dropdown-desc">业务用户</div>
                 </div>
                 <CheckOutlined v-if="role.id === activeRoleId" class="role-dropdown-check" />
               </div>
@@ -151,7 +150,6 @@ const handleSwitchRole = async (role: UserRoleAssignment) => {
               >
                 <div class="role-dropdown-info">
                   <div class="role-dropdown-name">{{ role.tenant_name }}</div>
-                  <div class="role-dropdown-desc">租户管理员</div>
                 </div>
                 <CheckOutlined v-if="role.id === activeRoleId" class="role-dropdown-check" />
               </div>

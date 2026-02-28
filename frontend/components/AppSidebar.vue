@@ -19,7 +19,6 @@ const { sections, isMenuActive, logoTarget } = useSidebarMenu()
 const { t } = useI18n()
 
 const displayName = computed(() => currentUser.value?.display_name || t('sidebar.defaultUser'))
-const roleLabel = computed(() => currentUser.value?.role_label || t('sidebar.defaultUser'))
 
 const handleMenuClick = (path: string) => {
   navigateTo(path)
@@ -137,7 +136,6 @@ const handleMenuClick = (path: string) => {
           </a-avatar>
           <div v-if="!collapsed || mobileMenuOpen" class="sidebar-user-info">
             <div class="sidebar-user-name">{{ displayName }}</div>
-            <div class="sidebar-user-role">{{ roleLabel }}</div>
           </div>
         </div>
       </a-popover>
@@ -247,7 +245,6 @@ const handleMenuClick = (path: string) => {
 .sidebar-avatar { background: linear-gradient(135deg, #4f46e5, #7c3aed) !important; flex-shrink: 0; }
 .sidebar-user-info { min-width: 0; flex: 1; }
 .sidebar-user-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sidebar-user-role { font-size: 11px; color: var(--color-text-tertiary); margin-top: 1px; }
 
 .user-dropdown-panel { background: var(--color-bg-card); min-width: 200px; padding: 8px 0; }
 .dropdown-divider { height: 1px; background: var(--color-border-light); margin: 4px 0; }
