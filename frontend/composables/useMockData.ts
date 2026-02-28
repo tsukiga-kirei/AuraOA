@@ -765,18 +765,18 @@ export const mockOrgRoles: OrgRole[] = [
 ]
 
 export const mockOrgMembers: OrgMember[] = [
-  { id: 'M-001', name: '张明', username: 'zhangming', department_id: 'D-001', department_name: '研发部',  role_ids: ['ROLE-001', 'ROLE-002'], role_names: ['业务用户', '审计管理员'], email: 'zhangming@example.com', phone: '13812348888', position: '高级工程师', status: 'active', created_at: '2024-03-15' },
-  { id: 'M-002', name: '李芳', username: 'lifang', department_id: 'D-002', department_name: '销售部',   role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'lifang@example.com', phone: '13912346666', position: '销售经理', status: 'active', created_at: '2024-04-20' },
-  { id: 'M-003', name: '王强', username: 'wangqiang', department_id: 'D-005', department_name: 'IT部',  role_ids: ['ROLE-001', 'ROLE-002'], role_names: ['业务用户', '审计管理员'], email: 'wangqiang@example.com', phone: '13712345555', position: 'IT主管', status: 'active', created_at: '2024-02-10' },
-  { id: 'M-004', name: '赵丽', username: 'zhaoli', department_id: 'D-004', department_name: '人力资源部',  role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'zhaoli@example.com', phone: '13612344444', position: 'HR经理', status: 'active', created_at: '2024-05-08' },
-  { id: 'M-005', name: '陈伟', username: 'chenwei', department_id: 'D-003', department_name: '市场部',  role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'chenwei@example.com', phone: '13512343333', position: '市场总监', status: 'active', created_at: '2024-01-20' },
-  { id: 'M-006', name: '刘洋', username: 'liuyang', department_id: 'D-007', department_name: '行政部',  role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'liuyang@example.com', phone: '13412342222', position: '行政主管', status: 'active', created_at: '2024-06-01' },
-  { id: 'M-007', name: '张华', username: 'zhanghua', department_id: 'D-006', department_name: '财务部',  role_ids: ['ROLE-001', 'ROLE-002'], role_names: ['业务用户', '审计管理员'], email: 'zhanghua@example.com', phone: '13312341111', position: '财务总监', status: 'active', created_at: '2024-01-05' },
-  { id: 'M-008', name: '孙律', username: 'sunlv', department_id: 'D-008', department_name: '法务部',  role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'sunlv@example.com', phone: '13212340000', position: '法务顾问', status: 'active', created_at: '2024-07-15' },
-  { id: 'M-009', name: '周磊', username: 'zhoulei', department_id: 'D-002', department_name: '销售部',  role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'zhoulei@example.com', phone: '13112349999', position: '销售总监', status: 'active', created_at: '2024-03-01' },
-  { id: 'M-010', name: '赵伟', username: 'tenantadmin', department_id: 'D-005', department_name: 'IT部',  role_ids: ['ROLE-001', 'ROLE-003'], role_names: ['业务用户', '租户管理员'], email: 'tenantadmin@example.com', phone: '13012347777', position: '系统管理', status: 'active', created_at: '2024-01-01' },
-  { id: 'M-011', name: '陈刚', username: 'admin', department_id: 'D-005', department_name: 'IT部',  role_ids: ['ROLE-001', 'ROLE-002', 'ROLE-003'], role_names: ['业务用户', '审计管理员', '租户管理员'], email: 'admin@example.com', phone: '12912348888', position: '超级管理员', status: 'active', created_at: '2024-01-01' },
-  { id: 'M-012', name: '测试用户', username: 'user', department_id: 'D-001', department_name: '研发部',  role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'user@example.com', phone: '12812346666', position: '测试工程师', status: 'disabled', created_at: '2024-08-01' },
+  { id: 'M-001', name: '张明', username: 'zhangming', department_id: 'D-001', department_name: '研发部', role_ids: ['ROLE-001', 'ROLE-002'], role_names: ['业务用户', '审计管理员'], email: 'zhangming@example.com', phone: '13812348888', position: '高级工程师', status: 'active', created_at: '2024-03-15' },
+  { id: 'M-002', name: '李芳', username: 'lifang', department_id: 'D-002', department_name: '销售部', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'lifang@example.com', phone: '13912346666', position: '销售经理', status: 'active', created_at: '2024-04-20' },
+  { id: 'M-003', name: '王强', username: 'wangqiang', department_id: 'D-005', department_name: 'IT部', role_ids: ['ROLE-001', 'ROLE-002'], role_names: ['业务用户', '审计管理员'], email: 'wangqiang@example.com', phone: '13712345555', position: 'IT主管', status: 'active', created_at: '2024-02-10' },
+  { id: 'M-004', name: '赵丽', username: 'zhaoli', department_id: 'D-004', department_name: '人力资源部', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'zhaoli@example.com', phone: '13612344444', position: 'HR经理', status: 'active', created_at: '2024-05-08' },
+  { id: 'M-005', name: '陈伟', username: 'chenwei', department_id: 'D-003', department_name: '市场部', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'chenwei@example.com', phone: '13512343333', position: '市场总监', status: 'active', created_at: '2024-01-20' },
+  { id: 'M-006', name: '刘洋', username: 'liuyang', department_id: 'D-007', department_name: '行政部', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'liuyang@example.com', phone: '13412342222', position: '行政主管', status: 'active', created_at: '2024-06-01' },
+  { id: 'M-007', name: '张华', username: 'zhanghua', department_id: 'D-006', department_name: '财务部', role_ids: ['ROLE-001', 'ROLE-002'], role_names: ['业务用户', '审计管理员'], email: 'zhanghua@example.com', phone: '13312341111', position: '财务总监', status: 'active', created_at: '2024-01-05' },
+  { id: 'M-008', name: '孙律', username: 'sunlv', department_id: 'D-008', department_name: '法务部', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'sunlv@example.com', phone: '13212340000', position: '法务顾问', status: 'active', created_at: '2024-07-15' },
+  { id: 'M-009', name: '周磊', username: 'zhoulei', department_id: 'D-002', department_name: '销售部', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'zhoulei@example.com', phone: '13112349999', position: '销售总监', status: 'active', created_at: '2024-03-01' },
+  { id: 'M-010', name: '赵伟', username: 'tenantadmin', department_id: 'D-005', department_name: 'IT部', role_ids: ['ROLE-001', 'ROLE-003'], role_names: ['业务用户', '租户管理员'], email: 'tenantadmin@example.com', phone: '13012347777', position: '系统管理', status: 'active', created_at: '2024-01-01' },
+  { id: 'M-011', name: '陈刚', username: 'admin', department_id: 'D-005', department_name: 'IT部', role_ids: ['ROLE-001', 'ROLE-002', 'ROLE-003'], role_names: ['业务用户', '审计管理员', '租户管理员'], email: 'admin@example.com', phone: '12912348888', position: '超级管理员', status: 'active', created_at: '2024-01-01' },
+  { id: 'M-012', name: '测试用户', username: 'user', department_id: 'D-001', department_name: '研发部', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'user@example.com', phone: '12812346666', position: '测试工程师', status: 'disabled', created_at: '2024-08-01' },
 ]
 
 // ============================================================
@@ -1083,22 +1083,38 @@ export interface ArchiveLog {
 }
 
 export const mockAuditLogs: AuditLog[] = [
-  { id: 'AL-001', process_id: 'WF-2025-001', title: '办公设备采购申请', operator: '张明', department: '行政部', process_type: '采购审批', recommendation: 'return', score: 72, created_at: '2025-06-10 09:35',
-    audit_result: { trace_id: 'TR-20250610-A3F8', process_id: 'WF-2025-001', recommendation: 'return', score: 72, duration_ms: 3850, details: [{ rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '采购金额 ¥156,000 未超过部门季度预算上限 ¥200,000', is_locked: true }, { rule_id: 'R003', rule_name: '供应商资质校验', passed: false, reasoning: '供应商未在合格供应商名录中', is_locked: true }, { rule_id: 'R004', rule_name: '采购比价要求', passed: false, reasoning: '单笔采购超过 ¥100,000 需提供至少 3 家供应商报价' }], ai_reasoning: '该采购申请存在供应商资质和比价流程问题，建议退回修改。', action_label: '建议退回', confidence: 0.85, risk_points: ['供应商未在合格名录中', '缺少竞争性比价材料'], suggestions: ['补充供应商资质证明', '提供至少3家供应商报价'], ai_summary: '该采购申请存在两个关键问题需要修正。' } },
-  { id: 'AL-002', process_id: 'WF-2025-002', title: '差旅费报销', operator: '李芳', department: '市场部', process_type: '费用报销', recommendation: 'approve', score: 88, created_at: '2025-06-10 10:20',
-    audit_result: { trace_id: 'TR-20250610-B2D4', process_id: 'WF-2025-002', recommendation: 'approve', score: 88, duration_ms: 1280, details: [{ rule_id: 'R006', rule_name: '差旅标准校验', passed: true, reasoning: '差旅费用在公司标准范围内', is_locked: true }, { rule_id: 'R007', rule_name: '发票合规性', passed: true, reasoning: '发票信息完整，日期与行程匹配' }], ai_reasoning: '差旅费报销合规，材料齐全。建议通过。', action_label: '建议通过', confidence: 0.92, risk_points: [], suggestions: ['建议后续出差提前提交预算申请'], ai_summary: '差旅费报销合规，材料齐全。' } },
-  { id: 'AL-003', process_id: 'WF-2025-003', title: '年度服务器租赁合同续签', operator: '王强', department: 'IT部', process_type: '合同审批', recommendation: 'return', score: 45, created_at: '2025-06-10 11:10',
-    audit_result: { trace_id: 'TR-20250610-C3E5', process_id: 'WF-2025-003', recommendation: 'return', score: 45, duration_ms: 2100, details: [{ rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '合同金额在年度IT预算范围内' }, { rule_id: 'R004', rule_name: '合同条款完整性', passed: false, reasoning: 'SLA条款缺少故障响应时间约定', is_locked: true }], ai_reasoning: '合同续签存在SLA条款不完整和价格涨幅较大的问题。', action_label: '建议退回', confidence: 0.78, risk_points: ['SLA条款缺少故障响应时间', '合同金额较上年增长15%'], suggestions: ['补充SLA故障响应时间条款'], ai_summary: '合同续签需关注SLA和价格问题。' } },
-  { id: 'AL-004', process_id: 'WF-2025-004', title: '新员工入职审批', operator: '赵丽', department: '人力资源部', process_type: '人事审批', recommendation: 'approve', score: 91, created_at: '2025-06-10 14:30',
-    audit_result: { trace_id: 'TR-20250610-D4F6', process_id: 'WF-2025-004', recommendation: 'approve', score: 91, duration_ms: 1050, details: [{ rule_id: 'R011', rule_name: '入职材料完整性', passed: true, reasoning: '入职材料齐全，身份证明、学历证明均已提供' }, { rule_id: 'R012', rule_name: '审批层级校验', passed: true, reasoning: '审批链完整' }], ai_reasoning: '新员工入职审批完全合规，材料齐全。建议通过。', action_label: '建议通过', confidence: 0.95, risk_points: [], suggestions: ['建议定期复核'], ai_summary: '入职审批完全合规。' } },
-  { id: 'AL-005', process_id: 'WF-2025-005', title: '市场推广活动预算申请', operator: '陈伟', department: '市场部', process_type: '采购审批', recommendation: 'review', score: 65, created_at: '2025-06-10 16:00',
-    audit_result: { trace_id: 'TR-20250610-E5G7', process_id: 'WF-2025-005', recommendation: 'review', score: 65, duration_ms: 1800, details: [{ rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '预算金额在市场部年度预算范围内', is_locked: true }, { rule_id: 'R013', rule_name: '活动方案完整性', passed: false, reasoning: '推广方案缺少预期ROI分析' }], ai_reasoning: '市场推广预算申请部分合规，缺少ROI分析。建议复核。', action_label: '建议复核', confidence: 0.72, risk_points: ['缺少预期ROI分析'], suggestions: ['补充预期ROI分析报告'], ai_summary: '推广预算申请需补充ROI分析。' } },
-  { id: 'AL-006', process_id: 'WF-2025-006', title: '办公室装修工程审批', operator: '张华', department: '行政部', process_type: '工程审批', recommendation: 'approve', score: 85, created_at: '2025-06-09 15:20',
-    audit_result: { trace_id: 'TR-20250609-F6H8', process_id: 'WF-2025-006', recommendation: 'approve', score: 85, duration_ms: 2200, details: [{ rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '工程预算在年度行政预算范围内' }, { rule_id: 'R014', rule_name: '工程资质校验', passed: true, reasoning: '施工方具备相应资质' }], ai_reasoning: '办公室装修工程审批合规，施工方资质齐全。建议通过。', action_label: '建议通过', confidence: 0.88, risk_points: [], suggestions: ['建议施工期间安排专人监督'], ai_summary: '装修工程审批合规。' } },
-  { id: 'AL-007', process_id: 'WF-2025-007', title: '客户招待费报销', operator: '王强', department: '销售部', process_type: '费用报销', recommendation: 'return', score: 52, created_at: '2025-06-09 11:45',
-    audit_result: { trace_id: 'TR-20250609-G7I9', process_id: 'WF-2025-007', recommendation: 'return', score: 52, duration_ms: 1500, details: [{ rule_id: 'R006', rule_name: '费用标准校验', passed: false, reasoning: '招待费用超出公司标准上限' }, { rule_id: 'R007', rule_name: '发票合规性', passed: false, reasoning: '部分发票日期与招待记录不匹配' }], ai_reasoning: '客户招待费报销存在费用超标和发票不匹配问题。建议退回。', action_label: '建议退回', confidence: 0.82, risk_points: ['费用超出标准上限', '发票日期不匹配'], suggestions: ['核实招待费用明细', '补充正确日期的发票'], ai_summary: '招待费报销存在多项问题。' } },
-  { id: 'AL-008', process_id: 'WF-2025-008', title: '年度培训计划审批', operator: '李芳', department: '人力资源部', process_type: '人事审批', recommendation: 'approve', score: 93, created_at: '2025-06-08 09:30',
-    audit_result: { trace_id: 'TR-20250608-H8J0', process_id: 'WF-2025-008', recommendation: 'approve', score: 93, duration_ms: 1100, details: [{ rule_id: 'R015', rule_name: '培训预算校验', passed: true, reasoning: '培训预算在年度人力资源预算范围内' }, { rule_id: 'R016', rule_name: '培训方案完整性', passed: true, reasoning: '培训计划包含目标、内容、时间安排等完整信息' }], ai_reasoning: '年度培训计划审批完全合规。建议通过。', action_label: '建议通过', confidence: 0.94, risk_points: [], suggestions: ['建议培训结束后收集反馈'], ai_summary: '培训计划审批完全合规。' } },
+  {
+    id: 'AL-001', process_id: 'WF-2025-001', title: '办公设备采购申请', operator: '张明', department: '行政部', process_type: '采购审批', recommendation: 'return', score: 72, created_at: '2025-06-10 09:35',
+    audit_result: { trace_id: 'TR-20250610-A3F8', process_id: 'WF-2025-001', recommendation: 'return', score: 72, duration_ms: 3850, details: [{ rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '采购金额 ¥156,000 未超过部门季度预算上限 ¥200,000', is_locked: true }, { rule_id: 'R003', rule_name: '供应商资质校验', passed: false, reasoning: '供应商未在合格供应商名录中', is_locked: true }, { rule_id: 'R004', rule_name: '采购比价要求', passed: false, reasoning: '单笔采购超过 ¥100,000 需提供至少 3 家供应商报价' }], ai_reasoning: '该采购申请存在供应商资质和比价流程问题，建议退回修改。', action_label: '建议退回', confidence: 0.85, risk_points: ['供应商未在合格名录中', '缺少竞争性比价材料'], suggestions: ['补充供应商资质证明', '提供至少3家供应商报价'], ai_summary: '该采购申请存在两个关键问题需要修正。' }
+  },
+  {
+    id: 'AL-002', process_id: 'WF-2025-002', title: '差旅费报销', operator: '李芳', department: '市场部', process_type: '费用报销', recommendation: 'approve', score: 88, created_at: '2025-06-10 10:20',
+    audit_result: { trace_id: 'TR-20250610-B2D4', process_id: 'WF-2025-002', recommendation: 'approve', score: 88, duration_ms: 1280, details: [{ rule_id: 'R006', rule_name: '差旅标准校验', passed: true, reasoning: '差旅费用在公司标准范围内', is_locked: true }, { rule_id: 'R007', rule_name: '发票合规性', passed: true, reasoning: '发票信息完整，日期与行程匹配' }], ai_reasoning: '差旅费报销合规，材料齐全。建议通过。', action_label: '建议通过', confidence: 0.92, risk_points: [], suggestions: ['建议后续出差提前提交预算申请'], ai_summary: '差旅费报销合规，材料齐全。' }
+  },
+  {
+    id: 'AL-003', process_id: 'WF-2025-003', title: '年度服务器租赁合同续签', operator: '王强', department: 'IT部', process_type: '合同审批', recommendation: 'return', score: 45, created_at: '2025-06-10 11:10',
+    audit_result: { trace_id: 'TR-20250610-C3E5', process_id: 'WF-2025-003', recommendation: 'return', score: 45, duration_ms: 2100, details: [{ rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '合同金额在年度IT预算范围内' }, { rule_id: 'R004', rule_name: '合同条款完整性', passed: false, reasoning: 'SLA条款缺少故障响应时间约定', is_locked: true }], ai_reasoning: '合同续签存在SLA条款不完整和价格涨幅较大的问题。', action_label: '建议退回', confidence: 0.78, risk_points: ['SLA条款缺少故障响应时间', '合同金额较上年增长15%'], suggestions: ['补充SLA故障响应时间条款'], ai_summary: '合同续签需关注SLA和价格问题。' }
+  },
+  {
+    id: 'AL-004', process_id: 'WF-2025-004', title: '新员工入职审批', operator: '赵丽', department: '人力资源部', process_type: '人事审批', recommendation: 'approve', score: 91, created_at: '2025-06-10 14:30',
+    audit_result: { trace_id: 'TR-20250610-D4F6', process_id: 'WF-2025-004', recommendation: 'approve', score: 91, duration_ms: 1050, details: [{ rule_id: 'R011', rule_name: '入职材料完整性', passed: true, reasoning: '入职材料齐全，身份证明、学历证明均已提供' }, { rule_id: 'R012', rule_name: '审批层级校验', passed: true, reasoning: '审批链完整' }], ai_reasoning: '新员工入职审批完全合规，材料齐全。建议通过。', action_label: '建议通过', confidence: 0.95, risk_points: [], suggestions: ['建议定期复核'], ai_summary: '入职审批完全合规。' }
+  },
+  {
+    id: 'AL-005', process_id: 'WF-2025-005', title: '市场推广活动预算申请', operator: '陈伟', department: '市场部', process_type: '采购审批', recommendation: 'review', score: 65, created_at: '2025-06-10 16:00',
+    audit_result: { trace_id: 'TR-20250610-E5G7', process_id: 'WF-2025-005', recommendation: 'review', score: 65, duration_ms: 1800, details: [{ rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '预算金额在市场部年度预算范围内', is_locked: true }, { rule_id: 'R013', rule_name: '活动方案完整性', passed: false, reasoning: '推广方案缺少预期ROI分析' }], ai_reasoning: '市场推广预算申请部分合规，缺少ROI分析。建议复核。', action_label: '建议复核', confidence: 0.72, risk_points: ['缺少预期ROI分析'], suggestions: ['补充预期ROI分析报告'], ai_summary: '推广预算申请需补充ROI分析。' }
+  },
+  {
+    id: 'AL-006', process_id: 'WF-2025-006', title: '办公室装修工程审批', operator: '张华', department: '行政部', process_type: '工程审批', recommendation: 'approve', score: 85, created_at: '2025-06-09 15:20',
+    audit_result: { trace_id: 'TR-20250609-F6H8', process_id: 'WF-2025-006', recommendation: 'approve', score: 85, duration_ms: 2200, details: [{ rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '工程预算在年度行政预算范围内' }, { rule_id: 'R014', rule_name: '工程资质校验', passed: true, reasoning: '施工方具备相应资质' }], ai_reasoning: '办公室装修工程审批合规，施工方资质齐全。建议通过。', action_label: '建议通过', confidence: 0.88, risk_points: [], suggestions: ['建议施工期间安排专人监督'], ai_summary: '装修工程审批合规。' }
+  },
+  {
+    id: 'AL-007', process_id: 'WF-2025-007', title: '客户招待费报销', operator: '王强', department: '销售部', process_type: '费用报销', recommendation: 'return', score: 52, created_at: '2025-06-09 11:45',
+    audit_result: { trace_id: 'TR-20250609-G7I9', process_id: 'WF-2025-007', recommendation: 'return', score: 52, duration_ms: 1500, details: [{ rule_id: 'R006', rule_name: '费用标准校验', passed: false, reasoning: '招待费用超出公司标准上限' }, { rule_id: 'R007', rule_name: '发票合规性', passed: false, reasoning: '部分发票日期与招待记录不匹配' }], ai_reasoning: '客户招待费报销存在费用超标和发票不匹配问题。建议退回。', action_label: '建议退回', confidence: 0.82, risk_points: ['费用超出标准上限', '发票日期不匹配'], suggestions: ['核实招待费用明细', '补充正确日期的发票'], ai_summary: '招待费报销存在多项问题。' }
+  },
+  {
+    id: 'AL-008', process_id: 'WF-2025-008', title: '年度培训计划审批', operator: '李芳', department: '人力资源部', process_type: '人事审批', recommendation: 'approve', score: 93, created_at: '2025-06-08 09:30',
+    audit_result: { trace_id: 'TR-20250608-H8J0', process_id: 'WF-2025-008', recommendation: 'approve', score: 93, duration_ms: 1100, details: [{ rule_id: 'R015', rule_name: '培训预算校验', passed: true, reasoning: '培训预算在年度人力资源预算范围内' }, { rule_id: 'R016', rule_name: '培训方案完整性', passed: true, reasoning: '培训计划包含目标、内容、时间安排等完整信息' }], ai_reasoning: '年度培训计划审批完全合规。建议通过。', action_label: '建议通过', confidence: 0.94, risk_points: [], suggestions: ['建议培训结束后收集反馈'], ai_summary: '培训计划审批完全合规。' }
+  },
 ]
 
 export const mockCronLogs: CronLog[] = [
@@ -1112,18 +1128,30 @@ export const mockCronLogs: CronLog[] = [
 ]
 
 export const mockArchiveLogs: ArchiveLog[] = [
-  { id: 'ARL-001', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', operator: '张华', department: 'IT部', process_type: '采购审批', compliance: 'compliant', compliance_score: 92, created_at: '2025-06-10 10:30',
-    archive_result: { trace_id: 'ATR-20250610-001', process_id: 'WF-2025-050', overall_compliance: 'compliant', overall_score: 92, duration_ms: 2500, flow_audit: { is_complete: true, missing_nodes: [], node_results: [{ node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批节点完整' }] }, field_audit: [], rule_audit: [{ rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '采购金额在预算范围内' }, { rule_id: 'R003', rule_name: '供应商资质校验', passed: true, reasoning: '供应商资质齐全' }], ai_summary: '该采购流程整体合规，审批链完整，规则校验全部通过。' } },
-  { id: 'ARL-002', process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', operator: '陈伟', department: '市场部', process_type: '费用报销', compliance: 'partially_compliant', compliance_score: 78, created_at: '2025-06-10 09:15',
-    archive_result: { trace_id: 'ATR-20250610-002', process_id: 'WF-2025-038', overall_compliance: 'partially_compliant', overall_score: 78, duration_ms: 2100, flow_audit: { is_complete: true, missing_nodes: [], node_results: [{ node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批节点完整' }] }, field_audit: [], rule_audit: [{ rule_id: 'R006', rule_name: '费用标准校验', passed: true, reasoning: '费用在标准范围内' }, { rule_id: 'R007', rule_name: '发票合规性', passed: false, reasoning: '部分发票缺少明细' }], ai_summary: '该费用报销流程存在部分合规问题，发票明细不完整。' } },
-  { id: 'ARL-003', process_id: 'WF-2025-025', title: '外包开发合同签署', operator: '张华', department: 'IT部', process_type: '合同审批', compliance: 'non_compliant', compliance_score: 45, created_at: '2025-06-09 15:00',
-    archive_result: { trace_id: 'ATR-20250609-003', process_id: 'WF-2025-025', overall_compliance: 'non_compliant', overall_score: 45, duration_ms: 3200, flow_audit: { is_complete: false, missing_nodes: ['法务审批'], node_results: [{ node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批节点完整' }, { node_id: 'N2', node_name: '法务审批', compliant: false, reasoning: '缺少法务审批节点' }] }, field_audit: [], rule_audit: [{ rule_id: 'R004', rule_name: '合同条款完整性', passed: false, reasoning: '合同缺少违约责任条款' }, { rule_id: 'R017', rule_name: '法务审核要求', passed: false, reasoning: '外包合同需经法务审核' }], ai_summary: '该合同签署流程存在较多合规问题，缺少法务审批和违约责任条款。' } },
-  { id: 'ARL-004', process_id: 'WF-2025-012', title: '新员工批量入职审批', operator: '赵丽', department: '人力资源部', process_type: '人事审批', compliance: 'compliant', compliance_score: 95, created_at: '2025-06-09 11:00',
-    archive_result: { trace_id: 'ATR-20250609-004', process_id: 'WF-2025-012', overall_compliance: 'compliant', overall_score: 95, duration_ms: 1800, flow_audit: { is_complete: true, missing_nodes: [], node_results: [{ node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批节点完整' }] }, field_audit: [], rule_audit: [{ rule_id: 'R011', rule_name: '入职材料完整性', passed: true, reasoning: '入职材料齐全' }], ai_summary: '新员工入职审批完全合规。' } },
-  { id: 'ARL-005', process_id: 'WF-2025-060', title: '年度办公用品集中采购', operator: '王强', department: '行政部', process_type: '采购审批', compliance: 'compliant', compliance_score: 88, created_at: '2025-06-08 16:30',
-    archive_result: { trace_id: 'ATR-20250608-005', process_id: 'WF-2025-060', overall_compliance: 'compliant', overall_score: 88, duration_ms: 2000, flow_audit: { is_complete: true, missing_nodes: [], node_results: [{ node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批节点完整' }] }, field_audit: [], rule_audit: [{ rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '采购金额在预算范围内' }], ai_summary: '办公用品采购审批合规。' } },
-  { id: 'ARL-006', process_id: 'WF-2025-055', title: '销售部差旅费季度报销', operator: '李芳', department: '销售部', process_type: '费用报销', compliance: 'partially_compliant', compliance_score: 72, created_at: '2025-06-08 10:00',
-    archive_result: { trace_id: 'ATR-20250608-006', process_id: 'WF-2025-055', overall_compliance: 'partially_compliant', overall_score: 72, duration_ms: 2300, flow_audit: { is_complete: true, missing_nodes: [], node_results: [{ node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批节点完整' }] }, field_audit: [], rule_audit: [{ rule_id: 'R006', rule_name: '费用标准校验', passed: false, reasoning: '部分差旅费用超出标准' }, { rule_id: 'R007', rule_name: '发票合规性', passed: true, reasoning: '发票信息完整' }], ai_summary: '差旅费报销存在部分费用超标问题。' } },
+  {
+    id: 'ARL-001', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', operator: '张华', department: 'IT部', process_type: '采购审批', compliance: 'compliant', compliance_score: 92, created_at: '2025-06-10 10:30',
+    archive_result: { trace_id: 'ATR-20250610-001', process_id: 'WF-2025-050', overall_compliance: 'compliant', overall_score: 92, duration_ms: 2500, flow_audit: { is_complete: true, missing_nodes: [], node_results: [{ node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批节点完整' }] }, field_audit: [], rule_audit: [{ rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '采购金额在预算范围内' }, { rule_id: 'R003', rule_name: '供应商资质校验', passed: true, reasoning: '供应商资质齐全' }], ai_summary: '该采购流程整体合规，审批链完整，规则校验全部通过。' }
+  },
+  {
+    id: 'ARL-002', process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', operator: '陈伟', department: '市场部', process_type: '费用报销', compliance: 'partially_compliant', compliance_score: 78, created_at: '2025-06-10 09:15',
+    archive_result: { trace_id: 'ATR-20250610-002', process_id: 'WF-2025-038', overall_compliance: 'partially_compliant', overall_score: 78, duration_ms: 2100, flow_audit: { is_complete: true, missing_nodes: [], node_results: [{ node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批节点完整' }] }, field_audit: [], rule_audit: [{ rule_id: 'R006', rule_name: '费用标准校验', passed: true, reasoning: '费用在标准范围内' }, { rule_id: 'R007', rule_name: '发票合规性', passed: false, reasoning: '部分发票缺少明细' }], ai_summary: '该费用报销流程存在部分合规问题，发票明细不完整。' }
+  },
+  {
+    id: 'ARL-003', process_id: 'WF-2025-025', title: '外包开发合同签署', operator: '张华', department: 'IT部', process_type: '合同审批', compliance: 'non_compliant', compliance_score: 45, created_at: '2025-06-09 15:00',
+    archive_result: { trace_id: 'ATR-20250609-003', process_id: 'WF-2025-025', overall_compliance: 'non_compliant', overall_score: 45, duration_ms: 3200, flow_audit: { is_complete: false, missing_nodes: ['法务审批'], node_results: [{ node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批节点完整' }, { node_id: 'N2', node_name: '法务审批', compliant: false, reasoning: '缺少法务审批节点' }] }, field_audit: [], rule_audit: [{ rule_id: 'R004', rule_name: '合同条款完整性', passed: false, reasoning: '合同缺少违约责任条款' }, { rule_id: 'R017', rule_name: '法务审核要求', passed: false, reasoning: '外包合同需经法务审核' }], ai_summary: '该合同签署流程存在较多合规问题，缺少法务审批和违约责任条款。' }
+  },
+  {
+    id: 'ARL-004', process_id: 'WF-2025-012', title: '新员工批量入职审批', operator: '赵丽', department: '人力资源部', process_type: '人事审批', compliance: 'compliant', compliance_score: 95, created_at: '2025-06-09 11:00',
+    archive_result: { trace_id: 'ATR-20250609-004', process_id: 'WF-2025-012', overall_compliance: 'compliant', overall_score: 95, duration_ms: 1800, flow_audit: { is_complete: true, missing_nodes: [], node_results: [{ node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批节点完整' }] }, field_audit: [], rule_audit: [{ rule_id: 'R011', rule_name: '入职材料完整性', passed: true, reasoning: '入职材料齐全' }], ai_summary: '新员工入职审批完全合规。' }
+  },
+  {
+    id: 'ARL-005', process_id: 'WF-2025-060', title: '年度办公用品集中采购', operator: '王强', department: '行政部', process_type: '采购审批', compliance: 'compliant', compliance_score: 88, created_at: '2025-06-08 16:30',
+    archive_result: { trace_id: 'ATR-20250608-005', process_id: 'WF-2025-060', overall_compliance: 'compliant', overall_score: 88, duration_ms: 2000, flow_audit: { is_complete: true, missing_nodes: [], node_results: [{ node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批节点完整' }] }, field_audit: [], rule_audit: [{ rule_id: 'R001', rule_name: '预算额度校验', passed: true, reasoning: '采购金额在预算范围内' }], ai_summary: '办公用品采购审批合规。' }
+  },
+  {
+    id: 'ARL-006', process_id: 'WF-2025-055', title: '销售部差旅费季度报销', operator: '李芳', department: '销售部', process_type: '费用报销', compliance: 'partially_compliant', compliance_score: 72, created_at: '2025-06-08 10:00',
+    archive_result: { trace_id: 'ATR-20250608-006', process_id: 'WF-2025-055', overall_compliance: 'partially_compliant', overall_score: 72, duration_ms: 2300, flow_audit: { is_complete: true, missing_nodes: [], node_results: [{ node_id: 'N1', node_name: '部门经理审批', compliant: true, reasoning: '审批节点完整' }] }, field_audit: [], rule_audit: [{ rule_id: 'R006', rule_name: '费用标准校验', passed: false, reasoning: '部分差旅费用超出标准' }, { rule_id: 'R007', rule_name: '发票合规性', passed: true, reasoning: '发票信息完整' }], ai_summary: '差旅费报销存在部分费用超标问题。' }
+  },
 ]
 
 export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
@@ -1311,6 +1339,108 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
       allow_custom_fields: true,
       allow_custom_rules: true,
       allow_modify_strictness: true,
+    },
+  },
+  {
+    id: 'PAC-005',
+    process_type: '工程审批',
+    process_type_label: '工程类',
+    flow_path: '部门经理 → 安全主管 → 行政总监',
+    main_table_name: 'formtable_main_005',
+    main_fields: [
+      { field_key: 'project_name', field_name: '工程名称', field_type: 'text', selected: true },
+      { field_key: 'budget', field_name: '工程预算', field_type: 'number', selected: true },
+      { field_key: 'contractor', field_name: '施工方', field_type: 'text', selected: true },
+      { field_key: 'start_date', field_name: '开工日期', field_type: 'date', selected: true },
+    ],
+    field_mode: 'all',
+    fields: [
+      { field_key: 'project_name', field_name: '工程名称', field_type: 'text', selected: true },
+      { field_key: 'budget', field_name: '工程预算', field_type: 'number', selected: true },
+      { field_key: 'contractor', field_name: '施工方', field_type: 'text', selected: true },
+      { field_key: 'start_date', field_name: '开工日期', field_type: 'date', selected: true },
+    ],
+    rules: [
+      { id: 'R020', process_type: '工程审批', rule_content: '工程预算须在年度行政预算范围内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual', related_flow: false },
+      { id: 'R021', process_type: '工程审批', rule_content: '施工方须具备相应资质', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'manual', related_flow: false },
+    ],
+    kb_mode: 'rules_only',
+    ai_config: {
+      audit_strictness: 'standard',
+      reasoning_prompt: '你是一个工程审批审核助手。请根据规则对工程项目进行审核。\n\n主表数据：{{main_table}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}',
+      extraction_prompt: '请输出结构化审核结论。\n\n原始规则列表：{{rules}}',
+    },
+    user_permissions: {
+      allow_custom_fields: true,
+      allow_custom_rules: true,
+      allow_modify_strictness: false,
+    },
+  },
+  {
+    id: 'PAC-006',
+    process_type: '项目审批',
+    process_type_label: '项目类',
+    flow_path: '部门经理 → 技术总监 → 总经理',
+    main_table_name: 'formtable_main_006',
+    main_fields: [
+      { field_key: 'project_name', field_name: '项目名称', field_type: 'text', selected: true },
+      { field_key: 'project_budget', field_name: '项目预算', field_type: 'number', selected: true },
+      { field_key: 'team_size', field_name: '团队规模', field_type: 'number', selected: true },
+      { field_key: 'duration', field_name: '预计周期', field_type: 'text', selected: true },
+    ],
+    field_mode: 'all',
+    fields: [
+      { field_key: 'project_name', field_name: '项目名称', field_type: 'text', selected: true },
+      { field_key: 'project_budget', field_name: '项目预算', field_type: 'number', selected: true },
+      { field_key: 'team_size', field_name: '团队规模', field_type: 'number', selected: true },
+      { field_key: 'duration', field_name: '预计周期', field_type: 'text', selected: true },
+    ],
+    rules: [
+      { id: 'R022', process_type: '项目审批', rule_content: '项目预算须在年度规划范围内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual', related_flow: false },
+      { id: 'R023', process_type: '项目审批', rule_content: '团队配置须包含必要角色', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual', related_flow: false },
+    ],
+    kb_mode: 'rules_only',
+    ai_config: {
+      audit_strictness: 'standard',
+      reasoning_prompt: '你是一个项目审批审核助手。请根据规则对项目立项进行审核。\n\n主表数据：{{main_table}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}',
+      extraction_prompt: '请输出结构化审核结论。\n\n原始规则列表：{{rules}}',
+    },
+    user_permissions: {
+      allow_custom_fields: true,
+      allow_custom_rules: true,
+      allow_modify_strictness: true,
+    },
+  },
+  {
+    id: 'PAC-007',
+    process_type: '预算审批',
+    process_type_label: '预算类',
+    flow_path: '部门经理 → 财务总监 → 总经理',
+    main_table_name: 'formtable_main_007',
+    main_fields: [
+      { field_key: 'budget_name', field_name: '预算名称', field_type: 'text', selected: true },
+      { field_key: 'budget_amount', field_name: '预算金额', field_type: 'number', selected: true },
+      { field_key: 'budget_period', field_name: '预算周期', field_type: 'text', selected: true },
+    ],
+    field_mode: 'all',
+    fields: [
+      { field_key: 'budget_name', field_name: '预算名称', field_type: 'text', selected: true },
+      { field_key: 'budget_amount', field_name: '预算金额', field_type: 'number', selected: true },
+      { field_key: 'budget_period', field_name: '预算周期', field_type: 'text', selected: true },
+    ],
+    rules: [
+      { id: 'R024', process_type: '预算审批', rule_content: '预算金额须在年度财务规划范围内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual', related_flow: false },
+    ],
+    kb_mode: 'rules_only',
+    ai_config: {
+      audit_strictness: 'standard',
+      reasoning_prompt: '你是一个预算审批审核助手。请根据规则对预算申请进行审核。\n\n主表数据：{{main_table}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}',
+      extraction_prompt: '请输出结构化审核结论。\n\n原始规则列表：{{rules}}',
+    },
+    user_permissions: {
+      allow_custom_fields: true,
+      allow_custom_rules: true,
+      allow_modify_strictness: false,
     },
   },
 ]
@@ -1773,10 +1903,10 @@ export const useMockData = () => {
     },
   }
 
-  const mockCronTasks: CronTask[] = [    { id: 'CT-BUILTIN-001', cron_expression: '0 9 * * 1-5', task_type: 'batch_audit', is_active: true, last_run_at: '2025-06-10 09:00', next_run_at: '2025-06-11 09:00', created_at: '2025-05-01', success_count: 28, fail_count: 1, is_builtin: true },
-    { id: 'CT-002', cron_expression: '0 18 * * 1-5', task_type: 'daily_report', is_active: true, last_run_at: '2025-06-09 18:00', next_run_at: '2025-06-10 18:00', created_at: '2025-05-01', success_count: 30, fail_count: 0, push_email: 'zhangming@example.com' },
-    { id: 'CT-003', cron_expression: '0 10 * * 1', task_type: 'weekly_report', is_active: true, last_run_at: '2025-06-09 10:00', next_run_at: '2025-06-16 10:00', created_at: '2025-05-15', success_count: 4, fail_count: 0, push_email: 'zhangming@example.com' },
-    { id: 'CT-004', cron_expression: '0 2 * * *', task_type: 'batch_audit', is_active: false, last_run_at: '2025-06-08 02:00', next_run_at: '-', created_at: '2025-04-20', success_count: 15, fail_count: 3 },
+  const mockCronTasks: CronTask[] = [{ id: 'CT-BUILTIN-001', cron_expression: '0 9 * * 1-5', task_type: 'batch_audit', is_active: true, last_run_at: '2025-06-10 09:00', next_run_at: '2025-06-11 09:00', created_at: '2025-05-01', success_count: 28, fail_count: 1, is_builtin: true },
+  { id: 'CT-002', cron_expression: '0 18 * * 1-5', task_type: 'daily_report', is_active: true, last_run_at: '2025-06-09 18:00', next_run_at: '2025-06-10 18:00', created_at: '2025-05-01', success_count: 30, fail_count: 0, push_email: 'zhangming@example.com' },
+  { id: 'CT-003', cron_expression: '0 10 * * 1', task_type: 'weekly_report', is_active: true, last_run_at: '2025-06-09 10:00', next_run_at: '2025-06-16 10:00', created_at: '2025-05-15', success_count: 4, fail_count: 0, push_email: 'zhangming@example.com' },
+  { id: 'CT-004', cron_expression: '0 2 * * *', task_type: 'batch_audit', is_active: false, last_run_at: '2025-06-08 02:00', next_run_at: '-', created_at: '2025-04-20', success_count: 15, fail_count: 3 },
   ]
 
   // ============================================================
@@ -2537,6 +2667,48 @@ export const useMockData = () => {
     ],
   }
 
+  /**
+   * Global process category → process name mapping.
+   * - category (流程类型/类别): e.g. "采购类", "费用类" — groups of related processes
+   * - processName (流程名称): e.g. "采购审批", "费用报销" — the specific process definition
+   * - title (流程标题): e.g. "办公设备采购申请" — a specific instance of a process
+   *
+   * This is the single source of truth for building cascading/multi-level process selectors.
+   */
+  const processCategoryMap = mockProcessAuditConfigs.map(cfg => ({
+    category: cfg.process_type_label || cfg.process_type,
+    processName: cfg.process_type,
+  }))
+
+  // Deduplicate and build cascader options structure:
+  // [{ label: '采购类', value: '采购类', children: [{ label: '采购审批', value: '采购审批' }] }]
+  const buildProcessCascaderOptions = (configs: ProcessAuditConfig[]) => {
+    const categoryMap = new Map<string, { label: string; value: string; children: { label: string; value: string }[] }>()
+    for (const cfg of configs) {
+      const catLabel = cfg.process_type_label || cfg.process_type
+      if (!categoryMap.has(catLabel)) {
+        categoryMap.set(catLabel, { label: catLabel, value: catLabel, children: [] })
+      }
+      const cat = categoryMap.get(catLabel)!
+      if (!cat.children.some(c => c.value === cfg.process_type)) {
+        cat.children.push({ label: cfg.process_type, value: cfg.process_type })
+      }
+    }
+    return Array.from(categoryMap.values())
+  }
+
+  const processCascaderOptions = buildProcessCascaderOptions(mockProcessAuditConfigs)
+
+  // Also build cascader options for archive review configs
+  const archiveProcessCascaderOptions = buildProcessCascaderOptions(
+    mockArchiveReviewConfigs.map(c => ({
+      ...c,
+      flow_path: '',
+      kb_mode: c.kb_mode,
+      user_permissions: { allow_custom_fields: c.user_permissions.allow_custom_fields, allow_custom_rules: c.user_permissions.allow_custom_rules, allow_modify_strictness: c.user_permissions.allow_modify_strictness },
+    } as any))
+  )
+
   /** Default dashboard prefs per user (keyed by username) */
   const mockUserDashboardPrefs: Record<string, UserDashboardPrefs> = {
     zhangming: { enabledWidgets: ['audit_summary', 'pending_tasks', 'weekly_trend', 'cron_tasks', 'archive_review', 'recent_activity'] },
@@ -2580,6 +2752,9 @@ export const useMockData = () => {
     mockUserLocalePrefs,
     mockBatchAuditResult,
     mockTodoAuditResults,
+    processCategoryMap,
+    processCascaderOptions,
+    archiveProcessCascaderOptions,
   }
 }
 

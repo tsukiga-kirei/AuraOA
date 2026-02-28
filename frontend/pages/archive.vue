@@ -34,6 +34,7 @@ const {
   mockArchiveReviewConfigs,
   mockOrgMembers,
   mockOrgRoles,
+  archiveProcessCascaderOptions,
 } = useMockData()
 
 // ===== Permission: filter accessible archive configs based on current user =====
@@ -62,30 +63,41 @@ const selectedProcess = ref<ArchivedProcess | null>(null)
 const loading = ref(false)
 const phase1Done = ref(false)
 const searchText = ref('')
+const searchApplicant = ref('')
 const showFilters = ref(false)
 const batchAuditing = ref(false)
 const selectedProcessIds = ref<string[]>([])
 const processAuditLoading = ref<Record<string, boolean>>({})
 
 // ===== Filters =====
-const filterProcessType = ref<string[]>([])
+const filterProcessType = ref<string[][]>([])
+const filterProcessNames = computed(() => {
+  if (filterProcessType.value.length === 0) return []
+  const names: string[] = []
+  for (const path of filterProcessType.value) {
+    if (path.length >= 2) {
+      names.push(path[path.length - 1])
+    } else if (path.length === 1) {
+      const cat = archiveProcessCascaderOptions.find((o: any) => o.value === path[0])
+      if (cat && (cat as any).children) {
+        names.push(...(cat as any).children.map((c: any) => c.value))
+      }
+    }
+  }
+  return names
+})
 const filterDepartment = ref<string | undefined>(undefined)
 const filterAuditStatus = ref<string | undefined>(undefined)
 
 const departmentOptions = computed(() => [...new Set(processList.value.map(p => p.department))])
-const processTypeOptions = computed(() =>
-  accessibleConfigs.value.map(c => {
-    const labelSuffix = c.process_type_label ? ` · ${c.process_type_label}` : ''
-    return { label: c.process_type + labelSuffix, value: c.process_type }
-  })
-)
 
 const hasActiveFilters = computed(() =>
-  !!searchText.value || filterProcessType.value.length > 0 || !!filterDepartment.value || !!filterAuditStatus.value
+  !!searchText.value || !!searchApplicant.value || filterProcessType.value.length > 0 || !!filterDepartment.value || !!filterAuditStatus.value
 )
 
 const clearFilters = () => {
   searchText.value = ''
+  searchApplicant.value = ''
   filterProcessType.value = []
   filterDepartment.value = undefined
   filterAuditStatus.value = undefined
@@ -96,8 +108,8 @@ const auditRecords = ref<Record<string, ArchiveAuditResult>>({})
 
 const filteredList = computed(() => {
   let list = [...processList.value]
-  if (filterProcessType.value.length > 0) {
-    list = list.filter(p => filterProcessType.value.includes(p.process_type))
+  if (filterProcessNames.value.length > 0) {
+    list = list.filter(p => filterProcessNames.value.includes(p.process_type))
   }
   if (filterDepartment.value) {
     list = list.filter(p => p.department === filterDepartment.value)
@@ -106,9 +118,12 @@ const filteredList = computed(() => {
     const q = searchText.value.toLowerCase()
     list = list.filter(p =>
       p.title.toLowerCase().includes(q) ||
-      p.applicant.toLowerCase().includes(q) ||
       p.process_id.toLowerCase().includes(q)
     )
+  }
+  if (searchApplicant.value) {
+    const q2 = searchApplicant.value.toLowerCase()
+    list = list.filter(p => p.applicant.toLowerCase().includes(q2))
   }
   if (filterAuditStatus.value) {
     if (filterAuditStatus.value === 'unaudited') {
@@ -334,14 +349,26 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
           <!-- Filters -->
           <transition name="slide">
             <div v-if="showFilters" class="filter-bar">
-              <a-input v-model:value="searchText" :placeholder="t('archive.searchPlaceholder')" allow-clear style="flex: 2; min-width: 140px;">
+              <a-input v-model:value="searchText" :placeholder="t('archive.searchPlaceholder')" allow-clear style="flex: 2; min-width: 160px;">
                 <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
               </a-input>
-              <a-select v-model:value="filterDepartment" :placeholder="t('archive.department')" allow-clear style="flex: 1; min-width: 100px;">
+              <a-input v-model:value="searchApplicant" :placeholder="t('archive.searchApplicant')" allow-clear style="flex: 1; min-width: 130px;">
+                <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+              </a-input>
+              <a-cascader
+                v-model:value="filterProcessType"
+                :options="archiveProcessCascaderOptions"
+                :placeholder="t('archive.processType')"
+                multiple
+                :max-tag-count="1"
+                allow-clear
+                style="flex: 1.5; min-width: 160px;"
+                :show-search="{ filter: (inputValue: string, path: any[]) => path.some((o: any) => o.label.toLowerCase().includes(inputValue.toLowerCase())) }"
+              />
+              <a-select v-model:value="filterDepartment" :placeholder="t('archive.department')" allow-clear style="flex: 1; min-width: 120px;">
                 <a-select-option v-for="d in departmentOptions" :key="d" :value="d">{{ d }}</a-select-option>
               </a-select>
-              <a-select v-model:value="filterProcessType" mode="multiple" :placeholder="t('archive.processType')" allow-clear style="flex: 1; min-width: 100px;" :options="processTypeOptions" :max-tag-count="1" />
-              <a-select v-model:value="filterAuditStatus" :placeholder="t('archive.filterStatus')" allow-clear style="flex: 1; min-width: 100px;">
+              <a-select v-model:value="filterAuditStatus" :placeholder="t('archive.filterStatus')" allow-clear style="flex: 1; min-width: 130px;">
                 <a-select-option value="unaudited">{{ t('archive.statusUnaudited') }}</a-select-option>
                 <a-select-option value="compliant">{{ t('archive.compliant') }}</a-select-option>
                 <a-select-option value="partially_compliant">{{ t('archive.partiallyCompliant') }}</a-select-option>

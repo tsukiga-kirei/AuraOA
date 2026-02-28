@@ -31,6 +31,7 @@ const {
   mockHistoricalResults, mockAuditResult, mockDashboardStats, mockSnapshots,
   mockArchivedOAProcesses, mockArchivedAuditChains, mockArchivedHistoricalResults,
   mockBatchAuditResult, mockTodoAuditResults,
+  processCascaderOptions,
 } = useMockData()
 
 const todoList = ref(mockProcesses)
@@ -42,6 +43,7 @@ const loading = ref(false)
 const phase1Done = ref(false)
 const selectedProcess = ref<string | null>(null)
 const searchText = ref('')
+const searchApplicant = ref('')
 const stats = ref(mockDashboardStats)
 const showFilters = ref(false)
 
@@ -54,16 +56,26 @@ const processAuditLoading = ref<Record<string, boolean>>({})
 const viewMode = ref<'todo' | 'approved' | 'returned' | 'archived'>('todo')
 const isHistoryMode = computed(() => viewMode.value !== 'todo')
 
-// Process type filter
-const filterProcessType = ref<string[]>([])
-const processTypeOptions = computed(() => {
-  const all = [...todoList.value, ...approvedList.value, ...returnedList.value, ...archivedList.value]
-  const types = [...new Set(all.map(p => p.process_type))]
-  return types.map(t => {
-    const cfg = mockProcessAuditConfigs.find(c => c.process_type === t)
-    const labelSuffix = cfg?.process_type_label ? ` · ${cfg.process_type_label}` : ''
-    return { label: t + labelSuffix, value: t }
-  })
+// Process type filter — cascader: [category, processName]
+const filterProcessType = ref<string[][]>([])
+// Resolve selected cascader values to process names, handling both
+// category-only selections (e.g. ['采购类']) and full paths (e.g. ['采购类','采购审批'])
+const filterProcessNames = computed(() => {
+  if (filterProcessType.value.length === 0) return []
+  const names: string[] = []
+  for (const path of filterProcessType.value) {
+    if (path.length >= 2) {
+      // Full path: last element is the process name
+      names.push(path[path.length - 1])
+    } else if (path.length === 1) {
+      // Category-only: find all children under this category
+      const cat = processCascaderOptions.find(o => o.value === path[0])
+      if (cat && cat.children) {
+        names.push(...cat.children.map((c: any) => c.value))
+      }
+    }
+  }
+  return names
 })
 const departmentOptions = computed(() => {
   const all = [...todoList.value, ...approvedList.value, ...returnedList.value, ...archivedList.value]
@@ -76,11 +88,12 @@ const filterAuditStatus = ref<string | undefined>(undefined)
 
 const clearFilters = () => {
   searchText.value = ''
+  searchApplicant.value = ''
   filterProcessType.value = []
   filterDepartment.value = undefined
   filterAuditStatus.value = undefined
 }
-const hasActiveFilters = computed(() => !!searchText.value || filterProcessType.value.length > 0 || !!filterDepartment.value || !!filterAuditStatus.value)
+const hasActiveFilters = computed(() => !!searchText.value || !!searchApplicant.value || filterProcessType.value.length > 0 || !!filterDepartment.value || !!filterAuditStatus.value)
 
 // Batch audit
 const selectedProcessIds = ref<string[]>([])
@@ -206,15 +219,19 @@ const filteredList = computed(() => {
     case 'archived': list = archivedList.value; break
     default: list = todoList.value
   }
-  if (filterProcessType.value.length > 0) {
-    list = list.filter(p => filterProcessType.value.includes(p.process_type))
+  if (filterProcessNames.value.length > 0) {
+    list = list.filter(p => filterProcessNames.value.includes(p.process_type))
   }
   if (filterDepartment.value) {
     list = list.filter(p => p.department === filterDepartment.value)
   }
   if (searchText.value) {
     const q = searchText.value.toLowerCase()
-    list = list.filter(p => p.title.toLowerCase().includes(q) || p.applicant.toLowerCase().includes(q))
+    list = list.filter(p => p.title.toLowerCase().includes(q))
+  }
+  if (searchApplicant.value) {
+    const q2 = searchApplicant.value.toLowerCase()
+    list = list.filter(p => p.applicant.toLowerCase().includes(q2))
   }
   // AI audit status filter
   if (filterAuditStatus.value) {
@@ -396,14 +413,6 @@ const getShortRecLabel = (rec: string) => {
           <!-- Collapsible filter bar -->
           <transition name="slide">
             <div v-if="showFilters" class="filter-bar">
-              <a-select
-                v-model:value="filterDepartment"
-                :placeholder="t('dashboard.filterDepartment')"
-                allow-clear
-                style="flex: 1; min-width: 100px;"
-              >
-                <a-select-option v-for="d in departmentOptions" :key="d" :value="d">{{ d }}</a-select-option>
-              </a-select>
               <a-input
                 v-model:value="searchText"
                 :placeholder="t('dashboard.searchPlaceholder')"
@@ -412,20 +421,37 @@ const getShortRecLabel = (rec: string) => {
               >
                 <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
               </a-input>
-              <a-select
+              <a-input
+                v-model:value="searchApplicant"
+                :placeholder="t('dashboard.searchApplicant')"
+                allow-clear
+                style="flex: 1; min-width: 130px;"
+              >
+                <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+              </a-input>
+              <a-cascader
                 v-model:value="filterProcessType"
-                mode="multiple"
+                :options="processCascaderOptions"
                 :placeholder="t('dashboard.filterProcessTypePlaceholder')"
+                multiple
+                :max-tag-count="1"
+                allow-clear
+                style="flex: 1.5; min-width: 160px;"
+                :show-search="{ filter: (inputValue: string, path: any[]) => path.some((o: any) => o.label.toLowerCase().includes(inputValue.toLowerCase())) }"
+              />
+              <a-select
+                v-model:value="filterDepartment"
+                :placeholder="t('dashboard.filterDepartment')"
                 allow-clear
                 style="flex: 1; min-width: 120px;"
-                :options="processTypeOptions"
-                :max-tag-count="1"
-              />
+              >
+                <a-select-option v-for="d in departmentOptions" :key="d" :value="d">{{ d }}</a-select-option>
+              </a-select>
               <a-select
                 v-model:value="filterAuditStatus"
                 :placeholder="t('dashboard.filterAuditStatus')"
                 allow-clear
-                style="flex: 1; min-width: 120px;"
+                style="flex: 1; min-width: 130px;"
               >
                 <a-select-option value="unaudited">{{ t('dashboard.auditStatus.unaudited') }}</a-select-option>
                 <a-select-option value="approve">{{ t('dashboard.auditStatus.approve') }}</a-select-option>

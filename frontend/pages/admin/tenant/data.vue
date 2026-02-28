@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  CalendarOutlined,
   SearchOutlined,
   ClockCircleOutlined,
   FolderOpenOutlined,
@@ -25,19 +26,42 @@ import {
   mockArchiveLogs,
 } from '~/composables/useMockData'
 import type { AuditLog, CronLog, ArchiveLog, AuditResult, ArchiveAuditResult } from '~/composables/useMockData'
+import type { Dayjs } from 'dayjs'
+import dayjs from 'dayjs'
+import 'dayjs/locale/zh-cn'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
 const activeTab = ref<'audit' | 'cron' | 'archive'>('audit')
 
+// Cascader options from mock data
+const { processCascaderOptions, archiveProcessCascaderOptions } = useMockData()
+
 // ===== Audit tab =====
 const auditLogs = ref<AuditLog[]>(JSON.parse(JSON.stringify(mockAuditLogs)))
 const auditSearch = ref('')
+const auditSearchOperator = ref('')
 const auditShowFilters = ref(false)
 const auditFilterDepartment = ref<string | undefined>(undefined)
-const auditFilterProcessType = ref<string[]>([])
+const auditFilterProcessType = ref<string[][]>([])
+const auditFilterProcessNames = computed(() => {
+  if (auditFilterProcessType.value.length === 0) return []
+  const names: string[] = []
+  for (const path of auditFilterProcessType.value) {
+    if (path.length >= 2) {
+      names.push(path[path.length - 1])
+    } else if (path.length === 1) {
+      const cat = processCascaderOptions.find((o: any) => o.value === path[0])
+      if (cat && (cat as any).children) {
+        names.push(...(cat as any).children.map((c: any) => c.value))
+      }
+    }
+  }
+  return names
+})
 const auditFilterStatus = ref<string | undefined>(undefined)
+const auditFilterDateRange = ref<[Dayjs, Dayjs] | null>(null)
 const auditSelectedIds = ref<string[]>([])
 const auditDetailVisible = ref(false)
 const auditDetailResult = ref<AuditResult | null>(null)
@@ -45,10 +69,9 @@ const auditDetailTitle = ref('')
 const auditCardFilter = ref<string | null>(null)
 
 const auditDepartmentOptions = computed(() => [...new Set(auditLogs.value.map(l => l.department))])
-const auditProcessTypeOptions = computed(() => [...new Set(auditLogs.value.map(l => l.process_type))].map(t => ({ label: t, value: t })))
-const auditHasActiveFilters = computed(() => !!auditSearch.value || auditFilterDepartment.value !== undefined || auditFilterProcessType.value.length > 0 || auditFilterStatus.value !== undefined)
+const auditHasActiveFilters = computed(() => !!auditSearch.value || !!auditSearchOperator.value || auditFilterDepartment.value !== undefined || auditFilterProcessType.value.length > 0 || auditFilterStatus.value !== undefined || auditFilterDateRange.value !== null)
 
-const clearAuditFilters = () => { auditSearch.value = ''; auditFilterDepartment.value = undefined; auditFilterProcessType.value = []; auditFilterStatus.value = undefined }
+const clearAuditFilters = () => { auditSearch.value = ''; auditSearchOperator.value = ''; auditFilterDepartment.value = undefined; auditFilterProcessType.value = []; auditFilterStatus.value = undefined; auditFilterDateRange.value = null }
 
 const filteredAuditLogs = computed(() => {
   return auditLogs.value.filter(l => {
@@ -56,10 +79,17 @@ const filteredAuditLogs = computed(() => {
       if (auditCardFilter.value === 'all') { /* no filter */ }
       else if (l.recommendation !== auditCardFilter.value) return false
     }
-    if (auditSearch.value) { const q = auditSearch.value.toLowerCase(); if (!l.title.toLowerCase().includes(q) && !l.process_id.toLowerCase().includes(q) && !l.operator.toLowerCase().includes(q)) return false }
+    if (auditSearch.value) { const q = auditSearch.value.toLowerCase(); if (!l.title.toLowerCase().includes(q) && !l.process_id.toLowerCase().includes(q)) return false }
+    if (auditSearchOperator.value) { const q = auditSearchOperator.value.toLowerCase(); if (!l.operator.toLowerCase().includes(q)) return false }
     if (auditFilterDepartment.value && l.department !== auditFilterDepartment.value) return false
-    if (auditFilterProcessType.value.length > 0 && !auditFilterProcessType.value.includes(l.process_type)) return false
+    if (auditFilterProcessNames.value.length > 0 && !auditFilterProcessNames.value.includes(l.process_type)) return false
     if (auditFilterStatus.value && l.recommendation !== auditFilterStatus.value) return false
+    if (auditFilterDateRange.value) {
+      const logDate = new Date(l.created_at).getTime()
+      const start = auditFilterDateRange.value[0].startOf('day').valueOf()
+      const end = auditFilterDateRange.value[1].endOf('day').valueOf()
+      if (logDate < start || logDate > end) return false
+    }
     return true
   })
 })
@@ -123,10 +153,27 @@ const toggleCronSelectAll = () => { if (cronSelectedIds.value.length === filtere
 // ===== Archive tab =====
 const archiveLogs = ref<ArchiveLog[]>(JSON.parse(JSON.stringify(mockArchiveLogs)))
 const archiveSearch = ref('')
+const archiveSearchOperator = ref('')
 const archiveShowFilters = ref(false)
 const archiveFilterDepartment = ref<string | undefined>(undefined)
-const archiveFilterProcessType = ref<string[]>([])
+const archiveFilterProcessType = ref<string[][]>([])
+const archiveFilterProcessNames = computed(() => {
+  if (archiveFilterProcessType.value.length === 0) return []
+  const names: string[] = []
+  for (const path of archiveFilterProcessType.value) {
+    if (path.length >= 2) {
+      names.push(path[path.length - 1])
+    } else if (path.length === 1) {
+      const cat = archiveProcessCascaderOptions.find((o: any) => o.value === path[0])
+      if (cat && (cat as any).children) {
+        names.push(...(cat as any).children.map((c: any) => c.value))
+      }
+    }
+  }
+  return names
+})
 const archiveFilterCompliance = ref<string | undefined>(undefined)
+const archiveFilterDateRange = ref<[Dayjs, Dayjs] | null>(null)
 const archiveSelectedIds = ref<string[]>([])
 const archiveDetailVisible = ref(false)
 const archiveDetailResult = ref<ArchiveAuditResult | null>(null)
@@ -134,9 +181,8 @@ const archiveDetailTitle = ref('')
 const archiveCardFilter = ref<string | null>(null)
 
 const archiveDepartmentOptions = computed(() => [...new Set(archiveLogs.value.map(l => l.department))])
-const archiveProcessTypeOptions = computed(() => [...new Set(archiveLogs.value.map(l => l.process_type))].map(t => ({ label: t, value: t })))
-const archiveHasActiveFilters = computed(() => !!archiveSearch.value || archiveFilterDepartment.value !== undefined || archiveFilterProcessType.value.length > 0 || archiveFilterCompliance.value !== undefined)
-const clearArchiveFilters = () => { archiveSearch.value = ''; archiveFilterDepartment.value = undefined; archiveFilterProcessType.value = []; archiveFilterCompliance.value = undefined }
+const archiveHasActiveFilters = computed(() => !!archiveSearch.value || !!archiveSearchOperator.value || archiveFilterDepartment.value !== undefined || archiveFilterProcessType.value.length > 0 || archiveFilterCompliance.value !== undefined || archiveFilterDateRange.value !== null)
+const clearArchiveFilters = () => { archiveSearch.value = ''; archiveSearchOperator.value = ''; archiveFilterDepartment.value = undefined; archiveFilterProcessType.value = []; archiveFilterCompliance.value = undefined; archiveFilterDateRange.value = null }
 
 const filteredArchiveLogs = computed(() => {
   return archiveLogs.value.filter(l => {
@@ -144,10 +190,17 @@ const filteredArchiveLogs = computed(() => {
       if (archiveCardFilter.value === 'all') { /* no filter */ }
       else if (l.compliance !== archiveCardFilter.value) return false
     }
-    if (archiveSearch.value) { const q = archiveSearch.value.toLowerCase(); if (!l.title.toLowerCase().includes(q) && !l.process_id.toLowerCase().includes(q) && !l.operator.toLowerCase().includes(q)) return false }
+    if (archiveSearch.value) { const q = archiveSearch.value.toLowerCase(); if (!l.title.toLowerCase().includes(q) && !l.process_id.toLowerCase().includes(q)) return false }
+    if (archiveSearchOperator.value) { const q = archiveSearchOperator.value.toLowerCase(); if (!l.operator.toLowerCase().includes(q)) return false }
     if (archiveFilterDepartment.value && l.department !== archiveFilterDepartment.value) return false
-    if (archiveFilterProcessType.value.length > 0 && !archiveFilterProcessType.value.includes(l.process_type)) return false
+    if (archiveFilterProcessNames.value.length > 0 && !archiveFilterProcessNames.value.includes(l.process_type)) return false
     if (archiveFilterCompliance.value && l.compliance !== archiveFilterCompliance.value) return false
+    if (archiveFilterDateRange.value) {
+      const logDate = new Date(l.created_at).getTime()
+      const start = archiveFilterDateRange.value[0].startOf('day').valueOf()
+      const end = archiveFilterDateRange.value[1].endOf('day').valueOf()
+      if (logDate < start || logDate > end) return false
+    }
     return true
   })
 })
@@ -282,15 +335,28 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
           <a-input v-model:value="auditSearch" :placeholder="t('admin.data.searchAudit')" allow-clear style="flex: 2; min-width: 160px;">
             <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
           </a-input>
+          <a-input v-model:value="auditSearchOperator" :placeholder="t('admin.data.searchOperator')" allow-clear style="flex: 1; min-width: 120px;">
+            <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+          </a-input>
+          <a-cascader
+            v-model:value="auditFilterProcessType"
+            :options="processCascaderOptions"
+            :placeholder="t('admin.data.filterProcessType')"
+            multiple
+            :max-tag-count="1"
+            allow-clear
+            style="flex: 1; min-width: 140px;"
+            :show-search="{ filter: (inputValue: string, path: any[]) => path.some((o: any) => o.label.toLowerCase().includes(inputValue.toLowerCase())) }"
+          />
           <a-select v-model:value="auditFilterDepartment" :placeholder="t('admin.data.filterDepartment')" allow-clear style="flex: 1; min-width: 100px;">
             <a-select-option v-for="d in auditDepartmentOptions" :key="d" :value="d">{{ d }}</a-select-option>
           </a-select>
-          <a-select v-model:value="auditFilterProcessType" mode="multiple" :placeholder="t('admin.data.filterProcessType')" allow-clear style="flex: 1; min-width: 120px;" :options="auditProcessTypeOptions" :max-tag-count="1" />
           <a-select v-model:value="auditFilterStatus" :placeholder="t('admin.data.filterAuditStatus')" allow-clear style="flex: 1; min-width: 120px;">
             <a-select-option value="approve">{{ t('admin.data.auditApprove') }}</a-select-option>
             <a-select-option value="return">{{ t('admin.data.auditReturn') }}</a-select-option>
             <a-select-option value="review">{{ t('admin.data.auditReview') }}</a-select-option>
           </a-select>
+          <a-range-picker v-model:value="auditFilterDateRange" :placeholder="[t('admin.data.filterDateRange'), t('admin.data.filterDateRange')]" allow-clear style="flex: 1; min-width: 200px;" />
           <a-button size="small" @click="clearAuditFilters">{{ t('admin.data.filterReset') }}</a-button>
         </div>
       </transition>
@@ -521,15 +587,28 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
           <a-input v-model:value="archiveSearch" :placeholder="t('admin.data.searchArchive')" allow-clear style="flex: 2; min-width: 160px;">
             <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
           </a-input>
+          <a-input v-model:value="archiveSearchOperator" :placeholder="t('admin.data.searchArchiveOperator')" allow-clear style="flex: 1; min-width: 120px;">
+            <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+          </a-input>
+          <a-cascader
+            v-model:value="archiveFilterProcessType"
+            :options="archiveProcessCascaderOptions"
+            :placeholder="t('admin.data.filterProcessType')"
+            multiple
+            :max-tag-count="1"
+            allow-clear
+            style="flex: 1; min-width: 140px;"
+            :show-search="{ filter: (inputValue: string, path: any[]) => path.some((o: any) => o.label.toLowerCase().includes(inputValue.toLowerCase())) }"
+          />
           <a-select v-model:value="archiveFilterDepartment" :placeholder="t('admin.data.filterDepartment')" allow-clear style="flex: 1; min-width: 100px;">
             <a-select-option v-for="d in archiveDepartmentOptions" :key="d" :value="d">{{ d }}</a-select-option>
           </a-select>
-          <a-select v-model:value="archiveFilterProcessType" mode="multiple" :placeholder="t('admin.data.filterProcessType')" allow-clear style="flex: 1; min-width: 120px;" :options="archiveProcessTypeOptions" :max-tag-count="1" />
           <a-select v-model:value="archiveFilterCompliance" :placeholder="t('admin.data.filterAuditStatus')" allow-clear style="flex: 1; min-width: 120px;">
             <a-select-option value="compliant">{{ t('admin.data.compliant') }}</a-select-option>
             <a-select-option value="partially_compliant">{{ t('admin.data.partiallyCompliant') }}</a-select-option>
             <a-select-option value="non_compliant">{{ t('admin.data.nonCompliant') }}</a-select-option>
           </a-select>
+          <a-range-picker v-model:value="archiveFilterDateRange" :placeholder="[t('admin.data.filterDateRange'), t('admin.data.filterDateRange')]" allow-clear style="flex: 1; min-width: 200px;" />
           <a-button size="small" @click="clearArchiveFilters">{{ t('admin.data.filterReset') }}</a-button>
         </div>
       </transition>
