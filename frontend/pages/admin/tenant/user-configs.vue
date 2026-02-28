@@ -4,54 +4,105 @@ import {
   UserOutlined,
   EyeOutlined,
   ExportOutlined,
-  NodeIndexOutlined,
   AppstoreOutlined,
   ClockCircleOutlined,
   FolderOpenOutlined,
-  MailOutlined,
-  FileTextOutlined,
   ControlOutlined,
+  NodeIndexOutlined,
   ApartmentOutlined,
+  SwapOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  SwapOutlined,
+  PlusOutlined,
   EditOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
+import * as XLSX from 'xlsx'
 import type { UserPersonalConfig } from '~/composables/useMockData'
 import { useI18n } from '~/composables/useI18n'
+import { usePagination } from '~/composables/usePagination'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
-const { mockUserPersonalConfigs } = useMockData()
+const { t } = useI18n()
+const { mockUserPersonalConfigs, mockOrgRoles, mockOrgMembers } = useMockData()
 
 const configs = ref<UserPersonalConfig[]>(JSON.parse(JSON.stringify(mockUserPersonalConfigs)))
 const search = ref('')
 const deptFilter = ref<string | undefined>(undefined)
+const roleFilter = ref<string | undefined>(undefined)
 const hasConfigFilter = ref<string | undefined>(undefined)
+const selectedIds = ref<string[]>([])
 
 const departments = computed(() => {
   const depts = new Set(configs.value.map(c => c.department))
   return Array.from(depts).sort()
 })
 
+const roleOptions = computed(() => {
+  const roles = new Set<string>()
+  configs.value.forEach(c => c.role_names.forEach(r => roles.add(r)))
+  return Array.from(roles).sort()
+})
+
 const filteredConfigs = computed(() => {
   return configs.value.filter(c => {
     if (search.value && !c.display_name.includes(search.value) && !c.username.includes(search.value)) return false
     if (deptFilter.value && c.department !== deptFilter.value) return false
-    if (hasConfigFilter.value === 'configured' && c.total_config_items === 0) return false
-    if (hasConfigFilter.value === 'none' && c.total_config_items > 0) return false
+    if (roleFilter.value && !c.role_names.includes(roleFilter.value)) return false
+    const totalChanges = c.audit_process_count + c.cron_config_count + c.archive_process_count
+    if (hasConfigFilter.value === 'configured' && totalChanges === 0) return false
+    if (hasConfigFilter.value === 'none' && totalChanges > 0) return false
     return true
   })
 })
 
 const { paged, current, pageSize, total, onChange } = usePagination(filteredConfigs, 10)
 
-// Stats
-const totalUsers = computed(() => configs.value.length)
-const configuredUsers = computed(() => configs.value.filter(c => c.total_config_items > 0).length)
-const totalCustomRules = computed(() => configs.value.reduce((s, c) => s + c.custom_rules_count + c.archive_custom_rules_count, 0))
-const totalFieldOverrides = computed(() => configs.value.reduce((s, c) => s + c.field_overrides_count, 0))
+// Stats cards: total modification counts for each category
+const totalAuditChanges = computed(() => configs.value.reduce((s, c) => s + c.audit_process_count, 0))
+const totalCronChanges = computed(() => configs.value.reduce((s, c) => s + c.cron_config_count, 0))
+const totalArchiveChanges = computed(() => configs.value.reduce((s, c) => s + c.archive_process_count, 0))
+
+// Selection
+const toggleSelect = (id: string) => {
+  const idx = selectedIds.value.indexOf(id)
+  if (idx >= 0) selectedIds.value.splice(idx, 1)
+  else selectedIds.value.push(id)
+}
+const toggleSelectAll = () => {
+  if (selectedIds.value.length === filteredConfigs.value.length) selectedIds.value = []
+  else selectedIds.value = filteredConfigs.value.map(c => c.id)
+}
+
+// Export with selection
+const handleExport = () => {
+  if (selectedIds.value.length === 0) {
+    message.warning(t('admin.userConfigs.selectToExport'))
+    return
+  }
+  message.loading(t('admin.userConfigs.exporting'), 1)
+  setTimeout(() => {
+    const data = configs.value
+      .filter(c => selectedIds.value.includes(c.id))
+      .map(c => ({
+        username: c.username,
+        display_name: c.display_name,
+        department: c.department,
+        roles: c.role_names.join(', '),
+        audit_process_count: c.audit_process_count,
+        cron_config_count: c.cron_config_count,
+        archive_process_count: c.archive_process_count,
+        last_modified: c.last_modified || '-',
+      }))
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'UserPrefs')
+    XLSX.writeFile(wb, `user_preferences_${Date.now()}.xlsx`)
+    message.success(t('common.success'))
+  }, 500)
+}
 
 // Detail drawer
 const showDetail = ref(false)
@@ -60,15 +111,12 @@ const detailTab = ref<'audit' | 'cron' | 'archive'>('audit')
 
 const openDetail = (c: UserPersonalConfig) => {
   detailConfig.value = c
-  // Auto-select first tab that has content
   if (c.audit_details.length > 0) detailTab.value = 'audit'
-  else if (c.cron_details.length > 0) detailTab.value = 'cron'
+  else if (c.cron_config_details.length > 0) detailTab.value = 'cron'
   else if (c.archive_details.length > 0) detailTab.value = 'archive'
   else detailTab.value = 'audit'
   showDetail.value = true
 }
-
-const { t } = useI18n()
 
 const strictnessLabels = computed(() => ({
   strict: { label: t('admin.ruleConfig.strict'), color: 'var(--color-danger)' },
@@ -76,9 +124,7 @@ const strictnessLabels = computed(() => ({
   loose: { label: t('admin.ruleConfig.loose'), color: 'var(--color-warning)' },
 }))
 
-const handleExport = () => {
-  message.success(t('admin.userConfigs.exporting', 'User preference data exporting...'))
-}
+const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cron_config_count + c.archive_process_count
 </script>
 
 <template>
@@ -90,6 +136,32 @@ const handleExport = () => {
       </div>
     </div>
 
+    <!-- Stats cards -->
+    <div class="stats-row">
+      <div class="stat-card stat-card--primary">
+        <div class="stat-card-icon"><AppstoreOutlined /></div>
+        <div class="stat-card-info">
+          <span class="stat-card-value">{{ totalAuditChanges }}</span>
+          <span class="stat-card-label">{{ t('admin.userConfigs.totalAuditChanges') }}</span>
+        </div>
+      </div>
+      <div class="stat-card stat-card--info">
+        <div class="stat-card-icon"><ClockCircleOutlined /></div>
+        <div class="stat-card-info">
+          <span class="stat-card-value">{{ totalCronChanges }}</span>
+          <span class="stat-card-label">{{ t('admin.userConfigs.totalCronChanges') }}</span>
+        </div>
+      </div>
+      <div class="stat-card stat-card--warning">
+        <div class="stat-card-icon"><FolderOpenOutlined /></div>
+        <div class="stat-card-info">
+          <span class="stat-card-value">{{ totalArchiveChanges }}</span>
+          <span class="stat-card-label">{{ t('admin.userConfigs.totalArchiveChanges') }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
         <a-input v-model:value="search" :placeholder="t('admin.userConfigs.searchPlaceholder')" allow-clear style="width: 200px;">
@@ -97,6 +169,9 @@ const handleExport = () => {
         </a-input>
         <a-select v-model:value="deptFilter" :placeholder="t('admin.userConfigs.department')" allow-clear style="width: 140px;">
           <a-select-option v-for="d in departments" :key="d" :value="d">{{ d }}</a-select-option>
+        </a-select>
+        <a-select v-model:value="roleFilter" :placeholder="t('admin.userConfigs.role')" allow-clear style="width: 140px;">
+          <a-select-option v-for="r in roleOptions" :key="r" :value="r">{{ r }}</a-select-option>
         </a-select>
         <a-select v-model:value="hasConfigFilter" :placeholder="t('admin.userConfigs.configStatus')" allow-clear style="width: 140px;">
           <a-select-option value="configured">{{ t('admin.userConfigs.hasConfig') }}</a-select-option>
@@ -106,42 +181,33 @@ const handleExport = () => {
       <a-button @click="handleExport"><ExportOutlined /> {{ t('admin.userConfigs.export') }}</a-button>
     </div>
 
-    <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-value">{{ totalUsers }}</div>
-        <div class="stat-label">{{ t('admin.userConfigs.totalUsers') }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">{{ configuredUsers }}</div>
-        <div class="stat-label">{{ t('admin.userConfigs.configuredUsers') }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">{{ totalCustomRules }}</div>
-        <div class="stat-label">{{ t('admin.userConfigs.totalCustomRules') }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">{{ totalFieldOverrides }}</div>
-        <div class="stat-label">{{ t('admin.userConfigs.totalFieldOverrides') }}</div>
-      </div>
-    </div>
-
+    <!-- Table -->
     <div class="data-table-card">
       <table class="data-table">
         <thead>
           <tr>
+            <th style="width: 40px;">
+              <a-checkbox
+                :checked="selectedIds.length > 0 && selectedIds.length === filteredConfigs.length"
+                :indeterminate="selectedIds.length > 0 && selectedIds.length < filteredConfigs.length"
+                @change="toggleSelectAll"
+              />
+            </th>
             <th>{{ t('admin.userConfigs.thUser') }}</th>
             <th>{{ t('admin.userConfigs.thDepartment') }}</th>
-            <th>{{ t('admin.userConfigs.thCustomRules') }}</th>
-            <th>{{ t('admin.userConfigs.thFieldOverrides') }}</th>
-            <th>{{ t('admin.userConfigs.thStrictnessOverrides') }}</th>
-            <th>{{ t('admin.userConfigs.thPushEmail') }}</th>
-            <th>{{ t('admin.userConfigs.thConfigItems') }}</th>
+            <th>{{ t('admin.userConfigs.thRole') }}</th>
+            <th>{{ t('admin.userConfigs.thAuditWorkbench') }}</th>
+            <th>{{ t('admin.userConfigs.thCronConfig') }}</th>
+            <th>{{ t('admin.userConfigs.thArchiveReview') }}</th>
             <th>{{ t('admin.userConfigs.thLastModified') }}</th>
             <th>{{ t('admin.userConfigs.thAction') }}</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="c in paged" :key="c.id">
+            <td>
+              <a-checkbox :checked="selectedIds.includes(c.id)" @change="toggleSelect(c.id)" />
+            </td>
             <td>
               <div class="user-cell">
                 <a-avatar :size="28" class="user-avatar">
@@ -155,26 +221,27 @@ const handleExport = () => {
             </td>
             <td class="text-secondary">{{ c.department }}</td>
             <td>
-              <span v-if="c.custom_rules_count + c.archive_custom_rules_count > 0" class="count-badge count-badge--primary">
-                {{ c.custom_rules_count + c.archive_custom_rules_count }}
+              <div class="role-tags">
+                <span v-for="r in c.role_names" :key="r" class="role-tag">{{ r }}</span>
+              </div>
+            </td>
+            <td>
+              <span v-if="c.audit_process_count > 0" class="count-badge count-badge--primary">
+                {{ t('admin.userConfigs.processCount', [c.audit_process_count]) }}
               </span>
               <span v-else class="text-secondary">-</span>
             </td>
             <td>
-              <span v-if="c.field_overrides_count > 0" class="count-badge count-badge--info">{{ c.field_overrides_count }}</span>
+              <span v-if="c.cron_config_count > 0" class="count-badge count-badge--info">
+                {{ t('admin.userConfigs.taskCount', [c.cron_config_count]) }}
+              </span>
               <span v-else class="text-secondary">-</span>
             </td>
             <td>
-              <span v-if="c.strictness_overrides_count > 0" class="count-badge count-badge--warning">{{ c.strictness_overrides_count }}</span>
+              <span v-if="c.archive_process_count > 0" class="count-badge count-badge--warning">
+                {{ t('admin.userConfigs.processCount', [c.archive_process_count]) }}
+              </span>
               <span v-else class="text-secondary">-</span>
-            </td>
-            <td>
-              <span v-if="c.custom_push_email" class="text-mono" style="font-size: 12px;">{{ c.custom_push_email }}</span>
-              <span v-else class="text-secondary">{{ t('admin.userConfigs.default') }}</span>
-            </td>
-            <td>
-              <span v-if="c.total_config_items > 0" class="config-total">{{ t('admin.userConfigs.items', [c.total_config_items]) }}</span>
-              <span v-else class="text-secondary">{{ t('admin.userConfigs.none') }}</span>
             </td>
             <td class="text-secondary">{{ c.last_modified || '-' }}</td>
             <td>
@@ -220,14 +287,14 @@ const handleExport = () => {
           <div>
             <div class="detail-user-name">{{ detailConfig.display_name }}</div>
             <div class="detail-user-meta">{{ detailConfig.username }} · {{ detailConfig.department }}</div>
-          </div>
-          <div class="detail-user-stats">
-            <span class="config-total">{{ t('admin.userConfigs.itemsConfig', [detailConfig.total_config_items]) }}</span>
+            <div class="detail-user-roles">
+              <span v-for="r in detailConfig.role_names" :key="r" class="role-tag role-tag--sm">{{ r }}</span>
+            </div>
           </div>
         </div>
 
         <!-- No config state -->
-        <div v-if="detailConfig.total_config_items === 0" class="detail-empty">
+        <div v-if="totalUserChanges(detailConfig) === 0" class="detail-empty">
           <a-empty :description="t('admin.userConfigs.noCustomConfig')" />
         </div>
 
@@ -236,7 +303,7 @@ const handleExport = () => {
           <button
             v-for="tab in [
               { key: 'audit', label: t('admin.userConfigs.tabAudit'), icon: AppstoreOutlined, count: detailConfig.audit_details.length },
-              { key: 'cron', label: t('admin.userConfigs.tabCron'), icon: ClockCircleOutlined, count: detailConfig.cron_details.length },
+              { key: 'cron', label: t('admin.userConfigs.tabCron'), icon: ClockCircleOutlined, count: detailConfig.cron_config_details.length },
               { key: 'archive', label: t('admin.userConfigs.tabArchive'), icon: FolderOpenOutlined, count: detailConfig.archive_details.length },
             ]"
             :key="tab.key"
@@ -250,8 +317,8 @@ const handleExport = () => {
           </button>
         </div>
 
-        <!-- ===== Audit workbench details ===== -->
-        <div v-if="detailTab === 'audit' && detailConfig.total_config_items > 0" class="detail-content">
+        <!-- ===== Audit workbench details (by process) ===== -->
+        <div v-if="detailTab === 'audit' && totalUserChanges(detailConfig) > 0" class="detail-content">
           <div v-if="detailConfig.audit_details.length === 0" class="detail-empty-tab">
             {{ t('admin.userConfigs.noAuditConfig') }}
           </div>
@@ -260,7 +327,6 @@ const handleExport = () => {
               <span class="detail-process-name">{{ proc.process_type }}</span>
             </div>
 
-            <!-- Strictness override -->
             <div v-if="proc.strictness_override" class="detail-config-block">
               <div class="detail-config-label"><ControlOutlined /> {{ t('admin.userConfigs.auditStrictness') }}</div>
               <div class="detail-config-value">
@@ -271,19 +337,16 @@ const handleExport = () => {
               </div>
             </div>
 
-            <!-- Custom rules -->
             <div v-if="proc.custom_rules.length > 0" class="detail-config-block">
               <div class="detail-config-label"><NodeIndexOutlined /> {{ t('admin.userConfigs.customRules') }}</div>
               <div class="detail-rule-list">
                 <div v-for="rule in proc.custom_rules" :key="rule.id" class="detail-rule-item">
                   <span class="detail-rule-dot" :class="rule.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
                   <span class="detail-rule-text">{{ rule.content }}</span>
-                  <span class="detail-rule-status">{{ rule.enabled ? t('admin.ruleConfig.enable') : t('admin.ruleConfig.disable') }}</span>
                 </div>
               </div>
             </div>
 
-            <!-- Field overrides -->
             <div v-if="proc.field_overrides.length > 0" class="detail-config-block">
               <div class="detail-config-label"><AppstoreOutlined /> {{ t('admin.userConfigs.fieldChanges') }}</div>
               <div class="detail-tag-list">
@@ -291,14 +354,12 @@ const handleExport = () => {
               </div>
             </div>
 
-            <!-- Rule toggle overrides -->
             <div v-if="proc.rule_toggle_overrides.length > 0" class="detail-config-block">
               <div class="detail-config-label"><SwapOutlined /> {{ t('admin.userConfigs.ruleToggleChanges') }}</div>
               <div class="detail-rule-list">
                 <div v-for="r in proc.rule_toggle_overrides" :key="r.rule_id" class="detail-rule-item">
                   <span class="detail-rule-dot" :class="r.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
                   <span class="detail-rule-text">{{ r.rule_content }}</span>
-                  <span class="detail-rule-status">{{ r.enabled ? t('admin.ruleConfig.enable') : t('admin.ruleConfig.disable') }}</span>
                 </div>
               </div>
             </div>
@@ -309,65 +370,88 @@ const handleExport = () => {
           </div>
         </div>
 
-        <!-- ===== Cron details ===== -->
-        <div v-if="detailTab === 'cron' && detailConfig.total_config_items > 0" class="detail-content">
-          <div v-if="detailConfig.cron_details.length === 0" class="detail-empty-tab">
-            {{ t('admin.userConfigs.noAuditConfig') }}
+        <!-- ===== Cron details (modified vs custom) ===== -->
+        <div v-if="detailTab === 'cron' && totalUserChanges(detailConfig) > 0" class="detail-content">
+          <div v-if="detailConfig.cron_config_details.length === 0" class="detail-empty-tab">
+            {{ t('admin.userConfigs.noCronConfig') }}
           </div>
-          <div v-for="cron in detailConfig.cron_details" :key="cron.task_type" class="detail-process-card">
-            <div class="detail-process-header">
-              <span class="detail-process-name">{{ cron.task_label }}</span>
-            </div>
-
-            <!-- Email override -->
-            <div v-if="cron.email_override" class="detail-config-block">
-              <div class="detail-config-label"><MailOutlined /> {{ t('admin.userConfigs.customPushEmail') }}</div>
-              <div class="detail-config-value text-mono">{{ cron.email_override }}</div>
-            </div>
-
-            <!-- Template override -->
-            <div v-if="cron.template_override" class="detail-config-block">
-              <div class="detail-config-label"><FileTextOutlined /> {{ t('admin.userConfigs.templateCustom') }}</div>
-              <div class="detail-template-list">
-                <div v-if="cron.template_override.subject" class="detail-template-item">
-                  <span class="detail-template-key">{{ t('admin.userConfigs.emailSubject') }}</span>
-                  <span class="detail-template-val">{{ cron.template_override.subject }}</span>
+          <template v-else>
+            <!-- Modified system default tasks -->
+            <template v-if="detailConfig.cron_config_details.filter(c => c.source === 'modified').length > 0">
+              <div class="detail-section-title">
+                <EditOutlined /> {{ t('admin.userConfigs.cronModified') }}
+              </div>
+              <div v-for="cron in detailConfig.cron_config_details.filter(c => c.source === 'modified')" :key="cron.task_id" class="detail-process-card">
+                <div class="detail-process-header">
+                  <span class="detail-process-name">{{ cron.task_label }}</span>
+                  <span class="cron-source-tag cron-source-tag--modified">{{ t('admin.userConfigs.cronModified') }}</span>
                 </div>
-                <div v-if="cron.template_override.header" class="detail-template-item">
-                  <span class="detail-template-key">{{ t('admin.userConfigs.headerContent') }}</span>
-                  <span class="detail-template-val">{{ cron.template_override.header }}</span>
+                <div class="detail-config-block">
+                  <div class="detail-config-label"><ClockCircleOutlined /> {{ t('admin.userConfigs.cronExpression') }}</div>
+                  <div class="detail-config-value text-mono">{{ cron.cron_expression }}</div>
                 </div>
-                <div v-if="cron.template_override.body_template" class="detail-template-item">
-                  <span class="detail-template-key">{{ t('admin.userConfigs.bodyTemplate') }}</span>
-                  <span class="detail-template-val">{{ cron.template_override.body_template }}</span>
+                <div class="detail-config-block">
+                  <div class="detail-config-label">{{ t('common.status') }}</div>
+                  <div class="detail-config-value">
+                    <span :class="cron.is_active ? 'status-active' : 'status-inactive'">
+                      <CheckCircleOutlined v-if="cron.is_active" />
+                      <CloseCircleOutlined v-else />
+                      {{ cron.is_active ? t('admin.userConfigs.cronActive') : t('admin.userConfigs.cronInactive') }}
+                    </span>
+                  </div>
                 </div>
-                <div v-if="cron.template_override.footer" class="detail-template-item">
-                  <span class="detail-template-key">{{ t('admin.userConfigs.footerContent') }}</span>
-                  <span class="detail-template-val">{{ cron.template_override.footer }}</span>
+                <div v-if="cron.push_email" class="detail-config-block">
+                  <div class="detail-config-label">{{ t('admin.userConfigs.cronPushEmail') }}</div>
+                  <div class="detail-config-value text-mono">{{ cron.push_email }}</div>
                 </div>
               </div>
-            </div>
+            </template>
 
-
-            <div v-if="!cron.email_override && !cron.template_override" class="detail-empty-tab">
-              {{ t('admin.userConfigs.noProcessConfig') }}
-            </div>
-          </div>
+            <!-- User-created custom tasks -->
+            <template v-if="detailConfig.cron_config_details.filter(c => c.source === 'custom').length > 0">
+              <div class="detail-section-title">
+                <PlusOutlined /> {{ t('admin.userConfigs.cronCustom') }}
+              </div>
+              <div v-for="cron in detailConfig.cron_config_details.filter(c => c.source === 'custom')" :key="cron.task_id" class="detail-process-card">
+                <div class="detail-process-header">
+                  <span class="detail-process-name">{{ cron.task_label }}</span>
+                  <span class="cron-source-tag cron-source-tag--custom">{{ t('admin.userConfigs.cronCustom') }}</span>
+                </div>
+                <div class="detail-config-block">
+                  <div class="detail-config-label"><ClockCircleOutlined /> {{ t('admin.userConfigs.cronExpression') }}</div>
+                  <div class="detail-config-value text-mono">{{ cron.cron_expression }}</div>
+                </div>
+                <div class="detail-config-block">
+                  <div class="detail-config-label">{{ t('common.status') }}</div>
+                  <div class="detail-config-value">
+                    <span :class="cron.is_active ? 'status-active' : 'status-inactive'">
+                      <CheckCircleOutlined v-if="cron.is_active" />
+                      <CloseCircleOutlined v-else />
+                      {{ cron.is_active ? t('admin.userConfigs.cronActive') : t('admin.userConfigs.cronInactive') }}
+                    </span>
+                  </div>
+                </div>
+                <div v-if="cron.push_email" class="detail-config-block">
+                  <div class="detail-config-label">{{ t('admin.userConfigs.cronPushEmail') }}</div>
+                  <div class="detail-config-value text-mono">{{ cron.push_email }}</div>
+                </div>
+              </div>
+            </template>
+          </template>
         </div>
 
-        <!-- ===== Archive details ===== -->
-        <div v-if="detailTab === 'archive' && detailConfig.total_config_items > 0" class="detail-content">
+        <!-- ===== Archive details (by process) ===== -->
+        <div v-if="detailTab === 'archive' && totalUserChanges(detailConfig) > 0" class="detail-content">
           <div v-if="detailConfig.archive_details.length === 0" class="detail-empty-tab">
-            {{ t('admin.userConfigs.noAuditConfig') }}
+            {{ t('admin.userConfigs.noArchiveConfig') }}
           </div>
           <div v-for="arc in detailConfig.archive_details" :key="arc.process_type" class="detail-process-card">
             <div class="detail-process-header">
               <span class="detail-process-name">{{ arc.process_type }}</span>
             </div>
 
-            <!-- Strictness override -->
             <div v-if="arc.strictness_override" class="detail-config-block">
-              <div class="detail-config-label"><ControlOutlined /> {{ t('admin.ruleConfig.reviewStrictness') }}</div>
+              <div class="detail-config-label"><ControlOutlined /> {{ t('admin.userConfigs.reviewStrictness') }}</div>
               <div class="detail-config-value">
                 <span class="strictness-tag" :style="{ color: strictnessLabels[arc.strictness_override]?.color }">
                   {{ strictnessLabels[arc.strictness_override]?.label }}
@@ -376,31 +460,26 @@ const handleExport = () => {
               </div>
             </div>
 
-            <!-- Custom rules -->
             <div v-if="arc.custom_rules.length > 0" class="detail-config-block">
-              <div class="detail-config-label"><NodeIndexOutlined /> {{ t('admin.ruleConfig.customReviewRules') }}</div>
+              <div class="detail-config-label"><NodeIndexOutlined /> {{ t('admin.userConfigs.customReviewRules') }}</div>
               <div class="detail-rule-list">
                 <div v-for="rule in arc.custom_rules" :key="rule.id" class="detail-rule-item">
                   <span class="detail-rule-dot" :class="rule.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
                   <span class="detail-rule-text">{{ rule.content }}</span>
-                  <span class="detail-rule-status">{{ rule.enabled ? t('admin.ruleConfig.enable') : t('admin.ruleConfig.disable') }}</span>
                 </div>
               </div>
             </div>
 
-            <!-- Custom flow rules -->
             <div v-if="arc.custom_flow_rules.length > 0" class="detail-config-block">
-              <div class="detail-config-label"><ApartmentOutlined /> {{ t('admin.ruleConfig.customFlowRules') }}</div>
+              <div class="detail-config-label"><ApartmentOutlined /> {{ t('admin.userConfigs.customFlowRules') }}</div>
               <div class="detail-rule-list">
                 <div v-for="rule in arc.custom_flow_rules" :key="rule.id" class="detail-rule-item">
                   <span class="detail-rule-dot" :class="rule.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
                   <span class="detail-rule-text">{{ rule.content }}</span>
-                  <span class="detail-rule-status">{{ rule.enabled ? t('admin.ruleConfig.enable') : t('admin.ruleConfig.disable') }}</span>
                 </div>
               </div>
             </div>
 
-            <!-- Field overrides -->
             <div v-if="arc.field_overrides.length > 0" class="detail-config-block">
               <div class="detail-config-label"><AppstoreOutlined /> {{ t('admin.userConfigs.fieldChanges') }}</div>
               <div class="detail-tag-list">
@@ -431,13 +510,23 @@ const handleExport = () => {
 .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
 .toolbar-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-.stats-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
 .stat-card {
-  background: var(--color-bg-card); border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-light); padding: 14px 20px; min-width: 120px;
+  background: var(--color-bg-card); border-radius: var(--radius-lg); padding: 20px;
+  display: flex; align-items: center; gap: 16px; border: 2px solid var(--color-border-light);
+  transition: all var(--transition-base);
 }
-.stat-value { font-size: 22px; font-weight: 700; color: var(--color-text-primary); }
-.stat-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+.stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.stat-card-icon {
+  width: 48px; height: 48px; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;
+}
+.stat-card--primary .stat-card-icon { background: var(--color-primary-bg); color: var(--color-primary); }
+.stat-card--info .stat-card-icon { background: var(--color-info-bg); color: var(--color-info); }
+.stat-card--warning .stat-card-icon { background: var(--color-warning-bg); color: var(--color-warning); }
+.stat-card-info { display: flex; flex-direction: column; }
+.stat-card-value { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
+.stat-card-label { font-size: 13px; color: var(--color-text-tertiary); margin-top: 2px; }
 
 .data-table-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
@@ -464,14 +553,19 @@ const handleExport = () => {
 .user-name { font-weight: 600; font-size: 13px; color: var(--color-text-primary); }
 .user-username { font-size: 11px; color: var(--color-text-tertiary); font-family: monospace; }
 
+.role-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.role-tag {
+  font-size: 11px; font-weight: 500; padding: 1px 8px; border-radius: var(--radius-full);
+  background: var(--color-bg-hover); color: var(--color-text-secondary); white-space: nowrap;
+}
+.role-tag--sm { font-size: 10px; padding: 1px 6px; }
+
 .count-badge {
   font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full); white-space: nowrap;
 }
 .count-badge--primary { background: var(--color-primary-bg); color: var(--color-primary); }
 .count-badge--info { background: var(--color-info-bg); color: var(--color-info); }
 .count-badge--warning { background: var(--color-warning-bg); color: var(--color-warning); }
-
-.config-total { font-weight: 600; color: var(--color-text-primary); font-size: 13px; }
 
 .action-btns { display: flex; gap: 4px; }
 .icon-btn {
@@ -485,12 +579,12 @@ const handleExport = () => {
 
 /* ===== Detail drawer ===== */
 .detail-user-header {
-  display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+  display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px;
   padding-bottom: 16px; border-bottom: 1px solid var(--color-border-light);
 }
 .detail-user-name { font-size: 16px; font-weight: 700; color: var(--color-text-primary); }
 .detail-user-meta { font-size: 13px; color: var(--color-text-tertiary); }
-.detail-user-stats { margin-left: auto; }
+.detail-user-roles { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 
 .detail-empty { padding: 40px 0; }
 .detail-empty-tab {
@@ -517,12 +611,27 @@ const handleExport = () => {
 
 .detail-content { display: flex; flex-direction: column; gap: 12px; }
 
+.detail-section-title {
+  font-size: 13px; font-weight: 600; color: var(--color-text-secondary);
+  display: flex; align-items: center; gap: 6px; margin-top: 8px; margin-bottom: 4px;
+  padding-bottom: 6px; border-bottom: 1px dashed var(--color-border-light);
+}
+
 .detail-process-card {
   background: var(--color-bg-page); border-radius: var(--radius-md);
   border: 1px solid var(--color-border-light); padding: 14px; display: flex; flex-direction: column; gap: 12px;
 }
 .detail-process-header { display: flex; align-items: center; gap: 8px; }
 .detail-process-name { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
+
+.cron-source-tag {
+  font-size: 10px; font-weight: 600; padding: 1px 8px; border-radius: var(--radius-full);
+}
+.cron-source-tag--modified { background: var(--color-warning-bg); color: var(--color-warning); }
+.cron-source-tag--custom { background: var(--color-success-bg); color: var(--color-success); }
+
+.status-active { color: var(--color-success); font-size: 13px; display: flex; align-items: center; gap: 4px; }
+.status-inactive { color: var(--color-text-tertiary); font-size: 13px; display: flex; align-items: center; gap: 4px; }
 
 .detail-config-block { display: flex; flex-direction: column; gap: 6px; }
 .detail-config-label {
@@ -533,7 +642,6 @@ const handleExport = () => {
 
 .strictness-tag { font-weight: 600; font-size: 13px; }
 
-/* Rule list */
 .detail-rule-list { display: flex; flex-direction: column; gap: 6px; padding-left: 20px; }
 .detail-rule-item {
   display: flex; align-items: flex-start; gap: 8px; font-size: 13px;
@@ -546,28 +654,12 @@ const handleExport = () => {
 .detail-rule-dot--on { background: var(--color-success); }
 .detail-rule-dot--off { background: var(--color-text-tertiary); }
 .detail-rule-text { flex: 1; color: var(--color-text-primary); line-height: 1.5; }
-.detail-rule-status {
-  font-size: 11px; color: var(--color-text-tertiary); flex-shrink: 0; margin-top: 2px;
-}
 
-/* Field tags */
 .detail-tag-list { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 20px; }
 .detail-field-tag {
   font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: var(--radius-full);
   background: var(--color-info-bg); color: var(--color-info); border: 1px solid transparent;
 }
-
-/* Template list */
-.detail-template-list { display: flex; flex-direction: column; gap: 4px; padding-left: 20px; }
-.detail-template-item {
-  display: flex; gap: 8px; font-size: 12px; padding: 4px 0;
-  border-bottom: 1px dashed var(--color-border-light);
-}
-.detail-template-item:last-child { border-bottom: none; }
-.detail-template-key {
-  font-weight: 600; color: var(--color-text-secondary); min-width: 70px; flex-shrink: 0;
-}
-.detail-template-val { color: var(--color-text-primary); word-break: break-all; }
 
 .detail-footer-info {
   font-size: 12px; color: var(--color-text-tertiary);
@@ -575,14 +667,16 @@ const handleExport = () => {
 }
 
 @media (max-width: 768px) {
-  .stats-row { flex-direction: column; }
+  .stats-row { grid-template-columns: 1fr; }
+  .stat-card { padding: 14px; }
+  .stat-card-value { font-size: 22px; }
+  .stat-card-icon { width: 40px; height: 40px; font-size: 18px; }
   .data-table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .data-table { min-width: 800px; }
   .toolbar { flex-direction: column; align-items: stretch; }
   .toolbar-left { flex-direction: column; }
   .toolbar-left > * { width: 100% !important; }
   .page-title { font-size: 20px; }
-  .stat-card { min-width: auto; }
   .detail-tab-nav { flex-direction: column; }
 }
 </style>

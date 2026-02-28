@@ -796,19 +796,6 @@ export interface UserAuditProcessDetail {
   rule_toggle_overrides: { rule_id: string; rule_content: string; enabled: boolean }[]
 }
 
-/** 定时任务 - 用户自定义配置 */
-export interface UserCronDetail {
-  task_type: string
-  task_label: string
-  email_override: string
-  template_override: {
-    subject?: string
-    header?: string
-    body_template?: string
-    footer?: string
-  } | null
-}
-
 /** 归档复盘 - 单个流程的用户自定义配置 */
 export interface UserArchiveProcessDetail {
   process_type: string
@@ -818,45 +805,48 @@ export interface UserArchiveProcessDetail {
   strictness_override: 'strict' | 'standard' | 'loose' | null
 }
 
+/** 定时任务 - 用户自定义/修改的定时任务记录 */
+export interface UserCronConfigDetail {
+  task_id: string
+  task_type: string
+  task_label: string
+  cron_expression: string
+  /** 'modified' = 修改了系统默认任务, 'custom' = 用户新增的自定义任务 */
+  source: 'modified' | 'custom'
+  is_active: boolean
+  push_email?: string
+}
+
 export interface UserPersonalConfig {
   id: string
   user_id: string
   username: string
   display_name: string
   department: string
-  /** 审核工作台：用户自定义规则数 */
-  custom_rules_count: number
-  /** 审核工作台：用户修改过的字段选择数 */
-  field_overrides_count: number
-  /** 审核工作台：用户修改过审核尺度的流程数 */
-  strictness_overrides_count: number
-  /** 定时任务：用户自定义推送邮箱 */
-  custom_push_email: string
-  /** 定时任务：用户修改过的模板数 */
-  template_overrides_count: number
-  /** 归档复盘：用户自定义复核规则数 */
-  archive_custom_rules_count: number
-  /** 归档复盘：用户自定义审批流规则数 */
-  archive_flow_rules_count: number
+  /** 角色名称列表（从组织人员获取） */
+  role_names: string[]
+  /** 审核工作台：按流程统计的修改数 */
+  audit_process_count: number
+  /** 定时任务：用户自定义/修改的定时任务数 */
+  cron_config_count: number
+  /** 归档复盘：按流程统计的修改数 */
+  archive_process_count: number
   /** 最后修改时间 */
   last_modified: string
-  /** 配置项总数 */
-  total_config_items: number
-  /** 审核工作台详细配置 */
+  /** 审核工作台详细配置（按流程） */
   audit_details: UserAuditProcessDetail[]
   /** 定时任务详细配置 */
-  cron_details: UserCronDetail[]
-  /** 归档复盘详细配置 */
+  cron_config_details: UserCronConfigDetail[]
+  /** 归档复盘详细配置（按流程） */
   archive_details: UserArchiveProcessDetail[]
 }
 
 export const mockUserPersonalConfigs: UserPersonalConfig[] = [
   {
     id: 'UPC-001', user_id: 'M-001', username: 'zhangming', display_name: '张明', department: '研发部',
-    custom_rules_count: 1, field_overrides_count: 0, strictness_overrides_count: 1,
-    custom_push_email: 'zhangming@example.com', template_overrides_count: 0,
-    archive_custom_rules_count: 1, archive_flow_rules_count: 0,
-    last_modified: '2025-06-10 14:30', total_config_items: 3,
+    role_names: ['业务用户', '审计管理员'],
+    audit_process_count: 1, cron_config_count: 1, archive_process_count: 1,
+    last_modified: '2025-06-10 14:30',
     audit_details: [
       {
         process_type: '采购审批',
@@ -866,8 +856,8 @@ export const mockUserPersonalConfigs: UserPersonalConfig[] = [
         rule_toggle_overrides: [],
       },
     ],
-    cron_details: [
-      { task_type: 'batch_audit', task_label: '批量审核', email_override: 'zhangming@example.com', template_override: null },
+    cron_config_details: [
+      { task_id: 'CT-USER-ZM-001', task_type: 'batch_audit', task_label: '批量审核', cron_expression: '0 8 * * 1-5', source: 'modified', is_active: true },
     ],
     archive_details: [
       {
@@ -881,10 +871,9 @@ export const mockUserPersonalConfigs: UserPersonalConfig[] = [
   },
   {
     id: 'UPC-002', user_id: 'M-002', username: 'lifang', display_name: '李芳', department: '销售部',
-    custom_rules_count: 0, field_overrides_count: 2, strictness_overrides_count: 0,
-    custom_push_email: 'lifang-personal@example.com', template_overrides_count: 1,
-    archive_custom_rules_count: 0, archive_flow_rules_count: 0,
-    last_modified: '2025-06-09 16:20', total_config_items: 3,
+    role_names: ['业务用户'],
+    audit_process_count: 1, cron_config_count: 2, archive_process_count: 0,
+    last_modified: '2025-06-09 16:20',
     audit_details: [
       {
         process_type: '费用报销',
@@ -894,21 +883,17 @@ export const mockUserPersonalConfigs: UserPersonalConfig[] = [
         rule_toggle_overrides: [{ rule_id: 'R006', rule_content: '差旅住宿标准不超过城市限额', enabled: true }],
       },
     ],
-    cron_details: [
-      { task_type: 'daily_report', task_label: '日报推送', email_override: 'lifang-personal@example.com', template_override: null },
-      {
-        task_type: 'weekly_report', task_label: '周报推送', email_override: '',
-        template_override: { subject: '【销售部】审核周报 - 第{{week}}周', header: '本周销售部审核概览：' },
-      },
+    cron_config_details: [
+      { task_id: 'CT-USER-LF-001', task_type: 'daily_report', task_label: '日报推送', cron_expression: '0 18 * * 1-5', source: 'modified', is_active: true, push_email: 'lifang-personal@example.com' },
+      { task_id: 'CT-USER-LF-002', task_type: 'weekly_report', task_label: '销售部周报', cron_expression: '0 9 * * 1', source: 'custom', is_active: true, push_email: 'lifang@example.com' },
     ],
     archive_details: [],
   },
   {
     id: 'UPC-003', user_id: 'M-003', username: 'wangqiang', display_name: '王强', department: 'IT部',
-    custom_rules_count: 3, field_overrides_count: 1, strictness_overrides_count: 2,
-    custom_push_email: '', template_overrides_count: 0,
-    archive_custom_rules_count: 2, archive_flow_rules_count: 1,
-    last_modified: '2025-06-10 09:45', total_config_items: 9,
+    role_names: ['业务用户', '审计管理员'],
+    audit_process_count: 2, cron_config_count: 2, archive_process_count: 1,
+    last_modified: '2025-06-10 09:45',
     audit_details: [
       {
         process_type: '采购审批',
@@ -928,8 +913,9 @@ export const mockUserPersonalConfigs: UserPersonalConfig[] = [
         rule_toggle_overrides: [],
       },
     ],
-    cron_details: [
-      { task_type: 'batch_audit', task_label: '批量审核', email_override: '', template_override: null },
+    cron_config_details: [
+      { task_id: 'CT-BUILTIN-001', task_type: 'batch_audit', task_label: '批量审核', cron_expression: '0 9 * * 1-5', source: 'modified', is_active: true },
+      { task_id: 'CT-USER-WQ-001', task_type: 'batch_audit', task_label: 'IT部专项批量审核', cron_expression: '0 14 * * 3', source: 'custom', is_active: true },
     ],
     archive_details: [
       {
@@ -946,13 +932,12 @@ export const mockUserPersonalConfigs: UserPersonalConfig[] = [
   },
   {
     id: 'UPC-004', user_id: 'M-004', username: 'zhaoli', display_name: '赵丽', department: '人力资源部',
-    custom_rules_count: 0, field_overrides_count: 0, strictness_overrides_count: 0,
-    custom_push_email: 'zhaoli-hr@example.com', template_overrides_count: 0,
-    archive_custom_rules_count: 0, archive_flow_rules_count: 1,
-    last_modified: '2025-06-08 11:00', total_config_items: 2,
+    role_names: ['业务用户'],
+    audit_process_count: 0, cron_config_count: 1, archive_process_count: 1,
+    last_modified: '2025-06-08 11:00',
     audit_details: [],
-    cron_details: [
-      { task_type: 'daily_report', task_label: '日报推送', email_override: 'zhaoli-hr@example.com', template_override: null },
+    cron_config_details: [
+      { task_id: 'CT-USER-ZL-001', task_type: 'daily_report', task_label: '日报推送', cron_expression: '0 17 * * 1-5', source: 'modified', is_active: true, push_email: 'zhaoli-hr@example.com' },
     ],
     archive_details: [
       {
@@ -966,10 +951,9 @@ export const mockUserPersonalConfigs: UserPersonalConfig[] = [
   },
   {
     id: 'UPC-005', user_id: 'M-005', username: 'chenwei', display_name: '陈伟', department: '市场部',
-    custom_rules_count: 2, field_overrides_count: 0, strictness_overrides_count: 1,
-    custom_push_email: '', template_overrides_count: 2,
-    archive_custom_rules_count: 0, archive_flow_rules_count: 0,
-    last_modified: '2025-06-10 17:10', total_config_items: 5,
+    role_names: ['业务用户'],
+    audit_process_count: 2, cron_config_count: 1, archive_process_count: 0,
+    last_modified: '2025-06-10 17:10',
     audit_details: [
       {
         process_type: '采购审批',
@@ -986,24 +970,16 @@ export const mockUserPersonalConfigs: UserPersonalConfig[] = [
         rule_toggle_overrides: [],
       },
     ],
-    cron_details: [
-      {
-        task_type: 'daily_report', task_label: '日报推送', email_override: '',
-        template_override: { subject: '【市场部】审核日报 - {{date}}', header: '今日市场部审核概览：' },
-      },
-      {
-        task_type: 'weekly_report', task_label: '周报推送', email_override: '',
-        template_override: { subject: '【市场部】审核周报 - 第{{week}}周' },
-      },
+    cron_config_details: [
+      { task_id: 'CT-USER-CW-001', task_type: 'daily_report', task_label: '市场部日报', cron_expression: '0 19 * * 1-5', source: 'custom', is_active: true, push_email: 'chenwei@example.com' },
     ],
     archive_details: [],
   },
   {
     id: 'UPC-006', user_id: 'M-007', username: 'zhanghua', display_name: '张华', department: '财务部',
-    custom_rules_count: 1, field_overrides_count: 3, strictness_overrides_count: 0,
-    custom_push_email: 'zhanghua-finance@example.com', template_overrides_count: 0,
-    archive_custom_rules_count: 1, archive_flow_rules_count: 0,
-    last_modified: '2025-06-09 10:30', total_config_items: 5,
+    role_names: ['业务用户', '审计管理员'],
+    audit_process_count: 2, cron_config_count: 1, archive_process_count: 1,
+    last_modified: '2025-06-09 10:30',
     audit_details: [
       {
         process_type: '费用报销',
@@ -1020,8 +996,8 @@ export const mockUserPersonalConfigs: UserPersonalConfig[] = [
         rule_toggle_overrides: [],
       },
     ],
-    cron_details: [
-      { task_type: 'batch_audit', task_label: '批量审核', email_override: 'zhanghua-finance@example.com', template_override: null },
+    cron_config_details: [
+      { task_id: 'CT-USER-ZH-001', task_type: 'batch_audit', task_label: '批量审核', cron_expression: '0 9 * * 1-5', source: 'modified', is_active: true, push_email: 'zhanghua-finance@example.com' },
     ],
     archive_details: [
       {
@@ -1035,20 +1011,18 @@ export const mockUserPersonalConfigs: UserPersonalConfig[] = [
   },
   {
     id: 'UPC-007', user_id: 'M-009', username: 'zhoulei', display_name: '周磊', department: '销售部',
-    custom_rules_count: 0, field_overrides_count: 0, strictness_overrides_count: 0,
-    custom_push_email: '', template_overrides_count: 0,
-    archive_custom_rules_count: 0, archive_flow_rules_count: 0,
-    last_modified: '', total_config_items: 0,
+    role_names: ['业务用户'],
+    audit_process_count: 0, cron_config_count: 0, archive_process_count: 0,
+    last_modified: '',
     audit_details: [],
-    cron_details: [],
+    cron_config_details: [],
     archive_details: [],
   },
   {
     id: 'UPC-008', user_id: 'M-006', username: 'liuyang', display_name: '刘洋', department: '行政部',
-    custom_rules_count: 0, field_overrides_count: 1, strictness_overrides_count: 1,
-    custom_push_email: 'liuyang-admin@example.com', template_overrides_count: 1,
-    archive_custom_rules_count: 0, archive_flow_rules_count: 0,
-    last_modified: '2025-06-07 15:40', total_config_items: 4,
+    role_names: ['业务用户'],
+    audit_process_count: 1, cron_config_count: 2, archive_process_count: 0,
+    last_modified: '2025-06-07 15:40',
     audit_details: [
       {
         process_type: '采购审批',
@@ -1058,12 +1032,9 @@ export const mockUserPersonalConfigs: UserPersonalConfig[] = [
         rule_toggle_overrides: [],
       },
     ],
-    cron_details: [
-      { task_type: 'batch_audit', task_label: '批量审核', email_override: 'liuyang-admin@example.com', template_override: null },
-      {
-        task_type: 'weekly_report', task_label: '周报推送', email_override: '',
-        template_override: { subject: '【行政部】审核周报 - 第{{week}}周', footer: '行政部审核管理组' },
-      },
+    cron_config_details: [
+      { task_id: 'CT-BUILTIN-001', task_type: 'batch_audit', task_label: '批量审核', cron_expression: '0 9 * * 1-5', source: 'modified', is_active: false },
+      { task_id: 'CT-USER-LY-001', task_type: 'weekly_report', task_label: '行政部周报', cron_expression: '0 10 * * 1', source: 'custom', is_active: true },
     ],
     archive_details: [],
   },
