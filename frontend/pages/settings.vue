@@ -38,9 +38,12 @@ definePageMeta({
   layout: 'default',
 })
 
-const { userRole, userPermissions, currentUser } = useAuth()
+const { userRole, userPermissions, currentUser, activeRole } = useAuth()
 const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockOrgRoles, mockOrgMembers, mockUserDashboardPrefs, mockUserSecurityInfo, mockUserLocalePrefs } = useMockData()
 const { t, locale, setLocale, availableLocales } = useI18n()
+
+/** The role type of the currently active identity (system_admin / tenant_admin / business) */
+const currentRoleType = computed(() => activeRole.value?.role || userRole.value)
 
 const activeTab = ref('profile')
 
@@ -129,9 +132,21 @@ const handleChangePassword = async () => {
 // ===== Profile tab =====
 // Find current user's org member record to show role-based permissions
 const currentMember = computed(() => {
-  const { currentUser } = useAuth()
   return mockOrgMembers.find(m => m.username === currentUser.value?.username) || null
 })
+/** All business roles this member has in the current tenant */
+const currentOrgRoles = computed(() => {
+  if (!currentMember.value) return []
+  const rIds = currentMember.value.role_ids?.length ? currentMember.value.role_ids : [currentMember.value.role_id]
+  return mockOrgRoles.filter(r => rIds.includes(r.id))
+})
+/** Merged page permissions from all business roles */
+const currentOrgPagePermissions = computed(() => {
+  const perms = new Set<string>()
+  currentOrgRoles.value.forEach(r => r.page_permissions.forEach(p => perms.add(p)))
+  return [...perms]
+})
+// Keep backward compat
 const currentOrgRole = computed(() => {
   if (!currentMember.value) return null
   return mockOrgRoles.find(r => r.id === currentMember.value!.role_id) || null
@@ -142,7 +157,7 @@ const getPageLabel = (path: string) => t(`page.${path}`, path)
 const profile = ref({
   nickname: '张明',
   email: 'zhangming@example.com',
-  phone: '138****8888',
+  phone: '13812348888',
   department: '研发部',
   position: '高级工程师',
 })
@@ -338,6 +353,25 @@ const currentCustomRules = computed(() =>
   userCustomRules.value[selectedConfig.value?.id || ''] || []
 )
 
+// ===== Tab visibility (computed for reliable reactivity) =====
+const visibleTabs = computed(() => {
+  const role = currentRoleType.value
+  const perms = currentOrgPagePermissions.value
+  return [
+    { key: 'profile', label: t('settings.tab.profile'), icon: UserOutlined, show: true },
+    { key: 'workbench', label: t('settings.tab.workbench'), icon: DashboardOutlined, show: role === 'business' && perms.includes('/dashboard') },
+    { key: 'cron', label: t('settings.tab.cron'), icon: ClockCircleOutlined, show: role === 'business' && perms.includes('/cron') },
+    { key: 'archive', label: t('settings.tab.archive'), icon: FolderOpenOutlined, show: role === 'business' && perms.includes('/archive') },
+  ].filter(tab => tab.show)
+})
+
+// Reset to profile if current tab is no longer visible
+watch(visibleTabs, (tabs) => {
+  if (!tabs.some(t => t.key === activeTab.value)) {
+    activeTab.value = 'profile'
+  }
+})
+
 const saving = ref(false)
 const handleSave = async () => {
   saving.value = true
@@ -498,12 +532,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
     <!-- Tab navigation -->
     <div class="tab-nav">
       <button
-        v-for="tab in [
-          { key: 'profile', label: t('settings.tab.profile'), icon: UserOutlined },
-          { key: 'workbench', label: t('settings.tab.workbench'), icon: DashboardOutlined },
-          { key: 'cron', label: t('settings.tab.cron'), icon: ClockCircleOutlined },
-          { key: 'archive', label: t('settings.tab.archive'), icon: FolderOpenOutlined },
-        ]"
+        v-for="tab in visibleTabs"
         :key="tab.key"
         class="tab-btn"
         :class="{ 'tab-btn--active': activeTab === tab.key }"
@@ -525,7 +554,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
           <div class="profile-avatar-info">
             <div class="profile-name">{{ profile.nickname }}</div>
             <div class="profile-role">
-              <span class="role-badge">{{ getRoleLabel(userRole) }}</span>
+              <span class="role-badge">{{ getRoleLabel(currentRoleType) }}</span>
             </div>
           </div>
         </div>
@@ -573,30 +602,63 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
           <SafetyCertificateOutlined style="color: var(--color-primary);" />
           {{ t('settings.profile.roleAndPermissions') }}
         </h4>
-        <div class="perm-info-row">
-          <span class="perm-info-label">{{ t('settings.profile.currentRole') }}</span>
-          <span class="perm-role-badge">{{ currentOrgRole?.name || getRoleLabel(userRole) }}</span>
-        </div>
-        <div v-if="currentOrgRole?.description" class="perm-info-row">
-          <span class="perm-info-label">{{ t('settings.profile.roleDescription') }}</span>
-          <span class="perm-info-value">{{ currentOrgRole.description }}</span>
-        </div>
-        <div v-if="currentMember" class="perm-info-row">
-          <span class="perm-info-label">{{ t('settings.profile.belongDepartment') }}</span>
-          <span class="perm-info-value">{{ currentMember.department_name }}</span>
-        </div>
-        <div class="perm-pages-section">
-          <span class="perm-info-label">{{ t('settings.profile.accessiblePages') }}</span>
-          <div class="perm-page-tags">
-            <span
-              v-for="p in (currentOrgRole?.page_permissions || ['/dashboard', '/cron', '/settings'])"
-              :key="p"
-              class="perm-page-tag"
-            >
-              {{ getPageLabel(p) }}
-            </span>
+
+        <!-- System Admin view -->
+        <template v-if="currentRoleType === 'system_admin'">
+          <div class="perm-info-row">
+            <span class="perm-info-label">{{ t('settings.profile.currentRole') }}</span>
+            <span class="perm-role-badge">{{ t('role.systemAdmin') }}</span>
           </div>
-        </div>
+          <div class="perm-info-row">
+            <span class="perm-info-label">{{ t('settings.profile.roleDescription') }}</span>
+            <span class="perm-info-value">{{ t('settings.profile.sysAdminDesc') }}</span>
+          </div>
+          <div class="perm-pages-section">
+            <span class="perm-info-label">{{ t('settings.profile.accessiblePages') }}</span>
+            <div class="perm-page-tags">
+              <span class="perm-page-tag">{{ t('page./overview') }}</span>
+              <span class="perm-page-tag">{{ t('page./admin/system/tenants') }}</span>
+              <span class="perm-page-tag">{{ t('page./admin/system/settings') }}</span>
+              <span class="perm-page-tag">{{ t('page./settings') }}</span>
+            </div>
+          </div>
+        </template>
+
+        <!-- Business / Tenant Admin view — tenant-scoped -->
+        <template v-else>
+          <div class="perm-info-row">
+            <span class="perm-info-label">{{ t('settings.profile.currentTenant') }}</span>
+            <span class="perm-info-value">{{ activeRole?.tenant_name || '-' }}</span>
+          </div>
+          <div class="perm-info-row">
+            <span class="perm-info-label">{{ t('settings.profile.currentRole') }}</span>
+            <div class="perm-role-badges">
+              <span v-for="r in currentOrgRoles" :key="r.id" class="perm-role-badge" style="margin-right: 6px;">{{ r.name }}</span>
+              <span v-if="!currentOrgRoles.length" class="perm-role-badge">{{ getRoleLabel(currentRoleType) }}</span>
+            </div>
+          </div>
+          <div v-if="currentOrgRoles.length === 1 && currentOrgRoles[0]?.description" class="perm-info-row">
+            <span class="perm-info-label">{{ t('settings.profile.roleDescription') }}</span>
+            <span class="perm-info-value">{{ currentOrgRoles[0].description }}</span>
+          </div>
+          <div v-if="currentMember" class="perm-info-row">
+            <span class="perm-info-label">{{ t('settings.profile.belongDepartment') }}</span>
+            <span class="perm-info-value">{{ currentMember.department_name }}</span>
+          </div>
+          <div class="perm-pages-section">
+            <span class="perm-info-label">{{ t('settings.profile.accessiblePages') }}</span>
+            <div class="perm-page-tags">
+              <span
+                v-for="p in currentOrgPagePermissions"
+                :key="p"
+                class="perm-page-tag"
+              >
+                {{ getPageLabel(p) }}
+              </span>
+            </div>
+          </div>
+        </template>
+
         <p class="perm-hint-text">{{ t('settings.profile.permissionHint') }}</p>
       </div>
 
@@ -1554,6 +1616,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   font-size: 12px; font-weight: 600; padding: 2px 12px; border-radius: var(--radius-full);
   background: var(--color-primary-bg); color: var(--color-primary);
 }
+.perm-role-badges { display: flex; flex-wrap: wrap; gap: 4px; }
 .perm-pages-section {
   display: flex; align-items: flex-start; gap: 12px; margin-top: 12px;
 }

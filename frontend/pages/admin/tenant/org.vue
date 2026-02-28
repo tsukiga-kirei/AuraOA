@@ -13,6 +13,7 @@ import {
   CheckOutlined,
   StopOutlined,
   KeyOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { useMockData } from '~/composables/useMockData'
@@ -36,7 +37,7 @@ const filteredMembers = computed(() => {
   return members.value.filter(m => {
     if (memberSearch.value && !m.name.includes(memberSearch.value) && !m.username.includes(memberSearch.value)) return false
     if (memberDeptFilter.value && m.department_id !== memberDeptFilter.value) return false
-    if (memberRoleFilter.value && m.role_id !== memberRoleFilter.value) return false
+    if (memberRoleFilter.value && !(m.role_ids || []).includes(memberRoleFilter.value)) return false
     return true
   })
 })
@@ -47,19 +48,28 @@ const { paged: pagedMembers, current: memberPage, pageSize: memberPageSize, tota
 const showMemberModal = ref(false)
 const editingMember = ref<OrgMember | null>(null)
 const memberForm = ref({
-  name: '', username: '', department_id: '', role_id: '', email: '', phone: '', position: '',
+  name: '', username: '', department_id: '', role_ids: [] as string[], email: '', phone: '', position: '',
 })
 
 const openAddMember = () => {
   editingMember.value = null
-  memberForm.value = { name: '', username: '', department_id: '', role_id: '', email: '', phone: '', position: '' }
+  memberForm.value = { name: '', username: '', department_id: '', role_ids: ['ROLE-001'], email: '', phone: '', position: '' }
   showMemberModal.value = true
 }
 
 const openEditMember = (m: OrgMember) => {
   editingMember.value = m
-  memberForm.value = { name: m.name, username: m.username, department_id: m.department_id, role_id: m.role_id, email: m.email, phone: m.phone, position: m.position }
+  memberForm.value = {
+    name: m.name, username: m.username, department_id: m.department_id,
+    role_ids: m.role_ids?.length ? [...m.role_ids] : [m.role_id],
+    email: m.email, phone: m.phone, position: m.position,
+  }
   showMemberModal.value = true
+}
+
+/** Resolve role_ids to display names */
+const resolveRoleNames = (roleIds: string[]): string[] => {
+  return roleIds.map(rid => roles.value.find(r => r.id === rid)?.name || rid)
 }
 
 const handleSaveMember = () => {
@@ -68,20 +78,39 @@ const handleSaveMember = () => {
     return
   }
   const dept = departments.value.find(d => d.id === memberForm.value.department_id)
-  const role = roles.value.find(r => r.id === memberForm.value.role_id)
+  const rNames = resolveRoleNames(memberForm.value.role_ids)
+  // Keep backward-compat role_id/role_name as first role
+  const primaryRoleId = memberForm.value.role_ids[0] || ''
+  const primaryRoleName = rNames[0] || ''
   if (editingMember.value) {
     Object.assign(editingMember.value, {
-      ...memberForm.value,
+      name: memberForm.value.name,
+      username: memberForm.value.username,
+      department_id: memberForm.value.department_id,
       department_name: dept?.name || '',
-      role_name: role?.name || '',
+      role_id: primaryRoleId,
+      role_name: primaryRoleName,
+      role_ids: [...memberForm.value.role_ids],
+      role_names: rNames,
+      email: memberForm.value.email,
+      phone: memberForm.value.phone,
+      position: memberForm.value.position,
     })
     message.success(t('admin.org.memberUpdated'))
   } else {
     members.value.push({
       id: `M-${Date.now()}`,
-      ...memberForm.value,
+      name: memberForm.value.name,
+      username: memberForm.value.username,
+      department_id: memberForm.value.department_id,
       department_name: dept?.name || '',
-      role_name: role?.name || '',
+      role_id: primaryRoleId,
+      role_name: primaryRoleName,
+      role_ids: [...memberForm.value.role_ids],
+      role_names: rNames,
+      email: memberForm.value.email,
+      phone: memberForm.value.phone,
+      position: memberForm.value.position,
       status: 'active',
       created_at: new Date().toISOString().slice(0, 10),
     })
@@ -106,23 +135,56 @@ const showRoleModal = ref(false)
 const editingRole = ref<OrgRole | null>(null)
 const roleForm = ref({ name: '', description: '', page_permissions: [] as string[] })
 
+/**
+ * Tenant-scoped page list for role permission assignment.
+ * Only pages within tenant scope — no system admin pages.
+ * Grouped into: common, business, admin.
+ */
 const allPages = computed(() => [
-  { path: '/overview', label: t('menu.overview') },
-  { path: '/dashboard', label: t('admin.org.page.dashboard') },
-  { path: '/cron', label: t('admin.org.page.cron') },
-  { path: '/archive', label: t('admin.org.page.archive') },
-  { path: '/settings', label: t('admin.org.page.settings') },
-  { path: '/admin/tenant/rules', label: t('admin.org.page.tenantConfig') },
-  { path: '/admin/tenant/org', label: t('admin.org.page.tenantOrg') },
-  { path: '/admin/tenant/data', label: t('admin.org.page.tenantData') },
-  { path: '/admin/tenant/user-configs', label: t('menu.tenant.userConfigs') },
-  { path: '/admin/system/tenants', label: t('admin.org.page.sysTenants') },
-  { path: '/admin/system/settings', label: t('admin.org.page.sysSettings') },
+  { path: '/overview', label: t('admin.org.page.overview'), group: 'common', alwaysOn: true },
+  { path: '/dashboard', label: t('admin.org.page.dashboard'), group: 'business' },
+  { path: '/cron', label: t('admin.org.page.cron'), group: 'business', dependsOn: '/dashboard' },
+  { path: '/archive', label: t('admin.org.page.archive'), group: 'business' },
+  { path: '/settings', label: t('admin.org.page.settings'), group: 'common', alwaysOn: true },
+  { path: '/admin/tenant/rules', label: t('admin.org.page.tenantConfig'), group: 'admin' },
+  { path: '/admin/tenant/org', label: t('admin.org.page.tenantOrg'), group: 'admin' },
+  { path: '/admin/tenant/data', label: t('admin.org.page.tenantData'), group: 'admin' },
+  { path: '/admin/tenant/user-configs', label: t('menu.tenant.userConfigs'), group: 'admin' },
 ])
+
+/** Handle permission checkbox with dependency enforcement */
+const handlePermToggle = (path: string, checked: boolean) => {
+  const page = allPages.value.find(p => p.path === path)
+  if (page?.alwaysOn) return // can't toggle always-on pages
+
+  if (checked) {
+    if (!roleForm.value.page_permissions.includes(path)) {
+      roleForm.value.page_permissions.push(path)
+    }
+    // If this page has a dependency, auto-add it
+    if (page?.dependsOn && !roleForm.value.page_permissions.includes(page.dependsOn)) {
+      roleForm.value.page_permissions.push(page.dependsOn)
+      message.info(t('admin.org.depAutoAdded'))
+    }
+  } else {
+    roleForm.value.page_permissions = roleForm.value.page_permissions.filter(p => p !== path)
+    // If removing a page that others depend on, remove dependents too
+    const dependents = allPages.value.filter(p => p.dependsOn === path)
+    dependents.forEach(dep => {
+      roleForm.value.page_permissions = roleForm.value.page_permissions.filter(p => p !== dep.path)
+    })
+  }
+}
+
+/** Check if a page checkbox should be disabled */
+const isPermDisabled = (path: string) => {
+  const page = allPages.value.find(p => p.path === path)
+  return !!page?.alwaysOn
+}
 
 const openAddRole = () => {
   editingRole.value = null
-  roleForm.value = { name: '', description: '', page_permissions: ['/dashboard', '/settings'] }
+  roleForm.value = { name: '', description: '', page_permissions: ['/overview', '/dashboard', '/settings'] }
   showRoleModal.value = true
 }
 
@@ -139,9 +201,11 @@ const handleSaveRole = () => {
   }
   if (editingRole.value) {
     Object.assign(editingRole.value, roleForm.value)
-    // Update member role names
+    // Update member role names for anyone who has this role
     members.value.forEach(m => {
       if (m.role_id === editingRole.value!.id) m.role_name = roleForm.value.name
+      const idx = (m.role_ids || []).indexOf(editingRole.value!.id)
+      if (idx >= 0 && m.role_names) m.role_names[idx] = roleForm.value.name
     })
     message.success(t('admin.org.roleUpdated'))
   } else {
@@ -157,13 +221,13 @@ const handleSaveRole = () => {
 
 const deleteRole = (r: OrgRole) => {
   if (r.is_system) { message.warning(t('admin.org.systemRoleProtected')); return }
-  const usedBy = members.value.filter(m => m.role_id === r.id)
+  const usedBy = members.value.filter(m => (m.role_ids || []).includes(r.id))
   if (usedBy.length > 0) { message.warning(t('admin.org.roleHasMembers', [usedBy.length])); return }
   roles.value = roles.value.filter(x => x.id !== r.id)
   message.success(t('admin.org.roleDeleted'))
 }
 
-const getRoleMemberCount = (roleId: string) => members.value.filter(m => m.role_id === roleId).length
+const getRoleMemberCount = (roleId: string) => members.value.filter(m => (m.role_ids || [m.role_id]).includes(roleId)).length
 
 // ===== Departments =====
 const departments = ref<Department[]>(JSON.parse(JSON.stringify(mockDepartments)))
@@ -288,7 +352,9 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
               </td>
               <td class="text-secondary">{{ m.username }}</td>
               <td>{{ m.department_name }}</td>
-              <td><span class="role-tag">{{ m.role_name }}</span></td>
+              <td>
+                <span v-for="rn in (m.role_names?.length ? m.role_names : [m.role_name])" :key="rn" class="role-tag" style="margin-right: 4px;">{{ rn }}</span>
+              </td>
               <td class="text-secondary">{{ m.position }}</td>
               <td class="text-secondary">{{ m.email }}</td>
               <td>
@@ -419,7 +485,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
             </a-select>
           </a-form-item>
           <a-form-item :label="t('admin.org.role')">
-            <a-select v-model:value="memberForm.role_id" :placeholder="t('admin.org.selectRole')">
+            <a-select v-model:value="memberForm.role_ids" mode="multiple" :placeholder="t('admin.org.selectRoles')">
               <a-select-option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</a-select-option>
             </a-select>
           </a-form-item>
@@ -450,17 +516,23 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
         <a-form-item :label="t('admin.org.pagePermissions')">
           <p class="perm-hint">{{ t('admin.org.permHint') }}</p>
           <div class="perm-check-grid">
-            <label v-for="page in allPages" :key="page.path" class="perm-check-item">
-              <a-checkbox
-                :checked="roleForm.page_permissions.includes(page.path)"
-                @change="(e: any) => {
-                  if (e.target.checked) roleForm.page_permissions.push(page.path)
-                  else roleForm.page_permissions = roleForm.page_permissions.filter(p => p !== page.path)
-                }"
-              />
-              <span class="perm-check-label">{{ page.label }}</span>
-              <span class="perm-check-path">{{ page.path }}</span>
-            </label>
+            <template v-for="group in ['common', 'business', 'admin']" :key="group">
+              <div v-if="allPages.filter(p => p.group === group).length" class="perm-group-label">
+                {{ group === 'common' ? t('admin.org.groupCommon') : group === 'business' ? t('admin.org.groupBusiness') : t('admin.org.groupAdmin') }}
+              </div>
+              <label v-for="page in allPages.filter(p => p.group === group)" :key="page.path" class="perm-check-item">
+                <a-checkbox
+                  :checked="roleForm.page_permissions.includes(page.path) || !!page.alwaysOn"
+                  :disabled="isPermDisabled(page.path)"
+                  @change="(e: any) => handlePermToggle(page.path, e.target.checked)"
+                />
+                <span class="perm-check-label">{{ page.label }}</span>
+                <span v-if="page.dependsOn" class="perm-dep-hint">
+                  <InfoCircleOutlined /> {{ t('admin.org.depHint') }}
+                </span>
+                <span class="perm-check-path">{{ page.path }}</span>
+              </label>
+            </template>
           </div>
         </a-form-item>
       </a-form>
@@ -582,6 +654,8 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
 /* Permission modal */
 .perm-hint { font-size: 12px; color: var(--color-text-tertiary); margin: 0 0 8px; }
 .perm-check-grid { display: flex; flex-direction: column; gap: 6px; }
+.perm-group-label { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-top: 8px; padding: 4px 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+.perm-dep-hint { font-size: 11px; color: var(--color-warning); display: flex; align-items: center; gap: 3px; }
 .perm-check-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--radius-sm); }
 .perm-check-item:hover { background: var(--color-bg-hover); }
 .perm-check-label { font-size: 13px; font-weight: 500; color: var(--color-text-primary); min-width: 80px; }

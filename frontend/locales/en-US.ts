@@ -65,6 +65,8 @@ export default {
     'settings.profile.belongDepartment': 'Department',
     'settings.profile.accessiblePages': 'Accessible Pages',
     'settings.profile.permissionHint': 'Permissions are configured by administrators in "Organization". Contact your tenant admin for changes.',
+    'settings.profile.currentTenant': 'Current Tenant',
+    'settings.profile.sysAdminDesc': 'Global system administrator with access to tenant management, system settings and monitoring.',
 
     // Language settings (integrated into profile)
     'settings.language.title': 'Interface Language',
@@ -1343,6 +1345,13 @@ export default {
     'admin.org.page.tenantData': 'Data Info',
     'admin.org.page.sysTenants': 'Tenant Management',
     'admin.org.page.sysSettings': 'System Settings',
+    'admin.org.page.overview': 'Dashboard',
+    'admin.org.selectRoles': 'Select roles (multiple)',
+    'admin.org.depAutoAdded': 'Dependency page auto-added',
+    'admin.org.depHint': 'Requires Audit Workbench',
+    'admin.org.groupCommon': 'Common',
+    'admin.org.groupBusiness': 'Business',
+    'admin.org.groupAdmin': 'Admin',
 
     // Field types
     'fieldType.text': 'Text',

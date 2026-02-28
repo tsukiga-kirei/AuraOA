@@ -65,6 +65,8 @@ export default {
     'settings.profile.belongDepartment': '所属部门',
     'settings.profile.accessiblePages': '可访问页面',
     'settings.profile.permissionHint': '权限由管理员在「组织人员」中配置，如需调整请联系租户管理员',
+    'settings.profile.currentTenant': '当前租户',
+    'settings.profile.sysAdminDesc': '全局系统管理员，可管理所有租户、系统设置与全局监控。',
 
     // Language settings (integrated into profile)
     'settings.language.title': '界面语言',
@@ -1344,6 +1346,13 @@ export default {
     'admin.org.page.tenantData': '数据信息',
     'admin.org.page.sysTenants': '租户管理',
     'admin.org.page.sysSettings': '系统设置',
+    'admin.org.page.overview': '仪表盘',
+    'admin.org.selectRoles': '选择角色（可多选）',
+    'admin.org.depAutoAdded': '已自动添加依赖页面',
+    'admin.org.depHint': '依赖审核工作台',
+    'admin.org.groupCommon': '通用',
+    'admin.org.groupBusiness': '业务功能',
+    'admin.org.groupAdmin': '后台管理',
 
     // Field types
     'fieldType.text': '文本',

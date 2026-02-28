@@ -724,8 +724,14 @@ export interface OrgMember {
   username: string
   department_id: string
   department_name: string
+  /** @deprecated use role_ids instead */
   role_id: string
+  /** @deprecated use role_names instead */
   role_name: string
+  /** Multiple business role IDs assigned within this tenant */
+  role_ids: string[]
+  /** Multiple business role names for display */
+  role_names: string[]
   email: string
   phone: string
   position: string
@@ -746,45 +752,35 @@ export const mockDepartments: Department[] = [
 
 export const mockOrgRoles: OrgRole[] = [
   {
-    id: 'ROLE-001', name: '业务用户', description: '普通业务人员，可使用审核工作台、定时任务等前台功能',
-    page_permissions: ['/overview', '/dashboard', '/cron', '/settings'],
-    is_system: true,
-  },
-  {
-    id: 'ROLE-002', name: '审计管理员', description: '可查看归档复盘页签，进行合规复核',
-    page_permissions: ['/overview', '/dashboard', '/cron', '/archive', '/settings'],
-    is_system: false,
-  },
-  {
-    id: 'ROLE-003', name: '租户管理员', description: '可进入后台管理，配置规则、组织人员、数据信息',
-    page_permissions: ['/overview', '/dashboard', '/cron', '/archive', '/settings', '/admin/tenant', '/admin/tenant/org', '/admin/tenant/data', '/admin/tenant/user-configs'],
-    is_system: true,
-  },
-  {
-    id: 'ROLE-004', name: '系统管理员', description: '拥有所有权限，包括系统管理',
-    page_permissions: ['/overview', '/dashboard', '/cron', '/archive', '/settings', '/admin/tenant', '/admin/tenant/org', '/admin/tenant/data', '/admin/tenant/user-configs', '/admin/system', '/admin/system/tenants', '/admin/system/settings'],
-    is_system: true,
-  },
-  {
-    id: 'ROLE-005', name: '只读用户', description: '仅可查看审核工作台，不可执行审核操作',
+    id: 'ROLE-001', name: '业务用户', description: '普通业务人员，可使用审核工作台等前台功能。仪表盘为所有角色默认拥有。',
     page_permissions: ['/overview', '/dashboard', '/settings'],
-    is_system: false,
+    is_system: true,
+  },
+  {
+    id: 'ROLE-002', name: '审计管理员', description: '在业务用户基础上，额外拥有归档复盘权限，可进行合规复核。',
+    page_permissions: ['/overview', '/dashboard', '/cron', '/archive', '/settings'],
+    is_system: true,
+  },
+  {
+    id: 'ROLE-003', name: '租户管理员', description: '可进入后台管理，配置规则、组织人员、数据信息、用户偏好。',
+    page_permissions: ['/overview', '/dashboard', '/cron', '/archive', '/settings', '/admin/tenant/rules', '/admin/tenant/org', '/admin/tenant/data', '/admin/tenant/user-configs'],
+    is_system: true,
   },
 ]
 
 export const mockOrgMembers: OrgMember[] = [
-  { id: 'M-001', name: '张明', username: 'zhangming', department_id: 'D-001', department_name: '研发部', role_id: 'ROLE-002', role_name: '审计管理员', email: 'zhangming@example.com', phone: '138****8888', position: '高级工程师', status: 'active', created_at: '2024-03-15' },
-  { id: 'M-002', name: '李芳', username: 'lifang', department_id: 'D-002', department_name: '销售部', role_id: 'ROLE-001', role_name: '业务用户', email: 'lifang@example.com', phone: '139****6666', position: '销售经理', status: 'active', created_at: '2024-04-20' },
-  { id: 'M-003', name: '王强', username: 'wangqiang', department_id: 'D-005', department_name: 'IT部', role_id: 'ROLE-002', role_name: '审计管理员', email: 'wangqiang@example.com', phone: '137****5555', position: 'IT主管', status: 'active', created_at: '2024-02-10' },
-  { id: 'M-004', name: '赵丽', username: 'zhaoli', department_id: 'D-004', department_name: '人力资源部', role_id: 'ROLE-001', role_name: '业务用户', email: 'zhaoli@example.com', phone: '136****4444', position: 'HR经理', status: 'active', created_at: '2024-05-08' },
-  { id: 'M-005', name: '陈伟', username: 'chenwei', department_id: 'D-003', department_name: '市场部', role_id: 'ROLE-001', role_name: '业务用户', email: 'chenwei@example.com', phone: '135****3333', position: '市场总监', status: 'active', created_at: '2024-01-20' },
-  { id: 'M-006', name: '刘洋', username: 'liuyang', department_id: 'D-007', department_name: '行政部', role_id: 'ROLE-001', role_name: '业务用户', email: 'liuyang@example.com', phone: '134****2222', position: '行政主管', status: 'active', created_at: '2024-06-01' },
-  { id: 'M-007', name: '张华', username: 'zhanghua', department_id: 'D-006', department_name: '财务部', role_id: 'ROLE-002', role_name: '审计管理员', email: 'zhanghua@example.com', phone: '133****1111', position: '财务总监', status: 'active', created_at: '2024-01-05' },
-  { id: 'M-008', name: '孙律', username: 'sunlv', department_id: 'D-008', department_name: '法务部', role_id: 'ROLE-005', role_name: '只读用户', email: 'sunlv@example.com', phone: '132****0000', position: '法务顾问', status: 'active', created_at: '2024-07-15' },
-  { id: 'M-009', name: '周磊', username: 'zhoulei', department_id: 'D-002', department_name: '销售部', role_id: 'ROLE-001', role_name: '业务用户', email: 'zhoulei@example.com', phone: '131****9999', position: '销售总监', status: 'active', created_at: '2024-03-01' },
-  { id: 'M-010', name: '租户管理员', username: 'tenantadmin', department_id: 'D-005', department_name: 'IT部', role_id: 'ROLE-003', role_name: '租户管理员', email: 'tenantadmin@example.com', phone: '130****7777', position: '系统管理', status: 'active', created_at: '2024-01-01' },
-  { id: 'M-011', name: '系统管理员', username: 'admin', department_id: 'D-005', department_name: 'IT部', role_id: 'ROLE-004', role_name: '系统管理员', email: 'admin@example.com', phone: '129****8888', position: '超级管理员', status: 'active', created_at: '2024-01-01' },
-  { id: 'M-012', name: '测试用户', username: 'user', department_id: 'D-001', department_name: '研发部', role_id: 'ROLE-001', role_name: '业务用户', email: 'user@example.com', phone: '128****6666', position: '测试工程师', status: 'disabled', created_at: '2024-08-01' },
+  { id: 'M-001', name: '张明', username: 'zhangming', department_id: 'D-001', department_name: '研发部', role_id: 'ROLE-002', role_name: '审计管理员', role_ids: ['ROLE-001', 'ROLE-002'], role_names: ['业务用户', '审计管理员'], email: 'zhangming@example.com', phone: '13812348888', position: '高级工程师', status: 'active', created_at: '2024-03-15' },
+  { id: 'M-002', name: '李芳', username: 'lifang', department_id: 'D-002', department_name: '销售部', role_id: 'ROLE-001', role_name: '业务用户', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'lifang@example.com', phone: '13912346666', position: '销售经理', status: 'active', created_at: '2024-04-20' },
+  { id: 'M-003', name: '王强', username: 'wangqiang', department_id: 'D-005', department_name: 'IT部', role_id: 'ROLE-002', role_name: '审计管理员', role_ids: ['ROLE-001', 'ROLE-002'], role_names: ['业务用户', '审计管理员'], email: 'wangqiang@example.com', phone: '13712345555', position: 'IT主管', status: 'active', created_at: '2024-02-10' },
+  { id: 'M-004', name: '赵丽', username: 'zhaoli', department_id: 'D-004', department_name: '人力资源部', role_id: 'ROLE-001', role_name: '业务用户', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'zhaoli@example.com', phone: '13612344444', position: 'HR经理', status: 'active', created_at: '2024-05-08' },
+  { id: 'M-005', name: '陈伟', username: 'chenwei', department_id: 'D-003', department_name: '市场部', role_id: 'ROLE-001', role_name: '业务用户', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'chenwei@example.com', phone: '13512343333', position: '市场总监', status: 'active', created_at: '2024-01-20' },
+  { id: 'M-006', name: '刘洋', username: 'liuyang', department_id: 'D-007', department_name: '行政部', role_id: 'ROLE-001', role_name: '业务用户', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'liuyang@example.com', phone: '13412342222', position: '行政主管', status: 'active', created_at: '2024-06-01' },
+  { id: 'M-007', name: '张华', username: 'zhanghua', department_id: 'D-006', department_name: '财务部', role_id: 'ROLE-002', role_name: '审计管理员', role_ids: ['ROLE-001', 'ROLE-002'], role_names: ['业务用户', '审计管理员'], email: 'zhanghua@example.com', phone: '13312341111', position: '财务总监', status: 'active', created_at: '2024-01-05' },
+  { id: 'M-008', name: '孙律', username: 'sunlv', department_id: 'D-008', department_name: '法务部', role_id: 'ROLE-001', role_name: '业务用户', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'sunlv@example.com', phone: '13212340000', position: '法务顾问', status: 'active', created_at: '2024-07-15' },
+  { id: 'M-009', name: '周磊', username: 'zhoulei', department_id: 'D-002', department_name: '销售部', role_id: 'ROLE-001', role_name: '业务用户', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'zhoulei@example.com', phone: '13112349999', position: '销售总监', status: 'active', created_at: '2024-03-01' },
+  { id: 'M-010', name: '赵伟', username: 'tenantadmin', department_id: 'D-005', department_name: 'IT部', role_id: 'ROLE-003', role_name: '租户管理员', role_ids: ['ROLE-001', 'ROLE-003'], role_names: ['业务用户', '租户管理员'], email: 'tenantadmin@example.com', phone: '13012347777', position: '系统管理', status: 'active', created_at: '2024-01-01' },
+  { id: 'M-011', name: '陈刚', username: 'admin', department_id: 'D-005', department_name: 'IT部', role_id: 'ROLE-003', role_name: '租户管理员', role_ids: ['ROLE-001', 'ROLE-002', 'ROLE-003'], role_names: ['业务用户', '审计管理员', '租户管理员'], email: 'admin@example.com', phone: '12912348888', position: '超级管理员', status: 'active', created_at: '2024-01-01' },
+  { id: 'M-012', name: '测试用户', username: 'user', department_id: 'D-001', department_name: '研发部', role_id: 'ROLE-001', role_name: '业务用户', role_ids: ['ROLE-001'], role_names: ['业务用户'], email: 'user@example.com', phone: '12812346666', position: '测试工程师', status: 'disabled', created_at: '2024-08-01' },
 ]
 
 // ============================================================
