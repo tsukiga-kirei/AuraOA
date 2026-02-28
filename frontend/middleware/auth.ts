@@ -23,7 +23,7 @@ export default defineNuxtRouteMiddleware((to) => {
     if (uname) {
       const member = mockOrgMembers.find(m => m.username === uname)
       if (member) {
-        const rIds = member.role_ids?.length ? member.role_ids : [member.role_id]
+        const rIds = member.role_ids
         const pagePerms = new Set<string>()
         mockOrgRoles.filter(r => rIds.includes(r.id)).forEach(r => r.page_permissions.forEach(p => pagePerms.add(p)))
         // /overview and /settings are always accessible
