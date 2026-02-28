@@ -434,6 +434,7 @@ export default {
     'dashboard.batchFailed': '失败',
     'dashboard.batchProcessing': '处理中...',
     'dashboard.batchDone': '批量审核完成',
+    'dashboard.auditedProgress': '已审核 {0}',
     'dashboard.selectAll': '全选',
     'dashboard.selected': '已选 {0} 项',
     'dashboard.traceId': 'Trace ID',
@@ -717,6 +718,7 @@ export default {
     'archive.allReviewed': '当前列表中所有流程均已完成合规复核',
     'archive.batchProgress': '正在批量复核 {0} 个流程...',
     'archive.batchDone': '已完成 {0} 个流程的批量合规复核',
+    'archive.auditedProgress': '已复核 {0}',
     'archive.exporting': '正在导出 {0} 格式的合规复核报告...',
     'archive.jumpingToOA': '正在跳转 OA 系统查看流程 {0}...',
 
@@ -1040,6 +1042,7 @@ export default {
     'admin.userConfigs.hasConfig': '有自定义配置',
     'admin.userConfigs.noConfig': '无自定义配置',
     'admin.userConfigs.export': '导出',
+    'admin.userConfigs.selected': '已选 {0} 项',
     'admin.userConfigs.selectToExport': '请先勾选要导出的记录',
     'admin.userConfigs.exporting': '正在导出用户偏好数据...',
     'admin.userConfigs.totalAuditChanges': '审核工作台修改总数',

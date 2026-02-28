@@ -204,13 +204,20 @@ const handleReAudit = async () => {
   await handleAudit()
 }
 
+// Batch audit progress tracking
+const batchAuditTotal = ref(0)
+const batchAuditDone = ref(0)
+
 // ===== Batch audit =====
 const handleBatchAudit = async () => {
   if (selectedProcessIds.value.length === 0) return
   batchAuditing.value = true
   const ids = [...selectedProcessIds.value]
+  batchAuditTotal.value = ids.length
+  batchAuditDone.value = 0
   for (const id of ids) processAuditLoading.value[id] = true
-  for (const id of ids) {
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i]
     await new Promise(r => setTimeout(r, 800 + Math.random() * 1000))
     const proc = processList.value.find(p => p.process_id === id)
     if (proc) {
@@ -219,6 +226,7 @@ const handleBatchAudit = async () => {
       if (selectedProcess.value?.process_id === id) currentResult.value = result
     }
     processAuditLoading.value[id] = false
+    batchAuditDone.value = i + 1
   }
   batchAuditing.value = false
   selectedProcessIds.value = []
@@ -345,19 +353,24 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 
           <!-- Batch toolbar -->
           <div class="batch-toolbar">
-            <a-checkbox
-              :checked="selectedProcessIds.length === filteredList.length && filteredList.length > 0"
-              :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < filteredList.length"
-              @change="toggleSelectAll"
-            >
-              {{ selectedProcessIds.length > 0 ? t('archive.selected', `${selectedProcessIds.length}`) : t('archive.selectAll') }}
-            </a-checkbox>
-            <a-button v-if="selectedProcessIds.length > 0" type="primary" size="small" :disabled="batchAuditing" @click="handleBatchAudit">
+            <div class="batch-toolbar-left">
+              <a-checkbox
+                :checked="selectedProcessIds.length === filteredList.length && filteredList.length > 0"
+                :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < filteredList.length"
+                @change="toggleSelectAll"
+              >
+                {{ selectedProcessIds.length > 0 ? t('archive.selected', `${selectedProcessIds.length}`) : t('archive.selectAll') }}
+              </a-checkbox>
+              <span v-if="batchAuditing" class="batch-progress-hint">
+                {{ t('archive.auditedProgress', `${batchAuditDone}/${batchAuditTotal}`) }}
+              </span>
+              <span v-else-if="auditedCount > 0" class="panel-header-hint">{{ t('archive.reviewed') }} {{ auditedCount }}/{{ filteredList.length }}</span>
+            </div>
+            <a-button v-if="selectedProcessIds.length > 0" type="primary" size="small" :disabled="batchAuditing" @click="handleBatchAudit" class="batch-audit-btn">
               <LoadingOutlined v-if="batchAuditing" />
               <ThunderboltOutlined v-else />
               {{ t('archive.batchAudit') }}
             </a-button>
-            <span v-if="auditedCount > 0" class="panel-header-hint">{{ t('archive.reviewed') }} {{ auditedCount }}/{{ filteredList.length }}</span>
           </div>
         </div>
 
@@ -686,7 +699,14 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 .slide-enter-from, .slide-leave-to { opacity: 0; transform: translateY(-6px); }
 
 /* Batch toolbar */
-.batch-toolbar { display: flex; align-items: center; gap: 10px; }
+.batch-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.batch-toolbar-left { display: flex; align-items: center; gap: 12px; }
+.batch-progress-hint {
+  font-size: 12px; font-weight: 600; color: var(--color-primary);
+  animation: batchPulse 1.5s ease-in-out infinite;
+}
+@keyframes batchPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+.batch-audit-btn { flex-shrink: 0; }
 
 /* Process list */
 .process-list { max-height: calc(100vh - 340px); overflow-y: auto; }

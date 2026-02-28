@@ -267,10 +267,11 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
             <FilterOutlined /> {{ t('admin.data.filter') }}
             <span v-if="auditHasActiveFilters" class="filter-active-dot" />
           </a-button>
+          <span v-if="auditSelectedIds.length > 0" class="batch-selected-hint">{{ t('admin.data.selected', `${auditSelectedIds.length}`) }}</span>
         </div>
         <div class="toolbar-right">
-          <a-button :disabled="auditSelectedIds.length === 0" @click="handleExport('audit')">
-            <ExportOutlined /> {{ auditSelectedIds.length > 0 ? t('admin.data.exportSelected') : t('admin.data.export') }}
+          <a-button @click="handleExport('audit')">
+            <ExportOutlined /> {{ t('admin.data.export') }}
           </a-button>
         </div>
       </div>
@@ -294,23 +295,18 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
         </div>
       </transition>
 
-      <!-- Batch select toolbar -->
-      <div class="batch-toolbar">
-        <a-checkbox
-          :checked="auditSelectedIds.length === filteredAuditLogs.length && filteredAuditLogs.length > 0"
-          :indeterminate="auditSelectedIds.length > 0 && auditSelectedIds.length < filteredAuditLogs.length"
-          @change="toggleAuditSelectAll"
-        >
-          {{ auditSelectedIds.length > 0 ? t('admin.data.selected', `${auditSelectedIds.length}`) : t('admin.data.selectAll') }}
-        </a-checkbox>
-      </div>
-
       <!-- Audit data table -->
       <div class="data-table-card">
         <table class="data-table">
           <thead>
             <tr>
-              <th style="width: 40px;"></th>
+              <th style="width: 40px;">
+                <a-checkbox
+                  :checked="auditSelectedIds.length === filteredAuditLogs.length && filteredAuditLogs.length > 0"
+                  :indeterminate="auditSelectedIds.length > 0 && auditSelectedIds.length < filteredAuditLogs.length"
+                  @change="toggleAuditSelectAll"
+                />
+              </th>
               <th>{{ t('admin.data.thProcessId') }}</th>
               <th>{{ t('admin.data.thProcessTitle') }}</th>
               <th>{{ t('admin.data.thOperator') }}</th>
@@ -389,10 +385,11 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
             <FilterOutlined /> {{ t('admin.data.filter') }}
             <span v-if="cronHasActiveFilters" class="filter-active-dot" />
           </a-button>
+          <span v-if="cronSelectedIds.length > 0" class="batch-selected-hint">{{ t('admin.data.selected', `${cronSelectedIds.length}`) }}</span>
         </div>
         <div class="toolbar-right">
-          <a-button :disabled="cronSelectedIds.length === 0" @click="handleExport('cron')">
-            <ExportOutlined /> {{ cronSelectedIds.length > 0 ? t('admin.data.exportSelected') : t('admin.data.export') }}
+          <a-button @click="handleExport('cron')">
+            <ExportOutlined /> {{ t('admin.data.export') }}
           </a-button>
         </div>
       </div>
@@ -418,21 +415,17 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
         </div>
       </transition>
 
-      <div class="batch-toolbar">
-        <a-checkbox
-          :checked="cronSelectedIds.length === filteredCronLogs.length && filteredCronLogs.length > 0"
-          :indeterminate="cronSelectedIds.length > 0 && cronSelectedIds.length < filteredCronLogs.length"
-          @change="toggleCronSelectAll"
-        >
-          {{ cronSelectedIds.length > 0 ? t('admin.data.selected', `${cronSelectedIds.length}`) : t('admin.data.selectAll') }}
-        </a-checkbox>
-      </div>
-
       <div class="data-table-card">
         <table class="data-table">
           <thead>
             <tr>
-              <th style="width: 40px;"></th>
+              <th style="width: 40px;">
+                <a-checkbox
+                  :checked="cronSelectedIds.length === filteredCronLogs.length && filteredCronLogs.length > 0"
+                  :indeterminate="cronSelectedIds.length > 0 && cronSelectedIds.length < filteredCronLogs.length"
+                  @change="toggleCronSelectAll"
+                />
+              </th>
               <th>{{ t('admin.data.thTaskId') }}</th>
               <th>{{ t('admin.data.thTaskType') }}</th>
               <th>{{ t('admin.data.thOperator') }}</th>
@@ -514,10 +507,11 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
             <FilterOutlined /> {{ t('admin.data.filter') }}
             <span v-if="archiveHasActiveFilters" class="filter-active-dot" />
           </a-button>
+          <span v-if="archiveSelectedIds.length > 0" class="batch-selected-hint">{{ t('admin.data.selected', `${archiveSelectedIds.length}`) }}</span>
         </div>
         <div class="toolbar-right">
-          <a-button :disabled="archiveSelectedIds.length === 0" @click="handleExport('archive')">
-            <ExportOutlined /> {{ archiveSelectedIds.length > 0 ? t('admin.data.exportSelected') : t('admin.data.export') }}
+          <a-button @click="handleExport('archive')">
+            <ExportOutlined /> {{ t('admin.data.export') }}
           </a-button>
         </div>
       </div>
@@ -540,21 +534,17 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
         </div>
       </transition>
 
-      <div class="batch-toolbar">
-        <a-checkbox
-          :checked="archiveSelectedIds.length === filteredArchiveLogs.length && filteredArchiveLogs.length > 0"
-          :indeterminate="archiveSelectedIds.length > 0 && archiveSelectedIds.length < filteredArchiveLogs.length"
-          @change="toggleArchiveSelectAll"
-        >
-          {{ archiveSelectedIds.length > 0 ? t('admin.data.selected', `${archiveSelectedIds.length}`) : t('admin.data.selectAll') }}
-        </a-checkbox>
-      </div>
-
       <div class="data-table-card">
         <table class="data-table">
           <thead>
             <tr>
-              <th style="width: 40px;"></th>
+              <th style="width: 40px;">
+                <a-checkbox
+                  :checked="archiveSelectedIds.length === filteredArchiveLogs.length && filteredArchiveLogs.length > 0"
+                  :indeterminate="archiveSelectedIds.length > 0 && archiveSelectedIds.length < filteredArchiveLogs.length"
+                  @change="toggleArchiveSelectAll"
+                />
+              </th>
               <th>{{ t('admin.data.thProcessId') }}</th>
               <th>{{ t('admin.data.thProcessTitle') }}</th>
               <th>{{ t('admin.data.thOperator') }}</th>
@@ -794,10 +784,11 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
   display: inline-block; margin-left: 4px;
 }
 
-/* Batch toolbar */
-.batch-toolbar {
-  display: flex; align-items: center; gap: 12px; padding: 8px 0; margin-bottom: 8px;
-  font-size: 13px; color: var(--color-text-secondary);
+/* Batch selected hint (inline in toolbar) */
+.batch-selected-hint {
+  font-size: 12px; font-weight: 500; color: var(--color-primary);
+  padding: 2px 10px; border-radius: var(--radius-full);
+  background: var(--color-primary-bg);
 }
 
 /* Data table */

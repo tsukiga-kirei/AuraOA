@@ -121,10 +121,16 @@ const generateMockResult = (processId: string): typeof mockAuditResult => {
   }
 }
 
+// Batch audit progress tracking
+const batchAuditTotal = ref(0)
+const batchAuditDone = ref(0)
+
 const handleBatchAudit = async () => {
   if (selectedProcessIds.value.length === 0) return
   batchAuditing.value = true
   const ids = [...selectedProcessIds.value]
+  batchAuditTotal.value = ids.length
+  batchAuditDone.value = 0
 
   // Set all selected to loading
   for (const id of ids) {
@@ -139,6 +145,7 @@ const handleBatchAudit = async () => {
     const result = mockTodoAuditResults[id] || generateMockResult(id)
     processAuditCache.value[id] = result
     processAuditLoading.value[id] = false
+    batchAuditDone.value = i + 1
     // If this process is currently selected, show its result directly
     if (selectedProcess.value === id) {
       currentResult.value = { ...result }
@@ -430,19 +437,25 @@ const getShortRecLabel = (rec: string) => {
           </transition>
           <!-- Batch audit toolbar (todo mode only) -->
           <div v-if="viewMode === 'todo'" class="batch-toolbar">
-            <a-checkbox
-              :checked="selectedProcessIds.length === filteredList.length && filteredList.length > 0"
-              :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < filteredList.length"
-              @change="toggleSelectAll"
-            >
-              {{ selectedProcessIds.length > 0 ? t('dashboard.selected', `${selectedProcessIds.length}`) : t('dashboard.selectAll') }}
-            </a-checkbox>
+            <div class="batch-toolbar-left">
+              <a-checkbox
+                :checked="selectedProcessIds.length === filteredList.length && filteredList.length > 0"
+                :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < filteredList.length"
+                @change="toggleSelectAll"
+              >
+                {{ selectedProcessIds.length > 0 ? t('dashboard.selected', `${selectedProcessIds.length}`) : t('dashboard.selectAll') }}
+              </a-checkbox>
+              <span v-if="batchAuditing" class="batch-progress-hint">
+                {{ t('dashboard.auditedProgress', `${batchAuditDone}/${batchAuditTotal}`) }}
+              </span>
+            </div>
             <a-button
               v-if="selectedProcessIds.length > 0"
               type="primary"
               size="small"
               :disabled="batchAuditing"
               @click="handleBatchAudit"
+              class="batch-audit-btn"
             >
               <LoadingOutlined v-if="batchAuditing" />
               <ThunderboltOutlined v-else />
@@ -1141,6 +1154,16 @@ const getShortRecLabel = (rec: string) => {
 .batch-toolbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 6px 0; gap: 8px;
+}
+.batch-toolbar-left {
+  display: flex; align-items: center; gap: 12px;
+}
+.batch-progress-hint {
+  font-size: 12px; font-weight: 600; color: var(--color-primary);
+  animation: auditPulse 1.5s ease-in-out infinite;
+}
+.batch-audit-btn {
+  flex-shrink: 0;
 }
 
 /* Pagination */

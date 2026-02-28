@@ -434,6 +434,7 @@ export default {
     'dashboard.batchFailed': 'Failed',
     'dashboard.batchProcessing': 'Processing...',
     'dashboard.batchDone': 'Batch audit completed',
+    'dashboard.auditedProgress': 'Audited {0}',
     'dashboard.selectAll': 'Select All',
     'dashboard.selected': '{0} selected',
     'dashboard.traceId': 'Trace ID',
@@ -717,6 +718,7 @@ export default {
     'archive.allReviewed': 'All processes have completed compliance review',
     'archive.batchProgress': 'Batch reviewing {0} processes...',
     'archive.batchDone': 'Completed batch review of {0} processes',
+    'archive.auditedProgress': 'Reviewed {0}',
     'archive.exporting': 'Exporting {0} compliance report...',
     'archive.jumpingToOA': 'Jumping to OA system for process {0}...',
 
@@ -1039,6 +1041,7 @@ export default {
     'admin.userConfigs.hasConfig': 'Has Custom Config',
     'admin.userConfigs.noConfig': 'No Custom Config',
     'admin.userConfigs.export': 'Export',
+    'admin.userConfigs.selected': '{0} selected',
     'admin.userConfigs.selectToExport': 'Please select records to export first',
     'admin.userConfigs.exporting': 'Exporting user preference data...',
     'admin.userConfigs.totalAuditChanges': 'Audit Workbench Changes',

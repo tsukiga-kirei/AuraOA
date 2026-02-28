@@ -178,7 +178,10 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
           <a-select-option value="none">{{ t('admin.userConfigs.noConfig') }}</a-select-option>
         </a-select>
       </div>
-      <a-button @click="handleExport"><ExportOutlined /> {{ t('admin.userConfigs.export') }}</a-button>
+      <div class="toolbar-right">
+        <span v-if="selectedIds.length > 0" class="batch-selected-hint">{{ t('admin.userConfigs.selected', `${selectedIds.length}`) }}</span>
+        <a-button @click="handleExport"><ExportOutlined /> {{ t('admin.userConfigs.export') }}</a-button>
+      </div>
     </div>
 
     <!-- Table -->
@@ -509,6 +512,12 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
 
 .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
 .toolbar-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.toolbar-right { display: flex; align-items: center; gap: 8px; }
+.batch-selected-hint {
+  font-size: 12px; font-weight: 500; color: var(--color-primary);
+  padding: 2px 10px; border-radius: var(--radius-full);
+  background: var(--color-primary-bg);
+}
 
 .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
 .stat-card {
