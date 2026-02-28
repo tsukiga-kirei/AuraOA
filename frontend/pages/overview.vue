@@ -322,9 +322,9 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
         <div class="activity-list" style="margin-top: 10px;">
           <div v-for="a in mockArchiveLogs.slice(0, 4)" :key="a.id" class="activity-item">
-            <div class="activity-dot" :style="{ background: 'var(--color-primary)' }" />
+            <div class="activity-dot" :style="{ background: a.compliance === 'compliant' ? 'var(--color-success)' : a.compliance === 'non_compliant' ? 'var(--color-danger)' : 'var(--color-warning)' }" />
             <div class="activity-body">
-              <span class="activity-action">{{ a.action_label }}</span>
+              <span class="activity-action">{{ a.compliance === 'compliant' ? '合规' : a.compliance === 'non_compliant' ? '不合规' : '部分合规' }}</span>
               <span class="activity-target">{{ a.title }}</span>
             </div>
             <div class="activity-meta">
