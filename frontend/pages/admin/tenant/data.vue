@@ -61,7 +61,7 @@ const auditFilterProcessNames = computed(() => {
   return names
 })
 const auditFilterStatus = ref<string | undefined>(undefined)
-const auditFilterDateRange = ref<[Dayjs, Dayjs] | null>(null)
+const auditFilterDateRange = ref<[Dayjs, Dayjs] | undefined>(undefined)
 const auditSelectedIds = ref<string[]>([])
 const auditDetailVisible = ref(false)
 const auditDetailResult = ref<AuditResult | null>(null)
@@ -69,9 +69,9 @@ const auditDetailTitle = ref('')
 const auditCardFilter = ref<string | null>(null)
 
 const auditDepartmentOptions = computed(() => [...new Set(auditLogs.value.map(l => l.department))])
-const auditHasActiveFilters = computed(() => !!auditSearch.value || !!auditSearchOperator.value || auditFilterDepartment.value !== undefined || auditFilterProcessType.value.length > 0 || auditFilterStatus.value !== undefined || auditFilterDateRange.value !== null)
+const auditHasActiveFilters = computed(() => !!auditSearch.value || !!auditSearchOperator.value || auditFilterDepartment.value !== undefined || auditFilterProcessType.value.length > 0 || auditFilterStatus.value !== undefined || auditFilterDateRange.value !== undefined)
 
-const clearAuditFilters = () => { auditSearch.value = ''; auditSearchOperator.value = ''; auditFilterDepartment.value = undefined; auditFilterProcessType.value = []; auditFilterStatus.value = undefined; auditFilterDateRange.value = null }
+const clearAuditFilters = () => { auditSearch.value = ''; auditSearchOperator.value = ''; auditFilterDepartment.value = undefined; auditFilterProcessType.value = []; auditFilterStatus.value = undefined; auditFilterDateRange.value = undefined }
 
 const filteredAuditLogs = computed(() => {
   return auditLogs.value.filter(l => {
@@ -173,7 +173,7 @@ const archiveFilterProcessNames = computed(() => {
   return names
 })
 const archiveFilterCompliance = ref<string | undefined>(undefined)
-const archiveFilterDateRange = ref<[Dayjs, Dayjs] | null>(null)
+const archiveFilterDateRange = ref<[Dayjs, Dayjs] | undefined>(undefined)
 const archiveSelectedIds = ref<string[]>([])
 const archiveDetailVisible = ref(false)
 const archiveDetailResult = ref<ArchiveAuditResult | null>(null)
@@ -181,8 +181,8 @@ const archiveDetailTitle = ref('')
 const archiveCardFilter = ref<string | null>(null)
 
 const archiveDepartmentOptions = computed(() => [...new Set(archiveLogs.value.map(l => l.department))])
-const archiveHasActiveFilters = computed(() => !!archiveSearch.value || !!archiveSearchOperator.value || archiveFilterDepartment.value !== undefined || archiveFilterProcessType.value.length > 0 || archiveFilterCompliance.value !== undefined || archiveFilterDateRange.value !== null)
-const clearArchiveFilters = () => { archiveSearch.value = ''; archiveSearchOperator.value = ''; archiveFilterDepartment.value = undefined; archiveFilterProcessType.value = []; archiveFilterCompliance.value = undefined; archiveFilterDateRange.value = null }
+const archiveHasActiveFilters = computed(() => !!archiveSearch.value || !!archiveSearchOperator.value || archiveFilterDepartment.value !== undefined || archiveFilterProcessType.value.length > 0 || archiveFilterCompliance.value !== undefined || archiveFilterDateRange.value !== undefined)
+const clearArchiveFilters = () => { archiveSearch.value = ''; archiveSearchOperator.value = ''; archiveFilterDepartment.value = undefined; archiveFilterProcessType.value = []; archiveFilterCompliance.value = undefined; archiveFilterDateRange.value = undefined }
 
 const filteredArchiveLogs = computed(() => {
   return archiveLogs.value.filter(l => {

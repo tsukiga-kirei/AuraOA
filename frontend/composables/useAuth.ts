@@ -1,4 +1,4 @@
-import { MOCK_USERS, getMockMenusByRole, getMockMenusByPermissions, getMockMenusByActiveRole, hasPagePermission, getDefaultPage, getDefaultPageForRole } from './useMockData'
+import { MOCK_USERS,   getMockMenusByActiveRole, hasPagePermission, getDefaultPage, getDefaultPageForRole } from './useMockData'
 import type { MockUser, MockMenuItem, UserRole, PermissionGroup, UserRoleAssignment } from './useMockData'
 
 interface LoginRequest {
@@ -154,9 +154,7 @@ export const useAuth = () => {
     if (isMockMode.value) {
       // Use activeRole for menu generation
       const role = activeRole.value
-      const m = role
-        ? getMockMenusByActiveRole(role)
-        : getMockMenusByPermissions(userPermissions.value)
+      const m = role ? getMockMenusByActiveRole(role) : [];
       menus.value = m
       return m
     }
