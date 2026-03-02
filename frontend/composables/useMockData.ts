@@ -156,44 +156,7 @@ export function getDefaultPage(permissions: PermissionGroup[]): string {
   return '/overview'
 }
 
-export function getMockMenusByRole(role: UserRole): MockMenuItem[] {
-  // Use default role-to-permissions mapping for backward compat
-  return getMockMenusByPermissions(
-    role === 'system_admin' ? ['business', 'tenant_admin', 'system_admin']
-      : role === 'tenant_admin' ? ['business', 'tenant_admin']
-        : ['business']
-  )
-}
 
-export function getMockMenusByPermissions(permissions: PermissionGroup[]): MockMenuItem[] {
-  const result: MockMenuItem[] = []
-  // Overview dashboard is always available
-  result.push(
-    { key: 'overview', label: '仪表盘', icon: 'PieChartOutlined', path: '/overview' },
-  )
-  if (permissions.includes('business')) {
-    result.push(
-      { key: 'dashboard', label: '审核工作台', icon: 'DashboardOutlined', path: '/dashboard' },
-      { key: 'cron', label: '定时任务', icon: 'ClockCircleOutlined', path: '/cron' },
-      { key: 'archive', label: '归档复盘', icon: 'FolderOpenOutlined', path: '/archive' },
-    )
-  }
-  if (permissions.includes('tenant_admin')) {
-    result.push(
-      { key: 'tenant-rules', label: '规则配置', icon: 'AppstoreOutlined', path: '/admin/tenant/rules' },
-      { key: 'tenant-org', label: '组织人员', icon: 'ApartmentOutlined', path: '/admin/tenant/org' },
-      { key: 'tenant-data', label: '数据信息', icon: 'DatabaseOutlined', path: '/admin/tenant/data' },
-      { key: 'tenant-user-configs', label: '用户偏好', icon: 'SettingOutlined', path: '/admin/tenant/user-configs' },
-    )
-  }
-  if (permissions.includes('system_admin')) {
-    result.push(
-      { key: 'tenants', label: '租户管理', icon: 'TeamOutlined', path: '/admin/system/tenants' },
-      { key: 'settings', label: '系统设置', icon: 'SettingOutlined', path: '/admin/system/settings' },
-    )
-  }
-  return result
-}
 
 /**
  * Generate menus for a specific active role assignment.
@@ -687,7 +650,6 @@ export interface ProcessAuditConfig {
   process_type: string
   /** 流程类型标签，如"采购类"、"费用类"，用于分类展示 */
   process_type_label?: string
-  flow_path: string
   main_table_name?: string
   main_fields?: ProcessField[]
   detail_tables?: DetailTable[]
@@ -1159,7 +1121,6 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     id: 'PAC-001',
     process_type: '采购审批',
     process_type_label: '采购类',
-    flow_path: '部门经理 → 财务总监 → 总经理',
     main_table_name: 'formtable_main_001',
     main_fields: [
       { field_key: 'amount', field_name: '采购金额', field_type: 'number', selected: true },
@@ -1215,7 +1176,6 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     id: 'PAC-002',
     process_type: '费用报销',
     process_type_label: '费用类',
-    flow_path: '部门经理 → 财务审核',
     main_table_name: 'formtable_main_002',
     main_fields: [
       { field_key: 'amount', field_name: '报销金额', field_type: 'number', selected: true },
@@ -1266,7 +1226,6 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     id: 'PAC-003',
     process_type: '合同审批',
     process_type_label: '合同类',
-    flow_path: '部门经理 → 法务审核 → 财务总监 → 总经理',
     main_table_name: 'formtable_main_003',
     main_fields: [
       { field_key: 'contract_amount', field_name: '合同金额', field_type: 'number', selected: true },
@@ -1306,7 +1265,6 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     id: 'PAC-004',
     process_type: '人事审批',
     process_type_label: '人事类',
-    flow_path: 'HR经理 → 用人部门 → HR总监',
     main_table_name: 'formtable_main_004',
     main_fields: [
       { field_key: 'position', field_name: '岗位名称', field_type: 'text', selected: true },
@@ -1345,7 +1303,6 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     id: 'PAC-005',
     process_type: '工程审批',
     process_type_label: '工程类',
-    flow_path: '部门经理 → 安全主管 → 行政总监',
     main_table_name: 'formtable_main_005',
     main_fields: [
       { field_key: 'project_name', field_name: '工程名称', field_type: 'text', selected: true },
@@ -1380,7 +1337,6 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     id: 'PAC-006',
     process_type: '项目审批',
     process_type_label: '项目类',
-    flow_path: '部门经理 → 技术总监 → 总经理',
     main_table_name: 'formtable_main_006',
     main_fields: [
       { field_key: 'project_name', field_name: '项目名称', field_type: 'text', selected: true },
@@ -1415,7 +1371,6 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
     id: 'PAC-007',
     process_type: '预算审批',
     process_type_label: '预算类',
-    flow_path: '部门经理 → 财务总监 → 总经理',
     main_table_name: 'formtable_main_007',
     main_fields: [
       { field_key: 'budget_name', field_name: '预算名称', field_type: 'text', selected: true },
@@ -2703,7 +2658,6 @@ export const useMockData = () => {
   const archiveProcessCascaderOptions = buildProcessCascaderOptions(
     mockArchiveReviewConfigs.map(c => ({
       ...c,
-      flow_path: '',
       kb_mode: c.kb_mode,
       user_permissions: { allow_custom_fields: c.user_permissions.allow_custom_fields, allow_custom_rules: c.user_permissions.allow_custom_rules, allow_modify_strictness: c.user_permissions.allow_modify_strictness },
     } as any))

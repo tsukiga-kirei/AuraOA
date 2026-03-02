@@ -152,7 +152,6 @@ const handleAddProcess = () => {
     id: `PAC-${Date.now()}`,
     process_type: newProcessForm.value.process_type.trim(),
     process_type_label: newProcessForm.value.process_type_label.trim() || undefined,
-    flow_path: newProcessForm.value.main_table_name.trim() || t('admin.ruleConfig.pending'),
     field_mode: 'selected',
     fields: [],
     rules: [],
