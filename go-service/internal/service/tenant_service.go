@@ -40,6 +40,7 @@ func (s *TenantService) ListTenants() ([]dto.TenantResponse, error) {
 }
 
 // CreateTenant creates a new tenant after checking code uniqueness.
+// It uses a transaction to also create three default system roles; if any step fails the entire operation is rolled back.
 func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantResponse, error) {
 	// Check code uniqueness
 	existing, _ := s.tenantRepo.FindByCode(req.Code)
@@ -77,7 +78,51 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 		tenant.MaxConcurrency = 10
 	}
 
-	if err := s.tenantRepo.Create(tenant); err != nil {
+	// Start transaction: create tenant + default roles atomically
+	tx := s.db.Begin()
+	defer tx.Rollback() // no-op after commit
+
+	if err := tx.Create(tenant).Error; err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+
+	// Build page_permissions JSON for each default role
+	businessPerms, _ := json.Marshal([]string{"/overview", "/dashboard", "/settings"})
+	auditPerms, _ := json.Marshal([]string{"/overview", "/dashboard", "/cron", "/archive", "/settings"})
+	adminPerms, _ := json.Marshal([]string{
+		"/overview", "/dashboard", "/cron", "/archive", "/settings",
+		"/admin/tenant/rules", "/admin/tenant/org", "/admin/tenant/data", "/admin/tenant/user-configs",
+	})
+
+	defaultRoles := []model.OrgRole{
+		{
+			TenantID:        tenant.ID,
+			Name:            "业务用户",
+			Description:     "普通业务人员，可使用审核工作台等前台功能。仪表盘为所有角色默认拥有。",
+			PagePermissions: businessPerms,
+			IsSystem:        true,
+		},
+		{
+			TenantID:        tenant.ID,
+			Name:            "审计管理员",
+			Description:     "在业务用户基础上，额外拥有归档复盘权限，可进行合规复核。",
+			PagePermissions: auditPerms,
+			IsSystem:        true,
+		},
+		{
+			TenantID:        tenant.ID,
+			Name:            "租户管理员",
+			Description:     "可进入后台管理，配置规则、组织人员、数据信息、用户偏好。",
+			PagePermissions: adminPerms,
+			IsSystem:        true,
+		},
+	}
+
+	if err := tx.Create(&defaultRoles).Error; err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "创建默认角色失败")
+	}
+
+	if err := tx.Commit().Error; err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 

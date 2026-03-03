@@ -21,7 +21,7 @@ const { isDark, toggle: toggleTheme } = useTheme()
 const { t } = useI18n()
 const { allRoles, activeRole, switchRole, getMenu } = useAuth()
 
-import type { UserRoleAssignment } from '~/composables/useMockData'
+import type { RoleInfo } from '~/types/auth'
 
 // ===== Role Switching =====
 const systemRoles = computed(() => allRoles.value.filter(r => r.role === 'system_admin'))
@@ -40,7 +40,7 @@ const dropdownOpen = ref(false)
 // Icon animation key — increments on each switch to trigger transition
 const iconKey = ref(0)
 
-const handleSwitchRole = async (role: UserRoleAssignment) => {
+const handleSwitchRole = async (role: RoleInfo) => {
   if (role.id === activeRoleId.value) return
   dropdownOpen.value = false
   iconKey.value++
