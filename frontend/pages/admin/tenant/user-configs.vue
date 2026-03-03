@@ -26,7 +26,8 @@ import { usePagination } from '~/composables/usePagination'
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
-const { mockUserPersonalConfigs, mockOrgRoles, mockOrgMembers } = useMockData()
+const { mockUserPersonalConfigs } = useMockData()
+const { roles, members } = useOrgApi()
 
 const configs = ref<UserPersonalConfig[]>(JSON.parse(JSON.stringify(mockUserPersonalConfigs)))
 const search = ref('')

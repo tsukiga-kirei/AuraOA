@@ -62,17 +62,17 @@ const SYSTEM_ITEMS: SidebarMenuItem[] = [
 export const useSidebarMenu = () => {
   const route = useRoute()
   const { userPermissions, currentUser, activeRole } = useAuth()
-  const { mockOrgMembers, mockOrgRoles } = useMockData()
+  const { members, roles } = useOrgApi()
 
   /** Merged page permissions from the current user's business roles */
   const businessPagePerms = computed<Set<string>>(() => {
     const uname = currentUser.value?.username
     if (!uname) return new Set()
-    const member = mockOrgMembers.find(m => m.username === uname)
+    const member = members.value.find(m => m.username === uname)
     if (!member) return new Set()
     const rIds = member.role_ids
     const perms = new Set<string>()
-    mockOrgRoles.filter(r => rIds.includes(r.id)).forEach(r => r.page_permissions.forEach(p => perms.add(p)))
+    roles.value.filter(r => rIds.includes(r.id)).forEach(r => r.page_permissions.forEach(p => perms.add(p)))
     return perms
   })
 

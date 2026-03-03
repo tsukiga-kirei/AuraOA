@@ -18,14 +18,14 @@ export default defineNuxtRouteMiddleware((to) => {
   // For business users, also check business-role page_permissions from org data
   const role = activeRole.value?.role
   if (role === 'business') {
-    const { mockOrgMembers, mockOrgRoles } = useMockData()
+    const { members, roles } = useOrgApi()
     const uname = currentUser.value?.username
     if (uname) {
-      const member = mockOrgMembers.find(m => m.username === uname)
+      const member = members.value.find(m => m.username === uname)
       if (member) {
         const rIds = member.role_ids
         const pagePerms = new Set<string>()
-        mockOrgRoles.filter(r => rIds.includes(r.id)).forEach(r => r.page_permissions.forEach(p => pagePerms.add(p)))
+        roles.value.filter(r => rIds.includes(r.id)).forEach(r => r.page_permissions.forEach(p => pagePerms.add(p)))
         // /overview and /settings are always accessible
         if (to.path !== '/overview' && to.path !== '/settings' && !pagePerms.has(to.path)) {
           return navigateTo('/overview')

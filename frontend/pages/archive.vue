@@ -32,15 +32,14 @@ const {
   mockArchivedProcesses,
   mockArchiveAuditResult,
   mockArchiveReviewConfigs,
-  mockOrgMembers,
-  mockOrgRoles,
   archiveProcessCascaderOptions,
 } = useMockData()
+const { members, roles } = useOrgApi()
 
 // ===== Permission: filter accessible archive configs based on current user =====
 const accessibleConfigs = computed<ArchiveReviewConfig[]>(() => {
   const uname = currentUser.value?.username || ''
-  const member = mockOrgMembers.find(m => m.username === uname)
+  const member = members.value.find(m => m.username === uname)
   if (!member) return []
   return mockArchiveReviewConfigs.filter(cfg => {
     // Check role-based access (any of member's roles)

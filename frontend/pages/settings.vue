@@ -39,7 +39,8 @@ definePageMeta({
 })
 
 const { userRole, userPermissions, currentUser, activeRole } = useAuth()
-const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockOrgRoles, mockOrgMembers, mockUserDashboardPrefs, mockUserSecurityInfo, mockUserLocalePrefs } = useMockData()
+const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockUserDashboardPrefs, mockUserSecurityInfo, mockUserLocalePrefs } = useMockData()
+const { members, roles } = useOrgApi()
 const { t, locale, setLocale, availableLocales } = useI18n()
 
 /** The role type of the currently active identity (system_admin / tenant_admin / business) */
@@ -132,13 +133,13 @@ const handleChangePassword = async () => {
 // ===== Profile tab =====
 // Find current user's org member record to show role-based permissions
 const currentMember = computed(() => {
-  return mockOrgMembers.find(m => m.username === currentUser.value?.username) || null
+  return members.value.find(m => m.username === currentUser.value?.username) || null
 })
 /** All business roles this member has in the current tenant */
 const currentOrgRoles = computed(() => {
   if (!currentMember.value) return []
   const rIds = currentMember.value.role_ids
-  return mockOrgRoles.filter(r => rIds.includes(r.id))
+  return roles.value.filter(r => rIds.includes(r.id))
 })
 /** Merged page permissions from all business roles */
 const currentOrgPagePermissions = computed(() => {
@@ -149,7 +150,7 @@ const currentOrgPagePermissions = computed(() => {
 // Keep backward compat
 const currentOrgRole = computed(() => {
   if (!currentMember.value) return null
-  return mockOrgRoles.find(r => currentMember.value!.role_ids.includes(r.id)) || null
+  return roles.value.find(r => currentMember.value!.role_ids.includes(r.id)) || null
 })
 
 const getPageLabel = (path: string) => t(`page.${path}`, path)

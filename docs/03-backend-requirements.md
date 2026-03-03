@@ -575,16 +575,29 @@ AI Service 当前标记为 **TODO**，后续开发将包含：
 
 ## 七、部署架构
 
-### 7.1 Docker Compose (开发环境)
+### 7.1 Docker Compose
+
+**生产/完整编排** (`docker-compose.yml`)：
 
 ```yaml
 services:
   frontend:     # Nuxt 3 前端
   go-service:   # Go 业务中台
-  ai-service:   # Python AI 引擎 (TODO)
+  ai-service:   # Python AI 引擎
   postgres:     # PostgreSQL 16 + pgvector
   redis:        # Redis 7
-  rabbitmq:     # RabbitMQ (可选，初期可用 Redis Pub/Sub)
+```
+
+**本地开发** (`docker-compose.dev.yml`)：仅启动基础设施，前后端在本地运行。
+
+```bash
+docker-compose -f docker-compose.dev.yml up -d
+```
+
+```yaml
+services:
+  postgres:     # PostgreSQL 16 + pgvector（自动加载 migrations 和 seeds）
+  redis:        # Redis 7
 ```
 
 ### 7.2 Kubernetes (生产环境)
@@ -607,7 +620,7 @@ Namespace: oa-smart-audit
 
 ```dockerfile
 # 多阶段构建
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25.6-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download

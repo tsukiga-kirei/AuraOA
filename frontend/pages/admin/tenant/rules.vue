@@ -469,7 +469,7 @@ const handleSavePresets = async () => {
 
 // ===== User permissions =====
 // ===== Archive review configs =====
-const { mockOrgRoles, mockOrgMembers, mockDepartments } = useMockData()
+const { departments, roles, members } = useOrgApi()
 const archiveConfigs = ref<ArchiveReviewConfig[]>(JSON.parse(JSON.stringify(mockArchiveReviewConfigs)))
 const selectedArchiveId = ref(archiveConfigs.value[0]?.id || '')
 const archiveActiveTab = ref('info')
@@ -694,20 +694,20 @@ const archiveDeptSearch = ref('')
 
 const filteredArchiveRoles = computed(() => {
   const q = archiveRoleSearch.value.toLowerCase().trim()
-  if (!q) return mockOrgRoles
-  return mockOrgRoles.filter(r => r.name.toLowerCase().includes(q))
+  if (!q) return roles.value
+  return roles.value.filter(r => r.name.toLowerCase().includes(q))
 })
 
 const filteredArchiveMembers = computed(() => {
   const q = archiveMemberSearch.value.toLowerCase().trim()
-  if (!q) return mockOrgMembers
-  return mockOrgMembers.filter(m => m.name.toLowerCase().includes(q) || m.department_name.toLowerCase().includes(q))
+  if (!q) return members.value
+  return members.value.filter(m => m.name.toLowerCase().includes(q) || m.department_name.toLowerCase().includes(q))
 })
 
 const filteredArchiveDepts = computed(() => {
   const q = archiveDeptSearch.value.toLowerCase().trim()
-  if (!q) return mockDepartments
-  return mockDepartments.filter(d => d.name.toLowerCase().includes(q))
+  if (!q) return departments.value
+  return departments.value.filter(d => d.name.toLowerCase().includes(q))
 })
 
 const toggleArchiveRole = (roleId: string) => {
