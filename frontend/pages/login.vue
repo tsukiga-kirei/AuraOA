@@ -13,7 +13,7 @@ import {
 import type { TenantOption } from '~/types/auth'
 import { useI18n } from '~/composables/useI18n'
 
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, middleware: 'auth' })
 
 const { login, getMenu } = useAuth()
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
