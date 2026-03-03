@@ -1,0 +1,28 @@
+server:
+  port: 8080
+
+database:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: postgres
+  dbname: oa_smart_audit
+  sslmode: disable
+  max_open_conns: 50
+  max_idle_conns: 10
+
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+
+jwt:
+  secret: "change-me-in-production"
+  access_token_ttl: 2h
+  refresh_token_ttl: 168h
+
+cors:
+  allowed_origins:
+    - "http://localhost:3000"
+    - "http://localhost:8080"

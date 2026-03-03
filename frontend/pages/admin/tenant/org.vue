@@ -16,19 +16,18 @@ import {
   InfoCircleOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import { useMockData } from '~/composables/useMockData'
 import type { Department, OrgRole, OrgMember } from '~/composables/useMockData'
+import { useOrgApi } from '~/composables/useOrgApi'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
-const { mockDepartments, mockOrgRoles, mockOrgMembers } = useMockData()
+const { departments, roles, members } = useOrgApi()
 
 // Top-level tab
 const topTab = ref<'members' | 'roles' | 'departments'>('members')
 
 // ===== Members =====
-const members = ref<OrgMember[]>(JSON.parse(JSON.stringify(mockOrgMembers)))
 const memberSearch = ref('')
 const memberDeptFilter = ref<string | undefined>(undefined)
 const memberRoleFilter = ref<string | undefined>(undefined)
@@ -123,7 +122,6 @@ const deleteMember = (m: OrgMember) => {
 }
 
 // ===== Roles =====
-const roles = ref<OrgRole[]>(JSON.parse(JSON.stringify(mockOrgRoles)))
 const showRoleModal = ref(false)
 const editingRole = ref<OrgRole | null>(null)
 const roleForm = ref({ name: '', description: '', page_permissions: [] as string[] })
@@ -222,7 +220,6 @@ const deleteRole = (r: OrgRole) => {
 const getRoleMemberCount = (roleId: string) => members.value.filter(m => m.role_ids.includes(roleId)).length
 
 // ===== Departments =====
-const departments = ref<Department[]>(JSON.parse(JSON.stringify(mockDepartments)))
 const showDeptModal = ref(false)
 const editingDept = ref<Department | null>(null)
 const deptForm = ref({ name: '', manager: '' })

@@ -1,6 +1,6 @@
 # OA 智审平台 — 前端代码架构与交互逻辑详解
 
-> 文档版本：v1.0 | 更新日期：2026-03-02  
+> 文档版本：v1.1 | 更新日期：2026-03-03  
 > 本文档详细解析前端代码的架构设计、核心交互逻辑、认证流程和技术实现细节。
 
 ---
@@ -321,7 +321,28 @@ export default defineNuxtRouteMiddleware((to) => {
 | POST | `/api/audit/execute` | 执行AI审核，body: `{ process_id }` |
 | POST | `/api/audit/feedback` | 提交审核反馈，body: `{ process_id, adopted, action_taken }` |
 
-### 5.3 其他接口（页面中暗含，需后端实现）
+### 5.3 组织人员接口（已实现）
+
+`useOrgApi` composable 已完成从 Mock 到真实 API 的切换，不再依赖 `useMockData`。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/tenant/org/departments` | 获取部门列表 |
+| POST | `/api/tenant/org/departments` | 创建部门 |
+| PUT | `/api/tenant/org/departments/:id` | 更新部门 |
+| DELETE | `/api/tenant/org/departments/:id` | 删除部门 |
+| GET | `/api/tenant/org/roles` | 获取角色列表 |
+| POST | `/api/tenant/org/roles` | 创建角色 |
+| PUT | `/api/tenant/org/roles/:id` | 更新角色 |
+| DELETE | `/api/tenant/org/roles/:id` | 删除角色 |
+| GET | `/api/tenant/org/members` | 获取成员列表 |
+| POST | `/api/tenant/org/members` | 创建成员 |
+| PUT | `/api/tenant/org/members/:id` | 更新成员 |
+| DELETE | `/api/tenant/org/members/:id` | 删除成员 |
+
+统一响应格式：`{ code: number, message: string, data: T }`，`code === 0` 表示成功。
+
+### 5.4 其他接口（页面中暗含，需后端实现）
 
 | 领域 | 预期接口 |
 |------|----------|
@@ -329,7 +350,6 @@ export default defineNuxtRouteMiddleware((to) => {
 | 归档复盘 | 归档流程查询、触发合规复核 |
 | 租户管理 | 租户 CRUD、配置管理 |
 | 规则管理 | 审核规则 CRUD、审核尺度预设 |
-| 组织人员 | 部门/角色/成员 CRUD |
 | 数据信息 | 审核/定时/归档日志查询 |
 | 用户偏好 | 用户个性化配置查询 |
 | 系统设置 | OA连接/AI模型/平台配置 CRUD |

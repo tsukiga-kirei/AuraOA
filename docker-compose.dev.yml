@@ -1,0 +1,44 @@
+version: "3.9"
+
+# 本地开发：只启动基础设施，前后端在本地运行
+# 用法：docker-compose -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=oa_smart_audit
+      - POSTGRES_USER=oa_admin
+      - POSTGRES_PASSWORD=changeme_pg_password
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d/migrations
+      - ./db/seeds:/docker-entrypoint-initdb.d/seeds
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oa_admin"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+
+volumes:
+  pg_data:
+  mongo_data:
+  redis_data:
