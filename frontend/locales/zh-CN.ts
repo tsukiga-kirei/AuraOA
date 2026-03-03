@@ -1366,6 +1366,7 @@ export default {
     'admin.org.deptAdded': '部门已添加',
     'admin.org.deptHasMembers': '该部门下有 {0} 名成员，请先调整',
     'admin.org.deptDeleted': '部门已删除',
+    'admin.org.operationFailed': '操作失败，请重试',
 
     // Page labels for org permissions
     'admin.org.page.dashboard': '审核工作台',

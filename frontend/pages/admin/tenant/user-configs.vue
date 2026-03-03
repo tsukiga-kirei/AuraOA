@@ -27,7 +27,11 @@ definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
 const { mockUserPersonalConfigs } = useMockData()
-const { roles, members } = useOrgApi()
+const { roles, members, loadAll: loadOrgData } = useOrgApi()
+
+onMounted(() => {
+  loadOrgData()
+})
 
 const configs = ref<UserPersonalConfig[]>(JSON.parse(JSON.stringify(mockUserPersonalConfigs)))
 const search = ref('')

@@ -40,7 +40,7 @@ definePageMeta({
 
 const { userRole, userPermissions, currentUser, activeRole } = useAuth()
 const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockUserDashboardPrefs, mockUserLocalePrefs } = useMockData()
-const { members, roles } = useOrgApi()
+const { members, roles, loadAll: loadOrgData } = useOrgApi()
 const { t, locale, setLocale, availableLocales } = useI18n()
 
 /** The role type of the currently active identity (system_admin / tenant_admin / business) */
@@ -51,6 +51,7 @@ const activeTab = ref('profile')
 // ===== Language & Region tab =====
 const userDateFormat = ref('YYYY-MM-DD')
 onMounted(() => {
+  loadOrgData()
   const uname = currentUser.value?.username || ''
   const prefs = mockUserLocalePrefs[uname]
   if (prefs) {

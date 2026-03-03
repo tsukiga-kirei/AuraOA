@@ -16,13 +16,22 @@ import {
   InfoCircleOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { Department, OrgRole, OrgMember } from '~/composables/useMockData'
+import type { Department, OrgRole, OrgMember } from '~/types/org'
 import { useOrgApi } from '~/composables/useOrgApi'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
-const { departments, roles, members } = useOrgApi()
+const {
+  departments, roles, members, loadAll, loading,
+  createDepartment, updateDepartment, deleteDepartment: apiDeleteDept,
+  createRole, updateRole, deleteRole: apiDeleteRole,
+  createMember, updateMember, deleteMember: apiDeleteMember,
+} = useOrgApi()
+
+onMounted(() => {
+  loadAll()
+})
 
 // Top-level tab
 const topTab = ref<'members' | 'roles' | 'departments'>('members')
@@ -71,54 +80,61 @@ const resolveRoleNames = (roleIds: string[]): string[] => {
   return roleIds.map(rid => roles.value.find(r => r.id === rid)?.name || rid)
 }
 
-const handleSaveMember = () => {
+const handleSaveMember = async () => {
   if (!memberForm.value.name.trim() || !memberForm.value.username.trim()) {
     message.warning(t('admin.org.fillNameRequired'))
     return
   }
-  const dept = departments.value.find(d => d.id === memberForm.value.department_id)
-  const rNames = resolveRoleNames(memberForm.value.role_ids)
-  if (editingMember.value) {
-    Object.assign(editingMember.value, {
-      name: memberForm.value.name,
-      username: memberForm.value.username,
-      department_id: memberForm.value.department_id,
-      department_name: dept?.name || '',
-      role_ids: [...memberForm.value.role_ids],
-      role_names: rNames,
-      email: memberForm.value.email,
-      phone: memberForm.value.phone,
-      position: memberForm.value.position,
-    })
-    message.success(t('admin.org.memberUpdated'))
-  } else {
-    members.value.push({
-      id: `M-${Date.now()}`,
-      name: memberForm.value.name,
-      username: memberForm.value.username,
-      department_id: memberForm.value.department_id,
-      department_name: dept?.name || '',
-      role_ids: [...memberForm.value.role_ids],
-      role_names: rNames,
-      email: memberForm.value.email,
-      phone: memberForm.value.phone,
-      position: memberForm.value.position,
-      status: 'active',
-      created_at: new Date().toISOString().slice(0, 10),
-    })
-    message.success(t('admin.org.memberAdded'))
+  try {
+    if (editingMember.value) {
+      await updateMember(editingMember.value.id, {
+        name: memberForm.value.name,
+        username: memberForm.value.username,
+        department_id: memberForm.value.department_id,
+        role_ids: [...memberForm.value.role_ids],
+        email: memberForm.value.email,
+        phone: memberForm.value.phone,
+        position: memberForm.value.position,
+      })
+      message.success(t('admin.org.memberUpdated'))
+    } else {
+      await createMember({
+        name: memberForm.value.name,
+        username: memberForm.value.username,
+        department_id: memberForm.value.department_id,
+        department_name: departments.value.find(d => d.id === memberForm.value.department_id)?.name || '',
+        role_ids: [...memberForm.value.role_ids],
+        role_names: resolveRoleNames(memberForm.value.role_ids),
+        email: memberForm.value.email,
+        phone: memberForm.value.phone,
+        position: memberForm.value.position,
+        status: 'active',
+      })
+      message.success(t('admin.org.memberAdded'))
+    }
+    showMemberModal.value = false
+  } catch (e: any) {
+    message.error(e.message || t('admin.org.operationFailed'))
   }
-  showMemberModal.value = false
 }
 
-const toggleMemberStatus = (m: OrgMember) => {
-  m.status = m.status === 'active' ? 'disabled' : 'active'
-  message.success(m.status === 'active' ? t('admin.org.memberEnabled') : t('admin.org.memberDisabled'))
+const toggleMemberStatus = async (m: OrgMember) => {
+  const newStatus = m.status === 'active' ? 'disabled' : 'active'
+  try {
+    await updateMember(m.id, { status: newStatus })
+    message.success(newStatus === 'active' ? t('admin.org.memberEnabled') : t('admin.org.memberDisabled'))
+  } catch (e: any) {
+    message.error(e.message || t('admin.org.operationFailed'))
+  }
 }
 
-const deleteMember = (m: OrgMember) => {
-  members.value = members.value.filter(x => x.id !== m.id)
-  message.success(t('admin.org.memberDeleted'))
+const removeMember = async (m: OrgMember) => {
+  try {
+    await apiDeleteMember(m.id)
+    message.success(t('admin.org.memberDeleted'))
+  } catch (e: any) {
+    message.error(e.message || t('admin.org.operationFailed'))
+  }
 }
 
 // ===== Roles =====
@@ -185,36 +201,44 @@ const openEditRole = (r: OrgRole) => {
   showRoleModal.value = true
 }
 
-const handleSaveRole = () => {
+const handleSaveRole = async () => {
   if (!roleForm.value.name.trim()) {
     message.warning(t('admin.org.fillRoleName'))
     return
   }
-  if (editingRole.value) {
-    Object.assign(editingRole.value, roleForm.value)
-    // Update member role names for anyone who has this role
-    members.value.forEach(m => {
-      const idx = m.role_ids.indexOf(editingRole.value!.id)
-      if (idx >= 0 && m.role_names) m.role_names[idx] = roleForm.value.name
-    })
-    message.success(t('admin.org.roleUpdated'))
-  } else {
-    roles.value.push({
-      id: `ROLE-${Date.now()}`,
-      ...roleForm.value,
-      is_system: false,
-    })
-    message.success(t('admin.org.roleAdded'))
+  try {
+    if (editingRole.value) {
+      await updateRole(editingRole.value.id, {
+        name: roleForm.value.name,
+        description: roleForm.value.description,
+        page_permissions: [...roleForm.value.page_permissions],
+      })
+      message.success(t('admin.org.roleUpdated'))
+    } else {
+      await createRole({
+        name: roleForm.value.name,
+        description: roleForm.value.description,
+        page_permissions: [...roleForm.value.page_permissions],
+        is_system: false,
+      })
+      message.success(t('admin.org.roleAdded'))
+    }
+    showRoleModal.value = false
+  } catch (e: any) {
+    message.error(e.message || t('admin.org.operationFailed'))
   }
-  showRoleModal.value = false
 }
 
-const deleteRole = (r: OrgRole) => {
+const removeRole = async (r: OrgRole) => {
   if (r.is_system) { message.warning(t('admin.org.systemRoleProtected')); return }
   const usedBy = members.value.filter(m => m.role_ids.includes(r.id))
   if (usedBy.length > 0) { message.warning(t('admin.org.roleHasMembers', [usedBy.length])); return }
-  roles.value = roles.value.filter(x => x.id !== r.id)
-  message.success(t('admin.org.roleDeleted'))
+  try {
+    await apiDeleteRole(r.id)
+    message.success(t('admin.org.roleDeleted'))
+  } catch (e: any) {
+    message.error(e.message || t('admin.org.operationFailed'))
+  }
 }
 
 const getRoleMemberCount = (roleId: string) => members.value.filter(m => m.role_ids.includes(roleId)).length
@@ -236,38 +260,41 @@ const openEditDept = (d: Department) => {
   showDeptModal.value = true
 }
 
-const handleSaveDept = () => {
+const handleSaveDept = async () => {
   if (!deptForm.value.name.trim()) {
     message.warning(t('admin.org.fillDeptName'))
     return
   }
-  if (editingDept.value) {
-    editingDept.value.name = deptForm.value.name
-    editingDept.value.manager = deptForm.value.manager
-    // Update member department names
-    members.value.forEach(m => {
-      if (m.department_id === editingDept.value!.id) m.department_name = deptForm.value.name
-    })
-    message.success(t('admin.org.deptUpdated'))
-  } else {
-    const newDept: Department = {
-      id: `D-${Date.now()}`,
-      name: deptForm.value.name,
-      parent_id: null,
-      manager: deptForm.value.manager,
-      member_count: 0,
+  try {
+    if (editingDept.value) {
+      await updateDepartment(editingDept.value.id, {
+        name: deptForm.value.name,
+        manager: deptForm.value.manager,
+      })
+      message.success(t('admin.org.deptUpdated'))
+    } else {
+      await createDepartment({
+        name: deptForm.value.name,
+        parent_id: null,
+        manager: deptForm.value.manager,
+      })
+      message.success(t('admin.org.deptAdded'))
     }
-    departments.value.push(newDept)
-    message.success(t('admin.org.deptAdded'))
+    showDeptModal.value = false
+  } catch (e: any) {
+    message.error(e.message || t('admin.org.operationFailed'))
   }
-  showDeptModal.value = false
 }
 
-const deleteDept = (d: Department) => {
+const removeDept = async (d: Department) => {
   const usedBy = members.value.filter(m => m.department_id === d.id)
   if (usedBy.length > 0) { message.warning(t('admin.org.deptHasMembers', [usedBy.length])); return }
-  departments.value = departments.value.filter(x => x.id !== d.id)
-  message.success(t('admin.org.deptDeleted'))
+  try {
+    await apiDeleteDept(d.id)
+    message.success(t('admin.org.deptDeleted'))
+  } catch (e: any) {
+    message.error(e.message || t('admin.org.operationFailed'))
+  }
 }
 
 const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.department_id === deptId).length
@@ -360,7 +387,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
                       <CheckOutlined v-else />
                     </button>
                   </a-popconfirm>
-                  <a-popconfirm :title="t('admin.org.confirmDeleteMember')" @confirm="deleteMember(m)">
+                  <a-popconfirm :title="t('admin.org.confirmDeleteMember')" @confirm="removeMember(m)">
                     <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
                   </a-popconfirm>
                 </div>
@@ -408,7 +435,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
             </div>
             <div class="role-card-actions">
               <button class="icon-btn" @click="openEditRole(r)"><EditOutlined /></button>
-              <a-popconfirm v-if="!r.is_system" :title="t('admin.org.confirmDelete')" @confirm="deleteRole(r)">
+              <a-popconfirm v-if="!r.is_system" :title="t('admin.org.confirmDelete')" @confirm="removeRole(r)">
                 <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
               </a-popconfirm>
             </div>
@@ -443,7 +470,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
             <span class="dept-card-name">{{ d.name }}</span>
             <div class="dept-card-actions">
               <button class="icon-btn" @click="openEditDept(d)"><EditOutlined /></button>
-              <a-popconfirm :title="t('admin.org.confirmDelete')" @confirm="deleteDept(d)">
+              <a-popconfirm :title="t('admin.org.confirmDelete')" @confirm="removeDept(d)">
                 <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
               </a-popconfirm>
             </div>
