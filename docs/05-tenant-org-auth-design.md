@@ -748,7 +748,7 @@ Week 4: 对接前端
 1. **`.env` 文件**：将 `NUXT_PUBLIC_MOCK_MODE` 设为 `false`
 2. **`useAuth.ts`**：API 模式分支已预置，无需大改
 3. **`useSidebarMenu.ts`**：✅ 已改为使用 `useAuth()` 的 `menus`（GetMenu API）驱动菜单过滤，不再依赖 `useOrgApi`
-4. **`middleware/auth.ts`**：✅ 已改为两层权限检查（系统角色粗粒度 + `menus` 细粒度），不再依赖 `useOrgApi`
+4. **`middleware/auth.ts`**：✅ 已改为两层权限检查（系统角色粗粒度 + `menus` 细粒度），不再依赖 `useOrgApi`；已登录用户访问 `/login` 时自动重定向至 `/overview`
 5. **`useMockData.ts`**：保留为开发模式后备，不删除
 
 ### 7.3 测试策略
