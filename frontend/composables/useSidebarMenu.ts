@@ -5,7 +5,7 @@
  * 他们当前所在的页面。没有路由上下文切换。
  *
  * 登录始终位于 /overview（概览仪表板）。
- * 用户下拉列表仅显示“个人设置”和“注销”（无重复导航）。
+ * 用户下拉列表仅显示"个人设置"和"注销"（无重复导航）。
  *
  * 所有标签都使用 i18n 键进行国际化。*/
 import {
@@ -60,39 +60,43 @@ const SYSTEM_ITEMS: SidebarMenuItem[] = [
 
 export const useSidebarMenu = () => {
   const route = useRoute()
-  const { userPermissions, currentUser, activeRole } = useAuth()
-  const { members, roles } = useOrgApi()
+  const { userPermissions, menus } = useAuth()
 
-  /** 合并当前用户业务角色的页面权限*/
-  const businessPagePerms = computed<Set<string>>(() => {
-    const uname = currentUser.value?.username
-    if (!uname) return new Set()
-    const member = members.value.find(m => m.username === uname)
-    if (!member) return new Set()
-    const rIds = member.role_ids
+  /**
+   * 从认证菜单（GetMenu API 返回）构建页面权限集合。
+   * 适用于所有角色，包括业务用户，无需访问 org API。
+   */
+  const menuPagePerms = computed<Set<string>>(() => {
     const perms = new Set<string>()
-    roles.value.filter(r => rIds.includes(r.id)).forEach(r => r.page_permissions.forEach(p => perms.add(p)))
+    menus.value.forEach(m => {
+      if (m.path) perms.add(m.path)
+    })
     return perms
   })
 
-  /** 侧边栏部分 — 权限驱动，按 page_permissions 过滤的业务项目*/
+  /** 侧边栏分区 — 由权限和菜单驱动 */
   const sections = computed<SidebarSection[]>(() => {
     const perms = userPermissions.value
     const result: SidebarSection[] = []
 
-    //所有经过身份验证的用户始终可以看到概览仪表板
+    //所有已认证用户始终可见概览仪表板
     result.push({ id: 'overview', titleKey: 'sidebar.section.overview', items: OVERVIEW_ITEMS })
 
     if (perms.includes('business')) {
-      const pagePerms = businessPagePerms.value
-      const filtered = BUSINESS_ITEMS.filter(item => pagePerms.has(item.key))
+      const pagePerms = menuPagePerms.value
+      //有菜单数据时按权限过滤，否则不显示（等待菜单加载）
+      const filtered = pagePerms.size > 0
+        ? BUSINESS_ITEMS.filter(item => pagePerms.has(item.key))
+        : []
       if (filtered.length) {
         result.push({ id: 'business', titleKey: 'sidebar.section.business', items: filtered })
       }
     }
+
     if (perms.includes('tenant_admin')) {
-      //按tenant_admin业务角色的page_permissions过滤租户管理项目
-      const pagePerms = businessPagePerms.value
+      const pagePerms = menuPagePerms.value
+      //GetMenu 返回的路径与 TENANT_ITEMS key 完全匹配（如 /admin/tenant/org）
+      //有菜单数据时按权限过滤，否则显示全部（tenant_admin 菜单固定，不依赖 org API）
       const filtered = pagePerms.size > 0
         ? TENANT_ITEMS.filter(item => pagePerms.has(item.key))
         : TENANT_ITEMS
@@ -100,6 +104,7 @@ export const useSidebarMenu = () => {
         result.push({ id: 'tenant', titleKey: 'sidebar.section.tenant', items: filtered })
       }
     }
+
     if (perms.includes('system_admin')) {
       result.push({ id: 'system', titleKey: 'sidebar.section.system', items: SYSTEM_ITEMS })
     }

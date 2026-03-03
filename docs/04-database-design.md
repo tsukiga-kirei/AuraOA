@@ -336,38 +336,47 @@ CREATE TABLE ai_model_configs (
 );
 ```
 
-#### system_general_config — 平台通用配置（单行表）
+#### system_configs — 平台通用配置（键值对表）
+
+实际实现采用 KV 键值对表，而非单行表，便于动态扩展配置项。
 
 ```sql
-CREATE TABLE system_general_config (
-    id              INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),  -- 单行
-    platform_name   VARCHAR(200) NOT NULL DEFAULT 'OA流程智能审核平台',
-    platform_version VARCHAR(50) NOT NULL DEFAULT 'v1.0.0',
-    default_language VARCHAR(10) NOT NULL DEFAULT 'zh-CN',
-    session_timeout INTEGER NOT NULL DEFAULT 120,        -- 分钟
-    max_upload_size INTEGER NOT NULL DEFAULT 50,          -- MB
-    enable_audit_trail BOOLEAN NOT NULL DEFAULT true,
-    enable_data_encryption BOOLEAN NOT NULL DEFAULT true,
-    
-    -- 备份配置
-    backup_enabled  BOOLEAN NOT NULL DEFAULT true,
-    backup_cron     VARCHAR(100) DEFAULT '0 2 * * *',
-    backup_retention_days INTEGER DEFAULT 30,
-    
-    -- 邮件配置
-    notification_email VARCHAR(255) DEFAULT '',
-    smtp_host       VARCHAR(255) DEFAULT '',
-    smtp_port       INTEGER DEFAULT 465,
-    smtp_username   VARCHAR(255) DEFAULT '',
-    smtp_password   VARCHAR(255) DEFAULT '',  -- 加密存储
-    smtp_ssl        BOOLEAN NOT NULL DEFAULT true,
-    
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE system_configs (
+    id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    key        VARCHAR(200) NOT NULL,
+    value      TEXT         NOT NULL DEFAULT '',
+    remark     VARCHAR(500),
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
--- 初始化单行数据
-INSERT INTO system_general_config (id) VALUES (1) ON CONFLICT DO NOTHING;
+CREATE UNIQUE INDEX idx_system_configs_key ON system_configs (key);
 ```
+
+**内置配置键（种子数据）**：
+
+| key | 默认值 | 说明 |
+|-----|--------|------|
+| `system.name` | `OA智审` | 系统名称 |
+| `system.version` | `1.0.0` | 系统版本号 |
+| `system.default_language` | `zh-CN` | 系统默认语言 |
+| `system.max_upload_size_mb` | `50` | 最大上传文件大小（MB） |
+| `system.enable_audit_trail` | `true` | 是否启用审计日志 |
+| `system.enable_data_encryption` | `false` | 是否启用数据加密 |
+| `system.backup_enabled` | `false` | 是否启用自动备份 |
+| `system.backup_cron` | `0 2 * * *` | 备份 Cron 表达式 |
+| `system.backup_retention_days` | `30` | 备份保留天数 |
+| `system.notification_email` | `` | 系统通知邮箱 |
+| `system.smtp_host` | `` | SMTP 服务器地址 |
+| `system.smtp_port` | `465` | SMTP 端口 |
+| `system.smtp_username` | `` | SMTP 用户名 |
+| `system.smtp_ssl` | `true` | 是否启用 SMTP SSL/TLS |
+| `auth.access_token_ttl_hours` | `2` | Access Token 有效期（小时），前端换算为 session_timeout（分钟） |
+| `auth.refresh_token_ttl_days` | `7` | Refresh Token 有效期（天） |
+| `auth.login_fail_lock_count` | `5` | 登录失败锁定阈值 |
+| `auth.lock_duration_minutes` | `15` | 账户锁定时长（分钟） |
+| `tenant.default_token_quota` | `10000` | 租户默认 Token 配额 |
+| `tenant.default_max_concurrency` | `10` | 租户默认最大并发数 |
 
 ### 4.4 审核规则 (Phase 2 — 000005)
 

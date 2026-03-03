@@ -39,7 +39,7 @@ definePageMeta({
 })
 
 const { userRole, userPermissions, currentUser, activeRole } = useAuth()
-const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockUserDashboardPrefs, mockUserLocalePrefs } = useMockData()
+const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockUserDashboardPrefs } = useMockData()
 const { members, roles, loadAll: loadOrgData } = useOrgApi()
 const { t, locale, setLocale, availableLocales } = useI18n()
 
@@ -51,11 +51,10 @@ const activeTab = ref('profile')
 //===== 语言和区域选项卡 =====
 const userDateFormat = ref('YYYY-MM-DD')
 onMounted(() => {
-  loadOrgData()
-  const uname = currentUser.value?.username || ''
-  const prefs = mockUserLocalePrefs[uname]
-  if (prefs) {
-    userDateFormat.value = prefs.dateFormat
+  // Only load org data for tenant_admin and business roles (not system_admin — would get 403)
+  const role = activeRole.value?.role || userRole.value
+  if (role === 'tenant_admin' || role === 'business') {
+    loadOrgData().catch(() => { /* ignore 403 for business users */ })
   }
 })
 
@@ -159,12 +158,25 @@ const currentOrgRole = computed(() => {
 const getPageLabel = (path: string) => t(`page.${path}`, path)
 
 const profile = ref({
-  nickname: '张明',
-  email: 'zhangming@example.com',
-  phone: '13812348888',
-  department: '研发部',
-  position: '高级工程师',
+  nickname: '',
+  email: '',
+  phone: '',
+  department: '',
+  position: '',
 })
+
+// Populate profile from auth/org data once available
+watch([currentUser, currentMember], () => {
+  const user = currentUser.value
+  const member = currentMember.value
+  profile.value = {
+    nickname: user?.display_name || user?.username || '',
+    email: member?.email || '',
+    phone: member?.phone || '',
+    department: member?.department_name || '',
+    position: member?.position || '',
+  }
+}, { immediate: true })
 
 const getRoleLabel = (role: string) => {
   const map: Record<string, string> = { business: 'role.business', tenant_admin: 'role.tenantAdmin', system_admin: 'role.systemAdmin' }

@@ -56,12 +56,30 @@ const saving = ref(false)
 onMounted(async () => {
   loading.value = true
   try {
-    const data = await getConfigs()
-    if (data.oa_systems) oaSystems.value = data.oa_systems
-    if (data.ai_models) aiModels.value = data.ai_models
-    if (data.general) {
-      generalConfig.value = { ...generalConfig.value, ...data.general }
+    // 后端返回 ConfigItem[] 数组（key-value 格式），转换为 map 后映射到 generalConfig
+    const items: Array<{ key: string; value: string; remark: string }> = await getConfigs()
+    const kvMap: Record<string, string> = {}
+    items.forEach(item => { kvMap[item.key] = item.value })
+
+    // 将 system_configs 表中的 key 映射到前端 generalConfig 字段
+    if (kvMap['system.name']) generalConfig.value.platform_name = kvMap['system.name']
+    if (kvMap['system.version']) generalConfig.value.platform_version = kvMap['system.version']
+    if (kvMap['system.default_language']) generalConfig.value.default_language = kvMap['system.default_language']
+    if (kvMap['auth.access_token_ttl_hours']) {
+      // session_timeout 用 access token TTL（小时转分钟）
+      generalConfig.value.session_timeout = parseInt(kvMap['auth.access_token_ttl_hours']) * 60
     }
+    if (kvMap['system.max_upload_size_mb']) generalConfig.value.max_upload_size = parseInt(kvMap['system.max_upload_size_mb'])
+    if (kvMap['system.enable_audit_trail']) generalConfig.value.enable_audit_trail = kvMap['system.enable_audit_trail'] === 'true'
+    if (kvMap['system.enable_data_encryption']) generalConfig.value.enable_data_encryption = kvMap['system.enable_data_encryption'] === 'true'
+    if (kvMap['system.backup_enabled']) generalConfig.value.backup_enabled = kvMap['system.backup_enabled'] === 'true'
+    if (kvMap['system.backup_cron']) generalConfig.value.backup_cron = kvMap['system.backup_cron']
+    if (kvMap['system.backup_retention_days']) generalConfig.value.backup_retention_days = parseInt(kvMap['system.backup_retention_days'])
+    if (kvMap['system.notification_email']) generalConfig.value.notification_email = kvMap['system.notification_email']
+    if (kvMap['system.smtp_host']) generalConfig.value.smtp_host = kvMap['system.smtp_host']
+    if (kvMap['system.smtp_port']) generalConfig.value.smtp_port = parseInt(kvMap['system.smtp_port'])
+    if (kvMap['system.smtp_username']) generalConfig.value.smtp_username = kvMap['system.smtp_username']
+    if (kvMap['system.smtp_ssl']) generalConfig.value.smtp_ssl = kvMap['system.smtp_ssl'] === 'true'
   } catch (e) {
     message.error(t('admin.settings.loadFailed', '加载配置失败'))
   } finally {
@@ -343,11 +361,26 @@ const getModelTypeTag = (type: string) => {
 const saveGeneralConfig = async () => {
   saving.value = true
   try {
-    await updateConfigs({
-      general: generalConfig.value,
-      oa_systems: oaSystems.value,
-      ai_models: aiModels.value,
-    })
+    // 将 generalConfig 字段转回 system_configs 表的 key-value 格式
+    const updates: Record<string, string> = {
+      'system.name': generalConfig.value.platform_name,
+      'system.version': generalConfig.value.platform_version,
+      'system.default_language': generalConfig.value.default_language,
+      // session_timeout（分钟）转回小时存储
+      'auth.access_token_ttl_hours': String(Math.round(generalConfig.value.session_timeout / 60)),
+      'system.max_upload_size_mb': String(generalConfig.value.max_upload_size),
+      'system.enable_audit_trail': String(generalConfig.value.enable_audit_trail),
+      'system.enable_data_encryption': String(generalConfig.value.enable_data_encryption),
+      'system.backup_enabled': String(generalConfig.value.backup_enabled),
+      'system.backup_cron': generalConfig.value.backup_cron,
+      'system.backup_retention_days': String(generalConfig.value.backup_retention_days),
+      'system.notification_email': generalConfig.value.notification_email,
+      'system.smtp_host': generalConfig.value.smtp_host,
+      'system.smtp_port': String(generalConfig.value.smtp_port),
+      'system.smtp_username': generalConfig.value.smtp_username,
+      'system.smtp_ssl': String(generalConfig.value.smtp_ssl),
+    }
+    await updateConfigs(updates)
     message.success(t('admin.settings.saved'))
   } catch (e) {
     message.error(t('admin.settings.saveFailed', '保存配置失败'))

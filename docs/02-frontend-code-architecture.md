@@ -63,7 +63,6 @@ export default defineNuxtConfig({
 | `allRoles` | `UserRoleAssignment[]` | 用户所有角色分配 | localStorage `all_roles` |
 | `activeRole` | `UserRoleAssignment | null` | 当前激活的角色 | localStorage `active_role` |
 | `userPermissions` | `PermissionGroup[]` | 当前权限组 | localStorage `user_permissions` |
-| `fullPermissions` | `PermissionGroup[]` | 完整权限（所有角色） | localStorage `full_permissions` |
 | `currentUser` | `object | null` | 当前用户信息 | localStorage `current_user` |
 
 #### 登录流程 (Mock 模式)
@@ -161,27 +160,27 @@ saveStrictnessPresets(tenantId, presets): Promise<boolean>
 
 ### 2.3 useSidebarMenu — 侧边栏菜单
 
-**文件**: `composables/useSidebarMenu.ts` (129 行)
+**文件**: `composables/useSidebarMenu.ts`
 
-菜单完全由权限驱动，不依赖路由上下文切换：
+菜单完全由权限驱动，不依赖路由上下文切换。菜单项的过滤统一通过 `useAuth()` 返回的 `menus`（来自 GetMenu API）实现，不再依赖 `useOrgApi`：
 
 ```typescript
 // 菜单段生成逻辑：
 sections = computed(() => {
   // 1. overview 始终显示
-  // 2. business 权限 → 过滤业务菜单（根据组织角色的 page_permissions）
-  // 3. tenant_admin 权限 → 显示租户管理菜单
+  // 2. business 权限 → 根据 GetMenu API 返回的 menus 过滤业务菜单
+  // 3. tenant_admin 权限 → 根据 menus 过滤租户管理菜单（menus 未加载时显示全部）
   // 4. system_admin 权限 → 显示系统管理菜单
 })
 ```
 
-**业务菜单的细粒度权限控制**：
+**菜单权限过滤机制**：
 ```
-当角色为 business 时：
-  1. 获取当前用户的 OrgMember 记录
-  2. 查找该成员关联的 OrgRole（如 ROLE-001 业务用户）
-  3. 取 OrgRole.page_permissions 作为可访问页面
-  4. 过滤菜单项，只显示有权限的
+所有角色（business、tenant_admin）统一使用 GetMenu API：
+  1. 登录/角色切换时，后端根据当前 activeRole 返回 menus 列表
+  2. useSidebarMenu 从 menus 中提取 path 构建 menuPagePerms 集合
+  3. 过滤菜单项：只显示 path 在 menuPagePerms 中的项目
+  4. menus 未加载时：business 不显示菜单，tenant_admin 显示全部（降级）
 ```
 
 ### 2.4 useI18n — 国际化

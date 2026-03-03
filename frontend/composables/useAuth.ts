@@ -48,8 +48,6 @@ export const useAuth = () => {
   const activeRole = useState<RoleInfo | null>('auth_active_role', () => null)
   /** Active权限组（派生自activeRole）*/
   const userPermissions = useState<PermissionGroup[]>('auth_permissions', () => ['business'])
-  /** 完整权限 - 保留用于向后兼容，但现在派生自 allRoles*/
-  const fullPermissions = useState<PermissionGroup[]>('auth_full_permissions', () => ['business'])
 
   const currentUser = useState<{
     username: string
@@ -66,11 +64,6 @@ export const useAuth = () => {
   const setUserPermissions = (perms: PermissionGroup[]) => {
     userPermissions.value = perms
     if (import.meta.client) localStorage.setItem('user_permissions', JSON.stringify(perms))
-  }
-
-  const setFullPermissions = (perms: PermissionGroup[]) => {
-    fullPermissions.value = perms
-    if (import.meta.client) localStorage.setItem('full_permissions', JSON.stringify(perms))
   }
 
   const setAllRoles = (roles: RoleInfo[]) => {
@@ -115,7 +108,9 @@ export const useAuth = () => {
       userPermissions.value = switchPerms
       if (import.meta.client) localStorage.setItem('user_permissions', JSON.stringify(switchPerms))
 
+      //持久化菜单，确保刷新后侧边栏不为空
       menus.value = data.menus
+      if (import.meta.client) localStorage.setItem('auth_menus', JSON.stringify(data.menus))
 
       return true
     } catch {
@@ -135,7 +130,7 @@ export const useAuth = () => {
 
       const data = res.data
 
-      //存储代币
+      //存储令牌
       token.value = data.access_token
       refreshToken.value = data.refresh_token
 
@@ -167,11 +162,7 @@ export const useAuth = () => {
         role_label: data.active_role.label,
       }
 
-      //计算向后兼容的完整权限（所有独特的角色类型）
-      const allPerms = [...new Set(data.roles.map(r => r.role))] as PermissionGroup[]
-      setFullPermissions(allPerms)
-
-      // Use backend permissions if available, otherwise fall back to active role
+      //优先使用后端返回的权限，否则回退到活跃角色
       const effectivePerms = data.permissions && data.permissions.length > 0
         ? data.permissions as PermissionGroup[]
         : [data.active_role.role] as PermissionGroup[]
@@ -182,6 +173,15 @@ export const useAuth = () => {
         localStorage.setItem('refresh_token', data.refresh_token)
         localStorage.setItem('current_user', JSON.stringify(currentUser.value))
         localStorage.setItem('user_permissions', JSON.stringify(effectivePerms))
+      }
+
+      //登录后立即拉取菜单并持久化，确保刷新后侧边栏不为空
+      try {
+        const menuData = await authFetch<{ menus: MenuItem[] }>('/api/auth/menu')
+        menus.value = menuData.menus
+        if (import.meta.client) localStorage.setItem('auth_menus', JSON.stringify(menuData.menus))
+      } catch {
+        //菜单加载失败不影响登录流程
       }
 
       return true
@@ -215,7 +215,6 @@ export const useAuth = () => {
     userRole.value = 'business'
     allRoles.value = []
     activeRole.value = null
-    fullPermissions.value = ['business']
     userPermissions.value = ['business']
     currentUser.value = null
 
@@ -225,10 +224,10 @@ export const useAuth = () => {
       localStorage.removeItem('refresh_token')
       localStorage.removeItem('user_role')
       localStorage.removeItem('user_permissions')
-      localStorage.removeItem('full_permissions')
       localStorage.removeItem('all_roles')
       localStorage.removeItem('active_role')
       localStorage.removeItem('current_user')
+      localStorage.removeItem('auth_menus')
     }
 
     navigateTo('/login')
@@ -392,10 +391,6 @@ export const useAuth = () => {
       if (savedActiveRole) {
         try { activeRole.value = JSON.parse(savedActiveRole) } catch { /*忽略*/ }
       }
-      const savedFullPerms = localStorage.getItem('full_permissions')
-      if (savedFullPerms) {
-        try { fullPermissions.value = JSON.parse(savedFullPerms) } catch { /*忽略*/ }
-      }
       const savedPerms = localStorage.getItem('user_permissions')
       if (savedPerms) {
         try { userPermissions.value = JSON.parse(savedPerms) } catch { /*忽略*/ }
@@ -404,14 +399,19 @@ export const useAuth = () => {
       if (savedUser) {
         try { currentUser.value = JSON.parse(savedUser) } catch { /*忽略*/ }
       }
+      //恢复菜单，避免刷新后侧边栏为空
+      const savedMenus = localStorage.getItem('auth_menus')
+      if (savedMenus) {
+        try { menus.value = JSON.parse(savedMenus) } catch { /*忽略*/ }
+      }
     }
   }
 
   return {
-    token, refreshToken, menus, userRole, fullPermissions, userPermissions, currentUser,
+    token, refreshToken, menus, userRole, userPermissions, currentUser,
     allRoles, activeRole,
     login, getMenu, logout, isAuthenticated, restore,
-    setUserRole, setUserPermissions, setFullPermissions, setAllRoles, setActiveRole, switchRole,
+    setUserRole, setUserPermissions, setAllRoles, setActiveRole, switchRole,
     authFetch, doRefreshToken, changePassword,
   }
 }

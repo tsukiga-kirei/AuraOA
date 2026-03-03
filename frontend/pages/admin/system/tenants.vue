@@ -18,17 +18,43 @@ import {
   UserOutlined,
 } from '@ant-design/icons-vue'
 import {message} from 'ant-design-vue'
-import type {TenantInfo} from '~/composables/useMockData'
 
 const { t } = useI18n()
 
-const { mockTenants, mockAIModelConfigs, mockOADatabaseConnections } = useMockData()
+const { mockAIModelConfigs, mockOADatabaseConnections } = useMockData()
+const { listTenants: fetchTenants, createTenant: apiCreateTenant, updateTenant: apiUpdateTenant } = useSystemApi()
 
-const tenants = ref<TenantInfo[]>(JSON.parse(JSON.stringify(mockTenants)))
-const selectedTenant = ref<TenantInfo | null>(null)
+interface TenantData {
+  id: string; name: string; code: string; description: string; status: string
+  oa_type: string; token_quota: number; token_used: number; max_concurrency: number
+  ai_config: any; sso_enabled: boolean; sso_endpoint: string
+  log_retention_days: number; data_retention_days: number; allow_custom_model: boolean
+  contact_name: string; contact_email: string; contact_phone: string
+  created_at: string; updated_at: string
+  oa_db_connection_id?: string
+}
+
+const tenants = ref<TenantData[]>([])
+const loading = ref(false)
+const selectedTenant = ref<TenantData | null>(null)
 const showCreate = ref(false)
 const showDetail = ref(false)
 const detailActiveTab = ref('basic')
+
+onMounted(async () => {
+  loading.value = true
+  try {
+    const data = await fetchTenants()
+    tenants.value = data.map((t: any) => ({
+      ...t,
+      ai_config: t.ai_config || { default_provider: '', default_model: '', fallback_provider: '', fallback_model: '', max_tokens_per_request: 4096, temperature: 0.3, timeout_seconds: 60, retry_count: 2 },
+    }))
+  } catch (e) {
+    message.error('加载租户列表失败')
+  } finally {
+    loading.value = false
+  }
+})
 
 //租户配置下拉列表的可用 AI 模型
 const availableModels = computed(() => mockAIModelConfigs.filter(m => m.enabled))
@@ -60,67 +86,80 @@ const newTenant = ref({
   ai_model: '',
 })
 
-const createTenant = () => {
+const createTenant = async () => {
   if (!newTenant.value.name || !newTenant.value.code) {
     message.warning(t('admin.tenants.fillRequired'))
     return
   }
-  const selectedOADb = mockOADatabaseConnections.find(c => c.id === newTenant.value.oa_db_connection_id)
-  const tenantObj: TenantInfo = {
-    id: `T-${Date.now()}`,
-    name: newTenant.value.name,
-    code: newTenant.value.code,
-    oa_type: selectedOADb?.oa_type || 'weaver_e9',
-    oa_db_connection_id: newTenant.value.oa_db_connection_id,
-    token_quota: newTenant.value.token_quota,
-    token_used: 0,
-    max_concurrency: newTenant.value.max_concurrency,
-    status: 'active',
-    created_at: new Date().toISOString().slice(0, 10),
-    contact_name: newTenant.value.contact_name,
-    contact_email: newTenant.value.contact_email,
-    contact_phone: newTenant.value.contact_phone,
-    description: newTenant.value.description,
-    ai_config: {
-      default_provider: newTenant.value.ai_provider, default_model: newTenant.value.ai_model || 'Qwen2.5-72B',
-      fallback_provider: '', fallback_model: '',
-      max_tokens_per_request: 4096, temperature: 0.3,
-      timeout_seconds: 60, retry_count: 2,
-    },
-    log_retention_days: 180,
-    data_retention_days: 730,
-    allow_custom_model: false,
-    sso_enabled: false,
-    sso_endpoint: '',
+  try {
+    const created = await apiCreateTenant({
+      name: newTenant.value.name,
+      code: newTenant.value.code,
+      token_quota: newTenant.value.token_quota,
+      max_concurrency: newTenant.value.max_concurrency,
+      contact_name: newTenant.value.contact_name,
+      contact_email: newTenant.value.contact_email,
+      contact_phone: newTenant.value.contact_phone,
+      description: newTenant.value.description,
+      ai_config: { default_provider: newTenant.value.ai_provider, default_model: newTenant.value.ai_model || '' },
+    })
+    const tenantObj: TenantData = {
+      ...created,
+      ai_config: created.ai_config || { default_provider: '', default_model: '', fallback_provider: '', fallback_model: '', max_tokens_per_request: 4096, temperature: 0.3, timeout_seconds: 60, retry_count: 2 },
+    }
+    tenants.value.push(tenantObj)
+    showCreate.value = false
+    message.success(t('admin.tenants.createSuccess'))
+    newTenant.value = { name: '', code: '', oa_db_connection_id: '', token_quota: 10000, max_concurrency: 10, contact_name: '', contact_email: '', contact_phone: '', description: '', ai_provider: 'Xinference', ai_model: '' }
+    openDetail(tenantObj)
+  } catch (e: any) {
+    message.error(e.message || '创建租户失败')
   }
-  tenants.value.push(tenantObj)
-  showCreate.value = false
-  message.success(t('admin.tenants.createSuccess'))
-  newTenant.value = { name: '', code: '', oa_db_connection_id: '', token_quota: 10000, max_concurrency: 10, contact_name: '', contact_email: '', contact_phone: '', description: '', ai_provider: 'Xinference', ai_model: '' }
-  openDetail(tenantObj)
 }
-
-const openDetail = (tenant: TenantInfo) => {
-  selectedTenant.value = { ...tenant, ai_config: { ...tenant.ai_config } }
+const openDetail = (tenant: TenantData) => {
+  selectedTenant.value = { ...tenant, ai_config: { ...(tenant.ai_config || {}) } }
   detailActiveTab.value = 'basic'
   showDetail.value = true
 }
 
-const saveTenantDetail = () => {
+const saveTenantDetail = async () => {
   if (!selectedTenant.value) return
-  const idx = tenants.value.findIndex(t => t.id === selectedTenant.value!.id)
-  if (idx >= 0) {
-    tenants.value[idx] = { ...selectedTenant.value }
+  try {
+    const updated = await apiUpdateTenant(selectedTenant.value.id, {
+      name: selectedTenant.value.name,
+      description: selectedTenant.value.description,
+      status: selectedTenant.value.status,
+      token_quota: selectedTenant.value.token_quota,
+      max_concurrency: selectedTenant.value.max_concurrency,
+      ai_config: selectedTenant.value.ai_config,
+      sso_enabled: selectedTenant.value.sso_enabled,
+      sso_endpoint: selectedTenant.value.sso_endpoint,
+      log_retention_days: selectedTenant.value.log_retention_days,
+      data_retention_days: selectedTenant.value.data_retention_days,
+      allow_custom_model: selectedTenant.value.allow_custom_model,
+      contact_name: selectedTenant.value.contact_name,
+      contact_email: selectedTenant.value.contact_email,
+      contact_phone: selectedTenant.value.contact_phone,
+    })
+    const idx = tenants.value.findIndex(t => t.id === selectedTenant.value!.id)
+    if (idx >= 0) tenants.value[idx] = { ...tenants.value[idx], ...updated }
+    showDetail.value = false
+    message.success(t('admin.tenants.saveSuccess'))
+  } catch (e: any) {
+    message.error(e.message || '保存失败')
   }
-  showDetail.value = false
-  message.success(t('admin.tenants.saveSuccess'))
 }
 
-const toggleTenantStatus = (id: string) => {
+const toggleTenantStatus = async (id: string) => {
   const tVal = tenants.value.find(x => x.id === id)
-  if (tVal) {
-    tVal.status = tVal.status === 'active' ? 'inactive' : 'active'
-    message.success(tVal.status === 'active' ? t('admin.tenants.enabled') : t('admin.tenants.disabled'))
+  if (!tVal) return
+  const newStatus = tVal.status === 'active' ? 'inactive' : 'active'
+  try {
+    await apiUpdateTenant(id, { status: newStatus })
+    tVal.status = newStatus
+    message.success(newStatus === 'active' ? t('admin.tenants.enabled') : t('admin.tenants.disabled'))
+  } catch (e: any) {
+    message.error(e.message || '操作失败')
   }
 }
 

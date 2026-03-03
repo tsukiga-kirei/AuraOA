@@ -79,22 +79,21 @@
     ↓
 系统设置 activeRole.role = 'business'
     ↓
-侧边栏生成：显示业务区域菜单
+调用 GET /api/auth/menu 获取当前角色可访问的菜单列表
     ↓
-② 查询 org_members 获取该用户的 OrgRole
-    ↓
-③ 合并 OrgRole.page_permissions
-    ↓
-④ 过滤菜单项：只显示有权限的页面
+侧边栏生成：根据 menus 中的 path 过滤菜单项
     ↓
 例如：张明有 ROLE-001 + ROLE-002
-      → page_permissions = [/overview, /dashboard, /cron, /archive, /settings]
+      → GetMenu 返回 [/overview, /dashboard, /cron, /archive, /settings]
       → 侧边栏显示全部业务功能
 
 例如：李芳只有 ROLE-001
-      → page_permissions = [/overview, /dashboard, /settings]
+      → GetMenu 返回 [/overview, /dashboard, /settings]
       → 侧边栏只显示仪表盘和工作台
 ```
+
+> 注：侧边栏菜单过滤统一通过 GetMenu API 驱动，不再在前端直接查询 org_members/org_roles。
+> 后端 GetMenu 根据用户的系统角色和组织角色综合计算可访问页面后返回。
 
 ---
 
@@ -741,7 +740,7 @@ Week 4: 对接前端
 
 1. **`.env` 文件**：将 `NUXT_PUBLIC_MOCK_MODE` 设为 `false`
 2. **`useAuth.ts`**：API 模式分支已预置，无需大改
-3. **`useSidebarMenu.ts`**：依赖 `mockOrgMembers` 和 `mockOrgRoles`，需改为 API 获取
+3. **`useSidebarMenu.ts`**：✅ 已改为使用 `useAuth()` 的 `menus`（GetMenu API）驱动菜单过滤，不再依赖 `useOrgApi`
 4. **`middleware/auth.ts`**：业务角色权限检查需从 API 获取，而非 mock 数据
 5. **`useMockData.ts`**：保留为开发模式后备，不删除
 

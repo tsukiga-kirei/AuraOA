@@ -172,19 +172,40 @@ func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
 	sessionKey := fmt.Sprintf("session:%s", user.ID.String())
 	s.rdb.Set(context.Background(), sessionKey, string(sessionJSON), 2*time.Hour)
 
-	//14. 建立响应
+	//14. Batch-fetch tenant names for all assignments
+	tenantNameCache := make(map[string]string) // tenantID string -> tenant name
+	if tenant != nil {
+		tenantNameCache[tenant.ID.String()] = tenant.Name
+	}
+	for _, a := range assignments {
+		if a.TenantID != nil {
+			tidStr := a.TenantID.String()
+			if _, exists := tenantNameCache[tidStr]; !exists {
+				if t, err := s.userRepo.FindTenantByID(*a.TenantID); err == nil {
+					tenantNameCache[tidStr] = t.Name
+				}
+			}
+		}
+	}
+
+	//15. 建立响应
 	roles := make([]dto.RoleInfo, len(assignments))
 	for i, a := range assignments {
 		var tid *string
+		var tname *string
 		if a.TenantID != nil {
 			s := a.TenantID.String()
 			tid = &s
+			if name, ok := tenantNameCache[s]; ok {
+				tname = &name
+			}
 		}
 		roles[i] = dto.RoleInfo{
-			ID:       a.ID.String(),
-			Role:     a.Role,
-			TenantID: tid,
-			Label:    a.Label,
+			ID:         a.ID.String(),
+			Role:       a.Role,
+			TenantID:   tid,
+			TenantName: tname,
+			Label:      a.Label,
 		}
 	}
 
@@ -202,10 +223,11 @@ func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
 		},
 		Roles: roles,
 		ActiveRole: dto.RoleInfo{
-			ID:       activeAssignment.ID.String(),
-			Role:     activeAssignment.Role,
-			TenantID: activeRoleClaim.TenantID,
-			Label:    activeAssignment.Label,
+			ID:         activeAssignment.ID.String(),
+			Role:       activeAssignment.Role,
+			TenantID:   activeRoleClaim.TenantID,
+			TenantName: activeRoleClaim.TenantName,
+			Label:      activeAssignment.Label,
 		},
 		Permissions: permissions,
 	}
@@ -415,22 +437,40 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 	sessionKey := fmt.Sprintf("session:%s", user.ID.String())
 	s.rdb.Set(ctx, sessionKey, string(sessionJSON), 2*time.Hour)
 
-	//7.返回SwitchRoleResponse
+	//7. Get menus for the new active role
+	menuResp, _ := s.GetMenu(activeRoleClaim, user.ID.String(), func() string {
+		if assignment.TenantID != nil {
+			return assignment.TenantID.String()
+		}
+		return ""
+	}())
+	var menuItems []dto.MenuItem
+	if menuResp != nil {
+		menuItems = menuResp.Menus
+	}
+
+	//8.返回SwitchRoleResponse
 	var tid *string
+	var tname *string
 	if assignment.TenantID != nil {
 		s := assignment.TenantID.String()
 		tid = &s
+		if tenant != nil {
+			tname = &tenant.Name
+		}
 	}
 
 	return &dto.SwitchRoleResponse{
 		AccessToken: accessToken,
 		ActiveRole: dto.RoleInfo{
-			ID:       assignment.ID.String(),
-			Role:     assignment.Role,
-			TenantID: tid,
-			Label:    assignment.Label,
+			ID:         assignment.ID.String(),
+			Role:       assignment.Role,
+			TenantID:   tid,
+			TenantName: tname,
+			Label:      assignment.Label,
 		},
 		Permissions: permissions,
+		Menus:       menuItems,
 	}, nil
 }
 
@@ -489,11 +529,37 @@ func (s *AuthService) getBusinessMenu(userID string, tenantID string) (*dto.Menu
 	}
 
 	//合并和删除所有角色的 page_permissions
+	// page_permissions is stored as a JSON string array like ["/overview", "/dashboard"]
 	seen := make(map[string]bool)
 	var menus []dto.MenuItem
 
+	// Path → label mapping for business menu items
+	pathLabels := map[string]struct{ key, label string }{
+		"/overview":  {key: "overview", label: "概览"},
+		"/dashboard": {key: "dashboard", label: "审核工作台"},
+		"/cron":      {key: "cron", label: "定时任务"},
+		"/archive":   {key: "archive", label: "归档复盘"},
+		"/settings":  {key: "settings", label: "个人设置"},
+	}
+
 	for _, member := range members {
 		for _, role := range member.Roles {
+			// Try to unmarshal as string array first (correct format)
+			var paths []string
+			if err := json.Unmarshal(role.PagePermissions, &paths); err == nil {
+				for _, p := range paths {
+					if !seen[p] {
+						seen[p] = true
+						info, ok := pathLabels[p]
+						if !ok {
+							info = struct{ key, label string }{key: p, label: p}
+						}
+						menus = append(menus, dto.MenuItem{Key: info.key, Label: info.label, Path: p})
+					}
+				}
+				continue
+			}
+			// Fallback: try to unmarshal as []dto.MenuItem (legacy format)
 			var items []dto.MenuItem
 			if err := json.Unmarshal(role.PagePermissions, &items); err != nil {
 				continue

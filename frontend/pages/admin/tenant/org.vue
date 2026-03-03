@@ -240,7 +240,7 @@ const removeRole = async (r: OrgRole) => {
   }
 }
 
-const getRoleMemberCount = (roleId: string) => members.value.filter(m => m.role_ids.includes(roleId)).length
+const getRoleMemberCount = (roleId: string) => members.value.filter(m => m.role_ids?.includes(roleId)).length
 
 //=====部门=====
 const showDeptModal = ref(false)

@@ -10,10 +10,11 @@ type LoginRequest struct {
 
 //RoleInfo 表示登录响应中的角色分配
 type RoleInfo struct {
-	ID       string  `json:"id"`
-	Role     string  `json:"role"`
-	TenantID *string `json:"tenant_id"`
-	Label    string  `json:"label"`
+	ID         string  `json:"id"`
+	Role       string  `json:"role"`
+	TenantID   *string `json:"tenant_id"`
+	TenantName *string `json:"tenant_name"`
+	Label      string  `json:"label"`
 }
 
 //UserInfo 表示登录响应中的用户详细信息
@@ -54,9 +55,10 @@ type SwitchRoleRequest struct {
 
 //SwitchRoleResponse 是 PUT /api/auth/switch-role 的响应正文
 type SwitchRoleResponse struct {
-	AccessToken string   `json:"access_token"`
-	ActiveRole  RoleInfo `json:"active_role"`
-	Permissions []string `json:"permissions"`
+	AccessToken string     `json:"access_token"`
+	ActiveRole  RoleInfo   `json:"active_role"`
+	Permissions []string   `json:"permissions"`
+	Menus       []MenuItem `json:"menus"`
 }
 
 //MenuItem 代表单个菜单项

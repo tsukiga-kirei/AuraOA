@@ -1,9 +1,72 @@
 import type { Department, OrgRole, OrgMember } from '~/types/org'
 
+// ============================================================
+// Backend DTO types (nested structure from Go service)
+// ============================================================
+interface ApiMemberUserInfo {
+  id: string; username: string; display_name: string
+  email: string; phone: string; avatar_url: string
+}
+interface ApiDepartmentResponse {
+  id: string; name: string; parent_id?: string | null
+  manager: string; sort_order: number
+  created_at: string; updated_at: string
+}
+interface ApiRoleResponse {
+  id: string; name: string; description: string
+  page_permissions: string[] | any; is_system: boolean
+  created_at: string; updated_at: string
+}
+interface ApiMemberResponse {
+  id: string; user: ApiMemberUserInfo; department: ApiDepartmentResponse
+  roles: ApiRoleResponse[]; position: string; status: string
+  created_at: string; updated_at: string
+}
+
+// ============================================================
+// DTO → Frontend model mappers
+// ============================================================
+function mapDepartment(d: ApiDepartmentResponse, memberCount: number = 0): Department {
+  return {
+    id: d.id, name: d.name, parent_id: d.parent_id ?? null,
+    manager: d.manager, member_count: memberCount,
+  }
+}
+
+function mapRole(r: ApiRoleResponse): OrgRole {
+  let perms: string[] = []
+  if (Array.isArray(r.page_permissions)) perms = r.page_permissions
+  else if (r.page_permissions) {
+    try { perms = typeof r.page_permissions === 'string' ? JSON.parse(r.page_permissions) : [] } catch { perms = [] }
+  }
+  return {
+    id: r.id, name: r.name, description: r.description,
+    page_permissions: perms, is_system: r.is_system,
+  }
+}
+
+function mapMember(m: ApiMemberResponse): OrgMember {
+  const roleIds = m.roles?.map(r => r.id) ?? []
+  const roleNames = m.roles?.map(r => r.name) ?? []
+  return {
+    id: m.id,
+    name: m.user?.display_name ?? m.user?.username ?? '',
+    username: m.user?.username ?? '',
+    department_id: m.department?.id ?? '',
+    department_name: m.department?.name ?? '',
+    role_ids: roleIds,
+    role_names: roleNames,
+    email: m.user?.email ?? '',
+    phone: m.user?.phone ?? '',
+    position: m.position ?? '',
+    status: (m.status as 'active' | 'disabled') ?? 'active',
+    created_at: m.created_at ?? '',
+  }
+}
+
 export const useOrgApi = () => {
   const { authFetch } = useAuth()
 
-  //反应式数据数组 — 从空开始，由 API 填充
   const departments = ref<Department[]>([])
   const roles = ref<OrgRole[]>([])
   const members = ref<OrgMember[]>([])
@@ -11,16 +74,16 @@ export const useOrgApi = () => {
   const error = ref<string | null>(null)
 
   // ============================================================
-  //部门
+  // Departments
   // ============================================================
 
   async function listDepartments(): Promise<Department[]> {
     loading.value = true
     error.value = null
     try {
-      const data = await authFetch<Department[]>('/api/tenant/org/departments')
-      departments.value = data
-      return data
+      const data = await authFetch<ApiDepartmentResponse[]>('/api/tenant/org/departments')
+      departments.value = data.map(d => mapDepartment(d))
+      return departments.value
     }
     catch (e: any) {
       error.value = e.message || 'Failed to load departments'
@@ -31,16 +94,18 @@ export const useOrgApi = () => {
   }
 
   async function createDepartment(dept: Omit<Department, 'id' | 'member_count'>): Promise<Department> {
-    const data = await authFetch<Department>('/api/tenant/org/departments', { method: 'POST', body: dept })
-    departments.value.push(data)
-    return data
+    const data = await authFetch<ApiDepartmentResponse>('/api/tenant/org/departments', { method: 'POST', body: dept })
+    const mapped = mapDepartment(data)
+    departments.value.push(mapped)
+    return mapped
   }
 
   async function updateDepartment(id: string, dept: Partial<Department>): Promise<Department> {
-    const data = await authFetch<Department>(`/api/tenant/org/departments/${id}`, { method: 'PUT', body: dept })
+    const data = await authFetch<ApiDepartmentResponse>(`/api/tenant/org/departments/${id}`, { method: 'PUT', body: dept })
+    const mapped = mapDepartment(data)
     const idx = departments.value.findIndex(d => d.id === id)
-    if (idx !== -1) departments.value[idx] = data
-    return data
+    if (idx !== -1) departments.value[idx] = mapped
+    return mapped
   }
 
   async function deleteDepartment(id: string): Promise<void> {
@@ -49,16 +114,16 @@ export const useOrgApi = () => {
   }
 
   // ============================================================
-  //角色
+  // Roles
   // ============================================================
 
   async function listRoles(): Promise<OrgRole[]> {
     loading.value = true
     error.value = null
     try {
-      const data = await authFetch<OrgRole[]>('/api/tenant/org/roles')
-      roles.value = data
-      return data
+      const data = await authFetch<ApiRoleResponse[]>('/api/tenant/org/roles')
+      roles.value = data.map(mapRole)
+      return roles.value
     }
     catch (e: any) {
       error.value = e.message || 'Failed to load roles'
@@ -69,16 +134,18 @@ export const useOrgApi = () => {
   }
 
   async function createRole(role: Omit<OrgRole, 'id'>): Promise<OrgRole> {
-    const data = await authFetch<OrgRole>('/api/tenant/org/roles', { method: 'POST', body: role })
-    roles.value.push(data)
-    return data
+    const data = await authFetch<ApiRoleResponse>('/api/tenant/org/roles', { method: 'POST', body: role })
+    const mapped = mapRole(data)
+    roles.value.push(mapped)
+    return mapped
   }
 
   async function updateRole(id: string, role: Partial<OrgRole>): Promise<OrgRole> {
-    const data = await authFetch<OrgRole>(`/api/tenant/org/roles/${id}`, { method: 'PUT', body: role })
+    const data = await authFetch<ApiRoleResponse>(`/api/tenant/org/roles/${id}`, { method: 'PUT', body: role })
+    const mapped = mapRole(data)
     const idx = roles.value.findIndex(r => r.id === id)
-    if (idx !== -1) roles.value[idx] = data
-    return data
+    if (idx !== -1) roles.value[idx] = mapped
+    return mapped
   }
 
   async function deleteRole(id: string): Promise<void> {
@@ -87,16 +154,16 @@ export const useOrgApi = () => {
   }
 
   // ============================================================
-  //会员
+  // Members
   // ============================================================
 
   async function listMembers(): Promise<OrgMember[]> {
     loading.value = true
     error.value = null
     try {
-      const data = await authFetch<OrgMember[]>('/api/tenant/org/members')
-      members.value = data
-      return data
+      const data = await authFetch<ApiMemberResponse[]>('/api/tenant/org/members')
+      members.value = data.map(mapMember)
+      return members.value
     }
     catch (e: any) {
       error.value = e.message || 'Failed to load members'
@@ -107,16 +174,33 @@ export const useOrgApi = () => {
   }
 
   async function createMember(member: Omit<OrgMember, 'id' | 'created_at'>): Promise<OrgMember> {
-    const data = await authFetch<OrgMember>('/api/tenant/org/members', { method: 'POST', body: member })
-    members.value.push(data)
-    return data
+    const body = {
+      username: member.username,
+      display_name: member.name,
+      password: 'Abc123456',
+      email: member.email,
+      phone: member.phone,
+      department_id: member.department_id,
+      role_ids: member.role_ids,
+      position: member.position,
+    }
+    const data = await authFetch<ApiMemberResponse>('/api/tenant/org/members', { method: 'POST', body })
+    const mapped = mapMember(data)
+    members.value.push(mapped)
+    return mapped
   }
 
   async function updateMember(id: string, member: Partial<OrgMember>): Promise<OrgMember> {
-    const data = await authFetch<OrgMember>(`/api/tenant/org/members/${id}`, { method: 'PUT', body: member })
+    const body: Record<string, any> = {}
+    if (member.department_id !== undefined) body.department_id = member.department_id
+    if (member.role_ids !== undefined) body.role_ids = member.role_ids
+    if (member.position !== undefined) body.position = member.position
+    if (member.status !== undefined) body.status = member.status
+    const data = await authFetch<ApiMemberResponse>(`/api/tenant/org/members/${id}`, { method: 'PUT', body })
+    const mapped = mapMember(data)
     const idx = members.value.findIndex(m => m.id === id)
-    if (idx !== -1) members.value[idx] = data
-    return data
+    if (idx !== -1) members.value[idx] = mapped
+    return mapped
   }
 
   async function deleteMember(id: string): Promise<void> {
@@ -124,38 +208,15 @@ export const useOrgApi = () => {
     members.value = members.value.filter(m => m.id !== id)
   }
 
-  /** 从API加载所有组织数据*/
   async function loadAll(): Promise<void> {
     await Promise.all([listDepartments(), listRoles(), listMembers()])
   }
 
   return {
-    //反应性数据
-    departments,
-    roles,
-    members,
-    loading,
-    error,
-
-    //加载全部
+    departments, roles, members, loading, error,
     loadAll,
-
-    //部门增删改查
-    listDepartments,
-    createDepartment,
-    updateDepartment,
-    deleteDepartment,
-
-    //角色增删改查
-    listRoles,
-    createRole,
-    updateRole,
-    deleteRole,
-
-    //会员增删改查
-    listMembers,
-    createMember,
-    updateMember,
-    deleteMember,
+    listDepartments, createDepartment, updateDepartment, deleteDepartment,
+    listRoles, createRole, updateRole, deleteRole,
+    listMembers, createMember, updateMember, deleteMember,
   }
 }
