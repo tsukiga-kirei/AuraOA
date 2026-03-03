@@ -95,18 +95,23 @@ export const useSidebarMenu = () => {
 
     if (perms.includes('tenant_admin')) {
       const pagePerms = menuPagePerms.value
-      //GetMenu 返回的路径与 TENANT_ITEMS key 完全匹配（如 /admin/tenant/org）
-      //有菜单数据时按权限过滤，否则显示全部（tenant_admin 菜单固定，不依赖 org API）
+      //从后端 menus 过滤，菜单未加载时不显示
       const filtered = pagePerms.size > 0
         ? TENANT_ITEMS.filter(item => pagePerms.has(item.key))
-        : TENANT_ITEMS
+        : []
       if (filtered.length) {
         result.push({ id: 'tenant', titleKey: 'sidebar.section.tenant', items: filtered })
       }
     }
 
     if (perms.includes('system_admin')) {
-      result.push({ id: 'system', titleKey: 'sidebar.section.system', items: SYSTEM_ITEMS })
+      const pagePerms = menuPagePerms.value
+      const filtered = pagePerms.size > 0
+        ? SYSTEM_ITEMS.filter(item => pagePerms.has(item.key))
+        : []
+      if (filtered.length) {
+        result.push({ id: 'system', titleKey: 'sidebar.section.system', items: filtered })
+      }
     }
 
     return result

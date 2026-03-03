@@ -483,34 +483,26 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 func (s *AuthService) GetMenu(activeRole jwtpkg.ActiveRoleClaim, userID string, tenantID string) (*dto.MenuResponse, error) {
 	switch activeRole.Role {
 	case "system_admin":
+		// system_admin 没有 org_member 记录，保持硬编码
 		return &dto.MenuResponse{
 			Menus: []dto.MenuItem{
-				{Key: "tenant-management", Label: "租户管理", Path: "/admin/tenants"},
-				{Key: "system-settings", Label: "系统设置", Path: "/admin/settings"},
-				{Key: "system-monitor", Label: "系统监控", Path: "/admin/monitor"},
+				{Key: "tenant-management", Label: "租户管理", Path: "/admin/system/tenants"},
+				{Key: "system-settings", Label: "系统设置", Path: "/admin/system/settings"},
 			},
 		}, nil
 
-	case "tenant_admin":
-		return &dto.MenuResponse{
-			Menus: []dto.MenuItem{
-				{Key: "org-management", Label: "组织管理", Path: "/admin/tenant/org"},
-				{Key: "rules-management", Label: "规则管理", Path: "/admin/tenant/rules"},
-				{Key: "data-management", Label: "数据管理", Path: "/admin/tenant/data"},
-				{Key: "tenant-settings", Label: "租户设置", Path: "/admin/tenant/settings"},
-			},
-		}, nil
-
-	case "business":
-		return s.getBusinessMenu(userID, tenantID)
+	case "tenant_admin", "business":
+		// tenant_admin 和 business 统一从 org_roles.page_permissions 读取
+		return s.getMenuFromOrgRoles(userID, tenantID)
 
 	default:
 		return &dto.MenuResponse{Menus: []dto.MenuItem{}}, nil
 	}
 }
 
-//getBusinessMenu 查询业务用户的 OrgMember + OrgRoles 并合并 page_permissions。
-func (s *AuthService) getBusinessMenu(userID string, tenantID string) (*dto.MenuResponse, error) {
+//getMenuFromOrgRoles 查询用户的 OrgMember + OrgRoles 并合并 page_permissions。
+//适用于 tenant_admin 和 business 角色。
+func (s *AuthService) getMenuFromOrgRoles(userID string, tenantID string) (*dto.MenuResponse, error) {
 	uid, err := uuid.Parse(userID)
 	if err != nil {
 		return &dto.MenuResponse{Menus: []dto.MenuItem{}}, nil
@@ -520,7 +512,7 @@ func (s *AuthService) getBusinessMenu(userID string, tenantID string) (*dto.Menu
 		return &dto.MenuResponse{Menus: []dto.MenuItem{}}, nil
 	}
 
-	//查询 org_members WHERE user_id = ? ANDtenant_id = ?, 预加载角色
+	//查询 org_members WHERE user_id = ? AND tenant_id = ?, 预加载角色
 	var members []model.OrgMember
 	if err := s.db.Where("user_id = ? AND tenant_id = ?", uid, tid).
 		Preload("Roles").
@@ -533,13 +525,17 @@ func (s *AuthService) getBusinessMenu(userID string, tenantID string) (*dto.Menu
 	seen := make(map[string]bool)
 	var menus []dto.MenuItem
 
-	// Path → label mapping for business menu items
+	// Path → label mapping for all menu items (business + tenant admin)
 	pathLabels := map[string]struct{ key, label string }{
-		"/overview":  {key: "overview", label: "概览"},
-		"/dashboard": {key: "dashboard", label: "审核工作台"},
-		"/cron":      {key: "cron", label: "定时任务"},
-		"/archive":   {key: "archive", label: "归档复盘"},
-		"/settings":  {key: "settings", label: "个人设置"},
+		"/overview":                 {key: "overview", label: "概览"},
+		"/dashboard":                {key: "dashboard", label: "审核工作台"},
+		"/cron":                     {key: "cron", label: "定时任务"},
+		"/archive":                  {key: "archive", label: "归档复盘"},
+		"/settings":                 {key: "settings", label: "个人设置"},
+		"/admin/tenant/rules":       {key: "rules-management", label: "规则管理"},
+		"/admin/tenant/org":         {key: "org-management", label: "组织管理"},
+		"/admin/tenant/data":        {key: "data-management", label: "数据管理"},
+		"/admin/tenant/user-configs": {key: "user-configs", label: "用户配置"},
 	}
 
 	for _, member := range members {

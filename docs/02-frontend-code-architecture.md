@@ -12,7 +12,7 @@
 ```typescript
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
-  ssr: true,                        // 服务端渲染
+  ssr: false,                       // SPA 模式（客户端渲染）
   modules: ['@ant-design-vue/nuxt'], // Ant Design Vue 自动导入
   css: ['~/assets/css/variables.css', '~/assets/css/global.css'],
   runtimeConfig: {
@@ -30,7 +30,7 @@ export default defineNuxtConfig({
 **关键点**：
 - `mockMode` 控制是否使用模拟数据（`'true'` 时不调用后端 API）
 - `apiBase` 指向 Go 后端服务地址
-- SSR 开启，但认证状态通过 `localStorage` 在客户端恢复
+- SSR 已关闭（SPA 模式），认证状态通过 `localStorage` 在客户端管理
 
 ### 1.2 app.vue 根组件
 
