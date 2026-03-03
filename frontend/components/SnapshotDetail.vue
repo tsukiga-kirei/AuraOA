@@ -6,7 +6,7 @@ import {
   CloseOutlined,
 } from '@ant-design/icons-vue'
 
-import { computed } from 'vue' // Start of added/modified lines
+import { computed } from 'vue' //添加/修改行的开始
 import { useI18n } from '~/composables/useI18n'
 
 const { t } = useI18n()
@@ -39,7 +39,7 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
           </div>
 
           <div class="drawer-body">
-            <!-- Summary -->
+            <!--概括-->
             <div class="detail-section">
               <div
                 class="detail-banner"
@@ -66,7 +66,7 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
               </div>
             </div>
 
-            <!-- Info grid -->
+            <!--信息网格-->
             <div class="detail-section">
               <h4 class="section-title">{{ t('snapshot.basicInfo') }}</h4>
               <div class="info-grid">
@@ -106,7 +106,7 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
               </div>
             </div>
 
-            <!-- Placeholder for rule details -->
+            <!--规则详细信息的占位符-->
             <div class="detail-section">
               <h4 class="section-title">{{ t('snapshot.auditReason') }}</h4>
               <div class="reasoning-block">
@@ -272,7 +272,7 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
   color: var(--color-text-secondary);
 }
 
-/* Transitions */
+/*过渡*/
 .drawer-enter-active {
   transition: opacity 0.2s ease;
 }

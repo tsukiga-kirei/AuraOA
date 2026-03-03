@@ -11,7 +11,7 @@ export const useTheme = () => {
     transitioning.value = true
     const next: ThemeMode = mode.value === 'light' ? 'dark' : 'light'
 
-    // Create a full-screen overlay for smooth color wash
+    //创建全屏叠加以实现平滑的色彩清洗
     const overlay = document.createElement('div')
     overlay.style.cssText = `
       position: fixed; inset: 0; z-index: 99999;
@@ -22,24 +22,24 @@ export const useTheme = () => {
     `
     document.body.appendChild(overlay)
 
-    // Trigger overlay fade-in
+    //触发叠加淡入
     requestAnimationFrame(() => {
       overlay.style.opacity = '1'
     })
 
-    // At peak of overlay, swap the theme
+    //在叠加的高峰期，交换主题
     setTimeout(() => {
       mode.value = next
       localStorage.setItem('theme', next)
       document.documentElement.setAttribute('data-theme', next)
     }, 200)
 
-    // Fade out overlay
+    //淡出叠加
     setTimeout(() => {
       overlay.style.opacity = '0'
     }, 350)
 
-    // Cleanup
+    //清理
     setTimeout(() => {
       overlay.remove()
       transitioning.value = false

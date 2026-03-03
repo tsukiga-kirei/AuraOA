@@ -1,4 +1,4 @@
-// types/auth.ts — 认证相关类型
+//types/auth.ts — 认证相关类型
 
 export type UserRole = 'business' | 'tenant_admin' | 'system_admin'
 export type PermissionGroup = 'business' | 'tenant_admin' | 'system_admin'

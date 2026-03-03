@@ -88,7 +88,7 @@ const handleLogin = async () => {
     </button>
 
     <div class="login-container">
-      <!-- Left: Branding -->
+      <!--左：品牌-->
       <div class="login-branding">
         <div class="login-branding-content">
           <div class="login-logo">
@@ -104,7 +104,7 @@ const handleLogin = async () => {
         </div>
       </div>
 
-      <!-- Right: Login Form -->
+      <!--右：登录表格-->
       <div class="login-form-wrapper">
         <div class="login-form-inner">
           <div class="login-form-header">
@@ -112,7 +112,7 @@ const handleLogin = async () => {
             <p>{{ t('login.selectIdentity') }}</p>
           </div>
 
-          <!-- Portal selector: horizontal pill tabs, fixed size -->
+          <!--入口选择器：水平药丸选项卡，固定尺寸-->
           <div class="portal-selector">
             <div
               v-for="portal in portals"
@@ -127,7 +127,7 @@ const handleLogin = async () => {
             </div>
           </div>
 
-          <!-- Active portal description (outside selector, fixed position) -->
+          <!--活动门户描述（外部选择器，固定位置）-->
           <div class="portal-active-desc">
             <span class="portal-active-dot" :style="{ background: currentPortal.color }" />
             {{ currentPortal.desc }}
@@ -211,7 +211,7 @@ const handleLogin = async () => {
   overflow: hidden; box-shadow: 0 25px 60px rgba(0,0,0,0.4);
 }
 
-/* Left branding */
+/*左品牌*/
 .login-branding {
   width: 360px; flex-shrink: 0;
   background: linear-gradient(135deg, rgba(79,70,229,0.9), rgba(124,58,237,0.9));
@@ -236,7 +236,7 @@ const handleLogin = async () => {
 .login-feature-item { display: flex; align-items: center; gap: 12px; color: rgba(255,255,255,0.9); font-size: 14px; }
 .login-feature-dot { width: 8px; height: 8px; border-radius: 50%; background: #22d3ee; flex-shrink: 0; }
 
-/* Right form */
+/*正确的形式*/
 .login-form-wrapper {
   flex: 1; background: var(--color-bg-card);
   padding: 36px 40px; display: flex; flex-direction: column;
@@ -247,7 +247,7 @@ const handleLogin = async () => {
 .login-form-header h2 { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0 0 6px; }
 .login-form-header p { font-size: 14px; color: var(--color-text-tertiary); margin: 0; }
 
-/* ===== Portal Pill Selector ===== */
+/*===== 传送丸选择器 =====*/
 .portal-selector {
   display: flex; gap: 8px; margin-bottom: 8px;
   overflow-x: auto; scrollbar-width: none;
@@ -294,7 +294,7 @@ const handleLogin = async () => {
   color: var(--pill-color);
 }
 
-/* Active description line */
+/*活动描述行*/
 .portal-active-desc {
   display: flex; align-items: center; gap: 6px;
   font-size: 12px; color: var(--color-text-tertiary);
@@ -306,7 +306,7 @@ const handleLogin = async () => {
   transition: background 0.25s ease;
 }
 
-/* Form */
+/*形式*/
 .login-form :deep(.ant-form-item) { margin-bottom: 16px; }
 .login-input {
   height: 46px !important; border-radius: var(--radius-lg) !important;
@@ -317,7 +317,7 @@ const handleLogin = async () => {
 }
 .login-input :deep(input) {
   height: 100% !important;
-  line-height: normal !important; /* Allow flex container to center */
+  line-height: normal !important; /*允许弹性容器居中*/
 }
 .login-input:hover { border-color: var(--color-text-tertiary) !important; }
 :deep(.ant-input-affix-wrapper:focus),
@@ -375,19 +375,19 @@ const handleLogin = async () => {
   .login-container {
     min-height: auto;
     border-radius: 20px;
-    height: auto; /* Allow content to dictate height */
-    margin: 20px 0; /* Add margin to prevent sticking to edges */
+    height: auto; /*允许内容决定高度*/
+    margin: 20px 0; /*添加边距以防止粘在边缘上*/
   }
   .login-form-wrapper { padding: 32px 24px; border-radius: 20px; }
   .login-mobile-brand { display: flex; }
 }
 
 @media (max-width: 480px) {
-  .login-page { align-items: flex-start; overflow-y: auto; } /* Allow scrolling on small screens */
+  .login-page { align-items: flex-start; overflow-y: auto; } /*允许在小屏幕上滚动*/
   .login-container {
     max-width: calc(100vw - 24px);
-    margin: 60px auto 20px; /* Top margin for mobile brand */
-    box-shadow: 0 10px 30px rgba(0,0,0,0.15); /* Softer shadow */
+    margin: 60px auto 20px; /*移动品牌利润率最高*/
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15); /*阴影更柔和*/
   }
   .login-form-wrapper { padding: 24px 20px; }
   .portal-pill-title { font-size: 12px; }

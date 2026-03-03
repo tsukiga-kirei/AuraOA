@@ -1,9 +1,8 @@
 /**
- * useLayoutPrefs — centralized layout personalization state.
+ * useLayoutPrefs — 集中布局个性化状态。
  *
- * Persists sidebar collapsed state in localStorage so it survives
- * page navigations and reloads.
- */
+ * 在 localStorage 中保留侧边栏折叠状态，以便它能够生存
+ * 页面导航和重新加载。*/
 export const useLayoutPrefs = () => {
     const STORAGE_KEY = 'layout_prefs'
 
@@ -25,7 +24,7 @@ export const useLayoutPrefs = () => {
                 const saved = JSON.parse(raw) as Partial<LayoutPrefs>
                 prefs.value = { ...defaults, ...saved }
             }
-        } catch { /* ignore corrupt data */ }
+        } catch { /*忽略损坏的数据*/ }
     }
 
     const persist = () => {

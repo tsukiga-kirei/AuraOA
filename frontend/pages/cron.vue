@@ -23,7 +23,7 @@ const { mockCronTasks, mockCronTaskTypeConfigs } = useMockData()
 
 const tasks = ref<CronTask[]>(JSON.parse(JSON.stringify(mockCronTasks)))
 
-// batch_audit config from tenant settings
+//租户设置中的batch_audit配置
 const batchAuditConfig = computed(() =>
   mockCronTaskTypeConfigs.find(c => c.task_type === 'batch_audit')
 )
@@ -33,7 +33,7 @@ const showCreate = ref(false)
 const showEdit = ref(false)
 const editingTask = ref<CronTask | null>(null)
 
-// ===== Cron expression builder =====
+//===== Cron 表达式生成器 =====
 const cronPresets = computed(() => [
   { label: t('cron.preset.weekday9'), value: '0 9 * * 1-5' },
   { label: t('cron.preset.weekday18'), value: '0 18 * * 1-5' },
@@ -54,7 +54,7 @@ const weekdayOptions = computed(() => [
   { label: t('cron.weekday.sun'), value: '0' },
 ])
 
-// Default push email from personal settings
+//个人设置中的默认推送电子邮件
 const defaultPushEmail = 'zhangming@example.com'
 
 const newTask = ref({
@@ -64,17 +64,17 @@ const newTask = ref({
   push_email: defaultPushEmail,
 })
 
-// Whether the current new task type needs email push
+//当前新任务类型是否需要邮件推送
 const newTaskNeedsEmail = computed(() => newTask.value.task_type !== 'batch_audit')
 
-// Whether a given task type needs email push
+//给定任务类型是否需要电子邮件推送
 const taskNeedsEmail = (taskType: string) => taskType !== 'batch_audit'
 
 const buildCronFromParts = () => {
   return `${cronParts.value.minute} ${cronParts.value.hour} ${cronParts.value.day} ${cronParts.value.month} ${cronParts.value.weekday}`
 }
 
-// Expand weekday field into a Set of individual day numbers (handles ranges like "1-5" and lists like "1,3,5")
+//将工作日字段扩展为一组单独的日期数字（处理“1-5”等范围和“1,3,5”等列表）
 const expandWeekdays = (weekdayStr: string): Set<string> => {
   if (weekdayStr === '*') return new Set(['0','1','2','3','4','5','6'])
   const result = new Set<string>()
@@ -92,12 +92,12 @@ const expandWeekdays = (weekdayStr: string): Set<string> => {
   return result
 }
 
-// Check if a weekday chip is active in the current weekday field
+//检查当前工作日字段中的工作日芯片是否处于活动状态
 const isWeekdayActive = (weekdayStr: string, dayValue: string): boolean => {
   return expandWeekdays(weekdayStr).has(dayValue)
 }
 
-// Toggle a weekday chip: rebuild as comma-separated list
+//切换工作日芯片：重建为逗号分隔列表
 const toggleWeekday = (partsRef: typeof cronParts.value, dayValue: string) => {
   const current = expandWeekdays(partsRef.weekday)
   if (current.has(dayValue)) {
@@ -108,7 +108,7 @@ const toggleWeekday = (partsRef: typeof cronParts.value, dayValue: string) => {
   if (current.size === 0 || current.size === 7) {
     partsRef.weekday = '*'
   } else {
-    // Sort numerically and join
+    //按数字排序并连接
     partsRef.weekday = [...current].map(Number).sort((a, b) => a - b).map(String).join(',')
   }
 }
@@ -127,7 +127,7 @@ watch(() => newTask.value.cron_mode, (val) => {
   }
 })
 
-// ===== Cron description & next run =====
+//===== Cron 描述和下次运行 =====
 const describeCron = (expr: string): string => {
   const map: Record<string, string> = {
     '0 9 * * 1-5': t('cron.describe.weekday9'),
@@ -143,7 +143,7 @@ const describeCron = (expr: string): string => {
 }
 
 const calcNextRuns = (expr: string, count: number = 3): string[] => {
-  const now = new Date(2026, 1, 11, 10, 0) // Feb 11, 2026 (Wednesday)
+  const now = new Date(2026, 1, 11, 10, 0) //2026年2月11日（星期三）
   const parts = expr.split(' ')
   if (parts.length !== 5) return [t('cron.describe.exprError')]
   const [minStr, hourStr, dayStr, monthStr, weekdayStr] = parts
@@ -160,13 +160,13 @@ const calcNextRuns = (expr: string, count: number = 3): string[] => {
   const results: string[] = []
   const candidate = new Date(now)
   candidate.setHours(h, m, 0, 0)
-  // If today's time already passed, start from tomorrow
+  //如果今天的时间已经过去了，就从明天开始
   if (candidate <= now) candidate.setDate(candidate.getDate() + 1)
 
   let safety = 0
   while (results.length < count && safety < 400) {
     safety++
-    const dow = candidate.getDay() // 0=Sun
+    const dow = candidate.getDay() //0=太阳
     const dom = candidate.getDate()
     const mon = candidate.getMonth() + 1
 
@@ -187,7 +187,7 @@ const calcNextRuns = (expr: string, count: number = 3): string[] => {
 const previewNextRuns = computed(() => calcNextRuns(newTask.value.cron_expression))
 const editPreviewNextRuns = computed(() => editingTask.value ? calcNextRuns(editingTask.value.cron_expression) : [])
 
-// ===== Edit cron parts for edit modal =====
+//===== 编辑 cron 部分以进行编辑模式 =====
 const editCronParts = ref({ minute: '0', hour: '9', day: '*', month: '*', weekday: '1-5' })
 const editCronMode = ref('0 9 * * 1-5')
 
@@ -206,7 +206,7 @@ watch(editCronMode, (val) => {
   }
 })
 
-// ===== Task CRUD =====
+//===== 任务增删改查 =====
 const deleteTask = (id: string) => {
   const task = tasks.value.find(t => t.id === id)
   if (task?.is_builtin) {
@@ -251,11 +251,11 @@ const createTask = () => {
 
 const openEdit = (task: CronTask) => {
   editingTask.value = JSON.parse(JSON.stringify(task))
-  // Default push email from personal settings if empty
+  //如果为空，则来自个人设置的默认推送电子邮件
   if (!editingTask.value!.push_email) {
     editingTask.value!.push_email = defaultPushEmail
   }
-  // Determine cron mode
+  //确定 cron 模式
   const isPreset = cronPresets.value.find(p => p.value === task.cron_expression && p.value !== 'custom')
   editCronMode.value = isPreset ? task.cron_expression : 'custom'
   if (!isPreset) {
@@ -318,7 +318,7 @@ const taskTypeOptions = computed(() => [
       </a-button>
     </div>
 
-    <!-- Task cards -->
+    <!--任务卡-->
     <div class="task-grid">
       <div
         v-for="task in tasks"
@@ -415,7 +415,7 @@ const taskTypeOptions = computed(() => [
       </div>
     </div>
 
-    <!-- Create modal -->
+    <!--创建模态-->
     <a-modal
       v-model:open="showCreate"
       :title="t('cron.createTitle')"
@@ -500,7 +500,7 @@ const taskTypeOptions = computed(() => [
       </a-form>
     </a-modal>
 
-    <!-- Edit modal -->
+    <!--编辑模态-->
     <a-modal
       v-model:open="showEdit"
       :title="t('cron.editTitle')"
@@ -790,7 +790,7 @@ const taskTypeOptions = computed(() => [
   background: var(--color-bg-card);
 }
 
-/* Cron builder */
+/*计划任务生成器*/
 .cron-builder {
   background: var(--color-bg-page);
   border-radius: var(--radius-md);
@@ -854,7 +854,7 @@ const taskTypeOptions = computed(() => [
   color: var(--color-primary);
 }
 
-/* Next run preview */
+/*下次运行预览*/
 .next-run-preview {
   display: flex;
   gap: 10px;

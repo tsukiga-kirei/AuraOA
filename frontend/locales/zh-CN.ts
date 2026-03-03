@@ -2,18 +2,18 @@
  * 简体中文翻译
  */
 export default {
-    // ===== App-level =====
+    //=====应用程序级别=====
     'app.name': 'OA智审',
     'app.title': 'OA智审 - 流程智能审核平台',
     'app.description': 'OA流程智能审核平台 - 智能化审批辅助系统',
 
-    // ===== Sidebar sections =====
+    //===== 侧边栏部分 =====
     'sidebar.section.overview': '仪表盘',
     'sidebar.section.business': '工作台',
     'sidebar.section.tenant': '租户管理',
     'sidebar.section.system': '系统管理',
 
-    // ===== Sidebar menu items =====
+    //===== 侧边栏菜单项 =====
     'menu.overview': '仪表盘',
     'menu.dashboard': '审核工作台',
     'menu.cron': '定时任务',
@@ -25,20 +25,20 @@ export default {
     'menu.system.tenants': '租户管理',
     'menu.system.settings': '系统设置',
 
-    // ===== Sidebar user dropdown =====
+    //===== 侧边栏用户下拉菜单 =====
     'sidebar.personalSettings': '个人设置',
     'sidebar.logout': '退出登录',
     'sidebar.closeMenu': '关闭菜单',
     'sidebar.defaultUser': '用户',
 
-    // ===== Header =====
+    //=====标题=====
     'header.toggleTheme': '切换主题',
     'header.lightMode': '切换到浅色模式',
     'header.darkMode': '切换到深色模式',
     'header.notifications': '通知',
     'header.switchRole': '切换角色',
 
-    // ===== Settings page =====
+    //=====设置页面=====
     'settings.title': '个人设置',
     'settings.subtitle': '管理您的账户信息与审核偏好',
     'settings.tab.profile': '基本信息',
@@ -47,7 +47,7 @@ export default {
     'settings.tab.cron': '定时任务',
     'settings.tab.archive': '归档复盘',
 
-    // Profile
+    //轮廓
     'settings.profile.nickname': '昵称',
     'settings.profile.nicknamePlaceholder': '请输入昵称',
     'settings.profile.email': '邮箱',
@@ -68,12 +68,12 @@ export default {
     'settings.profile.currentTenant': '当前租户',
     'settings.profile.sysAdminDesc': '全局系统管理员，可管理所有租户、系统设置与全局监控。',
 
-    // Language settings (integrated into profile)
+    //语言设置（集成到配置文件中）
     'settings.language.title': '界面语言',
     'settings.language.subtitle': '选择您偏好的界面显示语言',
     'settings.language.switchSuccess': '语言已切换',
 
-    // Security / Password (integrated into profile)
+    //安全/密码（集成到配置文件中）
     'settings.security.title': '修改密码',
     'settings.security.subtitle': '定期修改密码以保护账户安全',
     'settings.security.currentPassword': '当前密码',
@@ -95,7 +95,7 @@ export default {
     'settings.security.strength.strong': '强',
     'settings.security.loginHistory': '登录历史',
 
-    // Dashboard prefs
+    //仪表板首选项
     'settings.dashboard.widgetConfig': '仪表盘组件配置',
     'settings.dashboard.restoreDefault': '恢复默认',
     'settings.dashboard.restoreSuccess': '已恢复默认布局',
@@ -105,7 +105,7 @@ export default {
     'settings.dashboard.permTenant': '租户',
     'settings.dashboard.permSystem': '系统',
 
-    // Workbench
+    //工作台
     'settings.workbench.myProcesses': '我的审核流程',
     'settings.workbench.personalConfig': '个人审核配置',
     'settings.workbench.flowPath': '流程路径',
@@ -143,9 +143,9 @@ export default {
     'settings.workbench.kbHybrid': '混合模式',
     'settings.workbench.selectProcess': '请选择左侧流程查看配置',
 
-    // Cron settings（已简化 — 个人设置仅保留默认推送邮箱）
+    //cron 设置（已简化 — 个人设置仅保留默认个体目标）
 
-    // Archive settings
+    //存档设置
     'settings.archive.reviewProcesses': '复核流程',
     'settings.archive.personalReviewConfig': '个人复核配置',
     'settings.archive.fieldsTab': '复核字段',
@@ -171,12 +171,12 @@ export default {
     'settings.archive.strictnessTitle': '复核尺度',
     'settings.archive.selectProcess': '请选择左侧流程查看复核配置',
 
-    // Rule scopes
+    //规则范围
     'rule.scope.mandatory': '强制',
     'rule.scope.defaultOn': '默认开启',
     'rule.scope.defaultOff': '默认关闭',
 
-    // Field types
+    //字段类型
     'field.type.text': '文本',
     'field.type.number': '数字',
     'field.type.date': '日期',
@@ -184,12 +184,12 @@ export default {
     'field.type.textarea': '多行文本',
     'field.type.file': '文件',
 
-    // Role labels
+    //角色标签
     'role.business': '业务用户',
     'role.tenantAdmin': '租户管理员',
     'role.systemAdmin': '系统管理员',
 
-    // ===== RuleEditor =====
+    //===== 规则编辑器 =====
     'ruleEditor.editRule': '编辑规则',
     'ruleEditor.addRule': '新增规则',
     'ruleEditor.save': '保存',
@@ -207,7 +207,7 @@ export default {
     'ruleEditor.priorityCurrent': '当前',
     'ruleEditor.priorityHigh': '高',
 
-    // ===== System Monitor (merged into dashboard) =====
+    //=====系统监视器（合并到仪表板）=====
     'overview.monitorMetrics': '运行指标',
     'overview.resizeWidget': '调整组件大小',
     'overview.monitor.apiSuccessRate': 'API 成功率',
@@ -219,7 +219,7 @@ export default {
     'overview.monitor.recentAlerts': '最近告警',
     'overview.monitor.noAlerts': '暂无告警',
 
-    // ===== Page labels (for permissions display) =====
+    //=====页面标签（用于权限显示）=====
     'page./overview': '仪表盘',
     'page./dashboard': '审核工作台',
     'page./cron': '定时任务',
@@ -232,7 +232,7 @@ export default {
     'page./admin/system/tenants': '租户管理',
     'page./admin/system/settings': '系统设置',
 
-    // ===== Common =====
+    //=====常见=====
     'common.save': '保存',
     'common.cancel': '取消',
     'common.confirm': '确认',
@@ -261,7 +261,7 @@ export default {
     'common.failed': '操作失败',
     'common.copySuccess': '已复制到剪贴板',
 
-    // ===== Process types =====
+    //=====流程类型=====
     'processType.purchase': '采购审批',
     'processType.expense': '费用报销',
     'processType.contract': '合同审批',
@@ -269,12 +269,12 @@ export default {
     'processType.budget': '预算审批',
     'processType.engineering': '工程审批',
 
-    // ===== Cron task types =====
+    //===== Cron 任务类型 =====
     'cronTaskType.batchAudit': '批量审核',
     'cronTaskType.dailyReport': '日报推送',
     'cronTaskType.weeklyReport': '周报推送',
 
-    // ===== Login page =====
+    //=====登录页面=====
     'login.title': '智能审核辅助平台',
     'login.subtitle': '基于 AI 的 OA 流程智能审核系统',
     'login.username': '用户名',
@@ -288,7 +288,7 @@ export default {
     'login.logging': '登录中...',
     'login.failed': '用户名或密码错误',
 
-    // ===== Overview page =====
+    //=====概览页面=====
     'overview.title': '仪表盘',
     'overview.subtitle': '概览与数据可视化',
     'overview.welcomeTitle': '欢迎回来',
@@ -310,7 +310,7 @@ export default {
     'overview.time': '时间',
     'overview.count': '次',
 
-    // Overview page widgets
+    //概览页面小部件
     'overview.layoutSaved': '仪表盘布局已保存',
     'overview.greeting.lateNight': '夜深了',
     'overview.greeting.morning': '早上好',
@@ -360,7 +360,7 @@ export default {
     'overview.calls': '调用量',
     'overview.latency': '延迟',
 
-    // ===== Dashboard (workbench) page =====
+    //===== 仪表板（工作台）页面 =====
     'dashboard.title': '审核工作台',
     'dashboard.subtitle': '管理和审核 OA 流程',
     'dashboard.tab.pending': '待审核',
@@ -467,7 +467,7 @@ export default {
     'dashboard.auditStatus.return': '建议退回',
     'dashboard.auditStatus.review': '建议复核',
 
-    // Login page extras
+    //登录页面附加内容
     'login.emptyWarning': '请输入用户名和密码',
     'login.successRedirect': '登录成功，正在跳转...',
     'login.welcomeBack': '欢迎回来',
@@ -485,7 +485,7 @@ export default {
     'login.portal.systemAdmin': '系统管理员',
     'login.portal.systemAdminDesc': '租户管理 · 全局监控 · 系统设置',
 
-    // ===== Cron page (legacy keys) =====
+    //===== Cron 页面（旧键）=====
     'cron.taskName': '任务名称',
     'cron.schedule': '执行计划',
     'cron.lastRun': '上次执行',
@@ -496,7 +496,7 @@ export default {
     'cron.run': '立即执行',
     'cron.failed': '失败',
 
-    // ===== Archive page (legacy keys) =====
+    //===== 存档页面（旧密钥）=====
     'archive.processId': '流程编号',
     'archive.processName': '流程名称',
     'archive.applicant': '申请人',
@@ -505,7 +505,7 @@ export default {
     'archive.reviewAction': '复查',
     'archive.noData': '暂无归档流程',
 
-    // ===== Tenant Admin pages =====
+    //===== 租户管理页面 =====
     'tenant.rules.title': '规则配置',
     'tenant.rules.subtitle': '管理租户审核规则',
     'tenant.rules.addRule': '新增规则',
@@ -531,7 +531,7 @@ export default {
     'tenant.userConfigs.title': '用户偏好',
     'tenant.userConfigs.subtitle': '管理用户个性化配置',
 
-    // ===== System Admin pages =====
+    //=====系统管理页面=====
     'system.tenants.title': '租户管理',
     'system.tenants.subtitle': '管理系统中的所有租户',
     'system.tenants.addTenant': '新增租户',
@@ -551,7 +551,7 @@ export default {
     'system.settings.testSuccess': '连接成功',
     'system.settings.testFailed': '连接失败',
 
-    // ===== AuditPanel =====
+    //===== 审核面板 =====
     'auditPanel.title': 'AI 审核结果',
     'auditPanel.score': '评分',
     'auditPanel.recommendation': '建议',
@@ -566,34 +566,34 @@ export default {
     'auditPanel.startAudit': '选择待办流程开始审核',
     'auditPanel.auditing': 'AI 正在分析中...',
 
-    // ===== SnapshotDetail =====
+    //=====快照详情=====
     'snapshot.title': '快照详情',
     'snapshot.createdAt': '创建时间',
     'snapshot.processInfo': '流程信息',
     'snapshot.auditResult': '审核结果',
 
-    // ===== RuleList =====
+    //=====规则列表=====
     'ruleList.title': '规则列表',
     'ruleList.addRule': '新增规则',
     'ruleList.editRule': '编辑规则',
     'ruleList.deleteRule': '删除规则',
     'ruleList.deleteConfirm': '确定要删除该规则吗？',
 
-    // ===== CronHistory =====
+    //===== CronHistory =====
     'cronHistory.title': '执行记录',
     'cronHistory.time': '执行时间',
     'cronHistory.status': '状态',
     'cronHistory.duration': '耗时',
     'cronHistory.noHistory': '暂无执行记录',
 
-    // ===== Capabilities =====
+    //=====能力=====
     'admin.settings.capability.text': '文本生成',
     'admin.settings.capability.code': '代码生成',
     'admin.settings.capability.reasoning': '逻辑推理',
     'admin.settings.capability.vision': '视觉分析',
     'admin.settings.capability.analysis': '数据分析',
 
-    // ===== Cron page extended =====
+    //===== Cron 页面扩展 =====
     'cron.pageTitle': '定时任务中心',
     'cron.pageSubtitle': 'Cron 批量审核与推送管理',
     'cron.createTask': '新建任务',
@@ -671,7 +671,7 @@ export default {
     'cron.describe.pending': '待计算',
     'cron.describe.noMatch': '无匹配的执行时间',
 
-    // ===== Archive page extended =====
+    //===== 存档页面扩展 =====
     'archive.title': '归档复盘',
     'archive.subtitle': '已归档流程的全流程合规复核 · AI 重新审计',
     'archive.filter': '筛选',
@@ -724,7 +724,7 @@ export default {
     'archive.exporting': '正在导出 {0} 格式的合规复核报告...',
     'archive.jumpingToOA': '正在跳转 OA 系统查看流程 {0}...',
 
-    // ===== Admin - Tenant index (rule config) =====
+    //===== 管理员 - 租户索引（规则配置） =====
     'admin.ruleConfig.title': '规则配置',
     'admin.ruleConfig.subtitle': '以流程为维度，配置审核规则、定时任务参数与归档复盘',
     'admin.ruleConfig.tabAudit': '审核工作台',
@@ -792,7 +792,7 @@ export default {
     'admin.ruleConfig.systemPrompt': '系统提示词（System Prompt）',
     'admin.ruleConfig.promptPlaceholder': '输入 AI 审核的系统提示词...',
 
-    // Two-phase prompt config
+    //两阶段提示配置
     'admin.ruleConfig.phase1Label': '阶段一：深度推理',
     'admin.ruleConfig.phase2Label': '阶段二：结构化提取',
     'admin.ruleConfig.reasoningPrompt': '推理提示词',
@@ -802,7 +802,7 @@ export default {
     'admin.ruleConfig.extractionPromptDesc': '第二阶段将推理结果 + 原始规则列表一起输入，要求 AI 严格按 JSON Schema 输出建议操作、逐条规则校验结果、风险点和改进建议',
     'admin.ruleConfig.extractionPromptPlaceholder': '输入提取阶段的系统提示词，AI 将基于此提示词输出结构化结论...',
 
-    // Variable descriptions
+    //变量描述
     'admin.ruleConfig.varMainTableDesc': '主表字段数据（JSON 格式），包含流程表单的主要字段信息',
     'admin.ruleConfig.varDetailTablesDesc': '明细表数据（JSON 数组），可能包含多个明细表的详细记录',
     'admin.ruleConfig.varRulesDesc': '当前生效的规则列表（JSON），包含规则内容、优先级和启用状态',
@@ -810,7 +810,7 @@ export default {
     'admin.ruleConfig.varFlowGraphDesc': '流程图完整节点信息（JSON），包含流程的全部审批节点、顺序和状态',
     'admin.ruleConfig.varCurrentNodeDesc': '当前审批节点名称，标识流程当前所处的审批环节',
 
-    // Strictness preset editor
+    //严格预设编辑器
     'admin.ruleConfig.editPresets': '编辑预设提示词',
     'admin.ruleConfig.editPresetsTitle': '审核尺度预设提示词',
     'admin.ruleConfig.editPresetsDesc': '每种审核尺度对应一组预设指令，后端会自动追加到推理和提取提示词末尾。修改后保存即可生效。',
@@ -842,7 +842,7 @@ export default {
     'admin.ruleConfig.processNamePlaceholder': '如：采购审批、费用报销',
     'admin.ruleConfig.flowPath': '审批路径',
     'admin.ruleConfig.flowPathPlaceholder': '如：部门经理 → 财务总监 → 总经理',
-    // Cron tab in admin
+    //管理中的 Cron 选项卡
     'admin.ruleConfig.taskType': '任务类型',
     'admin.ruleConfig.cronEnabled': '已启用',
     'admin.ruleConfig.cronDisabled': '已禁用',
@@ -884,7 +884,7 @@ export default {
     'admin.ruleConfig.modifyTemplateDesc': '允许用户自定义推送内容的模板结构',
     'admin.ruleConfig.cronSaved': '定时任务配置已保存',
     'admin.ruleConfig.selectTask': '请选择左侧任务类型查看配置',
-    // Archive tab in admin
+    //管理中的存档选项卡
     'admin.ruleConfig.reviewProcess': '复核流程',
     'admin.ruleConfig.archiveConfig': '归档复盘配置',
     'admin.ruleConfig.reviewFields': '复核字段',
@@ -920,7 +920,7 @@ export default {
     'admin.ruleConfig.ruleContent': '规则内容',
     'admin.ruleConfig.ruleScope': '规则范围',
 
-    // ===== Admin - System Settings =====
+    //===== 管理员 - 系统设置 =====
     'admin.settings.title': '系统设置',
     'admin.settings.subtitle': '配置 OA 系统集成、AI 模型管理与平台全局参数',
     'admin.settings.enabledOA': '已启用 OA 系统',
@@ -994,7 +994,7 @@ export default {
     'admin.settings.smtpUserPlaceholder': '发件人地址',
     'admin.settings.saveAll': '保存所有设置',
     'admin.settings.saved': '系统配置已保存',
-    // OA Database Connection management
+    //OA数据库连接管理
     'admin.settings.enabledOADb': '已启用数据库连接',
     'admin.settings.oaDbDesc': '管理公司级 OA 系统数据库连接，新增后可供各租户（分部/分公司）选择使用',
     'admin.settings.addOADb': '新增数据库连接',
@@ -1013,7 +1013,7 @@ export default {
     'admin.settings.oaDbDeleted': '数据库连接已删除',
     'admin.settings.confirmDeleteOADb': '确认删除此数据库连接？',
     'admin.settings.noOADb': '暂无数据库连接，请点击上方按钮新增',
-    // AI Model management
+    //人工智能模型管理
     'admin.settings.addAIModel': '新增模型',
     'admin.settings.aiModelDisplayName': '模型显示名称',
     'admin.settings.aiModelDisplayNamePlaceholder': '如：Qwen2.5-72B（本地）',
@@ -1034,7 +1034,7 @@ export default {
     'admin.settings.dbConnFailed': '数据库连接测试失败，请检查配置',
     'admin.settings.modelConnSuccess': 'AI 模型端点连接测试成功',
 
-    // ===== Admin - Tenant User Configs =====
+    //===== 管理员 - 租户用户配置 =====
     'admin.userConfigs.title': '用户偏好',
     'admin.userConfigs.subtitle': '查看租户内用户在「个人设置」中的自定义配置情况，用于偏好分析与配置审计',
     'admin.userConfigs.searchPlaceholder': '搜索用户名/姓名',
@@ -1092,7 +1092,7 @@ export default {
     'admin.userConfigs.on': '开启',
     'admin.userConfigs.off': '关闭',
 
-    // ===== Admin - Tenant Data =====
+    //===== 管理员 - 租户数据 =====
     'admin.data.title': '数据信息',
     'admin.data.subtitle': '当前租户下所有用户使用 AI 审核的详细数据记录',
     'admin.data.tabAudit': '审核工作台',
@@ -1167,7 +1167,7 @@ export default {
     'admin.data.ruleAudit': '规则校验',
     'admin.data.aiSummary': 'AI 综合评价',
 
-    // ===== Admin - System Tenants =====
+    //===== 管理员 - 系统租户 =====
     'admin.tenants.title': '租户管理',
     'admin.tenants.subtitle': '管理租户开通、数据库连接、AI模型配置与资源配额',
     'admin.tenants.addTenant': '新增租户',
@@ -1234,7 +1234,7 @@ export default {
     'admin.tenants.aiModelSelect': 'AI 模型选择',
     'admin.tenants.aiModelHint': '从系统设置中已注册的模型中选择当前租户使用的 AI 模型（模型注册请到',
     'admin.tenants.systemSettings': '系统设置',
-    // OA Database connection selection
+    //OA数据库连接选择
     'admin.tenants.oaDbConnection': 'OA 数据库连接',
     'admin.tenants.selectOADb': '选择数据库连接',
     'admin.tenants.oaDbHint': '数据库连接在系统设置中统一管理，请前往',
@@ -1279,7 +1279,7 @@ export default {
     'admin.tenants.enableTenant': '启用租户',
     'admin.tenants.saveConfig': '保存配置',
 
-    // ===== Admin - Tenant Org =====
+    //===== 管理员 - 租户组织 =====
     'admin.org.title': '组织人员',
     'admin.org.subtitle': '管理组织架构、角色权限与人员信息',
     'admin.org.tabMembers': '人员管理',
@@ -1368,7 +1368,7 @@ export default {
     'admin.org.deptDeleted': '部门已删除',
     'admin.org.operationFailed': '操作失败，请重试',
 
-    // Page labels for org permissions
+    //组织权限的页面标签
     'admin.org.page.dashboard': '审核工作台',
     'admin.org.page.cron': '定时任务',
     'admin.org.page.archive': '归档复盘',
@@ -1386,7 +1386,7 @@ export default {
     'admin.org.groupBusiness': '业务功能',
     'admin.org.groupAdmin': '后台管理',
 
-    // Field types
+    //字段类型
     'fieldType.text': '文本',
     'fieldType.number': '数字',
     'fieldType.date': '日期',
@@ -1394,25 +1394,25 @@ export default {
     'fieldType.textarea': '多行文本',
     'fieldType.file': '文件',
 
-    // Components
+    //成分
     'rule.mandatory': '强制',
     'cron.history.noRecords': '暂无执行记录',
     'cron.history.processed': '处理 {0} 条',
 
 
-    // Archive Extras
+    //存档额外内容
     'archive.auditReason.approve': '审批权限匹配，审批时效正常',
     'archive.auditReason.attention': '{0}操作为{1}，需关注',
 
 
 
-    // Audit Panel
+    //审核小组
 
-    // ===== RuleEditor extras =====
+    //===== 规则编辑器附加功能 =====
     'ruleEditor.relatedFlow': '关联审批流',
     'ruleEditor.relatedFlowDesc': '该规则需结合审批流节点进行校验',
 
-    // ===== Admin ruleConfig extras =====
+    //===== 管理规则配置附加 =====
     'admin.ruleConfig.mainTableName': '主表名称',
     'admin.ruleConfig.mainTableNamePlaceholder': '如：formtable_main_001',
     'admin.ruleConfig.mainFields': '主表字段',
@@ -1431,7 +1431,7 @@ export default {
     'admin.ruleConfig.insertVariable': '插入变量',
     'admin.ruleConfig.promptVariables': '可用变量',
 
-    // ===== Field picker modal =====
+    //===== 字段选择器模态 =====
     'admin.ruleConfig.availableFields': '可选字段',
     'admin.ruleConfig.selectedFields': '已选字段',
     'admin.ruleConfig.searchFieldPlaceholder': '搜索字段名称或字段键...',
@@ -1441,16 +1441,16 @@ export default {
     'admin.ruleConfig.allFieldsHint': '全部字段模式：所有主表及明细表字段均传输给 AI',
     'admin.ruleConfig.detailTableLabel': '明细表',
 
-    // ===== Dashboard extras =====
+    //===== 仪表板附加功能 =====
     'dashboard.phase2': '阶段二：结构化提取中...',
 
-    // ===== Settings workbench extras =====
+    //===== 设置工作台附加功能 =====
     'settings.workbench.mainTableFields': '主表字段',
     'settings.workbench.detailTableLabel': '明细表',
     'settings.workbench.detailTableFields': '明细表字段',
     'settings.workbench.relatedFlow': '关联审批流',
 
-    // ===== Archive page new keys =====
+    //=====存档页面新键=====
     'archive.statTotal': '归档总数',
     'archive.statCompliant': '合规',
     'archive.statPartial': '部分合规',
@@ -1471,7 +1471,7 @@ export default {
     'archive.noRules': '该流程暂无复核规则',
     'archive.missingNode': '缺失节点',
 
-    // ===== Admin ruleConfig archive new keys =====
+    //===== 管理规则配置存档新密钥 =====
     'admin.ruleConfig.archiveProcess': '归档复盘流程',
     'admin.ruleConfig.addArchiveProcess': '新增归档流程',
     'admin.ruleConfig.addArchiveProcessTitle': '新增归档复盘流程',
@@ -1483,14 +1483,14 @@ export default {
     'admin.ruleConfig.archiveAllowedDepts': '允许访问的部门',
     'admin.ruleConfig.archiveAccessSearch': '搜索...',
 
-    // ===== Archive page extended (select/batch) =====
+    //===== 存档页面扩展（选择/批量）=====
     'archive.selectAll': '全选',
     'archive.selected': '已选 {0} 项',
 
-    // ===== Settings archive field picker =====
+    //===== 设置存档字段选择器 =====
     'settings.archive.fieldPickerTitle': '选择复核字段',
 
-    // ===== rules.vue hardcoded strings =====
+    //=====rules.vue硬编码字符串=====
     'admin.ruleConfig.infoTab': '基本信息',
     'admin.ruleConfig.infoTitle': '基本信息',
     'admin.ruleConfig.infoDesc': '流程的基础配置信息，包括名称、类型和主表标识',
@@ -1527,7 +1527,7 @@ export default {
     'admin.ruleConfig.switchAllow': '允许',
     'admin.ruleConfig.switchDeny': '禁止',
 
-    // ===== Cron template variable descriptions =====
+    //===== Cron 模板变量说明 =====
     'admin.ruleConfig.varDate': '当前日期，如 2026-02-27',
     'admin.ruleConfig.varTimeCutoff': '数据截止时间，如 18:00',
     'admin.ruleConfig.varTimeGenerated': '报告生成时间',

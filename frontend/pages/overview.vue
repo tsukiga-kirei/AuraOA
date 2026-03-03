@@ -27,7 +27,7 @@ const { mockOverviewData, mockUserDashboardPrefs, mockCronTasks, mockArchiveLogs
 const { t, locale } = useI18n()
 const data = ref(mockOverviewData)
 
-// Alert helpers for monitor_alerts widget
+//Monitor_alerts 小部件的警报助手
 const alertLevelConfig: Record<string, { color: string; bg: string }> = {
   warning: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' },
   error: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)' },
@@ -167,7 +167,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
       </a-button>
     </div>
 
-    <!-- Customize panel -->
+    <!--自定义面板-->
     <transition name="slide-down">
       <div v-if="customizing" class="customize-panel">
         <p class="customize-hint">{{ t('overview.customizeHint') }}</p>
@@ -181,7 +181,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
     </transition>
 
     <div class="widget-grid">
-      <!-- ===== Audit Summary (business) ===== -->
+      <!--=====审计摘要（业务）=====-->
       <div v-if="isEnabled('audit_summary')"
        :class="['widget', `widget--${getWidgetSize('audit_summary')}`, { 'widget--editing': customizing }]"
        :style="{ order: getWidgetOrder('audit_summary') }"
@@ -217,7 +217,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== Pending Tasks (business) ===== -->
+      <!--=====待处理任务（业务）=====-->
       <div v-if="isEnabled('pending_tasks')"
        :class="['widget', `widget--${getWidgetSize('pending_tasks')}`, { 'widget--editing': customizing }]" 
        :style="{ order: getWidgetOrder('pending_tasks') }" 
@@ -237,7 +237,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         <a-button type="link" size="small" @click="navigateTo('/dashboard')">{{ t('overview.goToWorkbench') }} →</a-button>
       </div>
 
-      <!-- ===== Weekly Trend (business) ===== -->
+      <!--=====每周趋势（商业）=====-->
       <div v-if="isEnabled('weekly_trend')"
        :class="['widget', `widget--${getWidgetSize('weekly_trend')}`, { 'widget--editing': customizing }]" 
        :style="{ order: getWidgetOrder('weekly_trend') }" 
@@ -259,7 +259,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== Dept Distribution (business) ===== -->
+      <!--=====部门分布（业务）=====-->
       <div v-if="isEnabled('dept_distribution')"
        :class="['widget', `widget--${getWidgetSize('dept_distribution')}`, { 'widget--editing': customizing }]" 
        :style="{ order: getWidgetOrder('dept_distribution') }" 
@@ -283,7 +283,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== Cron Tasks (business) ===== -->
+      <!--===== Cron 任务（业务） =====-->
       <div v-if="isEnabled('cron_tasks')"
        :class="['widget', `widget--${getWidgetSize('cron_tasks')}`, { 'widget--editing': customizing }]" 
        :style="{ order: getWidgetOrder('cron_tasks') }" 
@@ -307,7 +307,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== Archive Review (business) ===== -->
+      <!--=====档案审查（商业）=====-->
       <div v-if="isEnabled('archive_review')"
        :class="['widget', `widget--${getWidgetSize('archive_review')}`, { 'widget--editing': customizing }]" 
        :style="{ order: getWidgetOrder('archive_review') }" 
@@ -335,7 +335,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== Recent Activity (all) ===== -->
+      <!--=====最近活动（全部）=====-->
       <div v-if="isEnabled('recent_activity')"
        :class="['widget', `widget--${getWidgetSize('recent_activity')}`, { 'widget--editing': customizing }]" 
        :style="{ order: getWidgetOrder('recent_activity') }" 
@@ -363,7 +363,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== AI Performance (business+tenant) ===== -->
+      <!--===== AI性能（业务+租户） =====-->
       <div v-if="isEnabled('ai_performance')"
        :class="['widget', `widget--${getWidgetSize('ai_performance')}`, { 'widget--editing': customizing }]" 
        :style="{ order: getWidgetOrder('ai_performance') }" 
@@ -399,7 +399,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== Tenant Usage (tenant_admin) ===== -->
+      <!--===== 租户使用情况 (tenant_admin) =====-->
       <div v-if="isEnabled('tenant_usage')"
        :class="['widget', `widget--${getWidgetSize('tenant_usage')}`, { 'widget--editing': customizing }]" 
        :style="{ order: getWidgetOrder('tenant_usage') }" 
@@ -437,7 +437,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== User Activity (tenant_admin) ===== -->
+      <!--===== 用户活动 (tenant_admin) =====-->
       <div v-if="isEnabled('user_activity')"
        :class="['widget', `widget--${getWidgetSize('user_activity')}`, { 'widget--editing': customizing }]" 
        :style="{ order: getWidgetOrder('user_activity') }" 
@@ -462,7 +462,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== System Health (system_admin) ===== -->
+      <!--=====系统健康（system_admin）=====-->
       <div v-if="isEnabled('system_health')"
        :class="['widget', `widget--${getWidgetSize('system_health')}`, { 'widget--editing': customizing }]"
        :style="{ order: getWidgetOrder('system_health') }"
@@ -500,7 +500,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== Tenant Overview (system_admin) ===== -->
+      <!--===== 租户概览 (system_admin) =====-->
       <div v-if="isEnabled('tenant_overview')"
        :class="['widget', `widget--${getWidgetSize('tenant_overview')}`, { 'widget--editing': customizing }]" 
        :style="{ order: getWidgetOrder('tenant_overview') }" 
@@ -528,7 +528,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== API Metrics (system_admin) ===== -->
+      <!--===== API 指标 (system_admin) =====-->
       <div v-if="isEnabled('api_metrics')"
        :class="['widget', `widget--${getWidgetSize('api_metrics')}`, { 'widget--editing': customizing }]" 
        :style="{ order: getWidgetOrder('api_metrics') }" 
@@ -554,7 +554,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== Monitor Metrics (system_admin) ===== -->
+      <!--===== 监控指标 (system_admin) =====-->
       <div v-if="isEnabled('monitor_metrics')"
        :class="['widget', `widget--${getWidgetSize('monitor_metrics')}`, { 'widget--editing': customizing }]"
        :style="{ order: getWidgetOrder('monitor_metrics') }"
@@ -613,7 +613,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
       </div>
 
-      <!-- ===== Monitor Alerts (system_admin) ===== -->
+      <!--===== 监控警报 (system_admin) =====-->
       <div v-if="isEnabled('monitor_alerts')"
        :class="['widget', `widget--${getWidgetSize('monitor_alerts')}`, { 'widget--editing': customizing }]"
        :style="{ order: getWidgetOrder('monitor_alerts') }"
@@ -655,7 +655,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .ov-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; }
 .ov-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin-top: 4px; }
 
-/* Customize panel */
+/*自定义面板*/
 .customize-panel {
   background: var(--color-bg-card); border: 1px solid var(--color-border);
   border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 20px;
@@ -676,7 +676,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .slide-down-leave-active { transition: all 0.2s ease; }
 .slide-down-enter-from, .slide-down-leave-to { opacity: 0; transform: translateY(-8px); }
 
-/* Widget grid */
+/*小部件网格*/
 .widget-title { display: flex; justify-content: space-between; align-items: center; width: 100%; }
 .widget-title-left { flex: 1; display: flex; align-items: center; gap: 8px; }
 .widget-actions { flex-shrink: 0; padding: 4px; border-radius: 4px; transition: background 0.2s; }
@@ -706,7 +706,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
   margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
 }
 
-/* Audit summary */
+/*审计总结*/
 .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .summary-card {
   text-align: center; padding: 16px 8px; border-radius: var(--radius-md);
@@ -720,12 +720,12 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .summary-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
 .summary-card--total .summary-num { color: var(--color-primary); }
 
-/* Pending */
+/*待办的*/
 .pending-big { text-align: center; padding: 20px 0 12px; }
 .pending-num { font-size: 48px; font-weight: 700; color: var(--color-primary); line-height: 1; }
 .pending-label { font-size: 14px; color: var(--color-text-tertiary); margin-top: 8px; }
 
-/* Bar chart */
+/*条形图*/
 .bar-chart { display: flex; align-items: flex-end; gap: 8px; justify-content: space-between; padding-top: 8px; }
 .bar-chart--small { margin-top: 16px; }
 .bar-col { display: flex; flex-direction: column; align-items: center; flex: 1; }
@@ -738,7 +738,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .bar--accent { background: var(--color-accent); }
 .bar-label { font-size: 11px; color: var(--color-text-tertiary); margin-top: 6px; }
 
-/* Dept distribution */
+/*部门分布*/
 .dept-list { display: flex; flex-direction: column; gap: 10px; }
 .dept-row { display: flex; align-items: center; gap: 10px; }
 .dept-name { font-size: 13px; color: var(--color-text-secondary); width: 72px; flex-shrink: 0; text-align: right; }
@@ -746,7 +746,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .dept-bar { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
 .dept-count { font-size: 13px; font-weight: 600; color: var(--color-text-primary); width: 28px; text-align: right; }
 
-/* Activity */
+/*活动*/
 .activity-list { display: flex; flex-direction: column; gap: 0; }
 .activity-item {
   display: flex; align-items: center; gap: 10px;
@@ -761,13 +761,13 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .activity-user { font-size: 12px; color: var(--color-text-tertiary); }
 .activity-time { font-size: 11px; color: var(--color-text-tertiary); }
 
-/* AI stats */
+/*人工智能统计*/
 .ai-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .ai-stat { text-align: center; padding: 12px 0; background: var(--color-bg-page); border-radius: var(--radius-md); }
 .ai-stat-num { font-size: 20px; font-weight: 700; color: var(--color-text-primary); }
 .ai-stat-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
 
-/* Usage bars */
+/*使用栏*/
 .usage-rows { display: flex; flex-direction: column; gap: 16px; }
 .usage-row { display: flex; align-items: center; gap: 12px; }
 .usage-label { font-size: 13px; color: var(--color-text-secondary); width: 72px; flex-shrink: 0; }
@@ -777,7 +777,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .usage-bar--success { background: var(--color-success); }
 .usage-text { font-size: 12px; color: var(--color-text-tertiary); width: 120px; text-align: right; flex-shrink: 0; }
 
-/* Coverage */
+/*覆盖范围*/
 .coverage-list { display: flex; flex-direction: column; gap: 14px; }
 .coverage-row { display: flex; align-items: center; gap: 10px; }
 .coverage-info { width: 100px; flex-shrink: 0; }
@@ -787,7 +787,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .coverage-bar { height: 100%; background: var(--color-success); border-radius: 5px; transition: width 0.5s ease; }
 .coverage-pct { font-size: 13px; font-weight: 600; color: var(--color-text-primary); width: 40px; text-align: right; }
 
-/* Rank */
+/*秩*/
 .rank-list { display: flex; flex-direction: column; gap: 0; }
 .rank-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--color-border-light); }
 .rank-item:last-child { border-bottom: none; }
@@ -801,7 +801,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .rank-dept { font-size: 12px; color: var(--color-text-tertiary); margin-left: 8px; }
 .rank-count { font-size: 13px; font-weight: 600; color: var(--color-primary); flex-shrink: 0; }
 
-/* Health grid */
+/*健康网格*/
 .health-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .health-card { background: var(--color-bg-page); border-radius: var(--radius-md); padding: 14px; }
 .health-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -815,7 +815,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .health-metric-val { font-size: 12px; color: var(--color-text-secondary); width: 36px; text-align: right; }
 .health-uptime { font-size: 11px; color: var(--color-text-tertiary); margin-top: 8px; }
 
-/* Tenant table */
+/*租户表*/
 .tenant-table, .api-table { display: flex; flex-direction: column; }
 .tenant-row, .api-row {
   display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px;
@@ -828,7 +828,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .tenant-status { font-weight: 500; }
 .api-endpoint { font-family: var(--font-mono); font-size: 12px; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Monitor metrics grid */
+/*监控指标网格*/
 .monitor-metrics-grid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
 }
@@ -853,7 +853,7 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .monitor-metric-unit { font-size: 12px; font-weight: 500; color: var(--color-text-tertiary); margin-left: 2px; }
 .monitor-metric-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
 
-/* Monitor alerts */
+/*监控警报*/
 .monitor-alerts-list { display: flex; flex-direction: column; gap: 10px; }
 .monitor-alert-item {
   display: flex; align-items: flex-start; gap: 12px;

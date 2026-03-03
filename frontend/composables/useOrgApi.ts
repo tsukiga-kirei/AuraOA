@@ -3,7 +3,7 @@ import type { Department, OrgRole, OrgMember } from '~/types/org'
 export const useOrgApi = () => {
   const { authFetch } = useAuth()
 
-  // Reactive data arrays — start empty, populated from API
+  //反应式数据数组 — 从空开始，由 API 填充
   const departments = ref<Department[]>([])
   const roles = ref<OrgRole[]>([])
   const members = ref<OrgMember[]>([])
@@ -11,7 +11,7 @@ export const useOrgApi = () => {
   const error = ref<string | null>(null)
 
   // ============================================================
-  // Departments
+  //部门
   // ============================================================
 
   async function listDepartments(): Promise<Department[]> {
@@ -49,7 +49,7 @@ export const useOrgApi = () => {
   }
 
   // ============================================================
-  // Roles
+  //角色
   // ============================================================
 
   async function listRoles(): Promise<OrgRole[]> {
@@ -87,7 +87,7 @@ export const useOrgApi = () => {
   }
 
   // ============================================================
-  // Members
+  //会员
   // ============================================================
 
   async function listMembers(): Promise<OrgMember[]> {
@@ -124,35 +124,35 @@ export const useOrgApi = () => {
     members.value = members.value.filter(m => m.id !== id)
   }
 
-  /** Load all org data from API */
+  /** 从API加载所有组织数据*/
   async function loadAll(): Promise<void> {
     await Promise.all([listDepartments(), listRoles(), listMembers()])
   }
 
   return {
-    // Reactive data
+    //反应性数据
     departments,
     roles,
     members,
     loading,
     error,
 
-    // Load all
+    //加载全部
     loadAll,
 
-    // Department CRUD
+    //部门增删改查
     listDepartments,
     createDepartment,
     updateDepartment,
     deleteDepartment,
 
-    // Role CRUD
+    //角色增删改查
     listRoles,
     createRole,
     updateRole,
     deleteRole,
 
-    // Member CRUD
+    //会员增删改查
     listMembers,
     createMember,
     updateMember,

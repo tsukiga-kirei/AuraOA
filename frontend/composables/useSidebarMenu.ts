@@ -1,14 +1,13 @@
 /**
- * useSidebarMenu — Centralized sidebar menu driven purely by user permissions.
+ * useSidebarMenu — 完全由用户权限驱动的集中侧边栏菜单。
  *
- * Sidebar always shows ALL sections the user has access to, regardless of
- * which page they're currently on. No route-context switching.
+ * 侧边栏始终显示用户有权访问的所有部分，无论
+ * 他们当前所在的页面。没有路由上下文切换。
  *
- * Login always lands on /overview (the overview dashboard).
- * User dropdown only shows "Personal Settings" and "Logout" (no duplicate nav).
+ * 登录始终位于 /overview（概览仪表板）。
+ * 用户下拉列表仅显示“个人设置”和“注销”（无重复导航）。
  *
- * All labels use i18n keys for internationalization.
- */
+ * 所有标签都使用 i18n 键进行国际化。*/
 import {
   DashboardOutlined,
   ClockCircleOutlined,
@@ -25,14 +24,14 @@ import type { Component } from 'vue'
 export interface SidebarMenuItem {
   key: string
   icon: Component
-  /** i18n key for the label */
+  /** 标签的 i18n 键*/
   labelKey: string
   badge?: number
 }
 
 export interface SidebarSection {
   id: string
-  /** i18n key for the section title */
+  /** 章节标题的 i18n 键*/
   titleKey: string
   items: SidebarMenuItem[]
 }
@@ -64,7 +63,7 @@ export const useSidebarMenu = () => {
   const { userPermissions, currentUser, activeRole } = useAuth()
   const { members, roles } = useOrgApi()
 
-  /** Merged page permissions from the current user's business roles */
+  /** 合并当前用户业务角色的页面权限*/
   const businessPagePerms = computed<Set<string>>(() => {
     const uname = currentUser.value?.username
     if (!uname) return new Set()
@@ -76,12 +75,12 @@ export const useSidebarMenu = () => {
     return perms
   })
 
-  /** Sidebar sections — permission-driven, business items filtered by page_permissions */
+  /** 侧边栏部分 — 权限驱动，按 page_permissions 过滤的业务项目*/
   const sections = computed<SidebarSection[]>(() => {
     const perms = userPermissions.value
     const result: SidebarSection[] = []
 
-    // Overview dashboard is always visible to all authenticated users
+    //所有经过身份验证的用户始终可以看到概览仪表板
     result.push({ id: 'overview', titleKey: 'sidebar.section.overview', items: OVERVIEW_ITEMS })
 
     if (perms.includes('business')) {
@@ -92,7 +91,7 @@ export const useSidebarMenu = () => {
       }
     }
     if (perms.includes('tenant_admin')) {
-      // Filter tenant admin items by the tenant_admin business role's page_permissions
+      //按tenant_admin业务角色的page_permissions过滤租户管理项目
       const pagePerms = businessPagePerms.value
       const filtered = pagePerms.size > 0
         ? TENANT_ITEMS.filter(item => pagePerms.has(item.key))
@@ -108,7 +107,7 @@ export const useSidebarMenu = () => {
     return result
   })
 
-  /** Check if a menu item is active */
+  /** 检查菜单项是否处于活动状态*/
   const isMenuActive = (itemKey: string) => {
     const path = route.path
     if (itemKey === '/admin/tenant/rules' || itemKey === '/dashboard' || itemKey === '/overview') {
@@ -117,7 +116,7 @@ export const useSidebarMenu = () => {
     return path.startsWith(itemKey)
   }
 
-  /** Logo always goes to overview dashboard */
+  /** 徽标始终显示在概览仪表板上*/
   const logoTarget = '/overview'
 
   return {

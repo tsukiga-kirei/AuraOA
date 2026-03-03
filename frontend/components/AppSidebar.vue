@@ -34,7 +34,7 @@ const handleMenuClick = (path: string) => {
       'sidebar--mobile-open': mobileMenuOpen,
     }"
   >
-    <!-- Logo -->
+    <!--标识-->
     <div class="sidebar-logo" @click="navigateTo(logoTarget)">
       <div class="sidebar-logo-icon">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -46,7 +46,7 @@ const handleMenuClick = (path: string) => {
       <transition name="fade">
         <span v-if="!collapsed || mobileMenuOpen" class="sidebar-logo-text">{{ t('app.name') }}</span>
       </transition>
-      <!-- Mobile close button -->
+      <!--手机关闭按钮-->
       <button
         v-if="mobileMenuOpen"
         class="sidebar-close-btn"
@@ -61,12 +61,12 @@ const handleMenuClick = (path: string) => {
       </button>
     </div>
 
-    <!-- Navigation sections driven purely by permissions -->
+    <!--纯粹由权限驱动的导航部分-->
     <nav class="sidebar-nav">
       <div v-for="section in sections" :key="section.id" class="sidebar-section">
         <div v-if="!collapsed || mobileMenuOpen" class="sidebar-section-title">{{ t(section.titleKey) }}</div>
         <template v-for="item in section.items" :key="item.key">
-          <!-- Collapsed state: Wrap with Tooltip -->
+          <!--折叠状态：用工具提示包裹-->
           <a-tooltip
             v-if="collapsed && !mobileMenuOpen"
             :key="'tooltip-' + item.key"
@@ -81,13 +81,13 @@ const handleMenuClick = (path: string) => {
               @click="handleMenuClick(item.key)"
             >
               <component :is="item.icon" class="sidebar-item-icon" />
-              <!-- Content hidden in collapsed state usually -->
-              <!-- But we keep structure consistent -->
+              <!--内容通常隐藏在折叠状态-->
+              <!--但我们保持结构一致-->
               <div v-if="isMenuActive(item.key)" class="sidebar-item-indicator" />
             </div>
           </a-tooltip>
 
-          <!-- Expanded/Mobile state: No Tooltip -->
+          <!--展开/移动状态：无工具提示-->
           <div
             v-else
             :key="'item-' + item.key"
@@ -108,7 +108,7 @@ const handleMenuClick = (path: string) => {
       </div>
     </nav>
 
-    <!-- User profile footer — only settings + logout, no duplicate nav -->
+    <!--用户个人资料页脚 — 仅设置 + 注销，无重复导航-->
     <div class="sidebar-footer">
       <a-popover
         placement="rightBottom"
@@ -276,7 +276,7 @@ const handleMenuClick = (path: string) => {
     transform: translateX(0);
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
   }
-  /* On mobile, always show full sidebar (not collapsed) */
+  /*在移动设备上，始终显示完整的侧边栏（不折叠）*/
   .sidebar--collapsed {
     width: 280px;
   }

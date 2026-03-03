@@ -1,7 +1,7 @@
 import type { LoginRequest, LoginResponse, SwitchRoleResponse, MenuItem, UserRole, PermissionGroup, RoleInfo } from '~/types/auth'
 
 
-// --- Unified API response format ---
+//---统一API响应格式---
 interface ApiResponse<T> {
   code: number
   message: string
@@ -9,7 +9,7 @@ interface ApiResponse<T> {
   trace_id: string
 }
 
-// --- Error code → user-friendly message mapping ---
+//--- 错误代码 → 用户友好的消息映射 ---
 const ERROR_CODE_MAP: Record<number, string> = {
   40103: '用户名或密码错误',
   40104: '账户已锁定，请稍后重试',
@@ -20,7 +20,7 @@ const ERROR_CODE_MAP: Record<number, string> = {
   50000: '服务器错误，请稍后重试',
 }
 
-// --- Token refresh queue (module-level singleton) ---
+//--- 令牌刷新队列（模块级单例）---
 let isRefreshing = false
 let refreshSubscribers: Array<(token: string) => void> = []
 
@@ -33,7 +33,7 @@ function addRefreshSubscriber(cb: (token: string) => void) {
   refreshSubscribers.push(cb)
 }
 
-// LoginRequest and LoginResponse are imported from ~/types/auth
+//LoginRequest 和 LoginResponse 是从 ~/types/auth 导入的
 
 export const useAuth = () => {
   const config = useRuntimeConfig()
@@ -42,13 +42,13 @@ export const useAuth = () => {
   const menus = useState<MenuItem[]>('auth_menus', () => [])
   const userRole = useState<UserRole>('auth_role', () => 'business')
 
-  /** All role assignments this user has (never modified after login) */
+  /** 该用户拥有的所有角色分配（登录后从未修改）*/
   const allRoles = useState<RoleInfo[]>('auth_all_roles', () => [])
-  /** Currently active role assignment */
+  /** 当前活跃的角色分配*/
   const activeRole = useState<RoleInfo | null>('auth_active_role', () => null)
-  /** Active permission group (derived from activeRole) */
+  /** Active权限组（派生自activeRole）*/
   const userPermissions = useState<PermissionGroup[]>('auth_permissions', () => ['business'])
-  /** Full permissions — kept for backward compat but now derived from allRoles */
+  /** 完整权限 - 保留用于向后兼容，但现在派生自 allRoles*/
   const fullPermissions = useState<PermissionGroup[]>('auth_full_permissions', () => ['business'])
 
   const currentUser = useState<{
@@ -80,7 +80,7 @@ export const useAuth = () => {
 
   const setActiveRole = (role: RoleInfo) => {
     activeRole.value = role
-    // Derive permissions: only the active role's permission group
+    //派生权限：仅活动角色的权限组
     userPermissions.value = [role.role]
     if (import.meta.client) {
       localStorage.setItem('active_role', JSON.stringify(role))
@@ -88,7 +88,7 @@ export const useAuth = () => {
     }
   }
 
-  /** Switch to a specific role by its assignment ID */
+  /** 通过分配ID切换到特定角色*/
   const switchRole = async (roleId: string): Promise<boolean> => {
     try {
       const data = await authFetch<SwitchRoleResponse>('/api/auth/switch-role', {
@@ -96,7 +96,7 @@ export const useAuth = () => {
         body: { role_id: roleId },
       })
 
-      // Atomic update — only apply changes after API call succeeds
+      //原子更新——仅在 API 调用成功后应用更改
       token.value = data.access_token
       if (import.meta.client) localStorage.setItem('token', data.access_token)
 
@@ -116,7 +116,7 @@ export const useAuth = () => {
 
       return true
     } catch {
-      // On failure, all state remains unchanged
+      //失败时，所有状态保持不变
       return false
     }
   }
@@ -132,11 +132,11 @@ export const useAuth = () => {
 
       const data = res.data
 
-      // Store tokens
+      //存储代币
       token.value = data.access_token
       refreshToken.value = data.refresh_token
 
-      // Map roles from LoginResponse
+      //从 LoginResponse 映射角色
       const mappedRoles: RoleInfo[] = data.roles.map(r => ({
         id: r.id,
         role: r.role,
@@ -146,7 +146,7 @@ export const useAuth = () => {
       }))
       setAllRoles(mappedRoles)
 
-      // Map active_role
+      //映射 active_role
       const mappedActiveRole: RoleInfo = {
         id: data.active_role.id,
         role: data.active_role.role,
@@ -156,7 +156,7 @@ export const useAuth = () => {
       }
       setActiveRole(mappedActiveRole)
 
-      // Map user info
+      //映射用户信息
       currentUser.value = {
         username: data.user.username,
         display_name: data.user.display_name,
@@ -164,11 +164,11 @@ export const useAuth = () => {
         role_label: data.active_role.label,
       }
 
-      // Compute full permissions (all unique role types) for backward compat
+      //计算向后兼容的完整权限（所有独特的角色类型）
       const allPerms = [...new Set(data.roles.map(r => r.role))] as PermissionGroup[]
       setFullPermissions(allPerms)
 
-      // Store permissions from backend
+      //后台存储权限
       userPermissions.value = data.permissions as PermissionGroup[]
 
       if (import.meta.client) {
@@ -195,14 +195,14 @@ export const useAuth = () => {
   }
 
   const logout = async (): Promise<void> => {
-    // Best-effort server-side token invalidation
+    //尽力而为的服务器端令牌失效
     try {
       await authFetch('/api/auth/logout', { method: 'POST' })
     } catch {
-      // Ignore errors — always proceed with local cleanup
+      //忽略错误 - 始终继续进行本地清理
     }
 
-    // Clear all useState auth state
+    //清除所有 useState 身份验证状态
     token.value = null
     refreshToken.value = null
     menus.value = []
@@ -213,7 +213,7 @@ export const useAuth = () => {
     userPermissions.value = ['business']
     currentUser.value = null
 
-    // Clear all localStorage auth keys
+    //清除所有 localStorage 身份验证密钥
     if (import.meta.client) {
       localStorage.removeItem('token')
       localStorage.removeItem('refresh_token')
@@ -231,8 +231,7 @@ export const useAuth = () => {
   const isAuthenticated = computed(() => !!token.value)
 
   /**
-   * Refresh the access token using the stored refresh_token.
-   */
+   * 使用存储的refresh_token刷新访问令牌。*/
   const doRefreshToken = async (): Promise<boolean> => {
     const rt = refreshToken.value || (import.meta.client ? localStorage.getItem('refresh_token') : null)
     if (!rt) return false
@@ -254,13 +253,12 @@ export const useAuth = () => {
   }
 
   /**
-   * Authenticated fetch wrapper.
-   * - Auto-injects Bearer token
-   * - Parses unified response { code, message, data }; returns data when code=0
-   * - On 401: auto-refreshes token and retries; queues concurrent requests during refresh
-   * - On refresh failure: clears auth state and redirects to login
-   * - Maps known error codes to user-friendly messages
-   */
+   * 经过身份验证的获取包装器。
+   * - 自动注入不记名令牌
+   * - 解析统一响应 { code, message, data };当code=0时返回数据
+   * - 在 401 上：自动刷新令牌并重试；刷新期间对并发请求进行排队
+   * - 刷新失败时：清除身份验证状态并重定向到登录
+   * - 将已知错误代码映射到用户友好的消息*/
   async function authFetch<T>(path: string, options?: Record<string, any>): Promise<T> {
     const baseUrl = String(config.public.apiBase)
     const url = path.startsWith('http') ? path : `${baseUrl}${path}`
@@ -281,28 +279,28 @@ export const useAuth = () => {
     try {
       const res = await doRequest(token.value)
 
-      // Unified response: code=0 means success
+      //统一响应：code=0表示成功
       if (res.code === 0) return res.data
-      // Non-zero code → throw with mapped or original message
+      //非零代码 → 抛出映射或原始消息
       const friendlyMsg = ERROR_CODE_MAP[res.code] || res.message || '请求失败'
       const err = new Error(friendlyMsg) as any
       err.code = res.code
       throw err
     } catch (error: any) {
-      // If we threw it ourselves (from code != 0), re-throw as-is
+      //如果我们自己抛出它（从代码！= 0），则按原样重新抛出
       if (error.code && ERROR_CODE_MAP[error.code]) {
         throw error
       }
 
-      // Network error (no response from server)
+      //网络错误（服务器无响应）
       if (error.name === 'FetchError' || error.message === 'fetch failed' || (!error.statusCode && !error.status && error.cause)) {
         throw new Error('网络连接失败，请检查网络')
       }
 
-      // Handle 401 — token expired, attempt refresh
+      //句柄 401 — 令牌过期，尝试刷新
       const statusCode = error.statusCode || error.status
       if (statusCode === 401) {
-        // If already refreshing, queue this request
+        //如果已经刷新，则将此请求排队
         if (isRefreshing) {
           return new Promise<T>((resolve, reject) => {
             addRefreshSubscriber(async (newToken: string) => {
@@ -323,16 +321,16 @@ export const useAuth = () => {
           })
         }
 
-        // Start refresh
+        //开始刷新
         isRefreshing = true
         const refreshOk = await doRefreshToken()
         isRefreshing = false
 
         if (refreshOk) {
           const newToken = token.value!
-          // Notify all queued requests
+          //通知所有排队的请求
           onTokenRefreshed(newToken)
-          // Retry the original request
+          //重试原始请求
           const retryRes = await doRequest(newToken)
           if (retryRes.code === 0) return retryRes.data
           const msg = ERROR_CODE_MAP[retryRes.code] || retryRes.message || '请求失败'
@@ -340,14 +338,14 @@ export const useAuth = () => {
           e.code = retryRes.code
           throw e
         } else {
-          // Refresh failed — clear state, redirect to login
+          //刷新失败——清除状态，重定向到登录
           refreshSubscribers = []
           await logout()
           throw new Error('登录已过期，请重新登录')
         }
       }
 
-      // Other HTTP errors — try to extract code from response body
+      //其他 HTTP 错误 — 尝试从响应正文中提取代码
       if (error.data && typeof error.data.code === 'number') {
         const friendlyMsg = ERROR_CODE_MAP[error.data.code] || error.data.message || '请求失败'
         const e = new Error(friendlyMsg) as any
@@ -355,7 +353,7 @@ export const useAuth = () => {
         throw e
       }
 
-      // Fallback: re-throw original error
+      //Fallback：重新抛出原始错误
       throw error
     }
   }
@@ -382,23 +380,23 @@ export const useAuth = () => {
       if (savedRole) userRole.value = savedRole
       const savedAllRoles = localStorage.getItem('all_roles')
       if (savedAllRoles) {
-        try { allRoles.value = JSON.parse(savedAllRoles) } catch { /* ignore */ }
+        try { allRoles.value = JSON.parse(savedAllRoles) } catch { /*忽略*/ }
       }
       const savedActiveRole = localStorage.getItem('active_role')
       if (savedActiveRole) {
-        try { activeRole.value = JSON.parse(savedActiveRole) } catch { /* ignore */ }
+        try { activeRole.value = JSON.parse(savedActiveRole) } catch { /*忽略*/ }
       }
       const savedFullPerms = localStorage.getItem('full_permissions')
       if (savedFullPerms) {
-        try { fullPermissions.value = JSON.parse(savedFullPerms) } catch { /* ignore */ }
+        try { fullPermissions.value = JSON.parse(savedFullPerms) } catch { /*忽略*/ }
       }
       const savedPerms = localStorage.getItem('user_permissions')
       if (savedPerms) {
-        try { userPermissions.value = JSON.parse(savedPerms) } catch { /* ignore */ }
+        try { userPermissions.value = JSON.parse(savedPerms) } catch { /*忽略*/ }
       }
       const savedUser = localStorage.getItem('current_user')
       if (savedUser) {
-        try { currentUser.value = JSON.parse(savedUser) } catch { /* ignore */ }
+        try { currentUser.value = JSON.parse(savedUser) } catch { /*忽略*/ }
       }
     }
   }

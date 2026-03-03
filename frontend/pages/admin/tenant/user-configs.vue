@@ -65,12 +65,12 @@ const filteredConfigs = computed(() => {
 
 const { paged, current, pageSize, total, onChange } = usePagination(filteredConfigs, 10)
 
-// Stats cards: total modification counts for each category
+//统计卡：每个类别的总修改计数
 const totalAuditChanges = computed(() => configs.value.reduce((s, c) => s + c.audit_process_count, 0))
 const totalCronChanges = computed(() => configs.value.reduce((s, c) => s + c.cron_config_count, 0))
 const totalArchiveChanges = computed(() => configs.value.reduce((s, c) => s + c.archive_process_count, 0))
 
-// Selection
+//选择
 const toggleSelect = (id: string) => {
   const idx = selectedIds.value.indexOf(id)
   if (idx >= 0) selectedIds.value.splice(idx, 1)
@@ -81,7 +81,7 @@ const toggleSelectAll = () => {
   else selectedIds.value = filteredConfigs.value.map(c => c.id)
 }
 
-// Export with selection
+//导出并选择
 const handleExport = () => {
   if (selectedIds.value.length === 0) {
     message.warning(t('admin.userConfigs.selectToExport'))
@@ -109,7 +109,7 @@ const handleExport = () => {
   }, 500)
 }
 
-// Detail drawer
+//细节抽屉
 const showDetail = ref(false)
 const detailConfig = ref<UserPersonalConfig | null>(null)
 const detailTab = ref<'audit' | 'cron' | 'archive'>('audit')
@@ -141,7 +141,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
       </div>
     </div>
 
-    <!-- Stats cards -->
+    <!--统计卡-->
     <div class="stats-row">
       <div class="stat-card stat-card--primary">
         <div class="stat-card-icon"><AppstoreOutlined /></div>
@@ -166,7 +166,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
       </div>
     </div>
 
-    <!-- Toolbar -->
+    <!--工具栏-->
     <div class="toolbar">
       <div class="toolbar-left">
         <a-input v-model:value="search" :placeholder="t('admin.userConfigs.searchPlaceholder')" allow-clear style="width: 200px;">
@@ -189,7 +189,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
       </div>
     </div>
 
-    <!-- Table -->
+    <!--桌子-->
     <div class="data-table-card">
       <table class="data-table">
         <thead>
@@ -279,7 +279,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
       />
     </div>
 
-    <!-- Detail Drawer -->
+    <!--细节抽屉-->
     <a-drawer
       v-model:open="showDetail"
       :title="detailConfig ? t('admin.userConfigs.prefDetail', [detailConfig.display_name]) : ''"
@@ -287,7 +287,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
       placement="right"
     >
       <template v-if="detailConfig">
-        <!-- User header -->
+        <!--用户标题-->
         <div class="detail-user-header">
           <a-avatar :size="40" class="user-avatar">
             <template #icon><UserOutlined /></template>
@@ -301,12 +301,12 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
           </div>
         </div>
 
-        <!-- No config state -->
+        <!--无配置状态-->
         <div v-if="totalUserChanges(detailConfig) === 0" class="detail-empty">
           <a-empty :description="t('admin.userConfigs.noCustomConfig')" />
         </div>
 
-        <!-- Tab nav -->
+        <!--标签导航-->
         <div v-else class="detail-tab-nav">
           <button
             v-for="tab in [
@@ -325,7 +325,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
           </button>
         </div>
 
-        <!-- ===== Audit workbench details (by process) ===== -->
+        <!--===== 审核工作台详细信息（按流程）=====-->
         <div v-if="detailTab === 'audit' && totalUserChanges(detailConfig) > 0" class="detail-content">
           <div v-if="detailConfig.audit_details.length === 0" class="detail-empty-tab">
             {{ t('admin.userConfigs.noAuditConfig') }}
@@ -378,13 +378,13 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
           </div>
         </div>
 
-        <!-- ===== Cron details (modified vs custom) ===== -->
+        <!--===== Cron 详细信息（修改与自定义）=====-->
         <div v-if="detailTab === 'cron' && totalUserChanges(detailConfig) > 0" class="detail-content">
           <div v-if="detailConfig.cron_config_details.length === 0" class="detail-empty-tab">
             {{ t('admin.userConfigs.noCronConfig') }}
           </div>
           <template v-else>
-            <!-- Modified system default tasks -->
+            <!--修改系统默认任务-->
             <template v-if="detailConfig.cron_config_details.filter(c => c.source === 'modified').length > 0">
               <div class="detail-section-title">
                 <EditOutlined /> {{ t('admin.userConfigs.cronModified') }}
@@ -415,7 +415,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
               </div>
             </template>
 
-            <!-- User-created custom tasks -->
+            <!--用户创建的自定义任务-->
             <template v-if="detailConfig.cron_config_details.filter(c => c.source === 'custom').length > 0">
               <div class="detail-section-title">
                 <PlusOutlined /> {{ t('admin.userConfigs.cronCustom') }}
@@ -448,7 +448,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
           </template>
         </div>
 
-        <!-- ===== Archive details (by process) ===== -->
+        <!--===== 存档详细信息（按流程）=====-->
         <div v-if="detailTab === 'archive' && totalUserChanges(detailConfig) > 0" class="detail-content">
           <div v-if="detailConfig.archive_details.length === 0" class="detail-empty-tab">
             {{ t('admin.userConfigs.noArchiveConfig') }}
@@ -501,7 +501,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
           </div>
         </div>
 
-        <!-- Footer -->
+        <!--页脚-->
         <div v-if="detailConfig.last_modified" class="detail-footer-info">
           {{ t('admin.userConfigs.thLastModified') }}：{{ detailConfig.last_modified }}
         </div>
@@ -591,7 +591,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
 
 .pagination-wrapper { margin-top: 16px; display: flex; justify-content: flex-end; }
 
-/* ===== Detail drawer ===== */
+/*=====细节抽屉=====*/
 .detail-user-header {
   display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px;
   padding-bottom: 16px; border-bottom: 1px solid var(--color-border-light);
