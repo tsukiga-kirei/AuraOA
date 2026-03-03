@@ -71,11 +71,3 @@ type PublicTenantItem struct {
 	Name string `json:"name"`
 	Code string `json:"code"`
 }
-
-
-// PublicTenantItem is a lightweight tenant entry for the public login page.
-type PublicTenantItem struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Code string `json:"code"`
-}
