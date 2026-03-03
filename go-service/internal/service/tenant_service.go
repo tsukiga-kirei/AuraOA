@@ -12,13 +12,13 @@ import (
 	"oa-smart-audit/go-service/internal/repository"
 )
 
-// TenantService handles tenant CRUD and statistics for system_admin.
+//TenantService 处理 system_admin 的租户 CRUD 和统计信息。
 type TenantService struct {
 	tenantRepo *repository.TenantRepo
 	db         *gorm.DB
 }
 
-// NewTenantService creates a new TenantService instance.
+//NewTenantService 创建一个新的 TenantService 实例。
 func NewTenantService(tenantRepo *repository.TenantRepo, db *gorm.DB) *TenantService {
 	return &TenantService{
 		tenantRepo: tenantRepo,
@@ -26,7 +26,7 @@ func NewTenantService(tenantRepo *repository.TenantRepo, db *gorm.DB) *TenantSer
 	}
 }
 
-// ListTenants returns all tenants.
+//ListTenants 返回所有租户。
 func (s *TenantService) ListTenants() ([]dto.TenantResponse, error) {
 	tenants, err := s.tenantRepo.List()
 	if err != nil {
@@ -39,16 +39,16 @@ func (s *TenantService) ListTenants() ([]dto.TenantResponse, error) {
 	return result, nil
 }
 
-// CreateTenant creates a new tenant after checking code uniqueness.
-// It uses a transaction to also create three default system roles; if any step fails the entire operation is rolled back.
+//CreateTenant 在检查代码唯一性后创建一个新租户。
+//它使用事务还创建三个默认系统角色；如果任何步骤失败，则整个操作将回滚。
 func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantResponse, error) {
-	// Check code uniqueness
+	//检查代码唯一性
 	existing, _ := s.tenantRepo.FindByCode(req.Code)
 	if existing != nil {
 		return nil, newServiceError(errcode.ErrResourceConflict, "租户编码已存在")
 	}
 
-	// Build AIConfig JSON
+	//构建 AIConfig JSON
 	aiConfigJSON, _ := json.Marshal(req.AIConfig)
 	if req.AIConfig == nil {
 		aiConfigJSON = []byte("{}")
@@ -67,7 +67,7 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 		ContactPhone:   req.ContactPhone,
 	}
 
-	// Apply defaults if not provided
+	//如果未提供，则应用默认值
 	if tenant.OAType == "" {
 		tenant.OAType = "weaver_e9"
 	}
@@ -78,15 +78,15 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 		tenant.MaxConcurrency = 10
 	}
 
-	// Start transaction: create tenant + default roles atomically
+	//启动事务：自动创建租户+默认角色
 	tx := s.db.Begin()
-	defer tx.Rollback() // no-op after commit
+	defer tx.Rollback() //提交后无操作
 
 	if err := tx.Create(tenant).Error; err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
-	// Build page_permissions JSON for each default role
+	//为每个默认角色构建 page_permissions JSON
 	businessPerms, _ := json.Marshal([]string{"/overview", "/dashboard", "/settings"})
 	auditPerms, _ := json.Marshal([]string{"/overview", "/dashboard", "/cron", "/archive", "/settings"})
 	adminPerms, _ := json.Marshal([]string{
@@ -130,14 +130,14 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 	return &resp, nil
 }
 
-// UpdateTenant updates an existing tenant's fields.
+//UpdateTenant 更新现有租户的字段。
 func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest) (*dto.TenantResponse, error) {
 	tenant, err := s.tenantRepo.FindByID(id)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrResourceNotFound, "租户不存在")
 	}
 
-	// Update fields if provided
+	//更新字段（如果提供）
 	if req.Name != "" {
 		tenant.Name = req.Name
 	}
@@ -193,7 +193,7 @@ func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest)
 	return &resp, nil
 }
 
-// DeleteTenant deletes a tenant by ID.
+//DeleteTenant 通过 ID 删除租户。
 func (s *TenantService) DeleteTenant(id uuid.UUID) error {
 	_, err := s.tenantRepo.FindByID(id)
 	if err != nil {
@@ -205,7 +205,7 @@ func (s *TenantService) DeleteTenant(id uuid.UUID) error {
 	return nil
 }
 
-// GetTenantStats returns member, department, and role counts for a tenant.
+//GetTenantStats 返回租户的成员、部门和角色计数。
 func (s *TenantService) GetTenantStats(id uuid.UUID) (*dto.TenantStatsResponse, error) {
 	_, err := s.tenantRepo.FindByID(id)
 	if err != nil {
@@ -225,7 +225,7 @@ func (s *TenantService) GetTenantStats(id uuid.UUID) (*dto.TenantStatsResponse, 
 	}, nil
 }
 
-// toTenantResponse converts a model.Tenant to dto.TenantResponse.
+//toTenantResponse 将 model.Tenant 转换为 dto.TenantResponse。
 func toTenantResponse(t *model.Tenant) dto.TenantResponse {
 	var aiConfig interface{}
 	_ = json.Unmarshal(t.AIConfig, &aiConfig)

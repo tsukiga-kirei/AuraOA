@@ -7,16 +7,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CORS returns a middleware that sets Cross-Origin Resource Sharing headers.
-// allowedOrigins is the list of origins permitted to access the API.
-// An OPTIONS preflight request is answered with 204 No Content.
+//CORS 返回一个设置跨源资源共享标头的中间件。
+//allowedOrigins 是允许访问 API 的源列表。
+//OPTIONS 预检请求得到 204 No Content 应答。
 func CORS(allowedOrigins []string) gin.HandlerFunc {
 	originsStr := strings.Join(allowedOrigins, ", ")
 
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
 
-		// Check if the request origin is in the allowed list
+		//检查请求来源是否在允许列表中
 		allowed := false
 		for _, o := range allowedOrigins {
 			if o == "*" || o == origin {
@@ -30,8 +30,8 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 		} else if len(allowedOrigins) > 0 && allowedOrigins[0] == "*" {
 			c.Header("Access-Control-Allow-Origin", "*")
 		} else if origin != "" {
-			// Not allowed — still set the header to the first configured
-			// origin so the browser sees a mismatch and blocks the request.
+			//不允许 - 仍将标头设置为第一个配置的
+			//来源，因此浏览器会发现不匹配并阻止请求。
 			c.Header("Access-Control-Allow-Origin", originsStr)
 		}
 
@@ -41,7 +41,7 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 		c.Header("Access-Control-Allow-Credentials", "true")
 		c.Header("Access-Control-Max-Age", "86400")
 
-		// Handle preflight
+		//处理预检
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return

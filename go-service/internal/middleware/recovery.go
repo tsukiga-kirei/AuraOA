@@ -11,8 +11,8 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/response"
 )
 
-// Recovery returns a middleware that catches panics, logs the stack trace
-// via zap, and returns a 500 / 50000 error response.
+//恢复返回一个捕获恐慌的中间件，记录堆栈跟踪
+//通过 zap，并返回 500 / 50000 错误响应。
 func Recovery(log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {

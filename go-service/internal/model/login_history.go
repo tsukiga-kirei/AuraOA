@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// LoginHistory records each user login attempt for auditing purposes.
+//LoginHistory 记录每个用户登录尝试以用于审核目的。
 type LoginHistory struct {
 	ID       uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
 	UserID   uuid.UUID  `gorm:"type:uuid;not null;index"`

@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Config holds all configuration for the application.
+//配置保存应用程序的所有配置。
 type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
@@ -17,12 +17,12 @@ type Config struct {
 	CORS     CORSConfig     `mapstructure:"cors"`
 }
 
-// ServerConfig holds HTTP server settings.
+//ServerConfig 保存 HTTP 服务器设置。
 type ServerConfig struct {
 	Port int `mapstructure:"port"`
 }
 
-// DatabaseConfig holds PostgreSQL connection settings.
+//DatabaseConfig 保存 PostgreSQL 连接设置。
 type DatabaseConfig struct {
 	Host         string `mapstructure:"host"`
 	Port         int    `mapstructure:"port"`
@@ -34,7 +34,7 @@ type DatabaseConfig struct {
 	MaxIdleConns int    `mapstructure:"max_idle_conns"`
 }
 
-// DSN returns the PostgreSQL connection string.
+//DSN 返回 PostgreSQL 连接字符串。
 func (d *DatabaseConfig) DSN() string {
 	return fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
@@ -42,7 +42,7 @@ func (d *DatabaseConfig) DSN() string {
 	)
 }
 
-// RedisConfig holds Redis connection settings.
+//RedisConfig 保存 Redis 连接设置。
 type RedisConfig struct {
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
@@ -50,24 +50,24 @@ type RedisConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
-// Addr returns the Redis address in host:port format.
+//Addr 以主机:端口格式返回 Redis 地址。
 func (r *RedisConfig) Addr() string {
 	return fmt.Sprintf("%s:%d", r.Host, r.Port)
 }
 
-// JWTConfig holds JWT signing and TTL settings.
+//JWTConfig 保存 JWT 签名和 TTL 设置。
 type JWTConfig struct {
 	Secret          string        `mapstructure:"secret"`
 	AccessTokenTTL  time.Duration `mapstructure:"access_token_ttl"`
 	RefreshTokenTTL time.Duration `mapstructure:"refresh_token_ttl"`
 }
 
-// CORSConfig holds CORS allowed origins.
+//CORSConfig 保存 CORS 允许的来源。
 type CORSConfig struct {
 	AllowedOrigins []string `mapstructure:"allowed_origins"`
 }
 
-// Load reads config.yaml via Viper and unmarshals it into a Config struct.
+//Load 通过 Viper 读取 config.yaml 并将其解组到 Config 结构中。
 func Load() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
@@ -85,7 +85,7 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Apply defaults for connection pool if not set
+	//如果未设置，则应用连接池的默认值
 	if cfg.Database.MaxOpenConns == 0 {
 		cfg.Database.MaxOpenConns = 50
 	}
@@ -93,7 +93,7 @@ func Load() (*Config, error) {
 		cfg.Database.MaxIdleConns = 10
 	}
 
-	// Apply defaults for JWT TTL if not set
+	//如果未设置，则应用 JWT TTL 的默认值
 	if cfg.JWT.AccessTokenTTL == 0 {
 		cfg.JWT.AccessTokenTTL = 2 * time.Hour
 	}

@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// ActiveRoleClaim represents the currently active role in a JWT token.
+//ActiveRoleClaim 代表 JWT 令牌中当前活动的角色。
 type ActiveRoleClaim struct {
 	ID         string  `json:"id"`
 	Role       string  `json:"role"`
@@ -18,7 +18,7 @@ type ActiveRoleClaim struct {
 	Label      string  `json:"label"`
 }
 
-// JWTClaims is the custom claims structure embedded in access tokens.
+//JWTClaims 是嵌入在访问令牌中的自定义声明结构。
 type JWTClaims struct {
 	Sub         string          `json:"sub"`
 	Username    string          `json:"username"`
@@ -30,8 +30,8 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
-// GenerateAccessToken creates a signed access token with the given claims.
-// TTL is read from config (jwt.access_token_ttl), default 2h.
+//GenerateAccessToken 使用给定的声明创建一个签名的访问令牌。
+//TTL从配置中读取（jwt.access_token_ttl），默认2h。
 func GenerateAccessToken(claims *JWTClaims) (string, error) {
 	secret := viper.GetString("jwt.secret")
 	ttl := viper.GetDuration("jwt.access_token_ttl")
@@ -54,9 +54,9 @@ func GenerateAccessToken(claims *JWTClaims) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
-// GenerateRefreshToken creates a signed refresh token for the given user.
-// TTL is read from config (jwt.refresh_token_ttl), default 7d.
-// Returns the signed token string and the JTI used.
+//GenerateRefreshToken 为给定用户创建一个签名的刷新令牌。
+//TTL从配置中读取（jwt.refresh_token_ttl），默认7d。
+//返回签名的令牌字符串和使用的 JTI。
 func GenerateRefreshToken(userID string, jti string) (string, string, error) {
 	secret := viper.GetString("jwt.secret")
 	ttl := viper.GetDuration("jwt.refresh_token_ttl")
@@ -84,7 +84,7 @@ func GenerateRefreshToken(userID string, jti string) (string, string, error) {
 	return signed, jti, nil
 }
 
-// ParseToken validates and parses a token string, returning the custom JWTClaims.
+//ParseToken 验证并解析令牌字符串，返回自定义 JWTClaims。
 func ParseToken(tokenString string) (*JWTClaims, error) {
 	secret := viper.GetString("jwt.secret")
 

@@ -9,11 +9,11 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/response"
 )
 
-// TenantContext injects tenant_id and is_system_admin into the gin.Context.
+//TenantContext 将tenant_id 和is_system_admin 注入gin.Context 中。
 //
-// For system_admin users the tenant_id is read from the "tenant_id" query
-// parameter (may be empty) and is_system_admin is set to true.
-// For all other roles the tenant_id comes from the JWT ActiveRole claim.
+//对于 system_admin 用户，tenant_id 是从“tenant_id”查询中读取的
+//参数（可能为空）并且 is_system_admin 设置为 true。
+//对于所有其他角色，tenant_id 来自 JWT ActiveRole 声明。
 func TenantContext() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claimsVal, exists := c.Get("jwt_claims")

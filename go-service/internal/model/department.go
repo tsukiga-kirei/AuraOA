@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Department represents an organizational department within a tenant.
+//部门代表租户内的组织部门。
 type Department struct {
 	ID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
 	TenantID  uuid.UUID  `gorm:"type:uuid;not null;index"`

@@ -12,17 +12,17 @@ import (
 	"oa-smart-audit/go-service/internal/service"
 )
 
-// OrgHandler handles department, role, and member CRUD HTTP requests.
+//OrgHandler 处理部门、角色和成员 CRUD HTTP 请求。
 type OrgHandler struct {
 	orgService *service.OrgService
 }
 
-// NewOrgHandler creates a new OrgHandler instance.
+//NewOrgHandler 创建一个新的 OrgHandler 实例。
 func NewOrgHandler(orgService *service.OrgService) *OrgHandler {
 	return &OrgHandler{orgService: orgService}
 }
 
-// getTenantID extracts and parses tenant_id from the gin.Context (set by TenantMiddleware).
+//getTenantID 从 gin.Context（由 TenantMiddleware 设置）中提取并解析tenant_id。
 func getTenantID(c *gin.Context) (uuid.UUID, error) {
 	tidVal, exists := c.Get("tenant_id")
 	if !exists {
@@ -38,10 +38,10 @@ func getTenantID(c *gin.Context) (uuid.UUID, error) {
 var errTenantIDMissing = &service.ServiceError{Code: errcode.ErrParamValidation, Message: "租户ID缺失"}
 
 // ---------------------------------------------------------------------------
-// Department handlers
+//部门经理
 // ---------------------------------------------------------------------------
 
-// ListDepartments handles GET /api/tenant/org/departments
+//ListDepartments 处理 GET /api/tenant/org/departments
 func (h *OrgHandler) ListDepartments(c *gin.Context) {
 	departments, err := h.orgService.ListDepartments(c)
 	if err != nil {
@@ -51,7 +51,7 @@ func (h *OrgHandler) ListDepartments(c *gin.Context) {
 	response.Success(c, departments)
 }
 
-// CreateDepartment handles POST /api/tenant/org/departments
+//CreateDepartment 处理 POST /api/tenant/org/departments
 func (h *OrgHandler) CreateDepartment(c *gin.Context) {
 	var req dto.CreateDepartmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -71,7 +71,7 @@ func (h *OrgHandler) CreateDepartment(c *gin.Context) {
 	response.Success(c, dept)
 }
 
-// UpdateDepartment handles PUT /api/tenant/org/departments/:id
+//UpdateDepartment 处理 PUT /api/tenant/org/departments/:id
 func (h *OrgHandler) UpdateDepartment(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -91,7 +91,7 @@ func (h *OrgHandler) UpdateDepartment(c *gin.Context) {
 	response.Success(c, dept)
 }
 
-// DeleteDepartment handles DELETE /api/tenant/org/departments/:id
+//DeleteDepartment 处理 DELETE /api/tenant/org/departments/:id
 func (h *OrgHandler) DeleteDepartment(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -106,10 +106,10 @@ func (h *OrgHandler) DeleteDepartment(c *gin.Context) {
 }
 
 // ---------------------------------------------------------------------------
-// Role handlers
+//角色处理程序
 // ---------------------------------------------------------------------------
 
-// ListRoles handles GET /api/tenant/org/roles
+//ListRoles 处理 GET /api/tenant/org/roles
 func (h *OrgHandler) ListRoles(c *gin.Context) {
 	roles, err := h.orgService.ListRoles(c)
 	if err != nil {
@@ -119,7 +119,7 @@ func (h *OrgHandler) ListRoles(c *gin.Context) {
 	response.Success(c, roles)
 }
 
-// CreateRole handles POST /api/tenant/org/roles
+//CreateRole 处理 POST /api/tenant/org/roles
 func (h *OrgHandler) CreateRole(c *gin.Context) {
 	var req dto.CreateRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -139,7 +139,7 @@ func (h *OrgHandler) CreateRole(c *gin.Context) {
 	response.Success(c, role)
 }
 
-// UpdateRole handles PUT /api/tenant/org/roles/:id
+//UpdateRole 处理 PUT /api/tenant/org/roles/:id
 func (h *OrgHandler) UpdateRole(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -159,7 +159,7 @@ func (h *OrgHandler) UpdateRole(c *gin.Context) {
 	response.Success(c, role)
 }
 
-// DeleteRole handles DELETE /api/tenant/org/roles/:id
+//DeleteRole 处理 DELETE /api/tenant/org/roles/:id
 func (h *OrgHandler) DeleteRole(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -174,10 +174,10 @@ func (h *OrgHandler) DeleteRole(c *gin.Context) {
 }
 
 // ---------------------------------------------------------------------------
-// Member handlers
+//会员管理员
 // ---------------------------------------------------------------------------
 
-// ListMembers handles GET /api/tenant/org/members
+//ListMembers 处理 GET /api/tenant/org/members
 func (h *OrgHandler) ListMembers(c *gin.Context) {
 	members, err := h.orgService.ListMembers(c)
 	if err != nil {
@@ -187,7 +187,7 @@ func (h *OrgHandler) ListMembers(c *gin.Context) {
 	response.Success(c, members)
 }
 
-// CreateMember handles POST /api/tenant/org/members
+//CreateMember 处理 POST /api/tenant/org/members
 func (h *OrgHandler) CreateMember(c *gin.Context) {
 	var req dto.CreateMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -207,7 +207,7 @@ func (h *OrgHandler) CreateMember(c *gin.Context) {
 	response.Success(c, member)
 }
 
-// UpdateMember handles PUT /api/tenant/org/members/:id
+//UpdateMember 处理 PUT /api/tenant/org/members/:id
 func (h *OrgHandler) UpdateMember(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -227,7 +227,7 @@ func (h *OrgHandler) UpdateMember(c *gin.Context) {
 	response.Success(c, member)
 }
 
-// DeleteMember handles DELETE /api/tenant/org/members/:id
+//DeleteMember 处理 DELETE /api/tenant/org/members/:id
 func (h *OrgHandler) DeleteMember(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -242,7 +242,7 @@ func (h *OrgHandler) DeleteMember(c *gin.Context) {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: map ServiceError to HTTP response
+//Helper：将 ServiceError 映射到 HTTP 响应
 // ---------------------------------------------------------------------------
 
 func handleServiceError(c *gin.Context, err error) {

@@ -9,17 +9,17 @@ import (
 	"oa-smart-audit/go-service/internal/model"
 )
 
-// UserRepo provides data access methods for users, login history, role assignments, and tenants.
+//UserRepo 为用户、登录历史、角色分配和租户提供数据访问方法。
 type UserRepo struct {
 	*BaseRepo
 }
 
-// NewUserRepo creates a new UserRepo instance.
+//NewUserRepo 创建一个新的 UserRepo 实例。
 func NewUserRepo(db *gorm.DB) *UserRepo {
 	return &UserRepo{BaseRepo: NewBaseRepo(db)}
 }
 
-// FindByUsername finds a user by username.
+//FindByUsername 通过用户名查找用户。
 func (r *UserRepo) FindByUsername(username string) (*model.User, error) {
 	var user model.User
 	if err := r.DB.Where("username = ?", username).First(&user).Error; err != nil {
@@ -28,7 +28,7 @@ func (r *UserRepo) FindByUsername(username string) (*model.User, error) {
 	return &user, nil
 }
 
-// FindByID finds a user by UUID.
+//FindByID 通过 UUID 查找用户。
 func (r *UserRepo) FindByID(id uuid.UUID) (*model.User, error) {
 	var user model.User
 	if err := r.DB.Where("id = ?", id).First(&user).Error; err != nil {
@@ -37,8 +37,8 @@ func (r *UserRepo) FindByID(id uuid.UUID) (*model.User, error) {
 	return &user, nil
 }
 
-// UpdateLoginFail increments login_fail_count by 1.
-// If the count reaches 5, it sets locked_until to now + 15 minutes.
+//UpdateLoginFail 使 login_fail_count 增加 1。
+//如果计数达到 5，它将locked_until 设置为 now + 15 分钟。
 func (r *UserRepo) UpdateLoginFail(user *model.User) error {
 	user.LoginFailCount++
 	updates := map[string]interface{}{
@@ -52,7 +52,7 @@ func (r *UserRepo) UpdateLoginFail(user *model.User) error {
 	return r.DB.Model(user).Updates(updates).Error
 }
 
-// ResetLoginFail resets login_fail_count to 0 and clears locked_until.
+//ResetLoginFail 将login_fail_count 重置为0 并清除locked_until。
 func (r *UserRepo) ResetLoginFail(userID uuid.UUID) error {
 	return r.DB.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
 		"login_fail_count": 0,
@@ -60,12 +60,12 @@ func (r *UserRepo) ResetLoginFail(userID uuid.UUID) error {
 	}).Error
 }
 
-// CreateLoginHistory creates a login history record.
+//CreateLoginHistory 创建登录历史记录。
 func (r *UserRepo) CreateLoginHistory(history *model.LoginHistory) error {
 	return r.DB.Create(history).Error
 }
 
-// FindRoleAssignments finds all role assignments for a user.
+//FindRoleAssignments 查找用户的所有角色分配。
 func (r *UserRepo) FindRoleAssignments(userID uuid.UUID) ([]model.UserRoleAssignment, error) {
 	var assignments []model.UserRoleAssignment
 	if err := r.DB.Where("user_id = ?", userID).Find(&assignments).Error; err != nil {
@@ -74,7 +74,7 @@ func (r *UserRepo) FindRoleAssignments(userID uuid.UUID) ([]model.UserRoleAssign
 	return assignments, nil
 }
 
-// FindRoleAssignmentByID finds a specific role assignment by ID.
+//FindRoleAssignmentByID 按 ID 查找特定角色分配。
 func (r *UserRepo) FindRoleAssignmentByID(id uuid.UUID) (*model.UserRoleAssignment, error) {
 	var assignment model.UserRoleAssignment
 	if err := r.DB.Where("id = ?", id).First(&assignment).Error; err != nil {
@@ -83,7 +83,7 @@ func (r *UserRepo) FindRoleAssignmentByID(id uuid.UUID) (*model.UserRoleAssignme
 	return &assignment, nil
 }
 
-// FindTenantByID finds a tenant by ID.
+//FindTenantByID 通过 ID 查找租户。
 func (r *UserRepo) FindTenantByID(tenantID uuid.UUID) (*model.Tenant, error) {
 	var tenant model.Tenant
 	if err := r.DB.Where("id = ?", tenantID).First(&tenant).Error; err != nil {

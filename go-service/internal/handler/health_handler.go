@@ -6,15 +6,15 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/response"
 )
 
-// HealthHandler handles health check HTTP requests.
+//HealthHandler 处理健康检查 HTTP 请求。
 type HealthHandler struct{}
 
-// NewHealthHandler creates a new HealthHandler instance.
+//NewHealthHandler 创建一个新的 HealthHandler 实例。
 func NewHealthHandler() *HealthHandler {
 	return &HealthHandler{}
 }
 
-// Health handles GET /api/health
+//Health 处理 GET /api/health
 func (h *HealthHandler) Health(c *gin.Context) {
 	response.Success(c, gin.H{"status": "ok"})
 }

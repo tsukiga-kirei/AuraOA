@@ -17,13 +17,13 @@ import (
 	"oa-smart-audit/go-service/internal/service"
 )
 
-// AuthHandler handles authentication-related HTTP requests.
+//AuthHandler 处理与身份验证相关的 HTTP 请求。
 type AuthHandler struct {
 	authService *service.AuthService
 	rdb         *redis.Client
 }
 
-// NewAuthHandler creates a new AuthHandler instance.
+//NewAuthHandler 创建一个新的 AuthHandler 实例。
 func NewAuthHandler(authService *service.AuthService, rdb *redis.Client) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
@@ -31,12 +31,12 @@ func NewAuthHandler(authService *service.AuthService, rdb *redis.Client) *AuthHa
 	}
 }
 
-// logoutBody is the optional request body for POST /api/auth/logout.
+//logoutBody 是 POST /api/auth/logout 的可选请求正文。
 type logoutBody struct {
 	RefreshJTI string `json:"refresh_jti"`
 }
 
-// Login handles POST /api/auth/login
+//登录句柄 POST /api/auth/login
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -58,9 +58,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	response.Success(c, resp)
 }
 
-// Logout handles POST /api/auth/logout
+//注销处理 POST /api/auth/logout
 func (h *AuthHandler) Logout(c *gin.Context) {
-	// Get jwt_claims from context (set by JWT middleware)
+	//从上下文中获取jwt_claims（由JWT中间件设置）
 	claimsVal, exists := c.Get("jwt_claims")
 	if !exists {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
@@ -72,13 +72,13 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	// Try to get refresh_jti from request body
+	//尝试从请求体中获取refresh_jti
 	var body logoutBody
 	_ = c.ShouldBindJSON(&body)
 
 	refreshJTI := body.RefreshJTI
 
-	// If not provided in body, try to get from Redis session
+	//如果正文中未提供，请尝试从 Redis 会话中获取
 	if refreshJTI == "" {
 		sessionKey := fmt.Sprintf("session:%s", claims.Sub)
 		sessionJSON, err := h.rdb.Get(context.Background(), sessionKey).Result()
@@ -106,7 +106,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// Refresh handles POST /api/auth/refresh
+//刷新句柄 POST /api/auth/refresh
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req dto.RefreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -128,7 +128,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	response.Success(c, resp)
 }
 
-// SwitchRole handles PUT /api/auth/switch-role
+//SwitchRole 处理 PUT /api/auth/switch-role
 func (h *AuthHandler) SwitchRole(c *gin.Context) {
 	var req dto.SwitchRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -136,7 +136,7 @@ func (h *AuthHandler) SwitchRole(c *gin.Context) {
 		return
 	}
 
-	// Get user_id and jwt_claims from context
+	//从上下文中获取 user_id 和 jwt_claims
 	claimsVal, exists := c.Get("jwt_claims")
 	if !exists {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
@@ -168,9 +168,9 @@ func (h *AuthHandler) SwitchRole(c *gin.Context) {
 	response.Success(c, resp)
 }
 
-// GetMenu handles GET /api/auth/menu
+//GetMenu 处理 GET /api/auth/menu
 func (h *AuthHandler) GetMenu(c *gin.Context) {
-	// Get jwt_claims from context
+	//从上下文中获取 jwt_claims
 	claimsVal, exists := c.Get("jwt_claims")
 	if !exists {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
@@ -182,7 +182,7 @@ func (h *AuthHandler) GetMenu(c *gin.Context) {
 		return
 	}
 
-	// Determine tenantID: from ActiveRole or query param for system_admin
+	//确定tenantID：从ActiveRole或system_admin的查询参数
 	tenantID := ""
 	if claims.ActiveRole.TenantID != nil {
 		tenantID = *claims.ActiveRole.TenantID
@@ -203,10 +203,10 @@ func (h *AuthHandler) GetMenu(c *gin.Context) {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: map ServiceError code to HTTP status
+//Helper：将 ServiceError 代码映射到 HTTP 状态
 // ---------------------------------------------------------------------------
 
-// mapServiceErrorToHTTP maps a ServiceError's business code to an HTTP status code.
+//mapServiceErrorToHTTP 将 ServiceError 的业务代码映射到 HTTP 状态代码。
 func mapServiceErrorToHTTP(err error) int {
 	svcErr, ok := err.(*service.ServiceError)
 	if !ok {

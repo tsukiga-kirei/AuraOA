@@ -7,13 +7,13 @@ import (
 	"gorm.io/datatypes"
 )
 
-// Tenant represents a tenant in the multi-tenant platform.
+//租户代表多租户平台中的租户。
 type Tenant struct {
 	ID                uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
 	Name              string         `gorm:"size:255;not null"`
 	Code              string         `gorm:"uniqueIndex;size:100;not null"`
 	Description       string         `gorm:"type:text"`
-	Status            string         `gorm:"size:20;not null;default:active"` // active|inactive
+	Status            string         `gorm:"size:20;not null;default:active"` //活跃|不活跃
 	OAType            string         `gorm:"size:50;not null;default:weaver_e9"`
 	OADBConnectionID  *uuid.UUID     `gorm:"type:uuid"`
 	TokenQuota        int            `gorm:"not null;default:10000"`

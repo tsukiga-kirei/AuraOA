@@ -7,18 +7,18 @@ import (
 	"oa-smart-audit/go-service/internal/model"
 )
 
-// TenantRepo provides data access methods for tenant management (system_admin scope).
-// Unlike OrgRepo, TenantRepo does NOT use WithTenant since it manages tenants themselves.
+//TenantRepo 提供用于租户管理（system_admin 范围）的数据访问方法。
+//与 OrgRepo 不同，TenantRepo 不使用 WithTenant，因为它自己管理租户。
 type TenantRepo struct {
 	*BaseRepo
 }
 
-// NewTenantRepo creates a new TenantRepo instance.
+//NewTenantRepo 创建一个新的 TenantRepo 实例。
 func NewTenantRepo(db *gorm.DB) *TenantRepo {
 	return &TenantRepo{BaseRepo: NewBaseRepo(db)}
 }
 
-// List returns all tenants ordered by creation time.
+//列表返回按创建时间排序的所有租户。
 func (r *TenantRepo) List() ([]model.Tenant, error) {
 	var tenants []model.Tenant
 	if err := r.DB.Order("created_at ASC").Find(&tenants).Error; err != nil {
@@ -27,22 +27,22 @@ func (r *TenantRepo) List() ([]model.Tenant, error) {
 	return tenants, nil
 }
 
-// Create creates a new tenant record.
+//创建创建新的租户记录。
 func (r *TenantRepo) Create(tenant *model.Tenant) error {
 	return r.DB.Create(tenant).Error
 }
 
-// Update updates an existing tenant record.
+//更新更新现有租户记录。
 func (r *TenantRepo) Update(tenant *model.Tenant) error {
 	return r.DB.Save(tenant).Error
 }
 
-// Delete deletes a tenant by ID.
+//删除通过 ID 删除租户。
 func (r *TenantRepo) Delete(id uuid.UUID) error {
 	return r.DB.Where("id = ?", id).Delete(&model.Tenant{}).Error
 }
 
-// FindByID finds a tenant by its UUID.
+//FindByID 通过 UUID 查找租户。
 func (r *TenantRepo) FindByID(id uuid.UUID) (*model.Tenant, error) {
 	var tenant model.Tenant
 	if err := r.DB.Where("id = ?", id).First(&tenant).Error; err != nil {
@@ -51,7 +51,7 @@ func (r *TenantRepo) FindByID(id uuid.UUID) (*model.Tenant, error) {
 	return &tenant, nil
 }
 
-// FindByCode finds a tenant by its unique code.
+//FindByCode 通过其唯一代码查找租户。
 func (r *TenantRepo) FindByCode(code string) (*model.Tenant, error) {
 	var tenant model.Tenant
 	if err := r.DB.Where("code = ?", code).First(&tenant).Error; err != nil {
@@ -60,7 +60,7 @@ func (r *TenantRepo) FindByCode(code string) (*model.Tenant, error) {
 	return &tenant, nil
 }
 
-// GetStats returns member count, department count, and role count for a given tenant.
+//GetStats 返回给定租户的成员计数、部门计数和角色计数。
 func (r *TenantRepo) GetStats(tenantID uuid.UUID) (memberCount, deptCount, roleCount int64, err error) {
 	if err = r.DB.Model(&model.OrgMember{}).Where("tenant_id = ?", tenantID).Count(&memberCount).Error; err != nil {
 		return

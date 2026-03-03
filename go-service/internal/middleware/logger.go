@@ -7,8 +7,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// Logger returns a middleware that logs every request using the provided
-// zap.Logger. It records method, path, HTTP status, latency and client IP.
+//Logger 返回一个中间件，使用提供的记录每个请求
+//zap.Logger。它记录方法、路径、HTTP 状态、延迟和客户端 IP。
 func Logger(log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()

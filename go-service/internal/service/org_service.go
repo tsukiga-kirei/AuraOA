@@ -15,14 +15,14 @@ import (
 	"oa-smart-audit/go-service/internal/repository"
 )
 
-// OrgService handles department, role, and member CRUD operations with tenant isolation.
+//OrgService 通过租户隔离处理部门、角色和成员 CRUD 操作。
 type OrgService struct {
 	orgRepo  *repository.OrgRepo
 	userRepo *repository.UserRepo
 	db       *gorm.DB
 }
 
-// NewOrgService creates a new OrgService instance.
+//NewOrgService 创建一个新的 OrgService 实例。
 func NewOrgService(orgRepo *repository.OrgRepo, userRepo *repository.UserRepo, db *gorm.DB) *OrgService {
 	return &OrgService{
 		orgRepo:  orgRepo,
@@ -32,10 +32,10 @@ func NewOrgService(orgRepo *repository.OrgRepo, userRepo *repository.UserRepo, d
 }
 
 // ---------------------------------------------------------------------------
-// Department CRUD
+//部门增删改查
 // ---------------------------------------------------------------------------
 
-// ListDepartments returns all departments for the current tenant.
+//ListDepartments 返回当前租户的所有部门。
 func (s *OrgService) ListDepartments(c *gin.Context) ([]dto.DepartmentResponse, error) {
 	departments, err := s.orgRepo.ListDepartments(c)
 	if err != nil {
@@ -48,7 +48,7 @@ func (s *OrgService) ListDepartments(c *gin.Context) ([]dto.DepartmentResponse, 
 	return result, nil
 }
 
-// CreateDepartment creates a new department in the current tenant.
+//CreateDepartment 在当前租户中创建一个新部门。
 func (s *OrgService) CreateDepartment(c *gin.Context, tenantID uuid.UUID, req *dto.CreateDepartmentRequest) (*dto.DepartmentResponse, error) {
 	dept := &model.Department{
 		TenantID:  tenantID,
@@ -70,7 +70,7 @@ func (s *OrgService) CreateDepartment(c *gin.Context, tenantID uuid.UUID, req *d
 	return &resp, nil
 }
 
-// UpdateDepartment updates an existing department.
+//UpdateDepartment 更新现有部门。
 func (s *OrgService) UpdateDepartment(c *gin.Context, id uuid.UUID, req *dto.UpdateDepartmentRequest) (*dto.DepartmentResponse, error) {
 	dept, err := s.orgRepo.FindDepartmentByID(c, id)
 	if err != nil {
@@ -96,14 +96,14 @@ func (s *OrgService) UpdateDepartment(c *gin.Context, id uuid.UUID, req *dto.Upd
 	return &resp, nil
 }
 
-// DeleteDepartment deletes a department after checking it has no members.
+//DeleteDepartment 在检查部门没有成员后删除该部门。
 func (s *OrgService) DeleteDepartment(c *gin.Context, id uuid.UUID) error {
-	// Verify department exists in current tenant
+	//验证当前租户中是否存在部门
 	_, err := s.orgRepo.FindDepartmentByID(c, id)
 	if err != nil {
 		return newServiceError(errcode.ErrResourceNotFound, "资源不存在")
 	}
-	// Check if department has members
+	//检查部门是否有成员
 	count, err := s.orgRepo.CountMembersByDept(id)
 	if err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
@@ -118,10 +118,10 @@ func (s *OrgService) DeleteDepartment(c *gin.Context, id uuid.UUID) error {
 }
 
 // ---------------------------------------------------------------------------
-// Role CRUD
+//角色增删改查
 // ---------------------------------------------------------------------------
 
-// ListRoles returns all org roles for the current tenant.
+//ListRoles 返回当前租户的所有组织角色。
 func (s *OrgService) ListRoles(c *gin.Context) ([]dto.RoleResponse, error) {
 	roles, err := s.orgRepo.ListRoles(c)
 	if err != nil {
@@ -134,7 +134,7 @@ func (s *OrgService) ListRoles(c *gin.Context) ([]dto.RoleResponse, error) {
 	return result, nil
 }
 
-// CreateRole creates a new org role in the current tenant.
+//CreateRole 在当前租户中创建新的组织角色。
 func (s *OrgService) CreateRole(c *gin.Context, tenantID uuid.UUID, req *dto.CreateRoleRequest) (*dto.RoleResponse, error) {
 	pagePerms, err := json.Marshal(req.PagePermissions)
 	if err != nil {
@@ -153,7 +153,7 @@ func (s *OrgService) CreateRole(c *gin.Context, tenantID uuid.UUID, req *dto.Cre
 	return &resp, nil
 }
 
-// UpdateRole updates an existing org role.
+//UpdateRole 更新现有组织角色。
 func (s *OrgService) UpdateRole(c *gin.Context, id uuid.UUID, req *dto.UpdateRoleRequest) (*dto.RoleResponse, error) {
 	role, err := s.orgRepo.FindRoleByID(c, id)
 	if err != nil {
@@ -179,7 +179,7 @@ func (s *OrgService) UpdateRole(c *gin.Context, id uuid.UUID, req *dto.UpdateRol
 	return &resp, nil
 }
 
-// DeleteRole deletes an org role after checking it is not a system role.
+//DeleteRole 在检查组织角色不是系统角色后删除该角色。
 func (s *OrgService) DeleteRole(c *gin.Context, id uuid.UUID) error {
 	role, err := s.orgRepo.FindRoleByID(c, id)
 	if err != nil {
@@ -195,10 +195,10 @@ func (s *OrgService) DeleteRole(c *gin.Context, id uuid.UUID) error {
 }
 
 // ---------------------------------------------------------------------------
-// Member CRUD
+//会员增删改查
 // ---------------------------------------------------------------------------
 
-// ListMembers returns all org members for the current tenant.
+//ListMembers 返回当前租户的所有组织成员。
 func (s *OrgService) ListMembers(c *gin.Context) ([]dto.MemberResponse, error) {
 	members, err := s.orgRepo.ListMembers(c)
 	if err != nil {
@@ -211,19 +211,19 @@ func (s *OrgService) ListMembers(c *gin.Context) ([]dto.MemberResponse, error) {
 	return result, nil
 }
 
-// CreateMember creates a new org member with automatic user creation and role assignment.
+//CreateMember 通过自动用户创建和角色分配创建新的组织成员。
 func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.CreateMemberRequest) (*dto.MemberResponse, error) {
-	// 1. Check if user already exists; if so, check uniqueness within tenant
+	//1. 检查用户是否已经存在；如果是这样，请检查租户内的唯一性
 	existingUser, _ := s.userRepo.FindByUsername(req.Username)
 	if existingUser != nil {
-		// Check if this user already has a member record in this tenant
+		//检查该用户在此租户中是否已有会员记录
 		existingMember, _ := s.orgRepo.FindByUserAndTenant(existingUser.ID, tenantID)
 		if existingMember != nil {
 			return nil, newServiceError(errcode.ErrResourceConflict, "资源冲突")
 		}
 	}
 
-	// 2. Validate department_id exists in tenant
+	//2. 验证tenant中存在department_id
 	deptID, err := uuid.Parse(req.DepartmentID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
@@ -233,7 +233,7 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 		return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
 	}
 
-	// 3. Validate role_ids exist in tenant
+	//3. 验证租户中存在role_ids
 	roleUUIDs := make([]uuid.UUID, len(req.RoleIDs))
 	for i, rid := range req.RoleIDs {
 		parsed, err := uuid.Parse(rid)
@@ -246,14 +246,14 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 	if err != nil || len(roles) != len(roleUUIDs) {
 		return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
 	}
-	// Verify all roles belong to the current tenant
+	//验证所有角色都属于当前租户
 	for _, role := range roles {
 		if role.TenantID != tenantID {
 			return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
 		}
 	}
 
-	// 4. Find or create user
+	//4. 查找或创建用户
 	var user *model.User
 	if existingUser != nil {
 		user = existingUser
@@ -276,7 +276,7 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 		}
 	}
 
-	// 5. Create OrgMember record
+	//5. 创建组织成员记录
 	member := &model.OrgMember{
 		TenantID:     tenantID,
 		UserID:       user.ID,
@@ -288,12 +288,12 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
-	// 6. Create org_member_roles associations
+	//6. 创建 org_member_roles 关联
 	if err := s.db.Model(member).Association("Roles").Append(&roles); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
-	// 7. Create UserRoleAssignment with role="business" for this tenant
+	//7. 为此租户创建角色为“business”的 UserRoleAssignment
 	businessAssignment := &model.UserRoleAssignment{
 		UserID:  user.ID,
 		Role:    "business",
@@ -304,7 +304,7 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
-	// 8. If role_ids contains the tenant admin role, also create tenant_admin assignment
+	//8. 如果 role_ids 包含租户管理员角色，还创建tenant_admin 分配
 	for _, role := range roles {
 		if role.Name == "租户管理员" || (role.IsSystem && role.Name == "租户管理员") {
 			tenantAdminAssignment := &model.UserRoleAssignment{
@@ -320,7 +320,7 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 		}
 	}
 
-	// 9. Reload member with associations for response
+	//9. 重新加载成员的关联以进行响应
 	member.User = *user
 	member.Department = *dept
 	member.Roles = roles
@@ -329,14 +329,14 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 	return &resp, nil
 }
 
-// UpdateMember updates an existing org member's department, position, status, and roles.
+//UpdateMember 更新现有组织成员的部门、职位、状态和角色。
 func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateMemberRequest) (*dto.MemberResponse, error) {
 	member, err := s.orgRepo.FindMemberByID(c, id)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrResourceNotFound, "资源不存在")
 	}
 
-	// Update department_id if provided
+	//更新 Department_id（如果提供）
 	if req.DepartmentID != "" {
 		deptID, err := uuid.Parse(req.DepartmentID)
 		if err != nil {
@@ -360,7 +360,7 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
-	// Replace role associations if role_ids provided
+	//如果提供了 role_ids，则替换角色关联
 	if len(req.RoleIDs) > 0 {
 		roleUUIDs := make([]uuid.UUID, len(req.RoleIDs))
 		for i, rid := range req.RoleIDs {
@@ -380,7 +380,7 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 		member.Roles = roles
 	}
 
-	// Reload for full response
+	//重新加载以获得完整响应
 	reloaded, err := s.orgRepo.FindMemberByID(c, id)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
@@ -389,24 +389,24 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 	return &resp, nil
 }
 
-// DeleteMember deletes an org member and cascades cleanup of roles and user_role_assignments.
+//DeleteMember 删除组织成员并级联清理角色和 user_role_assignments。
 func (s *OrgService) DeleteMember(c *gin.Context, id uuid.UUID) error {
 	member, err := s.orgRepo.FindMemberByID(c, id)
 	if err != nil {
 		return newServiceError(errcode.ErrResourceNotFound, "资源不存在")
 	}
 
-	// 1. Clear org_member_roles associations
+	//1. 清除 org_member_roles 关联
 	if err := s.db.Model(member).Association("Roles").Clear(); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
-	// 2. Delete org_members record
+	//2.删除org_members记录
 	if err := s.orgRepo.DeleteMember(id); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
-	// 3. Delete user_role_assignments for this user + tenant
+	//3.删除该用户+租户的user_role_assignments
 	if err := s.db.Where("user_id = ? AND tenant_id = ?", member.UserID, member.TenantID).
 		Delete(&model.UserRoleAssignment{}).Error; err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
@@ -416,7 +416,7 @@ func (s *OrgService) DeleteMember(c *gin.Context, id uuid.UUID) error {
 }
 
 // ---------------------------------------------------------------------------
-// Helper functions: model → DTO conversion
+//辅助函数：模型 → DTO 转换
 // ---------------------------------------------------------------------------
 
 func toDepartmentResponse(d *model.Department) dto.DepartmentResponse {

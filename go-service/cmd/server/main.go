@@ -25,61 +25,61 @@ import (
 )
 
 func main() {
-	// 1. Load config via Viper
+	//1.通过Viper加载配置
 	if err := loadConfig(); err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// 2. Initialize logger
+	//2. 初始化记录器
 	logger, err := zap.NewProduction()
 	if err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
 	defer logger.Sync()
 
-	// 3. Connect to PostgreSQL via GORM
+	//3.通过GORM连接PostgreSQL
 	db, err := initDatabase()
 	if err != nil {
 		logger.Fatal("Failed to connect to database", zap.Error(err))
 	}
 	logger.Info("Database connected successfully")
 
-	// 4. Connect to Redis
+	//4.连接Redis
 	rdb, err := initRedis()
 	if err != nil {
 		logger.Fatal("Failed to connect to Redis", zap.Error(err))
 	}
 	logger.Info("Redis connected successfully")
 
-	// 5. Initialize Repositories
+	//5. 初始化存储库
 	userRepo := repository.NewUserRepo(db)
 	orgRepo := repository.NewOrgRepo(db)
 	tenantRepo := repository.NewTenantRepo(db)
 
-	// 6. Initialize Services
+	//6. 初始化服务
 	authService := service.NewAuthService(userRepo, rdb, db)
 	orgService := service.NewOrgService(orgRepo, userRepo, db)
 	tenantService := service.NewTenantService(tenantRepo, db)
 
-	// 7. Initialize Handlers
+	//7. 初始化处理程序
 	authHandler := handler.NewAuthHandler(authService, rdb)
 	orgHandler := handler.NewOrgHandler(orgService)
 	tenantHandler := handler.NewTenantHandler(tenantService)
 	healthHandler := handler.NewHealthHandler()
 
-	// 8. Set up Gin router with middleware and routes
+	//8. 使用中间件和路由设置 Gin 路由器
 	r := gin.New()
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
 	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, healthHandler)
 
-	// 9. Start HTTP server on configured port
+	//9. 在配置的端口上启动 HTTP 服务器
 	port := viper.GetInt("server.port")
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: r,
 	}
 
-	// 10. Graceful shutdown
+	//10. 优雅关机
 	go func() {
 		logger.Info("Server starting", zap.Int("port", port))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -101,7 +101,7 @@ func main() {
 	logger.Info("Server exited gracefully")
 }
 
-// loadConfig reads config.yaml using Viper.
+//loadConfig 使用 Viper 读取 config.yaml。
 func loadConfig() error {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
@@ -112,7 +112,7 @@ func loadConfig() error {
 	return viper.ReadInConfig()
 }
 
-// initDatabase connects to PostgreSQL using GORM.
+//initDatabase 使用 GORM 连接到 PostgreSQL。
 func initDatabase() (*gorm.DB, error) {
 	dsn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
@@ -140,7 +140,7 @@ func initDatabase() (*gorm.DB, error) {
 	return db, nil
 }
 
-// initRedis connects to Redis.
+//initRedis 连接到 Redis。
 func initRedis() (*redis.Client, error) {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", viper.GetString("redis.host"), viper.GetInt("redis.port")),

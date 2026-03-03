@@ -1,13 +1,13 @@
 package errcode
 
-// Business error codes (40001–50002).
+//业务错误代码 (40001–50002)。
 const (
 	Success = 0 // 成功
 
-	// 400xx - Client errors
+	//400xx - 客户端错误
 	ErrParamValidation = 40001 // 参数校验失败
 
-	// 401xx - Authentication errors
+	//401xx - 身份验证错误
 	ErrNoAuthToken       = 40100 // 未提供认证令牌
 	ErrTokenInvalid      = 40101 // 令牌无效或已过期
 	ErrTokenRevoked      = 40102 // 令牌已被吊销
@@ -18,18 +18,18 @@ const (
 	ErrNoRoleInTenant    = 40107 // 用户在该租户无角色分配
 	ErrRoleSwitchFailed  = 40108 // 角色切换失败
 
-	// 403xx - Authorization errors
+	//403xx - 授权错误
 	ErrInsufficientPerms = 40300 // 权限不足
 	ErrCrossTenantAccess = 40301 // 不允许跨租户访问
 
-	// 404xx - Not found
+	//404xx - 未找到
 	ErrResourceNotFound = 40400 // 资源不存在
 
-	// 409xx - Conflict
+	//409xx - 冲突
 	ErrResourceConflict = 40900 // 资源冲突
 
-	// 500xx - Server errors
+	//500xx - 服务器错误
 	ErrInternalServer = 50000 // 服务器内部错误
 	ErrDatabase       = 50001 // 数据库错误
-	ErrRedisConn      = 50002 // Redis 连接错误
+	ErrRedisConn      = 50002 //Redis连接错误
 )

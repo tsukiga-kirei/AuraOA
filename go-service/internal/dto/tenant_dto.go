@@ -1,6 +1,6 @@
 package dto
 
-// CreateTenantRequest is the request body for POST /api/admin/tenants
+//CreateTenantRequest 是 POST /api/admin/tenants 的请求正文
 type CreateTenantRequest struct {
 	Name           string      `json:"name" binding:"required"`
 	Code           string      `json:"code" binding:"required"`
@@ -14,7 +14,7 @@ type CreateTenantRequest struct {
 	ContactPhone   string      `json:"contact_phone"`
 }
 
-// UpdateTenantRequest is the request body for PUT /api/admin/tenants/:id
+//UpdateTenantRequest 是 PUT /api/admin/tenants/:id 的请求正文
 type UpdateTenantRequest struct {
 	Name              string      `json:"name"`
 	Status            string      `json:"status"`
@@ -33,7 +33,7 @@ type UpdateTenantRequest struct {
 	ContactPhone      string      `json:"contact_phone"`
 }
 
-// TenantResponse is the response body for tenant endpoints
+//TenantResponse 是租户端点的响应正文
 type TenantResponse struct {
 	ID                string      `json:"id"`
 	Name              string      `json:"name"`
@@ -57,7 +57,7 @@ type TenantResponse struct {
 	UpdatedAt         string      `json:"updated_at"`
 }
 
-// TenantStatsResponse is the response body for GET /api/admin/tenants/:id/stats
+//TenantStatsResponse 是 GET /api/admin/tenants/:id/stats 的响应正文
 type TenantStatsResponse struct {
 	TenantID        string `json:"tenant_id"`
 	MemberCount     int64  `json:"member_count"`
@@ -65,7 +65,7 @@ type TenantStatsResponse struct {
 	RoleCount       int64  `json:"role_count"`
 }
 
-// PublicTenantItem is a lightweight tenant entry for the public login page.
+//PublicTenantItem 是公共登录页面的轻量级租户条目。
 type PublicTenantItem struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`

@@ -18,14 +18,14 @@ import (
 	"oa-smart-audit/go-service/internal/repository"
 )
 
-// AuthService handles authentication, token management, role switching, and menu retrieval.
+//AuthService 处理身份验证、令牌管理、角色切换和菜单检索。
 type AuthService struct {
 	userRepo *repository.UserRepo
 	rdb      *redis.Client
 	db       *gorm.DB
 }
 
-// NewAuthService creates a new AuthService instance.
+//NewAuthService 创建一个新的 AuthService 实例。
 func NewAuthService(userRepo *repository.UserRepo, rdb *redis.Client, db *gorm.DB) *AuthService {
 	return &AuthService{
 		userRepo: userRepo,
@@ -34,7 +34,7 @@ func NewAuthService(userRepo *repository.UserRepo, rdb *redis.Client, db *gorm.D
 	}
 }
 
-// ServiceError carries a business error code and message for the handler layer.
+//ServiceError携带了handler层的业务错误码和消息。
 type ServiceError struct {
 	Code    int
 	Message string
@@ -49,34 +49,34 @@ func newServiceError(code int, msg string) *ServiceError {
 }
 
 // ---------------------------------------------------------------------------
-// Login
+//登录
 // ---------------------------------------------------------------------------
 
-// Login authenticates a user and returns tokens, user info, roles, and active role.
+//登录对用户进行身份验证并返回令牌、用户信息、角色和活动角色。
 func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
-	// 1. Find user by username
+	//1.通过用户名查找用户
 	user, err := s.userRepo.FindByUsername(req.Username)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrWrongPassword, "用户名或密码错误")
 	}
 
-	// 2. Check disabled status
+	//2. 检查禁用状态
 	if user.Status == "disabled" {
 		return nil, newServiceError(errcode.ErrAccountDisabled, "账户已被禁用")
 	}
 
-	// 3. Check locked: login_fail_count >= 5 AND locked_until > now
+	//3. 检查锁定：login_fail_count >= 5 AND Locked_until > now
 	if user.LoginFailCount >= 5 && user.LockedUntil != nil && user.LockedUntil.After(time.Now()) {
 		return nil, newServiceError(errcode.ErrAccountLocked, "账户被锁定")
 	}
 
-	// 4. Verify password
+	//4. 验证密码
 	if !hash.CheckPassword(req.Password, user.PasswordHash) {
 		_ = s.userRepo.UpdateLoginFail(user)
 		return nil, newServiceError(errcode.ErrWrongPassword, "用户名或密码错误")
 	}
 
-	// 5. If tenant_id provided and preferred_role != system_admin, validate tenant
+	//5. 如果提供了tenant_id并且preferred_role != system_admin，则验证租户
 	var tenant *model.Tenant
 	if req.TenantID != "" && req.PreferredRole != "system_admin" {
 		tenantUUID, parseErr := uuid.Parse(req.TenantID)
@@ -89,13 +89,13 @@ func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
 		}
 	}
 
-	// 6. Find role assignments for user
+	//6. 查找用户的角色分配
 	assignments, err := s.userRepo.FindRoleAssignments(user.ID)
 	if err != nil || len(assignments) == 0 {
 		return nil, newServiceError(errcode.ErrNoRoleInTenant, "用户在该租户无角色分配")
 	}
 
-	// 7. Filter assignments by tenant_id if provided
+	//7. 按tenant_id（如果提供）过滤分配
 	filtered := assignments
 	if req.TenantID != "" && req.PreferredRole != "system_admin" {
 		tenantUUID, _ := uuid.Parse(req.TenantID)
@@ -105,27 +105,27 @@ func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
 		}
 	}
 
-	// 8. Select activeRole by priority
+	//8.按优先级选择activeRole
 	activeAssignment := selectActiveRole(filtered, req.PreferredRole)
 
-	// 9. Reset login fail count
+	//9.重置登录失败次数
 	if err := s.userRepo.ResetLoginFail(user.ID); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
-	// Build active role claim
+	//建立积极的角色主张
 	activeRoleClaim := buildActiveRoleClaim(activeAssignment, tenant)
 
-	// Collect all role IDs
+	//收集所有角色 ID
 	allRoleIDs := make([]string, len(assignments))
 	for i, a := range assignments {
 		allRoleIDs[i] = a.ID.String()
 	}
 
-	// Build permissions (for business users, will be populated by GetMenu; for admin roles, empty)
+	//构建权限（对于业务用户，将由 GetMenu 填充；对于管理员角色，为空）
 	permissions := []string{}
 
-	// 10. Generate access_token
+	//10.生成access_token
 	claims := &jwtpkg.JWTClaims{
 		Sub:         user.ID.String(),
 		Username:    user.Username,
@@ -139,13 +139,13 @@ func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
 		return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 	}
 
-	// 11. Generate refresh_token
+	//11.生成refresh_token
 	refreshToken, refreshJTI, err := jwtpkg.GenerateRefreshToken(user.ID.String(), "")
 	if err != nil {
 		return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 	}
 
-	// 12. Create login history record
+	//12.创建登录历史记录
 	var loginTenantID *uuid.UUID
 	if req.TenantID != "" {
 		tid, _ := uuid.Parse(req.TenantID)
@@ -158,7 +158,7 @@ func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
 	}
 	_ = s.userRepo.CreateLoginHistory(history)
 
-	// 13. Cache session in Redis: key "session:{user_id}", TTL 2h
+	//13.Redis中缓存session：key "session:{user_id}", TTL 2h
 	sessionData := map[string]interface{}{
 		"user_id":      user.ID.String(),
 		"username":     user.Username,
@@ -172,7 +172,7 @@ func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
 	sessionKey := fmt.Sprintf("session:%s", user.ID.String())
 	s.rdb.Set(context.Background(), sessionKey, string(sessionJSON), 2*time.Hour)
 
-	// 14. Build response
+	//14. 建立响应
 	roles := make([]dto.RoleInfo, len(assignments))
 	for i, a := range assignments {
 		var tid *string
@@ -214,33 +214,33 @@ func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
 }
 
 // ---------------------------------------------------------------------------
-// Logout
+//退出
 // ---------------------------------------------------------------------------
 
-// LogoutRequest holds the JTIs and user ID needed for logout.
+//LogoutRequest 保存注销所需的 JTI 和用户 ID。
 type LogoutRequest struct {
 	AccessJTI  string
 	RefreshJTI string
 	UserID     string
 }
 
-// Logout invalidates both tokens and removes the session cache.
+//注销会使两个令牌失效并删除会话缓存。
 func (s *AuthService) Logout(req *LogoutRequest) error {
 	ctx := context.Background()
 
-	// 1. Add access_token JTI to blacklist (TTL = 2h default)
+	//1.将access_token JTI添加到黑名单（默认TTL = 2h）
 	if req.AccessJTI != "" {
 		blacklistKey := fmt.Sprintf("blacklist:%s", req.AccessJTI)
 		s.rdb.Set(ctx, blacklistKey, "1", 2*time.Hour)
 	}
 
-	// 2. Add refresh_token JTI to blacklist (TTL = 7d)
+	//2.将refresh_token JTI添加到黑名单（TTL = 7d）
 	if req.RefreshJTI != "" {
 		blacklistKey := fmt.Sprintf("blacklist:%s", req.RefreshJTI)
 		s.rdb.Set(ctx, blacklistKey, "1", 7*24*time.Hour)
 	}
 
-	// 3. Delete session cache
+	//3.删除会话缓存
 	if req.UserID != "" {
 		sessionKey := fmt.Sprintf("session:%s", req.UserID)
 		s.rdb.Del(ctx, sessionKey)
@@ -250,22 +250,22 @@ func (s *AuthService) Logout(req *LogoutRequest) error {
 }
 
 // ---------------------------------------------------------------------------
-// Refresh
+//刷新
 // ---------------------------------------------------------------------------
 
-// Refresh validates a refresh token and returns a new access token.
+//刷新验证刷新令牌并返回新的访问令牌。
 func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, error) {
 	ctx := context.Background()
 
-	// 1. Parse refresh_token (standard JWT with RegisteredClaims)
+	//1.解析refresh_token（带有RegisteredClaims的标准JWT）
 	secret := ""
-	_ = secret // parsed via jwtpkg which reads viper config
+	_ = secret //通过 jwtpkg 解析，读取 viper 配置
 	claims, err := parseRefreshToken(req.RefreshToken)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrTokenInvalid, "认证令牌无效或已过期")
 	}
 
-	// 2. Check blacklist for refresh_token JTI
+	//2.检查refresh_token JTI黑名单
 	blacklistKey := fmt.Sprintf("blacklist:%s", claims.ID)
 	exists, err := s.rdb.Exists(ctx, blacklistKey).Result()
 	if err != nil {
@@ -275,7 +275,7 @@ func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, er
 		return nil, newServiceError(errcode.ErrTokenRevoked, "令牌已被吊销")
 	}
 
-	// 3. Try to get session from cache, otherwise re-query user
+	//3.尝试从缓存中获取session，否则重新查询user
 	userID, parseErr := uuid.Parse(claims.Subject)
 	if parseErr != nil {
 		return nil, newServiceError(errcode.ErrTokenInvalid, "认证令牌无效或已过期")
@@ -287,7 +287,7 @@ func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, er
 	var accessToken string
 
 	if err == nil && sessionJSON != "" {
-		// Rebuild claims from cached session
+		//从缓存的会话重建声明
 		var sessionData map[string]interface{}
 		if jsonErr := json.Unmarshal([]byte(sessionJSON), &sessionData); jsonErr == nil {
 			jwtClaims := rebuildClaimsFromSession(sessionData)
@@ -298,7 +298,7 @@ func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, er
 		}
 	}
 
-	// Fallback: re-query user and assignments
+	//后备：重新查询用户和分配
 	if accessToken == "" {
 		user, findErr := s.userRepo.FindByID(userID)
 		if findErr != nil {
@@ -336,14 +336,14 @@ func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, er
 }
 
 // ---------------------------------------------------------------------------
-// SwitchRole
+//切换角色
 // ---------------------------------------------------------------------------
 
-// SwitchRole validates the target role, generates a new token, blacklists the old one, and updates the session.
+//SwitchRole 验证目标角色、生成新令牌、将旧令牌列入黑名单并更新会话。
 func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string) (*dto.SwitchRoleResponse, error) {
 	ctx := context.Background()
 
-	// 1. Find role assignment by roleID, verify it belongs to current user
+	//1.通过roleID查找角色分配，验证其属于当前用户
 	roleUUID, parseErr := uuid.Parse(roleID)
 	if parseErr != nil {
 		return nil, newServiceError(errcode.ErrRoleSwitchFailed, "角色切换失败")
@@ -357,20 +357,20 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 		return nil, newServiceError(errcode.ErrRoleSwitchFailed, "角色切换失败")
 	}
 
-	// 2. Build new ActiveRoleClaim from the assignment
+	//2. 根据分配构建新的 ActiveRoleClaim
 	var tenant *model.Tenant
 	if assignment.TenantID != nil {
 		tenant, _ = s.userRepo.FindTenantByID(*assignment.TenantID)
 	}
 	activeRoleClaim := buildActiveRoleClaim(assignment, tenant)
 
-	// 3. Get user info for token generation
+	//3. 获取用户信息以生成token
 	user, err := s.userRepo.FindByID(userID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 	}
 
-	// Get all role IDs
+	//获取所有角色ID
 	assignments, err := s.userRepo.FindRoleAssignments(userID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
@@ -382,7 +382,7 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 
 	permissions := []string{}
 
-	// 4. Generate new access_token with updated activeRole
+	//4. 使用更新的 activeRole 生成新的 access_token
 	claims := &jwtpkg.JWTClaims{
 		Sub:         user.ID.String(),
 		Username:    user.Username,
@@ -396,13 +396,13 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 		return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 	}
 
-	// 5. Add old JTI to blacklist
+	//5. 将旧JTI添加到黑名单
 	if oldJTI != "" {
 		blacklistKey := fmt.Sprintf("blacklist:%s", oldJTI)
 		s.rdb.Set(ctx, blacklistKey, "1", 2*time.Hour)
 	}
 
-	// 6. Update session cache
+	//6. 更新会话缓存
 	sessionData := map[string]interface{}{
 		"user_id":      user.ID.String(),
 		"username":     user.Username,
@@ -415,7 +415,7 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 	sessionKey := fmt.Sprintf("session:%s", user.ID.String())
 	s.rdb.Set(ctx, sessionKey, string(sessionJSON), 2*time.Hour)
 
-	// 7. Return SwitchRoleResponse
+	//7.返回SwitchRoleResponse
 	var tid *string
 	if assignment.TenantID != nil {
 		s := assignment.TenantID.String()
@@ -435,11 +435,11 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 }
 
 // ---------------------------------------------------------------------------
-// GetMenu
+//获取菜单
 // ---------------------------------------------------------------------------
 
-// GetMenu returns menu items based on the user's active role.
-// system_admin and tenant_admin get fixed menus; business users get merged OrgRole page_permissions.
+//GetMenu 根据用户的活动角色返回菜单项。
+//system_admin 和tenant_admin 获得固定菜单；业务用户获得合并 OrgRole page_permissions。
 func (s *AuthService) GetMenu(activeRole jwtpkg.ActiveRoleClaim, userID string, tenantID string) (*dto.MenuResponse, error) {
 	switch activeRole.Role {
 	case "system_admin":
@@ -469,7 +469,7 @@ func (s *AuthService) GetMenu(activeRole jwtpkg.ActiveRoleClaim, userID string, 
 	}
 }
 
-// getBusinessMenu queries OrgMember + OrgRoles for a business user and merges page_permissions.
+//getBusinessMenu 查询业务用户的 OrgMember + OrgRoles 并合并 page_permissions。
 func (s *AuthService) getBusinessMenu(userID string, tenantID string) (*dto.MenuResponse, error) {
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -480,7 +480,7 @@ func (s *AuthService) getBusinessMenu(userID string, tenantID string) (*dto.Menu
 		return &dto.MenuResponse{Menus: []dto.MenuItem{}}, nil
 	}
 
-	// Query org_members WHERE user_id = ? AND tenant_id = ?, preload Roles
+	//查询 org_members WHERE user_id = ? ANDtenant_id = ?, 预加载角色
 	var members []model.OrgMember
 	if err := s.db.Where("user_id = ? AND tenant_id = ?", uid, tid).
 		Preload("Roles").
@@ -488,7 +488,7 @@ func (s *AuthService) getBusinessMenu(userID string, tenantID string) (*dto.Menu
 		return &dto.MenuResponse{Menus: []dto.MenuItem{}}, nil
 	}
 
-	// Merge and deduplicate page_permissions from all roles
+	//合并和删除所有角色的 page_permissions
 	seen := make(map[string]bool)
 	var menus []dto.MenuItem
 
@@ -515,11 +515,11 @@ func (s *AuthService) getBusinessMenu(userID string, tenantID string) (*dto.Menu
 }
 
 // ---------------------------------------------------------------------------
-// Helper functions
+//辅助函数
 // ---------------------------------------------------------------------------
 
-// filterAssignmentsByTenant returns assignments that match the given tenant ID,
-// plus any system_admin assignments (which have nil TenantID).
+//filterAssignmentsByTenant 返回与给定租户 ID 匹配的分配，
+//加上任何 system_admin 分配（其中 TenantID 为零）。
 func filterAssignmentsByTenant(assignments []model.UserRoleAssignment, tenantID *uuid.UUID) []model.UserRoleAssignment {
 	var result []model.UserRoleAssignment
 	for _, a := range assignments {
@@ -534,10 +534,10 @@ func filterAssignmentsByTenant(assignments []model.UserRoleAssignment, tenantID 
 	return result
 }
 
-// selectActiveRole picks the best role by priority:
-// preferred_role match > system_admin > tenant_admin > business
+//selectActiveRole 按优先级选择最佳角色：
+//首选角色匹配 > 系统管理员 > 租户管理员 > 业务
 func selectActiveRole(assignments []model.UserRoleAssignment, preferredRole string) *model.UserRoleAssignment {
-	// Try preferred_role match first
+	//首先尝试 Preferred_role 匹配
 	if preferredRole != "" {
 		for i := range assignments {
 			if assignments[i].Role == preferredRole {
@@ -546,7 +546,7 @@ func selectActiveRole(assignments []model.UserRoleAssignment, preferredRole stri
 		}
 	}
 
-	// Priority order fallback
+	//优先顺序回退
 	priorities := []string{"system_admin", "tenant_admin", "business"}
 	for _, role := range priorities {
 		for i := range assignments {
@@ -556,14 +556,14 @@ func selectActiveRole(assignments []model.UserRoleAssignment, preferredRole stri
 		}
 	}
 
-	// Fallback to first assignment
+	//回退到第一个任务
 	if len(assignments) > 0 {
 		return &assignments[0]
 	}
 	return nil
 }
 
-// buildActiveRoleClaim constructs an ActiveRoleClaim from a role assignment and optional tenant.
+//buildActiveRoleClaim 根据角色分配和可选租户构造 ActiveRoleClaim。
 func buildActiveRoleClaim(assignment *model.UserRoleAssignment, tenant *model.Tenant) jwtpkg.ActiveRoleClaim {
 	claim := jwtpkg.ActiveRoleClaim{
 		ID:    assignment.ID.String(),
@@ -580,10 +580,10 @@ func buildActiveRoleClaim(assignment *model.UserRoleAssignment, tenant *model.Te
 	return claim
 }
 
-// parseRefreshToken parses a refresh token (standard JWT with RegisteredClaims only).
+//parseRefreshToken 解析刷新令牌（仅带有 RegisteredClaims 的标准 JWT）。
 func parseRefreshToken(tokenString string) (*jwtpkg.JWTClaims, error) {
-	// Refresh tokens use the same signing key; try parsing as JWTClaims first,
-	// then fall back to RegisteredClaims if needed.
+	//刷新令牌使用相同的签名密钥；首先尝试解析为 JWTClaims，
+	//如果需要的话，然后退回到 RegisteredClaims。
 	claims, err := jwtpkg.ParseToken(tokenString)
 	if err != nil {
 		return nil, err
@@ -591,7 +591,7 @@ func parseRefreshToken(tokenString string) (*jwtpkg.JWTClaims, error) {
 	return claims, nil
 }
 
-// rebuildClaimsFromSession reconstructs JWTClaims from cached session data.
+//rebuildClaimsFromSession 从缓存的会话数据重建 JWTClaims。
 func rebuildClaimsFromSession(data map[string]interface{}) *jwtpkg.JWTClaims {
 	claims := &jwtpkg.JWTClaims{}
 
@@ -605,7 +605,7 @@ func rebuildClaimsFromSession(data map[string]interface{}) *jwtpkg.JWTClaims {
 		claims.DisplayName = v
 	}
 
-	// Rebuild ActiveRole from map
+	//从地图重建 ActiveRole
 	if ar, ok := data["active_role"].(map[string]interface{}); ok {
 		claims.ActiveRole = jwtpkg.ActiveRoleClaim{}
 		if v, ok := ar["id"].(string); ok {
@@ -625,7 +625,7 @@ func rebuildClaimsFromSession(data map[string]interface{}) *jwtpkg.JWTClaims {
 		}
 	}
 
-	// Rebuild AllRoleIDs
+	//重建所有RoleID
 	if ids, ok := data["all_role_ids"].([]interface{}); ok {
 		for _, id := range ids {
 			if s, ok := id.(string); ok {
@@ -634,7 +634,7 @@ func rebuildClaimsFromSession(data map[string]interface{}) *jwtpkg.JWTClaims {
 		}
 	}
 
-	// Rebuild Permissions
+	//重建权限
 	if perms, ok := data["permissions"].([]interface{}); ok {
 		for _, p := range perms {
 			if s, ok := p.(string); ok {

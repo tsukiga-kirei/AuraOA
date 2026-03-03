@@ -10,9 +10,9 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/response"
 )
 
-// RequireRole returns a middleware that checks whether the caller's
-// active_role (from JWT claims) is one of the allowed roles.
-// If not, it aborts with 403 / 40300.
+//RequireRole 返回一个中间件，用于检查调用者是否
+//active_role（来自 JWT 声明）是允许的角色之一。
+//如果没有，则会以 403 / 40300 中止。
 func RequireRole(roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claimsVal, exists := c.Get("jwt_claims")
