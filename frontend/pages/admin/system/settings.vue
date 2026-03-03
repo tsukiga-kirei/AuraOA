@@ -655,14 +655,22 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               </a-col>
             </a-row>
             <a-row :gutter="16">
-              <a-col :span="12">
-                <a-form-item :label="t('admin.settings.sessionTimeout')">
-                  <a-input-number v-model:value="generalConfig.session_timeout" :min="5" :max="1440" style="width: 100%;" size="large" />
+              <a-col :span="8">
+                <a-form-item :label="t('admin.settings.defaultLanguage')">
+                  <a-select v-model:value="generalConfig.default_language" size="large" style="width: 100%;">
+                    <a-select-option value="zh-CN">简体中文</a-select-option>
+                    <a-select-option value="en-US">English</a-select-option>
+                  </a-select>
                 </a-form-item>
               </a-col>
-              <a-col :span="12">
+              <a-col :span="8">
+                <a-form-item :label="t('admin.settings.sessionTimeout')">
+                  <a-input-number v-model:value="generalConfig.session_timeout" :min="5" :max="1440" style="width: 100%;" size="large" :addon-after="t('admin.settings.minutes')" />
+                </a-form-item>
+              </a-col>
+              <a-col :span="8">
                 <a-form-item :label="t('admin.settings.maxUpload')">
-                  <a-input-number v-model:value="generalConfig.max_upload_size" :min="1" :max="500" style="width: 100%;" size="large" />
+                  <a-input-number v-model:value="generalConfig.max_upload_size" :min="1" :max="500" style="width: 100%;" size="large" :addon-after="'MB'" />
                 </a-form-item>
               </a-col>
             </a-row>

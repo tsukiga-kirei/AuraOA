@@ -175,6 +175,20 @@ const getQuotaColor = (percent: number) => {
   return '#10b981'
 }
 
+// 将 ISO 时间字符串格式化为上海时区的可读格式
+const formatDateTime = (iso: string) => {
+  if (!iso) return '-'
+  try {
+    return new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+    }).format(new Date(iso))
+  } catch {
+    return iso
+  }
+}
+
 //===== 按提供商筛选 AI 模型 =====
 const providerOptions = ['Xinference', '阿里云百炼']
 
@@ -236,7 +250,7 @@ const onNewTenantProviderChange = () => {
           </div>
           <div class="tenant-info">
             <div class="tenant-name">{{ tenant.name }}</div>
-            <div class="tenant-code">{{ tenant.code }} · {{ tenant.id }}</div>
+            <div class="tenant-code">{{ tenant.code }} · {{ tenant.description || t('admin.tenants.noDesc') }}</div>
           </div>
           <div
             class="tenant-status"
@@ -292,7 +306,7 @@ const onNewTenantProviderChange = () => {
 
         <div class="tenant-card-footer">
           <span class="tenant-created">
-            <ClockCircleOutlined /> {{ tenant.created_at }}
+            <ClockCircleOutlined /> {{ formatDateTime(tenant.created_at) }}
           </span>
           <div class="tenant-card-actions" @click.stop>
             <a-button size="small" type="text" @click="openDetail(tenant)">
@@ -460,7 +474,7 @@ const onNewTenantProviderChange = () => {
             <a-row :gutter="16">
               <a-col :span="12">
                 <a-form-item :label="t('admin.tenants.createdDate')">
-                  <a-input :value="selectedTenant.created_at" size="large" disabled />
+                  <a-input :value="formatDateTime(selectedTenant.created_at)" size="large" disabled />
                 </a-form-item>
               </a-col>
             </a-row>

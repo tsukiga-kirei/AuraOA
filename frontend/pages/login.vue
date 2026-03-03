@@ -45,7 +45,7 @@ const portals = computed(() => [
 ])
 
 const activePortal = ref<PortalType>('business')
-const form = ref({ username: '', password: '', tenant_id: '' })
+const form = ref<{ username: string; password: string; tenant_id: string | undefined }>({ username: '', password: '', tenant_id: undefined })
 const loading = ref(false)
 const rememberMe = ref(false)
 const currentPortal = computed(() => portals.value.find(p => p.key === activePortal.value)!)
@@ -59,6 +59,7 @@ const handleLogin = async () => {
   try {
     const ok = await login({
       ...form.value,
+      tenant_id: form.value.tenant_id || '',
       preferred_role: activePortal.value
     })
     if (ok) {
@@ -135,7 +136,7 @@ const handleLogin = async () => {
 
           <a-form layout="vertical" class="login-form">
             <a-form-item v-if="activePortal !== 'system_admin'">
-              <a-select v-model:value="form.tenant_id" :placeholder="t('login.tenantPlaceholder')" size="large" class="login-select">
+              <a-select v-model:value="form.tenant_id" :placeholder="t('login.tenantRequired')" size="large" class="login-select">
                 <a-select-option v-for="tenant in tenants" :key="tenant.id" :value="tenant.id">
                   {{ tenant.name }}（{{ tenant.code }}）
                 </a-select-option>
@@ -318,6 +319,11 @@ const handleLogin = async () => {
 .login-input :deep(input) {
   height: 100% !important;
   line-height: normal !important; /*允许弹性容器居中*/
+}
+/* 隐藏 Edge 浏览器密码输入框自带的眼睛图标，避免出现两个眼睛 */
+.login-input :deep(input::-ms-reveal),
+.login-input :deep(input::-ms-clear) {
+  display: none !important;
 }
 .login-input:hover { border-color: var(--color-text-tertiary) !important; }
 :deep(.ant-input-affix-wrapper:focus),
