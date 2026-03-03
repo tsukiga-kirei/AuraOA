@@ -1035,6 +1035,20 @@ export default {
     'admin.settings.dbConnSuccess': '数据库连接测试成功',
     'admin.settings.dbConnFailed': '数据库连接测试失败，请检查配置',
     'admin.settings.modelConnSuccess': 'AI 模型端点连接测试成功',
+    //通用配置 - 认证 & Token
+    'admin.settings.authTokenConfig': '认证 & Token 配置',
+    'admin.settings.loginFailLockThreshold': '登录失败锁定阈值',
+    'admin.settings.accountLockMinutes': '账户锁定时长（分钟）',
+    'admin.settings.accessTokenTtl': 'Access Token 有效期（小时）',
+    'admin.settings.refreshTokenTtl': 'Refresh Token 有效期（天）',
+    //通用配置 - 租户配额
+    'admin.settings.tenantQuotaConfig': '租户默认配额',
+    'admin.settings.tenantDefaultTokenQuota': '租户默认 Token 配额',
+    'admin.settings.tenantDefaultMaxConcurrency': '租户默认最大并发数',
+    //单位词
+    'admin.settings.times': '次',
+    'admin.settings.hours': '小时',
+    'admin.settings.days': '天',
 
     //===== 管理员 - 租户用户配置 =====
     'admin.userConfigs.title': '用户偏好',

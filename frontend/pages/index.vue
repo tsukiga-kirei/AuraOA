@@ -1,16 +1,11 @@
 <script setup lang="ts">
 /**
- * Root index page — redirects to the user's default page based on their permissions.
- * If not authenticated, redirects to /login.
+ * Root index page — 统一跳转 /overview，auth middleware 会负责未登录拦截和权限检查。
  */
-import { getDefaultPage } from '~/composables/useMockData'
-
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
-const { userPermissions } = useAuth()
-
 onMounted(() => {
-  navigateTo(getDefaultPage(userPermissions.value))
+  navigateTo('/overview')
 })
 </script>
 

@@ -22,7 +22,8 @@ import {
   UserOutlined,
 } from '@ant-design/icons-vue'
 import {message} from 'ant-design-vue'
-import type {AIModelConfig, OADatabaseConnection, OASystemConfig, SystemGeneralConfig} from '~/composables/useMockData'
+import type {AIModelConfig, OADatabaseConnection, OASystemConfig} from '~/composables/useMockData'
+import { type SystemGeneralConfig, mapConfigItems, configToUpdateRequest } from '~/types/settings'
 
 const { t } = useI18n()
 
@@ -35,51 +36,22 @@ const oaSystems = ref<OASystemConfig[]>([])
 const oaDbConnections = ref<OADatabaseConnection[]>(JSON.parse(JSON.stringify(mockOADatabaseConnections)))
 const aiModels = ref<AIModelConfig[]>([])
 const generalConfig = ref<SystemGeneralConfig>({
-  platform_name: '',
-  platform_version: '',
-  default_language: 'zh-CN',
-  session_timeout: 120,
-  max_upload_size: 50,
-  enable_audit_trail: false,
-  enable_data_encryption: false,
-  backup_enabled: false,
-  backup_cron: '0 2 * * *',
-  backup_retention_days: 30,
-  notification_email: '',
-  smtp_host: '',
-  smtp_port: 465,
-  smtp_username: '',
-  smtp_ssl: true,
+  platform_name: '', platform_version: '', default_language: 'zh-CN', max_upload_size: 50,
+  login_fail_lock_threshold: 5, account_lock_minutes: 15,
+  access_token_ttl_hours: 2, refresh_token_ttl_days: 7,
+  tenant_default_token_quota: 10000, tenant_default_max_concurrency: 10,
+  enable_audit_trail: false, enable_data_encryption: false,
+  backup_enabled: false, backup_cron: '0 2 * * *', backup_retention_days: 30,
+  notification_email: '', smtp_host: '', smtp_port: 465, smtp_username: '', smtp_ssl: true,
 })
 const saving = ref(false)
 
 onMounted(async () => {
   loading.value = true
   try {
-    // 后端返回 ConfigItem[] 数组（key-value 格式），转换为 map 后映射到 generalConfig
-    const items: Array<{ key: string; value: string; remark: string }> = await getConfigs()
-    const kvMap: Record<string, string> = {}
-    items.forEach(item => { kvMap[item.key] = item.value })
-
-    // 将 system_configs 表中的 key 映射到前端 generalConfig 字段
-    if (kvMap['system.name']) generalConfig.value.platform_name = kvMap['system.name']
-    if (kvMap['system.version']) generalConfig.value.platform_version = kvMap['system.version']
-    if (kvMap['system.default_language']) generalConfig.value.default_language = kvMap['system.default_language']
-    if (kvMap['auth.access_token_ttl_hours']) {
-      // session_timeout 用 access token TTL（小时转分钟）
-      generalConfig.value.session_timeout = parseInt(kvMap['auth.access_token_ttl_hours']) * 60
-    }
-    if (kvMap['system.max_upload_size_mb']) generalConfig.value.max_upload_size = parseInt(kvMap['system.max_upload_size_mb'])
-    if (kvMap['system.enable_audit_trail']) generalConfig.value.enable_audit_trail = kvMap['system.enable_audit_trail'] === 'true'
-    if (kvMap['system.enable_data_encryption']) generalConfig.value.enable_data_encryption = kvMap['system.enable_data_encryption'] === 'true'
-    if (kvMap['system.backup_enabled']) generalConfig.value.backup_enabled = kvMap['system.backup_enabled'] === 'true'
-    if (kvMap['system.backup_cron']) generalConfig.value.backup_cron = kvMap['system.backup_cron']
-    if (kvMap['system.backup_retention_days']) generalConfig.value.backup_retention_days = parseInt(kvMap['system.backup_retention_days'])
-    if (kvMap['system.notification_email']) generalConfig.value.notification_email = kvMap['system.notification_email']
-    if (kvMap['system.smtp_host']) generalConfig.value.smtp_host = kvMap['system.smtp_host']
-    if (kvMap['system.smtp_port']) generalConfig.value.smtp_port = parseInt(kvMap['system.smtp_port'])
-    if (kvMap['system.smtp_username']) generalConfig.value.smtp_username = kvMap['system.smtp_username']
-    if (kvMap['system.smtp_ssl']) generalConfig.value.smtp_ssl = kvMap['system.smtp_ssl'] === 'true'
+    const items = await getConfigs()
+    // 使用统一的映射工具将后端 KV 转换为前端表单模型
+    generalConfig.value = { ...generalConfig.value, ...mapConfigItems(items) }
   } catch (e) {
     message.error(t('admin.settings.loadFailed', '加载配置失败'))
   } finally {
@@ -361,26 +333,8 @@ const getModelTypeTag = (type: string) => {
 const saveGeneralConfig = async () => {
   saving.value = true
   try {
-    // 将 generalConfig 字段转回 system_configs 表的 key-value 格式
-    const updates: Record<string, string> = {
-      'system.name': generalConfig.value.platform_name,
-      'system.version': generalConfig.value.platform_version,
-      'system.default_language': generalConfig.value.default_language,
-      // session_timeout（分钟）转回小时存储
-      'auth.access_token_ttl_hours': String(Math.round(generalConfig.value.session_timeout / 60)),
-      'system.max_upload_size_mb': String(generalConfig.value.max_upload_size),
-      'system.enable_audit_trail': String(generalConfig.value.enable_audit_trail),
-      'system.enable_data_encryption': String(generalConfig.value.enable_data_encryption),
-      'system.backup_enabled': String(generalConfig.value.backup_enabled),
-      'system.backup_cron': generalConfig.value.backup_cron,
-      'system.backup_retention_days': String(generalConfig.value.backup_retention_days),
-      'system.notification_email': generalConfig.value.notification_email,
-      'system.smtp_host': generalConfig.value.smtp_host,
-      'system.smtp_port': String(generalConfig.value.smtp_port),
-      'system.smtp_username': generalConfig.value.smtp_username,
-      'system.smtp_ssl': String(generalConfig.value.smtp_ssl),
-    }
-    await updateConfigs(updates)
+    // 使用统一的序列化工具将前端表单模型转回后端 key-value 格式
+    await updateConfigs(configToUpdateRequest(generalConfig.value))
     message.success(t('admin.settings.saved'))
   } catch (e) {
     message.error(t('admin.settings.saveFailed', '保存配置失败'))
@@ -642,6 +596,8 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             </div>
           </div>
           <a-form layout="vertical">
+            <!-- 平台基本信息 -->
+            <div class="config-subsection-title">{{ t('admin.settings.platformInfo') }}</div>
             <a-row :gutter="16">
               <a-col :span="12">
                 <a-form-item :label="t('admin.settings.platformName')">
@@ -664,13 +620,50 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                 </a-form-item>
               </a-col>
               <a-col :span="8">
-                <a-form-item :label="t('admin.settings.sessionTimeout')">
-                  <a-input-number v-model:value="generalConfig.session_timeout" :min="5" :max="1440" style="width: 100%;" size="large" :addon-after="t('admin.settings.minutes')" />
-                </a-form-item>
-              </a-col>
-              <a-col :span="8">
                 <a-form-item :label="t('admin.settings.maxUpload')">
                   <a-input-number v-model:value="generalConfig.max_upload_size" :min="1" :max="500" style="width: 100%;" size="large" :addon-after="'MB'" />
+                </a-form-item>
+              </a-col>
+            </a-row>
+
+            <!-- 认证 & Token 有效期 -->
+            <a-divider style="margin: 8px 0 20px;" />
+            <div class="config-subsection-title">{{ t('admin.settings.authTokenConfig') }}</div>
+            <a-row :gutter="16">
+              <a-col :span="6">
+                <a-form-item :label="t('admin.settings.loginFailLockThreshold')">
+                  <a-input-number v-model:value="generalConfig.login_fail_lock_threshold" :min="1" :max="20" style="width: 100%;" size="large" :addon-after="t('admin.settings.times')" />
+                </a-form-item>
+              </a-col>
+              <a-col :span="6">
+                <a-form-item :label="t('admin.settings.accountLockMinutes')">
+                  <a-input-number v-model:value="generalConfig.account_lock_minutes" :min="1" :max="1440" style="width: 100%;" size="large" :addon-after="t('admin.settings.minutes')" />
+                </a-form-item>
+              </a-col>
+              <a-col :span="6">
+                <a-form-item :label="t('admin.settings.accessTokenTtl')">
+                  <a-input-number v-model:value="generalConfig.access_token_ttl_hours" :min="1" :max="168" style="width: 100%;" size="large" :addon-after="t('admin.settings.hours')" />
+                </a-form-item>
+              </a-col>
+              <a-col :span="6">
+                <a-form-item :label="t('admin.settings.refreshTokenTtl')">
+                  <a-input-number v-model:value="generalConfig.refresh_token_ttl_days" :min="1" :max="365" style="width: 100%;" size="large" :addon-after="t('admin.settings.days')" />
+                </a-form-item>
+              </a-col>
+            </a-row>
+
+            <!-- 租户默认配额 -->
+            <a-divider style="margin: 8px 0 20px;" />
+            <div class="config-subsection-title">{{ t('admin.settings.tenantQuotaConfig') }}</div>
+            <a-row :gutter="16">
+              <a-col :span="12">
+                <a-form-item :label="t('admin.settings.tenantDefaultTokenQuota')">
+                  <a-input-number v-model:value="generalConfig.tenant_default_token_quota" :min="1000" :max="10000000" :step="1000" style="width: 100%;" size="large" />
+                </a-form-item>
+              </a-col>
+              <a-col :span="12">
+                <a-form-item :label="t('admin.settings.tenantDefaultMaxConcurrency')">
+                  <a-input-number v-model:value="generalConfig.tenant_default_max_concurrency" :min="1" :max="200" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
             </a-row>
@@ -773,7 +766,11 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
 
         <div class="config-save">
           <a-button type="primary" size="large" :loading="saving" @click="saveGeneralConfig">
-            <SaveOutlined /> {{ t('admin.settings.saveAll') }}
+            <template #icon>
+              <SyncOutlined v-if="saving" />
+              <SaveOutlined v-else />
+            </template>
+            {{ t('admin.settings.saveAll') }}
           </a-button>
         </div>
       </div>
@@ -1034,6 +1031,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
 .form-hint { font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px; }
 .switch-label-inline { font-size: 13px; color: var(--color-text-tertiary); margin-left: 10px; }
 .config-save { display: flex; justify-content: flex-end; padding: 4px 0; }
+.config-subsection-title { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 16px; letter-spacing: 0.02em; }
 
 .empty-state { text-align: center; padding: 60px 20px; color: var(--color-text-tertiary); }
 .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.4; }

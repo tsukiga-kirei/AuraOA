@@ -264,7 +264,7 @@ const onNewTenantProviderChange = () => {
         <!--快速信息标签-->
         <div class="tenant-tags">
           <span class="info-tag info-tag--primary">
-            <DatabaseOutlined /> {{ getOADbName(tenant.oa_db_connection_id) }}
+            <DatabaseOutlined /> {{ getOADbName(tenant.oa_db_connection_id || '') }}
           </span>
           <span class="info-tag info-tag--info">
             <RobotOutlined /> {{ tenant.ai_config.default_model }}
