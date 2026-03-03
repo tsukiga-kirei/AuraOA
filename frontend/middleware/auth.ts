@@ -1,4 +1,4 @@
-import type { PermissionGroup } from '~/types/auth'
+﻿import type { PermissionGroup } from '~/types/auth'
 
 /**
  * 系统角色级别粗粒度检查：该路径大类是否对当前角色开放。
@@ -12,10 +12,12 @@ function hasRoleAccess(path: string, perms: PermissionGroup[]): boolean {
 }
 
 export default defineNuxtRouteMiddleware((to) => {
-  if (to.path === '/login') return
-
   const { isAuthenticated, restore, userPermissions, menus } = useAuth()
   restore()
+
+  if (to.path === '/login') {
+    return isAuthenticated.value ? navigateTo('/overview') : undefined
+  }
 
   if (!isAuthenticated.value) {
     return navigateTo('/login')
@@ -33,8 +35,8 @@ export default defineNuxtRouteMiddleware((to) => {
   // menus 未加载时（理论上不会，restore 会从 localStorage 恢复）放行
   if (menus.value.length === 0) return
 
-  const allowedPaths = new Set(menus.value.map(m => m.path).filter(Boolean))
-  if (!allowedPaths.has(to.path)) {
+  const allowed = new Set(menus.value.map((m: any) => m.path).filter(Boolean))
+  if (!allowed.has(to.path)) {
     return navigateTo('/overview')
   }
 })
