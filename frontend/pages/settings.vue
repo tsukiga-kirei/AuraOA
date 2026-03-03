@@ -39,7 +39,7 @@ definePageMeta({
 })
 
 const { userRole, userPermissions, currentUser, activeRole } = useAuth()
-const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockUserDashboardPrefs, mockUserSecurityInfo, mockUserLocalePrefs } = useMockData()
+const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockUserDashboardPrefs, mockUserLocalePrefs } = useMockData()
 const { members, roles } = useOrgApi()
 const { t, locale, setLocale, availableLocales } = useI18n()
 
@@ -100,8 +100,8 @@ const strengthConfig: Record<string, { color: string; percent: number }> = {
 }
 
 const securityInfo = computed(() => {
-  const uname = currentUser.value?.username || ''
-  return mockUserSecurityInfo[uname] || { password_last_changed: '-', login_history: [] }
+  // TODO: fetch from backend API when security info endpoint is available
+  return { password_last_changed: '-', login_history: [] as { time: string; device: string; ip: string; location: string }[] }
 })
 
 const handleChangePassword = async () => {
@@ -115,15 +115,17 @@ const handleChangePassword = async () => {
   if (newPassword !== confirmPassword) {
     message.error(t('settings.security.changeError.mismatch')); return
   }
-  // Mock: verify current password
-  const { MOCK_USERS } = useAuth()
-  const user = MOCK_USERS.find(u => u.username === currentUser.value?.username)
-  if (user && user.password !== currentPassword) {
+  // Call backend to change password
+  const { changePassword } = useAuth()
+  passwordChanging.value = true
+  const ok = await changePassword({
+    current_password: currentPassword,
+    new_password: newPassword,
+  })
+  passwordChanging.value = false
+  if (!ok) {
     message.error(t('settings.security.changeError.wrongCurrent')); return
   }
-  passwordChanging.value = true
-  await new Promise(r => setTimeout(r, 1000))
-  passwordChanging.value = false
   passwordForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' }
   message.success(t('settings.security.changeSuccess'))
 }

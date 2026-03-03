@@ -664,38 +664,8 @@ export interface ProcessAuditConfig {
 // ============================================================
 // Organization & Personnel types (组织人员)
 // ============================================================
-export interface Department {
-  id: string
-  name: string
-  parent_id: string | null
-  manager: string
-  member_count: number
-}
-
-export interface OrgRole {
-  id: string
-  name: string
-  description: string
-  page_permissions: string[]  // paths like '/dashboard', '/cron', etc.
-  is_system: boolean          // system roles cannot be deleted
-}
-
-export interface OrgMember {
-  id: string
-  name: string
-  username: string
-  department_id: string
-  department_name: string
-  /** Multiple business role IDs assigned within this tenant */
-  role_ids: string[]
-  /** Multiple business role names for display */
-  role_names: string[]
-  email: string
-  phone: string
-  position: string
-  status: 'active' | 'disabled'
-  created_at: string
-}
+// Organization types — imported from ~/types/org and re-exported for backward compatibility
+export type { Department, OrgRole, OrgMember } from '~/types/org'
 
 // Organization mock data removed — now served by Go backend via useOrgApi
 

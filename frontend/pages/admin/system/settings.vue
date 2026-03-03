@@ -26,14 +26,48 @@ import type {AIModelConfig, OADatabaseConnection, OASystemConfig, SystemGeneralC
 
 const { t } = useI18n()
 
-const { mockOASystemConfigs, mockOADatabaseConnections, mockAIModelConfigs, mockSystemGeneralConfig } = useMockData()
+const { mockOADatabaseConnections } = useMockData()
+const { getConfigs, updateConfigs } = useSystemApi()
 
+const loading = ref(false)
 const activeTab = ref('oa')
-const oaSystems = ref<OASystemConfig[]>([...mockOASystemConfigs])
+const oaSystems = ref<OASystemConfig[]>([])
 const oaDbConnections = ref<OADatabaseConnection[]>(JSON.parse(JSON.stringify(mockOADatabaseConnections)))
-const aiModels = ref<AIModelConfig[]>(JSON.parse(JSON.stringify(mockAIModelConfigs)))
-const generalConfig = ref<SystemGeneralConfig>({ ...mockSystemGeneralConfig })
+const aiModels = ref<AIModelConfig[]>([])
+const generalConfig = ref<SystemGeneralConfig>({
+  platform_name: '',
+  platform_version: '',
+  default_language: 'zh-CN',
+  session_timeout: 120,
+  max_upload_size: 50,
+  enable_audit_trail: false,
+  enable_data_encryption: false,
+  backup_enabled: false,
+  backup_cron: '0 2 * * *',
+  backup_retention_days: 30,
+  notification_email: '',
+  smtp_host: '',
+  smtp_port: 465,
+  smtp_username: '',
+  smtp_ssl: true,
+})
 const saving = ref(false)
+
+onMounted(async () => {
+  loading.value = true
+  try {
+    const data = await getConfigs()
+    if (data.oa_systems) oaSystems.value = data.oa_systems
+    if (data.ai_models) aiModels.value = data.ai_models
+    if (data.general) {
+      generalConfig.value = { ...generalConfig.value, ...data.general }
+    }
+  } catch (e) {
+    message.error(t('admin.settings.loadFailed', '加载配置失败'))
+  } finally {
+    loading.value = false
+  }
+})
 
 // ===== OA Database Connection CRUD =====
 const showAddOADb = ref(false)
@@ -308,9 +342,18 @@ const getModelTypeTag = (type: string) => {
 
 const saveGeneralConfig = async () => {
   saving.value = true
-  await new Promise(resolve => setTimeout(resolve, 1000))
-  saving.value = false
-  message.success(t('admin.settings.saved'))
+  try {
+    await updateConfigs({
+      general: generalConfig.value,
+      oa_systems: oaSystems.value,
+      ai_models: aiModels.value,
+    })
+    message.success(t('admin.settings.saved'))
+  } catch (e) {
+    message.error(t('admin.settings.saveFailed', '保存配置失败'))
+  } finally {
+    saving.value = false
+  }
 }
 
 const enabledOADbs = computed(() => oaDbConnections.value.filter(c => c.enabled).length)

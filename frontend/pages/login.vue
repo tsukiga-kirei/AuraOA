@@ -10,17 +10,31 @@ import {
   ControlOutlined,
 } from '@ant-design/icons-vue'
 
-import { getDefaultPage } from '~/composables/useMockData'
+import type { TenantOption } from '~/types/auth'
 import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ layout: false })
 
-const { login, getMenu, setUserRole, isMockMode, MOCK_USERS } = useAuth()
+const { login, getMenu } = useAuth()
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
 const { t } = useI18n()
-const { mockTenants } = useMockData()
+const config = useRuntimeConfig()
 
-onMounted(() => restoreTheme())
+const tenants = ref<TenantOption[]>([])
+
+onMounted(async () => {
+  restoreTheme()
+  try {
+    const res = await $fetch<{ code: number; message: string; data: TenantOption[]; trace_id: string }>(
+      `${config.public.apiBase}/api/tenants/list`
+    )
+    if (res.code === 0 && res.data) {
+      tenants.value = res.data
+    }
+  } catch (e) {
+    console.error('Failed to fetch tenant list:', e)
+  }
+})
 
 type PortalType = 'business' | 'tenant_admin' | 'system_admin'
 
@@ -31,20 +45,10 @@ const portals = computed(() => [
 ])
 
 const activePortal = ref<PortalType>('business')
-const form = ref({ username: '', password: '', tenant_id: mockTenants[0]?.code || 'default' })
+const form = ref({ username: '', password: '', tenant_id: '' })
 const loading = ref(false)
 const rememberMe = ref(false)
 const currentPortal = computed(() => portals.value.find(p => p.key === activePortal.value)!)
-
-// Quick-fill accounts: show users who have the selected portal role type
-const quickAccounts = computed(() =>
-  MOCK_USERS.filter(u => u.roles.some(r => r.role === activePortal.value)),
-)
-
-const fillAccount = (user: typeof MOCK_USERS[0]) => {
-  form.value.username = user.username
-  form.value.password = user.password
-}
 
 const handleLogin = async () => {
   if (!form.value.username || !form.value.password) {
@@ -132,7 +136,7 @@ const handleLogin = async () => {
           <a-form layout="vertical" class="login-form">
             <a-form-item v-if="activePortal !== 'system_admin'">
               <a-select v-model:value="form.tenant_id" :placeholder="t('login.tenantPlaceholder')" size="large" class="login-select">
-                <a-select-option v-for="tenant in mockTenants" :key="tenant.id" :value="tenant.code">
+                <a-select-option v-for="tenant in tenants" :key="tenant.id" :value="tenant.id">
                   {{ tenant.name }}（{{ tenant.code }}）
                 </a-select-option>
               </a-select>
@@ -149,20 +153,6 @@ const handleLogin = async () => {
             </a-form-item>
             <div class="login-options">
               <a-checkbox v-model:checked="rememberMe">{{ t('login.rememberMe') }}</a-checkbox>
-            </div>
-
-            <!-- Mock mode: quick-fill test accounts -->
-            <div v-if="isMockMode" class="mock-accounts">
-              <div class="mock-accounts-label">{{ t('login.testAccounts') }}</div>
-              <div class="mock-accounts-list">
-                <a-tag
-                  v-for="acc in quickAccounts" :key="acc.username"
-                  class="mock-account-tag" color="blue"
-                  @click="fillAccount(acc)"
-                >
-                  {{ acc.display_name }}（{{ acc.username }}）
-                </a-tag>
-              </div>
             </div>
 
             <a-form-item>
@@ -373,20 +363,6 @@ const handleLogin = async () => {
 }
 
 .login-footer { text-align: center; margin-top: 24px; color: var(--color-text-tertiary); font-size: 13px; }
-
-/* Mock accounts quick-fill */
-.mock-accounts {
-  margin-bottom: 16px; padding: 12px;
-  background: color-mix(in srgb, var(--color-primary, #4f46e5) 5%, var(--color-bg-card));
-  border: 1px dashed color-mix(in srgb, var(--color-primary, #4f46e5) 30%, transparent);
-  border-radius: var(--radius-lg);
-}
-.mock-accounts-label {
-  font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 8px;
-}
-.mock-accounts-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.mock-account-tag { cursor: pointer; font-size: 12px; }
-.mock-account-tag:hover { opacity: 0.8; }
 
 .login-mobile-brand {
   display: none; position: absolute; top: 24px; left: 24px; z-index: 2;
