@@ -33,10 +33,10 @@ onMounted(() => {
   loadAll()
 })
 
-// Top-level tab
+//顶级选项卡
 const topTab = ref<'members' | 'roles' | 'departments'>('members')
 
-// ===== Members =====
+//=====会员=====
 const memberSearch = ref('')
 const memberDeptFilter = ref<string | undefined>(undefined)
 const memberRoleFilter = ref<string | undefined>(undefined)
@@ -50,7 +50,7 @@ const filteredMembers = computed(() => {
   })
 })
 
-// Pagination for members
+//会员分页
 const { paged: pagedMembers, current: memberPage, pageSize: memberPageSize, total: memberTotal, onChange: onMemberPageChange } = usePagination(filteredMembers, 10)
 
 const showMemberModal = ref(false)
@@ -75,7 +75,7 @@ const openEditMember = (m: OrgMember) => {
   showMemberModal.value = true
 }
 
-/** Resolve role_ids to display names */
+/** 解析role_ids以显示名称*/
 const resolveRoleNames = (roleIds: string[]): string[] => {
   return roleIds.map(rid => roles.value.find(r => r.id === rid)?.name || rid)
 }
@@ -137,16 +137,15 @@ const removeMember = async (m: OrgMember) => {
   }
 }
 
-// ===== Roles =====
+//=====角色=====
 const showRoleModal = ref(false)
 const editingRole = ref<OrgRole | null>(null)
 const roleForm = ref({ name: '', description: '', page_permissions: [] as string[] })
 
 /**
- * Tenant-scoped page list for role permission assignment.
- * Only pages within tenant scope — no system admin pages.
- * Grouped into: common, business, admin.
- */
+ * 用于角色权限分配的租户范围页面列表。
+ * 仅包含租户范围内的页面 — 无系统管理页面。
+ * 分为：普通、业务、管理。*/
 const allPages = computed(() => [
   { path: '/overview', label: t('admin.org.page.overview'), group: 'common', alwaysOn: true },
   { path: '/dashboard', label: t('admin.org.page.dashboard'), group: 'business' },
@@ -159,23 +158,23 @@ const allPages = computed(() => [
   { path: '/admin/tenant/user-configs', label: t('menu.tenant.userConfigs'), group: 'admin' },
 ])
 
-/** Handle permission checkbox with dependency enforcement */
+/** 通过依赖强制处理权限复选框*/
 const handlePermToggle = (path: string, checked: boolean) => {
   const page = allPages.value.find(p => p.path === path)
-  if (page?.alwaysOn) return // can't toggle always-on pages
+  if (page?.alwaysOn) return //无法切换常亮页面
 
   if (checked) {
     if (!roleForm.value.page_permissions.includes(path)) {
       roleForm.value.page_permissions.push(path)
     }
-    // If this page has a dependency, auto-add it
+    //如果此页面有依赖项，则自动添加它
     if (page?.dependsOn && !roleForm.value.page_permissions.includes(page.dependsOn)) {
       roleForm.value.page_permissions.push(page.dependsOn)
       message.info(t('admin.org.depAutoAdded'))
     }
   } else {
     roleForm.value.page_permissions = roleForm.value.page_permissions.filter(p => p !== path)
-    // If removing a page that others depend on, remove dependents too
+    //如果删除其他人依赖的页面，请同时删除依赖项
     const dependents = allPages.value.filter(p => p.dependsOn === path)
     dependents.forEach(dep => {
       roleForm.value.page_permissions = roleForm.value.page_permissions.filter(p => p !== dep.path)
@@ -183,7 +182,7 @@ const handlePermToggle = (path: string, checked: boolean) => {
   }
 }
 
-/** Check if a page checkbox should be disabled */
+/** 检查是否应禁用页面复选框*/
 const isPermDisabled = (path: string) => {
   const page = allPages.value.find(p => p.path === path)
   return !!page?.alwaysOn
@@ -243,7 +242,7 @@ const removeRole = async (r: OrgRole) => {
 
 const getRoleMemberCount = (roleId: string) => members.value.filter(m => m.role_ids.includes(roleId)).length
 
-// ===== Departments =====
+//=====部门=====
 const showDeptModal = ref(false)
 const editingDept = ref<Department | null>(null)
 const deptForm = ref({ name: '', manager: '' })
@@ -309,7 +308,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
       </div>
     </div>
 
-    <!-- Top tabs -->
+    <!--顶部选项卡-->
     <div class="tab-nav">
       <button
         v-for="tab in [
@@ -327,7 +326,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
       </button>
     </div>
 
-    <!-- ===== Members Tab ===== -->
+    <!--===== 会员选项卡 =====-->
     <div v-if="topTab === 'members'" class="tab-content">
       <div class="toolbar">
         <div class="toolbar-left">
@@ -400,7 +399,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
         </table>
       </div>
 
-      <!-- Pagination -->
+      <!--分页-->
       <div class="pagination-wrapper">
         <a-pagination
           :current="memberPage"
@@ -416,7 +415,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
       </div>
     </div>
 
-    <!-- ===== Roles Tab ===== -->
+    <!--===== 角色选项卡 =====-->
     <div v-if="topTab === 'roles'" class="tab-content">
       <div class="toolbar">
         <div class="toolbar-left">
@@ -454,7 +453,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
       </div>
     </div>
 
-    <!-- ===== Departments Tab ===== -->
+    <!--===== 部门选项卡 =====-->
     <div v-if="topTab === 'departments'" class="tab-content">
       <div class="toolbar">
         <div class="toolbar-left">
@@ -483,7 +482,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
       </div>
     </div>
 
-    <!-- ===== Member Modal ===== -->
+    <!--=====会员模式=====-->
     <a-modal v-model:open="showMemberModal" :title="editingMember ? t('admin.org.editMember') : t('admin.org.addMemberTitle')" @ok="handleSaveMember" :ok-text="t('admin.org.save')" :cancel-text="t('admin.org.cancel')" :width="520">
       <a-form layout="vertical" style="margin-top: 16px;">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
@@ -520,7 +519,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
       </a-form>
     </a-modal>
 
-    <!-- ===== Role Modal ===== -->
+    <!--=====角色模态=====-->
     <a-modal v-model:open="showRoleModal" :title="editingRole ? t('admin.org.editRole') : t('admin.org.addRoleTitle')" @ok="handleSaveRole" :ok-text="t('admin.org.save')" :cancel-text="t('admin.org.cancel')" :width="560">
       <a-form layout="vertical" style="margin-top: 16px;">
         <a-form-item :label="t('admin.org.roleName')" required>
@@ -554,7 +553,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
       </a-form>
     </a-modal>
 
-    <!-- ===== Department Modal ===== -->
+    <!--===== 部门模态 =====-->
     <a-modal v-model:open="showDeptModal" :title="editingDept ? t('admin.org.editDept') : t('admin.org.addDeptTitle')" @ok="handleSaveDept" :ok-text="t('admin.org.save')" :cancel-text="t('admin.org.cancel')" :width="440">
       <a-form layout="vertical" style="margin-top: 16px;">
         <a-form-item :label="t('admin.org.deptName')" required>
@@ -589,7 +588,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
 .toolbar-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .toolbar-hint { font-size: 13px; color: var(--color-text-tertiary); }
 
-/* Data table */
+/*数据表*/
 .data-table-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); overflow: hidden;
@@ -631,7 +630,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
 .icon-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .icon-btn--danger:hover { border-color: var(--color-danger); color: var(--color-danger); }
 
-/* Role grid */
+/*角色网格*/
 .role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
 .role-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
@@ -654,7 +653,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
   background: var(--color-warning-bg); color: var(--color-warning);
 }
 
-/* Department grid */
+/*部门网格*/
 .dept-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
 .dept-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
@@ -667,7 +666,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
 .dept-card-body { display: flex; flex-direction: column; gap: 6px; }
 .dept-meta { font-size: 13px; color: var(--color-text-secondary); display: flex; align-items: center; gap: 6px; }
 
-/* Permission modal */
+/*权限模式*/
 .perm-hint { font-size: 12px; color: var(--color-text-tertiary); margin: 0 0 8px; }
 .perm-check-grid { display: flex; flex-direction: column; gap: 6px; }
 .perm-group-label { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-top: 8px; padding: 4px 8px; text-transform: uppercase; letter-spacing: 0.04em; }

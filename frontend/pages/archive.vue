@@ -40,15 +40,15 @@ onMounted(() => {
   loadOrgData()
 })
 
-// ===== Permission: filter accessible archive configs based on current user =====
+//===== 权限：根据当前用户过滤可访问的存档配置 =====
 const accessibleConfigs = computed<ArchiveReviewConfig[]>(() => {
   const uname = currentUser.value?.username || ''
   const member = members.value.find(m => m.username === uname)
   if (!member) return []
   return mockArchiveReviewConfigs.filter(cfg => {
-    // Check role-based access (any of member's roles)
+    //检查基于角色的访问（任何成员的角色）
     if (member.role_ids.some(rid => cfg.allowed_roles.includes(rid))) return true
-    // Check member-based access
+    //检查基于会员的访问权限
     if (cfg.allowed_members.includes(member.id)) return true
     return false
   })
@@ -56,12 +56,12 @@ const accessibleConfigs = computed<ArchiveReviewConfig[]>(() => {
 
 const accessibleProcessTypes = computed(() => accessibleConfigs.value.map(c => c.process_type))
 
-// ===== Process list (filtered by accessible types) =====
+//=====进程列表（按可访问类型过滤）=====
 const processList = ref<ArchivedProcess[]>(
   mockArchivedProcesses.filter(p => accessibleProcessTypes.value.includes(p.process_type))
 )
 
-// ===== View state =====
+//=====查看状态=====
 const selectedProcess = ref<ArchivedProcess | null>(null)
 const loading = ref(false)
 const phase1Done = ref(false)
@@ -72,7 +72,7 @@ const batchAuditing = ref(false)
 const selectedProcessIds = ref<string[]>([])
 const processAuditLoading = ref<Record<string, boolean>>({})
 
-// ===== Filters =====
+//=====过滤器=====
 const filterProcessType = ref<string[][]>([])
 const filterProcessNames = computed(() => {
   if (filterProcessType.value.length === 0) return []
@@ -106,7 +106,7 @@ const clearFilters = () => {
   filterAuditStatus.value = undefined
 }
 
-// ===== Audit results cache =====
+//=====审核结果缓存=====
 const auditRecords = ref<Record<string, ArchiveAuditResult>>({})
 
 const filteredList = computed(() => {
@@ -140,7 +140,7 @@ const filteredList = computed(() => {
 
 const { paged: pagedList, current: listPage, pageSize: listPageSize, total: listTotal, onChange: onListPageChange } = usePagination(filteredList, 10)
 
-// ===== Selection =====
+//=====选择=====
 const toggleSelectProcess = (id: string) => {
   const idx = selectedProcessIds.value.indexOf(id)
   if (idx >= 0) selectedProcessIds.value.splice(idx, 1)
@@ -155,7 +155,7 @@ const toggleSelectAll = () => {
   }
 }
 
-// ===== Generate mock audit result =====
+//=====生成模拟审核结果=====
 const generateAuditResult = (proc: ArchivedProcess): ArchiveAuditResult => {
   const complianceOptions: ArchiveAuditResult['overall_compliance'][] = ['compliant', 'non_compliant', 'partially_compliant']
   const hash = proc.process_id.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
@@ -194,7 +194,7 @@ const generateAuditResult = (proc: ArchivedProcess): ArchiveAuditResult => {
   }
 }
 
-// ===== Single audit =====
+//=====单次审核=====
 const currentResult = ref<ArchiveAuditResult | null>(null)
 
 const selectProcess = (proc: ArchivedProcess) => {
@@ -222,11 +222,11 @@ const handleReAudit = async () => {
   await handleAudit()
 }
 
-// Batch audit progress tracking
+//批量审核进度跟踪
 const batchAuditTotal = ref(0)
 const batchAuditDone = ref(0)
 
-// ===== Batch audit =====
+//=====批量审核=====
 const handleBatchAudit = async () => {
   if (selectedProcessIds.value.length === 0) return
   batchAuditing.value = true
@@ -251,7 +251,7 @@ const handleBatchAudit = async () => {
   message.success(t('archive.batchDone', `${ids.length}`))
 }
 
-// ===== Export (only shown after process selected) =====
+//=====导出（仅在选择流程后显示）=====
 const handleExport = (format: string) => {
   message.success(t('archive.exporting', format.toUpperCase()))
 }
@@ -260,7 +260,7 @@ const jumpToOA = (processId: string) => {
   message.info(t('archive.jumpingToOA', processId))
 }
 
-// ===== Config helpers =====
+//=====配置助手=====
 const complianceConfig = computed(() => ({
   compliant: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: t('archive.compliant') },
   non_compliant: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', label: t('archive.nonCompliant') },
@@ -277,14 +277,14 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 
 <template>
   <div class="archive-page fade-in">
-    <!-- Page header -->
+    <!--页眉-->
     <div class="page-header">
       <div>
         <h1 class="page-title">{{ t('archive.title') }}</h1>
         <p class="page-subtitle">{{ t('archive.subtitle') }}</p>
       </div>
       <div class="page-header-actions">
-        <!-- Export button: only shown when a process is selected -->
+        <!--导出按钮：仅在选择进程时显示-->
         <a-dropdown v-if="selectedProcess">
           <a-button>
             <DownloadOutlined /> {{ t('archive.exportReport') }}
@@ -300,7 +300,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
       </div>
     </div>
 
-    <!-- Stats row -->
+    <!--统计行-->
     <div class="stats-row">
       <div class="stat-card stat-card--primary" :class="{ 'stat-card--selected': !filterAuditStatus }" @click="filterAuditStatus = undefined">
         <div class="stat-card-icon"><FileProtectOutlined /></div>
@@ -332,9 +332,9 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
       </div>
     </div>
 
-    <!-- Main layout -->
+    <!--主要布局-->
     <div class="archive-grid">
-      <!-- Left: Process list -->
+      <!--左：进程列表-->
       <div class="list-panel">
         <div class="panel-header">
           <div class="panel-header-row">
@@ -349,7 +349,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
             </a-button>
           </div>
 
-          <!-- Filters -->
+          <!--过滤器-->
           <transition name="slide">
             <div v-if="showFilters" class="filter-bar">
               <a-input v-model:value="searchText" :placeholder="t('archive.searchPlaceholder')" allow-clear style="flex: 2; min-width: 160px;">
@@ -381,7 +381,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
             </div>
           </transition>
 
-          <!-- Batch toolbar -->
+          <!--批处理工具栏-->
           <div class="batch-toolbar">
             <div class="batch-toolbar-left">
               <a-checkbox
@@ -404,7 +404,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
           </div>
         </div>
 
-        <!-- Process list -->
+        <!--进程列表-->
         <div class="process-list">
           <div
             v-for="proc in pagedList"
@@ -462,7 +462,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
           </div>
         </div>
 
-        <!-- Pagination -->
+        <!--分页-->
         <div class="pagination-wrapper">
           <a-pagination
             :current="listPage"
@@ -478,7 +478,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
         </div>
       </div>
 
-      <!-- Right: Detail panel -->
+      <!--右：细节面板-->
       <div class="detail-panel">
         <div class="panel-header">
           <h3 class="panel-title">
@@ -488,7 +488,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
         </div>
 
         <div class="detail-content">
-          <!-- Empty state -->
+          <!--空状态-->
           <div v-if="!selectedProcess" class="detail-empty">
             <div class="detail-empty-icon"><SafetyCertificateOutlined /></div>
             <h4>{{ t('archive.selectProcess') }}</h4>
@@ -496,7 +496,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
           </div>
 
           <template v-else>
-            <!-- Process info card -->
+            <!--流程信息卡-->
             <div class="process-info-card">
               <div class="process-info-header">
                 <div>
@@ -525,7 +525,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
               </div>
             </div>
 
-            <!-- Audit in progress -->
+            <!--审核正在进行中-->
             <template v-if="loading">
               <div class="audit-progress">
                 <div class="audit-phase" :class="{ 'audit-phase--done': phase1Done, 'audit-phase--active': !phase1Done }">
@@ -551,9 +551,9 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
               </div>
             </template>
 
-            <!-- Audit result -->
+            <!--审核结果-->
             <template v-if="currentResult && !loading">
-              <!-- Compliance banner -->
+              <!--合规横幅-->
               <div
                 class="compliance-banner"
                 :style="{
@@ -580,7 +580,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
                 </div>
               </div>
 
-              <!-- Rule checks -->
+              <!--规则检查-->
               <div class="section-block">
                 <h4 class="section-title"><SafetyCertificateOutlined /> {{ t('archive.ruleAudit') }}</h4>
                 <div class="audit-checks">
@@ -605,7 +605,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
                 </div>
               </div>
 
-              <!-- Risk points & suggestions -->
+              <!--风险点及建议-->
               <div v-if="currentResult.overall_compliance !== 'compliant'" class="risk-suggestions-row">
                 <div class="risk-card">
                   <h4 class="section-title"><AlertOutlined style="color: var(--color-danger);" /> {{ t('archive.riskPoints') }}</h4>
@@ -640,7 +640,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
                 </div>
               </div>
 
-              <!-- AI Summary -->
+              <!--人工智能总结-->
               <div class="section-block">
                 <h4 class="section-title"><ThunderboltOutlined /> {{ t('archive.aiSummary') }}</h4>
                 <div class="ai-summary">
@@ -649,7 +649,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
               </div>
             </template>
 
-            <!-- No result yet (not loading) -->
+            <!--还没有结果（未加载）-->
             <div v-if="!currentResult && !loading" class="no-result-hint">
               <HistoryOutlined style="font-size: 32px; color: var(--color-text-tertiary);" />
               <p>{{ t('archive.noResultHint') }}</p>
@@ -673,7 +673,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
 .page-header-actions { display: flex; gap: 8px; align-items: center; }
 
-/* Stats row */
+/*统计行*/
 .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
 .stat-card {
   display: flex; align-items: center; gap: 12px; padding: 14px 18px;
@@ -696,10 +696,10 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 .stat-card-value { font-size: 22px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
 .stat-card-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
 
-/* Main grid */
+/*主格*/
 .archive-grid { display: grid; grid-template-columns: 400px 1fr; gap: 20px; align-items: start; }
 
-/* Panels */
+/*面板*/
 .list-panel, .detail-panel {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); overflow: hidden;
@@ -720,7 +720,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
   background: var(--color-primary); margin-left: 4px; vertical-align: middle;
 }
 
-/* Filter bar */
+/*过滤栏*/
 .filter-bar {
   display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
   padding: 10px 0 2px;
@@ -728,7 +728,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 .slide-enter-active, .slide-leave-active { transition: all 0.2s ease; }
 .slide-enter-from, .slide-leave-to { opacity: 0; transform: translateY(-6px); }
 
-/* Batch toolbar */
+/*批处理工具栏*/
 .batch-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .batch-toolbar-left { display: flex; align-items: center; gap: 12px; }
 .batch-progress-hint {
@@ -738,7 +738,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 @keyframes batchPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
 .batch-audit-btn { flex-shrink: 0; }
 
-/* Process list */
+/*进程列表*/
 .process-list { max-height: calc(100vh - 340px); overflow-y: auto; }
 .process-item {
   display: flex; align-items: flex-start; padding: 12px 16px; cursor: pointer;
@@ -776,10 +776,10 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 .oa-jump-btn:hover { color: var(--color-primary); }
 .list-empty { padding: 40px 20px; }
 
-/* Pagination */
+/*分页*/
 .pagination-wrapper { padding: 12px 16px; border-top: 1px solid var(--color-border-light); display: flex; justify-content: flex-end; }
 
-/* Detail panel */
+/*细节面板*/
 .detail-content { padding: 18px; max-height: calc(100vh - 220px); overflow-y: auto; }
 .detail-empty { text-align: center; padding: 60px 20px; }
 .detail-empty-icon {
@@ -790,7 +790,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 .detail-empty h4 { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px; }
 .detail-empty p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 auto; max-width: 300px; }
 
-/* Process info card */
+/*流程信息卡*/
 .process-info-card {
   padding: 14px 16px; background: var(--color-bg-page);
   border-radius: var(--radius-lg); border: 1px solid var(--color-border-light); margin-bottom: 16px;
@@ -800,7 +800,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 .process-info-meta { font-size: 12px; color: var(--color-text-tertiary); }
 .process-info-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
-/* Audit progress */
+/*审核进度*/
 .audit-progress {
   display: flex; flex-direction: column; gap: 12px; padding: 20px;
   background: var(--color-bg-page); border-radius: var(--radius-lg);
@@ -815,7 +815,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 .audit-phase-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-/* Compliance banner */
+/*合规横幅*/
 .compliance-banner {
   display: flex; align-items: center; padding: 14px 18px;
   border-radius: var(--radius-lg); border-left: 4px solid; margin-bottom: 16px; gap: 12px;
@@ -826,14 +826,14 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 .compliance-banner-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
 .compliance-score { font-size: 34px; font-weight: 800; line-height: 1; }
 
-/* Section blocks */
+/*剖面块*/
 .section-block { margin-bottom: 16px; }
 .section-title {
   font-size: 13px; font-weight: 600; color: var(--color-text-primary);
   margin: 0 0 10px; display: flex; align-items: center; gap: 6px;
 }
 
-/* Audit checks */
+/*审计检查*/
 .audit-checks { display: flex; flex-direction: column; gap: 6px; }
 .audit-check-item {
   display: flex; gap: 10px; padding: 10px 14px;
@@ -847,7 +847,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 .audit-check-reasoning { font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; }
 .audit-check-empty { font-size: 13px; color: var(--color-text-tertiary); padding: 12px; text-align: center; }
 
-/* Risk & suggestions */
+/*风险与建议*/
 .risk-suggestions-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
 .risk-card, .suggestion-card {
   padding: 14px; background: var(--color-bg-page);
@@ -860,7 +860,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 }
 .risk-empty { font-size: 12px; color: var(--color-text-tertiary); }
 
-/* AI Summary */
+/*人工智能总结*/
 .ai-summary {
   background: var(--color-bg-page); border-radius: var(--radius-md);
   padding: 14px; border: 1px solid var(--color-border-light);
@@ -896,7 +896,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 }
 .no-result-hint p { font-size: 13px; margin: 0; }
 
-/* Responsive */
+/*反应灵敏*/
 @media (max-width: 1200px) {
   .archive-grid { grid-template-columns: 360px 1fr; }
 }

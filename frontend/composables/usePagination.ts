@@ -1,9 +1,8 @@
 /**
- * usePagination — generic client-side pagination for any list.
+ * usePagination — 任何列表的通用客户端分页。
  *
- * Usage:
- *   const { paged, current, pageSize, total, onChange } = usePagination(filteredList, 10)
- */
+ * 用法：
+ * const { 分页，当前，pageSize，总计，onChange } = usePagination(filteredList, 10)*/
 export const usePagination = <T>(
   source: Ref<T[]> | ComputedRef<T[]>,
   defaultPageSize = 10,
@@ -13,7 +12,7 @@ export const usePagination = <T>(
 
   const total = computed(() => unref(source).length)
 
-  // Reset to page 1 when source data changes
+  //源数据更改时重置为第 1 页
   watch(source, () => {
     if (current.value > Math.ceil(total.value / pageSize.value)) {
       current.value = 1

@@ -30,13 +30,13 @@ const showCreate = ref(false)
 const showDetail = ref(false)
 const detailActiveTab = ref('basic')
 
-// Available AI models for tenant config dropdowns
+//租户配置下拉列表的可用 AI 模型
 const availableModels = computed(() => mockAIModelConfigs.filter(m => m.enabled))
 
-// Available OA database connections from system settings
+//系统设置中可用的 OA 数据库连接
 const availableOADbs = computed(() => mockOADatabaseConnections.filter(c => c.enabled))
 
-// Get OA DB connection name by id
+//通过id获取OA DB连接名称
 const getOADbName = (id: string) => {
   const conn = mockOADatabaseConnections.find(c => c.id === id)
   return conn ? conn.name : t('admin.tenants.notConfigured')
@@ -125,7 +125,7 @@ const toggleTenantStatus = (id: string) => {
 }
 
 const testConnection = async () => {
-  // No longer needed - connections managed at system level
+  //不再需要 - 在系统级别管理连接
 }
 
 const getQuotaPercent = (used: number, total: number) => Math.round((used / total) * 100)
@@ -136,7 +136,7 @@ const getQuotaColor = (percent: number) => {
   return '#10b981'
 }
 
-// ===== AI Model filtering by provider =====
+//===== 按提供商筛选 AI 模型 =====
 const providerOptions = ['Xinference', '阿里云百炼']
 
 const filteredModelsForProvider = (provider: string) => {
@@ -188,7 +188,7 @@ const onNewTenantProviderChange = () => {
       </a-button>
     </div>
 
-    <!-- Tenant Cards Grid -->
+    <!--租户卡网格-->
     <div class="tenant-grid">
       <div v-for="tenant in tenants" :key="tenant.id" class="tenant-card" @click="openDetail(tenant)">
         <div class="tenant-card-header">
@@ -208,7 +208,7 @@ const onNewTenantProviderChange = () => {
           </div>
         </div>
 
-        <!-- Quick Info Tags -->
+        <!--快速信息标签-->
         <div class="tenant-tags">
           <span class="info-tag info-tag--primary">
             <DatabaseOutlined /> {{ getOADbName(tenant.oa_db_connection_id) }}
@@ -221,7 +221,7 @@ const onNewTenantProviderChange = () => {
           </span>
         </div>
 
-        <!-- Stats Row -->
+        <!--统计行-->
         <div class="tenant-stats">
           <div class="stat-item">
             <span class="stat-label">{{ t('admin.tenants.tokenUsage') }}</span>
@@ -235,7 +235,7 @@ const onNewTenantProviderChange = () => {
           </div>
         </div>
 
-        <!-- Token usage bar -->
+        <!--代币使用栏-->
         <div class="quota-bar-wrapper">
           <div class="quota-bar">
             <div
@@ -267,7 +267,7 @@ const onNewTenantProviderChange = () => {
       </div>
     </div>
 
-    <!-- Create Tenant Modal -->
+    <!--创建租户模式-->
     <a-modal v-model:open="showCreate" :title="t('admin.tenants.createTenant')" @ok="createTenant" :okText="t('admin.tenants.create')" :cancelText="t('admin.tenants.cancel')" width="560px">
       <a-form layout="vertical" style="margin-top: 16px;">
         <a-row :gutter="16">
@@ -346,7 +346,7 @@ const onNewTenantProviderChange = () => {
       </a-form>
     </a-modal>
 
-    <!-- Tenant Detail Drawer -->
+    <!--租户细节抽屉-->
     <a-drawer
       v-model:open="showDetail"
       :title="selectedTenant?.name + t('admin.tenants.tenantConfig', '')"
@@ -374,7 +374,7 @@ const onNewTenantProviderChange = () => {
           </button>
         </div>
 
-        <!-- Basic Info Tab -->
+        <!--基本信息选项卡-->
         <div v-if="detailActiveTab === 'basic'" class="detail-section">
           <div class="section-header">
             <h3><UserOutlined /> {{ t('admin.tenants.basicInfo') }}</h3>
@@ -428,7 +428,7 @@ const onNewTenantProviderChange = () => {
           </a-form>
         </div>
 
-        <!-- OA Database Connection Tab -->
+        <!--OA 数据库连接选项卡-->
         <div v-if="detailActiveTab === 'oadb'" class="detail-section">
           <div class="section-header">
             <h3><DatabaseOutlined /> {{ t('admin.tenants.oaDbConfig') }}</h3>
@@ -446,7 +446,7 @@ const onNewTenantProviderChange = () => {
               </a-select>
             </a-form-item>
 
-            <!-- Show selected connection details (read-only) -->
+            <!--显示所选连接详细信息（只读）-->
             <div v-if="selectedTenant.oa_db_connection_id && getOADbInfo(selectedTenant.oa_db_connection_id)" class="oadb-detail-card">
               <div class="oadb-detail-header">
                 <LinkOutlined />
@@ -482,7 +482,7 @@ const onNewTenantProviderChange = () => {
           </a-form>
         </div>
 
-        <!-- AI Model Tab -->
+        <!--AI模型选项卡-->
         <div v-if="detailActiveTab === 'ai'" class="detail-section">
           <div class="section-header">
             <h3><RobotOutlined /> {{ t('admin.tenants.aiModelSelect') }}</h3>
@@ -568,7 +568,7 @@ const onNewTenantProviderChange = () => {
           </a-form>
         </div>
 
-        <!-- Quota & Policy Tab -->
+        <!--配额和政策选项卡-->
         <div v-if="detailActiveTab === 'quota'" class="detail-section">
           <div class="section-header">
             <h3><ThunderboltOutlined /> {{ t('admin.tenants.quotaPolicy') }}</h3>
@@ -588,7 +588,7 @@ const onNewTenantProviderChange = () => {
                   </a-form-item>
                 </a-col>
               </a-row>
-              <!-- Current usage display -->
+              <!--当前使用情况显示-->
               <div class="usage-display">
                 <div class="usage-info">
                   <span>{{ t('admin.tenants.usedTokens', [selectedTenant.token_used.toLocaleString(), selectedTenant.token_quota.toLocaleString()]) }}</span>
@@ -628,7 +628,7 @@ const onNewTenantProviderChange = () => {
           </a-form>
         </div>
 
-        <!-- Security Tab -->
+        <!--安全选项卡-->
         <div v-if="detailActiveTab === 'security'" class="detail-section">
           <div class="section-header">
             <h3><SafetyCertificateOutlined /> {{ t('admin.tenants.securitySettings') }}</h3>
@@ -665,7 +665,7 @@ const onNewTenantProviderChange = () => {
           </a-form>
         </div>
 
-        <!-- Footer Actions -->
+        <!--页脚操作-->
         <div class="detail-footer">
           <a-button @click="showDetail = false">{{ t('admin.tenants.cancel') }}</a-button>
           <a-button type="primary" @click="saveTenantDetail">{{ t('admin.tenants.saveConfig') }}</a-button>
@@ -696,7 +696,7 @@ const onNewTenantProviderChange = () => {
   margin: 4px 0 0;
 }
 
-/* Tenant grid */
+/*租户网格*/
 .tenant-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -794,7 +794,7 @@ const onNewTenantProviderChange = () => {
   background: var(--color-text-tertiary);
 }
 
-/* Tags */
+/*标签*/
 .tenant-tags {
   display: flex;
   gap: 8px;
@@ -827,7 +827,7 @@ const onNewTenantProviderChange = () => {
   color: var(--color-success);
 }
 
-/* Stats */
+/*统计数据*/
 .tenant-stats {
   display: flex;
   gap: 24px;
@@ -851,7 +851,7 @@ const onNewTenantProviderChange = () => {
   color: var(--color-text-primary);
 }
 
-/* Quota bar */
+/*配额栏*/
 .quota-bar-wrapper {
   display: flex;
   align-items: center;
@@ -902,7 +902,7 @@ const onNewTenantProviderChange = () => {
   gap: 4px;
 }
 
-/* ===== Detail Drawer ===== */
+/*=====细节抽屉=====*/
 .detail-tabs {
   display: flex;
   gap: 4px;
@@ -1053,7 +1053,7 @@ const onNewTenantProviderChange = () => {
   border-top: 1px solid var(--color-border-light);
 }
 
-/* OA DB detail card in tenant drawer */
+/*租户抽屉中的 OA DB 详细信息卡*/
 .oadb-detail-card {
   background: var(--color-bg-page);
   border: 1px solid var(--color-border-light);

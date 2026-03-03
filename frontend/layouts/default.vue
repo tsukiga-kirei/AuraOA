@@ -36,7 +36,7 @@ watch(route, () => {
       @update:mobile-menu-open="mobileMenuOpen = $event"
     />
 
-    <!-- Mobile overlay -->
+    <!--移动覆盖-->
     <transition name="overlay-fade">
       <div
         v-if="mobileMenuOpen && isMobile"
@@ -45,7 +45,7 @@ watch(route, () => {
       />
     </transition>
 
-    <!-- Main content -->
+    <!--主要内容-->
     <div class="main-wrapper">
       <AppHeader
         :collapsed="collapsed"

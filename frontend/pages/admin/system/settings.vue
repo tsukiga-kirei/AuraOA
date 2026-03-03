@@ -69,7 +69,7 @@ onMounted(async () => {
   }
 })
 
-// ===== OA Database Connection CRUD =====
+//===== OA数据库连接CRUD =====
 const showAddOADb = ref(false)
 const editingOADb = ref<OADatabaseConnection | null>(null)
 const testingOADbId = ref<string | null>(null)
@@ -197,7 +197,7 @@ const testOADbConnection = async (id: string) => {
   testingOADbId.value = null
 }
 
-// ===== AI Model CRUD =====
+//===== AI模型CRUD =====
 const showAddAIModel = ref(false)
 const editingAIModel = ref<AIModelConfig | null>(null)
 
@@ -283,7 +283,7 @@ const deleteAIModel = (id: string) => {
   message.success(t('admin.settings.aiModelDeleted'))
 }
 
-// ===== Test Connection for DB modal =====
+//===== 测试数据库模式连接 =====
 const testingDbConn = ref(false)
 const testDbConnection = async () => {
   if (!newOADb.value.jdbc_config?.host) {
@@ -300,7 +300,7 @@ const testDbConnection = async () => {
   }
 }
 
-// ===== Test Connection for AI Model modal =====
+//===== AI 模型模态测试连接 =====
 const testingModelConn = ref(false)
 const testModelConnection = async () => {
   if (!newAIModel.value.endpoint) {
@@ -313,7 +313,7 @@ const testModelConnection = async () => {
   message.success(t('admin.settings.modelConnSuccess'))
 }
 
-// ===== OA System toggle (legacy) =====
+//===== OA 系统切换（旧版）=====
 const toggleOASystem = (id: string) => {
   const sys = oaSystems.value.find(s => s.id === id)
   if (sys) {
@@ -370,7 +370,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
       </div>
     </div>
 
-    <!-- Overview Stats -->
+    <!--概览统计-->
     <div class="overview-stats">
       <div class="overview-stat">
         <div class="overview-stat-icon overview-stat-icon--primary">
@@ -401,7 +401,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
       </div>
     </div>
 
-    <!-- Tab Navigation -->
+    <!--选项卡导航-->
     <div class="tab-nav">
       <button
         v-for="tab in [
@@ -419,7 +419,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
       </button>
     </div>
 
-    <!-- OA Database Connections Tab -->
+    <!--OA 数据库连接选项卡-->
     <div v-if="activeTab === 'oa'" class="tab-content">
       <div class="tab-content-header">
         <p class="tab-desc">{{ t('admin.settings.oaDbDesc') }}</p>
@@ -507,7 +507,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
       </div>
     </div>
 
-    <!-- AI Models Tab -->
+    <!--AI 模型选项卡-->
     <div v-if="activeTab === 'ai'" class="tab-content">
       <div class="tab-content-header">
         <p class="tab-desc">{{ t('admin.settings.aiDesc') }}</p>
@@ -593,7 +593,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
       </div>
     </div>
 
-    <!-- General Config Tab -->
+    <!--常规配置选项卡-->
     <div v-if="activeTab === 'general'" class="tab-content">
       <div class="tab-content-header">
         <p class="tab-desc">{{ t('admin.settings.generalDesc') }}</p>
@@ -738,7 +738,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
       </div>
     </div>
 
-    <!-- Add/Edit OA Database Connection Modal -->
+    <!--添加/编辑 OA 数据库连接模式-->
     <a-modal
       v-model:open="showAddOADb"
       :title="editingOADb ? t('admin.settings.editOADb') : t('admin.settings.addOADb')"
@@ -828,7 +828,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
       </div>
     </a-modal>
 
-    <!-- Add AI Model Modal -->
+    <!--添加AI模型模态-->
     <a-modal
       v-model:open="showAddAIModel"
       :title="t('admin.settings.addAIModel')"

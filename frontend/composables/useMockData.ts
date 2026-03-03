@@ -1,27 +1,26 @@
 /**
- * Mock data for development - simulates API responses
- * All mock/virtual data lives here. Business code only references this file.
- */
+ * 用于开发的模拟数据 - 模拟 API 响应
+ * 所有模拟/虚拟数据都存放在这里。业务代码只引用该文件。*/
 
 // ============================================================
-// Role & Permission types
+//角色和权限类型
 // ============================================================
 export type UserRole = 'business' | 'tenant_admin' | 'system_admin'
 
-/** Permission groups that control sidebar section visibility */
+/** 控制侧边栏部分可见性的权限组*/
 export type PermissionGroup = 'business' | 'tenant_admin' | 'system_admin'
 
-/** A single role assignment — binds a user to a role within a tenant context */
+/** 单一角色分配——将用户绑定到租户上下文中的角色*/
 export interface UserRoleAssignment {
-  /** Unique id for this assignment */
+  /** 此作业的唯一 ID*/
   id: string
-  /** Role type */
+  /** 角色类型*/
   role: UserRole
-  /** Tenant ID (null for system_admin which is global) */
+  /** 租户 ID（对于全局的 system_admin 为空）*/
   tenant_id: string | null
-  /** Tenant name for display */
+  /** 显示租户名称*/
   tenant_name: string | null
-  /** Human-readable label, e.g. "示例集团总部 · 业务用户" */
+  /** 人类可读的标签，例如《示例集团总部·业务用户》*/
   label: string
 }
 
@@ -29,7 +28,7 @@ export interface MockUser {
   username: string
   password: string
   display_name: string
-  /** All role assignments this user has across all tenants */
+  /** 该用户在所有租户中拥有的所有角色分配*/
   roles: UserRoleAssignment[]
 }
 
@@ -99,7 +98,7 @@ export const MOCK_USERS: MockUser[] = [
 ]
 
 // ============================================================
-// Mock menus by role (RBAC)
+//按角色模拟菜单 (RBAC)
 // ============================================================
 export interface MockMenuItem {
   key: string
@@ -110,9 +109,8 @@ export interface MockMenuItem {
 }
 
 /**
- * Permission matrix: which permission groups can access which pages.
- * Used by middleware and layouts to control visibility.
- */
+ * 权限矩阵：哪些权限组可以访问哪些页面。
+ * 由中间件和布局使用来控制可见性。*/
 export const PAGE_PERMISSIONS: Record<string, PermissionGroup[]> = {
   '/overview': ['business', 'tenant_admin', 'system_admin'],
   '/dashboard': ['business'],
@@ -128,14 +126,13 @@ export const PAGE_PERMISSIONS: Record<string, PermissionGroup[]> = {
 }
 
 /**
- * Check if a user with given permissions can access a page.
- * For backward compat, also accepts UserRole and converts to permissions.
- */
+ * 检查具有给定权限的用户是否可以访问页面。
+ * 为了向后兼容，还接受 UserRole 并转换为权限。*/
 export function hasPagePermission(path: string, roleOrPerms: UserRole | PermissionGroup[]): boolean {
   const requiredPerms = PAGE_PERMISSIONS[path]
-  if (!requiredPerms) return true // pages not in the map are accessible by all
+  if (!requiredPerms) return true //地图上没有的页面可供所有人访问
 
-  // Convert legacy role to permissions array
+  //将旧角色转换为权限数组
   const userPerms: PermissionGroup[] = Array.isArray(roleOrPerms)
     ? roleOrPerms
     : roleToPermissions(roleOrPerms)
@@ -143,29 +140,28 @@ export function hasPagePermission(path: string, roleOrPerms: UserRole | Permissi
   return requiredPerms.some(p => userPerms.includes(p))
 }
 
-/** Fallback: convert a role to default permissions (for backward compat) */
+/**后备：将角色转换为默认权限（用于向后兼容）*/
 function roleToPermissions(role: UserRole): PermissionGroup[] {
   if (role === 'system_admin') return ['business', 'tenant_admin', 'system_admin']
   if (role === 'tenant_admin') return ['business', 'tenant_admin']
   return ['business']
 }
 
-/** Get the first accessible page for a user (used for default redirect after login) */
+/** 获取用户第一个可访问的页面（用于登录后的默认重定向）*/
 export function getDefaultPage(permissions: PermissionGroup[]): string {
-  // All users land on the overview dashboard first
+  //所有用户首先登陆概览仪表板
   return '/overview'
 }
 
 
 
 /**
- * Generate menus for a specific active role assignment.
- * KEY DIFFERENCE from getMockMenusByPermissions:
- * Only shows menus relevant to THIS role type, not all roles the user has.
- */
+ * 为特定的活动角色分配生成菜单。
+ * 与 getMockMenusByPermissions 的主要区别：
+ * 仅显示与此角色类型相关的菜单，而不显示用户拥有的所有角色。*/
 export function getMockMenusByActiveRole(role: UserRoleAssignment): MockMenuItem[] {
   const result: MockMenuItem[] = []
-  // Overview/dashboard is always shown
+  //概览/仪表板始终显示
   result.push(
     { key: 'overview', label: '仪表盘', icon: 'PieChartOutlined', path: '/overview' },
   )
@@ -193,13 +189,13 @@ export function getMockMenusByActiveRole(role: UserRoleAssignment): MockMenuItem
   return result
 }
 
-/** Get the default page for a specific role assignment */
+/** 获取特定角色分配的默认页面*/
 export function getDefaultPageForRole(role: UserRoleAssignment): string {
   return '/overview'
 }
 
 // ============================================================
-// Business mock data
+//业务模拟数据
 // ============================================================
 export interface OAProcess {
   process_id: string
@@ -209,9 +205,9 @@ export interface OAProcess {
   submit_time: string
   process_type: string
   status: string
-  current_node: string  // current approval node (replaces amount display)
-  amount?: number       // deprecated, kept for backward compat
-  urgency?: 'high' | 'medium' | 'low'  // deprecated
+  current_node: string  //当前审批节点（替换金额显示）
+  amount?: number       //已弃用，保留用于向后兼容
+  urgency?: 'high' | 'medium' | 'low'  //已弃用
   oa_url?: string
 }
 
@@ -226,7 +222,7 @@ export interface ChecklistResult {
 
 
 
-/** Legacy AuditResult - kept for backward compat */
+/** 旧版 AuditResult - 保留用于向后兼容*/
 export interface AuditResult {
   trace_id: string
   process_id: string
@@ -235,7 +231,7 @@ export interface AuditResult {
   details: ChecklistResult[]
   ai_reasoning: string
   duration_ms: number
-  // New fields (v2)
+  //新字段 (v2)
   action_label?: string
   confidence?: number
   risk_points?: string[]
@@ -262,13 +258,13 @@ export interface CronTask {
 }
 
 // ============================================================
-// Cron task configuration types (定时任务配置 - 租户管理)
+//Cron 任务配置类型 (定时任务配置 - 机场管理)
 // ============================================================
 export interface CronTaskTypeConfig {
   task_type: 'batch_audit' | 'daily_report' | 'weekly_report'
   label: string
   enabled: boolean
-  /** batch_audit only: max number of pending items per execution */
+  /** 仅batch_audit：每次执行的最大待处理项目数*/
   batch_limit?: number
   push_format: 'html' | 'markdown' | 'plain'
   content_template: {
@@ -299,7 +295,7 @@ export interface TenantJdbcConfig {
   username: string
   password: string
   pool_size: number
-  connection_timeout: number  // seconds
+  connection_timeout: number  //秒
   test_on_borrow: boolean
 }
 
@@ -317,9 +313,9 @@ export interface TenantAIConfig {
 export interface TenantInfo {
   id: string
   name: string
-  code: string                // tenant code for identification
+  code: string                //租户识别码
   oa_type: string
-  oa_db_connection_id: string // reference to system-level OA database connection
+  oa_db_connection_id: string //参考系统级OA数据库连接
   token_quota: number
   token_used: number
   max_concurrency: number
@@ -330,16 +326,16 @@ export interface TenantInfo {
   contact_phone: string
   description: string
   ai_config: TenantAIConfig
-  log_retention_days: number  // how many days to keep logs
-  data_retention_days: number // how many days to keep audit data
-  allow_custom_model: boolean // whether tenant users can override AI model
+  log_retention_days: number  //日志保留多少天
+  data_retention_days: number //审计数据保留多少天
+  allow_custom_model: boolean //租户用户是否可以覆盖AI模型
   sso_enabled: boolean
   sso_endpoint: string
-  tenant_admin_id?: string    // reference to MOCK_USERS username for tenant admin
+  tenant_admin_id?: string    //引用租户管理员的 MOCK_USERS 用户名
 }
 
 // ============================================================
-// System Settings types (系统设置)
+//系统设置类型（系统设置）
 // ============================================================
 export interface OASystemConfig {
   id: string
@@ -351,14 +347,14 @@ export interface OASystemConfig {
   description: string
   adapter_version: string
   last_sync: string
-  sync_interval: number  // seconds
+  sync_interval: number  //秒
   enabled: boolean
 }
 
-/** OA Database Connection - system-level, shared across tenants */
+/** OA数据库连接-系统级，跨租户共享*/
 export interface OADatabaseConnection {
   id: string
-  name: string                // user-defined display name
+  name: string                //用户定义的显示名称
   oa_type: 'weaver_e9' | 'weaver_ebridge' | 'zhiyuan_a8' | 'landray_ekp' | 'custom'
   oa_type_label: string
   jdbc_config: TenantJdbcConfig
@@ -380,19 +376,19 @@ export interface AIModelConfig {
   api_key_configured: boolean
   max_tokens: number
   context_window: number
-  cost_per_1k_tokens: number  // cost in RMB
+  cost_per_1k_tokens: number  //成本人民币
   status: 'online' | 'offline' | 'maintenance'
   enabled: boolean
   description: string
-  capabilities: string[]  // e.g. ['text', 'code', 'reasoning']
+  capabilities: string[]  //例如['文本'、'代码'、'推理']
 }
 
 export interface SystemGeneralConfig {
   platform_name: string
   platform_version: string
   default_language: string
-  session_timeout: number  // minutes
-  max_upload_size: number  // MB
+  session_timeout: number  //分钟
+  max_upload_size: number  //MB
   enable_audit_trail: boolean
   enable_data_encryption: boolean
   backup_enabled: boolean
@@ -473,34 +469,34 @@ export interface DashboardStats {
 }
 
 // ============================================================
-// Overview Dashboard types (仪表盘)
+//概述 仪表板类型（仪表盘）
 // ============================================================
 export type OverviewWidgetId =
-  | 'audit_summary'       // business: today's audit stats
-  | 'pending_tasks'       // business: pending task count
-  | 'weekly_trend'        // business: weekly audit trend chart
-  | 'dept_distribution'   // tenant_admin: audit distribution by department
-  | 'recent_activity'     // all: recent activity feed
-  | 'ai_performance'      // tenant_admin: AI model performance
-  | 'tenant_usage'        // tenant_admin: tenant resource usage
-  | 'user_activity'       // tenant_admin: user activity ranking
-  | 'system_health'       // system_admin: system health overview
-  | 'tenant_overview'     // system_admin: all tenants overview
-  | 'api_metrics'         // system_admin: API call metrics
-  | 'monitor_metrics'     // system_admin: key operational metrics (from global monitor)
-  | 'monitor_alerts'      // system_admin: recent alerts (from global monitor)
-  | 'cron_tasks'          // business: scheduled tasks
-  | 'archive_review'      // business: archive review
+  | 'audit_summary'       //业务：今日审计统计数据
+  | 'pending_tasks'       //业务：待处理任务数
+  | 'weekly_trend'        //业务：每周审计趋势图
+  | 'dept_distribution'   //tenant_admin：按部门审计分布
+  | 'recent_activity'     //全部：最近的活动提要
+  | 'ai_performance'      //tenant_admin：AI模型性能
+  | 'tenant_usage'        //tenant_admin：租户资源使用情况
+  | 'user_activity'       //tenant_admin：用户活跃度排名
+  | 'system_health'       //system_admin：系统健康状况概述
+  | 'tenant_overview'     //system_admin：所有租户概览
+  | 'api_metrics'         //system_admin：API 调用指标
+  | 'monitor_metrics'     //system_admin：关键运营指标（来自全局监视器）
+  | 'monitor_alerts'      //system_admin：最近的警报（来自全局监视器）
+  | 'cron_tasks'          //业务：计划任务
+  | 'archive_review'      //业务：档案审查
 
 export interface OverviewWidget {
   id: OverviewWidgetId
   title: string
   description: string
-  /** Which permission groups can see this widget */
+  /** 哪些权限组可以看到这个小部件*/
   requiredPermissions: PermissionGroup[]
-  /** Default enabled state */
+  /** 默认启用状态*/
   defaultEnabled: boolean
-  /** Widget size: 'sm' = 1/3, 'md' = 1/2, 'lg' = full width */
+  /** 小部件尺寸：'sm' = 1/3，'md' = 1/2，'lg' = 全宽*/
   size: 'sm' | 'md' | 'lg'
 }
 
@@ -538,19 +534,19 @@ export interface OverviewDashboardData {
   monitorAlerts: { id: number; level: string; messageZh: string; messageEn: string; timeZh: string; timeEn: string }[]
 }
 
-/** User's dashboard widget preferences (stored per user) */
+/** 用户的仪表板小部件首选项（按用户存储）*/
 export interface UserDashboardPrefs {
-  /** Widget IDs the user has enabled (order matters for layout) */
+  /** 用户已启用的小组件 ID（布局的顺序很重要）*/
   enabledWidgets: OverviewWidgetId[]
-  /** Optional custom sizes for widgets */
+  /** 小部件可选的自定义尺寸*/
   widgetSizes?: Partial<Record<OverviewWidgetId, 'sm' | 'md' | 'lg'>>
 }
 
 // ============================================================
-// Archive Review types (归档复盘 - 全流程合规复核)
+//归档复核类型 (归档复盘 - 全流程合规复核)
 // ============================================================
-// FlowNode, ArchivedProcess, FlowNodeAuditResult, ArchiveAuditResult
-// are defined above in the Business mock data section.
+//FlowNode、ArchiveProcess、FlowNodeAuditResult、ArchiveAuditResult
+//在上面的业务模拟数据部分中定义。
 
 export interface FieldAuditResult {
   field_name: string
@@ -559,7 +555,7 @@ export interface FieldAuditResult {
 }
 
 // ============================================================
-// Process-centric audit config types (审核工作台配置)
+//以流程为中心的审核配置类型（审核工作台配置）
 // ============================================================
 export interface ProcessField {
   field_key: string
@@ -572,7 +568,7 @@ export interface ProcessAIConfig {
   audit_strictness: 'strict' | 'standard' | 'loose'
   reasoning_prompt: string
   extraction_prompt: string
-  // Legacy fields kept for backward compatibility with other modules
+  //保留旧字段以向后兼容其他模块
   ai_provider?: string
   model_name?: string
   system_prompt?: string
@@ -580,7 +576,7 @@ export interface ProcessAIConfig {
   temperature?: number
 }
 
-// Strictness prompt presets — per-tenant configurable, fetched from API
+//严格提示预设 - 每个租户可配置，从 API 获取
 export interface StrictnessPromptPreset {
   strictness: 'strict' | 'standard' | 'loose'
   reasoning_instruction: string
@@ -594,7 +590,7 @@ export interface UserPermissions {
 }
 
 // ============================================================
-// Archive Review config types (归档复盘配置)
+//存档审核配置类型 (归档复盘配置)
 // ============================================================
 export interface FlowRuleConfig {
   id: string
@@ -625,11 +621,11 @@ export interface ArchiveReviewConfig {
     allow_custom_flow_rules: boolean
     allow_modify_strictness: boolean
   }
-  /** Roles/members/departments allowed to access this archive process */
+  /** 允许访问此存档过程的角色/成员/部门*/
   allowed_roles: string[]
-  /** Member IDs explicitly allowed (in addition to roles) */
+  /** 明确允许的成员 ID（除了角色之外）*/
   allowed_members: string[]
-  /** Department IDs explicitly allowed */
+  /** 明确允许的部门 ID*/
   allowed_departments?: string[]
 }
 
@@ -662,23 +658,23 @@ export interface ProcessAuditConfig {
 }
 
 // ============================================================
-// Organization & Personnel types (组织人员)
+//组织和人员类型（组织人员）
 // ============================================================
-// Organization types — imported from ~/types/org and re-exported for backward compatibility
+//组织类型 - 从 ~/types/org 导入并重新导出以实现向后兼容性
 export type { Department, OrgRole, OrgMember } from '~/types/org'
 
-// Organization mock data removed — now served by Go backend via useOrgApi
+//组织模拟数据已删除 - 现在由 Go 后端通过 useOrgApi 提供服务
 
 // ============================================================
-// User personal config types (用户偏好分析 - 租户管理)
+//用户个人配置类型（用户偏好分析 - 机场管理）
 // ============================================================
 
 /** 审核工作台 - 单个流程的用户自定义配置 */
 export interface UserAuditProcessDetail {
   process_type: string
   custom_rules: { id: string; content: string; enabled: boolean }[]
-  field_overrides: string[]  // field names the user toggled
-  strictness_override: 'strict' | 'standard' | 'loose' | null  // null = no override
+  field_overrides: string[]  //用户切换的字段名称
+  strictness_override: 'strict' | 'standard' | 'loose' | null  //null = 不覆盖
   rule_toggle_overrides: { rule_id: string; rule_content: string; enabled: boolean }[]
 }
 
@@ -697,7 +693,7 @@ export interface UserCronConfigDetail {
   task_type: string
   task_label: string
   cron_expression: string
-  /** 'modified' = 修改了系统默认任务, 'custom' = 用户新增的自定义任务 */
+  /** 'modified' = 修改了系统默认任务, 'custom' = 用户添加的自定义任务*/
   source: 'modified' | 'custom'
   is_active: boolean
   push_email?: string
@@ -927,7 +923,7 @@ export const mockUserPersonalConfigs: UserPersonalConfig[] = [
 ]
 
 // ============================================================
-// Data management types (数据信息)
+//数据管理类型（数据信息）
 // ============================================================
 export interface AuditLog {
   id: string
@@ -936,11 +932,11 @@ export interface AuditLog {
   operator: string
   department: string
   process_type: string
-  /** AI audit recommendation */
+  /** AI审核推荐*/
   recommendation: 'approve' | 'return' | 'review'
   score: number
   created_at: string
-  /** Full AI audit result for detail view */
+  /** 完整的人工智能审核结果可详细查看*/
   audit_result: AuditResult
 }
 
@@ -964,11 +960,11 @@ export interface ArchiveLog {
   operator: string
   department: string
   process_type: string
-  /** AI compliance result */
+  /** AI合规结果*/
   compliance: 'compliant' | 'non_compliant' | 'partially_compliant'
   compliance_score: number
   created_at: string
-  /** Full archive audit result for detail view */
+  /** 完整存档审核结果以供详细查看*/
   archive_result: ArchiveAuditResult
 }
 
@@ -1329,7 +1325,7 @@ export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
 ]
 
 // ============================================================
-// Archive Review configs (归档复盘配置 - 租户管理)
+//存档审核配置 (归档复盘配置 - 机场管理)
 // ============================================================
 export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
   {
@@ -1520,7 +1516,7 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
 ]
 
 // ============================================================
-// Strictness prompt presets (审核尺度预设提示词 - 按租户区分)
+//严格性提示预设（读出读数默认提示词 - 显示宽度）
 // ============================================================
 export const mockStrictnessPresets: StrictnessPromptPreset[] = [
   {
@@ -1540,16 +1536,16 @@ export const mockStrictnessPresets: StrictnessPromptPreset[] = [
   },
 ]
 
-// Mock API: fetch strictness presets for a tenant
+//模拟 API：获取租户的严格预设
 export const fetchStrictnessPresets = async (_tenantId?: string): Promise<StrictnessPromptPreset[]> => {
   await new Promise(r => setTimeout(r, 300))
   return JSON.parse(JSON.stringify(mockStrictnessPresets))
 }
 
-// Mock API: save strictness presets for a tenant
+//模拟 API：为租户保存严格预设
 export const saveStrictnessPresets = async (_tenantId: string, presets: StrictnessPromptPreset[]): Promise<boolean> => {
   await new Promise(r => setTimeout(r, 500))
-  // In real implementation, this would persist to backend
+  //在实际实现中，这将持续到后端
   mockStrictnessPresets.splice(0, mockStrictnessPresets.length, ...presets)
   return true
 }
@@ -1714,7 +1710,7 @@ export const useMockData = () => {
       { rule_id: 'R005', rule_name: '合同条款完整性', passed: true, reasoning: '合同包含付款条件、交付时间、售后条款等必要条款' },
     ],
     ai_reasoning: '该采购申请整体合规性尚可，但存在两个关键问题需要修正：\n\n1. 供应商资质问题：所选供应商未在企业合格供应商名录中登记，存在合规风险。建议申请人补充供应商资质材料或从已认证供应商中选择。\n\n2. 比价流程缺失：根据公司采购管理制度第 12 条，单笔采购金额超过 10 万元需进行竞争性比价（至少 3 家），当前申请仅提供了单一报价。\n\n建议：退回修改，要求补充比价材料和供应商资质证明后重新提交。',
-    // v2 fields
+    //v2 字段
     action_label: '建议退回',
     confidence: 0.85,
     risk_points: ['供应商未在合格名录中', '缺少竞争性比价材料'],
@@ -1740,7 +1736,7 @@ export const useMockData = () => {
     ],
   }
 
-  // Pre-computed audit results for some todo processes (simulates already-audited items)
+  //一些待办事项流程的预先计算的审核结果（模拟已审核的项目）
   const mockTodoAuditResults: Record<string, AuditResult> = {
     'WF-2025-001': { ...mockAuditResult },
     'WF-2025-002': {
@@ -1793,7 +1789,7 @@ export const useMockData = () => {
   ]
 
   // ============================================================
-  // Cron task type configs (租户管理 - 定时任务配置)
+  //Cron 任务类型配置 (机场管理 - 定时任务配置)
   // ============================================================
   const mockCronTaskTypeConfigs: CronTaskTypeConfig[] = [
     {
@@ -1892,7 +1888,7 @@ export const useMockData = () => {
   ]
 
   // ============================================================
-  // System Settings mock data (系统设置)
+  //系统设置模拟数据（系统设置）
   // ============================================================
   const mockOASystemConfigs: OASystemConfig[] = [
     {
@@ -1998,7 +1994,7 @@ export const useMockData = () => {
 
 
 
-  // Derive rules from process audit configs for backward compatibility
+  //从流程审核配置中派生规则以实现向后兼容性
   const mockRules: AuditRule[] = mockProcessAuditConfigs.flatMap(c => c.rules)
 
   const mockDashboardStats: DashboardStats = {
@@ -2020,7 +2016,7 @@ export const useMockData = () => {
   }
 
 
-  // Approved processes - historical, read-only
+  //批准的流程 - 历史、只读
   const mockApprovedProcesses: OAProcess[] = [
     { process_id: 'WF-2025-098', title: '年度IT设备采购', applicant: '王强', department: 'IT部', submit_time: '2025-06-09 16:30', process_type: '采购审批', status: 'approved', current_node: '已完成', amount: 320000, urgency: 'medium' },
     { process_id: 'WF-2025-096', title: '新产品研发立项', applicant: '张明', department: '研发部', submit_time: '2025-06-09 14:10', process_type: '项目审批', status: 'approved', current_node: '已完成', urgency: 'high' },
@@ -2033,7 +2029,7 @@ export const useMockData = () => {
     { process_id: 'WF-2025-076', title: '会议室音视频系统升级', applicant: '刘洋', department: '行政部', submit_time: '2025-06-04 16:00', process_type: '工程审批', status: 'approved', current_node: '已完成', amount: 135000, urgency: 'low' },
   ]
 
-  // Returned processes - historical, read-only
+  //返回的进程 - 历史、只读
   const mockReturnedProcesses: OAProcess[] = [
     { process_id: 'WF-2025-097', title: '客户招待费报销', applicant: '李芳', department: '销售部', submit_time: '2025-06-09 15:20', process_type: '费用报销', status: 'returned', current_node: '已退回', amount: 28000, urgency: 'medium' },
     { process_id: 'WF-2025-091', title: '未经审批的外包合同', applicant: '陈伟', department: '市场部', submit_time: '2025-06-08 10:00', process_type: '合同审批', status: 'returned', current_node: '已退回', amount: 150000, urgency: 'high' },
@@ -2041,7 +2037,7 @@ export const useMockData = () => {
     { process_id: 'WF-2025-083', title: '未备案供应商采购申请', applicant: '刘洋', department: '行政部', submit_time: '2025-06-06 11:00', process_type: '采购审批', status: 'returned', current_node: '已退回', amount: 95000, urgency: 'medium' },
   ]
 
-  // Historical audit results keyed by process_id
+  //由 process_id 键控的历史审计结果
   const mockHistoricalResults: Record<string, AuditResult> = {
     'WF-2025-098': {
       trace_id: 'TR-20250609-B1C2', process_id: 'WF-2025-098', recommendation: 'approve', score: 95, duration_ms: 1420,
@@ -2110,10 +2106,10 @@ export const useMockData = () => {
   }
 
   // ============================================================
-  // Archive Review (归档复盘) - Full process compliance re-audit
+  //Archive Review (归档复盘) - 全流程合规性重新审核
   // ============================================================
 
-  // Archived processes that have completed all approval nodes
+  //已完成所有审批节点的归档流程
   const mockArchivedProcesses: ArchivedProcess[] = [
     {
       process_id: 'WF-2025-050',
@@ -2291,7 +2287,7 @@ export const useMockData = () => {
     },
   ]
 
-  // Full-process compliance re-audit result
+  //全流程合规复审结果
   const mockArchiveAuditResult: ArchiveAuditResult = {
     trace_id: 'ATR-20250610-X1Y2',
     process_id: 'WF-2025-050',
@@ -2322,8 +2318,8 @@ export const useMockData = () => {
   }
 
   // ============================================================
-  // Archived processes for dashboard "归档" tab
-  // These are completed processes (final result = approved) with multi-round audit chains
+  //仪表板“归档”选项卡的存档流程
+  //这些是具有多轮审核链的完整流程（最终结果 = 批准）
   // ============================================================
   const mockArchivedOAProcesses: OAProcess[] = [
     { process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', submit_time: '2025-04-15 09:00', process_type: '采购审批', status: 'archived', current_node: '已归档', amount: 1200000, urgency: 'high' },
@@ -2333,7 +2329,7 @@ export const useMockData = () => {
     { process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', submit_time: '2025-01-10 10:00', process_type: '工程审批', status: 'archived', current_node: '已归档', amount: 450000, urgency: 'medium' },
   ]
 
-  // Multi-round audit chain snapshots for archived processes (final round always approve)
+  //存档流程的多轮审核链快照（最后一轮始终批准）
   const mockArchivedAuditChains: Record<string, AuditSnapshot[]> = {
     'WF-2025-050': [
       { snapshot_id: 'SN-A001', process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', recommendation: 'return', score: 68, created_at: '2025-04-16 10:30', adopted: true },
@@ -2359,7 +2355,7 @@ export const useMockData = () => {
     ],
   }
 
-  // Historical audit results for archived processes (final approved result)
+  //存档流程的历史审核结果（最终批准结果）
   const mockArchivedHistoricalResults: Record<string, AuditResult> = {
     'WF-2025-050': {
       trace_id: 'TR-20250510-M1N2', process_id: 'WF-2025-050', recommendation: 'approve', score: 95, duration_ms: 2100,
@@ -2407,7 +2403,7 @@ export const useMockData = () => {
   }
 
   // ============================================================
-  // System Monitor mock data (全局监控页面)
+  //系统监控模拟数据（全局监控页面）
   // ============================================================
   const mockSystemMonitorMetrics = {
     system_health: 'healthy' as const,
@@ -2427,7 +2423,7 @@ export const useMockData = () => {
   ]
 
   // ============================================================
-  // User Security mock data (密码修改/登录历史)
+  //用户安全模拟数据（密码修改/登录历史）
   // ============================================================
   const mockUserSecurityInfo: Record<string, {
     password_last_changed: string
@@ -2457,7 +2453,7 @@ export const useMockData = () => {
   }
 
   // ============================================================
-  // User Locale Preferences mock data (用户语言偏好)
+  //用户区域设置模拟数据（用户语言偏好）
   // ============================================================
   const mockUserLocalePrefs: Record<string, {
     locale: 'zh-CN' | 'en-US'
@@ -2551,20 +2547,19 @@ export const useMockData = () => {
   }
 
   /**
-   * Global process category → process name mapping.
-   * - category (流程类型/类别): e.g. "采购类", "费用类" — groups of related processes
-   * - processName (流程名称): e.g. "采购审批", "费用报销" — the specific process definition
-   * - title (流程标题): e.g. "办公设备采购申请" — a specific instance of a process
+   * 全局进程类别→进程名称映射。
+   * - 类别（流程类型/类别）：例如"采购类", "费用类" — 相关流程组
+   * - processName（流程名称）：例如"采购流程图", "费用报销" — 具体流程定义
+   * - 标题（流程标题）：例如“办公设备采购申请”——流程的具体实例
    *
-   * This is the single source of truth for building cascading/multi-level process selectors.
-   */
+   * 这是构建级联/多级流程选择器的唯一事实来源。*/
   const processCategoryMap = mockProcessAuditConfigs.map(cfg => ({
     category: cfg.process_type_label || cfg.process_type,
     processName: cfg.process_type,
   }))
 
-  // Deduplicate and build cascader options structure:
-  // [{ label: '采购类', value: '采购类', children: [{ label: '采购审批', value: '采购审批' }] }]
+  //去重并构建级联选项结构：
+  //[{ label: '采购类', value: '采购类', kids: [{ label: '采购类', value: '采购类' }] }]
   const buildProcessCascaderOptions = (configs: ProcessAuditConfig[]) => {
     const categoryMap = new Map<string, { label: string; value: string; children: { label: string; value: string }[] }>()
     for (const cfg of configs) {
@@ -2582,7 +2577,7 @@ export const useMockData = () => {
 
   const processCascaderOptions = buildProcessCascaderOptions(mockProcessAuditConfigs)
 
-  // Also build cascader options for archive review configs
+  //还为存档审查配置构建级联选项
   const archiveProcessCascaderOptions = buildProcessCascaderOptions(
     mockArchiveReviewConfigs.map(c => ({
       ...c,
@@ -2591,7 +2586,7 @@ export const useMockData = () => {
     } as any))
   )
 
-  /** Default dashboard prefs per user (keyed by username) */
+  /** 每个用户的默认仪表板首选项（由用户名键入）*/
   const mockUserDashboardPrefs: Record<string, UserDashboardPrefs> = {
     zhangming: { enabledWidgets: ['audit_summary', 'pending_tasks', 'weekly_trend', 'cron_tasks', 'archive_review', 'recent_activity'] },
     tenantadmin: { enabledWidgets: ['dept_distribution', 'recent_activity', 'ai_performance', 'tenant_usage', 'user_activity'] },

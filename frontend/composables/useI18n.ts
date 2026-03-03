@@ -1,30 +1,29 @@
 /**
- * useI18n — Centralized internationalization composable.
+ * useI18n — 集中国际化可组合项。
  *
- * Translation files are stored in ~/locales/ directory:
- *   - locales/zh-CN.ts  (简体中文)
- *   - locales/en-US.ts  (English)
- *   - locales/index.ts  (aggregator)
+ * 翻译文件存放在~/locales/目录下：
+ * - locales/zh-CN.ts (简体中文)
+ * - locales/en-US.ts（英语）
+ * - locales/index.ts（聚合器）
  *
- * Language preference is persisted in localStorage.
- * All UI labels should go through t() for translation.
+ * 语言首选项保留在 localStorage 中。
+ * ��有UI标签都要经过t()进行翻译。
  *
- * To add a new language:
- *   1. Create locales/xx-YY.ts with same key structure
- *   2. Register in locales/index.ts
- *   3. Add to availableLocales below
- */
+ * 添加新语言：
+ * 1. 创建具有相同密钥结构的 locales/xx-YY.ts
+ * 2.在locales/index.ts中注册
+ * 3.添加下面的availableLocales*/
 
 import { messages } from '~/locales'
 
 export type Locale = 'zh-CN' | 'en-US'
 
-/** Global reactive locale state (shared across the app) */
+/** 全局响应式语言环境状态（在应用程序中共享）*/
 const currentLocale = ref<Locale>('zh-CN')
 let initialized = false
 
 export const useI18n = () => {
-  // Initialize from localStorage once
+  //从 localStorage 初始化一次
   if (!initialized && import.meta.client) {
     const saved = localStorage.getItem('app_locale') as Locale | null
     if (saved && (saved === 'zh-CN' || saved === 'en-US')) {
@@ -33,33 +32,33 @@ export const useI18n = () => {
     initialized = true
   }
 
-  /** Translate a key, with optional fallback */
-  /** Translate a key, with optional interpolation values or fallback */
-  /** Translate a key, with optional interpolation values or fallback */
+  /** 翻译一个键，带有可选的后备*/
+  /** 转换键，使用可选的插值或后备*/
+  /** 转换键，使用可选的插值或后备*/
   const t = (key: string, values?: string | number | (string | number)[]): string => {
     let text = messages[currentLocale.value]?.[key]
 
-    // If text not found
+    //如果找不到文本
     if (!text) {
-      // If values is a string, treat it as fallback
+      //如果值是字符串，则将其视为后备
       if (typeof values === 'string') return values
       return key
     }
 
-    // Determine arguments for interpolation
+    //确定插值参数
     let args: (string | number)[] = []
 
     if (Array.isArray(values)) {
       args = values
     } else if (values !== undefined && values !== null) {
-      // If single value provided and text has placeholders, use it for interpolation
-      // Otherwise ignore it (it might be a fallback string provided by mistake)
+      //如果提供单个值并且文本具有占位符，则将其用于插值
+      //否则忽略它（它可能是错误提供的后备字符串）
       if (text.includes('{0}')) {
         args = [values]
       }
     }
 
-    // Perform interpolation
+    //执行插值
     if (args.length > 0) {
       args.forEach((val, idx) => {
         text = text.replace(new RegExp(`\\{${idx}\\}`, 'g'), String(val))
@@ -69,7 +68,7 @@ export const useI18n = () => {
     return text
   }
 
-  /** Set locale and persist */
+  /** 设置语言环境并保留*/
   const setLocale = (locale: Locale) => {
     currentLocale.value = locale
     if (import.meta.client) {
@@ -77,10 +76,10 @@ export const useI18n = () => {
     }
   }
 
-  /** Get the current locale */
+  /** 获取当前区域设置*/
   const locale = computed(() => currentLocale.value)
 
-  /** Get available locales */
+  /** 获取可用的语言环境*/
   const availableLocales: { value: Locale; label: string; flag: string }[] = [
     { value: 'zh-CN', label: '简体中文', flag: '🇨🇳' },
     { value: 'en-US', label: 'English', flag: '🇺🇸' },

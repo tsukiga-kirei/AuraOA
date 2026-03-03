@@ -23,7 +23,7 @@ const { allRoles, activeRole, switchRole, getMenu } = useAuth()
 
 import type { RoleInfo } from '~/types/auth'
 
-// ===== Role Switching =====
+//=====角色切换=====
 const systemRoles = computed(() => allRoles.value.filter(r => r.role === 'system_admin'))
 const tenantAdminRoles = computed(() => allRoles.value.filter(r => r.role === 'tenant_admin'))
 const businessRoles = computed(() => allRoles.value.filter(r => r.role === 'business'))
@@ -34,10 +34,10 @@ const activeRoleId = computed(() => activeRole.value?.id || '')
 const activeRoleLabel = computed(() => activeRole.value?.label || '')
 const activeRoleType = computed(() => activeRole.value?.role || 'business')
 
-// Track dropdown visibility
+//跟踪下拉可见性
 const dropdownOpen = ref(false)
 
-// Icon animation key — increments on each switch to trigger transition
+//图标动画键 - 在每个开关上递增以触发转换
 const iconKey = ref(0)
 
 const handleSwitchRole = async (role: RoleInfo) => {
@@ -82,7 +82,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
         </button>
       </a-tooltip>
 
-      <!-- Role Switcher Dropdown -->
+      <!--角色切换器下拉菜单-->
       <a-dropdown
         v-if="showRoleSwitcher"
         v-model:open="dropdownOpen"
@@ -98,11 +98,11 @@ const handleSwitchRole = async (role: RoleInfo) => {
           :title="t('header.switchRole')"
         >
           <transition name="role-icon" mode="out-in">
-            <!-- Business icon: bar chart -->
+            <!--业务图标：条形图-->
             <svg v-if="activeRoleType === 'business'" :key="'biz-' + iconKey" class="role-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-            <!-- Tenant Admin icon: settings/sliders -->
+            <!--租户管理图标：设置/滑块-->
             <svg v-else-if="activeRoleType === 'tenant_admin'" :key="'ta-' + iconKey" class="role-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-            <!-- System Admin icon: shield -->
+            <!--系统管理图标：盾牌-->
             <svg v-else :key="'sa-' + iconKey" class="role-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </transition>
           <span class="role-switch-label">{{ activeRoleLabel }}</span>
@@ -111,7 +111,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
           <div class="role-dropdown">
             <div class="role-dropdown-title">{{ t('header.switchRole') }}</div>
 
-            <!-- Business roles -->
+            <!--业务角色-->
             <template v-if="businessRoles.length">
               <div class="role-dropdown-group role-dropdown-group--first">
                 <span class="role-dropdown-group-icon role-dropdown-group-icon--business">
@@ -133,7 +133,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
               </div>
             </template>
 
-            <!-- Tenant Admin roles -->
+            <!--租户管理员角色-->
             <template v-if="tenantAdminRoles.length">
               <div class="role-dropdown-group" :class="{ 'role-dropdown-group--first': !businessRoles.length }">
                 <span class="role-dropdown-group-icon role-dropdown-group-icon--tenant">
@@ -155,7 +155,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
               </div>
             </template>
 
-            <!-- System Admin roles -->
+            <!--系统管理员角色-->
             <template v-if="systemRoles.length">
               <div class="role-dropdown-group" :class="{ 'role-dropdown-group--first': !businessRoles.length && !tenantAdminRoles.length }">
                 <span class="role-dropdown-group-icon role-dropdown-group-icon--system">
@@ -226,7 +226,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
   box-shadow: 0 0 0 2px var(--color-primary-bg), 0 0 0 4px rgba(79, 70, 229, 0.25);
 }
 
-/* ===== Role Switcher Button ===== */
+/*=====角色切换按钮=====*/
 .role-switch-btn {
   width: auto !important;
   padding: 0 8px !important;
@@ -244,7 +244,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
               background 0.2s ease !important;
 }
 
-/* Role-specific accent colors for the button */
+/*按钮的角色特定强调色*/
 .role-switch-btn--business { color: #10b981; }
 .role-switch-btn--tenant_admin { color: #f59e0b; }
 .role-switch-btn--system_admin { color: #6366f1; }
@@ -283,7 +283,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
               transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Role icon switch animation */
+/*角色图标切换动画*/
 .role-icon-enter-active,
 .role-icon-leave-active {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -297,7 +297,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
   transform: rotate(180deg) scale(0.4);
 }
 
-/* ===== Role Dropdown panel ===== */
+/*===== 角色下拉面板 =====*/
 .role-dropdown {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
@@ -316,7 +316,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
   color: var(--color-text-tertiary);
 }
 
-/* Group header */
+/*组标题*/
 .role-dropdown-group {
   display: flex;
   align-items: center;
@@ -333,7 +333,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
   margin-top: 0;
 }
 
-/* Group icons with role-specific colors */
+/*使用特定于角色的颜色对图标进行分组*/
 .role-dropdown-group-icon {
   display: flex;
   align-items: center;
@@ -356,7 +356,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
   background: rgba(99, 102, 241, 0.1);
 }
 
-/* Individual role item */
+/*个人角色项目*/
 .role-dropdown-item {
   display: flex;
   align-items: center;
@@ -403,7 +403,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
   flex-shrink: 0;
 }
 
-/* ===== Theme toggle pill switch ===== */
+/*=====主题切换药丸开关=====*/
 .theme-toggle-btn {
   width: auto !important;
   padding: 0 !important;

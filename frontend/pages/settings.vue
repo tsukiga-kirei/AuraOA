@@ -43,12 +43,12 @@ const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockUserDashboardPref
 const { members, roles, loadAll: loadOrgData } = useOrgApi()
 const { t, locale, setLocale, availableLocales } = useI18n()
 
-/** The role type of the currently active identity (system_admin / tenant_admin / business) */
+/** 当前活跃身份的角色类型（system_admin/tenant_admin/business）*/
 const currentRoleType = computed(() => activeRole.value?.role || userRole.value)
 
 const activeTab = ref('profile')
 
-// ===== Language & Region tab =====
+//===== 语言和区域选项卡 =====
 const userDateFormat = ref('YYYY-MM-DD')
 onMounted(() => {
   loadOrgData()
@@ -70,7 +70,7 @@ const dateFormatOptions = [
   { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (19/02/2026)' },
 ]
 
-// ===== Security / Password tab =====
+//===== 安全/密码选项卡 =====
 const passwordForm = ref({
   currentPassword: '',
   newPassword: '',
@@ -101,7 +101,7 @@ const strengthConfig: Record<string, { color: string; percent: number }> = {
 }
 
 const securityInfo = computed(() => {
-  // TODO: fetch from backend API when security info endpoint is available
+  //TODO：当安全信息端点可用时从后端 API 获取
   return { password_last_changed: '-', login_history: [] as { time: string; device: string; ip: string; location: string }[] }
 })
 
@@ -116,7 +116,7 @@ const handleChangePassword = async () => {
   if (newPassword !== confirmPassword) {
     message.error(t('settings.security.changeError.mismatch')); return
   }
-  // Call backend to change password
+  //调用后台修改密码
   const { changePassword } = useAuth()
   passwordChanging.value = true
   const ok = await changePassword({
@@ -133,24 +133,24 @@ const handleChangePassword = async () => {
 
 
 
-// ===== Profile tab =====
-// Find current user's org member record to show role-based permissions
+//=====个人资料选项卡=====
+//查找当前用户的组织成员记录以显示基于角色的权限
 const currentMember = computed(() => {
   return members.value.find(m => m.username === currentUser.value?.username) || null
 })
-/** All business roles this member has in the current tenant */
+/** 该成员在当前租户中拥有的所有业务角色*/
 const currentOrgRoles = computed(() => {
   if (!currentMember.value) return []
   const rIds = currentMember.value.role_ids
   return roles.value.filter(r => rIds.includes(r.id))
 })
-/** Merged page permissions from all business roles */
+/** 合并所有业务角色的页面权限*/
 const currentOrgPagePermissions = computed(() => {
   const perms = new Set<string>()
   currentOrgRoles.value.forEach(r => r.page_permissions.forEach(p => perms.add(p)))
   return [...perms]
 })
-// Keep backward compat
+//保持向后兼容
 const currentOrgRole = computed(() => {
   if (!currentMember.value) return null
   return roles.value.find(r => currentMember.value!.role_ids.includes(r.id)) || null
@@ -171,13 +171,13 @@ const getRoleLabel = (role: string) => {
   return t(map[role] || 'role.business')
 }
 
-// ===== Audit workbench tab =====
-// Deep clone tenant configs as user's working copy
+//===== 审核工作台选项卡 =====
+//深度克隆租户配置作为用户的工作副本
 const userProcessConfigs = ref<ProcessAuditConfig[]>(
   JSON.parse(JSON.stringify(mockProcessAuditConfigs))
 )
 
-// User's custom rules per process (separate from tenant rules)
+//每个进程的用户自定义规则（与租户规则分开）
 const userCustomRules = ref<Record<string, { id: string; content: string; enabled: boolean; related_flow: boolean }[]>>({
   'PAC-001': [{ id: 'UCR-001', content: '供应商必须在合格名录中', enabled: true, related_flow: false }],
   'PAC-002': [],
@@ -185,7 +185,7 @@ const userCustomRules = ref<Record<string, { id: string; content: string; enable
   'PAC-004': [],
 })
 
-// User's custom field overrides (additional selected fields)
+//用户的自定义字段覆盖（其他选定字段）
 const userFieldOverrides = ref<Record<string, string[]>>({
   'PAC-004': ['salary_range'],
 })
@@ -198,7 +198,7 @@ const selectedConfig = computed(() =>
 
 const permissions = computed(() => selectedConfig.value?.user_permissions)
 
-// Field type labels
+//字段类型标签
 const fieldTypeLabels = computed<Record<string, string>>(() => ({
   text: t('field.type.text'),
   number: t('field.type.number'),
@@ -210,28 +210,28 @@ const fieldTypeLabels = computed<Record<string, string>>(() => ({
   rich_text: t('field.type.richText'),
 }))
 
-// Scope config
+//范围配置
 const scopeConfig = computed<Record<string, { label: string; color?: string }>>(() => ({
   mandatory: { label: t('rule.scope.mandatory') },
   default_on: { label: t('rule.scope.defaultOn') },
   default_off: { label: t('rule.scope.defaultOff') },
 }))
 
-// Strictness
+//严格性
 const strictnessOptions = computed(() => [
   { value: 'strict', label: t('settings.workbench.strict'), desc: t('settings.workbench.strictDesc') },
   { value: 'standard', label: t('settings.workbench.standard'), desc: t('settings.workbench.standardDesc') },
   { value: 'loose', label: t('settings.workbench.loose'), desc: t('settings.workbench.looseDesc') },
 ])
 
-// Toggle user field override
+//切换用户字段覆盖
 const toggleUserField = (field: ProcessField) => {
   if (!selectedConfig.value || !permissions.value?.allow_custom_fields) return
   if (selectedConfig.value.field_mode === 'all') return
   field.selected = !field.selected
 }
 
-// ===== Field picker modal (settings) =====
+//===== 字段选择器模式（设置） =====
 const showFieldPicker = ref(false)
 const fieldSearchQuery = ref('')
 
@@ -327,7 +327,7 @@ const settingsUnpickField = (field: { field_key: string; source: string }) => {
   }
 }
 
-// Custom rules
+//自定义规则
 const newRuleContent = ref('')
 const newRuleRelatedFlow = ref(false)
 
@@ -357,7 +357,7 @@ const currentCustomRules = computed(() =>
   userCustomRules.value[selectedConfig.value?.id || ''] || []
 )
 
-// ===== Tab visibility (computed for reliable reactivity) =====
+//===== 选项卡可见性（为可靠的反应性而计算） =====
 const visibleTabs = computed(() => {
   const role = currentRoleType.value
   const perms = currentOrgPagePermissions.value
@@ -370,7 +370,7 @@ const visibleTabs = computed(() => {
   ].filter(tab => tab.show)
 })
 
-// Reset to profile if current tab is no longer visible
+//如果当前选项卡不再可见，则重置为配置文件
 watch(visibleTabs, (tabs) => {
   if (!tabs.some(t => t.key === activeTab.value)) {
     activeTab.value = 'profile'
@@ -385,13 +385,13 @@ const handleSave = async () => {
   message.success(t('settings.profile.saveSuccess'))
 }
 
-// Active workbench sub-section
+//活动工作台子部分
 const workbenchSection = ref('fields')
 
-// ===== Cron personal settings =====
+//=====Cron个人设置=====
 const cronDefaultEmail = ref('zhangming@example.com')
 
-// ===== Archive review personal settings =====
+//=====存档审核个人设置=====
 const userArchiveConfigs = ref<ArchiveReviewConfig[]>(
   JSON.parse(JSON.stringify(mockArchiveReviewConfigs))
 )
@@ -402,7 +402,7 @@ const selectedArchiveConfig = computed(() =>
 const archivePermissions = computed(() => selectedArchiveConfig.value?.user_permissions)
 const archiveSection = ref('fields')
 
-// User's custom archive rules
+//用户自定义归档规则
 const userArchiveCustomRules = ref<Record<string, { id: string; content: string; enabled: boolean }[]>>({
   'ARC-001': [{ id: 'UACR-001', content: '付款条件须与公司标准一致', enabled: true }],
   'ARC-002': [],
@@ -436,7 +436,7 @@ const currentArchiveCustomRules = computed(() =>
   userArchiveCustomRules.value[selectedArchiveConfig.value?.id || ''] || []
 )
 
-// ===== Archive field picker modal =====
+//===== 存档字段选择器模式 =====
 const showArchiveFieldPicker = ref(false)
 const archiveFieldSearchQuery = ref('')
 
@@ -534,7 +534,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
       </div>
     </div>
 
-    <!-- Tab navigation -->
+    <!--标签导航-->
     <div class="tab-nav">
       <button
         v-for="tab in visibleTabs"
@@ -549,7 +549,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
     </div>
 
 
-    <!-- Profile tab -->
+    <!--配置文件选项卡-->
     <div v-if="activeTab === 'profile'" class="tab-content">
       <div class="settings-card">
         <div class="profile-avatar-section">
@@ -601,14 +601,14 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
         </div>
       </div>
 
-      <!-- Role & Permissions card -->
+      <!--角色和权限卡-->
       <div class="settings-card" style="margin-top: 20px;">
         <h4 class="perm-card-title">
           <SafetyCertificateOutlined style="color: var(--color-primary);" />
           {{ t('settings.profile.roleAndPermissions') }}
         </h4>
 
-        <!-- System Admin view -->
+        <!--系统管理视图-->
         <template v-if="currentRoleType === 'system_admin'">
           <div class="perm-info-row">
             <span class="perm-info-label">{{ t('settings.profile.currentRole') }}</span>
@@ -629,7 +629,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
           </div>
         </template>
 
-        <!-- Business / Tenant Admin view — tenant-scoped -->
+        <!--业务/租户管理视图 — 租户范围-->
         <template v-else>
           <div class="perm-info-row">
             <span class="perm-info-label">{{ t('settings.profile.currentTenant') }}</span>
@@ -667,7 +667,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
         <p class="perm-hint-text">{{ t('settings.profile.permissionHint') }}</p>
       </div>
 
-      <!-- Language setting (integrated into profile) -->
+      <!--语言设置（集成到配置文件中）-->
       <div class="settings-card" style="margin-top: 20px;">
         <h4 class="perm-card-title">
           <GlobalOutlined style="color: var(--color-primary);" />
@@ -689,7 +689,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
         </div>
       </div>
 
-      <!-- Security / Password (integrated into profile) -->
+      <!--安全/密码（集成到配置文件中）-->
       <div class="settings-card" style="margin-top: 20px;">
         <h4 class="perm-card-title">
           <LockOutlined style="color: var(--color-primary);" />
@@ -763,10 +763,10 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
         </div>
       </div>
     </div>
-    <!-- Audit workbench tab -->
+    <!--审核工作台选项卡-->
     <div v-if="activeTab === 'workbench'" class="tab-content">
       <div class="workbench-layout">
-        <!-- Left: process list -->
+        <!--左：进程列表-->
         <div class="process-list-panel">
           <div class="process-list-header">
             <SettingOutlined />
@@ -784,11 +784,11 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
           </div>
         </div>
 
-        <!-- Right: config detail -->
+        <!--右：配置详细信息-->
         <div v-if="selectedConfig" class="process-config-panel">
           <h3 class="config-title">{{ selectedConfig.process_type }} - 个人审核配置</h3>
 
-          <!-- Sub-section nav -->
+          <!--子部分导航-->
           <div class="section-nav">
             <button
               v-for="sec in [
@@ -806,7 +806,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             </button>
           </div>
 
-          <!-- ===== Fields section ===== -->
+          <!--===== 字段部分 =====-->
           <div v-if="workbenchSection === 'fields'" class="config-section">
             <div class="section-header-row">
               <h4 class="config-section-title">传输 AI 的字段</h4>
@@ -834,7 +834,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
                 </a-button>
               </div>
 
-              <!-- Selected fields grouped by table -->
+              <!--按表分组的选定字段-->
               <template v-if="settingsGroupedSelected.length">
                 <div v-for="group in settingsGroupedSelected" :key="group.source" class="selected-field-group">
                   <div class="field-group-label">{{ group.sourceLabel }}</div>
@@ -862,9 +862,9 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             </template>
           </div>
 
-          <!-- ===== Rules section ===== -->
+          <!--=====规则部分=====-->
           <div v-if="workbenchSection === 'rules'" class="config-section">
-            <!-- System rules (from tenant config) -->
+            <!--系统规则（来自租户配置）-->
             <div class="section-header-row">
               <h4 class="config-section-title">通用审核规则（租户配置）</h4>
             </div>
@@ -892,7 +892,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
               </div>
             </div>
 
-            <!-- Custom rules (user private) -->
+            <!--自定义规则（用户私有）-->
             <div class="section-header-row" style="margin-top: 20px;">
               <h4 class="config-section-title">个人自定义规则</h4>
               <span v-if="!permissions?.allow_custom_rules" class="locked-tag">
@@ -942,7 +942,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             </div>
           </div>
 
-          <!-- ===== AI strictness section ===== -->
+          <!--===== AI 严格性部分 =====-->
           <div v-if="workbenchSection === 'ai'" class="config-section">
             <div class="section-header-row">
               <h4 class="config-section-title">审核尺度</h4>
@@ -972,7 +972,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
               </div>
             </div>
 
-            <!-- Knowledge base mode (read-only display) -->
+            <!--知识库模式（只读显示）-->
             <div style="margin-top: 20px;">
               <h4 class="config-section-title">知识库模式</h4>
               <p class="config-section-desc">
@@ -999,7 +999,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
       </div>
     </div>
 
-    <!-- Settings field picker modal -->
+    <!--设置字段选择器模式-->
     <a-modal
       v-model:open="showFieldPicker"
       title="选择字段"
@@ -1079,7 +1079,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
       </div>
     </a-modal>
 
-    <!-- Cron personal settings tab -->
+    <!--Cron 个人设置选项卡-->
     <div v-if="activeTab === 'cron'" class="tab-content">
       <div class="settings-card" style="max-width: 700px;">
         <h4 class="config-section-title" style="margin-bottom: 12px;">默认推送邮箱</h4>
@@ -1098,7 +1098,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
       </div>
     </div>
 
-    <!-- Archive field picker modal -->
+    <!--归档字段选择器模式-->
     <a-modal
       v-model:open="showArchiveFieldPicker"
       :title="t('settings.archive.fieldPickerTitle')"
@@ -1178,10 +1178,10 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
       </div>
     </a-modal>
 
-    <!-- Archive review personal settings tab -->
+    <!--存档审核个人设置选项卡-->
     <div v-if="activeTab === 'archive'" class="tab-content">
       <div class="workbench-layout">
-        <!-- Left: process list -->
+        <!--左：进程列表-->
         <div class="process-list-panel">
           <div class="process-list-header">
             <SafetyCertificateOutlined />
@@ -1199,11 +1199,11 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
           </div>
         </div>
 
-        <!-- Right: config detail -->
+        <!--右：配置详细信息-->
         <div v-if="selectedArchiveConfig" class="process-config-panel">
           <h3 class="config-title">{{ selectedArchiveConfig.process_type }} - 个人复核配置</h3>
 
-          <!-- Sub-section nav -->
+          <!--子部分导航-->
           <div class="section-nav">
             <button
               v-for="sec in [
@@ -1221,7 +1221,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             </button>
           </div>
 
-          <!-- ===== Fields section ===== -->
+          <!--===== 字段部分 =====-->
           <div v-if="archiveSection === 'fields'" class="config-section">
             <div class="section-header-row">
               <h4 class="config-section-title">复核字段</h4>
@@ -1270,9 +1270,9 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             </template>
           </div>
 
-          <!-- ===== Rules section ===== -->
+          <!--=====规则部分=====-->
           <div v-if="archiveSection === 'rules'" class="config-section">
-            <!-- System rules -->
+            <!--系统规则-->
             <div class="section-header-row">
               <h4 class="config-section-title">通用复核规则（租户配置）</h4>
             </div>
@@ -1297,7 +1297,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
               </div>
             </div>
 
-            <!-- Custom rules -->
+            <!--自定义规则-->
             <div class="section-header-row" style="margin-top: 20px;">
               <h4 class="config-section-title">个人自定义复核规则</h4>
               <span v-if="!archivePermissions?.allow_custom_rules" class="locked-tag">
@@ -1335,7 +1335,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             </div>
           </div>
 
-          <!-- ===== AI strictness section ===== -->
+          <!--===== AI 严格性部分 =====-->
           <div v-if="archiveSection === 'ai'" class="config-section">
             <div class="section-header-row">
               <h4 class="config-section-title">复核尺度</h4>
@@ -1396,7 +1396,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 .page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; }
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
 
-/* Tabs */
+/*选项卡*/
 .tab-nav {
   display: flex; flex-direction: row; flex-wrap: nowrap; gap: 4px;
   background: var(--color-bg-hover); padding: 4px;
@@ -1411,7 +1411,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 .tab-btn:hover { color: var(--color-text-primary); }
 .tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
 
-/* Settings card */
+/*设置卡*/
 .settings-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); padding: 24px; max-width: 700px;
@@ -1428,7 +1428,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 .input-icon { color: var(--color-text-tertiary); }
 .settings-actions { margin-top: 24px; display: flex; justify-content: flex-end; }
 
-/* Workbench layout */
+/*工作台布局*/
 .workbench-layout { display: grid; grid-template-columns: 240px 1fr; gap: 20px; align-items: start; }
 
 .process-list-panel {
@@ -1462,7 +1462,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 .config-title { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 4px; }
 .config-subtitle { font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 16px; }
 
-/* Section nav */
+/*部分导航*/
 .section-nav {
   display: flex; flex-direction: row; flex-wrap: nowrap; gap: 4px;
   background: var(--color-bg-hover); padding: 3px;
@@ -1488,7 +1488,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   background: var(--color-warning-bg); color: var(--color-warning);
 }
 
-/* Field grid */
+/*场网格*/
 .field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
 .field-card {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px;
@@ -1510,7 +1510,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   background: var(--color-bg-hover); color: var(--color-text-tertiary);
 }
 
-/* Rule config list */
+/*规则配置列表*/
 .rule-config-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .rule-config-item {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -1541,7 +1541,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 .add-rule-row :deep(.ant-btn-primary) { font-weight: 600; min-width: 80px; }
 .add-rule-row :deep(.ant-btn-primary[disabled]) { background: var(--color-primary); opacity: 0.5; color: #fff; }
 
-/* Strictness options */
+/*严格选项*/
 .strictness-options { display: flex; flex-direction: column; gap: 8px; }
 .strictness-option {
   display: flex; align-items: center; gap: 14px; padding: 12px 16px;
@@ -1559,7 +1559,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 .strictness-option-label { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
 .strictness-option-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
 
-/* Template label */
+/*模板标签*/
 .template-label {
   font-size: 13px; font-weight: 600; color: var(--color-text-primary);
   margin-bottom: 4px; display: block;
@@ -1605,7 +1605,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   .settings-card { padding: 14px; }
 }
 
-/* Permission card in profile */
+/*个人资料中的许可卡*/
 .perm-card-title {
   font-size: 15px; font-weight: 600; color: var(--color-text-primary);
   margin: 0 0 16px; display: flex; align-items: center; gap: 8px;
@@ -1635,7 +1635,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   padding-top: 12px; border-top: 1px solid var(--color-border-light);
 }
 
-/* Dashboard widget prefs */
+/*仪表板小部件首选项*/
 .dash-widget-list { display: flex; flex-direction: column; gap: 8px; }
 .dash-widget-item {
   display: flex; align-items: center; gap: 14px;
@@ -1661,7 +1661,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   font-size: 11px; padding: 2px 8px; border-radius: var(--radius-full);
   background: var(--color-bg-hover); color: var(--color-text-tertiary);
 }
-/* Language & Region tab */
+/*语言和区域选项卡*/
 .language-options { display: flex; gap: 12px; flex-wrap: wrap; }
 .language-option {
   display: flex; align-items: center; gap: 12px;
@@ -1689,7 +1689,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   border-radius: var(--radius-md); display: inline-block; margin-top: 8px;
 }
 
-/* Security tab */
+/*安全选项卡*/
 .password-strength { margin-top: 8px; }
 .strength-bar {
   height: 4px; background: var(--color-bg-hover);
@@ -1728,12 +1728,12 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   background: var(--color-info-bg); color: var(--color-info);
 }
 
-/* Field picker toolbar */
+/*字段选择器工具栏*/
 .field-picker-toolbar {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
 }
 
-/* Selected fields display */
+/*显示选定的字段*/
 .selected-fields-display { display: flex; flex-wrap: wrap; gap: 8px; }
 .selected-field-tag {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1748,7 +1748,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   font-size: 13px; background: var(--color-bg-hover); border-radius: var(--radius-md);
 }
 
-/* Field picker modal */
+/*字段选择器模态*/
 .field-picker-modal {
   display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
   min-height: 400px; margin-top: 12px;

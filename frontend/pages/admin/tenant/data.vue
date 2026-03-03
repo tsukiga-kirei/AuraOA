@@ -35,10 +35,10 @@ definePageMeta({ middleware: 'auth', layout: 'default' })
 const { t } = useI18n()
 const activeTab = ref<'audit' | 'cron' | 'archive'>('audit')
 
-// Cascader options from mock data
+//来自模拟数据的级联选项
 const { processCascaderOptions, archiveProcessCascaderOptions } = useMockData()
 
-// ===== Audit tab =====
+//===== 审核选项卡 =====
 const auditLogs = ref<AuditLog[]>(JSON.parse(JSON.stringify(mockAuditLogs)))
 const auditSearch = ref('')
 const auditSearchOperator = ref('')
@@ -76,7 +76,7 @@ const clearAuditFilters = () => { auditSearch.value = ''; auditSearchOperator.va
 const filteredAuditLogs = computed(() => {
   return auditLogs.value.filter(l => {
     if (auditCardFilter.value) {
-      if (auditCardFilter.value === 'all') { /* no filter */ }
+      if (auditCardFilter.value === 'all') { /*无过滤器*/ }
       else if (l.recommendation !== auditCardFilter.value) return false
     }
     if (auditSearch.value) { const q = auditSearch.value.toLowerCase(); if (!l.title.toLowerCase().includes(q) && !l.process_id.toLowerCase().includes(q)) return false }
@@ -103,12 +103,12 @@ const toggleAuditSelectAll = () => { if (auditSelectedIds.value.length === filte
 
 const openAuditDetail = (log: AuditLog) => { auditDetailResult.value = log.audit_result; auditDetailTitle.value = log.title; auditDetailVisible.value = true }
 
-// Audit stats
+//审计统计
 const auditApprovedCount = computed(() => auditLogs.value.filter(l => l.recommendation === 'approve').length)
 const auditReturnedCount = computed(() => auditLogs.value.filter(l => l.recommendation === 'return').length)
 const auditArchivedCount = computed(() => auditLogs.value.filter(l => l.recommendation === 'review').length)
 
-// ===== Cron tab =====
+//===== Cron 选项卡 =====
 const cronLogs = ref<CronLog[]>(JSON.parse(JSON.stringify(mockCronLogs)))
 const cronSearchTask = ref('')
 const cronSearchOperator = ref('')
@@ -127,7 +127,7 @@ const cronDepartmentOptions = computed(() => [...new Set(cronLogs.value.map(l =>
 const filteredCronLogs = computed(() => {
   return cronLogs.value.filter(l => {
     if (cronCardFilter.value) {
-      if (cronCardFilter.value === 'all') { /* no filter */ }
+      if (cronCardFilter.value === 'all') { /*无过滤器*/ }
       else if (l.status !== cronCardFilter.value) return false
     }
     if (cronSearchTask.value && !l.task_label.includes(cronSearchTask.value) && !l.task_id.includes(cronSearchTask.value)) return false
@@ -141,7 +141,7 @@ const filteredCronLogs = computed(() => {
 
 const toggleCronCardFilter = (filter: string) => { cronCardFilter.value = cronCardFilter.value === filter ? null : filter }
 
-// Cron tooltip: success shows "time + task succeeded", failed shows failure reason
+//Cron工具提示：成功显示“时间+任务成功”，失败显示失败原因
 const getCronResultTooltip = (l: CronLog) => l.message
 
 
@@ -150,7 +150,7 @@ const cronPagination = usePagination(filteredCronLogs, 10)
 const toggleCronSelect = (id: string) => { const idx = cronSelectedIds.value.indexOf(id); if (idx >= 0) cronSelectedIds.value.splice(idx, 1); else cronSelectedIds.value.push(id) }
 const toggleCronSelectAll = () => { if (cronSelectedIds.value.length === filteredCronLogs.value.length) cronSelectedIds.value = []; else cronSelectedIds.value = filteredCronLogs.value.map(l => l.id) }
 
-// ===== Archive tab =====
+//===== 存档选项卡 =====
 const archiveLogs = ref<ArchiveLog[]>(JSON.parse(JSON.stringify(mockArchiveLogs)))
 const archiveSearch = ref('')
 const archiveSearchOperator = ref('')
@@ -187,7 +187,7 @@ const clearArchiveFilters = () => { archiveSearch.value = ''; archiveSearchOpera
 const filteredArchiveLogs = computed(() => {
   return archiveLogs.value.filter(l => {
     if (archiveCardFilter.value) {
-      if (archiveCardFilter.value === 'all') { /* no filter */ }
+      if (archiveCardFilter.value === 'all') { /*无过滤器*/ }
       else if (l.compliance !== archiveCardFilter.value) return false
     }
     if (archiveSearch.value) { const q = archiveSearch.value.toLowerCase(); if (!l.title.toLowerCase().includes(q) && !l.process_id.toLowerCase().includes(q)) return false }
@@ -217,13 +217,13 @@ const archiveCompliantCount = computed(() => archiveLogs.value.filter(l => l.com
 const archivePartialCount = computed(() => archiveLogs.value.filter(l => l.compliance === 'partially_compliant').length)
 const archiveNonCompliantCount = computed(() => archiveLogs.value.filter(l => l.compliance === 'non_compliant').length)
 
-// ===== Recommendation / Compliance display configs =====
+//===== 建议/合规性显示配置 =====
 const recommendationConfig: Record<string, { color: string; bg: string; label: string }> = {
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: '' },
   return: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', label: '' },
   review: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: '' },
 }
-// Lazy-init labels (needs t())
+//惰性初始化标签（需要 t()）
 const getRecLabel = (rec: string) => {
   const map: Record<string, string> = { approve: t('admin.data.auditApprove'), return: t('admin.data.auditReturn'), review: t('admin.data.auditReview') }
   return map[rec] || rec
@@ -239,7 +239,7 @@ const getComplianceLabel = (c: string) => {
   return map[c] || c
 }
 
-// ===== Export (requires selection) =====
+//=====导出（需要选择）=====
 const handleExport = (type: 'audit' | 'cron' | 'archive') => {
   const selectedIds = type === 'audit' ? auditSelectedIds.value : type === 'cron' ? cronSelectedIds.value : archiveSelectedIds.value
   if (selectedIds.length === 0) { message.warning(t('admin.data.selectToExport')); return }
@@ -267,7 +267,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
       </div>
     </div>
 
-    <!-- Top tabs -->
+    <!--顶部选项卡-->
     <div class="tab-nav">
       <button v-for="tab in [
         { key: 'audit', label: t('admin.data.tabAudit'), icon: AppstoreOutlined },
@@ -279,9 +279,9 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
       </button>
     </div>
 
-    <!-- ===== Audit Tab ===== -->
+    <!--===== 审核选项卡 =====-->
     <div v-if="activeTab === 'audit'" class="tab-content fade-in">
-      <!-- Stats cards -->
+      <!--统计卡-->
       <div class="stats-row">
         <div class="stat-card stat-card--primary" :class="{ 'stat-card--selected': auditCardFilter === 'all' }" @click="toggleAuditCardFilter('all')" style="cursor: pointer;">
           <div class="stat-card-icon"><AppstoreOutlined /></div>
@@ -313,7 +313,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
         </div>
       </div>
 
-      <!-- Toolbar: filter toggle + export -->
+      <!--工具栏：过滤器切换+导出-->
       <div class="toolbar">
         <div class="toolbar-left">
           <a-button size="small" @click="auditShowFilters = !auditShowFilters" :class="{ 'filter-toggle-btn--active': auditHasActiveFilters }">
@@ -329,7 +329,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
         </div>
       </div>
 
-      <!-- Collapsible filters -->
+      <!--可折叠过滤器-->
       <transition name="slide">
         <div v-if="auditShowFilters" class="filter-bar">
           <a-input v-model:value="auditSearch" :placeholder="t('admin.data.searchAudit')" allow-clear style="flex: 2; min-width: 160px;">
@@ -361,7 +361,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
         </div>
       </transition>
 
-      <!-- Audit data table -->
+      <!--审核数据表-->
       <div class="data-table-card">
         <table class="data-table">
           <thead>
@@ -419,7 +419,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
       </div>
     </div>
 
-    <!-- ===== Cron Tab ===== -->
+    <!--===== Cron 选项卡 =====-->
     <div v-if="activeTab === 'cron'" class="tab-content fade-in">
       <div class="stats-row">
         <div class="stat-card stat-card--primary" :class="{ 'stat-card--selected': cronCardFilter === 'all' }" @click="toggleCronCardFilter('all')" style="cursor: pointer;">
@@ -534,7 +534,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
       </div>
     </div>
 
-    <!-- ===== Archive Tab ===== -->
+    <!--===== 存档选项卡 =====-->
     <div v-if="activeTab === 'archive'" class="tab-content fade-in">
       <div class="stats-row">
         <div class="stat-card stat-card--primary" :class="{ 'stat-card--selected': archiveCardFilter === 'all' }" @click="toggleArchiveCardFilter('all')" style="cursor: pointer;">
@@ -670,7 +670,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
       </div>
     </div>
 
-    <!-- ===== Audit Detail Drawer ===== -->
+    <!--===== 审核详细抽屉 =====-->
     <Teleport to="body">
       <transition name="drawer">
         <div v-if="auditDetailVisible" class="drawer-overlay" @click.self="auditDetailVisible = false">
@@ -681,7 +681,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
             </div>
             <div class="drawer-body" v-if="auditDetailResult">
               <div class="detail-process-title">{{ auditDetailTitle }}</div>
-              <!-- Recommendation banner -->
+              <!--推荐横幅-->
               <div class="detail-banner" :style="{ background: recommendationConfig[auditDetailResult.recommendation]?.bg, borderColor: recommendationConfig[auditDetailResult.recommendation]?.color }">
                 <CheckCircleOutlined v-if="auditDetailResult.recommendation === 'approve'" :style="{ color: recommendationConfig[auditDetailResult.recommendation]?.color, fontSize: '24px' }" />
                 <CloseCircleOutlined v-else-if="auditDetailResult.recommendation === 'return'" :style="{ color: recommendationConfig[auditDetailResult.recommendation]?.color, fontSize: '24px' }" />
@@ -692,7 +692,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
                 </div>
                 <div class="detail-score" :style="{ color: recommendationConfig[auditDetailResult.recommendation]?.color }">{{ auditDetailResult.score }}</div>
               </div>
-              <!-- Rule checks -->
+              <!--规则检查-->
               <div class="detail-section">
                 <h4 class="detail-section-title">{{ t('admin.data.ruleCheckDetail') }}</h4>
                 <div class="rule-checks">
@@ -708,7 +708,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
                   </div>
                 </div>
               </div>
-              <!-- Risk & Suggestions -->
+              <!--风险与建议-->
               <div v-if="auditDetailResult.risk_points?.length || auditDetailResult.suggestions?.length" class="risk-suggest-row">
                 <div v-if="auditDetailResult.risk_points?.length" class="insight-card insight-card--risk">
                   <div class="insight-card-header"><CloseCircleOutlined style="color: var(--color-danger);" /> <span>{{ t('admin.data.riskPoints') }}</span></div>
@@ -719,7 +719,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
                   <ul class="insight-card-list"><li v-for="(sg, i) in auditDetailResult.suggestions" :key="i">{{ sg }}</li></ul>
                 </div>
               </div>
-              <!-- AI Reasoning -->
+              <!--人工智能推理-->
               <div class="detail-section">
                 <h4 class="detail-section-title">{{ t('admin.data.aiReasoning') }}</h4>
                 <div class="ai-reasoning"><pre>{{ auditDetailResult.ai_reasoning }}</pre></div>
@@ -730,7 +730,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
       </transition>
     </Teleport>
 
-    <!-- ===== Archive Detail Drawer ===== -->
+    <!--===== 档案详细抽屉 =====-->
     <Teleport to="body">
       <transition name="drawer">
         <div v-if="archiveDetailVisible" class="drawer-overlay" @click.self="archiveDetailVisible = false">
@@ -741,7 +741,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
             </div>
             <div class="drawer-body" v-if="archiveDetailResult">
               <div class="detail-process-title">{{ archiveDetailTitle }}</div>
-              <!-- Compliance banner -->
+              <!--合规横幅-->
               <div class="detail-banner" :style="{ background: complianceConfig[archiveDetailResult.overall_compliance]?.bg, borderColor: complianceConfig[archiveDetailResult.overall_compliance]?.color }">
                 <SafetyCertificateOutlined :style="{ color: complianceConfig[archiveDetailResult.overall_compliance]?.color, fontSize: '24px' }" />
                 <div class="detail-banner-info">
@@ -750,7 +750,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
                 </div>
                 <div class="detail-score" :style="{ color: complianceConfig[archiveDetailResult.overall_compliance]?.color }">{{ archiveDetailResult.overall_score }}</div>
               </div>
-              <!-- Flow audit -->
+              <!--流程审核-->
               <div class="detail-section">
                 <h4 class="detail-section-title">{{ t('admin.data.flowAudit') }}</h4>
                 <div class="flow-status" :class="archiveDetailResult.flow_audit.is_complete ? 'flow-status--complete' : 'flow-status--incomplete'">
@@ -774,7 +774,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
                   </div>
                 </div>
               </div>
-              <!-- Rule audit -->
+              <!--规则审核-->
               <div class="detail-section">
                 <h4 class="detail-section-title">{{ t('admin.data.ruleAudit') }}</h4>
                 <div class="rule-checks">
@@ -790,7 +790,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
                   </div>
                 </div>
               </div>
-              <!-- AI Summary -->
+              <!--人工智能总结-->
               <div class="detail-section">
                 <h4 class="detail-section-title">{{ t('admin.data.aiSummary') }}</h4>
                 <div class="ai-reasoning"><pre>{{ archiveDetailResult.ai_summary }}</pre></div>
@@ -823,7 +823,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
 .tab-btn:hover { color: var(--color-text-primary); }
 .tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
 
-/* Stats row - matching dashboard/archive pattern */
+/*统计行 - 匹配仪表板/存档模式*/
 .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
 .stat-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg); padding: 20px;
@@ -852,7 +852,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
 .toolbar-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .toolbar-right { display: flex; align-items: center; gap: 8px; }
 
-/* Filter bar */
+/*过滤栏*/
 .filter-bar {
   display: flex; gap: 8px; padding: 12px 16px; background: var(--color-bg-page);
   border-radius: var(--radius-md); margin-bottom: 12px; flex-wrap: wrap; align-items: center;
@@ -863,14 +863,14 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
   display: inline-block; margin-left: 4px;
 }
 
-/* Batch selected hint (inline in toolbar) */
+/*批量选择提示（内嵌在工具栏中）*/
 .batch-selected-hint {
   font-size: 12px; font-weight: 500; color: var(--color-primary);
   padding: 2px 10px; border-radius: var(--radius-full);
   background: var(--color-primary-bg);
 }
 
-/* Data table */
+/*数据表*/
 .data-table-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); overflow: hidden;
@@ -891,13 +891,13 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
 .text-mono { font-family: monospace; font-size: 12px; color: var(--color-text-secondary); }
 .empty-cell { text-align: center; padding: 32px 16px !important; color: var(--color-text-tertiary); }
 
-/* Result tag (audit recommendation / compliance) */
+/*结果标签（审核建议/合规性）*/
 .result-tag {
   font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-full);
   white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;
 }
 
-/* Status tag (cron) */
+/*状态标签（cron）*/
 .status-tag {
   font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full);
   display: inline-flex; align-items: center; gap: 4px;
@@ -916,7 +916,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
 
 .pagination-wrapper { padding: 16px 0; display: flex; justify-content: flex-end; }
 
-/* Drawer (matching dashboard/archive pattern) */
+/*抽屉（匹配仪表板/档案图案）*/
 .drawer-overlay {
   position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 1000;
   display: flex; justify-content: flex-end;
@@ -940,7 +940,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
 
 .detail-process-title { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 16px; }
 
-/* Detail banner (matching dashboard result-banner) */
+/*详细横幅（匹配仪表板结果横幅）*/
 .detail-banner {
   display: flex; align-items: center; gap: 16px; padding: 16px 20px;
   border-radius: var(--radius-lg); border: 1px solid; margin-bottom: 20px;
@@ -953,7 +953,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
 .detail-section { margin-bottom: 20px; }
 .detail-section-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 10px; }
 
-/* Rule checks (matching dashboard pattern) */
+/*规则检查（匹配仪表板模式）*/
 .rule-checks { display: flex; flex-direction: column; gap: 8px; }
 .rule-check-item {
   display: flex; gap: 10px; padding: 10px 14px; border-radius: var(--radius-md);
@@ -966,7 +966,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
 .rule-check-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
 .rule-check-reasoning { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
 
-/* Flow status */
+/*流量状态*/
 .flow-status {
   display: flex; align-items: center; gap: 8px; padding: 10px 14px;
   border-radius: var(--radius-md); font-size: 13px; font-weight: 500; margin-bottom: 10px;
@@ -975,7 +975,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
 .flow-status--incomplete { background: var(--color-danger-bg); color: var(--color-danger); }
 .flow-missing { font-weight: 400; }
 
-/* Risk & Suggestions (matching dashboard pattern) */
+/*风险和建议（匹配仪表板模式）*/
 .risk-suggest-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
 .insight-card { padding: 14px; border-radius: var(--radius-md); }
 .insight-card--risk { background: var(--color-danger-bg); }
@@ -984,7 +984,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
 .insight-card-list { margin: 0; padding-left: 18px; font-size: 12px; color: var(--color-text-secondary); }
 .insight-card-list li { margin-bottom: 4px; }
 
-/* AI Reasoning */
+/*人工智能推理*/
 .ai-reasoning {
   background: var(--color-bg-page); border-radius: var(--radius-md); padding: 14px;
   border: 1px solid var(--color-border-light);
@@ -994,7 +994,7 @@ const handleExport = (type: 'audit' | 'cron' | 'archive') => {
   font-size: 13px; line-height: 1.6; color: var(--color-text-secondary); font-family: var(--font-sans);
 }
 
-/* Transitions */
+/*过渡*/
 .slide-enter-active, .slide-leave-active { transition: all 0.2s ease; }
 .slide-enter-from, .slide-leave-to { opacity: 0; max-height: 0; overflow: hidden; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
 .slide-enter-to, .slide-leave-from { opacity: 1; max-height: 200px; }

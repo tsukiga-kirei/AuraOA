@@ -41,10 +41,10 @@ definePageMeta({ middleware: 'auth', layout: 'default' })
 const { t } = useI18n()
 const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs } = useMockData()
 
-// ===== Top-level tab: 审核工作台 vs 定时任务配置 vs 归档复盘 =====
+//===== 顶级选项卡：审核工作台 vs 定时任务配置 vs 归档复盘 =====
 const topTab = ref<'audit' | 'cron' | 'archive'>('audit')
 
-// ===== Cron task type configs =====
+//===== Cron 任务类型配置 =====
 const cronConfigs = ref<CronTaskTypeConfig[]>(JSON.parse(JSON.stringify(mockCronTaskTypeConfigs)))
 const selectedCronType = ref<string>(cronConfigs.value[0]?.task_type || '')
 
@@ -60,7 +60,7 @@ const pushFormatOptions = computed(() => [
 
 const cronActiveTab = ref('template')
 
-// Template variables for daily/weekly report content templates
+//每日/每周报告内容模板的模板变量
 const cronTemplateVariables = computed(() => {
   if (selectedCronConfig.value?.task_type === 'daily_report') {
     return [
@@ -91,7 +91,7 @@ const cronTemplateVariables = computed(() => {
   return []
 })
 
-// Textarea refs for cron template variable insertion
+//用于 cron 模板变量插入的文本区域参考
 const cronSubjectRef = ref<any>(null)
 const cronHeaderRef = ref<any>(null)
 const cronBodyRef = ref<any>(null)
@@ -139,7 +139,7 @@ const handleSaveCronConfig = async () => {
 const processConfigs = ref<ProcessAuditConfig[]>(JSON.parse(JSON.stringify(mockProcessAuditConfigs)))
 const selectedProcessId = ref(processConfigs.value[0]?.id || '')
 
-// ===== Add new process =====
+//=====添加新流程=====
 const showAddProcess = ref(false)
 const newProcessForm = ref({ process_type: '', process_type_label: '', main_table_name: '' })
 
@@ -179,7 +179,7 @@ const selectedConfig = computed(() =>
   processConfigs.value.find(c => c.id === selectedProcessId.value)
 )
 
-// ===== Field config =====
+//===== 字段配置 =====
 const fieldTypeLabels = computed<Record<string, string>>(() => ({
   text: t('fieldType.text'), number: t('fieldType.number'), date: t('fieldType.date'), select: t('fieldType.select'), textarea: t('fieldType.textarea'), file: t('fieldType.file'),
 }))
@@ -189,11 +189,11 @@ const toggleFieldSelection = (field: ProcessField) => {
   field.selected = !field.selected
 }
 
-// ===== Field picker modal =====
+//===== 字段选择器模态 =====
 const showFieldPicker = ref(false)
 const fieldSearchQuery = ref('')
 
-// All available fields (main + detail tables) for the current process, grouped by table
+//当前流程的所有可用字段（主表+明细表），按表分组
 interface PickerField {
   field_key: string; field_name: string; field_type: string; selected: boolean
   source: string; sourceLabel: string
@@ -231,7 +231,7 @@ const selectedFieldCount = computed(() =>
   allAvailableFields.value.filter(f => f.selected).length
 )
 
-// Filtered unselected fields grouped by table (left side of picker)
+//按表分组的已筛选未选定字段（选择器左侧）
 const groupedUnselectedFields = computed<FieldGroup[]>(() => {
   const q = fieldSearchQuery.value.toLowerCase().trim()
   return groupedAvailableFields.value
@@ -246,7 +246,7 @@ const groupedUnselectedFields = computed<FieldGroup[]>(() => {
     .filter(g => g.fields.length > 0)
 })
 
-// Selected fields grouped by table (right side of picker)
+//按表分组的选定字段（选择器右侧）
 const groupedSelectedFields = computed<FieldGroup[]>(() =>
   groupedAvailableFields.value
     .map(g => ({ ...g, fields: g.fields.filter(f => f.selected) }))
@@ -260,11 +260,11 @@ const openFieldPicker = () => {
 
 const pickField = (field: { field_key: string; source: string }) => {
   if (!selectedConfig.value) return
-  // Find and toggle in main_fields
+  //在 main_fields 中查找并切换
   const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
   const mf = mainFields.find(f => f.field_key === field.field_key)
   if (mf && field.source === 'main') { mf.selected = true; return }
-  // Find in detail tables
+  //查找详细表格
   if (selectedConfig.value.detail_tables) {
     for (const dt of selectedConfig.value.detail_tables) {
       if (dt.table_name === field.source) {
@@ -290,7 +290,7 @@ const unpickField = (field: { field_key: string; source: string }) => {
   }
 }
 
-// ===== Rules config =====
+//=====规则配置=====
 const scopeConfig = computed(() => ({
   mandatory: { label: t('admin.ruleConfig.mandatory'), color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: LockOutlined },
   default_on: { label: t('admin.ruleConfig.defaultOn'), color: 'var(--color-primary)', bg: 'var(--color-primary-bg)', icon: UnlockOutlined },
@@ -337,7 +337,7 @@ const kbModes = computed(() => [
   { key: 'hybrid', icon: ThunderboltOutlined, title: t('admin.ruleConfig.hybridTitle'), desc: t('admin.ruleConfig.hybridDesc'), available: false },
 ])
 
-// ===== AI config =====
+//=====人工智能配置=====
 const strictnessOptions = computed(() => [
   { value: 'strict', label: t('admin.ruleConfig.strict'), desc: t('admin.ruleConfig.strictDescNew') },
   { value: 'standard', label: t('admin.ruleConfig.standard'), desc: t('admin.ruleConfig.standardDescNew') },
@@ -351,7 +351,7 @@ const aiProviders = computed(() => [
 
 const { mockAIModelConfigs } = useMockData()
 
-// Build model options from mockAIModelConfigs
+//从mockAIModelConfigs构建模型选项
 const modelOptions = computed(() => {
   const map: Record<string, string[]> = {}
   for (const m of mockAIModelConfigs) {
@@ -367,7 +367,7 @@ const interactionModeOptions = computed(() => [
   { value: 'single_pass', label: t('admin.ruleConfig.singlePass') },
 ])
 
-// Prompt variables with descriptions for reasoning phase
+//提示变量并提供推理阶段的描述
 const reasoningPromptVariables = computed(() => [
   { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
   { key: '{{detail_tables}}', desc: t('admin.ruleConfig.varDetailTablesDesc') },
@@ -377,18 +377,18 @@ const reasoningPromptVariables = computed(() => [
   { key: '{{current_node}}', desc: t('admin.ruleConfig.varCurrentNodeDesc') },
 ])
 
-// Prompt variables for extraction phase
+//提取阶段的提示变量
 const extractionPromptVariables = computed(() => [
   { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
 ])
 
-// Textarea refs for cursor-position insertion
+//用于光标位置插入的文本区域引用
 const reasoningTextareaRef = ref<any>(null)
 const extractionTextareaRef = ref<any>(null)
 
 const insertAtCursor = (textareaRef: any, field: 'reasoning_prompt' | 'extraction_prompt', variable: string) => {
   if (!selectedConfig.value) return
-  // Get the native textarea element from ant-design-vue's a-textarea
+  //从ant-design-vue的a-textarea获取原生textarea元素
   const el: HTMLTextAreaElement | null = textareaRef?.value?.$el?.querySelector?.('textarea')
     || textareaRef?.value?.resizableTextArea?.textArea
     || null
@@ -398,14 +398,14 @@ const insertAtCursor = (textareaRef: any, field: 'reasoning_prompt' | 'extractio
     const end = el.selectionEnd ?? currentVal.length
     const newVal = currentVal.slice(0, start) + variable + currentVal.slice(end)
     selectedConfig.value.ai_config[field] = newVal
-    // Restore cursor position after Vue re-renders
+    //Vue重新渲染后恢复光标位置
     nextTick(() => {
       const pos = start + variable.length
       el.focus()
       el.setSelectionRange(pos, pos)
     })
   } else {
-    // Fallback: append at end
+    //后备：追加到最后
     selectedConfig.value.ai_config[field] = currentVal + variable
   }
 }
@@ -418,7 +418,7 @@ const insertExtractionVariable = (variable: string) => {
   insertAtCursor(extractionTextareaRef, 'extraction_prompt', variable)
 }
 
-// ===== Strictness prompt presets =====
+//=====严格提示预设=====
 import { fetchStrictnessPresets, saveStrictnessPresets, type StrictnessPromptPreset } from '~/composables/useMockData'
 
 const strictnessPresets = ref<StrictnessPromptPreset[]>([])
@@ -427,7 +427,7 @@ const showPresetEditor = ref(false)
 const editingPresets = ref<StrictnessPromptPreset[]>([])
 const savingPresets = ref(false)
 
-// Load presets on mount
+//在安装上加载预设
 onMounted(async () => {
   loadOrgData()
   loadingPresets.value = true
@@ -438,24 +438,24 @@ onMounted(async () => {
   }
 })
 
-// Get current preset for the selected strictness
+//获取所选严格度的当前预设
 const currentStrictnessPreset = computed(() =>
   strictnessPresets.value.find(p => p.strictness === selectedConfig.value?.ai_config.audit_strictness)
 )
 
-// When strictness changes, show the corresponding preset instruction as a hint
+//当严格度改变时，显示对应的预设指令作为提示
 const handleStrictnessChange = (value: string) => {
   if (!selectedConfig.value) return
   selectedConfig.value.ai_config.audit_strictness = value as any
 }
 
-// Open preset editor
+//打开预设编辑器
 const openPresetEditor = () => {
   editingPresets.value = JSON.parse(JSON.stringify(strictnessPresets.value))
   showPresetEditor.value = true
 }
 
-// Save presets
+//保存预设
 const handleSavePresets = async () => {
   savingPresets.value = true
   try {
@@ -468,8 +468,8 @@ const handleSavePresets = async () => {
   }
 }
 
-// ===== User permissions =====
-// ===== Archive review configs =====
+//=====用户权限=====
+//===== 存档审核配置 =====
 const { departments, roles, members, loadAll: loadOrgData } = useOrgApi()
 const archiveConfigs = ref<ArchiveReviewConfig[]>(JSON.parse(JSON.stringify(mockArchiveReviewConfigs)))
 const selectedArchiveId = ref(archiveConfigs.value[0]?.id || '')
@@ -479,7 +479,7 @@ const selectedArchiveConfig = computed(() =>
   archiveConfigs.value.find(c => c.id === selectedArchiveId.value)
 )
 
-// ===== Add new archive process =====
+//=====添加新的归档进程=====
 const showAddArchiveProcess = ref(false)
 const newArchiveProcessForm = ref({ process_type: '', process_type_label: '', main_table_name: '' })
 
@@ -521,7 +521,7 @@ const handleAddArchiveProcess = () => {
   message.success(t('admin.ruleConfig.processAdded'))
 }
 
-// ===== Archive field picker =====
+//===== 存档字段选择器 =====
 const showArchiveFieldPicker = ref(false)
 const archiveFieldSearchQuery = ref('')
 
@@ -617,7 +617,7 @@ const archiveUnpickField = (field: { field_key: string; source: string }) => {
   }
 }
 
-// ===== Archive rules =====
+//=====存档规则=====
 const showArchiveRuleEditor = ref(false)
 const editingArchiveRule = ref<AuditRule | null>(null)
 
@@ -648,7 +648,7 @@ const deleteArchiveRule = (id: string) => {
   message.success(t('admin.ruleConfig.deleted'))
 }
 
-// ===== Archive AI prompt variables (same as audit workbench) =====
+//=====存档AI提示变量（与审计工作台相同）=====
 const archiveReasoningPromptVariables = computed(() => [
   { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
   { key: '{{detail_tables}}', desc: t('admin.ruleConfig.varDetailTablesDesc') },
@@ -681,14 +681,14 @@ const insertArchiveAtCursor = (textareaRef: any, field: 'reasoning_prompt' | 'ex
   }
 }
 
-// ===== Archive permissions (user customization + access control) =====
+//=====归档权限（用户定制+访问控制）=====
 const archivePermissionLabels = computed(() => ({
   allow_custom_fields: { label: t('admin.ruleConfig.customReviewFields'), desc: t('admin.ruleConfig.customReviewFieldsDesc') },
   allow_custom_rules: { label: t('admin.ruleConfig.customReviewRules'), desc: t('admin.ruleConfig.customReviewRulesDesc') },
   allow_modify_strictness: { label: t('admin.ruleConfig.modReviewStrictness'), desc: t('admin.ruleConfig.modReviewStrictnessDesc') },
 }))
 
-// Access control: roles and members
+//访问控制：角色和成员
 const archiveRoleSearch = ref('')
 const archiveMemberSearch = ref('')
 const archiveDeptSearch = ref('')
@@ -767,7 +767,7 @@ const handleSave = async () => {
       </div>
     </div>
 
-    <!-- Top-level tab: 审核工作台 / 定时任务配置 / 归档复盘 -->
+    <!--顶级选项卡：审核工作台 / 定时任务配置 / 归档复盘-->
     <div class="top-tab-nav">
       <button
         v-for="tab in [
@@ -787,7 +787,7 @@ const handleSave = async () => {
 
     <!-- ==================== 审核工作台配置 ==================== -->
     <div v-if="topTab === 'audit'" class="main-layout">
-      <!-- Left: process list -->
+      <!--左：进程列表-->
       <div class="process-nav">
         <div class="process-nav-header">
           <SettingOutlined />
@@ -808,14 +808,14 @@ const handleSave = async () => {
         </div>
       </div>
 
-      <!-- Right: config panel -->
+      <!--右：配置面板-->
       <div v-if="selectedConfig" class="config-panel">
         <div class="config-panel-header">
           <h2 class="config-panel-title">{{ selectedConfig.process_type }}</h2>
           <p v-if="selectedConfig.process_type_label" class="config-panel-subtitle">{{ selectedConfig.process_type_label }}</p>
         </div>
 
-        <!-- Sub tabs -->
+        <!--子选项卡-->
         <div class="tab-nav">
           <button
             v-for="tab in [
@@ -835,7 +835,7 @@ const handleSave = async () => {
           </button>
         </div>
 
-        <!-- ========== Info tab ========== -->
+        <!--========== 信息选项卡 ==========-->
         <div v-if="activeTab === 'info'" class="tab-content">
           <div class="section-header">
             <div>
@@ -860,7 +860,7 @@ const handleSave = async () => {
           </a-form>
         </div>
 
-        <!-- ========== Fields tab ========== -->
+        <!--========== 字段选项卡 ==========-->
         <div v-if="activeTab === 'fields'" class="tab-content">
           <div class="section-header">
             <div>
@@ -894,7 +894,7 @@ const handleSave = async () => {
             </div>
           </div>
 
-          <!-- Selected fields display + picker trigger -->
+          <!--选定字段显示+选择器触发器-->
           <template v-if="selectedConfig.field_mode === 'selected'">
             <div class="field-picker-toolbar">
               <span class="field-count">{{ t('admin.ruleConfig.selectedCount', [`${selectedFieldCount}`, `${allAvailableFields.length}`]) }}</span>
@@ -903,7 +903,7 @@ const handleSave = async () => {
               </a-button>
             </div>
 
-            <!-- Selected fields grouped by table -->
+            <!--按表分组的选定字段-->
             <template v-if="groupedSelectedFields.length">
               <div v-for="group in groupedSelectedFields" :key="group.source" class="selected-field-group">
                 <div class="field-group-label">{{ group.sourceLabel }}</div>
@@ -931,7 +931,7 @@ const handleSave = async () => {
           </template>
         </div>
 
-        <!-- ========== Rules tab ========== -->
+        <!--========== 规则选项卡 ==========-->
         <div v-if="activeTab === 'rules'" class="tab-content">
           <div class="section-header">
             <div>
@@ -940,7 +940,7 @@ const handleSave = async () => {
             </div>
           </div>
 
-          <!-- KB mode selector -->
+          <!--KB 模式选择器-->
           <div class="kb-modes">
             <div
               v-for="mode in kbModes"
@@ -1003,7 +1003,7 @@ const handleSave = async () => {
           </div>
         </div>
 
-        <!-- ========== AI tab ========== -->
+        <!--========== AI 标签==========-->
         <div v-if="activeTab === 'ai'" class="tab-content">
           <div class="section-header">
             <div>
@@ -1013,7 +1013,7 @@ const handleSave = async () => {
           </div>
 
           <div class="ai-form">
-            <!-- Audit strictness -->
+            <!--审核严格-->
             <div class="ai-form-group">
               <div class="strictness-label-row">
                 <label class="ai-form-label">{{ t('admin.ruleConfig.strictness') }}</label>
@@ -1036,7 +1036,7 @@ const handleSave = async () => {
                   </div>
                 </div>
               </div>
-              <!-- Show current preset instruction preview -->
+              <!--显示当前预设指令预览-->
               <div v-if="currentStrictnessPreset" class="strictness-preset-preview">
                 <div class="preset-preview-label">{{ t('admin.ruleConfig.currentPresetHint') }}</div>
                 <div class="preset-preview-row">
@@ -1050,7 +1050,7 @@ const handleSave = async () => {
               </div>
             </div>
 
-            <!-- Reasoning prompt -->
+            <!--推理提示-->
             <div class="ai-form-group">
               <div class="prompt-section-header">
                 <div class="prompt-section-title">
@@ -1076,7 +1076,7 @@ const handleSave = async () => {
               />
             </div>
 
-            <!-- Extraction prompt -->
+            <!--提取提示-->
             <div class="ai-form-group">
               <div class="prompt-section-header">
                 <div class="prompt-section-title">
@@ -1104,7 +1104,7 @@ const handleSave = async () => {
           </div>
         </div>
 
-        <!-- ========== Permissions tab ========== -->
+        <!--========== 权限选项卡 ==========-->
         <div v-if="activeTab === 'permissions'" class="tab-content">
           <div class="section-header">
             <div>
@@ -1146,7 +1146,7 @@ const handleSave = async () => {
       </div>
     </div>
 
-    <!-- Rule editor modal -->
+    <!--规则编辑器模式-->
     <RuleEditor
       :open="showRuleEditor"
       :rule="editingRule"
@@ -1154,7 +1154,7 @@ const handleSave = async () => {
       @save="handleSaveRule"
     />
 
-    <!-- Add process modal -->
+    <!--添加流程模态-->
     <a-modal
       v-model:open="showAddProcess"
       :title="t('admin.ruleConfig.addProcessTitle')"
@@ -1175,7 +1175,7 @@ const handleSave = async () => {
       </a-form>
     </a-modal>
 
-    <!-- Field picker modal -->
+    <!--字段选择器模态-->
     <a-modal
       v-model:open="showFieldPicker"
       :title="t('admin.ruleConfig.selectFieldsModal')"
@@ -1257,7 +1257,7 @@ const handleSave = async () => {
 
     <!-- ==================== 定时任务配置 ==================== -->
     <div v-if="topTab === 'cron'" class="main-layout">
-      <!-- Left: task type list -->
+      <!--左：任务类型列表-->
       <div class="process-nav">
         <div class="process-nav-header">
           <ClockCircleOutlined />
@@ -1278,7 +1278,7 @@ const handleSave = async () => {
         </div>
       </div>
 
-      <!-- Right: cron config panel -->
+      <!--右：cron 配置面板-->
       <div v-if="selectedCronConfig" class="config-panel">
         <div class="config-panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
           <div>
@@ -1296,7 +1296,7 @@ const handleSave = async () => {
           />
         </div>
 
-        <!-- ========== batch_audit: only batch limit config ========== -->
+        <!--==========batch_audit：仅批量限制配置==========-->
         <div v-if="selectedCronConfig.task_type === 'batch_audit'" class="tab-content">
           <div class="section-header">
             <div>
@@ -1319,7 +1319,7 @@ const handleSave = async () => {
           </div>
         </div>
 
-        <!-- ========== daily_report / weekly_report: content template with variable insertion ========== -->
+        <!--========== daily_report / Weekly_report：带有变量插入的内容模板==========-->
         <div v-if="selectedCronConfig.task_type !== 'batch_audit'" class="tab-content">
           <div class="section-header">
             <div>
@@ -1328,7 +1328,7 @@ const handleSave = async () => {
             </div>
           </div>
 
-          <!-- Variable insertion bar -->
+          <!--可变插入栏-->
           <div class="prompt-variables" style="margin-bottom: 16px;">
             <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
             <a-tooltip v-for="v in cronTemplateVariables" :key="v.key" :title="v.desc">
@@ -1336,7 +1336,7 @@ const handleSave = async () => {
             </a-tooltip>
           </div>
 
-          <!-- Push format -->
+          <!--推送格式-->
           <div class="ai-form-group" style="margin-bottom: 20px;">
             <label class="ai-form-label">{{ t('admin.ruleConfig.pushFormatLabel') }}</label>
             <div class="push-format-options">
@@ -1413,7 +1413,7 @@ const handleSave = async () => {
 
     <!-- ==================== 归档复盘配置 ==================== -->
     <div v-if="topTab === 'archive'" class="main-layout">
-      <!-- Left: process list -->
+      <!--左：进程列表-->
       <div class="process-nav">
         <div class="process-nav-header">
           <FolderOpenOutlined />
@@ -1434,14 +1434,14 @@ const handleSave = async () => {
         </div>
       </div>
 
-      <!-- Right: archive config panel -->
+      <!--右：存档配置面板-->
       <div v-if="selectedArchiveConfig" class="config-panel">
         <div class="config-panel-header">
           <h2 class="config-panel-title">{{ selectedArchiveConfig.process_type }}</h2>
           <p v-if="selectedArchiveConfig.process_type_label" class="config-panel-subtitle">{{ selectedArchiveConfig.process_type_label }}</p>
         </div>
 
-        <!-- Sub tabs: 删除审批流规则，与审核工作台对齐 -->
+        <!--子选项卡：删除霓虹流规则，与审核工作台景观-->
         <div class="tab-nav">
           <button
             v-for="tab in [
@@ -1461,7 +1461,7 @@ const handleSave = async () => {
           </button>
         </div>
 
-        <!-- ========== Info tab ========== -->
+        <!--========== 信息选项卡 ==========-->
         <div v-if="archiveActiveTab === 'info'" class="tab-content">
           <div class="section-header">
             <div>
@@ -1486,7 +1486,7 @@ const handleSave = async () => {
           </a-form>
         </div>
 
-        <!-- ========== Fields tab ========== -->
+        <!--========== 字段选项卡 ==========-->
         <div v-if="archiveActiveTab === 'fields'" class="tab-content">
           <div class="section-header">
             <div>
@@ -1520,7 +1520,7 @@ const handleSave = async () => {
             </div>
           </div>
 
-          <!-- Selected fields display + picker trigger -->
+          <!--选定字段显示+选择器触发器-->
           <template v-if="selectedArchiveConfig.field_mode === 'selected'">
             <div class="field-picker-toolbar">
               <span class="field-count">{{ t('admin.ruleConfig.selectedCount', [`${archiveSelectedFieldCount}`, `${archiveAllAvailableFields.length}`]) }}</span>
@@ -1529,7 +1529,7 @@ const handleSave = async () => {
               </a-button>
             </div>
 
-            <!-- Selected fields grouped by table -->
+            <!--按表分组的选定字段-->
             <template v-if="archiveGroupedSelected.length">
               <div v-for="group in archiveGroupedSelected" :key="group.source" class="selected-field-group">
                 <div class="field-group-label">{{ group.sourceLabel }}</div>
@@ -1557,7 +1557,7 @@ const handleSave = async () => {
           </template>
         </div>
 
-        <!-- ========== Rules tab ========== -->
+        <!--========== 规则选项卡 ==========-->
         <div v-if="archiveActiveTab === 'rules'" class="tab-content">
           <div class="section-header">
             <div>
@@ -1566,7 +1566,7 @@ const handleSave = async () => {
             </div>
           </div>
 
-          <!-- KB mode selector -->
+          <!--KB 模式选择器-->
           <div class="kb-modes">
             <div
               v-for="mode in kbModes"
@@ -1626,7 +1626,7 @@ const handleSave = async () => {
           </div>
         </div>
 
-        <!-- ========== AI tab (两阶段 prompt) ========== -->
+        <!--========== AI选项卡（两级提示）==========-->
         <div v-if="archiveActiveTab === 'ai'" class="tab-content">
           <div class="section-header">
             <div>
@@ -1636,7 +1636,7 @@ const handleSave = async () => {
           </div>
 
           <div class="ai-form">
-            <!-- Strictness -->
+            <!--严格性-->
             <div class="ai-form-group">
               <div class="strictness-label-row">
                 <label class="ai-form-label">{{ t('admin.ruleConfig.strictness') }}</label>
@@ -1659,7 +1659,7 @@ const handleSave = async () => {
                   </div>
                 </div>
               </div>
-              <!-- Show current preset instruction preview -->
+              <!--显示当前预设指令预览-->
               <div v-if="strictnessPresets.find(p => p.strictness === selectedArchiveConfig?.ai_config.audit_strictness)" class="strictness-preset-preview">
                 <div class="preset-preview-label">{{ t('admin.ruleConfig.currentPresetHint') }}</div>
                 <div class="preset-preview-row">
@@ -1673,7 +1673,7 @@ const handleSave = async () => {
               </div>
             </div>
 
-            <!-- Reasoning prompt -->
+            <!--推理提示-->
             <div class="ai-form-group">
               <div class="prompt-section-header">
                 <div class="prompt-section-title">
@@ -1696,7 +1696,7 @@ const handleSave = async () => {
               />
             </div>
 
-            <!-- Extraction prompt -->
+            <!--提取提示-->
             <div class="ai-form-group">
               <div class="prompt-section-header">
                 <div class="prompt-section-title">
@@ -1721,7 +1721,7 @@ const handleSave = async () => {
           </div>
         </div>
 
-        <!-- ========== Permissions tab (用户自定义权限 + 访问控制) ========== -->
+        <!--========== 权限选项卡（用户自定义权限 + 访问控制）==========-->
         <div v-if="archiveActiveTab === 'permissions'" class="tab-content">
           <div class="section-header">
             <div>
@@ -1832,7 +1832,7 @@ const handleSave = async () => {
       </div>
     </div>
 
-    <!-- Archive rule editor modal -->
+    <!--存档规则编辑器模式-->
     <RuleEditor
       :open="showArchiveRuleEditor"
       :rule="editingArchiveRule"
@@ -1840,7 +1840,7 @@ const handleSave = async () => {
       @save="handleSaveArchiveRule"
     />
 
-    <!-- Add archive process modal -->
+    <!--添加归档流程模式-->
     <a-modal
       v-model:open="showAddArchiveProcess"
       :title="t('admin.ruleConfig.addArchiveProcessTitle')"
@@ -1861,7 +1861,7 @@ const handleSave = async () => {
       </a-form>
     </a-modal>
 
-    <!-- Archive field picker modal -->
+    <!--归档字段选择器模式-->
     <a-modal
       v-model:open="showArchiveFieldPicker"
       :title="t('admin.ruleConfig.selectFieldsModal')"
@@ -1941,7 +1941,7 @@ const handleSave = async () => {
       </div>
     </a-modal>
 
-    <!-- Strictness preset editor modal -->
+    <!--严格预设编辑器模式-->
     <a-modal
       v-model:open="showPresetEditor"
       :title="t('admin.ruleConfig.editPresetsTitle')"
@@ -1986,7 +1986,7 @@ const handleSave = async () => {
 .page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; }
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
 
-/* Top-level tabs */
+/*顶级选项卡*/
 .top-tab-nav {
   display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
   border-radius: var(--radius-lg); margin-bottom: 24px; width: fit-content;
@@ -2000,10 +2000,10 @@ const handleSave = async () => {
 .top-tab-btn:hover { color: var(--color-text-primary); }
 .top-tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
 
-/* Main layout */
+/*主要布局*/
 .main-layout { display: grid; grid-template-columns: 240px 1fr; gap: 20px; align-items: start; }
 
-/* Process nav */
+/*流程导航*/
 .process-nav {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); overflow: hidden; position: sticky; top: 20px;
@@ -2030,7 +2030,7 @@ const handleSave = async () => {
 .process-nav-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 2px; }
 .process-nav-path { font-size: 12px; color: var(--color-text-tertiary); }
 
-/* Config panel */
+/*配置面板*/
 .config-panel {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); padding: 24px;
@@ -2043,7 +2043,7 @@ const handleSave = async () => {
   border: 1px solid var(--color-border-light); padding: 48px;
 }
 
-/* Tabs */
+/*选项卡*/
 .tab-nav {
   display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
   border-radius: var(--radius-lg); margin-bottom: 24px; width: fit-content;
@@ -2057,12 +2057,12 @@ const handleSave = async () => {
 .tab-btn:hover { color: var(--color-text-primary); }
 .tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
 
-/* Section */
+/*部分*/
 .section-header { margin-bottom: 16px; }
 .section-title { font-size: 15px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 4px; }
 .section-desc { font-size: 13px; color: var(--color-text-tertiary); margin: 0; }
 
-/* Field mode switch */
+/*现场模式开关*/
 .field-mode-switch { display: flex; gap: 12px; margin-bottom: 16px; }
 .field-mode-option {
   display: flex; align-items: center; gap: 12px; padding: 12px 16px; flex: 1;
@@ -2081,7 +2081,7 @@ const handleSave = async () => {
 
 .field-count { font-size: 13px; color: var(--color-text-tertiary); margin-bottom: 12px; }
 
-/* Field grid */
+/*场网格*/
 .field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .field-card {
   display: flex; align-items: center; gap: 10px; padding: 12px 14px;
@@ -2105,7 +2105,7 @@ const handleSave = async () => {
 }
 .field-key { font-size: 11px; color: var(--color-text-tertiary); font-family: monospace; }
 
-/* Rules */
+/*规则*/
 .rules-toolbar {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
 }
@@ -2141,7 +2141,7 @@ const handleSave = async () => {
 .icon-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .icon-btn--danger:hover { border-color: var(--color-danger); color: var(--color-danger); }
 
-/* KB modes */
+/*知识库模式*/
 .kb-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
 .kb-mode-card {
   display: flex; align-items: center; gap: 12px; padding: 14px;
@@ -2170,14 +2170,14 @@ const handleSave = async () => {
   background: var(--color-bg-hover); color: var(--color-text-tertiary);
 }
 
-/* AI form */
+/*人工智能表格*/
 .ai-form { display: flex; flex-direction: column; gap: 20px; }
 .ai-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .ai-form-group { display: flex; flex-direction: column; gap: 6px; }
 .ai-form-label { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
 .slider-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--color-text-tertiary); }
 
-/* Strictness */
+/*严格性*/
 .strictness-options { display: flex; gap: 10px; }
 .strictness-option {
   display: flex; align-items: center; gap: 10px; padding: 10px 14px; flex: 1;
@@ -2194,7 +2194,7 @@ const handleSave = async () => {
 .strictness-option-label { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
 .strictness-option-desc { font-size: 11px; color: var(--color-text-tertiary); margin-top: 1px; }
 
-/* Permissions */
+/*权限*/
 .permissions-list { display: flex; flex-direction: column; gap: 12px; }
 .permission-item {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
@@ -2231,7 +2231,7 @@ const handleSave = async () => {
   .field-card { padding: 8px 10px; }
 }
 
-/* Cron config sections */
+/*Cron 配置部分*/
 .cron-config-section { margin-bottom: 24px; }
 
 .status-dot {
@@ -2280,7 +2280,7 @@ const handleSave = async () => {
 }
 .variable-btn:hover { background: var(--color-primary-bg); border-color: var(--color-primary); }
 
-/* Prompt section styles */
+/*提示部分样式*/
 .prompt-section-header { margin-bottom: 8px; }
 .prompt-section-title { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .prompt-section-desc { font-size: 12px; color: var(--color-text-tertiary); line-height: 1.5; }
@@ -2296,12 +2296,12 @@ const handleSave = async () => {
   line-height: 1.5;
 }
 
-/* Strictness label row */
+/*严格标签行*/
 .strictness-label-row {
   display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;
 }
 
-/* Strictness preset preview */
+/*严格预设预览*/
 .strictness-preset-preview {
   margin-top: 10px; padding: 12px 14px; background: var(--color-bg-hover);
   border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
@@ -2323,7 +2323,7 @@ const handleSave = async () => {
   font-size: 12px; color: var(--color-text-tertiary); line-height: 1.5;
 }
 
-/* Preset editor modal */
+/*预设编辑器模式*/
 .preset-editor-desc {
   font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 16px;
 }
@@ -2347,16 +2347,16 @@ const handleSave = async () => {
   display: flex; align-items: center; gap: 6px;
 }
 
-/* Field picker toolbar */
+/*字段选择器工具栏*/
 .field-picker-toolbar {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
 }
 
-/* Info form */
+/*信息表*/
 .info-form { max-width: 480px; }
 .info-form :deep(.ant-form-item) { margin-bottom: 16px; }
 
-/* Selected fields display */
+/*显示选定的字段*/
 .selected-fields-display {
   display: flex; flex-wrap: wrap; gap: 8px;
 }
@@ -2373,7 +2373,7 @@ const handleSave = async () => {
   font-size: 13px; background: var(--color-bg-hover); border-radius: var(--radius-md);
 }
 
-/* Field picker modal */
+/*字段选择器模态*/
 .field-picker-modal {
   display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
   min-height: 400px; margin-top: 12px;
@@ -2422,7 +2422,7 @@ const handleSave = async () => {
   padding: 32px 16px; text-align: center; color: var(--color-text-tertiary); font-size: 13px;
 }
 
-/* Access control */
+/*访问控制*/
 .access-control-section { display: flex; flex-direction: column; gap: 0; }
 .access-control-group { }
 .access-control-label {

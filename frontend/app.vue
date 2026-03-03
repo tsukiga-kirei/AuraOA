@@ -14,7 +14,7 @@ dayjs.locale('zh-cn')
 </template>
 
 <style>
-/* Ensure CSS variables are available globally */
+/*确保 CSS 变量全局可用*/
 @import '~/assets/css/variables.css';
 @import '~/assets/css/global.css';
 </style>

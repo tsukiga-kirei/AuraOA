@@ -41,13 +41,13 @@ const recommendationConfig = computed(() => ({
 
 <template>
   <div class="audit-panel">
-    <!-- Loading -->
+    <!--加载中-->
     <div v-if="loading" class="panel-loading">
       <div class="loading-pulse" />
       <p class="loading-text">{{ t('auditPanel.auditing') }}</p>
     </div>
 
-    <!-- Result -->
+    <!--结果-->
     <template v-else-if="result">
       <div
         class="result-banner"
@@ -91,7 +91,7 @@ const recommendationConfig = computed(() => ({
       </div>
     </template>
 
-    <!-- Empty -->
+    <!--空的-->
     <div v-else class="panel-empty">
       <div class="empty-icon">
         <ThunderboltOutlined />

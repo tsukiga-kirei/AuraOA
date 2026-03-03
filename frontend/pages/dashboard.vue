@@ -47,28 +47,28 @@ const searchApplicant = ref('')
 const stats = ref(mockDashboardStats)
 const showFilters = ref(false)
 
-// Per-process audit results cache (for showing score/recommendation in list)
+//每个进程的审核结果缓存（用于在列表中显示分数/推荐）
 const processAuditCache = ref<Record<string, typeof mockAuditResult>>({ ...mockTodoAuditResults })
-// Per-process loading state (for batch audit per-item animation)
+//每进程加载状态（用于批量审核每项动画）
 const processAuditLoading = ref<Record<string, boolean>>({})
 
-// View mode
+//查看模式
 const viewMode = ref<'todo' | 'approved' | 'returned' | 'archived'>('todo')
 const isHistoryMode = computed(() => viewMode.value !== 'todo')
 
-// Process type filter — cascader: [category, processName]
+//进程类型过滤器——cascader: [category, processName]
 const filterProcessType = ref<string[][]>([])
-// Resolve selected cascader values to process names, handling both
-// category-only selections (e.g. ['采购类']) and full paths (e.g. ['采购类','采购审批'])
+//将选定的级联值解析为进程名称，同时处理两者
+//仅类别选择（例如 ['采购类']）和完整路径（例如 ['采购类','采购流程']）
 const filterProcessNames = computed(() => {
   if (filterProcessType.value.length === 0) return []
   const names: string[] = []
   for (const path of filterProcessType.value) {
     if (path.length >= 2) {
-      // Full path: last element is the process name
+      //完整路径：最后一个元素是进程名称
       names.push(path[path.length - 1])
     } else if (path.length === 1) {
-      // Category-only: find all children under this category
+      //仅类别：查找该类别下的所有子项
       const cat = processCascaderOptions.find(o => o.value === path[0])
       if (cat && cat.children) {
         names.push(...cat.children.map((c: any) => c.value))
@@ -83,7 +83,7 @@ const departmentOptions = computed(() => {
 })
 const filterDepartment = ref<string | undefined>(undefined)
 
-// AI audit status filter: 'unaudited' | 'approve' | 'return' | 'review'
+//AI 审核状态过滤器：“未经审核”| '批准' | '返回' | '审查'
 const filterAuditStatus = ref<string | undefined>(undefined)
 
 const clearFilters = () => {
@@ -95,7 +95,7 @@ const clearFilters = () => {
 }
 const hasActiveFilters = computed(() => !!searchText.value || !!searchApplicant.value || filterProcessType.value.length > 0 || !!filterDepartment.value || !!filterAuditStatus.value)
 
-// Batch audit
+//批量审核
 const selectedProcessIds = ref<string[]>([])
 const batchAuditing = ref(false)
 
@@ -113,7 +113,7 @@ const toggleSelectAll = () => {
   }
 }
 
-// Generate a mock audit result for a process that doesn't have one yet
+//为尚无模拟审核结果的流程生成模拟审核结果
 const generateMockResult = (processId: string): typeof mockAuditResult => {
   const hash = processId.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
   const recs: Array<'approve' | 'return' | 'review'> = ['approve', 'return', 'review', 'approve', 'return']
@@ -134,7 +134,7 @@ const generateMockResult = (processId: string): typeof mockAuditResult => {
   }
 }
 
-// Batch audit progress tracking
+//批量审核进度跟踪
 const batchAuditTotal = ref(0)
 const batchAuditDone = ref(0)
 
@@ -145,21 +145,21 @@ const handleBatchAudit = async () => {
   batchAuditTotal.value = ids.length
   batchAuditDone.value = 0
 
-  // Set all selected to loading
+  //将所有选择设置为加载
   for (const id of ids) {
     processAuditLoading.value[id] = true
   }
 
-  // Process each item with staggered delays
+  //以交错的延迟处理每个项目
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i]
     await new Promise(r => setTimeout(r, 800 + Math.random() * 1200))
-    // Use existing mock result or generate one
+    //使用现有的模拟结果或生成一个
     const result = mockTodoAuditResults[id] || generateMockResult(id)
     processAuditCache.value[id] = result
     processAuditLoading.value[id] = false
     batchAuditDone.value = i + 1
-    // If this process is currently selected, show its result directly
+    //如果当前选择了该进程，则直接显示其结果
     if (selectedProcess.value === id) {
       currentResult.value = { ...result }
     }
@@ -170,7 +170,7 @@ const handleBatchAudit = async () => {
   message.success(t('dashboard.batchDone'))
 }
 
-// Audit history chain
+//审计历史链
 const showHistoryChain = ref(false)
 const historyChainProcessId = ref<string | null>(null)
 const expandedChainNodes = ref<Set<string>>(new Set())
@@ -233,7 +233,7 @@ const filteredList = computed(() => {
     const q2 = searchApplicant.value.toLowerCase()
     list = list.filter(p => p.applicant.toLowerCase().includes(q2))
   }
-  // AI audit status filter
+  //AI审计状态过滤器
   if (filterAuditStatus.value) {
     if (filterAuditStatus.value === 'unaudited') {
       list = list.filter(p => !processAuditCache.value[p.process_id])
@@ -252,7 +252,7 @@ const handleSelectProcess = (processId: string) => {
     const hist = mockHistoricalResults[processId] || mockArchivedHistoricalResults[processId]
     currentResult.value = hist ? { ...hist } : null
   } else {
-    // If we have a cached audit result, show it directly
+    //如果我们有缓存的审核结果，直接显示
     const cached = processAuditCache.value[processId]
     if (cached) {
       currentResult.value = { ...cached, process_id: processId }
@@ -267,10 +267,10 @@ const handleSelectProcess = (processId: string) => {
 const handleAudit = async (processId: string) => {
   loading.value = true
   phase1Done.value = false
-  // Phase 1: reasoning
+  //第一阶段：推理
   await new Promise(resolve => setTimeout(resolve, 2200))
   phase1Done.value = true
-  // Phase 2: extraction
+  //第 2 阶段：提取
   await new Promise(resolve => setTimeout(resolve, 1650))
   const result = mockTodoAuditResults[processId] || generateMockResult(processId)
   currentResult.value = { ...result, process_id: processId }
@@ -322,7 +322,7 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
   review: { color: 'var(--color-info)', bg: 'var(--color-info-bg)', icon: EyeOutlined, label: t('dashboard.rec.review') },
 }))
 
-// Helper: get short recommendation label for list display
+//Helper：获取简短的推荐标签以进行列表显示
 const getShortRecLabel = (rec: string) => {
   const map: Record<string, string> = {
     approve: t('dashboard.suggestApprove'),
@@ -335,7 +335,7 @@ const getShortRecLabel = (rec: string) => {
 
 <template>
   <div class="dashboard">
-    <!-- Page header -->
+    <!--页眉-->
     <div class="page-header">
       <div>
         <h1 class="page-title">{{ t('dashboard.title') }}</h1>
@@ -343,7 +343,7 @@ const getShortRecLabel = (rec: string) => {
       </div>
     </div>
 
-    <!-- Stats row - clickable cards -->
+    <!--统计行 - 可点击的卡片-->
     <div class="stats-row">
       <div
         class="stat-card stat-card--primary"
@@ -391,9 +391,9 @@ const getShortRecLabel = (rec: string) => {
       </div>
     </div>
 
-    <!-- Main content area -->
+    <!--主要内容区-->
     <div class="dashboard-grid">
-      <!-- Left: Process list -->
+      <!--左：进程列表-->
       <div class="todo-panel">
         <div class="panel-header">
           <div class="panel-header-row">
@@ -410,7 +410,7 @@ const getShortRecLabel = (rec: string) => {
               <span v-if="hasActiveFilters" class="filter-active-dot" />
             </a-button>
           </div>
-          <!-- Collapsible filter bar -->
+          <!--可折叠过滤条-->
           <transition name="slide">
             <div v-if="showFilters" class="filter-bar">
               <a-input
@@ -461,7 +461,7 @@ const getShortRecLabel = (rec: string) => {
               <a-button size="small" @click="clearFilters">{{ t('dashboard.filterReset') }}</a-button>
             </div>
           </transition>
-          <!-- Batch audit toolbar (todo mode only) -->
+          <!--批量审核工具栏（仅限待办事项模式）-->
           <div v-if="viewMode === 'todo'" class="batch-toolbar">
             <div class="batch-toolbar-left">
               <a-checkbox
@@ -522,7 +522,7 @@ const getShortRecLabel = (rec: string) => {
                 <span class="todo-item-dot">·</span>
                 <span>{{ item.submit_time }}</span>
               </div>
-              <!-- Node + OA jump left, score badge right -->
+              <!--节点 + OA 向左跳转，分数徽章向右-->
               <div class="todo-item-audit-info">
                 <div class="todo-item-audit-left">
                   <span
@@ -536,12 +536,12 @@ const getShortRecLabel = (rec: string) => {
                   <span v-if="isHistoryMode" class="todo-item-process-type">{{ item.process_type }}</span>
                 </div>
                 <div class="todo-item-audit-right">
-                  <!-- Per-item loading animation during batch -->
+                  <!--批处理期间每个项目的加载动画-->
                   <span v-if="processAuditLoading[item.process_id]" class="todo-item-auditing">
                     <LoadingOutlined style="font-size: 12px;" />
                     <span>{{ t('dashboard.auditingItem') }}</span>
                   </span>
-                  <!-- Show score badge when audit is done (todo mode) -->
+                  <!--审核完成后显示分数徽章（待办事项模式）-->
                   <span
                     v-else-if="processAuditCache[item.process_id] && viewMode === 'todo'"
                     class="todo-item-score-badge"
@@ -553,7 +553,7 @@ const getShortRecLabel = (rec: string) => {
                     {{ processAuditCache[item.process_id].score }}{{ t('dashboard.points') }}
                     {{ getShortRecLabel(processAuditCache[item.process_id].recommendation) }}
                   </span>
-                  <!-- Show historical score for approved/returned/archived -->
+                  <!--显示已批准/退回/存档的历史分数-->
                   <span
                     v-else-if="isHistoryMode && (mockHistoricalResults[item.process_id] || mockArchivedHistoricalResults[item.process_id])"
                     class="todo-item-score-badge"
@@ -579,7 +579,7 @@ const getShortRecLabel = (rec: string) => {
           </div>
         </div>
 
-        <!-- Pagination -->
+        <!--分页-->
         <div class="pagination-wrapper">
           <a-pagination
             :current="listPage"
@@ -595,7 +595,7 @@ const getShortRecLabel = (rec: string) => {
         </div>
       </div>
 
-      <!-- Right: Audit result / Action panel -->
+      <!--右：审核结果​​/操作面板-->
       <div class="result-panel">
         <div class="panel-header">
           <h3 class="panel-title">
@@ -607,9 +607,9 @@ const getShortRecLabel = (rec: string) => {
         </div>
 
         <div class="result-content">
-          <!-- Loading state: two-phase card style (matches archive.vue audit-progress) -->
+          <!--加载状态：两阶段卡片式（匹配archive.vueaudit-progress）-->
           <div v-if="loading" class="result-loading">
-            <!-- Process basic info above animation -->
+            <!--处理动画上面的基本信息-->
             <div v-if="selectedProcessInfo" class="loading-process-info">
               <div class="loading-process-title">{{ selectedProcessInfo.title }}</div>
               <div class="loading-process-meta">
@@ -640,7 +640,7 @@ const getShortRecLabel = (rec: string) => {
             </div>
           </div>
 
-          <!-- TODO mode: Selected but not yet audited - show action prompt -->
+          <!--TODO 模式：已选择但尚未审核 - 显示操作提示-->
           <template v-else-if="!isHistoryMode && selectedProcess && !currentResult">
             <div class="action-prompt">
               <div class="action-prompt-info">
@@ -658,7 +658,7 @@ const getShortRecLabel = (rec: string) => {
             </div>
           </template>
 
-          <!-- History mode: Selected but no historical result found -->
+          <!--历史模式：已选择但未找到历史结果-->
           <template v-else-if="isHistoryMode && selectedProcess && !currentResult">
             <div class="result-empty">
               <div class="result-empty-icon"><HistoryOutlined /></div>
@@ -670,9 +670,9 @@ const getShortRecLabel = (rec: string) => {
             </div>
           </template>
 
-          <!-- Result display (both modes) -->
+          <!--结果显示（两种模式）-->
           <template v-else-if="currentResult">
-            <!-- Action bar -->
+            <!--操作栏-->
             <div class="result-action-bar">
               <template v-if="isHistoryMode">
                 <div class="history-badge">
@@ -697,7 +697,7 @@ const getShortRecLabel = (rec: string) => {
               </template>
             </div>
 
-            <!-- Recommendation banner -->
+            <!--推荐横幅-->
             <div
               class="result-banner"
               :style="{
@@ -724,7 +724,7 @@ const getShortRecLabel = (rec: string) => {
               </div>
             </div>
 
-            <!-- Rule checks -->
+            <!--规则检查-->
             <div class="result-section">
               <h4 class="result-section-title">{{ t('dashboard.ruleCheckDetail') }}</h4>
               <div class="rule-checks">
@@ -749,7 +749,7 @@ const getShortRecLabel = (rec: string) => {
               </div>
             </div>
 
-            <!-- Opt5: Risk points & suggestions as parallel cards below rule checks -->
+            <!--Opt5：风险点和建议作为规则检查下的平行卡-->
             <div v-if="currentResult.risk_points?.length || currentResult.suggestions?.length" class="risk-suggest-row">
               <div v-if="currentResult.risk_points?.length" class="insight-card insight-card--risk">
                 <div class="insight-card-header">
@@ -771,7 +771,7 @@ const getShortRecLabel = (rec: string) => {
               </div>
             </div>
 
-            <!-- AI Reasoning -->
+            <!--人工智能推理-->
             <div class="result-section">
               <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
               <div class="ai-reasoning">
@@ -780,7 +780,7 @@ const getShortRecLabel = (rec: string) => {
             </div>
           </template>
 
-          <!-- Empty state -->
+          <!--空状态-->
           <div v-else class="result-empty">
             <div class="result-empty-icon">
               <ThunderboltOutlined v-if="!isHistoryMode" />
@@ -794,7 +794,7 @@ const getShortRecLabel = (rec: string) => {
       </div>
     </div>
 
-    <!-- Audit History Chain Drawer -->
+    <!--审核历史链抽屉-->
     <Teleport to="body">
       <transition name="drawer">
         <div v-if="showHistoryChain" class="drawer-overlay" @click.self="showHistoryChain = false">
@@ -841,7 +841,7 @@ const getShortRecLabel = (rec: string) => {
                     </div>
                     <div v-if="expandedChainNodes.has(snap.snapshot_id)" class="chain-detail">
                       <template v-if="mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id]">
-                        <!-- Rule checks -->
+                        <!--规则检查-->
                         <div class="chain-section-title">{{ t('dashboard.ruleCheckDetail') }}</div>
                         <div v-for="rule in (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.details" :key="rule.rule_id" class="chain-rule-item" :class="rule.passed ? 'chain-rule--pass' : 'chain-rule--fail'">
                           <component :is="rule.passed ? CheckCircleOutlined : CloseCircleOutlined" :style="{ color: rule.passed ? 'var(--color-success)' : 'var(--color-danger)' }" />
@@ -850,7 +850,7 @@ const getShortRecLabel = (rec: string) => {
                             <div class="chain-rule-reasoning">{{ rule.reasoning }}</div>
                           </div>
                         </div>
-                        <!-- Risk points & suggestions -->
+                        <!--风险点及建议-->
                         <div
                           v-if="(mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.risk_points?.length || (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.suggestions?.length"
                           class="risk-suggest-row"
@@ -875,7 +875,7 @@ const getShortRecLabel = (rec: string) => {
                             </ul>
                           </div>
                         </div>
-                        <!-- AI Reasoning -->
+                        <!--人工智能推理-->
                         <div class="chain-section-title" style="margin-top: 10px;">{{ t('dashboard.aiReasoning') }}</div>
                         <div class="chain-reasoning">
                           <pre>{{ (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.ai_reasoning }}</pre>
@@ -902,7 +902,7 @@ const getShortRecLabel = (rec: string) => {
 .page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
 
-/* Stats row */
+/*统计行*/
 .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
 .stat-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg); padding: 20px;
@@ -923,7 +923,7 @@ const getShortRecLabel = (rec: string) => {
 .stat-card-value { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
 .stat-card-label { font-size: 13px; color: var(--color-text-tertiary); margin-top: 2px; }
 
-/* Dashboard grid */
+/*仪表板网格*/
 .dashboard-grid { display: grid; grid-template-columns: 420px 1fr; gap: 24px; align-items: start; }
 .todo-panel, .result-panel {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
@@ -938,12 +938,12 @@ const getShortRecLabel = (rec: string) => {
   margin: 0; display: flex; align-items: center; gap: 8px;
 }
 
-/* Panel header row */
+/*面板标题行*/
 .panel-header-row {
   display: flex; align-items: center; justify-content: space-between;
 }
 
-/* Collapsible filter bar */
+/*可折叠过滤条*/
 .filter-toggle-btn { position: relative; }
 .filter-toggle-btn--active { color: var(--color-primary); border-color: var(--color-primary); }
 .filter-active-dot {
@@ -957,7 +957,7 @@ const getShortRecLabel = (rec: string) => {
 .slide-enter-active, .slide-leave-active { transition: all 0.2s ease; }
 .slide-enter-from, .slide-leave-to { opacity: 0; transform: translateY(-8px); }
 
-/* Todo list */
+/*待办事项清单*/
 .todo-list { max-height: calc(100vh - 380px); overflow-y: auto; }
 .todo-item {
   display: flex; align-items: flex-start;
@@ -983,7 +983,7 @@ const getShortRecLabel = (rec: string) => {
 .todo-item-meta { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
 .todo-item-dot { color: var(--color-border); }
 
-/* Opt3: Audit info row below meta — left/right layout */
+/*Opt3：元下方的审核信息行 — 左/右布局*/
 .todo-item-audit-info {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
@@ -1033,7 +1033,7 @@ const getShortRecLabel = (rec: string) => {
 }
 .oa-jump-btn:active { transform: scale(0.95); }
 
-/* Opt4: Per-item auditing animation */
+/*Opt4：每项审核动画*/
 .todo-item-auditing {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; color: var(--color-primary); font-weight: 500;
@@ -1041,7 +1041,7 @@ const getShortRecLabel = (rec: string) => {
 }
 @keyframes auditPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
 
-/* Opt3: Score badge in list */
+/*Opt3：列表中的得分徽章*/
 .todo-item-score-badge {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; font-weight: 600; padding: 2px 8px;
@@ -1051,32 +1051,32 @@ const getShortRecLabel = (rec: string) => {
 .todo-item-checkbox { flex-shrink: 0; padding-top: 2px; }
 .todo-empty { padding: 48px 20px; }
 
-/* Result panel */
+/*结果面板*/
 .result-content { padding: 20px; }
 
-/* Action prompt */
+/*动作提示*/
 .action-prompt { text-align: center; padding: 40px 20px; }
 .action-prompt-info h4 { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px; }
 .action-prompt-info p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 24px; }
 .action-prompt-buttons { display: flex; gap: 12px; justify-content: center; }
 
-/* Result action bar */
+/*结果操作栏*/
 .result-action-bar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
 
-/* History badge */
+/*历史徽章*/
 .history-badge {
   display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
   padding: 4px 12px; border-radius: var(--radius-full);
   background: var(--color-bg-hover); color: var(--color-text-tertiary); margin-right: auto;
 }
 
-/* Loading */
+/*加载中*/
 .result-loading { display: flex; flex-direction: column; align-items: center; padding: 40px 20px; gap: 20px; }
 .loading-process-info { text-align: center; }
 .loading-process-title { font-size: 15px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 4px; }
 .loading-process-meta { font-size: 13px; color: var(--color-text-tertiary); }
 
-/* Two-phase audit progress cards (matches archive.vue style) */
+/*两阶段审核进度卡（匹配archive.vue风格）*/
 .audit-progress { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 400px; }
 .audit-phase {
   display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px;
@@ -1101,7 +1101,7 @@ const getShortRecLabel = (rec: string) => {
 .audit-phase-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 2px; }
 .audit-phase-desc { font-size: 12px; color: var(--color-text-tertiary); }
 
-/* Result banner */
+/*结果横幅*/
 .result-banner {
   display: flex; align-items: center; padding: 16px 20px;
   border-radius: var(--radius-lg); border-left: 4px solid; margin-bottom: 24px; gap: 14px;
@@ -1112,7 +1112,7 @@ const getShortRecLabel = (rec: string) => {
 .result-banner-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
 .result-score { font-size: 36px; font-weight: 800; line-height: 1; }
 
-/* Rule checks */
+/*规则检查*/
 .result-section { margin-bottom: 24px; }
 .result-section-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 12px; }
 .rule-checks { display: flex; flex-direction: column; gap: 8px; }
@@ -1130,7 +1130,7 @@ const getShortRecLabel = (rec: string) => {
 .rule-locked-badge { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-danger-bg); color: var(--color-danger); }
 .rule-check-reasoning { font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; }
 
-/* Opt5: Risk + Suggestions parallel cards */
+/*Opt5：风险+建议平行卡*/
 .risk-suggest-row {
   display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;
 }
@@ -1162,11 +1162,11 @@ const getShortRecLabel = (rec: string) => {
 }
 .insight-card--risk .insight-card-list li { color: var(--color-danger); }
 
-/* AI Reasoning */
+/*人工智能推理*/
 .ai-reasoning { background: var(--color-bg-page); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--color-border-light); }
 .ai-reasoning pre { white-space: pre-wrap; word-break: break-word; font-family: var(--font-sans); font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); margin: 0; }
 
-/* Empty state */
+/*空状态*/
 .result-empty { text-align: center; padding: 60px 20px; }
 .result-empty-icon {
   width: 64px; height: 64px; border-radius: 50%; background: var(--color-primary-bg);
@@ -1176,7 +1176,7 @@ const getShortRecLabel = (rec: string) => {
 .result-empty h4 { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px; }
 .result-empty p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 auto; max-width: 280px; }
 
-/* Batch toolbar */
+/*批处理工具栏*/
 .batch-toolbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 6px 0; gap: 8px;
@@ -1192,7 +1192,7 @@ const getShortRecLabel = (rec: string) => {
   flex-shrink: 0;
 }
 
-/* Pagination */
+/*分页*/
 .pagination-wrapper { padding: 12px 20px; border-top: 1px solid var(--color-border-light); display: flex; justify-content: center; }
 
 @media (max-width: 1024px) {
@@ -1223,7 +1223,7 @@ const getShortRecLabel = (rec: string) => {
   .result-score { font-size: 28px; }
 }
 
-/* Drawer */
+/*抽屉*/
 .drawer-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);
   backdrop-filter: blur(4px); z-index: 1000; display: flex; justify-content: flex-end;
@@ -1247,7 +1247,7 @@ const getShortRecLabel = (rec: string) => {
 .drawer-body { flex: 1; overflow-y: auto; padding: 24px; }
 .chain-desc { font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 20px; }
 
-/* Audit chain timeline */
+/*审计链时间表*/
 .audit-chain { display: flex; flex-direction: column; }
 .chain-node { display: flex; gap: 16px; }
 .chain-timeline { display: flex; flex-direction: column; align-items: center; width: 20px; flex-shrink: 0; }
@@ -1278,7 +1278,7 @@ const getShortRecLabel = (rec: string) => {
 .drawer-leave-to { opacity: 0; }
 .drawer-leave-to .drawer-panel { transform: translateX(100%); }
 
-/* Chain expand */
+/*连锁扩张*/
 .chain-expand-btn { margin-left: auto; font-size: 12px; color: var(--color-text-tertiary); }
 .chain-detail {
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border-light);
