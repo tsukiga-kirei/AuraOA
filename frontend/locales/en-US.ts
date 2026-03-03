@@ -1365,6 +1365,7 @@ export default {
     'admin.org.deptAdded': 'Department added',
     'admin.org.deptHasMembers': 'This department has {0} members, please reassign first',
     'admin.org.deptDeleted': 'Department deleted',
+    'admin.org.operationFailed': 'Operation failed, please try again',
 
     // Page labels for org permissions
     'admin.org.page.dashboard': 'Audit Workbench',

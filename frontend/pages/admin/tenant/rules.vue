@@ -429,6 +429,7 @@ const savingPresets = ref(false)
 
 // Load presets on mount
 onMounted(async () => {
+  loadOrgData()
   loadingPresets.value = true
   try {
     strictnessPresets.value = await fetchStrictnessPresets()
@@ -469,7 +470,7 @@ const handleSavePresets = async () => {
 
 // ===== User permissions =====
 // ===== Archive review configs =====
-const { departments, roles, members } = useOrgApi()
+const { departments, roles, members, loadAll: loadOrgData } = useOrgApi()
 const archiveConfigs = ref<ArchiveReviewConfig[]>(JSON.parse(JSON.stringify(mockArchiveReviewConfigs)))
 const selectedArchiveId = ref(archiveConfigs.value[0]?.id || '')
 const archiveActiveTab = ref('info')

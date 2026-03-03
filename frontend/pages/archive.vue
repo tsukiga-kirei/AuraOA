@@ -34,7 +34,11 @@ const {
   mockArchiveReviewConfigs,
   archiveProcessCascaderOptions,
 } = useMockData()
-const { members, roles } = useOrgApi()
+const { members, roles, loadAll: loadOrgData } = useOrgApi()
+
+onMounted(() => {
+  loadOrgData()
+})
 
 // ===== Permission: filter accessible archive configs based on current user =====
 const accessibleConfigs = computed<ArchiveReviewConfig[]>(() => {
