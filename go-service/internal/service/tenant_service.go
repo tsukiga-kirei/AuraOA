@@ -39,6 +39,23 @@ func (s *TenantService) ListTenants() ([]dto.TenantResponse, error) {
 	return result, nil
 }
 
+//ListPublicTenants 返回活跃租户的轻量级列表（公共接口，无需鉴权）。
+func (s *TenantService) ListPublicTenants() ([]dto.PublicTenantItem, error) {
+	tenants, err := s.tenantRepo.ListActive()
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	result := make([]dto.PublicTenantItem, len(tenants))
+	for i := range tenants {
+		result[i] = dto.PublicTenantItem{
+			ID:   tenants[i].ID.String(),
+			Name: tenants[i].Name,
+			Code: tenants[i].Code,
+		}
+	}
+	return result, nil
+}
+
 //CreateTenant 在检查代码唯一性后创建一个新租户。
 //它使用事务还创建三个默认系统角色；如果任何步骤失败，则整个操作将回滚。
 func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantResponse, error) {

@@ -645,3 +645,30 @@ func rebuildClaimsFromSession(data map[string]interface{}) *jwtpkg.JWTClaims {
 
 	return claims
 }
+
+// ---------------------------------------------------------------------------
+// ChangePassword
+// ---------------------------------------------------------------------------
+
+// ChangePassword verifies the current password and updates to the new one.
+func (s *AuthService) ChangePassword(userID uuid.UUID, req *dto.ChangePasswordRequest) error {
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return newServiceError(errcode.ErrWrongPassword, "用户不存在")
+	}
+
+	if !hash.CheckPassword(req.CurrentPassword, user.PasswordHash) {
+		return newServiceError(errcode.ErrWrongPassword, "当前密码错误")
+	}
+
+	newHash, err := hash.HashPassword(req.NewPassword)
+	if err != nil {
+		return newServiceError(errcode.ErrInternalServer, "服务器内部错误")
+	}
+
+	if err := s.userRepo.UpdatePasswordHash(userID, newHash); err != nil {
+		return newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+
+	return nil
+}

@@ -91,3 +91,8 @@ func (r *UserRepo) FindTenantByID(tenantID uuid.UUID) (*model.Tenant, error) {
 	}
 	return &tenant, nil
 }
+
+// UpdatePasswordHash updates the user's password hash.
+func (r *UserRepo) UpdatePasswordHash(userID uuid.UUID, hash string) error {
+	return r.DB.Model(&model.User{}).Where("id = ?", userID).Update("password_hash", hash).Error
+}

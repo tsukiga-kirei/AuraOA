@@ -70,3 +70,9 @@ type MenuItem struct {
 type MenuResponse struct {
 	Menus []MenuItem `json:"menus"`
 }
+
+// ChangePasswordRequest is the request body for PUT /api/auth/change-password
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required"`
+}

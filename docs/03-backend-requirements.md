@@ -346,7 +346,13 @@ go-service/
 | GET | `/api/archive/review/:trace_id` | 获取复核结果 |
 | GET | `/api/archive/audit-chains/:process_id` | 获取审核链历史 |
 
-### 3.6 租户管理接口
+### 3.6 公共租户接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/tenants/list` | 获取活跃租户列表（公共接口，无需鉴权，用于登录页租户选择器，仅返回 id 和 name） |
+
+### 3.7 租户管理接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -356,7 +362,7 @@ go-service/
 | DELETE | `/api/admin/tenants/:id` | 删除租户 |
 | GET | `/api/admin/tenants/:id/stats` | 租户统计数据 |
 
-### 3.7 规则管理接口
+### 3.8 规则管理接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -369,7 +375,7 @@ go-service/
 | GET | `/api/tenant/rules/cron-configs` | 获取定时任务类型配置 |
 | PUT | `/api/tenant/rules/cron-configs` | 更新定时任务类型配置 |
 
-### 3.8 组织人员接口
+### 3.9 组织人员接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -386,7 +392,7 @@ go-service/
 | PUT | `/api/tenant/org/members/:id` | 更新成员 |
 | DELETE | `/api/tenant/org/members/:id` | 删除成员 |
 
-### 3.9 数据信息接口
+### 3.10 数据信息接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -394,14 +400,14 @@ go-service/
 | GET | `/api/tenant/data/cron-logs` | 定时任务日志查询 |
 | GET | `/api/tenant/data/archive-logs` | 归档复盘日志查询 |
 
-### 3.10 用户偏好接口
+### 3.11 用户偏好接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/tenant/user-configs` | 获取所有用户偏好配置 |
 | GET | `/api/tenant/user-configs/:user_id` | 获取单个用户偏好详情 |
 
-### 3.11 系统设置接口
+### 3.12 系统设置接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -417,7 +423,7 @@ go-service/
 | GET | `/api/system/general` | 平台通用配置 |
 | PUT | `/api/system/general` | 更新平台配置 |
 
-### 3.12 仪表盘接口
+### 3.13 仪表盘接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -425,7 +431,7 @@ go-service/
 | GET | `/api/dashboard/prefs` | 用户仪表盘偏好 |
 | PUT | `/api/dashboard/prefs` | 更新仪表盘偏好 |
 
-### 3.13 个人设置接口
+### 3.14 个人设置接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -435,7 +441,7 @@ go-service/
 | PUT | `/api/user/locale` | 更新语言偏好 |
 | GET | `/api/user/security` | 安全信息 |
 
-### 3.14 系统监控接口
+### 3.15 系统监控接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|

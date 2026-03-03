@@ -109,8 +109,11 @@ export const useAuth = () => {
       }
       setActiveRole(mappedActiveRole)
 
-      userPermissions.value = data.permissions as PermissionGroup[]
-      if (import.meta.client) localStorage.setItem('user_permissions', JSON.stringify(data.permissions))
+      const switchPerms = data.permissions && data.permissions.length > 0
+        ? data.permissions as PermissionGroup[]
+        : [data.active_role.role] as PermissionGroup[]
+      userPermissions.value = switchPerms
+      if (import.meta.client) localStorage.setItem('user_permissions', JSON.stringify(switchPerms))
 
       menus.value = data.menus
 
@@ -168,14 +171,17 @@ export const useAuth = () => {
       const allPerms = [...new Set(data.roles.map(r => r.role))] as PermissionGroup[]
       setFullPermissions(allPerms)
 
-      //后台存储权限
-      userPermissions.value = data.permissions as PermissionGroup[]
+      // Use backend permissions if available, otherwise fall back to active role
+      const effectivePerms = data.permissions && data.permissions.length > 0
+        ? data.permissions as PermissionGroup[]
+        : [data.active_role.role] as PermissionGroup[]
+      userPermissions.value = effectivePerms
 
       if (import.meta.client) {
         localStorage.setItem('token', data.access_token)
         localStorage.setItem('refresh_token', data.refresh_token)
         localStorage.setItem('current_user', JSON.stringify(currentUser.value))
-        localStorage.setItem('user_permissions', JSON.stringify(data.permissions))
+        localStorage.setItem('user_permissions', JSON.stringify(effectivePerms))
       }
 
       return true

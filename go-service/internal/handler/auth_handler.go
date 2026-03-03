@@ -232,3 +232,41 @@ func mapServiceErrorToHTTP(err error) int {
 		return http.StatusInternalServerError
 	}
 }
+
+// ChangePassword handles PUT /api/auth/change-password
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	var req dto.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+
+	claimsVal, exists := c.Get("jwt_claims")
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
+		return
+	}
+	claims, ok := claimsVal.(*jwtpkg.JWTClaims)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "服务器内部错误")
+		return
+	}
+
+	userID, err := uuid.Parse(claims.Sub)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrTokenInvalid, "认证令牌无效或已过期")
+		return
+	}
+
+	if err := h.authService.ChangePassword(userID, &req); err != nil {
+		httpStatus := mapServiceErrorToHTTP(err)
+		if svcErr, ok := err.(*service.ServiceError); ok {
+			response.Error(c, httpStatus, svcErr.Code, svcErr.Message)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "服务器内部错误")
+		return
+	}
+
+	response.Success(c, nil)
+}

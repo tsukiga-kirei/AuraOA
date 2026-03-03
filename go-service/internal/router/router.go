@@ -9,7 +9,7 @@ import (
 	"oa-smart-audit/go-service/internal/middleware"
 )
 
-//SetupRouter 在给定的 Gin 引擎上注册所有路由和中间件。
+// SetupRouter registers all routes and middleware on the given Gin engine.
 func SetupRouter(
 	r *gin.Engine,
 	rdb *redis.Client,
@@ -20,16 +20,17 @@ func SetupRouter(
 	tenantHandler *handler.TenantHandler,
 	healthHandler *handler.HealthHandler,
 ) {
-	//全局中间件
+	// Global middleware
 	r.Use(middleware.Logger(logger))
 	r.Use(middleware.Recovery(logger))
 	r.Use(middleware.CORS(allowedOrigins))
 
-	//公共路线
+	// Public routes (no auth required)
 	r.GET("/api/health", healthHandler.Health)
 	r.POST("/api/auth/login", authHandler.Login)
+	r.GET("/api/tenants/list", tenantHandler.ListPublicTenants)
 
-	//身份验证路由（需要 JWT）
+	// Auth routes (JWT required)
 	auth := r.Group("/api/auth")
 	auth.Use(middleware.JWT(rdb))
 	{
@@ -37,9 +38,10 @@ func SetupRouter(
 		auth.POST("/refresh", authHandler.Refresh)
 		auth.PUT("/switch-role", authHandler.SwitchRole)
 		auth.GET("/menu", authHandler.GetMenu)
+		auth.PUT("/change-password", authHandler.ChangePassword)
 	}
 
-	//租户组织路由（JWT + TenantContext +tenant_admin）
+	// Tenant org routes (JWT + TenantContext + tenant_admin)
 	tenantOrg := r.Group("/api/tenant/org")
 	tenantOrg.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
 	{
@@ -59,7 +61,7 @@ func SetupRouter(
 		tenantOrg.DELETE("/members/:id", orgHandler.DeleteMember)
 	}
 
-	//管理路由（JWT + TenantContext + system_admin）
+	// Admin routes (JWT + TenantContext + system_admin)
 	admin := r.Group("/api/admin")
 	admin.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("system_admin"))
 	{
@@ -68,5 +70,8 @@ func SetupRouter(
 		admin.PUT("/tenants/:id", tenantHandler.UpdateTenant)
 		admin.DELETE("/tenants/:id", tenantHandler.DeleteTenant)
 		admin.GET("/tenants/:id/stats", tenantHandler.GetTenantStats)
+
+		admin.GET("/system/configs", tenantHandler.GetSystemConfigs)
+		admin.PUT("/system/configs", tenantHandler.UpdateSystemConfigs)
 	}
 }

@@ -15,3 +15,8 @@ type LoginHistory struct {
 	UserAgent string    `gorm:"size:500"`
 	LoginAt  time.Time  `gorm:"not null;default:now()"`
 }
+
+// TableName overrides GORM's default plural table name.
+func (LoginHistory) TableName() string {
+	return "login_history"
+}

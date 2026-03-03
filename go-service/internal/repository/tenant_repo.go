@@ -60,6 +60,15 @@ func (r *TenantRepo) FindByCode(code string) (*model.Tenant, error) {
 	return &tenant, nil
 }
 
+//ListActive 返回仅活跃状态的租户（用于公共登录页面）。
+func (r *TenantRepo) ListActive() ([]model.Tenant, error) {
+	var tenants []model.Tenant
+	if err := r.DB.Where("status = ?", "active").Order("created_at ASC").Find(&tenants).Error; err != nil {
+		return nil, err
+	}
+	return tenants, nil
+}
+
 //GetStats 返回给定租户的成员计数、部门计数和角色计数。
 func (r *TenantRepo) GetStats(tenantID uuid.UUID) (memberCount, deptCount, roleCount int64, err error) {
 	if err = r.DB.Model(&model.OrgMember{}).Where("tenant_id = ?", tenantID).Count(&memberCount).Error; err != nil {
