@@ -1,6 +1,6 @@
 # OA 智审平台 — 租户·组织·认证·权限 详细设计文档
 
-> 文档版本：v1.0 | 更新日期：2026-03-02  
+> 文档版本：v1.1 | 更新日期：2026-03-03  
 > 本文档是 Phase 1 开发的核心指南，详细解析多租户架构、组织人员管理、登录认证、权限控制的完整逻辑。
 
 ---
@@ -75,11 +75,13 @@
 ### 1.3 两层角色协作流程
 
 ```
-用户登录选择「业务用户」入口
+用户登录选择「业务用户」或「租户管理员」入口
     ↓
-系统设置 activeRole.role = 'business'
+系统设置 activeRole.role = 'business' 或 'tenant_admin'
     ↓
 调用 GET /api/auth/menu 获取当前角色可访问的菜单列表
+    ↓
+后端 GetMenu 统一从 org_roles.page_permissions 读取并合并
     ↓
 侧边栏生成：根据 menus 中的 path 过滤菜单项
     ↓
@@ -90,10 +92,15 @@
 例如：李芳只有 ROLE-001
       → GetMenu 返回 [/overview, /dashboard, /settings]
       → 侧边栏只显示仪表盘和工作台
+
+例如：赵伟(tenantadmin) 有 ROLE-001 + ROLE-003
+      → GetMenu 返回前台 + 后台管理全部页面
+      → 侧边栏显示业务功能 + 租户管理功能
 ```
 
-> 注：侧边栏菜单过滤统一通过 GetMenu API 驱动，不再在前端直接查询 org_members/org_roles。
-> 后端 GetMenu 根据用户的系统角色和组织角色综合计算可访问页面后返回。
+> 注：`tenant_admin` 和 `business` 角色的菜单均通过 `org_roles.page_permissions` 动态生成，不再硬编码。
+> 仅 `system_admin` 因无 `org_member` 记录，保持硬编码菜单。
+> 侧边栏菜单过滤统一通过 GetMenu API 驱动，不再在前端直接查询 org_members/org_roles。
 
 ---
 
@@ -741,7 +748,7 @@ Week 4: 对接前端
 1. **`.env` 文件**：将 `NUXT_PUBLIC_MOCK_MODE` 设为 `false`
 2. **`useAuth.ts`**：API 模式分支已预置，无需大改
 3. **`useSidebarMenu.ts`**：✅ 已改为使用 `useAuth()` 的 `menus`（GetMenu API）驱动菜单过滤，不再依赖 `useOrgApi`
-4. **`middleware/auth.ts`**：业务角色权限检查需从 API 获取，而非 mock 数据
+4. **`middleware/auth.ts`**：✅ 已改为两层权限检查（系统角色粗粒度 + `menus` 细粒度），不再依赖 `useOrgApi`
 5. **`useMockData.ts`**：保留为开发模式后备，不删除
 
 ### 7.3 测试策略
