@@ -61,7 +61,7 @@ const accessibleConfigs = computed<ArchiveReviewConfig[]>(() => {
 const accessibleProcessTypes = computed(() => accessibleConfigs.value.map(c => c.process_type))
 
 //=====进程列表（按可访问类型过滤）=====
-const processList = ref<ArchivedProcess[]>(
+const processList = computed<ArchivedProcess[]>(() =>
   mockArchivedProcesses.filter(p => accessibleProcessTypes.value.includes(p.process_type))
 )
 
