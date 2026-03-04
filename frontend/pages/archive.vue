@@ -26,7 +26,7 @@ import { useI18n } from '~/composables/useI18n'
 definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
-const { currentUser } = useAuth()
+const { currentUser, getProfile } = useAuth()
 
 const {
   mockArchivedProcesses,
@@ -34,22 +34,26 @@ const {
   mockArchiveReviewConfigs,
   archiveProcessCascaderOptions,
 } = useMockData()
-const { members, roles, loadAll: loadOrgData } = useOrgApi()
 
-onMounted(() => {
-  loadOrgData()
+// 通过 /api/auth/me 获取当前用户的组织角色，避免调用需要管理权限的 org API
+const myOrgRoleIds = ref<string[]>([])
+const myMemberId = ref<string>('')
+
+onMounted(async () => {
+  const profile = await getProfile()
+  if (profile) {
+    myOrgRoleIds.value = profile.org_roles?.map(r => r.id) ?? []
+    myMemberId.value = profile.user?.id ?? ''
+  }
 })
 
 //===== 权限：根据当前用户过滤可访问的存档配置 =====
 const accessibleConfigs = computed<ArchiveReviewConfig[]>(() => {
-  const uname = currentUser.value?.username || ''
-  const member = members.value.find(m => m.username === uname)
-  if (!member) return []
   return mockArchiveReviewConfigs.filter(cfg => {
-    //检查基于角色的访问（任何成员的角色）
-    if (member.role_ids.some(rid => cfg.allowed_roles.includes(rid))) return true
-    //检查基于会员的访问权限
-    if (cfg.allowed_members.includes(member.id)) return true
+    // 检查基于组织角色的访问
+    if (myOrgRoleIds.value.some(rid => cfg.allowed_roles.includes(rid))) return true
+    // 检查基于成员 ID 的访问
+    if (myMemberId.value && cfg.allowed_members.includes(myMemberId.value)) return true
     return false
   })
 })
