@@ -27,7 +27,6 @@ export interface LoginResponse {
     display_name: string
     email: string
     phone: string
-    avatar_url: string
     locale: string
   }
   roles: RoleInfo[]
@@ -54,4 +53,31 @@ export interface TenantOption {
   id: string
   name: string
   code: string
+}
+
+// GET /api/auth/me response types
+export interface MeOrgRole {
+  id: string
+  name: string
+  description: string
+  page_permissions: string[]
+  is_system: boolean
+}
+
+export interface MeResponse {
+  user: {
+    id: string
+    username: string
+    display_name: string
+    email: string
+    phone: string
+    locale: string
+  }
+  roles: RoleInfo[]
+  active_role: RoleInfo
+  tenant_name: string
+  department_name: string
+  position: string
+  org_roles: MeOrgRole[]
+  page_permissions: string[]
 }

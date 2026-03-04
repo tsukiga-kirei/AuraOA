@@ -448,7 +448,44 @@ const allPages = [
   │ 跳转到 /overview              │                               │
 ```
 
-### 4.3 角色切换流程
+### 4.3 获取当前用户信息
+
+```
+客户端                          Go Service                      数据库
+  │                               │                               │
+  │ GET /api/auth/me              │                               │
+  │ Header: Bearer <token>        │                               │
+  │ ─────────────────────────────>│                               │
+  │                               │                               │
+  │                               │ 1. 从 JWT Claims 获取         │
+  │                               │    user_id + activeRole       │
+  │                               │                               │
+  │                               │ 2. 查询 users 表获取基本信息   │
+  │                               │ ──────────────────────────────>│
+  │                               │                               │
+  │                               │ 3. 查询 user_role_assignments │
+  │                               │    获取所有角色分配            │
+  │                               │ ──────────────────────────────>│
+  │                               │                               │
+  │                               │ 4. 如果 activeRole 绑定租户:  │
+  │                               │    查询 org_members 获取       │
+  │                               │    department_name, position   │
+  │                               │    查询 org_member_roles +     │
+  │                               │    org_roles 获取组织角色      │
+  │                               │    合并 page_permissions       │
+  │                               │ ──────────────────────────────>│
+  │                               │                               │
+  │ <─────────────────────────────│                               │
+  │ {user, roles, active_role,    │                               │
+  │  tenant_name, department_name,│                               │
+  │  position, org_roles,         │                               │
+  │  page_permissions}            │                               │
+```
+
+> 该接口用于前端页面刷新后恢复用户完整上下文（系统角色 + 组织角色 + 页面权限），无需重新登录。
+> `system_admin` 角色下 `tenant_name`、`department_name`、`position`、`org_roles`、`page_permissions` 为空值。
+
+### 4.4 角色切换流程
 
 ```
 客户端                          Go Service                      Redis
@@ -476,7 +513,7 @@ const allPages = [
   │ 重新生成菜单                   │                               │
 ```
 
-### 4.4 Token 刷新流程
+### 4.5 Token 刷新流程
 
 ```
 客户端                          Go Service
@@ -498,7 +535,7 @@ const allPages = [
   │ {access_token(新), expires_in}│
 ```
 
-### 4.5 登出流程
+### 4.6 登出流程
 
 ```
 客户端                          Go Service                      Redis
@@ -731,6 +768,7 @@ Week 2: 认证系统
   ☐ POST /api/auth/logout
   ☐ PUT /api/auth/switch-role
   ☐ GET /api/auth/menu
+  ☐ GET /api/auth/me (用户完整上下文恢复)
   ☐ JWT 中间件
   ☐ Redis 集成 (Token黑名单+会话缓存)
 

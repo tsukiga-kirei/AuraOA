@@ -38,10 +38,23 @@ definePageMeta({
   layout: 'default',
 })
 
-const { userRole, userPermissions, currentUser, activeRole } = useAuth()
+const { userRole, userPermissions, activeRole, getProfile, updateLocale } = useAuth()
 const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockUserDashboardPrefs } = useMockData()
-const { members, roles, loadAll: loadOrgData } = useOrgApi()
 const { t, locale, setLocale, availableLocales } = useI18n()
+
+/** /api/auth/me 返回的完整资料 */
+import type { MeResponse, MeOrgRole } from '~/types/auth'
+const meData = ref<MeResponse | null>(null)
+const meLoading = ref(false)
+
+const fetchMe = async () => {
+  meLoading.value = true
+  meData.value = await getProfile()
+  meLoading.value = false
+}
+
+// 进入页面时拉取 /api/auth/me
+onMounted(() => { fetchMe() })
 
 /** 当前活跃身份的角色类型（system_admin/tenant_admin/business）*/
 const currentRoleType = computed(() => activeRole.value?.role || userRole.value)
@@ -49,9 +62,11 @@ const currentRoleType = computed(() => activeRole.value?.role || userRole.value)
 const activeTab = ref('profile')
 
 //===== 语言和区域选项卡 =====
-const handleLocaleChange = (newLocale: Locale) => {
+const handleLocaleChange = async (newLocale: Locale) => {
   setLocale(newLocale)
   message.success(t('settings.language.switchSuccess'))
+  // 同步到后端
+  await updateLocale(newLocale)
 }
 
 
@@ -119,31 +134,15 @@ const handleChangePassword = async () => {
 
 
 //=====个人资料选项卡=====
-//查找当前用户的组织成员记录以显示基于角色的权限
-const currentMember = computed(() => {
-  return members.value.find(m => m.username === currentUser.value?.username) || null
-})
-/** 该成员在当前租户中拥有的所有业务角色*/
-const currentOrgRoles = computed(() => {
-  if (!currentMember.value) return []
-  const rIds = currentMember.value.role_ids
-  return roles.value.filter(r => rIds.includes(r.id))
-})
-/** 合并所有业务角色的页面权限，org 数据未加载时从 menus 回退 */
+// 从 /api/auth/me 获取的组织角色（当前租户下的全部角色）
+const currentOrgRoles = computed<MeOrgRole[]>(() => meData.value?.org_roles || [])
+
+// 合并所有组织角色的页面权限，me 接口未返回时从菜单回退
 const currentOrgPagePermissions = computed(() => {
-  const perms = new Set<string>()
-  currentOrgRoles.value.forEach(r => r.page_permissions.forEach(p => perms.add(p)))
-  // org 数据未加载时，从后端菜单中提取路径作为回退
-  if (perms.size === 0) {
-    const { menus } = useAuth()
-    menus.value.forEach((m: any) => { if (m.path) perms.add(m.path) })
-  }
-  return [...perms]
-})
-//保持向后兼容
-const currentOrgRole = computed(() => {
-  if (!currentMember.value) return null
-  return roles.value.find(r => currentMember.value!.role_ids.includes(r.id)) || null
+  if (meData.value?.page_permissions?.length) return meData.value.page_permissions
+  // 回退：从后端菜单中提取路径
+  const { menus } = useAuth()
+  return menus.value.map((m: any) => m.path).filter(Boolean)
 })
 
 const getPageLabel = (path: string) => t(`page.${path}`, path)
@@ -156,16 +155,19 @@ const profile = ref({
   position: '',
 })
 
-// Populate profile from auth/org data once available
-watch([currentUser, currentMember], () => {
-  const user = currentUser.value
-  const member = currentMember.value
+// 从 /api/auth/me 数据填充 profile 表单
+watch(meData, (me) => {
+  if (!me) return
   profile.value = {
-    nickname: user?.display_name || user?.username || '',
-    email: member?.email || '',
-    phone: member?.phone || '',
-    department: member?.department_name || '',
-    position: member?.position || '',
+    nickname: me.user.display_name || '',
+    email: me.user.email || '',
+    phone: me.user.phone || '',
+    department: me.department_name || '',
+    position: me.position || '',
+  }
+  // 以后端 locale 为准，同步到前端
+  if (me.user.locale && (me.user.locale === 'zh-CN' || me.user.locale === 'en-US')) {
+    setLocale(me.user.locale as Locale)
   }
 }, { immediate: true })
 
@@ -562,7 +564,15 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
           <div class="profile-avatar-info">
             <div class="profile-name">{{ profile.nickname }}</div>
             <div class="profile-role">
-              <span class="role-badge">{{ getRoleLabel(currentRoleType) }}</span>
+              <template v-if="currentRoleType === 'system_admin'">
+                <span class="role-badge">{{ getRoleLabel('system_admin') }}</span>
+              </template>
+              <template v-else-if="currentOrgRoles.length">
+                <span v-for="r in currentOrgRoles" :key="r.id" class="role-badge" style="margin-right: 4px;">{{ r.name }}</span>
+              </template>
+              <template v-else>
+                <span class="role-badge">{{ getRoleLabel(currentRoleType) }}</span>
+              </template>
             </div>
           </div>
         </div>
@@ -636,7 +646,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
         <template v-else>
           <div class="perm-info-row">
             <span class="perm-info-label">{{ t('settings.profile.currentTenant') }}</span>
-            <span class="perm-info-value">{{ activeRole?.tenant_name || '-' }}</span>
+            <span class="perm-info-value">{{ meData?.tenant_name || activeRole?.tenant_name || '-' }}</span>
           </div>
           <div class="perm-info-row">
             <span class="perm-info-label">{{ t('settings.profile.currentRole') }}</span>
@@ -649,9 +659,9 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             <span class="perm-info-label">{{ t('settings.profile.roleDescription') }}</span>
             <span class="perm-info-value">{{ currentOrgRoles[0].description }}</span>
           </div>
-          <div v-if="currentMember" class="perm-info-row">
+          <div v-if="meData?.department_name" class="perm-info-row">
             <span class="perm-info-label">{{ t('settings.profile.belongDepartment') }}</span>
-            <span class="perm-info-value">{{ currentMember.department_name }}</span>
+            <span class="perm-info-value">{{ meData.department_name }}</span>
           </div>
           <div class="perm-pages-section">
             <span class="perm-info-label">{{ t('settings.profile.accessiblePages') }}</span>

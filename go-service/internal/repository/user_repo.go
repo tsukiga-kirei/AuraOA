@@ -96,3 +96,8 @@ func (r *UserRepo) FindTenantByID(tenantID uuid.UUID) (*model.Tenant, error) {
 func (r *UserRepo) UpdatePasswordHash(userID uuid.UUID, hash string) error {
 	return r.DB.Model(&model.User{}).Where("id = ?", userID).Update("password_hash", hash).Error
 }
+
+// UpdateLocale updates the user's locale preference.
+func (r *UserRepo) UpdateLocale(userID uuid.UUID, locale string) error {
+	return r.DB.Model(&model.User{}).Where("id = ?", userID).Update("locale", locale).Error
+}

@@ -224,7 +224,6 @@ func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
 			DisplayName: user.DisplayName,
 			Email:       user.Email,
 			Phone:       user.Phone,
-			AvatarURL:   user.AvatarURL,
 			Locale:      user.Locale,
 		},
 		Roles: roles,
@@ -766,5 +765,159 @@ func (s *AuthService) ChangePassword(userID uuid.UUID, req *dto.ChangePasswordRe
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// GetMe
+// ---------------------------------------------------------------------------
+
+// GetMe returns the full user profile including org-level info for the current tenant.
+func (s *AuthService) GetMe(userID uuid.UUID, activeRole jwtpkg.ActiveRoleClaim, allRoleIDs []string) (*dto.MeResponse, error) {
+	// 1. Fetch user basic info
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrTokenInvalid, "用户不存在")
+	}
+
+	// 2. Fetch all role assignments for the roles list
+	assignments, err := s.userRepo.FindRoleAssignments(userID)
+	if err != nil {
+		assignments = []model.UserRoleAssignment{}
+	}
+
+	// Batch-fetch tenant names
+	tenantNameCache := make(map[string]string)
+	for _, a := range assignments {
+		if a.TenantID != nil {
+			tidStr := a.TenantID.String()
+			if _, exists := tenantNameCache[tidStr]; !exists {
+				if t, tErr := s.userRepo.FindTenantByID(*a.TenantID); tErr == nil {
+					tenantNameCache[tidStr] = t.Name
+				}
+			}
+		}
+	}
+
+	roles := make([]dto.RoleInfo, len(assignments))
+	for i, a := range assignments {
+		var tid *string
+		var tname *string
+		if a.TenantID != nil {
+			s := a.TenantID.String()
+			tid = &s
+			if name, ok := tenantNameCache[s]; ok {
+				tname = &name
+			}
+		}
+		roles[i] = dto.RoleInfo{
+			ID:         a.ID.String(),
+			Role:       a.Role,
+			TenantID:   tid,
+			TenantName: tname,
+			Label:      a.Label,
+		}
+	}
+
+	activeRoleDTO := dto.RoleInfo{
+		ID:         activeRole.ID,
+		Role:       activeRole.Role,
+		TenantID:   activeRole.TenantID,
+		TenantName: activeRole.TenantName,
+		Label:      activeRole.Label,
+	}
+
+	resp := &dto.MeResponse{
+		User: dto.UserInfo{
+			ID:          user.ID.String(),
+			Username:    user.Username,
+			DisplayName: user.DisplayName,
+			Email:       user.Email,
+			Phone:       user.Phone,
+			Locale:      user.Locale,
+		},
+		Roles:      roles,
+		ActiveRole: activeRoleDTO,
+	}
+
+	// 3. If active role has a tenant, fetch org-level info
+	if activeRole.TenantID != nil && *activeRole.TenantID != "" {
+		tid, parseErr := uuid.Parse(*activeRole.TenantID)
+		if parseErr == nil {
+			if tname, ok := tenantNameCache[tid.String()]; ok {
+				resp.TenantName = tname
+			} else if t, tErr := s.userRepo.FindTenantByID(tid); tErr == nil {
+				resp.TenantName = t.Name
+			}
+
+			// Query org_members with department and roles preloaded
+			var members []model.OrgMember
+			if err := s.db.Where("user_id = ? AND tenant_id = ?", userID, tid).
+				Preload("Department").
+				Preload("Roles").
+				Find(&members).Error; err == nil && len(members) > 0 {
+
+				member := members[0]
+				resp.DepartmentName = member.Department.Name
+				resp.Position = member.Position
+
+				// Collect all org roles and merge page_permissions
+				permSet := make(map[string]bool)
+				var orgRoles []dto.MeOrgRole
+				for _, role := range member.Roles {
+					var perms []string
+					if err := json.Unmarshal(role.PagePermissions, &perms); err != nil {
+						perms = []string{}
+					}
+					for _, p := range perms {
+						permSet[p] = true
+					}
+					orgRoles = append(orgRoles, dto.MeOrgRole{
+						ID:              role.ID.String(),
+						Name:            role.Name,
+						Description:     role.Description,
+						PagePermissions: perms,
+						IsSystem:        role.IsSystem,
+					})
+				}
+				resp.OrgRoles = orgRoles
+
+				allPerms := make([]string, 0, len(permSet))
+				for p := range permSet {
+					allPerms = append(allPerms, p)
+				}
+				resp.PagePermissions = allPerms
+			}
+		}
+	}
+
+	// Ensure non-nil slices
+	if resp.OrgRoles == nil {
+		resp.OrgRoles = []dto.MeOrgRole{}
+	}
+	if resp.PagePermissions == nil {
+		resp.PagePermissions = []string{}
+	}
+
+	return resp, nil
+}
+
+// ---------------------------------------------------------------------------
+// UpdateLocale
+// ---------------------------------------------------------------------------
+
+// UpdateLocale updates the user's locale preference.
+func (s *AuthService) UpdateLocale(userID uuid.UUID, locale string) error {
+	// Validate locale value
+	switch locale {
+	case "zh-CN", "en-US":
+		// ok
+	default:
+		return newServiceError(errcode.ErrParamValidation, "不支持的语言设置")
+	}
+
+	if err := s.userRepo.UpdateLocale(userID, locale); err != nil {
+		return newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
 	return nil
 }
