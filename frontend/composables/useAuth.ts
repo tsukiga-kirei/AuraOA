@@ -201,9 +201,14 @@ export const useAuth = () => {
   }
 
   const logout = async (): Promise<void> => {
-    //尽力而为的服务器端令牌失效
+    //服务器端令牌失效——直接用 $fetch，不走 authFetch，避免 401 → refresh → logout 死循环
     try {
-      await authFetch('/api/auth/logout', { method: 'POST' })
+      const baseUrl = String(config.public.apiBase)
+      const currentToken = token.value || (import.meta.client ? localStorage.getItem('token') : null)
+      await $fetch(`${baseUrl}/api/auth/logout`, {
+        method: 'POST',
+        headers: currentToken ? { Authorization: `Bearer ${currentToken}` } : {},
+      })
     } catch {
       //忽略错误 - 始终继续进行本地清理
     }
@@ -297,13 +302,13 @@ export const useAuth = () => {
         throw error
       }
 
-      //网络错误（服务器无响应）
-      if (error.name === 'FetchError' || error.message === 'fetch failed' || (!error.statusCode && !error.status && error.cause)) {
+      //网络错误（服务器无响应）—— 排除有 HTTP 状态码的情况
+      const statusCode = error.statusCode || error.status
+      if (!statusCode && (error.name === 'FetchError' || error.message === 'fetch failed' || error.cause)) {
         throw new Error('网络连接失败，请检查网络')
       }
 
       //句柄 401 — 令牌过期，尝试刷新
-      const statusCode = error.statusCode || error.status
       if (statusCode === 401) {
         //如果已经刷新，则将此请求排队
         if (isRefreshing) {
