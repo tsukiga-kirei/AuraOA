@@ -38,7 +38,7 @@ definePageMeta({
   layout: 'default',
 })
 
-const { userRole, userPermissions, activeRole, getProfile, updateLocale } = useAuth()
+const { userRole, userPermissions, activeRole, getProfile, updateLocale, setUserLocale } = useAuth()
 const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockUserDashboardPrefs } = useMockData()
 const { t, locale, setLocale, availableLocales } = useI18n()
 
@@ -167,7 +167,7 @@ watch(meData, (me) => {
   }
   // 以后端 locale 为准，同步到前端
   if (me.user.locale && (me.user.locale === 'zh-CN' || me.user.locale === 'en-US')) {
-    setLocale(me.user.locale as Locale)
+    setUserLocale(me.user.locale)
   }
 }, { immediate: true })
 

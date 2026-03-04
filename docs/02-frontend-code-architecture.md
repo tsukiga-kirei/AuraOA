@@ -185,12 +185,12 @@ sections = computed(() => {
 
 ### 2.4 useI18n — 国际化
 
-**文件**: `composables/useI18n.ts` (97 行)
+**文件**: `composables/useI18n.ts`
 
 - 支持 `zh-CN` 和 `en-US` 两种语言
 - 翻译文件约 81KB 每组，超过 1500 个翻译键
 - 支持插值：`t('login.loginAs', '业务用户')` → `以 业务用户 身份登录`
-- 语言偏好持久化到 `localStorage.app_locale`
+- 语言偏好由 `useAuth` 的 `userLocale` 统一管理，持久化在 `auth_state` 中（不再使用独立的 `localStorage.app_locale`）
 
 ### 2.5 useTheme — 主题切换
 

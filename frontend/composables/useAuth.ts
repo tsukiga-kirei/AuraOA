@@ -1,7 +1,6 @@
 import type { LoginRequest, LoginResponse, SwitchRoleResponse, MenuItem, UserRole, PermissionGroup, RoleInfo, MeResponse } from '~/types/auth'
 
-
-//---统一API响应格式---
+// --- 统一 API 响应格式 ---
 interface ApiResponse<T> {
   code: number
   message: string
@@ -9,7 +8,7 @@ interface ApiResponse<T> {
   trace_id: string
 }
 
-//--- 错误代码 → 用户友好的消息映射 ---
+// --- 错误代码 → 用户友好的消息映射 ---
 const ERROR_CODE_MAP: Record<number, string> = {
   40103: '用户名或密码错误',
   40104: '账户已锁定，请稍后重试',
@@ -20,7 +19,7 @@ const ERROR_CODE_MAP: Record<number, string> = {
   50000: '服务器错误，请稍后重试',
 }
 
-//--- 令牌刷新队列（模块级单例）---
+// --- 令牌刷新队列（模块级单例）---
 let isRefreshing = false
 let refreshSubscribers: Array<(token: string) => void> = []
 
@@ -33,7 +32,25 @@ function addRefreshSubscriber(cb: (token: string) => void) {
   refreshSubscribers.push(cb)
 }
 
-//LoginRequest 和 LoginResponse 是从 ~/types/auth 导入的
+// --- 合并的 localStorage 状态结构 ---
+interface PersistedAuthState {
+  user_role: UserRole
+  user_permissions: PermissionGroup[]
+  all_roles: RoleInfo[]
+  active_role: RoleInfo | null
+  current_user: {
+    username: string
+    display_name: string
+    tenant_id: string
+    role_label: string
+    email: string
+    phone: string
+  } | null
+  menus: MenuItem[]
+  locale: string
+}
+
+const AUTH_STATE_KEY = 'auth_state'
 
 export const useAuth = () => {
   const config = useRuntimeConfig()
@@ -41,49 +58,96 @@ export const useAuth = () => {
   const refreshToken = useState<string | null>('auth_refresh', () => null)
   const menus = useState<MenuItem[]>('auth_menus', () => [])
   const userRole = useState<UserRole>('auth_role', () => 'business')
-
-  /** 该用户拥有的所有角色分配（登录后从未修改）*/
   const allRoles = useState<RoleInfo[]>('auth_all_roles', () => [])
-  /** 当前活跃的角色分配*/
   const activeRole = useState<RoleInfo | null>('auth_active_role', () => null)
-  /** Active权限组（派生自activeRole）*/
   const userPermissions = useState<PermissionGroup[]>('auth_permissions', () => ['business'])
+  const currentUser = useState<PersistedAuthState['current_user']>('auth_user', () => null)
+  const userLocale = useState<string>('auth_locale', () => 'zh-CN')
 
-  const currentUser = useState<{
-    username: string
-    display_name: string
-    tenant_id: string
-    role_label: string
-    email: string
-    phone: string
-  } | null>('auth_user', () => null)
+  // =========================================================================
+  // 统一 localStorage 读写
+  // =========================================================================
+
+  /** 将当前响应式状态序列化到 localStorage（单个 key） */
+  const persistState = () => {
+    if (!import.meta.client) return
+    const state: PersistedAuthState = {
+      user_role: userRole.value,
+      user_permissions: userPermissions.value,
+      all_roles: allRoles.value,
+      active_role: activeRole.value,
+      current_user: currentUser.value,
+      menus: menus.value,
+      locale: userLocale.value,
+    }
+    localStorage.setItem(AUTH_STATE_KEY, JSON.stringify(state))
+  }
+
+  /** 从 localStorage 恢复状态到响应式变量 */
+  const loadState = (): boolean => {
+    if (!import.meta.client) return false
+    const raw = localStorage.getItem(AUTH_STATE_KEY)
+    if (!raw) return false
+    try {
+      const state: PersistedAuthState = JSON.parse(raw)
+      if (state.user_role) userRole.value = state.user_role
+      if (state.user_permissions) userPermissions.value = state.user_permissions
+      if (state.all_roles) allRoles.value = state.all_roles
+      if (state.active_role !== undefined) activeRole.value = state.active_role
+      if (state.current_user !== undefined) currentUser.value = state.current_user
+      if (state.menus) menus.value = state.menus
+      if (state.locale) userLocale.value = state.locale
+      return true
+    } catch { return false }
+  }
+
+  /** 清除所有持久化的认证数据 */
+  const clearStorage = () => {
+    if (!import.meta.client) return
+    localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')
+    localStorage.removeItem(AUTH_STATE_KEY)
+    // 兼容：清除旧版分散 key（升级过渡期）
+    ;['user_role', 'user_permissions', 'all_roles', 'active_role',
+      'current_user', 'auth_menus', 'app_locale'].forEach(k => localStorage.removeItem(k))
+  }
+
+  /** 持久化 token 对（独立 key，高频读写） */
+  const persistTokens = () => {
+    if (!import.meta.client) return
+    if (token.value) localStorage.setItem('token', token.value)
+    if (refreshToken.value) localStorage.setItem('refresh_token', refreshToken.value)
+  }
+
+  // =========================================================================
+  // 状态设置器（更新响应式 + 持久化）
+  // =========================================================================
 
   const setUserRole = (role: UserRole) => {
     userRole.value = role
-    if (import.meta.client) localStorage.setItem('user_role', role)
+    persistState()
   }
 
   const setUserPermissions = (perms: PermissionGroup[]) => {
     userPermissions.value = perms
-    if (import.meta.client) localStorage.setItem('user_permissions', JSON.stringify(perms))
+    persistState()
   }
 
   const setAllRoles = (roles: RoleInfo[]) => {
     allRoles.value = roles
-    if (import.meta.client) localStorage.setItem('all_roles', JSON.stringify(roles))
+    persistState()
   }
 
   const setActiveRole = (role: RoleInfo) => {
     activeRole.value = role
-    //派生权限：仅活动角色的权限组
     userPermissions.value = [role.role]
-    if (import.meta.client) {
-      localStorage.setItem('active_role', JSON.stringify(role))
-      localStorage.setItem('user_permissions', JSON.stringify([role.role]))
-    }
+    persistState()
   }
 
-  /** 通过分配ID切换到特定角色*/
+  // =========================================================================
+  // 核心认证方法
+  // =========================================================================
+
   const switchRole = async (roleId: string): Promise<boolean> => {
     try {
       const data = await authFetch<SwitchRoleResponse>('/api/auth/switch-role', {
@@ -91,32 +155,26 @@ export const useAuth = () => {
         body: { role_id: roleId },
       })
 
-      //原子更新——仅在 API 调用成功后应用更改
       token.value = data.access_token
       if (import.meta.client) localStorage.setItem('token', data.access_token)
 
-      const mappedActiveRole: RoleInfo = {
+      activeRole.value = {
         id: data.active_role.id,
         role: data.active_role.role,
         tenant_id: data.active_role.tenant_id,
         tenant_name: data.active_role.tenant_name,
         label: data.active_role.label,
       }
-      setActiveRole(mappedActiveRole)
 
       const switchPerms = data.permissions && data.permissions.length > 0
         ? data.permissions as PermissionGroup[]
         : [data.active_role.role] as PermissionGroup[]
       userPermissions.value = switchPerms
-      if (import.meta.client) localStorage.setItem('user_permissions', JSON.stringify(switchPerms))
 
-      //持久化菜单，确保刷新后侧边栏不为空
       menus.value = data.menus
-      if (import.meta.client) localStorage.setItem('auth_menus', JSON.stringify(data.menus))
-
+      persistState()
       return true
     } catch {
-      //失败时，所有状态保持不变
       return false
     }
   }
@@ -129,34 +187,26 @@ export const useAuth = () => {
       })
 
       if (res.code !== 0 || !res.data) return false
-
       const data = res.data
 
-      //存储令牌
+      // 令牌
       token.value = data.access_token
       refreshToken.value = data.refresh_token
+      persistTokens()
 
-      //从 LoginResponse 映射角色
-      const mappedRoles: RoleInfo[] = data.roles.map(r => ({
-        id: r.id,
-        role: r.role,
-        tenant_id: r.tenant_id,
-        tenant_name: r.tenant_name,
-        label: r.label,
+      // 角色
+      allRoles.value = data.roles.map(r => ({
+        id: r.id, role: r.role, tenant_id: r.tenant_id,
+        tenant_name: r.tenant_name, label: r.label,
       }))
-      setAllRoles(mappedRoles)
 
-      //映射 active_role
-      const mappedActiveRole: RoleInfo = {
-        id: data.active_role.id,
-        role: data.active_role.role,
-        tenant_id: data.active_role.tenant_id,
-        tenant_name: data.active_role.tenant_name,
+      activeRole.value = {
+        id: data.active_role.id, role: data.active_role.role,
+        tenant_id: data.active_role.tenant_id, tenant_name: data.active_role.tenant_name,
         label: data.active_role.label,
       }
-      setActiveRole(mappedActiveRole)
 
-      //映射用户信息
+      // 用户信息
       currentUser.value = {
         username: data.user.username,
         display_name: data.user.display_name,
@@ -166,28 +216,21 @@ export const useAuth = () => {
         phone: data.user.phone || '',
       }
 
-      //优先使用后端返回的权限，否则回退到活跃角色
-      const effectivePerms = data.permissions && data.permissions.length > 0
+      // 权限
+      userPermissions.value = data.permissions && data.permissions.length > 0
         ? data.permissions as PermissionGroup[]
         : [data.active_role.role] as PermissionGroup[]
-      userPermissions.value = effectivePerms
 
-      if (import.meta.client) {
-        localStorage.setItem('token', data.access_token)
-        localStorage.setItem('refresh_token', data.refresh_token)
-        localStorage.setItem('current_user', JSON.stringify(currentUser.value))
-        localStorage.setItem('user_permissions', JSON.stringify(effectivePerms))
-      }
+      // locale 从后端用户数据获取
+      if (data.user.locale) userLocale.value = data.user.locale
 
-      //登录后立即拉取菜单并持久化，确保刷新后侧边栏不为空
+      // 拉取菜单
       try {
         const menuData = await authFetch<{ menus: MenuItem[] }>('/api/auth/menu')
         menus.value = menuData.menus
-        if (import.meta.client) localStorage.setItem('auth_menus', JSON.stringify(menuData.menus))
-      } catch {
-        //菜单加载失败不影响登录流程
-      }
+      } catch { /* 菜单加载失败不影响登录 */ }
 
+      persistState()
       return true
     } catch {
       return false
@@ -198,6 +241,7 @@ export const useAuth = () => {
     try {
       const data = await authFetch<{ menus: MenuItem[] }>('/api/auth/menu')
       menus.value = data.menus
+      persistState()
       return data.menus
     } catch {
       return []
@@ -205,7 +249,6 @@ export const useAuth = () => {
   }
 
   const logout = async (): Promise<void> => {
-    //服务器端令牌失效——直接用 $fetch，不走 authFetch，避免 401 → refresh → logout 死循环
     try {
       const baseUrl = String(config.public.apiBase)
       const currentToken = token.value || (import.meta.client ? localStorage.getItem('token') : null)
@@ -213,11 +256,9 @@ export const useAuth = () => {
         method: 'POST',
         headers: currentToken ? { Authorization: `Bearer ${currentToken}` } : {},
       })
-    } catch {
-      //忽略错误 - 始终继续进行本地清理
-    }
+    } catch { /* 忽略 */ }
 
-    //清除所有 useState 身份验证状态
+    // 清除响应式状态
     token.value = null
     refreshToken.value = null
     menus.value = []
@@ -226,26 +267,14 @@ export const useAuth = () => {
     activeRole.value = null
     userPermissions.value = ['business']
     currentUser.value = null
+    userLocale.value = 'zh-CN'
 
-    //清除所有 localStorage 身份验证密钥
-    if (import.meta.client) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('refresh_token')
-      localStorage.removeItem('user_role')
-      localStorage.removeItem('user_permissions')
-      localStorage.removeItem('all_roles')
-      localStorage.removeItem('active_role')
-      localStorage.removeItem('current_user')
-      localStorage.removeItem('auth_menus')
-    }
-
+    clearStorage()
     navigateTo('/login')
   }
 
   const isAuthenticated = computed(() => !!token.value)
 
-  /**
-   * 使用存储的refresh_token刷新访问令牌。*/
   const doRefreshToken = async (): Promise<boolean> => {
     const rt = refreshToken.value || (import.meta.client ? localStorage.getItem('refresh_token') : null)
     if (!rt) return false
@@ -266,183 +295,147 @@ export const useAuth = () => {
     }
   }
 
-  /**
-   * 经过身份验证的获取包装器。
-   * - 自动注入不记名令牌
-   * - 解析统一响应 { code, message, data };当code=0时返回数据
-   * - 在 401 上：自动刷新令牌并重试；刷新期间对并发请求进行排队
-   * - 刷新失败时：清除身份验证状态并重定向到登录
-   * - 将已知错误代码映射到用户友好的消息*/
+  // =========================================================================
+  // authFetch — 带自动刷新的认证请求包装器
+  // =========================================================================
+
   async function authFetch<T>(path: string, options?: Record<string, any>): Promise<T> {
     const baseUrl = String(config.public.apiBase)
     const url = path.startsWith('http') ? path : `${baseUrl}${path}`
 
     const doRequest = (accessToken: string | null) => {
-      const headers: Record<string, string> = {
-        ...(options?.headers || {}),
-      }
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`
-      }
-      return $fetch<ApiResponse<T>>(url, {
-        ...options,
-        headers,
-      })
+      const headers: Record<string, string> = { ...(options?.headers || {}) }
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
+      return $fetch<ApiResponse<T>>(url, { ...options, headers })
     }
 
     try {
       const res = await doRequest(token.value)
-
-      //统一响应：code=0表示成功
       if (res.code === 0) return res.data
-      //非零代码 → 抛出映射或原始消息
       const friendlyMsg = ERROR_CODE_MAP[res.code] || res.message || '请求失败'
       const err = new Error(friendlyMsg) as any
       err.code = res.code
       throw err
     } catch (error: any) {
-      //如果我们自己抛出它（从代码！= 0），则按原样重新抛出
-      if (error.code && ERROR_CODE_MAP[error.code]) {
-        throw error
-      }
+      if (error.code && ERROR_CODE_MAP[error.code]) throw error
 
-      //网络错误（服务器无响应）—— 排除有 HTTP 状态码的情况
       const statusCode = error.statusCode || error.status
       if (!statusCode && (error.name === 'FetchError' || error.message === 'fetch failed' || error.cause)) {
         throw new Error('网络连接失败，请检查网络')
       }
 
-      //句柄 401 — 令牌过期，尝试刷新
       if (statusCode === 401) {
-        //如果已经刷新，则将此请求排队
         if (isRefreshing) {
           return new Promise<T>((resolve, reject) => {
             addRefreshSubscriber(async (newToken: string) => {
               try {
                 const retryRes = await doRequest(newToken)
-                if (retryRes.code === 0) {
-                  resolve(retryRes.data)
-                } else {
+                if (retryRes.code === 0) resolve(retryRes.data)
+                else {
                   const msg = ERROR_CODE_MAP[retryRes.code] || retryRes.message || '请求失败'
-                  const e = new Error(msg) as any
-                  e.code = retryRes.code
-                  reject(e)
+                  const e = new Error(msg) as any; e.code = retryRes.code; reject(e)
                 }
-              } catch (retryErr) {
-                reject(retryErr)
-              }
+              } catch (retryErr) { reject(retryErr) }
             })
           })
         }
 
-        //开始刷新
         isRefreshing = true
         const refreshOk = await doRefreshToken()
         isRefreshing = false
 
         if (refreshOk) {
           const newToken = token.value!
-          //通知所有排队的请求
           onTokenRefreshed(newToken)
-          //重试原始请求
           const retryRes = await doRequest(newToken)
           if (retryRes.code === 0) return retryRes.data
           const msg = ERROR_CODE_MAP[retryRes.code] || retryRes.message || '请求失败'
-          const e = new Error(msg) as any
-          e.code = retryRes.code
-          throw e
+          const e = new Error(msg) as any; e.code = retryRes.code; throw e
         } else {
-          //刷新失败——清除状态，重定向到登录
           refreshSubscribers = []
           await logout()
           throw new Error('登录已过期，请重新登录')
         }
       }
 
-      //其他 HTTP 错误 — 尝试从响应正文中提取代码
       if (error.data && typeof error.data.code === 'number') {
         const friendlyMsg = ERROR_CODE_MAP[error.data.code] || error.data.message || '请求失败'
-        const e = new Error(friendlyMsg) as any
-        e.code = error.data.code
-        throw e
+        const e = new Error(friendlyMsg) as any; e.code = error.data.code; throw e
       }
 
-      //Fallback：重新抛出原始错误
       throw error
     }
   }
 
+  // =========================================================================
+  // 辅助方法
+  // =========================================================================
+
   const changePassword = async (req: { current_password: string; new_password: string }): Promise<boolean> => {
     try {
-      await authFetch('/api/auth/change-password', {
-        method: 'PUT',
-        body: req,
-      })
+      await authFetch('/api/auth/change-password', { method: 'PUT', body: req })
       return true
-    } catch {
-      return false
-    }
+    } catch { return false }
   }
 
-  /** 从 /api/auth/me 获取完整的用户资料（含组织信息） */
   const getProfile = async (): Promise<MeResponse | null> => {
-    try {
-      return await authFetch<MeResponse>('/api/auth/me')
-    } catch {
-      return null
-    }
+    try { return await authFetch<MeResponse>('/api/auth/me') }
+    catch { return null }
   }
 
-  /** 将语言偏好同步到后端 */
   const updateLocale = async (locale: string): Promise<boolean> => {
     try {
-      await authFetch('/api/auth/locale', {
-        method: 'PUT',
-        body: { locale },
-      })
+      await authFetch('/api/auth/locale', { method: 'PUT', body: { locale } })
+      userLocale.value = locale
+      persistState()
       return true
-    } catch {
-      return false
-    }
+    } catch { return false }
   }
 
+  // =========================================================================
+  // 恢复（页面刷新时从 localStorage 重建状态）
+  // =========================================================================
+
   const restore = () => {
-    if (import.meta.client) {
-      const saved = localStorage.getItem('token')
-      if (saved) token.value = saved
-      const savedRefresh = localStorage.getItem('refresh_token')
-      if (savedRefresh) refreshToken.value = savedRefresh
-      const savedRole = localStorage.getItem('user_role') as UserRole | null
-      if (savedRole) userRole.value = savedRole
-      const savedAllRoles = localStorage.getItem('all_roles')
-      if (savedAllRoles) {
-        try { allRoles.value = JSON.parse(savedAllRoles) } catch { /*忽略*/ }
-      }
-      const savedActiveRole = localStorage.getItem('active_role')
-      if (savedActiveRole) {
-        try { activeRole.value = JSON.parse(savedActiveRole) } catch { /*忽略*/ }
-      }
-      const savedPerms = localStorage.getItem('user_permissions')
-      if (savedPerms) {
-        try { userPermissions.value = JSON.parse(savedPerms) } catch { /*忽略*/ }
-      }
-      const savedUser = localStorage.getItem('current_user')
-      if (savedUser) {
-        try { currentUser.value = JSON.parse(savedUser) } catch { /*忽略*/ }
-      }
-      //恢复菜单，避免刷新后侧边栏为空
-      const savedMenus = localStorage.getItem('auth_menus')
-      if (savedMenus) {
-        try { menus.value = JSON.parse(savedMenus) } catch { /*忽略*/ }
-      }
-    }
+    if (!import.meta.client) return
+
+    // 令牌独立恢复
+    const savedToken = localStorage.getItem('token')
+    if (savedToken) token.value = savedToken
+    const savedRefresh = localStorage.getItem('refresh_token')
+    if (savedRefresh) refreshToken.value = savedRefresh
+
+    // 尝试从合并 key 恢复
+    if (loadState()) return
+
+    // 兼容旧版分散 key（升级过渡期）
+    const savedRole = localStorage.getItem('user_role') as UserRole | null
+    if (savedRole) userRole.value = savedRole
+    try { const v = localStorage.getItem('all_roles'); if (v) allRoles.value = JSON.parse(v) } catch {}
+    try { const v = localStorage.getItem('active_role'); if (v) activeRole.value = JSON.parse(v) } catch {}
+    try { const v = localStorage.getItem('user_permissions'); if (v) userPermissions.value = JSON.parse(v) } catch {}
+    try { const v = localStorage.getItem('current_user'); if (v) currentUser.value = JSON.parse(v) } catch {}
+    try { const v = localStorage.getItem('auth_menus'); if (v) menus.value = JSON.parse(v) } catch {}
+    const savedLocale = localStorage.getItem('app_locale')
+    if (savedLocale) userLocale.value = savedLocale
+
+    // 迁移：写入合并 key，清除旧 key
+    persistState()
+    ;['user_role', 'user_permissions', 'all_roles', 'active_role',
+      'current_user', 'auth_menus', 'app_locale'].forEach(k => localStorage.removeItem(k))
+  }
+
+  /** 设置 locale 并持久化到 auth_state（不调用后端） */
+  const setUserLocale = (locale: string) => {
+    userLocale.value = locale
+    persistState()
   }
 
   return {
     token, refreshToken, menus, userRole, userPermissions, currentUser,
-    allRoles, activeRole,
+    allRoles, activeRole, userLocale,
     login, getMenu, logout, isAuthenticated, restore,
     setUserRole, setUserPermissions, setAllRoles, setActiveRole, switchRole,
-    authFetch, doRefreshToken, changePassword, getProfile, updateLocale,
+    authFetch, doRefreshToken, changePassword, getProfile, updateLocale, setUserLocale,
   }
 }
