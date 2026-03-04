@@ -63,7 +63,6 @@ const handleLogin = async () => {
       preferred_role: activePortal.value
     })
     if (ok) {
-      await getMenu()
       message.success(t('login.successRedirect'))
       navigateTo('/overview')
     } else {

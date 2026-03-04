@@ -99,7 +99,7 @@ func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
 	filtered := assignments
 	if req.TenantID != "" && req.PreferredRole != "system_admin" {
 		tenantUUID, _ := uuid.Parse(req.TenantID)
-		filtered = filterAssignmentsByTenant(assignments, &tenantUUID)
+		filtered = filterAssignmentsByTenant(assignments, &tenantUUID, false)
 		if len(filtered) == 0 {
 			return nil, newServiceError(errcode.ErrNoRoleInTenant, "用户在该租户无角色分配")
 		}
@@ -107,6 +107,11 @@ func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
 
 	//8.按优先级选择activeRole
 	activeAssignment := selectActiveRole(filtered, req.PreferredRole)
+
+	// 如果指定了 preferred_role 且不是 system_admin，但最终选中的角色不匹配，说明该租户下没有对应角色
+	if req.PreferredRole != "" && req.PreferredRole != "system_admin" && activeAssignment.Role != req.PreferredRole {
+		return nil, newServiceError(errcode.ErrNoRoleInTenant, "用户在该租户下没有对应角色")
+	}
 
 	//9.重置登录失败次数
 	if err := s.userRepo.ResetLoginFail(user.ID); err != nil {
@@ -580,13 +585,15 @@ func (s *AuthService) getMenuFromOrgRoles(userID string, tenantID string) (*dto.
 //辅助函数
 // ---------------------------------------------------------------------------
 
-//filterAssignmentsByTenant 返回与给定租户 ID 匹配的分配，
-//加上任何 system_admin 分配（其中 TenantID 为零）。
-func filterAssignmentsByTenant(assignments []model.UserRoleAssignment, tenantID *uuid.UUID) []model.UserRoleAssignment {
+//filterAssignmentsByTenant 返回与给定租户 ID 匹配的分配。
+//includeSystemAdmin 控制是否保留 system_admin 分配（TenantID 为空）。
+func filterAssignmentsByTenant(assignments []model.UserRoleAssignment, tenantID *uuid.UUID, includeSystemAdmin bool) []model.UserRoleAssignment {
 	var result []model.UserRoleAssignment
 	for _, a := range assignments {
 		if a.Role == "system_admin" {
-			result = append(result, a)
+			if includeSystemAdmin {
+				result = append(result, a)
+			}
 			continue
 		}
 		if a.TenantID != nil && tenantID != nil && *a.TenantID == *tenantID {
