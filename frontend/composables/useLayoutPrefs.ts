@@ -17,7 +17,6 @@ export const useLayoutPrefs = () => {
     const prefs = useState<LayoutPrefs>('layout_prefs', () => ({ ...defaults }))
 
     const restore = () => {
-        if (!import.meta.client) return
         try {
             const raw = localStorage.getItem(STORAGE_KEY)
             if (raw) {
@@ -28,7 +27,6 @@ export const useLayoutPrefs = () => {
     }
 
     const persist = () => {
-        if (!import.meta.client) return
         localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs.value))
     }
 

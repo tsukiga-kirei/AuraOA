@@ -1,6 +1,6 @@
 # OA 智审平台 — 前端代码架构与交互逻辑详解
 
-> 文档版本：v1.1 | 更新日期：2026-03-03  
+> 文档版本：v1.2 | 更新日期：2026-03-04  
 > 本文档详细解析前端代码的架构设计、核心交互逻辑、认证流程和技术实现细节。
 
 ---
@@ -51,63 +51,79 @@ export default defineNuxtConfig({
 
 ### 2.1 useAuth — 认证与会话管理
 
-**文件**: `composables/useAuth.ts` (236 行)
+**文件**: `composables/useAuth.ts` (472 行)
 
 #### 状态管理
 
+所有认证状态通过统一的 `PersistedAuthState` 结构持久化到 localStorage 单个 key（`auth_state`），token 对独立存储（高频读写）。支持从旧版分散 key 自动迁移。
+
 | 状态变量 | 类型 | 说明 | 持久化 |
 |----------|------|------|--------|
-| `token` | `string | null` | JWT 访问令牌 | localStorage `token` |
-| `refreshToken` | `string | null` | 刷新令牌 | localStorage `refresh_token` |
-| `userRole` | `UserRole` | 当前角色类型 | localStorage `user_role` |
-| `allRoles` | `UserRoleAssignment[]` | 用户所有角色分配 | localStorage `all_roles` |
-| `activeRole` | `UserRoleAssignment | null` | 当前激活的角色 | localStorage `active_role` |
-| `userPermissions` | `PermissionGroup[]` | 当前权限组 | localStorage `user_permissions` |
-| `currentUser` | `object | null` | 当前用户信息 | localStorage `current_user` |
+| `token` | `string \| null` | JWT 访问令牌 | localStorage `token` |
+| `refreshToken` | `string \| null` | 刷新令牌 | localStorage `refresh_token` |
+| `userRole` | `UserRole` | 当前角色类型 | `auth_state` |
+| `allRoles` | `RoleInfo[]` | 用户所有角色分配 | `auth_state` |
+| `activeRole` | `RoleInfo \| null` | 当前激活的角色 | `auth_state` |
+| `userPermissions` | `PermissionGroup[]` | 当前权限组 | `auth_state` |
+| `currentUser` | `object \| null` | 当前用户信息 | `auth_state` |
+| `menus` | `MenuItem[]` | 当前菜单列表 | `auth_state` |
+| `userLocale` | `string` | 用户语言偏好 | `auth_state` |
 
-#### 登录流程 (Mock 模式)
+#### 错误代码映射
 
-```
-1. login({ username, password, tenant_id, preferred_role })
-2. → 在 MOCK_USERS 中查找匹配的用户
-3. → 生成 mock_token（前端模拟）
-4. → setAllRoles(matched.roles) — 存储所有角色分配
-5. → 根据 preferred_role 选择默认激活角色：
-     a. 优先匹配用户选择的入口类型
-     b. 回退：system_admin > tenant_admin > 第一个角色
-6. → setActiveRole(defaultRole) — 设置权限为该角色的权限组
-7. → 设置 currentUser 信息
-8. → 所有状态写入 localStorage
-9. → return true
-```
+`authFetch` 内置错误代码到用户友好消息的映射（`ERROR_CODE_MAP`），覆盖 40103（密码错误）、40104（账户锁定）、40105（账户禁用）、40106（租户停用）、40300（权限不足）、40400（资源不存在）、50000（服务器错误）等场景。网络不可达时抛出"网络连接失败"提示。
 
-#### 登录流程 (API 模式)
+#### 登录流程
 
 ```
 1. login({ username, password, tenant_id })
-2. → POST /api/auth/login → 获取 { access_token, refresh_token, expires_in }
-3. → 存储 token 到 state + localStorage
-4. → return true
+2. → POST /api/auth/login → 获取 { access_token, refresh_token, user, roles, active_role, permissions }
+3. → 存储 token 对到 state + localStorage
+4. → 设置 allRoles、activeRole、currentUser、userPermissions
+5. → 从 user.locale 同步语言偏好
+6. → authFetch GET /api/auth/menu 拉取菜单（失败不影响登录）
+7. → persistState() 统一写入 auth_state
+8. → return true
 ```
 
 #### 角色切换
 
 ```typescript
 switchRole(roleId: string): Promise<boolean>
-// 1. 在 allRoles 中查找目标角色
-// 2. setActiveRole(target) — 更新权限为目标角色的权限组
-// 3. 重新生成菜单 getMockMenusByActiveRole(target)
+// 1. PUT /api/auth/switch-role { role_id } → 获取新 access_token + active_role + permissions + menus
+// 2. 更新 token、activeRole、userPermissions、menus
+// 3. persistState()
 ```
 
-#### 菜单生成
+#### 菜单获取
 
 ```typescript
-getMockMenusByActiveRole(role: UserRoleAssignment): MockMenuItem[]
-// 根据角色类型生成对应菜单：
-// - business: 仪表盘、审核工作台、定时任务、归档复盘
-// - tenant_admin: 规则配置、组织人员、数据信息、用户偏好
-// - system_admin: 租户管理、系统设置
-// - overview 始终显示
+getMenu(): Promise<MenuItem[]>
+// GET /api/auth/menu → 更新 menus 状态并持久化
+```
+
+#### authFetch — 带自动刷新的认证请求包装器
+
+所有认证 API 调用统一通过 `authFetch<T>(path, options)` 发起，自动附加 Bearer Token。核心特性：
+- 统一响应解析：期望 `{ code: 0, data: T }` 格式，非 0 code 映射为友好错误
+- 401 自动刷新：收到 401 时调用 `doRefreshToken()` 换取新 token 后重试
+- 并发刷新队列：多个请求同时 401 时，仅触发一次刷新，其余请求排队等待新 token
+- 刷新失败自动登出：refresh 失败时清除状态并跳转 /login
+
+#### 辅助方法
+
+```typescript
+changePassword(req: { current_password, new_password }): Promise<boolean>
+// PUT /api/auth/change-password
+
+getProfile(): Promise<MeResponse | null>
+// GET /api/auth/me → 返回用户完整资料、组织角色、页面权限
+
+updateLocale(locale: string): Promise<boolean>
+// PUT /api/auth/locale → 同步语言偏好到后端
+
+setUserLocale(locale: string): void
+// 仅更新前端 locale 状态并持久化（不调用后端）
 ```
 
 #### 会话恢复
@@ -115,12 +131,17 @@ getMockMenusByActiveRole(role: UserRoleAssignment): MockMenuItem[]
 ```typescript
 restore()
 // 在页面刷新时从 localStorage 恢复所有认证状态（同步）
+// 优先从 auth_state 合并 key 恢复，兼容旧版分散 key 并自动迁移
 // 在 middleware/auth.ts 中被调用
 
 tryRestoreAsync(): Promise<boolean>
-// 异步恢复：当 access_token 丢失但 refresh_token 仍在时，
-// 尝试调用 doRefreshToken() 换取新 token。
+// 异步恢复：当 access_token 丢失但 refresh_token 仍未过期时，
+// 先通过 parseJwtExp() 检查 refresh_token 是否已过期，
+// 若未过期则调用 doRefreshToken() 换取新 token。
 // 返回 true 表示恢复成功（token 已可用），false 表示无法恢复。
+
+isRefreshTokenValid(): boolean
+// 判断 refresh_token 是否仍然有效（未过期）
 ```
 
 ### 2.2 useMockData — 模拟数据中心
@@ -245,22 +266,24 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // 1. 恢复认证状态（同步，从 localStorage）
   restore()
 
-  // 2. /login 页面：已认证则跳转 /overview，否则放行
-  if (to.path === '/login') return isAuthenticated ? navigateTo('/overview') : undefined
-
-  // 3. 未认证 → 尝试用 refresh_token 异步恢复
+  // 2. token 不存在时，先尝试用 refresh_token 异步恢复
   if (!isAuthenticated) {
-    const restored = await tryRestoreAsync()
-    if (!restored) return navigateTo('/login')
+    await tryRestoreAsync()
   }
 
-  // 4. 第一层：系统角色级别权限检查（hasRoleAccess）
+  // 3. /login 页面：已认证则跳转 /overview，否则放行
+  if (to.path === '/login') return isAuthenticated ? navigateTo('/overview') : undefined
+
+  // 4. 仍未认证 → 重定向 /login
+  if (!isAuthenticated) return navigateTo('/login')
+
+  // 5. 第一层：系统角色级别权限检查（hasRoleAccess）
   //    /overview、/settings 始终放行
   //    /admin/system → 需要 system_admin
   //    /admin/tenant → 需要 tenant_admin
   //    /dashboard、/cron、/archive → 需要 business
 
-  // 5. 第二层：基于后端 menus（org_roles.page_permissions）的细粒度检查
+  // 6. 第二层：基于后端 menus（org_roles.page_permissions）的细粒度检查
   //    /overview 和 /settings 始终放行，不依赖 menus
   //    menus 未加载时放行（降级）
 })
@@ -277,12 +300,14 @@ export default defineNuxtRouteMiddleware(async (to) => {
        ↓ 否（客户端）
   restore() 同步恢复 token
        ↓
+  有 token？ ─── 否 → tryRestoreAsync()（用 refresh_token 换新 token）
+       ↓ 是            ↓
+       ↓          （无论成功与否继续）
+       ↓←──────────────┘
   是否 /login？ ─── 是 → 已认证跳 /overview，否则放行
        ↓ 否
-  有 token？ ─── 否 → tryRestoreAsync()（用 refresh_token 换新 token）
-       │                    ↓
-       │              恢复成功？ ─── 否 → 重定向 /login
-       ↓ 是                ↓ 是
+  有 token？ ─── 否 → 重定向 /login
+       ↓ 是
   第一层：系统角色级权限检查 ─── 无权 → 重定向 /overview
        ↓ 有权
   第二层：menus 细粒度检查
@@ -325,8 +350,14 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
 | 方法 | 路径 | 请求体 | 响应 |
 |------|------|--------|------|
-| POST | `/api/auth/login` | `{ username, password, tenant_id, preferred_role? }` | `{ access_token, refresh_token, expires_in }` |
-| GET | `/api/auth/menu` | Header: Bearer Token | `{ menus: MockMenuItem[] }` |
+| POST | `/api/auth/login` | `{ username, password, tenant_id }` | `{ access_token, refresh_token, user, roles, active_role, permissions }` |
+| POST | `/api/auth/refresh` | `{ refresh_token }` | `{ access_token }` |
+| POST | `/api/auth/logout` | Header: Bearer Token | — |
+| GET | `/api/auth/menu` | Header: Bearer Token | `{ menus: MenuItem[] }` |
+| PUT | `/api/auth/switch-role` | `{ role_id }` | `{ access_token, active_role, permissions, menus }` |
+| GET | `/api/auth/me` | Header: Bearer Token | `MeResponse`（用户资料、组织角色、页面权限） |
+| PUT | `/api/auth/change-password` | `{ current_password, new_password }` | — |
+| PUT | `/api/auth/locale` | `{ locale }` | — |
 
 ### 5.2 审核业务接口
 

@@ -19,6 +19,16 @@ const ERROR_CODE_MAP: Record<number, string> = {
   50000: '服务器错误，请稍后重试',
 }
 
+// --- 解析 JWT payload 中的 exp（秒级时间戳），不验证签名 ---
+function parseJwtExp(token: string): number | null {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return typeof payload.exp === 'number' ? payload.exp : null
+  } catch { return null }
+}
+
 // --- 令牌刷新队列（模块级单例）---
 let isRefreshing = false
 let refreshSubscribers: Array<(token: string) => void> = []
@@ -70,7 +80,6 @@ export const useAuth = () => {
 
   /** 将当前响应式状态序列化到 localStorage（单个 key） */
   const persistState = () => {
-    if (!import.meta.client) return
     const state: PersistedAuthState = {
       user_role: userRole.value,
       user_permissions: userPermissions.value,
@@ -85,7 +94,6 @@ export const useAuth = () => {
 
   /** 从 localStorage 恢复状态到响应式变量 */
   const loadState = (): boolean => {
-    if (!import.meta.client) return false
     const raw = localStorage.getItem(AUTH_STATE_KEY)
     if (!raw) return false
     try {
@@ -103,7 +111,6 @@ export const useAuth = () => {
 
   /** 清除所有持久化的认证数据 */
   const clearStorage = () => {
-    if (!import.meta.client) return
     localStorage.removeItem('token')
     localStorage.removeItem('refresh_token')
     localStorage.removeItem(AUTH_STATE_KEY)
@@ -114,7 +121,6 @@ export const useAuth = () => {
 
   /** 持久化 token 对（独立 key，高频读写） */
   const persistTokens = () => {
-    if (!import.meta.client) return
     if (token.value) localStorage.setItem('token', token.value)
     if (refreshToken.value) localStorage.setItem('refresh_token', refreshToken.value)
   }
@@ -156,7 +162,7 @@ export const useAuth = () => {
       })
 
       token.value = data.access_token
-      if (import.meta.client) localStorage.setItem('token', data.access_token)
+      localStorage.setItem('token', data.access_token)
 
       activeRole.value = {
         id: data.active_role.id,
@@ -251,7 +257,7 @@ export const useAuth = () => {
   const logout = async (): Promise<void> => {
     try {
       const baseUrl = String(config.public.apiBase)
-      const currentToken = token.value || (import.meta.client ? localStorage.getItem('token') : null)
+      const currentToken = token.value || localStorage.getItem('token')
       await $fetch(`${baseUrl}/api/auth/logout`, {
         method: 'POST',
         headers: currentToken ? { Authorization: `Bearer ${currentToken}` } : {},
@@ -276,7 +282,7 @@ export const useAuth = () => {
   const isAuthenticated = computed(() => !!token.value)
 
   const doRefreshToken = async (): Promise<boolean> => {
-    const rt = refreshToken.value || (import.meta.client ? localStorage.getItem('refresh_token') : null)
+    const rt = refreshToken.value || localStorage.getItem('refresh_token')
     if (!rt) return false
 
     try {
@@ -286,7 +292,7 @@ export const useAuth = () => {
       })
       if (res.code === 0 && res.data?.access_token) {
         token.value = res.data.access_token
-        if (import.meta.client) localStorage.setItem('token', res.data.access_token)
+        localStorage.setItem('token', res.data.access_token)
         return true
       }
       console.warn('[auth] refresh token response not ok:', res.code, res.message)
@@ -399,8 +405,6 @@ export const useAuth = () => {
   // =========================================================================
 
   const restore = () => {
-    if (!import.meta.client) return
-
     // 令牌独立恢复
     const savedToken = localStorage.getItem('token')
     if (savedToken) token.value = savedToken
@@ -434,20 +438,32 @@ export const useAuth = () => {
   }
 
   /**
-   * 异步恢复：当 token 丢失但 refresh_token 仍在时，尝试用 refresh_token 换取新 token。
+   * 异步恢复：当 token 丢失但 refresh_token 仍未过期时，尝试用 refresh_token 换取新 token。
    * 返回 true 表示恢复成功（token 已可用），false 表示无法恢复。
    */
   const tryRestoreAsync = async (): Promise<boolean> => {
     if (token.value) return true
-    const rt = refreshToken.value || (import.meta.client ? localStorage.getItem('refresh_token') : null)
+    const rt = refreshToken.value || localStorage.getItem('refresh_token')
     if (!rt) return false
+    // 检查 refresh_token 是否已过期
+    const exp = parseJwtExp(rt)
+    if (exp && exp < Date.now() / 1000) return false
     return doRefreshToken()
+  }
+
+  /** 判断 refresh_token 是否仍然有效（未过期） */
+  const isRefreshTokenValid = (): boolean => {
+    const rt = refreshToken.value || localStorage.getItem('refresh_token')
+    if (!rt) return false
+    const exp = parseJwtExp(rt)
+    if (!exp) return false
+    return exp > Date.now() / 1000
   }
 
   return {
     token, refreshToken, menus, userRole, userPermissions, currentUser,
     allRoles, activeRole, userLocale,
-    login, getMenu, logout, isAuthenticated, restore, tryRestoreAsync,
+    login, getMenu, logout, isAuthenticated, restore, tryRestoreAsync, isRefreshTokenValid,
     setUserRole, setUserPermissions, setAllRoles, setActiveRole, switchRole,
     authFetch, doRefreshToken, changePassword, getProfile, updateLocale, setUserLocale,
   }

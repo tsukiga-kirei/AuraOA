@@ -6,7 +6,6 @@ export const useTheme = () => {
 
   const toggle = () => {
     if (transitioning.value) return
-    if (!import.meta.client) return
 
     transitioning.value = true
     const next: ThemeMode = mode.value === 'light' ? 'dark' : 'light'
@@ -47,12 +46,10 @@ export const useTheme = () => {
   }
 
   const restore = () => {
-    if (import.meta.client) {
-      const saved = localStorage.getItem('theme') as ThemeMode | null
-      if (saved) {
-        mode.value = saved
-        document.documentElement.setAttribute('data-theme', saved)
-      }
+    const saved = localStorage.getItem('theme') as ThemeMode | null
+    if (saved) {
+      mode.value = saved
+      document.documentElement.setAttribute('data-theme', saved)
     }
   }
 

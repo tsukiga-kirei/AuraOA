@@ -61,7 +61,7 @@ const memberForm = ref({
 
 const openAddMember = () => {
   editingMember.value = null
-  memberForm.value = { name: '', username: '', department_id: '', role_ids: ['ROLE-001'], email: '', phone: '', position: '' }
+  memberForm.value = { name: '', username: '', department_id: undefined as any, role_ids: [], email: '', phone: '', position: '' }
   showMemberModal.value = true
 }
 
