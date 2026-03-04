@@ -677,13 +677,7 @@ func buildActiveRoleClaim(assignment *model.UserRoleAssignment, tenant *model.Te
 
 //parseRefreshToken 解析刷新令牌（仅带有 RegisteredClaims 的标准 JWT）。
 func parseRefreshToken(tokenString string) (*jwtpkg.JWTClaims, error) {
-	//刷新令牌使用相同的签名密钥；首先尝试解析为 JWTClaims，
-	//如果需要的话，然后退回到 RegisteredClaims。
-	claims, err := jwtpkg.ParseToken(tokenString)
-	if err != nil {
-		return nil, err
-	}
-	return claims, nil
+	return jwtpkg.ParseRefreshToken(tokenString)
 }
 
 //rebuildClaimsFromSession 从缓存的会话数据重建 JWTClaims。

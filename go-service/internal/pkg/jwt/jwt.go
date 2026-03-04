@@ -105,3 +105,31 @@ func ParseToken(tokenString string) (*JWTClaims, error) {
 
 	return claims, nil
 }
+
+// ParseRefreshToken 验证并解析刷新令牌（仅 RegisteredClaims），
+// 返回 JWTClaims（仅填充 Sub 和 JTI）。
+func ParseRefreshToken(tokenString string) (*JWTClaims, error) {
+	secret := viper.GetString("jwt.secret")
+
+	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return []byte(secret), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	rc, ok := token.Claims.(*jwt.RegisteredClaims)
+	if !ok || !token.Valid {
+		return nil, fmt.Errorf("invalid refresh token claims")
+	}
+
+	return &JWTClaims{
+		Sub:              rc.Subject,
+		JTI:              rc.ID,
+		RegisteredClaims: *rc,
+	}, nil
+}
+

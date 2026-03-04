@@ -574,6 +574,11 @@ router.Use(
     middleware.Tracing(),         // 链路追踪
 )
 
+// 公开路由（无需 JWT）
+router.POST("/api/auth/login", authHandler.Login)
+router.POST("/api/auth/refresh", authHandler.Refresh)  // refresh_token 自带验证，无需 JWT
+router.GET("/api/tenants/list", tenantHandler.ListPublicTenants)
+
 // 需要认证的路由组
 authed := router.Group("/api")
 authed.Use(middleware.JWT())      // JWT 验证

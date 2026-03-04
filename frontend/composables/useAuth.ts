@@ -289,8 +289,10 @@ export const useAuth = () => {
         if (import.meta.client) localStorage.setItem('token', res.data.access_token)
         return true
       }
+      console.warn('[auth] refresh token response not ok:', res.code, res.message)
       return false
-    } catch {
+    } catch (e) {
+      console.warn('[auth] refresh token failed:', e)
       return false
     }
   }
@@ -431,10 +433,21 @@ export const useAuth = () => {
     persistState()
   }
 
+  /**
+   * 异步恢复：当 token 丢失但 refresh_token 仍在时，尝试用 refresh_token 换取新 token。
+   * 返回 true 表示恢复成功（token 已可用），false 表示无法恢复。
+   */
+  const tryRestoreAsync = async (): Promise<boolean> => {
+    if (token.value) return true
+    const rt = refreshToken.value || (import.meta.client ? localStorage.getItem('refresh_token') : null)
+    if (!rt) return false
+    return doRefreshToken()
+  }
+
   return {
     token, refreshToken, menus, userRole, userPermissions, currentUser,
     allRoles, activeRole, userLocale,
-    login, getMenu, logout, isAuthenticated, restore,
+    login, getMenu, logout, isAuthenticated, restore, tryRestoreAsync,
     setUserRole, setUserPermissions, setAllRoles, setActiveRole, switchRole,
     authFetch, doRefreshToken, changePassword, getProfile, updateLocale, setUserLocale,
   }

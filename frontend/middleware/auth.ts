@@ -11,16 +11,21 @@ function hasRoleAccess(path: string, perms: PermissionGroup[]): boolean {
   return true
 }
 
-export default defineNuxtRouteMiddleware((to) => {
-  const { isAuthenticated, restore, userPermissions, menus } = useAuth()
+export default defineNuxtRouteMiddleware(async (to) => {
+  // SSR 端没有 localStorage / token，认证检查仅在客户端执行
+  if (import.meta.server) return
+
+  const { isAuthenticated, restore, tryRestoreAsync, userPermissions, menus } = useAuth()
   restore()
 
   if (to.path === '/login') {
     return isAuthenticated.value ? navigateTo('/overview') : undefined
   }
 
+  // token 不存在时，尝试用 refresh_token 恢复
   if (!isAuthenticated.value) {
-    return navigateTo('/login')
+    const restored = await tryRestoreAsync()
+    if (!restored) return navigateTo('/login')
   }
 
   // 第一层：系统角色级别检查

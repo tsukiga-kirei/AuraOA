@@ -114,8 +114,13 @@ getMockMenusByActiveRole(role: UserRoleAssignment): MockMenuItem[]
 
 ```typescript
 restore()
-// 在页面刷新时从 localStorage 恢复所有认证状态
+// 在页面刷新时从 localStorage 恢复所有认证状态（同步）
 // 在 middleware/auth.ts 中被调用
+
+tryRestoreAsync(): Promise<boolean>
+// 异步恢复：当 access_token 丢失但 refresh_token 仍在时，
+// 尝试调用 doRefreshToken() 换取新 token。
+// 返回 true 表示恢复成功（token 已可用），false 表示无法恢复。
 ```
 
 ### 2.2 useMockData — 模拟数据中心
@@ -233,24 +238,31 @@ submitFeedback()  // POST /api/audit/feedback → 提交审核采纳反馈
 ### 3.1 middleware/auth.ts
 
 ```typescript
-export default defineNuxtRouteMiddleware((to) => {
-  // 1. /login 页面不拦截
-  if (to.path === '/login') return
+export default defineNuxtRouteMiddleware(async (to) => {
+  // 0. SSR 端没有 localStorage / token，认证检查仅在客户端执行
+  if (import.meta.server) return
 
-  // 2. 恢复认证状态
+  // 1. 恢复认证状态（同步，从 localStorage）
   restore()
 
-  // 3. 未认证 → 跳转登录
-  if (!isAuthenticated) return navigateTo('/login')
+  // 2. /login 页面：已认证则跳转 /overview，否则放行
+  if (to.path === '/login') return isAuthenticated ? navigateTo('/overview') : undefined
 
-  // 4. 系统角色级别权限检查
-  //    检查 PAGE_PERMISSIONS 矩阵
-  if (!hasPagePermission(to.path, userPermissions))
-    return navigateTo(getDefaultPage(userPermissions))
+  // 3. 未认证 → 尝试用 refresh_token 异步恢复
+  if (!isAuthenticated) {
+    const restored = await tryRestoreAsync()
+    if (!restored) return navigateTo('/login')
+  }
 
-  // 5. 如果是 business 角色，额外检查业务角色权限
-  //    从 OrgMember → OrgRole → page_permissions 获取可访问页面
-  //    /overview 和 /settings 始终可访问
+  // 4. 第一层：系统角色级别权限检查（hasRoleAccess）
+  //    /overview、/settings 始终放行
+  //    /admin/system → 需要 system_admin
+  //    /admin/tenant → 需要 tenant_admin
+  //    /dashboard、/cron、/archive → 需要 business
+
+  // 5. 第二层：基于后端 menus（org_roles.page_permissions）的细粒度检查
+  //    /overview 和 /settings 始终放行，不依赖 menus
+  //    menus 未加载时放行（降级）
 })
 ```
 
@@ -261,18 +273,22 @@ export default defineNuxtRouteMiddleware((to) => {
        ↓
   middleware/auth.ts
        ↓
-  是否 /login？ ─── 是 → 放行
+  SSR 端？ ─── 是 → 直接放行（服务端无 localStorage）
+       ↓ 否（客户端）
+  restore() 同步恢复 token
+       ↓
+  是否 /login？ ─── 是 → 已认证跳 /overview，否则放行
        ↓ 否
-  restore() 恢复 token
-       ↓
-  有 token？ ─── 否 → 重定向 /login
-       ↓ 是
-  角色级权限检查 ─── 无权 → 重定向默认页
+  有 token？ ─── 否 → tryRestoreAsync()（用 refresh_token 换新 token）
+       │                    ↓
+       │              恢复成功？ ─── 否 → 重定向 /login
+       ↓ 是                ↓ 是
+  第一层：系统角色级权限检查 ─── 无权 → 重定向 /overview
        ↓ 有权
-  业务角色权限检查(business用户)
+  第二层：menus 细粒度检查
        ↓
-  有组织角色权限？ ─── 无 → 重定向 /overview
-       ↓ 有
+  路径在 menus 中？ ─── 否 → 重定向 /overview
+       ↓ 是
   放行，渲染页面
 ```
 

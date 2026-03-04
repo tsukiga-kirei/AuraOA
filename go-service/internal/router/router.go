@@ -28,6 +28,7 @@ func SetupRouter(
 	// Public routes (no auth required)
 	r.GET("/api/health", healthHandler.Health)
 	r.POST("/api/auth/login", authHandler.Login)
+	r.POST("/api/auth/refresh", authHandler.Refresh)
 	r.GET("/api/tenants/list", tenantHandler.ListPublicTenants)
 
 	// Auth routes (JWT required)
@@ -35,7 +36,6 @@ func SetupRouter(
 	auth.Use(middleware.JWT(rdb))
 	{
 		auth.POST("/logout", authHandler.Logout)
-		auth.POST("/refresh", authHandler.Refresh)
 		auth.PUT("/switch-role", authHandler.SwitchRole)
 		auth.GET("/menu", authHandler.GetMenu)
 		auth.PUT("/change-password", authHandler.ChangePassword)
