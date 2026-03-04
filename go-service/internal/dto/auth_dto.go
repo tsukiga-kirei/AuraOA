@@ -24,7 +24,6 @@ type UserInfo struct {
 	DisplayName string `json:"display_name"`
 	Email       string `json:"email"`
 	Phone       string `json:"phone"`
-	AvatarURL   string `json:"avatar_url"`
 	Locale      string `json:"locale"`
 }
 
@@ -77,4 +76,39 @@ type MenuResponse struct {
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password" binding:"required"`
 	NewPassword     string `json:"new_password" binding:"required"`
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/auth/me
+// ---------------------------------------------------------------------------
+
+// MeOrgRole represents an org role in the /auth/me response.
+type MeOrgRole struct {
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	Description     string   `json:"description"`
+	PagePermissions []string `json:"page_permissions"`
+	IsSystem        bool     `json:"is_system"`
+}
+
+// MeResponse is the response body for GET /api/auth/me.
+type MeResponse struct {
+	// User basic info
+	User UserInfo `json:"user"`
+
+	// All role assignments (system-level, same as login)
+	Roles      []RoleInfo `json:"roles"`
+	ActiveRole RoleInfo   `json:"active_role"`
+
+	// Org-level info (only present when active role has a tenant)
+	TenantName     string      `json:"tenant_name"`
+	DepartmentName string      `json:"department_name"`
+	Position       string      `json:"position"`
+	OrgRoles       []MeOrgRole `json:"org_roles"`
+	PagePermissions []string   `json:"page_permissions"`
+}
+
+// UpdateLocaleRequest is the request body for PUT /api/auth/locale.
+type UpdateLocaleRequest struct {
+	Locale string `json:"locale" binding:"required"`
 }

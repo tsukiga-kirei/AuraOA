@@ -1,4 +1,4 @@
-import type { LoginRequest, LoginResponse, SwitchRoleResponse, MenuItem, UserRole, PermissionGroup, RoleInfo } from '~/types/auth'
+import type { LoginRequest, LoginResponse, SwitchRoleResponse, MenuItem, UserRole, PermissionGroup, RoleInfo, MeResponse } from '~/types/auth'
 
 
 //---统一API响应格式---
@@ -54,6 +54,8 @@ export const useAuth = () => {
     display_name: string
     tenant_id: string
     role_label: string
+    email: string
+    phone: string
   } | null>('auth_user', () => null)
 
   const setUserRole = (role: UserRole) => {
@@ -160,6 +162,8 @@ export const useAuth = () => {
         display_name: data.user.display_name,
         tenant_id: data.active_role.tenant_id || '',
         role_label: data.active_role.label,
+        email: data.user.email || '',
+        phone: data.user.phone || '',
       }
 
       //优先使用后端返回的权限，否则回退到活跃角色
@@ -380,6 +384,28 @@ export const useAuth = () => {
     }
   }
 
+  /** 从 /api/auth/me 获取完整的用户资料（含组织信息） */
+  const getProfile = async (): Promise<MeResponse | null> => {
+    try {
+      return await authFetch<MeResponse>('/api/auth/me')
+    } catch {
+      return null
+    }
+  }
+
+  /** 将语言偏好同步到后端 */
+  const updateLocale = async (locale: string): Promise<boolean> => {
+    try {
+      await authFetch('/api/auth/locale', {
+        method: 'PUT',
+        body: { locale },
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+
   const restore = () => {
     if (import.meta.client) {
       const saved = localStorage.getItem('token')
@@ -417,6 +443,6 @@ export const useAuth = () => {
     allRoles, activeRole,
     login, getMenu, logout, isAuthenticated, restore,
     setUserRole, setUserPermissions, setAllRoles, setActiveRole, switchRole,
-    authFetch, doRefreshToken, changePassword,
+    authFetch, doRefreshToken, changePassword, getProfile, updateLocale,
   }
 }

@@ -236,6 +236,44 @@ go-service/
 }
 ```
 
+#### GET `/api/auth/me`
+
+```json
+// Response: 当前登录用户的完整信息（含组织角色和页面权限）
+{
+  "code": 0,
+  "data": {
+    "user": {
+      "id": "user-uuid-001",
+      "username": "admin",
+      "display_name": "陈刚",
+      "email": "admin@example.com",
+      "phone": "13800000001",
+      "locale": "zh-CN"
+    },
+    "roles": [
+      { "id": "admin-r1", "role": "system_admin", "tenant_id": null, "tenant_name": null, "label": "系统管理员" }
+    ],
+    "active_role": { "id": "admin-r1", "role": "system_admin", ... },
+    "tenant_name": "示例集团总部",
+    "department_name": "总经办",
+    "position": "系统管理员",
+    "org_roles": [
+      {
+        "id": "d000...",
+        "name": "租户管理员",
+        "description": "...",
+        "page_permissions": ["/overview", "/dashboard", ...],
+        "is_system": true
+      }
+    ],
+    "page_permissions": ["/overview", "/dashboard", "/settings"]
+  }
+}
+```
+
+> `tenant_name`、`department_name`、`position`、`org_roles`、`page_permissions` 仅在 `active_role` 绑定了租户时返回有效值；`system_admin` 角色下这些字段为空。
+
 #### PUT `/api/auth/switch-role`
 
 ```json

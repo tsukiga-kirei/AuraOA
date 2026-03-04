@@ -39,6 +39,8 @@ func SetupRouter(
 		auth.PUT("/switch-role", authHandler.SwitchRole)
 		auth.GET("/menu", authHandler.GetMenu)
 		auth.PUT("/change-password", authHandler.ChangePassword)
+		auth.GET("/me", authHandler.GetMe)
+		auth.PUT("/locale", authHandler.UpdateLocale)
 	}
 
 	// Tenant org routes (JWT + TenantContext + tenant_admin)
