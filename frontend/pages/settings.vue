@@ -49,25 +49,11 @@ const currentRoleType = computed(() => activeRole.value?.role || userRole.value)
 const activeTab = ref('profile')
 
 //===== 语言和区域选项卡 =====
-const userDateFormat = ref('YYYY-MM-DD')
-onMounted(() => {
-  // Only load org data for tenant_admin and business roles (not system_admin — would get 403)
-  const role = activeRole.value?.role || userRole.value
-  if (role === 'tenant_admin' || role === 'business') {
-    loadOrgData().catch(() => { /* ignore 403 for business users */ })
-  }
-})
-
 const handleLocaleChange = (newLocale: Locale) => {
   setLocale(newLocale)
   message.success(t('settings.language.switchSuccess'))
 }
 
-const dateFormatOptions = [
-  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2026-02-19)' },
-  { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY (02/19/2026)' },
-  { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (19/02/2026)' },
-]
 
 //===== 安全/密码选项卡 =====
 const passwordForm = ref({
@@ -143,10 +129,15 @@ const currentOrgRoles = computed(() => {
   const rIds = currentMember.value.role_ids
   return roles.value.filter(r => rIds.includes(r.id))
 })
-/** 合并所有业务角色的页面权限*/
+/** 合并所有业务角色的页面权限，org 数据未加载时从 menus 回退 */
 const currentOrgPagePermissions = computed(() => {
   const perms = new Set<string>()
   currentOrgRoles.value.forEach(r => r.page_permissions.forEach(p => perms.add(p)))
+  // org 数据未加载时，从后端菜单中提取路径作为回退
+  if (perms.size === 0) {
+    const { menus } = useAuth()
+    menus.value.forEach((m: any) => { if (m.path) perms.add(m.path) })
+  }
   return [...perms]
 })
 //保持向后兼容

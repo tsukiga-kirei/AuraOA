@@ -1,6 +1,6 @@
 # OA 智审平台 — 租户·组织·认证·权限 详细设计文档
 
-> 文档版本：v1.1 | 更新日期：2026-03-03  
+> 文档版本：v1.2 | 更新日期：2026-03-04  
 > 本文档是 Phase 1 开发的核心指南，详细解析多租户架构、组织人员管理、登录认证、权限控制的完整逻辑。
 
 ---
@@ -83,22 +83,30 @@
     ↓
 后端 GetMenu 统一从 org_roles.page_permissions 读取并合并
     ↓
-侧边栏生成：根据 menus 中的 path 过滤菜单项
+按当前系统角色二次过滤：
+  · tenant_admin → 仅保留 /admin/tenant/* 及通用页面（/overview, /settings）
+  · business     → 仅保留非 /admin/* 的前台页面
     ↓
-例如：张明有 ROLE-001 + ROLE-002
-      → GetMenu 返回 [/overview, /dashboard, /cron, /archive, /settings]
+侧边栏生成：根据过滤后的 menus 渲染菜单项
+    ↓
+例如：张明(business) 有 ROLE-001 + ROLE-002
+      → 合并权限 [/overview, /dashboard, /cron, /archive, /settings]
+      → business 过滤：保留全部（均为非 admin 页面）
       → 侧边栏显示全部业务功能
 
-例如：李芳只有 ROLE-001
-      → GetMenu 返回 [/overview, /dashboard, /settings]
+例如：李芳(business) 只有 ROLE-001
+      → 合并权限 [/overview, /dashboard, /settings]
+      → business 过滤：保留全部
       → 侧边栏只显示仪表盘和工作台
 
-例如：赵伟(tenantadmin) 有 ROLE-001 + ROLE-003
-      → GetMenu 返回前台 + 后台管理全部页面
-      → 侧边栏显示业务功能 + 租户管理功能
+例如：赵伟(tenant_admin) 有 ROLE-001 + ROLE-003
+      → 合并权限 = 前台 + 后台管理全部页面
+      → tenant_admin 过滤：仅保留 /admin/tenant/* + /overview + /settings
+      → 侧边栏显示租户管理功能，不显示业务前台页面
 ```
 
 > 注：`tenant_admin` 和 `business` 角色的菜单均通过 `org_roles.page_permissions` 动态生成，不再硬编码。
+> 合并后按 `activeRole.role` 二次过滤，确保 tenant_admin 只看到后台管理页面、business 只看到前台业务页面。
 > 仅 `system_admin` 因无 `org_member` 记录，保持硬编码菜单。
 > 侧边栏菜单过滤统一通过 GetMenu API 驱动，不再在前端直接查询 org_members/org_roles。
 

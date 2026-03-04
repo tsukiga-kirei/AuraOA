@@ -67,7 +67,7 @@ VALUES
 -- ============================================================
 -- user_role_assignments
 -- ============================================================
--- admin: system_admin (no tenant) + tenant_admin for DEMO_HQ
+-- admin: system_admin (no tenant) + tenant_admin for DEMO_HQ + business for DEMO_HQ
 INSERT INTO user_role_assignments (id, user_id, role, tenant_id, label, is_default)
 VALUES
     (
@@ -84,6 +84,14 @@ VALUES
         'tenant_admin',
         'a0000000-0000-0000-0000-000000000001',
         '演示总部 - 租户管理员',
+        FALSE
+    ),
+    (
+        'f0000000-0000-0000-0000-000000000008',
+        'b0000000-0000-0000-0000-000000000001',
+        'business',
+        'a0000000-0000-0000-0000-000000000001',
+        '演示总部 - 业务用户',
         FALSE
     );
 
