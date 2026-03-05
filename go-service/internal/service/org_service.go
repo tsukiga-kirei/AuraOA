@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -293,34 +294,54 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
-	//7. 为此租户创建角色为“business”的 UserRoleAssignment
-	businessAssignment := &model.UserRoleAssignment{
-		UserID:  user.ID,
-		Role:    "business",
-		TenantID: &tenantID,
-		Label:   "业务用户 - " + req.DisplayName,
+	//7. 根据 page_permissions 推断需要的系统角色
+	//   包含前台页面（非 /admin/ 前缀）→ business
+	//   包含后台页面（/admin/ 前缀）→ tenant_admin
+	needBusiness := false
+	needTenantAdmin := false
+	for _, role := range roles {
+		var paths []string
+		if err := json.Unmarshal(role.PagePermissions, &paths); err != nil {
+			continue
+		}
+		for _, p := range paths {
+			if strings.HasPrefix(p, "/admin/") {
+				needTenantAdmin = true
+			} else {
+				needBusiness = true
+			}
+		}
 	}
-	if err := s.db.Create(businessAssignment).Error; err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	// 至少给一个 business，确保用户能登录
+	if !needBusiness && !needTenantAdmin {
+		needBusiness = true
 	}
 
-	//8. 如果 role_ids 包含租户管理员角色，还创建tenant_admin 分配
-	for _, role := range roles {
-		if role.Name == "租户管理员" || (role.IsSystem && role.Name == "租户管理员") {
-			tenantAdminAssignment := &model.UserRoleAssignment{
-				UserID:  user.ID,
-				Role:    "tenant_admin",
-				TenantID: &tenantID,
-				Label:   "租户管理员 - " + req.DisplayName,
-			}
-			if err := s.db.Create(tenantAdminAssignment).Error; err != nil {
-				return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
-			}
-			break
+	if needBusiness {
+		businessAssignment := &model.UserRoleAssignment{
+			UserID:   user.ID,
+			Role:     "business",
+			TenantID: &tenantID,
+			Label:    "业务用户 - " + req.DisplayName,
+		}
+		if err := s.db.Create(businessAssignment).Error; err != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 		}
 	}
 
-	//9. 重新加载成员的关联以进行响应
+	if needTenantAdmin {
+		tenantAdminAssignment := &model.UserRoleAssignment{
+			UserID:   user.ID,
+			Role:     "tenant_admin",
+			TenantID: &tenantID,
+			Label:    "租户管理员 - " + req.DisplayName,
+		}
+		if err := s.db.Create(tenantAdminAssignment).Error; err != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		}
+	}
+
+	//8. 重新加载成员的关联以进行响应
 	member.User = *user
 	member.Department = *dept
 	member.Roles = roles
