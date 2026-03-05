@@ -101,3 +101,9 @@ func (r *UserRepo) UpdatePasswordHash(userID uuid.UUID, hash string) error {
 func (r *UserRepo) UpdateLocale(userID uuid.UUID, locale string) error {
 	return r.DB.Model(&model.User{}).Where("id = ?", userID).Update("locale", locale).Error
 }
+
+// UpdateProfile updates the user's display_name, email, and phone.
+func (r *UserRepo) UpdateProfile(userID uuid.UUID, updates map[string]interface{}) error {
+	return r.DB.Model(&model.User{}).Where("id = ?", userID).Updates(updates).Error
+}
+
