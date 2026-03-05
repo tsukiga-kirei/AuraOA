@@ -406,6 +406,25 @@ export const useAuth = () => {
     catch { return null }
   }
 
+  const updateProfile = async (req: { display_name: string; email: string; phone: string }): Promise<{ ok: boolean; errorMsg?: string }> => {
+    try {
+      await authFetch('/api/auth/profile', { method: 'PUT', body: req })
+      // Sync local state
+      if (currentUser.value) {
+        currentUser.value = {
+          ...currentUser.value,
+          display_name: req.display_name || currentUser.value.display_name,
+          email: req.email ?? currentUser.value.email,
+          phone: req.phone ?? currentUser.value.phone,
+        }
+        persistState()
+      }
+      return { ok: true }
+    } catch (e: any) {
+      return { ok: false, errorMsg: e.message || '更新失败' }
+    }
+  }
+
   const updateLocale = async (locale: string): Promise<boolean> => {
     try {
       await authFetch('/api/auth/locale', { method: 'PUT', body: { locale } })
@@ -480,6 +499,6 @@ export const useAuth = () => {
     allRoles, activeRole, userLocale,
     login, getMenu, logout, isAuthenticated, restore, tryRestoreAsync, isRefreshTokenValid,
     setUserRole, setUserPermissions, setAllRoles, setActiveRole, switchRole,
-    authFetch, doRefreshToken, changePassword, getProfile, updateLocale, setUserLocale,
+    authFetch, doRefreshToken, changePassword, getProfile, updateProfile, updateLocale, setUserLocale,
   }
 }

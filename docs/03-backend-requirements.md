@@ -274,6 +274,22 @@ go-service/
 
 > `tenant_name`、`department_name`、`position`、`org_roles`、`page_permissions` 仅在 `active_role` 绑定了租户时返回有效值；`system_admin` 角色下这些字段为空。
 
+#### PUT `/api/auth/profile`
+
+```json
+// Request: 更新当前登录用户的个人信息（display_name / email / phone 均为可选）
+{
+  "display_name": "新显示名",
+  "email": "new@example.com",
+  "phone": "13900000000"
+}
+
+// Response (成功时 data 为 null)
+{ "code": 0, "message": "success", "data": null }
+```
+
+> 仅允许修改自身信息，user_id 从 JWT Claims 中获取。字段均为可选，仅传入需要修改的字段即可。
+
 #### PUT `/api/auth/switch-role`
 
 ```json

@@ -38,7 +38,7 @@ definePageMeta({
   layout: 'default',
 })
 
-const { userRole, userPermissions, activeRole, getProfile, updateLocale, setUserLocale } = useAuth()
+const { userRole, userPermissions, activeRole, getProfile, updateProfile, updateLocale, setUserLocale } = useAuth()
 const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockUserDashboardPrefs } = useMockData()
 const { t, locale, setLocale, availableLocales } = useI18n()
 
@@ -384,10 +384,43 @@ watch(visibleTabs, (tabs) => {
 
 const saving = ref(false)
 const handleSave = async () => {
+  // Validate email format (if provided)
+  if (profile.value.email.trim()) {
+    const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
+    if (!emailRegex.test(profile.value.email.trim())) {
+      message.error(t('settings.profile.emailFormatError'))
+      return
+    }
+  }
+  // Validate phone format: must be 11 digits (if provided)
+  if (profile.value.phone.trim()) {
+    const phoneRegex = /^\d{11}$/
+    if (!phoneRegex.test(profile.value.phone.trim())) {
+      message.error(t('settings.profile.phoneFormatError'))
+      return
+    }
+  }
+  // Nickname required
+  if (!profile.value.nickname.trim()) {
+    message.error(t('settings.profile.nicknameRequired'))
+    return
+  }
+
   saving.value = true
-  await new Promise(r => setTimeout(r, 800))
+  const { ok, errorMsg } = await updateProfile({
+    display_name: profile.value.nickname.trim(),
+    email: profile.value.email.trim(),
+    phone: profile.value.phone.trim(),
+  })
   saving.value = false
-  message.success(t('settings.profile.saveSuccess'))
+
+  if (ok) {
+    message.success(t('settings.profile.saveSuccess'))
+    // Refresh profile data from server
+    await fetchMe()
+  } else {
+    message.error(errorMsg || t('settings.profile.saveFailed'))
+  }
 }
 
 //活动工作台子部分

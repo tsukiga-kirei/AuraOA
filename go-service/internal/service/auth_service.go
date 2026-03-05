@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -911,6 +912,45 @@ func (s *AuthService) UpdateLocale(userID uuid.UUID, locale string) error {
 	}
 
 	if err := s.userRepo.UpdateLocale(userID, locale); err != nil {
+		return newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// UpdateProfile
+// ---------------------------------------------------------------------------
+
+// UpdateProfile updates the user's display_name, email, and phone with validation.
+func (s *AuthService) UpdateProfile(userID uuid.UUID, req *dto.UpdateProfileRequest) error {
+	// Validate email format (if provided)
+	if req.Email != "" {
+		emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+		if !emailRegex.MatchString(req.Email) {
+			return newServiceError(errcode.ErrParamValidation, "邮箱格式不正确")
+		}
+	}
+	// Validate phone format: must be 11 digits (if provided)
+	if req.Phone != "" {
+		phoneRegex := regexp.MustCompile(`^\d{11}$`)
+		if !phoneRegex.MatchString(req.Phone) {
+			return newServiceError(errcode.ErrParamValidation, "手机号必须为11位数字")
+		}
+	}
+
+	updates := map[string]interface{}{}
+	if req.DisplayName != "" {
+		updates["display_name"] = req.DisplayName
+	}
+	// Allow clearing email/phone by sending empty string — only update if key is present
+	updates["email"] = req.Email
+	updates["phone"] = req.Phone
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	if err := s.userRepo.UpdateProfile(userID, updates); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 	return nil

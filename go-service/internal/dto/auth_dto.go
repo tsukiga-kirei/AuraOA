@@ -108,7 +108,15 @@ type MeResponse struct {
 	PagePermissions []string   `json:"page_permissions"`
 }
 
+// UpdateProfileRequest is the request body for PUT /api/auth/profile.
+type UpdateProfileRequest struct {
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
+	Phone       string `json:"phone"`
+}
+
 // UpdateLocaleRequest is the request body for PUT /api/auth/locale.
 type UpdateLocaleRequest struct {
 	Locale string `json:"locale" binding:"required"`
 }
+
