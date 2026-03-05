@@ -57,16 +57,16 @@ const handleLogin = async () => {
   }
   loading.value = true
   try {
-    const ok = await login({
+    const result = await login({
       ...form.value,
       tenant_id: form.value.tenant_id || '',
       preferred_role: activePortal.value
     })
-    if (ok) {
+    if (result.ok) {
       message.success(t('login.successRedirect'))
       navigateTo('/overview')
     } else {
-      message.error(t('login.failed'))
+      message.error(result.errorMsg || t('login.failed'))
     }
   } finally {
     loading.value = false

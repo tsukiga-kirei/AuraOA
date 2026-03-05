@@ -185,14 +185,17 @@ export const useAuth = () => {
     }
   }
 
-  const login = async (req: LoginRequest): Promise<boolean> => {
+  const login = async (req: LoginRequest): Promise<{ ok: boolean; errorMsg?: string }> => {
     try {
       const res = await $fetch<ApiResponse<LoginResponse>>(`${config.public.apiBase}/api/auth/login`, {
         method: 'POST',
         body: req,
       })
 
-      if (res.code !== 0 || !res.data) return false
+      if (res.code !== 0 || !res.data) {
+        const msg = ERROR_CODE_MAP[res.code] || res.message || undefined
+        return { ok: false, errorMsg: msg }
+      }
       const data = res.data
 
       // 令牌
@@ -237,9 +240,14 @@ export const useAuth = () => {
       } catch { /* 菜单加载失败不影响登录 */ }
 
       persistState()
-      return true
-    } catch {
-      return false
+      return { ok: true }
+    } catch (error: any) {
+      // 从 $fetch 错误中提取后端返回的业务错误信息
+      if (error.data && typeof error.data.code === 'number') {
+        const msg = ERROR_CODE_MAP[error.data.code] || error.data.message || undefined
+        return { ok: false, errorMsg: msg }
+      }
+      return { ok: false }
     }
   }
 
@@ -333,6 +341,13 @@ export const useAuth = () => {
       }
 
       if (statusCode === 401) {
+        // 先检查是否为业务层面的认证错误（如账户禁用、账户锁定），不走 token 刷新
+        if (error.data && typeof error.data.code === 'number' && ERROR_CODE_MAP[error.data.code]) {
+          const e = new Error(ERROR_CODE_MAP[error.data.code]) as any
+          e.code = error.data.code
+          throw e
+        }
+
         if (isRefreshing) {
           return new Promise<T>((resolve, reject) => {
             addRefreshSubscriber(async (newToken: string) => {
