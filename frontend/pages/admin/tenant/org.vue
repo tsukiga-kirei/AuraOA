@@ -544,7 +544,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
             <a-input v-model:value="memberForm.email" :placeholder="t('admin.org.emailPlaceholder')" />
           </a-form-item>
           <a-form-item :label="t('admin.org.phone')">
-            <a-input v-model:value="memberForm.phone" :placeholder="t('admin.org.phonePlaceholder')" maxlength="11" />
+            <a-input v-model:value="memberForm.phone" :placeholder="t('admin.org.phonePlaceholder')" :maxlength="11" />
           </a-form-item>
         </div>
       </a-form>
