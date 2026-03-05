@@ -62,7 +62,7 @@ type RoleResponse struct {
 type CreateMemberRequest struct {
 	Username     string   `json:"username" binding:"required"`
 	DisplayName  string   `json:"display_name" binding:"required"`
-	Password     string   `json:"password" binding:"required,min=6"`
+	Password     string   `json:"password"`
 	Email        string   `json:"email"`
 	Phone        string   `json:"phone"`
 	DepartmentID string   `json:"department_id" binding:"required"`

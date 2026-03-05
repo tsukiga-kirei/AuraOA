@@ -56,6 +56,11 @@ func newServiceError(code int, msg string) *ServiceError {
 
 //登录对用户进行身份验证并返回令牌、用户信息、角色和活动角色。
 func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent string) (*dto.LoginResponse, error) {
+	// Normalize IPv6 loopback to IPv4 for readability
+	if clientIP == "::1" {
+		clientIP = "127.0.0.1"
+	}
+
 	//1.通过用户名查找用户
 	user, err := s.userRepo.FindByUsername(req.Username)
 	if err != nil {
@@ -903,7 +908,7 @@ func (s *AuthService) GetMe(userID uuid.UUID, activeRole jwtpkg.ActiveRoleClaim,
 	}
 
 	// 4. Fetch recent login history (last 10 entries)
-	loginHistories, _ := s.userRepo.FindRecentLoginHistory(userID, 10)
+	loginHistories, _ := s.userRepo.FindRecentLoginHistory(userID, 5)
 	loginItems := make([]dto.LoginHistoryItem, 0, len(loginHistories))
 	for _, h := range loginHistories {
 		loginItems = append(loginItems, dto.LoginHistoryItem{

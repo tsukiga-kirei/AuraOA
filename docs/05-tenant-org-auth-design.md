@@ -316,7 +316,6 @@ POST /api/tenant/org/members
 {
   "username": "newuser",
   "display_name": "新用户",
-  "password": "123456",
   "department_id": "D-001",
   "role_ids": ["ROLE-001"],
   "email": "new@example.com",
@@ -566,6 +565,8 @@ const allPages = [
 ## 五、权限校验中间件
 
 ### 5.1 中间件栈
+
+> **Trusted Proxies 配置**：生产环境中 Go 服务运行在 Docker / Nuxt 反向代理之后，需设置 `router.SetTrustedProxies(nil)` 并启用 `router.ForwardedByClientIP = true`，确保 `c.ClientIP()` 从 `X-Forwarded-For` / `X-Real-IP` 头获取真实客户端 IP，而非返回 `::1`。此配置影响 `login_history.ip_address` 等所有依赖客户端 IP 的功能。
 
 ```go
 router.Use(

@@ -71,6 +71,11 @@ func main() {
 
 	// 8. Setup Gin router with middleware and routes
 	r := gin.New()
+	// Trust all proxies so that X-Forwarded-For / X-Real-IP headers are respected
+	// by c.ClientIP(), which fixes "::1" being recorded in login history when
+	// requests come through Docker / Nuxt proxy.
+	r.SetTrustedProxies(nil)
+	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
 	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, healthHandler)
 

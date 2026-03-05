@@ -17,14 +17,14 @@ import (
 	"oa-smart-audit/go-service/internal/repository"
 )
 
-//OrgService 通过租户隔离处理部门、角色和成员 CRUD 操作。
+// OrgService 通过租户隔离处理部门、角色和成员 CRUD 操作。
 type OrgService struct {
 	orgRepo  *repository.OrgRepo
 	userRepo *repository.UserRepo
 	db       *gorm.DB
 }
 
-//NewOrgService 创建一个新的 OrgService 实例。
+// NewOrgService 创建一个新的 OrgService 实例。
 func NewOrgService(orgRepo *repository.OrgRepo, userRepo *repository.UserRepo, db *gorm.DB) *OrgService {
 	return &OrgService{
 		orgRepo:  orgRepo,
@@ -37,7 +37,7 @@ func NewOrgService(orgRepo *repository.OrgRepo, userRepo *repository.UserRepo, d
 //部门增删改查
 // ---------------------------------------------------------------------------
 
-//ListDepartments 返回当前租户的所有部门。
+// ListDepartments 返回当前租户的所有部门。
 func (s *OrgService) ListDepartments(c *gin.Context) ([]dto.DepartmentResponse, error) {
 	departments, err := s.orgRepo.ListDepartments(c)
 	if err != nil {
@@ -50,7 +50,7 @@ func (s *OrgService) ListDepartments(c *gin.Context) ([]dto.DepartmentResponse, 
 	return result, nil
 }
 
-//CreateDepartment 在当前租户中创建一个新部门。
+// CreateDepartment 在当前租户中创建一个新部门。
 func (s *OrgService) CreateDepartment(c *gin.Context, tenantID uuid.UUID, req *dto.CreateDepartmentRequest) (*dto.DepartmentResponse, error) {
 	dept := &model.Department{
 		TenantID:  tenantID,
@@ -72,7 +72,7 @@ func (s *OrgService) CreateDepartment(c *gin.Context, tenantID uuid.UUID, req *d
 	return &resp, nil
 }
 
-//UpdateDepartment 更新现有部门。
+// UpdateDepartment 更新现有部门。
 func (s *OrgService) UpdateDepartment(c *gin.Context, id uuid.UUID, req *dto.UpdateDepartmentRequest) (*dto.DepartmentResponse, error) {
 	dept, err := s.orgRepo.FindDepartmentByID(c, id)
 	if err != nil {
@@ -98,7 +98,7 @@ func (s *OrgService) UpdateDepartment(c *gin.Context, id uuid.UUID, req *dto.Upd
 	return &resp, nil
 }
 
-//DeleteDepartment 在检查部门没有成员后删除该部门。
+// DeleteDepartment 在检查部门没有成员后删除该部门。
 func (s *OrgService) DeleteDepartment(c *gin.Context, id uuid.UUID) error {
 	//验证当前租户中是否存在部门
 	_, err := s.orgRepo.FindDepartmentByID(c, id)
@@ -123,7 +123,7 @@ func (s *OrgService) DeleteDepartment(c *gin.Context, id uuid.UUID) error {
 //角色增删改查
 // ---------------------------------------------------------------------------
 
-//ListRoles 返回当前租户的所有组织角色。
+// ListRoles 返回当前租户的所有组织角色。
 func (s *OrgService) ListRoles(c *gin.Context) ([]dto.RoleResponse, error) {
 	roles, err := s.orgRepo.ListRoles(c)
 	if err != nil {
@@ -136,7 +136,7 @@ func (s *OrgService) ListRoles(c *gin.Context) ([]dto.RoleResponse, error) {
 	return result, nil
 }
 
-//CreateRole 在当前租户中创建新的组织角色。
+// CreateRole 在当前租户中创建新的组织角色。
 func (s *OrgService) CreateRole(c *gin.Context, tenantID uuid.UUID, req *dto.CreateRoleRequest) (*dto.RoleResponse, error) {
 	pagePerms, err := json.Marshal(req.PagePermissions)
 	if err != nil {
@@ -155,7 +155,7 @@ func (s *OrgService) CreateRole(c *gin.Context, tenantID uuid.UUID, req *dto.Cre
 	return &resp, nil
 }
 
-//UpdateRole 更新现有组织角色。
+// UpdateRole 更新现有组织角色。
 func (s *OrgService) UpdateRole(c *gin.Context, id uuid.UUID, req *dto.UpdateRoleRequest) (*dto.RoleResponse, error) {
 	role, err := s.orgRepo.FindRoleByID(c, id)
 	if err != nil {
@@ -181,7 +181,7 @@ func (s *OrgService) UpdateRole(c *gin.Context, id uuid.UUID, req *dto.UpdateRol
 	return &resp, nil
 }
 
-//DeleteRole 在检查组织角色不是系统角色后删除该角色。
+// DeleteRole 在检查组织角色不是系统角色后删除该角色。
 func (s *OrgService) DeleteRole(c *gin.Context, id uuid.UUID) error {
 	role, err := s.orgRepo.FindRoleByID(c, id)
 	if err != nil {
@@ -200,7 +200,7 @@ func (s *OrgService) DeleteRole(c *gin.Context, id uuid.UUID) error {
 //会员增删改查
 // ---------------------------------------------------------------------------
 
-//ListMembers 返回当前租户的所有组织成员。
+// ListMembers 返回当前租户的所有组织成员。
 func (s *OrgService) ListMembers(c *gin.Context) ([]dto.MemberResponse, error) {
 	members, err := s.orgRepo.ListMembers(c)
 	if err != nil {
@@ -213,7 +213,7 @@ func (s *OrgService) ListMembers(c *gin.Context) ([]dto.MemberResponse, error) {
 	return result, nil
 }
 
-//CreateMember 通过自动用户创建和角色分配创建新的组织成员。
+// CreateMember 通过自动用户创建和角色分配创建新的组织成员。
 func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.CreateMemberRequest) (*dto.MemberResponse, error) {
 	// 0. 参数格式校验
 	// 用户名只能包含英文字母、数字和下划线
@@ -281,7 +281,12 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 	if existingUser != nil {
 		user = existingUser
 	} else {
-		passwordHash, err := hash.HashPassword(req.Password)
+		// Use default password if not provided by the request
+		password := req.Password
+		if password == "" {
+			password = "123456"
+		}
+		passwordHash, err := hash.HashPassword(password)
 		if err != nil {
 			return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 		}
@@ -372,7 +377,7 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 	return &resp, nil
 }
 
-//UpdateMember 更新现有组织成员的部门、职位、状态和角色。
+// UpdateMember 更新现有组织成员的部门、职位、状态和角色。
 func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateMemberRequest) (*dto.MemberResponse, error) {
 	member, err := s.orgRepo.FindMemberByID(c, id)
 	if err != nil {
@@ -452,7 +457,7 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 	return &resp, nil
 }
 
-//DeleteMember 删除组织成员并级联清理角色和 user_role_assignments。
+// DeleteMember 删除组织成员并级联清理角色和 user_role_assignments。
 func (s *OrgService) DeleteMember(c *gin.Context, id uuid.UUID) error {
 	member, err := s.orgRepo.FindMemberByID(c, id)
 	if err != nil {
