@@ -751,6 +751,12 @@ OrgMember.status:
 
 > ⚠️ 注意：当用户在多个租户中拥有成员记录时，任一租户管理员禁用该成员都会导致 `users.status` 变为 `disabled`，从而影响该用户在所有租户的登录能力。后续版本可考虑改为仅当所有租户均禁用时才全局禁用。
 
+**用户信息同步机制**：
+
+通过 `PUT /api/tenant/org/members/:id` 更新成员时，除组织级字段（`department_id`、`role_ids`、`position`、`status`）外，还支持更新用户基本信息字段（`display_name`、`email`、`phone`）。这些字段存储在 `users` 表中，更新时需同步写回。
+
+> ⚠️ 注意：由于 `users` 表是全局共享的，在某一租户中修改用户的 `display_name`/`email`/`phone` 会影响该用户在所有租户中的显示。
+
 **判断逻辑**：
 ```
 用户能否登录？

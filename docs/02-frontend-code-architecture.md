@@ -83,7 +83,9 @@ export default defineNuxtConfig({
 5. → 从 user.locale 同步语言偏好
 6. → authFetch GET /api/auth/menu 拉取菜单（失败不影响登录）
 7. → persistState() 统一写入 auth_state
-8. → return true
+8. → return { ok: true }
+   失败时：解析后端 error.data.code，通过 ERROR_CODE_MAP 映射为用户友好消息
+   → return { ok: false, errorMsg?: string }
 ```
 
 #### 角色切换

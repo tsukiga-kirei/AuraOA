@@ -403,10 +403,22 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
-	// 同步更新 users.status，确保禁用/启用在登录时生效
+	// 同步更新 users 表字段（display_name, email, phone, status）
+	userUpdates := map[string]interface{}{}
+	if req.DisplayName != "" {
+		userUpdates["display_name"] = req.DisplayName
+	}
+	if req.Email != "" {
+		userUpdates["email"] = req.Email
+	}
+	if req.Phone != "" {
+		userUpdates["phone"] = req.Phone
+	}
 	if req.Status != "" {
-		userStatus := req.Status
-		if err := s.db.Model(&model.User{}).Where("id = ?", member.UserID).Update("status", userStatus).Error; err != nil {
+		userUpdates["status"] = req.Status
+	}
+	if len(userUpdates) > 0 {
+		if err := s.db.Model(&model.User{}).Where("id = ?", member.UserID).Updates(userUpdates).Error; err != nil {
 			return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 		}
 	}

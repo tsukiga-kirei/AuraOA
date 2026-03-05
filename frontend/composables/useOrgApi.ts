@@ -192,6 +192,9 @@ export const useOrgApi = () => {
 
   async function updateMember(id: string, member: Partial<OrgMember>): Promise<OrgMember> {
     const body: Record<string, any> = {}
+    if (member.name !== undefined) body.display_name = member.name
+    if (member.email !== undefined) body.email = member.email
+    if (member.phone !== undefined) body.phone = member.phone
     if (member.department_id !== undefined) body.department_id = member.department_id
     if (member.role_ids !== undefined) body.role_ids = member.role_ids
     if (member.position !== undefined) body.position = member.position

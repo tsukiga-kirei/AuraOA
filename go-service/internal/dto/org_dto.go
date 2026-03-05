@@ -72,6 +72,9 @@ type CreateMemberRequest struct {
 
 //UpdateMemberRequest 是 PUT /api/tenant/org/members/:id 的请求正文
 type UpdateMemberRequest struct {
+	DisplayName  string   `json:"display_name"`
+	Email        string   `json:"email"`
+	Phone        string   `json:"phone"`
 	DepartmentID string   `json:"department_id"`
 	RoleIDs      []string `json:"role_ids"`
 	Position     string   `json:"position"`

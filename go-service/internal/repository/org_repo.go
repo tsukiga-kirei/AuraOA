@@ -1,4 +1,4 @@
-package repository
+﻿package repository
 
 import (
 	"github.com/gin-gonic/gin"
@@ -129,7 +129,7 @@ func (r *OrgRepo) CreateMember(member *model.OrgMember) error {
 
 //UpdateMember 更新现有的组织成员记录。
 func (r *OrgRepo) UpdateMember(member *model.OrgMember) error {
-	return r.DB.Save(member).Error
+	return r.DB.Model(member).Select("department_id", "position", "status", "updated_at").Updates(member).Error
 }
 
 //DeleteMember 按 ID 删除组织成员。
