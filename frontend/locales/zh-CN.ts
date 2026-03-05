@@ -92,6 +92,7 @@ export default {
     'settings.security.changeError.mismatch': '两次输入的新密码不一致',
     'settings.security.changeError.tooShort': '新密码长度至少为6位',
     'settings.security.changeError.wrongCurrent': '当前密码不正确',
+    'settings.security.changeError.samePassword': '新密码不能与当前密码相同',
     'settings.security.lastChanged': '上次修改时间',
     'settings.security.passwordStrength': '密码强度',
     'settings.security.strength.weak': '弱',

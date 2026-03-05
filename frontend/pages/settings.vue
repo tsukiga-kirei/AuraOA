@@ -29,8 +29,7 @@ import {
   LoadingOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { ProcessAuditConfig, ProcessField, AuditRule, ArchiveReviewConfig, OverviewWidgetId } from '~/composables/useMockData'
-import { OVERVIEW_WIDGETS } from '~/composables/useMockData'
+import type { ProcessAuditConfig, ProcessField,  ArchiveReviewConfig } from '~/composables/useMockData'
 import type { Locale } from '~/composables/useI18n'
 
 definePageMeta({
@@ -38,8 +37,8 @@ definePageMeta({
   layout: 'default',
 })
 
-const { userRole, userPermissions, activeRole, getProfile, updateProfile, updateLocale, setUserLocale } = useAuth()
-const { mockProcessAuditConfigs, mockArchiveReviewConfigs, mockUserDashboardPrefs } = useMockData()
+const { userRole, activeRole, getProfile, updateProfile, updateLocale, setUserLocale } = useAuth()
+const { mockProcessAuditConfigs, mockArchiveReviewConfigs } = useMockData()
 const { t, locale, setLocale, availableLocales } = useI18n()
 
 /** /api/auth/me 返回的完整资料 */
@@ -77,8 +76,6 @@ const passwordForm = ref({
   confirmPassword: '',
 })
 const passwordChanging = ref(false)
-const showCurrentPassword = ref(false)
-const showNewPassword = ref(false)
 
 const passwordStrength = computed(() => {
   const pwd = passwordForm.value.newPassword
@@ -101,8 +98,15 @@ const strengthConfig: Record<string, { color: string; percent: number }> = {
 }
 
 const securityInfo = computed(() => {
-  //TODO：当安全信息端点可用时从后端 API 获取
-  return { password_last_changed: '-', login_history: [] as { time: string; device: string; ip: string; location: string }[] }
+  const history = (meData.value?.login_history || []).map(h => ({
+    time: h.time,
+    ip: h.ip,
+    device: h.device,
+  }))
+  return {
+    password_last_changed: meData.value?.password_changed_at || '-',
+    login_history: history,
+  }
 })
 
 const handleChangePassword = async () => {
@@ -113,11 +117,14 @@ const handleChangePassword = async () => {
   if (newPassword.length < 6) {
     message.error(t('settings.security.changeError.tooShort')); return
   }
+  if (currentPassword === newPassword) {
+    message.error(t('settings.security.changeError.samePassword')); return
+  }
   if (newPassword !== confirmPassword) {
     message.error(t('settings.security.changeError.mismatch')); return
   }
   //调用后台修改密码
-  const { changePassword } = useAuth()
+  const { changePassword, logout } = useAuth()
   passwordChanging.value = true
   const ok = await changePassword({
     current_password: currentPassword,
@@ -129,6 +136,8 @@ const handleChangePassword = async () => {
   }
   passwordForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' }
   message.success(t('settings.security.changeSuccess'))
+  // 密码修改成功后自动退出登录
+  setTimeout(() => { logout() }, 1500)
 }
 
 
@@ -749,7 +758,6 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
               v-model:value="passwordForm.currentPassword"
               size="large"
               :placeholder="t('settings.security.currentPasswordPlaceholder')"
-              :visibility-toggle="true"
             />
           </a-form-item>
           <a-form-item :label="t('settings.security.newPassword')">
@@ -757,7 +765,6 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
               v-model:value="passwordForm.newPassword"
               size="large"
               :placeholder="t('settings.security.newPasswordPlaceholder')"
-              :visibility-toggle="true"
             />
             <div v-if="passwordStrength" class="password-strength">
               <div class="strength-bar">
@@ -773,7 +780,6 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
               v-model:value="passwordForm.confirmPassword"
               size="large"
               :placeholder="t('settings.security.confirmPasswordPlaceholder')"
-              :visibility-toggle="true"
             />
           </a-form-item>
           <a-button type="primary" size="large" :disabled="passwordChanging" @click="handleChangePassword">
@@ -801,8 +807,6 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
                 <span>{{ entry.device }}</span>
                 <span class="login-history-sep">·</span>
                 <span>{{ entry.ip }}</span>
-                <span class="login-history-sep">·</span>
-                <span>{{ entry.location }}</span>
               </div>
             </div>
           </div>

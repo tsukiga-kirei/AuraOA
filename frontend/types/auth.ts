@@ -80,4 +80,6 @@ export interface MeResponse {
   position: string
   org_roles: MeOrgRole[]
   page_permissions: string[]
+  password_changed_at: string
+  login_history: { time: string; ip: string; device: string }[]
 }

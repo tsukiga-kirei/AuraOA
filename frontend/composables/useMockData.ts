@@ -2212,69 +2212,8 @@ export const useMockData = () => {
     },
   }
 
-  // ============================================================
-  //系统监控模拟数据（全局监控页面）
-  // ============================================================
-  const mockSystemMonitorMetrics = {
-    system_health: 'healthy' as const,
-    api_success_rate: 99.2,
-    avg_model_response_ms: 1250,
-    active_tenants: 3,
-    total_audits_today: mockDashboardStats.todayAudits,
-    uptime: '99.97%',
-    p95_latency: 2100,
-    total_requests_24h: 1847,
-  }
 
-  const mockSystemMonitorAlerts = [
-    { id: 1, level: 'warning', messageKey: 'monitor.alert.tokenUsage', messageZh: '租户"华东分公司" Token 用量已达 70%', messageEn: 'Tenant "East Division" token usage has reached 70%', time: '10 min ago', timeZh: '10 分钟前' },
-    { id: 2, level: 'info', messageKey: 'monitor.alert.backupComplete', messageZh: '系统自动完成每日数据备份', messageEn: 'System automatic daily data backup completed', time: '2 hours ago', timeZh: '2 小时前' },
-    { id: 3, level: 'info', messageKey: 'monitor.alert.aiRecovery', messageZh: 'AI 模型响应时间恢复正常', messageEn: 'AI model response time recovered to normal', time: '5 hours ago', timeZh: '5 小时前' },
-  ]
 
-  // ============================================================
-  //用户安全模拟数据（密码修改/登录历史）
-  // ============================================================
-  const mockUserSecurityInfo: Record<string, {
-    password_last_changed: string
-    login_history: { time: string; ip: string; device: string; location: string }[]
-  }> = {
-    zhangming: {
-      password_last_changed: '2025-12-15 14:30',
-      login_history: [
-        { time: '2026-02-19 09:12', ip: '192.168.1.101', device: 'Chrome / Windows', location: '上海' },
-        { time: '2026-02-18 08:45', ip: '192.168.1.101', device: 'Chrome / Windows', location: '上海' },
-        { time: '2026-02-17 14:20', ip: '10.0.0.55', device: 'Safari / macOS', location: '上海' },
-      ],
-    },
-    admin: {
-      password_last_changed: '2026-01-20 10:00',
-      login_history: [
-        { time: '2026-02-19 08:00', ip: '192.168.1.1', device: 'Chrome / Windows', location: '北京' },
-        { time: '2026-02-18 09:30', ip: '192.168.1.1', device: 'Chrome / Windows', location: '北京' },
-      ],
-    },
-    tenantadmin: {
-      password_last_changed: '2026-01-10 16:45',
-      login_history: [
-        { time: '2026-02-19 10:00', ip: '192.168.2.50', device: 'Firefox / Linux', location: '杭州' },
-      ],
-    },
-  }
-
-  // ============================================================
-  //用户区域设置模拟数据（用户语言偏好）
-  // ============================================================
-  const mockUserLocalePrefs: Record<string, {
-    locale: 'zh-CN' | 'en-US'
-    dateFormat: 'YYYY-MM-DD' | 'MM/DD/YYYY' | 'DD/MM/YYYY'
-  }> = {
-    zhangming: { locale: 'zh-CN', dateFormat: 'YYYY-MM-DD' },
-    admin: { locale: 'zh-CN', dateFormat: 'YYYY-MM-DD' },
-    tenantadmin: { locale: 'zh-CN', dateFormat: 'YYYY-MM-DD' },
-    user: { locale: 'zh-CN', dateFormat: 'YYYY-MM-DD' },
-    lifang: { locale: 'zh-CN', dateFormat: 'YYYY-MM-DD' },
-  }
 
   const mockOverviewData: OverviewDashboardData = {
     auditSummary: { approved: mockApprovedProcesses.length, returned: mockReturnedProcesses.length, archived: mockArchivedOAProcesses.length, total: mockApprovedProcesses.length + mockReturnedProcesses.length + mockArchivedOAProcesses.length },
@@ -2432,8 +2371,6 @@ export const useMockData = () => {
     mockOADatabaseConnections: [...mockOADatabaseConnections],
     mockAIModelConfigs: [...mockAIModelConfigs],
     mockSystemGeneralConfig: { ...mockSystemGeneralConfig },
-    mockUserSecurityInfo,
-    mockUserLocalePrefs,
     mockBatchAuditResult,
     mockTodoAuditResults,
     processCategoryMap,

@@ -104,8 +104,19 @@ type MeResponse struct {
 	TenantName     string      `json:"tenant_name"`
 	DepartmentName string      `json:"department_name"`
 	Position       string      `json:"position"`
-	OrgRoles       []MeOrgRole `json:"org_roles"`
-	PagePermissions []string   `json:"page_permissions"`
+	OrgRoles        []MeOrgRole `json:"org_roles"`
+	PagePermissions []string    `json:"page_permissions"`
+
+	// Security info
+	PasswordChangedAt string           `json:"password_changed_at"`
+	LoginHistory      []LoginHistoryItem `json:"login_history"`
+}
+
+// LoginHistoryItem represents a single login history entry in the /auth/me response.
+type LoginHistoryItem struct {
+	Time   string `json:"time"`
+	IP     string `json:"ip"`
+	Device string `json:"device"`
 }
 
 // UpdateProfileRequest is the request body for PUT /api/auth/profile.

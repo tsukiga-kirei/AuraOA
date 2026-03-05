@@ -91,6 +91,7 @@ export default {
     'settings.security.changeError.mismatch': 'New passwords do not match',
     'settings.security.changeError.tooShort': 'New password must be at least 6 characters',
     'settings.security.changeError.wrongCurrent': 'Current password is incorrect',
+    'settings.security.changeError.samePassword': 'New password cannot be the same as current password',
     'settings.security.lastChanged': 'Last Changed',
     'settings.security.passwordStrength': 'Password Strength',
     'settings.security.strength.weak': 'Weak',

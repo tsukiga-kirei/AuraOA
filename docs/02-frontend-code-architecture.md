@@ -117,9 +117,11 @@ getMenu(): Promise<MenuItem[]>
 ```typescript
 changePassword(req: { current_password, new_password }): Promise<boolean>
 // PUT /api/auth/change-password
+// 前端额外校验：新密码不能与当前密码相同
+// 修改成功后 1.5s 自动调用 logout() 强制重新登录
 
 getProfile(): Promise<MeResponse | null>
-// GET /api/auth/me → 返回用户完整资料、组织角色、页面权限
+// GET /api/auth/me → 返回用户完整资料、组织角色、页面权限、登录历史
 
 updateLocale(locale: string): Promise<boolean>
 // PUT /api/auth/locale → 同步语言偏好到后端
@@ -357,7 +359,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 | POST | `/api/auth/logout` | Header: Bearer Token | — |
 | GET | `/api/auth/menu` | Header: Bearer Token | `{ menus: MenuItem[] }` |
 | PUT | `/api/auth/switch-role` | `{ role_id }` | `{ access_token, active_role, permissions, menus }` |
-| GET | `/api/auth/me` | Header: Bearer Token | `MeResponse`（用户资料、组织角色、页面权限） |
+| GET | `/api/auth/me` | Header: Bearer Token | `MeResponse`（用户资料、组织角色、页面权限、登录历史） |
 | PUT | `/api/auth/change-password` | `{ current_password, new_password }` | — |
 | PUT | `/api/auth/locale` | `{ locale }` | — |
 

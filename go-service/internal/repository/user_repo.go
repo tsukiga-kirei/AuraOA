@@ -97,9 +97,26 @@ func (r *UserRepo) UpdatePasswordHash(userID uuid.UUID, hash string) error {
 	return r.DB.Model(&model.User{}).Where("id = ?", userID).Update("password_hash", hash).Error
 }
 
+// UpdatePasswordHashAndTime updates the user's password hash and sets password_changed_at to now.
+func (r *UserRepo) UpdatePasswordHashAndTime(userID uuid.UUID, hash string) error {
+	return r.DB.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"password_hash":       hash,
+		"password_changed_at": time.Now(),
+	}).Error
+}
+
 // UpdateLocale updates the user's locale preference.
 func (r *UserRepo) UpdateLocale(userID uuid.UUID, locale string) error {
 	return r.DB.Model(&model.User{}).Where("id = ?", userID).Update("locale", locale).Error
+}
+
+// FindRecentLoginHistory returns the most recent login history entries for a user (up to limit).
+func (r *UserRepo) FindRecentLoginHistory(userID uuid.UUID, limit int) ([]model.LoginHistory, error) {
+	var histories []model.LoginHistory
+	if err := r.DB.Where("user_id = ?", userID).Order("login_at DESC").Limit(limit).Find(&histories).Error; err != nil {
+		return nil, err
+	}
+	return histories, nil
 }
 
 // UpdateProfile updates the user's display_name, email, and phone.

@@ -55,7 +55,7 @@ func newServiceError(code int, msg string) *ServiceError {
 // ---------------------------------------------------------------------------
 
 //登录对用户进行身份验证并返回令牌、用户信息、角色和活动角色。
-func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
+func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent string) (*dto.LoginResponse, error) {
 	//1.通过用户名查找用户
 	user, err := s.userRepo.FindByUsername(req.Username)
 	if err != nil {
@@ -159,9 +159,11 @@ func (s *AuthService) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) {
 		loginTenantID = &tid
 	}
 	history := &model.LoginHistory{
-		UserID:   user.ID,
-		TenantID: loginTenantID,
-		LoginAt:  time.Now(),
+		UserID:    user.ID,
+		TenantID:  loginTenantID,
+		IP:        clientIP,
+		UserAgent: userAgent,
+		LoginAt:   time.Now(),
 	}
 	_ = s.userRepo.CreateLoginHistory(history)
 
@@ -751,12 +753,17 @@ func (s *AuthService) ChangePassword(userID uuid.UUID, req *dto.ChangePasswordRe
 		return newServiceError(errcode.ErrWrongPassword, "当前密码错误")
 	}
 
+	// New password must differ from current password
+	if req.CurrentPassword == req.NewPassword {
+		return newServiceError(errcode.ErrParamValidation, "新密码不能与当前密码相同")
+	}
+
 	newHash, err := hash.HashPassword(req.NewPassword)
 	if err != nil {
 		return newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 	}
 
-	if err := s.userRepo.UpdatePasswordHash(userID, newHash); err != nil {
+	if err := s.userRepo.UpdatePasswordHashAndTime(userID, newHash); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
@@ -831,8 +838,9 @@ func (s *AuthService) GetMe(userID uuid.UUID, activeRole jwtpkg.ActiveRoleClaim,
 			Phone:       user.Phone,
 			Locale:      user.Locale,
 		},
-		Roles:      roles,
-		ActiveRole: activeRoleDTO,
+		Roles:             roles,
+		ActiveRole:        activeRoleDTO,
+		PasswordChangedAt: user.PasswordChangedAt.Format("2006-01-02 15:04:05"),
 	}
 
 	// 3. If active role has a tenant, fetch org-level info
@@ -893,6 +901,18 @@ func (s *AuthService) GetMe(userID uuid.UUID, activeRole jwtpkg.ActiveRoleClaim,
 	if resp.PagePermissions == nil {
 		resp.PagePermissions = []string{}
 	}
+
+	// 4. Fetch recent login history (last 10 entries)
+	loginHistories, _ := s.userRepo.FindRecentLoginHistory(userID, 10)
+	loginItems := make([]dto.LoginHistoryItem, 0, len(loginHistories))
+	for _, h := range loginHistories {
+		loginItems = append(loginItems, dto.LoginHistoryItem{
+			Time:   h.LoginAt.Format("2006-01-02 15:04:05"),
+			IP:     h.IP,
+			Device: h.UserAgent,
+		})
+	}
+	resp.LoginHistory = loginItems
 
 	return resp, nil
 }

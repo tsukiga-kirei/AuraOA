@@ -44,7 +44,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.authService.Login(&req)
+	resp, err := h.authService.Login(&req, c.ClientIP(), c.GetHeader("User-Agent"))
 	if err != nil {
 		httpStatus := mapServiceErrorToHTTP(err)
 		if svcErr, ok := err.(*service.ServiceError); ok {
