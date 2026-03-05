@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 
@@ -214,13 +215,34 @@ func (s *OrgService) ListMembers(c *gin.Context) ([]dto.MemberResponse, error) {
 
 //CreateMember 通过自动用户创建和角色分配创建新的组织成员。
 func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.CreateMemberRequest) (*dto.MemberResponse, error) {
+	// 0. 参数格式校验
+	// 用户名只能包含英文字母、数字和下划线
+	usernameRegex := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
+	if !usernameRegex.MatchString(req.Username) {
+		return nil, newServiceError(errcode.ErrParamValidation, "用户名只能包含英文字母、数字和下划线，且以字母开头")
+	}
+	// 邮箱格式校验（如果提供）
+	if req.Email != "" {
+		emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+		if !emailRegex.MatchString(req.Email) {
+			return nil, newServiceError(errcode.ErrParamValidation, "邮箱格式不正确")
+		}
+	}
+	// 手机号必须为11位数字（如果提供）
+	if req.Phone != "" {
+		phoneRegex := regexp.MustCompile(`^\d{11}$`)
+		if !phoneRegex.MatchString(req.Phone) {
+			return nil, newServiceError(errcode.ErrParamValidation, "手机号必须为11位数字")
+		}
+	}
+
 	//1. 检查用户是否已经存在；如果是这样，请检查租户内的唯一性
 	existingUser, _ := s.userRepo.FindByUsername(req.Username)
 	if existingUser != nil {
 		//检查该用户在此租户中是否已有会员记录
 		existingMember, _ := s.orgRepo.FindByUserAndTenant(existingUser.ID, tenantID)
 		if existingMember != nil {
-			return nil, newServiceError(errcode.ErrResourceConflict, "资源冲突")
+			return nil, newServiceError(errcode.ErrResourceConflict, "该用户名已存在于当前租户中")
 		}
 	}
 
@@ -379,6 +401,14 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 
 	if err := s.orgRepo.UpdateMember(member); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+
+	// 同步更新 users.status，确保禁用/启用在登录时生效
+	if req.Status != "" {
+		userStatus := req.Status
+		if err := s.db.Model(&model.User{}).Where("id = ?", member.UserID).Update("status", userStatus).Error; err != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		}
 	}
 
 	//如果提供了 role_ids，则替换角色关联

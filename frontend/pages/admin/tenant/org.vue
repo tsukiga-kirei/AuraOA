@@ -85,6 +85,37 @@ const handleSaveMember = async () => {
     message.warning(t('admin.org.fillNameRequired'))
     return
   }
+  // 部门和角色必填校验
+  if (!memberForm.value.department_id) {
+    message.warning(t('admin.org.deptRequired'))
+    return
+  }
+  if (!memberForm.value.role_ids || memberForm.value.role_ids.length === 0) {
+    message.warning(t('admin.org.roleRequired'))
+    return
+  }
+  // 用户名校验：只能英文字母、数字、下划线，且以字母开头
+  const usernameRegex = /^[a-zA-Z][a-zA-Z0-9_]*$/
+  if (!usernameRegex.test(memberForm.value.username)) {
+    message.warning(t('admin.org.usernameFormatError'))
+    return
+  }
+  // 邮箱格式校验（如果填写了）
+  if (memberForm.value.email.trim()) {
+    const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
+    if (!emailRegex.test(memberForm.value.email)) {
+      message.warning(t('admin.org.emailFormatError'))
+      return
+    }
+  }
+  // 手机号校验：必须为11位数字（如果填写了）
+  if (memberForm.value.phone.trim()) {
+    const phoneRegex = /^\d{11}$/
+    if (!phoneRegex.test(memberForm.value.phone)) {
+      message.warning(t('admin.org.phoneFormatError'))
+      return
+    }
+  }
   try {
     if (editingMember.value) {
       await updateMember(editingMember.value.id, {
@@ -490,16 +521,16 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
             <a-input v-model:value="memberForm.name" :placeholder="t('admin.org.namePlaceholder')" />
           </a-form-item>
           <a-form-item :label="t('admin.org.username')" required>
-            <a-input v-model:value="memberForm.username" :placeholder="t('admin.org.usernamePlaceholder')" :disabled="!!editingMember" />
+            <a-input v-model:value="memberForm.username" :placeholder="!editingMember ? t('admin.org.usernameHint') : t('admin.org.usernamePlaceholder')" :disabled="!!editingMember" />
           </a-form-item>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <a-form-item :label="t('admin.org.department')">
+          <a-form-item :label="t('admin.org.department')" required>
             <a-select v-model:value="memberForm.department_id" :placeholder="t('admin.org.selectDept')">
               <a-select-option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</a-select-option>
             </a-select>
           </a-form-item>
-          <a-form-item :label="t('admin.org.role')">
+          <a-form-item :label="t('admin.org.role')" required>
             <a-select v-model:value="memberForm.role_ids" mode="multiple" :placeholder="t('admin.org.selectRoles')">
               <a-select-option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</a-select-option>
             </a-select>
@@ -513,7 +544,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
             <a-input v-model:value="memberForm.email" :placeholder="t('admin.org.emailPlaceholder')" />
           </a-form-item>
           <a-form-item :label="t('admin.org.phone')">
-            <a-input v-model:value="memberForm.phone" :placeholder="t('admin.org.phonePlaceholder')" />
+            <a-input v-model:value="memberForm.phone" :placeholder="t('admin.org.phonePlaceholder')" maxlength="11" />
           </a-form-item>
         </div>
       </a-form>
