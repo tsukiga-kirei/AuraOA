@@ -177,7 +177,7 @@ export const useOrgApi = () => {
     const body = {
       username: member.username,
       display_name: member.name,
-      password: 'Abc123456',
+      password: '123456',
       email: member.email,
       phone: member.phone,
       department_id: member.department_id,

@@ -333,9 +333,11 @@ POST /api/tenant/org/members
    b. 没有 → 继续
 3. 创建 org_members 记录（关联 user_id + tenant_id + department_id）
 4. 创建 org_member_roles 记录（关联 member_id + role_ids）
-5. 根据 role_ids 判断是否需要创建 user_role_assignments：
-   a. 如果包含 ROLE-003（租户管理员角色），自动创建 tenant_admin 的 UserRoleAssignment
-   b. 默认创建 business 的 UserRoleAssignment
+5. 根据 role_ids 对应的 page_permissions 推断需要创建的 user_role_assignments：
+   a. 遍历所有关联 OrgRole 的 page_permissions 路径
+   b. 包含 `/admin/` 前缀的路径 → 创建 `tenant_admin` 的 UserRoleAssignment
+   c. 包含非 `/admin/` 前缀的路径 → 创建 `business` 的 UserRoleAssignment
+   d. 如果两者都不满足，默认创建 `business`（确保用户能登录）
 6. 返回完整的成员信息
 ```
 
