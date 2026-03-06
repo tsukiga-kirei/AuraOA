@@ -185,7 +185,6 @@ interface TenantInfo {
   id: string                    // UUID
   name: string                  // "示例集团总部"
   code: string                  // "DEMO_HQ" — 登录时使用
-  oa_type: string               // "weaver_e9"
   oa_db_connection_id: string   // 关联系统级OA数据库连接
   token_quota: number           // Token额度上限
   token_used: number            // 已消耗Token
@@ -196,19 +195,14 @@ interface TenantInfo {
   contact_email: string
   contact_phone: string
   description: string
-  ai_config: {
-    default_provider: string    // "本地部署"
-    default_model: string       // "Qwen2.5-72B"
-    fallback_provider: string   // 备用
-    fallback_model: string
-    max_tokens_per_request: number
-    temperature: number
-    timeout_seconds: number
-    retry_count: number
-  }
+  primary_model_id: string      // 主模型 ID，关联 ai_model_configs
+  fallback_model_id: string | null  // 备用模型 ID，关联 ai_model_configs
+  max_tokens_per_request: number
+  temperature: number
+  timeout_seconds: number
+  retry_count: number
   log_retention_days: number
   data_retention_days: number
-  allow_custom_model: boolean
   sso_enabled: boolean
   sso_endpoint: string
   tenant_admin_id?: string      // 租户管理员用户名（用于反向关联）

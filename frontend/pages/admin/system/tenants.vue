@@ -21,17 +21,20 @@ import {message} from 'ant-design-vue'
 
 const { t } = useI18n()
 
-const { mockAIModelConfigs, mockOADatabaseConnections } = useMockData()
-const { listTenants: fetchTenants, createTenant: apiCreateTenant, updateTenant: apiUpdateTenant } = useSystemApi()
+const {
+  listTenants: fetchTenants, createTenant: apiCreateTenant, updateTenant: apiUpdateTenant,
+  listOAConnections, listAIModels,
+} = useSystemApi()
 
 interface TenantData {
   id: string; name: string; code: string; description: string; status: string
-  oa_type: string; token_quota: number; token_used: number; max_concurrency: number
-  ai_config: any; sso_enabled: boolean; sso_endpoint: string
-  log_retention_days: number; data_retention_days: number; allow_custom_model: boolean
+  oa_db_connection_id: string; token_quota: number; token_used: number; max_concurrency: number
+  primary_model_id: string; fallback_model_id: string
+  max_tokens_per_request: number; temperature: number; timeout_seconds: number; retry_count: number
+  sso_enabled: boolean; sso_endpoint: string
+  log_retention_days: number; data_retention_days: number
   contact_name: string; contact_email: string; contact_phone: string
   created_at: string; updated_at: string
-  oa_db_connection_id?: string
 }
 
 const tenants = ref<TenantData[]>([])
@@ -41,40 +44,53 @@ const showCreate = ref(false)
 const showDetail = ref(false)
 const detailActiveTab = ref('basic')
 
+// 后端获取的 OA 连接 & AI 模型
+const oaConnections = ref<any[]>([])
+const aiModels = ref<any[]>([])
+
 onMounted(async () => {
   loading.value = true
   try {
-    const data = await fetchTenants()
-    tenants.value = data.map((t: any) => ({
-      ...t,
-      ai_config: t.ai_config || { default_provider: '', default_model: '', fallback_provider: '', fallback_model: '', max_tokens_per_request: 4096, temperature: 0.3, timeout_seconds: 60, retry_count: 2 },
-    }))
+    const [tenantData, oaData, aiData] = await Promise.all([
+      fetchTenants(),
+      listOAConnections(),
+      listAIModels(),
+    ])
+    tenants.value = tenantData
+    oaConnections.value = oaData
+    aiModels.value = aiData
   } catch (e) {
-    message.error('加载租户列表失败')
+    message.error('加载数据失败')
   } finally {
     loading.value = false
   }
 })
 
-//租户配置下拉列表的可用 AI 模型
-const availableModels = computed(() => mockAIModelConfigs.filter(m => m.enabled))
+// 租户配置下拉列表的可用 AI 模型（只显示已启用的）
+const availableModels = computed(() => aiModels.value.filter(m => m.enabled))
 
-//系统设置中可用的 OA 数据库连接
-const availableOADbs = computed(() => mockOADatabaseConnections.filter(c => c.enabled))
+// 系统设置中可用的 OA 数据库连接（只显示已启用的）
+const availableOADbs = computed(() => oaConnections.value.filter(c => c.enabled))
 
-//通过id获取OA DB连接名称
+// 通过id获取OA DB连接名称
 const getOADbName = (id: string) => {
-  const conn = mockOADatabaseConnections.find(c => c.id === id)
+  const conn = oaConnections.value.find(c => c.id === id)
   return conn ? conn.name : t('admin.tenants.notConfigured')
 }
 
 const getOADbInfo = (id: string) => {
-  return mockOADatabaseConnections.find(c => c.id === id) || null
+  return oaConnections.value.find(c => c.id === id) || null
+}
+
+// 通过id获取AI模型显示名
+const getModelName = (id: string) => {
+  const m = aiModels.value.find(x => x.id === id)
+  return m ? m.display_name : ''
 }
 
 const newTenant = ref({
   name: '',
-  code: '',
+  code: '', // 后端自动生成，可选填
   oa_db_connection_id: '',
   token_quota: 10000,
   max_concurrency: 10,
@@ -82,42 +98,39 @@ const newTenant = ref({
   contact_email: '',
   contact_phone: '',
   description: '',
-  ai_provider: 'Xinference',
-  ai_model: '',
+  primary_model_id: '',
 })
 
 const createTenant = async () => {
-  if (!newTenant.value.name || !newTenant.value.code) {
+  if (!newTenant.value.name) {
     message.warning(t('admin.tenants.fillRequired'))
     return
   }
   try {
     const created = await apiCreateTenant({
       name: newTenant.value.name,
-      code: newTenant.value.code,
+      code: newTenant.value.code || undefined,
+      oa_db_connection_id: newTenant.value.oa_db_connection_id || undefined,
       token_quota: newTenant.value.token_quota,
       max_concurrency: newTenant.value.max_concurrency,
+      primary_model_id: newTenant.value.primary_model_id || undefined,
       contact_name: newTenant.value.contact_name,
       contact_email: newTenant.value.contact_email,
       contact_phone: newTenant.value.contact_phone,
       description: newTenant.value.description,
-      ai_config: { default_provider: newTenant.value.ai_provider, default_model: newTenant.value.ai_model || '' },
     })
-    const tenantObj: TenantData = {
-      ...created,
-      ai_config: created.ai_config || { default_provider: '', default_model: '', fallback_provider: '', fallback_model: '', max_tokens_per_request: 4096, temperature: 0.3, timeout_seconds: 60, retry_count: 2 },
-    }
-    tenants.value.push(tenantObj)
+    tenants.value.push(created)
     showCreate.value = false
     message.success(t('admin.tenants.createSuccess'))
-    newTenant.value = { name: '', code: '', oa_db_connection_id: '', token_quota: 10000, max_concurrency: 10, contact_name: '', contact_email: '', contact_phone: '', description: '', ai_provider: 'Xinference', ai_model: '' }
-    openDetail(tenantObj)
+    newTenant.value = { name: '', code: '', oa_db_connection_id: '', token_quota: 10000, max_concurrency: 10, contact_name: '', contact_email: '', contact_phone: '', description: '', primary_model_id: '' }
+    openDetail(created)
   } catch (e: any) {
     message.error(e.message || '创建租户失败')
   }
 }
+
 const openDetail = (tenant: TenantData) => {
-  selectedTenant.value = { ...tenant, ai_config: { ...(tenant.ai_config || {}) } }
+  selectedTenant.value = { ...tenant }
   detailActiveTab.value = 'basic'
   showDetail.value = true
 }
@@ -125,23 +138,29 @@ const openDetail = (tenant: TenantData) => {
 const saveTenantDetail = async () => {
   if (!selectedTenant.value) return
   try {
-    const updated = await apiUpdateTenant(selectedTenant.value.id, {
-      name: selectedTenant.value.name,
-      description: selectedTenant.value.description,
-      status: selectedTenant.value.status,
-      token_quota: selectedTenant.value.token_quota,
-      max_concurrency: selectedTenant.value.max_concurrency,
-      ai_config: selectedTenant.value.ai_config,
-      sso_enabled: selectedTenant.value.sso_enabled,
-      sso_endpoint: selectedTenant.value.sso_endpoint,
-      log_retention_days: selectedTenant.value.log_retention_days,
-      data_retention_days: selectedTenant.value.data_retention_days,
-      allow_custom_model: selectedTenant.value.allow_custom_model,
-      contact_name: selectedTenant.value.contact_name,
-      contact_email: selectedTenant.value.contact_email,
-      contact_phone: selectedTenant.value.contact_phone,
+    const s = selectedTenant.value
+    const updated = await apiUpdateTenant(s.id, {
+      name: s.name,
+      description: s.description,
+      status: s.status,
+      oa_db_connection_id: s.oa_db_connection_id || null,
+      token_quota: s.token_quota,
+      max_concurrency: s.max_concurrency,
+      primary_model_id: s.primary_model_id || null,
+      fallback_model_id: s.fallback_model_id || null,
+      max_tokens_per_request: s.max_tokens_per_request,
+      temperature: s.temperature,
+      timeout_seconds: s.timeout_seconds,
+      retry_count: s.retry_count,
+      sso_enabled: s.sso_enabled,
+      sso_endpoint: s.sso_endpoint,
+      log_retention_days: s.log_retention_days,
+      data_retention_days: s.data_retention_days,
+      contact_name: s.contact_name,
+      contact_email: s.contact_email,
+      contact_phone: s.contact_phone,
     })
-    const idx = tenants.value.findIndex(t => t.id === selectedTenant.value!.id)
+    const idx = tenants.value.findIndex(t => t.id === s.id)
     if (idx >= 0) tenants.value[idx] = { ...tenants.value[idx], ...updated }
     showDetail.value = false
     message.success(t('admin.tenants.saveSuccess'))
@@ -161,10 +180,6 @@ const toggleTenantStatus = async (id: string) => {
   } catch (e: any) {
     message.error(e.message || '操作失败')
   }
-}
-
-const testConnection = async () => {
-  //不再需要 - 在系统级别管理连接
 }
 
 const getQuotaPercent = (used: number, total: number) => Math.round((used / total) * 100)
@@ -187,45 +202,6 @@ const formatDateTime = (iso: string) => {
   } catch {
     return iso
   }
-}
-
-//===== 按提供商筛选 AI 模型 =====
-const providerOptions = ['Xinference', '阿里云百炼']
-
-const filteredModelsForProvider = (provider: string) => {
-  if (provider === 'Xinference') return availableModels.value.filter(m => m.type === 'local')
-  if (provider === '阿里云百炼') return availableModels.value.filter(m => m.type === 'cloud')
-  return availableModels.value
-}
-
-const primaryFilteredModels = computed(() => {
-  if (!selectedTenant.value) return availableModels.value
-  return filteredModelsForProvider(selectedTenant.value.ai_config.default_provider)
-})
-
-const fallbackFilteredModels = computed(() => {
-  if (!selectedTenant.value) return availableModels.value
-  return filteredModelsForProvider(selectedTenant.value.ai_config.fallback_provider)
-})
-
-const newTenantFilteredModels = computed(() => {
-  return filteredModelsForProvider(newTenant.value.ai_provider)
-})
-
-const onPrimaryProviderChange = () => {
-  if (selectedTenant.value) {
-    selectedTenant.value.ai_config.default_model = ''
-  }
-}
-
-const onFallbackProviderChange = () => {
-  if (selectedTenant.value) {
-    selectedTenant.value.ai_config.fallback_model = ''
-  }
-}
-
-const onNewTenantProviderChange = () => {
-  newTenant.value.ai_model = ''
 }
 </script>
 
@@ -267,7 +243,7 @@ const onNewTenantProviderChange = () => {
             <DatabaseOutlined /> {{ getOADbName(tenant.oa_db_connection_id || '') }}
           </span>
           <span class="info-tag info-tag--info">
-            <RobotOutlined /> {{ tenant.ai_config.default_model }}
+            <RobotOutlined /> {{ availableModels.find(m => m.id === tenant.primary_model_id)?.display_name || t('admin.tenants.noConfig') }}
           </span>
           <span v-if="tenant.sso_enabled" class="info-tag info-tag--success">
             <SafetyCertificateOutlined /> SSO
@@ -330,8 +306,9 @@ const onNewTenantProviderChange = () => {
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item :label="t('admin.tenants.tenantCode')" required>
+            <a-form-item :label="t('admin.tenants.tenantCode')">
               <a-input v-model:value="newTenant.code" :placeholder="t('admin.tenants.tenantCodePlaceholder')" size="large" />
+              <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px;">留空则由系统自动生成</div>
             </a-form-item>
           </a-col>
         </a-row>
@@ -375,24 +352,13 @@ const onNewTenantProviderChange = () => {
             </a-form-item>
           </a-col>
         </a-row>
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item :label="t('admin.tenants.aiProvider')">
-              <a-select v-model:value="newTenant.ai_provider" size="large" @change="onNewTenantProviderChange">
-                <a-select-option v-for="p in providerOptions" :key="p" :value="p">{{ p }}</a-select-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item :label="t('admin.tenants.modelName')">
-              <a-select v-model:value="newTenant.ai_model" size="large" :placeholder="t('admin.tenants.selectModel')">
-                <a-select-option v-for="m in newTenantFilteredModels" :key="m.model_name" :value="m.model_name">
-                  {{ m.display_name }}
-                </a-select-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-        </a-row>
+        <a-form-item :label="t('admin.tenants.primaryModel')">
+          <a-select v-model:value="newTenant.primary_model_id" size="large" :placeholder="t('admin.tenants.selectModel')" allowClear>
+            <a-select-option v-for="m in availableModels" :key="m.id" :value="m.id">
+              {{ m.display_name }} ({{ m.provider_label || m.provider }})
+            </a-select-option>
+          </a-select>
+        </a-form-item>
         <a-form-item :label="t('admin.tenants.description')">
           <a-textarea v-model:value="newTenant.description" :rows="2" :placeholder="t('admin.tenants.descPlaceholder')" />
         </a-form-item>
@@ -509,15 +475,15 @@ const onNewTenantProviderChange = () => {
               <div class="oadb-detail-meta">
                 <div class="oadb-meta-item">
                   <span class="oadb-meta-label">{{ t('admin.tenants.dbDriver') }}</span>
-                  <span class="oadb-meta-value">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.jdbc_config.driver.toUpperCase() }}</span>
+                  <span class="oadb-meta-value">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.driver.toUpperCase() }}</span>
                 </div>
                 <div class="oadb-meta-item">
                   <span class="oadb-meta-label">{{ t('admin.tenants.hostAddress') }}</span>
-                  <span class="oadb-meta-value">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.jdbc_config.host }}:{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.jdbc_config.port }}</span>
+                  <span class="oadb-meta-value">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.host }}:{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.port }}</span>
                 </div>
                 <div class="oadb-meta-item">
                   <span class="oadb-meta-label">{{ t('admin.tenants.dbName') }}</span>
-                  <span class="oadb-meta-value">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.jdbc_config.database }}</span>
+                  <span class="oadb-meta-value">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.database_name }}</span>
                 </div>
                 <div class="oadb-meta-item">
                   <span class="oadb-meta-label">{{ t('admin.settings.syncInterval') }}</span>
@@ -546,78 +512,52 @@ const onNewTenantProviderChange = () => {
           <a-form layout="vertical">
             <div class="config-group">
               <div class="config-group-title">{{ t('admin.tenants.primaryModel') }}</div>
-              <a-row :gutter="16">
-                <a-col :span="12">
-                  <a-form-item :label="t('admin.tenants.aiProvider')">
-                    <a-select v-model:value="selectedTenant.ai_config.default_provider" size="large" :placeholder="t('admin.tenants.selectProvider')" @change="onPrimaryProviderChange">
-                      <a-select-option v-for="p in providerOptions" :key="p" :value="p">{{ p }}</a-select-option>
-                    </a-select>
-                  </a-form-item>
-                </a-col>
-                <a-col :span="12">
-                  <a-form-item :label="t('admin.tenants.modelName')">
-                    <a-select v-model:value="selectedTenant.ai_config.default_model" size="large" :placeholder="t('admin.tenants.selectModel')">
-                      <a-select-option v-for="m in primaryFilteredModels" :key="m.model_name" :value="m.model_name">
-                        {{ m.display_name }}
-                      </a-select-option>
-                    </a-select>
-                  </a-form-item>
-                </a-col>
-              </a-row>
+              <a-form-item :label="t('admin.tenants.modelName')">
+                <a-select v-model:value="selectedTenant.primary_model_id" size="large" :placeholder="t('admin.tenants.selectModel')" allowClear>
+                  <a-select-option v-for="m in availableModels" :key="m.id" :value="m.id">
+                    {{ m.display_name }} ({{ m.provider_label || m.provider }})
+                  </a-select-option>
+                </a-select>
+              </a-form-item>
             </div>
 
             <div class="config-group">
               <div class="config-group-title">{{ t('admin.tenants.fallbackModel') }}</div>
-              <a-row :gutter="16">
-                <a-col :span="12">
-                  <a-form-item :label="t('admin.tenants.fallbackProvider')">
-                    <a-select v-model:value="selectedTenant.ai_config.fallback_provider" size="large" allowClear :placeholder="t('admin.tenants.noConfig')" @change="onFallbackProviderChange">
-                      <a-select-option v-for="p in providerOptions" :key="p" :value="p">{{ p }}</a-select-option>
-                    </a-select>
-                  </a-form-item>
-                </a-col>
-                <a-col :span="12">
-                  <a-form-item :label="t('admin.tenants.fallbackModelLabel')">
-                    <a-select v-model:value="selectedTenant.ai_config.fallback_model" size="large" allowClear :placeholder="t('admin.tenants.noConfig')">
-                      <a-select-option v-for="m in fallbackFilteredModels" :key="m.model_name" :value="m.model_name">
-                        {{ m.display_name }}
-                      </a-select-option>
-                    </a-select>
-                  </a-form-item>
-                </a-col>
-              </a-row>
+              <a-form-item :label="t('admin.tenants.fallbackModelLabel')">
+                <a-select v-model:value="selectedTenant.fallback_model_id" size="large" allowClear :placeholder="t('admin.tenants.noConfig')">
+                  <a-select-option v-for="m in availableModels" :key="m.id" :value="m.id">
+                    {{ m.display_name }} ({{ m.provider_label || m.provider }})
+                  </a-select-option>
+                </a-select>
+              </a-form-item>
             </div>
 
             <a-divider>{{ t('admin.tenants.callParams') }}</a-divider>
             <a-row :gutter="16">
               <a-col :span="12">
                 <a-form-item :label="t('admin.tenants.maxTokenPerReq')">
-                  <a-input-number v-model:value="selectedTenant.ai_config.max_tokens_per_request" :min="512" :max="32768" :step="512" style="width: 100%;" size="large" />
+                  <a-input-number v-model:value="selectedTenant.max_tokens_per_request" :min="512" :max="32768" :step="512" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="12">
                 <a-form-item :label="t('admin.tenants.temperature')">
-                  <a-slider v-model:value="selectedTenant.ai_config.temperature" :min="0" :max="1" :step="0.1" />
-                  <span class="slider-value">{{ selectedTenant.ai_config.temperature }}</span>
+                  <a-slider v-model:value="selectedTenant.temperature" :min="0" :max="1" :step="0.1" />
+                  <span class="slider-value">{{ selectedTenant.temperature }}</span>
                 </a-form-item>
               </a-col>
             </a-row>
             <a-row :gutter="16">
               <a-col :span="12">
                 <a-form-item :label="t('admin.tenants.timeout')">
-                  <a-input-number v-model:value="selectedTenant.ai_config.timeout_seconds" :min="10" :max="300" style="width: 100%;" size="large" />
+                  <a-input-number v-model:value="selectedTenant.timeout_seconds" :min="10" :max="300" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="12">
                 <a-form-item :label="t('admin.tenants.retryCount')">
-                  <a-input-number v-model:value="selectedTenant.ai_config.retry_count" :min="0" :max="10" style="width: 100%;" size="large" />
+                  <a-input-number v-model:value="selectedTenant.retry_count" :min="0" :max="10" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
             </a-row>
-            <a-form-item :label="t('admin.tenants.allowCustomModel')">
-              <a-switch v-model:checked="selectedTenant.allow_custom_model" />
-              <span class="switch-label">{{ selectedTenant.allow_custom_model ? t('admin.tenants.allowCustomModelDesc') : t('admin.tenants.onlyDefaultModel') }}</span>
-            </a-form-item>
           </a-form>
         </div>
 

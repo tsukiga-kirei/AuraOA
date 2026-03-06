@@ -1,4 +1,4 @@
--- 006_system_config.sql
+-- 007_system_config.sql
 -- Seed data: system key-value configurations
 -- Run after migrations are applied
 
@@ -18,13 +18,13 @@ VALUES
     ),
     (
         '00000000-0000-0000-0000-000000000003',
-        'auth.login_fail_lock_count',
+        'auth.login_fail_lock_threshold',
         '5',
         '登录失败锁定阈值'
     ),
     (
         '00000000-0000-0000-0000-000000000004',
-        'auth.lock_duration_minutes',
+        'auth.account_lock_minutes',
         '15',
         '账户锁定时长（分钟）'
     ),
@@ -123,4 +123,16 @@ VALUES
         'system.smtp_ssl',
         'true',
         '是否启用 SMTP SSL/TLS'
+    ),
+    (
+        '00000000-0000-0000-0000-000000000021',
+        'tenant.default_log_retention_days',
+        '365',
+        '租户默认日志保留天数'
+    ),
+    (
+        '00000000-0000-0000-0000-000000000022',
+        'tenant.default_data_retention_days',
+        '1095',
+        '租户默认审核数据保留天数'
     );

@@ -1,7 +1,7 @@
 /**
  * 用于开发的模拟数据 - 模拟 API 响应
  * 所有模拟/虚拟数据都存放在这里。业务代码只引用该文件。*/
-import type {PermissionGroup} from "~/types/auth";
+import type { PermissionGroup } from "~/types/auth";
 
 
 // ============================================================
@@ -109,73 +109,6 @@ export interface TenantJdbcConfig {
   test_on_borrow: boolean
 }
 
-export interface TenantAIConfig {
-  default_provider: string
-  default_model: string
-  fallback_provider: string
-  fallback_model: string
-  max_tokens_per_request: number
-  temperature: number
-  timeout_seconds: number
-  retry_count: number
-}
-
-export interface TenantInfo {
-  id: string
-  name: string
-  code: string                //租户识别码
-  oa_type: string
-  oa_db_connection_id: string //参考系统级OA数据库连接
-  token_quota: number
-  token_used: number
-  max_concurrency: number
-  status: 'active' | 'inactive'
-  created_at: string
-  contact_name: string
-  contact_email: string
-  contact_phone: string
-  description: string
-  ai_config: TenantAIConfig
-  log_retention_days: number  //日志保留多少天
-  data_retention_days: number //审计数据保留多少天
-  allow_custom_model: boolean //租户用户是否可以覆盖AI模型
-  sso_enabled: boolean
-  sso_endpoint: string
-  tenant_admin_id?: string    //引用租户管理员的 MOCK_USERS 用户名
-}
-
-// ============================================================
-//系统设置类型（系统设置）
-// ============================================================
-export interface OASystemConfig {
-  id: string
-  name: string
-  type: 'weaver_e9' | 'weaver_ebridge' | 'zhiyuan_a8' | 'landray_ekp' | 'custom'
-  type_label: string
-  version: string
-  status: 'connected' | 'disconnected' | 'testing'
-  description: string
-  adapter_version: string
-  last_sync: string
-  sync_interval: number  //秒
-  enabled: boolean
-}
-
-/** OA数据库连接-系统级，跨租户共享*/
-export interface OADatabaseConnection {
-  id: string
-  name: string                //用户定义的显示名称
-  oa_type: 'weaver_e9' | 'weaver_ebridge' | 'zhiyuan_a8' | 'landray_ekp' | 'custom'
-  oa_type_label: string
-  jdbc_config: TenantJdbcConfig
-  status: 'connected' | 'disconnected' | 'testing'
-  last_sync: string
-  sync_interval: number
-  enabled: boolean
-  created_at: string
-  description: string
-}
-
 export interface AIModelConfig {
   id: string
   provider: string
@@ -193,23 +126,6 @@ export interface AIModelConfig {
   capabilities: string[]  //例如['文本'、'代码'、'推理']
 }
 
-export interface SystemGeneralConfig {
-  platform_name: string
-  platform_version: string
-  default_language: string
-  session_timeout: number  //分钟
-  max_upload_size: number  //MB
-  enable_audit_trail: boolean
-  enable_data_encryption: boolean
-  backup_enabled: boolean
-  backup_cron: string
-  backup_retention_days: number
-  notification_email: string
-  smtp_host: string
-  smtp_port: number
-  smtp_username: string
-  smtp_ssl: boolean
-}
 
 
 export interface AuditRule {
@@ -1650,96 +1566,11 @@ export const useMockData = () => {
     { snapshot_id: 'SN-006', process_id: 'WF-2025-093', title: '广告投放合同签署', applicant: '陈伟', department: '市场部', recommendation: 'return', score: 58, created_at: '2025-06-08 14:30', adopted: null },
   ]
 
-  const mockTenants: TenantInfo[] = [
-    {
-      id: 'T-001', name: '示例集团总部', code: 'DEMO_HQ', oa_type: 'weaver_e9',
-      oa_db_connection_id: 'OADB-001',
-      token_quota: 100000, token_used: 42350, max_concurrency: 20, status: 'active', created_at: '2025-01-15',
-      contact_name: '张明', contact_email: 'zhangming@demo-group.com', contact_phone: '138****8888',
-      description: '示例集团总部，使用泛微E9 OA系统，主要用于采购、合同、报销等流程审核',
-      ai_config: {
-        default_provider: '本地部署', default_model: 'Qwen2.5-72B',
-        fallback_provider: '云端API', fallback_model: 'qwen-plus',
-        max_tokens_per_request: 8192, temperature: 0.3, timeout_seconds: 60, retry_count: 3,
-      },
-      log_retention_days: 365, data_retention_days: 1095,
-      allow_custom_model: true, sso_enabled: true, sso_endpoint: 'https://sso.demo-group.com/oauth2',
-      tenant_admin_id: 'tenantadmin',
-    },
-    {
-      id: 'T-002', name: '华东分公司', code: 'EAST_BRANCH', oa_type: 'weaver_e9',
-      oa_db_connection_id: 'OADB-002',
-      token_quota: 50000, token_used: 18200, max_concurrency: 10, status: 'active', created_at: '2025-02-20',
-      contact_name: '李芳', contact_email: 'lifang@demo-east.com', contact_phone: '139****6666',
-      description: '华东区域分公司，与总部共享OA基础配置，独立Token配额',
-      ai_config: {
-        default_provider: '本地部署', default_model: 'Qwen2.5-72B',
-        fallback_provider: '', fallback_model: '',
-        max_tokens_per_request: 4096, temperature: 0.3, timeout_seconds: 45, retry_count: 2,
-      },
-      log_retention_days: 180, data_retention_days: 730,
-      allow_custom_model: false, sso_enabled: false, sso_endpoint: '',
-      tenant_admin_id: 'tenantadmin2',
-    },
-    {
-      id: 'T-003', name: '测试租户', code: 'TEST_TENANT', oa_type: 'weaver_e9',
-      oa_db_connection_id: 'OADB-003',
-      token_quota: 10000, token_used: 3100, max_concurrency: 5, status: 'inactive', created_at: '2025-03-10',
-      contact_name: '系统管理员', contact_email: 'admin@test.com', contact_phone: '130****7777',
-      description: '用于系统测试和演示的租户环境',
-      ai_config: {
-        default_provider: '本地部署', default_model: 'Qwen2.5-32B',
-        fallback_provider: '', fallback_model: '',
-        max_tokens_per_request: 2048, temperature: 0.5, timeout_seconds: 30, retry_count: 1,
-      },
-      log_retention_days: 30, data_retention_days: 90,
-      allow_custom_model: true, sso_enabled: false, sso_endpoint: '',
-    },
-  ]
 
   // ============================================================
   //系统设置模拟数据（系统设置）
   // ============================================================
-  const mockOASystemConfigs: OASystemConfig[] = [
-    {
-      id: 'OA-001', name: '泛微 Ecology E9', type: 'weaver_e9', type_label: '泛微 Ecology E9',
-      version: 'v10.x', status: 'connected', description: '泛微协同办公平台 E9 版本，支持 JDBC 直连和 REST API 两种数据获取方式',
-      adapter_version: '2.1.0', last_sync: '2026/2/23 12:17:04', sync_interval: 30, enabled: true,
-    },
-  ]
 
-  const mockOADatabaseConnections: OADatabaseConnection[] = [
-    {
-      id: 'OADB-001', name: '总部泛微E9数据库', oa_type: 'weaver_e9', oa_type_label: '泛微 Ecology E9',
-      jdbc_config: {
-        driver: 'mysql', host: '192.168.1.100', port: 3306, database: 'ecology',
-        username: 'oa_reader', password: '********', pool_size: 20,
-        connection_timeout: 30, test_on_borrow: true,
-      },
-      status: 'connected', last_sync: '2026/2/23 12:17:04', sync_interval: 30, enabled: true,
-      created_at: '2025-01-10', description: '总部泛微E9 OA系统主数据库，用于流程数据同步',
-    },
-    {
-      id: 'OADB-002', name: '华东分公司E9数据库', oa_type: 'weaver_e9', oa_type_label: '泛微 Ecology E9',
-      jdbc_config: {
-        driver: 'mysql', host: '192.168.2.100', port: 3306, database: 'ecology_east',
-        username: 'oa_reader', password: '********', pool_size: 10,
-        connection_timeout: 30, test_on_borrow: true,
-      },
-      status: 'connected', last_sync: '2026/2/23 11:20:10', sync_interval: 60, enabled: true,
-      created_at: '2025-02-15', description: '华东分公司泛微E9数据库',
-    },
-    {
-      id: 'OADB-003', name: '测试环境数据库', oa_type: 'weaver_e9', oa_type_label: '泛微 Ecology E9',
-      jdbc_config: {
-        driver: 'oracle', host: 'localhost', port: 1521, database: 'ecology_test',
-        username: 'test_reader', password: '********', pool_size: 5,
-        connection_timeout: 15, test_on_borrow: false,
-      },
-      status: 'disconnected', last_sync: '', sync_interval: 120, enabled: false,
-      created_at: '2025-03-05', description: '用于系统测试和演示的OA数据库连接',
-    },
-  ]
 
   const mockAIModelConfigs: AIModelConfig[] = [
     {
@@ -1783,25 +1614,6 @@ export const useMockData = () => {
       capabilities: ['text', 'code', 'reasoning'],
     },
   ]
-
-  const mockSystemGeneralConfig: SystemGeneralConfig = {
-    platform_name: 'OA流程智能审核平台',
-    platform_version: 'v1.2.0',
-    default_language: 'zh-CN',
-    session_timeout: 120,
-    max_upload_size: 50,
-    enable_audit_trail: true,
-    enable_data_encryption: true,
-    backup_enabled: true,
-    backup_cron: '0 2 * * *',
-    backup_retention_days: 30,
-    notification_email: 'admin@oa-smart-audit.com',
-    smtp_host: 'smtp.example.com',
-    smtp_port: 465,
-    smtp_username: 'noreply@oa-smart-audit.com',
-    smtp_ssl: true,
-  }
-
 
 
   //从流程审核配置中派生规则以实现向后兼容性
@@ -2351,7 +2163,6 @@ export const useMockData = () => {
     mockCronTasks,
     mockCronTaskTypeConfigs,
     mockSnapshots,
-    mockTenants,
     mockRules,
     mockDashboardStats,
     mockOverviewData,
@@ -2367,10 +2178,7 @@ export const useMockData = () => {
     mockCronLogs: [...mockCronLogs],
     mockArchiveLogs: [...mockArchiveLogs],
     mockUserPersonalConfigs: [...mockUserPersonalConfigs],
-    mockOASystemConfigs: [...mockOASystemConfigs],
-    mockOADatabaseConnections: [...mockOADatabaseConnections],
     mockAIModelConfigs: [...mockAIModelConfigs],
-    mockSystemGeneralConfig: { ...mockSystemGeneralConfig },
     mockBatchAuditResult,
     mockTodoAuditResults,
     processCategoryMap,

@@ -18,6 +18,7 @@ func SetupRouter(
 	authHandler *handler.AuthHandler,
 	orgHandler *handler.OrgHandler,
 	tenantHandler *handler.TenantHandler,
+	systemHandler *handler.SystemHandler,
 	healthHandler *handler.HealthHandler,
 ) {
 	// Global middleware
@@ -68,13 +69,37 @@ func SetupRouter(
 	admin := r.Group("/api/admin")
 	admin.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("system_admin"))
 	{
+		// 租户管理
 		admin.GET("/tenants", tenantHandler.ListTenants)
 		admin.POST("/tenants", tenantHandler.CreateTenant)
 		admin.PUT("/tenants/:id", tenantHandler.UpdateTenant)
 		admin.DELETE("/tenants/:id", tenantHandler.DeleteTenant)
 		admin.GET("/tenants/:id/stats", tenantHandler.GetTenantStats)
 
-		admin.GET("/system/configs", tenantHandler.GetSystemConfigs)
-		admin.PUT("/system/configs", tenantHandler.UpdateSystemConfigs)
+		// 系统设置 — 选项数据
+		system := admin.Group("/system")
+		{
+			system.GET("/options/oa-types", systemHandler.ListOATypes)
+			system.GET("/options/db-drivers", systemHandler.ListDBDrivers)
+			system.GET("/options/ai-deploy-types", systemHandler.ListAIDeployTypes)
+			system.GET("/options/ai-providers", systemHandler.ListAIProviders)
+
+			// OA 数据库连接
+			system.GET("/oa-connections", systemHandler.ListOAConnections)
+			system.POST("/oa-connections", systemHandler.CreateOAConnection)
+			system.PUT("/oa-connections/:id", systemHandler.UpdateOAConnection)
+			system.DELETE("/oa-connections/:id", systemHandler.DeleteOAConnection)
+			system.POST("/oa-connections/:id/test", systemHandler.TestOAConnection)
+
+			// AI 模型配置
+			system.GET("/ai-models", systemHandler.ListAIModels)
+			system.POST("/ai-models", systemHandler.CreateAIModel)
+			system.PUT("/ai-models/:id", systemHandler.UpdateAIModel)
+			system.DELETE("/ai-models/:id", systemHandler.DeleteAIModel)
+
+			// 系统配置 (KV)
+			system.GET("/configs", systemHandler.GetSystemConfigs)
+			system.PUT("/configs", systemHandler.UpdateSystemConfigs)
+		}
 	}
 }

@@ -56,17 +56,24 @@ func main() {
 	orgRepo := repository.NewOrgRepo(db)
 	tenantRepo := repository.NewTenantRepo(db)
 	systemConfigRepo := repository.NewSystemConfigRepo(db)
+	optionRepo := repository.NewOptionRepo(db)
+	oaConnectionRepo := repository.NewOAConnectionRepo(db)
+	aiModelRepo := repository.NewAIModelRepo(db)
 
 	// 6. Initialize services
 	authService := service.NewAuthService(userRepo, rdb, db)
 	orgService := service.NewOrgService(orgRepo, userRepo, db)
-	tenantService := service.NewTenantService(tenantRepo, db)
+	tenantService := service.NewTenantService(tenantRepo, systemConfigRepo, db)
 	systemConfigService := service.NewSystemConfigService(systemConfigRepo)
+	optionService := service.NewOptionService(optionRepo)
+	oaConnectionService := service.NewOAConnectionService(oaConnectionRepo)
+	aiModelService := service.NewAIModelService(aiModelRepo)
 
 	// 7. Initialize handlers
 	authHandler := handler.NewAuthHandler(authService, rdb)
 	orgHandler := handler.NewOrgHandler(orgService)
-	tenantHandler := handler.NewTenantHandler(tenantService, systemConfigService)
+	tenantHandler := handler.NewTenantHandler(tenantService)
+	systemHandler := handler.NewSystemHandler(optionService, oaConnectionService, aiModelService, systemConfigService)
 	healthHandler := handler.NewHealthHandler()
 
 	// 8. Setup Gin router with middleware and routes
@@ -77,7 +84,7 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, healthHandler)
+	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler)
 
 	// 9. Start HTTP server
 	port := viper.GetInt("server.port")

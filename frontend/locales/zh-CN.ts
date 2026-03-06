@@ -1047,9 +1047,11 @@ export default {
     'admin.settings.accessTokenTtl': 'Access Token 有效期（小时）',
     'admin.settings.refreshTokenTtl': 'Refresh Token 有效期（天）',
     //通用配置 - 租户配额
-    'admin.settings.tenantQuotaConfig': '租户默认配额',
+    'admin.settings.tenantQuotaConfig': '配额与策略',
     'admin.settings.tenantDefaultTokenQuota': '租户默认 Token 配额',
     'admin.settings.tenantDefaultMaxConcurrency': '租户默认最大并发数',
+    'admin.settings.tenantDefaultLogRetentionDays': '默认日志保留天数',
+    'admin.settings.tenantDefaultDataRetentionDays': '默认审核数据保留天数',
     //单位词
     'admin.settings.times': '次',
     'admin.settings.hours': '小时',

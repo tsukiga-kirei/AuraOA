@@ -2,7 +2,7 @@ export const useSystemApi = () => {
   const { authFetch } = useAuth()
 
   // ============================================================
-  // System Configs
+  // System Configs (KV)
   // ============================================================
 
   async function getConfigs(): Promise<any> {
@@ -11,6 +11,70 @@ export const useSystemApi = () => {
 
   async function updateConfigs(configs: Record<string, any>): Promise<void> {
     await authFetch('/api/admin/system/configs', { method: 'PUT', body: configs })
+  }
+
+  // ============================================================
+  // 选项数据 (Options)
+  // ============================================================
+
+  async function listOATypes(): Promise<any[]> {
+    return authFetch<any[]>('/api/admin/system/options/oa-types')
+  }
+
+  async function listDBDrivers(): Promise<any[]> {
+    return authFetch<any[]>('/api/admin/system/options/db-drivers')
+  }
+
+  async function listAIDeployTypes(): Promise<any[]> {
+    return authFetch<any[]>('/api/admin/system/options/ai-deploy-types')
+  }
+
+  async function listAIProviders(): Promise<any[]> {
+    return authFetch<any[]>('/api/admin/system/options/ai-providers')
+  }
+
+  // ============================================================
+  // OA 数据库连接
+  // ============================================================
+
+  async function listOAConnections(): Promise<any[]> {
+    return authFetch<any[]>('/api/admin/system/oa-connections')
+  }
+
+  async function createOAConnection(data: Record<string, any>): Promise<any> {
+    return authFetch<any>('/api/admin/system/oa-connections', { method: 'POST', body: data })
+  }
+
+  async function updateOAConnection(id: string, data: Record<string, any>): Promise<any> {
+    return authFetch<any>(`/api/admin/system/oa-connections/${id}`, { method: 'PUT', body: data })
+  }
+
+  async function deleteOAConnection(id: string): Promise<void> {
+    await authFetch<null>(`/api/admin/system/oa-connections/${id}`, { method: 'DELETE' })
+  }
+
+  async function testOAConnection(id: string): Promise<any> {
+    return authFetch<any>(`/api/admin/system/oa-connections/${id}/test`, { method: 'POST' })
+  }
+
+  // ============================================================
+  // AI 模型配置
+  // ============================================================
+
+  async function listAIModels(): Promise<any[]> {
+    return authFetch<any[]>('/api/admin/system/ai-models')
+  }
+
+  async function createAIModel(data: Record<string, any>): Promise<any> {
+    return authFetch<any>('/api/admin/system/ai-models', { method: 'POST', body: data })
+  }
+
+  async function updateAIModel(id: string, data: Record<string, any>): Promise<any> {
+    return authFetch<any>(`/api/admin/system/ai-models/${id}`, { method: 'PUT', body: data })
+  }
+
+  async function deleteAIModel(id: string): Promise<void> {
+    await authFetch<null>(`/api/admin/system/ai-models/${id}`, { method: 'DELETE' })
   }
 
   // ============================================================
@@ -37,5 +101,16 @@ export const useSystemApi = () => {
     return authFetch<any>(`/api/admin/tenants/${id}/stats`)
   }
 
-  return { getConfigs, updateConfigs, listTenants, createTenant, updateTenant, deleteTenant, getTenantStats }
+  return {
+    // System configs
+    getConfigs, updateConfigs,
+    // Options
+    listOATypes, listDBDrivers, listAIDeployTypes, listAIProviders,
+    // OA connections
+    listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection, testOAConnection,
+    // AI models
+    listAIModels, createAIModel, updateAIModel, deleteAIModel,
+    // Tenants
+    listTenants, createTenant, updateTenant, deleteTenant, getTenantStats,
+  }
 }

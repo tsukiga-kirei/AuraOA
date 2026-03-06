@@ -1038,6 +1038,24 @@ export default {
     'admin.settings.dbConnSuccess': 'Database connection test successful',
     'admin.settings.dbConnFailed': 'Database connection test failed, please check configuration',
     'admin.settings.modelConnSuccess': 'AI model endpoint connection test successful',
+    //General config - Auth & Token
+    'admin.settings.authTokenConfig': 'Authentication & Token',
+    'admin.settings.loginFailLockThreshold': 'Login Fail Lock Threshold',
+    'admin.settings.accountLockMinutes': 'Account Lock Duration (min)',
+    'admin.settings.accessTokenTtl': 'Access Token TTL (hours)',
+    'admin.settings.refreshTokenTtl': 'Refresh Token TTL (days)',
+    //General config - Quota & Policy
+    'admin.settings.tenantQuotaConfig': 'Quota & Policy',
+    'admin.settings.tenantDefaultTokenQuota': 'Default Token Quota',
+    'admin.settings.tenantDefaultMaxConcurrency': 'Default Max Concurrency',
+    'admin.settings.tenantDefaultLogRetentionDays': 'Default Log Retention (days)',
+    'admin.settings.tenantDefaultDataRetentionDays': 'Default Audit Data Retention (days)',
+    //Unit labels
+    'admin.settings.times': 'times',
+    'admin.settings.hours': 'hours',
+    'admin.settings.days': 'days',
+    'admin.settings.loadFailed': 'Failed to load configuration',
+    'admin.settings.saveFailed': 'Failed to save configuration',
 
     //===== 管理员 - 租户用户配置 =====
     'admin.userConfigs.title': 'User Preferences',

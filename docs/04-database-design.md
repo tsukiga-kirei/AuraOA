@@ -373,7 +373,7 @@ CREATE UNIQUE INDEX idx_system_configs_key ON system_configs (key);
 | `system.smtp_ssl` | `true` | 是否启用 SMTP SSL/TLS |
 | `auth.access_token_ttl_hours` | `2` | Access Token 有效期（小时），前端换算为 session_timeout（分钟） |
 | `auth.refresh_token_ttl_days` | `7` | Refresh Token 有效期（天） |
-| `auth.login_fail_lock_count` | `5` | 登录失败锁定阈值 |
+| `auth.login_fail_lock_threshold` | `5` | 登录失败锁定阈值 |
 | `auth.lock_duration_minutes` | `15` | 账户锁定时长（分钟） |
 | `tenant.default_token_quota` | `10000` | 租户默认 Token 配额 |
 | `tenant.default_max_concurrency` | `10` | 租户默认最大并发数 |
