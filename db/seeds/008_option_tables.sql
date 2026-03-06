@@ -1,4 +1,4 @@
--- 007_option_tables.sql
+-- 008_option_tables.sql
 -- Seed data: OA type options, DB driver options, AI deploy type options, AI provider options
 
 -- ============================================================

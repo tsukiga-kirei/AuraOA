@@ -1,4 +1,4 @@
--- 004_org_roles.sql
+-- 005_org_roles.sql
 -- Seed data: 3 system org roles with page_permissions (path string array format)
 -- Run after 001_tenants.sql
 -- Role names, descriptions, and page_permissions match TenantService.CreateTenant defaults

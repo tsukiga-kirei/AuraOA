@@ -1,4 +1,4 @@
--- 001_tenants.sql
+-- 002_tenants.sql
 -- Seed data: demo tenants
 -- Run after migrations are applied (including 000005)
 

@@ -1,4 +1,4 @@
--- 002_users.sql
+-- 003_users.sql
 -- Seed data: users and user_role_assignments
 -- Run after 001_tenants.sql
 

@@ -1,4 +1,4 @@
--- 008_oa_ai_seeds.sql
+-- 001_oa_ai_seeds.sql
 -- Seed data: OA database connections and AI model configs
 -- References mock data from frontend for consistency
 

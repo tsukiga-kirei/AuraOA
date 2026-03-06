@@ -1,4 +1,4 @@
--- 005_org_members.sql
+-- 006_org_members.sql
 -- Seed data: org members + org_member_roles join records
 -- Run after 002_users.sql, 003_departments.sql, 004_org_roles.sql
 

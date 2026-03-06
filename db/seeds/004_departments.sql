@@ -1,4 +1,4 @@
--- 003_departments.sql
+-- 004_departments.sql
 -- Seed data: department hierarchy
 -- Run after 001_tenants.sql
 
