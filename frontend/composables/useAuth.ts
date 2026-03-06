@@ -114,9 +114,6 @@ export const useAuth = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('refresh_token')
     localStorage.removeItem(AUTH_STATE_KEY)
-    // 兼容：清除旧版分散 key（升级过渡期）
-    ;['user_role', 'user_permissions', 'all_roles', 'active_role',
-      'current_user', 'auth_menus', 'app_locale'].forEach(k => localStorage.removeItem(k))
   }
 
   /** 持久化 token 对（独立 key，高频读写） */
@@ -154,7 +151,7 @@ export const useAuth = () => {
   // 核心认证方法
   // =========================================================================
 
-  const switchRole = async (roleId: string): Promise<boolean> => {
+  const switchRole = async (roleId: string): Promise<{ ok: boolean; errorMsg?: string }> => {
     try {
       const data = await authFetch<SwitchRoleResponse>('/api/auth/switch-role', {
         method: 'PUT',
@@ -179,9 +176,9 @@ export const useAuth = () => {
 
       menus.value = data.menus
       persistState()
-      return true
-    } catch {
-      return false
+      return { ok: true }
+    } catch (e: any) {
+      return { ok: false, errorMsg: e.message || undefined }
     }
   }
 
@@ -434,6 +431,20 @@ export const useAuth = () => {
     } catch { return false }
   }
 
+  /** 从后端 /api/auth/me 刷新角色列表，过滤掉已停用租户的角色 */
+  const refreshRoles = async (): Promise<void> => {
+    try {
+      const me = await authFetch<MeResponse>('/api/auth/me')
+      if (me.roles) {
+        allRoles.value = me.roles.map(r => ({
+          id: r.id, role: r.role, tenant_id: r.tenant_id,
+          tenant_name: r.tenant_name, label: r.label,
+        }))
+        persistState()
+      }
+    } catch { /* 刷新角色失败不影响正常使用 */ }
+  }
+
   // =========================================================================
   // 恢复（页面刷新时从 localStorage 重建状态）
   // =========================================================================
@@ -445,24 +456,11 @@ export const useAuth = () => {
     const savedRefresh = localStorage.getItem('refresh_token')
     if (savedRefresh) refreshToken.value = savedRefresh
 
-    // 尝试从合并 key 恢复
-    if (loadState()) return
+    // 从合并 key 恢复
+    loadState()
 
-    // 兼容旧版分散 key（升级过渡期）
-    const savedRole = localStorage.getItem('user_role') as UserRole | null
-    if (savedRole) userRole.value = savedRole
-    try { const v = localStorage.getItem('all_roles'); if (v) allRoles.value = JSON.parse(v) } catch {}
-    try { const v = localStorage.getItem('active_role'); if (v) activeRole.value = JSON.parse(v) } catch {}
-    try { const v = localStorage.getItem('user_permissions'); if (v) userPermissions.value = JSON.parse(v) } catch {}
-    try { const v = localStorage.getItem('current_user'); if (v) currentUser.value = JSON.parse(v) } catch {}
-    try { const v = localStorage.getItem('auth_menus'); if (v) menus.value = JSON.parse(v) } catch {}
-    const savedLocale = localStorage.getItem('app_locale')
-    if (savedLocale) userLocale.value = savedLocale
-
-    // 迁移：写入合并 key，清除旧 key
-    persistState()
-    ;['user_role', 'user_permissions', 'all_roles', 'active_role',
-      'current_user', 'auth_menus', 'app_locale'].forEach(k => localStorage.removeItem(k))
+    // 恢复成功后，异步刷新角色列表（过滤已停用租户），不阻塞页面
+    if (savedToken) refreshRoles()
   }
 
   /** 设置 locale 并持久化到 auth_state（不调用后端） */
@@ -500,5 +498,6 @@ export const useAuth = () => {
     login, getMenu, logout, isAuthenticated, restore, tryRestoreAsync, isRefreshTokenValid,
     setUserRole, setUserPermissions, setAllRoles, setActiveRole, switchRole,
     authFetch, doRefreshToken, changePassword, getProfile, updateProfile, updateLocale, setUserLocale,
+    refreshRoles,
   }
 }

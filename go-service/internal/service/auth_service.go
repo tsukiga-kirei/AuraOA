@@ -189,8 +189,10 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 
 	//14. Batch-fetch tenant names for all assignments
 	tenantNameCache := make(map[string]string) // tenantID string -> tenant name
+	tenantStatusCache := make(map[string]string) // tenantID string -> tenant status
 	if tenant != nil {
 		tenantNameCache[tenant.ID.String()] = tenant.Name
+		tenantStatusCache[tenant.ID.String()] = tenant.Status
 	}
 	for _, a := range assignments {
 		if a.TenantID != nil {
@@ -198,30 +200,35 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 			if _, exists := tenantNameCache[tidStr]; !exists {
 				if t, err := s.userRepo.FindTenantByID(*a.TenantID); err == nil {
 					tenantNameCache[tidStr] = t.Name
+					tenantStatusCache[tidStr] = t.Status
 				}
 			}
 		}
 	}
 
-	//15. 建立响应
-	roles := make([]dto.RoleInfo, len(assignments))
-	for i, a := range assignments {
+	//15. 建立响应（过滤掉已停用租户的角色）
+	roles := make([]dto.RoleInfo, 0, len(assignments))
+	for _, a := range assignments {
 		var tid *string
 		var tname *string
 		if a.TenantID != nil {
 			s := a.TenantID.String()
+			// Skip roles belonging to inactive tenants
+			if status, ok := tenantStatusCache[s]; ok && status != "active" {
+				continue
+			}
 			tid = &s
 			if name, ok := tenantNameCache[s]; ok {
 				tname = &name
 			}
 		}
-		roles[i] = dto.RoleInfo{
+		roles = append(roles, dto.RoleInfo{
 			ID:         a.ID.String(),
 			Role:       a.Role,
 			TenantID:   tid,
 			TenantName: tname,
 			Label:      a.Label,
-		}
+		})
 	}
 
 	resp := &dto.LoginResponse{
@@ -393,10 +400,13 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 		return nil, newServiceError(errcode.ErrRoleSwitchFailed, "角色切换失败")
 	}
 
-	//2. 根据分配构建新的 ActiveRoleClaim
+	//2. 根据分配构建新的 ActiveRoleClaim；同时校验租户状态
 	var tenant *model.Tenant
 	if assignment.TenantID != nil {
 		tenant, _ = s.userRepo.FindTenantByID(*assignment.TenantID)
+		if tenant == nil || tenant.Status != "active" {
+			return nil, newServiceError(errcode.ErrTenantNotFound, "租户不存在或已停用")
+		}
 	}
 	activeRoleClaim := buildActiveRoleClaim(assignment, tenant)
 
@@ -794,37 +804,43 @@ func (s *AuthService) GetMe(userID uuid.UUID, activeRole jwtpkg.ActiveRoleClaim,
 		assignments = []model.UserRoleAssignment{}
 	}
 
-	// Batch-fetch tenant names
+	// Batch-fetch tenant names and statuses
 	tenantNameCache := make(map[string]string)
+	tenantStatusCache := make(map[string]string)
 	for _, a := range assignments {
 		if a.TenantID != nil {
 			tidStr := a.TenantID.String()
 			if _, exists := tenantNameCache[tidStr]; !exists {
 				if t, tErr := s.userRepo.FindTenantByID(*a.TenantID); tErr == nil {
 					tenantNameCache[tidStr] = t.Name
+					tenantStatusCache[tidStr] = t.Status
 				}
 			}
 		}
 	}
 
-	roles := make([]dto.RoleInfo, len(assignments))
-	for i, a := range assignments {
+	roles := make([]dto.RoleInfo, 0, len(assignments))
+	for _, a := range assignments {
 		var tid *string
 		var tname *string
 		if a.TenantID != nil {
 			s := a.TenantID.String()
+			// Skip roles belonging to inactive tenants
+			if status, ok := tenantStatusCache[s]; ok && status != "active" {
+				continue
+			}
 			tid = &s
 			if name, ok := tenantNameCache[s]; ok {
 				tname = &name
 			}
 		}
-		roles[i] = dto.RoleInfo{
+		roles = append(roles, dto.RoleInfo{
 			ID:         a.ID.String(),
 			Role:       a.Role,
 			TenantID:   tid,
 			TenantName: tname,
 			Label:      a.Label,
-		}
+		})
 	}
 
 	activeRoleDTO := dto.RoleInfo{

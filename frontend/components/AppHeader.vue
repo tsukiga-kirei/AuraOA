@@ -5,6 +5,7 @@ import {
   BellOutlined,
   CheckOutlined,
 } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
 
 defineProps<{
   collapsed: boolean
@@ -44,7 +45,11 @@ const handleSwitchRole = async (role: RoleInfo) => {
   if (role.id === activeRoleId.value) return
   dropdownOpen.value = false
   iconKey.value++
-  await switchRole(role.id)
+  const result = await switchRole(role.id)
+  if (!result.ok) {
+    message.error(result.errorMsg || t('header.switchRoleFailed'))
+    return
+  }
   await getMenu()
   navigateTo('/overview')
 }

@@ -203,6 +203,7 @@ go-service/
       { "id": "admin-r1", "role": "system_admin", "tenant_id": null, "tenant_name": null, "label": "系统管理员" },
       { "id": "admin-r2", "role": "tenant_admin", "tenant_id": "T-001", "tenant_name": "示例集团总部", "label": "示例集团总部 · 租户管理员" }
     ],
+    // 注意：roles 列表已过滤掉所属租户 status ≠ active 的角色分配
     "active_role": { "id": "admin-r1", "role": "system_admin", ... },
     "permissions": ["system_admin"]
   }

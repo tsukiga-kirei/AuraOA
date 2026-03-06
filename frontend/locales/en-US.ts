@@ -36,6 +36,7 @@ export default {
     'header.darkMode': 'Switch to Dark Mode',
     'header.notifications': 'Notifications',
     'header.switchRole': 'Switch Role',
+    'header.switchRoleFailed': 'Failed to switch role. The tenant may have been disabled.',
 
     //=====设置页面=====
     'settings.title': 'Personal Settings',

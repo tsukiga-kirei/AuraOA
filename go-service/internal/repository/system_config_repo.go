@@ -30,3 +30,11 @@ func (r *SystemConfigRepo) UpdateByKey(key, value string) error {
 		Where("key = ?", key).
 		Update("value", value).Error
 }
+// FindByKey returns the value of a config entry by key. Returns empty string if not found.
+func (r *SystemConfigRepo) FindByKey(key string) (string, error) {
+	var config model.SystemConfig
+	if err := r.DB.Where("key = ?", key).First(&config).Error; err != nil {
+		return "", err
+	}
+	return config.Value, nil
+}
