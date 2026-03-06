@@ -19,17 +19,19 @@ import (
 
 // OrgService 通过租户隔离处理部门、角色和成员 CRUD 操作。
 type OrgService struct {
-	orgRepo  *repository.OrgRepo
-	userRepo *repository.UserRepo
-	db       *gorm.DB
+	orgRepo          *repository.OrgRepo
+	userRepo         *repository.UserRepo
+	systemConfigRepo *repository.SystemConfigRepo
+	db               *gorm.DB
 }
 
 // NewOrgService 创建一个新的 OrgService 实例。
-func NewOrgService(orgRepo *repository.OrgRepo, userRepo *repository.UserRepo, db *gorm.DB) *OrgService {
+func NewOrgService(orgRepo *repository.OrgRepo, userRepo *repository.UserRepo, systemConfigRepo *repository.SystemConfigRepo, db *gorm.DB) *OrgService {
 	return &OrgService{
-		orgRepo:  orgRepo,
-		userRepo: userRepo,
-		db:       db,
+		orgRepo:          orgRepo,
+		userRepo:         userRepo,
+		systemConfigRepo: systemConfigRepo,
+		db:               db,
 	}
 }
 
@@ -301,6 +303,10 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 			Phone:             req.Phone,
 			Status:            "active",
 			PasswordChangedAt: time.Now(),
+		}
+		// Set locale from system default language config
+		if defaultLang, err := s.systemConfigRepo.FindByKey("system.default_language"); err == nil && defaultLang != "" {
+			user.Locale = defaultLang
 		}
 		if err := s.db.Create(user).Error; err != nil {
 			return nil, newServiceError(errcode.ErrDatabase, "数据库错误")

@@ -55,7 +55,7 @@ export default defineNuxtConfig({
 
 #### 状态管理
 
-所有认证状态通过统一的 `PersistedAuthState` 结构持久化到 localStorage 单个 key（`auth_state`），token 对独立存储（高频读写）。支持从旧版分散 key 自动迁移。
+所有认证状态通过统一的 `PersistedAuthState` 结构持久化到 localStorage 单个 key（`auth_state`），token 对独立存储（高频读写）。
 
 | 状态变量 | 类型 | 说明 | 持久化 |
 |----------|------|------|--------|
@@ -135,7 +135,7 @@ setUserLocale(locale: string): void
 ```typescript
 restore()
 // 在页面刷新时从 localStorage 恢复所有认证状态（同步）
-// 优先从 auth_state 合并 key 恢复，兼容旧版分散 key 并自动迁移
+// 从 auth_state 合并 key 恢复
 // 在 middleware/auth.ts 中被调用
 
 tryRestoreAsync(): Promise<boolean>
@@ -308,6 +308,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
        ↓ 是            ↓
        ↓          （无论成功与否继续）
        ↓←──────────────┘
+  已认证？
+       ↓
   是否 /login？ ─── 是 → 已认证跳 /overview，否则放行
        ↓ 否
   有 token？ ─── 否 → 重定向 /login

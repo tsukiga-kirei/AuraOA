@@ -37,6 +37,7 @@ export default {
     'header.darkMode': '切换到深色模式',
     'header.notifications': '通知',
     'header.switchRole': '切换角色',
+    'header.switchRoleFailed': '角色切换失败，该租户可能已被停用',
 
     //=====设置页面=====
     'settings.title': '个人设置',

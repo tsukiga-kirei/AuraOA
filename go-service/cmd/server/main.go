@@ -72,7 +72,7 @@ func main() {
 
 	// 6. Initialize services
 	authService := service.NewAuthService(userRepo, rdb, db)
-	orgService := service.NewOrgService(orgRepo, userRepo, db)
+	orgService := service.NewOrgService(orgRepo, userRepo, systemConfigRepo, db)
 	tenantService := service.NewTenantService(tenantRepo, systemConfigRepo, userRepo, db)
 	systemConfigService := service.NewSystemConfigService(systemConfigRepo)
 	optionService := service.NewOptionService(optionRepo)
