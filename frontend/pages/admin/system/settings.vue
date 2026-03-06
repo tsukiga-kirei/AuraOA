@@ -22,36 +22,70 @@ import {
   UserOutlined,
 } from '@ant-design/icons-vue'
 import {message} from 'ant-design-vue'
-import type {AIModelConfig, OADatabaseConnection, OASystemConfig} from '~/composables/useMockData'
 import { type SystemGeneralConfig, mapConfigItems, configToUpdateRequest } from '~/types/settings'
 
 const { t } = useI18n()
 
-const { mockOADatabaseConnections } = useMockData()
-const { getConfigs, updateConfigs } = useSystemApi()
+const {
+  getConfigs, updateConfigs,
+  listOATypes, listDBDrivers, listAIProviders, listAIDeployTypes,
+  listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection: apiDeleteOAConnection, testOAConnection: apiTestOAConnection,
+  listAIModels, createAIModel, updateAIModel, deleteAIModel: apiDeleteAIModel,
+} = useSystemApi()
 
 const loading = ref(false)
 const activeTab = ref('oa')
-const oaSystems = ref<OASystemConfig[]>([])
-const oaDbConnections = ref<OADatabaseConnection[]>(JSON.parse(JSON.stringify(mockOADatabaseConnections)))
-const aiModels = ref<AIModelConfig[]>([])
-const generalConfig = ref<SystemGeneralConfig>({
-  platform_name: '', platform_version: '', default_language: 'zh-CN', max_upload_size: 50,
-  login_fail_lock_threshold: 5, account_lock_minutes: 15,
-  access_token_ttl_hours: 2, refresh_token_ttl_days: 7,
-  tenant_default_token_quota: 10000, tenant_default_max_concurrency: 10,
-  enable_audit_trail: false, enable_data_encryption: false,
-  backup_enabled: false, backup_cron: '0 2 * * *', backup_retention_days: 30,
-  notification_email: '', smtp_host: '', smtp_port: 465, smtp_username: '', smtp_ssl: true,
-})
+
+// ===== 后端选项数据 =====
+const oaTypeOptions = ref<{value: string; label: string}[]>([])
+const driverOptions = ref<{value: string; label: string; default_port?: number}[]>([])
+const aiDeployTypeOptions = ref<{value: string; label: string}[]>([])
+const aiProviderOptions = ref<{value: string; label: string; deploy_type?: string}[]>([])
+
+// ===== 数据列表 =====
+interface OADbConnection {
+  id: string; name: string; oa_type: string; oa_type_label: string;
+  driver: string; host: string; port: number; database_name: string;
+  username: string; pool_size: number; connection_timeout: number; test_on_borrow: boolean;
+  status: string; last_sync: string; sync_interval: number; enabled: boolean;
+  description: string; created_at: string; updated_at: string;
+}
+interface AIModel {
+  id: string; provider: string; provider_label: string; model_name: string; display_name: string;
+  deploy_type: string; endpoint: string; api_key_configured: boolean;
+  max_tokens: number; context_window: number; cost_per_1k_tokens: number;
+  status: string; enabled: boolean; description: string; capabilities: string[];
+  created_at: string; updated_at: string;
+}
+
+const oaDbConnections = ref<OADbConnection[]>([])
+const aiModels = ref<AIModel[]>([])
+const generalConfig = ref<SystemGeneralConfig>({} as SystemGeneralConfig)
 const saving = ref(false)
 
 onMounted(async () => {
   loading.value = true
   try {
-    const items = await getConfigs()
-    // 使用统一的映射工具将后端 KV 转换为前端表单模型
-    generalConfig.value = { ...generalConfig.value, ...mapConfigItems(items) }
+    // 并行加载所有数据
+    const [configs, oaTypes, drivers, deployTypes, providers, oaConns, models] = await Promise.all([
+      getConfigs(),
+      listOATypes(),
+      listDBDrivers(),
+      listAIDeployTypes(),
+      listAIProviders(),
+      listOAConnections(),
+      listAIModels(),
+    ])
+    // 系统配置
+    generalConfig.value = { ...generalConfig.value, ...mapConfigItems(configs) }
+    // 选项数据
+    oaTypeOptions.value = (oaTypes || []).map((o: any) => ({ value: o.code, label: o.label }))
+    driverOptions.value = (drivers || []).map((o: any) => ({ value: o.code, label: o.label, default_port: o.default_port }))
+    aiDeployTypeOptions.value = (deployTypes || []).map((o: any) => ({ value: o.code, label: o.label }))
+    aiProviderOptions.value = (providers || []).map((o: any) => ({ value: o.code, label: o.label, deploy_type: o.deploy_type }))
+    // 列表数据
+    oaDbConnections.value = oaConns || []
+    aiModels.value = models || []
   } catch (e) {
     message.error(t('admin.settings.loadFailed', '加载配置失败'))
   } finally {
@@ -61,40 +95,27 @@ onMounted(async () => {
 
 //===== OA数据库连接CRUD =====
 const showAddOADb = ref(false)
-const editingOADb = ref<OADatabaseConnection | null>(null)
+const editingOADb = ref<OADbConnection | null>(null)
 const testingOADbId = ref<string | null>(null)
 
-const oaTypeOptions = [
-  { value: 'weaver_e9', label: '泛微 Ecology E9' },
-]
-
-const driverOptions = [
-  { label: 'MySQL', value: 'mysql' },
-  { label: 'Oracle', value: 'oracle' },
-]
-
 const getDriverPort = (driver: string) => {
-  const ports: Record<string, number> = { mysql: 3306, oracle: 1521 }
-  return ports[driver] || 3306
+  const opt = driverOptions.value.find(o => o.value === driver)
+  return opt?.default_port || 3306
 }
 
-const newOADb = ref<Partial<OADatabaseConnection>>({
-  name: '',
-  oa_type: 'weaver_e9',
-  oa_type_label: '泛微 Ecology E9',
-  description: '',
-  sync_interval: 60,
-  jdbc_config: {
-    driver: 'mysql', host: '', port: 3306, database: '',
-    username: '', password: '', pool_size: 10,
-    connection_timeout: 30, test_on_borrow: true,
-  },
+const newOADb = ref<Record<string, any>>({
+  name: '', oa_type: '', oa_type_label: '', description: '', sync_interval: 60,
+  driver: 'mysql', host: '', port: 3306, database_name: '',
+  username: '', password: '', pool_size: 10, connection_timeout: 30, test_on_borrow: true,
 })
 
 const resetNewOADb = () => {
+  const defaultOAType = oaTypeOptions.value[0]
   newOADb.value = {
-    name: '', oa_type: 'weaver_e9', oa_type_label: '泛微 Ecology E9', description: '', sync_interval: 60,
-    jdbc_config: { driver: 'mysql', host: '', port: 3306, database: '', username: '', password: '', pool_size: 10, connection_timeout: 30, test_on_borrow: true },
+    name: '', oa_type: defaultOAType?.value || '', oa_type_label: defaultOAType?.label || '',
+    description: '', sync_interval: 60,
+    driver: 'mysql', host: '', port: 3306, database_name: '',
+    username: '', password: '', pool_size: 10, connection_timeout: 30, test_on_borrow: true,
   }
 }
 
@@ -104,68 +125,72 @@ const openAddOADb = () => {
   showAddOADb.value = true
 }
 
-const openEditOADb = (conn: OADatabaseConnection) => {
+const openEditOADb = (conn: OADbConnection) => {
   editingOADb.value = conn
-  newOADb.value = JSON.parse(JSON.stringify(conn))
+  newOADb.value = {
+    name: conn.name, oa_type: conn.oa_type, oa_type_label: conn.oa_type_label,
+    description: conn.description, sync_interval: conn.sync_interval,
+    driver: conn.driver, host: conn.host, port: conn.port, database_name: conn.database_name,
+    username: conn.username, password: '', pool_size: conn.pool_size,
+    connection_timeout: conn.connection_timeout, test_on_borrow: conn.test_on_borrow,
+  }
   showAddOADb.value = true
 }
 
 const onOATypeChange = (val: any) => {
-  const opt = oaTypeOptions.find(o => o.value === val)
+  const opt = oaTypeOptions.value.find(o => o.value === val)
   if (opt) newOADb.value.oa_type_label = opt.label
 }
 
 const onDriverChange = (driver: any) => {
-  if (newOADb.value.jdbc_config) {
-    newOADb.value.jdbc_config.port = getDriverPort(driver as string)
-  }
+  newOADb.value.port = getDriverPort(driver as string)
 }
 
-const saveOADb = () => {
+const saveOADb = async () => {
   if (!newOADb.value.name?.trim()) {
     message.warning(t('admin.settings.oaDbNameRequired'))
     return
   }
-  if (!newOADb.value.jdbc_config?.host?.trim()) {
+  if (!newOADb.value.host?.trim()) {
     message.warning(t('admin.settings.oaDbHostRequired'))
     return
   }
-  if (editingOADb.value) {
-    const idx = oaDbConnections.value.findIndex(c => c.id === editingOADb.value!.id)
-    if (idx >= 0) {
-      oaDbConnections.value[idx] = { ...oaDbConnections.value[idx], ...newOADb.value } as OADatabaseConnection
+  try {
+    if (editingOADb.value) {
+      const updated = await updateOAConnection(editingOADb.value.id, newOADb.value)
+      const idx = oaDbConnections.value.findIndex(c => c.id === editingOADb.value!.id)
+      if (idx >= 0) oaDbConnections.value[idx] = updated
+      message.success(t('admin.settings.oaDbUpdated'))
+    } else {
+      const created = await createOAConnection(newOADb.value)
+      oaDbConnections.value.push(created)
+      message.success(t('admin.settings.oaDbAdded'))
     }
-    message.success(t('admin.settings.oaDbUpdated'))
-  } else {
-    const newConn: OADatabaseConnection = {
-      id: `OADB-${Date.now()}`,
-      name: newOADb.value.name!,
-      oa_type: newOADb.value.oa_type as any,
-      oa_type_label: newOADb.value.oa_type_label!,
-      jdbc_config: { ...newOADb.value.jdbc_config! } as any,
-      status: 'disconnected',
-      last_sync: '',
-      sync_interval: newOADb.value.sync_interval || 60,
-      enabled: true,
-      created_at: new Date().toISOString().slice(0, 10),
-      description: newOADb.value.description || '',
-    }
-    oaDbConnections.value.push(newConn)
-    message.success(t('admin.settings.oaDbAdded'))
+    showAddOADb.value = false
+  } catch (e) {
+    message.error('操作失败')
   }
-  showAddOADb.value = false
 }
 
-const deleteOADb = (id: string) => {
-  oaDbConnections.value = oaDbConnections.value.filter(c => c.id !== id)
-  message.success(t('admin.settings.oaDbDeleted'))
+const deleteOADb = async (id: string) => {
+  try {
+    await apiDeleteOAConnection(id)
+    oaDbConnections.value = oaDbConnections.value.filter(c => c.id !== id)
+    message.success(t('admin.settings.oaDbDeleted'))
+  } catch (e) {
+    message.error('删除失败')
+  }
 }
 
-const toggleOADb = (id: string) => {
+const toggleOADb = async (id: string) => {
   const conn = oaDbConnections.value.find(c => c.id === id)
-  if (conn) {
-    conn.enabled = !conn.enabled
+  if (!conn) return
+  try {
+    const updated = await updateOAConnection(id, { enabled: !conn.enabled })
+    conn.enabled = updated.enabled
     message.success(conn.enabled ? t('admin.settings.enabled', conn.name) : t('admin.settings.disabled', conn.name))
+  } catch (e) {
+    message.error('操作失败')
   }
 }
 
@@ -174,35 +199,39 @@ const testOADbConnection = async (id: string) => {
   if (!conn) return
   testingOADbId.value = id
   conn.status = 'testing'
-  await new Promise(resolve => setTimeout(resolve, 2000))
-  if (conn.enabled && conn.jdbc_config.host) {
-    conn.status = 'connected'
-    const now = new Date()
-    conn.last_sync = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
-    message.success(t('admin.settings.connSuccess', conn.name))
-  } else {
+  try {
+    const result = await apiTestOAConnection(id)
+    if (result.success) {
+      conn.status = 'connected'
+      conn.last_sync = new Date().toISOString()
+      message.success(t('admin.settings.connSuccess', conn.name))
+    } else {
+      conn.status = 'disconnected'
+      message.warning(result.message || t('admin.settings.notEnabled', conn.name))
+    }
+  } catch (e) {
     conn.status = 'disconnected'
-    message.warning(t('admin.settings.notEnabled', conn.name))
+    message.error('测试连接失败')
   }
   testingOADbId.value = null
 }
 
 //===== AI模型CRUD =====
 const showAddAIModel = ref(false)
-const editingAIModel = ref<AIModelConfig | null>(null)
+const editingAIModel = ref<AIModel | null>(null)
 
-const newAIModel = ref<Partial<AIModelConfig>>({
-  provider: 'Xinference', model_name: '', display_name: '', type: 'local',
-  endpoint: '', api_key_configured: false, max_tokens: 4096, context_window: 65536,
-  cost_per_1k_tokens: 0, status: 'offline', enabled: true, description: '',
-  capabilities: ['text'],
+const newAIModel = ref<Record<string, any>>({
+  provider: '', provider_label: '', model_name: '', display_name: '', deploy_type: 'local',
+  endpoint: '', api_key: '', max_tokens: 4096, context_window: 65536,
+  cost_per_1k_tokens: 0, enabled: true, description: '', capabilities: ['text'],
 })
 const resetNewAIModel = () => {
+  const defaultProvider = aiProviderOptions.value[0]
   newAIModel.value = {
-    provider: 'Xinference', model_name: '', display_name: '', type: 'local',
-    endpoint: '', api_key_configured: false, max_tokens: 4096, context_window: 65536,
-    cost_per_1k_tokens: 0, status: 'offline', enabled: true, description: '',
-    capabilities: ['text'],
+    provider: defaultProvider?.value || '', provider_label: defaultProvider?.label || '',
+    model_name: '', display_name: '', deploy_type: defaultProvider?.deploy_type || 'local',
+    endpoint: '', api_key: '', max_tokens: 4096, context_window: 65536,
+    cost_per_1k_tokens: 0, enabled: true, description: '', capabilities: ['text'],
   }
 }
 
@@ -213,12 +242,15 @@ const openAddAIModel = () => {
 }
 
 const onModelTypeChange = (val: any) => {
+  // 按部署类型过滤服务商
+  const filtered = aiProviderOptions.value.filter(p => p.deploy_type === val)
+  if (filtered.length > 0) {
+    newAIModel.value.provider = filtered[0].value
+    newAIModel.value.provider_label = filtered[0].label
+  }
   if (val === 'local') {
-    newAIModel.value.provider = 'Xinference'
     newAIModel.value.cost_per_1k_tokens = 0
-    newAIModel.value.api_key_configured = false
-  } else {
-    newAIModel.value.provider = '阿里云百炼'
+    newAIModel.value.api_key = ''
   }
 }
 
@@ -230,7 +262,7 @@ const capabilityOptions = computed(() => [
   { value: 'analysis', label: t('admin.settings.capability.analysis') },
 ])
 
-const saveAIModel = () => {
+const saveAIModel = async () => {
   if (!newAIModel.value.display_name?.trim()) {
     message.warning(t('admin.settings.aiModelNameRequired'))
     return
@@ -239,51 +271,56 @@ const saveAIModel = () => {
     message.warning(t('admin.settings.aiModelIdRequired'))
     return
   }
-  const newModel: AIModelConfig = {
-    id: `AI-${Date.now()}`,
-    provider: newAIModel.value.provider || 'Xinference',
-    model_name: newAIModel.value.model_name!,
-    display_name: newAIModel.value.display_name!,
-    type: newAIModel.value.type || 'local',
-    endpoint: newAIModel.value.endpoint || '',
-    api_key_configured: newAIModel.value.api_key_configured || false,
-    max_tokens: newAIModel.value.max_tokens || 4096,
-    context_window: newAIModel.value.context_window || 65536,
-    cost_per_1k_tokens: newAIModel.value.cost_per_1k_tokens || 0,
-    status: 'offline',
-    enabled: true,
-    description: newAIModel.value.description || '',
-    capabilities: newAIModel.value.capabilities || ['text'],
+  try {
+    if (editingAIModel.value) {
+      const updated = await updateAIModel(editingAIModel.value.id, newAIModel.value)
+      const idx = aiModels.value.findIndex(m => m.id === editingAIModel.value!.id)
+      if (idx >= 0) aiModels.value[idx] = updated
+      message.success(t('admin.settings.aiModelUpdated', '模型已更新'))
+    } else {
+      const created = await createAIModel(newAIModel.value)
+      aiModels.value.push(created)
+      message.success(t('admin.settings.aiModelAdded'))
+    }
+    showAddAIModel.value = false
+  } catch (e) {
+    message.error('操作失败')
   }
-  aiModels.value.push(newModel)
-  showAddAIModel.value = false
-  message.success(t('admin.settings.aiModelAdded'))
 }
 
-const toggleAIModel = (id: string) => {
+const toggleAIModel = async (id: string) => {
   const model = aiModels.value.find(m => m.id === id)
-  if (model) {
-    model.enabled = !model.enabled
+  if (!model) return
+  try {
+    const updated = await updateAIModel(id, { enabled: !model.enabled })
+    model.enabled = updated.enabled
     message.success(model.enabled ? t('admin.settings.enabled', model.display_name) : t('admin.settings.disabled', model.display_name))
+  } catch (e) {
+    message.error('操作失败')
   }
 }
 
-const deleteAIModel = (id: string) => {
-  aiModels.value = aiModels.value.filter(m => m.id !== id)
-  message.success(t('admin.settings.aiModelDeleted'))
+const deleteAIModel = async (id: string) => {
+  try {
+    await apiDeleteAIModel(id)
+    aiModels.value = aiModels.value.filter(m => m.id !== id)
+    message.success(t('admin.settings.aiModelDeleted'))
+  } catch (e) {
+    message.error('删除失败')
+  }
 }
 
 //===== 测试数据库模式连接 =====
 const testingDbConn = ref(false)
 const testDbConnection = async () => {
-  if (!newOADb.value.jdbc_config?.host) {
+  if (!newOADb.value.host) {
     message.warning(t('admin.settings.fillHostFirst'))
     return
   }
   testingDbConn.value = true
   await new Promise(resolve => setTimeout(resolve, 1800))
   testingDbConn.value = false
-  if (newOADb.value.jdbc_config?.host && newOADb.value.jdbc_config?.database) {
+  if (newOADb.value.host && newOADb.value.database_name) {
     message.success(t('admin.settings.dbConnSuccess'))
   } else {
     message.error(t('admin.settings.dbConnFailed'))
@@ -304,6 +341,7 @@ const testModelConnection = async () => {
 }
 
 //===== OA 系统切换（旧版）=====
+const oaSystems = ref<any[]>([])
 const toggleOASystem = (id: string) => {
   const sys = oaSystems.value.find(s => s.id === id)
   if (sys) {
@@ -436,15 +474,15 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
           <div class="oa-card-meta">
             <div class="oa-meta-item">
               <span class="oa-meta-label">{{ t('admin.settings.oaDbDriver') }}</span>
-              <span class="oa-meta-value">{{ conn.jdbc_config.driver.toUpperCase() }}</span>
+              <span class="oa-meta-value">{{ conn.driver.toUpperCase() }}</span>
             </div>
             <div class="oa-meta-item">
               <span class="oa-meta-label">{{ t('admin.settings.oaDbHost') }}</span>
-              <span class="oa-meta-value">{{ conn.jdbc_config.host }}:{{ conn.jdbc_config.port }}</span>
+              <span class="oa-meta-value">{{ conn.host }}:{{ conn.port }}</span>
             </div>
             <div class="oa-meta-item">
               <span class="oa-meta-label">{{ t('admin.settings.oaDbDatabase') }}</span>
-              <span class="oa-meta-value">{{ conn.jdbc_config.database }}</span>
+              <span class="oa-meta-value">{{ conn.database_name }}</span>
             </div>
             <div class="oa-meta-item">
               <span class="oa-meta-label">{{ t('admin.settings.syncInterval') }}</span>
@@ -506,17 +544,17 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
       <div class="ai-grid">
         <div v-for="model in aiModels" :key="model.id" class="ai-card" :class="{ 'ai-card--disabled': !model.enabled }">
           <div class="ai-card-header">
-            <div class="ai-card-icon" :class="{ 'ai-card-icon--local': model.type === 'local', 'ai-card-icon--cloud': model.type === 'cloud' }">
-              <RobotOutlined v-if="model.type === 'local'" />
+            <div class="ai-card-icon" :class="{ 'ai-card-icon--local': model.deploy_type === 'local', 'ai-card-icon--cloud': model.deploy_type === 'cloud' }">
+              <RobotOutlined v-if="model.deploy_type === 'local'" />
               <CloudServerOutlined v-else />
             </div>
             <div class="ai-card-info">
               <h3 class="ai-card-name">{{ model.display_name }}</h3>
-              <span class="ai-card-provider">{{ model.provider }}</span>
+              <span class="ai-card-provider">{{ model.provider_label || model.provider }}</span>
             </div>
             <div class="ai-card-badges">
-              <div class="ai-type-badge" :style="{ color: getModelTypeTag(model.type).color, background: getModelTypeTag(model.type).bg }">
-                {{ getModelTypeTag(model.type).label }}
+              <div class="ai-type-badge" :style="{ color: getModelTypeTag(model.deploy_type).color, background: getModelTypeTag(model.deploy_type).bg }">
+                {{ getModelTypeTag(model.deploy_type).label }}
               </div>
               <div class="ai-status-badge" :style="{ color: getStatusConfig(model.status).color, background: getStatusConfig(model.status).bg }">
                 <component :is="getStatusConfig(model.status).icon" />
@@ -557,7 +595,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                 <span class="ai-meta-label">API Key</span>
                 <span class="ai-meta-value">
                   <CheckCircleOutlined v-if="model.api_key_configured" style="color: var(--color-success);" />
-                  {{ model.api_key_configured ? t('admin.settings.apiKeyConfigured') : model.type === 'local' ? t('admin.settings.apiKeyLocal') : t('admin.settings.apiKeyMissing') }}
+                  {{ model.api_key_configured ? t('admin.settings.apiKeyConfigured') : model.deploy_type === 'local' ? t('admin.settings.apiKeyLocal') : t('admin.settings.apiKeyMissing') }}
                 </span>
               </div>
             </div>
@@ -652,7 +690,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               </a-col>
             </a-row>
 
-            <!-- 租户默认配额 -->
+            <!-- 配额与策略 -->
             <a-divider style="margin: 8px 0 20px;" />
             <div class="config-subsection-title">{{ t('admin.settings.tenantQuotaConfig') }}</div>
             <a-row :gutter="16">
@@ -664,6 +702,18 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               <a-col :span="12">
                 <a-form-item :label="t('admin.settings.tenantDefaultMaxConcurrency')">
                   <a-input-number v-model:value="generalConfig.tenant_default_max_concurrency" :min="1" :max="200" style="width: 100%;" size="large" />
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <a-row :gutter="16">
+              <a-col :span="12">
+                <a-form-item :label="t('admin.settings.tenantDefaultLogRetentionDays')">
+                  <a-input-number v-model:value="generalConfig.tenant_default_log_retention_days" :min="1" :max="3650" style="width: 100%;" size="large" :addon-after="t('admin.settings.days')" />
+                </a-form-item>
+              </a-col>
+              <a-col :span="12">
+                <a-form-item :label="t('admin.settings.tenantDefaultDataRetentionDays')">
+                  <a-input-number v-model:value="generalConfig.tenant_default_data_retention_days" :min="1" :max="3650" style="width: 100%;" size="large" :addon-after="t('admin.settings.days')" />
                 </a-form-item>
               </a-col>
             </a-row>
@@ -797,7 +847,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
           </a-col>
           <a-col :span="12">
             <a-form-item :label="t('admin.tenants.dbDriver')">
-              <a-select v-model:value="newOADb.jdbc_config!.driver" size="large" @change="onDriverChange">
+              <a-select v-model:value="newOADb.driver" size="large" @change="onDriverChange">
                 <a-select-option v-for="opt in driverOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
               </a-select>
             </a-form-item>
@@ -806,29 +856,29 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         <a-row :gutter="16">
           <a-col :span="16">
             <a-form-item :label="t('admin.tenants.hostAddress')" required>
-              <a-input v-model:value="newOADb.jdbc_config!.host" placeholder="192.168.1.100" size="large" />
+              <a-input v-model:value="newOADb.host" placeholder="192.168.1.100" size="large" />
             </a-form-item>
           </a-col>
           <a-col :span="8">
             <a-form-item :label="t('admin.tenants.port')">
-              <a-input-number v-model:value="newOADb.jdbc_config!.port" :min="1" :max="65535" style="width: 100%;" size="large" />
+              <a-input-number v-model:value="newOADb.port" :min="1" :max="65535" style="width: 100%;" size="large" />
             </a-form-item>
           </a-col>
         </a-row>
         <a-form-item :label="t('admin.tenants.dbName')">
-          <a-input v-model:value="newOADb.jdbc_config!.database" placeholder="ecology" size="large" />
+          <a-input v-model:value="newOADb.database_name" placeholder="ecology" size="large" />
         </a-form-item>
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item :label="t('admin.tenants.username')">
-              <a-input v-model:value="newOADb.jdbc_config!.username" placeholder="oa_reader" size="large">
+              <a-input v-model:value="newOADb.username" placeholder="oa_reader" size="large">
                 <template #prefix><UserOutlined /></template>
               </a-input>
             </a-form-item>
           </a-col>
           <a-col :span="12">
             <a-form-item :label="t('admin.tenants.password')">
-              <a-input-password v-model:value="newOADb.jdbc_config!.password" :placeholder="t('admin.tenants.dbPassword')" size="large">
+              <a-input-password v-model:value="newOADb.password" :placeholder="t('admin.tenants.dbPassword')" size="large">
                 <template #prefix><KeyOutlined /></template>
               </a-input-password>
             </a-form-item>
@@ -837,12 +887,12 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         <a-row :gutter="16">
           <a-col :span="8">
             <a-form-item :label="t('admin.tenants.poolSize')">
-              <a-input-number v-model:value="newOADb.jdbc_config!.pool_size" :min="1" :max="100" style="width: 100%;" size="large" />
+              <a-input-number v-model:value="newOADb.pool_size" :min="1" :max="100" style="width: 100%;" size="large" />
             </a-form-item>
           </a-col>
           <a-col :span="8">
             <a-form-item :label="t('admin.tenants.connTimeout')">
-              <a-input-number v-model:value="newOADb.jdbc_config!.connection_timeout" :min="5" :max="300" style="width: 100%;" size="large" />
+              <a-input-number v-model:value="newOADb.connection_timeout" :min="5" :max="300" style="width: 100%;" size="large" />
             </a-form-item>
           </a-col>
           <a-col :span="8">
@@ -889,17 +939,15 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item :label="t('admin.settings.aiModelType')">
-              <a-select v-model:value="newAIModel.type" size="large" @change="onModelTypeChange">
-                <a-select-option value="local">{{ t('admin.ruleConfig.localDeploy') }}</a-select-option>
-                <a-select-option value="cloud">{{ t('admin.ruleConfig.cloudAPI') }}</a-select-option>
+              <a-select v-model:value="newAIModel.deploy_type" size="large" @change="onModelTypeChange">
+                <a-select-option v-for="opt in aiDeployTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
               </a-select>
             </a-form-item>
           </a-col>
           <a-col :span="12">
             <a-form-item :label="t('admin.settings.aiModelProvider')">
               <a-select v-model:value="newAIModel.provider" size="large">
-                <a-select-option v-if="newAIModel.type === 'local'" value="Xinference">Xinference</a-select-option>
-                <a-select-option v-if="newAIModel.type === 'cloud'" value="阿里云百炼">阿里云百炼</a-select-option>
+                <a-select-option v-for="opt in aiProviderOptions.filter(p => p.deploy_type === newAIModel.deploy_type)" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
               </a-select>
             </a-form-item>
           </a-col>

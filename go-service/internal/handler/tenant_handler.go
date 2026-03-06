@@ -12,17 +12,15 @@ import (
 	"oa-smart-audit/go-service/internal/service"
 )
 
-// TenantHandler handles tenant management and system config HTTP requests.
+// TenantHandler handles tenant management HTTP requests.
 type TenantHandler struct {
-	tenantService      *service.TenantService
-	systemConfigService *service.SystemConfigService
+	tenantService *service.TenantService
 }
 
 // NewTenantHandler creates a new TenantHandler instance.
-func NewTenantHandler(tenantService *service.TenantService, systemConfigService *service.SystemConfigService) *TenantHandler {
+func NewTenantHandler(tenantService *service.TenantService) *TenantHandler {
 	return &TenantHandler{
-		tenantService:      tenantService,
-		systemConfigService: systemConfigService,
+		tenantService: tenantService,
 	}
 }
 
@@ -108,28 +106,4 @@ func (h *TenantHandler) GetTenantStats(c *gin.Context) {
 		return
 	}
 	response.Success(c, stats)
-}
-
-// GetSystemConfigs handles GET /api/admin/system/configs
-func (h *TenantHandler) GetSystemConfigs(c *gin.Context) {
-	configs, err := h.systemConfigService.GetAll()
-	if err != nil {
-		handleServiceError(c, err)
-		return
-	}
-	response.Success(c, configs)
-}
-
-// UpdateSystemConfigs handles PUT /api/admin/system/configs
-func (h *TenantHandler) UpdateSystemConfigs(c *gin.Context) {
-	var req map[string]string
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
-		return
-	}
-	if err := h.systemConfigService.UpdateConfigs(req); err != nil {
-		handleServiceError(c, err)
-		return
-	}
-	response.Success(c, nil)
 }
