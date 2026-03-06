@@ -77,6 +77,7 @@ type TenantResponse struct {
 	ContactName         string  `json:"contact_name"`
 	ContactEmail        string  `json:"contact_email"`
 	ContactPhone        string  `json:"contact_phone"`
+	AdminUserID         string  `json:"admin_user_id"`
 	CreatedAt           string  `json:"created_at"`
 	UpdatedAt           string  `json:"updated_at"`
 }

@@ -12,7 +12,7 @@ INSERT INTO tenants (id, name, code, description, status,
     max_tokens_per_request, temperature, timeout_seconds, retry_count,
     log_retention_days, data_retention_days,
     sso_enabled, sso_endpoint,
-    contact_name, contact_email, contact_phone)
+    contact_name, contact_email, contact_phone, admin_user_id)
 VALUES
     (
         'a0000000-0000-0000-0000-000000000001',
@@ -27,7 +27,8 @@ VALUES
         8192, 0.3, 60, 3,
         365, 1095,
         FALSE, '',
-        '张三', 'zhangsan@example.com', '13800000001'
+        '张三', 'zhangsan@example.com', '13800000001',
+        'b0000000-0000-0000-0000-000000000005'   -- tenantadmin (赵伟)
     ),
     (
         'a0000000-0000-0000-0000-000000000002',
@@ -42,5 +43,6 @@ VALUES
         4096, 0.5, 45, 2,
         180, 730,
         FALSE, '',
-        '分公司管理员', 'br1_admin@example.com', '13900000006'
+        '分公司管理员', 'br1_admin@example.com', '13900000006',
+        'b0000000-0000-0000-0000-000000000006'   -- br1_admin (分公司管理员)
     );

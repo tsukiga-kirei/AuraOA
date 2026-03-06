@@ -1306,7 +1306,7 @@ export default {
     'admin.tenants.tabCreateBasic': '基本信息',
     'admin.tenants.tabCreateAdmin': '管理员账号',
     'admin.tenants.tabCreateAI': 'AI 配置',
-    'admin.tenants.codeAutoHint': '留空则由系统自动生成，填写后会校验唯一性',
+    'admin.tenants.codeAutoHint': '留空则由系统自动生成，只能包含英文字母、数字和下划线',
     'admin.tenants.adminRequired': '请填写管理员姓名、用户名和默认部门名称',
     'admin.tenants.adminHint': '创建租户时需同步创建一个租户管理员账号，该账号将作为租户的联系人和首个可登录用户',
     'admin.tenants.adminDisplayName': '管理员姓名',
@@ -1325,6 +1325,8 @@ export default {
     'admin.tenants.tabMembers': '人员',
     'admin.tenants.membersHint': '以下为该租户下的所有组织成员，人员管理请进入对应租户的「组织人员」页面',
     'admin.tenants.noMembers': '该租户暂无人员',
+    'admin.tenants.codeFormatError': '租户编码只能包含英文字母、数字和下划线',
+    'admin.tenants.contactSyncHint': '修改联系人信息将同步更新关联的租户管理员账号（姓名、邮箱、手机号）',
 
     //===== 管理员 - 租户组织 =====
     'admin.org.title': '组织人员',

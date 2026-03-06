@@ -35,6 +35,7 @@ interface TenantData {
   sso_enabled: boolean; sso_endpoint: string
   log_retention_days: number; data_retention_days: number
   contact_name: string; contact_email: string; contact_phone: string
+  admin_user_id: string
   created_at: string; updated_at: string
 }
 
@@ -142,6 +143,15 @@ const validateCreateForm = (): boolean => {
     message.warning(t('admin.tenants.fillRequired'))
     return false
   }
+  // 租户编码校验（如果手动填写）
+  if (newTenant.value.code.trim()) {
+    const codeRegex = /^[a-zA-Z0-9_]+$/
+    if (!codeRegex.test(newTenant.value.code)) {
+      createTab.value = 'basic'
+      message.warning(t('admin.tenants.codeFormatError'))
+      return false
+    }
+  }
   // 管理员校验
   if (!newTenant.value.admin_username.trim() || !newTenant.value.admin_display_name.trim() || !newTenant.value.admin_dept_name.trim()) {
     createTab.value = 'admin'
@@ -228,6 +238,24 @@ const loadTenantMembers = async (tenantId: string) => {
 
 const saveTenantDetail = async () => {
   if (!selectedTenant.value) return
+  // 联系人邮箱校验
+  if (selectedTenant.value.contact_email.trim()) {
+    const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
+    if (!emailRegex.test(selectedTenant.value.contact_email)) {
+      detailActiveTab.value = 'basic'
+      message.warning(t('admin.org.emailFormatError'))
+      return
+    }
+  }
+  // 联系人手机号校验
+  if (selectedTenant.value.contact_phone.trim()) {
+    const phoneRegex = /^\d{11}$/
+    if (!phoneRegex.test(selectedTenant.value.contact_phone)) {
+      detailActiveTab.value = 'basic'
+      message.warning(t('admin.org.phoneFormatError'))
+      return
+    }
+  }
   try {
     const s = selectedTenant.value
     const updated = await apiUpdateTenant(s.id, {
@@ -472,7 +500,7 @@ const formatDateTime = (iso: string) => {
           </a-col>
           <a-col :span="12">
             <a-form-item :label="t('admin.tenants.adminPhone')">
-              <a-input v-model:value="newTenant.admin_phone" :placeholder="t('admin.tenants.contactPhonePlaceholder')" size="large">
+              <a-input v-model:value="newTenant.admin_phone" :placeholder="t('admin.tenants.contactPhonePlaceholder')" size="large" :maxlength="11">
                 <template #prefix><PhoneOutlined /></template>
               </a-input>
             </a-form-item>
@@ -612,6 +640,9 @@ const formatDateTime = (iso: string) => {
                 </a-form-item>
               </a-col>
             </a-row>
+            <div v-if="selectedTenant.admin_user_id" class="jdbc-hint" style="margin-bottom: 12px;">
+              <InfoCircleOutlined /> {{ t('admin.tenants.contactSyncHint') }}
+            </div>
             <a-row :gutter="16">
               <a-col :span="12">
                 <a-form-item :label="t('admin.tenants.createdDate')">

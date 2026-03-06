@@ -64,12 +64,14 @@ erDiagram
 | 002 | `000002_tenants_users.up.sql` | 租户 + 用户 + 角色分配 | Phase 1 |
 | 003 | `000003_org_structure.up.sql` | 部门 + 组织角色 + 组织成员 | Phase 1 |
 | 004 | `000004_system_configs.up.sql` | 系统设置 (OA/AI/通用) | Phase 1 |
-| 005 | `000005_audit_rules.up.sql` | 审核规则 + 流程配置 | Phase 2 |
-| 006 | `000006_cron_tasks.up.sql` | 定时任务 | Phase 2 |
-| 007 | `000007_audit_logs.up.sql` | 审核/定时/归档日志 | Phase 2 |
-| 008 | `000008_user_configs.up.sql` | 用户偏好 + 仪表盘配置 | Phase 2 |
-| 009 | `000009_archives.up.sql` | 归档流程 + 复核结果 | Phase 3 |
-| 010 | `000010_rag_vectors.up.sql` | 文档向量表 (pgvector) | Phase 4 |
+| 005 | `000005_system_options_oa_ai.up.sql` | OA连接 + AI模型配置 | Phase 1 |
+| 006 | `000006_tenant_admin_user.up.sql` | 租户管理员用户关联 | Phase 1 |
+| 007 | `000007_audit_rules.up.sql` | 审核规则 + 流程配置 | Phase 2 |
+| 008 | `000008_cron_tasks.up.sql` | 定时任务 | Phase 2 |
+| 009 | `000009_audit_logs.up.sql` | 审核/定时/归档日志 | Phase 2 |
+| 010 | `000010_user_configs.up.sql` | 用户偏好 + 仪表盘配置 | Phase 2 |
+| 011 | `000011_archives.up.sql` | 归档流程 + 复核结果 | Phase 3 |
+| 012 | `000012_rag_vectors.up.sql` | 文档向量表 (pgvector) | Phase 4 |
 
 ---
 
@@ -123,6 +125,9 @@ CREATE TABLE tenants (
     contact_email   VARCHAR(255) DEFAULT '',
     contact_phone   VARCHAR(50) DEFAULT '',
     
+    -- 租户管理员用户（000006 迁移添加）
+    admin_user_id   UUID REFERENCES users(id),  -- 租户管理员用户ID
+    
     -- 时间戳
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -130,6 +135,7 @@ CREATE TABLE tenants (
 
 CREATE INDEX idx_tenants_code ON tenants(code);
 CREATE INDEX idx_tenants_status ON tenants(status);
+CREATE INDEX idx_tenants_admin_user_id ON tenants(admin_user_id);
 ```
 
 #### users — 用户表
