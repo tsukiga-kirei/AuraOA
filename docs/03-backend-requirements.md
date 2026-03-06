@@ -133,6 +133,7 @@ go-service/
 │   ├── pkg/                        # 公共工具
 │   │   ├── jwt/                    # JWT 工具
 │   │   ├── hash/                   # 密码哈希
+│   │   ├── crypto/                 # AES-256-GCM 加解密（敏感字段加密存储）
 │   │   ├── response/               # 统一响应格式
 │   │   ├── pagination/             # 分页工具
 │   │   └── errors/                 # 错误码定义

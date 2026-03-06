@@ -20,7 +20,7 @@ type AIModelConfig struct {
 	APIKeyConfigured bool           `gorm:"not null;default:false" json:"api_key_configured"`
 	MaxTokens        int            `gorm:"not null;default:8192" json:"max_tokens"`
 	ContextWindow    int            `gorm:"not null;default:131072" json:"context_window"`
-	CostPer1kTokens  float64        `gorm:"type:decimal(10,6);default:0" json:"cost_per_1k_tokens"`
+	CostPer1kTokens  float64        `gorm:"column:cost_per_1k_tokens;type:decimal(10,6);default:0" json:"cost_per_1k_tokens"`
 	Status           string         `gorm:"size:20;not null;default:offline" json:"status"`
 	Enabled          bool           `gorm:"not null;default:true" json:"enabled"`
 	Description      string         `gorm:"type:text;default:''" json:"description"`

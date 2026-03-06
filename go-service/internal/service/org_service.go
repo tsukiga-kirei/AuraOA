@@ -53,6 +53,7 @@ func (s *OrgService) ListDepartments(c *gin.Context) ([]dto.DepartmentResponse, 
 // CreateDepartment 在当前租户中创建一个新部门。
 func (s *OrgService) CreateDepartment(c *gin.Context, tenantID uuid.UUID, req *dto.CreateDepartmentRequest) (*dto.DepartmentResponse, error) {
 	dept := &model.Department{
+		ID:        uuid.New(),
 		TenantID:  tenantID,
 		Name:      req.Name,
 		Manager:   req.Manager,
@@ -143,6 +144,7 @@ func (s *OrgService) CreateRole(c *gin.Context, tenantID uuid.UUID, req *dto.Cre
 		pagePerms = []byte("[]")
 	}
 	role := &model.OrgRole{
+		ID:              uuid.New(),
 		TenantID:        tenantID,
 		Name:            req.Name,
 		Description:     req.Description,
@@ -291,6 +293,7 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 			return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 		}
 		user = &model.User{
+			ID:                uuid.New(),
 			Username:          req.Username,
 			PasswordHash:      passwordHash,
 			DisplayName:       req.DisplayName,
@@ -306,6 +309,7 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 
 	//5. 创建组织成员记录
 	member := &model.OrgMember{
+		ID:           uuid.New(),
 		TenantID:     tenantID,
 		UserID:       user.ID,
 		DepartmentID: deptID,
@@ -346,6 +350,7 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 
 	if needBusiness {
 		businessAssignment := &model.UserRoleAssignment{
+			ID:       uuid.New(),
 			UserID:   user.ID,
 			Role:     "business",
 			TenantID: &tenantID,
@@ -358,6 +363,7 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 
 	if needTenantAdmin {
 		tenantAdminAssignment := &model.UserRoleAssignment{
+			ID:       uuid.New(),
 			UserID:   user.ID,
 			Role:     "tenant_admin",
 			TenantID: &tenantID,

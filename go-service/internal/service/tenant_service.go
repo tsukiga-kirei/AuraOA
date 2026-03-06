@@ -112,6 +112,7 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 	defaultDataRetention := s.getSystemConfigInt("tenant.default_data_retention_days", 1095)
 
 	tenant := &model.Tenant{
+		ID:                  uuid.New(),
 		Name:                req.Name,
 		Code:                code,
 		Description:         req.Description,
@@ -196,6 +197,7 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 
 	defaultRoles := []model.OrgRole{
 		{
+			ID:              uuid.New(),
 			TenantID:        tenant.ID,
 			Name:            "业务用户",
 			Description:     "普通业务人员，可使用审核工作台等前台功能。仪表盘为所有角色默认拥有。",
@@ -203,6 +205,7 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 			IsSystem:        true,
 		},
 		{
+			ID:              uuid.New(),
 			TenantID:        tenant.ID,
 			Name:            "审计管理员",
 			Description:     "在业务用户基础上，额外拥有归档复盘权限，可进行合规复核。",
@@ -210,6 +213,7 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 			IsSystem:        true,
 		},
 		{
+			ID:              uuid.New(),
 			TenantID:        tenant.ID,
 			Name:            "租户管理员",
 			Description:     "可进入后台管理，配置规则、组织人员、数据信息、用户偏好。",

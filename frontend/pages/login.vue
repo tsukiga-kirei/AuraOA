@@ -319,11 +319,7 @@ const handleLogin = async () => {
   height: 100% !important;
   line-height: normal !important; /*允许弹性容器居中*/
 }
-/* 隐藏 Edge 浏览器密码输入框自带的眼睛图标，避免出现两个眼睛 */
-.login-input :deep(input::-ms-reveal),
-.login-input :deep(input::-ms-clear) {
-  display: none !important;
-}
+
 .login-input:hover { border-color: var(--color-text-tertiary) !important; }
 :deep(.ant-input-affix-wrapper:focus),
 :deep(.ant-input-affix-wrapper-focused) {

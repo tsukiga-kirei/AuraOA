@@ -7,6 +7,7 @@ import (
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
+	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	"oa-smart-audit/go-service/internal/repository"
 )
@@ -41,13 +42,13 @@ func (s *AIModelService) Create(req *dto.CreateAIModelRequest) (*dto.AIModelResp
 	}
 
 	m := &model.AIModelConfig{
+		ID:               uuid.New(),
 		Provider:         req.Provider,
 		ProviderLabel:    req.ProviderLabel,
 		ModelName:        req.ModelName,
 		DisplayName:      req.DisplayName,
 		DeployType:       req.DeployType,
 		Endpoint:         req.Endpoint,
-		APIKey:           req.APIKey,
 		APIKeyConfigured: req.APIKey != "",
 		MaxTokens:        req.MaxTokens,
 		ContextWindow:    req.ContextWindow,
@@ -55,6 +56,15 @@ func (s *AIModelService) Create(req *dto.CreateAIModelRequest) (*dto.AIModelResp
 		Enabled:          req.Enabled,
 		Description:      req.Description,
 		Capabilities:     capsJSON,
+	}
+
+	// 加密 API Key
+	if req.APIKey != "" {
+		encrypted, err := crypto.Encrypt(req.APIKey)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrInternalServer, "加密失败")
+		}
+		m.APIKey = encrypted
 	}
 
 	// 默认值
@@ -106,7 +116,11 @@ func (s *AIModelService) Update(id uuid.UUID, req *dto.UpdateAIModelRequest) (*d
 		fields["endpoint"] = req.Endpoint
 	}
 	if req.APIKey != "" {
-		fields["api_key"] = req.APIKey
+		encrypted, err := crypto.Encrypt(req.APIKey)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrInternalServer, "加密失败")
+		}
+		fields["api_key"] = encrypted
 		fields["api_key_configured"] = true
 	}
 	if req.MaxTokens != 0 {

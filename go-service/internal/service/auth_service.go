@@ -164,6 +164,7 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 		loginTenantID = &tid
 	}
 	history := &model.LoginHistory{
+		ID:        uuid.New(),
 		UserID:    user.ID,
 		TenantID:  loginTenantID,
 		IP:        clientIP,

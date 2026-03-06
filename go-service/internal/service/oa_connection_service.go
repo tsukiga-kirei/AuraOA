@@ -5,6 +5,7 @@ import (
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
+	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	"oa-smart-audit/go-service/internal/repository"
 )
@@ -34,6 +35,7 @@ func (s *OAConnectionService) List() ([]dto.OAConnectionResponse, error) {
 // Create 创建新的 OA 连接。
 func (s *OAConnectionService) Create(req *dto.CreateOAConnectionRequest) (*dto.OAConnectionResponse, error) {
 	conn := &model.OADatabaseConnection{
+		ID:                uuid.New(),
 		Name:              req.Name,
 		OAType:            req.OAType,
 		OATypeLabel:       req.OATypeLabel,
@@ -51,6 +53,15 @@ func (s *OAConnectionService) Create(req *dto.CreateOAConnectionRequest) (*dto.O
 		Description:       req.Description,
 	}
 
+	// 加密密码
+	if req.Password != "" {
+		encrypted, err := crypto.Encrypt(req.Password)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrInternalServer, "加密失败")
+		}
+		conn.Password = encrypted
+	}
+
 	// 应用默认值
 	if conn.Port == 0 {
 		conn.Port = 3306
@@ -63,6 +74,9 @@ func (s *OAConnectionService) Create(req *dto.CreateOAConnectionRequest) (*dto.O
 	}
 	if conn.SyncInterval == 0 {
 		conn.SyncInterval = 30
+	}
+	if conn.Status == "" {
+		conn.Status = "disconnected"
 	}
 
 	if err := s.repo.Create(conn); err != nil {
@@ -106,7 +120,11 @@ func (s *OAConnectionService) Update(id uuid.UUID, req *dto.UpdateOAConnectionRe
 		fields["username"] = req.Username
 	}
 	if req.Password != "" {
-		fields["password"] = req.Password
+		encrypted, err := crypto.Encrypt(req.Password)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrInternalServer, "加密失败")
+		}
+		fields["password"] = encrypted
 	}
 	if req.PoolSize != 0 {
 		fields["pool_size"] = req.PoolSize

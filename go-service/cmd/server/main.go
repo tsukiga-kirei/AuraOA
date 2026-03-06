@@ -19,6 +19,7 @@ import (
 	"gorm.io/gorm"
 
 	"oa-smart-audit/go-service/internal/handler"
+	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/repository"
 	"oa-smart-audit/go-service/internal/router"
 	"oa-smart-audit/go-service/internal/service"
@@ -50,6 +51,15 @@ func main() {
 		logger.Fatal("Failed to connect to Redis", zap.Error(err))
 	}
 	logger.Info("Redis connected successfully")
+
+	// 4.5 Initialize AES encryption key
+	encKey := viper.GetString("encryption.key")
+	if encKey == "" {
+		logger.Fatal("encryption.key is not configured")
+	}
+	if err := crypto.SetKey(encKey); err != nil {
+		logger.Fatal("Failed to set encryption key", zap.Error(err))
+	}
 
 	// 5. Initialize repositories
 	userRepo := repository.NewUserRepo(db)

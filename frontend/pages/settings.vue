@@ -1739,12 +1739,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   border-radius: var(--radius-md); display: inline-block; margin-top: 8px;
 }
 
-/*安全选项卡*/
-/* Hide Edge browser native password reveal icon to avoid duplicate eye icons */
-.settings-form :deep(input::-ms-reveal),
-.settings-form :deep(input::-ms-clear) {
-  display: none !important;
-}
+
 .password-strength { margin-top: 8px; }
 .strength-bar {
   height: 4px; background: var(--color-bg-hover);

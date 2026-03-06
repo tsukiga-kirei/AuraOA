@@ -257,6 +257,19 @@ const openAddAIModel = () => {
   showAddAIModel.value = true
 }
 
+const openEditAIModel = (model: AIModel) => {
+  editingAIModel.value = model
+  newAIModel.value = {
+    provider: model.provider, provider_label: model.provider_label,
+    model_name: model.model_name, display_name: model.display_name,
+    deploy_type: model.deploy_type, endpoint: model.endpoint,
+    api_key: '', max_tokens: model.max_tokens, context_window: model.context_window,
+    cost_per_1k_tokens: model.cost_per_1k_tokens, enabled: model.enabled,
+    description: model.description, capabilities: [...model.capabilities],
+  }
+  showAddAIModel.value = true
+}
+
 const onModelTypeChange = (val: any) => {
   // 按部署类型过滤服务商
   const filtered = aiProviderOptions.value.filter(p => p.deploy_type === val)
@@ -278,6 +291,11 @@ const capabilityOptions = computed(() => [
   { value: 'analysis', label: t('admin.settings.capability.analysis') },
 ])
 
+const onProviderChange = (val: any) => {
+  const opt = aiProviderOptions.value.find(o => o.value === val)
+  if (opt) newAIModel.value.provider_label = opt.label
+}
+
 const saveAIModel = async () => {
   if (!newAIModel.value.display_name?.trim()) {
     message.warning(t('admin.settings.aiModelNameRequired'))
@@ -292,13 +310,18 @@ const saveAIModel = async () => {
     return
   }
   try {
+    const payload = { ...newAIModel.value }
+    // 编辑模式下，如果 api_key 为空则不发送，避免后端覆盖已有密钥
+    if (editingAIModel.value && !payload.api_key) {
+      delete payload.api_key
+    }
     if (editingAIModel.value) {
-      const updated = await updateAIModel(editingAIModel.value.id, newAIModel.value)
+      const updated = await updateAIModel(editingAIModel.value.id, payload)
       const idx = aiModels.value.findIndex(m => m.id === editingAIModel.value!.id)
       if (idx >= 0) aiModels.value[idx] = updated
       message.success(t('admin.settings.aiModelUpdated', '模型已更新'))
     } else {
-      const created = await createAIModel(newAIModel.value)
+      const created = await createAIModel(payload)
       aiModels.value.push(created)
       message.success(t('admin.settings.aiModelAdded'))
     }
@@ -642,11 +665,16 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               :checked-children="t('admin.ruleConfig.enable')"
               :un-checked-children="t('admin.ruleConfig.disable')"
             />
-            <a-popconfirm :title="t('admin.settings.confirmDeleteAIModel')" @confirm="deleteAIModel(model.id)" :okText="t('admin.ruleConfig.confirm')" :cancelText="t('admin.tenants.cancel')">
-              <a-button size="small" type="text" danger>
-                <DeleteOutlined />
+            <div class="oa-card-btns">
+              <a-button size="small" type="text" @click="openEditAIModel(model)">
+                <EditOutlined />
               </a-button>
-            </a-popconfirm>
+              <a-popconfirm :title="t('admin.settings.confirmDeleteAIModel')" @confirm="deleteAIModel(model.id)" :okText="t('admin.ruleConfig.confirm')" :cancelText="t('admin.tenants.cancel')">
+                <a-button size="small" type="text" danger>
+                  <DeleteOutlined />
+                </a-button>
+              </a-popconfirm>
+            </div>
           </div>
         </div>
       </div>
@@ -957,7 +985,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
     <!--添加AI模型模态-->
     <a-modal
       v-model:open="showAddAIModel"
-      :title="t('admin.settings.addAIModel')"
+      :title="editingAIModel ? t('admin.settings.editAIModel', '编辑AI模型') : t('admin.settings.addAIModel')"
       :footer="null"
       width="640px"
     >
@@ -984,7 +1012,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
           </a-col>
           <a-col :span="12">
             <a-form-item :label="t('admin.settings.aiModelProvider')">
-              <a-select v-model:value="newAIModel.provider" size="large">
+              <a-select v-model:value="newAIModel.provider" size="large" @change="onProviderChange">
                 <a-select-option v-for="opt in aiProviderOptions.filter(p => p.deploy_type === newAIModel.deploy_type)" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
               </a-select>
             </a-form-item>
@@ -992,6 +1020,11 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         </a-row>
         <a-form-item :label="t('admin.settings.endpoint')" required>
           <a-input v-model:value="newAIModel.endpoint" placeholder="http://192.168.1.50:8000/v1" size="large" />
+        </a-form-item>
+        <a-form-item label="API Key">
+          <a-input-password v-model:value="newAIModel.api_key" :placeholder="editingAIModel?.api_key_configured ? t('admin.settings.apiKeyKeepCurrent', '留空则保持当前密钥') : t('admin.settings.apiKeyPlaceholder', '输入 API Key')" size="large">
+            <template #prefix><KeyOutlined /></template>
+          </a-input-password>
         </a-form-item>
         <a-row :gutter="16">
           <a-col :span="8">
@@ -1029,7 +1062,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         </a-button>
         <div style="display: flex; gap: 8px;">
           <a-button @click="showAddAIModel = false">{{ t('admin.tenants.cancel') }}</a-button>
-          <a-button type="primary" @click="saveAIModel">{{ t('admin.tenants.create') }}</a-button>
+          <a-button type="primary" @click="saveAIModel">{{ editingAIModel ? t('admin.settings.saveAll') : t('admin.tenants.create') }}</a-button>
         </div>
       </div>
     </a-modal>

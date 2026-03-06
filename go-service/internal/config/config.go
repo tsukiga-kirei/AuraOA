@@ -10,11 +10,12 @@ import (
 
 //配置保存应用程序的所有配置。
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
-	CORS     CORSConfig     `mapstructure:"cors"`
+	Server     ServerConfig     `mapstructure:"server"`
+	Database   DatabaseConfig   `mapstructure:"database"`
+	Redis      RedisConfig      `mapstructure:"redis"`
+	JWT        JWTConfig        `mapstructure:"jwt"`
+	CORS       CORSConfig       `mapstructure:"cors"`
+	Encryption EncryptionConfig `mapstructure:"encryption"`
 }
 
 //ServerConfig 保存 HTTP 服务器设置。
@@ -65,6 +66,11 @@ type JWTConfig struct {
 //CORSConfig 保存 CORS 允许的来源。
 type CORSConfig struct {
 	AllowedOrigins []string `mapstructure:"allowed_origins"`
+}
+
+// EncryptionConfig 保存 AES 对称加密密钥。
+type EncryptionConfig struct {
+	Key string `mapstructure:"key"`
 }
 
 //Load 通过 Viper 读取 config.yaml 并将其解组到 Config 结构中。
