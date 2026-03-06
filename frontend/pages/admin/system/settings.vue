@@ -29,8 +29,8 @@ const { t } = useI18n()
 const {
   getConfigs, updateConfigs,
   listOATypes, listDBDrivers, listAIProviders, listAIDeployTypes,
-  listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection: apiDeleteOAConnection, testOAConnection: apiTestOAConnection,
-  listAIModels, createAIModel, updateAIModel, deleteAIModel: apiDeleteAIModel,
+  listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection: apiDeleteOAConnection, testOAConnection: apiTestOAConnection, testOAConnectionParams: apiTestOAConnectionParams,
+  listAIModels, createAIModel, updateAIModel, deleteAIModel: apiDeleteAIModel, testAIModelConnection: apiTestAIModelConnection,
 } = useSystemApi()
 
 const loading = ref(false)
@@ -155,6 +155,22 @@ const saveOADb = async () => {
     message.warning(t('admin.settings.oaDbHostRequired'))
     return
   }
+  if (!newOADb.value.port) {
+    message.warning(t('admin.settings.oaDbPortRequired', '请填写端口'))
+    return
+  }
+  if (!newOADb.value.database_name?.trim()) {
+    message.warning(t('admin.settings.oaDbDatabaseRequired', '请填写数据库名称'))
+    return
+  }
+  if (!newOADb.value.username?.trim()) {
+    message.warning(t('admin.settings.oaDbUsernameRequired', '请填写用户名'))
+    return
+  }
+  if (!newOADb.value.password?.trim() && !editingOADb.value) {
+    message.warning(t('admin.settings.oaDbPasswordRequired', '请填写密码'))
+    return
+  }
   try {
     if (editingOADb.value) {
       const updated = await updateOAConnection(editingOADb.value.id, newOADb.value)
@@ -271,6 +287,10 @@ const saveAIModel = async () => {
     message.warning(t('admin.settings.aiModelIdRequired'))
     return
   }
+  if (!newAIModel.value.endpoint?.trim()) {
+    message.warning(t('admin.settings.fillEndpointFirst'))
+    return
+  }
   try {
     if (editingAIModel.value) {
       const updated = await updateAIModel(editingAIModel.value.id, newAIModel.value)
@@ -318,12 +338,17 @@ const testDbConnection = async () => {
     return
   }
   testingDbConn.value = true
-  await new Promise(resolve => setTimeout(resolve, 1800))
-  testingDbConn.value = false
-  if (newOADb.value.host && newOADb.value.database_name) {
-    message.success(t('admin.settings.dbConnSuccess'))
-  } else {
+  try {
+    const result = await apiTestOAConnectionParams(newOADb.value)
+    if (result.success) {
+      message.success(t('admin.settings.dbConnSuccess'))
+    } else {
+      message.error(result.message || t('admin.settings.dbConnFailed'))
+    }
+  } catch (e) {
     message.error(t('admin.settings.dbConnFailed'))
+  } finally {
+    testingDbConn.value = false
   }
 }
 
@@ -335,9 +360,18 @@ const testModelConnection = async () => {
     return
   }
   testingModelConn.value = true
-  await new Promise(resolve => setTimeout(resolve, 1500))
-  testingModelConn.value = false
-  message.success(t('admin.settings.modelConnSuccess'))
+  try {
+    const result = await apiTestAIModelConnection(newAIModel.value)
+    if (result.success) {
+      message.success(t('admin.settings.modelConnSuccess'))
+    } else {
+      message.error(result.message || t('admin.settings.dbConnFailed'))
+    }
+  } catch (e) {
+    message.error(t('admin.settings.dbConnFailed'))
+  } finally {
+    testingModelConn.value = false
+  }
 }
 
 //===== OA 系统切换（旧版）=====
@@ -860,24 +894,24 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             </a-form-item>
           </a-col>
           <a-col :span="8">
-            <a-form-item :label="t('admin.tenants.port')">
+            <a-form-item :label="t('admin.tenants.port')" required>
               <a-input-number v-model:value="newOADb.port" :min="1" :max="65535" style="width: 100%;" size="large" />
             </a-form-item>
           </a-col>
         </a-row>
-        <a-form-item :label="t('admin.tenants.dbName')">
+        <a-form-item :label="t('admin.tenants.dbName')" required>
           <a-input v-model:value="newOADb.database_name" placeholder="ecology" size="large" />
         </a-form-item>
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item :label="t('admin.tenants.username')">
+            <a-form-item :label="t('admin.tenants.username')" required>
               <a-input v-model:value="newOADb.username" placeholder="oa_reader" size="large">
                 <template #prefix><UserOutlined /></template>
               </a-input>
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item :label="t('admin.tenants.password')">
+            <a-form-item :label="t('admin.tenants.password')" required>
               <a-input-password v-model:value="newOADb.password" :placeholder="t('admin.tenants.dbPassword')" size="large">
                 <template #prefix><KeyOutlined /></template>
               </a-input-password>
@@ -907,7 +941,11 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
       </a-form>
       <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--color-border-light); margin-top: 8px;">
         <a-button :loading="testingDbConn" @click="testDbConnection">
-          <ApiOutlined /> {{ t('admin.settings.testConnection') }}
+          <template #icon>
+            <SyncOutlined v-if="testingDbConn" />
+            <DatabaseOutlined v-else />
+          </template>
+          {{ t('admin.settings.testConnection') }}
         </a-button>
         <div style="display: flex; gap: 8px;">
           <a-button @click="showAddOADb = false">{{ t('admin.tenants.cancel') }}</a-button>
@@ -952,7 +990,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             </a-form-item>
           </a-col>
         </a-row>
-        <a-form-item :label="t('admin.settings.endpoint')">
+        <a-form-item :label="t('admin.settings.endpoint')" required>
           <a-input v-model:value="newAIModel.endpoint" placeholder="http://192.168.1.50:8000/v1" size="large" />
         </a-form-item>
         <a-row :gutter="16">
@@ -983,7 +1021,11 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
       </a-form>
       <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--color-border-light); margin-top: 8px;">
         <a-button :loading="testingModelConn" @click="testModelConnection">
-          <ApiOutlined /> {{ t('admin.settings.testConnection') }}
+          <template #icon>
+            <SyncOutlined v-if="testingModelConn" />
+            <RobotOutlined v-else />
+          </template>
+          {{ t('admin.settings.testConnection') }}
         </a-button>
         <div style="display: flex; gap: 8px;">
           <a-button @click="showAddAIModel = false">{{ t('admin.tenants.cancel') }}</a-button>
