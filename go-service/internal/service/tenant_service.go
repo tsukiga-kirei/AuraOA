@@ -115,6 +115,14 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 		}
 	}
 
+	// 租户编码校验（如果手动填写）
+	if req.Code != "" {
+		codeRegex := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+		if !codeRegex.MatchString(req.Code) {
+			return nil, newServiceError(errcode.ErrParamValidation, "租户编码只能包含英文字母、数字和下划线")
+		}
+	}
+
 	// 检查管理员用户名是否已存在
 	existingUser, _ := s.userRepo.FindByUsername(req.AdminUsername)
 	if existingUser != nil {
@@ -303,6 +311,12 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 		return nil, newServiceError(errcode.ErrDatabase, "创建管理员用户失败")
 	}
 
+	// 4.1 回写 admin_user_id 到租户记录
+	if err := tx.Model(tenant).Update("admin_user_id", adminUser.ID).Error; err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "更新租户管理员关联失败")
+	}
+	tenant.AdminUserID = &adminUser.ID
+
 	// 5. 创建组织成员记录（关联管理员到默认部门）
 	adminMember := &model.OrgMember{
 		ID:           uuid.New(),
@@ -348,6 +362,21 @@ func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest)
 	tenant, err := s.tenantRepo.FindByID(id)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrResourceNotFound, "租户不存在")
+	}
+
+	// 联系人邮箱格式校验
+	if req.ContactEmail != "" {
+		emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+		if !emailRegex.MatchString(req.ContactEmail) {
+			return nil, newServiceError(errcode.ErrParamValidation, "联系人邮箱格式不正确")
+		}
+	}
+	// 联系人手机号校验
+	if req.ContactPhone != "" {
+		phoneRegex := regexp.MustCompile(`^\d{11}$`)
+		if !phoneRegex.MatchString(req.ContactPhone) {
+			return nil, newServiceError(errcode.ErrParamValidation, "联系人手机号必须为11位数字")
+		}
 	}
 
 	// 构建更新字段 map，只包含实际传入的字段
@@ -440,6 +469,25 @@ func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest)
 
 	if err := s.tenantRepo.UpdateFields(id, fields); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+
+	// 同步联系人信息到关联的管理员 user 记录
+	if tenant.AdminUserID != nil {
+		userUpdates := map[string]interface{}{}
+		if req.ContactName != "" {
+			userUpdates["display_name"] = req.ContactName
+		}
+		if req.ContactEmail != "" {
+			userUpdates["email"] = req.ContactEmail
+		}
+		if req.ContactPhone != "" {
+			userUpdates["phone"] = req.ContactPhone
+		}
+		if len(userUpdates) > 0 {
+			if err := s.db.Model(&model.User{}).Where("id = ?", *tenant.AdminUserID).Updates(userUpdates).Error; err != nil {
+				return nil, newServiceError(errcode.ErrDatabase, "同步管理员信息失败")
+			}
+		}
 	}
 
 	// 重新查询最新数据返回
@@ -537,6 +585,10 @@ func toTenantResponse(t *model.Tenant) dto.TenantResponse {
 	if t.FallbackModelID != nil {
 		fallbackModelID = t.FallbackModelID.String()
 	}
+	adminUserID := ""
+	if t.AdminUserID != nil {
+		adminUserID = t.AdminUserID.String()
+	}
 
 	temp := t.Temperature
 
@@ -563,6 +615,7 @@ func toTenantResponse(t *model.Tenant) dto.TenantResponse {
 		ContactName:         t.ContactName,
 		ContactEmail:        t.ContactEmail,
 		ContactPhone:        t.ContactPhone,
+		AdminUserID:         adminUserID,
 		CreatedAt:           t.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:           t.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}

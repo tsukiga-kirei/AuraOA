@@ -390,6 +390,14 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 		return nil, newServiceError(errcode.ErrResourceNotFound, "资源不存在")
 	}
 
+	// 租户管理员保护：不允许禁用租户管理员
+	if req.Status == "disabled" {
+		var tenant model.Tenant
+		if err := s.db.Where("admin_user_id = ? AND id = ?", member.UserID, member.TenantID).First(&tenant).Error; err == nil {
+			return nil, newServiceError(errcode.ErrParamValidation, "该成员是租户管理员，不允许禁用。如需更换管理员，请联系系统管理员。")
+		}
+	}
+
 	//更新 Department_id（如果提供）
 	if req.DepartmentID != "" {
 		deptID, err := uuid.Parse(req.DepartmentID)
@@ -434,6 +442,24 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 		}
 	}
 
+	// 反向同步：如果该成员是租户管理员，同步更新租户表的联系人信息
+	var adminTenant model.Tenant
+	if err := s.db.Where("admin_user_id = ? AND id = ?", member.UserID, member.TenantID).First(&adminTenant).Error; err == nil {
+		tenantUpdates := map[string]interface{}{}
+		if req.DisplayName != "" {
+			tenantUpdates["contact_name"] = req.DisplayName
+		}
+		if req.Email != "" {
+			tenantUpdates["contact_email"] = req.Email
+		}
+		if req.Phone != "" {
+			tenantUpdates["contact_phone"] = req.Phone
+		}
+		if len(tenantUpdates) > 0 {
+			s.db.Model(&model.Tenant{}).Where("id = ?", adminTenant.ID).Updates(tenantUpdates)
+		}
+	}
+
 	//如果提供了 role_ids，则替换角色关联
 	if len(req.RoleIDs) > 0 {
 		roleUUIDs := make([]uuid.UUID, len(req.RoleIDs))
@@ -468,6 +494,12 @@ func (s *OrgService) DeleteMember(c *gin.Context, id uuid.UUID) error {
 	member, err := s.orgRepo.FindMemberByID(c, id)
 	if err != nil {
 		return newServiceError(errcode.ErrResourceNotFound, "资源不存在")
+	}
+
+	// 租户管理员保护：不允许删除租户管理员
+	var tenant model.Tenant
+	if err := s.db.Where("admin_user_id = ? AND id = ?", member.UserID, member.TenantID).First(&tenant).Error; err == nil {
+		return newServiceError(errcode.ErrParamValidation, "该成员是租户管理员，不允许删除。如需更换管理员，请联系系统管理员。")
 	}
 
 	//1. 清除 org_member_roles 关联

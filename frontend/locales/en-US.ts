@@ -1306,7 +1306,7 @@ export default {
     'admin.tenants.tabCreateBasic': 'Basic Info',
     'admin.tenants.tabCreateAdmin': 'Admin Account',
     'admin.tenants.tabCreateAI': 'AI Config',
-    'admin.tenants.codeAutoHint': 'Leave empty for auto-generation, uniqueness will be validated if provided',
+    'admin.tenants.codeAutoHint': 'Leave empty for auto-generation. Only letters, numbers and underscores allowed',
     'admin.tenants.adminRequired': 'Please fill in admin name, username and default department name',
     'admin.tenants.adminHint': 'A tenant admin account will be created along with the tenant. This account serves as the tenant contact and first login user.',
     'admin.tenants.adminDisplayName': 'Admin Name',
@@ -1325,6 +1325,8 @@ export default {
     'admin.tenants.tabMembers': 'Members',
     'admin.tenants.membersHint': 'All organization members under this tenant. For member management, go to the tenant\'s "Organization" page.',
     'admin.tenants.noMembers': 'No members in this tenant',
+    'admin.tenants.codeFormatError': 'Tenant code can only contain letters, numbers and underscores',
+    'admin.tenants.contactSyncHint': 'Changing contact info will also update the linked tenant admin account (name, email, phone)',
 
     //===== 管理员 - 租户组织 =====
     'admin.org.title': 'Organization',

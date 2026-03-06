@@ -30,6 +30,7 @@ type Tenant struct {
 	ContactName         string     `gorm:"size:100"`
 	ContactEmail        string     `gorm:"size:255"`
 	ContactPhone        string     `gorm:"size:50"`
+	AdminUserID         *uuid.UUID `gorm:"type:uuid"`
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }

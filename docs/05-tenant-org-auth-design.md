@@ -205,7 +205,7 @@ interface TenantInfo {
   data_retention_days: number
   sso_enabled: boolean
   sso_endpoint: string
-  tenant_admin_id?: string      // 租户管理员用户名（用于反向关联）
+  admin_user_id?: string        // 租户管理员用户ID（关联 users.id，000006 迁移添加）
 }
 
 // 创建租户时同步创建管理员账号（CreateTenantRequest 额外字段）
@@ -761,6 +761,12 @@ OrgMember.status:
 通过 `PUT /api/tenant/org/members/:id` 更新成员时，除组织级字段（`department_id`、`role_ids`、`position`、`status`）外，还支持更新用户基本信息字段（`display_name`、`email`、`phone`）。这些字段存储在 `users` 表中，更新时需同步写回。
 
 > ⚠️ 注意：由于 `users` 表是全局共享的，在某一租户中修改用户的 `display_name`/`email`/`phone` 会影响该用户在所有租户中的显示。
+
+**租户联系人反向同步机制**：
+
+当通过 `PUT /api/tenant/org/members/:id` 更新的成员恰好是该租户的管理员（即 `tenants.admin_user_id` 指向该成员的 `user_id`）时，系统会自动将 `display_name`、`email`、`phone` 反向同步到 `tenants` 表的 `contact_name`、`contact_email`、`contact_phone` 字段，确保租户联系人信息与管理员账号保持一致。
+
+> 同步方向：`org_members 更新` → `users 表` → `tenants 表（仅当该用户是 admin_user_id 时）`
 
 **判断逻辑**：
 ```
