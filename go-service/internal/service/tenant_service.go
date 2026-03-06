@@ -270,14 +270,10 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 	}
 
 	// 3. 创建默认部门
-	deptName := req.AdminDeptName
-	if deptName == "" {
-		deptName = req.Name // 使用租户名称作为默认部门名称
-	}
 	defaultDept := &model.Department{
 		ID:        uuid.New(),
 		TenantID:  tenant.ID,
-		Name:      deptName,
+		Name:      req.AdminDeptName,
 		SortOrder: 0,
 	}
 	if err := tx.Create(defaultDept).Error; err != nil {

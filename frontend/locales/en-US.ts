@@ -1307,7 +1307,7 @@ export default {
     'admin.tenants.tabCreateAdmin': 'Admin Account',
     'admin.tenants.tabCreateAI': 'AI Config',
     'admin.tenants.codeAutoHint': 'Leave empty for auto-generation, uniqueness will be validated if provided',
-    'admin.tenants.adminRequired': 'Please fill in admin name and username',
+    'admin.tenants.adminRequired': 'Please fill in admin name, username and default department name',
     'admin.tenants.adminHint': 'A tenant admin account will be created along with the tenant. This account serves as the tenant contact and first login user.',
     'admin.tenants.adminDisplayName': 'Admin Name',
     'admin.tenants.adminDisplayNamePlaceholder': 'Enter admin name',
@@ -1320,7 +1320,7 @@ export default {
     'admin.tenants.adminPasswordHint': 'Defaults to 123456 if left empty',
     'admin.tenants.adminDeptName': 'Default Department Name',
     'admin.tenants.adminDeptNamePlaceholder': 'e.g., General Office',
-    'admin.tenants.adminDeptHint': 'Uses tenant name as default department if left empty',
+    'admin.tenants.adminDeptHint': 'Default department name when creating tenant (required)',
     // Detail drawer - members tab
     'admin.tenants.tabMembers': 'Members',
     'admin.tenants.membersHint': 'All organization members under this tenant. For member management, go to the tenant\'s "Organization" page.',

@@ -215,7 +215,7 @@ interface CreateTenantAdminFields {
   admin_password?: string       // 可选，不填则由后端生成默认密码
   admin_email?: string
   admin_phone?: string
-  admin_dept_name?: string      // 默认部门名称，不填则使用租户名称
+  admin_dept_name: string       // 必填，默认部门名称
 }
 ```
 

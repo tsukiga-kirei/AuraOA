@@ -27,7 +27,7 @@ type CreateTenantRequest struct {
 	AdminPassword    string `json:"admin_password"`
 	AdminEmail       string `json:"admin_email"`
 	AdminPhone       string `json:"admin_phone"`
-	AdminDeptName    string `json:"admin_dept_name"` // 默认部门名称，不填则使用租户名称
+	AdminDeptName    string `json:"admin_dept_name" binding:"required"` // 默认部门名称
 }
 
 // UpdateTenantRequest 是 PUT /api/admin/tenants/:id 的请求正文。

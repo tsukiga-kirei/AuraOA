@@ -2,6 +2,7 @@
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 import {useI18n} from '~/composables/useI18n'
+import {usePagination} from '~/composables/usePagination'
 import {
   ClockCircleOutlined,
   DatabaseOutlined,
@@ -56,6 +57,7 @@ const aiModels = ref<any[]>([])
 // 租户成员列表（详情抽屉中使用）
 const tenantMembers = ref<TenantMember[]>([])
 const membersLoading = ref(false)
+const { paged: pagedMembers, current: memberPage, pageSize: memberPageSize, total: memberTotal, onChange: onMemberPageChange } = usePagination(tenantMembers, 10)
 
 onMounted(async () => {
   loading.value = true
@@ -141,7 +143,7 @@ const validateCreateForm = (): boolean => {
     return false
   }
   // 管理员校验
-  if (!newTenant.value.admin_username.trim() || !newTenant.value.admin_display_name.trim()) {
+  if (!newTenant.value.admin_username.trim() || !newTenant.value.admin_display_name.trim() || !newTenant.value.admin_dept_name.trim()) {
     createTab.value = 'admin'
     message.warning(t('admin.tenants.adminRequired'))
     return false
@@ -484,7 +486,7 @@ const formatDateTime = (iso: string) => {
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item :label="t('admin.tenants.adminDeptName')">
+            <a-form-item :label="t('admin.tenants.adminDeptName')" required>
               <a-input v-model:value="newTenant.admin_dept_name" :placeholder="t('admin.tenants.adminDeptNamePlaceholder')" size="large" />
               <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px;">{{ t('admin.tenants.adminDeptHint') }}</div>
             </a-form-item>
@@ -805,7 +807,7 @@ const formatDateTime = (iso: string) => {
               <InfoCircleOutlined /> {{ t('admin.tenants.noMembers') }}
             </div>
             <div v-else class="members-list">
-              <div v-for="m in tenantMembers" :key="m.id" class="member-card">
+              <div v-for="m in pagedMembers" :key="m.id" class="member-card">
                 <div class="member-card-left">
                   <div class="member-avatar"><UserOutlined /></div>
                   <div class="member-info">
@@ -827,6 +829,19 @@ const formatDateTime = (iso: string) => {
                   </a-tag>
                 </div>
               </div>
+            </div>
+            <div v-if="memberTotal > memberPageSize" class="pagination-wrapper" style="margin-top: 12px; text-align: right;">
+              <a-pagination
+                :current="memberPage"
+                :page-size="memberPageSize"
+                :total="memberTotal"
+                size="small"
+                show-size-changer
+                show-quick-jumper
+                :page-size-options="['10', '20', '50']"
+                @change="onMemberPageChange"
+                @showSizeChange="onMemberPageChange"
+              />
             </div>
           </a-spin>
         </div>
