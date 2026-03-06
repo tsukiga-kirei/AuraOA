@@ -1,4 +1,4 @@
--- 007_system_config.sql
+-- 008_system_config.sql
 -- Seed data: system key-value configurations
 -- Run after migrations are applied
 

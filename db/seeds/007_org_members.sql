@@ -1,6 +1,6 @@
--- 006_org_members.sql
+-- 007_org_members.sql
 -- Seed data: org members + org_member_roles join records
--- Run after 003_users.sql, 004_departments.sql, 005_org_roles.sql
+-- Run after 002_users.sql, 003_tenants.sql, 005_departments.sql, 006_org_roles.sql
 
 -- Fixed UUIDs for referential integrity:
 --
@@ -62,6 +62,7 @@ VALUES
         '审核主管',
         'active'
     );
+
 
 -- ============================================================
 -- DEMO_BR1 org_members

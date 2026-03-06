@@ -747,9 +747,23 @@ CREATE INDEX idx_doc_chunks_embedding ON document_chunks
 
 ## 五、种子数据
 
-### 5.1 初始化脚本要点
+### 5.1 种子文件清单
 
-Phase 1 部署时需生成以下种子数据：
+种子脚本位于 `db/seeds/`，按编号顺序执行，文件间存在外键依赖：
+
+| 序号 | 文件名 | 内容 | 依赖 |
+|------|--------|------|------|
+| 001 | `001_oa_ai_seeds.sql` | OA 数据库连接（3条）+ AI 模型配置（7条） | 无 |
+| 002 | `002_users.sql` | 用户账号（7个：admin、tenant_admin_user、reviewer01/02、supervisor01、br1_admin、br1_reviewer） | 001 |
+| 003 | `003_tenants.sql` | 租户（DEMO_HQ、DEMO_BR1） | 002 |
+| 004 | `004_user_role_assignments.sql` | 用户-系统角色分配（含跨租户分配） | 002, 003 |
+| 005 | `005_departments.sql` | 部门层级（DEMO_HQ 3个 + DEMO_BR1 2个） | 003 |
+| 006 | `006_org_roles.sql` | 组织角色（每租户 3 个系统角色：业务用户、审计管理员、租户管理员） | 003 |
+| 007 | `007_org_members.sql` | 组织成员 + org_member_roles 关联（DEMO_HQ 5条） | 002, 003, 005, 006 |
+
+### 5.2 初始化要点
+
+Phase 1 部署时种子数据需覆盖：
 
 1. **系统管理员用户**：至少一个超级管理员账号
 2. **默认租户**：至少一个初始租户

@@ -1,6 +1,6 @@
--- 004_departments.sql
+-- 005_departments.sql
 -- Seed data: department hierarchy
--- Run after 002_tenants.sql
+-- Run after 003_tenants.sql
 
 -- Fixed UUIDs for referential integrity:
 -- Departments (DEMO_HQ tenant a0000000-0000-0000-0000-000000000001):

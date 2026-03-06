@@ -1,6 +1,6 @@
--- 005_org_roles.sql
+-- 006_org_roles.sql
 -- Seed data: system org roles with page_permissions (path string array format)
--- Run after 002_tenants.sql
+-- Run after 003_tenants.sql
 -- Role names, descriptions, and page_permissions match TenantService.CreateTenant defaults
 
 -- Fixed UUIDs for referential integrity:
@@ -43,6 +43,7 @@ VALUES
         '["/overview", "/dashboard", "/cron", "/archive", "/settings", "/admin/tenant/rules", "/admin/tenant/org", "/admin/tenant/data", "/admin/tenant/user-configs"]',
         TRUE
     );
+
 
 -- ============================================================
 -- DEMO_BR1 角色（与 CreateTenant 事务生成的默认角色一致）
