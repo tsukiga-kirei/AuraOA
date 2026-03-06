@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
+	"oa-smart-audit/go-service/internal/pkg/hash"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -18,14 +20,16 @@ import (
 type TenantService struct {
 	tenantRepo       *repository.TenantRepo
 	systemConfigRepo *repository.SystemConfigRepo
+	userRepo         *repository.UserRepo
 	db               *gorm.DB
 }
 
 // NewTenantService 创建一个新的 TenantService 实例。
-func NewTenantService(tenantRepo *repository.TenantRepo, systemConfigRepo *repository.SystemConfigRepo, db *gorm.DB) *TenantService {
+func NewTenantService(tenantRepo *repository.TenantRepo, systemConfigRepo *repository.SystemConfigRepo, userRepo *repository.UserRepo, db *gorm.DB) *TenantService {
 	return &TenantService{
 		tenantRepo:       tenantRepo,
 		systemConfigRepo: systemConfigRepo,
+		userRepo:         userRepo,
 		db:               db,
 	}
 }
@@ -91,8 +95,32 @@ func (s *TenantService) getSystemConfigInt(key string, defaultVal int) int {
 }
 
 // CreateTenant 在检查代码唯一性后创建一个新租户。
-// 它使用事务还创建三个默认系统角色；如果任何步骤失败，则整个操作将回滚。
+// 它使用事务创建租户、默认角色、默认部门和租户管理员账号；如果任何步骤失败，则整个操作将回滚。
 func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantResponse, error) {
+	// 0. 管理员参数校验
+	usernameRegex := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
+	if !usernameRegex.MatchString(req.AdminUsername) {
+		return nil, newServiceError(errcode.ErrParamValidation, "管理员用户名只能包含英文字母、数字和下划线，且以字母开头")
+	}
+	if req.AdminEmail != "" {
+		emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+		if !emailRegex.MatchString(req.AdminEmail) {
+			return nil, newServiceError(errcode.ErrParamValidation, "管理员邮箱格式不正确")
+		}
+	}
+	if req.AdminPhone != "" {
+		phoneRegex := regexp.MustCompile(`^\d{11}$`)
+		if !phoneRegex.MatchString(req.AdminPhone) {
+			return nil, newServiceError(errcode.ErrParamValidation, "管理员手机号必须为11位数字")
+		}
+	}
+
+	// 检查管理员用户名是否已存在
+	existingUser, _ := s.userRepo.FindByUsername(req.AdminUsername)
+	if existingUser != nil {
+		return nil, newServiceError(errcode.ErrResourceConflict, "管理员用户名已存在")
+	}
+
 	// 自动生成编码（如果未提供）
 	code := req.Code
 	if code == "" {
@@ -111,6 +139,20 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 	defaultLogRetention := s.getSystemConfigInt("tenant.default_log_retention_days", 365)
 	defaultDataRetention := s.getSystemConfigInt("tenant.default_data_retention_days", 1095)
 
+	// 联系人信息自动填充：使用管理员信息作为联系人
+	contactName := req.ContactName
+	if contactName == "" {
+		contactName = req.AdminDisplayName
+	}
+	contactEmail := req.ContactEmail
+	if contactEmail == "" {
+		contactEmail = req.AdminEmail
+	}
+	contactPhone := req.ContactPhone
+	if contactPhone == "" {
+		contactPhone = req.AdminPhone
+	}
+
 	tenant := &model.Tenant{
 		ID:                  uuid.New(),
 		Name:                req.Name,
@@ -121,9 +163,9 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 		MaxTokensPerRequest: req.MaxTokensPerRequest,
 		TimeoutSeconds:      req.TimeoutSeconds,
 		RetryCount:          req.RetryCount,
-		ContactName:         req.ContactName,
-		ContactEmail:        req.ContactEmail,
-		ContactPhone:        req.ContactPhone,
+		ContactName:         contactName,
+		ContactEmail:        contactEmail,
+		ContactPhone:        contactPhone,
 		LogRetentionDays:    req.LogRetentionDays,
 		DataRetentionDays:   req.DataRetentionDays,
 	}
@@ -182,15 +224,16 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 		tenant.RetryCount = 3
 	}
 
-	// 启动事务：自动创建租户+默认角色
+	// 启动事务：自动创建租户+默认角色+默认部门+管理员账号
 	tx := s.db.Begin()
 	defer tx.Rollback() // 提交后无操作
 
+	// 1. 创建租户
 	if err := tx.Create(tenant).Error; err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "创建租户失败")
 	}
 
-	// 为每个默认角色构建 page_permissions JSON
+	// 2. 创建默认角色
 	businessPerms := []byte(`["/overview","/dashboard","/settings"]`)
 	auditPerms := []byte(`["/overview","/dashboard","/cron","/archive","/settings"]`)
 	adminPerms := []byte(`["/overview","/dashboard","/cron","/archive","/settings","/admin/tenant/rules","/admin/tenant/org","/admin/tenant/data","/admin/tenant/user-configs"]`)
@@ -224,6 +267,75 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 
 	if err := tx.Create(&defaultRoles).Error; err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "创建默认角色失败")
+	}
+
+	// 3. 创建默认部门
+	deptName := req.AdminDeptName
+	if deptName == "" {
+		deptName = req.Name // 使用租户名称作为默认部门名称
+	}
+	defaultDept := &model.Department{
+		ID:        uuid.New(),
+		TenantID:  tenant.ID,
+		Name:      deptName,
+		SortOrder: 0,
+	}
+	if err := tx.Create(defaultDept).Error; err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "创建默认部门失败")
+	}
+
+	// 4. 创建管理员用户
+	password := req.AdminPassword
+	if password == "" {
+		password = "123456"
+	}
+	passwordHash, err := hash.HashPassword(password)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
+	}
+	adminUser := &model.User{
+		ID:                uuid.New(),
+		Username:          req.AdminUsername,
+		PasswordHash:      passwordHash,
+		DisplayName:       req.AdminDisplayName,
+		Email:             req.AdminEmail,
+		Phone:             req.AdminPhone,
+		Status:            "active",
+		PasswordChangedAt: time.Now(),
+	}
+	if err := tx.Create(adminUser).Error; err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "创建管理员用户失败")
+	}
+
+	// 5. 创建组织成员记录（关联管理员到默认部门）
+	adminMember := &model.OrgMember{
+		ID:           uuid.New(),
+		TenantID:     tenant.ID,
+		UserID:       adminUser.ID,
+		DepartmentID: defaultDept.ID,
+		Position:     "租户管理员",
+		Status:       "active",
+	}
+	if err := tx.Create(adminMember).Error; err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "创建管理员成员记录失败")
+	}
+
+	// 6. 关联管理员到"租户管理员"角色（org_member_roles）
+	adminRole := defaultRoles[2] // 租户管理员
+	if err := tx.Model(adminMember).Association("Roles").Append(&adminRole); err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "分配管理员角色失败")
+	}
+
+	// 7. 创建 user_role_assignment（系统级角色）
+	tenantAdminAssignment := &model.UserRoleAssignment{
+		ID:       uuid.New(),
+		UserID:   adminUser.ID,
+		Role:     "tenant_admin",
+		TenantID: &tenant.ID,
+		Label:    "租户管理员 - " + req.AdminDisplayName,
+	}
+	if err := tx.Create(tenantAdminAssignment).Error; err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "创建角色分配失败")
 	}
 
 	if err := tx.Commit().Error; err != nil {
@@ -374,6 +486,45 @@ func (s *TenantService) GetTenantStats(id uuid.UUID) (*dto.TenantStatsResponse, 
 		DepartmentCount: deptCount,
 		RoleCount:       roleCount,
 	}, nil
+}
+
+// ListTenantMembers 返回指定租户的所有成员（系统管理员视角）。
+func (s *TenantService) ListTenantMembers(tenantID uuid.UUID) ([]dto.TenantMemberItem, error) {
+	_, err := s.tenantRepo.FindByID(tenantID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrResourceNotFound, "租户不存在")
+	}
+
+	var members []model.OrgMember
+	if err := s.db.Where("tenant_id = ?", tenantID).
+		Preload("User").
+		Preload("Department").
+		Preload("Roles").
+		Order("created_at ASC").
+		Find(&members).Error; err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+
+	result := make([]dto.TenantMemberItem, len(members))
+	for i, m := range members {
+		roleNames := make([]string, len(m.Roles))
+		for j, r := range m.Roles {
+			roleNames[j] = r.Name
+		}
+		result[i] = dto.TenantMemberItem{
+			ID:             m.ID.String(),
+			Username:       m.User.Username,
+			DisplayName:    m.User.DisplayName,
+			Email:          m.User.Email,
+			Phone:          m.User.Phone,
+			DepartmentName: m.Department.Name,
+			RoleNames:      roleNames,
+			Position:       m.Position,
+			Status:         m.Status,
+			CreatedAt:      m.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		}
+	}
+	return result, nil
 }
 
 // toTenantResponse 将 model.Tenant 转换为 dto.TenantResponse。

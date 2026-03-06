@@ -20,6 +20,14 @@ type CreateTenantRequest struct {
 	ContactName         string  `json:"contact_name"`
 	ContactEmail        string  `json:"contact_email"`
 	ContactPhone        string  `json:"contact_phone"`
+
+	// 租户管理员信息（创建租户时同步创建管理员账号）
+	AdminUsername    string `json:"admin_username" binding:"required"`
+	AdminDisplayName string `json:"admin_display_name" binding:"required"`
+	AdminPassword    string `json:"admin_password"`
+	AdminEmail       string `json:"admin_email"`
+	AdminPhone       string `json:"admin_phone"`
+	AdminDeptName    string `json:"admin_dept_name"` // 默认部门名称，不填则使用租户名称
 }
 
 // UpdateTenantRequest 是 PUT /api/admin/tenants/:id 的请求正文。
@@ -86,4 +94,18 @@ type PublicTenantItem struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Code string `json:"code"`
+}
+
+// TenantMemberItem 是系统管理员查看租户成员的响应条目。
+type TenantMemberItem struct {
+	ID             string   `json:"id"`
+	Username       string   `json:"username"`
+	DisplayName    string   `json:"display_name"`
+	Email          string   `json:"email"`
+	Phone          string   `json:"phone"`
+	DepartmentName string   `json:"department_name"`
+	RoleNames      []string `json:"role_names"`
+	Position       string   `json:"position"`
+	Status         string   `json:"status"`
+	CreatedAt      string   `json:"created_at"`
 }

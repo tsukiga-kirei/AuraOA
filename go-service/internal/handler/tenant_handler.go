@@ -107,3 +107,18 @@ func (h *TenantHandler) GetTenantStats(c *gin.Context) {
 	}
 	response.Success(c, stats)
 }
+
+// ListTenantMembers handles GET /api/admin/tenants/:id/members
+func (h *TenantHandler) ListTenantMembers(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	members, err := h.tenantService.ListTenantMembers(id)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, members)
+}

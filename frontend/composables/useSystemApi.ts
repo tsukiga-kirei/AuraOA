@@ -109,6 +109,10 @@ export const useSystemApi = () => {
     return authFetch<any>(`/api/admin/tenants/${id}/stats`)
   }
 
+  async function listTenantMembers(id: string): Promise<any[]> {
+    return authFetch<any[]>(`/api/admin/tenants/${id}/members`)
+  }
+
   return {
     // System configs
     getConfigs, updateConfigs,
@@ -119,6 +123,6 @@ export const useSystemApi = () => {
     // AI models
     listAIModels, createAIModel, updateAIModel, deleteAIModel, testAIModelConnection,
     // Tenants
-    listTenants, createTenant, updateTenant, deleteTenant, getTenantStats,
+    listTenants, createTenant, updateTenant, deleteTenant, getTenantStats, listTenantMembers,
   }
 }
