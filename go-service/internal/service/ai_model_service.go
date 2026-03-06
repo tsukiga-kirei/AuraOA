@@ -67,6 +67,9 @@ func (s *AIModelService) Create(req *dto.CreateAIModelRequest) (*dto.AIModelResp
 	if m.DeployType == "" {
 		m.DeployType = "local"
 	}
+	if m.Status == "" {
+		m.Status = "offline"
+	}
 
 	if err := s.repo.Create(m); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")

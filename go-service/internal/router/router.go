@@ -87,6 +87,7 @@ func SetupRouter(
 			// OA 数据库连接
 			system.GET("/oa-connections", systemHandler.ListOAConnections)
 			system.POST("/oa-connections", systemHandler.CreateOAConnection)
+			system.POST("/oa-connections/test", systemHandler.TestOAConnectionParams)
 			system.PUT("/oa-connections/:id", systemHandler.UpdateOAConnection)
 			system.DELETE("/oa-connections/:id", systemHandler.DeleteOAConnection)
 			system.POST("/oa-connections/:id/test", systemHandler.TestOAConnection)
@@ -94,6 +95,7 @@ func SetupRouter(
 			// AI 模型配置
 			system.GET("/ai-models", systemHandler.ListAIModels)
 			system.POST("/ai-models", systemHandler.CreateAIModel)
+			system.POST("/ai-models/test", systemHandler.TestAIModelConnection)
 			system.PUT("/ai-models/:id", systemHandler.UpdateAIModel)
 			system.DELETE("/ai-models/:id", systemHandler.DeleteAIModel)
 

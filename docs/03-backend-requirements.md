@@ -465,17 +465,19 @@ go-service/
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/system/oa-connections` | OA数据库连接列表 |
-| POST | `/api/system/oa-connections` | 创建OA连接 |
-| PUT | `/api/system/oa-connections/:id` | 更新OA连接 |
-| DELETE | `/api/system/oa-connections/:id` | 删除OA连接 |
-| POST | `/api/system/oa-connections/:id/test` | 测试OA连接 |
-| GET | `/api/system/ai-models` | AI模型配置列表 |
-| POST | `/api/system/ai-models` | 创建AI模型 |
-| PUT | `/api/system/ai-models/:id` | 更新AI模型 |
-| DELETE | `/api/system/ai-models/:id` | 删除AI模型 |
-| GET | `/api/system/general` | 平台通用配置 |
-| PUT | `/api/system/general` | 更新平台配置 |
+| GET | `/api/admin/system/oa-connections` | OA数据库连接列表 |
+| POST | `/api/admin/system/oa-connections` | 创建OA连接 |
+| PUT | `/api/admin/system/oa-connections/:id` | 更新OA连接 |
+| DELETE | `/api/admin/system/oa-connections/:id` | 删除OA连接 |
+| POST | `/api/admin/system/oa-connections/:id/test` | 测试已保存的OA连接 |
+| POST | `/api/admin/system/oa-connections/test` | 按参数测试OA连接（未保存） |
+| GET | `/api/admin/system/ai-models` | AI模型配置列表 |
+| POST | `/api/admin/system/ai-models` | 创建AI模型 |
+| PUT | `/api/admin/system/ai-models/:id` | 更新AI模型 |
+| DELETE | `/api/admin/system/ai-models/:id` | 删除AI模型 |
+| POST | `/api/admin/system/ai-models/test` | 按参数测试AI模型连接（未保存） |
+| GET | `/api/admin/system/configs` | 平台通用配置 |
+| PUT | `/api/admin/system/configs` | 更新平台配置 |
 
 ### 3.13 仪表盘接口
 

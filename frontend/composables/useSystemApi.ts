@@ -57,6 +57,10 @@ export const useSystemApi = () => {
     return authFetch<any>(`/api/admin/system/oa-connections/${id}/test`, { method: 'POST' })
   }
 
+  async function testOAConnectionParams(data: Record<string, any>): Promise<any> {
+    return authFetch<any>('/api/admin/system/oa-connections/test', { method: 'POST', body: data })
+  }
+
   // ============================================================
   // AI 模型配置
   // ============================================================
@@ -75,6 +79,10 @@ export const useSystemApi = () => {
 
   async function deleteAIModel(id: string): Promise<void> {
     await authFetch<null>(`/api/admin/system/ai-models/${id}`, { method: 'DELETE' })
+  }
+
+  async function testAIModelConnection(data: Record<string, any>): Promise<any> {
+    return authFetch<any>('/api/admin/system/ai-models/test', { method: 'POST', body: data })
   }
 
   // ============================================================
@@ -107,9 +115,9 @@ export const useSystemApi = () => {
     // Options
     listOATypes, listDBDrivers, listAIDeployTypes, listAIProviders,
     // OA connections
-    listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection, testOAConnection,
+    listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection, testOAConnection, testOAConnectionParams,
     // AI models
-    listAIModels, createAIModel, updateAIModel, deleteAIModel,
+    listAIModels, createAIModel, updateAIModel, deleteAIModel, testAIModelConnection,
     // Tenants
     listTenants, createTenant, updateTenant, deleteTenant, getTenantStats,
   }

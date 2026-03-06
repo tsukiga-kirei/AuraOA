@@ -35,10 +35,10 @@ type CreateOAConnectionRequest struct {
 	OATypeLabel       string `json:"oa_type_label"`
 	Driver            string `json:"driver" binding:"required"`
 	Host              string `json:"host" binding:"required"`
-	Port              int    `json:"port"`
-	DatabaseName      string `json:"database_name"`
-	Username          string `json:"username"`
-	Password          string `json:"password"`
+	Port              int    `json:"port" binding:"required,min=1"`
+	DatabaseName      string `json:"database_name" binding:"required"`
+	Username          string `json:"username" binding:"required"`
+	Password          string `json:"password" binding:"required"`
 	PoolSize          int    `json:"pool_size"`
 	ConnectionTimeout int    `json:"connection_timeout"`
 	TestOnBorrow      bool   `json:"test_on_borrow"`
@@ -100,7 +100,7 @@ type CreateAIModelRequest struct {
 	ModelName       string   `json:"model_name" binding:"required"`
 	DisplayName     string   `json:"display_name" binding:"required"`
 	DeployType      string   `json:"deploy_type" binding:"required"`
-	Endpoint        string   `json:"endpoint"`
+	Endpoint        string   `json:"endpoint" binding:"required"`
 	APIKey          string   `json:"api_key"`
 	MaxTokens       int      `json:"max_tokens"`
 	ContextWindow   int      `json:"context_window"`
