@@ -176,6 +176,12 @@ body {
   background: transparent !important;
 }
 
+/* Hide Edge browser native password reveal icon to avoid duplicate eye icons */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none !important;
+}
+
 .ant-input-number {
   background: var(--color-bg-input) !important;
   border-color: var(--color-border) !important;

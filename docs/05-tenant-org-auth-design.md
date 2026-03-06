@@ -1,6 +1,6 @@
 # OA 智审平台 — 租户·组织·认证·权限 详细设计文档
 
-> 文档版本：v1.3 | 更新日期：2026-03-05  
+> 文档版本：v1.4 | 更新日期：2026-03-06  
 > 本文档是 Phase 1 开发的核心指南，详细解析多租户架构、组织人员管理、登录认证、权限控制的完整逻辑。
 
 ---
@@ -206,6 +206,16 @@ interface TenantInfo {
   sso_enabled: boolean
   sso_endpoint: string
   tenant_admin_id?: string      // 租户管理员用户名（用于反向关联）
+}
+
+// 创建租户时同步创建管理员账号（CreateTenantRequest 额外字段）
+interface CreateTenantAdminFields {
+  admin_username: string        // 必填，管理员登录用户名
+  admin_display_name: string    // 必填，管理员显示名称
+  admin_password?: string       // 可选，不填则由后端生成默认密码
+  admin_email?: string
+  admin_phone?: string
+  admin_dept_name?: string      // 默认部门名称，不填则使用租户名称
 }
 ```
 

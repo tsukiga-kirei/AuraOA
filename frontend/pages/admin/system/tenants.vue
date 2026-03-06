@@ -23,7 +23,7 @@ const { t } = useI18n()
 
 const {
   listTenants: fetchTenants, createTenant: apiCreateTenant, updateTenant: apiUpdateTenant,
-  listOAConnections, listAIModels,
+  listOAConnections, listAIModels, listTenantMembers: apiListTenantMembers,
 } = useSystemApi()
 
 interface TenantData {
@@ -37,6 +37,11 @@ interface TenantData {
   created_at: string; updated_at: string
 }
 
+interface TenantMember {
+  id: string; username: string; display_name: string; email: string; phone: string
+  department_name: string; role_names: string[]; position: string; status: string; created_at: string
+}
+
 const tenants = ref<TenantData[]>([])
 const loading = ref(false)
 const selectedTenant = ref<TenantData | null>(null)
@@ -47,6 +52,10 @@ const detailActiveTab = ref('basic')
 // 后端获取的 OA 连接 & AI 模型
 const oaConnections = ref<any[]>([])
 const aiModels = ref<any[]>([])
+
+// 租户成员列表（详情抽屉中使用）
+const tenantMembers = ref<TenantMember[]>([])
+const membersLoading = ref(false)
 
 onMounted(async () => {
   loading.value = true
@@ -88,51 +97,131 @@ const getModelName = (id: string) => {
   return m ? m.display_name : ''
 }
 
+// ===== 新增租户 - 分页签表单 =====
+const createTab = ref<'basic' | 'admin' | 'ai'>('basic')
+
 const newTenant = ref({
   name: '',
-  code: '', // 后端自动生成，可选填
+  code: '',
   oa_db_connection_id: '',
   token_quota: 10000,
   max_concurrency: 10,
-  contact_name: '',
-  contact_email: '',
-  contact_phone: '',
   description: '',
   primary_model_id: '',
+  fallback_model_id: '',
+  max_tokens_per_request: 8192,
+  temperature: 0.3,
+  timeout_seconds: 60,
+  retry_count: 3,
+  // 管理员信息
+  admin_username: '',
+  admin_display_name: '',
+  admin_password: '',
+  admin_email: '',
+  admin_phone: '',
+  admin_dept_name: '',
 })
 
-const createTenant = async () => {
-  if (!newTenant.value.name) {
-    message.warning(t('admin.tenants.fillRequired'))
-    return
+const resetNewTenant = () => {
+  newTenant.value = {
+    name: '', code: '', oa_db_connection_id: '', token_quota: 10000, max_concurrency: 10,
+    description: '', primary_model_id: '', fallback_model_id: '',
+    max_tokens_per_request: 8192, temperature: 0.3, timeout_seconds: 60, retry_count: 3,
+    admin_username: '', admin_display_name: '', admin_password: '',
+    admin_email: '', admin_phone: '', admin_dept_name: '',
   }
+  createTab.value = 'basic'
+}
+
+const validateCreateForm = (): boolean => {
+  // 基本信息校验
+  if (!newTenant.value.name.trim()) {
+    createTab.value = 'basic'
+    message.warning(t('admin.tenants.fillRequired'))
+    return false
+  }
+  // 管理员校验
+  if (!newTenant.value.admin_username.trim() || !newTenant.value.admin_display_name.trim()) {
+    createTab.value = 'admin'
+    message.warning(t('admin.tenants.adminRequired'))
+    return false
+  }
+  const usernameRegex = /^[a-zA-Z][a-zA-Z0-9_]*$/
+  if (!usernameRegex.test(newTenant.value.admin_username)) {
+    createTab.value = 'admin'
+    message.warning(t('admin.org.usernameFormatError'))
+    return false
+  }
+  if (newTenant.value.admin_email.trim()) {
+    const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
+    if (!emailRegex.test(newTenant.value.admin_email)) {
+      createTab.value = 'admin'
+      message.warning(t('admin.org.emailFormatError'))
+      return false
+    }
+  }
+  if (newTenant.value.admin_phone.trim()) {
+    const phoneRegex = /^\d{11}$/
+    if (!phoneRegex.test(newTenant.value.admin_phone)) {
+      createTab.value = 'admin'
+      message.warning(t('admin.org.phoneFormatError'))
+      return false
+    }
+  }
+  return true
+}
+
+const createTenant = async () => {
+  if (!validateCreateForm()) return
   try {
+    const d = newTenant.value
     const created = await apiCreateTenant({
-      name: newTenant.value.name,
-      code: newTenant.value.code || undefined,
-      oa_db_connection_id: newTenant.value.oa_db_connection_id || undefined,
-      token_quota: newTenant.value.token_quota,
-      max_concurrency: newTenant.value.max_concurrency,
-      primary_model_id: newTenant.value.primary_model_id || undefined,
-      contact_name: newTenant.value.contact_name,
-      contact_email: newTenant.value.contact_email,
-      contact_phone: newTenant.value.contact_phone,
-      description: newTenant.value.description,
+      name: d.name,
+      code: d.code || undefined,
+      oa_db_connection_id: d.oa_db_connection_id || undefined,
+      token_quota: d.token_quota,
+      max_concurrency: d.max_concurrency,
+      primary_model_id: d.primary_model_id || undefined,
+      fallback_model_id: d.fallback_model_id || undefined,
+      max_tokens_per_request: d.max_tokens_per_request,
+      temperature: d.temperature,
+      timeout_seconds: d.timeout_seconds,
+      retry_count: d.retry_count,
+      description: d.description,
+      admin_username: d.admin_username,
+      admin_display_name: d.admin_display_name,
+      admin_password: d.admin_password || undefined,
+      admin_email: d.admin_email || undefined,
+      admin_phone: d.admin_phone || undefined,
+      admin_dept_name: d.admin_dept_name || undefined,
     })
     tenants.value.push(created)
     showCreate.value = false
     message.success(t('admin.tenants.createSuccess'))
-    newTenant.value = { name: '', code: '', oa_db_connection_id: '', token_quota: 10000, max_concurrency: 10, contact_name: '', contact_email: '', contact_phone: '', description: '', primary_model_id: '' }
+    resetNewTenant()
     openDetail(created)
   } catch (e: any) {
     message.error(e.message || '创建租户失败')
   }
 }
 
-const openDetail = (tenant: TenantData) => {
+const openDetail = async (tenant: TenantData) => {
   selectedTenant.value = { ...tenant }
   detailActiveTab.value = 'basic'
   showDetail.value = true
+  // 加载成员列表
+  loadTenantMembers(tenant.id)
+}
+
+const loadTenantMembers = async (tenantId: string) => {
+  membersLoading.value = true
+  try {
+    tenantMembers.value = await apiListTenantMembers(tenantId)
+  } catch {
+    tenantMembers.value = []
+  } finally {
+    membersLoading.value = false
+  }
 }
 
 const saveTenantDetail = async () => {
@@ -190,7 +279,6 @@ const getQuotaColor = (percent: number) => {
   return '#10b981'
 }
 
-// 将 ISO 时间字符串格式化为上海时区的可读格式
 const formatDateTime = (iso: string) => {
   if (!iso) return '-'
   try {
@@ -212,7 +300,7 @@ const formatDateTime = (iso: string) => {
         <h1 class="page-title">{{ t('admin.tenants.title') }}</h1>
         <p class="page-subtitle">{{ t('admin.tenants.subtitle') }}</p>
       </div>
-      <a-button type="primary" size="large" @click="showCreate = true">
+      <a-button type="primary" size="large" @click="showCreate = true; resetNewTenant()">
         <PlusOutlined /> {{ t('admin.tenants.addTenant') }}
       </a-button>
     </div>
@@ -237,7 +325,6 @@ const formatDateTime = (iso: string) => {
           </div>
         </div>
 
-        <!--快速信息标签-->
         <div class="tenant-tags">
           <span class="info-tag info-tag--primary">
             <DatabaseOutlined /> {{ getOADbName(tenant.oa_db_connection_id || '') }}
@@ -250,7 +337,6 @@ const formatDateTime = (iso: string) => {
           </span>
         </div>
 
-        <!--统计行-->
         <div class="tenant-stats">
           <div class="stat-item">
             <span class="stat-label">{{ t('admin.tenants.tokenUsage') }}</span>
@@ -264,7 +350,6 @@ const formatDateTime = (iso: string) => {
           </div>
         </div>
 
-        <!--代币使用栏-->
         <div class="quota-bar-wrapper">
           <div class="quota-bar">
             <div
@@ -296,9 +381,26 @@ const formatDateTime = (iso: string) => {
       </div>
     </div>
 
-    <!--创建租户模式-->
-    <a-modal v-model:open="showCreate" :title="t('admin.tenants.createTenant')" @ok="createTenant" :okText="t('admin.tenants.create')" :cancelText="t('admin.tenants.cancel')" width="560px">
-      <a-form layout="vertical" style="margin-top: 16px;">
+    <!--创建租户模式 - 分页签-->
+    <a-modal v-model:open="showCreate" :title="t('admin.tenants.createTenant')" @ok="createTenant" :okText="t('admin.tenants.create')" :cancelText="t('admin.tenants.cancel')" width="640px" :maskClosable="false">
+      <div class="create-tabs">
+        <button
+          v-for="tab in [
+            { key: 'basic', label: t('admin.tenants.tabCreateBasic') },
+            { key: 'admin', label: t('admin.tenants.tabCreateAdmin') },
+            { key: 'ai', label: t('admin.tenants.tabCreateAI') },
+          ]"
+          :key="tab.key"
+          class="create-tab-btn"
+          :class="{ 'create-tab-btn--active': createTab === tab.key }"
+          @click="createTab = tab.key as any"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+
+      <!--基本信息页签-->
+      <a-form v-show="createTab === 'basic'" layout="vertical" style="margin-top: 16px;">
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item :label="t('admin.tenants.tenantName')" required>
@@ -308,7 +410,7 @@ const formatDateTime = (iso: string) => {
           <a-col :span="12">
             <a-form-item :label="t('admin.tenants.tenantCode')">
               <a-input v-model:value="newTenant.code" :placeholder="t('admin.tenants.tenantCodePlaceholder')" size="large" />
-              <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px;">留空则由系统自动生成</div>
+              <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px;">{{ t('admin.tenants.codeAutoHint') }}</div>
             </a-form-item>
           </a-col>
         </a-row>
@@ -335,23 +437,63 @@ const formatDateTime = (iso: string) => {
             </a-form-item>
           </a-col>
         </a-row>
+        <a-form-item :label="t('admin.tenants.description')">
+          <a-textarea v-model:value="newTenant.description" :rows="2" :placeholder="t('admin.tenants.descPlaceholder')" />
+        </a-form-item>
+      </a-form>
+
+      <!--管理员信息页签-->
+      <a-form v-show="createTab === 'admin'" layout="vertical" style="margin-top: 16px;">
+        <div class="jdbc-hint" style="margin-bottom: 16px;">
+          <InfoCircleOutlined /> {{ t('admin.tenants.adminHint') }}
+        </div>
         <a-row :gutter="16">
-          <a-col :span="8">
-            <a-form-item :label="t('admin.tenants.contact')">
-              <a-input v-model:value="newTenant.contact_name" :placeholder="t('admin.tenants.contactPlaceholder')" size="large" />
+          <a-col :span="12">
+            <a-form-item :label="t('admin.tenants.adminDisplayName')" required>
+              <a-input v-model:value="newTenant.admin_display_name" :placeholder="t('admin.tenants.adminDisplayNamePlaceholder')" size="large" />
             </a-form-item>
           </a-col>
-          <a-col :span="8">
-            <a-form-item :label="t('admin.tenants.contactEmail')">
-              <a-input v-model:value="newTenant.contact_email" placeholder="admin@example.com" size="large" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item :label="t('admin.tenants.contactPhone')">
-              <a-input v-model:value="newTenant.contact_phone" :placeholder="t('admin.tenants.contactPhonePlaceholder')" size="large" />
+          <a-col :span="12">
+            <a-form-item :label="t('admin.tenants.adminUsername')" required>
+              <a-input v-model:value="newTenant.admin_username" :placeholder="t('admin.tenants.adminUsernamePlaceholder')" size="large" />
+              <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px;">{{ t('admin.org.usernameHint') }}</div>
             </a-form-item>
           </a-col>
         </a-row>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item :label="t('admin.tenants.adminEmail')">
+              <a-input v-model:value="newTenant.admin_email" placeholder="admin@example.com" size="large">
+                <template #prefix><MailOutlined /></template>
+              </a-input>
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item :label="t('admin.tenants.adminPhone')">
+              <a-input v-model:value="newTenant.admin_phone" :placeholder="t('admin.tenants.contactPhonePlaceholder')" size="large">
+                <template #prefix><PhoneOutlined /></template>
+              </a-input>
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item :label="t('admin.tenants.adminPassword')">
+              <a-input-password v-model:value="newTenant.admin_password" :placeholder="t('admin.tenants.adminPasswordPlaceholder')" size="large" />
+              <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px;">{{ t('admin.tenants.adminPasswordHint') }}</div>
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item :label="t('admin.tenants.adminDeptName')">
+              <a-input v-model:value="newTenant.admin_dept_name" :placeholder="t('admin.tenants.adminDeptNamePlaceholder')" size="large" />
+              <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px;">{{ t('admin.tenants.adminDeptHint') }}</div>
+            </a-form-item>
+          </a-col>
+        </a-row>
+      </a-form>
+
+      <!--AI 模型页签-->
+      <a-form v-show="createTab === 'ai'" layout="vertical" style="margin-top: 16px;">
         <a-form-item :label="t('admin.tenants.primaryModel')">
           <a-select v-model:value="newTenant.primary_model_id" size="large" :placeholder="t('admin.tenants.selectModel')" allowClear>
             <a-select-option v-for="m in availableModels" :key="m.id" :value="m.id">
@@ -359,16 +501,46 @@ const formatDateTime = (iso: string) => {
             </a-select-option>
           </a-select>
         </a-form-item>
-        <a-form-item :label="t('admin.tenants.description')">
-          <a-textarea v-model:value="newTenant.description" :rows="2" :placeholder="t('admin.tenants.descPlaceholder')" />
+        <a-form-item :label="t('admin.tenants.fallbackModelLabel')">
+          <a-select v-model:value="newTenant.fallback_model_id" size="large" :placeholder="t('admin.tenants.noConfig')" allowClear>
+            <a-select-option v-for="m in availableModels" :key="m.id" :value="m.id">
+              {{ m.display_name }} ({{ m.provider_label || m.provider }})
+            </a-select-option>
+          </a-select>
         </a-form-item>
+        <a-divider>{{ t('admin.tenants.callParams') }}</a-divider>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item :label="t('admin.tenants.maxTokenPerReq')">
+              <a-input-number v-model:value="newTenant.max_tokens_per_request" :min="512" :max="32768" :step="512" style="width: 100%;" size="large" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item :label="t('admin.tenants.temperature')">
+              <a-slider v-model:value="newTenant.temperature" :min="0" :max="1" :step="0.1" />
+              <span class="slider-value">{{ newTenant.temperature }}</span>
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item :label="t('admin.tenants.timeout')">
+              <a-input-number v-model:value="newTenant.timeout_seconds" :min="10" :max="300" style="width: 100%;" size="large" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item :label="t('admin.tenants.retryCount')">
+              <a-input-number v-model:value="newTenant.retry_count" :min="0" :max="10" style="width: 100%;" size="large" />
+            </a-form-item>
+          </a-col>
+        </a-row>
       </a-form>
     </a-modal>
 
     <!--租户细节抽屉-->
     <a-drawer
       v-model:open="showDetail"
-      :title="selectedTenant?.name + t('admin.tenants.tenantConfig', '')"
+      :title="selectedTenant?.name + ' — ' + t('admin.tenants.tabBasic')"
       placement="right"
       :width="720"
       @close="showDetail = false"
@@ -381,6 +553,7 @@ const formatDateTime = (iso: string) => {
               { key: 'oadb', label: t('admin.tenants.tabOADb'), icon: DatabaseOutlined },
               { key: 'ai', label: t('admin.tenants.tabAI'), icon: RobotOutlined },
               { key: 'quota', label: t('admin.tenants.tabQuota'), icon: ThunderboltOutlined },
+              { key: 'members', label: t('admin.tenants.tabMembers'), icon: TeamOutlined },
               { key: 'security', label: t('admin.tenants.tabSecurity'), icon: SafetyCertificateOutlined },
             ]"
             :key="tab.key"
@@ -465,7 +638,6 @@ const formatDateTime = (iso: string) => {
               </a-select>
             </a-form-item>
 
-            <!--显示所选连接详细信息（只读）-->
             <div v-if="selectedTenant.oa_db_connection_id && getOADbInfo(selectedTenant.oa_db_connection_id)" class="oadb-detail-card">
               <div class="oadb-detail-header">
                 <LinkOutlined />
@@ -581,7 +753,6 @@ const formatDateTime = (iso: string) => {
                   </a-form-item>
                 </a-col>
               </a-row>
-              <!--当前使用情况显示-->
               <div class="usage-display">
                 <div class="usage-info">
                   <span>{{ t('admin.tenants.usedTokens', [selectedTenant.token_used.toLocaleString(), selectedTenant.token_quota.toLocaleString()]) }}</span>
@@ -619,6 +790,45 @@ const formatDateTime = (iso: string) => {
               </a-row>
             </div>
           </a-form>
+        </div>
+
+        <!--人员选项卡-->
+        <div v-if="detailActiveTab === 'members'" class="detail-section">
+          <div class="section-header">
+            <h3><TeamOutlined /> {{ t('admin.tenants.tabMembers') }}</h3>
+          </div>
+          <div class="jdbc-hint" style="margin-bottom: 16px;">
+            <InfoCircleOutlined /> {{ t('admin.tenants.membersHint') }}
+          </div>
+          <a-spin :spinning="membersLoading">
+            <div v-if="tenantMembers.length === 0 && !membersLoading" class="oadb-empty">
+              <InfoCircleOutlined /> {{ t('admin.tenants.noMembers') }}
+            </div>
+            <div v-else class="members-list">
+              <div v-for="m in tenantMembers" :key="m.id" class="member-card">
+                <div class="member-card-left">
+                  <div class="member-avatar"><UserOutlined /></div>
+                  <div class="member-info">
+                    <div class="member-name">{{ m.display_name }} <span class="member-username">@{{ m.username }}</span></div>
+                    <div class="member-meta">
+                      <span v-if="m.department_name">{{ m.department_name }}</span>
+                      <span v-if="m.position"> · {{ m.position }}</span>
+                    </div>
+                    <div class="member-tags">
+                      <span v-for="role in m.role_names" :key="role" class="info-tag info-tag--primary" style="font-size: 10px; padding: 1px 6px;">{{ role }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="member-card-right">
+                  <div v-if="m.email" class="member-contact"><MailOutlined /> {{ m.email }}</div>
+                  <div v-if="m.phone" class="member-contact"><PhoneOutlined /> {{ m.phone }}</div>
+                  <a-tag :color="m.status === 'active' ? 'green' : 'default'" style="margin-top: 4px;">
+                    {{ m.status === 'active' ? t('admin.org.active') : t('admin.org.disabled') }}
+                  </a-tag>
+                </div>
+              </div>
+            </div>
+          </a-spin>
         </div>
 
         <!--安全选项卡-->
@@ -675,21 +885,19 @@ const formatDateTime = (iso: string) => {
   align-items: flex-start;
   margin-bottom: 28px;
 }
-
 .page-title {
   font-size: 24px;
   font-weight: 700;
   color: var(--color-text-primary);
   margin: 0;
 }
-
 .page-subtitle {
   font-size: 14px;
   color: var(--color-text-tertiary);
   margin: 4px 0 0;
 }
 
-/*租户网格*/
+/* 租户网格 */
 .tenant-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -707,20 +915,17 @@ const formatDateTime = (iso: string) => {
   transition: all var(--transition-base);
   cursor: pointer;
 }
-
 .tenant-card:hover {
   box-shadow: var(--shadow-lg);
   transform: translateY(-3px);
   border-color: var(--color-primary);
 }
-
 .tenant-card-header {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
 }
-
 .tenant-avatar {
   width: 48px;
   height: 48px;
@@ -733,391 +938,170 @@ const formatDateTime = (iso: string) => {
   font-size: 22px;
   flex-shrink: 0;
 }
-
-.tenant-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.tenant-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.tenant-code {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  font-family: var(--font-mono);
-}
-
+.tenant-info { flex: 1; min-width: 0; }
+.tenant-name { font-size: 16px; font-weight: 600; color: var(--color-text-primary); }
+.tenant-code { font-size: 12px; color: var(--color-text-tertiary); font-family: var(--font-mono); }
 .tenant-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  flex-shrink: 0;
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
+  display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
+  flex-shrink: 0; padding: 4px 10px; border-radius: var(--radius-full);
 }
+.tenant-status-dot { width: 7px; height: 7px; border-radius: 50%; }
+.tenant-status--active { color: var(--color-success); background: var(--color-success-bg); }
+.tenant-status--active .tenant-status-dot { background: var(--color-success); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2); }
+.tenant-status--inactive { color: var(--color-text-tertiary); background: var(--color-bg-hover); }
+.tenant-status--inactive .tenant-status-dot { background: var(--color-text-tertiary); }
 
-.tenant-status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
-
-.tenant-status--active {
-  color: var(--color-success);
-  background: var(--color-success-bg);
-}
-
-.tenant-status--active .tenant-status-dot {
-  background: var(--color-success);
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
-}
-
-.tenant-status--inactive {
-  color: var(--color-text-tertiary);
-  background: var(--color-bg-hover);
-}
-
-.tenant-status--inactive .tenant-status-dot {
-  background: var(--color-text-tertiary);
-}
-
-/*标签*/
-.tenant-tags {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
+/* 标签 */
+.tenant-tags { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .info-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 3px 10px;
-  border-radius: var(--radius-full);
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: var(--radius-full);
 }
+.info-tag--primary { background: var(--color-primary-bg); color: var(--color-primary); }
+.info-tag--info { background: var(--color-info-bg); color: var(--color-info); }
+.info-tag--success { background: var(--color-success-bg); color: var(--color-success); }
 
-.info-tag--primary {
-  background: var(--color-primary-bg);
-  color: var(--color-primary);
-}
+/* 统计 */
+.tenant-stats { display: flex; gap: 24px; margin-bottom: 12px; }
+.stat-item { display: flex; flex-direction: column; gap: 2px; }
+.stat-label { font-size: 11px; color: var(--color-text-tertiary); }
+.stat-value { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
 
-.info-tag--info {
-  background: var(--color-info-bg);
-  color: var(--color-info);
-}
-
-.info-tag--success {
-  background: var(--color-success-bg);
-  color: var(--color-success);
-}
-
-/*统计数据*/
-.tenant-stats {
-  display: flex;
-  gap: 24px;
-  margin-bottom: 12px;
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.stat-label {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-}
-
-.stat-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-/*配额栏*/
-.quota-bar-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.quota-bar {
-  flex: 1;
-  height: 6px;
-  background: var(--color-bg-hover);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-
-.quota-bar-fill {
-  height: 100%;
-  border-radius: var(--radius-full);
-  transition: width 0.5s ease;
-}
-
-.quota-percent {
-  font-size: 12px;
-  font-weight: 600;
-  min-width: 36px;
-  text-align: right;
-}
+/* 配额栏 */
+.quota-bar-wrapper { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.quota-bar { flex: 1; height: 6px; background: var(--color-bg-hover); border-radius: var(--radius-full); overflow: hidden; }
+.quota-bar-fill { height: 100%; border-radius: var(--radius-full); transition: width 0.5s ease; }
+.quota-percent { font-size: 12px; font-weight: 600; min-width: 36px; text-align: right; }
 
 .tenant-card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--color-border-light);
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--color-border-light);
 }
+.tenant-created { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 4px; }
+.tenant-card-actions { display: flex; gap: 4px; }
 
-.tenant-created {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  display: flex;
-  align-items: center;
-  gap: 4px;
+/* 创建租户页签 */
+.create-tabs {
+  display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
+  border-radius: var(--radius-lg); margin-top: 8px;
 }
-
-.tenant-card-actions {
-  display: flex;
-  gap: 4px;
+.create-tab-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 14px; border: none; background: transparent; border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 500; color: var(--color-text-tertiary);
+  cursor: pointer; transition: all var(--transition-fast); white-space: nowrap;
 }
+.create-tab-btn:hover { color: var(--color-text-primary); }
+.create-tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
 
-/*=====细节抽屉=====*/
+/* 详情抽屉 */
 .detail-tabs {
-  display: flex;
-  gap: 4px;
-  background: var(--color-bg-hover);
-  padding: 4px;
-  border-radius: var(--radius-lg);
-  margin-bottom: 24px;
-  flex-wrap: wrap;
+  display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
+  border-radius: var(--radius-lg); margin-bottom: 24px; flex-wrap: wrap;
 }
-
 .detail-tab-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  white-space: nowrap;
+  display: flex; align-items: center; gap: 6px; padding: 8px 14px;
+  border: none; background: transparent; border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 500; color: var(--color-text-tertiary);
+  cursor: pointer; transition: all var(--transition-fast); white-space: nowrap;
 }
+.detail-tab-btn:hover { color: var(--color-text-primary); }
+.detail-tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
 
-.detail-tab-btn:hover {
-  color: var(--color-text-primary);
-}
-
-.detail-tab-btn--active {
-  background: var(--color-bg-card);
-  color: var(--color-primary);
-  box-shadow: var(--shadow-xs);
-}
-
-.detail-section {
-  animation: fadeIn 0.2s ease;
-}
-
+.detail-section { animation: fadeIn 0.2s ease; }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .section-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  font-size: 16px; font-weight: 600; color: var(--color-text-primary);
+  margin: 0; display: flex; align-items: center; gap: 8px;
 }
-
 .jdbc-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--color-info);
-  background: var(--color-info-bg);
-  padding: 10px 14px;
-  border-radius: var(--radius-md);
-  margin-bottom: 20px;
+  display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-info);
+  background: var(--color-info-bg); padding: 10px 14px; border-radius: var(--radius-md); margin-bottom: 20px;
 }
-
-.config-group {
-  background: var(--color-bg-page);
-  border-radius: var(--radius-lg);
-  padding: 16px 20px;
-  margin-bottom: 16px;
-}
-
-.config-group-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  margin-bottom: 12px;
-}
-
-.switch-label {
-  font-size: 13px;
-  color: var(--color-text-tertiary);
-  margin-left: 10px;
-}
-
-.slider-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-primary);
-  margin-left: 8px;
-}
-
-.form-hint {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  margin-top: 4px;
-}
+.config-group { background: var(--color-bg-page); border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 16px; }
+.config-group-title { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 12px; }
+.switch-label { font-size: 13px; color: var(--color-text-tertiary); margin-left: 10px; }
+.slider-value { font-size: 14px; font-weight: 600; color: var(--color-primary); margin-left: 8px; }
+.form-hint { font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px; }
 
 .usage-display {
-  background: var(--color-bg-card);
-  border-radius: var(--radius-md);
-  padding: 14px;
+  background: var(--color-bg-card); border-radius: var(--radius-md); padding: 14px;
   border: 1px solid var(--color-border-light);
 }
-
 .usage-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  margin-bottom: 8px;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; color: var(--color-text-secondary); margin-bottom: 8px;
 }
-
 .status-display {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--color-bg-card);
-  border-radius: var(--radius-md);
-  padding: 14px;
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--color-bg-card); border-radius: var(--radius-md); padding: 14px;
   border: 1px solid var(--color-border-light);
 }
-
-.status-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: var(--color-text-secondary);
-}
-
+.status-info { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--color-text-secondary); }
 .detail-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 32px;
-  padding-top: 20px;
-  border-top: 1px solid var(--color-border-light);
+  display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;
+  padding-top: 20px; border-top: 1px solid var(--color-border-light);
 }
 
-/*租户抽屉中的 OA DB 详细信息卡*/
+/* OA DB 详情卡 */
 .oadb-detail-card {
-  background: var(--color-bg-page);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-  padding: 16px 20px;
-  margin-top: 12px;
+  background: var(--color-bg-page); border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg); padding: 16px 20px; margin-top: 12px;
 }
 .oadb-detail-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600;
+  color: var(--color-text-primary); margin-bottom: 12px;
 }
 .oadb-detail-type {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-primary);
-  background: var(--color-primary-bg);
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
+  font-size: 12px; font-weight: 500; color: var(--color-primary);
+  background: var(--color-primary-bg); padding: 2px 8px; border-radius: var(--radius-full);
 }
 .oadb-detail-meta {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-  padding: 10px 14px;
-  background: var(--color-bg-card);
-  border-radius: var(--radius-md);
-  margin-bottom: 8px;
+  display: flex; gap: 20px; flex-wrap: wrap; padding: 10px 14px;
+  background: var(--color-bg-card); border-radius: var(--radius-md); margin-bottom: 8px;
 }
-.oadb-meta-item { }
 .oadb-meta-label { font-size: 11px; color: var(--color-text-tertiary); display: block; }
 .oadb-meta-value { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin-top: 2px; display: block; }
 .oadb-detail-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 8px; }
 .oadb-empty {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--color-text-tertiary);
-  padding: 20px;
-  text-align: center;
-  justify-content: center;
-  background: var(--color-bg-page);
-  border-radius: var(--radius-md);
-  margin-top: 12px;
+  display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-tertiary);
+  padding: 20px; text-align: center; justify-content: center;
+  background: var(--color-bg-page); border-radius: var(--radius-md); margin-top: 12px;
 }
+
+/* 成员列表 */
+.members-list { display: flex; flex-direction: column; gap: 12px; }
+.member-card {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  background: var(--color-bg-page); border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg); padding: 14px 18px; gap: 16px;
+}
+.member-card-left { display: flex; gap: 12px; align-items: flex-start; flex: 1; min-width: 0; }
+.member-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--color-primary-bg); color: var(--color-primary);
+  display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;
+}
+.member-info { min-width: 0; }
+.member-name { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
+.member-username { font-size: 12px; font-weight: 400; color: var(--color-text-tertiary); margin-left: 4px; }
+.member-meta { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+.member-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.member-card-right { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
+.member-contact { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 4px; }
 
 @media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-  }
-
-  .tenant-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .detail-tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
+  .page-header { flex-direction: column; gap: 12px; align-items: stretch; }
+  .tenant-grid { grid-template-columns: 1fr; }
+  .detail-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   .detail-tabs::-webkit-scrollbar { display: none; }
+  .member-card { flex-direction: column; }
+  .member-card-right { align-items: flex-start; }
 }
-
 @media (max-width: 480px) {
   .page-title { font-size: 20px; }
 }

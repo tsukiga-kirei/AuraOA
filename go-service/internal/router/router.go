@@ -75,6 +75,7 @@ func SetupRouter(
 		admin.PUT("/tenants/:id", tenantHandler.UpdateTenant)
 		admin.DELETE("/tenants/:id", tenantHandler.DeleteTenant)
 		admin.GET("/tenants/:id/stats", tenantHandler.GetTenantStats)
+		admin.GET("/tenants/:id/members", tenantHandler.ListTenantMembers)
 
 		// 系统设置 — 选项数据
 		system := admin.Group("/system")
