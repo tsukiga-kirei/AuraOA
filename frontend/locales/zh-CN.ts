@@ -1328,6 +1328,16 @@ export default {
     'admin.tenants.noMembers': '该租户暂无人员',
     'admin.tenants.codeFormatError': '租户编码只能包含英文字母、数字和下划线',
     'admin.tenants.contactSyncHint': '修改联系人信息将同步更新关联的租户管理员账号（姓名、邮箱、手机号）',
+    'admin.tenants.deleteTenant': '删除租户',
+    'admin.tenants.deleteConfirmTitle': '⚠️ 危险操作：彻底删除租户',
+    'admin.tenants.deleteConfirmDesc': '此操作将永久删除该租户及其所有关联数据，包括：组织成员、部门、角色、用户角色分配、以及仅属于该租户的用户账号。此操作不可撤销，请慎重考虑。',
+    'admin.tenants.deleteConfirmTenantName': '即将删除的租户',
+    'admin.tenants.deleteConfirmPassword': '请输入您的管理员密码以确认操作',
+    'admin.tenants.deletePasswordPlaceholder': '输入当前登录账号的密码',
+    'admin.tenants.deletePasswordRequired': '请输入管理员密码',
+    'admin.tenants.deleteSuccess': '租户已彻底删除',
+    'admin.tenants.deleteFailed': '删除租户失败',
+    'admin.tenants.deletePasswordError': '管理员密码错误',
 
     //===== 管理员 - 租户组织 =====
     'admin.org.title': '组织人员',

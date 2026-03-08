@@ -415,7 +415,7 @@ go-service/
 | GET | `/api/admin/tenants` | 获取所有租户 |
 | POST | `/api/admin/tenants` | 创建租户（同步创建租户管理员账号、默认部门和角色分配） |
 | PUT | `/api/admin/tenants/:id` | 更新租户 |
-| DELETE | `/api/admin/tenants/:id` | 删除租户 |
+| DELETE | `/api/admin/tenants/:id` | 删除租户（需管理员密码确认） |
 | GET | `/api/admin/tenants/:id/stats` | 租户统计数据 |
 
 ### 3.8 规则管理接口

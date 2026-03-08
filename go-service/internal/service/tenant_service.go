@@ -500,16 +500,107 @@ func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest)
 	return &resp, nil
 }
 
-// DeleteTenant 通过 ID 删除租户。
-func (s *TenantService) DeleteTenant(id uuid.UUID) error {
-	_, err := s.tenantRepo.FindByID(id)
+// DeleteTenant 彻底删除租户及其所有关联数据。
+// 在事务中按依赖顺序清理：org_member_roles → org_members → org_roles → departments → user_role_assignments → 租户专属用户 → tenant。
+// 需要当前操作管理员的密码确认。
+func (s *TenantService) DeleteTenant(id uuid.UUID, operatorUserID uuid.UUID, adminPassword string) error {
+	// 1. 验证操作者密码
+	operator, err := s.userRepo.FindByID(operatorUserID)
+	if err != nil {
+		return newServiceError(errcode.ErrResourceNotFound, "操作用户不存在")
+	}
+	if !hash.CheckPassword(adminPassword, operator.PasswordHash) {
+		return newServiceError(errcode.ErrWrongPassword, "管理员密码错误")
+	}
+
+	// 2. 确认租户存在
+	tenant, err := s.tenantRepo.FindByID(id)
 	if err != nil {
 		return newServiceError(errcode.ErrResourceNotFound, "租户不存在")
 	}
-	if err := s.tenantRepo.Delete(id); err != nil {
-		return newServiceError(errcode.ErrDatabase, "数据库错误")
-	}
-	return nil
+
+	// 3. 在事务中执行级联删除
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		tenantID := tenant.ID
+
+		// 3a. 删除 org_member_roles（通过 org_members 子查询）
+		if err := tx.Exec(`
+			DELETE FROM org_member_roles
+			WHERE org_member_id IN (
+				SELECT id FROM org_members WHERE tenant_id = ?
+			)`, tenantID).Error; err != nil {
+			return newServiceError(errcode.ErrDatabase, "删除成员角色关联失败")
+		}
+
+		// 3b. 删除 org_members
+		if err := tx.Exec("DELETE FROM org_members WHERE tenant_id = ?", tenantID).Error; err != nil {
+			return newServiceError(errcode.ErrDatabase, "删除组织成员失败")
+		}
+
+		// 3c. 删除 org_roles
+		if err := tx.Exec("DELETE FROM org_roles WHERE tenant_id = ?", tenantID).Error; err != nil {
+			return newServiceError(errcode.ErrDatabase, "删除组织角色失败")
+		}
+
+		// 3d. 删除 departments
+		if err := tx.Exec("DELETE FROM departments WHERE tenant_id = ?", tenantID).Error; err != nil {
+			return newServiceError(errcode.ErrDatabase, "删除部门失败")
+		}
+
+		// 3e. 收集该租户下所有用户 ID（通过 user_role_assignments）
+		var userIDs []uuid.UUID
+		if err := tx.Raw(`
+			SELECT DISTINCT user_id FROM user_role_assignments WHERE tenant_id = ?
+		`, tenantID).Scan(&userIDs).Error; err != nil {
+			return newServiceError(errcode.ErrDatabase, "查询租户用户失败")
+		}
+
+		// 3f. 删除 user_role_assignments
+		if err := tx.Exec("DELETE FROM user_role_assignments WHERE tenant_id = ?", tenantID).Error; err != nil {
+			return newServiceError(errcode.ErrDatabase, "删除用户角色分配失败")
+		}
+
+		// 3g. 清理 login_history 中的 tenant_id 引用
+		if err := tx.Exec("UPDATE login_history SET tenant_id = NULL WHERE tenant_id = ?", tenantID).Error; err != nil {
+			return newServiceError(errcode.ErrDatabase, "清理登录历史失败")
+		}
+
+		// 3h. 清除租户的 admin_user_id 引用（避免外键阻塞）
+		if err := tx.Exec("UPDATE tenants SET admin_user_id = NULL WHERE id = ?", tenantID).Error; err != nil {
+			return newServiceError(errcode.ErrDatabase, "清除租户管理员引用失败")
+		}
+
+		// 3i. 删除仅属于该租户的用户（在其他租户无角色分配的用户）
+		if len(userIDs) > 0 {
+			// 找出在其他租户仍有角色的用户，排除它们
+			if err := tx.Exec(`
+				DELETE FROM login_history
+				WHERE user_id IN (?)
+				AND user_id NOT IN (
+					SELECT DISTINCT user_id FROM user_role_assignments
+				)
+			`, userIDs).Error; err != nil {
+				return newServiceError(errcode.ErrDatabase, "删除用户登录历史失败")
+			}
+
+			if err := tx.Exec(`
+				DELETE FROM users
+				WHERE id IN (?)
+				AND id NOT IN (
+					SELECT DISTINCT user_id FROM user_role_assignments
+				)
+			`, userIDs).Error; err != nil {
+				return newServiceError(errcode.ErrDatabase, "删除租户用户失败")
+			}
+		}
+
+		// 3j. 删除租户本身
+		if err := tx.Exec("DELETE FROM tenants WHERE id = ?", tenantID).Error; err != nil {
+			return newServiceError(errcode.ErrDatabase, "删除租户失败")
+		}
+
+		return nil
+	})
 }
 
 // GetTenantStats 返回租户的成员、部门和角色计数。

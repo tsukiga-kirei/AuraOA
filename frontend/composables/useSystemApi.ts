@@ -105,8 +105,8 @@ export const useSystemApi = () => {
     return authFetch<any>(`/api/admin/tenants/${id}`, { method: 'PUT', body: data })
   }
 
-  async function deleteTenant(id: string): Promise<void> {
-    await authFetch<null>(`/api/admin/tenants/${id}`, { method: 'DELETE' })
+  async function deleteTenant(id: string, adminPassword: string): Promise<void> {
+    await authFetch<null>(`/api/admin/tenants/${id}`, { method: 'DELETE', body: { admin_password: adminPassword } })
   }
 
   async function getTenantStats(id: string): Promise<any> {

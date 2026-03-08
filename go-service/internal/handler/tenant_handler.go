@@ -8,6 +8,7 @@ import (
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
+	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
 	"oa-smart-audit/go-service/internal/pkg/response"
 	"oa-smart-audit/go-service/internal/service"
 )
@@ -80,13 +81,38 @@ func (h *TenantHandler) UpdateTenant(c *gin.Context) {
 }
 
 // DeleteTenant handles DELETE /api/admin/tenants/:id
+// 需要请求体中提供管理员密码确认。
 func (h *TenantHandler) DeleteTenant(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
 		return
 	}
-	if err := h.tenantService.DeleteTenant(id); err != nil {
+
+	var req dto.DeleteTenantRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "请提供管理员密码")
+		return
+	}
+
+	// 从 JWT 中提取当前操作者的用户 ID
+	claimsVal, exists := c.Get("jwt_claims")
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
+		return
+	}
+	claims, ok := claimsVal.(*jwtpkg.JWTClaims)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrTokenInvalid, "令牌解析失败")
+		return
+	}
+	operatorID, err := uuid.Parse(claims.Sub)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrTokenInvalid, "令牌用户ID无效")
+		return
+	}
+
+	if err := h.tenantService.DeleteTenant(id, operatorID, req.AdminPassword); err != nil {
 		handleServiceError(c, err)
 		return
 	}

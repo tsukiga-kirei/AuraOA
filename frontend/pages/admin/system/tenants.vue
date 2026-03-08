@@ -6,9 +6,12 @@ import {usePagination} from '~/composables/usePagination'
 import {
   ClockCircleOutlined,
   DatabaseOutlined,
+  DeleteOutlined,
   EditOutlined,
+  ExclamationCircleOutlined,
   InfoCircleOutlined,
   LinkOutlined,
+  LockOutlined,
   MailOutlined,
   PhoneOutlined,
   PlusOutlined,
@@ -24,6 +27,7 @@ const { t } = useI18n()
 
 const {
   listTenants: fetchTenants, createTenant: apiCreateTenant, updateTenant: apiUpdateTenant,
+  deleteTenant: apiDeleteTenant,
   listOAConnections, listAIModels, listTenantMembers: apiListTenantMembers,
 } = useSystemApi()
 
@@ -321,6 +325,42 @@ const formatDateTime = (iso: string) => {
     return iso
   }
 }
+
+// ===== 删除租户 =====
+const showDeleteConfirm = ref(false)
+const deletingTenant = ref<TenantData | null>(null)
+const deletePassword = ref('')
+const deleting = ref(false)
+
+const openDeleteConfirm = (tenant: TenantData) => {
+  deletingTenant.value = tenant
+  deletePassword.value = ''
+  showDeleteConfirm.value = true
+}
+
+const confirmDeleteTenant = async () => {
+  if (!deletingTenant.value) return
+  if (!deletePassword.value.trim()) {
+    message.warning(t('admin.tenants.deletePasswordRequired'))
+    return
+  }
+  deleting.value = true
+  try {
+    await apiDeleteTenant(deletingTenant.value.id, deletePassword.value)
+    tenants.value = tenants.value.filter(x => x.id !== deletingTenant.value!.id)
+    showDeleteConfirm.value = false
+    showDetail.value = false
+    message.success(t('admin.tenants.deleteSuccess'))
+  } catch (e: any) {
+    if (e.message?.includes('密码') || e.message?.includes('password') || e.code === 40103) {
+      message.error(t('admin.tenants.deletePasswordError'))
+    } else {
+      message.error(e.message || t('admin.tenants.deleteFailed'))
+    }
+  } finally {
+    deleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -405,6 +445,9 @@ const formatDateTime = (iso: string) => {
             </a-button>
             <a-button size="small" type="text" @click="toggleTenantStatus(tenant.id)">
               {{ tenant.status === 'active' ? t('admin.tenants.stop') : t('admin.tenants.enable') }}
+            </a-button>
+            <a-button size="small" type="text" danger @click="openDeleteConfirm(tenant)">
+              <DeleteOutlined /> {{ t('admin.tenants.deleteTenant') }}
             </a-button>
           </div>
         </div>
@@ -916,11 +959,60 @@ const formatDateTime = (iso: string) => {
 
         <!--页脚操作-->
         <div class="detail-footer">
-          <a-button @click="showDetail = false">{{ t('admin.tenants.cancel') }}</a-button>
-          <a-button type="primary" @click="saveTenantDetail">{{ t('admin.tenants.saveConfig') }}</a-button>
+          <a-button danger @click="openDeleteConfirm(selectedTenant)">
+            <DeleteOutlined /> {{ t('admin.tenants.deleteTenant') }}
+          </a-button>
+          <div style="display: flex; gap: 8px;">
+            <a-button @click="showDetail = false">{{ t('admin.tenants.cancel') }}</a-button>
+            <a-button type="primary" @click="saveTenantDetail">{{ t('admin.tenants.saveConfig') }}</a-button>
+          </div>
         </div>
       </template>
     </a-drawer>
+
+    <!--删除租户确认弹窗-->
+    <a-modal
+      v-model:open="showDeleteConfirm"
+      :title="t('admin.tenants.deleteConfirmTitle')"
+      :okText="t('admin.tenants.deleteTenant')"
+      :cancelText="t('admin.tenants.cancel')"
+      :okButtonProps="{ danger: true, loading: deleting }"
+      :maskClosable="false"
+      @ok="confirmDeleteTenant"
+      width="520px"
+    >
+      <div style="padding: 8px 0;">
+        <a-alert
+          type="error"
+          show-icon
+          style="margin-bottom: 16px;"
+        >
+          <template #icon><ExclamationCircleOutlined /></template>
+          <template #message>{{ t('admin.tenants.deleteConfirmDesc') }}</template>
+        </a-alert>
+
+        <div v-if="deletingTenant" style="padding: 12px 16px; background: var(--color-bg-hover); border-radius: var(--radius-md); margin-bottom: 16px;">
+          <div style="font-size: 13px; color: var(--color-text-tertiary); margin-bottom: 4px;">{{ t('admin.tenants.deleteConfirmTenantName') }}</div>
+          <div style="font-size: 16px; font-weight: 600; color: var(--color-text-primary);">
+            {{ deletingTenant.name }}
+            <span style="font-size: 12px; font-weight: 400; color: var(--color-text-tertiary); margin-left: 8px;">{{ deletingTenant.code }}</span>
+          </div>
+        </div>
+
+        <a-form layout="vertical">
+          <a-form-item :label="t('admin.tenants.deleteConfirmPassword')" required>
+            <a-input-password
+              v-model:value="deletePassword"
+              :placeholder="t('admin.tenants.deletePasswordPlaceholder')"
+              size="large"
+              @pressEnter="confirmDeleteTenant"
+            >
+              <template #prefix><LockOutlined /></template>
+            </a-input-password>
+          </a-form-item>
+        </a-form>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -1089,7 +1181,7 @@ const formatDateTime = (iso: string) => {
 }
 .status-info { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--color-text-secondary); }
 .detail-footer {
-  display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;
+  display: flex; justify-content: space-between; align-items: center; margin-top: 32px;
   padding-top: 20px; border-top: 1px solid var(--color-border-light);
 }
 

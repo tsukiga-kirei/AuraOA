@@ -1328,6 +1328,16 @@ export default {
     'admin.tenants.noMembers': 'No members in this tenant',
     'admin.tenants.codeFormatError': 'Tenant code can only contain letters, numbers and underscores',
     'admin.tenants.contactSyncHint': 'Changing contact info will also update the linked tenant admin account (name, email, phone)',
+    'admin.tenants.deleteTenant': 'Delete Tenant',
+    'admin.tenants.deleteConfirmTitle': '⚠️ Danger: Permanently Delete Tenant',
+    'admin.tenants.deleteConfirmDesc': 'This will permanently delete the tenant and all associated data, including: org members, departments, roles, user role assignments, and user accounts that belong exclusively to this tenant. This action cannot be undone. Please proceed with caution.',
+    'admin.tenants.deleteConfirmTenantName': 'Tenant to be deleted',
+    'admin.tenants.deleteConfirmPassword': 'Enter your admin password to confirm',
+    'admin.tenants.deletePasswordPlaceholder': 'Enter your current account password',
+    'admin.tenants.deletePasswordRequired': 'Please enter admin password',
+    'admin.tenants.deleteSuccess': 'Tenant has been permanently deleted',
+    'admin.tenants.deleteFailed': 'Failed to delete tenant',
+    'admin.tenants.deletePasswordError': 'Incorrect admin password',
 
     //===== 管理员 - 租户组织 =====
     'admin.org.title': 'Organization',

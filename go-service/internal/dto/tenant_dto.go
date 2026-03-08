@@ -82,6 +82,12 @@ type TenantResponse struct {
 	UpdatedAt           string  `json:"updated_at"`
 }
 
+// DeleteTenantRequest 是 DELETE /api/admin/tenants/:id 的请求正文。
+// 需要管理员密码确认以防止误操作。
+type DeleteTenantRequest struct {
+	AdminPassword string `json:"admin_password" binding:"required"`
+}
+
 // TenantStatsResponse 是 GET /api/admin/tenants/:id/stats 的响应正文。
 type TenantStatsResponse struct {
 	TenantID        string `json:"tenant_id"`
