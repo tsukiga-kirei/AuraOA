@@ -85,6 +85,10 @@ export const useSystemApi = () => {
     return authFetch<any>('/api/admin/system/ai-models/test', { method: 'POST', body: data })
   }
 
+  async function testAIModelConnectionById(id: string): Promise<any> {
+    return authFetch<any>(`/api/admin/system/ai-models/${id}/test`, { method: 'POST' })
+  }
+
   // ============================================================
   // Tenant Management
   // ============================================================
@@ -121,7 +125,7 @@ export const useSystemApi = () => {
     // OA connections
     listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection, testOAConnection, testOAConnectionParams,
     // AI models
-    listAIModels, createAIModel, updateAIModel, deleteAIModel, testAIModelConnection,
+    listAIModels, createAIModel, updateAIModel, deleteAIModel, testAIModelConnection, testAIModelConnectionById,
     // Tenants
     listTenants, createTenant, updateTenant, deleteTenant, getTenantStats, listTenantMembers,
   }

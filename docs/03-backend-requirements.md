@@ -478,6 +478,7 @@ go-service/
 | PUT | `/api/admin/system/ai-models/:id` | 更新AI模型 |
 | DELETE | `/api/admin/system/ai-models/:id` | 删除AI模型 |
 | POST | `/api/admin/system/ai-models/test` | 按参数测试AI模型连接（未保存） |
+| POST | `/api/admin/system/ai-models/:id/test` | 测试已保存的AI模型连接 |
 | GET | `/api/admin/system/configs` | 平台通用配置 |
 | PUT | `/api/admin/system/configs` | 更新平台配置 |
 

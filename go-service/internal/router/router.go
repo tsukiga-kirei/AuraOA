@@ -99,6 +99,7 @@ func SetupRouter(
 			system.POST("/ai-models/test", systemHandler.TestAIModelConnection)
 			system.PUT("/ai-models/:id", systemHandler.UpdateAIModel)
 			system.DELETE("/ai-models/:id", systemHandler.DeleteAIModel)
+			system.POST("/ai-models/:id/test", systemHandler.TestAIModelConnectionById)
 
 			// 系统配置 (KV)
 			system.GET("/configs", systemHandler.GetSystemConfigs)

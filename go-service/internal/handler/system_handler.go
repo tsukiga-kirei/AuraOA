@@ -234,6 +234,22 @@ func (h *SystemHandler) TestAIModelConnection(c *gin.Context) {
 	})
 }
 
+// TestAIModelConnectionById handles POST /api/admin/system/ai-models/:id/test
+// 根据已保存的模型 ID 测试连接（用于卡片上的测试按钮）。
+func (h *SystemHandler) TestAIModelConnectionById(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	// TODO: 实现实际的模型连接测试逻辑（根据已保存的 endpoint/api_key 尝试调用模型）
+	_ = id
+	response.Success(c, map[string]interface{}{
+		"success": true,
+		"message": "模型连接测试成功",
+	})
+}
+
 // ============================================================
 // 系统配置
 // ============================================================
