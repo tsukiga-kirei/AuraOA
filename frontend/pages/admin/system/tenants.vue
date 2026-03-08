@@ -27,7 +27,7 @@ const { t } = useI18n()
 
 const {
   listTenants: fetchTenants, createTenant: apiCreateTenant, updateTenant: apiUpdateTenant,
-  deleteTenant: apiDeleteTenant,
+  deleteTenant: apiDeleteTenant, getTenantStats: apiGetTenantStats,
   listOAConnections, listAIModels, listTenantMembers: apiListTenantMembers,
 } = useSystemApi()
 
@@ -64,6 +64,24 @@ const tenantMembers = ref<TenantMember[]>([])
 const membersLoading = ref(false)
 const { paged: pagedMembers, current: memberPage, pageSize: memberPageSize, total: memberTotal, onChange: onMemberPageChange } = usePagination(tenantMembers, 10)
 
+// 租户统计数据（成员数、部门数、角色数）
+const tenantStatsMap = ref<Record<string, { member_count: number; department_count: number; role_count: number }>>({})
+
+const loadAllTenantStats = async () => {
+  const results = await Promise.allSettled(
+    tenants.value.map(t => apiGetTenantStats(t.id))
+  )
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled' && r.value) {
+      tenantStatsMap.value[tenants.value[i].id] = r.value
+    }
+  })
+}
+
+const getTenantStat = (tenantId: string, key: 'member_count' | 'department_count' | 'role_count') => {
+  return tenantStatsMap.value[tenantId]?.[key] ?? '-'
+}
+
 onMounted(async () => {
   loading.value = true
   try {
@@ -75,6 +93,8 @@ onMounted(async () => {
     tenants.value = tenantData
     oaConnections.value = oaData
     aiModels.value = aiData
+    // 加载完租户列表后并行获取统计
+    loadAllTenantStats()
   } catch (e) {
     message.error('加载数据失败')
   } finally {
@@ -225,9 +245,13 @@ const openDetail = async (tenant: TenantData) => {
   selectedTenant.value = { ...tenant }
   detailActiveTab.value = 'basic'
   showDetail.value = true
-  // 加载成员列表
+  // 加载成员列表 & 刷新统计
   loadTenantMembers(tenant.id)
+  apiGetTenantStats(tenant.id).then(s => {
+    if (s) tenantStatsMap.value[tenant.id] = s
+  }).catch(() => {})
 }
+
 
 const loadTenantMembers = async (tenantId: string) => {
   membersLoading.value = true
@@ -409,10 +433,16 @@ const confirmDeleteTenant = async () => {
 
         <div class="tenant-stats">
           <div class="stat-item">
-            <span class="stat-label">{{ t('admin.tenants.tokenUsage') }}</span>
-            <span class="stat-value">
-              {{ (tenant.token_used / 1000).toFixed(1) }}K / {{ (tenant.token_quota / 1000).toFixed(0) }}K
-            </span>
+            <span class="stat-label">{{ t('admin.tenants.memberCount') }}</span>
+            <span class="stat-value">{{ getTenantStat(tenant.id, 'member_count') }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">{{ t('admin.tenants.deptCount') }}</span>
+            <span class="stat-value">{{ getTenantStat(tenant.id, 'department_count') }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">{{ t('admin.tenants.roleCount') }}</span>
+            <span class="stat-value">{{ getTenantStat(tenant.id, 'role_count') }}</span>
           </div>
           <div class="stat-item">
             <span class="stat-label">{{ t('admin.tenants.maxConcurrency') }}</span>
@@ -420,7 +450,16 @@ const confirmDeleteTenant = async () => {
           </div>
         </div>
 
-        <div class="quota-bar-wrapper">
+        <div class="token-usage-block">
+          <div class="token-usage-header">
+            <span class="token-usage-label">{{ t('admin.tenants.tokenUsage') }}</span>
+            <span class="token-usage-nums">
+              {{ (tenant.token_used / 1000).toFixed(1) }}K / {{ (tenant.token_quota / 1000).toFixed(0) }}K
+              <span class="token-usage-percent" :style="{ color: getQuotaColor(getQuotaPercent(tenant.token_used, tenant.token_quota)) }">
+                {{ getQuotaPercent(tenant.token_used, tenant.token_quota) }}%
+              </span>
+            </span>
+          </div>
           <div class="quota-bar">
             <div
               class="quota-bar-fill"
@@ -430,9 +469,6 @@ const confirmDeleteTenant = async () => {
               }"
             />
           </div>
-          <span class="quota-percent" :style="{ color: getQuotaColor(getQuotaPercent(tenant.token_used, tenant.token_quota)) }">
-            {{ getQuotaPercent(tenant.token_used, tenant.token_quota) }}%
-          </span>
         </div>
 
         <div class="tenant-card-footer">
@@ -1100,16 +1136,19 @@ const confirmDeleteTenant = async () => {
 .info-tag--success { background: var(--color-success-bg); color: var(--color-success); }
 
 /* 统计 */
-.tenant-stats { display: flex; gap: 24px; margin-bottom: 12px; }
+.tenant-stats { display: flex; gap: 24px; margin-bottom: 12px; flex-wrap: wrap; }
 .stat-item { display: flex; flex-direction: column; gap: 2px; }
 .stat-label { font-size: 11px; color: var(--color-text-tertiary); }
 .stat-value { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
 
-/* 配额栏 */
-.quota-bar-wrapper { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+/* Token 用量 */
+.token-usage-block { margin-bottom: 14px; }
+.token-usage-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.token-usage-label { font-size: 11px; color: var(--color-text-tertiary); }
+.token-usage-nums { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.token-usage-percent { font-size: 12px; font-weight: 600; margin-left: 8px; }
 .quota-bar { flex: 1; height: 6px; background: var(--color-bg-hover); border-radius: var(--radius-full); overflow: hidden; }
 .quota-bar-fill { height: 100%; border-radius: var(--radius-full); transition: width 0.5s ease; }
-.quota-percent { font-size: 12px; font-weight: 600; min-width: 36px; text-align: right; }
 
 .tenant-card-footer {
   display: flex; justify-content: space-between; align-items: center;
