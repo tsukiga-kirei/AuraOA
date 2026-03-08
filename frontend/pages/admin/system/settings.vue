@@ -30,7 +30,7 @@ const {
   getConfigs, updateConfigs,
   listOATypes, listDBDrivers, listAIProviders, listAIDeployTypes,
   listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection: apiDeleteOAConnection, testOAConnection: apiTestOAConnection, testOAConnectionParams: apiTestOAConnectionParams,
-  listAIModels, createAIModel, updateAIModel, deleteAIModel: apiDeleteAIModel, testAIModelConnection: apiTestAIModelConnection,
+  listAIModels, createAIModel, updateAIModel, deleteAIModel: apiDeleteAIModel, testAIModelConnection: apiTestAIModelConnection, testAIModelConnectionById: apiTestAIModelConnectionById,
 } = useSystemApi()
 
 const loading = ref(false)
@@ -235,6 +235,7 @@ const testOADbConnection = async (id: string) => {
 //===== AI模型CRUD =====
 const showAddAIModel = ref(false)
 const editingAIModel = ref<AIModel | null>(null)
+const testingAIModelId = ref<string | null>(null)
 
 const newAIModel = ref<Record<string, any>>({
   provider: '', provider_label: '', model_name: '', display_name: '', deploy_type: 'local',
@@ -351,6 +352,28 @@ const deleteAIModel = async (id: string) => {
   } catch (e) {
     message.error('删除失败')
   }
+}
+
+//===== AI 模型卡片测试连接 =====
+const testAIModelById = async (id: string) => {
+  const model = aiModels.value.find(m => m.id === id)
+  if (!model) return
+  testingAIModelId.value = id
+  model.status = 'testing'
+  try {
+    const result = await apiTestAIModelConnectionById(id)
+    if (result.success) {
+      model.status = 'online'
+      message.success(t('admin.settings.connSuccess', model.display_name))
+    } else {
+      model.status = 'offline'
+      message.warning(result.message || t('admin.settings.notEnabled', model.display_name))
+    }
+  } catch (e) {
+    model.status = 'offline'
+    message.error(t('admin.settings.dbConnFailed'))
+  }
+  testingAIModelId.value = null
 }
 
 //===== 测试数据库模式连接 =====
@@ -674,6 +697,14 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                   <DeleteOutlined />
                 </a-button>
               </a-popconfirm>
+              <a-button
+                size="small"
+                :disabled="!model.enabled || model.status === 'testing'"
+                @click="testAIModelById(model.id)"
+                class="test-conn-btn"
+              >
+                <SyncOutlined :spin="testingAIModelId === model.id" /> {{ testingAIModelId === model.id ? t('admin.settings.testingConn') : t('admin.settings.testConnection') }}
+              </a-button>
             </div>
           </div>
         </div>

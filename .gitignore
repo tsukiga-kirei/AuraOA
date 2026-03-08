@@ -94,5 +94,4 @@ pip-delete-this-directory.txt
 # poetry
 poetry.lock
 
-# Go modules
-go.sum
+
