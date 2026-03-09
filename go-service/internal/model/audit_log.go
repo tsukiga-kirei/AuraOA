@@ -1,0 +1,55 @@
+package model
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/datatypes"
+)
+
+// AuditLog 审核日志，记录每次审核执行的结果。
+type AuditLog struct {
+	ID             uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	TenantID       uuid.UUID      `gorm:"type:uuid;not null" json:"tenant_id"`
+	UserID         uuid.UUID      `gorm:"type:uuid;not null" json:"user_id"`
+	ProcessID      string         `gorm:"size:100;not null" json:"process_id"`
+	Title          string         `gorm:"size:500;not null" json:"title"`
+	ProcessType    string         `gorm:"size:200;not null" json:"process_type"`
+	Recommendation string         `gorm:"size:20;not null" json:"recommendation"`
+	Score          int            `gorm:"not null;default:0" json:"score"`
+	AuditResult    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"audit_result"`
+	DurationMs     int            `gorm:"not null;default:0" json:"duration_ms"`
+	CreatedAt      time.Time      `json:"created_at"`
+}
+
+func (AuditLog) TableName() string { return "audit_logs" }
+
+// CronLog 定时任务日志。
+type CronLog struct {
+	ID         uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	TenantID   uuid.UUID  `gorm:"type:uuid;not null" json:"tenant_id"`
+	TaskID     uuid.UUID  `gorm:"type:uuid;not null" json:"task_id"`
+	TaskType   string     `gorm:"size:50;not null" json:"task_type"`
+	Status     string     `gorm:"size:20;not null;default:running" json:"status"`
+	Message    string     `gorm:"type:text;default:''" json:"message"`
+	StartedAt  time.Time  `gorm:"not null;default:now()" json:"started_at"`
+	FinishedAt *time.Time `json:"finished_at"`
+}
+
+func (CronLog) TableName() string { return "cron_logs" }
+
+// ArchiveLog 归档复盘日志。
+type ArchiveLog struct {
+	ID              uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	TenantID        uuid.UUID      `gorm:"type:uuid;not null" json:"tenant_id"`
+	UserID          uuid.UUID      `gorm:"type:uuid;not null" json:"user_id"`
+	ProcessID       string         `gorm:"size:100;not null" json:"process_id"`
+	Title           string         `gorm:"size:500;not null" json:"title"`
+	ProcessType     string         `gorm:"size:200;not null" json:"process_type"`
+	Compliance      string         `gorm:"size:30;not null" json:"compliance"`
+	ComplianceScore int            `gorm:"not null;default:0" json:"compliance_score"`
+	ArchiveResult   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"archive_result"`
+	CreatedAt       time.Time      `json:"created_at"`
+}
+
+func (ArchiveLog) TableName() string { return "archive_logs" }

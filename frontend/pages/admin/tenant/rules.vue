@@ -39,7 +39,8 @@ import { useI18n } from '~/composables/useI18n'
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
-const { mockProcessAuditConfigs, mockCronTaskTypeConfigs, mockArchiveReviewConfigs } = useMockData()
+const { mockCronTaskTypeConfigs, mockArchiveReviewConfigs, mockAIModelConfigs } = useMockData()
+const rulesApi = useRulesApi()
 
 //===== 顶级选项卡：审核工作台 vs 定时任务配置 vs 归档复盘 =====
 const topTab = ref<'audit' | 'cron' | 'archive'>('audit')
@@ -136,8 +137,8 @@ const handleSaveCronConfig = async () => {
   message.success(t('admin.ruleConfig.cronSaved'))
 }
 
-const processConfigs = ref<ProcessAuditConfig[]>(JSON.parse(JSON.stringify(mockProcessAuditConfigs)))
-const selectedProcessId = ref(processConfigs.value[0]?.id || '')
+const processConfigs = ref<ProcessAuditConfig[]>([])
+const selectedProcessId = ref('')
 
 //=====添加新流程=====
 const showAddProcess = ref(false)
@@ -349,7 +350,7 @@ const aiProviders = computed(() => [
   { value: '云端API', label: t('admin.ruleConfig.cloudAPI') },
 ])
 
-const { mockAIModelConfigs } = useMockData()
+const { mockAIModelConfigs: _unusedAIModels } = useMockData()
 
 //从mockAIModelConfigs构建模型选项
 const modelOptions = computed(() => {
@@ -419,9 +420,8 @@ const insertExtractionVariable = (variable: string) => {
 }
 
 //=====严格提示预设=====
-import { fetchStrictnessPresets, saveStrictnessPresets, type StrictnessPromptPreset } from '~/composables/useMockData'
 
-const strictnessPresets = ref<StrictnessPromptPreset[]>([])
+const strictnessPresets = ref<any[]>([])
 const loadingPresets = ref(false)
 const showPresetEditor = ref(false)
 const editingPresets = ref<StrictnessPromptPreset[]>([])
@@ -430,12 +430,25 @@ const savingPresets = ref(false)
 //在安装上加载预设
 onMounted(async () => {
   loadOrgData()
+  // 从 API 加载流程审核配置
+  try {
+    const configs = await rulesApi.listConfigs()
+    processConfigs.value = configs as any
+    if (configs.length > 0) selectedProcessId.value = configs[0].id
+  }
+  catch (e) { console.error('[rules] 加载流程配置失败', e) }
+  // 从 API 加载审核尺度预设
   loadingPresets.value = true
   try {
-    strictnessPresets.value = await fetchStrictnessPresets()
-  } finally {
-    loadingPresets.value = false
+    const presets = await rulesApi.listPresets()
+    strictnessPresets.value = presets.map(p => ({
+      strictness: p.strictness,
+      reasoning_instruction: p.reasoning_instruction,
+      extraction_instruction: p.extraction_instruction,
+    }))
   }
+  catch (e) { console.error('[rules] 加载预设失败', e) }
+  finally { loadingPresets.value = false }
 })
 
 //获取所选严格度的当前预设
@@ -459,7 +472,13 @@ const openPresetEditor = () => {
 const handleSavePresets = async () => {
   savingPresets.value = true
   try {
-    await saveStrictnessPresets('current-tenant', editingPresets.value)
+    // 逐条更新预设到后端 API
+    for (const preset of editingPresets.value) {
+      await rulesApi.updatePreset(preset.strictness, {
+        reasoning_instruction: preset.reasoning_instruction,
+        extraction_instruction: preset.extraction_instruction,
+      })
+    }
     strictnessPresets.value = JSON.parse(JSON.stringify(editingPresets.value))
     showPresetEditor.value = false
     message.success(t('admin.ruleConfig.presetsSaved'))
