@@ -228,6 +228,10 @@ func mapServiceErrorToHTTP(err error) int {
 		return http.StatusConflict
 	case code >= 50000 && code <= 50099:
 		return http.StatusInternalServerError
+	case code >= 50200 && code <= 50299:
+		return http.StatusBadGateway
+	case code >= 50300 && code <= 50399:
+		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError
 	}
