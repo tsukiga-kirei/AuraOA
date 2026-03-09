@@ -760,6 +760,9 @@ CREATE INDEX idx_doc_chunks_embedding ON document_chunks
 | 005 | `005_departments.sql` | 部门层级（DEMO_HQ 3个 + DEMO_BR1 2个） | 003 |
 | 006 | `006_org_roles.sql` | 组织角色（每租户 3 个系统角色：业务用户、审计管理员、租户管理员） | 003 |
 | 007 | `007_org_members.sql` | 组织成员 + org_member_roles 关联（DEMO_HQ 5条） | 002, 003, 005, 006 |
+| 008 | `008_system_config.sql` | 系统配置键值对初始数据 | 无 |
+| 009 | `009_option_tables.sql` | OA 连接 + AI 模型等选项表补充数据 | 001 |
+| 010 | `010_process_audit_configs.sql` | 流程审核配置 + 审核规则 + 审核尺度预设 | 001, 003 |
 
 ### 5.2 初始化要点
 

@@ -28,7 +28,7 @@ definePageMeta({ middleware: 'auth', layout: 'default' })
 const { t } = useI18n()
 const { mockUserPersonalConfigs } = useMockData()
 const { authFetch } = useAuth()
-const { roles, members, loadAll: loadOrgData } = useOrgApi()
+const { loadAll: loadOrgData } = useOrgApi()
 
 onMounted(async () => {
   loadOrgData()
