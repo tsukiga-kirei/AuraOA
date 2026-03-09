@@ -1,0 +1,317 @@
+# Implementation Plan: 规则配置与 OA 集成
+
+## Overview
+
+将前端规则配置和个人设置页面从模拟数据切换为真实后端 API 驱动。按自底向上顺序实现：数据库迁移 → Go 模型 → Repository → 适配器/调用器 → Service → Handler → 前端 Composable → 前端页面替换。每个阶段包含对应的属性测试和单元测试子任务。
+
+## Tasks
+
+- [x] 1. 数据库迁移文件
+  - [x] 1.1 创建 000007 迁移文件（process_audit_configs, audit_rules, strictness_presets）
+    - 在 `db/migrations/` 下创建 `000007_audit_configs_rules_presets.up.sql` 和 `000007_audit_configs_rules_presets.down.sql`
+    - 包含 process_audit_configs 表（JSONB 字段 main_fields, detail_tables, ai_config, user_permissions）、audit_rules 表、strictness_presets 表及所有索引和唯一约束
+    - _Requirements: 16.1_
+  - [x] 1.2 创建 000008 迁移文件（cron_tasks, cron_task_type_configs）
+    - 在 `db/migrations/` 下创建 `000008_cron_tasks.up.sql` 和 `000008_cron_tasks.down.sql`
+    - _Requirements: 16.2_
+  - [x] 1.3 创建 000009 迁移文件（audit_logs, cron_logs, archive_logs）
+    - 在 `db/migrations/` 下创建 `000009_audit_cron_archive_logs.up.sql` 和 `000009_audit_cron_archive_logs.down.sql`
+    - _Requirements: 16.3_
+  - [x] 1.4 创建 000010 迁移文件（user_personal_configs, user_dashboard_prefs）
+    - 在 `db/migrations/` 下创建 `000010_user_personal_configs.up.sql` 和 `000010_user_personal_configs.down.sql`
+    - _Requirements: 16.4_
+  - [x] 1.5 创建 000011 迁移文件（tenant_llm_message_logs）
+    - 在 `db/migrations/` 下创建 `000011_tenant_llm_message_logs.up.sql` 和 `000011_tenant_llm_message_logs.down.sql`
+    - _Requirements: 16.5, 16.6_
+
+- [x] 2. Go 数据模型与错误码
+  - [x] 2.1 创建新表对应的 Go model 结构体
+    - 在 `go-service/internal/model/` 下创建 `process_audit_config.go`、`audit_rule.go`、`strictness_preset.go`、`user_personal_config.go`、`user_dashboard_pref.go`、`tenant_llm_message_log.go`、`cron_task.go`、`audit_log.go`
+    - 每个 model 包含 GORM 标签、JSON 标签，JSONB 字段使用 `datatypes.JSON` 或自定义类型
+    - _Requirements: 6.1, 5.2, 8.2, 11.3, 15.1_
+  - [x] 2.2 新增错误码常量
+    - 在 `go-service/internal/pkg/errcode/errcode.go` 中添加 ErrProcessNotFound、ErrConfigNotFound、ErrRuleNotFound、ErrDuplicateProcessType、ErrPermissionDenied、ErrMandatoryRuleLocked、ErrOAConnectionFailed、ErrOAQueryFailed、ErrOATypeUnsupported、ErrAIConnectionFailed、ErrAICallFailed、ErrAIDeployTypeUnsupported、ErrTokenQuotaExceeded
+    - _Requirements: 1.4, 3.3, 3.4, 6.2_
+
+- [x] 3. Checkpoint - 确认迁移文件和模型定义
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 4. Repository 层实现
+  - [x] 4.1 实现 ProcessAuditConfigRepo
+    - 在 `go-service/internal/repository/process_audit_config_repo.go` 中实现 CRUD 方法，继承 BaseRepo 的 WithTenant 租户隔离
+    - 包含 Create、GetByID、ListByTenant、Update、Delete、GetByProcessType 方法
+    - _Requirements: 6.1, 6.2, 5.5_
+  - [x] 4.2 实现 AuditRuleRepo
+    - 在 `go-service/internal/repository/audit_rule_repo.go` 中实现 CRUD 方法
+    - 包含 Create、Update、Delete、ListByProcessType（支持 rule_scope 和 enabled 筛选）方法
+    - _Requirements: 5.1, 5.2, 5.3, 5.4_
+  - [x] 4.3 实现 StrictnessPresetRepo
+    - 在 `go-service/internal/repository/strictness_preset_repo.go` 中实现查询和更新方法
+    - 包含 ListByTenant、UpdateByStrictness 方法
+    - _Requirements: 8.1, 8.2, 8.3_
+  - [x] 4.4 实现 UserPersonalConfigRepo
+    - 在 `go-service/internal/repository/user_personal_config_repo.go` 中实现 CRUD 方法
+    - 包含 GetByTenantAndUser（upsert 语义）、Update 方法，按 tenant_id + user_id 唯一约束
+    - _Requirements: 11.3, 12.4, 13.3, 14.3_
+  - [x] 4.5 实现 LLMMessageLogRepo
+    - 在 `go-service/internal/repository/llm_message_log_repo.go` 中实现日志写入和统计查询
+    - 包含 Create（异步写入）、QueryByTimeRange（按时间范围和模型筛选）方法
+    - _Requirements: 15.1, 15.2, 15.3_
+  - [ ]* 4.6 写属性测试：租户数据隔离（Property 7）
+    - **Property 7: 租户数据隔离**
+    - 在 `go-service/internal/repository/tenant_isolation_test.go` 中使用 rapid 库验证：租户 A 创建的 process_audit_configs、audit_rules、user_personal_configs 记录，通过租户 B 上下文查询时返回空
+    - **Validates: Requirements 5.1, 5.5, 14.3, 14.4**
+  - [ ]* 4.7 写属性测试：Token 日志时间范围筛选（Property 19）
+    - **Property 19: Token 日志时间范围筛选**
+    - 在 `go-service/internal/repository/llm_log_repo_test.go` 中使用 rapid 库验证：按时间范围查询返回的所有记录 created_at 落在指定范围内
+    - **Validates: Requirements 15.3**
+
+- [x] 5. OA 适配器层
+  - [x] 5.1 定义 OAAdapter 接口和数据结构
+    - 在 `go-service/internal/pkg/oa/adapter.go` 中定义 OAAdapter 接口（ValidateProcess、FetchFields、CheckUserPermission、FetchProcessData）及 ProcessInfo、FieldDef、DetailTableDef、ProcessFields、ProcessData 结构体
+    - _Requirements: 1.1_
+  - [x] 5.2 实现 Ecology9Adapter
+    - 在 `go-service/internal/pkg/oa/ecology9.go` 中实现泛微 E9 适配器，通过 GORM + MySQL 驱动连接 E9 数据库
+    - 封装 workflow_base、workflow_billfield、workflow_detail_table 表查询
+    - _Requirements: 1.2, 3.1, 3.2, 3.3, 4.1, 4.2_
+  - [x] 5.3 实现 OAAdapterFactory
+    - 在 `go-service/internal/pkg/oa/factory.go` 中实现 NewOAAdapter 工厂函数，根据 oa_type 返回对应适配器实例
+    - _Requirements: 1.3, 1.4_
+  - [ ]* 5.4 写属性测试：OA 适配器工厂选择（Property 1）
+    - **Property 1: OA 适配器工厂选择**
+    - 在 `go-service/internal/pkg/oa/factory_test.go` 中使用 rapid 库验证：合法 oa_type 返回正确实例，非法 oa_type 返回错误
+    - **Validates: Requirements 1.3, 1.4**
+  - [ ]* 5.5 写属性测试：字段结构完整性（Property 18）
+    - **Property 18: 字段结构完整性**
+    - 在 `go-service/internal/pkg/oa/fields_test.go` 中使用 rapid 库验证：OA 适配器返回的 ProcessFields 中每个字段包含非空 field_key、field_name、field_type，每个明细表包含非空 table_name、table_label
+    - **Validates: Requirements 4.2**
+
+- [x] 6. AI 模型调用层
+  - [x] 6.1 定义 AIModelCaller 接口和数据结构
+    - 在 `go-service/internal/pkg/ai/caller.go` 中定义 AIModelCaller 接口（TestConnection、Chat）及 ChatRequest、ChatResponse、TokenUsage 结构体
+    - _Requirements: 2.1_
+  - [x] 6.2 实现 XinferenceCaller
+    - 在 `go-service/internal/pkg/ai/xinference.go` 中实现本地 Xinference 调用器，通过 OpenAI 兼容 API 调用
+    - _Requirements: 2.2_
+  - [x] 6.3 实现 AliyunBailianCaller
+    - 在 `go-service/internal/pkg/ai/aliyun_bailian.go` 中实现阿里云百炼调用器，通过 DashScope 兼容 API 调用
+    - _Requirements: 2.3_
+  - [x] 6.4 实现 AIModelCallerFactory
+    - 在 `go-service/internal/pkg/ai/factory.go` 中实现 NewAIModelCaller 工厂函数，根据 deploy_type 返回对应调用器实例
+    - _Requirements: 2.6_
+  - [ ]* 6.5 写属性测试：AI 调用器工厂选择（Property 2）
+    - **Property 2: AI 调用器工厂选择**
+    - 在 `go-service/internal/pkg/ai/factory_test.go` 中使用 rapid 库验证：合法 deploy_type 返回正确实例，非法 deploy_type 返回错误
+    - **Validates: Requirements 2.6**
+
+- [x] 7. 数据脱敏工具
+  - [x] 7.1 实现敏感数据脱敏函数
+    - 在 `go-service/internal/pkg/sanitize/sanitize.go` 中实现身份证号、手机号、银行卡号、薪资金额的脱敏函数
+    - 脱敏规则：身份证保留前3后4、手机号保留前3后4、银行卡保留后4位、薪资替换为区间
+    - _Requirements: 17.5_
+  - [ ]* 7.2 写属性测试：敏感数据脱敏（Property 16）
+    - **Property 16: 敏感数据脱敏**
+    - 在 `go-service/internal/pkg/sanitize/sanitize_test.go` 中使用 rapid 库验证：脱敏后输出不包含完整敏感信息原文，且格式符合预定义规则
+    - **Validates: Requirements 17.5**
+
+- [x] 8. Checkpoint - 确认基础设施层（Repository + 适配器 + 调用器 + 脱敏）
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 9. Service 层实现（流程审核配置 + 审核规则）
+  - [x] 9.1 实现 ProcessAuditConfigService
+    - 在 `go-service/internal/service/process_audit_config_service.go` 中实现
+    - 包含 Create（校验 process_type 租户内唯一性）、GetByID、List、Update、Delete 方法
+    - 包含 TestConnection（调用 OAAdapter.ValidateProcess）和 FetchFields（调用 OAAdapter.FetchFields 并持久化到 main_fields/detail_tables）方法
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 4.1, 4.2, 4.4, 4.5, 6.1, 6.2, 6.3, 6.4_
+  - [ ]* 9.2 写属性测试：流程审核配置 CRUD 往返（Property 4）
+    - **Property 4: 流程审核配置 CRUD 往返**
+    - 在 `go-service/internal/service/process_audit_config_service_test.go` 中使用 rapid 库验证：创建合法 ProcessAuditConfig 后查询返回等价数据，包括 ai_config 中的 system_prompt 和 user_prompt_template
+    - **Validates: Requirements 6.1, 6.3, 6.4, 7.3, 4.4**
+  - [ ]* 9.3 写属性测试：流程类型租户内唯一性（Property 8）
+    - **Property 8: 流程类型租户内唯一性**
+    - 在 `go-service/internal/service/process_audit_config_service_test.go` 中使用 rapid 库验证：同一租户下创建两个相同 process_type 的配置，第二次应返回唯一性冲突错误
+    - **Validates: Requirements 6.2**
+  - [x] 9.4 实现 AuditRuleService
+    - 在 `go-service/internal/service/audit_rule_service.go` 中实现
+    - 包含 Create、Update、Delete（manual 来源硬删除，file_import 来源标记禁用）、ListByProcessType（支持 rule_scope/enabled 筛选）方法
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
+  - [ ]* 9.5 写属性测试：审核规则 CRUD 往返（Property 5）
+    - **Property 5: 审核规则 CRUD 往返**
+    - 在 `go-service/internal/service/audit_rule_service_test.go` 中使用 rapid 库验证：创建合法 AuditRule 后按 process_type 查询应包含该规则且字段值一致
+    - **Validates: Requirements 5.2**
+  - [ ]* 9.6 写属性测试：审核规则筛选正确性（Property 15）
+    - **Property 15: 审核规则筛选正确性**
+    - 在 `go-service/internal/service/audit_rule_service_test.go` 中使用 rapid 库验证：按 process_type、rule_scope、enabled 筛选返回的所有规则满足所有筛选条件
+    - **Validates: Requirements 5.3**
+  - [ ]* 9.7 写属性测试：规则删除行为（Property 20）
+    - **Property 20: 规则删除行为**
+    - 在 `go-service/internal/service/audit_rule_service_test.go` 中使用 rapid 库验证：manual 来源规则删除后从数据库完全移除，file_import 来源规则删除后保留但标记禁用
+    - **Validates: Requirements 5.4**
+
+- [x] 10. Service 层实现（审核尺度预设 + 用户个人配置 + 规则合并）
+  - [x] 10.1 实现 StrictnessPresetService
+    - 在 `go-service/internal/service/strictness_preset_service.go` 中实现
+    - 包含 ListByTenant、UpdateByStrictness 方法，确保每个租户恰好维护 strict/standard/loose 三条记录
+    - 在租户首次访问时自动初始化三条默认预设
+    - _Requirements: 8.1, 8.2, 8.3_
+  - [ ]* 10.2 写属性测试：审核尺度预设不变量（Property 9）
+    - **Property 9: 审核尺度预设不变量**
+    - 在 `go-service/internal/service/strictness_preset_service_test.go` 中使用 rapid 库验证：任何租户的 strictness_presets 恰好存在三条记录，更新后查询返回更新值
+    - **Validates: Requirements 8.2, 8.3**
+  - [x] 10.3 实现 UserPersonalConfigService
+    - 在 `go-service/internal/service/user_personal_config_service.go` 中实现
+    - 包含 GetProcessList（双重校验：OA 审批权限 + 租户配置存在）、GetByProcessType、UpdateByProcessType 方法
+    - UpdateByProcessType 需校验 user_permissions 锁定状态，被锁定的配置项拒绝修改
+    - _Requirements: 9.1, 9.2, 9.3, 9.4, 10.1, 10.2, 10.3, 10.4, 10.5, 11.1, 11.2, 11.3, 12.2, 12.4, 13.1, 13.2, 13.3, 14.1, 14.2, 14.3_
+  - [ ]* 10.4 写属性测试：用户个人配置往返（Property 6）
+    - **Property 6: 用户个人配置往返**
+    - 在 `go-service/internal/service/user_personal_config_service_test.go` 中使用 rapid 库验证：保存合法用户配置后查询返回等价数据
+    - **Validates: Requirements 11.3, 12.4, 13.3**
+  - [ ]* 10.5 写属性测试：权限锁定拒绝修改（Property 10）
+    - **Property 10: 权限锁定拒绝修改**
+    - 在 `go-service/internal/service/user_personal_config_service_test.go` 中使用 rapid 库验证：当 allow_custom_fields/allow_custom_rules/allow_modify_strictness 为 false 时，对应修改被拒绝
+    - **Validates: Requirements 9.1, 9.2, 9.3, 11.1, 11.2, 13.1, 13.2**
+  - [x] 10.6 实现规则合并逻辑
+    - 在 `go-service/internal/service/rule_merge.go` 中实现 MergeRules 函数
+    - 合并优先级：mandatory 规则始终生效 > 用户私有规则 > 用户 toggle 覆盖 > 租户默认规则
+    - 实现字段覆盖合并和审核尺度覆盖合并
+    - _Requirements: 11.4, 12.1, 12.3, 12.5, 13.4_
+  - [ ]* 10.7 写属性测试：强制规则不可关闭（Property 11）
+    - **Property 11: 强制规则不可关闭**
+    - 在 `go-service/internal/service/rule_merge_test.go` 中使用 rapid 库验证：mandatory 规则的 enabled=false toggle 在合并时被忽略，强制规则始终生效
+    - **Validates: Requirements 12.1**
+  - [ ]* 10.8 写属性测试：规则合并优先级（Property 12）
+    - **Property 12: 规则合并优先级**
+    - 在 `go-service/internal/service/rule_merge_test.go` 中使用 rapid 库验证：合并后 mandatory 始终包含且启用，用户私有规则优先于租户默认规则，toggle 覆盖生效
+    - **Validates: Requirements 12.5**
+  - [ ]* 10.9 写属性测试：用户覆盖优先（Property 13）
+    - **Property 13: 用户覆盖优先**
+    - 在 `go-service/internal/service/rule_merge_test.go` 中使用 rapid 库验证：字段覆盖和审核尺度覆盖优先使用用户值，用户未覆盖时使用租户默认值
+    - **Validates: Requirements 11.4, 13.4**
+
+- [x] 11. Service 层实现（AI 调用 + Token 统计 + 提示词组装）
+  - [x] 11.1 实现 AIModelCallerService
+    - 在 `go-service/internal/service/ai_caller_service.go` 中实现
+    - 包含 Chat 方法：根据 ai_model_configs.deploy_type 选择调用器，调用完成后累加 tenant.token_used，异步写入 tenant_llm_message_logs
+    - 使用 goroutine + channel 实现异步日志写入，不阻塞主流程
+    - _Requirements: 2.4, 2.5, 2.6, 15.2, 15.4_
+  - [ ]* 11.2 写属性测试：Token 累加正确性（Property 3）
+    - **Property 3: Token 累加正确性**
+    - 在 `go-service/internal/service/ai_caller_service_test.go` 中使用 rapid 库验证：调用完成后 token_used 增加恰好 total_tokens，且日志记录包含正确字段
+    - **Validates: Requirements 2.4, 2.5, 15.2**
+  - [x] 11.3 实现 LLMMessageLogService
+    - 在 `go-service/internal/service/llm_message_log_service.go` 中实现
+    - 包含 QueryTokenUsage（按租户、时间范围、模型筛选）方法
+    - _Requirements: 15.3_
+  - [x] 11.4 实现提示词组装函数
+    - 在 `go-service/internal/service/prompt_builder.go` 中实现 BuildPrompt 函数
+    - 将 system_prompt 映射为系统角色消息，渲染 user_prompt_template（替换 {{process_type}}、{{fields}}、{{rules}} 变量）为用户角色消息
+    - 组装包含 system_prompt、user_prompt、model_config、audit_context 的完整请求体
+    - _Requirements: 7.3, 7.4, 17.1, 17.3_
+  - [ ]* 11.5 写属性测试：提示词组装正确性（Property 17）
+    - **Property 17: 提示词组装正确性**
+    - 在 `go-service/internal/service/prompt_builder_test.go` 中使用 rapid 库验证：system_prompt 映射为系统角色消息，渲染后的 user_prompt_template 映射为用户角色消息，请求体包含四个必需字段
+    - **Validates: Requirements 7.4, 17.3**
+
+- [x] 12. Checkpoint - 确认 Service 层完整性
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 13. Handler/API 层实现
+  - [x] 13.1 实现 ProcessAuditConfigHandler
+    - 在 `go-service/internal/handler/process_audit_config_handler.go` 中实现
+    - 路由：GET/POST `/api/tenant/rules/configs`、GET/PUT/DELETE `/api/tenant/rules/configs/:id`、POST `/api/tenant/rules/configs/test-connection`、POST `/api/tenant/rules/configs/:id/fetch-fields`
+    - 包含请求参数校验、错误响应格式化
+    - _Requirements: 3.5, 4.3, 6.1, 6.5_
+  - [x] 13.2 实现 AuditRuleHandler
+    - 在 `go-service/internal/handler/audit_rule_handler.go` 中实现
+    - 路由：GET/POST `/api/tenant/rules/audit-rules`、PUT/DELETE `/api/tenant/rules/audit-rules/:id`
+    - _Requirements: 5.1, 5.2, 5.3_
+  - [x] 13.3 实现 StrictnessPresetHandler
+    - 在 `go-service/internal/handler/strictness_preset_handler.go` 中实现
+    - 路由：GET `/api/tenant/rules/strictness-presets`、PUT `/api/tenant/rules/strictness-presets/:strictness`
+    - _Requirements: 8.1, 8.4_
+  - [x] 13.4 实现 UserPersonalConfigHandler
+    - 在 `go-service/internal/handler/user_personal_config_handler.go` 中实现
+    - 路由：GET `/api/tenant/settings/processes`、GET/PUT `/api/tenant/settings/processes/:processType`、GET/PUT `/api/tenant/settings/dashboard-prefs`
+    - _Requirements: 9.4, 10.1, 10.2, 10.3, 11.3, 12.4, 13.3, 14.1, 14.2_
+  - [x] 13.5 实现 UserConfigManagementHandler（租户管理端）
+    - 在 `go-service/internal/handler/user_config_management_handler.go` 中实现
+    - 路由：GET `/api/tenant/user-configs`、GET `/api/tenant/user-configs/:userId`
+    - _Requirements: 9.4_
+  - [x] 13.6 实现 LLMMessageLogHandler
+    - 在 `go-service/internal/handler/llm_message_log_handler.go` 中实现
+    - 路由：GET `/api/tenant/stats/token-usage`、GET `/api/admin/stats/token-usage`
+    - _Requirements: 15.3_
+  - [x] 13.7 创建 DTO 结构体
+    - 在 `go-service/internal/dto/` 下创建 `rules_dto.go`（流程配置、审核规则、尺度预设的请求/响应 DTO）和 `settings_dto.go`（用户个人配置的请求/响应 DTO）
+    - _Requirements: 6.1, 5.2, 8.1, 11.3_
+  - [x] 13.8 注册路由
+    - 在 `go-service/internal/router/router.go` 中注册所有新 API 路由，配置租户中间件和角色中间件
+    - tenant_admin 路由组：rules/configs、audit-rules、strictness-presets、user-configs
+    - business user 路由组：settings/processes、settings/dashboard-prefs
+    - system_admin 路由组：admin/stats/token-usage
+    - _Requirements: 5.5, 14.3_
+
+- [x] 14. Checkpoint - 确认后端 API 层完整性
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 15. 前端 Composable 和 API 层
+  - [x] 15.1 创建 useRulesApi composable
+    - 在 `frontend/composables/useRulesApi.ts` 中实现
+    - 封装流程审核配置 CRUD API（listConfigs、createConfig、updateConfig、deleteConfig）
+    - 封装测试连接 API（testConnection）和字段拉取 API（fetchFields）
+    - 封装审核规则 CRUD API（listRules、createRule、updateRule、deleteRule）
+    - 封装审核尺度预设 API（listPresets、updatePreset）
+    - _Requirements: 6.5, 3.5, 4.3, 5.3, 8.4_
+  - [x] 15.2 创建 useSettingsApi composable
+    - 在 `frontend/composables/useSettingsApi.ts` 中实现
+    - 封装用户流程列表 API（listProcesses，双重校验结果）
+    - 封装用户配置 API（getProcessConfig、updateProcessConfig）
+    - 封装仪表板偏好 API（getDashboardPrefs、updateDashboardPrefs）
+    - 封装权限锁定状态计算逻辑（根据 user_permissions 返回各配置项的可编辑状态）
+    - _Requirements: 9.4, 10.1, 11.1, 11.2, 12.2, 13.1, 13.2, 14.1, 14.2_
+  - [ ]* 15.3 写属性测试：流程列表双重校验（Property 14）
+    - **Property 14: 流程列表双重校验**
+    - 在 `frontend/composables/__tests__/useSettingsApi.test.ts` 中使用 fast-check 验证：返回的流程列表中每个流程同时满足 OA 审批权限和租户配置存在两个条件
+    - **Validates: Requirements 10.2, 10.3, 10.4, 10.5**
+
+- [x] 16. 前端页面替换
+  - [x] 16.1 更新 rules.vue 页面
+    - 在 `frontend/pages/admin/tenant/rules.vue` 中替换所有 mockProcessAuditConfigs 引用为 useRulesApi 调用
+    - 接入测试连接按钮和结果展示
+    - 接入字段拉取功能和统计提示
+    - 修改 AI 配置区域标签："编辑预设提示词" → "预设系统提示词"，标注"系统提示词"和"用户提示词（首次提问）"
+    - _Requirements: 3.5, 4.3, 6.5, 7.1, 7.2_
+  - [x] 16.2 更新 settings.vue 页面
+    - 在 `frontend/pages/settings.vue` 中替换模拟数据为 useSettingsApi 调用
+    - 实现权限锁定 UI：字段配置锁定时只读、自定义规则锁定时禁用添加、审核尺度锁定时禁用选择
+    - mandatory 规则显示锁定图标不可关闭
+    - 根据当前激活角色的 tenant_id 加载配置，切换角色后重新加载
+    - _Requirements: 9.1, 9.2, 9.3, 9.4, 11.1, 11.2, 12.1, 12.2, 12.3, 13.1, 13.2, 14.1, 14.2_
+  - [x] 16.3 更新 user-configs.vue 页面
+    - 在 `frontend/pages/admin/tenant/user-configs.vue` 中替换 mockUserPersonalConfigs 为管理端 API 调用
+    - _Requirements: 9.4_
+
+- [x] 17. Checkpoint - 确认前端集成完整性
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 18. Go ↔ Python 服务间协议实现
+  - [x] 18.1 实现 Go 端 AI 服务调用客户端
+    - 在 `go-service/internal/service/ai_caller_service.go` 中补充 HTTP 调用 Python AI 服务的逻辑
+    - 请求体包含 system_prompt、user_prompt、model_config、audit_context
+    - 响应体解析 content、token_usage、model_id、duration_ms
+    - 调用前执行数据脱敏（调用 sanitize 包）
+    - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
+
+- [x] 19. Final checkpoint - 确认所有功能集成
+  - Ensure all tests pass, ask the user if questions arise.
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation
+- Property tests validate universal correctness properties (20 properties across Go + frontend)
+- Go PBT library: `pgregory.net/rapid`; Frontend PBT library: `fast-check`
+- 数据库迁移文件编号延续现有 000001-000006，从 000007 开始
+- 所有新增表包含 tenant_id 列，通过租户中间件确保隔离

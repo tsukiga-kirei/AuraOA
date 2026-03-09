@@ -27,10 +27,27 @@ definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
 const { mockUserPersonalConfigs } = useMockData()
+const { authFetch } = useAuth()
 const { roles, members, loadAll: loadOrgData } = useOrgApi()
 
-onMounted(() => {
+onMounted(async () => {
   loadOrgData()
+  // 从管理端 API 加载用户配置列表
+  try {
+    const data = await authFetch<any[]>('/api/tenant/user-configs')
+    if (data && data.length > 0) {
+      configs.value = data.map((c: any) => ({
+        user_id: c.user_id,
+        user_name: c.user_id,
+        department: '',
+        role_names: [],
+        audit_details: c.audit_details || [],
+        cron_details: c.cron_details || [],
+        archive_details: c.archive_details || [],
+      })) as any
+    }
+  }
+  catch (e) { console.error('[user-configs] 加载用户配置失败', e) }
 })
 
 const configs = ref<UserPersonalConfig[]>(JSON.parse(JSON.stringify(mockUserPersonalConfigs)))

@@ -38,7 +38,8 @@ definePageMeta({
 })
 
 const { userRole, activeRole, getProfile, updateProfile, updateLocale, setUserLocale } = useAuth()
-const { mockProcessAuditConfigs, mockArchiveReviewConfigs } = useMockData()
+const { mockArchiveReviewConfigs } = useMockData()
+const settingsApi = useSettingsApi()
 const { t, locale, setLocale, availableLocales } = useI18n()
 
 /** /api/auth/me 返回的完整资料 */
@@ -52,8 +53,30 @@ const fetchMe = async () => {
   meLoading.value = false
 }
 
-// 进入页面时拉取 /api/auth/me
-onMounted(() => { fetchMe() })
+// 进入页面时拉取 /api/auth/me 和流程配置
+onMounted(async () => {
+  fetchMe()
+  // 从 API 加载用户可见的流程列表
+  try {
+    const processList = await settingsApi.listProcesses()
+    // 将流程列表转换为 ProcessAuditConfig 格式（兼容现有模板）
+    userProcessConfigs.value = processList.map((p: any) => ({
+      id: p.config_id,
+      process_type: p.process_type,
+      process_type_label: p.process_type_label,
+      field_mode: 'all',
+      fields: [],
+      rules: [],
+      kb_mode: 'rules_only',
+      ai_config: { audit_strictness: 'standard', reasoning_prompt: '', extraction_prompt: '' },
+      user_permissions: { allow_custom_fields: true, allow_custom_rules: true, allow_modify_strictness: true },
+    })) as any
+    if (userProcessConfigs.value.length > 0) {
+      selectedProcessId.value = userProcessConfigs.value[0].id
+    }
+  }
+  catch (e) { console.error('[settings] 加载流程列表失败', e) }
+})
 
 /** 当前活跃身份的角色类型（system_admin/tenant_admin/business）*/
 const currentRoleType = computed(() => activeRole.value?.role || userRole.value)
@@ -186,25 +209,16 @@ const getRoleLabel = (role: string) => {
 }
 
 //===== 审核工作台选项卡 =====
-//深度克隆租户配置作为用户的工作副本
-const userProcessConfigs = ref<ProcessAuditConfig[]>(
-  JSON.parse(JSON.stringify(mockProcessAuditConfigs))
-)
+//从 API 加载流程配置（替代模拟数据）
+const userProcessConfigs = ref<ProcessAuditConfig[]>([])
 
 //每个进程的用户自定义规则（与租户规则分开）
-const userCustomRules = ref<Record<string, { id: string; content: string; enabled: boolean; related_flow: boolean }[]>>({
-  'PAC-001': [{ id: 'UCR-001', content: '供应商必须在合格名录中', enabled: true, related_flow: false }],
-  'PAC-002': [],
-  'PAC-003': [{ id: 'UCR-002', content: '合同期限超过2年需额外审批', enabled: true, related_flow: true }],
-  'PAC-004': [],
-})
+const userCustomRules = ref<Record<string, { id: string; content: string; enabled: boolean; related_flow: boolean }[]>>({})
 
 //用户的自定义字段覆盖（其他选定字段）
-const userFieldOverrides = ref<Record<string, string[]>>({
-  'PAC-004': ['salary_range'],
-})
+const userFieldOverrides = ref<Record<string, string[]>>({})
 
-const selectedProcessId = ref(userProcessConfigs.value[0]?.id || '')
+const selectedProcessId = ref('')
 
 const selectedConfig = computed(() =>
   userProcessConfigs.value.find(c => c.id === selectedProcessId.value)

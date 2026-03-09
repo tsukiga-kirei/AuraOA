@@ -20,6 +20,12 @@ func SetupRouter(
 	tenantHandler *handler.TenantHandler,
 	systemHandler *handler.SystemHandler,
 	healthHandler *handler.HealthHandler,
+	configHandler *handler.ProcessAuditConfigHandler,
+	ruleHandler *handler.AuditRuleHandler,
+	presetHandler *handler.StrictnessPresetHandler,
+	userConfigHandler *handler.UserPersonalConfigHandler,
+	userConfigMgmtHandler *handler.UserConfigManagementHandler,
+	llmLogHandler *handler.LLMMessageLogHandler,
 ) {
 	// Global middleware
 	r.Use(middleware.Logger(logger))
@@ -105,5 +111,58 @@ func SetupRouter(
 			system.GET("/configs", systemHandler.GetSystemConfigs)
 			system.PUT("/configs", systemHandler.UpdateSystemConfigs)
 		}
+
+		// 系统管理员 — Token 消耗统计
+		admin.GET("/stats/token-usage", llmLogHandler.QueryAllTenantsTokenUsage)
+	}
+
+	// 租户管理员路由组（JWT + TenantContext + tenant_admin）
+	tenantRules := r.Group("/api/tenant/rules")
+	tenantRules.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		// 流程审核配置
+		tenantRules.GET("/configs", configHandler.List)
+		tenantRules.POST("/configs", configHandler.Create)
+		tenantRules.GET("/configs/:id", configHandler.GetByID)
+		tenantRules.PUT("/configs/:id", configHandler.Update)
+		tenantRules.DELETE("/configs/:id", configHandler.Delete)
+		tenantRules.POST("/configs/test-connection", configHandler.TestConnection)
+		tenantRules.POST("/configs/:id/fetch-fields", configHandler.FetchFields)
+
+		// 审核规则
+		tenantRules.GET("/audit-rules", ruleHandler.List)
+		tenantRules.POST("/audit-rules", ruleHandler.Create)
+		tenantRules.PUT("/audit-rules/:id", ruleHandler.Update)
+		tenantRules.DELETE("/audit-rules/:id", ruleHandler.Delete)
+
+		// 审核尺度预设
+		tenantRules.GET("/strictness-presets", presetHandler.List)
+		tenantRules.PUT("/strictness-presets/:strictness", presetHandler.Update)
+	}
+
+	// 租户管理员 — 用户配置管理
+	tenantUserConfigs := r.Group("/api/tenant/user-configs")
+	tenantUserConfigs.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		tenantUserConfigs.GET("", userConfigMgmtHandler.ListUserConfigs)
+		tenantUserConfigs.GET("/:userId", userConfigMgmtHandler.GetUserConfig)
+	}
+
+	// 租户管理员 — Token 消耗统计
+	tenantStats := r.Group("/api/tenant/stats")
+	tenantStats.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		tenantStats.GET("/token-usage", llmLogHandler.QueryTokenUsage)
+	}
+
+	// 业务用户路由组（JWT + TenantContext，无角色限制）
+	tenantSettings := r.Group("/api/tenant/settings")
+	tenantSettings.Use(middleware.JWT(rdb), middleware.TenantContext())
+	{
+		tenantSettings.GET("/processes", userConfigHandler.GetProcessList)
+		tenantSettings.GET("/processes/:processType", userConfigHandler.GetByProcessType)
+		tenantSettings.PUT("/processes/:processType", userConfigHandler.UpdateByProcessType)
+		tenantSettings.GET("/dashboard-prefs", userConfigHandler.GetDashboardPrefs)
+		tenantSettings.PUT("/dashboard-prefs", userConfigHandler.UpdateDashboardPrefs)
 	}
 }
