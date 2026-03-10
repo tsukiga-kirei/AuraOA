@@ -5,6 +5,7 @@ package dm
 
 import (
 	"fmt"
+	"net/url"
 
 	dmdriver "github.com/Rulessly/dm-driver-gorm"
 	"gorm.io/gorm"
@@ -17,7 +18,8 @@ func Open(dsn string) gorm.Dialector {
 
 // BuildDSN 构建达梦数据库连接字符串。
 // 格式: dm://user:pass@host:port?ignoreCase=false
+// 用户名和密码会进行 URL 编码以处理特殊字符（如 / @ 等）。
 func BuildDSN(username, password, host string, port int, dbName string) string {
 	return fmt.Sprintf("dm://%s:%s@%s:%d?schema=%s&ignoreCase=false",
-		username, password, host, port, dbName)
+		url.QueryEscape(username), url.QueryEscape(password), host, port, dbName)
 }

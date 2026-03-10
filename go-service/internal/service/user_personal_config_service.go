@@ -10,6 +10,7 @@ import (
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
+	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	"oa-smart-audit/go-service/internal/pkg/oa"
 	"oa-smart-audit/go-service/internal/repository"
@@ -238,6 +239,13 @@ func (s *UserPersonalConfigService) getOAAdapter(c *gin.Context) (oa.OAAdapter, 
 	if err != nil {
 		return nil, err
 	}
+
+	// 解密密码（数据库中存储的是加密密文）
+	password, decErr := crypto.Decrypt(conn.Password)
+	if decErr != nil {
+		return nil, newServiceError(errcode.ErrOAConnectionFailed, "OA数据库密码解密失败")
+	}
+	conn.Password = password
 
 	return oa.NewOAAdapter(conn.OAType, conn)
 }

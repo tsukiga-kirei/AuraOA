@@ -4,6 +4,7 @@ package oracle
 
 import (
 	"fmt"
+	"net/url"
 
 	goracle "github.com/godoes/gorm-oracle"
 	"gorm.io/gorm"
@@ -23,7 +24,8 @@ func Open(dsn string) gorm.Dialector {
 
 // BuildDSN 构建 Oracle 连接字符串。
 // 格式: oracle://user:pass@host:port/service_name
+// 用户名和密码会进行 URL 编码以处理特殊字符（如 / @ 等）。
 func BuildDSN(username, password, host string, port int, serviceName string) string {
 	return fmt.Sprintf("oracle://%s:%s@%s:%d/%s",
-		username, password, host, port, serviceName)
+		url.QueryEscape(username), url.QueryEscape(password), host, port, serviceName)
 }

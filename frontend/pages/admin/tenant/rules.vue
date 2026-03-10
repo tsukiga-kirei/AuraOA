@@ -321,18 +321,18 @@ interface FieldGroup {
 const groupedAvailableFields = computed<FieldGroup[]>(() => {
   if (!selectedConfig.value) return []
   const groups: FieldGroup[] = []
-  const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
+  const mainFields = selectedConfig.value.main_fields || []
   groups.push({
     source: 'main',
     sourceLabel: t('admin.ruleConfig.mainTableFields'),
-    fields: mainFields.map(f => ({ ...f, source: 'main', sourceLabel: t('admin.ruleConfig.mainTableFields') })),
+    fields: mainFields.map(f => ({ ...f, selected: f.selected ?? false, source: 'main', sourceLabel: t('admin.ruleConfig.mainTableFields') })),
   })
   if (selectedConfig.value.detail_tables) {
     selectedConfig.value.detail_tables.forEach((dt, idx) => {
       groups.push({
         source: dt.table_name,
         sourceLabel: `${t('admin.ruleConfig.detailTableLabel')} ${idx + 1}`,
-        fields: dt.fields.map(f => ({ ...f, source: dt.table_name, sourceLabel: `${t('admin.ruleConfig.detailTableLabel')} ${idx + 1}` })),
+        fields: dt.fields.map(f => ({ ...f, selected: f.selected ?? false, source: dt.table_name, sourceLabel: `${t('admin.ruleConfig.detailTableLabel')} ${idx + 1}` })),
       })
     })
   }
@@ -377,7 +377,7 @@ const openFieldPicker = () => {
 const pickField = (field: { field_key: string; source: string }) => {
   if (!selectedConfig.value) return
   //在 main_fields 中查找并切换
-  const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
+  const mainFields = selectedConfig.value.main_fields || []
   const mf = mainFields.find(f => f.field_key === field.field_key)
   if (mf && field.source === 'main') { mf.selected = true; return }
   //查找详细表格
@@ -393,7 +393,7 @@ const pickField = (field: { field_key: string; source: string }) => {
 
 const unpickField = (field: { field_key: string; source: string }) => {
   if (!selectedConfig.value) return
-  const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
+  const mainFields = selectedConfig.value.main_fields || []
   const mf = mainFields.find(f => f.field_key === field.field_key)
   if (mf && field.source === 'main') { mf.selected = false; return }
   if (selectedConfig.value.detail_tables) {
@@ -568,7 +568,7 @@ onMounted(async () => {
   // 从 API 加载流程审核配置
   try {
     const configs = await rulesApi.listConfigs()
-    processConfigs.value = configs as any
+    processConfigs.value = configs
     if (configs.length > 0) {
       selectedProcessId.value = configs[0].id
       // 加载第一个流程的规则
@@ -1204,7 +1204,7 @@ const handleSave = async () => {
                 </div>
               </div>
               <div class="rule-card-actions">
-                <a-switch :checked="rule.enabled" size="small" @change="(checked: boolean) => rulesApi.updateRule(rule.id, { enabled: checked }).then(updated => { const idx = currentRules.findIndex(r => r.id === rule.id); if (idx >= 0) currentRules[idx] = updated })" />
+                <a-switch :checked="rule.enabled" size="small" @change="(checked: any) => rulesApi.updateRule(rule.id, { enabled: !!checked }).then(updated => { const idx = currentRules.findIndex(r => r.id === rule.id); if (idx >= 0) currentRules[idx] = updated })" />
                 <button class="icon-btn" @click="openRuleEditor(rule)"><EditOutlined /></button>
                 <a-popconfirm :title="t('admin.ruleConfig.deleteRuleConfirm')" @confirm="deleteRule(rule.id)">
                   <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
