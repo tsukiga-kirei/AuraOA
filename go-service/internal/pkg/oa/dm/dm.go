@@ -17,9 +17,9 @@ func Open(dsn string) gorm.Dialector {
 }
 
 // BuildDSN 构建达梦数据库连接字符串。
-// 格式: dm://user:pass@host:port?ignoreCase=false
+// 格式: dm://user:pass@host:port?ignoreCase=true
 // 用户名和密码会进行 URL 编码以处理特殊字符（如 / @ 等）。
 func BuildDSN(username, password, host string, port int, dbName string) string {
-	return fmt.Sprintf("dm://%s:%s@%s:%d?schema=%s&ignoreCase=false",
+	return fmt.Sprintf("dm://%s:%s@%s:%d?schema=%s&ignoreCase=true",
 		url.QueryEscape(username), url.QueryEscape(password), host, port, dbName)
 }

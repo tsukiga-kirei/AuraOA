@@ -101,7 +101,7 @@
      → Ecology9Adapter.ValidateProcess(processType)
      → OA 数据库: SELECT FROM workflow_base WHERE ...
      → 可选：校验 main_table_name 是否与 OA 实际主表一致
-     → 返回 ProcessInfo{name, mainTable, detailCount, tableMismatch?, expectedTable?}
+     → 返回 ProcessInfo{name, mainTable, tableMismatch?, expectedTable?}
 ```
 
 #### AI 审核调用
@@ -144,7 +144,6 @@ ProcessInfo
 ├── ProcessType    string   // 流程类型标识
 ├── ProcessName    string   // 流程名称
 ├── MainTable      string   // 主表名
-├── DetailCount    int      // 明细表数量
 ├── TableMismatch  bool     // 用户填写的主表名与 OA 实际不一致（仅校验时返回）
 └── ExpectedTable  string   // OA 系统中的正确主表名（仅 mismatch 时返回）
 

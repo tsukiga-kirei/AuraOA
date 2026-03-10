@@ -26,13 +26,18 @@ func (a *Ecology9Adapter) isOracleCompatible() bool {
 	return a.driver == "oracle" || a.driver == "dm"
 }
 
-// tableName 根据驱动类型返回正确大小写的表名。
+// tableName 根据驱动类型返回正确大小写的表名/列名。
 // Oracle/DM 默认大写标识符，MySQL 不区分大小写。
 func (a *Ecology9Adapter) tableName(name string) string {
 	if a.isOracleCompatible() {
 		return strings.ToUpper(name)
 	}
 	return name
+}
+
+// col 与 tableName 相同，用于列名场景，语义更清晰。
+func (a *Ecology9Adapter) col(name string) string {
+	return a.tableName(name)
 }
 
 // NewEcology9Adapter 根据 OA 数据库连接配置创建泛微 E9 适配器实例。
@@ -83,79 +88,86 @@ func NewEcology9Adapter(conn *model.OADatabaseConnection) (*Ecology9Adapter, err
 
 // ── E9 表结构映射 ──────────────────────────────────────────
 
-// e9WorkflowBase 泛微 E9 workflow_base 表映射
-type e9WorkflowBase struct {
-	ID           int    `gorm:"column:id"`
-	WorkflowName string `gorm:"column:workflowname"`
-	FormID       int    `gorm:"column:formid"`
-	TableDBName  string `gorm:"column:tablename"`
-	IsValid      string `gorm:"column:isvalid"` // "1"=启用, "0"=停用
-}
-
-func (e9WorkflowBase) TableName() string { return "workflow_base" }
-
-// e9WorkflowBill 泛微 E9 workflow_bill 表映射（表单定义）
-type e9WorkflowBill struct {
-	ID          int    `gorm:"column:id"`
-	TableDBName string `gorm:"column:tablename"`
-}
-
-func (e9WorkflowBill) TableName() string { return "workflow_bill" }
-
 // e9WorkflowBillField 泛微 E9 workflow_billfield 表映射（流程表单字段定义）
+// 注意：Oracle/DM 返回的列名为大写，通过 mapGet() 辅助函数不区分大小写取值。
 type e9WorkflowBillField struct {
-	ID            int    `gorm:"column:id"`
-	FieldDBName   string `gorm:"column:fielddbname"`
-	FieldName     string `gorm:"column:fieldname"`
-	FieldHTMLType string `gorm:"column:fieldhtmltype"`
-	DetailTable   int    `gorm:"column:detailtable"` // 0=主表, >0=明细表序号
-	FormID        int    `gorm:"column:billid"`
+	FieldDBName   string
+	FieldName     string
+	FieldHTMLType string
+	DetailTable   int
 }
 
 func (e9WorkflowBillField) TableName() string { return "workflow_billfield" }
 
+// mapGet 从 map[string]interface{} 中不区分大小写地取字符串值。
+func mapGet(m map[string]interface{}, key string) string {
+	key = strings.ToLower(key)
+	for k, v := range m {
+		if strings.ToLower(k) == key {
+			if s, ok := v.(string); ok {
+				return s
+			}
+			return fmt.Sprintf("%v", v)
+		}
+	}
+	return ""
+}
+
+// mapGetInt 从 map[string]interface{} 中不区分大小写地取整数值。
+func mapGetInt(m map[string]interface{}, key string) int {
+	key = strings.ToLower(key)
+	for k, v := range m {
+		if strings.ToLower(k) == key {
+			switch n := v.(type) {
+			case int:
+				return n
+			case int32:
+				return int(n)
+			case int64:
+				return int(n)
+			case float64:
+				return int(n)
+			}
+		}
+	}
+	return 0
+}
+
 // ── ValidateProcess ────────────────────────────────────────
 
 // ValidateProcess 验证流程类型是否存在于泛微 E9 系统中。
-// 1. 检查 workflow_base 中是否存在该流程（不限 isvalid）
-// 2. 检查 isvalid=1（流程是否启用）
-// 3. 通过 formid 关联 workflow_bill 获取真实主表名
+// 1. 查询 workflow_base，确认流程存在且 isvalid=1
+// 2. 通过 formid 关联 workflow_bill 获取真实主表名
+//
+// 使用 Row().Scan() 显式扫描列值，避免 GORM struct tag 大小写映射问题（Oracle/DM 列名大写）。
 func (a *Ecology9Adapter) ValidateProcess(ctx context.Context, processType string) (*ProcessInfo, error) {
-	var wf e9WorkflowBase
-	err := a.db.WithContext(ctx).
+	// 查询 workflow_base：获取流程名称和 formid
+	var workflowName string
+	var formID int
+	row := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_base")).
-		Where(a.tableName("workflowname")+" = ? AND "+a.tableName("isvalid")+" = ?", processType, "1").
-		Take(&wf).Error
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("流程 '%s' 在泛微 E9 系统中不存在或已停用", processType)
-		}
-		return nil, fmt.Errorf("查询泛微 E9 流程失败: %w", err)
+		Select(a.col("workflowname")+", "+a.col("formid")).
+		Where(a.col("workflowname")+" = ? AND "+a.col("isvalid")+" = ?", processType, "1").
+		Row()
+	if err := row.Scan(&workflowName, &formID); err != nil {
+		return nil, fmt.Errorf("流程 '%s' 在泛微 E9 系统中不存在或已停用", processType)
 	}
 
-	// 通过 formid 关联 workflow_bill 获取真实主表名
-	var bill e9WorkflowBill
-	err = a.db.WithContext(ctx).
+	// 通过 formid 查询 workflow_bill，获取真实主表名
+	var mainTable string
+	billRow := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_bill")).
-		Where(a.tableName("id")+" = ?", wf.FormID).
-		Take(&bill).Error
-	if err != nil {
-		// workflow_bill 查询失败时降级使用 workflow_base.tablename
-		bill.TableDBName = wf.TableDBName
+		Select(a.col("tablename")).
+		Where(a.col("id")+" = ?", formID).
+		Row()
+	if err := billRow.Scan(&mainTable); err != nil {
+		return nil, fmt.Errorf("查询流程表单定义失败 (formid=%d): %w", formID, err)
 	}
-
-	var detailCount int64
-	a.db.WithContext(ctx).
-		Table(a.tableName("workflow_billfield")).
-		Where(a.tableName("billid")+" = ? AND "+a.tableName("detailtable")+" > 0", wf.FormID).
-		Distinct(a.tableName("detailtable")).
-		Count(&detailCount)
 
 	return &ProcessInfo{
 		ProcessType: processType,
-		ProcessName: wf.WorkflowName,
-		MainTable:   bill.TableDBName,
-		DetailCount: int(detailCount),
+		ProcessName: workflowName,
+		MainTable:   mainTable,
 	}, nil
 }
 
@@ -163,21 +175,25 @@ func (a *Ecology9Adapter) ValidateProcess(ctx context.Context, processType strin
 
 // FetchFields 从泛微 E9 拉取指定流程的全部字段定义。
 func (a *Ecology9Adapter) FetchFields(ctx context.Context, processType string) (*ProcessFields, error) {
-	var wf e9WorkflowBase
-	err := a.db.WithContext(ctx).
+	// 显式扫描 formid 和 tablename，避免 struct tag 大小写映射问题
+	var formID int
+	var mainTableName string
+	row := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_base")).
-		Where(a.tableName("workflowname")+" = ?", processType).
-		Take(&wf).Error
-	if err != nil {
+		Select(a.col("formid")+", "+a.col("tablename")).
+		Where(a.col("workflowname")+" = ?", processType).
+		Row()
+	if err := row.Scan(&formID, &mainTableName); err != nil {
 		return nil, fmt.Errorf("查询流程 '%s' 失败: %w", processType, err)
 	}
 
-	var fields []e9WorkflowBillField
-	err = a.db.WithContext(ctx).
+	var rawFields []map[string]interface{}
+	err := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_billfield")).
-		Where(a.tableName("billid")+" = ?", wf.FormID).
-		Order(a.tableName("detailtable") + " ASC, " + a.tableName("id") + " ASC").
-		Find(&fields).Error
+		Select(a.col("fielddbname")+", "+a.col("fieldname")+", "+a.col("fieldhtmltype")+", "+a.col("detailtable")).
+		Where(a.col("billid")+" = ?", formID).
+		Order(a.col("detailtable") + " ASC, " + a.col("id") + " ASC").
+		Find(&rawFields).Error
 	if err != nil {
 		return nil, fmt.Errorf("查询流程字段失败: %w", err)
 	}
@@ -188,25 +204,26 @@ func (a *Ecology9Adapter) FetchFields(ctx context.Context, processType string) (
 	}
 	detailMap := make(map[int]*DetailTableDef)
 
-	for _, f := range fields {
+	for _, row := range rawFields {
 		fd := FieldDef{
-			FieldKey:  f.FieldDBName,
-			FieldName: f.FieldName,
-			FieldType: a.mapFieldType(f.FieldHTMLType),
+			FieldKey:  mapGet(row, "fielddbname"),
+			FieldName: mapGet(row, "fieldname"),
+			FieldType: a.mapFieldType(mapGet(row, "fieldhtmltype")),
 		}
-		if f.DetailTable == 0 {
+		dt := mapGetInt(row, "detailtable")
+		if dt == 0 {
 			result.MainFields = append(result.MainFields, fd)
 		} else {
-			dt, exists := detailMap[f.DetailTable]
+			dtDef, exists := detailMap[dt]
 			if !exists {
-				dt = &DetailTableDef{
-					TableName:  fmt.Sprintf("%s_dt%d", wf.TableDBName, f.DetailTable),
-					TableLabel: fmt.Sprintf("明细表%d", f.DetailTable),
+				dtDef = &DetailTableDef{
+					TableName:  fmt.Sprintf("%s_dt%d", mainTableName, dt),
+					TableLabel: fmt.Sprintf("明细表%d", dt),
 					Fields:     make([]FieldDef, 0),
 				}
-				detailMap[f.DetailTable] = dt
+				detailMap[dt] = dtDef
 			}
-			dt.Fields = append(dt.Fields, fd)
+			dtDef.Fields = append(dtDef.Fields, fd)
 		}
 	}
 	for i := 1; i <= len(detailMap); i++ {
@@ -221,12 +238,13 @@ func (a *Ecology9Adapter) FetchFields(ctx context.Context, processType string) (
 
 // CheckUserPermission 检查用户在泛微 E9 中是否具有指定流程的审批权限。
 func (a *Ecology9Adapter) CheckUserPermission(ctx context.Context, userID string, processType string) (bool, error) {
-	var wf e9WorkflowBase
-	err := a.db.WithContext(ctx).
+	var workflowID int
+	row := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_base")).
-		Where(a.tableName("workflowname")+" = ?", processType).
-		Take(&wf).Error
-	if err != nil {
+		Select(a.col("id")).
+		Where(a.col("workflowname")+" = ?", processType).
+		Row()
+	if err := row.Scan(&workflowID); err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return false, nil
 		}
@@ -234,9 +252,9 @@ func (a *Ecology9Adapter) CheckUserPermission(ctx context.Context, userID string
 	}
 
 	var count int64
-	err = a.db.WithContext(ctx).
+	err := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_currentoperator")).
-		Where(a.tableName("workflowid")+" = ? AND "+a.tableName("userid")+" = ?", wf.ID, userID).
+		Where(a.col("workflowid")+" = ? AND "+a.col("userid")+" = ?", workflowID, userID).
 		Count(&count).Error
 	if err != nil {
 		return false, fmt.Errorf("查询用户审批权限失败: %w", err)
@@ -249,61 +267,60 @@ func (a *Ecology9Adapter) CheckUserPermission(ctx context.Context, userID string
 // FetchProcessData 拉取指定流程实例的业务数据。
 // 注意：明细表子查询在 Oracle 和 MySQL 中语法不同，需按 driver 分支处理。
 func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string) (*ProcessData, error) {
-	// 查询流程请求基本信息
-	var requestInfo struct {
-		RequestID   int    `gorm:"column:requestid"`
-		WorkflowID  int    `gorm:"column:workflowid"`
-		RequestName string `gorm:"column:requestname"`
-	}
-	err := a.db.WithContext(ctx).
+	// 查询流程请求基本信息，显式扫描避免 struct tag 大小写问题
+	var workflowID int
+	reqRow := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_requestbase")).
-		Where(a.tableName("requestid")+" = ?", processID).
-		Take(&requestInfo).Error
-	if err != nil {
+		Select(a.col("workflowid")).
+		Where(a.col("requestid")+" = ?", processID).
+		Row()
+	if err := reqRow.Scan(&workflowID); err != nil {
 		return nil, fmt.Errorf("查询流程实例失败: %w", err)
 	}
 
-	// 查询流程对应的表单表名
-	var wf e9WorkflowBase
-	err = a.db.WithContext(ctx).
+	// 查询流程对应的主表名和 formid
+	var tableDBName string
+	var formID int
+	wfRow := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_base")).
-		Where(a.tableName("id")+" = ?", requestInfo.WorkflowID).
-		Take(&wf).Error
-	if err != nil {
+		Select(a.col("tablename")+", "+a.col("formid")).
+		Where(a.col("id")+" = ?", workflowID).
+		Row()
+	if err := wfRow.Scan(&tableDBName, &formID); err != nil {
 		return nil, fmt.Errorf("查询流程定义失败: %w", err)
 	}
 
 	// 查询主表数据
-	mainTableName := a.tableName(wf.TableDBName)
+	mainTableName := a.tableName(tableDBName)
 	var mainData map[string]interface{}
-	err = a.db.WithContext(ctx).
+	err := a.db.WithContext(ctx).
 		Table(mainTableName).
-		Where(a.tableName("requestid")+" = ?", processID).
+		Where(a.col("requestid")+" = ?", processID).
 		Take(&mainData).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
 		return nil, fmt.Errorf("查询主表数据失败: %w", err)
 	}
 
-	// 查询明细表数据
-	var detailData []map[string]interface{}
+	// 查询明细表数量
 	var detailCount int64
 	a.db.WithContext(ctx).
 		Table(a.tableName("workflow_billfield")).
-		Where(a.tableName("billid")+" = ? AND "+a.tableName("detailtable")+" > 0", wf.FormID).
-		Distinct(a.tableName("detailtable")).
+		Where(a.col("billid")+" = ? AND "+a.col("detailtable")+" > 0", formID).
+		Distinct(a.col("detailtable")).
 		Count(&detailCount)
 
+	// 查询各明细表数据
+	var detailData []map[string]interface{}
 	for i := 1; i <= int(detailCount); i++ {
-		dtTableName := a.tableName(fmt.Sprintf("%s_dt%d", wf.TableDBName, i))
+		dtTableName := a.tableName(fmt.Sprintf("%s_dt%d", tableDBName, i))
 		var rows []map[string]interface{}
 
-		// Oracle/DM 不支持 MySQL 的 IN (SELECT ...) 写法中的某些隐式转换，
-		// 统一使用 EXISTS 子查询，三种数据库都兼容。
+		// 统一使用 EXISTS 子查询，兼容 MySQL / Oracle / DM
 		subQuery := fmt.Sprintf(
 			"EXISTS (SELECT 1 FROM %s m WHERE m.%s = %s.%s AND m.%s = ?)",
 			mainTableName,
-			a.tableName("id"), dtTableName, a.tableName("mainid"),
-			a.tableName("requestid"),
+			a.col("id"), dtTableName, a.col("mainid"),
+			a.col("requestid"),
 		)
 		a.db.WithContext(ctx).
 			Table(dtTableName).
