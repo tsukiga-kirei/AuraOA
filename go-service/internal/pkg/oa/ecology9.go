@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"oa-smart-audit/go-service/internal/model"
+	"oa-smart-audit/go-service/internal/pkg/oa/dm"
 	"oa-smart-audit/go-service/internal/pkg/oa/oracle"
 )
 
@@ -31,8 +32,11 @@ func NewEcology9Adapter(conn *model.OADatabaseConnection) (*Ecology9Adapter, err
 	case "oracle":
 		dsn := oracle.BuildDSN(conn.Username, conn.Password, conn.Host, conn.Port, conn.DatabaseName)
 		dialector = oracle.Open(dsn)
+	case "dm":
+		dsn := dm.BuildDSN(conn.Username, conn.Password, conn.Host, conn.Port, conn.DatabaseName)
+		dialector = dm.Open(dsn)
 	default:
-		return nil, fmt.Errorf("泛微 E9 不支持数据库驱动: %s（仅支持 mysql、oracle）", conn.Driver)
+		return nil, fmt.Errorf("泛微 E9 不支持数据库驱动: %s（仅支持 mysql、oracle、dm）", conn.Driver)
 	}
 
 	db, err := gorm.Open(dialector, &gorm.Config{})

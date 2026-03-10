@@ -8,7 +8,7 @@ import (
 
 // supportedDrivers 记录每种 OA 类型支持的数据库驱动。
 var supportedDrivers = map[string][]string{
-	"weaver_e9": {"mysql", "oracle"},
+	"weaver_e9": {"mysql", "oracle", "dm"},
 }
 
 // NewOAAdapter 根据 oa_type 和 conn.Driver 创建对应的 OA 适配器实例。
