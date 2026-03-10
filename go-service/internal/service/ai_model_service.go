@@ -1,12 +1,15 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
+	"oa-smart-audit/go-service/internal/pkg/ai"
 	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	"oa-smart-audit/go-service/internal/repository"
@@ -198,4 +201,56 @@ func toAIModelResponse(m *model.AIModelConfig) dto.AIModelResponse {
 		CreatedAt:        m.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:        m.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+// TestConnection 根据已保存的 AI 模型 ID 测试连接。
+func (s *AIModelService) TestConnection(id uuid.UUID) error {
+	m, err := s.repo.FindByID(id)
+	if err != nil {
+		return newServiceError(errcode.ErrResourceNotFound, "AI模型不存在")
+	}
+
+	// 解密 API Key
+	if m.APIKey != "" {
+		decrypted, err := crypto.Decrypt(m.APIKey)
+		if err != nil {
+			return newServiceError(errcode.ErrInternalServer, "API Key解密失败")
+		}
+		m.APIKey = decrypted
+	}
+
+	return s.testAIModel(m)
+}
+
+// TestConnectionByParams 根据传入参数直接测试 AI 模型连接（用于新建/编辑时的测试按钮）。
+func (s *AIModelService) TestConnectionByParams(req *dto.CreateAIModelRequest) error {
+	m := &model.AIModelConfig{
+		Provider:   req.Provider,
+		ModelName:  req.ModelName,
+		DeployType: req.DeployType,
+		Endpoint:   req.Endpoint,
+		APIKey:     req.APIKey, // 前端传入的是明文
+		MaxTokens:  req.MaxTokens,
+	}
+	if m.MaxTokens == 0 {
+		m.MaxTokens = 8192
+	}
+
+	return s.testAIModel(m)
+}
+
+// testAIModel 实际执行 AI 模型连接测试。
+func (s *AIModelService) testAIModel(m *model.AIModelConfig) error {
+	caller, err := ai.NewAIModelCaller(m)
+	if err != nil {
+		return newServiceError(errcode.ErrAIDeployTypeUnsupported, err.Error())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := caller.TestConnection(ctx); err != nil {
+		return newServiceError(errcode.ErrAIConnectionFailed, err.Error())
+	}
+	return nil
 }

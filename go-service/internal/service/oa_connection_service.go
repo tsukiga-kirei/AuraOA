@@ -1,12 +1,18 @@
 package service
 
 import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
 	"github.com/google/uuid"
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
+	"oa-smart-audit/go-service/internal/pkg/oa"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -198,4 +204,75 @@ func toOAConnectionResponse(c *model.OADatabaseConnection) dto.OAConnectionRespo
 		CreatedAt:         c.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:         c.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+// TestConnection 根据已保存的 OA 连接 ID 测试数据库连通性。
+func (s *OAConnectionService) TestConnection(id uuid.UUID) error {
+	conn, err := s.repo.FindByID(id)
+	if err != nil {
+		return newServiceError(errcode.ErrResourceNotFound, "OA连接不存在")
+	}
+
+	// 解密密码
+	password, err := crypto.Decrypt(conn.Password)
+	if err != nil {
+		return newServiceError(errcode.ErrInternalServer, "密码解密失败")
+	}
+	conn.Password = password
+
+	return s.testOAConnection(conn)
+}
+
+// TestConnectionByParams 根据传入参数直接测试数据库连通性（用于新建/编辑时的测试按钮）。
+func (s *OAConnectionService) TestConnectionByParams(req *dto.CreateOAConnectionRequest) error {
+	conn := &model.OADatabaseConnection{
+		OAType:       req.OAType,
+		Driver:       req.Driver,
+		Host:         req.Host,
+		Port:         req.Port,
+		DatabaseName: req.DatabaseName,
+		Username:     req.Username,
+		Password:     req.Password, // 前端传入的是明文
+		PoolSize:     req.PoolSize,
+	}
+	if conn.PoolSize == 0 {
+		conn.PoolSize = 5
+	}
+
+	return s.testOAConnection(conn)
+}
+
+// testOAConnection 实际执行 OA 数据库连接测试。
+func (s *OAConnectionService) testOAConnection(conn *model.OADatabaseConnection) error {
+	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
+	if err != nil {
+		return newServiceError(errcode.ErrOATypeUnsupported, err.Error())
+	}
+
+	// 用 5 秒超时做一次简单查询验证连通性
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// ValidateProcess 用一个不存在的流程名测试，只要不报连接错误就算通
+	_, err = adapter.ValidateProcess(ctx, "__connection_test__")
+	if err != nil {
+		if strings.Contains(err.Error(), "不存在") {
+			return nil
+		}
+		return newServiceError(errcode.ErrOAConnectionFailed, fmt.Sprintf("连接失败: %s", err.Error()))
+	}
+	return nil
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))
+}
+
+func containsSubstr(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

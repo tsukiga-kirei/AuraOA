@@ -144,7 +144,15 @@ func (h *SystemHandler) DeleteOAConnection(c *gin.Context) {
 
 // TestOAConnection handles POST /api/admin/system/oa-connections/:id/test
 func (h *SystemHandler) TestOAConnection(c *gin.Context) {
-	// TODO: 实现实际的数据库连接测试逻辑
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	if err := h.oaConnectionService.TestConnection(id); err != nil {
+		handleServiceError(c, err)
+		return
+	}
 	response.Success(c, map[string]interface{}{
 		"success": true,
 		"message": "连接测试成功",
@@ -154,7 +162,15 @@ func (h *SystemHandler) TestOAConnection(c *gin.Context) {
 // TestOAConnectionParams handles POST /api/admin/system/oa-connections/test
 // 接受连接参数直接测试（用于新建/编辑模态框中的测试按钮）。
 func (h *SystemHandler) TestOAConnectionParams(c *gin.Context) {
-	// TODO: 实现实际的数据库连接测试逻辑（根据传入参数尝试建立连接）
+	var req dto.CreateOAConnectionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	if err := h.oaConnectionService.TestConnectionByParams(&req); err != nil {
+		handleServiceError(c, err)
+		return
+	}
 	response.Success(c, map[string]interface{}{
 		"success": true,
 		"message": "连接测试成功",
@@ -227,7 +243,15 @@ func (h *SystemHandler) DeleteAIModel(c *gin.Context) {
 // TestAIModelConnection handles POST /api/admin/system/ai-models/test
 // 接受模型参数直接测试连接（用于新建模态框中的测试按钮）。
 func (h *SystemHandler) TestAIModelConnection(c *gin.Context) {
-	// TODO: 实现实际的模型连接测试逻辑（根据 endpoint/api_key 尝试调用模型）
+	var req dto.CreateAIModelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	if err := h.aiModelService.TestConnectionByParams(&req); err != nil {
+		handleServiceError(c, err)
+		return
+	}
 	response.Success(c, map[string]interface{}{
 		"success": true,
 		"message": "模型连接测试成功",
@@ -242,8 +266,10 @@ func (h *SystemHandler) TestAIModelConnectionById(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
 		return
 	}
-	// TODO: 实现实际的模型连接测试逻辑（根据已保存的 endpoint/api_key 尝试调用模型）
-	_ = id
+	if err := h.aiModelService.TestConnection(id); err != nil {
+		handleServiceError(c, err)
+		return
+	}
 	response.Success(c, map[string]interface{}{
 		"success": true,
 		"message": "模型连接测试成功",
