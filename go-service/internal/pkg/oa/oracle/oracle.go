@@ -1,17 +1,22 @@
 // Package oracle 提供 Oracle 数据库的 GORM 驱动封装。
-// 基于 github.com/dzwvip/oracle 驱动（GORM 官方推荐的 Oracle 适配）。
+// 基于 github.com/godoes/gorm-oracle（纯 Go 实现，无需 Oracle Instant Client）。
 package oracle
 
 import (
 	"fmt"
 
-	"github.com/dzwvip/oracle"
+	goracle "github.com/godoes/gorm-oracle"
 	"gorm.io/gorm"
 )
 
 // Open 返回 Oracle 的 GORM Dialector。
 func Open(dsn string) gorm.Dialector {
-	return oracle.Open(dsn)
+	return goracle.New(goracle.Config{
+		DSN:                     dsn,
+		IgnoreCase:              false,
+		NamingCaseSensitive:     true,
+		VarcharSizeIsCharLength: true,
+	})
 }
 
 // BuildDSN 构建 Oracle 连接字符串。
