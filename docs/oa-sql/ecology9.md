@@ -2,7 +2,9 @@
 
 > 对应代码：`go-service/internal/pkg/oa/ecology9.go`
 >
-> 泛微 E9 底层数据库支持 MySQL 和 Oracle，下面按功能列出所有 SQL，并标注两种数据库的差异。
+> 泛微 E9 底层数据库支持 MySQL、Oracle 和 DM（达梦），下面按功能列出所有 SQL，并标注数据库差异。
+>
+> **标识符大小写**：Oracle / DM 默认将未加引号的标识符转为大写，泛微 E9 在 Oracle / DM 上的表名和列名均为大写。Oracle 驱动通过 `IgnoreCase=true` + `NamingCaseSensitive=false` 配置使 GORM 不给标识符加双引号，Oracle 自动将标识符转为大写匹配；业务层另有 `tableName()` 辅助方法在 Oracle / DM 下将表名列名显式转大写，MySQL 保持原样。
 
 ---
 
@@ -11,23 +13,25 @@
 ### 1.1 查询流程定义
 
 ```sql
--- MySQL / Oracle 通用
+-- MySQL
 SELECT * FROM workflow_base WHERE workflowname = ? LIMIT 1;
-```
 
-Oracle 等价写法（GORM 自动处理）：
-
-```sql
-SELECT * FROM workflow_base WHERE workflowname = ? AND ROWNUM <= 1;
+-- Oracle / DM（tableName() 自动转大写）
+SELECT * FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ROWNUM <= 1;
 ```
 
 ### 1.2 统计明细表数量
 
 ```sql
--- MySQL / Oracle 通用
+-- MySQL
 SELECT COUNT(DISTINCT detailtable)
   FROM workflow_billfield
  WHERE billid = ? AND detailtable > 0;
+
+-- Oracle / DM（tableName() 自动转大写）
+SELECT COUNT(DISTINCT DETAILTABLE)
+  FROM WORKFLOW_BILLFIELD
+ WHERE BILLID = ? AND DETAILTABLE > 0;
 ```
 
 ---
@@ -136,11 +140,13 @@ SELECT *
 
 ---
 
-## MySQL vs Oracle 差异备注
+## MySQL vs Oracle / DM 差异备注
 
-| 差异点 | MySQL | Oracle | 代码处理方式 |
+| 差异点 | MySQL | Oracle / DM | 代码处理方式 |
 |---|---|---|---|
+| 标识符大小写 | 不区分大小写 | 默认大写 | Oracle 驱动 `IgnoreCase=true` + `NamingCaseSensitive=false` 使 GORM 不加双引号，Oracle 自动转大写；业务层 `tableName()` 方法辅助显式转大写 |
 | LIMIT 语法 | `LIMIT 1` | `ROWNUM <= 1` / `FETCH FIRST 1 ROWS ONLY` | GORM 自动适配 |
 | 子查询 IN 隐式转换 | 正常 | 可能类型不匹配 | 统一使用 EXISTS |
-| 字符串比较 | 大小写取决于 collation | 默认大小写敏感 | 暂未特殊处理，E9 字段名通常小写 |
+| 字符串比较 | 大小写取决于 collation | 默认大小写敏感 | 业务层暂未特殊处理 |
 | DSN 格式 | `user:pass@tcp(host:port)/db` | `oracle://user:pass@host:port/service` | `ecology9.go` 按 driver 分支构建 |
+| DM（达梦） | — | 使用 Oracle 兼容模式 | `isOracleCompatible()` 统一判断 oracle / dm |
