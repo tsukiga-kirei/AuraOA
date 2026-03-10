@@ -167,24 +167,36 @@ const handleTestConnectionInModal = async () => {
   testingConnection.value = true
   testConnectionResult.value = null
   try {
-    const info = await rulesApi.testConnection(processType, newProcessForm.value.main_table_name.trim())
-    if (info.table_mismatch) {
+    const info = await rulesApi.testConnection(processType, newProcessForm.value.main_table_name.trim(), newProcessForm.value.process_type_label?.trim() || '')
+    if (info.table_mismatch || info.type_label_mismatch) {
+      const msgs = []
+      if (info.table_mismatch) {
+        msgs.push(t('admin.ruleConfig.tableMismatch', [info.expected_table || '-']))
+        if (info.expected_table) {
+          newProcessForm.value.main_table_name = info.expected_table
+        }
+      }
+      if (info.type_label_mismatch) {
+        msgs.push(t('admin.ruleConfig.typeLabelMismatch', [info.expected_type_label || '-']))
+        if (info.expected_type_label) {
+          newProcessForm.value.process_type_label = info.expected_type_label
+        }
+      }
       testConnectionResult.value = {
         success: false,
-        message: t('admin.ruleConfig.tableMismatch', [info.expected_table || '-']),
-      }
-      // 自动纠正为正确的主表名
-      if (info.expected_table) {
-        newProcessForm.value.main_table_name = info.expected_table
+        message: msgs.join('；'),
       }
     } else {
       testConnectionResult.value = {
         success: true,
         message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-']),
       }
-      // 自动填充主表名称
+      // 自动填充主表名称和流程类型
       if (info.main_table) {
         newProcessForm.value.main_table_name = info.main_table
+      }
+      if (info.process_type_label) {
+        newProcessForm.value.process_type_label = info.process_type_label
       }
     }
   } catch (e: any) {
@@ -208,24 +220,36 @@ const handleTestConnectionInInfo = async () => {
   infoTestingConnection.value = true
   infoTestConnectionResult.value = null
   try {
-    const info = await rulesApi.testConnection(processType, selectedConfig.value.main_table_name.trim())
-    if (info.table_mismatch) {
+    const info = await rulesApi.testConnection(processType, selectedConfig.value.main_table_name.trim(), selectedConfig.value.process_type_label?.trim() || '')
+    if (info.table_mismatch || info.type_label_mismatch) {
+      const msgs = []
+      if (info.table_mismatch) {
+        msgs.push(t('admin.ruleConfig.tableMismatch', [info.expected_table || '-']))
+        if (info.expected_table && selectedConfig.value) {
+          selectedConfig.value.main_table_name = info.expected_table
+        }
+      }
+      if (info.type_label_mismatch) {
+        msgs.push(t('admin.ruleConfig.typeLabelMismatch', [info.expected_type_label || '-']))
+        if (info.expected_type_label && selectedConfig.value) {
+          selectedConfig.value.process_type_label = info.expected_type_label
+        }
+      }
       infoTestConnectionResult.value = {
         success: false,
-        message: t('admin.ruleConfig.tableMismatch', [info.expected_table || '-']),
-      }
-      // 自动纠正为正确的主表名
-      if (info.expected_table && selectedConfig.value) {
-        selectedConfig.value.main_table_name = info.expected_table
+        message: msgs.join('；'),
       }
     } else {
       infoTestConnectionResult.value = {
         success: true,
         message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-']),
       }
-      // 自动填充主表名称
+      // 自动填充主表名称和流程类型
       if (info.main_table && selectedConfig.value) {
         selectedConfig.value.main_table_name = info.main_table
+      }
+      if (info.process_type_label && selectedConfig.value) {
+        selectedConfig.value.process_type_label = info.process_type_label
       }
     }
   } catch (e: any) {

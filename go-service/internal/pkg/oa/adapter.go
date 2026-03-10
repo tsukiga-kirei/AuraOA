@@ -20,12 +20,15 @@ type OAAdapter interface {
 
 // ProcessInfo 流程基本信息
 type ProcessInfo struct {
-	ProcessType    string `json:"process_type"`
-	ProcessName    string `json:"process_name"`
-	MainTable      string `json:"main_table"`
-	DetailCount    int    `json:"detail_count"`
-	TableMismatch  bool   `json:"table_mismatch,omitempty"`   // 用户填写的主表名与 OA 实际不一致
-	ExpectedTable  string `json:"expected_table,omitempty"`   // OA 系统中的正确主表名（仅 mismatch 时返回）
+	ProcessType       string `json:"process_type"`
+	ProcessName       string `json:"process_name"`
+	ProcessTypeLabel  string `json:"process_type_label,omitempty"`
+	MainTable         string `json:"main_table"`
+	DetailCount       int    `json:"detail_count"`
+	TableMismatch     bool   `json:"table_mismatch,omitempty"`       // 用户填写的主表名与 OA 实际不一致
+	ExpectedTable     string `json:"expected_table,omitempty"`       // OA 系统中的正确主表名（仅 mismatch 时返回）
+	TypeLabelMismatch bool   `json:"type_label_mismatch,omitempty"`  // 用户填写的流程类型与 OA 实际不一致
+	ExpectedTypeLabel string `json:"expected_type_label,omitempty"`  // OA 系统中的正确流程类型（仅 mismatch 时返回）
 }
 
 // FieldDef 字段定义

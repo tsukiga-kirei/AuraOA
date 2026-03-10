@@ -136,21 +136,34 @@ func mapGetInt(m map[string]interface{}, key string) int {
 // ── ValidateProcess ────────────────────────────────────────
 
 // ValidateProcess 验证流程类型是否存在于泛微 E9 系统中。
-// 1. 查询 workflow_base，确认流程存在且 isvalid=1
-// 2. 通过 formid 关联 workflow_bill 获取真实主表名
+// 1. 查询 workflow_base，确认流程存在且 isvalid=1，获取 workflowtype
+// 2. 查询 workflow_type，获取 typename
+// 3. 通过 formid 关联 workflow_bill 获取真实主表名
 //
 // 使用 Row().Scan() 显式扫描列值，避免 GORM struct tag 大小写映射问题（Oracle/DM 列名大写）。
 func (a *Ecology9Adapter) ValidateProcess(ctx context.Context, processType string) (*ProcessInfo, error) {
-	// 查询 workflow_base：获取流程名称和 formid
+	// 查询 workflow_base：获取流程名称、formid 和 workflowtype
 	var workflowName string
 	var formID int
+	var workflowTypeID int
 	row := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_base")).
-		Select(a.col("workflowname")+", "+a.col("formid")).
+		Select(a.col("workflowname")+", "+a.col("formid")+", "+a.col("workflowtype")).
 		Where(a.col("workflowname")+" = ? AND "+a.col("isvalid")+" = ?", processType, "1").
 		Row()
-	if err := row.Scan(&workflowName, &formID); err != nil {
+	if err := row.Scan(&workflowName, &formID, &workflowTypeID); err != nil {
 		return nil, fmt.Errorf("流程 '%s' 在泛微 E9 系统中不存在或已停用", processType)
+	}
+
+	// 查询 workflow_type：获取流类型名称(typename)
+	var typeName string
+	typeRow := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_type")).
+		Select(a.col("typename")).
+		Where(a.col("id")+" = ?", workflowTypeID).
+		Row()
+	if err := typeRow.Scan(&typeName); err != nil && err != gorm.ErrRecordNotFound {
+		return nil, fmt.Errorf("查询流程类型定义失败 (workflowtype=%d): %w", workflowTypeID, err)
 	}
 
 	// 通过 formid 查询 workflow_bill，获取真实主表名
@@ -165,9 +178,10 @@ func (a *Ecology9Adapter) ValidateProcess(ctx context.Context, processType strin
 	}
 
 	return &ProcessInfo{
-		ProcessType: processType,
-		ProcessName: workflowName,
-		MainTable:   mainTable,
+		ProcessType:      processType,
+		ProcessName:      workflowName,
+		ProcessTypeLabel: typeName,
+		MainTable:        mainTable,
 	}, nil
 }
 
