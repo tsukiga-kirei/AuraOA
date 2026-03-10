@@ -3,6 +3,8 @@ module oa-smart-audit/go-service
 go 1.25.6
 
 require (
+	github.com/Rulessly/dm-driver-gorm v0.0.0-20240223154000-d24c7ebf2ebf
+	github.com/dzwvip/oracle v1.3.2
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -24,7 +26,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/dzwvip/oracle v1.3.2 // indirect
 	github.com/emirpasic/gods v1.12.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
@@ -39,6 +40,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/godror/godror v0.40.3 // indirect
 	github.com/godror/knownpb v0.1.1 // indirect
+	github.com/golang/snappy v0.0.4 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.8.0 // indirect

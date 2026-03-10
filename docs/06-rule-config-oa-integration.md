@@ -191,7 +191,9 @@ func NewOAAdapter(oaType string, conn *model.OADatabaseConnection) (OAAdapter, e
 
 | oa_type | 适配器 | 支持的数据库驱动 | 说明 |
 |---------|--------|-----------------|------|
-| `weaver_e9` | `Ecology9Adapter` | `mysql`, `oracle` | 泛微 Ecology9 |
+| `weaver_e9` | `Ecology9Adapter` | `mysql`, `oracle`, `dm` | 泛微 Ecology9 |
+
+> 达梦（DM）驱动封装位于 `go-service/internal/pkg/oa/dm/`，基于 `github.com/Rulessly/dm-driver-gorm`，使用 Oracle 兼容模式。
 
 扩展新 OA 类型需要：(1) 在 `supportedDrivers` 中注册 OA 类型及其支持的驱动列表，(2) 实现 `OAAdapter` 接口，(3) 在工厂函数 switch 中注册 case。
 
@@ -1202,6 +1204,8 @@ Go → Python 通过 HTTP POST 调用，服务地址由环境变量 `AI_SERVICE_
 | OA Adapter | `internal/pkg/oa/adapter.go` | OA 适配器接口 |
 | OA Adapter | `internal/pkg/oa/ecology9.go` | 泛微 E9 适配器实现 |
 | OA Adapter | `internal/pkg/oa/factory.go` | OA 适配器工厂 |
+| OA Driver | `internal/pkg/oa/dm/dm.go` | 达梦数据库 GORM 驱动封装 |
+| OA Driver | `internal/pkg/oa/oracle/oracle.go` | Oracle 数据库 GORM 驱动封装 |
 | AI Caller | `internal/pkg/ai/caller.go` | AI 模型调用接口 |
 | AI Caller | `internal/pkg/ai/openai_compat.go` | OpenAI 兼容协议统一调用器 |
 | AI Caller | `internal/pkg/ai/factory.go` | AI 调用器工厂（按 provider 路由） |

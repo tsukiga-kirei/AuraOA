@@ -18,7 +18,8 @@ INSERT INTO db_driver_options (code, label, default_port, sort_order) VALUES
     ('mysql',      'MySQL',      3306, 1),
     ('oracle',     'Oracle',     1521, 2),
     ('postgresql', 'PostgreSQL', 5432, 3),
-    ('sqlserver',  'SQL Server', 1433, 4);
+    ('sqlserver',  'SQL Server', 1433, 4),
+    ('dm',         '达梦 DM',    5236, 5);
 
 -- ============================================================
 -- AI部署类型选项
