@@ -100,8 +100,8 @@
      → OAAdapterFactory.NewOAAdapter("weaver_e9", conn)
      → Ecology9Adapter.ValidateProcess(processType)
      → OA 数据库: SELECT FROM workflow_base WHERE ...
-     → 可选：校验 main_table_name 是否与 OA 实际主表一致
-     → 返回 ProcessInfo{name, mainTable, tableMismatch?, expectedTable?}
+     → 可选：校验 main_table_name 和 process_type_label 是否与 OA 实际系统信息一致
+     → 返回 ProcessInfo{name, processTypeLabel, mainTable, tableMismatch?, typeLabelMismatch?, expectedTable?, expectedTypeLabel?}
 ```
 
 #### AI 审核调用
@@ -141,11 +141,14 @@ OAAdapter 接口定义了所有 OA 系统适配器必须实现的四个方法：
 
 ```
 ProcessInfo
-├── ProcessType    string   // 流程类型标识
-├── ProcessName    string   // 流程名称
-├── MainTable      string   // 主表名
-├── TableMismatch  bool     // 用户填写的主表名与 OA 实际不一致（仅校验时返回）
-└── ExpectedTable  string   // OA 系统中的正确主表名（仅 mismatch 时返回）
+├── ProcessType       string   // 流程类型标识
+├── ProcessName       string   // 流程名称
+├── ProcessTypeLabel  string   // 流程类型分类名称
+├── MainTable         string   // 主表名
+├── TableMismatch     bool     // 用户填写的主表名与 OA 实际不一致（仅校验时返回）
+├── ExpectedTable     string   // OA 系统中的正确主表名（仅 mismatch 时返回）
+├── TypeLabelMismatch bool     // 用户填写的分类与 OA 实际不一致（仅校验时返回）
+└── ExpectedTypeLabel string   // OA 系统中的正确分类（仅 mismatch 时返回）
 
 ProcessFields
 ├── MainFields    []FieldDef        // 主表字段列表

@@ -187,6 +187,12 @@ func (s *ProcessAuditConfigService) TestConnection(c *gin.Context, req *dto.Test
 		info.ExpectedTable = info.MainTable
 	}
 
+	// 如果前端传了 process_type_label，校验是否与 OA 实际流程类型分类一致
+	if req.ProcessTypeLabel != "" && !strings.EqualFold(req.ProcessTypeLabel, info.ProcessTypeLabel) {
+		info.TypeLabelMismatch = true
+		info.ExpectedTypeLabel = info.ProcessTypeLabel
+	}
+
 	return info, nil
 }
 
@@ -212,7 +218,7 @@ func (s *ProcessAuditConfigService) FetchFields(c *gin.Context, id uuid.UUID) (*
 	detailTablesJSON, _ := json.Marshal(fields.DetailTables)
 
 	updateFields := map[string]interface{}{
-		"main_fields":  datatypes.JSON(mainFieldsJSON),
+		"main_fields":   datatypes.JSON(mainFieldsJSON),
 		"detail_tables": datatypes.JSON(detailTablesJSON),
 	}
 	if err := s.configRepo.UpdateFields(c, id, updateFields); err != nil {

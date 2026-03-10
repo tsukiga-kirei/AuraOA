@@ -12,37 +12,47 @@
 
 ### 1.1 查询流程定义
 
-```sql
--- MySQL
-SELECT * FROM workflow_base WHERE workflowname = ? AND isvalid = '1' LIMIT 1;
-
--- Oracle / DM（tableName() 自动转大写）
-SELECT * FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ISVALID = '1' AND ROWNUM <= 1;
-```
-
-> 直接在查询条件中加 `isvalid = '1'`，查不到记录即表示流程不存在或已停用。
-
-### 1.2 查询表单定义（获取真实主表名）
-
-通过 `workflow_base.formid` 关联 `workflow_bill.id`，获取 `workflow_bill.tablename` 作为真实主表名。
-
 使用 `Row().Scan()` 显式扫描列值，避免 GORM struct tag 大小写映射问题（Oracle/DM 列名大写）。
 
 ```sql
 -- MySQL
-SELECT workflowname, formid FROM workflow_base WHERE workflowname = ? AND isvalid = '1' LIMIT 1;
-SELECT tablename FROM workflow_bill WHERE id = ? LIMIT 1;
+SELECT workflowname, formid, workflowtype FROM workflow_base WHERE workflowname = ? AND isvalid = '1' LIMIT 1;
 
 -- Oracle / DM（tableName() / col() 自动转大写）
-SELECT WORKFLOWNAME, FORMID FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ISVALID = '1' AND ROWNUM <= 1;
+SELECT WORKFLOWNAME, FORMID, WORKFLOWTYPE FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ISVALID = '1' AND ROWNUM <= 1;
+```
+
+> 直接在查询条件中加 `isvalid = '1'`，查不到记录即表示流程不存在或已停用。
+
+### 1.2 查询流程类型分类名称
+
+通过 `workflow_base.workflowtype` 关联 `workflow_type.id`，获取 `workflow_type.typename` 作为流程类型显示名称。
+
+```sql
+-- MySQL
+SELECT typename FROM workflow_type WHERE id = ? LIMIT 1;
+
+-- Oracle / DM
+SELECT TYPENAME FROM WORKFLOW_TYPE WHERE ID = ? AND ROWNUM <= 1;
+```
+
+### 1.3 查询表单定义（获取真实主表名）
+
+通过 `workflow_base.formid` 关联 `workflow_bill.id`，获取 `workflow_bill.tablename` 作为真实主表名。
+
+```sql
+-- MySQL
+SELECT tablename FROM workflow_bill WHERE id = ? LIMIT 1;
+
+-- Oracle / DM
 SELECT TABLENAME FROM WORKFLOW_BILL WHERE ID = ? AND ROWNUM <= 1;
 ```
 
 > `workflow_bill` 查询失败时直接返回错误，不再降级使用 `workflow_base.tablename`。
 >
-> 当前端传入 `main_table_name` 时，Service 层会将其与 `workflow_bill.tablename` 做忽略大小写比较：
+> 当前端传入 `main_table_name` 或 `process_type_label` 时，Service 层会将其与实际系统里的数据做忽略大小写比较：
 > - 一致：正常返回
-> - 不一致：返回 `table_mismatch=true` + `expected_table`（正确表名），前端自动纠正
+> - 不一致：返回 mismatch=true 加上 expected_xxx（正确名称），前端自动纠正
 
 ---
 
@@ -155,7 +165,8 @@ SELECT *
 
 | 表名 | 用途 | 使用方法 |
 |---|---|---|
-| `workflow_base` | 流程定义（名称、表单ID、主表名、isvalid 启停状态） | ValidateProcess / FetchFields / CheckUserPermission / FetchProcessData |
+| `workflow_base` | 流程定义（名称、表单ID、流程类型ID、主表名、isvalid 启停状态） | ValidateProcess / FetchFields / CheckUserPermission / FetchProcessData |
+| `workflow_type` | 流程类型定义（类型ID → 分类名称 typename） | ValidateProcess（获取流程类型显示名称） |
 | `workflow_bill` | 表单定义（表单ID → 关联主表名 tablename） | ValidateProcess（获取真实主表名） |
 | `workflow_billfield` | 表单字段定义（字段名、类型、明细表归属） | FetchFields / FetchProcessData |
 | `workflow_currentoperator` | 流程当前操作人（待办/已办） | CheckUserPermission |
