@@ -20,10 +20,12 @@ type OAAdapter interface {
 
 // ProcessInfo 流程基本信息
 type ProcessInfo struct {
-	ProcessType string `json:"process_type"`
-	ProcessName string `json:"process_name"`
-	MainTable   string `json:"main_table"`
-	DetailCount int    `json:"detail_count"`
+	ProcessType    string `json:"process_type"`
+	ProcessName    string `json:"process_name"`
+	MainTable      string `json:"main_table"`
+	DetailCount    int    `json:"detail_count"`
+	TableMismatch  bool   `json:"table_mismatch,omitempty"`   // 用户填写的主表名与 OA 实际不一致
+	ExpectedTable  string `json:"expected_table,omitempty"`   // OA 系统中的正确主表名（仅 mismatch 时返回）
 }
 
 // FieldDef 字段定义

@@ -56,10 +56,10 @@ export const useRulesApi = () => {
     configs.value = configs.value.filter(c => c.id !== id)
   }
 
-  async function testConnection(processType: string): Promise<ProcessInfo> {
+  async function testConnection(processType: string, mainTableName?: string): Promise<ProcessInfo> {
     return await authFetch<ProcessInfo>('/api/tenant/rules/configs/test-connection', {
       method: 'POST',
-      body: { process_type: processType },
+      body: { process_type: processType, main_table_name: mainTableName || '' },
     })
   }
 

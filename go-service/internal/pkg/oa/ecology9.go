@@ -89,9 +89,18 @@ type e9WorkflowBase struct {
 	WorkflowName string `gorm:"column:workflowname"`
 	FormID       int    `gorm:"column:formid"`
 	TableDBName  string `gorm:"column:tablename"`
+	IsValid      string `gorm:"column:isvalid"` // "1"=启用, "0"=停用
 }
 
 func (e9WorkflowBase) TableName() string { return "workflow_base" }
+
+// e9WorkflowBill 泛微 E9 workflow_bill 表映射（表单定义）
+type e9WorkflowBill struct {
+	ID          int    `gorm:"column:id"`
+	TableDBName string `gorm:"column:tablename"`
+}
+
+func (e9WorkflowBill) TableName() string { return "workflow_bill" }
 
 // e9WorkflowBillField 泛微 E9 workflow_billfield 表映射（流程表单字段定义）
 type e9WorkflowBillField struct {
@@ -108,17 +117,31 @@ func (e9WorkflowBillField) TableName() string { return "workflow_billfield" }
 // ── ValidateProcess ────────────────────────────────────────
 
 // ValidateProcess 验证流程类型是否存在于泛微 E9 系统中。
+// 1. 检查 workflow_base 中是否存在该流程（不限 isvalid）
+// 2. 检查 isvalid=1（流程是否启用）
+// 3. 通过 formid 关联 workflow_bill 获取真实主表名
 func (a *Ecology9Adapter) ValidateProcess(ctx context.Context, processType string) (*ProcessInfo, error) {
 	var wf e9WorkflowBase
 	err := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_base")).
-		Where(a.tableName("workflowname")+" = ?", processType).
+		Where(a.tableName("workflowname")+" = ? AND "+a.tableName("isvalid")+" = ?", processType, "1").
 		Take(&wf).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("流程 '%s' 在泛微 E9 系统中不存在", processType)
+			return nil, fmt.Errorf("流程 '%s' 在泛微 E9 系统中不存在或已停用", processType)
 		}
 		return nil, fmt.Errorf("查询泛微 E9 流程失败: %w", err)
+	}
+
+	// 通过 formid 关联 workflow_bill 获取真实主表名
+	var bill e9WorkflowBill
+	err = a.db.WithContext(ctx).
+		Table(a.tableName("workflow_bill")).
+		Where(a.tableName("id")+" = ?", wf.FormID).
+		Take(&bill).Error
+	if err != nil {
+		// workflow_bill 查询失败时降级使用 workflow_base.tablename
+		bill.TableDBName = wf.TableDBName
 	}
 
 	var detailCount int64
@@ -131,7 +154,7 @@ func (a *Ecology9Adapter) ValidateProcess(ctx context.Context, processType strin
 	return &ProcessInfo{
 		ProcessType: processType,
 		ProcessName: wf.WorkflowName,
-		MainTable:   wf.TableDBName,
+		MainTable:   bill.TableDBName,
 		DetailCount: int(detailCount),
 	}, nil
 }

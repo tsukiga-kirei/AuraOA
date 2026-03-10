@@ -167,14 +167,25 @@ const handleTestConnectionInModal = async () => {
   testingConnection.value = true
   testConnectionResult.value = null
   try {
-    const info = await rulesApi.testConnection(processType)
-    testConnectionResult.value = {
-      success: true,
-      message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-']),
-    }
-    // 自动填充主表名称
-    if (info.main_table) {
-      newProcessForm.value.main_table_name = info.main_table
+    const info = await rulesApi.testConnection(processType, newProcessForm.value.main_table_name.trim())
+    if (info.table_mismatch) {
+      testConnectionResult.value = {
+        success: false,
+        message: t('admin.ruleConfig.tableMismatch', [info.expected_table || '-']),
+      }
+      // 自动纠正为正确的主表名
+      if (info.expected_table) {
+        newProcessForm.value.main_table_name = info.expected_table
+      }
+    } else {
+      testConnectionResult.value = {
+        success: true,
+        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-']),
+      }
+      // 自动填充主表名称
+      if (info.main_table) {
+        newProcessForm.value.main_table_name = info.main_table
+      }
     }
   } catch (e: any) {
     testConnectionResult.value = {
@@ -197,14 +208,25 @@ const handleTestConnectionInInfo = async () => {
   infoTestingConnection.value = true
   infoTestConnectionResult.value = null
   try {
-    const info = await rulesApi.testConnection(processType)
-    infoTestConnectionResult.value = {
-      success: true,
-      message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-']),
-    }
-    // 自动填充主表名称
-    if (info.main_table && selectedConfig.value) {
-      selectedConfig.value.main_table_name = info.main_table
+    const info = await rulesApi.testConnection(processType, selectedConfig.value.main_table_name.trim())
+    if (info.table_mismatch) {
+      infoTestConnectionResult.value = {
+        success: false,
+        message: t('admin.ruleConfig.tableMismatch', [info.expected_table || '-']),
+      }
+      // 自动纠正为正确的主表名
+      if (info.expected_table && selectedConfig.value) {
+        selectedConfig.value.main_table_name = info.expected_table
+      }
+    } else {
+      infoTestConnectionResult.value = {
+        success: true,
+        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-']),
+      }
+      // 自动填充主表名称
+      if (info.main_table && selectedConfig.value) {
+        selectedConfig.value.main_table_name = info.main_table
+      }
     }
   } catch (e: any) {
     infoTestConnectionResult.value = {

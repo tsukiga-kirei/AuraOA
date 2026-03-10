@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -168,7 +169,7 @@ func (s *ProcessAuditConfigService) Delete(c *gin.Context, id uuid.UUID) error {
 	return nil
 }
 
-// TestConnection 测试 OA 流程连接，验证流程是否存在。
+// TestConnection 测试 OA 流程连接，验证流程是否存在，并可选校验主表名。
 func (s *ProcessAuditConfigService) TestConnection(c *gin.Context, req *dto.TestConnectionRequest) (*oa.ProcessInfo, error) {
 	adapter, err := s.getOAAdapter(c)
 	if err != nil {
@@ -179,6 +180,13 @@ func (s *ProcessAuditConfigService) TestConnection(c *gin.Context, req *dto.Test
 	if err != nil {
 		return nil, newServiceError(errcode.ErrProcessNotFound, "流程在OA系统中不存在: "+err.Error())
 	}
+
+	// 如果前端传了 main_table_name，校验是否与 OA 实际主表名一致
+	if req.MainTableName != "" && !strings.EqualFold(req.MainTableName, info.MainTable) {
+		info.TableMismatch = true
+		info.ExpectedTable = info.MainTable
+	}
+
 	return info, nil
 }
 

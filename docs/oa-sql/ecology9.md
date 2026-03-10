@@ -14,13 +14,33 @@
 
 ```sql
 -- MySQL
-SELECT * FROM workflow_base WHERE workflowname = ? LIMIT 1;
+SELECT * FROM workflow_base WHERE workflowname = ? AND isvalid = '1' LIMIT 1;
 
 -- Oracle / DM（tableName() 自动转大写）
-SELECT * FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ROWNUM <= 1;
+SELECT * FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ISVALID = '1' AND ROWNUM <= 1;
 ```
 
-### 1.2 统计明细表数量
+> 直接在查询条件中加 `isvalid = '1'`，查不到记录即表示流程不存在或已停用。
+
+### 1.2 查询表单定义（获取真实主表名）
+
+通过 `workflow_base.formid` 关联 `workflow_bill.id`，获取 `workflow_bill.tablename` 作为真实主表名。
+
+```sql
+-- MySQL
+SELECT * FROM workflow_bill WHERE id = ? LIMIT 1;
+
+-- Oracle / DM
+SELECT * FROM WORKFLOW_BILL WHERE ID = ? AND ROWNUM <= 1;
+```
+
+> 如果 `workflow_bill` 查询失败，降级使用 `workflow_base.tablename`。
+>
+> 当前端传入 `main_table_name` 时，Service 层会将其与 `workflow_bill.tablename` 做忽略大小写比较：
+> - 一致：正常返回
+> - 不一致：返回 `table_mismatch=true` + `expected_table`（正确表名），前端自动纠正
+
+### 1.3 统计明细表数量
 
 ```sql
 -- MySQL
@@ -38,10 +58,16 @@ SELECT COUNT(DISTINCT DETAILTABLE)
 
 ## 2. FetchFields — 拉取流程字段定义
 
-### 2.1 查询流程定义（同 1.1）
+### 2.1 查询流程定义
+
+> 与 1.1 不同，此处不过滤 `isvalid`，仅按流程名称查询。
 
 ```sql
+-- MySQL
 SELECT * FROM workflow_base WHERE workflowname = ? LIMIT 1;
+
+-- Oracle / DM
+SELECT * FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ROWNUM <= 1;
 ```
 
 ### 2.2 查询所有字段
@@ -58,10 +84,16 @@ SELECT *
 
 ## 3. CheckUserPermission — 校验用户审批权限
 
-### 3.1 查询流程定义（同 1.1）
+### 3.1 查询流程定义
+
+> 与 1.1 不同，此处不过滤 `isvalid`，仅按流程名称查询。
 
 ```sql
+-- MySQL
 SELECT * FROM workflow_base WHERE workflowname = ? LIMIT 1;
+
+-- Oracle / DM
+SELECT * FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ROWNUM <= 1;
 ```
 
 ### 3.2 统计用户操作记录
@@ -131,7 +163,8 @@ SELECT *
 
 | 表名 | 用途 | 使用方法 |
 |---|---|---|
-| `workflow_base` | 流程定义（名称、表单ID、主表名） | ValidateProcess / FetchFields / CheckUserPermission / FetchProcessData |
+| `workflow_base` | 流程定义（名称、表单ID、主表名、isvalid 启停状态） | ValidateProcess / FetchFields / CheckUserPermission / FetchProcessData |
+| `workflow_bill` | 表单定义（表单ID → 关联主表名 tablename） | ValidateProcess（获取真实主表名） |
 | `workflow_billfield` | 表单字段定义（字段名、类型、明细表归属） | ValidateProcess / FetchFields / FetchProcessData |
 | `workflow_currentoperator` | 流程当前操作人（待办/已办） | CheckUserPermission |
 | `workflow_requestbase` | 流程请求实例（requestid ↔ workflowid） | FetchProcessData |

@@ -1620,6 +1620,7 @@ export default {
     'admin.ruleConfig.testingConnection': 'Testing...',
     'admin.ruleConfig.testConnectionSuccess': 'Success: Process "{0}" exists, main table: {1}',
     'admin.ruleConfig.testConnectionFail': 'Connection failed: {0}',
+    'admin.ruleConfig.tableMismatch': 'Table name mismatch. Correct main table in OA: {0} (auto-corrected)',
     'admin.ruleConfig.testConnectionHint': 'Enter process name and click test to verify it exists in the OA system and auto-fill the main table name',
     'admin.ruleConfig.autoFillMainTable': 'Main table name auto-filled: {0}',
     'admin.ruleConfig.createConfigFail': 'Failed to create process config',
