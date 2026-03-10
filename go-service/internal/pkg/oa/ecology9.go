@@ -104,6 +104,9 @@ func mapGet(m map[string]interface{}, key string) string {
 	key = strings.ToLower(key)
 	for k, v := range m {
 		if strings.ToLower(k) == key {
+			if v == nil {
+				return ""
+			}
 			if s, ok := v.(string); ok {
 				return s
 			}
@@ -227,7 +230,8 @@ func (a *Ecology9Adapter) FetchFields(ctx context.Context, processType string) (
 		MainFields:   make([]FieldDef, 0),
 		DetailTables: make([]DetailTableDef, 0),
 	}
-	detailMap := make(map[int]*DetailTableDef)
+	detailMap := make(map[string]*DetailTableDef)
+	var detailTableKeys []string
 
 	for _, row := range rawFields {
 		fd := FieldDef{
@@ -235,26 +239,38 @@ func (a *Ecology9Adapter) FetchFields(ctx context.Context, processType string) (
 			FieldName: mapGet(row, "fieldname"),
 			FieldType: a.mapFieldType(mapGet(row, "fieldhtmltype")),
 		}
-		dt := mapGetInt(row, "detailtable")
-		if dt == 0 {
+		dt := strings.TrimSpace(mapGet(row, "detailtable"))
+
+		// E9 中 detailtable 可能为 NULL(解析为空字符串)、"主表" 或对应主表表名
+		if dt == "" || strings.EqualFold(dt, "主表") || strings.EqualFold(dt, mainTableName) {
 			result.MainFields = append(result.MainFields, fd)
 		} else {
+			// 部分版本可能只存了一个数字(这算是老表结构)，这里做兼容拼接
+			if len(dt) < 3 && !strings.Contains(strings.ToLower(dt), "dt") {
+				dt = fmt.Sprintf("%s_dt%s", mainTableName, dt)
+			}
+
+			// 从形如 formtable_main_151_dt1 提取出 1 作为显示标签
+			label := dt
+			if idx := strings.LastIndex(dt, "_dt"); idx != -1 && idx+3 < len(dt) {
+				label = "明细表" + dt[idx+3:]
+			}
+
 			dtDef, exists := detailMap[dt]
 			if !exists {
 				dtDef = &DetailTableDef{
-					TableName:  fmt.Sprintf("%s_dt%d", mainTableName, dt),
-					TableLabel: fmt.Sprintf("明细表%d", dt),
+					TableName:  dt,
+					TableLabel: label,
 					Fields:     make([]FieldDef, 0),
 				}
 				detailMap[dt] = dtDef
+				detailTableKeys = append(detailTableKeys, dt)
 			}
 			dtDef.Fields = append(dtDef.Fields, fd)
 		}
 	}
-	for i := 1; i <= len(detailMap); i++ {
-		if dt, ok := detailMap[i]; ok {
-			result.DetailTables = append(result.DetailTables, *dt)
-		}
+	for _, k := range detailTableKeys {
+		result.DetailTables = append(result.DetailTables, *detailMap[k])
 	}
 	return result, nil
 }
@@ -374,7 +390,7 @@ func (a *Ecology9Adapter) mapFieldType(htmlType string) string {
 	case "3": // 浏览按钮
 		return "select"
 	case "4": // check框
-		return "text"
+		return "checkbox"
 	case "5": // 选择框
 		return "select"
 	case "6": // 附件上传 (泛微 E9 附件通常是 6)

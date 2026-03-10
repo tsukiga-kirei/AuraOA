@@ -64,10 +64,13 @@ export interface StrictnessPreset {
 export interface ProcessInfo {
   process_type: string
   process_name: string
+  process_type_label?: string
   main_table: string
   detail_count: number
   table_mismatch?: boolean    // 用户填写的主表名与 OA 实际不一致
   expected_table?: string     // OA 系统中的正确主表名（仅 mismatch 时返回）
+  type_label_mismatch?: boolean // 用户填写的分类与 OA 实际不一致
+  expected_type_label?: string  // OA 系统中的正确分类（仅 mismatch 时返回）
 }
 
 /** 字段定义（OA 拉取的原始字段，无 selected） */

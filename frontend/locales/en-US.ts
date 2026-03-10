@@ -1463,6 +1463,7 @@ export default {
     'fieldType.select': 'Select',
     'fieldType.textarea': 'Textarea',
     'fieldType.file': 'File',
+    'fieldType.checkbox': 'Checkbox',
 
     //成分
     'rule.mandatory': 'Mandatory',
