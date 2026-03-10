@@ -12,11 +12,7 @@ import {
   RobotOutlined,
   CheckOutlined,
   UploadOutlined,
-  EyeOutlined,
-  EyeInvisibleOutlined,
-  ControlOutlined,
   ClockCircleOutlined,
-  MailOutlined,
   DashboardOutlined,
   FolderOpenOutlined,
   AppstoreOutlined,
@@ -36,6 +32,7 @@ import { message } from 'ant-design-vue'
 import type { ProcessField, CronTaskTypeConfig, ArchiveReviewConfig, StrictnessPromptPreset, AuditRule } from '~/composables/useMockData'
 import type { ProcessAuditConfig as ApiProcessAuditConfig, AuditRule as ApiAuditRule } from '~/composables/useRulesApi'
 import { useI18n } from '~/composables/useI18n'
+import { usePagination } from '~/composables/usePagination'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
@@ -393,6 +390,80 @@ const selectedFieldCount = computed(() =>
   allAvailableFields.value.filter(f => f.selected).length
 )
 
+const selectedFieldSearchQuery = ref('')
+const leftSelectedKeys = ref<string[]>([])
+const rightSelectedKeys = ref<string[]>([])
+
+const unselectedFieldsFlat = computed(() => {
+  const q = fieldSearchQuery.value.toLowerCase().trim()
+  return allAvailableFields.value.filter(f => {
+    if (f.selected) return false
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
+  })
+})
+const unselectedPagination = usePagination(unselectedFieldsFlat, 5)
+
+const toggleLeftSelectAll = () => {
+  if (leftSelectedKeys.value.length === unselectedFieldsFlat.value.length && unselectedFieldsFlat.value.length > 0) {
+    leftSelectedKeys.value = []
+  } else {
+    leftSelectedKeys.value = unselectedFieldsFlat.value.map(f => f.field_key + '_' + f.source)
+  }
+}
+
+const toggleLeftSelect = (fieldId: string) => {
+  const idx = leftSelectedKeys.value.indexOf(fieldId)
+  if (idx >= 0) leftSelectedKeys.value.splice(idx, 1)
+  else leftSelectedKeys.value.push(fieldId)
+}
+
+const batchPick = () => {
+  unselectedFieldsFlat.value.filter(f => leftSelectedKeys.value.includes(f.field_key + '_' + f.source)).forEach(pickField)
+  leftSelectedKeys.value = []
+}
+
+const selectedFieldsFlat = computed(() => {
+  const q = selectedFieldSearchQuery.value.toLowerCase().trim()
+  return allAvailableFields.value.filter(f => {
+    if (!f.selected) return false
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q) || f.sourceLabel.toLowerCase().includes(q)
+  })
+})
+const selectedPagination = usePagination(selectedFieldsFlat, 5)
+
+const toggleRightSelectAll = () => {
+  if (rightSelectedKeys.value.length === selectedFieldsFlat.value.length && selectedFieldsFlat.value.length > 0) {
+    rightSelectedKeys.value = []
+  } else {
+    rightSelectedKeys.value = selectedFieldsFlat.value.map(f => f.field_key + '_' + f.source)
+  }
+}
+
+const toggleRightSelect = (fieldId: string) => {
+  const idx = rightSelectedKeys.value.indexOf(fieldId)
+  if (idx >= 0) rightSelectedKeys.value.splice(idx, 1)
+  else rightSelectedKeys.value.push(fieldId)
+}
+
+const batchUnpick = () => {
+  selectedFieldsFlat.value.filter(f => rightSelectedKeys.value.includes(f.field_key + '_' + f.source)).forEach(unpickField)
+  rightSelectedKeys.value = []
+}
+
+const pageSelectedFieldSearchQuery = ref('')
+const pageSelectedFieldsFlat = computed(() => {
+  const q = pageSelectedFieldSearchQuery.value.toLowerCase().trim()
+  return allAvailableFields.value.filter(f => {
+    if (!f.selected) return false
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q) || f.sourceLabel.toLowerCase().includes(q)
+  })
+})
+const pageSelectedPagination = usePagination(pageSelectedFieldsFlat, 5)
+
+
 //按表分组的已筛选未选定字段（选择器左侧）
 const groupedUnselectedFields = computed<FieldGroup[]>(() => {
   const q = fieldSearchQuery.value.toLowerCase().trim()
@@ -417,6 +488,9 @@ const groupedSelectedFields = computed<FieldGroup[]>(() =>
 
 const openFieldPicker = () => {
   fieldSearchQuery.value = ''
+  selectedFieldSearchQuery.value = ''
+  leftSelectedKeys.value = []
+  rightSelectedKeys.value = []
   showFieldPicker.value = true
 }
 
@@ -1159,23 +1233,54 @@ const handleSave = async () => {
               </a-button>
             </div>
 
-            <!--按表分组的选定字段-->
-            <template v-if="groupedSelectedFields.length">
-              <div v-for="group in groupedSelectedFields" :key="group.source" class="selected-field-group">
-                <div class="field-group-label">{{ group.sourceLabel }}</div>
-                <div class="selected-fields-display">
-                  <div
-                    v-for="field in group.fields"
-                    :key="field.field_key + field.source"
-                    class="selected-field-tag"
-                  >
-                    <span class="selected-field-name">{{ field.field_name }}</span>
-                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                  </div>
-                </div>
+            <div v-if="pageSelectedFieldsFlat.length > 0 || pageSelectedFieldSearchQuery" class="page-selected-fields-container" style="margin-top: 16px;">
+              <div style="margin-bottom: 12px; max-width: 300px;">
+                <a-input
+                  v-model:value="pageSelectedFieldSearchQuery"
+                  :placeholder="t('admin.ruleConfig.searchFieldPlaceholder')"
+                  allow-clear
+                >
+                  <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                </a-input>
               </div>
-            </template>
-            <div v-else class="field-empty-hint">
+              <div class="data-table-card">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="padding-left: 24px;">字段名称</th>
+                      <th>字段标识</th>
+                      <th>字段类型</th>
+                      <th>归属表</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="field in pageSelectedPagination.paged.value" :key="field.field_key + field.source">
+                      <td style="padding-left: 24px; font-weight: 500;">{{ field.field_name }}</td>
+                      <td class="text-mono" style="font-size: 13px;">{{ field.field_key }}</td>
+                      <td><span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span></td>
+                      <td class="text-secondary" style="font-size: 13px;">{{ field.sourceLabel }}</td>
+                    </tr>
+                    <tr v-if="pageSelectedPagination.paged.value.length === 0">
+                      <td colspan="4" class="empty-cell">{{ t('admin.ruleConfig.noSearchResult') || '未找到匹配字段' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="pagination-wrapper" style="margin-top: 12px; text-align: right;">
+                <a-pagination
+                  v-model:current="pageSelectedPagination.current.value"
+                  v-model:page-size="pageSelectedPagination.pageSize.value"
+                  :total="pageSelectedPagination.total.value"
+                  size="small"
+                  show-size-changer
+                  show-quick-jumper
+                  :page-size-options="['5', '20', '50']"
+                  @change="pageSelectedPagination.onChange"
+                  @showSizeChange="pageSelectedPagination.onChange"
+                />
+              </div>
+            </div>
+            <div v-else class="field-empty-hint" style="margin-top: 16px;">
               {{ t('admin.ruleConfig.noFieldsSelected') }}
             </div>
           </template>
@@ -1464,8 +1569,16 @@ const handleSave = async () => {
     >
       <div class="field-picker-modal">
         <div class="field-picker-left">
-          <div class="field-picker-panel-header">
-            <span>{{ t('admin.ruleConfig.availableFields') }}</span>
+          <div class="field-picker-panel-header" style="justify-content: flex-start; gap: 8px;">
+            <a-checkbox
+              :checked="leftSelectedKeys.length === unselectedFieldsFlat.length && unselectedFieldsFlat.length > 0"
+              :indeterminate="leftSelectedKeys.length > 0 && leftSelectedKeys.length < unselectedFieldsFlat.length"
+              @change="toggleLeftSelectAll"
+            />
+            <span style="flex: 1;">{{ t('admin.ruleConfig.availableFields') }} <span class="field-count" style="margin-left:4px; font-weight:normal;">({{ unselectedFieldsFlat.length }})</span></span>
+            <a-button type="primary" size="small" :disabled="leftSelectedKeys.length === 0" @click="batchPick">
+              {{ t('admin.ruleConfig.add') }}
+            </a-button>
           </div>
           <div class="field-picker-search">
             <a-input
@@ -1477,58 +1590,104 @@ const handleSave = async () => {
               <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
             </a-input>
           </div>
-          <div class="field-picker-list">
-            <template v-for="group in groupedUnselectedFields" :key="group.source">
-              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
-              <div
-                v-for="field in group.fields"
-                :key="field.field_key + field.source"
-                class="field-picker-item"
-                @click="pickField(field)"
-              >
-                <div class="field-picker-item-info">
-                  <div class="field-picker-item-name">{{ field.field_name }}</div>
-                  <div class="field-picker-item-meta">
-                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                    <span class="field-key">{{ field.field_key }}</span>
-                  </div>
-                </div>
-                <SwapRightOutlined class="field-picker-arrow" />
+          <div class="field-picker-list" style="padding: 12px 16px;">
+            <div
+              v-for="field in unselectedPagination.paged.value"
+              :key="field.field_key + field.source"
+              class="field-picker-item"
+              @click="toggleLeftSelect(field.field_key + '_' + field.source)"
+              style="display: flex; gap: 12px; justify-content: flex-start; margin-bottom: 8px;"
+            >
+              <div class="field-picker-item-checkbox" @click.stop="toggleLeftSelect(field.field_key + '_' + field.source)">
+                <a-checkbox :checked="leftSelectedKeys.includes(field.field_key + '_' + field.source)" />
               </div>
-            </template>
-            <div v-if="!groupedUnselectedFields.length" class="field-picker-empty">
+              <div class="field-picker-item-info" style="flex: 1;">
+                <div class="field-picker-item-name">{{ field.field_name }} <span class="field-source-tag" style="font-size: 11px; color: var(--color-text-tertiary); font-weight: normal; margin-left: 4px;">({{ field.sourceLabel }})</span></div>
+                <div class="field-picker-item-meta">
+                  <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                  <span class="field-key">{{ field.field_key }}</span>
+                </div>
+              </div>
+              <button class="icon-btn icon-btn--sm" @click.stop="pickField(field)" style="margin-left: auto;">
+                <SwapRightOutlined />
+              </button>
+            </div>
+            <div v-if="!unselectedFieldsFlat.length" class="field-picker-empty">
               {{ fieldSearchQuery ? t('admin.ruleConfig.noSearchResult') : t('admin.ruleConfig.allFieldsAdded') }}
             </div>
           </div>
+          <div class="pagination-wrapper" style="padding: 12px 16px; border-top: 1px solid var(--color-border-light);">
+            <a-pagination
+              v-model:current="unselectedPagination.current.value"
+              v-model:page-size="unselectedPagination.pageSize.value"
+              :total="unselectedPagination.total.value"
+              size="small"
+              show-size-changer
+              :page-size-options="['5', '20', '50']"
+              @change="unselectedPagination.onChange"
+              @showSizeChange="unselectedPagination.onChange"
+            />
+          </div>
         </div>
         <div class="field-picker-right">
-          <div class="field-picker-panel-header">
-            <span>{{ t('admin.ruleConfig.selectedFields') }}</span>
-            <span class="field-picker-count">{{ selectedFieldCount }}</span>
+          <div class="field-picker-panel-header" style="justify-content: flex-start; gap: 8px;">
+            <a-checkbox
+              :checked="rightSelectedKeys.length === selectedFieldsFlat.length && selectedFieldsFlat.length > 0"
+              :indeterminate="rightSelectedKeys.length > 0 && rightSelectedKeys.length < selectedFieldsFlat.length"
+              @change="toggleRightSelectAll"
+            />
+            <span style="flex: 1;">{{ t('admin.ruleConfig.selectedFields') }} <span class="field-picker-count" style="margin-left:4px;">{{ selectedFieldCount }}</span></span>
+            <a-button danger size="small" :disabled="rightSelectedKeys.length === 0" @click="batchUnpick">
+              {{ t('admin.ruleConfig.remove') }}
+            </a-button>
           </div>
-          <div class="field-picker-list">
-            <template v-for="group in groupedSelectedFields" :key="group.source">
-              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
-              <div
-                v-for="field in group.fields"
-                :key="field.field_key + field.source"
-                class="field-picker-item field-picker-item--selected"
-              >
-                <div class="field-picker-item-info">
-                  <div class="field-picker-item-name">{{ field.field_name }}</div>
-                  <div class="field-picker-item-meta">
-                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                    <span class="field-key">{{ field.field_key }}</span>
-                  </div>
-                </div>
-                <button class="field-picker-remove" @click="unpickField(field)">
-                  <CloseOutlined />
-                </button>
+          <div class="field-picker-search">
+            <a-input
+              v-model:value="selectedFieldSearchQuery"
+              :placeholder="t('admin.ruleConfig.searchFieldPlaceholder')"
+              allow-clear
+              size="small"
+            >
+              <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+            </a-input>
+          </div>
+          <div class="field-picker-list" style="padding: 12px 16px;">
+            <div
+              v-for="field in selectedPagination.paged.value"
+              :key="field.field_key + field.source"
+              class="field-picker-item field-picker-item--selected"
+              @click="toggleRightSelect(field.field_key + '_' + field.source)"
+              style="display: flex; gap: 12px; justify-content: flex-start; margin-bottom: 8px;"
+            >
+              <div class="field-picker-item-checkbox" @click.stop="toggleRightSelect(field.field_key + '_' + field.source)">
+                <a-checkbox :checked="rightSelectedKeys.includes(field.field_key + '_' + field.source)" />
               </div>
-            </template>
-            <div v-if="!groupedSelectedFields.length" class="field-picker-empty">
-              {{ t('admin.ruleConfig.noFieldsSelected') }}
+              <div class="field-picker-item-info" style="flex: 1;">
+                <div class="field-picker-item-name">{{ field.field_name }} <span class="field-source-tag" style="font-size: 11px; color: var(--color-text-tertiary); font-weight: normal; margin-left: 4px;">({{ field.sourceLabel }})</span></div>
+                <div class="field-picker-item-meta">
+                  <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                  <span class="field-key">{{ field.field_key }}</span>
+                </div>
+              </div>
+              <button class="field-picker-remove" @click.stop="unpickField(field)" style="margin-left: auto;">
+                <CloseOutlined />
+              </button>
             </div>
+            <div v-if="!selectedFieldsFlat.length" class="field-picker-empty">
+              {{ selectedFieldSearchQuery ? t('admin.ruleConfig.noSearchResult') : t('admin.ruleConfig.noFieldsSelected') }}
+            </div>
+          </div>
+          <div class="pagination-wrapper" style="padding: 12px 16px; border-top: 1px solid var(--color-border-light);">
+            <a-pagination
+              v-model:current="selectedPagination.current.value"
+              v-model:page-size="selectedPagination.pageSize.value"
+              :total="selectedPagination.total.value"
+              size="small"
+              show-size-changer
+              :page-size-options="['5', '20', '50']"
+              @change="selectedPagination.onChange"
+              @showSizeChange="selectedPagination.onChange"
+            />
           </div>
         </div>
       </div>
@@ -2725,5 +2884,157 @@ const handleSave = async () => {
 .access-tag-dept {
   font-size: 10px; color: var(--color-text-tertiary); margin-left: 2px;
   padding-left: 6px; border-left: 1px solid var(--color-border-light);
+}
+
+
+/* Imported data-table styles */
+.data-table-card {
+  background: var(--color-bg-card); border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light); overflow: hidden;
+}
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+  padding: 12px 16px; text-align: left; font-weight: 600; color: var(--color-text-secondary);
+  background: var(--color-bg-page); border-bottom: 1px solid var(--color-border-light);
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+}
+.data-table td {
+  padding: 12px 16px; border-bottom: 1px solid var(--color-border-light);
+  color: var(--color-text-primary);
+}
+.data-table tbody tr:hover { background: var(--color-bg-hover); }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.text-secondary { color: var(--color-text-tertiary); }
+.text-mono { font-family: monospace; font-size: 12px; color: var(--color-text-secondary); }
+.empty-cell { text-align: center; padding: 32px 16px !important; color: var(--color-text-tertiary); }
+
+/*结果标签（审核建议/合规性）*/
+.result-tag {
+  font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-full);
+  white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;
+}
+
+/*状态标签（cron）*/
+.status-tag {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full);
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.status-tag--success { background: var(--color-success-bg); color: var(--color-success); }
+.status-tag--failed { background: var(--color-danger-bg); color: var(--color-danger); }
+.status-tag--running { background: var(--color-primary-bg); color: var(--color-primary); }
+
+.action-btns { display: flex; gap: 4px; }
+.icon-btn {
+  width: 28px; height: 28px; border: 1px solid var(--color-border); background: transparent;
+  border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center;
+  justify-content: center; color: var(--color-text-tertiary); transition: all var(--transition-fast);
+}
+.icon-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+.pagination-wrapper { padding: 16px 0; display: flex; justify-content: flex-end; }
+
+/*抽屉（匹配仪表板/档案图案）*/
+.drawer-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 1000;
+  display: flex; justify-content: flex-end;
+}
+.drawer-panel {
+  width: 560px; max-width: 90vw; background: var(--color-bg-card);
+  box-shadow: var(--shadow-xl); display: flex; flex-direction: column; height: 100%;
+}
+.drawer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 24px; border-bottom: 1px solid var(--color-border-light);
+}
+.drawer-header h3 { margin: 0; font-size: 16px; font-weight: 600; color: var(--color-text-primary); }
+.drawer-close {
+  width: 32px; height: 32px; border: none; background: transparent; border-radius: var(--radius-sm);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: var(--color-text-tertiary); transition: all var(--transition-fast);
+}
+.drawer-close:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+.drawer-body { flex: 1; overflow-y: auto; padding: 24px; }
+
+.detail-process-title { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 16px; }
+
+/*详细横幅（匹配仪表板结果横幅）*/
+.detail-banner {
+  display: flex; align-items: center; gap: 16px; padding: 16px 20px;
+  border-radius: var(--radius-lg); border: 1px solid; margin-bottom: 20px;
+}
+.detail-banner-info { flex: 1; }
+.detail-banner-title { font-size: 16px; font-weight: 700; }
+.detail-banner-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
+.detail-score { font-size: 36px; font-weight: 800; line-height: 1; }
+
+.detail-section { margin-bottom: 20px; }
+.detail-section-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 10px; }
+
+/*规则检查（匹配仪表板模式）*/
+.rule-checks { display: flex; flex-direction: column; gap: 8px; }
+.rule-check-item {
+  display: flex; gap: 10px; padding: 10px 14px; border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
+}
+.rule-check-item--pass { background: var(--color-success-bg); border-color: rgba(16, 185, 129, 0.2); }
+.rule-check-item--fail { background: var(--color-danger-bg); border-color: rgba(239, 68, 68, 0.2); }
+.rule-check-status { font-size: 16px; flex-shrink: 0; padding-top: 1px; }
+.rule-check-content { flex: 1; }
+.rule-check-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.rule-check-reasoning { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+
+/*流量状态*/
+.flow-status {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  border-radius: var(--radius-md); font-size: 13px; font-weight: 500; margin-bottom: 10px;
+}
+.flow-status--complete { background: var(--color-success-bg); color: var(--color-success); }
+.flow-status--incomplete { background: var(--color-danger-bg); color: var(--color-danger); }
+.flow-missing { font-weight: 400; }
+
+/*风险和建议（匹配仪表板模式）*/
+.risk-suggest-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+.insight-card { padding: 14px; border-radius: var(--radius-md); }
+.insight-card--risk { background: var(--color-danger-bg); }
+.insight-card--suggest { background: var(--color-primary-bg); }
+.insight-card-header { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.insight-card-list { margin: 0; padding-left: 18px; font-size: 12px; color: var(--color-text-secondary); }
+.insight-card-list li { margin-bottom: 4px; }
+
+/*人工智能推理*/
+.ai-reasoning {
+  background: var(--color-bg-page); border-radius: var(--radius-md); padding: 14px;
+  border: 1px solid var(--color-border-light);
+}
+.ai-reasoning pre {
+  margin: 0; white-space: pre-wrap; word-break: break-word;
+  font-size: 13px; line-height: 1.6; color: var(--color-text-secondary); font-family: var(--font-sans);
+}
+
+/*过渡*/
+.slide-enter-active, .slide-leave-active { transition: all 0.2s ease; }
+.slide-enter-from, .slide-leave-to { opacity: 0; max-height: 0; overflow: hidden; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
+.slide-enter-to, .slide-leave-from { opacity: 1; max-height: 200px; }
+
+.drawer-enter-active, .drawer-leave-active { transition: opacity 0.3s ease; }
+.drawer-enter-active .drawer-panel, .drawer-leave-active .drawer-panel { transition: transform 0.3s ease; }
+.drawer-enter-from { opacity: 0; }
+.drawer-enter-from .drawer-panel { transform: translateX(100%); }
+.drawer-leave-to { opacity: 0; }
+.drawer-leave-to .drawer-panel { transform: translateX(100%); }
+
+.fade-in { animation: fadeIn 0.3s ease-out; }
+
+@media (max-width: 768px) {
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+  .data-table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .data-table { min-width: 700px; }
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .filter-bar { flex-direction: column; }
+  .page-title { font-size: 20px; }
+  .tab-nav { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab-btn { flex-shrink: 0; padding: 8px 14px; font-size: 13px; }
+  .risk-suggest-row { grid-template-columns: 1fr; }
+  .drawer-panel { width: 100%; max-width: 100vw; }
 }
 </style>
