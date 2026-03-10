@@ -33,7 +33,8 @@ import {
   InfoCircleOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { ProcessAuditConfig, ProcessField, AuditRule, CronTaskTypeConfig, ArchiveReviewConfig } from '~/composables/useMockData'
+import type { ProcessField, CronTaskTypeConfig, ArchiveReviewConfig, StrictnessPromptPreset, AuditRule } from '~/composables/useMockData'
+import type { ProcessAuditConfig as ApiProcessAuditConfig, AuditRule as ApiAuditRule } from '~/composables/useRulesApi'
 import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
@@ -137,48 +138,162 @@ const handleSaveCronConfig = async () => {
   message.success(t('admin.ruleConfig.cronSaved'))
 }
 
-const processConfigs = ref<ProcessAuditConfig[]>([])
+const processConfigs = ref<ApiProcessAuditConfig[]>([])
 const selectedProcessId = ref('')
+// 当前选中流程的规则列表（从 API 加载）
+const currentRules = ref<ApiAuditRule[]>([])
+const loadingRules = ref(false)
+
+//=====测试连接状态=====
+const testingConnection = ref(false)
+const testConnectionResult = ref<{ success: boolean; message: string } | null>(null)
+// 基本信息页面的测试连接状态（独立于新增弹框）
+const infoTestingConnection = ref(false)
+const infoTestConnectionResult = ref<{ success: boolean; message: string } | null>(null)
+// 同步字段状态
+const syncingFields = ref(false)
 
 //=====添加新流程=====
 const showAddProcess = ref(false)
 const newProcessForm = ref({ process_type: '', process_type_label: '', main_table_name: '' })
 
-const handleAddProcess = () => {
+// 新增弹框中的测试连接
+const handleTestConnectionInModal = async () => {
+  const processType = newProcessForm.value.process_type.trim()
+  if (!processType) {
+    message.warning(t('admin.ruleConfig.enterProcessName'))
+    return
+  }
+  testingConnection.value = true
+  testConnectionResult.value = null
+  try {
+    const info = await rulesApi.testConnection(processType)
+    testConnectionResult.value = {
+      success: true,
+      message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-']),
+    }
+    // 自动填充主表名称
+    if (info.main_table) {
+      newProcessForm.value.main_table_name = info.main_table
+    }
+  } catch (e: any) {
+    testConnectionResult.value = {
+      success: false,
+      message: t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']),
+    }
+  } finally {
+    testingConnection.value = false
+  }
+}
+
+// 基本信息页面的测试连接
+const handleTestConnectionInInfo = async () => {
+  if (!selectedConfig.value) return
+  const processType = selectedConfig.value.process_type.trim()
+  if (!processType) {
+    message.warning(t('admin.ruleConfig.enterProcessName'))
+    return
+  }
+  infoTestingConnection.value = true
+  infoTestConnectionResult.value = null
+  try {
+    const info = await rulesApi.testConnection(processType)
+    infoTestConnectionResult.value = {
+      success: true,
+      message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-']),
+    }
+    // 自动填充主表名称
+    if (info.main_table && selectedConfig.value) {
+      selectedConfig.value.main_table_name = info.main_table
+    }
+  } catch (e: any) {
+    infoTestConnectionResult.value = {
+      success: false,
+      message: t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']),
+    }
+  } finally {
+    infoTestingConnection.value = false
+  }
+}
+
+// 同步 OA 字段
+const handleSyncFields = async () => {
+  if (!selectedConfig.value) return
+  syncingFields.value = true
+  try {
+    const fields = await rulesApi.fetchFields(selectedConfig.value.id)
+    // 更新本地数据
+    selectedConfig.value.main_fields = (fields.main_fields || []).map((f: any) => ({ ...f, selected: true }))
+    selectedConfig.value.detail_tables = (fields.detail_tables || []).map((dt: any) => ({
+      ...dt,
+      fields: dt.fields.map((f: any) => ({ ...f, selected: true })),
+    }))
+    message.success(t('admin.ruleConfig.fetchFieldsSuccess'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.fetchFieldsFail') + ': ' + (e.message || ''))
+  } finally {
+    syncingFields.value = false
+  }
+}
+
+const handleAddProcess = async () => {
   if (!newProcessForm.value.process_type.trim()) {
     message.warning(t('admin.ruleConfig.enterProcessName'))
     return
   }
-  const newConfig: ProcessAuditConfig = {
-    id: `PAC-${Date.now()}`,
-    process_type: newProcessForm.value.process_type.trim(),
-    process_type_label: newProcessForm.value.process_type_label.trim() || undefined,
-    field_mode: 'selected',
-    fields: [],
-    rules: [],
-    kb_mode: 'rules_only',
-    ai_config: {
-      audit_strictness: 'standard',
-      reasoning_prompt: '',
-      extraction_prompt: '',
-    },
-    user_permissions: {
-      allow_custom_fields: false,
-      allow_custom_rules: false,
-      allow_modify_strictness: false,
-    },
+  try {
+    const created = await rulesApi.createConfig({
+      process_type: newProcessForm.value.process_type.trim(),
+      process_type_label: newProcessForm.value.process_type_label.trim(),
+      main_table_name: newProcessForm.value.main_table_name.trim(),
+    })
+    processConfigs.value.push(created)
+    selectedProcessId.value = created.id
+    showAddProcess.value = false
+    newProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
+    testConnectionResult.value = null
+    message.success(t('admin.ruleConfig.processAdded'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.createConfigFail') + ': ' + (e.message || ''))
   }
-  processConfigs.value.push(newConfig)
-  selectedProcessId.value = newConfig.id
-  showAddProcess.value = false
-  newProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
-  message.success(t('admin.ruleConfig.processAdded'))
+}
+
+// 删除流程配置
+const handleDeleteProcess = async (id: string) => {
+  try {
+    await rulesApi.deleteConfig(id)
+    processConfigs.value = processConfigs.value.filter(c => c.id !== id)
+    if (selectedProcessId.value === id) {
+      selectedProcessId.value = processConfigs.value[0]?.id || ''
+    }
+    message.success(t('admin.ruleConfig.deleteConfigSuccess'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.deleteConfigFail') + ': ' + (e.message || ''))
+  }
 }
 const activeTab = ref('info')
 
 const selectedConfig = computed(() =>
   processConfigs.value.find(c => c.id === selectedProcessId.value)
 )
+
+// 当选中流程变化时，从 API 加载该流程的规则
+watch(selectedProcessId, async (newId) => {
+  if (!newId) { currentRules.value = []; return }
+  const cfg = processConfigs.value.find(c => c.id === newId)
+  if (!cfg) { currentRules.value = []; return }
+  loadingRules.value = true
+  try {
+    currentRules.value = await rulesApi.listRules(cfg.process_type)
+  } catch (e) {
+    console.error('[rules] 加载规则失败', e)
+    currentRules.value = []
+  } finally {
+    loadingRules.value = false
+  }
+  // 重置基本信息页面的测试连接状态
+  infoTestConnectionResult.value = null
+})
 
 //===== 字段配置 =====
 const fieldTypeLabels = computed<Record<string, string>>(() => ({
@@ -299,33 +414,53 @@ const scopeConfig = computed(() => ({
 }))
 
 const showRuleEditor = ref(false)
-const editingRule = ref<AuditRule | null>(null)
+const editingRule = ref<ApiAuditRule | AuditRule | null>(null)
 
-const openRuleEditor = (rule?: AuditRule) => {
+const openRuleEditor = (rule?: ApiAuditRule | AuditRule) => {
   editingRule.value = rule || null
   showRuleEditor.value = true
 }
 
-const handleSaveRule = (rule: any) => {
+const handleSaveRule = async (rule: any) => {
   if (!selectedConfig.value) return
-  if (editingRule.value) {
-    const idx = selectedConfig.value.rules.findIndex(r => r.id === editingRule.value!.id)
-    if (idx >= 0) selectedConfig.value.rules[idx] = { ...editingRule.value, ...rule }
-  } else {
-    selectedConfig.value.rules.push({
-      id: `R${Date.now()}`, process_type: selectedConfig.value.process_type,
-      priority: 50, ...rule, enabled: true, source: 'manual' as const,
-    })
+  try {
+    if (editingRule.value) {
+      // 更新规则
+      const updated = await rulesApi.updateRule(editingRule.value.id, {
+        rule_content: rule.rule_content,
+        rule_scope: rule.rule_scope,
+        related_flow: rule.related_flow,
+      })
+      const idx = currentRules.value.findIndex(r => r.id === editingRule.value!.id)
+      if (idx >= 0) currentRules.value[idx] = updated
+    } else {
+      // 创建规则
+      const created = await rulesApi.createRule({
+        config_id: selectedConfig.value.id,
+        process_type: selectedConfig.value.process_type,
+        rule_content: rule.rule_content,
+        rule_scope: rule.rule_scope,
+        related_flow: rule.related_flow,
+      })
+      currentRules.value.push(created)
+    }
+    showRuleEditor.value = false
+    editingRule.value = null
+    message.success(t('admin.ruleConfig.ruleSaved'))
+  } catch (e: any) {
+    const key = editingRule.value ? 'admin.ruleConfig.updateRuleFail' : 'admin.ruleConfig.createRuleFail'
+    message.error(t(key) + ': ' + (e.message || ''))
   }
-  showRuleEditor.value = false
-  editingRule.value = null
-  message.success(t('admin.ruleConfig.ruleSaved'))
 }
 
-const deleteRule = (id: string) => {
-  if (!selectedConfig.value) return
-  selectedConfig.value.rules = selectedConfig.value.rules.filter(r => r.id !== id)
-  message.success(t('admin.ruleConfig.deleted'))
+const deleteRule = async (id: string) => {
+  try {
+    await rulesApi.deleteRule(id)
+    currentRules.value = currentRules.value.filter(r => r.id !== id)
+    message.success(t('admin.ruleConfig.deleted'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.deleteRuleFail') + ': ' + (e.message || ''))
+  }
 }
 
 const handleImportRules = () => {
@@ -434,7 +569,13 @@ onMounted(async () => {
   try {
     const configs = await rulesApi.listConfigs()
     processConfigs.value = configs as any
-    if (configs.length > 0) selectedProcessId.value = configs[0].id
+    if (configs.length > 0) {
+      selectedProcessId.value = configs[0].id
+      // 加载第一个流程的规则
+      try {
+        currentRules.value = await rulesApi.listRules(configs[0].process_type)
+      } catch (e) { console.error('[rules] 加载规则失败', e) }
+    }
   }
   catch (e) { console.error('[rules] 加载流程配置失败', e) }
   // 从 API 加载审核尺度预设
@@ -770,10 +911,31 @@ const savingCron = ref(false)
 const savingArchive = ref(false)
 
 const handleSave = async () => {
+  if (!selectedConfig.value) return
   saving.value = true
-  await new Promise(r => setTimeout(r, 800))
-  saving.value = false
-  message.success(t('admin.ruleConfig.configSaved'))
+  try {
+    const cfg = selectedConfig.value
+    const updated = await rulesApi.updateConfig(cfg.id, {
+      process_type: cfg.process_type,
+      process_type_label: cfg.process_type_label,
+      main_table_name: cfg.main_table_name,
+      main_fields: cfg.main_fields,
+      detail_tables: cfg.detail_tables,
+      field_mode: cfg.field_mode,
+      kb_mode: cfg.kb_mode,
+      ai_config: cfg.ai_config,
+      user_permissions: cfg.user_permissions,
+      status: cfg.status,
+    })
+    // 更新本地数据
+    const idx = processConfigs.value.findIndex(c => c.id === cfg.id)
+    if (idx !== -1) processConfigs.value[idx] = updated
+    message.success(t('admin.ruleConfig.configSaved'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.updateConfigFail') + ': ' + (e.message || ''))
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
@@ -822,8 +984,15 @@ const handleSave = async () => {
           :class="{ 'process-nav-item--active': selectedProcessId === cfg.id }"
           @click="selectedProcessId = cfg.id"
         >
-          <div class="process-nav-name">{{ cfg.process_type }}</div>
-          <div v-if="cfg.process_type_label" class="process-nav-path">{{ cfg.process_type_label }}</div>
+          <div style="flex: 1; min-width: 0;">
+            <div class="process-nav-name">{{ cfg.process_type }}</div>
+            <div v-if="cfg.process_type_label" class="process-nav-path">{{ cfg.process_type_label }}</div>
+          </div>
+          <a-popconfirm :title="t('admin.ruleConfig.deleteConfigConfirm')" @confirm.stop="handleDeleteProcess(cfg.id)" placement="right">
+            <button class="icon-btn icon-btn--danger icon-btn--sm" @click.stop style="opacity: 0.5; flex-shrink: 0;">
+              <DeleteOutlined />
+            </button>
+          </a-popconfirm>
         </div>
       </div>
 
@@ -874,7 +1043,25 @@ const handleSave = async () => {
               />
             </a-form-item>
             <a-form-item :label="t('admin.ruleConfig.mainTableLabel')">
-              <a-input v-model:value="selectedConfig!.main_table_name" :placeholder="t('admin.ruleConfig.mainTableInputPlaceholder')" />
+              <div style="display: flex; gap: 8px;">
+                <a-input v-model:value="selectedConfig!.main_table_name" :placeholder="t('admin.ruleConfig.mainTableInputPlaceholder')" style="flex: 1;" />
+                <a-button
+                  :loading="infoTestingConnection"
+                  @click="handleTestConnectionInInfo"
+                >
+                  <template #icon><DatabaseOutlined /></template>
+                  {{ infoTestingConnection ? t('admin.ruleConfig.testingConnection') : t('admin.ruleConfig.testConnection') }}
+                </a-button>
+              </div>
+              <div v-if="infoTestConnectionResult" style="margin-top: 8px;">
+                <a-alert
+                  :type="infoTestConnectionResult.success ? 'success' : 'error'"
+                  :message="infoTestConnectionResult.message"
+                  show-icon
+                  closable
+                  @close="infoTestConnectionResult = null"
+                />
+              </div>
             </a-form-item>
           </a-form>
         </div>
@@ -886,6 +1073,10 @@ const handleSave = async () => {
               <h4 class="section-title">{{ t('admin.ruleConfig.fieldTitle') }}</h4>
               <p class="section-desc">{{ t('admin.ruleConfig.fieldDesc') }}</p>
             </div>
+            <a-button :loading="syncingFields" @click="handleSyncFields">
+              <template #icon><DatabaseOutlined /></template>
+              {{ syncingFields ? t('admin.ruleConfig.syncingFields') : t('admin.ruleConfig.syncFields') }}
+            </a-button>
           </div>
 
           <div class="field-mode-switch">
@@ -982,7 +1173,7 @@ const handleSave = async () => {
           </div>
 
           <div class="rules-toolbar">
-            <span class="rules-count">{{ t('admin.ruleConfig.totalRules', `${selectedConfig.rules.length}`) }}</span>
+            <span class="rules-count">{{ t('admin.ruleConfig.totalRules', `${currentRules.length}`) }}</span>
             <div class="rules-toolbar-actions">
               <a-button @click="handleImportRules">
                 <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
@@ -994,7 +1185,8 @@ const handleSave = async () => {
           </div>
 
           <div class="rules-list">
-            <div v-for="rule in selectedConfig.rules" :key="rule.id" class="rule-card">
+            <a-spin v-if="loadingRules" style="display: block; text-align: center; padding: 24px;" />
+            <div v-for="rule in currentRules" :key="rule.id" class="rule-card">
               <div class="rule-card-left">
                 <div class="rule-scope-badge" :style="{ color: scopeConfig[rule.rule_scope]?.color, background: scopeConfig[rule.rule_scope]?.bg }">
                   <component :is="scopeConfig[rule.rule_scope]?.icon" />
@@ -1012,7 +1204,7 @@ const handleSave = async () => {
                 </div>
               </div>
               <div class="rule-card-actions">
-                <a-switch v-model:checked="rule.enabled" size="small" />
+                <a-switch :checked="rule.enabled" size="small" @change="(checked: boolean) => rulesApi.updateRule(rule.id, { enabled: checked }).then(updated => { const idx = currentRules.findIndex(r => r.id === rule.id); if (idx >= 0) currentRules[idx] = updated })" />
                 <button class="icon-btn" @click="openRuleEditor(rule)"><EditOutlined /></button>
                 <a-popconfirm :title="t('admin.ruleConfig.deleteRuleConfirm')" @confirm="deleteRule(rule.id)">
                   <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
@@ -1189,7 +1381,29 @@ const handleSave = async () => {
           <a-input v-model:value="newProcessForm.process_type_label" :placeholder="t('admin.ruleConfig.processTypeLabelPlaceholder')" />
         </a-form-item>
         <a-form-item :label="t('admin.ruleConfig.mainTableName')">
-          <a-input v-model:value="newProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" />
+          <div style="display: flex; gap: 8px;">
+            <a-input v-model:value="newProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" style="flex: 1;" />
+            <a-button
+              :loading="testingConnection"
+              @click="handleTestConnectionInModal"
+              :disabled="!newProcessForm.process_type.trim()"
+            >
+              <template #icon><DatabaseOutlined /></template>
+              {{ testingConnection ? t('admin.ruleConfig.testingConnection') : t('admin.ruleConfig.testConnection') }}
+            </a-button>
+          </div>
+          <div class="test-connection-hint" style="margin-top: 4px; font-size: 12px; color: var(--color-text-tertiary);">
+            {{ t('admin.ruleConfig.testConnectionHint') }}
+          </div>
+          <div v-if="testConnectionResult" style="margin-top: 8px;">
+            <a-alert
+              :type="testConnectionResult.success ? 'success' : 'error'"
+              :message="testConnectionResult.message"
+              show-icon
+              closable
+              @close="testConnectionResult = null"
+            />
+          </div>
         </a-form-item>
       </a-form>
     </a-modal>
@@ -2042,6 +2256,7 @@ const handleSave = async () => {
 .process-nav-item {
   padding: 12px 16px; cursor: pointer; transition: all var(--transition-fast);
   border-bottom: 1px solid var(--color-border-light);
+  display: flex; align-items: center; gap: 8px;
 }
 .process-nav-item:last-child { border-bottom: none; }
 .process-nav-item:hover { background: var(--color-bg-hover); }
@@ -2159,6 +2374,7 @@ const handleSave = async () => {
 }
 .icon-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .icon-btn--danger:hover { border-color: var(--color-danger); color: var(--color-danger); }
+.icon-btn--sm { width: 24px; height: 24px; font-size: 12px; }
 
 /*知识库模式*/
 .kb-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
