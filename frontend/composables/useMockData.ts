@@ -1616,8 +1616,6 @@ export const useMockData = () => {
   ]
 
 
-  //从流程审核配置中派生规则以实现向后兼容性
-  const mockRules: AuditRule[] = mockProcessAuditConfigs.flatMap(c => c.rules)
 
   const mockDashboardStats: DashboardStats = {
     todayAudits: 42,
@@ -2163,7 +2161,6 @@ export const useMockData = () => {
     mockCronTasks,
     mockCronTaskTypeConfigs,
     mockSnapshots,
-    mockRules,
     mockDashboardStats,
     mockOverviewData,
     mockUserDashboardPrefs,

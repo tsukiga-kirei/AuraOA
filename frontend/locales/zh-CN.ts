@@ -1463,6 +1463,7 @@ export default {
     'fieldType.select': '下拉选择',
     'fieldType.textarea': '多行文本',
     'fieldType.file': '文件',
+    'fieldType.checkbox': '复选框',
 
     //成分
     'rule.mandatory': '强制',
