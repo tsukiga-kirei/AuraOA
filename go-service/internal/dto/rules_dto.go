@@ -34,7 +34,8 @@ type UpdateProcessAuditConfigRequest struct {
 
 // TestConnectionRequest 测试 OA 流程连接请求
 type TestConnectionRequest struct {
-	ProcessType string `json:"process_type" binding:"required"`
+	ProcessType   string `json:"process_type" binding:"required"`
+	MainTableName string `json:"main_table_name"` // 可选，用于校验主表名是否正确
 }
 
 // ===================== 审核规则 DTO =====================

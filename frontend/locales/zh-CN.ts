@@ -1620,6 +1620,7 @@ export default {
     'admin.ruleConfig.testingConnection': '测试中...',
     'admin.ruleConfig.testConnectionSuccess': '连接成功：流程「{0}」存在，主表名称为 {1}',
     'admin.ruleConfig.testConnectionFail': '连接失败：{0}',
+    'admin.ruleConfig.tableMismatch': '主表名称不匹配，OA 系统中正确的主表名为：{0}（已自动纠正）',
     'admin.ruleConfig.testConnectionHint': '输入流程名称后点击测试，验证 OA 系统中是否存在该流程并自动获取主表名称',
     'admin.ruleConfig.autoFillMainTable': '已自动填充主表名称：{0}',
     'admin.ruleConfig.createConfigFail': '创建流程配置失败',
