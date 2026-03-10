@@ -189,24 +189,35 @@ func (a *Ecology9Adapter) ValidateProcess(ctx context.Context, processType strin
 
 // FetchFields 从泛微 E9 拉取指定流程的全部字段定义。
 func (a *Ecology9Adapter) FetchFields(ctx context.Context, processType string) (*ProcessFields, error) {
-	// 显式扫描 formid 和 tablename，避免 struct tag 大小写映射问题
+	// 显式扫描 formid，避免 struct tag 大小写映射问题
 	var formID int
-	var mainTableName string
 	row := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_base")).
-		Select(a.col("formid")+", "+a.col("tablename")).
+		Select(a.col("formid")).
 		Where(a.col("workflowname")+" = ?", processType).
 		Row()
-	if err := row.Scan(&formID, &mainTableName); err != nil {
+	if err := row.Scan(&formID); err != nil {
 		return nil, fmt.Errorf("查询流程 '%s' 失败: %w", processType, err)
+	}
+
+	// 通过 formid 查询 workflow_bill，获取真实主表名
+	var mainTableName string
+	billRow := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_bill")).
+		Select(a.col("tablename")).
+		Where(a.col("id")+" = ?", formID).
+		Row()
+	if err := billRow.Scan(&mainTableName); err != nil {
+		return nil, fmt.Errorf("查询流程表单定义失败 (formid=%d): %w", formID, err)
 	}
 
 	var rawFields []map[string]interface{}
 	err := a.db.WithContext(ctx).
-		Table(a.tableName("workflow_billfield")).
-		Select(a.col("fielddbname")+", "+a.col("fieldname")+", "+a.col("fieldhtmltype")+", "+a.col("detailtable")).
-		Where(a.col("billid")+" = ?", formID).
-		Order(a.col("detailtable") + " ASC, " + a.col("id") + " ASC").
+		Table(a.tableName("workflow_billfield")+" "+a.col("t1")).
+		Select(a.col("t1.fieldname")+" AS fieldkey, "+a.col("t2.labelname")+" AS fieldname, "+a.col("t1.fieldhtmltype")+" AS fieldhtmltype, "+a.col("t1.detailtable")+" AS detailtable").
+		Joins("JOIN "+a.tableName("htmllabelinfo")+" "+a.col("t2")+" ON "+a.col("t1.fieldlabel")+" = "+a.col("t2.indexid")).
+		Where(a.col("t1.billid")+" = ? AND "+a.col("t2.languageid")+" = 7", formID).
+		Order(a.col("t1.detailtable") + " ASC, " + a.col("t1.id") + " ASC").
 		Find(&rawFields).Error
 	if err != nil {
 		return nil, fmt.Errorf("查询流程字段失败: %w", err)
@@ -220,7 +231,7 @@ func (a *Ecology9Adapter) FetchFields(ctx context.Context, processType string) (
 
 	for _, row := range rawFields {
 		fd := FieldDef{
-			FieldKey:  mapGet(row, "fielddbname"),
+			FieldKey:  mapGet(row, "fieldkey"),
 			FieldName: mapGet(row, "fieldname"),
 			FieldType: a.mapFieldType(mapGet(row, "fieldhtmltype")),
 		}
@@ -356,20 +367,18 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 // mapFieldType 将泛微 E9 的字段 HTML 类型映射为通用字段类型。
 func (a *Ecology9Adapter) mapFieldType(htmlType string) string {
 	switch htmlType {
-	case "1":
+	case "1": // 单行文本框
 		return "text"
-	case "2":
+	case "2": // 多行文本框
 		return "textarea"
-	case "3":
+	case "3": // 浏览按钮
 		return "select"
-	case "4":
-		return "checkbox"
-	case "5":
-		return "date"
-	case "6":
-		return "number"
-	case "7":
-		return "attachment"
+	case "4": // check框
+		return "text"
+	case "5": // 选择框
+		return "select"
+	case "6": // 附件上传 (泛微 E9 附件通常是 6)
+		return "file"
 	default:
 		return "text"
 	}

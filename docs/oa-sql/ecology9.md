@@ -70,14 +70,21 @@ SELECT * FROM workflow_base WHERE workflowname = ? LIMIT 1;
 SELECT * FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ROWNUM <= 1;
 ```
 
-### 2.2 查询所有字段
+### 2.2 查询所有字段及国际化显示名
+
+泛微 E9 将实际展示的中文字段名存放在 `htmllabelinfo` 中，需要通过 `fieldlabel` 关联查询（`languageid = 7` 代表简体中文）。
 
 ```sql
 -- MySQL / Oracle 通用
-SELECT *
-  FROM workflow_billfield
- WHERE billid = ?
- ORDER BY detailtable ASC, id ASC;
+SELECT
+    T1.FIELDNAME AS FIELDKEY,
+    T2.LABELNAME AS FIELDNAME,
+    T1.FIELDHTMLTYPE AS FIELDHTMLTYPE,
+    T1.DETAILTABLE AS DETAILTABLE
+FROM WORKFLOW_BILLFIELD T1
+JOIN HTMLLABELINFO T2 ON T1.FIELDLABEL = T2.INDEXID
+WHERE T1.BILLID = ? AND T2.LANGUAGEID = 7
+ORDER BY T1.DETAILTABLE ASC, T1.ID ASC;
 ```
 
 ---
