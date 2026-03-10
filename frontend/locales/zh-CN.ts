@@ -1615,4 +1615,24 @@ export default {
     'admin.ruleConfig.varComplianceRate': '合规率百分比',
     'admin.ruleConfig.varComplianceTrend': '合规率环比变化',
 
+    //===== 审核工作台 - 测试连接 =====
+    'admin.ruleConfig.testConnection': '测试连接',
+    'admin.ruleConfig.testingConnection': '测试中...',
+    'admin.ruleConfig.testConnectionSuccess': '连接成功：流程「{0}」存在，主表名称为 {1}',
+    'admin.ruleConfig.testConnectionFail': '连接失败：{0}',
+    'admin.ruleConfig.testConnectionHint': '输入流程名称后点击测试，验证 OA 系统中是否存在该流程并自动获取主表名称',
+    'admin.ruleConfig.autoFillMainTable': '已自动填充主表名称：{0}',
+    'admin.ruleConfig.createConfigFail': '创建流程配置失败',
+    'admin.ruleConfig.updateConfigFail': '更新流程配置失败',
+    'admin.ruleConfig.deleteConfigConfirm': '确定删除该流程配置？关联的规则也将被删除',
+    'admin.ruleConfig.deleteConfigSuccess': '流程配置已删除',
+    'admin.ruleConfig.deleteConfigFail': '删除流程配置失败',
+    'admin.ruleConfig.createRuleFail': '创建规则失败',
+    'admin.ruleConfig.updateRuleFail': '更新规则失败',
+    'admin.ruleConfig.deleteRuleFail': '删除规则失败',
+    'admin.ruleConfig.fetchFieldsFail': '拉取字段失败',
+    'admin.ruleConfig.fetchFieldsSuccess': '字段已从 OA 系统同步',
+    'admin.ruleConfig.syncFields': '同步 OA 字段',
+    'admin.ruleConfig.syncingFields': '同步中...',
+
 } as Record<string, string>

@@ -1615,4 +1615,24 @@ export default {
     'admin.ruleConfig.varComplianceRate': 'Compliance rate percentage',
     'admin.ruleConfig.varComplianceTrend': 'Compliance rate week-over-week change',
 
+    //===== Audit Workbench - Test Connection =====
+    'admin.ruleConfig.testConnection': 'Test Connection',
+    'admin.ruleConfig.testingConnection': 'Testing...',
+    'admin.ruleConfig.testConnectionSuccess': 'Success: Process "{0}" exists, main table: {1}',
+    'admin.ruleConfig.testConnectionFail': 'Connection failed: {0}',
+    'admin.ruleConfig.testConnectionHint': 'Enter process name and click test to verify it exists in the OA system and auto-fill the main table name',
+    'admin.ruleConfig.autoFillMainTable': 'Main table name auto-filled: {0}',
+    'admin.ruleConfig.createConfigFail': 'Failed to create process config',
+    'admin.ruleConfig.updateConfigFail': 'Failed to update process config',
+    'admin.ruleConfig.deleteConfigConfirm': 'Delete this process config? Associated rules will also be deleted.',
+    'admin.ruleConfig.deleteConfigSuccess': 'Process config deleted',
+    'admin.ruleConfig.deleteConfigFail': 'Failed to delete process config',
+    'admin.ruleConfig.createRuleFail': 'Failed to create rule',
+    'admin.ruleConfig.updateRuleFail': 'Failed to update rule',
+    'admin.ruleConfig.deleteRuleFail': 'Failed to delete rule',
+    'admin.ruleConfig.fetchFieldsFail': 'Failed to fetch fields',
+    'admin.ruleConfig.fetchFieldsSuccess': 'Fields synced from OA system',
+    'admin.ruleConfig.syncFields': 'Sync OA Fields',
+    'admin.ruleConfig.syncingFields': 'Syncing...',
+
 } as Record<string, string>

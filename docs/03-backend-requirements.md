@@ -653,7 +653,7 @@ services:
   redis:        # Redis 7
 ```
 
-**本地开发** (`docker-compose.dev.yml`)：启动基础设施 + Go 后端服务，前端在本地运行。
+**本地开发** (`docker-compose.dev.yml`)：启动基础设施服务，Go 后端服务定义已注释（可按需取消注释启用），前端在本地运行。
 
 ```bash
 docker-compose -f docker-compose.dev.yml up -d
@@ -661,7 +661,7 @@ docker-compose -f docker-compose.dev.yml up -d
 
 ```yaml
 services:
-  go-service:   # Go 业务中台（从源码构建）
+  # go-service:   # Go 业务中台（从源码构建，当前已注释）
   postgres:     # PostgreSQL 16 + pgvector（自动加载 migrations 和 seeds）
   redis:        # Redis 7
 ```

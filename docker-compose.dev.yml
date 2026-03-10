@@ -4,31 +4,31 @@ version: "3.9"
 # 用法：docker-compose -f docker-compose.dev.yml up -d
 
 services:
-  go-service:
-    build:
-      context: ./go-service
-      dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_DBNAME=oa_smart_audit
-      - DATABASE_USER=oa_admin
-      - DATABASE_PASSWORD=changeme_pg_password
-      - DATABASE_SSLMODE=disable
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=
-      - SERVER_PORT=8080
-      - JWT_SECRET=dev_jwt_secret_change_me
-      - ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
-    restart: unless-stopped
+  # go-service:
+  #   build:
+  #     context: ./go-service
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "8080:8080"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   environment:
+  #     - DATABASE_HOST=postgres
+  #     - DATABASE_PORT=5432
+  #     - DATABASE_DBNAME=oa_smart_audit
+  #     - DATABASE_USER=oa_admin
+  #     - DATABASE_PASSWORD=changeme_pg_password
+  #     - DATABASE_SSLMODE=disable
+  #     - REDIS_HOST=redis
+  #     - REDIS_PORT=6379
+  #     - REDIS_PASSWORD=
+  #     - SERVER_PORT=8080
+  #     - JWT_SECRET=dev_jwt_secret_change_me
+  #     - ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
+  #   restart: unless-stopped
 
   postgres:
     image: pgvector/pgvector:pg16
