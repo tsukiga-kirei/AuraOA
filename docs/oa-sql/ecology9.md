@@ -26,33 +26,23 @@ SELECT * FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ISVALID = '1' AND ROWNUM 
 
 通过 `workflow_base.formid` 关联 `workflow_bill.id`，获取 `workflow_bill.tablename` 作为真实主表名。
 
+使用 `Row().Scan()` 显式扫描列值，避免 GORM struct tag 大小写映射问题（Oracle/DM 列名大写）。
+
 ```sql
 -- MySQL
-SELECT * FROM workflow_bill WHERE id = ? LIMIT 1;
+SELECT workflowname, formid FROM workflow_base WHERE workflowname = ? AND isvalid = '1' LIMIT 1;
+SELECT tablename FROM workflow_bill WHERE id = ? LIMIT 1;
 
--- Oracle / DM
-SELECT * FROM WORKFLOW_BILL WHERE ID = ? AND ROWNUM <= 1;
+-- Oracle / DM（tableName() / col() 自动转大写）
+SELECT WORKFLOWNAME, FORMID FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ISVALID = '1' AND ROWNUM <= 1;
+SELECT TABLENAME FROM WORKFLOW_BILL WHERE ID = ? AND ROWNUM <= 1;
 ```
 
-> 如果 `workflow_bill` 查询失败，降级使用 `workflow_base.tablename`。
+> `workflow_bill` 查询失败时直接返回错误，不再降级使用 `workflow_base.tablename`。
 >
 > 当前端传入 `main_table_name` 时，Service 层会将其与 `workflow_bill.tablename` 做忽略大小写比较：
 > - 一致：正常返回
 > - 不一致：返回 `table_mismatch=true` + `expected_table`（正确表名），前端自动纠正
-
-### 1.3 统计明细表数量
-
-```sql
--- MySQL
-SELECT COUNT(DISTINCT detailtable)
-  FROM workflow_billfield
- WHERE billid = ? AND detailtable > 0;
-
--- Oracle / DM（tableName() 自动转大写）
-SELECT COUNT(DISTINCT DETAILTABLE)
-  FROM WORKFLOW_BILLFIELD
- WHERE BILLID = ? AND DETAILTABLE > 0;
-```
 
 ---
 
@@ -87,13 +77,15 @@ SELECT *
 ### 3.1 查询流程定义
 
 > 与 1.1 不同，此处不过滤 `isvalid`，仅按流程名称查询。
+>
+> 使用 `Row().Scan()` 显式扫描 `id` 列，避免 GORM struct tag 大小写映射问题（Oracle/DM 列名大写）。
 
 ```sql
 -- MySQL
-SELECT * FROM workflow_base WHERE workflowname = ? LIMIT 1;
+SELECT id FROM workflow_base WHERE workflowname = ? LIMIT 1;
 
--- Oracle / DM
-SELECT * FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ROWNUM <= 1;
+-- Oracle / DM（tableName() / col() 自动转大写）
+SELECT ID FROM WORKFLOW_BASE WHERE WORKFLOWNAME = ? AND ROWNUM <= 1;
 ```
 
 ### 3.2 统计用户操作记录
@@ -165,7 +157,7 @@ SELECT *
 |---|---|---|
 | `workflow_base` | 流程定义（名称、表单ID、主表名、isvalid 启停状态） | ValidateProcess / FetchFields / CheckUserPermission / FetchProcessData |
 | `workflow_bill` | 表单定义（表单ID → 关联主表名 tablename） | ValidateProcess（获取真实主表名） |
-| `workflow_billfield` | 表单字段定义（字段名、类型、明细表归属） | ValidateProcess / FetchFields / FetchProcessData |
+| `workflow_billfield` | 表单字段定义（字段名、类型、明细表归属） | FetchFields / FetchProcessData |
 | `workflow_currentoperator` | 流程当前操作人（待办/已办） | CheckUserPermission |
 | `workflow_requestbase` | 流程请求实例（requestid ↔ workflowid） | FetchProcessData |
 | `{tablename}` | 流程主表（动态表名，来自 workflow_base.tablename） | FetchProcessData |
