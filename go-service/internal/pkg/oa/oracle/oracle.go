@@ -10,11 +10,13 @@ import (
 )
 
 // Open 返回 Oracle 的 GORM Dialector。
+// IgnoreCase=true + NamingCaseSensitive=false 使驱动不给标识符加双引号，
+// Oracle 会自动将不带引号的标识符转为大写匹配，兼容泛微 E9 的大写表名。
 func Open(dsn string) gorm.Dialector {
 	return goracle.New(goracle.Config{
 		DSN:                     dsn,
-		IgnoreCase:              false,
-		NamingCaseSensitive:     true,
+		IgnoreCase:              true,
+		NamingCaseSensitive:     false,
 		VarcharSizeIsCharLength: true,
 	})
 }
