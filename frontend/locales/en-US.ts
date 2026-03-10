@@ -787,6 +787,8 @@ export default {
     'admin.ruleConfig.strict': 'Strict',
     'admin.ruleConfig.strictDesc': 'All rules strictly enforced, zero tolerance',
     'admin.ruleConfig.strictDescNew': 'Any doubt leads to return recommendation, zero tolerance',
+    'admin.ruleConfig.add': 'Batch Add',
+    'admin.ruleConfig.remove': 'Batch Remove',
     'admin.ruleConfig.standard': 'Standard',
     'admin.ruleConfig.standardDesc': 'Execute per default rule config',
     'admin.ruleConfig.standardDescNew': 'Clear violations recommend return, doubtful items explained with suggestions',

@@ -789,6 +789,8 @@ export default {
     'admin.ruleConfig.strict': '严格',
     'admin.ruleConfig.strictDesc': '所有规则严格执行，零容忍',
     'admin.ruleConfig.strictDescNew': '任何疑点均建议退回，宁可误判也不放过',
+    'admin.ruleConfig.add': '批量添加',
+    'admin.ruleConfig.remove': '批量移除',
     'admin.ruleConfig.standard': '标准',
     'admin.ruleConfig.standardDesc': '按规则默认配置执行',
     'admin.ruleConfig.standardDescNew': '明确违规项建议退回，存疑项说明理由并给出建议',
