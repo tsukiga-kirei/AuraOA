@@ -1618,7 +1618,7 @@ export default {
     //===== 审核工作台 - 测试连接 =====
     'admin.ruleConfig.testConnection': '测试连接',
     'admin.ruleConfig.testingConnection': '测试中...',
-    'admin.ruleConfig.testConnectionSuccess': '连接成功：流程「{0}」存在，主表名称为 {1}',
+    'admin.ruleConfig.testConnectionSuccess': '连接成功：流程「{0}」存在，主表名称为 {1}，流程类型为 {2}',
     'admin.ruleConfig.testConnectionFail': '连接失败：{0}',
     'admin.ruleConfig.tableMismatch': '主表名称不匹配，OA 系统中正确的主表名为：{0}（已自动纠正）',
     'admin.ruleConfig.typeLabelMismatch': '流程类型分类不匹配，已自动填入正确的分类: {0}',

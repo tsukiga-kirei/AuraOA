@@ -1618,7 +1618,7 @@ export default {
     //===== Audit Workbench - Test Connection =====
     'admin.ruleConfig.testConnection': 'Test Connection',
     'admin.ruleConfig.testingConnection': 'Testing...',
-    'admin.ruleConfig.testConnectionSuccess': 'Success: Process "{0}" exists, main table: {1}',
+    'admin.ruleConfig.testConnectionSuccess': 'Success: Process "{0}" exists, main table: {1}, process type: {2}',
     'admin.ruleConfig.testConnectionFail': 'Connection failed: {0}',
     'admin.ruleConfig.tableMismatch': 'Table name mismatch. Correct main table in OA: {0} (auto-corrected)',
     'admin.ruleConfig.typeLabelMismatch': 'Process type category mismatch, automatically corrected to: {0}',

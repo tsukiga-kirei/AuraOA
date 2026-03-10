@@ -189,7 +189,7 @@ const handleTestConnectionInModal = async () => {
     } else {
       testConnectionResult.value = {
         success: true,
-        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-']),
+        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
       }
       // 自动填充主表名称和流程类型
       if (info.main_table) {
@@ -242,7 +242,7 @@ const handleTestConnectionInInfo = async () => {
     } else {
       infoTestConnectionResult.value = {
         success: true,
-        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-']),
+        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
       }
       // 自动填充主表名称和流程类型
       if (info.main_table && selectedConfig.value) {
