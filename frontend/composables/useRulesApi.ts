@@ -3,19 +3,19 @@
 import type {
   ProcessAuditConfig,
   AuditRule,
-  StrictnessPreset,
+  SystemPromptTemplate,
   ProcessInfo,
   ProcessFields,
 } from '~/types/rules'
 
-export type { ProcessAuditConfig, AuditRule, StrictnessPreset, ProcessInfo, ProcessFields }
+export type { ProcessAuditConfig, AuditRule, SystemPromptTemplate, ProcessInfo, ProcessFields }
 
 export const useRulesApi = () => {
   const { authFetch } = useAuth()
 
   const configs = ref<ProcessAuditConfig[]>([])
   const rules = ref<AuditRule[]>([])
-  const presets = ref<StrictnessPreset[]>([])
+  const promptTemplates = ref<SystemPromptTemplate[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -100,34 +100,29 @@ export const useRulesApi = () => {
   }
 
   // ============================================================
-  // 审核尺度预设
+  // 系统提示词模板
   // ============================================================
 
-  async function listPresets(): Promise<StrictnessPreset[]> {
+  async function listPromptTemplates(): Promise<SystemPromptTemplate[]> {
     loading.value = true
     error.value = null
     try {
-      const data = await authFetch<StrictnessPreset[]>('/api/tenant/rules/strictness-presets')
-      presets.value = data
+      const data = await authFetch<SystemPromptTemplate[]>('/api/tenant/rules/prompt-templates')
+      promptTemplates.value = data
       return data
     }
     catch (e: any) {
-      error.value = e.message || '加载审核尺度预设失败'
+      error.value = e.message || '加载提示词模板失败'
       throw e
     }
     finally { loading.value = false }
   }
 
-  async function updatePreset(strictness: string, body: { reasoning_instruction: string; extraction_instruction: string }): Promise<StrictnessPreset> {
-    const data = await authFetch<StrictnessPreset>(`/api/tenant/rules/strictness-presets/${strictness}`, { method: 'PUT', body })
-    return data
-  }
-
   return {
-    configs, rules, presets, loading, error,
+    configs, rules, promptTemplates, loading, error,
     listConfigs, createConfig, updateConfig, deleteConfig,
     testConnection, fetchFields,
     listRules, createRule, updateRule, deleteRule,
-    listPresets, updatePreset,
+    listPromptTemplates,
   }
 }

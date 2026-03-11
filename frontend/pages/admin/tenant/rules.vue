@@ -29,8 +29,8 @@ import {
   InfoCircleOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { ProcessField, CronTaskTypeConfig, ArchiveReviewConfig, StrictnessPromptPreset, AuditRule } from '~/composables/useMockData'
-import type { ProcessAuditConfig as ApiProcessAuditConfig, AuditRule as ApiAuditRule } from '~/composables/useRulesApi'
+import type { ProcessField, CronTaskTypeConfig, ArchiveReviewConfig, AuditRule } from '~/composables/useMockData'
+import type { ProcessAuditConfig as ApiProcessAuditConfig, AuditRule as ApiAuditRule, SystemPromptTemplate } from '~/composables/useRulesApi'
 import { useI18n } from '~/composables/useI18n'
 import { usePagination } from '~/composables/usePagination'
 
@@ -623,7 +623,7 @@ const interactionModeOptions = computed(() => [
   { value: 'single_pass', label: t('admin.ruleConfig.singlePass') },
 ])
 
-//提示变量并提供推理阶段的描述
+//用户推理提示词可用变量
 const reasoningPromptVariables = computed(() => [
   { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
   { key: '{{detail_tables}}', desc: t('admin.ruleConfig.varDetailTablesDesc') },
@@ -633,8 +633,9 @@ const reasoningPromptVariables = computed(() => [
   { key: '{{current_node}}', desc: t('admin.ruleConfig.varCurrentNodeDesc') },
 ])
 
-//提取阶段的提示变量
+//用户提取提示词可用变量
 const extractionPromptVariables = computed(() => [
+  { key: '{{reasoning_result}}', desc: t('admin.ruleConfig.varReasoningResultDesc') },
   { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
 ])
 
@@ -642,7 +643,7 @@ const extractionPromptVariables = computed(() => [
 const reasoningTextareaRef = ref<any>(null)
 const extractionTextareaRef = ref<any>(null)
 
-const insertAtCursor = (textareaRef: any, field: 'reasoning_prompt' | 'extraction_prompt', variable: string) => {
+const insertAtCursor = (textareaRef: any, field: 'user_reasoning_prompt' | 'user_extraction_prompt', variable: string) => {
   if (!selectedConfig.value) return
   //从ant-design-vue的a-textarea获取原生textarea元素
   const el: HTMLTextAreaElement | null = textareaRef?.value?.$el?.querySelector?.('textarea')
@@ -667,25 +668,21 @@ const insertAtCursor = (textareaRef: any, field: 'reasoning_prompt' | 'extractio
 }
 
 const insertReasoningVariable = (variable: string) => {
-  insertAtCursor(reasoningTextareaRef, 'reasoning_prompt', variable)
+  insertAtCursor(reasoningTextareaRef, 'user_reasoning_prompt', variable)
 }
 
 const insertExtractionVariable = (variable: string) => {
-  insertAtCursor(extractionTextareaRef, 'extraction_prompt', variable)
+  insertAtCursor(extractionTextareaRef, 'user_extraction_prompt', variable)
 }
 
-//=====严格提示预设=====
+//=====系统提示词模板=====
 
-const strictnessPresets = ref<any[]>([])
-const loadingPresets = ref(false)
-const showPresetEditor = ref(false)
-const editingPresets = ref<StrictnessPromptPreset[]>([])
-const savingPresets = ref(false)
+const promptTemplates = ref<SystemPromptTemplate[]>([])
+const loadingTemplates = ref(false)
+const showSystemPromptEditor = ref(false)
 
-//在安装上加载预设
 onMounted(async () => {
   loadOrgData()
-  // 从 API 加载流程审核配置
   try {
     const configs = await rulesApi.listConfigs()
     processConfigs.value = configs
@@ -694,54 +691,37 @@ onMounted(async () => {
     }
   }
   catch (e) { console.error('[rules] 加载流程配置失败', e) }
-  // 从 API 加载审核尺度预设
-  loadingPresets.value = true
+  loadingTemplates.value = true
   try {
-    const presets = await rulesApi.listPresets()
-    strictnessPresets.value = presets.map(p => ({
-      strictness: p.strictness,
-      reasoning_instruction: p.reasoning_instruction,
-      extraction_instruction: p.extraction_instruction,
-    }))
+    promptTemplates.value = await rulesApi.listPromptTemplates()
   }
-  catch (e) { console.error('[rules] 加载预设失败', e) }
-  finally { loadingPresets.value = false }
+  catch (e) { console.error('[rules] 加载提示词模板失败', e) }
+  finally { loadingTemplates.value = false }
 })
 
-//获取所选严格度的当前预设
-const currentStrictnessPreset = computed(() =>
-  strictnessPresets.value.find(p => p.strictness === selectedConfig.value?.ai_config.audit_strictness)
-)
+const getTemplateContent = (promptKey: string) => {
+  return promptTemplates.value.find(t => t.prompt_key === promptKey)?.content || ''
+}
 
-//当严格度改变时，显示对应的预设指令作为提示
 const handleStrictnessChange = (value: string) => {
   if (!selectedConfig.value) return
   selectedConfig.value.ai_config.audit_strictness = value as any
+  const userReasoningKey = `user_reasoning_${value}`
+  const userExtractionKey = `user_extraction_${value}`
+  selectedConfig.value.ai_config.user_reasoning_prompt = getTemplateContent(userReasoningKey)
+  selectedConfig.value.ai_config.user_extraction_prompt = getTemplateContent(userExtractionKey)
 }
 
-//打开预设编辑器
-const openPresetEditor = () => {
-  editingPresets.value = JSON.parse(JSON.stringify(strictnessPresets.value))
-  showPresetEditor.value = true
+const openSystemPromptEditor = () => {
+  showSystemPromptEditor.value = true
 }
 
-//保存预设
-const handleSavePresets = async () => {
-  savingPresets.value = true
-  try {
-    // 逐条更新预设到后端 API
-    for (const preset of editingPresets.value) {
-      await rulesApi.updatePreset(preset.strictness, {
-        reasoning_instruction: preset.reasoning_instruction,
-        extraction_instruction: preset.extraction_instruction,
-      })
-    }
-    strictnessPresets.value = JSON.parse(JSON.stringify(editingPresets.value))
-    showPresetEditor.value = false
-    message.success(t('admin.ruleConfig.presetsSaved'))
-  } finally {
-    savingPresets.value = false
-  }
+const resetSystemPrompts = () => {
+  if (!selectedConfig.value) return
+  selectedConfig.value.ai_config.system_reasoning_prompt = getTemplateContent('system_reasoning')
+  selectedConfig.value.ai_config.system_extraction_prompt = getTemplateContent('system_extraction')
+  message.success(t('admin.ruleConfig.systemPromptsReset'))
+  showSystemPromptEditor.value = false
 }
 
 //=====用户权限=====
@@ -1371,14 +1351,9 @@ const handleSave = async () => {
           </div>
 
           <div class="ai-form">
-            <!--审核严格-->
+            <!--审核尺度-->
             <div class="ai-form-group">
-              <div class="strictness-label-row">
-                <label class="ai-form-label">{{ t('admin.ruleConfig.strictness') }}</label>
-                <a-button size="small" type="link" @click="openPresetEditor">
-                  <EditOutlined /> {{ t('admin.ruleConfig.editPresets') }}
-                </a-button>
-              </div>
+              <label class="ai-form-label">{{ t('admin.ruleConfig.strictness') }}</label>
               <div class="strictness-options">
                 <div
                   v-for="opt in strictnessOptions"
@@ -1394,70 +1369,103 @@ const handleSave = async () => {
                   </div>
                 </div>
               </div>
-              <!--显示当前预设指令预览-->
-              <div v-if="currentStrictnessPreset" class="strictness-preset-preview">
-                <div class="preset-preview-label">{{ t('admin.ruleConfig.currentPresetHint') }}</div>
-                <div class="preset-preview-row">
-                  <span class="preset-preview-tag preset-preview-tag--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
-                  <span class="preset-preview-text">{{ currentStrictnessPreset.reasoning_instruction }}</span>
+            </div>
+
+            <!--系统提示词区域-->
+            <div class="ai-prompt-section">
+              <div class="ai-prompt-section-header">
+                <div class="ai-prompt-section-tag ai-prompt-section-tag--system">{{ t('admin.ruleConfig.systemPromptTag') }}</div>
+                <a-button size="small" type="link" @click="openSystemPromptEditor">
+                  <EditOutlined /> {{ t('admin.ruleConfig.editSystemPresets') }}
+                </a-button>
+              </div>
+              <p class="ai-prompt-section-desc">{{ t('admin.ruleConfig.systemPromptDesc') }}</p>
+
+              <div class="ai-form-group">
+                <div class="prompt-section-header">
+                  <div class="prompt-section-title">
+                    <span class="prompt-phase-badge prompt-phase-badge--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
+                    <label class="ai-form-label">{{ t('admin.ruleConfig.systemReasoningPrompt') }}</label>
+                  </div>
                 </div>
-                <div class="preset-preview-row">
-                  <span class="preset-preview-tag preset-preview-tag--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
-                  <span class="preset-preview-text">{{ currentStrictnessPreset.extraction_instruction }}</span>
+                <a-textarea
+                  v-model:value="selectedConfig.ai_config.system_reasoning_prompt"
+                  :rows="6"
+                  :placeholder="t('admin.ruleConfig.systemReasoningPlaceholder')"
+                />
+              </div>
+
+              <div class="ai-form-group">
+                <div class="prompt-section-header">
+                  <div class="prompt-section-title">
+                    <span class="prompt-phase-badge prompt-phase-badge--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
+                    <label class="ai-form-label">{{ t('admin.ruleConfig.systemExtractionPrompt') }}</label>
+                  </div>
                 </div>
+                <a-textarea
+                  v-model:value="selectedConfig.ai_config.system_extraction_prompt"
+                  :rows="6"
+                  :placeholder="t('admin.ruleConfig.systemExtractionPlaceholder')"
+                />
               </div>
             </div>
 
-            <!--推理提示-->
-            <div class="ai-form-group">
-              <div class="prompt-section-header">
-                <div class="prompt-section-title">
-                  <span class="prompt-phase-badge prompt-phase-badge--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
-                  <label class="ai-form-label">{{ t('admin.ruleConfig.reasoningPrompt') }}</label>
-                </div>
-                <div class="prompt-section-desc">{{ t('admin.ruleConfig.reasoningPromptDesc') }}</div>
+            <!--用户提示词区域-->
+            <div class="ai-prompt-section">
+              <div class="ai-prompt-section-header">
+                <div class="ai-prompt-section-tag ai-prompt-section-tag--user">{{ t('admin.ruleConfig.userPromptTag') }}</div>
               </div>
-              <div class="prompt-variables">
-                <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
-                <a-tooltip v-for="v in reasoningPromptVariables" :key="v.key" :title="v.desc">
-                  <button
-                    class="variable-btn"
-                    @click="insertReasoningVariable(v.key)"
-                  >{{ v.key }}</button>
-                </a-tooltip>
-              </div>
-              <a-textarea
-                ref="reasoningTextareaRef"
-                v-model:value="selectedConfig.ai_config.reasoning_prompt"
-                :rows="8"
-                :placeholder="t('admin.ruleConfig.reasoningPromptPlaceholder')"
-              />
-            </div>
+              <p class="ai-prompt-section-desc">{{ t('admin.ruleConfig.userPromptDesc') }}</p>
 
-            <!--提取提示-->
-            <div class="ai-form-group">
-              <div class="prompt-section-header">
-                <div class="prompt-section-title">
-                  <span class="prompt-phase-badge prompt-phase-badge--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
-                  <label class="ai-form-label">{{ t('admin.ruleConfig.extractionPrompt') }}</label>
+              <div class="ai-form-group">
+                <div class="prompt-section-header">
+                  <div class="prompt-section-title">
+                    <span class="prompt-phase-badge prompt-phase-badge--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
+                    <label class="ai-form-label">{{ t('admin.ruleConfig.userReasoningPrompt') }}</label>
+                  </div>
+                  <div class="prompt-section-desc">{{ t('admin.ruleConfig.userReasoningPromptDesc') }}</div>
                 </div>
-                <div class="prompt-section-desc">{{ t('admin.ruleConfig.extractionPromptDesc') }}</div>
+                <div class="prompt-variables">
+                  <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
+                  <a-tooltip v-for="v in reasoningPromptVariables" :key="v.key" :title="v.desc">
+                    <button
+                      class="variable-btn"
+                      @click="insertReasoningVariable(v.key)"
+                    >{{ v.key }}</button>
+                  </a-tooltip>
+                </div>
+                <a-textarea
+                  ref="reasoningTextareaRef"
+                  v-model:value="selectedConfig.ai_config.user_reasoning_prompt"
+                  :rows="8"
+                  :placeholder="t('admin.ruleConfig.userReasoningPlaceholder')"
+                />
               </div>
-              <div class="prompt-variables">
-                <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
-                <a-tooltip v-for="v in extractionPromptVariables" :key="v.key" :title="v.desc">
-                  <button
-                    class="variable-btn"
-                    @click="insertExtractionVariable(v.key)"
-                  >{{ v.key }}</button>
-                </a-tooltip>
+
+              <div class="ai-form-group">
+                <div class="prompt-section-header">
+                  <div class="prompt-section-title">
+                    <span class="prompt-phase-badge prompt-phase-badge--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
+                    <label class="ai-form-label">{{ t('admin.ruleConfig.userExtractionPrompt') }}</label>
+                  </div>
+                  <div class="prompt-section-desc">{{ t('admin.ruleConfig.userExtractionPromptDesc') }}</div>
+                </div>
+                <div class="prompt-variables">
+                  <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
+                  <a-tooltip v-for="v in extractionPromptVariables" :key="v.key" :title="v.desc">
+                    <button
+                      class="variable-btn"
+                      @click="insertExtractionVariable(v.key)"
+                    >{{ v.key }}</button>
+                  </a-tooltip>
+                </div>
+                <a-textarea
+                  ref="extractionTextareaRef"
+                  v-model:value="selectedConfig.ai_config.user_extraction_prompt"
+                  :rows="6"
+                  :placeholder="t('admin.ruleConfig.userExtractionPlaceholder')"
+                />
               </div>
-              <a-textarea
-                ref="extractionTextareaRef"
-                v-model:value="selectedConfig.ai_config.extraction_prompt"
-                :rows="6"
-                :placeholder="t('admin.ruleConfig.extractionPromptPlaceholder')"
-              />
             </div>
           </div>
         </div>
@@ -2072,12 +2080,7 @@ const handleSave = async () => {
           <div class="ai-form">
             <!--严格性-->
             <div class="ai-form-group">
-              <div class="strictness-label-row">
-                <label class="ai-form-label">{{ t('admin.ruleConfig.strictness') }}</label>
-                <a-button size="small" type="link" @click="openPresetEditor">
-                  <EditOutlined /> {{ t('admin.ruleConfig.editPresets') }}
-                </a-button>
-              </div>
+              <label class="ai-form-label">{{ t('admin.ruleConfig.strictness') }}</label>
               <div class="strictness-options">
                 <div
                   v-for="opt in strictnessOptions"
@@ -2093,17 +2096,9 @@ const handleSave = async () => {
                   </div>
                 </div>
               </div>
-              <!--显示当前预设指令预览-->
-              <div v-if="strictnessPresets.find(p => p.strictness === selectedArchiveConfig?.ai_config.audit_strictness)" class="strictness-preset-preview">
-                <div class="preset-preview-label">{{ t('admin.ruleConfig.currentPresetHint') }}</div>
-                <div class="preset-preview-row">
-                  <span class="preset-preview-tag preset-preview-tag--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
-                  <span class="preset-preview-text">{{ strictnessPresets.find(p => p.strictness === selectedArchiveConfig?.ai_config.audit_strictness)?.reasoning_instruction }}</span>
-                </div>
-                <div class="preset-preview-row">
-                  <span class="preset-preview-tag preset-preview-tag--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
-                  <span class="preset-preview-text">{{ strictnessPresets.find(p => p.strictness === selectedArchiveConfig?.ai_config.audit_strictness)?.extraction_instruction }}</span>
-                </div>
+              <!--当前尺度标签-->
+              <div class="strictness-hint">
+                {{ t('admin.ruleConfig.strictnessHint') }}
               </div>
             </div>
 
@@ -2375,40 +2370,38 @@ const handleSave = async () => {
       </div>
     </a-modal>
 
-    <!--严格预设编辑器模式-->
+    <!--系统预设提示词编辑器-->
     <a-modal
-      v-model:open="showPresetEditor"
-      :title="t('admin.ruleConfig.editPresetsTitle')"
+      v-model:open="showSystemPromptEditor"
+      :title="t('admin.ruleConfig.editSystemPresetsTitle')"
       :width="720"
-      :ok-text="t('admin.ruleConfig.saveConfig')"
-      :cancel-text="t('admin.ruleConfig.cancel')"
-      :confirm-loading="savingPresets"
-      @ok="handleSavePresets"
+      :footer="null"
     >
       <div class="preset-editor">
-        <p class="preset-editor-desc">{{ t('admin.ruleConfig.editPresetsDesc') }}</p>
-        <div v-for="preset in editingPresets" :key="preset.strictness" class="preset-editor-item">
+        <p class="preset-editor-desc">{{ t('admin.ruleConfig.editSystemPresetsDesc') }}</p>
+        <div class="preset-editor-item">
           <div class="preset-editor-header">
-            <span class="preset-editor-badge" :class="`preset-editor-badge--${preset.strictness}`">
-              {{ strictnessOptions.find(o => o.value === preset.strictness)?.label }}
-            </span>
+            <span class="preset-editor-badge preset-editor-badge--standard">{{ t('admin.ruleConfig.systemPromptTag') }}</span>
           </div>
           <div class="preset-editor-fields">
             <div class="preset-editor-field">
               <label class="preset-editor-label">
                 <span class="preset-preview-tag preset-preview-tag--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
-                {{ t('admin.ruleConfig.presetReasoningLabel') }}
+                {{ t('admin.ruleConfig.systemReasoningPrompt') }}
               </label>
-              <a-textarea v-model:value="preset.reasoning_instruction" :rows="3" />
+              <div class="preset-template-content">{{ getTemplateContent('system_reasoning') }}</div>
             </div>
             <div class="preset-editor-field">
               <label class="preset-editor-label">
                 <span class="preset-preview-tag preset-preview-tag--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
-                {{ t('admin.ruleConfig.presetExtractionLabel') }}
+                {{ t('admin.ruleConfig.systemExtractionPrompt') }}
               </label>
-              <a-textarea v-model:value="preset.extraction_instruction" :rows="3" />
+              <div class="preset-template-content">{{ getTemplateContent('system_extraction') }}</div>
             </div>
           </div>
+        </div>
+        <div style="text-align: right; margin-top: 16px;">
+          <a-button type="primary" @click="resetSystemPrompts">{{ t('admin.ruleConfig.resetToDefault') }}</a-button>
         </div>
       </div>
     </a-modal>
@@ -2732,34 +2725,32 @@ const handleSave = async () => {
   line-height: 1.5;
 }
 
-/*严格标签行*/
-.strictness-label-row {
-  display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;
-}
-
-/*严格预设预览*/
-.strictness-preset-preview {
-  margin-top: 10px; padding: 12px 14px; background: var(--color-bg-hover);
+/*提示词区域分组*/
+.ai-prompt-section {
+  margin-top: 20px; padding: 16px; background: var(--color-bg-page);
   border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
 }
-.preset-preview-label {
-  font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 8px;
+.ai-prompt-section-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;
 }
-.preset-preview-row {
-  display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px;
+.ai-prompt-section-tag {
+  display: inline-flex; align-items: center; font-size: 13px; font-weight: 600;
+  padding: 2px 12px; border-radius: var(--radius-full);
 }
-.preset-preview-row:last-child { margin-bottom: 0; }
+.ai-prompt-section-tag--system { background: var(--color-warning-bg, #fffbe6); color: var(--color-warning, #d48806); }
+.ai-prompt-section-tag--user { background: var(--color-primary-bg); color: var(--color-primary); }
+.ai-prompt-section-desc {
+  font-size: 12px; color: var(--color-text-tertiary); margin: 0 0 12px; line-height: 1.5;
+}
+
 .preset-preview-tag {
   display: inline-flex; align-items: center; font-size: 10px; font-weight: 600;
   padding: 1px 8px; border-radius: var(--radius-full); white-space: nowrap; flex-shrink: 0; margin-top: 2px;
 }
 .preset-preview-tag--reasoning { background: var(--color-primary-bg); color: var(--color-primary); }
 .preset-preview-tag--extraction { background: var(--color-info-bg); color: var(--color-info); }
-.preset-preview-text {
-  font-size: 12px; color: var(--color-text-tertiary); line-height: 1.5;
-}
 
-/*预设编辑器模式*/
+/*预设编辑器*/
 .preset-editor-desc {
   font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 16px;
 }
@@ -2781,6 +2772,11 @@ const handleSave = async () => {
 .preset-editor-label {
   font-size: 12px; font-weight: 500; color: var(--color-text-secondary);
   display: flex; align-items: center; gap: 6px;
+}
+.preset-template-content {
+  font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6;
+  padding: 8px 12px; background: var(--color-bg-hover); border-radius: var(--radius-sm);
+  white-space: pre-wrap; max-height: 200px; overflow-y: auto;
 }
 
 /*字段选择器工具栏*/

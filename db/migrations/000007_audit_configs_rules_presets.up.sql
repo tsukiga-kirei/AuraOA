@@ -1,5 +1,5 @@
 -- 000007_audit_configs_rules_presets.up.sql
--- 创建流程审核配置表、审核规则表、审核尺度预设表
+-- 创建流程审核配置表、审核规则表、系统提示词模板表
 
 -- ============================================================
 -- process_audit_configs — 流程审核配置表
@@ -46,17 +46,16 @@ CREATE INDEX idx_ar_config_id ON audit_rules(config_id);
 CREATE INDEX idx_ar_process_type ON audit_rules(tenant_id, process_type);
 
 -- ============================================================
--- strictness_presets — 审核尺度预设表
+-- system_prompt_templates — 系统提示词模板表（全局，仅初始化用）
 -- ============================================================
-CREATE TABLE strictness_presets (
-    id                     UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id              UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    strictness             VARCHAR(20)  NOT NULL,
-    reasoning_instruction  TEXT         NOT NULL DEFAULT '',
-    extraction_instruction TEXT         NOT NULL DEFAULT '',
-    created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    UNIQUE(tenant_id, strictness)
+CREATE TABLE system_prompt_templates (
+    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    prompt_key  VARCHAR(100) NOT NULL UNIQUE,
+    prompt_type VARCHAR(20)  NOT NULL,
+    phase       VARCHAR(20)  NOT NULL,
+    strictness  VARCHAR(20),
+    content     TEXT         NOT NULL DEFAULT '',
+    description VARCHAR(500) DEFAULT '',
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
-
-CREATE INDEX idx_sp_tenant_id ON strictness_presets(tenant_id);

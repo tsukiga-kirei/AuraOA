@@ -49,13 +49,15 @@ export interface AuditRule {
   updated_at?: string
 }
 
-/** 审核尺度预设 */
-export interface StrictnessPreset {
+/** 系统提示词模板 */
+export interface SystemPromptTemplate {
   id: string
-  tenant_id?: string
-  strictness: string
-  reasoning_instruction: string
-  extraction_instruction: string
+  prompt_key: string
+  prompt_type: 'system' | 'user'
+  phase: 'reasoning' | 'extraction'
+  strictness: string | null
+  content: string
+  description: string
   created_at?: string
   updated_at?: string
 }

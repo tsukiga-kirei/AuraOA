@@ -125,3 +125,13 @@ func (h *ProcessAuditConfigHandler) FetchFields(c *gin.Context) {
 	}
 	response.Success(c, fields)
 }
+
+// ListPromptTemplates 处理 GET /api/tenant/rules/prompt-templates
+func (h *ProcessAuditConfigHandler) ListPromptTemplates(c *gin.Context) {
+	templates, err := h.configService.ListPromptTemplates()
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, templates)
+}

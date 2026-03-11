@@ -29,11 +29,11 @@ func (ProcessAuditConfig) TableName() string { return "process_audit_configs" }
 
 // AIConfigData AI配置的结构化表示
 type AIConfigData struct {
-	AuditStrictness       string `json:"audit_strictness"`
-	SystemPrompt          string `json:"system_prompt"`
-	UserPromptTemplate    string `json:"user_prompt_template"`
-	ReasoningInstruction  string `json:"reasoning_instruction"`
-	ExtractionInstruction string `json:"extraction_instruction"`
+	AuditStrictness        string `json:"audit_strictness"`
+	SystemReasoningPrompt  string `json:"system_reasoning_prompt"`
+	SystemExtractionPrompt string `json:"system_extraction_prompt"`
+	UserReasoningPrompt    string `json:"user_reasoning_prompt"`
+	UserExtractionPrompt   string `json:"user_extraction_prompt"`
 }
 
 // UserPermissionsData 用户权限配置的结构化表示
