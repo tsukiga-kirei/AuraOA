@@ -22,7 +22,6 @@ func SetupRouter(
 	healthHandler *handler.HealthHandler,
 	configHandler *handler.ProcessAuditConfigHandler,
 	ruleHandler *handler.AuditRuleHandler,
-	presetHandler *handler.StrictnessPresetHandler,
 	userConfigHandler *handler.UserPersonalConfigHandler,
 	userConfigMgmtHandler *handler.UserConfigManagementHandler,
 	llmLogHandler *handler.LLMMessageLogHandler,
@@ -135,9 +134,8 @@ func SetupRouter(
 		tenantRules.PUT("/audit-rules/:id", ruleHandler.Update)
 		tenantRules.DELETE("/audit-rules/:id", ruleHandler.Delete)
 
-		// 审核尺度预设
-		tenantRules.GET("/strictness-presets", presetHandler.List)
-		tenantRules.PUT("/strictness-presets/:strictness", presetHandler.Update)
+		// 系统提示词模板（只读）
+		tenantRules.GET("/prompt-templates", configHandler.ListPromptTemplates)
 	}
 
 	// 租户管理员 — 用户配置管理

@@ -20,10 +20,11 @@ import (
 
 // ProcessAuditConfigService 处理流程审核配置的业务逻辑。
 type ProcessAuditConfigService struct {
-	configRepo *repository.ProcessAuditConfigRepo
-	tenantRepo *repository.TenantRepo
-	oaConnRepo *repository.OAConnectionRepo
-	db         *gorm.DB
+	configRepo   *repository.ProcessAuditConfigRepo
+	tenantRepo   *repository.TenantRepo
+	oaConnRepo   *repository.OAConnectionRepo
+	templateRepo *repository.SystemPromptTemplateRepo
+	db           *gorm.DB
 }
 
 // NewProcessAuditConfigService 创建一个新的 ProcessAuditConfigService 实例。
@@ -31,13 +32,15 @@ func NewProcessAuditConfigService(
 	configRepo *repository.ProcessAuditConfigRepo,
 	tenantRepo *repository.TenantRepo,
 	oaConnRepo *repository.OAConnectionRepo,
+	templateRepo *repository.SystemPromptTemplateRepo,
 	db *gorm.DB,
 ) *ProcessAuditConfigService {
 	return &ProcessAuditConfigService{
-		configRepo: configRepo,
-		tenantRepo: tenantRepo,
-		oaConnRepo: oaConnRepo,
-		db:         db,
+		configRepo:   configRepo,
+		tenantRepo:   tenantRepo,
+		oaConnRepo:   oaConnRepo,
+		templateRepo: templateRepo,
+		db:           db,
 	}
 }
 
@@ -51,8 +54,8 @@ func getTenantUUID(c *gin.Context) (uuid.UUID, error) {
 }
 
 // Create 创建流程审核配置，校验 process_type 租户内唯一性。
+// 若 ai_config 为空，自动从系统提示词模板初始化。
 func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProcessAuditConfigRequest) (*model.ProcessAuditConfig, error) {
-	// 校验流程类型唯一性
 	exists, err := s.configRepo.ExistsByProcessType(c, req.ProcessType)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
@@ -66,6 +69,19 @@ func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProces
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
 
+	aiConfig := req.AIConfig
+	if aiConfig == nil || string(aiConfig) == "{}" || string(aiConfig) == "null" || len(aiConfig) == 0 {
+		aiConfig = s.buildDefaultAIConfig("standard")
+	} else {
+		var parsed model.AIConfigData
+		if err := json.Unmarshal(aiConfig, &parsed); err == nil {
+			if parsed.SystemReasoningPrompt == "" && parsed.UserReasoningPrompt == "" {
+				strictness := defaultStr(parsed.AuditStrictness, "standard")
+				aiConfig = s.buildDefaultAIConfig(strictness)
+			}
+		}
+	}
+
 	cfg := &model.ProcessAuditConfig{
 		ID:               uuid.New(),
 		TenantID:         tenantID,
@@ -76,7 +92,7 @@ func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProces
 		DetailTables:     defaultJSON(req.DetailTables, "[]"),
 		FieldMode:        defaultStr(req.FieldMode, "all"),
 		KBMode:           defaultStr(req.KBMode, "rules_only"),
-		AIConfig:         defaultJSON(req.AIConfig, "{}"),
+		AIConfig:         defaultJSON(aiConfig, "{}"),
 		UserPermissions:  defaultJSON(req.UserPermissions, "{}"),
 		Status:           defaultStr(req.Status, "active"),
 	}
@@ -85,6 +101,41 @@ func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProces
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 	return cfg, nil
+}
+
+// buildDefaultAIConfig 从系统提示词模板构建默认 ai_config JSON。
+func (s *ProcessAuditConfigService) buildDefaultAIConfig(strictness string) datatypes.JSON {
+	templates, err := s.templateRepo.GetByStrictness(strictness)
+	if err != nil || len(templates) == 0 {
+		fallback, _ := json.Marshal(model.AIConfigData{AuditStrictness: strictness})
+		return datatypes.JSON(fallback)
+	}
+
+	data := model.AIConfigData{AuditStrictness: strictness}
+	for _, t := range templates {
+		switch {
+		case t.PromptType == "system" && t.Phase == "reasoning":
+			data.SystemReasoningPrompt = t.Content
+		case t.PromptType == "system" && t.Phase == "extraction":
+			data.SystemExtractionPrompt = t.Content
+		case t.PromptType == "user" && t.Phase == "reasoning":
+			data.UserReasoningPrompt = t.Content
+		case t.PromptType == "user" && t.Phase == "extraction":
+			data.UserExtractionPrompt = t.Content
+		}
+	}
+
+	result, _ := json.Marshal(data)
+	return datatypes.JSON(result)
+}
+
+// ListPromptTemplates 返回所有系统提示词模板。
+func (s *ProcessAuditConfigService) ListPromptTemplates() ([]model.SystemPromptTemplate, error) {
+	templates, err := s.templateRepo.ListAll()
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	return templates, nil
 }
 
 // GetByID 通过 ID 查询单个流程审核配置。

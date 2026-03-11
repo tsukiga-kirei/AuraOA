@@ -302,13 +302,6 @@ export interface ProcessAIConfig {
   temperature?: number
 }
 
-//严格提示预设 - 每个租户可配置，从 API 获取
-export interface StrictnessPromptPreset {
-  strictness: 'strict' | 'standard' | 'loose'
-  reasoning_instruction: string
-  extraction_instruction: string
-}
-
 export interface UserPermissions {
   allow_custom_fields: boolean
   allow_custom_rules: boolean
@@ -1240,41 +1233,6 @@ export const mockArchiveReviewConfigs: ArchiveReviewConfig[] = [
     allowed_departments: ['c0000000-0000-0000-0000-000000000002'],
   },
 ]
-
-// ============================================================
-//严格性提示预设（读出读数默认提示词 - 显示宽度）
-// ============================================================
-export const mockStrictnessPresets: StrictnessPromptPreset[] = [
-  {
-    strictness: 'strict',
-    reasoning_instruction: '请以最严格的标准审核，任何疑点均应标记为不合规。宁可误判也不放过，对所有可疑项逐一深入分析，给出明确的退回建议。',
-    extraction_instruction: '请以最严格标准提取结论：任何存疑项均应判定为不通过，建议操作倾向于 return，仅在完全合规时才建议 approve。',
-  },
-  {
-    strictness: 'standard',
-    reasoning_instruction: '请以常规标准审核，明确违规项标记为不合规并说明理由，存疑项需详细说明疑点并给出改进建议。整体评估应客观公正。',
-    extraction_instruction: '请以常规标准提取结论：明确违规项判定为不通过并建议 return，合规项判定为通过，存疑项说明理由。建议操作应综合考虑整体合规情况。',
-  },
-  {
-    strictness: 'loose',
-    reasoning_instruction: '请以宽松标准审核，仅明显违规项标记为不合规，轻微问题可标注但不作为不合规依据。重点关注重大风险，对小问题保持宽容。',
-    extraction_instruction: '请以宽松标准提取结论：仅明显违规项判定为不通过，轻微问题标注但不影响最终建议。建议操作倾向于 approve，仅严重问题才建议 return。',
-  },
-]
-
-//模拟 API：获取租户的严格预设
-export const fetchStrictnessPresets = async (_tenantId?: string): Promise<StrictnessPromptPreset[]> => {
-  await new Promise(r => setTimeout(r, 300))
-  return JSON.parse(JSON.stringify(mockStrictnessPresets))
-}
-
-//模拟 API：为租户保存严格预设
-export const saveStrictnessPresets = async (_tenantId: string, presets: StrictnessPromptPreset[]): Promise<boolean> => {
-  await new Promise(r => setTimeout(r, 500))
-  //在实际实现中，这将持续到后端
-  mockStrictnessPresets.splice(0, mockStrictnessPresets.length, ...presets)
-  return true
-}
 
 export const useMockData = () => {
   const mockProcesses: OAProcess[] = [

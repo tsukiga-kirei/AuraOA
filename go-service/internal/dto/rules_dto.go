@@ -60,14 +60,6 @@ type UpdateAuditRuleRequest struct {
 	RelatedFlow *bool  `json:"related_flow"`
 }
 
-// ===================== 审核尺度预设 DTO =====================
-
-// UpdateStrictnessPresetRequest 更新审核尺度预设请求
-type UpdateStrictnessPresetRequest struct {
-	ReasoningInstruction  string `json:"reasoning_instruction"`
-	ExtractionInstruction string `json:"extraction_instruction"`
-}
-
 // ===================== Token 统计 DTO =====================
 
 // TokenUsageQuery Token 消耗查询参数

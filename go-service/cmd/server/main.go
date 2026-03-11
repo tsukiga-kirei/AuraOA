@@ -71,7 +71,7 @@ func main() {
 	aiModelRepo := repository.NewAIModelRepo(db)
 	processAuditConfigRepo := repository.NewProcessAuditConfigRepo(db)
 	auditRuleRepo := repository.NewAuditRuleRepo(db)
-	strictnessPresetRepo := repository.NewStrictnessPresetRepo(db)
+	promptTemplateRepo := repository.NewSystemPromptTemplateRepo(db)
 	userPersonalConfigRepo := repository.NewUserPersonalConfigRepo(db)
 	userDashboardPrefRepo := repository.NewUserDashboardPrefRepo(db)
 	llmMessageLogRepo := repository.NewLLMMessageLogRepo(db)
@@ -84,9 +84,8 @@ func main() {
 	optionService := service.NewOptionService(optionRepo)
 	oaConnectionService := service.NewOAConnectionService(oaConnectionRepo)
 	aiModelService := service.NewAIModelService(aiModelRepo)
-	processAuditConfigService := service.NewProcessAuditConfigService(processAuditConfigRepo, tenantRepo, oaConnectionRepo, db)
+	processAuditConfigService := service.NewProcessAuditConfigService(processAuditConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, db)
 	auditRuleService := service.NewAuditRuleService(auditRuleRepo)
-	strictnessPresetService := service.NewStrictnessPresetService(strictnessPresetRepo)
 	userPersonalConfigService := service.NewUserPersonalConfigService(userPersonalConfigRepo, processAuditConfigRepo, tenantRepo, oaConnectionRepo)
 	llmMessageLogService := service.NewLLMMessageLogService(llmMessageLogRepo)
 
@@ -98,7 +97,6 @@ func main() {
 	healthHandler := handler.NewHealthHandler()
 	configHandler := handler.NewProcessAuditConfigHandler(processAuditConfigService)
 	ruleHandler := handler.NewAuditRuleHandler(auditRuleService)
-	presetHandler := handler.NewStrictnessPresetHandler(strictnessPresetService)
 	userConfigHandler := handler.NewUserPersonalConfigHandler(userPersonalConfigService, userDashboardPrefRepo)
 	userConfigMgmtHandler := handler.NewUserConfigManagementHandler(userPersonalConfigRepo)
 	llmLogHandler := handler.NewLLMMessageLogHandler(llmMessageLogService)
@@ -111,7 +109,7 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, presetHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler)
+	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler)
 
 	// 9. Start HTTP server
 	port := viper.GetInt("server.port")
