@@ -34,7 +34,6 @@ CREATE TABLE audit_rules (
     process_type VARCHAR(200) NOT NULL,
     rule_content TEXT         NOT NULL,
     rule_scope   VARCHAR(20)  NOT NULL DEFAULT 'default_on',
-    priority     INT          NOT NULL DEFAULT 0,
     enabled      BOOLEAN      NOT NULL DEFAULT TRUE,
     source       VARCHAR(20)  NOT NULL DEFAULT 'manual',
     related_flow BOOLEAN      NOT NULL DEFAULT FALSE,

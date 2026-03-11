@@ -14,7 +14,6 @@ type AuditRule struct {
 	ProcessType string     `gorm:"size:200;not null" json:"process_type"`
 	RuleContent string     `gorm:"type:text;not null" json:"rule_content"`
 	RuleScope   string     `gorm:"size:20;not null;default:default_on" json:"rule_scope"` // mandatory | default_on | default_off
-	Priority    int        `gorm:"not null;default:0" json:"priority"`
 	Enabled     bool       `gorm:"not null;default:true" json:"enabled"`
 	Source      string     `gorm:"size:20;not null;default:manual" json:"source"` // manual | file_import
 	RelatedFlow bool       `gorm:"not null;default:false" json:"related_flow"`

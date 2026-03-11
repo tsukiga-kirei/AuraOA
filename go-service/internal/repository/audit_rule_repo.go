@@ -47,9 +47,9 @@ func (r *AuditRuleRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.AuditRule,
 	return &rule, nil
 }
 
-// ListByProcessType 按流程类型查询审核规则列表，支持按 rule_scope 和 enabled 筛选。
-func (r *AuditRuleRepo) ListByProcessType(c *gin.Context, processType string, ruleScope *string, enabled *bool) ([]model.AuditRule, error) {
-	query := r.WithTenant(c).Where("process_type = ?", processType)
+// ListByConfigIDFilter 按配置 ID 查询审核规则列表，支持按 rule_scope 和 enabled 筛选。
+func (r *AuditRuleRepo) ListByConfigIDFilter(c *gin.Context, configID uuid.UUID, ruleScope *string, enabled *bool) ([]model.AuditRule, error) {
+	query := r.WithTenant(c).Where("config_id = ?", configID)
 	if ruleScope != nil {
 		query = query.Where("rule_scope = ?", *ruleScope)
 	}
@@ -57,7 +57,7 @@ func (r *AuditRuleRepo) ListByProcessType(c *gin.Context, processType string, ru
 		query = query.Where("enabled = ?", *enabled)
 	}
 	var rules []model.AuditRule
-	if err := query.Order("priority ASC, created_at ASC").Find(&rules).Error; err != nil {
+	if err := query.Order("created_at ASC").Find(&rules).Error; err != nil {
 		return nil, err
 	}
 	return rules, nil
@@ -66,7 +66,7 @@ func (r *AuditRuleRepo) ListByProcessType(c *gin.Context, processType string, ru
 // ListByConfigID 按配置 ID 查询关联的审核规则。
 func (r *AuditRuleRepo) ListByConfigID(c *gin.Context, configID uuid.UUID) ([]model.AuditRule, error) {
 	var rules []model.AuditRule
-	if err := r.WithTenant(c).Where("config_id = ?", configID).Order("priority ASC, created_at ASC").Find(&rules).Error; err != nil {
+	if err := r.WithTenant(c).Where("config_id = ?", configID).Order("created_at ASC").Find(&rules).Error; err != nil {
 		return nil, err
 	}
 	return rules, nil

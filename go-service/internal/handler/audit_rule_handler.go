@@ -22,11 +22,16 @@ func NewAuditRuleHandler(ruleService *service.AuditRuleService) *AuditRuleHandle
 	return &AuditRuleHandler{ruleService: ruleService}
 }
 
-// List 处理 GET /api/tenant/rules/audit-rules
 func (h *AuditRuleHandler) List(c *gin.Context) {
-	processType := c.Query("process_type")
-	if processType == "" {
-		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "process_type 参数必填")
+	configIDStr := c.Query("config_id")
+	if configIDStr == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "config_id 参数必填")
+		return
+	}
+
+	configID, err := uuid.Parse(configIDStr)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "config_id 格式错误")
 		return
 	}
 
@@ -41,7 +46,7 @@ func (h *AuditRuleHandler) List(c *gin.Context) {
 		enabled = &b
 	}
 
-	rules, err := h.ruleService.ListByProcessType(c, processType, ruleScope, enabled)
+	rules, err := h.ruleService.ListByConfigIDFilter(c, configID, ruleScope, enabled)
 	if err != nil {
 		handleServiceError(c, err)
 		return

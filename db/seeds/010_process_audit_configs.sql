@@ -140,75 +140,75 @@ VALUES
 -- DEMO_HQ 审核规则（采购审批）
 -- ============================================================
 INSERT INTO audit_rules
-    (id, tenant_id, config_id, process_type, rule_content, rule_scope, priority, enabled, source, related_flow)
+    (id, tenant_id, config_id, process_type, rule_content, rule_scope, enabled, source, related_flow)
 VALUES
     -- 强制规则：不可关闭
     ('d2000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001',
      'd1000000-0000-0000-0000-000000000001', '采购审批',
-     '单笔采购金额超过 50,000 元必须附有经审批的采购合同', 'mandatory', 100, TRUE, 'manual', FALSE),
+     '单笔采购金额超过 50,000 元必须附有经审批的采购合同', 'mandatory', TRUE, 'manual', FALSE),
     ('d2000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001',
      'd1000000-0000-0000-0000-000000000001', '采购审批',
-     '供应商必须在合格供应商名录中', 'mandatory', 99, TRUE, 'manual', FALSE),
+     '供应商必须在合格供应商名录中', 'mandatory', TRUE, 'manual', FALSE),
     -- 默认开启：用户可关闭
     ('d2000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001',
      'd1000000-0000-0000-0000-000000000001', '采购审批',
-     '采购明细中每项物品的单价不得超过市场参考价的 120%', 'default_on', 80, TRUE, 'manual', FALSE),
+     '采购明细中每项物品的单价不得超过市场参考价的 120%', 'default_on', TRUE, 'manual', FALSE),
     ('d2000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000001',
      'd1000000-0000-0000-0000-000000000001', '采购审批',
-     '采购原因说明不得少于 20 字', 'default_on', 70, TRUE, 'manual', FALSE),
+     '采购原因说明不得少于 20 字', 'default_on', TRUE, 'manual', FALSE),
     -- 默认关闭：用户可开启
     ('d2000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000001',
      'd1000000-0000-0000-0000-000000000001', '采购审批',
-     '同一供应商连续三个月累计采购金额超过 200,000 元需额外审批', 'default_off', 60, TRUE, 'manual', FALSE),
+     '同一供应商连续三个月累计采购金额超过 200,000 元需额外审批', 'default_off', TRUE, 'manual', FALSE),
     -- 文件导入规则
     ('d2000000-0000-0000-0000-000000000006', 'a0000000-0000-0000-0000-000000000001',
      'd1000000-0000-0000-0000-000000000001', '采购审批',
-     '紧急采购须在 24 小时内补齐完整审批手续', 'default_on', 50, TRUE, 'file_import', TRUE);
+     '紧急采购须在 24 小时内补齐完整审批手续', 'default_on', TRUE, 'file_import', TRUE);
 
 -- ============================================================
 -- DEMO_HQ 审核规则（合同审批）
 -- ============================================================
 INSERT INTO audit_rules
-    (id, tenant_id, config_id, process_type, rule_content, rule_scope, priority, enabled, source, related_flow)
+    (id, tenant_id, config_id, process_type, rule_content, rule_scope, enabled, source, related_flow)
 VALUES
     ('d2000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000001',
      'd1000000-0000-0000-0000-000000000002', '合同审批',
-     '合同金额超过 100,000 元必须经法务部审核', 'mandatory', 100, TRUE, 'manual', FALSE),
+     '合同金额超过 100,000 元必须经法务部审核', 'mandatory', TRUE, 'manual', FALSE),
     ('d2000000-0000-0000-0000-000000000008', 'a0000000-0000-0000-0000-000000000001',
      'd1000000-0000-0000-0000-000000000002', '合同审批',
-     '合同必须包含违约责任条款', 'mandatory', 99, TRUE, 'manual', FALSE),
+     '合同必须包含违约责任条款', 'mandatory', TRUE, 'manual', FALSE),
     ('d2000000-0000-0000-0000-000000000009', 'a0000000-0000-0000-0000-000000000001',
      'd1000000-0000-0000-0000-000000000002', '合同审批',
-     '合同签署日期不得早于审批通过日期', 'default_on', 80, TRUE, 'manual', FALSE);
+     '合同签署日期不得早于审批通过日期', 'default_on', TRUE, 'manual', FALSE);
 
 -- ============================================================
 -- DEMO_HQ 审核规则（费用报销）
 -- ============================================================
 INSERT INTO audit_rules
-    (id, tenant_id, config_id, process_type, rule_content, rule_scope, priority, enabled, source, related_flow)
+    (id, tenant_id, config_id, process_type, rule_content, rule_scope, enabled, source, related_flow)
 VALUES
     ('d2000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001',
      'd1000000-0000-0000-0000-000000000003', '费用报销',
-     '单笔报销金额超过 5,000 元必须附发票原件照片', 'mandatory', 100, TRUE, 'manual', FALSE),
+     '单笔报销金额超过 5,000 元必须附发票原件照片', 'mandatory', TRUE, 'manual', FALSE),
     ('d2000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000001',
      'd1000000-0000-0000-0000-000000000003', '费用报销',
-     '差旅费报销须附行程单和住宿发票', 'default_on', 80, TRUE, 'manual', FALSE),
+     '差旅费报销须附行程单和住宿发票', 'default_on', TRUE, 'manual', FALSE),
     ('d2000000-0000-0000-0000-000000000012', 'a0000000-0000-0000-0000-000000000001',
      'd1000000-0000-0000-0000-000000000003', '费用报销',
-     '餐饮招待费单次不得超过 2,000 元', 'default_on', 70, TRUE, 'manual', FALSE);
+     '餐饮招待费单次不得超过 2,000 元', 'default_on', TRUE, 'manual', FALSE);
 
 -- ============================================================
 -- DEMO_BR1 审核规则（采购审批）
 -- ============================================================
 INSERT INTO audit_rules
-    (id, tenant_id, config_id, process_type, rule_content, rule_scope, priority, enabled, source, related_flow)
+    (id, tenant_id, config_id, process_type, rule_content, rule_scope, enabled, source, related_flow)
 VALUES
     ('d2000000-0000-0000-0000-000000000013', 'a0000000-0000-0000-0000-000000000002',
      'd1000000-0000-0000-0000-000000000004', '采购审批',
-     '分公司单笔采购金额超过 20,000 元须总部审批', 'mandatory', 100, TRUE, 'manual', FALSE),
+     '分公司单笔采购金额超过 20,000 元须总部审批', 'mandatory', TRUE, 'manual', FALSE),
     ('d2000000-0000-0000-0000-000000000014', 'a0000000-0000-0000-0000-000000000002',
      'd1000000-0000-0000-0000-000000000004', '采购审批',
-     '采购申请须注明预算来源', 'default_on', 80, TRUE, 'manual', FALSE);
+     '采购申请须注明预算来源', 'default_on', TRUE, 'manual', FALSE);
 
 -- ============================================================
 -- DEMO_HQ 审核尺度预设（每个租户 3 条：strict / standard / loose）

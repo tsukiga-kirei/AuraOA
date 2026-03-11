@@ -327,7 +327,7 @@ watch(selectedProcessId, async (newId) => {
   if (!cfg) { currentRules.value = []; return }
   loadingRules.value = true
   try {
-    currentRules.value = await rulesApi.listRules(cfg.process_type)
+    currentRules.value = await rulesApi.listRules(cfg.id)
   } catch (e) {
     console.error('[rules] 加载规则失败', e)
     currentRules.value = []
@@ -691,10 +691,6 @@ onMounted(async () => {
     processConfigs.value = configs
     if (configs.length > 0) {
       selectedProcessId.value = configs[0].id
-      // 加载第一个流程的规则
-      try {
-        currentRules.value = await rulesApi.listRules(configs[0].process_type)
-      } catch (e) { console.error('[rules] 加载规则失败', e) }
     }
   }
   catch (e) { console.error('[rules] 加载流程配置失败', e) }

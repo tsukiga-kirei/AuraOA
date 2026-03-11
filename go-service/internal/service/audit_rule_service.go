@@ -33,7 +33,6 @@ func (s *AuditRuleService) Create(c *gin.Context, req *dto.CreateAuditRuleReques
 		ProcessType: req.ProcessType,
 		RuleContent: req.RuleContent,
 		RuleScope:   defaultStr(req.RuleScope, "default_on"),
-		Priority:    req.Priority,
 		Enabled:     true,
 		Source:      defaultStr(req.Source, "manual"),
 		RelatedFlow: req.RelatedFlow,
@@ -71,9 +70,6 @@ func (s *AuditRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.UpdateA
 	}
 	if req.RuleScope != "" {
 		fields["rule_scope"] = req.RuleScope
-	}
-	if req.Priority != nil {
-		fields["priority"] = *req.Priority
 	}
 	if req.Enabled != nil {
 		fields["enabled"] = *req.Enabled
@@ -116,9 +112,9 @@ func (s *AuditRuleService) Delete(c *gin.Context, id uuid.UUID) error {
 	return nil
 }
 
-// ListByProcessType 按流程类型查询审核规则列表，支持筛选。
-func (s *AuditRuleService) ListByProcessType(c *gin.Context, processType string, ruleScope *string, enabled *bool) ([]model.AuditRule, error) {
-	rules, err := s.ruleRepo.ListByProcessType(c, processType, ruleScope, enabled)
+// ListByConfigIDFilter 按配置 ID 查询关联的审核规则，支持筛选。
+func (s *AuditRuleService) ListByConfigIDFilter(c *gin.Context, configID uuid.UUID, ruleScope *string, enabled *bool) ([]model.AuditRule, error) {
+	rules, err := s.ruleRepo.ListByConfigIDFilter(c, configID, ruleScope, enabled)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}

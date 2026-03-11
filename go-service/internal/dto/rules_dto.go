@@ -47,7 +47,6 @@ type CreateAuditRuleRequest struct {
 	ProcessType string `json:"process_type" binding:"required"`
 	RuleContent string `json:"rule_content" binding:"required"`
 	RuleScope   string `json:"rule_scope"`
-	Priority    int    `json:"priority"`
 	Enabled     *bool  `json:"enabled"`
 	Source      string `json:"source"`
 	RelatedFlow bool   `json:"related_flow"`
@@ -57,7 +56,6 @@ type CreateAuditRuleRequest struct {
 type UpdateAuditRuleRequest struct {
 	RuleContent string `json:"rule_content"`
 	RuleScope   string `json:"rule_scope"`
-	Priority    *int   `json:"priority"`
 	Enabled     *bool  `json:"enabled"`
 	RelatedFlow *bool  `json:"related_flow"`
 }
