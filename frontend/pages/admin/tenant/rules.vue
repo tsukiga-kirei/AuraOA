@@ -27,6 +27,7 @@ import {
   LoadingOutlined,
   UserOutlined,
   InfoCircleOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ProcessField, CronTaskTypeConfig, ArchiveReviewConfig, AuditRule } from '~/composables/useMockData'
@@ -679,8 +680,6 @@ const insertExtractionVariable = (variable: string) => {
 
 const promptTemplates = ref<SystemPromptTemplate[]>([])
 const loadingTemplates = ref(false)
-const showSystemPromptEditor = ref(false)
-
 onMounted(async () => {
   loadOrgData()
   try {
@@ -706,22 +705,26 @@ const getTemplateContent = (promptKey: string) => {
 const handleStrictnessChange = (value: string) => {
   if (!selectedConfig.value) return
   selectedConfig.value.ai_config.audit_strictness = value as any
-  const userReasoningKey = `user_reasoning_${value}`
-  const userExtractionKey = `user_extraction_${value}`
-  selectedConfig.value.ai_config.user_reasoning_prompt = getTemplateContent(userReasoningKey)
-  selectedConfig.value.ai_config.user_extraction_prompt = getTemplateContent(userExtractionKey)
-}
-
-const openSystemPromptEditor = () => {
-  showSystemPromptEditor.value = true
+  selectedConfig.value.ai_config.system_reasoning_prompt = getTemplateContent(`system_reasoning_${value}`)
+  selectedConfig.value.ai_config.system_extraction_prompt = getTemplateContent(`system_extraction_${value}`)
+  selectedConfig.value.ai_config.user_reasoning_prompt = getTemplateContent(`user_reasoning_${value}`)
+  selectedConfig.value.ai_config.user_extraction_prompt = getTemplateContent(`user_extraction_${value}`)
 }
 
 const resetSystemPrompts = () => {
   if (!selectedConfig.value) return
-  selectedConfig.value.ai_config.system_reasoning_prompt = getTemplateContent('system_reasoning')
-  selectedConfig.value.ai_config.system_extraction_prompt = getTemplateContent('system_extraction')
+  const strictness = selectedConfig.value.ai_config.audit_strictness || 'standard'
+  selectedConfig.value.ai_config.system_reasoning_prompt = getTemplateContent(`system_reasoning_${strictness}`)
+  selectedConfig.value.ai_config.system_extraction_prompt = getTemplateContent(`system_extraction_${strictness}`)
   message.success(t('admin.ruleConfig.systemPromptsReset'))
-  showSystemPromptEditor.value = false
+}
+
+const resetUserPrompts = () => {
+  if (!selectedConfig.value) return
+  const strictness = selectedConfig.value.ai_config.audit_strictness || 'standard'
+  selectedConfig.value.ai_config.user_reasoning_prompt = getTemplateContent(`user_reasoning_${strictness}`)
+  selectedConfig.value.ai_config.user_extraction_prompt = getTemplateContent(`user_extraction_${strictness}`)
+  message.success(t('admin.ruleConfig.userPromptsReset'))
 }
 
 //=====用户权限=====
@@ -1375,8 +1378,8 @@ const handleSave = async () => {
             <div class="ai-prompt-section">
               <div class="ai-prompt-section-header">
                 <div class="ai-prompt-section-tag ai-prompt-section-tag--system">{{ t('admin.ruleConfig.systemPromptTag') }}</div>
-                <a-button size="small" type="link" @click="openSystemPromptEditor">
-                  <EditOutlined /> {{ t('admin.ruleConfig.editSystemPresets') }}
+                <a-button size="small" type="link" @click="resetSystemPrompts">
+                  <ReloadOutlined /> {{ t('admin.ruleConfig.resetSystemPresets') }}
                 </a-button>
               </div>
               <p class="ai-prompt-section-desc">{{ t('admin.ruleConfig.systemPromptDesc') }}</p>
@@ -1414,6 +1417,9 @@ const handleSave = async () => {
             <div class="ai-prompt-section">
               <div class="ai-prompt-section-header">
                 <div class="ai-prompt-section-tag ai-prompt-section-tag--user">{{ t('admin.ruleConfig.userPromptTag') }}</div>
+                <a-button size="small" type="link" @click="resetUserPrompts">
+                  <ReloadOutlined /> {{ t('admin.ruleConfig.resetUserPresets') }}
+                </a-button>
               </div>
               <p class="ai-prompt-section-desc">{{ t('admin.ruleConfig.userPromptDesc') }}</p>
 
@@ -2370,41 +2376,6 @@ const handleSave = async () => {
       </div>
     </a-modal>
 
-    <!--系统预设提示词编辑器-->
-    <a-modal
-      v-model:open="showSystemPromptEditor"
-      :title="t('admin.ruleConfig.editSystemPresetsTitle')"
-      :width="720"
-      :footer="null"
-    >
-      <div class="preset-editor">
-        <p class="preset-editor-desc">{{ t('admin.ruleConfig.editSystemPresetsDesc') }}</p>
-        <div class="preset-editor-item">
-          <div class="preset-editor-header">
-            <span class="preset-editor-badge preset-editor-badge--standard">{{ t('admin.ruleConfig.systemPromptTag') }}</span>
-          </div>
-          <div class="preset-editor-fields">
-            <div class="preset-editor-field">
-              <label class="preset-editor-label">
-                <span class="preset-preview-tag preset-preview-tag--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
-                {{ t('admin.ruleConfig.systemReasoningPrompt') }}
-              </label>
-              <div class="preset-template-content">{{ getTemplateContent('system_reasoning') }}</div>
-            </div>
-            <div class="preset-editor-field">
-              <label class="preset-editor-label">
-                <span class="preset-preview-tag preset-preview-tag--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
-                {{ t('admin.ruleConfig.systemExtractionPrompt') }}
-              </label>
-              <div class="preset-template-content">{{ getTemplateContent('system_extraction') }}</div>
-            </div>
-          </div>
-        </div>
-        <div style="text-align: right; margin-top: 16px;">
-          <a-button type="primary" @click="resetSystemPrompts">{{ t('admin.ruleConfig.resetToDefault') }}</a-button>
-        </div>
-      </div>
-    </a-modal>
   </div>
 </template>
 

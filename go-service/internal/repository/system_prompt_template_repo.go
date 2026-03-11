@@ -34,10 +34,10 @@ func (r *SystemPromptTemplateRepo) GetByKey(key string) (*model.SystemPromptTemp
 	return &tpl, nil
 }
 
-// GetByStrictness 查询指定尺度的所有模板（包括无尺度的系统提示词）。
+// GetByStrictness 查询指定尺度的所有模板（系统提示词和用户提示词均按尺度区分）。
 func (r *SystemPromptTemplateRepo) GetByStrictness(strictness string) ([]model.SystemPromptTemplate, error) {
 	var templates []model.SystemPromptTemplate
-	if err := r.db.Where("strictness IS NULL OR strictness = ?", strictness).
+	if err := r.db.Where("strictness = ?", strictness).
 		Order("prompt_type ASC, phase ASC").Find(&templates).Error; err != nil {
 		return nil, err
 	}
