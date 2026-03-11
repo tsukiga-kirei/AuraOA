@@ -118,7 +118,7 @@ const handleSaveMember = async () => {
   }
   try {
     if (editingMember.value) {
-      await updateMember(editingMember.value.id, {
+      const mapped = await updateMember(editingMember.value.id, {
         name: memberForm.value.name,
         username: memberForm.value.username,
         department_id: memberForm.value.department_id,
@@ -127,9 +127,11 @@ const handleSaveMember = async () => {
         phone: memberForm.value.phone,
         position: memberForm.value.position,
       })
+      const idx = members.value.findIndex(m => m.id === editingMember.value!.id)
+      if (idx !== -1) members.value[idx] = mapped
       message.success(t('admin.org.memberUpdated'))
     } else {
-      await createMember({
+      const mapped = await createMember({
         name: memberForm.value.name,
         username: memberForm.value.username,
         department_id: memberForm.value.department_id,
@@ -141,6 +143,7 @@ const handleSaveMember = async () => {
         position: memberForm.value.position,
         status: 'active',
       })
+      members.value.push(mapped)
       message.success(t('admin.org.memberAdded'))
     }
     showMemberModal.value = false
@@ -152,7 +155,9 @@ const handleSaveMember = async () => {
 const toggleMemberStatus = async (m: OrgMember) => {
   const newStatus = m.status === 'active' ? 'disabled' : 'active'
   try {
-    await updateMember(m.id, { status: newStatus })
+    const mapped = await updateMember(m.id, { status: newStatus })
+    const idx = members.value.findIndex(mem => mem.id === m.id)
+    if (idx !== -1) members.value[idx] = mapped
     message.success(newStatus === 'active' ? t('admin.org.memberEnabled') : t('admin.org.memberDisabled'))
   } catch (e: any) {
     message.error(e.message || t('admin.org.operationFailed'))
@@ -162,6 +167,7 @@ const toggleMemberStatus = async (m: OrgMember) => {
 const removeMember = async (m: OrgMember) => {
   try {
     await apiDeleteMember(m.id)
+    members.value = members.value.filter(mem => mem.id !== m.id)
     message.success(t('admin.org.memberDeleted'))
   } catch (e: any) {
     message.error(e.message || t('admin.org.operationFailed'))
@@ -238,19 +244,22 @@ const handleSaveRole = async () => {
   }
   try {
     if (editingRole.value) {
-      await updateRole(editingRole.value.id, {
+      const mapped = await updateRole(editingRole.value.id, {
         name: roleForm.value.name,
         description: roleForm.value.description,
         page_permissions: [...roleForm.value.page_permissions],
       })
+      const idx = roles.value.findIndex(r => r.id === editingRole.value!.id)
+      if (idx !== -1) roles.value[idx] = mapped
       message.success(t('admin.org.roleUpdated'))
     } else {
-      await createRole({
+      const mapped = await createRole({
         name: roleForm.value.name,
         description: roleForm.value.description,
         page_permissions: [...roleForm.value.page_permissions],
         is_system: false,
       })
+      roles.value.push(mapped)
       message.success(t('admin.org.roleAdded'))
     }
     showRoleModal.value = false
@@ -265,6 +274,7 @@ const removeRole = async (r: OrgRole) => {
   if (usedBy.length > 0) { message.warning(t('admin.org.roleHasMembers', [usedBy.length])); return }
   try {
     await apiDeleteRole(r.id)
+    roles.value = roles.value.filter(role => role.id !== r.id)
     message.success(t('admin.org.roleDeleted'))
   } catch (e: any) {
     message.error(e.message || t('admin.org.operationFailed'))
@@ -297,17 +307,20 @@ const handleSaveDept = async () => {
   }
   try {
     if (editingDept.value) {
-      await updateDepartment(editingDept.value.id, {
+      const mapped = await updateDepartment(editingDept.value.id, {
         name: deptForm.value.name,
         manager: deptForm.value.manager,
       })
+      const idx = departments.value.findIndex(d => d.id === editingDept.value!.id)
+      if (idx !== -1) departments.value[idx] = mapped
       message.success(t('admin.org.deptUpdated'))
     } else {
-      await createDepartment({
+      const mapped = await createDepartment({
         name: deptForm.value.name,
         parent_id: null,
         manager: deptForm.value.manager,
       })
+      departments.value.push(mapped)
       message.success(t('admin.org.deptAdded'))
     }
     showDeptModal.value = false
@@ -321,6 +334,7 @@ const removeDept = async (d: Department) => {
   if (usedBy.length > 0) { message.warning(t('admin.org.deptHasMembers', [usedBy.length])); return }
   try {
     await apiDeleteDept(d.id)
+    departments.value = departments.value.filter(dept => dept.id !== d.id)
     message.success(t('admin.org.deptDeleted'))
   } catch (e: any) {
     message.error(e.message || t('admin.org.operationFailed'))
