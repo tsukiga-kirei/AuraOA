@@ -96,21 +96,17 @@ export const useOrgApi = () => {
   async function createDepartment(dept: Omit<Department, 'id' | 'member_count'>): Promise<Department> {
     const data = await authFetch<ApiDepartmentResponse>('/api/tenant/org/departments', { method: 'POST', body: dept })
     const mapped = mapDepartment(data)
-    departments.value.push(mapped)
     return mapped
   }
 
   async function updateDepartment(id: string, dept: Partial<Department>): Promise<Department> {
     const data = await authFetch<ApiDepartmentResponse>(`/api/tenant/org/departments/${id}`, { method: 'PUT', body: dept })
     const mapped = mapDepartment(data)
-    const idx = departments.value.findIndex(d => d.id === id)
-    if (idx !== -1) departments.value[idx] = mapped
     return mapped
   }
 
   async function deleteDepartment(id: string): Promise<void> {
     await authFetch<null>(`/api/tenant/org/departments/${id}`, { method: 'DELETE' })
-    departments.value = departments.value.filter(d => d.id !== id)
   }
 
   // ============================================================
@@ -136,21 +132,17 @@ export const useOrgApi = () => {
   async function createRole(role: Omit<OrgRole, 'id'>): Promise<OrgRole> {
     const data = await authFetch<ApiRoleResponse>('/api/tenant/org/roles', { method: 'POST', body: role })
     const mapped = mapRole(data)
-    roles.value.push(mapped)
     return mapped
   }
 
   async function updateRole(id: string, role: Partial<OrgRole>): Promise<OrgRole> {
     const data = await authFetch<ApiRoleResponse>(`/api/tenant/org/roles/${id}`, { method: 'PUT', body: role })
     const mapped = mapRole(data)
-    const idx = roles.value.findIndex(r => r.id === id)
-    if (idx !== -1) roles.value[idx] = mapped
     return mapped
   }
 
   async function deleteRole(id: string): Promise<void> {
     await authFetch<null>(`/api/tenant/org/roles/${id}`, { method: 'DELETE' })
-    roles.value = roles.value.filter(r => r.id !== id)
   }
 
   // ============================================================
@@ -185,7 +177,6 @@ export const useOrgApi = () => {
     }
     const data = await authFetch<ApiMemberResponse>('/api/tenant/org/members', { method: 'POST', body })
     const mapped = mapMember(data)
-    members.value.push(mapped)
     return mapped
   }
 
@@ -198,16 +189,14 @@ export const useOrgApi = () => {
     if (member.role_ids !== undefined) body.role_ids = member.role_ids
     if (member.position !== undefined) body.position = member.position
     if (member.status !== undefined) body.status = member.status
+
     const data = await authFetch<ApiMemberResponse>(`/api/tenant/org/members/${id}`, { method: 'PUT', body })
     const mapped = mapMember(data)
-    const idx = members.value.findIndex(m => m.id === id)
-    if (idx !== -1) members.value[idx] = mapped
     return mapped
   }
 
   async function deleteMember(id: string): Promise<void> {
     await authFetch<null>(`/api/tenant/org/members/${id}`, { method: 'DELETE' })
-    members.value = members.value.filter(m => m.id !== id)
   }
 
   async function loadAll(): Promise<void> {
