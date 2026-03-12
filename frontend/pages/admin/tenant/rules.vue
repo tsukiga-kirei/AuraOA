@@ -872,18 +872,18 @@ interface ArchiveFieldGroup {
 const archiveGroupedAvailableFields = computed<ArchiveFieldGroup[]>(() => {
   if (!selectedArchiveConfig.value) return []
   const groups: ArchiveFieldGroup[] = []
-  const mainFields = selectedArchiveConfig.value.main_fields || selectedArchiveConfig.value.fields
+  const mainFields = selectedArchiveConfig.value.main_fields || []
   groups.push({
     source: 'main',
     sourceLabel: t('admin.ruleConfig.mainTableFields'),
-    fields: mainFields.map(f => ({ ...f, source: 'main', sourceLabel: t('admin.ruleConfig.mainTableFields') })),
+    fields: mainFields.map(f => ({ ...f, selected: !!f.selected, source: 'main', sourceLabel: t('admin.ruleConfig.mainTableFields') })),
   })
   if (selectedArchiveConfig.value.detail_tables) {
     selectedArchiveConfig.value.detail_tables.forEach((dt, idx) => {
       groups.push({
         source: dt.table_name,
         sourceLabel: `${t('admin.ruleConfig.detailTableLabel')} ${idx + 1}`,
-        fields: dt.fields.map(f => ({ ...f, source: dt.table_name, sourceLabel: `${t('admin.ruleConfig.detailTableLabel')} ${idx + 1}` })),
+        fields: (dt.fields || []).map(f => ({ ...f, selected: !!f.selected, source: dt.table_name, sourceLabel: `${t('admin.ruleConfig.detailTableLabel')} ${idx + 1}` })),
       })
     })
   }
@@ -925,7 +925,7 @@ const openArchiveFieldPicker = () => {
 
 const archivePickField = (field: { field_key: string; source: string }) => {
   if (!selectedArchiveConfig.value) return
-  const mainFields = selectedArchiveConfig.value.main_fields || selectedArchiveConfig.value.fields
+  const mainFields = selectedArchiveConfig.value.main_fields || []
   const mf = mainFields.find(f => f.field_key === field.field_key)
   if (mf && field.source === 'main') { mf.selected = true; return }
   if (selectedArchiveConfig.value.detail_tables) {
@@ -940,7 +940,7 @@ const archivePickField = (field: { field_key: string; source: string }) => {
 
 const archiveUnpickField = (field: { field_key: string; source: string }) => {
   if (!selectedArchiveConfig.value) return
-  const mainFields = selectedArchiveConfig.value.main_fields || selectedArchiveConfig.value.fields
+  const mainFields = selectedArchiveConfig.value.main_fields || []
   const mf = mainFields.find(f => f.field_key === field.field_key)
   if (mf && field.source === 'main') { mf.selected = false; return }
   if (selectedArchiveConfig.value.detail_tables) {
@@ -1059,11 +1059,56 @@ const resetArchiveUserPrompts = () => {
 const handleArchiveStrictnessChange = (value: string) => {
   if (!selectedArchiveConfig.value) return
   selectedArchiveConfig.value.ai_config.audit_strictness = value as any
-  selectedArchiveConfig.value.ai_config.system_reasoning_prompt = getArchiveTemplateContent(`archive_system_reasoning_${value}`)
-  selectedArchiveConfig.value.ai_config.system_extraction_prompt = getArchiveTemplateContent(`archive_system_extraction_${value}`)
-  selectedArchiveConfig.value.ai_config.user_reasoning_prompt = getArchiveTemplateContent(`archive_user_reasoning_${value}`)
-  selectedArchiveConfig.value.ai_config.user_extraction_prompt = getArchiveTemplateContent(`archive_user_extraction_${value}`)
+  // 更新尺度时，同时重置系统和用户提示词为该尺度下的默认值
+  resetArchiveSystemPrompts()
+  resetArchiveUserPrompts()
 }
+
+const archiveInfoTestingConnection = ref(false)
+const archiveInfoTestConnectionResult = ref<{ success: boolean; message: string } | null>(null)
+
+// 归档基本信息也提供测试连接
+const handleArchiveTestConnectionInInfo = async () => {
+  if (!selectedArchiveConfig.value) return
+  const processType = selectedArchiveConfig.value.process_type.trim()
+  if (!processType) {
+    message.warning(t('admin.ruleConfig.enterProcessName'))
+    return
+  }
+  archiveInfoTestingConnection.value = true
+  archiveInfoTestConnectionResult.value = null
+  try {
+    const info = await archiveApi.testConnection(processType, selectedArchiveConfig.value.main_table_name.trim(), selectedArchiveConfig.value.process_type_label?.trim() || '')
+    if (info.table_mismatch || info.type_label_mismatch) {
+      const msgs = []
+      if (info.table_mismatch) {
+        msgs.push(t('admin.ruleConfig.tableMismatch', [info.expected_table || '-']))
+        if (info.expected_table && selectedArchiveConfig.value) {
+          selectedArchiveConfig.value.main_table_name = info.expected_table
+        }
+      }
+      if (info.type_label_mismatch) {
+        msgs.push(t('admin.ruleConfig.typeLabelMismatch', [info.expected_type_label || '-']))
+        if (info.expected_type_label && selectedArchiveConfig.value) {
+          selectedArchiveConfig.value.process_type_label = info.expected_type_label
+        }
+      }
+      archiveInfoTestConnectionResult.value = { success: false, message: msgs.join('；') }
+    } else {
+      archiveInfoTestConnectionResult.value = {
+        success: true,
+        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
+      }
+      if (info.main_table && selectedArchiveConfig.value) selectedArchiveConfig.value.main_table_name = info.main_table
+      if (info.process_type_label && selectedArchiveConfig.value) selectedArchiveConfig.value.process_type_label = info.process_type_label
+    }
+  } catch (e: any) {
+    archiveInfoTestConnectionResult.value = { success: false, message: t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']) }
+  } finally {
+    archiveInfoTestingConnection.value = false
+  }
+}
+
 
 //=====归档权限（用户定制+访问控制）=====
 const archivePermissionLabels = computed(() => ({
@@ -1484,14 +1529,14 @@ const handleSave = async () => {
                   <div class="rule-card-meta">
                     <span v-if="rule.source === 'file_import'" class="rule-source-tag">{{ t('admin.ruleConfig.fileImportTag') }}</span>
                     <span v-else class="rule-source-tag rule-source-tag--manual">{{ t('admin.ruleConfig.manualAddTag') }}</span>
-                    <span v-if="(rule as any).related_flow" class="rule-flow-tag">
+                    <span v-if="rule.related_flow" class="rule-flow-tag">
                       <NodeIndexOutlined /> {{ t('admin.ruleConfig.relatedFlow') }}
                     </span>
                   </div>
                 </div>
               </div>
               <div class="rule-card-actions">
-                <a-switch :checked="rule.enabled" size="small" @change="(checked: any) => rulesApi.updateRule(rule.id, { enabled: !!checked }).then(updated => { const idx = currentRules.findIndex(r => r.id === rule.id); if (idx >= 0) currentRules[idx] = updated })" />
+                <a-switch :checked="rule.enabled" size="small" @change="(checked: any) => { rulesApi.updateRule(rule.id, { enabled: !!checked }).then(updated => { const idx = currentRules.findIndex(r => r.id === rule.id); if (idx >= 0) currentRules[idx] = updated }) }" />
                 <button class="icon-btn" @click="openRuleEditor(rule)"><EditOutlined /></button>
                 <a-popconfirm :title="t('admin.ruleConfig.deleteRuleConfirm')" @confirm="deleteRule(rule.id)">
                   <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
@@ -1894,7 +1939,7 @@ const handleSave = async () => {
             :checked="selectedCronConfig.is_enabled"
             :checked-children="t('admin.ruleConfig.cronEnabled')"
             :un-checked-children="t('admin.ruleConfig.cronDisabled')"
-            @change="(v: boolean) => v ? handleSaveCronConfig() : handleResetCronTemplate()"
+            @change="(checked: any) => { if (checked) handleSaveCronConfig(); else handleResetCronTemplate(); }"
           />
         </div>
 
@@ -2092,7 +2137,29 @@ const handleSave = async () => {
               />
             </a-form-item>
             <a-form-item :label="t('admin.ruleConfig.mainTableLabel')">
-              <a-input v-model:value="selectedArchiveConfig!.main_table_name" :placeholder="t('admin.ruleConfig.mainTableInputPlaceholder')" />
+              <div style="display: flex; gap: 8px;">
+                <a-input v-model:value="selectedArchiveConfig!.main_table_name" :placeholder="t('admin.ruleConfig.mainTableInputPlaceholder')" style="flex: 1;" />
+                <a-button
+                  :loading="archiveInfoTestingConnection"
+                  @click="handleArchiveTestConnectionInInfo"
+                  :disabled="!selectedArchiveConfig!.process_type.trim()"
+                >
+                  <template #icon><DatabaseOutlined /></template>
+                  {{ archiveInfoTestingConnection ? t('admin.ruleConfig.testingConnection') : t('admin.ruleConfig.testConnection') }}
+                </a-button>
+              </div>
+              <div class="test-connection-hint" style="margin-top: 4px; font-size: 12px; color: var(--color-text-tertiary);">
+                {{ t('admin.ruleConfig.testConnectionHint') }}
+              </div>
+              <div v-if="archiveInfoTestConnectionResult" style="margin-top: 8px;">
+                <a-alert
+                  :type="archiveInfoTestConnectionResult.success ? 'success' : 'error'"
+                  :message="archiveInfoTestConnectionResult.message"
+                  show-icon
+                  closable
+                  @close="archiveInfoTestConnectionResult = null"
+                />
+              </div>
             </a-form-item>
           </a-form>
         </div>
@@ -2224,6 +2291,9 @@ const handleSave = async () => {
                 <div class="rule-card-body">
                   <div class="rule-card-content">{{ rule.rule_content }}</div>
                   <div class="rule-card-meta">
+                    <span v-if="rule.related_flow" class="rule-flow-tag">
+                      <NodeIndexOutlined /> {{ t('admin.ruleConfig.flowRelated') }}
+                    </span>
                     <span v-if="rule.source === 'file_import'" class="rule-source-tag">{{ t('admin.ruleConfig.fileSource') }}</span>
                     <span v-else class="rule-source-tag rule-source-tag--manual">{{ t('admin.ruleConfig.manualSource') }}</span>
                   </div>
@@ -2274,50 +2344,98 @@ const handleSave = async () => {
               </div>
             </div>
 
-            <!--推理提示-->
-            <div class="ai-form-group">
-              <div class="prompt-section-header">
-                <div class="prompt-section-title">
-                  <span class="prompt-phase-badge prompt-phase-badge--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
-                  <label class="ai-form-label">{{ t('admin.ruleConfig.reasoningPrompt') }}</label>
+            <!--系统提示词区域-->
+            <div class="ai-prompt-section">
+              <div class="ai-prompt-section-header">
+                <div class="ai-prompt-section-tag ai-prompt-section-tag--system">{{ t('admin.ruleConfig.systemPromptTag') }}</div>
+                <a-button size="small" type="link" @click="resetArchiveSystemPrompts">
+                  <ReloadOutlined /> {{ t('admin.ruleConfig.resetSystemPresets') }}
+                </a-button>
+              </div>
+              <p class="ai-prompt-section-desc">{{ t('admin.ruleConfig.systemPromptDesc') }}</p>
+
+              <div class="ai-form-group">
+                <div class="prompt-section-header">
+                  <div class="prompt-section-title">
+                    <span class="prompt-phase-badge prompt-phase-badge--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
+                    <label class="ai-form-label">{{ t('admin.ruleConfig.systemReasoningPrompt') }}</label>
+                  </div>
                 </div>
-                <div class="prompt-section-desc">{{ t('admin.ruleConfig.reasoningPromptDesc') }}</div>
+                <a-textarea
+                  v-model:value="selectedArchiveConfig.ai_config.system_reasoning_prompt"
+                  :rows="6"
+                  :placeholder="t('admin.ruleConfig.systemReasoningPlaceholder')"
+                />
               </div>
-              <div class="prompt-variables">
-                <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
-                <a-tooltip v-for="v in archiveReasoningPromptVariables" :key="v.key" :title="v.desc">
-                  <button class="variable-btn" @click="insertArchiveAtCursor(archiveReasoningTextareaRef, 'user_reasoning_prompt', v.key)">{{ v.key }}</button>
-                </a-tooltip>
+
+              <div class="ai-form-group">
+                <div class="prompt-section-header">
+                  <div class="prompt-section-title">
+                    <span class="prompt-phase-badge prompt-phase-badge--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
+                    <label class="ai-form-label">{{ t('admin.ruleConfig.systemExtractionPrompt') }}</label>
+                  </div>
+                </div>
+                <a-textarea
+                  v-model:value="selectedArchiveConfig.ai_config.system_extraction_prompt"
+                  :rows="6"
+                  :placeholder="t('admin.ruleConfig.systemExtractionPlaceholder')"
+                />
               </div>
-              <a-textarea
-                ref="archiveReasoningTextareaRef"
-                v-model:value="selectedArchiveConfig.ai_config.user_reasoning_prompt"
-                :rows="8"
-                :placeholder="t('admin.ruleConfig.reasoningPromptPlaceholder')"
-              />
             </div>
 
-            <!--提取提示-->
-            <div class="ai-form-group">
-              <div class="prompt-section-header">
-                <div class="prompt-section-title">
-                  <span class="prompt-phase-badge prompt-phase-badge--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
-                  <label class="ai-form-label">{{ t('admin.ruleConfig.extractionPrompt') }}</label>
+            <!--用户提示词区域-->
+            <div class="ai-prompt-section">
+              <div class="ai-prompt-section-header">
+                <div class="ai-prompt-section-tag ai-prompt-section-tag--user">{{ t('admin.ruleConfig.userPromptTag') }}</div>
+                <a-button size="small" type="link" @click="resetArchiveUserPrompts">
+                  <ReloadOutlined /> {{ t('admin.ruleConfig.resetUserPresets') }}
+                </a-button>
+              </div>
+              <p class="ai-prompt-section-desc">{{ t('admin.ruleConfig.userPromptDesc') }}</p>
+
+              <div class="ai-form-group">
+                <div class="prompt-section-header">
+                  <div class="prompt-section-title">
+                    <span class="prompt-phase-badge prompt-phase-badge--reasoning">{{ t('admin.ruleConfig.phase1Label') }}</span>
+                    <label class="ai-form-label">{{ t('admin.ruleConfig.userReasoningPrompt') }}</label>
+                  </div>
+                  <div class="prompt-section-desc">{{ t('admin.ruleConfig.userReasoningPromptDesc') }}</div>
                 </div>
-                <div class="prompt-section-desc">{{ t('admin.ruleConfig.extractionPromptDesc') }}</div>
+                <div class="prompt-variables">
+                  <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
+                  <a-tooltip v-for="v in archiveReasoningPromptVariables" :key="v.key" :title="v.desc">
+                    <button class="variable-btn" @click="insertArchiveAtCursor(archiveReasoningTextareaRef, 'user_reasoning_prompt', v.key)">{{ v.key }}</button>
+                  </a-tooltip>
+                </div>
+                <a-textarea
+                  ref="archiveReasoningTextareaRef"
+                  v-model:value="selectedArchiveConfig.ai_config.user_reasoning_prompt"
+                  :rows="8"
+                  :placeholder="t('admin.ruleConfig.userReasoningPlaceholder')"
+                />
               </div>
-              <div class="prompt-variables">
-                <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
-                <a-tooltip v-for="v in archiveExtractionPromptVariables" :key="v.key" :title="v.desc">
-                  <button class="variable-btn" @click="insertArchiveAtCursor(archiveExtractionTextareaRef, 'user_extraction_prompt', v.key)">{{ v.key }}</button>
-                </a-tooltip>
+
+              <div class="ai-form-group">
+                <div class="prompt-section-header">
+                  <div class="prompt-section-title">
+                    <span class="prompt-phase-badge prompt-phase-badge--extraction">{{ t('admin.ruleConfig.phase2Label') }}</span>
+                    <label class="ai-form-label">{{ t('admin.ruleConfig.userExtractionPrompt') }}</label>
+                  </div>
+                  <div class="prompt-section-desc">{{ t('admin.ruleConfig.userExtractionPromptDesc') }}</div>
+                </div>
+                <div class="prompt-variables">
+                  <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
+                  <a-tooltip v-for="v in archiveExtractionPromptVariables" :key="v.key" :title="v.desc">
+                    <button class="variable-btn" @click="insertArchiveAtCursor(archiveExtractionTextareaRef, 'user_extraction_prompt', v.key)">{{ v.key }}</button>
+                  </a-tooltip>
+                </div>
+                <a-textarea
+                  ref="archiveExtractionTextareaRef"
+                  v-model:value="selectedArchiveConfig.ai_config.user_extraction_prompt"
+                  :rows="6"
+                  :placeholder="t('admin.ruleConfig.userExtractionPlaceholder')"
+                />
               </div>
-              <a-textarea
-                ref="archiveExtractionTextareaRef"
-                v-model:value="selectedArchiveConfig.ai_config.user_extraction_prompt"
-                :rows="6"
-                :placeholder="t('admin.ruleConfig.extractionPromptPlaceholder')"
-              />
             </div>
           </div>
         </div>
@@ -2457,7 +2575,29 @@ const handleSave = async () => {
           <a-input v-model:value="newArchiveProcessForm.process_type_label" :placeholder="t('admin.ruleConfig.processTypeLabelPlaceholder')" />
         </a-form-item>
         <a-form-item :label="t('admin.ruleConfig.mainTableName')">
-          <a-input v-model:value="newArchiveProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" />
+          <div style="display: flex; gap: 8px;">
+            <a-input v-model:value="newArchiveProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" style="flex: 1;" />
+            <a-button
+              :loading="archiveTestingConnection"
+              @click="handleTestConnectionInArchiveModal"
+              :disabled="!newArchiveProcessForm.process_type.trim()"
+            >
+              <template #icon><DatabaseOutlined /></template>
+              {{ archiveTestingConnection ? t('admin.ruleConfig.testingConnection') : t('admin.ruleConfig.testConnection') }}
+            </a-button>
+          </div>
+          <div class="test-connection-hint" style="margin-top: 4px; font-size: 12px; color: var(--color-text-tertiary);">
+            {{ t('admin.ruleConfig.testConnectionHint') }}
+          </div>
+          <div v-if="archiveTestConnectionResult" style="margin-top: 8px;">
+            <a-alert
+              :type="archiveTestConnectionResult.success ? 'success' : 'error'"
+              :message="archiveTestConnectionResult.message"
+              show-icon
+              closable
+              @close="archiveTestConnectionResult = null"
+            />
+          </div>
         </a-form-item>
       </a-form>
     </a-modal>
