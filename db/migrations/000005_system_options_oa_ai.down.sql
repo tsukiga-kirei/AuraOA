@@ -1,5 +1,5 @@
 -- 000005_system_options_oa_ai.down.sql
--- Rollback: restore tenants columns, drop new tables
+-- 回滚：恢复租户表列，删除新建表
 
 -- 恢复租户表列
 ALTER TABLE tenants DROP CONSTRAINT IF EXISTS fk_tenants_oa_db;

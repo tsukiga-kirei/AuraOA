@@ -1590,7 +1590,7 @@ export default {
     'admin.ruleConfig.batchAuditConfigTitle': '批量审核配置',
     'admin.ruleConfig.batchAuditConfigDesc': '批量审核通过定时任务自动执行审核工作台的待办 AI 审批，配置单次允许处理的待办数量上限',
     'admin.ruleConfig.batchLimitLabel': '单次执行上限',
-    'admin.ruleConfig.batchLimitDesc': '每次定时任务最多处理的待办流程数量（1-500），超出部分将在下次执行时处理',
+    'admin.ruleConfig.batchLimitDesc': '每次定时任务最多处理的待办流程数量（1-50），超出部分将在下次执行时处理',
     'admin.ruleConfig.pushTemplateTitle': '推送内容模板',
     'admin.ruleConfig.pushTemplateDesc': '配置推送邮件的内容结构，通过定时任务执行审核工作台获取审核数据后，按模板组装邮件内容。点击变量标签可插入到当前编辑的输入框中。',
     'admin.ruleConfig.pushFormatLabel': '内容格式',

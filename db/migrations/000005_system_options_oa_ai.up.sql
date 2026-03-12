@@ -217,3 +217,176 @@ VALUES
         'Ollama 本地部署 Qwen2.5 14B 轻量模型',
         '["text","reasoning"]'
     );
+
+-- ============================================================
+-- 数据库注释（中文）
+-- ============================================================
+COMMENT ON TABLE oa_type_options IS 'OA系统类型选项表';
+COMMENT ON COLUMN oa_type_options.id IS '主键UUID';
+COMMENT ON COLUMN oa_type_options.code IS '选项编码（程序内部使用）';
+COMMENT ON COLUMN oa_type_options.label IS '选项显示名称（前端展示）';
+COMMENT ON COLUMN oa_type_options.sort_order IS '排序权重（越小越靠前）';
+COMMENT ON COLUMN oa_type_options.enabled IS '是否启用（禁用后前端不显示）';
+COMMENT ON COLUMN oa_type_options.created_at IS '创建时间';
+
+COMMENT ON TABLE db_driver_options IS '数据库驱动类型选项表';
+COMMENT ON COLUMN db_driver_options.id IS '主键UUID';
+COMMENT ON COLUMN db_driver_options.code IS '驱动编码（对应Go数据库驱动名）';
+COMMENT ON COLUMN db_driver_options.label IS '驱动显示名称';
+COMMENT ON COLUMN db_driver_options.default_port IS '该数据库类型的默认端口';
+COMMENT ON COLUMN db_driver_options.sort_order IS '排序权重';
+COMMENT ON COLUMN db_driver_options.enabled IS '是否启用';
+COMMENT ON COLUMN db_driver_options.created_at IS '创建时间';
+
+COMMENT ON TABLE ai_deploy_type_options IS 'AI模型部署类型选项表';
+COMMENT ON COLUMN ai_deploy_type_options.id IS '主键UUID';
+COMMENT ON COLUMN ai_deploy_type_options.code IS '部署类型编码：local/cloud';
+COMMENT ON COLUMN ai_deploy_type_options.label IS '部署类型显示名称';
+COMMENT ON COLUMN ai_deploy_type_options.sort_order IS '排序权重';
+COMMENT ON COLUMN ai_deploy_type_options.enabled IS '是否启用';
+COMMENT ON COLUMN ai_deploy_type_options.created_at IS '创建时间';
+
+COMMENT ON TABLE ai_provider_options IS 'AI服务商选项表';
+COMMENT ON COLUMN ai_provider_options.id IS '主键UUID';
+COMMENT ON COLUMN ai_provider_options.code IS '服务商编码（与ai_model_configs.provider对应）';
+COMMENT ON COLUMN ai_provider_options.label IS '服务商显示名称';
+COMMENT ON COLUMN ai_provider_options.deploy_type IS '所属部署类型：local/cloud';
+COMMENT ON COLUMN ai_provider_options.sort_order IS '排序权重';
+COMMENT ON COLUMN ai_provider_options.enabled IS '是否启用';
+COMMENT ON COLUMN ai_provider_options.created_at IS '创建时间';
+
+COMMENT ON TABLE oa_database_connections IS 'OA数据库连接配置表';
+COMMENT ON COLUMN oa_database_connections.id IS '主键UUID';
+COMMENT ON COLUMN oa_database_connections.name IS '连接名称（管理员自定义）';
+COMMENT ON COLUMN oa_database_connections.oa_type IS 'OA系统类型编码（关联oa_type_options.code）';
+COMMENT ON COLUMN oa_database_connections.oa_type_label IS 'OA系统类型显示名称（冗余字段，避免join）';
+COMMENT ON COLUMN oa_database_connections.driver IS '数据库驱动类型（关联db_driver_options.code）';
+COMMENT ON COLUMN oa_database_connections.host IS '数据库主机地址';
+COMMENT ON COLUMN oa_database_connections.port IS '数据库端口';
+COMMENT ON COLUMN oa_database_connections.database_name IS '数据库名称';
+COMMENT ON COLUMN oa_database_connections.username IS '数据库登录用户名';
+COMMENT ON COLUMN oa_database_connections.password IS '数据库登录密码（加密存储）';
+COMMENT ON COLUMN oa_database_connections.pool_size IS '连接池最大连接数';
+COMMENT ON COLUMN oa_database_connections.connection_timeout IS '连接超时时间（秒）';
+COMMENT ON COLUMN oa_database_connections.test_on_borrow IS '从连接池取出连接时是否先测试连通性';
+COMMENT ON COLUMN oa_database_connections.status IS '连接状态：connected/disconnected/error';
+COMMENT ON COLUMN oa_database_connections.last_sync IS '最后一次成功同步时间';
+COMMENT ON COLUMN oa_database_connections.sync_interval IS '同步间隔（分钟）';
+COMMENT ON COLUMN oa_database_connections.enabled IS '是否启用该连接';
+COMMENT ON COLUMN oa_database_connections.description IS '连接描述说明';
+COMMENT ON COLUMN oa_database_connections.created_at IS '创建时间';
+COMMENT ON COLUMN oa_database_connections.updated_at IS '最后更新时间';
+
+COMMENT ON TABLE ai_model_configs IS 'AI模型配置表';
+COMMENT ON COLUMN ai_model_configs.id IS '主键UUID';
+COMMENT ON COLUMN ai_model_configs.provider IS '服务商编码（关联ai_provider_options.code）';
+COMMENT ON COLUMN ai_model_configs.provider_label IS '服务商显示名称（冗余字段，避免join）';
+COMMENT ON COLUMN ai_model_configs.model_name IS '模型标识名（如 qwen2.5-72b，API调用时使用）';
+COMMENT ON COLUMN ai_model_configs.display_name IS '模型显示名称（前端展示）';
+COMMENT ON COLUMN ai_model_configs.deploy_type IS '部署类型：local/cloud';
+COMMENT ON COLUMN ai_model_configs.endpoint IS 'API接入端点URL';
+COMMENT ON COLUMN ai_model_configs.api_key IS 'API密钥（序列化时隐藏）';
+COMMENT ON COLUMN ai_model_configs.api_key_configured IS 'API密钥是否已配置（前端用于状态显示）';
+COMMENT ON COLUMN ai_model_configs.max_tokens IS '单次请求最大输出Token数';
+COMMENT ON COLUMN ai_model_configs.context_window IS '模型上下文窗口大小（Token数）';
+COMMENT ON COLUMN ai_model_configs.cost_per_1k_tokens IS '每1000 Token费用（元，本地部署填0）';
+COMMENT ON COLUMN ai_model_configs.status IS '模型状态：online/offline/maintenance';
+COMMENT ON COLUMN ai_model_configs.enabled IS '是否启用（禁用后租户不可选择）';
+COMMENT ON COLUMN ai_model_configs.description IS '模型描述说明';
+COMMENT ON COLUMN ai_model_configs.capabilities IS '模型能力列表（如["text","code","reasoning","vision"]）';
+COMMENT ON COLUMN ai_model_configs.created_at IS '创建时间';
+COMMENT ON COLUMN ai_model_configs.updated_at IS '最后更新时间';
+
+-- 扩展 tenants 表新增字段注释
+COMMENT ON COLUMN tenants.primary_model_id IS '租户主用AI模型ID';
+COMMENT ON COLUMN tenants.fallback_model_id IS '租户备用AI模型ID（主模型不可用时切换）';
+COMMENT ON COLUMN tenants.max_tokens_per_request IS '单次审核最大输出Token限制';
+COMMENT ON COLUMN tenants.temperature IS 'AI生成温度参数（0~1，越低越确定）';
+COMMENT ON COLUMN tenants.timeout_seconds IS 'AI请求超时时间（秒）';
+COMMENT ON COLUMN tenants.retry_count IS 'AI请求失败重试次数';
+
+-- ============================================================
+-- 数据库注释（中文）
+-- ============================================================
+COMMENT ON TABLE oa_type_options IS 'OA系统类型选项表';
+COMMENT ON COLUMN oa_type_options.id IS '主键UUID';
+COMMENT ON COLUMN oa_type_options.code IS '选项编码（程序内部使用）';
+COMMENT ON COLUMN oa_type_options.label IS '选项显示名称（前端展示）';
+COMMENT ON COLUMN oa_type_options.sort_order IS '排序权重（越小越靠前）';
+COMMENT ON COLUMN oa_type_options.enabled IS '是否启用（禁用后前端不显示）';
+COMMENT ON COLUMN oa_type_options.created_at IS '创建时间';
+
+COMMENT ON TABLE db_driver_options IS '数据库驱动类型选项表';
+COMMENT ON COLUMN db_driver_options.id IS '主键UUID';
+COMMENT ON COLUMN db_driver_options.code IS '驱动编码（对应Go数据库驱动名）';
+COMMENT ON COLUMN db_driver_options.label IS '驱动显示名称';
+COMMENT ON COLUMN db_driver_options.default_port IS '该数据库类型的默认端口';
+COMMENT ON COLUMN db_driver_options.sort_order IS '排序权重';
+COMMENT ON COLUMN db_driver_options.enabled IS '是否启用';
+COMMENT ON COLUMN db_driver_options.created_at IS '创建时间';
+
+COMMENT ON TABLE ai_deploy_type_options IS 'AI模型部署类型选项表';
+COMMENT ON COLUMN ai_deploy_type_options.id IS '主键UUID';
+COMMENT ON COLUMN ai_deploy_type_options.code IS '部署类型编码：local/cloud';
+COMMENT ON COLUMN ai_deploy_type_options.label IS '部署类型显示名称';
+COMMENT ON COLUMN ai_deploy_type_options.sort_order IS '排序权重';
+COMMENT ON COLUMN ai_deploy_type_options.enabled IS '是否启用';
+COMMENT ON COLUMN ai_deploy_type_options.created_at IS '创建时间';
+
+COMMENT ON TABLE ai_provider_options IS 'AI服务商选项表';
+COMMENT ON COLUMN ai_provider_options.id IS '主键UUID';
+COMMENT ON COLUMN ai_provider_options.code IS '服务商编码（与ai_model_configs.provider对应）';
+COMMENT ON COLUMN ai_provider_options.label IS '服务商显示名称';
+COMMENT ON COLUMN ai_provider_options.deploy_type IS '所属部署类型：local/cloud';
+COMMENT ON COLUMN ai_provider_options.sort_order IS '排序权重';
+COMMENT ON COLUMN ai_provider_options.enabled IS '是否启用';
+COMMENT ON COLUMN ai_provider_options.created_at IS '创建时间';
+
+COMMENT ON TABLE oa_database_connections IS 'OA数据库连接配置表';
+COMMENT ON COLUMN oa_database_connections.id IS '主键UUID';
+COMMENT ON COLUMN oa_database_connections.name IS '连接名称（管理员自定义）';
+COMMENT ON COLUMN oa_database_connections.oa_type IS 'OA系统类型编码（关联oa_type_options.code）';
+COMMENT ON COLUMN oa_database_connections.oa_type_label IS 'OA系统类型显示名称（冗余字段，避免join）';
+COMMENT ON COLUMN oa_database_connections.driver IS '数据库驱动类型（关联db_driver_options.code）';
+COMMENT ON COLUMN oa_database_connections.host IS '数据库主机地址';
+COMMENT ON COLUMN oa_database_connections.port IS '数据库端口';
+COMMENT ON COLUMN oa_database_connections.database_name IS '数据库名称';
+COMMENT ON COLUMN oa_database_connections.username IS '数据库登录用户名';
+COMMENT ON COLUMN oa_database_connections.password IS '数据库登录密码（加密存储）';
+COMMENT ON COLUMN oa_database_connections.pool_size IS '连接池最大连接数';
+COMMENT ON COLUMN oa_database_connections.connection_timeout IS '连接超时时间（秒）';
+COMMENT ON COLUMN oa_database_connections.test_on_borrow IS '从连接池取出连接时是否先测试连通性';
+COMMENT ON COLUMN oa_database_connections.status IS '连接状态：connected/disconnected/error';
+COMMENT ON COLUMN oa_database_connections.last_sync IS '最后一次成功同步时间';
+COMMENT ON COLUMN oa_database_connections.sync_interval IS '同步间隔（分钟）';
+COMMENT ON COLUMN oa_database_connections.enabled IS '是否启用该连接';
+COMMENT ON COLUMN oa_database_connections.description IS '连接描述说明';
+COMMENT ON COLUMN oa_database_connections.created_at IS '创建时间';
+COMMENT ON COLUMN oa_database_connections.updated_at IS '最后更新时间';
+
+COMMENT ON TABLE ai_model_configs IS 'AI模型配置表';
+COMMENT ON COLUMN ai_model_configs.id IS '主键UUID';
+COMMENT ON COLUMN ai_model_configs.provider IS '服务商编码（关联ai_provider_options.code）';
+COMMENT ON COLUMN ai_model_configs.provider_label IS '服务商显示名称（冗余字段，避免join）';
+COMMENT ON COLUMN ai_model_configs.model_name IS '模型标识名（如 qwen2.5-72b，API调用时使用）';
+COMMENT ON COLUMN ai_model_configs.display_name IS '模型显示名称（前端展示）';
+COMMENT ON COLUMN ai_model_configs.deploy_type IS '部署类型：local/cloud';
+COMMENT ON COLUMN ai_model_configs.endpoint IS 'API接入端点URL';
+COMMENT ON COLUMN ai_model_configs.api_key IS 'API密钥（json序列化时隐藏）';
+COMMENT ON COLUMN ai_model_configs.api_key_configured IS 'API密钥是否已配置（前端用于状态显示）';
+COMMENT ON COLUMN ai_model_configs.max_tokens IS '单次请求最大输出Token数';
+COMMENT ON COLUMN ai_model_configs.context_window IS '模型上下文窗口大小（Token数）';
+COMMENT ON COLUMN ai_model_configs.cost_per_1k_tokens IS '每1000 Token费用（元，本地部署填0）';
+COMMENT ON COLUMN ai_model_configs.status IS '模型状态：online/offline/maintenance';
+COMMENT ON COLUMN ai_model_configs.enabled IS '是否启用（禁用后租户不可选择）';
+COMMENT ON COLUMN ai_model_configs.description IS '模型描述说明';
+COMMENT ON COLUMN ai_model_configs.capabilities IS '模型能力列表（如["text","code","reasoning","vision"]）';
+COMMENT ON COLUMN ai_model_configs.created_at IS '创建时间';
+COMMENT ON COLUMN ai_model_configs.updated_at IS '最后更新时间';
+
+COMMENT ON COLUMN tenants.primary_model_id IS '租户主用AI模型ID';
+COMMENT ON COLUMN tenants.fallback_model_id IS '租户备用AI模型ID（主模型不可用时切换）';
+COMMENT ON COLUMN tenants.max_tokens_per_request IS '单次审核最大输出Token限制';
+COMMENT ON COLUMN tenants.temperature IS 'AI生成温度参数（0~1，越低越确定）';
+COMMENT ON COLUMN tenants.timeout_seconds IS 'AI请求超时时间（秒）';
+COMMENT ON COLUMN tenants.retry_count IS 'AI请求失败重试次数';

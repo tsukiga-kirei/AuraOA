@@ -82,3 +82,59 @@ CREATE TABLE login_history (
 
 CREATE INDEX idx_login_history_user_id   ON login_history (user_id);
 CREATE INDEX idx_login_history_tenant_id ON login_history (tenant_id);
+
+-- ============================================================
+-- 数据库注释（中文）
+-- ============================================================
+COMMENT ON TABLE tenants IS '租户表';
+COMMENT ON COLUMN tenants.id IS '主键UUID';
+COMMENT ON COLUMN tenants.name IS '租户名称';
+COMMENT ON COLUMN tenants.code IS '租户唯一编码，用于URL路由标识';
+COMMENT ON COLUMN tenants.description IS '租户描述';
+COMMENT ON COLUMN tenants.status IS '状态：active/inactive/suspended';
+COMMENT ON COLUMN tenants.oa_db_connection_id IS '关联的OA数据库连接ID';
+COMMENT ON COLUMN tenants.token_quota IS 'Token总配额（租户级别）';
+COMMENT ON COLUMN tenants.token_used IS '已消耗Token数量';
+COMMENT ON COLUMN tenants.max_concurrency IS '最大并发AI审核请求数';
+COMMENT ON COLUMN tenants.sso_enabled IS '是否启用单点登录（SSO）';
+COMMENT ON COLUMN tenants.sso_endpoint IS 'SSO接口地址';
+COMMENT ON COLUMN tenants.log_retention_days IS '操作日志保留天数';
+COMMENT ON COLUMN tenants.data_retention_days IS '审核数据保留天数（约3年）';
+COMMENT ON COLUMN tenants.contact_name IS '联系人姓名';
+COMMENT ON COLUMN tenants.contact_email IS '联系人邮箱';
+COMMENT ON COLUMN tenants.contact_phone IS '联系人电话';
+COMMENT ON COLUMN tenants.created_at IS '创建时间';
+COMMENT ON COLUMN tenants.updated_at IS '最后更新时间';
+
+COMMENT ON TABLE users IS '平台用户账号表';
+COMMENT ON COLUMN users.id IS '主键UUID';
+COMMENT ON COLUMN users.username IS '登录用户名（全局唯一）';
+COMMENT ON COLUMN users.password_hash IS 'bcrypt加密后的密码哈希';
+COMMENT ON COLUMN users.display_name IS '用户显示名称';
+COMMENT ON COLUMN users.email IS '邮箱地址';
+COMMENT ON COLUMN users.phone IS '手机号码';
+COMMENT ON COLUMN users.avatar_url IS '头像图片URL';
+COMMENT ON COLUMN users.status IS '账号状态：active/inactive/locked';
+COMMENT ON COLUMN users.password_changed_at IS '最后修改密码时间';
+COMMENT ON COLUMN users.login_fail_count IS '连续登录失败次数';
+COMMENT ON COLUMN users.locked_until IS '账号锁定截止时间（NULL表示未锁定）';
+COMMENT ON COLUMN users.locale IS '用户界面语言偏好';
+COMMENT ON COLUMN users.created_at IS '创建时间';
+COMMENT ON COLUMN users.updated_at IS '最后更新时间';
+
+COMMENT ON TABLE user_role_assignments IS '用户系统级角色分配表';
+COMMENT ON COLUMN user_role_assignments.id IS '主键UUID';
+COMMENT ON COLUMN user_role_assignments.user_id IS '关联用户ID';
+COMMENT ON COLUMN user_role_assignments.role IS '系统角色：business/tenant_admin/system_admin';
+COMMENT ON COLUMN user_role_assignments.tenant_id IS '关联租户ID（system_admin角色时为NULL）';
+COMMENT ON COLUMN user_role_assignments.label IS '角色显示标签（前端展示用）';
+COMMENT ON COLUMN user_role_assignments.is_default IS '是否为用户的默认角色/默认租户';
+COMMENT ON COLUMN user_role_assignments.created_at IS '创建时间';
+
+COMMENT ON TABLE login_history IS '用户登录历史表';
+COMMENT ON COLUMN login_history.id IS '主键UUID';
+COMMENT ON COLUMN login_history.user_id IS '关联用户ID';
+COMMENT ON COLUMN login_history.tenant_id IS '登录所属租户（NULL表示系统管理员登录）';
+COMMENT ON COLUMN login_history.ip IS '客户端IP地址（支持IPv6）';
+COMMENT ON COLUMN login_history.user_agent IS '浏览器/客户端标识';
+COMMENT ON COLUMN login_history.login_at IS '登录时间';

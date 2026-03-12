@@ -1912,7 +1912,7 @@ const handleSave = async () => {
               <a-input-number
                 v-model:value="selectedCronConfig.batch_limit"
                 :min="1"
-                :max="500"
+                :max="50"
                 size="large"
                 style="width: 200px;"
               />

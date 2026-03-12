@@ -20,3 +20,18 @@ CREATE TABLE tenant_llm_message_logs (
 CREATE INDEX idx_tllm_tenant_id  ON tenant_llm_message_logs(tenant_id);
 CREATE INDEX idx_tllm_created_at ON tenant_llm_message_logs(tenant_id, created_at DESC);
 CREATE INDEX idx_tllm_model      ON tenant_llm_message_logs(model_config_id);
+
+-- ============================================================
+-- 数据库注释（中文）
+-- ============================================================
+COMMENT ON TABLE tenant_llm_message_logs IS '租户大模型调用记录表（Token用量追踪）';
+COMMENT ON COLUMN tenant_llm_message_logs.id IS '主键UUID';
+COMMENT ON COLUMN tenant_llm_message_logs.tenant_id IS '所属租户ID（用于配额统计）';
+COMMENT ON COLUMN tenant_llm_message_logs.user_id IS '发起请求的用户ID（NULL表示系统自动触发）';
+COMMENT ON COLUMN tenant_llm_message_logs.model_config_id IS '使用的AI模型配置ID（NULL表示模型已被删除）';
+COMMENT ON COLUMN tenant_llm_message_logs.request_type IS '请求类型：audit=审核/archive=归档复盘/other=其他';
+COMMENT ON COLUMN tenant_llm_message_logs.input_tokens IS '输入Token消耗数';
+COMMENT ON COLUMN tenant_llm_message_logs.output_tokens IS '输出Token消耗数';
+COMMENT ON COLUMN tenant_llm_message_logs.total_tokens IS '总Token消耗数（input + output）';
+COMMENT ON COLUMN tenant_llm_message_logs.duration_ms IS '本次AI调用耗时（毫秒）';
+COMMENT ON COLUMN tenant_llm_message_logs.created_at IS '记录创建时间';

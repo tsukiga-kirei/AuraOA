@@ -1590,7 +1590,7 @@ export default {
     'admin.ruleConfig.batchAuditConfigTitle': 'Batch Audit Config',
     'admin.ruleConfig.batchAuditConfigDesc': 'Batch audit auto-runs AI audit on pending workbench items via scheduled task. Configure the max number of items per execution.',
     'admin.ruleConfig.batchLimitLabel': 'Max Items Per Run',
-    'admin.ruleConfig.batchLimitDesc': 'Max pending processes per scheduled run (1-500), excess will be processed next time',
+    'admin.ruleConfig.batchLimitDesc': 'Max pending processes per scheduled run (1-50), excess will be processed next time',
     'admin.ruleConfig.pushTemplateTitle': 'Push Content Template',
     'admin.ruleConfig.pushTemplateDesc': 'Configure push email content structure. After fetching audit data via scheduled task, email is assembled from this template. Click variable tags to insert at cursor.',
     'admin.ruleConfig.pushFormatLabel': 'Content Format',
