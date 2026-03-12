@@ -13,39 +13,20 @@ export type { ProcessAuditConfig, AuditRule, SystemPromptTemplate, ProcessInfo, 
 export const useRulesApi = () => {
   const { authFetch } = useAuth()
 
-  const configs = ref<ProcessAuditConfig[]>([])
-  const rules = ref<AuditRule[]>([])
-  const promptTemplates = ref<SystemPromptTemplate[]>([])
-  const loading = ref(false)
-  const error = ref<string | null>(null)
-
   // ============================================================
   // 流程审核配置
   // ============================================================
 
   async function listConfigs(): Promise<ProcessAuditConfig[]> {
-    loading.value = true
-    error.value = null
-    try {
-      const data = await authFetch<ProcessAuditConfig[]>('/api/tenant/rules/configs')
-      configs.value = data
-      return data
-    }
-    catch (e: any) {
-      error.value = e.message || '加载流程配置失败'
-      throw e
-    }
-    finally { loading.value = false }
+    return await authFetch<ProcessAuditConfig[]>('/api/tenant/rules/configs')
   }
 
   async function createConfig(config: Partial<ProcessAuditConfig>): Promise<ProcessAuditConfig> {
-    const data = await authFetch<ProcessAuditConfig>('/api/tenant/rules/configs', { method: 'POST', body: config })
-    return data
+    return await authFetch<ProcessAuditConfig>('/api/tenant/rules/configs', { method: 'POST', body: config })
   }
 
   async function updateConfig(id: string, config: Partial<ProcessAuditConfig>): Promise<ProcessAuditConfig> {
-    const data = await authFetch<ProcessAuditConfig>(`/api/tenant/rules/configs/${id}`, { method: 'PUT', body: config })
-    return data
+    return await authFetch<ProcessAuditConfig>(`/api/tenant/rules/configs/${id}`, { method: 'PUT', body: config })
   }
 
   async function deleteConfig(id: string): Promise<void> {
@@ -68,31 +49,18 @@ export const useRulesApi = () => {
   // ============================================================
 
   async function listRules(configId: string, ruleScope?: string, enabled?: boolean): Promise<AuditRule[]> {
-    loading.value = true
-    error.value = null
-    try {
-      const params = new URLSearchParams({ config_id: configId })
-      if (ruleScope) params.set('rule_scope', ruleScope)
-      if (enabled !== undefined) params.set('enabled', String(enabled))
-      const data = await authFetch<AuditRule[]>(`/api/tenant/rules/audit-rules?${params.toString()}`)
-      rules.value = data
-      return data
-    }
-    catch (e: any) {
-      error.value = e.message || '加载审核规则失败'
-      throw e
-    }
-    finally { loading.value = false }
+    const params = new URLSearchParams({ config_id: configId })
+    if (ruleScope) params.set('rule_scope', ruleScope)
+    if (enabled !== undefined) params.set('enabled', String(enabled))
+    return await authFetch<AuditRule[]>(`/api/tenant/rules/audit-rules?${params.toString()}`)
   }
 
   async function createRule(rule: Partial<AuditRule>): Promise<AuditRule> {
-    const data = await authFetch<AuditRule>('/api/tenant/rules/audit-rules', { method: 'POST', body: rule })
-    return data
+    return await authFetch<AuditRule>('/api/tenant/rules/audit-rules', { method: 'POST', body: rule })
   }
 
   async function updateRule(id: string, rule: Partial<AuditRule>): Promise<AuditRule> {
-    const data = await authFetch<AuditRule>(`/api/tenant/rules/audit-rules/${id}`, { method: 'PUT', body: rule })
-    return data
+    return await authFetch<AuditRule>(`/api/tenant/rules/audit-rules/${id}`, { method: 'PUT', body: rule })
   }
 
   async function deleteRule(id: string): Promise<void> {
@@ -104,22 +72,10 @@ export const useRulesApi = () => {
   // ============================================================
 
   async function listPromptTemplates(): Promise<SystemPromptTemplate[]> {
-    loading.value = true
-    error.value = null
-    try {
-      const data = await authFetch<SystemPromptTemplate[]>('/api/tenant/rules/prompt-templates')
-      promptTemplates.value = data
-      return data
-    }
-    catch (e: any) {
-      error.value = e.message || '加载提示词模板失败'
-      throw e
-    }
-    finally { loading.value = false }
+    return await authFetch<SystemPromptTemplate[]>('/api/tenant/rules/prompt-templates')
   }
 
   return {
-    configs, rules, promptTemplates, loading, error,
     listConfigs, createConfig, updateConfig, deleteConfig,
     testConnection, fetchFields,
     listRules, createRule, updateRule, deleteRule,

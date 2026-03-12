@@ -26,10 +26,6 @@ export const useArchiveApi = () => {
     })
   }
 
-  async function getConfigById(id: string): Promise<ProcessArchiveConfig> {
-    return await authFetch<ProcessArchiveConfig>(`/api/tenant/archive/configs/${id}`)
-  }
-
   async function updateConfig(id: string, config: Partial<ProcessArchiveConfig>): Promise<ProcessArchiveConfig> {
     return await authFetch<ProcessArchiveConfig>(`/api/tenant/archive/configs/${id}`, {
       method: 'PUT',
@@ -98,7 +94,6 @@ export const useArchiveApi = () => {
   return {
     listConfigs,
     createConfig,
-    getConfigById,
     updateConfig,
     deleteConfig,
     testConnection,

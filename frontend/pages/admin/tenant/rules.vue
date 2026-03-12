@@ -2292,10 +2292,10 @@ const handleSave = async () => {
                   <div class="rule-card-content">{{ rule.rule_content }}</div>
                   <div class="rule-card-meta">
                     <span v-if="rule.related_flow" class="rule-flow-tag">
-                      <NodeIndexOutlined /> {{ t('admin.ruleConfig.flowRelated') }}
+                      <NodeIndexOutlined /> {{ t('admin.ruleConfig.relatedFlow') }}
                     </span>
-                    <span v-if="rule.source === 'file_import'" class="rule-source-tag">{{ t('admin.ruleConfig.fileSource') }}</span>
-                    <span v-else class="rule-source-tag rule-source-tag--manual">{{ t('admin.ruleConfig.manualSource') }}</span>
+                    <span v-if="rule.source === 'file_import'" class="rule-source-tag">{{ t('admin.ruleConfig.fileImportTag') }}</span>
+                    <span v-else class="rule-source-tag rule-source-tag--manual">{{ t('admin.ruleConfig.manualAddTag') }}</span>
                   </div>
                 </div>
               </div>
