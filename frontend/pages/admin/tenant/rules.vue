@@ -30,23 +30,25 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { ProcessField, CronTaskTypeConfig, ArchiveReviewConfig, AuditRule } from '~/composables/useMockData'
 import type { ProcessAuditConfig as ApiProcessAuditConfig, AuditRule as ApiAuditRule, SystemPromptTemplate } from '~/composables/useRulesApi'
+import type { ProcessArchiveConfig, ArchiveRule, CronTaskConfig } from '~/types/rules'
 import { useI18n } from '~/composables/useI18n'
 import { usePagination } from '~/composables/usePagination'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
-const { mockCronTaskTypeConfigs, mockArchiveReviewConfigs } = useMockData()
 const rulesApi = useRulesApi()
+const cronApi = useCronApi()
+const archiveApi = useArchiveApi()
 
 //===== 顶级选项卡：审核工作台 vs 定时任务配置 vs 归档复盘 =====
 const topTab = ref<'audit' | 'cron' | 'archive'>('audit')
 
 //===== Cron 任务类型配置 =====
-const cronConfigs = ref<CronTaskTypeConfig[]>(JSON.parse(JSON.stringify(mockCronTaskTypeConfigs)))
-const selectedCronType = ref<string>(cronConfigs.value[0]?.task_type || '')
+const cronConfigs = ref<CronTaskConfig[]>([])
+const loadingCron = ref(false)
+const selectedCronType = ref<string>('')
 
 const selectedCronConfig = computed(() =>
   cronConfigs.value.find(c => c.task_type === selectedCronType.value)
@@ -61,7 +63,8 @@ const pushFormatOptions = computed(() => [
 
 //每日/每周报告内容模板的模板变量
 const cronTemplateVariables = computed(() => {
-  if (selectedCronConfig.value?.task_type === 'daily_report') {
+  const taskType = selectedCronConfig.value?.task_type || ''
+  if (taskType === 'audit_daily' || taskType === 'archive_daily') {
     return [
       { key: '{{date}}', desc: t('admin.ruleConfig.varDate') },
       { key: '{{time}}', desc: t('admin.ruleConfig.varTimeCutoff') },
@@ -74,7 +77,7 @@ const cronTemplateVariables = computed(() => {
       { key: '{{statistics}}', desc: t('admin.ruleConfig.varStatistics') },
     ]
   }
-  if (selectedCronConfig.value?.task_type === 'weekly_report') {
+  if (taskType === 'audit_weekly' || taskType === 'archive_weekly') {
     return [
       { key: '{{week}}', desc: t('admin.ruleConfig.varWeek') },
       { key: '{{date_range}}', desc: t('admin.ruleConfig.varDateRange') },
@@ -129,10 +132,37 @@ const insertCronVariable = (variable: string) => {
 }
 
 const handleSaveCronConfig = async () => {
+  if (!selectedCronConfig.value) return
   savingCron.value = true
-  await new Promise(r => setTimeout(r, 800))
-  savingCron.value = false
-  message.success(t('admin.ruleConfig.cronSaved'))
+  try {
+    const cfg = selectedCronConfig.value
+    const saved = await cronApi.saveConfig(cfg.task_type, {
+      push_format: cfg.push_format,
+      content_template: cfg.content_template,
+      batch_limit: cfg.batch_limit,
+    })
+    // 更新本地数据
+    const idx = cronConfigs.value.findIndex(c => c.task_type === cfg.task_type)
+    if (idx >= 0) cronConfigs.value[idx] = saved
+    message.success(t('admin.ruleConfig.cronSaved'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.cronSaveFail') + ': ' + (e.message || ''))
+  } finally {
+    savingCron.value = false
+  }
+}
+
+const handleResetCronTemplate = async () => {
+  if (!selectedCronConfig.value) return
+  try {
+    const cfg = selectedCronConfig.value
+    const reset = await cronApi.resetConfig(cfg.task_type)
+    const idx = cronConfigs.value.findIndex(c => c.task_type === cfg.task_type)
+    if (idx >= 0) cronConfigs.value[idx] = reset
+    message.success(t('admin.ruleConfig.cronReset'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.cronResetFail') + ': ' + (e.message || ''))
+  }
 }
 
 const processConfigs = ref<ApiProcessAuditConfig[]>([])
@@ -653,23 +683,40 @@ const insertExtractionVariable = (variable: string) => {
 //=====系统提示词模板=====
 
 const promptTemplates = ref<SystemPromptTemplate[]>([])
+const archivePromptTemplates = ref<SystemPromptTemplate[]>([])
 const loadingTemplates = ref(false)
 onMounted(async () => {
   loadOrgData()
+  // 加载审核工作台配置
   try {
     const configs = await rulesApi.listConfigs()
     processConfigs.value = configs
-    if (configs.length > 0) {
-      selectedProcessId.value = configs[0].id
-    }
-  }
-  catch (e) { console.error('[rules] 加载流程配置失败', e) }
+    if (configs.length > 0) selectedProcessId.value = configs[0].id
+  } catch (e) { console.error('[rules] 加载流程配置失败', e) }
+  // 加载提示词模板（审核工作台）
   loadingTemplates.value = true
   try {
     promptTemplates.value = await rulesApi.listPromptTemplates()
-  }
-  catch (e) { console.error('[rules] 加载提示词模板失败', e) }
+  } catch (e) { console.error('[rules] 加载提示词模板失败', e) }
   finally { loadingTemplates.value = false }
+  // 加载定时任务类型配置
+  loadingCron.value = true
+  try {
+    const cronList = await cronApi.listConfigs()
+    cronConfigs.value = cronList
+    if (cronList.length > 0) selectedCronType.value = cronList[0].task_type
+  } catch (e) { console.error('[rules] 加载定时任务配置失败', e) }
+  finally { loadingCron.value = false }
+  // 加载归档复盘配置
+  loadingArchive.value = true
+  try {
+    const archiveList = await archiveApi.listConfigs()
+    archiveConfigs.value = archiveList
+    if (archiveList.length > 0) selectedArchiveId.value = archiveList[0].id
+    // 同时加载归档专用提示词模板
+    archivePromptTemplates.value = await archiveApi.listPromptTemplates()
+  } catch (e) { console.error('[rules] 加载归档配置失败', e) }
+  finally { loadingArchive.value = false }
 })
 
 const getTemplateContent = (promptKey: string) => {
@@ -704,54 +751,110 @@ const resetUserPrompts = () => {
 //=====用户权限=====
 //===== 存档审核配置 =====
 const { departments, roles, members, loadAll: loadOrgData } = useOrgApi()
-const archiveConfigs = ref<ArchiveReviewConfig[]>(JSON.parse(JSON.stringify(mockArchiveReviewConfigs)))
-const selectedArchiveId = ref(archiveConfigs.value[0]?.id || '')
+const archiveConfigs = ref<ProcessArchiveConfig[]>([])
+const loadingArchive = ref(false)
+const selectedArchiveId = ref('')
 const archiveActiveTab = ref('info')
 
 const selectedArchiveConfig = computed(() =>
   archiveConfigs.value.find(c => c.id === selectedArchiveId.value)
 )
 
+// 当选中归档流程变化时，从 API 加载该流程的规则
+const currentArchiveRules = ref<ArchiveRule[]>([])
+const loadingArchiveRules = ref(false)
+
+watch(selectedArchiveId, async (newId) => {
+  if (!newId) { currentArchiveRules.value = []; return }
+  const cfg = archiveConfigs.value.find(c => c.id === newId)
+  if (!cfg) { currentArchiveRules.value = []; return }
+  loadingArchiveRules.value = true
+  try {
+    currentArchiveRules.value = await archiveApi.listRules(cfg.id)
+  } catch (e) {
+    console.error('[rules] 加载归档规则失败', e)
+    currentArchiveRules.value = []
+  } finally {
+    loadingArchiveRules.value = false
+  }
+})
+
 //=====添加新的归档进程=====
 const showAddArchiveProcess = ref(false)
 const newArchiveProcessForm = ref({ process_type: '', process_type_label: '', main_table_name: '' })
+const archiveTestingConnection = ref(false)
+const archiveTestConnectionResult = ref<{ success: boolean; message: string } | null>(null)
 
-const handleAddArchiveProcess = () => {
+const handleTestConnectionInArchiveModal = async () => {
+  const processType = newArchiveProcessForm.value.process_type.trim()
+  if (!processType) {
+    message.warning(t('admin.ruleConfig.enterProcessName'))
+    return
+  }
+  archiveTestingConnection.value = true
+  archiveTestConnectionResult.value = null
+  try {
+    const info = await archiveApi.testConnection(processType, newArchiveProcessForm.value.main_table_name.trim(), newArchiveProcessForm.value.process_type_label?.trim() || '')
+    if (info.table_mismatch || info.type_label_mismatch) {
+      const msgs = []
+      if (info.table_mismatch && info.expected_table) {
+        msgs.push(t('admin.ruleConfig.tableMismatch', [info.expected_table]))
+        newArchiveProcessForm.value.main_table_name = info.expected_table
+      }
+      if (info.type_label_mismatch && info.expected_type_label) {
+        msgs.push(t('admin.ruleConfig.typeLabelMismatch', [info.expected_type_label]))
+        newArchiveProcessForm.value.process_type_label = info.expected_type_label
+      }
+      archiveTestConnectionResult.value = { success: false, message: msgs.join('；') }
+    } else {
+      archiveTestConnectionResult.value = {
+        success: true,
+        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
+      }
+      if (info.main_table) newArchiveProcessForm.value.main_table_name = info.main_table
+      if (info.process_type_label) newArchiveProcessForm.value.process_type_label = info.process_type_label
+    }
+  } catch (e: any) {
+    archiveTestConnectionResult.value = { success: false, message: t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']) }
+  } finally {
+    archiveTestingConnection.value = false
+  }
+}
+
+const handleAddArchiveProcess = async () => {
   if (!newArchiveProcessForm.value.process_type.trim()) {
     message.warning(t('admin.ruleConfig.enterProcessName'))
     return
   }
-  const newConfig: ArchiveReviewConfig = {
-    id: `ARC-${Date.now()}`,
-    process_type: newArchiveProcessForm.value.process_type.trim(),
-    process_type_label: newArchiveProcessForm.value.process_type_label.trim() || undefined,
-    main_table_name: newArchiveProcessForm.value.main_table_name.trim() || '',
-    main_fields: [],
-    detail_tables: [],
-    field_mode: 'selected',
-    fields: [],
-    rules: [],
-    flow_rules: [],
-    kb_mode: 'rules_only',
-    ai_config: {
-      audit_strictness: 'standard',
-      reasoning_prompt: '',
-      extraction_prompt: '',
-    },
-    user_permissions: {
-      allow_custom_fields: false,
-      allow_custom_rules: true,
-      allow_custom_flow_rules: false,
-      allow_modify_strictness: false,
-    },
-    allowed_roles: [],
-    allowed_members: [],
+  try {
+    const created = await archiveApi.createConfig({
+      process_type: newArchiveProcessForm.value.process_type.trim(),
+      process_type_label: newArchiveProcessForm.value.process_type_label.trim(),
+      main_table_name: newArchiveProcessForm.value.main_table_name.trim(),
+      access_control: { allowed_roles: [], allowed_members: [], allowed_departments: [] },
+    })
+    archiveConfigs.value.push(created)
+    selectedArchiveId.value = created.id
+    showAddArchiveProcess.value = false
+    newArchiveProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
+    archiveTestConnectionResult.value = null
+    message.success(t('admin.ruleConfig.processAdded'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.createConfigFail') + ': ' + (e.message || ''))
   }
-  archiveConfigs.value.push(newConfig)
-  selectedArchiveId.value = newConfig.id
-  showAddArchiveProcess.value = false
-  newArchiveProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
-  message.success(t('admin.ruleConfig.processAdded'))
+}
+
+const handleDeleteArchiveProcess = async (id: string) => {
+  try {
+    await archiveApi.deleteConfig(id)
+    archiveConfigs.value = archiveConfigs.value.filter(c => c.id !== id)
+    if (selectedArchiveId.value === id) {
+      selectedArchiveId.value = archiveConfigs.value[0]?.id || ''
+    }
+    message.success(t('admin.ruleConfig.deleteConfigSuccess'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.deleteConfigFail') + ': ' + (e.message || ''))
+  }
 }
 
 //===== 存档字段选择器 =====
@@ -852,33 +955,51 @@ const archiveUnpickField = (field: { field_key: string; source: string }) => {
 
 //=====存档规则=====
 const showArchiveRuleEditor = ref(false)
-const editingArchiveRule = ref<AuditRule | null>(null)
+const editingArchiveRule = ref<ArchiveRule | null>(null)
 
-const openArchiveRuleEditor = (rule?: AuditRule) => {
+const openArchiveRuleEditor = (rule?: ArchiveRule) => {
   editingArchiveRule.value = rule || null
   showArchiveRuleEditor.value = true
 }
 
-const handleSaveArchiveRule = (rule: any) => {
+const handleSaveArchiveRule = async (rule: any) => {
   if (!selectedArchiveConfig.value) return
-  if (editingArchiveRule.value) {
-    const idx = selectedArchiveConfig.value.rules.findIndex(r => r.id === editingArchiveRule.value!.id)
-    if (idx >= 0) selectedArchiveConfig.value.rules[idx] = { ...editingArchiveRule.value, ...rule }
-  } else {
-    selectedArchiveConfig.value.rules.push({
-      id: `AR${Date.now()}`, process_type: selectedArchiveConfig.value.process_type,
-      ...rule, enabled: true, source: 'manual' as const,
-    })
+  try {
+    if (editingArchiveRule.value) {
+      const updated = await archiveApi.updateRule(editingArchiveRule.value.id, {
+        rule_content: rule.rule_content,
+        rule_scope: rule.rule_scope,
+        related_flow: rule.related_flow,
+      })
+      const idx = currentArchiveRules.value.findIndex(r => r.id === editingArchiveRule.value!.id)
+      if (idx >= 0) currentArchiveRules.value[idx] = updated
+    } else {
+      const created = await archiveApi.createRule({
+        config_id: selectedArchiveConfig.value.id,
+        process_type: selectedArchiveConfig.value.process_type,
+        rule_content: rule.rule_content,
+        rule_scope: rule.rule_scope,
+        related_flow: rule.related_flow,
+      })
+      currentArchiveRules.value.push(created)
+    }
+    showArchiveRuleEditor.value = false
+    editingArchiveRule.value = null
+    message.success(t('admin.ruleConfig.ruleSaved'))
+  } catch (e: any) {
+    const key = editingArchiveRule.value ? 'admin.ruleConfig.updateRuleFail' : 'admin.ruleConfig.createRuleFail'
+    message.error(t(key) + ': ' + (e.message || ''))
   }
-  showArchiveRuleEditor.value = false
-  editingArchiveRule.value = null
-  message.success(t('admin.ruleConfig.ruleSaved'))
 }
 
-const deleteArchiveRule = (id: string) => {
-  if (!selectedArchiveConfig.value) return
-  selectedArchiveConfig.value.rules = selectedArchiveConfig.value.rules.filter(r => r.id !== id)
-  message.success(t('admin.ruleConfig.deleted'))
+const deleteArchiveRule = async (id: string) => {
+  try {
+    await archiveApi.deleteRule(id)
+    currentArchiveRules.value = currentArchiveRules.value.filter(r => r.id !== id)
+    message.success(t('admin.ruleConfig.deleted'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.deleteRuleFail') + ': ' + (e.message || ''))
+  }
 }
 
 //=====存档AI提示变量（与审计工作台相同）=====
@@ -891,14 +1012,14 @@ const archiveReasoningPromptVariables = computed(() => [
   { key: '{{current_node}}', desc: t('admin.ruleConfig.varCurrentNodeDesc') },
 ])
 const archiveExtractionPromptVariables = computed(() => [
+  { key: '{{reasoning_result}}', desc: t('admin.ruleConfig.varReasoningResultDesc') },
   { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
-  { key: '{{flow_graph}}', desc: t('admin.ruleConfig.varFlowGraphDesc') },
 ])
 
 const archiveReasoningTextareaRef = ref<any>(null)
 const archiveExtractionTextareaRef = ref<any>(null)
 
-const insertArchiveAtCursor = (textareaRef: any, field: 'reasoning_prompt' | 'extraction_prompt', variable: string) => {
+const insertArchiveAtCursor = (textareaRef: any, field: 'user_reasoning_prompt' | 'user_extraction_prompt', variable: string) => {
   if (!selectedArchiveConfig.value) return
   const el: HTMLTextAreaElement | null = textareaRef?.value?.$el?.querySelector?.('textarea')
     || textareaRef?.value?.resizableTextArea?.textArea || null
@@ -912,6 +1033,36 @@ const insertArchiveAtCursor = (textareaRef: any, field: 'reasoning_prompt' | 'ex
   } else {
     selectedArchiveConfig.value.ai_config[field] = currentVal + variable
   }
+}
+
+// 归档复盘：恢复默认提示词模板
+const getArchiveTemplateContent = (promptKey: string) => {
+  return archivePromptTemplates.value.find(t => t.prompt_key === promptKey)?.content || ''
+}
+
+const resetArchiveSystemPrompts = () => {
+  if (!selectedArchiveConfig.value) return
+  const strictness = selectedArchiveConfig.value.ai_config.audit_strictness || 'standard'
+  selectedArchiveConfig.value.ai_config.system_reasoning_prompt = getArchiveTemplateContent(`archive_system_reasoning_${strictness}`)
+  selectedArchiveConfig.value.ai_config.system_extraction_prompt = getArchiveTemplateContent(`archive_system_extraction_${strictness}`)
+  message.success(t('admin.ruleConfig.systemPromptsReset'))
+}
+
+const resetArchiveUserPrompts = () => {
+  if (!selectedArchiveConfig.value) return
+  const strictness = selectedArchiveConfig.value.ai_config.audit_strictness || 'standard'
+  selectedArchiveConfig.value.ai_config.user_reasoning_prompt = getArchiveTemplateContent(`archive_user_reasoning_${strictness}`)
+  selectedArchiveConfig.value.ai_config.user_extraction_prompt = getArchiveTemplateContent(`archive_user_extraction_${strictness}`)
+  message.success(t('admin.ruleConfig.userPromptsReset'))
+}
+
+const handleArchiveStrictnessChange = (value: string) => {
+  if (!selectedArchiveConfig.value) return
+  selectedArchiveConfig.value.ai_config.audit_strictness = value as any
+  selectedArchiveConfig.value.ai_config.system_reasoning_prompt = getArchiveTemplateContent(`archive_system_reasoning_${value}`)
+  selectedArchiveConfig.value.ai_config.system_extraction_prompt = getArchiveTemplateContent(`archive_system_extraction_${value}`)
+  selectedArchiveConfig.value.ai_config.user_reasoning_prompt = getArchiveTemplateContent(`archive_user_reasoning_${value}`)
+  selectedArchiveConfig.value.ai_config.user_extraction_prompt = getArchiveTemplateContent(`archive_user_extraction_${value}`)
 }
 
 //=====归档权限（用户定制+访问控制）=====
@@ -946,31 +1097,63 @@ const filteredArchiveDepts = computed(() => {
 
 const toggleArchiveRole = (roleId: string) => {
   if (!selectedArchiveConfig.value) return
-  const idx = selectedArchiveConfig.value.allowed_roles.indexOf(roleId)
-  if (idx >= 0) selectedArchiveConfig.value.allowed_roles.splice(idx, 1)
-  else selectedArchiveConfig.value.allowed_roles.push(roleId)
+  if (!selectedArchiveConfig.value.access_control) {
+    selectedArchiveConfig.value.access_control = { allowed_roles: [], allowed_members: [], allowed_departments: [] }
+  }
+  const list = selectedArchiveConfig.value.access_control.allowed_roles
+  const idx = list.indexOf(roleId)
+  if (idx >= 0) list.splice(idx, 1)
+  else list.push(roleId)
 }
 
 const toggleArchiveMember = (memberId: string) => {
   if (!selectedArchiveConfig.value) return
-  const idx = selectedArchiveConfig.value.allowed_members.indexOf(memberId)
-  if (idx >= 0) selectedArchiveConfig.value.allowed_members.splice(idx, 1)
-  else selectedArchiveConfig.value.allowed_members.push(memberId)
+  if (!selectedArchiveConfig.value.access_control) {
+    selectedArchiveConfig.value.access_control = { allowed_roles: [], allowed_members: [], allowed_departments: [] }
+  }
+  const list = selectedArchiveConfig.value.access_control.allowed_members
+  const idx = list.indexOf(memberId)
+  if (idx >= 0) list.splice(idx, 1)
+  else list.push(memberId)
 }
 
 const toggleArchiveDept = (deptId: string) => {
   if (!selectedArchiveConfig.value) return
-  if (!selectedArchiveConfig.value.allowed_departments) selectedArchiveConfig.value.allowed_departments = []
-  const idx = selectedArchiveConfig.value.allowed_departments.indexOf(deptId)
-  if (idx >= 0) selectedArchiveConfig.value.allowed_departments.splice(idx, 1)
-  else selectedArchiveConfig.value.allowed_departments.push(deptId)
+  if (!selectedArchiveConfig.value.access_control) {
+    selectedArchiveConfig.value.access_control = { allowed_roles: [], allowed_members: [], allowed_departments: [] }
+  }
+  const list = selectedArchiveConfig.value.access_control.allowed_departments
+  const idx = list.indexOf(deptId)
+  if (idx >= 0) list.splice(idx, 1)
+  else list.push(deptId)
 }
 
 const handleSaveArchiveConfig = async () => {
+  if (!selectedArchiveConfig.value) return
   savingArchive.value = true
-  await new Promise(r => setTimeout(r, 800))
-  savingArchive.value = false
-  message.success(t('admin.ruleConfig.archiveSaved'))
+  try {
+    const cfg = selectedArchiveConfig.value
+    const updated = await archiveApi.updateConfig(cfg.id, {
+      process_type: cfg.process_type,
+      process_type_label: cfg.process_type_label,
+      main_table_name: cfg.main_table_name,
+      main_fields: cfg.main_fields,
+      detail_tables: cfg.detail_tables,
+      field_mode: cfg.field_mode,
+      kb_mode: cfg.kb_mode,
+      ai_config: cfg.ai_config,
+      user_permissions: cfg.user_permissions,
+      access_control: cfg.access_control,
+      status: cfg.status,
+    })
+    const idx = archiveConfigs.value.findIndex(c => c.id === cfg.id)
+    if (idx >= 0) archiveConfigs.value[idx] = updated
+    message.success(t('admin.ruleConfig.archiveSaved'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.updateConfigFail') + ': ' + (e.message || ''))
+  } finally {
+    savingArchive.value = false
+  }
 }
 
 const permissionLabels = computed(() => ({
@@ -1692,10 +1875,10 @@ const handleSave = async () => {
           :class="{ 'process-nav-item--active': selectedCronType === cfg.task_type }"
           @click="selectedCronType = cfg.task_type"
         >
-          <div class="process-nav-name">{{ cfg.label }}</div>
+          <div class="process-nav-name">{{ cfg.label_zh }}</div>
           <div class="process-nav-path">
-            <span :class="cfg.enabled ? 'status-dot status-dot--active' : 'status-dot'" />
-            {{ cfg.enabled ? t('admin.ruleConfig.cronEnabled') : t('admin.ruleConfig.cronDisabled') }}
+            <span :class="cfg.is_enabled ? 'status-dot status-dot--active' : 'status-dot'" />
+            {{ cfg.is_enabled ? t('admin.ruleConfig.cronEnabled') : t('admin.ruleConfig.cronDisabled') }}
           </div>
         </div>
       </div>
@@ -1704,22 +1887,19 @@ const handleSave = async () => {
       <div v-if="selectedCronConfig" class="config-panel">
         <div class="config-panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
           <div>
-            <h2 class="config-panel-title">{{ selectedCronConfig.label }}</h2>
-            <p class="config-panel-subtitle">
-              {{ selectedCronConfig.task_type === 'batch_audit'
-                ? t('admin.ruleConfig.batchAuditSubtitle')
-                : t('admin.ruleConfig.reportSubtitle') }}
-            </p>
+            <h2 class="config-panel-title">{{ selectedCronConfig.label_zh }}</h2>
+            <p class="config-panel-subtitle">{{ selectedCronConfig.description_zh }}</p>
           </div>
           <a-switch
-            v-model:checked="selectedCronConfig.enabled"
+            :checked="selectedCronConfig.is_enabled"
             :checked-children="t('admin.ruleConfig.cronEnabled')"
             :un-checked-children="t('admin.ruleConfig.cronDisabled')"
+            @change="(v: boolean) => v ? handleSaveCronConfig() : handleResetCronTemplate()"
           />
         </div>
 
-        <!--==========batch_audit：仅批量限制配置==========-->
-        <div v-if="selectedCronConfig.task_type === 'batch_audit'" class="tab-content">
+        <!--========== audit_batch / archive_batch：仅批量限制配置==========-->
+        <div v-if="selectedCronConfig.task_type === 'audit_batch' || selectedCronConfig.task_type === 'archive_batch'" class="tab-content">
           <div class="section-header">
             <div>
               <h4 class="section-title">{{ t('admin.ruleConfig.batchAuditConfigTitle') }}</h4>
@@ -1741,8 +1921,8 @@ const handleSave = async () => {
           </div>
         </div>
 
-        <!--========== daily_report / Weekly_report：带有变量插入的内容模板==========-->
-        <div v-if="selectedCronConfig.task_type !== 'batch_audit'" class="tab-content">
+        <!--========== daily / weekly：带有变量插入的内容模板==========-->
+        <div v-if="selectedCronConfig.task_type !== 'audit_batch' && selectedCronConfig.task_type !== 'archive_batch'" class="tab-content">
           <div class="section-header">
             <div>
               <h4 class="section-title">{{ t('admin.ruleConfig.pushTemplateTitle') }}</h4>
@@ -1825,6 +2005,15 @@ const handleSave = async () => {
             <SaveOutlined v-else />
             {{ t('admin.ruleConfig.cronSaveConfig') }}
           </a-button>
+          <a-popconfirm
+            :title="t('admin.ruleConfig.cronResetConfirm')"
+            @confirm="handleResetCronTemplate"
+          >
+            <a-button size="large" style="margin-left: 12px;">
+              <ReloadOutlined />
+              {{ t('admin.ruleConfig.cronResetBtn') }}
+            </a-button>
+          </a-popconfirm>
         </div>
       </div>
 
@@ -2011,7 +2200,7 @@ const handleSave = async () => {
           </div>
 
           <div class="rules-toolbar">
-            <span class="rules-count">{{ t('admin.ruleConfig.totalRules', `${selectedArchiveConfig.rules.length}`) }}</span>
+            <span class="rules-count">{{ t('admin.ruleConfig.totalRules', `${currentArchiveRules.length}`) }}</span>
             <div class="rules-toolbar-actions">
               <a-button @click="handleImportRules">
                 <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
@@ -2023,7 +2212,10 @@ const handleSave = async () => {
           </div>
 
           <div class="rules-list">
-            <div v-for="rule in selectedArchiveConfig.rules" :key="rule.id" class="rule-card">
+            <div v-if="loadingArchiveRules" class="rules-loading">
+              <a-spin size="small" />
+            </div>
+            <div v-for="rule in currentArchiveRules" :key="rule.id" class="rule-card">
               <div class="rule-card-left">
                 <div class="rule-scope-badge" :style="{ color: scopeConfig[rule.rule_scope]?.color, background: scopeConfig[rule.rule_scope]?.bg }">
                   <component :is="scopeConfig[rule.rule_scope]?.icon" />
@@ -2067,7 +2259,7 @@ const handleSave = async () => {
                   :key="opt.value"
                   class="strictness-option"
                   :class="{ 'strictness-option--active': selectedArchiveConfig.ai_config.audit_strictness === opt.value }"
-                  @click="selectedArchiveConfig.ai_config.audit_strictness = opt.value as any"
+                  @click="handleArchiveStrictnessChange(opt.value)"
                 >
                   <div class="strictness-option-radio" />
                   <div>
@@ -2094,12 +2286,12 @@ const handleSave = async () => {
               <div class="prompt-variables">
                 <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
                 <a-tooltip v-for="v in archiveReasoningPromptVariables" :key="v.key" :title="v.desc">
-                  <button class="variable-btn" @click="insertArchiveAtCursor(archiveReasoningTextareaRef, 'reasoning_prompt', v.key)">{{ v.key }}</button>
+                  <button class="variable-btn" @click="insertArchiveAtCursor(archiveReasoningTextareaRef, 'user_reasoning_prompt', v.key)">{{ v.key }}</button>
                 </a-tooltip>
               </div>
               <a-textarea
                 ref="archiveReasoningTextareaRef"
-                v-model:value="selectedArchiveConfig.ai_config.reasoning_prompt"
+                v-model:value="selectedArchiveConfig.ai_config.user_reasoning_prompt"
                 :rows="8"
                 :placeholder="t('admin.ruleConfig.reasoningPromptPlaceholder')"
               />
@@ -2117,12 +2309,12 @@ const handleSave = async () => {
               <div class="prompt-variables">
                 <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
                 <a-tooltip v-for="v in archiveExtractionPromptVariables" :key="v.key" :title="v.desc">
-                  <button class="variable-btn" @click="insertArchiveAtCursor(archiveExtractionTextareaRef, 'extraction_prompt', v.key)">{{ v.key }}</button>
+                  <button class="variable-btn" @click="insertArchiveAtCursor(archiveExtractionTextareaRef, 'user_extraction_prompt', v.key)">{{ v.key }}</button>
                 </a-tooltip>
               </div>
               <a-textarea
                 ref="archiveExtractionTextareaRef"
-                v-model:value="selectedArchiveConfig.ai_config.extraction_prompt"
+                v-model:value="selectedArchiveConfig.ai_config.user_extraction_prompt"
                 :rows="6"
                 :placeholder="t('admin.ruleConfig.extractionPromptPlaceholder')"
               />
@@ -2174,10 +2366,10 @@ const handleSave = async () => {
                   v-for="role in filteredArchiveRoles"
                   :key="role.id"
                   class="access-tag"
-                  :class="{ 'access-tag--active': selectedArchiveConfig.allowed_roles.includes(role.id) }"
+                  :class="{ 'access-tag--active': (selectedArchiveConfig.access_control?.allowed_roles || []).includes(role.id) }"
                   @click="toggleArchiveRole(role.id)"
                 >
-                  <CheckOutlined v-if="selectedArchiveConfig.allowed_roles.includes(role.id)" class="access-tag-check" />
+                  <CheckOutlined v-if="(selectedArchiveConfig.access_control?.allowed_roles || []).includes(role.id)" class="access-tag-check" />
                   {{ role.name }}
                 </div>
               </div>
@@ -2194,10 +2386,10 @@ const handleSave = async () => {
                   v-for="member in filteredArchiveMembers"
                   :key="member.id"
                   class="access-tag"
-                  :class="{ 'access-tag--active': selectedArchiveConfig.allowed_members.includes(member.id) }"
+                  :class="{ 'access-tag--active': (selectedArchiveConfig.access_control?.allowed_members || []).includes(member.id) }"
                   @click="toggleArchiveMember(member.id)"
                 >
-                  <CheckOutlined v-if="selectedArchiveConfig.allowed_members.includes(member.id)" class="access-tag-check" />
+                  <CheckOutlined v-if="(selectedArchiveConfig.access_control?.allowed_members || []).includes(member.id)" class="access-tag-check" />
                   {{ member.name }}
                   <span class="access-tag-dept">{{ member.department_name }}</span>
                 </div>
@@ -2215,10 +2407,10 @@ const handleSave = async () => {
                   v-for="dept in filteredArchiveDepts"
                   :key="dept.id"
                   class="access-tag"
-                  :class="{ 'access-tag--active': (selectedArchiveConfig.allowed_departments || []).includes(dept.id) }"
+                  :class="{ 'access-tag--active': (selectedArchiveConfig.access_control?.allowed_departments || []).includes(dept.id) }"
                   @click="toggleArchiveDept(dept.id)"
                 >
-                  <CheckOutlined v-if="(selectedArchiveConfig.allowed_departments || []).includes(dept.id)" class="access-tag-check" />
+                  <CheckOutlined v-if="(selectedArchiveConfig.access_control?.allowed_departments || []).includes(dept.id)" class="access-tag-check" />
                   {{ dept.name }}
                   <span class="access-tag-dept">{{ dept.member_count }}人</span>
                 </div>

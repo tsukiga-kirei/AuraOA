@@ -75,6 +75,10 @@ func main() {
 	userPersonalConfigRepo := repository.NewUserPersonalConfigRepo(db)
 	userDashboardPrefRepo := repository.NewUserDashboardPrefRepo(db)
 	llmMessageLogRepo := repository.NewLLMMessageLogRepo(db)
+	cronPresetRepo := repository.NewCronTaskTypePresetRepo(db)
+	cronConfigRepo := repository.NewCronTaskTypeConfigRepo(db)
+	archiveConfigRepo := repository.NewProcessArchiveConfigRepo(db)
+	archiveRuleRepo := repository.NewArchiveRuleRepo(db)
 
 	// 6. Initialize services
 	authService := service.NewAuthService(userRepo, rdb, db)
@@ -88,6 +92,9 @@ func main() {
 	auditRuleService := service.NewAuditRuleService(auditRuleRepo)
 	userPersonalConfigService := service.NewUserPersonalConfigService(userPersonalConfigRepo, processAuditConfigRepo, tenantRepo, oaConnectionRepo)
 	llmMessageLogService := service.NewLLMMessageLogService(llmMessageLogRepo)
+	cronConfigService := service.NewCronConfigService(cronPresetRepo, cronConfigRepo)
+	archiveConfigService := service.NewProcessArchiveConfigService(archiveConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo)
+	archiveRuleService := service.NewArchiveRuleService(archiveRuleRepo)
 
 	// 7. Initialize handlers
 	authHandler := handler.NewAuthHandler(authService, rdb)
@@ -100,6 +107,9 @@ func main() {
 	userConfigHandler := handler.NewUserPersonalConfigHandler(userPersonalConfigService, userDashboardPrefRepo)
 	userConfigMgmtHandler := handler.NewUserConfigManagementHandler(userPersonalConfigRepo)
 	llmLogHandler := handler.NewLLMMessageLogHandler(llmMessageLogService)
+	cronHandler := handler.NewCronConfigHandler(cronConfigService)
+	archiveConfigHandler := handler.NewArchiveConfigHandler(archiveConfigService)
+	archiveRuleHandler := handler.NewArchiveRuleHandler(archiveRuleService)
 
 	// 8. Setup Gin router with middleware and routes
 	r := gin.New()
@@ -109,7 +119,7 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler)
+	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, archiveConfigHandler, archiveRuleHandler)
 
 	// 9. Start HTTP server
 	port := viper.GetInt("server.port")

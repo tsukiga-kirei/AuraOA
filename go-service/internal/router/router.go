@@ -25,6 +25,9 @@ func SetupRouter(
 	userConfigHandler *handler.UserPersonalConfigHandler,
 	userConfigMgmtHandler *handler.UserConfigManagementHandler,
 	llmLogHandler *handler.LLMMessageLogHandler,
+	cronHandler *handler.CronConfigHandler,
+	archiveConfigHandler *handler.ArchiveConfigHandler,
+	archiveRuleHandler *handler.ArchiveRuleHandler,
 ) {
 	// Global middleware
 	r.Use(middleware.Logger(logger))
@@ -136,6 +139,33 @@ func SetupRouter(
 
 		// 系统提示词模板（只读）
 		tenantRules.GET("/prompt-templates", configHandler.ListPromptTemplates)
+	}
+
+	// 定时任务类型配置
+	tenantCron := r.Group("/api/tenant/cron")
+	tenantCron.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		tenantCron.GET("/configs", cronHandler.ListConfigs)
+		tenantCron.PUT("/configs/:taskType", cronHandler.SaveConfig)
+		tenantCron.DELETE("/configs/:taskType", cronHandler.ResetConfig)
+	}
+
+	// 归档复盘配置
+	tenantArchive := r.Group("/api/tenant/archive")
+	tenantArchive.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		tenantArchive.GET("/configs", archiveConfigHandler.List)
+		tenantArchive.POST("/configs", archiveConfigHandler.Create)
+		tenantArchive.POST("/configs/test-connection", archiveConfigHandler.TestConnection)
+		tenantArchive.GET("/configs/:id", archiveConfigHandler.GetByID)
+		tenantArchive.PUT("/configs/:id", archiveConfigHandler.Update)
+		tenantArchive.DELETE("/configs/:id", archiveConfigHandler.Delete)
+		tenantArchive.POST("/configs/:id/fetch-fields", archiveConfigHandler.FetchFields)
+		tenantArchive.GET("/audit-rules", archiveRuleHandler.List)
+		tenantArchive.POST("/audit-rules", archiveRuleHandler.Create)
+		tenantArchive.PUT("/audit-rules/:id", archiveRuleHandler.Update)
+		tenantArchive.DELETE("/audit-rules/:id", archiveRuleHandler.Delete)
+		tenantArchive.GET("/prompt-templates", archiveConfigHandler.ListPromptTemplates)
 	}
 
 	// 租户管理员 — 用户配置管理
