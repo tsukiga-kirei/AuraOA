@@ -122,3 +122,46 @@ CREATE TABLE cron_task_type_configs (
 );
 
 CREATE INDEX idx_cttc_tenant_id ON cron_task_type_configs(tenant_id);
+
+-- ============================================================
+-- 数据库注释（中文）
+-- ============================================================
+COMMENT ON TABLE cron_tasks IS '定时任务实例表';
+COMMENT ON COLUMN cron_tasks.id IS '主键UUID';
+COMMENT ON COLUMN cron_tasks.tenant_id IS '所属租户ID';
+COMMENT ON COLUMN cron_tasks.task_type IS '任务类型编码（关联 cron_task_type_presets.task_type）';
+COMMENT ON COLUMN cron_tasks.task_label IS '任务显示名称';
+COMMENT ON COLUMN cron_tasks.cron_expression IS 'Cron 表达式（标准五段式，如 "0 8 * * 1"）';
+COMMENT ON COLUMN cron_tasks.is_active IS '是否启用（禁用时调度器跳过该任务）';
+COMMENT ON COLUMN cron_tasks.is_builtin IS '是否为系统内置任务（内置任务不可删除）';
+COMMENT ON COLUMN cron_tasks.push_email IS '执行结果推送邮箱（为空则不推送）';
+COMMENT ON COLUMN cron_tasks.last_run_at IS '上次执行时间（NULL 表示从未执行）';
+COMMENT ON COLUMN cron_tasks.next_run_at IS '下次计划执行时间';
+COMMENT ON COLUMN cron_tasks.success_count IS '历史成功执行次数';
+COMMENT ON COLUMN cron_tasks.fail_count IS '历史失败执行次数';
+COMMENT ON COLUMN cron_tasks.created_at IS '创建时间';
+COMMENT ON COLUMN cron_tasks.updated_at IS '最后更新时间';
+
+COMMENT ON TABLE cron_task_type_presets IS '系统内置任务类型预设表（全局，不绑定租户）';
+COMMENT ON COLUMN cron_task_type_presets.task_type IS '任务类型唯一键（如 audit_batch / archive_daily）';
+COMMENT ON COLUMN cron_task_type_presets.module IS '所属模块：audit=审核工作台，archive=归档复盘';
+COMMENT ON COLUMN cron_task_type_presets.label_zh IS '中文显示名称';
+COMMENT ON COLUMN cron_task_type_presets.label_en IS '英文显示名称';
+COMMENT ON COLUMN cron_task_type_presets.description_zh IS '中文描述';
+COMMENT ON COLUMN cron_task_type_presets.description_en IS '英文描述';
+COMMENT ON COLUMN cron_task_type_presets.default_cron IS '建议的默认 Cron 表达式（仅供参考）';
+COMMENT ON COLUMN cron_task_type_presets.push_format IS '默认推送格式：html/markdown/plain';
+COMMENT ON COLUMN cron_task_type_presets.content_template IS '默认内容模板（subject/header/body_template/footer）';
+COMMENT ON COLUMN cron_task_type_presets.sort_order IS '页面展示排序序号';
+COMMENT ON COLUMN cron_task_type_presets.created_at IS '创建时间';
+COMMENT ON COLUMN cron_task_type_presets.updated_at IS '最后更新时间';
+
+COMMENT ON TABLE cron_task_type_configs IS '定时任务类型配置表（租户覆盖层）';
+COMMENT ON COLUMN cron_task_type_configs.id IS '主键UUID';
+COMMENT ON COLUMN cron_task_type_configs.tenant_id IS '所属租户ID';
+COMMENT ON COLUMN cron_task_type_configs.task_type IS '关联预设类型编码';
+COMMENT ON COLUMN cron_task_type_configs.batch_limit IS '单次批处理数量上限（NULL 表示使用预设默认值）';
+COMMENT ON COLUMN cron_task_type_configs.push_format IS '租户自定义推送格式：html/markdown/plain';
+COMMENT ON COLUMN cron_task_type_configs.content_template IS '租户自定义内容模板（subject/header/body_template/footer）';
+COMMENT ON COLUMN cron_task_type_configs.created_at IS '创建时间';
+COMMENT ON COLUMN cron_task_type_configs.updated_at IS '最后更新时间';

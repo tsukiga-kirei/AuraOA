@@ -42,3 +42,14 @@ INSERT INTO system_configs (key, value, remark) VALUES
     ('system.smtp_ssl',                    'true',      '是否启用 SMTP SSL/TLS 加密'),
     ('tenant.default_log_retention_days',  '365',       '新建租户默认操作日志保留天数'),
     ('tenant.default_data_retention_days', '1095',      '新建租户默认审核数据保留天数（约3年）');
+
+-- ============================================================
+-- 数据库注释（中文）
+-- ============================================================
+COMMENT ON TABLE system_configs IS '系统全局键值配置表';
+COMMENT ON COLUMN system_configs.id IS '主键UUID';
+COMMENT ON COLUMN system_configs.key IS '配置键名（全局唯一，格式：模块.配置项）';
+COMMENT ON COLUMN system_configs.value IS '配置值（统一存为字符串，业务层负责类型转换）';
+COMMENT ON COLUMN system_configs.remark IS '配置说明/备注';
+COMMENT ON COLUMN system_configs.created_at IS '创建时间';
+COMMENT ON COLUMN system_configs.updated_at IS '最后更新时间';

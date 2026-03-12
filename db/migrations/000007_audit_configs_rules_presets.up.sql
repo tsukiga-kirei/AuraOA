@@ -425,6 +425,79 @@ CREATE INDEX idx_ar2_config_id    ON archive_rules(config_id);
 CREATE INDEX idx_ar2_process_type ON archive_rules(tenant_id, process_type);
 
 -- ============================================================
+-- 数据库注释（中文）
+-- ============================================================
+COMMENT ON TABLE process_audit_configs IS '流程审核配置表（租户级）';
+COMMENT ON COLUMN process_audit_configs.id IS '主键UUID';
+COMMENT ON COLUMN process_audit_configs.tenant_id IS '所属租户ID';
+COMMENT ON COLUMN process_audit_configs.process_type IS '流程类型标识（如"采购审批"）';
+COMMENT ON COLUMN process_audit_configs.process_type_label IS '流程类型显示名称';
+COMMENT ON COLUMN process_audit_configs.main_table_name IS 'OA主表名称（如formtable_main_1）';
+COMMENT ON COLUMN process_audit_configs.main_fields IS '主表字段配置列表（含field_key/field_name/field_type）';
+COMMENT ON COLUMN process_audit_configs.detail_tables IS '明细子表配置列表（含table_name/table_label/fields）';
+COMMENT ON COLUMN process_audit_configs.field_mode IS '字段提取模式：all=全部字段，selected=仅配置字段';
+COMMENT ON COLUMN process_audit_configs.kb_mode IS '知识库模式：rules_only=仅规则，hybrid=规则+文档';
+COMMENT ON COLUMN process_audit_configs.ai_config IS 'AI审核配置（含尺度/提示词/模型覆盖等）';
+COMMENT ON COLUMN process_audit_configs.user_permissions IS '用户权限配置（含allow_custom_fields/rules/strictness）';
+COMMENT ON COLUMN process_audit_configs.status IS '配置状态：active/inactive';
+COMMENT ON COLUMN process_audit_configs.created_at IS '创建时间';
+COMMENT ON COLUMN process_audit_configs.updated_at IS '最后更新时间';
+
+COMMENT ON TABLE audit_rules IS '审核规则表';
+COMMENT ON COLUMN audit_rules.id IS '主键UUID';
+COMMENT ON COLUMN audit_rules.tenant_id IS '所属租户ID';
+COMMENT ON COLUMN audit_rules.config_id IS '所属审核配置ID（NULL表示通用规则）';
+COMMENT ON COLUMN audit_rules.process_type IS '适用流程类型';
+COMMENT ON COLUMN audit_rules.rule_content IS '规则内容（自然语言描述，直接送入AI提示词）';
+COMMENT ON COLUMN audit_rules.rule_scope IS '规则作用域：mandatory=强制/default_on=默认启用/default_off=默认禁用';
+COMMENT ON COLUMN audit_rules.enabled IS '是否启用（用户可个人覆盖）';
+COMMENT ON COLUMN audit_rules.source IS '规则来源：manual=手动录入/file_import=文件导入';
+COMMENT ON COLUMN audit_rules.related_flow IS '是否关联审批流（TRUE时AI会结合审批流信息分析）';
+COMMENT ON COLUMN audit_rules.created_at IS '创建时间';
+COMMENT ON COLUMN audit_rules.updated_at IS '最后更新时间';
+
+COMMENT ON TABLE system_prompt_templates IS '系统提示词模板表（全局初始化数据）';
+COMMENT ON COLUMN system_prompt_templates.id IS '主键UUID';
+COMMENT ON COLUMN system_prompt_templates.prompt_key IS '提示词唯一键（格式：{type}_{phase}_{strictness}）';
+COMMENT ON COLUMN system_prompt_templates.prompt_type IS '提示词类型：system=系统提示词，user=用户提示词';
+COMMENT ON COLUMN system_prompt_templates.phase IS '审核阶段：reasoning=链式推理阶段，extraction=结构化提取阶段';
+COMMENT ON COLUMN system_prompt_templates.strictness IS '审核尺度：strict=严格，standard=标准，loose=宽松（NULL表示通用）';
+COMMENT ON COLUMN system_prompt_templates.content IS '提示词完整内容';
+COMMENT ON COLUMN system_prompt_templates.description IS '提示词用途说明';
+COMMENT ON COLUMN system_prompt_templates.created_at IS '创建时间';
+COMMENT ON COLUMN system_prompt_templates.updated_at IS '最后更新时间';
+
+COMMENT ON TABLE process_archive_configs IS '归档复盘配置表（租户级）';
+COMMENT ON COLUMN process_archive_configs.id IS '主键UUID';
+COMMENT ON COLUMN process_archive_configs.tenant_id IS '所属租户ID';
+COMMENT ON COLUMN process_archive_configs.process_type IS '流程类型标识（如"采购审批"）';
+COMMENT ON COLUMN process_archive_configs.process_type_label IS '流程类型显示名称';
+COMMENT ON COLUMN process_archive_configs.main_table_name IS 'OA主表名称（如 formtable_main_1）';
+COMMENT ON COLUMN process_archive_configs.main_fields IS '主表字段配置列表（含 field_key/field_name/field_type）';
+COMMENT ON COLUMN process_archive_configs.detail_tables IS '明细子表配置列表（含 table_name/table_label/fields）';
+COMMENT ON COLUMN process_archive_configs.field_mode IS '字段提取模式：all=全部字段，selected=仅配置字段';
+COMMENT ON COLUMN process_archive_configs.kb_mode IS '知识库模式：rules_only=仅规则，hybrid=规则+文档';
+COMMENT ON COLUMN process_archive_configs.ai_config IS 'AI复核配置（含尺度/提示词等）';
+COMMENT ON COLUMN process_archive_configs.user_permissions IS '用户权限配置（含 allow_custom_fields/rules/flow_rules/strictness）';
+COMMENT ON COLUMN process_archive_configs.access_control IS '访问控制（{allowed_roles:[], allowed_members:[], allowed_departments:[]}）';
+COMMENT ON COLUMN process_archive_configs.status IS '配置状态：active/inactive';
+COMMENT ON COLUMN process_archive_configs.created_at IS '创建时间';
+COMMENT ON COLUMN process_archive_configs.updated_at IS '最后更新时间';
+
+COMMENT ON TABLE archive_rules IS '归档复盘规则表（独立于审核规则）';
+COMMENT ON COLUMN archive_rules.id IS '主键UUID';
+COMMENT ON COLUMN archive_rules.tenant_id IS '所属租户ID';
+COMMENT ON COLUMN archive_rules.config_id IS '所属归档配置ID（NULL 表示通用规则）';
+COMMENT ON COLUMN archive_rules.process_type IS '适用流程类型';
+COMMENT ON COLUMN archive_rules.rule_content IS '规则内容（自然语言描述）';
+COMMENT ON COLUMN archive_rules.rule_scope IS '规则作用域：mandatory/default_on/default_off';
+COMMENT ON COLUMN archive_rules.enabled IS '是否启用';
+COMMENT ON COLUMN archive_rules.source IS '规则来源：manual/file_import';
+COMMENT ON COLUMN archive_rules.related_flow IS '是否关联审批流（TRUE 时 AI 结合审批流信息分析）';
+COMMENT ON COLUMN archive_rules.created_at IS '创建时间';
+COMMENT ON COLUMN archive_rules.updated_at IS '最后更新时间';
+
+-- ============================================================
 -- 初始化归档复盘专用系统提示词模板（12条，key 前缀为 archive_）
 -- 架构：两阶段复核（推理→提取）× 三尺度（严格/标准/宽松）× 两类型（system/user）
 -- ============================================================

@@ -1,5 +1,5 @@
 -- 000002_tenants_users.down.sql
--- Drop tables in reverse dependency order
+-- 回滚：按依赖逆序删除表
 
 DROP TABLE IF EXISTS login_history;
 DROP TABLE IF EXISTS user_role_assignments;

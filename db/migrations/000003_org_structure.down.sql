@@ -1,5 +1,5 @@
 -- 000003_org_structure.down.sql
--- Drop tables in reverse dependency order
+-- 回滚：按依赖逆序删除表
 
 DROP TABLE IF EXISTS org_member_roles;
 DROP TABLE IF EXISTS org_members;
