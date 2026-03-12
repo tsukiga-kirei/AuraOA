@@ -38,7 +38,7 @@ import { usePagination } from '~/composables/usePagination'
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
-const { mockCronTaskTypeConfigs, mockArchiveReviewConfigs, mockAIModelConfigs } = useMockData()
+const { mockCronTaskTypeConfigs, mockArchiveReviewConfigs } = useMockData()
 const rulesApi = useRulesApi()
 
 //===== 顶级选项卡：审核工作台 vs 定时任务配置 vs 归档复盘 =====
@@ -58,7 +58,6 @@ const pushFormatOptions = computed(() => [
   { value: 'plain', label: t('admin.ruleConfig.plainText') },
 ])
 
-const cronActiveTab = ref('template')
 
 //每日/每周报告内容模板的模板变量
 const cronTemplateVariables = computed(() => {
@@ -480,12 +479,7 @@ const groupedUnselectedFields = computed<FieldGroup[]>(() => {
     .filter(g => g.fields.length > 0)
 })
 
-//按表分组的选定字段（选择器右侧）
-const groupedSelectedFields = computed<FieldGroup[]>(() =>
-  groupedAvailableFields.value
-    .map(g => ({ ...g, fields: g.fields.filter(f => f.selected) }))
-    .filter(g => g.fields.length > 0)
-)
+
 
 const openFieldPicker = () => {
   fieldSearchQuery.value = ''
@@ -601,28 +595,8 @@ const strictnessOptions = computed(() => [
   { value: 'loose', label: t('admin.ruleConfig.loose'), desc: t('admin.ruleConfig.looseDescNew') },
 ])
 
-const aiProviders = computed(() => [
-  { value: '本地部署', label: t('admin.ruleConfig.localDeploy') },
-  { value: '云端API', label: t('admin.ruleConfig.cloudAPI') },
-])
 
-const { mockAIModelConfigs: _unusedAIModels } = useMockData()
 
-//从mockAIModelConfigs构建模型选项
-const modelOptions = computed(() => {
-  const map: Record<string, string[]> = {}
-  for (const m of mockAIModelConfigs) {
-    const key = m.type === 'local' ? '本地部署' : '云端API'
-    if (!map[key]) map[key] = []
-    map[key].push(m.model_name)
-  }
-  return map
-})
-
-const interactionModeOptions = computed(() => [
-  { value: 'two_phase', label: t('admin.ruleConfig.twoPhase') },
-  { value: 'single_pass', label: t('admin.ruleConfig.singlePass') },
-])
 
 //用户推理提示词可用变量
 const reasoningPromptVariables = computed(() => [

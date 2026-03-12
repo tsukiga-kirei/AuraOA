@@ -15,9 +15,7 @@ export interface OAProcess {
   submit_time: string
   process_type: string
   status: string
-  current_node: string  //当前审批节点（替换金额显示）
-  amount?: number       //已弃用，保留用于向后兼容
-  urgency?: 'high' | 'medium' | 'low'  //已弃用
+  current_node: string
   oa_url?: string
 }
 
@@ -41,7 +39,6 @@ export interface AuditResult {
   details: ChecklistResult[]
   ai_reasoning: string
   duration_ms: number
-  //新字段 (v2)
   action_label?: string
   confidence?: number
   risk_points?: string[]
@@ -108,24 +105,6 @@ export interface TenantJdbcConfig {
   connection_timeout: number  //秒
   test_on_borrow: boolean
 }
-
-export interface AIModelConfig {
-  id: string
-  provider: string
-  model_name: string
-  display_name: string
-  type: 'local' | 'cloud'
-  endpoint: string
-  api_key_configured: boolean
-  max_tokens: number
-  context_window: number
-  cost_per_1k_tokens: number  //成本人民币
-  status: 'online' | 'offline' | 'maintenance'
-  enabled: boolean
-  description: string
-  capabilities: string[]  //例如['文本'、'代码'、'推理']
-}
-
 
 
 export interface AuditRule {
@@ -271,8 +250,7 @@ export interface UserDashboardPrefs {
 // ============================================================
 //归档复核类型 (归档复盘 - 全流程合规复核)
 // ============================================================
-//FlowNode、ArchiveProcess、FlowNodeAuditResult、ArchiveAuditResult
-//在上面的业务模拟数据部分中定义。
+
 
 export interface FieldAuditResult {
   field_name: string
@@ -348,11 +326,6 @@ export interface ArchiveReviewConfig {
   allowed_departments?: string[]
 }
 
-export interface ArchiveUserPermissions {
-  allow_custom_fields: boolean
-  allow_custom_rules: boolean
-  allow_modify_strictness: boolean
-}
 
 export interface DetailTable {
   table_name: string
@@ -360,21 +333,6 @@ export interface DetailTable {
   fields: ProcessField[]
 }
 
-export interface ProcessAuditConfig {
-  id: string
-  process_type: string
-  /** 流程类型标签，如"采购类"、"费用类"，用于分类展示 */
-  process_type_label?: string
-  main_table_name?: string
-  main_fields?: ProcessField[]
-  detail_tables?: DetailTable[]
-  fields: ProcessField[]
-  field_mode: 'all' | 'selected'
-  rules: (AuditRule & { source: 'manual' | 'file_import'; related_flow?: boolean })[]
-  kb_mode: 'rules_only' | 'rag_only' | 'hybrid'
-  ai_config: ProcessAIConfig
-  user_permissions: UserPermissions
-}
 
 // ============================================================
 //组织和人员类型（组织人员）
@@ -759,289 +717,7 @@ export const mockArchiveLogs: ArchiveLog[] = [
   },
 ]
 
-export const mockProcessAuditConfigs: ProcessAuditConfig[] = [
-  {
-    id: 'PAC-001',
-    process_type: '采购审批',
-    process_type_label: '采购类',
-    main_table_name: 'formtable_main_001',
-    main_fields: [
-      { field_key: 'amount', field_name: '采购金额', field_type: 'number', selected: true },
-      { field_key: 'supplier', field_name: '供应商名称', field_type: 'text', selected: true },
-      { field_key: 'category', field_name: '采购类别', field_type: 'select', selected: true },
-      { field_key: 'reason', field_name: '采购事由', field_type: 'textarea', selected: true },
-      { field_key: 'delivery_date', field_name: '交付日期', field_type: 'date', selected: false },
-      { field_key: 'contract_no', field_name: '合同编号', field_type: 'text', selected: false },
-      { field_key: 'attachment', field_name: '附件材料', field_type: 'file', selected: false },
-    ],
-    detail_tables: [
-      {
-        table_name: 'formtable_main_001_dt1',
-        table_label: '采购明细',
-        fields: [
-          { field_key: 'item_name', field_name: '物品名称', field_type: 'text', selected: true },
-          { field_key: 'item_qty', field_name: '数量', field_type: 'number', selected: true },
-          { field_key: 'unit_price', field_name: '单价', field_type: 'number', selected: true },
-          { field_key: 'item_spec', field_name: '规格型号', field_type: 'text', selected: false },
-        ],
-      },
-    ],
-    field_mode: 'selected',
-    fields: [
-      { field_key: 'amount', field_name: '采购金额', field_type: 'number', selected: true },
-      { field_key: 'supplier', field_name: '供应商名称', field_type: 'text', selected: true },
-      { field_key: 'category', field_name: '采购类别', field_type: 'select', selected: true },
-      { field_key: 'reason', field_name: '采购事由', field_type: 'textarea', selected: true },
-      { field_key: 'delivery_date', field_name: '交付日期', field_type: 'date', selected: false },
-      { field_key: 'contract_no', field_name: '合同编号', field_type: 'text', selected: false },
-      { field_key: 'attachment', field_name: '附件材料', field_type: 'file', selected: false },
-    ],
-    rules: [
-      { id: 'R001', process_type: '采购审批', rule_content: '单笔采购金额不得超过部门季度预算上限', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual', related_flow: false },
-      { id: 'R002', process_type: '采购审批', rule_content: '超过10万元需提供至少3家供应商比价', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'manual', related_flow: false },
-      { id: 'R013', process_type: '采购审批', rule_content: '供应商须在合格供应商名录中', rule_scope: 'default_on', priority: 85, enabled: true, source: 'file_import', related_flow: false },
-      { id: 'R014', process_type: '采购审批', rule_content: '合同条款须包含付款条件、交付时间、售后条款', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual', related_flow: false },
-      { id: 'R019', process_type: '采购审批', rule_content: '金额超过50万需总经理审批节点', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual', related_flow: true },
-    ],
-    kb_mode: 'rules_only',
-    ai_config: {
-      audit_strictness: 'standard',
-      reasoning_prompt: '你是一个专业的采购审核助手。请根据以下规则对采购申请进行合规性审核，逐条检查并给出判断理由。对于不合规项，请明确指出问题并给出修改建议。\n\n主表数据：{{main_table}}\n明细表数据：{{detail_tables}}\n审核规则：{{rules}}\n审批流历史：{{flow_history}}\n流程图：{{flow_graph}}\n当前节点：{{current_node}}',
-      extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作（approve/return/review）及置信度\n2. rule_checks：逐条规则校验结果（rule_id、是否通过、判断理由）\n3. risk_points：发现的风险点列表\n4. suggestions：改进建议列表\n\n原始规则列表：{{rules}}',
-    },
-    user_permissions: {
-      allow_custom_fields: false,
-      allow_custom_rules: true,
-      allow_modify_strictness: true,
-    },
-  },
-  {
-    id: 'PAC-002',
-    process_type: '费用报销',
-    process_type_label: '费用类',
-    main_table_name: 'formtable_main_002',
-    main_fields: [
-      { field_key: 'amount', field_name: '报销金额', field_type: 'number', selected: true },
-      { field_key: 'expense_type', field_name: '费用类型', field_type: 'select', selected: true },
-      { field_key: 'invoice_count', field_name: '发票数量', field_type: 'number', selected: true },
-      { field_key: 'reason', field_name: '报销事由', field_type: 'textarea', selected: true },
-      { field_key: 'trip_date', field_name: '出差日期', field_type: 'date', selected: false },
-    ],
-    detail_tables: [
-      {
-        table_name: 'formtable_main_002_dt1',
-        table_label: '发票明细',
-        fields: [
-          { field_key: 'invoice_no', field_name: '发票号码', field_type: 'text', selected: true },
-          { field_key: 'invoice_amount', field_name: '发票金额', field_type: 'number', selected: true },
-          { field_key: 'invoice_date', field_name: '发票日期', field_type: 'date', selected: true },
-          { field_key: 'invoice_file', field_name: '发票附件', field_type: 'file', selected: false },
-        ],
-      },
-    ],
-    field_mode: 'selected',
-    fields: [
-      { field_key: 'amount', field_name: '报销金额', field_type: 'number', selected: true },
-      { field_key: 'expense_type', field_name: '费用类型', field_type: 'select', selected: true },
-      { field_key: 'invoice_count', field_name: '发票数量', field_type: 'number', selected: true },
-      { field_key: 'reason', field_name: '报销事由', field_type: 'textarea', selected: true },
-      { field_key: 'trip_date', field_name: '出差日期', field_type: 'date', selected: false },
-      { field_key: 'invoice_file', field_name: '发票附件', field_type: 'file', selected: false },
-    ],
-    rules: [
-      { id: 'R003', process_type: '费用报销', rule_content: '单次报销金额超过5000元需附发票原件', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual', related_flow: false },
-      { id: 'R006', process_type: '费用报销', rule_content: '差旅住宿标准不超过城市限额', rule_scope: 'default_off', priority: 60, enabled: false, source: 'manual', related_flow: false },
-      { id: 'R015', process_type: '费用报销', rule_content: '发票日期须在报销申请日期前90天内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'file_import', related_flow: false },
-    ],
-    kb_mode: 'rules_only',
-    ai_config: {
-      audit_strictness: 'standard',
-      reasoning_prompt: '你是一个专业的费用报销审核助手。请根据以下规则对报销申请进行合规性审核，重点关注金额合理性、发票合规性和审批材料完整性。\n\n主表数据：{{main_table}}\n明细表数据：{{detail_tables}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}',
-      extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作及置信度\n2. rule_checks：逐条规则校验结果\n3. risk_points：风险点\n4. suggestions：改进建议\n\n原始规则列表：{{rules}}',
-    },
-    user_permissions: {
-      allow_custom_fields: true,
-      allow_custom_rules: true,
-      allow_modify_strictness: false,
-    },
-  },
-  {
-    id: 'PAC-003',
-    process_type: '合同审批',
-    process_type_label: '合同类',
-    main_table_name: 'formtable_main_003',
-    main_fields: [
-      { field_key: 'contract_amount', field_name: '合同金额', field_type: 'number', selected: true },
-      { field_key: 'vendor', field_name: '合作方', field_type: 'text', selected: true },
-      { field_key: 'contract_period', field_name: '合同期限', field_type: 'text', selected: true },
-      { field_key: 'contract_type', field_name: '合同类型', field_type: 'select', selected: true },
-      { field_key: 'deliverables', field_name: '交付物', field_type: 'textarea', selected: true },
-      { field_key: 'contract_file', field_name: '合同文件', field_type: 'file', selected: true },
-    ],
-    field_mode: 'all',
-    fields: [
-      { field_key: 'contract_amount', field_name: '合同金额', field_type: 'number', selected: true },
-      { field_key: 'vendor', field_name: '合作方', field_type: 'text', selected: true },
-      { field_key: 'contract_period', field_name: '合同期限', field_type: 'text', selected: true },
-      { field_key: 'contract_type', field_name: '合同类型', field_type: 'select', selected: true },
-      { field_key: 'deliverables', field_name: '交付物', field_type: 'textarea', selected: true },
-      { field_key: 'contract_file', field_name: '合同文件', field_type: 'file', selected: true },
-    ],
-    rules: [
-      { id: 'R004', process_type: '合同审批', rule_content: '合同金额超过50万需法务部会签', rule_scope: 'mandatory', priority: 100, enabled: true, source: 'manual', related_flow: true },
-      { id: 'R016', process_type: '合同审批', rule_content: '合同须包含知识产权归属条款', rule_scope: 'default_on', priority: 85, enabled: true, source: 'manual', related_flow: false },
-      { id: 'R017', process_type: '合同审批', rule_content: '合作方须通过准入评审', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'file_import', related_flow: false },
-    ],
-    kb_mode: 'rules_only',
-    ai_config: {
-      audit_strictness: 'strict',
-      reasoning_prompt: '你是一个专业的合同审核助手。请根据以下规则对合同进行全面审核，重点关注法律条款完整性、金额合理性和合作方资质。对于高风险条款请特别标注。\n\n主表数据：{{main_table}}\n审核规则：{{rules}}\n审批流历史：{{flow_history}}\n流程图：{{flow_graph}}',
-      extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作（approve/return/review）及置信度\n2. rule_checks：逐条规则校验结果\n3. risk_points：风险点\n4. suggestions：改进建议\n\n原始规则列表：{{rules}}',
-    },
-    user_permissions: {
-      allow_custom_fields: false,
-      allow_custom_rules: false,
-      allow_modify_strictness: false,
-    },
-  },
-  {
-    id: 'PAC-004',
-    process_type: '人事审批',
-    process_type_label: '人事类',
-    main_table_name: 'formtable_main_004',
-    main_fields: [
-      { field_key: 'position', field_name: '岗位名称', field_type: 'text', selected: true },
-      { field_key: 'headcount', field_name: '招聘人数', field_type: 'number', selected: true },
-      { field_key: 'department', field_name: '用人部门', field_type: 'text', selected: true },
-      { field_key: 'onboard_date', field_name: '入职日期', field_type: 'date', selected: true },
-      { field_key: 'salary_range', field_name: '薪资范围', field_type: 'text', selected: false },
-      { field_key: 'job_desc', field_name: '岗位职责', field_type: 'textarea', selected: false },
-    ],
-    field_mode: 'selected',
-    fields: [
-      { field_key: 'position', field_name: '岗位名称', field_type: 'text', selected: true },
-      { field_key: 'headcount', field_name: '招聘人数', field_type: 'number', selected: true },
-      { field_key: 'department', field_name: '用人部门', field_type: 'text', selected: true },
-      { field_key: 'onboard_date', field_name: '入职日期', field_type: 'date', selected: true },
-      { field_key: 'salary_range', field_name: '薪资范围', field_type: 'text', selected: false },
-      { field_key: 'job_desc', field_name: '岗位职责', field_type: 'textarea', selected: false },
-    ],
-    rules: [
-      { id: 'R005', process_type: '人事审批', rule_content: '新增HC需部门负责人和HR总监双签', rule_scope: 'default_on', priority: 75, enabled: true, source: 'manual', related_flow: true },
-      { id: 'R018', process_type: '人事审批', rule_content: '招聘人数须在年度HC计划范围内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual', related_flow: false },
-    ],
-    kb_mode: 'rules_only',
-    ai_config: {
-      audit_strictness: 'loose',
-      reasoning_prompt: '你是一个专业的人事审批审核助手。请根据以下规则对人事申请进行审核，关注HC计划匹配度、审批链完整性和岗位合理性。\n\n主表数据：{{main_table}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}\n当前节点：{{current_node}}',
-      extraction_prompt: '请根据以上推理分析结果，严格按照 JSON Schema 输出结构化审核结论。\n\n需要输出：\n1. recommendation：建议操作及置信度\n2. rule_checks：逐条规则校验结果\n3. risk_points：风险点\n4. suggestions：改进建议\n\n原始规则列表：{{rules}}',
-    },
-    user_permissions: {
-      allow_custom_fields: true,
-      allow_custom_rules: true,
-      allow_modify_strictness: true,
-    },
-  },
-  {
-    id: 'PAC-005',
-    process_type: '工程审批',
-    process_type_label: '工程类',
-    main_table_name: 'formtable_main_005',
-    main_fields: [
-      { field_key: 'project_name', field_name: '工程名称', field_type: 'text', selected: true },
-      { field_key: 'budget', field_name: '工程预算', field_type: 'number', selected: true },
-      { field_key: 'contractor', field_name: '施工方', field_type: 'text', selected: true },
-      { field_key: 'start_date', field_name: '开工日期', field_type: 'date', selected: true },
-    ],
-    field_mode: 'all',
-    fields: [
-      { field_key: 'project_name', field_name: '工程名称', field_type: 'text', selected: true },
-      { field_key: 'budget', field_name: '工程预算', field_type: 'number', selected: true },
-      { field_key: 'contractor', field_name: '施工方', field_type: 'text', selected: true },
-      { field_key: 'start_date', field_name: '开工日期', field_type: 'date', selected: true },
-    ],
-    rules: [
-      { id: 'R020', process_type: '工程审批', rule_content: '工程预算须在年度行政预算范围内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual', related_flow: false },
-      { id: 'R021', process_type: '工程审批', rule_content: '施工方须具备相应资质', rule_scope: 'mandatory', priority: 95, enabled: true, source: 'manual', related_flow: false },
-    ],
-    kb_mode: 'rules_only',
-    ai_config: {
-      audit_strictness: 'standard',
-      reasoning_prompt: '你是一个工程审批审核助手。请根据规则对工程项目进行审核。\n\n主表数据：{{main_table}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}',
-      extraction_prompt: '请输出结构化审核结论。\n\n原始规则列表：{{rules}}',
-    },
-    user_permissions: {
-      allow_custom_fields: true,
-      allow_custom_rules: true,
-      allow_modify_strictness: false,
-    },
-  },
-  {
-    id: 'PAC-006',
-    process_type: '项目审批',
-    process_type_label: '项目类',
-    main_table_name: 'formtable_main_006',
-    main_fields: [
-      { field_key: 'project_name', field_name: '项目名称', field_type: 'text', selected: true },
-      { field_key: 'project_budget', field_name: '项目预算', field_type: 'number', selected: true },
-      { field_key: 'team_size', field_name: '团队规模', field_type: 'number', selected: true },
-      { field_key: 'duration', field_name: '预计周期', field_type: 'text', selected: true },
-    ],
-    field_mode: 'all',
-    fields: [
-      { field_key: 'project_name', field_name: '项目名称', field_type: 'text', selected: true },
-      { field_key: 'project_budget', field_name: '项目预算', field_type: 'number', selected: true },
-      { field_key: 'team_size', field_name: '团队规模', field_type: 'number', selected: true },
-      { field_key: 'duration', field_name: '预计周期', field_type: 'text', selected: true },
-    ],
-    rules: [
-      { id: 'R022', process_type: '项目审批', rule_content: '项目预算须在年度规划范围内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual', related_flow: false },
-      { id: 'R023', process_type: '项目审批', rule_content: '团队配置须包含必要角色', rule_scope: 'default_on', priority: 80, enabled: true, source: 'manual', related_flow: false },
-    ],
-    kb_mode: 'rules_only',
-    ai_config: {
-      audit_strictness: 'standard',
-      reasoning_prompt: '你是一个项目审批审核助手。请根据规则对项目立项进行审核。\n\n主表数据：{{main_table}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}',
-      extraction_prompt: '请输出结构化审核结论。\n\n原始规则列表：{{rules}}',
-    },
-    user_permissions: {
-      allow_custom_fields: true,
-      allow_custom_rules: true,
-      allow_modify_strictness: true,
-    },
-  },
-  {
-    id: 'PAC-007',
-    process_type: '预算审批',
-    process_type_label: '预算类',
-    main_table_name: 'formtable_main_007',
-    main_fields: [
-      { field_key: 'budget_name', field_name: '预算名称', field_type: 'text', selected: true },
-      { field_key: 'budget_amount', field_name: '预算金额', field_type: 'number', selected: true },
-      { field_key: 'budget_period', field_name: '预算周期', field_type: 'text', selected: true },
-    ],
-    field_mode: 'all',
-    fields: [
-      { field_key: 'budget_name', field_name: '预算名称', field_type: 'text', selected: true },
-      { field_key: 'budget_amount', field_name: '预算金额', field_type: 'number', selected: true },
-      { field_key: 'budget_period', field_name: '预算周期', field_type: 'text', selected: true },
-    ],
-    rules: [
-      { id: 'R024', process_type: '预算审批', rule_content: '预算金额须在年度财务规划范围内', rule_scope: 'mandatory', priority: 90, enabled: true, source: 'manual', related_flow: false },
-    ],
-    kb_mode: 'rules_only',
-    ai_config: {
-      audit_strictness: 'standard',
-      reasoning_prompt: '你是一个预算审批审核助手。请根据规则对预算申请进行审核。\n\n主表数据：{{main_table}}\n审核规则：{{rules}}\n流程图：{{flow_graph}}',
-      extraction_prompt: '请输出结构化审核结论。\n\n原始规则列表：{{rules}}',
-    },
-    user_permissions: {
-      allow_custom_fields: true,
-      allow_custom_rules: true,
-      allow_modify_strictness: false,
-    },
-  },
-]
+export const mockProcessAuditConfigs: ProcessAuditConfig[] = []
 
 // ============================================================
 //存档审核配置 (归档复盘配置 - 机场管理)
@@ -1245,8 +921,6 @@ export const useMockData = () => {
       process_type: '采购审批',
       status: 'pending',
       current_node: '财务总监审批',
-      amount: 156000,
-      urgency: 'medium',
     },
     {
       process_id: 'WF-2025-002',
@@ -1257,8 +931,6 @@ export const useMockData = () => {
       process_type: '费用报销',
       status: 'pending',
       current_node: '部门经理审批',
-      amount: 8500,
-      urgency: 'low',
     },
     {
       process_id: 'WF-2025-003',
@@ -1269,8 +941,6 @@ export const useMockData = () => {
       process_type: '合同审批',
       status: 'pending',
       current_node: '法务审核',
-      amount: 480000,
-      urgency: 'high',
     },
     {
       process_id: 'WF-2025-004',
@@ -1281,7 +951,6 @@ export const useMockData = () => {
       process_type: '人事审批',
       status: 'pending',
       current_node: 'HR经理审批',
-      urgency: 'medium',
     },
     {
       process_id: 'WF-2025-005',
@@ -1292,8 +961,6 @@ export const useMockData = () => {
       process_type: '预算审批',
       status: 'pending',
       current_node: '财务总监审批',
-      amount: 250000,
-      urgency: 'high',
     },
     {
       process_id: 'WF-2025-006',
@@ -1304,8 +971,6 @@ export const useMockData = () => {
       process_type: '工程审批',
       status: 'pending',
       current_node: '部门经理审批',
-      amount: 320000,
-      urgency: 'low',
     },
     {
       process_id: 'WF-2025-007',
@@ -1316,8 +981,6 @@ export const useMockData = () => {
       process_type: '费用报销',
       status: 'pending',
       current_node: '财务审核',
-      amount: 35000,
-      urgency: 'medium',
     },
     {
       process_id: 'WF-2025-009',
@@ -1328,8 +991,6 @@ export const useMockData = () => {
       process_type: '预算审批',
       status: 'pending',
       current_node: '总经理审批',
-      amount: 120000,
-      urgency: 'low',
     },
     {
       process_id: 'WF-2025-010',
@@ -1340,8 +1001,6 @@ export const useMockData = () => {
       process_type: '采购审批',
       status: 'pending',
       current_node: '财务总监审批',
-      amount: 280000,
-      urgency: 'high',
     },
     {
       process_id: 'WF-2025-011',
@@ -1352,7 +1011,6 @@ export const useMockData = () => {
       process_type: '人事审批',
       status: 'pending',
       current_node: 'HR总监审批',
-      urgency: 'medium',
     },
     {
       process_id: 'WF-2025-013',
@@ -1363,8 +1021,6 @@ export const useMockData = () => {
       process_type: '合同审批',
       status: 'pending',
       current_node: '总经理审批',
-      amount: 560000,
-      urgency: 'high',
     },
     {
       process_id: 'WF-2025-014',
@@ -1375,8 +1031,6 @@ export const useMockData = () => {
       process_type: '工程审批',
       status: 'pending',
       current_node: '部门经理审批',
-      amount: 185000,
-      urgency: 'low',
     },
   ]
 
@@ -1530,51 +1184,6 @@ export const useMockData = () => {
   // ============================================================
 
 
-  const mockAIModelConfigs: AIModelConfig[] = [
-    {
-      id: 'AI-001', provider: 'Xinference', model_name: 'Qwen2.5-72B', display_name: 'Qwen2.5-72B（本地）',
-      type: 'local', endpoint: 'http://192.168.1.50:9997/v1', api_key_configured: false,
-      max_tokens: 8192, context_window: 131072, cost_per_1k_tokens: 0,
-      status: 'online', enabled: true,
-      description: '通义千问2.5 72B 参数大模型，通过 Xinference 本地私有部署，数据不出域',
-      capabilities: ['text', 'code', 'reasoning', 'analysis'],
-    },
-    {
-      id: 'AI-002', provider: 'Xinference', model_name: 'Qwen2.5-32B', display_name: 'Qwen2.5-32B（本地）',
-      type: 'local', endpoint: 'http://192.168.1.50:9997/v1', api_key_configured: false,
-      max_tokens: 4096, context_window: 65536, cost_per_1k_tokens: 0,
-      status: 'online', enabled: true,
-      description: '通义千问2.5 32B 参数大模型，通过 Xinference 部署，适合轻量级审核任务',
-      capabilities: ['text', 'code', 'reasoning'],
-    },
-    {
-      id: 'AI-003', provider: '阿里云百炼', model_name: 'qwen-plus', display_name: 'Qwen-Plus（阿里云百炼）',
-      type: 'cloud', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', api_key_configured: true,
-      max_tokens: 16384, context_window: 131072, cost_per_1k_tokens: 0.008,
-      status: 'online', enabled: true,
-      description: '阿里云百炼 Qwen-Plus 大模型，云端部署，性价比高',
-      capabilities: ['text', 'code', 'reasoning', 'analysis'],
-    },
-    {
-      id: 'AI-004', provider: '阿里云百炼', model_name: 'qwen-max', display_name: 'Qwen-Max（阿里云百炼）',
-      type: 'cloud', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', api_key_configured: true,
-      max_tokens: 8192, context_window: 131072, cost_per_1k_tokens: 0.02,
-      status: 'online', enabled: false,
-      description: '阿里云百炼 Qwen-Max 旗舰模型，适合复杂合同和法务审核',
-      capabilities: ['text', 'code', 'reasoning', 'vision', 'analysis'],
-    },
-    {
-      id: 'AI-005', provider: 'Xinference', model_name: 'DeepSeek-V3', display_name: 'DeepSeek-V3（本地）',
-      type: 'local', endpoint: 'http://192.168.1.51:9997/v1', api_key_configured: false,
-      max_tokens: 8192, context_window: 65536, cost_per_1k_tokens: 0,
-      status: 'maintenance', enabled: false,
-      description: 'DeepSeek V3 大模型，通过 Xinference 部署，擅长代码和推理任务',
-      capabilities: ['text', 'code', 'reasoning'],
-    },
-  ]
-
-
-
   const mockDashboardStats: DashboardStats = {
     todayAudits: 42,
     todayApproved: 28,
@@ -1596,23 +1205,23 @@ export const useMockData = () => {
 
   //批准的流程 - 历史、只读
   const mockApprovedProcesses: OAProcess[] = [
-    { process_id: 'WF-2025-098', title: '年度IT设备采购', applicant: '王强', department: 'IT部', submit_time: '2025-06-09 16:30', process_type: '采购审批', status: 'approved', current_node: '已完成', amount: 320000, urgency: 'medium' },
-    { process_id: 'WF-2025-096', title: '新产品研发立项', applicant: '张明', department: '研发部', submit_time: '2025-06-09 14:10', process_type: '项目审批', status: 'approved', current_node: '已完成', urgency: 'high' },
-    { process_id: 'WF-2025-094', title: '员工培训费用申请', applicant: '赵丽', department: '人力资源部', submit_time: '2025-06-08 17:00', process_type: '费用报销', status: 'approved', current_node: '已完成', amount: 45000, urgency: 'low' },
-    { process_id: 'WF-2025-090', title: '办公家具批量采购', applicant: '刘洋', department: '行政部', submit_time: '2025-06-07 10:00', process_type: '采购审批', status: 'approved', current_node: '已完成', amount: 98000, urgency: 'low' },
-    { process_id: 'WF-2025-088', title: '年度广告投放合同', applicant: '陈伟', department: '市场部', submit_time: '2025-06-06 15:30', process_type: '合同审批', status: 'approved', current_node: '已完成', amount: 750000, urgency: 'high' },
-    { process_id: 'WF-2025-085', title: '销售团队季度奖金发放', applicant: '李芳', department: '销售部', submit_time: '2025-06-06 09:00', process_type: '费用报销', status: 'approved', current_node: '已完成', amount: 180000, urgency: 'medium' },
-    { process_id: 'WF-2025-082', title: '网络安全设备采购', applicant: '王强', department: 'IT部', submit_time: '2025-06-05 14:20', process_type: '采购审批', status: 'approved', current_node: '已完成', amount: 420000, urgency: 'high' },
-    { process_id: 'WF-2025-079', title: '实习生转正审批（3人）', applicant: '赵丽', department: '人力资源部', submit_time: '2025-06-05 11:00', process_type: '人事审批', status: 'approved', current_node: '已完成', urgency: 'medium' },
-    { process_id: 'WF-2025-076', title: '会议室音视频系统升级', applicant: '刘洋', department: '行政部', submit_time: '2025-06-04 16:00', process_type: '工程审批', status: 'approved', current_node: '已完成', amount: 135000, urgency: 'low' },
+    { process_id: 'WF-2025-098', title: '年度IT设备采购', applicant: '王强', department: 'IT部', submit_time: '2025-06-09 16:30', process_type: '采购审批', status: 'approved', current_node: '已完成' },
+    { process_id: 'WF-2025-096', title: '新产品研发立项', applicant: '张明', department: '研发部', submit_time: '2025-06-09 14:10', process_type: '项目审批', status: 'approved', current_node: '已完成' },
+    { process_id: 'WF-2025-094', title: '员工培训费用申请', applicant: '赵丽', department: '人力资源部', submit_time: '2025-06-08 17:00', process_type: '费用报销', status: 'approved', current_node: '已完成' },
+    { process_id: 'WF-2025-090', title: '办公家具批量采购', applicant: '刘洋', department: '行政部', submit_time: '2025-06-07 10:00', process_type: '采购审批', status: 'approved', current_node: '已完成' },
+    { process_id: 'WF-2025-088', title: '年度广告投放合同', applicant: '陈伟', department: '市场部', submit_time: '2025-06-06 15:30', process_type: '合同审批', status: 'approved', current_node: '已完成' },
+    { process_id: 'WF-2025-085', title: '销售团队季度奖金发放', applicant: '李芳', department: '销售部', submit_time: '2025-06-06 09:00', process_type: '费用报销', status: 'approved', current_node: '已完成' },
+    { process_id: 'WF-2025-082', title: '网络安全设备采购', applicant: '王强', department: 'IT部', submit_time: '2025-06-05 14:20', process_type: '采购审批', status: 'approved', current_node: '已完成'},
+    { process_id: 'WF-2025-079', title: '实习生转正审批（3人）', applicant: '赵丽', department: '人力资源部', submit_time: '2025-06-05 11:00', process_type: '人事审批', status: 'approved', current_node: '已完成' },
+    { process_id: 'WF-2025-076', title: '会议室音视频系统升级', applicant: '刘洋', department: '行政部', submit_time: '2025-06-04 16:00', process_type: '工程审批', status: 'approved', current_node: '已完成'},
   ]
 
   //返回的进程 - 历史、只读
   const mockReturnedProcesses: OAProcess[] = [
-    { process_id: 'WF-2025-097', title: '客户招待费报销', applicant: '李芳', department: '销售部', submit_time: '2025-06-09 15:20', process_type: '费用报销', status: 'returned', current_node: '已退回', amount: 28000, urgency: 'medium' },
-    { process_id: 'WF-2025-091', title: '未经审批的外包合同', applicant: '陈伟', department: '市场部', submit_time: '2025-06-08 10:00', process_type: '合同审批', status: 'returned', current_node: '已退回', amount: 150000, urgency: 'high' },
-    { process_id: 'WF-2025-087', title: '超标准差旅费报销', applicant: '张明', department: '研发部', submit_time: '2025-06-07 09:30', process_type: '费用报销', status: 'returned', current_node: '已退回', amount: 42000, urgency: 'low' },
-    { process_id: 'WF-2025-083', title: '未备案供应商采购申请', applicant: '刘洋', department: '行政部', submit_time: '2025-06-06 11:00', process_type: '采购审批', status: 'returned', current_node: '已退回', amount: 95000, urgency: 'medium' },
+    { process_id: 'WF-2025-097', title: '客户招待费报销', applicant: '李芳', department: '销售部', submit_time: '2025-06-09 15:20', process_type: '费用报销', status: 'returned', current_node: '已退回'},
+    { process_id: 'WF-2025-091', title: '未经审批的外包合同', applicant: '陈伟', department: '市场部', submit_time: '2025-06-08 10:00', process_type: '合同审批', status: 'returned', current_node: '已退回' },
+    { process_id: 'WF-2025-087', title: '超标准差旅费报销', applicant: '张明', department: '研发部', submit_time: '2025-06-07 09:30', process_type: '费用报销', status: 'returned', current_node: '已退回'},
+    { process_id: 'WF-2025-083', title: '未备案供应商采购申请', applicant: '刘洋', department: '行政部', submit_time: '2025-06-06 11:00', process_type: '采购审批', status: 'returned', current_node: '已退回'},
   ]
 
   //由 process_id 键控的历史审计结果
@@ -1900,11 +1509,11 @@ export const useMockData = () => {
   //这些是具有多轮审核链的完整流程（最终结果 = 批准）
   // ============================================================
   const mockArchivedOAProcesses: OAProcess[] = [
-    { process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', submit_time: '2025-04-15 09:00', process_type: '采购审批', status: 'archived', current_node: '已归档', amount: 1200000, urgency: 'high' },
-    { process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', applicant: '陈伟', department: '市场部', submit_time: '2025-03-20 11:00', process_type: '费用报销', status: 'archived', current_node: '已归档', amount: 85000, urgency: 'medium' },
-    { process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', submit_time: '2025-02-10 14:00', process_type: '合同审批', status: 'archived', current_node: '已归档', amount: 680000, urgency: 'high' },
-    { process_id: 'WF-2025-012', title: '新员工批量入职审批 - 2025春招', applicant: '赵丽', department: '人力资源部', submit_time: '2025-01-20 09:00', process_type: '人事审批', status: 'archived', current_node: '已归档', urgency: 'low' },
-    { process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', submit_time: '2025-01-10 10:00', process_type: '工程审批', status: 'archived', current_node: '已归档', amount: 450000, urgency: 'medium' },
+    { process_id: 'WF-2025-050', title: '2025年度服务器集群采购', applicant: '王强', department: 'IT部', submit_time: '2025-04-15 09:00', process_type: '采购审批', status: 'archived', current_node: '已归档'},
+    { process_id: 'WF-2025-038', title: '华东区域市场推广费用报销', applicant: '陈伟', department: '市场部', submit_time: '2025-03-20 11:00', process_type: '费用报销', status: 'archived', current_node: '已归档' },
+    { process_id: 'WF-2025-025', title: '外包开发合同签署 - CRM系统二期', applicant: '赵丽', department: '研发部', submit_time: '2025-02-10 14:00', process_type: '合同审批', status: 'archived', current_node: '已归档' },
+    { process_id: 'WF-2025-012', title: '新员工批量入职审批 - 2025春招', applicant: '赵丽', department: '人力资源部', submit_time: '2025-01-20 09:00', process_type: '人事审批', status: 'archived', current_node: '已归档'},
+    { process_id: 'WF-2025-008', title: '办公楼层装修改造工程', applicant: '刘洋', department: '行政部', submit_time: '2025-01-10 10:00', process_type: '工程审批', status: 'archived', current_node: '已归档' },
   ]
 
   //存档流程的多轮审核链快照（最后一轮始终批准）
@@ -2063,17 +1672,7 @@ export const useMockData = () => {
     ],
   }
 
-  /**
-   * 全局进程类别→进程名称映射。
-   * - 类别（流程类型/类别）：例如"采购类", "费用类" — 相关流程组
-   * - processName（流程名称）：例如"采购流程图", "费用报销" — 具体流程定义
-   * - 标题（流程标题）：例如“办公设备采购申请”——流程的具体实例
-   *
-   * 这是构建级联/多级流程选择器的唯一事实来源。*/
-  const processCategoryMap = mockProcessAuditConfigs.map(cfg => ({
-    category: cfg.process_type_label || cfg.process_type,
-    processName: cfg.process_type,
-  }))
+
 
   //去重并构建级联选项结构：
   //[{ label: '采购类', value: '采购类', kids: [{ label: '采购类', value: '采购类' }] }]
@@ -2133,10 +1732,8 @@ export const useMockData = () => {
     mockCronLogs: [...mockCronLogs],
     mockArchiveLogs: [...mockArchiveLogs],
     mockUserPersonalConfigs: [...mockUserPersonalConfigs],
-    mockAIModelConfigs: [...mockAIModelConfigs],
     mockBatchAuditResult,
     mockTodoAuditResults,
-    processCategoryMap,
     processCascaderOptions,
     archiveProcessCascaderOptions,
   }
