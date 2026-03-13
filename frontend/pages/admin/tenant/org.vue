@@ -36,7 +36,7 @@ onMounted(() => {
 //顶级选项卡
 const topTab = ref<'members' | 'roles' | 'departments'>('members')
 
-//=====会员=====
+//=====成员=====
 const memberSearch = ref('')
 const memberDeptFilter = ref<string | undefined>(undefined)
 const memberRoleFilter = ref<string | undefined>(undefined)
@@ -50,7 +50,7 @@ const filteredMembers = computed(() => {
   })
 })
 
-//会员分页
+//成员分页
 const { paged: pagedMembers, current: memberPage, pageSize: memberPageSize, total: memberTotal, onChange: onMemberPageChange } = usePagination(filteredMembers, 10)
 
 const showMemberModal = ref(false)
@@ -179,11 +179,19 @@ const showRoleModal = ref(false)
 const editingRole = ref<OrgRole | null>(null)
 const roleForm = ref({ name: '', description: '', page_permissions: [] as string[] })
 
+interface PageConfig {
+  path: string
+  label: string
+  group: 'common' | 'business' | 'admin'
+  alwaysOn?: boolean
+  dependsOn?: string | string[]
+}
+
 /**
  * 用于角色权限分配的租户范围页面列表。
  * 仅包含租户范围内的页面 — 无系统管理页面。
  * 分为：普通、业务、管理。*/
-const allPages = computed(() => [
+const ALL_PAGES_CONFIG: PageConfig[] = [
   { path: '/overview', label: t('admin.org.page.overview'), group: 'common', alwaysOn: true },
   { path: '/dashboard', label: t('admin.org.page.dashboard'), group: 'business' },
   { path: '/cron', label: t('admin.org.page.cron'), group: 'business', dependsOn: ['/dashboard', '/archive'] },
@@ -193,47 +201,40 @@ const allPages = computed(() => [
   { path: '/admin/tenant/org', label: t('admin.org.page.tenantOrg'), group: 'admin' },
   { path: '/admin/tenant/data', label: t('admin.org.page.tenantData'), group: 'admin' },
   { path: '/admin/tenant/user-configs', label: t('menu.tenant.userConfigs'), group: 'admin' },
-])
+]
+
+const allPages = computed<PageConfig[]>(() => ALL_PAGES_CONFIG)
 
 /** 通过依赖强制处理权限复选框*/
 const handlePermToggle = (path: string, checked: boolean) => {
   const page = allPages.value.find(p => p.path === path)
-  if (page?.alwaysOn) return //无法切换常亮页面
+  if (!page || page.alwaysOn) return
 
   if (checked) {
     if (!roleForm.value.page_permissions.includes(path)) {
       roleForm.value.page_permissions.push(path)
     }
-    //如果此页面有依赖项，则自动添加它（如果是数组且都不在，自动添加第一个）
-    if (page?.dependsOn) {
-      if (typeof page.dependsOn === 'string') {
-        if (!roleForm.value.page_permissions.includes(page.dependsOn)) {
-          roleForm.value.page_permissions.push(page.dependsOn)
-          message.info(t('admin.org.depAutoAdded'))
-        }
-      } else if (Array.isArray(page.dependsOn)) {
-        if (!page.dependsOn.some(dep => roleForm.value.page_permissions.includes(dep))) {
-          roleForm.value.page_permissions.push(page.dependsOn[0])
-          message.info(t('admin.org.depAutoAdded'))
-        }
+    // 如果此页面有依赖项，则自动添加
+    if (page.dependsOn) {
+      const deps = Array.isArray(page.dependsOn) ? page.dependsOn : [page.dependsOn]
+      if (!deps.some(dep => roleForm.value.page_permissions.includes(dep))) {
+        roleForm.value.page_permissions.push(deps[0])
+        message.info(t('admin.org.depAutoAdded'))
       }
     }
   } else {
     roleForm.value.page_permissions = roleForm.value.page_permissions.filter(p => p !== path)
-    //如果删除其他人依赖的页面，请同时删除依赖项
-    const dependents = allPages.value.filter(p => {
-      if (!p.dependsOn) return false
-      if (typeof p.dependsOn === 'string') return p.dependsOn === path
-      return p.dependsOn.includes(path)
-    })
-    dependents.forEach(dep => {
-      if (typeof dep.dependsOn === 'string') {
-        roleForm.value.page_permissions = roleForm.value.page_permissions.filter(p => p !== dep.path)
-      } else if (Array.isArray(dep.dependsOn)) {
-        // 只有当所有依赖都不在权限列表中时才删除
-        const hasRemainingDep = dep.dependsOn.some(d => d !== path && roleForm.value.page_permissions.includes(d))
-        if (!hasRemainingDep) {
-          roleForm.value.page_permissions = roleForm.value.page_permissions.filter(p => p !== dep.path)
+    // 检查是否有其他页面依赖当前被移除的页面
+    allPages.value.forEach(p => {
+      if (!p.dependsOn) return
+      const deps = Array.isArray(p.dependsOn) ? p.dependsOn : [p.dependsOn]
+      
+      // 如果当前页面 p 依赖于刚被移除的 path
+      if (deps.includes(path)) {
+        // 如果 p 所有的候选依赖项都不再被勾选，则连带移除 p
+        const hasAnyDep = deps.some(d => roleForm.value.page_permissions.includes(d))
+        if (!hasAnyDep && roleForm.value.page_permissions.includes(p.path)) {
+          roleForm.value.page_permissions = roleForm.value.page_permissions.filter(perm => perm !== p.path)
         }
       }
     })
