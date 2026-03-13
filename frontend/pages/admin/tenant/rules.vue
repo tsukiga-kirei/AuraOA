@@ -183,6 +183,7 @@ const infoTestingConnection = ref(false)
 const infoTestConnectionResult = ref<{ success: boolean; message: string } | null>(null)
 // 同步字段状态
 const syncingFields = ref(false)
+const syncingArchiveFields = ref(false)
 
 //=====添加新流程=====
 const showAddProcess = ref(false)
@@ -310,6 +311,26 @@ const handleSyncFields = async () => {
     message.error(t('admin.ruleConfig.fetchFieldsFail') + ': ' + (e.message || ''))
   } finally {
     syncingFields.value = false
+  }
+}
+
+// 归档复盘：同步 OA 字段
+const handleArchiveSyncFields = async () => {
+  if (!selectedArchiveConfig.value) return
+  syncingArchiveFields.value = true
+  try {
+    const fields = await archiveApi.fetchFields(selectedArchiveConfig.value.id)
+    // 更新本地数据
+    selectedArchiveConfig.value.main_fields = (fields.main_fields || []).map((f: any) => ({ ...f, selected: true }))
+    selectedArchiveConfig.value.detail_tables = (fields.detail_tables || []).map((dt: any) => ({
+      ...dt,
+      fields: (dt.fields || []).map((f: any) => ({ ...f, selected: true })),
+    }))
+    message.success(t('admin.ruleConfig.fetchFieldsSuccess'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.fetchFieldsFail') + ': ' + (e.message || ''))
+  } finally {
+    syncingArchiveFields.value = false
   }
 }
 
@@ -1358,6 +1379,9 @@ const handleSave = async () => {
                   {{ infoTestingConnection ? t('admin.ruleConfig.testingConnection') : t('admin.ruleConfig.testConnection') }}
                 </a-button>
               </div>
+              <div class="test-connection-hint" style="margin-top: 4px; font-size: 12px; color: var(--color-text-tertiary);">
+                {{ t('admin.ruleConfig.testConnectionHint') }}
+              </div>
               <div v-if="infoTestConnectionResult" style="margin-top: 8px;">
                 <a-alert
                   :type="infoTestConnectionResult.success ? 'success' : 'error'"
@@ -2089,8 +2113,15 @@ const handleSave = async () => {
           :class="{ 'process-nav-item--active': selectedArchiveId === cfg.id }"
           @click="selectedArchiveId = cfg.id"
         >
-          <div class="process-nav-name">{{ cfg.process_type }}</div>
-          <div v-if="cfg.process_type_label" class="process-nav-path">{{ cfg.process_type_label }}</div>
+          <div style="flex: 1; min-width: 0;">
+            <div class="process-nav-name">{{ cfg.process_type }}</div>
+            <div v-if="cfg.process_type_label" class="process-nav-path">{{ cfg.process_type_label }}</div>
+          </div>
+          <a-popconfirm :title="t('admin.ruleConfig.deleteConfigConfirm')" @confirm.stop="handleDeleteArchiveProcess(cfg.id)" placement="right">
+            <button class="icon-btn icon-btn--danger icon-btn--sm" @click.stop style="opacity: 0.5; flex-shrink: 0;">
+              <DeleteOutlined />
+            </button>
+          </a-popconfirm>
         </div>
       </div>
 
@@ -2175,6 +2206,10 @@ const handleSave = async () => {
               <h4 class="section-title">{{ t('admin.ruleConfig.fieldTitle') }}</h4>
               <p class="section-desc">{{ t('admin.ruleConfig.archiveFieldDesc') }}</p>
             </div>
+            <a-button :loading="syncingArchiveFields" @click="handleArchiveSyncFields">
+              <template #icon><DatabaseOutlined /></template>
+              {{ syncingArchiveFields ? t('admin.ruleConfig.syncingFields') : t('admin.ruleConfig.syncFields') }}
+            </a-button>
           </div>
 
           <div class="field-mode-switch">
