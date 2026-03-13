@@ -22,13 +22,23 @@ const form = ref({
   related_flow: false,
 })
 
-watch(() => props.rule, (val) => {
-  if (val) {
-    form.value = { rule_content: val.rule_content, rule_scope: val.rule_scope, related_flow: (val as any).related_flow ?? false }
-  } else {
-    form.value = { rule_content: '', rule_scope: 'default_on', related_flow: false }
+watch(() => props.open, (isOpen) => {
+  if (isOpen) {
+    if (props.rule) {
+      form.value = {
+        rule_content: props.rule.rule_content,
+        rule_scope: props.rule.rule_scope,
+        related_flow: (props.rule as any).related_flow ?? false,
+      }
+    } else {
+      form.value = {
+        rule_content: '',
+        rule_scope: 'default_on',
+        related_flow: false,
+      }
+    }
   }
-}, { immediate: true })
+})
 
 const scopeOptions = computed(() => [
   { value: 'mandatory', label: t('ruleEditor.mandatory') },
