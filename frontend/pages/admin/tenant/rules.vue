@@ -1,39 +1,43 @@
 <script setup lang="ts">
 import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  LockOutlined,
-  UnlockOutlined,
-  DatabaseOutlined,
-  FileTextOutlined,
-  ThunderboltOutlined,
-  SettingOutlined,
-  RobotOutlined,
-  CheckOutlined,
-  UploadOutlined,
-  ClockCircleOutlined,
-  DashboardOutlined,
-  FolderOpenOutlined,
   AppstoreOutlined,
   AuditOutlined,
-  SafetyCertificateOutlined,
-  TeamOutlined,
-  NodeIndexOutlined,
-  SearchOutlined,
-  SwapRightOutlined,
+  CheckOutlined,
+  ClockCircleOutlined,
   CloseOutlined,
-  SaveOutlined,
-  LoadingOutlined,
-  UserOutlined,
+  DashboardOutlined,
+  DatabaseOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  FileTextOutlined,
+  FolderOpenOutlined,
   InfoCircleOutlined,
+  LoadingOutlined,
+  LockOutlined,
+  NodeIndexOutlined,
+  PlusOutlined,
   ReloadOutlined,
+  RobotOutlined,
+  SafetyCertificateOutlined,
+  SaveOutlined,
+  SearchOutlined,
+  SettingOutlined,
+  SwapRightOutlined,
+  TeamOutlined,
+  ThunderboltOutlined,
+  UnlockOutlined,
+  UploadOutlined,
+  UserOutlined,
 } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
-import type { ProcessAuditConfig as ApiProcessAuditConfig, AuditRule as ApiAuditRule, SystemPromptTemplate } from '~/composables/useRulesApi'
-import type { ProcessArchiveConfig, ArchiveRule, CronTaskConfig } from '~/types/rules'
-import { useI18n } from '~/composables/useI18n'
-import { usePagination } from '~/composables/usePagination'
+import {message} from 'ant-design-vue'
+import type {
+  AuditRule as ApiAuditRule,
+  ProcessAuditConfig as ApiProcessAuditConfig,
+  SystemPromptTemplate
+} from '~/composables/useRulesApi'
+import type {ArchiveRule, CronTaskConfig, ProcessArchiveConfig} from '~/types/rules'
+import {useI18n} from '~/composables/useI18n'
+import {usePagination} from '~/composables/usePagination'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
@@ -2787,23 +2791,6 @@ const handleSave = async () => {
 .field-count { font-size: 13px; color: var(--color-text-tertiary); margin-bottom: 12px; }
 
 /*场网格*/
-.field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-.field-card {
-  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
-  border: 1px solid var(--color-border-light); border-radius: var(--radius-md);
-  cursor: pointer; transition: all var(--transition-fast);
-}
-.field-card:hover { border-color: var(--color-primary-lighter); }
-.field-card--selected { border-color: var(--color-primary); background: var(--color-primary-bg); }
-.field-card--disabled { cursor: default; opacity: 0.7; }
-.field-card-check {
-  width: 22px; height: 22px; border-radius: 4px; border: 2px solid var(--color-border);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  font-size: 12px; color: #fff; transition: all var(--transition-fast);
-}
-.field-card--selected .field-card-check { background: var(--color-primary); border-color: var(--color-primary); }
-.field-card-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
-.field-card-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .field-type-tag {
   font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: var(--radius-sm);
   background: var(--color-bg-hover); color: var(--color-text-tertiary);
@@ -2878,10 +2865,8 @@ const handleSave = async () => {
 
 /*人工智能表格*/
 .ai-form { display: flex; flex-direction: column; gap: 20px; }
-.ai-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .ai-form-group { display: flex; flex-direction: column; gap: 6px; }
 .ai-form-label { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
-.slider-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--color-text-tertiary); }
 
 /*严格性*/
 .strictness-options { display: flex; gap: 10px; }
@@ -2915,9 +2900,7 @@ const handleSave = async () => {
 @media (max-width: 768px) {
   .main-layout { grid-template-columns: 1fr; }
   .field-mode-switch { flex-direction: column; }
-  .field-grid { grid-template-columns: 1fr; }
   .kb-modes { grid-template-columns: 1fr; }
-  .ai-form-row { grid-template-columns: 1fr; }
   .strictness-options { flex-direction: column; }
   .tab-nav {
     width: 100%;
@@ -2934,11 +2917,9 @@ const handleSave = async () => {
 @media (max-width: 480px) {
   .page-title { font-size: 20px; }
   .tab-btn { padding: 6px 10px; font-size: 12px; }
-  .field-card { padding: 8px 10px; }
 }
 
-/*Cron 配置部分*/
-.cron-config-section { margin-bottom: 24px; }
+
 
 .status-dot {
   display: inline-block; width: 6px; height: 6px; border-radius: 50%;
@@ -2972,10 +2953,7 @@ const handleSave = async () => {
   border-radius: var(--radius-full);
   background: var(--color-info-bg); color: var(--color-info);
 }
-.prompt-label-row {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  margin-bottom: 6px; flex-wrap: wrap; gap: 8px;
-}
+
 .prompt-variables { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
 .prompt-variables-hint { font-size: 12px; color: var(--color-text-tertiary); }
 .variable-btn {
@@ -3018,42 +2996,6 @@ const handleSave = async () => {
 .ai-prompt-section-tag--user { background: var(--color-primary-bg); color: var(--color-primary); }
 .ai-prompt-section-desc {
   font-size: 12px; color: var(--color-text-tertiary); margin: 0 0 12px; line-height: 1.5;
-}
-
-.preset-preview-tag {
-  display: inline-flex; align-items: center; font-size: 10px; font-weight: 600;
-  padding: 1px 8px; border-radius: var(--radius-full); white-space: nowrap; flex-shrink: 0; margin-top: 2px;
-}
-.preset-preview-tag--reasoning { background: var(--color-primary-bg); color: var(--color-primary); }
-.preset-preview-tag--extraction { background: var(--color-info-bg); color: var(--color-info); }
-
-/*预设编辑器*/
-.preset-editor-desc {
-  font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 16px;
-}
-.preset-editor-item {
-  margin-bottom: 20px; padding: 16px; background: var(--color-bg-page);
-  border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
-}
-.preset-editor-item:last-child { margin-bottom: 0; }
-.preset-editor-header { margin-bottom: 12px; }
-.preset-editor-badge {
-  display: inline-flex; font-size: 13px; font-weight: 600; padding: 2px 12px;
-  border-radius: var(--radius-full);
-}
-.preset-editor-badge--strict { background: var(--color-danger-bg); color: var(--color-danger); }
-.preset-editor-badge--standard { background: var(--color-primary-bg); color: var(--color-primary); }
-.preset-editor-badge--loose { background: var(--color-bg-hover); color: var(--color-text-secondary); }
-.preset-editor-fields { display: flex; flex-direction: column; gap: 12px; }
-.preset-editor-field { display: flex; flex-direction: column; gap: 4px; }
-.preset-editor-label {
-  font-size: 12px; font-weight: 500; color: var(--color-text-secondary);
-  display: flex; align-items: center; gap: 6px;
-}
-.preset-template-content {
-  font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6;
-  padding: 8px 12px; background: var(--color-bg-hover); border-radius: var(--radius-sm);
-  white-space: pre-wrap; max-height: 200px; overflow-y: auto;
 }
 
 /*字段选择器工具栏*/
@@ -3155,7 +3097,6 @@ const handleSave = async () => {
   padding-left: 6px; border-left: 1px solid var(--color-border-light);
 }
 
-
 /* Imported data-table styles */
 .data-table-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
@@ -3177,22 +3118,6 @@ const handleSave = async () => {
 .text-mono { font-family: monospace; font-size: 12px; color: var(--color-text-secondary); }
 .empty-cell { text-align: center; padding: 32px 16px !important; color: var(--color-text-tertiary); }
 
-/*结果标签（审核建议/合规性）*/
-.result-tag {
-  font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-full);
-  white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;
-}
-
-/*状态标签（cron）*/
-.status-tag {
-  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full);
-  display: inline-flex; align-items: center; gap: 4px;
-}
-.status-tag--success { background: var(--color-success-bg); color: var(--color-success); }
-.status-tag--failed { background: var(--color-danger-bg); color: var(--color-danger); }
-.status-tag--running { background: var(--color-primary-bg); color: var(--color-primary); }
-
-.action-btns { display: flex; gap: 4px; }
 .icon-btn {
   width: 28px; height: 28px; border: 1px solid var(--color-border); background: transparent;
   border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center;
@@ -3202,108 +3127,14 @@ const handleSave = async () => {
 
 .pagination-wrapper { padding: 16px 0; display: flex; justify-content: flex-end; }
 
-/*抽屉（匹配仪表板/档案图案）*/
-.drawer-overlay {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 1000;
-  display: flex; justify-content: flex-end;
-}
-.drawer-panel {
-  width: 560px; max-width: 90vw; background: var(--color-bg-card);
-  box-shadow: var(--shadow-xl); display: flex; flex-direction: column; height: 100%;
-}
-.drawer-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 24px; border-bottom: 1px solid var(--color-border-light);
-}
-.drawer-header h3 { margin: 0; font-size: 16px; font-weight: 600; color: var(--color-text-primary); }
-.drawer-close {
-  width: 32px; height: 32px; border: none; background: transparent; border-radius: var(--radius-sm);
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  color: var(--color-text-tertiary); transition: all var(--transition-fast);
-}
-.drawer-close:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
-.drawer-body { flex: 1; overflow-y: auto; padding: 24px; }
-
-.detail-process-title { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 16px; }
-
-/*详细横幅（匹配仪表板结果横幅）*/
-.detail-banner {
-  display: flex; align-items: center; gap: 16px; padding: 16px 20px;
-  border-radius: var(--radius-lg); border: 1px solid; margin-bottom: 20px;
-}
-.detail-banner-info { flex: 1; }
-.detail-banner-title { font-size: 16px; font-weight: 700; }
-.detail-banner-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
-.detail-score { font-size: 36px; font-weight: 800; line-height: 1; }
-
-.detail-section { margin-bottom: 20px; }
-.detail-section-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 10px; }
-
-/*规则检查（匹配仪表板模式）*/
-.rule-checks { display: flex; flex-direction: column; gap: 8px; }
-.rule-check-item {
-  display: flex; gap: 10px; padding: 10px 14px; border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-light);
-}
-.rule-check-item--pass { background: var(--color-success-bg); border-color: rgba(16, 185, 129, 0.2); }
-.rule-check-item--fail { background: var(--color-danger-bg); border-color: rgba(239, 68, 68, 0.2); }
-.rule-check-status { font-size: 16px; flex-shrink: 0; padding-top: 1px; }
-.rule-check-content { flex: 1; }
-.rule-check-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
-.rule-check-reasoning { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
-
-/*流量状态*/
-.flow-status {
-  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
-  border-radius: var(--radius-md); font-size: 13px; font-weight: 500; margin-bottom: 10px;
-}
-.flow-status--complete { background: var(--color-success-bg); color: var(--color-success); }
-.flow-status--incomplete { background: var(--color-danger-bg); color: var(--color-danger); }
-.flow-missing { font-weight: 400; }
-
-/*风险和建议（匹配仪表板模式）*/
-.risk-suggest-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-.insight-card { padding: 14px; border-radius: var(--radius-md); }
-.insight-card--risk { background: var(--color-danger-bg); }
-.insight-card--suggest { background: var(--color-primary-bg); }
-.insight-card-header { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
-.insight-card-list { margin: 0; padding-left: 18px; font-size: 12px; color: var(--color-text-secondary); }
-.insight-card-list li { margin-bottom: 4px; }
-
-/*人工智能推理*/
-.ai-reasoning {
-  background: var(--color-bg-page); border-radius: var(--radius-md); padding: 14px;
-  border: 1px solid var(--color-border-light);
-}
-.ai-reasoning pre {
-  margin: 0; white-space: pre-wrap; word-break: break-word;
-  font-size: 13px; line-height: 1.6; color: var(--color-text-secondary); font-family: var(--font-sans);
-}
-
 /*过渡*/
-.slide-enter-active, .slide-leave-active { transition: all 0.2s ease; }
-.slide-enter-from, .slide-leave-to { opacity: 0; max-height: 0; overflow: hidden; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
-.slide-enter-to, .slide-leave-from { opacity: 1; max-height: 200px; }
-
-.drawer-enter-active, .drawer-leave-active { transition: opacity 0.3s ease; }
-.drawer-enter-active .drawer-panel, .drawer-leave-active .drawer-panel { transition: transform 0.3s ease; }
-.drawer-enter-from { opacity: 0; }
-.drawer-enter-from .drawer-panel { transform: translateX(100%); }
-.drawer-leave-to { opacity: 0; }
-.drawer-leave-to .drawer-panel { transform: translateX(100%); }
-
 .fade-in { animation: fadeIn 0.3s ease-out; }
 
 @media (max-width: 768px) {
-  .stats-row { grid-template-columns: repeat(2, 1fr); }
   .data-table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .data-table { min-width: 700px; }
-  .toolbar { flex-direction: column; align-items: stretch; }
-  .filter-bar { flex-direction: column; }
   .page-title { font-size: 20px; }
   .tab-nav { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .tab-btn { flex-shrink: 0; padding: 8px 14px; font-size: 13px; }
-  .risk-suggest-row { grid-template-columns: 1fr; }
-  .drawer-panel { width: 100%; max-width: 100vw; }
 }
 </style>
