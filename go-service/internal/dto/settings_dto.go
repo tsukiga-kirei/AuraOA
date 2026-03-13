@@ -54,10 +54,11 @@ type ProcessListItem struct {
 
 // TenantFieldDTO 租户字段配置项（含用户选中状态）
 type TenantFieldDTO struct {
-	FieldKey   string `json:"field_key"`
-	FieldName  string `json:"field_name"`
-	FieldType  string `json:"field_type"`
-	Selected   bool   `json:"selected"` // 是否被用户选中
+	FieldKey  string `json:"field_key"`
+	FieldName string `json:"field_name"`
+	FieldType string `json:"field_type"`
+	Selected  bool   `json:"selected"` // 是否被有效选中（租户选中 || 用户选中）
+	Locked    bool   `json:"locked"`   // 是否为租户预设，用户不可取消
 }
 
 // DetailTableDTO 明细表配置（含字段选中状态）

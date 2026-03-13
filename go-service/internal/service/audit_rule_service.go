@@ -91,23 +91,16 @@ func (s *AuditRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.UpdateA
 	return rule, nil
 }
 
-// Delete 删除审核规则：manual 来源硬删除，file_import 来源标记禁用。
+// Delete 删除审核规则。
 func (s *AuditRuleService) Delete(c *gin.Context, id uuid.UUID) error {
-	rule, err := s.ruleRepo.GetByID(c, id)
+	_, err := s.ruleRepo.GetByID(c, id)
 	if err != nil {
 		return newServiceError(errcode.ErrRuleNotFound, "审核规则不存在")
 	}
 
-	if rule.Source == "manual" {
-		// 手动创建的规则：硬删除
-		if err := s.ruleRepo.Delete(c, id); err != nil {
-			return newServiceError(errcode.ErrDatabase, "数据库错误")
-		}
-	} else {
-		// file_import 来源：标记禁用
-		if err := s.ruleRepo.UpdateFields(c, id, map[string]interface{}{"enabled": false}); err != nil {
-			return newServiceError(errcode.ErrDatabase, "数据库错误")
-		}
+	// 统一执行硬删除，确保前端点击删除后内容真实消失
+	if err := s.ruleRepo.Delete(c, id); err != nil {
+		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 	return nil
 }

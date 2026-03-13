@@ -145,10 +145,10 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 	}
 
 	// 校验权限锁定
-	if !perms.AllowCustomFields && (len(req.FieldConfig.FieldOverrides) > 0 || req.FieldConfig.FieldMode != "") {
+	if !perms.AllowCustomFields && len(req.FieldConfig.FieldOverrides) > 0 {
 		return newServiceError(errcode.ErrPermissionDenied, "字段自定义功能已被锁定")
 	}
-	if !perms.AllowCustomRules && req.RuleConfig.CustomRules != nil {
+	if !perms.AllowCustomRules && len(req.RuleConfig.CustomRules) > 0 {
 		return newServiceError(errcode.ErrPermissionDenied, "自定义规则功能已被锁定")
 	}
 	if !perms.AllowModifyStrictness && req.AIConfig.StrictnessOverride != "" {
@@ -332,17 +332,19 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 
 	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
 	for i, f := range rawMainFields {
-		// 租户选中的，用户必选；租户未选的，看用户是否额外增加
-		sel := effectiveFieldMode == "all" || f.Selected || userAddedFieldKeys[f.FieldKey]
-		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
+		// 租户选中的，用户必选（Locked）；租户未选的，看用户是否额外增加
+		locked := effectiveFieldMode == "all" || f.Selected
+		sel := locked || userAddedFieldKeys[f.FieldKey]
+		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel, Locked: locked}
 	}
 
 	detailTables := make([]dto.DetailTableDTO, len(rawDetailTables))
 	for i, dt := range rawDetailTables {
 		fields := make([]dto.TenantFieldDTO, len(dt.Fields))
 		for j, f := range dt.Fields {
-			sel := effectiveFieldMode == "all" || f.Selected || userAddedFieldKeys[f.FieldKey]
-			fields[j] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
+			locked := effectiveFieldMode == "all" || f.Selected
+			sel := locked || userAddedFieldKeys[f.FieldKey]
+			fields[j] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel, Locked: locked}
 		}
 		detailTables[i] = dto.DetailTableDTO{TableName: dt.TableName, TableLabel: dt.TableLabel, Fields: fields}
 	}
@@ -631,16 +633,18 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 
 	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
 	for i, f := range rawMainFields {
-		sel := effectiveFieldMode == "all" || f.Selected || userAddedFieldKeys[f.FieldKey]
-		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
+		locked := effectiveFieldMode == "all" || f.Selected
+		sel := locked || userAddedFieldKeys[f.FieldKey]
+		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel, Locked: locked}
 	}
 
 	detailTables := make([]dto.DetailTableDTO, len(rawDetailTables))
 	for i, dt := range rawDetailTables {
 		fields := make([]dto.TenantFieldDTO, len(dt.Fields))
 		for j, f := range dt.Fields {
-			sel := effectiveFieldMode == "all" || f.Selected || userAddedFieldKeys[f.FieldKey]
-			fields[j] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
+			locked := effectiveFieldMode == "all" || f.Selected
+			sel := locked || userAddedFieldKeys[f.FieldKey]
+			fields[j] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel, Locked: locked}
 		}
 		detailTables[i] = dto.DetailTableDTO{TableName: dt.TableName, TableLabel: dt.TableLabel, Fields: fields}
 	}
@@ -721,10 +725,10 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 		perms = model.ArchiveUserPermissionsData{AllowCustomFields: true, AllowCustomRules: true, AllowModifyStrictness: true}
 	}
 
-	if !perms.AllowCustomFields && (len(req.FieldConfig.FieldOverrides) > 0 || req.FieldConfig.FieldMode != "") {
+	if !perms.AllowCustomFields && len(req.FieldConfig.FieldOverrides) > 0 {
 		return newServiceError(errcode.ErrPermissionDenied, "字段自定义功能已被锁定")
 	}
-	if !perms.AllowCustomRules && req.RuleConfig.CustomRules != nil {
+	if !perms.AllowCustomRules && len(req.RuleConfig.CustomRules) > 0 {
 		return newServiceError(errcode.ErrPermissionDenied, "自定义规则功能已被锁定")
 	}
 	if !perms.AllowModifyStrictness && req.AIConfig.StrictnessOverride != "" {

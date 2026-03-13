@@ -152,6 +152,7 @@ export default {
     'settings.workbench.fieldSelected': '已选 {0} / {1} 个字段',
     'settings.workbench.selectFields': '选择字段',
     'settings.workbench.noFieldSelected': '暂未选择字段',
+    'settings.workbench.noFieldsSelected': '暂未选择审核字段',
     'settings.workbench.allFieldsModeDesc': '全部字段模式：所有主表及明细表字段均传输给 AI',
     'settings.workbench.mainTableFields': '主表字段',
     'settings.workbench.detailTableLabel': '明细表',
@@ -195,6 +196,7 @@ export default {
     'settings.archive.strictnessTitle': '复核尺度',
     'settings.archive.selectProcess': '请选择左侧流程查看复核配置',
     'settings.archive.noProcess': '暂无可访问的归档复盘流程，请联系管理员配置权限',
+    'settings.archive.noFieldsSelected': '暂未选择复核字段',
     'settings.archive.fieldPickerTitle': '选择复核字段',
     'settings.archive.saveSuccess': '归档复盘配置已保存',
     'settings.archive.saveFailed': '保存失败，请稍后重试',
@@ -293,6 +295,7 @@ export default {
     'common.failed': '操作失败',
     'common.copySuccess': '已复制到剪贴板',
     'common.currentMode': '当前模式：',
+    'common.remove': '移除',
 
     //=====流程类型=====
     'processType.purchase': '采购审批',
