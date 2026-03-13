@@ -151,6 +151,7 @@ export default {
     'settings.workbench.fieldSelected': 'Selected {0} / {1} fields',
     'settings.workbench.selectFields': 'Select Fields',
     'settings.workbench.noFieldSelected': 'No fields selected yet',
+    'settings.workbench.noFieldsSelected': 'No audit fields selected',
     'settings.workbench.allFieldsModeDesc': 'All Fields Mode: All main and detail table fields are transmitted to AI',
     'settings.workbench.mainTableFields': 'Main Table Fields',
     'settings.workbench.detailTableLabel': 'Detail Table',
@@ -194,6 +195,7 @@ export default {
     'settings.archive.strictnessTitle': 'Review Strictness',
     'settings.archive.selectProcess': 'Select a process on the left to view review config',
     'settings.archive.noProcess': 'No accessible archive review processes, please contact the administrator for permission',
+    'settings.archive.noFieldsSelected': 'No review fields selected',
     'settings.archive.fieldPickerTitle': 'Select Review Fields',
     'settings.archive.saveSuccess': 'Archive review configuration saved',
     'settings.archive.saveFailed': 'Save failed, please try again later',
@@ -292,6 +294,7 @@ export default {
     'common.failed': 'Failed',
     'common.copySuccess': 'Copied to clipboard',
     'common.currentMode': 'Current Mode: ',
+    'common.remove': 'Remove',
 
     //=====流程类型=====
     'processType.purchase': 'Purchase Approval',
@@ -1527,7 +1530,6 @@ export default {
     'archive.auditReason.attention': '{0} action is {1}, needs attention',
 
 
-
     //审核小组
 
     //===== Rule Editor Extra Features =====
@@ -1567,7 +1569,6 @@ export default {
     'dashboard.phase2': 'Phase 2: Structured extraction...',
 
 
-
     //===== Archive Page New Keys =====
     'archive.statTotal': 'Total Archived',
     'archive.statCompliant': 'Compliant',
@@ -1593,7 +1594,6 @@ export default {
     //===== Archive Page Select/Batch =====
     'archive.selectAll': 'Select All',
     'archive.selected': '{0} selected',
-
 
 
     //===== rules.vue localizations =====
