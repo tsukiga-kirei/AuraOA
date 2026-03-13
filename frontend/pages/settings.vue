@@ -978,7 +978,7 @@ const handleSaveArchive = async () => {
             <div style="margin-top: 20px;">
               <h4 class="config-section-title">{{ t('settings.workbench.kbMode') }}</h4>
               <p class="config-section-desc">
-                {{ t('common.currentColon') }}<span style="font-weight: 600;">
+                {{ t('common.currentMode') }}<span style="font-weight: 600;">
                   {{ fullProcessConfig.kb_mode === 'rules_only' ? t('settings.workbench.kbRulesOnly') : fullProcessConfig.kb_mode === 'rag_only' ? t('settings.workbench.kbRagOnly') : t('settings.workbench.kbHybrid') }}
                 </span>
                 （{{ t('settings.workbench.configuredByAdmin') }}）
@@ -1263,7 +1263,7 @@ const handleSaveArchive = async () => {
             <div style="margin-top: 20px;">
               <h4 class="config-section-title">{{ t('settings.workbench.kbMode') }}</h4>
               <p class="config-section-desc">
-                {{ t('common.currentColon') }}<span style="font-weight: 600;">
+                {{ t('common.currentMode') }}<span style="font-weight: 600;">
                   {{ fullArchiveConfig.kb_mode === 'rules_only' ? t('settings.workbench.kbRulesOnly') : fullArchiveConfig.kb_mode === 'rag_only' ? t('settings.workbench.kbRagOnly') : t('settings.workbench.kbHybrid') }}
                 </span>
                 （{{ t('settings.workbench.configuredByAdmin') }}）

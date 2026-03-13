@@ -263,7 +263,7 @@ export default {
     'page./admin/system/tenants': 'Tenant Mgmt',
     'page./admin/system/settings': 'System Settings',
 
-    //=====常见=====
+    //===== Common =====
     'common.save': 'Save',
     'common.cancel': 'Cancel',
     'common.confirm': 'Confirm',
@@ -291,6 +291,7 @@ export default {
     'common.success': 'Success',
     'common.failed': 'Failed',
     'common.copySuccess': 'Copied to clipboard',
+    'common.currentMode': 'Current Mode: ',
 
     //=====流程类型=====
     'processType.purchase': 'Purchase Approval',

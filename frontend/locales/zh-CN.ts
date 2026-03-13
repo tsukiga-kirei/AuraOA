@@ -292,6 +292,7 @@ export default {
     'common.success': '操作成功',
     'common.failed': '操作失败',
     'common.copySuccess': '已复制到剪贴板',
+    'common.currentMode': '当前模式：',
 
     //=====流程类型=====
     'processType.purchase': '采购审批',
