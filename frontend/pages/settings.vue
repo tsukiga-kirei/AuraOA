@@ -210,14 +210,12 @@ const fullProcessConfig = ref<FullAuditProcessConfig | null>(null)
 const workbenchSection = ref<'fields' | 'rules' | 'ai'>('fields')
 
 const fieldTypeLabels = computed<Record<string, string>>(() => ({
-  text: t('field.type.text'),
-  number: t('field.type.number'),
-  date: t('field.type.date'),
-  money: t('field.type.money'),
-  select: t('field.type.select'),
-  user: t('field.type.user'),
-  dept: t('field.type.dept'),
-  rich_text: t('field.type.richText'),
+  text: t('fieldType.text'),
+  number: t('fieldType.number'),
+  date: t('fieldType.date'),
+  select: t('fieldType.select'),
+  textarea: t('fieldType.textarea'),
+  file: t('fieldType.file'),
 }))
 
 const scopeConfig = computed<Record<string, { label: string }>>(() => ({

@@ -600,17 +600,22 @@ const handleSaveRule = async (rule: any) => {
         rule_content: rule.rule_content,
         rule_scope: rule.rule_scope,
         related_flow: rule.related_flow,
+        // 如果改为强制，强制开启
+        enabled: rule.rule_scope === 'mandatory' ? true : undefined
       })
       const idx = currentRules.value.findIndex(r => r.id === editingRule.value!.id)
       if (idx >= 0) currentRules.value[idx] = updated
     } else {
       // 创建规则
+      // 根据规则级别设置初始状态：强制或默认开启则设为true，默认关闭则设为false
+      const initialEnabled = rule.rule_scope !== 'default_off'
       const created = await rulesApi.createRule({
         config_id: selectedConfig.value.id,
         process_type: selectedConfig.value.process_type,
         rule_content: rule.rule_content,
         rule_scope: rule.rule_scope,
         related_flow: rule.related_flow,
+        enabled: initialEnabled,
       })
       currentRules.value.push(created)
     }
@@ -995,16 +1000,22 @@ const handleSaveArchiveRule = async (rule: any) => {
         rule_content: rule.rule_content,
         rule_scope: rule.rule_scope,
         related_flow: rule.related_flow,
+        // 如果改为强制，强制开启
+        enabled: rule.rule_scope === 'mandatory' ? true : undefined
       })
       const idx = currentArchiveRules.value.findIndex(r => r.id === editingArchiveRule.value!.id)
       if (idx >= 0) currentArchiveRules.value[idx] = updated
     } else {
+      // 创建规则
+      // 根据规则级别设置初始状态
+      const initialEnabled = rule.rule_scope !== 'default_off'
       const created = await archiveApi.createRule({
         config_id: selectedArchiveConfig.value.id,
         process_type: selectedArchiveConfig.value.process_type,
         rule_content: rule.rule_content,
         rule_scope: rule.rule_scope,
         related_flow: rule.related_flow,
+        enabled: initialEnabled,
       })
       currentArchiveRules.value.push(created)
     }
@@ -1564,7 +1575,12 @@ const handleSave = async () => {
                 </div>
               </div>
               <div class="rule-card-actions">
-                <a-switch :checked="rule.enabled" size="small" @change="(checked: any) => { rulesApi.updateRule(rule.id, { enabled: !!checked }).then(updated => { const idx = currentRules.findIndex(r => r.id === rule.id); if (idx >= 0) currentRules[idx] = updated }) }" />
+                <a-switch
+                  :checked="rule.enabled"
+                  :disabled="rule.rule_scope === 'mandatory'"
+                  size="small"
+                  @change="(checked: any) => { rulesApi.updateRule(rule.id, { enabled: !!checked }).then(updated => { const idx = currentRules.findIndex(r => r.id === rule.id); if (idx >= 0) currentRules[idx] = updated }) }"
+                />
                 <button class="icon-btn" @click="openRuleEditor(rule)"><EditOutlined /></button>
                 <a-popconfirm :title="t('admin.ruleConfig.deleteRuleConfirm')" @confirm="deleteRule(rule.id)">
                   <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
@@ -1734,7 +1750,7 @@ const handleSave = async () => {
           </div>
         </div>
 
-        <div class="config-actions">
+        <div v-if="activeTab !== 'rules'" class="config-actions">
           <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
             <LoadingOutlined v-if="saving" spin />
             <SaveOutlined v-else />
@@ -2339,7 +2355,12 @@ const handleSave = async () => {
                 </div>
               </div>
               <div class="rule-card-actions">
-                <a-switch v-model:checked="rule.enabled" size="small" />
+                <a-switch
+                  :checked="rule.enabled"
+                  :disabled="rule.rule_scope === 'mandatory'"
+                  size="small"
+                  @change="(checked: any) => { archiveApi.updateRule(rule.id, { enabled: !!checked }).then(updated => { const idx = currentArchiveRules.findIndex(r => r.id === rule.id); if (idx >= 0) currentArchiveRules[idx] = updated }) }"
+                />
                 <button class="icon-btn" @click="openArchiveRuleEditor(rule)"><EditOutlined /></button>
                 <a-popconfirm :title="t('admin.ruleConfig.deleteRuleConfirm')" @confirm="deleteArchiveRule(rule.id)">
                   <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
@@ -2576,7 +2597,7 @@ const handleSave = async () => {
           </div>
         </div>
 
-        <div class="config-actions">
+        <div v-if="archiveActiveTab !== 'rules'" class="config-actions">
           <a-button type="primary" size="large" :disabled="savingArchive" @click="handleSaveArchiveConfig">
             <LoadingOutlined v-if="savingArchive" spin />
             <SaveOutlined v-else />
