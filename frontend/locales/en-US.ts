@@ -1475,7 +1475,7 @@ export default {
     'admin.org.page.overview': 'Dashboard',
     'admin.org.selectRoles': 'Select roles (multiple)',
     'admin.org.depAutoAdded': 'Dependency page auto-added',
-    'admin.org.depHint': 'Requires Audit Workbench',
+    'admin.org.depHint': 'Requires Audit Workbench or Archive Review',
     'admin.org.groupCommon': 'Common',
     'admin.org.groupBusiness': 'Business',
     'admin.org.groupAdmin': 'Admin',

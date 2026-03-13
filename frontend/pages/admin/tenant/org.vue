@@ -186,7 +186,7 @@ const roleForm = ref({ name: '', description: '', page_permissions: [] as string
 const allPages = computed(() => [
   { path: '/overview', label: t('admin.org.page.overview'), group: 'common', alwaysOn: true },
   { path: '/dashboard', label: t('admin.org.page.dashboard'), group: 'business' },
-  { path: '/cron', label: t('admin.org.page.cron'), group: 'business', dependsOn: '/dashboard' },
+  { path: '/cron', label: t('admin.org.page.cron'), group: 'business', dependsOn: ['/dashboard', '/archive'] },
   { path: '/archive', label: t('admin.org.page.archive'), group: 'business' },
   { path: '/settings', label: t('admin.org.page.settings'), group: 'common', alwaysOn: true },
   { path: '/admin/tenant/rules', label: t('admin.org.page.tenantConfig'), group: 'admin' },
@@ -204,17 +204,38 @@ const handlePermToggle = (path: string, checked: boolean) => {
     if (!roleForm.value.page_permissions.includes(path)) {
       roleForm.value.page_permissions.push(path)
     }
-    //如果此页面有依赖项，则自动添加它
-    if (page?.dependsOn && !roleForm.value.page_permissions.includes(page.dependsOn)) {
-      roleForm.value.page_permissions.push(page.dependsOn)
-      message.info(t('admin.org.depAutoAdded'))
+    //如果此页面有依赖项，则自动添加它（如果是数组且都不在，自动添加第一个）
+    if (page?.dependsOn) {
+      if (typeof page.dependsOn === 'string') {
+        if (!roleForm.value.page_permissions.includes(page.dependsOn)) {
+          roleForm.value.page_permissions.push(page.dependsOn)
+          message.info(t('admin.org.depAutoAdded'))
+        }
+      } else if (Array.isArray(page.dependsOn)) {
+        if (!page.dependsOn.some(dep => roleForm.value.page_permissions.includes(dep))) {
+          roleForm.value.page_permissions.push(page.dependsOn[0])
+          message.info(t('admin.org.depAutoAdded'))
+        }
+      }
     }
   } else {
     roleForm.value.page_permissions = roleForm.value.page_permissions.filter(p => p !== path)
     //如果删除其他人依赖的页面，请同时删除依赖项
-    const dependents = allPages.value.filter(p => p.dependsOn === path)
+    const dependents = allPages.value.filter(p => {
+      if (!p.dependsOn) return false
+      if (typeof p.dependsOn === 'string') return p.dependsOn === path
+      return p.dependsOn.includes(path)
+    })
     dependents.forEach(dep => {
-      roleForm.value.page_permissions = roleForm.value.page_permissions.filter(p => p !== dep.path)
+      if (typeof dep.dependsOn === 'string') {
+        roleForm.value.page_permissions = roleForm.value.page_permissions.filter(p => p !== dep.path)
+      } else if (Array.isArray(dep.dependsOn)) {
+        // 只有当所有依赖都不在权限列表中时才删除
+        const hasRemainingDep = dep.dependsOn.some(d => d !== path && roleForm.value.page_permissions.includes(d))
+        if (!hasRemainingDep) {
+          roleForm.value.page_permissions = roleForm.value.page_permissions.filter(p => p !== dep.path)
+        }
+      }
     })
   }
 }
@@ -222,7 +243,14 @@ const handlePermToggle = (path: string, checked: boolean) => {
 /** 检查是否应禁用页面复选框*/
 const isPermDisabled = (path: string) => {
   const page = allPages.value.find(p => p.path === path)
-  return !!page?.alwaysOn
+  if (page?.alwaysOn) return true
+  
+  // 特殊逻辑：定时任务依赖审核工作台或归档复盘
+  if (path === '/cron') {
+    return !(roleForm.value.page_permissions.includes('/dashboard') || roleForm.value.page_permissions.includes('/archive'))
+  }
+  
+  return false
 }
 
 const openAddRole = () => {

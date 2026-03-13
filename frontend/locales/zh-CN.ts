@@ -1475,7 +1475,7 @@ export default {
     'admin.org.page.overview': '仪表盘',
     'admin.org.selectRoles': '选择角色（可多选）',
     'admin.org.depAutoAdded': '已自动添加依赖页面',
-    'admin.org.depHint': '依赖审核工作台',
+    'admin.org.depHint': '依赖审核工作台或归档复盘',
     'admin.org.groupCommon': '通用',
     'admin.org.groupBusiness': '业务功能',
     'admin.org.groupAdmin': '后台管理',
