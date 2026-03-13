@@ -501,9 +501,21 @@ const loadCronPrefs = async () => {
 }
 
 const handleSaveCron = async () => {
+  const emailStr = cronDefaultEmail.value.trim()
+  if (emailStr) {
+    const emails = emailStr.split(',').map(e => e.trim()).filter(Boolean)
+    const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
+    for (const email of emails) {
+      if (!emailRegex.test(email)) {
+        message.error(t('settings.profile.emailFormatError'))
+        return
+      }
+    }
+  }
+
   saving.value = true
   try {
-    await settingsApi.updateCronPrefs({ default_email: cronDefaultEmail.value })
+    await settingsApi.updateCronPrefs({ default_email: emailStr })
     message.success(t('settings.cron.saveSuccess'))
   }
   catch (e) { message.error(t('settings.cron.saveFailed')) }
