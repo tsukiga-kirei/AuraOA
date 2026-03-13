@@ -43,3 +43,18 @@ type RuleToggleOverride struct {
 	RuleID  string `json:"rule_id"`
 	Enabled bool   `json:"enabled"`
 }
+
+// CronDetailItem 用户定时任务相关个人偏好（存储在 cron_details 字段）
+type CronDetailItem struct {
+	DefaultEmail string `json:"default_email"` // 默认推送邮箱（多个逗号分隔）
+}
+
+// ArchiveDetailItem 用户归档复盘中单个流程的个性化设置
+type ArchiveDetailItem struct {
+	ProcessType         string              `json:"process_type"`
+	CustomRules         []CustomRule        `json:"custom_rules"`
+	FieldOverrides      []string            `json:"field_overrides"`
+	FieldMode           string              `json:"field_mode"`
+	StrictnessOverride  string              `json:"strictness_override"`
+	RuleToggleOverrides []RuleToggleOverride `json:"rule_toggle_overrides"`
+}

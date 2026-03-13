@@ -147,49 +147,75 @@ export default {
     'settings.workbench.kbRagOnly': 'Document Only',
     'settings.workbench.kbHybrid': 'Hybrid Mode',
     'settings.workbench.selectProcess': 'Select a process on the left to view config',
+    'settings.workbench.noProcess': 'No available processes, please contact the administrator for configuration',
+    'settings.workbench.fieldSelected': 'Selected {0} / {1} fields',
+    'settings.workbench.selectFields': 'Select Fields',
+    'settings.workbench.noFieldSelected': 'No fields selected yet',
+    'settings.workbench.allFieldsModeDesc': 'All Fields Mode: All main and detail table fields are transmitted to AI',
+    'settings.workbench.mainTableFields': 'Main Table Fields',
+    'settings.workbench.detailTableLabel': 'Detail Table',
+    'settings.workbench.noTenantRules': 'No tenant rules',
+    'settings.workbench.relatedFlow': 'Related Approval Flow',
+    'settings.workbench.relatedFlowTip': 'Related Approval Flow: This rule needs approval flow node information to validate',
+    'settings.workbench.fieldPickerTitle': 'Select Fields',
+    'settings.workbench.availableFields': 'Available Fields',
+    'settings.workbench.selectedFields': 'Selected Fields',
+    'settings.workbench.fieldSearchPlaceholder': 'Search field name or key...',
+    'settings.workbench.noMatchField': 'No matching fields',
+    'settings.workbench.allFieldsAdded': 'All fields added',
+    'settings.workbench.saveSuccess': 'Workbench configuration saved',
+    'settings.workbench.saveFailed': 'Save failed, please try again later',
 
-    //Cron 设置（简化 - 个人设置仅显示默认推送电子邮件）
+    //Scheduled Task Settings
+    'settings.cron.defaultEmailTitle': 'Default Notification Email',
+    'settings.cron.defaultEmailDesc': 'Results of daily and weekly reports will be sent to this email. Batch audit tasks do not involve email notifications.',
+    'settings.cron.defaultEmailPlaceholder': 'Enter default notification email, separate multiple emails with commas',
+    'settings.cron.multiEmailHint': 'Use English commas (,) to separate multiple emails',
+    'settings.cron.saveSuccess': 'Scheduled task configuration saved',
+    'settings.cron.saveFailed': 'Save failed, please try again later',
 
-    //存档设置
+    //Archive Settings
     'settings.archive.reviewProcesses': 'Review Processes',
     'settings.archive.personalReviewConfig': 'Personal Review Config',
     'settings.archive.fieldsTab': 'Review Fields',
     'settings.archive.rulesTab': 'Review Rules',
-    'settings.archive.flowRulesTab': 'Flow Rules',
     'settings.archive.aiTab': 'Review Strictness',
     'settings.archive.fieldsTitle': 'Review Fields',
     'settings.archive.allFieldsMode': 'All fields mode is active',
+    'settings.archive.allFieldsModeDesc': 'All Fields Mode: All main and detail table fields are involved in review',
     'settings.archive.selectedFieldsMode': 'Fields for archive review',
     'settings.archive.tenantRules': 'Tenant Review Rules',
+    'settings.archive.noTenantRules': 'No tenant review rules',
     'settings.archive.personalRules': 'Personal Custom Review Rules',
     'settings.archive.personalRulesAllowed': 'You can add personal review rules for this process',
     'settings.archive.personalRulesDenied': 'Personal rules are not allowed for this process',
     'settings.archive.ruleAdded': 'Custom review rule added',
     'settings.archive.addRulePlaceholder': 'Enter custom review rule content...',
-    'settings.archive.tenantFlowRules': 'Tenant Flow Rules',
-    'settings.archive.flowRulesDesc': 'Approval flow compliance rules, such as chain completeness and node ordering',
-    'settings.archive.personalFlowRules': 'Personal Custom Flow Rules',
-    'settings.archive.personalFlowRulesAllowed': 'You can add personal flow compliance rules for this process',
-    'settings.archive.personalFlowRulesDenied': 'Personal flow rules are not allowed for this process',
-    'settings.archive.flowRuleAdded': 'Custom flow rule added',
-    'settings.archive.addFlowRulePlaceholder': 'Enter custom flow rule content...',
     'settings.archive.strictnessTitle': 'Review Strictness',
     'settings.archive.selectProcess': 'Select a process on the left to view review config',
+    'settings.archive.noProcess': 'No accessible archive review processes, please contact the administrator for permission',
+    'settings.archive.fieldPickerTitle': 'Select Review Fields',
+    'settings.archive.saveSuccess': 'Archive review configuration saved',
+    'settings.archive.saveFailed': 'Save failed, please try again later',
 
-    //规则范围
+    //Rule Scopes
     'rule.scope.mandatory': 'Mandatory',
     'rule.scope.defaultOn': 'Default On',
     'rule.scope.defaultOff': 'Default Off',
 
-    //字段类型
+    //Field Types
     'field.type.text': 'Text',
     'field.type.number': 'Number',
     'field.type.date': 'Date',
+    'field.type.money': 'Amount',
     'field.type.select': 'Select',
+    'field.type.user': 'User',
+    'field.type.dept': 'Department',
     'field.type.textarea': 'Textarea',
+    'field.type.richText': 'Rich Text',
     'field.type.file': 'File',
 
-    //角色标签
+    //Role Labels
     'role.business': 'Business User',
     'role.tenantAdmin': 'Tenant Admin',
     'role.systemAdmin': 'System Admin',
@@ -799,11 +825,11 @@ export default {
     'admin.ruleConfig.systemPrompt': 'System Prompt',
     'admin.ruleConfig.promptPlaceholder': 'Enter AI audit system prompt...',
 
-    //两阶段提示配置
+    //Two-phase Prompt Configuration
     'admin.ruleConfig.phase1Label': 'Phase 1: Deep Reasoning',
     'admin.ruleConfig.phase2Label': 'Phase 2: Structured Extraction',
 
-    //变量描述
+    //Variable Descriptions
     'admin.ruleConfig.varMainTableDesc': 'Main table field data (JSON), containing primary form field information',
     'admin.ruleConfig.varDetailTablesDesc': 'Detail table data (JSON array), may contain multiple detail table records',
     'admin.ruleConfig.varRulesDesc': 'Currently active rules list (JSON), including rule content, priority and status',
@@ -811,7 +837,7 @@ export default {
     'admin.ruleConfig.varFlowGraphDesc': 'Complete flow graph node info (JSON), all approval nodes, sequence and status',
     'admin.ruleConfig.varCurrentNodeDesc': 'Current approval node name, identifies the current stage in the approval process',
 
-    //系统提示词编辑器
+    //System Prompt Editor
     'admin.ruleConfig.systemPromptTag': 'System Prompts',
     'admin.ruleConfig.userPromptTag': 'User Prompts',
     'admin.ruleConfig.systemPromptDesc': 'System prompts define AI role and behavior. They auto-switch with strictness level. Changes only affect the current process.',
@@ -855,7 +881,7 @@ export default {
     'admin.ruleConfig.processNamePlaceholder': 'e.g. Purchase Approval, Expense Report',
     'admin.ruleConfig.flowPath': 'Approval Path',
     'admin.ruleConfig.flowPathPlaceholder': 'e.g. Dept Manager → CFO → CEO',
-    //管理中的 Cron 选项卡
+    //Cron Tab in Admin
     'admin.ruleConfig.taskType': 'Task Type',
     'admin.ruleConfig.cronEnabled': 'Enabled',
     'admin.ruleConfig.cronDisabled': 'Disabled',
@@ -902,7 +928,7 @@ export default {
     'admin.ruleConfig.cronResetConfirm': 'This will clear tenant custom configuration and restore system default. Continue?',
     'admin.ruleConfig.cronResetBtn': 'Restore System Default',
     'admin.ruleConfig.selectTask': 'Select a task type from the left to view config',
-    //管理中的存档选项卡
+    //Archive Tab in Admin
     'admin.ruleConfig.reviewProcess': 'Review Process',
     'admin.ruleConfig.archiveConfig': 'Archive Review Config',
     'admin.ruleConfig.reviewFields': 'Review Fields',
@@ -1024,7 +1050,7 @@ export default {
     'admin.settings.smtpUserPlaceholder': 'Sender address',
     'admin.settings.saveAll': 'Save All Settings',
     'admin.settings.saved': 'System settings saved',
-    //OA数据库连接管理
+    //OA Database Connection Management
     'admin.settings.enabledOADb': 'Enabled DB Connections',
     'admin.settings.oaDbDesc': 'Manage company-level OA system database connections, available for tenant (branch/subsidiary) selection',
     'admin.settings.addOADb': 'Add DB Connection',
@@ -1043,7 +1069,7 @@ export default {
     'admin.settings.oaDbDeleted': 'Database connection deleted',
     'admin.settings.confirmDeleteOADb': 'Confirm delete this database connection?',
     'admin.settings.noOADb': 'No database connections yet, click the button above to add one',
-    //人工智能模型管理
+    //AI Model Management
     'admin.settings.addAIModel': 'Add Model',
     'admin.settings.aiModelDisplayName': 'Display Name',
     'admin.settings.aiModelDisplayNamePlaceholder': 'e.g., Qwen2.5-72B (Local)',
@@ -1063,26 +1089,26 @@ export default {
     'admin.settings.dbConnSuccess': 'Database connection test successful',
     'admin.settings.dbConnFailed': 'Database connection test failed, please check configuration',
     'admin.settings.modelConnSuccess': 'AI model endpoint connection test successful',
-    //General config - Auth & Token
+    //General Config - Auth & Token
     'admin.settings.authTokenConfig': 'Authentication & Token',
     'admin.settings.loginFailLockThreshold': 'Login Fail Lock Threshold',
     'admin.settings.accountLockMinutes': 'Account Lock Duration (min)',
     'admin.settings.accessTokenTtl': 'Access Token TTL (hours)',
     'admin.settings.refreshTokenTtl': 'Refresh Token TTL (days)',
-    //General config - Quota & Policy
+    //General Config - Quota & Policy
     'admin.settings.tenantQuotaConfig': 'Quota & Policy',
     'admin.settings.tenantDefaultTokenQuota': 'Default Token Quota',
     'admin.settings.tenantDefaultMaxConcurrency': 'Default Max Concurrency',
     'admin.settings.tenantDefaultLogRetentionDays': 'Default Log Retention (days)',
     'admin.settings.tenantDefaultDataRetentionDays': 'Default Audit Data Retention (days)',
-    //Unit labels
+    //Unit Labels
     'admin.settings.times': 'times',
     'admin.settings.hours': 'hours',
     'admin.settings.days': 'days',
     'admin.settings.loadFailed': 'Failed to load configuration',
     'admin.settings.saveFailed': 'Failed to save configuration',
 
-    //===== 管理员 - 租户用户配置 =====
+    //===== Admin - User Configurations =====
     'admin.userConfigs.title': 'User Preferences',
     'admin.userConfigs.subtitle': 'View tenant users\' custom configurations in "Personal Settings" for preference analysis and audit',
     'admin.userConfigs.searchPlaceholder': 'Search username/name',
@@ -1140,7 +1166,7 @@ export default {
     'admin.userConfigs.on': 'On',
     'admin.userConfigs.off': 'Off',
 
-    //===== 管理员 - 租户数据 =====
+    //===== Admin - Tenant Data =====
     'admin.data.title': 'Data Information',
     'admin.data.subtitle': 'Detailed AI audit data records for all users under the current tenant',
     'admin.data.tabAudit': 'Audit Workbench',
@@ -1215,7 +1241,7 @@ export default {
     'admin.data.ruleAudit': 'Rule Audit',
     'admin.data.aiSummary': 'AI Summary',
 
-    //===== 管理员 - 系统租户 =====
+    //===== Admin - System Tenants =====
     'admin.tenants.title': 'Tenant Management',
     'admin.tenants.subtitle': 'Manage tenant provisioning, database connections, AI model configuration and resource quotas',
     'admin.tenants.addTenant': 'Add Tenant',
@@ -1366,7 +1392,7 @@ export default {
     'admin.tenants.deleteFailed': 'Failed to delete tenant',
     'admin.tenants.deletePasswordError': 'Incorrect admin password',
 
-    //===== 管理员 - 租户组织 =====
+    //===== Admin - Tenant Organization =====
     'admin.org.title': 'Organization',
     'admin.org.subtitle': 'Manage organization structure, roles and member information',
     'admin.org.tabMembers': 'Members',
@@ -1462,7 +1488,7 @@ export default {
     'admin.org.deptDeleted': 'Department deleted',
     'admin.org.operationFailed': 'Operation failed, please try again',
 
-    //组织权限的页面标签
+    //Page labels for organization permissions
     'admin.org.page.dashboard': 'Audit Workbench',
     'admin.org.page.cron': 'Scheduled Tasks',
     'admin.org.page.archive': 'Archive Review',
@@ -1495,7 +1521,7 @@ export default {
     'cron.history.processed': 'Processed {0} items',
 
 
-    //存档额外内容
+    //Archive extra content
     'archive.auditReason.approve': 'Approval authority matched, timing normal',
     'archive.auditReason.attention': '{0} action is {1}, needs attention',
 
@@ -1503,11 +1529,11 @@ export default {
 
     //审核小组
 
-    //===== 规则编辑器附加功能 =====
+    //===== Rule Editor Extra Features =====
     'ruleEditor.relatedFlow': 'Related Flow',
     'ruleEditor.relatedFlowDesc': 'This rule requires validation against approval flow nodes',
 
-    //===== 管理规则配置附加 =====
+    //===== Admin Rule Config Extra =====
     'admin.ruleConfig.mainTableName': 'Main Table Name',
     'admin.ruleConfig.mainTableNamePlaceholder': 'e.g.: formtable_main_001',
     'admin.ruleConfig.mainFields': 'Main Table Fields',
@@ -1526,7 +1552,7 @@ export default {
     'admin.ruleConfig.insertVariable': 'Insert Variable',
     'admin.ruleConfig.promptVariables': 'Available Variables',
 
-    //===== 字段选择器模态 =====
+    //===== Field Picker Modal =====
     'admin.ruleConfig.availableFields': 'Available Fields',
     'admin.ruleConfig.selectedFields': 'Selected Fields',
     'admin.ruleConfig.searchFieldPlaceholder': 'Search field name or key...',
@@ -1536,16 +1562,12 @@ export default {
     'admin.ruleConfig.allFieldsHint': 'All-fields mode: all main and detail table fields are sent to AI',
     'admin.ruleConfig.detailTableLabel': 'Detail Table',
 
-    //===== 仪表板附加功能 =====
+    //===== Dashboard Extra Features =====
     'dashboard.phase2': 'Phase 2: Structured extraction...',
 
-    //===== 设置工作台附加功能 =====
-    'settings.workbench.mainTableFields': 'Main Table Fields',
-    'settings.workbench.detailTableLabel': 'Detail Table',
-    'settings.workbench.detailTableFields': 'Detail Table Fields',
-    'settings.workbench.relatedFlow': 'Related Flow',
 
-    //=====存档页面新键=====
+
+    //===== Archive Page New Keys =====
     'archive.statTotal': 'Total Archived',
     'archive.statCompliant': 'Compliant',
     'archive.statPartial': 'Partial',
@@ -1567,14 +1589,13 @@ export default {
     'archive.missingNode': 'Missing Node',
 
 
-    //===== 存档页面扩展（选择/批量）=====
+    //===== Archive Page Select/Batch =====
     'archive.selectAll': 'Select All',
     'archive.selected': '{0} selected',
 
-    //===== 设置存档字段选择器 =====
-    'settings.archive.fieldPickerTitle': 'Select Review Fields',
 
-    //=====rules.vue硬编码字符串=====
+
+    //===== rules.vue localizations =====
     'admin.ruleConfig.infoTab': 'Basic Info',
     'admin.ruleConfig.infoTitle': 'Basic Info',
     'admin.ruleConfig.infoDesc': 'Basic configuration for this process, including name, type and main table',
@@ -1610,7 +1631,7 @@ export default {
     'admin.ruleConfig.switchAllow': 'Allow',
     'admin.ruleConfig.switchDeny': 'Deny',
 
-    //===== Cron 模板变量说明 =====
+    //===== Cron Template Variables Help =====
     'admin.ruleConfig.varDate': 'Current date, e.g. 2026-02-27',
     'admin.ruleConfig.varTimeCutoff': 'Data cutoff time, e.g. 18:00',
     'admin.ruleConfig.varTimeGenerated': 'Report generation time',

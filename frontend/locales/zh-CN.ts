@@ -148,34 +148,56 @@ export default {
     'settings.workbench.kbRagOnly': '仅制度库',
     'settings.workbench.kbHybrid': '混合模式',
     'settings.workbench.selectProcess': '请选择左侧流程查看配置',
+    'settings.workbench.noProcess': '暂无可用流程，请联系管理员配置',
+    'settings.workbench.fieldSelected': '已选 {0} / {1} 个字段',
+    'settings.workbench.selectFields': '选择字段',
+    'settings.workbench.noFieldSelected': '暂未选择字段',
+    'settings.workbench.allFieldsModeDesc': '全部字段模式：所有主表及明细表字段均传输给 AI',
+    'settings.workbench.mainTableFields': '主表字段',
+    'settings.workbench.detailTableLabel': '明细表',
+    'settings.workbench.noTenantRules': '暂无租户规则',
+    'settings.workbench.relatedFlow': '关联审批流',
+    'settings.workbench.relatedFlowTip': '关联审批流：该规则需要审批流节点信息才能校验',
+    'settings.workbench.fieldPickerTitle': '选择字段',
+    'settings.workbench.availableFields': '可选字段',
+    'settings.workbench.selectedFields': '已选字段',
+    'settings.workbench.fieldSearchPlaceholder': '搜索字段名称或字段键...',
+    'settings.workbench.noMatchField': '无匹配字段',
+    'settings.workbench.allFieldsAdded': '所有字段已添加',
+    'settings.workbench.saveSuccess': '审核工作台配置已保存',
+    'settings.workbench.saveFailed': '保存失败，请稍后重试',
 
-    //cron 设置（已简化 — 个人设置仅保留默认个体目标）
+    //定时任务设置
+    'settings.cron.defaultEmailTitle': '默认推送邮箱',
+    'settings.cron.defaultEmailDesc': '日报推送和周报推送的结果将发送至此邮箱，批量审核任务不涉及邮件推送',
+    'settings.cron.defaultEmailPlaceholder': '输入默认推送邮箱，多个邮箱使用英文逗号分隔',
+    'settings.cron.multiEmailHint': '多个邮箱请使用英文逗号（,）分隔',
+    'settings.cron.saveSuccess': '定时任务配置已保存',
+    'settings.cron.saveFailed': '保存失败，请稍后重试',
 
     //存档设置
     'settings.archive.reviewProcesses': '复核流程',
     'settings.archive.personalReviewConfig': '个人复核配置',
     'settings.archive.fieldsTab': '复核字段',
     'settings.archive.rulesTab': '复核规则',
-    'settings.archive.flowRulesTab': '审批流规则',
     'settings.archive.aiTab': '复核尺度',
     'settings.archive.fieldsTitle': '复核字段',
     'settings.archive.allFieldsMode': '当前为全部字段模式',
+    'settings.archive.allFieldsModeDesc': '全部字段模式：所有主表及明细表字段均参与复核',
     'settings.archive.selectedFieldsMode': '以下为参与归档复核的字段配置',
     'settings.archive.tenantRules': '通用复核规则（租户配置）',
+    'settings.archive.noTenantRules': '暂无租户复核规则',
     'settings.archive.personalRules': '个人自定义复核规则',
     'settings.archive.personalRulesAllowed': '您可以为此流程添加个人复核规则',
     'settings.archive.personalRulesDenied': '当前流程不允许添加个人规则',
     'settings.archive.ruleAdded': '自定义复核规则已添加',
     'settings.archive.addRulePlaceholder': '输入自定义复核规则内容...',
-    'settings.archive.tenantFlowRules': '通用审批流规则（租户配置）',
-    'settings.archive.flowRulesDesc': '审批流程合规性校验规则，如审批链完整性、节点顺序等',
-    'settings.archive.personalFlowRules': '个人自定义审批流规则',
-    'settings.archive.personalFlowRulesAllowed': '您可以为此流程添加个人审批流合规规则',
-    'settings.archive.personalFlowRulesDenied': '当前流程不允许添加个人审批流规则',
-    'settings.archive.flowRuleAdded': '自定义审批流规则已添加',
-    'settings.archive.addFlowRulePlaceholder': '输入自定义审批流规则内容...',
     'settings.archive.strictnessTitle': '复核尺度',
     'settings.archive.selectProcess': '请选择左侧流程查看复核配置',
+    'settings.archive.noProcess': '暂无可访问的归档复盘流程，请联系管理员配置权限',
+    'settings.archive.fieldPickerTitle': '选择复核字段',
+    'settings.archive.saveSuccess': '归档复盘配置已保存',
+    'settings.archive.saveFailed': '保存失败，请稍后重试',
 
     //规则范围
     'rule.scope.mandatory': '强制',
@@ -186,8 +208,12 @@ export default {
     'field.type.text': '文本',
     'field.type.number': '数字',
     'field.type.date': '日期',
+    'field.type.money': '金额',
     'field.type.select': '下拉选择',
+    'field.type.user': '人员',
+    'field.type.dept': '部门',
     'field.type.textarea': '多行文本',
+    'field.type.richText': '富文本',
     'field.type.file': '文件',
 
     //角色标签
@@ -1539,11 +1565,7 @@ export default {
     //===== 仪表板附加功能 =====
     'dashboard.phase2': '阶段二：结构化提取中...',
 
-    //===== 设置工作台附加功能 =====
-    'settings.workbench.mainTableFields': '主表字段',
-    'settings.workbench.detailTableLabel': '明细表',
-    'settings.workbench.detailTableFields': '明细表字段',
-    'settings.workbench.relatedFlow': '关联审批流',
+
 
     //=====存档页面新键=====
     'archive.statTotal': '归档总数',
@@ -1571,8 +1593,6 @@ export default {
     'archive.selectAll': '全选',
     'archive.selected': '已选 {0} 项',
 
-    //===== 设置存档字段选择器 =====
-    'settings.archive.fieldPickerTitle': '选择复核字段',
 
     //=====rules.vue硬编码字符串=====
     'admin.ruleConfig.infoTab': '基本信息',

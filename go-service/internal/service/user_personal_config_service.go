@@ -18,24 +18,36 @@ import (
 
 // UserPersonalConfigService 处理用户个人配置的业务逻辑。
 type UserPersonalConfigService struct {
-	userConfigRepo *repository.UserPersonalConfigRepo
-	configRepo     *repository.ProcessAuditConfigRepo
-	tenantRepo     *repository.TenantRepo
-	oaConnRepo     *repository.OAConnectionRepo
+	userConfigRepo    *repository.UserPersonalConfigRepo
+	configRepo        *repository.ProcessAuditConfigRepo
+	auditRuleRepo     *repository.AuditRuleRepo
+	archiveConfigRepo *repository.ProcessArchiveConfigRepo
+	archiveRuleRepo   *repository.ArchiveRuleRepo
+	orgRepo           *repository.OrgRepo
+	tenantRepo        *repository.TenantRepo
+	oaConnRepo        *repository.OAConnectionRepo
 }
 
 // NewUserPersonalConfigService 创建一个新的 UserPersonalConfigService 实例。
 func NewUserPersonalConfigService(
 	userConfigRepo *repository.UserPersonalConfigRepo,
 	configRepo *repository.ProcessAuditConfigRepo,
+	auditRuleRepo *repository.AuditRuleRepo,
+	archiveConfigRepo *repository.ProcessArchiveConfigRepo,
+	archiveRuleRepo *repository.ArchiveRuleRepo,
+	orgRepo *repository.OrgRepo,
 	tenantRepo *repository.TenantRepo,
 	oaConnRepo *repository.OAConnectionRepo,
 ) *UserPersonalConfigService {
 	return &UserPersonalConfigService{
-		userConfigRepo: userConfigRepo,
-		configRepo:     configRepo,
-		tenantRepo:     tenantRepo,
-		oaConnRepo:     oaConnRepo,
+		userConfigRepo:    userConfigRepo,
+		configRepo:        configRepo,
+		auditRuleRepo:     auditRuleRepo,
+		archiveConfigRepo: archiveConfigRepo,
+		archiveRuleRepo:   archiveRuleRepo,
+		orgRepo:           orgRepo,
+		tenantRepo:        tenantRepo,
+		oaConnRepo:        oaConnRepo,
 	}
 }
 
@@ -217,6 +229,546 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 	return nil
+}
+
+// GetFullAuditProcessConfig 返回审核工作台指定流程的完整配置（租户字段/规则 + 用户覆盖合并）。
+func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, userID uuid.UUID, processType string) (*dto.FullAuditProcessConfigResponse, error) {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+
+	// 获取租户流程审核配置
+	tenantCfg, err := s.configRepo.GetByProcessType(c, processType)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrConfigNotFound, "流程审核配置不存在")
+	}
+
+	// 解析用户权限
+	var perms model.UserPermissionsData
+	if err := json.Unmarshal(tenantCfg.UserPermissions, &perms); err != nil {
+		perms = model.UserPermissionsData{AllowCustomFields: true, AllowCustomRules: true, AllowModifyStrictness: true}
+	}
+
+	// 解析 AI 配置获取默认严格度
+	var aiConfig struct {
+		AuditStrictness string `json:"audit_strictness"`
+	}
+	_ = json.Unmarshal(tenantCfg.AIConfig, &aiConfig)
+	if aiConfig.AuditStrictness == "" {
+		aiConfig.AuditStrictness = "standard"
+	}
+
+	// 获取该流程的租户审核规则
+	tenantRules, err := s.auditRuleRepo.ListByConfigID(c, tenantCfg.ID)
+	if err != nil {
+		tenantRules = []model.AuditRule{}
+	}
+
+	// 获取用户个人配置
+	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+
+	var userDetail model.AuditDetailItem
+	if userCfg != nil {
+		var auditDetails []model.AuditDetailItem
+		if err := json.Unmarshal(userCfg.AuditDetails, &auditDetails); err == nil {
+			for _, d := range auditDetails {
+				if d.ProcessType == processType {
+					userDetail = d
+					break
+				}
+			}
+		}
+	}
+
+	// 构建规则开关 map（用户覆盖）
+	toggleMap := map[string]bool{}
+	for _, t := range userDetail.RuleToggleOverrides {
+		toggleMap[t.RuleID] = t.Enabled
+	}
+
+	// 构建用户选中字段集合
+	selectedFieldKeys := map[string]bool{}
+	for _, k := range userDetail.FieldOverrides {
+		selectedFieldKeys[k] = true
+	}
+	effectiveFieldMode := tenantCfg.FieldMode
+	if userDetail.FieldMode != "" && perms.AllowCustomFields {
+		effectiveFieldMode = userDetail.FieldMode
+	}
+
+	// 解析主表字段
+	var rawMainFields []struct {
+		FieldKey  string `json:"field_key"`
+		FieldName string `json:"field_name"`
+		FieldType string `json:"field_type"`
+	}
+	_ = json.Unmarshal(tenantCfg.MainFields, &rawMainFields)
+	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
+	for i, f := range rawMainFields {
+		sel := effectiveFieldMode == "all" || selectedFieldKeys[f.FieldKey]
+		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
+	}
+
+	// 解析明细表
+	var rawDetailTables []struct {
+		TableName  string `json:"table_name"`
+		TableLabel string `json:"table_label"`
+		Fields     []struct {
+			FieldKey  string `json:"field_key"`
+			FieldName string `json:"field_name"`
+			FieldType string `json:"field_type"`
+		} `json:"fields"`
+	}
+	_ = json.Unmarshal(tenantCfg.DetailTables, &rawDetailTables)
+	detailTables := make([]dto.DetailTableDTO, len(rawDetailTables))
+	for i, dt := range rawDetailTables {
+		fields := make([]dto.TenantFieldDTO, len(dt.Fields))
+		for j, f := range dt.Fields {
+			sel := effectiveFieldMode == "all" || selectedFieldKeys[f.FieldKey]
+			fields[j] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
+		}
+		detailTables[i] = dto.DetailTableDTO{TableName: dt.TableName, TableLabel: dt.TableLabel, Fields: fields}
+	}
+
+	// 构建租户规则 DTO（应用用户开关覆盖）
+	tenantRuleDTOs := make([]dto.TenantRuleDTO, len(tenantRules))
+	for i, r := range tenantRules {
+		effectiveEnabled := r.Enabled
+		if r.RuleScope != "mandatory" {
+			if v, ok := toggleMap[r.ID.String()]; ok {
+				effectiveEnabled = v
+			}
+		}
+		tenantRuleDTOs[i] = dto.TenantRuleDTO{
+			ID:          r.ID.String(),
+			RuleContent: r.RuleContent,
+			RuleScope:   r.RuleScope,
+			RelatedFlow: r.RelatedFlow,
+			Enabled:     effectiveEnabled,
+		}
+	}
+
+	// 有效严格度（用户覆盖优先）
+	effectiveStrictness := aiConfig.AuditStrictness
+	if userDetail.StrictnessOverride != "" && perms.AllowModifyStrictness {
+		effectiveStrictness = userDetail.StrictnessOverride
+	}
+
+	// 构建自定义规则 DTO
+	customRuleDTOs := make([]dto.CustomRuleDTO, len(userDetail.CustomRules))
+	for i, r := range userDetail.CustomRules {
+		customRuleDTOs[i] = dto.CustomRuleDTO{ID: r.ID, Content: r.Content, Enabled: r.Enabled}
+	}
+
+	return &dto.FullAuditProcessConfigResponse{
+		ProcessType:      tenantCfg.ProcessType,
+		ProcessTypeLabel: tenantCfg.ProcessTypeLabel,
+		ConfigID:         tenantCfg.ID.String(),
+		FieldMode:        effectiveFieldMode,
+		KBMode:           tenantCfg.KBMode,
+		AuditStrictness:  effectiveStrictness,
+		UserPermissions:  dto.UserPermissionsDTO{AllowCustomFields: perms.AllowCustomFields, AllowCustomRules: perms.AllowCustomRules, AllowModifyStrictness: perms.AllowModifyStrictness},
+		MainFields:       mainFields,
+		DetailTables:     detailTables,
+		TenantRules:      tenantRuleDTOs,
+		CustomRules:      customRuleDTOs,
+	}, nil
+}
+
+// GetCronPrefs 获取用户定时任务个人偏好（默认推送邮箱）。
+func (s *UserPersonalConfigService) GetCronPrefs(c *gin.Context, userID uuid.UUID) (*dto.CronPrefsResponse, error) {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	if userCfg == nil {
+		return &dto.CronPrefsResponse{DefaultEmail: ""}, nil
+	}
+	var cronDetail model.CronDetailItem
+	// cron_details 可能是对象或数组，兼容两种格式
+	_ = json.Unmarshal(userCfg.CronDetails, &cronDetail)
+	return &dto.CronPrefsResponse{DefaultEmail: cronDetail.DefaultEmail}, nil
+}
+
+// UpdateCronPrefs 更新用户定时任务个人偏好（默认推送邮箱）。
+func (s *UserPersonalConfigService) UpdateCronPrefs(c *gin.Context, userID uuid.UUID, req *dto.UpdateCronPrefsRequest) error {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
+	if err != nil {
+		return newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+
+	cronDetail := model.CronDetailItem{DefaultEmail: req.DefaultEmail}
+	cronJSON, _ := json.Marshal(cronDetail)
+
+	cfg := &model.UserPersonalConfig{
+		ID:             uuid.New(),
+		TenantID:       tenantID,
+		UserID:         userID,
+		AuditDetails:   datatypes.JSON([]byte("[]")),
+		CronDetails:    datatypes.JSON(cronJSON),
+		ArchiveDetails: datatypes.JSON([]byte("[]")),
+		UpdatedAt:      time.Now(),
+	}
+	if userCfg != nil {
+		cfg.ID = userCfg.ID
+		cfg.AuditDetails = userCfg.AuditDetails
+		cfg.ArchiveDetails = userCfg.ArchiveDetails
+	}
+	return s.userConfigRepo.Upsert(cfg)
+}
+
+// GetAccessibleArchiveConfigs 获取当前用户在租户内有权访问的归档复盘配置列表。
+// 访问控制规则：access_control 所有列表均为空 → 对所有租户成员开放；
+// 否则用户 ID/角色/部门命中任一列表即可访问。
+func (s *UserPersonalConfigService) GetAccessibleArchiveConfigs(c *gin.Context, userID uuid.UUID) ([]dto.AccessibleArchiveConfigItem, error) {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+
+	// 查询租户内全部归档配置
+	allCfgs, err := s.archiveConfigRepo.ListByTenant(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	if len(allCfgs) == 0 {
+		return []dto.AccessibleArchiveConfigItem{}, nil
+	}
+
+	// 获取用户在租户内的成员信息（角色、部门）
+	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
+
+	var result []dto.AccessibleArchiveConfigItem
+	for _, cfg := range allCfgs {
+		if cfg.Status != "active" {
+			continue
+		}
+		var ac model.AccessControlData
+		if err := json.Unmarshal(cfg.AccessControl, &ac); err != nil {
+			// 解析失败视为公开
+			result = append(result, dto.AccessibleArchiveConfigItem{
+				ProcessType:      cfg.ProcessType,
+				ProcessTypeLabel: cfg.ProcessTypeLabel,
+				ConfigID:         cfg.ID.String(),
+			})
+			continue
+		}
+		// 三列表均为空 → 公开
+		if len(ac.AllowedRoles) == 0 && len(ac.AllowedMembers) == 0 && len(ac.AllowedDepartments) == 0 {
+			result = append(result, dto.AccessibleArchiveConfigItem{
+				ProcessType:      cfg.ProcessType,
+				ProcessTypeLabel: cfg.ProcessTypeLabel,
+				ConfigID:         cfg.ID.String(),
+			})
+			continue
+		}
+		if member == nil {
+			continue
+		}
+		// 检查用户 ID
+		if sliceContains(ac.AllowedMembers, userID.String()) {
+			result = append(result, dto.AccessibleArchiveConfigItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
+			continue
+		}
+		// 检查部门
+		if sliceContains(ac.AllowedDepartments, member.DepartmentID.String()) {
+			result = append(result, dto.AccessibleArchiveConfigItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
+			continue
+		}
+		// 检查角色
+		found := false
+		for _, r := range member.Roles {
+			if sliceContains(ac.AllowedRoles, r.ID.String()) {
+				found = true
+				break
+			}
+		}
+		if found {
+			result = append(result, dto.AccessibleArchiveConfigItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
+		}
+	}
+	if result == nil {
+		result = []dto.AccessibleArchiveConfigItem{}
+	}
+	return result, nil
+}
+
+// GetFullArchiveConfig 返回归档复盘指定流程的完整配置（租户字段/规则 + 用户覆盖合并）。
+func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID uuid.UUID, processType string) (*dto.FullArchiveConfigResponse, error) {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+
+	// 查找归档配置（通过流程类型）
+	allCfgs, err := s.archiveConfigRepo.ListByTenant(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	var tenantCfg *model.ProcessArchiveConfig
+	for i := range allCfgs {
+		if allCfgs[i].ProcessType == processType {
+			tenantCfg = &allCfgs[i]
+			break
+		}
+	}
+	if tenantCfg == nil {
+		return nil, newServiceError(errcode.ErrConfigNotFound, "归档复盘配置不存在")
+	}
+
+	// 解析用户权限
+	var perms model.ArchiveUserPermissionsData
+	if err := json.Unmarshal(tenantCfg.UserPermissions, &perms); err != nil {
+		perms = model.ArchiveUserPermissionsData{AllowCustomFields: true, AllowCustomRules: true, AllowModifyStrictness: true}
+	}
+
+	// 解析 AI 配置
+	var aiConfig struct {
+		AuditStrictness string `json:"audit_strictness"`
+	}
+	_ = json.Unmarshal(tenantCfg.AIConfig, &aiConfig)
+	if aiConfig.AuditStrictness == "" {
+		aiConfig.AuditStrictness = "standard"
+	}
+
+	// 获取归档规则
+	archiveRules, err := s.archiveRuleRepo.ListByConfigIDFilter(c, tenantCfg.ID, nil, nil)
+	if err != nil {
+		archiveRules = []model.ArchiveRule{}
+	}
+
+	// 获取用户个人归档配置
+	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+
+	var userDetail model.ArchiveDetailItem
+	if userCfg != nil {
+		var archiveDetails []model.ArchiveDetailItem
+		if err := json.Unmarshal(userCfg.ArchiveDetails, &archiveDetails); err == nil {
+			for _, d := range archiveDetails {
+				if d.ProcessType == processType {
+					userDetail = d
+					break
+				}
+			}
+		}
+	}
+
+	// 构建规则开关 map
+	toggleMap := map[string]bool{}
+	for _, t := range userDetail.RuleToggleOverrides {
+		toggleMap[t.RuleID] = t.Enabled
+	}
+
+	// 字段选中状态
+	selectedFieldKeys := map[string]bool{}
+	for _, k := range userDetail.FieldOverrides {
+		selectedFieldKeys[k] = true
+	}
+	effectiveFieldMode := tenantCfg.FieldMode
+	if userDetail.FieldMode != "" && perms.AllowCustomFields {
+		effectiveFieldMode = userDetail.FieldMode
+	}
+
+	// 解析主表字段
+	var rawMainFields []struct {
+		FieldKey  string `json:"field_key"`
+		FieldName string `json:"field_name"`
+		FieldType string `json:"field_type"`
+	}
+	_ = json.Unmarshal(tenantCfg.MainFields, &rawMainFields)
+	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
+	for i, f := range rawMainFields {
+		sel := effectiveFieldMode == "all" || selectedFieldKeys[f.FieldKey]
+		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
+	}
+
+	// 解析明细表
+	var rawDetailTables []struct {
+		TableName  string `json:"table_name"`
+		TableLabel string `json:"table_label"`
+		Fields     []struct {
+			FieldKey  string `json:"field_key"`
+			FieldName string `json:"field_name"`
+			FieldType string `json:"field_type"`
+		} `json:"fields"`
+	}
+	_ = json.Unmarshal(tenantCfg.DetailTables, &rawDetailTables)
+	detailTables := make([]dto.DetailTableDTO, len(rawDetailTables))
+	for i, dt := range rawDetailTables {
+		fields := make([]dto.TenantFieldDTO, len(dt.Fields))
+		for j, f := range dt.Fields {
+			sel := effectiveFieldMode == "all" || selectedFieldKeys[f.FieldKey]
+			fields[j] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
+		}
+		detailTables[i] = dto.DetailTableDTO{TableName: dt.TableName, TableLabel: dt.TableLabel, Fields: fields}
+	}
+
+	// 构建归档规则 DTO
+	ruleDTOs := make([]dto.TenantRuleDTO, len(archiveRules))
+	for i, r := range archiveRules {
+		effectiveEnabled := r.Enabled
+		if r.RuleScope != "mandatory" {
+			if v, ok := toggleMap[r.ID.String()]; ok {
+				effectiveEnabled = v
+			}
+		}
+		ruleDTOs[i] = dto.TenantRuleDTO{
+			ID: r.ID.String(), RuleContent: r.RuleContent,
+			RuleScope: r.RuleScope, RelatedFlow: r.RelatedFlow, Enabled: effectiveEnabled,
+		}
+	}
+
+	// 有效严格度
+	effectiveStrictness := aiConfig.AuditStrictness
+	if userDetail.StrictnessOverride != "" && perms.AllowModifyStrictness {
+		effectiveStrictness = userDetail.StrictnessOverride
+	}
+
+	customRuleDTOs := make([]dto.CustomRuleDTO, len(userDetail.CustomRules))
+	for i, r := range userDetail.CustomRules {
+		customRuleDTOs[i] = dto.CustomRuleDTO{ID: r.ID, Content: r.Content, Enabled: r.Enabled}
+	}
+
+	return &dto.FullArchiveConfigResponse{
+		ProcessType:      tenantCfg.ProcessType,
+		ProcessTypeLabel: tenantCfg.ProcessTypeLabel,
+		ConfigID:         tenantCfg.ID.String(),
+		FieldMode:        effectiveFieldMode,
+		KBMode:           tenantCfg.KBMode,
+		AuditStrictness:  effectiveStrictness,
+		UserPermissions:  dto.ArchiveUserPermissionsDTO{AllowCustomFields: perms.AllowCustomFields, AllowCustomRules: perms.AllowCustomRules, AllowModifyStrictness: perms.AllowModifyStrictness},
+		MainFields:       mainFields,
+		DetailTables:     detailTables,
+		TenantRules:      ruleDTOs,
+		CustomRules:      customRuleDTOs,
+	}, nil
+}
+
+// UpdateArchiveConfig 更新用户归档复盘个人配置。
+func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID uuid.UUID, processType string, req *dto.UpdateArchiveConfigRequest) error {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+
+	// 检查归档配置权限
+	allCfgs, err := s.archiveConfigRepo.ListByTenant(c)
+	if err != nil {
+		return newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	var tenantCfg *model.ProcessArchiveConfig
+	for i := range allCfgs {
+		if allCfgs[i].ProcessType == processType {
+			tenantCfg = &allCfgs[i]
+			break
+		}
+	}
+	if tenantCfg == nil {
+		return newServiceError(errcode.ErrConfigNotFound, "归档复盘配置不存在")
+	}
+
+	var perms model.ArchiveUserPermissionsData
+	if err := json.Unmarshal(tenantCfg.UserPermissions, &perms); err != nil {
+		perms = model.ArchiveUserPermissionsData{AllowCustomFields: true, AllowCustomRules: true, AllowModifyStrictness: true}
+	}
+
+	if !perms.AllowCustomFields && (req.FieldOverrides != nil || req.FieldMode != "") {
+		return newServiceError(errcode.ErrPermissionDenied, "字段自定义功能已被锁定")
+	}
+	if !perms.AllowCustomRules && req.CustomRules != nil {
+		return newServiceError(errcode.ErrPermissionDenied, "自定义规则功能已被锁定")
+	}
+	if !perms.AllowModifyStrictness && req.StrictnessOverride != "" {
+		return newServiceError(errcode.ErrPermissionDenied, "复核尺度修改功能已被锁定")
+	}
+
+	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
+	if err != nil {
+		return newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+
+	var archiveDetails []model.ArchiveDetailItem
+	if userCfg != nil {
+		_ = json.Unmarshal(userCfg.ArchiveDetails, &archiveDetails)
+	}
+
+	newDetail := model.ArchiveDetailItem{
+		ProcessType:        processType,
+		FieldMode:          req.FieldMode,
+		StrictnessOverride: req.StrictnessOverride,
+	}
+	if req.FieldOverrides != nil {
+		newDetail.FieldOverrides = req.FieldOverrides
+	}
+	if req.CustomRules != nil {
+		rules := make([]model.CustomRule, len(req.CustomRules))
+		for i, r := range req.CustomRules {
+			rules[i] = model.CustomRule{ID: r.ID, Content: r.Content, Enabled: r.Enabled}
+		}
+		newDetail.CustomRules = rules
+	}
+	if req.RuleToggleOverrides != nil {
+		toggles := make([]model.RuleToggleOverride, len(req.RuleToggleOverrides))
+		for i, t := range req.RuleToggleOverrides {
+			toggles[i] = model.RuleToggleOverride{RuleID: t.RuleID, Enabled: t.Enabled}
+		}
+		newDetail.RuleToggleOverrides = toggles
+	}
+
+	found := false
+	for i, d := range archiveDetails {
+		if d.ProcessType == processType {
+			archiveDetails[i] = newDetail
+			found = true
+			break
+		}
+	}
+	if !found {
+		archiveDetails = append(archiveDetails, newDetail)
+	}
+
+	archiveJSON, _ := json.Marshal(archiveDetails)
+
+	cfg := &model.UserPersonalConfig{
+		ID:             uuid.New(),
+		TenantID:       tenantID,
+		UserID:         userID,
+		AuditDetails:   datatypes.JSON([]byte("[]")),
+		CronDetails:    datatypes.JSON([]byte("{}")),
+		ArchiveDetails: datatypes.JSON(archiveJSON),
+		UpdatedAt:      time.Now(),
+	}
+	if userCfg != nil {
+		cfg.ID = userCfg.ID
+		cfg.AuditDetails = userCfg.AuditDetails
+		cfg.CronDetails = userCfg.CronDetails
+	}
+	return s.userConfigRepo.Upsert(cfg)
+}
+
+// sliceContains 检查字符串切片是否包含指定值。
+func sliceContains(slice []string, val string) bool {
+	for _, s := range slice {
+		if s == val {
+			return true
+		}
+	}
+	return false
 }
 
 // getOAAdapter 获取当前租户的 OA 适配器实例。

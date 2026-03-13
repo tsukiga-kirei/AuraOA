@@ -167,6 +167,119 @@ func (h *UserPersonalConfigHandler) UpdateDashboardPrefs(c *gin.Context) {
 	response.Success(c, nil)
 }
 
+// GetFullProcessConfig 处理 GET /api/tenant/settings/processes/:processType/full
+func (h *UserPersonalConfigHandler) GetFullProcessConfig(c *gin.Context) {
+	userID, err := getUserID(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
+		return
+	}
+	processType := c.Param("processType")
+	if processType == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	result, err := h.userConfigService.GetFullAuditProcessConfig(c, userID, processType)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// GetCronPrefs 处理 GET /api/tenant/settings/cron-prefs
+func (h *UserPersonalConfigHandler) GetCronPrefs(c *gin.Context) {
+	userID, err := getUserID(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
+		return
+	}
+	prefs, err := h.userConfigService.GetCronPrefs(c, userID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, prefs)
+}
+
+// UpdateCronPrefs 处理 PUT /api/tenant/settings/cron-prefs
+func (h *UserPersonalConfigHandler) UpdateCronPrefs(c *gin.Context) {
+	userID, err := getUserID(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
+		return
+	}
+	var req dto.UpdateCronPrefsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	if err := h.userConfigService.UpdateCronPrefs(c, userID, &req); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, nil)
+}
+
+// GetArchiveConfigList 处理 GET /api/tenant/settings/archive-configs
+func (h *UserPersonalConfigHandler) GetArchiveConfigList(c *gin.Context) {
+	userID, err := getUserID(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
+		return
+	}
+	list, err := h.userConfigService.GetAccessibleArchiveConfigs(c, userID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, list)
+}
+
+// GetFullArchiveConfig 处理 GET /api/tenant/settings/archive-configs/:processType/full
+func (h *UserPersonalConfigHandler) GetFullArchiveConfig(c *gin.Context) {
+	userID, err := getUserID(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
+		return
+	}
+	processType := c.Param("processType")
+	if processType == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	result, err := h.userConfigService.GetFullArchiveConfig(c, userID, processType)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// UpdateArchiveConfig 处理 PUT /api/tenant/settings/archive-configs/:processType
+func (h *UserPersonalConfigHandler) UpdateArchiveConfig(c *gin.Context) {
+	userID, err := getUserID(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
+		return
+	}
+	processType := c.Param("processType")
+	if processType == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	var req dto.UpdateArchiveConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	if err := h.userConfigService.UpdateArchiveConfig(c, userID, processType, &req); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, nil)
+}
+
 // defaultDashJSON 返回 JSON 值，如果为 nil 则返回默认值。
 func defaultDashJSON(val datatypes.JSON, defaultVal string) datatypes.JSON {
 	if val == nil {

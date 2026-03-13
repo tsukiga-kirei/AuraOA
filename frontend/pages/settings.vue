@@ -27,10 +27,21 @@ import {
   SwapRightOutlined,
   CloseOutlined,
   LoadingOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { ProcessAuditConfig, ProcessField,  ArchiveReviewConfig } from '~/composables/useMockData'
 import type { Locale } from '~/composables/useI18n'
+import type {
+  ProcessListItem,
+  FullAuditProcessConfig,
+  TenantField,
+  TenantRule,
+  CustomRule,
+  CronPrefs,
+  AccessibleArchiveConfig,
+  FullArchiveConfig,
+  UpdatePersonalConfigRequest,
+} from '~/types/user-config'
 
 definePageMeta({
   middleware: 'auth',
@@ -38,11 +49,9 @@ definePageMeta({
 })
 
 const { userRole, activeRole, getProfile, updateProfile, updateLocale, setUserLocale } = useAuth()
-const { mockArchiveReviewConfigs } = useMockData()
 const settingsApi = useSettingsApi()
 const { t, locale, setLocale, availableLocales } = useI18n()
 
-/** /api/auth/me 返回的完整资料 */
 import type { MeResponse, MeOrgRole } from '~/types/auth'
 const meData = ref<MeResponse | null>(null)
 const meLoading = ref(false)
@@ -53,51 +62,26 @@ const fetchMe = async () => {
   meLoading.value = false
 }
 
-// 进入页面时拉取 /api/auth/me 和流程配置
+// ===== 页面初始化 =====
 onMounted(async () => {
   fetchMe()
-  // 从 API 加载用户可见的流程列表
-  try {
-    const processList = await settingsApi.listProcesses()
-    // 将流程列表转换为 ProcessAuditConfig 格式（兼容现有模板）
-    userProcessConfigs.value = processList.map((p: any) => ({
-      id: p.config_id,
-      process_type: p.process_type,
-      process_type_label: p.process_type_label,
-      field_mode: 'all',
-      fields: [],
-      rules: [],
-      kb_mode: 'rules_only',
-      ai_config: { audit_strictness: 'standard', reasoning_prompt: '', extraction_prompt: '' },
-      user_permissions: { allow_custom_fields: true, allow_custom_rules: true, allow_modify_strictness: true },
-    })) as any
-    if (userProcessConfigs.value.length > 0) {
-      selectedProcessId.value = userProcessConfigs.value[0].id
-    }
-  }
-  catch (e) { console.error('[settings] 加载流程列表失败', e) }
+  loadProcessList()
+  loadCronPrefs()
+  loadArchiveList()
 })
 
-/** 当前活跃身份的角色类型（system_admin/tenant_admin/business）*/
 const currentRoleType = computed(() => activeRole.value?.role || userRole.value)
-
 const activeTab = ref('profile')
 
-//===== 语言和区域选项卡 =====
+// ===== 语言设置 =====
 const handleLocaleChange = async (newLocale: Locale) => {
   setLocale(newLocale)
   message.success(t('settings.language.switchSuccess'))
-  // 同步到后端
   await updateLocale(newLocale)
 }
 
-
-//===== 安全/密码选项卡 =====
-const passwordForm = ref({
-  currentPassword: '',
-  newPassword: '',
-  confirmPassword: '',
-})
+// ===== 安全/密码 =====
+const passwordForm = ref({ currentPassword: '', newPassword: '', confirmPassword: '' })
 const passwordChanging = ref(false)
 
 const passwordStrength = computed(() => {
@@ -121,11 +105,7 @@ const strengthConfig: Record<string, { color: string; percent: number }> = {
 }
 
 const securityInfo = computed(() => {
-  const history = (meData.value?.login_history || []).map(h => ({
-    time: h.time,
-    ip: h.ip,
-    device: h.device,
-  }))
+  const history = (meData.value?.login_history || []).map(h => ({ time: h.time, ip: h.ip, device: h.device }))
   return {
     password_last_changed: meData.value?.password_changed_at || '-',
     login_history: history,
@@ -134,60 +114,33 @@ const securityInfo = computed(() => {
 
 const handleChangePassword = async () => {
   const { currentPassword, newPassword, confirmPassword } = passwordForm.value
-  if (!currentPassword || !newPassword || !confirmPassword) {
-    message.error(t('settings.security.changeError.empty')); return
-  }
-  if (newPassword.length < 6) {
-    message.error(t('settings.security.changeError.tooShort')); return
-  }
-  if (currentPassword === newPassword) {
-    message.error(t('settings.security.changeError.samePassword')); return
-  }
-  if (newPassword !== confirmPassword) {
-    message.error(t('settings.security.changeError.mismatch')); return
-  }
-  //调用后台修改密码
+  if (!currentPassword || !newPassword || !confirmPassword) { message.error(t('settings.security.changeError.empty')); return }
+  if (newPassword.length < 6) { message.error(t('settings.security.changeError.tooShort')); return }
+  if (currentPassword === newPassword) { message.error(t('settings.security.changeError.samePassword')); return }
+  if (newPassword !== confirmPassword) { message.error(t('settings.security.changeError.mismatch')); return }
   const { changePassword, logout } = useAuth()
   passwordChanging.value = true
-  const ok = await changePassword({
-    current_password: currentPassword,
-    new_password: newPassword,
-  })
+  const ok = await changePassword({ current_password: currentPassword, new_password: newPassword })
   passwordChanging.value = false
-  if (!ok) {
-    message.error(t('settings.security.changeError.wrongCurrent')); return
-  }
+  if (!ok) { message.error(t('settings.security.changeError.wrongCurrent')); return }
   passwordForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' }
   message.success(t('settings.security.changeSuccess'))
-  // 密码修改成功后自动退出登录
   setTimeout(() => { logout() }, 1500)
 }
 
-
-
-//=====个人资料选项卡=====
-// 从 /api/auth/me 获取的组织角色（当前租户下的全部角色）
+// ===== 个人资料 =====
 const currentOrgRoles = computed<MeOrgRole[]>(() => meData.value?.org_roles || [])
 
-// 合并所有组织角色的页面权限，me 接口未返回时从菜单回退
 const currentOrgPagePermissions = computed(() => {
   if (meData.value?.page_permissions?.length) return meData.value.page_permissions
-  // 回退：从后端菜单中提取路径
   const { menus } = useAuth()
   return menus.value.map((m: any) => m.path).filter(Boolean)
 })
 
 const getPageLabel = (path: string) => t(`page.${path}`, path)
 
-const profile = ref({
-  nickname: '',
-  email: '',
-  phone: '',
-  department: '',
-  position: '',
-})
+const profile = ref({ nickname: '', email: '', phone: '', department: '', position: '' })
 
-// 从 /api/auth/me 数据填充 profile 表单
 watch(meData, (me) => {
   if (!me) return
   profile.value = {
@@ -197,7 +150,6 @@ watch(meData, (me) => {
     department: me.department_name || '',
     position: me.position || '',
   }
-  // 以后端 locale 为准，同步到前端
   if (me.user.locale && (me.user.locale === 'zh-CN' || me.user.locale === 'en-US')) {
     setUserLocale(me.user.locale)
   }
@@ -208,25 +160,54 @@ const getRoleLabel = (role: string) => {
   return t(map[role] || 'role.business')
 }
 
-//===== 审核工作台选项卡 =====
-//从 API 加载流程配置（替代模拟数据）
-const userProcessConfigs = ref<ProcessAuditConfig[]>([])
+// ===== Tab 可见性 =====
+const visibleTabs = computed(() => {
+  const role = currentRoleType.value
+  const perms = currentOrgPagePermissions.value
+  const isBiz = role === 'business'
+  return [
+    { key: 'profile', label: t('settings.tab.profile'), icon: UserOutlined, show: true },
+    { key: 'workbench', label: t('settings.tab.workbench'), icon: DashboardOutlined, show: isBiz && perms.includes('/dashboard') },
+    { key: 'cron', label: t('settings.tab.cron'), icon: ClockCircleOutlined, show: isBiz && perms.includes('/cron') },
+    { key: 'archive', label: t('settings.tab.archive'), icon: FolderOpenOutlined, show: isBiz && perms.includes('/archive') },
+  ].filter(tab => tab.show)
+})
 
-//每个进程的用户自定义规则（与租户规则分开）
-const userCustomRules = ref<Record<string, { id: string; content: string; enabled: boolean; related_flow: boolean }[]>>({})
+watch(visibleTabs, (tabs) => {
+  if (!tabs.some(t => t.key === activeTab.value)) activeTab.value = 'profile'
+})
 
-//用户的自定义字段覆盖（其他选定字段）
-const userFieldOverrides = ref<Record<string, string[]>>({})
+const saving = ref(false)
+const handleSaveProfile = async () => {
+  if (profile.value.email.trim()) {
+    if (!/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(profile.value.email.trim())) {
+      message.error(t('settings.profile.emailFormatError')); return
+    }
+  }
+  if (profile.value.phone.trim() && !/^\d{11}$/.test(profile.value.phone.trim())) {
+    message.error(t('settings.profile.phoneFormatError')); return
+  }
+  if (!profile.value.nickname.trim()) { message.error(t('settings.profile.nicknameRequired')); return }
+  saving.value = true
+  const { ok, errorMsg } = await updateProfile({
+    display_name: profile.value.nickname.trim(),
+    email: profile.value.email.trim(),
+    phone: profile.value.phone.trim(),
+  })
+  saving.value = false
+  if (ok) { message.success(t('settings.profile.saveSuccess')); await fetchMe() }
+  else message.error(errorMsg || t('settings.profile.saveFailed'))
+}
 
-const selectedProcessId = ref('')
+// =====================================================================
+// ===== 审核工作台 Tab =====
+// =====================================================================
+const workbenchLoading = ref(false)
+const processList = ref<ProcessListItem[]>([])
+const selectedProcessType = ref('')
+const fullProcessConfig = ref<FullAuditProcessConfig | null>(null)
+const workbenchSection = ref<'fields' | 'rules' | 'ai'>('fields')
 
-const selectedConfig = computed(() =>
-  userProcessConfigs.value.find(c => c.id === selectedProcessId.value)
-)
-
-const permissions = computed(() => selectedConfig.value?.user_permissions)
-
-//字段类型标签
 const fieldTypeLabels = computed<Record<string, string>>(() => ({
   text: t('field.type.text'),
   number: t('field.type.number'),
@@ -238,71 +219,79 @@ const fieldTypeLabels = computed<Record<string, string>>(() => ({
   rich_text: t('field.type.richText'),
 }))
 
-//范围配置
-const scopeConfig = computed<Record<string, { label: string; color?: string }>>(() => ({
+const scopeConfig = computed<Record<string, { label: string }>>(() => ({
   mandatory: { label: t('rule.scope.mandatory') },
   default_on: { label: t('rule.scope.defaultOn') },
   default_off: { label: t('rule.scope.defaultOff') },
 }))
 
-//严格性
 const strictnessOptions = computed(() => [
   { value: 'strict', label: t('settings.workbench.strict'), desc: t('settings.workbench.strictDesc') },
   { value: 'standard', label: t('settings.workbench.standard'), desc: t('settings.workbench.standardDesc') },
   { value: 'loose', label: t('settings.workbench.loose'), desc: t('settings.workbench.looseDesc') },
 ])
 
-//切换用户字段覆盖
-const toggleUserField = (field: ProcessField) => {
-  if (!selectedConfig.value || !permissions.value?.allow_custom_fields) return
-  if (selectedConfig.value.field_mode === 'all') return
-  field.selected = !field.selected
+const loadProcessList = async () => {
+  workbenchLoading.value = true
+  try {
+    processList.value = await settingsApi.listProcesses()
+    if (processList.value.length > 0) {
+      selectedProcessType.value = processList.value[0].process_type
+      await loadFullProcessConfig(selectedProcessType.value)
+    }
+  }
+  catch (e) { console.error('[settings] 加载流程列表失败', e) }
+  finally { workbenchLoading.value = false }
 }
 
-//===== 字段选择器模式（设置） =====
+const loadFullProcessConfig = async (processType: string) => {
+  workbenchLoading.value = true
+  try {
+    fullProcessConfig.value = await settingsApi.getFullProcessConfig(processType)
+    workbenchSection.value = 'fields'
+  }
+  catch (e) { console.error('[settings] 加载流程配置失败', e) }
+  finally { workbenchLoading.value = false }
+}
+
+const selectProcess = async (processType: string) => {
+  selectedProcessType.value = processType
+  await loadFullProcessConfig(processType)
+}
+
+// 字段选择器
 const showFieldPicker = ref(false)
 const fieldSearchQuery = ref('')
 
-interface SettingsPickerField {
-  field_key: string; field_name: string; field_type: string; selected: boolean
+interface PickerFieldGroup {
   source: string; sourceLabel: string
-}
-interface SettingsFieldGroup {
-  source: string; sourceLabel: string; fields: SettingsPickerField[]
+  fields: (TenantField & { source: string; sourceLabel: string })[]
 }
 
-const settingsGroupedFields = computed<SettingsFieldGroup[]>(() => {
-  if (!selectedConfig.value) return []
-  const groups: SettingsFieldGroup[] = []
-  const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
+const groupedFields = computed<PickerFieldGroup[]>(() => {
+  if (!fullProcessConfig.value) return []
+  const groups: PickerFieldGroup[] = []
   groups.push({
     source: 'main',
     sourceLabel: t('settings.workbench.mainTableFields'),
-    fields: mainFields.map(f => ({ ...f, source: 'main', sourceLabel: t('settings.workbench.mainTableFields') })),
+    fields: fullProcessConfig.value.main_fields.map(f => ({ ...f, source: 'main', sourceLabel: t('settings.workbench.mainTableFields') })),
   })
-  if (selectedConfig.value.detail_tables) {
-    selectedConfig.value.detail_tables.forEach((dt, idx) => {
-      groups.push({
-        source: dt.table_name,
-        sourceLabel: `${t('settings.workbench.detailTableLabel')} ${idx + 1}`,
-        fields: dt.fields.map(f => ({ ...f, source: dt.table_name, sourceLabel: `${t('settings.workbench.detailTableLabel')} ${idx + 1}` })),
-      })
+  for (const dt of (fullProcessConfig.value.detail_tables || [])) {
+    groups.push({
+      source: dt.table_name,
+      sourceLabel: dt.table_label || dt.table_name,
+      fields: dt.fields.map(f => ({ ...f, source: dt.table_name, sourceLabel: dt.table_label || dt.table_name })),
     })
   }
   return groups
 })
 
-const settingsAllFields = computed<SettingsPickerField[]>(() =>
-  settingsGroupedFields.value.flatMap(g => g.fields)
-)
+const allFields = computed(() => groupedFields.value.flatMap(g => g.fields))
+const selectedFieldCount = computed(() => allFields.value.filter(f => f.selected).length)
 
-const settingsSelectedCount = computed(() =>
-  settingsAllFields.value.filter(f => f.selected).length
-)
-
-const settingsGroupedUnselected = computed<SettingsFieldGroup[]>(() => {
+const groupedUnselected = computed<PickerFieldGroup[]>(() => {
   const q = fieldSearchQuery.value.toLowerCase().trim()
-  return settingsGroupedFields.value
+  return groupedFields.value
     .map(g => ({
       ...g,
       fields: g.fields.filter(f => {
@@ -314,56 +303,46 @@ const settingsGroupedUnselected = computed<SettingsFieldGroup[]>(() => {
     .filter(g => g.fields.length > 0)
 })
 
-const settingsGroupedSelected = computed<SettingsFieldGroup[]>(() =>
-  settingsGroupedFields.value
+const groupedSelected = computed<PickerFieldGroup[]>(() =>
+  groupedFields.value
     .map(g => ({ ...g, fields: g.fields.filter(f => f.selected) }))
-    .filter(g => g.fields.length > 0)
+    .filter(g => g.fields.length > 0),
 )
 
-const openSettingsFieldPicker = () => {
-  fieldSearchQuery.value = ''
-  showFieldPicker.value = true
-}
-
-const settingsPickField = (field: { field_key: string; source: string }) => {
-  if (!selectedConfig.value) return
-  const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
-  const mf = mainFields.find(f => f.field_key === field.field_key)
-  if (mf && field.source === 'main') { mf.selected = true; return }
-  if (selectedConfig.value.detail_tables) {
-    for (const dt of selectedConfig.value.detail_tables) {
-      if (dt.table_name === field.source) {
-        const df = dt.fields.find(f => f.field_key === field.field_key)
-        if (df) { df.selected = true; return }
-      }
-    }
+const pickField = (field: { field_key: string; source: string }) => {
+  if (!fullProcessConfig.value || !fullProcessConfig.value.user_permissions.allow_custom_fields) return
+  const cfg = fullProcessConfig.value
+  if (field.source === 'main') {
+    const f = cfg.main_fields.find(f => f.field_key === field.field_key)
+    if (f) f.selected = true
+  }
+  else {
+    const dt = cfg.detail_tables.find(d => d.table_name === field.source)
+    if (dt) { const f = dt.fields.find(f => f.field_key === field.field_key); if (f) f.selected = true }
   }
 }
 
-const settingsUnpickField = (field: { field_key: string; source: string }) => {
-  if (!selectedConfig.value) return
-  const mainFields = selectedConfig.value.main_fields || selectedConfig.value.fields
-  const mf = mainFields.find(f => f.field_key === field.field_key)
-  if (mf && field.source === 'main') { mf.selected = false; return }
-  if (selectedConfig.value.detail_tables) {
-    for (const dt of selectedConfig.value.detail_tables) {
-      if (dt.table_name === field.source) {
-        const df = dt.fields.find(f => f.field_key === field.field_key)
-        if (df) { df.selected = false; return }
-      }
-    }
+const unpickField = (field: { field_key: string; source: string }) => {
+  if (!fullProcessConfig.value) return
+  const cfg = fullProcessConfig.value
+  if (field.source === 'main') {
+    const f = cfg.main_fields.find(f => f.field_key === field.field_key)
+    if (f) f.selected = false
+  }
+  else {
+    const dt = cfg.detail_tables.find(d => d.table_name === field.source)
+    if (dt) { const f = dt.fields.find(f => f.field_key === field.field_key); if (f) f.selected = false }
   }
 }
 
-//自定义规则
+// 自定义规则
 const newRuleContent = ref('')
 const newRuleRelatedFlow = ref(false)
 
 const addCustomRule = () => {
-  if (!newRuleContent.value.trim() || !selectedConfig.value) return
-  const pid = selectedConfig.value.id
-  if (!userCustomRules.value[pid]) userCustomRules.value[pid] = []
-  userCustomRules.value[pid].push({
+  if (!newRuleContent.value.trim() || !fullProcessConfig.value) return
+  if (!fullProcessConfig.value.custom_rules) fullProcessConfig.value.custom_rules = []
+  fullProcessConfig.value.custom_rules.push({
     id: `UCR-${Date.now()}`,
     content: newRuleContent.value.trim(),
     enabled: true,
@@ -375,164 +354,137 @@ const addCustomRule = () => {
 }
 
 const removeCustomRule = (ruleId: string) => {
-  if (!selectedConfig.value) return
-  const pid = selectedConfig.value.id
-  userCustomRules.value[pid] = (userCustomRules.value[pid] || []).filter(r => r.id !== ruleId)
+  if (!fullProcessConfig.value) return
+  fullProcessConfig.value.custom_rules = fullProcessConfig.value.custom_rules.filter(r => r.id !== ruleId)
   message.success(t('settings.workbench.deleted'))
 }
 
-const currentCustomRules = computed(() =>
-  userCustomRules.value[selectedConfig.value?.id || ''] || []
-)
-
-//===== 选项卡可见性（为可靠的反应性而计算） =====
-const visibleTabs = computed(() => {
-  const role = currentRoleType.value
-  const perms = currentOrgPagePermissions.value
-  const isBizOrAdmin = role === 'business'
-  return [
-    { key: 'profile', label: t('settings.tab.profile'), icon: UserOutlined, show: true },
-    { key: 'workbench', label: t('settings.tab.workbench'), icon: DashboardOutlined, show: isBizOrAdmin && perms.includes('/dashboard') },
-    { key: 'cron', label: t('settings.tab.cron'), icon: ClockCircleOutlined, show: isBizOrAdmin && perms.includes('/cron') },
-    { key: 'archive', label: t('settings.tab.archive'), icon: FolderOpenOutlined, show: isBizOrAdmin && perms.includes('/archive') },
-  ].filter(tab => tab.show)
-})
-
-//如果当前选项卡不再可见，则重置为配置文件
-watch(visibleTabs, (tabs) => {
-  if (!tabs.some(t => t.key === activeTab.value)) {
-    activeTab.value = 'profile'
+// 保存审核工作台配置
+const handleSaveWorkbench = async () => {
+  if (!fullProcessConfig.value) return
+  const cfg = fullProcessConfig.value
+  const selectedKeys = allFields.value.filter(f => f.selected).map(f => f.field_key)
+  const ruleToggleOverrides = cfg.tenant_rules
+    .filter(r => r.rule_scope !== 'mandatory')
+    .map(r => ({ rule_id: r.id, enabled: r.enabled }))
+  const req: UpdatePersonalConfigRequest = {
+    custom_rules: cfg.custom_rules || [],
+    field_overrides: cfg.field_mode === 'selected' ? selectedKeys : [],
+    field_mode: cfg.field_mode,
+    strictness_override: cfg.audit_strictness,
+    rule_toggle_overrides: ruleToggleOverrides,
   }
-})
-
-const saving = ref(false)
-const handleSave = async () => {
-  // Validate email format (if provided)
-  if (profile.value.email.trim()) {
-    const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
-    if (!emailRegex.test(profile.value.email.trim())) {
-      message.error(t('settings.profile.emailFormatError'))
-      return
-    }
-  }
-  // Validate phone format: must be 11 digits (if provided)
-  if (profile.value.phone.trim()) {
-    const phoneRegex = /^\d{11}$/
-    if (!phoneRegex.test(profile.value.phone.trim())) {
-      message.error(t('settings.profile.phoneFormatError'))
-      return
-    }
-  }
-  // Nickname required
-  if (!profile.value.nickname.trim()) {
-    message.error(t('settings.profile.nicknameRequired'))
-    return
-  }
-
   saving.value = true
-  const { ok, errorMsg } = await updateProfile({
-    display_name: profile.value.nickname.trim(),
-    email: profile.value.email.trim(),
-    phone: profile.value.phone.trim(),
-  })
-  saving.value = false
-
-  if (ok) {
-    message.success(t('settings.profile.saveSuccess'))
-    // Refresh profile data from server
-    await fetchMe()
-  } else {
-    message.error(errorMsg || t('settings.profile.saveFailed'))
+  try {
+    await settingsApi.updateProcessConfig(cfg.process_type, req)
+    message.success(t('settings.workbench.saveSuccess'))
   }
+  catch (e) { message.error(t('settings.workbench.saveFailed')) }
+  finally { saving.value = false }
 }
 
-//活动工作台子部分
-const workbenchSection = ref('fields')
+// =====================================================================
+// ===== 定时任务 Tab =====
+// =====================================================================
+const cronLoading = ref(false)
+const cronDefaultEmail = ref('')
 
-//=====Cron个人设置=====
-const cronDefaultEmail = ref('zhangming@example.com')
-
-//=====存档审核个人设置=====
-const userArchiveConfigs = ref<ArchiveReviewConfig[]>(
-  JSON.parse(JSON.stringify(mockArchiveReviewConfigs))
-)
-const selectedArchiveId = ref<string>(userArchiveConfigs.value[0]?.id || '')
-const selectedArchiveConfig = computed(() =>
-  userArchiveConfigs.value.find(c => c.id === selectedArchiveId.value)
-)
-const archivePermissions = computed(() => selectedArchiveConfig.value?.user_permissions)
-const archiveSection = ref('fields')
-
-//用户自定义归档规则
-const userArchiveCustomRules = ref<Record<string, { id: string; content: string; enabled: boolean }[]>>({
-  'ARC-001': [{ id: 'UACR-001', content: '付款条件须与公司标准一致', enabled: true }],
-  'ARC-002': [],
-  'ARC-003': [],
-  'ARC-004': [{ id: 'UACR-002', content: 'HR总监审批须在用人部门确认之后', enabled: true }],
-})
-
-const newArchiveRuleContent = ref('')
-
-const addArchiveCustomRule = () => {
-  if (!newArchiveRuleContent.value.trim() || !selectedArchiveConfig.value) return
-  const pid = selectedArchiveConfig.value.id
-  if (!userArchiveCustomRules.value[pid]) userArchiveCustomRules.value[pid] = []
-  userArchiveCustomRules.value[pid].push({
-    id: `UACR-${Date.now()}`,
-    content: newArchiveRuleContent.value.trim(),
-    enabled: true,
-  })
-  newArchiveRuleContent.value = ''
-  message.success(t('settings.archive.ruleAdded'))
+const loadCronPrefs = async () => {
+  cronLoading.value = true
+  try {
+    const prefs = await settingsApi.getCronPrefs()
+    // 若无配置，用用户自己的邮箱作默认
+    if (prefs.default_email) {
+      cronDefaultEmail.value = prefs.default_email
+    }
+    else {
+      // 等 meData 加载完后再填充
+      watch(meData, (me) => {
+        if (me?.user?.email && !cronDefaultEmail.value) {
+          cronDefaultEmail.value = me.user.email
+        }
+      }, { immediate: true })
+    }
+  }
+  catch (e) { console.error('[settings] 加载 cron 偏好失败', e) }
+  finally { cronLoading.value = false }
 }
 
-const removeArchiveCustomRule = (ruleId: string) => {
-  if (!selectedArchiveConfig.value) return
-  const pid = selectedArchiveConfig.value.id
-  userArchiveCustomRules.value[pid] = (userArchiveCustomRules.value[pid] || []).filter(r => r.id !== ruleId)
-  message.success(t('settings.workbench.deleted'))
+const handleSaveCron = async () => {
+  saving.value = true
+  try {
+    await settingsApi.updateCronPrefs({ default_email: cronDefaultEmail.value })
+    message.success(t('settings.cron.saveSuccess'))
+  }
+  catch (e) { message.error(t('settings.cron.saveFailed')) }
+  finally { saving.value = false }
 }
 
-const currentArchiveCustomRules = computed(() =>
-  userArchiveCustomRules.value[selectedArchiveConfig.value?.id || ''] || []
-)
+// =====================================================================
+// ===== 归档复盘 Tab =====
+// =====================================================================
+const archiveLoading = ref(false)
+const archiveList = ref<AccessibleArchiveConfig[]>([])
+const selectedArchiveProcessType = ref('')
+const fullArchiveConfig = ref<FullArchiveConfig | null>(null)
+const archiveSection = ref<'fields' | 'rules' | 'ai'>('fields')
 
-//===== 存档字段选择器模式 =====
+const loadArchiveList = async () => {
+  archiveLoading.value = true
+  try {
+    archiveList.value = await settingsApi.listArchiveConfigs()
+    if (archiveList.value.length > 0) {
+      selectedArchiveProcessType.value = archiveList.value[0].process_type
+      await loadFullArchiveConfig(selectedArchiveProcessType.value)
+    }
+  }
+  catch (e) { console.error('[settings] 加载归档配置列表失败', e) }
+  finally { archiveLoading.value = false }
+}
+
+const loadFullArchiveConfig = async (processType: string) => {
+  archiveLoading.value = true
+  try {
+    fullArchiveConfig.value = await settingsApi.getFullArchiveConfig(processType)
+    archiveSection.value = 'fields'
+  }
+  catch (e) { console.error('[settings] 加载归档配置失败', e) }
+  finally { archiveLoading.value = false }
+}
+
+const selectArchiveProcess = async (processType: string) => {
+  selectedArchiveProcessType.value = processType
+  await loadFullArchiveConfig(processType)
+}
+
+// 归档字段选择器
 const showArchiveFieldPicker = ref(false)
 const archiveFieldSearchQuery = ref('')
 
-const archiveSettingsGroupedFields = computed<SettingsFieldGroup[]>(() => {
-  if (!selectedArchiveConfig.value) return []
-  const groups: SettingsFieldGroup[] = []
-  const mainFields = selectedArchiveConfig.value.main_fields || selectedArchiveConfig.value.fields
+const archiveGroupedFields = computed<PickerFieldGroup[]>(() => {
+  if (!fullArchiveConfig.value) return []
+  const groups: PickerFieldGroup[] = []
   groups.push({
     source: 'main',
     sourceLabel: t('settings.workbench.mainTableFields'),
-    fields: mainFields.map(f => ({ ...f, source: 'main', sourceLabel: t('settings.workbench.mainTableFields') })),
+    fields: fullArchiveConfig.value.main_fields.map(f => ({ ...f, source: 'main', sourceLabel: t('settings.workbench.mainTableFields') })),
   })
-  if (selectedArchiveConfig.value.detail_tables) {
-    selectedArchiveConfig.value.detail_tables.forEach((dt, idx) => {
-      groups.push({
-        source: dt.table_name,
-        sourceLabel: `${t('settings.workbench.detailTableLabel')} ${idx + 1}`,
-        fields: dt.fields.map(f => ({ ...f, source: dt.table_name, sourceLabel: `${t('settings.workbench.detailTableLabel')} ${idx + 1}` })),
-      })
+  for (const dt of (fullArchiveConfig.value.detail_tables || [])) {
+    groups.push({
+      source: dt.table_name,
+      sourceLabel: dt.table_label || dt.table_name,
+      fields: dt.fields.map(f => ({ ...f, source: dt.table_name, sourceLabel: dt.table_label || dt.table_name })),
     })
   }
   return groups
 })
 
-const archiveSettingsAllFields = computed<SettingsPickerField[]>(() =>
-  archiveSettingsGroupedFields.value.flatMap(g => g.fields)
-)
+const archiveAllFields = computed(() => archiveGroupedFields.value.flatMap(g => g.fields))
+const archiveSelectedCount = computed(() => archiveAllFields.value.filter(f => f.selected).length)
 
-const archiveSettingsSelectedCount = computed(() =>
-  archiveSettingsAllFields.value.filter(f => f.selected).length
-)
-
-const archiveSettingsGroupedUnselected = computed<SettingsFieldGroup[]>(() => {
+const archiveGroupedUnselected = computed<PickerFieldGroup[]>(() => {
   const q = archiveFieldSearchQuery.value.toLowerCase().trim()
-  return archiveSettingsGroupedFields.value
+  return archiveGroupedFields.value
     .map(g => ({
       ...g,
       fields: g.fields.filter(f => {
@@ -544,45 +496,81 @@ const archiveSettingsGroupedUnselected = computed<SettingsFieldGroup[]>(() => {
     .filter(g => g.fields.length > 0)
 })
 
-const archiveSettingsGroupedSelected = computed<SettingsFieldGroup[]>(() =>
-  archiveSettingsGroupedFields.value
+const archiveGroupedSelected = computed<PickerFieldGroup[]>(() =>
+  archiveGroupedFields.value
     .map(g => ({ ...g, fields: g.fields.filter(f => f.selected) }))
-    .filter(g => g.fields.length > 0)
+    .filter(g => g.fields.length > 0),
 )
 
-const openArchiveSettingsFieldPicker = () => {
-  archiveFieldSearchQuery.value = ''
-  showArchiveFieldPicker.value = true
-}
-
-const archiveSettingsPickField = (field: { field_key: string; source: string }) => {
-  if (!selectedArchiveConfig.value) return
-  const mainFields = selectedArchiveConfig.value.main_fields || selectedArchiveConfig.value.fields
-  const mf = mainFields.find(f => f.field_key === field.field_key)
-  if (mf && field.source === 'main') { mf.selected = true; return }
-  if (selectedArchiveConfig.value.detail_tables) {
-    for (const dt of selectedArchiveConfig.value.detail_tables) {
-      if (dt.table_name === field.source) {
-        const df = dt.fields.find(f => f.field_key === field.field_key)
-        if (df) { df.selected = true; return }
-      }
-    }
+const archivePickField = (field: { field_key: string; source: string }) => {
+  if (!fullArchiveConfig.value || !fullArchiveConfig.value.user_permissions.allow_custom_fields) return
+  const cfg = fullArchiveConfig.value
+  if (field.source === 'main') {
+    const f = cfg.main_fields.find(f => f.field_key === field.field_key)
+    if (f) f.selected = true
+  }
+  else {
+    const dt = cfg.detail_tables.find(d => d.table_name === field.source)
+    if (dt) { const f = dt.fields.find(f => f.field_key === field.field_key); if (f) f.selected = true }
   }
 }
 
-const archiveSettingsUnpickField = (field: { field_key: string; source: string }) => {
-  if (!selectedArchiveConfig.value) return
-  const mainFields = selectedArchiveConfig.value.main_fields || selectedArchiveConfig.value.fields
-  const mf = mainFields.find(f => f.field_key === field.field_key)
-  if (mf && field.source === 'main') { mf.selected = false; return }
-  if (selectedArchiveConfig.value.detail_tables) {
-    for (const dt of selectedArchiveConfig.value.detail_tables) {
-      if (dt.table_name === field.source) {
-        const df = dt.fields.find(f => f.field_key === field.field_key)
-        if (df) { df.selected = false; return }
-      }
-    }
+const archiveUnpickField = (field: { field_key: string; source: string }) => {
+  if (!fullArchiveConfig.value) return
+  const cfg = fullArchiveConfig.value
+  if (field.source === 'main') {
+    const f = cfg.main_fields.find(f => f.field_key === field.field_key)
+    if (f) f.selected = false
   }
+  else {
+    const dt = cfg.detail_tables.find(d => d.table_name === field.source)
+    if (dt) { const f = dt.fields.find(f => f.field_key === field.field_key); if (f) f.selected = false }
+  }
+}
+
+// 归档自定义规则
+const newArchiveRuleContent = ref('')
+
+const addArchiveCustomRule = () => {
+  if (!newArchiveRuleContent.value.trim() || !fullArchiveConfig.value) return
+  if (!fullArchiveConfig.value.custom_rules) fullArchiveConfig.value.custom_rules = []
+  fullArchiveConfig.value.custom_rules.push({
+    id: `UACR-${Date.now()}`,
+    content: newArchiveRuleContent.value.trim(),
+    enabled: true,
+  })
+  newArchiveRuleContent.value = ''
+  message.success(t('settings.archive.ruleAdded'))
+}
+
+const removeArchiveCustomRule = (ruleId: string) => {
+  if (!fullArchiveConfig.value) return
+  fullArchiveConfig.value.custom_rules = fullArchiveConfig.value.custom_rules.filter(r => r.id !== ruleId)
+  message.success(t('settings.workbench.deleted'))
+}
+
+// 保存归档复盘配置
+const handleSaveArchive = async () => {
+  if (!fullArchiveConfig.value) return
+  const cfg = fullArchiveConfig.value
+  const selectedKeys = archiveAllFields.value.filter(f => f.selected).map(f => f.field_key)
+  const ruleToggleOverrides = cfg.tenant_rules
+    .filter(r => r.rule_scope !== 'mandatory')
+    .map(r => ({ rule_id: r.id, enabled: r.enabled }))
+  const req: UpdatePersonalConfigRequest = {
+    custom_rules: cfg.custom_rules || [],
+    field_overrides: cfg.field_mode === 'selected' ? selectedKeys : [],
+    field_mode: cfg.field_mode,
+    strictness_override: cfg.audit_strictness,
+    rule_toggle_overrides: ruleToggleOverrides,
+  }
+  saving.value = true
+  try {
+    await settingsApi.updateArchiveConfig(cfg.process_type, req)
+    message.success(t('settings.archive.saveSuccess'))
+  }
+  catch (e) { message.error(t('settings.archive.saveFailed')) }
+  finally { saving.value = false }
 }
 </script>
 
@@ -595,7 +583,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
       </div>
     </div>
 
-    <!--标签导航-->
+    <!-- Tab 导航 -->
     <div class="tab-nav">
       <button
         v-for="tab in visibleTabs"
@@ -609,8 +597,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
       </button>
     </div>
 
-
-    <!--配置文件选项卡-->
+    <!-- ===== 个人资料 Tab ===== -->
     <div v-if="activeTab === 'profile'" class="tab-content">
       <div class="settings-card">
         <div class="profile-avatar-section">
@@ -662,7 +649,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
         </a-form>
 
         <div class="settings-actions">
-          <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
+          <a-button type="primary" size="large" :disabled="saving" @click="handleSaveProfile">
             <LoadingOutlined v-if="saving" spin />
             <SaveOutlined v-else />
             {{ t('settings.profile.save') }}
@@ -670,14 +657,12 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
         </div>
       </div>
 
-      <!--角色和权限卡-->
+      <!-- 角色与权限卡 -->
       <div class="settings-card" style="margin-top: 20px;">
         <h4 class="perm-card-title">
           <SafetyCertificateOutlined style="color: var(--color-primary);" />
           {{ t('settings.profile.roleAndPermissions') }}
         </h4>
-
-        <!--系统管理视图-->
         <template v-if="currentRoleType === 'system_admin'">
           <div class="perm-info-row">
             <span class="perm-info-label">{{ t('settings.profile.currentRole') }}</span>
@@ -697,8 +682,6 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             </div>
           </div>
         </template>
-
-        <!--业务/租户管理视图 — 租户范围-->
         <template v-else>
           <div class="perm-info-row">
             <span class="perm-info-label">{{ t('settings.profile.currentTenant') }}</span>
@@ -722,21 +705,14 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
           <div class="perm-pages-section">
             <span class="perm-info-label">{{ t('settings.profile.accessiblePages') }}</span>
             <div class="perm-page-tags">
-              <span
-                v-for="p in currentOrgPagePermissions"
-                :key="p"
-                class="perm-page-tag"
-              >
-                {{ getPageLabel(p) }}
-              </span>
+              <span v-for="p in currentOrgPagePermissions" :key="p" class="perm-page-tag">{{ getPageLabel(p) }}</span>
             </div>
           </div>
         </template>
-
         <p class="perm-hint-text">{{ t('settings.profile.permissionHint') }}</p>
       </div>
 
-      <!--语言设置（集成到配置文件中）-->
+      <!-- 语言设置 -->
       <div class="settings-card" style="margin-top: 20px;">
         <h4 class="perm-card-title">
           <GlobalOutlined style="color: var(--color-primary);" />
@@ -758,28 +734,19 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
         </div>
       </div>
 
-      <!--安全/密码（集成到配置文件中）-->
+      <!-- 安全/密码 -->
       <div class="settings-card" style="margin-top: 20px;">
         <h4 class="perm-card-title">
           <LockOutlined style="color: var(--color-primary);" />
           {{ t('settings.security.title') }}
         </h4>
         <p class="config-section-desc" style="margin-bottom: 16px;">{{ t('settings.security.subtitle') }}</p>
-
         <a-form layout="vertical" class="settings-form" style="max-width: 480px;">
           <a-form-item :label="t('settings.security.currentPassword')">
-            <a-input-password
-              v-model:value="passwordForm.currentPassword"
-              size="large"
-              :placeholder="t('settings.security.currentPasswordPlaceholder')"
-            />
+            <a-input-password v-model:value="passwordForm.currentPassword" size="large" :placeholder="t('settings.security.currentPasswordPlaceholder')" />
           </a-form-item>
           <a-form-item :label="t('settings.security.newPassword')">
-            <a-input-password
-              v-model:value="passwordForm.newPassword"
-              size="large"
-              :placeholder="t('settings.security.newPasswordPlaceholder')"
-            />
+            <a-input-password v-model:value="passwordForm.newPassword" size="large" :placeholder="t('settings.security.newPasswordPlaceholder')" />
             <div v-if="passwordStrength" class="password-strength">
               <div class="strength-bar">
                 <div class="strength-fill" :style="{ width: strengthConfig[passwordStrength].percent + '%', background: strengthConfig[passwordStrength].color }" />
@@ -790,11 +757,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             </div>
           </a-form-item>
           <a-form-item :label="t('settings.security.confirmPassword')">
-            <a-input-password
-              v-model:value="passwordForm.confirmPassword"
-              size="large"
-              :placeholder="t('settings.security.confirmPasswordPlaceholder')"
-            />
+            <a-input-password v-model:value="passwordForm.confirmPassword" size="large" :placeholder="t('settings.security.confirmPasswordPlaceholder')" />
           </a-form-item>
           <a-button type="primary" size="large" :disabled="passwordChanging" @click="handleChangePassword">
             <LoadingOutlined v-if="passwordChanging" spin />
@@ -802,16 +765,13 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
             {{ t('settings.security.changePassword') }}
           </a-button>
         </a-form>
-
         <div class="settings-divider" />
-
         <div class="security-info">
           <div class="security-info-row">
             <span class="perm-info-label">{{ t('settings.security.lastChanged') }}</span>
             <span class="perm-info-value">{{ securityInfo.password_last_changed }}</span>
           </div>
         </div>
-
         <div v-if="securityInfo.login_history.length" class="login-history">
           <h4 class="config-section-title" style="margin-top: 24px;">{{ t('settings.security.loginHistory') }}</h4>
           <div class="login-history-list">
@@ -827,116 +787,107 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
         </div>
       </div>
     </div>
-    <!--审核工作台选项卡-->
+
+    <!-- ===== 审核工作台 Tab ===== -->
     <div v-if="activeTab === 'workbench'" class="tab-content">
-      <div class="workbench-layout">
-        <!--左：进程列表-->
+      <div v-if="workbenchLoading && !processList.length" class="loading-placeholder">
+        <a-spin :tip="t('common.loading')" />
+      </div>
+      <div v-else-if="!processList.length" class="settings-card">
+        <a-empty :description="t('settings.workbench.noProcess')" />
+      </div>
+      <div v-else class="workbench-layout">
+        <!-- 左：流程列表 -->
         <div class="process-list-panel">
           <div class="process-list-header">
             <SettingOutlined />
-            <span>我的审核流程</span>
+            <span>{{ t('settings.workbench.myProcesses') }}</span>
           </div>
           <div
-            v-for="proc in userProcessConfigs"
-            :key="proc.id"
+            v-for="proc in processList"
+            :key="proc.process_type"
             class="process-list-item"
-            :class="{ 'process-list-item--active': selectedProcessId === proc.id }"
-            @click="selectedProcessId = proc.id"
+            :class="{ 'process-list-item--active': selectedProcessType === proc.process_type }"
+            @click="selectProcess(proc.process_type)"
           >
-            <div class="process-list-item-name">{{ proc.process_type }}</div>
-            <div v-if="proc.process_type_label" class="process-list-item-path">{{ proc.process_type_label }}</div>
+            <div class="process-list-item-name">{{ proc.process_type_label || proc.process_type }}</div>
+            <div v-if="proc.process_type_label" class="process-list-item-path">{{ proc.process_type }}</div>
           </div>
         </div>
 
-        <!--右：配置详细信息-->
-        <div v-if="selectedConfig" class="process-config-panel">
-          <h3 class="config-title">{{ selectedConfig.process_type }} - 个人审核配置</h3>
+        <!-- 右：配置详情 -->
+        <div v-if="fullProcessConfig && !workbenchLoading" class="process-config-panel">
+          <h3 class="config-title">{{ fullProcessConfig.process_type_label || fullProcessConfig.process_type }} — {{ t('settings.workbench.personalConfig') }}</h3>
 
-          <!--子部分导航-->
+          <!-- 子导航 -->
           <div class="section-nav">
             <button
               v-for="sec in [
-                { key: 'fields', label: '审核字段', icon: AppstoreOutlined },
-                { key: 'rules', label: '审核规则', icon: NodeIndexOutlined },
-                { key: 'ai', label: '审核尺度', icon: ControlOutlined },
+                { key: 'fields', label: t('settings.workbench.fieldsTab'), icon: AppstoreOutlined },
+                { key: 'rules', label: t('settings.workbench.rulesTab'), icon: NodeIndexOutlined },
+                { key: 'ai', label: t('settings.workbench.aiTab'), icon: ControlOutlined },
               ]"
               :key="sec.key"
               class="section-nav-btn"
               :class="{ 'section-nav-btn--active': workbenchSection === sec.key }"
-              @click="workbenchSection = sec.key"
+              @click="workbenchSection = sec.key as any"
             >
               <component :is="sec.icon" />
               {{ sec.label }}
             </button>
           </div>
 
-          <!--===== 字段部分 =====-->
+          <!-- 字段部分 -->
           <div v-if="workbenchSection === 'fields'" class="config-section">
             <div class="section-header-row">
-              <h4 class="config-section-title">传输 AI 的字段</h4>
-              <span v-if="!permissions?.allow_custom_fields" class="locked-tag">
-                <LockOutlined /> 管理员已锁定
+              <h4 class="config-section-title">{{ t('settings.workbench.fieldsTitle') }}</h4>
+              <span v-if="!fullProcessConfig.user_permissions.allow_custom_fields" class="locked-tag">
+                <LockOutlined /> {{ t('settings.workbench.lockedByAdmin') }}
               </span>
             </div>
             <p class="config-section-desc">
-              {{ selectedConfig.field_mode === 'all' ? '当前为全部字段模式' : '以下为参与 AI 审核的字段配置' }}
-              <template v-if="permissions?.allow_custom_fields && selectedConfig.field_mode === 'selected'">
-                ，您可以通过弹框切换字段的选中状态
+              {{ fullProcessConfig.field_mode === 'all' ? t('settings.workbench.allFieldsMode') : t('settings.workbench.selectedFieldsMode') }}
+              <template v-if="fullProcessConfig.user_permissions.allow_custom_fields && fullProcessConfig.field_mode === 'selected'">
+                {{ t('settings.workbench.canToggleFields') }}
               </template>
             </p>
 
-            <template v-if="selectedConfig.field_mode === 'selected'">
+            <template v-if="fullProcessConfig.field_mode === 'selected'">
               <div class="field-picker-toolbar">
-                <span class="field-count">已选 {{ settingsSelectedCount }} / {{ settingsAllFields.length }} 个字段</span>
-                <a-button
-                  v-if="permissions?.allow_custom_fields"
-                  type="primary"
-                  size="small"
-                  @click="openSettingsFieldPicker"
-                >
-                  <AppstoreOutlined /> 选择字段
+                <span class="field-count">{{ t('settings.workbench.fieldSelected', [selectedFieldCount, allFields.length]) }}</span>
+                <a-button v-if="fullProcessConfig.user_permissions.allow_custom_fields" type="primary" size="small" @click="showFieldPicker = true; fieldSearchQuery = ''">
+                  <AppstoreOutlined /> {{ t('settings.workbench.selectFields') }}
                 </a-button>
               </div>
-
-              <!--按表分组的选定字段-->
-              <template v-if="settingsGroupedSelected.length">
-                <div v-for="group in settingsGroupedSelected" :key="group.source" class="selected-field-group">
+              <template v-if="groupedSelected.length">
+                <div v-for="group in groupedSelected" :key="group.source" class="selected-field-group">
                   <div class="field-group-label">{{ group.sourceLabel }}</div>
                   <div class="selected-fields-display">
-                    <div
-                      v-for="field in group.fields"
-                      :key="field.field_key + field.source"
-                      class="selected-field-tag"
-                    >
+                    <div v-for="field in group.fields" :key="field.field_key + field.source" class="selected-field-tag">
                       <span class="selected-field-name">{{ field.field_name }}</span>
                       <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
                     </div>
                   </div>
                 </div>
               </template>
-              <div v-else class="field-empty-hint">
-                暂未选择字段
-              </div>
+              <div v-else class="field-empty-hint">{{ t('settings.workbench.noFieldSelected') }}</div>
             </template>
-
             <template v-else>
-              <div class="field-count" style="margin-top: 8px;">
-                全部字段模式：所有主表及明细表字段均传输给 AI
-              </div>
+              <div class="field-count" style="margin-top: 8px;">{{ t('settings.workbench.allFieldsModeDesc') }}</div>
             </template>
           </div>
 
-          <!--=====规则部分=====-->
+          <!-- 规则部分 -->
           <div v-if="workbenchSection === 'rules'" class="config-section">
-            <!--系统规则（来自租户配置）-->
+            <!-- 租户规则 -->
             <div class="section-header-row">
-              <h4 class="config-section-title">通用审核规则（租户配置）</h4>
+              <h4 class="config-section-title">{{ t('settings.workbench.tenantRules') }}</h4>
             </div>
-            <div class="rule-config-list">
-              <div v-for="rule in selectedConfig.rules" :key="rule.id" class="rule-config-item">
+            <div v-if="fullProcessConfig.tenant_rules.length" class="rule-config-list">
+              <div v-for="rule in fullProcessConfig.tenant_rules" :key="rule.id" class="rule-config-item">
                 <div class="rule-config-content">
                   <span class="rule-config-text">{{ rule.rule_content }}</span>
-                  <span v-if="(rule as any).related_flow" class="rule-flow-tag">
+                  <span v-if="rule.related_flow" class="rule-flow-tag">
                     <NodeIndexOutlined /> {{ t('settings.workbench.relatedFlow') }}
                   </span>
                   <span
@@ -948,85 +899,74 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
                     }"
                   >{{ scopeConfig[rule.rule_scope]?.label }}</span>
                 </div>
-                <a-switch
-                  v-model:checked="rule.enabled"
-                  size="small"
-                  :disabled="rule.rule_scope === 'mandatory'"
-                />
+                <a-switch v-model:checked="rule.enabled" size="small" :disabled="rule.rule_scope === 'mandatory'" />
               </div>
             </div>
+            <div v-else class="field-empty-hint">{{ t('settings.workbench.noTenantRules') }}</div>
 
-            <!--自定义规则（用户私有）-->
+            <!-- 自定义规则 -->
             <div class="section-header-row" style="margin-top: 20px;">
-              <h4 class="config-section-title">个人自定义规则</h4>
-              <span v-if="!permissions?.allow_custom_rules" class="locked-tag">
-                <LockOutlined /> 管理员已锁定
+              <h4 class="config-section-title">{{ t('settings.workbench.personalRules') }}</h4>
+              <span v-if="!fullProcessConfig.user_permissions.allow_custom_rules" class="locked-tag">
+                <LockOutlined /> {{ t('settings.workbench.lockedByAdmin') }}
               </span>
             </div>
             <p class="config-section-desc">
-              {{ permissions?.allow_custom_rules ? '您可以为此流程添加个人审核规则，优先级低于租户强制规则' : '当前流程不允许添加个人规则' }}
+              {{ fullProcessConfig.user_permissions.allow_custom_rules ? t('settings.workbench.personalRulesAllowed') : t('settings.workbench.personalRulesDenied') }}
             </p>
-
-            <div class="rule-config-list" v-if="currentCustomRules.length > 0">
-              <div v-for="rule in currentCustomRules" :key="rule.id" class="rule-config-item">
+            <div v-if="fullProcessConfig.custom_rules?.length" class="rule-config-list">
+              <div v-for="rule in fullProcessConfig.custom_rules" :key="rule.id" class="rule-config-item">
                 <div class="rule-config-content">
                   <span class="rule-config-text">{{ rule.content }}</span>
                   <span v-if="rule.related_flow" class="rule-flow-tag">
                     <NodeIndexOutlined /> {{ t('settings.workbench.relatedFlow') }}
                   </span>
-                  <span class="rule-scope-tag rule-scope-tag--custom">个人</span>
+                  <span class="rule-scope-tag rule-scope-tag--custom">{{ t('settings.workbench.personal') }}</span>
                 </div>
                 <div class="rule-config-actions">
                   <a-switch v-model:checked="rule.enabled" size="small" />
-                  <a-popconfirm v-if="permissions?.allow_custom_rules" title="确认删除？" @confirm="removeCustomRule(rule.id)">
+                  <a-popconfirm v-if="fullProcessConfig.user_permissions.allow_custom_rules" :title="t('settings.workbench.confirmDelete')" @confirm="removeCustomRule(rule.id)">
                     <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
                   </a-popconfirm>
                 </div>
               </div>
             </div>
-
-            <div v-if="permissions?.allow_custom_rules" class="add-rule-row">
+            <div v-if="fullProcessConfig.user_permissions.allow_custom_rules" class="add-rule-row">
               <a-input
                 v-model:value="newRuleContent"
-                placeholder="输入自定义规则内容..."
+                :placeholder="t('settings.workbench.addRulePlaceholder')"
                 @pressEnter="addCustomRule"
               />
-              <a-tooltip title="关联审批流：该规则需要审批流节点信息才能校验">
-                <button
-                  class="icon-btn"
-                  :class="{ 'icon-btn--active': newRuleRelatedFlow }"
-                  @click="newRuleRelatedFlow = !newRuleRelatedFlow"
-                >
+              <a-tooltip :title="t('settings.workbench.relatedFlowTip')">
+                <button class="icon-btn" :class="{ 'icon-btn--active': newRuleRelatedFlow }" @click="newRuleRelatedFlow = !newRuleRelatedFlow">
                   <NodeIndexOutlined />
                 </button>
               </a-tooltip>
               <a-button type="primary" :disabled="!newRuleContent.trim()" @click="addCustomRule">
-                <PlusOutlined /> 添加
+                <PlusOutlined /> {{ t('settings.workbench.add') }}
               </a-button>
             </div>
           </div>
 
-          <!--===== AI 严格性部分 =====-->
+          <!-- AI 严格度部分 -->
           <div v-if="workbenchSection === 'ai'" class="config-section">
             <div class="section-header-row">
-              <h4 class="config-section-title">审核尺度</h4>
-              <span v-if="!permissions?.allow_modify_strictness" class="locked-tag">
-                <LockOutlined /> 管理员已锁定
+              <h4 class="config-section-title">{{ t('settings.workbench.strictnessTitle') }}</h4>
+              <span v-if="!fullProcessConfig.user_permissions.allow_modify_strictness" class="locked-tag">
+                <LockOutlined /> {{ t('settings.workbench.lockedByAdmin') }}
               </span>
             </div>
-            <p class="config-section-desc">
-              {{ t('settings.workbench.strictnessDesc', '审核尺度影响 AI 建议倾向，由管理员或个人设置') }}
-            </p>
+            <p class="config-section-desc">{{ t('settings.workbench.strictnessDesc') }}</p>
             <div class="strictness-options">
               <div
                 v-for="opt in strictnessOptions"
                 :key="opt.value"
                 class="strictness-option"
                 :class="{
-                  'strictness-option--active': selectedConfig.ai_config.audit_strictness === opt.value,
-                  'strictness-option--disabled': !permissions?.allow_modify_strictness,
+                  'strictness-option--active': fullProcessConfig.audit_strictness === opt.value,
+                  'strictness-option--disabled': !fullProcessConfig.user_permissions.allow_modify_strictness,
                 }"
-                @click="permissions?.allow_modify_strictness && (selectedConfig.ai_config.audit_strictness = opt.value as any)"
+                @click="fullProcessConfig.user_permissions.allow_modify_strictness && (fullProcessConfig.audit_strictness = opt.value)"
               >
                 <div class="strictness-option-radio" />
                 <div>
@@ -1035,66 +975,50 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
                 </div>
               </div>
             </div>
-
-            <!--知识库模式（只读显示）-->
             <div style="margin-top: 20px;">
-              <h4 class="config-section-title">知识库模式</h4>
+              <h4 class="config-section-title">{{ t('settings.workbench.kbMode') }}</h4>
               <p class="config-section-desc">
-                当前模式：<span style="font-weight: 600;">
-                  {{ selectedConfig.kb_mode === 'rules_only' ? '仅规则库' : selectedConfig.kb_mode === 'rag_only' ? '仅制度库' : '混合模式' }}
+                {{ t('common.currentColon') }}<span style="font-weight: 600;">
+                  {{ fullProcessConfig.kb_mode === 'rules_only' ? t('settings.workbench.kbRulesOnly') : fullProcessConfig.kb_mode === 'rag_only' ? t('settings.workbench.kbRagOnly') : t('settings.workbench.kbHybrid') }}
                 </span>
-                （由管理员配置）
+                （{{ t('settings.workbench.configuredByAdmin') }}）
               </p>
             </div>
           </div>
 
           <div class="settings-actions">
-            <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
-              <LoadingOutlined v-if="saving" spin />
-              <SaveOutlined v-else />
-              保存配置
+            <a-button type="primary" size="large" :loading="saving" @click="handleSaveWorkbench">
+              <SaveOutlined v-if="!saving" />
+              {{ t('common.save') }}
             </a-button>
           </div>
         </div>
 
+        <div v-else-if="workbenchLoading" class="process-config-panel" style="display:flex;align-items:center;justify-content:center;min-height:300px;">
+          <a-spin :tip="t('common.loading')" />
+        </div>
         <div v-else class="process-config-empty">
-          <a-empty description="请选择左侧流程查看配置" />
+          <a-empty :description="t('settings.workbench.selectProcess')" />
         </div>
       </div>
     </div>
 
-    <!--设置字段选择器模式-->
-    <a-modal
-      v-model:open="showFieldPicker"
-      title="选择字段"
-      :width="720"
-      :footer="null"
-      @cancel="showFieldPicker = false"
-    >
+    <!-- 审核工作台字段选择器 Modal -->
+    <a-modal v-model:open="showFieldPicker" :title="t('settings.workbench.fieldPickerTitle')" :width="720" :footer="null">
       <div class="field-picker-modal">
         <div class="field-picker-left">
           <div class="field-picker-panel-header">
-            <span>可选字段</span>
+            <span>{{ t('settings.workbench.availableFields') }}</span>
           </div>
           <div class="field-picker-search">
-            <a-input
-              v-model:value="fieldSearchQuery"
-              placeholder="搜索字段名称或字段键..."
-              allow-clear
-              size="small"
-            >
+            <a-input v-model:value="fieldSearchQuery" :placeholder="t('settings.workbench.fieldSearchPlaceholder')" allow-clear size="small">
               <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
             </a-input>
           </div>
           <div class="field-picker-list">
-            <template v-for="group in settingsGroupedUnselected" :key="group.source">
+            <template v-for="group in groupedUnselected" :key="group.source">
               <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
-              <div
-                v-for="field in group.fields"
-                :key="field.field_key + field.source"
-                class="field-picker-item"
-                @click="settingsPickField(field)"
-              >
+              <div v-for="field in group.fields" :key="field.field_key + field.source" class="field-picker-item" @click="pickField(field)">
                 <div class="field-picker-item-info">
                   <div class="field-picker-item-name">{{ field.field_name }}</div>
                   <div class="field-picker-item-meta">
@@ -1105,24 +1029,20 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
                 <SwapRightOutlined class="field-picker-arrow" />
               </div>
             </template>
-            <div v-if="!settingsGroupedUnselected.length" class="field-picker-empty">
-              {{ fieldSearchQuery ? '无匹配字段' : '所有字段已添加' }}
+            <div v-if="!groupedUnselected.length" class="field-picker-empty">
+              {{ fieldSearchQuery ? t('settings.workbench.noMatchField') : t('settings.workbench.allFieldsAdded') }}
             </div>
           </div>
         </div>
         <div class="field-picker-right">
           <div class="field-picker-panel-header">
-            <span>已选字段</span>
-            <span class="field-picker-count">{{ settingsSelectedCount }}</span>
+            <span>{{ t('settings.workbench.selectedFields') }}</span>
+            <span class="field-picker-count">{{ selectedFieldCount }}</span>
           </div>
           <div class="field-picker-list">
-            <template v-for="group in settingsGroupedSelected" :key="group.source">
+            <template v-for="group in groupedSelected" :key="group.source">
               <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
-              <div
-                v-for="field in group.fields"
-                :key="field.field_key + field.source"
-                class="field-picker-item field-picker-item--selected"
-              >
+              <div v-for="field in group.fields" :key="field.field_key + field.source" class="field-picker-item field-picker-item--selected">
                 <div class="field-picker-item-info">
                   <div class="field-picker-item-name">{{ field.field_name }}</div>
                   <div class="field-picker-item-meta">
@@ -1130,218 +1050,137 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
                     <span class="field-key">{{ field.field_key }}</span>
                   </div>
                 </div>
-                <button class="field-picker-remove" @click="settingsUnpickField(field)">
-                  <CloseOutlined />
-                </button>
+                <button class="field-picker-remove" @click="unpickField(field)"><CloseOutlined /></button>
               </div>
             </template>
-            <div v-if="!settingsGroupedSelected.length" class="field-picker-empty">
-              暂未选择字段
-            </div>
+            <div v-if="!groupedSelected.length" class="field-picker-empty">{{ t('settings.workbench.noFieldSelected') }}</div>
           </div>
         </div>
       </div>
     </a-modal>
 
-    <!--Cron 个人设置选项卡-->
+    <!-- ===== 定时任务 Tab ===== -->
     <div v-if="activeTab === 'cron'" class="tab-content">
       <div class="settings-card" style="max-width: 700px;">
-        <h4 class="config-section-title" style="margin-bottom: 12px;">默认推送邮箱</h4>
-        <p class="config-section-desc">日报推送和周报推送的结果将发送至此邮箱，批量审核任务不涉及邮件推送</p>
-        <a-input v-model:value="cronDefaultEmail" placeholder="输入默认推送邮箱，多个邮箱使用英文逗号分隔" size="large">
+        <h4 class="perm-card-title">
+          <MailOutlined style="color: var(--color-primary);" />
+          {{ t('settings.cron.defaultEmailTitle') }}
+        </h4>
+        <p class="config-section-desc" style="margin-bottom: 16px;">{{ t('settings.cron.defaultEmailDesc') }}</p>
+        <a-input
+          v-model:value="cronDefaultEmail"
+          :placeholder="t('settings.cron.defaultEmailPlaceholder')"
+          size="large"
+          :disabled="cronLoading"
+        >
           <template #prefix><MailOutlined class="input-icon" /></template>
         </a-input>
-        <p class="config-section-desc" style="margin-top: 4px; margin-bottom: 0;">多个邮箱请使用英文逗号（,）分隔</p>
+        <p class="config-section-desc" style="margin-top: 4px; margin-bottom: 0;">{{ t('settings.cron.multiEmailHint') }}</p>
         <div class="settings-actions" style="margin-top: 20px;">
-          <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
-            <LoadingOutlined v-if="saving" spin />
-            <SaveOutlined v-else />
-            保存配置
+          <a-button type="primary" size="large" :loading="saving" @click="handleSaveCron">
+            <SaveOutlined v-if="!saving" />
+            {{ t('common.save') }}
           </a-button>
         </div>
       </div>
     </div>
 
-    <!--归档字段选择器模式-->
-    <a-modal
-      v-model:open="showArchiveFieldPicker"
-      :title="t('settings.archive.fieldPickerTitle')"
-      :width="720"
-      :footer="null"
-      @cancel="showArchiveFieldPicker = false"
-    >
-      <div class="field-picker-modal">
-        <div class="field-picker-left">
-          <div class="field-picker-panel-header">
-            <span>可选字段</span>
-          </div>
-          <div class="field-picker-search">
-            <a-input
-              v-model:value="archiveFieldSearchQuery"
-              placeholder="搜索字段名称或字段键..."
-              allow-clear
-              size="small"
-            >
-              <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
-            </a-input>
-          </div>
-          <div class="field-picker-list">
-            <template v-for="group in archiveSettingsGroupedUnselected" :key="group.source">
-              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
-              <div
-                v-for="field in group.fields"
-                :key="field.field_key + field.source"
-                class="field-picker-item"
-                @click="archiveSettingsPickField(field)"
-              >
-                <div class="field-picker-item-info">
-                  <div class="field-picker-item-name">{{ field.field_name }}</div>
-                  <div class="field-picker-item-meta">
-                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                    <span class="field-key">{{ field.field_key }}</span>
-                  </div>
-                </div>
-                <SwapRightOutlined class="field-picker-arrow" />
-              </div>
-            </template>
-            <div v-if="!archiveSettingsGroupedUnselected.length" class="field-picker-empty">
-              {{ archiveFieldSearchQuery ? '无匹配字段' : '所有字段已添加' }}
-            </div>
-          </div>
-        </div>
-        <div class="field-picker-right">
-          <div class="field-picker-panel-header">
-            <span>已选字段</span>
-            <span class="field-picker-count">{{ archiveSettingsSelectedCount }}</span>
-          </div>
-          <div class="field-picker-list">
-            <template v-for="group in archiveSettingsGroupedSelected" :key="group.source">
-              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
-              <div
-                v-for="field in group.fields"
-                :key="field.field_key + field.source"
-                class="field-picker-item field-picker-item--selected"
-              >
-                <div class="field-picker-item-info">
-                  <div class="field-picker-item-name">{{ field.field_name }}</div>
-                  <div class="field-picker-item-meta">
-                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                    <span class="field-key">{{ field.field_key }}</span>
-                  </div>
-                </div>
-                <button class="field-picker-remove" @click="archiveSettingsUnpickField(field)">
-                  <CloseOutlined />
-                </button>
-              </div>
-            </template>
-            <div v-if="!archiveSettingsGroupedSelected.length" class="field-picker-empty">
-              暂未选择字段
-            </div>
-          </div>
-        </div>
-      </div>
-    </a-modal>
-
-    <!--存档审核个人设置选项卡-->
+    <!-- ===== 归档复盘 Tab ===== -->
     <div v-if="activeTab === 'archive'" class="tab-content">
-      <div class="workbench-layout">
-        <!--左：进程列表-->
+      <div v-if="archiveLoading && !archiveList.length" class="loading-placeholder">
+        <a-spin :tip="t('common.loading')" />
+      </div>
+      <div v-else-if="!archiveList.length" class="settings-card">
+        <a-empty :description="t('settings.archive.noProcess')" />
+      </div>
+      <div v-else class="workbench-layout">
+        <!-- 左：归档流程列表 -->
         <div class="process-list-panel">
           <div class="process-list-header">
             <SafetyCertificateOutlined />
-            <span>复核流程</span>
+            <span>{{ t('settings.archive.reviewProcesses') }}</span>
           </div>
           <div
-            v-for="cfg in userArchiveConfigs"
-            :key="cfg.id"
+            v-for="cfg in archiveList"
+            :key="cfg.process_type"
             class="process-list-item"
-            :class="{ 'process-list-item--active': selectedArchiveId === cfg.id }"
-            @click="selectedArchiveId = cfg.id"
+            :class="{ 'process-list-item--active': selectedArchiveProcessType === cfg.process_type }"
+            @click="selectArchiveProcess(cfg.process_type)"
           >
-            <div class="process-list-item-name">{{ cfg.process_type }}</div>
-            <div v-if="cfg.process_type_label" class="process-list-item-path">{{ cfg.process_type_label }}</div>
+            <div class="process-list-item-name">{{ cfg.process_type_label || cfg.process_type }}</div>
+            <div v-if="cfg.process_type_label" class="process-list-item-path">{{ cfg.process_type }}</div>
           </div>
         </div>
 
-        <!--右：配置详细信息-->
-        <div v-if="selectedArchiveConfig" class="process-config-panel">
-          <h3 class="config-title">{{ selectedArchiveConfig.process_type }} - 个人复核配置</h3>
+        <!-- 右：归档配置详情 -->
+        <div v-if="fullArchiveConfig && !archiveLoading" class="process-config-panel">
+          <h3 class="config-title">{{ fullArchiveConfig.process_type_label || fullArchiveConfig.process_type }} — {{ t('settings.archive.personalReviewConfig') }}</h3>
 
-          <!--子部分导航-->
+          <!-- 子导航 -->
           <div class="section-nav">
             <button
               v-for="sec in [
-                { key: 'fields', label: '复核字段', icon: AppstoreOutlined },
-                { key: 'rules', label: '复核规则', icon: AuditOutlined },
-                { key: 'ai', label: '复核尺度', icon: ControlOutlined },
+                { key: 'fields', label: t('settings.archive.fieldsTab'), icon: AppstoreOutlined },
+                { key: 'rules', label: t('settings.archive.rulesTab'), icon: AuditOutlined },
+                { key: 'ai', label: t('settings.archive.aiTab'), icon: ControlOutlined },
               ]"
               :key="sec.key"
               class="section-nav-btn"
               :class="{ 'section-nav-btn--active': archiveSection === sec.key }"
-              @click="archiveSection = sec.key"
+              @click="archiveSection = sec.key as any"
             >
               <component :is="sec.icon" />
               {{ sec.label }}
             </button>
           </div>
 
-          <!--===== 字段部分 =====-->
+          <!-- 字段部分 -->
           <div v-if="archiveSection === 'fields'" class="config-section">
             <div class="section-header-row">
-              <h4 class="config-section-title">复核字段</h4>
-              <span v-if="!archivePermissions?.allow_custom_fields" class="locked-tag">
-                <LockOutlined /> 管理员已锁定
+              <h4 class="config-section-title">{{ t('settings.archive.fieldsTitle') }}</h4>
+              <span v-if="!fullArchiveConfig.user_permissions.allow_custom_fields" class="locked-tag">
+                <LockOutlined /> {{ t('settings.workbench.lockedByAdmin') }}
               </span>
             </div>
             <p class="config-section-desc">
-              {{ selectedArchiveConfig.field_mode === 'all' ? '当前为全部字段模式' : '以下为参与归档复核的字段配置' }}
-              <template v-if="archivePermissions?.allow_custom_fields && selectedArchiveConfig.field_mode === 'selected'">
-                ，您可以通过弹框切换字段的选中状态
+              {{ fullArchiveConfig.field_mode === 'all' ? t('settings.archive.allFieldsMode') : t('settings.archive.selectedFieldsMode') }}
+              <template v-if="fullArchiveConfig.user_permissions.allow_custom_fields && fullArchiveConfig.field_mode === 'selected'">
+                {{ t('settings.workbench.canToggleFields') }}
               </template>
             </p>
-
-            <template v-if="selectedArchiveConfig.field_mode === 'selected'">
+            <template v-if="fullArchiveConfig.field_mode === 'selected'">
               <div class="field-picker-toolbar">
-                <span class="field-count">已选 {{ archiveSettingsSelectedCount }} / {{ archiveSettingsAllFields.length }} 个字段</span>
-                <a-button
-                  v-if="archivePermissions?.allow_custom_fields"
-                  type="primary"
-                  size="small"
-                  @click="openArchiveSettingsFieldPicker"
-                >
-                  <AppstoreOutlined /> 选择字段
+                <span class="field-count">{{ t('settings.workbench.fieldSelected', [archiveSelectedCount, archiveAllFields.length]) }}</span>
+                <a-button v-if="fullArchiveConfig.user_permissions.allow_custom_fields" type="primary" size="small" @click="showArchiveFieldPicker = true; archiveFieldSearchQuery = ''">
+                  <AppstoreOutlined /> {{ t('settings.workbench.selectFields') }}
                 </a-button>
               </div>
-              <template v-if="archiveSettingsGroupedSelected.length">
-                <div v-for="group in archiveSettingsGroupedSelected" :key="group.source" class="selected-field-group">
+              <template v-if="archiveGroupedSelected.length">
+                <div v-for="group in archiveGroupedSelected" :key="group.source" class="selected-field-group">
                   <div class="field-group-label">{{ group.sourceLabel }}</div>
                   <div class="selected-fields-display">
-                    <div
-                      v-for="field in group.fields"
-                      :key="field.field_key + field.source"
-                      class="selected-field-tag"
-                    >
+                    <div v-for="field in group.fields" :key="field.field_key + field.source" class="selected-field-tag">
                       <span class="selected-field-name">{{ field.field_name }}</span>
                       <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
                     </div>
                   </div>
                 </div>
               </template>
-              <div v-else class="field-empty-hint">暂未选择字段</div>
+              <div v-else class="field-empty-hint">{{ t('settings.workbench.noFieldSelected') }}</div>
             </template>
             <template v-else>
-              <div class="field-count" style="margin-top: 8px;">全部字段模式：所有主表及明细表字段均参与复核</div>
+              <div class="field-count" style="margin-top: 8px;">{{ t('settings.archive.allFieldsModeDesc') }}</div>
             </template>
           </div>
 
-          <!--=====规则部分=====-->
+          <!-- 规则部分 -->
           <div v-if="archiveSection === 'rules'" class="config-section">
-            <!--系统规则-->
+            <!-- 租户规则 -->
             <div class="section-header-row">
-              <h4 class="config-section-title">通用复核规则（租户配置）</h4>
+              <h4 class="config-section-title">{{ t('settings.archive.tenantRules') }}</h4>
             </div>
-            <div class="rule-config-list">
-              <div v-for="rule in selectedArchiveConfig.rules" :key="rule.id" class="rule-config-item">
+            <div v-if="fullArchiveConfig.tenant_rules.length" class="rule-config-list">
+              <div v-for="rule in fullArchiveConfig.tenant_rules" :key="rule.id" class="rule-config-item">
                 <div class="rule-config-content">
                   <span class="rule-config-text">{{ rule.rule_content }}</span>
                   <span
@@ -1353,71 +1192,66 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
                     }"
                   >{{ scopeConfig[rule.rule_scope]?.label }}</span>
                 </div>
-                <a-switch
-                  v-model:checked="rule.enabled"
-                  size="small"
-                  :disabled="rule.rule_scope === 'mandatory'"
-                />
+                <a-switch v-model:checked="rule.enabled" size="small" :disabled="rule.rule_scope === 'mandatory'" />
               </div>
             </div>
+            <div v-else class="field-empty-hint">{{ t('settings.archive.noTenantRules') }}</div>
 
-            <!--自定义规则-->
+            <!-- 自定义规则 -->
             <div class="section-header-row" style="margin-top: 20px;">
-              <h4 class="config-section-title">个人自定义复核规则</h4>
-              <span v-if="!archivePermissions?.allow_custom_rules" class="locked-tag">
-                <LockOutlined /> 管理员已锁定
+              <h4 class="config-section-title">{{ t('settings.archive.personalRules') }}</h4>
+              <span v-if="!fullArchiveConfig.user_permissions.allow_custom_rules" class="locked-tag">
+                <LockOutlined /> {{ t('settings.workbench.lockedByAdmin') }}
               </span>
             </div>
             <p class="config-section-desc">
-              {{ archivePermissions?.allow_custom_rules ? '您可以为此流程添加个人复核规则' : '当前流程不允许添加个人规则' }}
+              {{ fullArchiveConfig.user_permissions.allow_custom_rules ? t('settings.archive.personalRulesAllowed') : t('settings.archive.personalRulesDenied') }}
             </p>
-
-            <div class="rule-config-list" v-if="currentArchiveCustomRules.length > 0">
-              <div v-for="rule in currentArchiveCustomRules" :key="rule.id" class="rule-config-item">
+            <div v-if="fullArchiveConfig.custom_rules?.length" class="rule-config-list">
+              <div v-for="rule in fullArchiveConfig.custom_rules" :key="rule.id" class="rule-config-item">
                 <div class="rule-config-content">
                   <span class="rule-config-text">{{ rule.content }}</span>
-                  <span class="rule-scope-tag rule-scope-tag--custom">个人</span>
+                  <span class="rule-scope-tag rule-scope-tag--custom">{{ t('settings.workbench.personal') }}</span>
                 </div>
                 <div class="rule-config-actions">
                   <a-switch v-model:checked="rule.enabled" size="small" />
-                  <a-popconfirm v-if="archivePermissions?.allow_custom_rules" title="确认删除？" @confirm="removeArchiveCustomRule(rule.id)">
+                  <a-popconfirm v-if="fullArchiveConfig.user_permissions.allow_custom_rules" :title="t('settings.workbench.confirmDelete')" @confirm="removeArchiveCustomRule(rule.id)">
                     <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
                   </a-popconfirm>
                 </div>
               </div>
             </div>
-
-            <div v-if="archivePermissions?.allow_custom_rules" class="add-rule-row">
+            <div v-if="fullArchiveConfig.user_permissions.allow_custom_rules" class="add-rule-row">
               <a-input
                 v-model:value="newArchiveRuleContent"
-                placeholder="输入自定义复核规则内容..."
+                :placeholder="t('settings.archive.addRulePlaceholder')"
                 @pressEnter="addArchiveCustomRule"
               />
               <a-button type="primary" :disabled="!newArchiveRuleContent.trim()" @click="addArchiveCustomRule">
-                <PlusOutlined /> 添加
+                <PlusOutlined /> {{ t('settings.workbench.add') }}
               </a-button>
             </div>
           </div>
 
-          <!--===== AI 严格性部分 =====-->
+          <!-- AI 复核尺度 -->
           <div v-if="archiveSection === 'ai'" class="config-section">
             <div class="section-header-row">
-              <h4 class="config-section-title">复核尺度</h4>
-              <span v-if="!archivePermissions?.allow_modify_strictness" class="locked-tag">
-                <LockOutlined /> 管理员已锁定
+              <h4 class="config-section-title">{{ t('settings.archive.strictnessTitle') }}</h4>
+              <span v-if="!fullArchiveConfig.user_permissions.allow_modify_strictness" class="locked-tag">
+                <LockOutlined /> {{ t('settings.workbench.lockedByAdmin') }}
               </span>
             </div>
-            <p class="config-section-desc">复核尺度影响 AI 建议倾向，由管理员或个人设置</p>
+            <p class="config-section-desc">{{ t('settings.workbench.strictnessDesc') }}</p>
             <div class="strictness-options">
               <div
                 v-for="opt in strictnessOptions"
                 :key="opt.value"
                 class="strictness-option"
                 :class="{
-                  'strictness-option--active': selectedArchiveConfig.ai_config.audit_strictness === opt.value,
-                  'strictness-option--disabled': !archivePermissions?.allow_modify_strictness,
+                  'strictness-option--active': fullArchiveConfig.audit_strictness === opt.value,
+                  'strictness-option--disabled': !fullArchiveConfig.user_permissions.allow_modify_strictness,
                 }"
-                @click="archivePermissions?.allow_modify_strictness && (selectedArchiveConfig.ai_config.audit_strictness = opt.value as any)"
+                @click="fullArchiveConfig.user_permissions.allow_modify_strictness && (fullArchiveConfig.audit_strictness = opt.value)"
               >
                 <div class="strictness-option-radio" />
                 <div>
@@ -1426,32 +1260,89 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
                 </div>
               </div>
             </div>
-
             <div style="margin-top: 20px;">
-              <h4 class="config-section-title">知识库模式</h4>
+              <h4 class="config-section-title">{{ t('settings.workbench.kbMode') }}</h4>
               <p class="config-section-desc">
-                当前模式：<span style="font-weight: 600;">
-                  {{ selectedArchiveConfig.kb_mode === 'rules_only' ? '仅规则库' : selectedArchiveConfig.kb_mode === 'rag_only' ? '仅制度库' : '混合模式' }}
+                {{ t('common.currentColon') }}<span style="font-weight: 600;">
+                  {{ fullArchiveConfig.kb_mode === 'rules_only' ? t('settings.workbench.kbRulesOnly') : fullArchiveConfig.kb_mode === 'rag_only' ? t('settings.workbench.kbRagOnly') : t('settings.workbench.kbHybrid') }}
                 </span>
-                （由管理员配置）
+                （{{ t('settings.workbench.configuredByAdmin') }}）
               </p>
             </div>
           </div>
 
           <div class="settings-actions">
-            <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
-              <LoadingOutlined v-if="saving" spin />
-              <SaveOutlined v-else />
-              保存配置
+            <a-button type="primary" size="large" :loading="saving" @click="handleSaveArchive">
+              <SaveOutlined v-if="!saving" />
+              {{ t('common.save') }}
             </a-button>
           </div>
         </div>
 
+        <div v-else-if="archiveLoading" class="process-config-panel" style="display:flex;align-items:center;justify-content:center;min-height:300px;">
+          <a-spin :tip="t('common.loading')" />
+        </div>
         <div v-else class="process-config-empty">
-          <a-empty description="请选择左侧流程查看复核配置" />
+          <a-empty :description="t('settings.archive.selectProcess')" />
         </div>
       </div>
     </div>
+
+    <!-- 归档字段选择器 Modal -->
+    <a-modal v-model:open="showArchiveFieldPicker" :title="t('settings.archive.fieldPickerTitle')" :width="720" :footer="null">
+      <div class="field-picker-modal">
+        <div class="field-picker-left">
+          <div class="field-picker-panel-header">
+            <span>{{ t('settings.workbench.availableFields') }}</span>
+          </div>
+          <div class="field-picker-search">
+            <a-input v-model:value="archiveFieldSearchQuery" :placeholder="t('settings.workbench.fieldSearchPlaceholder')" allow-clear size="small">
+              <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+            </a-input>
+          </div>
+          <div class="field-picker-list">
+            <template v-for="group in archiveGroupedUnselected" :key="group.source">
+              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
+              <div v-for="field in group.fields" :key="field.field_key + field.source" class="field-picker-item" @click="archivePickField(field)">
+                <div class="field-picker-item-info">
+                  <div class="field-picker-item-name">{{ field.field_name }}</div>
+                  <div class="field-picker-item-meta">
+                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                    <span class="field-key">{{ field.field_key }}</span>
+                  </div>
+                </div>
+                <SwapRightOutlined class="field-picker-arrow" />
+              </div>
+            </template>
+            <div v-if="!archiveGroupedUnselected.length" class="field-picker-empty">
+              {{ archiveFieldSearchQuery ? t('settings.workbench.noMatchField') : t('settings.workbench.allFieldsAdded') }}
+            </div>
+          </div>
+        </div>
+        <div class="field-picker-right">
+          <div class="field-picker-panel-header">
+            <span>{{ t('settings.workbench.selectedFields') }}</span>
+            <span class="field-picker-count">{{ archiveSelectedCount }}</span>
+          </div>
+          <div class="field-picker-list">
+            <template v-for="group in archiveGroupedSelected" :key="group.source">
+              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
+              <div v-for="field in group.fields" :key="field.field_key + field.source" class="field-picker-item field-picker-item--selected">
+                <div class="field-picker-item-info">
+                  <div class="field-picker-item-name">{{ field.field_name }}</div>
+                  <div class="field-picker-item-meta">
+                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                    <span class="field-key">{{ field.field_key }}</span>
+                  </div>
+                </div>
+                <button class="field-picker-remove" @click="archiveUnpickField(field)"><CloseOutlined /></button>
+              </div>
+            </template>
+            <div v-if="!archiveGroupedSelected.length" class="field-picker-empty">{{ t('settings.workbench.noFieldSelected') }}</div>
+          </div>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -1460,7 +1351,6 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 .page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; }
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
 
-/*选项卡*/
 .tab-nav {
   display: flex; flex-direction: row; flex-wrap: nowrap; gap: 4px;
   background: var(--color-bg-hover); padding: 4px;
@@ -1475,7 +1365,6 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 .tab-btn:hover { color: var(--color-text-primary); }
 .tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
 
-/*设置卡*/
 .settings-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); padding: 24px; max-width: 700px;
@@ -1492,7 +1381,6 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 .input-icon { color: var(--color-text-tertiary); }
 .settings-actions { margin-top: 24px; display: flex; justify-content: flex-end; }
 
-/*工作台布局*/
 .workbench-layout { display: grid; grid-template-columns: 240px 1fr; gap: 20px; align-items: start; }
 
 .process-list-panel {
@@ -1524,9 +1412,7 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 }
 
 .config-title { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 4px; }
-.config-subtitle { font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 16px; }
 
-/*部分导航*/
 .section-nav {
   display: flex; flex-direction: row; flex-wrap: nowrap; gap: 4px;
   background: var(--color-bg-hover); padding: 3px;
@@ -1552,29 +1438,11 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   background: var(--color-warning-bg); color: var(--color-warning);
 }
 
-/*场网格*/
-.field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
-.field-card {
-  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
-  border: 1px solid var(--color-border-light); border-radius: var(--radius-md);
-  cursor: pointer; transition: all var(--transition-fast);
-}
-.field-card:hover:not(.field-card--readonly) { border-color: var(--color-primary-lighter); }
-.field-card--selected { border-color: var(--color-primary); background: var(--color-primary-bg); }
-.field-card--readonly { cursor: default; opacity: 0.8; }
-.field-card-check {
-  width: 20px; height: 20px; border-radius: 4px; border: 2px solid var(--color-border);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  font-size: 11px; color: #fff; transition: all var(--transition-fast);
-}
-.field-card--selected .field-card-check { background: var(--color-primary); border-color: var(--color-primary); }
-.field-card-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
 .field-type-tag {
   font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: var(--radius-sm);
   background: var(--color-bg-hover); color: var(--color-text-tertiary);
 }
 
-/*规则配置列表*/
 .rule-config-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .rule-config-item {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -1605,7 +1473,6 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 .add-rule-row :deep(.ant-btn-primary) { font-weight: 600; min-width: 80px; }
 .add-rule-row :deep(.ant-btn-primary[disabled]) { background: var(--color-primary); opacity: 0.5; color: #fff; }
 
-/*严格选项*/
 .strictness-options { display: flex; flex-direction: column; gap: 8px; }
 .strictness-option {
   display: flex; align-items: center; gap: 14px; padding: 12px 16px;
@@ -1623,72 +1490,21 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 .strictness-option-label { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
 .strictness-option-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
 
-/*模板标签*/
-.template-label {
-  font-size: 13px; font-weight: 600; color: var(--color-text-primary);
-  margin-bottom: 4px; display: block;
-}
+.loading-placeholder { display: flex; align-items: center; justify-content: center; padding: 80px; }
 
-@media (max-width: 768px) {
-  .form-row { grid-template-columns: 1fr; }
-  .workbench-layout { grid-template-columns: 1fr; }
-  .field-grid { grid-template-columns: 1fr 1fr; }
-  .tab-nav {
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    flex-wrap: nowrap;
-  }
-  .tab-nav::-webkit-scrollbar { display: none; }
-  .tab-btn { flex-shrink: 0; padding: 8px 14px; font-size: 13px; }
-  .section-nav {
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    flex-wrap: nowrap;
-  }
-  .section-nav::-webkit-scrollbar { display: none; }
-  .section-nav-btn { flex-shrink: 0; white-space: nowrap; }
-  .settings-card { padding: 16px; }
-  .process-config-panel { padding: 16px; }
-  .strictness-options { gap: 6px; }
-  .strictness-option { padding: 10px 12px; }
-  .add-rule-row { flex-direction: column; }
-  .add-rule-row .ant-btn { width: 100%; }
-  .rule-config-item { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
-  .perm-info-row { flex-direction: column; align-items: flex-start; gap: 4px; }
-  .perm-pages-section { flex-direction: column; gap: 8px; }
-}
-@media (max-width: 480px) {
-  .page-title { font-size: 20px; }
-  .tab-btn { padding: 6px 10px; font-size: 12px; gap: 4px; }
-  .field-grid { grid-template-columns: 1fr; }
-  .profile-avatar-section { flex-direction: column; text-align: center; }
-  .settings-card { padding: 14px; }
-}
-
-/*个人资料中的许可卡*/
 .perm-card-title {
   font-size: 15px; font-weight: 600; color: var(--color-text-primary);
   margin: 0 0 16px; display: flex; align-items: center; gap: 8px;
 }
-.perm-info-row {
-  display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
-}
-.perm-info-label {
-  font-size: 13px; font-weight: 500; color: var(--color-text-secondary); min-width: 72px;
-}
+.perm-info-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.perm-info-label { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); min-width: 72px; }
 .perm-info-value { font-size: 13px; color: var(--color-text-primary); }
 .perm-role-badge {
   font-size: 12px; font-weight: 600; padding: 2px 12px; border-radius: var(--radius-full);
   background: var(--color-primary-bg); color: var(--color-primary);
 }
 .perm-role-badges { display: flex; flex-wrap: wrap; gap: 4px; }
-.perm-pages-section {
-  display: flex; align-items: flex-start; gap: 12px; margin-top: 12px;
-}
+.perm-pages-section { display: flex; align-items: flex-start; gap: 12px; margin-top: 12px; }
 .perm-page-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .perm-page-tag {
   font-size: 11px; padding: 2px 10px; border-radius: var(--radius-sm);
@@ -1699,81 +1515,30 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   padding-top: 12px; border-top: 1px solid var(--color-border-light);
 }
 
-/*仪表板小部件首选项*/
-.dash-widget-list { display: flex; flex-direction: column; gap: 8px; }
-.dash-widget-item {
-  display: flex; align-items: center; gap: 14px;
-  padding: 14px 16px; border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-light); background: var(--color-bg-page);
-  cursor: pointer; transition: all var(--transition-fast);
-}
-.dash-widget-item:hover { border-color: var(--color-primary); }
-.dash-widget-item--active { background: var(--color-primary-bg); border-color: var(--color-primary); }
-.dash-widget-check {
-  width: 28px; height: 28px; border-radius: var(--radius-sm);
-  border: 2px solid var(--color-border); display: flex; align-items: center; justify-content: center;
-  color: transparent; flex-shrink: 0; transition: all var(--transition-fast);
-}
-.dash-widget-item--active .dash-widget-check {
-  background: var(--color-primary); border-color: var(--color-primary); color: #fff;
-}
-.dash-widget-info { flex: 1; min-width: 0; }
-.dash-widget-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
-.dash-widget-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
-.dash-widget-perms { display: flex; gap: 4px; flex-shrink: 0; }
-.dash-perm-tag {
-  font-size: 11px; padding: 2px 8px; border-radius: var(--radius-full);
-  background: var(--color-bg-hover); color: var(--color-text-tertiary);
-}
-/*语言和区域选项卡*/
 .language-options { display: flex; gap: 12px; flex-wrap: wrap; }
 .language-option {
-  display: flex; align-items: center; gap: 12px;
-  padding: 16px 24px; border-radius: var(--radius-lg);
-  border: 2px solid var(--color-border);
-  cursor: pointer; transition: all 0.2s ease;
-  min-width: 180px; position: relative;
+  display: flex; align-items: center; gap: 12px; padding: 16px 24px;
+  border-radius: var(--radius-lg); border: 2px solid var(--color-border);
+  cursor: pointer; transition: all 0.2s ease; min-width: 180px; position: relative;
 }
 .language-option:hover { border-color: var(--color-primary-light); background: var(--color-bg-hover); }
-.language-option--active {
-  border-color: var(--color-primary); background: var(--color-primary-bg);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-}
+.language-option--active { border-color: var(--color-primary); background: var(--color-primary-bg); box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
 .language-flag { font-size: 24px; }
 .language-label { font-size: 15px; font-weight: 600; color: var(--color-text-primary); }
 .language-check { color: var(--color-primary); font-size: 16px; margin-left: auto; }
 
-.settings-divider {
-  height: 1px; background: var(--color-border-light);
-  margin: 24px 0;
-}
-.timezone-display {
-  font-size: 14px; font-weight: 500; color: var(--color-text-primary);
-  padding: 10px 16px; background: var(--color-bg-hover);
-  border-radius: var(--radius-md); display: inline-block; margin-top: 8px;
-}
-
+.settings-divider { height: 1px; background: var(--color-border-light); margin: 24px 0; }
 
 .password-strength { margin-top: 8px; }
-.strength-bar {
-  height: 4px; background: var(--color-bg-hover);
-  border-radius: 2px; overflow: hidden; margin-bottom: 4px;
-}
-.strength-fill {
-  height: 100%; border-radius: 2px;
-  transition: width 0.3s ease, background 0.3s ease;
-}
+.strength-bar { height: 4px; background: var(--color-bg-hover); border-radius: 2px; overflow: hidden; margin-bottom: 4px; }
+.strength-fill { height: 100%; border-radius: 2px; transition: width 0.3s ease, background 0.3s ease; }
 .strength-label { font-size: 12px; font-weight: 500; }
 .security-info { margin-top: 16px; }
-.security-info-row {
-  display: flex; align-items: center; gap: 12px;
-  padding: 8px 0;
-}
+.security-info-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 .login-history-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .login-history-item {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px; border-radius: var(--radius-md);
-  background: var(--color-bg-hover); transition: background 0.2s ease;
+  padding: 10px 14px; border-radius: var(--radius-md); background: var(--color-bg-hover);
 }
 .login-history-item:hover { background: var(--color-bg-active); }
 .login-history-time { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
@@ -1782,28 +1547,19 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 
 .field-group-label {
   font-size: 13px; font-weight: 600; color: var(--color-text-secondary);
-  margin: 12px 0 8px; padding-left: 4px;
-  border-left: 3px solid var(--color-primary);
+  margin: 12px 0 8px; padding-left: 4px; border-left: 3px solid var(--color-primary);
 }
 .rule-flow-tag {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; font-weight: 500; padding: 1px 8px;
-  border-radius: var(--radius-full);
-  background: var(--color-info-bg); color: var(--color-info);
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500;
+  padding: 1px 8px; border-radius: var(--radius-full); background: var(--color-info-bg); color: var(--color-info);
 }
 
-/*字段选择器工具栏*/
-.field-picker-toolbar {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
-}
-
-/*显示选定的字段*/
+.field-picker-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .selected-fields-display { display: flex; flex-wrap: wrap; gap: 8px; }
 .selected-field-tag {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 12px; border-radius: var(--radius-md);
-  background: var(--color-primary-bg); border: 1px solid var(--color-primary-lighter);
-  font-size: 13px; color: var(--color-text-primary);
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px;
+  border-radius: var(--radius-md); background: var(--color-primary-bg);
+  border: 1px solid var(--color-primary-lighter); font-size: 13px; color: var(--color-text-primary);
 }
 .selected-field-name { font-weight: 500; }
 .selected-field-group { margin-bottom: 12px; }
@@ -1811,11 +1567,10 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
   padding: 24px; text-align: center; color: var(--color-text-tertiary);
   font-size: 13px; background: var(--color-bg-hover); border-radius: var(--radius-md);
 }
+.field-count { font-size: 13px; color: var(--color-text-secondary); }
 
-/*字段选择器模态*/
 .field-picker-modal {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
-  min-height: 400px; margin-top: 12px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-height: 400px; margin-top: 12px;
 }
 .field-picker-left, .field-picker-right {
   border: 1px solid var(--color-border-light); border-radius: var(--radius-md);
@@ -1843,21 +1598,46 @@ const archiveSettingsUnpickField = (field: { field_key: string; source: string }
 .field-picker-item--selected:hover { background: transparent; }
 .field-picker-item-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
 .field-picker-item-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.field-picker-item-info { flex: 1; min-width: 0; }
+.field-key { font-size: 11px; color: var(--color-text-tertiary); }
 .field-picker-group-label {
   font-size: 12px; font-weight: 600; color: var(--color-text-secondary);
-  padding: 6px 10px 2px; margin-top: 4px;
-  border-left: 3px solid var(--color-primary);
+  padding: 6px 10px 2px; margin-top: 4px; border-left: 3px solid var(--color-primary);
 }
 .field-picker-arrow { color: var(--color-primary); font-size: 14px; flex-shrink: 0; }
 .field-picker-remove {
   width: 22px; height: 22px; border: none; background: transparent;
-  border-radius: var(--radius-sm); cursor: pointer; display: flex;
-  align-items: center; justify-content: center;
-  color: var(--color-text-tertiary); font-size: 11px;
+  border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center;
+  justify-content: center; color: var(--color-text-tertiary); font-size: 11px;
   transition: all var(--transition-fast); flex-shrink: 0;
 }
 .field-picker-remove:hover { background: var(--color-danger-bg); color: var(--color-danger); }
-.field-picker-empty {
-  padding: 32px 16px; text-align: center; color: var(--color-text-tertiary); font-size: 13px;
+.field-picker-empty { padding: 32px 16px; text-align: center; color: var(--color-text-tertiary); font-size: 13px; }
+
+@media (max-width: 768px) {
+  .form-row { grid-template-columns: 1fr; }
+  .workbench-layout { grid-template-columns: 1fr; }
+  .tab-nav { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tab-nav::-webkit-scrollbar { display: none; }
+  .tab-btn { flex-shrink: 0; padding: 8px 14px; font-size: 13px; }
+  .section-nav { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .section-nav::-webkit-scrollbar { display: none; }
+  .section-nav-btn { flex-shrink: 0; }
+  .settings-card { padding: 16px; }
+  .process-config-panel { padding: 16px; }
+  .strictness-options { gap: 6px; }
+  .strictness-option { padding: 10px 12px; }
+  .add-rule-row { flex-direction: column; }
+  .add-rule-row .ant-btn { width: 100%; }
+  .rule-config-item { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+  .perm-info-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .perm-pages-section { flex-direction: column; gap: 8px; }
+  .field-picker-modal { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .page-title { font-size: 20px; }
+  .tab-btn { padding: 6px 10px; font-size: 12px; gap: 4px; }
+  .profile-avatar-section { flex-direction: column; text-align: center; }
+  .settings-card { padding: 14px; }
 }
 </style>

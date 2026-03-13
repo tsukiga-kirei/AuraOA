@@ -187,9 +187,22 @@ func SetupRouter(
 	tenantSettings := r.Group("/api/tenant/settings")
 	tenantSettings.Use(middleware.JWT(rdb), middleware.TenantContext())
 	{
+		// 审核工作台个人配置
 		tenantSettings.GET("/processes", userConfigHandler.GetProcessList)
 		tenantSettings.GET("/processes/:processType", userConfigHandler.GetByProcessType)
 		tenantSettings.PUT("/processes/:processType", userConfigHandler.UpdateByProcessType)
+		tenantSettings.GET("/processes/:processType/full", userConfigHandler.GetFullProcessConfig)
+
+		// 定时任务个人偏好（默认邮箱等）
+		tenantSettings.GET("/cron-prefs", userConfigHandler.GetCronPrefs)
+		tenantSettings.PUT("/cron-prefs", userConfigHandler.UpdateCronPrefs)
+
+		// 归档复盘个人配置
+		tenantSettings.GET("/archive-configs", userConfigHandler.GetArchiveConfigList)
+		tenantSettings.GET("/archive-configs/:processType/full", userConfigHandler.GetFullArchiveConfig)
+		tenantSettings.PUT("/archive-configs/:processType", userConfigHandler.UpdateArchiveConfig)
+
+		// 仪表板偏好
 		tenantSettings.GET("/dashboard-prefs", userConfigHandler.GetDashboardPrefs)
 		tenantSettings.PUT("/dashboard-prefs", userConfigHandler.UpdateDashboardPrefs)
 	}

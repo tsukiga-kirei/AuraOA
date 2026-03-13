@@ -7,9 +7,18 @@ import type {
   AuditDetailItem,
   DashboardPref,
   UserPermissions,
+  FullAuditProcessConfig,
+  CronPrefs,
+  AccessibleArchiveConfig,
+  FullArchiveConfig,
+  UpdatePersonalConfigRequest,
 } from '~/types/user-config'
 
-export type { ProcessListItem, CustomRule, RuleToggleOverride, AuditDetailItem, DashboardPref, UserPermissions }
+export type {
+  ProcessListItem, CustomRule, RuleToggleOverride, AuditDetailItem,
+  DashboardPref, UserPermissions, FullAuditProcessConfig,
+  CronPrefs, AccessibleArchiveConfig, FullArchiveConfig, UpdatePersonalConfigRequest,
+}
 
 export const useSettingsApi = () => {
   const { authFetch } = useAuth()
@@ -19,7 +28,7 @@ export const useSettingsApi = () => {
   const error = ref<string | null>(null)
 
   // ============================================================
-  // 流程列表（双重校验结果）
+  // 审核工作台 — 流程列表
   // ============================================================
 
   async function listProcesses(): Promise<ProcessListItem[]> {
@@ -38,15 +47,57 @@ export const useSettingsApi = () => {
   }
 
   // ============================================================
-  // 用户流程配置
+  // 审核工作台 — 完整配置（租户+用户合并）
   // ============================================================
 
-  async function getProcessConfig(processType: string): Promise<AuditDetailItem> {
-    return await authFetch<AuditDetailItem>(`/api/tenant/settings/processes/${encodeURIComponent(processType)}`)
+  async function getFullProcessConfig(processType: string): Promise<FullAuditProcessConfig> {
+    return await authFetch<FullAuditProcessConfig>(
+      `/api/tenant/settings/processes/${encodeURIComponent(processType)}/full`,
+    )
   }
 
-  async function updateProcessConfig(processType: string, config: Partial<AuditDetailItem>): Promise<void> {
+  async function updateProcessConfig(processType: string, config: UpdatePersonalConfigRequest): Promise<void> {
     await authFetch<null>(`/api/tenant/settings/processes/${encodeURIComponent(processType)}`, {
+      method: 'PUT',
+      body: config,
+    })
+  }
+
+  // ============================================================
+  // 定时任务偏好（默认推送邮箱）
+  // ============================================================
+
+  async function getCronPrefs(): Promise<CronPrefs> {
+    return await authFetch<CronPrefs>('/api/tenant/settings/cron-prefs')
+  }
+
+  async function updateCronPrefs(prefs: CronPrefs): Promise<void> {
+    await authFetch<null>('/api/tenant/settings/cron-prefs', {
+      method: 'PUT',
+      body: prefs,
+    })
+  }
+
+  // ============================================================
+  // 归档复盘 — 可访问配置列表
+  // ============================================================
+
+  async function listArchiveConfigs(): Promise<AccessibleArchiveConfig[]> {
+    return await authFetch<AccessibleArchiveConfig[]>('/api/tenant/settings/archive-configs')
+  }
+
+  // ============================================================
+  // 归档复盘 — 完整配置（租户+用户合并）
+  // ============================================================
+
+  async function getFullArchiveConfig(processType: string): Promise<FullArchiveConfig> {
+    return await authFetch<FullArchiveConfig>(
+      `/api/tenant/settings/archive-configs/${encodeURIComponent(processType)}/full`,
+    )
+  }
+
+  async function updateArchiveConfig(processType: string, config: UpdatePersonalConfigRequest): Promise<void> {
+    await authFetch<null>(`/api/tenant/settings/archive-configs/${encodeURIComponent(processType)}`, {
       method: 'PUT',
       body: config,
     })
@@ -78,7 +129,6 @@ export const useSettingsApi = () => {
       allow_modify_strictness: true,
     }
     const perms = permissions ?? defaults
-
     return {
       fieldsLocked: !perms.allow_custom_fields,
       rulesLocked: !perms.allow_custom_rules,
@@ -88,7 +138,9 @@ export const useSettingsApi = () => {
 
   return {
     processes, loading, error,
-    listProcesses, getProcessConfig, updateProcessConfig,
+    listProcesses, getFullProcessConfig, updateProcessConfig,
+    getCronPrefs, updateCronPrefs,
+    listArchiveConfigs, getFullArchiveConfig, updateArchiveConfig,
     getDashboardPrefs, updateDashboardPrefs,
     computePermissionLocks,
   }
