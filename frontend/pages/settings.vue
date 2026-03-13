@@ -317,7 +317,7 @@ const selectedFieldsFiltered = computed(() => {
   })
 })
 const selectedPagination = usePagination(selectedFieldsFiltered, 6)
-const displaySelectedPagination = usePagination(selectedFieldsFlat, 12)
+const displaySelectedPagination = usePagination(selectedFieldsFlat, 24)
 
 const selectedFieldCount = computed(() => selectedFieldsFlat.value.length)
 
@@ -599,7 +599,7 @@ const archiveSelectedFieldsFiltered = computed(() => {
   })
 })
 const archiveSelectedPagination = usePagination(archiveSelectedFieldsFiltered, 6)
-const archiveDisplaySelectedPagination = usePagination(archiveSelectedFieldsFlat, 12)
+const archiveDisplaySelectedPagination = usePagination(archiveSelectedFieldsFlat, 24)
 
 const archiveSelectedCount = computed(() => archiveSelectedFieldsFlat.value.length)
 
@@ -691,7 +691,8 @@ const archivePickField = (field: { field_key: string; source: string }) => {
 }
 
 const archiveUnpickField = (field: { field_key: string; source: string }) => {
-  if (!fullArchiveConfig.value) return
+  if (!fullArchiveConfig.value || !fullArchiveConfig.value.user_permissions.allow_custom_fields) return
+  if (isArchiveFieldLocked(field as any)) return
   const cfg = fullArchiveConfig.value
   if (field.source === 'main') {
     const f = cfg.main_fields.find(f => f.field_key === field.field_key)
@@ -1473,6 +1474,9 @@ const handleSaveArchive = async () => {
               <div v-for="rule in fullArchiveConfig.tenant_rules" :key="rule.id" class="rule-config-item">
                 <div class="rule-config-content">
                   <span class="rule-config-text">{{ rule.rule_content }}</span>
+                  <span v-if="rule.related_flow" class="rule-flow-tag">
+                    <NodeIndexOutlined /> {{ t('settings.workbench.relatedFlow') }}
+                  </span>
                   <span
                     class="rule-scope-tag"
                     :class="{
