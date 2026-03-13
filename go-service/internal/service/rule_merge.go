@@ -23,7 +23,7 @@ func MergeRules(tenantRules []model.AuditRule, userDetail *model.AuditDetailItem
 	// 构建用户 toggle 覆盖映射
 	toggleMap := make(map[string]bool)
 	if userDetail != nil {
-		for _, toggle := range userDetail.RuleToggleOverrides {
+		for _, toggle := range userDetail.RuleConfig.RuleToggleOverrides {
 			toggleMap[toggle.RuleID] = toggle.Enabled
 		}
 	}
@@ -66,7 +66,7 @@ func MergeRules(tenantRules []model.AuditRule, userDetail *model.AuditDetailItem
 
 	// 添加用户私有规则
 	if userDetail != nil {
-		for _, customRule := range userDetail.CustomRules {
+		for _, customRule := range userDetail.RuleConfig.CustomRules {
 			result = append(result, MergedRule{
 				RuleID:  customRule.ID,
 				Content: customRule.Content,

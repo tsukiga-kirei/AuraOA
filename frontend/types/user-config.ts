@@ -12,7 +12,7 @@ export interface CustomRule {
   id: string
   content: string
   enabled: boolean
-  related_flow?: boolean
+  related_flow: boolean
 }
 
 /** 规则开关覆盖 */
@@ -23,12 +23,19 @@ export interface RuleToggleOverride {
 
 /** 用户审核个性化配置项 */
 export interface AuditDetailItem {
+  config_id: string
   process_type: string
-  custom_rules: CustomRule[]
-  field_overrides: string[]
-  field_mode: string
-  strictness_override: string
-  rule_toggle_overrides: RuleToggleOverride[]
+  field_config: {
+    field_mode: string
+    field_overrides: string[]
+  }
+  rule_config: {
+    custom_rules: CustomRule[]
+    rule_toggle_overrides: RuleToggleOverride[]
+  }
+  ai_config: {
+    strictness_override: string
+  }
 }
 
 /** 仪表板偏好 */
@@ -76,7 +83,7 @@ export interface FullAuditProcessConfig {
   process_type: string
   process_type_label: string
   config_id: string
-  field_mode: string
+  field_mode: string // 租户设置的字段传输模式
   kb_mode: string
   audit_strictness: string
   user_permissions: UserPermissions
@@ -126,9 +133,16 @@ export interface FullArchiveConfig {
 
 /** 更新审核/归档个人配置请求体 */
 export interface UpdatePersonalConfigRequest {
-  custom_rules: CustomRule[]
-  field_overrides: string[]
-  field_mode: string
-  strictness_override: string
-  rule_toggle_overrides: RuleToggleOverride[]
+  config_id: string
+  field_config: {
+    field_mode: string
+    field_overrides: string[]
+  }
+  rule_config: {
+    custom_rules: CustomRule[]
+    rule_toggle_overrides: RuleToggleOverride[]
+  }
+  ai_config: {
+    strictness_override: string
+  }
 }

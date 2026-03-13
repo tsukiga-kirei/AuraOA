@@ -102,14 +102,13 @@ func (s *UserPersonalConfigService) GetByProcessType(c *gin.Context, userID uuid
 	}
 
 	if userCfg == nil {
-		// 用户尚无配置，返回空的默认配置
-		return &model.AuditDetailItem{ProcessType: processType}, nil
+		return nil, nil
 	}
 
 	// 从 audit_details JSON 中查找对应流程的配置
 	var auditDetails []model.AuditDetailItem
 	if err := json.Unmarshal(userCfg.AuditDetails, &auditDetails); err != nil {
-		return &model.AuditDetailItem{ProcessType: processType}, nil
+		return nil, nil
 	}
 
 	for _, detail := range auditDetails {
@@ -118,7 +117,7 @@ func (s *UserPersonalConfigService) GetByProcessType(c *gin.Context, userID uuid
 		}
 	}
 
-	return &model.AuditDetailItem{ProcessType: processType}, nil
+	return nil, nil
 }
 
 // UpdateByProcessType 更新用户对指定流程的个性化配置，校验权限锁定。
@@ -134,25 +133,25 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 		return newServiceError(errcode.ErrConfigNotFound, "流程审核配置不存在")
 	}
 
+	configID, _ := uuid.Parse(req.ConfigID)
+	if configID == uuid.Nil {
+		configID = processCfg.ID
+	}
+
 	// 解析 user_permissions
 	var perms model.UserPermissionsData
 	if err := json.Unmarshal(processCfg.UserPermissions, &perms); err != nil {
-		// 解析失败时使用默认值（全部允许）
-		perms = model.UserPermissionsData{
-			AllowCustomFields:     true,
-			AllowCustomRules:      true,
-			AllowModifyStrictness: true,
-		}
+		perms = model.UserPermissionsData{AllowCustomFields: true, AllowCustomRules: true, AllowModifyStrictness: true}
 	}
 
 	// 校验权限锁定
-	if !perms.AllowCustomFields && (req.FieldOverrides != nil || req.FieldMode != "") {
+	if !perms.AllowCustomFields && (len(req.FieldConfig.FieldOverrides) > 0 || req.FieldConfig.FieldMode != "") {
 		return newServiceError(errcode.ErrPermissionDenied, "字段自定义功能已被锁定")
 	}
-	if !perms.AllowCustomRules && req.CustomRules != nil {
+	if !perms.AllowCustomRules && req.RuleConfig.CustomRules != nil {
 		return newServiceError(errcode.ErrPermissionDenied, "自定义规则功能已被锁定")
 	}
-	if !perms.AllowModifyStrictness && req.StrictnessOverride != "" {
+	if !perms.AllowModifyStrictness && req.AIConfig.StrictnessOverride != "" {
 		return newServiceError(errcode.ErrPermissionDenied, "审核尺度修改功能已被锁定")
 	}
 
@@ -169,28 +168,26 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 
 	// 构建新的 AuditDetailItem
 	newDetail := model.AuditDetailItem{
-		ProcessType:        processType,
-		FieldMode:          req.FieldMode,
-		StrictnessOverride: req.StrictnessOverride,
+		ConfigID:    configID,
+		ProcessType: processType,
+		FieldConfig: model.FieldConfig{
+			FieldMode:      req.FieldConfig.FieldMode,
+			FieldOverrides: req.FieldConfig.FieldOverrides,
+		},
+		RuleConfig: model.RuleConfig{
+			CustomRules: make([]model.CustomRule, len(req.RuleConfig.CustomRules)),
+			RuleToggleOverrides: make([]model.RuleToggleOverride, len(req.RuleConfig.RuleToggleOverrides)),
+		},
+		AIConfig: model.UserAIConfig{
+			StrictnessOverride: req.AIConfig.StrictnessOverride,
+		},
 	}
 
-	// 转换 DTO 到 model
-	if req.FieldOverrides != nil {
-		newDetail.FieldOverrides = req.FieldOverrides
+	for i, r := range req.RuleConfig.CustomRules {
+		newDetail.RuleConfig.CustomRules[i] = model.CustomRule{ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow}
 	}
-	if req.CustomRules != nil {
-		customRules := make([]model.CustomRule, len(req.CustomRules))
-		for i, r := range req.CustomRules {
-			customRules[i] = model.CustomRule{ID: r.ID, Content: r.Content, Enabled: r.Enabled}
-		}
-		newDetail.CustomRules = customRules
-	}
-	if req.RuleToggleOverrides != nil {
-		toggles := make([]model.RuleToggleOverride, len(req.RuleToggleOverrides))
-		for i, t := range req.RuleToggleOverrides {
-			toggles[i] = model.RuleToggleOverride{RuleID: t.RuleID, Enabled: t.Enabled}
-		}
-		newDetail.RuleToggleOverrides = toggles
+	for i, t := range req.RuleConfig.RuleToggleOverrides {
+		newDetail.RuleConfig.RuleToggleOverrides[i] = model.RuleToggleOverride{RuleID: t.RuleID, Enabled: t.Enabled}
 	}
 
 	// 更新或追加到 auditDetails
@@ -208,21 +205,21 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 
 	auditDetailsJSON, _ := json.Marshal(auditDetails)
 
-	// Upsert 用户配置
 	cfg := &model.UserPersonalConfig{
-		ID:           uuid.New(),
-		TenantID:     tenantID,
-		UserID:       userID,
-		AuditDetails: datatypes.JSON(auditDetailsJSON),
-		CronDetails:  datatypes.JSON([]byte("[]")),
-		ArchiveDetails: datatypes.JSON([]byte("[]")),
-		UpdatedAt:    time.Now(),
+		ID:             uuid.New(),
+		TenantID:       tenantID,
+		UserID:         userID,
+		AuditDetails:   datatypes.JSON(auditDetailsJSON),
+		UpdatedAt:      time.Now(),
 	}
 
 	if userCfg != nil {
 		cfg.ID = userCfg.ID
 		cfg.CronDetails = userCfg.CronDetails
 		cfg.ArchiveDetails = userCfg.ArchiveDetails
+	} else {
+		cfg.CronDetails = datatypes.JSON([]byte("{}"))
+		cfg.ArchiveDetails = datatypes.JSON([]byte("[]"))
 	}
 
 	if err := s.userConfigRepo.Upsert(cfg); err != nil {
@@ -251,9 +248,7 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 	}
 
 	// 解析 AI 配置获取默认严格度
-	var aiConfig struct {
-		AuditStrictness string `json:"audit_strictness"`
-	}
+	var aiConfig model.AIConfigData
 	_ = json.Unmarshal(tenantCfg.AIConfig, &aiConfig)
 	if aiConfig.AuditStrictness == "" {
 		aiConfig.AuditStrictness = "standard"
@@ -276,7 +271,7 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 		var auditDetails []model.AuditDetailItem
 		if err := json.Unmarshal(userCfg.AuditDetails, &auditDetails); err == nil {
 			for _, d := range auditDetails {
-				if d.ProcessType == processType {
+				if d.ProcessType == processType || (d.ConfigID != uuid.Nil && d.ConfigID == tenantCfg.ID) {
 					userDetail = d
 					break
 				}
@@ -284,34 +279,37 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 		}
 	}
 
-	// 构建规则开关 map（用户覆盖）
+	// 规则同步逻辑：过滤掉已经不存在的租户规则覆盖
+	validRuleToggles := []model.RuleToggleOverride{}
+	tenantRuleMap := make(map[string]bool)
+	for _, tr := range tenantRules {
+		tenantRuleMap[tr.ID.String()] = true
+	}
+	for _, ut := range userDetail.RuleConfig.RuleToggleOverrides {
+		if tenantRuleMap[ut.RuleID] {
+			validRuleToggles = append(validRuleToggles, ut)
+		}
+	}
+	userDetail.RuleConfig.RuleToggleOverrides = validRuleToggles
+
+	// 构建规则开关 map (用于快速查找)
 	toggleMap := map[string]bool{}
-	for _, t := range userDetail.RuleToggleOverrides {
+	for _, t := range userDetail.RuleConfig.RuleToggleOverrides {
 		toggleMap[t.RuleID] = t.Enabled
 	}
 
-	// 构建用户选中字段集合
-	selectedFieldKeys := map[string]bool{}
-	for _, k := range userDetail.FieldOverrides {
-		selectedFieldKeys[k] = true
-	}
+	// 字段同步逻辑：
+	// 如果租户是 'all' 模式，用户侧强制显示所有，且不允许自定义减少
+	// 如果租户是 'selected' 模式，用户侧默认包含租户选择的所有字段，且只能新增不能减少
 	effectiveFieldMode := tenantCfg.FieldMode
-	if userDetail.FieldMode != "" && perms.AllowCustomFields {
-		effectiveFieldMode = userDetail.FieldMode
-	}
-
 	// 解析主表字段
 	var rawMainFields []struct {
 		FieldKey  string `json:"field_key"`
 		FieldName string `json:"field_name"`
 		FieldType string `json:"field_type"`
+		Selected  bool   `json:"selected"`
 	}
 	_ = json.Unmarshal(tenantCfg.MainFields, &rawMainFields)
-	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
-	for i, f := range rawMainFields {
-		sel := effectiveFieldMode == "all" || selectedFieldKeys[f.FieldKey]
-		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
-	}
 
 	// 解析明细表
 	var rawDetailTables []struct {
@@ -321,14 +319,29 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 			FieldKey  string `json:"field_key"`
 			FieldName string `json:"field_name"`
 			FieldType string `json:"field_type"`
+			Selected  bool   `json:"selected"`
 		} `json:"fields"`
 	}
 	_ = json.Unmarshal(tenantCfg.DetailTables, &rawDetailTables)
+
+	// 构建用户额外选中字段的 Map
+	userAddedFieldKeys := map[string]bool{}
+	for _, k := range userDetail.FieldConfig.FieldOverrides {
+		userAddedFieldKeys[k] = true
+	}
+
+	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
+	for i, f := range rawMainFields {
+		// 租户选中的，用户必选；租户未选的，看用户是否额外增加
+		sel := effectiveFieldMode == "all" || f.Selected || userAddedFieldKeys[f.FieldKey]
+		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
+	}
+
 	detailTables := make([]dto.DetailTableDTO, len(rawDetailTables))
 	for i, dt := range rawDetailTables {
 		fields := make([]dto.TenantFieldDTO, len(dt.Fields))
 		for j, f := range dt.Fields {
-			sel := effectiveFieldMode == "all" || selectedFieldKeys[f.FieldKey]
+			sel := effectiveFieldMode == "all" || f.Selected || userAddedFieldKeys[f.FieldKey]
 			fields[j] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
 		}
 		detailTables[i] = dto.DetailTableDTO{TableName: dt.TableName, TableLabel: dt.TableLabel, Fields: fields}
@@ -342,6 +355,8 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 			if v, ok := toggleMap[r.ID.String()]; ok {
 				effectiveEnabled = v
 			}
+		} else {
+			effectiveEnabled = true // 强制开启
 		}
 		tenantRuleDTOs[i] = dto.TenantRuleDTO{
 			ID:          r.ID.String(),
@@ -354,14 +369,14 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 
 	// 有效严格度（用户覆盖优先）
 	effectiveStrictness := aiConfig.AuditStrictness
-	if userDetail.StrictnessOverride != "" && perms.AllowModifyStrictness {
-		effectiveStrictness = userDetail.StrictnessOverride
+	if userDetail.AIConfig.StrictnessOverride != "" && perms.AllowModifyStrictness {
+		effectiveStrictness = userDetail.AIConfig.StrictnessOverride
 	}
 
 	// 构建自定义规则 DTO
-	customRuleDTOs := make([]dto.CustomRuleDTO, len(userDetail.CustomRules))
-	for i, r := range userDetail.CustomRules {
-		customRuleDTOs[i] = dto.CustomRuleDTO{ID: r.ID, Content: r.Content, Enabled: r.Enabled}
+	customRuleDTOs := make([]dto.CustomRuleDTO, len(userDetail.RuleConfig.CustomRules))
+	for i, r := range userDetail.RuleConfig.CustomRules {
+		customRuleDTOs[i] = dto.CustomRuleDTO{ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow}
 	}
 
 	return &dto.FullAuditProcessConfigResponse{
@@ -512,7 +527,7 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
 
-	// 查找归档配置（通过流程类型）
+	// 查找归档配置
 	allCfgs, err := s.archiveConfigRepo.ListByTenant(c)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
@@ -535,9 +550,7 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 	}
 
 	// 解析 AI 配置
-	var aiConfig struct {
-		AuditStrictness string `json:"audit_strictness"`
-	}
+	var aiConfig model.AIConfigData
 	_ = json.Unmarshal(tenantCfg.AIConfig, &aiConfig)
 	if aiConfig.AuditStrictness == "" {
 		aiConfig.AuditStrictness = "standard"
@@ -560,7 +573,7 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 		var archiveDetails []model.ArchiveDetailItem
 		if err := json.Unmarshal(userCfg.ArchiveDetails, &archiveDetails); err == nil {
 			for _, d := range archiveDetails {
-				if d.ProcessType == processType {
+				if d.ProcessType == processType || (d.ConfigID != uuid.Nil && d.ConfigID == tenantCfg.ID) {
 					userDetail = d
 					break
 				}
@@ -568,36 +581,37 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 		}
 	}
 
+	// 规则同步逻辑
+	validRuleToggles := []model.RuleToggleOverride{}
+	tenantRuleMap := make(map[string]bool)
+	for _, tr := range archiveRules {
+		tenantRuleMap[tr.ID.String()] = true
+	}
+	for _, ut := range userDetail.RuleConfig.RuleToggleOverrides {
+		if tenantRuleMap[ut.RuleID] {
+			validRuleToggles = append(validRuleToggles, ut)
+		}
+	}
+	userDetail.RuleConfig.RuleToggleOverrides = validRuleToggles
+
 	// 构建规则开关 map
 	toggleMap := map[string]bool{}
-	for _, t := range userDetail.RuleToggleOverrides {
+	for _, t := range userDetail.RuleConfig.RuleToggleOverrides {
 		toggleMap[t.RuleID] = t.Enabled
 	}
 
-	// 字段选中状态
-	selectedFieldKeys := map[string]bool{}
-	for _, k := range userDetail.FieldOverrides {
-		selectedFieldKeys[k] = true
-	}
+	// 字段同步逻辑
 	effectiveFieldMode := tenantCfg.FieldMode
-	if userDetail.FieldMode != "" && perms.AllowCustomFields {
-		effectiveFieldMode = userDetail.FieldMode
-	}
 
-	// 解析主表字段
+	// 子表和主表解析
 	var rawMainFields []struct {
 		FieldKey  string `json:"field_key"`
 		FieldName string `json:"field_name"`
 		FieldType string `json:"field_type"`
+		Selected  bool   `json:"selected"`
 	}
 	_ = json.Unmarshal(tenantCfg.MainFields, &rawMainFields)
-	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
-	for i, f := range rawMainFields {
-		sel := effectiveFieldMode == "all" || selectedFieldKeys[f.FieldKey]
-		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
-	}
 
-	// 解析明细表
 	var rawDetailTables []struct {
 		TableName  string `json:"table_name"`
 		TableLabel string `json:"table_label"`
@@ -605,14 +619,27 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 			FieldKey  string `json:"field_key"`
 			FieldName string `json:"field_name"`
 			FieldType string `json:"field_type"`
+			Selected  bool   `json:"selected"`
 		} `json:"fields"`
 	}
 	_ = json.Unmarshal(tenantCfg.DetailTables, &rawDetailTables)
+
+	userAddedFieldKeys := map[string]bool{}
+	for _, k := range userDetail.FieldConfig.FieldOverrides {
+		userAddedFieldKeys[k] = true
+	}
+
+	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
+	for i, f := range rawMainFields {
+		sel := effectiveFieldMode == "all" || f.Selected || userAddedFieldKeys[f.FieldKey]
+		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
+	}
+
 	detailTables := make([]dto.DetailTableDTO, len(rawDetailTables))
 	for i, dt := range rawDetailTables {
 		fields := make([]dto.TenantFieldDTO, len(dt.Fields))
 		for j, f := range dt.Fields {
-			sel := effectiveFieldMode == "all" || selectedFieldKeys[f.FieldKey]
+			sel := effectiveFieldMode == "all" || f.Selected || userAddedFieldKeys[f.FieldKey]
 			fields[j] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel}
 		}
 		detailTables[i] = dto.DetailTableDTO{TableName: dt.TableName, TableLabel: dt.TableLabel, Fields: fields}
@@ -626,6 +653,8 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 			if v, ok := toggleMap[r.ID.String()]; ok {
 				effectiveEnabled = v
 			}
+		} else {
+			effectiveEnabled = true
 		}
 		ruleDTOs[i] = dto.TenantRuleDTO{
 			ID: r.ID.String(), RuleContent: r.RuleContent,
@@ -635,13 +664,13 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 
 	// 有效严格度
 	effectiveStrictness := aiConfig.AuditStrictness
-	if userDetail.StrictnessOverride != "" && perms.AllowModifyStrictness {
-		effectiveStrictness = userDetail.StrictnessOverride
+	if userDetail.AIConfig.StrictnessOverride != "" && perms.AllowModifyStrictness {
+		effectiveStrictness = userDetail.AIConfig.StrictnessOverride
 	}
 
-	customRuleDTOs := make([]dto.CustomRuleDTO, len(userDetail.CustomRules))
-	for i, r := range userDetail.CustomRules {
-		customRuleDTOs[i] = dto.CustomRuleDTO{ID: r.ID, Content: r.Content, Enabled: r.Enabled}
+	customRuleDTOs := make([]dto.CustomRuleDTO, len(userDetail.RuleConfig.CustomRules))
+	for i, r := range userDetail.RuleConfig.CustomRules {
+		customRuleDTOs[i] = dto.CustomRuleDTO{ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow}
 	}
 
 	return &dto.FullArchiveConfigResponse{
@@ -682,18 +711,23 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 		return newServiceError(errcode.ErrConfigNotFound, "归档复盘配置不存在")
 	}
 
+	configID, _ := uuid.Parse(req.ConfigID)
+	if configID == uuid.Nil {
+		configID = tenantCfg.ID
+	}
+
 	var perms model.ArchiveUserPermissionsData
 	if err := json.Unmarshal(tenantCfg.UserPermissions, &perms); err != nil {
 		perms = model.ArchiveUserPermissionsData{AllowCustomFields: true, AllowCustomRules: true, AllowModifyStrictness: true}
 	}
 
-	if !perms.AllowCustomFields && (req.FieldOverrides != nil || req.FieldMode != "") {
+	if !perms.AllowCustomFields && (len(req.FieldConfig.FieldOverrides) > 0 || req.FieldConfig.FieldMode != "") {
 		return newServiceError(errcode.ErrPermissionDenied, "字段自定义功能已被锁定")
 	}
-	if !perms.AllowCustomRules && req.CustomRules != nil {
+	if !perms.AllowCustomRules && req.RuleConfig.CustomRules != nil {
 		return newServiceError(errcode.ErrPermissionDenied, "自定义规则功能已被锁定")
 	}
-	if !perms.AllowModifyStrictness && req.StrictnessOverride != "" {
+	if !perms.AllowModifyStrictness && req.AIConfig.StrictnessOverride != "" {
 		return newServiceError(errcode.ErrPermissionDenied, "复核尺度修改功能已被锁定")
 	}
 
@@ -708,26 +742,25 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 	}
 
 	newDetail := model.ArchiveDetailItem{
-		ProcessType:        processType,
-		FieldMode:          req.FieldMode,
-		StrictnessOverride: req.StrictnessOverride,
+		ConfigID:    configID,
+		ProcessType: processType,
+		FieldConfig: model.FieldConfig{
+			FieldMode:      req.FieldConfig.FieldMode,
+			FieldOverrides: req.FieldConfig.FieldOverrides,
+		},
+		RuleConfig: model.RuleConfig{
+			CustomRules: make([]model.CustomRule, len(req.RuleConfig.CustomRules)),
+			RuleToggleOverrides: make([]model.RuleToggleOverride, len(req.RuleConfig.RuleToggleOverrides)),
+		},
+		AIConfig: model.UserAIConfig{
+			StrictnessOverride: req.AIConfig.StrictnessOverride,
+		},
 	}
-	if req.FieldOverrides != nil {
-		newDetail.FieldOverrides = req.FieldOverrides
+	for i, r := range req.RuleConfig.CustomRules {
+		newDetail.RuleConfig.CustomRules[i] = model.CustomRule{ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow}
 	}
-	if req.CustomRules != nil {
-		rules := make([]model.CustomRule, len(req.CustomRules))
-		for i, r := range req.CustomRules {
-			rules[i] = model.CustomRule{ID: r.ID, Content: r.Content, Enabled: r.Enabled}
-		}
-		newDetail.CustomRules = rules
-	}
-	if req.RuleToggleOverrides != nil {
-		toggles := make([]model.RuleToggleOverride, len(req.RuleToggleOverrides))
-		for i, t := range req.RuleToggleOverrides {
-			toggles[i] = model.RuleToggleOverride{RuleID: t.RuleID, Enabled: t.Enabled}
-		}
-		newDetail.RuleToggleOverrides = toggles
+	for i, t := range req.RuleConfig.RuleToggleOverrides {
+		newDetail.RuleConfig.RuleToggleOverrides[i] = model.RuleToggleOverride{RuleID: t.RuleID, Enabled: t.Enabled}
 	}
 
 	found := false
@@ -748,8 +781,6 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 		ID:             uuid.New(),
 		TenantID:       tenantID,
 		UserID:         userID,
-		AuditDetails:   datatypes.JSON([]byte("[]")),
-		CronDetails:    datatypes.JSON([]byte("{}")),
 		ArchiveDetails: datatypes.JSON(archiveJSON),
 		UpdatedAt:      time.Now(),
 	}
@@ -757,6 +788,9 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 		cfg.ID = userCfg.ID
 		cfg.AuditDetails = userCfg.AuditDetails
 		cfg.CronDetails = userCfg.CronDetails
+	} else {
+		cfg.AuditDetails = datatypes.JSON([]byte("[]"))
+		cfg.CronDetails = datatypes.JSON([]byte("{}"))
 	}
 	return s.userConfigRepo.Upsert(cfg)
 }

@@ -42,6 +42,7 @@ import type {
   FullArchiveConfig,
   UpdatePersonalConfigRequest,
 } from '~/types/user-config'
+import { usePagination } from '~/composables/usePagination'
 
 definePageMeta({
   middleware: 'auth',
@@ -287,7 +288,23 @@ const groupedFields = computed<PickerFieldGroup[]>(() => {
 })
 
 const allFields = computed(() => groupedFields.value.flatMap(g => g.fields))
-const selectedFieldCount = computed(() => allFields.value.filter(f => f.selected).length)
+const unselectedFieldsFlat = computed(() => {
+  const q = fieldSearchQuery.value.toLowerCase().trim()
+  return allFields.value.filter(f => {
+    if (f.selected) return false
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
+  })
+})
+const selectedFieldsFlat = computed(() => {
+  return allFields.value.filter(f => f.selected)
+})
+
+const unselectedPagination = usePagination(unselectedFieldsFlat, 6)
+const selectedPagination = usePagination(selectedFieldsFlat, 6)
+const displaySelectedPagination = usePagination(selectedFieldsFlat, 8)
+
+const selectedFieldCount = computed(() => selectedFieldsFlat.value.length)
 
 const groupedUnselected = computed<PickerFieldGroup[]>(() => {
   const q = fieldSearchQuery.value.toLowerCase().trim()
@@ -309,6 +326,14 @@ const groupedSelected = computed<PickerFieldGroup[]>(() =>
     .filter(g => g.fields.length > 0),
 )
 
+// 字段是否允许由用户取消勾选？
+// 根据要求：用户侧只能新增不能减少。
+// 这意味着如果一个字段已经是 selected: true (无论是租户预设还是用户之前选的)，用户进入后不能取消它。
+const isFieldLocked = (field: TenantField) => {
+  // 暂时实现为：如果已经选中，则锁定（只能增不能减）
+  return field.selected
+}
+
 const pickField = (field: { field_key: string; source: string }) => {
   if (!fullProcessConfig.value || !fullProcessConfig.value.user_permissions.allow_custom_fields) return
   const cfg = fullProcessConfig.value
@@ -323,15 +348,14 @@ const pickField = (field: { field_key: string; source: string }) => {
 }
 
 const unpickField = (field: { field_key: string; source: string }) => {
-  if (!fullProcessConfig.value) return
+  if (!fullProcessConfig.value || !fullProcessConfig.value.user_permissions.allow_custom_fields) return
+  // 如果当前是“只能增不能减”逻辑，此处其实应该被 UI 禁用，或者做二次校验
   const cfg = fullProcessConfig.value
   if (field.source === 'main') {
     const f = cfg.main_fields.find(f => f.field_key === field.field_key)
-    if (f) f.selected = false
-  }
-  else {
-    const dt = cfg.detail_tables.find(d => d.table_name === field.source)
-    if (dt) { const f = dt.fields.find(f => f.field_key === field.field_key); if (f) f.selected = false }
+    // 只有当租户允许自定义且不是强制字段时（但目前逻辑是完全不能减）
+    // 为了灵活性，我们允许取消本次操作中新选的部分？不，按字面意思“不能减少”
+    // if (f) f.selected = false
   }
 }
 
@@ -367,13 +391,22 @@ const handleSaveWorkbench = async () => {
   const ruleToggleOverrides = cfg.tenant_rules
     .filter(r => r.rule_scope !== 'mandatory')
     .map(r => ({ rule_id: r.id, enabled: r.enabled }))
+  
   const req: UpdatePersonalConfigRequest = {
-    custom_rules: cfg.custom_rules || [],
-    field_overrides: cfg.field_mode === 'selected' ? selectedKeys : [],
-    field_mode: cfg.field_mode,
-    strictness_override: cfg.audit_strictness,
-    rule_toggle_overrides: ruleToggleOverrides,
+    config_id: cfg.config_id,
+    field_config: {
+      field_mode: cfg.field_mode,
+      field_overrides: cfg.field_mode === 'selected' ? selectedKeys : [],
+    },
+    rule_config: {
+      custom_rules: cfg.custom_rules || [],
+      rule_toggle_overrides: ruleToggleOverrides,
+    },
+    ai_config: {
+      strictness_override: cfg.audit_strictness,
+    }
   }
+  
   saving.value = true
   try {
     await settingsApi.updateProcessConfig(cfg.process_type, req)
@@ -396,14 +429,6 @@ const loadCronPrefs = async () => {
     // 若无配置，用用户自己的邮箱作默认
     if (prefs.default_email) {
       cronDefaultEmail.value = prefs.default_email
-    }
-    else {
-      // 等 meData 加载完后再填充
-      watch(meData, (me) => {
-        if (me?.user?.email && !cronDefaultEmail.value) {
-          cronDefaultEmail.value = me.user.email
-        }
-      }, { immediate: true })
     }
   }
   catch (e) { console.error('[settings] 加载 cron 偏好失败', e) }
@@ -480,7 +505,23 @@ const archiveGroupedFields = computed<PickerFieldGroup[]>(() => {
 })
 
 const archiveAllFields = computed(() => archiveGroupedFields.value.flatMap(g => g.fields))
-const archiveSelectedCount = computed(() => archiveAllFields.value.filter(f => f.selected).length)
+const archiveUnselectedFieldsFlat = computed(() => {
+  const q = archiveFieldSearchQuery.value.toLowerCase().trim()
+  return archiveAllFields.value.filter(f => {
+    if (f.selected) return false
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
+  })
+})
+const archiveSelectedFieldsFlat = computed(() => {
+  return archiveAllFields.value.filter(f => f.selected)
+})
+
+const archiveUnselectedPagination = usePagination(archiveUnselectedFieldsFlat, 6)
+const archiveSelectedPagination = usePagination(archiveSelectedFieldsFlat, 6)
+const archiveDisplaySelectedPagination = usePagination(archiveSelectedFieldsFlat, 8)
+
+const archiveSelectedCount = computed(() => archiveSelectedFieldsFlat.value.length)
 
 const archiveGroupedUnselected = computed<PickerFieldGroup[]>(() => {
   const q = archiveFieldSearchQuery.value.toLowerCase().trim()
@@ -530,6 +571,7 @@ const archiveUnpickField = (field: { field_key: string; source: string }) => {
 
 // 归档自定义规则
 const newArchiveRuleContent = ref('')
+const newArchiveRuleRelatedFlow = ref(false)
 
 const addArchiveCustomRule = () => {
   if (!newArchiveRuleContent.value.trim() || !fullArchiveConfig.value) return
@@ -538,8 +580,10 @@ const addArchiveCustomRule = () => {
     id: `UACR-${Date.now()}`,
     content: newArchiveRuleContent.value.trim(),
     enabled: true,
+    related_flow: newArchiveRuleRelatedFlow.value,
   })
   newArchiveRuleContent.value = ''
+  newArchiveRuleRelatedFlow.value = false
   message.success(t('settings.archive.ruleAdded'))
 }
 
@@ -557,13 +601,22 @@ const handleSaveArchive = async () => {
   const ruleToggleOverrides = cfg.tenant_rules
     .filter(r => r.rule_scope !== 'mandatory')
     .map(r => ({ rule_id: r.id, enabled: r.enabled }))
+  
   const req: UpdatePersonalConfigRequest = {
-    custom_rules: cfg.custom_rules || [],
-    field_overrides: cfg.field_mode === 'selected' ? selectedKeys : [],
-    field_mode: cfg.field_mode,
-    strictness_override: cfg.audit_strictness,
-    rule_toggle_overrides: ruleToggleOverrides,
+    config_id: cfg.config_id,
+    field_config: {
+      field_mode: cfg.field_mode,
+      field_overrides: cfg.field_mode === 'selected' ? selectedKeys : [],
+    },
+    rule_config: {
+      custom_rules: cfg.custom_rules || [],
+      rule_toggle_overrides: ruleToggleOverrides,
+    },
+    ai_config: {
+      strictness_override: cfg.audit_strictness,
+    }
   }
+  
   saving.value = true
   try {
     await settingsApi.updateArchiveConfig(cfg.process_type, req)
@@ -859,18 +912,34 @@ const handleSaveArchive = async () => {
                   <AppstoreOutlined /> {{ t('settings.workbench.selectFields') }}
                 </a-button>
               </div>
-              <template v-if="groupedSelected.length">
-                <div v-for="group in groupedSelected" :key="group.source" class="selected-field-group">
-                  <div class="field-group-label">{{ group.sourceLabel }}</div>
-                  <div class="selected-fields-display">
-                    <div v-for="field in group.fields" :key="field.field_key + field.source" class="selected-field-tag">
-                      <span class="selected-field-name">{{ field.field_name }}</span>
-                      <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                <!-- 字段列表展示 -->
+                <div v-if="selectedFieldsFlat.length > 0">
+                  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    <div
+                      v-for="field in displaySelectedPagination.paged.value"
+                      :key="field.field_key"
+                      class="px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-between group/field"
+                    >
+                      <div class="flex flex-col min-w-0">
+                        <span class="text-sm font-medium text-slate-700 truncate">{{ field.field_name }}</span>
+                        <span class="text-[10px] text-slate-400 truncate">{{ field.field_key }}</span>
+                      </div>
                     </div>
                   </div>
+                  <!-- 分页控制 -->
+                  <div v-if="selectedFieldsFlat.length > 8" class="mt-4 flex justify-center">
+                    <a-pagination
+                      v-model:current="displaySelectedPagination.current.value"
+                      :total="selectedFieldsFlat.length"
+                      :page-size="displaySelectedPagination.pageSize.value"
+                      size="small"
+                      show-less-items
+                    />
+                  </div>
                 </div>
-              </template>
-              <div v-else class="field-empty-hint">{{ t('settings.workbench.noFieldSelected') }}</div>
+                <div v-else class="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  <div class="text-slate-400 text-sm">{{ t('settings.workbench.noFieldsSelected') }}</div>
+                </div>
             </template>
             <template v-else>
               <div class="field-count" style="margin-top: 8px;">{{ t('settings.workbench.allFieldsModeDesc') }}</div>
@@ -1006,7 +1075,8 @@ const handleSaveArchive = async () => {
     <!-- 审核工作台字段选择器 Modal -->
     <a-modal v-model:open="showFieldPicker" :title="t('settings.workbench.fieldPickerTitle')" :width="720" :footer="null">
       <div class="field-picker-modal">
-        <div class="field-picker-left">
+        <!-- 左侧：待选 -->
+        <div class="field-picker-panel">
           <div class="field-picker-panel-header">
             <span>{{ t('settings.workbench.availableFields') }}</span>
           </div>
@@ -1015,10 +1085,14 @@ const handleSaveArchive = async () => {
               <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
             </a-input>
           </div>
-          <div class="field-picker-list">
-            <template v-for="group in groupedUnselected" :key="group.source">
-              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
-              <div v-for="field in group.fields" :key="field.field_key + field.source" class="field-picker-item" @click="pickField(field)">
+          <div class="field-picker-list custom-scrollbar">
+            <div v-if="unselectedPagination.paged.value.length > 0" class="space-y-1">
+              <div
+                v-for="field in unselectedPagination.paged.value"
+                :key="field.field_key"
+                class="field-picker-item"
+                @click="pickField({ field_key: field.field_key, source: field.source })"
+              >
                 <div class="field-picker-item-info">
                   <div class="field-picker-item-name">{{ field.field_name }}</div>
                   <div class="field-picker-item-meta">
@@ -1028,32 +1102,64 @@ const handleSaveArchive = async () => {
                 </div>
                 <SwapRightOutlined class="field-picker-arrow" />
               </div>
-            </template>
-            <div v-if="!groupedUnselected.length" class="field-picker-empty">
+            </div>
+            <div v-else class="field-picker-empty">
               {{ fieldSearchQuery ? t('settings.workbench.noMatchField') : t('settings.workbench.allFieldsAdded') }}
             </div>
           </div>
+          <!-- 待选分页 -->
+          <div v-if="unselectedFieldsFlat.length > unselectedPagination.pageSize.value" class="p-2 border-t border-slate-50 flex justify-center">
+            <a-pagination
+              v-model:current="unselectedPagination.current.value"
+              :total="unselectedFieldsFlat.length"
+              :page-size="unselectedPagination.pageSize.value"
+              size="small"
+              simple
+            />
+          </div>
         </div>
-        <div class="field-picker-right">
+
+        <!-- 右侧：已选 -->
+        <div class="field-picker-panel field-picker-panel--right">
           <div class="field-picker-panel-header">
             <span>{{ t('settings.workbench.selectedFields') }}</span>
             <span class="field-picker-count">{{ selectedFieldCount }}</span>
           </div>
-          <div class="field-picker-list">
-            <template v-for="group in groupedSelected" :key="group.source">
-              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
-              <div v-for="field in group.fields" :key="field.field_key + field.source" class="field-picker-item field-picker-item--selected">
+          <div class="field-picker-list custom-scrollbar">
+            <div v-if="selectedPagination.paged.value.length > 0" class="space-y-1">
+              <div
+                v-for="field in selectedPagination.paged.value"
+                :key="field.field_key"
+                class="field-picker-item field-picker-item--selected"
+              >
                 <div class="field-picker-item-info">
-                  <div class="field-picker-item-name">{{ field.field_name }}</div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="field-picker-item-name">{{ field.field_name }}</span>
+                    <a-tooltip v-if="isFieldLocked(field)" :title="t('settings.workbench.fieldLocked') || '租户预设或已保存字段，不可删除'">
+                      <LockOutlined style="font-size: 10px; color: var(--color-text-tertiary);" />
+                    </a-tooltip>
+                  </div>
                   <div class="field-picker-item-meta">
                     <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
                     <span class="field-key">{{ field.field_key }}</span>
                   </div>
                 </div>
-                <button class="field-picker-remove" @click="unpickField(field)"><CloseOutlined /></button>
+                <button v-if="!isFieldLocked(field)" class="field-picker-remove" @click="unpickField({ field_key: field.field_key, source: field.source })">
+                  <CloseOutlined />
+                </button>
               </div>
-            </template>
-            <div v-if="!groupedSelected.length" class="field-picker-empty">{{ t('settings.workbench.noFieldSelected') }}</div>
+            </div>
+            <div v-else class="field-picker-empty">{{ t('settings.workbench.noFieldSelected') }}</div>
+          </div>
+          <!-- 已选分页 -->
+          <div v-if="selectedFieldsFlat.length > selectedPagination.pageSize.value" class="p-2 border-t border-slate-50 flex justify-center">
+            <a-pagination
+              v-model:current="selectedPagination.current.value"
+              :total="selectedFieldsFlat.length"
+              :page-size="selectedPagination.pageSize.value"
+              size="small"
+              simple
+            />
           </div>
         </div>
       </div>
@@ -1155,18 +1261,34 @@ const handleSaveArchive = async () => {
                   <AppstoreOutlined /> {{ t('settings.workbench.selectFields') }}
                 </a-button>
               </div>
-              <template v-if="archiveGroupedSelected.length">
-                <div v-for="group in archiveGroupedSelected" :key="group.source" class="selected-field-group">
-                  <div class="field-group-label">{{ group.sourceLabel }}</div>
-                  <div class="selected-fields-display">
-                    <div v-for="field in group.fields" :key="field.field_key + field.source" class="selected-field-tag">
-                      <span class="selected-field-name">{{ field.field_name }}</span>
-                      <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                <!-- 字段列表展示 -->
+                <div v-if="archiveSelectedFieldsFlat.length > 0">
+                  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    <div
+                      v-for="field in archiveDisplaySelectedPagination.paged.value"
+                      :key="field.field_key"
+                      class="px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-between"
+                    >
+                      <div class="flex flex-col min-w-0">
+                        <span class="text-sm font-medium text-slate-700 truncate">{{ field.field_name }}</span>
+                        <span class="text-[10px] text-slate-400 truncate">{{ field.field_key }}</span>
+                      </div>
                     </div>
                   </div>
+                  <!-- 分页控制 -->
+                  <div v-if="archiveSelectedFieldsFlat.length > 8" class="mt-4 flex justify-center">
+                    <a-pagination
+                      v-model:current="archiveDisplaySelectedPagination.current.value"
+                      :total="archiveSelectedFieldsFlat.length"
+                      :page-size="archiveDisplaySelectedPagination.pageSize.value"
+                      size="small"
+                      show-less-items
+                    />
+                  </div>
                 </div>
-              </template>
-              <div v-else class="field-empty-hint">{{ t('settings.workbench.noFieldSelected') }}</div>
+                <div v-else class="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  <div class="text-slate-400 text-sm">{{ t('settings.archive.noFieldsSelected') }}</div>
+                </div>
             </template>
             <template v-else>
               <div class="field-count" style="margin-top: 8px;">{{ t('settings.archive.allFieldsModeDesc') }}</div>
@@ -1211,6 +1333,9 @@ const handleSaveArchive = async () => {
               <div v-for="rule in fullArchiveConfig.custom_rules" :key="rule.id" class="rule-config-item">
                 <div class="rule-config-content">
                   <span class="rule-config-text">{{ rule.content }}</span>
+                  <span v-if="rule.related_flow" class="rule-flow-tag">
+                    <NodeIndexOutlined /> {{ t('settings.workbench.relatedFlow') }}
+                  </span>
                   <span class="rule-scope-tag rule-scope-tag--custom">{{ t('settings.workbench.personal') }}</span>
                 </div>
                 <div class="rule-config-actions">
@@ -1227,6 +1352,11 @@ const handleSaveArchive = async () => {
                 :placeholder="t('settings.archive.addRulePlaceholder')"
                 @pressEnter="addArchiveCustomRule"
               />
+              <a-tooltip :title="t('settings.workbench.relatedFlowTip')">
+                <button class="icon-btn" :class="{ 'icon-btn--active': newArchiveRuleRelatedFlow }" @click="newArchiveRuleRelatedFlow = !newArchiveRuleRelatedFlow">
+                  <NodeIndexOutlined />
+                </button>
+              </a-tooltip>
               <a-button type="primary" :disabled="!newArchiveRuleContent.trim()" @click="addArchiveCustomRule">
                 <PlusOutlined /> {{ t('settings.workbench.add') }}
               </a-button>
@@ -1291,7 +1421,8 @@ const handleSaveArchive = async () => {
     <!-- 归档字段选择器 Modal -->
     <a-modal v-model:open="showArchiveFieldPicker" :title="t('settings.archive.fieldPickerTitle')" :width="720" :footer="null">
       <div class="field-picker-modal">
-        <div class="field-picker-left">
+        <!-- 左侧：待选 -->
+        <div class="field-picker-panel">
           <div class="field-picker-panel-header">
             <span>{{ t('settings.workbench.availableFields') }}</span>
           </div>
@@ -1300,10 +1431,14 @@ const handleSaveArchive = async () => {
               <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
             </a-input>
           </div>
-          <div class="field-picker-list">
-            <template v-for="group in archiveGroupedUnselected" :key="group.source">
-              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
-              <div v-for="field in group.fields" :key="field.field_key + field.source" class="field-picker-item" @click="archivePickField(field)">
+          <div class="field-picker-list custom-scrollbar">
+            <div v-if="archiveUnselectedPagination.paged.value.length > 0" class="space-y-1">
+              <div
+                v-for="field in archiveUnselectedPagination.paged.value"
+                :key="field.field_key"
+                class="field-picker-item"
+                @click="pickField({ field_key: field.field_key, source: field.source })"
+              >
                 <div class="field-picker-item-info">
                   <div class="field-picker-item-name">{{ field.field_name }}</div>
                   <div class="field-picker-item-meta">
@@ -1313,32 +1448,64 @@ const handleSaveArchive = async () => {
                 </div>
                 <SwapRightOutlined class="field-picker-arrow" />
               </div>
-            </template>
-            <div v-if="!archiveGroupedUnselected.length" class="field-picker-empty">
+            </div>
+            <div v-else class="field-picker-empty">
               {{ archiveFieldSearchQuery ? t('settings.workbench.noMatchField') : t('settings.workbench.allFieldsAdded') }}
             </div>
           </div>
+          <!-- 待选分页 -->
+          <div v-if="archiveUnselectedFieldsFlat.length > archiveUnselectedPagination.pageSize.value" class="p-2 border-t border-slate-50 flex justify-center">
+            <a-pagination
+              v-model:current="archiveUnselectedPagination.current.value"
+              :total="archiveUnselectedFieldsFlat.length"
+              :page-size="archiveUnselectedPagination.pageSize.value"
+              size="small"
+              simple
+            />
+          </div>
         </div>
-        <div class="field-picker-right">
+
+        <!-- 右侧：已选 -->
+        <div class="field-picker-panel field-picker-panel--right">
           <div class="field-picker-panel-header">
             <span>{{ t('settings.workbench.selectedFields') }}</span>
             <span class="field-picker-count">{{ archiveSelectedCount }}</span>
           </div>
-          <div class="field-picker-list">
-            <template v-for="group in archiveGroupedSelected" :key="group.source">
-              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
-              <div v-for="field in group.fields" :key="field.field_key + field.source" class="field-picker-item field-picker-item--selected">
+          <div class="field-picker-list custom-scrollbar">
+            <div v-if="archiveSelectedPagination.paged.value.length > 0" class="space-y-1">
+              <div
+                v-for="field in archiveSelectedPagination.paged.value"
+                :key="field.field_key"
+                class="field-picker-item field-picker-item--selected"
+              >
                 <div class="field-picker-item-info">
-                  <div class="field-picker-item-name">{{ field.field_name }}</div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="field-picker-item-name">{{ field.field_name }}</span>
+                    <a-tooltip v-if="isFieldLocked(field)" :title="t('settings.workbench.fieldLocked') || '租户预设或已保存字段，不可删除'">
+                      <LockOutlined style="font-size: 10px; color: var(--color-text-tertiary);" />
+                    </a-tooltip>
+                  </div>
                   <div class="field-picker-item-meta">
                     <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
                     <span class="field-key">{{ field.field_key }}</span>
                   </div>
                 </div>
-                <button class="field-picker-remove" @click="archiveUnpickField(field)"><CloseOutlined /></button>
+                <button v-if="!isFieldLocked(field)" class="field-picker-remove" @click="unpickField({ field_key: field.field_key, source: field.source })">
+                  <CloseOutlined />
+                </button>
               </div>
-            </template>
-            <div v-if="!archiveGroupedSelected.length" class="field-picker-empty">{{ t('settings.workbench.noFieldSelected') }}</div>
+            </div>
+            <div v-else class="field-picker-empty">{{ t('settings.workbench.noFieldSelected') }}</div>
+          </div>
+          <!-- 已选分页 -->
+          <div v-if="archiveSelectedFieldsFlat.length > archiveSelectedPagination.pageSize.value" class="p-2 border-t border-slate-50 flex justify-center">
+            <a-pagination
+              v-model:current="archiveSelectedPagination.current.value"
+              :total="archiveSelectedFieldsFlat.length"
+              :page-size="archiveSelectedPagination.pageSize.value"
+              size="small"
+              simple
+            />
           </div>
         </div>
       </div>
@@ -1570,49 +1737,47 @@ const handleSaveArchive = async () => {
 .field-count { font-size: 13px; color: var(--color-text-secondary); }
 
 .field-picker-modal {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-height: 400px; margin-top: 12px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-height: 480px; margin-top: 12px;
 }
-.field-picker-left, .field-picker-right {
-  border: 1px solid var(--color-border-light); border-radius: var(--radius-md);
-  display: flex; flex-direction: column; overflow: hidden;
+.field-picker-panel {
+  border: 1px solid var(--color-border-light); border-radius: var(--radius-lg);
+  display: flex; flex-direction: column; overflow: hidden; background: #fff;
 }
+.field-picker-panel--right { background: var(--color-bg-page); }
 .field-picker-panel-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px; background: var(--color-bg-hover);
+  padding: 12px 16px; background: var(--color-bg-hover);
   font-size: 13px; font-weight: 600; color: var(--color-text-primary);
   border-bottom: 1px solid var(--color-border-light);
 }
 .field-picker-count {
-  font-size: 11px; font-weight: 500; padding: 1px 8px;
+  font-size: 11px; font-weight: 500; padding: 2px 8px;
   border-radius: var(--radius-full); background: var(--color-primary-bg); color: var(--color-primary);
 }
-.field-picker-search { padding: 8px 10px; border-bottom: 1px solid var(--color-border-light); }
-.field-picker-list { flex: 1; overflow-y: auto; padding: 4px; }
+.field-picker-search { padding: 10px; border-bottom: 1px solid var(--color-border-light); }
+.field-picker-list { flex: 1; overflow-y: auto; padding: 8px; max-height: 320px; }
 .field-picker-item {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer;
-  transition: all var(--transition-fast); gap: 8px;
+  padding: 10px 12px; border-radius: var(--radius-md); cursor: pointer;
+  transition: all var(--transition-fast); gap: 12px; border: 1px solid transparent;
 }
-.field-picker-item:hover { background: var(--color-bg-hover); }
+.field-picker-item:hover { background: var(--color-primary-bg); border-color: var(--color-primary-lighter); }
 .field-picker-item--selected { cursor: default; }
-.field-picker-item--selected:hover { background: transparent; }
+.field-picker-item--selected:hover { background: #fff; border-color: transparent; }
 .field-picker-item-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
 .field-picker-item-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .field-picker-item-info { flex: 1; min-width: 0; }
 .field-key { font-size: 11px; color: var(--color-text-tertiary); }
-.field-picker-group-label {
-  font-size: 12px; font-weight: 600; color: var(--color-text-secondary);
-  padding: 6px 10px 2px; margin-top: 4px; border-left: 3px solid var(--color-primary);
-}
-.field-picker-arrow { color: var(--color-primary); font-size: 14px; flex-shrink: 0; }
+.field-picker-arrow { color: var(--color-primary); font-size: 14px; opacity: 0; transition: opacity 0.2s; }
+.field-picker-item:hover .field-picker-arrow { opacity: 1; }
 .field-picker-remove {
-  width: 22px; height: 22px; border: none; background: transparent;
+  width: 24px; height: 24px; border: none; background: transparent;
   border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center;
-  justify-content: center; color: var(--color-text-tertiary); font-size: 11px;
-  transition: all var(--transition-fast); flex-shrink: 0;
+  justify-content: center; color: var(--color-text-tertiary); font-size: 12px;
+  transition: all var(--transition-fast);
 }
 .field-picker-remove:hover { background: var(--color-danger-bg); color: var(--color-danger); }
-.field-picker-empty { padding: 32px 16px; text-align: center; color: var(--color-text-tertiary); font-size: 13px; }
+.field-picker-empty { padding: 48px 16px; text-align: center; color: var(--color-text-tertiary); font-size: 13px; }
 
 @media (max-width: 768px) {
   .form-row { grid-template-columns: 1fr; }

@@ -6,11 +6,27 @@ import "gorm.io/datatypes"
 
 // UpdateUserProcessConfigRequest 更新用户流程个性化配置请求
 type UpdateUserProcessConfigRequest struct {
+	ConfigID    string              `json:"config_id"`
+	FieldConfig UserFieldConfigDTO  `json:"field_config"`
+	RuleConfig  UserRuleConfigDTO   `json:"rule_config"`
+	AIConfig    UserAIConfigDTO     `json:"ai_config"`
+}
+
+// UserFieldConfigDTO 用户字段配置 DTO
+type UserFieldConfigDTO struct {
+	FieldMode      string   `json:"field_mode"`
+	FieldOverrides []string `json:"field_overrides"`
+}
+
+// UserRuleConfigDTO 用户规则配置 DTO
+type UserRuleConfigDTO struct {
 	CustomRules         []CustomRuleDTO         `json:"custom_rules"`
-	FieldOverrides      []string                `json:"field_overrides"`
-	FieldMode           string                  `json:"field_mode"`
-	StrictnessOverride  string                  `json:"strictness_override"`
 	RuleToggleOverrides []RuleToggleOverrideDTO `json:"rule_toggle_overrides"`
+}
+
+// UserAIConfigDTO 用户 AI 个性化配置 DTO
+type UserAIConfigDTO struct {
+	StrictnessOverride string `json:"strictness_override"`
 }
 
 // CustomRuleDTO 用户自定义规则 DTO
@@ -18,7 +34,7 @@ type CustomRuleDTO struct {
 	ID          string `json:"id"`
 	Content     string `json:"content"`
 	Enabled     bool   `json:"enabled"`
-	RelatedFlow bool   `json:"related_flow,omitempty"`
+	RelatedFlow bool   `json:"related_flow"`
 }
 
 // RuleToggleOverrideDTO 规则开关覆盖 DTO
@@ -78,7 +94,7 @@ type FullAuditProcessConfigResponse struct {
 	ProcessType      string             `json:"process_type"`
 	ProcessTypeLabel string             `json:"process_type_label"`
 	ConfigID         string             `json:"config_id"`
-	FieldMode        string             `json:"field_mode"`         // 租户设置的字段模式
+	FieldMode        string             `json:"field_mode"`         // 租户设置的字段传输模式
 	KBMode           string             `json:"kb_mode"`            // 租户设置的知识库模式
 	AuditStrictness  string             `json:"audit_strictness"`   // 有效严格度（用户覆盖优先）
 	UserPermissions  UserPermissionsDTO `json:"user_permissions"`   // 用户权限
@@ -133,11 +149,10 @@ type FullArchiveConfigResponse struct {
 
 // UpdateArchiveConfigRequest 更新用户归档复盘个人配置请求
 type UpdateArchiveConfigRequest struct {
-	CustomRules         []CustomRuleDTO         `json:"custom_rules"`
-	FieldOverrides      []string                `json:"field_overrides"`
-	FieldMode           string                  `json:"field_mode"`
-	StrictnessOverride  string                  `json:"strictness_override"`
-	RuleToggleOverrides []RuleToggleOverrideDTO `json:"rule_toggle_overrides"`
+	ConfigID    string              `json:"config_id"`
+	FieldConfig UserFieldConfigDTO  `json:"field_config"`
+	RuleConfig  UserRuleConfigDTO   `json:"rule_config"`
+	AIConfig    UserAIConfigDTO     `json:"ai_config"`
 }
 
 // ===================== 仪表板偏好 DTO =====================
