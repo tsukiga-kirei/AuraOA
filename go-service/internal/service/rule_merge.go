@@ -30,7 +30,7 @@ func MergeRules(tenantRules []model.AuditRule, userDetail *model.AuditDetailItem
 
 	// 处理租户规则
 	for _, rule := range tenantRules {
-		if !rule.Enabled {
+		if rule.Enabled != nil && !*rule.Enabled {
 			continue
 		}
 

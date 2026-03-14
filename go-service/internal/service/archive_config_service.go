@@ -345,13 +345,19 @@ func (s *ArchiveRuleService) Create(c *gin.Context, req *dto.CreateArchiveRuleRe
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
 
+	// 默认开启
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+
 	rule := &model.ArchiveRule{
 		ID:          uuid.New(),
 		TenantID:    tenantID,
 		ProcessType: req.ProcessType,
 		RuleContent: req.RuleContent,
 		RuleScope:   defaultStr(req.RuleScope, "default_on"),
-		Enabled:     true,
+		Enabled:     &enabled,
 		Source:      defaultStr(req.Source, "manual"),
 		RelatedFlow: req.RelatedFlow,
 	}
@@ -361,10 +367,6 @@ func (s *ArchiveRuleService) Create(c *gin.Context, req *dto.CreateArchiveRuleRe
 		if err == nil {
 			rule.ConfigID = &configID
 		}
-	}
-
-	if req.Enabled != nil {
-		rule.Enabled = *req.Enabled
 	}
 
 	if err := s.ruleRepo.Create(c, rule); err != nil {

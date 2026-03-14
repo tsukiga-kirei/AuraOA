@@ -37,7 +37,16 @@ VALUES (
         ]
     }]'::jsonb,
     '[]'::jsonb,
-    '[]'::jsonb
+    '[{
+        "process_type": "采购审批",
+        "custom_rules": [
+            {"id": "arc-001", "content": "归档文件必须包含供应商合规承诺书", "enabled": true}
+        ],
+        "field_overrides": [],
+        "field_mode": "all",
+        "strictness_override": "standard",
+        "rule_toggle_overrides": []
+    }]'::jsonb
 );
 
 -- reviewer02 (李四) 在 DEMO_HQ 的个人配置
@@ -89,7 +98,18 @@ VALUES (
         }
     ]'::jsonb,
     '[]'::jsonb,
-    '[]'::jsonb
+    '[
+        {
+            "process_type": "合同审批",
+            "custom_rules": [
+                {"id": "arc-002", "content": "归档文件须检查印章清晰度", "enabled": true}
+            ],
+            "field_overrides": [],
+            "field_mode": "all",
+            "strictness_override": "strict",
+            "rule_toggle_overrides": []
+        }
+    ]'::jsonb
 );
 
 -- ============================================================
@@ -133,7 +153,14 @@ VALUES (
         ]
     }]'::jsonb,
     '[]'::jsonb,
-    '[]'::jsonb
+    '[{
+        "process_type": "采购审批",
+        "custom_rules": [],
+        "field_overrides": [],
+        "field_mode": "all",
+        "strictness_override": "loose",
+        "rule_toggle_overrides": []
+    }]'::jsonb
 );
 
 -- ============================================================

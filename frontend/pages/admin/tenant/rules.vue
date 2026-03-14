@@ -38,6 +38,8 @@ import type {
 import type {ArchiveRule, CronTaskConfig, ProcessArchiveConfig} from '~/types/rules'
 import {useI18n} from '~/composables/useI18n'
 import {usePagination} from '~/composables/usePagination'
+import {useArchiveApi} from "~/composables/useArchiveApi";
+import {useCronApi} from "~/composables/useCronApi";
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
@@ -600,8 +602,8 @@ const handleSaveRule = async (rule: any) => {
         rule_content: rule.rule_content,
         rule_scope: rule.rule_scope,
         related_flow: rule.related_flow,
-        // 如果改为强制，强制开启
-        enabled: rule.rule_scope === 'mandatory' ? true : undefined
+        // 强制根据级别同步启用状态
+        enabled: rule.rule_scope === 'mandatory' ? true : (rule.rule_scope === 'default_off' ? false : true)
       })
       const idx = currentRules.value.findIndex(r => r.id === editingRule.value!.id)
       if (idx >= 0) currentRules.value[idx] = updated
@@ -1000,8 +1002,8 @@ const handleSaveArchiveRule = async (rule: any) => {
         rule_content: rule.rule_content,
         rule_scope: rule.rule_scope,
         related_flow: rule.related_flow,
-        // 如果改为强制，强制开启
-        enabled: rule.rule_scope === 'mandatory' ? true : undefined
+        // 强制根据级别同步启用状态
+        enabled: rule.rule_scope === 'mandatory' ? true : (rule.rule_scope === 'default_off' ? false : true)
       })
       const idx = currentArchiveRules.value.findIndex(r => r.id === editingArchiveRule.value!.id)
       if (idx >= 0) currentArchiveRules.value[idx] = updated

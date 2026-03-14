@@ -27,13 +27,19 @@ func (s *AuditRuleService) Create(c *gin.Context, req *dto.CreateAuditRuleReques
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
 
+	// 默认开启
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+
 	rule := &model.AuditRule{
 		ID:          uuid.New(),
 		TenantID:    tenantID,
 		ProcessType: req.ProcessType,
 		RuleContent: req.RuleContent,
 		RuleScope:   defaultStr(req.RuleScope, "default_on"),
-		Enabled:     true,
+		Enabled:     &enabled,
 		Source:      defaultStr(req.Source, "manual"),
 		RelatedFlow: req.RelatedFlow,
 	}
@@ -44,11 +50,6 @@ func (s *AuditRuleService) Create(c *gin.Context, req *dto.CreateAuditRuleReques
 		if err == nil {
 			rule.ConfigID = &configID
 		}
-	}
-
-	// 设置 enabled 默认值
-	if req.Enabled != nil {
-		rule.Enabled = *req.Enabled
 	}
 
 	if err := s.ruleRepo.Create(c, rule); err != nil {
