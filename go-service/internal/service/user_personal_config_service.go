@@ -352,7 +352,11 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 	// 构建租户规则 DTO（应用用户开关覆盖）
 	tenantRuleDTOs := make([]dto.TenantRuleDTO, len(tenantRules))
 	for i, r := range tenantRules {
-		effectiveEnabled := r.Enabled
+		effectiveEnabled := true
+		if r.Enabled != nil {
+			effectiveEnabled = *r.Enabled
+		}
+
 		if r.RuleScope != "mandatory" {
 			if v, ok := toggleMap[r.ID.String()]; ok {
 				effectiveEnabled = v
@@ -652,7 +656,11 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 	// 构建归档规则 DTO
 	ruleDTOs := make([]dto.TenantRuleDTO, len(archiveRules))
 	for i, r := range archiveRules {
-		effectiveEnabled := r.Enabled
+		effectiveEnabled := true
+		if r.Enabled != nil {
+			effectiveEnabled = *r.Enabled
+		}
+
 		if r.RuleScope != "mandatory" {
 			if v, ok := toggleMap[r.ID.String()]; ok {
 				effectiveEnabled = v
@@ -661,8 +669,11 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 			effectiveEnabled = true
 		}
 		ruleDTOs[i] = dto.TenantRuleDTO{
-			ID: r.ID.String(), RuleContent: r.RuleContent,
-			RuleScope: r.RuleScope, RelatedFlow: r.RelatedFlow, Enabled: effectiveEnabled,
+			ID:          r.ID.String(),
+			RuleContent: r.RuleContent,
+			RuleScope:   r.RuleScope,
+			RelatedFlow: r.RelatedFlow,
+			Enabled:     effectiveEnabled,
 		}
 	}
 

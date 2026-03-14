@@ -14,7 +14,7 @@ type ArchiveRule struct {
 	ProcessType string     `gorm:"size:200;not null" json:"process_type"`                     // 适用流程类型
 	RuleContent string     `gorm:"type:text;not null" json:"rule_content"`                    // 规则内容（自然语言描述）
 	RuleScope   string     `gorm:"size:20;not null;default:default_on" json:"rule_scope"`     // 规则作用域：mandatory/default_on/default_off
-	Enabled     bool       `gorm:"not null;default:true" json:"enabled"`                      // 是否启用
+	Enabled     *bool      `gorm:"not null;default:true" json:"enabled"`                      // 是否启用
 	Source      string     `gorm:"size:20;not null;default:manual" json:"source"`             // 规则来源：manual/file_import
 	RelatedFlow bool       `gorm:"not null;default:false" json:"related_flow"`                // 是否关联审批流
 	CreatedAt   time.Time  `json:"created_at"`                                                // 创建时间
