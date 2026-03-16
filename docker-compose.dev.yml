@@ -27,7 +27,7 @@ services:
       - REDIS_PASSWORD=
       - SERVER_PORT=8080
       - JWT_SECRET=dev_jwt_secret_change_me
-      - ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
+      - ENCRYPTION_KEY=4f9e2b8c5a1d7f0e3a6c9b2d5e8f1a4c
     restart: unless-stopped
 
   postgres:
