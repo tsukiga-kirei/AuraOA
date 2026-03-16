@@ -930,30 +930,89 @@ const archiveSelectedFieldCount = computed(() =>
   archiveAllAvailableFields.value.filter(f => f.selected).length
 )
 
-const archiveGroupedUnselected = computed<ArchiveFieldGroup[]>(() => {
-  const q = archiveFieldSearchQuery.value.toLowerCase().trim()
-  return archiveGroupedAvailableFields.value
-    .map(g => ({
-      ...g,
-      fields: g.fields.filter(f => {
-        if (f.selected) return false
-        if (!q) return true
-        return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
-      }),
-    }))
-    .filter(g => g.fields.length > 0)
-})
 
-const archiveGroupedSelected = computed<ArchiveFieldGroup[]>(() =>
-  archiveGroupedAvailableFields.value
-    .map(g => ({ ...g, fields: g.fields.filter(f => f.selected) }))
-    .filter(g => g.fields.length > 0)
-)
+
+const archiveSelectedFieldSearchQuery = ref('')
+const archiveLeftSelectedKeys = ref<string[]>([])
+const archiveRightSelectedKeys = ref<string[]>([])
+
+const archiveUnselectedFieldsFlat = computed(() => {
+  const q = archiveFieldSearchQuery.value.toLowerCase().trim()
+  return archiveAllAvailableFields.value.filter(f => {
+    if (f.selected) return false
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
+  })
+})
+const archiveUnselectedPagination = usePagination(archiveUnselectedFieldsFlat, 5)
+
+const toggleArchiveLeftSelectAll = () => {
+  if (archiveLeftSelectedKeys.value.length === archiveUnselectedFieldsFlat.value.length && archiveUnselectedFieldsFlat.value.length > 0) {
+    archiveLeftSelectedKeys.value = []
+  } else {
+    archiveLeftSelectedKeys.value = archiveUnselectedFieldsFlat.value.map(f => f.field_key + '_' + f.source)
+  }
+}
+
+const toggleArchiveLeftSelect = (fieldId: string) => {
+  const idx = archiveLeftSelectedKeys.value.indexOf(fieldId)
+  if (idx >= 0) archiveLeftSelectedKeys.value.splice(idx, 1)
+  else archiveLeftSelectedKeys.value.push(fieldId)
+}
+
+const archiveBatchPick = () => {
+  archiveUnselectedFieldsFlat.value.filter(f => archiveLeftSelectedKeys.value.includes(f.field_key + '_' + f.source)).forEach(archivePickField)
+  archiveLeftSelectedKeys.value = []
+}
+
+const archiveSelectedFieldsFlat = computed(() => {
+  const q = archiveSelectedFieldSearchQuery.value.toLowerCase().trim()
+  return archiveAllAvailableFields.value.filter(f => {
+    if (!f.selected) return false
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q) || f.sourceLabel.toLowerCase().includes(q)
+  })
+})
+const archiveSelectedPagination = usePagination(archiveSelectedFieldsFlat, 5)
+
+const toggleArchiveRightSelectAll = () => {
+  if (archiveRightSelectedKeys.value.length === archiveSelectedFieldsFlat.value.length && archiveSelectedFieldsFlat.value.length > 0) {
+    archiveRightSelectedKeys.value = []
+  } else {
+    archiveRightSelectedKeys.value = archiveSelectedFieldsFlat.value.map(f => f.field_key + '_' + f.source)
+  }
+}
+
+const toggleArchiveRightSelect = (fieldId: string) => {
+  const idx = archiveRightSelectedKeys.value.indexOf(fieldId)
+  if (idx >= 0) archiveRightSelectedKeys.value.splice(idx, 1)
+  else archiveRightSelectedKeys.value.push(fieldId)
+}
+
+const archiveBatchUnpick = () => {
+  archiveSelectedFieldsFlat.value.filter(f => archiveRightSelectedKeys.value.includes(f.field_key + '_' + f.source)).forEach(archiveUnpickField)
+  archiveRightSelectedKeys.value = []
+}
+
+const archivePageSelectedFieldSearchQuery = ref('')
+const archivePageSelectedFieldsFlat = computed(() => {
+  const q = archivePageSelectedFieldSearchQuery.value.toLowerCase().trim()
+  return archiveAllAvailableFields.value.filter(f => {
+    if (!f.selected) return false
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q) || f.sourceLabel.toLowerCase().includes(q)
+  })
+})
+const archivePageSelectedPagination = usePagination(archivePageSelectedFieldsFlat, 5)
 
 const openArchiveFieldPicker = () => {
   archiveFieldSearchQuery.value = ''
+  archiveSelectedFieldSearchQuery.value = ''
+  archiveLeftSelectedKeys.value = []
+  archiveRightSelectedKeys.value = []
   showArchiveFieldPicker.value = true
 }
+
 
 const archivePickField = (field: { field_key: string; source: string }) => {
   if (!selectedArchiveConfig.value) return
@@ -2264,26 +2323,58 @@ const handleSave = async () => {
               </a-button>
             </div>
 
-            <!--按表分组的选定字段-->
-            <template v-if="archiveGroupedSelected.length">
-              <div v-for="group in archiveGroupedSelected" :key="group.source" class="selected-field-group">
-                <div class="field-group-label">{{ group.sourceLabel }}</div>
-                <div class="selected-fields-display">
-                  <div
-                    v-for="field in group.fields"
-                    :key="field.field_key + field.source"
-                    class="selected-field-tag"
-                  >
-                    <span class="selected-field-name">{{ field.field_name }}</span>
-                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                  </div>
-                </div>
+            <div v-if="archivePageSelectedFieldsFlat.length > 0 || archivePageSelectedFieldSearchQuery" class="page-selected-fields-container" style="margin-top: 16px;">
+              <div style="margin-bottom: 12px; max-width: 300px;">
+                <a-input
+                  v-model:value="archivePageSelectedFieldSearchQuery"
+                  :placeholder="t('admin.ruleConfig.searchFieldPlaceholder')"
+                  allow-clear
+                >
+                  <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                </a-input>
               </div>
-            </template>
-            <div v-else class="field-empty-hint">
+              <div class="data-table-card">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="padding-left: 24px;">字段名称</th>
+                      <th>字段标识</th>
+                      <th>字段类型</th>
+                      <th>归属表</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="field in archivePageSelectedPagination.paged.value" :key="field.field_key + field.source">
+                      <td style="padding-left: 24px; font-weight: 500;">{{ field.field_name }}</td>
+                      <td class="text-mono" style="font-size: 13px;">{{ field.field_key }}</td>
+                      <td><span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span></td>
+                      <td class="text-secondary" style="font-size: 13px;">{{ field.sourceLabel }}</td>
+                    </tr>
+                    <tr v-if="archivePageSelectedPagination.paged.value.length === 0">
+                      <td colspan="4" class="empty-cell">{{ t('admin.ruleConfig.noSearchResult') || '未找到匹配字段' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="pagination-wrapper" style="margin-top: 12px; text-align: right;">
+                <a-pagination
+                  v-model:current="archivePageSelectedPagination.current.value"
+                  v-model:page-size="archivePageSelectedPagination.pageSize.value"
+                  :total="archivePageSelectedPagination.total.value"
+                  size="small"
+                  show-size-changer
+                  show-quick-jumper
+                  :page-size-options="['5', '20', '50']"
+                  @change="archivePageSelectedPagination.onChange"
+                  @showSizeChange="archivePageSelectedPagination.onChange"
+                />
+              </div>
+            </div>
+            <div v-else class="field-empty-hint" style="margin-top: 16px;">
               {{ t('admin.ruleConfig.noFieldsSelected') }}
             </div>
           </template>
+
 
           <template v-else>
             <div class="field-count" style="margin-top: 8px;">
@@ -2674,8 +2765,16 @@ const handleSave = async () => {
     >
       <div class="field-picker-modal">
         <div class="field-picker-left">
-          <div class="field-picker-panel-header">
-            <span>{{ t('admin.ruleConfig.availableFields') }}</span>
+          <div class="field-picker-panel-header" style="justify-content: flex-start; gap: 8px;">
+            <a-checkbox
+              :checked="archiveLeftSelectedKeys.length === archiveUnselectedFieldsFlat.length && archiveUnselectedFieldsFlat.length > 0"
+              :indeterminate="archiveLeftSelectedKeys.length > 0 && archiveLeftSelectedKeys.length < archiveUnselectedFieldsFlat.length"
+              @change="toggleArchiveLeftSelectAll"
+            />
+            <span style="flex: 1;">{{ t('admin.ruleConfig.availableFields') }} <span class="field-count" style="margin-left:4px; font-weight:normal;">({{ archiveUnselectedFieldsFlat.length }})</span></span>
+            <a-button type="primary" size="small" :disabled="archiveLeftSelectedKeys.length === 0" @click="archiveBatchPick">
+              {{ t('admin.ruleConfig.add') }}
+            </a-button>
           </div>
           <div class="field-picker-search">
             <a-input
@@ -2687,61 +2786,108 @@ const handleSave = async () => {
               <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
             </a-input>
           </div>
-          <div class="field-picker-list">
-            <template v-for="group in archiveGroupedUnselected" :key="group.source">
-              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
-              <div
-                v-for="field in group.fields"
-                :key="field.field_key + field.source"
-                class="field-picker-item"
-                @click="archivePickField(field)"
-              >
-                <div class="field-picker-item-info">
-                  <div class="field-picker-item-name">{{ field.field_name }}</div>
-                  <div class="field-picker-item-meta">
-                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                    <span class="field-key">{{ field.field_key }}</span>
-                  </div>
-                </div>
-                <SwapRightOutlined class="field-picker-arrow" />
+          <div class="field-picker-list" style="padding: 12px 16px;">
+            <div
+              v-for="field in archiveUnselectedPagination.paged.value"
+              :key="field.field_key + field.source"
+              class="field-picker-item"
+              @click="toggleArchiveLeftSelect(field.field_key + '_' + field.source)"
+              style="display: flex; gap: 12px; justify-content: flex-start; margin-bottom: 8px;"
+            >
+              <div class="field-picker-item-checkbox" @click.stop="toggleArchiveLeftSelect(field.field_key + '_' + field.source)">
+                <a-checkbox :checked="archiveLeftSelectedKeys.includes(field.field_key + '_' + field.source)" />
               </div>
-            </template>
-            <div v-if="!archiveGroupedUnselected.length" class="field-picker-empty">
+              <div class="field-picker-item-info" style="flex: 1;">
+                <div class="field-picker-item-name">{{ field.field_name }} <span class="field-source-tag" style="font-size: 11px; color: var(--color-text-tertiary); font-weight: normal; margin-left: 4px;">({{ field.sourceLabel }})</span></div>
+                <div class="field-picker-item-meta">
+                  <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                  <span class="field-key">{{ field.field_key }}</span>
+                </div>
+              </div>
+              <button class="icon-btn icon-btn--sm" @click.stop="archivePickField(field)" style="margin-left: auto;">
+                <SwapRightOutlined />
+              </button>
+            </div>
+            <div v-if="!archiveUnselectedFieldsFlat.length" class="field-picker-empty">
               {{ archiveFieldSearchQuery ? t('admin.ruleConfig.noSearchResult') : t('admin.ruleConfig.allFieldsAdded') }}
             </div>
           </div>
+          <div class="pagination-wrapper" style="padding: 12px 16px; border-top: 1px solid var(--color-border-light);">
+            <a-pagination
+              v-model:current="archiveUnselectedPagination.current.value"
+              v-model:page-size="archiveUnselectedPagination.pageSize.value"
+              :total="archiveUnselectedPagination.total.value"
+              size="small"
+              show-size-changer
+              :page-size-options="['5', '20', '50']"
+              @change="archiveUnselectedPagination.onChange"
+              @showSizeChange="archiveUnselectedPagination.onChange"
+            />
+          </div>
         </div>
         <div class="field-picker-right">
-          <div class="field-picker-panel-header">
-            <span>{{ t('admin.ruleConfig.selectedFields') }}</span>
-            <span class="field-picker-count">{{ archiveSelectedFieldCount }}</span>
+          <div class="field-picker-panel-header" style="justify-content: flex-start; gap: 8px;">
+            <a-checkbox
+              :checked="archiveRightSelectedKeys.length === archiveSelectedFieldsFlat.length && archiveSelectedFieldsFlat.length > 0"
+              :indeterminate="archiveRightSelectedKeys.length > 0 && archiveRightSelectedKeys.length < archiveSelectedFieldsFlat.length"
+              @change="toggleArchiveRightSelectAll"
+            />
+            <span style="flex: 1;">{{ t('admin.ruleConfig.selectedFields') }} <span class="field-picker-count" style="margin-left:4px;">{{ archiveSelectedFieldCount }}</span></span>
+            <a-button danger size="small" :disabled="archiveRightSelectedKeys.length === 0" @click="archiveBatchUnpick">
+              {{ t('admin.ruleConfig.remove') }}
+            </a-button>
           </div>
-          <div class="field-picker-list">
-            <template v-for="group in archiveGroupedSelected" :key="group.source">
-              <div class="field-picker-group-label">{{ group.sourceLabel }}</div>
-              <div
-                v-for="field in group.fields"
-                :key="field.field_key + field.source"
-                class="field-picker-item field-picker-item--selected"
-              >
-                <div class="field-picker-item-info">
-                  <div class="field-picker-item-name">{{ field.field_name }}</div>
-                  <div class="field-picker-item-meta">
-                    <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                    <span class="field-key">{{ field.field_key }}</span>
-                  </div>
-                </div>
-                <button class="field-picker-remove" @click="archiveUnpickField(field)">
-                  <CloseOutlined />
-                </button>
+          <div class="field-picker-search">
+            <a-input
+              v-model:value="archiveSelectedFieldSearchQuery"
+              :placeholder="t('admin.ruleConfig.searchFieldPlaceholder')"
+              allow-clear
+              size="small"
+            >
+              <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+            </a-input>
+          </div>
+          <div class="field-picker-list" style="padding: 12px 16px;">
+            <div
+              v-for="field in archiveSelectedPagination.paged.value"
+              :key="field.field_key + field.source"
+              class="field-picker-item field-picker-item--selected"
+              @click="toggleArchiveRightSelect(field.field_key + '_' + field.source)"
+              style="display: flex; gap: 12px; justify-content: flex-start; margin-bottom: 8px;"
+            >
+              <div class="field-picker-item-checkbox" @click.stop="toggleArchiveRightSelect(field.field_key + '_' + field.source)">
+                <a-checkbox :checked="archiveRightSelectedKeys.includes(field.field_key + '_' + field.source)" />
               </div>
-            </template>
-            <div v-if="!archiveGroupedSelected.length" class="field-picker-empty">
-              {{ t('admin.ruleConfig.noFieldsSelected') }}
+              <div class="field-picker-item-info" style="flex: 1;">
+                <div class="field-picker-item-name">{{ field.field_name }} <span class="field-source-tag" style="font-size: 11px; color: var(--color-text-tertiary); font-weight: normal; margin-left: 4px;">({{ field.sourceLabel }})</span></div>
+                <div class="field-picker-item-meta">
+                  <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                  <span class="field-key">{{ field.field_key }}</span>
+                </div>
+              </div>
+              <button class="field-picker-remove" @click.stop="archiveUnpickField(field)" style="margin-left: auto;">
+                <CloseOutlined />
+              </button>
             </div>
+            <div v-if="!archiveSelectedFieldsFlat.length" class="field-picker-empty">
+              {{ archiveSelectedFieldSearchQuery ? t('admin.ruleConfig.noSearchResult') : t('admin.ruleConfig.noFieldsSelected') }}
+            </div>
+          </div>
+          <div class="pagination-wrapper" style="padding: 12px 16px; border-top: 1px solid var(--color-border-light);">
+            <a-pagination
+              v-model:current="archiveSelectedPagination.current.value"
+              v-model:page-size="archiveSelectedPagination.pageSize.value"
+              :total="archiveSelectedPagination.total.value"
+              size="small"
+              show-size-changer
+              :page-size-options="['5', '20', '50']"
+              @change="archiveSelectedPagination.onChange"
+              @showSizeChange="archiveSelectedPagination.onChange"
+            />
           </div>
         </div>
       </div>
+
     </a-modal>
 
   </div>
