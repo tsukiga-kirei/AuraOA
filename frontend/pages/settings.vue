@@ -314,10 +314,20 @@ const selectedFieldsFiltered = computed(() => {
     return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
   })
 })
+const workbenchPageSelectedFieldSearchQuery = ref('')
+const workbenchPageSelectedFieldsFlat = computed(() => {
+  const q = workbenchPageSelectedFieldSearchQuery.value.toLowerCase().trim()
+  return selectedFieldsFlat.value.filter(f => {
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q) || f.sourceLabel.toLowerCase().includes(q)
+  })
+})
+const displaySelectedPagination = usePagination(workbenchPageSelectedFieldsFlat, 10)
 const selectedPagination = usePagination(selectedFieldsFiltered, 6)
-const displaySelectedPagination = usePagination(selectedFieldsFlat, 24)
+
 
 const selectedFieldCount = computed(() => selectedFieldsFlat.value.length)
+
 
 const groupedUnselected = computed<PickerFieldGroup[]>(() => {
   const q = fieldSearchQuery.value.toLowerCase().trim()
@@ -608,10 +618,20 @@ const archiveSelectedFieldsFiltered = computed(() => {
     return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
   })
 })
+const archivePageSelectedFieldSearchQuery = ref('')
+const archivePageSelectedFieldsFlat = computed(() => {
+  const q = archivePageSelectedFieldSearchQuery.value.toLowerCase().trim()
+  return archiveSelectedFieldsFlat.value.filter(f => {
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q) || f.sourceLabel.toLowerCase().includes(q)
+  })
+})
+const archiveDisplaySelectedPagination = usePagination(archivePageSelectedFieldsFlat, 10)
 const archiveSelectedPagination = usePagination(archiveSelectedFieldsFiltered, 6)
-const archiveDisplaySelectedPagination = usePagination(archiveSelectedFieldsFlat, 24)
+
 
 const archiveSelectedCount = computed(() => archiveSelectedFieldsFlat.value.length)
+
 
 const archiveGroupedUnselected = computed<PickerFieldGroup[]>(() => {
   const q = archiveFieldSearchQuery.value.toLowerCase().trim()
@@ -1058,35 +1078,60 @@ const handleSaveArchive = async () => {
                 </a-button>
               </div>
                 <!-- 字段列表展示 -->
-                <div v-if="selectedFieldsFlat.length > 0">
-                  <div v-for="group in groupedSelected" :key="group.source" class="selected-field-group">
-                    <div class="field-group-label">{{ group.sourceLabel }}</div>
-                    <div class="selected-fields-display">
-                      <div
-                        v-for="field in group.fields"
-                        :key="field.field_key + '_' + field.source"
-                        class="selected-field-tag"
-                      >
-                        <span class="selected-field-name">{{ field.field_name }}</span>
-                        <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                      </div>
-                    </div>
+                <div v-if="workbenchPageSelectedFieldsFlat.length > 0 || workbenchPageSelectedFieldSearchQuery">
+                  <div style="margin-bottom: 12px; max-width: 280px;">
+                    <a-input
+                      v-model:value="workbenchPageSelectedFieldSearchQuery"
+                      :placeholder="t('settings.workbench.fieldSearchPlaceholder')"
+                      allow-clear
+                      size="small"
+                    >
+                      <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                    </a-input>
                   </div>
-                  <!-- 分页控制 (可选，如果字段很多可以整体分页，但通常分组后整体分页较好) -->
-                  <div v-if="selectedFieldsFlat.length > 24" class="pagination-wrapper" style="margin-top: 20px; border-top: none;">
+                  
+                  <div class="data-table-container">
+                    <table class="settings-data-table">
+                      <thead>
+                        <tr>
+                          <th>{{ t('settings.workbench.fieldName') || '字段名称' }}</th>
+                          <th>{{ t('settings.workbench.fieldKey') || '字段标识' }}</th>
+                          <th>{{ t('settings.workbench.fieldType') || '类型' }}</th>
+                          <th>{{ t('settings.workbench.fieldSource') || '来源' }}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="field in displaySelectedPagination.paged.value" :key="field.field_key + '_' + field.source">
+                          <td style="font-weight: 500;">{{ field.field_name }}</td>
+                          <td class="text-mono" style="font-size: 12px;">{{ field.field_key }}</td>
+                          <td><span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span></td>
+                          <td class="text-secondary" style="font-size: 12px;">{{ field.sourceLabel }}</td>
+                        </tr>
+                        <tr v-if="displaySelectedPagination.paged.value.length === 0">
+                          <td colspan="4" class="empty-cell">{{ t('settings.workbench.noMatchField') }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <!-- 分页控制 -->
+                  <div class="pagination-wrapper" style="margin-top: 12px; border-top: none; justify-content: flex-end;">
                     <a-pagination
                       v-model:current="displaySelectedPagination.current.value"
                       v-model:page-size="displaySelectedPagination.pageSize.value"
-                      :total="selectedFieldsFlat.length"
+                      :total="displaySelectedPagination.total.value"
                       size="small"
                       show-size-changer
-                      :page-size-options="['24', '48', '96']"
+                      show-quick-jumper
+                      :page-size-options="['10', '20', '50']"
+                      @change="displaySelectedPagination.onChange"
                     />
                   </div>
                 </div>
                 <div v-else class="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                   <div class="text-slate-400 text-sm">{{ t('settings.workbench.noFieldsSelected') }}</div>
                 </div>
+
             </template>
             <template v-else>
               <div class="field-count" style="margin-top: 8px;">{{ t('settings.workbench.allFieldsModeDesc') }}</div>
@@ -1439,35 +1484,60 @@ const handleSaveArchive = async () => {
                 </a-button>
               </div>
                 <!-- 字段列表展示 -->
-                <div v-if="archiveSelectedFieldsFlat.length > 0">
-                  <div v-for="group in archiveGroupedSelected" :key="group.source" class="selected-field-group">
-                    <div class="field-group-label">{{ group.sourceLabel }}</div>
-                    <div class="selected-fields-display">
-                      <div
-                        v-for="field in group.fields"
-                        :key="field.field_key + '_' + field.source"
-                        class="selected-field-tag"
-                      >
-                        <span class="selected-field-name">{{ field.field_name }}</span>
-                        <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
-                      </div>
-                    </div>
+                <div v-if="archivePageSelectedFieldsFlat.length > 0 || archivePageSelectedFieldSearchQuery">
+                  <div style="margin-bottom: 12px; max-width: 280px;">
+                    <a-input
+                      v-model:value="archivePageSelectedFieldSearchQuery"
+                      :placeholder="t('settings.workbench.fieldSearchPlaceholder')"
+                      allow-clear
+                      size="small"
+                    >
+                      <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                    </a-input>
                   </div>
+
+                  <div class="data-table-container">
+                    <table class="settings-data-table">
+                      <thead>
+                        <tr>
+                          <th>{{ t('settings.workbench.fieldName') || '字段名称' }}</th>
+                          <th>{{ t('settings.workbench.fieldKey') || '字段标识' }}</th>
+                          <th>{{ t('settings.workbench.fieldType') || '类型' }}</th>
+                          <th>{{ t('settings.workbench.fieldSource') || '来源' }}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="field in archiveDisplaySelectedPagination.paged.value" :key="field.field_key + '_' + field.source">
+                          <td style="font-weight: 500;">{{ field.field_name }}</td>
+                          <td class="text-mono" style="font-size: 12px;">{{ field.field_key }}</td>
+                          <td><span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span></td>
+                          <td class="text-secondary" style="font-size: 12px;">{{ field.sourceLabel }}</td>
+                        </tr>
+                        <tr v-if="archiveDisplaySelectedPagination.paged.value.length === 0">
+                          <td colspan="4" class="empty-cell">{{ t('settings.workbench.noMatchField') }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
                   <!-- 分页控制 -->
-                  <div v-if="archiveSelectedFieldsFlat.length > 24" class="pagination-wrapper" style="margin-top: 20px; border-top: none;">
+                  <div class="pagination-wrapper" style="margin-top: 12px; border-top: none; justify-content: flex-end;">
                     <a-pagination
                       v-model:current="archiveDisplaySelectedPagination.current.value"
                       v-model:page-size="archiveDisplaySelectedPagination.pageSize.value"
-                      :total="archiveSelectedFieldsFlat.length"
+                      :total="archiveDisplaySelectedPagination.total.value"
                       size="small"
                       show-size-changer
-                      :page-size-options="['24', '48', '96']"
+                      show-quick-jumper
+                      :page-size-options="['10', '20', '50']"
+                      @change="archiveDisplaySelectedPagination.onChange"
                     />
                   </div>
                 </div>
                 <div v-else class="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                   <div class="text-slate-400 text-sm">{{ t('settings.archive.noFieldsSelected') }}</div>
                 </div>
+
             </template>
             <template v-else>
               <div class="field-count" style="margin-top: 8px;">{{ t('settings.archive.allFieldsModeDesc') }}</div>
@@ -2024,4 +2094,35 @@ const handleSaveArchive = async () => {
   .profile-avatar-section { flex-direction: column; text-align: center; }
   .settings-card { padding: 14px; }
 }
+
+/* Data Table Styles */
+.data-table-container {
+  overflow-x: auto;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+.settings-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+.settings-data-table th {
+  background: var(--color-bg-hover);
+  padding: 10px 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-light);
+}
+.settings-data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border-light);
+  color: var(--color-text-primary);
+}
+.settings-data-table tr:last-child td { border-bottom: none; }
+.settings-data-table tr:hover { background: var(--color-bg-hover); }
+.text-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.empty-cell { padding: 32px !important; text-align: center; color: var(--color-text-tertiary); }
 </style>
+

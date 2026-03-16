@@ -26,9 +26,10 @@ type UserPersonalConfigService struct {
 	orgRepo           *repository.OrgRepo
 	tenantRepo        *repository.TenantRepo
 	oaConnRepo        *repository.OAConnectionRepo
+	userRepo          *repository.UserRepo
 }
 
-// NewUserPersonalConfigService 创建一个新的 UserPersonalConfigService 实例。
+
 func NewUserPersonalConfigService(
 	userConfigRepo *repository.UserPersonalConfigRepo,
 	configRepo *repository.ProcessAuditConfigRepo,
@@ -38,6 +39,7 @@ func NewUserPersonalConfigService(
 	orgRepo *repository.OrgRepo,
 	tenantRepo *repository.TenantRepo,
 	oaConnRepo *repository.OAConnectionRepo,
+	userRepo *repository.UserRepo,
 ) *UserPersonalConfigService {
 	return &UserPersonalConfigService{
 		userConfigRepo:    userConfigRepo,
@@ -48,6 +50,7 @@ func NewUserPersonalConfigService(
 		orgRepo:           orgRepo,
 		tenantRepo:        tenantRepo,
 		oaConnRepo:        oaConnRepo,
+		userRepo:          userRepo,
 	}
 }
 
@@ -59,8 +62,14 @@ func (s *UserPersonalConfigService) GetProcessList(c *gin.Context, userID uuid.U
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
-	if len(configs) == 0 {
-		return []dto.ProcessListItem{}, nil
+	// 获取用户信息用于 OA 权限校验（E9 需要 loginid/username）
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	username := ""
+	if user != nil {
+		username = user.Username
 	}
 
 	// 尝试获取 OA 适配器进行权限校验
@@ -70,7 +79,8 @@ func (s *UserPersonalConfigService) GetProcessList(c *gin.Context, userID uuid.U
 	for _, cfg := range configs {
 		// 如果有 OA 适配器，校验用户权限
 		if adapterErr == nil && adapter != nil {
-			hasPermission, err := adapter.CheckUserPermission(c.Request.Context(), userID.String(), cfg.ProcessType)
+			// 将 username 传给 OA 适配器
+			hasPermission, err := adapter.CheckUserPermission(c.Request.Context(), username, cfg.ProcessType)
 			if err != nil || !hasPermission {
 				continue
 			}

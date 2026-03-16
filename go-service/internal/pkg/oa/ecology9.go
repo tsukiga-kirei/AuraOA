@@ -278,7 +278,20 @@ func (a *Ecology9Adapter) FetchFields(ctx context.Context, processType string) (
 // ── CheckUserPermission ────────────────────────────────────
 
 // CheckUserPermission 检查用户在泛微 E9 中是否具有指定流程的审批权限。
-func (a *Ecology9Adapter) CheckUserPermission(ctx context.Context, userID string, processType string) (bool, error) {
+func (a *Ecology9Adapter) CheckUserPermission(ctx context.Context, username string, processType string) (bool, error) {
+	// 1. 通过 loginid 查询 OA 系统内部的数字 ID (id)
+	var e9UserID int
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("hrmresource")).
+		Select(a.col("id")).
+		Where(a.col("loginid")+" = ?", username).
+		Row().Scan(&e9UserID)
+	if err != nil {
+		// 如果在 OA 中找不到对应用户，则直接返回无权限
+		return false, nil
+	}
+
+	// 2. 查询流程 ID
 	var workflowID int
 	row := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_base")).
@@ -292,16 +305,18 @@ func (a *Ecology9Adapter) CheckUserPermission(ctx context.Context, userID string
 		return false, fmt.Errorf("查询流程失败: %w", err)
 	}
 
+	// 3. 检查权限 (userid 在 E9 中是数字类型)
 	var count int64
-	err := a.db.WithContext(ctx).
+	err = a.db.WithContext(ctx).
 		Table(a.tableName("workflow_currentoperator")).
-		Where(a.col("workflowid")+" = ? AND "+a.col("userid")+" = ?", workflowID, userID).
+		Where(a.col("workflowid")+" = ? AND "+a.col("userid")+" = ?", workflowID, e9UserID).
 		Count(&count).Error
 	if err != nil {
 		return false, fmt.Errorf("查询用户审批权限失败: %w", err)
 	}
 	return count > 0, nil
 }
+
 
 // ── FetchProcessData ───────────────────────────────────────
 
