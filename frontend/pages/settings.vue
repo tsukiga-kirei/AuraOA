@@ -460,6 +460,7 @@ const removeCustomRule = (ruleId: string) => {
 const handleSaveWorkbench = async () => {
   if (!fullProcessConfig.value) return
   const cfg = fullProcessConfig.value
+  const perms = cfg.user_permissions
   const selectedKeys = allFields.value.filter(f => f.selected).map(f => f.field_key)
   const ruleToggleOverrides = cfg.tenant_rules
     .filter(r => r.rule_scope !== 'mandatory')
@@ -468,15 +469,15 @@ const handleSaveWorkbench = async () => {
   const req: UpdatePersonalConfigRequest = {
     config_id: cfg.config_id,
     field_config: {
-      field_mode: cfg.field_mode,
-      field_overrides: cfg.field_mode === 'selected' ? selectedKeys : [],
+      field_mode: perms.allow_custom_fields ? cfg.field_mode : 'all',
+      field_overrides: perms.allow_custom_fields && cfg.field_mode === 'selected' ? selectedKeys : [],
     },
     rule_config: {
-      custom_rules: cfg.custom_rules || [],
+      custom_rules: perms.allow_custom_rules ? (cfg.custom_rules || []) : [],
       rule_toggle_overrides: ruleToggleOverrides,
     },
     ai_config: {
-      strictness_override: cfg.audit_strictness,
+      strictness_override: perms.allow_modify_strictness ? cfg.audit_strictness : '',
     }
   }
   
@@ -762,6 +763,7 @@ const removeArchiveCustomRule = (ruleId: string) => {
 const handleSaveArchive = async () => {
   if (!fullArchiveConfig.value) return
   const cfg = fullArchiveConfig.value
+  const perms = cfg.user_permissions
   const selectedKeys = archiveAllFields.value.filter(f => f.selected).map(f => f.field_key)
   const ruleToggleOverrides = cfg.tenant_rules
     .filter(r => r.rule_scope !== 'mandatory')
@@ -770,15 +772,15 @@ const handleSaveArchive = async () => {
   const req: UpdatePersonalConfigRequest = {
     config_id: cfg.config_id,
     field_config: {
-      field_mode: cfg.field_mode,
-      field_overrides: cfg.field_mode === 'selected' ? selectedKeys : [],
+      field_mode: perms.allow_custom_fields ? cfg.field_mode : 'all',
+      field_overrides: perms.allow_custom_fields && cfg.field_mode === 'selected' ? selectedKeys : [],
     },
     rule_config: {
-      custom_rules: cfg.custom_rules || [],
+      custom_rules: perms.allow_custom_rules ? (cfg.custom_rules || []) : [],
       rule_toggle_overrides: ruleToggleOverrides,
     },
     ai_config: {
-      strictness_override: cfg.audit_strictness,
+      strictness_override: perms.allow_modify_strictness ? cfg.audit_strictness : '',
     }
   }
   
