@@ -1175,6 +1175,9 @@ export default {
     'admin.userConfigs.disabled': 'Disabled',
     'admin.userConfigs.on': 'On',
     'admin.userConfigs.off': 'Off',
+    'admin.userConfigs.adminDefault': 'Admin default',
+    'admin.userConfigs.userOverride': 'User modified',
+    'admin.userConfigs.unchanged': 'Unchanged',
 
     //===== Admin - Tenant Data =====
     'admin.data.title': 'Data Information',

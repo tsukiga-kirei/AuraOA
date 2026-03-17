@@ -105,7 +105,7 @@ func main() {
 	configHandler := handler.NewProcessAuditConfigHandler(processAuditConfigService)
 	ruleHandler := handler.NewAuditRuleHandler(auditRuleService)
 	userConfigHandler := handler.NewUserPersonalConfigHandler(userPersonalConfigService, userDashboardPrefRepo)
-	userConfigMgmtHandler := handler.NewUserConfigManagementHandler(userPersonalConfigRepo, orgRepo, auditRuleRepo, archiveRuleRepo)
+	userConfigMgmtHandler := handler.NewUserConfigManagementHandler(userPersonalConfigRepo, orgRepo, auditRuleRepo, archiveRuleRepo, processAuditConfigRepo, archiveConfigRepo)
 	llmLogHandler := handler.NewLLMMessageLogHandler(llmMessageLogService)
 	cronHandler := handler.NewCronConfigHandler(cronConfigService)
 	archiveConfigHandler := handler.NewArchiveConfigHandler(archiveConfigService)

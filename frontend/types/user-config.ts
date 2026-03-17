@@ -160,7 +160,9 @@ export interface AdminCustomRule {
 export interface AdminRuleToggleItem {
   rule_id: string
   rule_content: string
-  enabled: boolean
+  rule_scope: string    // mandatory | default_on | default_off
+  admin_enabled: boolean // 管理员当前设置的默认状态
+  enabled: boolean       // 用户覆盖后的状态
 }
 
 /** 管理员视图：单个流程的用户个性化详情（审核工作台/归档复盘共用） */

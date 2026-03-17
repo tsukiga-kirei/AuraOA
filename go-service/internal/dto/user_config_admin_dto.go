@@ -37,9 +37,11 @@ type AdminCustomRule struct {
 
 // AdminRuleToggleItem 用户对租户规则的开关覆盖（管理员视图）
 type AdminRuleToggleItem struct {
-	RuleID      string `json:"rule_id"`
-	RuleContent string `json:"rule_content"`
-	Enabled     bool   `json:"enabled"`
+	RuleID       string `json:"rule_id"`
+	RuleContent  string `json:"rule_content"`
+	RuleScope    string `json:"rule_scope"`    // mandatory | default_on | default_off
+	AdminEnabled bool   `json:"admin_enabled"` // 管理员当前启用状态（租户默认值）
+	Enabled      bool   `json:"enabled"`       // 用户覆盖后的启用状态
 }
 
 // AdminCronDetail 用户定时任务偏好（管理员视图）

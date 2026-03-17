@@ -1175,6 +1175,9 @@ export default {
     'admin.userConfigs.emailSuffix': '个邮箱',
     'admin.userConfigs.on': '开启',
     'admin.userConfigs.off': '关闭',
+    'admin.userConfigs.adminDefault': '管理员默认',
+    'admin.userConfigs.userOverride': '用户修改',
+    'admin.userConfigs.unchanged': '未修改',
 
     //===== 管理员 - 租户数据 =====
     'admin.data.title': '数据信息',

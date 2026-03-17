@@ -392,11 +392,23 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
             <div v-if="proc.rule_toggle_overrides.length > 0" class="detail-config-block">
               <div class="detail-config-label"><SwapOutlined /> {{ t('admin.userConfigs.ruleToggleChanges') }}</div>
               <div class="detail-rule-list">
-                <div v-for="r in proc.rule_toggle_overrides" :key="r.rule_id" class="detail-rule-item">
+                <div v-for="r in proc.rule_toggle_overrides" :key="r.rule_id" class="detail-rule-item detail-rule-item--toggle">
                   <span class="detail-rule-dot" :class="r.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
                   <span class="detail-rule-text">{{ r.rule_content || r.rule_id }}</span>
-                  <span class="rule-toggle-status" :class="r.enabled ? 'rule-toggle-status--on' : 'rule-toggle-status--off'">
-                    {{ r.enabled ? t('admin.userConfigs.enabled') : t('admin.userConfigs.disabled') }}
+                  <span class="rule-toggle-compare">
+                    <span class="rule-toggle-admin" :class="r.admin_enabled ? 'rule-toggle-status--on' : 'rule-toggle-status--off'">
+                      {{ t('admin.userConfigs.adminDefault') }}:&nbsp;{{ r.admin_enabled ? t('admin.userConfigs.enabled') : t('admin.userConfigs.disabled') }}
+                    </span>
+                    <span class="rule-toggle-arrow">→</span>
+                    <span
+                      class="rule-toggle-user"
+                      :class="[
+                        r.enabled ? 'rule-toggle-status--on' : 'rule-toggle-status--off',
+                        r.enabled !== r.admin_enabled ? 'rule-toggle-user--changed' : ''
+                      ]"
+                    >
+                      {{ r.enabled !== r.admin_enabled ? t('admin.userConfigs.userOverride') : t('admin.userConfigs.unchanged') }}:&nbsp;{{ r.enabled ? t('admin.userConfigs.enabled') : t('admin.userConfigs.disabled') }}
+                    </span>
                   </span>
                 </div>
               </div>
@@ -470,11 +482,23 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
             <div v-if="arc.rule_toggle_overrides.length > 0" class="detail-config-block">
               <div class="detail-config-label"><SwapOutlined /> {{ t('admin.userConfigs.ruleToggleChanges') }}</div>
               <div class="detail-rule-list">
-                <div v-for="r in arc.rule_toggle_overrides" :key="r.rule_id" class="detail-rule-item">
+                <div v-for="r in arc.rule_toggle_overrides" :key="r.rule_id" class="detail-rule-item detail-rule-item--toggle">
                   <span class="detail-rule-dot" :class="r.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
                   <span class="detail-rule-text">{{ r.rule_content || r.rule_id }}</span>
-                  <span class="rule-toggle-status" :class="r.enabled ? 'rule-toggle-status--on' : 'rule-toggle-status--off'">
-                    {{ r.enabled ? t('admin.userConfigs.enabled') : t('admin.userConfigs.disabled') }}
+                  <span class="rule-toggle-compare">
+                    <span class="rule-toggle-admin" :class="r.admin_enabled ? 'rule-toggle-status--on' : 'rule-toggle-status--off'">
+                      {{ t('admin.userConfigs.adminDefault') }}:&nbsp;{{ r.admin_enabled ? t('admin.userConfigs.enabled') : t('admin.userConfigs.disabled') }}
+                    </span>
+                    <span class="rule-toggle-arrow">→</span>
+                    <span
+                      class="rule-toggle-user"
+                      :class="[
+                        r.enabled ? 'rule-toggle-status--on' : 'rule-toggle-status--off',
+                        r.enabled !== r.admin_enabled ? 'rule-toggle-user--changed' : ''
+                      ]"
+                    >
+                      {{ r.enabled !== r.admin_enabled ? t('admin.userConfigs.userOverride') : t('admin.userConfigs.unchanged') }}:&nbsp;{{ r.enabled ? t('admin.userConfigs.enabled') : t('admin.userConfigs.disabled') }}
+                    </span>
                   </span>
                 </div>
               </div>
@@ -645,6 +669,23 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
 }
 .rule-toggle-status--on { background: var(--color-success-bg); color: var(--color-success); }
 .rule-toggle-status--off { background: var(--color-bg-hover); color: var(--color-text-tertiary); }
+
+/* 规则开关对比布局 */
+.detail-rule-item--toggle { flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.rule-toggle-compare {
+  display: flex; align-items: center; gap: 4px; flex-shrink: 0; flex-wrap: wrap;
+}
+.rule-toggle-admin, .rule-toggle-user {
+  font-size: 10px; font-weight: 600; padding: 1px 6px;
+  border-radius: var(--radius-full); white-space: nowrap;
+}
+.rule-toggle-arrow {
+  font-size: 11px; color: var(--color-text-tertiary); flex-shrink: 0;
+}
+.rule-toggle-user--changed {
+  outline: 1.5px solid currentColor;
+  outline-offset: 1px;
+}
 
 .detail-tag-list { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 20px; }
 .detail-email-list { display: flex; flex-wrap: wrap; gap: 6px; }
