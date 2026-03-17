@@ -508,8 +508,8 @@ func (s *UserPersonalConfigService) GetAccessibleArchiveConfigs(c *gin.Context, 
 		if member == nil {
 			continue
 		}
-		// 检查用户 ID
-		if sliceContains(ac.AllowedMembers, userID.String()) {
+		// 检查成员 ID（OrgMember ID，与前端 member.id 一致）
+		if sliceContains(ac.AllowedMembers, member.ID.String()) {
 			result = append(result, dto.AccessibleArchiveConfigItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
 			continue
 		}

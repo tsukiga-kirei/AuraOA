@@ -45,7 +45,7 @@ VALUES
         'user_extraction_prompt',   (SELECT content FROM system_prompt_templates WHERE prompt_key = 'archive_user_extraction_standard')
     )),
     '{"allow_custom_fields":true,"allow_custom_rules":true,"allow_modify_strictness":true}'::jsonb,
-    '{"allowed_roles":["tenant_admin", "compliance_officer"],"allowed_members":[],"allowed_departments":[]}'::jsonb,
+    '{"allowed_roles":[],"allowed_members":[],"allowed_departments":[]}'::jsonb,
     'active'
 ),
 (
@@ -68,7 +68,7 @@ VALUES
         'user_extraction_prompt',   (SELECT content FROM system_prompt_templates WHERE prompt_key = 'archive_user_extraction_strict')
     )),
     '{"allow_custom_fields":false,"allow_custom_rules":true,"allow_modify_strictness":false}'::jsonb,
-    '{"allowed_roles":["tenant_admin", "legal_reviewer"],"allowed_members":[],"allowed_departments":[]}'::jsonb,
+    '{"allowed_roles":[],"allowed_members":[],"allowed_departments":[]}'::jsonb,
     'active'
 ),
 (
@@ -90,7 +90,7 @@ VALUES
         'user_extraction_prompt',   (SELECT content FROM system_prompt_templates WHERE prompt_key = 'archive_user_extraction_standard')
     )),
     '{"allow_custom_fields":true,"allow_custom_rules":true,"allow_modify_strictness":true}'::jsonb,
-    '{"allowed_roles":["tenant_admin"],"allowed_members":[],"allowed_departments":[]}'::jsonb,
+    '{"allowed_roles":[],"allowed_members":[],"allowed_departments":[]}'::jsonb,
     'active'
 );
 

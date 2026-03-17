@@ -20,13 +20,14 @@ type UpdateDepartmentRequest struct {
 
 //DepartmentResponse 是部门端点的响应正文
 type DepartmentResponse struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	ParentID  *string `json:"parent_id"`
-	Manager   string  `json:"manager"`
-	SortOrder int     `json:"sort_order"`
-	CreatedAt string  `json:"created_at"`
-	UpdatedAt string  `json:"updated_at"`
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	ParentID    *string `json:"parent_id"`
+	Manager     string  `json:"manager"`
+	SortOrder   int     `json:"sort_order"`
+	MemberCount int64   `json:"member_count"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
 }
 
 //--- OrgRole DTO ---

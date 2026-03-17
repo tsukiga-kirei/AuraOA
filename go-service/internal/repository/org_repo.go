@@ -1,4 +1,4 @@
-﻿package repository
+package repository
 
 import (
 	"github.com/gin-gonic/gin"
@@ -51,6 +51,27 @@ func (r *OrgRepo) CountMembersByDept(deptID uuid.UUID) (int64, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+//CountMembersByTenant 通过单次 GROUP BY 查询，返回当前租户内各部门的成员数量映射（dept_id → count）。
+func (r *OrgRepo) CountMembersByTenant(c *gin.Context) (map[uuid.UUID]int64, error) {
+	type deptCount struct {
+		DepartmentID uuid.UUID
+		Count        int64
+	}
+	var rows []deptCount
+	if err := r.WithTenant(c).
+		Model(&model.OrgMember{}).
+		Select("department_id, count(*) as count").
+		Group("department_id").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[uuid.UUID]int64, len(rows))
+	for _, row := range rows {
+		result[row.DepartmentID] = row.Count
+	}
+	return result, nil
 }
 
 //FindDepartmentByID 按 ID 查找当前租户范围内的部门。
@@ -151,10 +172,14 @@ func (r *OrgRepo) FindMemberByID(c *gin.Context, id uuid.UUID) (*model.OrgMember
 	return &member, nil
 }
 
-//FindByUserAndTenant 按用户 ID 和租户 ID 查找组织成员。
+//FindByUserAndTenant 按用户 ID 和租户 ID 查找组织成员，并预加载角色和部门关联。
 func (r *OrgRepo) FindByUserAndTenant(userID, tenantID uuid.UUID) (*model.OrgMember, error) {
 	var member model.OrgMember
-	if err := r.DB.Where("user_id = ? AND tenant_id = ?", userID, tenantID).First(&member).Error; err != nil {
+	if err := r.DB.
+		Preload("Roles").
+		Preload("Department").
+		Where("user_id = ? AND tenant_id = ?", userID, tenantID).
+		First(&member).Error; err != nil {
 		return nil, err
 	}
 	return &member, nil

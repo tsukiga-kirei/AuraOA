@@ -9,7 +9,7 @@ interface ApiMemberUserInfo {
 }
 interface ApiDepartmentResponse {
   id: string; name: string; parent_id?: string | null
-  manager: string; sort_order: number
+  manager: string; sort_order: number; member_count: number
   created_at: string; updated_at: string
 }
 interface ApiRoleResponse {
@@ -26,10 +26,10 @@ interface ApiMemberResponse {
 // ============================================================
 // DTO → Frontend model mappers
 // ============================================================
-function mapDepartment(d: ApiDepartmentResponse, memberCount: number = 0): Department {
+function mapDepartment(d: ApiDepartmentResponse): Department {
   return {
     id: d.id, name: d.name, parent_id: d.parent_id ?? null,
-    manager: d.manager, member_count: memberCount,
+    manager: d.manager, member_count: d.member_count ?? 0,
   }
 }
 

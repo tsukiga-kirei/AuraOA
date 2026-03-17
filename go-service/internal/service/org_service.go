@@ -39,15 +39,22 @@ func NewOrgService(orgRepo *repository.OrgRepo, userRepo *repository.UserRepo, s
 //部门增删改查
 // ---------------------------------------------------------------------------
 
-// ListDepartments 返回当前租户的所有部门。
+// ListDepartments 返回当前租户的所有部门（含各部门成员人数）。
 func (s *OrgService) ListDepartments(c *gin.Context) ([]dto.DepartmentResponse, error) {
 	departments, err := s.orgRepo.ListDepartments(c)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	// 单次 GROUP BY 查询各部门成员数，避免 N+1
+	countMap, err := s.orgRepo.CountMembersByTenant(c)
+	if err != nil {
+		countMap = map[uuid.UUID]int64{}
+	}
 	result := make([]dto.DepartmentResponse, len(departments))
 	for i, d := range departments {
-		result[i] = toDepartmentResponse(&d)
+		resp := toDepartmentResponse(&d)
+		resp.MemberCount = countMap[d.ID]
+		result[i] = resp
 	}
 	return result, nil
 }
@@ -546,6 +553,7 @@ func toDepartmentResponse(d *model.Department) dto.DepartmentResponse {
 	}
 	return resp
 }
+
 
 func toRoleResponse(r *model.OrgRole) dto.RoleResponse {
 	var pagePerms interface{}
