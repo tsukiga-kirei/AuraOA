@@ -146,3 +146,51 @@ export interface UpdatePersonalConfigRequest {
     strictness_override: string
   }
 }
+
+// ===================== 管理端用户配置视图类型 =====================
+
+/** 管理员视图：用户自定义规则 */
+export interface AdminCustomRule {
+  id: string
+  content: string
+  enabled: boolean
+}
+
+/** 管理员视图：规则开关覆盖项 */
+export interface AdminRuleToggleItem {
+  rule_id: string
+  rule_content: string
+  enabled: boolean
+}
+
+/** 管理员视图：单个流程的用户个性化详情（审核工作台/归档复盘共用） */
+export interface AdminProcessDetail {
+  process_type: string
+  strictness_override: string
+  custom_rules: AdminCustomRule[]
+  field_overrides: string[]
+  rule_toggle_overrides: AdminRuleToggleItem[]
+}
+
+/** 管理员视图：用户定时任务偏好 */
+export interface AdminCronDetail {
+  default_email: string
+  email_count: number
+}
+
+/** 管理员视图：单个用户的完整配置摘要（含成员信息） */
+export interface AdminUserConfigItem {
+  user_id: string
+  member_id: string
+  username: string
+  display_name: string
+  department: string
+  role_names: string[]
+  audit_process_count: number
+  cron_email_count: number
+  archive_process_count: number
+  last_modified: string
+  audit_details: AdminProcessDetail[]
+  cron_details: AdminCronDetail
+  archive_details: AdminProcessDetail[]
+}
