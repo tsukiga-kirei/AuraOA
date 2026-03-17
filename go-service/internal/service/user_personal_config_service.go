@@ -334,10 +334,12 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 	}
 	_ = json.Unmarshal(tenantCfg.DetailTables, &rawDetailTables)
 
-	// 构建用户额外选中字段的 Map
+	// 构建用户额外选中字段的 Map（仅在允许自定义字段时生效）
 	userAddedFieldKeys := map[string]bool{}
-	for _, k := range userDetail.FieldConfig.FieldOverrides {
-		userAddedFieldKeys[k] = true
+	if perms.AllowCustomFields {
+		for _, k := range userDetail.FieldConfig.FieldOverrides {
+			userAddedFieldKeys[k] = true
+		}
 	}
 
 	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
@@ -389,10 +391,15 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 		effectiveStrictness = userDetail.AIConfig.StrictnessOverride
 	}
 
-	// 构建自定义规则 DTO
-	customRuleDTOs := make([]dto.CustomRuleDTO, len(userDetail.RuleConfig.CustomRules))
-	for i, r := range userDetail.RuleConfig.CustomRules {
-		customRuleDTOs[i] = dto.CustomRuleDTO{ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow}
+	// 构建自定义规则 DTO（仅在允许自定义规则时返回）
+	var customRuleDTOs []dto.CustomRuleDTO
+	if perms.AllowCustomRules {
+		customRuleDTOs = make([]dto.CustomRuleDTO, len(userDetail.RuleConfig.CustomRules))
+		for i, r := range userDetail.RuleConfig.CustomRules {
+			customRuleDTOs[i] = dto.CustomRuleDTO{ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow}
+		}
+	} else {
+		customRuleDTOs = []dto.CustomRuleDTO{}
 	}
 
 	return &dto.FullAuditProcessConfigResponse{
@@ -640,9 +647,12 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 	}
 	_ = json.Unmarshal(tenantCfg.DetailTables, &rawDetailTables)
 
+	// 构建用户额外选中字段的 Map（仅在允许自定义字段时生效）
 	userAddedFieldKeys := map[string]bool{}
-	for _, k := range userDetail.FieldConfig.FieldOverrides {
-		userAddedFieldKeys[k] = true
+	if perms.AllowCustomFields {
+		for _, k := range userDetail.FieldConfig.FieldOverrides {
+			userAddedFieldKeys[k] = true
+		}
 	}
 
 	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
@@ -693,9 +703,15 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 		effectiveStrictness = userDetail.AIConfig.StrictnessOverride
 	}
 
-	customRuleDTOs := make([]dto.CustomRuleDTO, len(userDetail.RuleConfig.CustomRules))
-	for i, r := range userDetail.RuleConfig.CustomRules {
-		customRuleDTOs[i] = dto.CustomRuleDTO{ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow}
+	// 构建自定义规则 DTO（仅在允许自定义规则时返回）
+	var customRuleDTOs []dto.CustomRuleDTO
+	if perms.AllowCustomRules {
+		customRuleDTOs = make([]dto.CustomRuleDTO, len(userDetail.RuleConfig.CustomRules))
+		for i, r := range userDetail.RuleConfig.CustomRules {
+			customRuleDTOs[i] = dto.CustomRuleDTO{ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow}
+		}
+	} else {
+		customRuleDTOs = []dto.CustomRuleDTO{}
 	}
 
 	return &dto.FullArchiveConfigResponse{
