@@ -882,6 +882,8 @@ export default {
     'admin.ruleConfig.deny': 'Deny',
     'admin.ruleConfig.saveConfig': 'Save Config',
     'admin.ruleConfig.configSaved': 'Config saved',
+    'admin.ruleConfig.permDowngradeTitle': 'Confirm permission change?',
+    'admin.ruleConfig.permDowngradeContent': 'The following permissions will be disabled: {0}.\nExisting user customizations for these features will no longer take effect (they will be ignored, not deleted). Proceed?',
     'admin.ruleConfig.selectProcess': 'Select a process from the left to view config',
     'admin.ruleConfig.addProcessTitle': 'Add Audit Process',
     'admin.ruleConfig.confirm': 'OK',
