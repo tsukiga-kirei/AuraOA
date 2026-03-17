@@ -299,6 +299,7 @@ export default {
     'common.copySuccess': 'Copied to clipboard',
     'common.currentMode': 'Current Mode: ',
     'common.remove': 'Remove',
+    'common.refresh': 'Refresh',
 
     //=====流程类型=====
     'processType.purchase': 'Purchase Approval',
@@ -1130,7 +1131,7 @@ export default {
     'admin.userConfigs.selectToExport': 'Please select records to export first',
     'admin.userConfigs.exporting': 'Exporting user preference data...',
     'admin.userConfigs.totalAuditChanges': 'Audit Workbench Changes',
-    'admin.userConfigs.totalCronChanges': 'Cron Task Changes',
+    'admin.userConfigs.totalCronChanges': 'Cron Email Configs',
     'admin.userConfigs.totalArchiveChanges': 'Archive Review Changes',
     'admin.userConfigs.thUser': 'User',
     'admin.userConfigs.thDepartment': 'Department',
@@ -1170,6 +1171,7 @@ export default {
     'admin.userConfigs.noArchiveConfig': 'No archive review modifications',
     'admin.userConfigs.lastModifiedTime': 'Last Modified: {0}',
     'admin.userConfigs.enabled': 'Enabled',
+    'admin.userConfigs.emailSuffix': 'email(s)',
     'admin.userConfigs.disabled': 'Disabled',
     'admin.userConfigs.on': 'On',
     'admin.userConfigs.off': 'Off',

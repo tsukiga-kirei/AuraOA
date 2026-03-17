@@ -9,56 +9,36 @@ import {
   FolderOpenOutlined,
   ControlOutlined,
   NodeIndexOutlined,
-  ApartmentOutlined,
   SwapOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  PlusOutlined,
-  EditOutlined,
-  SafetyCertificateOutlined,
+  ReloadOutlined,
+  MailOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import * as XLSX from 'xlsx'
-import type { UserPersonalConfig } from '~/composables/useMockData'
+import type { AdminUserConfigItem, AdminProcessDetail } from '~/types/user-config'
 import { useI18n } from '~/composables/useI18n'
 import { usePagination } from '~/composables/usePagination'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
-const { mockUserPersonalConfigs } = useMockData()
-const { authFetch } = useAuth()
-const { loadAll: loadOrgData } = useOrgApi()
+const { configs, loading, listUserConfigs } = useAdminUserConfigApi()
 
-onMounted(async () => {
-  loadOrgData()
-  // 从管理端 API 加载用户配置列表
-  try {
-    const data = await authFetch<any[]>('/api/tenant/user-configs')
-    if (data && data.length > 0) {
-      configs.value = data.map((c: any) => ({
-        user_id: c.user_id,
-        user_name: c.user_id,
-        department: '',
-        role_names: [],
-        audit_details: c.audit_details || [],
-        cron_details: c.cron_details || [],
-        archive_details: c.archive_details || [],
-      })) as any
-    }
-  }
-  catch (e) { console.error('[user-configs] 加载用户配置失败', e) }
-})
+// =====================================================================
+// 数据加载
+// =====================================================================
+const loadConfigs = async () => {
+  try { await listUserConfigs() }
+  catch (e) { console.error('[user-configs] 加载失败', e) }
+}
 
-const configs = ref<UserPersonalConfig[]>(JSON.parse(JSON.stringify(mockUserPersonalConfigs)))
-const search = ref('')
-const deptFilter = ref<string | undefined>(undefined)
-const roleFilter = ref<string | undefined>(undefined)
-const hasConfigFilter = ref<string | undefined>(undefined)
-const selectedIds = ref<string[]>([])
+onMounted(loadConfigs)
 
-const departments = computed(() => {
-  const depts = new Set(configs.value.map(c => c.department))
+// =====================================================================
+// 过滤选项（从真实数据派生）
+// =====================================================================
+const departmentOptions = computed(() => {
+  const depts = new Set(configs.value.map(c => c.department).filter(Boolean))
   return Array.from(depts).sort()
 })
 
@@ -68,26 +48,43 @@ const roleOptions = computed(() => {
   return Array.from(roles).sort()
 })
 
-const filteredConfigs = computed(() => {
-  return configs.value.filter(c => {
-    if (search.value && !c.display_name.includes(search.value) && !c.username.includes(search.value)) return false
+// =====================================================================
+// 筛选逻辑
+// =====================================================================
+const search = ref('')
+const deptFilter = ref<string | undefined>(undefined)
+const roleFilter = ref<string | undefined>(undefined)
+const hasConfigFilter = ref<string | undefined>(undefined)
+const selectedIds = ref<string[]>([])
+
+const totalChanges = (c: AdminUserConfigItem) =>
+  c.audit_process_count + c.cron_email_count + c.archive_process_count
+
+const filteredConfigs = computed(() =>
+  configs.value.filter(c => {
+    const q = search.value.trim().toLowerCase()
+    if (q && !c.display_name.toLowerCase().includes(q) && !c.username.toLowerCase().includes(q)) return false
     if (deptFilter.value && c.department !== deptFilter.value) return false
     if (roleFilter.value && !c.role_names.includes(roleFilter.value)) return false
-    const totalChanges = c.audit_process_count + c.cron_config_count + c.archive_process_count
-    if (hasConfigFilter.value === 'configured' && totalChanges === 0) return false
-    if (hasConfigFilter.value === 'none' && totalChanges > 0) return false
+    const total = totalChanges(c)
+    if (hasConfigFilter.value === 'configured' && total === 0) return false
+    if (hasConfigFilter.value === 'none' && total > 0) return false
     return true
   })
-})
+)
 
 const { paged, current, pageSize, total, onChange } = usePagination(filteredConfigs, 10)
 
-//统计卡：每个类别的总修改计数
+// =====================================================================
+// 统计卡
+// =====================================================================
 const totalAuditChanges = computed(() => configs.value.reduce((s, c) => s + c.audit_process_count, 0))
-const totalCronChanges = computed(() => configs.value.reduce((s, c) => s + c.cron_config_count, 0))
+const totalCronChanges = computed(() => configs.value.reduce((s, c) => s + c.cron_email_count, 0))
 const totalArchiveChanges = computed(() => configs.value.reduce((s, c) => s + c.archive_process_count, 0))
 
-//选择
+// =====================================================================
+// 选择
+// =====================================================================
 const toggleSelect = (id: string) => {
   const idx = selectedIds.value.indexOf(id)
   if (idx >= 0) selectedIds.value.splice(idx, 1)
@@ -95,58 +92,64 @@ const toggleSelect = (id: string) => {
 }
 const toggleSelectAll = () => {
   if (selectedIds.value.length === filteredConfigs.value.length) selectedIds.value = []
-  else selectedIds.value = filteredConfigs.value.map(c => c.id)
+  else selectedIds.value = filteredConfigs.value.map(c => c.user_id)
 }
 
-//导出并选择
+// =====================================================================
+// 导出
+// =====================================================================
 const handleExport = () => {
   if (selectedIds.value.length === 0) {
     message.warning(t('admin.userConfigs.selectToExport'))
     return
   }
-  message.loading(t('admin.userConfigs.exporting'), 1)
-  setTimeout(() => {
-    const data = configs.value
-      .filter(c => selectedIds.value.includes(c.id))
-      .map(c => ({
-        username: c.username,
-        display_name: c.display_name,
-        department: c.department,
-        roles: c.role_names.join(', '),
-        audit_process_count: c.audit_process_count,
-        cron_config_count: c.cron_config_count,
-        archive_process_count: c.archive_process_count,
-        last_modified: c.last_modified || '-',
-      }))
-    const ws = XLSX.utils.json_to_sheet(data)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'UserPrefs')
-    XLSX.writeFile(wb, `user_preferences_${Date.now()}.xlsx`)
-    message.success(t('common.success'))
-  }, 500)
+  const data = configs.value
+    .filter(c => selectedIds.value.includes(c.user_id))
+    .map(c => ({
+      username: c.username,
+      display_name: c.display_name,
+      department: c.department,
+      roles: c.role_names.join(', '),
+      audit_process_count: c.audit_process_count,
+      cron_email_count: c.cron_email_count,
+      archive_process_count: c.archive_process_count,
+      last_modified: c.last_modified || '-',
+    }))
+  const ws = XLSX.utils.json_to_sheet(data)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'UserPrefs')
+  XLSX.writeFile(wb, `user_preferences_${Date.now()}.xlsx`)
+  message.success(t('common.success'))
 }
 
-//细节抽屉
+// =====================================================================
+// 详情抽屉
+// =====================================================================
 const showDetail = ref(false)
-const detailConfig = ref<UserPersonalConfig | null>(null)
+const detailConfig = ref<AdminUserConfigItem | null>(null)
 const detailTab = ref<'audit' | 'cron' | 'archive'>('audit')
 
-const openDetail = (c: UserPersonalConfig) => {
+const openDetail = (c: AdminUserConfigItem) => {
   detailConfig.value = c
   if (c.audit_details.length > 0) detailTab.value = 'audit'
-  else if (c.cron_config_details.length > 0) detailTab.value = 'cron'
+  else if (c.cron_email_count > 0) detailTab.value = 'cron'
   else if (c.archive_details.length > 0) detailTab.value = 'archive'
   else detailTab.value = 'audit'
   showDetail.value = true
 }
 
-const strictnessLabels = computed(() => ({
-  strict: { label: t('admin.ruleConfig.strict'), color: 'var(--color-danger)' },
+const strictnessLabels: Record<string, { label: string; color: string }> = {
+  strict:   { label: t('admin.ruleConfig.strict'),   color: 'var(--color-danger)' },
   standard: { label: t('admin.ruleConfig.standard'), color: 'var(--color-primary)' },
-  loose: { label: t('admin.ruleConfig.loose'), color: 'var(--color-warning)' },
-}))
+  loose:    { label: t('admin.ruleConfig.loose'),    color: 'var(--color-warning)' },
+}
 
-const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cron_config_count + c.archive_process_count
+// 判断某个流程详情是否有实质内容
+const hasProcessContent = (proc: AdminProcessDetail) =>
+  !!proc.strictness_override ||
+  proc.custom_rules.length > 0 ||
+  proc.field_overrides.length > 0 ||
+  proc.rule_toggle_overrides.length > 0
 </script>
 
 <template>
@@ -156,9 +159,12 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
         <h1 class="page-title">{{ t('admin.userConfigs.title') }}</h1>
         <p class="page-subtitle">{{ t('admin.userConfigs.subtitle') }}</p>
       </div>
+      <a-button :loading="loading" @click="loadConfigs">
+        <ReloadOutlined /> {{ t('common.refresh') }}
+      </a-button>
     </div>
 
-    <!--统计卡-->
+    <!-- 统计卡 -->
     <div class="stats-row">
       <div class="stat-card stat-card--primary">
         <div class="stat-card-icon"><AppstoreOutlined /></div>
@@ -183,14 +189,14 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
       </div>
     </div>
 
-    <!--工具栏-->
+    <!-- 工具栏 -->
     <div class="toolbar">
       <div class="toolbar-left">
         <a-input v-model:value="search" :placeholder="t('admin.userConfigs.searchPlaceholder')" allow-clear style="width: 200px;">
           <template #prefix><SearchOutlined /></template>
         </a-input>
         <a-select v-model:value="deptFilter" :placeholder="t('admin.userConfigs.department')" allow-clear style="width: 140px;">
-          <a-select-option v-for="d in departments" :key="d" :value="d">{{ d }}</a-select-option>
+          <a-select-option v-for="d in departmentOptions" :key="d" :value="d">{{ d }}</a-select-option>
         </a-select>
         <a-select v-model:value="roleFilter" :placeholder="t('admin.userConfigs.role')" allow-clear style="width: 140px;">
           <a-select-option v-for="r in roleOptions" :key="r" :value="r">{{ r }}</a-select-option>
@@ -206,9 +212,12 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
       </div>
     </div>
 
-    <!--桌子-->
+    <!-- 表格 -->
     <div class="data-table-card">
-      <table class="data-table">
+      <div v-if="loading" class="loading-cell">
+        <a-spin />
+      </div>
+      <table v-else class="data-table">
         <thead>
           <tr>
             <th style="width: 40px;">
@@ -229,9 +238,9 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
           </tr>
         </thead>
         <tbody>
-          <tr v-for="c in paged" :key="c.id">
+          <tr v-for="c in paged" :key="c.user_id">
             <td>
-              <a-checkbox :checked="selectedIds.includes(c.id)" @change="toggleSelect(c.id)" />
+              <a-checkbox :checked="selectedIds.includes(c.user_id)" @change="toggleSelect(c.user_id)" />
             </td>
             <td>
               <div class="user-cell">
@@ -239,14 +248,15 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
                   <template #icon><UserOutlined /></template>
                 </a-avatar>
                 <div>
-                  <div class="user-name">{{ c.display_name }}</div>
+                  <div class="user-name">{{ c.display_name || c.username }}</div>
                   <div class="user-username">{{ c.username }}</div>
                 </div>
               </div>
             </td>
-            <td class="text-secondary">{{ c.department }}</td>
+            <td class="text-secondary">{{ c.department || '-' }}</td>
             <td>
               <div class="role-tags">
+                <span v-if="c.role_names.length === 0" class="text-secondary">-</span>
                 <span v-for="r in c.role_names" :key="r" class="role-tag">{{ r }}</span>
               </div>
             </td>
@@ -257,8 +267,8 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
               <span v-else class="text-secondary">-</span>
             </td>
             <td>
-              <span v-if="c.cron_config_count > 0" class="count-badge count-badge--info">
-                {{ t('admin.userConfigs.taskCount', [c.cron_config_count]) }}
+              <span v-if="c.cron_email_count > 0" class="count-badge count-badge--info">
+                {{ c.cron_email_count }} {{ t('admin.userConfigs.emailSuffix') }}
               </span>
               <span v-else class="text-secondary">-</span>
             </td>
@@ -268,14 +278,14 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
               </span>
               <span v-else class="text-secondary">-</span>
             </td>
-            <td class="text-secondary">{{ c.last_modified || '-' }}</td>
+            <td class="text-secondary text-mono">{{ c.last_modified ? new Date(c.last_modified).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' }) : '-' }}</td>
             <td>
               <div class="action-btns">
                 <button class="icon-btn" :title="t('admin.userConfigs.viewDetail')" @click="openDetail(c)"><EyeOutlined /></button>
               </div>
             </td>
           </tr>
-          <tr v-if="filteredConfigs.length === 0">
+          <tr v-if="!loading && filteredConfigs.length === 0">
             <td colspan="9" class="empty-cell">{{ t('admin.userConfigs.noData') }}</td>
           </tr>
         </tbody>
@@ -296,40 +306,40 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
       />
     </div>
 
-    <!--细节抽屉-->
+    <!-- 详情抽屉 -->
     <a-drawer
       v-model:open="showDetail"
-      :title="detailConfig ? t('admin.userConfigs.prefDetail', [detailConfig.display_name]) : ''"
+      :title="detailConfig ? t('admin.userConfigs.prefDetail', [detailConfig.display_name || detailConfig.username]) : ''"
       width="600"
       placement="right"
     >
       <template v-if="detailConfig">
-        <!--用户标题-->
+        <!-- 用户头部 -->
         <div class="detail-user-header">
           <a-avatar :size="40" class="user-avatar">
             <template #icon><UserOutlined /></template>
           </a-avatar>
           <div>
-            <div class="detail-user-name">{{ detailConfig.display_name }}</div>
-            <div class="detail-user-meta">{{ detailConfig.username }} · {{ detailConfig.department }}</div>
+            <div class="detail-user-name">{{ detailConfig.display_name || detailConfig.username }}</div>
+            <div class="detail-user-meta">{{ detailConfig.username }} · {{ detailConfig.department || '-' }}</div>
             <div class="detail-user-roles">
               <span v-for="r in detailConfig.role_names" :key="r" class="role-tag role-tag--sm">{{ r }}</span>
             </div>
           </div>
         </div>
 
-        <!--无配置状态-->
-        <div v-if="totalUserChanges(detailConfig) === 0" class="detail-empty">
+        <!-- 无配置状态 -->
+        <div v-if="totalChanges(detailConfig) === 0" class="detail-empty">
           <a-empty :description="t('admin.userConfigs.noCustomConfig')" />
         </div>
 
-        <!--标签导航-->
+        <!-- Tab 导航 -->
         <div v-else class="detail-tab-nav">
           <button
             v-for="tab in [
-              { key: 'audit', label: t('admin.userConfigs.tabAudit'), icon: AppstoreOutlined, count: detailConfig.audit_details.length },
-              { key: 'cron', label: t('admin.userConfigs.tabCron'), icon: ClockCircleOutlined, count: detailConfig.cron_config_details.length },
-              { key: 'archive', label: t('admin.userConfigs.tabArchive'), icon: FolderOpenOutlined, count: detailConfig.archive_details.length },
+              { key: 'audit',   label: t('admin.userConfigs.tabAudit'),   icon: AppstoreOutlined,    count: detailConfig.audit_details.length },
+              { key: 'cron',    label: t('admin.userConfigs.tabCron'),    icon: ClockCircleOutlined, count: detailConfig.cron_email_count },
+              { key: 'archive', label: t('admin.userConfigs.tabArchive'), icon: FolderOpenOutlined,  count: detailConfig.archive_details.length },
             ]"
             :key="tab.key"
             class="detail-tab-btn"
@@ -342,8 +352,8 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
           </button>
         </div>
 
-        <!--===== 审核工作台详细信息（按流程）=====-->
-        <div v-if="detailTab === 'audit' && totalUserChanges(detailConfig) > 0" class="detail-content">
+        <!-- ===== 审核工作台 ===== -->
+        <div v-if="detailTab === 'audit' && totalChanges(detailConfig) > 0" class="detail-content">
           <div v-if="detailConfig.audit_details.length === 0" class="detail-empty-tab">
             {{ t('admin.userConfigs.noAuditConfig') }}
           </div>
@@ -356,7 +366,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
               <div class="detail-config-label"><ControlOutlined /> {{ t('admin.userConfigs.auditStrictness') }}</div>
               <div class="detail-config-value">
                 <span class="strictness-tag" :style="{ color: strictnessLabels[proc.strictness_override]?.color }">
-                  {{ strictnessLabels[proc.strictness_override]?.label }}
+                  {{ strictnessLabels[proc.strictness_override]?.label || proc.strictness_override }}
                 </span>
                 <span class="text-secondary" style="font-size: 12px; margin-left: 4px;">{{ t('admin.userConfigs.userCustom') }}</span>
               </div>
@@ -384,89 +394,44 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
               <div class="detail-rule-list">
                 <div v-for="r in proc.rule_toggle_overrides" :key="r.rule_id" class="detail-rule-item">
                   <span class="detail-rule-dot" :class="r.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
-                  <span class="detail-rule-text">{{ r.rule_content }}</span>
+                  <span class="detail-rule-text">{{ r.rule_content || r.rule_id }}</span>
+                  <span class="rule-toggle-status" :class="r.enabled ? 'rule-toggle-status--on' : 'rule-toggle-status--off'">
+                    {{ r.enabled ? t('admin.userConfigs.enabled') : t('admin.userConfigs.disabled') }}
+                  </span>
                 </div>
               </div>
             </div>
 
-            <div v-if="!proc.strictness_override && proc.custom_rules.length === 0 && proc.field_overrides.length === 0 && proc.rule_toggle_overrides.length === 0" class="detail-empty-tab">
+            <div v-if="!hasProcessContent(proc)" class="detail-empty-tab">
               {{ t('admin.userConfigs.noProcessConfig') }}
             </div>
           </div>
         </div>
 
-        <!--===== Cron 详细信息（修改与自定义）=====-->
-        <div v-if="detailTab === 'cron' && totalUserChanges(detailConfig) > 0" class="detail-content">
-          <div v-if="detailConfig.cron_config_details.length === 0" class="detail-empty-tab">
+        <!-- ===== 定时任务 ===== -->
+        <div v-if="detailTab === 'cron' && totalChanges(detailConfig) > 0" class="detail-content">
+          <div v-if="detailConfig.cron_email_count === 0" class="detail-empty-tab">
             {{ t('admin.userConfigs.noCronConfig') }}
           </div>
-          <template v-else>
-            <!--修改系统默认任务-->
-            <template v-if="detailConfig.cron_config_details.filter(c => c.source === 'modified').length > 0">
-              <div class="detail-section-title">
-                <EditOutlined /> {{ t('admin.userConfigs.cronModified') }}
+          <div v-else class="detail-process-card">
+            <div class="detail-process-header">
+              <span class="detail-process-name"><MailOutlined /> {{ t('admin.userConfigs.cronPushEmail') }}</span>
+              <span class="count-badge count-badge--info">{{ detailConfig.cron_details.email_count }} {{ t('admin.userConfigs.emailSuffix') }}</span>
+            </div>
+            <div class="detail-config-block">
+              <div class="detail-email-list">
+                <span
+                  v-for="email in detailConfig.cron_details.default_email.split(',').map(e => e.trim()).filter(Boolean)"
+                  :key="email"
+                  class="detail-field-tag"
+                >{{ email }}</span>
               </div>
-              <div v-for="cron in detailConfig.cron_config_details.filter(c => c.source === 'modified')" :key="cron.task_id" class="detail-process-card">
-                <div class="detail-process-header">
-                  <span class="detail-process-name">{{ cron.task_label }}</span>
-                  <span class="cron-source-tag cron-source-tag--modified">{{ t('admin.userConfigs.cronModified') }}</span>
-                </div>
-                <div class="detail-config-block">
-                  <div class="detail-config-label"><ClockCircleOutlined /> {{ t('admin.userConfigs.cronExpression') }}</div>
-                  <div class="detail-config-value text-mono">{{ cron.cron_expression }}</div>
-                </div>
-                <div class="detail-config-block">
-                  <div class="detail-config-label">{{ t('common.status') }}</div>
-                  <div class="detail-config-value">
-                    <span :class="cron.is_active ? 'status-active' : 'status-inactive'">
-                      <CheckCircleOutlined v-if="cron.is_active" />
-                      <CloseCircleOutlined v-else />
-                      {{ cron.is_active ? t('admin.userConfigs.cronActive') : t('admin.userConfigs.cronInactive') }}
-                    </span>
-                  </div>
-                </div>
-                <div v-if="cron.push_email" class="detail-config-block">
-                  <div class="detail-config-label">{{ t('admin.userConfigs.cronPushEmail') }}</div>
-                  <div class="detail-config-value text-mono">{{ cron.push_email }}</div>
-                </div>
-              </div>
-            </template>
-
-            <!--用户创建的自定义任务-->
-            <template v-if="detailConfig.cron_config_details.filter(c => c.source === 'custom').length > 0">
-              <div class="detail-section-title">
-                <PlusOutlined /> {{ t('admin.userConfigs.cronCustom') }}
-              </div>
-              <div v-for="cron in detailConfig.cron_config_details.filter(c => c.source === 'custom')" :key="cron.task_id" class="detail-process-card">
-                <div class="detail-process-header">
-                  <span class="detail-process-name">{{ cron.task_label }}</span>
-                  <span class="cron-source-tag cron-source-tag--custom">{{ t('admin.userConfigs.cronCustom') }}</span>
-                </div>
-                <div class="detail-config-block">
-                  <div class="detail-config-label"><ClockCircleOutlined /> {{ t('admin.userConfigs.cronExpression') }}</div>
-                  <div class="detail-config-value text-mono">{{ cron.cron_expression }}</div>
-                </div>
-                <div class="detail-config-block">
-                  <div class="detail-config-label">{{ t('common.status') }}</div>
-                  <div class="detail-config-value">
-                    <span :class="cron.is_active ? 'status-active' : 'status-inactive'">
-                      <CheckCircleOutlined v-if="cron.is_active" />
-                      <CloseCircleOutlined v-else />
-                      {{ cron.is_active ? t('admin.userConfigs.cronActive') : t('admin.userConfigs.cronInactive') }}
-                    </span>
-                  </div>
-                </div>
-                <div v-if="cron.push_email" class="detail-config-block">
-                  <div class="detail-config-label">{{ t('admin.userConfigs.cronPushEmail') }}</div>
-                  <div class="detail-config-value text-mono">{{ cron.push_email }}</div>
-                </div>
-              </div>
-            </template>
-          </template>
+            </div>
+          </div>
         </div>
 
-        <!--===== 存档详细信息（按流程）=====-->
-        <div v-if="detailTab === 'archive' && totalUserChanges(detailConfig) > 0" class="detail-content">
+        <!-- ===== 归档复盘 ===== -->
+        <div v-if="detailTab === 'archive' && totalChanges(detailConfig) > 0" class="detail-content">
           <div v-if="detailConfig.archive_details.length === 0" class="detail-empty-tab">
             {{ t('admin.userConfigs.noArchiveConfig') }}
           </div>
@@ -479,7 +444,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
               <div class="detail-config-label"><ControlOutlined /> {{ t('admin.userConfigs.reviewStrictness') }}</div>
               <div class="detail-config-value">
                 <span class="strictness-tag" :style="{ color: strictnessLabels[arc.strictness_override]?.color }">
-                  {{ strictnessLabels[arc.strictness_override]?.label }}
+                  {{ strictnessLabels[arc.strictness_override]?.label || arc.strictness_override }}
                 </span>
                 <span class="text-secondary" style="font-size: 12px; margin-left: 4px;">{{ t('admin.userConfigs.userCustom') }}</span>
               </div>
@@ -495,16 +460,6 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
               </div>
             </div>
 
-            <div v-if="arc.custom_flow_rules.length > 0" class="detail-config-block">
-              <div class="detail-config-label"><ApartmentOutlined /> {{ t('admin.userConfigs.customFlowRules') }}</div>
-              <div class="detail-rule-list">
-                <div v-for="rule in arc.custom_flow_rules" :key="rule.id" class="detail-rule-item">
-                  <span class="detail-rule-dot" :class="rule.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
-                  <span class="detail-rule-text">{{ rule.content }}</span>
-                </div>
-              </div>
-            </div>
-
             <div v-if="arc.field_overrides.length > 0" class="detail-config-block">
               <div class="detail-config-label"><AppstoreOutlined /> {{ t('admin.userConfigs.fieldChanges') }}</div>
               <div class="detail-tag-list">
@@ -512,15 +467,28 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
               </div>
             </div>
 
-            <div v-if="!arc.strictness_override && arc.custom_rules.length === 0 && arc.custom_flow_rules.length === 0 && arc.field_overrides.length === 0" class="detail-empty-tab">
+            <div v-if="arc.rule_toggle_overrides.length > 0" class="detail-config-block">
+              <div class="detail-config-label"><SwapOutlined /> {{ t('admin.userConfigs.ruleToggleChanges') }}</div>
+              <div class="detail-rule-list">
+                <div v-for="r in arc.rule_toggle_overrides" :key="r.rule_id" class="detail-rule-item">
+                  <span class="detail-rule-dot" :class="r.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
+                  <span class="detail-rule-text">{{ r.rule_content || r.rule_id }}</span>
+                  <span class="rule-toggle-status" :class="r.enabled ? 'rule-toggle-status--on' : 'rule-toggle-status--off'">
+                    {{ r.enabled ? t('admin.userConfigs.enabled') : t('admin.userConfigs.disabled') }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="!hasProcessContent(arc)" class="detail-empty-tab">
               {{ t('admin.userConfigs.noProcessConfig') }}
             </div>
           </div>
         </div>
 
-        <!--页脚-->
+        <!-- 页脚 -->
         <div v-if="detailConfig.last_modified" class="detail-footer-info">
-          {{ t('admin.userConfigs.thLastModified') }}：{{ detailConfig.last_modified }}
+          {{ t('admin.userConfigs.thLastModified') }}：{{ new Date(detailConfig.last_modified).toLocaleString('zh-CN') }}
         </div>
       </template>
     </a-drawer>
@@ -528,7 +496,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
 </template>
 
 <style scoped>
-.page-header { margin-bottom: 24px; }
+.page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
 .page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; }
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
 
@@ -563,6 +531,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); overflow: hidden;
 }
+.loading-cell { padding: 48px; text-align: center; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .data-table th {
   padding: 12px 16px; text-align: left; font-weight: 600; color: var(--color-text-secondary);
@@ -608,7 +577,7 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
 
 .pagination-wrapper { margin-top: 16px; display: flex; justify-content: flex-end; }
 
-/*=====细节抽屉=====*/
+/* ===== 详情抽屉 ===== */
 .detail-user-header {
   display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px;
   padding-bottom: 16px; border-bottom: 1px solid var(--color-border-light);
@@ -642,27 +611,12 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
 
 .detail-content { display: flex; flex-direction: column; gap: 12px; }
 
-.detail-section-title {
-  font-size: 13px; font-weight: 600; color: var(--color-text-secondary);
-  display: flex; align-items: center; gap: 6px; margin-top: 8px; margin-bottom: 4px;
-  padding-bottom: 6px; border-bottom: 1px dashed var(--color-border-light);
-}
-
 .detail-process-card {
   background: var(--color-bg-page); border-radius: var(--radius-md);
   border: 1px solid var(--color-border-light); padding: 14px; display: flex; flex-direction: column; gap: 12px;
 }
-.detail-process-header { display: flex; align-items: center; gap: 8px; }
+.detail-process-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .detail-process-name { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
-
-.cron-source-tag {
-  font-size: 10px; font-weight: 600; padding: 1px 8px; border-radius: var(--radius-full);
-}
-.cron-source-tag--modified { background: var(--color-warning-bg); color: var(--color-warning); }
-.cron-source-tag--custom { background: var(--color-success-bg); color: var(--color-success); }
-
-.status-active { color: var(--color-success); font-size: 13px; display: flex; align-items: center; gap: 4px; }
-.status-inactive { color: var(--color-text-tertiary); font-size: 13px; display: flex; align-items: center; gap: 4px; }
 
 .detail-config-block { display: flex; flex-direction: column; gap: 6px; }
 .detail-config-label {
@@ -670,23 +624,30 @@ const totalUserChanges = (c: UserPersonalConfig) => c.audit_process_count + c.cr
   display: flex; align-items: center; gap: 6px;
 }
 .detail-config-value { font-size: 13px; color: var(--color-text-primary); padding-left: 20px; }
-
 .strictness-tag { font-weight: 600; font-size: 13px; }
 
 .detail-rule-list { display: flex; flex-direction: column; gap: 6px; padding-left: 20px; }
 .detail-rule-item {
-  display: flex; align-items: flex-start; gap: 8px; font-size: 13px;
+  display: flex; align-items: center; gap: 8px; font-size: 13px;
   padding: 6px 10px; background: var(--color-bg-card); border-radius: var(--radius-sm);
   border: 1px solid var(--color-border-light);
 }
 .detail-rule-dot {
-  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
 }
 .detail-rule-dot--on { background: var(--color-success); }
 .detail-rule-dot--off { background: var(--color-text-tertiary); }
 .detail-rule-text { flex: 1; color: var(--color-text-primary); line-height: 1.5; }
 
+.rule-toggle-status {
+  font-size: 10px; font-weight: 600; padding: 1px 6px;
+  border-radius: var(--radius-full); white-space: nowrap; flex-shrink: 0;
+}
+.rule-toggle-status--on { background: var(--color-success-bg); color: var(--color-success); }
+.rule-toggle-status--off { background: var(--color-bg-hover); color: var(--color-text-tertiary); }
+
 .detail-tag-list { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 20px; }
+.detail-email-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .detail-field-tag {
   font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: var(--radius-full);
   background: var(--color-info-bg); color: var(--color-info); border: 1px solid transparent;

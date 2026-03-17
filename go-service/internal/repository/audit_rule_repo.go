@@ -71,3 +71,12 @@ func (r *AuditRuleRepo) ListByConfigID(c *gin.Context, configID uuid.UUID) ([]mo
 	}
 	return rules, nil
 }
+
+// ListByTenant 查询当前租户的所有审核规则，用于构建 ruleID→content 映射。
+func (r *AuditRuleRepo) ListByTenant(c *gin.Context) ([]model.AuditRule, error) {
+	var rules []model.AuditRule
+	if err := r.WithTenant(c).Order("created_at ASC").Find(&rules).Error; err != nil {
+		return nil, err
+	}
+	return rules, nil
+}

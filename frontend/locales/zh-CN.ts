@@ -300,6 +300,7 @@ export default {
     'common.copySuccess': '已复制到剪贴板',
     'common.currentMode': '当前模式：',
     'common.remove': '移除',
+    'common.refresh': '刷新',
 
     //=====流程类型=====
     'processType.purchase': '采购审批',
@@ -1130,7 +1131,7 @@ export default {
     'admin.userConfigs.selectToExport': '请先勾选要导出的记录',
     'admin.userConfigs.exporting': '正在导出用户偏好数据...',
     'admin.userConfigs.totalAuditChanges': '审核工作台修改总数',
-    'admin.userConfigs.totalCronChanges': '定时任务修改总数',
+    'admin.userConfigs.totalCronChanges': '定时任务邮箱配置总数',
     'admin.userConfigs.totalArchiveChanges': '归档复盘修改总数',
     'admin.userConfigs.thUser': '用户',
     'admin.userConfigs.thDepartment': '部门',
@@ -1171,6 +1172,7 @@ export default {
     'admin.userConfigs.lastModifiedTime': '最后修改时间：{0}',
     'admin.userConfigs.enabled': '启用',
     'admin.userConfigs.disabled': '禁用',
+    'admin.userConfigs.emailSuffix': '个邮箱',
     'admin.userConfigs.on': '开启',
     'admin.userConfigs.off': '关闭',
 

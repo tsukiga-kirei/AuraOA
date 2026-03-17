@@ -95,6 +95,15 @@ func (r *ArchiveRuleRepo) Delete(c *gin.Context, id uuid.UUID) error {
 	return r.WithTenant(c).Where("id = ?", id).Delete(&model.ArchiveRule{}).Error
 }
 
+// ListByTenant 查询当前租户的所有归档规则，用于构建 ruleID→content 映射。
+func (r *ArchiveRuleRepo) ListByTenant(c *gin.Context) ([]model.ArchiveRule, error) {
+	var rules []model.ArchiveRule
+	if err := r.WithTenant(c).Order("created_at ASC").Find(&rules).Error; err != nil {
+		return nil, err
+	}
+	return rules, nil
+}
+
 // ListByConfigIDFilter 按配置 ID 查询归档规则列表，支持按 rule_scope 和 enabled 筛选。
 func (r *ArchiveRuleRepo) ListByConfigIDFilter(c *gin.Context, configID uuid.UUID, ruleScope *string, enabled *bool) ([]model.ArchiveRule, error) {
 	query := r.WithTenant(c).Where("config_id = ?", configID)
