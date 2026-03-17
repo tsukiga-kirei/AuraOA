@@ -29,7 +29,7 @@ import {
   UploadOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
-import {message} from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import type {
   AuditRule as ApiAuditRule,
   ProcessAuditConfig as ApiProcessAuditConfig,
@@ -376,6 +376,13 @@ const activeTab = ref('info')
 const selectedConfig = computed(() =>
   processConfigs.value.find(c => c.id === selectedProcessId.value)
 )
+
+// 快照原始权限，用于保存时检测是否有权限降级
+const originalAuditPerms = ref<Record<string, boolean>>({})
+watch(selectedProcessId, (newId) => {
+  const cfg = processConfigs.value.find(c => c.id === newId)
+  originalAuditPerms.value = cfg ? { ...(cfg.user_permissions as any) } : {}
+}, { immediate: true })
 
 // 当选中流程变化时，从 API 加载该流程的规则
 watch(selectedProcessId, async (newId) => {
@@ -791,6 +798,13 @@ const archiveActiveTab = ref('info')
 const selectedArchiveConfig = computed(() =>
   archiveConfigs.value.find(c => c.id === selectedArchiveId.value)
 )
+
+// 快照原始权限，用于保存时检测是否有权限降级
+const originalArchivePerms = ref<Record<string, boolean>>({})
+watch(selectedArchiveId, (newId) => {
+  const cfg = archiveConfigs.value.find(c => c.id === newId)
+  originalArchivePerms.value = cfg ? { ...(cfg.user_permissions as any) } : {}
+}, { immediate: true })
 
 // 当选中归档流程变化时，从 API 加载该流程的规则
 const currentArchiveRules = ref<ArchiveRule[]>([])
@@ -1272,9 +1286,17 @@ const toggleArchiveDept = (deptId: string) => {
 
 const handleSaveArchiveConfig = async () => {
   if (!selectedArchiveConfig.value) return
+  const cfg = selectedArchiveConfig.value
+
+  // 检测权限降级，需要用户确认
+  const disabledKeys = getDowngradedPermKeys(originalArchivePerms.value, cfg.user_permissions as any)
+  if (disabledKeys.length > 0) {
+    const confirmed = await confirmPermDowngrade(disabledKeys, archivePermissionLabels.value)
+    if (!confirmed) return
+  }
+
   savingArchive.value = true
   try {
-    const cfg = selectedArchiveConfig.value
     const updated = await archiveApi.updateConfig(cfg.id, {
       process_type: cfg.process_type,
       process_type_label: cfg.process_type_label,
@@ -1290,6 +1312,7 @@ const handleSaveArchiveConfig = async () => {
     })
     const idx = archiveConfigs.value.findIndex(c => c.id === cfg.id)
     if (idx >= 0) archiveConfigs.value[idx] = updated
+    originalArchivePerms.value = { ...(cfg.user_permissions as any) }
     message.success(t('admin.ruleConfig.archiveSaved'))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.updateConfigFail') + ': ' + (e.message || ''))
@@ -1308,11 +1331,49 @@ const saving = ref(false)
 const savingCron = ref(false)
 const savingArchive = ref(false)
 
+/**
+ * 比较原始权限与当前权限，返回从 true 变为 false 的权限 key 列表。
+ */
+function getDowngradedPermKeys(
+  original: Record<string, boolean>,
+  current: Record<string, boolean>,
+): string[] {
+  return Object.keys(original).filter(k => original[k] === true && current[k] === false)
+}
+
+/**
+ * 若有权限被关闭，弹出确认对话框；用户取消则返回 false，确认则返回 true。
+ */
+function confirmPermDowngrade(
+  disabledKeys: string[],
+  labels: Record<string, { label: string }>,
+): Promise<boolean> {
+  const names = disabledKeys.map(k => labels[k]?.label ?? k).join('、')
+  return new Promise(resolve => {
+    Modal.confirm({
+      title: t('admin.ruleConfig.permDowngradeTitle'),
+      content: t('admin.ruleConfig.permDowngradeContent', [names]),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: () => resolve(true),
+      onCancel: () => resolve(false),
+    })
+  })
+}
+
 const handleSave = async () => {
   if (!selectedConfig.value) return
+  const cfg = selectedConfig.value
+
+  // 检测权限降级，需要用户确认
+  const disabledKeys = getDowngradedPermKeys(originalAuditPerms.value, cfg.user_permissions as any)
+  if (disabledKeys.length > 0) {
+    const confirmed = await confirmPermDowngrade(disabledKeys, permissionLabels.value)
+    if (!confirmed) return
+  }
+
   saving.value = true
   try {
-    const cfg = selectedConfig.value
     const updated = await rulesApi.updateConfig(cfg.id, {
       process_type: cfg.process_type,
       process_type_label: cfg.process_type_label,
@@ -1325,9 +1386,10 @@ const handleSave = async () => {
       user_permissions: cfg.user_permissions,
       status: cfg.status,
     })
-    // 更新本地数据
+    // 更新本地数据并刷新快照
     const idx = processConfigs.value.findIndex(c => c.id === cfg.id)
     if (idx !== -1) processConfigs.value[idx] = updated
+    originalAuditPerms.value = { ...(cfg.user_permissions as any) }
     message.success(t('admin.ruleConfig.configSaved'))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.updateConfigFail') + ': ' + (e.message || ''))

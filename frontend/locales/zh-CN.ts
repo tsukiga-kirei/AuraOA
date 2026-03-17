@@ -884,6 +884,8 @@ export default {
     'admin.ruleConfig.deny': '禁止',
     'admin.ruleConfig.saveConfig': '保存配置',
     'admin.ruleConfig.configSaved': '配置已保存',
+    'admin.ruleConfig.permDowngradeTitle': '确认关闭用户权限？',
+    'admin.ruleConfig.permDowngradeContent': '以下权限即将被关闭：{0}。\n已有用户针对这些功能的自定义配置将不再生效（不会被删除，但会被忽略）。确认继续保存？',
     'admin.ruleConfig.selectProcess': '请选择左侧流程查看配置',
     'admin.ruleConfig.addProcessTitle': '新增审核流程',
     'admin.ruleConfig.confirm': '确认',
