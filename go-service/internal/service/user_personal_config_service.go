@@ -2,9 +2,11 @@ package service
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 
@@ -335,18 +337,24 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 	_ = json.Unmarshal(tenantCfg.DetailTables, &rawDetailTables)
 
 	// 构建用户额外选中字段的 Map（仅在允许自定义字段时生效）
-	userAddedFieldKeys := map[string]bool{}
+	userAddedFieldMap := make(map[string]map[string]bool)
 	if perms.AllowCustomFields {
 		for _, k := range userDetail.FieldConfig.FieldOverrides {
-			userAddedFieldKeys[k] = true
+			table, key := parseFieldOverride(k)
+			if userAddedFieldMap[table] == nil {
+				userAddedFieldMap[table] = make(map[string]bool)
+			}
+			userAddedFieldMap[table][key] = true
 		}
 	}
+
 
 	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
 	for i, f := range rawMainFields {
 		// 租户选中的，用户必选（Locked）；租户未选的，看用户是否额外增加
 		locked := effectiveFieldMode == "all" || f.Selected
-		sel := locked || userAddedFieldKeys[f.FieldKey]
+		sel := locked || (userAddedFieldMap["main"] != nil && userAddedFieldMap["main"][f.FieldKey])
+
 		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel, Locked: locked}
 	}
 
@@ -355,7 +363,8 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 		fields := make([]dto.TenantFieldDTO, len(dt.Fields))
 		for j, f := range dt.Fields {
 			locked := effectiveFieldMode == "all" || f.Selected
-			sel := locked || userAddedFieldKeys[f.FieldKey]
+			sel := locked || (userAddedFieldMap[dt.TableName] != nil && userAddedFieldMap[dt.TableName][f.FieldKey])
+
 			fields[j] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel, Locked: locked}
 		}
 		detailTables[i] = dto.DetailTableDTO{TableName: dt.TableName, TableLabel: dt.TableLabel, Fields: fields}
@@ -648,17 +657,22 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 	_ = json.Unmarshal(tenantCfg.DetailTables, &rawDetailTables)
 
 	// 构建用户额外选中字段的 Map（仅在允许自定义字段时生效）
-	userAddedFieldKeys := map[string]bool{}
+	userAddedFieldMap := make(map[string]map[string]bool)
 	if perms.AllowCustomFields {
 		for _, k := range userDetail.FieldConfig.FieldOverrides {
-			userAddedFieldKeys[k] = true
+			table, key := parseFieldOverride(k)
+			if userAddedFieldMap[table] == nil {
+				userAddedFieldMap[table] = make(map[string]bool)
+			}
+			userAddedFieldMap[table][key] = true
 		}
 	}
+
 
 	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
 	for i, f := range rawMainFields {
 		locked := effectiveFieldMode == "all" || f.Selected
-		sel := locked || userAddedFieldKeys[f.FieldKey]
+		sel := locked || (userAddedFieldMap["main"] != nil && userAddedFieldMap["main"][f.FieldKey])
 		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel, Locked: locked}
 	}
 
@@ -667,11 +681,12 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 		fields := make([]dto.TenantFieldDTO, len(dt.Fields))
 		for j, f := range dt.Fields {
 			locked := effectiveFieldMode == "all" || f.Selected
-			sel := locked || userAddedFieldKeys[f.FieldKey]
+			sel := locked || (userAddedFieldMap[dt.TableName] != nil && userAddedFieldMap[dt.TableName][f.FieldKey])
 			fields[j] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel, Locked: locked}
 		}
 		detailTables[i] = dto.DetailTableDTO{TableName: dt.TableName, TableLabel: dt.TableLabel, Fields: fields}
 	}
+
 
 	// 构建归档规则 DTO
 	ruleDTOs := make([]dto.TenantRuleDTO, len(archiveRules))
@@ -836,7 +851,16 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 	return s.userConfigRepo.Upsert(cfg)
 }
 
+func parseFieldOverride(fo string) (string, string) {
+	if strings.Contains(fo, ":") {
+		parts := strings.SplitN(fo, ":", 2)
+		return parts[0], parts[1]
+	}
+	return "main", fo
+}
+
 // sliceContains 检查字符串切片是否包含指定值。
+
 func sliceContains(slice []string, val string) bool {
 	for _, s := range slice {
 		if s == val {

@@ -60,6 +60,7 @@ export interface TenantField {
   field_name: string
   field_type: string
   selected: boolean
+  locked: boolean
 }
 
 /** 明细表配置（含字段选中状态） */
@@ -165,14 +166,25 @@ export interface AdminRuleToggleItem {
   enabled: boolean       // 用户覆盖后的状态
 }
 
+/** 管理端展示字段详情 */
+export interface AdminFieldOverrideItem {
+  table_name: string
+  table_label: string
+  field_key: string
+  field_name: string
+  status: 'normal' | 'new' | 'abandoned'
+}
+
+
 /** 管理员视图：单个流程的用户个性化详情（审核工作台/归档复盘共用） */
 export interface AdminProcessDetail {
   process_type: string
   strictness_override: string
   custom_rules: AdminCustomRule[]
-  field_overrides: string[]
+  field_overrides: AdminFieldOverrideItem[]
   rule_toggle_overrides: AdminRuleToggleItem[]
 }
+
 
 /** 管理员视图：用户定时任务偏好 */
 export interface AdminCronDetail {

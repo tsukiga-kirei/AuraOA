@@ -247,9 +247,6 @@ const loadFullProcessConfig = async (processType: string) => {
   workbenchLoading.value = true
   try {
     const data = await settingsApi.getFullProcessConfig(processType)
-    // 标记初始选中状态，用于锁定（只能增不能减）
-    data.main_fields.forEach(f => { if (f.selected) (f as any).is_original = true })
-    data.detail_tables.forEach(t => t.fields.forEach(f => { if (f.selected) (f as any).is_original = true }))
     fullProcessConfig.value = data
     workbenchSection.value = 'fields'
   }
@@ -401,8 +398,8 @@ const groupedSelected = computed<PickerFieldGroup[]>(() =>
 )
 
 const isFieldLocked = (field: any) => {
-  // 租户锁定的，或者本次进入前已保存的字段，不可删除
-  return field.locked || field.is_original
+  // 仅租户锁定的字段不可删除
+  return field.locked
 }
 
 const pickField = (field: { field_key: string; source: string }) => {
@@ -461,7 +458,8 @@ const handleSaveWorkbench = async () => {
   if (!fullProcessConfig.value) return
   const cfg = fullProcessConfig.value
   const perms = cfg.user_permissions
-  const selectedKeys = allFields.value.filter(f => f.selected).map(f => f.field_key)
+  const selectedKeys = allFields.value.filter(f => f.selected).map(f => `${f.source}:${f.field_key}`)
+
   const ruleToggleOverrides = cfg.tenant_rules
     .filter(r => r.rule_scope !== 'mandatory')
     .map(r => ({ rule_id: r.id, enabled: r.enabled }))
@@ -557,9 +555,6 @@ const loadFullArchiveConfig = async (processType: string) => {
   archiveLoading.value = true
   try {
     const data = await settingsApi.getFullArchiveConfig(processType)
-    // 标记初始选中状态
-    data.main_fields.forEach(f => { if (f.selected) (f as any).is_original = true })
-    data.detail_tables.forEach(t => t.fields.forEach(f => { if (f.selected) (f as any).is_original = true }))
     fullArchiveConfig.value = data
     archiveSection.value = 'fields'
   }
@@ -764,7 +759,8 @@ const handleSaveArchive = async () => {
   if (!fullArchiveConfig.value) return
   const cfg = fullArchiveConfig.value
   const perms = cfg.user_permissions
-  const selectedKeys = archiveAllFields.value.filter(f => f.selected).map(f => f.field_key)
+  const selectedKeys = archiveAllFields.value.filter(f => f.selected).map(f => `${f.source}:${f.field_key}`)
+
   const ruleToggleOverrides = cfg.tenant_rules
     .filter(r => r.rule_scope !== 'mandatory')
     .map(r => ({ rule_id: r.id, enabled: r.enabled }))
