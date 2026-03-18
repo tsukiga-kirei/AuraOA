@@ -54,13 +54,14 @@ func (h *UserConfigManagementHandler) ListUserConfigs(c *gin.Context) {
 		return
 	}
 
-	memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap := h.loadSharedMaps(c)
+	memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap := h.loadSharedMaps(c)
 
 	result := make([]dto.AdminUserConfigListItem, 0, len(configs))
 	for _, cfg := range configs {
-		item := buildAdminUserConfigItem(cfg, memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap)
+		item := buildAdminUserConfigItem(cfg, memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap)
 		result = append(result, item)
 	}
+
 	response.Success(c, result)
 }
 
@@ -81,9 +82,10 @@ func (h *UserConfigManagementHandler) GetUserConfig(c *gin.Context) {
 		return
 	}
 
-	memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap := h.loadSharedMaps(c)
-	item := buildAdminUserConfigItem(*cfg, memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap)
+	memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap := h.loadSharedMaps(c)
+	item := buildAdminUserConfigItem(*cfg, memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap)
 	response.Success(c, item)
+
 }
 
 // ruleInfo 保存规则的内容、管理员启用状态和作用域，用于 toggle 覆盖的展示对比。
@@ -98,9 +100,11 @@ func (h *UserConfigManagementHandler) loadSharedMaps(c *gin.Context) (
 	memberMap map[uuid.UUID]*model.OrgMember,
 	auditRuleMap map[string]ruleInfo,
 	archiveRuleMap map[string]ruleInfo,
-	auditPermsMap map[string]model.UserPermissionsData,
-	archivePermsMap map[string]model.ArchiveUserPermissionsData,
+	auditPermsMap    map[string]model.UserPermissionsData,
+	archivePermsMap  map[string]model.ArchiveUserPermissionsData,
 	archiveAccessMap map[string]model.AccessControlData,
+	auditFieldsMap   map[string]processConfigInfo,
+	archiveFieldsMap map[string]processConfigInfo,
 ) {
 	memberMap = make(map[uuid.UUID]*model.OrgMember)
 	if members, err := h.orgRepo.ListMembers(c); err == nil {
@@ -125,24 +129,31 @@ func (h *UserConfigManagementHandler) loadSharedMaps(c *gin.Context) (
 		}
 	}
 
-	// 审核工作台权限映射：processType → UserPermissionsData
+	// 审核工作台权限和字段映射
 	auditPermsMap = make(map[string]model.UserPermissionsData)
+	auditFieldsMap = make(map[string]processConfigInfo)
 	if cfgs, err := h.auditConfigRepo.ListByTenant(c); err == nil {
 		for _, cfg := range cfgs {
 			var perms model.UserPermissionsData
 			if err2 := json.Unmarshal(cfg.UserPermissions, &perms); err2 == nil {
 				auditPermsMap[cfg.ProcessType] = perms
 			}
+			var mf []rawField
+			_ = json.Unmarshal(cfg.MainFields, &mf)
+			var dt []rawDetailTable
+			_ = json.Unmarshal(cfg.DetailTables, &dt)
+			auditFieldsMap[cfg.ProcessType] = processConfigInfo{FieldMode: cfg.FieldMode, MainFields: mf, DetailTables: dt}
 		}
 	}
 
-	// 归档复盘权限映射 + 访问控制映射：一次查询同时构建两个 map
+	// 归档复盘权限、字段及访问控制映射
 	archivePermsMap = make(map[string]model.ArchiveUserPermissionsData)
 	archiveAccessMap = make(map[string]model.AccessControlData)
+	archiveFieldsMap = make(map[string]processConfigInfo)
 	if cfgs, err := h.archiveConfigRepo.ListByTenant(c); err == nil {
 		for _, cfg := range cfgs {
 			if cfg.Status != "active" {
-				continue // 已下线的配置视为不存在
+				continue
 			}
 			var perms model.ArchiveUserPermissionsData
 			if err2 := json.Unmarshal(cfg.UserPermissions, &perms); err2 == nil {
@@ -152,10 +163,34 @@ func (h *UserConfigManagementHandler) loadSharedMaps(c *gin.Context) (
 			if err2 := json.Unmarshal(cfg.AccessControl, &ac); err2 == nil {
 				archiveAccessMap[cfg.ProcessType] = ac
 			}
+			var mf []rawField
+			_ = json.Unmarshal(cfg.MainFields, &mf)
+			var dt []rawDetailTable
+			_ = json.Unmarshal(cfg.DetailTables, &dt)
+			archiveFieldsMap[cfg.ProcessType] = processConfigInfo{FieldMode: cfg.FieldMode, MainFields: mf, DetailTables: dt}
 		}
 	}
 	return
 }
+
+type processConfigInfo struct {
+	FieldMode    string
+	MainFields   []rawField
+	DetailTables []rawDetailTable
+}
+
+type rawField struct {
+	FieldKey  string `json:"field_key"`
+	FieldName string `json:"field_name"`
+	Selected  bool   `json:"selected"`
+}
+
+type rawDetailTable struct {
+	TableName  string     `json:"table_name"`
+	TableLabel string     `json:"table_label"`
+	Fields     []rawField `json:"fields"`
+}
+
 
 // buildAdminUserConfigItem 将原始 UserPersonalConfig 富化为管理员视图 DTO。
 // 以管理员权限配置为基准：被禁用的特性对应的用户数据视为空；已删除的规则从 toggle 列表中清除。
@@ -168,6 +203,8 @@ func buildAdminUserConfigItem(
 	auditPermsMap map[string]model.UserPermissionsData,
 	archivePermsMap map[string]model.ArchiveUserPermissionsData,
 	archiveAccessMap map[string]model.AccessControlData,
+	auditFieldsMap map[string]processConfigInfo,
+	archiveFieldsMap map[string]processConfigInfo,
 ) dto.AdminUserConfigListItem {
 	item := dto.AdminUserConfigListItem{
 		UserID:         cfg.UserID.String(),
@@ -176,6 +213,7 @@ func buildAdminUserConfigItem(
 		AuditDetails:   []dto.AdminProcessDetail{},
 		ArchiveDetails: []dto.AdminProcessDetail{},
 	}
+
 
 	// 填充成员信息
 	if m, ok := memberMap[cfg.UserID]; ok {
@@ -201,10 +239,12 @@ func buildAdminUserConfigItem(
 				applyFieldOverridesPerm(d.FieldConfig.FieldOverrides, perms.AllowCustomFields),
 				filterToggleOverrides(d.RuleConfig.RuleToggleOverrides, auditRuleMap),
 				auditRuleMap,
+				auditFieldsMap[d.ProcessType],
 			)
 			if hasAdminProcessContent(detail) {
 				item.AuditDetails = append(item.AuditDetails, detail)
 			}
+
 		}
 		item.AuditProcessCount = len(item.AuditDetails)
 	}
@@ -245,10 +285,12 @@ func buildAdminUserConfigItem(
 				applyFieldOverridesPerm(d.FieldConfig.FieldOverrides, perms.AllowCustomFields),
 				filterToggleOverrides(d.RuleConfig.RuleToggleOverrides, archiveRuleMap),
 				archiveRuleMap,
+				archiveFieldsMap[d.ProcessType],
 			)
 			if hasAdminProcessContent(detail) {
 				item.ArchiveDetails = append(item.ArchiveDetails, detail)
 			}
+
 		}
 		item.ArchiveProcessCount = len(item.ArchiveDetails)
 	}
@@ -348,17 +390,17 @@ func toAdminProcessDetail(
 	fieldOverrides []string,
 	toggles []model.RuleToggleOverride,
 	ruleMap map[string]ruleInfo,
+	fieldInfo processConfigInfo,
 ) dto.AdminProcessDetail {
 	detail := dto.AdminProcessDetail{
 		ProcessType:         processType,
 		StrictnessOverride:  strictness,
-		FieldOverrides:      fieldOverrides,
+		FieldOverrides:      []dto.AdminFieldOverrideItem{},
 		CustomRules:         make([]dto.AdminCustomRule, len(customRules)),
 		RuleToggleOverrides: make([]dto.AdminRuleToggleItem, len(toggles)),
 	}
-	if detail.FieldOverrides == nil {
-		detail.FieldOverrides = []string{}
-	}
+
+	// 规则对比
 	for i, r := range customRules {
 		detail.CustomRules[i] = dto.AdminCustomRule{ID: r.ID, Content: r.Content, Enabled: r.Enabled}
 	}
@@ -372,5 +414,79 @@ func toAdminProcessDetail(
 			Enabled:      t.Enabled,
 		}
 	}
+
+	// 字段对比
+	// 如果租户管理员已经选择了所有字段，则默认没有修改（不需要标记任何东西，除非用户有冗余字段）
+	// 但通常 'all' 模式下，fieldOverrides 应该是空的。
+	if fieldInfo.FieldMode == "all" && len(fieldOverrides) == 0 {
+		return detail
+	}
+
+	// 解析租户可用字段，同时记录租户的选中状态
+	tenantFieldMap := make(map[string]struct {
+		Name     string
+		Table    string
+		Label    string
+		Selected bool
+	})
+	for _, f := range fieldInfo.MainFields {
+		tenantFieldMap["main:"+f.FieldKey] = struct {
+			Name     string
+			Table    string
+			Label    string
+			Selected bool
+		}{Name: f.FieldName, Table: "main", Label: "主表", Selected: f.Selected}
+	}
+	for _, dt := range fieldInfo.DetailTables {
+		for _, f := range dt.Fields {
+			tenantFieldMap[dt.TableName+":"+f.FieldKey] = struct {
+				Name     string
+				Table    string
+				Label    string
+				Selected bool
+			}{Name: f.FieldName, Table: dt.TableName, Label: dt.TableLabel, Selected: f.Selected}
+		}
+	}
+
+	// 遍历用户覆盖字段，计算偏差
+	for _, fo := range fieldOverrides {
+		table, key := parseFieldOverride(fo)
+		fullKey := table + ":" + key
+
+		info, exists := tenantFieldMap[fullKey]
+		if !exists {
+			// 情况1: 租户元数据里没有这个字段了 -> 系统已废弃
+			detail.FieldOverrides = append(detail.FieldOverrides, dto.AdminFieldOverrideItem{
+				TableName:  table,
+				TableLabel: table,
+				FieldKey:   key,
+				FieldName:  key,
+				Status:     "abandoned",
+			})
+		} else {
+			// 情况2: 租户元数据里有，但租户管理员没配置（未选中）
+			// 如果租户是 'all' 模式，或者该字段本身就被租户选中了，则视为正常同步，不显示。
+			isTenantSelected := fieldInfo.FieldMode == "all" || info.Selected
+			if !isTenantSelected {
+				detail.FieldOverrides = append(detail.FieldOverrides, dto.AdminFieldOverrideItem{
+					TableName:  info.Table,
+					TableLabel: info.Label,
+					FieldKey:   key,
+					FieldName:  info.Name,
+					Status:     "user_added",
+				})
+			}
+		}
+	}
+
 	return detail
 }
+
+func parseFieldOverride(fo string) (string, string) {
+	if strings.Contains(fo, ":") {
+		parts := strings.SplitN(fo, ":", 2)
+		return parts[0], parts[1]
+	}
+	return "main", fo
+}
+

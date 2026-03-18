@@ -384,10 +384,15 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
 
             <div v-if="proc.field_overrides.length > 0" class="detail-config-block">
               <div class="detail-config-label"><AppstoreOutlined /> {{ t('admin.userConfigs.fieldChanges') }}</div>
-              <div class="detail-tag-list">
-                <span v-for="f in proc.field_overrides" :key="f" class="detail-field-tag">{{ f }}</span>
+              <div class="field-override-list">
+                <div v-for="f in proc.field_overrides" :key="f.field_key + f.table_name" class="field-override-item" :class="'field-override-item--' + f.status">
+                  <span class="field-source">[{{ f.table_label }}]</span>
+                  <span class="field-name">{{ f.field_name }}</span>
+                  <span class="field-status-tag">{{ t(`admin.userConfigs.status.${f.status}`) }}</span>
+                </div>
               </div>
             </div>
+
 
             <div v-if="proc.rule_toggle_overrides.length > 0" class="detail-config-block">
               <div class="detail-config-label"><SwapOutlined /> {{ t('admin.userConfigs.ruleToggleChanges') }}</div>
@@ -474,10 +479,15 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
 
             <div v-if="arc.field_overrides.length > 0" class="detail-config-block">
               <div class="detail-config-label"><AppstoreOutlined /> {{ t('admin.userConfigs.fieldChanges') }}</div>
-              <div class="detail-tag-list">
-                <span v-for="f in arc.field_overrides" :key="f" class="detail-field-tag">{{ f }}</span>
+              <div class="field-override-list">
+                <div v-for="f in arc.field_overrides" :key="f.field_key + f.table_name" class="field-override-item" :class="'field-override-item--' + f.status">
+                  <span class="field-source">[{{ f.table_label }}]</span>
+                  <span class="field-name">{{ f.field_name }}</span>
+                  <span class="field-status-tag">{{ t(`admin.userConfigs.status.${f.status}`) }}</span>
+                </div>
               </div>
             </div>
+
 
             <div v-if="arc.rule_toggle_overrides.length > 0" class="detail-config-block">
               <div class="detail-config-label"><SwapOutlined /> {{ t('admin.userConfigs.ruleToggleChanges') }}</div>
@@ -693,6 +703,25 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
   font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: var(--radius-full);
   background: var(--color-info-bg); color: var(--color-info); border: 1px solid transparent;
 }
+
+/* 字段覆盖增强样式 */
+.field-override-list { display: flex; flex-direction: column; gap: 4px; padding-left: 20px; }
+.field-override-item {
+  display: flex; align-items: center; gap: 8px; font-size: 13px;
+  padding: 6px 12px; border-radius: var(--radius-md);
+  background: var(--color-bg-card); border: 1px solid var(--color-border-light);
+}
+.field-source { font-size: 12px; color: var(--color-text-tertiary); font-family: monospace; }
+.field-name { flex: 1; font-weight: 500; color: var(--color-text-primary); }
+.field-status-tag {
+  font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: var(--radius-full);
+}
+.field-override-item--user_added { border-left: 3px solid var(--color-info); }
+.field-override-item--user_added .field-status-tag { background: var(--color-info-bg); color: var(--color-info); }
+.field-override-item--abandoned { border-left: 3px solid var(--color-danger); opacity: 0.7; }
+.field-override-item--abandoned .field-status-tag { background: var(--color-danger-bg); color: var(--color-danger); }
+.field-override-item--abandoned .field-name { text-decoration: line-through; }
+
 
 .detail-footer-info {
   font-size: 12px; color: var(--color-text-tertiary);

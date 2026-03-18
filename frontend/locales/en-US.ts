@@ -1180,6 +1180,9 @@ export default {
     'admin.userConfigs.adminDefault': 'Admin default',
     'admin.userConfigs.userOverride': 'User modified',
     'admin.userConfigs.unchanged': 'Unchanged',
+    'admin.userConfigs.status.user_added': 'User Added',
+    'admin.userConfigs.status.abandoned': 'Abandoned by System',
+
 
     //===== Admin - Tenant Data =====
     'admin.data.title': 'Data Information',

@@ -29,7 +29,7 @@ VALUES (
             {"id": "cr-001", "content": "采购金额超过 30,000 元需附三家比价单", "enabled": true},
             {"id": "cr-002", "content": "IT 设备采购须经信息部确认", "enabled": true}
         ],
-        "field_overrides": ["cgje", "gys", "htbh"],
+        "field_overrides": ["main:cgje", "main:gys", "main:htbh"],
         "field_mode": "selected",
         "strictness_override": "strict",
         "rule_toggle_overrides": [
@@ -91,7 +91,7 @@ VALUES (
             "custom_rules": [
                 {"id": "cr-004", "content": "合同期限超过 3 年须总经理审批", "enabled": true}
             ],
-            "field_overrides": ["htje", "qsrq", "dfjg"],
+            "field_overrides": ["main:htje", "main:qsrq", "main:dfjg"],
             "field_mode": "selected",
             "strictness_override": "",
             "rule_toggle_overrides": []
@@ -145,7 +145,7 @@ VALUES (
     '[{
         "process_type": "采购审批",
         "custom_rules": [],
-        "field_overrides": ["cgje"],
+        "field_overrides": ["main:cgje"],
         "field_mode": "selected",
         "strictness_override": "loose",
         "rule_toggle_overrides": [

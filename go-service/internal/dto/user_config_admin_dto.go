@@ -21,12 +21,22 @@ type AdminUserConfigListItem struct {
 
 // AdminProcessDetail 单个流程的用户个性化配置详情（审核工作台/归档复盘共用）
 type AdminProcessDetail struct {
-	ProcessType         string               `json:"process_type"`
-	StrictnessOverride  string               `json:"strictness_override"`
-	CustomRules         []AdminCustomRule    `json:"custom_rules"`
-	FieldOverrides      []string             `json:"field_overrides"`
-	RuleToggleOverrides []AdminRuleToggleItem `json:"rule_toggle_overrides"`
+	ProcessType         string                   `json:"process_type"`
+	StrictnessOverride  string                   `json:"strictness_override"`
+	CustomRules         []AdminCustomRule        `json:"custom_rules"`
+	FieldOverrides      []AdminFieldOverrideItem `json:"field_overrides"`
+	RuleToggleOverrides []AdminRuleToggleItem    `json:"rule_toggle_overrides"`
 }
+
+// AdminFieldOverrideItem 管理员视图：用户字段覆盖出的详细信息
+type AdminFieldOverrideItem struct {
+	TableName  string `json:"table_name"`
+	TableLabel string `json:"table_label"`
+	FieldKey   string `json:"field_key"`
+	FieldName  string `json:"field_name"`
+	Status     string `json:"status"` // "normal": 用户额外选中的, "new": 租户存在但用户未选的, "abandoned": 用户曾选但租户已删的
+}
+
 
 // AdminCustomRule 用户自定义规则（管理员视图）
 type AdminCustomRule struct {
