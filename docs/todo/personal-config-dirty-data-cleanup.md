@@ -21,7 +21,7 @@
 
 | 子字段 | 类型 | 说明 | 脏数据场景 |
 |-------|------|------|------------|
-| `field_config.field_overrides` | `[]string` | 用户额外勾选的字段 key | **租户同步字段后删除某字段**，该 key 仍保留 |
+| `field_config.field_overrides` | `[]string` | 用户额外勾选的字段 | **格式变更**：由 `key` 升级为 `table:key` (如 `main:cgje`)。旧数据缺失前缀。|
 | `rule_config.rule_toggle_overrides` | `[]{rule_id, enabled}` | 用户对**租户通用规则**的开关覆盖 | **租户删除某条通用规则**，该 rule_id 仍保留 |
 | `rule_config.custom_rules` | `[]{id, content, ...}` | 用户自定义规则 | 无直接脏数据（不依赖租户实体） |
 | `ai_config.strictness_override` | `string` | 用户覆盖的审核尺度 | 无直接脏数据 |
@@ -39,20 +39,20 @@
 
 | 位置 | 逻辑 | 效果 |
 |------|------|------|
-| `user_personal_config_service.go` 合并字段 | 遍历**租户当前字段列表**，对每个字段查 `userAddedFieldKeys` | 若 `field_overrides` 中有租户已删除的 key，该 key 不会出现在任何字段上，**自然被忽略** |
-| `user_config_management_handler.go` `filterToggleOverrides` | 遍历 toggles，仅保留 `rule_id` 存在于 `ruleMap` 中的项 | 若 `rule_toggle_overrides` 中有租户已删除的 rule_id（通用规则），**过滤掉不展示**，但**原始 JSON 未修改** |
-| 权限关闭时的清空 | `applyFieldOverridesPerm` / `applyCustomRulesPerm` 等 | 权限关闭时**返回空**给前端，但**不写回数据库** |
+| `user_personal_config_service.go` | `parseFieldOverride` 及读取逻辑 | 若无前缀则默认为 `main` 表，遍历租户当前字段列表 | 旧格式数据得到兼容处理；若 `field_overrides` 中有租户已删除的 key，**自然被忽略** |
+| `user_config_management_handler.go` | `toAdminProcessDetail` (管理端) | 比对用户覆盖与租户元数据。若 `fullKey` 不存在，标记为 **`abandoned` (系统已废弃)** | 脏数据从“默默忽略”转向了**“主动暴露”**记录，管理员可在详情中看到划线废弃项 |
+| `user_config_management_handler.go` | `filterToggleOverrides` (管理端) | 遍历 toggles，仅保留 `rule_id` 存在于 `ruleMap` 中的项 | 过滤掉已删除规则不展示，但数据库原始 JSON 未修改 |
+| 权限关闭时的清空 | `applyFieldOverridesPerm` 等 | 权限关闭时返回空给前端 | 不写回数据库 |
 
-**结论**：脏数据只存在于**读取路径的过滤逻辑**中，**没有写回清理**。数据库中的 `audit_details` / `archive_details` 会持续累积无效 key。
+**现状结论**：目前已实现**“管理端可视化识别”**（标记为已废弃），但核心逻辑依然是**“读时过滤”**，数据库层面的 JSON 冗余仍待持久化清理。
 
 ---
 
 ## 二、需要改进的点
 
-1. **字段 `field_overrides`**：租户同步字段后删除某字段，用户配置中该 `field_key` 应被清理。
-2. **规则 `rule_toggle_overrides`**：租户删除某条**通用规则**后，用户配置中该 `rule_id` 应被清理。
-3. **流程配置删除**：租户删除整个流程配置（或归档访问控制不再包含该用户），用户 `audit_details` / `archive_details` 中对应流程条目应被清理。
-4. **权限关闭**：租户关闭某权限后，是否要**持久化清空**用户对应内容（当前仅读时忽略，未写回）。
+1. **字段 `field_overrides` 格式迁移**：逐步将存量的旧格式 `field_key` 自动转换为 `table:field_key`。
+2. **规则 `rule_toggle_overrides` 清理**：租户删除某条**通用规则**后，用户配置中该 `rule_id` 应被持久化清除。
+3. **流程配置/权限变更后的持久化**：流程删除或权限（如 `allow_custom_fields`）关闭后，不应只在读取时忽略，需同步写回清理对应 JSON 数据。
 
 ---
 
@@ -92,9 +92,8 @@
 
 ## 四、后续行动项
 
-- [ ] 确定清理策略：写时清理 / 定时任务 / 混合
-- [ ] 在保存个人配置接口中增加 `field_overrides`、`rule_toggle_overrides` 校验与清理逻辑
-- [ ] 评估是否对「权限关闭」做持久化清空
-- [ ] 评估是否对「流程删除/访问权变更」做持久化清理
-- [ ] 如需历史清理，编写迁移脚本或定时任务
-- [ ] 更新相关文档与测试用例
+- [ ] **数据格式迁移**：在用户保存个性化配置时，自动将旧格式 `key` 升级为 `table:key` 格式
+- [ ] **自动化清理逻辑**：在保存个人配置接口中增加校验逻辑，自动剔除无效的 `field_overrides` 和 `rule_toggle_overrides`
+- [ ] **管理端清理工具**：在管理端流程详情抽屉中，对应已废弃字段增加“清理”按钮，支持手动清理存量脏数据
+- [ ] **策略定义**：明确租户权限（AllowXxx）关闭后，对应的已有配置是“标记禁用”还是“彻底擦除”
+- [ ] 更新相关后端单元测试，覆盖 dirty data 场景
