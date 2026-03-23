@@ -1252,37 +1252,41 @@ const filteredArchiveDepts = computed(() => {
   return departments.value.filter(d => d.name.toLowerCase().includes(q))
 })
 
-const toggleArchiveRole = (roleId: string) => {
-  if (!selectedArchiveConfig.value) return
-  if (!selectedArchiveConfig.value.access_control) {
+const ensureArchiveAC = () => {
+  if (!selectedArchiveConfig.value) return null
+  const ac = selectedArchiveConfig.value.access_control
+  if (!ac || typeof ac !== 'object') {
     selectedArchiveConfig.value.access_control = { allowed_roles: [], allowed_members: [], allowed_departments: [] }
+  } else {
+    if (!Array.isArray(ac.allowed_roles)) ac.allowed_roles = []
+    if (!Array.isArray(ac.allowed_members)) ac.allowed_members = []
+    if (!Array.isArray(ac.allowed_departments)) ac.allowed_departments = []
   }
-  const list = selectedArchiveConfig.value.access_control.allowed_roles
-  const idx = list.indexOf(roleId)
-  if (idx >= 0) list.splice(idx, 1)
-  else list.push(roleId)
+  return selectedArchiveConfig.value.access_control!
+}
+
+const toggleArchiveRole = (roleId: string) => {
+  const ac = ensureArchiveAC()
+  if (!ac) return
+  const idx = ac.allowed_roles.indexOf(roleId)
+  if (idx >= 0) ac.allowed_roles.splice(idx, 1)
+  else ac.allowed_roles.push(roleId)
 }
 
 const toggleArchiveMember = (memberId: string) => {
-  if (!selectedArchiveConfig.value) return
-  if (!selectedArchiveConfig.value.access_control) {
-    selectedArchiveConfig.value.access_control = { allowed_roles: [], allowed_members: [], allowed_departments: [] }
-  }
-  const list = selectedArchiveConfig.value.access_control.allowed_members
-  const idx = list.indexOf(memberId)
-  if (idx >= 0) list.splice(idx, 1)
-  else list.push(memberId)
+  const ac = ensureArchiveAC()
+  if (!ac) return
+  const idx = ac.allowed_members.indexOf(memberId)
+  if (idx >= 0) ac.allowed_members.splice(idx, 1)
+  else ac.allowed_members.push(memberId)
 }
 
 const toggleArchiveDept = (deptId: string) => {
-  if (!selectedArchiveConfig.value) return
-  if (!selectedArchiveConfig.value.access_control) {
-    selectedArchiveConfig.value.access_control = { allowed_roles: [], allowed_members: [], allowed_departments: [] }
-  }
-  const list = selectedArchiveConfig.value.access_control.allowed_departments
-  const idx = list.indexOf(deptId)
-  if (idx >= 0) list.splice(idx, 1)
-  else list.push(deptId)
+  const ac = ensureArchiveAC()
+  if (!ac) return
+  const idx = ac.allowed_departments.indexOf(deptId)
+  if (idx >= 0) ac.allowed_departments.splice(idx, 1)
+  else ac.allowed_departments.push(deptId)
 }
 
 const handleSaveArchiveConfig = async () => {
