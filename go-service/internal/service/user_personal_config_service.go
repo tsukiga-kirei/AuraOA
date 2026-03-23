@@ -12,9 +12,7 @@ import (
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
-	"oa-smart-audit/go-service/internal/pkg/oa"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -26,11 +24,7 @@ type UserPersonalConfigService struct {
 	archiveConfigRepo *repository.ProcessArchiveConfigRepo
 	archiveRuleRepo   *repository.ArchiveRuleRepo
 	orgRepo           *repository.OrgRepo
-	tenantRepo        *repository.TenantRepo
-	oaConnRepo        *repository.OAConnectionRepo
-	userRepo          *repository.UserRepo
 }
-
 
 func NewUserPersonalConfigService(
 	userConfigRepo *repository.UserPersonalConfigRepo,
@@ -39,9 +33,6 @@ func NewUserPersonalConfigService(
 	archiveConfigRepo *repository.ProcessArchiveConfigRepo,
 	archiveRuleRepo *repository.ArchiveRuleRepo,
 	orgRepo *repository.OrgRepo,
-	tenantRepo *repository.TenantRepo,
-	oaConnRepo *repository.OAConnectionRepo,
-	userRepo *repository.UserRepo,
 ) *UserPersonalConfigService {
 	return &UserPersonalConfigService{
 		userConfigRepo:    userConfigRepo,
@@ -50,49 +41,77 @@ func NewUserPersonalConfigService(
 		archiveConfigRepo: archiveConfigRepo,
 		archiveRuleRepo:   archiveRuleRepo,
 		orgRepo:           orgRepo,
-		tenantRepo:        tenantRepo,
-		oaConnRepo:        oaConnRepo,
-		userRepo:          userRepo,
 	}
 }
 
-// GetProcessList 获取用户可见的流程列表（双重校验：OA 权限 + 租户配置存在）。
+// GetProcessList 获取用户可见的审核工作台流程列表。
+// 访问控制规则：access_control 所有列表均为空 → 对所有租户成员开放；
+// 否则用户 ID/角色/部门命中任一列表即可访问。
 func (s *UserPersonalConfigService) GetProcessList(c *gin.Context, userID uuid.UUID) ([]dto.ProcessListItem, error) {
-	// 获取租户的所有流程审核配置
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+
 	configs, err := s.configRepo.ListByTenant(c)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
-
-	// 获取用户信息用于 OA 权限校验（E9 需要 loginid/username）
-	user, err := s.userRepo.FindByID(userID)
-	if err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
-	}
-	username := ""
-	if user != nil {
-		username = user.Username
+	if len(configs) == 0 {
+		return []dto.ProcessListItem{}, nil
 	}
 
-	// 尝试获取 OA 适配器进行权限校验
-	adapter, adapterErr := s.getOAAdapter(c)
+	// 获取用户在租户内的成员信息（角色、部门）
+	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
 
 	var result []dto.ProcessListItem
 	for _, cfg := range configs {
-		// 如果有 OA 适配器，校验用户权限
-		if adapterErr == nil && adapter != nil {
-			// 将 username 传给 OA 适配器
-			hasPermission, err := adapter.CheckUserPermission(c.Request.Context(), username, cfg.ProcessType)
-			if err != nil || !hasPermission {
-				continue
+		if cfg.Status != "active" {
+			continue
+		}
+		var ac model.AccessControlData
+		if err := json.Unmarshal(cfg.AccessControl, &ac); err != nil {
+			// 解析失败视为公开
+			result = append(result, dto.ProcessListItem{
+				ProcessType:      cfg.ProcessType,
+				ProcessTypeLabel: cfg.ProcessTypeLabel,
+				ConfigID:         cfg.ID.String(),
+			})
+			continue
+		}
+		// 三列表均为空 → 公开
+		if len(ac.AllowedRoles) == 0 && len(ac.AllowedMembers) == 0 && len(ac.AllowedDepartments) == 0 {
+			result = append(result, dto.ProcessListItem{
+				ProcessType:      cfg.ProcessType,
+				ProcessTypeLabel: cfg.ProcessTypeLabel,
+				ConfigID:         cfg.ID.String(),
+			})
+			continue
+		}
+		if member == nil {
+			continue
+		}
+		// 检查成员 ID
+		if sliceContains(ac.AllowedMembers, member.ID.String()) {
+			result = append(result, dto.ProcessListItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
+			continue
+		}
+		// 检查部门
+		if sliceContains(ac.AllowedDepartments, member.DepartmentID.String()) {
+			result = append(result, dto.ProcessListItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
+			continue
+		}
+		// 检查角色
+		found := false
+		for _, r := range member.Roles {
+			if sliceContains(ac.AllowedRoles, r.ID.String()) {
+				found = true
+				break
 			}
 		}
-		// 配置存在且用户有权限（或无 OA 适配器时默认放行）
-		result = append(result, dto.ProcessListItem{
-			ProcessType:      cfg.ProcessType,
-			ProcessTypeLabel: cfg.ProcessTypeLabel,
-			ConfigID:         cfg.ID.String(),
-		})
+		if found {
+			result = append(result, dto.ProcessListItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
+		}
 	}
 
 	if result == nil {
@@ -187,7 +206,7 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 			FieldOverrides: req.FieldConfig.FieldOverrides,
 		},
 		RuleConfig: model.RuleConfig{
-			CustomRules: make([]model.CustomRule, len(req.RuleConfig.CustomRules)),
+			CustomRules:         make([]model.CustomRule, len(req.RuleConfig.CustomRules)),
 			RuleToggleOverrides: make([]model.RuleToggleOverride, len(req.RuleConfig.RuleToggleOverrides)),
 		},
 		AIConfig: model.UserAIConfig{
@@ -218,11 +237,11 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 	auditDetailsJSON, _ := json.Marshal(auditDetails)
 
 	cfg := &model.UserPersonalConfig{
-		ID:             uuid.New(),
-		TenantID:       tenantID,
-		UserID:         userID,
-		AuditDetails:   datatypes.JSON(auditDetailsJSON),
-		UpdatedAt:      time.Now(),
+		ID:           uuid.New(),
+		TenantID:     tenantID,
+		UserID:       userID,
+		AuditDetails: datatypes.JSON(auditDetailsJSON),
+		UpdatedAt:    time.Now(),
 	}
 
 	if userCfg != nil {
@@ -347,7 +366,6 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 			userAddedFieldMap[table][key] = true
 		}
 	}
-
 
 	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
 	for i, f := range rawMainFields {
@@ -668,7 +686,6 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 		}
 	}
 
-
 	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
 	for i, f := range rawMainFields {
 		locked := effectiveFieldMode == "all" || f.Selected
@@ -686,7 +703,6 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 		}
 		detailTables[i] = dto.DetailTableDTO{TableName: dt.TableName, TableLabel: dt.TableLabel, Fields: fields}
 	}
-
 
 	// 构建归档规则 DTO
 	ruleDTOs := make([]dto.TenantRuleDTO, len(archiveRules))
@@ -805,7 +821,7 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 			FieldOverrides: req.FieldConfig.FieldOverrides,
 		},
 		RuleConfig: model.RuleConfig{
-			CustomRules: make([]model.CustomRule, len(req.RuleConfig.CustomRules)),
+			CustomRules:         make([]model.CustomRule, len(req.RuleConfig.CustomRules)),
 			RuleToggleOverrides: make([]model.RuleToggleOverride, len(req.RuleConfig.RuleToggleOverrides)),
 		},
 		AIConfig: model.UserAIConfig{
@@ -868,35 +884,4 @@ func sliceContains(slice []string, val string) bool {
 		}
 	}
 	return false
-}
-
-// getOAAdapter 获取当前租户的 OA 适配器实例。
-func (s *UserPersonalConfigService) getOAAdapter(c *gin.Context) (oa.OAAdapter, error) {
-	tenantID, err := getTenantUUID(c)
-	if err != nil {
-		return nil, err
-	}
-
-	tenant, err := s.tenantRepo.FindByID(tenantID)
-	if err != nil {
-		return nil, err
-	}
-
-	if tenant.OADBConnectionID == nil {
-		return nil, newServiceError(errcode.ErrOAConnectionFailed, "租户未配置OA数据库连接")
-	}
-
-	conn, err := s.oaConnRepo.FindByID(*tenant.OADBConnectionID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 解密密码（数据库中存储的是加密密文）
-	password, decErr := crypto.Decrypt(conn.Password)
-	if decErr != nil {
-		return nil, newServiceError(errcode.ErrOAConnectionFailed, "OA数据库密码解密失败")
-	}
-	conn.Password = password
-
-	return oa.NewOAAdapter(conn.OAType, conn)
 }

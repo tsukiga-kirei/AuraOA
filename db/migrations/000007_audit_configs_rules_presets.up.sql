@@ -17,6 +17,7 @@ CREATE TABLE process_audit_configs (
     kb_mode            VARCHAR(20)  NOT NULL DEFAULT 'rules_only',                      -- 知识库模式：rules_only=仅规则，hybrid=规则+文档
     ai_config          JSONB        NOT NULL DEFAULT '{}'::jsonb,                       -- AI审核配置（含尺度/提示词/模型覆盖等）
     user_permissions   JSONB        NOT NULL DEFAULT '{}'::jsonb,                       -- 用户权限配置（含allow_custom_fields/rules/strictness）
+    access_control     JSONB        NOT NULL DEFAULT '{}'::jsonb,                       -- 访问控制（{allowed_roles:[], allowed_members:[], allowed_departments:[]}）
     status             VARCHAR(20)  NOT NULL DEFAULT 'active',                          -- 配置状态：active/inactive
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT now(),                             -- 创建时间
     updated_at         TIMESTAMPTZ  NOT NULL DEFAULT now(),                             -- 最后更新时间
@@ -439,6 +440,7 @@ COMMENT ON COLUMN process_audit_configs.field_mode IS '字段提取模式：all=
 COMMENT ON COLUMN process_audit_configs.kb_mode IS '知识库模式：rules_only=仅规则，hybrid=规则+文档';
 COMMENT ON COLUMN process_audit_configs.ai_config IS 'AI审核配置（含尺度/提示词/模型覆盖等）';
 COMMENT ON COLUMN process_audit_configs.user_permissions IS '用户权限配置（含allow_custom_fields/rules/strictness）';
+COMMENT ON COLUMN process_audit_configs.access_control IS '访问控制（{allowed_roles:[], allowed_members:[], allowed_departments:[]}）';
 COMMENT ON COLUMN process_audit_configs.status IS '配置状态：active/inactive';
 COMMENT ON COLUMN process_audit_configs.created_at IS '创建时间';
 COMMENT ON COLUMN process_audit_configs.updated_at IS '最后更新时间';

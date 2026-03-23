@@ -90,7 +90,7 @@ func main() {
 	aiModelService := service.NewAIModelService(aiModelRepo)
 	processAuditConfigService := service.NewProcessAuditConfigService(processAuditConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, db)
 	auditRuleService := service.NewAuditRuleService(auditRuleRepo)
-	userPersonalConfigService := service.NewUserPersonalConfigService(userPersonalConfigRepo, processAuditConfigRepo, auditRuleRepo, archiveConfigRepo, archiveRuleRepo, orgRepo, tenantRepo, oaConnectionRepo, userRepo)
+	userPersonalConfigService := service.NewUserPersonalConfigService(userPersonalConfigRepo, processAuditConfigRepo, auditRuleRepo, archiveConfigRepo, archiveRuleRepo, orgRepo)
 	llmMessageLogService := service.NewLLMMessageLogService(llmMessageLogRepo)
 	cronConfigService := service.NewCronConfigService(cronPresetRepo, cronConfigRepo)
 	archiveConfigService := service.NewProcessArchiveConfigService(archiveConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo)

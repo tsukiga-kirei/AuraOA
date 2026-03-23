@@ -346,6 +346,7 @@ const handleAddProcess = async () => {
       process_type: newProcessForm.value.process_type.trim(),
       process_type_label: newProcessForm.value.process_type_label.trim(),
       main_table_name: newProcessForm.value.main_table_name.trim(),
+      access_control: { allowed_roles: [], allowed_members: [], allowed_departments: [] },
     })
     processConfigs.value.push(created)
     selectedProcessId.value = created.id
@@ -1327,6 +1328,66 @@ const permissionLabels = computed(() => ({
   allow_modify_strictness: { label: t('admin.ruleConfig.allowModStrictness'), desc: t('admin.ruleConfig.allowModStrictnessDesc') },
 }))
 
+//===== 审核工作台访问控制（角色/成员/部门）=====
+const auditRoleSearch = ref('')
+const auditMemberSearch = ref('')
+const auditDeptSearch = ref('')
+
+const filteredAuditRoles = computed(() => {
+  const q = auditRoleSearch.value.toLowerCase().trim()
+  if (!q) return roles.value
+  return roles.value.filter(r => r.name.toLowerCase().includes(q))
+})
+
+const filteredAuditMembers = computed(() => {
+  const q = auditMemberSearch.value.toLowerCase().trim()
+  if (!q) return members.value
+  return members.value.filter(m => m.name.toLowerCase().includes(q) || m.department_name.toLowerCase().includes(q))
+})
+
+const filteredAuditDepts = computed(() => {
+  const q = auditDeptSearch.value.toLowerCase().trim()
+  if (!q) return departments.value
+  return departments.value.filter(d => d.name.toLowerCase().includes(q))
+})
+
+const ensureAuditAC = () => {
+  if (!selectedConfig.value) return null
+  const ac = selectedConfig.value.access_control
+  if (!ac || typeof ac !== 'object') {
+    selectedConfig.value.access_control = { allowed_roles: [], allowed_members: [], allowed_departments: [] }
+  } else {
+    if (!Array.isArray(ac.allowed_roles)) ac.allowed_roles = []
+    if (!Array.isArray(ac.allowed_members)) ac.allowed_members = []
+    if (!Array.isArray(ac.allowed_departments)) ac.allowed_departments = []
+  }
+  return selectedConfig.value.access_control!
+}
+
+const toggleAuditRole = (roleId: string) => {
+  const ac = ensureAuditAC()
+  if (!ac) return
+  const idx = ac.allowed_roles.indexOf(roleId)
+  if (idx >= 0) ac.allowed_roles.splice(idx, 1)
+  else ac.allowed_roles.push(roleId)
+}
+
+const toggleAuditMember = (memberId: string) => {
+  const ac = ensureAuditAC()
+  if (!ac) return
+  const idx = ac.allowed_members.indexOf(memberId)
+  if (idx >= 0) ac.allowed_members.splice(idx, 1)
+  else ac.allowed_members.push(memberId)
+}
+
+const toggleAuditDept = (deptId: string) => {
+  const ac = ensureAuditAC()
+  if (!ac) return
+  const idx = ac.allowed_departments.indexOf(deptId)
+  if (idx >= 0) ac.allowed_departments.splice(idx, 1)
+  else ac.allowed_departments.push(deptId)
+}
+
 const saving = ref(false)
 const savingCron = ref(false)
 const savingArchive = ref(false)
@@ -1384,6 +1445,7 @@ const handleSave = async () => {
       kb_mode: cfg.kb_mode,
       ai_config: cfg.ai_config,
       user_permissions: cfg.user_permissions,
+      access_control: cfg.access_control ?? { allowed_roles: [], allowed_members: [], allowed_departments: [] },
       status: cfg.status,
     })
     // 更新本地数据并刷新快照
@@ -1869,6 +1931,79 @@ const handleSave = async () => {
                 :checked-children="t('admin.ruleConfig.switchAllow')"
                 :un-checked-children="t('admin.ruleConfig.switchDeny')"
               />
+            </div>
+          </div>
+
+          <!-- 审核工作台访问控制 -->
+          <div class="section-header" style="margin-top: 28px;">
+            <div>
+              <h4 class="section-title">{{ t('admin.ruleConfig.auditAccessTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.auditAccessDesc') }}</p>
+            </div>
+          </div>
+
+          <div class="access-control-section">
+            <div class="access-control-group">
+              <div class="access-control-label"><TeamOutlined /> {{ t('admin.ruleConfig.auditAllowedRoles') }}</div>
+              <div class="access-control-search">
+                <a-input v-model:value="auditRoleSearch" :placeholder="t('admin.ruleConfig.auditAccessSearch')" allow-clear size="small" style="max-width: 280px;">
+                  <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                </a-input>
+              </div>
+              <div class="access-control-tags" style="gap: 8px;">
+                <div
+                  v-for="role in filteredAuditRoles"
+                  :key="role.id"
+                  class="access-tag"
+                  :class="{ 'access-tag--active': (selectedConfig.access_control?.allowed_roles || []).includes(role.id) }"
+                  @click="toggleAuditRole(role.id)"
+                >
+                  <CheckOutlined v-if="(selectedConfig.access_control?.allowed_roles || []).includes(role.id)" class="access-tag-check" />
+                  {{ role.name }}
+                </div>
+              </div>
+            </div>
+            <div class="access-control-group" style="margin-top: 16px;">
+              <div class="access-control-label"><UserOutlined /> {{ t('admin.ruleConfig.auditAllowedMembers') }}</div>
+              <div class="access-control-search">
+                <a-input v-model:value="auditMemberSearch" :placeholder="t('admin.ruleConfig.auditAccessSearch')" allow-clear size="small" style="max-width: 280px;">
+                  <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                </a-input>
+              </div>
+              <div class="access-control-tags" style="gap: 8px;">
+                <div
+                  v-for="member in filteredAuditMembers"
+                  :key="member.id"
+                  class="access-tag"
+                  :class="{ 'access-tag--active': (selectedConfig.access_control?.allowed_members || []).includes(member.id) }"
+                  @click="toggleAuditMember(member.id)"
+                >
+                  <CheckOutlined v-if="(selectedConfig.access_control?.allowed_members || []).includes(member.id)" class="access-tag-check" />
+                  {{ member.name }}
+                  <span class="access-tag-dept">{{ member.department_name }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="access-control-group" style="margin-top: 16px;">
+              <div class="access-control-label"><AppstoreOutlined /> {{ t('admin.ruleConfig.auditAllowedDepts') }}</div>
+              <div class="access-control-search">
+                <a-input v-model:value="auditDeptSearch" :placeholder="t('admin.ruleConfig.auditAccessSearch')" allow-clear size="small" style="max-width: 280px;">
+                  <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                </a-input>
+              </div>
+              <div class="access-control-tags" style="gap: 8px;">
+                <div
+                  v-for="dept in filteredAuditDepts"
+                  :key="dept.id"
+                  class="access-tag"
+                  :class="{ 'access-tag--active': (selectedConfig.access_control?.allowed_departments || []).includes(dept.id) }"
+                  @click="toggleAuditDept(dept.id)"
+                >
+                  <CheckOutlined v-if="(selectedConfig.access_control?.allowed_departments || []).includes(dept.id)" class="access-tag-check" />
+                  {{ dept.name }}
+                  <span class="access-tag-dept">{{ dept.member_count }}人</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

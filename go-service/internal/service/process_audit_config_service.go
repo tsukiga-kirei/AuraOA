@@ -94,6 +94,7 @@ func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProces
 		KBMode:           defaultStr(req.KBMode, "rules_only"),
 		AIConfig:         defaultJSON(aiConfig, "{}"),
 		UserPermissions:  defaultJSON(req.UserPermissions, "{}"),
+		AccessControl:    defaultJSON(req.AccessControl, "{}"),
 		Status:           defaultStr(req.Status, "active"),
 	}
 
@@ -190,6 +191,9 @@ func (s *ProcessAuditConfigService) Update(c *gin.Context, id uuid.UUID, req *dt
 	}
 	if req.UserPermissions != nil {
 		fields["user_permissions"] = req.UserPermissions
+	}
+	if req.AccessControl != nil {
+		fields["access_control"] = req.AccessControl
 	}
 	if req.Status != "" {
 		fields["status"] = req.Status

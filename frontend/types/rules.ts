@@ -28,6 +28,7 @@ export interface ProcessAuditConfig {
   kb_mode: string
   ai_config: Record<string, any>
   user_permissions: Record<string, any>
+  access_control?: AccessControl
   status: string
   created_at?: string
   updated_at?: string

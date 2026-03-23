@@ -15,6 +15,7 @@ type CreateProcessAuditConfigRequest struct {
 	KBMode           string         `json:"kb_mode"`
 	AIConfig         datatypes.JSON `json:"ai_config"`
 	UserPermissions  datatypes.JSON `json:"user_permissions"`
+	AccessControl    datatypes.JSON `json:"access_control"`
 	Status           string         `json:"status"`
 }
 
@@ -29,6 +30,7 @@ type UpdateProcessAuditConfigRequest struct {
 	KBMode           string         `json:"kb_mode"`
 	AIConfig         datatypes.JSON `json:"ai_config"`
 	UserPermissions  datatypes.JSON `json:"user_permissions"`
+	AccessControl    datatypes.JSON `json:"access_control"`
 	Status           string         `json:"status"`
 }
 
