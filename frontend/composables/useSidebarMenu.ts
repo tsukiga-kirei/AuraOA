@@ -41,7 +41,7 @@ const OVERVIEW_ITEMS: SidebarMenuItem[] = [
 ]
 
 const BUSINESS_ITEMS: SidebarMenuItem[] = [
-  { key: '/dashboard', icon: DashboardOutlined, labelKey: 'menu.dashboard', badge: 6 },
+  { key: '/dashboard', icon: DashboardOutlined, labelKey: 'menu.dashboard' },
   { key: '/cron', icon: ClockCircleOutlined, labelKey: 'menu.cron' },
   { key: '/archive', icon: FolderOpenOutlined, labelKey: 'menu.archive' },
 ]
@@ -58,9 +58,33 @@ const SYSTEM_ITEMS: SidebarMenuItem[] = [
   { key: '/admin/system/settings', icon: SettingOutlined, labelKey: 'menu.system.settings' },
 ]
 
+const POLL_INTERVAL_MS = 60_000
+
 export const useSidebarMenu = () => {
   const route = useRoute()
-  const { userPermissions, menus } = useAuth()
+  const { userPermissions, menus, authFetch } = useAuth()
+
+  // 待审核数量（从后端实时获取）
+  const pendingAuditCount = ref(0)
+  let pollTimer: ReturnType<typeof setInterval> | null = null
+
+  const fetchPendingCount = async () => {
+    try {
+      const stats = await authFetch<{ pending_ai_count: number }>('/api/audit/stats')
+      pendingAuditCount.value = stats.pending_ai_count ?? 0
+    } catch {
+      // 接口失败时不影响侧边栏显示
+    }
+  }
+
+  onMounted(() => {
+    fetchPendingCount()
+    pollTimer = setInterval(fetchPendingCount, POLL_INTERVAL_MS)
+  })
+
+  onUnmounted(() => {
+    if (pollTimer) clearInterval(pollTimer)
+  })
 
   /**
    * 从认证菜单（GetMenu API 返回）构建页面权限集合。
@@ -86,7 +110,12 @@ export const useSidebarMenu = () => {
       const pagePerms = menuPagePerms.value
       //有菜单数据时按权限过滤，否则不显示（等待菜单加载）
       const filtered = pagePerms.size > 0
-        ? BUSINESS_ITEMS.filter(item => pagePerms.has(item.key))
+        ? BUSINESS_ITEMS.filter(item => pagePerms.has(item.key)).map(item => {
+            if (item.key === '/dashboard' && pendingAuditCount.value > 0) {
+              return { ...item, badge: pendingAuditCount.value }
+            }
+            return item
+          })
         : []
       if (filtered.length) {
         result.push({ id: 'business', titleKey: 'sidebar.section.business', items: filtered })
