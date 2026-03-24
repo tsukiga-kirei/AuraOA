@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"oa-smart-audit/go-service/internal/model"
+	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
 	"oa-smart-audit/go-service/internal/pkg/oa"
@@ -425,6 +426,15 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 	return result
 }
 
+func (s *AuditExecuteService) decryptOAConn(conn *model.OADatabaseConnection) error {
+	password, err := crypto.Decrypt(conn.Password)
+	if err != nil {
+		return newServiceError(errcode.ErrInternalServer, "OA 数据库密码解密失败")
+	}
+	conn.Password = password
+	return nil
+}
+
 func (s *AuditExecuteService) getOAAdapter(tenantID uuid.UUID) (oa.OAAdapter, error) {
 	tenant, err := s.tenantRepo.FindByID(tenantID)
 	if err != nil {
@@ -436,6 +446,9 @@ func (s *AuditExecuteService) getOAAdapter(tenantID uuid.UUID) (oa.OAAdapter, er
 	conn, err := s.oaConnRepo.FindByID(*tenant.OADBConnectionID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "OA 数据库连接配置不存在")
+	}
+	if err := s.decryptOAConn(conn); err != nil {
+		return nil, err
 	}
 	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
 	if err != nil {
@@ -451,6 +464,9 @@ func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, 
 	conn, err := s.oaConnRepo.FindByID(*tenant.OADBConnectionID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "OA 数据库连接配置不存在")
+	}
+	if err := s.decryptOAConn(conn); err != nil {
+		return nil, err
 	}
 	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
 	if err != nil {
