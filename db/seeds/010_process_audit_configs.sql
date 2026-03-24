@@ -44,10 +44,10 @@ VALUES
     'all', 'rules_only',
     (SELECT jsonb_build_object(
         'audit_strictness',        'standard',
-        'system_reasoning_prompt',  (SELECT content FROM system_prompt_templates WHERE prompt_key = 'system_reasoning_standard'),
-        'system_extraction_prompt', (SELECT content FROM system_prompt_templates WHERE prompt_key = 'system_extraction_standard'),
-        'user_reasoning_prompt',    (SELECT content FROM system_prompt_templates WHERE prompt_key = 'user_reasoning_standard'),
-        'user_extraction_prompt',   (SELECT content FROM system_prompt_templates WHERE prompt_key = 'user_extraction_standard')
+        'system_reasoning_prompt',  (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_system_reasoning_standard'),
+        'system_extraction_prompt', (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_system_extraction_standard'),
+        'user_reasoning_prompt',    (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_user_reasoning_standard'),
+        'user_extraction_prompt',   (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_user_extraction_standard')
     )),
     '{"allow_custom_fields":true,"allow_custom_rules":true,"allow_modify_strictness":true}'::jsonb,
     'active'
@@ -69,10 +69,10 @@ VALUES
     'selected', 'rules_only',
     (SELECT jsonb_build_object(
         'audit_strictness',        'strict',
-        'system_reasoning_prompt',  (SELECT content FROM system_prompt_templates WHERE prompt_key = 'system_reasoning_strict'),
-        'system_extraction_prompt', (SELECT content FROM system_prompt_templates WHERE prompt_key = 'system_extraction_strict'),
-        'user_reasoning_prompt',    (SELECT content FROM system_prompt_templates WHERE prompt_key = 'user_reasoning_strict'),
-        'user_extraction_prompt',   (SELECT content FROM system_prompt_templates WHERE prompt_key = 'user_extraction_strict')
+        'system_reasoning_prompt',  (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_system_reasoning_strict'),
+        'system_extraction_prompt', (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_system_extraction_strict'),
+        'user_reasoning_prompt',    (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_user_reasoning_strict'),
+        'user_extraction_prompt',   (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_user_extraction_strict')
     )),
     '{"allow_custom_fields":true,"allow_custom_rules":false,"allow_modify_strictness":false}'::jsonb,
     'active'
@@ -97,10 +97,10 @@ VALUES
     'all', 'rules_only',
     (SELECT jsonb_build_object(
         'audit_strictness',        'standard',
-        'system_reasoning_prompt',  (SELECT content FROM system_prompt_templates WHERE prompt_key = 'system_reasoning_standard'),
-        'system_extraction_prompt', (SELECT content FROM system_prompt_templates WHERE prompt_key = 'system_extraction_standard'),
-        'user_reasoning_prompt',    (SELECT content FROM system_prompt_templates WHERE prompt_key = 'user_reasoning_standard'),
-        'user_extraction_prompt',   (SELECT content FROM system_prompt_templates WHERE prompt_key = 'user_extraction_standard')
+        'system_reasoning_prompt',  (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_system_reasoning_standard'),
+        'system_extraction_prompt', (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_system_extraction_standard'),
+        'user_reasoning_prompt',    (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_user_reasoning_standard'),
+        'user_extraction_prompt',   (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_user_extraction_standard')
     )),
     '{"allow_custom_fields":true,"allow_custom_rules":true,"allow_modify_strictness":true}'::jsonb,
     'active'
@@ -127,10 +127,10 @@ VALUES
     'all', 'rules_only',
     (SELECT jsonb_build_object(
         'audit_strictness',        'loose',
-        'system_reasoning_prompt',  (SELECT content FROM system_prompt_templates WHERE prompt_key = 'system_reasoning_loose'),
-        'system_extraction_prompt', (SELECT content FROM system_prompt_templates WHERE prompt_key = 'system_extraction_loose'),
-        'user_reasoning_prompt',    (SELECT content FROM system_prompt_templates WHERE prompt_key = 'user_reasoning_loose'),
-        'user_extraction_prompt',   (SELECT content FROM system_prompt_templates WHERE prompt_key = 'user_extraction_loose')
+        'system_reasoning_prompt',  (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_system_reasoning_loose'),
+        'system_extraction_prompt', (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_system_extraction_loose'),
+        'user_reasoning_prompt',    (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_user_reasoning_loose'),
+        'user_extraction_prompt',   (SELECT content FROM system_prompt_templates WHERE prompt_key = 'audit_user_extraction_loose')
     )),
     '{"allow_custom_fields":false,"allow_custom_rules":true,"allow_modify_strictness":false}'::jsonb,
     'active'

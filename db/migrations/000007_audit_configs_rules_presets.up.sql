@@ -52,7 +52,7 @@ CREATE INDEX idx_ar_process_type ON audit_rules(tenant_id, process_type);
 -- ============================================================
 CREATE TABLE system_prompt_templates (
     id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(), -- 主键UUID
-    prompt_key  VARCHAR(100) NOT NULL UNIQUE,                       -- 提示词唯一键（格式：{type}_{phase}_{strictness}）
+    prompt_key  VARCHAR(100) NOT NULL UNIQUE,                       -- 提示词唯一键（审核 audit_* / 归档 archive_*）
     prompt_type VARCHAR(20)  NOT NULL,                              -- 提示词类型：system=系统提示词，user=用户提示词
     phase       VARCHAR(20)  NOT NULL,                              -- 审核阶段：reasoning=链式推理阶段，extraction=结构化提取阶段
     strictness  VARCHAR(20),                                        -- 审核尺度：strict=严格，standard=标准，loose=宽松（NULL表示通用）
@@ -65,13 +65,14 @@ CREATE TABLE system_prompt_templates (
 -- ============================================================
 -- 初始化系统提示词模板（12条，ID自动生成）
 -- 架构：两阶段审核（推理→提取）× 三尺度（严格/标准/宽松）× 两类型（system/user）
+-- prompt_key 前缀 audit_，与归档 archive_ 对称，避免混用
 -- ============================================================
 INSERT INTO system_prompt_templates
     (prompt_key, prompt_type, phase, strictness, content, description)
 VALUES
 
 -- ── 系统提示词（严格 · 推理阶段）──────────────────────────────
-('system_reasoning_strict', 'system', 'reasoning', 'strict',
+('audit_system_reasoning_strict', 'system', 'reasoning', 'strict',
 '你是 OA 智能审核系统的深度推理引擎，工作于【严格】审核模式。你的任务是对 OA 流程表单数据进行全面、严格的合规性分析。
 
 工作流程：
@@ -92,7 +93,7 @@ VALUES
 '系统推理提示词（严格）：零容忍，重视细节，合规优先'),
 
 -- ── 系统提示词（标准 · 推理阶段）──────────────────────────────
-('system_reasoning_standard', 'system', 'reasoning', 'standard',
+('audit_system_reasoning_standard', 'system', 'reasoning', 'standard',
 '你是 OA 智能审核系统的深度推理引擎，工作于【标准】审核模式。你的任务是对 OA 流程表单数据进行全面的合规性分析。
 
 工作流程：
@@ -113,7 +114,7 @@ VALUES
 '系统推理提示词（标准）：平衡合规与业务合理性'),
 
 -- ── 系统提示词（宽松 · 推理阶段）──────────────────────────────
-('system_reasoning_loose', 'system', 'reasoning', 'loose',
+('audit_system_reasoning_loose', 'system', 'reasoning', 'loose',
 '你是 OA 智能审核系统的深度推理引擎，工作于【宽松】审核模式。你的任务是对 OA 流程表单数据进行合规性分析，聚焦重大风险。
 
 工作流程：
@@ -134,7 +135,7 @@ VALUES
 '系统推理提示词（宽松）：聚焦重大违规，以推动业务流转为导向'),
 
 -- ── 系统提示词（严格 · 提取阶段）──────────────────────────────
-('system_extraction_strict', 'system', 'extraction', 'strict',
+('audit_system_extraction_strict', 'system', 'extraction', 'strict',
 '你是 OA 智能审核系统的结构化提取引擎，工作于【严格】审核模式。你的任务是将推理分析结果转化为标准化的 JSON 格式输出。
 
 评分规则（严格模式）：
@@ -171,7 +172,7 @@ VALUES
 '系统提取提示词（严格）：严格评分阈值，违规扣分加倍'),
 
 -- ── 系统提示词（标准 · 提取阶段）──────────────────────────────
-('system_extraction_standard', 'system', 'extraction', 'standard',
+('audit_system_extraction_standard', 'system', 'extraction', 'standard',
 '你是 OA 智能审核系统的结构化提取引擎，工作于【标准】审核模式。你的任务是将推理分析结果转化为标准化的 JSON 格式输出。
 
 评分规则（标准模式）：
@@ -208,7 +209,7 @@ VALUES
 '系统提取提示词（标准）：标准评分阈值'),
 
 -- ── 系统提示词（宽松 · 提取阶段）──────────────────────────────
-('system_extraction_loose', 'system', 'extraction', 'loose',
+('audit_system_extraction_loose', 'system', 'extraction', 'loose',
 '你是 OA 智能审核系统的结构化提取引擎，工作于【宽松】审核模式。你的任务是将推理分析结果转化为标准化的 JSON 格式输出。
 
 评分规则（宽松模式）：
@@ -245,7 +246,7 @@ VALUES
 '系统提取提示词（宽松）：宽松评分阈值，轻微问题不扣分'),
 
 -- ── 用户提示词（严格 · 推理阶段）──────────────────────────────
-('user_reasoning_strict', 'user', 'reasoning', 'strict',
+('audit_user_reasoning_strict', 'user', 'reasoning', 'strict',
 '请以【严格】标准审核以下 OA 流程数据。
 
 审核尺度要求：
@@ -275,7 +276,7 @@ VALUES
 '用户推理提示词（严格）：宁可误判也不放过'),
 
 -- ── 用户提示词（严格 · 提取阶段）──────────────────────────────
-('user_extraction_strict', 'user', 'extraction', 'strict',
+('audit_user_extraction_strict', 'user', 'extraction', 'strict',
 '基于以下推理分析结果和审核规则，请以【严格】标准提取结构化审核结论。
 
 评分标准：任何违规项扣分权重加倍，80 分以下建议退回。
@@ -290,7 +291,7 @@ VALUES
 '用户提取提示词（严格）：严格评分标准'),
 
 -- ── 用户提示词（标准 · 推理阶段）──────────────────────────────
-('user_reasoning_standard', 'user', 'reasoning', 'standard',
+('audit_user_reasoning_standard', 'user', 'reasoning', 'standard',
 '请以【标准】尺度审核以下 OA 流程数据。
 
 审核尺度要求：
@@ -320,7 +321,7 @@ VALUES
 '用户推理提示词（标准）：明确违规退回，存疑项给出建议'),
 
 -- ── 用户提示词（标准 · 提取阶段）──────────────────────────────
-('user_extraction_standard', 'user', 'extraction', 'standard',
+('audit_user_extraction_standard', 'user', 'extraction', 'standard',
 '基于以下推理分析结果和审核规则，请以【标准】尺度提取结构化审核结论。
 
 评分标准：明确违规项按正常权重扣分，60 分以下建议退回，60-80 分建议复核。
@@ -335,7 +336,7 @@ VALUES
 '用户提取提示词（标准）：标准评分标准'),
 
 -- ── 用户提示词（宽松 · 推理阶段）──────────────────────────────
-('user_reasoning_loose', 'user', 'reasoning', 'loose',
+('audit_user_reasoning_loose', 'user', 'reasoning', 'loose',
 '请以【宽松】标准审核以下 OA 流程数据。
 
 审核尺度要求：
@@ -365,7 +366,7 @@ VALUES
 '用户推理提示词（宽松）：仅关注重大违规'),
 
 -- ── 用户提示词（宽松 · 提取阶段）──────────────────────────────
-('user_extraction_loose', 'user', 'extraction', 'loose',
+('audit_user_extraction_loose', 'user', 'extraction', 'loose',
 '基于以下推理分析结果和审核规则，请以【宽松】标准提取结构化审核结论。
 
 评分标准：仅重大违规项扣分，40 分以下才建议退回，轻微问题仅作提示。
@@ -460,7 +461,7 @@ COMMENT ON COLUMN audit_rules.updated_at IS '最后更新时间';
 
 COMMENT ON TABLE system_prompt_templates IS '系统提示词模板表（全局初始化数据）';
 COMMENT ON COLUMN system_prompt_templates.id IS '主键UUID';
-COMMENT ON COLUMN system_prompt_templates.prompt_key IS '提示词唯一键（格式：{type}_{phase}_{strictness}）';
+COMMENT ON COLUMN system_prompt_templates.prompt_key IS '提示词唯一键（审核台 audit_{type}_{phase}_{strictness}；归档 archive_{type}_{phase}_{strictness}）';
 COMMENT ON COLUMN system_prompt_templates.prompt_type IS '提示词类型：system=系统提示词，user=用户提示词';
 COMMENT ON COLUMN system_prompt_templates.phase IS '审核阶段：reasoning=链式推理阶段，extraction=结构化提取阶段';
 COMMENT ON COLUMN system_prompt_templates.strictness IS '审核尺度：strict=严格，standard=标准，loose=宽松（NULL表示通用）';

@@ -65,7 +65,7 @@ UPDATE system_prompt_templates SET content =
 4. 所有字符串值使用双引号
 5. 不要输出多余的换行或空格',
 updated_at = now()
-WHERE prompt_key = 'system_extraction_strict';
+WHERE prompt_key = 'audit_system_extraction_strict';
 
 -- 标准模式
 UPDATE system_prompt_templates SET content =
@@ -110,7 +110,7 @@ UPDATE system_prompt_templates SET content =
 4. 所有字符串值使用双引号
 5. 不要输出多余的换行或空格',
 updated_at = now()
-WHERE prompt_key = 'system_extraction_standard';
+WHERE prompt_key = 'audit_system_extraction_standard';
 
 -- 宽松模式
 UPDATE system_prompt_templates SET content =
@@ -155,7 +155,7 @@ UPDATE system_prompt_templates SET content =
 4. 所有字符串值使用双引号
 5. 不要输出多余的换行或空格',
 updated_at = now()
-WHERE prompt_key = 'system_extraction_loose';
+WHERE prompt_key = 'audit_system_extraction_loose';
 
 -- ── 4. 新增错误码常量说明（仅注释，实际在 Go 代码中定义） ────
 -- ErrAuditParseFailed = 50305  -- AI 审核结果 JSON 解析失败
