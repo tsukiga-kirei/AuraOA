@@ -89,6 +89,9 @@ const hasActiveFilters = computed(() => !!searchText.value || !!searchApplicant.
 
 // 第一个页签不展示"AI 审核状态"筛选；第二三个页签去掉"未审核"选项
 const showAuditStatusFilter = computed(() => activeTab.value !== 'pending_ai')
+
+/** 仅「全部已完成」为只读历史；待 AI / AI 已审核仍处待办流程，允许重新审核 */
+const isCompletedHistoryTab = computed(() => activeTab.value === 'completed')
 const auditStatusOptions = computed(() => {
   const opts = [
     { value: 'approve', label: t('dashboard.auditStatus.approve') },
@@ -579,8 +582,9 @@ onMounted(() => {
         <div class="panel-header">
           <h3 class="panel-title">
             <ThunderboltOutlined v-if="activeTab === 'pending_ai'" style="color: var(--color-primary);" />
+            <CheckCircleOutlined v-else-if="activeTab === 'ai_done'" style="color: var(--color-success);" />
             <HistoryOutlined v-else style="color: var(--color-text-tertiary);" />
-            {{ activeTab === 'pending_ai' ? t('dashboard.auditResult') : t('dashboard.historyResult') }}
+            {{ isCompletedHistoryTab ? t('dashboard.historyResult') : t('dashboard.auditResult') }}
           </h3>
         </div>
 
@@ -670,7 +674,8 @@ onMounted(() => {
               </div>
             </div>
 
-            <template v-else-if="currentResult.status === 'failed'">
+            <template v-else>
+            <template v-if="currentResult.status === 'failed'">
               <div class="result-banner result-banner--error">
                 <WarningOutlined class="result-banner-icon" style="color: var(--color-danger);" />
                 <div class="result-banner-info">
@@ -680,9 +685,8 @@ onMounted(() => {
               </div>
             </template>
 
-            <template v-else>
             <div class="result-action-bar">
-              <template v-if="activeTab !== 'pending_ai'">
+              <template v-if="isCompletedHistoryTab">
                 <div class="history-badge">
                   <HistoryOutlined />
                   {{ t('dashboard.historyReadonly') }}
@@ -694,7 +698,7 @@ onMounted(() => {
               <a-button @click="jumpToOA(currentResult.process_id)">
                 <ExportOutlined /> {{ t('dashboard.jumpOA') }}
               </a-button>
-              <a-button v-if="activeTab === 'pending_ai'" @click="handleReAudit">
+              <a-button v-if="!isCompletedHistoryTab" @click="handleReAudit">
                 <ReloadOutlined /> {{ t('dashboard.reAudit') }}
               </a-button>
             </div>
@@ -722,8 +726,8 @@ onMounted(() => {
               </div>
             </template>
 
-            <!--正常结果展示-->
-            <template v-else>
+            <!--正常结果展示（failed 仅展示上方错误条 + 操作栏，不再套结论横幅）-->
+            <template v-else-if="currentResult.status !== 'failed'">
               <div
                 class="result-banner"
                 :style="{

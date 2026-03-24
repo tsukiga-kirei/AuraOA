@@ -137,3 +137,44 @@ func (s *AuditExecuteService) handleAuditStreamMessage(ctx context.Context, rdb 
 	}
 	_ = rdb.XAck(ctx, auditRedisStream, auditRedisConsumerGrp, msgID).Err()
 }
+
+// auditStaleReconcileInterval 后台扫描「非终态超时」任务的周期。
+const auditStaleReconcileInterval = 30 * time.Second
+
+// StartAuditStaleReconciler 定时将 pending/reasoning/extracting 过久记录标为 failed，避免列表与轮询永远卡在 pending。
+func StartAuditStaleReconciler(ctx context.Context, svc *AuditExecuteService, logger *zap.Logger, interval time.Duration) {
+	if svc == nil {
+		return
+	}
+	if interval < 5*time.Second {
+		interval = auditStaleReconcileInterval
+	}
+	go func() {
+		run := func() {
+			n, err := svc.FailStaleAuditJobs(context.Background())
+			if err != nil {
+				if logger != nil {
+					logger.Warn("fail stale audit jobs", zap.Error(err))
+				}
+				return
+			}
+			if n > 0 && logger != nil {
+				logger.Info("marked stale audit jobs as failed", zap.Int64("count", n))
+			}
+		}
+		run()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				run()
+			}
+		}
+	}()
+	if logger != nil {
+		logger.Info("audit stale reconciler started", zap.Duration("interval", interval))
+	}
+}

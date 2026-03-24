@@ -103,6 +103,7 @@ func main() {
 	if err := service.StartAuditStreamWorker(context.Background(), rdb, auditExecuteService, logger, 2); err != nil {
 		logger.Warn("audit stream worker not started", zap.Error(err))
 	}
+	service.StartAuditStaleReconciler(context.Background(), auditExecuteService, logger, 30*time.Second)
 
 	// 7. Initialize handlers
 	authHandler := handler.NewAuthHandler(authService, rdb)
