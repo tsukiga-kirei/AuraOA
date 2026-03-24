@@ -1844,7 +1844,9 @@ const handleSave = async () => {
                   v-model:value="selectedConfig.ai_config.system_extraction_prompt"
                   :rows="6"
                   :placeholder="t('admin.ruleConfig.systemExtractionPlaceholder')"
+                  disabled
                 />
+                <div class="system-prompt-readonly-hint">{{ t('admin.ruleConfig.systemPromptReadonly') }}</div>
               </div>
             </div>
 
@@ -2733,7 +2735,9 @@ const handleSave = async () => {
                   v-model:value="selectedArchiveConfig.ai_config.system_extraction_prompt"
                   :rows="6"
                   :placeholder="t('admin.ruleConfig.systemExtractionPlaceholder')"
+                  disabled
                 />
+                <div class="system-prompt-readonly-hint">{{ t('admin.ruleConfig.systemPromptReadonly') }}</div>
               </div>
             </div>
 
@@ -3383,6 +3387,11 @@ const handleSave = async () => {
   margin-top: 8px; font-size: 12px; color: var(--color-text-tertiary);
   padding: 8px 12px; background: var(--color-bg-hover); border-radius: var(--radius-sm);
   line-height: 1.5;
+}
+.system-prompt-readonly-hint {
+  margin-top: 6px; font-size: 12px; color: var(--color-text-quaternary);
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 8px; background: var(--color-bg-hover); border-radius: var(--radius-sm);
 }
 
 /*提示词区域分组*/

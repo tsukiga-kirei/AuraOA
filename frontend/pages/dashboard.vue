@@ -4,87 +4,59 @@ import {
   ThunderboltOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  EditOutlined,
   ClockCircleOutlined,
   FireOutlined,
   ExportOutlined,
   ReloadOutlined,
   HistoryOutlined,
   EyeOutlined,
-  RightOutlined,
-  FolderOpenOutlined,
   DownOutlined,
   UpOutlined,
   InfoCircleOutlined,
   LoadingOutlined,
   FilterOutlined,
+  WarningOutlined,
+  StopOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { useI18n } from '~/composables/useI18n'
+import type { OAProcessItem, AuditResult, AuditChainItem, AuditTab, AuditStats } from '~/types/audit'
 
 definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
+const { getStats, listProcesses, executeAudit, batchAudit, getAuditChain: fetchAuditChain } = useAuditApi()
+const { processCascaderOptions } = useMockData()
 
-const {
-  mockProcesses, mockApprovedProcesses, mockReturnedProcesses,
-  mockHistoricalResults, mockAuditResult, mockDashboardStats, mockSnapshots,
-  mockArchivedOAProcesses, mockArchivedAuditChains, mockArchivedHistoricalResults,
-  mockBatchAuditResult, mockTodoAuditResults,
-  processCascaderOptions,
-} = useMockData()
+// ─── 页签 & 列表数据 ───
+const activeTab = ref<AuditTab>('pending_ai')
+const processList = ref<OAProcessItem[]>([])
+const listLoading = ref(false)
+const stats = ref<AuditStats>({ pending_ai_count: 0, ai_done_count: 0, completed_count: 0 })
 
-const todoList = ref(mockProcesses)
-const approvedList = ref(mockApprovedProcesses)
-const returnedList = ref(mockReturnedProcesses)
-const archivedList = ref(mockArchivedOAProcesses)
-const currentResult = ref<typeof mockAuditResult | null>(null)
-const loading = ref(false)
-const phase1Done = ref(false)
-const selectedProcess = ref<string | null>(null)
+// ─── 筛选 ───
 const searchText = ref('')
 const searchApplicant = ref('')
-const stats = ref(mockDashboardStats)
+const filterProcessType = ref<string[][]>([])
+const filterDepartment = ref<string | undefined>(undefined)
+const filterAuditStatus = ref<string | undefined>(undefined)
 const showFilters = ref(false)
 
-//每个进程的审核结果缓存（用于在列表中显示分数/推荐）
-const processAuditCache = ref<Record<string, typeof mockAuditResult>>({ ...mockTodoAuditResults })
-//每进程加载状态（用于批量审核每项动画）
-const processAuditLoading = ref<Record<string, boolean>>({})
-
-//查看模式
-const viewMode = ref<'todo' | 'approved' | 'returned' | 'archived'>('todo')
-const isHistoryMode = computed(() => viewMode.value !== 'todo')
-
-//进程类型过滤器——cascader: [category, processName]
-const filterProcessType = ref<string[][]>([])
-//将选定的级联值解析为进程名称，同时处理两者
-//仅类别选择（例如 ['采购类']）和完整路径（例如 ['采购类','采购流程']）
 const filterProcessNames = computed(() => {
   if (filterProcessType.value.length === 0) return []
   const names: string[] = []
   for (const path of filterProcessType.value) {
     if (path.length >= 2) {
-      //完整路径：最后一个元素是进程名称
       names.push(path[path.length - 1])
     } else if (path.length === 1) {
-      //仅类别：查找该类别下的所有子项
-      const cat = processCascaderOptions.find(o => o.value === path[0])
-      if (cat && cat.children) {
-        names.push(...cat.children.map((c: any) => c.value))
-      }
+      const cat = processCascaderOptions.find((o: any) => o.value === path[0])
+      if (cat?.children) names.push(...cat.children.map((c: any) => c.value))
     }
   }
   return names
 })
-const departmentOptions = computed(() => {
-  const all = [...todoList.value, ...approvedList.value, ...returnedList.value, ...archivedList.value]
-  return [...new Set(all.map(p => p.department))]
-})
-const filterDepartment = ref<string | undefined>(undefined)
 
-//AI 审核状态过滤器：“未经审核”| '批准' | '返回' | '审查'
-const filterAuditStatus = ref<string | undefined>(undefined)
+const departmentOptions = computed(() => [...new Set(processList.value.map(p => p.department).filter(Boolean))])
 
 const clearFilters = () => {
   searchText.value = ''
@@ -95,130 +67,20 @@ const clearFilters = () => {
 }
 const hasActiveFilters = computed(() => !!searchText.value || !!searchApplicant.value || filterProcessType.value.length > 0 || !!filterDepartment.value || !!filterAuditStatus.value)
 
-//批量审核
-const selectedProcessIds = ref<string[]>([])
-const batchAuditing = ref(false)
-
-const toggleSelectProcess = (processId: string) => {
-  const idx = selectedProcessIds.value.indexOf(processId)
-  if (idx >= 0) selectedProcessIds.value.splice(idx, 1)
-  else selectedProcessIds.value.push(processId)
-}
-
-const toggleSelectAll = () => {
-  if (selectedProcessIds.value.length === filteredList.value.length) {
-    selectedProcessIds.value = []
-  } else {
-    selectedProcessIds.value = filteredList.value.map(p => p.process_id)
-  }
-}
-
-//为尚无模拟审核结果的流程生成模拟审核结果
-const generateMockResult = (processId: string): typeof mockAuditResult => {
-  const hash = processId.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
-  const recs: Array<'approve' | 'return' | 'review'> = ['approve', 'return', 'review', 'approve', 'return']
-  const rec = recs[hash % recs.length]
-  const score = rec === 'approve' ? 80 + (hash % 20) : rec === 'return' ? 50 + (hash % 25) : 55 + (hash % 30)
-  return {
-    ...mockAuditResult,
-    trace_id: `TR-${Date.now().toString(36).toUpperCase()}-${processId.slice(-3)}`,
-    process_id: processId,
-    recommendation: rec,
-    score,
-    action_label: rec === 'approve' ? '建议通过' : rec === 'return' ? '建议退回' : '建议复核',
-    confidence: 0.7 + (hash % 25) / 100,
-    risk_points: rec === 'approve' ? [] : ['存在待确认的合规风险项'],
-    suggestions: rec === 'approve' ? ['建议定期复核'] : ['建议补充相关材料后重新提交'],
-    ai_summary: rec === 'approve' ? '该流程整体合规，建议通过。' : '该流程存在部分问题，需要关注。',
-    duration_ms: 1200 + (hash % 2000),
-  }
-}
-
-//批量审核进度跟踪
-const batchAuditTotal = ref(0)
-const batchAuditDone = ref(0)
-
-const handleBatchAudit = async () => {
-  if (selectedProcessIds.value.length === 0) return
-  batchAuditing.value = true
-  const ids = [...selectedProcessIds.value]
-  batchAuditTotal.value = ids.length
-  batchAuditDone.value = 0
-
-  //将所有选择设置为加载
-  for (const id of ids) {
-    processAuditLoading.value[id] = true
-  }
-
-  //以交错的延迟处理每个项目
-  for (let i = 0; i < ids.length; i++) {
-    const id = ids[i]
-    await new Promise(r => setTimeout(r, 800 + Math.random() * 1200))
-    //使用现有的模拟结果或生成一个
-    const result = mockTodoAuditResults[id] || generateMockResult(id)
-    processAuditCache.value[id] = result
-    processAuditLoading.value[id] = false
-    batchAuditDone.value = i + 1
-    //如果当前选择了该进程，则直接显示其结果
-    if (selectedProcess.value === id) {
-      currentResult.value = { ...result }
-    }
-  }
-
-  batchAuditing.value = false
-  selectedProcessIds.value = []
-  message.success(t('dashboard.batchDone'))
-}
-
-//审计历史链
-const showHistoryChain = ref(false)
-const historyChainProcessId = ref<string | null>(null)
-const expandedChainNodes = ref<Set<string>>(new Set())
-
-const toggleChainNode = (snapshotId: string) => {
-  if (expandedChainNodes.value.has(snapshotId)) expandedChainNodes.value.delete(snapshotId)
-  else expandedChainNodes.value.add(snapshotId)
-}
-
-const getAuditChain = (processId: string) => {
-  const archivedChain = mockArchivedAuditChains[processId]
-  if (archivedChain && archivedChain.length > 0) return archivedChain
-  const snapshots = mockSnapshots.filter(s => s.process_id === processId)
-  if (snapshots.length > 0) return snapshots
-  const hist = mockHistoricalResults[processId] || mockArchivedHistoricalResults[processId]
-  if (!hist) return []
-  return [{
-    snapshot_id: `SN-${processId}`,
-    process_id: processId,
-    title: selectedProcessInfo.value?.title || '',
-    applicant: selectedProcessInfo.value?.applicant || '',
-    department: selectedProcessInfo.value?.department || '',
-    recommendation: hist.recommendation,
-    score: hist.score,
-    created_at: selectedProcessInfo.value?.submit_time || '',
-    adopted: true,
-  }]
-}
-
-const currentAuditChain = computed(() => {
-  if (!historyChainProcessId.value) return []
-  return getAuditChain(historyChainProcessId.value)
+// 第一个页签不展示"AI 审核状态"筛选；第二三个页签去掉"未审核"选项
+const showAuditStatusFilter = computed(() => activeTab.value !== 'pending_ai')
+const auditStatusOptions = computed(() => {
+  const opts = [
+    { value: 'approve', label: t('dashboard.auditStatus.approve') },
+    { value: 'return', label: t('dashboard.auditStatus.return') },
+    { value: 'review', label: t('dashboard.auditStatus.review') },
+  ]
+  return opts
 })
 
-const openHistoryChain = (processId: string) => {
-  historyChainProcessId.value = processId
-  expandedChainNodes.value = new Set()
-  showHistoryChain.value = true
-}
-
+// ─── 本地筛选（后端已按 tab 过滤，前端做关键词等二次筛选） ───
 const filteredList = computed(() => {
-  let list: typeof todoList.value
-  switch (viewMode.value) {
-    case 'approved': list = approvedList.value; break
-    case 'returned': list = returnedList.value; break
-    case 'archived': list = archivedList.value; break
-    default: list = todoList.value
-  }
+  let list = processList.value
   if (filterProcessNames.value.length > 0) {
     list = list.filter(p => filterProcessNames.value.includes(p.process_type))
   }
@@ -233,49 +95,120 @@ const filteredList = computed(() => {
     const q2 = searchApplicant.value.toLowerCase()
     list = list.filter(p => p.applicant.toLowerCase().includes(q2))
   }
-  //AI审计状态过滤器
-  if (filterAuditStatus.value) {
-    if (filterAuditStatus.value === 'unaudited') {
-      list = list.filter(p => !processAuditCache.value[p.process_id])
-    } else {
-      list = list.filter(p => processAuditCache.value[p.process_id]?.recommendation === filterAuditStatus.value)
-    }
+  if (filterAuditStatus.value && showAuditStatusFilter.value) {
+    list = list.filter(p => p.audit_result?.recommendation === filterAuditStatus.value)
   }
   return list
 })
 
 const { paged: pagedList, current: listPage, pageSize: listPageSize, total: listTotal, onChange: onListPageChange } = usePagination(filteredList, 10)
 
-const handleSelectProcess = (processId: string) => {
-  selectedProcess.value = processId
-  if (isHistoryMode.value) {
-    const hist = mockHistoricalResults[processId] || mockArchivedHistoricalResults[processId]
-    currentResult.value = hist ? { ...hist } : null
+// ─── 选中流程 & 审核结果 ───
+const selectedProcess = ref<string | null>(null)
+const currentResult = ref<AuditResult | null>(null)
+const loading = ref(false)
+const phase1Done = ref(false)
+
+const selectedProcessInfo = computed(() => processList.value.find(p => p.process_id === selectedProcess.value))
+
+// ─── 批量审核 ───
+const selectedProcessIds = ref<string[]>([])
+const batchAuditing = ref(false)
+const batchAborted = ref(false)
+const batchAuditTotal = ref(0)
+const batchAuditDone = ref(0)
+
+const toggleSelectProcess = (processId: string) => {
+  const idx = selectedProcessIds.value.indexOf(processId)
+  if (idx >= 0) selectedProcessIds.value.splice(idx, 1)
+  else if (selectedProcessIds.value.length < 10) selectedProcessIds.value.push(processId)
+  else message.warning(t('dashboard.batchLimitHint'))
+}
+
+const toggleSelectAll = () => {
+  if (selectedProcessIds.value.length === Math.min(filteredList.value.length, 10)) {
+    selectedProcessIds.value = []
   } else {
-    //如果我们有缓存的审核结果，直接显示
-    const cached = processAuditCache.value[processId]
-    if (cached) {
-      currentResult.value = { ...cached, process_id: processId }
-      phase1Done.value = true
-    } else {
-      currentResult.value = null
-      phase1Done.value = false
-    }
+    selectedProcessIds.value = filteredList.value.slice(0, 10).map(p => p.process_id)
   }
 }
 
+// ─── 审核链 ───
+const showHistoryChain = ref(false)
+const historyChainProcessId = ref<string | null>(null)
+const auditChainData = ref<AuditChainItem[]>([])
+const auditChainLoading = ref(false)
+const expandedChainNodes = ref<Set<string>>(new Set())
+
+const toggleChainNode = (id: string) => {
+  if (expandedChainNodes.value.has(id)) expandedChainNodes.value.delete(id)
+  else expandedChainNodes.value.add(id)
+}
+
+// ─── 数据加载 ───
+const loadStats = async () => {
+  try { stats.value = await getStats() } catch {}
+}
+
+const loadProcesses = async () => {
+  listLoading.value = true
+  try {
+    const res = await listProcesses(activeTab.value)
+    processList.value = Array.isArray(res) ? res : (res as any)?.items ?? []
+  } catch (e: any) {
+    message.error(t('dashboard.loadFailed'))
+    processList.value = []
+  } finally {
+    listLoading.value = false
+  }
+}
+
+const switchTab = (tab: AuditTab) => {
+  activeTab.value = tab
+  selectedProcess.value = null
+  currentResult.value = null
+  listPage.value = 1
+  selectedProcessIds.value = []
+  filterAuditStatus.value = undefined
+  loadProcesses()
+}
+
+const handleSelectProcess = (processId: string) => {
+  selectedProcess.value = processId
+  const item = processList.value.find(p => p.process_id === processId)
+  if (item?.has_audit && item.audit_result) {
+    currentResult.value = { ...item.audit_result }
+    phase1Done.value = true
+  } else {
+    currentResult.value = null
+    phase1Done.value = false
+  }
+}
+
+// ─── 单条审核 ───
 const handleAudit = async (processId: string) => {
+  const item = processList.value.find(p => p.process_id === processId)
+  if (!item) return
   loading.value = true
   phase1Done.value = false
-  //第一阶段：推理
-  await new Promise(resolve => setTimeout(resolve, 2200))
-  phase1Done.value = true
-  //第 2 阶段：提取
-  await new Promise(resolve => setTimeout(resolve, 1650))
-  const result = mockTodoAuditResults[processId] || generateMockResult(processId)
-  currentResult.value = { ...result, process_id: processId }
-  processAuditCache.value[processId] = currentResult.value
-  loading.value = false
+  try {
+    const timer = setTimeout(() => { phase1Done.value = true }, 2500)
+    const result = await executeAudit({
+      process_id: processId,
+      process_type: item.process_type,
+      title: item.title,
+    })
+    clearTimeout(timer)
+    phase1Done.value = true
+    currentResult.value = result
+    item.has_audit = true
+    item.audit_result = result
+    await loadStats()
+  } catch (e: any) {
+    message.error(e?.message || t('dashboard.auditFailed'))
+  } finally {
+    loading.value = false
+  }
 }
 
 const handleReAudit = async () => {
@@ -284,30 +217,80 @@ const handleReAudit = async () => {
   await handleAudit(selectedProcess.value)
 }
 
+// ─── 批量审核（逐条调用，支持中途退出） ───
+const handleBatchAudit = async () => {
+  if (selectedProcessIds.value.length === 0) return
+  if (selectedProcessIds.value.length > 10) {
+    message.warning(t('dashboard.batchLimitHint'))
+    return
+  }
+  batchAuditing.value = true
+  batchAborted.value = false
+  const ids = [...selectedProcessIds.value]
+  batchAuditTotal.value = ids.length
+  batchAuditDone.value = 0
+
+  for (const id of ids) {
+    if (batchAborted.value) break
+    const item = processList.value.find(p => p.process_id === id)
+    if (!item) { batchAuditDone.value++; continue }
+    try {
+      const result = await executeAudit({
+        process_id: id,
+        process_type: item.process_type,
+        title: item.title,
+      })
+      item.has_audit = true
+      item.audit_result = result
+      if (selectedProcess.value === id) currentResult.value = result
+    } catch {}
+    batchAuditDone.value++
+  }
+
+  batchAuditing.value = false
+  selectedProcessIds.value = []
+  if (batchAborted.value) message.info(t('dashboard.batchAborted'))
+  else message.success(t('dashboard.batchDone'))
+  await loadStats()
+  await loadProcesses()
+}
+
+const handleAbortBatch = () => { batchAborted.value = true }
+
+// ─── 审核链 ───
+const openAuditChain = async (processId: string) => {
+  historyChainProcessId.value = processId
+  expandedChainNodes.value = new Set()
+  showHistoryChain.value = true
+  auditChainLoading.value = true
+  try {
+    auditChainData.value = await fetchAuditChain(processId)
+  } catch {
+    auditChainData.value = []
+  } finally {
+    auditChainLoading.value = false
+  }
+}
+
+// ─── OA 跳转 ───
 const jumpToOA = (processId: string) => {
   message.info(t('dashboard.jumpingToOA', `Jumping to OA: ${processId}...`))
 }
 
-const switchView = (mode: 'todo' | 'approved' | 'returned' | 'archived') => {
-  viewMode.value = mode
-  selectedProcess.value = null
-  currentResult.value = null
-  listPage.value = 1
-  selectedProcessIds.value = []
-}
-
-const selectedProcessInfo = computed(() => {
-  const all = [...todoList.value, ...approvedList.value, ...returnedList.value, ...archivedList.value]
-  return all.find(p => p.process_id === selectedProcess.value)
-})
+// ─── 配置常量 ───
+const tabConfig = computed(() => [
+  { key: 'pending_ai' as AuditTab, icon: ClockCircleOutlined, count: stats.value.pending_ai_count, label: t('dashboard.tab.pendingAI'), cssClass: 'stat-card--primary' },
+  { key: 'ai_done' as AuditTab, icon: CheckCircleOutlined, count: stats.value.ai_done_count, label: t('dashboard.tab.aiDone'), cssClass: 'stat-card--success' },
+  { key: 'completed' as AuditTab, icon: HistoryOutlined, count: stats.value.completed_count, label: t('dashboard.tab.completed'), cssClass: 'stat-card--info' },
+])
 
 const viewModeLabel = computed(() => {
-  switch (viewMode.value) {
-    case 'approved': return t('dashboard.viewMode.approved')
-    case 'returned': return t('dashboard.viewMode.returned')
-    case 'archived': return t('dashboard.viewMode.archived')
-    default: return t('dashboard.viewMode.todo')
+  const map: Record<AuditTab, string> = {
+    pending_ai: t('dashboard.viewMode.pendingAI'),
+    ai_done: t('dashboard.viewMode.aiDone'),
+    completed: t('dashboard.viewMode.completed'),
   }
+  return map[activeTab.value]
 })
 
 const urgencyConfig = computed<Record<string, { color: string; bg: string; label: string }>>(() => ({
@@ -322,15 +305,16 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
   review: { color: 'var(--color-info)', bg: 'var(--color-info-bg)', icon: EyeOutlined, label: t('dashboard.rec.review') },
 }))
 
-//Helper：获取简短的推荐标签以进行列表显示
 const getShortRecLabel = (rec: string) => {
-  const map: Record<string, string> = {
-    approve: t('dashboard.suggestApprove'),
-    return: t('dashboard.suggestReturn'),
-    review: t('dashboard.suggestReview'),
-  }
+  const map: Record<string, string> = { approve: t('dashboard.suggestApprove'), return: t('dashboard.suggestReturn'), review: t('dashboard.suggestReview') }
   return map[rec] || rec
 }
+
+// ─── 初始化 ───
+onMounted(() => {
+  loadStats()
+  loadProcesses()
+})
 </script>
 
 <template>
@@ -339,67 +323,36 @@ const getShortRecLabel = (rec: string) => {
     <div class="page-header">
       <div>
         <h1 class="page-title">{{ t('dashboard.title') }}</h1>
-        <p class="page-subtitle">{{ t('dashboard.subtitleWithCount', `${stats.todayAudits}`) }}</p>
+        <p class="page-subtitle">{{ t('dashboard.subtitleWithCount', `${stats.pending_ai_count}`) }}</p>
       </div>
     </div>
 
-    <!--统计行 - 可点击的卡片-->
+    <!--统计行 - 3 个页签卡片-->
     <div class="stats-row">
       <div
-        class="stat-card stat-card--primary"
-        :class="{ 'stat-card--selected': viewMode === 'todo' }"
-        @click="switchView('todo')"
+        v-for="tab in tabConfig"
+        :key="tab.key"
+        class="stat-card"
+        :class="[tab.cssClass, { 'stat-card--selected': activeTab === tab.key }]"
+        @click="switchTab(tab.key)"
       >
-        <div class="stat-card-icon"><ClockCircleOutlined /></div>
+        <div class="stat-card-icon"><component :is="tab.icon" /></div>
         <div class="stat-card-info">
-          <span class="stat-card-value">{{ stats.pendingCount }}</span>
-          <span class="stat-card-label">{{ t('dashboard.tab.pending') }}</span>
-        </div>
-      </div>
-      <div
-        class="stat-card stat-card--success"
-        :class="{ 'stat-card--selected': viewMode === 'approved' }"
-        @click="switchView('approved')"
-      >
-        <div class="stat-card-icon"><CheckCircleOutlined /></div>
-        <div class="stat-card-info">
-          <span class="stat-card-value">{{ stats.todayApproved }}</span>
-          <span class="stat-card-label">{{ t('dashboard.tab.approved') }}</span>
-        </div>
-      </div>
-      <div
-        class="stat-card stat-card--danger"
-        :class="{ 'stat-card--selected': viewMode === 'returned' }"
-        @click="switchView('returned')"
-      >
-        <div class="stat-card-icon"><CloseCircleOutlined /></div>
-        <div class="stat-card-info">
-          <span class="stat-card-value">{{ stats.todayReturned }}</span>
-          <span class="stat-card-label">{{ t('dashboard.tab.returned') }}</span>
-        </div>
-      </div>
-      <div
-        class="stat-card stat-card--archived"
-        :class="{ 'stat-card--selected': viewMode === 'archived' }"
-        @click="switchView('archived')"
-      >
-        <div class="stat-card-icon"><FolderOpenOutlined /></div>
-        <div class="stat-card-info">
-          <span class="stat-card-value">{{ archivedList.length }}</span>
-          <span class="stat-card-label">{{ t('dashboard.tab.archived') }}</span>
+          <span class="stat-card-value">{{ tab.count }}</span>
+          <span class="stat-card-label">{{ tab.label }}</span>
         </div>
       </div>
     </div>
 
     <!--主要内容区-->
     <div class="dashboard-grid">
-      <!--左：进程列表-->
+      <!--左：流程列表-->
       <div class="todo-panel">
         <div class="panel-header">
           <div class="panel-header-row">
             <h3 class="panel-title">
-              <FireOutlined v-if="viewMode === 'todo'" style="color: var(--color-primary);" />
-              <FolderOpenOutlined v-else-if="viewMode === 'archived'" style="color: var(--color-info);" />
+              <FireOutlined v-if="activeTab === 'pending_ai'" style="color: var(--color-primary);" />
+              <CheckCircleOutlined v-else-if="activeTab === 'ai_done'" style="color: var(--color-success);" />
               <HistoryOutlined v-else style="color: var(--color-text-tertiary);" />
               {{ viewModeLabel }}
               <a-badge :count="filteredList.length" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
@@ -410,23 +363,13 @@ const getShortRecLabel = (rec: string) => {
               <span v-if="hasActiveFilters" class="filter-active-dot" />
             </a-button>
           </div>
-          <!--可折叠过滤条-->
+          <!--可折叠筛选条-->
           <transition name="slide">
             <div v-if="showFilters" class="filter-bar">
-              <a-input
-                v-model:value="searchText"
-                :placeholder="t('dashboard.searchPlaceholder')"
-                allow-clear
-                style="flex: 2; min-width: 160px;"
-              >
+              <a-input v-model:value="searchText" :placeholder="t('dashboard.searchPlaceholder')" allow-clear style="flex: 2; min-width: 160px;">
                 <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
               </a-input>
-              <a-input
-                v-model:value="searchApplicant"
-                :placeholder="t('dashboard.searchApplicant')"
-                allow-clear
-                style="flex: 1; min-width: 130px;"
-              >
+              <a-input v-model:value="searchApplicant" :placeholder="t('dashboard.searchApplicant')" allow-clear style="flex: 1; min-width: 130px;">
                 <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
               </a-input>
               <a-cascader
@@ -439,147 +382,132 @@ const getShortRecLabel = (rec: string) => {
                 style="flex: 1.5; min-width: 160px;"
                 :show-search="{ filter: (inputValue: string, path: any[]) => path.some((o: any) => o.label.toLowerCase().includes(inputValue.toLowerCase())) }"
               />
-              <a-select
-                v-model:value="filterDepartment"
-                :placeholder="t('dashboard.filterDepartment')"
-                allow-clear
-                style="flex: 1; min-width: 120px;"
-              >
+              <a-select v-model:value="filterDepartment" :placeholder="t('dashboard.filterDepartment')" allow-clear style="flex: 1; min-width: 120px;">
                 <a-select-option v-for="d in departmentOptions" :key="d" :value="d">{{ d }}</a-select-option>
               </a-select>
               <a-select
+                v-if="showAuditStatusFilter"
                 v-model:value="filterAuditStatus"
                 :placeholder="t('dashboard.filterAuditStatus')"
                 allow-clear
                 style="flex: 1; min-width: 130px;"
               >
-                <a-select-option value="unaudited">{{ t('dashboard.auditStatus.unaudited') }}</a-select-option>
-                <a-select-option value="approve">{{ t('dashboard.auditStatus.approve') }}</a-select-option>
-                <a-select-option value="return">{{ t('dashboard.auditStatus.return') }}</a-select-option>
-                <a-select-option value="review">{{ t('dashboard.auditStatus.review') }}</a-select-option>
+                <a-select-option v-for="opt in auditStatusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
               </a-select>
               <a-button size="small" @click="clearFilters">{{ t('dashboard.filterReset') }}</a-button>
             </div>
           </transition>
-          <!--批量审核工具栏（仅限待办事项模式）-->
-          <div v-if="viewMode === 'todo'" class="batch-toolbar">
+          <!--批量审核工具栏（仅 pending_ai 页签）-->
+          <div v-if="activeTab === 'pending_ai'" class="batch-toolbar">
             <div class="batch-toolbar-left">
               <a-checkbox
-                :checked="selectedProcessIds.length === filteredList.length && filteredList.length > 0"
-                :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < filteredList.length"
+                :checked="selectedProcessIds.length > 0 && selectedProcessIds.length === Math.min(filteredList.length, 10)"
+                :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < Math.min(filteredList.length, 10)"
                 @change="toggleSelectAll"
               >
                 {{ selectedProcessIds.length > 0 ? t('dashboard.selected', `${selectedProcessIds.length}`) : t('dashboard.selectAll') }}
               </a-checkbox>
+              <span class="batch-limit-hint">{{ t('dashboard.batchLimitLabel') }}</span>
               <span v-if="batchAuditing" class="batch-progress-hint">
                 {{ t('dashboard.auditedProgress', `${batchAuditDone}/${batchAuditTotal}`) }}
               </span>
             </div>
-            <a-button
-              v-if="selectedProcessIds.length > 0"
-              type="primary"
-              size="small"
-              :disabled="batchAuditing"
-              @click="handleBatchAudit"
-              class="batch-audit-btn"
+            <div class="batch-toolbar-right">
+              <a-button
+                v-if="batchAuditing"
+                size="small"
+                danger
+                @click="handleAbortBatch"
+              >
+                <StopOutlined /> {{ t('dashboard.batchAbort') }}
+              </a-button>
+              <a-button
+                v-if="selectedProcessIds.length > 0"
+                type="primary"
+                size="small"
+                :disabled="batchAuditing"
+                @click="handleBatchAudit"
+                class="batch-audit-btn"
+              >
+                <LoadingOutlined v-if="batchAuditing" />
+                <ThunderboltOutlined v-else />
+                {{ t('dashboard.batchAudit') }}
+              </a-button>
+            </div>
+          </div>
+        </div>
+
+        <a-spin :spinning="listLoading">
+          <div class="todo-list">
+            <div
+              v-for="item in pagedList"
+              :key="item.process_id"
+              class="todo-item"
+              :class="{
+                'todo-item--selected': selectedProcess === item.process_id,
+                'todo-item--audited-approve': item.has_audit && item.audit_result?.recommendation === 'approve',
+                'todo-item--audited-return': item.has_audit && item.audit_result?.recommendation === 'return',
+                'todo-item--audited-review': item.has_audit && item.audit_result?.recommendation === 'review',
+              }"
+              @click="handleSelectProcess(item.process_id)"
             >
-              <LoadingOutlined v-if="batchAuditing" />
-              <ThunderboltOutlined v-else />
-              {{ t('dashboard.batchAudit') }}
-            </a-button>
-          </div>
-        </div>
-
-        <div class="todo-list">
-          <div
-            v-for="item in pagedList"
-            :key="item.process_id"
-            class="todo-item"
-            :class="{
-              'todo-item--selected': selectedProcess === item.process_id,
-              'todo-item--audited-approve': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'approve',
-              'todo-item--audited-return': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'return',
-              'todo-item--audited-review': viewMode === 'todo' && processAuditCache[item.process_id]?.recommendation === 'review',
-            }"
-            @click="handleSelectProcess(item.process_id)"
-          >
-            <div v-if="viewMode === 'todo'" class="todo-item-checkbox" @click.stop="toggleSelectProcess(item.process_id)">
-              <a-checkbox :checked="selectedProcessIds.includes(item.process_id)" />
-            </div>
-            <div class="todo-item-main">
-              <div class="todo-item-title">
-                <CheckCircleOutlined
-                  v-if="viewMode === 'todo' && processAuditCache[item.process_id]"
-                  class="todo-item-audited-icon"
-                  :style="{ color: recommendationConfig[processAuditCache[item.process_id].recommendation]?.color }"
-                />
-                {{ item.title }}
+              <div v-if="activeTab === 'pending_ai'" class="todo-item-checkbox" @click.stop="toggleSelectProcess(item.process_id)">
+                <a-checkbox :checked="selectedProcessIds.includes(item.process_id)" />
               </div>
-              <div class="todo-item-meta">
-                <span>{{ item.applicant }}</span>
-                <span class="todo-item-dot">·</span>
-                <span>{{ item.department }}</span>
-                <span class="todo-item-dot">·</span>
-                <span>{{ item.submit_time }}</span>
-              </div>
-              <!--节点 + OA 向左跳转，分数徽章向右-->
-              <div class="todo-item-audit-info">
-                <div class="todo-item-audit-left">
-                  <span
-                    class="todo-item-node"
-                    :class="{
-                      'todo-item-node--success': item.status === 'approved',
-                      'todo-item-node--danger': item.status === 'returned',
-                      'todo-item-node--info': item.status === 'archived',
-                    }"
-                  >{{ item.current_node }}</span>
-                  <span v-if="isHistoryMode" class="todo-item-process-type">{{ item.process_type }}</span>
+              <div class="todo-item-main">
+                <div class="todo-item-title">
+                  <CheckCircleOutlined
+                    v-if="item.has_audit && item.audit_result"
+                    class="todo-item-audited-icon"
+                    :style="{ color: recommendationConfig[item.audit_result.recommendation]?.color }"
+                  />
+                  {{ item.title }}
                 </div>
-                <div class="todo-item-audit-right">
-                  <!--批处理期间每个项目的加载动画-->
-                  <span v-if="processAuditLoading[item.process_id]" class="todo-item-auditing">
-                    <LoadingOutlined style="font-size: 12px;" />
-                    <span>{{ t('dashboard.auditingItem') }}</span>
-                  </span>
-                  <!--审核完成后显示分数徽章（待办事项模式）-->
-                  <span
-                    v-else-if="processAuditCache[item.process_id] && viewMode === 'todo'"
-                    class="todo-item-score-badge"
-                    :style="{
-                      color: recommendationConfig[processAuditCache[item.process_id].recommendation]?.color,
-                      background: recommendationConfig[processAuditCache[item.process_id].recommendation]?.bg,
-                    }"
-                  >
-                    {{ processAuditCache[item.process_id].score }}{{ t('dashboard.points') }}
-                    {{ getShortRecLabel(processAuditCache[item.process_id].recommendation) }}
-                  </span>
-                  <!--显示已批准/退回/存档的历史分数-->
-                  <span
-                    v-else-if="isHistoryMode && (mockHistoricalResults[item.process_id] || mockArchivedHistoricalResults[item.process_id])"
-                    class="todo-item-score-badge"
-                    :style="{
-                      color: recommendationConfig[(mockHistoricalResults[item.process_id] || mockArchivedHistoricalResults[item.process_id]).recommendation]?.color,
-                      background: recommendationConfig[(mockHistoricalResults[item.process_id] || mockArchivedHistoricalResults[item.process_id]).recommendation]?.bg,
-                    }"
-                  >
-                    {{ (mockHistoricalResults[item.process_id] || mockArchivedHistoricalResults[item.process_id]).score }}{{ t('dashboard.points') }}
-                  </span>
-                  <a-tooltip :title="t('dashboard.jumpToOA')" :mouse-enter-delay="0.5">
-                    <button class="oa-jump-btn" @click.stop="jumpToOA(item.process_id)">
-                      <ExportOutlined />
-                    </button>
-                  </a-tooltip>
+                <div class="todo-item-meta">
+                  <span>{{ item.applicant }}</span>
+                  <span class="todo-item-dot">·</span>
+                  <span>{{ item.department }}</span>
+                  <span class="todo-item-dot">·</span>
+                  <span>{{ item.submit_time }}</span>
+                </div>
+                <div class="todo-item-audit-info">
+                  <div class="todo-item-audit-left">
+                    <span class="todo-item-node">{{ item.current_node }}</span>
+                    <span class="todo-item-process-type">{{ item.process_type_label || item.process_type }}</span>
+                  </div>
+                  <div class="todo-item-audit-right">
+                    <span
+                      v-if="item.has_audit && item.audit_result"
+                      class="todo-item-score-badge"
+                      :style="{
+                        color: recommendationConfig[item.audit_result.recommendation]?.color,
+                        background: recommendationConfig[item.audit_result.recommendation]?.bg,
+                      }"
+                    >
+                      {{ item.audit_result.overall_score }}{{ t('dashboard.points') }}
+                      {{ getShortRecLabel(item.audit_result.recommendation) }}
+                    </span>
+                    <a-tooltip :title="t('dashboard.auditChain')" :mouse-enter-delay="0.5">
+                      <button class="oa-jump-btn" @click.stop="openAuditChain(item.process_id)">
+                        <HistoryOutlined />
+                      </button>
+                    </a-tooltip>
+                    <a-tooltip :title="t('dashboard.jumpToOA')" :mouse-enter-delay="0.5">
+                      <button class="oa-jump-btn" @click.stop="jumpToOA(item.process_id)">
+                        <ExportOutlined />
+                      </button>
+                    </a-tooltip>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div v-if="filteredList.length === 0" class="todo-empty">
-            <a-empty :description="t('dashboard.noData')" />
+            <div v-if="filteredList.length === 0 && !listLoading" class="todo-empty">
+              <a-empty :description="t('dashboard.noData')" />
+            </div>
           </div>
-        </div>
+        </a-spin>
 
-        <!--分页-->
         <div class="pagination-wrapper">
           <a-pagination
             :current="listPage"
@@ -595,21 +523,19 @@ const getShortRecLabel = (rec: string) => {
         </div>
       </div>
 
-      <!--右：审核结果​​/操作面板-->
+      <!--右：审核结果面板-->
       <div class="result-panel">
         <div class="panel-header">
           <h3 class="panel-title">
-            <ThunderboltOutlined v-if="!isHistoryMode" style="color: var(--color-primary);" />
-            <FolderOpenOutlined v-else-if="viewMode === 'archived'" style="color: var(--color-info);" />
+            <ThunderboltOutlined v-if="activeTab === 'pending_ai'" style="color: var(--color-primary);" />
             <HistoryOutlined v-else style="color: var(--color-text-tertiary);" />
-            {{ viewMode === 'archived' ? t('dashboard.archivedResult') : isHistoryMode ? t('dashboard.historyResult') : t('dashboard.auditResult') }}
+            {{ activeTab === 'pending_ai' ? t('dashboard.auditResult') : t('dashboard.historyResult') }}
           </h3>
         </div>
 
         <div class="result-content">
-          <!--加载状态：两阶段卡片式（匹配archive.vueaudit-progress）-->
+          <!--加载状态：两阶段-->
           <div v-if="loading" class="result-loading">
-            <!--处理动画上面的基本信息-->
             <div v-if="selectedProcessInfo" class="loading-process-info">
               <div class="loading-process-title">{{ selectedProcessInfo.title }}</div>
               <div class="loading-process-meta">
@@ -640,8 +566,8 @@ const getShortRecLabel = (rec: string) => {
             </div>
           </div>
 
-          <!--TODO 模式：已选择但尚未审核 - 显示操作提示-->
-          <template v-else-if="!isHistoryMode && selectedProcess && !currentResult">
+          <!--pending_ai 页签：已选未审核 → 操作提示-->
+          <template v-else-if="activeTab === 'pending_ai' && selectedProcess && !currentResult">
             <div class="action-prompt">
               <div class="action-prompt-info">
                 <h4>{{ selectedProcessInfo?.title }}</h4>
@@ -658,143 +584,155 @@ const getShortRecLabel = (rec: string) => {
             </div>
           </template>
 
-          <!--历史模式：已选择但未找到历史结果-->
-          <template v-else-if="isHistoryMode && selectedProcess && !currentResult">
+          <!--非 pending_ai 页签：已选但无结果-->
+          <template v-else-if="activeTab !== 'pending_ai' && selectedProcess && !currentResult">
             <div class="result-empty">
               <div class="result-empty-icon"><HistoryOutlined /></div>
               <h4>{{ t('dashboard.noHistoryTitle') }}</h4>
               <p>{{ t('dashboard.noHistoryDesc') }}</p>
-              <a-button style="margin-top: 16px;" @click="jumpToOA(selectedProcess!)">
-                <ExportOutlined /> {{ t('dashboard.jumpToOAView') }}
-              </a-button>
             </div>
           </template>
 
-          <!--结果显示（两种模式）-->
+          <!--结果展示-->
           <template v-else-if="currentResult">
-            <!--操作栏-->
             <div class="result-action-bar">
-              <template v-if="isHistoryMode">
+              <template v-if="activeTab !== 'pending_ai'">
                 <div class="history-badge">
-                  <FolderOpenOutlined v-if="viewMode === 'archived'" />
-                  <HistoryOutlined v-else />
-                  {{ viewMode === 'archived' ? t('dashboard.archivedReadonly') : t('dashboard.historyReadonly') }}
+                  <HistoryOutlined />
+                  {{ t('dashboard.historyReadonly') }}
                 </div>
-                <a-button @click="openHistoryChain(currentResult.process_id)">
-                  <EyeOutlined /> {{ t('dashboard.auditChain') }}
-                </a-button>
-                <a-button type="primary" @click="jumpToOA(currentResult.process_id)">
-                  <ExportOutlined /> {{ t('dashboard.jumpOA') }}
-                </a-button>
               </template>
-              <template v-else>
-                <a-button @click="jumpToOA(currentResult.process_id)">
-                  <ExportOutlined /> {{ t('dashboard.jumpOA') }}
-                </a-button>
-                <a-button @click="handleReAudit">
-                  <ReloadOutlined /> {{ t('dashboard.reAudit') }}
-                </a-button>
-              </template>
+              <a-button @click="openAuditChain(currentResult.process_id)">
+                <EyeOutlined /> {{ t('dashboard.auditChain') }}
+              </a-button>
+              <a-button @click="jumpToOA(currentResult.process_id)">
+                <ExportOutlined /> {{ t('dashboard.jumpOA') }}
+              </a-button>
+              <a-button v-if="activeTab === 'pending_ai'" @click="handleReAudit">
+                <ReloadOutlined /> {{ t('dashboard.reAudit') }}
+              </a-button>
             </div>
 
-            <!--推荐横幅-->
-            <div
-              class="result-banner"
-              :style="{
-                background: recommendationConfig[currentResult.recommendation].bg,
-                borderColor: recommendationConfig[currentResult.recommendation].color,
-              }"
-            >
-              <component
-                :is="recommendationConfig[currentResult.recommendation].icon"
-                class="result-banner-icon"
-                :style="{ color: recommendationConfig[currentResult.recommendation].color }"
-              />
-              <div class="result-banner-info">
-                <div class="result-banner-title" :style="{ color: recommendationConfig[currentResult.recommendation].color }">
-                  {{ recommendationConfig[currentResult.recommendation].label }}
-                </div>
-                <div class="result-banner-meta">
-                  {{ t('dashboard.overallScore') }} {{ currentResult.score }}{{ t('dashboard.points') }}
-                  · {{ t('dashboard.duration') }} {{ currentResult.duration_ms }}ms
+            <!--解析失败降级展示-->
+            <template v-if="currentResult.parse_error">
+              <div class="result-banner result-banner--error">
+                <WarningOutlined class="result-banner-icon" style="color: var(--color-danger);" />
+                <div class="result-banner-info">
+                  <div class="result-banner-title" style="color: var(--color-danger);">{{ t('dashboard.parseErrorTitle') }}</div>
+                  <div class="result-banner-meta">{{ currentResult.parse_error }}</div>
                 </div>
               </div>
-              <div class="result-score" :style="{ color: recommendationConfig[currentResult.recommendation].color }">
-                {{ currentResult.score }}
+              <div class="result-section">
+                <h4 class="result-section-title">{{ t('dashboard.rawContent') }}</h4>
+                <div class="ai-reasoning">
+                  <pre>{{ currentResult.raw_content }}</pre>
+                </div>
               </div>
-            </div>
+              <div v-if="currentResult.ai_reasoning" class="result-section">
+                <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
+                <div class="ai-reasoning">
+                  <pre>{{ currentResult.ai_reasoning }}</pre>
+                </div>
+              </div>
+            </template>
 
-            <!--规则检查-->
-            <div class="result-section">
-              <h4 class="result-section-title">{{ t('dashboard.ruleCheckDetail') }}</h4>
-              <div class="rule-checks">
-                <div
-                  v-for="rule in currentResult.details"
-                  :key="rule.rule_id"
-                  class="rule-check-item"
-                  :class="{ 'rule-check-item--pass': rule.passed, 'rule-check-item--fail': !rule.passed }"
-                >
-                  <div class="rule-check-status">
-                    <CheckCircleOutlined v-if="rule.passed" style="color: var(--color-success);" />
-                    <CloseCircleOutlined v-else style="color: var(--color-danger);" />
+            <!--正常结果展示-->
+            <template v-else>
+              <div
+                class="result-banner"
+                :style="{
+                  background: recommendationConfig[currentResult.recommendation]?.bg,
+                  borderColor: recommendationConfig[currentResult.recommendation]?.color,
+                }"
+              >
+                <component
+                  :is="recommendationConfig[currentResult.recommendation]?.icon"
+                  class="result-banner-icon"
+                  :style="{ color: recommendationConfig[currentResult.recommendation]?.color }"
+                />
+                <div class="result-banner-info">
+                  <div class="result-banner-title" :style="{ color: recommendationConfig[currentResult.recommendation]?.color }">
+                    {{ recommendationConfig[currentResult.recommendation]?.label }}
                   </div>
-                  <div class="rule-check-content">
-                    <div class="rule-check-name">
-                      {{ rule.rule_name }}
-                      <span v-if="rule.is_locked" class="rule-locked-badge">{{ t('rule.scope.mandatory') }}</span>
+                  <div class="result-banner-meta">
+                    {{ t('dashboard.overallScore') }} {{ currentResult.overall_score }}{{ t('dashboard.points') }}
+                    · {{ t('dashboard.confidence') }} {{ currentResult.confidence }}%
+                    · {{ t('dashboard.duration') }} {{ currentResult.duration_ms }}ms
+                  </div>
+                </div>
+                <div class="result-score" :style="{ color: recommendationConfig[currentResult.recommendation]?.color }">
+                  {{ currentResult.overall_score }}
+                </div>
+              </div>
+
+              <!--规则校验-->
+              <div v-if="currentResult.rule_results?.length" class="result-section">
+                <h4 class="result-section-title">{{ t('dashboard.ruleCheckDetail') }}</h4>
+                <div class="rule-checks">
+                  <div
+                    v-for="(rule, idx) in currentResult.rule_results"
+                    :key="idx"
+                    class="rule-check-item"
+                    :class="{ 'rule-check-item--pass': rule.passed, 'rule-check-item--fail': !rule.passed }"
+                  >
+                    <div class="rule-check-status">
+                      <CheckCircleOutlined v-if="rule.passed" style="color: var(--color-success);" />
+                      <CloseCircleOutlined v-else style="color: var(--color-danger);" />
                     </div>
-                    <div class="rule-check-reasoning">{{ rule.reasoning }}</div>
+                    <div class="rule-check-content">
+                      <div class="rule-check-name">{{ rule.rule_content }}</div>
+                      <div class="rule-check-reasoning">{{ rule.reason }}</div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!--Opt5：风险点和建议作为规则检查下的平行卡-->
-            <div v-if="currentResult.risk_points?.length || currentResult.suggestions?.length" class="risk-suggest-row">
-              <div v-if="currentResult.risk_points?.length" class="insight-card insight-card--risk">
-                <div class="insight-card-header">
-                  <CloseCircleOutlined style="color: var(--color-danger);" />
-                  <span>{{ t('dashboard.riskPoints') }}</span>
+              <!--风险点 & 建议-->
+              <div v-if="currentResult.risk_points?.length || currentResult.suggestions?.length" class="risk-suggest-row">
+                <div v-if="currentResult.risk_points?.length" class="insight-card insight-card--risk">
+                  <div class="insight-card-header">
+                    <CloseCircleOutlined style="color: var(--color-danger);" />
+                    <span>{{ t('dashboard.riskPoints') }}</span>
+                  </div>
+                  <ul class="insight-card-list">
+                    <li v-for="(rp, i) in currentResult.risk_points" :key="i">{{ rp }}</li>
+                  </ul>
                 </div>
-                <ul class="insight-card-list">
-                  <li v-for="(rp, i) in currentResult.risk_points" :key="i">{{ rp }}</li>
-                </ul>
-              </div>
-              <div v-if="currentResult.suggestions?.length" class="insight-card insight-card--suggest">
-                <div class="insight-card-header">
-                  <InfoCircleOutlined style="color: var(--color-primary);" />
-                  <span>{{ t('dashboard.suggestions') }}</span>
+                <div v-if="currentResult.suggestions?.length" class="insight-card insight-card--suggest">
+                  <div class="insight-card-header">
+                    <InfoCircleOutlined style="color: var(--color-primary);" />
+                    <span>{{ t('dashboard.suggestions') }}</span>
+                  </div>
+                  <ul class="insight-card-list">
+                    <li v-for="(sg, i) in currentResult.suggestions" :key="i">{{ sg }}</li>
+                  </ul>
                 </div>
-                <ul class="insight-card-list">
-                  <li v-for="(sg, i) in currentResult.suggestions" :key="i">{{ sg }}</li>
-                </ul>
               </div>
-            </div>
 
-            <!--人工智能推理-->
-            <div class="result-section">
-              <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
-              <div class="ai-reasoning">
-                <pre>{{ currentResult.ai_reasoning }}</pre>
+              <!--AI 推理-->
+              <div v-if="currentResult.ai_reasoning" class="result-section">
+                <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
+                <div class="ai-reasoning">
+                  <pre>{{ currentResult.ai_reasoning }}</pre>
+                </div>
               </div>
-            </div>
+            </template>
           </template>
 
           <!--空状态-->
           <div v-else class="result-empty">
             <div class="result-empty-icon">
-              <ThunderboltOutlined v-if="!isHistoryMode" />
-              <FolderOpenOutlined v-else-if="viewMode === 'archived'" />
+              <ThunderboltOutlined v-if="activeTab === 'pending_ai'" />
               <HistoryOutlined v-else />
             </div>
-            <h4>{{ viewMode === 'archived' ? t('dashboard.emptyArchived') : isHistoryMode ? t('dashboard.emptyHistory') : t('dashboard.emptyTodo') }}</h4>
-            <p>{{ viewMode === 'archived' ? t('dashboard.emptyArchivedDesc') : isHistoryMode ? t('dashboard.emptyHistoryDesc') : t('dashboard.emptyTodoDesc') }}</p>
+            <h4>{{ activeTab === 'pending_ai' ? t('dashboard.emptyTodo') : t('dashboard.emptyHistory') }}</h4>
+            <p>{{ activeTab === 'pending_ai' ? t('dashboard.emptyTodoDesc') : t('dashboard.emptyHistoryDesc') }}</p>
           </div>
         </div>
       </div>
     </div>
 
-    <!--审核历史链抽屉-->
+    <!--审核链抽屉-->
     <Teleport to="body">
       <transition name="drawer">
         <div v-if="showHistoryChain" class="drawer-overlay" @click.self="showHistoryChain = false">
@@ -805,87 +743,90 @@ const getShortRecLabel = (rec: string) => {
             </div>
             <div class="drawer-body">
               <p class="chain-desc">{{ t('dashboard.chainDesc') }}</p>
-              <div v-if="currentAuditChain.length === 0" style="padding: 40px; text-align: center;">
-                <a-empty :description="t('dashboard.noAuditRecords')" />
-              </div>
-              <div v-else class="audit-chain">
-                <div
-                  v-for="(snap, idx) in currentAuditChain"
-                  :key="snap.snapshot_id"
-                  class="chain-node"
-                >
-                  <div class="chain-timeline">
-                    <div class="chain-dot" :style="{ background: recommendationConfig[snap.recommendation]?.color }" />
-                    <div v-if="idx < currentAuditChain.length - 1" class="chain-line" />
-                  </div>
-                  <div class="chain-card">
-                    <div class="chain-card-header" @click="toggleChainNode(snap.snapshot_id)" style="cursor: pointer;">
-                      <span
-                        class="chain-tag"
-                        :style="{ color: recommendationConfig[snap.recommendation]?.color, background: recommendationConfig[snap.recommendation]?.bg }"
-                      >
-                        <component :is="recommendationConfig[snap.recommendation]?.icon" />
-                        {{ recommendationConfig[snap.recommendation]?.label }}
-                      </span>
-                      <span class="chain-score">{{ snap.score }}{{ t('dashboard.points') }}</span>
-                      <span class="chain-expand-btn">
-                        <DownOutlined v-if="!expandedChainNodes.has(snap.snapshot_id)" />
-                        <UpOutlined v-else />
-                      </span>
+              <a-spin :spinning="auditChainLoading">
+                <div v-if="!auditChainLoading && auditChainData.length === 0" style="padding: 40px; text-align: center;">
+                  <a-empty :description="t('dashboard.noAuditRecords')" />
+                </div>
+                <div v-else class="audit-chain">
+                  <div
+                    v-for="(item, idx) in auditChainData"
+                    :key="item.id"
+                    class="chain-node"
+                  >
+                    <div class="chain-timeline">
+                      <div class="chain-dot" :style="{ background: recommendationConfig[item.recommendation]?.color }" />
+                      <div v-if="idx < auditChainData.length - 1" class="chain-line" />
                     </div>
-                    <div class="chain-card-meta">
-                      {{ snap.created_at }}
-                      <span v-if="snap.adopted !== null" class="chain-adopted" :class="snap.adopted ? 'chain-adopted--yes' : 'chain-adopted--no'">
-                        {{ snap.adopted ? t('dashboard.adopted') : t('dashboard.notAdopted') }}
-                      </span>
-                    </div>
-                    <div v-if="expandedChainNodes.has(snap.snapshot_id)" class="chain-detail">
-                      <template v-if="mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id]">
-                        <!--规则检查-->
-                        <div class="chain-section-title">{{ t('dashboard.ruleCheckDetail') }}</div>
-                        <div v-for="rule in (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.details" :key="rule.rule_id" class="chain-rule-item" :class="rule.passed ? 'chain-rule--pass' : 'chain-rule--fail'">
-                          <component :is="rule.passed ? CheckCircleOutlined : CloseCircleOutlined" :style="{ color: rule.passed ? 'var(--color-success)' : 'var(--color-danger)' }" />
-                          <div>
-                            <div class="chain-rule-name">{{ rule.rule_name }}</div>
-                            <div class="chain-rule-reasoning">{{ rule.reasoning }}</div>
-                          </div>
-                        </div>
-                        <!--风险点及建议-->
-                        <div
-                          v-if="(mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.risk_points?.length || (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.suggestions?.length"
-                          class="risk-suggest-row"
-                          style="margin-top: 10px;"
+                    <div class="chain-card">
+                      <div class="chain-card-header" @click="toggleChainNode(item.id)" style="cursor: pointer;">
+                        <span
+                          class="chain-tag"
+                          :style="{ color: recommendationConfig[item.recommendation]?.color, background: recommendationConfig[item.recommendation]?.bg }"
                         >
-                          <div v-if="(mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.risk_points?.length" class="insight-card insight-card--risk">
-                            <div class="insight-card-header">
-                              <CloseCircleOutlined style="color: var(--color-danger);" />
-                              <span>{{ t('dashboard.riskPoints') }}</span>
+                          <component :is="recommendationConfig[item.recommendation]?.icon" />
+                          {{ recommendationConfig[item.recommendation]?.label }}
+                        </span>
+                        <span class="chain-score">{{ item.score }}{{ t('dashboard.points') }}</span>
+                        <span class="chain-expand-btn">
+                          <DownOutlined v-if="!expandedChainNodes.has(item.id)" />
+                          <UpOutlined v-else />
+                        </span>
+                      </div>
+                      <div class="chain-card-meta">
+                        {{ item.created_at }} · {{ item.user_name || item.user_id }}
+                        · {{ t('dashboard.duration') }} {{ item.duration_ms }}ms
+                      </div>
+                      <div v-if="expandedChainNodes.has(item.id)" class="chain-detail">
+                        <template v-if="item.audit_result">
+                          <!--规则校验-->
+                          <template v-if="item.audit_result.rule_results?.length">
+                            <div class="chain-section-title">{{ t('dashboard.ruleCheckDetail') }}</div>
+                            <div v-for="(rule, ri) in item.audit_result.rule_results" :key="ri" class="chain-rule-item" :class="rule.passed ? 'chain-rule--pass' : 'chain-rule--fail'">
+                              <component :is="rule.passed ? CheckCircleOutlined : CloseCircleOutlined" :style="{ color: rule.passed ? 'var(--color-success)' : 'var(--color-danger)' }" />
+                              <div>
+                                <div class="chain-rule-name">{{ rule.rule_content }}</div>
+                                <div class="chain-rule-reasoning">{{ rule.reason }}</div>
+                              </div>
                             </div>
-                            <ul class="insight-card-list">
-                              <li v-for="(rp, i) in (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.risk_points" :key="i">{{ rp }}</li>
-                            </ul>
-                          </div>
-                          <div v-if="(mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.suggestions?.length" class="insight-card insight-card--suggest">
-                            <div class="insight-card-header">
-                              <InfoCircleOutlined style="color: var(--color-primary);" />
-                              <span>{{ t('dashboard.suggestions') }}</span>
+                          </template>
+                          <!--风险点 & 建议-->
+                          <div v-if="item.audit_result.risk_points?.length || item.audit_result.suggestions?.length" class="risk-suggest-row" style="margin-top: 10px;">
+                            <div v-if="item.audit_result.risk_points?.length" class="insight-card insight-card--risk">
+                              <div class="insight-card-header">
+                                <CloseCircleOutlined style="color: var(--color-danger);" />
+                                <span>{{ t('dashboard.riskPoints') }}</span>
+                              </div>
+                              <ul class="insight-card-list">
+                                <li v-for="(rp, i) in item.audit_result.risk_points" :key="i">{{ rp }}</li>
+                              </ul>
                             </div>
-                            <ul class="insight-card-list">
-                              <li v-for="(sg, i) in (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.suggestions" :key="i">{{ sg }}</li>
-                            </ul>
+                            <div v-if="item.audit_result.suggestions?.length" class="insight-card insight-card--suggest">
+                              <div class="insight-card-header">
+                                <InfoCircleOutlined style="color: var(--color-primary);" />
+                                <span>{{ t('dashboard.suggestions') }}</span>
+                              </div>
+                              <ul class="insight-card-list">
+                                <li v-for="(sg, i) in item.audit_result.suggestions" :key="i">{{ sg }}</li>
+                              </ul>
+                            </div>
                           </div>
-                        </div>
-                        <!--人工智能推理-->
-                        <div class="chain-section-title" style="margin-top: 10px;">{{ t('dashboard.aiReasoning') }}</div>
-                        <div class="chain-reasoning">
-                          <pre>{{ (mockHistoricalResults[snap.process_id] || mockArchivedHistoricalResults[snap.process_id])?.ai_reasoning }}</pre>
-                        </div>
-                      </template>
-                      <div v-else class="chain-no-detail">{{ t('dashboard.noHistoryDesc') }}</div>
+                          <!--AI 推理-->
+                          <div v-if="item.audit_result.ai_reasoning" class="chain-section-title" style="margin-top: 10px;">{{ t('dashboard.aiReasoning') }}</div>
+                          <div v-if="item.audit_result.ai_reasoning" class="chain-reasoning">
+                            <pre>{{ item.audit_result.ai_reasoning }}</pre>
+                          </div>
+                          <!--解析错误-->
+                          <div v-if="item.audit_result.parse_error" class="chain-parse-error">
+                            <WarningOutlined style="color: var(--color-danger);" />
+                            <span>{{ t('dashboard.parseErrorTitle') }}: {{ item.audit_result.parse_error }}</span>
+                          </div>
+                        </template>
+                        <div v-else class="chain-no-detail">{{ t('dashboard.noHistoryDesc') }}</div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </a-spin>
             </div>
           </div>
         </div>
@@ -902,8 +843,8 @@ const getShortRecLabel = (rec: string) => {
 .page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
 
-/*统计行*/
-.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+/*统计行 — 3 列*/
+.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
 .stat-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg); padding: 20px;
   display: flex; align-items: center; gap: 16px; border: 2px solid var(--color-border-light);
@@ -917,8 +858,7 @@ const getShortRecLabel = (rec: string) => {
 }
 .stat-card--primary .stat-card-icon { background: var(--color-primary-bg); color: var(--color-primary); }
 .stat-card--success .stat-card-icon { background: var(--color-success-bg); color: var(--color-success); }
-.stat-card--danger .stat-card-icon { background: var(--color-danger-bg); color: var(--color-danger); }
-.stat-card--archived .stat-card-icon { background: var(--color-info-bg); color: var(--color-info); }
+.stat-card--info .stat-card-icon { background: var(--color-info-bg); color: var(--color-info); }
 .stat-card-info { display: flex; flex-direction: column; }
 .stat-card-value { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
 .stat-card-label { font-size: 13px; color: var(--color-text-tertiary); margin-top: 2px; }
@@ -937,27 +877,20 @@ const getShortRecLabel = (rec: string) => {
   font-size: 15px; font-weight: 600; color: var(--color-text-primary);
   margin: 0; display: flex; align-items: center; gap: 8px;
 }
+.panel-header-row { display: flex; align-items: center; justify-content: space-between; }
 
-/*面板标题行*/
-.panel-header-row {
-  display: flex; align-items: center; justify-content: space-between;
-}
-
-/*可折叠过滤条*/
+/*筛选条*/
 .filter-toggle-btn { position: relative; }
 .filter-toggle-btn--active { color: var(--color-primary); border-color: var(--color-primary); }
 .filter-active-dot {
   display: inline-block; width: 6px; height: 6px; border-radius: 50%;
   background: var(--color-primary); margin-left: 4px; vertical-align: middle;
 }
-.filter-bar {
-  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-  padding: 10px 0 0;
-}
+.filter-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 0 0; }
 .slide-enter-active, .slide-leave-active { transition: all 0.2s ease; }
 .slide-enter-from, .slide-leave-to { opacity: 0; transform: translateY(-8px); }
 
-/*待办事项清单*/
+/*列表*/
 .todo-list { max-height: calc(100vh - 380px); overflow-y: auto; }
 .todo-item {
   display: flex; align-items: flex-start;
@@ -983,29 +916,13 @@ const getShortRecLabel = (rec: string) => {
 .todo-item-meta { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
 .todo-item-dot { color: var(--color-border); }
 
-/*Opt3：元下方的审核信息行 — 左/右布局*/
-.todo-item-audit-info {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-}
-.todo-item-audit-left {
-  display: flex; align-items: center; gap: 8px; min-width: 0;
-}
-.todo-item-audit-right {
-  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
-}
+.todo-item-audit-info { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.todo-item-audit-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.todo-item-audit-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .todo-item-node {
   font-size: 11px; font-weight: 500; padding: 2px 8px;
   border-radius: var(--radius-full); background: var(--color-bg-hover);
   color: var(--color-text-secondary); white-space: nowrap;
-}
-.todo-item-node--success {
-  background: var(--color-success-bg); color: var(--color-success); font-weight: 600;
-}
-.todo-item-node--danger {
-  background: var(--color-danger-bg); color: var(--color-danger); font-weight: 600;
-}
-.todo-item-node--info {
-  background: var(--color-info-bg); color: var(--color-info); font-weight: 600;
 }
 .todo-item-process-type {
   font-size: 11px; padding: 2px 7px; border-radius: var(--radius-full);
@@ -1022,48 +939,41 @@ const getShortRecLabel = (rec: string) => {
 }
 .oa-jump-btn:hover {
   border-color: var(--color-primary); color: var(--color-primary);
-  background: var(--color-primary-bg);
-  transform: scale(1.1);
+  background: var(--color-primary-bg); transform: scale(1.1);
   box-shadow: 0 2px 8px rgba(79, 70, 229, 0.15);
 }
-.oa-jump-btn:focus-visible {
-  border-color: var(--color-primary); color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
-  background: var(--color-primary-bg);
-}
 .oa-jump-btn:active { transform: scale(0.95); }
-
-/*Opt4：每项审核动画*/
-.todo-item-auditing {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; color: var(--color-primary); font-weight: 500;
-  animation: auditPulse 1.5s ease-in-out infinite;
-}
-@keyframes auditPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
-
-/*Opt3：列表中的得分徽章*/
 .todo-item-score-badge {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; font-weight: 600; padding: 2px 8px;
   border-radius: var(--radius-full); white-space: nowrap;
 }
-
 .todo-item-checkbox { flex-shrink: 0; padding-top: 2px; }
 .todo-empty { padding: 48px 20px; }
+
+/*批量审核工具栏*/
+.batch-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; gap: 8px; }
+.batch-toolbar-left { display: flex; align-items: center; gap: 12px; }
+.batch-toolbar-right { display: flex; align-items: center; gap: 8px; }
+.batch-limit-hint { font-size: 11px; color: var(--color-text-quaternary); }
+.batch-progress-hint { font-size: 12px; font-weight: 600; color: var(--color-primary); animation: auditPulse 1.5s ease-in-out infinite; }
+@keyframes auditPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+.batch-audit-btn { flex-shrink: 0; }
+
+/*分页*/
+.pagination-wrapper { padding: 12px 20px; border-top: 1px solid var(--color-border-light); display: flex; justify-content: center; }
 
 /*结果面板*/
 .result-content { padding: 20px; }
 
-/*动作提示*/
+/*操作提示*/
 .action-prompt { text-align: center; padding: 40px 20px; }
 .action-prompt-info h4 { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px; }
 .action-prompt-info p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 24px; }
 .action-prompt-buttons { display: flex; gap: 12px; justify-content: center; }
 
-/*结果操作栏*/
+/*操作栏*/
 .result-action-bar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
-
-/*历史徽章*/
 .history-badge {
   display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
   padding: 4px 12px; border-radius: var(--radius-full);
@@ -1075,24 +985,18 @@ const getShortRecLabel = (rec: string) => {
 .loading-process-info { text-align: center; }
 .loading-process-title { font-size: 15px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 4px; }
 .loading-process-meta { font-size: 13px; color: var(--color-text-tertiary); }
-
-/*两阶段审核进度卡（匹配archive.vue风格）*/
 .audit-progress { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 400px; }
 .audit-phase {
   display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px;
   border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
   background: var(--color-bg-page); transition: all 0.3s ease;
 }
-.audit-phase--active {
-  border-color: var(--color-primary); background: var(--color-primary-bg);
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1);
-}
+.audit-phase--active { border-color: var(--color-primary); background: var(--color-primary-bg); box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1); }
 .audit-phase--done { border-color: var(--color-success); background: var(--color-success-bg); }
 .audit-phase--pending { opacity: 0.5; }
 .audit-phase-dot {
   width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center;
-  justify-content: center; font-size: 16px; flex-shrink: 0;
-  background: var(--color-bg-hover);
+  justify-content: center; font-size: 16px; flex-shrink: 0; background: var(--color-bg-hover);
 }
 .audit-phase--active .audit-phase-dot { background: var(--color-primary-bg); color: var(--color-primary); }
 .audit-phase--done .audit-phase-dot { background: var(--color-success-bg); color: var(--color-success); }
@@ -1106,13 +1010,16 @@ const getShortRecLabel = (rec: string) => {
   display: flex; align-items: center; padding: 16px 20px;
   border-radius: var(--radius-lg); border-left: 4px solid; margin-bottom: 24px; gap: 14px;
 }
+.result-banner--error {
+  background: var(--color-danger-bg); border-color: var(--color-danger);
+}
 .result-banner-icon { font-size: 28px; flex-shrink: 0; }
 .result-banner-info { flex: 1; }
 .result-banner-title { font-size: 16px; font-weight: 700; }
 .result-banner-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
 .result-score { font-size: 36px; font-weight: 800; line-height: 1; }
 
-/*规则检查*/
+/*规则校验*/
 .result-section { margin-bottom: 24px; }
 .result-section-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 12px; }
 .rule-checks { display: flex; flex-direction: column; gap: 8px; }
@@ -1126,43 +1033,21 @@ const getShortRecLabel = (rec: string) => {
 .rule-check-item--fail { border-left: 3px solid var(--color-danger); background: var(--color-danger-bg); }
 .rule-check-status { font-size: 18px; flex-shrink: 0; padding-top: 1px; }
 .rule-check-content { flex: 1; min-width: 0; }
-.rule-check-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
-.rule-locked-badge { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-danger-bg); color: var(--color-danger); }
+.rule-check-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
 .rule-check-reasoning { font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; }
 
-/*Opt5：风险+建议平行卡*/
-.risk-suggest-row {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;
-}
-.risk-suggest-row:has(.insight-card:only-child) {
-  grid-template-columns: 1fr;
-}
-.insight-card {
-  border-radius: var(--radius-md); padding: 16px;
-  border: 1px solid var(--color-border-light);
-}
-.insight-card--risk {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.04), rgba(239, 68, 68, 0.01));
-  border-color: rgba(239, 68, 68, 0.15);
-}
-.insight-card--suggest {
-  background: linear-gradient(135deg, rgba(79, 70, 229, 0.04), rgba(79, 70, 229, 0.01));
-  border-color: rgba(79, 70, 229, 0.15);
-}
-.insight-card-header {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 13px; font-weight: 600; color: var(--color-text-primary);
-  margin-bottom: 10px;
-}
-.insight-card-list {
-  margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px;
-}
-.insight-card-list li {
-  font-size: 13px; line-height: 1.6; color: var(--color-text-secondary);
-}
+/*风险 + 建议*/
+.risk-suggest-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.risk-suggest-row:has(.insight-card:only-child) { grid-template-columns: 1fr; }
+.insight-card { border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--color-border-light); }
+.insight-card--risk { background: linear-gradient(135deg, rgba(239, 68, 68, 0.04), rgba(239, 68, 68, 0.01)); border-color: rgba(239, 68, 68, 0.15); }
+.insight-card--suggest { background: linear-gradient(135deg, rgba(79, 70, 229, 0.04), rgba(79, 70, 229, 0.01)); border-color: rgba(79, 70, 229, 0.15); }
+.insight-card-header { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 10px; }
+.insight-card-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.insight-card-list li { font-size: 13px; line-height: 1.6; color: var(--color-text-secondary); }
 .insight-card--risk .insight-card-list li { color: var(--color-danger); }
 
-/*人工智能推理*/
+/*AI 推理*/
 .ai-reasoning { background: var(--color-bg-page); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--color-border-light); }
 .ai-reasoning pre { white-space: pre-wrap; word-break: break-word; font-family: var(--font-sans); font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); margin: 0; }
 
@@ -1176,60 +1061,13 @@ const getShortRecLabel = (rec: string) => {
 .result-empty h4 { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px; }
 .result-empty p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 auto; max-width: 280px; }
 
-/*批处理工具栏*/
-.batch-toolbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 6px 0; gap: 8px;
-}
-.batch-toolbar-left {
-  display: flex; align-items: center; gap: 12px;
-}
-.batch-progress-hint {
-  font-size: 12px; font-weight: 600; color: var(--color-primary);
-  animation: auditPulse 1.5s ease-in-out infinite;
-}
-.batch-audit-btn {
-  flex-shrink: 0;
-}
-
-/*分页*/
-.pagination-wrapper { padding: 12px 20px; border-top: 1px solid var(--color-border-light); display: flex; justify-content: center; }
-
-@media (max-width: 1024px) {
-  .dashboard-grid { grid-template-columns: 1fr; }
-  .stats-row { grid-template-columns: repeat(4, 1fr); }
-}
-@media (max-width: 768px) {
-  .stats-row { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-  .stat-card { padding: 14px; }
-  .stat-card-value { font-size: 22px; }
-  .stat-card-icon { width: 40px; height: 40px; font-size: 18px; }
-  .page-title { font-size: 20px; }
-  .dashboard-grid { gap: 16px; }
-  .panel-header { padding: 12px 16px; }
-  .todo-item { padding: 12px 16px; }
-  .result-content { padding: 16px; }
-  .action-prompt-buttons { flex-direction: column; }
-  .risk-suggest-row { grid-template-columns: 1fr; }
-  .filter-bar { flex-direction: column; align-items: stretch; }
-}
-@media (max-width: 480px) {
-  .stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .stat-card { padding: 12px; gap: 10px; }
-  .stat-card-value { font-size: 20px; }
-  .stat-card-label { font-size: 11px; }
-  .stat-card-icon { width: 36px; height: 36px; font-size: 16px; }
-  .result-banner { flex-wrap: wrap; padding: 12px 14px; }
-  .result-score { font-size: 28px; }
-}
-
 /*抽屉*/
 .drawer-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);
   backdrop-filter: blur(4px); z-index: 1000; display: flex; justify-content: flex-end;
 }
 .drawer-panel {
-  width: 480px; max-width: 100vw; background: var(--color-bg-card);
+  width: 520px; max-width: 100vw; background: var(--color-bg-card);
   height: 100%; display: flex; flex-direction: column; box-shadow: -8px 0 30px rgba(0,0,0,0.12);
 }
 .drawer-header {
@@ -1247,7 +1085,7 @@ const getShortRecLabel = (rec: string) => {
 .drawer-body { flex: 1; overflow-y: auto; padding: 24px; }
 .chain-desc { font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 20px; }
 
-/*审计链时间表*/
+/*审核链时间线*/
 .audit-chain { display: flex; flex-direction: column; }
 .chain-node { display: flex; gap: 16px; }
 .chain-timeline { display: flex; flex-direction: column; align-items: center; width: 20px; flex-shrink: 0; }
@@ -1265,20 +1103,6 @@ const getShortRecLabel = (rec: string) => {
 }
 .chain-score { font-size: 18px; font-weight: 700; color: var(--color-text-primary); }
 .chain-card-meta { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 8px; }
-.chain-adopted { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: var(--radius-full); }
-.chain-adopted--yes { background: var(--color-success-bg); color: var(--color-success); }
-.chain-adopted--no { background: var(--color-bg-hover); color: var(--color-text-tertiary); }
-
-.drawer-enter-active { transition: opacity 0.2s ease; }
-.drawer-enter-active .drawer-panel { transition: transform 0.3s cubic-bezier(0.16,1,0.3,1); }
-.drawer-leave-active { transition: opacity 0.2s ease 0.1s; }
-.drawer-leave-active .drawer-panel { transition: transform 0.2s ease; }
-.drawer-enter-from { opacity: 0; }
-.drawer-enter-from .drawer-panel { transform: translateX(100%); }
-.drawer-leave-to { opacity: 0; }
-.drawer-leave-to .drawer-panel { transform: translateX(100%); }
-
-/*连锁扩张*/
 .chain-expand-btn { margin-left: auto; font-size: 12px; color: var(--color-text-tertiary); }
 .chain-detail {
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border-light);
@@ -1295,4 +1119,41 @@ const getShortRecLabel = (rec: string) => {
 .chain-reasoning pre { font-size: 12px; line-height: 1.6; color: var(--color-text-secondary); margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--font-sans); }
 .chain-no-detail { font-size: 12px; color: var(--color-text-tertiary); text-align: center; padding: 12px; }
 .chain-section-title { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 6px; }
+.chain-parse-error {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  border-radius: var(--radius-sm); background: var(--color-danger-bg);
+  font-size: 12px; color: var(--color-danger);
+}
+
+.drawer-enter-active { transition: opacity 0.2s ease; }
+.drawer-enter-active .drawer-panel { transition: transform 0.3s cubic-bezier(0.16,1,0.3,1); }
+.drawer-leave-active { transition: opacity 0.2s ease 0.1s; }
+.drawer-leave-active .drawer-panel { transition: transform 0.2s ease; }
+.drawer-enter-from { opacity: 0; }
+.drawer-enter-from .drawer-panel { transform: translateX(100%); }
+.drawer-leave-to { opacity: 0; }
+.drawer-leave-to .drawer-panel { transform: translateX(100%); }
+
+@media (max-width: 1024px) {
+  .dashboard-grid { grid-template-columns: 1fr; }
+  .stats-row { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 768px) {
+  .stats-row { grid-template-columns: 1fr; gap: 12px; }
+  .stat-card { padding: 14px; }
+  .stat-card-value { font-size: 22px; }
+  .stat-card-icon { width: 40px; height: 40px; font-size: 18px; }
+  .page-title { font-size: 20px; }
+  .dashboard-grid { gap: 16px; }
+  .panel-header { padding: 12px 16px; }
+  .todo-item { padding: 12px 16px; }
+  .result-content { padding: 16px; }
+  .action-prompt-buttons { flex-direction: column; }
+  .risk-suggest-row { grid-template-columns: 1fr; }
+  .filter-bar { flex-direction: column; align-items: stretch; }
+}
+@media (max-width: 480px) {
+  .result-banner { flex-wrap: wrap; padding: 12px 14px; }
+  .result-score { font-size: 28px; }
+}
 </style>

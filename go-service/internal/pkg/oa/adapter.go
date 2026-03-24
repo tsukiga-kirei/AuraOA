@@ -16,6 +16,12 @@ type OAAdapter interface {
 
 	// FetchProcessData 拉取指定流程实例的业务数据（用于审核执行）
 	FetchProcessData(ctx context.Context, processID string) (*ProcessData, error)
+
+	// FetchTodoList 拉取指定用户的 OA 待审批流程列表
+	FetchTodoList(ctx context.Context, username string) ([]TodoItem, error)
+
+	// IsProcessInTodo 判断指定流程是否仍在用户待办中
+	IsProcessInTodo(ctx context.Context, username string, processID string) (bool, error)
 }
 
 // ProcessInfo 流程基本信息
@@ -56,4 +62,17 @@ type ProcessData struct {
 	ProcessID  string                   `json:"process_id"`
 	MainData   map[string]interface{}   `json:"main_data"`
 	DetailData []map[string]interface{} `json:"detail_data"`
+}
+
+// TodoItem OA 待办流程条目
+type TodoItem struct {
+	ProcessID        string `json:"process_id"`
+	Title            string `json:"title"`
+	Applicant        string `json:"applicant"`
+	Department       string `json:"department"`
+	ProcessType      string `json:"process_type"`
+	ProcessTypeLabel string `json:"process_type_label"`
+	CurrentNode      string `json:"current_node"`
+	SubmitTime       string `json:"submit_time"`
+	Urgency          string `json:"urgency"`
 }

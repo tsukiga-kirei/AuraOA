@@ -49,4 +49,10 @@ const (
 	ErrAICallFailed            = 50302 // AI 模型调用失败
 	ErrAIDeployTypeUnsupported = 50303 // 不支持的 AI 部署类型
 	ErrTokenQuotaExceeded      = 50304 // 租户 Token 配额已用尽
+	ErrAuditParseFailed        = 50305 // AI 审核结果 JSON 解析失败
+
+	//400xx - 客户端扩展
+	ErrBatchLimitExceeded = 40002 // 批量审核超过上限
+	ErrNoAIModelConfig    = 40003 // 租户未配置 AI 模型
+	ErrNoProcessConfig    = 40004 // 流程审核配置不存在
 )

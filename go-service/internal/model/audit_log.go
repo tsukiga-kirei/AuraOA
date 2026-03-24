@@ -19,7 +19,28 @@ type AuditLog struct {
 	Score          int            `gorm:"not null;default:0" json:"score"`
 	AuditResult    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"audit_result"`
 	DurationMs     int            `gorm:"not null;default:0" json:"duration_ms"`
+	AIReasoning    string         `gorm:"type:text;default:''" json:"ai_reasoning"`
+	Confidence     int            `gorm:"not null;default:0" json:"confidence"`
+	RawContent     string         `gorm:"type:text;default:''" json:"raw_content"`
+	ParseError     string         `gorm:"type:text;default:''" json:"parse_error"`
 	CreatedAt      time.Time      `json:"created_at"`
+}
+
+// AuditResultJSON 提取阶段 JSON Schema 的 Go 映射（固定结构，前后端共用）
+type AuditResultJSON struct {
+	Recommendation string           `json:"recommendation"`
+	OverallScore   int              `json:"overall_score"`
+	RuleResults    []RuleResultJSON `json:"rule_results"`
+	RiskPoints     []string         `json:"risk_points"`
+	Suggestions    []string         `json:"suggestions"`
+	Confidence     int              `json:"confidence"`
+}
+
+// RuleResultJSON 单条规则校验结果
+type RuleResultJSON struct {
+	RuleContent string `json:"rule_content"`
+	Passed      bool   `json:"passed"`
+	Reason      string `json:"reason"`
 }
 
 func (AuditLog) TableName() string { return "audit_logs" }

@@ -80,6 +80,8 @@ func main() {
 	archiveConfigRepo := repository.NewProcessArchiveConfigRepo(db)
 	archiveRuleRepo := repository.NewArchiveRuleRepo(db)
 
+	auditLogRepo := repository.NewAuditLogRepo(db)
+
 	// 6. Initialize services
 	authService := service.NewAuthService(userRepo, rdb, db)
 	orgService := service.NewOrgService(orgRepo, userRepo, systemConfigRepo, db)
@@ -95,6 +97,8 @@ func main() {
 	cronConfigService := service.NewCronConfigService(cronPresetRepo, cronConfigRepo)
 	archiveConfigService := service.NewProcessArchiveConfigService(archiveConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo)
 	archiveRuleService := service.NewArchiveRuleService(archiveRuleRepo)
+	aiCallerService := service.NewAIModelCallerService(tenantRepo, llmMessageLogRepo, db)
+	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, processAuditConfigRepo, auditRuleRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db)
 
 	// 7. Initialize handlers
 	authHandler := handler.NewAuthHandler(authService, rdb)
@@ -110,6 +114,7 @@ func main() {
 	cronHandler := handler.NewCronConfigHandler(cronConfigService)
 	archiveConfigHandler := handler.NewArchiveConfigHandler(archiveConfigService)
 	archiveRuleHandler := handler.NewArchiveRuleHandler(archiveRuleService)
+	auditHandler := handler.NewAuditHandler(auditExecuteService)
 
 	// 8. Setup Gin router with middleware and routes
 	r := gin.New()
@@ -119,7 +124,7 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, archiveConfigHandler, archiveRuleHandler)
+	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, archiveConfigHandler, archiveRuleHandler, auditHandler)
 
 	// 9. Start HTTP server
 	port := viper.GetInt("server.port")

@@ -1,0 +1,508 @@
+package service
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+
+	"oa-smart-audit/go-service/internal/model"
+	"oa-smart-audit/go-service/internal/pkg/errcode"
+	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
+	"oa-smart-audit/go-service/internal/pkg/oa"
+	"oa-smart-audit/go-service/internal/repository"
+)
+
+const batchAuditMaxLimit = 10
+
+// AuditExecuteService 审核执行业务逻辑：串联 OA 数据 → 提示词构建 → AI 调用 → 结果解析 → 写入日志。
+type AuditExecuteService struct {
+	auditLogRepo  *repository.AuditLogRepo
+	configRepo    *repository.ProcessAuditConfigRepo
+	ruleRepo      *repository.AuditRuleRepo
+	tenantRepo    *repository.TenantRepo
+	oaConnRepo    *repository.OAConnectionRepo
+	aiModelRepo   *repository.AIModelRepo
+	aiCaller      *AIModelCallerService
+	db            *gorm.DB
+}
+
+func NewAuditExecuteService(
+	auditLogRepo *repository.AuditLogRepo,
+	configRepo *repository.ProcessAuditConfigRepo,
+	ruleRepo *repository.AuditRuleRepo,
+	tenantRepo *repository.TenantRepo,
+	oaConnRepo *repository.OAConnectionRepo,
+	aiModelRepo *repository.AIModelRepo,
+	aiCaller *AIModelCallerService,
+	db *gorm.DB,
+) *AuditExecuteService {
+	return &AuditExecuteService{
+		auditLogRepo: auditLogRepo,
+		configRepo:   configRepo,
+		ruleRepo:     ruleRepo,
+		tenantRepo:   tenantRepo,
+		oaConnRepo:   oaConnRepo,
+		aiModelRepo:  aiModelRepo,
+		aiCaller:     aiCaller,
+		db:           db,
+	}
+}
+
+// AuditExecuteRequest 审核执行请求
+type AuditExecuteRequest struct {
+	ProcessID   string `json:"process_id" binding:"required"`
+	ProcessType string `json:"process_type" binding:"required"`
+	Title       string `json:"title"`
+}
+
+// AuditExecuteResponse 审核执行响应
+type AuditExecuteResponse struct {
+	ID             string                  `json:"id"`
+	TraceID        string                  `json:"trace_id"`
+	ProcessID      string                  `json:"process_id"`
+	Recommendation string                  `json:"recommendation"`
+	OverallScore   int                     `json:"overall_score"`
+	RuleResults    []model.RuleResultJSON  `json:"rule_results"`
+	RiskPoints     []string                `json:"risk_points"`
+	Suggestions    []string                `json:"suggestions"`
+	Confidence     int                     `json:"confidence"`
+	AIReasoning    string                  `json:"ai_reasoning"`
+	DurationMs     int                     `json:"duration_ms"`
+	CreatedAt      string                  `json:"created_at"`
+	ParseError     string                  `json:"parse_error,omitempty"`
+	RawContent     string                  `json:"raw_content,omitempty"`
+}
+
+// Execute 执行单条审核：OA 数据拉取 → 两阶段 AI 调用 → 解析结果 → 写入 audit_logs。
+func (s *AuditExecuteService) Execute(c *gin.Context, req *AuditExecuteRequest) (*AuditExecuteResponse, error) {
+	startTime := time.Now()
+	tenantID, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1. 获取租户信息和 AI 模型配置
+	tenant, err := s.tenantRepo.FindByID(tenantID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "获取租户信息失败")
+	}
+	if tenant.PrimaryModelID == nil {
+		return nil, newServiceError(errcode.ErrNoAIModelConfig, "租户未配置主用 AI 模型")
+	}
+	modelCfg, err := s.aiModelRepo.FindByID(*tenant.PrimaryModelID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrNoAIModelConfig, "AI 模型配置不存在")
+	}
+
+	// 2. 获取流程审核配置
+	config, err := s.configRepo.GetByProcessType(c, req.ProcessType)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的审核配置不存在", req.ProcessType))
+	}
+
+	// 3. 解析 AI 配置
+	var aiConfig model.AIConfigData
+	if err := json.Unmarshal(config.AIConfig, &aiConfig); err != nil {
+		return nil, newServiceError(errcode.ErrInternalServer, "AI 配置解析失败")
+	}
+
+	// 4. 获取审核规则
+	rules, err := s.ruleRepo.ListByConfigID(c, config.ID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "获取审核规则失败")
+	}
+	rulesText := formatRules(rules)
+
+	// 5. 从 OA 拉取流程数据
+	processData, err := s.fetchOAData(c, tenant, req.ProcessID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 6. 获取当前节点（优先用 OA 数据，否则用请求中的值）
+	// TODO: 从 OA 待办中获取精确的 current_node
+	currentNode := "当前节点"
+
+	// 7. 阶段一：推理
+	reasoningReq := BuildReasoningPrompt(&aiConfig, req.ProcessType, processData, rulesText, currentNode)
+	reasoningReq.Temperature = float64(tenant.Temperature)
+	reasoningReq.MaxTokens = tenant.MaxTokensPerRequest
+	reasoningReq.ModelConfig = modelCfg
+
+	reasoningResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, reasoningReq)
+	if err != nil {
+		return nil, err
+	}
+	aiReasoning := reasoningResp.Content
+
+	// 8. 阶段二：提取
+	extractionReq := BuildExtractionPrompt(&aiConfig, aiReasoning, rulesText)
+	extractionReq.Temperature = 0.1
+	extractionReq.MaxTokens = tenant.MaxTokensPerRequest
+	extractionReq.ModelConfig = modelCfg
+
+	extractionResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, extractionReq)
+	if err != nil {
+		return nil, err
+	}
+
+	// 9. 解析 JSON 结果
+	totalDuration := int(time.Since(startTime).Milliseconds())
+	traceID := fmt.Sprintf("TR-%s-%s", time.Now().Format("20060102150405"), uuid.New().String()[:8])
+
+	parsed, parseErr := ParseAuditResult(extractionResp.Content)
+
+	// 10. 构建审核日志
+	logEntry := &model.AuditLog{
+		ID:          uuid.New(),
+		TenantID:    tenantID,
+		UserID:      userID,
+		ProcessID:   req.ProcessID,
+		Title:       req.Title,
+		ProcessType: req.ProcessType,
+		DurationMs:  totalDuration,
+		AIReasoning: aiReasoning,
+		RawContent:  extractionResp.Content,
+		CreatedAt:   time.Now(),
+	}
+
+	resp := &AuditExecuteResponse{
+		ID:          logEntry.ID.String(),
+		TraceID:     traceID,
+		ProcessID:   req.ProcessID,
+		AIReasoning: aiReasoning,
+		DurationMs:  totalDuration,
+		CreatedAt:   logEntry.CreatedAt.Format(time.RFC3339),
+	}
+
+	if parseErr != nil {
+		logEntry.Recommendation = "review"
+		logEntry.Score = 0
+		logEntry.Confidence = 0
+		logEntry.ParseError = parseErr.Error()
+		logEntry.AuditResult = datatypes.JSON([]byte("{}"))
+		resp.Recommendation = "review"
+		resp.OverallScore = 0
+		resp.Confidence = 0
+		resp.ParseError = parseErr.Error()
+		resp.RawContent = extractionResp.Content
+		resp.RuleResults = []model.RuleResultJSON{}
+		resp.RiskPoints = []string{}
+		resp.Suggestions = []string{}
+	} else {
+		resultJSON, _ := json.Marshal(parsed)
+		logEntry.Recommendation = parsed.Recommendation
+		logEntry.Score = parsed.OverallScore
+		logEntry.Confidence = parsed.Confidence
+		logEntry.AuditResult = datatypes.JSON(resultJSON)
+		resp.Recommendation = parsed.Recommendation
+		resp.OverallScore = parsed.OverallScore
+		resp.RuleResults = parsed.RuleResults
+		resp.RiskPoints = parsed.RiskPoints
+		resp.Suggestions = parsed.Suggestions
+		resp.Confidence = parsed.Confidence
+	}
+
+	// 11. 写入数据库
+	if err := s.auditLogRepo.Create(logEntry); err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "审核日志写入失败")
+	}
+
+	return resp, nil
+}
+
+// BatchExecute 批量审核（上限 10 条）。
+func (s *AuditExecuteService) BatchExecute(c *gin.Context, items []AuditExecuteRequest) (*BatchAuditResult, error) {
+	if len(items) > batchAuditMaxLimit {
+		return nil, newServiceError(errcode.ErrBatchLimitExceeded,
+			fmt.Sprintf("批量审核上限 %d 条，当前 %d 条", batchAuditMaxLimit, len(items)))
+	}
+
+	result := &BatchAuditResult{
+		Total: len(items),
+	}
+
+	for _, item := range items {
+		resp, err := s.Execute(c, &item)
+		if err != nil {
+			result.Failed++
+			result.Results = append(result.Results, AuditExecuteResponse{
+				ProcessID:  item.ProcessID,
+				ParseError: err.Error(),
+			})
+			continue
+		}
+		result.Success++
+		result.Results = append(result.Results, *resp)
+	}
+
+	return result, nil
+}
+
+type BatchAuditResult struct {
+	Results []AuditExecuteResponse `json:"results"`
+	Total   int                    `json:"total"`
+	Success int                    `json:"success"`
+	Failed  int                    `json:"failed"`
+}
+
+// GetAuditChain 获取审核链：查询租户内该流程所有已完成的审核记录（所有用户）。
+func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([]model.AuditLog, error) {
+	return s.auditLogRepo.ListByProcessID(c, processID)
+}
+
+// GetStats 获取审核工作台统计。
+func (s *AuditExecuteService) GetStats(c *gin.Context) (map[string]int, error) {
+	// TODO: 后续优化为单次聚合查询
+	// 当前返回简单统计，实际需要结合 OA 待办状态
+	return map[string]int{
+		"pending_ai_count": 0,
+		"ai_done_count":    0,
+		"completed_count":  0,
+	}, nil
+}
+
+// ListProcesses 获取审核工作台流程列表（结合 OA 待办 + AI 审核状态）。
+func (s *AuditExecuteService) ListProcesses(c *gin.Context, tab string, username string) ([]map[string]interface{}, error) {
+	tenantID, _, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取 OA 适配器
+	adapter, err := s.getOAAdapter(tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 从 OA 拉取用户待办
+	todoItems, err := adapter.FetchTodoList(c.Request.Context(), username)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 待办失败: "+err.Error())
+	}
+
+	// 获取已有审核记录
+	processIDs := make([]string, len(todoItems))
+	for i, item := range todoItems {
+		processIDs[i] = item.ProcessID
+	}
+	auditMap, err := s.auditLogRepo.GetLatestResultMap(c, processIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询审核记录失败")
+	}
+
+	var results []map[string]interface{}
+	for _, item := range todoItems {
+		record := map[string]interface{}{
+			"process_id":         item.ProcessID,
+			"title":              item.Title,
+			"applicant":          item.Applicant,
+			"department":         item.Department,
+			"process_type":       item.ProcessType,
+			"process_type_label": item.ProcessTypeLabel,
+			"current_node":       item.CurrentNode,
+			"submit_time":        item.SubmitTime,
+			"urgency":            item.Urgency,
+			"has_audit":          false,
+			"audit_result":       nil,
+			"in_todo":            true,
+		}
+
+		auditLog, hasAudit := auditMap[item.ProcessID]
+		if hasAudit {
+			record["has_audit"] = true
+			record["audit_result"] = buildAuditResultFromLog(auditLog)
+		}
+
+		// 根据 tab 过滤
+		switch tab {
+		case "pending_ai":
+			if !hasAudit {
+				results = append(results, record)
+			}
+		case "ai_done":
+			if hasAudit {
+				results = append(results, record)
+			}
+		case "completed":
+			// completed: AI 审核完成 + 不在待办中（当前待办列表拉出来的都在待办中，所以这里需要额外查询已完成的审核记录）
+		}
+	}
+
+	// 对 completed tab：查询已有审核记录但不在当前待办的流程
+	if tab == "completed" {
+		results, err = s.listCompletedProcesses(c, tenantID, username, adapter, processIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return results, nil
+}
+
+func (s *AuditExecuteService) listCompletedProcesses(c *gin.Context, tenantID uuid.UUID, username string, adapter oa.OAAdapter, todoProcessIDs []string) ([]map[string]interface{}, error) {
+	todoSet := make(map[string]bool)
+	for _, id := range todoProcessIDs {
+		todoSet[id] = true
+	}
+
+	// 查询该租户所有审核日志中不在当前待办里的流程
+	var logs []model.AuditLog
+	query := s.db.Where("tenant_id = ?", tenantID).Order("created_at DESC")
+	if len(todoProcessIDs) > 0 {
+		query = query.Where("process_id NOT IN ?", todoProcessIDs)
+	}
+	if err := query.Find(&logs).Error; err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询已完成审核记录失败")
+	}
+
+	seen := make(map[string]bool)
+	var results []map[string]interface{}
+	for _, log := range logs {
+		if seen[log.ProcessID] {
+			continue
+		}
+		seen[log.ProcessID] = true
+		results = append(results, map[string]interface{}{
+			"process_id":         log.ProcessID,
+			"title":              log.Title,
+			"applicant":          "",
+			"department":         "",
+			"process_type":       log.ProcessType,
+			"process_type_label": "",
+			"current_node":       "已完成",
+			"submit_time":        log.CreatedAt.Format("2006-01-02 15:04"),
+			"urgency":            "low",
+			"has_audit":          true,
+			"audit_result":       buildAuditResultFromLog(&log),
+			"in_todo":            false,
+		})
+	}
+	return results, nil
+}
+
+func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
+	result := map[string]interface{}{
+		"id":             log.ID.String(),
+		"trace_id":       fmt.Sprintf("TR-%s", log.ID.String()[:8]),
+		"process_id":     log.ProcessID,
+		"recommendation": log.Recommendation,
+		"overall_score":  log.Score,
+		"confidence":     log.Confidence,
+		"ai_reasoning":   log.AIReasoning,
+		"duration_ms":    log.DurationMs,
+		"created_at":     log.CreatedAt.Format(time.RFC3339),
+	}
+
+	if log.ParseError != "" {
+		result["parse_error"] = log.ParseError
+		result["raw_content"] = log.RawContent
+		result["rule_results"] = []interface{}{}
+		result["risk_points"] = []string{}
+		result["suggestions"] = []string{}
+	} else {
+		var parsed model.AuditResultJSON
+		if err := json.Unmarshal(log.AuditResult, &parsed); err == nil {
+			result["rule_results"] = parsed.RuleResults
+			result["risk_points"] = parsed.RiskPoints
+			result["suggestions"] = parsed.Suggestions
+		} else {
+			result["rule_results"] = []interface{}{}
+			result["risk_points"] = []string{}
+			result["suggestions"] = []string{}
+		}
+	}
+	return result
+}
+
+func (s *AuditExecuteService) getOAAdapter(tenantID uuid.UUID) (oa.OAAdapter, error) {
+	tenant, err := s.tenantRepo.FindByID(tenantID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "获取租户失败")
+	}
+	if tenant.OADBConnectionID == nil {
+		return nil, newServiceError(errcode.ErrOAConnectionFailed, "租户未配置 OA 数据库连接")
+	}
+	conn, err := s.oaConnRepo.FindByID(*tenant.OADBConnectionID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAConnectionFailed, "OA 数据库连接配置不存在")
+	}
+	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAConnectionFailed, "创建 OA 适配器失败: "+err.Error())
+	}
+	return adapter, nil
+}
+
+func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, processID string) (*oa.ProcessData, error) {
+	if tenant.OADBConnectionID == nil {
+		return nil, newServiceError(errcode.ErrOAConnectionFailed, "租户未配置 OA 数据库连接")
+	}
+	conn, err := s.oaConnRepo.FindByID(*tenant.OADBConnectionID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAConnectionFailed, "OA 数据库连接配置不存在")
+	}
+	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAConnectionFailed, "创建 OA 适配器失败: "+err.Error())
+	}
+	data, err := adapter.FetchProcessData(c.Request.Context(), processID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "拉取 OA 流程数据失败: "+err.Error())
+	}
+	return data, nil
+}
+
+func (s *AuditExecuteService) extractIDs(c *gin.Context) (uuid.UUID, uuid.UUID, error) {
+	tidVal, exists := c.Get("tenant_id")
+	if !exists {
+		return uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoAuthToken, "租户ID缺失")
+	}
+	tenantID, err := uuid.Parse(fmt.Sprintf("%v", tidVal))
+	if err != nil {
+		return uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoAuthToken, "租户ID格式无效")
+	}
+
+	claimsVal, _ := c.Get("jwt_claims")
+	claims, ok := claimsVal.(*jwtpkg.JWTClaims)
+	if !ok {
+		return uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoAuthToken, "用户认证信息缺失")
+	}
+	userID, err := uuid.Parse(claims.Sub)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoAuthToken, "用户ID格式无效")
+	}
+
+	return tenantID, userID, nil
+}
+
+func (s *AuditExecuteService) extractUsername(c *gin.Context) string {
+	claimsVal, _ := c.Get("jwt_claims")
+	if claims, ok := claimsVal.(*jwtpkg.JWTClaims); ok {
+		return claims.Username
+	}
+	return ""
+}
+
+func formatRules(rules []model.AuditRule) string {
+	if len(rules) == 0 {
+		return "（无审核规则）"
+	}
+	var sb strings.Builder
+	for i, r := range rules {
+		if !r.Enabled {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("%d. [%s] %s\n", i+1, r.RuleScope, r.RuleContent))
+	}
+	if sb.Len() == 0 {
+		return "（无启用的审核规则）"
+	}
+	return sb.String()
+}

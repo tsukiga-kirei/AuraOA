@@ -393,6 +393,115 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 	}, nil
 }
 
+// ── FetchTodoList ──────────────────────────────────────────
+
+// FetchTodoList 拉取用户在泛微 E9 中的待审批流程列表。
+// 查询 workflow_currentoperator 获取用户待办，关联 workflow_requestbase 获取流程信息。
+// 兼容 MySQL / Oracle / DM 三种驱动。
+func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([]TodoItem, error) {
+	var e9UserID int
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("hrmresource")).
+		Select(a.col("id")).
+		Where(a.col("loginid")+" = ?", username).
+		Row().Scan(&e9UserID)
+	if err != nil {
+		return nil, fmt.Errorf("OA 用户 '%s' 不存在", username)
+	}
+
+	// 查询待办：workflow_currentoperator + workflow_requestbase + workflow_base
+	query := fmt.Sprintf(`
+		SELECT
+			r.%s AS request_id,
+			r.%s AS request_name,
+			COALESCE(h.%s, '') AS applicant_name,
+			COALESCE(d.%s, '') AS dept_name,
+			COALESCE(wb.%s, '') AS workflow_name,
+			COALESCE(wt.%s, '') AS type_name,
+			COALESCE(n.%s, '') AS node_name,
+			r.%s AS create_date
+		FROM %s co
+		JOIN %s r ON co.%s = r.%s
+		LEFT JOIN %s wb ON r.%s = wb.%s
+		LEFT JOIN %s wt ON wb.%s = wt.%s
+		LEFT JOIN %s h ON r.%s = h.%s
+		LEFT JOIN %s d ON h.%s = d.%s
+		LEFT JOIN %s n ON co.%s = n.%s
+		WHERE co.%s = ? AND co.%s = 0
+		ORDER BY r.%s DESC`,
+		a.col("requestid"), a.col("requestname"),
+		a.col("lastname"), a.col("departmentname"),
+		a.col("workflowname"), a.col("typename"),
+		a.col("nodename"),
+		a.col("createdate"),
+		a.tableName("workflow_currentoperator"), // co
+		a.tableName("workflow_requestbase"),      // r
+		a.col("requestid"), a.col("requestid"),
+		a.tableName("workflow_base"),  // wb
+		a.col("workflowid"), a.col("id"),
+		a.tableName("workflow_type"),  // wt
+		a.col("workflowtype"), a.col("id"),
+		a.tableName("hrmresource"),    // h (applicant)
+		a.col("creater"), a.col("id"),
+		a.tableName("hrmdepartment"),  // d
+		a.col("departmentid"), a.col("id"),
+		a.tableName("workflow_nodebase"), // n
+		a.col("nownodeid"), a.col("id"),
+		a.col("userid"), a.col("isremark"),
+		a.col("createdate"),
+	)
+
+	rows, err := a.db.WithContext(ctx).Raw(query, e9UserID).Rows()
+	if err != nil {
+		return nil, fmt.Errorf("查询 OA 待办失败: %w", err)
+	}
+	defer rows.Close()
+
+	var items []TodoItem
+	for rows.Next() {
+		var requestID, requestName, applicant, department, workflowName, typeName, nodeName, createDate string
+		if err := rows.Scan(&requestID, &requestName, &applicant, &department, &workflowName, &typeName, &nodeName, &createDate); err != nil {
+			continue
+		}
+		items = append(items, TodoItem{
+			ProcessID:        requestID,
+			Title:            requestName,
+			Applicant:        applicant,
+			Department:       department,
+			ProcessType:      workflowName,
+			ProcessTypeLabel: typeName,
+			CurrentNode:      nodeName,
+			SubmitTime:       createDate,
+			Urgency:          "medium",
+		})
+	}
+	return items, nil
+}
+
+// IsProcessInTodo 判断指定流程是否仍在用户待办中。
+func (a *Ecology9Adapter) IsProcessInTodo(ctx context.Context, username string, processID string) (bool, error) {
+	var e9UserID int
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("hrmresource")).
+		Select(a.col("id")).
+		Where(a.col("loginid")+" = ?", username).
+		Row().Scan(&e9UserID)
+	if err != nil {
+		return false, nil
+	}
+
+	var count int64
+	err = a.db.WithContext(ctx).
+		Table(a.tableName("workflow_currentoperator")).
+		Where(a.col("userid")+" = ? AND "+a.col("requestid")+" = ? AND "+a.col("isremark")+" = 0",
+			e9UserID, processID).
+		Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("查询待办状态失败: %w", err)
+	}
+	return count > 0, nil
+}
+
 // ── mapFieldType ───────────────────────────────────────────
 
 // mapFieldType 将泛微 E9 的字段 HTML 类型映射为通用字段类型。

@@ -28,6 +28,7 @@ func SetupRouter(
 	cronHandler *handler.CronConfigHandler,
 	archiveConfigHandler *handler.ArchiveConfigHandler,
 	archiveRuleHandler *handler.ArchiveRuleHandler,
+	auditHandler *handler.AuditHandler,
 ) {
 	// Global middleware
 	r.Use(middleware.Logger(logger))
@@ -205,5 +206,16 @@ func SetupRouter(
 		// 仪表板偏好
 		tenantSettings.GET("/dashboard-prefs", userConfigHandler.GetDashboardPrefs)
 		tenantSettings.PUT("/dashboard-prefs", userConfigHandler.UpdateDashboardPrefs)
+	}
+
+	// 审核工作台（JWT + TenantContext，无角色限制）
+	audit := r.Group("/api/audit")
+	audit.Use(middleware.JWT(rdb), middleware.TenantContext())
+	{
+		audit.GET("/processes", auditHandler.ListProcesses)
+		audit.GET("/stats", auditHandler.GetStats)
+		audit.POST("/execute", auditHandler.Execute)
+		audit.POST("/batch", auditHandler.BatchExecute)
+		audit.GET("/chain/:processId", auditHandler.GetAuditChain)
 	}
 }
