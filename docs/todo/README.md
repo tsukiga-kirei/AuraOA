@@ -10,6 +10,7 @@
 | [detail-todo.md](./detail-todo.md) | **细节改进待办**：默认管理员账号、提示词模板格式约束、前端分页性能、国际化完善、UI/UX 优化、安全相关 |
 | [technical-todo.md](./technical-todo.md) | **技术改造计划**：后端分页、Redis 扩展、消息队列、OCR 附件识别、Python AI 服务、监控可观测性、多实例部署等 |
 | [personal-config-dirty-data-cleanup.md](./personal-config-dirty-data-cleanup.md) | **脏数据清理**：个人配置中因租户修改而产生的无效数据现状、改进点及实现注意事项 |
+| [../config-data-flow.md](../config-data-flow.md) | **配置数据流转全景**：租户配置、用户个人配置在数据库存储、后端处理、前端传输三层的完整数据结构和流转逻辑 |
 
 ## 优先级总览
 

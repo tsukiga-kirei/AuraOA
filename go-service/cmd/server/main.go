@@ -98,7 +98,7 @@ func main() {
 	archiveConfigService := service.NewProcessArchiveConfigService(archiveConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo)
 	archiveRuleService := service.NewArchiveRuleService(archiveRuleRepo)
 	aiCallerService := service.NewAIModelCallerService(tenantRepo, llmMessageLogRepo, db)
-	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, processAuditConfigRepo, auditRuleRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db)
+	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db)
 
 	// 7. Initialize handlers
 	authHandler := handler.NewAuthHandler(authService, rdb)

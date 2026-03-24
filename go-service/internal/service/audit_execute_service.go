@@ -22,20 +22,22 @@ const batchAuditMaxLimit = 10
 
 // AuditExecuteService 审核执行业务逻辑：串联 OA 数据 → 提示词构建 → AI 调用 → 结果解析 → 写入日志。
 type AuditExecuteService struct {
-	auditLogRepo  *repository.AuditLogRepo
-	configRepo    *repository.ProcessAuditConfigRepo
-	ruleRepo      *repository.AuditRuleRepo
-	tenantRepo    *repository.TenantRepo
-	oaConnRepo    *repository.OAConnectionRepo
-	aiModelRepo   *repository.AIModelRepo
-	aiCaller      *AIModelCallerService
-	db            *gorm.DB
+	auditLogRepo    *repository.AuditLogRepo
+	configRepo      *repository.ProcessAuditConfigRepo
+	ruleRepo        *repository.AuditRuleRepo
+	userConfigRepo  *repository.UserPersonalConfigRepo
+	tenantRepo      *repository.TenantRepo
+	oaConnRepo      *repository.OAConnectionRepo
+	aiModelRepo     *repository.AIModelRepo
+	aiCaller        *AIModelCallerService
+	db              *gorm.DB
 }
 
 func NewAuditExecuteService(
 	auditLogRepo *repository.AuditLogRepo,
 	configRepo *repository.ProcessAuditConfigRepo,
 	ruleRepo *repository.AuditRuleRepo,
+	userConfigRepo *repository.UserPersonalConfigRepo,
 	tenantRepo *repository.TenantRepo,
 	oaConnRepo *repository.OAConnectionRepo,
 	aiModelRepo *repository.AIModelRepo,
@@ -43,14 +45,15 @@ func NewAuditExecuteService(
 	db *gorm.DB,
 ) *AuditExecuteService {
 	return &AuditExecuteService{
-		auditLogRepo: auditLogRepo,
-		configRepo:   configRepo,
-		ruleRepo:     ruleRepo,
-		tenantRepo:   tenantRepo,
-		oaConnRepo:   oaConnRepo,
-		aiModelRepo:  aiModelRepo,
-		aiCaller:     aiCaller,
-		db:           db,
+		auditLogRepo:   auditLogRepo,
+		configRepo:     configRepo,
+		ruleRepo:       ruleRepo,
+		userConfigRepo: userConfigRepo,
+		tenantRepo:     tenantRepo,
+		oaConnRepo:     oaConnRepo,
+		aiModelRepo:    aiModelRepo,
+		aiCaller:       aiCaller,
+		db:             db,
 	}
 }
 
@@ -112,25 +115,26 @@ func (s *AuditExecuteService) Execute(c *gin.Context, req *AuditExecuteRequest) 
 		return nil, newServiceError(errcode.ErrInternalServer, "AI 配置解析失败")
 	}
 
-	// 4. 获取审核规则
+	// 4. 获取审核规则（租户级）
 	rules, err := s.ruleRepo.ListByConfigID(c, config.ID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "获取审核规则失败")
 	}
-	rulesText := formatRules(rules)
 
-	// 5. 从 OA 拉取流程数据
+	// 5. 获取用户个人配置，合并字段选择 + 规则覆盖
+	fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
+
+	// 6. 从 OA 拉取流程数据
 	processData, err := s.fetchOAData(c, tenant, req.ProcessID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 6. 获取当前节点（优先用 OA 数据，否则用请求中的值）
-	// TODO: 从 OA 待办中获取精确的 current_node
+	// 7. 获取当前节点
 	currentNode := "当前节点"
 
-	// 7. 阶段一：推理
-	reasoningReq := BuildReasoningPrompt(&aiConfig, req.ProcessType, processData, rulesText, currentNode)
+	// 8. 阶段一：推理
+	reasoningReq := BuildReasoningPrompt(&aiConfig, req.ProcessType, processData, mergedRulesText, currentNode, fieldSet)
 	reasoningReq.Temperature = float64(tenant.Temperature)
 	reasoningReq.MaxTokens = tenant.MaxTokensPerRequest
 	reasoningReq.ModelConfig = modelCfg
@@ -141,8 +145,8 @@ func (s *AuditExecuteService) Execute(c *gin.Context, req *AuditExecuteRequest) 
 	}
 	aiReasoning := reasoningResp.Content
 
-	// 8. 阶段二：提取
-	extractionReq := BuildExtractionPrompt(&aiConfig, aiReasoning, rulesText)
+	// 9. 阶段二：提取
+	extractionReq := BuildExtractionPrompt(&aiConfig, aiReasoning, mergedRulesText)
 	extractionReq.Temperature = 0.1
 	extractionReq.MaxTokens = tenant.MaxTokensPerRequest
 	extractionReq.ModelConfig = modelCfg
@@ -490,17 +494,210 @@ func (s *AuditExecuteService) extractUsername(c *gin.Context) string {
 	return ""
 }
 
+func isRuleEnabled(r *model.AuditRule) bool {
+	return r.Enabled == nil || *r.Enabled
+}
+
 func formatRules(rules []model.AuditRule) string {
 	if len(rules) == 0 {
 		return "（无审核规则）"
 	}
 	var sb strings.Builder
 	for i, r := range rules {
-		if !r.Enabled {
+		if !isRuleEnabled(&r) {
 			continue
 		}
 		sb.WriteString(fmt.Sprintf("%d. [%s] %s\n", i+1, r.RuleScope, r.RuleContent))
 	}
+	if sb.Len() == 0 {
+		return "（无启用的审核规则）"
+	}
+	return sb.String()
+}
+
+// resolveUserConfig 解析租户流程配置 + 用户个人配置，返回最终字段集和规则文本。
+//
+// 核心原则：以租户配置为权威来源，用户个人配置是"锦上添花"。
+//   - 租户已删除的字段/规则 → 自动忽略用户中的对应残留（读时过滤）
+//   - 租户关闭 AllowCustomFields → 用户 field_overrides 不生效
+//   - 租户关闭 AllowCustomRules → 用户 custom_rules 不生效
+//   - mandatory 规则 → 始终强制启用，无论租户 Enabled 或用户 override
+func (s *AuditExecuteService) resolveUserConfig(
+	c *gin.Context, userID uuid.UUID,
+	config *model.ProcessAuditConfig,
+	tenantRules []model.AuditRule,
+	processType string,
+) (SelectedFieldSet, string) {
+	// 解析租户权限配置
+	var perms model.UserPermissionsData
+	if err := json.Unmarshal(config.UserPermissions, &perms); err != nil {
+		perms = model.UserPermissionsData{
+			AllowCustomFields: true, AllowCustomRules: true, AllowModifyStrictness: true,
+		}
+	}
+
+	// 获取用户个人配置
+	var userDetail *model.AuditDetailItem
+	userCfg, _ := s.userConfigRepo.GetByUserID(c, userID)
+	if userCfg != nil {
+		var items []model.AuditDetailItem
+		_ = json.Unmarshal(userCfg.AuditDetails, &items)
+		for i := range items {
+			if items[i].ProcessType == processType || items[i].ConfigID == config.ID {
+				userDetail = &items[i]
+				break
+			}
+		}
+	}
+
+	// ── 字段解析 ──
+	fieldSet := s.resolveFieldSet(config, userDetail, perms)
+
+	// ── 规则解析 ──
+	rulesText := s.resolveRulesText(tenantRules, userDetail, perms)
+
+	return fieldSet, rulesText
+}
+
+func (s *AuditExecuteService) resolveFieldSet(
+	config *model.ProcessAuditConfig,
+	userDetail *model.AuditDetailItem,
+	perms model.UserPermissionsData,
+) SelectedFieldSet {
+	if config.FieldMode == "all" {
+		return nil
+	}
+
+	type fieldItem struct {
+		FieldKey string `json:"field_key"`
+		Selected bool   `json:"selected"`
+	}
+	type detailTableItem struct {
+		TableName string      `json:"table_name"`
+		Fields    []fieldItem `json:"fields"`
+	}
+
+	var mainFields []fieldItem
+	var detailTables []detailTableItem
+	_ = json.Unmarshal(config.MainFields, &mainFields)
+	_ = json.Unmarshal(config.DetailTables, &detailTables)
+
+	// 构建租户字段索引：只有租户当前字段列表中存在的 key 才有资格被选中
+	tenantFieldIndex := make(map[string]map[string]bool) // table -> fieldKey -> exists
+	tenantFieldIndex["main"] = make(map[string]bool)
+	for _, f := range mainFields {
+		tenantFieldIndex["main"][f.FieldKey] = true
+	}
+	for _, dt := range detailTables {
+		tenantFieldIndex[dt.TableName] = make(map[string]bool)
+		for _, f := range dt.Fields {
+			tenantFieldIndex[dt.TableName][f.FieldKey] = true
+		}
+	}
+
+	// 用户额外字段：仅在权限允许且字段仍存在于租户列表时生效
+	userAddedMap := make(map[string]map[string]bool)
+	if userDetail != nil && perms.AllowCustomFields {
+		for _, key := range userDetail.FieldConfig.FieldOverrides {
+			parts := strings.SplitN(key, ":", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			table, field := parts[0], parts[1]
+			if tenantFieldIndex[table] == nil || !tenantFieldIndex[table][field] {
+				continue
+			}
+			if userAddedMap[table] == nil {
+				userAddedMap[table] = make(map[string]bool)
+			}
+			userAddedMap[table][field] = true
+		}
+	}
+
+	fieldSet := make(SelectedFieldSet)
+
+	mainSet := make(map[string]bool)
+	for _, f := range mainFields {
+		if f.Selected || (userAddedMap["main"] != nil && userAddedMap["main"][f.FieldKey]) {
+			mainSet[strings.ToLower(f.FieldKey)] = true
+		}
+	}
+	if len(mainSet) > 0 {
+		fieldSet["main"] = mainSet
+	}
+
+	for _, dt := range detailTables {
+		dtSet := make(map[string]bool)
+		for _, f := range dt.Fields {
+			if f.Selected || (userAddedMap[dt.TableName] != nil && userAddedMap[dt.TableName][f.FieldKey]) {
+				dtSet[strings.ToLower(f.FieldKey)] = true
+			}
+		}
+		if len(dtSet) > 0 {
+			fieldSet[dt.TableName] = dtSet
+		}
+	}
+
+	return fieldSet
+}
+
+func (s *AuditExecuteService) resolveRulesText(
+	tenantRules []model.AuditRule,
+	userDetail *model.AuditDetailItem,
+	perms model.UserPermissionsData,
+) string {
+	// 构建用户规则开关覆盖 map（仅引用仍存在于租户规则中的 ID）
+	tenantRuleIDs := make(map[string]bool, len(tenantRules))
+	for _, r := range tenantRules {
+		tenantRuleIDs[r.ID.String()] = true
+	}
+
+	toggleMap := make(map[string]bool)
+	var customRules []model.CustomRule
+	if userDetail != nil {
+		for _, t := range userDetail.RuleConfig.RuleToggleOverrides {
+			if !tenantRuleIDs[t.RuleID] {
+				continue
+			}
+			toggleMap[t.RuleID] = t.Enabled
+		}
+		customRules = userDetail.RuleConfig.CustomRules
+	}
+
+	var sb strings.Builder
+	idx := 1
+
+	for _, r := range tenantRules {
+		// mandatory 规则始终强制启用
+		if r.RuleScope == "mandatory" {
+			sb.WriteString(fmt.Sprintf("%d. [%s] %s\n", idx, r.RuleScope, r.RuleContent))
+			idx++
+			continue
+		}
+
+		// 非 mandatory：先取租户默认 Enabled，再看用户覆盖
+		enabled := isRuleEnabled(&r)
+		if override, ok := toggleMap[r.ID.String()]; ok {
+			enabled = override
+		}
+		if !enabled {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("%d. [%s] %s\n", idx, r.RuleScope, r.RuleContent))
+		idx++
+	}
+
+	// 用户自定义规则：仅在权限允许时追加
+	if perms.AllowCustomRules {
+		for _, cr := range customRules {
+			if !cr.Enabled {
+				continue
+			}
+			sb.WriteString(fmt.Sprintf("%d. [用户自定义] %s\n", idx, cr.Content))
+			idx++
+		}
+	}
+
 	if sb.Len() == 0 {
 		return "（无启用的审核规则）"
 	}

@@ -365,13 +365,13 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 		Distinct(a.col("detailtable")).
 		Count(&detailCount)
 
-	// 查询各明细表数据
-	var detailData []map[string]interface{}
+	// 查询各明细表数据，按表名分组
+	detailTables := make(map[string][]map[string]interface{})
 	for i := 1; i <= int(detailCount); i++ {
-		dtTableName := a.tableName(fmt.Sprintf("%s_dt%d", tableDBName, i))
+		dtRawName := fmt.Sprintf("%s_dt%d", tableDBName, i)
+		dtTableName := a.tableName(dtRawName)
 		var rows []map[string]interface{}
 
-		// 统一使用 EXISTS 子查询，兼容 MySQL / Oracle / DM
 		subQuery := fmt.Sprintf(
 			"EXISTS (SELECT 1 FROM %s m WHERE m.%s = %s.%s AND m.%s = ?)",
 			mainTableName,
@@ -383,13 +383,15 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 			Where(subQuery, processID).
 			Find(&rows)
 
-		detailData = append(detailData, rows...)
+		if len(rows) > 0 {
+			detailTables[dtRawName] = rows
+		}
 	}
 
 	return &ProcessData{
-		ProcessID:  processID,
-		MainData:   mainData,
-		DetailData: detailData,
+		ProcessID:    processID,
+		MainData:     mainData,
+		DetailTables: detailTables,
 	}, nil
 }
 

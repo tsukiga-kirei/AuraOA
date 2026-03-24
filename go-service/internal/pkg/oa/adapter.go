@@ -59,9 +59,9 @@ type ProcessFields struct {
 
 // ProcessData 流程实例业务数据
 type ProcessData struct {
-	ProcessID  string                   `json:"process_id"`
-	MainData   map[string]interface{}   `json:"main_data"`
-	DetailData []map[string]interface{} `json:"detail_data"`
+	ProcessID    string                                `json:"process_id"`
+	MainData     map[string]interface{}                `json:"main_data"`
+	DetailTables map[string][]map[string]interface{}   `json:"detail_tables"`
 }
 
 // TodoItem OA 待办流程条目
