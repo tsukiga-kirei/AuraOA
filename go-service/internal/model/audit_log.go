@@ -7,6 +7,15 @@ import (
 	"gorm.io/datatypes"
 )
 
+// 审核日志异步状态（与 DB 迁移 000013 一致）
+const (
+	AuditStatusPending    = "pending"
+	AuditStatusReasoning  = "reasoning"
+	AuditStatusExtracting = "extracting"
+	AuditStatusCompleted  = "completed"
+	AuditStatusFailed     = "failed"
+)
+
 // AuditLog 审核日志，记录每次审核执行的结果。
 type AuditLog struct {
 	ID             uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
@@ -15,6 +24,7 @@ type AuditLog struct {
 	ProcessID      string         `gorm:"size:100;not null" json:"process_id"`
 	Title          string         `gorm:"size:500;not null" json:"title"`
 	ProcessType    string         `gorm:"size:200;not null" json:"process_type"`
+	Status         string         `gorm:"size:20;not null;default:completed" json:"status"`
 	Recommendation string         `gorm:"size:20;not null" json:"recommendation"`
 	Score          int            `gorm:"not null;default:0" json:"score"`
 	AuditResult    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"audit_result"`
@@ -23,17 +33,21 @@ type AuditLog struct {
 	Confidence     int            `gorm:"not null;default:0" json:"confidence"`
 	RawContent     string         `gorm:"type:text;default:''" json:"raw_content"`
 	ParseError     string         `gorm:"type:text;default:''" json:"parse_error"`
+	ErrorMessage   string         `gorm:"type:text;default:''" json:"error_message"`
 	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `gorm:"not null;default:now()" json:"updated_at"`
 }
 
-// AuditResultJSON 提取阶段 JSON Schema 的 Go 映射（固定结构，前后端共用）
+// AuditResultJSON 提取阶段 JSON Schema 的 Go 映射（固定结构，前后端共用）。
+// 部分模型会输出与归档复盘一致的 overall_compliance，而非 recommendation；解析时会归一并可保留原始合规字段。
 type AuditResultJSON struct {
-	Recommendation string           `json:"recommendation"`
-	OverallScore   int              `json:"overall_score"`
-	RuleResults    []RuleResultJSON `json:"rule_results"`
-	RiskPoints     []string         `json:"risk_points"`
-	Suggestions    []string         `json:"suggestions"`
-	Confidence     int              `json:"confidence"`
+	Recommendation    string           `json:"recommendation"`
+	OverallCompliance string           `json:"overall_compliance,omitempty"`
+	OverallScore      int              `json:"overall_score"`
+	RuleResults       []RuleResultJSON `json:"rule_results"`
+	RiskPoints        []string         `json:"risk_points"`
+	Suggestions       []string         `json:"suggestions"`
+	Confidence        int              `json:"confidence"`
 }
 
 // RuleResultJSON 单条规则校验结果

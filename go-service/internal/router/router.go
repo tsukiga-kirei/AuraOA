@@ -215,6 +215,7 @@ func SetupRouter(
 		audit.GET("/processes", auditHandler.ListProcesses)
 		audit.GET("/stats", auditHandler.GetStats)
 		audit.POST("/execute", auditHandler.Execute)
+		audit.GET("/jobs/:id", auditHandler.GetJobStatus)
 		audit.POST("/batch", auditHandler.BatchExecute)
 		audit.GET("/chain/:processId", auditHandler.GetAuditChain)
 	}

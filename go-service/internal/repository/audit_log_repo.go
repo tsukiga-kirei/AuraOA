@@ -27,11 +27,26 @@ func (r *AuditLogRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.AuditLog, e
 	return &log, err
 }
 
+// UpdateFields 更新审核日志指定字段（租户隔离）。
+func (r *AuditLogRepo) UpdateFields(c *gin.Context, id uuid.UUID, updates map[string]interface{}) error {
+	return r.WithTenant(c).Model(&model.AuditLog{}).Where("id = ?", id).Updates(updates).Error
+}
+
 // ListByProcessID 查询某流程的所有审核记录（审核链），按时间倒序。
 func (r *AuditLogRepo) ListByProcessID(c *gin.Context, processID string) ([]model.AuditLog, error) {
 	var logs []model.AuditLog
 	err := r.WithTenant(c).
 		Where("process_id = ?", processID).
+		Order("created_at DESC").
+		Find(&logs).Error
+	return logs, err
+}
+
+// ListCompletedByProcessID 审核链：仅已完成的记录，按时间倒序。
+func (r *AuditLogRepo) ListCompletedByProcessID(c *gin.Context, processID string) ([]model.AuditLog, error) {
+	var logs []model.AuditLog
+	err := r.WithTenant(c).
+		Where("process_id = ? AND status = ?", processID, model.AuditStatusCompleted).
 		Order("created_at DESC").
 		Find(&logs).Error
 	return logs, err

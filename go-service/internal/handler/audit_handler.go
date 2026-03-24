@@ -4,7 +4,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
+	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
 	"oa-smart-audit/go-service/internal/pkg/response"
@@ -60,7 +62,31 @@ func (h *AuditHandler) Execute(c *gin.Context) {
 		handleServiceError(c, err)
 		return
 	}
+	if result.Status == model.AuditStatusPending {
+		c.JSON(http.StatusAccepted, response.Response{
+			Code:    0,
+			Message: "accepted",
+			Data:    result,
+		})
+		return
+	}
 	response.Success(c, result)
+}
+
+// GetJobStatus GET /api/audit/jobs/:id
+func (h *AuditHandler) GetJobStatus(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "任务 ID 无效")
+		return
+	}
+	data, err := h.auditService.GetAuditJobStatus(c, id)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, data)
 }
 
 // BatchExecute POST /api/audit/batch

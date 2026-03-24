@@ -98,7 +98,11 @@ func main() {
 	archiveConfigService := service.NewProcessArchiveConfigService(archiveConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo)
 	archiveRuleService := service.NewArchiveRuleService(archiveRuleRepo)
 	aiCallerService := service.NewAIModelCallerService(tenantRepo, llmMessageLogRepo, db)
-	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db)
+	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db, rdb)
+
+	if err := service.StartAuditStreamWorker(context.Background(), rdb, auditExecuteService, logger, 2); err != nil {
+		logger.Warn("audit stream worker not started", zap.Error(err))
+	}
 
 	// 7. Initialize handlers
 	authHandler := handler.NewAuthHandler(authService, rdb)
