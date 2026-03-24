@@ -141,6 +141,7 @@ const batchAborted = ref(false)
 const batchAuditTotal = ref(0)
 const batchAuditDone = ref(0)
 const currentInflightProcessId = ref<string | null>(null)
+const pollProcessId = ref<string | null>(null)
 
 const toggleSelectProcess = (processId: string) => {
   const idx = selectedProcessIds.value.indexOf(processId)
@@ -149,11 +150,19 @@ const toggleSelectProcess = (processId: string) => {
   else message.warning(t('dashboard.batchLimitHint'))
 }
 
+const selectableIdsComputed = computed(() => {
+  return filteredList.value
+    .filter(p => !(p.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(p.audit_status)))
+    .map(p => p.process_id)
+})
+
 const toggleSelectAll = () => {
-  if (selectedProcessIds.value.length === Math.min(filteredList.value.length, 10)) {
+  const selectableIds = selectableIdsComputed.value
+  
+  if (selectedProcessIds.value.length === Math.min(selectableIds.length, 10) || selectableIds.length === 0) {
     selectedProcessIds.value = []
   } else {
-    selectedProcessIds.value = filteredList.value.slice(0, 10).map(p => p.process_id)
+    selectedProcessIds.value = selectableIds.slice(0, 10)
   }
 }
 
@@ -195,6 +204,7 @@ const switchTab = (tab: AuditTab) => {
   selectedProcessIds.value = []
   filterAuditStatus.value = undefined
   loadProcesses()
+  loadStats()
 }
 
 const handleSelectProcess = (processId: string) => {
@@ -203,10 +213,37 @@ const handleSelectProcess = (processId: string) => {
   if (item?.audit_result) {
     currentResult.value = { ...item.audit_result }
     const st = item.audit_status ?? item.audit_result.status
-    phase1Done.value = st === 'completed' || st === 'failed' || !!item.has_audit
+    if (st && ['pending', 'assembling', 'reasoning', 'extracting'].includes(st)) {
+       if (!currentResult.value.progress_steps) {
+         currentResult.value.progress_steps = [
+           { key: 'pending', label: '排队中', done: st !== 'pending', current: st === 'pending' },
+           { key: 'assembling', label: '组装提示词', done: ['reasoning','extracting'].includes(st), current: st === 'assembling' },
+           { key: 'reasoning', label: '推理分析', done: st === 'extracting', current: st === 'reasoning' },
+           { key: 'extracting', label: '结构化提取', done: false, current: st === 'extracting' },
+         ]
+       }
+
+       if (item.audit_result.id && pollProcessId.value !== processId) {
+          pollProcessId.value = processId
+          waitAuditJob(item.audit_result.id, (st) => {
+             if (selectedProcess.value === processId) currentResult.value = st as any
+             item.audit_status = st.status as any
+             item.audit_result = st as any
+          }).then(st => {
+             if (selectedProcess.value === processId) currentResult.value = st as any
+             item.audit_status = st.status as any
+             item.audit_result = st as any
+             item.has_audit = st.status === 'completed'
+             if (pollProcessId.value === processId) pollProcessId.value = null
+             loadProcesses()
+             loadStats()
+          }).catch(() => {
+             if (pollProcessId.value === processId) pollProcessId.value = null
+          })
+       }
+    }
   } else {
     currentResult.value = null
-    phase1Done.value = false
   }
 }
 
@@ -215,30 +252,43 @@ const handleAudit = async (processId: string) => {
   const item = processList.value.find(p => p.process_id === processId)
   if (!item) return
   loading.value = true
-  phase1Done.value = false
+  currentResult.value = {
+    progress_steps: [
+      { key: 'pending', label: '排队中', done: false, current: true },
+      { key: 'assembling', label: '组装提示词', done: false, current: false },
+      { key: 'reasoning', label: '推理分析', done: false, current: false },
+      { key: 'extracting', label: '结构化提取', done: false, current: false },
+    ],
+    status: 'pending',
+    process_id: processId
+  } as any
+  let started = false
+
   try {
-    const timer = setTimeout(() => { phase1Done.value = true }, 2500)
     const result = await executeAudit({
       process_id: processId,
       process_type: item.process_type,
       title: item.title,
     }, (st) => {
+      if (!started) {
+         started = true
+         loadStats() // 立即更新左侧和头部的角标
+      }
       if (selectedProcess.value === processId) {
         currentResult.value = { ...st }
       }
-      item.audit_status = st.status
-      item.audit_result = { ...st }
+      item.audit_status = st.status as any
+      item.audit_result = { ...st } as any
     })
-    clearTimeout(timer)
-    phase1Done.value = true
     currentResult.value = result
-    item.audit_status = result.status
+    item.audit_status = result.status as any
     item.audit_result = result
     item.has_audit = result.status === 'completed'
     await loadStats()
     await loadProcesses()
   } catch (e: any) {
     message.error(e?.message || t('dashboard.auditFailed'))
+    currentResult.value = null
   } finally {
     loading.value = false
   }
@@ -246,8 +296,9 @@ const handleAudit = async (processId: string) => {
 
 const handleReAudit = async () => {
   if (!selectedProcess.value) return
-  currentResult.value = null
-  await handleAudit(selectedProcess.value)
+  const pid = selectedProcess.value
+  await handleAudit(pid)
+  // 如果是已完成页签重新审核，它会回到待审核并从当前列表消失，为了不引发困惑，我们不自动退回，而是通过 loadProcesses() 刷新列表
 }
 
 const handleCancelAudit = async (processId: string) => {
@@ -376,6 +427,12 @@ const urgencyConfig = computed<Record<string, { color: string; bg: string; label
 const isResultAsyncRunning = (r: AuditResult | null) =>
   !!(r?.status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(r.status))
 
+const filteredProgressSteps = computed(() => {
+  if (!currentResult.value?.progress_steps) return []
+  if (batchAuditing.value) return currentResult.value.progress_steps
+  return currentResult.value.progress_steps.filter(s => s.key !== 'pending')
+})
+
 const recommendationConfig = computed<Record<string, { color: string; bg: string; icon: any; label: string }>>(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
   return: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: ReloadOutlined, label: t('dashboard.rec.return') },
@@ -497,8 +554,8 @@ onMounted(() => {
           <div v-if="activeTab === 'pending_ai'" class="batch-toolbar">
             <div class="batch-toolbar-left">
               <a-checkbox
-                :checked="selectedProcessIds.length > 0 && selectedProcessIds.length === Math.min(filteredList.length, 10)"
-                :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < Math.min(filteredList.length, 10)"
+                :checked="selectedProcessIds.length > 0 && selectedProcessIds.length === Math.min(selectableIdsComputed.length, 10)"
+                :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < Math.min(selectableIdsComputed.length, 10)"
                 @change="toggleSelectAll"
               >
                 {{ selectedProcessIds.length > 0 ? t('dashboard.selected', `${selectedProcessIds.length}`) : t('dashboard.selectAll') }}
@@ -649,40 +706,14 @@ onMounted(() => {
         </div>
 
         <div class="result-content">
-          <!--加载状态：两阶段-->
-          <div v-if="loading" class="result-loading">
-            <div v-if="selectedProcessInfo" class="loading-process-info">
-              <div class="loading-process-title">{{ selectedProcessInfo.title }}</div>
-              <div class="loading-process-meta">
-                {{ selectedProcessInfo.applicant }} · {{ selectedProcessInfo.department }} · {{ selectedProcessInfo.submit_time }}
-              </div>
-            </div>
-            <div class="audit-progress">
-              <div class="audit-phase" :class="{ 'audit-phase--done': phase1Done, 'audit-phase--active': !phase1Done }">
-                <div class="audit-phase-dot">
-                  <LoadingOutlined v-if="!phase1Done" />
-                  <CheckCircleOutlined v-else style="color: var(--color-success);" />
-                </div>
-                <div class="audit-phase-info">
-                  <div class="audit-phase-title">{{ t('dashboard.phase1') }}</div>
-                  <div class="audit-phase-desc">{{ t('dashboard.phase1Duration') }}</div>
-                </div>
-              </div>
-              <div class="audit-phase" :class="{ 'audit-phase--active': phase1Done, 'audit-phase--pending': !phase1Done }">
-                <div class="audit-phase-dot">
-                  <LoadingOutlined v-if="phase1Done" />
-                  <div v-else class="phase-pending-dot" />
-                </div>
-                <div class="audit-phase-info">
-                  <div class="audit-phase-title">{{ t('dashboard.phase2') }}</div>
-                  <div class="audit-phase-desc">{{ t('dashboard.phase2Duration') }}</div>
-                </div>
-              </div>
-            </div>
+          <!--非 pending_ai 页签：未选中任何记录-->
+          <div v-if="!selectedProcess" class="result-empty">
+            <div class="result-empty-icon"><FileOutlined /></div>
+            <p>{{ t('dashboard.selectProcessHint', '请在左侧列表中选择一个流程以查看明细') }}</p>
           </div>
 
           <!--pending_ai 页签：已选未审核 → 操作提示-->
-          <template v-else-if="activeTab === 'pending_ai' && selectedProcess && !currentResult">
+          <template v-else-if="activeTab === 'pending_ai' && selectedProcess && !isResultAsyncRunning(currentResult)">
             <div class="action-prompt">
               <div class="action-prompt-info">
                 <h4>{{ selectedProcessInfo?.title }}</h4>
@@ -714,7 +745,7 @@ onMounted(() => {
               <a-spin size="large">
                 <div class="async-progress-steps">
                   <div
-                    v-for="s in (currentResult.progress_steps || [])"
+                    v-for="s in filteredProgressSteps"
                     :key="s.key"
                     class="async-step-row"
                   >
