@@ -39,11 +39,10 @@ type AuditLog struct {
 }
 
 // AuditResultJSON 提取阶段 JSON Schema 的 Go 映射（固定结构，前后端共用）。
-// 部分模型会输出与归档复盘一致的 overall_compliance，而非 recommendation；解析时会归一并可保留原始合规字段。
+// 解析时若模型仅输出 overall_compliance（见 extractionPayload），会映射为 recommendation，不单独落库。
 type AuditResultJSON struct {
-	Recommendation    string           `json:"recommendation"`
-	OverallCompliance string           `json:"overall_compliance,omitempty"`
-	OverallScore      int              `json:"overall_score"`
+	Recommendation string           `json:"recommendation"`
+	OverallScore   int              `json:"overall_score"`
 	RuleResults       []RuleResultJSON `json:"rule_results"`
 	RiskPoints        []string         `json:"risk_points"`
 	Suggestions       []string         `json:"suggestions"`

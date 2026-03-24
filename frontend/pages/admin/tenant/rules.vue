@@ -766,25 +766,25 @@ const getTemplateContent = (promptKey: string) => {
 const handleStrictnessChange = (value: string) => {
   if (!selectedConfig.value) return
   selectedConfig.value.ai_config.audit_strictness = value as any
-  selectedConfig.value.ai_config.system_reasoning_prompt = getTemplateContent(`system_reasoning_${value}`)
-  selectedConfig.value.ai_config.system_extraction_prompt = getTemplateContent(`system_extraction_${value}`)
-  selectedConfig.value.ai_config.user_reasoning_prompt = getTemplateContent(`user_reasoning_${value}`)
-  selectedConfig.value.ai_config.user_extraction_prompt = getTemplateContent(`user_extraction_${value}`)
+  selectedConfig.value.ai_config.system_reasoning_prompt = getTemplateContent(`audit_system_reasoning_${value}`)
+  selectedConfig.value.ai_config.system_extraction_prompt = getTemplateContent(`audit_system_extraction_${value}`)
+  selectedConfig.value.ai_config.user_reasoning_prompt = getTemplateContent(`audit_user_reasoning_${value}`)
+  selectedConfig.value.ai_config.user_extraction_prompt = getTemplateContent(`audit_user_extraction_${value}`)
 }
 
 const resetSystemPrompts = () => {
   if (!selectedConfig.value) return
   const strictness = selectedConfig.value.ai_config.audit_strictness || 'standard'
-  selectedConfig.value.ai_config.system_reasoning_prompt = getTemplateContent(`system_reasoning_${strictness}`)
-  selectedConfig.value.ai_config.system_extraction_prompt = getTemplateContent(`system_extraction_${strictness}`)
+  selectedConfig.value.ai_config.system_reasoning_prompt = getTemplateContent(`audit_system_reasoning_${strictness}`)
+  selectedConfig.value.ai_config.system_extraction_prompt = getTemplateContent(`audit_system_extraction_${strictness}`)
   message.success(t('admin.ruleConfig.systemPromptsReset'))
 }
 
 const resetUserPrompts = () => {
   if (!selectedConfig.value) return
   const strictness = selectedConfig.value.ai_config.audit_strictness || 'standard'
-  selectedConfig.value.ai_config.user_reasoning_prompt = getTemplateContent(`user_reasoning_${strictness}`)
-  selectedConfig.value.ai_config.user_extraction_prompt = getTemplateContent(`user_extraction_${strictness}`)
+  selectedConfig.value.ai_config.user_reasoning_prompt = getTemplateContent(`audit_user_reasoning_${strictness}`)
+  selectedConfig.value.ai_config.user_extraction_prompt = getTemplateContent(`audit_user_extraction_${strictness}`)
   message.success(t('admin.ruleConfig.userPromptsReset'))
 }
 

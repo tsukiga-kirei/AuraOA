@@ -11,7 +11,7 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/oa"
 )
 
-// extractionPayload 提取阶段宽松解析：兼容 recommendation 与 overall_compliance 两套口径（见 docs/todo/detail-todo.md）。
+// extractionPayload 提取阶段宽松解析：主字段为 recommendation；若模型误用 overall_compliance 则映射为 recommendation。
 // 分数类字段用 float64，避免部分模型输出 85.0 导致整型反序列化失败。
 type extractionPayload struct {
 	Recommendation    string                 `json:"recommendation"`
@@ -77,7 +77,7 @@ func BuildPrompt(aiConfig *model.AIConfigData, processType string, fields string
 }
 
 // ParseAuditResult 解析 AI 提取阶段返回的 JSON 为结构化结果。
-// 兼容：1) recommendation（approve/return/review）；2) overall_compliance（compliant/non_compliant/partially_compliant 等，与归档口径一致）；3) overall_score 与 score 互为补充。
+// 兼容：1) recommendation（approve/return/review）；2) 仅 overall_compliance（compliant 族）时映射为 recommendation；3) overall_score 与 score 互为补充。
 func ParseAuditResult(raw string) (*model.AuditResultJSON, error) {
 	cleaned := cleanJSONResponse(raw)
 	var p extractionPayload
@@ -86,17 +86,16 @@ func ParseAuditResult(raw string) (*model.AuditResultJSON, error) {
 	}
 
 	out := &model.AuditResultJSON{
-		RuleResults:       coalesceRuleResults(p.RuleResults),
-		RiskPoints:        coalesceStringSlice(p.RiskPoints),
-		Suggestions:       coalesceStringSlice(p.Suggestions),
-		OverallScore:      pickOverallScoreInt(p.OverallScore, p.Score),
-		OverallCompliance: strings.TrimSpace(p.OverallCompliance),
-		Confidence:        clampPercentInt(p.Confidence),
+		RuleResults:  coalesceRuleResults(p.RuleResults),
+		RiskPoints:   coalesceStringSlice(p.RiskPoints),
+		Suggestions:  coalesceStringSlice(p.Suggestions),
+		OverallScore: pickOverallScoreInt(p.OverallScore, p.Score),
+		Confidence:   clampPercentInt(p.Confidence),
 	}
 
 	rec := normalizeAuditRecommendation(strings.TrimSpace(p.Recommendation))
 	if rec == "" {
-		rec = recommendationFromOverallCompliance(p.OverallCompliance)
+		rec = mapComplianceAliasToRecommendation(p.OverallCompliance)
 	}
 	if rec == "" {
 		return nil, fmt.Errorf("缺少有效结论：请提供 recommendation（approve/return/review）或 overall_compliance（如 compliant/non_compliant/partially_compliant）")
@@ -158,8 +157,8 @@ func normalizeAuditRecommendation(s string) string {
 	}
 }
 
-// recommendationFromOverallCompliance 将归档/合规口径映射为审核台 recommendation（与 archive 模块 compliant 族一致）。
-func recommendationFromOverallCompliance(s string) string {
+// mapComplianceAliasToRecommendation 将 compliant/non_compliant/partially_compliant 等映射为 approve/return/review。
+func mapComplianceAliasToRecommendation(s string) string {
 	if s == "" {
 		return ""
 	}
@@ -267,17 +266,8 @@ func formatGroupedDetailData(detailTables map[string][]map[string]interface{}, f
 
 func cleanJSONResponse(raw string) string {
 	s := strings.TrimSpace(raw)
-	if idx := strings.Index(s, "```json"); idx >= 0 {
-		s = s[idx+7:]
-		if end := strings.Index(s, "```"); end >= 0 {
-			s = s[:end]
-		}
-	} else if idx := strings.Index(s, "```"); idx >= 0 {
-		s = s[idx+3:]
-		if end := strings.Index(s, "```"); end >= 0 {
-			s = s[:end]
-		}
-	}
+	s = stripLeadingEllipsisPrefix(s)
+	s = extractJSONFromMarkdownFence(s)
 	s = strings.TrimSpace(s)
 	start := strings.Index(s, "{")
 	end := strings.LastIndex(s, "}")
@@ -285,6 +275,57 @@ func cleanJSONResponse(raw string) string {
 		s = s[start : end+1]
 	}
 	return s
+}
+
+// extractJSONFromMarkdownFence 若模型用 markdown 代码块包裹 JSON（```json … ``` 或 ``` … ```），只取中间正文再交给后续解析。
+func extractJSONFromMarkdownFence(s string) string {
+	lower := strings.ToLower(s)
+	if idx := strings.Index(lower, "```json"); idx >= 0 {
+		inner := s[idx+7:]
+		inner = strings.TrimLeft(inner, " \t\r\n")
+		if end := strings.Index(inner, "```"); end >= 0 {
+			inner = inner[:end]
+		}
+		return strings.TrimSpace(inner)
+	}
+	if idx := strings.Index(s, "```"); idx >= 0 {
+		inner := s[idx+3:]
+		inner = strings.TrimLeft(inner, " \t\r\n")
+		if end := strings.Index(inner, "```"); end >= 0 {
+			inner = inner[:end]
+		}
+		return strings.TrimSpace(inner)
+	}
+	return s
+}
+
+// stripLeadingEllipsisPrefix 去掉模型在 JSON 前附加的省略号（如 ...、…），避免首字符不是 { 导致截断错位。
+func stripLeadingEllipsisPrefix(s string) string {
+	for {
+		t := strings.TrimSpace(s)
+		if t == "" {
+			return t
+		}
+		if strings.HasPrefix(t, "...") {
+			s = t[3:]
+			continue
+		}
+		if strings.HasPrefix(t, "…") {
+			s = t[len("…"):]
+			continue
+		}
+		// 文首连续英文句点（如 .. 或单独 .）
+		i := 0
+		for i < len(t) && t[i] == '.' {
+			i++
+		}
+		if i > 0 {
+			s = t[i:]
+			continue
+		}
+		break
+	}
+	return strings.TrimSpace(s)
 }
 
 func truncate(s string, maxLen int) string {

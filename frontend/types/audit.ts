@@ -1,5 +1,8 @@
 // types/audit.ts — 审核工作台相关类型定义
 
+/** 异步审核阶段（与后端 audit_logs.status 一致） */
+export type AuditRunStatus = 'pending' | 'reasoning' | 'extracting' | 'completed' | 'failed'
+
 /** OA 流程列表项（后端聚合 OA 待办 + AI 审核状态返回） */
 export interface OAProcessItem {
   process_id: string
@@ -12,6 +15,8 @@ export interface OAProcessItem {
   submit_time: string
   urgency: 'high' | 'medium' | 'low'
   has_audit: boolean
+  /** 当前最新一条审核记录的状态（含进行中的异步任务） */
+  audit_status?: AuditRunStatus
   audit_result?: AuditResult | null
 }
 
@@ -20,8 +25,14 @@ export interface AuditResult {
   id?: string
   trace_id: string
   process_id: string
-  recommendation: 'approve' | 'return' | 'review'
-  overall_score: number
+  /** 异步审核：进行中 / 失败时由后端填充 */
+  status?: AuditRunStatus
+  error_message?: string
+  /** GET /api/audit/jobs/:id 返回的进度步骤 */
+  progress_steps?: { key: string; label: string; done?: boolean; current?: boolean; failed?: boolean }[]
+  updated_at?: string
+  recommendation?: 'approve' | 'return' | 'review'
+  overall_score?: number
   rule_results: RuleResultItem[]
   risk_points: string[]
   suggestions: string[]
@@ -85,4 +96,15 @@ export interface AuditStats {
   pending_ai_count: number
   ai_done_count: number
   completed_count: number
+  /** 今日审核成功条数（status=completed 且当日） */
+  today_completed_count: number
+}
+
+/** POST /api/audit/execute 立即返回 */
+export interface AuditSubmitResponse {
+  status: AuditRunStatus
+  id: string
+  trace_id: string
+  process_id: string
+  created_at: string
 }

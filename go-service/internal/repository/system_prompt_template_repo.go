@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"strings"
+
 	"gorm.io/gorm"
 
 	"oa-smart-audit/go-service/internal/model"
@@ -39,6 +41,31 @@ func (r *SystemPromptTemplateRepo) GetByStrictness(strictness string) ([]model.S
 	var templates []model.SystemPromptTemplate
 	if err := r.db.Where("strictness = ?", strictness).
 		Order("prompt_type ASC, phase ASC").Find(&templates).Error; err != nil {
+		return nil, err
+	}
+	return templates, nil
+}
+
+// GetByStrictnessAuditWorkbench 审核工作台默认 ai_config 专用：同尺度且仅 prompt_key 以 audit_ 开头（与 archive_ 对称，库内已区分）。
+func (r *SystemPromptTemplateRepo) GetByStrictnessAuditWorkbench(strictness string) ([]model.SystemPromptTemplate, error) {
+	var templates []model.SystemPromptTemplate
+	q := r.db.Where("strictness = ?", strictness)
+	switch r.db.Dialector.Name() {
+	case "postgres":
+		q = q.Where("prompt_key ~ '^audit_'")
+	default:
+		var all []model.SystemPromptTemplate
+		if err := r.db.Where("strictness = ?", strictness).Order("prompt_type ASC, phase ASC").Find(&all).Error; err != nil {
+			return nil, err
+		}
+		for _, t := range all {
+			if strings.HasPrefix(t.PromptKey, "audit_") {
+				templates = append(templates, t)
+			}
+		}
+		return templates, nil
+	}
+	if err := q.Order("prompt_type ASC, phase ASC").Find(&templates).Error; err != nil {
 		return nil, err
 	}
 	return templates, nil
