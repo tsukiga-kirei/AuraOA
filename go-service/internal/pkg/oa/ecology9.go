@@ -305,18 +305,25 @@ func (a *Ecology9Adapter) CheckUserPermission(ctx context.Context, username stri
 		return false, fmt.Errorf("查询流程失败: %w", err)
 	}
 
-	// 3. 检查权限 (userid 在 E9 中是数字类型)
+	// 3. 检查权限：workflow_currentoperator 没有 workflowid 列，
+	//    需通过 requestid 关联 workflow_requestbase 匹配 workflowid
 	var count int64
+	coTable := a.tableName("workflow_currentoperator")
+	rbTable := a.tableName("workflow_requestbase")
+	joinSQL := fmt.Sprintf(
+		"JOIN %s r ON %s.%s = r.%s",
+		rbTable, coTable, a.col("requestid"), a.col("requestid"),
+	)
 	err = a.db.WithContext(ctx).
-		Table(a.tableName("workflow_currentoperator")).
-		Where(a.col("workflowid")+" = ? AND "+a.col("userid")+" = ?", workflowID, e9UserID).
+		Table(coTable).
+		Joins(joinSQL).
+		Where("r."+a.col("workflowid")+" = ? AND "+coTable+"."+a.col("userid")+" = ?", workflowID, e9UserID).
 		Count(&count).Error
 	if err != nil {
 		return false, fmt.Errorf("查询用户审批权限失败: %w", err)
 	}
 	return count > 0, nil
 }
-
 
 // ── FetchProcessData ───────────────────────────────────────
 
@@ -334,16 +341,26 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 		return nil, fmt.Errorf("查询流程实例失败: %w", err)
 	}
 
-	// 查询流程对应的主表名和 formid
-	var tableDBName string
+	// 查询 formid
 	var formID int
 	wfRow := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_base")).
-		Select(a.col("tablename")+", "+a.col("formid")).
+		Select(a.col("formid")).
 		Where(a.col("id")+" = ?", workflowID).
 		Row()
-	if err := wfRow.Scan(&tableDBName, &formID); err != nil {
+	if err := wfRow.Scan(&formID); err != nil {
 		return nil, fmt.Errorf("查询流程定义失败: %w", err)
+	}
+
+	// 通过 formid 关联 workflow_bill 获取真实主表名
+	var tableDBName string
+	billRow := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_bill")).
+		Select(a.col("tablename")).
+		Where(a.col("id")+" = ?", formID).
+		Row()
+	if err := billRow.Scan(&tableDBName); err != nil {
+		return nil, fmt.Errorf("查询流程表单定义失败 (formid=%d): %w", formID, err)
 	}
 
 	// 查询主表数据
@@ -437,18 +454,18 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([
 		a.col("nodename"),
 		a.col("createdate"),
 		a.tableName("workflow_currentoperator"), // co
-		a.tableName("workflow_requestbase"),      // r
+		a.tableName("workflow_requestbase"),     // r
 		a.col("requestid"), a.col("requestid"),
-		a.tableName("workflow_base"),  // wb
+		a.tableName("workflow_base"), // wb
 		a.col("workflowid"), a.col("id"),
-		a.tableName("workflow_type"),  // wt
+		a.tableName("workflow_type"), // wt
 		a.col("workflowtype"), a.col("id"),
-		a.tableName("hrmresource"),    // h (applicant)
+		a.tableName("hrmresource"), // h (applicant)
 		a.col("creater"), a.col("id"),
-		a.tableName("hrmdepartment"),  // d
+		a.tableName("hrmdepartment"), // d
 		a.col("departmentid"), a.col("id"),
 		a.tableName("workflow_nodebase"), // n
-		a.col("nownodeid"), a.col("id"),
+		a.col("nodeid"), a.col("id"),
 		a.col("userid"), a.col("isremark"),
 		a.col("createdate"),
 	)
