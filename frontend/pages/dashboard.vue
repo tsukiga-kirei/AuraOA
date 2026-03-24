@@ -731,18 +731,18 @@ onMounted(() => {
               <div
                 class="result-banner"
                 :style="{
-                  background: recommendationConfig[currentResult.recommendation]?.bg,
-                  borderColor: recommendationConfig[currentResult.recommendation]?.color,
+                  background: recommendationConfig[currentResult.recommendation || 'review']?.bg,
+                  borderColor: recommendationConfig[currentResult.recommendation || 'review']?.color,
                 }"
               >
                 <component
-                  :is="recommendationConfig[currentResult.recommendation]?.icon"
+                  :is="recommendationConfig[currentResult.recommendation || 'review']?.icon"
                   class="result-banner-icon"
-                  :style="{ color: recommendationConfig[currentResult.recommendation]?.color }"
+                  :style="{ color: recommendationConfig[currentResult.recommendation || 'review']?.color }"
                 />
                 <div class="result-banner-info">
-                  <div class="result-banner-title" :style="{ color: recommendationConfig[currentResult.recommendation]?.color }">
-                    {{ recommendationConfig[currentResult.recommendation]?.label }}
+                  <div class="result-banner-title" :style="{ color: recommendationConfig[currentResult.recommendation || 'review']?.color }">
+                    {{ recommendationConfig[currentResult.recommendation || 'review']?.label }}
                   </div>
                   <div class="result-banner-meta">
                     {{ t('dashboard.overallScore') }} {{ currentResult.overall_score }}{{ t('dashboard.points') }}
@@ -750,7 +750,7 @@ onMounted(() => {
                     · {{ t('dashboard.duration') }} {{ currentResult.duration_ms }}ms
                   </div>
                 </div>
-                <div class="result-score" :style="{ color: recommendationConfig[currentResult.recommendation]?.color }">
+                <div class="result-score" :style="{ color: recommendationConfig[currentResult.recommendation || 'review']?.color }">
                   {{ currentResult.overall_score }}
                 </div>
               </div>
@@ -845,17 +845,17 @@ onMounted(() => {
                     class="chain-node"
                   >
                     <div class="chain-timeline">
-                      <div class="chain-dot" :style="{ background: recommendationConfig[item.recommendation]?.color }" />
+                      <div class="chain-dot" :style="{ background: recommendationConfig[item.recommendation || 'review']?.color }" />
                       <div v-if="idx < auditChainData.length - 1" class="chain-line" />
                     </div>
                     <div class="chain-card">
                       <div class="chain-card-header" @click="toggleChainNode(item.id)" style="cursor: pointer;">
                         <span
                           class="chain-tag"
-                          :style="{ color: recommendationConfig[item.recommendation]?.color, background: recommendationConfig[item.recommendation]?.bg }"
+                          :style="{ color: recommendationConfig[item.recommendation || 'review']?.color, background: recommendationConfig[item.recommendation || 'review']?.bg }"
                         >
-                          <component :is="recommendationConfig[item.recommendation]?.icon" />
-                          {{ recommendationConfig[item.recommendation]?.label }}
+                          <component :is="recommendationConfig[item.recommendation || 'review']?.icon" />
+                          {{ recommendationConfig[item.recommendation || 'review']?.label }}
                         </span>
                         <span class="chain-score">{{ item.score }}{{ t('dashboard.points') }}</span>
                         <span class="chain-expand-btn">

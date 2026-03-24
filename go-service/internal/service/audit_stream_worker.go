@@ -92,12 +92,13 @@ func runAuditConsumerLoop(ctx context.Context, rdb *redis.Client, svc *AuditExec
 			Block:    5 * time.Second,
 		}).Result()
 		if err != nil {
-			if err == redis.Nil || err == context.Canceled {
+			if err == redis.Nil {
+				continue
+			}
+			if err == context.Canceled || ctx.Err() != nil {
 				return
 			}
-			if ctx.Err() != nil {
-				return
-			}
+			logger.Error("audit stream worker error", zap.Error(err))
 			time.Sleep(time.Second)
 			continue
 		}
