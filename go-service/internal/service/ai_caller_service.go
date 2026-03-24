@@ -44,19 +44,24 @@ func NewAIModelCallerService(
 // Chat 执行 AI 模型调用，包含 Token 配额检查、调用执行、Token 累加和异步日志写入。
 func (s *AIModelCallerService) Chat(c *gin.Context, tenantID, userID uuid.UUID, modelCfg *model.AIModelConfig, req *ai.ChatRequest) (*ai.ChatResponse, error) {
 	// 检查 Token 配额（预扣 max_tokens 防止并发超额）
-	reserved := req.MaxTokens
-	if reserved == 0 {
-		reserved = modelCfg.MaxTokens
-	}
-	if err := s.reserveTokenQuota(tenantID, reserved); err != nil {
-		return nil, err
+	reserved := 0
+	if !req.SkipQuotaCheck {
+		reserved = req.MaxTokens
+		if reserved == 0 {
+			reserved = modelCfg.MaxTokens
+		}
+		if err := s.reserveTokenQuota(tenantID, reserved); err != nil {
+			return nil, err
+		}
 	}
 
 	// 创建 AI 调用器
 	caller, err := ai.NewAIModelCaller(modelCfg)
 	if err != nil {
 		// 预扣失败回滚
-		_ = s.releaseTokenQuota(tenantID, reserved)
+		if !req.SkipQuotaCheck {
+			_ = s.releaseTokenQuota(tenantID, reserved)
+		}
 		return nil, newServiceError(errcode.ErrAIDeployTypeUnsupported, err.Error())
 	}
 
@@ -65,7 +70,9 @@ func (s *AIModelCallerService) Chat(c *gin.Context, tenantID, userID uuid.UUID, 
 	resp, err := caller.Chat(c.Request.Context(), req)
 	if err != nil {
 		// 调用失败回滚预扣
-		_ = s.releaseTokenQuota(tenantID, reserved)
+		if !req.SkipQuotaCheck {
+			_ = s.releaseTokenQuota(tenantID, reserved)
+		}
 		return nil, newServiceError(errcode.ErrAICallFailed, "AI模型调用失败: "+err.Error())
 	}
 
@@ -103,12 +110,15 @@ type pythonAIResponse struct {
 // 调用前对用户提示词执行数据脱敏，调用后结算 Token 并异步写入日志。
 func (s *AIModelCallerService) ChatViaPython(c *gin.Context, tenantID, userID uuid.UUID, modelCfg *model.AIModelConfig, req *ai.ChatRequest, auditContext map[string]interface{}) (*ai.ChatResponse, error) {
 	// 预扣 Token 配额
-	reserved := req.MaxTokens
-	if reserved == 0 {
-		reserved = modelCfg.MaxTokens
-	}
-	if err := s.reserveTokenQuota(tenantID, reserved); err != nil {
-		return nil, err
+	reserved := 0
+	if !req.SkipQuotaCheck {
+		reserved = req.MaxTokens
+		if reserved == 0 {
+			reserved = modelCfg.MaxTokens
+		}
+		if err := s.reserveTokenQuota(tenantID, reserved); err != nil {
+			return nil, err
+		}
 	}
 
 	// 数据脱敏：对用户提示词中的敏感信息进行脱敏
@@ -150,13 +160,17 @@ func (s *AIModelCallerService) ChatViaPython(c *gin.Context, tenantID, userID uu
 		bytes.NewReader(bodyBytes),
 	)
 	if err != nil {
-		_ = s.releaseTokenQuota(tenantID, reserved)
+		if !req.SkipQuotaCheck {
+			_ = s.releaseTokenQuota(tenantID, reserved)
+		}
 		return nil, newServiceError(errcode.ErrAICallFailed, "Python AI服务调用失败: "+err.Error())
 	}
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode != http.StatusOK {
-		_ = s.releaseTokenQuota(tenantID, reserved)
+		if !req.SkipQuotaCheck {
+			_ = s.releaseTokenQuota(tenantID, reserved)
+		}
 		respBody, _ := io.ReadAll(httpResp.Body)
 		return nil, newServiceError(errcode.ErrAICallFailed, fmt.Sprintf("Python AI服务返回错误(%d): %s", httpResp.StatusCode, string(respBody)))
 	}
@@ -164,7 +178,9 @@ func (s *AIModelCallerService) ChatViaPython(c *gin.Context, tenantID, userID uu
 	// 解析响应
 	var pyResp pythonAIResponse
 	if err := json.NewDecoder(httpResp.Body).Decode(&pyResp); err != nil {
-		_ = s.releaseTokenQuota(tenantID, reserved)
+		if !req.SkipQuotaCheck {
+			_ = s.releaseTokenQuota(tenantID, reserved)
+		}
 		return nil, newServiceError(errcode.ErrAICallFailed, "Python AI服务响应解析失败")
 	}
 

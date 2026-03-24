@@ -23,6 +23,7 @@ type ChatRequest struct {
 	ModelConfig  *model.AIModelConfig `json:"-"`
 	Temperature  float64            `json:"temperature"`
 	MaxTokens    int                `json:"max_tokens"`
+	SkipQuotaCheck bool             `json:"skip_quota_check"`
 }
 
 // ChatResponse AI 对话响应

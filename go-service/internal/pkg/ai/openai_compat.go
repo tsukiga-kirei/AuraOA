@@ -26,7 +26,7 @@ func NewOpenAICompatCaller(cfg *model.AIModelConfig) (*OpenAICompatCaller, error
 	return &OpenAICompatCaller{
 		cfg: cfg,
 		client: &http.Client{
-			Timeout: 120 * time.Second,
+			Timeout: 30 * time.Minute,
 		},
 	}, nil
 }
@@ -61,8 +61,9 @@ func (c *OpenAICompatCaller) TestConnection(ctx context.Context) error {
 type openAIRequest struct {
 	Model       string          `json:"model"`
 	Messages    []openAIMessage `json:"messages"`
-	Temperature float64         `json:"temperature"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
+	Temperature        float64                `json:"temperature"`
+	MaxTokens          int                    `json:"max_tokens,omitempty"`
+	ChatTemplateKwargs map[string]interface{} `json:"chat_template_kwargs,omitempty"`
 }
 
 // openAIMessage OpenAI 消息格式
@@ -106,6 +107,9 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 		Messages:    messages,
 		Temperature: temperature,
 		MaxTokens:   maxTokens,
+		ChatTemplateKwargs: map[string]interface{}{
+			"enable_thinking": false,
+		},
 	}
 
 	jsonBody, err := json.Marshal(body)
