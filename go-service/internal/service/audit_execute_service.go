@@ -24,7 +24,16 @@ import (
 	"oa-smart-audit/go-service/internal/repository"
 )
 
-const batchAuditMaxLimit = 10
+const (
+	batchAuditMaxLimit = 10
+
+	// auditErrStaleMessage 超时任务写入 error_message 的固定文案
+	auditErrStaleMessage = "审核任务超时（请重新发起）"
+	// auditJobMaxAge 非终态（pending/reasoning/extracting）超过此时长则标记为 failed（排队过久或执行卡住）
+	auditJobMaxAge = 30 * time.Minute
+	// auditProcessTimeout 单条异步任务 AI+OA 链路 context 上限，须小于 auditJobMaxAge，避免与对账任务竞态
+	auditProcessTimeout = 25 * time.Minute
+)
 
 // AuditExecuteService 审核执行业务逻辑：串联 OA 数据 → 提示词构建 → AI 调用 → 结果解析 → 写入日志。
 type AuditExecuteService struct {
@@ -191,8 +200,73 @@ func (s *AuditExecuteService) markAuditFailed(c *gin.Context, id uuid.UUID, err 
 	})
 }
 
+// markAuditFailedDB 不依赖 Gin Context（避免 context 已取消时无法落库），用于收尾保存失败或超时标记。
+func (s *AuditExecuteService) markAuditFailedDB(tenantID, id uuid.UUID, message string) error {
+	return s.db.Model(&model.AuditLog{}).
+		Where("id = ? AND tenant_id = ?", id, tenantID).
+		Updates(map[string]interface{}{
+			"status":        model.AuditStatusFailed,
+			"error_message": message,
+			"updated_at":    time.Now(),
+		}).Error
+}
+
+// markAuditFailedOrTimeout 失败落库；若因 context 超时（AI/OA 过久），用 DB 直写避免 Gin Context 已取消导致无法更新。
+func (s *AuditExecuteService) markAuditFailedOrTimeout(c *gin.Context, tenantID, id uuid.UUID, err error) {
+	if err == nil {
+		return
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		_ = s.markAuditFailedDB(tenantID, id, "审核任务执行超时（请重新发起）")
+		return
+	}
+	s.markAuditFailed(c, id, err)
+}
+
+// applyStaleAuditTimeout 轮询时若任务过久未结束，标记为 failed 并返回最新行。
+func (s *AuditExecuteService) applyStaleAuditTimeout(c *gin.Context, log *model.AuditLog) (*model.AuditLog, error) {
+	if log == nil {
+		return nil, nil
+	}
+	switch log.Status {
+	case model.AuditStatusCompleted, model.AuditStatusFailed:
+		return log, nil
+	}
+	if time.Since(log.CreatedAt) <= auditJobMaxAge {
+		return log, nil
+	}
+	if err := s.auditLogRepo.UpdateFields(c, log.ID, map[string]interface{}{
+		"status":        model.AuditStatusFailed,
+		"error_message": auditErrStaleMessage,
+		"updated_at":    time.Now(),
+	}); err != nil {
+		return log, nil
+	}
+	return s.auditLogRepo.GetByID(c, log.ID)
+}
+
+// FailStaleAuditJobs 将长时间未结束的非终态任务标记为失败（全租户后台对账）。
+func (s *AuditExecuteService) FailStaleAuditJobs(ctx context.Context) (int64, error) {
+	cutoff := time.Now().Add(-auditJobMaxAge)
+	res := s.db.WithContext(ctx).Model(&model.AuditLog{}).
+		Where("status IN ? AND created_at < ?", []string{
+			model.AuditStatusPending,
+			model.AuditStatusReasoning,
+			model.AuditStatusExtracting,
+		}, cutoff).
+		Updates(map[string]interface{}{
+			"status":        model.AuditStatusFailed,
+			"error_message": auditErrStaleMessage,
+			"updated_at":    time.Now(),
+		})
+	return res.RowsAffected, res.Error
+}
+
 // processAuditJob 由 Redis Stream Worker 调用，执行完整审核链路。
 func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, tenantID, userID uuid.UUID) error {
+	ctx, cancel := context.WithTimeout(ctx, auditProcessTimeout)
+	defer cancel()
+
 	c := s.workerGinContext(ctx, tenantID, userID)
 	log, err := s.auditLogRepo.GetByID(c, auditLogID)
 	if err != nil {
@@ -204,22 +278,27 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	if log.Status != model.AuditStatusPending {
 		return nil
 	}
+	// 队列积压过久：不再执行，直接标记失败（与 FailStaleAuditJobs 一致）
+	if time.Since(log.CreatedAt) > auditJobMaxAge {
+		_ = s.markAuditFailedDB(tenantID, auditLogID, auditErrStaleMessage)
+		return nil
+	}
 
 	startTime := time.Now()
 	tenant, err := s.tenantRepo.FindByID(tenantID)
 	if err != nil {
-		s.markAuditFailed(c, auditLogID, newServiceError(errcode.ErrDatabase, "获取租户信息失败"))
+		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, newServiceError(errcode.ErrDatabase, "获取租户信息失败"))
 		return err
 	}
 	if tenant.PrimaryModelID == nil {
 		se := newServiceError(errcode.ErrNoAIModelConfig, "租户未配置主用 AI 模型")
-		s.markAuditFailed(c, auditLogID, se)
+		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
 		return se
 	}
 	modelCfg, err := s.aiModelRepo.FindByID(*tenant.PrimaryModelID)
 	if err != nil {
 		se := newServiceError(errcode.ErrNoAIModelConfig, "AI 模型配置不存在")
-		s.markAuditFailed(c, auditLogID, se)
+		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
 		return se
 	}
 
@@ -228,21 +307,21 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	config, err := s.configRepo.GetByProcessType(c, req.ProcessType)
 	if err != nil {
 		se := newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的审核配置不存在", req.ProcessType))
-		s.markAuditFailed(c, auditLogID, se)
+		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
 		return se
 	}
 
 	var aiConfig model.AIConfigData
 	if err := json.Unmarshal(config.AIConfig, &aiConfig); err != nil {
 		se := newServiceError(errcode.ErrInternalServer, "AI 配置解析失败")
-		s.markAuditFailed(c, auditLogID, se)
+		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
 		return se
 	}
 
 	rules, err := s.ruleRepo.ListByConfigID(c, config.ID)
 	if err != nil {
 		se := newServiceError(errcode.ErrDatabase, "获取审核规则失败")
-		s.markAuditFailed(c, auditLogID, se)
+		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
 		return se
 	}
 
@@ -255,7 +334,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 
 	processData, err := s.fetchOAData(c, tenant, req.ProcessID)
 	if err != nil {
-		s.markAuditFailed(c, auditLogID, err)
+		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
 		return err
 	}
 
@@ -268,7 +347,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 
 	reasoningResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, reasoningReq)
 	if err != nil {
-		s.markAuditFailed(c, auditLogID, err)
+		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
 		return err
 	}
 	aiReasoning := reasoningResp.Content
@@ -286,7 +365,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 
 	extractionResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, extractionReq)
 	if err != nil {
-		s.markAuditFailed(c, auditLogID, err)
+		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
 		return err
 	}
 
@@ -315,7 +394,11 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		updates["audit_result"] = datatypes.JSON(resultJSON)
 	}
 
-	return s.auditLogRepo.UpdateFields(c, auditLogID, updates)
+	if err := s.auditLogRepo.UpdateFields(c, auditLogID, updates); err != nil {
+		_ = s.markAuditFailedDB(tenantID, auditLogID, "保存审核结果失败: "+err.Error())
+		return err
+	}
+	return nil
 }
 
 // BatchExecute 批量审核（上限 10 条）：同步逐条执行，不经过 Redis Stream，避免与 Worker 重复消费。
@@ -428,6 +511,10 @@ func (s *AuditExecuteService) GetAuditJobStatus(c *gin.Context, id uuid.UUID) (m
 		}
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核任务失败")
 	}
+	log, err = s.applyStaleAuditTimeout(c, log)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询审核任务失败")
+	}
 	out := buildAuditResultFromLog(log)
 	out["updated_at"] = log.UpdatedAt.Format(time.RFC3339)
 	out["progress_steps"] = auditProgressSteps(log.Status)
@@ -483,6 +570,8 @@ func (s *AuditExecuteService) GetStats(c *gin.Context) (map[string]int, error) {
 	if err != nil {
 		return nil, err
 	}
+	_, _ = s.FailStaleAuditJobs(context.Background())
+
 	username := s.extractUsername(c)
 	if username == "" {
 		return nil, newServiceError(errcode.ErrNoAuthToken, "用户信息缺失")
@@ -558,6 +647,7 @@ func (s *AuditExecuteService) ListProcesses(c *gin.Context, tab string, username
 	if err != nil {
 		return nil, err
 	}
+	_, _ = s.FailStaleAuditJobs(context.Background())
 
 	// 获取 OA 适配器
 	adapter, err := s.getOAAdapter(tenantID)

@@ -47,7 +47,8 @@ export const useAuditApi = () => {
   }
 
   const POLL_INTERVAL_MS = 1500
-  const AUDIT_TIMEOUT_MS = 15 * 60 * 1000
+  /** 略大于服务端非终态超时（30m），避免前端先放弃而后端仍可能完成 */
+  const AUDIT_TIMEOUT_MS = 35 * 60 * 1000
 
   /** 轮询异步任务直到完成或失败 */
   async function waitAuditJob(
