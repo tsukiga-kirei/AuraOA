@@ -42,6 +42,24 @@ func (r *AuditLogRepo) ListByProcessID(c *gin.Context, processID string) ([]mode
 	return logs, err
 }
 
+type AuditLogWithUser struct {
+	model.AuditLog
+	UserName string `json:"user_name"`
+}
+
+// ListCompletedByProcessIDWithUser 审核链：仅已完成的记录，按时间倒序，包含用户名。
+func (r *AuditLogRepo) ListCompletedByProcessIDWithUser(c *gin.Context, processID string) ([]AuditLogWithUser, error) {
+	var logs []AuditLogWithUser
+	err := r.WithTenant(c).
+		Table("audit_logs").
+		Select("audit_logs.*, users.display_name as user_name").
+		Joins("left join users on audit_logs.user_id = users.id").
+		Where("audit_logs.process_id = ? AND audit_logs.status = ?", processID, model.AuditStatusCompleted).
+		Order("audit_logs.created_at DESC").
+		Find(&logs).Error
+	return logs, err
+}
+
 // ListCompletedByProcessID 审核链：仅已完成的记录，按时间倒序。
 func (r *AuditLogRepo) ListCompletedByProcessID(c *gin.Context, processID string) ([]model.AuditLog, error) {
 	var logs []model.AuditLog

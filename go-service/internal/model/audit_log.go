@@ -10,6 +10,7 @@ import (
 // 审核日志异步状态（与 DB 迁移 000013 一致）
 const (
 	AuditStatusPending    = "pending"
+	AuditStatusAssembling = "assembling"
 	AuditStatusReasoning  = "reasoning"
 	AuditStatusExtracting = "extracting"
 	AuditStatusCompleted  = "completed"

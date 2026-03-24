@@ -89,6 +89,21 @@ func (h *AuditHandler) GetJobStatus(c *gin.Context) {
 	response.Success(c, data)
 }
 
+// CancelJob POST /api/audit/cancel/:id
+func (h *AuditHandler) CancelJob(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "任务 ID 无效")
+		return
+	}
+	if err := h.auditService.CancelJob(c, id); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"status": "cancelled"})
+}
+
 // BatchExecute POST /api/audit/batch
 func (h *AuditHandler) BatchExecute(c *gin.Context) {
 	var req struct {

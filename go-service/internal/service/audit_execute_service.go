@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -47,6 +48,7 @@ type AuditExecuteService struct {
 	aiCaller       *AIModelCallerService
 	db             *gorm.DB
 	rdb            *redis.Client
+	cancelMap      sync.Map
 }
 
 func NewAuditExecuteService(
@@ -251,6 +253,7 @@ func (s *AuditExecuteService) FailStaleAuditJobs(ctx context.Context) (int64, er
 	res := s.db.WithContext(ctx).Model(&model.AuditLog{}).
 		Where("status IN ? AND created_at < ?", []string{
 			model.AuditStatusPending,
+			model.AuditStatusAssembling,
 			model.AuditStatusReasoning,
 			model.AuditStatusExtracting,
 		}, cutoff).
@@ -265,7 +268,11 @@ func (s *AuditExecuteService) FailStaleAuditJobs(ctx context.Context) (int64, er
 // processAuditJob 由 Redis Stream Worker 调用，执行完整审核链路。
 func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, tenantID, userID uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(ctx, auditProcessTimeout)
-	defer cancel()
+	s.cancelMap.Store(auditLogID.String(), cancel)
+	defer func() {
+		cancel()
+		s.cancelMap.Delete(auditLogID.String())
+	}()
 
 	c := s.workerGinContext(ctx, tenantID, userID)
 	log, err := s.auditLogRepo.GetByID(c, auditLogID)
@@ -328,7 +335,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
 
 	_ = s.auditLogRepo.UpdateFields(c, auditLogID, map[string]interface{}{
-		"status":     model.AuditStatusReasoning,
+		"status":     model.AuditStatusAssembling,
 		"updated_at": time.Now(),
 	})
 
@@ -344,6 +351,11 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	reasoningReq.Temperature = float64(tenant.Temperature)
 	reasoningReq.MaxTokens = tenant.MaxTokensPerRequest
 	reasoningReq.ModelConfig = modelCfg
+
+	_ = s.auditLogRepo.UpdateFields(c, auditLogID, map[string]interface{}{
+		"status":     model.AuditStatusReasoning,
+		"updated_at": time.Now(),
+	})
 
 	reasoningResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, reasoningReq)
 	if err != nil {
@@ -362,6 +374,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	extractionReq.Temperature = 0.1
 	extractionReq.MaxTokens = tenant.MaxTokensPerRequest
 	extractionReq.ModelConfig = modelCfg
+	extractionReq.SkipQuotaCheck = true
 
 	extractionResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, extractionReq)
 	if err != nil {
@@ -399,6 +412,19 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		return err
 	}
 	return nil
+}
+
+// CancelJob 主动中止审核任务，设置状态为 failed 并取消执行上下文
+func (s *AuditExecuteService) CancelJob(c *gin.Context, id uuid.UUID) error {
+	tenantID, _, err := s.extractIDs(c)
+	if err != nil {
+		return err
+	}
+	err = s.markAuditFailedDB(tenantID, id, "已主动中止")
+	if cancelFunc, ok := s.cancelMap.Load(id.String()); ok {
+		cancelFunc.(context.CancelFunc)()
+	}
+	return err
 }
 
 // BatchExecute 批量审核（上限 10 条）：同步逐条执行，不经过 Redis Stream，避免与 Worker 重复消费。
@@ -497,9 +523,9 @@ type BatchAuditResult struct {
 	Failed  int                    `json:"failed"`
 }
 
-// GetAuditChain 获取审核链：仅展示已完成的 AI 审核记录（租户内所有用户）。
-func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([]model.AuditLog, error) {
-	return s.auditLogRepo.ListCompletedByProcessID(c, processID)
+// GetAuditChain 获取审核链：仅展示已完成的 AI 审核记录（租户内所有用户），包含真实姓名。
+func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([]repository.AuditLogWithUser, error) {
+	return s.auditLogRepo.ListCompletedByProcessIDWithUser(c, processID)
 }
 
 // GetAuditJobStatus 轮询异步审核任务状态（含进度阶段说明）。
@@ -527,13 +553,15 @@ func auditProgressSteps(status string) []map[string]interface{} {
 		label string
 	}{
 		{model.AuditStatusPending, "排队中"},
+		{model.AuditStatusAssembling, "组装提示词"},
 		{model.AuditStatusReasoning, "推理分析"},
 		{model.AuditStatusExtracting, "结构化提取"},
 	}
 	phaseIdx := map[string]int{
 		model.AuditStatusPending:    0,
-		model.AuditStatusReasoning:  1,
-		model.AuditStatusExtracting: 2,
+		model.AuditStatusAssembling: 1,
+		model.AuditStatusReasoning:  2,
+		model.AuditStatusExtracting: 3,
 	}
 	cur, ok := phaseIdx[status]
 	if !ok {
@@ -553,7 +581,7 @@ func auditProgressSteps(status string) []map[string]interface{} {
 			m["failed"] = true
 		case i < cur:
 			m["done"] = true
-		case i == cur && cur < 3 && status != model.AuditStatusFailed:
+		case i == cur && cur < 4 && status != model.AuditStatusFailed:
 			m["current"] = true
 		}
 		steps = append(steps, m)
@@ -779,7 +807,7 @@ func (s *AuditExecuteService) listCompletedProcesses(c *gin.Context, tenantID uu
 
 func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 	switch log.Status {
-	case model.AuditStatusPending, model.AuditStatusReasoning, model.AuditStatusExtracting:
+	case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
 		out := map[string]interface{}{
 			"id":           log.ID.String(),
 			"trace_id":     fmt.Sprintf("TR-%s", log.ID.String()[:8]),

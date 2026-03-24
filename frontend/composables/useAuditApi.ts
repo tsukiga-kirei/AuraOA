@@ -105,11 +105,16 @@ export const useAuditApi = () => {
     return await authFetch<{ process_type: string; process_type_label: string; config_id: string }[]>('/api/tenant/settings/processes')
   }
 
+  async function cancelAuditJob(auditLogId: string): Promise<void> {
+    await authFetch(`/api/audit/cancel/${encodeURIComponent(auditLogId)}`, { method: 'POST' })
+  }
+
   return {
     getStats,
     listProcesses,
     executeAudit,
     waitAuditJob,
+    cancelAuditJob,
     batchAudit,
     getAuditChain,
     getAuditResult,

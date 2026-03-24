@@ -25,7 +25,7 @@ import type { OAProcessItem, AuditResult, AuditChainItem, AuditTab, AuditStats }
 definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
-const { getStats, listProcesses, executeAudit, getAuditChain: fetchAuditChain, getProcessTypes } = useAuditApi()
+const { getStats, listProcesses, executeAudit, getAuditChain: fetchAuditChain, getProcessTypes, cancelAuditJob } = useAuditApi()
 
 // ─── 页签 & 列表数据 ───
 const activeTab = ref<AuditTab>('pending_ai')
@@ -140,6 +140,7 @@ const batchAuditing = ref(false)
 const batchAborted = ref(false)
 const batchAuditTotal = ref(0)
 const batchAuditDone = ref(0)
+const currentInflightProcessId = ref<string | null>(null)
 
 const toggleSelectProcess = (processId: string) => {
   const idx = selectedProcessIds.value.indexOf(processId)
@@ -249,6 +250,25 @@ const handleReAudit = async () => {
   await handleAudit(selectedProcess.value)
 }
 
+const handleCancelAudit = async (processId: string) => {
+  try {
+    const item = processList.value.find(p => p.process_id === processId)
+    if (item && item.audit_result && item.audit_result.id) {
+       await cancelAuditJob(item.audit_result.id)
+    } else {
+       message.warning(t('dashboard.noAuditIdFound', '无法中止，任务 ID 缺失'))
+       return;
+    }
+    message.success(t('dashboard.cancelSuccess', '中止成功'))
+    await loadProcesses()
+    if (selectedProcess.value === processId) {
+       handleSelectProcess(processId)
+    }
+  } catch (e: any) {
+    message.error(t('dashboard.cancelFailed', '中止失败: ') + e.message)
+  }
+}
+
 // ─── 批量审核（逐条调用，支持中途退出） ───
 const handleBatchAudit = async () => {
   if (selectedProcessIds.value.length === 0) return
@@ -266,6 +286,7 @@ const handleBatchAudit = async () => {
     if (batchAborted.value) break
     const item = processList.value.find(p => p.process_id === id)
     if (!item) { batchAuditDone.value++; continue }
+    currentInflightProcessId.value = id
     try {
       const result = await executeAudit({
         process_id: id,
@@ -284,6 +305,7 @@ const handleBatchAudit = async () => {
     batchAuditDone.value++
   }
 
+  currentInflightProcessId.value = null
   batchAuditing.value = false
   selectedProcessIds.value = []
   if (batchAborted.value) message.info(t('dashboard.batchAborted'))
@@ -292,7 +314,22 @@ const handleBatchAudit = async () => {
   await loadProcesses()
 }
 
-const handleAbortBatch = () => { batchAborted.value = true }
+const handleAbortBatch = async () => {
+  batchAborted.value = true
+  if (currentInflightProcessId.value) {
+    const processId = currentInflightProcessId.value
+    await handleCancelAudit(processId).catch(() => {})
+    currentInflightProcessId.value = null
+  }
+  // 剩余未处理自动失败
+  for (const id of selectedProcessIds.value) {
+    const item = processList.value.find(p => p.process_id === id)
+    if (item && item.audit_status === 'pending') {
+      item.audit_status = 'failed'
+      item.audit_result = { status: 'failed', error_message: '批量审核已中止', recommendation: 'review' } as any
+    }
+  }
+}
 
 // ─── 审核链 ───
 const openAuditChain = async (processId: string) => {
@@ -337,7 +374,7 @@ const urgencyConfig = computed<Record<string, { color: string; bg: string; label
 }))
 
 const isResultAsyncRunning = (r: AuditResult | null) =>
-  !!(r?.status && ['pending', 'reasoning', 'extracting'].includes(r.status))
+  !!(r?.status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(r.status))
 
 const recommendationConfig = computed<Record<string, { color: string; bg: string; icon: any; label: string }>>(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
@@ -348,6 +385,24 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
 const getShortRecLabel = (rec: string) => {
   const map: Record<string, string> = { approve: t('dashboard.suggestApprove'), return: t('dashboard.suggestReturn'), review: t('dashboard.suggestReview') }
   return map[rec] || rec
+}
+
+const getScoreColorConfig = (score: number | undefined) => {
+  if (score === undefined || score === null) return { color: 'var(--color-info)', bg: 'var(--color-info-bg)' }
+  if (score < 60) return { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)' }
+  if (score > 80) return { color: 'var(--color-success)', bg: 'var(--color-success-bg)' }
+  return { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' }
+}
+
+const formatChainDate = (dateStr: string) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr)
+  return isNaN(d.getTime()) ? dateStr : d.toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
+}
+
+const getDurationSec = (ms: number | undefined) => {
+  if (ms === undefined) return 0
+  return (ms / 1000).toFixed(1)
 }
 
 // ─── 初始化 ───
@@ -492,13 +547,13 @@ onMounted(() => {
               }"
               @click="handleSelectProcess(item.process_id)"
             >
-              <div v-if="activeTab === 'pending_ai'" class="todo-item-checkbox" @click.stop="toggleSelectProcess(item.process_id)">
-                <a-checkbox :checked="selectedProcessIds.includes(item.process_id)" />
+              <div v-if="activeTab === 'pending_ai'" class="todo-item-checkbox" @click.stop="item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status) ? null : toggleSelectProcess(item.process_id)">
+                <a-checkbox :checked="selectedProcessIds.includes(item.process_id)" :disabled="item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status)" />
               </div>
               <div class="todo-item-main">
                 <div class="todo-item-title">
                   <LoadingOutlined
-                    v-if="item.audit_status && ['pending', 'reasoning', 'extracting'].includes(item.audit_status)"
+                    v-if="item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status)"
                     class="todo-item-audited-icon"
                     spin
                     style="color: var(--color-primary);"
@@ -506,7 +561,7 @@ onMounted(() => {
                   <CheckCircleOutlined
                     v-else-if="item.has_audit && item.audit_result"
                     class="todo-item-audited-icon"
-                    :style="{ color: recommendationConfig[item.audit_result.recommendation || 'review']?.color }"
+                    :style="{ color: getScoreColorConfig(item.audit_result.overall_score).color }"
                   />
                   {{ item.title }}
                 </div>
@@ -524,7 +579,7 @@ onMounted(() => {
                   </div>
                   <div class="todo-item-audit-right">
                     <span
-                      v-if="item.audit_status && ['pending', 'reasoning', 'extracting'].includes(item.audit_status)"
+                      v-if="item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status)"
                       class="todo-item-score-badge"
                       style="color: var(--color-primary); background: var(--color-primary-bg);"
                     >
@@ -534,13 +589,18 @@ onMounted(() => {
                       v-else-if="item.has_audit && item.audit_result"
                       class="todo-item-score-badge"
                       :style="{
-                        color: recommendationConfig[item.audit_result.recommendation || 'review']?.color,
-                        background: recommendationConfig[item.audit_result.recommendation || 'review']?.bg,
+                        color: getScoreColorConfig(item.audit_result.overall_score).color,
+                        background: getScoreColorConfig(item.audit_result.overall_score).bg,
                       }"
                     >
                       {{ item.audit_result.overall_score }}{{ t('dashboard.points') }}
                       {{ getShortRecLabel(item.audit_result.recommendation || 'review') }}
                     </span>
+                    <a-tooltip v-if="item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status)" title="中止当前流程" :mouse-enter-delay="0.5">
+                      <button class="oa-jump-btn" @click.stop="handleCancelAudit(item.process_id)">
+                        <StopOutlined style="color: var(--color-danger);" />
+                      </button>
+                    </a-tooltip>
                     <a-tooltip :title="t('dashboard.auditChain')" :mouse-enter-delay="0.5">
                       <button class="oa-jump-btn" @click.stop="openAuditChain(item.process_id)">
                         <HistoryOutlined />
@@ -701,6 +761,9 @@ onMounted(() => {
               <a-button v-if="!isCompletedHistoryTab" @click="handleReAudit">
                 <ReloadOutlined /> {{ t('dashboard.reAudit') }}
               </a-button>
+              <a-button danger v-if="!isCompletedHistoryTab && isResultAsyncRunning(currentResult)" @click="handleCancelAudit(currentResult.process_id)">
+                <StopOutlined /> 中止审核
+              </a-button>
             </div>
 
             <!--解析失败降级展示-->
@@ -731,26 +794,26 @@ onMounted(() => {
               <div
                 class="result-banner"
                 :style="{
-                  background: recommendationConfig[currentResult.recommendation || 'review']?.bg,
-                  borderColor: recommendationConfig[currentResult.recommendation || 'review']?.color,
+                  background: getScoreColorConfig(currentResult.overall_score)?.bg,
+                  borderColor: getScoreColorConfig(currentResult.overall_score)?.color,
                 }"
               >
                 <component
                   :is="recommendationConfig[currentResult.recommendation || 'review']?.icon"
                   class="result-banner-icon"
-                  :style="{ color: recommendationConfig[currentResult.recommendation || 'review']?.color }"
+                  :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }"
                 />
                 <div class="result-banner-info">
-                  <div class="result-banner-title" :style="{ color: recommendationConfig[currentResult.recommendation || 'review']?.color }">
+                  <div class="result-banner-title" :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }">
                     {{ recommendationConfig[currentResult.recommendation || 'review']?.label }}
                   </div>
                   <div class="result-banner-meta">
                     {{ t('dashboard.overallScore') }} {{ currentResult.overall_score }}{{ t('dashboard.points') }}
                     · {{ t('dashboard.confidence') }} {{ currentResult.confidence }}%
-                    · {{ t('dashboard.duration') }} {{ currentResult.duration_ms }}ms
+                    · {{ t('dashboard.duration') }} {{ getDurationSec(currentResult.duration_ms) }}s
                   </div>
                 </div>
-                <div class="result-score" :style="{ color: recommendationConfig[currentResult.recommendation || 'review']?.color }">
+                <div class="result-score" :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }">
                   {{ currentResult.overall_score }}
                 </div>
               </div>
@@ -845,14 +908,14 @@ onMounted(() => {
                     class="chain-node"
                   >
                     <div class="chain-timeline">
-                      <div class="chain-dot" :style="{ background: recommendationConfig[item.recommendation || 'review']?.color }" />
+                      <div class="chain-dot" :style="{ background: getScoreColorConfig(item.score)?.color }" />
                       <div v-if="idx < auditChainData.length - 1" class="chain-line" />
                     </div>
                     <div class="chain-card">
                       <div class="chain-card-header" @click="toggleChainNode(item.id)" style="cursor: pointer;">
                         <span
                           class="chain-tag"
-                          :style="{ color: recommendationConfig[item.recommendation || 'review']?.color, background: recommendationConfig[item.recommendation || 'review']?.bg }"
+                          :style="{ color: getScoreColorConfig(item.score)?.color, background: getScoreColorConfig(item.score)?.bg }"
                         >
                           <component :is="recommendationConfig[item.recommendation || 'review']?.icon" />
                           {{ recommendationConfig[item.recommendation || 'review']?.label }}
@@ -864,8 +927,9 @@ onMounted(() => {
                         </span>
                       </div>
                       <div class="chain-card-meta">
-                        {{ item.created_at }} · {{ item.user_name || item.user_id }}
-                        · {{ t('dashboard.duration') }} {{ item.duration_ms }}ms
+                        {{ formatChainDate(item.created_at) }}
+                        <span v-if="item.user_name"> · {{ item.user_name }}</span>
+                        · {{ t('dashboard.duration') }} {{ getDurationSec(item.duration_ms) }}s
                       </div>
                       <div v-if="expandedChainNodes.has(item.id)" class="chain-detail">
                         <template v-if="item.audit_result">
