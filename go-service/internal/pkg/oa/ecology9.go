@@ -428,7 +428,7 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([
 		return nil, fmt.Errorf("OA 用户 '%s' 不存在", username)
 	}
 
-	// 查询待办：workflow_currentoperator + workflow_requestbase + workflow_base
+	// 查询待办：workflow_currentoperator + requestbase + base + bill + type + node
 	query := fmt.Sprintf(`
 		SELECT
 			r.%s AS request_id,
@@ -438,35 +438,45 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([
 			COALESCE(wb.%s, '') AS workflow_name,
 			COALESCE(wt.%s, '') AS type_name,
 			COALESCE(n.%s, '') AS node_name,
-			r.%s AS create_date
+			r.%s AS create_date,
+			COALESCE(bill.%s, '') AS main_table_name
 		FROM %s co
 		JOIN %s r ON co.%s = r.%s
 		LEFT JOIN %s wb ON r.%s = wb.%s
 		LEFT JOIN %s wt ON wb.%s = wt.%s
+		LEFT JOIN %s bill ON wb.%s = bill.%s
 		LEFT JOIN %s h ON r.%s = h.%s
 		LEFT JOIN %s d ON h.%s = d.%s
 		LEFT JOIN %s n ON co.%s = n.%s
 		WHERE co.%s = ? AND co.%s = 0
 		ORDER BY r.%s DESC`,
+		// SELECT
 		a.col("requestid"), a.col("requestname"),
 		a.col("lastname"), a.col("departmentname"),
 		a.col("workflowname"), a.col("typename"),
 		a.col("nodename"),
 		a.col("createdate"),
+		a.col("tablename"), // bill.tablename → 主表名
+		// FROM
 		a.tableName("workflow_currentoperator"), // co
+		// JOINs
 		a.tableName("workflow_requestbase"),     // r
 		a.col("requestid"), a.col("requestid"),
-		a.tableName("workflow_base"), // wb
+		a.tableName("workflow_base"),            // wb
 		a.col("workflowid"), a.col("id"),
-		a.tableName("workflow_type"), // wt
+		a.tableName("workflow_type"),            // wt
 		a.col("workflowtype"), a.col("id"),
-		a.tableName("hrmresource"), // h (applicant)
+		a.tableName("workflow_bill"),            // bill (通过 formid 获取主表名)
+		a.col("formid"), a.col("id"),
+		a.tableName("hrmresource"),              // h (applicant)
 		a.col("creater"), a.col("id"),
-		a.tableName("hrmdepartment"), // d
+		a.tableName("hrmdepartment"),            // d
 		a.col("departmentid"), a.col("id"),
-		a.tableName("workflow_nodebase"), // n
+		a.tableName("workflow_nodebase"),         // n
 		a.col("nodeid"), a.col("id"),
+		// WHERE
 		a.col("userid"), a.col("isremark"),
+		// ORDER BY
 		a.col("createdate"),
 	)
 
@@ -478,8 +488,8 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([
 
 	var items []TodoItem
 	for rows.Next() {
-		var requestID, requestName, applicant, department, workflowName, typeName, nodeName, createDate string
-		if err := rows.Scan(&requestID, &requestName, &applicant, &department, &workflowName, &typeName, &nodeName, &createDate); err != nil {
+		var requestID, requestName, applicant, department, workflowName, typeName, nodeName, createDate, mainTableName string
+		if err := rows.Scan(&requestID, &requestName, &applicant, &department, &workflowName, &typeName, &nodeName, &createDate, &mainTableName); err != nil {
 			continue
 		}
 		items = append(items, TodoItem{
@@ -492,6 +502,7 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([
 			CurrentNode:      nodeName,
 			SubmitTime:       createDate,
 			Urgency:          "medium",
+			MainTableName:    mainTableName,
 		})
 	}
 	return items, nil

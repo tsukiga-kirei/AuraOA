@@ -262,18 +262,72 @@ func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([
 	return s.auditLogRepo.ListByProcessID(c, processID)
 }
 
-// GetStats 获取审核工作台统计。
+// GetStats 获取审核工作台统计（结合 OA 待办 + 租户配置 + 审核记录）。
 func (s *AuditExecuteService) GetStats(c *gin.Context) (map[string]int, error) {
-	// TODO: 后续优化为单次聚合查询
-	// 当前返回简单统计，实际需要结合 OA 待办状态
+	tenantID, _, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	username := s.extractUsername(c)
+	if username == "" {
+		return nil, newServiceError(errcode.ErrNoAuthToken, "用户信息缺失")
+	}
+
+	adapter, err := s.getOAAdapter(tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	todoItems, err := adapter.FetchTodoList(c.Request.Context(), username)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 待办失败: "+err.Error())
+	}
+
+	// 按租户配置的主表名过滤
+	allowedTables := s.getAllowedMainTables(c)
+	var filtered []oa.TodoItem
+	for _, item := range todoItems {
+		if allowedTables[strings.ToLower(item.MainTableName)] {
+			filtered = append(filtered, item)
+		}
+	}
+
+	processIDs := make([]string, len(filtered))
+	for i, item := range filtered {
+		processIDs[i] = item.ProcessID
+	}
+	auditMap, _ := s.auditLogRepo.GetLatestResultMap(c, processIDs)
+
+	pendingAI, aiDone := 0, 0
+	for _, item := range filtered {
+		if _, has := auditMap[item.ProcessID]; has {
+			aiDone++
+		} else {
+			pendingAI++
+		}
+	}
+
+	// completed：有审核记录但不在当前待办中的流程数
+	var completedCount int64
+	q := s.db.Model(&model.AuditLog{}).Where("tenant_id = ?", tenantID)
+	if len(processIDs) > 0 {
+		q = q.Where("process_id NOT IN ?", processIDs)
+	}
+	// 只统计租户配置的流程类型
+	configuredTypes := s.getAllowedProcessTypes(c)
+	if len(configuredTypes) > 0 {
+		q = q.Where("process_type IN ?", configuredTypes)
+	}
+	q.Select("COUNT(DISTINCT process_id)").Scan(&completedCount)
+
 	return map[string]int{
-		"pending_ai_count": 0,
-		"ai_done_count":    0,
-		"completed_count":  0,
+		"pending_ai_count": pendingAI,
+		"ai_done_count":    aiDone,
+		"completed_count":  int(completedCount),
 	}, nil
 }
 
-// ListProcesses 获取审核工作台流程列表（结合 OA 待办 + AI 审核状态）。
+// ListProcesses 获取审核工作台流程列表（结合 OA 待办 + 租户配置 + AI 审核状态）。
 func (s *AuditExecuteService) ListProcesses(c *gin.Context, tab string, username string) ([]map[string]interface{}, error) {
 	tenantID, _, err := s.extractIDs(c)
 	if err != nil {
@@ -292,9 +346,18 @@ func (s *AuditExecuteService) ListProcesses(c *gin.Context, tab string, username
 		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 待办失败: "+err.Error())
 	}
 
+	// 按租户配置的主表名过滤：只保留租户已配置审核的流程
+	allowedTables := s.getAllowedMainTables(c)
+	var filteredTodo []oa.TodoItem
+	for _, item := range todoItems {
+		if allowedTables[strings.ToLower(item.MainTableName)] {
+			filteredTodo = append(filteredTodo, item)
+		}
+	}
+
 	// 获取已有审核记录
-	processIDs := make([]string, len(todoItems))
-	for i, item := range todoItems {
+	processIDs := make([]string, len(filteredTodo))
+	for i, item := range filteredTodo {
 		processIDs[i] = item.ProcessID
 	}
 	auditMap, err := s.auditLogRepo.GetLatestResultMap(c, processIDs)
@@ -303,7 +366,7 @@ func (s *AuditExecuteService) ListProcesses(c *gin.Context, tab string, username
 	}
 
 	var results []map[string]interface{}
-	for _, item := range todoItems {
+	for _, item := range filteredTodo {
 		record := map[string]interface{}{
 			"process_id":         item.ProcessID,
 			"title":              item.Title,
@@ -325,7 +388,6 @@ func (s *AuditExecuteService) ListProcesses(c *gin.Context, tab string, username
 			record["audit_result"] = buildAuditResultFromLog(auditLog)
 		}
 
-		// 根据 tab 过滤
 		switch tab {
 		case "pending_ai":
 			if !hasAudit {
@@ -336,7 +398,7 @@ func (s *AuditExecuteService) ListProcesses(c *gin.Context, tab string, username
 				results = append(results, record)
 			}
 		case "completed":
-			// completed: AI 审核完成 + 不在待办中（当前待办列表拉出来的都在待办中，所以这里需要额外查询已完成的审核记录）
+			// completed 在下面单独查询
 		}
 	}
 
@@ -357,11 +419,15 @@ func (s *AuditExecuteService) listCompletedProcesses(c *gin.Context, tenantID uu
 		todoSet[id] = true
 	}
 
-	// 查询该租户所有审核日志中不在当前待办里的流程
+	// 查询该租户所有审核日志中不在当前待办里的流程，且属于租户配置的流程类型
+	configuredTypes := s.getAllowedProcessTypes(c)
 	var logs []model.AuditLog
 	query := s.db.Where("tenant_id = ?", tenantID).Order("created_at DESC")
 	if len(todoProcessIDs) > 0 {
 		query = query.Where("process_id NOT IN ?", todoProcessIDs)
+	}
+	if len(configuredTypes) > 0 {
+		query = query.Where("process_type IN ?", configuredTypes)
 	}
 	if err := query.Find(&logs).Error; err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询已完成审核记录失败")
@@ -424,6 +490,36 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 		}
 	}
 	return result
+}
+
+// getAllowedMainTables 获取当前租户所有启用的流程审核配置的主表名集合（小写），用于过滤 OA 待办。
+func (s *AuditExecuteService) getAllowedMainTables(c *gin.Context) map[string]bool {
+	configs, err := s.configRepo.ListByTenant(c)
+	if err != nil {
+		return map[string]bool{}
+	}
+	m := make(map[string]bool, len(configs))
+	for _, cfg := range configs {
+		if cfg.Status == "active" && cfg.MainTableName != "" {
+			m[strings.ToLower(cfg.MainTableName)] = true
+		}
+	}
+	return m
+}
+
+// getAllowedProcessTypes 获取当前租户所有启用的流程类型名称列表。
+func (s *AuditExecuteService) getAllowedProcessTypes(c *gin.Context) []string {
+	configs, err := s.configRepo.ListByTenant(c)
+	if err != nil {
+		return nil
+	}
+	var types []string
+	for _, cfg := range configs {
+		if cfg.Status == "active" {
+			types = append(types, cfg.ProcessType)
+		}
+	}
+	return types
 }
 
 func (s *AuditExecuteService) decryptOAConn(conn *model.OADatabaseConnection) error {

@@ -25,14 +25,34 @@ import type { OAProcessItem, AuditResult, AuditChainItem, AuditTab, AuditStats }
 definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
-const { getStats, listProcesses, executeAudit, batchAudit, getAuditChain: fetchAuditChain } = useAuditApi()
-const { processCascaderOptions } = useMockData()
+const { getStats, listProcesses, executeAudit, getAuditChain: fetchAuditChain, getProcessTypes } = useAuditApi()
 
 // ─── 页签 & 列表数据 ───
 const activeTab = ref<AuditTab>('pending_ai')
 const processList = ref<OAProcessItem[]>([])
 const listLoading = ref(false)
 const stats = ref<AuditStats>({ pending_ai_count: 0, ai_done_count: 0, completed_count: 0 })
+
+// ─── 流程类型选项（从后端获取） ───
+const processCascaderOptions = ref<{ label: string; value: string; children: { label: string; value: string }[] }[]>([])
+
+const loadProcessTypes = async () => {
+  try {
+    const list = await getProcessTypes()
+    const categoryMap = new Map<string, { label: string; value: string; children: { label: string; value: string }[] }>()
+    for (const item of (Array.isArray(list) ? list : [])) {
+      const catLabel = item.process_type_label || item.process_type
+      if (!categoryMap.has(catLabel)) {
+        categoryMap.set(catLabel, { label: catLabel, value: catLabel, children: [] })
+      }
+      const cat = categoryMap.get(catLabel)!
+      if (!cat.children.some(c => c.value === item.process_type)) {
+        cat.children.push({ label: item.process_type, value: item.process_type })
+      }
+    }
+    processCascaderOptions.value = Array.from(categoryMap.values())
+  } catch {}
+}
 
 // ─── 筛选 ───
 const searchText = ref('')
@@ -49,7 +69,7 @@ const filterProcessNames = computed(() => {
     if (path.length >= 2) {
       names.push(path[path.length - 1])
     } else if (path.length === 1) {
-      const cat = processCascaderOptions.find((o: any) => o.value === path[0])
+      const cat = processCascaderOptions.value.find((o: any) => o.value === path[0])
       if (cat?.children) names.push(...cat.children.map((c: any) => c.value))
     }
   }
@@ -314,6 +334,7 @@ const getShortRecLabel = (rec: string) => {
 onMounted(() => {
   loadStats()
   loadProcesses()
+  loadProcessTypes()
 })
 </script>
 

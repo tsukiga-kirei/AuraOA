@@ -66,6 +66,11 @@ export const useAuditApi = () => {
     return await authFetch<AuditResult>(`/api/audit/result/${encodeURIComponent(auditLogId)}`)
   }
 
+  /** 获取当前租户已配置的流程类型列表（用于筛选下拉） */
+  async function getProcessTypes(): Promise<{ process_type: string; process_type_label: string; config_id: string }[]> {
+    return await authFetch<{ process_type: string; process_type_label: string; config_id: string }[]>('/api/tenant/settings/processes')
+  }
+
   return {
     getStats,
     listProcesses,
@@ -73,5 +78,6 @@ export const useAuditApi = () => {
     batchAudit,
     getAuditChain,
     getAuditResult,
+    getProcessTypes,
   }
 }

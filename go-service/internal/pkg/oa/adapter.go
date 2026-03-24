@@ -75,4 +75,5 @@ type TodoItem struct {
 	CurrentNode      string `json:"current_node"`
 	SubmitTime       string `json:"submit_time"`
 	Urgency          string `json:"urgency"`
+	MainTableName    string `json:"main_table_name"`
 }
