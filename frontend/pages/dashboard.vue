@@ -31,7 +31,7 @@ const { getStats, listProcesses, executeAudit, getAuditChain: fetchAuditChain, g
 const activeTab = ref<AuditTab>('pending_ai')
 const processList = ref<OAProcessItem[]>([])
 const listLoading = ref(false)
-const stats = ref<AuditStats>({ pending_ai_count: 0, ai_done_count: 0, completed_count: 0 })
+const stats = ref<AuditStats>({ pending_ai_count: 0, ai_done_count: 0, completed_count: 0, today_completed_count: 0 })
 
 // ─── 流程类型选项（从后端获取） ───
 const processCascaderOptions = ref<{ label: string; value: string; children: { label: string; value: string }[] }[]>([])
@@ -196,9 +196,10 @@ const switchTab = (tab: AuditTab) => {
 const handleSelectProcess = (processId: string) => {
   selectedProcess.value = processId
   const item = processList.value.find(p => p.process_id === processId)
-  if (item?.has_audit && item.audit_result) {
+  if (item?.audit_result) {
     currentResult.value = { ...item.audit_result }
-    phase1Done.value = true
+    const st = item.audit_status ?? item.audit_result.status
+    phase1Done.value = st === 'completed' || st === 'failed' || !!item.has_audit
   } else {
     currentResult.value = null
     phase1Done.value = false
@@ -217,13 +218,21 @@ const handleAudit = async (processId: string) => {
       process_id: processId,
       process_type: item.process_type,
       title: item.title,
+    }, (st) => {
+      if (selectedProcess.value === processId) {
+        currentResult.value = { ...st }
+      }
+      item.audit_status = st.status
+      item.audit_result = { ...st }
     })
     clearTimeout(timer)
     phase1Done.value = true
     currentResult.value = result
-    item.has_audit = true
+    item.audit_status = result.status
     item.audit_result = result
+    item.has_audit = result.status === 'completed'
     await loadStats()
+    await loadProcesses()
   } catch (e: any) {
     message.error(e?.message || t('dashboard.auditFailed'))
   } finally {
@@ -259,9 +268,14 @@ const handleBatchAudit = async () => {
         process_id: id,
         process_type: item.process_type,
         title: item.title,
+      }, (st) => {
+        if (selectedProcess.value === id) currentResult.value = { ...st }
+        item.audit_status = st.status
+        item.audit_result = { ...st }
       })
-      item.has_audit = true
+      item.audit_status = result.status
       item.audit_result = result
+      item.has_audit = result.status === 'completed'
       if (selectedProcess.value === id) currentResult.value = result
     } catch {}
     batchAuditDone.value++
@@ -319,6 +333,9 @@ const urgencyConfig = computed<Record<string, { color: string; bg: string; label
   low: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: t('dashboard.urgency.low') },
 }))
 
+const isResultAsyncRunning = (r: AuditResult | null) =>
+  !!(r?.status && ['pending', 'reasoning', 'extracting'].includes(r.status))
+
 const recommendationConfig = computed<Record<string, { color: string; bg: string; icon: any; label: string }>>(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
   return: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: ReloadOutlined, label: t('dashboard.rec.return') },
@@ -344,7 +361,7 @@ onMounted(() => {
     <div class="page-header">
       <div>
         <h1 class="page-title">{{ t('dashboard.title') }}</h1>
-        <p class="page-subtitle">{{ t('dashboard.subtitleWithCount', `${stats.pending_ai_count}`) }}</p>
+        <p class="page-subtitle">{{ t('dashboard.subtitleWithCount', `${stats.today_completed_count ?? 0}`) }}</p>
       </div>
     </div>
 
@@ -477,10 +494,16 @@ onMounted(() => {
               </div>
               <div class="todo-item-main">
                 <div class="todo-item-title">
-                  <CheckCircleOutlined
-                    v-if="item.has_audit && item.audit_result"
+                  <LoadingOutlined
+                    v-if="item.audit_status && ['pending', 'reasoning', 'extracting'].includes(item.audit_status)"
                     class="todo-item-audited-icon"
-                    :style="{ color: recommendationConfig[item.audit_result.recommendation]?.color }"
+                    spin
+                    style="color: var(--color-primary);"
+                  />
+                  <CheckCircleOutlined
+                    v-else-if="item.has_audit && item.audit_result"
+                    class="todo-item-audited-icon"
+                    :style="{ color: recommendationConfig[item.audit_result.recommendation || 'review']?.color }"
                   />
                   {{ item.title }}
                 </div>
@@ -498,15 +521,22 @@ onMounted(() => {
                   </div>
                   <div class="todo-item-audit-right">
                     <span
-                      v-if="item.has_audit && item.audit_result"
+                      v-if="item.audit_status && ['pending', 'reasoning', 'extracting'].includes(item.audit_status)"
+                      class="todo-item-score-badge"
+                      style="color: var(--color-primary); background: var(--color-primary-bg);"
+                    >
+                      {{ t('dashboard.auditingItem') }}
+                    </span>
+                    <span
+                      v-else-if="item.has_audit && item.audit_result"
                       class="todo-item-score-badge"
                       :style="{
-                        color: recommendationConfig[item.audit_result.recommendation]?.color,
-                        background: recommendationConfig[item.audit_result.recommendation]?.bg,
+                        color: recommendationConfig[item.audit_result.recommendation || 'review']?.color,
+                        background: recommendationConfig[item.audit_result.recommendation || 'review']?.bg,
                       }"
                     >
                       {{ item.audit_result.overall_score }}{{ t('dashboard.points') }}
-                      {{ getShortRecLabel(item.audit_result.recommendation) }}
+                      {{ getShortRecLabel(item.audit_result.recommendation || 'review') }}
                     </span>
                     <a-tooltip :title="t('dashboard.auditChain')" :mouse-enter-delay="0.5">
                       <button class="oa-jump-btn" @click.stop="openAuditChain(item.process_id)">
@@ -616,6 +646,41 @@ onMounted(() => {
 
           <!--结果展示-->
           <template v-else-if="currentResult">
+            <div v-if="isResultAsyncRunning(currentResult)" class="result-async-panel">
+              <a-spin size="large">
+                <div class="async-progress-steps">
+                  <div
+                    v-for="s in (currentResult.progress_steps || [])"
+                    :key="s.key"
+                    class="async-step-row"
+                  >
+                    <CheckCircleOutlined v-if="s.done" style="color: var(--color-success);" />
+                    <LoadingOutlined v-else-if="s.current" spin style="color: var(--color-primary);" />
+                    <CloseCircleOutlined v-else-if="s.failed" style="color: var(--color-danger);" />
+                    <span v-else class="async-step-pending-dot" />
+                    <span>{{ s.label }}</span>
+                  </div>
+                </div>
+              </a-spin>
+              <div v-if="currentResult.ai_reasoning" class="result-section" style="margin-top: 16px;">
+                <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
+                <div class="ai-reasoning">
+                  <pre>{{ currentResult.ai_reasoning }}</pre>
+                </div>
+              </div>
+            </div>
+
+            <template v-else-if="currentResult.status === 'failed'">
+              <div class="result-banner result-banner--error">
+                <WarningOutlined class="result-banner-icon" style="color: var(--color-danger);" />
+                <div class="result-banner-info">
+                  <div class="result-banner-title" style="color: var(--color-danger);">{{ t('dashboard.auditFailed') }}</div>
+                  <div class="result-banner-meta">{{ currentResult.error_message }}</div>
+                </div>
+              </div>
+            </template>
+
+            <template v-else>
             <div class="result-action-bar">
               <template v-if="activeTab !== 'pending_ai'">
                 <div class="history-badge">
@@ -737,6 +802,7 @@ onMounted(() => {
                   <pre>{{ currentResult.ai_reasoning }}</pre>
                 </div>
               </div>
+            </template>
             </template>
           </template>
 
@@ -1025,6 +1091,11 @@ onMounted(() => {
 .audit-phase-info { flex: 1; }
 .audit-phase-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 2px; }
 .audit-phase-desc { font-size: 12px; color: var(--color-text-tertiary); }
+
+.result-async-panel { padding: 8px 0 16px; }
+.async-progress-steps { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.async-step-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--color-text-secondary); }
+.async-step-pending-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-border); display: inline-block; flex-shrink: 0; }
 
 /*结果横幅*/
 .result-banner {

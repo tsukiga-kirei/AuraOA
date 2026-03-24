@@ -106,7 +106,7 @@ func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProces
 
 // buildDefaultAIConfig 从系统提示词模板构建默认 ai_config JSON。
 func (s *ProcessAuditConfigService) buildDefaultAIConfig(strictness string) datatypes.JSON {
-	templates, err := s.templateRepo.GetByStrictness(strictness)
+	templates, err := s.templateRepo.GetByStrictnessAuditWorkbench(strictness)
 	if err != nil || len(templates) == 0 {
 		fallback, _ := json.Marshal(model.AIConfigData{AuditStrictness: strictness})
 		return datatypes.JSON(fallback)
@@ -130,13 +130,19 @@ func (s *ProcessAuditConfigService) buildDefaultAIConfig(strictness string) data
 	return datatypes.JSON(result)
 }
 
-// ListPromptTemplates 返回所有系统提示词模板。
+// ListPromptTemplates 返回审核工作台系统提示词模板（prompt_key 以 audit_ 为前缀，与归档 archive_ 区分）。
 func (s *ProcessAuditConfigService) ListPromptTemplates() ([]model.SystemPromptTemplate, error) {
 	templates, err := s.templateRepo.ListAll()
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
-	return templates, nil
+	out := templates[:0]
+	for _, t := range templates {
+		if strings.HasPrefix(t.PromptKey, "audit_") {
+			out = append(out, t)
+		}
+	}
+	return out, nil
 }
 
 // GetByID 通过 ID 查询单个流程审核配置。

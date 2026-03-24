@@ -9,12 +9,14 @@ import type {
   AuditExecuteRequest,
   BatchAuditRequest,
   AuditStats,
+  AuditSubmitResponse,
+  AuditRunStatus,
 } from '~/types/audit'
 
 export type {
   OAProcessItem, AuditResult, AuditChainItem,
   BatchAuditResponse, AuditTab, AuditExecuteRequest,
-  BatchAuditRequest, AuditStats,
+  BatchAuditRequest, AuditStats, AuditSubmitResponse, AuditRunStatus,
 }
 
 export const useAuditApi = () => {
@@ -44,11 +46,42 @@ export const useAuditApi = () => {
     return await authFetch<{ items: OAProcessItem[]; total: number }>(`/api/audit/processes?${query.toString()}`)
   }
 
-  async function executeAudit(req: AuditExecuteRequest): Promise<AuditResult> {
-    return await authFetch<AuditResult>('/api/audit/execute', {
+  const POLL_INTERVAL_MS = 1500
+  const AUDIT_TIMEOUT_MS = 15 * 60 * 1000
+
+  /** 轮询异步任务直到完成或失败 */
+  async function waitAuditJob(
+    jobId: string,
+    onProgress?: (st: AuditResult & { progress_steps?: unknown[]; updated_at?: string }) => void,
+  ): Promise<AuditResult> {
+    const deadline = Date.now() + AUDIT_TIMEOUT_MS
+    while (Date.now() < deadline) {
+      const st = await authFetch<AuditResult & { progress_steps?: unknown[]; updated_at?: string }>(
+        `/api/audit/jobs/${encodeURIComponent(jobId)}`,
+      )
+      onProgress?.(st)
+      const status = st.status as AuditRunStatus | undefined
+      if (status === 'completed' || status === 'failed') {
+        return st as AuditResult
+      }
+      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS))
+    }
+    throw new Error('审核等待超时，请稍后刷新列表查看结果')
+  }
+
+  /** 提交审核并等待结果（内部轮询 Redis Stream 异步任务） */
+  async function executeAudit(
+    req: AuditExecuteRequest,
+    onProgress?: (st: AuditResult & { progress_steps?: unknown[] }) => void,
+  ): Promise<AuditResult> {
+    const submit = await authFetch<AuditSubmitResponse>('/api/audit/execute', {
       method: 'POST',
       body: req,
     })
+    if (submit.status !== 'pending' || !submit.id) {
+      return submit as unknown as AuditResult
+    }
+    return await waitAuditJob(submit.id, onProgress)
   }
 
   async function batchAudit(req: BatchAuditRequest): Promise<BatchAuditResponse> {
@@ -75,6 +108,7 @@ export const useAuditApi = () => {
     getStats,
     listProcesses,
     executeAudit,
+    waitAuditJob,
     batchAudit,
     getAuditChain,
     getAuditResult,
