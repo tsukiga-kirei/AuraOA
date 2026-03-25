@@ -16,16 +16,17 @@ import {
   LoadingOutlined,
   FilterOutlined,
   WarningOutlined,
-  StopOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
+import { marked } from 'marked'
 import { useI18n } from '~/composables/useI18n'
 import type { OAProcessItem, AuditResult, AuditChainItem, AuditTab, AuditStats } from '~/types/audit'
 
 definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
-const { getStats, listProcesses, executeAudit, getAuditChain: fetchAuditChain, getProcessTypes, cancelAuditJob } = useAuditApi()
+const { token } = useAuth()
+const { getStats, listProcesses, executeAudit, getAuditChain: fetchAuditChain, getProcessTypes, cancelAuditJob, waitAuditJob, batchAudit } = useAuditApi()
 
 // ─── 页签 & 列表数据 ───
 const activeTab = ref<AuditTab>('pending_ai')
@@ -143,6 +144,42 @@ const batchAuditDone = ref(0)
 const currentInflightProcessId = ref<string | null>(null)
 const pollProcessId = ref<string | null>(null)
 
+// ─── 流式推理 SSE ───
+const eventSourceStream = ref<EventSource | null>(null)
+
+const disconnectStream = () => {
+  if (eventSourceStream.value) {
+    eventSourceStream.value.close()
+    eventSourceStream.value = null
+  }
+}
+
+const startSSE = (auditResultId: string, processId: string) => {
+  disconnectStream()
+  const tokenVal = token.value || localStorage.getItem('token') || ''
+  const config = useRuntimeConfig()
+  const url = `${String(config.public.apiBase)}/api/audit/stream/${auditResultId}?token=${encodeURIComponent(tokenVal)}`
+  
+  eventSourceStream.value = new EventSource(url)
+  
+  if (!currentResult.value?.ai_reasoning && selectedProcess.value === processId) {
+    if (currentResult.value) currentResult.value.ai_reasoning = ''
+  }
+  
+  eventSourceStream.value.onmessage = (e) => {
+    if (selectedProcess.value === processId && currentResult.value) {
+      currentResult.value.ai_reasoning = (currentResult.value.ai_reasoning || '') + e.data
+    }
+  }
+  
+  eventSourceStream.value.onerror = () => {
+    disconnectStream()
+  }
+}
+
+const renderMarkdown = (text: string) => text ? marked.parse(text) : ''
+
+// ─── 数据选择与操作 ───
 const toggleSelectProcess = (processId: string) => {
   const idx = selectedProcessIds.value.indexOf(processId)
   if (idx >= 0) selectedProcessIds.value.splice(idx, 1)
@@ -225,20 +262,37 @@ const handleSelectProcess = (processId: string) => {
 
        if (item.audit_result.id && pollProcessId.value !== processId) {
           pollProcessId.value = processId
-          waitAuditJob(item.audit_result.id, (st) => {
-             if (selectedProcess.value === processId) currentResult.value = st as any
+          startSSE(item.audit_result.id, processId)
+          waitAuditJob(item.audit_result.id, (st: any) => {
+             if (selectedProcess.value === processId) {
+                 const oldReasoning = currentResult.value?.ai_reasoning || ''
+                 currentResult.value = st as any
+                 if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
+                     if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
+                 }
+             }
              item.audit_status = st.status as any
              item.audit_result = st as any
-          }).then(st => {
-             if (selectedProcess.value === processId) currentResult.value = st as any
+          }).then((st: any) => {
+             if (pollProcessId.value === processId) pollProcessId.value = null
+             if (selectedProcess.value === processId) {
+                 const oldReasoning = currentResult.value?.ai_reasoning || ''
+                 currentResult.value = st as any
+                 if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
+                     if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
+                 }
+                 disconnectStream()
+             }
              item.audit_status = st.status as any
              item.audit_result = st as any
              item.has_audit = st.status === 'completed'
-             if (pollProcessId.value === processId) pollProcessId.value = null
              loadProcesses()
              loadStats()
           }).catch(() => {
-             if (pollProcessId.value === processId) pollProcessId.value = null
+             if (pollProcessId.value === processId) {
+               pollProcessId.value = null
+               disconnectStream()
+             }
           })
        }
     }
@@ -260,8 +314,11 @@ const handleAudit = async (processId: string) => {
       { key: 'extracting', label: '结构化提取', done: false, current: false },
     ],
     status: 'pending',
-    process_id: processId
+    process_id: processId,
+    ai_reasoning: '',
+    id: undefined,
   } as any
+  item.audit_result = { ...currentResult.value } as any
   let started = false
 
   try {
@@ -269,18 +326,33 @@ const handleAudit = async (processId: string) => {
       process_id: processId,
       process_type: item.process_type,
       title: item.title,
-    }, (st) => {
+    }, (st: any) => {
       if (!started) {
          started = true
-         loadStats() // 立即更新左侧和头部的角标
+         loadStats()
+         if (st?.id) {
+           startSSE(st.id, processId)
+         }
       }
       if (selectedProcess.value === processId) {
-        currentResult.value = { ...st }
+         const oldReasoning = currentResult.value?.ai_reasoning || ''
+         currentResult.value = { ...st } as any
+         if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
+             if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
+         }
       }
       item.audit_status = st.status as any
       item.audit_result = { ...st } as any
     })
-    currentResult.value = result
+    
+    if (selectedProcess.value === processId) {
+      const oldReasoning = currentResult.value?.ai_reasoning || ''
+      currentResult.value = result as any
+      if (oldReasoning.length > (result.ai_reasoning?.length || 0)) {
+          if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
+      }
+      disconnectStream()
+    }
     item.audit_status = result.status as any
     item.audit_result = result
     item.has_audit = result.status === 'completed'
@@ -338,20 +410,62 @@ const handleBatchAudit = async () => {
     const item = processList.value.find(p => p.process_id === id)
     if (!item) { batchAuditDone.value++; continue }
     currentInflightProcessId.value = id
+    
+    let started = false
+    if (selectedProcess.value === id) {
+       currentResult.value = {
+         progress_steps: [
+           { key: 'pending', label: '排队中', done: false, current: true },
+           { key: 'assembling', label: '组装提示词', done: false, current: false },
+           { key: 'reasoning', label: '推理分析', done: false, current: false },
+           { key: 'extracting', label: '结构化提取', done: false, current: false },
+         ],
+         status: 'pending',
+         process_id: id,
+         ai_reasoning: '',
+         id: undefined,
+       } as any
+    }
+    item.audit_result = {
+      status: 'pending',
+      process_id: id,
+      ai_reasoning: '',
+      id: undefined,
+    } as any
+
     try {
       const result = await executeAudit({
         process_id: id,
         process_type: item.process_type,
         title: item.title,
-      }, (st) => {
-        if (selectedProcess.value === id) currentResult.value = { ...st }
-        item.audit_status = st.status
-        item.audit_result = { ...st }
+      }, (st: any) => {
+        if (!started) {
+          started = true
+          if (st?.id && selectedProcess.value === id) {
+            startSSE(st.id, id)
+          }
+        }
+        if (selectedProcess.value === id) {
+          const oldReasoning = currentResult.value?.ai_reasoning || ''
+          currentResult.value = { ...st } as any
+          if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
+            if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
+          }
+        }
+        item.audit_status = st.status as any
+        item.audit_result = { ...st } as any
       })
-      item.audit_status = result.status
-      item.audit_result = result
+      item.audit_status = result.status as any
+      item.audit_result = result as any
       item.has_audit = result.status === 'completed'
-      if (selectedProcess.value === id) currentResult.value = result
+      if (selectedProcess.value === id) {
+        const oldReasoning = currentResult.value?.ai_reasoning || ''
+        currentResult.value = result as any
+        if (oldReasoning.length > (result.ai_reasoning?.length || 0)) {
+           if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
+        }
+        disconnectStream()
+      }
     } catch {}
     batchAuditDone.value++
   }
@@ -757,10 +871,10 @@ onMounted(() => {
                   </div>
                 </div>
               </a-spin>
-              <div v-if="currentResult.ai_reasoning" class="result-section" style="margin-top: 16px;">
+              <div v-if="currentResult.ai_reasoning || isResultAsyncRunning(currentResult)" class="result-section" style="margin-top: 16px;">
                 <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
                 <div class="ai-reasoning">
-                  <pre>{{ currentResult.ai_reasoning }}</pre>
+                  <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')"></div>
                 </div>
               </div>
             </div>
@@ -815,7 +929,7 @@ onMounted(() => {
               <div v-if="currentResult.ai_reasoning" class="result-section">
                 <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
                 <div class="ai-reasoning">
-                  <pre>{{ currentResult.ai_reasoning }}</pre>
+                  <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')"></div>
                 </div>
               </div>
             </template>
@@ -897,7 +1011,7 @@ onMounted(() => {
               <div v-if="currentResult.ai_reasoning" class="result-section">
                 <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
                 <div class="ai-reasoning">
-                  <pre>{{ currentResult.ai_reasoning }}</pre>
+                  <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')"></div>
                 </div>
               </div>
             </template>
@@ -999,7 +1113,7 @@ onMounted(() => {
                           <!--AI 推理-->
                           <div v-if="item.audit_result.ai_reasoning" class="chain-section-title" style="margin-top: 10px;">{{ t('dashboard.aiReasoning') }}</div>
                           <div v-if="item.audit_result.ai_reasoning" class="chain-reasoning">
-                            <pre>{{ item.audit_result.ai_reasoning }}</pre>
+                            <div class="markdown-body" v-html="renderMarkdown(item.audit_result.ai_reasoning || '')"></div>
                           </div>
                           <!--解析错误-->
                           <div v-if="item.audit_result.parse_error" class="chain-parse-error">

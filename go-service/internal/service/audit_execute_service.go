@@ -309,6 +309,17 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		return se
 	}
 
+	// 解密 API Key，确保云端模型能够携带真实秘钥发起 HTTP 调用
+	if modelCfg.APIKey != "" {
+		decrypted, err := crypto.Decrypt(modelCfg.APIKey)
+		if err != nil {
+			se := newServiceError(errcode.ErrInternalServer, "API Key 解密失败")
+			s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
+			return se
+		}
+		modelCfg.APIKey = decrypted
+	}
+
 	req := &AuditExecuteRequest{ProcessID: log.ProcessID, ProcessType: log.ProcessType, Title: log.Title}
 
 	config, err := s.configRepo.GetByProcessType(c, req.ProcessType)
@@ -351,6 +362,14 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	reasoningReq.Temperature = float64(tenant.Temperature)
 	reasoningReq.MaxTokens = tenant.MaxTokensPerRequest
 	reasoningReq.ModelConfig = modelCfg
+
+	// 注入流式回调，将增量写入 Redis 并通过 PubSub 广播
+	reasoningReq.StreamChunkFunc = func(chunk string) {
+		key := "audit:reasoning:" + auditLogID.String()
+		s.rdb.Append(context.Background(), key, chunk)
+		s.rdb.Expire(context.Background(), key, 24*time.Hour)
+		s.rdb.Publish(context.Background(), "audit:stream:"+auditLogID.String(), chunk)
+	}
 
 	_ = s.auditLogRepo.UpdateFields(c, auditLogID, map[string]interface{}{
 		"status":     model.AuditStatusReasoning,
@@ -526,6 +545,27 @@ type BatchAuditResult struct {
 // GetAuditChain 获取审核链：仅展示已完成的 AI 审核记录（租户内所有用户），包含真实姓名。
 func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([]repository.AuditLogWithUser, error) {
 	return s.auditLogRepo.ListCompletedByProcessIDWithUser(c, processID)
+}
+
+// SubscribeJobStream 获取特定流程的 SSE 流和控制句柄
+func (s *AuditExecuteService) SubscribeJobStream(ctx context.Context, id uuid.UUID) (<-chan string, func(), error) {
+	pubsub := s.rdb.Subscribe(ctx, "audit:stream:"+id.String())
+	ch := make(chan string)
+
+	history, _ := s.rdb.Get(ctx, "audit:reasoning:"+id.String()).Result()
+
+	go func() {
+		defer close(ch)
+		// 如果已有累计，则首先把累计发给前端铺底
+		if history != "" {
+			ch <- history
+		}
+		for msg := range pubsub.Channel() {
+			ch <- msg.Payload
+		}
+	}()
+
+	return ch, func() { pubsub.Close() }, nil
 }
 
 // GetAuditJobStatus 轮询异步审核任务状态（含进度阶段说明）。

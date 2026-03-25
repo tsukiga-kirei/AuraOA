@@ -1,13 +1,16 @@
 package ai
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
+
 
 	"oa-smart-audit/go-service/internal/model"
 )
@@ -61,8 +64,9 @@ func (c *OpenAICompatCaller) TestConnection(ctx context.Context) error {
 type openAIRequest struct {
 	Model       string          `json:"model"`
 	Messages    []openAIMessage `json:"messages"`
-	Temperature        float64                `json:"temperature"`
-	MaxTokens          int                    `json:"max_tokens,omitempty"`
+	Temperature float64         `json:"temperature"`
+	MaxTokens   int             `json:"max_tokens,omitempty"`
+	Stream      bool            `json:"stream,omitempty"`
 	ChatTemplateKwargs map[string]interface{} `json:"chat_template_kwargs,omitempty"`
 }
 
@@ -107,6 +111,7 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 		Messages:    messages,
 		Temperature: temperature,
 		MaxTokens:   maxTokens,
+		Stream:      req.StreamChunkFunc != nil,
 		ChatTemplateKwargs: map[string]interface{}{
 			"enable_thinking": false,
 		},
@@ -132,6 +137,54 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 		return nil, fmt.Errorf("[%s] 调用失败: %w", c.cfg.Provider, err)
 	}
 	defer resp.Body.Close()
+
+	if body.Stream {
+		reader := bufio.NewReader(resp.Body)
+		var fullContent strings.Builder
+		for {
+			line, err := reader.ReadBytes('\n')
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return nil, fmt.Errorf("读取流失败: %w", err)
+			}
+			line = bytes.TrimSpace(line)
+			if !bytes.HasPrefix(line, []byte("data: ")) {
+				continue
+			}
+			data := bytes.TrimPrefix(line, []byte("data: "))
+			if string(data) == "[DONE]" {
+				break
+			}
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+			if err := json.Unmarshal(data, &chunk); err == nil && len(chunk.Choices) > 0 {
+				content := chunk.Choices[0].Delta.Content
+				if content != "" {
+					fullContent.WriteString(content)
+					req.StreamChunkFunc(content)
+				}
+			}
+		}
+		// Estimates roughly token usage since SSE often omits usage block.
+		outContent := fullContent.String()
+		return &ChatResponse{
+			Content: outContent,
+			TokenUsage: TokenUsage{
+				InputTokens:  len(req.SystemPrompt)/4 + len(req.UserPrompt)/4,
+				OutputTokens: len(outContent) / 4,
+				TotalTokens:  (len(req.SystemPrompt) + len(req.UserPrompt) + len(outContent)) / 4,
+			},
+			ModelID:    c.cfg.ModelName,
+			DurationMs: time.Since(startTime).Milliseconds(),
+		}, nil
+	}
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

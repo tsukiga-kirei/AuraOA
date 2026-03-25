@@ -122,6 +122,41 @@ func (h *AuditHandler) BatchExecute(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// GetJobStream GET /api/audit/stream/:id
+func (h *AuditHandler) GetJobStream(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "任务 ID 无效")
+		return
+	}
+
+	ch, closeSub, err := h.auditService.SubscribeJobStream(c, id)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	defer closeSub()
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Flush()
+
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			c.SSEvent("message", msg)
+			c.Writer.Flush()
+		}
+	}
+}
+
 // GetAuditChain GET /api/audit/chain/:processId
 func (h *AuditHandler) GetAuditChain(c *gin.Context) {
 	processID := c.Param("processId")
