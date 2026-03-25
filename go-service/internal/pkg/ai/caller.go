@@ -18,12 +18,13 @@ type AIModelCaller interface {
 
 // ChatRequest AI 对话请求
 type ChatRequest struct {
-	SystemPrompt string             `json:"system_prompt"`
-	UserPrompt   string             `json:"user_prompt"`
-	ModelConfig  *model.AIModelConfig `json:"-"`
-	Temperature  float64            `json:"temperature"`
-	MaxTokens    int                `json:"max_tokens"`
-	SkipQuotaCheck bool             `json:"skip_quota_check"`
+	SystemPrompt    string               `json:"system_prompt"`
+	UserPrompt      string               `json:"user_prompt"`
+	ModelConfig     *model.AIModelConfig `json:"-"`
+	Temperature     float64              `json:"temperature"`
+	MaxTokens       int                  `json:"max_tokens"`
+	SkipQuotaCheck  bool                 `json:"skip_quota_check"`
+	StreamChunkFunc func(string)         `json:"-"`
 }
 
 // ChatResponse AI 对话响应

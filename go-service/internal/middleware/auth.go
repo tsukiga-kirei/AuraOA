@@ -57,15 +57,21 @@ func JWT(rdb *redis.Client) gin.HandlerFunc {
 	}
 }
 
-//extractBearerToken 从“Authorization: Bearer <token>”标头中提取令牌。
+// extractBearerToken 从“Authorization: Bearer <token>”标头中提取令牌，如果不存在则从 query 参数中提取。
 func extractBearerToken(c *gin.Context) string {
 	auth := c.GetHeader("Authorization")
-	if auth == "" {
-		return ""
+	if auth != "" {
+		parts := strings.SplitN(auth, " ", 2)
+		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+			return strings.TrimSpace(parts[1])
+		}
 	}
-	parts := strings.SplitN(auth, " ", 2)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-		return ""
+	
+	// 为了支持 SSE 或者 WebSocket 这类不易传递 Auth Header 的请求
+	token := c.Query("token")
+	if token != "" {
+		return strings.TrimSpace(token)
 	}
-	return strings.TrimSpace(parts[1])
+
+	return ""
 }

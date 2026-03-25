@@ -1,7 +1,7 @@
 // types/audit.ts — 审核工作台相关类型定义
 
 /** 异步审核阶段（与后端 audit_logs.status 一致） */
-export type AuditRunStatus = 'pending' | 'reasoning' | 'extracting' | 'completed' | 'failed'
+export type AuditRunStatus = 'pending' | 'assembling' | 'reasoning' | 'extracting' | 'completed' | 'failed'
 
 /** OA 流程列表项（后端聚合 OA 待办 + AI 审核状态返回） */
 export interface OAProcessItem {
