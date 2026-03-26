@@ -1,7 +1,10 @@
 package handler
 
 import (
+	"encoding/csv"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -10,6 +13,7 @@ import (
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	"oa-smart-audit/go-service/internal/pkg/response"
+	"oa-smart-audit/go-service/internal/repository"
 	"oa-smart-audit/go-service/internal/service"
 )
 
@@ -163,4 +167,84 @@ func (h *ArchiveReviewHandler) GetResult(c *gin.Context) {
 		return
 	}
 	response.Success(c, data)
+}
+
+// ListLogs GET /api/archive/logs (tenant_admin)
+func (h *ArchiveReviewHandler) ListLogs(c *gin.Context) {
+	filter, page, pageSize := parseArchiveLogQuery(c)
+	items, total, err := h.archiveService.ListArchiveLogs(c, filter, page, pageSize)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"items":     items,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+// GetLogStats GET /api/archive/logs/stats (tenant_admin)
+func (h *ArchiveReviewHandler) GetLogStats(c *gin.Context) {
+	stats, err := h.archiveService.GetArchiveLogStats(c)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, stats)
+}
+
+// ExportLogs GET /api/archive/logs/export (tenant_admin) — CSV 下载
+func (h *ArchiveReviewHandler) ExportLogs(c *gin.Context) {
+	filter, _, _ := parseArchiveLogQuery(c)
+	items, _, err := h.archiveService.ListArchiveLogs(c, filter, 1, 5000)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	filename := fmt.Sprintf("archive_logs_%s.csv", time.Now().Format("20060102150405"))
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Writer.Write([]byte("\xef\xbb\xbf"))
+
+	w := csv.NewWriter(c.Writer)
+	_ = w.Write([]string{"记录ID", "流程编号", "流程标题", "操作人", "流程类型", "合规性", "评分", "状态", "创建时间"})
+	for _, item := range items {
+		_ = w.Write([]string{
+			item.ID.String(),
+			item.ProcessID,
+			item.Title,
+			item.UserName,
+			item.ProcessType,
+			item.Compliance,
+			fmt.Sprintf("%d", item.ComplianceScore),
+			item.Status,
+			item.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+	w.Flush()
+}
+
+func parseArchiveLogQuery(c *gin.Context) (repository.ArchiveLogFilter, int, int) {
+	filter := repository.ArchiveLogFilter{
+		Keyword:     c.Query("keyword"),
+		ProcessType: c.Query("process_type"),
+		Compliance:  c.Query("compliance"),
+	}
+	if s := c.Query("start_date"); s != "" {
+		if t, err := time.Parse("2006-01-02", s); err == nil {
+			filter.StartDate = &t
+		}
+	}
+	if s := c.Query("end_date"); s != "" {
+		if t, err := time.Parse("2006-01-02", s); err == nil {
+			end := t.Add(24*time.Hour - time.Second)
+			filter.EndDate = &end
+		}
+	}
+	page := parseIntQuery(c, "page", 1)
+	pageSize := parseIntQuery(c, "page_size", 20)
+	return filter, page, pageSize
 }

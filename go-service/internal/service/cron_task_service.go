@@ -212,14 +212,26 @@ func (s *CronTaskService) ExecuteNow(c *gin.Context, id uuid.UUID) error {
 		return newServiceError(errcode.ErrConfigNotFound, "任务不存在")
 	}
 
+	// 取手动触发人姓名
+	createdBy := "unknown"
+	if claims, ok := c.Get("jwt_claims"); ok {
+		if jc, ok := claims.(*jwtpkg.JWTClaims); ok {
+			if jc.Username != "" {
+				createdBy = jc.Username
+			}
+		}
+	}
+
 	logEntry := &model.CronLog{
-		ID:        uuid.New(),
-		TenantID:  task.TenantID,
-		TaskID:    task.ID,
-		TaskType:  task.TaskType,
-		TaskLabel: task.TaskLabel,
-		Status:    "running",
-		StartedAt: time.Now(),
+		ID:          uuid.New(),
+		TenantID:    task.TenantID,
+		TaskID:      task.ID,
+		TaskType:    task.TaskType,
+		TaskLabel:   task.TaskLabel,
+		TriggerType: "manual",
+		CreatedBy:   createdBy,
+		Status:      "running",
+		StartedAt:   time.Now(),
 	}
 	_ = s.logRepo.Create(logEntry)
 
@@ -249,13 +261,15 @@ func (s *CronTaskService) TriggerScheduled(ctx context.Context, taskID uuid.UUID
 	}
 
 	logEntry := &model.CronLog{
-		ID:        uuid.New(),
-		TenantID:  task.TenantID,
-		TaskID:    task.ID,
-		TaskType:  task.TaskType,
-		TaskLabel: task.TaskLabel,
-		Status:    "running",
-		StartedAt: time.Now(),
+		ID:          uuid.New(),
+		TenantID:    task.TenantID,
+		TaskID:      task.ID,
+		TaskType:    task.TaskType,
+		TaskLabel:   task.TaskLabel,
+		TriggerType: "scheduled",
+		CreatedBy:   "system",
+		Status:      "running",
+		StartedAt:   time.Now(),
 	}
 	_ = s.logRepo.Create(logEntry)
 
@@ -281,6 +295,32 @@ func (s *CronTaskService) ListLogs(c *gin.Context, taskID uuid.UUID) ([]model.Cr
 		return nil, newServiceError(errcode.ErrDatabase, "查询日志失败")
 	}
 	return logs, nil
+}
+
+// ListAllLogs 数据管理页：分页查询当前租户所有任务日志。
+func (s *CronTaskService) ListAllLogs(c *gin.Context, filter repository.CronLogFilter, page, pageSize int) ([]model.CronLog, int64, error) {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, 0, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+	items, total, err := s.logRepo.ListPagedByTenant(tenantID, filter, page, pageSize)
+	if err != nil {
+		return nil, 0, newServiceError(errcode.ErrDatabase, "查询日志失败")
+	}
+	return items, total, nil
+}
+
+// GetCronLogStats 数据管理页：获取当前租户任务日志统计。
+func (s *CronTaskService) GetCronLogStats(c *gin.Context) (*repository.CronLogStats, error) {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+	stats, err := s.logRepo.CountStatsByTenant(tenantID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "统计查询失败")
+	}
+	return stats, nil
 }
 
 // ============================================================

@@ -1,12 +1,32 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"oa-smart-audit/go-service/internal/model"
 )
+
+// ArchiveLogFilter 归档复盘日志分页查询过滤条件。
+type ArchiveLogFilter struct {
+	Keyword     string
+	ProcessType string
+	Compliance  string
+	StartDate   *time.Time
+	EndDate     *time.Time
+}
+
+// ArchiveLogStats 归档复盘日志统计。
+type ArchiveLogStats struct {
+	Total         int64 `json:"total"`
+	Compliant     int64 `json:"compliant"`
+	Partial       int64 `json:"partial"`
+	NonCompliant  int64 `json:"non_compliant"`
+	PendingReview int64 `json:"pending_review"` // 非 completed 状态
+}
 
 // ArchiveLogRepo 提供归档复盘日志的数据访问方法。
 type ArchiveLogRepo struct {
@@ -81,4 +101,95 @@ func (r *ArchiveLogRepo) ListCompletedByProcessIDWithUser(c *gin.Context, proces
 		Order("archive_logs.created_at DESC").
 		Find(&logs).Error
 	return logs, err
+}
+
+// ArchiveLogWithUser2 归档日志 + 用户名（数据管理页专用）。
+type ArchiveLogWithUser2 struct {
+	model.ArchiveLog
+	UserName string `json:"user_name"`
+}
+
+// ListPagedWithUser 数据管理页：分页查询归档复盘日志，JOIN 用户名，支持多维过滤。
+func (r *ArchiveLogRepo) ListPagedWithUser(c *gin.Context, filter ArchiveLogFilter, page, pageSize int) ([]ArchiveLogWithUser2, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 200 {
+		pageSize = 20
+	}
+
+	base := r.WithTenant(c).
+		Table("archive_logs").
+		Select("archive_logs.*, COALESCE(users.display_name, users.username, '') as user_name").
+		Joins("LEFT JOIN users ON archive_logs.user_id = users.id")
+
+	base = applyArchiveLogFilter(base, filter)
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var items []ArchiveLogWithUser2
+	err := base.Order("archive_logs.created_at DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&items).Error
+	return items, total, err
+}
+
+// CountStats 数据管理页：统计各合规分组数量。
+func (r *ArchiveLogRepo) CountStats(c *gin.Context) (*ArchiveLogStats, error) {
+	type row struct {
+		Status     string
+		Compliance string
+		Cnt        int64
+	}
+	var rows []row
+	err := r.WithTenant(c).
+		Table("archive_logs").
+		Select("status, compliance, COUNT(*) as cnt").
+		Group("status, compliance").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &ArchiveLogStats{}
+	for _, r := range rows {
+		stats.Total += r.Cnt
+		if r.Status == model.AuditStatusCompleted {
+			switch r.Compliance {
+			case "compliant":
+				stats.Compliant += r.Cnt
+			case "partially_compliant":
+				stats.Partial += r.Cnt
+			case "non_compliant":
+				stats.NonCompliant += r.Cnt
+			}
+		} else {
+			stats.PendingReview += r.Cnt
+		}
+	}
+	return stats, nil
+}
+
+func applyArchiveLogFilter(db *gorm.DB, f ArchiveLogFilter) *gorm.DB {
+	if f.Keyword != "" {
+		like := "%" + f.Keyword + "%"
+		db = db.Where("(archive_logs.title ILIKE ? OR archive_logs.process_id ILIKE ?)", like, like)
+	}
+	if f.ProcessType != "" {
+		db = db.Where("archive_logs.process_type = ?", f.ProcessType)
+	}
+	if f.Compliance != "" {
+		db = db.Where("archive_logs.compliance = ?", f.Compliance)
+	}
+	if f.StartDate != nil {
+		db = db.Where("archive_logs.created_at >= ?", f.StartDate)
+	}
+	if f.EndDate != nil {
+		db = db.Where("archive_logs.created_at <= ?", f.EndDate)
+	}
+	return db
 }

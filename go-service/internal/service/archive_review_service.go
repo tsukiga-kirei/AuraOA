@@ -329,6 +329,24 @@ func (s *ArchiveReviewService) CancelJob(c *gin.Context, id uuid.UUID) error {
 	return err
 }
 
+// ListArchiveLogs 数据管理页：分页查询当前租户归档复盘日志。
+func (s *ArchiveReviewService) ListArchiveLogs(c *gin.Context, filter repository.ArchiveLogFilter, page, pageSize int) ([]repository.ArchiveLogWithUser2, int64, error) {
+	items, total, err := s.archiveLogRepo.ListPagedWithUser(c, filter, page, pageSize)
+	if err != nil {
+		return nil, 0, newServiceError(errcode.ErrDatabase, "查询归档日志失败")
+	}
+	return items, total, nil
+}
+
+// GetArchiveLogStats 数据管理页：获取当前租户归档复盘日志统计。
+func (s *ArchiveReviewService) GetArchiveLogStats(c *gin.Context) (*repository.ArchiveLogStats, error) {
+	stats, err := s.archiveLogRepo.CountStats(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "统计查询失败")
+	}
+	return stats, nil
+}
+
 func (s *ArchiveReviewService) GetArchiveJobStatus(c *gin.Context, id uuid.UUID) (map[string]interface{}, error) {
 	logEntry, err := s.getAccessibleArchiveLog(c, id)
 	if err != nil {

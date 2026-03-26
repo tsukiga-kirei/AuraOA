@@ -243,6 +243,15 @@ func SetupRouter(
 		audit.GET("/chain/:processId", auditHandler.GetAuditChain)
 	}
 
+	// 审核日志 — 数据管理页（仅 tenant_admin）
+	auditAdmin := r.Group("/api/audit/logs")
+	auditAdmin.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		auditAdmin.GET("", auditHandler.ListLogs)
+		auditAdmin.GET("/stats", auditHandler.GetLogStats)
+		auditAdmin.GET("/export", auditHandler.ExportLogs)
+	}
+
 	// 归档复盘运行时（JWT + TenantContext，无角色限制）
 	archive := r.Group("/api/archive")
 	archive.Use(middleware.JWT(rdb), middleware.TenantContext())
@@ -256,5 +265,23 @@ func SetupRouter(
 		archive.GET("/stream/:id", archiveReviewHandler.GetJobStream)
 		archive.GET("/history/:processId", archiveReviewHandler.GetHistory)
 		archive.GET("/result/:id", archiveReviewHandler.GetResult)
+	}
+
+	// 归档日志 — 数据管理页（仅 tenant_admin）
+	archiveAdmin := r.Group("/api/archive/logs")
+	archiveAdmin.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		archiveAdmin.GET("", archiveReviewHandler.ListLogs)
+		archiveAdmin.GET("/stats", archiveReviewHandler.GetLogStats)
+		archiveAdmin.GET("/export", archiveReviewHandler.ExportLogs)
+	}
+
+	// 定时任务全量日志 — 数据管理页（仅 tenant_admin）
+	cronLogsAdmin := r.Group("/api/tenant/cron/logs")
+	cronLogsAdmin.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		cronLogsAdmin.GET("", cronTaskHandler.ListAllLogs)
+		cronLogsAdmin.GET("/stats", cronTaskHandler.GetAllLogsStats)
+		cronLogsAdmin.GET("/export", cronTaskHandler.ExportAllLogs)
 	}
 }
