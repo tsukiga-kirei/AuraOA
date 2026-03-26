@@ -65,6 +65,7 @@ type CronLog struct {
 	TenantID   uuid.UUID  `gorm:"type:uuid;not null" json:"tenant_id"`
 	TaskID     uuid.UUID  `gorm:"type:uuid;not null" json:"task_id"`
 	TaskType   string     `gorm:"size:50;not null" json:"task_type"`
+	TaskLabel  string     `gorm:"size:200;not null;default:''" json:"task_label"`
 	Status     string     `gorm:"size:20;not null;default:running" json:"status"`
 	Message    string     `gorm:"type:text;default:''" json:"message"`
 	StartedAt  time.Time  `gorm:"not null;default:now()" json:"started_at"`

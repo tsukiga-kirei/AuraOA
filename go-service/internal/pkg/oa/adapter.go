@@ -28,6 +28,10 @@ type OAAdapter interface {
 
 	// IsProcessInTodo 判断指定流程是否仍在用户待办中
 	IsProcessInTodo(ctx context.Context, username string, processID string) (bool, error)
+
+	// FetchAllTodoItems 拉取所有待审批流程（不过滤用户，供调度器批处理使用）
+	// limit <= 0 表示不限制条数
+	FetchAllTodoItems(ctx context.Context, limit int) ([]TodoItem, error)
 }
 
 // ProcessInfo 流程基本信息
