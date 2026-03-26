@@ -1629,6 +1629,17 @@ export default {
     //===== Archive Page Select/Batch =====
     'archive.selectAll': 'Select All',
     'archive.selected': '{0} selected',
+    'archive.batchLimitHint': 'You can review up to 10 processes at a time',
+    'archive.loadFailed': 'Failed to load archived processes',
+    'archive.auditFailed': 'Archive review failed',
+    'archive.noResultToExport': 'No review result available to export',
+    'archive.exportJsonReady': 'Archive review JSON download started',
+    'archive.exportFormatPending': '{0} export is not available yet, please use JSON export first',
+    'archive.cancelReview': 'Cancel Review',
+    'archive.cancelSuccess': 'Archive review cancelled',
+    'archive.cancelFailed': 'Failed to cancel archive review',
+    'archive.historyTitle': 'Review History',
+    'archive.noHistory': 'No review history for this process yet',
 
 
     //===== rules.vue localizations =====

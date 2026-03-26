@@ -162,6 +162,7 @@ docker-compose up -d
 |------|------|
 | [功能说明 — OA 适配](docs/features/oa-integration.md) | OA 系统连接与数据适配能力说明 |
 | [功能说明 — AI 智能审核](docs/features/ai-audit.md) | AI 审核引擎架构与审核流程说明 |
+| [功能说明 — 归档复盘后端化方案](docs/features/archive-review-implementation-plan.md) | `archive.vue` 运行时后端化、队列、接口、数据结构与实施建议 |
 | [数据库设计](docs/database/database-schema.md) | 全部数据表结构与关系说明 |
 | [技术架构](docs/architecture/technical-architecture.md) | 系统架构、前后端关联、API 接口说明 |
 | [TODO — 业务待办](docs/todo/business-todo.md) | 审核工作台、定时任务、归档复盘、仪表盘、消息等业务待办 |

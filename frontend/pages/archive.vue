@@ -17,64 +17,61 @@ import {
   BulbOutlined,
   RightOutlined,
   HistoryOutlined,
-  LockOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { ArchivedProcess, ArchiveAuditResult, ArchiveReviewConfig } from '~/composables/useMockData'
 import { useI18n } from '~/composables/useI18n'
+import type {
+  ArchiveReviewHistoryItem,
+  ArchiveProcessItem,
+  ArchiveProgressStep,
+  ArchiveReviewResult,
+  ArchiveReviewStats,
+  ArchiveRuleAuditResult,
+  ArchiveFieldAuditResult,
+} from '~/types/archive-review'
 
 definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
-const { currentUser, getProfile } = useAuth()
-
+const { token } = useAuth()
 const {
-  mockArchivedProcesses,
-  mockArchiveAuditResult,
-  mockArchiveReviewConfigs,
-  archiveProcessCascaderOptions,
-} = useMockData()
+  getStats,
+  listProcesses: fetchArchiveProcesses,
+  executeReview,
+  waitArchiveJob,
+  cancelArchiveJob,
+  getArchiveResult,
+  getArchiveHistory,
+  getProcessTypes,
+} = useArchiveReviewApi()
 
-// 通过 /api/auth/me 获取当前用户的组织角色，避免调用需要管理权限的 org API
-const myOrgRoleIds = ref<string[]>([])
-const myMemberId = ref<string>('')
+const asyncArchiveStatuses = ['pending', 'assembling', 'reasoning', 'extracting']
 
-onMounted(async () => {
-  const profile = await getProfile()
-  if (profile) {
-    myOrgRoleIds.value = profile.org_roles?.map(r => r.id) ?? []
-    myMemberId.value = profile.user?.id ?? ''
-  }
+const stats = ref<ArchiveReviewStats>({
+  total_count: 0,
+  compliant_count: 0,
+  partial_count: 0,
+  non_compliant_count: 0,
+  unaudited_count: 0,
+  running_count: 0,
 })
+const processList = ref<ArchiveProcessItem[]>([])
+const processCascaderOptions = ref<{ label: string; value: string; children: { label: string; value: string }[] }[]>([])
+const listLoading = ref(false)
 
-//===== 权限：根据当前用户过滤可访问的存档配置 =====
-const accessibleConfigs = computed<ArchiveReviewConfig[]>(() => {
-  return mockArchiveReviewConfigs.filter(cfg => {
-    // 检查基于组织角色的访问
-    if (myOrgRoleIds.value.some(rid => cfg.allowed_roles.includes(rid))) return true
-    // 检查基于成员 ID 的访问
-    if (myMemberId.value && cfg.allowed_members.includes(myMemberId.value)) return true
-    return false
-  })
-})
-
-const accessibleProcessTypes = computed(() => accessibleConfigs.value.map(c => c.process_type))
-
-//=====进程列表（按可访问类型过滤）=====
-const processList = computed<ArchivedProcess[]>(() =>
-  mockArchivedProcesses.filter(p => accessibleProcessTypes.value.includes(p.process_type))
-)
-
-//=====查看状态=====
-const selectedProcess = ref<ArchivedProcess | null>(null)
-const loading = ref(false)
-const phase1Done = ref(false)
+const selectedProcess = ref<ArchiveProcessItem | null>(null)
 const searchText = ref('')
 const searchApplicant = ref('')
 const showFilters = ref(false)
 const batchAuditing = ref(false)
 const selectedProcessIds = ref<string[]>([])
 const processAuditLoading = ref<Record<string, boolean>>({})
+const pollProcessId = ref<string | null>(null)
+const eventSourceStream = ref<EventSource | null>(null)
+const reviewHistory = ref<ArchiveReviewHistoryItem[]>([])
+const historyLoading = ref(false)
+const selectedHistoryId = ref<string | null>(null)
+const currentResult = ref<ArchiveReviewResult | null>(null)
 
 //=====过滤器=====
 const filterProcessType = ref<string[][]>([])
@@ -85,7 +82,7 @@ const filterProcessNames = computed(() => {
     if (path.length >= 2) {
       names.push(path[path.length - 1])
     } else if (path.length === 1) {
-      const cat = archiveProcessCascaderOptions.find((o: any) => o.value === path[0])
+      const cat = processCascaderOptions.value.find((o: any) => o.value === path[0])
       if (cat && (cat as any).children) {
         names.push(...(cat as any).children.map((c: any) => c.value))
       }
@@ -96,7 +93,7 @@ const filterProcessNames = computed(() => {
 const filterDepartment = ref<string | undefined>(undefined)
 const filterAuditStatus = ref<string | undefined>(undefined)
 
-const departmentOptions = computed(() => [...new Set(processList.value.map(p => p.department))])
+const departmentOptions = computed(() => [...new Set(processList.value.map(p => p.department).filter(Boolean))])
 
 const hasActiveFilters = computed(() =>
   !!searchText.value || !!searchApplicant.value || filterProcessType.value.length > 0 || !!filterDepartment.value || !!filterAuditStatus.value
@@ -110,8 +107,97 @@ const clearFilters = () => {
   filterAuditStatus.value = undefined
 }
 
-//=====审核结果缓存=====
-const auditRecords = ref<Record<string, ArchiveAuditResult>>({})
+const isResultAsyncRunning = (result: ArchiveReviewResult | null | undefined) =>
+  !!(result?.status && asyncArchiveStatuses.includes(result.status))
+
+const defaultProgressSteps = (status?: string): ArchiveProgressStep[] => {
+  const defs = [
+    { key: 'pending', label: '排队中' },
+    { key: 'assembling', label: '组装复盘提示词' },
+    { key: 'reasoning', label: '推理分析' },
+    { key: 'extracting', label: '结构化提取' },
+  ]
+  const phaseIdx: Record<string, number> = {
+    pending: 0,
+    assembling: 1,
+    reasoning: 2,
+    extracting: 3,
+  }
+  let current = phaseIdx[status || 'pending'] ?? 0
+  if (status === 'completed') current = 3
+  if (status === 'failed') current = 2
+
+  const steps = defs.map((def, index) => {
+    const step: ArchiveProgressStep = { key: def.key, label: def.label }
+    if (status === 'failed' && index === current) step.failed = true
+    else if (index < current) step.done = true
+    else if (index === current && status !== 'completed') step.current = true
+    return step
+  })
+  if (status === 'completed') {
+    steps.push({ key: 'done', label: '已完成', done: true })
+  }
+  return steps
+}
+
+const normalizeArchiveResult = (input?: Partial<ArchiveReviewResult> | null): ArchiveReviewResult | null => {
+  if (!input) return null
+  return {
+    id: input.id,
+    trace_id: input.trace_id || '',
+    process_id: input.process_id || '',
+    title: input.title,
+    process_type: input.process_type,
+    status: input.status,
+    overall_compliance: input.overall_compliance,
+    overall_score: input.overall_score ?? 0,
+    confidence: input.confidence ?? 0,
+    duration_ms: input.duration_ms ?? 0,
+    ai_reasoning: input.ai_reasoning || '',
+    ai_summary: input.ai_summary || '',
+    flow_audit: {
+      is_complete: input.flow_audit?.is_complete ?? true,
+      missing_nodes: input.flow_audit?.missing_nodes ?? [],
+      node_results: input.flow_audit?.node_results ?? [],
+    },
+    field_audit: input.field_audit ?? [],
+    rule_audit: input.rule_audit ?? [],
+    risk_points: input.risk_points ?? [],
+    suggestions: input.suggestions ?? [],
+    created_at: input.created_at,
+    updated_at: input.updated_at,
+    error_message: input.error_message,
+    parse_error: input.parse_error,
+    raw_content: input.raw_content,
+    process_snapshot: input.process_snapshot,
+    progress_steps: input.progress_steps?.length ? input.progress_steps : defaultProgressSteps(input.status),
+  }
+}
+
+const syncResultToList = (processId: string, result: ArchiveReviewResult | null) => {
+  const item = processList.value.find(proc => proc.process_id === processId)
+  if (!item) return
+  item.archive_result = result
+  item.archive_status = result?.status
+  item.has_review = result?.status === 'completed'
+  processAuditLoading.value = {
+    ...processAuditLoading.value,
+    [processId]: isResultAsyncRunning(result),
+  }
+}
+
+const updateLiveResult = (processId: string, result: Partial<ArchiveReviewResult> | null | undefined) => {
+  const normalized = normalizeArchiveResult(result)
+  if (!normalized) return
+  syncResultToList(processId, normalized)
+  if (selectedProcess.value?.process_id === processId) {
+    const oldReasoning = currentResult.value?.ai_reasoning || ''
+    currentResult.value = normalized
+    if (oldReasoning.length > (normalized.ai_reasoning?.length || 0) && currentResult.value) {
+      currentResult.value.ai_reasoning = oldReasoning
+    }
+  }
+}
 
 const filteredList = computed(() => {
   let list = [...processList.value]
@@ -134,9 +220,9 @@ const filteredList = computed(() => {
   }
   if (filterAuditStatus.value) {
     if (filterAuditStatus.value === 'unaudited') {
-      list = list.filter(p => !auditRecords.value[p.process_id])
+      list = list.filter(p => !p.archive_result?.overall_compliance)
     } else {
-      list = list.filter(p => auditRecords.value[p.process_id]?.overall_compliance === filterAuditStatus.value)
+      list = list.filter(p => p.archive_result?.overall_compliance === filterAuditStatus.value)
     }
   }
   return list
@@ -146,137 +232,350 @@ const { paged: pagedList, current: listPage, pageSize: listPageSize, total: list
 
 //=====选择=====
 const toggleSelectProcess = (id: string) => {
+  if (processAuditLoading.value[id]) return
   const idx = selectedProcessIds.value.indexOf(id)
   if (idx >= 0) selectedProcessIds.value.splice(idx, 1)
-  else selectedProcessIds.value.push(id)
+  else if (selectedProcessIds.value.length < 10) selectedProcessIds.value.push(id)
+  else message.warning(t('archive.batchLimitHint'))
 }
+
+const selectableIdsComputed = computed(() =>
+  filteredList.value
+    .filter(proc => !proc.archive_status || !asyncArchiveStatuses.includes(proc.archive_status))
+    .map(proc => proc.process_id),
+)
 
 const toggleSelectAll = () => {
-  if (selectedProcessIds.value.length === filteredList.value.length) {
+  const selectableIds = selectableIdsComputed.value
+  if (selectedProcessIds.value.length === Math.min(selectableIds.length, 10) || selectableIds.length === 0) {
     selectedProcessIds.value = []
   } else {
-    selectedProcessIds.value = filteredList.value.map(p => p.process_id)
+    selectedProcessIds.value = selectableIds.slice(0, 10)
   }
 }
 
-//=====生成模拟审核结果=====
-const generateAuditResult = (proc: ArchivedProcess): ArchiveAuditResult => {
-  const complianceOptions: ArchiveAuditResult['overall_compliance'][] = ['compliant', 'non_compliant', 'partially_compliant']
-  const hash = proc.process_id.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
-  const compliance = complianceOptions[hash % 3]
-  const score = compliance === 'compliant' ? 85 + (hash % 15) : compliance === 'partially_compliant' ? 55 + (hash % 25) : 20 + (hash % 30)
-  const cfg = accessibleConfigs.value.find(c => c.process_type === proc.process_type)
-  const rules = cfg?.rules || []
-  return {
-    ...mockArchiveAuditResult,
-    trace_id: `ATR-${Date.now().toString(36).toUpperCase()}`,
-    process_id: proc.process_id,
-    overall_compliance: compliance,
-    overall_score: score,
-    duration_ms: 1500 + (hash % 3000),
-    rule_audit: rules.map((r, i) => ({
-      rule_id: r.id,
-      rule_name: r.rule_content.slice(0, 20) + (r.rule_content.length > 20 ? '...' : ''),
-      passed: (hash + i) % 3 !== 0,
-      reasoning: (hash + i) % 3 !== 0 ? '经核查，该规则项符合要求' : '经核查，该规则项存在不合规情况，需关注',
-    })),
-    flow_audit: {
-      is_complete: hash % 4 !== 0,
-      missing_nodes: hash % 4 === 0 ? ['财务总监审批'] : [],
-      node_results: proc.flow_nodes.map((n, i) => ({
-        node_id: n.node_id,
-        node_name: n.node_name,
-        compliant: (hash + i) % 5 !== 0 || n.action === 'approve',
-        reasoning: n.action === 'approve' ? '审批节点完整，操作合规' : `节点 ${n.node_name} 存在退回操作，需关注`,
-      })),
-    },
-    ai_summary: compliance === 'compliant'
-      ? `该${proc.process_type}流程整体合规，审批链完整，规则校验全部通过，建议归档留存。`
-      : compliance === 'partially_compliant'
-        ? `该${proc.process_type}流程存在部分合规问题，规则校验有不通过项，建议关注并整改。`
-        : `该${proc.process_type}流程存在较多合规问题，规则校验多项不通过，建议重点审查。`,
+const disconnectStream = () => {
+  if (eventSourceStream.value) {
+    eventSourceStream.value.close()
+    eventSourceStream.value = null
   }
 }
 
-//=====单次审核=====
-const currentResult = ref<ArchiveAuditResult | null>(null)
+const startSSE = (archiveLogId: string, processId: string) => {
+  disconnectStream()
+  const tokenVal = token.value || localStorage.getItem('token') || ''
+  const config = useRuntimeConfig()
+  const url = `${String(config.public.apiBase)}/api/archive/stream/${archiveLogId}?token=${encodeURIComponent(tokenVal)}`
 
-const selectProcess = (proc: ArchivedProcess) => {
+  eventSourceStream.value = new EventSource(url)
+  eventSourceStream.value.onmessage = (event) => {
+    if (selectedProcess.value?.process_id !== processId || !currentResult.value) return
+    currentResult.value.ai_reasoning = (currentResult.value.ai_reasoning || '') + event.data
+  }
+  eventSourceStream.value.onerror = () => {
+    disconnectStream()
+  }
+}
+
+const trackRunningJob = async (proc: ArchiveProcessItem) => {
+  const archiveLogId = proc.archive_result?.id
+  if (!archiveLogId || pollProcessId.value === proc.process_id) return
+
+  pollProcessId.value = proc.process_id
+  processAuditLoading.value = {
+    ...processAuditLoading.value,
+    [proc.process_id]: true,
+  }
+  if (selectedProcess.value?.process_id === proc.process_id) {
+    startSSE(archiveLogId, proc.process_id)
+  }
+
+  try {
+    const result = await waitArchiveJob(archiveLogId, (status) => {
+      updateLiveResult(proc.process_id, status)
+    })
+    updateLiveResult(proc.process_id, result)
+    await Promise.all([loadStats(), loadProcesses()])
+  } catch {
+    await Promise.all([loadStats(), loadProcesses()])
+  } finally {
+    if (pollProcessId.value === proc.process_id) {
+      pollProcessId.value = null
+    }
+    if (selectedProcess.value?.process_id === proc.process_id) {
+      disconnectStream()
+    }
+    processAuditLoading.value = {
+      ...processAuditLoading.value,
+      [proc.process_id]: false,
+    }
+  }
+}
+
+const selectProcess = (proc: ArchiveProcessItem) => {
   selectedProcess.value = proc
-  currentResult.value = auditRecords.value[proc.process_id] || null
-  phase1Done.value = !!currentResult.value
+  selectedHistoryId.value = proc.archive_result?.status === 'completed' ? proc.archive_result.id || null : null
+  currentResult.value = normalizeArchiveResult(proc.archive_result)
+  loadHistory(proc.process_id)
+  if (isResultAsyncRunning(currentResult.value)) {
+    trackRunningJob(proc)
+  } else {
+    disconnectStream()
+  }
+}
+
+const loading = computed(() => isResultAsyncRunning(currentResult.value))
+
+const runArchiveReview = async (proc: ArchiveProcessItem) => {
+  selectedHistoryId.value = null
+  const pendingResult = normalizeArchiveResult({
+    trace_id: '',
+    process_id: proc.process_id,
+    title: proc.title,
+    process_type: proc.process_type,
+    status: 'pending',
+    ai_reasoning: '',
+  })
+  syncResultToList(proc.process_id, pendingResult)
+  if (selectedProcess.value?.process_id === proc.process_id) {
+    currentResult.value = pendingResult
+  }
+
+  let started = false
+  try {
+    const result = await executeReview({
+      process_id: proc.process_id,
+      process_type: proc.process_type,
+      title: proc.title,
+    }, (status) => {
+      if (!started && status.id && selectedProcess.value?.process_id === proc.process_id) {
+        startSSE(status.id, proc.process_id)
+        started = true
+      }
+      updateLiveResult(proc.process_id, status)
+    })
+    updateLiveResult(proc.process_id, result)
+    await Promise.all([loadStats(), loadProcesses()])
+    return result
+  } finally {
+    if (selectedProcess.value?.process_id === proc.process_id && !isResultAsyncRunning(currentResult.value)) {
+      disconnectStream()
+    }
+  }
 }
 
 const handleAudit = async () => {
   if (!selectedProcess.value) return
-  loading.value = true
-  phase1Done.value = false
-  currentResult.value = null
-  await new Promise(r => setTimeout(r, 2200))
-  phase1Done.value = true
-  await new Promise(r => setTimeout(r, 1650))
-  const result = generateAuditResult(selectedProcess.value)
-  currentResult.value = result
-  auditRecords.value[selectedProcess.value.process_id] = result
-  loading.value = false
+  const processId = selectedProcess.value.process_id
+  processAuditLoading.value = {
+    ...processAuditLoading.value,
+    [processId]: true,
+  }
+  try {
+    await runArchiveReview(selectedProcess.value)
+  } catch (error: any) {
+    message.error(error?.message || t('archive.auditFailed'))
+    await Promise.all([loadStats(), loadProcesses()])
+  } finally {
+    processAuditLoading.value = {
+      ...processAuditLoading.value,
+      [processId]: false,
+    }
+  }
 }
 
 const handleReAudit = async () => {
-  currentResult.value = null
   await handleAudit()
 }
 
-//批量审核进度跟踪
 const batchAuditTotal = ref(0)
 const batchAuditDone = ref(0)
 
 //=====批量审核=====
 const handleBatchAudit = async () => {
-  if (selectedProcessIds.value.length === 0) return
+  if (selectedProcessIds.value.length === 0 || selectedProcessIds.value.length > 10) {
+    if (selectedProcessIds.value.length > 10) {
+      message.warning(t('archive.batchLimitHint'))
+    }
+    return
+  }
   batchAuditing.value = true
   const ids = [...selectedProcessIds.value]
   batchAuditTotal.value = ids.length
   batchAuditDone.value = 0
-  for (const id of ids) processAuditLoading.value[id] = true
+
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i]
-    await new Promise(r => setTimeout(r, 800 + Math.random() * 1000))
     const proc = processList.value.find(p => p.process_id === id)
-    if (proc) {
-      const result = generateAuditResult(proc)
-      auditRecords.value[id] = result
-      if (selectedProcess.value?.process_id === id) currentResult.value = result
+    if (!proc) {
+      batchAuditDone.value = i + 1
+      continue
     }
-    processAuditLoading.value[id] = false
+
+    processAuditLoading.value = {
+      ...processAuditLoading.value,
+      [id]: true,
+    }
+
+    try {
+      await runArchiveReview(proc)
+    } catch {
+    }
+
+    processAuditLoading.value = {
+      ...processAuditLoading.value,
+      [id]: false,
+    }
     batchAuditDone.value = i + 1
   }
+
   batchAuditing.value = false
   selectedProcessIds.value = []
-  message.success(t('archive.batchDone', `${ids.length}`))
+  await Promise.all([loadStats(), loadProcesses()])
+  message.success(t('archive.batchDone', `${batchAuditDone.value}`))
 }
 
 //=====导出（仅在选择流程后显示）=====
-const handleExport = (format: string) => {
-  message.success(t('archive.exporting', format.toUpperCase()))
+const handleExport = async (format: string) => {
+  if (!selectedProcess.value || !currentResult.value) {
+    message.warning(t('archive.noResultToExport'))
+    return
+  }
+  if (format !== 'json') {
+    message.info(t('archive.exportFormatPending', format.toUpperCase()))
+    return
+  }
+
+  const fullResult = currentResult.value.id
+    ? normalizeArchiveResult(await getArchiveResult(currentResult.value.id))
+    : currentResult.value
+  const payload = {
+    process: selectedProcess.value,
+    result: fullResult,
+  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `archive-review-${selectedProcess.value.process_id}.json`
+  link.click()
+  URL.revokeObjectURL(url)
+  message.success(t('archive.exportJsonReady'))
 }
 
 const jumpToOA = (processId: string) => {
   message.info(t('archive.jumpingToOA', processId))
 }
 
+const handleCancelAudit = async () => {
+  if (!currentResult.value?.id || !selectedProcess.value) return
+  try {
+    await cancelArchiveJob(currentResult.value.id)
+    message.success(t('archive.cancelSuccess'))
+    await Promise.all([loadStats(), loadProcesses()])
+    const next = processList.value.find(proc => proc.process_id === selectedProcess.value?.process_id)
+    if (next) {
+      selectProcess(next)
+    }
+  } catch (error: any) {
+    message.error(error?.message || t('archive.cancelFailed'))
+  }
+}
+
+const loadHistory = async (processId: string) => {
+  historyLoading.value = true
+  try {
+    reviewHistory.value = await getArchiveHistory(processId)
+  } catch {
+    reviewHistory.value = []
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+const handleSelectHistory = async (item: ArchiveReviewHistoryItem) => {
+  selectedHistoryId.value = item.id
+  try {
+    const result = normalizeArchiveResult(await getArchiveResult(item.id))
+    if (result) {
+      currentResult.value = result
+    }
+  } catch (error: any) {
+    message.error(error?.message || t('archive.loadFailed'))
+  }
+}
+
+const loadStats = async () => {
+  try {
+    stats.value = await getStats()
+  } catch {}
+}
+
+const loadProcessTypes = async () => {
+  try {
+    const list = await getProcessTypes()
+    const categoryMap = new Map<string, { label: string; value: string; children: { label: string; value: string }[] }>()
+    for (const item of list || []) {
+      const categoryLabel = item.process_type_label || item.process_type
+      if (!categoryMap.has(categoryLabel)) {
+        categoryMap.set(categoryLabel, { label: categoryLabel, value: categoryLabel, children: [] })
+      }
+      const category = categoryMap.get(categoryLabel)!
+      if (!category.children.some(child => child.value === item.process_type)) {
+        category.children.push({ label: item.process_type, value: item.process_type })
+      }
+    }
+    processCascaderOptions.value = Array.from(categoryMap.values())
+  } catch {}
+}
+
+const loadProcesses = async () => {
+  listLoading.value = true
+  try {
+    const response = await fetchArchiveProcesses()
+    processList.value = Array.isArray(response) ? response : (response?.items ?? [])
+    selectedProcessIds.value = selectedProcessIds.value.filter(id => selectableIdsComputed.value.includes(id))
+
+    if (!selectedProcess.value) return
+    const nextSelected = processList.value.find(proc => proc.process_id === selectedProcess.value?.process_id) || null
+    selectedProcess.value = nextSelected
+    if (selectedHistoryId.value) return
+    currentResult.value = normalizeArchiveResult(nextSelected?.archive_result)
+    if (nextSelected && isResultAsyncRunning(currentResult.value)) {
+      trackRunningJob(nextSelected)
+    }
+  } catch {
+    processList.value = []
+    message.error(t('archive.loadFailed'))
+  } finally {
+    listLoading.value = false
+  }
+}
+
+const filteredProgressSteps = computed(() => {
+  if (!currentResult.value) return []
+  const steps = currentResult.value.progress_steps?.length
+    ? currentResult.value.progress_steps
+    : defaultProgressSteps(currentResult.value.status)
+  return steps.filter(step => step.key !== 'pending')
+})
+
 //=====配置助手=====
-const complianceConfig = computed(() => ({
+const complianceConfig = computed((): Record<string, { color: string; bg: string; label: string }> => ({
   compliant: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: t('archive.compliant') },
   non_compliant: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', label: t('archive.nonCompliant') },
   partially_compliant: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: t('archive.partiallyCompliant') },
 }))
 
-const actionConfig = computed(() => ({
-  approve: { color: 'var(--color-success)', label: t('archive.actionApprove') },
-  return: { color: 'var(--color-warning)', label: t('archive.actionReturn') },
-}))
+const auditedCount = computed(() => filteredList.value.filter(p => !!p.archive_result?.overall_compliance).length)
 
-const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.value[p.process_id]).length)
+onMounted(async () => {
+  await Promise.all([loadProcessTypes(), loadStats(), loadProcesses()])
+})
+
+onUnmounted(() => {
+  disconnectStream()
+})
 </script>
 
 <template>
@@ -316,21 +615,21 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
       <div class="stat-card stat-card--success" :class="{ 'stat-card--selected': filterAuditStatus === 'compliant' }" @click="filterAuditStatus = filterAuditStatus === 'compliant' ? undefined : 'compliant'">
         <div class="stat-card-icon"><CheckCircleOutlined /></div>
         <div class="stat-card-info">
-          <span class="stat-card-value">{{ Object.values(auditRecords).filter(r => r.overall_compliance === 'compliant').length }}</span>
+          <span class="stat-card-value">{{ stats.compliant_count }}</span>
           <span class="stat-card-label">{{ t('archive.statCompliant') }}</span>
         </div>
       </div>
       <div class="stat-card stat-card--warning" :class="{ 'stat-card--selected': filterAuditStatus === 'partially_compliant' }" @click="filterAuditStatus = filterAuditStatus === 'partially_compliant' ? undefined : 'partially_compliant'">
         <div class="stat-card-icon"><AlertOutlined /></div>
         <div class="stat-card-info">
-          <span class="stat-card-value">{{ Object.values(auditRecords).filter(r => r.overall_compliance === 'partially_compliant').length }}</span>
+          <span class="stat-card-value">{{ stats.partial_count }}</span>
           <span class="stat-card-label">{{ t('archive.statPartial') }}</span>
         </div>
       </div>
       <div class="stat-card stat-card--danger" :class="{ 'stat-card--selected': filterAuditStatus === 'non_compliant' }" @click="filterAuditStatus = filterAuditStatus === 'non_compliant' ? undefined : 'non_compliant'">
         <div class="stat-card-icon"><CloseCircleOutlined /></div>
         <div class="stat-card-info">
-          <span class="stat-card-value">{{ Object.values(auditRecords).filter(r => r.overall_compliance === 'non_compliant').length }}</span>
+          <span class="stat-card-value">{{ stats.non_compliant_count }}</span>
           <span class="stat-card-label">{{ t('archive.statNonCompliant') }}</span>
         </div>
       </div>
@@ -364,7 +663,7 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
               </a-input>
               <a-cascader
                 v-model:value="filterProcessType"
-                :options="archiveProcessCascaderOptions"
+                :options="processCascaderOptions"
                 :placeholder="t('archive.processType')"
                 multiple
                 :max-tag-count="1"
@@ -389,8 +688,8 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
           <div class="batch-toolbar">
             <div class="batch-toolbar-left">
               <a-checkbox
-                :checked="selectedProcessIds.length === filteredList.length && filteredList.length > 0"
-                :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < filteredList.length"
+                :checked="selectedProcessIds.length === Math.min(selectableIdsComputed.length, 10) && selectableIdsComputed.length > 0"
+                :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < Math.min(selectableIdsComputed.length, 10)"
                 @change="toggleSelectAll"
               >
                 {{ selectedProcessIds.length > 0 ? t('archive.selected', `${selectedProcessIds.length}`) : t('archive.selectAll') }}
@@ -410,60 +709,65 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
 
         <!--进程列表-->
         <div class="process-list">
-          <div
-            v-for="proc in pagedList"
-            :key="proc.process_id"
-            class="process-item"
-            :class="{
-              'process-item--selected': selectedProcess?.process_id === proc.process_id,
-              'process-item--compliant': auditRecords[proc.process_id]?.overall_compliance === 'compliant',
-              'process-item--partial': auditRecords[proc.process_id]?.overall_compliance === 'partially_compliant',
-              'process-item--noncompliant': auditRecords[proc.process_id]?.overall_compliance === 'non_compliant',
-            }"
-            @click="selectProcess(proc)"
-          >
-            <div class="process-item-checkbox" @click.stop="toggleSelectProcess(proc.process_id)">
-              <a-checkbox :checked="selectedProcessIds.includes(proc.process_id)" />
-            </div>
-            <div class="process-item-main">
-              <div class="process-item-title-row">
-                <span class="process-item-title">{{ proc.title }}</span>
-                <span
-                  v-if="auditRecords[proc.process_id]"
-                  class="process-audit-badge"
-                  :style="{
-                    color: complianceConfig[auditRecords[proc.process_id].overall_compliance]?.color,
-                    background: complianceConfig[auditRecords[proc.process_id].overall_compliance]?.bg,
-                  }"
-                >
-                  <SafetyCertificateOutlined />
-                  {{ complianceConfig[auditRecords[proc.process_id].overall_compliance]?.label }}
-                  {{ auditRecords[proc.process_id].overall_score }}{{ t('archive.score') }}
-                </span>
-              </div>
-              <div class="process-item-meta">
-                <span>{{ proc.applicant }}</span>
-                <span class="meta-dot">·</span>
-                <span>{{ proc.department }}</span>
-                <span class="meta-dot">·</span>
-                <span>{{ proc.submit_time }}</span>
-              </div>
-              <div class="process-item-footer">
-                <span class="process-type-tag">{{ proc.process_type }}</span>
-                <span v-if="processAuditLoading[proc.process_id]" class="process-auditing">
-                  <LoadingOutlined style="font-size: 11px;" /> {{ t('archive.auditingItem') }}
-                </span>
-                <a-tooltip :title="t('archive.jumpOA')" :mouse-enter-delay="0.5">
-                  <button class="oa-jump-btn" @click.stop="jumpToOA(proc.process_id)">
-                    <ExportOutlined />
-                  </button>
-                </a-tooltip>
-              </div>
-            </div>
+          <div v-if="listLoading" class="list-empty">
+            <a-spin />
           </div>
-          <div v-if="filteredList.length === 0" class="list-empty">
-            <a-empty :description="t('archive.noMatch')" />
-          </div>
+          <template v-else>
+            <div
+              v-for="proc in pagedList"
+              :key="proc.process_id"
+              class="process-item"
+              :class="{
+                'process-item--selected': selectedProcess?.process_id === proc.process_id,
+                'process-item--compliant': proc.archive_result?.overall_compliance === 'compliant',
+                'process-item--partial': proc.archive_result?.overall_compliance === 'partially_compliant',
+                'process-item--noncompliant': proc.archive_result?.overall_compliance === 'non_compliant',
+              }"
+              @click="selectProcess(proc)"
+            >
+              <div class="process-item-checkbox" @click.stop="toggleSelectProcess(proc.process_id)">
+                <a-checkbox :checked="selectedProcessIds.includes(proc.process_id)" :disabled="processAuditLoading[proc.process_id]" />
+              </div>
+              <div class="process-item-main">
+                <div class="process-item-title-row">
+                  <span class="process-item-title">{{ proc.title }}</span>
+                  <span
+                    v-if="proc.archive_result?.overall_compliance"
+                    class="process-audit-badge"
+                    :style="{
+                      color: complianceConfig[proc.archive_result.overall_compliance]?.color,
+                      background: complianceConfig[proc.archive_result.overall_compliance]?.bg,
+                    }"
+                  >
+                    <SafetyCertificateOutlined />
+                    {{ complianceConfig[proc.archive_result.overall_compliance]?.label }}
+                    {{ proc.archive_result.overall_score }}{{ t('archive.score') }}
+                  </span>
+                </div>
+                <div class="process-item-meta">
+                  <span>{{ proc.applicant }}</span>
+                  <span class="meta-dot">·</span>
+                  <span>{{ proc.department }}</span>
+                  <span class="meta-dot">·</span>
+                  <span>{{ proc.submit_time }}</span>
+                </div>
+                <div class="process-item-footer">
+                  <span class="process-type-tag">{{ proc.process_type }}</span>
+                  <span v-if="processAuditLoading[proc.process_id]" class="process-auditing">
+                    <LoadingOutlined style="font-size: 11px;" /> {{ t('archive.auditingItem') }}
+                  </span>
+                  <a-tooltip :title="t('archive.jumpOA')" :mouse-enter-delay="0.5">
+                    <button class="oa-jump-btn" @click.stop="jumpToOA(proc.process_id)">
+                      <ExportOutlined />
+                    </button>
+                  </a-tooltip>
+                </div>
+              </div>
+            </div>
+            <div v-if="filteredList.length === 0" class="list-empty">
+              <a-empty :description="t('archive.noMatch')" />
+            </div>
+          </template>
         </div>
 
         <!--分页-->
@@ -517,6 +821,9 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
                   <a-button @click="jumpToOA(selectedProcess.process_id)">
                     <ExportOutlined /> OA
                   </a-button>
+                  <a-button v-if="loading && currentResult?.id" danger @click="handleCancelAudit">
+                    <CloseCircleOutlined /> {{ t('archive.cancelReview') }}
+                  </a-button>
                   <a-button type="primary" :loading="loading" @click="currentResult ? handleReAudit() : handleAudit()">
                     <template v-if="currentResult && !loading">
                       <ReloadOutlined /> {{ t('archive.reAudit') }}
@@ -530,27 +837,35 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
             </div>
 
             <!--审核正在进行中-->
-            <template v-if="loading">
+            <template v-if="loading && currentResult">
               <div class="audit-progress">
-                <div class="audit-phase" :class="{ 'audit-phase--done': phase1Done, 'audit-phase--active': !phase1Done }">
+                <div
+                  v-for="step in filteredProgressSteps"
+                  :key="step.key"
+                  class="audit-phase"
+                  :class="{
+                    'audit-phase--done': step.done,
+                    'audit-phase--active': step.current,
+                    'audit-phase--failed': step.failed,
+                    'audit-phase--pending': !step.done && !step.current && !step.failed,
+                  }"
+                >
                   <div class="audit-phase-dot">
-                    <LoadingOutlined v-if="!phase1Done" />
-                    <CheckCircleOutlined v-else style="color: var(--color-success);" />
-                  </div>
-                  <div class="audit-phase-info">
-                    <div class="audit-phase-title">{{ t('archive.phase1Title') }}</div>
-                    <div class="audit-phase-desc">{{ t('archive.phase1Desc') }}</div>
-                  </div>
-                </div>
-                <div class="audit-phase" :class="{ 'audit-phase--active': phase1Done, 'audit-phase--pending': !phase1Done }">
-                  <div class="audit-phase-dot">
-                    <LoadingOutlined v-if="phase1Done" />
+                    <LoadingOutlined v-if="step.current" />
+                    <CloseCircleOutlined v-else-if="step.failed" style="color: var(--color-danger);" />
+                    <CheckCircleOutlined v-else-if="step.done" style="color: var(--color-success);" />
                     <div v-else class="phase-pending-dot" />
                   </div>
                   <div class="audit-phase-info">
-                    <div class="audit-phase-title">{{ t('archive.phase2Title') }}</div>
-                    <div class="audit-phase-desc">{{ t('archive.phase2Desc') }}</div>
+                    <div class="audit-phase-title">{{ step.label }}</div>
+                    <div class="audit-phase-desc">{{ currentResult.trace_id || t('archive.aiAuditing') }}</div>
                   </div>
+                </div>
+                <div v-if="currentResult.ai_reasoning" class="ai-summary">
+                  <pre>{{ currentResult.ai_reasoning }}</pre>
+                </div>
+                <div v-else class="audit-check-empty">
+                  {{ t('archive.aiAuditing') }}
                 </div>
               </div>
             </template>
@@ -561,17 +876,17 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
               <div
                 class="compliance-banner"
                 :style="{
-                  background: complianceConfig[currentResult.overall_compliance]?.bg,
-                  borderColor: complianceConfig[currentResult.overall_compliance]?.color,
+                  background: complianceConfig[currentResult.overall_compliance ?? '']?.bg,
+                  borderColor: complianceConfig[currentResult.overall_compliance ?? '']?.color,
                 }"
               >
                 <SafetyCertificateOutlined
                   class="compliance-banner-icon"
-                  :style="{ color: complianceConfig[currentResult.overall_compliance]?.color }"
+                  :style="{ color: complianceConfig[currentResult.overall_compliance ?? '']?.color }"
                 />
                 <div class="compliance-banner-info">
-                  <div class="compliance-banner-title" :style="{ color: complianceConfig[currentResult.overall_compliance]?.color }">
-                    {{ complianceConfig[currentResult.overall_compliance]?.label }}
+                  <div class="compliance-banner-title" :style="{ color: complianceConfig[currentResult.overall_compliance ?? '']?.color }">
+                    {{ complianceConfig[currentResult.overall_compliance ?? '']?.label }}
                   </div>
                   <div class="compliance-banner-meta">
                     {{ t('archive.overallScore') }} {{ currentResult.overall_score }} {{ t('archive.score') }}
@@ -579,8 +894,20 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
                     · {{ currentResult.trace_id }}
                   </div>
                 </div>
-                <div class="compliance-score" :style="{ color: complianceConfig[currentResult.overall_compliance]?.color }">
+                <div class="compliance-score" :style="{ color: complianceConfig[currentResult.overall_compliance ?? '']?.color }">
                   {{ currentResult.overall_score }}
+                </div>
+              </div>
+
+              <div v-if="currentResult.error_message" class="section-block">
+                <div class="audit-check-item audit-check-item--fail">
+                  <div class="audit-check-status">
+                    <CloseCircleOutlined style="color: var(--color-danger);" />
+                  </div>
+                  <div class="audit-check-content">
+                    <div class="audit-check-name">{{ t('archive.auditFailed') }}</div>
+                    <div class="audit-check-reasoning">{{ currentResult.error_message }}</div>
+                  </div>
                 </div>
               </div>
 
@@ -613,30 +940,30 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
               <div v-if="currentResult.overall_compliance !== 'compliant'" class="risk-suggestions-row">
                 <div class="risk-card">
                   <h4 class="section-title"><AlertOutlined style="color: var(--color-danger);" /> {{ t('archive.riskPoints') }}</h4>
-                  <div v-if="currentResult.flow_audit.missing_nodes.length > 0" class="risk-list">
-                    <div v-for="node in currentResult.flow_audit.missing_nodes" :key="node" class="risk-item">
+                  <div v-if="currentResult.flow_audit?.missing_nodes?.length ?? 0 > 0" class="risk-list">
+                    <div v-for="node in currentResult.flow_audit?.missing_nodes" :key="node" class="risk-item">
                       <CloseCircleOutlined style="color: var(--color-danger); flex-shrink: 0;" />
                       <span>{{ t('archive.missingNode') }}: {{ node }}</span>
                     </div>
                   </div>
                   <div class="risk-list">
-                    <div v-for="(ra, i) in currentResult.rule_audit.filter(r => !r.passed)" :key="i" class="risk-item">
+                    <div v-for="(ra, i) in currentResult.rule_audit?.filter((r: ArchiveRuleAuditResult) => !r.passed) ?? []" :key="i" class="risk-item">
                       <CloseCircleOutlined style="color: var(--color-danger); flex-shrink: 0;" />
                       <span>{{ ra.rule_name }}</span>
                     </div>
                   </div>
-                  <div v-if="!currentResult.flow_audit.missing_nodes.length && !currentResult.rule_audit.filter(r => !r.passed).length" class="risk-empty">
+                  <div v-if="!currentResult.flow_audit?.missing_nodes?.length && !(currentResult.rule_audit?.filter((r: ArchiveRuleAuditResult) => !r.passed)?.length)" class="risk-empty">
                     {{ t('archive.noRiskPoints') }}
                   </div>
                 </div>
                 <div class="suggestion-card">
                   <h4 class="section-title"><BulbOutlined style="color: var(--color-warning);" /> {{ t('archive.suggestions') }}</h4>
                   <div class="suggestion-list">
-                    <div v-for="(fa, i) in currentResult.field_audit.filter(f => !f.passed)" :key="i" class="suggestion-item">
+                    <div v-for="(fa, i) in currentResult.field_audit?.filter((f: ArchiveFieldAuditResult) => !f.passed) ?? []" :key="i" class="suggestion-item">
                       <RightOutlined style="color: var(--color-warning); flex-shrink: 0;" />
                       <span>{{ fa.reasoning }}</span>
                     </div>
-                    <div v-if="!currentResult.field_audit.filter(f => !f.passed).length" class="suggestion-item">
+                    <div v-if="!currentResult.field_audit?.filter((f: ArchiveFieldAuditResult) => !f.passed)?.length" class="suggestion-item">
                       <RightOutlined style="color: var(--color-warning); flex-shrink: 0;" />
                       <span>{{ t('archive.reviewSuggestion') }}</span>
                     </div>
@@ -657,6 +984,42 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
             <div v-if="!currentResult && !loading" class="no-result-hint">
               <HistoryOutlined style="font-size: 32px; color: var(--color-text-tertiary);" />
               <p>{{ t('archive.noResultHint') }}</p>
+            </div>
+
+            <div class="section-block">
+              <h4 class="section-title"><HistoryOutlined /> {{ t('archive.historyTitle') }}</h4>
+              <div v-if="historyLoading" class="audit-check-empty">
+                <a-spin size="small" />
+              </div>
+              <div v-else-if="reviewHistory.length" class="history-list">
+                <button
+                  v-for="item in reviewHistory"
+                  :key="item.id"
+                  class="history-item"
+                  :class="{ 'history-item--active': selectedHistoryId === item.id }"
+                  @click="handleSelectHistory(item)"
+                >
+                  <span class="history-item-title">
+                    <span>{{ item.user_name || item.title }}</span>
+                    <span class="history-item-time">{{ item.created_at }}</span>
+                  </span>
+                  <span class="history-item-meta">
+                    <span
+                      class="process-audit-badge"
+                      :style="{
+                        color: complianceConfig[item.compliance]?.color,
+                        background: complianceConfig[item.compliance]?.bg,
+                      }"
+                    >
+                      {{ complianceConfig[item.compliance]?.label }}
+                      {{ item.compliance_score }}{{ t('archive.score') }}
+                    </span>
+                  </span>
+                </button>
+              </div>
+              <div v-else class="audit-check-empty">
+                {{ t('archive.noHistory') }}
+              </div>
             </div>
           </template>
         </div>
@@ -873,6 +1236,28 @@ const auditedCount = computed(() => filteredList.value.filter(p => auditRecords.
   white-space: pre-wrap; word-break: break-word; font-family: var(--font-sans);
   font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); margin: 0;
 }
+
+.history-list { display: flex; flex-direction: column; gap: 8px; }
+.history-item {
+  width: 100%; text-align: left; padding: 12px 14px; border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light); background: var(--color-bg-page); cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.history-item:hover {
+  border-color: var(--color-primary); background: var(--color-primary-bg);
+}
+.history-item--active {
+  border-color: var(--color-primary); background: var(--color-primary-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+.history-item-title {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 13px; font-weight: 600; color: var(--color-text-primary);
+}
+.history-item-time {
+  font-size: 12px; font-weight: 400; color: var(--color-text-tertiary);
+}
+.history-item-meta { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
 
 .oa-jump-btn {
   width: 24px; height: 24px; border: 1px solid var(--color-border);

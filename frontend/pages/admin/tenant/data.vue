@@ -27,7 +27,6 @@ import {
 } from '~/composables/useMockData'
 import type { AuditLog, CronLog, ArchiveLog, AuditResult, ArchiveAuditResult } from '~/composables/useMockData'
 import type { Dayjs } from 'dayjs'
-import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })

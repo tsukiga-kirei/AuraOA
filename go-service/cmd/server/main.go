@@ -81,6 +81,7 @@ func main() {
 	archiveRuleRepo := repository.NewArchiveRuleRepo(db)
 
 	auditLogRepo := repository.NewAuditLogRepo(db)
+	archiveLogRepo := repository.NewArchiveLogRepo(db)
 
 	// 6. Initialize services
 	authService := service.NewAuthService(userRepo, rdb, db)
@@ -99,11 +100,16 @@ func main() {
 	archiveRuleService := service.NewArchiveRuleService(archiveRuleRepo)
 	aiCallerService := service.NewAIModelCallerService(tenantRepo, llmMessageLogRepo, db)
 	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db, rdb)
+	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, orgRepo, db, rdb)
 
 	if err := service.StartAuditStreamWorker(context.Background(), rdb, auditExecuteService, logger, 2); err != nil {
 		logger.Warn("audit stream worker not started", zap.Error(err))
 	}
 	service.StartAuditStaleReconciler(context.Background(), auditExecuteService, logger, 30*time.Second)
+	if err := service.StartArchiveStreamWorker(context.Background(), rdb, archiveReviewService, logger, 2); err != nil {
+		logger.Warn("archive stream worker not started", zap.Error(err))
+	}
+	service.StartArchiveStaleReconciler(context.Background(), archiveReviewService, logger, 30*time.Second)
 
 	// 7. Initialize handlers
 	authHandler := handler.NewAuthHandler(authService, rdb)
@@ -120,6 +126,7 @@ func main() {
 	archiveConfigHandler := handler.NewArchiveConfigHandler(archiveConfigService)
 	archiveRuleHandler := handler.NewArchiveRuleHandler(archiveRuleService)
 	auditHandler := handler.NewAuditHandler(auditExecuteService)
+	archiveReviewHandler := handler.NewArchiveReviewHandler(archiveReviewService)
 
 	// 8. Setup Gin router with middleware and routes
 	r := gin.New()
@@ -129,7 +136,7 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, archiveConfigHandler, archiveRuleHandler, auditHandler)
+	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler)
 
 	// 9. Start HTTP server
 	port := viper.GetInt("server.port")

@@ -41,6 +41,15 @@ func (r *ProcessArchiveConfigRepo) ListByTenant(c *gin.Context) ([]model.Process
 	return cfgs, nil
 }
 
+// GetByProcessType 查询当前租户指定流程类型的归档配置。
+func (r *ProcessArchiveConfigRepo) GetByProcessType(c *gin.Context, processType string) (*model.ProcessArchiveConfig, error) {
+	var cfg model.ProcessArchiveConfig
+	if err := r.WithTenant(c).Where("process_type = ?", processType).First(&cfg).Error; err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
 // ExistsByProcessType 检查租户内是否已存在相同流程类型的配置。
 func (r *ProcessArchiveConfigRepo) ExistsByProcessType(c *gin.Context, processType string) (bool, error) {
 	var count int64

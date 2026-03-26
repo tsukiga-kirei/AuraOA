@@ -85,7 +85,7 @@ func (s *AIModelCallerService) Chat(c *gin.Context, tenantID, userID uuid.UUID, 
 	_ = s.settleTokenUsage(tenantID, reserved, resp.TokenUsage.TotalTokens)
 
 	// 异步写入日志（带重试）
-	s.asyncWriteLog(tenantID, userID, modelCfg.ID, resp)
+	s.asyncWriteLog(tenantID, userID, modelCfg.ID, req.RequestType, resp)
 
 	return resp, nil
 }
@@ -200,7 +200,7 @@ func (s *AIModelCallerService) ChatViaPython(c *gin.Context, tenantID, userID uu
 	_ = s.settleTokenUsage(tenantID, reserved, resp.TokenUsage.TotalTokens)
 
 	// 异步写入日志（带重试）
-	s.asyncWriteLog(tenantID, userID, modelCfg.ID, resp)
+	s.asyncWriteLog(tenantID, userID, modelCfg.ID, req.RequestType, resp)
 
 	return resp, nil
 }
@@ -248,14 +248,14 @@ func (s *AIModelCallerService) settleTokenUsage(tenantID uuid.UUID, reserved, ac
 const logMaxRetries = 3
 
 // asyncWriteLog 异步写入 LLM 调用日志，失败时指数退避重试。
-func (s *AIModelCallerService) asyncWriteLog(tenantID, userID uuid.UUID, modelConfigID uuid.UUID, resp *ai.ChatResponse) {
+func (s *AIModelCallerService) asyncWriteLog(tenantID, userID uuid.UUID, modelConfigID uuid.UUID, requestType string, resp *ai.ChatResponse) {
 	go func() {
 		entry := &model.TenantLLMMessageLog{
 			ID:            uuid.New(),
 			TenantID:      tenantID,
 			UserID:        &userID,
 			ModelConfigID: &modelConfigID,
-			RequestType:   "audit",
+			RequestType:   requestType,
 			InputTokens:   resp.TokenUsage.InputTokens,
 			OutputTokens:  resp.TokenUsage.OutputTokens,
 			TotalTokens:   resp.TokenUsage.TotalTokens,

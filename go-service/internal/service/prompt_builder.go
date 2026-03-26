@@ -47,6 +47,7 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
 	return &ai.ChatRequest{
 		SystemPrompt: aiConfig.SystemReasoningPrompt,
 		UserPrompt:   userPrompt,
+		RequestType:  "audit",
 	}
 }
 
@@ -59,20 +60,7 @@ func BuildExtractionPrompt(aiConfig *model.AIConfigData, reasoningResult string,
 	return &ai.ChatRequest{
 		SystemPrompt: aiConfig.SystemExtractionPrompt,
 		UserPrompt:   userPrompt,
-	}
-}
-
-// BuildPrompt 保留向后兼容。
-func BuildPrompt(aiConfig *model.AIConfigData, processType string, fields string, rules string) *ai.ChatRequest {
-	userPrompt := aiConfig.UserReasoningPrompt
-	userPrompt = strings.ReplaceAll(userPrompt, "{{process_type}}", processType)
-	userPrompt = strings.ReplaceAll(userPrompt, "{{fields}}", fields)
-	userPrompt = strings.ReplaceAll(userPrompt, "{{main_table}}", fields)
-	userPrompt = strings.ReplaceAll(userPrompt, "{{rules}}", rules)
-
-	return &ai.ChatRequest{
-		SystemPrompt: aiConfig.SystemReasoningPrompt,
-		UserPrompt:   userPrompt,
+		RequestType:  "audit",
 	}
 }
 
