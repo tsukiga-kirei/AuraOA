@@ -1246,8 +1246,8 @@ export default {
     'admin.data.tabCron': 'Scheduled Tasks',
     'admin.data.tabArchive': 'Archive Review',
     // Audit sub-tabs
-    'admin.data.auditTab.pendingAi': 'Pending AI',
-    'admin.data.auditTab.aiDone': 'AI Done',
+    'admin.data.auditTab.pendingAi': 'Pending AI Review',
+    'admin.data.auditTab.aiDone': 'AI Completed',
     'admin.data.auditTab.all': 'All',
     // Search & Filters
     'admin.data.searchAudit': 'Search process (title/ID)',
@@ -1277,7 +1277,7 @@ export default {
     'admin.data.loading': 'Loading...',
     'admin.data.loadFailed': 'Load failed, please try again later',
     // Cron related
-    'admin.data.searchCron': 'Search task/operator',
+    'admin.data.searchCron': 'Search task/creator',
     'admin.data.searchCronTask': 'Search task',
     'admin.data.searchCronCreator': 'Search creator',
     'admin.data.execStatus': 'Execution Status',
@@ -1288,7 +1288,7 @@ export default {
     'admin.data.thTaskId': 'Task ID',
     'admin.data.thTaskType': 'Task Type',
     'admin.data.thTriggerType': 'Trigger Type',
-    'admin.data.thCreatedBy': 'Creator',
+    'admin.data.thCreatedBy': 'Created By',
     'admin.data.triggerManual': 'Manual',
     'admin.data.triggerScheduled': 'Scheduled',
     'admin.data.thStatus': 'Status',

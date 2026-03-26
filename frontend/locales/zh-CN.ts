@@ -1246,8 +1246,8 @@ export default {
     'admin.data.tabCron': '定时任务',
     'admin.data.tabArchive': '归档复盘',
     // 审核子页签
-    'admin.data.auditTab.pendingAi': '待审核',
-    'admin.data.auditTab.aiDone': '已审核',
+    'admin.data.auditTab.pendingAi': '待 AI 审核',
+    'admin.data.auditTab.aiDone': 'AI 已完成',
     'admin.data.auditTab.all': '全部',
     // 搜索 & 筛选
     'admin.data.searchAudit': '搜索流程（标题/编号）',
@@ -1277,7 +1277,7 @@ export default {
     'admin.data.loading': '加载中...',
     'admin.data.loadFailed': '加载失败，请稍后重试',
     // Cron 相关
-    'admin.data.searchCron': '搜索任务/操作人',
+    'admin.data.searchCron': '搜索任务/创建人',
     'admin.data.searchCronTask': '搜索任务',
     'admin.data.searchCronCreator': '搜索创建人',
     'admin.data.execStatus': '执行状态',
@@ -1288,7 +1288,7 @@ export default {
     'admin.data.thTaskId': '任务ID',
     'admin.data.thTaskType': '任务类型',
     'admin.data.thTriggerType': '触发类型',
-    'admin.data.thCreatedBy': '创建人',
+    'admin.data.thCreatedBy': '创建/触发人',
     'admin.data.triggerManual': '手动执行',
     'admin.data.triggerScheduled': '定时调度',
     'admin.data.thStatus': '状态',
