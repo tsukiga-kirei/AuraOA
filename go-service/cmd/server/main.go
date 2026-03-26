@@ -77,6 +77,8 @@ func main() {
 	llmMessageLogRepo := repository.NewLLMMessageLogRepo(db)
 	cronPresetRepo := repository.NewCronTaskTypePresetRepo(db)
 	cronConfigRepo := repository.NewCronTaskTypeConfigRepo(db)
+	cronTaskRepo := repository.NewCronTaskRepo(db)
+	cronLogRepo := repository.NewCronLogRepo(db)
 	archiveConfigRepo := repository.NewProcessArchiveConfigRepo(db)
 	archiveRuleRepo := repository.NewArchiveRuleRepo(db)
 
@@ -102,6 +104,11 @@ func main() {
 	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db, rdb)
 	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, orgRepo, db, rdb)
 
+	// Cron 任务实例服务（延迟注入调度器）
+	cronTaskService := service.NewCronTaskService(cronTaskRepo, cronLogRepo, cronPresetRepo, cronConfigRepo, auditExecuteService, archiveReviewService)
+	cronScheduler := service.NewCronScheduler(cronTaskRepo, cronTaskService, logger)
+	cronTaskService.SetScheduler(cronScheduler)
+
 	if err := service.StartAuditStreamWorker(context.Background(), rdb, auditExecuteService, logger, 2); err != nil {
 		logger.Warn("audit stream worker not started", zap.Error(err))
 	}
@@ -110,6 +117,11 @@ func main() {
 		logger.Warn("archive stream worker not started", zap.Error(err))
 	}
 	service.StartArchiveStaleReconciler(context.Background(), archiveReviewService, logger, 30*time.Second)
+
+	// 启动 cron 调度器
+	if err := cronScheduler.Start(context.Background()); err != nil {
+		logger.Warn("cron scheduler not started", zap.Error(err))
+	}
 
 	// 7. Initialize handlers
 	authHandler := handler.NewAuthHandler(authService, rdb)
@@ -123,6 +135,7 @@ func main() {
 	userConfigMgmtHandler := handler.NewUserConfigManagementHandler(userPersonalConfigRepo, orgRepo, auditRuleRepo, archiveRuleRepo, processAuditConfigRepo, archiveConfigRepo)
 	llmLogHandler := handler.NewLLMMessageLogHandler(llmMessageLogService)
 	cronHandler := handler.NewCronConfigHandler(cronConfigService)
+	cronTaskHandler := handler.NewCronTaskHandler(cronTaskService)
 	archiveConfigHandler := handler.NewArchiveConfigHandler(archiveConfigService)
 	archiveRuleHandler := handler.NewArchiveRuleHandler(archiveRuleService)
 	auditHandler := handler.NewAuditHandler(auditExecuteService)
@@ -130,13 +143,10 @@ func main() {
 
 	// 8. Setup Gin router with middleware and routes
 	r := gin.New()
-	// Trust all proxies so that X-Forwarded-For / X-Real-IP headers are respected
-	// by c.ClientIP(), which fixes "::1" being recorded in login history when
-	// requests come through Docker / Nuxt proxy.
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler)
+	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler)
 
 	// 9. Start HTTP server
 	port := viper.GetInt("server.port")

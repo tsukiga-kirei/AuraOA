@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -82,4 +84,80 @@ func (r *CronTaskTypeConfigRepo) Delete(c *gin.Context, tenantID uuid.UUID, task
 	return r.WithTenant(c).
 		Where("task_type = ?", taskType).
 		Delete(&model.CronTaskTypeConfig{}).Error
+}
+
+// ============================================================
+// CronTaskRepo — 定时任务实例 CRUD（按租户隔离）
+// ============================================================
+
+// CronTaskRepo 提供 cron_tasks 表的数据访问方法，按租户隔离。
+type CronTaskRepo struct {
+	*BaseRepo
+}
+
+// NewCronTaskRepo 创建一个新的 CronTaskRepo 实例。
+func NewCronTaskRepo(db *gorm.DB) *CronTaskRepo {
+	return &CronTaskRepo{BaseRepo: NewBaseRepo(db)}
+}
+
+// DB 暴露底层 gorm.DB（供调度器跨租户查询使用）。
+func (r *CronTaskRepo) DB() *gorm.DB { return r.BaseRepo.DB }
+
+// ListByTenant 查询当前租户的所有任务实例，按创建时间排序。
+func (r *CronTaskRepo) ListByTenant(c *gin.Context) ([]model.CronTask, error) {
+	var tasks []model.CronTask
+	if err := r.WithTenant(c).Order("created_at ASC").Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
+// ListActiveByAllTenants 查询所有租户的活跃任务（调度器启动时使用，无 gin.Context）。
+func (r *CronTaskRepo) ListActiveByAllTenants() ([]model.CronTask, error) {
+	var tasks []model.CronTask
+	if err := r.BaseRepo.DB.Where("is_active = true").Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
+// GetByID 查询指定 ID 的任务（带租户校验）。
+func (r *CronTaskRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.CronTask, error) {
+	var task model.CronTask
+	if err := r.WithTenant(c).Where("id = ?", id).First(&task).Error; err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
+// Create 创建新任务实例。
+func (r *CronTaskRepo) Create(task *model.CronTask) error {
+	return r.BaseRepo.DB.Create(task).Error
+}
+
+// Update 更新任务实例（全字段覆盖，排除 id/tenant_id/is_builtin/created_at）。
+func (r *CronTaskRepo) Update(c *gin.Context, id uuid.UUID, fields map[string]interface{}) error {
+	return r.WithTenant(c).Model(&model.CronTask{}).Where("id = ?", id).Updates(fields).Error
+}
+
+// Delete 删除任务实例（内置任务由调用层防护）。
+func (r *CronTaskRepo) Delete(c *gin.Context, id uuid.UUID) error {
+	return r.WithTenant(c).Where("id = ?", id).Delete(&model.CronTask{}).Error
+}
+
+// UpdateRunStats 更新任务的运行统计（last_run_at / next_run_at / success_count / fail_count）。
+func (r *CronTaskRepo) UpdateRunStats(id uuid.UUID, lastRunAt time.Time, nextRunAt *time.Time, success bool) error {
+	fields := map[string]interface{}{
+		"last_run_at": lastRunAt,
+		"updated_at":  time.Now(),
+	}
+	if nextRunAt != nil {
+		fields["next_run_at"] = nextRunAt
+	}
+	if success {
+		fields["success_count"] = gorm.Expr("success_count + 1")
+	} else {
+		fields["fail_count"] = gorm.Expr("fail_count + 1")
+	}
+	return r.BaseRepo.DB.Model(&model.CronTask{}).Where("id = ?", id).Updates(fields).Error
 }

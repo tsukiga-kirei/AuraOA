@@ -519,6 +519,96 @@ func (a *Ecology9Adapter) FetchArchivedList(ctx context.Context, username string
 	return a.fetchArchivedListWithArchiveDate(ctx, false)
 }
 
+// FetchAllTodoItems 拉取所有待审批流程（不过滤用户，供调度器批处理使用）。
+// 与 FetchTodoList 相比，去掉了 WHERE co.userid = ? 条件，并对结果去重（同一流程可能出现在多个审批人的待办中）。
+func (a *Ecology9Adapter) FetchAllTodoItems(ctx context.Context, limit int) ([]TodoItem, error) {
+	query := fmt.Sprintf(`
+		SELECT DISTINCT
+			r.%s AS request_id,
+			r.%s AS request_name,
+			COALESCE(h.%s, '') AS applicant_name,
+			COALESCE(d.%s, '') AS dept_name,
+			COALESCE(wb.%s, '') AS workflow_name,
+			COALESCE(wt.%s, '') AS type_name,
+			COALESCE(n.%s, '') AS node_name,
+			r.%s AS create_date,
+			COALESCE(bill.%s, '') AS main_table_name
+		FROM %s co
+		JOIN %s r ON co.%s = r.%s
+		LEFT JOIN %s wb ON r.%s = wb.%s
+		LEFT JOIN %s wt ON wb.%s = wt.%s
+		LEFT JOIN %s bill ON wb.%s = bill.%s
+		LEFT JOIN %s h ON r.%s = h.%s
+		LEFT JOIN %s d ON h.%s = d.%s
+		LEFT JOIN %s n ON co.%s = n.%s
+		WHERE co.%s = 0
+		ORDER BY r.%s DESC`,
+		// SELECT
+		a.col("requestid"), a.col("requestname"),
+		a.col("lastname"), a.col("departmentname"),
+		a.col("workflowname"), a.col("typename"),
+		a.col("nodename"),
+		a.col("createdate"),
+		a.col("tablename"),
+		// FROM
+		a.tableName("workflow_currentoperator"),
+		a.tableName("workflow_requestbase"),
+		a.col("requestid"), a.col("requestid"),
+		a.tableName("workflow_base"),
+		a.col("workflowid"), a.col("id"),
+		a.tableName("workflow_type"),
+		a.col("workflowtype"), a.col("id"),
+		a.tableName("workflow_bill"),
+		a.col("formid"), a.col("id"),
+		a.tableName("hrmresource"),
+		a.col("creater"), a.col("id"),
+		a.tableName("hrmdepartment"),
+		a.col("departmentid"), a.col("id"),
+		a.tableName("workflow_nodebase"),
+		a.col("nodeid"), a.col("id"),
+		// WHERE
+		a.col("isremark"),
+		// ORDER BY
+		a.col("createdate"),
+	)
+
+	db := a.db.WithContext(ctx)
+	if limit > 0 {
+		db = db.Limit(limit)
+	}
+	rows, err := db.Raw(query).Rows()
+	if err != nil {
+		return nil, fmt.Errorf("查询 OA 全量待办失败: %w", err)
+	}
+	defer rows.Close()
+
+	var items []TodoItem
+	seen := make(map[string]struct{})
+	for rows.Next() {
+		var requestID, requestName, applicant, department, workflowName, typeName, nodeName, createDate, mainTableName string
+		if err := rows.Scan(&requestID, &requestName, &applicant, &department, &workflowName, &typeName, &nodeName, &createDate, &mainTableName); err != nil {
+			continue
+		}
+		if _, dup := seen[requestID]; dup {
+			continue
+		}
+		seen[requestID] = struct{}{}
+		items = append(items, TodoItem{
+			ProcessID:        requestID,
+			Title:            requestName,
+			Applicant:        applicant,
+			Department:       department,
+			ProcessType:      workflowName,
+			ProcessTypeLabel: typeName,
+			CurrentNode:      nodeName,
+			SubmitTime:       createDate,
+			Urgency:          "medium",
+			MainTableName:    mainTableName,
+		})
+	}
+	return items, nil
+}
+
 func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, useLastOperateDate bool) ([]ArchivedItem, error) {
 	archiveDateExpr := "r." + a.col("createdate")
 	if useLastOperateDate {

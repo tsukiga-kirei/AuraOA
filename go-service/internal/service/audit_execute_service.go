@@ -632,6 +632,36 @@ func auditProgressSteps(status string) []map[string]interface{} {
 	return steps
 }
 
+// ListPendingForBatch 为调度器提供：不过滤用户，拉取该租户下所有待审批流程（已按租户配置过滤），
+// 供 cron audit_batch 任务批量调用。
+func (s *AuditExecuteService) ListPendingForBatch(c *gin.Context, limit int) ([]AuditExecuteRequest, error) {
+	tenantID, _, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	adapter, err := s.getOAAdapter(tenantID)
+	if err != nil {
+		return nil, err
+	}
+	items, err := adapter.FetchAllTodoItems(c.Request.Context(), limit)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 全量待办失败: "+err.Error())
+	}
+	// 按租户已配置的主表名过滤
+	allowedTables := s.getAllowedMainTables(c)
+	var result []AuditExecuteRequest
+	for _, item := range items {
+		if allowedTables[strings.ToLower(item.MainTableName)] {
+			result = append(result, AuditExecuteRequest{
+				ProcessID:   item.ProcessID,
+				ProcessType: item.ProcessType,
+				Title:       item.Title,
+			})
+		}
+	}
+	return result, nil
+}
+
 // GetStats 获取审核工作台统计（结合 OA 待办 + 租户配置 + 审核记录）。
 func (s *AuditExecuteService) GetStats(c *gin.Context) (map[string]int, error) {
 	tenantID, _, err := s.extractIDs(c)

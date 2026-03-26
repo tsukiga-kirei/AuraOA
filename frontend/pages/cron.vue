@@ -7,33 +7,87 @@ import {
   CheckCircleOutlined,
   PauseCircleOutlined,
   EditOutlined,
-  CopyOutlined,
   LockOutlined,
   MailOutlined,
   ScheduleOutlined,
+  UnorderedListOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import type { CronTask } from '~/composables/useMockData'
+import type { CronTask, CreateCronTaskRequest, UpdateCronTaskRequest, CronLog } from '~/types/cron'
+import type { CronTaskConfig } from '~/types/rules'
 import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
-const { mockCronTasks, mockCronTaskTypeConfigs } = useMockData()
+const { listTasks, createTask, updateTask, deleteTask, toggleTask, executeTask, listConfigs, listTaskLogs } = useCronApi()
+const { getCronPrefs } = useSettingsApi()
 
-const tasks = ref<CronTask[]>(JSON.parse(JSON.stringify(mockCronTasks)))
-
-//租户设置中的batch_audit配置
-const batchAuditConfig = computed(() =>
-  mockCronTaskTypeConfigs.find(c => c.task_type === 'batch_audit')
-)
-const batchLimit = computed(() => batchAuditConfig.value?.batch_limit ?? 0)
+// ============================================================
+// 数据状态
+// ============================================================
+const tasks = ref<CronTask[]>([])
+const configs = ref<CronTaskConfig[]>([])
+const defaultEmail = ref('')
 const loading = ref(false)
-const showCreate = ref(false)
-const showEdit = ref(false)
-const editingTask = ref<CronTask | null>(null)
+const pageError = ref('')
 
-//===== Cron 表达式生成器 =====
+// 按 module 分组
+const auditTasks = computed(() => tasks.value.filter(t => t.module === 'audit'))
+const archiveTasks = computed(() => tasks.value.filter(t => t.module === 'archive'))
+
+// 仅展示已启用的任务类型
+const enabledConfigs = computed(() => configs.value.filter(c => c.is_enabled))
+
+const taskTypeOptions = computed(() =>
+  enabledConfigs.value.map(c => ({
+    value: c.task_type,
+    label: t(`cron.taskType.${c.task_type}` as any) || c.label_zh,
+    module: c.module,
+    batchLimit: c.batch_limit,
+  }))
+)
+
+// 判断任务类型是否需要推送邮箱（batch 类型不需要）
+const taskNeedsEmail = (taskType: string) => !taskType.endsWith('_batch')
+
+// 获取任务类型的 batch_limit（来自 configs）
+const getBatchLimit = (taskType: string): number | null => {
+  const cfg = configs.value.find(c => c.task_type === taskType)
+  return cfg?.batch_limit ?? null
+}
+
+// ============================================================
+// 初始化加载
+// ============================================================
+onMounted(async () => {
+  loading.value = true
+  pageError.value = ''
+  try {
+    const [taskList, configList, prefs] = await Promise.allSettled([
+      listTasks(),
+      listConfigs(),
+      getCronPrefs(),
+    ])
+    if (taskList.status === 'fulfilled') tasks.value = taskList.value
+    if (configList.status === 'fulfilled') configs.value = configList.value
+    if (prefs.status === 'fulfilled' && prefs.value?.default_email) {
+      defaultEmail.value = prefs.value.default_email
+    }
+    if (taskList.status === 'rejected') {
+      pageError.value = t('cron.loadFailed')
+    }
+  } catch {
+    pageError.value = t('cron.loadFailed')
+  } finally {
+    loading.value = false
+  }
+})
+
+// ============================================================
+// Cron 表达式工具
+// ============================================================
 const cronPresets = computed(() => [
   { label: t('cron.preset.weekday9'), value: '0 9 * * 1-5' },
   { label: t('cron.preset.weekday18'), value: '0 18 * * 1-5' },
@@ -45,38 +99,18 @@ const cronPresets = computed(() => [
   { label: t('cron.preset.custom'), value: 'custom' },
 ])
 
-const cronParts = ref({ minute: '0', hour: '9', day: '*', month: '*', weekday: '1-5' })
-
 const weekdayOptions = computed(() => [
-  { label: t('cron.weekday.mon'), value: '1' }, { label: t('cron.weekday.tue'), value: '2' },
-  { label: t('cron.weekday.wed'), value: '3' }, { label: t('cron.weekday.thu'), value: '4' },
-  { label: t('cron.weekday.fri'), value: '5' }, { label: t('cron.weekday.sat'), value: '6' },
+  { label: t('cron.weekday.mon'), value: '1' },
+  { label: t('cron.weekday.tue'), value: '2' },
+  { label: t('cron.weekday.wed'), value: '3' },
+  { label: t('cron.weekday.thu'), value: '4' },
+  { label: t('cron.weekday.fri'), value: '5' },
+  { label: t('cron.weekday.sat'), value: '6' },
   { label: t('cron.weekday.sun'), value: '0' },
 ])
 
-//个人设置中的默认推送电子邮件
-const defaultPushEmail = 'zhangming@example.com'
-
-const newTask = ref({
-  cron_expression: '0 9 * * 1-5',
-  cron_mode: '0 9 * * 1-5' as string,
-  task_type: 'batch_audit',
-  push_email: defaultPushEmail,
-})
-
-//当前新任务类型是否需要邮件推送
-const newTaskNeedsEmail = computed(() => newTask.value.task_type !== 'batch_audit')
-
-//给定任务类型是否需要电子邮件推送
-const taskNeedsEmail = (taskType: string) => taskType !== 'batch_audit'
-
-const buildCronFromParts = () => {
-  return `${cronParts.value.minute} ${cronParts.value.hour} ${cronParts.value.day} ${cronParts.value.month} ${cronParts.value.weekday}`
-}
-
-//将工作日字段扩展为一组单独的日期数字（处理“1-5”等范围和“1,3,5”等列表）
 const expandWeekdays = (weekdayStr: string): Set<string> => {
-  if (weekdayStr === '*') return new Set(['0','1','2','3','4','5','6'])
+  if (weekdayStr === '*') return new Set(['0', '1', '2', '3', '4', '5', '6'])
   const result = new Set<string>()
   for (const part of weekdayStr.split(',')) {
     const trimmed = part.trim()
@@ -92,42 +126,20 @@ const expandWeekdays = (weekdayStr: string): Set<string> => {
   return result
 }
 
-//检查当前工作日字段中的工作日芯片是否处于活动状态
-const isWeekdayActive = (weekdayStr: string, dayValue: string): boolean => {
-  return expandWeekdays(weekdayStr).has(dayValue)
-}
+const isWeekdayActive = (weekdayStr: string, dayValue: string): boolean =>
+  expandWeekdays(weekdayStr).has(dayValue)
 
-//切换工作日芯片：重建为逗号分隔列表
-const toggleWeekday = (partsRef: typeof cronParts.value, dayValue: string) => {
+const toggleWeekday = (partsRef: { weekday: string }, dayValue: string) => {
   const current = expandWeekdays(partsRef.weekday)
-  if (current.has(dayValue)) {
-    current.delete(dayValue)
-  } else {
-    current.add(dayValue)
-  }
+  if (current.has(dayValue)) current.delete(dayValue)
+  else current.add(dayValue)
   if (current.size === 0 || current.size === 7) {
     partsRef.weekday = '*'
   } else {
-    //按数字排序并连接
     partsRef.weekday = [...current].map(Number).sort((a, b) => a - b).map(String).join(',')
   }
 }
 
-watch(cronParts, () => {
-  if (newTask.value.cron_mode === 'custom') {
-    newTask.value.cron_expression = buildCronFromParts()
-  }
-}, { deep: true })
-
-watch(() => newTask.value.cron_mode, (val) => {
-  if (val !== 'custom') {
-    newTask.value.cron_expression = val
-  } else {
-    newTask.value.cron_expression = buildCronFromParts()
-  }
-})
-
-//===== Cron 描述和下次运行 =====
 const describeCron = (expr: string): string => {
   const map: Record<string, string> = {
     '0 9 * * 1-5': t('cron.describe.weekday9'),
@@ -142,8 +154,9 @@ const describeCron = (expr: string): string => {
   return map[expr] || expr
 }
 
-const calcNextRuns = (expr: string, count: number = 3): string[] => {
-  const now = new Date(2026, 1, 11, 10, 0) //2026年2月11日（星期三）
+// 使用当前真实时间计算下次执行
+const calcNextRuns = (expr: string, count = 3): string[] => {
+  const now = new Date()
   const parts = expr.split(' ')
   if (parts.length !== 5) return [t('cron.describe.exprError')]
   const [minStr, hourStr, dayStr, monthStr, weekdayStr] = parts
@@ -152,28 +165,23 @@ const calcNextRuns = (expr: string, count: number = 3): string[] => {
   if (isNaN(h) || isNaN(m)) return [t('cron.describe.pending')]
 
   const allowedWeekdays = expandWeekdays(weekdayStr)
-  const hasMonthFilter = monthStr !== '*'
-  const hasDayFilter = dayStr !== '*'
-  const allowedMonths = hasMonthFilter ? new Set(monthStr.split(',').map(s => s.trim())) : null
-  const allowedDays = hasDayFilter ? new Set(dayStr.split(',').map(s => s.trim())) : null
+  const allowedMonths = monthStr !== '*' ? new Set(monthStr.split(',').map(s => s.trim())) : null
+  const allowedDays = dayStr !== '*' ? new Set(dayStr.split(',').map(s => s.trim())) : null
 
   const results: string[] = []
   const candidate = new Date(now)
   candidate.setHours(h, m, 0, 0)
-  //如果今天的时间已经过去了，就从明天开始
   if (candidate <= now) candidate.setDate(candidate.getDate() + 1)
 
   let safety = 0
   while (results.length < count && safety < 400) {
     safety++
-    const dow = candidate.getDay() //0=太阳
+    const dow = candidate.getDay()
     const dom = candidate.getDate()
     const mon = candidate.getMonth() + 1
-
     const weekdayOk = allowedWeekdays.has(String(dow))
     const monthOk = !allowedMonths || allowedMonths.has(String(mon))
     const dayOk = !allowedDays || allowedDays.has(String(dom))
-
     if (weekdayOk && monthOk && dayOk) {
       results.push(
         `${candidate.getFullYear()}-${String(candidate.getMonth() + 1).padStart(2, '0')}-${String(candidate.getDate()).padStart(2, '0')} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
@@ -184,81 +192,116 @@ const calcNextRuns = (expr: string, count: number = 3): string[] => {
   return results.length ? results : [t('cron.describe.noMatch')]
 }
 
-const previewNextRuns = computed(() => calcNextRuns(newTask.value.cron_expression))
-const editPreviewNextRuns = computed(() => editingTask.value ? calcNextRuns(editingTask.value.cron_expression) : [])
+// ============================================================
+// 新建任务
+// ============================================================
+const showCreate = ref(false)
+const createLoading = ref(false)
+const newTask = ref({
+  task_type: '',
+  task_label: '',
+  cron_expression: '0 9 * * 1-5',
+  cron_mode: '0 9 * * 1-5' as string,
+  push_email: '',
+})
+const cronParts = ref({ minute: '0', hour: '9', day: '*', month: '*', weekday: '1-5' })
 
-//===== 编辑 cron 部分以进行编辑模式 =====
-const editCronParts = ref({ minute: '0', hour: '9', day: '*', month: '*', weekday: '1-5' })
-const editCronMode = ref('0 9 * * 1-5')
+const newTaskConfig = computed(() => configs.value.find(c => c.task_type === newTask.value.task_type))
 
-watch(editCronParts, () => {
-  if (editCronMode.value === 'custom' && editingTask.value) {
-    editingTask.value.cron_expression = `${editCronParts.value.minute} ${editCronParts.value.hour} ${editCronParts.value.day} ${editCronParts.value.month} ${editCronParts.value.weekday}`
-  }
-}, { deep: true })
-
-watch(editCronMode, (val) => {
-  if (!editingTask.value) return
-  if (val !== 'custom') {
-    editingTask.value.cron_expression = val
-  } else {
-    editingTask.value.cron_expression = `${editCronParts.value.minute} ${editCronParts.value.hour} ${editCronParts.value.day} ${editCronParts.value.month} ${editCronParts.value.weekday}`
+watch(() => newTask.value.task_type, (type) => {
+  // 新类型时自动填入预设 cron 表达式
+  const cfg = configs.value.find(c => c.task_type === type)
+  if (cfg?.default_cron) {
+    newTask.value.cron_expression = cfg.default_cron
+    newTask.value.cron_mode = cronPresets.value.find(p => p.value === cfg.default_cron && p.value !== 'custom')
+      ? cfg.default_cron
+      : 'custom'
   }
 })
 
-//===== 任务增删改查 =====
-const deleteTask = (id: string) => {
-  const task = tasks.value.find(t => t.id === id)
-  if (task?.is_builtin) {
-    message.warning(t('cron.builtinDeleteWarn'))
+watch(cronParts, () => {
+  if (newTask.value.cron_mode === 'custom') {
+    newTask.value.cron_expression = `${cronParts.value.minute} ${cronParts.value.hour} ${cronParts.value.day} ${cronParts.value.month} ${cronParts.value.weekday}`
+  }
+}, { deep: true })
+
+watch(() => newTask.value.cron_mode, (val) => {
+  if (val !== 'custom') newTask.value.cron_expression = val
+  else newTask.value.cron_expression = `${cronParts.value.minute} ${cronParts.value.hour} ${cronParts.value.day} ${cronParts.value.month} ${cronParts.value.weekday}`
+})
+
+const previewNextRuns = computed(() => calcNextRuns(newTask.value.cron_expression))
+
+const openCreate = () => {
+  const firstEnabled = enabledConfigs.value[0]
+  newTask.value = {
+    task_type: firstEnabled?.task_type ?? '',
+    task_label: '',
+    cron_expression: firstEnabled?.default_cron || '0 9 * * 1-5',
+    cron_mode: firstEnabled?.default_cron || '0 9 * * 1-5',
+    push_email: defaultEmail.value,
+  }
+  cronParts.value = { minute: '0', hour: '9', day: '*', month: '*', weekday: '1-5' }
+  showCreate.value = true
+}
+
+const doCreateTask = async () => {
+  if (!newTask.value.task_type) {
+    message.warning(t('cron.selectTaskType'))
     return
   }
-  tasks.value = tasks.value.filter(t => t.id !== id)
-  message.success(t('cron.deleted'))
-}
-
-const executeTask = async (id: string) => {
-  message.loading({ content: t('cron.executing'), key: 'exec' })
-  await new Promise(r => setTimeout(r, 1000))
-  message.success({ content: t('cron.executeDone'), key: 'exec' })
-}
-
-const toggleTask = (id: string) => {
-  const task = tasks.value.find(t => t.id === id)
-  if (task) {
-    task.is_active = !task.is_active
-    message.success(task.is_active ? t('cron.enabled') : t('cron.paused'))
+  createLoading.value = true
+  try {
+    const req: CreateCronTaskRequest = {
+      task_type: newTask.value.task_type,
+      cron_expression: newTask.value.cron_expression,
+      task_label: newTask.value.task_label || undefined,
+      push_email: newTask.value.push_email || undefined,
+    }
+    const created = await createTask(req)
+    tasks.value.push(created)
+    showCreate.value = false
+    message.success(t('cron.taskCreated'))
+  } catch (e: any) {
+    message.error(e?.data?.message || t('cron.loadFailed'))
+  } finally {
+    createLoading.value = false
   }
 }
 
-const createTask = () => {
-  tasks.value.push({
-    id: `CT-${Date.now()}`,
-    cron_expression: newTask.value.cron_expression,
-    task_type: newTask.value.task_type,
-    push_email: newTask.value.push_email,
-    is_active: true,
-    last_run_at: null,
-    next_run_at: calcNextRuns(newTask.value.cron_expression, 1)[0] || t('cron.describe.pending'),
-    created_at: new Date().toISOString().slice(0, 10),
-    success_count: 0,
-    fail_count: 0,
-  })
-  showCreate.value = false
-  newTask.value = { cron_expression: '0 9 * * 1-5', cron_mode: '0 9 * * 1-5', task_type: 'batch_audit', push_email: defaultPushEmail }
-  message.success(t('cron.taskCreated'))
-}
+// ============================================================
+// 编辑任务
+// ============================================================
+const showEdit = ref(false)
+const editLoading = ref(false)
+const editingTask = ref<CronTask | null>(null)
+const editForm = ref({ task_label: '', cron_expression: '0 9 * * 1-5', cron_mode: '0 9 * * 1-5', push_email: '' })
+const editCronParts = ref({ minute: '0', hour: '9', day: '*', month: '*', weekday: '1-5' })
+
+const editPreviewNextRuns = computed(() => calcNextRuns(editForm.value.cron_expression))
+
+watch(editCronParts, () => {
+  if (editForm.value.cron_mode === 'custom') {
+    editForm.value.cron_expression = `${editCronParts.value.minute} ${editCronParts.value.hour} ${editCronParts.value.day} ${editCronParts.value.month} ${editCronParts.value.weekday}`
+  }
+}, { deep: true })
+
+watch(() => editForm.value.cron_mode, (val) => {
+  if (val !== 'custom') editForm.value.cron_expression = val
+  else editForm.value.cron_expression = `${editCronParts.value.minute} ${editCronParts.value.hour} ${editCronParts.value.day} ${editCronParts.value.month} ${editCronParts.value.weekday}`
+})
 
 const openEdit = (task: CronTask) => {
-  editingTask.value = JSON.parse(JSON.stringify(task))
-  //如果为空，则来自个人设置的默认推送电子邮件
-  if (!editingTask.value!.push_email) {
-    editingTask.value!.push_email = defaultPushEmail
+  editingTask.value = task
+  editForm.value = {
+    task_label: task.task_label,
+    cron_expression: task.cron_expression,
+    cron_mode: cronPresets.value.find(p => p.value === task.cron_expression && p.value !== 'custom')
+      ? task.cron_expression
+      : 'custom',
+    push_email: task.push_email || defaultEmail.value,
   }
-  //确定 cron 模式
-  const isPreset = cronPresets.value.find(p => p.value === task.cron_expression && p.value !== 'custom')
-  editCronMode.value = isPreset ? task.cron_expression : 'custom'
-  if (!isPreset) {
+  if (editForm.value.cron_mode === 'custom') {
     const parts = task.cron_expression.split(' ')
     if (parts.length === 5) {
       editCronParts.value = { minute: parts[0], hour: parts[1], day: parts[2], month: parts[3], weekday: parts[4] }
@@ -267,43 +310,119 @@ const openEdit = (task: CronTask) => {
   showEdit.value = true
 }
 
-const saveEdit = () => {
+const doSaveEdit = async () => {
   if (!editingTask.value) return
-  const idx = tasks.value.findIndex(t => t.id === editingTask.value!.id)
-  if (idx >= 0) {
-    tasks.value[idx] = { ...editingTask.value, next_run_at: calcNextRuns(editingTask.value.cron_expression, 1)[0] || t('cron.describe.pending') }
+  editLoading.value = true
+  try {
+    const req: UpdateCronTaskRequest = {
+      task_label: editForm.value.task_label || undefined,
+      cron_expression: editForm.value.cron_expression,
+      push_email: editForm.value.push_email,
+    }
+    const updated = await updateTask(editingTask.value.id, req)
+    const idx = tasks.value.findIndex(t => t.id === updated.id)
+    if (idx >= 0) tasks.value[idx] = updated
+    showEdit.value = false
+    editingTask.value = null
+    message.success(t('cron.taskUpdated'))
+  } catch (e: any) {
+    message.error(e?.data?.message || t('cron.loadFailed'))
+  } finally {
+    editLoading.value = false
   }
-  showEdit.value = false
-  editingTask.value = null
-  message.success(t('cron.taskUpdated'))
 }
 
-const copyTask = (task: CronTask) => {
-  const copied: CronTask = {
-    ...JSON.parse(JSON.stringify(task)),
-    id: `CT-${Date.now()}`,
-    is_builtin: false,
-    is_active: false,
-    success_count: 0,
-    fail_count: 0,
-    last_run_at: null,
-    created_at: new Date().toISOString().slice(0, 10),
+// ============================================================
+// 删除任务
+// ============================================================
+const doDeleteTask = async (id: string) => {
+  try {
+    await deleteTask(id)
+    tasks.value = tasks.value.filter(t => t.id !== id)
+    message.success(t('cron.deleteSuccess'))
+  } catch (e: any) {
+    message.error(e?.data?.message || t('cron.loadFailed'))
   }
-  tasks.value.push(copied)
-  message.success(t('cron.taskCopied'))
 }
 
-const taskTypeConfig = computed<Record<string, { label: string; color: string; bg: string; }>>(() => ({
-  batch_audit: { label: t('cron.batchAudit'), color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' },
-  daily_report: { label: t('cron.dailyReport'), color: 'var(--color-accent)', bg: 'var(--color-info-bg)' },
-  weekly_report: { label: t('cron.weeklyReport'), color: '#8b5cf6', bg: 'var(--color-primary-bg)' },
-}))
+// ============================================================
+// 切换启用/禁用
+// ============================================================
+const doToggleTask = async (id: string) => {
+  try {
+    const updated = await toggleTask(id)
+    const idx = tasks.value.findIndex(t => t.id === id)
+    if (idx >= 0) tasks.value[idx] = updated
+    message.success(t('cron.toggleSuccess'))
+  } catch (e: any) {
+    message.error(e?.data?.message || t('cron.loadFailed'))
+  }
+}
 
-const taskTypeOptions = computed(() => [
-  { value: 'batch_audit', label: t('cron.batchAudit') },
-  { value: 'daily_report', label: t('cron.dailyReport') },
-  { value: 'weekly_report', label: t('cron.weeklyReport') },
-])
+// ============================================================
+// 立即执行
+// ============================================================
+const doExecuteTask = async (id: string) => {
+  try {
+    await executeTask(id)
+    message.success(t('cron.executeTrigger'))
+  } catch (e: any) {
+    message.error(e?.data?.message || t('cron.loadFailed'))
+  }
+}
+
+// ============================================================
+// 执行日志抽屉
+// ============================================================
+const showLogs = ref(false)
+const logsTask = ref<CronTask | null>(null)
+const logs = ref<CronLog[]>([])
+const logsLoading = ref(false)
+
+const openLogs = async (task: CronTask) => {
+  logsTask.value = task
+  showLogs.value = true
+  logsLoading.value = true
+  try {
+    logs.value = await listTaskLogs(task.id)
+  } catch {
+    logs.value = []
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+const reloadLogs = async () => {
+  if (!logsTask.value) return
+  logsLoading.value = true
+  try {
+    logs.value = await listTaskLogs(logsTask.value.id)
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+// 日志状态颜色
+const logStatusColor = (status: string) => {
+  if (status === 'success') return 'var(--color-success)'
+  if (status === 'failed') return 'var(--color-danger)'
+  return 'var(--color-warning)'
+}
+
+// ============================================================
+// 任务类型样式
+// ============================================================
+const taskTypeStyle = (taskType: string): { color: string; bg: string } => {
+  if (taskType.startsWith('audit_')) return { color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' }
+  if (taskType.startsWith('archive_')) return { color: '#8b5cf6', bg: 'var(--color-primary-bg)' }
+  return { color: 'var(--color-accent)', bg: 'var(--color-info-bg)' }
+}
+
+const taskTypeLabel = (task: CronTask | null): string => {
+  if (!task) return ''
+  const key = `cron.taskType.${task.task_type}` as any
+  return t(key) || task.task_label || task.task_type
+}
 </script>
 
 <template>
@@ -313,141 +432,238 @@ const taskTypeOptions = computed(() => [
         <h1 class="page-title">{{ t('cron.pageTitle') }}</h1>
         <p class="page-subtitle">{{ t('cron.pageSubtitle') }}</p>
       </div>
-      <a-button type="primary" size="large" @click="showCreate = true">
+      <a-button type="primary" size="large" @click="openCreate" :disabled="enabledConfigs.length === 0">
         <PlusOutlined /> {{ t('cron.createTask') }}
       </a-button>
     </div>
 
-    <!--任务卡-->
-    <div class="task-grid">
-      <div
-        v-for="task in tasks"
-        :key="task.id"
-        class="task-card"
-        :class="{ 'task-card--inactive': !task.is_active }"
-      >
-        <div class="task-card-header">
-          <div class="task-card-header-left">
-            <span
-              class="task-type-tag"
-              :style="{
-                color: taskTypeConfig[task.task_type]?.color,
-                background: taskTypeConfig[task.task_type]?.bg,
-              }"
-            >
-              {{ taskTypeConfig[task.task_type]?.label || task.task_type }}
-            </span>
-            <span v-if="task.is_builtin" class="builtin-tag">
-              <LockOutlined /> {{ t('cron.builtin') }}
-            </span>
-          </div>
-          <div class="task-status" :class="task.is_active ? 'task-status--active' : 'task-status--paused'">
-            <span class="task-status-dot" />
-            {{ task.is_active ? t('cron.running') : t('cron.paused') }}
-          </div>
-        </div>
+    <!-- 加载错误提示 -->
+    <a-alert v-if="pageError" type="error" :message="pageError" show-icon style="margin-bottom: 20px;" />
 
-        <div class="task-cron">
-          <ClockCircleOutlined />
-          <code>{{ task.cron_expression }}</code>
-          <span class="cron-desc">{{ describeCron(task.cron_expression) }}</span>
-        </div>
+    <!-- 无启用类型提示 -->
+    <a-alert
+      v-if="!loading && !pageError && enabledConfigs.length === 0"
+      type="warning"
+      :message="t('cron.noEnabledTypes')"
+      show-icon
+      style="margin-bottom: 20px;"
+    />
 
-        <div v-if="task.push_email && taskNeedsEmail(task.task_type)" class="task-email">
-          <MailOutlined />
-          <span>{{ task.push_email }}</span>
+    <a-spin :spinning="loading">
+      <!-- ===== 审核工作台分组 ===== -->
+      <template v-if="auditTasks.length > 0">
+        <div class="module-header">
+          <span class="module-icon audit-icon" />
+          <span>{{ t('cron.moduleAudit') }}</span>
         </div>
-
-        <div class="task-stats">
-          <div class="task-stat">
-            <span class="task-stat-value" style="color: var(--color-success);">{{ task.success_count }}</span>
-            <span class="task-stat-label">{{ t('cron.success') }}</span>
-          </div>
-          <div class="task-stat">
-            <span class="task-stat-value" style="color: var(--color-danger);">{{ task.fail_count }}</span>
-            <span class="task-stat-label">{{ t('cron.fail') }}</span>
-          </div>
-          <div class="task-stat">
-            <span class="task-stat-value">{{ task.last_run_at || '—' }}</span>
-            <span class="task-stat-label">{{ t('cron.lastExec') }}</span>
-          </div>
-        </div>
-
-        <div class="task-actions">
-          <a-tooltip :title="t('cron.executeNow')">
-            <button class="task-action-btn task-action-btn--run" @click="executeTask(task.id)">
-              <PlayCircleOutlined />
-            </button>
-          </a-tooltip>
-          <a-tooltip :title="task.is_active ? t('cron.pause') : t('cron.enable')">
-            <button class="task-action-btn task-action-btn--toggle" @click="toggleTask(task.id)">
-              <PauseCircleOutlined v-if="task.is_active" />
-              <CheckCircleOutlined v-else />
-            </button>
-          </a-tooltip>
-          <a-tooltip :title="t('cron.edit')">
-            <button class="task-action-btn" @click="openEdit(task)">
-              <EditOutlined />
-            </button>
-          </a-tooltip>
-          <a-tooltip :title="t('cron.copy')">
-            <button class="task-action-btn" @click="copyTask(task)">
-              <CopyOutlined />
-            </button>
-          </a-tooltip>
-          <a-popconfirm
-            v-if="!task.is_builtin"
-            :title="t('cron.deleteConfirm')"
-            @confirm="deleteTask(task.id)"
+        <div class="task-grid">
+          <div
+            v-for="task in auditTasks"
+            :key="task.id"
+            class="task-card"
+            :class="{ 'task-card--inactive': !task.is_active }"
           >
-            <a-tooltip :title="t('cron.delete')">
-              <button class="task-action-btn task-action-btn--delete">
-                <DeleteOutlined />
-              </button>
-            </a-tooltip>
-          </a-popconfirm>
-          <a-tooltip v-else :title="t('cron.builtinNoDelete')">
-            <button class="task-action-btn task-action-btn--disabled" disabled>
-              <DeleteOutlined />
-            </button>
-          </a-tooltip>
+            <div class="task-card-header">
+              <div class="task-card-header-left">
+                <span
+                  class="task-type-tag"
+                  :style="{ color: taskTypeStyle(task.task_type).color, background: taskTypeStyle(task.task_type).bg }"
+                >{{ taskTypeLabel(task) }}</span>
+                <span v-if="task.is_builtin" class="builtin-tag">
+                  <LockOutlined /> {{ t('cron.builtin') }}
+                </span>
+              </div>
+              <div class="task-status" :class="task.is_active ? 'task-status--active' : 'task-status--paused'">
+                <span class="task-status-dot" />
+                {{ task.is_active ? t('cron.running') : t('cron.paused') }}
+              </div>
+            </div>
+            <div v-if="task.task_label" class="task-custom-label">{{ task.task_label }}</div>
+            <div class="task-cron">
+              <ClockCircleOutlined />
+              <code>{{ task.cron_expression }}</code>
+              <span class="cron-desc">{{ describeCron(task.cron_expression) }}</span>
+            </div>
+            <div v-if="task.push_email && taskNeedsEmail(task.task_type)" class="task-email">
+              <MailOutlined /><span>{{ task.push_email }}</span>
+            </div>
+            <div class="task-stats">
+              <div class="task-stat">
+                <span class="task-stat-value" style="color: var(--color-success);">{{ task.success_count }}</span>
+                <span class="task-stat-label">{{ t('cron.success') }}</span>
+              </div>
+              <div class="task-stat">
+                <span class="task-stat-value" style="color: var(--color-danger);">{{ task.fail_count }}</span>
+                <span class="task-stat-label">{{ t('cron.fail') }}</span>
+              </div>
+              <div class="task-stat">
+                <span class="task-stat-value">{{ task.last_run_at ? task.last_run_at.slice(0, 16).replace('T', ' ') : '—' }}</span>
+                <span class="task-stat-label">{{ t('cron.lastExec') }}</span>
+              </div>
+            </div>
+            <div class="task-actions">
+              <a-tooltip :title="t('cron.executeNow')">
+                <button class="task-action-btn task-action-btn--run" @click="doExecuteTask(task.id)"><PlayCircleOutlined /></button>
+              </a-tooltip>
+              <a-tooltip :title="task.is_active ? t('cron.pause') : t('cron.enable')">
+                <button class="task-action-btn task-action-btn--toggle" @click="doToggleTask(task.id)">
+                  <PauseCircleOutlined v-if="task.is_active" /><CheckCircleOutlined v-else />
+                </button>
+              </a-tooltip>
+              <a-tooltip :title="t('cron.edit')">
+                <button class="task-action-btn" @click="openEdit(task)"><EditOutlined /></button>
+              </a-tooltip>
+              <a-tooltip :title="t('cron.viewLogs')">
+                <button class="task-action-btn" @click="openLogs(task)"><UnorderedListOutlined /></button>
+              </a-tooltip>
+              <a-popconfirm v-if="!task.is_builtin" :title="t('cron.deleteConfirm')" @confirm="doDeleteTask(task.id)">
+                <a-tooltip :title="t('cron.delete')">
+                  <button class="task-action-btn task-action-btn--delete"><DeleteOutlined /></button>
+                </a-tooltip>
+              </a-popconfirm>
+              <a-tooltip v-else :title="t('cron.builtinNoDelete')">
+                <button class="task-action-btn task-action-btn--disabled" disabled><DeleteOutlined /></button>
+              </a-tooltip>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      </template>
 
-    <!--创建模态-->
+      <!-- ===== 归档复盘分组 ===== -->
+      <template v-if="archiveTasks.length > 0">
+        <div class="module-header" :style="auditTasks.length > 0 ? 'margin-top: 28px;' : ''">
+          <span class="module-icon archive-icon" />
+          <span>{{ t('cron.moduleArchive') }}</span>
+        </div>
+        <div class="task-grid">
+          <div
+            v-for="task in archiveTasks"
+            :key="task.id"
+            class="task-card"
+            :class="{ 'task-card--inactive': !task.is_active }"
+          >
+            <div class="task-card-header">
+              <div class="task-card-header-left">
+                <span
+                  class="task-type-tag"
+                  :style="{ color: taskTypeStyle(task.task_type).color, background: taskTypeStyle(task.task_type).bg }"
+                >{{ taskTypeLabel(task) }}</span>
+                <span v-if="task.is_builtin" class="builtin-tag">
+                  <LockOutlined /> {{ t('cron.builtin') }}
+                </span>
+              </div>
+              <div class="task-status" :class="task.is_active ? 'task-status--active' : 'task-status--paused'">
+                <span class="task-status-dot" />
+                {{ task.is_active ? t('cron.running') : t('cron.paused') }}
+              </div>
+            </div>
+            <div v-if="task.task_label" class="task-custom-label">{{ task.task_label }}</div>
+            <div class="task-cron">
+              <ClockCircleOutlined />
+              <code>{{ task.cron_expression }}</code>
+              <span class="cron-desc">{{ describeCron(task.cron_expression) }}</span>
+            </div>
+            <div v-if="task.push_email && taskNeedsEmail(task.task_type)" class="task-email">
+              <MailOutlined /><span>{{ task.push_email }}</span>
+            </div>
+            <div class="task-stats">
+              <div class="task-stat">
+                <span class="task-stat-value" style="color: var(--color-success);">{{ task.success_count }}</span>
+                <span class="task-stat-label">{{ t('cron.success') }}</span>
+              </div>
+              <div class="task-stat">
+                <span class="task-stat-value" style="color: var(--color-danger);">{{ task.fail_count }}</span>
+                <span class="task-stat-label">{{ t('cron.fail') }}</span>
+              </div>
+              <div class="task-stat">
+                <span class="task-stat-value">{{ task.last_run_at ? task.last_run_at.slice(0, 16).replace('T', ' ') : '—' }}</span>
+                <span class="task-stat-label">{{ t('cron.lastExec') }}</span>
+              </div>
+            </div>
+            <div class="task-actions">
+              <a-tooltip :title="t('cron.executeNow')">
+                <button class="task-action-btn task-action-btn--run" @click="doExecuteTask(task.id)"><PlayCircleOutlined /></button>
+              </a-tooltip>
+              <a-tooltip :title="task.is_active ? t('cron.pause') : t('cron.enable')">
+                <button class="task-action-btn task-action-btn--toggle" @click="doToggleTask(task.id)">
+                  <PauseCircleOutlined v-if="task.is_active" /><CheckCircleOutlined v-else />
+                </button>
+              </a-tooltip>
+              <a-tooltip :title="t('cron.edit')">
+                <button class="task-action-btn" @click="openEdit(task)"><EditOutlined /></button>
+              </a-tooltip>
+              <a-tooltip :title="t('cron.viewLogs')">
+                <button class="task-action-btn" @click="openLogs(task)"><UnorderedListOutlined /></button>
+              </a-tooltip>
+              <a-popconfirm v-if="!task.is_builtin" :title="t('cron.deleteConfirm')" @confirm="doDeleteTask(task.id)">
+                <a-tooltip :title="t('cron.delete')">
+                  <button class="task-action-btn task-action-btn--delete"><DeleteOutlined /></button>
+                </a-tooltip>
+              </a-popconfirm>
+              <a-tooltip v-else :title="t('cron.builtinNoDelete')">
+                <button class="task-action-btn task-action-btn--disabled" disabled><DeleteOutlined /></button>
+              </a-tooltip>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- 无任务占位 -->
+      <div v-if="!loading && !pageError && tasks.length === 0 && enabledConfigs.length > 0" class="empty-state">
+        <ScheduleOutlined class="empty-icon" />
+        <p>{{ t('cron.noTasks') }}</p>
+      </div>
+    </a-spin>
+
+    <!-- ===== 新建任务弹窗 ===== -->
     <a-modal
       v-model:open="showCreate"
       :title="t('cron.createTitle')"
-      @ok="createTask"
+      @ok="doCreateTask"
       :okText="t('cron.create')"
       :cancelText="t('cron.cancel')"
-      :width="560"
+      :confirmLoading="createLoading"
+      :width="580"
     >
       <a-form layout="vertical" style="margin-top: 16px;">
+        <!-- 任务类型 -->
         <a-form-item :label="t('cron.taskType')">
-          <a-select v-model:value="newTask.task_type" :options="taskTypeOptions" size="large" :placeholder="t('cron.selectTaskType')" />
-          <div v-if="newTask.task_type === 'batch_audit'" class="email-hint" style="margin-top: 8px;">
-            {{ t('cron.batchAuditDesc') }}
-            <div style="margin-top: 6px; color: var(--color-text-secondary);">
-              {{ t('cron.batchLimitHint', batchLimit) }}
+          <a-select
+            v-model:value="newTask.task_type"
+            :options="taskTypeOptions"
+            size="large"
+            :placeholder="t('cron.selectTaskType')"
+          />
+          <template v-if="newTask.task_type">
+            <div class="task-type-hint">
+              {{ t(`cron.taskType.${newTask.task_type}.desc` as any) }}
             </div>
-          </div>
-          <div v-if="newTask.task_type === 'daily_report'" class="email-hint" style="margin-top: 8px;">
-            {{ t('cron.dailyReportDesc') }}
-          </div>
-          <div v-if="newTask.task_type === 'weekly_report'" class="email-hint" style="margin-top: 8px;">
-            {{ t('cron.weeklyReportDesc') }}
-          </div>
+            <div v-if="newTask.task_type.endsWith('_batch') && getBatchLimit(newTask.task_type)" class="task-type-hint">
+              {{ t('cron.batchLimit', getBatchLimit(newTask.task_type)!) }}
+            </div>
+          </template>
         </a-form-item>
+
+        <!-- 任务标签 -->
+        <a-form-item :label="t('cron.taskLabel')">
+          <a-input
+            v-model:value="newTask.task_label"
+            :placeholder="t('cron.taskLabelPlaceholder')"
+            size="large"
+          />
+        </a-form-item>
+
+        <!-- 执行计划 -->
         <a-form-item :label="t('cron.executePlan')">
-          <a-select v-model:value="newTask.cron_mode" size="large" style="width: 100%;" :placeholder="t('cron.selectOrCustom')">
+          <a-select v-model:value="newTask.cron_mode" size="large" style="width: 100%;">
             <a-select-option v-for="p in cronPresets" :key="p.value" :value="p.value">
               {{ p.label }}
               <span v-if="p.value !== 'custom'" style="color: var(--color-text-tertiary); margin-left: 8px; font-family: monospace; font-size: 12px;">{{ p.value }}</span>
             </a-select-option>
           </a-select>
         </a-form-item>
+
+        <!-- 自定义 cron 构建器 -->
         <div v-if="newTask.cron_mode === 'custom'" class="cron-builder">
           <div class="cron-builder-row">
             <div class="cron-builder-field">
@@ -484,6 +700,8 @@ const taskTypeOptions = computed(() => [
             <code>{{ newTask.cron_expression }}</code>
           </div>
         </div>
+
+        <!-- 下次执行预览 -->
         <div class="next-run-preview">
           <ScheduleOutlined />
           <div>
@@ -491,7 +709,9 @@ const taskTypeOptions = computed(() => [
             <div v-for="(run, i) in previewNextRuns" :key="i" class="next-run-item">{{ run }}</div>
           </div>
         </div>
-        <a-form-item v-if="newTaskNeedsEmail" :label="t('cron.pushEmail')">
+
+        <!-- 推送邮箱（仅报告类） -->
+        <a-form-item v-if="taskNeedsEmail(newTask.task_type)" :label="t('cron.pushEmail')">
           <a-input v-model:value="newTask.push_email" :placeholder="t('cron.emailPlaceholder')" size="large">
             <template #prefix><MailOutlined style="color: var(--color-text-tertiary);" /></template>
           </a-input>
@@ -500,28 +720,39 @@ const taskTypeOptions = computed(() => [
       </a-form>
     </a-modal>
 
-    <!--编辑模态-->
+    <!-- ===== 编辑任务弹窗 ===== -->
     <a-modal
       v-model:open="showEdit"
       :title="t('cron.editTitle')"
-      @ok="saveEdit"
+      @ok="doSaveEdit"
       :okText="t('cron.save')"
       :cancelText="t('cron.cancel')"
-      :width="560"
+      :confirmLoading="editLoading"
+      :width="580"
     >
       <a-form v-if="editingTask" layout="vertical" style="margin-top: 16px;">
+        <!-- 任务类型（只读） -->
         <a-form-item :label="t('cron.taskType')">
-          <a-select v-model:value="editingTask.task_type" :options="taskTypeOptions" size="large" :placeholder="t('cron.selectTaskType')" />
+          <a-input :value="taskTypeLabel(editingTask)" disabled size="large" />
         </a-form-item>
+
+        <!-- 任务标签 -->
+        <a-form-item :label="t('cron.taskLabel')">
+          <a-input v-model:value="editForm.task_label" :placeholder="t('cron.taskLabelPlaceholder')" size="large" />
+        </a-form-item>
+
+        <!-- 执行计划 -->
         <a-form-item :label="t('cron.executePlan')">
-          <a-select v-model:value="editCronMode" size="large" style="width: 100%;" :placeholder="t('cron.selectOrCustom')">
+          <a-select v-model:value="editForm.cron_mode" size="large" style="width: 100%;">
             <a-select-option v-for="p in cronPresets" :key="p.value" :value="p.value">
               {{ p.label }}
               <span v-if="p.value !== 'custom'" style="color: var(--color-text-tertiary); margin-left: 8px; font-family: monospace; font-size: 12px;">{{ p.value }}</span>
             </a-select-option>
           </a-select>
         </a-form-item>
-        <div v-if="editCronMode === 'custom'" class="cron-builder">
+
+        <!-- 自定义构建器 -->
+        <div v-if="editForm.cron_mode === 'custom'" class="cron-builder">
           <div class="cron-builder-row">
             <div class="cron-builder-field">
               <label>{{ t('cron.minute') }}</label>
@@ -554,9 +785,11 @@ const taskTypeOptions = computed(() => [
             >{{ wd.label }}</span>
           </div>
           <div class="cron-expression-preview">
-            <code>{{ editingTask.cron_expression }}</code>
+            <code>{{ editForm.cron_expression }}</code>
           </div>
         </div>
+
+        <!-- 下次执行预览 -->
         <div class="next-run-preview">
           <ScheduleOutlined />
           <div>
@@ -564,16 +797,52 @@ const taskTypeOptions = computed(() => [
             <div v-for="(run, i) in editPreviewNextRuns" :key="i" class="next-run-item">{{ run }}</div>
           </div>
         </div>
-        <a-form-item v-if="editingTask && taskNeedsEmail(editingTask.task_type)" :label="t('cron.pushEmail')">
-          <a-input v-model:value="editingTask.push_email" :placeholder="t('cron.emailPlaceholder')" size="large">
+
+        <!-- 推送邮箱（仅报告类） -->
+        <a-form-item v-if="taskNeedsEmail(editingTask.task_type)" :label="t('cron.pushEmail')">
+          <a-input v-model:value="editForm.push_email" :placeholder="t('cron.emailPlaceholder')" size="large">
             <template #prefix><MailOutlined style="color: var(--color-text-tertiary);" /></template>
           </a-input>
           <div class="email-hint">{{ t('cron.emailHint') }}</div>
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- ===== 执行日志抽屉 ===== -->
+    <a-drawer
+      v-model:open="showLogs"
+      :title="logsTask ? `${t('cron.logsTitle')} — ${logsTask.task_label || taskTypeLabel(logsTask)}` : t('cron.logsTitle')"
+      placement="right"
+      :width="520"
+    >
+      <template #extra>
+        <a-button size="small" @click="reloadLogs" :loading="logsLoading">
+          <ReloadOutlined /> {{ t('cron.run') }}
+        </a-button>
+      </template>
+      <a-spin :spinning="logsLoading">
+        <div v-if="logs.length === 0 && !logsLoading" class="logs-empty">
+          <UnorderedListOutlined style="font-size: 32px; opacity: 0.3;" />
+          <p>{{ t('cron.logsEmpty') }}</p>
+        </div>
+        <div v-for="log in logs" :key="log.id" class="log-item">
+          <div class="log-item-header">
+            <span class="log-status" :style="{ color: logStatusColor(log.status) }">
+              ● {{ t(`cron.logStatus.${log.status}` as any) }}
+            </span>
+            <span class="log-time">{{ log.started_at?.slice(0, 19).replace('T', ' ') }}</span>
+          </div>
+          <div v-if="log.message" class="log-message">{{ log.message }}</div>
+          <div v-if="log.finished_at" class="log-duration">
+            {{ t('cron.lastExec') }}：{{ log.finished_at?.slice(0, 19).replace('T', ' ') }}
+          </div>
+        </div>
+      </a-spin>
+    </a-drawer>
   </div>
 </template>
+
+<!-- task card styles are scoped in the style block below -->
 
 <style scoped>
 .page-header {
@@ -596,10 +865,46 @@ const taskTypeOptions = computed(() => [
   margin: 4px 0 0;
 }
 
+/* 模块分组标题 */
+.module-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 14px;
+}
+
+.module-icon {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.audit-icon { background: var(--color-primary); }
+.archive-icon { background: #8b5cf6; }
+
+/* 空状态 */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--color-text-tertiary);
+}
+
+.empty-icon {
+  font-size: 48px;
+  opacity: 0.25;
+  margin-bottom: 12px;
+}
+
+/* 任务卡片网格 */
 .task-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 20px;
+  margin-bottom: 8px;
 }
 
 .task-card {
@@ -615,15 +920,14 @@ const taskTypeOptions = computed(() => [
   transform: translateY(-2px);
 }
 
-.task-card--inactive {
-  opacity: 0.65;
-}
+.task-card--inactive { opacity: 0.65; }
 
+/* 任务卡片内部 */
 .task-card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .task-card-header-left {
@@ -651,6 +955,13 @@ const taskTypeOptions = computed(() => [
   gap: 3px;
 }
 
+.task-custom-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 10px;
+}
+
 .task-status {
   display: flex;
   align-items: center;
@@ -665,10 +976,7 @@ const taskTypeOptions = computed(() => [
   border-radius: 50%;
 }
 
-.task-status--active {
-  color: var(--color-success);
-}
-
+.task-status--active { color: var(--color-success); }
 .task-status--active .task-status-dot {
   background: var(--color-success);
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
@@ -680,13 +988,8 @@ const taskTypeOptions = computed(() => [
   50% { opacity: 0.4; }
 }
 
-.task-status--paused {
-  color: var(--color-text-tertiary);
-}
-
-.task-status--paused .task-status-dot {
-  background: var(--color-text-tertiary);
-}
+.task-status--paused { color: var(--color-text-tertiary); }
+.task-status--paused .task-status-dot { background: var(--color-text-tertiary); }
 
 .task-cron {
   display: flex;
@@ -716,7 +1019,7 @@ const taskTypeOptions = computed(() => [
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px;
+  padding: 4px 14px;
   font-size: 12px;
   color: var(--color-text-tertiary);
   margin-bottom: 10px;
@@ -731,26 +1034,11 @@ const taskTypeOptions = computed(() => [
   border-bottom: 1px solid var(--color-border-light);
 }
 
-.task-stat {
-  display: flex;
-  flex-direction: column;
-}
+.task-stat { display: flex; flex-direction: column; }
+.task-stat-value { font-size: 14px; font-weight: 600; }
+.task-stat-label { font-size: 11px; color: var(--color-text-tertiary); margin-top: 2px; }
 
-.task-stat-value {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.task-stat-label {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  margin-top: 2px;
-}
-
-.task-actions {
-  display: flex;
-  gap: 8px;
-}
+.task-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .task-action-btn {
   width: 36px;
@@ -790,7 +1078,14 @@ const taskTypeOptions = computed(() => [
   background: var(--color-bg-card);
 }
 
-/*计划任务生成器*/
+/* 类型标签 */
+.task-type-hint {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-top: 6px;
+}
+
+/* Cron 构建器 */
 .cron-builder {
   background: var(--color-bg-page);
   border-radius: var(--radius-md);
@@ -830,9 +1125,7 @@ const taskTypeOptions = computed(() => [
   color: var(--color-text-secondary);
 }
 
-.weekday-chip:hover {
-  border-color: var(--color-primary);
-}
+.weekday-chip:hover { border-color: var(--color-primary); }
 
 .weekday-chip--active {
   background: var(--color-primary);
@@ -854,7 +1147,7 @@ const taskTypeOptions = computed(() => [
   color: var(--color-primary);
 }
 
-/*下次运行预览*/
+/* 下次执行预览 */
 .next-run-preview {
   display: flex;
   gap: 10px;
@@ -883,6 +1176,52 @@ const taskTypeOptions = computed(() => [
   margin-top: 4px;
 }
 
+/* 日志抽屉 */
+.logs-empty {
+  text-align: center;
+  padding: 40px;
+  color: var(--color-text-tertiary);
+}
+
+.log-item {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.log-item:last-child { border-bottom: none; }
+
+.log-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.log-status {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.log-time {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+}
+
+.log-message {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.log-duration {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin-top: 2px;
+}
+
 @media (max-width: 768px) {
   .page-header {
     flex-direction: column;
@@ -890,60 +1229,16 @@ const taskTypeOptions = computed(() => [
     align-items: stretch;
   }
 
-  .task-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .task-card {
-    padding: 16px;
-  }
-
-  .task-stats {
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 10px;
-  }
-
-  .task-actions {
-    flex-wrap: wrap;
-  }
-
-  .cron-builder-row {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .cron-builder-weekdays {
-    justify-content: center;
-  }
+  .task-grid { grid-template-columns: 1fr; }
+  .task-card { padding: 16px; }
+  .cron-builder-row { grid-template-columns: repeat(3, 1fr); }
+  .cron-builder-weekdays { justify-content: center; }
 }
 
 @media (max-width: 480px) {
   .page-title { font-size: 20px; }
-
   .task-card { padding: 14px; }
-
-  .task-cron {
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  .cron-desc {
-    width: 100%;
-    margin-left: 0;
-  }
-
-  .task-action-btn {
-    width: 32px;
-    height: 32px;
-    font-size: 14px;
-  }
-
-  .cron-builder-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .weekday-chip {
-    font-size: 11px;
-    padding: 2px 8px;
-  }
+  .cron-builder-row { grid-template-columns: repeat(2, 1fr); }
+  .weekday-chip { font-size: 11px; padding: 2px 8px; }
 }
 </style>

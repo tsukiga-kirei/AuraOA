@@ -26,6 +26,7 @@ func SetupRouter(
 	userConfigMgmtHandler *handler.UserConfigManagementHandler,
 	llmLogHandler *handler.LLMMessageLogHandler,
 	cronHandler *handler.CronConfigHandler,
+	cronTaskHandler *handler.CronTaskHandler,
 	archiveConfigHandler *handler.ArchiveConfigHandler,
 	archiveRuleHandler *handler.ArchiveRuleHandler,
 	auditHandler *handler.AuditHandler,
@@ -143,13 +144,32 @@ func SetupRouter(
 		tenantRules.GET("/prompt-templates", configHandler.ListPromptTemplates)
 	}
 
-	// 定时任务类型配置
-	tenantCron := r.Group("/api/tenant/cron")
-	tenantCron.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	// 定时任务类型配置 — 只读（业务用户可访问，用于 cron.vue 展示已启用的任务类型）
+	tenantCronRO := r.Group("/api/tenant/cron")
+	tenantCronRO.Use(middleware.JWT(rdb), middleware.TenantContext())
 	{
-		tenantCron.GET("/configs", cronHandler.ListConfigs)
-		tenantCron.PUT("/configs/:taskType", cronHandler.SaveConfig)
-		tenantCron.DELETE("/configs/:taskType", cronHandler.ResetConfig)
+		tenantCronRO.GET("/configs", cronHandler.ListConfigs)
+	}
+
+	// 定时任务类型配置 — 写操作（仅租户管理员）
+	tenantCronAdmin := r.Group("/api/tenant/cron")
+	tenantCronAdmin.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		tenantCronAdmin.PUT("/configs/:taskType", cronHandler.SaveConfig)
+		tenantCronAdmin.DELETE("/configs/:taskType", cronHandler.ResetConfig)
+	}
+
+	// 定时任务实例（业务用户，无角色限制）
+	cronTasks := r.Group("/api/tenant/cron/tasks")
+	cronTasks.Use(middleware.JWT(rdb), middleware.TenantContext())
+	{
+		cronTasks.GET("", cronTaskHandler.ListTasks)
+		cronTasks.POST("", cronTaskHandler.CreateTask)
+		cronTasks.PUT("/:id", cronTaskHandler.UpdateTask)
+		cronTasks.DELETE("/:id", cronTaskHandler.DeleteTask)
+		cronTasks.POST("/:id/toggle", cronTaskHandler.ToggleTask)
+		cronTasks.POST("/:id/execute", cronTaskHandler.ExecuteNow)
+		cronTasks.GET("/:id/logs", cronTaskHandler.ListLogs)
 	}
 
 	// 归档复盘配置

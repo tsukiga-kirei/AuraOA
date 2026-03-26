@@ -265,6 +265,55 @@ func (s *ArchiveReviewService) BatchExecute(c *gin.Context, items []dto.ArchiveR
 	return result, nil
 }
 
+// ListPendingForBatch 为调度器提供：拉取该租户下所有已归档但未完成复盘的流程，
+// 供 cron archive_batch 任务批量调用。
+func (s *ArchiveReviewService) ListPendingForBatch(c *gin.Context, limit int) ([]dto.ArchiveReviewExecuteRequest, error) {
+	tenantID, _, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	adapter, err := s.getOAAdapter(tenantID)
+	if err != nil {
+		return nil, err
+	}
+	// FetchArchivedList 已忽略 username，获取全量归档流程
+	allItems, err := adapter.FetchArchivedList(c.Request.Context(), "")
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 归档流程失败: "+err.Error())
+	}
+
+	// 按租户已配置的归档复盘配置过滤
+	archiveCfgs, _ := s.archiveConfigRepo.ListByTenant(c)
+	allowedTypes := make(map[string]struct{})
+	allowedTables := make(map[string]struct{})
+	for _, cfg := range archiveCfgs {
+		if cfg.ProcessType != "" {
+			allowedTypes[strings.ToLower(cfg.ProcessType)] = struct{}{}
+		}
+		if cfg.MainTableName != "" {
+			allowedTables[strings.ToLower(cfg.MainTableName)] = struct{}{}
+		}
+	}
+
+	var result []dto.ArchiveReviewExecuteRequest
+	for _, item := range allItems {
+		_, byType := allowedTypes[strings.ToLower(item.ProcessType)]
+		_, byTable := allowedTables[strings.ToLower(item.MainTableName)]
+		if !byType && !byTable {
+			continue
+		}
+		result = append(result, dto.ArchiveReviewExecuteRequest{
+			ProcessID:   item.ProcessID,
+			ProcessType: item.ProcessType,
+			Title:       item.Title,
+		})
+		if limit > 0 && len(result) >= limit {
+			break
+		}
+	}
+	return result, nil
+}
+
 func (s *ArchiveReviewService) CancelJob(c *gin.Context, id uuid.UUID) error {
 	tenantID, _, err := s.extractIDs(c)
 	if err != nil {
