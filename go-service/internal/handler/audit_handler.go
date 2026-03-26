@@ -1,7 +1,10 @@
 package handler
 
 import (
+	"encoding/csv"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -10,6 +13,7 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
 	"oa-smart-audit/go-service/internal/pkg/response"
+	"oa-smart-audit/go-service/internal/repository"
 	"oa-smart-audit/go-service/internal/service"
 )
 
@@ -131,7 +135,7 @@ func (h *AuditHandler) GetJobStream(c *gin.Context) {
 		return
 	}
 
-	ch, closeSub, err := h.auditService.SubscribeJobStream(c, id)
+	ch, closeSub, err := h.auditService.SubscribeJobStream(c.Request.Context(), id)
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -171,6 +175,89 @@ func (h *AuditHandler) GetAuditChain(c *gin.Context) {
 		return
 	}
 	response.Success(c, chain)
+}
+
+// ListLogs GET /api/audit/logs (tenant_admin)
+func (h *AuditHandler) ListLogs(c *gin.Context) {
+	filter, page, pageSize := parseAuditLogQuery(c)
+	items, total, err := h.auditService.ListAuditLogs(c, filter, page, pageSize)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"items":     items,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+// GetLogStats GET /api/audit/logs/stats (tenant_admin)
+func (h *AuditHandler) GetLogStats(c *gin.Context) {
+	stats, err := h.auditService.GetAuditLogStats(c)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, stats)
+}
+
+// ExportLogs GET /api/audit/logs/export (tenant_admin) — CSV 下载
+func (h *AuditHandler) ExportLogs(c *gin.Context) {
+	filter, _, _ := parseAuditLogQuery(c)
+	// 导出不分页，最多 5000 条
+	items, _, err := h.auditService.ListAuditLogs(c, filter, 1, 5000)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	filename := fmt.Sprintf("audit_logs_%s.csv", time.Now().Format("20060102150405"))
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Header("BOM", "\xef\xbb\xbf") // UTF-8 BOM for Excel
+	c.Writer.Write([]byte("\xef\xbb\xbf"))
+
+	w := csv.NewWriter(c.Writer)
+	_ = w.Write([]string{"记录ID", "流程编号", "流程标题", "操作人", "流程类型", "审核建议", "评分", "状态", "创建时间"})
+	for _, item := range items {
+		_ = w.Write([]string{
+			item.ID.String(),
+			item.ProcessID,
+			item.Title,
+			item.UserName,
+			item.ProcessType,
+			item.Recommendation,
+			fmt.Sprintf("%d", item.Score),
+			item.Status,
+			item.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+	w.Flush()
+}
+
+func parseAuditLogQuery(c *gin.Context) (repository.AuditLogFilter, int, int) {
+	filter := repository.AuditLogFilter{
+		StatusGroup:    c.Query("status_group"),
+		Keyword:        c.Query("keyword"),
+		ProcessType:    c.Query("process_type"),
+		Recommendation: c.Query("recommendation"),
+	}
+	if s := c.Query("start_date"); s != "" {
+		if t, err := time.Parse("2006-01-02", s); err == nil {
+			filter.StartDate = &t
+		}
+	}
+	if s := c.Query("end_date"); s != "" {
+		if t, err := time.Parse("2006-01-02", s); err == nil {
+			end := t.Add(24*time.Hour - time.Second)
+			filter.EndDate = &end
+		}
+	}
+	page := parseIntQuery(c, "page", 1)
+	pageSize := parseIntQuery(c, "page_size", 20)
+	return filter, page, pageSize
 }
 
 func getUsername(c *gin.Context) string {

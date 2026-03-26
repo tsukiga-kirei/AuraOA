@@ -632,6 +632,24 @@ func auditProgressSteps(status string) []map[string]interface{} {
 	return steps
 }
 
+// ListAuditLogs 数据管理页：分页查询当前租户审核日志。
+func (s *AuditExecuteService) ListAuditLogs(c *gin.Context, filter repository.AuditLogFilter, page, pageSize int) ([]repository.AuditLogWithUser2, int64, error) {
+	items, total, err := s.auditLogRepo.ListPagedWithUser(c, filter, page, pageSize)
+	if err != nil {
+		return nil, 0, newServiceError(errcode.ErrDatabase, "查询审核日志失败")
+	}
+	return items, total, nil
+}
+
+// GetAuditLogStats 数据管理页：获取当前租户审核日志统计。
+func (s *AuditExecuteService) GetAuditLogStats(c *gin.Context) (*repository.AuditLogStats, error) {
+	stats, err := s.auditLogRepo.CountStats(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "统计查询失败")
+	}
+	return stats, nil
+}
+
 // ListPendingForBatch 为调度器提供：不过滤用户，拉取该租户下所有待审批流程（已按租户配置过滤），
 // 供 cron audit_batch 任务批量调用。
 func (s *AuditExecuteService) ListPendingForBatch(c *gin.Context, limit int) ([]AuditExecuteRequest, error) {

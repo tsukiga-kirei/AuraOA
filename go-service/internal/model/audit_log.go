@@ -61,15 +61,17 @@ func (AuditLog) TableName() string { return "audit_logs" }
 
 // CronLog 定时任务日志。
 type CronLog struct {
-	ID         uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	TenantID   uuid.UUID  `gorm:"type:uuid;not null" json:"tenant_id"`
-	TaskID     uuid.UUID  `gorm:"type:uuid;not null" json:"task_id"`
-	TaskType   string     `gorm:"size:50;not null" json:"task_type"`
-	TaskLabel  string     `gorm:"size:200;not null;default:''" json:"task_label"`
-	Status     string     `gorm:"size:20;not null;default:running" json:"status"`
-	Message    string     `gorm:"type:text;default:''" json:"message"`
-	StartedAt  time.Time  `gorm:"not null;default:now()" json:"started_at"`
-	FinishedAt *time.Time `json:"finished_at"`
+	ID          uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	TenantID    uuid.UUID  `gorm:"type:uuid;not null" json:"tenant_id"`
+	TaskID      uuid.UUID  `gorm:"type:uuid;not null" json:"task_id"`
+	TaskType    string     `gorm:"size:50;not null" json:"task_type"`
+	TaskLabel   string     `gorm:"size:200;not null;default:''" json:"task_label"`
+	TriggerType string     `gorm:"size:20;not null;default:scheduled" json:"trigger_type"` // 触发类型：manual = 手动执行，scheduled = 定时调度
+	CreatedBy   string     `gorm:"size:100;not null;default:''" json:"created_by"`         // 创建人/触发人
+	Status      string     `gorm:"size:20;not null;default:running" json:"status"`
+	Message     string     `gorm:"type:text;default:''" json:"message"`
+	StartedAt   time.Time  `gorm:"not null;default:now()" json:"started_at"`
+	FinishedAt  *time.Time `json:"finished_at"`
 }
 
 func (CronLog) TableName() string { return "cron_logs" }

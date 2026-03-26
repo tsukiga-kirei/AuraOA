@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -252,4 +253,17 @@ func handleServiceError(c *gin.Context, err error) {
 		return
 	}
 	response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "服务器内部错误")
+}
+
+// parseIntQuery 从查询参数中解析整数，fallback 到 defaultVal。
+func parseIntQuery(c *gin.Context, key string, defaultVal int) int {
+	s := c.Query(key)
+	if s == "" {
+		return defaultVal
+	}
+	var n int
+	if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
+		return defaultVal
+	}
+	return n
 }
