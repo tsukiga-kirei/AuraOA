@@ -1631,6 +1631,17 @@ export default {
     //===== 存档页面扩展（选择/批量）=====
     'archive.selectAll': '全选',
     'archive.selected': '已选 {0} 项',
+    'archive.batchLimitHint': '一次最多可批量复核 10 条流程',
+    'archive.loadFailed': '加载归档流程列表失败',
+    'archive.auditFailed': '归档复盘执行失败',
+    'archive.noResultToExport': '暂无可导出的复盘结果',
+    'archive.exportJsonReady': '归档复盘 JSON 已开始下载',
+    'archive.exportFormatPending': '{0} 导出暂未开放，请先使用 JSON 导出',
+    'archive.cancelReview': '中止复盘',
+    'archive.cancelSuccess': '归档复盘已中止',
+    'archive.cancelFailed': '中止归档复盘失败',
+    'archive.historyTitle': '历史复盘',
+    'archive.noHistory': '该流程暂无历史复盘记录',
 
 
     //=====rules.vue硬编码字符串=====

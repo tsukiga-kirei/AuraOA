@@ -29,6 +29,7 @@ func SetupRouter(
 	archiveConfigHandler *handler.ArchiveConfigHandler,
 	archiveRuleHandler *handler.ArchiveRuleHandler,
 	auditHandler *handler.AuditHandler,
+	archiveReviewHandler *handler.ArchiveReviewHandler,
 ) {
 	// Global middleware
 	r.Use(middleware.Logger(logger))
@@ -220,5 +221,20 @@ func SetupRouter(
 		audit.GET("/stream/:id", auditHandler.GetJobStream)
 		audit.POST("/batch", auditHandler.BatchExecute)
 		audit.GET("/chain/:processId", auditHandler.GetAuditChain)
+	}
+
+	// 归档复盘运行时（JWT + TenantContext，无角色限制）
+	archive := r.Group("/api/archive")
+	archive.Use(middleware.JWT(rdb), middleware.TenantContext())
+	{
+		archive.GET("/processes", archiveReviewHandler.ListProcesses)
+		archive.GET("/stats", archiveReviewHandler.GetStats)
+		archive.POST("/execute", archiveReviewHandler.Execute)
+		archive.POST("/batch", archiveReviewHandler.BatchExecute)
+		archive.POST("/cancel/:id", archiveReviewHandler.CancelJob)
+		archive.GET("/jobs/:id", archiveReviewHandler.GetJobStatus)
+		archive.GET("/stream/:id", archiveReviewHandler.GetJobStream)
+		archive.GET("/history/:processId", archiveReviewHandler.GetHistory)
+		archive.GET("/result/:id", archiveReviewHandler.GetResult)
 	}
 }

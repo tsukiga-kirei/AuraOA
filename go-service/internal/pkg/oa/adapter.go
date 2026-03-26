@@ -20,6 +20,12 @@ type OAAdapter interface {
 	// FetchTodoList 拉取指定用户的 OA 待审批流程列表
 	FetchTodoList(ctx context.Context, username string) ([]TodoItem, error)
 
+	// FetchArchivedList 拉取已归档流程列表
+	FetchArchivedList(ctx context.Context, username string) ([]ArchivedItem, error)
+
+	// FetchProcessFlow 拉取流程审批流快照
+	FetchProcessFlow(ctx context.Context, processID string) (*ProcessFlowSnapshot, error)
+
 	// IsProcessInTodo 判断指定流程是否仍在用户待办中
 	IsProcessInTodo(ctx context.Context, username string, processID string) (bool, error)
 }
@@ -31,10 +37,10 @@ type ProcessInfo struct {
 	ProcessTypeLabel  string `json:"process_type_label,omitempty"`
 	MainTable         string `json:"main_table"`
 	DetailCount       int    `json:"detail_count"`
-	TableMismatch     bool   `json:"table_mismatch,omitempty"`       // 用户填写的主表名与 OA 实际不一致
-	ExpectedTable     string `json:"expected_table,omitempty"`       // OA 系统中的正确主表名（仅 mismatch 时返回）
-	TypeLabelMismatch bool   `json:"type_label_mismatch,omitempty"`  // 用户填写的流程类型与 OA 实际不一致
-	ExpectedTypeLabel string `json:"expected_type_label,omitempty"`  // OA 系统中的正确流程类型（仅 mismatch 时返回）
+	TableMismatch     bool   `json:"table_mismatch,omitempty"`      // 用户填写的主表名与 OA 实际不一致
+	ExpectedTable     string `json:"expected_table,omitempty"`      // OA 系统中的正确主表名（仅 mismatch 时返回）
+	TypeLabelMismatch bool   `json:"type_label_mismatch,omitempty"` // 用户填写的流程类型与 OA 实际不一致
+	ExpectedTypeLabel string `json:"expected_type_label,omitempty"` // OA 系统中的正确流程类型（仅 mismatch 时返回）
 }
 
 // FieldDef 字段定义
@@ -59,9 +65,9 @@ type ProcessFields struct {
 
 // ProcessData 流程实例业务数据
 type ProcessData struct {
-	ProcessID    string                                `json:"process_id"`
-	MainData     map[string]interface{}                `json:"main_data"`
-	DetailTables map[string][]map[string]interface{}   `json:"detail_tables"`
+	ProcessID    string                              `json:"process_id"`
+	MainData     map[string]interface{}              `json:"main_data"`
+	DetailTables map[string][]map[string]interface{} `json:"detail_tables"`
 }
 
 // TodoItem OA 待办流程条目
@@ -76,4 +82,37 @@ type TodoItem struct {
 	SubmitTime       string `json:"submit_time"`
 	Urgency          string `json:"urgency"`
 	MainTableName    string `json:"main_table_name"`
+}
+
+// ArchivedItem OA 已归档流程条目。
+type ArchivedItem struct {
+	ProcessID        string `json:"process_id"`
+	Title            string `json:"title"`
+	Applicant        string `json:"applicant"`
+	Department       string `json:"department"`
+	ProcessType      string `json:"process_type"`
+	ProcessTypeLabel string `json:"process_type_label"`
+	CurrentNode      string `json:"current_node"`
+	SubmitTime       string `json:"submit_time"`
+	ArchiveTime      string `json:"archive_time"`
+	MainTableName    string `json:"main_table_name"`
+}
+
+// ProcessFlowNode 审批流节点快照。
+type ProcessFlowNode struct {
+	NodeID     string `json:"node_id"`
+	NodeName   string `json:"node_name"`
+	Approver   string `json:"approver"`
+	Action     string `json:"action"`
+	ActionTime string `json:"action_time"`
+	Opinion    string `json:"opinion"`
+}
+
+// ProcessFlowSnapshot 审批流快照。
+type ProcessFlowSnapshot struct {
+	IsComplete   bool              `json:"is_complete"`
+	MissingNodes []string          `json:"missing_nodes"`
+	Nodes        []ProcessFlowNode `json:"nodes"`
+	HistoryText  string            `json:"history_text"`
+	GraphText    string            `json:"graph_text"`
 }

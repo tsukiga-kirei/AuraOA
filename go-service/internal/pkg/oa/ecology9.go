@@ -460,19 +460,19 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([
 		// FROM
 		a.tableName("workflow_currentoperator"), // co
 		// JOINs
-		a.tableName("workflow_requestbase"),     // r
+		a.tableName("workflow_requestbase"), // r
 		a.col("requestid"), a.col("requestid"),
-		a.tableName("workflow_base"),            // wb
+		a.tableName("workflow_base"), // wb
 		a.col("workflowid"), a.col("id"),
-		a.tableName("workflow_type"),            // wt
+		a.tableName("workflow_type"), // wt
 		a.col("workflowtype"), a.col("id"),
-		a.tableName("workflow_bill"),            // bill (通过 formid 获取主表名)
+		a.tableName("workflow_bill"), // bill (通过 formid 获取主表名)
 		a.col("formid"), a.col("id"),
-		a.tableName("hrmresource"),              // h (applicant)
+		a.tableName("hrmresource"), // h (applicant)
 		a.col("creater"), a.col("id"),
-		a.tableName("hrmdepartment"),            // d
+		a.tableName("hrmdepartment"), // d
 		a.col("departmentid"), a.col("id"),
-		a.tableName("workflow_nodebase"),         // n
+		a.tableName("workflow_nodebase"), // n
 		a.col("nodeid"), a.col("id"),
 		// WHERE
 		a.col("userid"), a.col("isremark"),
@@ -506,6 +506,216 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([
 		})
 	}
 	return items, nil
+}
+
+// FetchArchivedList 拉取泛微 E9 中的已归档流程。
+// 不同客户库对归档时间字段可能不一致，因此优先尝试 lastoperatedate，失败时回退到 createdate。
+func (a *Ecology9Adapter) FetchArchivedList(ctx context.Context, username string) ([]ArchivedItem, error) {
+	_ = username
+	items, err := a.fetchArchivedListWithArchiveDate(ctx, true)
+	if err == nil {
+		return items, nil
+	}
+	return a.fetchArchivedListWithArchiveDate(ctx, false)
+}
+
+func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, useLastOperateDate bool) ([]ArchivedItem, error) {
+	archiveDateExpr := "r." + a.col("createdate")
+	if useLastOperateDate {
+		archiveDateExpr = fmt.Sprintf("COALESCE(r.%s, r.%s)", a.col("lastoperatedate"), a.col("createdate"))
+	}
+
+	query := fmt.Sprintf(`
+		SELECT
+			r.%s AS request_id,
+			r.%s AS request_name,
+			COALESCE(h.%s, '') AS applicant_name,
+			COALESCE(d.%s, '') AS dept_name,
+			COALESCE(wb.%s, '') AS workflow_name,
+			COALESCE(wt.%s, '') AS type_name,
+			COALESCE(n.%s, '已归档') AS node_name,
+			r.%s AS create_date,
+			%s AS archive_date,
+			COALESCE(bill.%s, '') AS main_table_name
+		FROM %s r
+		LEFT JOIN %s wb ON r.%s = wb.%s
+		LEFT JOIN %s wt ON wb.%s = wt.%s
+		LEFT JOIN %s bill ON wb.%s = bill.%s
+		LEFT JOIN %s h ON r.%s = h.%s
+		LEFT JOIN %s d ON h.%s = d.%s
+		LEFT JOIN %s n ON r.%s = n.%s
+		WHERE r.%s = 3
+		ORDER BY %s DESC`,
+		a.col("requestid"), a.col("requestname"),
+		a.col("lastname"), a.col("departmentname"),
+		a.col("workflowname"), a.col("typename"),
+		a.col("nodename"),
+		a.col("createdate"),
+		archiveDateExpr,
+		a.col("tablename"),
+		a.tableName("workflow_requestbase"),
+		a.tableName("workflow_base"),
+		a.col("workflowid"), a.col("id"),
+		a.tableName("workflow_type"),
+		a.col("workflowtype"), a.col("id"),
+		a.tableName("workflow_bill"),
+		a.col("formid"), a.col("id"),
+		a.tableName("hrmresource"),
+		a.col("creater"), a.col("id"),
+		a.tableName("hrmdepartment"),
+		a.col("departmentid"), a.col("id"),
+		a.tableName("workflow_nodebase"),
+		a.col("currentnodeid"), a.col("id"),
+		a.col("currentnodetype"),
+		archiveDateExpr,
+	)
+
+	rows, err := a.db.WithContext(ctx).Raw(query).Rows()
+	if err != nil {
+		return nil, fmt.Errorf("查询 OA 已归档流程失败: %w", err)
+	}
+	defer rows.Close()
+
+	var items []ArchivedItem
+	for rows.Next() {
+		var requestID, requestName, applicant, department, workflowName, typeName, nodeName, createDate, archiveDate, mainTableName string
+		if err := rows.Scan(&requestID, &requestName, &applicant, &department, &workflowName, &typeName, &nodeName, &createDate, &archiveDate, &mainTableName); err != nil {
+			continue
+		}
+		items = append(items, ArchivedItem{
+			ProcessID:        requestID,
+			Title:            requestName,
+			Applicant:        applicant,
+			Department:       department,
+			ProcessType:      workflowName,
+			ProcessTypeLabel: typeName,
+			CurrentNode:      nodeName,
+			SubmitTime:       createDate,
+			ArchiveTime:      archiveDate,
+			MainTableName:    mainTableName,
+		})
+	}
+	return items, nil
+}
+
+// FetchProcessFlow 拉取流程审批流快照。
+// 若历史日志表结构不兼容，则退化为仅返回当前节点快照，避免阻塞归档复盘主链路。
+func (a *Ecology9Adapter) FetchProcessFlow(ctx context.Context, processID string) (*ProcessFlowSnapshot, error) {
+	query := fmt.Sprintf(`
+		SELECT
+			'' AS node_id,
+			COALESCE(n.%s, '') AS node_name,
+			COALESCE(h.%s, '') AS approver_name,
+			COALESCE(l.%s, '') AS operate_date,
+			COALESCE(l.%s, '') AS operate_time,
+			COALESCE(l.%s, '') AS log_type,
+			COALESCE(l.%s, '') AS remark
+		FROM %s l
+		LEFT JOIN %s n ON l.%s = n.%s
+		LEFT JOIN %s h ON l.%s = h.%s
+		WHERE l.%s = ?
+		ORDER BY l.%s ASC, l.%s ASC`,
+		a.col("nodename"),
+		a.col("lastname"),
+		a.col("operatedate"),
+		a.col("operatetime"),
+		a.col("logtype"),
+		a.col("remark"),
+		a.tableName("workflow_requestlog"),
+		a.tableName("workflow_nodebase"),
+		a.col("nodeid"), a.col("id"),
+		a.tableName("hrmresource"),
+		a.col("operator"), a.col("id"),
+		a.col("requestid"),
+		a.col("operatedate"), a.col("operatetime"),
+	)
+
+	rows, err := a.db.WithContext(ctx).Raw(query, processID).Rows()
+	if err != nil {
+		return a.fetchCurrentNodeSnapshot(ctx, processID)
+	}
+	defer rows.Close()
+
+	var nodes []ProcessFlowNode
+	var historyLines []string
+	for rows.Next() {
+		var nodeID, nodeName, approver, operateDate, operateTime, logType, remark string
+		if err := rows.Scan(&nodeID, &nodeName, &approver, &operateDate, &operateTime, &logType, &remark); err != nil {
+			continue
+		}
+		action := "approve"
+		lower := strings.ToLower(logType + " " + remark)
+		if strings.Contains(lower, "退回") || strings.Contains(lower, "reject") || strings.Contains(lower, "return") {
+			action = "return"
+		}
+		actionTime := strings.TrimSpace(strings.TrimSpace(operateDate) + " " + strings.TrimSpace(operateTime))
+		nodes = append(nodes, ProcessFlowNode{
+			NodeID:     nodeName,
+			NodeName:   nodeName,
+			Approver:   approver,
+			Action:     action,
+			ActionTime: actionTime,
+			Opinion:    remark,
+		})
+		historyLines = append(historyLines, fmt.Sprintf("%s | %s | %s | %s", actionTime, nodeName, approver, remark))
+	}
+
+	if len(nodes) == 0 {
+		return a.fetchCurrentNodeSnapshot(ctx, processID)
+	}
+
+	nodeNames := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		nodeNames = append(nodeNames, node.NodeName)
+	}
+
+	return &ProcessFlowSnapshot{
+		IsComplete:   true,
+		MissingNodes: []string{},
+		Nodes:        nodes,
+		HistoryText:  strings.Join(historyLines, "\n"),
+		GraphText:    strings.Join(nodeNames, " -> "),
+	}, nil
+}
+
+func (a *Ecology9Adapter) fetchCurrentNodeSnapshot(ctx context.Context, processID string) (*ProcessFlowSnapshot, error) {
+	query := fmt.Sprintf(`
+		SELECT
+			COALESCE(n.%s, '已归档')
+		FROM %s r
+		LEFT JOIN %s n ON r.%s = n.%s
+		WHERE r.%s = ?`,
+		a.col("nodename"),
+		a.tableName("workflow_requestbase"),
+		a.tableName("workflow_nodebase"),
+		a.col("currentnodeid"), a.col("id"),
+		a.col("requestid"),
+	)
+
+	var nodeName string
+	if err := a.db.WithContext(ctx).Raw(query, processID).Row().Scan(&nodeName); err != nil {
+		return &ProcessFlowSnapshot{
+			IsComplete:   true,
+			MissingNodes: []string{},
+			Nodes:        []ProcessFlowNode{},
+			HistoryText:  "",
+			GraphText:    "",
+		}, nil
+	}
+
+	node := ProcessFlowNode{
+		NodeID:   nodeName,
+		NodeName: nodeName,
+		Action:   "approve",
+	}
+
+	return &ProcessFlowSnapshot{
+		IsComplete:   true,
+		MissingNodes: []string{},
+		Nodes:        []ProcessFlowNode{node},
+		HistoryText:  nodeName,
+		GraphText:    nodeName,
+	}, nil
 }
 
 // IsProcessInTodo 判断指定流程是否仍在用户待办中。

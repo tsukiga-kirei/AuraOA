@@ -24,6 +24,7 @@ type ChatRequest struct {
 	Temperature     float64              `json:"temperature"`
 	MaxTokens       int                  `json:"max_tokens"`
 	SkipQuotaCheck  bool                 `json:"skip_quota_check"`
+	RequestType     string               `json:"request_type"`
 	StreamChunkFunc func(string)         `json:"-"`
 }
 
@@ -32,7 +33,7 @@ type ChatResponse struct {
 	Content    string     `json:"content"`
 	TokenUsage TokenUsage `json:"token_usage"`
 	ModelID    string     `json:"model_id"`
-	DurationMs int64     `json:"duration_ms"`
+	DurationMs int64      `json:"duration_ms"`
 }
 
 // TokenUsage Token 消耗统计
