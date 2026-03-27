@@ -15,7 +15,7 @@ type CronLogFilter struct {
 	Status      string
 	TaskType    string
 	TriggerType string // manual / scheduled
-	CreatedBy   string // 创建人模糊搜索
+	CreatedBy   string // 触发人（created_by）模糊搜索
 	StartDate   *time.Time
 	EndDate     *time.Time
 }

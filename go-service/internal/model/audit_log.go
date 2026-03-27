@@ -67,7 +67,7 @@ type CronLog struct {
 	TaskType    string     `gorm:"size:50;not null" json:"task_type"`
 	TaskLabel   string     `gorm:"size:200;not null;default:''" json:"task_label"`
 	TriggerType     string     `gorm:"size:20;not null;default:scheduled" json:"trigger_type"` // 触发类型：manual = 手动执行，scheduled = 定时调度
-	CreatedBy       string     `gorm:"size:100;not null;default:''" json:"created_by"`       // 创建人/触发人
+	CreatedBy       string     `gorm:"size:100;not null;default:''" json:"created_by"`       // 触发人（手动为操作者，定时为 system）
 	TaskOwnerUserID *uuid.UUID `gorm:"type:uuid" json:"task_owner_user_id,omitempty"`        // 任务归属用户（冗余）
 	Status          string     `gorm:"size:20;not null;default:running" json:"status"`
 	Message     string     `gorm:"type:text;default:''" json:"message"`

@@ -170,7 +170,7 @@ func (h *CronTaskHandler) ExportAllLogs(c *gin.Context) {
 	c.Writer.Write([]byte("\xef\xbb\xbf"))
 
 	w := csv.NewWriter(c.Writer)
-	_ = w.Write([]string{"记录ID", "任务名称", "任务类型", "触发类型", "创建/触发人", "任务归属人", "状态", "备注", "开始时间", "结束时间"})
+	_ = w.Write([]string{"记录ID", "任务名称", "任务类型", "触发类型", "触发人", "任务归属人", "状态", "备注", "开始时间", "结束时间"})
 	for _, item := range items {
 		finishedAt := ""
 		if item.FinishedAt != nil {
