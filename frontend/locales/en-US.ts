@@ -37,6 +37,18 @@ export default {
     'header.notifications': 'Notifications',
     'header.switchRole': 'Switch Role',
     'header.switchRoleFailed': 'Failed to switch role. The tenant may have been disabled.',
+    'header.notificationsTitle': 'Notifications',
+    'header.notificationsEmpty': 'No notifications',
+    'header.notificationsMarkAllRead': 'Mark all as read',
+    'header.notificationsUnreadOnlyHint': 'Unread items show on the badge; switching role shows notifications for that identity only.',
+
+    'notifications.category.system_admin': 'Platform',
+    'notifications.category.tenant_admin': 'Tenant admin',
+    'notifications.category.business': 'Business',
+    'notifications.category.audit': 'Smart audit',
+    'notifications.category.archive': 'Archive review',
+    'notifications.category.cron': 'Scheduled tasks',
+    'notifications.category.general': 'General',
 
     //=====设置页面=====
     'settings.title': 'Personal Settings',

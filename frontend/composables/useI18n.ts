@@ -37,6 +37,13 @@ export const useI18n = () => {
     return text
   }
 
+  /** 当前语言下是否存在该文案键（用于避免回退到原始 key 时的误判）。 */
+  const te = (key: string): boolean => {
+    const loc = (userLocale.value || 'zh-CN') as Locale
+    const text = messages[loc]?.[key]
+    return typeof text === 'string' && text.length > 0
+  }
+
   const setLocale = (locale: Locale) => {
     userLocale.value = locale
   }
@@ -48,5 +55,5 @@ export const useI18n = () => {
     { value: 'en-US', label: 'English', flag: '🇺🇸' },
   ]
 
-  return { t, locale, setLocale, currentLocale: userLocale, availableLocales }
+  return { t, te, locale, setLocale, currentLocale: userLocale, availableLocales }
 }

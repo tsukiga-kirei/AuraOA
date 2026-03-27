@@ -7,10 +7,12 @@ import {
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 
+import type { RoleInfo } from '~/types/auth'
+import type { UserNotificationItem } from '~/types/user-notifications'
+
 defineProps<{
   collapsed: boolean
   isMobile: boolean
-  notificationCount?: number
 }>()
 
 const emit = defineEmits<{
@@ -19,10 +21,40 @@ const emit = defineEmits<{
 }>()
 
 const { isDark, toggle: toggleTheme } = useTheme()
-const { t } = useI18n()
+const { t, te } = useI18n()
 const { allRoles, activeRole, switchRole, getMenu } = useAuth()
 
-import type { RoleInfo } from '~/types/auth'
+const {
+  items: notifItems,
+  unreadCount,
+  listLoading,
+  refreshList,
+  markOneRead,
+  markAllRead,
+  formatRelative,
+} = useNotifications()
+
+const notifOpen = ref(false)
+watch(notifOpen, open => {
+  if (open) refreshList()
+})
+
+function categoryLabel(cat: string) {
+  const key = `notifications.category.${cat}`
+  return te(key) ? t(key) : cat
+}
+
+async function onNotifItemClick(it: UserNotificationItem) {
+  if (!it.read) await markOneRead(it.id)
+  if (it.link_path) {
+    notifOpen.value = false
+    await navigateTo(it.link_path)
+  }
+}
+
+async function handleMarkAllNotificationsRead() {
+  await markAllRead()
+}
 
 //=====角色切换=====
 const systemRoles = computed(() => allRoles.value.filter(r => r.role === 'system_admin'))
@@ -185,13 +217,59 @@ const handleSwitchRole = async (role: RoleInfo) => {
         </template>
       </a-dropdown>
 
-      <a-tooltip :title="t('header.notifications')" placement="bottom" :mouse-enter-delay="0.5">
-        <a-badge :count="notificationCount ?? 0" :offset="[-4, 4]">
-          <button class="header-action">
-            <BellOutlined />
-          </button>
-        </a-badge>
-      </a-tooltip>
+      <a-dropdown
+        v-model:open="notifOpen"
+        placement="bottomRight"
+        :trigger="['click']"
+      >
+        <a-tooltip :title="t('header.notifications')" placement="bottom" :mouse-enter-delay="0.5">
+          <a-badge :count="unreadCount" :overflow-count="99" :show-zero="false" :offset="[-4, 4]">
+            <button type="button" class="header-action" :aria-label="t('header.notifications')">
+              <BellOutlined />
+            </button>
+          </a-badge>
+        </a-tooltip>
+        <template #overlay>
+          <div class="notif-panel">
+            <div class="notif-panel-head">
+              <span class="notif-panel-title">{{ t('header.notificationsTitle') }}</span>
+              <button
+                v-if="unreadCount > 0"
+                type="button"
+                class="notif-mark-all"
+                @click.stop="handleMarkAllNotificationsRead"
+              >
+                {{ t('header.notificationsMarkAllRead') }}
+              </button>
+            </div>
+            <p class="notif-panel-hint">{{ t('header.notificationsUnreadOnlyHint') }}</p>
+            <a-spin :spinning="listLoading">
+              <div v-if="!notifItems.length && !listLoading" class="notif-empty">
+                {{ t('header.notificationsEmpty') }}
+              </div>
+              <ul v-else class="notif-list">
+                <li
+                  v-for="it in notifItems"
+                  :key="it.id"
+                  class="notif-item"
+                  :class="{ 'notif-item--unread': !it.read }"
+                  role="button"
+                  tabindex="0"
+                  @click="onNotifItemClick(it)"
+                  @keydown.enter.prevent="onNotifItemClick(it)"
+                >
+                  <div class="notif-item-top">
+                    <span class="notif-cat">{{ categoryLabel(it.category) }}</span>
+                    <span class="notif-time">{{ formatRelative(it.created_at) }}</span>
+                  </div>
+                  <div class="notif-title">{{ it.title }}</div>
+                  <div v-if="it.body" class="notif-body">{{ it.body }}</div>
+                </li>
+              </ul>
+            </a-spin>
+          </div>
+        </template>
+      </a-dropdown>
     </div>
   </header>
 </template>
@@ -468,5 +546,117 @@ const handleSwitchRole = async (role: RoleInfo) => {
 @media (max-width: 768px) {
   .app-header { padding: 0 16px; }
   .role-dropdown { min-width: 220px; }
+}
+</style>
+
+<style scoped>
+.notif-panel {
+  width: min(360px, calc(100vw - 32px));
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.notif-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.notif-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.notif-mark-all {
+  border: none;
+  background: none;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+.notif-mark-all:hover {
+  text-decoration: underline;
+}
+.notif-panel-hint {
+  margin: 0;
+  padding: 6px 14px 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-text-tertiary);
+  border-bottom: 1px solid var(--color-border-light);
+}
+.notif-empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+}
+.notif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.notif-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border-light);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.notif-item:last-child {
+  border-bottom: none;
+}
+.notif-item:hover {
+  background: var(--color-bg-hover);
+}
+.notif-item--unread {
+  background: var(--color-primary-bg);
+}
+.notif-item--unread:hover {
+  background: var(--color-primary-bg);
+  filter: brightness(0.97);
+}
+.notif-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.notif-cat {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-transform: none;
+}
+.notif-time {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+.notif-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  line-height: 1.4;
+}
+.notif-body {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 </style>

@@ -32,6 +32,7 @@ func SetupRouter(
 	auditHandler *handler.AuditHandler,
 	archiveReviewHandler *handler.ArchiveReviewHandler,
 	dashboardOverviewHandler *handler.DashboardOverviewHandler,
+	userNotificationHandler *handler.UserNotificationHandler,
 ) {
 	// Global middleware
 	r.Use(middleware.Logger(logger))
@@ -55,6 +56,11 @@ func SetupRouter(
 		auth.GET("/me", authHandler.GetMe)
 		auth.PUT("/locale", authHandler.UpdateLocale)
 		auth.PUT("/profile", authHandler.UpdateProfile)
+
+		auth.GET("/notifications/unread-count", userNotificationHandler.UnreadCount)
+		auth.GET("/notifications", userNotificationHandler.List)
+		auth.PUT("/notifications/read-all", userNotificationHandler.MarkAllRead)
+		auth.PUT("/notifications/:id/read", userNotificationHandler.MarkRead)
 	}
 
 	// Tenant org routes (JWT + TenantContext + tenant_admin)

@@ -38,6 +38,18 @@ export default {
     'header.notifications': '通知',
     'header.switchRole': '切换角色',
     'header.switchRoleFailed': '角色切换失败，该租户可能已被停用',
+    'header.notificationsTitle': '消息通知',
+    'header.notificationsEmpty': '暂无通知',
+    'header.notificationsMarkAllRead': '全部已读',
+    'header.notificationsUnreadOnlyHint': '未读会显示在角标中；切换角色后仅显示当前身份下的通知',
+
+    'notifications.category.system_admin': '平台 / 系统管理',
+    'notifications.category.tenant_admin': '租户管理',
+    'notifications.category.business': '业务',
+    'notifications.category.audit': '智能审核',
+    'notifications.category.archive': '归档复盘',
+    'notifications.category.cron': '定时任务',
+    'notifications.category.general': '一般',
 
     //=====设置页面=====
     'settings.title': '个人设置',
