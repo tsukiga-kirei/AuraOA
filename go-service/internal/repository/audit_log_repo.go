@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -9,6 +10,9 @@ import (
 
 	"oa-smart-audit/go-service/internal/model"
 )
+
+// ErrNoTenantContext 上下文中缺少 tenant_id。
+var ErrNoTenantContext = errors.New("missing tenant_id in context")
 
 // AuditLogFilter 审核日志分页查询过滤条件。
 type AuditLogFilter struct {
@@ -251,6 +255,357 @@ func (r *AuditLogRepo) CountStats(c *gin.Context) (*AuditLogStats, error) {
 		}
 	}
 	return stats, nil
+}
+
+// CountStatsGlobal 全库审核日志统计（system_admin 平台仪表盘，无租户过滤）。
+func (r *AuditLogRepo) CountStatsGlobal() (*AuditLogStats, error) {
+	type row struct {
+		Status           string
+		Recommendation   string
+		Cnt              int64
+	}
+	var rows []row
+	err := r.DB.
+		Table("audit_logs").
+		Select("status, recommendation, COUNT(*) as cnt").
+		Group("status, recommendation").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &AuditLogStats{}
+	completedStatuses := map[string]bool{model.AuditStatusCompleted: true}
+	pendingStatuses := map[string]bool{
+		model.AuditStatusPending:    true,
+		model.AuditStatusAssembling: true,
+		model.AuditStatusReasoning:  true,
+		model.AuditStatusExtracting: true,
+		model.AuditStatusFailed:     true,
+	}
+	for _, row := range rows {
+		stats.Total += row.Cnt
+		if completedStatuses[row.Status] {
+			stats.AIDone += row.Cnt
+			switch row.Recommendation {
+			case "approve":
+				stats.ApproveCount += row.Cnt
+			case "return":
+				stats.ReturnCount += row.Cnt
+			case "review":
+				stats.ReviewCount += row.Cnt
+			}
+		} else if pendingStatuses[row.Status] {
+			stats.PendingAI += row.Cnt
+		}
+	}
+	return stats, nil
+}
+
+// DashboardWeeklyCompletedTrend 最近 n 个自然日（含当日）内，按 UTC 日聚合的已完成审核次数。
+func (r *AuditLogRepo) DashboardWeeklyCompletedTrend(c *gin.Context, days int) ([]struct {
+	Date  string `gorm:"column:date"`
+	Count int64  `gorm:"column:count"`
+}, error) {
+	if days < 1 {
+		days = 7
+	}
+	tid, ok := c.Get("tenant_id")
+	if !ok || tid == nil || tid == "" {
+		return nil, ErrNoTenantContext
+	}
+	tenantUUID, err := uuid.Parse(tid.(string))
+	if err != nil {
+		return nil, err
+	}
+
+	q := `
+WITH days AS (
+  SELECT generate_series(
+    (CURRENT_DATE AT TIME ZONE 'UTC')::date - ($2::int - 1),
+    (CURRENT_DATE AT TIME ZONE 'UTC')::date,
+    INTERVAL '1 day'
+  )::date AS d
+)
+SELECT TO_CHAR(days.d, 'MM-DD') AS date, COALESCE(b.cnt, 0)::bigint AS count
+FROM days
+LEFT JOIN (
+  SELECT DATE(created_at AT TIME ZONE 'UTC') AS d, COUNT(*)::bigint AS cnt
+  FROM audit_logs
+  WHERE tenant_id = $1 AND status = $3
+  GROUP BY 1
+) b ON b.d = days.d
+ORDER BY days.d
+`
+	var rows []struct {
+		Date  string `gorm:"column:date"`
+		Count int64  `gorm:"column:count"`
+	}
+	err = r.DB.Raw(q, tenantUUID, days, model.AuditStatusCompleted).Scan(&rows).Error
+	return rows, err
+}
+
+// DashboardWeeklyCompletedTrendGlobal 全库：最近 n 个 UTC 自然日已完成审核次数。
+func (r *AuditLogRepo) DashboardWeeklyCompletedTrendGlobal(days int) ([]struct {
+	Date  string `gorm:"column:date"`
+	Count int64  `gorm:"column:count"`
+}, error) {
+	if days < 1 {
+		days = 7
+	}
+	q := `
+WITH days AS (
+  SELECT generate_series(
+    (CURRENT_DATE AT TIME ZONE 'UTC')::date - ($1::int - 1),
+    (CURRENT_DATE AT TIME ZONE 'UTC')::date,
+    INTERVAL '1 day'
+  )::date AS d
+)
+SELECT TO_CHAR(days.d, 'MM-DD') AS date, COALESCE(b.cnt, 0)::bigint AS count
+FROM days
+LEFT JOIN (
+  SELECT DATE(created_at AT TIME ZONE 'UTC') AS d, COUNT(*)::bigint AS cnt
+  FROM audit_logs
+  WHERE status = $2
+  GROUP BY 1
+) b ON b.d = days.d
+ORDER BY days.d
+`
+	var rows []struct {
+		Date  string `gorm:"column:date"`
+		Count int64  `gorm:"column:count"`
+	}
+	err := r.DB.Raw(q, days, model.AuditStatusCompleted).Scan(&rows).Error
+	return rows, err
+}
+
+// DashboardRecentCompletedRows 最近完成的审核记录（用于动态与归档以外的展示）。
+type DashboardRecentAuditRow struct {
+	ID        uuid.UUID `json:"id" gorm:"column:id"`
+	Title     string    `json:"title" gorm:"column:title"`
+	UserName  string    `json:"user_name" gorm:"column:user_name"`
+	CreatedAt time.Time `json:"created_at" gorm:"column:created_at"`
+	Status    string    `json:"status" gorm:"column:status"`
+}
+
+// DashboardRecentAudits 最近审核记录（含完成/失败），按时间倒序。
+func (r *AuditLogRepo) DashboardRecentAudits(c *gin.Context, limit int) ([]DashboardRecentAuditRow, error) {
+	if limit < 1 {
+		limit = 8
+	}
+	var rows []DashboardRecentAuditRow
+	err := r.WithTenant(c).
+		Table("audit_logs").
+		Select("audit_logs.id, audit_logs.title, COALESCE(users.display_name, users.username, '') as user_name, audit_logs.created_at, audit_logs.status").
+		Joins("LEFT JOIN users ON audit_logs.user_id = users.id").
+		Where("audit_logs.status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed}).
+		Order("audit_logs.created_at DESC").
+		Limit(limit).
+		Scan(&rows).Error
+	return rows, err
+}
+
+// DashboardRecentAuditsGlobal 全库最近审核记录（完成/失败），按时间倒序。
+func (r *AuditLogRepo) DashboardRecentAuditsGlobal(limit int) ([]DashboardRecentAuditRow, error) {
+	if limit < 1 {
+		limit = 8
+	}
+	var rows []DashboardRecentAuditRow
+	err := r.DB.
+		Table("audit_logs").
+		Select("audit_logs.id, audit_logs.title, COALESCE(users.display_name, users.username, '') as user_name, audit_logs.created_at, audit_logs.status").
+		Joins("LEFT JOIN users ON audit_logs.user_id = users.id").
+		Where("audit_logs.status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed}).
+		Order("audit_logs.created_at DESC").
+		Limit(limit).
+		Scan(&rows).Error
+	return rows, err
+}
+
+// DashboardAuditOutcomeForAIStats 用于计算 AI 成功率：已完成条数与失败条数。
+func (r *AuditLogRepo) DashboardAuditOutcomeForAIStats(c *gin.Context) (completed, failed int64, err error) {
+	type row struct {
+		Status string
+		Cnt    int64
+	}
+	var rows []row
+	err = r.WithTenant(c).
+		Model(&model.AuditLog{}).
+		Select("status, COUNT(*) as cnt").
+		Where("status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed}).
+		Group("status").
+		Scan(&rows).Error
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, x := range rows {
+		switch x.Status {
+		case model.AuditStatusCompleted:
+			completed += x.Cnt
+		case model.AuditStatusFailed:
+			failed += x.Cnt
+		}
+	}
+	return completed, failed, nil
+}
+
+// DashboardAuditOutcomeForAIStatsGlobal 全库已完成/失败条数（AI 成功率分母）。
+func (r *AuditLogRepo) DashboardAuditOutcomeForAIStatsGlobal() (completed, failed int64, err error) {
+	type row struct {
+		Status string
+		Cnt    int64
+	}
+	var rows []row
+	err = r.DB.
+		Model(&model.AuditLog{}).
+		Select("status, COUNT(*) as cnt").
+		Where("status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed}).
+		Group("status").
+		Scan(&rows).Error
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, x := range rows {
+		switch x.Status {
+		case model.AuditStatusCompleted:
+			completed += x.Cnt
+		case model.AuditStatusFailed:
+			failed += x.Cnt
+		}
+	}
+	return completed, failed, nil
+}
+
+// DashboardPlatformTenantRankRow 全平台按租户已完成审核数排名。
+type DashboardPlatformTenantRankRow struct {
+	TenantID   uuid.UUID `gorm:"column:tenant_id"`
+	TenantName string    `gorm:"column:tenant_name"`
+	TenantCode string    `gorm:"column:tenant_code"`
+	AuditCount int64     `gorm:"column:audit_count"`
+}
+
+// DashboardTenantAuditRankingGlobal 全库各租户已完成审核 Top N。
+func (r *AuditLogRepo) DashboardTenantAuditRankingGlobal(limit int) ([]DashboardPlatformTenantRankRow, error) {
+	if limit < 1 {
+		limit = 10
+	}
+	q := `
+SELECT t.id AS tenant_id,
+       t.name AS tenant_name,
+       t.code AS tenant_code,
+       COUNT(*)::bigint AS audit_count
+FROM audit_logs al
+JOIN tenants t ON t.id = al.tenant_id
+WHERE al.status = ?
+GROUP BY t.id, t.name, t.code
+ORDER BY audit_count DESC
+LIMIT ?
+`
+	var rows []DashboardPlatformTenantRankRow
+	err := r.DB.Raw(q, model.AuditStatusCompleted, limit).Scan(&rows).Error
+	return rows, err
+}
+
+// DashboardUserAuditRankRow 用户审核排行行。
+type DashboardUserAuditRankRow struct {
+	Username    string    `gorm:"column:username"`
+	DisplayName string    `gorm:"column:display_name"`
+	Department  string    `gorm:"column:department"`
+	AuditCount  int64     `gorm:"column:audit_count"`
+	LastActive  time.Time `gorm:"column:last_active"`
+}
+
+// DashboardUserAuditRanking 租户内已完成审核次数 Top N。
+func (r *AuditLogRepo) DashboardUserAuditRanking(c *gin.Context, limit int) ([]DashboardUserAuditRankRow, error) {
+	if limit < 1 {
+		limit = 10
+	}
+	tid, ok := c.Get("tenant_id")
+	if !ok || tid == nil || tid == "" {
+		return nil, ErrNoTenantContext
+	}
+	tenantUUID, err := uuid.Parse(tid.(string))
+	if err != nil {
+		return nil, err
+	}
+
+	q := `
+SELECT u.username AS username,
+       u.display_name AS display_name,
+       COALESCE(MAX(d.name), '') AS department,
+       COUNT(*)::bigint AS audit_count,
+       MAX(al.created_at) AS last_active
+FROM audit_logs al
+JOIN users u ON u.id = al.user_id
+LEFT JOIN org_members om ON om.user_id = al.user_id AND om.tenant_id = al.tenant_id AND om.status = 'active'
+LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = al.tenant_id
+WHERE al.tenant_id = ? AND al.status = ?
+GROUP BY u.id, u.username, u.display_name
+ORDER BY audit_count DESC
+LIMIT ?
+`
+	var rows []DashboardUserAuditRankRow
+	err = r.DB.Raw(q, tenantUUID, model.AuditStatusCompleted, limit).Scan(&rows).Error
+	return rows, err
+}
+
+// DashboardDeptAuditDistribution 已完成审核按部门分布（未关联组织的记入 __unassigned__）。
+func (r *AuditLogRepo) DashboardDeptAuditDistribution(c *gin.Context, limit int) ([]struct {
+	Department string `gorm:"column:department"`
+	Count      int64  `gorm:"column:count"`
+}, error) {
+	if limit < 1 {
+		limit = 12
+	}
+	tid, ok := c.Get("tenant_id")
+	if !ok || tid == nil || tid == "" {
+		return nil, ErrNoTenantContext
+	}
+	tenantUUID, err := uuid.Parse(tid.(string))
+	if err != nil {
+		return nil, err
+	}
+
+	q := `
+SELECT dept_key AS department, COUNT(*)::bigint AS count
+FROM (
+  SELECT COALESCE(d.name, '__unassigned__') AS dept_key
+  FROM audit_logs al
+  LEFT JOIN org_members om ON om.user_id = al.user_id AND om.tenant_id = al.tenant_id AND om.status = 'active'
+  LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = al.tenant_id
+  WHERE al.tenant_id = ? AND al.status = ?
+) t
+GROUP BY dept_key
+ORDER BY count DESC
+LIMIT ?
+`
+	var rows []struct {
+		Department string `gorm:"column:department"`
+		Count      int64  `gorm:"column:count"`
+	}
+	err = r.DB.Raw(q, tenantUUID, model.AuditStatusCompleted, limit).Scan(&rows).Error
+	return rows, err
+}
+
+// DashboardDistinctUserCountSince 指定时间以来有审核行为的去重用户数。
+func (r *AuditLogRepo) DashboardDistinctUserCountSince(c *gin.Context, since time.Time) (int64, error) {
+	tid, ok := c.Get("tenant_id")
+	if !ok || tid == nil || tid == "" {
+		return 0, ErrNoTenantContext
+	}
+	tenantUUID, err := uuid.Parse(tid.(string))
+	if err != nil {
+		return 0, err
+	}
+	type cntRow struct {
+		N int64 `gorm:"column:n"`
+	}
+	var row cntRow
+	err = r.DB.Raw(
+		`SELECT COUNT(DISTINCT user_id)::bigint AS n FROM audit_logs WHERE tenant_id = ? AND created_at >= ?`,
+		tenantUUID, since,
+	).Scan(&row).Error
+	return row.N, err
 }
 
 func applyAuditLogFilter(db *gorm.DB, f AuditLogFilter) *gorm.DB {

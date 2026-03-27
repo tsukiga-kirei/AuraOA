@@ -31,6 +31,7 @@ func SetupRouter(
 	archiveRuleHandler *handler.ArchiveRuleHandler,
 	auditHandler *handler.AuditHandler,
 	archiveReviewHandler *handler.ArchiveReviewHandler,
+	dashboardOverviewHandler *handler.DashboardOverviewHandler,
 ) {
 	// Global middleware
 	r.Use(middleware.Logger(logger))
@@ -119,6 +120,8 @@ func SetupRouter(
 
 		// 系统管理员 — Token 消耗统计
 		admin.GET("/stats/token-usage", llmLogHandler.QueryAllTenantsTokenUsage)
+
+		admin.GET("/dashboard-overview", dashboardOverviewHandler.GetPlatformOverview)
 	}
 
 	// 租户管理员路由组（JWT + TenantContext + tenant_admin）
@@ -227,6 +230,9 @@ func SetupRouter(
 		// 仪表板偏好
 		tenantSettings.GET("/dashboard-prefs", userConfigHandler.GetDashboardPrefs)
 		tenantSettings.PUT("/dashboard-prefs", userConfigHandler.UpdateDashboardPrefs)
+
+		// 仪表盘聚合数据
+		tenantSettings.GET("/dashboard-overview", dashboardOverviewHandler.GetOverview)
 	}
 
 	// 审核工作台（JWT + TenantContext，无角色限制）

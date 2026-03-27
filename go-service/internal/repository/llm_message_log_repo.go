@@ -67,3 +67,110 @@ func (r *LLMMessageLogRepo) QueryAllTenantsTokenUsage(startTime, endTime time.Ti
 	}
 	return summaries, nil
 }
+
+// DashboardLLMDailyPointRow LLM 按日聚合行（UTC 日期）。
+type DashboardLLMDailyPointRow struct {
+	Date  string `gorm:"column:date"`
+	AvgMs int64  `gorm:"column:avg_ms"`
+	Calls int64  `gorm:"column:calls"`
+}
+
+// DashboardLLMWeeklyTrend 最近 n 个 UTC 自然日 LLM 调用：日均耗时与次数。
+func (r *LLMMessageLogRepo) DashboardLLMWeeklyTrend(c *gin.Context, days int) ([]DashboardLLMDailyPointRow, error) {
+	if days < 1 {
+		days = 7
+	}
+	tid, ok := c.Get("tenant_id")
+	if !ok || tid == nil || tid == "" {
+		return nil, ErrNoTenantContext
+	}
+	tenantUUID, err := uuid.Parse(tid.(string))
+	if err != nil {
+		return nil, err
+	}
+
+	q := `
+WITH days AS (
+  SELECT generate_series(
+    (CURRENT_DATE AT TIME ZONE 'UTC')::date - ($2::int - 1),
+    (CURRENT_DATE AT TIME ZONE 'UTC')::date,
+    INTERVAL '1 day'
+  )::date AS d
+)
+SELECT TO_CHAR(days.d, 'MM-DD') AS date,
+       COALESCE(b.avg_ms, 0)::bigint AS avg_ms,
+       COALESCE(b.calls, 0)::bigint AS calls
+FROM days
+LEFT JOIN (
+  SELECT DATE(created_at AT TIME ZONE 'UTC') AS d,
+         COALESCE(AVG(duration_ms), 0)::bigint AS avg_ms,
+         COUNT(*)::bigint AS calls
+  FROM tenant_llm_message_logs
+  WHERE tenant_id = $1
+  GROUP BY 1
+) b ON b.d = days.d
+ORDER BY days.d
+`
+	var rows []DashboardLLMDailyPointRow
+	err = r.DB.Raw(q, tenantUUID, days).Scan(&rows).Error
+	return rows, err
+}
+
+// DashboardLLMWeeklyTrendGlobal 全库最近 n 个 UTC 自然日 LLM 调用趋势。
+func (r *LLMMessageLogRepo) DashboardLLMWeeklyTrendGlobal(days int) ([]DashboardLLMDailyPointRow, error) {
+	if days < 1 {
+		days = 7
+	}
+	q := `
+WITH days AS (
+  SELECT generate_series(
+    (CURRENT_DATE AT TIME ZONE 'UTC')::date - ($1::int - 1),
+    (CURRENT_DATE AT TIME ZONE 'UTC')::date,
+    INTERVAL '1 day'
+  )::date AS d
+)
+SELECT TO_CHAR(days.d, 'MM-DD') AS date,
+       COALESCE(b.avg_ms, 0)::bigint AS avg_ms,
+       COALESCE(b.calls, 0)::bigint AS calls
+FROM days
+LEFT JOIN (
+  SELECT DATE(created_at AT TIME ZONE 'UTC') AS d,
+         COALESCE(AVG(duration_ms), 0)::bigint AS avg_ms,
+         COUNT(*)::bigint AS calls
+  FROM tenant_llm_message_logs
+  GROUP BY 1
+) b ON b.d = days.d
+ORDER BY days.d
+`
+	var rows []DashboardLLMDailyPointRow
+	err := r.DB.Raw(q, days).Scan(&rows).Error
+	return rows, err
+}
+
+// DashboardLLMOverallStats 租户 LLM 调用总次数与平均耗时。
+func (r *LLMMessageLogRepo) DashboardLLMOverallStats(c *gin.Context) (totalCalls int64, avgMs int64, err error) {
+	type row struct {
+		Calls int64 `gorm:"column:calls"`
+		AvgMs int64 `gorm:"column:avg_ms"`
+	}
+	var out row
+	err = r.WithTenant(c).
+		Model(&model.TenantLLMMessageLog{}).
+		Select("COUNT(*)::bigint AS calls, COALESCE(AVG(duration_ms), 0)::bigint AS avg_ms").
+		Scan(&out).Error
+	return out.Calls, out.AvgMs, err
+}
+
+// DashboardLLMOverallStatsGlobal 全库 LLM 调用总次数与平均耗时。
+func (r *LLMMessageLogRepo) DashboardLLMOverallStatsGlobal() (totalCalls int64, avgMs int64, err error) {
+	type row struct {
+		Calls int64 `gorm:"column:calls"`
+		AvgMs int64 `gorm:"column:avg_ms"`
+	}
+	var out row
+	err = r.DB.
+		Model(&model.TenantLLMMessageLog{}).
+		Select("COUNT(*)::bigint AS calls, COALESCE(AVG(duration_ms), 0)::bigint AS avg_ms").
+		Scan(&out).Error
+	return out.Calls, out.AvgMs, err
+}

@@ -74,6 +74,30 @@ func (r *TenantRepo) ListActive() ([]model.Tenant, error) {
 	return tenants, nil
 }
 
+// DashboardPlatformTenantCounts 全平台租户总数与活跃租户数。
+func (r *TenantRepo) DashboardPlatformTenantCounts() (total, active int64, err error) {
+	if err = r.DB.Model(&model.Tenant{}).Count(&total).Error; err != nil {
+		return 0, 0, err
+	}
+	if err = r.DB.Model(&model.Tenant{}).Where("status = ?", "active").Count(&active).Error; err != nil {
+		return 0, 0, err
+	}
+	return total, active, nil
+}
+
+// DashboardPlatformTokenSum 全平台各租户 token_used / token_quota 求和。
+func (r *TenantRepo) DashboardPlatformTokenSum() (used, quota int64, err error) {
+	type sumRow struct {
+		SUsed  int64 `gorm:"column:s_used"`
+		SQuota int64 `gorm:"column:s_quota"`
+	}
+	var row sumRow
+	err = r.DB.Model(&model.Tenant{}).
+		Select("COALESCE(SUM(token_used), 0)::bigint AS s_used, COALESCE(SUM(token_quota), 0)::bigint AS s_quota").
+		Scan(&row).Error
+	return row.SUsed, row.SQuota, err
+}
+
 //GetStats 返回给定租户的成员计数、部门计数和角色计数。
 func (r *TenantRepo) GetStats(tenantID uuid.UUID) (memberCount, deptCount, roleCount int64, err error) {
 	if err = r.DB.Model(&model.OrgMember{}).Where("tenant_id = ?", tenantID).Count(&memberCount).Error; err != nil {

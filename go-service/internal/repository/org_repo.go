@@ -184,3 +184,13 @@ func (r *OrgRepo) FindByUserAndTenant(userID, tenantID uuid.UUID) (*model.OrgMem
 	}
 	return &member, nil
 }
+
+// CountActiveMembersInTenant 当前租户内 active 成员总数。
+func (r *OrgRepo) CountActiveMembersInTenant(c *gin.Context) (int64, error) {
+	var n int64
+	err := r.WithTenant(c).
+		Model(&model.OrgMember{}).
+		Where("status = ?", "active").
+		Count(&n).Error
+	return n, err
+}

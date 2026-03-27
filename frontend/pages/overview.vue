@@ -2,75 +2,125 @@
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
-  EditOutlined,
   ClockCircleOutlined,
   ThunderboltOutlined,
   RiseOutlined,
   TeamOutlined,
   SafetyCertificateOutlined,
   CloudServerOutlined,
-  ApiOutlined,
   SettingOutlined,
   EyeOutlined,
   EyeInvisibleOutlined,
-  AlertOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import { OVERVIEW_WIDGETS } from '~/composables/useMockData'
+import { OVERVIEW_WIDGETS, OVERVIEW_WIDGET_ID_SET } from '~/constants/overviewWidgets'
 import { useI18n } from '~/composables/useI18n'
-import type { OverviewWidgetId } from '~/composables/useMockData'
+import type { OverviewWidgetId } from '~/constants/overviewWidgets'
+import type { DashboardOverview, DashboardActivityItem, PlatformDashboardOverview } from '~/types/dashboard-overview'
+import type { CronTask } from '~/types/cron'
+import type { DashboardPref } from '~/types/user-config'
 
 definePageMeta({ middleware: 'auth' })
 
-const { userPermissions, currentUser } = useAuth()
-const { mockOverviewData, mockUserDashboardPrefs, mockCronTasks, mockArchiveLogs } = useMockData()
-const { t, locale } = useI18n()
-const data = ref(mockOverviewData)
-
-//Monitor_alerts 小部件的警报助手
-const alertLevelConfig: Record<string, { color: string; bg: string }> = {
-  warning: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' },
-  error: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)' },
-  info: { color: 'var(--color-info)', bg: 'var(--color-info-bg)' },
+const EMPTY_OVERVIEW: DashboardOverview = {
+  pending_oa_count: 0,
+  audit_summary: { total: 0, approved: 0, returned: 0, archived: 0, review: 0, pending_ai: 0 },
+  weekly_trend: [],
+  recent_activity: [],
+  archive_recent: [],
 }
-const getAlertMessage = (alert: typeof data.value.monitorAlerts[0]) => locale.value === 'en-US' ? alert.messageEn : alert.messageZh
-const getAlertTime = (alert: typeof data.value.monitorAlerts[0]) => locale.value === 'en-US' ? alert.timeEn : alert.timeZh
 
-const username = computed(() => currentUser.value?.username || '')
-const defaultPrefs = computed(() => {
-  const perms = userPermissions.value
-  return OVERVIEW_WIDGETS
-    .filter(w => w.requiredPermissions.some(p => perms.includes(p)) && w.defaultEnabled)
-    .map(w => w.id)
+const { activeRole, currentUser } = useAuth()
+const { t, locale } = useI18n()
+const { fetchDashboardOverview, fetchPlatformDashboardOverview } = useDashboardOverviewApi()
+const { getDashboardPrefs, updateDashboardPrefs } = useSettingsApi()
+const { listTasks } = useCronApi()
+
+const overview = ref<DashboardOverview | null>(null)
+const platformOverview = ref<PlatformDashboardOverview | null>(null)
+const overviewLoading = ref(false)
+const cronTasksList = ref<CronTask[]>([])
+
+const isPlatformAdmin = computed(() => activeRole.value?.role === 'system_admin')
+
+function mergePlatformToDash(p: PlatformDashboardOverview): DashboardOverview {
+  return {
+    pending_oa_count: p.pending_oa_count,
+    audit_summary: p.audit_summary,
+    weekly_trend: p.weekly_trend,
+    recent_activity: p.recent_activity,
+    archive_recent: p.archive_recent,
+    ai_performance: p.ai_performance,
+    tenant_total: p.tenant_total,
+    tenant_active: p.tenant_active,
+    tenant_ranking: p.tenant_ranking,
+    tenant_usage: p.token_summary
+      ? {
+          token_used: p.token_summary.total_used,
+          token_quota: p.token_summary.total_quota,
+          storage_used_mb: 0,
+          storage_quota_mb: 0,
+          active_users: 0,
+          total_users: 0,
+        }
+      : undefined,
+  }
+}
+
+const dash = computed(() => {
+  if (isPlatformAdmin.value && platformOverview.value)
+    return mergePlatformToDash(platformOverview.value)
+  return overview.value ?? EMPTY_OVERVIEW
 })
+
+const availableWidgets = computed(() => {
+  const role = activeRole.value?.role
+  if (!role) return []
+  return OVERVIEW_WIDGETS.filter(w => w.requiredPermissions.includes(role))
+})
+
+const defaultPrefs = computed(() =>
+  availableWidgets.value.filter(w => w.defaultEnabled).map(w => w.id))
+
 const enabledWidgets = ref<OverviewWidgetId[]>([])
 const widgetSizes = ref<Partial<Record<OverviewWidgetId, 'sm' | 'md' | 'lg'>>>({})
 
-const availableWidgets = computed(() => {
-  const perms = userPermissions.value
-  return OVERVIEW_WIDGETS.filter(w => w.requiredPermissions.some(p => perms.includes(p)))
-})
+function applyDashboardPrefs(prefs: DashboardPref) {
+  const allowed = new Set(availableWidgets.value.map(w => w.id))
+  const raw = (prefs.enabled_widgets || []).filter((id): id is OverviewWidgetId =>
+    OVERVIEW_WIDGET_ID_SET.has(id as OverviewWidgetId) && allowed.has(id as OverviewWidgetId))
+  enabledWidgets.value = raw.length > 0 ? raw : [...defaultPrefs.value]
+  widgetSizes.value = { ...(prefs.widget_sizes as Partial<Record<OverviewWidgetId, 'sm' | 'md' | 'lg'>> || {}) }
+}
 
-watch(userPermissions, () => {
-  const prefsKey = `${username.value}_${userPermissions.value[0] || 'business'}`
-  const saved = mockUserDashboardPrefs[prefsKey]
-  
-  if (saved) {
-    enabledWidgets.value = [...saved.enabledWidgets]
-    widgetSizes.value = { ...(saved.widgetSizes || {}) }
-  } else {
-    const generalSaved = mockUserDashboardPrefs[username.value]
-    if (generalSaved) {
-       const validGeneral = generalSaved.enabledWidgets.filter(id => availableWidgets.value.some(w => w.id === id))
-       const merged = [...new Set([...validGeneral, ...defaultPrefs.value])]
-       enabledWidgets.value = merged
-       widgetSizes.value = { ...(generalSaved.widgetSizes || {}) }
-    } else {
-       enabledWidgets.value = [...defaultPrefs.value]
-       widgetSizes.value = {}
+async function loadOverviewPage() {
+  if (!activeRole.value?.role) return
+  overviewLoading.value = true
+  try {
+    const prefs = await getDashboardPrefs().catch(() => ({ enabled_widgets: [] as string[], widget_sizes: {} }))
+    if (isPlatformAdmin.value) {
+      platformOverview.value = await fetchPlatformDashboardOverview()
+      overview.value = null
+      cronTasksList.value = []
     }
+    else {
+      platformOverview.value = null
+      overview.value = await fetchDashboardOverview()
+      cronTasksList.value = await listTasks()
+    }
+    applyDashboardPrefs(prefs)
   }
-}, { immediate: true })
+  catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    message.error(msg || t('overview.loadFailed'))
+  }
+  finally {
+    overviewLoading.value = false
+  }
+}
+
+watch(activeRole, () => { void loadOverviewPage() }, { immediate: true, deep: true })
 
 const isEnabled = (id: OverviewWidgetId) => {
   return enabledWidgets.value.includes(id) && availableWidgets.value.some(w => w.id === id)
@@ -83,14 +133,20 @@ const toggleWidget = (id: OverviewWidgetId) => {
   if (idx >= 0) enabledWidgets.value.splice(idx, 1)
   else enabledWidgets.value.push(id)
 }
-const savePrefs = () => { 
+
+const savePrefs = async () => {
   customizing.value = false
-  const prefsKey = `${username.value}_${userPermissions.value[0] || 'business'}`
-  mockUserDashboardPrefs[prefsKey] = { 
-    enabledWidgets: [...enabledWidgets.value],
-    widgetSizes: { ...widgetSizes.value }
+  try {
+    await updateDashboardPrefs({
+      enabled_widgets: [...enabledWidgets.value],
+      widget_sizes: { ...widgetSizes.value },
+    })
+    message.success(t('overview.layoutSaved'))
   }
-  message.success(t('overview.layoutSaved')) 
+  catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    message.error(msg || t('overview.saveLayoutFailed'))
+  }
 }
 
 const getWidgetSize = (id: OverviewWidgetId) => {
@@ -112,17 +168,91 @@ const greeting = computed(() => {
 
 const formatNum = (n: number) => n >= 10000 ? (n / 1000).toFixed(1) + 'K' : n.toLocaleString()
 
-const activityStyle: Record<string, { color: string; bg: string }> = {
-  audit: { color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' },
-  cron: { color: 'var(--color-accent)', bg: 'rgba(6,182,212,0.1)' },
-  system: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' },
-  config: { color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
+const DEPT_COLORS = ['#4f46e5', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6', '#f97316']
+
+const deptRows = computed(() => {
+  const rows = dash.value.dept_distribution ?? []
+  return rows.map((d, i) => ({
+    department: d.department === '__unassigned__' ? t('overview.deptUnassigned') : d.department,
+    count: d.count,
+    color: DEPT_COLORS[i % DEPT_COLORS.length],
+  }))
+})
+
+const activityKindStyle: Record<string, { color: string; bg: string }> = {
+  audit_completed: { color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' },
+  audit_failed: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)' },
+  cron_log: { color: 'var(--color-accent)', bg: 'rgba(6,182,212,0.1)' },
+  archive_reviewed: { color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
 }
 
-const healthColor = (s: string) => s === 'healthy' ? 'var(--color-success)' : s === 'degraded' ? 'var(--color-warning)' : 'var(--color-danger)'
-const healthLabel = (s: string) => s === 'healthy' ? t('overview.health.healthy') : s === 'degraded' ? t('overview.health.degraded') : t('overview.health.error')
-const trendMax = computed(() => Math.max(...data.value.weeklyTrend.map(t => t.count), 1))
-const deptMax = computed(() => Math.max(...data.value.deptDistribution.map(d => d.count), 1))
+function activityActionLabel(a: DashboardActivityItem) {
+  switch (a.kind) {
+    case 'audit_completed': return t('overview.activity.auditCompleted')
+    case 'audit_failed': return t('overview.activity.auditFailed')
+    case 'cron_log': return t('overview.activity.cronLog')
+    case 'archive_reviewed': return t('overview.activity.archiveReviewed')
+    default: return a.kind
+  }
+}
+
+function formatActivityTime(iso: string) {
+  try {
+    const d = new Date(iso)
+    return new Intl.DateTimeFormat(locale.value === 'en-US' ? 'en-US' : 'zh-CN', {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    }).format(d)
+  }
+  catch {
+    return iso
+  }
+}
+
+function formatUserLastActive(iso: string) {
+  try {
+    const d = new Date(iso)
+    return new Intl.DateTimeFormat(locale.value === 'en-US' ? 'en-US' : 'zh-CN', {
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    }).format(d)
+  }
+  catch {
+    return iso
+  }
+}
+
+function archiveComplianceLabel(compliance: string) {
+  if (compliance === 'compliant') return t('overview.archiveCompliance.compliant')
+  if (compliance === 'non_compliant') return t('overview.archiveCompliance.nonCompliant')
+  if (compliance === 'partially_compliant') return t('overview.archiveCompliance.partial')
+  return compliance
+}
+
+function cronTaskLabel(task: CronTask) {
+  if (task.task_label?.trim()) return task.task_label
+  const key = `cron.taskType.${task.task_type}` as const
+  const tr = t(key as 'cron.taskType.audit_batch')
+  return tr && tr !== key ? tr : task.task_type
+}
+
+const cronPreviewTasks = computed(() => {
+  return [...cronTasksList.value].sort((a, b) =>
+    new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()).slice(0, 5)
+})
+
+const trendMax = computed(() => Math.max(...dash.value.weekly_trend.map(x => x.count), 1))
+const deptMax = computed(() => Math.max(...deptRows.value.map(d => d.count), 1))
+
+const aiBarMaxMs = computed(() => {
+  const stats = dash.value.ai_performance?.daily_stats ?? []
+  return Math.max(...stats.map(s => s.avg_ms), 1)
+})
+
+const storagePct = computed(() => {
+  const u = dash.value.tenant_usage
+  if (!u || u.storage_quota_mb <= 0) return 0
+  return Math.min(100, (u.storage_used_mb / u.storage_quota_mb) * 100)
+})
+
 const getWidgetOrder = (id: OverviewWidgetId) => {
   const index = enabledWidgets.value.indexOf(id)
   return index >= 0 ? index : 999
@@ -157,10 +287,11 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 
 <template>
   <div class="overview-page fade-in">
+    <a-spin :spinning="overviewLoading" :tip="t('overview.loading')">
     <div class="ov-header">
       <div>
         <h1 class="ov-title">{{ greeting }}，{{ currentUser?.display_name || t('sidebar.defaultUser') }}</h1>
-        <p class="ov-subtitle">{{ t('overview.subtitle') }}</p>
+        <p class="ov-subtitle">{{ isPlatformAdmin ? t('overview.subtitlePlatform') : t('overview.subtitle') }}</p>
       </div>
       <a-button :type="customizing ? 'primary' : 'default'" @click="customizing ? savePrefs() : (customizing = true)">
         <SettingOutlined /> {{ customizing ? t('overview.saveLayout') : t('overview.customizeDashboard') }}
@@ -174,13 +305,38 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         <div class="customize-grid">
           <div v-for="w in availableWidgets" :key="w.id" class="customize-chip" :class="{ 'customize-chip--active': isEnabled(w.id) }" @click="toggleWidget(w.id)">
             <component :is="isEnabled(w.id) ? EyeOutlined : EyeInvisibleOutlined" />
-            <span>{{ w.title }}</span>
+            <span>{{ t(w.titleKey) }}</span>
           </div>
         </div>
       </div>
     </transition>
 
     <div class="widget-grid">
+      <!--===== 平台：租户规模（system_admin）=====-->
+      <div v-if="isEnabled('platform_tenant_stats')"
+       :class="['widget', `widget--${getWidgetSize('platform_tenant_stats')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('platform_tenant_stats') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'platform_tenant_stats')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'platform_tenant_stats')">
+        <div class="widget-title">
+          <div class="widget-title-left"><TeamOutlined /> {{ t('overview.widgetTitle.platform_tenant_stats') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('platform_tenant_stats')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
+        <div class="summary-cards" style="grid-template-columns: repeat(2, 1fr);">
+          <div class="summary-card summary-card--total">
+            <div class="summary-num">{{ dash.tenant_total ?? 0 }}</div>
+            <div class="summary-label">{{ t('overview.platformTenantsTotal') }}</div>
+          </div>
+          <div class="summary-card summary-card--approved">
+            <div class="summary-num">{{ dash.tenant_active ?? 0 }}</div>
+            <div class="summary-label">{{ t('overview.platformTenantsActive') }}</div>
+          </div>
+        </div>
+      </div>
+
       <!--=====审计摘要（业务）=====-->
       <div v-if="isEnabled('audit_summary')"
        :class="['widget', `widget--${getWidgetSize('audit_summary')}`, { 'widget--editing': customizing }]"
@@ -192,26 +348,26 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
        @drop="onDrop($event, 'audit_summary')">
         <div class="widget-title">
           <div class="widget-title-left"><ThunderboltOutlined /> {{ t('overview.auditOverview') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('audit_summary')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('audit_summary')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
         <div class="summary-cards">
           <div class="summary-card summary-card--total">
-            <div class="summary-num">{{ data.auditSummary.total }}</div>
+            <div class="summary-num">{{ dash.audit_summary.total }}</div>
             <div class="summary-label">{{ t('overview.totalAudits') }}</div>
           </div>
           <div class="summary-card summary-card--approved">
             <CheckCircleOutlined class="summary-icon" />
-            <div class="summary-num">{{ data.auditSummary.approved }}</div>
+            <div class="summary-num">{{ dash.audit_summary.approved }}</div>
             <div class="summary-label">{{ t('overview.approved') }}</div>
           </div>
           <div class="summary-card summary-card--returned">
             <CloseCircleOutlined class="summary-icon" />
-            <div class="summary-num">{{ data.auditSummary.returned }}</div>
+            <div class="summary-num">{{ dash.audit_summary.returned }}</div>
             <div class="summary-label">{{ t('overview.rejected') }}</div>
           </div>
           <div class="summary-card summary-card--archived">
             <CheckCircleOutlined class="summary-icon" />
-            <div class="summary-num">{{ data.auditSummary.archived }}</div>
+            <div class="summary-num">{{ dash.audit_summary.archived }}</div>
             <div class="summary-label">{{ t('dashboard.tab.archived') }}</div>
           </div>
         </div>
@@ -228,10 +384,10 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
        @drop="onDrop($event, 'pending_tasks')">
         <div class="widget-title">
           <div class="widget-title-left"><ClockCircleOutlined /> {{ t('overview.pendingTasks') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('pending_tasks')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('pending_tasks')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
         <div class="pending-big">
-          <div class="pending-num">{{ data.pendingCount }}</div>
+          <div class="pending-num">{{ dash.pending_oa_count }}</div>
           <div class="pending-label">{{ t('overview.itemsPending') }}</div>
         </div>
         <a-button type="link" size="small" @click="navigateTo('/dashboard')">{{ t('overview.goToWorkbench') }} →</a-button>
@@ -248,13 +404,13 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
        @drop="onDrop($event, 'weekly_trend')">
         <div class="widget-title">
           <div class="widget-title-left"><RiseOutlined /> {{ t('overview.auditTrend7d') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('weekly_trend')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('weekly_trend')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
         <div class="bar-chart">
-          <div v-for="t in data.weeklyTrend" :key="t.date" class="bar-col">
-            <div class="bar-value">{{ t.count }}</div>
-            <div class="bar" :style="{ height: (t.count / trendMax * 120) + 'px' }" />
-            <div class="bar-label">{{ t.date }}</div>
+          <div v-for="row in dash.weekly_trend" :key="row.date" class="bar-col">
+            <div class="bar-value">{{ row.count }}</div>
+            <div class="bar" :style="{ height: (row.count / trendMax * 120) + 'px' }" />
+            <div class="bar-label">{{ row.date }}</div>
           </div>
         </div>
       </div>
@@ -270,10 +426,10 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
        @drop="onDrop($event, 'dept_distribution')">
         <div class="widget-title">
           <div class="widget-title-left"><TeamOutlined /> {{ t('overview.deptDistribution') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('dept_distribution')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('dept_distribution')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
         <div class="dept-list">
-          <div v-for="d in data.deptDistribution" :key="d.department" class="dept-row">
+          <div v-for="d in deptRows" :key="d.department" class="dept-row">
             <span class="dept-name">{{ d.department }}</span>
             <div class="dept-bar-wrap">
               <div class="dept-bar" :style="{ width: (d.count / deptMax * 100) + '%', background: d.color }" />
@@ -293,16 +449,16 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
        @dragenter.prevent 
        @drop="onDrop($event, 'cron_tasks')">
         <div class="widget-title">
-          <div class="widget-title-left"><ClockCircleOutlined /> 定时任务任务列表</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('cron_tasks')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+          <div class="widget-title-left"><ClockCircleOutlined /> {{ t('overview.widgetTitle.cron_tasks') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('cron_tasks')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
         <div class="rank-list" style="margin-top: 10px;">
-          <div v-for="c in mockCronTasks.slice(0, 5)" :key="c.id" class="rank-item">
+          <div v-for="c in cronPreviewTasks" :key="c.id" class="rank-item">
             <div class="rank-info">
-              <span class="rank-name">{{ c.task_type === 'batch_audit' ? '批量审核' : c.task_type === 'daily_report' ? '日报推送' : '周报推送' }}</span>
+              <span class="rank-name">{{ cronTaskLabel(c) }}</span>
               <span class="rank-dept">{{ c.cron_expression }}</span>
             </div>
-            <span class="rank-count" :style="{ color: c.is_active ? 'var(--color-success)' : 'var(--color-text-tertiary)' }">{{ c.is_active ? '运行中' : '已停用' }}</span>
+            <span class="rank-count" :style="{ color: c.is_active ? 'var(--color-success)' : 'var(--color-text-tertiary)' }">{{ c.is_active ? t('overview.cronActive') : t('overview.cronInactive') }}</span>
           </div>
         </div>
       </div>
@@ -317,19 +473,19 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
        @dragenter.prevent 
        @drop="onDrop($event, 'archive_review')">
         <div class="widget-title">
-          <div class="widget-title-left"><SafetyCertificateOutlined /> 归档复盘最新记录</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('archive_review')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+          <div class="widget-title-left"><SafetyCertificateOutlined /> {{ t('overview.widgetTitle.archive_review') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('archive_review')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
         <div class="activity-list" style="margin-top: 10px;">
-          <div v-for="a in mockArchiveLogs.slice(0, 4)" :key="a.id" class="activity-item">
+          <div v-for="a in dash.archive_recent.slice(0, 4)" :key="a.id" class="activity-item">
             <div class="activity-dot" :style="{ background: a.compliance === 'compliant' ? 'var(--color-success)' : a.compliance === 'non_compliant' ? 'var(--color-danger)' : 'var(--color-warning)' }" />
             <div class="activity-body">
-              <span class="activity-action">{{ a.compliance === 'compliant' ? '合规' : a.compliance === 'non_compliant' ? '不合规' : '部分合规' }}</span>
+              <span class="activity-action">{{ archiveComplianceLabel(a.compliance) }}</span>
               <span class="activity-target">{{ a.title }}</span>
             </div>
             <div class="activity-meta">
-              <span class="activity-user">{{ a.operator }}</span>
-              <span class="activity-time">{{ a.created_at }}</span>
+              <span class="activity-user">{{ a.user_name }}</span>
+              <span class="activity-time">{{ formatActivityTime(a.created_at) }}</span>
             </div>
           </div>
         </div>
@@ -346,18 +502,18 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
        @drop="onDrop($event, 'recent_activity')">
         <div class="widget-title">
           <div class="widget-title-left"><ClockCircleOutlined /> {{ t('overview.recentActivity') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('recent_activity')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('recent_activity')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
         <div class="activity-list">
-          <div v-for="a in data.recentActivity" :key="a.id" class="activity-item">
-            <div class="activity-dot" :style="{ background: activityStyle[a.type]?.color }" />
+          <div v-for="a in dash.recent_activity" :key="a.id" class="activity-item">
+            <div class="activity-dot" :style="{ background: activityKindStyle[a.kind]?.color }" />
             <div class="activity-body">
-              <span class="activity-action">{{ a.action }}</span>
-              <span class="activity-target">{{ a.target }}</span>
+              <span class="activity-action">{{ activityActionLabel(a) }}</span>
+              <span class="activity-target">{{ a.title }}</span>
             </div>
             <div class="activity-meta">
-              <span class="activity-user">{{ a.user }}</span>
-              <span class="activity-time">{{ a.time }}</span>
+              <span class="activity-user">{{ a.user_name }}</span>
+              <span class="activity-time">{{ formatActivityTime(a.created_at) }}</span>
             </div>
           </div>
         </div>
@@ -374,32 +530,32 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
        @drop="onDrop($event, 'ai_performance')">
         <div class="widget-title">
           <div class="widget-title-left"><ThunderboltOutlined /> {{ t('overview.aiPerformance') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('ai_performance')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('ai_performance')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
         <div class="ai-stats">
           <div class="ai-stat">
-            <div class="ai-stat-num">{{ data.aiPerformance.avgResponseMs }}ms</div>
+            <div class="ai-stat-num">{{ dash.ai_performance?.avg_response_ms ?? 0 }}ms</div>
             <div class="ai-stat-label">{{ t('overview.avgResponse') }}</div>
           </div>
           <div class="ai-stat">
-            <div class="ai-stat-num">{{ data.aiPerformance.successRate }}%</div>
+            <div class="ai-stat-num">{{ (dash.ai_performance?.success_rate ?? 0).toFixed(1) }}%</div>
             <div class="ai-stat-label">{{ t('overview.successRate') }}</div>
           </div>
           <div class="ai-stat">
-            <div class="ai-stat-num">{{ formatNum(data.aiPerformance.totalCalls) }}</div>
+            <div class="ai-stat-num">{{ formatNum(dash.ai_performance?.total_calls ?? 0) }}</div>
             <div class="ai-stat-label">{{ t('overview.totalCalls') }}</div>
           </div>
         </div>
         <div class="bar-chart bar-chart--small">
-          <div v-for="s in data.aiPerformance.dailyStats" :key="s.date" class="bar-col">
-            <div class="bar-value">{{ s.avgMs }}</div>
-            <div class="bar bar--accent" :style="{ height: (s.avgMs / 2500 * 80) + 'px' }" />
+          <div v-for="s in (dash.ai_performance?.daily_stats ?? [])" :key="s.date" class="bar-col">
+            <div class="bar-value">{{ s.avg_ms }}</div>
+            <div class="bar bar--accent" :style="{ height: (s.avg_ms / aiBarMaxMs * 80) + 'px' }" />
             <div class="bar-label">{{ s.date }}</div>
           </div>
         </div>
       </div>
 
-      <!--===== 租户使用情况 (tenant_admin) =====-->
+      <!--===== 租户使用情况 (tenant_admin) / 全平台 Token 合计 (system_admin) =====-->
       <div v-if="isEnabled('tenant_usage')"
        :class="['widget', `widget--${getWidgetSize('tenant_usage')}`, { 'widget--editing': customizing }]" 
        :style="{ order: getWidgetOrder('tenant_usage') }" 
@@ -410,30 +566,36 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
        @drop="onDrop($event, 'tenant_usage')">
         <div class="widget-title">
           <div class="widget-title-left"><CloudServerOutlined /> {{ t('overview.tenantUsage') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('tenant_usage')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('tenant_usage')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
         <div class="usage-rows">
           <div class="usage-row">
-            <span class="usage-label">{{ t('overview.tokenUsage') }}</span>
+            <span class="usage-label">{{ isPlatformAdmin ? t('overview.platformTokenAllTenants') : t('overview.tokenUsage') }}</span>
             <div class="usage-bar-wrap">
-              <div class="usage-bar" :style="{ width: (data.tenantUsage.tokenUsed / data.tenantUsage.tokenQuota * 100) + '%' }" />
+              <div class="usage-bar" :style="{ width: ((dash.tenant_usage?.token_quota ?? 0) > 0 ? (dash.tenant_usage!.token_used / dash.tenant_usage!.token_quota * 100) : 0) + '%' }" />
             </div>
-            <span class="usage-text">{{ formatNum(data.tenantUsage.tokenUsed) }} / {{ formatNum(data.tenantUsage.tokenQuota) }}</span>
+            <span class="usage-text">{{ formatNum(dash.tenant_usage?.token_used ?? 0) }} / {{ formatNum(dash.tenant_usage?.token_quota ?? 0) }}</span>
           </div>
-          <div class="usage-row">
-            <span class="usage-label">{{ t('overview.storageUsage') }}</span>
-            <div class="usage-bar-wrap">
-              <div class="usage-bar usage-bar--info" :style="{ width: (data.tenantUsage.storageUsedMB / data.tenantUsage.storageQuotaMB * 100) + '%' }" />
+          <template v-if="!isPlatformAdmin">
+            <div v-if="(dash.tenant_usage?.storage_quota_mb ?? 0) > 0" class="usage-row">
+              <span class="usage-label">{{ t('overview.storageUsage') }}</span>
+              <div class="usage-bar-wrap">
+                <div class="usage-bar usage-bar--info" :style="{ width: storagePct + '%' }" />
+              </div>
+              <span class="usage-text">{{ dash.tenant_usage?.storage_used_mb ?? 0 }}MB / {{ dash.tenant_usage?.storage_quota_mb ?? 0 }}MB</span>
             </div>
-            <span class="usage-text">{{ data.tenantUsage.storageUsedMB }}MB / {{ data.tenantUsage.storageQuotaMB }}MB</span>
-          </div>
-          <div class="usage-row">
-            <span class="usage-label">{{ t('overview.activeUsers') }}</span>
-            <div class="usage-bar-wrap">
-              <div class="usage-bar usage-bar--success" :style="{ width: (data.tenantUsage.activeUsers / data.tenantUsage.totalUsers * 100) + '%' }" />
+            <div v-else class="usage-row">
+              <span class="usage-label">{{ t('overview.storageUsage') }}</span>
+              <span class="usage-text" style="flex:1;text-align:right;color:var(--color-text-tertiary);">{{ t('overview.storageNotTracked') }}</span>
             </div>
-            <span class="usage-text">{{ data.tenantUsage.activeUsers }} / {{ data.tenantUsage.totalUsers }}</span>
-          </div>
+            <div class="usage-row">
+              <span class="usage-label">{{ t('overview.activeUsers') }}</span>
+              <div class="usage-bar-wrap">
+                <div class="usage-bar usage-bar--success" :style="{ width: ((dash.tenant_usage?.total_users ?? 0) > 0 ? (dash.tenant_usage!.active_users / dash.tenant_usage!.total_users * 100) : 0) + '%' }" />
+              </div>
+              <span class="usage-text">{{ dash.tenant_usage?.active_users ?? 0 }} / {{ dash.tenant_usage?.total_users ?? 0 }}</span>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -448,203 +610,49 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
        @drop="onDrop($event, 'user_activity')">
         <div class="widget-title">
           <div class="widget-title-left"><TeamOutlined /> {{ t('overview.userActivityRank') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('user_activity')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('user_activity')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
         <div class="rank-list">
-          <div v-for="(u, i) in data.userActivity" :key="u.username" class="rank-item">
+          <div v-for="(u, i) in (dash.user_activity ?? [])" :key="u.username" class="rank-item">
             <span class="rank-num" :class="{ 'rank-num--top': i < 3 }">{{ i + 1 }}</span>
             <div class="rank-info">
-              <span class="rank-name">{{ u.displayName }}</span>
+              <span class="rank-name">{{ u.display_name }}</span>
               <span class="rank-dept">{{ u.department }}</span>
             </div>
-            <span class="rank-count">{{ u.auditCount }} {{ t('overview.times') }}</span>
+            <span class="rank-count">{{ u.audit_count }} {{ t('overview.times') }}</span>
           </div>
         </div>
+        <div v-if="!(dash.user_activity?.length)" style="padding: 16px; color: var(--color-text-tertiary); font-size: 13px;">{{ t('overview.emptyUserActivity') }}</div>
       </div>
 
-      <!--=====系统健康（system_admin）=====-->
-      <div v-if="isEnabled('system_health')"
-       :class="['widget', `widget--${getWidgetSize('system_health')}`, { 'widget--editing': customizing }]"
-       :style="{ order: getWidgetOrder('system_health') }"
+      <!--===== 平台：租户审核量排行（system_admin）=====-->
+      <div v-if="isEnabled('platform_tenant_ranking')"
+       :class="['widget', `widget--${getWidgetSize('platform_tenant_ranking')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('platform_tenant_ranking') }"
        :draggable="customizing"
-       @dragstart="onDragStart($event, 'system_health')"
+       @dragstart="onDragStart($event, 'platform_tenant_ranking')"
        @dragover.prevent
        @dragenter.prevent
-       @drop="onDrop($event, 'system_health')">
+       @drop="onDrop($event, 'platform_tenant_ranking')">
         <div class="widget-title">
-          <div class="widget-title-left"><CloudServerOutlined /> {{ t('overview.systemHealth') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('system_health')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+          <div class="widget-title-left"><TeamOutlined /> {{ t('overview.platformTenantRank') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('platform_tenant_ranking')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
-        <div class="health-grid">
-          <div v-for="s in data.systemHealth" :key="s.service" class="health-card">
-            <div class="health-header">
-              <span class="health-name">{{ s.service }}</span>
-              <span class="health-badge" :style="{ color: healthColor(s.status), background: s.status === 'healthy' ? 'var(--color-success-bg)' : s.status === 'degraded' ? 'var(--color-warning-bg)' : 'var(--color-danger-bg)' }">
-                {{ healthLabel(s.status) }}
-              </span>
+        <div class="rank-list">
+          <div v-for="(row, i) in (dash.tenant_ranking ?? [])" :key="row.tenant_id" class="rank-item">
+            <span class="rank-num" :class="{ 'rank-num--top': i < 3 }">{{ i + 1 }}</span>
+            <div class="rank-info">
+              <span class="rank-name">{{ row.tenant_name }}</span>
+              <span class="rank-dept">{{ row.tenant_code }}</span>
             </div>
-            <div class="health-metrics">
-              <div class="health-metric">
-                <span class="health-metric-label">CPU</span>
-                <div class="health-bar-wrap"><div class="health-bar" :style="{ width: s.cpu + '%', background: s.cpu > 80 ? 'var(--color-danger)' : s.cpu > 60 ? 'var(--color-warning)' : 'var(--color-success)' }" /></div>
-                <span class="health-metric-val">{{ s.cpu }}%</span>
-              </div>
-              <div class="health-metric">
-                <span class="health-metric-label">{{ t('overview.memory') }}</span>
-                <div class="health-bar-wrap"><div class="health-bar" :style="{ width: s.memory + '%', background: s.memory > 80 ? 'var(--color-danger)' : s.memory > 60 ? 'var(--color-warning)' : 'var(--color-success)' }" /></div>
-                <span class="health-metric-val">{{ s.memory }}%</span>
-              </div>
-            </div>
-            <div class="health-uptime">{{ t('overview.uptime') }} {{ s.uptime }}</div>
+            <span class="rank-count">{{ row.audit_count }} {{ t('overview.times') }}</span>
           </div>
         </div>
+        <div v-if="!(dash.tenant_ranking?.length)" style="padding: 16px; color: var(--color-text-tertiary); font-size: 13px;">{{ t('overview.emptyUserActivity') }}</div>
       </div>
 
-      <!--===== 租户概览 (system_admin) =====-->
-      <div v-if="isEnabled('tenant_overview')"
-       :class="['widget', `widget--${getWidgetSize('tenant_overview')}`, { 'widget--editing': customizing }]" 
-       :style="{ order: getWidgetOrder('tenant_overview') }" 
-       :draggable="customizing" 
-       @dragstart="onDragStart($event, 'tenant_overview')" 
-       @dragover.prevent 
-       @dragenter.prevent 
-       @drop="onDrop($event, 'tenant_overview')">
-        <div class="widget-title">
-          <div class="widget-title-left"><TeamOutlined /> {{ t('overview.tenantOverview') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('tenant_overview')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
-        </div>
-        <div class="tenant-table">
-          <div class="tenant-row tenant-row--header">
-            <span>{{ t('overview.tenant') }}</span><span>{{ t('overview.users') }}</span><span>{{ t('overview.auditVolume') }}</span><span>{{ t('common.status') }}</span>
-          </div>
-          <div v-for="tenant in data.tenantOverview" :key="tenant.tenantId" class="tenant-row">
-            <span class="tenant-name">{{ tenant.tenantName }}</span>
-            <span>{{ tenant.userCount }}</span>
-            <span>{{ formatNum(tenant.auditCount) }}</span>
-            <span class="tenant-status" :style="{ color: tenant.status === 'active' ? 'var(--color-success)' : 'var(--color-warning)' }">
-              {{ tenant.status === 'active' ? t('overview.active') : t('overview.suspended') }}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <!--===== API 指标 (system_admin) =====-->
-      <div v-if="isEnabled('api_metrics')"
-       :class="['widget', `widget--${getWidgetSize('api_metrics')}`, { 'widget--editing': customizing }]" 
-       :style="{ order: getWidgetOrder('api_metrics') }" 
-       :draggable="customizing" 
-       @dragstart="onDragStart($event, 'api_metrics')" 
-       @dragover.prevent 
-       @dragenter.prevent 
-       @drop="onDrop($event, 'api_metrics')">
-        <div class="widget-title">
-          <div class="widget-title-left"><ApiOutlined /> {{ t('overview.apiMetrics') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('api_metrics')" title="点击调整组件大小" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
-        </div>
-        <div class="api-table">
-          <div class="api-row api-row--header">
-            <span>{{ t('overview.endpoint') }}</span><span>{{ t('overview.calls') }}</span><span>{{ t('overview.latency') }}</span><span>{{ t('overview.successRate') }}</span>
-          </div>
-          <div v-for="a in data.apiMetrics" :key="a.endpoint" class="api-row">
-            <span class="api-endpoint">{{ a.endpoint }}</span>
-            <span>{{ formatNum(a.calls) }}</span>
-            <span>{{ a.avgMs }}ms</span>
-            <span :style="{ color: a.successRate >= 99 ? 'var(--color-success)' : a.successRate >= 95 ? 'var(--color-warning)' : 'var(--color-danger)' }">{{ a.successRate }}%</span>
-          </div>
-        </div>
-      </div>
-
-      <!--===== 监控指标 (system_admin) =====-->
-      <div v-if="isEnabled('monitor_metrics')"
-       :class="['widget', `widget--${getWidgetSize('monitor_metrics')}`, { 'widget--editing': customizing }]"
-       :style="{ order: getWidgetOrder('monitor_metrics') }"
-       :draggable="customizing"
-       @dragstart="onDragStart($event, 'monitor_metrics')"
-       @dragover.prevent
-       @dragenter.prevent
-       @drop="onDrop($event, 'monitor_metrics')">
-        <div class="widget-title">
-          <div class="widget-title-left"><ThunderboltOutlined /> {{ t('overview.monitorMetrics') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('monitor_metrics')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
-        </div>
-        <div class="monitor-metrics-grid">
-          <div class="monitor-metric-card">
-            <div class="monitor-metric-icon monitor-metric-icon--success"><ApiOutlined /></div>
-            <div class="monitor-metric-info">
-              <div class="monitor-metric-value">{{ data.monitorMetrics.apiSuccessRate }}<span class="monitor-metric-unit">%</span></div>
-              <div class="monitor-metric-label">{{ t('overview.monitor.apiSuccessRate') }}</div>
-            </div>
-          </div>
-          <div class="monitor-metric-card">
-            <div class="monitor-metric-icon monitor-metric-icon--primary"><ClockCircleOutlined /></div>
-            <div class="monitor-metric-info">
-              <div class="monitor-metric-value">{{ data.monitorMetrics.avgModelResponseMs }}<span class="monitor-metric-unit">ms</span></div>
-              <div class="monitor-metric-label">{{ t('overview.monitor.avgModelResponse') }}</div>
-            </div>
-          </div>
-          <div class="monitor-metric-card">
-            <div class="monitor-metric-icon monitor-metric-icon--warning"><ThunderboltOutlined /></div>
-            <div class="monitor-metric-info">
-              <div class="monitor-metric-value">{{ data.monitorMetrics.p95Latency }}<span class="monitor-metric-unit">ms</span></div>
-              <div class="monitor-metric-label">{{ t('overview.monitor.p95Latency') }}</div>
-            </div>
-          </div>
-          <div class="monitor-metric-card">
-            <div class="monitor-metric-icon monitor-metric-icon--info"><RiseOutlined /></div>
-            <div class="monitor-metric-info">
-              <div class="monitor-metric-value">{{ formatNum(data.monitorMetrics.totalRequests24h) }}</div>
-              <div class="monitor-metric-label">{{ t('overview.monitor.requests24h') }}</div>
-            </div>
-          </div>
-          <div class="monitor-metric-card">
-            <div class="monitor-metric-icon monitor-metric-icon--success"><TeamOutlined /></div>
-            <div class="monitor-metric-info">
-              <div class="monitor-metric-value">{{ data.monitorMetrics.activeTenants }}</div>
-              <div class="monitor-metric-label">{{ t('overview.monitor.activeTenants') }}</div>
-            </div>
-          </div>
-          <div class="monitor-metric-card">
-            <div class="monitor-metric-icon monitor-metric-icon--primary"><CheckCircleOutlined /></div>
-            <div class="monitor-metric-info">
-              <div class="monitor-metric-value">{{ data.monitorMetrics.uptime }}</div>
-              <div class="monitor-metric-label">{{ t('overview.monitor.uptime') }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!--===== 监控警报 (system_admin) =====-->
-      <div v-if="isEnabled('monitor_alerts')"
-       :class="['widget', `widget--${getWidgetSize('monitor_alerts')}`, { 'widget--editing': customizing }]"
-       :style="{ order: getWidgetOrder('monitor_alerts') }"
-       :draggable="customizing"
-       @dragstart="onDragStart($event, 'monitor_alerts')"
-       @dragover.prevent
-       @dragenter.prevent
-       @drop="onDrop($event, 'monitor_alerts')">
-        <div class="widget-title">
-          <div class="widget-title-left"><AlertOutlined style="color: var(--color-warning);" /> {{ t('overview.monitor.recentAlerts') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('monitor_alerts')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
-        </div>
-        <div class="monitor-alerts-list">
-          <div
-            v-for="alert in data.monitorAlerts"
-            :key="alert.id"
-            class="monitor-alert-item"
-            :style="{ borderLeftColor: alertLevelConfig[alert.level]?.color }"
-          >
-            <div class="monitor-alert-dot" :style="{ background: alertLevelConfig[alert.level]?.color }" />
-            <div class="monitor-alert-content">
-              <div class="monitor-alert-message">{{ getAlertMessage(alert) }}</div>
-              <div class="monitor-alert-time">{{ getAlertTime(alert) }}</div>
-            </div>
-          </div>
-        </div>
-        <div v-if="data.monitorAlerts.length === 0" style="padding: 32px; text-align: center;">
-          <a-empty :description="t('overview.monitor.noAlerts')" />
-        </div>
-      </div>
     </div>
+    </a-spin>
   </div>
 </template>
 

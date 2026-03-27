@@ -174,6 +174,69 @@ func (r *ArchiveLogRepo) CountStats(c *gin.Context) (*ArchiveLogStats, error) {
 	return stats, nil
 }
 
+// DashboardArchiveRecentRow 仪表盘归档复盘列表行。
+type DashboardArchiveRecentRow struct {
+	ID         uuid.UUID `json:"id" gorm:"column:id"`
+	Title      string    `json:"title" gorm:"column:title"`
+	Compliance string    `json:"compliance" gorm:"column:compliance"`
+	UserName   string    `json:"user_name" gorm:"column:user_name"`
+	CreatedAt  time.Time `json:"created_at" gorm:"column:created_at"`
+}
+
+// DashboardRecentArchiveLogs 最近归档复盘记录（已完成或失败均展示，便于感知活动）。
+func (r *ArchiveLogRepo) DashboardRecentArchiveLogs(c *gin.Context, limit int) ([]DashboardArchiveRecentRow, error) {
+	if limit < 1 {
+		limit = 8
+	}
+	var rows []DashboardArchiveRecentRow
+	err := r.WithTenant(c).
+		Table("archive_logs").
+		Select("archive_logs.id, archive_logs.title, archive_logs.compliance, COALESCE(users.display_name, users.username, '') as user_name, archive_logs.created_at").
+		Joins("LEFT JOIN users ON archive_logs.user_id = users.id").
+		Where("archive_logs.status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed}).
+		Order("archive_logs.created_at DESC").
+		Limit(limit).
+		Scan(&rows).Error
+	return rows, err
+}
+
+// DashboardRecentArchiveLogsGlobal 全库最近归档复盘记录。
+func (r *ArchiveLogRepo) DashboardRecentArchiveLogsGlobal(limit int) ([]DashboardArchiveRecentRow, error) {
+	if limit < 1 {
+		limit = 8
+	}
+	var rows []DashboardArchiveRecentRow
+	err := r.DB.
+		Table("archive_logs").
+		Select("archive_logs.id, archive_logs.title, archive_logs.compliance, COALESCE(users.display_name, users.username, '') as user_name, archive_logs.created_at").
+		Joins("LEFT JOIN users ON archive_logs.user_id = users.id").
+		Where("archive_logs.status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed}).
+		Order("archive_logs.created_at DESC").
+		Limit(limit).
+		Scan(&rows).Error
+	return rows, err
+}
+
+// CountCompletedArchiveLogs 已完成归档复盘条数（用于概览「归档」计数）。
+func (r *ArchiveLogRepo) CountCompletedArchiveLogs(c *gin.Context) (int64, error) {
+	var n int64
+	err := r.WithTenant(c).
+		Model(&model.ArchiveLog{}).
+		Where("status = ?", model.AuditStatusCompleted).
+		Count(&n).Error
+	return n, err
+}
+
+// CountCompletedArchiveLogsGlobal 全库已完成归档条数。
+func (r *ArchiveLogRepo) CountCompletedArchiveLogsGlobal() (int64, error) {
+	var n int64
+	err := r.DB.
+		Model(&model.ArchiveLog{}).
+		Where("status = ?", model.AuditStatusCompleted).
+		Count(&n).Error
+	return n, err
+}
+
 func applyArchiveLogFilter(db *gorm.DB, f ArchiveLogFilter) *gorm.DB {
 	if f.Keyword != "" {
 		like := "%" + f.Keyword + "%"

@@ -102,6 +102,9 @@ func main() {
 	archiveRuleService := service.NewArchiveRuleService(archiveRuleRepo)
 	aiCallerService := service.NewAIModelCallerService(tenantRepo, llmMessageLogRepo, db)
 	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db, rdb)
+	dashboardOverviewService := service.NewDashboardOverviewService(
+		auditLogRepo, archiveLogRepo, cronLogRepo, llmMessageLogRepo, tenantRepo, orgRepo, auditExecuteService,
+	)
 	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, orgRepo, db, rdb)
 
 	// Cron 任务实例服务（延迟注入调度器）
@@ -140,13 +143,14 @@ func main() {
 	archiveRuleHandler := handler.NewArchiveRuleHandler(archiveRuleService)
 	auditHandler := handler.NewAuditHandler(auditExecuteService)
 	archiveReviewHandler := handler.NewArchiveReviewHandler(archiveReviewService)
+	dashboardOverviewHandler := handler.NewDashboardOverviewHandler(dashboardOverviewService)
 
 	// 8. Setup Gin router with middleware and routes
 	r := gin.New()
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler)
+	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler, dashboardOverviewHandler)
 
 	// 9. Start HTTP server
 	port := viper.GetInt("server.port")

@@ -81,45 +81,20 @@
 
 ---
 
-## 四、仪表盘（dashboard.vue）— 待后端集成
+## 四、仪表盘（overview.vue）— 已与后端对接（部分组件仍待增强）
 
 ### 当前状态
 
-- ✅ 前端 `dashboard.vue` 已完成 UI 开发（约 60KB，最大的页面文件）
-- ✅ 支持 15 种可配置的仪表板小部件
-- ✅ 仪表板偏好设置（启用/禁用组件、调整大小）已对接后端
-- ❌ **所有仪表板数据均为 Mock** — 包括统计数字、趋势图、排行榜
+- ✅ 前端 `overview.vue`（原业务文档中的「仪表盘」页）UI 与 **`GET /api/tenant/settings/dashboard-overview`**（租户上下文）对接；**系统管理员**当前身份为 `system_admin` 时改调 **`GET /api/admin/dashboard-overview`** 全平台聚合（不依赖 `tenant_id`），已移除仪表盘相关的 `useMockData` 聚合数据
+- ✅ 仪表板偏好 **`/api/tenant/settings/dashboard-prefs`** 读写已使用真实接口保存（系统管理员无租户时拉取失败则回退默认布局）
+- ✅ **已接入真实数据的组件**：`audit_summary`、`pending_tasks`（OA 待办未完成 AI 数）、`weekly_trend`、`cron_tasks`（任务实例列表）、`archive_review`、`recent_activity`、`dept_distribution`、`ai_performance`、`tenant_usage`（Token/活跃成员；存储暂无业务字段）、`user_activity`；**系统管理员专属**：`platform_tenant_stats`、`platform_tenant_ranking`，以及全库维度的审核趋势/动态/归档/AI 等（与租户卡片共用 id，数据源不同）
+- ❌ **已从仪表盘移除、仍依赖监控/多租户聚合能力的组件**（仅保留在待办，不使用 Mock）：`system_health`、`tenant_overview`、`api_metrics`、`monitor_metrics`、`monitor_alerts`
 
-### 待实现项
+### 待实现 / 可增强项
 
-按角色分组：
-
-**业务用户组件**：
-- [ ] `audit_summary` — 审核概览统计（从 `audit_logs` 聚合）
-- [ ] `pending_tasks` — 待办任务数（从 OA 拉取）
-- [ ] `weekly_trend` — 周审核趋势图（从 `audit_logs` 按日聚合）
-- [ ] `cron_tasks` — 定时任务执行概览（从 `cron_tasks`/`cron_logs` 读取）
-- [ ] `archive_review` — 归档复盘概览（从 `archive_logs` 聚合）
-- [ ] `recent_activity` — 最近动态（从多个日志表合并）
-
-**租户管理员组件**：
-- [ ] `dept_distribution` — 部门分布（从 `audit_logs` + `org_members` 联查）
-- [ ] `ai_performance` — AI 模型表现（从 `tenant_llm_message_logs` 统计）
-- [ ] `tenant_usage` — 资源用量（Token/存储）
-- [ ] `user_activity` — 用户活跃排行
-
-**系统管理员组件**：
-- [ ] `system_health` — 系统健康状态（需引入监控机制）
-- [ ] `tenant_overview` — 租户总览
-- [ ] `api_metrics` — API 调用指标（需引入 Prometheus 或自定义统计）
-- [ ] `monitor_metrics` — 运行指标
-- [ ] `monitor_alerts` — 告警事件
-
-### 推荐实现策略
-
-1. **优先实现业务用户组件**：audit_summary / weekly_trend / recent_activity 可直接从现有日志表聚合
-2. **AI/Token 统计**：`tenant_llm_message_logs` 表已设计好聚合索引
-3. **系统监控类**：可后期引入 Prometheus + Grafana，初期可用简单的 `/api/health/detailed` 接口
+- [ ] **存储用量**：租户级存储统计字段或对象存储计量接入后，补全 `tenant_usage` 中的存储条
+- [ ] **系统管理员监控类卡片**：见上，需 Prometheus/自建指标/健康检查聚合后再恢复 UI
+- [ ] **pending_tasks 语义**：当前与审核工作台一致，为 OA 待办中「尚未完成 AI 审核」的流程数；若需「纯 OA 待办总数」可再拆字段
 
 ---
 

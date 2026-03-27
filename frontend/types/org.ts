@@ -1,4 +1,4 @@
-//types/org.ts — 组织管理相关类型（来自 useMockData.ts 迁出）
+//types/org.ts — 组织管理相关类型
 
 export interface Department {
   id: string

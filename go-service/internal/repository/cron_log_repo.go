@@ -75,6 +75,19 @@ func (r *CronLogRepo) ListByTenant(tenantID uuid.UUID, limit int) ([]model.CronL
 	return logs, err
 }
 
+// ListRecentGlobal 全库最近 N 条定时任务执行日志（按 started_at 倒序）。
+func (r *CronLogRepo) ListRecentGlobal(limit int) ([]model.CronLog, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var logs []model.CronLog
+	err := r.db.
+		Order("started_at DESC").
+		Limit(limit).
+		Find(&logs).Error
+	return logs, err
+}
+
 // Finish 更新指定日志的状态和结束时间。
 func (r *CronLogRepo) Finish(id uuid.UUID, status, message string) error {
 	now := time.Now()
