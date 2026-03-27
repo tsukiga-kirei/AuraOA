@@ -431,6 +431,7 @@ const taskTypeLabel = (task: CronTask | null): string => {
       <div>
         <h1 class="page-title">{{ t('cron.pageTitle') }}</h1>
         <p class="page-subtitle">{{ t('cron.pageSubtitle') }}</p>
+        <p class="page-subtitle page-subtitle--secondary">{{ t('cron.userScopeHint') }}</p>
       </div>
       <a-button type="primary" size="large" @click="openCreate" :disabled="enabledConfigs.length === 0">
         <PlusOutlined /> {{ t('cron.createTask') }}
@@ -863,6 +864,12 @@ const taskTypeLabel = (task: CronTask | null): string => {
   font-size: 14px;
   color: var(--color-text-tertiary);
   margin: 4px 0 0;
+}
+
+.page-subtitle--secondary {
+  font-size: 13px;
+  margin-top: 2px;
+  opacity: 0.92;
 }
 
 /* 模块分组标题 */

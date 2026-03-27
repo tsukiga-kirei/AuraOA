@@ -105,7 +105,7 @@ func main() {
 	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, orgRepo, db, rdb)
 
 	// Cron 任务实例服务（延迟注入调度器）
-	cronTaskService := service.NewCronTaskService(cronTaskRepo, cronLogRepo, cronPresetRepo, cronConfigRepo, auditExecuteService, archiveReviewService)
+	cronTaskService := service.NewCronTaskService(cronTaskRepo, cronLogRepo, cronPresetRepo, cronConfigRepo, userRepo, auditExecuteService, archiveReviewService)
 	cronScheduler := service.NewCronScheduler(cronTaskRepo, cronTaskService, logger)
 	cronTaskService.SetScheduler(cronScheduler)
 

@@ -23,6 +23,7 @@ type CronTaskService struct {
 	logRepo    *repository.CronLogRepo
 	presetRepo *repository.CronTaskTypePresetRepo
 	configRepo *repository.CronTaskTypeConfigRepo
+	userRepo   *repository.UserRepo
 	auditSvc   *AuditExecuteService
 	archiveSvc *ArchiveReviewService
 	scheduler  *CronScheduler // 延迟注入，避免循环依赖
@@ -34,6 +35,7 @@ func NewCronTaskService(
 	logRepo *repository.CronLogRepo,
 	presetRepo *repository.CronTaskTypePresetRepo,
 	configRepo *repository.CronTaskTypeConfigRepo,
+	userRepo *repository.UserRepo,
 	auditSvc *AuditExecuteService,
 	archiveSvc *ArchiveReviewService,
 ) *CronTaskService {
@@ -42,6 +44,7 @@ func NewCronTaskService(
 		logRepo:    logRepo,
 		presetRepo: presetRepo,
 		configRepo: configRepo,
+		userRepo:   userRepo,
 		auditSvc:   auditSvc,
 		archiveSvc: archiveSvc,
 	}
@@ -56,9 +59,13 @@ func (s *CronTaskService) SetScheduler(sch *CronScheduler) {
 // CRUD 操作
 // ============================================================
 
-// ListTasks 获取当前租户的所有任务实例。
+// ListTasks 获取当前登录用户在当前租户下的任务实例。
 func (s *CronTaskService) ListTasks(c *gin.Context) ([]dto.CronTaskResponse, error) {
-	tasks, err := s.taskRepo.ListByTenant(c)
+	ownerID, err := getUserUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "用户ID无效")
+	}
+	tasks, err := s.taskRepo.ListByOwner(c, ownerID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
@@ -70,11 +77,15 @@ func (s *CronTaskService) ListTasks(c *gin.Context) ([]dto.CronTaskResponse, err
 	return result, nil
 }
 
-// CreateTask 为当前租户创建一个新任务实例。
+// CreateTask 为当前登录用户创建一个新任务实例（按用户隔离）。
 func (s *CronTaskService) CreateTask(c *gin.Context, req *dto.CreateCronTaskRequest) (*dto.CronTaskResponse, error) {
 	tenantID, err := getTenantUUID(c)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+	ownerID, err := getUserUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "用户ID无效")
 	}
 
 	// 校验任务类型是否在系统预设中存在
@@ -98,6 +109,7 @@ func (s *CronTaskService) CreateTask(c *gin.Context, req *dto.CreateCronTaskRequ
 	task := &model.CronTask{
 		ID:             uuid.New(),
 		TenantID:       tenantID,
+		OwnerUserID:    ownerID,
 		TaskType:       req.TaskType,
 		TaskLabel:      label,
 		CronExpression: req.CronExpression,
@@ -123,7 +135,11 @@ func (s *CronTaskService) CreateTask(c *gin.Context, req *dto.CreateCronTaskRequ
 
 // UpdateTask 更新任务的 cron 表达式、标签、推送邮箱。
 func (s *CronTaskService) UpdateTask(c *gin.Context, id uuid.UUID, req *dto.UpdateCronTaskRequest) (*dto.CronTaskResponse, error) {
-	task, err := s.taskRepo.GetByID(c, id)
+	ownerID, err := getUserUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "用户ID无效")
+	}
+	task, err := s.taskRepo.GetByIDForOwner(c, id, ownerID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrConfigNotFound, "任务不存在")
 	}
@@ -148,7 +164,7 @@ func (s *CronTaskService) UpdateTask(c *gin.Context, id uuid.UUID, req *dto.Upda
 		task.PushEmail = *req.PushEmail
 	}
 
-	if err := s.taskRepo.Update(c, id, fields); err != nil {
+	if err := s.taskRepo.Update(c, id, ownerID, fields); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "更新任务失败")
 	}
 
@@ -162,7 +178,11 @@ func (s *CronTaskService) UpdateTask(c *gin.Context, id uuid.UUID, req *dto.Upda
 
 // DeleteTask 删除任务（内置任务不可删除）。
 func (s *CronTaskService) DeleteTask(c *gin.Context, id uuid.UUID) error {
-	task, err := s.taskRepo.GetByID(c, id)
+	ownerID, err := getUserUUID(c)
+	if err != nil {
+		return newServiceError(errcode.ErrParamValidation, "用户ID无效")
+	}
+	task, err := s.taskRepo.GetByIDForOwner(c, id, ownerID)
 	if err != nil {
 		return newServiceError(errcode.ErrConfigNotFound, "任务不存在")
 	}
@@ -172,7 +192,7 @@ func (s *CronTaskService) DeleteTask(c *gin.Context, id uuid.UUID) error {
 	if s.scheduler != nil {
 		s.scheduler.Remove(task.ID)
 	}
-	if err := s.taskRepo.Delete(c, id); err != nil {
+	if err := s.taskRepo.Delete(c, id, ownerID); err != nil {
 		return newServiceError(errcode.ErrDatabase, "删除任务失败")
 	}
 	return nil
@@ -180,12 +200,16 @@ func (s *CronTaskService) DeleteTask(c *gin.Context, id uuid.UUID) error {
 
 // ToggleTask 切换任务启用/禁用状态。
 func (s *CronTaskService) ToggleTask(c *gin.Context, id uuid.UUID) (*dto.CronTaskResponse, error) {
-	task, err := s.taskRepo.GetByID(c, id)
+	ownerID, err := getUserUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "用户ID无效")
+	}
+	task, err := s.taskRepo.GetByIDForOwner(c, id, ownerID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrConfigNotFound, "任务不存在")
 	}
 	newActive := !task.IsActive
-	if err := s.taskRepo.Update(c, id, map[string]interface{}{
+	if err := s.taskRepo.Update(c, id, ownerID, map[string]interface{}{
 		"is_active":  newActive,
 		"updated_at": time.Now(),
 	}); err != nil {
@@ -207,37 +231,46 @@ func (s *CronTaskService) ToggleTask(c *gin.Context, id uuid.UUID) (*dto.CronTas
 
 // ExecuteNow 立即触发任务执行（手动触发，不影响调度时间）。
 func (s *CronTaskService) ExecuteNow(c *gin.Context, id uuid.UUID) error {
-	task, err := s.taskRepo.GetByID(c, id)
+	ownerID, err := getUserUUID(c)
+	if err != nil {
+		return newServiceError(errcode.ErrParamValidation, "用户ID无效")
+	}
+	task, err := s.taskRepo.GetByIDForOwner(c, id, ownerID)
 	if err != nil {
 		return newServiceError(errcode.ErrConfigNotFound, "任务不存在")
 	}
 
-	// 取手动触发人姓名
+	// 取手动触发人展示名（优先 display_name）
 	createdBy := "unknown"
 	if claims, ok := c.Get("jwt_claims"); ok {
 		if jc, ok := claims.(*jwtpkg.JWTClaims); ok {
-			if jc.Username != "" {
+			if jc.DisplayName != "" {
+				createdBy = jc.DisplayName
+			} else if jc.Username != "" {
 				createdBy = jc.Username
 			}
 		}
 	}
 
+	ouid := task.OwnerUserID
 	logEntry := &model.CronLog{
-		ID:          uuid.New(),
-		TenantID:    task.TenantID,
-		TaskID:      task.ID,
-		TaskType:    task.TaskType,
-		TaskLabel:   task.TaskLabel,
-		TriggerType: "manual",
-		CreatedBy:   createdBy,
-		Status:      "running",
-		StartedAt:   time.Now(),
+		ID:              uuid.New(),
+		TenantID:        task.TenantID,
+		TaskID:          task.ID,
+		TaskType:        task.TaskType,
+		TaskLabel:       task.TaskLabel,
+		TriggerType:     "manual",
+		CreatedBy:       createdBy,
+		TaskOwnerUserID: &ouid,
+		Status:          "running",
+		StartedAt:       time.Now(),
 	}
 	_ = s.logRepo.Create(logEntry)
 
 	go func() {
 		ctx := context.Background()
-		execErr := s.runTaskByType(ctx, task)
+		tcopy := *task
+		execErr := s.runTaskByType(ctx, &tcopy)
 		status := "success"
 		msg := fmt.Sprintf("%s 手动触发执行成功", time.Now().Format("2006-01-02 15:04:05"))
 		if execErr != nil {
@@ -245,7 +278,7 @@ func (s *CronTaskService) ExecuteNow(c *gin.Context, id uuid.UUID) error {
 			msg = execErr.Error()
 		}
 		_ = s.logRepo.Finish(logEntry.ID, status, msg)
-		_ = s.taskRepo.UpdateRunStats(task.ID, time.Now(), nil, execErr == nil)
+		_ = s.taskRepo.UpdateRunStats(tcopy.ID, time.Now(), nil, execErr == nil)
 	}()
 	return nil
 }
@@ -260,16 +293,18 @@ func (s *CronTaskService) TriggerScheduled(ctx context.Context, taskID uuid.UUID
 		return
 	}
 
+	ouid := task.OwnerUserID
 	logEntry := &model.CronLog{
-		ID:          uuid.New(),
-		TenantID:    task.TenantID,
-		TaskID:      task.ID,
-		TaskType:    task.TaskType,
-		TaskLabel:   task.TaskLabel,
-		TriggerType: "scheduled",
-		CreatedBy:   "system",
-		Status:      "running",
-		StartedAt:   time.Now(),
+		ID:              uuid.New(),
+		TenantID:        task.TenantID,
+		TaskID:          task.ID,
+		TaskType:        task.TaskType,
+		TaskLabel:       task.TaskLabel,
+		TriggerType:     "scheduled",
+		CreatedBy:       "system",
+		TaskOwnerUserID: &ouid,
+		Status:          "running",
+		StartedAt:       time.Now(),
 	}
 	_ = s.logRepo.Create(logEntry)
 
@@ -287,7 +322,11 @@ func (s *CronTaskService) TriggerScheduled(ctx context.Context, taskID uuid.UUID
 
 // ListLogs 获取指定任务的执行日志。
 func (s *CronTaskService) ListLogs(c *gin.Context, taskID uuid.UUID) ([]model.CronLog, error) {
-	if _, err := s.taskRepo.GetByID(c, taskID); err != nil {
+	ownerID, err := getUserUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "用户ID无效")
+	}
+	if _, err := s.taskRepo.GetByIDForOwner(c, taskID, ownerID); err != nil {
 		return nil, newServiceError(errcode.ErrConfigNotFound, "任务不存在")
 	}
 	logs, err := s.logRepo.ListByTask(taskID, 50)
@@ -298,7 +337,7 @@ func (s *CronTaskService) ListLogs(c *gin.Context, taskID uuid.UUID) ([]model.Cr
 }
 
 // ListAllLogs 数据管理页：分页查询当前租户所有任务日志。
-func (s *CronTaskService) ListAllLogs(c *gin.Context, filter repository.CronLogFilter, page, pageSize int) ([]model.CronLog, int64, error) {
+func (s *CronTaskService) ListAllLogs(c *gin.Context, filter repository.CronLogFilter, page, pageSize int) ([]repository.CronLogListRow, int64, error) {
 	tenantID, err := getTenantUUID(c)
 	if err != nil {
 		return nil, 0, newServiceError(errcode.ErrParamValidation, "租户ID无效")
@@ -328,7 +367,13 @@ func (s *CronTaskService) GetCronLogStats(c *gin.Context) (*repository.CronLogSt
 // ============================================================
 
 func (s *CronTaskService) runTaskByType(ctx context.Context, task *model.CronTask) error {
-	gc := buildWorkerContext(ctx, task.TenantID, uuid.Nil)
+	oaUsername := ""
+	if s.userRepo != nil {
+		if owner, err := s.userRepo.FindByID(task.OwnerUserID); err == nil && owner != nil {
+			oaUsername = owner.Username
+		}
+	}
+	gc := buildWorkerContext(ctx, task.TenantID, task.OwnerUserID, oaUsername)
 
 	switch task.TaskType {
 	case "audit_batch":
@@ -396,14 +441,18 @@ func (s *CronTaskService) loadPresetMap() map[string]model.CronTaskTypePreset {
 	return m
 }
 
-// buildWorkerContext 构造调度器使用的伪 gin.Context。
-func buildWorkerContext(ctx context.Context, tenantID, userID uuid.UUID) *gin.Context {
+// buildWorkerContext 构造调度器使用的伪 gin.Context（Sub 为归属用户，Username 为 OA 登录名）。
+func buildWorkerContext(ctx context.Context, tenantID, ownerUserID uuid.UUID, oaUsername string) *gin.Context {
 	rec := httptest.NewRecorder()
 	gc, _ := gin.CreateTestContext(rec)
 	req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
 	gc.Request = req
 	gc.Set("tenant_id", tenantID.String())
-	gc.Set("jwt_claims", &jwtpkg.JWTClaims{Sub: userID.String(), Username: "scheduler"})
+	gc.Set("user_id", ownerUserID.String())
+	if oaUsername == "" {
+		oaUsername = "scheduler"
+	}
+	gc.Set("jwt_claims", &jwtpkg.JWTClaims{Sub: ownerUserID.String(), Username: oaUsername})
 	gc.Set("is_system_admin", false)
 	return gc
 }
@@ -417,6 +466,7 @@ func taskToResponse(t model.CronTask, presetMap map[string]model.CronTaskTypePre
 	return dto.CronTaskResponse{
 		ID:             t.ID.String(),
 		TenantID:       t.TenantID.String(),
+		OwnerUserID:    t.OwnerUserID.String(),
 		TaskType:       t.TaskType,
 		TaskLabel:      t.TaskLabel,
 		Module:         module,

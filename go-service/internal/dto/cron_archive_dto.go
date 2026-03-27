@@ -55,6 +55,7 @@ type SaveCronTaskTypeConfigRequest struct {
 type CronTaskResponse struct {
 	ID             string     `json:"id"`
 	TenantID       string     `json:"tenant_id"`
+	OwnerUserID    string     `json:"owner_user_id"`
 	TaskType       string     `json:"task_type"`
 	TaskLabel      string     `json:"task_label"`
 	Module         string     `json:"module"`

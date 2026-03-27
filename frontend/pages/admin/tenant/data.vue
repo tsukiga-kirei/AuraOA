@@ -867,6 +867,7 @@ onMounted(async () => {
             <th>{{ t('admin.data.thTaskType') }}</th>
             <th>{{ t('admin.data.thTriggerType') }}</th>
             <th>{{ t('admin.data.thCreatedBy') }}</th>
+            <th>{{ t('admin.data.thTaskOwner') }}</th>
             <th>{{ t('admin.data.thStartTime') }}</th>
             <th>{{ t('admin.data.thEndTime') }}</th>
             <th>{{ t('admin.data.thMessage') }}</th>
@@ -874,7 +875,7 @@ onMounted(async () => {
           </thead>
           <tbody>
           <tr v-if="cronLoading">
-            <td colspan="7" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td colspan="8" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in cronLogs" :key="item.id">
             <td class="text-mono">{{ item.task_id }}</td>
@@ -884,6 +885,7 @@ onMounted(async () => {
             </td>
             <td>{{ getTriggerTypeLabel(item.trigger_type) }}</td>
             <td>{{ item.created_by || '-' }}</td>
+            <td>{{ item.task_owner_display_name || '-' }}</td>
             <td class="text-secondary">{{ item.started_at }}</td>
             <td class="text-secondary">{{ item.finished_at || '-' }}</td>
             <td>
@@ -913,7 +915,7 @@ onMounted(async () => {
             </td>
           </tr>
           <tr v-if="!cronLoading && cronLogs.length === 0">
-            <td colspan="7" class="empty-cell">{{ t('admin.data.noData') }}</td>
+            <td colspan="8" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>

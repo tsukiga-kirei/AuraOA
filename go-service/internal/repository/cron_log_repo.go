@@ -28,6 +28,12 @@ type CronLogStats struct {
 	Running int64 `json:"running"`
 }
 
+// CronLogListRow 分页列表：日志 + 任务归属用户展示名（LEFT JOIN users）。
+type CronLogListRow struct {
+	model.CronLog
+	TaskOwnerDisplayName string `json:"task_owner_display_name" gorm:"column:task_owner_display_name"`
+}
+
 // CronLogRepo 提供 cron_logs 表的数据访问方法。
 type CronLogRepo struct {
 	db *gorm.DB
@@ -81,8 +87,8 @@ func (r *CronLogRepo) Finish(id uuid.UUID, status, message string) error {
 		}).Error
 }
 
-// ListPagedByTenant 数据管理页：分页查询租户所有任务日志，支持多维过滤。
-func (r *CronLogRepo) ListPagedByTenant(tenantID uuid.UUID, filter CronLogFilter, page, pageSize int) ([]model.CronLog, int64, error) {
+// ListPagedByTenant 数据管理页：分页查询租户所有任务日志，支持多维过滤（JOIN 归属用户展示名）。
+func (r *CronLogRepo) ListPagedByTenant(tenantID uuid.UUID, filter CronLogFilter, page, pageSize int) ([]CronLogListRow, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -90,16 +96,19 @@ func (r *CronLogRepo) ListPagedByTenant(tenantID uuid.UUID, filter CronLogFilter
 		pageSize = 20
 	}
 
-	base := r.db.Model(&model.CronLog{}).Where("tenant_id = ?", tenantID)
-	base = applyCronLogFilter(base, filter)
+	base := r.db.Table("cron_logs").
+		Select("cron_logs.*, COALESCE(u.display_name, u.username, '') AS task_owner_display_name").
+		Joins("LEFT JOIN users u ON u.id = cron_logs.task_owner_user_id").
+		Where("cron_logs.tenant_id = ?", tenantID)
+	base = applyCronLogFilterJoined(base, filter)
 
 	var total int64
 	if err := base.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	var items []model.CronLog
-	err := base.Order("started_at DESC").
+	var items []CronLogListRow
+	err := base.Order("cron_logs.started_at DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&items).Error
@@ -158,6 +167,34 @@ func applyCronLogFilter(db *gorm.DB, f CronLogFilter) *gorm.DB {
 	}
 	if f.EndDate != nil {
 		db = db.Where("started_at <= ?", f.EndDate)
+	}
+	return db
+}
+
+// applyCronLogFilterJoined 在 JOIN users 查询上使用，列名带 cron_logs. 前缀避免歧义。
+func applyCronLogFilterJoined(db *gorm.DB, f CronLogFilter) *gorm.DB {
+	const t = "cron_logs."
+	if f.Keyword != "" {
+		like := "%" + f.Keyword + "%"
+		db = db.Where(t+"task_label ILIKE ?", like)
+	}
+	if f.Status != "" {
+		db = db.Where(t+"status = ?", f.Status)
+	}
+	if f.TaskType != "" {
+		db = db.Where(t+"task_type = ?", f.TaskType)
+	}
+	if f.TriggerType != "" {
+		db = db.Where(t+"trigger_type = ?", f.TriggerType)
+	}
+	if f.CreatedBy != "" {
+		db = db.Where(t+"created_by ILIKE ?", "%"+f.CreatedBy+"%")
+	}
+	if f.StartDate != nil {
+		db = db.Where(t+"started_at >= ?", f.StartDate)
+	}
+	if f.EndDate != nil {
+		db = db.Where(t+"started_at <= ?", f.EndDate)
 	}
 	return db
 }
