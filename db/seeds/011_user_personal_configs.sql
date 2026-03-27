@@ -8,6 +8,7 @@
 --   user_personal_configs.user_id → users(id)
 --   user_dashboard_prefs.tenant_id → tenants(id)
 --   user_dashboard_prefs.user_id → users(id)
+--   user_dashboard_prefs.pref_scope：business | tenant_admin | platform（需在迁移 000021 之后执行本 seed）
 --
 -- UUID 约定：
 --   user_personal_configs: d4000000-0000-0000-0000-00000000000x
@@ -167,32 +168,35 @@ VALUES (
 -- 仪表板偏好
 -- ============================================================
 
--- reviewer01 在 DEMO_HQ
-INSERT INTO user_dashboard_prefs (id, tenant_id, user_id, enabled_widgets, widget_sizes)
+-- reviewer01 在 DEMO_HQ（业务身份布局）
+INSERT INTO user_dashboard_prefs (id, tenant_id, user_id, pref_scope, enabled_widgets, widget_sizes)
 VALUES (
     'd5000000-0000-0000-0000-000000000001',
     'a0000000-0000-0000-0000-000000000001',
     'b0000000-0000-0000-0000-000000000003',
+    'business',
     '["pending_tasks", "recent_audits", "token_usage", "rule_stats"]'::jsonb,
     '{"pending_tasks":"large","recent_audits":"medium","token_usage":"small","rule_stats":"small"}'::jsonb
 );
 
--- supervisor01 在 DEMO_HQ
-INSERT INTO user_dashboard_prefs (id, tenant_id, user_id, enabled_widgets, widget_sizes)
+-- supervisor01 在 DEMO_HQ（租户管理员身份布局）
+INSERT INTO user_dashboard_prefs (id, tenant_id, user_id, pref_scope, enabled_widgets, widget_sizes)
 VALUES (
     'd5000000-0000-0000-0000-000000000002',
     'a0000000-0000-0000-0000-000000000001',
     'b0000000-0000-0000-0000-000000000005',
+    'tenant_admin',
     '["pending_tasks", "recent_audits", "team_overview", "token_usage"]'::jsonb,
     '{"pending_tasks":"medium","recent_audits":"large","team_overview":"medium","token_usage":"small"}'::jsonb
 );
 
--- br1_reviewer 在 DEMO_BR1
-INSERT INTO user_dashboard_prefs (id, tenant_id, user_id, enabled_widgets, widget_sizes)
+-- br1_reviewer 在 DEMO_BR1（业务身份布局）
+INSERT INTO user_dashboard_prefs (id, tenant_id, user_id, pref_scope, enabled_widgets, widget_sizes)
 VALUES (
     'd5000000-0000-0000-0000-000000000003',
     'a0000000-0000-0000-0000-000000000002',
     'b0000000-0000-0000-0000-000000000007',
+    'business',
     '["pending_tasks", "recent_audits"]'::jsonb,
     '{"pending_tasks":"large","recent_audits":"large"}'::jsonb
 );
