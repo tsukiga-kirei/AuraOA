@@ -74,6 +74,7 @@ func main() {
 	promptTemplateRepo := repository.NewSystemPromptTemplateRepo(db)
 	userPersonalConfigRepo := repository.NewUserPersonalConfigRepo(db)
 	userDashboardPrefRepo := repository.NewUserDashboardPrefRepo(db)
+	userNotificationRepo := repository.NewUserNotificationRepo(db)
 	llmMessageLogRepo := repository.NewLLMMessageLogRepo(db)
 	cronPresetRepo := repository.NewCronTaskTypePresetRepo(db)
 	cronConfigRepo := repository.NewCronTaskTypeConfigRepo(db)
@@ -105,6 +106,7 @@ func main() {
 	dashboardOverviewService := service.NewDashboardOverviewService(
 		auditLogRepo, archiveLogRepo, cronLogRepo, llmMessageLogRepo, tenantRepo, orgRepo, auditExecuteService,
 	)
+	userNotificationService := service.NewUserNotificationService(userNotificationRepo, userRepo)
 	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, orgRepo, db, rdb)
 
 	// Cron 任务实例服务（延迟注入调度器）
@@ -144,13 +146,14 @@ func main() {
 	auditHandler := handler.NewAuditHandler(auditExecuteService)
 	archiveReviewHandler := handler.NewArchiveReviewHandler(archiveReviewService)
 	dashboardOverviewHandler := handler.NewDashboardOverviewHandler(dashboardOverviewService)
+	userNotificationHandler := handler.NewUserNotificationHandler(userNotificationService)
 
 	// 8. Setup Gin router with middleware and routes
 	r := gin.New()
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler, dashboardOverviewHandler)
+	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler, dashboardOverviewHandler, userNotificationHandler)
 
 	// 9. Start HTTP server
 	port := viper.GetInt("server.port")

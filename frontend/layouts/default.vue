@@ -50,7 +50,6 @@ watch(route, () => {
       <AppHeader
         :collapsed="collapsed"
         :is-mobile="isMobile"
-        :notification-count="3"
         @toggle-sidebar="collapsed = !collapsed"
         @toggle-mobile-menu="mobileMenuOpen = !mobileMenuOpen"
       />
