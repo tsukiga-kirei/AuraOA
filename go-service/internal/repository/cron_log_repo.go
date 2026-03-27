@@ -75,6 +75,20 @@ func (r *CronLogRepo) ListByTenant(tenantID uuid.UUID, limit int) ([]model.CronL
 	return logs, err
 }
 
+// ListByTenantForDashboardMember 业务用户仪表盘：仅归属当前用户的任务执行日志，或手动触发且 created_by 为本人登录名。
+func (r *CronLogRepo) ListByTenantForDashboardMember(tenantID, memberUserID uuid.UUID, username string, limit int) ([]model.CronLog, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var logs []model.CronLog
+	err := r.db.Where("tenant_id = ?", tenantID).
+		Where("(task_owner_user_id = ? OR (task_owner_user_id IS NULL AND created_by = ?))", memberUserID, username).
+		Order("started_at DESC").
+		Limit(limit).
+		Find(&logs).Error
+	return logs, err
+}
+
 // ListRecentGlobal 全库最近 N 条定时任务执行日志（按 started_at 倒序）。
 func (r *CronLogRepo) ListRecentGlobal(limit int) ([]model.CronLog, error) {
 	if limit <= 0 {

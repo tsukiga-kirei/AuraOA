@@ -35,7 +35,7 @@ import type {
   ProcessAuditConfig as ApiProcessAuditConfig,
   SystemPromptTemplate
 } from '~/composables/useRulesApi'
-import type {ArchiveRule, CronTaskConfig, ProcessArchiveConfig} from '~/types/rules'
+import type {ArchiveRule, CronTaskConfig, ProcessArchiveConfig, ProcessField} from '~/types/rules'
 import {useI18n} from '~/composables/useI18n'
 import {usePagination} from '~/composables/usePagination'
 import {useArchiveApi} from "~/composables/useArchiveApi";

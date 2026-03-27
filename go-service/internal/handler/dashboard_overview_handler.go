@@ -4,8 +4,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
+	"oa-smart-audit/go-service/internal/pkg/errcode"
 	"oa-smart-audit/go-service/internal/pkg/response"
 	"oa-smart-audit/go-service/internal/service"
 )
@@ -33,7 +35,12 @@ func (h *DashboardOverviewHandler) GetOverview(c *gin.Context) {
 		return
 	}
 
-	data, err := h.svc.BuildOverview(c, claims.ActiveRole.Role)
+	viewerID, err := uuid.Parse(claims.Sub)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "用户标识无效")
+		return
+	}
+	data, err := h.svc.BuildOverview(c, claims.ActiveRole.Role, viewerID, claims.Username)
 	if err != nil {
 		handleServiceError(c, err)
 		return

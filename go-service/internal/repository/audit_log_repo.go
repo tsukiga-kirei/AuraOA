@@ -212,19 +212,21 @@ func (r *AuditLogRepo) ListPagedWithUser(c *gin.Context, filter AuditLogFilter, 
 	return items, total, err
 }
 
-// CountStats 数据管理页：统计各分组数量。
-func (r *AuditLogRepo) CountStats(c *gin.Context) (*AuditLogStats, error) {
+// CountStats 数据管理页 / 仪表盘：统计各分组数量。forUserID 非空时仅统计该用户作为操作人的审核记录（业务用户仪表盘）。
+func (r *AuditLogRepo) CountStats(c *gin.Context, forUserID *uuid.UUID) (*AuditLogStats, error) {
 	type row struct {
 		Status         string
 		Recommendation string
 		Cnt            int64
 	}
-	var rows []row
-	err := r.WithTenant(c).
+	q := r.WithTenant(c).
 		Table("audit_logs").
-		Select("status, recommendation, COUNT(*) as cnt").
-		Group("status, recommendation").
-		Find(&rows).Error
+		Select("status, recommendation, COUNT(*) as cnt")
+	if forUserID != nil {
+		q = q.Where("audit_logs.user_id = ?", *forUserID)
+	}
+	var rows []row
+	err := q.Group("status, recommendation").Find(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -238,20 +240,20 @@ func (r *AuditLogRepo) CountStats(c *gin.Context) (*AuditLogStats, error) {
 		model.AuditStatusExtracting: true,
 		model.AuditStatusFailed:     true,
 	}
-	for _, r := range rows {
-		stats.Total += r.Cnt
-		if completedStatuses[r.Status] {
-			stats.AIDone += r.Cnt
-			switch r.Recommendation {
+	for _, rw := range rows {
+		stats.Total += rw.Cnt
+		if completedStatuses[rw.Status] {
+			stats.AIDone += rw.Cnt
+			switch rw.Recommendation {
 			case "approve":
-				stats.ApproveCount += r.Cnt
+				stats.ApproveCount += rw.Cnt
 			case "return":
-				stats.ReturnCount += r.Cnt
+				stats.ReturnCount += rw.Cnt
 			case "review":
-				stats.ReviewCount += r.Cnt
+				stats.ReviewCount += rw.Cnt
 			}
-		} else if pendingStatuses[r.Status] {
-			stats.PendingAI += r.Cnt
+		} else if pendingStatuses[rw.Status] {
+			stats.PendingAI += rw.Cnt
 		}
 	}
 	return stats, nil
@@ -302,8 +304,8 @@ func (r *AuditLogRepo) CountStatsGlobal() (*AuditLogStats, error) {
 	return stats, nil
 }
 
-// DashboardWeeklyCompletedTrend 最近 n 个自然日（含当日）内，按 UTC 日聚合的已完成审核次数。
-func (r *AuditLogRepo) DashboardWeeklyCompletedTrend(c *gin.Context, days int) ([]struct {
+// DashboardWeeklyCompletedTrend 最近 n 个自然日（含当日）内，按 UTC 日聚合的已完成审核次数。forUserID 非空时仅统计该用户。
+func (r *AuditLogRepo) DashboardWeeklyCompletedTrend(c *gin.Context, days int, forUserID *uuid.UUID) ([]struct {
 	Date  string `gorm:"column:date"`
 	Count int64  `gorm:"column:count"`
 }, error) {
@@ -319,6 +321,12 @@ func (r *AuditLogRepo) DashboardWeeklyCompletedTrend(c *gin.Context, days int) (
 		return nil, err
 	}
 
+	userClause := ""
+	args := []interface{}{tenantUUID, days, model.AuditStatusCompleted}
+	if forUserID != nil {
+		userClause = " AND user_id = $4"
+		args = append(args, *forUserID)
+	}
 	q := `
 WITH days AS (
   SELECT generate_series(
@@ -332,7 +340,7 @@ FROM days
 LEFT JOIN (
   SELECT DATE(created_at AT TIME ZONE 'UTC') AS d, COUNT(*)::bigint AS cnt
   FROM audit_logs
-  WHERE tenant_id = $1 AND status = $3
+  WHERE tenant_id = $1 AND status = $3` + userClause + `
   GROUP BY 1
 ) b ON b.d = days.d
 ORDER BY days.d
@@ -341,7 +349,7 @@ ORDER BY days.d
 		Date  string `gorm:"column:date"`
 		Count int64  `gorm:"column:count"`
 	}
-	err = r.DB.Raw(q, tenantUUID, days, model.AuditStatusCompleted).Scan(&rows).Error
+	err = r.DB.Raw(q, args...).Scan(&rows).Error
 	return rows, err
 }
 
@@ -388,20 +396,21 @@ type DashboardRecentAuditRow struct {
 	Status    string    `json:"status" gorm:"column:status"`
 }
 
-// DashboardRecentAudits 最近审核记录（含完成/失败），按时间倒序。
-func (r *AuditLogRepo) DashboardRecentAudits(c *gin.Context, limit int) ([]DashboardRecentAuditRow, error) {
+// DashboardRecentAudits 最近审核记录（含完成/失败），按时间倒序。forUserID 非空时仅该用户。
+func (r *AuditLogRepo) DashboardRecentAudits(c *gin.Context, limit int, forUserID *uuid.UUID) ([]DashboardRecentAuditRow, error) {
 	if limit < 1 {
 		limit = 8
 	}
-	var rows []DashboardRecentAuditRow
-	err := r.WithTenant(c).
+	q := r.WithTenant(c).
 		Table("audit_logs").
 		Select("audit_logs.id, audit_logs.title, COALESCE(users.display_name, users.username, '') as user_name, audit_logs.created_at, audit_logs.status").
 		Joins("LEFT JOIN users ON audit_logs.user_id = users.id").
-		Where("audit_logs.status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed}).
-		Order("audit_logs.created_at DESC").
-		Limit(limit).
-		Scan(&rows).Error
+		Where("audit_logs.status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed})
+	if forUserID != nil {
+		q = q.Where("audit_logs.user_id = ?", *forUserID)
+	}
+	var rows []DashboardRecentAuditRow
+	err := q.Order("audit_logs.created_at DESC").Limit(limit).Scan(&rows).Error
 	return rows, err
 }
 

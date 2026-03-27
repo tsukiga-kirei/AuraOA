@@ -29,6 +29,20 @@ function parseJwtExp(token: string): number | null {
   } catch { return null }
 }
 
+/** 从 access token 解析 active_role.role（与网关/后端 TenantContext 一致）；不验证签名 */
+function parseJwtActiveRoleRole(tokenVal: string | null): string | null {
+  if (!tokenVal) return null
+  try {
+    const parts = tokenVal.split('.')
+    if (parts.length !== 3) return null
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+    const r = payload?.active_role?.role
+    return typeof r === 'string' && r.length > 0 ? r : null
+  } catch {
+    return null
+  }
+}
+
 // --- 令牌刷新队列（模块级单例）---
 let isRefreshing = false
 let refreshSubscribers: Array<(token: string) => void> = []
@@ -70,6 +84,11 @@ export const useAuth = () => {
   const userRole = useState<UserRole>('auth_role', () => 'business')
   const allRoles = useState<RoleInfo[]>('auth_all_roles', () => [])
   const activeRole = useState<RoleInfo | null>('auth_active_role', () => null)
+
+  /** 与后端 JWT 声明一致的身份（优先令牌，避免持久化状态与 token 不同步导致错调租户/平台接口） */
+  const effectiveActiveRoleForApi = computed(() => {
+    return parseJwtActiveRoleRole(token.value) ?? activeRole.value?.role ?? null
+  })
   const userPermissions = useState<PermissionGroup[]>('auth_permissions', () => ['business'])
   const currentUser = useState<PersistedAuthState['current_user']>('auth_user', () => null)
   const userLocale = useState<string>('auth_locale', () => 'zh-CN')
@@ -494,7 +513,7 @@ export const useAuth = () => {
 
   return {
     token, refreshToken, menus, userRole, userPermissions, currentUser,
-    allRoles, activeRole, userLocale,
+    allRoles, activeRole, effectiveActiveRoleForApi, userLocale,
     login, getMenu, logout, isAuthenticated, restore, tryRestoreAsync, isRefreshTokenValid,
     setUserRole, setUserPermissions, setAllRoles, setActiveRole, switchRole,
     authFetch, doRefreshToken, changePassword, getProfile, updateProfile, updateLocale, setUserLocale,

@@ -643,7 +643,7 @@ func (s *AuditExecuteService) ListAuditLogs(c *gin.Context, filter repository.Au
 
 // GetAuditLogStats 数据管理页：获取当前租户审核日志统计。
 func (s *AuditExecuteService) GetAuditLogStats(c *gin.Context) (*repository.AuditLogStats, error) {
-	stats, err := s.auditLogRepo.CountStats(c)
+	stats, err := s.auditLogRepo.CountStats(c, nil)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "统计查询失败")
 	}

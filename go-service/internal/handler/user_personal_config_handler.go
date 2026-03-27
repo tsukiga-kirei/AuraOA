@@ -47,6 +47,48 @@ func getUserID(c *gin.Context) (uuid.UUID, error) {
 	return uuid.Parse(claims.Sub)
 }
 
+// dashboardPrefsTenantScope 仪表盘偏好存储维度：system_admin 使用平台维度（数据库 tenant_id 为 NULL）；其他角色必须带租户上下文。
+func dashboardPrefsTenantScope(c *gin.Context) (*uuid.UUID, error) {
+	claimsVal, ok := c.Get("jwt_claims")
+	if !ok {
+		return nil, errTenantIDMissing
+	}
+	claims, ok := claimsVal.(*jwtpkg.JWTClaims)
+	if !ok {
+		return nil, errTenantIDMissing
+	}
+	if claims.ActiveRole.Role == "system_admin" {
+		return nil, nil
+	}
+	tid, err := getTenantID(c)
+	if err != nil {
+		return nil, err
+	}
+	return &tid, nil
+}
+
+// dashboardPrefScope 与当前 JWT active_role 一致，用于分角色存储布局，避免 business / tenant_admin 互相覆盖。
+func dashboardPrefScope(c *gin.Context) (string, error) {
+	claimsVal, ok := c.Get("jwt_claims")
+	if !ok {
+		return "", errTenantIDMissing
+	}
+	claims, ok := claimsVal.(*jwtpkg.JWTClaims)
+	if !ok {
+		return "", errTenantIDMissing
+	}
+	switch claims.ActiveRole.Role {
+	case "system_admin":
+		return model.DashboardPrefScopePlatform, nil
+	case "tenant_admin":
+		return model.DashboardPrefScopeTenantAdmin, nil
+	case "business":
+		return model.DashboardPrefScopeBusiness, nil
+	default:
+		return model.DashboardPrefScopeBusiness, nil
+	}
+}
+
 // GetProcessList 处理 GET /api/tenant/settings/processes
 func (h *UserPersonalConfigHandler) GetProcessList(c *gin.Context) {
 	userID, err := getUserID(c)
@@ -113,19 +155,24 @@ func (h *UserPersonalConfigHandler) GetDashboardPrefs(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
 		return
 	}
-	tenantID, err := getTenantID(c)
+	tenantScope, err := dashboardPrefsTenantScope(c)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "租户ID无效")
 		return
 	}
-	pref, err := h.dashPrefRepo.GetByTenantAndUser(c, tenantID, userID)
+	scope, err := dashboardPrefScope(c)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	pref, err := h.dashPrefRepo.GetPref(tenantScope, userID, scope)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, errcode.ErrDatabase, "数据库错误")
 		return
 	}
 	if pref == nil {
-		// 返回默认空偏好
 		pref = &model.UserDashboardPref{
+			PrefScope:      scope,
 			EnabledWidgets: datatypes.JSON([]byte("[]")),
 			WidgetSizes:    datatypes.JSON([]byte("{}")),
 		}
@@ -140,9 +187,14 @@ func (h *UserPersonalConfigHandler) UpdateDashboardPrefs(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
 		return
 	}
-	tenantID, err := getTenantID(c)
+	tenantScope, err := dashboardPrefsTenantScope(c)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "租户ID无效")
+		return
+	}
+	scope, err := dashboardPrefScope(c)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
 		return
 	}
 	var req dto.UpdateDashboardPrefRequest
@@ -153,8 +205,9 @@ func (h *UserPersonalConfigHandler) UpdateDashboardPrefs(c *gin.Context) {
 
 	pref := &model.UserDashboardPref{
 		ID:             uuid.New(),
-		TenantID:       tenantID,
+		TenantID:       tenantScope,
 		UserID:         userID,
+		PrefScope:      scope,
 		EnabledWidgets: defaultDashJSON(req.EnabledWidgets, "[]"),
 		WidgetSizes:    defaultDashJSON(req.WidgetSizes, "{}"),
 		UpdatedAt:      time.Now(),

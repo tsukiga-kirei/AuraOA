@@ -38,9 +38,10 @@ export interface AuditDetailItem {
   }
 }
 
-/** 仪表板偏好 */
+/** 仪表板偏好（后端按 JWT active_role 分 scope 存储） */
 export interface DashboardPref {
   id?: string
+  pref_scope?: string
   enabled_widgets: string[]
   widget_sizes: Record<string, any>
 }

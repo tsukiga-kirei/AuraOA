@@ -1,10 +1,11 @@
 package repository
 
 import (
-	"github.com/gin-gonic/gin"
+	"errors"
+	"time"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"oa-smart-audit/go-service/internal/model"
 )
@@ -19,10 +20,16 @@ func NewUserDashboardPrefRepo(db *gorm.DB) *UserDashboardPrefRepo {
 	return &UserDashboardPrefRepo{BaseRepo: NewBaseRepo(db)}
 }
 
-// GetByTenantAndUser 查询指定租户和用户的仪表板偏好。
-func (r *UserDashboardPrefRepo) GetByTenantAndUser(c *gin.Context, tenantID, userID uuid.UUID) (*model.UserDashboardPref, error) {
+// GetPref 查询仪表板偏好。tenantID=nil 且 scope=platform 为系统管理员平台布局。
+func (r *UserDashboardPrefRepo) GetPref(tenantID *uuid.UUID, userID uuid.UUID, prefScope string) (*model.UserDashboardPref, error) {
 	var pref model.UserDashboardPref
-	err := r.DB.Where("tenant_id = ? AND user_id = ?", tenantID, userID).First(&pref).Error
+	q := r.DB.Where("user_id = ? AND pref_scope = ?", userID, prefScope)
+	if tenantID == nil {
+		q = q.Where("tenant_id IS NULL")
+	} else {
+		q = q.Where("tenant_id = ?", *tenantID)
+	}
+	err := q.First(&pref).Error
 	if err == gorm.ErrRecordNotFound {
 		return nil, nil
 	}
@@ -32,10 +39,31 @@ func (r *UserDashboardPrefRepo) GetByTenantAndUser(c *gin.Context, tenantID, use
 	return &pref, nil
 }
 
-// Upsert 创建或更新用户仪表板偏好（基于 tenant_id + user_id 唯一约束）。
+// Upsert 创建或更新用户仪表板偏好（含 pref_scope）。
 func (r *UserDashboardPrefRepo) Upsert(pref *model.UserDashboardPref) error {
-	return r.DB.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "user_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"enabled_widgets", "widget_sizes", "updated_at"}),
-	}).Create(pref).Error
+	var existing model.UserDashboardPref
+	q := r.DB.Where("user_id = ? AND pref_scope = ?", pref.UserID, pref.PrefScope)
+	if pref.TenantID == nil {
+		q = q.Where("tenant_id IS NULL")
+	} else {
+		q = q.Where("tenant_id = ?", *pref.TenantID)
+	}
+	err := q.First(&existing).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if pref.CreatedAt.IsZero() {
+			pref.CreatedAt = time.Now()
+		}
+		if pref.UpdatedAt.IsZero() {
+			pref.UpdatedAt = time.Now()
+		}
+		return r.DB.Create(pref).Error
+	}
+	if err != nil {
+		return err
+	}
+	return r.DB.Model(&existing).Updates(map[string]interface{}{
+		"enabled_widgets": pref.EnabledWidgets,
+		"widget_sizes":    pref.WidgetSizes,
+		"updated_at":      pref.UpdatedAt,
+	}).Error
 }
