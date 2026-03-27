@@ -651,6 +651,7 @@ export default {
     //===== Cron 页面扩展 =====
     'cron.pageTitle': 'Scheduled Task Center',
     'cron.pageSubtitle': 'Cron batch audit & push management',
+    'cron.userScopeHint': 'Tasks below belong to the signed-in user; batch audit/archive uses that account\'s OA todos and archived items.',
     'cron.createTask': 'New Task',
     'cron.builtin': 'Built-in',
     'cron.running': 'Running',
@@ -1289,6 +1290,7 @@ export default {
     'admin.data.thTaskType': 'Task Type',
     'admin.data.thTriggerType': 'Trigger Type',
     'admin.data.thCreatedBy': 'Created By',
+    'admin.data.thTaskOwner': 'Task owner',
     'admin.data.triggerManual': 'Manual',
     'admin.data.triggerScheduled': 'Scheduled',
     'admin.data.thStatus': 'Status',

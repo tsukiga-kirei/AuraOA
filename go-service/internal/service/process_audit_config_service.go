@@ -53,6 +53,15 @@ func getTenantUUID(c *gin.Context) (uuid.UUID, error) {
 	return uuid.Parse(tidVal.(string))
 }
 
+// getUserUUID 从 gin.Context 中提取当前用户 UUID（JWT 注入的 user_id）。
+func getUserUUID(c *gin.Context) (uuid.UUID, error) {
+	uidVal, exists := c.Get("user_id")
+	if !exists {
+		return uuid.Nil, fmt.Errorf("用户ID缺失")
+	}
+	return uuid.Parse(fmt.Sprintf("%v", uidVal))
+}
+
 // Create 创建流程审核配置，校验 process_type 租户内唯一性。
 // 若 ai_config 为空，自动从系统提示词模板初始化。
 func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProcessAuditConfigRequest) (*model.ProcessAuditConfig, error) {

@@ -103,10 +103,10 @@ func NewCronTaskRepo(db *gorm.DB) *CronTaskRepo {
 // DB 暴露底层 gorm.DB（供调度器跨租户查询使用）。
 func (r *CronTaskRepo) DB() *gorm.DB { return r.BaseRepo.DB }
 
-// ListByTenant 查询当前租户的所有任务实例，按创建时间排序。
-func (r *CronTaskRepo) ListByTenant(c *gin.Context) ([]model.CronTask, error) {
+// ListByOwner 查询当前租户下指定归属用户的任务实例，按创建时间排序。
+func (r *CronTaskRepo) ListByOwner(c *gin.Context, ownerUserID uuid.UUID) ([]model.CronTask, error) {
 	var tasks []model.CronTask
-	if err := r.WithTenant(c).Order("created_at ASC").Find(&tasks).Error; err != nil {
+	if err := r.WithTenant(c).Where("owner_user_id = ?", ownerUserID).Order("created_at ASC").Find(&tasks).Error; err != nil {
 		return nil, err
 	}
 	return tasks, nil
@@ -121,10 +121,10 @@ func (r *CronTaskRepo) ListActiveByAllTenants() ([]model.CronTask, error) {
 	return tasks, nil
 }
 
-// GetByID 查询指定 ID 的任务（带租户校验）。
-func (r *CronTaskRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.CronTask, error) {
+// GetByIDForOwner 查询指定 ID 的任务（租户 + 归属用户校验）。
+func (r *CronTaskRepo) GetByIDForOwner(c *gin.Context, id uuid.UUID, ownerUserID uuid.UUID) (*model.CronTask, error) {
 	var task model.CronTask
-	if err := r.WithTenant(c).Where("id = ?", id).First(&task).Error; err != nil {
+	if err := r.WithTenant(c).Where("id = ? AND owner_user_id = ?", id, ownerUserID).First(&task).Error; err != nil {
 		return nil, err
 	}
 	return &task, nil
@@ -135,14 +135,14 @@ func (r *CronTaskRepo) Create(task *model.CronTask) error {
 	return r.BaseRepo.DB.Create(task).Error
 }
 
-// Update 更新任务实例（全字段覆盖，排除 id/tenant_id/is_builtin/created_at）。
-func (r *CronTaskRepo) Update(c *gin.Context, id uuid.UUID, fields map[string]interface{}) error {
-	return r.WithTenant(c).Model(&model.CronTask{}).Where("id = ?", id).Updates(fields).Error
+// Update 更新任务实例（归属用户校验；不可改 owner_user_id）。
+func (r *CronTaskRepo) Update(c *gin.Context, id uuid.UUID, ownerUserID uuid.UUID, fields map[string]interface{}) error {
+	return r.WithTenant(c).Model(&model.CronTask{}).Where("id = ? AND owner_user_id = ?", id, ownerUserID).Updates(fields).Error
 }
 
 // Delete 删除任务实例（内置任务由调用层防护）。
-func (r *CronTaskRepo) Delete(c *gin.Context, id uuid.UUID) error {
-	return r.WithTenant(c).Where("id = ?", id).Delete(&model.CronTask{}).Error
+func (r *CronTaskRepo) Delete(c *gin.Context, id uuid.UUID, ownerUserID uuid.UUID) error {
+	return r.WithTenant(c).Where("id = ? AND owner_user_id = ?", id, ownerUserID).Delete(&model.CronTask{}).Error
 }
 
 // UpdateRunStats 更新任务的运行统计（last_run_at / next_run_at / success_count / fail_count）。

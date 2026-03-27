@@ -265,19 +265,22 @@ func (s *ArchiveReviewService) BatchExecute(c *gin.Context, items []dto.ArchiveR
 	return result, nil
 }
 
-// ListPendingForBatch 为调度器提供：拉取该租户下所有已归档但未完成复盘的流程，
-// 供 cron archive_batch 任务批量调用。
+// ListPendingForBatch 为调度器提供：按当前上下文 OA 用户拉取已归档流程，
+// 供 cron archive_batch 任务批量调用（与任务归属用户一致）。
 func (s *ArchiveReviewService) ListPendingForBatch(c *gin.Context, limit int) ([]dto.ArchiveReviewExecuteRequest, error) {
 	tenantID, _, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
 	}
+	username := s.extractUsername(c)
+	if username == "" {
+		return nil, newServiceError(errcode.ErrParamValidation, "无法解析 OA 登录用户名，请检查任务归属用户账号")
+	}
 	adapter, err := s.getOAAdapter(tenantID)
 	if err != nil {
 		return nil, err
 	}
-	// FetchArchivedList 已忽略 username，获取全量归档流程
-	allItems, err := adapter.FetchArchivedList(c.Request.Context(), "")
+	allItems, err := adapter.FetchArchivedList(c.Request.Context(), username)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 归档流程失败: "+err.Error())
 	}

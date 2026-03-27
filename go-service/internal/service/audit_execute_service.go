@@ -650,20 +650,24 @@ func (s *AuditExecuteService) GetAuditLogStats(c *gin.Context) (*repository.Audi
 	return stats, nil
 }
 
-// ListPendingForBatch 为调度器提供：不过滤用户，拉取该租户下所有待审批流程（已按租户配置过滤），
-// 供 cron audit_batch 任务批量调用。
+// ListPendingForBatch 为调度器提供：按当前上下文中的 OA 用户拉取待审批流程（已按租户配置过滤），
+// 供 cron audit_batch 任务批量调用（任务归属用户即 OA 待办所属用户）。
 func (s *AuditExecuteService) ListPendingForBatch(c *gin.Context, limit int) ([]AuditExecuteRequest, error) {
 	tenantID, _, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
 	}
+	username := s.extractUsername(c)
+	if username == "" {
+		return nil, newServiceError(errcode.ErrParamValidation, "无法解析 OA 登录用户名，请检查任务归属用户账号")
+	}
 	adapter, err := s.getOAAdapter(tenantID)
 	if err != nil {
 		return nil, err
 	}
-	items, err := adapter.FetchAllTodoItems(c.Request.Context(), limit)
+	items, err := adapter.FetchTodoList(c.Request.Context(), username)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 全量待办失败: "+err.Error())
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 用户待办失败: "+err.Error())
 	}
 	// 按租户已配置的主表名过滤
 	allowedTables := s.getAllowedMainTables(c)
@@ -675,6 +679,9 @@ func (s *AuditExecuteService) ListPendingForBatch(c *gin.Context, limit int) ([]
 				ProcessType: item.ProcessType,
 				Title:       item.Title,
 			})
+			if limit > 0 && len(result) >= limit {
+				break
+			}
 		}
 	}
 	return result, nil

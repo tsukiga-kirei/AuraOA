@@ -99,6 +99,7 @@ export interface CronLogItem {
   task_label: string
   trigger_type: string        // manual = 手动执行, scheduled = 定时调度
   created_by: string          // 创建人/触发人
+  task_owner_display_name?: string // 任务归属用户（展示名）
   status: string              // running / success / failed
   message: string
   started_at: string

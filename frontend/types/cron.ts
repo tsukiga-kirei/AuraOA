@@ -4,6 +4,7 @@
 export interface CronTask {
   id: string
   tenant_id: string
+  owner_user_id: string       // 任务归属用户（当前登录用户）
   task_type: string           // audit_batch / audit_daily / audit_weekly / archive_batch / archive_daily / archive_weekly
   task_label: string          // 自定义显示名称
   module: string              // audit | archive
@@ -41,6 +42,9 @@ export interface CronLog {
   task_id: string
   task_type: string
   task_label: string
+  trigger_type?: string
+  created_by?: string
+  task_owner_user_id?: string | null
   status: 'running' | 'success' | 'failed'
   message: string
   started_at: string

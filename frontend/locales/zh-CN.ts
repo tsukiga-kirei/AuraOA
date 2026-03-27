@@ -652,6 +652,7 @@ export default {
     //===== Cron 页面扩展 =====
     'cron.pageTitle': '定时任务中心',
     'cron.pageSubtitle': 'Cron 批量审核与推送管理',
+    'cron.userScopeHint': '以下任务仅属于当前登录用户；批量审核/归档将使用该账号在 OA 中的待办与归档数据。',
     'cron.createTask': '新建任务',
     'cron.builtin': '内置',
     'cron.running': '运行中',
@@ -1289,6 +1290,7 @@ export default {
     'admin.data.thTaskType': '任务类型',
     'admin.data.thTriggerType': '触发类型',
     'admin.data.thCreatedBy': '创建/触发人',
+    'admin.data.thTaskOwner': '任务归属人',
     'admin.data.triggerManual': '手动执行',
     'admin.data.triggerScheduled': '定时调度',
     'admin.data.thStatus': '状态',

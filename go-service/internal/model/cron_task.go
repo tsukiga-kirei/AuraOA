@@ -11,6 +11,7 @@ import (
 type CronTask struct {
 	ID             uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	TenantID       uuid.UUID  `gorm:"type:uuid;not null" json:"tenant_id"`
+	OwnerUserID    uuid.UUID  `gorm:"type:uuid;not null" json:"owner_user_id"`
 	TaskType       string     `gorm:"size:50;not null" json:"task_type"`
 	TaskLabel      string     `gorm:"size:200;not null;default:''" json:"task_label"`
 	CronExpression string     `gorm:"size:100;not null" json:"cron_expression"`
