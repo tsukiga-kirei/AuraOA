@@ -1,0 +1,2 @@
+-- 000025_remove_ai_model_configs_seed.down.sql
+-- 不恢复已删除的预置模型：回滚后无法保证与租户/日志中的历史 UUID 一致，且可能与用户自建同名行冲突。
