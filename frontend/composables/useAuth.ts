@@ -16,6 +16,7 @@ const ERROR_CODE_MAP: Record<number, string> = {
   40106: '租户不存在或已停用',
   40300: '权限不足',
   40400: '资源不存在',
+  40910: '系统已初始化，无法再次创建管理员',
   50000: '服务器错误，请稍后重试',
 }
 
@@ -278,6 +279,57 @@ export const useAuth = () => {
     }
   }
 
+  /** 仅清除本地登录态（不调注销接口、不 navigate），用于令牌失效或用户已删除时的中间件处理。 */
+  const clearLocalSession = () => {
+    token.value = null
+    refreshToken.value = null
+    menus.value = []
+    userRole.value = 'business'
+    allRoles.value = []
+    activeRole.value = null
+    userPermissions.value = ['business']
+    currentUser.value = null
+    userLocale.value = 'zh-CN'
+    meValidateCache.value = null
+    clearStorage()
+  }
+
+  /** 短期内复用 /me 校验结果，避免每次路由切换都打接口（同 token 约 10s 内只校验一次）。 */
+  const meValidateCache = useState<{ tokenPrefix: string; at: number; ok: boolean } | null>(
+    'auth_me_validate_cache',
+    () => null,
+  )
+
+  /**
+   * 用当前 access_token 请求 /api/auth/me，确认用户仍存在且令牌可用。
+   * 网络异常时返回 true，避免因短暂断网把用户踢下线。
+   */
+  const validateAccessToken = async (): Promise<boolean> => {
+    const t = token.value || localStorage.getItem('token')
+    if (!t) return false
+    const prefix = t.slice(0, 48)
+    const now = Date.now()
+    const c = meValidateCache.value
+    if (c && c.tokenPrefix === prefix && now - c.at < 10_000) {
+      return c.ok
+    }
+    try {
+      const res = await $fetch<ApiResponse<unknown>>(`${config.public.apiBase}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${t}` },
+      })
+      const ok = res.code === 0
+      meValidateCache.value = { tokenPrefix: prefix, at: now, ok }
+      return ok
+    } catch (e: any) {
+      const st = e?.statusCode ?? e?.status ?? e?.response?.status
+      if (st === 401) {
+        meValidateCache.value = { tokenPrefix: prefix, at: now, ok: false }
+        return false
+      }
+      return true
+    }
+  }
+
   const logout = async (): Promise<void> => {
     try {
       const baseUrl = String(config.public.apiBase)
@@ -288,18 +340,7 @@ export const useAuth = () => {
       })
     } catch { /* 忽略 */ }
 
-    // 清除响应式状态
-    token.value = null
-    refreshToken.value = null
-    menus.value = []
-    userRole.value = 'business'
-    allRoles.value = []
-    activeRole.value = null
-    userPermissions.value = ['business']
-    currentUser.value = null
-    userLocale.value = 'zh-CN'
-
-    clearStorage()
+    clearLocalSession()
     navigateTo('/login')
   }
 
@@ -514,7 +555,8 @@ export const useAuth = () => {
   return {
     token, refreshToken, menus, userRole, userPermissions, currentUser,
     allRoles, activeRole, effectiveActiveRoleForApi, userLocale,
-    login, getMenu, logout, isAuthenticated, restore, tryRestoreAsync, isRefreshTokenValid,
+    login, getMenu, logout, clearLocalSession, validateAccessToken,
+    isAuthenticated, restore, tryRestoreAsync, isRefreshTokenValid,
     setUserRole, setUserPermissions, setAllRoles, setActiveRole, switchRole,
     authFetch, doRefreshToken, changePassword, getProfile, updateProfile, updateLocale, setUserLocale,
     refreshRoles,

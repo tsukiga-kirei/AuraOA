@@ -1,5 +1,17 @@
 package dto
 
+// BootstrapStatusResponse 是 GET /api/auth/bootstrap-status 的 data。
+type BootstrapStatusResponse struct {
+	NeedsSetup bool `json:"needs_setup"`
+}
+
+// BootstrapAdminRequest 是 POST /api/auth/bootstrap 的请求正文（仅当系统中无任何用户时允许）。
+type BootstrapAdminRequest struct {
+	Username    string `json:"username" binding:"required"`
+	Password    string `json:"password" binding:"required,min=8"`
+	DisplayName string `json:"display_name" binding:"required"`
+}
+
 //LoginRequest 是 POST /api/auth/login 的请求正文
 type LoginRequest struct {
 	Username      string `json:"username" binding:"required"`

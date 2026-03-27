@@ -596,6 +596,18 @@ export default {
     'login.portal.systemAdmin': 'System Admin',
     'login.portal.systemAdminDesc': 'Tenants · Monitoring · Settings',
 
+    'setup.title': 'Initial Setup',
+    'setup.subtitle': 'No users exist yet. Create the first system administrator.',
+    'setup.displayName': 'Display name',
+    'setup.displayNamePlaceholder': 'e.g. Admin',
+    'setup.passwordHint': 'At least 8 characters',
+    'setup.confirmPassword': 'Confirm password',
+    'setup.submit': 'Create and go to login',
+    'setup.submitting': 'Creating...',
+    'setup.success': 'Administrator created. Sign in via the System Admin portal.',
+    'setup.mismatch': 'Passwords do not match',
+    'setup.usernameRule': '3–100 characters: letters, digits, underscore',
+
     //===== Cron 页面（旧键）=====
     'cron.taskName': 'Task Name',
     'cron.schedule': 'Schedule',

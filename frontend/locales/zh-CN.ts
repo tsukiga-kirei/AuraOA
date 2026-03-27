@@ -597,6 +597,18 @@ export default {
     'login.portal.systemAdmin': '系统管理员',
     'login.portal.systemAdminDesc': '租户管理 · 全局监控 · 系统设置',
 
+    'setup.title': '初始化系统',
+    'setup.subtitle': '当前没有任何用户，请创建首个系统管理员账号',
+    'setup.displayName': '显示名称',
+    'setup.displayNamePlaceholder': '例如：管理员',
+    'setup.passwordHint': '至少 8 位',
+    'setup.confirmPassword': '确认密码',
+    'setup.submit': '创建并前往登录',
+    'setup.submitting': '创建中...',
+    'setup.success': '管理员已创建，请使用「系统管理员」入口登录',
+    'setup.mismatch': '两次输入的密码不一致',
+    'setup.usernameRule': '3–100 位字母、数字、下划线',
+
     //===== Cron 页面（旧键）=====
     'cron.taskName': '任务名称',
     'cron.schedule': '执行计划',

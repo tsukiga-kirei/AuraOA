@@ -51,6 +51,79 @@ func newServiceError(code int, msg string) *ServiceError {
 }
 
 // ---------------------------------------------------------------------------
+// 首次部署初始化（无任何用户时创建系统管理员）
+// ---------------------------------------------------------------------------
+
+var bootstrapUsernameRe = regexp.MustCompile(`^[a-zA-Z0-9_]{3,100}$`)
+
+// BootstrapStatus 返回是否需要展示初始化向导（users 表为空）。
+func (s *AuthService) BootstrapStatus() (*dto.BootstrapStatusResponse, error) {
+	n, err := s.userRepo.CountUsers()
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	return &dto.BootstrapStatusResponse{NeedsSetup: n == 0}, nil
+}
+
+// BootstrapAdmin 在零用户时创建首个系统管理员账号及 system_admin 角色分配。
+func (s *AuthService) BootstrapAdmin(req *dto.BootstrapAdminRequest) error {
+	username := strings.TrimSpace(req.Username)
+	displayName := strings.TrimSpace(req.DisplayName)
+	if username == "" || displayName == "" {
+		return newServiceError(errcode.ErrParamValidation, "用户名或显示名称不能为空")
+	}
+	if !bootstrapUsernameRe.MatchString(username) {
+		return newServiceError(errcode.ErrParamValidation, "用户名需为 3–100 位字母、数字、下划线")
+	}
+	if len(req.Password) < 8 {
+		return newServiceError(errcode.ErrParamValidation, "密码至少 8 位")
+	}
+
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&model.User{}).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return newServiceError(errcode.ErrBootstrapForbidden, "系统已初始化")
+		}
+		hashStr, err := hash.HashPassword(req.Password)
+		if err != nil {
+			return newServiceError(errcode.ErrInternalServer, "服务器内部错误")
+		}
+		user := &model.User{
+			ID:                uuid.New(),
+			Username:          username,
+			PasswordHash:      hashStr,
+			DisplayName:       displayName,
+			Status:            "active",
+			PasswordChangedAt: time.Now(),
+		}
+		if err := tx.Create(user).Error; err != nil {
+			return newServiceError(errcode.ErrDatabase, "创建用户失败，用户名可能已存在")
+		}
+		assign := &model.UserRoleAssignment{
+			ID:       uuid.New(),
+			UserID:   user.ID,
+			Role:     "system_admin",
+			TenantID: nil,
+			Label:    "系统管理员 - " + displayName,
+		}
+		if err := tx.Create(assign).Error; err != nil {
+			return newServiceError(errcode.ErrDatabase, "数据库错误")
+		}
+		return nil
+	})
+	if err != nil {
+		if se, ok := err.(*ServiceError); ok {
+			return se
+		}
+		return newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
 //登录
 // ---------------------------------------------------------------------------
 

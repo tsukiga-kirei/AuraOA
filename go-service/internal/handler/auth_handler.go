@@ -58,6 +58,40 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	response.Success(c, resp)
 }
 
+// GetBootstrapStatus GET /api/auth/bootstrap-status — 是否需要进行首次初始化（无用户）。
+func (h *AuthHandler) GetBootstrapStatus(c *gin.Context) {
+	resp, err := h.authService.BootstrapStatus()
+	if err != nil {
+		httpStatus := mapServiceErrorToHTTP(err)
+		if svcErr, ok := err.(*service.ServiceError); ok {
+			response.Error(c, httpStatus, svcErr.Code, svcErr.Message)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "服务器内部错误")
+		return
+	}
+	response.Success(c, resp)
+}
+
+// BootstrapAdmin POST /api/auth/bootstrap — 创建首个系统管理员（仅零用户时）。
+func (h *AuthHandler) BootstrapAdmin(c *gin.Context) {
+	var req dto.BootstrapAdminRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	if err := h.authService.BootstrapAdmin(&req); err != nil {
+		httpStatus := mapServiceErrorToHTTP(err)
+		if svcErr, ok := err.(*service.ServiceError); ok {
+			response.Error(c, httpStatus, svcErr.Code, svcErr.Message)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "服务器内部错误")
+		return
+	}
+	response.Success(c, nil)
+}
+
 //注销处理 POST /api/auth/logout
 func (h *AuthHandler) Logout(c *gin.Context) {
 	//从上下文中获取jwt_claims（由JWT中间件设置）

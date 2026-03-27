@@ -41,6 +41,8 @@ func SetupRouter(
 
 	// Public routes (no auth required)
 	r.GET("/api/health", healthHandler.Health)
+	r.GET("/api/auth/bootstrap-status", authHandler.GetBootstrapStatus)
+	r.POST("/api/auth/bootstrap", authHandler.BootstrapAdmin)
 	r.POST("/api/auth/login", authHandler.Login)
 	r.POST("/api/auth/refresh", authHandler.Refresh)
 	r.GET("/api/tenants/list", tenantHandler.ListPublicTenants)

@@ -19,6 +19,13 @@ func NewUserRepo(db *gorm.DB) *UserRepo {
 	return &UserRepo{BaseRepo: NewBaseRepo(db)}
 }
 
+// CountUsers 返回 users 表行数（用于首次部署初始化判断）。
+func (r *UserRepo) CountUsers() (int64, error) {
+	var count int64
+	err := r.DB.Model(&model.User{}).Count(&count).Error
+	return count, err
+}
+
 //FindByUsername 通过用户名查找用户。
 func (r *UserRepo) FindByUsername(username string) (*model.User, error) {
 	var user model.User

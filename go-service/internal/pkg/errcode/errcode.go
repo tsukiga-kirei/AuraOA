@@ -33,6 +33,7 @@ const (
 	//409xx - 冲突
 	ErrResourceConflict     = 40900 // 资源冲突
 	ErrDuplicateProcessType = 40901 // 同一租户下流程类型重复
+	ErrBootstrapForbidden   = 40910 // 已有用户，禁止再次执行初始化创建管理员
 
 	//500xx - 服务器错误
 	ErrInternalServer = 50000 // 服务器内部错误
