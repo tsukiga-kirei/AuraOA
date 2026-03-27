@@ -1,6 +1,7 @@
 package service
 
 import (
+	"log"
 	"sort"
 	"time"
 
@@ -54,14 +55,21 @@ func tenantUUIDFromContext(c *gin.Context) (uuid.UUID, error) {
 }
 
 // BuildOverview 构建当前租户仪表盘数据；tenant_admin 额外填充管理类字段。
-func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole string) (*dto.DashboardOverviewResponse, error) {
+// business 身份下审核/归档/趋势/动态仅统计当前登录用户本人数据；tenant_admin 为租户级汇总。
+func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole string, viewerUserID uuid.UUID, viewerUsername string) (*dto.DashboardOverviewResponse, error) {
 	if _, err := tenantUUIDFromContext(c); err != nil {
 		return nil, err
 	}
 
+	var userScope *uuid.UUID
+	if activeRole == "business" {
+		u := viewerUserID
+		userScope = &u
+	}
+
 	out := &dto.DashboardOverviewResponse{}
 
-	stats, err := s.auditLogRepo.CountStats(c)
+	stats, err := s.auditLogRepo.CountStats(c, userScope)
 	if err != nil {
 		return nil, err
 	}
@@ -71,13 +79,13 @@ func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole stri
 	out.AuditSummary.Review = stats.ReviewCount
 	out.AuditSummary.PendingAI = stats.PendingAI
 
-	archived, err := s.archiveLogRepo.CountCompletedArchiveLogs(c)
+	archived, err := s.archiveLogRepo.CountCompletedArchiveLogs(c, userScope)
 	if err != nil {
 		return nil, err
 	}
 	out.AuditSummary.Archived = archived
 
-	weekRows, err := s.auditLogRepo.DashboardWeeklyCompletedTrend(c, 7)
+	weekRows, err := s.auditLogRepo.DashboardWeeklyCompletedTrend(c, 7, userScope)
 	if err != nil {
 		return nil, err
 	}
@@ -86,17 +94,20 @@ func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole stri
 		out.WeeklyTrend = append(out.WeeklyTrend, dto.DashboardDayCount{Date: row.Date, Count: row.Count})
 	}
 
+	// OA 待办失败时仍返回其余仪表盘数据，避免整页失败导致前端重置布局
 	oaStats, err := s.auditExecuteSvc.GetStats(c)
 	if err != nil {
-		return nil, err
-	}
-	out.PendingOACount = oaStats["pending_ai_count"]
-
-	if err := s.fillRecentActivity(c, out); err != nil {
-		return nil, err
+		log.Printf("dashboard overview: GetStats skipped (pending_oa_count=0): %v", err)
+		out.PendingOACount = 0
+	} else {
+		out.PendingOACount = oaStats["pending_ai_count"]
 	}
 
-	archRows, err := s.archiveLogRepo.DashboardRecentArchiveLogs(c, 6)
+	if err := s.fillRecentActivity(c, out, userScope, viewerUsername); err != nil {
+		return nil, err
+	}
+
+	archRows, err := s.archiveLogRepo.DashboardRecentArchiveLogs(c, 6, userScope)
 	if err != nil {
 		return nil, err
 	}
@@ -376,8 +387,8 @@ type activitySort struct {
 	dto.DashboardActivityItem
 }
 
-func (s *DashboardOverviewService) fillRecentActivity(c *gin.Context, out *dto.DashboardOverviewResponse) error {
-	audits, err := s.auditLogRepo.DashboardRecentAudits(c, 8)
+func (s *DashboardOverviewService) fillRecentActivity(c *gin.Context, out *dto.DashboardOverviewResponse, forUserID *uuid.UUID, viewerUsername string) error {
+	audits, err := s.auditLogRepo.DashboardRecentAudits(c, 8, forUserID)
 	if err != nil {
 		return err
 	}
@@ -385,11 +396,16 @@ func (s *DashboardOverviewService) fillRecentActivity(c *gin.Context, out *dto.D
 	if err != nil {
 		return err
 	}
-	cronLogs, err := s.cronLogRepo.ListByTenant(tid, 8)
+	var cronLogs []model.CronLog
+	if forUserID != nil {
+		cronLogs, err = s.cronLogRepo.ListByTenantForDashboardMember(tid, *forUserID, viewerUsername, 8)
+	} else {
+		cronLogs, err = s.cronLogRepo.ListByTenant(tid, 8)
+	}
 	if err != nil {
 		return err
 	}
-	archives, err := s.archiveLogRepo.DashboardRecentArchiveLogs(c, 6)
+	archives, err := s.archiveLogRepo.DashboardRecentArchiveLogs(c, 6, forUserID)
 	if err != nil {
 		return err
 	}

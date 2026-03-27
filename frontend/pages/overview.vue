@@ -17,6 +17,7 @@ import { message } from 'ant-design-vue'
 import { OVERVIEW_WIDGETS, OVERVIEW_WIDGET_ID_SET } from '~/constants/overviewWidgets'
 import { useI18n } from '~/composables/useI18n'
 import type { OverviewWidgetId } from '~/constants/overviewWidgets'
+import type { PermissionGroup } from '~/types/auth'
 import type { DashboardOverview, DashboardActivityItem, PlatformDashboardOverview } from '~/types/dashboard-overview'
 import type { CronTask } from '~/types/cron'
 import type { DashboardPref } from '~/types/user-config'
@@ -31,7 +32,7 @@ const EMPTY_OVERVIEW: DashboardOverview = {
   archive_recent: [],
 }
 
-const { activeRole, currentUser } = useAuth()
+const { effectiveActiveRoleForApi, currentUser } = useAuth()
 const { t, locale } = useI18n()
 const { fetchDashboardOverview, fetchPlatformDashboardOverview } = useDashboardOverviewApi()
 const { getDashboardPrefs, updateDashboardPrefs } = useSettingsApi()
@@ -42,7 +43,8 @@ const platformOverview = ref<PlatformDashboardOverview | null>(null)
 const overviewLoading = ref(false)
 const cronTasksList = ref<CronTask[]>([])
 
-const isPlatformAdmin = computed(() => activeRole.value?.role === 'system_admin')
+// 必须与当前 access token 一致，否则会错调 /api/admin/dashboard-overview 而看到全平台数据
+const isPlatformAdmin = computed(() => effectiveActiveRoleForApi.value === 'system_admin')
 
 function mergePlatformToDash(p: PlatformDashboardOverview): DashboardOverview {
   return {
@@ -75,9 +77,9 @@ const dash = computed(() => {
 })
 
 const availableWidgets = computed(() => {
-  const role = activeRole.value?.role
+  const role = effectiveActiveRoleForApi.value
   if (!role) return []
-  return OVERVIEW_WIDGETS.filter(w => w.requiredPermissions.includes(role))
+  return OVERVIEW_WIDGETS.filter(w => w.requiredPermissions.includes(role as PermissionGroup))
 })
 
 const defaultPrefs = computed(() =>
@@ -94,33 +96,57 @@ function applyDashboardPrefs(prefs: DashboardPref) {
   widgetSizes.value = { ...(prefs.widget_sizes as Partial<Record<OverviewWidgetId, 'sm' | 'md' | 'lg'>> || {}) }
 }
 
+const EMPTY_DASH_PREFS: DashboardPref = { enabled_widgets: [], widget_sizes: {} }
+
 async function loadOverviewPage() {
-  if (!activeRole.value?.role) return
+  const role = effectiveActiveRoleForApi.value
+  if (!role) return
+
+  // 先按当前角色清空「另一套」数据，避免切换后首屏仍短暂沿用上一身份的数据或失败路径下长期残留
+  if (role === 'system_admin') {
+    overview.value = null
+    cronTasksList.value = []
+  }
+  else {
+    platformOverview.value = null
+  }
+
   overviewLoading.value = true
   try {
-    const prefs = await getDashboardPrefs().catch(() => ({ enabled_widgets: [] as string[], widget_sizes: {} }))
-    if (isPlatformAdmin.value) {
+    const prefs = await getDashboardPrefs().catch(() => ({ ...EMPTY_DASH_PREFS, enabled_widgets: [] as string[] }))
+    // 先应用布局，再拉取数据；内容接口失败时不应清空用户已保存的组件勾选
+    applyDashboardPrefs(prefs)
+
+    if (role === 'system_admin') {
       platformOverview.value = await fetchPlatformDashboardOverview()
-      overview.value = null
-      cronTasksList.value = []
     }
     else {
-      platformOverview.value = null
       overview.value = await fetchDashboardOverview()
-      cronTasksList.value = await listTasks()
+      try {
+        cronTasksList.value = await listTasks()
+      }
+      catch {
+        cronTasksList.value = []
+      }
     }
-    applyDashboardPrefs(prefs)
   }
   catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     message.error(msg || t('overview.loadFailed'))
+    if (role === 'system_admin') {
+      platformOverview.value = null
+    }
+    else {
+      overview.value = null
+      cronTasksList.value = []
+    }
   }
   finally {
     overviewLoading.value = false
   }
 }
 
-watch(activeRole, () => { void loadOverviewPage() }, { immediate: true, deep: true })
+watch(effectiveActiveRoleForApi, () => { void loadOverviewPage() }, { immediate: true })
 
 const isEnabled = (id: OverviewWidgetId) => {
   return enabledWidgets.value.includes(id) && availableWidgets.value.some(w => w.id === id)

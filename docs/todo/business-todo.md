@@ -86,7 +86,7 @@
 ### 当前状态
 
 - ✅ 前端 `overview.vue`（原业务文档中的「仪表盘」页）UI 与 **`GET /api/tenant/settings/dashboard-overview`**（租户上下文）对接；**系统管理员**当前身份为 `system_admin` 时改调 **`GET /api/admin/dashboard-overview`** 全平台聚合（不依赖 `tenant_id`），已移除仪表盘相关的 `useMockData` 聚合数据
-- ✅ 仪表板偏好 **`/api/tenant/settings/dashboard-prefs`** 读写已使用真实接口保存（系统管理员无租户时拉取失败则回退默认布局）
+- ✅ 仪表板偏好 **`/api/tenant/settings/dashboard-prefs`** 读写已使用真实接口保存；**系统管理员**（`active_role=system_admin`）使用平台维度（`tenant_id IS NULL`，`pref_scope=platform`，迁移 **000020**）；**同一租户同一用户**在 **business** 与 **tenant_admin** 下各存一条布局（`pref_scope`，迁移 **000021**），避免两角互相覆盖
 - ✅ **已接入真实数据的组件**：`audit_summary`、`pending_tasks`（OA 待办未完成 AI 数）、`weekly_trend`、`cron_tasks`（任务实例列表）、`archive_review`、`recent_activity`、`dept_distribution`、`ai_performance`、`tenant_usage`（Token/活跃成员；存储暂无业务字段）、`user_activity`；**系统管理员专属**：`platform_tenant_stats`、`platform_tenant_ranking`，以及全库维度的审核趋势/动态/归档/AI 等（与租户卡片共用 id，数据源不同）
 - ❌ **已从仪表盘移除、仍依赖监控/多租户聚合能力的组件**（仅保留在待办，不使用 Mock）：`system_health`、`tenant_overview`、`api_metrics`、`monitor_metrics`、`monitor_alerts`
 
