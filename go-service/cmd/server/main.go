@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
+	"oa-smart-audit/go-service/internal/dbmigrate"
 	"oa-smart-audit/go-service/internal/handler"
 	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/repository"
@@ -38,7 +40,26 @@ func main() {
 	}
 	defer logger.Sync()
 
-	// 3. Connect PostgreSQL via GORM
+	// 3. PostgreSQL schema migrations (schema_migrations)，再建立 GORM 连接
+	if viper.GetBool("migrations.enabled") {
+		dir := resolveMigrationsPath(viper.GetString("migrations.path"))
+		if dir == "" {
+			logger.Fatal("migrations.enabled is true but migrations.path is empty and no default db/migrations directory was found")
+		}
+		if err := dbmigrate.Up(
+			dir,
+			viper.GetString("database.host"),
+			viper.GetInt("database.port"),
+			viper.GetString("database.user"),
+			viper.GetString("database.password"),
+			viper.GetString("database.dbname"),
+			viper.GetString("database.sslmode"),
+		); err != nil {
+			logger.Fatal("Database migrations failed", zap.String("dir", dir), zap.Error(err))
+		}
+		logger.Info("Database migrations applied", zap.String("dir", dir))
+	}
+
 	db, err := initDatabase()
 	if err != nil {
 		logger.Fatal("Failed to connect to database", zap.Error(err))
@@ -191,7 +212,41 @@ func loadConfig() error {
 	viper.AddConfigPath("../../")
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.SetDefault("migrations.enabled", true)
+	viper.SetDefault("migrations.path", "")
 	return viper.ReadInConfig()
+}
+
+// resolveMigrationsPath 返回迁移 SQL 所在目录；优先配置/环境变量，否则在当前工作目录下尝试常见相对路径（便于本地 go run）。
+func resolveMigrationsPath(configured string) string {
+	candidates := []string{}
+	if configured != "" {
+		candidates = append(candidates, configured)
+	}
+	if env := os.Getenv("MIGRATIONS_PATH"); env != "" {
+		candidates = append(candidates, env)
+	}
+	candidates = append(candidates, "db/migrations", "../db/migrations", "../../db/migrations")
+
+	wd, err := os.Getwd()
+	if err != nil {
+		wd = "."
+	}
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		p := c
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(wd, c)
+		}
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			if _, err := os.Stat(filepath.Join(p, "000001_init_extensions.up.sql")); err == nil {
+				return p
+			}
+		}
+	}
+	return ""
 }
 
 func initDatabase() (*gorm.DB, error) {

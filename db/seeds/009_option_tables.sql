@@ -1,7 +1,0 @@
--- 009_option_tables.sql
--- 选项枚举表数据已迁移至 migrations 中随建表一同初始化：
---   oa_type_options        → 000005_system_options_oa_ai.up.sql
---   db_driver_options      → 000005_system_options_oa_ai.up.sql
---   ai_deploy_type_options → 000005_system_options_oa_ai.up.sql
---   ai_provider_options    → 000005_system_options_oa_ai.up.sql
--- 此文件保留为占位，无需执行任何语句。

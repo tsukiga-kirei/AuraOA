@@ -47,7 +47,7 @@ interface OADbConnection {
   id: string; name: string; oa_type: string; oa_type_label: string;
   driver: string; host: string; port: number; database_name: string;
   username: string; pool_size: number; connection_timeout: number; test_on_borrow: boolean;
-  status: string; last_sync: string; sync_interval: number; enabled: boolean;
+  status: string; sync_interval: number; enabled: boolean;
   description: string; created_at: string; updated_at: string;
 }
 interface AIModel {
@@ -219,7 +219,6 @@ const testOADbConnection = async (id: string) => {
     const result = await apiTestOAConnection(id)
     if (result.success) {
       conn.status = 'connected'
-      conn.last_sync = new Date().toISOString()
       message.success(t('admin.settings.connSuccess', conn.name))
     } else {
       conn.status = 'disconnected'
@@ -567,10 +566,6 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             <div class="oa-meta-item">
               <span class="oa-meta-label">{{ t('admin.settings.syncInterval') }}</span>
               <span class="oa-meta-value">{{ conn.sync_interval }}s</span>
-            </div>
-            <div v-if="conn.last_sync" class="oa-meta-item">
-              <span class="oa-meta-label">{{ t('admin.settings.lastSync') }}</span>
-              <span class="oa-meta-value">{{ conn.last_sync }}</span>
             </div>
           </div>
 

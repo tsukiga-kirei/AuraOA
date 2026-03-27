@@ -179,10 +179,6 @@ func (s *OAConnectionService) Delete(id uuid.UUID) error {
 }
 
 func toOAConnectionResponse(c *model.OADatabaseConnection) dto.OAConnectionResponse {
-	lastSync := ""
-	if c.LastSync != nil {
-		lastSync = c.LastSync.Format("2006-01-02T15:04:05Z07:00")
-	}
 	return dto.OAConnectionResponse{
 		ID:                c.ID.String(),
 		Name:              c.Name,
@@ -197,7 +193,6 @@ func toOAConnectionResponse(c *model.OADatabaseConnection) dto.OAConnectionRespo
 		ConnectionTimeout: c.ConnectionTimeout,
 		TestOnBorrow:      c.TestOnBorrow,
 		Status:            c.Status,
-		LastSync:          lastSync,
 		SyncInterval:      c.SyncInterval,
 		Enabled:           c.Enabled,
 		Description:       c.Description,

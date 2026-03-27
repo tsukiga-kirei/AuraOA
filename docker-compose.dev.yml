@@ -6,8 +6,8 @@ version: "3.9"
 services:
   go-service:
     build:
-      context: ./go-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: go-service/Dockerfile
     ports:
       - "8080:8080"
     depends_on:
@@ -22,6 +22,7 @@ services:
       - DATABASE_USER=oa_admin
       - DATABASE_PASSWORD=changeme_pg_password
       - DATABASE_SSLMODE=disable
+      - MIGRATIONS_PATH=/migrations
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=
@@ -40,8 +41,6 @@ services:
       - POSTGRES_PASSWORD=changeme_pg_password
     volumes:
       - pg_data:/var/lib/postgresql/data
-      - ./db/migrations:/docker-entrypoint-initdb.d/migrations
-      - ./db/seeds:/docker-entrypoint-initdb.d/seeds
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U oa_admin"]
       interval: 5s
