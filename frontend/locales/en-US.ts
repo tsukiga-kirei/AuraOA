@@ -1117,7 +1117,6 @@ export default {
     'admin.settings.maintenance': 'Maintenance',
     'admin.settings.adapterVersion': 'Adapter Version',
     'admin.settings.syncInterval': 'Sync Interval',
-    'admin.settings.lastSync': 'Last Sync',
     'admin.settings.testConnection': 'Test Connection',
     'admin.settings.testingConn': 'Testing...',
     'admin.settings.connSuccess': '{0} connection test successful',

@@ -1,4 +1,0 @@
--- 008_system_config.sql
--- 系统全局配置数据已迁移至 migrations 中随建表一同初始化：
---   system_configs → 000004_system_configs.up.sql
--- 此文件保留为占位，无需执行任何语句。

@@ -22,7 +22,6 @@ type OADatabaseConnection struct {
 	ConnectionTimeout int        `gorm:"not null;default:30" json:"connection_timeout"`
 	TestOnBorrow      bool       `gorm:"not null;default:true" json:"test_on_borrow"`
 	Status            string     `gorm:"size:20;not null;default:disconnected" json:"status"`
-	LastSync          *time.Time `json:"last_sync"`
 	SyncInterval      int        `gorm:"not null;default:30" json:"sync_interval"`
 	Enabled           bool       `gorm:"not null;default:true" json:"enabled"`
 	Description       string     `gorm:"type:text;default:''" json:"description"`

@@ -15,8 +15,8 @@ services:
 
   go-service:
     build:
-      context: ./go-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: go-service/Dockerfile
     ports:
       - "8080:8080"
     depends_on:
@@ -35,6 +35,7 @@ services:
       - DATABASE_USER=${POSTGRES_USER}
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD}
       - DATABASE_SSLMODE=disable
+      - MIGRATIONS_PATH=/migrations
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
@@ -72,7 +73,6 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - pg_data:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-oa_admin}"]
       interval: 5s

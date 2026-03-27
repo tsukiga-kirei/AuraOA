@@ -81,7 +81,6 @@ type OAConnectionResponse struct {
 	ConnectionTimeout int    `json:"connection_timeout"`
 	TestOnBorrow      bool   `json:"test_on_borrow"`
 	Status            string `json:"status"`
-	LastSync          string `json:"last_sync"`
 	SyncInterval      int    `json:"sync_interval"`
 	Enabled           bool   `json:"enabled"`
 	Description       string `json:"description"`

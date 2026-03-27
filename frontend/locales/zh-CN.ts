@@ -1119,7 +1119,6 @@ export default {
     'admin.settings.maintenance': '维护中',
     'admin.settings.adapterVersion': '适配器版本',
     'admin.settings.syncInterval': '同步间隔',
-    'admin.settings.lastSync': '最后同步',
     'admin.settings.testConnection': '测试连接',
     'admin.settings.testingConn': '测试中...',
     'admin.settings.connSuccess': '{0} 连接测试成功',

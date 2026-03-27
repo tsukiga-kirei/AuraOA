@@ -1,0 +1,26 @@
+# go-service 镜像构建 context 为仓库根目录时，排除无关大目录，避免把整仓（尤其 frontend node_modules）传给 Docker。
+# 见 go-service/Dockerfile：仅需 go-service/ 与 db/migrations/
+
+.git
+.gitignore
+**/.DS_Store
+
+frontend
+ai-service
+docs
+.kiro
+.cursor
+
+.env
+**/.env
+**/.env.*
+!.env.example
+
+**/node_modules
+**/.nuxt
+**/.output
+**/.vite
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/*.pyc

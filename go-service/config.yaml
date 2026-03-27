@@ -11,6 +11,12 @@ database:
   max_open_conns: 50
   max_idle_conns: 10
 
+# 启动时执行 db/migrations 下 SQL，版本记录在表 schema_migrations（golang-migrate）
+# path 留空时按工作目录尝试 db/migrations、../db/migrations、../../db/migrations；Docker 环境变量 MIGRATIONS_PATH=/migrations
+migrations:
+  enabled: true
+  path: ""
+
 redis:
   host: localhost
   port: 6379
