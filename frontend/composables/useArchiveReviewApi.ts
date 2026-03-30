@@ -32,8 +32,25 @@ export const useArchiveReviewApi = () => {
     return await authFetch<ArchiveReviewStats>('/api/archive/stats')
   }
 
-  async function listProcesses(): Promise<ArchiveProcessListResponse> {
-    return await authFetch<ArchiveProcessListResponse>('/api/archive/processes')
+  async function listProcesses(params?: {
+    keyword?: string
+    applicant?: string
+    process_type?: string
+    department?: string
+    audit_status?: string
+    page?: number
+    page_size?: number
+  }): Promise<ArchiveProcessListResponse> {
+    const query = new URLSearchParams()
+    if (params?.keyword) query.set('keyword', params.keyword)
+    if (params?.applicant) query.set('applicant', params.applicant)
+    if (params?.process_type) query.set('process_type', params.process_type)
+    if (params?.department) query.set('department', params.department)
+    if (params?.audit_status) query.set('audit_status', params.audit_status)
+    if (params?.page) query.set('page', String(params.page))
+    if (params?.page_size) query.set('page_size', String(params.page_size))
+    const qs = query.toString()
+    return await authFetch<ArchiveProcessListResponse>(qs ? `/api/archive/processes?${qs}` : '/api/archive/processes')
   }
 
   async function waitArchiveJob(

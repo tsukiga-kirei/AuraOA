@@ -1736,6 +1736,7 @@ export default {
 
     //=====存档页面新键=====
     'archive.statTotal': '归档总数',
+    'archive.statUnaudited': '归档未审核',
     'archive.statCompliant': '合规',
     'archive.statPartial': '部分合规',
     'archive.statNonCompliant': '不合规',

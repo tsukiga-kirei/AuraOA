@@ -17,6 +17,7 @@ type archiveExtractionPayload struct {
 	FlowAudit         archiveFlowAuditPayload    `json:"flow_audit"`
 	FieldAudit        []archiveFieldAuditPayload `json:"field_audit"`
 	RuleAudit         []archiveRuleAuditPayload  `json:"rule_audit"`
+	RuleResults       []archiveRuleResultPayload `json:"rule_results"` // dashboard 格式兼容
 	RiskPoints        []string                   `json:"risk_points"`
 	Suggestions       []string                   `json:"suggestions"`
 	AISummary         string                     `json:"ai_summary"`
@@ -48,6 +49,13 @@ type archiveRuleAuditPayload struct {
 	RuleName  string `json:"rule_name"`
 	Passed    bool   `json:"passed"`
 	Reasoning string `json:"reasoning"`
+}
+
+// archiveRuleResultPayload 兼容 dashboard 风格的 rule_results 格式
+type archiveRuleResultPayload struct {
+	RuleContent string `json:"rule_content"`
+	Passed      bool   `json:"passed"`
+	Reason      string `json:"reason"`
 }
 
 // ParseArchiveReviewResult 解析归档复盘提取结果。
@@ -102,6 +110,17 @@ func ParseArchiveReviewResult(raw string) (*model.ArchiveResultJSON, error) {
 			Passed:    item.Passed,
 			Reasoning: item.Reasoning,
 		})
+	}
+	// 兼容 dashboard 风格 rule_results：当 rule_audit 为空且 rule_results 非空时回退
+	if len(result.RuleAudit) == 0 && len(payload.RuleResults) > 0 {
+		for _, item := range payload.RuleResults {
+			result.RuleAudit = append(result.RuleAudit, model.ArchiveRuleAuditJSON{
+				RuleID:    item.RuleContent,
+				RuleName:  item.RuleContent,
+				Passed:    item.Passed,
+				Reasoning: item.Reason,
+			})
+		}
 	}
 
 	return result, nil

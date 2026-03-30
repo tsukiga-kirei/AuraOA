@@ -167,6 +167,95 @@ func (s *ArchiveReviewService) ListProcesses(c *gin.Context) (*dto.ArchiveProces
 	}, nil
 }
 
+// ListProcessesPaged 分页查询已归档流程（在内存获取全量后做筛选+分页）。
+func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.ArchiveListParams) (*dto.ArchiveProcessListResponse, error) {
+	full, err := s.ListProcesses(c)
+	if err != nil {
+		return nil, err
+	}
+
+	// 筛选
+	filtered := make([]map[string]interface{}, 0, len(full.Items))
+	for _, item := range full.Items {
+		// 跳过 failed 状态
+		if status, _ := item["archive_status"].(string); status == model.AuditStatusFailed {
+			continue
+		}
+
+		if params.Keyword != "" {
+			kw := strings.ToLower(params.Keyword)
+			title, _ := item["title"].(string)
+			pid, _ := item["process_id"].(string)
+			if !strings.Contains(strings.ToLower(title), kw) && !strings.Contains(strings.ToLower(pid), kw) {
+				continue
+			}
+		}
+		if params.Applicant != "" {
+			applicant, _ := item["applicant"].(string)
+			if !strings.Contains(strings.ToLower(applicant), strings.ToLower(params.Applicant)) {
+				continue
+			}
+		}
+		if params.ProcessType != "" {
+			pt, _ := item["process_type"].(string)
+			if !strings.EqualFold(pt, params.ProcessType) {
+				continue
+			}
+		}
+		if params.Department != "" {
+			dept, _ := item["department"].(string)
+			if dept != params.Department {
+				continue
+			}
+		}
+		if params.AuditStatus != "" {
+			result, _ := item["archive_result"].(map[string]interface{})
+			switch params.AuditStatus {
+			case "unaudited":
+				if result != nil {
+					if _, ok := result["overall_compliance"]; ok {
+						continue
+					}
+				}
+			default:
+				if result == nil {
+					continue
+				}
+				compliance, _ := result["overall_compliance"].(string)
+				if compliance != params.AuditStatus {
+					continue
+				}
+			}
+		}
+		filtered = append(filtered, item)
+	}
+
+	total := len(filtered)
+	page := params.Page
+	pageSize := params.PageSize
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+
+	return &dto.ArchiveProcessListResponse{
+		Items:    filtered[start:end],
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
 func (s *ArchiveReviewService) GetStats(c *gin.Context) (*dto.ArchiveReviewStats, error) {
 	resp, err := s.ListProcesses(c)
 	if err != nil {

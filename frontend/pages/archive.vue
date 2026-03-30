@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marked } from 'marked'
 import {
   SearchOutlined,
   FilterOutlined,
@@ -91,20 +92,54 @@ const filterProcessNames = computed(() => {
   return names
 })
 const filterDepartment = ref<string | undefined>(undefined)
-const filterAuditStatus = ref<string | undefined>(undefined)
+const filterAuditStatus = ref<string | undefined>('unaudited')
 
 const departmentOptions = computed(() => [...new Set(processList.value.map(p => p.department).filter(Boolean))])
 
+const renderMarkdown = (md: string | undefined | null): string => {
+  if (!md) return ''
+  try {
+    return marked.parse(md, { breaks: true, gfm: true }) as string
+  } catch {
+    return md
+  }
+}
+
+const formatDuration = (ms: number | undefined | null): string => {
+  if (!ms || ms <= 0) return '0ms'
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+const formatDate = (dateStr: string | undefined | null): string => {
+  if (!dateStr) return ''
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return dateStr
+    return d.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return dateStr
+  }
+}
+
 const hasActiveFilters = computed(() =>
-  !!searchText.value || !!searchApplicant.value || filterProcessType.value.length > 0 || !!filterDepartment.value || !!filterAuditStatus.value
+  !!searchText.value || !!searchApplicant.value || filterProcessType.value.length > 0 || !!filterDepartment.value
 )
+
+const computedListTitle = computed(() => {
+  if (!filterAuditStatus.value) return t('archive.archivedProcesses')
+  if (filterAuditStatus.value === 'unaudited') return t('archive.statUnaudited')
+  if (filterAuditStatus.value === 'compliant') return t('archive.statCompliant')
+  if (filterAuditStatus.value === 'partially_compliant') return t('archive.statPartial')
+  if (filterAuditStatus.value === 'non_compliant') return t('archive.statNonCompliant')
+  return t('archive.archivedProcesses')
+})
 
 const clearFilters = () => {
   searchText.value = ''
   searchApplicant.value = ''
   filterProcessType.value = []
   filterDepartment.value = undefined
-  filterAuditStatus.value = undefined
 }
 
 const isResultAsyncRunning = (result: ArchiveReviewResult | null | undefined) =>
@@ -199,36 +234,30 @@ const updateLiveResult = (processId: string, result: Partial<ArchiveReviewResult
   }
 }
 
-const filteredList = computed(() => {
-  let list = [...processList.value]
-  if (filterProcessNames.value.length > 0) {
-    list = list.filter(p => filterProcessNames.value.includes(p.process_type))
-  }
-  if (filterDepartment.value) {
-    list = list.filter(p => p.department === filterDepartment.value)
-  }
-  if (searchText.value) {
-    const q = searchText.value.toLowerCase()
-    list = list.filter(p =>
-      p.title.toLowerCase().includes(q) ||
-      p.process_id.toLowerCase().includes(q)
-    )
-  }
-  if (searchApplicant.value) {
-    const q2 = searchApplicant.value.toLowerCase()
-    list = list.filter(p => p.applicant.toLowerCase().includes(q2))
-  }
-  if (filterAuditStatus.value) {
-    if (filterAuditStatus.value === 'unaudited') {
-      list = list.filter(p => !p.archive_result?.overall_compliance)
-    } else {
-      list = list.filter(p => p.archive_result?.overall_compliance === filterAuditStatus.value)
-    }
-  }
-  return list
-})
+// ===== 后端分页 =====
+const listPage = ref(1)
+const listPageSize = ref(20)
+const listTotal = ref(0)
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
-const { paged: pagedList, current: listPage, pageSize: listPageSize, total: listTotal, onChange: onListPageChange } = usePagination(filteredList, 10)
+const onListPageChange = (page: number, size: number) => {
+  listPage.value = page
+  listPageSize.value = size
+  loadProcesses()
+}
+
+// 搜索条件变化时重新拉取第一页
+const triggerSearch = () => {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    listPage.value = 1
+    loadProcesses()
+  }, 400)
+}
+
+watch([searchText, searchApplicant, filterProcessNames, filterDepartment, filterAuditStatus], () => {
+  triggerSearch()
+})
 
 //=====选择=====
 const toggleSelectProcess = (id: string) => {
@@ -240,9 +269,9 @@ const toggleSelectProcess = (id: string) => {
 }
 
 const selectableIdsComputed = computed(() =>
-  filteredList.value
-    .filter(proc => !proc.archive_status || !asyncArchiveStatuses.includes(proc.archive_status))
-    .map(proc => proc.process_id),
+  processList.value
+    .filter((proc: ArchiveProcessItem) => !proc.archive_status || !asyncArchiveStatuses.includes(proc.archive_status))
+    .map((proc: ArchiveProcessItem) => proc.process_id),
 )
 
 const toggleSelectAll = () => {
@@ -532,8 +561,18 @@ const loadProcessTypes = async () => {
 const loadProcesses = async () => {
   listLoading.value = true
   try {
-    const response = await fetchArchiveProcesses()
+    const pt = filterProcessNames.value.length === 1 ? filterProcessNames.value[0] : ''
+    const response = await fetchArchiveProcesses({
+      keyword: searchText.value || undefined,
+      applicant: searchApplicant.value || undefined,
+      process_type: pt || undefined,
+      department: filterDepartment.value || undefined,
+      audit_status: filterAuditStatus.value || undefined,
+      page: listPage.value,
+      page_size: listPageSize.value,
+    })
     processList.value = Array.isArray(response) ? response : (response?.items ?? [])
+    listTotal.value = (response as any)?.total ?? processList.value.length
     selectedProcessIds.value = selectedProcessIds.value.filter(id => selectableIdsComputed.value.includes(id))
 
     if (!selectedProcess.value) return
@@ -567,7 +606,7 @@ const complianceConfig = computed((): Record<string, { color: string; bg: string
   partially_compliant: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: t('archive.partiallyCompliant') },
 }))
 
-const auditedCount = computed(() => filteredList.value.filter(p => !!p.archive_result?.overall_compliance).length)
+const auditedCount = computed(() => processList.value.filter(p => !!p.archive_result?.overall_compliance).length)
 
 onMounted(async () => {
   await Promise.all([loadProcessTypes(), loadStats(), loadProcesses()])
@@ -605,11 +644,11 @@ onUnmounted(() => {
 
     <!--统计行-->
     <div class="stats-row">
-      <div class="stat-card stat-card--primary" :class="{ 'stat-card--selected': !filterAuditStatus }" @click="filterAuditStatus = undefined">
+      <div class="stat-card stat-card--primary" :class="{ 'stat-card--selected': filterAuditStatus === 'unaudited' }" @click="filterAuditStatus = filterAuditStatus === 'unaudited' ? undefined : 'unaudited'">
         <div class="stat-card-icon"><FileProtectOutlined /></div>
         <div class="stat-card-info">
-          <span class="stat-card-value">{{ filteredList.length }}</span>
-          <span class="stat-card-label">{{ t('archive.statTotal') }}</span>
+          <span class="stat-card-value">{{ stats.unaudited_count }}</span>
+          <span class="stat-card-label">{{ t('archive.statUnaudited') }}</span>
         </div>
       </div>
       <div class="stat-card stat-card--success" :class="{ 'stat-card--selected': filterAuditStatus === 'compliant' }" @click="filterAuditStatus = filterAuditStatus === 'compliant' ? undefined : 'compliant'">
@@ -643,8 +682,8 @@ onUnmounted(() => {
           <div class="panel-header-row">
             <h3 class="panel-title">
               <FireOutlined style="color: var(--color-primary);" />
-              {{ t('archive.archivedProcesses') }}
-              <a-badge :count="filteredList.length" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
+              {{ computedListTitle }}
+              <a-badge :count="listTotal" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
             </h3>
             <a-button size="small" @click="showFilters = !showFilters" :class="{ 'filter-toggle-btn--active': hasActiveFilters }">
               <FilterOutlined /> {{ t('archive.filter') }}
@@ -674,12 +713,7 @@ onUnmounted(() => {
               <a-select v-model:value="filterDepartment" :placeholder="t('archive.department')" allow-clear style="flex: 1; min-width: 120px;">
                 <a-select-option v-for="d in departmentOptions" :key="d" :value="d">{{ d }}</a-select-option>
               </a-select>
-              <a-select v-model:value="filterAuditStatus" :placeholder="t('archive.filterStatus')" allow-clear style="flex: 1; min-width: 130px;">
-                <a-select-option value="unaudited">{{ t('archive.statusUnaudited') }}</a-select-option>
-                <a-select-option value="compliant">{{ t('archive.compliant') }}</a-select-option>
-                <a-select-option value="partially_compliant">{{ t('archive.partiallyCompliant') }}</a-select-option>
-                <a-select-option value="non_compliant">{{ t('archive.nonCompliant') }}</a-select-option>
-              </a-select>
+
               <a-button size="small" @click="clearFilters">{{ t('archive.reset') }}</a-button>
             </div>
           </transition>
@@ -697,7 +731,7 @@ onUnmounted(() => {
               <span v-if="batchAuditing" class="batch-progress-hint">
                 {{ t('archive.auditedProgress', `${batchAuditDone}/${batchAuditTotal}`) }}
               </span>
-              <span v-else-if="auditedCount > 0" class="panel-header-hint">{{ t('archive.reviewed') }} {{ auditedCount }}/{{ filteredList.length }}</span>
+              <span v-else-if="auditedCount > 0" class="panel-header-hint">{{ t('archive.reviewed') }} {{ auditedCount }}/{{ listTotal }}</span>
             </div>
             <a-button v-if="selectedProcessIds.length > 0" type="primary" size="small" :disabled="batchAuditing" @click="handleBatchAudit" class="batch-audit-btn">
               <LoadingOutlined v-if="batchAuditing" />
@@ -709,12 +743,12 @@ onUnmounted(() => {
 
         <!--进程列表-->
         <div class="process-list">
-          <div v-if="listLoading" class="list-empty">
+          <div v-if="listLoading" class="list-empty" style="display: flex; justify-content: center; align-items: center; padding: 40px 0;">
             <a-spin />
           </div>
           <template v-else>
             <div
-              v-for="proc in pagedList"
+              v-for="proc in processList"
               :key="proc.process_id"
               class="process-item"
               :class="{
@@ -741,7 +775,7 @@ onUnmounted(() => {
                   >
                     <SafetyCertificateOutlined />
                     {{ complianceConfig[proc.archive_result.overall_compliance]?.label }}
-                    {{ proc.archive_result.overall_score }}{{ t('archive.score') }}
+                    {{ proc.archive_result.overall_score }}{{ t('archive.score') }} · {{ formatDuration(proc.archive_result.duration_ms) }}
                   </span>
                 </div>
                 <div class="process-item-meta">
@@ -753,7 +787,7 @@ onUnmounted(() => {
                 </div>
                 <div class="process-item-footer">
                   <span class="process-type-tag">{{ proc.process_type }}</span>
-                  <span v-if="processAuditLoading[proc.process_id]" class="process-auditing">
+                  <span v-if="processAuditLoading[proc.process_id]" class="process-auditing" style="display: inline-flex; align-items: center; gap: 4px;">
                     <LoadingOutlined style="font-size: 11px;" /> {{ t('archive.auditingItem') }}
                   </span>
                   <a-tooltip :title="t('archive.jumpOA')" :mouse-enter-delay="0.5">
@@ -764,7 +798,7 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-            <div v-if="filteredList.length === 0" class="list-empty">
+            <div v-if="processList.length === 0" class="list-empty">
               <a-empty :description="t('archive.noMatch')" />
             </div>
           </template>
@@ -824,7 +858,7 @@ onUnmounted(() => {
                   <a-button v-if="loading && currentResult?.id" danger @click="handleCancelAudit">
                     <CloseCircleOutlined /> {{ t('archive.cancelReview') }}
                   </a-button>
-                  <a-button type="primary" :loading="loading" @click="currentResult ? handleReAudit() : handleAudit()">
+                  <a-button type="primary" :loading="loading" @click="currentResult ? handleReAudit() : handleAudit()" style="display: inline-flex; align-items: center; gap: 6px;">
                     <template v-if="currentResult && !loading">
                       <ReloadOutlined /> {{ t('archive.reAudit') }}
                     </template>
@@ -858,11 +892,11 @@ onUnmounted(() => {
                   </div>
                   <div class="audit-phase-info">
                     <div class="audit-phase-title">{{ step.label }}</div>
-                    <div class="audit-phase-desc">{{ currentResult.trace_id || t('archive.aiAuditing') }}</div>
+                    <div class="audit-phase-desc">{{ t('archive.aiAuditing') }}</div>
                   </div>
                 </div>
-                <div v-if="currentResult.ai_reasoning" class="ai-summary">
-                  <pre>{{ currentResult.ai_reasoning }}</pre>
+                <div v-if="currentResult.ai_reasoning" class="ai-summary markdown-body">
+                  <div v-html="renderMarkdown(currentResult.ai_reasoning)" />
                 </div>
                 <div v-else class="audit-check-empty">
                   {{ t('archive.aiAuditing') }}
@@ -890,8 +924,7 @@ onUnmounted(() => {
                   </div>
                   <div class="compliance-banner-meta">
                     {{ t('archive.overallScore') }} {{ currentResult.overall_score }} {{ t('archive.score') }}
-                    · {{ t('archive.durationLabel') }} {{ currentResult.duration_ms }}ms
-                    · {{ currentResult.trace_id }}
+                    · {{ t('archive.durationLabel') }} {{ formatDuration(currentResult.duration_ms) }}
                   </div>
                 </div>
                 <div class="compliance-score" :style="{ color: complianceConfig[currentResult.overall_compliance ?? '']?.color }">
@@ -940,33 +973,47 @@ onUnmounted(() => {
               <div v-if="currentResult.overall_compliance !== 'compliant'" class="risk-suggestions-row">
                 <div class="risk-card">
                   <h4 class="section-title"><AlertOutlined style="color: var(--color-danger);" /> {{ t('archive.riskPoints') }}</h4>
-                  <div v-if="currentResult.flow_audit?.missing_nodes?.length ?? 0 > 0" class="risk-list">
+                  <div v-if="(currentResult.risk_points?.length ?? 0) > 0" class="risk-list">
+                    <div v-for="(rp, i) in currentResult.risk_points" :key="'rp-'+i" class="risk-item">
+                      <CloseCircleOutlined style="color: var(--color-danger); flex-shrink: 0;" />
+                      <span>{{ rp }}</span>
+                    </div>
+                  </div>
+                  <div v-else-if="currentResult.flow_audit?.missing_nodes?.length" class="risk-list">
                     <div v-for="node in currentResult.flow_audit?.missing_nodes" :key="node" class="risk-item">
                       <CloseCircleOutlined style="color: var(--color-danger); flex-shrink: 0;" />
                       <span>{{ t('archive.missingNode') }}: {{ node }}</span>
                     </div>
                   </div>
-                  <div class="risk-list">
+                  <div v-else class="risk-list">
                     <div v-for="(ra, i) in currentResult.rule_audit?.filter((r: ArchiveRuleAuditResult) => !r.passed) ?? []" :key="i" class="risk-item">
                       <CloseCircleOutlined style="color: var(--color-danger); flex-shrink: 0;" />
-                      <span>{{ ra.rule_name }}</span>
+                      <span>{{ ra.rule_name }}: {{ ra.reasoning }}</span>
                     </div>
                   </div>
-                  <div v-if="!currentResult.flow_audit?.missing_nodes?.length && !(currentResult.rule_audit?.filter((r: ArchiveRuleAuditResult) => !r.passed)?.length)" class="risk-empty">
+                  <div v-if="!currentResult.risk_points?.length && !currentResult.flow_audit?.missing_nodes?.length && !(currentResult.rule_audit?.filter((r: ArchiveRuleAuditResult) => !r.passed)?.length)" class="risk-empty">
                     {{ t('archive.noRiskPoints') }}
                   </div>
                 </div>
                 <div class="suggestion-card">
                   <h4 class="section-title"><BulbOutlined style="color: var(--color-warning);" /> {{ t('archive.suggestions') }}</h4>
                   <div class="suggestion-list">
-                    <div v-for="(fa, i) in currentResult.field_audit?.filter((f: ArchiveFieldAuditResult) => !f.passed) ?? []" :key="i" class="suggestion-item">
-                      <RightOutlined style="color: var(--color-warning); flex-shrink: 0;" />
-                      <span>{{ fa.reasoning }}</span>
-                    </div>
-                    <div v-if="!currentResult.field_audit?.filter((f: ArchiveFieldAuditResult) => !f.passed)?.length" class="suggestion-item">
-                      <RightOutlined style="color: var(--color-warning); flex-shrink: 0;" />
-                      <span>{{ t('archive.reviewSuggestion') }}</span>
-                    </div>
+                    <template v-if="(currentResult.suggestions?.length ?? 0) > 0">
+                      <div v-for="(sg, i) in currentResult.suggestions" :key="'sg-'+i" class="suggestion-item">
+                        <RightOutlined style="color: var(--color-warning); flex-shrink: 0;" />
+                        <span>{{ sg }}</span>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <div v-for="(fa, i) in currentResult.field_audit?.filter((f: ArchiveFieldAuditResult) => !f.passed) ?? []" :key="i" class="suggestion-item">
+                        <RightOutlined style="color: var(--color-warning); flex-shrink: 0;" />
+                        <span>{{ fa.reasoning }}</span>
+                      </div>
+                      <div v-if="!currentResult.field_audit?.filter((f: ArchiveFieldAuditResult) => !f.passed)?.length" class="suggestion-item">
+                        <RightOutlined style="color: var(--color-warning); flex-shrink: 0;" />
+                        <span>{{ t('archive.reviewSuggestion') }}</span>
+                      </div>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -974,8 +1021,8 @@ onUnmounted(() => {
               <!--人工智能总结-->
               <div class="section-block">
                 <h4 class="section-title"><ThunderboltOutlined /> {{ t('archive.aiSummary') }}</h4>
-                <div class="ai-summary">
-                  <pre>{{ currentResult.ai_summary }}</pre>
+                <div class="ai-summary markdown-body">
+                  <div v-html="renderMarkdown(currentResult.ai_summary || currentResult.ai_reasoning)" />
                 </div>
               </div>
             </template>
@@ -1001,7 +1048,7 @@ onUnmounted(() => {
                 >
                   <span class="history-item-title">
                     <span>{{ item.user_name || item.title }}</span>
-                    <span class="history-item-time">{{ item.created_at }}</span>
+                    <span class="history-item-time">{{ formatDate(item.created_at) }}</span>
                   </span>
                   <span class="history-item-meta">
                     <span
@@ -1303,4 +1350,22 @@ onUnmounted(() => {
   .stats-row { grid-template-columns: 1fr 1fr; }
   .page-title { font-size: 20px; }
 }
+/*markdown*/
+.markdown-body { font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); word-break: break-word; }
+.markdown-body :deep(h1), .markdown-body :deep(h2), .markdown-body :deep(h3),
+.markdown-body :deep(h4), .markdown-body :deep(h5), .markdown-body :deep(h6) { margin: 12px 0 6px; font-weight: 600; color: var(--color-text-primary); }
+.markdown-body :deep(h1) { font-size: 18px; }
+.markdown-body :deep(h2) { font-size: 16px; }
+.markdown-body :deep(h3) { font-size: 14px; }
+.markdown-body :deep(p) { margin: 6px 0; }
+.markdown-body :deep(ul), .markdown-body :deep(ol) { padding-left: 20px; margin: 6px 0; }
+.markdown-body :deep(li) { margin: 3px 0; }
+.markdown-body :deep(code) { background: var(--color-bg-elevated); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+.markdown-body :deep(pre) { background: var(--color-bg-elevated); padding: 12px; border-radius: 8px; overflow-x: auto; margin: 8px 0; }
+.markdown-body :deep(pre code) { background: none; padding: 0; }
+.markdown-body :deep(blockquote) { border-left: 3px solid var(--color-primary); padding: 4px 12px; margin: 8px 0; color: var(--color-text-tertiary); background: var(--color-bg-elevated); border-radius: 0 6px 6px 0; }
+.markdown-body :deep(strong) { color: var(--color-text-primary); font-weight: 600; }
+.markdown-body :deep(table) { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.markdown-body :deep(th), .markdown-body :deep(td) { border: 1px solid var(--color-border-light); padding: 6px 10px; font-size: 12px; }
+.markdown-body :deep(th) { background: var(--color-bg-elevated); font-weight: 600; }
 </style>

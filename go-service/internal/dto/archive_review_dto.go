@@ -39,8 +39,21 @@ type ArchiveReviewStats struct {
 	RunningCount      int `json:"running_count"`
 }
 
+// ArchiveListParams 归档流程列表查询参数。
+type ArchiveListParams struct {
+	Keyword     string `json:"keyword"`
+	Applicant   string `json:"applicant"`
+	ProcessType string `json:"process_type"`
+	Department  string `json:"department"`
+	AuditStatus string `json:"audit_status"`
+	Page        int    `json:"page"`
+	PageSize    int    `json:"page_size"`
+}
+
 // ArchiveProcessListResponse 已归档流程列表响应。
 type ArchiveProcessListResponse struct {
-	Items []map[string]interface{} `json:"items"`
-	Total int                      `json:"total"`
+	Items    []map[string]interface{} `json:"items"`
+	Total    int                      `json:"total"`
+	Page     int                      `json:"page"`
+	PageSize int                      `json:"page_size"`
 }

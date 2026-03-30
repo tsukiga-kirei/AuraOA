@@ -1734,6 +1734,7 @@ export default {
 
     //===== Archive Page New Keys =====
     'archive.statTotal': 'Total Archived',
+    'archive.statUnaudited': 'Unaudited Archive',
     'archive.statCompliant': 'Compliant',
     'archive.statPartial': 'Partial',
     'archive.statNonCompliant': 'Non-compliant',

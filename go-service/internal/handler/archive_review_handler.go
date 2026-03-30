@@ -27,7 +27,16 @@ func NewArchiveReviewHandler(archiveService *service.ArchiveReviewService) *Arch
 }
 
 func (h *ArchiveReviewHandler) ListProcesses(c *gin.Context) {
-	resp, err := h.archiveService.ListProcesses(c)
+	params := dto.ArchiveListParams{
+		Keyword:     c.Query("keyword"),
+		Applicant:   c.Query("applicant"),
+		ProcessType: c.Query("process_type"),
+		Department:  c.Query("department"),
+		AuditStatus: c.Query("audit_status"),
+		Page:        parseIntQuery(c, "page", 1),
+		PageSize:    parseIntQuery(c, "page_size", 20),
+	}
+	resp, err := h.archiveService.ListProcessesPaged(c, params)
 	if err != nil {
 		handleServiceError(c, err)
 		return
