@@ -16,6 +16,7 @@ import {
   LoadingOutlined,
   FilterOutlined,
   WarningOutlined,
+  StopOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { marked } from 'marked'
@@ -181,6 +182,7 @@ const renderMarkdown = (text: string) => text ? marked.parse(text) : ''
 
 // ─── 数据选择与操作 ───
 const toggleSelectProcess = (processId: string) => {
+  if (batchAuditing.value) return
   const idx = selectedProcessIds.value.indexOf(processId)
   if (idx >= 0) selectedProcessIds.value.splice(idx, 1)
   else if (selectedProcessIds.value.length < 10) selectedProcessIds.value.push(processId)
@@ -194,6 +196,7 @@ const selectableIdsComputed = computed(() => {
 })
 
 const toggleSelectAll = () => {
+  if (batchAuditing.value) return
   const selectableIds = selectableIdsComputed.value
   
   if (selectedProcessIds.value.length === Math.min(selectableIds.length, 10) || selectableIds.length === 0) {

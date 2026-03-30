@@ -18,11 +18,16 @@ import {
   BulbOutlined,
   RightOutlined,
   HistoryOutlined,
+  EyeOutlined,
+  StopOutlined,
+  DownOutlined,
+  UpOutlined,
+  InfoCircleOutlined,
+  WarningOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { useI18n } from '~/composables/useI18n'
 import type {
-  ArchiveReviewHistoryItem,
   ArchiveProcessItem,
   ArchiveProgressStep,
   ArchiveReviewResult,
@@ -30,6 +35,7 @@ import type {
   ArchiveRuleAuditResult,
   ArchiveFieldAuditResult,
 } from '~/types/archive-review'
+import type { AuditChainItem } from '~/types/audit'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -42,9 +48,9 @@ const {
   waitArchiveJob,
   cancelArchiveJob,
   getArchiveResult,
-  getArchiveHistory,
   getProcessTypes,
 } = useArchiveReviewApi()
+const { getAuditChain: fetchAuditChain } = useAuditApi()
 
 const asyncArchiveStatuses = ['pending', 'assembling', 'reasoning', 'extracting']
 
@@ -69,10 +75,9 @@ const selectedProcessIds = ref<string[]>([])
 const processAuditLoading = ref<Record<string, boolean>>({})
 const pollProcessId = ref<string | null>(null)
 const eventSourceStream = ref<EventSource | null>(null)
-const reviewHistory = ref<ArchiveReviewHistoryItem[]>([])
-const historyLoading = ref(false)
-const selectedHistoryId = ref<string | null>(null)
 const currentResult = ref<ArchiveReviewResult | null>(null)
+const batchAborted = ref(false)
+const currentInflightProcessId = ref<string | null>(null)
 
 //=====过滤器=====
 const filterProcessType = ref<string[][]>([])
@@ -109,17 +114,6 @@ const formatDuration = (ms: number | undefined | null): string => {
   if (!ms || ms <= 0) return '0ms'
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(1)}s`
-}
-
-const formatDate = (dateStr: string | undefined | null): string => {
-  if (!dateStr) return ''
-  try {
-    const d = new Date(dateStr)
-    if (isNaN(d.getTime())) return dateStr
-    return d.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return dateStr
-  }
 }
 
 const hasActiveFilters = computed(() =>
@@ -261,7 +255,7 @@ watch([searchText, searchApplicant, filterProcessNames, filterDepartment, filter
 
 //=====选择=====
 const toggleSelectProcess = (id: string) => {
-  if (processAuditLoading.value[id]) return
+  if (batchAuditing.value || processAuditLoading.value[id]) return
   const idx = selectedProcessIds.value.indexOf(id)
   if (idx >= 0) selectedProcessIds.value.splice(idx, 1)
   else if (selectedProcessIds.value.length < 10) selectedProcessIds.value.push(id)
@@ -275,6 +269,7 @@ const selectableIdsComputed = computed(() =>
 )
 
 const toggleSelectAll = () => {
+  if (batchAuditing.value) return
   const selectableIds = selectableIdsComputed.value
   if (selectedProcessIds.value.length === Math.min(selectableIds.length, 10) || selectableIds.length === 0) {
     selectedProcessIds.value = []
@@ -343,9 +338,7 @@ const trackRunningJob = async (proc: ArchiveProcessItem) => {
 
 const selectProcess = (proc: ArchiveProcessItem) => {
   selectedProcess.value = proc
-  selectedHistoryId.value = proc.archive_result?.status === 'completed' ? proc.archive_result.id || null : null
   currentResult.value = normalizeArchiveResult(proc.archive_result)
-  loadHistory(proc.process_id)
   if (isResultAsyncRunning(currentResult.value)) {
     trackRunningJob(proc)
   } else {
@@ -356,7 +349,6 @@ const selectProcess = (proc: ArchiveProcessItem) => {
 const loading = computed(() => isResultAsyncRunning(currentResult.value))
 
 const runArchiveReview = async (proc: ArchiveProcessItem) => {
-  selectedHistoryId.value = null
   const pendingResult = normalizeArchiveResult({
     trace_id: '',
     process_id: proc.process_id,
@@ -429,12 +421,15 @@ const handleBatchAudit = async () => {
     return
   }
   batchAuditing.value = true
+  batchAborted.value = false
   const ids = [...selectedProcessIds.value]
   batchAuditTotal.value = ids.length
   batchAuditDone.value = 0
 
   for (let i = 0; i < ids.length; i++) {
+    if (batchAborted.value) break
     const id = ids[i]
+    currentInflightProcessId.value = id
     const proc = processList.value.find(p => p.process_id === id)
     if (!proc) {
       batchAuditDone.value = i + 1
@@ -458,10 +453,28 @@ const handleBatchAudit = async () => {
     batchAuditDone.value = i + 1
   }
 
+  currentInflightProcessId.value = null
   batchAuditing.value = false
   selectedProcessIds.value = []
   await Promise.all([loadStats(), loadProcesses()])
-  message.success(t('archive.batchDone', `${batchAuditDone.value}`))
+  if (batchAborted.value) {
+    message.info(t('archive.batchAborted', '批量审核已中止'))
+  } else {
+    message.success(t('archive.batchDone', `${batchAuditDone.value}`))
+  }
+}
+
+const handleAbortBatch = async () => {
+  batchAborted.value = true
+  if (currentInflightProcessId.value) {
+    const pid = currentInflightProcessId.value
+    const proc = processList.value.find(p => p.process_id === pid)
+    if (proc?.archive_result?.id) {
+       await cancelArchiveJob(proc.archive_result.id).catch(() => {})
+    }
+    currentInflightProcessId.value = null
+  }
+  // 剩余未处理自动失败 (可选，参考 dashboard)
 }
 
 //=====导出（仅在选择流程后显示）=====
@@ -511,29 +524,6 @@ const handleCancelAudit = async () => {
   }
 }
 
-const loadHistory = async (processId: string) => {
-  historyLoading.value = true
-  try {
-    reviewHistory.value = await getArchiveHistory(processId)
-  } catch {
-    reviewHistory.value = []
-  } finally {
-    historyLoading.value = false
-  }
-}
-
-const handleSelectHistory = async (item: ArchiveReviewHistoryItem) => {
-  selectedHistoryId.value = item.id
-  try {
-    const result = normalizeArchiveResult(await getArchiveResult(item.id))
-    if (result) {
-      currentResult.value = result
-    }
-  } catch (error: any) {
-    message.error(error?.message || t('archive.loadFailed'))
-  }
-}
-
 const loadStats = async () => {
   try {
     stats.value = await getStats()
@@ -578,7 +568,6 @@ const loadProcesses = async () => {
     if (!selectedProcess.value) return
     const nextSelected = processList.value.find(proc => proc.process_id === selectedProcess.value?.process_id) || null
     selectedProcess.value = nextSelected
-    if (selectedHistoryId.value) return
     currentResult.value = normalizeArchiveResult(nextSelected?.archive_result)
     if (nextSelected && isResultAsyncRunning(currentResult.value)) {
       trackRunningJob(nextSelected)
@@ -598,6 +587,53 @@ const filteredProgressSteps = computed(() => {
     : defaultProgressSteps(currentResult.value.status)
   return steps.filter(step => step.key !== 'pending')
 })
+
+const showHistoryChain = ref(false)
+const auditChainData = ref<AuditChainItem[]>([])
+const auditChainLoading = ref(false)
+const expandedChainNodes = ref<Set<string>>(new Set())
+
+const toggleChainNode = (id: string) => {
+  if (expandedChainNodes.value.has(id)) expandedChainNodes.value.delete(id)
+  else expandedChainNodes.value.add(id)
+}
+
+const openAuditChain = async (processId: string) => {
+  expandedChainNodes.value = new Set()
+  showHistoryChain.value = true
+  auditChainLoading.value = true
+  try {
+    auditChainData.value = await fetchAuditChain(processId)
+  } catch {
+    auditChainData.value = []
+  } finally {
+    auditChainLoading.value = false
+  }
+}
+
+const formatChainDate = (dateStr: string) => {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  return isNaN(d.getTime()) ? dateStr : d.toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
+}
+
+const getDurationSec = (ms: number | undefined) => {
+  if (ms === undefined) return 0
+  return (ms / 1000).toFixed(1)
+}
+
+const getScoreColorConfig = (score: number | undefined) => {
+  if (score === undefined || score === null) return { color: 'var(--color-info)', bg: 'var(--color-info-bg)' }
+  if (score < 60) return { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)' }
+  if (score > 80) return { color: 'var(--color-success)', bg: 'var(--color-success-bg)' }
+  return { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' }
+}
+
+const recommendationConfig = computed<Record<string, { color: string; bg: string; icon: typeof CheckCircleOutlined; label: string }>>(() => ({
+  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
+  return: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: ReloadOutlined, label: t('dashboard.rec.return') },
+  review: { color: 'var(--color-info)', bg: 'var(--color-info-bg)', icon: EyeOutlined, label: t('dashboard.rec.review') },
+}))
 
 //=====配置助手=====
 const complianceConfig = computed((): Record<string, { color: string; bg: string; label: string }> => ({
@@ -674,10 +710,10 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!--主要布局-->
-    <div class="archive-grid">
+    <!--主要布局（与 dashboard 一致）-->
+    <div class="dashboard-grid">
       <!--左：进程列表-->
-      <div class="list-panel">
+      <div class="todo-panel">
         <div class="panel-header">
           <div class="panel-header-row">
             <h3 class="panel-title">
@@ -685,8 +721,9 @@ onUnmounted(() => {
               {{ computedListTitle }}
               <a-badge :count="listTotal" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
             </h3>
-            <a-button size="small" @click="showFilters = !showFilters" :class="{ 'filter-toggle-btn--active': hasActiveFilters }">
-              <FilterOutlined /> {{ t('archive.filter') }}
+            <a-button size="small" type="default" @click="showFilters = !showFilters" class="filter-toggle-btn" :class="{ 'filter-toggle-btn--active': hasActiveFilters }">
+              <FilterOutlined />
+              {{ t('archive.filter') }}
               <span v-if="hasActiveFilters" class="filter-active-dot" />
             </a-button>
           </div>
@@ -722,87 +759,139 @@ onUnmounted(() => {
           <div class="batch-toolbar">
             <div class="batch-toolbar-left">
               <a-checkbox
-                :checked="selectedProcessIds.length === Math.min(selectableIdsComputed.length, 10) && selectableIdsComputed.length > 0"
+                :checked="selectedProcessIds.length > 0 && selectedProcessIds.length === Math.min(selectableIdsComputed.length, 10)"
                 :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < Math.min(selectableIdsComputed.length, 10)"
                 @change="toggleSelectAll"
               >
                 {{ selectedProcessIds.length > 0 ? t('archive.selected', `${selectedProcessIds.length}`) : t('archive.selectAll') }}
               </a-checkbox>
+              <span class="batch-limit-hint">{{ t('dashboard.batchLimitLabel') }}</span>
               <span v-if="batchAuditing" class="batch-progress-hint">
                 {{ t('archive.auditedProgress', `${batchAuditDone}/${batchAuditTotal}`) }}
               </span>
               <span v-else-if="auditedCount > 0" class="panel-header-hint">{{ t('archive.reviewed') }} {{ auditedCount }}/{{ listTotal }}</span>
             </div>
-            <a-button v-if="selectedProcessIds.length > 0" type="primary" size="small" :disabled="batchAuditing" @click="handleBatchAudit" class="batch-audit-btn">
-              <LoadingOutlined v-if="batchAuditing" />
-              <ThunderboltOutlined v-else />
-              {{ t('archive.batchAudit') }}
-            </a-button>
+            <div class="batch-toolbar-right">
+              <a-button
+                v-if="batchAuditing"
+                size="small"
+                danger
+                @click="handleAbortBatch"
+              >
+                <StopOutlined /> {{ t('archive.batchAbort', '中止') }}
+              </a-button>
+              <a-button
+                v-if="selectedProcessIds.length > 0"
+                type="primary"
+                size="small"
+                :disabled="batchAuditing"
+                @click="handleBatchAudit"
+                class="batch-audit-btn"
+              >
+                <LoadingOutlined v-if="batchAuditing" />
+                <ThunderboltOutlined v-else />
+                {{ t('archive.batchAudit') }}
+              </a-button>
+            </div>
           </div>
         </div>
 
         <!--进程列表-->
-        <div class="process-list">
-          <div v-if="listLoading" class="list-empty" style="display: flex; justify-content: center; align-items: center; padding: 40px 0;">
-            <a-spin />
-          </div>
-          <template v-else>
+        <a-spin :spinning="listLoading">
+          <div class="todo-list">
             <div
               v-for="proc in processList"
               :key="proc.process_id"
-              class="process-item"
+              class="todo-item"
               :class="{
-                'process-item--selected': selectedProcess?.process_id === proc.process_id,
-                'process-item--compliant': proc.archive_result?.overall_compliance === 'compliant',
-                'process-item--partial': proc.archive_result?.overall_compliance === 'partially_compliant',
-                'process-item--noncompliant': proc.archive_result?.overall_compliance === 'non_compliant',
+                'todo-item--selected': selectedProcess?.process_id === proc.process_id,
+                'todo-item--audited-approve': proc.archive_result?.overall_compliance === 'compliant',
+                'todo-item--audited-return': proc.archive_result?.overall_compliance === 'partially_compliant',
+                'todo-item--archive-noncompliant': proc.archive_result?.overall_compliance === 'non_compliant',
               }"
               @click="selectProcess(proc)"
             >
-              <div class="process-item-checkbox" @click.stop="toggleSelectProcess(proc.process_id)">
+              <div class="todo-item-checkbox" @click.stop="processAuditLoading[proc.process_id] ? null : toggleSelectProcess(proc.process_id)">
                 <a-checkbox :checked="selectedProcessIds.includes(proc.process_id)" :disabled="processAuditLoading[proc.process_id]" />
               </div>
-              <div class="process-item-main">
-                <div class="process-item-title-row">
-                  <span class="process-item-title">{{ proc.title }}</span>
-                  <span
-                    v-if="proc.archive_result?.overall_compliance"
-                    class="process-audit-badge"
-                    :style="{
-                      color: complianceConfig[proc.archive_result.overall_compliance]?.color,
-                      background: complianceConfig[proc.archive_result.overall_compliance]?.bg,
-                    }"
-                  >
-                    <SafetyCertificateOutlined />
-                    {{ complianceConfig[proc.archive_result.overall_compliance]?.label }}
-                    {{ proc.archive_result.overall_score }}{{ t('archive.score') }} · {{ formatDuration(proc.archive_result.duration_ms) }}
-                  </span>
+              <div class="todo-item-main">
+                <div class="todo-item-title">
+                  <LoadingOutlined
+                    v-if="processAuditLoading[proc.process_id]" class="todo-item-audited-icon" spin style="color: var(--color-primary);"
+                  />
+                  <CheckCircleOutlined
+                    v-else-if="proc.archive_result?.overall_compliance === 'compliant'"
+                    class="todo-item-audited-icon"
+                    style="color: var(--color-success);"
+                  />
+                  <CheckCircleOutlined
+                    v-else-if="proc.archive_result?.overall_compliance === 'partially_compliant'"
+                    class="todo-item-audited-icon"
+                    style="color: var(--color-warning);"
+                  />
+                  <CloseCircleOutlined
+                    v-else-if="proc.archive_result?.overall_compliance === 'non_compliant'"
+                    class="todo-item-audited-icon"
+                    style="color: var(--color-danger);"
+                  />
+                  {{ proc.title }}
                 </div>
-                <div class="process-item-meta">
+                <div class="todo-item-meta">
                   <span>{{ proc.applicant }}</span>
-                  <span class="meta-dot">·</span>
+                  <span class="todo-item-dot">·</span>
                   <span>{{ proc.department }}</span>
-                  <span class="meta-dot">·</span>
+                  <span class="todo-item-dot">·</span>
                   <span>{{ proc.submit_time }}</span>
                 </div>
-                <div class="process-item-footer">
-                  <span class="process-type-tag">{{ proc.process_type }}</span>
-                  <span v-if="processAuditLoading[proc.process_id]" class="process-auditing" style="display: inline-flex; align-items: center; gap: 4px;">
-                    <LoadingOutlined style="font-size: 11px;" /> {{ t('archive.auditingItem') }}
-                  </span>
-                  <a-tooltip :title="t('archive.jumpOA')" :mouse-enter-delay="0.5">
-                    <button class="oa-jump-btn" @click.stop="jumpToOA(proc.process_id)">
-                      <ExportOutlined />
-                    </button>
-                  </a-tooltip>
+                <div class="todo-item-audit-info">
+                  <div class="todo-item-audit-left">
+                    <span class="todo-item-node">{{ proc.current_node || '—' }}</span>
+                    <span class="todo-item-process-type">{{ proc.process_type_label || proc.process_type }}</span>
+                  </div>
+                  <div class="todo-item-audit-right">
+                    <span
+                      v-if="processAuditLoading[proc.process_id]"
+                      class="todo-item-score-badge"
+                      style="color: var(--color-primary); background: var(--color-primary-bg);"
+                    >
+                      {{ t('archive.auditingItem') }}
+                    </span>
+                    <span
+                      v-else-if="proc.archive_result?.overall_compliance"
+                      class="todo-item-score-badge"
+                      :style="{
+                        color: complianceConfig[proc.archive_result.overall_compliance]?.color,
+                        background: complianceConfig[proc.archive_result.overall_compliance]?.bg,
+                      }"
+                    >
+                      {{ complianceConfig[proc.archive_result.overall_compliance]?.label }}
+                      {{ proc.archive_result.overall_score }}{{ t('archive.score') }}
+                    </span>
+                    <a-tooltip v-if="processAuditLoading[proc.process_id]" :title="t('archive.cancelReview')" :mouse-enter-delay="0.5">
+                      <button class="oa-jump-btn" @click.stop="proc.archive_result?.id ? cancelArchiveJob(proc.archive_result.id).then(() => loadProcesses()) : null">
+                        <StopOutlined style="color: var(--color-danger);" />
+                      </button>
+                    </a-tooltip>
+                    <a-tooltip :title="t('dashboard.auditChain')" :mouse-enter-delay="0.5">
+                      <button class="oa-jump-btn" @click.stop="openAuditChain(proc.process_id)">
+                        <HistoryOutlined />
+                      </button>
+                    </a-tooltip>
+                    <a-tooltip :title="t('dashboard.jumpToOA')" :mouse-enter-delay="0.5">
+                      <button class="oa-jump-btn" @click.stop="jumpToOA(proc.process_id)">
+                        <ExportOutlined />
+                      </button>
+                    </a-tooltip>
+                  </div>
                 </div>
               </div>
             </div>
-            <div v-if="processList.length === 0" class="list-empty">
+
+            <div v-if="processList.length === 0 && !listLoading" class="todo-empty">
               <a-empty :description="t('archive.noMatch')" />
             </div>
-          </template>
-        </div>
+          </div>
+        </a-spin>
 
         <!--分页-->
         <div class="pagination-wrapper">
@@ -820,8 +909,8 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!--右：细节面板-->
-      <div class="detail-panel">
+      <!--右：复盘结果（与 dashboard 结果区结构一致）-->
+      <div class="result-panel">
         <div class="panel-header">
           <h3 class="panel-title">
             <SafetyCertificateOutlined style="color: var(--color-primary);" />
@@ -829,105 +918,85 @@ onUnmounted(() => {
           </h3>
         </div>
 
-        <div class="detail-content">
+        <div class="result-content">
           <!--空状态-->
-          <div v-if="!selectedProcess" class="detail-empty">
-            <div class="detail-empty-icon"><SafetyCertificateOutlined /></div>
-            <h4>{{ t('archive.selectProcess') }}</h4>
+          <div v-if="!selectedProcess" class="result-empty">
+            <div class="result-empty-icon"><SafetyCertificateOutlined /></div>
             <p>{{ t('archive.selectProcessDesc') }}</p>
           </div>
 
           <template v-else>
-            <!--流程信息卡-->
-            <div class="process-info-card">
-              <div class="process-info-header">
-                <div>
-                  <h4 class="process-info-title">{{ selectedProcess.title }}</h4>
-                  <div class="process-info-meta">
-                    {{ selectedProcess.applicant }} · {{ selectedProcess.department }} · {{ selectedProcess.process_type }}
-                  </div>
-                  <div class="process-info-meta" style="margin-top: 4px;">
-                    <FieldTimeOutlined /> {{ t('archive.submitLabel') }}: {{ selectedProcess.submit_time }}
-                    &nbsp;→&nbsp; {{ t('archive.archiveLabel') }}: {{ selectedProcess.archive_time }}
-                  </div>
-                </div>
-                <div class="process-info-actions">
-                  <a-button @click="jumpToOA(selectedProcess.process_id)">
-                    <ExportOutlined /> OA
-                  </a-button>
-                  <a-button v-if="loading && currentResult?.id" danger @click="handleCancelAudit">
-                    <CloseCircleOutlined /> {{ t('archive.cancelReview') }}
-                  </a-button>
-                  <a-button type="primary" :loading="loading" @click="currentResult ? handleReAudit() : handleAudit()" style="display: inline-flex; align-items: center; gap: 6px;">
-                    <template v-if="currentResult && !loading">
-                      <ReloadOutlined /> {{ t('archive.reAudit') }}
-                    </template>
-                    <template v-else-if="!loading">
-                      <ThunderboltOutlined /> {{ t('archive.startAudit') }}
-                    </template>
-                  </a-button>
-                </div>
-              </div>
-            </div>
-
-            <!--审核正在进行中-->
+            <!--审核进行中（与 dashboard result-async-panel 一致）-->
             <template v-if="loading && currentResult">
-              <div class="audit-progress">
-                <div
-                  v-for="step in filteredProgressSteps"
-                  :key="step.key"
-                  class="audit-phase"
-                  :class="{
-                    'audit-phase--done': step.done,
-                    'audit-phase--active': step.current,
-                    'audit-phase--failed': step.failed,
-                    'audit-phase--pending': !step.done && !step.current && !step.failed,
-                  }"
-                >
-                  <div class="audit-phase-dot">
-                    <LoadingOutlined v-if="step.current" />
-                    <CloseCircleOutlined v-else-if="step.failed" style="color: var(--color-danger);" />
-                    <CheckCircleOutlined v-else-if="step.done" style="color: var(--color-success);" />
-                    <div v-else class="phase-pending-dot" />
+              <div class="result-async-panel">
+                <a-spin size="large">
+                  <div class="async-progress-steps">
+                    <div
+                      v-for="s in filteredProgressSteps"
+                      :key="s.key"
+                      class="async-step-row"
+                    >
+                      <CheckCircleOutlined v-if="s.done" style="color: var(--color-success);" />
+                      <LoadingOutlined v-else-if="s.current" spin style="color: var(--color-primary);" />
+                      <CloseCircleOutlined v-else-if="s.failed" style="color: var(--color-danger);" />
+                      <span v-else class="async-step-pending-dot" />
+                      <span>{{ s.label }}</span>
+                    </div>
                   </div>
-                  <div class="audit-phase-info">
-                    <div class="audit-phase-title">{{ step.label }}</div>
-                    <div class="audit-phase-desc">{{ t('archive.aiAuditing') }}</div>
+                </a-spin>
+                <div v-if="currentResult.ai_reasoning || loading" class="result-section" style="margin-top: 16px;">
+                  <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
+                  <div class="ai-reasoning">
+                    <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')" />
                   </div>
-                </div>
-                <div v-if="currentResult.ai_reasoning" class="ai-summary markdown-body">
-                  <div v-html="renderMarkdown(currentResult.ai_reasoning)" />
-                </div>
-                <div v-else class="audit-check-empty">
-                  {{ t('archive.aiAuditing') }}
                 </div>
               </div>
             </template>
 
             <!--审核结果-->
-            <template v-if="currentResult && !loading">
-              <!--合规横幅-->
+            <template v-else-if="currentResult && !loading">
+              <!--与 dashboard 一致的操作栏 -->
+              <div class="result-action-bar">
+                <a-button @click="openAuditChain(selectedProcess.process_id)">
+                  <EyeOutlined /> {{ t('dashboard.auditChain') }}
+                </a-button>
+                <a-button @click="jumpToOA(selectedProcess.process_id)">
+                  <ExportOutlined /> {{ t('dashboard.jumpOA') }}
+                </a-button>
+                <a-button @click="handleReAudit">
+                  <ReloadOutlined /> {{ t('archive.reAudit') }}
+                </a-button>
+              </div>
+
+              <!--流程摘要（归档时间等）-->
+              <div class="archive-process-meta-line">
+                <span class="archive-process-meta-line__title">{{ selectedProcess.title }}</span>
+                <span>{{ selectedProcess.applicant }} · {{ selectedProcess.department }} · {{ selectedProcess.process_type_label || selectedProcess.process_type }}</span>
+                <span><FieldTimeOutlined /> {{ t('archive.submitLabel') }}: {{ selectedProcess.submit_time }} → {{ t('archive.archiveLabel') }}: {{ selectedProcess.archive_time }}</span>
+              </div>
+
+              <!--合规横幅（与 dashboard result-banner 一致）-->
               <div
-                class="compliance-banner"
+                class="result-banner"
                 :style="{
                   background: complianceConfig[currentResult.overall_compliance ?? '']?.bg,
                   borderColor: complianceConfig[currentResult.overall_compliance ?? '']?.color,
                 }"
               >
                 <SafetyCertificateOutlined
-                  class="compliance-banner-icon"
+                  class="result-banner-icon"
                   :style="{ color: complianceConfig[currentResult.overall_compliance ?? '']?.color }"
                 />
-                <div class="compliance-banner-info">
-                  <div class="compliance-banner-title" :style="{ color: complianceConfig[currentResult.overall_compliance ?? '']?.color }">
+                <div class="result-banner-info">
+                  <div class="result-banner-title" :style="{ color: complianceConfig[currentResult.overall_compliance ?? '']?.color }">
                     {{ complianceConfig[currentResult.overall_compliance ?? '']?.label }}
                   </div>
-                  <div class="compliance-banner-meta">
+                  <div class="result-banner-meta">
                     {{ t('archive.overallScore') }} {{ currentResult.overall_score }} {{ t('archive.score') }}
                     · {{ t('archive.durationLabel') }} {{ formatDuration(currentResult.duration_ms) }}
                   </div>
                 </div>
-                <div class="compliance-score" :style="{ color: complianceConfig[currentResult.overall_compliance ?? '']?.color }">
+                <div class="result-score" :style="{ color: complianceConfig[currentResult.overall_compliance ?? '']?.color }">
                   {{ currentResult.overall_score }}
                 </div>
               </div>
@@ -1027,51 +1096,129 @@ onUnmounted(() => {
               </div>
             </template>
 
-            <!--还没有结果（未加载）-->
-            <div v-if="!currentResult && !loading" class="no-result-hint">
-              <HistoryOutlined style="font-size: 32px; color: var(--color-text-tertiary);" />
-              <p>{{ t('archive.noResultHint') }}</p>
+            <!--未开始复盘：与 dashboard action-prompt 一致 -->
+            <div v-else-if="selectedProcess && !currentResult && !loading" class="action-prompt">
+              <div class="action-prompt-info">
+                <h4>{{ selectedProcess.title }}</h4>
+                <p>{{ selectedProcess.applicant }} · {{ selectedProcess.department }} · {{ selectedProcess.submit_time }}</p>
+              </div>
+              <div class="action-prompt-buttons">
+                <a-button type="primary" size="large" @click="handleAudit()">
+                  <ThunderboltOutlined /> {{ t('archive.startAudit') }}
+                </a-button>
+                <a-button size="large" @click="jumpToOA(selectedProcess.process_id)">
+                  <ExportOutlined /> {{ t('dashboard.jumpToOASystem') }}
+                </a-button>
+              </div>
             </div>
 
-            <div class="section-block">
-              <h4 class="section-title"><HistoryOutlined /> {{ t('archive.historyTitle') }}</h4>
-              <div v-if="historyLoading" class="audit-check-empty">
-                <a-spin size="small" />
-              </div>
-              <div v-else-if="reviewHistory.length" class="history-list">
-                <button
-                  v-for="item in reviewHistory"
-                  :key="item.id"
-                  class="history-item"
-                  :class="{ 'history-item--active': selectedHistoryId === item.id }"
-                  @click="handleSelectHistory(item)"
-                >
-                  <span class="history-item-title">
-                    <span>{{ item.user_name || item.title }}</span>
-                    <span class="history-item-time">{{ formatDate(item.created_at) }}</span>
-                  </span>
-                  <span class="history-item-meta">
-                    <span
-                      class="process-audit-badge"
-                      :style="{
-                        color: complianceConfig[item.compliance]?.color,
-                        background: complianceConfig[item.compliance]?.bg,
-                      }"
-                    >
-                      {{ complianceConfig[item.compliance]?.label }}
-                      {{ item.compliance_score }}{{ t('archive.score') }}
-                    </span>
-                  </span>
-                </button>
-              </div>
-              <div v-else class="audit-check-empty">
-                {{ t('archive.noHistory') }}
-              </div>
-            </div>
           </template>
         </div>
       </div>
     </div>
+
+    <!-- 审核链抽屉（与 dashboard 同宽、同内容结构） -->
+    <Teleport to="body">
+      <transition name="drawer">
+        <div v-if="showHistoryChain" class="drawer-overlay" @click.self="showHistoryChain = false">
+          <div class="drawer-panel">
+            <div class="drawer-header">
+              <h3>{{ t('dashboard.auditHistoryChain') }}</h3>
+              <button type="button" class="drawer-close" @click="showHistoryChain = false">✕</button>
+            </div>
+            <div class="drawer-body">
+              <p class="chain-desc">{{ t('dashboard.chainDesc') }}</p>
+              <a-spin :spinning="auditChainLoading">
+                <div v-if="!auditChainLoading && auditChainData.length === 0" style="padding: 40px; text-align: center;">
+                  <a-empty :description="t('dashboard.noAuditRecords')" />
+                </div>
+                <div v-else class="audit-chain">
+                  <div
+                    v-for="(item, idx) in auditChainData"
+                    :key="item.id"
+                    class="chain-node"
+                  >
+                    <div class="chain-timeline">
+                      <div class="chain-dot" :style="{ background: getScoreColorConfig(item.score)?.color }" />
+                      <div v-if="idx < auditChainData.length - 1" class="chain-line" />
+                    </div>
+                    <div class="chain-card">
+                      <div class="chain-card-header" @click="toggleChainNode(item.id)">
+                        <span
+                          class="chain-tag"
+                          :style="{ color: getScoreColorConfig(item.score)?.color, background: getScoreColorConfig(item.score)?.bg }"
+                        >
+                          <component :is="recommendationConfig[item.recommendation || 'review']?.icon" />
+                          {{ recommendationConfig[item.recommendation || 'review']?.label }}
+                        </span>
+                        <span class="chain-score">{{ item.score }}{{ t('dashboard.points') }}</span>
+                        <span class="chain-expand-btn">
+                          <DownOutlined v-if="!expandedChainNodes.has(item.id)" />
+                          <UpOutlined v-else />
+                        </span>
+                      </div>
+                      <div class="chain-card-meta">
+                        {{ formatChainDate(item.created_at) }}
+                        <span v-if="item.user_name"> · {{ item.user_name }}</span>
+                        · {{ t('dashboard.duration') }} {{ getDurationSec(item.duration_ms) }}s
+                      </div>
+                      <div v-if="expandedChainNodes.has(item.id)" class="chain-detail">
+                        <template v-if="item.audit_result">
+                          <template v-if="item.audit_result.rule_results?.length">
+                            <div class="chain-section-title">{{ t('dashboard.ruleCheckDetail') }}</div>
+                            <div
+                              v-for="(rule, ri) in item.audit_result.rule_results"
+                              :key="ri"
+                              class="chain-rule-item"
+                              :class="rule.passed ? 'chain-rule--pass' : 'chain-rule--fail'"
+                            >
+                              <component :is="rule.passed ? CheckCircleOutlined : CloseCircleOutlined" :style="{ color: rule.passed ? 'var(--color-success)' : 'var(--color-danger)' }" />
+                              <div>
+                                <div class="chain-rule-name">{{ rule.rule_content }}</div>
+                                <div class="chain-rule-reasoning">{{ rule.reason }}</div>
+                              </div>
+                            </div>
+                          </template>
+                          <div v-if="item.audit_result.risk_points?.length || item.audit_result.suggestions?.length" class="risk-suggest-row" style="margin-top: 10px;">
+                            <div v-if="item.audit_result.risk_points?.length" class="insight-card insight-card--risk">
+                              <div class="insight-card-header">
+                                <CloseCircleOutlined style="color: var(--color-danger);" />
+                                <span>{{ t('dashboard.riskPoints') }}</span>
+                              </div>
+                              <ul class="insight-card-list">
+                                <li v-for="(rp, i) in item.audit_result.risk_points" :key="i">{{ rp }}</li>
+                              </ul>
+                            </div>
+                            <div v-if="item.audit_result.suggestions?.length" class="insight-card insight-card--suggest">
+                              <div class="insight-card-header">
+                                <InfoCircleOutlined style="color: var(--color-primary);" />
+                                <span>{{ t('dashboard.suggestions') }}</span>
+                              </div>
+                              <ul class="insight-card-list">
+                                <li v-for="(sg, i) in item.audit_result.suggestions" :key="i">{{ sg }}</li>
+                              </ul>
+                            </div>
+                          </div>
+                          <div v-if="item.audit_result.ai_reasoning" class="chain-section-title" style="margin-top: 10px;">{{ t('dashboard.aiReasoning') }}</div>
+                          <div v-if="item.audit_result.ai_reasoning" class="chain-reasoning">
+                            <div class="markdown-body" v-html="renderMarkdown(item.audit_result.ai_reasoning || '')" />
+                          </div>
+                          <div v-if="item.audit_result.parse_error" class="chain-parse-error">
+                            <WarningOutlined style="color: var(--color-danger);" />
+                            <span>{{ t('dashboard.parseErrorTitle') }}: {{ item.audit_result.parse_error }}</span>
+                          </div>
+                        </template>
+                        <div v-else class="chain-no-detail">{{ t('dashboard.noHistoryDesc') }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </a-spin>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
   </div>
 </template>
 
@@ -1079,233 +1226,106 @@ onUnmounted(() => {
 .archive-page { animation: fadeIn 0.3s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-.page-header {
-  display: flex; justify-content: space-between; align-items: flex-start;
-  margin-bottom: 20px; flex-wrap: wrap; gap: 16px;
-}
+.page-header { margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
 .page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
 .page-header-actions { display: flex; gap: 8px; align-items: center; }
 
-/*统计行*/
-.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+/*统计行（与 dashboard 卡片风格一致，保留 4 列）*/
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
 .stat-card {
-  display: flex; align-items: center; gap: 12px; padding: 14px 18px;
-  background: var(--color-bg-card); border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-light); cursor: pointer;
-  transition: all var(--transition-fast);
+  background: var(--color-bg-card); border-radius: var(--radius-lg); padding: 20px;
+  display: flex; align-items: center; gap: 16px; border: 2px solid var(--color-border-light);
+  transition: all var(--transition-base); cursor: pointer; user-select: none;
 }
-.stat-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
-.stat-card--selected { border-width: 2px; }
-.stat-card--primary.stat-card--selected { border-color: var(--color-primary); }
-.stat-card--success.stat-card--selected { border-color: var(--color-success); }
-.stat-card--warning.stat-card--selected { border-color: var(--color-warning); }
-.stat-card--danger.stat-card--selected { border-color: var(--color-danger); }
-.stat-card-icon { font-size: 22px; }
-.stat-card--primary .stat-card-icon { color: var(--color-primary); }
-.stat-card--success .stat-card-icon { color: var(--color-success); }
-.stat-card--warning .stat-card-icon { color: var(--color-warning); }
-.stat-card--danger .stat-card-icon { color: var(--color-danger); }
+.stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.stat-card--selected { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }
+.stat-card-icon {
+  width: 48px; height: 48px; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;
+}
+.stat-card--primary .stat-card-icon { background: var(--color-primary-bg); color: var(--color-primary); }
+.stat-card--success .stat-card-icon { background: var(--color-success-bg); color: var(--color-success); }
+.stat-card--warning .stat-card-icon { background: var(--color-warning-bg); color: var(--color-warning); }
+.stat-card--danger .stat-card-icon { background: var(--color-danger-bg); color: var(--color-danger); }
 .stat-card-info { display: flex; flex-direction: column; }
-.stat-card-value { font-size: 22px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
-.stat-card-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+.stat-card-value { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
+.stat-card-label { font-size: 13px; color: var(--color-text-tertiary); margin-top: 2px; }
 
-/*主格*/
-.archive-grid { display: grid; grid-template-columns: 400px 1fr; gap: 20px; align-items: start; }
-
-/*面板*/
-.list-panel, .detail-panel {
+/*主格（与 dashboard 同宽）*/
+.dashboard-grid { display: grid; grid-template-columns: 420px 1fr; gap: 24px; align-items: start; }
+.todo-panel, .result-panel {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); overflow: hidden;
 }
 .panel-header {
-  padding: 14px 18px; border-bottom: 1px solid var(--color-border-light);
-  display: flex; flex-direction: column; gap: 10px;
+  padding: 16px 20px; border-bottom: 1px solid var(--color-border-light);
+  display: flex; flex-direction: column; gap: 12px;
 }
-.panel-header-row { display: flex; justify-content: space-between; align-items: center; }
+.panel-header-row { display: flex; align-items: center; justify-content: space-between; }
 .panel-title {
   font-size: 15px; font-weight: 600; color: var(--color-text-primary);
   margin: 0; display: flex; align-items: center; gap: 8px;
 }
 .panel-header-hint { font-size: 12px; color: var(--color-text-tertiary); }
+.filter-toggle-btn { position: relative; }
 .filter-toggle-btn--active { color: var(--color-primary); border-color: var(--color-primary); }
 .filter-active-dot {
   display: inline-block; width: 6px; height: 6px; border-radius: 50%;
   background: var(--color-primary); margin-left: 4px; vertical-align: middle;
 }
 
-/*过滤栏*/
-.filter-bar {
-  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-  padding: 10px 0 2px;
-}
+.filter-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 0 0; }
 .slide-enter-active, .slide-leave-active { transition: all 0.2s ease; }
-.slide-enter-from, .slide-leave-to { opacity: 0; transform: translateY(-6px); }
+.slide-enter-from, .slide-leave-to { opacity: 0; transform: translateY(-8px); }
 
-/*批处理工具栏*/
-.batch-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.batch-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; gap: 8px; }
 .batch-toolbar-left { display: flex; align-items: center; gap: 12px; }
-.batch-progress-hint {
-  font-size: 12px; font-weight: 600; color: var(--color-primary);
-  animation: batchPulse 1.5s ease-in-out infinite;
-}
-@keyframes batchPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+.batch-toolbar-right { display: flex; align-items: center; gap: 8px; }
+.batch-limit-hint { font-size: 11px; color: var(--color-text-quaternary); }
+.batch-progress-hint { font-size: 12px; font-weight: 600; color: var(--color-primary); animation: auditPulse 1.5s ease-in-out infinite; }
+@keyframes auditPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
 .batch-audit-btn { flex-shrink: 0; }
 
-/*进程列表*/
-.process-list { max-height: calc(100vh - 340px); overflow-y: auto; }
-.process-item {
-  display: flex; align-items: flex-start; padding: 12px 16px; cursor: pointer;
-  transition: all var(--transition-fast); border-bottom: 1px solid var(--color-border-light); gap: 10px;
+/*列表（与 dashboard todo 一致）*/
+.todo-list { max-height: calc(100vh - 380px); overflow-y: auto; }
+.todo-item {
+  display: flex; align-items: flex-start;
+  padding: 14px 20px; cursor: pointer; transition: all var(--transition-fast);
+  border-bottom: 1px solid var(--color-border-light); gap: 12px;
 }
-.process-item:last-child { border-bottom: none; }
-.process-item:hover { background: var(--color-bg-hover); }
-.process-item--selected { background: var(--color-primary-bg); border-left: 3px solid var(--color-primary); }
-.process-item--compliant { border-left: 3px solid var(--color-success); }
-.process-item--partial { border-left: 3px solid var(--color-warning); }
-.process-item--noncompliant { border-left: 3px solid var(--color-danger); }
-.process-item-checkbox { padding-top: 2px; flex-shrink: 0; }
-.process-item-main { flex: 1; min-width: 0; }
-.process-item-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
-.process-item-title {
-  font-size: 13px; font-weight: 500; color: var(--color-text-primary);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;
+.todo-item:last-child { border-bottom: none; }
+.todo-item:hover { background: var(--color-bg-hover); }
+.todo-item--selected { background: var(--color-primary-bg); border-left: 3px solid var(--color-primary); }
+.todo-item--audited-approve { background: rgba(34, 197, 94, 0.03); border-left: 3px solid var(--color-success); }
+.todo-item--audited-return { background: rgba(245, 158, 11, 0.03); border-left: 3px solid var(--color-warning); }
+.todo-item--archive-noncompliant { background: rgba(239, 68, 68, 0.04); border-left: 3px solid var(--color-danger); }
+.todo-item--audited-approve.todo-item--selected,
+.todo-item--audited-return.todo-item--selected,
+.todo-item--archive-noncompliant.todo-item--selected { background: var(--color-primary-bg); border-left: 3px solid var(--color-primary); }
+.todo-item-audited-icon { font-size: 13px; flex-shrink: 0; }
+.todo-item-main { flex: 1; min-width: 0; }
+.todo-item-title {
+  font-size: 14px; font-weight: 500; color: var(--color-text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;
+  display: flex; align-items: center; gap: 6px;
 }
-.process-audit-badge {
-  display: inline-flex; align-items: center; gap: 3px;
-  font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: var(--radius-full); white-space: nowrap; flex-shrink: 0;
-}
-.process-item-meta {
-  font-size: 12px; color: var(--color-text-tertiary);
-  display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 4px;
-}
-.meta-dot { color: var(--color-border); }
-.process-item-footer { display: flex; align-items: center; gap: 6px; }
-.process-type-tag {
-  font-size: 11px; padding: 1px 8px; border-radius: var(--radius-full);
-  background: var(--color-bg-hover); color: var(--color-text-tertiary); border: 1px solid var(--color-border-light);
-}
-.process-auditing { font-size: 11px; color: var(--color-primary); display: flex; align-items: center; gap: 4px; }
-.oa-jump-btn { margin-left: auto; color: var(--color-text-tertiary); padding: 0 4px; height: 22px; }
-.oa-jump-btn:hover { color: var(--color-primary); }
-.list-empty { padding: 40px 20px; }
+.todo-item-meta { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+.todo-item-dot { color: var(--color-border); }
 
-/*分页*/
-.pagination-wrapper { padding: 12px 16px; border-top: 1px solid var(--color-border-light); display: flex; justify-content: flex-end; }
-
-/*细节面板*/
-.detail-content { padding: 18px; max-height: calc(100vh - 220px); overflow-y: auto; }
-.detail-empty { text-align: center; padding: 60px 20px; }
-.detail-empty-icon {
-  width: 64px; height: 64px; border-radius: 50%; background: var(--color-primary-bg);
-  color: var(--color-primary); font-size: 28px; display: flex; align-items: center;
-  justify-content: center; margin: 0 auto 16px;
+.todo-item-audit-info { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.todo-item-audit-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.todo-item-audit-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.todo-item-node {
+  font-size: 11px; font-weight: 500; padding: 2px 8px;
+  border-radius: var(--radius-full); background: var(--color-bg-hover);
+  color: var(--color-text-secondary); white-space: nowrap;
 }
-.detail-empty h4 { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px; }
-.detail-empty p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 auto; max-width: 300px; }
-
-/*流程信息卡*/
-.process-info-card {
-  padding: 14px 16px; background: var(--color-bg-page);
-  border-radius: var(--radius-lg); border: 1px solid var(--color-border-light); margin-bottom: 16px;
+.todo-item-process-type {
+  font-size: 11px; padding: 2px 7px; border-radius: var(--radius-full);
+  background: var(--color-bg-hover); color: var(--color-text-tertiary);
+  border: 1px solid var(--color-border-light); white-space: nowrap;
 }
-.process-info-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.process-info-title { font-size: 15px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 6px; }
-.process-info-meta { font-size: 12px; color: var(--color-text-tertiary); }
-.process-info-actions { display: flex; gap: 8px; flex-shrink: 0; }
-
-/*审核进度*/
-.audit-progress {
-  display: flex; flex-direction: column; gap: 12px; padding: 20px;
-  background: var(--color-bg-page); border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-light); margin-bottom: 16px;
-}
-.audit-phase { display: flex; align-items: flex-start; gap: 12px; }
-.audit-phase-dot { font-size: 18px; flex-shrink: 0; padding-top: 2px; }
-.audit-phase--active .audit-phase-dot { color: var(--color-primary); animation: spin 1s linear infinite; }
-.audit-phase--pending .audit-phase-dot { color: var(--color-text-tertiary); }
-.phase-pending-dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--color-border); }
-.audit-phase-title { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
-.audit-phase-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-/*合规横幅*/
-.compliance-banner {
-  display: flex; align-items: center; padding: 14px 18px;
-  border-radius: var(--radius-lg); border-left: 4px solid; margin-bottom: 16px; gap: 12px;
-}
-.compliance-banner-icon { font-size: 26px; flex-shrink: 0; }
-.compliance-banner-info { flex: 1; }
-.compliance-banner-title { font-size: 15px; font-weight: 700; }
-.compliance-banner-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
-.compliance-score { font-size: 34px; font-weight: 800; line-height: 1; }
-
-/*剖面块*/
-.section-block { margin-bottom: 16px; }
-.section-title {
-  font-size: 13px; font-weight: 600; color: var(--color-text-primary);
-  margin: 0 0 10px; display: flex; align-items: center; gap: 6px;
-}
-
-/*审计检查*/
-.audit-checks { display: flex; flex-direction: column; gap: 6px; }
-.audit-check-item {
-  display: flex; gap: 10px; padding: 10px 14px;
-  border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
-}
-.audit-check-item--pass { border-left: 3px solid var(--color-success); }
-.audit-check-item--fail { border-left: 3px solid var(--color-danger); background: var(--color-danger-bg); }
-.audit-check-status { font-size: 16px; flex-shrink: 0; padding-top: 1px; }
-.audit-check-content { flex: 1; min-width: 0; }
-.audit-check-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 3px; }
-.audit-check-reasoning { font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; }
-.audit-check-empty { font-size: 13px; color: var(--color-text-tertiary); padding: 12px; text-align: center; }
-
-/*风险与建议*/
-.risk-suggestions-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-.risk-card, .suggestion-card {
-  padding: 14px; background: var(--color-bg-page);
-  border-radius: var(--radius-lg); border: 1px solid var(--color-border-light);
-}
-.risk-list, .suggestion-list { display: flex; flex-direction: column; gap: 6px; }
-.risk-item, .suggestion-item {
-  display: flex; align-items: flex-start; gap: 8px;
-  font-size: 12px; color: var(--color-text-secondary); line-height: 1.5;
-}
-.risk-empty { font-size: 12px; color: var(--color-text-tertiary); }
-
-/*人工智能总结*/
-.ai-summary {
-  background: var(--color-bg-page); border-radius: var(--radius-md);
-  padding: 14px; border: 1px solid var(--color-border-light);
-}
-.ai-summary pre {
-  white-space: pre-wrap; word-break: break-word; font-family: var(--font-sans);
-  font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); margin: 0;
-}
-
-.history-list { display: flex; flex-direction: column; gap: 8px; }
-.history-item {
-  width: 100%; text-align: left; padding: 12px 14px; border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-light); background: var(--color-bg-page); cursor: pointer;
-  transition: all var(--transition-fast);
-}
-.history-item:hover {
-  border-color: var(--color-primary); background: var(--color-primary-bg);
-}
-.history-item--active {
-  border-color: var(--color-primary); background: var(--color-primary-bg);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent);
-}
-.history-item-title {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  font-size: 13px; font-weight: 600; color: var(--color-text-primary);
-}
-.history-item-time {
-  font-size: 12px; font-weight: 400; color: var(--color-text-tertiary);
-}
-.history-item-meta { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
-
 .oa-jump-btn {
   width: 24px; height: 24px; border: 1px solid var(--color-border);
   background: transparent; border-radius: var(--radius-sm); cursor: pointer;
@@ -1316,39 +1336,201 @@ onUnmounted(() => {
 }
 .oa-jump-btn:hover {
   border-color: var(--color-primary); color: var(--color-primary);
-  background: var(--color-primary-bg);
-  transform: scale(1.1);
+  background: var(--color-primary-bg); transform: scale(1.1);
   box-shadow: 0 2px 8px rgba(79, 70, 229, 0.15);
 }
-.oa-jump-btn:focus-visible {
-  border-color: var(--color-primary); color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
-  background: var(--color-primary-bg);
-}
 .oa-jump-btn:active { transform: scale(0.95); }
-.no-result-hint {
-  text-align: center; padding: 40px 20px;
-  color: var(--color-text-tertiary); display: flex; flex-direction: column; align-items: center; gap: 12px;
+.todo-item-score-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; padding: 2px 8px;
+  border-radius: var(--radius-full); white-space: nowrap;
 }
-.no-result-hint p { font-size: 13px; margin: 0; }
+.todo-item-checkbox { flex-shrink: 0; padding-top: 2px; }
+.todo-empty { padding: 48px 20px; }
 
-/*反应灵敏*/
+.pagination-wrapper { padding: 12px 20px; border-top: 1px solid var(--color-border-light); display: flex; justify-content: center; }
+
+/*结果区（与 dashboard 一致）*/
+.result-content { padding: 20px; }
+.result-action-bar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+.archive-process-meta-line {
+  display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;
+  font-size: 12px; color: var(--color-text-tertiary); line-height: 1.5;
+}
+.archive-process-meta-line__title {
+  font-size: 15px; font-weight: 600; color: var(--color-text-primary);
+}
+
+.result-async-panel { padding: 8px 0 16px; }
+.async-progress-steps { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.async-step-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--color-text-secondary); }
+.async-step-pending-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-border); display: inline-block; flex-shrink: 0; }
+
+.result-banner {
+  display: flex; align-items: center; padding: 16px 20px;
+  border-radius: var(--radius-lg); border-left: 4px solid; margin-bottom: 24px; gap: 14px;
+}
+.result-banner-icon { font-size: 28px; flex-shrink: 0; }
+.result-banner-info { flex: 1; }
+.result-banner-title { font-size: 16px; font-weight: 700; }
+.result-banner-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+.result-score { font-size: 36px; font-weight: 800; line-height: 1; }
+
+.action-prompt { text-align: center; padding: 40px 20px; }
+.action-prompt-info h4 { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px; }
+.action-prompt-info p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 24px; }
+.action-prompt-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+.result-section { margin-bottom: 24px; }
+.result-section-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 12px; }
+
+.section-block { margin-bottom: 16px; }
+.section-title {
+  font-size: 13px; font-weight: 600; color: var(--color-text-primary);
+  margin: 0 0 10px; display: flex; align-items: center; gap: 6px;
+}
+
+.audit-checks { display: flex; flex-direction: column; gap: 8px; }
+.audit-check-item {
+  display: flex; gap: 12px; padding: 12px 16px;
+  border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
+  transition: background var(--transition-fast);
+}
+.audit-check-item:hover { background: var(--color-bg-hover); }
+.audit-check-item--pass { border-left: 3px solid var(--color-success); }
+.audit-check-item--fail { border-left: 3px solid var(--color-danger); background: var(--color-danger-bg); }
+.audit-check-status { font-size: 18px; flex-shrink: 0; padding-top: 1px; }
+.audit-check-content { flex: 1; min-width: 0; }
+.audit-check-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+.audit-check-reasoning { font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; }
+.audit-check-empty { font-size: 13px; color: var(--color-text-tertiary); padding: 12px; text-align: center; }
+
+.risk-suggestions-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.risk-card, .suggestion-card {
+  padding: 16px; background: var(--color-bg-page);
+  border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
+}
+.risk-list, .suggestion-list { display: flex; flex-direction: column; gap: 6px; }
+.risk-item, .suggestion-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 13px; color: var(--color-text-secondary); line-height: 1.5;
+}
+.risk-empty { font-size: 12px; color: var(--color-text-tertiary); }
+
+.ai-summary { background: var(--color-bg-page); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--color-border-light); }
+.ai-reasoning { background: var(--color-bg-page); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--color-border-light); }
+.ai-reasoning pre { white-space: pre-wrap; word-break: break-word; font-family: var(--font-sans); font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); margin: 0; }
+
+.result-empty { text-align: center; padding: 60px 20px; }
+.result-empty-icon {
+  width: 64px; height: 64px; border-radius: 50%; background: var(--color-primary-bg);
+  color: var(--color-primary); font-size: 28px; display: flex; align-items: center;
+  justify-content: center; margin: 0 auto 16px;
+}
+.result-empty p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 auto; max-width: 280px; }
+
+/*审核链抽屉（与 dashboard 完全一致）*/
+.drawer-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(4px); z-index: 1000; display: flex; justify-content: flex-end;
+}
+.drawer-panel {
+  width: 520px; max-width: 100vw; background: var(--color-bg-card);
+  height: 100%; display: flex; flex-direction: column; box-shadow: -8px 0 30px rgba(0,0,0,0.12);
+}
+.drawer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px; border-bottom: 1px solid var(--color-border-light); flex-shrink: 0;
+}
+.drawer-header h3 { font-size: 16px; font-weight: 600; margin: 0; }
+.drawer-close {
+  width: 32px; height: 32px; border: none; background: transparent;
+  border-radius: var(--radius-md); cursor: pointer; display: flex;
+  align-items: center; justify-content: center; color: var(--color-text-tertiary);
+  font-size: 16px; transition: all var(--transition-fast);
+}
+.drawer-close:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+.drawer-body { flex: 1; overflow-y: auto; padding: 24px; }
+.chain-desc { font-size: 13px; color: var(--color-text-tertiary); margin: 0 0 20px; }
+
+.audit-chain { display: flex; flex-direction: column; }
+.chain-node { display: flex; gap: 16px; }
+.chain-timeline { display: flex; flex-direction: column; align-items: center; width: 20px; flex-shrink: 0; }
+.chain-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.chain-line { width: 2px; flex: 1; background: var(--color-border-light); min-height: 20px; }
+.chain-card {
+  flex: 1; padding: 14px 16px; border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md); margin-bottom: 12px; transition: background var(--transition-fast);
+}
+.chain-card:hover { background: var(--color-bg-hover); }
+.chain-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; cursor: pointer; }
+.chain-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-full);
+}
+.chain-score { font-size: 18px; font-weight: 700; color: var(--color-text-primary); }
+.chain-card-meta { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chain-expand-btn { margin-left: auto; font-size: 12px; color: var(--color-text-tertiary); }
+.chain-detail {
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border-light);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.chain-rule-item {
+  display: flex; gap: 8px; font-size: 12px; padding: 6px 8px;
+  border-radius: var(--radius-sm); border: 1px solid var(--color-border-light);
+}
+.chain-rule--fail { background: var(--color-danger-bg); }
+.chain-rule-name { font-weight: 600; color: var(--color-text-primary); margin-bottom: 2px; }
+.chain-rule-reasoning { color: var(--color-text-secondary); }
+.chain-reasoning { background: var(--color-bg-page); border-radius: var(--radius-sm); padding: 10px; }
+.chain-no-detail { font-size: 12px; color: var(--color-text-tertiary); text-align: center; padding: 12px; }
+.chain-section-title { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 6px; }
+.chain-parse-error {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  border-radius: var(--radius-sm); background: var(--color-danger-bg);
+  font-size: 12px; color: var(--color-danger);
+}
+
+.risk-suggest-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.risk-suggest-row:has(.insight-card:only-child) { grid-template-columns: 1fr; }
+.insight-card { border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--color-border-light); }
+.insight-card--risk { background: linear-gradient(135deg, rgba(239, 68, 68, 0.04), rgba(239, 68, 68, 0.01)); border-color: rgba(239, 68, 68, 0.15); }
+.insight-card--suggest { background: linear-gradient(135deg, rgba(79, 70, 229, 0.04), rgba(79, 70, 229, 0.01)); border-color: rgba(79, 70, 229, 0.15); }
+.insight-card-header { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 10px; }
+.insight-card-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.insight-card-list li { font-size: 13px; line-height: 1.6; color: var(--color-text-secondary); }
+.insight-card--risk .insight-card-list li { color: var(--color-danger); }
+
+.drawer-enter-active { transition: opacity 0.2s ease; }
+.drawer-enter-active .drawer-panel { transition: transform 0.3s cubic-bezier(0.16,1,0.3,1); }
+.drawer-leave-active { transition: opacity 0.2s ease 0.1s; }
+.drawer-leave-active .drawer-panel { transition: transform 0.2s ease; }
+.drawer-enter-from { opacity: 0; }
+.drawer-enter-from .drawer-panel { transform: translateX(100%); }
+.drawer-leave-to { opacity: 0; }
+.drawer-leave-to .drawer-panel { transform: translateX(100%); }
+
 @media (max-width: 1200px) {
-  .archive-grid { grid-template-columns: 360px 1fr; }
+  .dashboard-grid { grid-template-columns: 380px 1fr; }
 }
 @media (max-width: 1024px) {
-  .archive-grid { grid-template-columns: 1fr; }
+  .dashboard-grid { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
   .stats-row { grid-template-columns: repeat(2, 1fr); }
   .risk-suggestions-row { grid-template-columns: 1fr; }
-  .process-info-header { flex-direction: column; }
-  .process-info-actions { width: 100%; }
+  .panel-header { padding: 12px 16px; }
+  .todo-item { padding: 12px 16px; }
+  .result-content { padding: 16px; }
+  .action-prompt-buttons { flex-direction: column; }
+  .filter-bar { flex-direction: column; align-items: stretch; }
 }
 @media (max-width: 480px) {
   .stats-row { grid-template-columns: 1fr 1fr; }
   .page-title { font-size: 20px; }
+  .result-banner { flex-wrap: wrap; padding: 12px 14px; }
+  .result-score { font-size: 28px; }
 }
 /*markdown*/
 .markdown-body { font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); word-break: break-word; }
