@@ -1,6 +1,17 @@
 package oa
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// ArchivedListFilter 控制已归档流程列表在 OA 侧的查询条件（由 SQL 直接过滤）。
+type ArchivedListFilter struct {
+	// ArchiveDateStart 归档时间下界（含），与适配器内用于排序的归档时间表达式一致（如 COALESCE(lastoperatedate, createdate)）。
+	ArchiveDateStart *time.Time
+	// ArchiveDateEndExclusive 归档时间上界（不含），通常为「结束日期」次日 0 点。
+	ArchiveDateEndExclusive *time.Time
+}
 
 // OAAdapter 定义 OA 系统适配器接口。
 // 不同 OA 类型（泛微 E9、致远、钉钉等）各自实现该接口。
@@ -20,8 +31,8 @@ type OAAdapter interface {
 	// FetchTodoList 拉取指定用户的 OA 待审批流程列表
 	FetchTodoList(ctx context.Context, username string) ([]TodoItem, error)
 
-	// FetchArchivedList 拉取已归档流程列表
-	FetchArchivedList(ctx context.Context, username string) ([]ArchivedItem, error)
+	// FetchArchivedList 拉取已归档流程列表（filter 中日期条件在 SQL 中生效）
+	FetchArchivedList(ctx context.Context, username string, filter ArchivedListFilter) ([]ArchivedItem, error)
 
 	// FetchProcessFlow 拉取流程审批流快照
 	FetchProcessFlow(ctx context.Context, processID string) (*ProcessFlowSnapshot, error)

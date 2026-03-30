@@ -26,6 +26,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
+import dayjs, { type Dayjs } from 'dayjs'
 import { useI18n } from '~/composables/useI18n'
 import type {
   ArchiveProcessItem,
@@ -99,6 +100,27 @@ const filterProcessNames = computed(() => {
 const filterDepartment = ref<string | undefined>(undefined)
 const filterAuditStatus = ref<string | undefined>('unaudited')
 
+/** 与 OA SQL 归档时间筛选一致，默认最近 90 天 */
+const archiveDateRange = ref<[Dayjs, Dayjs]>([
+  dayjs().subtract(90, 'day').startOf('day'),
+  dayjs().endOf('day'),
+])
+
+const archiveDateQuery = () => {
+  const r = archiveDateRange.value
+  if (!r?.[0] || !r?.[1]) return {}
+  return {
+    start_date: r[0].format('YYYY-MM-DD'),
+    end_date: r[1].format('YYYY-MM-DD'),
+  }
+}
+
+const onArchiveDateRangeChange = () => {
+  listPage.value = 1
+  clearDetailOnFilterChange()
+  void Promise.all([loadStats(), loadProcesses()])
+}
+
 const departmentOptions = computed(() => [...new Set(processList.value.map(p => p.department).filter(Boolean))])
 
 const renderMarkdown = (md: string | undefined | null): string => {
@@ -134,6 +156,13 @@ const clearFilters = () => {
   searchApplicant.value = ''
   filterProcessType.value = []
   filterDepartment.value = undefined
+  archiveDateRange.value = [
+    dayjs().subtract(90, 'day').startOf('day'),
+    dayjs().endOf('day'),
+  ]
+  listPage.value = 1
+  clearDetailOnFilterChange()
+  void Promise.all([loadStats(), loadProcesses()])
 }
 
 const isResultAsyncRunning = (result: ArchiveReviewResult | null | undefined) =>
@@ -538,7 +567,7 @@ const handleCancelAudit = async () => {
 
 const loadStats = async () => {
   try {
-    stats.value = await getStats()
+    stats.value = await getStats(archiveDateQuery())
   } catch {}
 }
 
@@ -572,6 +601,7 @@ const loadProcesses = async () => {
       audit_status: filterAuditStatus.value || undefined,
       page: listPage.value,
       page_size: listPageSize.value,
+      ...archiveDateQuery(),
     })
     processList.value = Array.isArray(response) ? response : (response?.items ?? [])
     listTotal.value = (response as any)?.total ?? processList.value.length
@@ -728,11 +758,20 @@ onUnmounted(() => {
               {{ computedListTitle }}
               <a-badge :count="listTotal" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
             </h3>
-            <a-button size="small" type="default" @click="showFilters = !showFilters" class="filter-toggle-btn" :class="{ 'filter-toggle-btn--active': hasActiveFilters }">
-              <FilterOutlined />
-              {{ t('archive.filter') }}
-              <span v-if="hasActiveFilters" class="filter-active-dot" />
-            </a-button>
+            <div class="panel-header-controls">
+              <span class="archive-date-label">{{ t('archive.archiveDateRange') }}</span>
+              <a-range-picker
+                v-model:value="archiveDateRange"
+                :allow-clear="false"
+                class="archive-range-picker"
+                @change="onArchiveDateRangeChange"
+              />
+              <a-button size="small" type="default" @click="showFilters = !showFilters" class="filter-toggle-btn" :class="{ 'filter-toggle-btn--active': hasActiveFilters }">
+                <FilterOutlined />
+                {{ t('archive.filter') }}
+                <span v-if="hasActiveFilters" class="filter-active-dot" />
+              </a-button>
+            </div>
           </div>
 
           <!--过滤器-->
@@ -1276,7 +1315,10 @@ onUnmounted(() => {
   padding: 16px 20px; border-bottom: 1px solid var(--color-border-light);
   display: flex; flex-direction: column; gap: 12px;
 }
-.panel-header-row { display: flex; align-items: center; justify-content: space-between; }
+.panel-header-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.panel-header-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.archive-date-label { font-size: 13px; color: var(--color-text-secondary); white-space: nowrap; }
+.archive-range-picker { min-width: 240px; }
 .panel-title {
   font-size: 15px; font-weight: 600; color: var(--color-text-primary);
   margin: 0; display: flex; align-items: center; gap: 8px;

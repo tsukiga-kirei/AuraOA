@@ -78,7 +78,7 @@ func NewArchiveReviewService(
 	}
 }
 
-func (s *ArchiveReviewService) ListProcesses(c *gin.Context) (*dto.ArchiveProcessListResponse, error) {
+func (s *ArchiveReviewService) ListProcesses(c *gin.Context, params dto.ArchiveListParams) (*dto.ArchiveProcessListResponse, error) {
 	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
@@ -107,7 +107,11 @@ func (s *ArchiveReviewService) ListProcesses(c *gin.Context) (*dto.ArchiveProces
 		return nil, err
 	}
 
-	items, err := adapter.FetchArchivedList(c.Request.Context(), s.extractUsername(c))
+	listFilter := oa.ArchivedListFilter{
+		ArchiveDateStart:        params.ArchiveDateStart,
+		ArchiveDateEndExclusive: params.ArchiveDateEndExclusive,
+	}
+	items, err := adapter.FetchArchivedList(c.Request.Context(), s.extractUsername(c), listFilter)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 已归档流程失败: "+err.Error())
 	}
@@ -169,7 +173,7 @@ func (s *ArchiveReviewService) ListProcesses(c *gin.Context) (*dto.ArchiveProces
 
 // ListProcessesPaged 分页查询已归档流程（在内存获取全量后做筛选+分页）。
 func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.ArchiveListParams) (*dto.ArchiveProcessListResponse, error) {
-	full, err := s.ListProcesses(c)
+	full, err := s.ListProcesses(c, params)
 	if err != nil {
 		return nil, err
 	}
@@ -256,8 +260,8 @@ func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.Arc
 	}, nil
 }
 
-func (s *ArchiveReviewService) GetStats(c *gin.Context) (*dto.ArchiveReviewStats, error) {
-	resp, err := s.ListProcesses(c)
+func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListParams) (*dto.ArchiveReviewStats, error) {
+	resp, err := s.ListProcesses(c, params)
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +373,7 @@ func (s *ArchiveReviewService) ListPendingForBatch(c *gin.Context, limit int) ([
 	if err != nil {
 		return nil, err
 	}
-	allItems, err := adapter.FetchArchivedList(c.Request.Context(), username)
+	allItems, err := adapter.FetchArchivedList(c.Request.Context(), username, oa.ArchivedListFilter{})
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 归档流程失败: "+err.Error())
 	}
@@ -1132,7 +1136,7 @@ func (s *ArchiveReviewService) getOAAdapter(tenantID uuid.UUID) (oa.OAAdapter, e
 }
 
 func (s *ArchiveReviewService) fetchArchivedItem(ctx context.Context, adapter oa.OAAdapter, processID string) (*oa.ArchivedItem, error) {
-	items, err := adapter.FetchArchivedList(ctx, "")
+	items, err := adapter.FetchArchivedList(ctx, "", oa.ArchivedListFilter{})
 	if err != nil {
 		return nil, err
 	}

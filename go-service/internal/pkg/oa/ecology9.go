@@ -510,13 +510,14 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([
 
 // FetchArchivedList 拉取泛微 E9 中的已归档流程。
 // 不同客户库对归档时间字段可能不一致，因此优先尝试 lastoperatedate，失败时回退到 createdate。
-func (a *Ecology9Adapter) FetchArchivedList(ctx context.Context, username string) ([]ArchivedItem, error) {
+// filter 中的归档日期范围在 SQL WHERE 中生效，与 ORDER BY 使用同一归档时间表达式。
+func (a *Ecology9Adapter) FetchArchivedList(ctx context.Context, username string, filter ArchivedListFilter) ([]ArchivedItem, error) {
 	_ = username
-	items, err := a.fetchArchivedListWithArchiveDate(ctx, true)
+	items, err := a.fetchArchivedListWithArchiveDate(ctx, true, filter)
 	if err == nil {
 		return items, nil
 	}
-	return a.fetchArchivedListWithArchiveDate(ctx, false)
+	return a.fetchArchivedListWithArchiveDate(ctx, false, filter)
 }
 
 // FetchAllTodoItems 拉取所有待审批流程（不过滤用户，供调度器批处理使用）。
@@ -609,10 +610,21 @@ func (a *Ecology9Adapter) FetchAllTodoItems(ctx context.Context, limit int) ([]T
 	return items, nil
 }
 
-func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, useLastOperateDate bool) ([]ArchivedItem, error) {
+func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, useLastOperateDate bool, filter ArchivedListFilter) ([]ArchivedItem, error) {
 	archiveDateExpr := "r." + a.col("createdate")
 	if useLastOperateDate {
 		archiveDateExpr = fmt.Sprintf("COALESCE(r.%s, r.%s)", a.col("lastoperatedate"), a.col("createdate"))
+	}
+
+	var dateCond string
+	var dateArgs []interface{}
+	if filter.ArchiveDateStart != nil {
+		dateCond += fmt.Sprintf(" AND (%s) >= ?", archiveDateExpr)
+		dateArgs = append(dateArgs, *filter.ArchiveDateStart)
+	}
+	if filter.ArchiveDateEndExclusive != nil {
+		dateCond += fmt.Sprintf(" AND (%s) < ?", archiveDateExpr)
+		dateArgs = append(dateArgs, *filter.ArchiveDateEndExclusive)
 	}
 
 	query := fmt.Sprintf(`
@@ -634,7 +646,7 @@ func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, 
 		LEFT JOIN %s h ON r.%s = h.%s
 		LEFT JOIN %s d ON h.%s = d.%s
 		LEFT JOIN %s n ON r.%s = n.%s
-		WHERE r.%s = 3
+		WHERE r.%s = 3%s
 		ORDER BY %s DESC`,
 		a.col("requestid"), a.col("requestname"),
 		a.col("lastname"), a.col("departmentname"),
@@ -657,10 +669,11 @@ func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, 
 		a.tableName("workflow_nodebase"),
 		a.col("currentnodeid"), a.col("id"),
 		a.col("currentnodetype"),
+		dateCond,
 		archiveDateExpr,
 	)
 
-	rows, err := a.db.WithContext(ctx).Raw(query).Rows()
+	rows, err := a.db.WithContext(ctx).Raw(query, dateArgs...).Rows()
 	if err != nil {
 		return nil, fmt.Errorf("查询 OA 已归档流程失败: %w", err)
 	}

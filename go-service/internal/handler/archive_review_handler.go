@@ -27,15 +27,7 @@ func NewArchiveReviewHandler(archiveService *service.ArchiveReviewService) *Arch
 }
 
 func (h *ArchiveReviewHandler) ListProcesses(c *gin.Context) {
-	params := dto.ArchiveListParams{
-		Keyword:     c.Query("keyword"),
-		Applicant:   c.Query("applicant"),
-		ProcessType: c.Query("process_type"),
-		Department:  c.Query("department"),
-		AuditStatus: c.Query("audit_status"),
-		Page:        parseIntQuery(c, "page", 1),
-		PageSize:    parseIntQuery(c, "page_size", 20),
-	}
+	params := parseArchiveListParams(c)
 	resp, err := h.archiveService.ListProcessesPaged(c, params)
 	if err != nil {
 		handleServiceError(c, err)
@@ -45,7 +37,7 @@ func (h *ArchiveReviewHandler) ListProcesses(c *gin.Context) {
 }
 
 func (h *ArchiveReviewHandler) GetStats(c *gin.Context) {
-	stats, err := h.archiveService.GetStats(c)
+	stats, err := h.archiveService.GetStats(c, parseArchiveListParams(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -234,6 +226,31 @@ func (h *ArchiveReviewHandler) ExportLogs(c *gin.Context) {
 		})
 	}
 	w.Flush()
+}
+
+// parseArchiveListParams 解析归档列表与统计请求；start_date、end_date 为 YYYY-MM-DD，在 OA SQL 中按归档时间过滤。
+func parseArchiveListParams(c *gin.Context) dto.ArchiveListParams {
+	params := dto.ArchiveListParams{
+		Keyword:     c.Query("keyword"),
+		Applicant:   c.Query("applicant"),
+		ProcessType: c.Query("process_type"),
+		Department:  c.Query("department"),
+		AuditStatus: c.Query("audit_status"),
+		Page:        parseIntQuery(c, "page", 1),
+		PageSize:    parseIntQuery(c, "page_size", 20),
+	}
+	if s := c.Query("start_date"); s != "" {
+		if t, err := time.ParseInLocation("2006-01-02", s, time.Local); err == nil {
+			params.ArchiveDateStart = &t
+		}
+	}
+	if s := c.Query("end_date"); s != "" {
+		if t, err := time.ParseInLocation("2006-01-02", s, time.Local); err == nil {
+			excl := t.AddDate(0, 0, 1)
+			params.ArchiveDateEndExclusive = &excl
+		}
+	}
+	return params
 }
 
 func parseArchiveLogQuery(c *gin.Context) (repository.ArchiveLogFilter, int, int) {
