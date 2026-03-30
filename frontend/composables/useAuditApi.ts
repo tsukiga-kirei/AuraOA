@@ -22,8 +22,15 @@ export type {
 export const useAuditApi = () => {
   const { authFetch } = useAuth()
 
-  async function getStats(): Promise<AuditStats> {
-    return await authFetch<AuditStats>('/api/audit/stats')
+  async function getStats(params?: {
+    start_date?: string
+    end_date?: string
+  }): Promise<AuditStats> {
+    const query = new URLSearchParams()
+    if (params?.start_date) query.set('start_date', params.start_date)
+    if (params?.end_date) query.set('end_date', params.end_date)
+    const qs = query.toString()
+    return await authFetch<AuditStats>(qs ? `/api/audit/stats?${qs}` : '/api/audit/stats')
   }
 
   async function listProcesses(tab: AuditTab, params?: {
@@ -34,7 +41,9 @@ export const useAuditApi = () => {
     audit_status?: string
     page?: number
     page_size?: number
-  }): Promise<{ items: OAProcessItem[]; total: number }> {
+    start_date?: string
+    end_date?: string
+  }): Promise<{ items: OAProcessItem[]; total: number; page?: number; page_size?: number }> {
     const query = new URLSearchParams({ tab })
     if (params?.keyword) query.set('keyword', params.keyword)
     if (params?.applicant) query.set('applicant', params.applicant)
@@ -43,7 +52,11 @@ export const useAuditApi = () => {
     if (params?.audit_status) query.set('audit_status', params.audit_status)
     if (params?.page) query.set('page', String(params.page))
     if (params?.page_size) query.set('page_size', String(params.page_size))
-    return await authFetch<{ items: OAProcessItem[]; total: number }>(`/api/audit/processes?${query.toString()}`)
+    if (params?.start_date) query.set('start_date', params.start_date)
+    if (params?.end_date) query.set('end_date', params.end_date)
+    return await authFetch<{ items: OAProcessItem[]; total: number; page?: number; page_size?: number }>(
+      `/api/audit/processes?${query.toString()}`,
+    )
   }
 
   const POLL_INTERVAL_MS = 1500

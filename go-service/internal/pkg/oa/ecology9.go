@@ -417,7 +417,7 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 // FetchTodoList 拉取用户在泛微 E9 中的待审批流程列表。
 // 查询 workflow_currentoperator 获取用户待办，关联 workflow_requestbase 获取流程信息。
 // 兼容 MySQL / Oracle / DM 三种驱动。
-func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([]TodoItem, error) {
+func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string, filter TodoListFilter) ([]TodoItem, error) {
 	var e9UserID int
 	err := a.db.WithContext(ctx).
 		Table(a.tableName("hrmresource")).
@@ -426,6 +426,18 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([
 		Row().Scan(&e9UserID)
 	if err != nil {
 		return nil, fmt.Errorf("OA 用户 '%s' 不存在", username)
+	}
+
+	createDateCol := "r." + a.col("createdate")
+	var dateCond string
+	var dateArgs []interface{}
+	if filter.SubmitDateStart != nil {
+		dateCond += fmt.Sprintf(" AND %s >= ?", createDateCol)
+		dateArgs = append(dateArgs, *filter.SubmitDateStart)
+	}
+	if filter.SubmitDateEndExclusive != nil {
+		dateCond += fmt.Sprintf(" AND %s < ?", createDateCol)
+		dateArgs = append(dateArgs, *filter.SubmitDateEndExclusive)
 	}
 
 	// 查询待办：workflow_currentoperator + requestbase + base + bill + type + node
@@ -448,7 +460,7 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([
 		LEFT JOIN %s h ON r.%s = h.%s
 		LEFT JOIN %s d ON h.%s = d.%s
 		LEFT JOIN %s n ON co.%s = n.%s
-		WHERE co.%s = ? AND co.%s = 0
+		WHERE co.%s = ? AND co.%s = 0%s
 		ORDER BY r.%s DESC`,
 		// SELECT
 		a.col("requestid"), a.col("requestname"),
@@ -476,11 +488,14 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string) ([
 		a.col("nodeid"), a.col("id"),
 		// WHERE
 		a.col("userid"), a.col("isremark"),
+		dateCond,
 		// ORDER BY
 		a.col("createdate"),
 	)
 
-	rows, err := a.db.WithContext(ctx).Raw(query, e9UserID).Rows()
+	args := []interface{}{e9UserID}
+	args = append(args, dateArgs...)
+	rows, err := a.db.WithContext(ctx).Raw(query, args...).Rows()
 	if err != nil {
 		return nil, fmt.Errorf("查询 OA 待办失败: %w", err)
 	}

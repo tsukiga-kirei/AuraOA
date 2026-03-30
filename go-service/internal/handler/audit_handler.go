@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
@@ -26,26 +27,29 @@ func NewAuditHandler(auditService *service.AuditExecuteService) *AuditHandler {
 	return &AuditHandler{auditService: auditService}
 }
 
-// ListProcesses GET /api/audit/processes?tab=pending_ai&keyword=...
+// ListProcesses GET /api/audit/processes?tab=pending_ai&page=1&page_size=20&start_date=&end_date=
 func (h *AuditHandler) ListProcesses(c *gin.Context) {
-	tab := c.DefaultQuery("tab", "pending_ai")
-	username := getUsername(c)
-	if username == "" {
+	if getUsername(c) == "" {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "用户信息缺失")
 		return
 	}
 
-	items, err := h.auditService.ListProcesses(c, tab, username)
+	params := parseAuditListParams(c)
+	resp, err := h.auditService.ListProcessesPaged(c, params)
 	if err != nil {
 		handleServiceError(c, err)
 		return
 	}
-	response.Success(c, items)
+	response.Success(c, resp)
 }
 
-// GetStats GET /api/audit/stats
+// GetStats GET /api/audit/stats（与列表共用 start_date / end_date 时统计口径一致）
 func (h *AuditHandler) GetStats(c *gin.Context) {
-	stats, err := h.auditService.GetStats(c)
+	if getUsername(c) == "" {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "用户信息缺失")
+		return
+	}
+	stats, err := h.auditService.GetStatsWithParams(c, parseAuditListParams(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -258,6 +262,32 @@ func parseAuditLogQuery(c *gin.Context) (repository.AuditLogFilter, int, int) {
 	page := parseIntQuery(c, "page", 1)
 	pageSize := parseIntQuery(c, "page_size", 20)
 	return filter, page, pageSize
+}
+
+// parseAuditListParams 解析审核工作台列表与统计的 query（含 OA 提交时间 start_date、end_date）。
+func parseAuditListParams(c *gin.Context) dto.AuditListParams {
+	p := dto.AuditListParams{
+		Tab:         c.DefaultQuery("tab", "pending_ai"),
+		Keyword:     c.Query("keyword"),
+		Applicant:   c.Query("applicant"),
+		ProcessType: c.Query("process_type"),
+		Department:  c.Query("department"),
+		AuditStatus: c.Query("audit_status"),
+		Page:        parseIntQuery(c, "page", 1),
+		PageSize:    parseIntQuery(c, "page_size", 20),
+	}
+	if s := c.Query("start_date"); s != "" {
+		if t, err := time.ParseInLocation("2006-01-02", s, time.Local); err == nil {
+			p.SubmitDateStart = &t
+		}
+	}
+	if s := c.Query("end_date"); s != "" {
+		if t, err := time.ParseInLocation("2006-01-02", s, time.Local); err == nil {
+			excl := t.AddDate(0, 0, 1)
+			p.SubmitDateEndExclusive = &excl
+		}
+	}
+	return p
 }
 
 func getUsername(c *gin.Context) string {

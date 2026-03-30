@@ -10,6 +10,7 @@ import {
   ReloadOutlined,
   HistoryOutlined,
   EyeOutlined,
+  FieldTimeOutlined,
   DownOutlined,
   UpOutlined,
   InfoCircleOutlined,
@@ -19,6 +20,7 @@ import {
   StopOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
+import dayjs, { type Dayjs } from 'dayjs'
 import { marked } from 'marked'
 import { useI18n } from '~/composables/useI18n'
 import type { OAProcessItem, AuditResult, AuditChainItem, AuditTab, AuditStats } from '~/types/audit'
@@ -64,6 +66,26 @@ const filterDepartment = ref<string | undefined>(undefined)
 const filterAuditStatus = ref<string | undefined>(undefined)
 const showFilters = ref(false)
 
+/** 与后端 OA SQL 一致：按流程创建/提交时间筛待办；默认最近 90 天 */
+const auditDateRange = ref<[Dayjs, Dayjs]>([
+  dayjs().subtract(90, 'day').startOf('day'),
+  dayjs().endOf('day'),
+])
+
+const auditListDateQuery = () => {
+  const r = auditDateRange.value
+  if (!r?.[0] || !r?.[1]) return {}
+  return {
+    start_date: r[0].format('YYYY-MM-DD'),
+    end_date: r[1].format('YYYY-MM-DD'),
+  }
+}
+
+const onAuditDateRangeChange = () => {
+  listPage.value = 1
+  void Promise.all([loadStats(), loadProcesses()])
+}
+
 const filterProcessNames = computed(() => {
   if (filterProcessType.value.length === 0) return []
   const names: string[] = []
@@ -86,6 +108,12 @@ const clearFilters = () => {
   filterProcessType.value = []
   filterDepartment.value = undefined
   filterAuditStatus.value = undefined
+  auditDateRange.value = [
+    dayjs().subtract(90, 'day').startOf('day'),
+    dayjs().endOf('day'),
+  ]
+  listPage.value = 1
+  void Promise.all([loadStats(), loadProcesses()])
 }
 const hasActiveFilters = computed(() => !!searchText.value || !!searchApplicant.value || filterProcessType.value.length > 0 || !!filterDepartment.value || !!filterAuditStatus.value)
 
@@ -103,30 +131,22 @@ const auditStatusOptions = computed(() => {
   return opts
 })
 
-// ─── 本地筛选（后端已按 tab 过滤，前端做关键词等二次筛选） ───
-const filteredList = computed(() => {
-  let list = processList.value
-  if (filterProcessNames.value.length > 0) {
-    list = list.filter(p => filterProcessNames.value.includes(p.process_type))
-  }
-  if (filterDepartment.value) {
-    list = list.filter(p => p.department === filterDepartment.value)
-  }
-  if (searchText.value) {
-    const q = searchText.value.toLowerCase()
-    list = list.filter(p => p.title.toLowerCase().includes(q))
-  }
-  if (searchApplicant.value) {
-    const q2 = searchApplicant.value.toLowerCase()
-    list = list.filter(p => p.applicant.toLowerCase().includes(q2))
-  }
-  if (filterAuditStatus.value && showAuditStatusFilter.value) {
-    list = list.filter(p => p.audit_result?.recommendation === filterAuditStatus.value)
-  }
-  return list
-})
+const listPage = ref(1)
+const listPageSize = ref(10)
+const listTotal = ref(0)
 
-const { paged: pagedList, current: listPage, pageSize: listPageSize, total: listTotal, onChange: onListPageChange } = usePagination(filteredList, 10)
+let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const triggerFilterReload = () => {
+  if (filterDebounceTimer) clearTimeout(filterDebounceTimer)
+  filterDebounceTimer = setTimeout(() => {
+    listPage.value = 1
+    loadProcesses()
+  }, 400)
+}
+
+watch([searchText, searchApplicant, filterProcessNames, filterDepartment, filterAuditStatus], () => {
+  triggerFilterReload()
+})
 
 // ─── 选中流程 & 审核结果 ───
 const selectedProcess = ref<string | null>(null)
@@ -135,6 +155,18 @@ const loading = ref(false)
 const phase1Done = ref(false)
 
 const selectedProcessInfo = computed(() => processList.value.find(p => p.process_id === selectedProcess.value))
+
+/** 摘要第一行仅展示流程标题（避免与下方元信息重复） */
+const dashboardProcessSummaryTitle = computed(() => selectedProcessInfo.value?.title ?? '')
+
+const dashboardProcessMetaLine2 = computed(() => {
+  const p = selectedProcessInfo.value
+  if (!p) return ''
+  const ap = p.applicant?.trim() || '—'
+  const dept = p.department?.trim() || '—'
+  const cat = (p.process_type_label || p.process_type || '').trim() || '—'
+  return `${ap} · ${dept} · ${cat}`
+})
 
 // ─── 批量审核 ───
 const selectedProcessIds = ref<string[]>([])
@@ -190,7 +222,7 @@ const toggleSelectProcess = (processId: string) => {
 }
 
 const selectableIdsComputed = computed(() => {
-  return filteredList.value
+  return processList.value
     .filter(p => !(p.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(p.audit_status)))
     .map(p => p.process_id)
 })
@@ -220,20 +252,43 @@ const toggleChainNode = (id: string) => {
 
 // ─── 数据加载 ───
 const loadStats = async () => {
-  try { stats.value = await getStats() } catch {}
+  try {
+    stats.value = await getStats(auditListDateQuery())
+  } catch {}
 }
 
 const loadProcesses = async () => {
   listLoading.value = true
   try {
-    const res = await listProcesses(activeTab.value)
-    processList.value = Array.isArray(res) ? res : (res as any)?.items ?? []
+    const pt =
+      filterProcessNames.value.length > 0 ? filterProcessNames.value.join(',') : undefined
+    const res = await listProcesses(activeTab.value, {
+      keyword: searchText.value || undefined,
+      applicant: searchApplicant.value || undefined,
+      process_type: pt,
+      department: filterDepartment.value || undefined,
+      audit_status: filterAuditStatus.value || undefined,
+      page: listPage.value,
+      page_size: listPageSize.value,
+      ...auditListDateQuery(),
+    })
+    processList.value = res?.items ?? []
+    listTotal.value = res?.total ?? 0
+    if (res?.page) listPage.value = res.page
+    if (res?.page_size) listPageSize.value = res.page_size
   } catch (e: any) {
     message.error(t('dashboard.loadFailed'))
     processList.value = []
+    listTotal.value = 0
   } finally {
     listLoading.value = false
   }
+}
+
+const onListPageChange = (page: number, size: number) => {
+  listPage.value = page
+  listPageSize.value = size
+  loadProcesses()
 }
 
 const switchTab = (tab: AuditTab) => {
@@ -549,6 +604,15 @@ const urgencyConfig = computed<Record<string, { color: string; bg: string; label
 const isResultAsyncRunning = (r: AuditResult | null) =>
   !!(r?.status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(r.status))
 
+/** 「AI 已审核 / 全部已完成」页签下，已出结果时展示流程摘要（与归档复盘区一致） */
+const showDashboardProcessSummary = computed(
+  () =>
+    (activeTab.value === 'ai_done' || activeTab.value === 'completed')
+    && !!selectedProcessInfo.value
+    && !!currentResult.value
+    && !isResultAsyncRunning(currentResult.value),
+)
+
 const filteredProgressSteps = computed(() => {
   if (!currentResult.value?.progress_steps) return []
   if (batchAuditing.value) return currentResult.value.progress_steps
@@ -634,13 +698,22 @@ onMounted(() => {
               <CheckCircleOutlined v-else-if="activeTab === 'ai_done'" style="color: var(--color-success);" />
               <HistoryOutlined v-else style="color: var(--color-text-tertiary);" />
               {{ viewModeLabel }}
-              <a-badge :count="filteredList.length" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
+              <a-badge :count="listTotal" :number-style="{ backgroundColor: 'var(--color-primary)' }" />
             </h3>
-            <a-button size="small" type="default" @click="showFilters = !showFilters" class="filter-toggle-btn" :class="{ 'filter-toggle-btn--active': hasActiveFilters }">
-              <FilterOutlined />
-              {{ t('dashboard.filter') }}
-              <span v-if="hasActiveFilters" class="filter-active-dot" />
-            </a-button>
+            <div class="panel-header-controls">
+              <span class="dashboard-audit-date-label">{{ t('dashboard.listDateRange') }}</span>
+              <a-range-picker
+                v-model:value="auditDateRange"
+                :allow-clear="false"
+                class="dashboard-audit-range-picker"
+                @change="onAuditDateRangeChange"
+              />
+              <a-button size="small" type="default" @click="showFilters = !showFilters" class="filter-toggle-btn" :class="{ 'filter-toggle-btn--active': hasActiveFilters }">
+                <FilterOutlined />
+                {{ t('dashboard.filter') }}
+                <span v-if="hasActiveFilters" class="filter-active-dot" />
+              </a-button>
+            </div>
           </div>
           <!--可折叠筛选条-->
           <transition name="slide">
@@ -719,7 +792,7 @@ onMounted(() => {
         <a-spin :spinning="listLoading">
           <div class="todo-list">
             <div
-              v-for="item in pagedList"
+              v-for="item in processList"
               :key="item.process_id"
               class="todo-item"
               :class="{
@@ -799,7 +872,7 @@ onMounted(() => {
               </div>
             </div>
 
-            <div v-if="filteredList.length === 0 && !listLoading" class="todo-empty">
+            <div v-if="processList.length === 0 && !listLoading" class="todo-empty">
               <a-empty :description="t('dashboard.noData')" />
             </div>
           </div>
@@ -926,6 +999,16 @@ onMounted(() => {
               <a-button danger v-if="!isCompletedHistoryTab && isResultAsyncRunning(currentResult)" @click="handleCancelAudit(currentResult.process_id)">
                 <StopOutlined /> 中止审核
               </a-button>
+            </div>
+
+            <!--已审核流程摘要：标题 + 申请人/部门/类别 + 当前节点-->
+            <div v-if="showDashboardProcessSummary" class="dashboard-process-summary">
+              <span class="dashboard-process-summary__title">{{ dashboardProcessSummaryTitle }}</span>
+              <span class="dashboard-process-summary__meta">{{ dashboardProcessMetaLine2 }}</span>
+              <span class="dashboard-process-summary__node">
+                <FieldTimeOutlined />
+                {{ t('dashboard.currentNode') }}: {{ selectedProcessInfo?.current_node || '—' }}
+              </span>
             </div>
 
             <!--解析失败降级展示-->
@@ -1194,7 +1277,10 @@ onMounted(() => {
   font-size: 15px; font-weight: 600; color: var(--color-text-primary);
   margin: 0; display: flex; align-items: center; gap: 8px;
 }
-.panel-header-row { display: flex; align-items: center; justify-content: space-between; }
+.panel-header-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.panel-header-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.dashboard-audit-date-label { font-size: 13px; color: var(--color-text-secondary); white-space: nowrap; }
+.dashboard-audit-range-picker { min-width: 240px; }
 
 /*筛选条*/
 .filter-toggle-btn { position: relative; }
@@ -1290,7 +1376,33 @@ onMounted(() => {
 .action-prompt-buttons { display: flex; gap: 12px; justify-content: center; }
 
 /*操作栏*/
-.result-action-bar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
+.result-action-bar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+
+.dashboard-process-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+.dashboard-process-summary__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+.dashboard-process-summary__meta { font-size: 12px; }
+.dashboard-process-summary__node {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.dashboard-process-summary__node .anticon {
+  margin-right: 2px;
+}
 .history-badge {
   display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
   padding: 4px 12px; border-radius: var(--radius-full);

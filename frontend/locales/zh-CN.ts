@@ -557,6 +557,7 @@ export default {
     'dashboard.suggestReview': '建议复核',
     'dashboard.auditingItem': '审核中...',
     'dashboard.filter': '筛选',
+    'dashboard.listDateRange': '提交时间',
     'dashboard.filterDepartment': '选择部门',
     'dashboard.filterReset': '重置',
     'dashboard.filterAuditStatus': 'AI审核状态',
