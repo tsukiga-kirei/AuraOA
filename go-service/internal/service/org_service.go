@@ -338,53 +338,9 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
-	//7. 根据 page_permissions 推断需要的系统角色
-	//   包含前台页面（非 /admin/ 前缀）→ business
-	//   包含后台页面（/admin/ 前缀）→ tenant_admin
-	needBusiness := false
-	needTenantAdmin := false
-	for _, role := range roles {
-		var paths []string
-		if err := json.Unmarshal(role.PagePermissions, &paths); err != nil {
-			continue
-		}
-		for _, p := range paths {
-			if strings.HasPrefix(p, "/admin/") {
-				needTenantAdmin = true
-			} else {
-				needBusiness = true
-			}
-		}
-	}
-	// 至少给一个 business，确保用户能登录
-	if !needBusiness && !needTenantAdmin {
-		needBusiness = true
-	}
-
-	if needBusiness {
-		businessAssignment := &model.UserRoleAssignment{
-			ID:       uuid.New(),
-			UserID:   user.ID,
-			Role:     "business",
-			TenantID: &tenantID,
-			Label:    "业务用户 - " + req.DisplayName,
-		}
-		if err := s.db.Create(businessAssignment).Error; err != nil {
-			return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
-		}
-	}
-
-	if needTenantAdmin {
-		tenantAdminAssignment := &model.UserRoleAssignment{
-			ID:       uuid.New(),
-			UserID:   user.ID,
-			Role:     "tenant_admin",
-			TenantID: &tenantID,
-			Label:    "租户管理员 - " + req.DisplayName,
-		}
-		if err := s.db.Create(tenantAdminAssignment).Error; err != nil {
-			return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
-		}
+	// 7. 同步系统角色分配
+	if err := s.syncUserSystemRoles(user.ID, tenantID, user.DisplayName, roles); err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
 	//8. 重新加载成员的关联以进行响应
@@ -493,6 +449,15 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 		member.Roles = roles
 	}
 
+	// 8. 同步系统角色分配（总是同步以确保 Label 和 Role 保持最新）
+	displayName := member.User.DisplayName
+	if req.DisplayName != "" {
+		displayName = req.DisplayName
+	}
+	if err := s.syncUserSystemRoles(member.UserID, member.TenantID, displayName, member.Roles); err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+
 	//重新加载以获得完整响应
 	reloaded, err := s.orgRepo.FindMemberByID(c, id)
 	if err != nil {
@@ -529,6 +494,67 @@ func (s *OrgService) DeleteMember(c *gin.Context, id uuid.UUID) error {
 	if err := s.db.Where("user_id = ? AND tenant_id = ?", member.UserID, member.TenantID).
 		Delete(&model.UserRoleAssignment{}).Error; err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+
+	return nil
+}
+
+// syncUserSystemRoles 根据 org_roles 的 page_permissions 推断并同步 user_role_assignments。
+func (s *OrgService) syncUserSystemRoles(userID uuid.UUID, tenantID uuid.UUID, displayName string, roles []model.OrgRole) error {
+	// 1. 删除该用户在该租户下的现有系统角色分配（仅限 business 和 tenant_admin）
+	if err := s.db.Where("user_id = ? AND tenant_id = ?", userID, tenantID).
+		Delete(&model.UserRoleAssignment{}).Error; err != nil {
+		return err
+	}
+
+	// 2. 根据 page_permissions 推断需要的系统角色
+	//    包含前台页面（非 /admin/ 前缀）→ business
+	//    包含后台页面（/admin/ 前缀）→ tenant_admin
+	needBusiness := false
+	needTenantAdmin := false
+	for _, role := range roles {
+		var paths []string
+		if err := json.Unmarshal(role.PagePermissions, &paths); err != nil {
+			continue
+		}
+		for _, p := range paths {
+			if strings.HasPrefix(p, "/admin/") {
+				needTenantAdmin = true
+			} else {
+				needBusiness = true
+			}
+		}
+	}
+
+	// 至少给予 business 权限，确保用户能通过基础校验
+	if !needBusiness && !needTenantAdmin {
+		needBusiness = true
+	}
+
+	if needBusiness {
+		businessAssignment := &model.UserRoleAssignment{
+			ID:       uuid.New(),
+			UserID:   userID,
+			Role:     "business",
+			TenantID: &tenantID,
+			Label:    "业务用户 - " + displayName,
+		}
+		if err := s.db.Create(businessAssignment).Error; err != nil {
+			return err
+		}
+	}
+
+	if needTenantAdmin {
+		tenantAdminAssignment := &model.UserRoleAssignment{
+			ID:       uuid.New(),
+			UserID:   userID,
+			Role:     "tenant_admin",
+			TenantID: &tenantID,
+			Label:    "租户管理员 - " + displayName,
+		}
+		if err := s.db.Create(tenantAdminAssignment).Error; err != nil {
+			return err
+		}
 	}
 
 	return nil

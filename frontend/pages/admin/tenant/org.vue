@@ -29,6 +29,8 @@ const {
   createMember, updateMember, deleteMember: apiDeleteMember,
 } = useOrgApi()
 
+const { currentUser, refreshRoles } = useAuth()
+
 onMounted(() => {
   loadAll()
 })
@@ -129,6 +131,12 @@ const handleSaveMember = async () => {
       })
       const idx = members.value.findIndex(m => m.id === editingMember.value!.id)
       if (idx !== -1) members.value[idx] = mapped
+      
+      // 如果修改的是当前登录用户，刷新角色列表
+      if (currentUser.value && editingMember.value.username === currentUser.value.username) {
+        refreshRoles()
+      }
+      
       message.success(t('admin.org.memberUpdated'))
     } else {
       const mapped = await createMember({
@@ -158,6 +166,12 @@ const toggleMemberStatus = async (m: OrgMember) => {
     const mapped = await updateMember(m.id, { status: newStatus })
     const idx = members.value.findIndex(mem => mem.id === m.id)
     if (idx !== -1) members.value[idx] = mapped
+    
+    // 如果修改的是当前登录用户，刷新角色列表
+    if (currentUser.value && m.username === currentUser.value.username) {
+      refreshRoles()
+    }
+    
     message.success(newStatus === 'active' ? t('admin.org.memberEnabled') : t('admin.org.memberDisabled'))
   } catch (e: any) {
     message.error(e.message || t('admin.org.operationFailed'))
@@ -168,6 +182,12 @@ const removeMember = async (m: OrgMember) => {
   try {
     await apiDeleteMember(m.id)
     members.value = members.value.filter(mem => mem.id !== m.id)
+    
+    // 如果删除的是当前登录用户，尝试刷新或登出（通常不建议在管理台删除自己，但需处理逻辑）
+    if (currentUser.value && m.username === currentUser.value.username) {
+      refreshRoles()
+    }
+    
     message.success(t('admin.org.memberDeleted'))
   } catch (e: any) {
     message.error(e.message || t('admin.org.operationFailed'))
