@@ -556,6 +556,7 @@ export default {
     'dashboard.suggestReview': 'Review',
     'dashboard.auditingItem': 'Auditing...',
     'dashboard.filter': 'Filter',
+    'dashboard.listDateRange': 'Submit time',
     'dashboard.filterDepartment': 'Department',
     'dashboard.filterReset': 'Reset',
     'dashboard.filterAuditStatus': 'AI Audit Status',

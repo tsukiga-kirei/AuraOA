@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+// TodoListFilter 控制待办列表在 OA 侧的查询条件（由 SQL 直接过滤 workflow_requestbase.createdate）。
+type TodoListFilter struct {
+	SubmitDateStart *time.Time
+	// SubmitDateEndExclusive 上界（不含）
+	SubmitDateEndExclusive *time.Time
+}
+
 // ArchivedListFilter 控制已归档流程列表在 OA 侧的查询条件（由 SQL 直接过滤）。
 type ArchivedListFilter struct {
 	// ArchiveDateStart 归档时间下界（含），与适配器内用于排序的归档时间表达式一致（如 COALESCE(lastoperatedate, createdate)）。
@@ -28,8 +35,8 @@ type OAAdapter interface {
 	// FetchProcessData 拉取指定流程实例的业务数据（用于审核执行）
 	FetchProcessData(ctx context.Context, processID string) (*ProcessData, error)
 
-	// FetchTodoList 拉取指定用户的 OA 待审批流程列表
-	FetchTodoList(ctx context.Context, username string) ([]TodoItem, error)
+	// FetchTodoList 拉取指定用户的 OA 待审批流程列表（filter 中日期条件在 SQL 中生效）
+	FetchTodoList(ctx context.Context, username string, filter TodoListFilter) ([]TodoItem, error)
 
 	// FetchArchivedList 拉取已归档流程列表（filter 中日期条件在 SQL 中生效）
 	FetchArchivedList(ctx context.Context, username string, filter ArchivedListFilter) ([]ArchivedItem, error)

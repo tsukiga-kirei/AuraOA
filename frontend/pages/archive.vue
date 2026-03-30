@@ -1018,11 +1018,11 @@ onUnmounted(() => {
                 </a-button>
               </div>
 
-              <!--流程摘要（归档时间等）-->
+              <!--流程摘要：标题 + 申请人/部门/类别 + 当前节点-->
               <div class="archive-process-meta-line">
                 <span class="archive-process-meta-line__title">{{ selectedProcess.title }}</span>
                 <span>{{ selectedProcess.applicant }} · {{ selectedProcess.department }} · {{ selectedProcess.process_type_label || selectedProcess.process_type }}</span>
-                <span><FieldTimeOutlined /> {{ t('archive.submitLabel') }}: {{ selectedProcess.submit_time }} → {{ t('archive.archiveLabel') }}: {{ selectedProcess.archive_time }}</span>
+                <span><FieldTimeOutlined /> {{ t('dashboard.currentNode') }}: {{ selectedProcess.current_node || '—' }}</span>
               </div>
 
               <!--合规横幅（与 dashboard result-banner 一致）-->
