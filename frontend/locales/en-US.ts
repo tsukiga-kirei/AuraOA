@@ -834,6 +834,7 @@ export default {
     'archive.title': 'Archive Review',
     'archive.subtitle': 'Full-process compliance review · AI re-audit',
     'archive.filter': 'Filter',
+    'archive.archiveDateRange': 'Archive date',
     'archive.batchAudit': 'Batch Review',
     'archive.exportReport': 'Export Report',
     'archive.exportJSON': 'Export JSON',

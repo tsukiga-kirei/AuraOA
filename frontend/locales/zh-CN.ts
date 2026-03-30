@@ -835,6 +835,7 @@ export default {
     'archive.title': '归档复盘',
     'archive.subtitle': '已归档流程的全流程合规复核 · AI 重新审计',
     'archive.filter': '筛选',
+    'archive.archiveDateRange': '归档时间',
     'archive.batchAudit': '批量复核',
     'archive.exportReport': '导出报告',
     'archive.exportJSON': '导出 JSON',

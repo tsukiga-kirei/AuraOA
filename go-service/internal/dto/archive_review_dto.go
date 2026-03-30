@@ -1,5 +1,7 @@
 package dto
 
+import "time"
+
 // ArchiveReviewExecuteRequest 发起归档复盘请求。
 type ArchiveReviewExecuteRequest struct {
 	ProcessID   string `json:"process_id" binding:"required"`
@@ -48,6 +50,10 @@ type ArchiveListParams struct {
 	AuditStatus string `json:"audit_status"`
 	Page        int    `json:"page"`
 	PageSize    int    `json:"page_size"`
+	// ArchiveDateStart 归档日期起（含），由 Handler 从 query start_date 解析，用于 OA SQL。
+	ArchiveDateStart *time.Time `json:"-"`
+	// ArchiveDateEndExclusive 归档日期止的排他上界，由 Handler 从 query end_date 解析为次日 0 点。
+	ArchiveDateEndExclusive *time.Time `json:"-"`
 }
 
 // ArchiveProcessListResponse 已归档流程列表响应。

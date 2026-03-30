@@ -28,8 +28,15 @@ const ARCHIVE_TIMEOUT_MS = 35 * 60 * 1000
 export const useArchiveReviewApi = () => {
   const { authFetch } = useAuth()
 
-  async function getStats(): Promise<ArchiveReviewStats> {
-    return await authFetch<ArchiveReviewStats>('/api/archive/stats')
+  async function getStats(params?: {
+    start_date?: string
+    end_date?: string
+  }): Promise<ArchiveReviewStats> {
+    const query = new URLSearchParams()
+    if (params?.start_date) query.set('start_date', params.start_date)
+    if (params?.end_date) query.set('end_date', params.end_date)
+    const qs = query.toString()
+    return await authFetch<ArchiveReviewStats>(qs ? `/api/archive/stats?${qs}` : '/api/archive/stats')
   }
 
   async function listProcesses(params?: {
@@ -40,6 +47,8 @@ export const useArchiveReviewApi = () => {
     audit_status?: string
     page?: number
     page_size?: number
+    start_date?: string
+    end_date?: string
   }): Promise<ArchiveProcessListResponse> {
     const query = new URLSearchParams()
     if (params?.keyword) query.set('keyword', params.keyword)
@@ -49,6 +58,8 @@ export const useArchiveReviewApi = () => {
     if (params?.audit_status) query.set('audit_status', params.audit_status)
     if (params?.page) query.set('page', String(params.page))
     if (params?.page_size) query.set('page_size', String(params.page_size))
+    if (params?.start_date) query.set('start_date', params.start_date)
+    if (params?.end_date) query.set('end_date', params.end_date)
     const qs = query.toString()
     return await authFetch<ArchiveProcessListResponse>(qs ? `/api/archive/processes?${qs}` : '/api/archive/processes')
   }
