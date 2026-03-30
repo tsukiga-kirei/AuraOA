@@ -237,7 +237,12 @@ const loadProcesses = async () => {
 }
 
 const switchTab = (tab: AuditTab) => {
+  disconnectStream()
+  pollProcessId.value = null
+  showHistoryChain.value = false
+  loading.value = false
   activeTab.value = tab
+  processList.value = []
   selectedProcess.value = null
   currentResult.value = null
   listPage.value = 1
@@ -579,6 +584,10 @@ const getDurationSec = (ms: number | undefined) => {
   return (ms / 1000).toFixed(1)
 }
 
+/** 审核链 GET /api/audit/chain 返回的是 audit_logs 整行：推理在顶层 ai_reasoning；audit_result JSONB 仅存结构化字段，不含推理正文 */
+const chainItemAiReasoning = (item: AuditChainItem) =>
+  (item.ai_reasoning || item.audit_result?.ai_reasoning || '').trim()
+
 // ─── 初始化 ───
 onMounted(() => {
   loadStats()
@@ -823,8 +832,13 @@ onMounted(() => {
         </div>
 
         <div class="result-content">
+          <!--切换页签或列表加载中：不显示上一条详情 -->
+          <div v-if="listLoading && !selectedProcess" class="result-empty result-empty--loading">
+            <a-spin size="large" />
+            <p>{{ t('dashboard.loadingListHint') }}</p>
+          </div>
           <!--非 pending_ai 页签：未选中任何记录-->
-          <div v-if="!selectedProcess" class="result-empty">
+          <div v-else-if="!selectedProcess" class="result-empty">
             <div class="result-empty-icon"><FileOutlined /></div>
             <p>{{ t('dashboard.selectProcessHint', '请在左侧列表中选择一个流程以查看明细') }}</p>
           </div>
@@ -1113,10 +1127,10 @@ onMounted(() => {
                               </ul>
                             </div>
                           </div>
-                          <!--AI 推理-->
-                          <div v-if="item.audit_result.ai_reasoning" class="chain-section-title" style="margin-top: 10px;">{{ t('dashboard.aiReasoning') }}</div>
-                          <div v-if="item.audit_result.ai_reasoning" class="chain-reasoning">
-                            <div class="markdown-body" v-html="renderMarkdown(item.audit_result.ai_reasoning || '')"></div>
+                          <!--AI 推理：后端链数据里推理在行字段 ai_reasoning，不在 audit_result JSONB 内 -->
+                          <div v-if="chainItemAiReasoning(item)" class="chain-section-title" style="margin-top: 10px;">{{ t('dashboard.aiReasoning') }}</div>
+                          <div v-if="chainItemAiReasoning(item)" class="chain-reasoning">
+                            <div class="markdown-body" v-html="renderMarkdown(chainItemAiReasoning(item) || '')"></div>
                           </div>
                           <!--解析错误-->
                           <div v-if="item.audit_result.parse_error" class="chain-parse-error">
@@ -1368,6 +1382,11 @@ onMounted(() => {
 }
 .result-empty h4 { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px; }
 .result-empty p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 auto; max-width: 280px; }
+.result-empty--loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  padding: 48px 20px; min-height: 200px;
+}
+.result-empty--loading p { margin: 0; }
 
 /*抽屉*/
 .drawer-overlay {

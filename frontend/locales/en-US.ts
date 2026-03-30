@@ -574,6 +574,7 @@ export default {
     'dashboard.batchAbort': 'Abort',
     'dashboard.batchAborted': 'Batch audit aborted',
     'dashboard.loadFailed': 'Failed to load process list',
+    'dashboard.loadingListHint': 'Loading list…',
     'dashboard.auditFailed': 'AI audit failed',
     'dashboard.parseErrorTitle': 'Extraction Parse Error',
     'dashboard.rawContent': 'AI Raw Response',
@@ -851,6 +852,7 @@ export default {
     'archive.complianceTitle': 'Compliance Review',
     'archive.selectProcess': 'Select a process for compliance review',
     'archive.selectProcessDesc': 'Select an archived process from the list to view approval chain and start AI compliance audit',
+    'archive.loadingListHint': 'Loading list…',
     'archive.reAudit': 'Re-review',
     'archive.startAudit': 'Start Compliance Review',
     'archive.viewReport': 'Click to view full compliance report',
@@ -1769,6 +1771,10 @@ export default {
     'archive.cancelFailed': 'Failed to cancel archive review',
     'archive.historyTitle': 'Review History',
     'archive.noHistory': 'No review history for this process yet',
+    'archive.archiveReviewChainTitle': 'Archive review history',
+    'archive.archiveReviewChainDesc': 'Completed archive review runs for this process (newest first). Separate from OA workbench AI audit logs.',
+    'archive.noArchiveChainRecords': 'No archive review records',
+    'archive.noArchiveDetail': 'No structured detail for this entry',
 
 
     //===== rules.vue localizations =====

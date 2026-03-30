@@ -32,10 +32,10 @@ import type {
   ArchiveProgressStep,
   ArchiveReviewResult,
   ArchiveReviewStats,
+  ArchiveReviewHistoryItem,
   ArchiveRuleAuditResult,
   ArchiveFieldAuditResult,
 } from '~/types/archive-review'
-import type { AuditChainItem } from '~/types/audit'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -48,9 +48,9 @@ const {
   waitArchiveJob,
   cancelArchiveJob,
   getArchiveResult,
+  getArchiveHistory,
   getProcessTypes,
 } = useArchiveReviewApi()
-const { getAuditChain: fetchAuditChain } = useAuditApi()
 
 const asyncArchiveStatuses = ['pending', 'assembling', 'reasoning', 'extracting']
 
@@ -240,9 +240,20 @@ const onListPageChange = (page: number, size: number) => {
   loadProcesses()
 }
 
+/** 筛选条件变化时清空左右两侧数据，避免在旧列表上叠加载；分页仅调 loadProcesses 不会走此逻辑 */
+const clearDetailOnFilterChange = () => {
+  disconnectStream()
+  processList.value = []
+  listTotal.value = 0
+  selectedProcess.value = null
+  currentResult.value = null
+  selectedProcessIds.value = []
+}
+
 // 搜索条件变化时重新拉取第一页
 const triggerSearch = () => {
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  listLoading.value = true
   searchDebounceTimer = setTimeout(() => {
     listPage.value = 1
     loadProcesses()
@@ -250,6 +261,7 @@ const triggerSearch = () => {
 }
 
 watch([searchText, searchApplicant, filterProcessNames, filterDepartment, filterAuditStatus], () => {
+  clearDetailOnFilterChange()
   triggerSearch()
 })
 
@@ -589,7 +601,8 @@ const filteredProgressSteps = computed(() => {
 })
 
 const showHistoryChain = ref(false)
-const auditChainData = ref<AuditChainItem[]>([])
+/** 归档复盘链：来自 /api/archive/history（archive_logs），与 dashboard 的 OA 审核链（audit_logs）数据源不同 */
+const archiveHistoryData = ref<ArchiveReviewHistoryItem[]>([])
 const auditChainLoading = ref(false)
 const expandedChainNodes = ref<Set<string>>(new Set())
 
@@ -603,9 +616,9 @@ const openAuditChain = async (processId: string) => {
   showHistoryChain.value = true
   auditChainLoading.value = true
   try {
-    auditChainData.value = await fetchAuditChain(processId)
+    archiveHistoryData.value = await getArchiveHistory(processId)
   } catch {
-    auditChainData.value = []
+    archiveHistoryData.value = []
   } finally {
     auditChainLoading.value = false
   }
@@ -628,12 +641,6 @@ const getScoreColorConfig = (score: number | undefined) => {
   if (score > 80) return { color: 'var(--color-success)', bg: 'var(--color-success-bg)' }
   return { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' }
 }
-
-const recommendationConfig = computed<Record<string, { color: string; bg: string; icon: typeof CheckCircleOutlined; label: string }>>(() => ({
-  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
-  return: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: ReloadOutlined, label: t('dashboard.rec.return') },
-  review: { color: 'var(--color-info)', bg: 'var(--color-info-bg)', icon: EyeOutlined, label: t('dashboard.rec.review') },
-}))
 
 //=====配置助手=====
 const complianceConfig = computed((): Record<string, { color: string; bg: string; label: string }> => ({
@@ -919,8 +926,12 @@ onUnmounted(() => {
         </div>
 
         <div class="result-content">
-          <!--空状态-->
-          <div v-if="!selectedProcess" class="result-empty">
+          <!--列表加载中且无选中：与左侧一致显示加载态，避免仍显示上一条详情 -->
+          <div v-if="listLoading && !selectedProcess" class="result-empty result-empty--loading">
+            <a-spin size="large" />
+            <p>{{ t('archive.loadingListHint') }}</p>
+          </div>
+          <div v-else-if="!selectedProcess" class="result-empty">
             <div class="result-empty-icon"><SafetyCertificateOutlined /></div>
             <p>{{ t('archive.selectProcessDesc') }}</p>
           </div>
@@ -1117,41 +1128,44 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- 审核链抽屉（与 dashboard 同宽、同内容结构） -->
+    <!-- 归档复盘审核链（数据来自 archive_logs，非 OA 待办 audit_logs） -->
     <Teleport to="body">
       <transition name="drawer">
         <div v-if="showHistoryChain" class="drawer-overlay" @click.self="showHistoryChain = false">
           <div class="drawer-panel">
             <div class="drawer-header">
-              <h3>{{ t('dashboard.auditHistoryChain') }}</h3>
+              <h3>{{ t('archive.archiveReviewChainTitle') }}</h3>
               <button type="button" class="drawer-close" @click="showHistoryChain = false">✕</button>
             </div>
             <div class="drawer-body">
-              <p class="chain-desc">{{ t('dashboard.chainDesc') }}</p>
+              <p class="chain-desc">{{ t('archive.archiveReviewChainDesc') }}</p>
               <a-spin :spinning="auditChainLoading">
-                <div v-if="!auditChainLoading && auditChainData.length === 0" style="padding: 40px; text-align: center;">
-                  <a-empty :description="t('dashboard.noAuditRecords')" />
+                <div v-if="!auditChainLoading && archiveHistoryData.length === 0" style="padding: 40px; text-align: center;">
+                  <a-empty :description="t('archive.noArchiveChainRecords')" />
                 </div>
                 <div v-else class="audit-chain">
                   <div
-                    v-for="(item, idx) in auditChainData"
+                    v-for="(item, idx) in archiveHistoryData"
                     :key="item.id"
                     class="chain-node"
                   >
                     <div class="chain-timeline">
-                      <div class="chain-dot" :style="{ background: getScoreColorConfig(item.score)?.color }" />
-                      <div v-if="idx < auditChainData.length - 1" class="chain-line" />
+                      <div class="chain-dot" :style="{ background: getScoreColorConfig(item.compliance_score)?.color }" />
+                      <div v-if="idx < archiveHistoryData.length - 1" class="chain-line" />
                     </div>
                     <div class="chain-card">
                       <div class="chain-card-header" @click="toggleChainNode(item.id)">
                         <span
                           class="chain-tag"
-                          :style="{ color: getScoreColorConfig(item.score)?.color, background: getScoreColorConfig(item.score)?.bg }"
+                          :style="{
+                            color: complianceConfig[item.compliance]?.color,
+                            background: complianceConfig[item.compliance]?.bg,
+                          }"
                         >
-                          <component :is="recommendationConfig[item.recommendation || 'review']?.icon" />
-                          {{ recommendationConfig[item.recommendation || 'review']?.label }}
+                          <SafetyCertificateOutlined />
+                          {{ complianceConfig[item.compliance]?.label }}
                         </span>
-                        <span class="chain-score">{{ item.score }}{{ t('dashboard.points') }}</span>
+                        <span class="chain-score">{{ item.compliance_score }}{{ t('archive.score') }}</span>
                         <span class="chain-expand-btn">
                           <DownOutlined v-if="!expandedChainNodes.has(item.id)" />
                           <UpOutlined v-else />
@@ -1163,52 +1177,52 @@ onUnmounted(() => {
                         · {{ t('dashboard.duration') }} {{ getDurationSec(item.duration_ms) }}s
                       </div>
                       <div v-if="expandedChainNodes.has(item.id)" class="chain-detail">
-                        <template v-if="item.audit_result">
-                          <template v-if="item.audit_result.rule_results?.length">
-                            <div class="chain-section-title">{{ t('dashboard.ruleCheckDetail') }}</div>
+                        <template v-if="item.archive_result">
+                          <template v-if="item.archive_result.rule_audit?.length">
+                            <div class="chain-section-title">{{ t('archive.ruleAudit') }}</div>
                             <div
-                              v-for="(rule, ri) in item.audit_result.rule_results"
+                              v-for="(rule, ri) in item.archive_result.rule_audit"
                               :key="ri"
                               class="chain-rule-item"
                               :class="rule.passed ? 'chain-rule--pass' : 'chain-rule--fail'"
                             >
                               <component :is="rule.passed ? CheckCircleOutlined : CloseCircleOutlined" :style="{ color: rule.passed ? 'var(--color-success)' : 'var(--color-danger)' }" />
                               <div>
-                                <div class="chain-rule-name">{{ rule.rule_content }}</div>
-                                <div class="chain-rule-reasoning">{{ rule.reason }}</div>
+                                <div class="chain-rule-name">{{ rule.rule_name }}</div>
+                                <div class="chain-rule-reasoning">{{ rule.reasoning }}</div>
                               </div>
                             </div>
                           </template>
-                          <div v-if="item.audit_result.risk_points?.length || item.audit_result.suggestions?.length" class="risk-suggest-row" style="margin-top: 10px;">
-                            <div v-if="item.audit_result.risk_points?.length" class="insight-card insight-card--risk">
+                          <div v-if="item.archive_result.risk_points?.length || item.archive_result.suggestions?.length" class="risk-suggest-row" style="margin-top: 10px;">
+                            <div v-if="item.archive_result.risk_points?.length" class="insight-card insight-card--risk">
                               <div class="insight-card-header">
                                 <CloseCircleOutlined style="color: var(--color-danger);" />
-                                <span>{{ t('dashboard.riskPoints') }}</span>
+                                <span>{{ t('archive.riskPoints') }}</span>
                               </div>
                               <ul class="insight-card-list">
-                                <li v-for="(rp, i) in item.audit_result.risk_points" :key="i">{{ rp }}</li>
+                                <li v-for="(rp, i) in item.archive_result.risk_points" :key="i">{{ rp }}</li>
                               </ul>
                             </div>
-                            <div v-if="item.audit_result.suggestions?.length" class="insight-card insight-card--suggest">
+                            <div v-if="item.archive_result.suggestions?.length" class="insight-card insight-card--suggest">
                               <div class="insight-card-header">
                                 <InfoCircleOutlined style="color: var(--color-primary);" />
-                                <span>{{ t('dashboard.suggestions') }}</span>
+                                <span>{{ t('archive.suggestions') }}</span>
                               </div>
                               <ul class="insight-card-list">
-                                <li v-for="(sg, i) in item.audit_result.suggestions" :key="i">{{ sg }}</li>
+                                <li v-for="(sg, i) in item.archive_result.suggestions" :key="i">{{ sg }}</li>
                               </ul>
                             </div>
                           </div>
-                          <div v-if="item.audit_result.ai_reasoning" class="chain-section-title" style="margin-top: 10px;">{{ t('dashboard.aiReasoning') }}</div>
-                          <div v-if="item.audit_result.ai_reasoning" class="chain-reasoning">
-                            <div class="markdown-body" v-html="renderMarkdown(item.audit_result.ai_reasoning || '')" />
+                          <div v-if="item.archive_result.ai_summary || item.archive_result.ai_reasoning || item.ai_reasoning" class="chain-section-title" style="margin-top: 10px;">{{ t('archive.aiSummary') }}</div>
+                          <div v-if="item.archive_result.ai_summary || item.archive_result.ai_reasoning || item.ai_reasoning" class="chain-reasoning">
+                            <div class="markdown-body" v-html="renderMarkdown(item.archive_result.ai_summary || item.archive_result.ai_reasoning || item.ai_reasoning || '')" />
                           </div>
-                          <div v-if="item.audit_result.parse_error" class="chain-parse-error">
+                          <div v-if="item.archive_result.parse_error" class="chain-parse-error">
                             <WarningOutlined style="color: var(--color-danger);" />
-                            <span>{{ t('dashboard.parseErrorTitle') }}: {{ item.audit_result.parse_error }}</span>
+                            <span>{{ t('dashboard.parseErrorTitle') }}: {{ item.archive_result.parse_error }}</span>
                           </div>
                         </template>
-                        <div v-else class="chain-no-detail">{{ t('dashboard.noHistoryDesc') }}</div>
+                        <div v-else class="chain-no-detail">{{ t('archive.noArchiveDetail') }}</div>
                       </div>
                     </div>
                   </div>
@@ -1428,6 +1442,11 @@ onUnmounted(() => {
   justify-content: center; margin: 0 auto 16px;
 }
 .result-empty p { font-size: 13px; color: var(--color-text-tertiary); margin: 0 auto; max-width: 280px; }
+.result-empty--loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  padding: 48px 20px; min-height: 200px;
+}
+.result-empty--loading p { margin: 0; }
 
 /*审核链抽屉（与 dashboard 完全一致）*/
 .drawer-overlay {

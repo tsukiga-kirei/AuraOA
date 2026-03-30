@@ -63,6 +63,8 @@ export interface AuditChainItem {
   user_name: string
   recommendation: 'approve' | 'return' | 'review'
   score: number
+  /** 与 audit_result 并列返回，来自 audit_logs.ai_reasoning 列；JSONB audit_result 内不含推理正文 */
+  ai_reasoning?: string
   audit_result: AuditResult
   duration_ms: number
   created_at: string
