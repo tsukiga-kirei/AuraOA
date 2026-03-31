@@ -80,6 +80,44 @@ const currentResult = ref<ArchiveReviewResult | null>(null)
 const batchAborted = ref(false)
 const currentInflightProcessId = ref<string | null>(null)
 
+const auditInProgress = computed(
+  () =>
+    batchAuditing.value
+    || Object.values(processAuditLoading.value).some(Boolean)
+    || processList.value.some(p => p.archive_status && asyncArchiveStatuses.includes(p.archive_status)),
+)
+
+const blockingProcessId = computed((): string | null => {
+  if (batchAuditing.value) return currentInflightProcessId.value
+  const row = processList.value.find(p => p.archive_status && asyncArchiveStatuses.includes(p.archive_status))
+  return row?.process_id ?? null
+})
+
+type ArchiveBatchMeta = { process_id: string; process_type: string; title: string }
+const ARCHIVE_BATCH_KEY = 'oa-smart-audit:archive:batch-queue'
+
+function saveArchiveBatchState(ids: string[], queueMeta: ArchiveBatchMeta[], nextIndex: number) {
+  try {
+    sessionStorage.setItem(ARCHIVE_BATCH_KEY, JSON.stringify({ ids, queueMeta, nextIndex }))
+  } catch {}
+}
+
+function clearArchiveBatchStorage() {
+  try {
+    sessionStorage.removeItem(ARCHIVE_BATCH_KEY)
+  } catch {}
+}
+
+function readArchiveBatchState(): { ids: string[]; queueMeta: ArchiveBatchMeta[]; nextIndex: number } | null {
+  try {
+    const r = sessionStorage.getItem(ARCHIVE_BATCH_KEY)
+    if (!r) return null
+    return JSON.parse(r)
+  } catch {
+    return null
+  }
+}
+
 //=====过滤器=====
 const filterProcessType = ref<string[][]>([])
 const filterProcessNames = computed(() => {
@@ -115,12 +153,6 @@ const archiveDateQuery = () => {
   }
 }
 
-const onArchiveDateRangeChange = () => {
-  listPage.value = 1
-  clearDetailOnFilterChange()
-  void Promise.all([loadStats(), loadProcesses()])
-}
-
 const departmentOptions = computed(() => [...new Set(processList.value.map(p => p.department).filter(Boolean))])
 
 const renderMarkdown = (md: string | undefined | null): string => {
@@ -152,6 +184,10 @@ const computedListTitle = computed(() => {
 })
 
 const clearFilters = () => {
+  if (auditInProgress.value) {
+    message.warning(t('archive.auditInProgressNoSwitch'))
+    return
+  }
   searchText.value = ''
   searchApplicant.value = ''
   filterProcessType.value = []
@@ -271,6 +307,7 @@ const onListPageChange = (page: number, size: number) => {
 
 /** 筛选条件变化时清空左右两侧数据，避免在旧列表上叠加载；分页仅调 loadProcesses 不会走此逻辑 */
 const clearDetailOnFilterChange = () => {
+  if (batchAuditing.value) return
   disconnectStream()
   processList.value = []
   listTotal.value = 0
@@ -289,14 +326,9 @@ const triggerSearch = () => {
   }, 400)
 }
 
-watch([searchText, searchApplicant, filterProcessNames, filterDepartment, filterAuditStatus], () => {
-  clearDetailOnFilterChange()
-  triggerSearch()
-})
-
 //=====选择=====
 const toggleSelectProcess = (id: string) => {
-  if (batchAuditing.value || processAuditLoading.value[id]) return
+  if (auditInProgress.value) return
   const idx = selectedProcessIds.value.indexOf(id)
   if (idx >= 0) selectedProcessIds.value.splice(idx, 1)
   else if (selectedProcessIds.value.length < 10) selectedProcessIds.value.push(id)
@@ -310,7 +342,7 @@ const selectableIdsComputed = computed(() =>
 )
 
 const toggleSelectAll = () => {
-  if (batchAuditing.value) return
+  if (auditInProgress.value) return
   const selectableIds = selectableIdsComputed.value
   if (selectedProcessIds.value.length === Math.min(selectableIds.length, 10) || selectableIds.length === 0) {
     selectedProcessIds.value = []
@@ -378,6 +410,13 @@ const trackRunningJob = async (proc: ArchiveProcessItem) => {
 }
 
 const selectProcess = (proc: ArchiveProcessItem) => {
+  if (auditInProgress.value) {
+    const allow = blockingProcessId.value
+    if (allow && proc.process_id !== allow) {
+      message.warning(t('archive.auditInProgressNoSwitch'))
+      return
+    }
+  }
   selectedProcess.value = proc
   currentResult.value = normalizeArchiveResult(proc.archive_result)
   if (isResultAsyncRunning(currentResult.value)) {
@@ -453,29 +492,43 @@ const handleReAudit = async () => {
 const batchAuditTotal = ref(0)
 const batchAuditDone = ref(0)
 
-//=====批量审核=====
-const handleBatchAudit = async () => {
-  if (selectedProcessIds.value.length === 0 || selectedProcessIds.value.length > 10) {
-    if (selectedProcessIds.value.length > 10) {
-      message.warning(t('archive.batchLimitHint'))
-    }
-    return
+function archiveItemFromMeta(meta: ArchiveBatchMeta): ArchiveProcessItem {
+  return {
+    process_id: meta.process_id,
+    title: meta.title,
+    process_type: meta.process_type,
+    process_type_label: meta.process_type,
+    applicant: '',
+    department: '',
+    current_node: '',
+    submit_time: '',
+    archive_time: '',
+    has_review: false,
+    in_archive: true,
   }
+}
+
+//=====批量审核（sessionStorage 支持刷新后续跑）=====
+async function runArchiveBatchLoop(ids: string[], queueMeta: ArchiveBatchMeta[], startIndex: number) {
   batchAuditing.value = true
   batchAborted.value = false
-  const ids = [...selectedProcessIds.value]
-  batchAuditTotal.value = ids.length
-  batchAuditDone.value = 0
+  const metaById = new Map(queueMeta.map(m => [m.process_id, m]))
+  saveArchiveBatchState(ids, queueMeta, startIndex)
 
-  for (let i = 0; i < ids.length; i++) {
+  for (let i = startIndex; i < ids.length; i++) {
     if (batchAborted.value) break
     const id = ids[i]
     currentInflightProcessId.value = id
     const proc = processList.value.find(p => p.process_id === id)
-    if (!proc) {
+    const meta = proc
+      ? { process_id: proc.process_id, process_type: proc.process_type, title: proc.title }
+      : metaById.get(id)
+    if (!meta) {
       batchAuditDone.value = i + 1
+      saveArchiveBatchState(ids, queueMeta, i + 1)
       continue
     }
+    const procToRun = proc ?? archiveItemFromMeta(meta)
 
     processAuditLoading.value = {
       ...processAuditLoading.value,
@@ -483,7 +536,7 @@ const handleBatchAudit = async () => {
     }
 
     try {
-      await runArchiveReview(proc)
+      await runArchiveReview(procToRun)
     } catch {
     }
 
@@ -492,11 +545,13 @@ const handleBatchAudit = async () => {
       [id]: false,
     }
     batchAuditDone.value = i + 1
+    saveArchiveBatchState(ids, queueMeta, i + 1)
   }
 
   currentInflightProcessId.value = null
   batchAuditing.value = false
   selectedProcessIds.value = []
+  clearArchiveBatchStorage()
   await Promise.all([loadStats(), loadProcesses()])
   if (batchAborted.value) {
     message.info(t('archive.batchAborted', '批量审核已中止'))
@@ -505,17 +560,53 @@ const handleBatchAudit = async () => {
   }
 }
 
+const handleBatchAudit = async () => {
+  if (selectedProcessIds.value.length === 0 || selectedProcessIds.value.length > 10) {
+    if (selectedProcessIds.value.length > 10) {
+      message.warning(t('archive.batchLimitHint'))
+    }
+    return
+  }
+  const ids = [...selectedProcessIds.value]
+  const queueMeta: ArchiveBatchMeta[] = ids.map(id => {
+    const it = processList.value.find(p => p.process_id === id)
+    if (!it) return null
+    return { process_id: it.process_id, process_type: it.process_type, title: it.title }
+  }).filter(Boolean) as ArchiveBatchMeta[]
+  if (queueMeta.length !== ids.length) {
+    message.error(t('archive.loadFailed'))
+    return
+  }
+  batchAuditTotal.value = ids.length
+  batchAuditDone.value = 0
+  await runArchiveBatchLoop(ids, queueMeta, 0)
+}
+
+function tryResumeArchiveBatch() {
+  const state = readArchiveBatchState()
+  if (!state || state.ids.length === 0) return
+  if (state.nextIndex >= state.ids.length) {
+    clearArchiveBatchStorage()
+    return
+  }
+  const { ids, queueMeta, nextIndex } = state
+  batchAuditTotal.value = ids.length
+  batchAuditDone.value = nextIndex
+  selectedProcessIds.value = [...ids]
+  void runArchiveBatchLoop(ids, queueMeta, nextIndex)
+}
+
 const handleAbortBatch = async () => {
   batchAborted.value = true
   if (currentInflightProcessId.value) {
     const pid = currentInflightProcessId.value
     const proc = processList.value.find(p => p.process_id === pid)
     if (proc?.archive_result?.id) {
-       await cancelArchiveJob(proc.archive_result.id).catch(() => {})
+      await cancelArchiveJob(proc.archive_result.id).catch(() => {})
     }
     currentInflightProcessId.value = null
   }
-  // 剩余未处理自动失败 (可选，参考 dashboard)
+  clearArchiveBatchStorage()
 }
 
 //=====导出（仅在选择流程后显示）=====
@@ -565,6 +656,14 @@ const handleCancelAudit = async () => {
   }
 }
 
+const handleUnifiedAbortArchive = async () => {
+  if (batchAuditing.value) {
+    await handleAbortBatch()
+    return
+  }
+  await handleCancelAudit()
+}
+
 const loadStats = async () => {
   try {
     stats.value = await getStats(archiveDateQuery())
@@ -605,7 +704,9 @@ const loadProcesses = async () => {
     })
     processList.value = Array.isArray(response) ? response : (response?.items ?? [])
     listTotal.value = (response as any)?.total ?? processList.value.length
-    selectedProcessIds.value = selectedProcessIds.value.filter(id => selectableIdsComputed.value.includes(id))
+    if (!batchAuditing.value) {
+      selectedProcessIds.value = selectedProcessIds.value.filter(id => selectableIdsComputed.value.includes(id))
+    }
 
     if (!selectedProcess.value) return
     const nextSelected = processList.value.find(proc => proc.process_id === selectedProcess.value?.process_id) || null
@@ -620,6 +721,30 @@ const loadProcesses = async () => {
   } finally {
     listLoading.value = false
   }
+}
+
+const onArchiveDateRangeChange = () => {
+  if (auditInProgress.value) {
+    message.warning(t('archive.auditInProgressNoSwitch'))
+    return
+  }
+  listPage.value = 1
+  clearDetailOnFilterChange()
+  void Promise.all([loadStats(), loadProcesses()])
+}
+
+watch([searchText, searchApplicant, filterProcessNames, filterDepartment, filterAuditStatus], () => {
+  if (auditInProgress.value) return
+  clearDetailOnFilterChange()
+  triggerSearch()
+})
+
+const onStatCardFilterClick = (value: string | undefined) => {
+  if (auditInProgress.value) {
+    message.warning(t('archive.auditInProgressNoSwitch'))
+    return
+  }
+  filterAuditStatus.value = filterAuditStatus.value === value ? undefined : value
 }
 
 const filteredProgressSteps = computed(() => {
@@ -683,6 +808,7 @@ const auditedCount = computed(() => processList.value.filter(p => !!p.archive_re
 
 onMounted(async () => {
   await Promise.all([loadProcessTypes(), loadStats(), loadProcesses()])
+  tryResumeArchiveBatch()
 })
 
 onUnmounted(() => {
@@ -717,28 +843,28 @@ onUnmounted(() => {
 
     <!--统计行-->
     <div class="stats-row">
-      <div class="stat-card stat-card--primary" :class="{ 'stat-card--selected': filterAuditStatus === 'unaudited' }" @click="filterAuditStatus = filterAuditStatus === 'unaudited' ? undefined : 'unaudited'">
+      <div class="stat-card stat-card--primary" :class="{ 'stat-card--selected': filterAuditStatus === 'unaudited' }" @click="onStatCardFilterClick('unaudited')">
         <div class="stat-card-icon"><FileProtectOutlined /></div>
         <div class="stat-card-info">
           <span class="stat-card-value">{{ stats.unaudited_count }}</span>
           <span class="stat-card-label">{{ t('archive.statUnaudited') }}</span>
         </div>
       </div>
-      <div class="stat-card stat-card--success" :class="{ 'stat-card--selected': filterAuditStatus === 'compliant' }" @click="filterAuditStatus = filterAuditStatus === 'compliant' ? undefined : 'compliant'">
+      <div class="stat-card stat-card--success" :class="{ 'stat-card--selected': filterAuditStatus === 'compliant' }" @click="onStatCardFilterClick('compliant')">
         <div class="stat-card-icon"><CheckCircleOutlined /></div>
         <div class="stat-card-info">
           <span class="stat-card-value">{{ stats.compliant_count }}</span>
           <span class="stat-card-label">{{ t('archive.statCompliant') }}</span>
         </div>
       </div>
-      <div class="stat-card stat-card--warning" :class="{ 'stat-card--selected': filterAuditStatus === 'partially_compliant' }" @click="filterAuditStatus = filterAuditStatus === 'partially_compliant' ? undefined : 'partially_compliant'">
+      <div class="stat-card stat-card--warning" :class="{ 'stat-card--selected': filterAuditStatus === 'partially_compliant' }" @click="onStatCardFilterClick('partially_compliant')">
         <div class="stat-card-icon"><AlertOutlined /></div>
         <div class="stat-card-info">
           <span class="stat-card-value">{{ stats.partial_count }}</span>
           <span class="stat-card-label">{{ t('archive.statPartial') }}</span>
         </div>
       </div>
-      <div class="stat-card stat-card--danger" :class="{ 'stat-card--selected': filterAuditStatus === 'non_compliant' }" @click="filterAuditStatus = filterAuditStatus === 'non_compliant' ? undefined : 'non_compliant'">
+      <div class="stat-card stat-card--danger" :class="{ 'stat-card--selected': filterAuditStatus === 'non_compliant' }" @click="onStatCardFilterClick('non_compliant')">
         <div class="stat-card-icon"><CloseCircleOutlined /></div>
         <div class="stat-card-info">
           <span class="stat-card-value">{{ stats.non_compliant_count }}</span>
@@ -805,6 +931,7 @@ onUnmounted(() => {
           <div class="batch-toolbar">
             <div class="batch-toolbar-left">
               <a-checkbox
+                :disabled="auditInProgress"
                 :checked="selectedProcessIds.length > 0 && selectedProcessIds.length === Math.min(selectableIdsComputed.length, 10)"
                 :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < Math.min(selectableIdsComputed.length, 10)"
                 @change="toggleSelectAll"
@@ -815,14 +942,17 @@ onUnmounted(() => {
               <span v-if="batchAuditing" class="batch-progress-hint">
                 {{ t('archive.auditedProgress', `${batchAuditDone}/${batchAuditTotal}`) }}
               </span>
+              <span v-else-if="loading && !batchAuditing" class="batch-progress-hint">
+                {{ t('archive.auditingItem') }}
+              </span>
               <span v-else-if="auditedCount > 0" class="panel-header-hint">{{ t('archive.reviewed') }} {{ auditedCount }}/{{ listTotal }}</span>
             </div>
             <div class="batch-toolbar-right">
               <a-button
-                v-if="batchAuditing"
+                v-if="auditInProgress"
                 size="small"
                 danger
-                @click="handleAbortBatch"
+                @click="handleUnifiedAbortArchive"
               >
                 <StopOutlined /> {{ t('archive.batchAbort', '中止') }}
               </a-button>
@@ -830,7 +960,7 @@ onUnmounted(() => {
                 v-if="selectedProcessIds.length > 0"
                 type="primary"
                 size="small"
-                :disabled="batchAuditing"
+                :disabled="auditInProgress"
                 @click="handleBatchAudit"
                 class="batch-audit-btn"
               >
@@ -857,8 +987,8 @@ onUnmounted(() => {
               }"
               @click="selectProcess(proc)"
             >
-              <div class="todo-item-checkbox" @click.stop="processAuditLoading[proc.process_id] ? null : toggleSelectProcess(proc.process_id)">
-                <a-checkbox :checked="selectedProcessIds.includes(proc.process_id)" :disabled="processAuditLoading[proc.process_id]" />
+              <div class="todo-item-checkbox" @click.stop="auditInProgress || processAuditLoading[proc.process_id] ? null : toggleSelectProcess(proc.process_id)">
+                <a-checkbox :checked="selectedProcessIds.includes(proc.process_id)" :disabled="auditInProgress || processAuditLoading[proc.process_id]" />
               </div>
               <div class="todo-item-main">
                 <div class="todo-item-title">
@@ -913,11 +1043,6 @@ onUnmounted(() => {
                       {{ complianceConfig[proc.archive_result.overall_compliance]?.label }}
                       {{ proc.archive_result.overall_score }}{{ t('archive.score') }}
                     </span>
-                    <a-tooltip v-if="processAuditLoading[proc.process_id]" :title="t('archive.cancelReview')" :mouse-enter-delay="0.5">
-                      <button class="oa-jump-btn" @click.stop="proc.archive_result?.id ? cancelArchiveJob(proc.archive_result.id).then(() => loadProcesses()) : null">
-                        <StopOutlined style="color: var(--color-danger);" />
-                      </button>
-                    </a-tooltip>
                     <a-tooltip :title="t('dashboard.auditChain')" :mouse-enter-delay="0.5">
                       <button class="oa-jump-btn" @click.stop="openAuditChain(proc.process_id)">
                         <HistoryOutlined />

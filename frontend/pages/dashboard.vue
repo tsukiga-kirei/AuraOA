@@ -81,11 +81,6 @@ const auditListDateQuery = () => {
   }
 }
 
-const onAuditDateRangeChange = () => {
-  listPage.value = 1
-  void Promise.all([loadStats(), loadProcesses()])
-}
-
 const filterProcessNames = computed(() => {
   if (filterProcessType.value.length === 0) return []
   const names: string[] = []
@@ -135,19 +130,6 @@ const listPage = ref(1)
 const listPageSize = ref(10)
 const listTotal = ref(0)
 
-let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null
-const triggerFilterReload = () => {
-  if (filterDebounceTimer) clearTimeout(filterDebounceTimer)
-  filterDebounceTimer = setTimeout(() => {
-    listPage.value = 1
-    loadProcesses()
-  }, 400)
-}
-
-watch([searchText, searchApplicant, filterProcessNames, filterDepartment, filterAuditStatus], () => {
-  triggerFilterReload()
-})
-
 // ─── 选中流程 & 审核结果 ───
 const selectedProcess = ref<string | null>(null)
 const currentResult = ref<AuditResult | null>(null)
@@ -176,6 +158,45 @@ const batchAuditTotal = ref(0)
 const batchAuditDone = ref(0)
 const currentInflightProcessId = ref<string | null>(null)
 const pollProcessId = ref<string | null>(null)
+
+const asyncAuditStatuses = ['pending', 'assembling', 'reasoning', 'extracting'] as const
+
+const auditInProgress = computed(() => {
+  if (loading.value || batchAuditing.value) return true
+  return processList.value.some(p => p.audit_status && asyncAuditStatuses.includes(p.audit_status as any))
+})
+
+const blockingProcessId = computed((): string | null => {
+  if (loading.value && selectedProcess.value) return selectedProcess.value
+  if (batchAuditing.value) return currentInflightProcessId.value
+  const row = processList.value.find(p => p.audit_status && asyncAuditStatuses.includes(p.audit_status as any))
+  return row?.process_id ?? null
+})
+
+type DashboardBatchMeta = { process_id: string; process_type: string; title: string }
+const DASHBOARD_BATCH_KEY = 'oa-smart-audit:dashboard:batch-queue'
+
+function saveDashboardBatchState(ids: string[], queueMeta: DashboardBatchMeta[], nextIndex: number) {
+  try {
+    sessionStorage.setItem(DASHBOARD_BATCH_KEY, JSON.stringify({ ids, queueMeta, nextIndex }))
+  } catch {}
+}
+
+function clearDashboardBatchStorage() {
+  try {
+    sessionStorage.removeItem(DASHBOARD_BATCH_KEY)
+  } catch {}
+}
+
+function readDashboardBatchState(): { ids: string[]; queueMeta: DashboardBatchMeta[]; nextIndex: number } | null {
+  try {
+    const r = sessionStorage.getItem(DASHBOARD_BATCH_KEY)
+    if (!r) return null
+    return JSON.parse(r)
+  } catch {
+    return null
+  }
+}
 
 // ─── 流式推理 SSE ───
 const eventSourceStream = ref<EventSource | null>(null)
@@ -214,7 +235,7 @@ const renderMarkdown = (text: string) => text ? marked.parse(text) : ''
 
 // ─── 数据选择与操作 ───
 const toggleSelectProcess = (processId: string) => {
-  if (batchAuditing.value) return
+  if (auditInProgress.value) return
   const idx = selectedProcessIds.value.indexOf(processId)
   if (idx >= 0) selectedProcessIds.value.splice(idx, 1)
   else if (selectedProcessIds.value.length < 10) selectedProcessIds.value.push(processId)
@@ -228,7 +249,7 @@ const selectableIdsComputed = computed(() => {
 })
 
 const toggleSelectAll = () => {
-  if (batchAuditing.value) return
+  if (auditInProgress.value) return
   const selectableIds = selectableIdsComputed.value
   
   if (selectedProcessIds.value.length === Math.min(selectableIds.length, 10) || selectableIds.length === 0) {
@@ -285,6 +306,29 @@ const loadProcesses = async () => {
   }
 }
 
+let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const triggerFilterReload = () => {
+  if (auditInProgress.value) return
+  if (filterDebounceTimer) clearTimeout(filterDebounceTimer)
+  filterDebounceTimer = setTimeout(() => {
+    listPage.value = 1
+    loadProcesses()
+  }, 400)
+}
+
+watch([searchText, searchApplicant, filterProcessNames, filterDepartment, filterAuditStatus], () => {
+  triggerFilterReload()
+})
+
+const onAuditDateRangeChange = () => {
+  if (auditInProgress.value) {
+    message.warning(t('dashboard.auditInProgressNoSwitch'))
+    return
+  }
+  listPage.value = 1
+  void Promise.all([loadStats(), loadProcesses()])
+}
+
 const onListPageChange = (page: number, size: number) => {
   listPage.value = page
   listPageSize.value = size
@@ -292,6 +336,10 @@ const onListPageChange = (page: number, size: number) => {
 }
 
 const switchTab = (tab: AuditTab) => {
+  if (auditInProgress.value) {
+    message.warning(t('dashboard.auditInProgressNoSwitch'))
+    return
+  }
   disconnectStream()
   pollProcessId.value = null
   showHistoryChain.value = false
@@ -308,6 +356,13 @@ const switchTab = (tab: AuditTab) => {
 }
 
 const handleSelectProcess = (processId: string) => {
+  if (auditInProgress.value) {
+    const allow = blockingProcessId.value
+    if (allow && processId !== allow) {
+      message.warning(t('dashboard.auditInProgressNoSwitch'))
+      return
+    }
+  }
   selectedProcess.value = processId
   const item = processList.value.find(p => p.process_id === processId)
   if (item?.audit_result) {
@@ -455,52 +510,56 @@ const handleCancelAudit = async (processId: string) => {
   }
 }
 
-// ─── 批量审核（逐条调用，支持中途退出） ───
-const handleBatchAudit = async () => {
-  if (selectedProcessIds.value.length === 0) return
-  if (selectedProcessIds.value.length > 10) {
-    message.warning(t('dashboard.batchLimitHint'))
-    return
-  }
+// ─── 批量审核（逐条调用，支持中途退出；sessionStorage 支持刷新后续跑） ───
+async function runDashboardBatchLoop(ids: string[], queueMeta: DashboardBatchMeta[], startIndex: number) {
   batchAuditing.value = true
   batchAborted.value = false
-  const ids = [...selectedProcessIds.value]
-  batchAuditTotal.value = ids.length
-  batchAuditDone.value = 0
+  const metaById = new Map(queueMeta.map(m => [m.process_id, m]))
+  saveDashboardBatchState(ids, queueMeta, startIndex)
 
-  for (const id of ids) {
+  for (let i = startIndex; i < ids.length; i++) {
     if (batchAborted.value) break
-    const item = processList.value.find(p => p.process_id === id)
-    if (!item) { batchAuditDone.value++; continue }
+    const id = ids[i]
     currentInflightProcessId.value = id
-    
+    const item = processList.value.find(p => p.process_id === id)
+    const meta = item
+      ? { process_id: item.process_id, process_type: item.process_type, title: item.title }
+      : metaById.get(id)
+    if (!meta) {
+      batchAuditDone.value = i + 1
+      saveDashboardBatchState(ids, queueMeta, i + 1)
+      continue
+    }
+
     let started = false
     if (selectedProcess.value === id) {
-       currentResult.value = {
-         progress_steps: [
-           { key: 'pending', label: '排队中', done: false, current: true },
-           { key: 'assembling', label: '组装提示词', done: false, current: false },
-           { key: 'reasoning', label: '推理分析', done: false, current: false },
-           { key: 'extracting', label: '结构化提取', done: false, current: false },
-         ],
-         status: 'pending',
-         process_id: id,
-         ai_reasoning: '',
-         id: undefined,
-       } as any
+      currentResult.value = {
+        progress_steps: [
+          { key: 'pending', label: '排队中', done: false, current: true },
+          { key: 'assembling', label: '组装提示词', done: false, current: false },
+          { key: 'reasoning', label: '推理分析', done: false, current: false },
+          { key: 'extracting', label: '结构化提取', done: false, current: false },
+        ],
+        status: 'pending',
+        process_id: id,
+        ai_reasoning: '',
+        id: undefined,
+      } as any
     }
-    item.audit_result = {
-      status: 'pending',
-      process_id: id,
-      ai_reasoning: '',
-      id: undefined,
-    } as any
+    if (item) {
+      item.audit_result = {
+        status: 'pending',
+        process_id: id,
+        ai_reasoning: '',
+        id: undefined,
+      } as any
+    }
 
     try {
       const result = await executeAudit({
-        process_id: id,
-        process_type: item.process_type,
-        title: item.title,
+        process_id: meta.process_id,
+        process_type: meta.process_type,
+        title: meta.title,
       }, (st: any) => {
         if (!started) {
           started = true
@@ -515,31 +574,72 @@ const handleBatchAudit = async () => {
             if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
           }
         }
-        item.audit_status = st.status as any
-        item.audit_result = { ...st } as any
+        if (item) {
+          item.audit_status = st.status as any
+          item.audit_result = { ...st } as any
+        }
       })
-      item.audit_status = result.status as any
-      item.audit_result = result as any
-      item.has_audit = result.status === 'completed'
+      if (item) {
+        item.audit_status = result.status as any
+        item.audit_result = result as any
+        item.has_audit = result.status === 'completed'
+      }
       if (selectedProcess.value === id) {
         const oldReasoning = currentResult.value?.ai_reasoning || ''
         currentResult.value = result as any
         if (oldReasoning.length > (result.ai_reasoning?.length || 0)) {
-           if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
+          if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
         }
         disconnectStream()
       }
     } catch {}
-    batchAuditDone.value++
+    batchAuditDone.value = i + 1
+    saveDashboardBatchState(ids, queueMeta, i + 1)
   }
 
   currentInflightProcessId.value = null
   batchAuditing.value = false
   selectedProcessIds.value = []
+  clearDashboardBatchStorage()
   if (batchAborted.value) message.info(t('dashboard.batchAborted'))
   else message.success(t('dashboard.batchDone'))
   await loadStats()
   await loadProcesses()
+}
+
+const handleBatchAudit = async () => {
+  if (selectedProcessIds.value.length === 0) return
+  if (selectedProcessIds.value.length > 10) {
+    message.warning(t('dashboard.batchLimitHint'))
+    return
+  }
+  const ids = [...selectedProcessIds.value]
+  const queueMeta: DashboardBatchMeta[] = ids.map(id => {
+    const it = processList.value.find(p => p.process_id === id)
+    if (!it) return null
+    return { process_id: it.process_id, process_type: it.process_type, title: it.title }
+  }).filter(Boolean) as DashboardBatchMeta[]
+  if (queueMeta.length !== ids.length) {
+    message.error(t('dashboard.loadFailed'))
+    return
+  }
+  batchAuditTotal.value = ids.length
+  batchAuditDone.value = 0
+  await runDashboardBatchLoop(ids, queueMeta, 0)
+}
+
+function tryResumeDashboardBatch() {
+  const state = readDashboardBatchState()
+  if (!state || state.ids.length === 0) return
+  if (state.nextIndex >= state.ids.length) {
+    clearDashboardBatchStorage()
+    return
+  }
+  const { ids, queueMeta, nextIndex } = state
+  batchAuditTotal.value = ids.length
+  batchAuditDone.value = nextIndex
+  selectedProcessIds.value = [...ids]
+  void runDashboardBatchLoop(ids, queueMeta, nextIndex)
 }
 
 const handleAbortBatch = async () => {
@@ -549,7 +649,6 @@ const handleAbortBatch = async () => {
     await handleCancelAudit(processId).catch(() => {})
     currentInflightProcessId.value = null
   }
-  // 剩余未处理自动失败
   for (const id of selectedProcessIds.value) {
     const item = processList.value.find(p => p.process_id === id)
     if (item && item.audit_status === 'pending') {
@@ -557,6 +656,16 @@ const handleAbortBatch = async () => {
       item.audit_result = { status: 'failed', error_message: '批量审核已中止', recommendation: 'review' } as any
     }
   }
+  clearDashboardBatchStorage()
+}
+
+const handleUnifiedAbort = async () => {
+  if (batchAuditing.value) {
+    await handleAbortBatch()
+    return
+  }
+  const pid = blockingProcessId.value
+  if (pid) await handleCancelAudit(pid)
 }
 
 // ─── 审核链 ───
@@ -653,10 +762,11 @@ const chainItemAiReasoning = (item: AuditChainItem) =>
   (item.ai_reasoning || item.audit_result?.ai_reasoning || '').trim()
 
 // ─── 初始化 ───
-onMounted(() => {
+onMounted(async () => {
   loadStats()
-  loadProcesses()
+  await loadProcesses()
   loadProcessTypes()
+  tryResumeDashboardBatch()
 })
 </script>
 
@@ -753,6 +863,7 @@ onMounted(() => {
           <div v-if="activeTab === 'pending_ai'" class="batch-toolbar">
             <div class="batch-toolbar-left">
               <a-checkbox
+                :disabled="auditInProgress"
                 :checked="selectedProcessIds.length > 0 && selectedProcessIds.length === Math.min(selectableIdsComputed.length, 10)"
                 :indeterminate="selectedProcessIds.length > 0 && selectedProcessIds.length < Math.min(selectableIdsComputed.length, 10)"
                 @change="toggleSelectAll"
@@ -763,13 +874,16 @@ onMounted(() => {
               <span v-if="batchAuditing" class="batch-progress-hint">
                 {{ t('dashboard.auditedProgress', `${batchAuditDone}/${batchAuditTotal}`) }}
               </span>
+              <span v-else-if="loading" class="batch-progress-hint">
+                {{ t('dashboard.auditingItem') }}
+              </span>
             </div>
             <div class="batch-toolbar-right">
               <a-button
-                v-if="batchAuditing"
+                v-if="auditInProgress"
                 size="small"
                 danger
-                @click="handleAbortBatch"
+                @click="handleUnifiedAbort"
               >
                 <StopOutlined /> {{ t('dashboard.batchAbort') }}
               </a-button>
@@ -777,7 +891,7 @@ onMounted(() => {
                 v-if="selectedProcessIds.length > 0"
                 type="primary"
                 size="small"
-                :disabled="batchAuditing"
+                :disabled="auditInProgress"
                 @click="handleBatchAudit"
                 class="batch-audit-btn"
               >
@@ -803,8 +917,8 @@ onMounted(() => {
               }"
               @click="handleSelectProcess(item.process_id)"
             >
-              <div v-if="activeTab === 'pending_ai'" class="todo-item-checkbox" @click.stop="item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status) ? null : toggleSelectProcess(item.process_id)">
-                <a-checkbox :checked="selectedProcessIds.includes(item.process_id)" :disabled="item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status)" />
+              <div v-if="activeTab === 'pending_ai'" class="todo-item-checkbox" @click.stop="auditInProgress || (item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status)) ? null : toggleSelectProcess(item.process_id)">
+                <a-checkbox :checked="selectedProcessIds.includes(item.process_id)" :disabled="auditInProgress || (item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status))" />
               </div>
               <div class="todo-item-main">
                 <div class="todo-item-title">
@@ -852,11 +966,6 @@ onMounted(() => {
                       {{ item.audit_result.overall_score }}{{ t('dashboard.points') }}
                       {{ getShortRecLabel(item.audit_result.recommendation || 'review') }}
                     </span>
-                    <a-tooltip v-if="item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status)" title="中止当前流程" :mouse-enter-delay="0.5">
-                      <button class="oa-jump-btn" @click.stop="handleCancelAudit(item.process_id)">
-                        <StopOutlined style="color: var(--color-danger);" />
-                      </button>
-                    </a-tooltip>
                     <a-tooltip :title="t('dashboard.auditChain')" :mouse-enter-delay="0.5">
                       <button class="oa-jump-btn" @click.stop="openAuditChain(item.process_id)">
                         <HistoryOutlined />
@@ -995,9 +1104,6 @@ onMounted(() => {
               </a-button>
               <a-button v-if="!isCompletedHistoryTab" @click="handleReAudit">
                 <ReloadOutlined /> {{ t('dashboard.reAudit') }}
-              </a-button>
-              <a-button danger v-if="!isCompletedHistoryTab && isResultAsyncRunning(currentResult)" @click="handleCancelAudit(currentResult.process_id)">
-                <StopOutlined /> 中止审核
               </a-button>
             </div>
 

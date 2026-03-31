@@ -574,6 +574,7 @@ export default {
     'dashboard.batchLimitLabel': '(max 10)',
     'dashboard.batchAbort': 'Abort',
     'dashboard.batchAborted': 'Batch audit aborted',
+    'dashboard.auditInProgressNoSwitch': 'Audit in progress. Wait or abort first.',
     'dashboard.loadFailed': 'Failed to load process list',
     'dashboard.loadingListHint': 'Loading list…',
     'dashboard.auditFailed': 'AI audit failed',
@@ -883,6 +884,7 @@ export default {
     'archive.batchProgress': 'Batch reviewing {0} processes...',
     'archive.batchDone': 'Completed batch review of {0} processes',
     'archive.auditedProgress': 'Reviewed {0}',
+    'archive.auditInProgressNoSwitch': 'Review in progress. Wait or abort first.',
     'archive.exporting': 'Exporting {0} compliance report...',
     'archive.jumpingToOA': 'Jumping to OA system for process {0}...',
 
