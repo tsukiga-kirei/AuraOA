@@ -1195,9 +1195,7 @@ func buildArchiveResultFromLog(logEntry *model.ArchiveLog) map[string]interface{
 	case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
 		return base
 	case model.AuditStatusFailed:
-		base["overall_compliance"] = "partially_compliant"
-		base["overall_score"] = 0
-		base["confidence"] = 0
+		// 失败不写入合规结论，与「归档未审核」语义一致；前端按未完成展示，避免与部分合规混淆。
 		base["flow_audit"] = emptyArchiveFlowAuditMap()
 		base["field_audit"] = []interface{}{}
 		base["rule_audit"] = []interface{}{}

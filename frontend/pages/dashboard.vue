@@ -297,6 +297,18 @@ const loadProcesses = async () => {
     listTotal.value = res?.total ?? 0
     if (res?.page) listPage.value = res.page
     if (res?.page_size) listPageSize.value = res.page_size
+
+    // 刷新/分页后：若当前选中行仍在进行中，恢复轮询与 SSE（列表徽标本就依赖 audit_status）
+    if (selectedProcess.value) {
+      const row = processList.value.find(p => p.process_id === selectedProcess.value)
+      if (
+        row?.audit_result?.id
+        && row.audit_status
+        && asyncAuditStatuses.includes(row.audit_status as any)
+      ) {
+        handleSelectProcess(selectedProcess.value)
+      }
+    }
   } catch (e: any) {
     message.error(t('dashboard.loadFailed'))
     processList.value = []
@@ -412,6 +424,9 @@ const handleSelectProcess = (processId: string) => {
                disconnectStream()
              }
           })
+       } else if (item.audit_result.id && pollProcessId.value === processId) {
+          // 列表已恢复轮询后再次 handleSelectProcess：仅补挂 SSE
+          startSSE(item.audit_result.id, processId)
        }
     }
   } else {
@@ -874,7 +889,7 @@ onMounted(async () => {
               <span v-if="batchAuditing" class="batch-progress-hint">
                 {{ t('dashboard.auditedProgress', `${batchAuditDone}/${batchAuditTotal}`) }}
               </span>
-              <span v-else-if="loading" class="batch-progress-hint">
+              <span v-else-if="auditInProgress && !batchAuditing" class="batch-progress-hint">
                 {{ t('dashboard.auditingItem') }}
               </span>
             </div>

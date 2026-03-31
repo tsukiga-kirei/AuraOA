@@ -55,6 +55,12 @@ const {
 
 const asyncArchiveStatuses = ['pending', 'assembling', 'reasoning', 'extracting']
 
+/** 与列表接口返回的 archive_status / archive_result.status 一致；刷新后仍显示「复核中」 */
+function isArchiveJobRunning(proc: ArchiveProcessItem): boolean {
+  const st = proc.archive_result?.status ?? proc.archive_status
+  return !!(st && asyncArchiveStatuses.includes(st))
+}
+
 const stats = ref<ArchiveReviewStats>({
   total_count: 0,
   compliant_count: 0,
@@ -378,7 +384,14 @@ const startSSE = (archiveLogId: string, processId: string) => {
 
 const trackRunningJob = async (proc: ArchiveProcessItem) => {
   const archiveLogId = proc.archive_result?.id
-  if (!archiveLogId || pollProcessId.value === proc.process_id) return
+  if (!archiveLogId) return
+  // 已由列表恢复轮询时：仅补挂 SSE（用户随后点开该流程时）
+  if (pollProcessId.value === proc.process_id) {
+    if (selectedProcess.value?.process_id === proc.process_id) {
+      startSSE(archiveLogId, proc.process_id)
+    }
+    return
+  }
 
   pollProcessId.value = proc.process_id
   processAuditLoading.value = {
@@ -409,6 +422,19 @@ const trackRunningJob = async (proc: ArchiveProcessItem) => {
       [proc.process_id]: false,
     }
   }
+}
+
+/** 列表刷新/分页后：恢复对进行中归档任务的轮询与 SSE（不依赖再次点击） */
+function resumeArchiveAsyncTrackingFromList() {
+  const running = processList.value.filter(
+    p => isArchiveJobRunning(p) && p.archive_result?.id,
+  )
+  if (running.length === 0) return
+  const preferred = selectedProcess.value
+    ? running.find(p => p.process_id === selectedProcess.value!.process_id)
+    : null
+  const proc = preferred ?? running[0]
+  void trackRunningJob(proc)
 }
 
 const selectProcess = (proc: ArchiveProcessItem) => {
@@ -710,13 +736,13 @@ const loadProcesses = async () => {
       selectedProcessIds.value = selectedProcessIds.value.filter(id => selectableIdsComputed.value.includes(id))
     }
 
-    if (!selectedProcess.value) return
-    const nextSelected = processList.value.find(proc => proc.process_id === selectedProcess.value?.process_id) || null
-    selectedProcess.value = nextSelected
-    currentResult.value = normalizeArchiveResult(nextSelected?.archive_result)
-    if (nextSelected && isResultAsyncRunning(currentResult.value)) {
-      trackRunningJob(nextSelected)
+    if (selectedProcess.value) {
+      const nextSelected = processList.value.find(proc => proc.process_id === selectedProcess.value?.process_id) || null
+      selectedProcess.value = nextSelected
+      currentResult.value = normalizeArchiveResult(nextSelected?.archive_result)
     }
+
+    resumeArchiveAsyncTrackingFromList()
   } catch {
     processList.value = []
     message.error(t('archive.loadFailed'))
@@ -806,7 +832,24 @@ const complianceConfig = computed((): Record<string, { color: string; bg: string
   partially_compliant: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: t('archive.partiallyCompliant') },
 }))
 
-const auditedCount = computed(() => processList.value.filter(p => !!p.archive_result?.overall_compliance).length)
+/** 与后端 archiveItemHasComplianceOutcome 一致：仅 completed 且有三档合规结论才算「已完成复盘」 */
+function archiveHasFinishedOutcome(
+  proc: ArchiveProcessItem | null | undefined,
+  res?: ArchiveReviewResult | null,
+): boolean {
+  if (!proc) return false
+  const r = res ?? proc.archive_result ?? null
+  const status = r?.status ?? proc.archive_status
+  if (status !== 'completed') return false
+  const c = r?.overall_compliance
+  return c === 'compliant' || c === 'partially_compliant' || c === 'non_compliant'
+}
+
+const archiveDetailShowsComplianceReport = computed(() =>
+  archiveHasFinishedOutcome(selectedProcess.value, currentResult.value),
+)
+
+const auditedCount = computed(() => processList.value.filter(p => archiveHasFinishedOutcome(p, p.archive_result)).length)
 
 onMounted(async () => {
   await Promise.all([loadProcessTypes(), loadStats(), loadProcesses()])
@@ -944,7 +987,7 @@ onUnmounted(() => {
               <span v-if="batchAuditing" class="batch-progress-hint">
                 {{ t('archive.auditedProgress', `${batchAuditDone}/${batchAuditTotal}`) }}
               </span>
-              <span v-else-if="loading && !batchAuditing" class="batch-progress-hint">
+              <span v-else-if="auditInProgress && !batchAuditing" class="batch-progress-hint">
                 {{ t('archive.auditingItem') }}
               </span>
               <span v-else-if="auditedCount > 0" class="panel-header-hint">{{ t('archive.reviewed') }} {{ auditedCount }}/{{ listTotal }}</span>
@@ -983,32 +1026,32 @@ onUnmounted(() => {
               class="todo-item"
               :class="{
                 'todo-item--selected': selectedProcess?.process_id === proc.process_id,
-                'todo-item--audited-approve': proc.archive_result?.overall_compliance === 'compliant',
-                'todo-item--audited-return': proc.archive_result?.overall_compliance === 'partially_compliant',
-                'todo-item--archive-noncompliant': proc.archive_result?.overall_compliance === 'non_compliant',
+                'todo-item--audited-approve': archiveHasFinishedOutcome(proc, proc.archive_result) && proc.archive_result?.overall_compliance === 'compliant',
+                'todo-item--audited-return': archiveHasFinishedOutcome(proc, proc.archive_result) && proc.archive_result?.overall_compliance === 'partially_compliant',
+                'todo-item--archive-noncompliant': archiveHasFinishedOutcome(proc, proc.archive_result) && proc.archive_result?.overall_compliance === 'non_compliant',
               }"
               @click="selectProcess(proc)"
             >
-              <div class="todo-item-checkbox" @click.stop="auditInProgress || processAuditLoading[proc.process_id] ? null : toggleSelectProcess(proc.process_id)">
-                <a-checkbox :checked="selectedProcessIds.includes(proc.process_id)" :disabled="auditInProgress || processAuditLoading[proc.process_id]" />
+              <div class="todo-item-checkbox" @click.stop="auditInProgress || isArchiveJobRunning(proc) ? null : toggleSelectProcess(proc.process_id)">
+                <a-checkbox :checked="selectedProcessIds.includes(proc.process_id)" :disabled="auditInProgress || isArchiveJobRunning(proc)" />
               </div>
               <div class="todo-item-main">
                 <div class="todo-item-title">
                   <LoadingOutlined
-                    v-if="processAuditLoading[proc.process_id]" class="todo-item-audited-icon" spin style="color: var(--color-primary);"
+                    v-if="isArchiveJobRunning(proc)" class="todo-item-audited-icon" spin style="color: var(--color-primary);"
                   />
                   <CheckCircleOutlined
-                    v-else-if="proc.archive_result?.overall_compliance === 'compliant'"
+                    v-else-if="archiveHasFinishedOutcome(proc, proc.archive_result) && proc.archive_result?.overall_compliance === 'compliant'"
                     class="todo-item-audited-icon"
                     style="color: var(--color-success);"
                   />
                   <CheckCircleOutlined
-                    v-else-if="proc.archive_result?.overall_compliance === 'partially_compliant'"
+                    v-else-if="archiveHasFinishedOutcome(proc, proc.archive_result) && proc.archive_result?.overall_compliance === 'partially_compliant'"
                     class="todo-item-audited-icon"
                     style="color: var(--color-warning);"
                   />
                   <CloseCircleOutlined
-                    v-else-if="proc.archive_result?.overall_compliance === 'non_compliant'"
+                    v-else-if="archiveHasFinishedOutcome(proc, proc.archive_result) && proc.archive_result?.overall_compliance === 'non_compliant'"
                     class="todo-item-audited-icon"
                     style="color: var(--color-danger);"
                   />
@@ -1028,14 +1071,14 @@ onUnmounted(() => {
                   </div>
                   <div class="todo-item-audit-right">
                     <span
-                      v-if="processAuditLoading[proc.process_id]"
+                      v-if="isArchiveJobRunning(proc)"
                       class="todo-item-score-badge"
                       style="color: var(--color-primary); background: var(--color-primary-bg);"
                     >
                       {{ t('archive.auditingItem') }}
                     </span>
                     <span
-                      v-else-if="proc.archive_result?.overall_compliance"
+                      v-else-if="archiveHasFinishedOutcome(proc, proc.archive_result) && proc.archive_result?.overall_compliance"
                       class="todo-item-score-badge"
                       :style="{
                         color: complianceConfig[proc.archive_result.overall_compliance]?.color,
@@ -1044,6 +1087,13 @@ onUnmounted(() => {
                     >
                       {{ complianceConfig[proc.archive_result.overall_compliance]?.label }}
                       {{ proc.archive_result.overall_score }}{{ t('archive.score') }}
+                    </span>
+                    <span
+                      v-else
+                      class="todo-item-score-badge"
+                      style="color: var(--color-text-secondary); background: var(--color-bg-hover);"
+                    >
+                      {{ t('archive.pendingReview') }}
                     </span>
                     <a-tooltip :title="t('dashboard.auditChain')" :mouse-enter-delay="0.5">
                       <button class="oa-jump-btn" @click.stop="openAuditChain(proc.process_id)">
@@ -1130,8 +1180,8 @@ onUnmounted(() => {
               </div>
             </template>
 
-            <!--审核结果-->
-            <template v-else-if="currentResult && !loading">
+            <!--审核结果：仅已形成合规结论时展示完整报告（与审核工作台「已完成」一致）-->
+            <template v-else-if="currentResult && !loading && archiveDetailShowsComplianceReport">
               <!--与 dashboard 一致的操作栏 -->
               <div class="result-action-bar">
                 <a-button @click="openAuditChain(selectedProcess.process_id)">
@@ -1175,18 +1225,6 @@ onUnmounted(() => {
                 </div>
                 <div class="result-score" :style="{ color: complianceConfig[currentResult.overall_compliance ?? '']?.color }">
                   {{ currentResult.overall_score }}
-                </div>
-              </div>
-
-              <div v-if="currentResult.error_message" class="section-block">
-                <div class="audit-check-item audit-check-item--fail">
-                  <div class="audit-check-status">
-                    <CloseCircleOutlined style="color: var(--color-danger);" />
-                  </div>
-                  <div class="audit-check-content">
-                    <div class="audit-check-name">{{ t('archive.auditFailed') }}</div>
-                    <div class="audit-check-reasoning">{{ currentResult.error_message }}</div>
-                  </div>
                 </div>
               </div>
 
@@ -1273,8 +1311,11 @@ onUnmounted(() => {
               </div>
             </template>
 
-            <!--未开始复盘：与 dashboard action-prompt 一致 -->
-            <div v-else-if="selectedProcess && !currentResult && !loading" class="action-prompt">
+            <!--未形成合规结论（含从未复盘、失败、解析失败）：与「开始合规复盘」态同一布局 -->
+            <div
+              v-else-if="selectedProcess && !loading && !archiveDetailShowsComplianceReport"
+              class="action-prompt"
+            >
               <div class="action-prompt-info">
                 <h4>{{ selectedProcess.title }}</h4>
                 <p>{{ selectedProcess.applicant }} · {{ selectedProcess.department }} · {{ selectedProcess.submit_time }}</p>
