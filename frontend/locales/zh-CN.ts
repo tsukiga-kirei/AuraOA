@@ -575,6 +575,7 @@ export default {
     'dashboard.batchLimitLabel': '（上限 10 条）',
     'dashboard.batchAbort': '中止',
     'dashboard.batchAborted': '批量审核已中止',
+    'dashboard.auditInProgressNoSwitch': '审核进行中，请稍候或先中止当前任务',
     'dashboard.loadFailed': '加载流程列表失败',
     'dashboard.loadingListHint': '正在加载列表…',
     'dashboard.auditFailed': 'AI 审核失败',
@@ -884,6 +885,7 @@ export default {
     'archive.batchProgress': '正在批量复核 {0} 个流程...',
     'archive.batchDone': '已完成 {0} 个流程的批量合规复核',
     'archive.auditedProgress': '已复核 {0}',
+    'archive.auditInProgressNoSwitch': '复核进行中，请稍候或先中止当前任务',
     'archive.exporting': '正在导出 {0} 格式的合规复核报告...',
     'archive.jumpingToOA': '正在跳转 OA 系统查看流程 {0}...',
 
