@@ -34,6 +34,37 @@ const (
 	archiveProcessTimeout  = 25 * time.Minute
 )
 
+// archiveItemHasComplianceOutcome 最后一条复盘已形成合规/部分合规/不合规结论。
+// 其余（含 failed、进行中、从未复盘、已完成但无有效 overall_compliance）均视为「归档未审核」，与列表筛选 audit_status=unaudited 一致。
+func archiveItemHasComplianceOutcome(item map[string]interface{}) bool {
+	status, _ := item["archive_status"].(string)
+	if status != model.AuditStatusCompleted {
+		return false
+	}
+	result, _ := item["archive_result"].(map[string]interface{})
+	if result == nil {
+		return false
+	}
+	c, ok := result["overall_compliance"].(string)
+	if !ok {
+		return false
+	}
+	return c == "compliant" || c == "partially_compliant" || c == "non_compliant"
+}
+
+func archiveItemComplianceClass(item map[string]interface{}, want string) bool {
+	status, _ := item["archive_status"].(string)
+	if status != model.AuditStatusCompleted {
+		return false
+	}
+	result, _ := item["archive_result"].(map[string]interface{})
+	if result == nil {
+		return false
+	}
+	c, ok := result["overall_compliance"].(string)
+	return ok && c == want
+}
+
 // ArchiveReviewService 处理归档复盘运行时业务。
 type ArchiveReviewService struct {
 	archiveLogRepo    *repository.ArchiveLogRepo
@@ -178,14 +209,9 @@ func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.Arc
 		return nil, err
 	}
 
-	// 筛选
+	// 筛选（与 GetStats 中「归档未审核」语义一致）
 	filtered := make([]map[string]interface{}, 0, len(full.Items))
 	for _, item := range full.Items {
-		// 跳过 failed 状态
-		if status, _ := item["archive_status"].(string); status == model.AuditStatusFailed {
-			continue
-		}
-
 		if params.Keyword != "" {
 			kw := strings.ToLower(params.Keyword)
 			title, _ := item["title"].(string)
@@ -213,20 +239,21 @@ func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.Arc
 			}
 		}
 		if params.AuditStatus != "" {
-			result, _ := item["archive_result"].(map[string]interface{})
 			switch params.AuditStatus {
 			case "unaudited":
-				if result != nil {
-					if _, ok := result["overall_compliance"]; ok {
-						continue
-					}
-				}
-			default:
-				if result == nil {
+				if archiveItemHasComplianceOutcome(item) {
 					continue
 				}
-				compliance, _ := result["overall_compliance"].(string)
-				if compliance != params.AuditStatus {
+			case "compliant":
+				if !archiveItemComplianceClass(item, "compliant") {
+					continue
+				}
+			case "partially_compliant":
+				if !archiveItemComplianceClass(item, "partially_compliant") {
+					continue
+				}
+			case "non_compliant":
+				if !archiveItemComplianceClass(item, "non_compliant") {
 					continue
 				}
 			}
@@ -270,32 +297,26 @@ func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListPa
 		TotalCount: len(resp.Items),
 	}
 	for _, item := range resp.Items {
-		status, _ := item["archive_status"].(string)
-		if status == "" {
+		if archiveItemHasComplianceOutcome(item) {
+			result, _ := item["archive_result"].(map[string]interface{})
+			c, _ := result["overall_compliance"].(string)
+			switch c {
+			case "compliant":
+				stats.CompliantCount++
+			case "partially_compliant":
+				stats.PartialCount++
+			case "non_compliant":
+				stats.NonCompliantCount++
+			}
+		} else {
 			stats.UnauditedCount++
-			continue
 		}
-
+	}
+	for _, item := range resp.Items {
+		status, _ := item["archive_status"].(string)
 		switch status {
 		case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
 			stats.RunningCount++
-		case model.AuditStatusCompleted:
-			if result, ok := item["archive_result"].(map[string]interface{}); ok {
-				switch result["overall_compliance"] {
-				case "compliant":
-					stats.CompliantCount++
-				case "partially_compliant":
-					stats.PartialCount++
-				case "non_compliant":
-					stats.NonCompliantCount++
-				default:
-					stats.UnauditedCount++
-				}
-			} else {
-				stats.UnauditedCount++
-			}
-		default:
-			stats.UnauditedCount++
 		}
 	}
 	return stats, nil

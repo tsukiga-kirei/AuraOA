@@ -136,7 +136,8 @@ const filterProcessNames = computed(() => {
   return names
 })
 const filterDepartment = ref<string | undefined>(undefined)
-const filterAuditStatus = ref<string | undefined>('unaudited')
+type ArchiveAuditTab = 'unaudited' | 'compliant' | 'partially_compliant' | 'non_compliant'
+const filterAuditStatus = ref<ArchiveAuditTab>('unaudited')
 
 /** 与 OA SQL 归档时间筛选一致，默认最近 90 天 */
 const archiveDateRange = ref<[Dayjs, Dayjs]>([
@@ -175,12 +176,13 @@ const hasActiveFilters = computed(() =>
 )
 
 const computedListTitle = computed(() => {
-  if (!filterAuditStatus.value) return t('archive.archivedProcesses')
-  if (filterAuditStatus.value === 'unaudited') return t('archive.statUnaudited')
-  if (filterAuditStatus.value === 'compliant') return t('archive.statCompliant')
-  if (filterAuditStatus.value === 'partially_compliant') return t('archive.statPartial')
-  if (filterAuditStatus.value === 'non_compliant') return t('archive.statNonCompliant')
-  return t('archive.archivedProcesses')
+  const m: Record<ArchiveAuditTab, string> = {
+    unaudited: t('archive.statUnaudited'),
+    compliant: t('archive.statCompliant'),
+    partially_compliant: t('archive.statPartial'),
+    non_compliant: t('archive.statNonCompliant'),
+  }
+  return m[filterAuditStatus.value]
 })
 
 const clearFilters = () => {
@@ -697,7 +699,7 @@ const loadProcesses = async () => {
       applicant: searchApplicant.value || undefined,
       process_type: pt || undefined,
       department: filterDepartment.value || undefined,
-      audit_status: filterAuditStatus.value || undefined,
+      audit_status: filterAuditStatus.value,
       page: listPage.value,
       page_size: listPageSize.value,
       ...archiveDateQuery(),
@@ -739,12 +741,12 @@ watch([searchText, searchApplicant, filterProcessNames, filterDepartment, filter
   triggerSearch()
 })
 
-const onStatCardFilterClick = (value: string | undefined) => {
+const onStatCardFilterClick = (value: ArchiveAuditTab) => {
   if (auditInProgress.value) {
     message.warning(t('archive.auditInProgressNoSwitch'))
     return
   }
-  filterAuditStatus.value = filterAuditStatus.value === value ? undefined : value
+  filterAuditStatus.value = value
 }
 
 const filteredProgressSteps = computed(() => {
