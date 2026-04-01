@@ -39,21 +39,23 @@ const (
 
 // AuditExecuteService 审核执行业务逻辑：串联 OA 数据 → 提示词构建 → AI 调用 → 结果解析 → 写入日志。
 type AuditExecuteService struct {
-	auditLogRepo   *repository.AuditLogRepo
-	configRepo     *repository.ProcessAuditConfigRepo
-	ruleRepo       *repository.AuditRuleRepo
-	userConfigRepo *repository.UserPersonalConfigRepo
-	tenantRepo     *repository.TenantRepo
-	oaConnRepo     *repository.OAConnectionRepo
-	aiModelRepo    *repository.AIModelRepo
-	aiCaller       *AIModelCallerService
-	db             *gorm.DB
-	rdb            *redis.Client
-	cancelMap      sync.Map
+	auditLogRepo       *repository.AuditLogRepo
+	auditSnapshotRepo  *repository.AuditProcessSnapshotRepo
+	configRepo         *repository.ProcessAuditConfigRepo
+	ruleRepo           *repository.AuditRuleRepo
+	userConfigRepo     *repository.UserPersonalConfigRepo
+	tenantRepo         *repository.TenantRepo
+	oaConnRepo         *repository.OAConnectionRepo
+	aiModelRepo        *repository.AIModelRepo
+	aiCaller           *AIModelCallerService
+	db                 *gorm.DB
+	rdb                *redis.Client
+	cancelMap          sync.Map
 }
 
 func NewAuditExecuteService(
 	auditLogRepo *repository.AuditLogRepo,
+	auditSnapshotRepo *repository.AuditProcessSnapshotRepo,
 	configRepo *repository.ProcessAuditConfigRepo,
 	ruleRepo *repository.AuditRuleRepo,
 	userConfigRepo *repository.UserPersonalConfigRepo,
@@ -65,16 +67,17 @@ func NewAuditExecuteService(
 	rdb *redis.Client,
 ) *AuditExecuteService {
 	return &AuditExecuteService{
-		auditLogRepo:   auditLogRepo,
-		configRepo:     configRepo,
-		ruleRepo:       ruleRepo,
-		userConfigRepo: userConfigRepo,
-		tenantRepo:     tenantRepo,
-		oaConnRepo:     oaConnRepo,
-		aiModelRepo:    aiModelRepo,
-		aiCaller:       aiCaller,
-		db:             db,
-		rdb:            rdb,
+		auditLogRepo:      auditLogRepo,
+		auditSnapshotRepo: auditSnapshotRepo,
+		configRepo:        configRepo,
+		ruleRepo:          ruleRepo,
+		userConfigRepo:    userConfigRepo,
+		tenantRepo:        tenantRepo,
+		oaConnRepo:        oaConnRepo,
+		aiModelRepo:       aiModelRepo,
+		aiCaller:          aiCaller,
+		db:                db,
+		rdb:               rdb,
 	}
 }
 
@@ -406,7 +409,6 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	parsed, parseErr := ParseAuditResult(extractionResp.Content)
 
 	updates := map[string]interface{}{
-		"status":       model.AuditStatusCompleted,
 		"duration_ms":  totalDuration,
 		"raw_content":  extractionResp.Content,
 		"ai_reasoning": aiReasoning,
@@ -414,6 +416,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	}
 
 	if parseErr != nil {
+		updates["status"] = model.AuditStatusFailed
 		updates["recommendation"] = "review"
 		updates["score"] = 0
 		updates["confidence"] = 0
@@ -421,6 +424,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		updates["audit_result"] = datatypes.JSON([]byte("{}"))
 	} else {
 		resultJSON, _ := json.Marshal(parsed)
+		updates["status"] = model.AuditStatusCompleted
 		updates["recommendation"] = parsed.Recommendation
 		updates["score"] = parsed.OverallScore
 		updates["confidence"] = parsed.Confidence
@@ -430,6 +434,11 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	if err := s.auditLogRepo.UpdateFields(c, auditLogID, updates); err != nil {
 		_ = s.markAuditFailedDB(tenantID, auditLogID, "保存审核结果失败: "+err.Error())
 		return err
+	}
+	if parseErr == nil && parsed != nil {
+		if err := s.auditSnapshotRepo.UpsertAppendValid(c, tenantID, log.ProcessID, auditLogID, log.Title, log.ProcessType, parsed.Recommendation, parsed.OverallScore, parsed.Confidence); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -543,9 +552,17 @@ type BatchAuditResult struct {
 	Failed  int                    `json:"failed"`
 }
 
-// GetAuditChain 获取审核链：仅展示已完成的 AI 审核记录（租户内所有用户），包含真实姓名。
+// GetAuditChain 获取审核链：仅包含有效解析成功的记录，顺序与快照中一致。
 func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([]repository.AuditLogWithUser, error) {
-	return s.auditLogRepo.ListCompletedByProcessIDWithUser(c, processID)
+	snap, err := s.auditSnapshotRepo.GetByProcessID(c, processID)
+	if err != nil {
+		return nil, err
+	}
+	if snap == nil {
+		return []repository.AuditLogWithUser{}, nil
+	}
+	ids := parseSnapshotValidLogIDs(snap.ValidLogIDs)
+	return s.auditLogRepo.ListByIDsWithUserOrdered(c, ids)
 }
 
 // SubscribeJobStream 获取特定流程的 SSE 流和控制句柄
@@ -801,13 +818,14 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 	for i, item := range filtered {
 		processIDs[i] = item.ProcessID
 	}
-	auditMap, _ := s.auditLogRepo.GetLatestResultMap(c, processIDs)
+	snapshotMap, err := s.auditSnapshotRepo.GetMapByProcessIDs(c, processIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询审核快照失败")
+	}
 
 	pendingAI, aiDone := 0, 0
 	for _, item := range filtered {
-		latest := auditMap[item.ProcessID]
-		hasCompleted := latest != nil && latest.Status == model.AuditStatusCompleted
-		if hasCompleted {
+		if snapshotMap[item.ProcessID] != nil {
 			aiDone++
 		} else {
 			pendingAI++
@@ -815,7 +833,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 	}
 
 	var completedCount int64
-	q := s.db.Model(&model.AuditLog{}).Where("tenant_id = ? AND status = ?", tenantID, model.AuditStatusCompleted)
+	q := s.db.Model(&model.AuditProcessSnapshot{}).Where("tenant_id = ?", tenantID)
 	if len(processIDs) > 0 {
 		q = q.Where("process_id NOT IN ?", processIDs)
 	}
@@ -824,18 +842,18 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 		q = q.Where("process_type IN ?", configuredTypes)
 	}
 	if params.SubmitDateStart != nil {
-		q = q.Where("created_at >= ?", params.SubmitDateStart)
+		q = q.Where("updated_at >= ?", params.SubmitDateStart)
 	}
 	if params.SubmitDateEndExclusive != nil {
-		q = q.Where("created_at < ?", params.SubmitDateEndExclusive)
+		q = q.Where("updated_at < ?", params.SubmitDateEndExclusive)
 	}
-	q.Select("COUNT(DISTINCT process_id)").Scan(&completedCount)
+	q.Count(&completedCount)
 
 	now := time.Now()
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	var todayCompleted int64
-	s.db.Model(&model.AuditLog{}).
-		Where("tenant_id = ? AND status = ? AND updated_at >= ?", tenantID, model.AuditStatusCompleted, startOfDay).
+	s.db.Model(&model.AuditProcessSnapshot{}).
+		Where("tenant_id = ? AND updated_at >= ?", tenantID, startOfDay).
 		Count(&todayCompleted)
 
 	return map[string]int{
@@ -846,7 +864,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 	}, nil
 }
 
-// ListProcessesPaged 分页查询审核工作台（OA 待办按 requestbase.createdate 过滤；completed 按 audit_logs.created_at）。
+// ListProcessesPaged 分页查询审核工作台（OA 待办按 requestbase.createdate 过滤；completed 按有效结论快照 updated_at）。
 func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.AuditListParams) (*dto.AuditProcessListResponse, error) {
 	tenantID, _, err := s.extractIDs(c)
 	if err != nil {
@@ -896,6 +914,10 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核记录失败")
 	}
+	snapshotMap, err := s.auditSnapshotRepo.GetMapByProcessIDs(c, processIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询审核快照失败")
+	}
 
 	var results []map[string]interface{}
 	for _, item := range filteredTodo {
@@ -914,23 +936,46 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 			"in_todo":            true,
 		}
 
+		snap := snapshotMap[item.ProcessID]
+		hasValid := snap != nil
 		auditLog, hasLatest := auditMap[item.ProcessID]
-		hasCompleted := hasLatest && auditLog.Status == model.AuditStatusCompleted
-		if hasLatest {
-			record["audit_status"] = auditLog.Status
-			record["audit_result"] = buildAuditResultFromLog(auditLog)
+
+		if hasValid {
+			validLog, err := s.auditLogRepo.GetByID(c, snap.LatestValidLogID)
+			if err == nil && validLog != nil {
+				record["has_audit"] = true
+				record["audit_result"] = buildAuditResultFromLog(validLog)
+				record["audit_status"] = model.AuditStatusCompleted
+			}
 		}
-		if hasCompleted {
-			record["has_audit"] = true
+		if hasLatest {
+			st := auditLog.Status
+			switch st {
+			case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
+				record["audit_status"] = st
+				record["audit_result"] = buildAuditResultFromLog(auditLog)
+			case model.AuditStatusFailed:
+				if !hasValid {
+					record["audit_status"] = nil
+					record["audit_result"] = nil
+					record["has_audit"] = false
+				}
+			case model.AuditStatusCompleted:
+				if !hasValid {
+					record["audit_status"] = nil
+					record["audit_result"] = nil
+					record["has_audit"] = false
+				}
+			}
 		}
 
 		switch tab {
 		case "pending_ai":
-			if !hasCompleted {
+			if !hasValid {
 				results = append(results, record)
 			}
 		case "ai_done":
-			if hasCompleted {
+			if hasValid {
 				results = append(results, record)
 			}
 		}
@@ -971,8 +1016,8 @@ func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenant
 	}
 
 	configuredTypes := s.getAllowedProcessTypes(c)
-	var logs []model.AuditLog
-	query := s.db.Where("tenant_id = ? AND status = ?", tenantID, model.AuditStatusCompleted).Order("created_at DESC")
+	var snaps []model.AuditProcessSnapshot
+	query := s.db.Where("tenant_id = ?", tenantID).Order("updated_at DESC")
 	if len(todoProcessIDs) > 0 {
 		query = query.Where("process_id NOT IN ?", todoProcessIDs)
 	}
@@ -980,34 +1025,38 @@ func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenant
 		query = query.Where("process_type IN ?", configuredTypes)
 	}
 	if params.SubmitDateStart != nil {
-		query = query.Where("created_at >= ?", params.SubmitDateStart)
+		query = query.Where("updated_at >= ?", params.SubmitDateStart)
 	}
 	if params.SubmitDateEndExclusive != nil {
-		query = query.Where("created_at < ?", params.SubmitDateEndExclusive)
+		query = query.Where("updated_at < ?", params.SubmitDateEndExclusive)
 	}
-	if err := query.Find(&logs).Error; err != nil {
+	if err := query.Find(&snaps).Error; err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询已完成审核记录失败")
 	}
 
 	seen := make(map[string]bool)
 	var results []map[string]interface{}
-	for _, log := range logs {
-		if seen[log.ProcessID] {
+	for _, snap := range snaps {
+		if seen[snap.ProcessID] {
 			continue
 		}
-		seen[log.ProcessID] = true
+		seen[snap.ProcessID] = true
+		validLog, err := s.auditLogRepo.GetByID(c, snap.LatestValidLogID)
+		if err != nil || validLog == nil {
+			continue
+		}
 		results = append(results, map[string]interface{}{
-			"process_id":         log.ProcessID,
-			"title":              log.Title,
+			"process_id":         snap.ProcessID,
+			"title":              snap.Title,
 			"applicant":          "",
 			"department":         "",
-			"process_type":       log.ProcessType,
+			"process_type":       snap.ProcessType,
 			"process_type_label": "",
 			"current_node":       "已完成",
-			"submit_time":        log.CreatedAt.Format("2006-01-02 15:04"),
+			"submit_time":        validLog.CreatedAt.Format("2006-01-02 15:04"),
 			"urgency":            "low",
 			"has_audit":          true,
-			"audit_result":       buildAuditResultFromLog(&log),
+			"audit_result":       buildAuditResultFromLog(validLog),
 			"in_todo":            false,
 		})
 	}
@@ -1423,4 +1472,17 @@ func (s *AuditExecuteService) resolveRulesText(
 		return "（无启用的审核规则）"
 	}
 	return sb.String()
+}
+
+func parseSnapshotValidLogIDs(raw datatypes.JSON) []uuid.UUID {
+	var s []string
+	_ = json.Unmarshal(raw, &s)
+	out := make([]uuid.UUID, 0, len(s))
+	for _, x := range s {
+		id, err := uuid.Parse(strings.TrimSpace(x))
+		if err == nil {
+			out = append(out, id)
+		}
+	}
+	return out
 }

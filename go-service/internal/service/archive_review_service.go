@@ -34,9 +34,11 @@ const (
 	archiveProcessTimeout  = 25 * time.Minute
 )
 
-// archiveItemHasComplianceOutcome 最后一条复盘已形成合规/部分合规/不合规结论。
-// 其余（含 failed、进行中、从未复盘、已完成但无有效 overall_compliance）均视为「归档未审核」，与列表筛选 audit_status=unaudited 一致。
+// archiveItemHasComplianceOutcome 以有效快照为准；无快照时回退看 archive_result（兼容旧数据）。
 func archiveItemHasComplianceOutcome(item map[string]interface{}) bool {
+	if sc, ok := item["snapshot_compliance"].(string); ok && sc != "" {
+		return sc == "compliant" || sc == "partially_compliant" || sc == "non_compliant"
+	}
 	status, _ := item["archive_status"].(string)
 	if status != model.AuditStatusCompleted {
 		return false
@@ -53,6 +55,9 @@ func archiveItemHasComplianceOutcome(item map[string]interface{}) bool {
 }
 
 func archiveItemComplianceClass(item map[string]interface{}, want string) bool {
+	if sc, ok := item["snapshot_compliance"].(string); ok && sc != "" {
+		return sc == want
+	}
 	status, _ := item["archive_status"].(string)
 	if status != model.AuditStatusCompleted {
 		return false
@@ -67,22 +72,24 @@ func archiveItemComplianceClass(item map[string]interface{}, want string) bool {
 
 // ArchiveReviewService 处理归档复盘运行时业务。
 type ArchiveReviewService struct {
-	archiveLogRepo    *repository.ArchiveLogRepo
-	archiveConfigRepo *repository.ProcessArchiveConfigRepo
-	archiveRuleRepo   *repository.ArchiveRuleRepo
-	userConfigRepo    *repository.UserPersonalConfigRepo
+	archiveLogRepo       *repository.ArchiveLogRepo
+	archiveSnapshotRepo  *repository.ArchiveProcessSnapshotRepo
+	archiveConfigRepo    *repository.ProcessArchiveConfigRepo
+	archiveRuleRepo      *repository.ArchiveRuleRepo
+	userConfigRepo       *repository.UserPersonalConfigRepo
 	tenantRepo        *repository.TenantRepo
-	oaConnRepo        *repository.OAConnectionRepo
-	aiModelRepo       *repository.AIModelRepo
-	aiCaller          *AIModelCallerService
-	orgRepo           *repository.OrgRepo
-	db                *gorm.DB
-	rdb               *redis.Client
-	cancelMap         sync.Map
+	oaConnRepo          *repository.OAConnectionRepo
+	aiModelRepo         *repository.AIModelRepo
+	aiCaller            *AIModelCallerService
+	orgRepo             *repository.OrgRepo
+	db                  *gorm.DB
+	rdb                 *redis.Client
+	cancelMap           sync.Map
 }
 
 func NewArchiveReviewService(
 	archiveLogRepo *repository.ArchiveLogRepo,
+	archiveSnapshotRepo *repository.ArchiveProcessSnapshotRepo,
 	archiveConfigRepo *repository.ProcessArchiveConfigRepo,
 	archiveRuleRepo *repository.ArchiveRuleRepo,
 	userConfigRepo *repository.UserPersonalConfigRepo,
@@ -95,17 +102,18 @@ func NewArchiveReviewService(
 	rdb *redis.Client,
 ) *ArchiveReviewService {
 	return &ArchiveReviewService{
-		archiveLogRepo:    archiveLogRepo,
-		archiveConfigRepo: archiveConfigRepo,
-		archiveRuleRepo:   archiveRuleRepo,
-		userConfigRepo:    userConfigRepo,
-		tenantRepo:        tenantRepo,
-		oaConnRepo:        oaConnRepo,
-		aiModelRepo:       aiModelRepo,
-		aiCaller:          aiCaller,
-		orgRepo:           orgRepo,
-		db:                db,
-		rdb:               rdb,
+		archiveLogRepo:      archiveLogRepo,
+		archiveSnapshotRepo: archiveSnapshotRepo,
+		archiveConfigRepo:   archiveConfigRepo,
+		archiveRuleRepo:     archiveRuleRepo,
+		userConfigRepo:      userConfigRepo,
+		tenantRepo:          tenantRepo,
+		oaConnRepo:          oaConnRepo,
+		aiModelRepo:         aiModelRepo,
+		aiCaller:            aiCaller,
+		orgRepo:             orgRepo,
+		db:                  db,
+		rdb:                 rdb,
 	}
 }
 
@@ -170,6 +178,10 @@ func (s *ArchiveReviewService) ListProcesses(c *gin.Context, params dto.ArchiveL
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询归档复盘记录失败")
 	}
+	snapshotMap, err := s.archiveSnapshotRepo.GetMapByProcessIDs(c, processIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询归档有效结论失败")
+	}
 
 	results := make([]map[string]interface{}, 0, len(filtered))
 	for _, item := range filtered {
@@ -188,10 +200,39 @@ func (s *ArchiveReviewService) ListProcesses(c *gin.Context, params dto.ArchiveL
 			"in_archive":         true,
 		}
 
-		if latest, ok := latestMap[item.ProcessID]; ok {
-			record["archive_status"] = latest.Status
-			record["archive_result"] = buildArchiveResultFromLog(latest)
-			record["has_review"] = latest.Status == model.AuditStatusCompleted
+		snap := snapshotMap[item.ProcessID]
+		latest, hasLatest := latestMap[item.ProcessID]
+
+		if snap != nil {
+			record["has_review"] = true
+			record["snapshot_compliance"] = snap.Compliance
+			validLog, err := s.archiveLogRepo.GetByID(c, snap.LatestValidArchiveLogID)
+			if err == nil && validLog != nil {
+				record["archive_status"] = model.AuditStatusCompleted
+				record["archive_result"] = buildArchiveResultFromLog(validLog)
+			}
+		}
+		if hasLatest {
+			st := latest.Status
+			switch st {
+			case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
+				record["archive_status"] = st
+				record["archive_result"] = buildArchiveResultFromLog(latest)
+			case model.AuditStatusFailed:
+				if snap == nil {
+					record["archive_status"] = nil
+					record["archive_result"] = nil
+					record["has_review"] = false
+					delete(record, "snapshot_compliance")
+				}
+			case model.AuditStatusCompleted:
+				if snap == nil {
+					record["archive_status"] = nil
+					record["archive_result"] = nil
+					record["has_review"] = false
+					delete(record, "snapshot_compliance")
+				}
+			}
 		}
 		results = append(results, record)
 	}
@@ -483,7 +524,15 @@ func (s *ArchiveReviewService) GetArchiveHistory(c *gin.Context, processID strin
 	if _, err := s.ensureArchiveProcessAccessible(c, processID); err != nil {
 		return nil, err
 	}
-	return s.archiveLogRepo.ListCompletedByProcessIDWithUser(c, processID)
+	snap, err := s.archiveSnapshotRepo.GetByProcessID(c, processID)
+	if err != nil {
+		return nil, err
+	}
+	if snap == nil {
+		return []repository.ArchiveLogWithUser{}, nil
+	}
+	ids := parseArchiveSnapshotValidIDs(snap.ValidArchiveLogIDs)
+	return s.archiveLogRepo.ListByIDsWithUserOrdered(c, ids)
 }
 
 func (s *ArchiveReviewService) GetArchiveResult(c *gin.Context, id uuid.UUID) (map[string]interface{}, error) {
@@ -747,7 +796,6 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	parsed, parseErr := ParseArchiveReviewResult(extractionResp.Content)
 
 	updates := map[string]interface{}{
-		"status":           model.AuditStatusCompleted,
 		"duration_ms":      totalDuration,
 		"raw_content":      extractionResp.Content,
 		"ai_reasoning":     aiReasoning,
@@ -755,6 +803,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		"updated_at":       time.Now(),
 	}
 	if parseErr != nil {
+		updates["status"] = model.AuditStatusFailed
 		updates["compliance"] = "partially_compliant"
 		updates["compliance_score"] = 0
 		updates["confidence"] = 0
@@ -762,6 +811,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		updates["archive_result"] = datatypes.JSON([]byte("{}"))
 	} else {
 		resultJSON, _ := json.Marshal(parsed)
+		updates["status"] = model.AuditStatusCompleted
 		updates["compliance"] = parsed.OverallCompliance
 		updates["compliance_score"] = parsed.OverallScore
 		updates["confidence"] = parsed.Confidence
@@ -771,6 +821,11 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	if err := s.archiveLogRepo.UpdateFields(c, archiveLogID, updates); err != nil {
 		_ = s.markArchiveFailedDB(tenantID, archiveLogID, "保存归档复盘结果失败: "+err.Error())
 		return err
+	}
+	if parseErr == nil && parsed != nil {
+		if err := s.archiveSnapshotRepo.UpsertAppendValid(c, tenantID, logEntry.ProcessID, archiveLogID, logEntry.Title, logEntry.ProcessType, parsed.OverallCompliance, parsed.OverallScore, parsed.Confidence); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -1296,4 +1351,17 @@ func archiveProgressSteps(status string) []map[string]interface{} {
 		steps = append(steps, map[string]interface{}{"key": "done", "label": "已完成", "done": true})
 	}
 	return steps
+}
+
+func parseArchiveSnapshotValidIDs(raw datatypes.JSON) []uuid.UUID {
+	var s []string
+	_ = json.Unmarshal(raw, &s)
+	out := make([]uuid.UUID, 0, len(s))
+	for _, x := range s {
+		id, err := uuid.Parse(strings.TrimSpace(x))
+		if err == nil {
+			out = append(out, id)
+		}
+	}
+	return out
 }

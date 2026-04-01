@@ -106,6 +106,8 @@ func main() {
 
 	auditLogRepo := repository.NewAuditLogRepo(db)
 	archiveLogRepo := repository.NewArchiveLogRepo(db)
+	auditSnapshotRepo := repository.NewAuditProcessSnapshotRepo(db)
+	archiveSnapshotRepo := repository.NewArchiveProcessSnapshotRepo(db)
 
 	// 6. Initialize services
 	authService := service.NewAuthService(userRepo, rdb, db)
@@ -123,12 +125,12 @@ func main() {
 	archiveConfigService := service.NewProcessArchiveConfigService(archiveConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo)
 	archiveRuleService := service.NewArchiveRuleService(archiveRuleRepo)
 	aiCallerService := service.NewAIModelCallerService(tenantRepo, llmMessageLogRepo, db)
-	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db, rdb)
+	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db, rdb)
 	dashboardOverviewService := service.NewDashboardOverviewService(
 		auditLogRepo, archiveLogRepo, cronLogRepo, llmMessageLogRepo, tenantRepo, orgRepo, auditExecuteService,
 	)
 	userNotificationService := service.NewUserNotificationService(userNotificationRepo, userRepo)
-	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, orgRepo, db, rdb)
+	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveSnapshotRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, orgRepo, db, rdb)
 
 	// Cron 任务实例服务（延迟注入调度器）
 	cronTaskService := service.NewCronTaskService(cronTaskRepo, cronLogRepo, cronPresetRepo, cronConfigRepo, userRepo, auditExecuteService, archiveReviewService)

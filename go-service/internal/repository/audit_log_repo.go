@@ -74,6 +74,34 @@ type AuditLogWithUser struct {
 	UserName string `json:"user_name"`
 }
 
+// ListByIDsWithUserOrdered 按给定 id 顺序返回审核记录（用于有效审核链）；缺失 id 跳过。
+func (r *AuditLogRepo) ListByIDsWithUserOrdered(c *gin.Context, ids []uuid.UUID) ([]AuditLogWithUser, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var logs []AuditLogWithUser
+	err := r.WithTenant(c).
+		Table("audit_logs").
+		Select("audit_logs.*, users.display_name as user_name").
+		Joins("LEFT JOIN users ON audit_logs.user_id = users.id").
+		Where("audit_logs.id IN ?", ids).
+		Find(&logs).Error
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[uuid.UUID]AuditLogWithUser, len(logs))
+	for _, l := range logs {
+		byID[l.ID] = l
+	}
+	out := make([]AuditLogWithUser, 0, len(ids))
+	for _, id := range ids {
+		if row, ok := byID[id]; ok {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
 // ListCompletedByProcessIDWithUser 审核链：仅已完成的记录，按时间倒序，包含用户名。
 func (r *AuditLogRepo) ListCompletedByProcessIDWithUser(c *gin.Context, processID string) ([]AuditLogWithUser, error) {
 	var logs []AuditLogWithUser

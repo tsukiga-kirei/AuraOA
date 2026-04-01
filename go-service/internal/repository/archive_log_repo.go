@@ -103,6 +103,34 @@ func (r *ArchiveLogRepo) ListCompletedByProcessIDWithUser(c *gin.Context, proces
 	return logs, err
 }
 
+// ListByIDsWithUserOrdered 按给定 id 顺序返回归档日志（有效复盘链）。
+func (r *ArchiveLogRepo) ListByIDsWithUserOrdered(c *gin.Context, ids []uuid.UUID) ([]ArchiveLogWithUser, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var logs []ArchiveLogWithUser
+	err := r.WithTenant(c).
+		Table("archive_logs").
+		Select("archive_logs.*, users.display_name as user_name").
+		Joins("LEFT JOIN users ON archive_logs.user_id = users.id").
+		Where("archive_logs.id IN ?", ids).
+		Find(&logs).Error
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[uuid.UUID]ArchiveLogWithUser, len(logs))
+	for _, l := range logs {
+		byID[l.ID] = l
+	}
+	out := make([]ArchiveLogWithUser, 0, len(ids))
+	for _, id := range ids {
+		if row, ok := byID[id]; ok {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
 // ArchiveLogWithUser2 归档日志 + 用户名（数据管理页专用）。
 type ArchiveLogWithUser2 struct {
 	model.ArchiveLog
