@@ -83,6 +83,10 @@ export interface SystemGeneralConfig {
     smtp_username: string
     /** system.smtp_ssl */
     smtp_ssl: boolean
+    /** system.smtp_password */
+    smtp_password?: string
+    /** system.smtp_sender */
+    smtp_sender?: string
 }
 
 
@@ -126,6 +130,8 @@ export function mapConfigItems(items: ConfigItem[]): Partial<SystemGeneralConfig
         ...(!isNaN(int('system.smtp_port')) && { smtp_port: int('system.smtp_port') }),
         ...(str('system.smtp_username') !== undefined && { smtp_username: kv['system.smtp_username'] }),
         ...(str('system.smtp_ssl') !== undefined && { smtp_ssl: bool('system.smtp_ssl') }),
+        ...(str('system.smtp_password') !== undefined && { smtp_password: kv['system.smtp_password'] }),
+        ...(str('system.smtp_sender') !== undefined && { smtp_sender: kv['system.smtp_sender'] }),
     }
 }
 
@@ -160,5 +166,7 @@ export function configToUpdateRequest(cfg: SystemGeneralConfig): ConfigUpdateReq
         'system.smtp_port': String(cfg.smtp_port),
         'system.smtp_username': cfg.smtp_username,
         'system.smtp_ssl': String(cfg.smtp_ssl),
+        'system.smtp_password': cfg.smtp_password || '',
+        'system.smtp_sender': cfg.smtp_sender || '',
     }
 }

@@ -53,6 +53,15 @@ const {
   getProcessTypes,
 } = useArchiveReviewApi()
 
+const { listTasks } = useCronApi()
+const runningCronTasks = ref<any[]>([])
+const checkRunningCron = async () => {
+  try {
+    const all = await listTasks()
+    runningCronTasks.value = all.filter(t => t.current_log_id && t.task_type.startsWith('archive_batch'))
+  } catch {}
+}
+
 const asyncArchiveStatuses = ['pending', 'assembling', 'reasoning', 'extracting']
 
 /** 与列表接口返回的 archive_status / archive_result.status 一致；刷新后仍显示「复核中」 */
@@ -973,6 +982,7 @@ onMounted(async () => {
   
   // 3. 尝试恢复执行批量任务
   tryResumeArchiveBatch()
+  checkRunningCron()
 })
 
 onUnmounted(() => {
@@ -982,6 +992,18 @@ onUnmounted(() => {
 
 <template>
   <div class="archive-page fade-in">
+    <!-- 后台定时任务提醒 -->
+    <a-alert
+      v-if="runningCronTasks.length > 0"
+      type="info"
+      show-icon
+      style="margin-bottom: 16px;"
+    >
+      <template #message>
+        {{ t('cron.runningBatchHint', runningCronTasks.map(t => t.task_label || t.task_type).join('、')) }}
+      </template>
+    </a-alert>
+
     <!--页眉-->
     <div class="page-header">
       <div>

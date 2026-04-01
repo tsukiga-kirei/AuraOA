@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -138,6 +139,11 @@ func (r *CronTaskRepo) Create(task *model.CronTask) error {
 // Update 更新任务实例（归属用户校验；不可改 owner_user_id）。
 func (r *CronTaskRepo) Update(c *gin.Context, id uuid.UUID, ownerUserID uuid.UUID, fields map[string]interface{}) error {
 	return r.WithTenant(c).Model(&model.CronTask{}).Where("id = ? AND owner_user_id = ?", id, ownerUserID).Updates(fields).Error
+}
+
+// UpdateFields 更新任务指定字段（不强制要求 gin.Context）。
+func (r *CronTaskRepo) UpdateFields(c context.Context, id uuid.UUID, ownerUserID uuid.UUID, fields map[string]interface{}) error {
+	return r.BaseRepo.DB.WithContext(c).Model(&model.CronTask{}).Where("id = ? AND owner_user_id = ?", id, ownerUserID).Updates(fields).Error
 }
 
 // Delete 删除任务实例（内置任务由调用层防护）。

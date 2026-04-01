@@ -148,12 +148,12 @@ func (r *AuditLogRepo) GetLatestByProcessID(c *gin.Context, processID string) (*
 	return &log, err
 }
 
-// HasAuditRecord 检查某流程是否有审核记录。
-func (r *AuditLogRepo) HasAuditRecord(c *gin.Context, processID string) (bool, error) {
+// ExistsSuccess 检查某流程是否存在已完成的审核记录（用于待 AI 处理判定）。
+func (r *AuditLogRepo) ExistsSuccess(c *gin.Context, processID string) (bool, error) {
 	var count int64
 	err := r.WithTenant(c).
 		Model(&model.AuditLog{}).
-		Where("process_id = ?", processID).
+		Where("process_id = ? AND status = ?", processID, model.AuditStatusCompleted).
 		Count(&count).Error
 	return count > 0, err
 }
@@ -281,6 +281,45 @@ func (r *AuditLogRepo) CountStats(c *gin.Context, forUserID *uuid.UUID) (*AuditL
 				stats.ReviewCount += rw.Cnt
 			}
 		} else if pendingStatuses[rw.Status] {
+			stats.PendingAI += rw.Cnt
+		}
+	}
+	return stats, nil
+}
+
+// CountStatsByTimeRange 获取指定时间范围内的统计数据（租户隔离）。
+func (r *AuditLogRepo) CountStatsByTimeRange(c *gin.Context, start, end time.Time) (*AuditLogStats, error) {
+	type row struct {
+		Status         string
+		Recommendation string
+		Cnt            int64
+	}
+	var rows []row
+	err := r.WithTenant(c).
+		Table("audit_logs").
+		Select("status, recommendation, COUNT(*) as cnt").
+		Where("audit_logs.created_at >= ? AND audit_logs.created_at <= ?", start, end).
+		Group("status, recommendation").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &AuditLogStats{}
+	completedStatuses := map[string]bool{model.AuditStatusCompleted: true}
+	for _, rw := range rows {
+		stats.Total += rw.Cnt
+		if completedStatuses[rw.Status] {
+			stats.AIDone += rw.Cnt
+			switch rw.Recommendation {
+			case "approve":
+				stats.ApproveCount += rw.Cnt
+			case "return":
+				stats.ReturnCount += rw.Cnt
+			case "review":
+				stats.ReviewCount += rw.Cnt
+			}
+		} else {
 			stats.PendingAI += rw.Cnt
 		}
 	}

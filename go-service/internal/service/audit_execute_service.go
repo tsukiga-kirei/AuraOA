@@ -81,6 +81,10 @@ func NewAuditExecuteService(
 	}
 }
 
+func (s *AuditExecuteService) BatchRdb() *redis.Client {
+	return s.rdb
+}
+
 // AuditExecuteRequest 审核执行请求
 type AuditExecuteRequest struct {
 	ProcessID   string `json:"process_id" binding:"required"`
@@ -700,7 +704,7 @@ func (s *AuditExecuteService) GetAuditLogStats(c *gin.Context) (*repository.Audi
 
 // ListPendingForBatch 为调度器提供：按当前上下文中的 OA 用户拉取待审批流程（已按租户配置过滤），
 // 供 cron audit_batch 任务批量调用（任务归属用户即 OA 待办所属用户）。
-func (s *AuditExecuteService) ListPendingForBatch(c *gin.Context, limit int) ([]AuditExecuteRequest, error) {
+func (s *AuditExecuteService) ListPendingForBatch(c *gin.Context, workflowIds []string, dateRangeDays int, limit int) ([]AuditExecuteRequest, error) {
 	tenantID, _, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
@@ -713,23 +717,55 @@ func (s *AuditExecuteService) ListPendingForBatch(c *gin.Context, limit int) ([]
 	if err != nil {
 		return nil, err
 	}
-	items, err := adapter.FetchTodoList(c.Request.Context(), username, oa.TodoListFilter{})
+
+	filter := oa.TodoListFilter{}
+	if dateRangeDays > 0 {
+		start := time.Now().AddDate(0, 0, -dateRangeDays)
+		filter.SubmitDateStart = &start
+	}
+
+	items, err := adapter.FetchTodoList(c.Request.Context(), username, filter)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 用户待办失败: "+err.Error())
 	}
+
+	// 4. 获取当前待办项的快照状态，用于排除已处理项（已复核流程有快照记录）
+	todoPIDs := make([]string, len(items))
+	for i, it := range items {
+		todoPIDs[i] = it.ProcessID
+	}
+	snapshotMap, _ := s.auditSnapshotRepo.GetMapByProcessIDs(c, todoPIDs)
+
 	// 按租户已配置的主表名过滤
 	allowedTables := s.getAllowedMainTables(c)
+	wfMap := make(map[string]bool)
+	for _, id := range workflowIds {
+		wfMap[id] = true
+	}
+
 	var result []AuditExecuteRequest
 	for _, item := range items {
-		if allowedTables[strings.ToLower(item.MainTableName)] {
-			result = append(result, AuditExecuteRequest{
-				ProcessID:   item.ProcessID,
-				ProcessType: item.ProcessType,
-				Title:       item.Title,
-			})
-			if limit > 0 && len(result) >= limit {
-				break
-			}
+		// 1. 权限与配置过滤
+		if !allowedTables[strings.ToLower(item.MainTableName)] {
+			continue
+		}
+		// 2. 指定流程过滤（若有）
+		if len(wfMap) > 0 && !wfMap[item.ProcessID] && !wfMap[item.ProcessType] {
+			continue
+		}
+
+		// 3. 排除已处理（待 AI 审核逻辑：若 snapshotMap 中不存在有效记录，则为待处理）
+		if _, exists := snapshotMap[item.ProcessID]; exists {
+			continue
+		}
+
+		result = append(result, AuditExecuteRequest{
+			ProcessID:   item.ProcessID,
+			ProcessType: item.ProcessType,
+			Title:       item.Title,
+		})
+		if limit > 0 && len(result) >= limit {
+			break
 		}
 	}
 	return result, nil

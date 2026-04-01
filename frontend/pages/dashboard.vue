@@ -30,8 +30,18 @@ definePageMeta({ middleware: 'auth' })
 const { t } = useI18n()
 const { token } = useAuth()
 const { getStats, listProcesses, executeAudit, getAuditChain: fetchAuditChain, getProcessTypes, cancelAuditJob, waitAuditJob, batchAudit } = useAuditApi()
+const { listTasks } = useCronApi()
 
-// ─── 页签 & 列表数据 ───
+// ─── 后台定时任务状态 ───
+const runningCronTasks = ref<any[]>([])
+const checkRunningCron = async () => {
+  try {
+    const all = await listTasks()
+    runningCronTasks.value = all.filter(t => t.current_log_id && t.task_type.startsWith('audit_batch'))
+  } catch {}
+}
+
+// ─── 列表日期范围
 const activeTab = ref<AuditTab>('pending_ai')
 const processList = ref<OAProcessItem[]>([])
 const listLoading = ref(false)
@@ -898,12 +908,24 @@ onMounted(async () => {
   await loadProcesses()
   loadProcessTypes()
   tryResumeDashboardBatch()
+  checkRunningCron()
 })
 </script>
 
 <template>
-  <div class="dashboard">
-    <!--页眉-->
+  <div class="dashboard fade-in">
+    <!-- 后台定时任务提醒 -->
+    <a-alert
+      v-if="runningCronTasks.length > 0"
+      type="info"
+      show-icon
+      style="margin-bottom: 16px;"
+    >
+      <template #message>
+        {{ t('cron.runningBatchHint', runningCronTasks.map(t => t.task_label || t.task_type).join('、')) }}
+      </template>
+    </a-alert>
+
     <div class="page-header">
       <div>
         <h1 class="page-title">{{ t('dashboard.title') }}</h1>

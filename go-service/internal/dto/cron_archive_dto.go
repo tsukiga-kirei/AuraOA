@@ -65,10 +65,13 @@ type CronTaskResponse struct {
 	PushEmail      string     `json:"push_email"`
 	LastRunAt      *time.Time `json:"last_run_at"`
 	NextRunAt      *time.Time `json:"next_run_at"`
-	SuccessCount   int        `json:"success_count"`
-	FailCount      int        `json:"fail_count"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	SuccessCount   int            `json:"success_count"`
+	FailCount      int            `json:"fail_count"`
+	WorkflowIds    datatypes.JSON `json:"workflow_ids"`
+	DateRange      int            `json:"date_range"`
+	CurrentLogID   *string        `json:"current_log_id"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 // CreateCronTaskRequest 创建定时任务实例请求
@@ -76,7 +79,9 @@ type CreateCronTaskRequest struct {
 	TaskType       string `json:"task_type" binding:"required"`
 	TaskLabel      string `json:"task_label"`
 	CronExpression string `json:"cron_expression" binding:"required"`
-	PushEmail      string `json:"push_email"`
+	PushEmail      string         `json:"push_email"`
+	WorkflowIds    datatypes.JSON `json:"workflow_ids"` // 流程选择
+	DateRange      int            `json:"date_range"`   // 30 | 90 | 365
 }
 
 // UpdateCronTaskRequest 更新定时任务实例请求
@@ -84,7 +89,9 @@ type CreateCronTaskRequest struct {
 type UpdateCronTaskRequest struct {
 	TaskLabel      string  `json:"task_label"`
 	CronExpression string  `json:"cron_expression"`
-	PushEmail      *string `json:"push_email"`
+	PushEmail      *string         `json:"push_email"`
+	WorkflowIds    *datatypes.JSON `json:"workflow_ids"`
+	DateRange      *int            `json:"date_range"`
 }
 
 // ===================== 归档复盘配置 DTO =====================

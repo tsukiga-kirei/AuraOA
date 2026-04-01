@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -116,6 +117,8 @@ func (s *CronTaskService) CreateTask(c *gin.Context, req *dto.CreateCronTaskRequ
 		IsActive:       true,
 		IsBuiltin:      false,
 		PushEmail:      req.PushEmail,
+		WorkflowIds:    req.WorkflowIds,
+		DateRange:      req.DateRange,
 		NextRunAt:      ParseNextRun(req.CronExpression),
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
@@ -162,6 +165,14 @@ func (s *CronTaskService) UpdateTask(c *gin.Context, id uuid.UUID, req *dto.Upda
 	if req.PushEmail != nil {
 		fields["push_email"] = *req.PushEmail
 		task.PushEmail = *req.PushEmail
+	}
+	if req.WorkflowIds != nil {
+		fields["workflow_ids"] = *req.WorkflowIds
+		task.WorkflowIds = *req.WorkflowIds
+	}
+	if req.DateRange != nil {
+		fields["date_range"] = *req.DateRange
+		task.DateRange = *req.DateRange
 	}
 
 	if err := s.taskRepo.Update(c, id, ownerID, fields); err != nil {
@@ -267,18 +278,32 @@ func (s *CronTaskService) ExecuteNow(c *gin.Context, id uuid.UUID) error {
 	}
 	_ = s.logRepo.Create(logEntry)
 
+	// 更新任务当前运行状态
+	_ = s.taskRepo.UpdateFields(c, task.ID, ownerID, map[string]interface{}{
+		"current_log_id": logEntry.ID,
+	})
+
 	go func() {
 		ctx := context.Background()
 		tcopy := *task
+		tcopy.CurrentLogID = &logEntry.ID
 		execErr := s.runTaskByType(ctx, &tcopy)
+		
 		status := "success"
 		msg := fmt.Sprintf("%s 手动触发执行成功", time.Now().Format("2006-01-02 15:04:05"))
 		if execErr != nil {
-			status = "failed"
-			msg = execErr.Error()
+			if execErr.Error() == "job_aborted" {
+				status = "failed"
+				msg = "用户主动中止"
+			} else {
+				status = "failed"
+				msg = execErr.Error()
+			}
 		}
 		_ = s.logRepo.Finish(logEntry.ID, status, msg)
 		_ = s.taskRepo.UpdateRunStats(tcopy.ID, time.Now(), nil, execErr == nil)
+		// 执行完毕清除 CurrentLogID
+		_ = s.taskRepo.UpdateFields(context.Background(), tcopy.ID, ownerID, map[string]interface{}{"current_log_id": nil})
 	}()
 	return nil
 }
@@ -307,17 +332,46 @@ func (s *CronTaskService) TriggerScheduled(ctx context.Context, taskID uuid.UUID
 		StartedAt:       time.Now(),
 	}
 	_ = s.logRepo.Create(logEntry)
+	_ = s.taskRepo.DB().Model(&model.CronTask{}).Where("id = ?", task.ID).Update("current_log_id", logEntry.ID)
 
+	task.CurrentLogID = &logEntry.ID
 	execErr := s.runTaskByType(ctx, &task)
 
 	status := "success"
 	msg := fmt.Sprintf("%s 定时触发执行成功", time.Now().Format("2006-01-02 15:04:05"))
 	if execErr != nil {
-		status = "failed"
-		msg = execErr.Error()
+		if execErr.Error() == "job_aborted" {
+			status = "failed"
+			msg = "任务在执行周期中由于中止指令被终止"
+		} else {
+			status = "failed"
+			msg = execErr.Error()
+		}
 	}
 	_ = s.logRepo.Finish(logEntry.ID, status, msg)
 	_ = s.taskRepo.UpdateRunStats(task.ID, time.Now(), nil, execErr == nil)
+	_ = s.taskRepo.DB().Model(&model.CronTask{}).Where("id = ?", task.ID).Update("current_log_id", nil)
+}
+
+// AbortTask 发送中止信号。
+func (s *CronTaskService) AbortTask(c *gin.Context, id uuid.UUID) error {
+	ownerID, err := getUserUUID(c)
+	if err != nil {
+		return err
+	}
+	task, err := s.taskRepo.GetByIDForOwner(c, id, ownerID)
+	if err != nil {
+		return err
+	}
+	if task.CurrentLogID == nil {
+		return nil
+	}
+	// 在 Redis 中设置中止标记，有效期 10 分钟（应对批量循环）
+	key := fmt.Sprintf("cron:abort:%s", id.String())
+	if s.auditSvc.BatchRdb() != nil {
+		s.auditSvc.BatchRdb().Set(c.Request.Context(), key, "1", 10*time.Minute)
+	}
+	return nil
 }
 
 // ListLogs 获取指定任务的执行日志。
@@ -391,39 +445,75 @@ func (s *CronTaskService) runAuditBatch(c *gin.Context, task *model.CronTask) er
 	if s.auditSvc == nil {
 		return fmt.Errorf("审核服务未初始化")
 	}
-	limit := 50
+	limit := 10 // 默认单次执行上限 10
 	if cfg, err := s.configRepo.GetByTaskType(c, task.TaskType); err == nil && cfg.BatchLimit != nil && *cfg.BatchLimit > 0 {
 		limit = *cfg.BatchLimit
 	}
 
-	items, err := s.auditSvc.ListPendingForBatch(c, limit)
+	workflowIds := []string{}
+	_ = json.Unmarshal(task.WorkflowIds, &workflowIds)
+
+	items, err := s.auditSvc.ListPendingForBatch(c, workflowIds, task.DateRange, limit)
 	if err != nil || len(items) == 0 {
 		return nil // 无待处理项，正常
 	}
-	_, err = s.auditSvc.BatchExecute(c, items)
-	return err
+
+	for _, item := range items {
+		// 检查中止信号
+		if s.checkAbort(c, task.ID) {
+			return fmt.Errorf("job_aborted")
+		}
+		// 逐条执行以保障事务与状态更新准确
+		_, _ = s.auditSvc.BatchExecute(c, []AuditExecuteRequest{item})
+	}
+	return nil
 }
 
 func (s *CronTaskService) runArchiveBatch(c *gin.Context, task *model.CronTask) error {
 	if s.archiveSvc == nil {
 		return fmt.Errorf("归档服务未初始化")
 	}
-	limit := 50
+	limit := 10
 	if cfg, err := s.configRepo.GetByTaskType(c, task.TaskType); err == nil && cfg.BatchLimit != nil && *cfg.BatchLimit > 0 {
 		limit = *cfg.BatchLimit
+		if limit > 10 {
+			limit = 10
+		}
 	}
 
-	items, err := s.archiveSvc.ListPendingForBatch(c, limit)
+	workflowIds := []string{}
+	_ = json.Unmarshal(task.WorkflowIds, &workflowIds)
+
+	items, err := s.archiveSvc.ListPendingForBatch(c, workflowIds, task.DateRange, limit)
 	if err != nil || len(items) == 0 {
 		return nil
 	}
-	_, err = s.archiveSvc.BatchExecute(c, items)
-	return err
+
+	for _, item := range items {
+		if s.checkAbort(c, task.ID) {
+			return fmt.Errorf("job_aborted")
+		}
+		_, _ = s.archiveSvc.BatchExecute(c, []dto.ArchiveReviewExecuteRequest{item})
+	}
+	return nil
 }
 
-// runReportTask 报告推送类任务占位（接入邮件服务后实现）。
+func (s *CronTaskService) checkAbort(c *gin.Context, taskID uuid.UUID) bool {
+	key := fmt.Sprintf("cron:abort:%s", taskID.String())
+	if s.auditSvc.BatchRdb() != nil {
+		val, _ := s.auditSvc.BatchRdb().Get(c.Request.Context(), key).Result()
+		if val == "1" {
+			s.auditSvc.BatchRdb().Del(c.Request.Context(), key)
+			return true
+		}
+	}
+	return false
+}
+
+// runReportTask 报告推送类任务占位（获取变量、发送邮件）。
 func (s *CronTaskService) runReportTask(task *model.CronTask) error {
-	// TODO: 接入邮件服务后，查询统计数据、渲染模板、SMTP 推送至 task.PushEmail
+	// TODO: 使用 ReportCalculatorService 计算变量
+	// TODO: 使用 MailService 发送邮件（读取 system_configs 里的 SMTP 配置）
 	_ = task
 	return nil
 }
@@ -478,6 +568,9 @@ func taskToResponse(t model.CronTask, presetMap map[string]model.CronTaskTypePre
 		NextRunAt:      t.NextRunAt,
 		SuccessCount:   t.SuccessCount,
 		FailCount:      t.FailCount,
+		WorkflowIds:    t.WorkflowIds,
+		DateRange:      t.DateRange,
+		CurrentLogID:   func() *string { if t.CurrentLogID != nil { s := t.CurrentLogID.String(); return &s }; return nil }(),
 		CreatedAt:      t.CreatedAt,
 		UpdatedAt:      t.UpdatedAt,
 	}

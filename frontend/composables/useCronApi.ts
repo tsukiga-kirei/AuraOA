@@ -85,6 +85,11 @@ export const useCronApi = () => {
     return await authFetch<CronLog[]>(`/api/tenant/cron/tasks/${id}/logs`)
   }
 
+  /** 中止当前正在运行的任务实例 */
+  async function abortTask(id: string): Promise<void> {
+    await authFetch<null>(`/api/tenant/cron/tasks/${id}/abort`, { method: 'POST' })
+  }
+
   return {
     listConfigs,
     saveConfig,
@@ -95,6 +100,7 @@ export const useCronApi = () => {
     deleteTask,
     toggleTask,
     executeTask,
+    abortTask,
     listTaskLogs,
   }
 }

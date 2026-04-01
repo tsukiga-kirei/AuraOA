@@ -422,7 +422,7 @@ func (s *ArchiveReviewService) BatchExecute(c *gin.Context, items []dto.ArchiveR
 
 // ListPendingForBatch 为调度器提供：按当前上下文 OA 用户拉取已归档流程，
 // 供 cron archive_batch 任务批量调用（与任务归属用户一致）。
-func (s *ArchiveReviewService) ListPendingForBatch(c *gin.Context, limit int) ([]dto.ArchiveReviewExecuteRequest, error) {
+func (s *ArchiveReviewService) ListPendingForBatch(c *gin.Context, workflowIds []string, dateRangeDays int, limit int) ([]dto.ArchiveReviewExecuteRequest, error) {
 	tenantID, _, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
@@ -435,7 +435,14 @@ func (s *ArchiveReviewService) ListPendingForBatch(c *gin.Context, limit int) ([
 	if err != nil {
 		return nil, err
 	}
-	allItems, err := adapter.FetchArchivedList(c.Request.Context(), username, oa.ArchivedListFilter{})
+
+	filter := oa.ArchivedListFilter{}
+	if dateRangeDays > 0 {
+		start := time.Now().AddDate(0, 0, -dateRangeDays)
+		filter.ArchiveDateStart = &start
+	}
+
+	allItems, err := adapter.FetchArchivedList(c.Request.Context(), username, filter)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 归档流程失败: "+err.Error())
 	}
@@ -453,13 +460,37 @@ func (s *ArchiveReviewService) ListPendingForBatch(c *gin.Context, limit int) ([
 		}
 	}
 
+	// 4. 获取当前已归档项的复盘快照，排除已复盘项（已复盘流程存有快照记录）
+	archPIDs := make([]string, len(allItems))
+	for i, it := range allItems {
+		archPIDs[i] = it.ProcessID
+	}
+	snapshotMap, _ := s.archiveSnapshotRepo.GetMapByProcessIDs(c, archPIDs)
+
+	wfMap := make(map[string]bool)
+	for _, id := range workflowIds {
+		wfMap[id] = true
+	}
+
 	var result []dto.ArchiveReviewExecuteRequest
 	for _, item := range allItems {
+		// 1. 权限与配置过滤
 		_, byType := allowedTypes[strings.ToLower(item.ProcessType)]
 		_, byTable := allowedTables[strings.ToLower(item.MainTableName)]
 		if !byType && !byTable {
 			continue
 		}
+
+		// 2. 指定 ID/类型 过滤
+		if len(wfMap) > 0 && !wfMap[item.ProcessID] && !wfMap[item.ProcessType] {
+			continue
+		}
+
+		// 3. 排除已处理（归档未复盘逻辑：快照中不存在记录）
+		if _, exists := snapshotMap[item.ProcessID]; exists {
+			continue
+		}
+
 		result = append(result, dto.ArchiveReviewExecuteRequest{
 			ProcessID:   item.ProcessID,
 			ProcessType: item.ProcessType,

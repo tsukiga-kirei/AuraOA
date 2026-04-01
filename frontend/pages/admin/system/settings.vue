@@ -899,6 +899,12 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             <a-form-item :label="t('admin.settings.smtpUsername')">
               <a-input v-model:value="generalConfig.smtp_username" size="large" :placeholder="t('admin.settings.smtpUserPlaceholder')" />
             </a-form-item>
+            <a-form-item :label="t('admin.settings.smtpPassword')">
+              <a-input-password v-model:value="generalConfig.smtp_password" size="large" />
+            </a-form-item>
+            <a-form-item :label="t('admin.settings.smtpSender')">
+              <a-input v-model:value="generalConfig.smtp_sender" size="large" :placeholder="t('admin.settings.smtpUserPlaceholder')" />
+            </a-form-item>
           </a-form>
         </div>
 

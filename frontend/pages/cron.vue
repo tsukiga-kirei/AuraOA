@@ -6,29 +6,36 @@ import {
   ClockCircleOutlined,
   CheckCircleOutlined,
   PauseCircleOutlined,
+  StopOutlined,
   EditOutlined,
   LockOutlined,
   MailOutlined,
   ScheduleOutlined,
   UnorderedListOutlined,
   ReloadOutlined,
+  GlobalOutlined,
+  CalendarOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
+import { createVNode } from 'vue'
 import type { CronTask, CreateCronTaskRequest, UpdateCronTaskRequest, CronLog } from '~/types/cron'
-import type { CronTaskConfig } from '~/types/rules'
+import type { CronTaskConfig, ProcessAuditConfig } from '~/types/rules'
 import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
-const { listTasks, createTask, updateTask, deleteTask, toggleTask, executeTask, listConfigs, listTaskLogs } = useCronApi()
-const { getCronPrefs } = useSettingsApi()
+const { listTasks, createTask, updateTask, deleteTask, toggleTask, executeTask, abortTask, listConfigs, listTaskLogs } = useCronApi()
+const { getCronPrefs, listProcesses, listArchiveConfigs } = useSettingsApi()
 
 // ============================================================
 // 数据状态
 // ============================================================
 const tasks = ref<CronTask[]>([])
 const configs = ref<CronTaskConfig[]>([])
+const auditWorkflowConfigs = ref<ProcessListItem[]>([])
+const archiveWorkflowConfigs = ref<AccessibleArchiveConfig[]>([])
 const defaultEmail = ref('')
 const loading = ref(false)
 const pageError = ref('')
@@ -49,8 +56,35 @@ const taskTypeOptions = computed(() =>
   }))
 )
 
+const workflowOptions = computed(() => {
+  const taskType = newTask.value.task_type || (editingTask.value?.task_type || '')
+  if (taskType.startsWith('archive_')) {
+    return archiveWorkflowConfigs.value.map(c => ({
+      value: c.process_type,
+      label: c.process_type, // 根据用户习惯，process_type 才是名称
+    }))
+  }
+  return auditWorkflowConfigs.value.map(c => ({
+    value: c.process_type,
+    label: c.process_type, // 根据用户习惯，process_type 才是名称
+  }))
+})
+
+// 合并所有流程配置，用于回显展示名称
+const allWorkflowConfigs = computed(() => {
+  return [...auditWorkflowConfigs.value, ...archiveWorkflowConfigs.value]
+})
+
+const dateRangeOptions = [
+  { label: t('cron.dateRange.30'), value: 30 },
+  { label: t('cron.dateRange.90'), value: 90 },
+  { label: t('cron.dateRange.365'), value: 365 },
+]
+
 // 判断任务类型是否需要推送邮箱（batch 类型不需要）
 const taskNeedsEmail = (taskType: string) => !taskType.endsWith('_batch')
+// 判断是否为批量任务（需要流程选择和日期范围）
+const isBatchTask = (taskType: string) => taskType.endsWith('_batch')
 
 // 获取任务类型的 batch_limit（来自 configs）
 const getBatchLimit = (taskType: string): number | null => {
@@ -61,17 +95,26 @@ const getBatchLimit = (taskType: string): number | null => {
 // ============================================================
 // 初始化加载
 // ============================================================
-onMounted(async () => {
+const fetchData = async () => {
   loading.value = true
   pageError.value = ''
   try {
-    const [taskList, configList, prefs] = await Promise.allSettled([
+    const [taskList, configList, auditList, archiveList, prefs] = await Promise.allSettled([
       listTasks(),
       listConfigs(),
+      listProcesses(),
+      listArchiveConfigs(),
       getCronPrefs(),
     ])
     if (taskList.status === 'fulfilled') tasks.value = taskList.value
-    if (configList.status === 'fulfilled') configs.value = configList.value
+    if (configList.status === 'fulfilled') {
+      configs.value = configList.value.map(c => ({
+        ...c,
+        batch_limit: c.batch_limit ?? 10
+      }))
+    }
+    if (auditList.status === 'fulfilled') auditWorkflowConfigs.value = auditList.value
+    if (archiveList.status === 'fulfilled') archiveWorkflowConfigs.value = archiveList.value
     if (prefs.status === 'fulfilled' && prefs.value?.default_email) {
       defaultEmail.value = prefs.value.default_email
     }
@@ -83,6 +126,25 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+onMounted(fetchData)
+
+// 轮询正在运行的任务状态
+let pollTimer: any = null
+onMounted(() => {
+  pollTimer = setInterval(async () => {
+    const runningTasks = tasks.value.filter(t => t.current_log_id)
+    if (runningTasks.length > 0) {
+      const newList = await listTasks()
+      // 局部更新，合并状态
+      tasks.value = newList
+    }
+  }, 5000)
+})
+
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
 })
 
 // ============================================================
@@ -203,6 +265,8 @@ const newTask = ref({
   cron_expression: '0 9 * * 1-5',
   cron_mode: '0 9 * * 1-5' as string,
   push_email: '',
+  workflow_ids: [] as string[],
+  date_range: 30,
 })
 const cronParts = ref({ minute: '0', hour: '9', day: '*', month: '*', weekday: '1-5' })
 
@@ -240,6 +304,8 @@ const openCreate = () => {
     cron_expression: firstEnabled?.default_cron || '0 9 * * 1-5',
     cron_mode: firstEnabled?.default_cron || '0 9 * * 1-5',
     push_email: defaultEmail.value,
+    workflow_ids: [],
+    date_range: 30,
   }
   cronParts.value = { minute: '0', hour: '9', day: '*', month: '*', weekday: '1-5' }
   showCreate.value = true
@@ -257,6 +323,8 @@ const doCreateTask = async () => {
       cron_expression: newTask.value.cron_expression,
       task_label: newTask.value.task_label || undefined,
       push_email: newTask.value.push_email || undefined,
+      workflow_ids: isBatchTask(newTask.value.task_type) ? (newTask.value.workflow_ids.length > 0 ? newTask.value.workflow_ids : undefined) : undefined,
+      date_range: isBatchTask(newTask.value.task_type) ? newTask.value.date_range : undefined,
     }
     const created = await createTask(req)
     tasks.value.push(created)
@@ -275,7 +343,14 @@ const doCreateTask = async () => {
 const showEdit = ref(false)
 const editLoading = ref(false)
 const editingTask = ref<CronTask | null>(null)
-const editForm = ref({ task_label: '', cron_expression: '0 9 * * 1-5', cron_mode: '0 9 * * 1-5', push_email: '' })
+const editForm = ref({
+  task_label: '',
+  cron_expression: '0 9 * * 1-5',
+  cron_mode: '0 9 * * 1-5',
+  push_email: '',
+  workflow_ids: [] as string[],
+  date_range: 30,
+})
 const editCronParts = ref({ minute: '0', hour: '9', day: '*', month: '*', weekday: '1-5' })
 
 const editPreviewNextRuns = computed(() => calcNextRuns(editForm.value.cron_expression))
@@ -300,6 +375,8 @@ const openEdit = (task: CronTask) => {
       ? task.cron_expression
       : 'custom',
     push_email: task.push_email || defaultEmail.value,
+    workflow_ids: task.workflow_ids || [],
+    date_range: task.date_range || 30,
   }
   if (editForm.value.cron_mode === 'custom') {
     const parts = task.cron_expression.split(' ')
@@ -318,6 +395,8 @@ const doSaveEdit = async () => {
       task_label: editForm.value.task_label || undefined,
       cron_expression: editForm.value.cron_expression,
       push_email: editForm.value.push_email,
+      workflow_ids: isBatchTask(editingTask.value.task_type) ? (editForm.value.workflow_ids.length > 0 ? editForm.value.workflow_ids : undefined) : undefined,
+      date_range: isBatchTask(editingTask.value.task_type) ? editForm.value.date_range : undefined,
     }
     const updated = await updateTask(editingTask.value.id, req)
     const idx = tasks.value.findIndex(t => t.id === updated.id)
@@ -360,15 +439,33 @@ const doToggleTask = async (id: string) => {
 }
 
 // ============================================================
-// 立即执行
+// 立即执行与中止
 // ============================================================
 const doExecuteTask = async (id: string) => {
   try {
     await executeTask(id)
     message.success(t('cron.executeTrigger'))
+    // 立即刷新列表获取运行态
+    setTimeout(fetchData, 1000)
   } catch (e: any) {
     message.error(e?.data?.message || t('cron.loadFailed'))
   }
+}
+
+const doAbortTask = async (id: string) => {
+  Modal.confirm({
+    title: t('cron.abortConfirm'),
+    icon: createVNode(StopOutlined, { style: 'color: var(--color-danger)' }),
+    onOk: async () => {
+      try {
+        await abortTask(id)
+        message.success(t('cron.abortSuccess'))
+        setTimeout(fetchData, 1000)
+      } catch (e: any) {
+        message.error(e?.data?.message || t('cron.abortFailed'))
+      }
+    }
+  })
 }
 
 // ============================================================
@@ -414,7 +511,7 @@ const logStatusColor = (status: string) => {
 // ============================================================
 const taskTypeStyle = (taskType: string): { color: string; bg: string } => {
   if (taskType.startsWith('audit_')) return { color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' }
-  if (taskType.startsWith('archive_')) return { color: '#8b5cf6', bg: 'var(--color-primary-bg)' }
+  if (taskType.startsWith('archive_')) return { color: '#8b5cf6', bg: 'var(--color-primary-bg-alt, #f5f3ff)' }
   return { color: 'var(--color-accent)', bg: 'var(--color-info-bg)' }
 }
 
@@ -423,6 +520,16 @@ const taskTypeLabel = (task: CronTask | null): string => {
   const key = `cron.taskType.${task.task_type}` as any
   return t(key) || task.task_label || task.task_type
 }
+
+// 渲染流程标签列表
+const renderWorkflowLabels = (workflowIds: string[] | undefined): string => {
+  if (!workflowIds || workflowIds.length === 0) return t('common.all')
+  return workflowIds.map(id => {
+    const cfg = allWorkflowConfigs.value.find(c => c.process_type === id)
+    return cfg?.process_type || id // 使用 process_type 作为展示名称
+  }).join('、')
+}
+
 </script>
 
 <template>
@@ -473,6 +580,12 @@ const taskTypeLabel = (task: CronTask | null): string => {
                 <span v-if="task.is_builtin" class="builtin-tag">
                   <LockOutlined /> {{ t('cron.builtin') }}
                 </span>
+                <span v-if="isBatchTask(task.task_type)" class="batch-badge">
+                  <GlobalOutlined /> {{ renderWorkflowLabels(task.workflow_ids) }}
+                </span>
+                <span v-if="isBatchTask(task.task_type)" class="batch-badge">
+                  <CalendarOutlined /> {{ t(`cron.dateRange.${task.date_range || 30}`) }}
+                </span>
               </div>
               <div class="task-status" :class="task.is_active ? 'task-status--active' : 'task-status--paused'">
                 <span class="task-status-dot" />
@@ -488,6 +601,18 @@ const taskTypeLabel = (task: CronTask | null): string => {
             <div v-if="task.push_email && taskNeedsEmail(task.task_type)" class="task-email">
               <MailOutlined /><span>{{ task.push_email }}</span>
             </div>
+
+            <!-- 运行中的特殊状态显示 -->
+            <div v-if="task.current_log_id" class="task-running-box">
+              <div class="running-info">
+                <LoadingOutlined spin />
+                <span>{{ t('cron.runningDesc') }}</span>
+              </div>
+              <a-button danger size="small" type="ghost" @click="doAbortTask(task.id)">
+                <StopOutlined /> {{ t('cron.abort') }}
+              </a-button>
+            </div>
+
             <div class="task-stats">
               <div class="task-stat">
                 <span class="task-stat-value" style="color: var(--color-success);">{{ task.success_count }}</span>
@@ -504,7 +629,7 @@ const taskTypeLabel = (task: CronTask | null): string => {
             </div>
             <div class="task-actions">
               <a-tooltip :title="t('cron.executeNow')">
-                <button class="task-action-btn task-action-btn--run" @click="doExecuteTask(task.id)"><PlayCircleOutlined /></button>
+                <button class="task-action-btn task-action-btn--run" :disabled="!!task.current_log_id" @click="doExecuteTask(task.id)"><PlayCircleOutlined /></button>
               </a-tooltip>
               <a-tooltip :title="task.is_active ? t('cron.pause') : t('cron.enable')">
                 <button class="task-action-btn task-action-btn--toggle" @click="doToggleTask(task.id)">
@@ -552,6 +677,12 @@ const taskTypeLabel = (task: CronTask | null): string => {
                 <span v-if="task.is_builtin" class="builtin-tag">
                   <LockOutlined /> {{ t('cron.builtin') }}
                 </span>
+                <span v-if="isBatchTask(task.task_type)" class="batch-badge">
+                  <GlobalOutlined /> {{ renderWorkflowLabels(task.workflow_ids) }}
+                </span>
+                <span v-if="isBatchTask(task.task_type)" class="batch-badge">
+                  <CalendarOutlined /> {{ t(`cron.dateRange.${task.date_range || 30}`) }}
+                </span>
               </div>
               <div class="task-status" :class="task.is_active ? 'task-status--active' : 'task-status--paused'">
                 <span class="task-status-dot" />
@@ -567,6 +698,18 @@ const taskTypeLabel = (task: CronTask | null): string => {
             <div v-if="task.push_email && taskNeedsEmail(task.task_type)" class="task-email">
               <MailOutlined /><span>{{ task.push_email }}</span>
             </div>
+
+            <!-- 运行中的特殊状态显示 -->
+            <div v-if="task.current_log_id" class="task-running-box">
+              <div class="running-info">
+                <LoadingOutlined spin />
+                <span>{{ t('cron.runningDesc') }}</span>
+              </div>
+              <a-button danger size="small" type="ghost" @click="doAbortTask(task.id)">
+                <StopOutlined /> {{ t('cron.abort') }}
+              </a-button>
+            </div>
+
             <div class="task-stats">
               <div class="task-stat">
                 <span class="task-stat-value" style="color: var(--color-success);">{{ task.success_count }}</span>
@@ -583,7 +726,7 @@ const taskTypeLabel = (task: CronTask | null): string => {
             </div>
             <div class="task-actions">
               <a-tooltip :title="t('cron.executeNow')">
-                <button class="task-action-btn task-action-btn--run" @click="doExecuteTask(task.id)"><PlayCircleOutlined /></button>
+                <button class="task-action-btn task-action-btn--run" :disabled="!!task.current_log_id" @click="doExecuteTask(task.id)"><PlayCircleOutlined /></button>
               </a-tooltip>
               <a-tooltip :title="task.is_active ? t('cron.pause') : t('cron.enable')">
                 <button class="task-action-btn task-action-btn--toggle" @click="doToggleTask(task.id)">
@@ -653,6 +796,28 @@ const taskTypeLabel = (task: CronTask | null): string => {
             size="large"
           />
         </a-form-item>
+
+        <!-- 批量任务特有：流程选择 & 日期范围 -->
+        <template v-if="isBatchTask(newTask.task_type)">
+          <a-form-item :label="t('cron.selectWorkflows')">
+            <a-select
+              v-model:value="newTask.workflow_ids"
+              mode="multiple"
+              :options="workflowOptions"
+              :placeholder="t('cron.selectWorkflowsPlaceholder')"
+              size="large"
+              show-search
+              option-filter-prop="label"
+            />
+          </a-form-item>
+          <a-form-item :label="t('cron.dateRangeLabel')">
+            <a-radio-group v-model:value="newTask.date_range" button-style="solid">
+              <a-radio-button v-for="opt in dateRangeOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </a-radio-button>
+            </a-radio-group>
+          </a-form-item>
+        </template>
 
         <!-- 执行计划 -->
         <a-form-item :label="t('cron.executePlan')">
@@ -741,6 +906,28 @@ const taskTypeLabel = (task: CronTask | null): string => {
         <a-form-item :label="t('cron.taskLabel')">
           <a-input v-model:value="editForm.task_label" :placeholder="t('cron.taskLabelPlaceholder')" size="large" />
         </a-form-item>
+
+        <!-- 批量任务特有：流程选择 & 日期范围 -->
+        <template v-if="isBatchTask(editingTask.task_type)">
+          <a-form-item :label="t('cron.selectWorkflows')">
+            <a-select
+              v-model:value="editForm.workflow_ids"
+              mode="multiple"
+              :options="workflowOptions"
+              :placeholder="t('cron.selectWorkflowsPlaceholder')"
+              size="large"
+              show-search
+              option-filter-prop="label"
+            />
+          </a-form-item>
+          <a-form-item :label="t('cron.dateRangeLabel')">
+            <a-radio-group v-model:value="editForm.date_range" button-style="solid">
+              <a-radio-button v-for="opt in dateRangeOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </a-radio-button>
+            </a-radio-group>
+          </a-form-item>
+        </template>
 
         <!-- 执行计划 -->
         <a-form-item :label="t('cron.executePlan')">
@@ -940,26 +1127,34 @@ const taskTypeLabel = (task: CronTask | null): string => {
 .task-card-header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .task-type-tag {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 4px 12px;
-  border-radius: var(--radius-full);
+  padding: 2px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
 }
 
 .builtin-tag {
   font-size: 10px;
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
+  padding: 0 8px;
+  border-radius: 6px;
   background: var(--color-warning-bg);
   color: var(--color-warning);
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  height: 22px;
 }
 
 .task-custom-label {
@@ -975,6 +1170,10 @@ const taskTypeLabel = (task: CronTask | null): string => {
   gap: 6px;
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
+  margin-left: 12px;
+  align-self: flex-start;
+  padding-top: 2px;
 }
 
 .task-status-dot {
@@ -1247,5 +1446,45 @@ const taskTypeLabel = (task: CronTask | null): string => {
   .task-card { padding: 14px; }
   .cron-builder-row { grid-template-columns: repeat(2, 1fr); }
   .weekday-chip { font-size: 11px; padding: 2px 8px; }
+}
+
+/* 批量任务专用徽章 */
+.batch-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-light);
+  color: var(--color-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 运行中状态条 */
+.task-running-box {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: var(--color-primary-bg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-primary-light);
+}
+
+.running-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--color-primary);
+  font-weight: 600;
 }
 </style>

@@ -202,6 +202,43 @@ func (r *ArchiveLogRepo) CountStats(c *gin.Context) (*ArchiveLogStats, error) {
 	return stats, nil
 }
 
+// CountStatsByTimeRange 获取指定时间范围内的统计数据（租户隔离）。
+func (r *ArchiveLogRepo) CountStatsByTimeRange(c *gin.Context, start, end time.Time) (*ArchiveLogStats, error) {
+	type row struct {
+		Status     string
+		Compliance string
+		Cnt        int64
+	}
+	var rows []row
+	err := r.WithTenant(c).
+		Table("archive_logs").
+		Select("status, compliance, COUNT(*) as cnt").
+		Where("archive_logs.created_at >= ? AND archive_logs.created_at <= ?", start, end).
+		Group("status, compliance").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &ArchiveLogStats{}
+	for _, r := range rows {
+		stats.Total += r.Cnt
+		if r.Status == model.AuditStatusCompleted {
+			switch r.Compliance {
+			case "compliant":
+				stats.Compliant += r.Cnt
+			case "partially_compliant":
+				stats.Partial += r.Cnt
+			case "non_compliant":
+				stats.NonCompliant += r.Cnt
+			}
+		} else {
+			stats.PendingReview += r.Cnt
+		}
+	}
+	return stats, nil
+}
+
 // DashboardArchiveRecentRow 仪表盘归档复盘列表行。
 type DashboardArchiveRecentRow struct {
 	ID         uuid.UUID `json:"id" gorm:"column:id"`

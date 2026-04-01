@@ -743,7 +743,10 @@ onMounted(async () => {
   loadingCron.value = true
   try {
     const cronList = await cronApi.listConfigs()
-    cronConfigs.value = cronList
+    cronConfigs.value = cronList.map(c => ({
+      ...c,
+      batch_limit: c.batch_limit ?? 10
+    }))
     if (cronList.length > 0) selectedCronType.value = cronList[0].task_type
   } catch (e) { console.error('[rules] 加载定时任务配置失败', e) }
   finally { loadingCron.value = false }
@@ -2252,18 +2255,17 @@ const handleSave = async () => {
         </div>
 
         <!--========== audit_batch / archive_batch：仅批量限制配置==========-->
-        <div v-if="selectedCronConfig.task_type === 'audit_batch' || selectedCronConfig.task_type === 'archive_batch'" class="tab-content">
+        <div v-if="selectedCronConfig?.task_type === 'audit_batch' || selectedCronConfig?.task_type === 'archive_batch'" class="tab-content">
           <div class="section-header">
             <div>
               <h4 class="section-title">{{ t('admin.ruleConfig.batchAuditConfigTitle') }}</h4>
               <p class="section-desc">{{ t('admin.ruleConfig.batchAuditConfigDesc') }}</p>
             </div>
           </div>
-          <div class="ai-form">
             <div class="ai-form-group">
               <label class="ai-form-label">{{ t('admin.ruleConfig.batchLimitLabel') }}</label>
               <a-input-number
-                v-model:value="selectedCronConfig.batch_limit"
+                v-model:value="selectedCronConfig!.batch_limit"
                 :min="1"
                 :max="50"
                 size="large"
@@ -2271,11 +2273,10 @@ const handleSave = async () => {
               />
               <p class="section-desc" style="margin-top: 4px;">{{ t('admin.ruleConfig.batchLimitDesc') }}</p>
             </div>
-          </div>
         </div>
 
         <!--========== daily / weekly：带有变量插入的内容模板==========-->
-        <div v-if="selectedCronConfig.task_type !== 'audit_batch' && selectedCronConfig.task_type !== 'archive_batch'" class="tab-content">
+        <div v-if="selectedCronConfig?.task_type !== 'audit_batch' && selectedCronConfig?.task_type !== 'archive_batch'" class="tab-content">
           <div class="section-header">
             <div>
               <h4 class="section-title">{{ t('admin.ruleConfig.pushTemplateTitle') }}</h4>
@@ -2299,8 +2300,8 @@ const handleSave = async () => {
                 v-for="fmt in pushFormatOptions"
                 :key="fmt.value"
                 class="push-format-option"
-                :class="{ 'push-format-option--active': selectedCronConfig.push_format === fmt.value }"
-                @click="selectedCronConfig.push_format = fmt.value as any"
+                :class="{ 'push-format-option--active': selectedCronConfig!.push_format === fmt.value }"
+                @click="selectedCronConfig!.push_format = fmt.value as any"
               >
                 <div class="push-format-radio" />
                 <span>{{ fmt.label }}</span>
@@ -2313,7 +2314,7 @@ const handleSave = async () => {
               <label class="ai-form-label">{{ t('admin.ruleConfig.emailSubjectLabel') }}</label>
               <a-input
                 ref="cronSubjectRef"
-                v-model:value="selectedCronConfig.content_template.subject"
+                v-model:value="selectedCronConfig!.content_template.subject"
                 size="large"
                 :placeholder="t('admin.ruleConfig.emailSubjectPlaceholder')"
                 @focus="cronActiveField = 'subject'"
@@ -2323,7 +2324,7 @@ const handleSave = async () => {
               <label class="ai-form-label">{{ t('admin.ruleConfig.emailHeaderLabel') }}</label>
               <a-input
                 ref="cronHeaderRef"
-                v-model:value="selectedCronConfig.content_template.header"
+                v-model:value="selectedCronConfig!.content_template.header"
                 size="large"
                 :placeholder="t('admin.ruleConfig.emailHeaderPlaceholder')"
                 @focus="cronActiveField = 'header'"
@@ -2333,7 +2334,7 @@ const handleSave = async () => {
               <label class="ai-form-label">{{ t('admin.ruleConfig.emailBodyLabel') }}</label>
               <a-textarea
                 ref="cronBodyRef"
-                v-model:value="selectedCronConfig.content_template.body_template"
+                v-model:value="selectedCronConfig!.content_template.body_template"
                 :rows="6"
                 :placeholder="t('admin.ruleConfig.emailBodyPlaceholder')"
                 @focus="cronActiveField = 'body_template'"
@@ -2343,7 +2344,7 @@ const handleSave = async () => {
               <label class="ai-form-label">{{ t('admin.ruleConfig.emailFooterLabel') }}</label>
               <a-input
                 ref="cronFooterRef"
-                v-model:value="selectedCronConfig.content_template.footer"
+                v-model:value="selectedCronConfig!.content_template.footer"
                 size="large"
                 :placeholder="t('admin.ruleConfig.emailFooterPlaceholder')"
                 @focus="cronActiveField = 'footer'"

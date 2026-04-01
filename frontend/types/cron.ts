@@ -12,6 +12,9 @@ export interface CronTask {
   is_active: boolean
   is_builtin: boolean
   push_email: string          // 推送邮箱（报告类任务）
+  workflow_ids?: string[]      // 流程多选
+  date_range?: number         // 日期范围（天）
+  current_log_id?: string | null // 当前运行中的日志 ID
   last_run_at: string | null  // ISO 时间字符串
   next_run_at: string | null
   success_count: number
@@ -26,6 +29,8 @@ export interface CreateCronTaskRequest {
   task_label?: string
   cron_expression: string
   push_email?: string
+  workflow_ids?: string[]
+  date_range?: number
 }
 
 /** 更新定时任务请求（push_email 为 null 时清空，undefined 时不修改） */
@@ -33,6 +38,8 @@ export interface UpdateCronTaskRequest {
   task_label?: string
   cron_expression?: string
   push_email?: string | null
+  workflow_ids?: string[]
+  date_range?: number
 }
 
 /** 定时任务执行日志 */
