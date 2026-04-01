@@ -99,12 +99,28 @@ const blockingProcessId = computed((): string | null => {
   return row?.process_id ?? null
 })
 
-type ArchiveBatchMeta = { process_id: string; process_type: string; title: string }
 const ARCHIVE_BATCH_KEY = 'oa-smart-audit:archive:batch-queue'
 
-function saveArchiveBatchState(ids: string[], queueMeta: ArchiveBatchMeta[], nextIndex: number) {
+type ArchiveBatchMeta = { process_id: string; process_type: string; title: string }
+type ArchiveBatchPersisted = {
+  ids: string[]
+  queueMeta: ArchiveBatchMeta[]
+  nextIndex: number
+  tab: ArchiveAuditTab
+  /** 当前条异步任务 archive_logs.id，列表未加载或仍为旧快照时用于 POST /api/archive/cancel/:id */
+  inflightJobId?: string
+}
+
+function saveArchiveBatchState(
+  ids: string[],
+  queueMeta: ArchiveBatchMeta[],
+  nextIndex: number,
+  inflightJobId?: string | null,
+) {
   try {
-    sessionStorage.setItem(ARCHIVE_BATCH_KEY, JSON.stringify({ ids, queueMeta, nextIndex }))
+    const payload: ArchiveBatchPersisted = { ids, queueMeta, nextIndex, tab: filterAuditStatus.value }
+    if (inflightJobId) payload.inflightJobId = inflightJobId
+    sessionStorage.setItem(ARCHIVE_BATCH_KEY, JSON.stringify(payload))
   } catch {}
 }
 
@@ -114,14 +130,23 @@ function clearArchiveBatchStorage() {
   } catch {}
 }
 
-function readArchiveBatchState(): { ids: string[]; queueMeta: ArchiveBatchMeta[]; nextIndex: number } | null {
+function readArchiveBatchState(): ArchiveBatchPersisted | null {
   try {
     const r = sessionStorage.getItem(ARCHIVE_BATCH_KEY)
     if (!r) return null
-    return JSON.parse(r)
+    return JSON.parse(r) as ArchiveBatchPersisted
   } catch {
     return null
   }
+}
+
+/** 中止时：优先列表行上的任务 id，否则用批量持久化里的 inflightJobId（刷新后列表可能尚无 id） */
+function resolveArchiveJobIdForCancel(processId: string): string | undefined {
+  const item = processList.value.find(p => p.process_id === processId)
+  if (item?.archive_result?.id) return item.archive_result.id
+  const st = readArchiveBatchState()
+  if (st?.inflightJobId && st.ids[st.nextIndex] === processId) return st.inflightJobId
+  return undefined
 }
 
 //=====过滤器=====
@@ -145,11 +170,68 @@ const filterDepartment = ref<string | undefined>(undefined)
 type ArchiveAuditTab = 'unaudited' | 'compliant' | 'partially_compliant' | 'non_compliant'
 const filterAuditStatus = ref<ArchiveAuditTab>('unaudited')
 
-/** 与 OA SQL 归档时间筛选一致，默认最近 90 天 */
-const archiveDateRange = ref<[Dayjs, Dayjs]>([
-  dayjs().subtract(90, 'day').startOf('day'),
-  dayjs().endOf('day'),
-])
+/**
+ * 列表日期范围：记住当日选择，避免刷新后回到近 90 天导致批量/长周期任务从列表消失；
+ * 跨自然日再打开则丢弃（默认近 90 天），便于次日看到相对「最新」的待办。
+ */
+const ARCHIVE_DATE_RANGE_KEY = 'oa-smart-audit:archive:list-date-range'
+
+function defaultArchiveDateRange(): [Dayjs, Dayjs] {
+  return [dayjs().subtract(90, 'day').startOf('day'), dayjs().endOf('day')]
+}
+
+function readArchiveDateRange(): [Dayjs, Dayjs] | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const r = sessionStorage.getItem(ARCHIVE_DATE_RANGE_KEY)
+    if (!r) return null
+    const o = JSON.parse(r) as { start?: string; end?: string; savedAt?: string }
+    if (!o.start || !o.end) return null
+    if (o.savedAt) {
+      const saved = dayjs(o.savedAt)
+      if (!saved.isValid() || !saved.isSame(dayjs(), 'day')) {
+        sessionStorage.removeItem(ARCHIVE_DATE_RANGE_KEY)
+        return null
+      }
+    } else {
+      sessionStorage.removeItem(ARCHIVE_DATE_RANGE_KEY)
+      return null
+    }
+    const a = dayjs(o.start)
+    const b = dayjs(o.end)
+    if (!a.isValid() || !b.isValid()) return null
+    if (a.isAfter(b)) return null
+    const maxSpan = 365 * 3
+    if (b.diff(a, 'day') > maxSpan) return null
+    return [a.startOf('day'), b.endOf('day')]
+  } catch {
+    return null
+  }
+}
+
+function saveArchiveDateRange(range: [Dayjs, Dayjs]) {
+  if (typeof window === 'undefined') return
+  try {
+    const [a, b] = range
+    if (!a?.isValid?.() || !b?.isValid?.()) return
+    sessionStorage.setItem(
+      ARCHIVE_DATE_RANGE_KEY,
+      JSON.stringify({
+        start: a.format('YYYY-MM-DD'),
+        end: b.format('YYYY-MM-DD'),
+        savedAt: new Date().toISOString(),
+      }),
+    )
+  } catch {}
+}
+
+function clearArchiveDateRangeStorage() {
+  try {
+    if (typeof window !== 'undefined') sessionStorage.removeItem(ARCHIVE_DATE_RANGE_KEY)
+  } catch {}
+}
+
+const archiveDateRange = ref<[Dayjs, Dayjs]>(readArchiveDateRange() || defaultArchiveDateRange())
 
 const archiveDateQuery = () => {
   const r = archiveDateRange.value
@@ -200,10 +282,8 @@ const clearFilters = () => {
   searchApplicant.value = ''
   filterProcessType.value = []
   filterDepartment.value = undefined
-  archiveDateRange.value = [
-    dayjs().subtract(90, 'day').startOf('day'),
-    dayjs().endOf('day'),
-  ]
+  archiveDateRange.value = defaultArchiveDateRange()
+  clearArchiveDateRangeStorage()
   listPage.value = 1
   clearDetailOnFilterChange()
   void Promise.all([loadStats(), loadProcesses()])
@@ -456,7 +536,7 @@ const selectProcess = (proc: ArchiveProcessItem) => {
 
 const loading = computed(() => isResultAsyncRunning(currentResult.value))
 
-const runArchiveReview = async (proc: ArchiveProcessItem) => {
+const runArchiveReview = async (proc: ArchiveProcessItem, onStarted?: (id: string) => void) => {
   const pendingResult = normalizeArchiveResult({
     trace_id: '',
     process_id: proc.process_id,
@@ -477,9 +557,12 @@ const runArchiveReview = async (proc: ArchiveProcessItem) => {
       process_type: proc.process_type,
       title: proc.title,
     }, (status) => {
-      if (!started && status.id && selectedProcess.value?.process_id === proc.process_id) {
-        startSSE(status.id, proc.process_id)
+      if (status.id && !started) {
         started = true
+        if (selectedProcess.value?.process_id === proc.process_id) {
+          startSSE(status.id, proc.process_id)
+        }
+        if (onStarted) onStarted(status.id)
       }
       updateLiveResult(proc.process_id, status)
     })
@@ -541,7 +624,18 @@ async function runArchiveBatchLoop(ids: string[], queueMeta: ArchiveBatchMeta[],
   batchAuditing.value = true
   batchAborted.value = false
   const metaById = new Map(queueMeta.map(m => [m.process_id, m]))
-  saveArchiveBatchState(ids, queueMeta, startIndex)
+  const prev = readArchiveBatchState()
+  const carryInflight =
+    prev &&
+    prev.ids.length === ids.length &&
+    prev.nextIndex === startIndex &&
+    prev.ids[startIndex] &&
+    prev.inflightJobId &&
+    prev.queueMeta.length === queueMeta.length &&
+    prev.ids.every((id, idx) => id === queueMeta[idx]?.process_id)
+      ? prev.inflightJobId
+      : undefined
+  saveArchiveBatchState(ids, queueMeta, startIndex, carryInflight)
 
   for (let i = startIndex; i < ids.length; i++) {
     if (batchAborted.value) break
@@ -564,7 +658,9 @@ async function runArchiveBatchLoop(ids: string[], queueMeta: ArchiveBatchMeta[],
     }
 
     try {
-      await runArchiveReview(procToRun)
+      await runArchiveReview(procToRun, (jobId) => {
+        saveArchiveBatchState(ids, queueMeta, i, jobId)
+      })
     } catch {
     }
 
@@ -628,11 +724,16 @@ const handleAbortBatch = async () => {
   batchAborted.value = true
   if (currentInflightProcessId.value) {
     const pid = currentInflightProcessId.value
-    const proc = processList.value.find(p => p.process_id === pid)
-    if (proc?.archive_result?.id) {
-      await cancelArchiveJob(proc.archive_result.id).catch(() => {})
-    }
+    await handleCancelAudit(pid).catch(() => {})
     currentInflightProcessId.value = null
+  }
+  // 中止时，将未运行的 pending 任务置为失败状态，对齐 dashboard 逻辑
+  for (const id of selectedProcessIds.value) {
+    const item = processList.value.find(p => p.process_id === id)
+    if (item && item.archive_status === 'pending') {
+      item.archive_status = 'failed'
+      item.archive_result = { status: 'failed', error_message: '批量审核已中止' } as any
+    }
   }
   clearArchiveBatchStorage()
 }
@@ -669,15 +770,19 @@ const jumpToOA = (processId: string) => {
   message.info(t('archive.jumpingToOA', processId))
 }
 
-const handleCancelAudit = async () => {
-  if (!currentResult.value?.id || !selectedProcess.value) return
+const handleCancelAudit = async (processId: string) => {
   try {
-    await cancelArchiveJob(currentResult.value.id)
+    const jobId = resolveArchiveJobIdForCancel(processId)
+    if (!jobId) {
+       message.warning(t('archive.noAuditIdFound', '无法中止，任务 ID 缺失'))
+       return
+    }
+    await cancelArchiveJob(jobId)
     message.success(t('archive.cancelSuccess'))
     await Promise.all([loadStats(), loadProcesses()])
-    const next = processList.value.find(proc => proc.process_id === selectedProcess.value?.process_id)
-    if (next) {
-      selectProcess(next)
+    if (selectedProcess.value?.process_id === processId) {
+      const next = processList.value.find(proc => proc.process_id === processId)
+      if (next) selectProcess(next)
     }
   } catch (error: any) {
     message.error(error?.message || t('archive.cancelFailed'))
@@ -689,7 +794,11 @@ const handleUnifiedAbortArchive = async () => {
     await handleAbortBatch()
     return
   }
-  await handleCancelAudit()
+  const pid = blockingProcessId.value
+  if (pid) await handleCancelAudit(pid)
+  else if (selectedProcess.value) {
+    await handleCancelAudit(selectedProcess.value.process_id)
+  }
 }
 
 const loadStats = async () => {
@@ -756,6 +865,7 @@ const onArchiveDateRangeChange = () => {
     message.warning(t('archive.auditInProgressNoSwitch'))
     return
   }
+  saveArchiveDateRange(archiveDateRange.value)
   listPage.value = 1
   clearDetailOnFilterChange()
   void Promise.all([loadStats(), loadProcesses()])
@@ -852,7 +962,16 @@ const archiveDetailShowsComplianceReport = computed(() =>
 const auditedCount = computed(() => processList.value.filter(p => archiveHasFinishedOutcome(p, p.archive_result)).length)
 
 onMounted(async () => {
+  // 1. 优先恢复持久化的批量状态（含页签切换状态），确保初始加载使用正确的 filterAuditStatus
+  const batchState = readArchiveBatchState()
+  if (batchState?.tab) {
+    filterAuditStatus.value = batchState.tab
+  }
+  
+  // 2. 加载基础数据（已带上正确的页签过滤条件）
   await Promise.all([loadProcessTypes(), loadStats(), loadProcesses()])
+  
+  // 3. 尝试恢复执行批量任务
   tryResumeArchiveBatch()
 })
 
@@ -887,7 +1006,7 @@ onUnmounted(() => {
     </div>
 
     <!--统计行-->
-    <div class="stats-row">
+    <div class="stats-row" :class="{ 'stats-row--readonly': auditInProgress }">
       <div class="stat-card stat-card--primary" :class="{ 'stat-card--selected': filterAuditStatus === 'unaudited' }" @click="onStatCardFilterClick('unaudited')">
         <div class="stat-card-icon"><FileProtectOutlined /></div>
         <div class="stat-card-info">
@@ -1460,6 +1579,8 @@ onUnmounted(() => {
   transition: all var(--transition-base); cursor: pointer; user-select: none;
 }
 .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.stats-row--readonly .stat-card { cursor: not-allowed; }
+.stats-row--readonly .stat-card:hover { transform: none; box-shadow: none; }
 .stat-card--selected { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }
 .stat-card-icon {
   width: 48px; height: 48px; border-radius: var(--radius-lg);

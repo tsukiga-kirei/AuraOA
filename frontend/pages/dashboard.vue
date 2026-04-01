@@ -66,11 +66,69 @@ const filterDepartment = ref<string | undefined>(undefined)
 const filterAuditStatus = ref<string | undefined>(undefined)
 const showFilters = ref(false)
 
+/**
+ * 列表日期范围：记住当日选择，避免刷新后回到近 90 天导致批量/长周期任务从列表消失；
+ * 跨自然日再打开则丢弃（默认近 90 天），便于次日看到相对「最新」的待办。
+ */
+const DASHBOARD_DATE_RANGE_KEY = 'oa-smart-audit:dashboard:list-date-range'
+
+function defaultDashboardDateRange(): [Dayjs, Dayjs] {
+  return [dayjs().subtract(90, 'day').startOf('day'), dayjs().endOf('day')]
+}
+
+function readDashboardDateRange(): [Dayjs, Dayjs] | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const r = sessionStorage.getItem(DASHBOARD_DATE_RANGE_KEY)
+    if (!r) return null
+    const o = JSON.parse(r) as { start?: string; end?: string; savedAt?: string }
+    if (!o.start || !o.end) return null
+    if (o.savedAt) {
+      const saved = dayjs(o.savedAt)
+      if (!saved.isValid() || !saved.isSame(dayjs(), 'day')) {
+        sessionStorage.removeItem(DASHBOARD_DATE_RANGE_KEY)
+        return null
+      }
+    } else {
+      sessionStorage.removeItem(DASHBOARD_DATE_RANGE_KEY)
+      return null
+    }
+    const a = dayjs(o.start)
+    const b = dayjs(o.end)
+    if (!a.isValid() || !b.isValid()) return null
+    if (a.isAfter(b)) return null
+    const maxSpan = 365 * 3
+    if (b.diff(a, 'day') > maxSpan) return null
+    return [a.startOf('day'), b.endOf('day')]
+  } catch {
+    return null
+  }
+}
+
+function saveDashboardDateRange(range: [Dayjs, Dayjs]) {
+  if (typeof window === 'undefined') return
+  try {
+    const [a, b] = range
+    if (!a?.isValid?.() || !b?.isValid?.()) return
+    sessionStorage.setItem(
+      DASHBOARD_DATE_RANGE_KEY,
+      JSON.stringify({
+        start: a.format('YYYY-MM-DD'),
+        end: b.format('YYYY-MM-DD'),
+        savedAt: new Date().toISOString(),
+      }),
+    )
+  } catch {}
+}
+
+function clearDashboardDateRangeStorage() {
+  try {
+    if (typeof window !== 'undefined') sessionStorage.removeItem(DASHBOARD_DATE_RANGE_KEY)
+  } catch {}
+}
+
 /** 与后端 OA SQL 一致：按流程创建/提交时间筛待办；默认最近 90 天 */
-const auditDateRange = ref<[Dayjs, Dayjs]>([
-  dayjs().subtract(90, 'day').startOf('day'),
-  dayjs().endOf('day'),
-])
+const auditDateRange = ref<[Dayjs, Dayjs]>(defaultDashboardDateRange())
 
 const auditListDateQuery = () => {
   const r = auditDateRange.value
@@ -103,10 +161,8 @@ const clearFilters = () => {
   filterProcessType.value = []
   filterDepartment.value = undefined
   filterAuditStatus.value = undefined
-  auditDateRange.value = [
-    dayjs().subtract(90, 'day').startOf('day'),
-    dayjs().endOf('day'),
-  ]
+  auditDateRange.value = defaultDashboardDateRange()
+  clearDashboardDateRangeStorage()
   listPage.value = 1
   void Promise.all([loadStats(), loadProcesses()])
 }
@@ -117,6 +173,9 @@ const showAuditStatusFilter = computed(() => activeTab.value !== 'pending_ai')
 
 /** 仅「全部已完成」为只读历史；待 AI / AI 已审核仍处待办流程，允许重新审核 */
 const isCompletedHistoryTab = computed(() => activeTab.value === 'completed')
+
+/** 「待 AI」与「AI 已审核」共用批量勾选、批量审核与中止（与待办一致） */
+const isBatchAuditTab = computed(() => activeTab.value === 'pending_ai' || activeTab.value === 'ai_done')
 const auditStatusOptions = computed(() => {
   const opts = [
     { value: 'approve', label: t('dashboard.auditStatus.approve') },
@@ -174,11 +233,33 @@ const blockingProcessId = computed((): string | null => {
 })
 
 type DashboardBatchMeta = { process_id: string; process_type: string; title: string }
+type DashboardBatchPersisted = {
+  ids: string[]
+  queueMeta: DashboardBatchMeta[]
+  nextIndex: number
+  /** 发起批量时所在页签，刷新后先恢复，避免待办/已审核列表错位 */
+  activeTab?: AuditTab
+  /** 当前条异步任务 audit_logs.id，列表未加载或仍为旧快照时用于 POST /api/audit/cancel/:id */
+  inflightJobId?: string
+}
+
 const DASHBOARD_BATCH_KEY = 'oa-smart-audit:dashboard:batch-queue'
 
-function saveDashboardBatchState(ids: string[], queueMeta: DashboardBatchMeta[], nextIndex: number) {
+function saveDashboardBatchState(
+  ids: string[],
+  queueMeta: DashboardBatchMeta[],
+  nextIndex: number,
+  inflightJobId?: string | null,
+) {
   try {
-    sessionStorage.setItem(DASHBOARD_BATCH_KEY, JSON.stringify({ ids, queueMeta, nextIndex }))
+    const payload: DashboardBatchPersisted = {
+      ids,
+      queueMeta,
+      nextIndex,
+      activeTab: activeTab.value,
+    }
+    if (inflightJobId) payload.inflightJobId = inflightJobId
+    sessionStorage.setItem(DASHBOARD_BATCH_KEY, JSON.stringify(payload))
   } catch {}
 }
 
@@ -188,14 +269,23 @@ function clearDashboardBatchStorage() {
   } catch {}
 }
 
-function readDashboardBatchState(): { ids: string[]; queueMeta: DashboardBatchMeta[]; nextIndex: number } | null {
+function readDashboardBatchState(): DashboardBatchPersisted | null {
   try {
     const r = sessionStorage.getItem(DASHBOARD_BATCH_KEY)
     if (!r) return null
-    return JSON.parse(r)
+    return JSON.parse(r) as DashboardBatchPersisted
   } catch {
     return null
   }
+}
+
+/** 中止时：优先列表行上的任务 id，否则用批量持久化里的 inflightJobId（刷新后列表可能尚无 id） */
+function resolveAuditJobIdForCancel(processId: string): string | undefined {
+  const item = processList.value.find(p => p.process_id === processId)
+  if (item?.audit_result?.id) return item.audit_result.id
+  const st = readDashboardBatchState()
+  if (st?.inflightJobId && st.ids[st.nextIndex] === processId) return st.inflightJobId
+  return undefined
 }
 
 // ─── 流式推理 SSE ───
@@ -337,6 +427,7 @@ const onAuditDateRangeChange = () => {
     message.warning(t('dashboard.auditInProgressNoSwitch'))
     return
   }
+  saveDashboardDateRange(auditDateRange.value)
   listPage.value = 1
   void Promise.all([loadStats(), loadProcesses()])
 }
@@ -508,17 +599,16 @@ const handleReAudit = async () => {
 
 const handleCancelAudit = async (processId: string) => {
   try {
-    const item = processList.value.find(p => p.process_id === processId)
-    if (item && item.audit_result && item.audit_result.id) {
-       await cancelAuditJob(item.audit_result.id)
-    } else {
-       message.warning(t('dashboard.noAuditIdFound', '无法中止，任务 ID 缺失'))
-       return;
+    const jobId = resolveAuditJobIdForCancel(processId)
+    if (!jobId) {
+      message.warning(t('dashboard.noAuditIdFound', '无法中止，任务 ID 缺失'))
+      return
     }
+    await cancelAuditJob(jobId)
     message.success(t('dashboard.cancelSuccess', '中止成功'))
     await loadProcesses()
     if (selectedProcess.value === processId) {
-       handleSelectProcess(processId)
+      handleSelectProcess(processId)
     }
   } catch (e: any) {
     message.error(t('dashboard.cancelFailed', '中止失败: ') + e.message)
@@ -530,7 +620,18 @@ async function runDashboardBatchLoop(ids: string[], queueMeta: DashboardBatchMet
   batchAuditing.value = true
   batchAborted.value = false
   const metaById = new Map(queueMeta.map(m => [m.process_id, m]))
-  saveDashboardBatchState(ids, queueMeta, startIndex)
+  const prev = readDashboardBatchState()
+  const carryInflight =
+    prev &&
+    prev.ids.length === ids.length &&
+    prev.nextIndex === startIndex &&
+    prev.ids[startIndex] &&
+    prev.inflightJobId &&
+    prev.queueMeta.length === queueMeta.length &&
+    prev.ids.every((id, idx) => id === queueMeta[idx]?.process_id)
+      ? prev.inflightJobId
+      : undefined
+  saveDashboardBatchState(ids, queueMeta, startIndex, carryInflight)
 
   for (let i = startIndex; i < ids.length; i++) {
     if (batchAborted.value) break
@@ -547,6 +648,7 @@ async function runDashboardBatchLoop(ids: string[], queueMeta: DashboardBatchMet
     }
 
     let started = false
+    let persistedJobId = false
     if (selectedProcess.value === id) {
       currentResult.value = {
         progress_steps: [
@@ -576,6 +678,10 @@ async function runDashboardBatchLoop(ids: string[], queueMeta: DashboardBatchMet
         process_type: meta.process_type,
         title: meta.title,
       }, (st: any) => {
+        if (st?.id && !persistedJobId) {
+          persistedJobId = true
+          saveDashboardBatchState(ids, queueMeta, i, st.id)
+        }
         if (!started) {
           started = true
           if (st?.id && selectedProcess.value === id) {
@@ -638,6 +744,7 @@ const handleBatchAudit = async () => {
     message.error(t('dashboard.loadFailed'))
     return
   }
+  clearDashboardBatchStorage()
   batchAuditTotal.value = ids.length
   batchAuditDone.value = 0
   await runDashboardBatchLoop(ids, queueMeta, 0)
@@ -778,6 +885,15 @@ const chainItemAiReasoning = (item: AuditChainItem) =>
 
 // ─── 初始化 ───
 onMounted(async () => {
+  const restoredRange = readDashboardDateRange()
+  if (restoredRange) auditDateRange.value = restoredRange
+  const pending = readDashboardBatchState()
+  if (pending && pending.ids.length > 0 && pending.nextIndex < pending.ids.length) {
+    const tab = pending.activeTab
+    if (tab === 'pending_ai' || tab === 'ai_done' || tab === 'completed') {
+      activeTab.value = tab
+    }
+  }
   loadStats()
   await loadProcesses()
   loadProcessTypes()
@@ -874,8 +990,8 @@ onMounted(async () => {
               <a-button size="small" @click="clearFilters">{{ t('dashboard.filterReset') }}</a-button>
             </div>
           </transition>
-          <!--批量审核工具栏（仅 pending_ai 页签）-->
-          <div v-if="activeTab === 'pending_ai'" class="batch-toolbar">
+          <!--批量审核工具栏（待 AI / AI 已审核）-->
+          <div v-if="isBatchAuditTab" class="batch-toolbar">
             <div class="batch-toolbar-left">
               <a-checkbox
                 :disabled="auditInProgress"
@@ -932,7 +1048,7 @@ onMounted(async () => {
               }"
               @click="handleSelectProcess(item.process_id)"
             >
-              <div v-if="activeTab === 'pending_ai'" class="todo-item-checkbox" @click.stop="auditInProgress || (item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status)) ? null : toggleSelectProcess(item.process_id)">
+              <div v-if="isBatchAuditTab" class="todo-item-checkbox" @click.stop="auditInProgress || (item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status)) ? null : toggleSelectProcess(item.process_id)">
                 <a-checkbox :checked="selectedProcessIds.includes(item.process_id)" :disabled="auditInProgress || (item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status))" />
               </div>
               <div class="todo-item-main">

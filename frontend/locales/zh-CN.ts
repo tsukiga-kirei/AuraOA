@@ -580,7 +580,10 @@ export default {
     'dashboard.loadingListHint': '正在加载列表…',
     'dashboard.auditFailed': 'AI 审核失败',
     'dashboard.parseErrorTitle': '结构化提取失败',
-    'dashboard.rawContent': 'AI 原始回复',
+    'dashboard.modReviewStrictnessDesc': '允许用户调整 AI 审核的严格/宽松程度',
+    'dashboard.noAuditIdFound': '无法中止，任务 ID 缺失',
+    'dashboard.cancelSuccess': '完成中止任务',
+    'dashboard.cancelFailed': '中止任务失败',
 
     //登录页面附加内容
     'login.emptyWarning': '请输入用户名和密码',
@@ -1784,6 +1787,7 @@ export default {
     'archive.batchAborted': '批量合规复核已中止',
     'archive.cancelSuccess': '已中止合规复核',
     'archive.cancelFailed': '中止归档复盘失败',
+    'archive.noAuditIdFound': '无法中止，任务 ID 缺失',
     'archive.historyTitle': '历史复盘',
     'archive.noHistory': '该流程暂无历史复盘记录',
 

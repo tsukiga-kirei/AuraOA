@@ -269,6 +269,14 @@ func (s *AuditExecuteService) FailStaleAuditJobs(ctx context.Context) (int64, er
 	return res.RowsAffected, res.Error
 }
 
+// updateAuditLogIfNotCancelled 用户已中止（failed）时不再被后续阶段覆盖，避免 Cancel 后任务仍写完成为 completed。
+func (s *AuditExecuteService) updateAuditLogIfNotCancelled(tenantID, auditLogID uuid.UUID, updates map[string]interface{}) (int64, error) {
+	res := s.db.Model(&model.AuditLog{}).
+		Where("id = ? AND tenant_id = ? AND status NOT IN ?", auditLogID, tenantID, []string{model.AuditStatusFailed}).
+		Updates(updates)
+	return res.RowsAffected, res.Error
+}
+
 // processAuditJob 由 Redis Stream Worker 调用，执行完整审核链路。
 func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, tenantID, userID uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(ctx, auditProcessTimeout)
@@ -349,10 +357,16 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 
 	fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
 
-	_ = s.auditLogRepo.UpdateFields(c, auditLogID, map[string]interface{}{
+	n, err := s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
 		"status":     model.AuditStatusAssembling,
 		"updated_at": time.Now(),
 	})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
 
 	processData, err := s.fetchOAData(c, tenant, req.ProcessID)
 	if err != nil {
@@ -375,10 +389,16 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		s.rdb.Publish(context.Background(), "audit:stream:"+auditLogID.String(), chunk)
 	}
 
-	_ = s.auditLogRepo.UpdateFields(c, auditLogID, map[string]interface{}{
+	n, err = s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
 		"status":     model.AuditStatusReasoning,
 		"updated_at": time.Now(),
 	})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
 
 	reasoningResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, reasoningReq)
 	if err != nil {
@@ -387,11 +407,17 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	}
 	aiReasoning := reasoningResp.Content
 
-	_ = s.auditLogRepo.UpdateFields(c, auditLogID, map[string]interface{}{
+	n, err = s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
 		"status":       model.AuditStatusExtracting,
 		"ai_reasoning": aiReasoning,
 		"updated_at":   time.Now(),
 	})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
 
 	extractionReq := BuildExtractionPrompt(&aiConfig, aiReasoning, mergedRulesText)
 	extractionReq.Temperature = 0.1
@@ -431,9 +457,13 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		updates["audit_result"] = datatypes.JSON(resultJSON)
 	}
 
-	if err := s.auditLogRepo.UpdateFields(c, auditLogID, updates); err != nil {
+	finalRows, err := s.updateAuditLogIfNotCancelled(tenantID, auditLogID, updates)
+	if err != nil {
 		_ = s.markAuditFailedDB(tenantID, auditLogID, "保存审核结果失败: "+err.Error())
 		return err
+	}
+	if finalRows == 0 {
+		return nil
 	}
 	if parseErr == nil && parsed != nil {
 		if err := s.auditSnapshotRepo.UpsertAppendValid(c, tenantID, log.ProcessID, auditLogID, log.Title, log.ProcessType, parsed.Recommendation, parsed.OverallScore, parsed.Confidence); err != nil {
@@ -712,6 +742,23 @@ func todoListFilterFromAuditParams(p dto.AuditListParams) oa.TodoListFilter {
 	}
 }
 
+// collectTodoProcessIDsForExclusion 当前用户仍在 OA 待办中的流程 id（不按 workflow_requestbase.createdate 过滤）。
+// 「全部已完成」与统计 completed_count 排除待办时必须用全量待办；若与列表同一日期条件，会把「提交日不在范围内但仍在待办」的流程误判为已完成。
+func (s *AuditExecuteService) collectTodoProcessIDsForExclusion(c *gin.Context, username string, adapter oa.OAAdapter) ([]string, error) {
+	todoItems, err := adapter.FetchTodoList(c.Request.Context(), username, oa.TodoListFilter{})
+	if err != nil {
+		return nil, err
+	}
+	allowedTables := s.getAllowedMainTables(c)
+	var ids []string
+	for _, item := range todoItems {
+		if allowedTables[strings.ToLower(item.MainTableName)] {
+			ids = append(ids, item.ProcessID)
+		}
+	}
+	return ids, nil
+}
+
 func normalizeAuditPage(page, pageSize int) (p int, ps int, start int, end int) {
 	p = page
 	if p < 1 {
@@ -832,10 +879,15 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 		}
 	}
 
+	todoExcludeIDs, err := s.collectTodoProcessIDsForExclusion(c, username, adapter)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 待办失败: "+err.Error())
+	}
+
 	var completedCount int64
 	q := s.db.Model(&model.AuditProcessSnapshot{}).Where("tenant_id = ?", tenantID)
-	if len(processIDs) > 0 {
-		q = q.Where("process_id NOT IN ?", processIDs)
+	if len(todoExcludeIDs) > 0 {
+		q = q.Where("process_id NOT IN ?", todoExcludeIDs)
 	}
 	configuredTypes := s.getAllowedProcessTypes(c)
 	if len(configuredTypes) > 0 {
@@ -864,7 +916,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 	}, nil
 }
 
-// ListProcessesPaged 分页查询审核工作台（OA 待办按 requestbase.createdate 过滤；completed 按有效结论快照 updated_at）。
+// ListProcessesPaged 分页查询审核工作台（待 AI / AI 已审核：OA 待办可按 createdate；全部已完成：排除「当前全量待办」后按快照 updated_at）。
 func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.AuditListParams) (*dto.AuditProcessListResponse, error) {
 	tenantID, _, err := s.extractIDs(c)
 	if err != nil {
@@ -1001,18 +1053,9 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 }
 
 func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenantID uuid.UUID, username string, adapter oa.OAAdapter, params dto.AuditListParams) (*dto.AuditProcessListResponse, error) {
-	tf := todoListFilterFromAuditParams(params)
-	todoItems, err := adapter.FetchTodoList(c.Request.Context(), username, tf)
+	todoProcessIDs, err := s.collectTodoProcessIDsForExclusion(c, username, adapter)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 待办失败: "+err.Error())
-	}
-
-	allowedTables := s.getAllowedMainTables(c)
-	var todoProcessIDs []string
-	for _, item := range todoItems {
-		if allowedTables[strings.ToLower(item.MainTableName)] {
-			todoProcessIDs = append(todoProcessIDs, item.ProcessID)
-		}
 	}
 
 	configuredTypes := s.getAllowedProcessTypes(c)
