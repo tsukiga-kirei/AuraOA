@@ -586,6 +586,11 @@ const renderWorkflowLabels = (workflowIds: string[] | undefined): string => {
                 <span v-if="isBatchTask(task.task_type)" class="batch-badge">
                   <CalendarOutlined /> {{ t(`cron.dateRange.${task.date_range || 30}`) }}
                 </span>
+                <template v-if="task.push_email && taskNeedsEmail(task.task_type)">
+                  <span v-for="email in task.push_email.split(',').filter(e => e.trim())" :key="email" class="batch-badge">
+                    <MailOutlined /> {{ email.trim() }}
+                  </span>
+                </template>
               </div>
               <div class="task-status" :class="task.is_active ? 'task-status--active' : 'task-status--paused'">
                 <span class="task-status-dot" />
@@ -597,9 +602,6 @@ const renderWorkflowLabels = (workflowIds: string[] | undefined): string => {
               <ClockCircleOutlined />
               <code>{{ task.cron_expression }}</code>
               <span class="cron-desc">{{ describeCron(task.cron_expression) }}</span>
-            </div>
-            <div v-if="task.push_email && taskNeedsEmail(task.task_type)" class="task-email">
-              <MailOutlined /><span>{{ task.push_email }}</span>
             </div>
 
             <!-- 运行中的特殊状态显示 -->
@@ -683,6 +685,11 @@ const renderWorkflowLabels = (workflowIds: string[] | undefined): string => {
                 <span v-if="isBatchTask(task.task_type)" class="batch-badge">
                   <CalendarOutlined /> {{ t(`cron.dateRange.${task.date_range || 30}`) }}
                 </span>
+                <template v-if="task.push_email && taskNeedsEmail(task.task_type)">
+                  <span v-for="email in task.push_email.split(',').filter(e => e.trim())" :key="email" class="batch-badge">
+                    <MailOutlined /> {{ email.trim() }}
+                  </span>
+                </template>
               </div>
               <div class="task-status" :class="task.is_active ? 'task-status--active' : 'task-status--paused'">
                 <span class="task-status-dot" />
@@ -694,9 +701,6 @@ const renderWorkflowLabels = (workflowIds: string[] | undefined): string => {
               <ClockCircleOutlined />
               <code>{{ task.cron_expression }}</code>
               <span class="cron-desc">{{ describeCron(task.cron_expression) }}</span>
-            </div>
-            <div v-if="task.push_email && taskNeedsEmail(task.task_type)" class="task-email">
-              <MailOutlined /><span>{{ task.push_email }}</span>
             </div>
 
             <!-- 运行中的特殊状态显示 -->
@@ -1461,7 +1465,7 @@ const renderWorkflowLabels = (workflowIds: string[] | undefined): string => {
   align-items: center;
   gap: 6px;
   height: 22px;
-  max-width: 180px;
+  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -131,9 +131,11 @@ func main() {
 	)
 	userNotificationService := service.NewUserNotificationService(userNotificationRepo, userRepo)
 	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveSnapshotRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, orgRepo, db, rdb)
+	reportCalculatorService := service.NewReportCalculatorService(auditLogRepo, archiveLogRepo, tenantRepo)
+	mailService := service.NewMailService(systemConfigRepo)
 
 	// Cron 任务实例服务（延迟注入调度器）
-	cronTaskService := service.NewCronTaskService(cronTaskRepo, cronLogRepo, cronPresetRepo, cronConfigRepo, userRepo, auditExecuteService, archiveReviewService)
+	cronTaskService := service.NewCronTaskService(cronTaskRepo, cronLogRepo, cronPresetRepo, cronConfigRepo, userRepo, tenantRepo, auditExecuteService, archiveReviewService, reportCalculatorService, mailService)
 	cronScheduler := service.NewCronScheduler(cronTaskRepo, cronTaskService, logger)
 	cronTaskService.SetScheduler(cronScheduler)
 
