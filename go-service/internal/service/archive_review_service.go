@@ -804,7 +804,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	}
 	if parseErr != nil {
 		updates["status"] = model.AuditStatusFailed
-		updates["compliance"] = "partially_compliant"
+		updates["compliance"] = ""
 		updates["compliance_score"] = 0
 		updates["confidence"] = 0
 		updates["parse_error"] = parseErr.Error()
