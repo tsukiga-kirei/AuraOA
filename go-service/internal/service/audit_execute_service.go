@@ -139,7 +139,7 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		Title:          req.Title,
 		ProcessType:    req.ProcessType,
 		Status:         model.AuditStatusPending,
-		Recommendation: "review",
+		Recommendation: "",
 		Score:          0,
 		AuditResult:    datatypes.JSON([]byte("{}")),
 		CreatedAt:      now,
@@ -443,7 +443,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 
 	if parseErr != nil {
 		updates["status"] = model.AuditStatusFailed
-		updates["recommendation"] = "review"
+		updates["recommendation"] = ""
 		updates["score"] = 0
 		updates["confidence"] = 0
 		updates["parse_error"] = parseErr.Error()
@@ -545,7 +545,7 @@ func auditExecuteResponseFromLog(log *model.AuditLog) *AuditExecuteResponse {
 		Status:      log.Status,
 	}
 	if log.Status == model.AuditStatusFailed {
-		resp.Recommendation = "review"
+		resp.Recommendation = ""
 		resp.ParseError = log.ErrorMessage
 		resp.RuleResults = []model.RuleResultJSON{}
 		resp.RiskPoints = []string{}
@@ -553,7 +553,7 @@ func auditExecuteResponseFromLog(log *model.AuditLog) *AuditExecuteResponse {
 		return resp
 	}
 	if log.ParseError != "" {
-		resp.Recommendation = "review"
+		resp.Recommendation = ""
 		resp.OverallScore = 0
 		resp.Confidence = 0
 		resp.ParseError = log.ParseError
