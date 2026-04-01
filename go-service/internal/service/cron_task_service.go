@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,8 +26,11 @@ type CronTaskService struct {
 	presetRepo *repository.CronTaskTypePresetRepo
 	configRepo *repository.CronTaskTypeConfigRepo
 	userRepo   *repository.UserRepo
+	tenantRepo *repository.TenantRepo
 	auditSvc   *AuditExecuteService
 	archiveSvc *ArchiveReviewService
+	reportSvc  *ReportCalculatorService
+	mailSvc    *MailService
 	scheduler  *CronScheduler // 延迟注入，避免循环依赖
 }
 
@@ -37,8 +41,11 @@ func NewCronTaskService(
 	presetRepo *repository.CronTaskTypePresetRepo,
 	configRepo *repository.CronTaskTypeConfigRepo,
 	userRepo *repository.UserRepo,
+	tenantRepo *repository.TenantRepo,
 	auditSvc *AuditExecuteService,
 	archiveSvc *ArchiveReviewService,
+	reportSvc *ReportCalculatorService,
+	mailSvc *MailService,
 ) *CronTaskService {
 	return &CronTaskService{
 		taskRepo:   taskRepo,
@@ -46,8 +53,11 @@ func NewCronTaskService(
 		presetRepo: presetRepo,
 		configRepo: configRepo,
 		userRepo:   userRepo,
+		tenantRepo: tenantRepo,
 		auditSvc:   auditSvc,
 		archiveSvc: archiveSvc,
+		reportSvc:  reportSvc,
+		mailSvc:    mailSvc,
 	}
 }
 
@@ -370,6 +380,22 @@ func (s *CronTaskService) AbortTask(c *gin.Context, id uuid.UUID) error {
 	key := fmt.Sprintf("cron:abort:%s", id.String())
 	if s.auditSvc.BatchRdb() != nil {
 		s.auditSvc.BatchRdb().Set(c.Request.Context(), key, "1", 10*time.Minute)
+
+		// 联锁尝试取消当前正在运行的单个 AI 审核/归档任务（如果有标记其 ID）
+		subKey := fmt.Sprintf("cron:running_sub:%s", id.String())
+		if subID, _ := s.auditSvc.BatchRdb().Get(c.Request.Context(), subKey).Result(); subID != "" {
+			sid, perr := uuid.Parse(subID)
+			if perr == nil {
+				// 尝试在审核或归档服务中取消
+				preset := s.loadPresetMap()[task.TaskType]
+				if preset.Module == "audit" {
+					_ = s.auditSvc.CancelJob(c, sid)
+				} else if preset.Module == "archive" {
+					_ = s.archiveSvc.CancelJob(c, sid)
+				}
+			}
+			s.auditSvc.BatchRdb().Del(c.Request.Context(), subKey)
+		}
 	}
 	return nil
 }
@@ -463,9 +489,17 @@ func (s *CronTaskService) runAuditBatch(c *gin.Context, task *model.CronTask) er
 		if s.checkAbort(c, task.ID) {
 			return fmt.Errorf("job_aborted")
 		}
-		// 逐条执行以保障事务与状态更新准确
-		_, _ = s.auditSvc.BatchExecute(c, []AuditExecuteRequest{item})
+		// 逐条执行并记录当前子进程 ID 以便 Abort 能立即杀掉该任务
+		res, err := s.auditSvc.BatchExecute(c, []AuditExecuteRequest{item})
+		if err == nil && len(res.Results) > 0 {
+			subLogID := res.Results[0].ID
+			subKey := fmt.Sprintf("cron:running_sub:%s", task.ID.String())
+			s.auditSvc.BatchRdb().Set(c.Request.Context(), subKey, subLogID, 1*time.Hour)
+			// 此处 BatchExecute 是同步等待单条完成的，完成后由于 BatchRdb 的特性，后续清理在 Abort 之后即可
+		}
 	}
+	// 无论成功失败，循环结束清理此标记
+	s.auditSvc.BatchRdb().Del(c.Request.Context(), fmt.Sprintf("cron:running_sub:%s", task.ID.String()))
 	return nil
 }
 
@@ -493,8 +527,14 @@ func (s *CronTaskService) runArchiveBatch(c *gin.Context, task *model.CronTask) 
 		if s.checkAbort(c, task.ID) {
 			return fmt.Errorf("job_aborted")
 		}
-		_, _ = s.archiveSvc.BatchExecute(c, []dto.ArchiveReviewExecuteRequest{item})
+		res, err := s.archiveSvc.BatchExecute(c, []dto.ArchiveReviewExecuteRequest{item})
+		if err == nil && len(res.Results) > 0 {
+			subLogID := res.Results[0].ID
+			subKey := fmt.Sprintf("cron:running_sub:%s", task.ID.String())
+			s.auditSvc.BatchRdb().Set(c.Request.Context(), subKey, subLogID, 1*time.Hour)
+		}
 	}
+	s.auditSvc.BatchRdb().Del(c.Request.Context(), fmt.Sprintf("cron:running_sub:%s", task.ID.String()))
 	return nil
 }
 
@@ -510,12 +550,92 @@ func (s *CronTaskService) checkAbort(c *gin.Context, taskID uuid.UUID) bool {
 	return false
 }
 
-// runReportTask 报告推送类任务占位（获取变量、发送邮件）。
+// runReportTask 报告推送类任务正式实现（获取变量、发送邮件）。
 func (s *CronTaskService) runReportTask(task *model.CronTask) error {
-	// TODO: 使用 ReportCalculatorService 计算变量
-	// TODO: 使用 MailService 发送邮件（读取 system_configs 里的 SMTP 配置）
-	_ = task
-	return nil
+	if s.reportSvc == nil || s.mailSvc == nil {
+		return fmt.Errorf("报告或邮件服务未初始化")
+	}
+	c := buildWorkerContext(context.Background(), task.TenantID, task.OwnerUserID, "")
+
+	// 1. 确定时间段（根据任务类型：日报 1 天，周报 7 天）
+	days := 1
+	rangeTitle := "日报"
+	if task.TaskType == "audit_weekly" || task.TaskType == "archive_weekly" {
+		days = 7
+		rangeTitle = "周报"
+	}
+	end := time.Now()
+	start := end.AddDate(0, 0, -days)
+
+	// 2. 获取租户名称
+	tenant, _ := s.tenantRepo.FindByID(task.TenantID)
+	tenantName := "系统租户"
+	if tenant != nil {
+		tenantName = tenant.Name
+	}
+
+	// 3. 计算统计
+	auditStats, _ := s.reportSvc.CalculateAuditStats(c, start, end)
+	archiveStats, _ := s.reportSvc.CalculateArchiveStats(c, start, end)
+
+	stats := &ReportStats{
+		AuditStats:   auditStats,
+		ArchiveStats: archiveStats,
+		TimeRange:    fmt.Sprintf("%s ~ %s", start.Format("2006-01-02"), end.Format("2006-01-02")),
+		TenantName:   tenantName,
+	}
+
+	// 4. 获取变量并替换
+	vars := s.reportSvc.GetSummaryVariables(stats)
+
+	// 5. 读取任务配置中的模板
+	cfg, err := s.configRepo.GetByTaskType(c, task.TaskType)
+	if err != nil {
+		return fmt.Errorf("未找到任务配置: %s", task.TaskType)
+	}
+
+	type templateConfig struct {
+		Subject      string `json:"subject"`
+		Header       string `json:"header"`
+		BodyTemplate string `json:"body_template"`
+		Footer       string `json:"footer"`
+	}
+	var tpl templateConfig
+	_ = json.Unmarshal(cfg.ContentTemplate, &tpl)
+
+	render := func(text string, v map[string]interface{}) string {
+		for k, val := range v {
+			placeholder := fmt.Sprintf("{{%s}}", k)
+			text = strings.ReplaceAll(text, placeholder, fmt.Sprint(val))
+		}
+		return text
+	}
+
+	subject := render(tpl.Subject, vars)
+	header := render(tpl.Header, vars)
+	body := render(tpl.BodyTemplate, vars)
+	footer := render(tpl.Footer, vars)
+
+	finalContent := fmt.Sprintf("%s\n\n%s\n\n%s", header, body, footer)
+	if cfg.PushFormat == "html" {
+		// 简单 HTML 包装（后续可引入更复杂的 HTML 邮件模版）
+		finalContent = fmt.Sprintf("<div style='font-family: sans-serif;'><p>%s</p><div>%s</div><p style='color: grey;'>%s</p></div>",
+			strings.ReplaceAll(header, "\n", "<br/>"),
+			strings.ReplaceAll(body, "\n", "<br/>"),
+			strings.ReplaceAll(footer, "\n", "<br/>"))
+	}
+
+	// 6. 发送邮件
+	to := task.PushEmail
+	if to == "" {
+		return fmt.Errorf("任务未配置接收邮箱")
+	}
+
+	if subject == "" {
+		subject = fmt.Sprintf("【%s】智能审计业务推送 - %s", tenantName, rangeTitle)
+	}
+
+	return s.mailSvc.SendReport(to, subject, finalContent)
 }
 
 // ============================================================
