@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/smtp"
 	"strconv"
+	"strings"
 )
 
 // Config 邮件服务配置
@@ -26,14 +27,27 @@ func NewMailer(cfg Config) *Mailer {
 	return &Mailer{config: cfg}
 }
 
-// Send 发送邮件（支持 HTML 内容）
+// Send 发送邮件（支持 HTML 内容，支持逗号分隔的多个收件人）
 func (m *Mailer) Send(to string, subject, body string) error {
 	addr := fmt.Sprintf("%s:%d", m.config.Host, m.config.Port)
 	auth := smtp.PlainAuth("", m.config.Username, m.config.Password, m.config.Host)
 
+	// 处理多个收件人
+	toParts := strings.Split(to, ",")
+	var recipients []string
+	for _, p := range toParts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			recipients = append(recipients, trimmed)
+		}
+	}
+	if len(recipients) == 0 {
+		return fmt.Errorf("no valid recipients")
+	}
+
 	header := make(map[string]string)
 	header["From"] = m.config.From
-	header["To"] = to
+	header["To"] = strings.Join(recipients, ", ")
 	header["Subject"] = subject
 	header["MIME-Version"] = "1.0"
 	header["Content-Type"] = "text/html; charset=UTF-8"
@@ -69,8 +83,10 @@ func (m *Mailer) Send(to string, subject, body string) error {
 			return err
 		}
 
-		if err = client.Rcpt(to); err != nil {
-			return err
+		for _, rcpt := range recipients {
+			if err = client.Rcpt(rcpt); err != nil {
+				return err
+			}
 		}
 
 		w, err := client.Data()
@@ -86,7 +102,7 @@ func (m *Mailer) Send(to string, subject, body string) error {
 		return w.Close()
 	}
 
-	return smtp.SendMail(addr, auth, m.config.From, []string{to}, []byte(message))
+	return smtp.SendMail(addr, auth, m.config.From, recipients, []byte(message))
 }
 
 // ParsePort 将字符串端口解析为 int，默认 465

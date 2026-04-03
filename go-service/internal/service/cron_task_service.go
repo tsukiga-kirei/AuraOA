@@ -261,6 +261,10 @@ func (s *CronTaskService) ExecuteNow(c *gin.Context, id uuid.UUID) error {
 		return newServiceError(errcode.ErrConfigNotFound, "任务不存在")
 	}
 
+	if task.CurrentLogID != nil {
+		return newServiceError(errcode.ErrParamValidation, "该任务已经在运行中，请等候执行完成")
+	}
+
 	// 取手动触发人展示名（优先 display_name）
 	createdBy := "unknown"
 	if claims, ok := c.Get("jwt_claims"); ok {

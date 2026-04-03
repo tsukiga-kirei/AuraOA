@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -49,6 +50,12 @@ func (s *ReportCalculatorService) GetSummaryVariables(stats *ReportStats) map[st
 	vars := make(map[string]interface{})
 	vars["tenant_name"] = stats.TenantName
 	vars["time_range"] = stats.TimeRange
+	vars["date"] = time.Now().Format("2006-01-02")
+	vars["time"] = time.Now().Format("2006-01-02 15:04:05")
+
+	// 默认统计占位符（后续可根据业务逻辑生成详情列表）
+	vars["detail_list"] = "（各流程详情请点击进入系统查看）"
+	vars["statistics"] = "（完整统计报表请在系统管理页下载）"
 
 	if stats.AuditStats != nil {
 		vars["audit_total"] = stats.AuditStats.Total
@@ -59,6 +66,20 @@ func (s *ReportCalculatorService) GetSummaryVariables(stats *ReportStats) map[st
 		if stats.AuditStats.Total > 0 {
 			vars["audit_pass_rate"] = float64(stats.AuditStats.ApproveCount) * 100 / float64(stats.AuditStats.Total)
 		}
+
+		// 注入别名以兼容默认模板
+		vars["total"] = vars["audit_total"]
+		vars["approved"] = vars["audit_approve"]
+		vars["rejected"] = vars["audit_return"]
+		vars["revised"] = vars["audit_review"]
+		vars["pass_rate"] = fmt.Sprintf("%.2f", vars["audit_pass_rate"])
+
+		// 周报额外变量占位
+		vars["week"] = time.Now().Format("02") // 简单用日期占位或后续计算周数
+		vars["trend"] = "持平"
+		vars["compliance_rate"] = vars["pass_rate"]
+		vars["compliance_trend"] = "稳定"
+		vars["date_range"] = stats.TimeRange
 	}
 
 	if stats.ArchiveStats != nil {
@@ -69,6 +90,21 @@ func (s *ReportCalculatorService) GetSummaryVariables(stats *ReportStats) map[st
 		vars["archive_pass_rate"] = 0.0
 		if stats.ArchiveStats.Total > 0 {
 			vars["archive_pass_rate"] = float64(stats.ArchiveStats.Compliant) * 100 / float64(stats.ArchiveStats.Total)
+		}
+
+		// 如果是归档任务，别名映射到归档统计
+		if stats.AuditStats == nil || stats.AuditStats.Total == 0 {
+			vars["total"] = vars["archive_total"]
+			vars["approved"] = vars["archive_compliant"]
+			vars["rejected"] = vars["archive_non_compliant"]
+			vars["revised"] = vars["archive_partial"]
+			vars["pass_rate"] = fmt.Sprintf("%.2f", vars["archive_pass_rate"])
+
+			vars["week"] = time.Now().Format("02")
+			vars["trend"] = "持平"
+			vars["compliance_rate"] = vars["pass_rate"]
+			vars["compliance_trend"] = "稳定"
+			vars["date_range"] = stats.TimeRange
 		}
 	}
 
