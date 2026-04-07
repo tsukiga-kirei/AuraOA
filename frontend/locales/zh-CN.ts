@@ -1360,6 +1360,8 @@ export default {
     'admin.data.thDepartment': '部门',
     'admin.data.thProcessType': '流程分类',
     'admin.data.thResult': 'AI审核结果',
+    'admin.data.thScore': '分数',
+    'admin.data.thAuditCount': '审核次数',
     'admin.data.thTime': '时间',
     'admin.data.thAction': '操作',
     'admin.data.viewDetail': '查看AI审核详情',
@@ -1399,6 +1401,9 @@ export default {
     'admin.data.compliant': '合规',
     'admin.data.nonCompliant': '不合规',
     'admin.data.partiallyCompliant': '部分合规',
+    'admin.data.confidence': '置信度',
+    'admin.data.points': '分',
+    'admin.data.duration': '耗时',
     // 通用筛选
     'admin.data.filterDepartment': '部门',
     'admin.data.filterOperator': '搜索操作人',
@@ -1421,8 +1426,6 @@ export default {
     // 审核详情抽屉
     'admin.data.detailTitle': 'AI 审核详情',
     'admin.data.overallScore': '综合评分',
-    'admin.data.points': '分',
-    'admin.data.duration': '耗时',
     'admin.data.ruleCheckDetail': '规则校验明细',
     'admin.data.riskPoints': '风险点',
     'admin.data.suggestions': '改进建议',

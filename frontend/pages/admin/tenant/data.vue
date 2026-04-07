@@ -15,12 +15,15 @@ import {
   InfoCircleOutlined,
   CloseOutlined,
 } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
-import type { Dayjs } from 'dayjs'
+import dayjs, { type Dayjs } from 'dayjs'
 import 'dayjs/locale/zh-cn'
+import { marked } from 'marked'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from '~/composables/useI18n'
+import { message } from 'ant-design-vue'
 import { useAdminDataApi } from '~/composables/useAdminDataApi'
 import { useAuditApi } from '~/composables/useAuditApi'
+import { useOrgApi } from '~/composables/useOrgApi'
 import { useArchiveReviewApi } from '~/composables/useArchiveReviewApi'
 import type {
   AuditLogItem,
@@ -55,17 +58,6 @@ type AuditDetailPayload = {
   score?: number
   rule_results?: AuditRuleItem[]
   details?: AuditRuleItem[]
-  risk_points?: string[]
-  suggestions?: string[]
-  ai_reasoning?: string
-  duration_ms?: number
-}
-
-type ArchiveFlowNode = {
-  node_id?: string
-  node_name?: string
-  compliant?: boolean
-  reasoning?: string
 }
 
 type ArchiveRuleItem = {
@@ -75,13 +67,20 @@ type ArchiveRuleItem = {
   reasoning?: string
 }
 
+type ArchiveNodeResult = {
+  node_id?: string
+  node_name?: string
+  compliant?: boolean
+  reasoning?: string
+}
+
 type ArchiveDetailPayload = {
   overall_compliance?: string
   overall_score?: number
   flow_audit?: {
-    is_complete?: boolean
-    missing_nodes?: string[]
-    node_results?: ArchiveFlowNode[]
+    is_complete: boolean
+    missing_nodes: string[]
+    node_results: ArchiveNodeResult[]
   }
   rule_audit?: ArchiveRuleItem[]
   risk_points?: string[]
@@ -127,23 +126,41 @@ const cronStats = ref<CronLogStats>({
   failed: 0,
   running: 0,
 })
-const archiveStats = ref<ArchiveSnapshotStats>({
-  total: 0,
-  compliant: 0,
-  partial: 0,
-  non_compliant: 0,
-})
+const archiveStats = ref<ArchiveSnapshotStats>({ total: 0, compliant: 0, partial: 0, non_compliant: 0 })
 
 const auditSnapshots = ref<AuditSnapshotItem[]>([])
 const cronLogs = ref<CronLogItem[]>([])
 const archiveSnapshots = ref<ArchiveSnapshotItem[]>([])
 
+// Drawer details variables
+const auditDetailVisible = ref(false)
+const selectedAuditLog = ref<AuditSnapshotItem | null>(null)
+const auditChainLogs = ref<AuditLogItem[]>([])
+const expandedAuditChainNodes = ref<Set<string>>(new Set())
+
+const archiveDetailVisible = ref(false)
+const selectedArchiveLog = ref<ArchiveSnapshotItem | null>(null)
+const archiveChainLogs = ref<ArchiveLogItem[]>([])
+const expandedArchiveChainNodes = ref<Set<string>>(new Set())
+
+const cronDetailVisible = ref(false)
+const selectedCronLog = ref<CronLogItem | null>(null)
+
+const chainLoading = ref(false)
+
+const { listDepartments } = useOrgApi()
+const { getProcessTypes } = useAuditApi()
+
 const auditLoading = ref(false)
 const cronLoading = ref(false)
 const archiveLoading = ref(false)
 
+const departmentOptions = ref<{label: string, value: string}[]>([])
+const processCascaderOptions = ref<any[]>([])
+
 const auditSearch = ref('')
-const auditFilterProcessType = ref<string | undefined>(undefined)
+const auditFilterProcessPath = ref<string[][]>([])
+const auditFilterProcessType = computed(() => auditFilterProcessPath.value.length ? auditFilterProcessPath.value.map((p: any[]) => p[p.length - 1]).join(',') : undefined)
 const auditFilterOperator = ref('')
 const auditFilterDepartment = ref<string | undefined>(undefined)
 const auditFilterDateRange = ref<[Dayjs, Dayjs] | undefined>(undefined)
@@ -161,7 +178,8 @@ const cronPageSize = ref(10)
 const cronTotal = ref(0)
 
 const archiveSearch = ref('')
-const archiveFilterProcessType = ref<string | undefined>(undefined)
+const archiveFilterProcessPath = ref<string[][]>([])
+const archiveFilterProcessType = computed(() => archiveFilterProcessPath.value.length ? archiveFilterProcessPath.value.map((p: any[]) => p[p.length - 1]).join(',') : undefined)
 const archiveFilterOperator = ref('')
 const archiveFilterDepartment = ref<string | undefined>(undefined)
 const archiveFilterDateRange = ref<[Dayjs, Dayjs] | undefined>(undefined)
@@ -169,16 +187,6 @@ const archiveShowFilters = ref(false)
 const archivePage = ref(1)
 const archivePageSize = ref(10)
 const archiveTotal = ref(0)
-
-const auditDetailVisible = ref(false)
-const archiveDetailVisible = ref(false)
-const cronDetailVisible = ref(false)
-const selectedAuditLog = ref<AuditLogItem | null>(null)
-const selectedArchiveLog = ref<ArchiveLogItem | null>(null)
-const selectedCronLog = ref<CronLogItem | null>(null)
-const auditChainLogs = ref<AuditLogItem[]>([])
-const archiveChainLogs = ref<ArchiveLogItem[]>([])
-const chainLoading = ref(false)
 
 const recommendationConfig = computed<Record<string, { color: string; bg: string }>>(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
@@ -252,46 +260,7 @@ const cronTaskTypeOptions = computed(() => {
   return Array.from(seen.entries()).map(([value, label]) => ({ value, label }))
 })
 
-const normalizedAuditDetail = computed<Required<AuditDetailPayload>>(() => {
-  const current = selectedAuditLog.value
-  const raw = normalizeObject<AuditDetailPayload>(current?.audit_result)
 
-  return {
-    recommendation: raw.recommendation || current?.recommendation || '',
-    overall_score: Number(raw.overall_score ?? raw.score ?? current?.score ?? 0),
-    score: Number(raw.score ?? raw.overall_score ?? current?.score ?? 0),
-    rule_results: Array.isArray(raw.rule_results)
-        ? raw.rule_results
-        : Array.isArray(raw.details)
-            ? raw.details
-            : [],
-    details: Array.isArray(raw.details)
-        ? raw.details
-        : Array.isArray(raw.rule_results)
-            ? raw.rule_results
-            : [],
-    risk_points: Array.isArray(raw.risk_points) ? raw.risk_points : [],
-    suggestions: Array.isArray(raw.suggestions) ? raw.suggestions : [],
-    ai_reasoning: raw.ai_reasoning || current?.ai_reasoning || '',
-    duration_ms: Number(raw.duration_ms ?? current?.duration_ms ?? 0),
-  }
-})
-
-const normalizedArchiveDetail = computed<Required<ArchiveDetailPayload>>(() => {
-  const current = selectedArchiveLog.value
-  const raw = normalizeObject<ArchiveDetailPayload>(current?.archive_result)
-
-  return {
-    overall_compliance: raw.overall_compliance || current?.compliance || '',
-    overall_score: Number(raw.overall_score ?? current?.compliance_score ?? 0),
-    flow_audit: raw.flow_audit || { is_complete: false, missing_nodes: [], node_results: [] },
-    rule_audit: Array.isArray(raw.rule_audit) ? raw.rule_audit : [],
-    risk_points: Array.isArray(raw.risk_points) ? raw.risk_points : [],
-    suggestions: Array.isArray(raw.suggestions) ? raw.suggestions : [],
-    ai_summary: raw.ai_summary || current?.ai_reasoning || '',
-    duration_ms: Number(raw.duration_ms ?? current?.duration_ms ?? 0),
-  }
-})
 
 const auditQuery = computed(() => ({
   recommendation: activeAuditSubTab.value === 'all' ? '' : activeAuditSubTab.value,
@@ -377,34 +346,52 @@ function getAsyncStatusLabel(status: string) {
   return map[status] || status || '-'
 }
 
-async function openAuditDetail(snapshot: AuditSnapshotItem) {
+async function openAuditDetail(item: AuditSnapshotItem) {
+  selectedAuditLog.value = item
   auditDetailVisible.value = true
   chainLoading.value = true
+  expandedAuditChainNodes.value.clear()
   try {
-    const res = await getAuditSnapshotChain(snapshot.process_id)
+    const res = await getAuditSnapshotChain(item.process_id)
     auditChainLogs.value = res.chain || []
-    selectedAuditLog.value = auditChainLogs.value[0] || null
-  } catch {
+    if (auditChainLogs.value.length > 0) {
+      expandedAuditChainNodes.value.add(auditChainLogs.value[0].id)
+    }
+  } catch (e) {
+    message.error(t('admin.data.fetchFailed'))
     auditChainLogs.value = []
-    selectedAuditLog.value = null
   } finally {
     chainLoading.value = false
   }
 }
 
-async function openArchiveDetail(snapshot: ArchiveSnapshotItem) {
+function toggleAuditChainNode(id: string) {
+  if (expandedAuditChainNodes.value.has(id)) expandedAuditChainNodes.value.delete(id)
+  else expandedAuditChainNodes.value.add(id)
+}
+
+async function openArchiveDetail(item: ArchiveSnapshotItem) {
+  selectedArchiveLog.value = item
   archiveDetailVisible.value = true
   chainLoading.value = true
+  expandedArchiveChainNodes.value.clear()
   try {
-    const res = await getArchiveSnapshotChain(snapshot.process_id)
+    const res = await getArchiveSnapshotChain(item.process_id)
     archiveChainLogs.value = res.chain || []
-    selectedArchiveLog.value = archiveChainLogs.value[0] || null
-  } catch {
+    if (archiveChainLogs.value.length > 0) {
+      expandedArchiveChainNodes.value.add(archiveChainLogs.value[0].id)
+    }
+  } catch (e) {
+    message.error(t('admin.data.fetchFailed'))
     archiveChainLogs.value = []
-    selectedArchiveLog.value = null
   } finally {
     chainLoading.value = false
   }
+}
+
+function toggleArchiveChainNode(id: string) {
+  if (expandedArchiveChainNodes.value.has(id)) expandedArchiveChainNodes.value.delete(id)
+  else expandedArchiveChainNodes.value.add(id)
 }
 
 function openCronDetail(log: CronLogItem) {
@@ -414,7 +401,7 @@ function openCronDetail(log: CronLogItem) {
 
 function clearAuditFilters() {
   auditSearch.value = ''
-  auditFilterProcessType.value = undefined
+  auditFilterProcessPath.value = []
   auditFilterOperator.value = ''
   auditFilterDepartment.value = undefined
   auditFilterDateRange.value = undefined
@@ -430,7 +417,7 @@ function clearCronFilters() {
 
 function clearArchiveFilters() {
   archiveSearch.value = ''
-  archiveFilterProcessType.value = undefined
+  archiveFilterProcessPath.value = []
   archiveFilterOperator.value = ''
   archiveFilterDepartment.value = undefined
   archiveFilterDateRange.value = undefined
@@ -450,6 +437,38 @@ function handleCronPageChange(page: number, pageSize: number) {
 function handleArchivePageChange(page: number, pageSize: number) {
   archivePage.value = page
   archivePageSize.value = pageSize
+}
+
+async function loadProcessCascaderOptions() {
+  try {
+    const list = await getProcessTypes()
+    const categoryMap = new Map<string, any>()
+    for (const item of (Array.isArray(list) ? list : [])) {
+      const catLabel = item.process_type_label || item.process_type
+      if (!categoryMap.has(catLabel)) {
+        categoryMap.set(catLabel, { label: catLabel, value: catLabel, children: [] })
+      }
+      const cat = categoryMap.get(catLabel)!
+      if (!cat.children.some((c: any) => c.value === item.process_type)) {
+        cat.children.push({ label: item.process_type, value: item.process_type })
+      }
+    }
+    processCascaderOptions.value = Array.from(categoryMap.values())
+  } catch (e) {
+    console.warn('Failed to load process types', e)
+    processCascaderOptions.value = []
+  }
+}
+
+const renderMarkdown = (text: string) => text ? marked.parse(text) : ''
+const formatDate = (dateStr: string | null | undefined) => dateStr ? dayjs(dateStr).format('YYYY/MM/DD HH:mm') : '-'
+const getAuditCount = (validLogIds: string) => {
+  try {
+    const parsed = JSON.parse(validLogIds || '[]')
+    return Array.isArray(parsed) ? parsed.length : 1
+  } catch (e) {
+    return 1
+  }
 }
 
 async function loadAuditProcessTypeOptions() {
@@ -584,8 +603,8 @@ watch(activeAuditSubTab, () => {
 
 onMounted(async () => {
   await Promise.all([
-    loadAuditProcessTypeOptions(),
-    loadArchiveProcessTypeOptions(),
+    loadProcessCascaderOptions(),
+    listDepartments().then(deps => departmentOptions.value = deps.map(d => ({ label: d.name, value: d.name }))).catch(() => {}),
     loadAuditStats(),
     loadCronStats(),
     loadArchiveStats(),
@@ -620,18 +639,20 @@ onMounted(async () => {
     </div>
 
     <div v-if="activeTab === 'audit'" class="tab-content fade-in">
-      <div class="subtab-nav">
-        <button
+      <div class="stats-row">
+        <div
             v-for="tab in auditSubTabs"
             :key="tab.key"
-            class="subtab-btn"
-            :class="[tab.cssClass, { 'subtab-btn--active': activeAuditSubTab === tab.key }]"
-            @click="activeAuditSubTab = tab.key"
+            class="stat-card"
+            :class="[tab.cssClass, { 'stat-card--selected': activeAuditSubTab === tab.key }]"
+            @click="activeAuditSubTab = tab.key; auditPage = 1"
         >
-          <component :is="tab.icon" />
-          <span>{{ tab.label }}</span>
-          <span class="subtab-badge">{{ tab.count }}</span>
-        </button>
+          <div class="stat-card-icon"><component :is="tab.icon" /></div>
+          <div class="stat-card-info">
+            <span class="stat-card-value">{{ tab.count }}</span>
+            <span class="stat-card-label">{{ tab.label }}</span>
+          </div>
+        </div>
       </div>
 
       <div class="toolbar">
@@ -678,12 +699,15 @@ onMounted(async () => {
             </template>
           </a-input>
 
-          <a-select
-              v-model:value="auditFilterProcessType"
+          <a-cascader
+              v-model:value="auditFilterProcessPath"
+              :options="processCascaderOptions"
               :placeholder="t('admin.data.filterProcessType')"
+              multiple
+              :max-tag-count="1"
               allow-clear
-              style="flex: 1; min-width: 160px;"
-              :options="auditProcessOptions"
+              style="flex: 1.5; min-width: 160px;"
+              :show-search="{ filter: (inputValue: string, path: any[]) => path.some((o: any) => o.label.toLowerCase().includes(inputValue.toLowerCase())) }"
               @change="auditPage = 1"
           />
 
@@ -692,9 +716,9 @@ onMounted(async () => {
               :placeholder="t('admin.data.filterDepartment')"
               allow-clear
               style="flex: 1; min-width: 140px;"
+              :options="departmentOptions"
               @change="auditPage = 1"
-          >
-          </a-select>
+          />
 
           <a-range-picker
               v-model:value="auditFilterDateRange"
@@ -720,13 +744,14 @@ onMounted(async () => {
             <th>{{ t('admin.data.thDepartment') }}</th>
             <th>{{ t('admin.data.thProcessType') }}</th>
             <th>{{ t('admin.data.thResult') }}</th>
+            <th>{{ t('admin.data.thAuditCount') }}</th>
             <th>{{ t('admin.data.thTime') }}</th>
             <th>{{ t('admin.data.thAction') }}</th>
           </tr>
           </thead>
           <tbody>
           <tr v-if="auditLoading">
-            <td colspan="8" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td colspan="10" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in auditSnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
@@ -747,9 +772,10 @@ onMounted(async () => {
                   <CloseCircleOutlined v-else-if="item.recommendation === 'return'" />
                   <AlertOutlined v-else />
                   {{ getRecLabel(item.recommendation) }} {{ item.score }}{{ t('admin.data.points') }}
+                  <span class="text-tertiary" style="margin-left: 4px; font-size: 11px; opacity: 0.8;">(AI {{ item.confidence }}%)</span>
                 </span>
-              <span v-else class="text-secondary">-</span>
             </td>
+            <td>{{ getAuditCount(item.valid_log_ids) }}</td>
             <td class="text-secondary">{{ item.updated_at_fmt }}</td>
             <td>
               <div class="action-btns">
@@ -764,7 +790,7 @@ onMounted(async () => {
             </td>
           </tr>
           <tr v-if="!auditLoading && auditSnapshots.length === 0">
-            <td colspan="8" class="empty-cell">{{ t('admin.data.noData') }}</td>
+            <td colspan="10" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>
@@ -786,23 +812,25 @@ onMounted(async () => {
     </div>
 
     <div v-if="activeTab === 'cron'" class="tab-content fade-in">
-      <div class="subtab-nav">
-        <button
+      <div class="stats-row">
+        <div
             v-for="tab in [
             { key: 'all', icon: AppstoreOutlined, count: cronStats.total, label: t('admin.data.auditTab.all'), cssClass: 'stat-card--info' },
             { key: 'success', icon: CheckCircleOutlined, count: cronStats.success, label: t('admin.data.success'), cssClass: 'stat-card--success' },
             { key: 'failed', icon: CloseCircleOutlined, count: cronStats.failed, label: t('admin.data.failed'), cssClass: 'stat-card--danger' },
-            { key: 'running', icon: SyncOutlined, count: cronStats.running, label: t('admin.data.running'), cssClass: 'stat-card--warning' },
+            { key: 'running', icon: SyncOutlined, count: cronStats.running, label: t('admin.data.running'), cssClass: 'stat-card--primary' },
           ]"
             :key="tab.key"
-            class="subtab-btn"
-            :class="[tab.cssClass, { 'subtab-btn--active': activeCronSubTab === tab.key }]"
+            class="stat-card"
+            :class="[tab.cssClass, { 'stat-card--selected': activeCronSubTab === tab.key }]"
             @click="activeCronSubTab = tab.key as CronSubTab; cronPage = 1"
         >
-          <component :is="tab.icon" />
-          <span>{{ tab.label }}</span>
-          <span class="subtab-badge">{{ tab.count }}</span>
-        </button>
+          <div class="stat-card-icon"><component :is="tab.icon" /></div>
+          <div class="stat-card-info">
+            <span class="stat-card-value">{{ tab.count }}</span>
+            <span class="stat-card-label">{{ tab.label }}</span>
+          </div>
+        </div>
       </div>
 
       <div class="toolbar">
@@ -850,9 +878,9 @@ onMounted(async () => {
               :placeholder="t('admin.data.filterDepartment')"
               allow-clear
               style="flex: 1; min-width: 140px;"
+              :options="departmentOptions"
               @change="cronPage = 1"
-          >
-          </a-select>
+          />
 
           <a-button size="small" @click="clearCronFilters">
             {{ t('admin.data.filterReset') }}
@@ -909,7 +937,7 @@ onMounted(async () => {
                   }}
                 </span>
             </td>
-            <td class="text-secondary">{{ item.started_at }}</td>
+            <td class="text-secondary">{{ formatDate(item.started_at) }}</td>
             <td>
               <div class="action-btns">
                 <button
@@ -945,8 +973,8 @@ onMounted(async () => {
     </div>
 
     <div v-if="activeTab === 'archive'" class="tab-content fade-in">
-      <div class="subtab-nav">
-        <button
+      <div class="stats-row">
+        <div
             v-for="tab in [
             { key: 'all', icon: AppstoreOutlined, count: archiveStats.total, label: t('admin.data.auditTab.all'), cssClass: 'stat-card--info' },
             { key: 'compliant', icon: SafetyCertificateOutlined, count: archiveStats.compliant, label: t('admin.data.compliant'), cssClass: 'stat-card--success' },
@@ -954,14 +982,16 @@ onMounted(async () => {
             { key: 'non_compliant', icon: CloseCircleOutlined, count: archiveStats.non_compliant, label: t('admin.data.nonCompliant'), cssClass: 'stat-card--danger' },
           ]"
             :key="tab.key"
-            class="subtab-btn"
-            :class="[tab.cssClass, { 'subtab-btn--active': activeArchiveSubTab === tab.key }]"
+            class="stat-card"
+            :class="[tab.cssClass, { 'stat-card--selected': activeArchiveSubTab === tab.key }]"
             @click="activeArchiveSubTab = tab.key as ArchiveSubTab; archivePage = 1"
         >
-          <component :is="tab.icon" />
-          <span>{{ tab.label }}</span>
-          <span class="subtab-badge">{{ tab.count }}</span>
-        </button>
+          <div class="stat-card-icon"><component :is="tab.icon" /></div>
+          <div class="stat-card-info">
+            <span class="stat-card-value">{{ tab.count }}</span>
+            <span class="stat-card-label">{{ tab.label }}</span>
+          </div>
+        </div>
       </div>
 
       <div class="toolbar">
@@ -1008,12 +1038,15 @@ onMounted(async () => {
             </template>
           </a-input>
 
-          <a-select
-              v-model:value="archiveFilterProcessType"
+          <a-cascader
+              v-model:value="archiveFilterProcessPath"
+              :options="processCascaderOptions"
               :placeholder="t('admin.data.filterProcessType')"
+              multiple
+              :max-tag-count="1"
               allow-clear
-              style="flex: 1; min-width: 160px;"
-              :options="archiveProcessOptions"
+              style="flex: 1.5; min-width: 160px;"
+              :show-search="{ filter: (inputValue: string, path: any[]) => path.some((o: any) => o.label.toLowerCase().includes(inputValue.toLowerCase())) }"
               @change="archivePage = 1"
           />
 
@@ -1022,9 +1055,9 @@ onMounted(async () => {
               :placeholder="t('admin.data.filterDepartment')"
               allow-clear
               style="flex: 1; min-width: 140px;"
+              :options="departmentOptions"
               @change="archivePage = 1"
-          >
-          </a-select>
+          />
 
           <a-range-picker
               v-model:value="archiveFilterDateRange"
@@ -1050,13 +1083,14 @@ onMounted(async () => {
             <th>{{ t('admin.data.thDepartment') }}</th>
             <th>{{ t('admin.data.thProcessType') }}</th>
             <th>{{ t('admin.data.thCompliance') }}</th>
+            <th>{{ t('admin.data.thAuditCount') }}</th>
             <th>{{ t('admin.data.thTime') }}</th>
             <th>{{ t('admin.data.thAction') }}</th>
           </tr>
           </thead>
           <tbody>
           <tr v-if="archiveLoading">
-            <td colspan="8" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td colspan="9" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in archiveSnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
@@ -1077,9 +1111,11 @@ onMounted(async () => {
                   <AlertOutlined v-else-if="item.compliance === 'partially_compliant'" />
                   <CloseCircleOutlined v-else />
                   {{ getComplianceLabel(item.compliance) }} {{ item.compliance_score }}{{ t('admin.data.points') }}
+                  <span class="text-tertiary" style="margin-left: 4px; font-size: 11px; opacity: 0.8;">(AI {{ item.confidence }}%)</span>
                 </span>
               <span v-else class="text-secondary">-</span>
             </td>
+            <td>{{ getAuditCount(item.valid_archive_log_ids) }}</td>
             <td class="text-secondary">{{ item.updated_at_fmt }}</td>
             <td>
               <div class="action-btns">
@@ -1094,7 +1130,7 @@ onMounted(async () => {
             </td>
           </tr>
           <tr v-if="!archiveLoading && archiveSnapshots.length === 0">
-            <td colspan="8" class="empty-cell">{{ t('admin.data.noData') }}</td>
+            <td colspan="9" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>
@@ -1129,101 +1165,99 @@ onMounted(async () => {
             <div class="drawer-body" v-if="selectedAuditLog">
               <div class="detail-process-title">{{ selectedAuditLog.title }}</div>
 
-              <div
-                  class="detail-banner"
-                  :style="{
-                  background: recommendationConfig[normalizedAuditDetail.recommendation]?.bg || 'var(--color-bg-page)',
-                  borderColor: recommendationConfig[normalizedAuditDetail.recommendation]?.color || 'var(--color-border-light)',
-                }"
-              >
-                <CheckCircleOutlined
-                    v-if="normalizedAuditDetail.recommendation === 'approve'"
-                    :style="{ color: recommendationConfig[normalizedAuditDetail.recommendation]?.color, fontSize: '24px' }"
-                />
-                <CloseCircleOutlined
-                    v-else-if="normalizedAuditDetail.recommendation === 'return'"
-                    :style="{ color: recommendationConfig[normalizedAuditDetail.recommendation]?.color, fontSize: '24px' }"
-                />
-                <AlertOutlined
-                    v-else
-                    :style="{ color: recommendationConfig[normalizedAuditDetail.recommendation]?.color || 'var(--color-text-tertiary)', fontSize: '24px' }"
-                />
-                <div class="detail-banner-info">
+              <a-spin :spinning="chainLoading">
+                <div v-if="!chainLoading && auditChainLogs.length === 0" style="padding: 40px; text-align: center;">
+                  <a-empty :description="t('admin.data.noData')" />
+                </div>
+                <div v-else class="audit-chain" style="margin-top: 16px;">
                   <div
-                      class="detail-banner-title"
-                      :style="{ color: recommendationConfig[normalizedAuditDetail.recommendation]?.color || 'var(--color-text-primary)' }"
+                      v-for="(logItem, idx) in auditChainLogs"
+                      :key="logItem.id"
+                      class="chain-node"
                   >
-                    {{ getRecLabel(normalizedAuditDetail.recommendation) }}
-                  </div>
-                  <div class="detail-banner-meta">
-                    {{ t('admin.data.overallScore') }} {{ normalizedAuditDetail.overall_score }}{{ t('admin.data.points') }}
-                    ·
-                    {{ t('admin.data.duration') }} {{ normalizedAuditDetail.duration_ms }}ms
-                  </div>
-                </div>
-                <div
-                    class="detail-score"
-                    :style="{ color: recommendationConfig[normalizedAuditDetail.recommendation]?.color || 'var(--color-text-primary)' }"
-                >
-                  {{ normalizedAuditDetail.overall_score }}
-                </div>
-              </div>
-
-              <div class="detail-section">
-                <h4 class="detail-section-title">{{ t('admin.data.ruleCheckDetail') }}</h4>
-                <div class="rule-checks">
-                  <div
-                      v-for="(rule, index) in normalizedAuditDetail.rule_results"
-                      :key="rule.rule_id || rule.rule_name || rule.rule_content || index"
-                      class="rule-check-item"
-                      :class="{ 'rule-check-item--pass': !!rule.passed, 'rule-check-item--fail': rule.passed === false }"
-                  >
-                    <div class="rule-check-status">
-                      <CheckCircleOutlined v-if="rule.passed" style="color: var(--color-success);" />
-                      <CloseCircleOutlined v-else style="color: var(--color-danger);" />
+                    <div class="chain-timeline">
+                      <div class="chain-dot" :style="{ background: recommendationConfig[logItem.recommendation]?.color || 'var(--color-primary)' }" />
+                      <div v-if="idx < auditChainLogs.length - 1" class="chain-line" />
                     </div>
-                    <div class="rule-check-content">
-                      <div class="rule-check-name">{{ rule.rule_name || rule.rule_content || '-' }}</div>
-                      <div class="rule-check-reasoning">{{ rule.reasoning || rule.reason || '-' }}</div>
+                    <div class="chain-card">
+                      <div class="chain-card-header" @click="toggleAuditChainNode(logItem.id)" style="cursor: pointer;">
+                        <span
+                            class="chain-tag"
+                            :style="{ color: recommendationConfig[logItem.recommendation]?.color || 'var(--color-text-primary)', background: recommendationConfig[logItem.recommendation]?.bg || 'var(--color-bg-page)' }"
+                        >
+                          <CheckCircleOutlined v-if="logItem.recommendation === 'approve'" />
+                          <CloseCircleOutlined v-else-if="logItem.recommendation === 'return'" />
+                          <AlertOutlined v-else />
+                          {{ getRecLabel(logItem.recommendation) }}
+                        </span>
+                        <span class="chain-score">{{ logItem.score }}{{ t('admin.data.points') }}</span>
+                        <span class="chain-meta-item">({{ logItem.confidence }}%)</span>
+                        <span class="chain-expand-btn">
+                          <DownOutlined v-if="!expandedAuditChainNodes.has(logItem.id)" />
+                          <UpOutlined v-else />
+                        </span>
+                      </div>
+                      <div class="chain-card-meta">
+                        {{ formatDate(logItem.created_at) }}
+                        <span v-if="logItem.user_name"> · {{ logItem.user_name }}</span>
+                        · {{ t('admin.data.duration') }} {{ (logItem.duration_ms / 1000).toFixed(1) }}s
+                      </div>
+
+                      <div v-if="expandedAuditChainNodes.has(logItem.id)" class="chain-detail">
+                        <template v-if="logItem.audit_result && typeof logItem.audit_result === 'object'">
+                          
+                          <!-- 规则细节 -->
+                          <div class="detail-section" style="margin-top: 0; padding-top: 0; border: none;">
+                            <h4 class="chain-section-title">{{ t('admin.data.ruleCheckDetail') }}</h4>
+                            <div class="rule-checks">
+                               <div
+                                  v-for="(rule, index) in (logItem.audit_result.rule_results || [])"
+                                  :key="index"
+                                  class="chain-rule-item"
+                                  :class="{ 'chain-rule--fail': rule.passed === false }"
+                              >
+                                <div class="chain-rule-name">{{ rule.rule_name || rule.rule_content || '-' }}</div>
+                                <div class="chain-rule-reasoning">{{ rule.reasoning || rule.reason || '-' }}</div>
+                              </div>
+                              <div v-if="!logItem.audit_result.rule_results?.length" class="chain-no-detail">
+                                {{ t('admin.data.noData') }}
+                              </div>
+                            </div>
+                          </div>
+
+                          <!-- 推理过程 -->
+                          <div class="detail-section">
+                            <!-- 风险点 & 优化建议 -->
+                            <div v-if="logItem.audit_result?.risk_points?.length || logItem.audit_result?.suggestions?.length" class="risk-suggest-row" style="margin-bottom: 12px;">
+                              <div v-if="logItem.audit_result?.risk_points?.length" class="insight-card insight-card--risk" style="padding: 10px;">
+                                <div class="insight-card-header" style="margin-bottom: 4px;"><CloseCircleOutlined /> 风险点</div>
+                                <ul class="insight-card-list" style="gap: 2px;">
+                                  <li v-for="(p, i) in logItem.audit_result.risk_points" :key="i" style="font-size: 12px;">{{ p }}</li>
+                                </ul>
+                              </div>
+                              <div v-if="logItem.audit_result?.suggestions?.length" class="insight-card insight-card--suggest" style="padding: 10px;">
+                                <div class="insight-card-header" style="margin-bottom: 4px;"><InfoCircleOutlined /> 优化建议</div>
+                                <ul class="insight-card-list" style="gap: 2px;">
+                                  <li v-for="(s, i) in logItem.audit_result.suggestions" :key="i" style="font-size: 12px;">{{ s }}</li>
+                                </ul>
+                              </div>
+                            </div>
+
+                            <div v-if="logItem.ai_reasoning" class="chain-section-title">AI推理过程</div>
+                            <div v-if="logItem.ai_reasoning" class="chain-reasoning">
+                              <div class="markdown-body" v-html="renderMarkdown(logItem.ai_reasoning)"></div>
+                            </div>
+                          </div>
+                        </template>
+                        <div v-else class="chain-parse-error">
+                          <CloseCircleOutlined />
+                          {{ logItem.parse_error || t('admin.data.noData') }}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div v-if="normalizedAuditDetail.rule_results.length === 0" class="empty-state-inline">
-                    {{ t('admin.data.noData') }}
-                  </div>
                 </div>
-              </div>
-
-              <div
-                  v-if="normalizedAuditDetail.risk_points.length || normalizedAuditDetail.suggestions.length"
-                  class="risk-suggest-row"
-              >
-                <div v-if="normalizedAuditDetail.risk_points.length" class="insight-card insight-card--risk">
-                  <div class="insight-card-header">
-                    <CloseCircleOutlined style="color: var(--color-danger);" />
-                    <span>{{ t('admin.data.riskPoints') }}</span>
-                  </div>
-                  <ul class="insight-card-list">
-                    <li v-for="(rp, i) in normalizedAuditDetail.risk_points" :key="i">{{ rp }}</li>
-                  </ul>
-                </div>
-
-                <div v-if="normalizedAuditDetail.suggestions.length" class="insight-card insight-card--suggest">
-                  <div class="insight-card-header">
-                    <InfoCircleOutlined style="color: var(--color-primary);" />
-                    <span>{{ t('admin.data.suggestions') }}</span>
-                  </div>
-                  <ul class="insight-card-list">
-                    <li v-for="(sg, i) in normalizedAuditDetail.suggestions" :key="i">{{ sg }}</li>
-                  </ul>
-                </div>
-              </div>
-
-              <div class="detail-section">
-                <h4 class="detail-section-title">{{ t('admin.data.aiReasoning') }}</h4>
-                <div class="ai-reasoning">
-                  <pre>{{ normalizedAuditDetail.ai_reasoning || '-' }}</pre>
-                </div>
-              </div>
+              </a-spin>
             </div>
           </div>
         </div>
@@ -1244,105 +1278,111 @@ onMounted(async () => {
             <div class="drawer-body" v-if="selectedArchiveLog">
               <div class="detail-process-title">{{ selectedArchiveLog.title }}</div>
 
-              <div
-                  class="detail-banner"
-                  :style="{
-                  background: complianceConfig[normalizedArchiveDetail.overall_compliance]?.bg || 'var(--color-bg-page)',
-                  borderColor: complianceConfig[normalizedArchiveDetail.overall_compliance]?.color || 'var(--color-border-light)',
-                }"
-              >
-                <SafetyCertificateOutlined
-                    :style="{ color: complianceConfig[normalizedArchiveDetail.overall_compliance]?.color || 'var(--color-text-primary)', fontSize: '24px' }"
-                />
-                <div class="detail-banner-info">
+              <a-spin :spinning="chainLoading">
+                <div v-if="!chainLoading && archiveChainLogs.length === 0" style="padding: 40px; text-align: center;">
+                  <a-empty :description="t('admin.data.noData')" />
+                </div>
+                <div v-else class="audit-chain" style="margin-top: 16px;">
                   <div
-                      class="detail-banner-title"
-                      :style="{ color: complianceConfig[normalizedArchiveDetail.overall_compliance]?.color || 'var(--color-text-primary)' }"
+                      v-for="(logItem, idx) in archiveChainLogs"
+                      :key="logItem.id"
+                      class="chain-node"
                   >
-                    {{ getComplianceLabel(normalizedArchiveDetail.overall_compliance) }}
-                  </div>
-                  <div class="detail-banner-meta">
-                    {{ t('admin.data.overallScore') }} {{ normalizedArchiveDetail.overall_score }}{{ t('admin.data.points') }}
-                    ·
-                    {{ t('admin.data.duration') }} {{ normalizedArchiveDetail.duration_ms }}ms
-                  </div>
-                </div>
-                <div
-                    class="detail-score"
-                    :style="{ color: complianceConfig[normalizedArchiveDetail.overall_compliance]?.color || 'var(--color-text-primary)' }"
-                >
-                  {{ normalizedArchiveDetail.overall_score }}
-                </div>
-              </div>
-
-              <div class="detail-section">
-                <h4 class="detail-section-title">{{ t('admin.data.flowAudit') }}</h4>
-                <div
-                    class="flow-status"
-                    :class="normalizedArchiveDetail.flow_audit?.is_complete ? 'flow-status--complete' : 'flow-status--incomplete'"
-                >
-                  <CheckCircleOutlined v-if="normalizedArchiveDetail.flow_audit?.is_complete" style="color: var(--color-success);" />
-                  <CloseCircleOutlined v-else style="color: var(--color-danger);" />
-                  {{
-                    normalizedArchiveDetail.flow_audit?.is_complete
-                        ? t('admin.data.flowComplete')
-                        : t('admin.data.flowIncomplete')
-                  }}
-                  <span v-if="normalizedArchiveDetail.flow_audit?.missing_nodes?.length" class="flow-missing">
-                    · {{ t('admin.data.missingNodes') }}:
-                    {{ normalizedArchiveDetail.flow_audit?.missing_nodes?.join(', ') }}
-                  </span>
-                </div>
-
-                <div class="rule-checks">
-                  <div
-                      v-for="(node, index) in normalizedArchiveDetail.flow_audit?.node_results || []"
-                      :key="node.node_id || node.node_name || index"
-                      class="rule-check-item"
-                      :class="{ 'rule-check-item--pass': !!node.compliant, 'rule-check-item--fail': node.compliant === false }"
-                  >
-                    <div class="rule-check-status">
-                      <CheckCircleOutlined v-if="node.compliant" style="color: var(--color-success);" />
-                      <CloseCircleOutlined v-else style="color: var(--color-danger);" />
+                    <div class="chain-timeline">
+                      <div class="chain-dot" :style="{ background: complianceConfig[logItem.archive_result?.overall_compliance || 'non_compliant']?.color || 'var(--color-danger)' }" />
+                      <div v-if="idx < archiveChainLogs.length - 1" class="chain-line" />
                     </div>
-                    <div class="rule-check-content">
-                      <div class="rule-check-name">{{ node.node_name || '-' }}</div>
-                      <div class="rule-check-reasoning">{{ node.reasoning || '-' }}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                    <div class="chain-card">
+                      <div class="chain-card-header" @click="toggleArchiveChainNode(logItem.id)" style="cursor: pointer;">
+                        <span
+                            class="chain-tag"
+                            :style="{ color: complianceConfig[logItem.archive_result?.overall_compliance || 'non_compliant']?.color || 'var(--color-danger)', background: complianceConfig[logItem.archive_result?.overall_compliance || 'non_compliant']?.bg || 'var(--color-bg-page)' }"
+                        >
+                          <SafetyCertificateOutlined v-if="logItem.archive_result?.overall_compliance === 'compliant'" />
+                          <AlertOutlined v-else-if="logItem.archive_result?.overall_compliance === 'partially_compliant'" />
+                          <CloseCircleOutlined v-else />
+                          {{ getComplianceLabel(logItem.archive_result?.overall_compliance) }}
+                        </span>
+                        <span class="chain-score">{{ logItem.archive_result?.overall_score || 0 }}{{ t('admin.data.points') }}</span>
+                        <span class="chain-expand-btn">
+                          <DownOutlined v-if="!expandedArchiveChainNodes.has(logItem.id)" />
+                          <UpOutlined v-else />
+                        </span>
+                      </div>
+                      <div class="chain-card-meta">
+                        {{ formatDate(logItem.created_at) }}
+                        <span v-if="logItem.user_name"> · {{ logItem.user_name }}</span>
+                        · {{ t('admin.data.duration') }} {{ (logItem.duration_ms / 1000).toFixed(1) }}s
+                      </div>
 
-              <div class="detail-section">
-                <h4 class="detail-section-title">{{ t('admin.data.ruleAudit') }}</h4>
-                <div class="rule-checks">
-                  <div
-                      v-for="(rule, index) in normalizedArchiveDetail.rule_audit"
-                      :key="rule.rule_id || rule.rule_name || index"
-                      class="rule-check-item"
-                      :class="{ 'rule-check-item--pass': !!rule.passed, 'rule-check-item--fail': rule.passed === false }"
-                  >
-                    <div class="rule-check-status">
-                      <CheckCircleOutlined v-if="rule.passed" style="color: var(--color-success);" />
-                      <CloseCircleOutlined v-else style="color: var(--color-danger);" />
-                    </div>
-                    <div class="rule-check-content">
-                      <div class="rule-check-name">{{ rule.rule_name || '-' }}</div>
-                      <div class="rule-check-reasoning">{{ rule.reasoning || '-' }}</div>
-                    </div>
-                  </div>
-                  <div v-if="normalizedArchiveDetail.rule_audit.length === 0" class="empty-state-inline">
-                    {{ t('admin.data.noData') }}
-                  </div>
-                </div>
-              </div>
+                      <div v-if="expandedArchiveChainNodes.has(logItem.id)" class="chain-detail">
+                        <template v-if="logItem.archive_result && typeof logItem.archive_result === 'object'">
+                          
+                          <!-- 规则细节 -->
+                          <div class="detail-section" style="margin-top: 0; padding-top: 0; border: none;">
+                            <h4 class="chain-section-title">{{ t('admin.data.ruleAudit') }}</h4>
+                            <div class="rule-checks">
+                               <div
+                                  v-for="(rule, index) in (logItem.archive_result.rule_audit || [])"
+                                  :key="index"
+                                  class="chain-rule-item"
+                                  :class="{ 'chain-rule--fail': rule.passed === false }"
+                              >
+                                <div class="chain-rule-name">{{ rule.rule_name || '-' }}</div>
+                                <div class="chain-rule-reasoning">{{ rule.reasoning || '-' }}</div>
+                              </div>
+                              <div v-if="!logItem.archive_result.rule_audit?.length" class="chain-no-detail">
+                                {{ t('admin.data.noData') }}
+                              </div>
+                            </div>
+                          </div>
 
-              <div class="detail-section">
-                <h4 class="detail-section-title">{{ t('admin.data.aiSummary') }}</h4>
-                <div class="ai-reasoning">
-                  <pre>{{ normalizedArchiveDetail.ai_summary || '-' }}</pre>
+                          <!-- 流程分析 (Archive) -->
+                          <div v-if="logItem.archive_result?.flow_audit?.node_results?.length" class="chain-section-title">流程分析</div>
+                          <div v-if="logItem.archive_result?.flow_audit?.node_results?.length" class="rule-checks" style="margin-bottom: 12px;">
+                             <div v-for="(node, ni) in logItem.archive_result.flow_audit.node_results" :key="ni" class="chain-rule-item" :class="{ 'chain-rule--fail': !node.compliant }">
+                               <div class="chain-rule-name">
+                                 <CheckCircleOutlined v-if="node.compliant" style="color: var(--color-success); margin-right: 4px;" />
+                                 <CloseCircleOutlined v-else style="color: var(--color-danger); margin-right: 4px;" />
+                                 {{ node.node_name }}
+                               </div>
+                               <div class="chain-rule-reasoning">{{ node.reasoning }}</div>
+                             </div>
+                          </div>
+
+                          <!-- 风险点 & 改进建议 -->
+                          <div v-if="logItem.archive_result?.risk_points?.length || logItem.archive_result?.suggestions?.length" class="risk-suggest-row" style="margin-bottom: 12px;">
+                            <div v-if="logItem.archive_result?.risk_points?.length" class="insight-card insight-card--risk" style="padding: 10px;">
+                              <div class="insight-card-header" style="margin-bottom: 4px;"><CloseCircleOutlined /> 风险点</div>
+                              <ul class="insight-card-list" style="gap: 2px;">
+                                <li v-for="(p, i) in logItem.archive_result.risk_points" :key="i" style="font-size: 12px;">{{ p }}</li>
+                              </ul>
+                            </div>
+                            <div v-if="logItem.archive_result?.suggestions?.length" class="insight-card insight-card--suggest" style="padding: 10px;">
+                              <div class="insight-card-header" style="margin-bottom: 4px;"><InfoCircleOutlined /> 改进建议</div>
+                              <ul class="insight-card-list" style="gap: 2px;">
+                                <li v-for="(s, i) in logItem.archive_result.suggestions" :key="i" style="font-size: 12px;">{{ s }}</li>
+                              </ul>
+                            </div>
+                          </div>
+
+                          <!-- 推理过程 (Archive) -->
+                          <div class="detail-section" v-if="logItem.ai_reasoning">
+                            <h4 class="chain-section-title">{{ t('admin.data.aiSummary') }}</h4>
+                            <div class="chain-reasoning">
+                              <div class="markdown-body" v-html="renderMarkdown(logItem.ai_reasoning)"></div>
+                            </div>
+                          </div>
+                        </template>
+                        <div v-else class="chain-parse-error">
+                          <CloseCircleOutlined />
+                          {{ logItem.parse_error || t('admin.data.noData') }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </a-spin>
             </div>
           </div>
         </div>
@@ -1412,18 +1452,18 @@ onMounted(async () => {
                 </div>
                 <div class="detail-meta-item">
                   <span class="detail-meta-label">{{ t('admin.data.cronStartTime') }}</span>
-                  <span class="detail-meta-value">{{ selectedCronLog.started_at }}</span>
+                  <span class="detail-meta-value">{{ formatDate(selectedCronLog.started_at) }}</span>
                 </div>
                 <div class="detail-meta-item">
                   <span class="detail-meta-label">{{ t('admin.data.cronEndTime') }}</span>
-                  <span class="detail-meta-value">{{ selectedCronLog.finished_at || '-' }}</span>
+                  <span class="detail-meta-value">{{ formatDate(selectedCronLog.finished_at) }}</span>
                 </div>
               </div>
 
               <div class="detail-section" v-if="selectedCronLog.message">
                 <h4 class="detail-section-title">{{ t('admin.data.cronMessage') }}</h4>
                 <div class="ai-reasoning">
-                  <pre>{{ selectedCronLog.message }}</pre>
+                  <div class="markdown-body" v-html="renderMarkdown(selectedCronLog.message || '')"></div>
                 </div>
               </div>
             </div>
@@ -1435,6 +1475,25 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* markdown override */
+.markdown-body { font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); word-break: break-word; }
+.markdown-body :deep(h1), .markdown-body :deep(h2), .markdown-body :deep(h3),
+.markdown-body :deep(h4), .markdown-body :deep(h5), .markdown-body :deep(h6) { margin: 12px 0 6px; font-weight: 600; color: var(--color-text-primary); }
+.markdown-body :deep(h1) { font-size: 18px; }
+.markdown-body :deep(h2) { font-size: 16px; }
+.markdown-body :deep(h3) { font-size: 14px; }
+.markdown-body :deep(p) { margin: 6px 0; }
+.markdown-body :deep(ul), .markdown-body :deep(ol) { padding-left: 20px; margin: 6px 0; }
+.markdown-body :deep(li) { margin: 3px 0; }
+.markdown-body :deep(code) { background: var(--color-bg-elevated); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+.markdown-body :deep(pre) { background: var(--color-bg-elevated); padding: 12px; border-radius: 8px; overflow-x: auto; margin: 8px 0; }
+.markdown-body :deep(pre code) { background: none; padding: 0; }
+.markdown-body :deep(blockquote) { border-left: 3px solid var(--color-primary); padding: 4px 12px; margin: 8px 0; color: var(--color-text-tertiary); background: var(--color-bg-elevated); border-radius: 0 6px 6px 0; }
+.markdown-body :deep(strong) { color: var(--color-text-primary); font-weight: 600; }
+.markdown-body :deep(table) { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.markdown-body :deep(th), .markdown-body :deep(td) { border: 1px solid var(--color-border-light); padding: 6px 10px; font-size: 12px; }
+.markdown-body :deep(th) { background: var(--color-bg-elevated); font-weight: 600; }
+
 .data-page { animation: fadeIn 0.3s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -1474,56 +1533,6 @@ onMounted(async () => {
   box-shadow: var(--shadow-xs);
 }
 
-.subtab-nav {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.subtab-btn {
-  border: 2px solid var(--color-border-light);
-  background: var(--color-bg-card);
-  border-radius: var(--radius-lg);
-  padding: 16px 18px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  transition: all var(--transition-base);
-  color: var(--color-text-primary);
-  font-weight: 600;
-}
-
-.subtab-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-.subtab-btn--active {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-.subtab-btn.stat-card--primary.subtab-btn--active { border-color: var(--color-primary); }
-.subtab-btn.stat-card--success.subtab-btn--active { border-color: var(--color-success); }
-.subtab-btn.stat-card--info.subtab-btn--active { border-color: var(--color-info, var(--color-primary)); }
-
-.subtab-badge {
-  margin-left: auto;
-  min-width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8px;
-  font-size: 12px;
-  font-weight: 700;
-  background: var(--color-bg-page);
-  color: var(--color-text-primary);
-}
-
 .stats-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1540,11 +1549,18 @@ onMounted(async () => {
   gap: 16px;
   border: 2px solid var(--color-border-light);
   transition: all var(--transition-base);
+  cursor: pointer;
+  user-select: none;
 }
 
 .stat-card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
+}
+
+.stat-card--selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
 }
 
 .stat-card-icon {
@@ -1931,9 +1947,51 @@ onMounted(async () => {
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.7;
   color: var(--color-text-secondary);
   font-family: var(--font-sans);
+}
+
+/* 审核链样式 */
+.audit-chain { display: flex; flex-direction: column; }
+.chain-node { display: flex; gap: 16px; min-height: 40px; }
+.chain-timeline { display: flex; flex-direction: column; align-items: center; width: 20px; flex-shrink: 0; }
+.chain-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; margin-top: 20px; border: 2px solid var(--color-bg-card); }
+.chain-line { width: 2px; flex: 1; background: var(--color-border-light); }
+.chain-card {
+  flex: 1; padding: 14px 16px; border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md); margin-bottom: 12px; transition: all var(--transition-fast);
+  background: var(--color-bg-card);
+}
+.chain-card:hover { background: var(--color-bg-hover); border-color: var(--color-primary-light); }
+.chain-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.chain-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-full);
+}
+.chain-score { font-size: 18px; font-weight: 700; color: var(--color-text-primary); }
+.chain-card-meta { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 8px; }
+.chain-expand-btn { margin-left: auto; font-size: 12px; color: var(--color-text-tertiary); }
+.chain-detail {
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border-light);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.chain-rule-item {
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 12px;
+  border-radius: var(--radius-sm); border: 1px solid var(--color-border-light);
+  transition: background var(--transition-fast);
+}
+.chain-rule-item:hover { background: var(--color-bg-hover); }
+.chain-rule--fail { background: var(--color-danger-bg); border-color: rgba(239, 68, 68, 0.2); }
+.chain-rule-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.chain-rule-reasoning { font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; }
+.chain-reasoning { background: var(--color-bg-page); border-radius: var(--radius-sm); padding: 12px; border: 1px solid var(--color-border-light); }
+.chain-no-detail { font-size: 12px; color: var(--color-text-tertiary); text-align: center; padding: 12px; }
+.chain-section-title { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 8px; margin-top: 12px; }
+.chain-parse-error {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  border-radius: var(--radius-sm); background: var(--color-danger-bg);
+  font-size: 12px; color: var(--color-danger); border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 .slide-enter-active,
@@ -1995,7 +2053,6 @@ onMounted(async () => {
 
 @media (max-width: 768px) {
   .stats-row { grid-template-columns: repeat(2, 1fr); }
-  .subtab-nav { grid-template-columns: repeat(2, 1fr); }
   .data-table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .data-table { min-width: 760px; }
   .toolbar { flex-direction: column; align-items: stretch; }
