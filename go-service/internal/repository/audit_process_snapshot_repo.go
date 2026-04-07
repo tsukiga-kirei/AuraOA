@@ -3,6 +3,7 @@ package repository
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -204,7 +205,8 @@ func applyAuditSnapshotFilter(db *gorm.DB, f AuditSnapshotFilter) *gorm.DB {
 		db = db.Where("("+t+"title ILIKE ? OR "+t+"process_id ILIKE ?)", like, like)
 	}
 	if f.ProcessType != "" {
-		db = db.Where(t+"process_type = ?", f.ProcessType)
+		types := strings.Split(f.ProcessType, ",")
+		db = db.Where(t+"process_type IN ?", types)
 	}
 	if f.Operator != "" {
 		like := "%" + f.Operator + "%"

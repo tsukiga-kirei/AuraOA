@@ -1379,9 +1379,14 @@ export default {
     'admin.data.searchArchive': 'Search process (title/ID)',
     'admin.data.searchArchiveOperator': 'Search operator...',
     'admin.data.thCompliance': 'Compliance Result',
+    'admin.data.thScore': 'Score',
+    'admin.data.thAuditCount': 'Audit Count',
     'admin.data.compliant': 'Compliant',
     'admin.data.nonCompliant': 'Non-compliant',
     'admin.data.partiallyCompliant': 'Partially Compliant',
+    'admin.data.confidence': 'Confidence',
+    'admin.data.points': 'pts',
+    'admin.data.duration': 'Duration',
     // Common filters
     'admin.data.filterDepartment': 'Department',
     'admin.data.filterOperator': 'Search operator',
@@ -1404,8 +1409,6 @@ export default {
     // Audit detail drawer
     'admin.data.detailTitle': 'AI Audit Details',
     'admin.data.overallScore': 'Overall Score',
-    'admin.data.points': 'pts',
-    'admin.data.duration': 'Duration',
     'admin.data.ruleCheckDetail': 'Rule Check Details',
     'admin.data.riskPoints': 'Risk Points',
     'admin.data.suggestions': 'Suggestions',
