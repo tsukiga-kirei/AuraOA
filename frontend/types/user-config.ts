@@ -187,10 +187,18 @@ export interface AdminProcessDetail {
 }
 
 
-/** 管理员视图：用户定时任务偏好 */
-export interface AdminCronDetail {
-  default_email: string
-  email_count: number
+/** 管理员视图：单个定时任务详情 */
+export interface AdminCronTaskDetail {
+  id: string
+  task_type: string
+  task_label: string
+  module: string
+  cron_expression: string
+  is_active: boolean
+  is_builtin: boolean
+  push_email: string
+  workflow_ids: string[]
+  date_range: number
 }
 
 /** 管理员视图：单个用户的完整配置摘要（含成员信息） */
@@ -202,10 +210,10 @@ export interface AdminUserConfigItem {
   department: string
   role_names: string[]
   audit_process_count: number
-  cron_email_count: number
+  cron_task_count: number
   archive_process_count: number
   last_modified: string
   audit_details: AdminProcessDetail[]
-  cron_details: AdminCronDetail
+  cron_tasks: AdminCronTaskDetail[]
   archive_details: AdminProcessDetail[]
 }

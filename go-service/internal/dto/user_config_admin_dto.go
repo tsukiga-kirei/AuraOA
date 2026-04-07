@@ -4,19 +4,19 @@ package dto
 
 // AdminUserConfigListItem 管理员视图：单个用户的个人配置摘要（含成员信息）
 type AdminUserConfigListItem struct {
-	UserID              string               `json:"user_id"`
-	MemberID            string               `json:"member_id"`
-	Username            string               `json:"username"`
-	DisplayName         string               `json:"display_name"`
-	Department          string               `json:"department"`
-	RoleNames           []string             `json:"role_names"`
-	AuditProcessCount   int                  `json:"audit_process_count"`
-	CronEmailCount      int                  `json:"cron_email_count"`
-	ArchiveProcessCount int                  `json:"archive_process_count"`
-	LastModified        string               `json:"last_modified"`
-	AuditDetails        []AdminProcessDetail `json:"audit_details"`
-	CronDetails         AdminCronDetail      `json:"cron_details"`
-	ArchiveDetails      []AdminProcessDetail `json:"archive_details"`
+	UserID              string                `json:"user_id"`
+	MemberID            string                `json:"member_id"`
+	Username            string                `json:"username"`
+	DisplayName         string                `json:"display_name"`
+	Department          string                `json:"department"`
+	RoleNames           []string              `json:"role_names"`
+	AuditProcessCount   int                   `json:"audit_process_count"`
+	CronTaskCount       int                   `json:"cron_task_count"`
+	ArchiveProcessCount int                   `json:"archive_process_count"`
+	LastModified        string                `json:"last_modified"`
+	AuditDetails        []AdminProcessDetail  `json:"audit_details"`
+	CronTasks           []AdminCronTaskDetail `json:"cron_tasks"`
+	ArchiveDetails      []AdminProcessDetail  `json:"archive_details"`
 }
 
 // AdminProcessDetail 单个流程的用户个性化配置详情（审核工作台/归档复盘共用）
@@ -37,7 +37,6 @@ type AdminFieldOverrideItem struct {
 	Status     string `json:"status"` // "normal": 用户额外选中的, "new": 租户存在但用户未选的, "abandoned": 用户曾选但租户已删的
 }
 
-
 // AdminCustomRule 用户自定义规则（管理员视图）
 type AdminCustomRule struct {
 	ID      string `json:"id"`
@@ -54,8 +53,16 @@ type AdminRuleToggleItem struct {
 	Enabled      bool   `json:"enabled"`       // 用户覆盖后的启用状态
 }
 
-// AdminCronDetail 用户定时任务偏好（管理员视图）
-type AdminCronDetail struct {
-	DefaultEmail string `json:"default_email"`
-	EmailCount   int    `json:"email_count"`
+// AdminCronTaskDetail 管理员视图中的单个定时任务详情。
+type AdminCronTaskDetail struct {
+	ID             string   `json:"id"`
+	TaskType       string   `json:"task_type"`
+	TaskLabel      string   `json:"task_label"`
+	Module         string   `json:"module"`
+	CronExpression string   `json:"cron_expression"`
+	IsActive       bool     `json:"is_active"`
+	IsBuiltin      bool     `json:"is_builtin"`
+	PushEmail      string   `json:"push_email"`
+	WorkflowIDs    []string `json:"workflow_ids"`
+	DateRange      int      `json:"date_range"`
 }

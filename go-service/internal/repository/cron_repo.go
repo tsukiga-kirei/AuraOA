@@ -104,6 +104,15 @@ func NewCronTaskRepo(db *gorm.DB) *CronTaskRepo {
 // DB 暴露底层 gorm.DB（供调度器跨租户查询使用）。
 func (r *CronTaskRepo) DB() *gorm.DB { return r.BaseRepo.DB }
 
+// ListByTenant 查询当前租户下的全部任务实例，按用户和创建时间排序。
+func (r *CronTaskRepo) ListByTenant(c *gin.Context) ([]model.CronTask, error) {
+	var tasks []model.CronTask
+	if err := r.WithTenant(c).Order("owner_user_id ASC").Order("created_at ASC").Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
 // ListByOwner 查询当前租户下指定归属用户的任务实例，按创建时间排序。
 func (r *CronTaskRepo) ListByOwner(c *gin.Context, ownerUserID uuid.UUID) ([]model.CronTask, error) {
 	var tasks []model.CronTask

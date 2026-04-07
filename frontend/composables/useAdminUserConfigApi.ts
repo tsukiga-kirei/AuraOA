@@ -3,7 +3,7 @@
 import type {
   AdminUserConfigItem,
   AdminProcessDetail,
-  AdminCronDetail,
+  AdminCronTaskDetail,
   AdminCustomRule,
   AdminRuleToggleItem,
 } from '~/types/user-config'
@@ -11,7 +11,7 @@ import type {
 export type {
   AdminUserConfigItem,
   AdminProcessDetail,
-  AdminCronDetail,
+  AdminCronTaskDetail,
   AdminCustomRule,
   AdminRuleToggleItem,
 }

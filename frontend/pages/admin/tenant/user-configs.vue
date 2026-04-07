@@ -15,13 +15,14 @@ import {
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import * as XLSX from 'xlsx'
-import type { AdminUserConfigItem, AdminProcessDetail } from '~/types/user-config'
+import type { AdminUserConfigItem, AdminProcessDetail, AdminCronTaskDetail } from '~/types/user-config'
 import { useI18n } from '~/composables/useI18n'
 import { usePagination } from '~/composables/usePagination'
+import { messages } from '~/locales'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
-const { t } = useI18n()
+const { t, te, locale } = useI18n()
 const { configs, loading, listUserConfigs } = useAdminUserConfigApi()
 
 // =====================================================================
@@ -58,7 +59,7 @@ const hasConfigFilter = ref<string | undefined>(undefined)
 const selectedIds = ref<string[]>([])
 
 const totalChanges = (c: AdminUserConfigItem) =>
-  c.audit_process_count + c.cron_email_count + c.archive_process_count
+  c.audit_process_count + c.cron_task_count + c.archive_process_count
 
 const filteredConfigs = computed(() =>
   configs.value.filter(c => {
@@ -79,7 +80,7 @@ const { paged, current, pageSize, total, onChange } = usePagination(filteredConf
 // 统计卡
 // =====================================================================
 const totalAuditChanges = computed(() => configs.value.reduce((s, c) => s + c.audit_process_count, 0))
-const totalCronChanges = computed(() => configs.value.reduce((s, c) => s + c.cron_email_count, 0))
+const totalCronChanges = computed(() => configs.value.reduce((s, c) => s + c.cron_task_count, 0))
 const totalArchiveChanges = computed(() => configs.value.reduce((s, c) => s + c.archive_process_count, 0))
 
 // =====================================================================
@@ -111,7 +112,7 @@ const handleExport = () => {
       department: c.department,
       roles: c.role_names.join(', '),
       audit_process_count: c.audit_process_count,
-      cron_email_count: c.cron_email_count,
+      cron_task_count: c.cron_task_count,
       archive_process_count: c.archive_process_count,
       last_modified: c.last_modified || '-',
     }))
@@ -132,7 +133,7 @@ const detailTab = ref<'audit' | 'cron' | 'archive'>('audit')
 const openDetail = (c: AdminUserConfigItem) => {
   detailConfig.value = c
   if (c.audit_details.length > 0) detailTab.value = 'audit'
-  else if (c.cron_email_count > 0) detailTab.value = 'cron'
+  else if (c.cron_task_count > 0) detailTab.value = 'cron'
   else if (c.archive_details.length > 0) detailTab.value = 'archive'
   else detailTab.value = 'audit'
   showDetail.value = true
@@ -150,6 +151,48 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
   proc.custom_rules.length > 0 ||
   proc.field_overrides.length > 0 ||
   proc.rule_toggle_overrides.length > 0
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '-'
+  return new Date(value).toLocaleString(locale.value, { dateStyle: 'short', timeStyle: 'short' })
+}
+
+const describeCronExpression = (expr: string): string => {
+  const map: Record<string, string> = {
+    '0 9 * * 1-5': t('cron.describe.weekday9'),
+    '0 18 * * 1-5': t('cron.describe.weekday18'),
+    '0 2 * * *': t('cron.describe.daily2'),
+    '0 10 * * 1': t('cron.describe.monday10'),
+    '0 9 1 * *': t('cron.describe.monthly1_9'),
+    '0 * * * *': t('cron.describe.hourly'),
+    '0 12 * * *': t('cron.describe.daily12'),
+    '0 16 * * *': t('cron.describe.daily16'),
+  }
+  return map[expr] || expr
+}
+
+const cronTaskTypeLabel = (task: AdminCronTaskDetail): string => {
+  const key = `cron.taskType.${task.task_type}`
+  return te(key) ? t(key) : (task.task_label || task.task_type)
+}
+
+const cronTaskDefaultLabels = (taskType: string): string[] => {
+  const key = `cron.taskType.${taskType}`
+  return [
+    messages['zh-CN']?.[key],
+    messages['en-US']?.[key],
+    taskType,
+  ].filter((label): label is string => !!label)
+}
+
+const cronTaskCustomLabel = (task: AdminCronTaskDetail): string => {
+  const customLabel = task.task_label?.trim()
+  if (!customLabel) return ''
+  return cronTaskDefaultLabels(task.task_type).includes(customLabel) ? '' : customLabel
+}
+
+const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
+  task.push_email.split(',').map(email => email.trim()).filter(Boolean)
 </script>
 
 <template>
@@ -267,8 +310,8 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
               <span v-else class="text-secondary">-</span>
             </td>
             <td>
-              <span v-if="c.cron_email_count > 0" class="count-badge count-badge--info">
-                {{ c.cron_email_count }} {{ t('admin.userConfigs.emailSuffix') }}
+              <span v-if="c.cron_task_count > 0" class="count-badge count-badge--info">
+                {{ t('admin.userConfigs.taskCount', [c.cron_task_count]) }}
               </span>
               <span v-else class="text-secondary">-</span>
             </td>
@@ -278,7 +321,7 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
               </span>
               <span v-else class="text-secondary">-</span>
             </td>
-            <td class="text-secondary text-mono">{{ c.last_modified ? new Date(c.last_modified).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' }) : '-' }}</td>
+            <td class="text-secondary text-mono">{{ formatDateTime(c.last_modified) }}</td>
             <td>
               <div class="action-btns">
                 <button class="icon-btn" :title="t('admin.userConfigs.viewDetail')" @click="openDetail(c)"><EyeOutlined /></button>
@@ -338,7 +381,7 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
           <button
             v-for="tab in [
               { key: 'audit',   label: t('admin.userConfigs.tabAudit'),   icon: AppstoreOutlined,    count: detailConfig.audit_details.length },
-              { key: 'cron',    label: t('admin.userConfigs.tabCron'),    icon: ClockCircleOutlined, count: detailConfig.cron_email_count },
+              { key: 'cron',    label: t('admin.userConfigs.tabCron'),    icon: ClockCircleOutlined, count: detailConfig.cron_task_count },
               { key: 'archive', label: t('admin.userConfigs.tabArchive'), icon: FolderOpenOutlined,  count: detailConfig.archive_details.length },
             ]"
             :key="tab.key"
@@ -427,24 +470,55 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
 
         <!-- ===== 定时任务 ===== -->
         <div v-if="detailTab === 'cron' && totalChanges(detailConfig) > 0" class="detail-content">
-          <div v-if="detailConfig.cron_email_count === 0" class="detail-empty-tab">
+          <div v-if="detailConfig.cron_task_count === 0" class="detail-empty-tab">
             {{ t('admin.userConfigs.noCronConfig') }}
           </div>
-          <div v-else class="detail-process-card">
-            <div class="detail-process-header">
-              <span class="detail-process-name"><MailOutlined /> {{ t('admin.userConfigs.cronPushEmail') }}</span>
-              <span class="count-badge count-badge--info">{{ detailConfig.cron_details.email_count }} {{ t('admin.userConfigs.emailSuffix') }}</span>
-            </div>
-            <div class="detail-config-block">
-              <div class="detail-email-list">
-                <span
-                  v-for="email in detailConfig.cron_details.default_email.split(',').map(e => e.trim()).filter(Boolean)"
-                  :key="email"
-                  class="detail-field-tag"
-                >{{ email }}</span>
+          <template v-else>
+            <div v-for="task in detailConfig.cron_tasks" :key="task.id" class="detail-process-card">
+              <div class="detail-process-header">
+                <span class="detail-process-name">{{ cronTaskTypeLabel(task) }}</span>
+                <span v-if="task.is_builtin" class="role-tag role-tag--sm">{{ t('cron.builtin') }}</span>
+                <span class="count-badge" :class="task.is_active ? 'count-badge--success' : 'count-badge--muted'">
+                  {{ task.is_active ? t('admin.userConfigs.cronActive') : t('admin.userConfigs.cronInactive') }}
+                </span>
+              </div>
+
+              <div v-if="cronTaskCustomLabel(task)" class="detail-config-block">
+                <div class="detail-config-label">{{ t('cron.taskLabel') }}</div>
+                <div class="detail-config-value">{{ cronTaskCustomLabel(task) }}</div>
+              </div>
+
+              <div class="detail-config-block">
+                <div class="detail-config-label"><ClockCircleOutlined /> {{ t('admin.userConfigs.cronExpression') }}</div>
+                <div class="detail-config-value">
+                  <code class="detail-inline-code">{{ task.cron_expression }}</code>
+                  <span class="text-secondary detail-inline-desc">{{ describeCronExpression(task.cron_expression) }}</span>
+                </div>
+              </div>
+
+              <div v-if="task.task_type.endsWith('_batch')" class="detail-config-block">
+                <div class="detail-config-label"><AppstoreOutlined /> {{ t('admin.userConfigs.cronWorkflows') }}</div>
+                <div class="detail-tag-list">
+                  <span v-if="task.workflow_ids.length === 0" class="detail-field-tag detail-field-tag--neutral">{{ t('common.all') }}</span>
+                  <template v-else>
+                    <span v-for="workflow in task.workflow_ids" :key="workflow" class="detail-field-tag">{{ workflow }}</span>
+                  </template>
+                </div>
+              </div>
+
+              <div v-if="task.task_type.endsWith('_batch')" class="detail-config-block">
+                <div class="detail-config-label"><ControlOutlined /> {{ t('admin.userConfigs.cronDateRange') }}</div>
+                <div class="detail-config-value">{{ t(`cron.dateRange.${task.date_range || 30}`) }}</div>
+              </div>
+
+              <div v-if="cronTaskEmails(task).length > 0" class="detail-config-block">
+                <div class="detail-config-label"><MailOutlined /> {{ t('admin.userConfigs.cronPushEmail') }}</div>
+                <div class="detail-tag-list">
+                  <span v-for="email in cronTaskEmails(task)" :key="email" class="detail-field-tag">{{ email }}</span>
+                </div>
               </div>
             </div>
-          </div>
+          </template>
         </div>
 
         <!-- ===== 归档复盘 ===== -->
@@ -522,7 +596,7 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
 
         <!-- 页脚 -->
         <div v-if="detailConfig.last_modified" class="detail-footer-info">
-          {{ t('admin.userConfigs.thLastModified') }}：{{ new Date(detailConfig.last_modified).toLocaleString('zh-CN') }}
+          {{ t('admin.userConfigs.thLastModified') }}：{{ formatDateTime(detailConfig.last_modified) }}
         </div>
       </template>
     </a-drawer>
@@ -600,6 +674,8 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
 .count-badge--primary { background: var(--color-primary-bg); color: var(--color-primary); }
 .count-badge--info { background: var(--color-info-bg); color: var(--color-info); }
 .count-badge--warning { background: var(--color-warning-bg); color: var(--color-warning); }
+.count-badge--success { background: var(--color-success-bg); color: var(--color-success); }
+.count-badge--muted { background: var(--color-bg-hover); color: var(--color-text-tertiary); }
 
 .action-btns { display: flex; gap: 4px; }
 .icon-btn {
@@ -658,6 +734,11 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
   display: flex; align-items: center; gap: 6px;
 }
 .detail-config-value { font-size: 13px; color: var(--color-text-primary); padding-left: 20px; }
+.detail-inline-code {
+  font-size: 12px; padding: 2px 6px; border-radius: var(--radius-sm);
+  background: var(--color-bg-card); border: 1px solid var(--color-border-light);
+}
+.detail-inline-desc { display: inline-block; margin-left: 8px; }
 .strictness-tag { font-weight: 600; font-size: 13px; }
 
 .detail-rule-list { display: flex; flex-direction: column; gap: 6px; padding-left: 20px; }
@@ -703,6 +784,7 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
   font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: var(--radius-full);
   background: var(--color-info-bg); color: var(--color-info); border: 1px solid transparent;
 }
+.detail-field-tag--neutral { background: var(--color-bg-hover); color: var(--color-text-secondary); }
 
 /* 字段覆盖增强样式 */
 .field-override-list { display: flex; flex-direction: column; gap: 4px; padding-left: 20px; }
