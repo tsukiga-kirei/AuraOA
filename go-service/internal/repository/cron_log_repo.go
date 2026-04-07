@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"oa-smart-audit/go-service/internal/model"
@@ -19,6 +20,7 @@ type CronLogFilter struct {
 	Department  string // 部门精确匹配
 	StartDate   *time.Time
 	EndDate     *time.Time
+	DateRange   *int   // 数据范围（天）
 }
 
 // CronLogStats 定时任务日志统计。
@@ -32,8 +34,12 @@ type CronLogStats struct {
 // CronLogListRow 分页列表：日志 + 任务归属用户展示名 + 部门（LEFT JOIN users + org_members + departments）。
 type CronLogListRow struct {
 	model.CronLog
-	TaskOwnerDisplayName string `json:"task_owner_display_name" gorm:"column:task_owner_display_name"`
-	Department           string `json:"department" gorm:"column:department"`
+	TaskOwnerDisplayName string         `json:"task_owner_display_name" gorm:"column:task_owner_display_name"`
+	Department           string         `json:"department" gorm:"column:department"`
+	TaskTypeLabel        string         `json:"task_type_label" gorm:"column:task_type_label"`
+	PushEmail            string         `json:"push_email" gorm:"column:push_email"`
+	WorkflowIds          datatypes.JSON `json:"workflow_ids" gorm:"column:workflow_ids"`
+	DateRange            int            `json:"date_range" gorm:"column:date_range"`
 }
 
 // CronLogRepo 提供 cron_logs 表的数据访问方法。
@@ -128,10 +134,16 @@ func (r *CronLogRepo) ListPagedByTenant(tenantID uuid.UUID, filter CronLogFilter
 	base := r.db.Table("cron_logs").
 		Select("cron_logs.*, "+
 			"COALESCE(u.display_name, u.username, '') AS task_owner_display_name, "+
-			"COALESCE(d.name, '') AS department").
+			"COALESCE(d.name, '') AS department, "+
+			"COALESCE(p.label_zh, cron_logs.task_type) AS task_type_label, "+
+			"COALESCE(ct.push_email, '') AS push_email, "+
+			"COALESCE(ct.workflow_ids, '[]'::jsonb) AS workflow_ids, "+
+			"COALESCE(ct.date_range, 0) AS date_range").
 		Joins("LEFT JOIN users u ON u.id = cron_logs.task_owner_user_id").
 		Joins("LEFT JOIN org_members om ON om.user_id = cron_logs.task_owner_user_id AND om.tenant_id = cron_logs.tenant_id AND om.status = 'active'").
 		Joins("LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = cron_logs.tenant_id").
+		Joins("LEFT JOIN cron_task_type_presets p ON p.task_type = cron_logs.task_type").
+		Joins("LEFT JOIN cron_tasks ct ON ct.id = cron_logs.task_id").
 		Where("cron_logs.tenant_id = ?", tenantID)
 	base = applyCronLogFilterJoined(base, filter)
 

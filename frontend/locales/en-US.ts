@@ -1427,8 +1427,12 @@ export default {
     'admin.data.cronExecStatus': 'Execution Status',
     'admin.data.cronStartTime': 'Start Time',
     'admin.data.cronEndTime': 'End Time',
-    'admin.data.cronMessage': 'Execution Notes',
+    'admin.data.cronMessage': 'Execution Remark',
     'admin.data.cronOwner': 'Task Owner',
+    'admin.data.cronPushEmail': 'Push Email',
+    'admin.data.cronWorkflows': 'Associated Workflows',
+    'admin.data.cronDateRange': 'Data Range',
+    'admin.data.days': 'days',
 
     //===== Admin - System Tenants =====
     'admin.tenants.title': 'Tenant Management',

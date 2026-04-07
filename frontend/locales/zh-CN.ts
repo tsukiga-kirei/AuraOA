@@ -1445,7 +1445,11 @@ export default {
     'admin.data.cronStartTime': '开始时间',
     'admin.data.cronEndTime': '结束时间',
     'admin.data.cronMessage': '执行备注',
-    'admin.data.cronOwner': '归属用户',
+    'admin.data.cronOwner': '任务归属人',
+    'admin.data.cronPushEmail': '推送邮箱',
+    'admin.data.cronWorkflows': '关联流程',
+    'admin.data.cronDateRange': '数据范围',
+    'admin.data.days': '天',
 
     //===== 管理员 - 系统租户 =====
     'admin.tenants.title': '租户管理',

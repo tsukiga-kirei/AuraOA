@@ -462,13 +462,21 @@ async function loadProcessCascaderOptions() {
 
 const renderMarkdown = (text: string) => text ? marked.parse(text) : ''
 const formatDate = (dateStr: string | null | undefined) => dateStr ? dayjs(dateStr).format('YYYY/MM/DD HH:mm') : '-'
-const getAuditCount = (validLogIds: string) => {
-  try {
-    const parsed = JSON.parse(validLogIds || '[]')
-    return Array.isArray(parsed) ? parsed.length : 1
-  } catch (e) {
-    return 1
+const getAuditCount = (validLogIds: any) => {
+  if (!validLogIds) return 0
+  if (Array.isArray(validLogIds)) return validLogIds.length
+  if (typeof validLogIds === 'string') {
+    if (validLogIds.startsWith('[') && validLogIds.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(validLogIds)
+        return Array.isArray(parsed) ? parsed.length : 1
+      } catch { /* fallback */ }
+    }
+    if (validLogIds.includes(',')) return validLogIds.split(',').filter(Boolean).length
+    if (validLogIds.length > 20) return 1 // looks like a single ID
+    return isNaN(Number(validLogIds)) ? 1 : Number(validLogIds)
   }
+  return 1
 }
 
 async function loadAuditProcessTypeOptions() {
@@ -772,7 +780,7 @@ onMounted(async () => {
                   <CloseCircleOutlined v-else-if="item.recommendation === 'return'" />
                   <AlertOutlined v-else />
                   {{ getRecLabel(item.recommendation) }} {{ item.score }}{{ t('admin.data.points') }}
-                  <span class="text-tertiary" style="margin-left: 4px; font-size: 11px; opacity: 0.8;">(AI {{ item.confidence }}%)</span>
+                  <span class="conf-pill">AI {{ item.confidence }}%</span>
                 </span>
             </td>
             <td>{{ getAuditCount(item.valid_log_ids) }}</td>
@@ -909,7 +917,7 @@ onMounted(async () => {
           </tr>
           <tr v-else v-for="item in cronLogs" :key="item.id">
             <td>{{ item.task_label }}</td>
-            <td class="text-secondary text-mono">{{ item.task_type }}</td>
+            <td class="text-secondary">{{ item.task_type_label || item.task_type }}</td>
             <td>{{ getTriggerTypeLabel(item.trigger_type) }}</td>
             <td>{{ item.created_by || '-' }}</td>
             <td>{{ item.task_owner_display_name || '-' }}</td>
@@ -1111,7 +1119,7 @@ onMounted(async () => {
                   <AlertOutlined v-else-if="item.compliance === 'partially_compliant'" />
                   <CloseCircleOutlined v-else />
                   {{ getComplianceLabel(item.compliance) }} {{ item.compliance_score }}{{ t('admin.data.points') }}
-                  <span class="text-tertiary" style="margin-left: 4px; font-size: 11px; opacity: 0.8;">(AI {{ item.confidence }}%)</span>
+                  <span class="conf-pill">AI {{ item.confidence }}%</span>
                 </span>
               <span v-else class="text-secondary">-</span>
             </td>
@@ -1191,7 +1199,7 @@ onMounted(async () => {
                           {{ getRecLabel(logItem.recommendation) }}
                         </span>
                         <span class="chain-score">{{ logItem.score }}{{ t('admin.data.points') }}</span>
-                        <span class="chain-meta-item">({{ logItem.confidence }}%)</span>
+                        <span class="chain-conf-tag">{{ logItem.confidence }}%</span>
                         <span class="chain-expand-btn">
                           <DownOutlined v-if="!expandedAuditChainNodes.has(logItem.id)" />
                           <UpOutlined v-else />
@@ -1304,6 +1312,7 @@ onMounted(async () => {
                           {{ getComplianceLabel(logItem.archive_result?.overall_compliance) }}
                         </span>
                         <span class="chain-score">{{ logItem.archive_result?.overall_score || 0 }}{{ t('admin.data.points') }}</span>
+                        <span class="chain-conf-tag">{{ logItem.confidence }}%</span>
                         <span class="chain-expand-btn">
                           <DownOutlined v-if="!expandedArchiveChainNodes.has(logItem.id)" />
                           <UpOutlined v-else />
@@ -1406,7 +1415,7 @@ onMounted(async () => {
               <div class="detail-meta-grid">
                 <div class="detail-meta-item">
                   <span class="detail-meta-label">{{ t('admin.data.thTaskType') }}</span>
-                  <span class="detail-meta-value text-mono">{{ selectedCronLog.task_type }}</span>
+                  <span class="detail-meta-value">{{ selectedCronLog.task_type_label || selectedCronLog.task_type }}</span>
                 </div>
                 <div class="detail-meta-item">
                   <span class="detail-meta-label">{{ t('admin.data.thTriggerType') }}</span>
@@ -1458,6 +1467,27 @@ onMounted(async () => {
                   <span class="detail-meta-label">{{ t('admin.data.cronEndTime') }}</span>
                   <span class="detail-meta-value">{{ formatDate(selectedCronLog.finished_at) }}</span>
                 </div>
+                <div class="detail-meta-item" v-if="selectedCronLog.push_email">
+                  <span class="detail-meta-label">{{ t('admin.data.cronPushEmail') }}</span>
+                  <span class="detail-meta-value">{{ selectedCronLog.push_email }}</span>
+                </div>
+                <div class="detail-meta-item" v-if="selectedCronLog.workflow_ids && selectedCronLog.workflow_ids !== '[]'">
+                  <span class="detail-meta-label">{{ t('admin.data.cronWorkflows') }}</span>
+                  <div class="detail-meta-value" style="display: flex; flex-wrap: wrap; gap: 4px;">
+                    <span 
+                      v-for="wf in (typeof selectedCronLog.workflow_ids === 'string' ? JSON.parse(selectedCronLog.workflow_ids) : selectedCronLog.workflow_ids)" 
+                      :key="wf"
+                      class="conf-pill"
+                      style="margin: 0; padding: 2px 8px; font-size: 11px; border-radius: 4px;"
+                    >
+                      {{ wf }}
+                    </span>
+                  </div>
+                </div>
+                <div class="detail-meta-item" v-if="selectedCronLog.date_range">
+                  <span class="detail-meta-label">{{ t('admin.data.cronDateRange') }}</span>
+                  <span class="detail-meta-value">{{ selectedCronLog.date_range }} {{ t('admin.data.days') }}</span>
+                </div>
               </div>
 
               <div class="detail-section" v-if="selectedCronLog.message">
@@ -1493,6 +1523,28 @@ onMounted(async () => {
 .markdown-body :deep(table) { width: 100%; border-collapse: collapse; margin: 8px 0; }
 .markdown-body :deep(th), .markdown-body :deep(td) { border: 1px solid var(--color-border-light); padding: 6px 10px; font-size: 12px; }
 .markdown-body :deep(th) { background: var(--color-bg-elevated); font-weight: 600; }
+ 
+.conf-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-light);
+  border-radius: 10px;
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  margin-left: 4px;
+}
+
+.chain-conf-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  margin-left: 4px;
+}
 
 .data-page { animation: fadeIn 0.3s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

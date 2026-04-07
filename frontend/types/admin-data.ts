@@ -176,7 +176,11 @@ export interface CronLogItem {
   tenant_id: string
   task_id: string
   task_type: string
-  task_label: string
+  task_label: string           // 任务自定义名称
+  task_type_label: string      // 任务类型中文标签（如：每日审核报表）
+  push_email?: string          // 推送邮箱
+  workflow_ids?: any           // 关联工作流 ID 列表
+  date_range?: number          // 数据范围（天）
   trigger_type: string        // manual = 手动执行, scheduled = 定时调度
   created_by: string          // 触发人（手动为操作者，定时为 system）
   task_owner_display_name?: string // 任务归属用户（展示名）
