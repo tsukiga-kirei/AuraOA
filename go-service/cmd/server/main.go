@@ -168,8 +168,8 @@ func main() {
 	cronTaskHandler := handler.NewCronTaskHandler(cronTaskService)
 	archiveConfigHandler := handler.NewArchiveConfigHandler(archiveConfigService)
 	archiveRuleHandler := handler.NewArchiveRuleHandler(archiveRuleService)
-	auditHandler := handler.NewAuditHandler(auditExecuteService)
-	archiveReviewHandler := handler.NewArchiveReviewHandler(archiveReviewService)
+	auditHandler := handler.NewAuditHandler(auditExecuteService, auditSnapshotRepo, auditLogRepo)
+	archiveReviewHandler := handler.NewArchiveReviewHandler(archiveReviewService, archiveSnapshotRepo, archiveLogRepo)
 	dashboardOverviewHandler := handler.NewDashboardOverviewHandler(dashboardOverviewService)
 	userNotificationHandler := handler.NewUserNotificationHandler(userNotificationService)
 

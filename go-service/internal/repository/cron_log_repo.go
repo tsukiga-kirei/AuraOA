@@ -16,6 +16,7 @@ type CronLogFilter struct {
 	TaskType    string
 	TriggerType string // manual / scheduled
 	CreatedBy   string // 触发人（created_by）模糊搜索
+	Department  string // 部门精确匹配
 	StartDate   *time.Time
 	EndDate     *time.Time
 }
@@ -28,10 +29,11 @@ type CronLogStats struct {
 	Running int64 `json:"running"`
 }
 
-// CronLogListRow 分页列表：日志 + 任务归属用户展示名（LEFT JOIN users）。
+// CronLogListRow 分页列表：日志 + 任务归属用户展示名 + 部门（LEFT JOIN users + org_members + departments）。
 type CronLogListRow struct {
 	model.CronLog
 	TaskOwnerDisplayName string `json:"task_owner_display_name" gorm:"column:task_owner_display_name"`
+	Department           string `json:"department" gorm:"column:department"`
 }
 
 // CronLogRepo 提供 cron_logs 表的数据访问方法。
@@ -114,7 +116,7 @@ func (r *CronLogRepo) Finish(id uuid.UUID, status, message string) error {
 		}).Error
 }
 
-// ListPagedByTenant 数据管理页：分页查询租户所有任务日志，支持多维过滤（JOIN 归属用户展示名）。
+// ListPagedByTenant 数据管理页：分页查询租户所有任务日志，支持多维过滤（JOIN 归属用户展示名 + 部门）。
 func (r *CronLogRepo) ListPagedByTenant(tenantID uuid.UUID, filter CronLogFilter, page, pageSize int) ([]CronLogListRow, int64, error) {
 	if page < 1 {
 		page = 1
@@ -124,8 +126,12 @@ func (r *CronLogRepo) ListPagedByTenant(tenantID uuid.UUID, filter CronLogFilter
 	}
 
 	base := r.db.Table("cron_logs").
-		Select("cron_logs.*, COALESCE(u.display_name, u.username, '') AS task_owner_display_name").
+		Select("cron_logs.*, "+
+			"COALESCE(u.display_name, u.username, '') AS task_owner_display_name, "+
+			"COALESCE(d.name, '') AS department").
 		Joins("LEFT JOIN users u ON u.id = cron_logs.task_owner_user_id").
+		Joins("LEFT JOIN org_members om ON om.user_id = cron_logs.task_owner_user_id AND om.tenant_id = cron_logs.tenant_id AND om.status = 'active'").
+		Joins("LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = cron_logs.tenant_id").
 		Where("cron_logs.tenant_id = ?", tenantID)
 	base = applyCronLogFilterJoined(base, filter)
 
@@ -216,6 +222,9 @@ func applyCronLogFilterJoined(db *gorm.DB, f CronLogFilter) *gorm.DB {
 	}
 	if f.CreatedBy != "" {
 		db = db.Where(t+"created_by ILIKE ?", "%"+f.CreatedBy+"%")
+	}
+	if f.Department != "" {
+		db = db.Where("d.name = ?", f.Department)
 	}
 	if f.StartDate != nil {
 		db = db.Where(t+"started_at >= ?", f.StartDate)

@@ -7,7 +7,7 @@ export interface PagedResult<T> {
   page_size: number
 }
 
-// ─── 审核日志 ─────────────────────────────────────────────────────────────────
+// ─── 审核日志（原始日志，保留用于详情链展示） ─────────────────────────────────
 
 export interface AuditLogItem {
   id: string
@@ -49,7 +49,47 @@ export interface AuditLogFilter {
   page_size?: number
 }
 
-// ─── 归档复盘日志 ─────────────────────────────────────────────────────────────
+// ─── 审核快照（数据管理页主表） ─────────────────────────────────────────────
+
+export interface AuditSnapshotItem {
+  id: string
+  tenant_id: string
+  process_id: string
+  title: string
+  process_type: string
+  recommendation: string     // approve / return / review
+  score: number
+  confidence: number
+  valid_log_ids: string      // JSON array
+  latest_valid_log_id: string
+  operator: string           // 操作人显示名（JOIN）
+  department: string         // 部门名称（JOIN）
+  created_at: string
+  updated_at: string
+  updated_at_fmt: string     // 格式化后 "2026/4/3 17:44"
+  created_at_fmt: string
+}
+
+export interface AuditSnapshotStats {
+  total: number
+  approve_count: number
+  return_count: number
+  review_count: number
+}
+
+export interface AuditSnapshotFilter {
+  recommendation?: string    // '' | 'approve' | 'return' | 'review'
+  keyword?: string
+  process_type?: string
+  operator?: string
+  department?: string
+  start_date?: string
+  end_date?: string
+  page?: number
+  page_size?: number
+}
+
+// ─── 归档复盘日志（原始日志） ──────────────────────────────────────────────
 
 export interface ArchiveLogItem {
   id: string
@@ -89,6 +129,46 @@ export interface ArchiveLogFilter {
   page_size?: number
 }
 
+// ─── 归档复盘快照（数据管理页主表） ─────────────────────────────────────────
+
+export interface ArchiveSnapshotItem {
+  id: string
+  tenant_id: string
+  process_id: string
+  title: string
+  process_type: string
+  compliance: string          // compliant / partially_compliant / non_compliant
+  compliance_score: number
+  confidence: number
+  valid_archive_log_ids: string
+  latest_valid_archive_log_id: string
+  operator: string
+  department: string
+  created_at: string
+  updated_at: string
+  updated_at_fmt: string
+  created_at_fmt: string
+}
+
+export interface ArchiveSnapshotStats {
+  total: number
+  compliant: number
+  partial: number
+  non_compliant: number
+}
+
+export interface ArchiveSnapshotFilter {
+  compliance?: string
+  keyword?: string
+  process_type?: string
+  operator?: string
+  department?: string
+  start_date?: string
+  end_date?: string
+  page?: number
+  page_size?: number
+}
+
 // ─── 定时任务日志 ─────────────────────────────────────────────────────────────
 
 export interface CronLogItem {
@@ -100,6 +180,7 @@ export interface CronLogItem {
   trigger_type: string        // manual = 手动执行, scheduled = 定时调度
   created_by: string          // 触发人（手动为操作者，定时为 system）
   task_owner_display_name?: string // 任务归属用户（展示名）
+  department?: string         // 部门（JOIN）
   status: string              // running / success / failed
   message: string
   started_at: string
@@ -119,6 +200,7 @@ export interface CronLogFilter {
   task_type?: string
   trigger_type?: string       // '' | 'manual' | 'scheduled'
   created_by?: string
+  department?: string         // 部门
   start_date?: string
   end_date?: string
   page?: number

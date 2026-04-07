@@ -1323,9 +1323,10 @@ export default {
     'admin.data.tabCron': 'Scheduled Tasks',
     'admin.data.tabArchive': 'Archive Review',
     // Audit sub-tabs
-    'admin.data.auditTab.pendingAi': 'Pending AI Review',
-    'admin.data.auditTab.aiDone': 'AI Completed',
     'admin.data.auditTab.all': 'All',
+    'admin.data.auditTab.approve': 'Suggest Approve',
+    'admin.data.auditTab.return': 'Suggest Return',
+    'admin.data.auditTab.review': 'Suggest Review',
     // Search & Filters
     'admin.data.searchAudit': 'Search process (title/ID)',
     'admin.data.searchOperator': 'Search operator...',
@@ -1383,6 +1384,7 @@ export default {
     'admin.data.partiallyCompliant': 'Partially Compliant',
     // Common filters
     'admin.data.filterDepartment': 'Department',
+    'admin.data.filterOperator': 'Search operator',
     'admin.data.filterProcessType': 'Select Process',
     'admin.data.filterDateRange': 'Date Range',
     'admin.data.filterAuditStatus': 'AI Audit Status',
@@ -1416,6 +1418,14 @@ export default {
     'admin.data.missingNodes': 'Missing nodes',
     'admin.data.ruleAudit': 'Rule Audit',
     'admin.data.aiSummary': 'AI Summary',
+    // Cron detail drawer
+    'admin.data.cronDetailTitle': 'Scheduled Task Details',
+    'admin.data.thTaskName': 'Task Name',
+    'admin.data.cronExecStatus': 'Execution Status',
+    'admin.data.cronStartTime': 'Start Time',
+    'admin.data.cronEndTime': 'End Time',
+    'admin.data.cronMessage': 'Execution Notes',
+    'admin.data.cronOwner': 'Task Owner',
 
     //===== Admin - System Tenants =====
     'admin.tenants.title': 'Tenant Management',

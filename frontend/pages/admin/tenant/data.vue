@@ -24,9 +24,11 @@ import { useAuditApi } from '~/composables/useAuditApi'
 import { useArchiveReviewApi } from '~/composables/useArchiveReviewApi'
 import type {
   AuditLogItem,
-  AuditLogStats,
+  AuditSnapshotItem,
+  AuditSnapshotStats,
   ArchiveLogItem,
-  ArchiveLogStats,
+  ArchiveSnapshotItem,
+  ArchiveSnapshotStats,
   CronLogItem,
   CronLogStats,
 } from '~/types/admin-data'
@@ -34,7 +36,9 @@ import type {
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 type MainTab = 'audit' | 'cron' | 'archive'
-type AuditSubTab = 'pending_ai' | 'ai_done' | 'all'
+type AuditSubTab = 'all' | 'approve' | 'return' | 'review'
+type CronSubTab = 'all' | 'success' | 'failed' | 'running'
+type ArchiveSubTab = 'all' | 'compliant' | 'partially_compliant' | 'non_compliant'
 
 type AuditRuleItem = {
   rule_id?: string
@@ -88,29 +92,31 @@ type ArchiveDetailPayload = {
 
 const { t } = useI18n()
 const {
-  listAuditLogs,
-  getAuditLogStats,
+  listAuditSnapshots,
+  getAuditSnapshotStats,
+  getAuditSnapshotChain,
   exportAuditLogs,
+  listArchiveSnapshots,
+  getArchiveSnapshotStats,
+  getArchiveSnapshotChain,
+  exportArchiveLogs,
   listCronLogs,
   getCronLogStats,
   exportCronLogs,
-  listArchiveLogs,
-  getArchiveLogStats,
-  exportArchiveLogs,
 } = useAdminDataApi()
 const { getProcessTypes: getAuditProcessTypes } = useAuditApi()
 const { getProcessTypes: getArchiveProcessTypes } = useArchiveReviewApi()
 
 const activeTab = ref<MainTab>('audit')
-const activeAuditSubTab = ref<AuditSubTab>('pending_ai')
+const activeAuditSubTab = ref<AuditSubTab>('all')
+const activeCronSubTab = ref<CronSubTab>('all')
+const activeArchiveSubTab = ref<ArchiveSubTab>('all')
 
 const auditProcessOptions = ref<{ label: string; value: string }[]>([])
 const archiveProcessOptions = ref<{ label: string; value: string }[]>([])
 
-const auditStats = ref<AuditLogStats>({
+const auditStats = ref<AuditSnapshotStats>({
   total: 0,
-  pending_ai: 0,
-  ai_done: 0,
   approve_count: 0,
   return_count: 0,
   review_count: 0,
@@ -121,17 +127,16 @@ const cronStats = ref<CronLogStats>({
   failed: 0,
   running: 0,
 })
-const archiveStats = ref<ArchiveLogStats>({
+const archiveStats = ref<ArchiveSnapshotStats>({
   total: 0,
   compliant: 0,
   partial: 0,
   non_compliant: 0,
-  pending_review: 0,
 })
 
-const auditLogs = ref<AuditLogItem[]>([])
+const auditSnapshots = ref<AuditSnapshotItem[]>([])
 const cronLogs = ref<CronLogItem[]>([])
-const archiveLogs = ref<ArchiveLogItem[]>([])
+const archiveSnapshots = ref<ArchiveSnapshotItem[]>([])
 
 const auditLoading = ref(false)
 const cronLoading = ref(false)
@@ -139,18 +144,17 @@ const archiveLoading = ref(false)
 
 const auditSearch = ref('')
 const auditFilterProcessType = ref<string | undefined>(undefined)
-const auditFilterRecommendation = ref<string | undefined>(undefined)
+const auditFilterOperator = ref('')
+const auditFilterDepartment = ref<string | undefined>(undefined)
 const auditFilterDateRange = ref<[Dayjs, Dayjs] | undefined>(undefined)
 const auditShowFilters = ref(false)
 const auditPage = ref(1)
 const auditPageSize = ref(10)
 const auditTotal = ref(0)
 
-const cronSearchTask = ref('')
-const cronFilterCreatedBy = ref('')
-const cronStatusFilter = ref<string | undefined>(undefined)
 const cronFilterTaskType = ref<string | undefined>(undefined)
 const cronFilterTriggerType = ref<string | undefined>(undefined)
+const cronFilterDepartment = ref<string | undefined>(undefined)
 const cronShowFilters = ref(false)
 const cronPage = ref(1)
 const cronPageSize = ref(10)
@@ -158,7 +162,8 @@ const cronTotal = ref(0)
 
 const archiveSearch = ref('')
 const archiveFilterProcessType = ref<string | undefined>(undefined)
-const archiveFilterCompliance = ref<string | undefined>(undefined)
+const archiveFilterOperator = ref('')
+const archiveFilterDepartment = ref<string | undefined>(undefined)
 const archiveFilterDateRange = ref<[Dayjs, Dayjs] | undefined>(undefined)
 const archiveShowFilters = ref(false)
 const archivePage = ref(1)
@@ -167,8 +172,13 @@ const archiveTotal = ref(0)
 
 const auditDetailVisible = ref(false)
 const archiveDetailVisible = ref(false)
+const cronDetailVisible = ref(false)
 const selectedAuditLog = ref<AuditLogItem | null>(null)
 const selectedArchiveLog = ref<ArchiveLogItem | null>(null)
+const selectedCronLog = ref<CronLogItem | null>(null)
+const auditChainLogs = ref<AuditLogItem[]>([])
+const archiveChainLogs = ref<ArchiveLogItem[]>([])
+const chainLoading = ref(false)
 
 const recommendationConfig = computed<Record<string, { color: string; bg: string }>>(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
@@ -184,45 +194,52 @@ const complianceConfig = computed<Record<string, { color: string; bg: string }>>
 
 const auditSubTabs = computed(() => [
   {
-    key: 'pending_ai' as AuditSubTab,
-    icon: ClockCircleOutlined,
-    count: auditStats.value.pending_ai,
-    label: t('admin.data.auditTab.pendingAi'),
-    cssClass: 'stat-card--primary',
-  },
-  {
-    key: 'ai_done' as AuditSubTab,
-    icon: CheckCircleOutlined,
-    count: auditStats.value.ai_done,
-    label: t('admin.data.auditTab.aiDone'),
-    cssClass: 'stat-card--success',
-  },
-  {
     key: 'all' as AuditSubTab,
     icon: AppstoreOutlined,
     count: auditStats.value.total,
     label: t('admin.data.auditTab.all'),
     cssClass: 'stat-card--info',
   },
+  {
+    key: 'approve' as AuditSubTab,
+    icon: CheckCircleOutlined,
+    count: auditStats.value.approve_count,
+    label: t('admin.data.approved'),
+    cssClass: 'stat-card--success',
+  },
+  {
+    key: 'return' as AuditSubTab,
+    icon: CloseCircleOutlined,
+    count: auditStats.value.return_count,
+    label: t('admin.data.returned'),
+    cssClass: 'stat-card--danger',
+  },
+  {
+    key: 'review' as AuditSubTab,
+    icon: AlertOutlined,
+    count: auditStats.value.review_count,
+    label: t('admin.data.archived'),
+    cssClass: 'stat-card--warning',
+  },
 ])
 
 const auditHasActiveFilters = computed(() =>
     !!auditSearch.value ||
     !!auditFilterProcessType.value ||
-    !!auditFilterRecommendation.value ||
+    !!auditFilterOperator.value ||
+    !!auditFilterDepartment.value ||
     !!auditFilterDateRange.value)
 
 const cronHasActiveFilters = computed(() =>
-    !!cronSearchTask.value ||
-    !!cronFilterCreatedBy.value ||
-    !!cronStatusFilter.value ||
     !!cronFilterTaskType.value ||
-    !!cronFilterTriggerType.value)
+    !!cronFilterTriggerType.value ||
+    !!cronFilterDepartment.value)
 
 const archiveHasActiveFilters = computed(() =>
     !!archiveSearch.value ||
     !!archiveFilterProcessType.value ||
-    !!archiveFilterCompliance.value ||
+    !!archiveFilterOperator.value ||
+    !!archiveFilterDepartment.value ||
     !!archiveFilterDateRange.value)
 
 const cronTaskTypeOptions = computed(() => {
@@ -277,10 +294,11 @@ const normalizedArchiveDetail = computed<Required<ArchiveDetailPayload>>(() => {
 })
 
 const auditQuery = computed(() => ({
-  status_group: activeAuditSubTab.value === 'all' ? '' : activeAuditSubTab.value,
+  recommendation: activeAuditSubTab.value === 'all' ? '' : activeAuditSubTab.value,
   keyword: auditSearch.value.trim(),
   process_type: auditFilterProcessType.value || '',
-  recommendation: auditFilterRecommendation.value || '',
+  operator: auditFilterOperator.value.trim(),
+  department: auditFilterDepartment.value || '',
   start_date: auditFilterDateRange.value?.[0]?.format('YYYY-MM-DD') || '',
   end_date: auditFilterDateRange.value?.[1]?.format('YYYY-MM-DD') || '',
   page: auditPage.value,
@@ -288,19 +306,20 @@ const auditQuery = computed(() => ({
 }))
 
 const cronQuery = computed(() => ({
-  keyword: cronSearchTask.value.trim(),
-  created_by: cronFilterCreatedBy.value.trim(),
-  status: cronStatusFilter.value || '',
+  status: activeCronSubTab.value === 'all' ? '' : activeCronSubTab.value,
   task_type: cronFilterTaskType.value || '',
   trigger_type: cronFilterTriggerType.value || '',
+  department: cronFilterDepartment.value || '',
   page: cronPage.value,
   page_size: cronPageSize.value,
 }))
 
 const archiveQuery = computed(() => ({
+  compliance: activeArchiveSubTab.value === 'all' ? '' : activeArchiveSubTab.value,
   keyword: archiveSearch.value.trim(),
   process_type: archiveFilterProcessType.value || '',
-  compliance: archiveFilterCompliance.value || '',
+  operator: archiveFilterOperator.value.trim(),
+  department: archiveFilterDepartment.value || '',
   start_date: archiveFilterDateRange.value?.[0]?.format('YYYY-MM-DD') || '',
   end_date: archiveFilterDateRange.value?.[1]?.format('YYYY-MM-DD') || '',
   page: archivePage.value,
@@ -358,37 +377,62 @@ function getAsyncStatusLabel(status: string) {
   return map[status] || status || '-'
 }
 
-function openAuditDetail(log: AuditLogItem) {
-  selectedAuditLog.value = log
+async function openAuditDetail(snapshot: AuditSnapshotItem) {
   auditDetailVisible.value = true
+  chainLoading.value = true
+  try {
+    const res = await getAuditSnapshotChain(snapshot.process_id)
+    auditChainLogs.value = res.chain || []
+    selectedAuditLog.value = auditChainLogs.value[0] || null
+  } catch {
+    auditChainLogs.value = []
+    selectedAuditLog.value = null
+  } finally {
+    chainLoading.value = false
+  }
 }
 
-function openArchiveDetail(log: ArchiveLogItem) {
-  selectedArchiveLog.value = log
+async function openArchiveDetail(snapshot: ArchiveSnapshotItem) {
   archiveDetailVisible.value = true
+  chainLoading.value = true
+  try {
+    const res = await getArchiveSnapshotChain(snapshot.process_id)
+    archiveChainLogs.value = res.chain || []
+    selectedArchiveLog.value = archiveChainLogs.value[0] || null
+  } catch {
+    archiveChainLogs.value = []
+    selectedArchiveLog.value = null
+  } finally {
+    chainLoading.value = false
+  }
+}
+
+function openCronDetail(log: CronLogItem) {
+  selectedCronLog.value = log
+  cronDetailVisible.value = true
 }
 
 function clearAuditFilters() {
   auditSearch.value = ''
   auditFilterProcessType.value = undefined
-  auditFilterRecommendation.value = undefined
+  auditFilterOperator.value = ''
+  auditFilterDepartment.value = undefined
   auditFilterDateRange.value = undefined
   auditPage.value = 1
 }
 
 function clearCronFilters() {
-  cronSearchTask.value = ''
-  cronFilterCreatedBy.value = ''
-  cronStatusFilter.value = undefined
   cronFilterTaskType.value = undefined
   cronFilterTriggerType.value = undefined
+  cronFilterDepartment.value = undefined
   cronPage.value = 1
 }
 
 function clearArchiveFilters() {
   archiveSearch.value = ''
   archiveFilterProcessType.value = undefined
-  archiveFilterCompliance.value = undefined
+  archiveFilterOperator.value = ''
+  archiveFilterDepartment.value = undefined
   archiveFilterDateRange.value = undefined
   archivePage.value = 1
 }
@@ -434,7 +478,7 @@ async function loadArchiveProcessTypeOptions() {
 
 async function loadAuditStats() {
   try {
-    auditStats.value = await getAuditLogStats()
+    auditStats.value = await getAuditSnapshotStats()
   } catch (e: any) {
     message.error(e?.message || t('admin.data.loadFailed'))
   }
@@ -450,7 +494,7 @@ async function loadCronStats() {
 
 async function loadArchiveStats() {
   try {
-    archiveStats.value = await getArchiveLogStats()
+    archiveStats.value = await getArchiveSnapshotStats()
   } catch (e: any) {
     message.error(e?.message || t('admin.data.loadFailed'))
   }
@@ -459,11 +503,11 @@ async function loadArchiveStats() {
 async function loadAuditLogs() {
   auditLoading.value = true
   try {
-    const res = await listAuditLogs(auditQuery.value)
-    auditLogs.value = res.items || []
+    const res = await listAuditSnapshots(auditQuery.value)
+    auditSnapshots.value = res.items || []
     auditTotal.value = res.total || 0
   } catch (e: any) {
-    auditLogs.value = []
+    auditSnapshots.value = []
     auditTotal.value = 0
     message.error(e?.message || t('admin.data.loadFailed'))
   } finally {
@@ -489,11 +533,11 @@ async function loadCronLogs() {
 async function loadArchiveLogs() {
   archiveLoading.value = true
   try {
-    const res = await listArchiveLogs(archiveQuery.value)
-    archiveLogs.value = res.items || []
+    const res = await listArchiveSnapshots(archiveQuery.value)
+    archiveSnapshots.value = res.items || []
     archiveTotal.value = res.total || 0
   } catch (e: any) {
-    archiveLogs.value = []
+    archiveSnapshots.value = []
     archiveTotal.value = 0
     message.error(e?.message || t('admin.data.loadFailed'))
   } finally {
@@ -622,6 +666,18 @@ onMounted(async () => {
             </template>
           </a-input>
 
+          <a-input
+              v-model:value="auditFilterOperator"
+              :placeholder="t('admin.data.filterOperator')"
+              allow-clear
+              style="flex: 1; min-width: 140px;"
+              @update:value="auditPage = 1"
+          >
+            <template #prefix>
+              <SearchOutlined style="color: var(--color-text-tertiary);" />
+            </template>
+          </a-input>
+
           <a-select
               v-model:value="auditFilterProcessType"
               :placeholder="t('admin.data.filterProcessType')"
@@ -632,15 +688,12 @@ onMounted(async () => {
           />
 
           <a-select
-              v-model:value="auditFilterRecommendation"
-              :placeholder="t('admin.data.filterAuditStatus')"
+              v-model:value="auditFilterDepartment"
+              :placeholder="t('admin.data.filterDepartment')"
               allow-clear
               style="flex: 1; min-width: 140px;"
               @change="auditPage = 1"
           >
-            <a-select-option value="approve">{{ t('admin.data.auditApprove') }}</a-select-option>
-            <a-select-option value="return">{{ t('admin.data.auditReturn') }}</a-select-option>
-            <a-select-option value="review">{{ t('admin.data.auditReview') }}</a-select-option>
           </a-select>
 
           <a-range-picker
@@ -664,6 +717,7 @@ onMounted(async () => {
             <th>{{ t('admin.data.thProcessId') }}</th>
             <th>{{ t('admin.data.thProcessTitle') }}</th>
             <th>{{ t('admin.data.thOperator') }}</th>
+            <th>{{ t('admin.data.thDepartment') }}</th>
             <th>{{ t('admin.data.thProcessType') }}</th>
             <th>{{ t('admin.data.thResult') }}</th>
             <th>{{ t('admin.data.thTime') }}</th>
@@ -672,12 +726,13 @@ onMounted(async () => {
           </thead>
           <tbody>
           <tr v-if="auditLoading">
-            <td colspan="7" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td colspan="8" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
-          <tr v-else v-for="item in auditLogs" :key="item.id">
+          <tr v-else v-for="item in auditSnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
             <td>{{ item.title }}</td>
-            <td>{{ item.user_name || '-' }}</td>
+            <td>{{ item.operator || '-' }}</td>
+            <td>{{ item.department || '-' }}</td>
             <td class="text-secondary">{{ item.process_type }}</td>
             <td>
                 <span
@@ -693,24 +748,9 @@ onMounted(async () => {
                   <AlertOutlined v-else />
                   {{ getRecLabel(item.recommendation) }} {{ item.score }}{{ t('admin.data.points') }}
                 </span>
-              <span
-                  v-else
-                  class="status-tag"
-                  :class="`status-tag--${
-                    item.status === 'failed'
-                      ? 'failed'
-                      : item.status === 'completed'
-                        ? 'success'
-                        : 'running'
-                  }`"
-              >
-                  <SyncOutlined v-if="item.status !== 'completed' && item.status !== 'failed'" spin />
-                  <CheckCircleOutlined v-else-if="item.status === 'completed'" />
-                  <CloseCircleOutlined v-else />
-                  {{ getAsyncStatusLabel(item.status) }}
-                </span>
+              <span v-else class="text-secondary">-</span>
             </td>
-            <td class="text-secondary">{{ item.created_at }}</td>
+            <td class="text-secondary">{{ item.updated_at_fmt }}</td>
             <td>
               <div class="action-btns">
                 <button
@@ -723,8 +763,8 @@ onMounted(async () => {
               </div>
             </td>
           </tr>
-          <tr v-if="!auditLoading && auditLogs.length === 0">
-            <td colspan="7" class="empty-cell">{{ t('admin.data.noData') }}</td>
+          <tr v-if="!auditLoading && auditSnapshots.length === 0">
+            <td colspan="8" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>
@@ -746,35 +786,23 @@ onMounted(async () => {
     </div>
 
     <div v-if="activeTab === 'cron'" class="tab-content fade-in">
-      <div class="stats-row">
-        <div class="stat-card stat-card--primary">
-          <div class="stat-card-icon"><ClockCircleOutlined /></div>
-          <div class="stat-card-info">
-            <span class="stat-card-value">{{ cronStats.total }}</span>
-            <span class="stat-card-label">{{ t('admin.data.totalExec') }}</span>
-          </div>
-        </div>
-        <div class="stat-card stat-card--success">
-          <div class="stat-card-icon"><CheckCircleOutlined /></div>
-          <div class="stat-card-info">
-            <span class="stat-card-value">{{ cronStats.success }}</span>
-            <span class="stat-card-label">{{ t('admin.data.success') }}</span>
-          </div>
-        </div>
-        <div class="stat-card stat-card--danger">
-          <div class="stat-card-icon"><CloseCircleOutlined /></div>
-          <div class="stat-card-info">
-            <span class="stat-card-value">{{ cronStats.failed }}</span>
-            <span class="stat-card-label">{{ t('admin.data.failed') }}</span>
-          </div>
-        </div>
-        <div class="stat-card stat-card--info">
-          <div class="stat-card-icon"><SyncOutlined spin /></div>
-          <div class="stat-card-info">
-            <span class="stat-card-value">{{ cronStats.running }}</span>
-            <span class="stat-card-label">{{ t('admin.data.running') }}</span>
-          </div>
-        </div>
+      <div class="subtab-nav">
+        <button
+            v-for="tab in [
+            { key: 'all', icon: AppstoreOutlined, count: cronStats.total, label: t('admin.data.auditTab.all'), cssClass: 'stat-card--info' },
+            { key: 'success', icon: CheckCircleOutlined, count: cronStats.success, label: t('admin.data.success'), cssClass: 'stat-card--success' },
+            { key: 'failed', icon: CloseCircleOutlined, count: cronStats.failed, label: t('admin.data.failed'), cssClass: 'stat-card--danger' },
+            { key: 'running', icon: SyncOutlined, count: cronStats.running, label: t('admin.data.running'), cssClass: 'stat-card--warning' },
+          ]"
+            :key="tab.key"
+            class="subtab-btn"
+            :class="[tab.cssClass, { 'subtab-btn--active': activeCronSubTab === tab.key }]"
+            @click="activeCronSubTab = tab.key as CronSubTab; cronPage = 1"
+        >
+          <component :is="tab.icon" />
+          <span>{{ tab.label }}</span>
+          <span class="subtab-badge">{{ tab.count }}</span>
+        </button>
       </div>
 
       <div class="toolbar">
@@ -797,30 +825,6 @@ onMounted(async () => {
 
       <transition name="slide">
         <div v-if="cronShowFilters" class="filter-bar">
-          <a-input
-              v-model:value="cronSearchTask"
-              :placeholder="t('admin.data.searchCronTask')"
-              allow-clear
-              style="flex: 1; min-width: 160px;"
-              @update:value="cronPage = 1"
-          >
-            <template #prefix>
-              <SearchOutlined style="color: var(--color-text-tertiary);" />
-            </template>
-          </a-input>
-
-          <a-input
-              v-model:value="cronFilterCreatedBy"
-              :placeholder="t('admin.data.searchCronCreator')"
-              allow-clear
-              style="flex: 1; min-width: 140px;"
-              @update:value="cronPage = 1"
-          >
-            <template #prefix>
-              <SearchOutlined style="color: var(--color-text-tertiary);" />
-            </template>
-          </a-input>
-
           <a-select
               v-model:value="cronFilterTaskType"
               :placeholder="t('admin.data.thTaskType')"
@@ -842,15 +846,12 @@ onMounted(async () => {
           </a-select>
 
           <a-select
-              v-model:value="cronStatusFilter"
-              :placeholder="t('admin.data.execStatus')"
+              v-model:value="cronFilterDepartment"
+              :placeholder="t('admin.data.filterDepartment')"
               allow-clear
-              style="flex: 1; min-width: 120px;"
+              style="flex: 1; min-width: 140px;"
               @change="cronPage = 1"
           >
-            <a-select-option value="success">{{ t('admin.data.success') }}</a-select-option>
-            <a-select-option value="failed">{{ t('admin.data.failed') }}</a-select-option>
-            <a-select-option value="running">{{ t('admin.data.running') }}</a-select-option>
           </a-select>
 
           <a-button size="small" @click="clearCronFilters">
@@ -863,59 +864,66 @@ onMounted(async () => {
         <table class="data-table">
           <thead>
           <tr>
-            <th>{{ t('admin.data.thTaskId') }}</th>
+            <th>{{ t('admin.data.thTaskName') }}</th>
             <th>{{ t('admin.data.thTaskType') }}</th>
             <th>{{ t('admin.data.thTriggerType') }}</th>
             <th>{{ t('admin.data.thCreatedBy') }}</th>
             <th>{{ t('admin.data.thTaskOwner') }}</th>
-            <th>{{ t('admin.data.thStartTime') }}</th>
-            <th>{{ t('admin.data.thEndTime') }}</th>
-            <th>{{ t('admin.data.thMessage') }}</th>
+            <th>{{ t('admin.data.thDepartment') }}</th>
+            <th>{{ t('admin.data.thStatus') }}</th>
+            <th>{{ t('admin.data.thTime') }}</th>
+            <th>{{ t('admin.data.thAction') }}</th>
           </tr>
           </thead>
           <tbody>
           <tr v-if="cronLoading">
-            <td colspan="8" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td colspan="9" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in cronLogs" :key="item.id">
-            <td class="text-mono">{{ item.task_id }}</td>
-            <td>
-              <div>{{ item.task_label }}</div>
-              <div class="text-secondary text-mono">{{ item.task_type }}</div>
-            </td>
+            <td>{{ item.task_label }}</td>
+            <td class="text-secondary text-mono">{{ item.task_type }}</td>
             <td>{{ getTriggerTypeLabel(item.trigger_type) }}</td>
             <td>{{ item.created_by || '-' }}</td>
             <td>{{ item.task_owner_display_name || '-' }}</td>
-            <td class="text-secondary">{{ item.started_at }}</td>
-            <td class="text-secondary">{{ item.finished_at || '-' }}</td>
+            <td>{{ item.department || '-' }}</td>
             <td>
-              <a-tooltip :title="item.message" placement="topLeft">
-                  <span
-                      class="status-tag"
-                      :class="`status-tag--${
-                      item.status === 'success'
-                        ? 'success'
+                <span
+                    class="status-tag"
+                    :class="`status-tag--${
+                    item.status === 'success'
+                      ? 'success'
+                      : item.status === 'failed'
+                        ? 'failed'
+                        : 'running'
+                  }`"
+                >
+                  <CheckCircleOutlined v-if="item.status === 'success'" />
+                  <CloseCircleOutlined v-else-if="item.status === 'failed'" />
+                  <SyncOutlined v-else spin />
+                  {{
+                    item.status === 'success'
+                        ? t('admin.data.success')
                         : item.status === 'failed'
-                          ? 'failed'
-                          : 'running'
-                    }`"
-                  >
-                    <CheckCircleOutlined v-if="item.status === 'success'" />
-                    <CloseCircleOutlined v-else-if="item.status === 'failed'" />
-                    <SyncOutlined v-else spin />
-                    {{
-                      item.status === 'success'
-                          ? t('admin.data.success')
-                          : item.status === 'failed'
-                              ? t('admin.data.failed')
-                              : t('admin.data.running')
-                    }}
-                  </span>
-              </a-tooltip>
+                            ? t('admin.data.failed')
+                            : t('admin.data.running')
+                  }}
+                </span>
+            </td>
+            <td class="text-secondary">{{ item.started_at }}</td>
+            <td>
+              <div class="action-btns">
+                <button
+                    class="icon-btn"
+                    :title="t('admin.data.viewDetail')"
+                    @click="openCronDetail(item)"
+                >
+                  <EyeOutlined />
+                </button>
+              </div>
             </td>
           </tr>
           <tr v-if="!cronLoading && cronLogs.length === 0">
-            <td colspan="8" class="empty-cell">{{ t('admin.data.noData') }}</td>
+            <td colspan="9" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>
@@ -937,35 +945,23 @@ onMounted(async () => {
     </div>
 
     <div v-if="activeTab === 'archive'" class="tab-content fade-in">
-      <div class="stats-row">
-        <div class="stat-card stat-card--primary">
-          <div class="stat-card-icon"><FolderOpenOutlined /></div>
-          <div class="stat-card-info">
-            <span class="stat-card-value">{{ archiveStats.total }}</span>
-            <span class="stat-card-label">{{ t('admin.data.totalRecords') }}</span>
-          </div>
-        </div>
-        <div class="stat-card stat-card--success">
-          <div class="stat-card-icon"><CheckCircleOutlined /></div>
-          <div class="stat-card-info">
-            <span class="stat-card-value">{{ archiveStats.compliant }}</span>
-            <span class="stat-card-label">{{ t('admin.data.compliant') }}</span>
-          </div>
-        </div>
-        <div class="stat-card stat-card--warning">
-          <div class="stat-card-icon"><AlertOutlined /></div>
-          <div class="stat-card-info">
-            <span class="stat-card-value">{{ archiveStats.partial }}</span>
-            <span class="stat-card-label">{{ t('admin.data.partiallyCompliant') }}</span>
-          </div>
-        </div>
-        <div class="stat-card stat-card--danger">
-          <div class="stat-card-icon"><CloseCircleOutlined /></div>
-          <div class="stat-card-info">
-            <span class="stat-card-value">{{ archiveStats.non_compliant }}</span>
-            <span class="stat-card-label">{{ t('admin.data.nonCompliant') }}</span>
-          </div>
-        </div>
+      <div class="subtab-nav">
+        <button
+            v-for="tab in [
+            { key: 'all', icon: AppstoreOutlined, count: archiveStats.total, label: t('admin.data.auditTab.all'), cssClass: 'stat-card--info' },
+            { key: 'compliant', icon: SafetyCertificateOutlined, count: archiveStats.compliant, label: t('admin.data.compliant'), cssClass: 'stat-card--success' },
+            { key: 'partially_compliant', icon: AlertOutlined, count: archiveStats.partial, label: t('admin.data.partiallyCompliant'), cssClass: 'stat-card--warning' },
+            { key: 'non_compliant', icon: CloseCircleOutlined, count: archiveStats.non_compliant, label: t('admin.data.nonCompliant'), cssClass: 'stat-card--danger' },
+          ]"
+            :key="tab.key"
+            class="subtab-btn"
+            :class="[tab.cssClass, { 'subtab-btn--active': activeArchiveSubTab === tab.key }]"
+            @click="activeArchiveSubTab = tab.key as ArchiveSubTab; archivePage = 1"
+        >
+          <component :is="tab.icon" />
+          <span>{{ tab.label }}</span>
+          <span class="subtab-badge">{{ tab.count }}</span>
+        </button>
       </div>
 
       <div class="toolbar">
@@ -1000,6 +996,18 @@ onMounted(async () => {
             </template>
           </a-input>
 
+          <a-input
+              v-model:value="archiveFilterOperator"
+              :placeholder="t('admin.data.filterOperator')"
+              allow-clear
+              style="flex: 1; min-width: 140px;"
+              @update:value="archivePage = 1"
+          >
+            <template #prefix>
+              <SearchOutlined style="color: var(--color-text-tertiary);" />
+            </template>
+          </a-input>
+
           <a-select
               v-model:value="archiveFilterProcessType"
               :placeholder="t('admin.data.filterProcessType')"
@@ -1010,15 +1018,12 @@ onMounted(async () => {
           />
 
           <a-select
-              v-model:value="archiveFilterCompliance"
-              :placeholder="t('admin.data.thCompliance')"
+              v-model:value="archiveFilterDepartment"
+              :placeholder="t('admin.data.filterDepartment')"
               allow-clear
               style="flex: 1; min-width: 140px;"
               @change="archivePage = 1"
           >
-            <a-select-option value="compliant">{{ t('admin.data.compliant') }}</a-select-option>
-            <a-select-option value="partially_compliant">{{ t('admin.data.partiallyCompliant') }}</a-select-option>
-            <a-select-option value="non_compliant">{{ t('admin.data.nonCompliant') }}</a-select-option>
           </a-select>
 
           <a-range-picker
@@ -1042,6 +1047,7 @@ onMounted(async () => {
             <th>{{ t('admin.data.thProcessId') }}</th>
             <th>{{ t('admin.data.thProcessTitle') }}</th>
             <th>{{ t('admin.data.thOperator') }}</th>
+            <th>{{ t('admin.data.thDepartment') }}</th>
             <th>{{ t('admin.data.thProcessType') }}</th>
             <th>{{ t('admin.data.thCompliance') }}</th>
             <th>{{ t('admin.data.thTime') }}</th>
@@ -1050,12 +1056,13 @@ onMounted(async () => {
           </thead>
           <tbody>
           <tr v-if="archiveLoading">
-            <td colspan="7" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td colspan="8" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
-          <tr v-else v-for="item in archiveLogs" :key="item.id">
+          <tr v-else v-for="item in archiveSnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
             <td>{{ item.title }}</td>
-            <td>{{ item.user_name || '-' }}</td>
+            <td>{{ item.operator || '-' }}</td>
+            <td>{{ item.department || '-' }}</td>
             <td class="text-secondary">{{ item.process_type }}</td>
             <td>
                 <span
@@ -1071,24 +1078,9 @@ onMounted(async () => {
                   <CloseCircleOutlined v-else />
                   {{ getComplianceLabel(item.compliance) }} {{ item.compliance_score }}{{ t('admin.data.points') }}
                 </span>
-              <span
-                  v-else
-                  class="status-tag"
-                  :class="`status-tag--${
-                    item.status === 'failed'
-                      ? 'failed'
-                      : item.status === 'completed'
-                        ? 'success'
-                        : 'running'
-                  }`"
-              >
-                  <SyncOutlined v-if="item.status !== 'completed' && item.status !== 'failed'" spin />
-                  <CheckCircleOutlined v-else-if="item.status === 'completed'" />
-                  <CloseCircleOutlined v-else />
-                  {{ getAsyncStatusLabel(item.status) }}
-                </span>
+              <span v-else class="text-secondary">-</span>
             </td>
-            <td class="text-secondary">{{ item.created_at }}</td>
+            <td class="text-secondary">{{ item.updated_at_fmt }}</td>
             <td>
               <div class="action-btns">
                 <button
@@ -1101,8 +1093,8 @@ onMounted(async () => {
               </div>
             </td>
           </tr>
-          <tr v-if="!archiveLoading && archiveLogs.length === 0">
-            <td colspan="7" class="empty-cell">{{ t('admin.data.noData') }}</td>
+          <tr v-if="!archiveLoading && archiveSnapshots.length === 0">
+            <td colspan="8" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>
@@ -1356,6 +1348,89 @@ onMounted(async () => {
         </div>
       </transition>
     </Teleport>
+
+    <Teleport to="body">
+      <transition name="drawer">
+        <div v-if="cronDetailVisible" class="drawer-overlay" @click.self="cronDetailVisible = false">
+          <div class="drawer-panel">
+            <div class="drawer-header">
+              <h3>{{ t('admin.data.cronDetailTitle') }}</h3>
+              <button class="drawer-close" @click="cronDetailVisible = false">
+                <CloseOutlined />
+              </button>
+            </div>
+
+            <div class="drawer-body" v-if="selectedCronLog">
+              <div class="detail-process-title">{{ selectedCronLog.task_label }}</div>
+
+              <div class="detail-meta-grid">
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.thTaskType') }}</span>
+                  <span class="detail-meta-value text-mono">{{ selectedCronLog.task_type }}</span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.thTriggerType') }}</span>
+                  <span class="detail-meta-value">{{ getTriggerTypeLabel(selectedCronLog.trigger_type) }}</span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.cronExecStatus') }}</span>
+                  <span class="detail-meta-value">
+                    <span
+                        class="status-tag"
+                        :class="`status-tag--${
+                        selectedCronLog.status === 'success'
+                          ? 'success'
+                          : selectedCronLog.status === 'failed'
+                            ? 'failed'
+                            : 'running'
+                      }`"
+                    >
+                      <CheckCircleOutlined v-if="selectedCronLog.status === 'success'" />
+                      <CloseCircleOutlined v-else-if="selectedCronLog.status === 'failed'" />
+                      <SyncOutlined v-else spin />
+                      {{
+                        selectedCronLog.status === 'success'
+                            ? t('admin.data.success')
+                            : selectedCronLog.status === 'failed'
+                                ? t('admin.data.failed')
+                                : t('admin.data.running')
+                      }}
+                    </span>
+                  </span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.thCreatedBy') }}</span>
+                  <span class="detail-meta-value">{{ selectedCronLog.created_by || '-' }}</span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.cronOwner') }}</span>
+                  <span class="detail-meta-value">{{ selectedCronLog.task_owner_display_name || '-' }}</span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.thDepartment') }}</span>
+                  <span class="detail-meta-value">{{ selectedCronLog.department || '-' }}</span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.cronStartTime') }}</span>
+                  <span class="detail-meta-value">{{ selectedCronLog.started_at }}</span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.cronEndTime') }}</span>
+                  <span class="detail-meta-value">{{ selectedCronLog.finished_at || '-' }}</span>
+                </div>
+              </div>
+
+              <div class="detail-section" v-if="selectedCronLog.message">
+                <h4 class="detail-section-title">{{ t('admin.data.cronMessage') }}</h4>
+                <div class="ai-reasoning">
+                  <pre>{{ selectedCronLog.message }}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
   </div>
 </template>
 
@@ -1401,7 +1476,7 @@ onMounted(async () => {
 
 .subtab-nav {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 20px;
 }
@@ -1890,9 +1965,37 @@ onMounted(async () => {
 
 .fade-in { animation: fadeIn 0.3s ease-out; }
 
+.detail-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--color-bg-page);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light);
+}
+
+.detail-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-meta-label {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  font-weight: 500;
+}
+
+.detail-meta-value {
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
 @media (max-width: 768px) {
   .stats-row { grid-template-columns: repeat(2, 1fr); }
-  .subtab-nav { grid-template-columns: 1fr; }
+  .subtab-nav { grid-template-columns: repeat(2, 1fr); }
   .data-table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .data-table { min-width: 760px; }
   .toolbar { flex-direction: column; align-items: stretch; }
@@ -1902,5 +2005,6 @@ onMounted(async () => {
   .tab-btn { flex-shrink: 0; padding: 8px 14px; font-size: 13px; }
   .risk-suggest-row { grid-template-columns: 1fr; }
   .drawer-panel { width: 100%; max-width: 100vw; }
+  .detail-meta-grid { grid-template-columns: 1fr; }
 }
 </style>

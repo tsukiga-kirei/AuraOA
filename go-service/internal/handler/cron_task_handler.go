@@ -203,6 +203,7 @@ func parseCronLogQuery(c *gin.Context) (repository.CronLogFilter, int, int) {
 		TaskType:    c.Query("task_type"),
 		TriggerType: c.Query("trigger_type"),
 		CreatedBy:   c.Query("created_by"),
+		Department:  c.Query("department"),
 	}
 	if s := c.Query("start_date"); s != "" {
 		if t, err := time.Parse("2006-01-02", s); err == nil {

@@ -1340,9 +1340,10 @@ export default {
     'admin.data.tabCron': '定时任务',
     'admin.data.tabArchive': '归档复盘',
     // 审核子页签
-    'admin.data.auditTab.pendingAi': '待 AI 审核',
-    'admin.data.auditTab.aiDone': 'AI 已完成',
     'admin.data.auditTab.all': '全部',
+    'admin.data.auditTab.approve': '建议通过',
+    'admin.data.auditTab.return': '建议退回',
+    'admin.data.auditTab.review': '建议复核',
     // 搜索 & 筛选
     'admin.data.searchAudit': '搜索流程（标题/编号）',
     'admin.data.searchOperator': '搜索操作人...',
@@ -1400,6 +1401,7 @@ export default {
     'admin.data.partiallyCompliant': '部分合规',
     // 通用筛选
     'admin.data.filterDepartment': '部门',
+    'admin.data.filterOperator': '搜索操作人',
     'admin.data.filterProcessType': '选择流程',
     'admin.data.filterDateRange': '时间区间',
     'admin.data.filterAuditStatus': 'AI审核状态',
@@ -1433,6 +1435,14 @@ export default {
     'admin.data.missingNodes': '缺失节点',
     'admin.data.ruleAudit': '规则校验',
     'admin.data.aiSummary': 'AI 综合评价',
+    // 定时任务详情抽屉
+    'admin.data.cronDetailTitle': '定时任务详情',
+    'admin.data.thTaskName': '任务名称',
+    'admin.data.cronExecStatus': '执行状态',
+    'admin.data.cronStartTime': '开始时间',
+    'admin.data.cronEndTime': '结束时间',
+    'admin.data.cronMessage': '执行备注',
+    'admin.data.cronOwner': '归属用户',
 
     //===== 管理员 - 系统租户 =====
     'admin.tenants.title': '租户管理',

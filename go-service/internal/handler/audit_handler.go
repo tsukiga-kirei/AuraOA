@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -21,10 +22,12 @@ import (
 // AuditHandler 审核工作台相关 HTTP 请求处理。
 type AuditHandler struct {
 	auditService *service.AuditExecuteService
+	snapshotRepo *repository.AuditProcessSnapshotRepo
+	auditLogRepo *repository.AuditLogRepo
 }
 
-func NewAuditHandler(auditService *service.AuditExecuteService) *AuditHandler {
-	return &AuditHandler{auditService: auditService}
+func NewAuditHandler(auditService *service.AuditExecuteService, snapshotRepo *repository.AuditProcessSnapshotRepo, auditLogRepo *repository.AuditLogRepo) *AuditHandler {
+	return &AuditHandler{auditService: auditService, snapshotRepo: snapshotRepo, auditLogRepo: auditLogRepo}
 }
 
 // ListProcesses GET /api/audit/processes?tab=pending_ai&page=1&page_size=20&start_date=&end_date=
@@ -239,6 +242,104 @@ func (h *AuditHandler) ExportLogs(c *gin.Context) {
 		})
 	}
 	w.Flush()
+}
+
+// ── 快照数据管理页端点 ──────────────────────────────────────────────────────
+
+// ListSnapshots GET /api/audit/snapshots
+func (h *AuditHandler) ListSnapshots(c *gin.Context) {
+	filter, page, pageSize := parseAuditSnapshotQuery(c)
+	items, total, err := h.snapshotRepo.ListPagedWithUser(c, filter, page, pageSize)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	// 格式化时间
+	type itemDTO struct {
+		repository.AuditSnapshotListRow
+		UpdatedAtFmt string `json:"updated_at_fmt"`
+		CreatedAtFmt string `json:"created_at_fmt"`
+	}
+	out := make([]itemDTO, len(items))
+	for i, row := range items {
+		out[i] = itemDTO{
+			AuditSnapshotListRow: row,
+			UpdatedAtFmt:         row.UpdatedAt.Local().Format("2006/1/2 15:04"),
+			CreatedAtFmt:         row.CreatedAt.Local().Format("2006/1/2 15:04"),
+		}
+	}
+	response.Success(c, gin.H{
+		"items":     out,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+// GetSnapshotStats GET /api/audit/snapshots/stats
+func (h *AuditHandler) GetSnapshotStats(c *gin.Context) {
+	stats, err := h.snapshotRepo.CountStatsByRecommendation(c)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, stats)
+}
+
+// GetSnapshotChain GET /api/audit/snapshots/:processId/chain — 审核链详情
+func (h *AuditHandler) GetSnapshotChain(c *gin.Context) {
+	processID := c.Param("processId")
+	if processID == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "流程ID不能为空")
+		return
+	}
+	snapshot, err := h.snapshotRepo.GetByProcessID(c, processID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	if snapshot == nil {
+		response.Success(c, gin.H{"chain": []interface{}{}})
+		return
+	}
+	var idStrs []string
+	_ = json.Unmarshal(snapshot.ValidLogIDs, &idStrs)
+	ids := make([]uuid.UUID, 0, len(idStrs))
+	for _, s := range idStrs {
+		if uid, err := uuid.Parse(s); err == nil {
+			ids = append(ids, uid)
+		}
+	}
+	chain, err := h.auditLogRepo.ListByIDsWithUserOrdered(c, ids)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"chain": chain})
+}
+
+func parseAuditSnapshotQuery(c *gin.Context) (repository.AuditSnapshotFilter, int, int) {
+	filter := repository.AuditSnapshotFilter{
+		Recommendation: c.Query("recommendation"),
+		Keyword:        c.Query("keyword"),
+		ProcessType:    c.Query("process_type"),
+		Operator:       c.Query("operator"),
+		Department:     c.Query("department"),
+	}
+	if s := c.Query("start_date"); s != "" {
+		if t, err := time.Parse("2006-01-02", s); err == nil {
+			filter.StartDate = &t
+		}
+	}
+	if s := c.Query("end_date"); s != "" {
+		if t, err := time.Parse("2006-01-02", s); err == nil {
+			end := t.Add(24*time.Hour - time.Second)
+			filter.EndDate = &end
+		}
+	}
+	page := parseIntQuery(c, "page", 1)
+	pageSize := parseIntQuery(c, "page_size", 20)
+	return filter, page, pageSize
 }
 
 func parseAuditLogQuery(c *gin.Context) (repository.AuditLogFilter, int, int) {

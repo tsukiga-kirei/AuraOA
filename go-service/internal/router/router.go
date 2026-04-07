@@ -266,6 +266,15 @@ func SetupRouter(
 		auditAdmin.GET("/export", auditHandler.ExportLogs)
 	}
 
+	// 审核快照 — 数据管理页（仅 tenant_admin）
+	auditSnapshotAdmin := r.Group("/api/audit/snapshots")
+	auditSnapshotAdmin.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		auditSnapshotAdmin.GET("", auditHandler.ListSnapshots)
+		auditSnapshotAdmin.GET("/stats", auditHandler.GetSnapshotStats)
+		auditSnapshotAdmin.GET("/:processId/chain", auditHandler.GetSnapshotChain)
+	}
+
 	// 归档复盘运行时（JWT + TenantContext，无角色限制）
 	archive := r.Group("/api/archive")
 	archive.Use(middleware.JWT(rdb), middleware.TenantContext())
@@ -288,6 +297,15 @@ func SetupRouter(
 		archiveAdmin.GET("", archiveReviewHandler.ListLogs)
 		archiveAdmin.GET("/stats", archiveReviewHandler.GetLogStats)
 		archiveAdmin.GET("/export", archiveReviewHandler.ExportLogs)
+	}
+
+	// 归档快照 — 数据管理页（仅 tenant_admin）
+	archiveSnapshotAdmin := r.Group("/api/archive/snapshots")
+	archiveSnapshotAdmin.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		archiveSnapshotAdmin.GET("", archiveReviewHandler.ListSnapshots)
+		archiveSnapshotAdmin.GET("/stats", archiveReviewHandler.GetSnapshotStats)
+		archiveSnapshotAdmin.GET("/:processId/chain", archiveReviewHandler.GetSnapshotChain)
 	}
 
 	// 定时任务全量日志 — 数据管理页（仅 tenant_admin）

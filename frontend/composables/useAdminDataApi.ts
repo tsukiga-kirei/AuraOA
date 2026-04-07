@@ -1,24 +1,32 @@
 /**
  * useAdminDataApi — 数据管理页面 API 封装
- * 对接三个后端路由组：
- *   GET /api/audit/logs               审核日志分页
- *   GET /api/audit/logs/stats         审核日志统计
- *   GET /api/audit/logs/export        审核日志导出
- *   GET /api/archive/logs             归档复盘日志分页
- *   GET /api/archive/logs/stats       归档复盘日志统计
- *   GET /api/archive/logs/export      归档复盘日志导出
- *   GET /api/tenant/cron/logs         定时任务日志分页
- *   GET /api/tenant/cron/logs/stats   定时任务日志统计
- *   GET /api/tenant/cron/logs/export  定时任务日志导出
+ * 对接后端路由组：
+ *   GET /api/audit/snapshots             审核快照分页（数据管理页主表）
+ *   GET /api/audit/snapshots/stats       审核快照统计
+ *   GET /api/audit/snapshots/:id/chain   审核链详情
+ *   GET /api/audit/logs/export           审核日志导出
+ *   GET /api/archive/snapshots           归档快照分页
+ *   GET /api/archive/snapshots/stats     归档快照统计
+ *   GET /api/archive/snapshots/:id/chain 归档复盘链详情
+ *   GET /api/archive/logs/export         归档复盘日志导出
+ *   GET /api/tenant/cron/logs            定时任务日志分页
+ *   GET /api/tenant/cron/logs/stats      定时任务日志统计
+ *   GET /api/tenant/cron/logs/export     定时任务日志导出
  */
 
 import type {
   AuditLogFilter,
   AuditLogStats,
   AuditLogItem,
+  AuditSnapshotFilter,
+  AuditSnapshotStats,
+  AuditSnapshotItem,
   ArchiveLogFilter,
   ArchiveLogStats,
   ArchiveLogItem,
+  ArchiveSnapshotFilter,
+  ArchiveSnapshotStats,
+  ArchiveSnapshotItem,
   CronLogFilter,
   CronLogStats,
   CronLogItem,
@@ -28,7 +36,23 @@ import type {
 export function useAdminDataApi() {
   const { authFetch, token } = useAuth()
 
-  // ── 审核日志 ────────────────────────────────────────────────────────────────
+  // ── 审核快照（数据管理页主数据源） ──────────────────────────────────────────
+
+  async function listAuditSnapshots(filter: AuditSnapshotFilter = {}): Promise<PagedResult<AuditSnapshotItem>> {
+    const params = buildParams(filter)
+    const query = new URLSearchParams(params).toString()
+    return await authFetch<PagedResult<AuditSnapshotItem>>(`/api/audit/snapshots${query ? `?${query}` : ''}`)
+  }
+
+  async function getAuditSnapshotStats(): Promise<AuditSnapshotStats> {
+    return await authFetch<AuditSnapshotStats>('/api/audit/snapshots/stats')
+  }
+
+  async function getAuditSnapshotChain(processId: string): Promise<{ chain: AuditLogItem[] }> {
+    return await authFetch<{ chain: AuditLogItem[] }>(`/api/audit/snapshots/${processId}/chain`)
+  }
+
+  // ── 审核日志（保留用于导出） ──────────────────────────────────────────────
 
   async function listAuditLogs(filter: AuditLogFilter = {}): Promise<PagedResult<AuditLogItem>> {
     const params = buildParams(filter)
@@ -46,7 +70,23 @@ export function useAdminDataApi() {
     await triggerDownload(url, 'audit_logs.csv')
   }
 
-  // ── 归档复盘日志 ──────────────────────────────────────────────────────────────
+  // ── 归档快照（数据管理页主数据源） ──────────────────────────────────────────
+
+  async function listArchiveSnapshots(filter: ArchiveSnapshotFilter = {}): Promise<PagedResult<ArchiveSnapshotItem>> {
+    const params = buildParams(filter)
+    const query = new URLSearchParams(params).toString()
+    return await authFetch<PagedResult<ArchiveSnapshotItem>>(`/api/archive/snapshots${query ? `?${query}` : ''}`)
+  }
+
+  async function getArchiveSnapshotStats(): Promise<ArchiveSnapshotStats> {
+    return await authFetch<ArchiveSnapshotStats>('/api/archive/snapshots/stats')
+  }
+
+  async function getArchiveSnapshotChain(processId: string): Promise<{ chain: ArchiveLogItem[] }> {
+    return await authFetch<{ chain: ArchiveLogItem[] }>(`/api/archive/snapshots/${processId}/chain`)
+  }
+
+  // ── 归档复盘日志（保留用于导出） ──────────────────────────────────────────
 
   async function listArchiveLogs(filter: ArchiveLogFilter = {}): Promise<PagedResult<ArchiveLogItem>> {
     const params = buildParams(filter)
@@ -139,12 +179,23 @@ export function useAdminDataApi() {
   }
 
   return {
+    // 审核快照
+    listAuditSnapshots,
+    getAuditSnapshotStats,
+    getAuditSnapshotChain,
+    // 审核日志（保留）
     listAuditLogs,
     getAuditLogStats,
     exportAuditLogs,
+    // 归档快照
+    listArchiveSnapshots,
+    getArchiveSnapshotStats,
+    getArchiveSnapshotChain,
+    // 归档日志（保留）
     listArchiveLogs,
     getArchiveLogStats,
     exportArchiveLogs,
+    // 定时任务
     listCronLogs,
     getCronLogStats,
     exportCronLogs,
