@@ -23,7 +23,7 @@ definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
 const {
-  departments, roles, members, loadAll, loading,
+  departments, roles, members, loadAll,
   createDepartment, updateDepartment, deleteDepartment: apiDeleteDept,
   createRole, updateRole, deleteRole: apiDeleteRole,
   createMember, updateMember, deleteMember: apiDeleteMember,

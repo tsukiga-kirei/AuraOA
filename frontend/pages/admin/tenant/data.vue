@@ -24,7 +24,6 @@ import { message } from 'ant-design-vue'
 import { useAdminDataApi } from '~/composables/useAdminDataApi'
 import { useAuditApi } from '~/composables/useAuditApi'
 import { useOrgApi } from '~/composables/useOrgApi'
-import { useArchiveReviewApi } from '~/composables/useArchiveReviewApi'
 import type {
   AuditLogItem,
   AuditSnapshotItem,
@@ -43,51 +42,6 @@ type AuditSubTab = 'all' | 'approve' | 'return' | 'review'
 type CronSubTab = 'all' | 'success' | 'failed' | 'running'
 type ArchiveSubTab = 'all' | 'compliant' | 'partially_compliant' | 'non_compliant'
 
-type AuditRuleItem = {
-  rule_id?: string
-  rule_name?: string
-  rule_content?: string
-  passed?: boolean
-  reasoning?: string
-  reason?: string
-}
-
-type AuditDetailPayload = {
-  recommendation?: string
-  overall_score?: number
-  score?: number
-  rule_results?: AuditRuleItem[]
-  details?: AuditRuleItem[]
-}
-
-type ArchiveRuleItem = {
-  rule_id?: string
-  rule_name?: string
-  passed?: boolean
-  reasoning?: string
-}
-
-type ArchiveNodeResult = {
-  node_id?: string
-  node_name?: string
-  compliant?: boolean
-  reasoning?: string
-}
-
-type ArchiveDetailPayload = {
-  overall_compliance?: string
-  overall_score?: number
-  flow_audit?: {
-    is_complete: boolean
-    missing_nodes: string[]
-    node_results: ArchiveNodeResult[]
-  }
-  rule_audit?: ArchiveRuleItem[]
-  risk_points?: string[]
-  suggestions?: string[]
-  ai_summary?: string
-  duration_ms?: number
-}
 
 const { t } = useI18n()
 const {
@@ -103,16 +57,11 @@ const {
   getCronLogStats,
   exportCronLogs,
 } = useAdminDataApi()
-const { getProcessTypes: getAuditProcessTypes } = useAuditApi()
-const { getProcessTypes: getArchiveProcessTypes } = useArchiveReviewApi()
 
 const activeTab = ref<MainTab>('audit')
 const activeAuditSubTab = ref<AuditSubTab>('all')
 const activeCronSubTab = ref<CronSubTab>('all')
 const activeArchiveSubTab = ref<ArchiveSubTab>('all')
-
-const auditProcessOptions = ref<{ label: string; value: string }[]>([])
-const archiveProcessOptions = ref<{ label: string; value: string }[]>([])
 
 const auditStats = ref<AuditSnapshotStats>({
   total: 0,
@@ -295,18 +244,7 @@ const archiveQuery = computed(() => ({
   page_size: archivePageSize.value,
 }))
 
-function normalizeObject<T>(value: unknown): T {
-  if (!value) return {} as T
-  if (typeof value === 'string') {
-    try {
-      return JSON.parse(value) as T
-    } catch {
-      return {} as T
-    }
-  }
-  if (typeof value === 'object') return value as T
-  return {} as T
-}
+
 
 function getRecLabel(rec: string) {
   const map: Record<string, string> = {
@@ -334,17 +272,7 @@ function getTriggerTypeLabel(value: string) {
   return map[value] || value || '-'
 }
 
-function getAsyncStatusLabel(status: string) {
-  const map: Record<string, string> = {
-    pending: t('admin.data.statusPending'),
-    assembling: t('admin.data.statusAssembling'),
-    reasoning: t('admin.data.statusReasoning'),
-    extracting: t('admin.data.statusExtracting'),
-    completed: t('admin.data.statusCompleted'),
-    failed: t('admin.data.statusFailed'),
-  }
-  return map[status] || status || '-'
-}
+
 
 async function openAuditDetail(item: AuditSnapshotItem) {
   selectedAuditLog.value = item
@@ -479,29 +407,6 @@ const getAuditCount = (validLogIds: any) => {
   return 1
 }
 
-async function loadAuditProcessTypeOptions() {
-  try {
-    const list = await getAuditProcessTypes()
-    auditProcessOptions.value = (Array.isArray(list) ? list : []).map(item => ({
-      value: item.process_type,
-      label: item.process_type_label || item.process_type,
-    }))
-  } catch {
-    auditProcessOptions.value = []
-  }
-}
-
-async function loadArchiveProcessTypeOptions() {
-  try {
-    const list = await getArchiveProcessTypes()
-    archiveProcessOptions.value = (Array.isArray(list) ? list : []).map(item => ({
-      value: item.process_type,
-      label: item.process_type_label || item.process_type,
-    }))
-  } catch {
-    archiveProcessOptions.value = []
-  }
-}
 
 async function loadAuditStats() {
   try {

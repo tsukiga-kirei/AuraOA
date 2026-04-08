@@ -754,10 +754,6 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
 .detail-rule-dot--off { background: var(--color-text-tertiary); }
 .detail-rule-text { flex: 1; color: var(--color-text-primary); line-height: 1.5; }
 
-.rule-toggle-status {
-  font-size: 10px; font-weight: 600; padding: 1px 6px;
-  border-radius: var(--radius-full); white-space: nowrap; flex-shrink: 0;
-}
 .rule-toggle-status--on { background: var(--color-success-bg); color: var(--color-success); }
 .rule-toggle-status--off { background: var(--color-bg-hover); color: var(--color-text-tertiary); }
 
@@ -773,13 +769,8 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
 .rule-toggle-arrow {
   font-size: 11px; color: var(--color-text-tertiary); flex-shrink: 0;
 }
-.rule-toggle-user--changed {
-  outline: 1.5px solid currentColor;
-  outline-offset: 1px;
-}
 
 .detail-tag-list { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 20px; }
-.detail-email-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .detail-field-tag {
   font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: var(--radius-full);
   background: var(--color-info-bg); color: var(--color-info); border: 1px solid transparent;
@@ -798,9 +789,8 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
 .field-status-tag {
   font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: var(--radius-full);
 }
-.field-override-item--user_added { border-left: 3px solid var(--color-info); }
+
 .field-override-item--user_added .field-status-tag { background: var(--color-info-bg); color: var(--color-info); }
-.field-override-item--abandoned { border-left: 3px solid var(--color-danger); opacity: 0.7; }
 .field-override-item--abandoned .field-status-tag { background: var(--color-danger-bg); color: var(--color-danger); }
 .field-override-item--abandoned .field-name { text-decoration: line-through; }
 

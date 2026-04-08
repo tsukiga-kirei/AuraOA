@@ -35,7 +35,7 @@ import type {
   ProcessAuditConfig as ApiProcessAuditConfig,
   SystemPromptTemplate
 } from '~/composables/useRulesApi'
-import type {ArchiveRule, CronTaskConfig, ProcessArchiveConfig, ProcessField} from '~/types/rules'
+import type {ArchiveRule, CronTaskConfig, ProcessArchiveConfig} from '~/types/rules'
 import {useI18n} from '~/composables/useI18n'
 import {usePagination} from '~/composables/usePagination'
 import {useArchiveApi} from "~/composables/useArchiveApi";
@@ -408,10 +408,7 @@ const fieldTypeLabels = computed<Record<string, string>>(() => ({
   text: t('fieldType.text'), number: t('fieldType.number'), date: t('fieldType.date'), select: t('fieldType.select'), textarea: t('fieldType.textarea'), file: t('fieldType.file'),
 }))
 
-const toggleFieldSelection = (field: ProcessField) => {
-  if (selectedConfig.value?.field_mode === 'all') return
-  field.selected = !field.selected
-}
+
 
 //===== 字段选择器模态 =====
 const showFieldPicker = ref(false)
@@ -527,22 +524,6 @@ const pageSelectedFieldsFlat = computed(() => {
   })
 })
 const pageSelectedPagination = usePagination(pageSelectedFieldsFlat, 5)
-
-
-//按表分组的已筛选未选定字段（选择器左侧）
-const groupedUnselectedFields = computed<FieldGroup[]>(() => {
-  const q = fieldSearchQuery.value.toLowerCase().trim()
-  return groupedAvailableFields.value
-    .map(g => ({
-      ...g,
-      fields: g.fields.filter(f => {
-        if (f.selected) return false
-        if (!q) return true
-        return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
-      }),
-    }))
-    .filter(g => g.fields.length > 0)
-})
 
 
 
