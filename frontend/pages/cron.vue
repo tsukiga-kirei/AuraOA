@@ -270,7 +270,6 @@ const newTask = ref({
 })
 const cronParts = ref({ minute: '0', hour: '9', day: '*', month: '*', weekday: '1-5' })
 
-const newTaskConfig = computed(() => configs.value.find(c => c.task_type === newTask.value.task_type))
 
 watch(() => newTask.value.task_type, (type) => {
   // 新类型时自动填入预设 cron 表达式
