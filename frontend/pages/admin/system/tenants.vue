@@ -118,11 +118,7 @@ const getOADbInfo = (id: string) => {
   return oaConnections.value.find(c => c.id === id) || null
 }
 
-// 通过id获取AI模型显示名
-const getModelName = (id: string) => {
-  const m = aiModels.value.find(x => x.id === id)
-  return m ? m.display_name : ''
-}
+
 
 // ===== 新增租户 - 分页签表单 =====
 const createTab = ref<'basic' | 'admin' | 'ai'>('basic')

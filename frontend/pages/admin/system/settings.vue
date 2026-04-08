@@ -419,15 +419,7 @@ const testModelConnection = async () => {
   }
 }
 
-//===== OA 系统切换（旧版）=====
-const oaSystems = ref<any[]>([])
-const toggleOASystem = (id: string) => {
-  const sys = oaSystems.value.find(s => s.id === id)
-  if (sys) {
-    sys.enabled = !sys.enabled
-    message.success(sys.enabled ? t('admin.settings.enabled', sys.name) : t('admin.settings.disabled', sys.name))
-  }
-}
+
 
 const getStatusConfig = (status: string) => {
   const configs: Record<string, { color: string; bg: string; label: string; icon: any }> = {
