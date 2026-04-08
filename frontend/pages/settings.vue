@@ -9,7 +9,6 @@ import {
   SettingOutlined,
   LockOutlined,
   CheckOutlined,
-  EditOutlined,
   ClockCircleOutlined,
   SafetyCertificateOutlined,
   NodeIndexOutlined,
@@ -18,16 +17,11 @@ import {
   AppstoreOutlined,
   ControlOutlined,
   AuditOutlined,
-  PieChartOutlined,
-  EyeOutlined,
-  EyeInvisibleOutlined,
   GlobalOutlined,
-  KeyOutlined,
   SearchOutlined,
   SwapRightOutlined,
   CloseOutlined,
   LoadingOutlined,
-  ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { Locale } from '~/composables/useI18n'
@@ -35,9 +29,6 @@ import type {
   ProcessListItem,
   FullAuditProcessConfig,
   TenantField,
-  TenantRule,
-  CustomRule,
-  CronPrefs,
   AccessibleArchiveConfig,
   FullArchiveConfig,
   UpdatePersonalConfigRequest,
@@ -326,19 +317,7 @@ const selectedPagination = usePagination(selectedFieldsFiltered, 6)
 const selectedFieldCount = computed(() => selectedFieldsFlat.value.length)
 
 
-const groupedUnselected = computed<PickerFieldGroup[]>(() => {
-  const q = fieldSearchQuery.value.toLowerCase().trim()
-  return groupedFields.value
-    .map(g => ({
-      ...g,
-      fields: g.fields.filter(f => {
-        if (f.selected) return false
-        if (!q) return true
-        return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
-      }),
-    }))
-    .filter(g => g.fields.length > 0)
-})
+
 
 // 批量操作逻辑
 const toggleLeftSelectAll = () => {
@@ -391,11 +370,6 @@ const isFieldIdLocked = (fieldId: string) => {
   return field ? isFieldLocked(field) : false
 }
 
-const groupedSelected = computed<PickerFieldGroup[]>(() =>
-  groupedFields.value
-    .map(g => ({ ...g, fields: g.fields.filter(f => f.selected) }))
-    .filter(g => g.fields.length > 0),
-)
 
 const isFieldLocked = (field: any) => {
   // 仅租户锁定的字段不可删除
@@ -629,19 +603,7 @@ const archiveSelectedPagination = usePagination(archiveSelectedFieldsFiltered, 6
 const archiveSelectedCount = computed(() => archiveSelectedFieldsFlat.value.length)
 
 
-const archiveGroupedUnselected = computed<PickerFieldGroup[]>(() => {
-  const q = archiveFieldSearchQuery.value.toLowerCase().trim()
-  return archiveGroupedFields.value
-    .map(g => ({
-      ...g,
-      fields: g.fields.filter(f => {
-        if (f.selected) return false
-        if (!q) return true
-        return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q)
-      }),
-    }))
-    .filter(g => g.fields.length > 0)
-})
+
 
 const toggleArchiveLeftSelectAll = () => {
   if (archiveLeftSelectedKeys.value.length === archiveUnselectedFieldsFlat.value.length && archiveUnselectedFieldsFlat.value.length > 0) {
@@ -697,11 +659,7 @@ const isArchiveFieldIdLocked = (fieldId: string) => {
   return field ? isArchiveFieldLocked(field) : false
 }
 
-const archiveGroupedSelected = computed<PickerFieldGroup[]>(() =>
-  archiveGroupedFields.value
-    .map(g => ({ ...g, fields: g.fields.filter(f => f.selected) }))
-    .filter(g => g.fields.length > 0),
-)
+
 
 const archivePickField = (field: { field_key: string; source: string }) => {
   if (!fullArchiveConfig.value || !fullArchiveConfig.value.user_permissions.allow_custom_fields) return

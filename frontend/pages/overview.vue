@@ -234,18 +234,6 @@ function formatActivityTime(iso: string) {
   }
 }
 
-function formatUserLastActive(iso: string) {
-  try {
-    const d = new Date(iso)
-    return new Intl.DateTimeFormat(locale.value === 'en-US' ? 'en-US' : 'zh-CN', {
-      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-    }).format(d)
-  }
-  catch {
-    return iso
-  }
-}
-
 function archiveComplianceLabel(compliance: string) {
   if (compliance === 'compliant') return t('overview.archiveCompliance.compliant')
   if (compliance === 'non_compliant') return t('overview.archiveCompliance.nonCompliant')

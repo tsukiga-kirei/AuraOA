@@ -29,7 +29,7 @@ definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
 const { token } = useAuth()
-const { getStats, listProcesses, executeAudit, getAuditChain: fetchAuditChain, getProcessTypes, cancelAuditJob, waitAuditJob, batchAudit } = useAuditApi()
+const { getStats, listProcesses, executeAudit, getAuditChain: fetchAuditChain, getProcessTypes, cancelAuditJob, waitAuditJob } = useAuditApi()
 const { listTasks } = useCronApi()
 
 // ─── 后台定时任务状态 ───
@@ -203,7 +203,6 @@ const listTotal = ref(0)
 const selectedProcess = ref<string | null>(null)
 const currentResult = ref<AuditResult | null>(null)
 const loading = ref(false)
-const phase1Done = ref(false)
 
 const selectedProcessInfo = computed(() => processList.value.find(p => p.process_id === selectedProcess.value))
 
@@ -836,11 +835,7 @@ const viewModeLabel = computed(() => {
   return map[activeTab.value]
 })
 
-const urgencyConfig = computed<Record<string, { color: string; bg: string; label: string }>>(() => ({
-  high: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', label: t('dashboard.urgency.high') },
-  medium: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', label: t('dashboard.urgency.medium') },
-  low: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', label: t('dashboard.urgency.low') },
-}))
+
 
 const isResultAsyncRunning = (r: AuditResult | null) =>
   !!(r?.status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(r.status))

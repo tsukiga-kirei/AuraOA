@@ -15,7 +15,7 @@ import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ layout: false, middleware: 'auth' })
 
-const { login, getMenu } = useAuth()
+const { login } = useAuth()
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
 const { t } = useI18n()
 const config = useRuntimeConfig()
