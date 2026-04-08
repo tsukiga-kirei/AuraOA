@@ -1156,7 +1156,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
 .ai-meta-row + .ai-meta-row { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--color-border-light); }
 .ai-meta-label { font-size: 11px; color: var(--color-text-tertiary); display: block; }
 .ai-meta-value { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin-top: 2px; display: block; }
-.ai-meta-value--mono { font-family: var(--font-mono); font-size: 12px; }
+.ai-meta-value--mono { font-family: var(--font-mono), monospace; font-size: 12px; }
 .ai-card-actions { display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid var(--color-border-light); margin-top: auto; }
 
 .config-sections { display: flex; flex-direction: column; gap: 24px; }

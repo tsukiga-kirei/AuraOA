@@ -24,7 +24,7 @@ export interface OverviewWidgetDef {
   size: 'sm' | 'md' | 'lg'
 }
 
-/** 当前已接入真实数据的仪表盘组件（系统监控类已移至业务 TODO，自此处移除） */
+/** 当前已接入真实数据的仪表盘组件*/
 export const OVERVIEW_WIDGETS: OverviewWidgetDef[] = [
   { id: 'audit_summary', titleKey: 'overview.widgetTitle.audit_summary', descriptionKey: 'overview.widgetDesc.audit_summary', requiredPermissions: ['business', 'tenant_admin', 'system_admin'], defaultEnabled: true, size: 'lg' },
   { id: 'pending_tasks', titleKey: 'overview.widgetTitle.pending_tasks', descriptionKey: 'overview.widgetDesc.pending_tasks', requiredPermissions: ['business', 'tenant_admin'], defaultEnabled: true, size: 'sm' },
