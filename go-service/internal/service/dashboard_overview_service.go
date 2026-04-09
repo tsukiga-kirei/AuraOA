@@ -21,6 +21,8 @@ type DashboardOverviewService struct {
 	auditLogRepo        *repository.AuditLogRepo
 	archiveLogRepo      *repository.ArchiveLogRepo
 	cronLogRepo         *repository.CronLogRepo
+	cronTaskRepo        *repository.CronTaskRepo
+	cronPresetRepo      *repository.CronTaskTypePresetRepo
 	llmLogRepo          *repository.LLMMessageLogRepo
 	tenantRepo          *repository.TenantRepo
 	orgRepo             *repository.OrgRepo
@@ -33,6 +35,8 @@ func NewDashboardOverviewService(
 	auditLogRepo *repository.AuditLogRepo,
 	archiveLogRepo *repository.ArchiveLogRepo,
 	cronLogRepo *repository.CronLogRepo,
+	cronTaskRepo *repository.CronTaskRepo,
+	cronPresetRepo *repository.CronTaskTypePresetRepo,
 	llmLogRepo *repository.LLMMessageLogRepo,
 	tenantRepo *repository.TenantRepo,
 	orgRepo *repository.OrgRepo,
@@ -43,6 +47,8 @@ func NewDashboardOverviewService(
 		auditLogRepo:        auditLogRepo,
 		archiveLogRepo:      archiveLogRepo,
 		cronLogRepo:         cronLogRepo,
+		cronTaskRepo:        cronTaskRepo,
+		cronPresetRepo:      cronPresetRepo,
 		llmLogRepo:          llmLogRepo,
 		tenantRepo:          tenantRepo,
 		orgRepo:             orgRepo,
@@ -235,7 +241,22 @@ func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userSco
 			},
 		})
 	}
+	// 加载预设映射（用于 cron 任务种类名称）
+	presets, _ := s.cronPresetRepo.ListAll()
+	presetLabelMap := make(map[string]string)
+	for _, p := range presets {
+		presetLabelMap[p.TaskType] = p.LabelZh
+	}
+
 	for _, cl := range cronRows {
+		// TaskLabel 显示任务种类（preset label_zh），而非任务实例名
+		typeLabel := presetLabelMap[cl.TaskType]
+		if typeLabel == "" {
+			typeLabel = cl.TaskLabel
+			if typeLabel == "" {
+				typeLabel = cl.TaskType
+			}
+		}
 		buf = append(buf, enrichedSort{
 			at: cl.CreatedAt,
 			item: dto.ActivityItemEnriched{
@@ -245,7 +266,7 @@ func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userSco
 				UserName:   cl.UserName,
 				CreatedAt:  cl.CreatedAt.UTC().Format(time.RFC3339),
 				CronStatus: cl.Status,
-				TaskLabel:  cl.TaskLabel,
+				TaskLabel:  typeLabel,
 			},
 		})
 	}
@@ -282,32 +303,46 @@ func (s *DashboardOverviewService) buildPendingTasks(c *gin.Context, userID uuid
 	}
 }
 
-// buildCronTaskPreview 构建定时任务预览列表。
+// buildCronTaskPreview 构建定时任务预览列表（从 cron_tasks 表查任务实例，JOIN presets 获取 label_zh）。
 func (s *DashboardOverviewService) buildCronTaskPreview(c *gin.Context, userID uuid.UUID, username string) []dto.CronTaskPreview {
-	tid, err := tenantUUIDFromContext(c)
+	// 查询当前用户的定时任务实例
+	tasks, err := s.cronTaskRepo.ListByOwner(c, userID)
 	if err != nil {
+		log.Printf("dashboard: cronTaskRepo.ListByOwner error: %v", err)
 		return nil
 	}
 
-	var cronLogs []model.CronLog
-	cronLogs, err = s.cronLogRepo.ListByTenantForDashboardMember(tid, userID, username, 5)
+	// 加载所有预设，构建 task_type → preset 映射
+	presets, err := s.cronPresetRepo.ListAll()
 	if err != nil {
-		log.Printf("dashboard: cronLogRepo.ListByTenantForDashboardMember error: %v", err)
-		return nil
+		log.Printf("dashboard: cronPresetRepo.ListAll error: %v", err)
+	}
+	presetMap := make(map[string]model.CronTaskTypePreset)
+	for _, p := range presets {
+		presetMap[p.TaskType] = p
 	}
 
-	result := make([]dto.CronTaskPreview, 0, len(cronLogs))
-	for _, cl := range cronLogs {
-		label := cl.TaskLabel
+	result := make([]dto.CronTaskPreview, 0, len(tasks))
+	for _, t := range tasks {
+		label := t.TaskLabel
 		if label == "" {
-			label = cl.TaskType
+			label = t.TaskType
+		}
+		// 说明列：从 preset 获取 label_zh
+		desc := ""
+		if p, ok := presetMap[t.TaskType]; ok {
+			desc = p.LabelZh
+		}
+		if desc == "" {
+			desc = label
 		}
 		result = append(result, dto.CronTaskPreview{
-			ID:          cl.ID.String(),
-			TaskLabel:   label,
-			TaskType:    cl.TaskType,
-			Description: label,
-			IsActive:    cl.Status == string(model.AuditStatusCompleted),
+			ID:             t.ID.String(),
+			TaskLabel:      label,
+			TaskType:       t.TaskType,
+			Description:    desc,
+			CronExpression: t.CronExpression,
+			IsActive:       t.IsActive,
 		})
 	}
 	return result

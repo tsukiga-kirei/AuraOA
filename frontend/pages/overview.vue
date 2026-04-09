@@ -424,7 +424,7 @@ function tokenPct(used: number, quota: number) {
         </div>
         <div class="activity-list" v-if="dash.recent_activity.length > 0">
           <div v-for="a in dash.recent_activity.slice(0, 10)" :key="a.id" class="activity-item">
-            <div class="activity-dot" :style="{ background: activityKindColor[a.kind] || 'var(--color-text-tertiary)' }" />
+            <div class="activity-dot" :style="{ background: (a.kind === 'cron' && a.cron_status === 'failed') ? 'var(--color-danger)' : (activityKindColor[a.kind] || 'var(--color-text-tertiary)') }" />
             <div class="activity-body">
               <span class="activity-action">{{ kindLabel(a.kind) }}</span>
               <span class="activity-target">{{ a.title }}</span>
@@ -434,7 +434,7 @@ function tokenPct(used: number, quota: number) {
               <span v-if="a.kind === 'archive' && a.compliance" class="activity-tag activity-tag--archive">
                 {{ t(`overview.compliance.${a.compliance}`) }} · {{ a.compliance_score }}{{ t('overview.scoreUnit') }}
               </span>
-              <span v-if="a.kind === 'cron' && a.cron_status" class="activity-tag activity-tag--cron">
+              <span v-if="a.kind === 'cron' && a.cron_status" class="activity-tag" :class="a.cron_status === 'failed' ? 'activity-tag--cron-fail' : 'activity-tag--cron'">
                 {{ t(`overview.cronStatus.${a.cron_status}`) }} · {{ a.task_label }}
               </span>
             </div>
@@ -754,6 +754,7 @@ function tokenPct(used: number, quota: number) {
 .activity-tag { font-size: 11px; color: var(--color-primary); background: var(--color-primary-bg); padding: 1px 6px; border-radius: var(--radius-full); margin-left: 6px; white-space: nowrap; }
 .activity-tag--archive { color: var(--color-success); background: var(--color-success-bg); }
 .activity-tag--cron { color: var(--color-accent); background: rgba(6,182,212,0.1); }
+.activity-tag--cron-fail { color: var(--color-danger); background: var(--color-danger-bg); }
 .activity-meta { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
 .activity-user { font-size: 12px; color: var(--color-text-tertiary); }
 .activity-time { font-size: 11px; color: var(--color-text-tertiary); }
