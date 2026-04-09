@@ -127,7 +127,7 @@ func main() {
 	aiCallerService := service.NewAIModelCallerService(tenantRepo, llmMessageLogRepo, db)
 	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db, rdb)
 	dashboardOverviewService := service.NewDashboardOverviewService(
-		auditSnapshotRepo, archiveSnapshotRepo, auditLogRepo, archiveLogRepo, cronLogRepo, llmMessageLogRepo, tenantRepo, orgRepo,
+		auditSnapshotRepo, archiveSnapshotRepo, auditLogRepo, archiveLogRepo, cronLogRepo, cronTaskRepo, cronPresetRepo, llmMessageLogRepo, tenantRepo, orgRepo,
 	)
 	userNotificationService := service.NewUserNotificationService(userNotificationRepo, userRepo)
 	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveSnapshotRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, orgRepo, db, rdb)
