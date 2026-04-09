@@ -428,10 +428,18 @@ function tokenPct(used: number, quota: number) {
             <div class="activity-body">
               <span class="activity-action">{{ kindLabel(a.kind) }}</span>
               <span class="activity-target">{{ a.title }}</span>
-              <span v-if="a.kind === 'audit' && a.recommendation" class="activity-tag">
+              <span v-if="a.kind === 'audit' && a.recommendation" class="activity-tag" :class="{
+                'activity-tag--approve': a.recommendation === 'approve',
+                'activity-tag--return': a.recommendation === 'return',
+                'activity-tag--review': a.recommendation === 'review',
+              }">
                 {{ t(`overview.recommendation.${a.recommendation}`) }} · {{ a.score }}{{ t('overview.scoreUnit') }}
               </span>
-              <span v-if="a.kind === 'archive' && a.compliance" class="activity-tag activity-tag--archive">
+              <span v-if="a.kind === 'archive' && a.compliance" class="activity-tag" :class="{
+                'activity-tag--compliant': a.compliance === 'compliant',
+                'activity-tag--non-compliant': a.compliance === 'non_compliant',
+                'activity-tag--partial': a.compliance === 'partially_compliant',
+              }">
                 {{ t(`overview.compliance.${a.compliance}`) }} · {{ a.compliance_score }}{{ t('overview.scoreUnit') }}
               </span>
               <span v-if="a.kind === 'cron' && a.cron_status" class="activity-tag" :class="a.cron_status === 'failed' ? 'activity-tag--cron-fail' : 'activity-tag--cron'">
@@ -673,9 +681,6 @@ function tokenPct(used: number, quota: number) {
 .customize-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .customize-chip--active { background: var(--color-primary-bg); border-color: var(--color-primary); color: var(--color-primary); font-weight: 500; }
 
-.slide-down-enter-active { transition: all 0.25s ease; }
-.slide-down-leave-active { transition: all 0.2s ease; }
-.slide-down-enter-from, .slide-down-leave-to { opacity: 0; transform: translateY(-8px); }
 
 /*小部件网格*/
 .widget-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
@@ -752,6 +757,12 @@ function tokenPct(used: number, quota: number) {
 .activity-action { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
 .activity-target { font-size: 13px; color: var(--color-text-secondary); margin-left: 6px; }
 .activity-tag { font-size: 11px; color: var(--color-primary); background: var(--color-primary-bg); padding: 1px 6px; border-radius: var(--radius-full); margin-left: 6px; white-space: nowrap; }
+.activity-tag--approve { color: var(--color-success); background: var(--color-success-bg); }
+.activity-tag--return { color: var(--color-warning); background: var(--color-warning-bg); }
+.activity-tag--review { color: var(--color-info); background: var(--color-info-bg); }
+.activity-tag--compliant { color: var(--color-success); background: var(--color-success-bg); }
+.activity-tag--non-compliant { color: var(--color-danger); background: var(--color-danger-bg); }
+.activity-tag--partial { color: var(--color-warning); background: var(--color-warning-bg); }
 .activity-tag--archive { color: var(--color-success); background: var(--color-success-bg); }
 .activity-tag--cron { color: var(--color-accent); background: rgba(6,182,212,0.1); }
 .activity-tag--cron-fail { color: var(--color-danger); background: var(--color-danger-bg); }
