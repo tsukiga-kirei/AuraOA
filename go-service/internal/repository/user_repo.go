@@ -99,6 +99,15 @@ func (r *UserRepo) FindTenantByID(tenantID uuid.UUID) (*model.Tenant, error) {
 	return &tenant, nil
 }
 
+// FindBusinessRoleAssignment 查找用户在指定租户下的 business 角色分配（用于发送通知）。
+func (r *UserRepo) FindBusinessRoleAssignment(userID, tenantID uuid.UUID) (*model.UserRoleAssignment, error) {
+	var a model.UserRoleAssignment
+	if err := r.DB.Where("user_id = ? AND tenant_id = ? AND role = 'business'", userID, tenantID).First(&a).Error; err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
 // UpdatePasswordHash updates the user's password hash.
 func (r *UserRepo) UpdatePasswordHash(userID uuid.UUID, hash string) error {
 	return r.DB.Model(&model.User{}).Where("id = ?", userID).Update("password_hash", hash).Error

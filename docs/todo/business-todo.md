@@ -115,10 +115,12 @@
 - [ ] **邮件发送服务**：基于 `net/smtp` 或第三方库（如 `go-gomail`）实现
 - [ ] **邮件模板渲染**：基于 `content_template` 中的模板变量渲染 HTML/Markdown
 - [ ] **通知触发机制**：
-  - 审核完成通知（发给流程申请人/审批人）
-  - 定时任务结果推送（日报/周报）
+  - ~~审核完成通知~~ — ✅ 已实现站内通知（`audit_execute_service.go` → `notifSvc.CreateByTenant`）
+  - ~~归档复盘完成通知~~ — ✅ 已实现站内通知（`archive_review_service.go` → `notifSvc.CreateByTenant`）
+  - ~~定时任务完成通知~~ — ✅ 已实现站内通知（`cron_task_service.go` → `notifSvc.CreateByTenant`）
+  - 定时任务结果推送（日报/周报邮件）
   - 系统告警通知（管理员）
-- [ ] **站内消息系统**：考虑后期新增 `notifications` 表，实现站内消息
+- [x] **站内消息系统**：`user_notifications` 表 + `UserNotificationService` 已实现
 - [ ] **前端消息中心**：AppHeader 中的通知图标已预留，需实现消息列表/已读/未读
 
 ---

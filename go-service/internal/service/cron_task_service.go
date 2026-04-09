@@ -31,6 +31,7 @@ type CronTaskService struct {
 	archiveSvc *ArchiveReviewService
 	reportSvc  *ReportCalculatorService
 	mailSvc    *MailService
+	notifSvc   *UserNotificationService
 	scheduler  *CronScheduler // 延迟注入，避免循环依赖
 }
 
@@ -46,6 +47,7 @@ func NewCronTaskService(
 	archiveSvc *ArchiveReviewService,
 	reportSvc *ReportCalculatorService,
 	mailSvc *MailService,
+	notifSvc *UserNotificationService,
 ) *CronTaskService {
 	return &CronTaskService{
 		taskRepo:   taskRepo,
@@ -58,6 +60,7 @@ func NewCronTaskService(
 		archiveSvc: archiveSvc,
 		reportSvc:  reportSvc,
 		mailSvc:    mailSvc,
+		notifSvc:   notifSvc,
 	}
 }
 
@@ -318,6 +321,12 @@ func (s *CronTaskService) ExecuteNow(c *gin.Context, id uuid.UUID) error {
 		_ = s.taskRepo.UpdateRunStats(tcopy.ID, time.Now(), nil, execErr == nil)
 		// 执行完毕清除 CurrentLogID
 		_ = s.taskRepo.UpdateFields(context.Background(), tcopy.ID, ownerID, map[string]interface{}{"current_log_id": nil})
+
+		// 手动任务完成通知
+		if s.notifSvc != nil {
+			title := fmt.Sprintf("手动任务%s：%s", map[string]string{"success": "完成", "failed": "失败"}[status], tcopy.TaskLabel)
+			s.notifSvc.CreateByTenant(tcopy.OwnerUserID, tcopy.TenantID, "cron", title, msg, "/cron")
+		}
 	}()
 	return nil
 }
@@ -365,6 +374,12 @@ func (s *CronTaskService) TriggerScheduled(ctx context.Context, taskID uuid.UUID
 	_ = s.logRepo.Finish(logEntry.ID, status, msg)
 	_ = s.taskRepo.UpdateRunStats(task.ID, time.Now(), nil, execErr == nil)
 	_ = s.taskRepo.DB().Model(&model.CronTask{}).Where("id = ?", task.ID).Update("current_log_id", nil)
+
+	// 定时任务完成通知
+	if s.notifSvc != nil {
+		title := fmt.Sprintf("定时任务%s：%s", map[string]string{"success": "完成", "failed": "失败"}[status], task.TaskLabel)
+		s.notifSvc.CreateByTenant(task.OwnerUserID, task.TenantID, "cron", title, msg, "/cron")
+	}
 }
 
 // AbortTask 发送中止信号。

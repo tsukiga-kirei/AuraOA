@@ -57,6 +57,16 @@ func (s *UserNotificationService) Create(userID, roleAssignmentID uuid.UUID, cat
 	return nil
 }
 
+// CreateByTenant 根据 userID + tenantID 查找 business 角色分配后写入通知。
+// 找不到角色分配时静默跳过（不影响主流程）。
+func (s *UserNotificationService) CreateByTenant(userID, tenantID uuid.UUID, category, title, body, linkPath string) {
+	a, err := s.userRepo.FindBusinessRoleAssignment(userID, tenantID)
+	if err != nil {
+		return
+	}
+	_ = s.Create(userID, a.ID, category, title, body, linkPath)
+}
+
 // List 当前 JWT 角色分配下的通知列表。
 func (s *UserNotificationService) List(userID, roleAssignmentID uuid.UUID, limit, offset int, unreadOnly bool) (*dto.UserNotificationListResponse, error) {
 	if limit <= 0 {
