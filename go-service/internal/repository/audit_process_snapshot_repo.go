@@ -270,7 +270,11 @@ type TenantSnapshotCount struct {
 func (r *AuditProcessSnapshotRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID) (int64, error) {
 	var count int64
 
-	q := r.WithTenant(c).Table("audit_process_snapshots AS aps")
+	tenantID, _ := c.Get("tenant_id")
+	q := r.DB.Table("audit_process_snapshots AS aps")
+	if tenantID != nil && tenantID != "" {
+		q = q.Where("aps.tenant_id = ?", tenantID)
+	}
 	if userID != nil {
 		q = q.Joins("JOIN audit_logs al ON al.id = aps.latest_valid_log_id").
 			Where("al.user_id = ?", *userID)
