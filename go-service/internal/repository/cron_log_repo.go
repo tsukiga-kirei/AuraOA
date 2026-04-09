@@ -3,6 +3,7 @@ package repository
 import (
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -245,4 +246,151 @@ func applyCronLogFilterJoined(db *gorm.DB, f CronLogFilter) *gorm.DB {
 		db = db.Where(t+"started_at <= ?", f.EndDate)
 	}
 	return db
+}
+
+// ── 仪表盘查询辅助类型 ──────────────────────────────────────────────────────
+
+// CronLogEnrichedRow 带状态和任务标签的定时任务日志行（用于最近动态）。
+type CronLogEnrichedRow struct {
+	ID        uuid.UUID `gorm:"column:id"`
+	TaskLabel string    `gorm:"column:task_label"`
+	TaskType  string    `gorm:"column:task_type"`
+	Status    string    `gorm:"column:status"`
+	UserName  string    `gorm:"column:user_name"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+}
+
+// TenantCronCount 按租户统计定时任务执行数。
+type TenantCronCount struct {
+	TenantID uuid.UUID `gorm:"column:tenant_id"`
+	Count    int64     `gorm:"column:count"`
+}
+
+// ── 仪表盘查询方法 ──────────────────────────────────────────────────────────
+
+// CountThisWeek 本周（周一 00:00 UTC 至今）定时任务执行次数。
+// userID 非 nil 时按 task_owner_user_id 或 created_by（从 gin context 取 username）过滤。
+func (r *CronLogRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID) (int64, error) {
+	tenantID, _ := c.Get("tenant_id")
+
+	args := []interface{}{tenantID}
+	userFilter := ""
+	if userID != nil {
+		username, _ := c.Get("username")
+		userFilter = "AND (cl.task_owner_user_id = ? OR cl.created_by = ?)"
+		args = append(args, *userID, username)
+	}
+
+	sql := `
+SELECT COUNT(*)::bigint
+FROM cron_logs cl
+WHERE cl.tenant_id = ?
+  AND cl.started_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+  ` + userFilter
+
+	var count int64
+	err := r.db.Raw(sql, args...).Scan(&count).Error
+	return count, err
+}
+
+// WeeklyTrendByDay 本周每天的定时任务执行次数（generate_series 填充无数据日期）。
+func (r *CronLogRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UUID) ([]DayCount, error) {
+	tenantID, _ := c.Get("tenant_id")
+
+	userFilter := ""
+	args := []interface{}{tenantID}
+	if userID != nil {
+		username, _ := c.Get("username")
+		userFilter = "AND (cl.task_owner_user_id = ? OR cl.created_by = ?)"
+		args = append(args, *userID, username)
+	}
+
+	sql := `
+WITH days AS (
+  SELECT generate_series(
+    date_trunc('week', CURRENT_DATE AT TIME ZONE 'UTC')::date,
+    (CURRENT_DATE AT TIME ZONE 'UTC')::date,
+    INTERVAL '1 day'
+  )::date AS d
+)
+SELECT TO_CHAR(days.d, 'MM-DD') AS date,
+       COALESCE(b.cnt, 0)::bigint AS count
+FROM days
+LEFT JOIN (
+  SELECT DATE(cl.started_at AT TIME ZONE 'UTC') AS d,
+         COUNT(*)::bigint AS cnt
+  FROM cron_logs cl
+  WHERE cl.tenant_id = ?
+    AND cl.started_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+    ` + userFilter + `
+  GROUP BY 1
+) b ON b.d = days.d
+ORDER BY days.d`
+
+	var rows []DayCount
+	err := r.db.Raw(sql, args...).Scan(&rows).Error
+	return rows, err
+}
+
+// RecentEnriched 最近 N 条定时任务日志（带 status + task_label + 操作人信息）。
+// userID 非 nil 时按 task_owner_user_id 过滤。
+func (r *CronLogRepo) RecentEnriched(tenantID uuid.UUID, limit int, userID *uuid.UUID) ([]CronLogEnrichedRow, error) {
+	args := []interface{}{tenantID}
+	userFilter := ""
+	if userID != nil {
+		userFilter = "AND cl.task_owner_user_id = ?"
+		args = append(args, *userID)
+	}
+	args = append(args, limit)
+
+	sql := `
+SELECT cl.id,
+       cl.task_label,
+       cl.task_type,
+       cl.status,
+       COALESCE(u.display_name, u.username, cl.created_by) AS user_name,
+       cl.started_at AS created_at
+FROM cron_logs cl
+LEFT JOIN users u ON u.id = cl.task_owner_user_id
+WHERE cl.tenant_id = ?
+  ` + userFilter + `
+ORDER BY cl.started_at DESC
+LIMIT ?`
+
+	var rows []CronLogEnrichedRow
+	err := r.db.Raw(sql, args...).Scan(&rows).Error
+	return rows, err
+}
+
+// CountByDepartment 按部门统计定时任务执行数（通过 task_owner_user_id → org_members → departments）。
+func (r *CronLogRepo) CountByDepartment(c *gin.Context) ([]DeptCount, error) {
+	tenantID, _ := c.Get("tenant_id")
+
+	sql := `
+SELECT COALESCE(d.name, '未分配') AS department,
+       COUNT(*)::bigint AS count
+FROM cron_logs cl
+LEFT JOIN org_members om ON om.user_id = cl.task_owner_user_id AND om.tenant_id = cl.tenant_id AND om.status = 'active'
+LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = cl.tenant_id
+WHERE cl.tenant_id = ?
+GROUP BY d.name
+ORDER BY count DESC`
+
+	var rows []DeptCount
+	err := r.db.Raw(sql, tenantID).Scan(&rows).Error
+	return rows, err
+}
+
+// CountByTenantGlobal 全平台按租户统计定时任务执行数（system_admin 用，无 tenant_id 过滤）。
+func (r *CronLogRepo) CountByTenantGlobal() ([]TenantCronCount, error) {
+	sql := `
+SELECT tenant_id,
+       COUNT(*)::bigint AS count
+FROM cron_logs
+GROUP BY tenant_id
+ORDER BY count DESC`
+
+	var rows []TenantCronCount
+	err := r.db.Raw(sql).Scan(&rows).Error
+	return rows, err
 }

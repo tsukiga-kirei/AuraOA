@@ -111,3 +111,82 @@ func (r *TenantRepo) GetStats(tenantID uuid.UUID) (memberCount, deptCount, roleC
 	}
 	return
 }
+
+// TenantWithUserCount 租户列表行（含注册人员数量）。
+type TenantWithUserCount struct {
+	TenantID   uuid.UUID `gorm:"column:tenant_id"`
+	TenantName string    `gorm:"column:tenant_name"`
+	TenantCode string    `gorm:"column:tenant_code"`
+	UserCount  int64     `gorm:"column:user_count"`
+}
+
+// DashboardTenantListWithUserCount 所有租户列表（含注册人员数量）。
+func (r *TenantRepo) DashboardTenantListWithUserCount() ([]TenantWithUserCount, error) {
+	sql := `
+SELECT t.id AS tenant_id,
+       t.name AS tenant_name,
+       t.code AS tenant_code,
+       COALESCE(mc.cnt, 0)::bigint AS user_count
+FROM tenants t
+LEFT JOIN (
+  SELECT tenant_id, COUNT(*)::bigint AS cnt
+  FROM org_members
+  WHERE status = 'active'
+  GROUP BY tenant_id
+) mc ON mc.tenant_id = t.id
+ORDER BY t.created_at ASC`
+
+	var rows []TenantWithUserCount
+	err := r.DB.Raw(sql).Scan(&rows).Error
+	return rows, err
+}
+
+// DashboardActiveTenantIDs 近 30 天有快照记录的租户 ID 集合。
+func (r *TenantRepo) DashboardActiveTenantIDs() (map[string]bool, error) {
+	sql := `
+SELECT DISTINCT tenant_id::text AS tid FROM (
+  SELECT tenant_id FROM audit_process_snapshots
+  WHERE updated_at >= NOW() - INTERVAL '30 days'
+  UNION
+  SELECT tenant_id FROM archive_process_snapshots
+  WHERE updated_at >= NOW() - INTERVAL '30 days'
+) sub`
+
+	type row struct {
+		Tid string `gorm:"column:tid"`
+	}
+	var rows []row
+	if err := r.DB.Raw(sql).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(rows))
+	for _, rw := range rows {
+		out[rw.Tid] = true
+	}
+	return out, nil
+}
+
+// TenantTokenRow 按租户分列的 Token 用量。
+type TenantTokenRow struct {
+	TenantID   uuid.UUID `gorm:"column:tenant_id"`
+	TenantName string    `gorm:"column:tenant_name"`
+	TenantCode string    `gorm:"column:tenant_code"`
+	TokenUsed  int64     `gorm:"column:token_used"`
+	TokenQuota int64     `gorm:"column:token_quota"`
+}
+
+// DashboardTenantTokenList 按租户分列返回 token_used / token_quota。
+func (r *TenantRepo) DashboardTenantTokenList() ([]TenantTokenRow, error) {
+	sql := `
+SELECT id AS tenant_id,
+       name AS tenant_name,
+       code AS tenant_code,
+       COALESCE(token_used, 0)::bigint AS token_used,
+       COALESCE(token_quota, 0)::bigint AS token_quota
+FROM tenants
+ORDER BY token_used DESC`
+
+	var rows []TenantTokenRow
+	err := r.DB.Raw(sql).Scan(&rows).Error
+	return rows, err
+}

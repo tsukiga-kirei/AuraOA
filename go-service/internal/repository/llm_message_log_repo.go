@@ -174,3 +174,35 @@ func (r *LLMMessageLogRepo) DashboardLLMOverallStatsGlobal() (totalCalls int64, 
 		Scan(&out).Error
 	return out.Calls, out.AvgMs, err
 }
+
+// AIModelCallStats 按模型+调用类型分组的 AI 调用统计行。
+type AIModelCallStats struct {
+	ModelConfigID string `gorm:"column:model_config_id"`
+	ModelName     string `gorm:"column:model_name"`
+	DisplayName   string `gorm:"column:display_name"`
+	Provider      string `gorm:"column:provider"`
+	CallType      string `gorm:"column:call_type"`
+	Calls         int64  `gorm:"column:calls"`
+	AvgMs         int64  `gorm:"column:avg_ms"`
+}
+
+// DashboardAIPerformanceByModel 按模型+调用类型分组的 AI 性能统计（system_admin 用）。
+func (r *LLMMessageLogRepo) DashboardAIPerformanceByModel() ([]AIModelCallStats, error) {
+	sql := `
+SELECT tl.model_config_id::text AS model_config_id,
+       COALESCE(amc.model_name, '') AS model_name,
+       COALESCE(amc.display_name, '') AS display_name,
+       COALESCE(amc.provider, '') AS provider,
+       tl.call_type,
+       COUNT(*)::bigint AS calls,
+       COALESCE(AVG(tl.duration_ms), 0)::bigint AS avg_ms
+FROM tenant_llm_message_logs tl
+LEFT JOIN ai_model_configs amc ON amc.id = tl.model_config_id
+WHERE tl.model_config_id IS NOT NULL
+GROUP BY tl.model_config_id, amc.model_name, amc.display_name, amc.provider, tl.call_type
+ORDER BY calls DESC`
+
+	var rows []AIModelCallStats
+	err := r.DB.Raw(sql).Scan(&rows).Error
+	return rows, err
+}

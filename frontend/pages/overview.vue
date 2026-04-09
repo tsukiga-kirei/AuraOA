@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
   ClockCircleOutlined,
   ThunderboltOutlined,
   RiseOutlined,
@@ -12,74 +10,63 @@ import {
   EyeOutlined,
   EyeInvisibleOutlined,
   AppstoreOutlined,
+  DatabaseOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import { OVERVIEW_WIDGETS, OVERVIEW_WIDGET_ID_SET } from '~/constants/overviewWidgets'
+import { OVERVIEW_WIDGETS, OVERVIEW_WIDGET_ID_SET, WIDGET_PAGE_PERMISSION_MAP } from '~/constants/overviewWidgets'
 import { useI18n } from '~/composables/useI18n'
 import type { OverviewWidgetId } from '~/constants/overviewWidgets'
 import type { PermissionGroup } from '~/types/auth'
-import type { DashboardOverview, DashboardActivityItem, PlatformDashboardOverview } from '~/types/dashboard-overview'
-import type { CronTask } from '~/types/cron'
+import type {
+  DashboardOverview,
+  PlatformDashboardOverview,
+  ActivityItemEnriched,
+} from '~/types/dashboard-overview'
 import type { DashboardPref } from '~/types/user-config'
+import StackedBarChart from '~/components/charts/StackedBarChart.vue'
+import DeptDistributionChart from '~/components/charts/DeptDistributionChart.vue'
 
 definePageMeta({ middleware: 'auth' })
 
 const EMPTY_OVERVIEW: DashboardOverview = {
-  pending_oa_count: 0,
-  audit_summary: { total: 0, approved: 0, returned: 0, archived: 0, review: 0, pending_ai: 0 },
+  weekly_overview: { total: 0, audit_count: 0, archive_count: 0, cron_count: 0 },
   weekly_trend: [],
   recent_activity: [],
-  archive_recent: [],
 }
 
-const { effectiveActiveRoleForApi, currentUser } = useAuth()
+const { effectiveActiveRoleForApi, currentUser, menus } = useAuth()
 const { t, locale } = useI18n()
 const { fetchDashboardOverview, fetchPlatformDashboardOverview } = useDashboardOverviewApi()
 const { getDashboardPrefs, updateDashboardPrefs } = useSettingsApi()
-const { listTasks } = useCronApi()
 
 const overview = ref<DashboardOverview | null>(null)
 const platformOverview = ref<PlatformDashboardOverview | null>(null)
 const overviewLoading = ref(false)
-const cronTasksList = ref<CronTask[]>([])
 
-// 必须与当前 access token 一致，否则会错调 /api/admin/dashboard-overview 而看到全平台数据
 const isPlatformAdmin = computed(() => effectiveActiveRoleForApi.value === 'system_admin')
 
-function mergePlatformToDash(p: PlatformDashboardOverview): DashboardOverview {
-  return {
-    pending_oa_count: p.pending_oa_count,
-    audit_summary: p.audit_summary,
-    weekly_trend: p.weekly_trend,
-    recent_activity: p.recent_activity,
-    archive_recent: p.archive_recent,
-    ai_performance: p.ai_performance,
-    tenant_total: p.tenant_total,
-    tenant_active: p.tenant_active,
-    tenant_ranking: p.tenant_ranking,
-    tenant_usage: p.token_summary
-      ? {
-          token_used: p.token_summary.total_used,
-          token_quota: p.token_summary.total_quota,
-          storage_used_mb: 0,
-          storage_quota_mb: 0,
-          active_users: 0,
-          total_users: 0,
-        }
-      : undefined,
-  }
-}
-
-const dash = computed(() => {
-  if (isPlatformAdmin.value && platformOverview.value)
-    return mergePlatformToDash(platformOverview.value)
-  return overview.value ?? EMPTY_OVERVIEW
-})
+const dash = computed(() => overview.value ?? EMPTY_OVERVIEW)
 
 const availableWidgets = computed(() => {
   const role = effectiveActiveRoleForApi.value
   if (!role) return []
-  return OVERVIEW_WIDGETS.filter(w => w.requiredPermissions.includes(role as PermissionGroup))
+
+  let widgets = OVERVIEW_WIDGETS.filter(w =>
+    w.requiredPermissions.includes(role as PermissionGroup),
+  )
+
+  // business 角色额外按 page_permissions 过滤
+  if (role === 'business') {
+    const allowedPaths = new Set(menus.value.map((m: any) => m.path).filter(Boolean))
+    widgets = widgets.filter((w) => {
+      const requiredPerm = WIDGET_PAGE_PERMISSION_MAP[w.id]
+      // 空字符串或 undefined 表示始终可见
+      return !requiredPerm || allowedPaths.has(requiredPerm)
+    })
+  }
+
+  return widgets
 })
 
 const defaultPrefs = computed(() =>
@@ -102,10 +89,8 @@ async function loadOverviewPage() {
   const role = effectiveActiveRoleForApi.value
   if (!role) return
 
-  // 先按当前角色清空「另一套」数据，避免切换后首屏仍短暂沿用上一身份的数据或失败路径下长期残留
   if (role === 'system_admin') {
     overview.value = null
-    cronTasksList.value = []
   }
   else {
     platformOverview.value = null
@@ -114,7 +99,6 @@ async function loadOverviewPage() {
   overviewLoading.value = true
   try {
     const prefs = await getDashboardPrefs().catch(() => ({ ...EMPTY_DASH_PREFS, enabled_widgets: [] as string[] }))
-    // 先应用布局，再拉取数据；内容接口失败时不应清空用户已保存的组件勾选
     applyDashboardPrefs(prefs)
 
     if (role === 'system_admin') {
@@ -122,12 +106,6 @@ async function loadOverviewPage() {
     }
     else {
       overview.value = await fetchDashboardOverview()
-      try {
-        cronTasksList.value = await listTasks()
-      }
-      catch {
-        cronTasksList.value = []
-      }
     }
   }
   catch (e: unknown) {
@@ -138,7 +116,6 @@ async function loadOverviewPage() {
     }
     else {
       overview.value = null
-      cronTasksList.value = []
     }
   }
   finally {
@@ -194,31 +171,20 @@ const greeting = computed(() => {
 
 const formatNum = (n: number) => n >= 10000 ? (n / 1000).toFixed(1) + 'K' : n.toLocaleString()
 
-const DEPT_COLORS = ['#4f46e5', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6', '#f97316']
+// ── Activity helpers ──
 
-const deptRows = computed(() => {
-  const rows = dash.value.dept_distribution ?? []
-  return rows.map((d, i) => ({
-    department: d.department === '__unassigned__' ? t('overview.deptUnassigned') : d.department,
-    count: d.count,
-    color: DEPT_COLORS[i % DEPT_COLORS.length],
-  }))
-})
-
-const activityKindStyle: Record<string, { color: string; bg: string }> = {
-  audit_completed: { color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' },
-  audit_failed: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)' },
-  cron_log: { color: 'var(--color-accent)', bg: 'rgba(6,182,212,0.1)' },
-  archive_reviewed: { color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
+const activityKindColor: Record<string, string> = {
+  audit: 'var(--color-primary)',
+  archive: 'var(--color-success)',
+  cron: 'var(--color-accent)',
 }
 
-function activityActionLabel(a: DashboardActivityItem) {
-  switch (a.kind) {
-    case 'audit_completed': return t('overview.activity.auditCompleted')
-    case 'audit_failed': return t('overview.activity.auditFailed')
-    case 'cron_log': return t('overview.activity.cronLog')
-    case 'archive_reviewed': return t('overview.activity.archiveReviewed')
-    default: return a.kind
+function kindLabel(kind: string) {
+  switch (kind) {
+    case 'audit': return t('overview.activity.audit')
+    case 'archive': return t('overview.activity.archive')
+    case 'cron': return t('overview.activity.cron')
+    default: return kind
   }
 }
 
@@ -234,38 +200,31 @@ function formatActivityTime(iso: string) {
   }
 }
 
-function archiveComplianceLabel(compliance: string) {
-  if (compliance === 'compliant') return t('overview.archiveCompliance.compliant')
-  if (compliance === 'non_compliant') return t('overview.archiveCompliance.nonCompliant')
-  if (compliance === 'partially_compliant') return t('overview.archiveCompliance.partial')
-  return compliance
-}
-
-function cronTaskLabel(task: CronTask) {
-  if (task.task_label?.trim()) return task.task_label
+function cronTaskDescriptionLabel(task: { description?: string; task_type?: string }) {
+  if (task.description?.trim()) return task.description
   const key = `cron.taskType.${task.task_type}` as const
-  const tr = t(key as 'cron.taskType.audit_batch')
-  return tr && tr !== key ? tr : task.task_type
+  const tr = t(key as string)
+  return tr && tr !== key ? tr : task.task_type ?? ''
 }
 
-const cronPreviewTasks = computed(() => {
-  return [...cronTasksList.value].sort((a, b) =>
-    new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()).slice(0, 5)
-})
+// ── Trend chart data ──
 
-const trendMax = computed(() => Math.max(...dash.value.weekly_trend.map(x => x.count), 1))
-const deptMax = computed(() => Math.max(...deptRows.value.map(d => d.count), 1))
+const trendCategories = computed(() => dash.value.weekly_trend.map(d => d.date))
+const trendSeries = computed(() => [
+  { name: t('overview.auditWorkbench'), data: dash.value.weekly_trend.map(d => d.audit_count), color: '#4f46e5' },
+  { name: t('overview.cronTasks'), data: dash.value.weekly_trend.map(d => d.cron_count), color: '#06b6d4' },
+  { name: t('overview.archiveReview'), data: dash.value.weekly_trend.map(d => d.archive_count), color: '#10b981' },
+])
 
-const aiBarMaxMs = computed(() => {
-  const stats = dash.value.ai_performance?.daily_stats ?? []
-  return Math.max(...stats.map(s => s.avg_ms), 1)
-})
+// ── Dept distribution chart labels ──
 
-const storagePct = computed(() => {
-  const u = dash.value.tenant_usage
-  if (!u || u.storage_quota_mb <= 0) return 0
-  return Math.min(100, (u.storage_used_mb / u.storage_quota_mb) * 100)
-})
+const deptChartLabels = computed(() => ({
+  audit: t('overview.auditWorkbench'),
+  cron: t('overview.cronTasks'),
+  archive: t('overview.archiveReview'),
+}))
+
+// ── Widget ordering & drag ──
 
 const getWidgetOrder = (id: OverviewWidgetId) => {
   const index = enabledWidgets.value.indexOf(id)
@@ -287,15 +246,20 @@ const onDragStart = (e: DragEvent, id: OverviewWidgetId) => {
 const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
   if (!customizing.value || !draggedWidget.value) return
   if (draggedWidget.value === targetId) return
-
   const dragIndex = enabledWidgets.value.indexOf(draggedWidget.value)
   const targetIndex = enabledWidgets.value.indexOf(targetId)
-
   if (dragIndex >= 0 && targetIndex >= 0) {
     const [item] = enabledWidgets.value.splice(dragIndex, 1)
     enabledWidgets.value.splice(targetIndex, 0, item)
   }
   draggedWidget.value = null
+}
+
+// ── Token usage bar helper ──
+
+function tokenPct(used: number, quota: number) {
+  if (quota <= 0) return 0
+  return Math.min(100, (used / quota) * 100)
 }
 </script>
 
@@ -326,7 +290,212 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
     </transition>
 
     <div class="widget-grid">
-      <!--===== 平台：租户规模（system_admin）=====-->
+
+      <!--===== 本周概览（weekly_overview）=====-->
+      <div v-if="isEnabled('weekly_overview')"
+       :class="['widget', `widget--${getWidgetSize('weekly_overview')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('weekly_overview') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'weekly_overview')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'weekly_overview')">
+        <div class="widget-title">
+          <div class="widget-title-left"><ThunderboltOutlined /> {{ t('overview.widgetTitle.weekly_overview') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('weekly_overview')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
+        <div class="weekly-overview">
+          <div class="wo-total">
+            <div class="wo-total-num">{{ dash.weekly_overview.total }}</div>
+            <div class="wo-total-label">{{ t('overview.weeklyTotal') }}</div>
+          </div>
+          <div class="wo-items">
+            <div class="wo-item">
+              <span class="wo-num" style="color: var(--color-primary);">{{ dash.weekly_overview.audit_count }}</span>
+              <span class="wo-label">{{ t('overview.auditWorkbench') }}</span>
+            </div>
+            <div class="wo-item">
+              <span class="wo-num" style="color: var(--color-success);">{{ dash.weekly_overview.archive_count }}</span>
+              <span class="wo-label">{{ t('overview.archiveReview') }}</span>
+            </div>
+            <div class="wo-item">
+              <span class="wo-num" style="color: var(--color-accent);">{{ dash.weekly_overview.cron_count }}</span>
+              <span class="wo-label">{{ t('overview.cronTasks') }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!--===== 待办任务（pending_tasks）=====-->
+      <div v-if="isEnabled('pending_tasks')"
+       :class="['widget', `widget--${getWidgetSize('pending_tasks')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('pending_tasks') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'pending_tasks')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'pending_tasks')">
+        <div class="widget-title">
+          <div class="widget-title-left"><ClockCircleOutlined /> {{ t('overview.widgetTitle.pending_tasks') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('pending_tasks')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
+        <div class="pending-split">
+          <div class="pending-item">
+            <div class="pending-num">{{ dash.pending_tasks?.audit_pending ?? 0 }}</div>
+            <div class="pending-label">{{ t('overview.auditPending') }}</div>
+          </div>
+          <div class="pending-item">
+            <div class="pending-num">{{ dash.pending_tasks?.archive_pending ?? 0 }}</div>
+            <div class="pending-label">{{ t('overview.archivePending') }}</div>
+          </div>
+        </div>
+        <div class="pending-total">
+          {{ t('overview.totalPending') }}: {{ dash.pending_tasks?.total ?? 0 }}
+        </div>
+        <a-button type="link" size="small" @click="navigateTo('/dashboard')">{{ t('overview.goToWorkbench') }} →</a-button>
+      </div>
+
+      <!--===== 审核趋势（weekly_trend）=====-->
+      <div v-if="isEnabled('weekly_trend')"
+       :class="['widget', `widget--${getWidgetSize('weekly_trend')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('weekly_trend') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'weekly_trend')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'weekly_trend')">
+        <div class="widget-title">
+          <div class="widget-title-left"><RiseOutlined /> {{ t('overview.widgetTitle.weekly_trend') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('weekly_trend')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
+        <StackedBarChart
+          v-if="dash.weekly_trend.length > 0"
+          :categories="trendCategories"
+          :series="trendSeries"
+          height="240px"
+        />
+        <div v-else class="widget-empty">{{ t('overview.noData') }}</div>
+      </div>
+
+      <!--===== 定时任务（cron_tasks）=====-->
+      <div v-if="isEnabled('cron_tasks')"
+       :class="['widget', `widget--${getWidgetSize('cron_tasks')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('cron_tasks') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'cron_tasks')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'cron_tasks')">
+        <div class="widget-title">
+          <div class="widget-title-left"><ClockCircleOutlined /> {{ t('overview.widgetTitle.cron_tasks') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('cron_tasks')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
+        <div class="cron-table" v-if="dash.cron_tasks?.length">
+          <div class="cron-row cron-row--header">
+            <span class="cron-cell cron-cell--name">{{ t('overview.cronTaskName') }}</span>
+            <span class="cron-cell cron-cell--desc">{{ t('overview.cronTaskDesc') }}</span>
+            <span class="cron-cell cron-cell--expr">{{ t('overview.cronExpression') }}</span>
+            <span class="cron-cell cron-cell--status">{{ t('overview.cronStatusLabel') }}</span>
+          </div>
+          <div v-for="c in dash.cron_tasks" :key="c.id" class="cron-row">
+            <span class="cron-cell cron-cell--name">{{ c.task_label }}</span>
+            <span class="cron-cell cron-cell--desc">{{ cronTaskDescriptionLabel(c) }}</span>
+            <span class="cron-cell cron-cell--expr">{{ c.cron_expression }}</span>
+            <span class="cron-cell cron-cell--status" :style="{ color: c.is_active ? 'var(--color-success)' : 'var(--color-text-tertiary)' }">
+              {{ c.is_active ? t('overview.cronActive') : t('overview.cronInactive') }}
+            </span>
+          </div>
+        </div>
+        <div v-else class="widget-empty">{{ t('overview.noData') }}</div>
+      </div>
+
+      <!--===== 最近动态（recent_activity）=====-->
+      <div v-if="isEnabled('recent_activity')"
+       :class="['widget', `widget--${getWidgetSize('recent_activity')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('recent_activity') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'recent_activity')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'recent_activity')">
+        <div class="widget-title">
+          <div class="widget-title-left"><ClockCircleOutlined /> {{ t('overview.widgetTitle.recent_activity') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('recent_activity')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
+        <div class="activity-list" v-if="dash.recent_activity.length > 0">
+          <div v-for="a in dash.recent_activity.slice(0, 10)" :key="a.id" class="activity-item">
+            <div class="activity-dot" :style="{ background: activityKindColor[a.kind] || 'var(--color-text-tertiary)' }" />
+            <div class="activity-body">
+              <span class="activity-action">{{ kindLabel(a.kind) }}</span>
+              <span class="activity-target">{{ a.title }}</span>
+              <span v-if="a.kind === 'audit' && a.recommendation" class="activity-tag">
+                {{ t(`overview.recommendation.${a.recommendation}`) }} · {{ a.score }}{{ t('overview.scoreUnit') }}
+              </span>
+              <span v-if="a.kind === 'archive' && a.compliance" class="activity-tag activity-tag--archive">
+                {{ t(`overview.compliance.${a.compliance}`) }} · {{ a.compliance_score }}{{ t('overview.scoreUnit') }}
+              </span>
+              <span v-if="a.kind === 'cron' && a.cron_status" class="activity-tag activity-tag--cron">
+                {{ t(`overview.cronStatus.${a.cron_status}`) }} · {{ a.task_label }}
+              </span>
+            </div>
+            <div class="activity-meta">
+              <span class="activity-user">{{ a.user_name }}</span>
+              <span class="activity-time">{{ formatActivityTime(a.created_at) }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-else class="widget-empty">{{ t('overview.noData') }}</div>
+      </div>
+
+      <!--===== 部门分布（dept_distribution）=====-->
+      <div v-if="isEnabled('dept_distribution')"
+       :class="['widget', `widget--${getWidgetSize('dept_distribution')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('dept_distribution') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'dept_distribution')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'dept_distribution')">
+        <div class="widget-title">
+          <div class="widget-title-left"><TeamOutlined /> {{ t('overview.widgetTitle.dept_distribution') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('dept_distribution')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
+        <DeptDistributionChart
+          v-if="dash.dept_distribution?.length"
+          :data="dash.dept_distribution"
+          :labels="deptChartLabels"
+          height="300px"
+        />
+        <div v-else class="widget-empty">{{ t('overview.noData') }}</div>
+      </div>
+
+      <!--===== 用户活跃排名（user_activity）=====-->
+      <div v-if="isEnabled('user_activity')"
+       :class="['widget', `widget--${getWidgetSize('user_activity')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('user_activity') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'user_activity')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'user_activity')">
+        <div class="widget-title">
+          <div class="widget-title-left"><TeamOutlined /> {{ t('overview.widgetTitle.user_activity') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('user_activity')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
+        <div class="rank-list" v-if="dash.user_activity?.length">
+          <div v-for="(u, i) in dash.user_activity" :key="u.username" class="rank-item">
+            <span class="rank-num" :class="{ 'rank-num--top': i < 3 }">{{ i + 1 }}</span>
+            <div class="rank-info">
+              <span class="rank-name">{{ u.display_name }}</span>
+              <span class="rank-dept">{{ u.department }}</span>
+            </div>
+            <span class="rank-count">{{ u.audit_count }} {{ t('overview.times') }}</span>
+          </div>
+        </div>
+        <div v-else class="widget-empty">{{ t('overview.emptyUserActivity') }}</div>
+      </div>
+
+      <!--===== 平台：租户规模（platform_tenant_stats）=====-->
       <div v-if="isEnabled('platform_tenant_stats')"
        :class="['widget', `widget--${getWidgetSize('platform_tenant_stats')}`, { 'widget--editing': customizing }]"
        :style="{ order: getWidgetOrder('platform_tenant_stats') }"
@@ -341,305 +510,103 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
         </div>
         <div class="summary-cards" style="grid-template-columns: repeat(2, 1fr);">
           <div class="summary-card summary-card--total">
-            <div class="summary-num">{{ dash.tenant_total ?? 0 }}</div>
+            <div class="summary-num">{{ platformOverview?.tenant_stats?.tenant_total ?? 0 }}</div>
             <div class="summary-label">{{ t('overview.platformTenantsTotal') }}</div>
           </div>
           <div class="summary-card summary-card--approved">
-            <div class="summary-num">{{ dash.tenant_active ?? 0 }}</div>
+            <div class="summary-num">{{ platformOverview?.tenant_stats?.tenant_active ?? 0 }}</div>
             <div class="summary-label">{{ t('overview.platformTenantsActive') }}</div>
           </div>
         </div>
+        <p class="active-criteria-text">{{ platformOverview?.tenant_stats?.active_criteria || t('overview.activeCriteria') }}</p>
+        <div class="tenant-table" v-if="platformOverview?.tenant_stats?.tenants?.length">
+          <div class="tenant-row tenant-row--header">
+            <span>{{ t('overview.tenantName') }}</span>
+            <span>{{ t('overview.tenantUserCount') }}</span>
+            <span>{{ t('overview.tenantStatusLabel') }}</span>
+          </div>
+          <div v-for="row in platformOverview.tenant_stats.tenants" :key="row.tenant_id" class="tenant-row">
+            <span class="tenant-name">{{ row.tenant_name }}</span>
+            <span>{{ row.user_count }}</span>
+            <span class="tenant-status" :style="{ color: row.is_active ? 'var(--color-success)' : 'var(--color-text-tertiary)' }">
+              {{ row.is_active ? t('overview.tenantActive') : t('overview.tenantInactive') }}
+            </span>
+          </div>
+        </div>
       </div>
 
-      <!--=====审计摘要（业务）=====-->
-      <div v-if="isEnabled('audit_summary')"
-       :class="['widget', `widget--${getWidgetSize('audit_summary')}`, { 'widget--editing': customizing }]"
-       :style="{ order: getWidgetOrder('audit_summary') }"
+      <!--===== 平台：AI 模型表现（ai_performance）=====-->
+      <div v-if="isEnabled('ai_performance')"
+       :class="['widget', `widget--${getWidgetSize('ai_performance')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('ai_performance') }"
        :draggable="customizing"
-       @dragstart="onDragStart($event, 'audit_summary')"
+       @dragstart="onDragStart($event, 'ai_performance')"
        @dragover.prevent
        @dragenter.prevent
-       @drop="onDrop($event, 'audit_summary')">
-        <div class="widget-title">
-          <div class="widget-title-left"><ThunderboltOutlined /> {{ t('overview.auditOverview') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('audit_summary')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
-        </div>
-        <div class="summary-cards">
-          <div class="summary-card summary-card--total">
-            <div class="summary-num">{{ dash.audit_summary.total }}</div>
-            <div class="summary-label">{{ t('overview.totalAudits') }}</div>
-          </div>
-          <div class="summary-card summary-card--approved">
-            <CheckCircleOutlined class="summary-icon" />
-            <div class="summary-num">{{ dash.audit_summary.approved }}</div>
-            <div class="summary-label">{{ t('overview.approved') }}</div>
-          </div>
-          <div class="summary-card summary-card--returned">
-            <CloseCircleOutlined class="summary-icon" />
-            <div class="summary-num">{{ dash.audit_summary.returned }}</div>
-            <div class="summary-label">{{ t('overview.rejected') }}</div>
-          </div>
-          <div class="summary-card summary-card--archived">
-            <CheckCircleOutlined class="summary-icon" />
-            <div class="summary-num">{{ dash.audit_summary.archived }}</div>
-            <div class="summary-label">{{ t('dashboard.tab.archived') }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!--=====待处理任务（业务）=====-->
-      <div v-if="isEnabled('pending_tasks')"
-       :class="['widget', `widget--${getWidgetSize('pending_tasks')}`, { 'widget--editing': customizing }]" 
-       :style="{ order: getWidgetOrder('pending_tasks') }" 
-       :draggable="customizing" 
-       @dragstart="onDragStart($event, 'pending_tasks')" 
-       @dragover.prevent 
-       @dragenter.prevent 
-       @drop="onDrop($event, 'pending_tasks')">
-        <div class="widget-title">
-          <div class="widget-title-left"><ClockCircleOutlined /> {{ t('overview.pendingTasks') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('pending_tasks')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
-        </div>
-        <div class="pending-big">
-          <div class="pending-num">{{ dash.pending_oa_count }}</div>
-          <div class="pending-label">{{ t('overview.itemsPending') }}</div>
-        </div>
-        <a-button type="link" size="small" @click="navigateTo('/dashboard')">{{ t('overview.goToWorkbench') }} →</a-button>
-      </div>
-
-      <!--=====每周趋势（商业）=====-->
-      <div v-if="isEnabled('weekly_trend')"
-       :class="['widget', `widget--${getWidgetSize('weekly_trend')}`, { 'widget--editing': customizing }]" 
-       :style="{ order: getWidgetOrder('weekly_trend') }" 
-       :draggable="customizing" 
-       @dragstart="onDragStart($event, 'weekly_trend')" 
-       @dragover.prevent 
-       @dragenter.prevent 
-       @drop="onDrop($event, 'weekly_trend')">
-        <div class="widget-title">
-          <div class="widget-title-left"><RiseOutlined /> {{ t('overview.auditTrend7d') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('weekly_trend')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
-        </div>
-        <div class="bar-chart">
-          <div v-for="row in dash.weekly_trend" :key="row.date" class="bar-col">
-            <div class="bar-value">{{ row.count }}</div>
-            <div class="bar" :style="{ height: (row.count / trendMax * 120) + 'px' }" />
-            <div class="bar-label">{{ row.date }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!--=====部门分布（业务）=====-->
-      <div v-if="isEnabled('dept_distribution')"
-       :class="['widget', `widget--${getWidgetSize('dept_distribution')}`, { 'widget--editing': customizing }]" 
-       :style="{ order: getWidgetOrder('dept_distribution') }" 
-       :draggable="customizing" 
-       @dragstart="onDragStart($event, 'dept_distribution')" 
-       @dragover.prevent 
-       @dragenter.prevent 
-       @drop="onDrop($event, 'dept_distribution')">
-        <div class="widget-title">
-          <div class="widget-title-left"><TeamOutlined /> {{ t('overview.deptDistribution') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('dept_distribution')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
-        </div>
-        <div class="dept-list">
-          <div v-for="d in deptRows" :key="d.department" class="dept-row">
-            <span class="dept-name">{{ d.department }}</span>
-            <div class="dept-bar-wrap">
-              <div class="dept-bar" :style="{ width: (d.count / deptMax * 100) + '%', background: d.color }" />
-            </div>
-            <span class="dept-count">{{ d.count }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!--===== Cron 任务（业务） =====-->
-      <div v-if="isEnabled('cron_tasks')"
-       :class="['widget', `widget--${getWidgetSize('cron_tasks')}`, { 'widget--editing': customizing }]" 
-       :style="{ order: getWidgetOrder('cron_tasks') }" 
-       :draggable="customizing" 
-       @dragstart="onDragStart($event, 'cron_tasks')" 
-       @dragover.prevent 
-       @dragenter.prevent 
-       @drop="onDrop($event, 'cron_tasks')">
-        <div class="widget-title">
-          <div class="widget-title-left"><ClockCircleOutlined /> {{ t('overview.widgetTitle.cron_tasks') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('cron_tasks')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
-        </div>
-        <div class="rank-list" style="margin-top: 10px;">
-          <div v-for="c in cronPreviewTasks" :key="c.id" class="rank-item">
-            <div class="rank-info">
-              <span class="rank-name">{{ cronTaskLabel(c) }}</span>
-              <span class="rank-dept">{{ c.cron_expression }}</span>
-            </div>
-            <span class="rank-count" :style="{ color: c.is_active ? 'var(--color-success)' : 'var(--color-text-tertiary)' }">{{ c.is_active ? t('overview.cronActive') : t('overview.cronInactive') }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!--=====档案审查（商业）=====-->
-      <div v-if="isEnabled('archive_review')"
-       :class="['widget', `widget--${getWidgetSize('archive_review')}`, { 'widget--editing': customizing }]" 
-       :style="{ order: getWidgetOrder('archive_review') }" 
-       :draggable="customizing" 
-       @dragstart="onDragStart($event, 'archive_review')" 
-       @dragover.prevent 
-       @dragenter.prevent 
-       @drop="onDrop($event, 'archive_review')">
-        <div class="widget-title">
-          <div class="widget-title-left"><SafetyCertificateOutlined /> {{ t('overview.widgetTitle.archive_review') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('archive_review')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
-        </div>
-        <div class="activity-list" style="margin-top: 10px;">
-          <div v-for="a in dash.archive_recent.slice(0, 4)" :key="a.id" class="activity-item">
-            <div class="activity-dot" :style="{ background: a.compliance === 'compliant' ? 'var(--color-success)' : a.compliance === 'non_compliant' ? 'var(--color-danger)' : 'var(--color-warning)' }" />
-            <div class="activity-body">
-              <span class="activity-action">{{ archiveComplianceLabel(a.compliance) }}</span>
-              <span class="activity-target">{{ a.title }}</span>
-            </div>
-            <div class="activity-meta">
-              <span class="activity-user">{{ a.user_name }}</span>
-              <span class="activity-time">{{ formatActivityTime(a.created_at) }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!--=====最近活动（全部）=====-->
-      <div v-if="isEnabled('recent_activity')"
-       :class="['widget', `widget--${getWidgetSize('recent_activity')}`, { 'widget--editing': customizing }]" 
-       :style="{ order: getWidgetOrder('recent_activity') }" 
-       :draggable="customizing" 
-       @dragstart="onDragStart($event, 'recent_activity')" 
-       @dragover.prevent 
-       @dragenter.prevent 
-       @drop="onDrop($event, 'recent_activity')">
-        <div class="widget-title">
-          <div class="widget-title-left"><ClockCircleOutlined /> {{ t('overview.recentActivity') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('recent_activity')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
-        </div>
-        <div class="activity-list">
-          <div v-for="a in dash.recent_activity" :key="a.id" class="activity-item">
-            <div class="activity-dot" :style="{ background: activityKindStyle[a.kind]?.color }" />
-            <div class="activity-body">
-              <span class="activity-action">{{ activityActionLabel(a) }}</span>
-              <span class="activity-target">{{ a.title }}</span>
-            </div>
-            <div class="activity-meta">
-              <span class="activity-user">{{ a.user_name }}</span>
-              <span class="activity-time">{{ formatActivityTime(a.created_at) }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!--===== AI性能（业务+租户） =====-->
-      <div v-if="isEnabled('ai_performance')"
-       :class="['widget', `widget--${getWidgetSize('ai_performance')}`, { 'widget--editing': customizing }]" 
-       :style="{ order: getWidgetOrder('ai_performance') }" 
-       :draggable="customizing" 
-       @dragstart="onDragStart($event, 'ai_performance')" 
-       @dragover.prevent 
-       @dragenter.prevent 
        @drop="onDrop($event, 'ai_performance')">
         <div class="widget-title">
-          <div class="widget-title-left"><ThunderboltOutlined /> {{ t('overview.aiPerformance') }}</div>
+          <div class="widget-title-left"><ThunderboltOutlined /> {{ t('overview.widgetTitle.ai_performance') }}</div>
           <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('ai_performance')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
-        <div class="ai-stats">
-          <div class="ai-stat">
-            <div class="ai-stat-num">{{ dash.ai_performance?.avg_response_ms ?? 0 }}ms</div>
-            <div class="ai-stat-label">{{ t('overview.avgResponse') }}</div>
-          </div>
-          <div class="ai-stat">
-            <div class="ai-stat-num">{{ (dash.ai_performance?.success_rate ?? 0).toFixed(1) }}%</div>
-            <div class="ai-stat-label">{{ t('overview.successRate') }}</div>
-          </div>
-          <div class="ai-stat">
-            <div class="ai-stat-num">{{ formatNum(dash.ai_performance?.total_calls ?? 0) }}</div>
-            <div class="ai-stat-label">{{ t('overview.totalCalls') }}</div>
+        <div class="ai-model-list" v-if="platformOverview?.ai_performance?.models?.length">
+          <div v-for="m in platformOverview.ai_performance.models" :key="m.model_config_id" class="ai-model-card">
+            <div class="ai-model-header">
+              <span class="ai-model-name">{{ m.display_name || m.model_name }}</span>
+              <span class="ai-model-provider">{{ m.provider }}</span>
+            </div>
+            <div class="ai-model-stats">
+              <div class="ai-model-stat-group">
+                <div class="ai-model-stat-title">{{ t('overview.reasoningCalls') }}</div>
+                <div class="ai-model-stat-row">
+                  <span>{{ t('overview.callCount') }}: {{ formatNum(m.reasoning_stats.calls) }}</span>
+                  <span>{{ t('overview.successRate') }}: {{ m.reasoning_stats.success_rate.toFixed(1) }}%</span>
+                  <span>{{ t('overview.avgResponseTime') }}: {{ m.reasoning_stats.avg_ms }}ms</span>
+                </div>
+              </div>
+              <div class="ai-model-stat-group">
+                <div class="ai-model-stat-title">{{ t('overview.structuredCalls') }}</div>
+                <div class="ai-model-stat-row">
+                  <span>{{ t('overview.callCount') }}: {{ formatNum(m.structured_stats.calls) }}</span>
+                  <span>{{ t('overview.successRate') }}: {{ m.structured_stats.success_rate.toFixed(1) }}%</span>
+                  <span>{{ t('overview.avgResponseTime') }}: {{ m.structured_stats.avg_ms }}ms</span>
+                </div>
+              </div>
+            </div>
+            <div class="ai-model-footer">
+              <span>{{ t('overview.totalCalls') }}: {{ formatNum(m.total_calls) }}</span>
+              <span>{{ t('overview.overallSuccessRate') }}: {{ m.overall_success_rate.toFixed(1) }}%</span>
+            </div>
           </div>
         </div>
-        <div class="bar-chart bar-chart--small">
-          <div v-for="s in (dash.ai_performance?.daily_stats ?? [])" :key="s.date" class="bar-col">
-            <div class="bar-value">{{ s.avg_ms }}</div>
-            <div class="bar bar--accent" :style="{ height: (s.avg_ms / aiBarMaxMs * 80) + 'px' }" />
-            <div class="bar-label">{{ s.date }}</div>
-          </div>
-        </div>
+        <div v-else class="widget-empty">{{ t('overview.noData') }}</div>
       </div>
 
-      <!--===== 租户使用情况 (tenant_admin) / 全平台 Token 合计 (system_admin) =====-->
+      <!--===== 平台：租户资源用量（tenant_usage）=====-->
       <div v-if="isEnabled('tenant_usage')"
-       :class="['widget', `widget--${getWidgetSize('tenant_usage')}`, { 'widget--editing': customizing }]" 
-       :style="{ order: getWidgetOrder('tenant_usage') }" 
-       :draggable="customizing" 
-       @dragstart="onDragStart($event, 'tenant_usage')" 
-       @dragover.prevent 
-       @dragenter.prevent 
+       :class="['widget', `widget--${getWidgetSize('tenant_usage')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('tenant_usage') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'tenant_usage')"
+       @dragover.prevent
+       @dragenter.prevent
        @drop="onDrop($event, 'tenant_usage')">
         <div class="widget-title">
-          <div class="widget-title-left"><CloudServerOutlined /> {{ t('overview.tenantUsage') }}</div>
+          <div class="widget-title-left"><CloudServerOutlined /> {{ t('overview.widgetTitle.tenant_usage') }}</div>
           <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('tenant_usage')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
-        <div class="usage-rows">
-          <div class="usage-row">
-            <span class="usage-label">{{ isPlatformAdmin ? t('overview.platformTokenAllTenants') : t('overview.tokenUsage') }}</span>
+        <div class="usage-rows" v-if="platformOverview?.tenant_usage_list?.length">
+          <div v-for="row in platformOverview.tenant_usage_list" :key="row.tenant_id" class="usage-row">
+            <span class="usage-label" :title="row.tenant_code">{{ row.tenant_name }}</span>
             <div class="usage-bar-wrap">
-              <div class="usage-bar" :style="{ width: ((dash.tenant_usage?.token_quota ?? 0) > 0 ? (dash.tenant_usage!.token_used / dash.tenant_usage!.token_quota * 100) : 0) + '%' }" />
+              <div class="usage-bar" :style="{ width: tokenPct(row.token_used, row.token_quota) + '%' }" />
             </div>
-            <span class="usage-text">{{ formatNum(dash.tenant_usage?.token_used ?? 0) }} / {{ formatNum(dash.tenant_usage?.token_quota ?? 0) }}</span>
-          </div>
-          <template v-if="!isPlatformAdmin">
-            <div v-if="(dash.tenant_usage?.storage_quota_mb ?? 0) > 0" class="usage-row">
-              <span class="usage-label">{{ t('overview.storageUsage') }}</span>
-              <div class="usage-bar-wrap">
-                <div class="usage-bar usage-bar--info" :style="{ width: storagePct + '%' }" />
-              </div>
-              <span class="usage-text">{{ dash.tenant_usage?.storage_used_mb ?? 0 }}MB / {{ dash.tenant_usage?.storage_quota_mb ?? 0 }}MB</span>
-            </div>
-            <div v-else class="usage-row">
-              <span class="usage-label">{{ t('overview.storageUsage') }}</span>
-              <span class="usage-text" style="flex:1;text-align:right;color:var(--color-text-tertiary);">{{ t('overview.storageNotTracked') }}</span>
-            </div>
-            <div class="usage-row">
-              <span class="usage-label">{{ t('overview.activeUsers') }}</span>
-              <div class="usage-bar-wrap">
-                <div class="usage-bar usage-bar--success" :style="{ width: ((dash.tenant_usage?.total_users ?? 0) > 0 ? (dash.tenant_usage!.active_users / dash.tenant_usage!.total_users * 100) : 0) + '%' }" />
-              </div>
-              <span class="usage-text">{{ dash.tenant_usage?.active_users ?? 0 }} / {{ dash.tenant_usage?.total_users ?? 0 }}</span>
-            </div>
-          </template>
-        </div>
-      </div>
-
-      <!--===== 用户活动 (tenant_admin) =====-->
-      <div v-if="isEnabled('user_activity')"
-       :class="['widget', `widget--${getWidgetSize('user_activity')}`, { 'widget--editing': customizing }]" 
-       :style="{ order: getWidgetOrder('user_activity') }" 
-       :draggable="customizing" 
-       @dragstart="onDragStart($event, 'user_activity')" 
-       @dragover.prevent 
-       @dragenter.prevent 
-       @drop="onDrop($event, 'user_activity')">
-        <div class="widget-title">
-          <div class="widget-title-left"><TeamOutlined /> {{ t('overview.userActivityRank') }}</div>
-          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('user_activity')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
-        </div>
-        <div class="rank-list">
-          <div v-for="(u, i) in (dash.user_activity ?? [])" :key="u.username" class="rank-item">
-            <span class="rank-num" :class="{ 'rank-num--top': i < 3 }">{{ i + 1 }}</span>
-            <div class="rank-info">
-              <span class="rank-name">{{ u.display_name }}</span>
-              <span class="rank-dept">{{ u.department }}</span>
-            </div>
-            <span class="rank-count">{{ u.audit_count }} {{ t('overview.times') }}</span>
+            <span class="usage-text">{{ formatNum(row.token_used) }} / {{ formatNum(row.token_quota) }}</span>
           </div>
         </div>
-        <div v-if="!(dash.user_activity?.length)" style="padding: 16px; color: var(--color-text-tertiary); font-size: 13px;">{{ t('overview.emptyUserActivity') }}</div>
+        <div v-else class="widget-empty">{{ t('overview.noData') }}</div>
       </div>
 
-      <!--===== 平台：租户审核量排行（system_admin）=====-->
+      <!--===== 平台：租户审核排名（platform_tenant_ranking）=====-->
       <div v-if="isEnabled('platform_tenant_ranking')"
        :class="['widget', `widget--${getWidgetSize('platform_tenant_ranking')}`, { 'widget--editing': customizing }]"
        :style="{ order: getWidgetOrder('platform_tenant_ranking') }"
@@ -649,20 +616,32 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
        @dragenter.prevent
        @drop="onDrop($event, 'platform_tenant_ranking')">
         <div class="widget-title">
-          <div class="widget-title-left"><TeamOutlined /> {{ t('overview.platformTenantRank') }}</div>
+          <div class="widget-title-left"><BarChartOutlined /> {{ t('overview.widgetTitle.platform_tenant_ranking') }}</div>
           <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('platform_tenant_ranking')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
-        <div class="rank-list">
-          <div v-for="(row, i) in (dash.tenant_ranking ?? [])" :key="row.tenant_id" class="rank-item">
-            <span class="rank-num" :class="{ 'rank-num--top': i < 3 }">{{ i + 1 }}</span>
-            <div class="rank-info">
-              <span class="rank-name">{{ row.tenant_name }}</span>
-              <span class="rank-dept">{{ row.tenant_code }}</span>
-            </div>
-            <span class="rank-count">{{ row.audit_count }} {{ t('overview.times') }}</span>
+        <div class="tenant-ranking-table" v-if="platformOverview?.tenant_ranking?.length">
+          <div class="tr-row tr-row--header">
+            <span class="tr-cell tr-cell--rank">#</span>
+            <span class="tr-cell tr-cell--name">{{ t('overview.tenantName') }}</span>
+            <span class="tr-cell">{{ t('overview.auditSnapshots') }}</span>
+            <span class="tr-cell">{{ t('overview.archiveSnapshots') }}</span>
+            <span class="tr-cell">{{ t('overview.cronExecutions') }}</span>
+            <span class="tr-cell tr-cell--fail">{{ t('overview.auditFailures') }}</span>
+            <span class="tr-cell tr-cell--fail">{{ t('overview.archiveFailures') }}</span>
+          </div>
+          <div v-for="(row, i) in platformOverview.tenant_ranking" :key="row.tenant_id" class="tr-row">
+            <span class="tr-cell tr-cell--rank">
+              <span class="rank-num" :class="{ 'rank-num--top': i < 3 }">{{ i + 1 }}</span>
+            </span>
+            <span class="tr-cell tr-cell--name tenant-name">{{ row.tenant_name }}</span>
+            <span class="tr-cell">{{ row.audit_count }}</span>
+            <span class="tr-cell">{{ row.archive_count }}</span>
+            <span class="tr-cell">{{ row.cron_count }}</span>
+            <span class="tr-cell tr-cell--fail" :style="{ color: row.audit_failed > 0 ? 'var(--color-danger)' : undefined }">{{ row.audit_failed }}</span>
+            <span class="tr-cell tr-cell--fail" :style="{ color: row.archive_failed > 0 ? 'var(--color-danger)' : undefined }">{{ row.archive_failed }}</span>
           </div>
         </div>
-        <div v-if="!(dash.tenant_ranking?.length)" style="padding: 16px; color: var(--color-text-tertiary); font-size: 13px;">{{ t('overview.emptyUserActivity') }}</div>
+        <div v-else class="widget-empty">{{ t('overview.noData') }}</div>
       </div>
 
     </div>
@@ -699,10 +678,6 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .slide-down-enter-from, .slide-down-leave-to { opacity: 0; transform: translateY(-8px); }
 
 /*小部件网格*/
-.widget-title { display: flex; justify-content: space-between; align-items: center; width: 100%; }
-.widget-title-left { flex: 1; display: flex; align-items: center; gap: 8px; }
-.widget-actions { flex-shrink: 0; padding: 4px; border-radius: 4px; transition: background 0.2s; }
-.widget-actions:hover { background: rgba(0,0,0,0.05); }
 .widget-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
 .widget {
   background: var(--color-bg-card); border: 1px solid var(--color-border-light);
@@ -710,23 +685,39 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
   box-shadow: var(--shadow-xs); transition: box-shadow var(--transition-base);
 }
 .widget:hover { box-shadow: var(--shadow-sm); }
-
-.widget--editing {
-  border: 1px dashed var(--color-primary);
-  cursor: grab;
-  transform: scale(0.99);
-}
-.widget--editing:active {
-  cursor: grabbing;
-}
-
+.widget--editing { border: 1px dashed var(--color-primary); cursor: grab; transform: scale(0.99); }
+.widget--editing:active { cursor: grabbing; }
 .widget--sm { grid-column: span 4; }
 .widget--md { grid-column: span 6; }
 .widget--lg { grid-column: span 12; }
+
 .widget-title {
   font-size: 14px; font-weight: 600; color: var(--color-text-primary);
   margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+  justify-content: space-between; width: 100%;
 }
+.widget-title-left { flex: 1; display: flex; align-items: center; gap: 8px; }
+.widget-actions { flex-shrink: 0; padding: 4px; border-radius: 4px; transition: background 0.2s; }
+.widget-actions:hover { background: rgba(0,0,0,0.05); }
+
+.widget-empty { padding: 24px; text-align: center; color: var(--color-text-tertiary); font-size: 13px; }
+
+/*本周概览*/
+.weekly-overview { display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
+.wo-total { text-align: center; padding: 16px 24px; background: var(--color-primary-bg); border-radius: var(--radius-md); }
+.wo-total-num { font-size: 36px; font-weight: 700; color: var(--color-primary); line-height: 1.2; }
+.wo-total-label { font-size: 13px; color: var(--color-text-tertiary); margin-top: 4px; }
+.wo-items { display: flex; gap: 24px; flex: 1; }
+.wo-item { text-align: center; flex: 1; padding: 12px 0; }
+.wo-num { font-size: 24px; font-weight: 700; display: block; line-height: 1.2; }
+.wo-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; display: block; }
+
+/*待办任务*/
+.pending-split { display: flex; gap: 16px; margin-bottom: 12px; }
+.pending-item { flex: 1; text-align: center; padding: 16px 8px; background: var(--color-bg-page); border-radius: var(--radius-md); }
+.pending-num { font-size: 32px; font-weight: 700; color: var(--color-primary); line-height: 1; }
+.pending-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 6px; }
+.pending-total { font-size: 13px; color: var(--color-text-secondary); text-align: center; margin-bottom: 8px; }
 
 /*审计总结*/
 .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
@@ -736,37 +727,18 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 }
 .summary-card--total { background: var(--color-primary-bg); }
 .summary-card--approved .summary-icon { color: var(--color-success); font-size: 20px; }
-.summary-card--returned .summary-icon { color: var(--color-danger); font-size: 20px; }
-.summary-card--archived .summary-icon { color: var(--color-warning); font-size: 20px; }
 .summary-num { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
 .summary-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
 .summary-card--total .summary-num { color: var(--color-primary); }
 
-/*待办的*/
-.pending-big { text-align: center; padding: 20px 0 12px; }
-.pending-num { font-size: 48px; font-weight: 700; color: var(--color-primary); line-height: 1; }
-.pending-label { font-size: 14px; color: var(--color-text-tertiary); margin-top: 8px; }
-
-/*条形图*/
-.bar-chart { display: flex; align-items: flex-end; gap: 8px; justify-content: space-between; padding-top: 8px; }
-.bar-chart--small { margin-top: 16px; }
-.bar-col { display: flex; flex-direction: column; align-items: center; flex: 1; }
-.bar-value { font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 4px; }
-.bar {
-  width: 100%; max-width: 40px; min-height: 4px;
-  background: var(--color-primary); border-radius: 4px 4px 0 0;
-  transition: height 0.5s ease;
-}
-.bar--accent { background: var(--color-accent); }
-.bar-label { font-size: 11px; color: var(--color-text-tertiary); margin-top: 6px; }
-
-/*部门分布*/
-.dept-list { display: flex; flex-direction: column; gap: 10px; }
-.dept-row { display: flex; align-items: center; gap: 10px; }
-.dept-name { font-size: 13px; color: var(--color-text-secondary); width: 72px; flex-shrink: 0; text-align: right; }
-.dept-bar-wrap { flex: 1; height: 20px; background: var(--color-bg-page); border-radius: 4px; overflow: hidden; }
-.dept-bar { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
-.dept-count { font-size: 13px; font-weight: 600; color: var(--color-text-primary); width: 28px; text-align: right; }
+/*定时任务表格*/
+.cron-table { display: flex; flex-direction: column; }
+.cron-row { display: grid; grid-template-columns: 2fr 3fr 1.5fr 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--color-border-light); font-size: 13px; color: var(--color-text-secondary); align-items: center; }
+.cron-row:last-child { border-bottom: none; }
+.cron-row--header { font-weight: 600; color: var(--color-text-tertiary); font-size: 12px; }
+.cron-cell--name { font-weight: 500; color: var(--color-text-primary); }
+.cron-cell--desc { color: var(--color-text-tertiary); font-size: 12px; }
+.cron-cell--expr { font-family: var(--font-mono, monospace); font-size: 12px; }
 
 /*活动*/
 .activity-list { display: flex; flex-direction: column; gap: 0; }
@@ -779,37 +751,14 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .activity-body { flex: 1; min-width: 0; }
 .activity-action { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
 .activity-target { font-size: 13px; color: var(--color-text-secondary); margin-left: 6px; }
+.activity-tag { font-size: 11px; color: var(--color-primary); background: var(--color-primary-bg); padding: 1px 6px; border-radius: var(--radius-full); margin-left: 6px; white-space: nowrap; }
+.activity-tag--archive { color: var(--color-success); background: var(--color-success-bg); }
+.activity-tag--cron { color: var(--color-accent); background: rgba(6,182,212,0.1); }
 .activity-meta { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
 .activity-user { font-size: 12px; color: var(--color-text-tertiary); }
 .activity-time { font-size: 11px; color: var(--color-text-tertiary); }
 
-/*人工智能统计*/
-.ai-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.ai-stat { text-align: center; padding: 12px 0; background: var(--color-bg-page); border-radius: var(--radius-md); }
-.ai-stat-num { font-size: 20px; font-weight: 700; color: var(--color-text-primary); }
-.ai-stat-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
-
-/*使用栏*/
-.usage-rows { display: flex; flex-direction: column; gap: 16px; }
-.usage-row { display: flex; align-items: center; gap: 12px; }
-.usage-label { font-size: 13px; color: var(--color-text-secondary); width: 72px; flex-shrink: 0; }
-.usage-bar-wrap { flex: 1; height: 12px; background: var(--color-bg-page); border-radius: 6px; overflow: hidden; }
-.usage-bar { height: 100%; background: var(--color-primary); border-radius: 6px; transition: width 0.5s ease; }
-.usage-bar--info { background: var(--color-info); }
-.usage-bar--success { background: var(--color-success); }
-.usage-text { font-size: 12px; color: var(--color-text-tertiary); width: 120px; text-align: right; flex-shrink: 0; }
-
-/*覆盖范围*/
-.coverage-list { display: flex; flex-direction: column; gap: 14px; }
-.coverage-row { display: flex; align-items: center; gap: 10px; }
-.coverage-info { width: 100px; flex-shrink: 0; }
-.coverage-type { font-size: 13px; font-weight: 500; color: var(--color-text-primary); display: block; }
-.coverage-count { font-size: 11px; color: var(--color-text-tertiary); }
-.coverage-bar-wrap { flex: 1; height: 10px; background: var(--color-bg-page); border-radius: 5px; overflow: hidden; }
-.coverage-bar { height: 100%; background: var(--color-success); border-radius: 5px; transition: width 0.5s ease; }
-.coverage-pct { font-size: 13px; font-weight: 600; color: var(--color-text-primary); width: 40px; text-align: right; }
-
-/*秩*/
+/*排名*/
 .rank-list { display: flex; flex-direction: column; gap: 0; }
 .rank-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--color-border-light); }
 .rank-item:last-child { border-bottom: none; }
@@ -823,81 +772,60 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
 .rank-dept { font-size: 12px; color: var(--color-text-tertiary); margin-left: 8px; }
 .rank-count { font-size: 13px; font-weight: 600; color: var(--color-primary); flex-shrink: 0; }
 
-/*健康网格*/
-.health-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.health-card { background: var(--color-bg-page); border-radius: var(--radius-md); padding: 14px; }
-.health-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.health-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
-.health-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full); }
-.health-metrics { display: flex; flex-direction: column; gap: 8px; }
-.health-metric { display: flex; align-items: center; gap: 8px; }
-.health-metric-label { font-size: 12px; color: var(--color-text-tertiary); width: 32px; }
-.health-bar-wrap { flex: 1; height: 6px; background: var(--color-bg-card); border-radius: 3px; overflow: hidden; }
-.health-bar { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
-.health-metric-val { font-size: 12px; color: var(--color-text-secondary); width: 36px; text-align: right; }
-.health-uptime { font-size: 11px; color: var(--color-text-tertiary); margin-top: 8px; }
-
-/*租户表*/
-.tenant-table, .api-table { display: flex; flex-direction: column; }
-.tenant-row, .api-row {
-  display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px;
+/*租户规模*/
+.active-criteria-text { font-size: 12px; color: var(--color-text-tertiary); margin: 12px 0 16px; }
+.tenant-table { display: flex; flex-direction: column; }
+.tenant-row {
+  display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px;
   padding: 8px 0; border-bottom: 1px solid var(--color-border-light);
   font-size: 13px; color: var(--color-text-secondary); align-items: center;
 }
-.tenant-row:last-child, .api-row:last-child { border-bottom: none; }
-.tenant-row--header, .api-row--header { font-weight: 600; color: var(--color-text-tertiary); font-size: 12px; }
+.tenant-row:last-child { border-bottom: none; }
+.tenant-row--header { font-weight: 600; color: var(--color-text-tertiary); font-size: 12px; }
 .tenant-name { font-weight: 500; color: var(--color-text-primary); }
 .tenant-status { font-weight: 500; }
-.api-endpoint { font-family: var(--font-mono); font-size: 12px; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/*监控指标网格*/
-.monitor-metrics-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
-}
-.monitor-metric-card {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 16px;
-  background: var(--color-bg-page);
-  border-radius: var(--radius-md);
-  transition: all 0.2s ease;
-}
-.monitor-metric-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-xs); }
-.monitor-metric-icon {
-  width: 40px; height: 40px; border-radius: var(--radius-md);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; flex-shrink: 0;
-}
-.monitor-metric-icon--primary { background: var(--color-primary-bg); color: var(--color-primary); }
-.monitor-metric-icon--success { background: var(--color-success-bg); color: var(--color-success); }
-.monitor-metric-icon--warning { background: var(--color-warning-bg); color: var(--color-warning); }
-.monitor-metric-icon--info { background: var(--color-info-bg); color: var(--color-info); }
-.monitor-metric-value { font-size: 20px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
-.monitor-metric-unit { font-size: 12px; font-weight: 500; color: var(--color-text-tertiary); margin-left: 2px; }
-.monitor-metric-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+/*AI 模型表现*/
+.ai-model-list { display: flex; flex-direction: column; gap: 16px; }
+.ai-model-card { background: var(--color-bg-page); border-radius: var(--radius-md); padding: 16px; }
+.ai-model-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.ai-model-name { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
+.ai-model-provider { font-size: 12px; color: var(--color-text-tertiary); background: var(--color-bg-card); padding: 2px 8px; border-radius: var(--radius-full); }
+.ai-model-stats { display: flex; gap: 16px; flex-wrap: wrap; }
+.ai-model-stat-group { flex: 1; min-width: 200px; }
+.ai-model-stat-title { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 6px; }
+.ai-model-stat-row { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--color-text-tertiary); }
+.ai-model-footer { display: flex; gap: 16px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--color-border-light); font-size: 13px; font-weight: 500; color: var(--color-text-secondary); }
 
-/*监控警报*/
-.monitor-alerts-list { display: flex; flex-direction: column; gap: 10px; }
-.monitor-alert-item {
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 12px 14px; border-radius: var(--radius-md);
-  background: var(--color-bg-page); border-left: 3px solid;
-  transition: background 0.2s ease;
-}
-.monitor-alert-item:hover { background: var(--color-bg-hover); }
-.monitor-alert-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
-.monitor-alert-message { font-size: 13px; color: var(--color-text-primary); line-height: 1.4; }
-.monitor-alert-time { font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px; }
+/*使用栏*/
+.usage-rows { display: flex; flex-direction: column; gap: 16px; }
+.usage-row { display: flex; align-items: center; gap: 12px; }
+.usage-label { font-size: 13px; color: var(--color-text-secondary); width: 100px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usage-bar-wrap { flex: 1; height: 12px; background: var(--color-bg-page); border-radius: 6px; overflow: hidden; }
+.usage-bar { height: 100%; background: var(--color-primary); border-radius: 6px; transition: width 0.5s ease; }
+.usage-text { font-size: 12px; color: var(--color-text-tertiary); width: 120px; text-align: right; flex-shrink: 0; }
+
+/*租户审核排名表格*/
+.tenant-ranking-table { display: flex; flex-direction: column; overflow-x: auto; }
+.tr-row { display: grid; grid-template-columns: 40px 2fr 1fr 1fr 1fr 1fr 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--color-border-light); font-size: 13px; color: var(--color-text-secondary); align-items: center; }
+.tr-row:last-child { border-bottom: none; }
+.tr-row--header { font-weight: 600; color: var(--color-text-tertiary); font-size: 12px; }
+.tr-cell { text-align: center; }
+.tr-cell--rank { text-align: center; }
+.tr-cell--name { text-align: left; }
+.tr-cell--fail { font-size: 12px; }
 
 @media (max-width: 1024px) {
   .widget--sm, .widget--md { grid-column: span 6; }
   .summary-cards { grid-template-columns: repeat(2, 1fr); }
-  .monitor-metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  .weekly-overview { flex-direction: column; gap: 16px; }
+  .wo-items { width: 100%; }
 }
 @media (max-width: 768px) {
   .widget--sm, .widget--md, .widget--lg { grid-column: span 12; }
   .summary-cards { grid-template-columns: repeat(2, 1fr); }
-  .health-grid { grid-template-columns: 1fr; }
-  .monitor-metrics-grid { grid-template-columns: 1fr; }
   .ov-header { flex-direction: column; }
+  .pending-split { flex-direction: column; }
+  .tr-row { grid-template-columns: 30px 1.5fr repeat(5, 1fr); font-size: 12px; }
 }
 </style>

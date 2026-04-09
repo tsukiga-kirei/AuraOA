@@ -16,33 +16,36 @@ import (
 
 // DashboardOverviewService 聚合仪表盘数据。
 type DashboardOverviewService struct {
-	auditLogRepo       *repository.AuditLogRepo
-	archiveLogRepo     *repository.ArchiveLogRepo
-	cronLogRepo        *repository.CronLogRepo
-	llmLogRepo         *repository.LLMMessageLogRepo
-	tenantRepo         *repository.TenantRepo
-	orgRepo            *repository.OrgRepo
-	auditExecuteSvc    *AuditExecuteService
+	auditSnapshotRepo   *repository.AuditProcessSnapshotRepo
+	archiveSnapshotRepo *repository.ArchiveProcessSnapshotRepo
+	auditLogRepo        *repository.AuditLogRepo
+	archiveLogRepo      *repository.ArchiveLogRepo
+	cronLogRepo         *repository.CronLogRepo
+	llmLogRepo          *repository.LLMMessageLogRepo
+	tenantRepo          *repository.TenantRepo
+	orgRepo             *repository.OrgRepo
 }
 
 // NewDashboardOverviewService 创建 DashboardOverviewService。
 func NewDashboardOverviewService(
+	auditSnapshotRepo *repository.AuditProcessSnapshotRepo,
+	archiveSnapshotRepo *repository.ArchiveProcessSnapshotRepo,
 	auditLogRepo *repository.AuditLogRepo,
 	archiveLogRepo *repository.ArchiveLogRepo,
 	cronLogRepo *repository.CronLogRepo,
 	llmLogRepo *repository.LLMMessageLogRepo,
 	tenantRepo *repository.TenantRepo,
 	orgRepo *repository.OrgRepo,
-	auditExecuteSvc *AuditExecuteService,
 ) *DashboardOverviewService {
 	return &DashboardOverviewService{
-		auditLogRepo:    auditLogRepo,
-		archiveLogRepo:  archiveLogRepo,
-		cronLogRepo:     cronLogRepo,
-		llmLogRepo:      llmLogRepo,
-		tenantRepo:      tenantRepo,
-		orgRepo:         orgRepo,
-		auditExecuteSvc: auditExecuteSvc,
+		auditSnapshotRepo:   auditSnapshotRepo,
+		archiveSnapshotRepo: archiveSnapshotRepo,
+		auditLogRepo:        auditLogRepo,
+		archiveLogRepo:      archiveLogRepo,
+		cronLogRepo:         cronLogRepo,
+		llmLogRepo:          llmLogRepo,
+		tenantRepo:          tenantRepo,
+		orgRepo:             orgRepo,
 	}
 }
 
@@ -54,8 +57,8 @@ func tenantUUIDFromContext(c *gin.Context) (uuid.UUID, error) {
 	return uuid.Parse(tid.(string))
 }
 
-// BuildOverview 构建当前租户仪表盘数据；tenant_admin 额外填充管理类字段。
-// business 身份下审核/归档/趋势/动态仅统计当前登录用户本人数据；tenant_admin 为租户级汇总。
+// BuildOverview 构建当前租户仪表盘数据。
+// business: 仅个人数据；tenant_admin: 租户级汇总。
 func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole string, viewerUserID uuid.UUID, viewerUsername string) (*dto.DashboardOverviewResponse, error) {
 	if _, err := tenantUUIDFromContext(c); err != nil {
 		return nil, err
@@ -69,138 +72,45 @@ func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole stri
 
 	out := &dto.DashboardOverviewResponse{}
 
-	stats, err := s.auditLogRepo.CountStats(c, userScope)
+	// ── 本周概览（快照表 + cron_logs）──
+	auditWeek, err := s.auditSnapshotRepo.CountThisWeek(c, userScope)
 	if err != nil {
-		return nil, err
+		log.Printf("dashboard: auditSnapshotRepo.CountThisWeek error: %v", err)
 	}
-	out.AuditSummary.Total = stats.Total
-	out.AuditSummary.Approved = stats.ApproveCount
-	out.AuditSummary.Returned = stats.ReturnCount
-	out.AuditSummary.Review = stats.ReviewCount
-	out.AuditSummary.PendingAI = stats.PendingAI
-
-	archived, err := s.archiveLogRepo.CountCompletedArchiveLogs(c, userScope)
+	archiveWeek, err := s.archiveSnapshotRepo.CountThisWeek(c, userScope)
 	if err != nil {
-		return nil, err
+		log.Printf("dashboard: archiveSnapshotRepo.CountThisWeek error: %v", err)
 	}
-	out.AuditSummary.Archived = archived
-
-	weekRows, err := s.auditLogRepo.DashboardWeeklyCompletedTrend(c, 7, userScope)
+	cronWeek, err := s.cronLogRepo.CountThisWeek(c, userScope)
 	if err != nil {
-		return nil, err
+		log.Printf("dashboard: cronLogRepo.CountThisWeek error: %v", err)
 	}
-	out.WeeklyTrend = make([]dto.DashboardDayCount, 0, len(weekRows))
-	for _, row := range weekRows {
-		out.WeeklyTrend = append(out.WeeklyTrend, dto.DashboardDayCount{Date: row.Date, Count: row.Count})
+	out.WeeklyOverview = &dto.WeeklyOverviewData{
+		AuditCount:   auditWeek,
+		ArchiveCount: archiveWeek,
+		CronCount:    cronWeek,
+		Total:        auditWeek + archiveWeek + cronWeek,
 	}
 
-	// OA 待办失败时仍返回其余仪表盘数据，避免整页失败导致前端重置布局
-	oaStats, err := s.auditExecuteSvc.GetStats(c)
-	if err != nil {
-		log.Printf("dashboard overview: GetStats skipped (pending_oa_count=0): %v", err)
-		out.PendingOACount = 0
-	} else {
-		out.PendingOACount = oaStats["pending_ai_count"]
+	// ── 审核趋势（堆叠柱状图）──
+	auditTrend, _ := s.auditSnapshotRepo.WeeklyTrendByDay(c, userScope)
+	cronTrend, _ := s.cronLogRepo.WeeklyTrendByDay(c, userScope)
+	archiveTrend, _ := s.archiveSnapshotRepo.WeeklyTrendByDay(c, userScope)
+	out.WeeklyTrend = mergeWeeklyTrend(auditTrend, cronTrend, archiveTrend)
+
+	// ── 最近动态（前 10 条，带详细标注）──
+	out.RecentActivity = s.buildEnrichedActivity(c, userScope, viewerUsername, 10)
+
+	// ── business 专属 ──
+	if activeRole == "business" {
+		out.PendingTasks = s.buildPendingTasks(c, viewerUserID)
+		out.CronTasks = s.buildCronTaskPreview(c, viewerUserID, viewerUsername)
 	}
 
-	if err := s.fillRecentActivity(c, out, userScope, viewerUsername); err != nil {
-		return nil, err
-	}
-
-	archRows, err := s.archiveLogRepo.DashboardRecentArchiveLogs(c, 6, userScope)
-	if err != nil {
-		return nil, err
-	}
-	out.ArchiveRecent = make([]dto.DashboardArchiveRow, 0, len(archRows))
-	for _, r := range archRows {
-		out.ArchiveRecent = append(out.ArchiveRecent, dto.DashboardArchiveRow{
-			ID:          r.ID.String(),
-			Title:       r.Title,
-			Compliance:  r.Compliance,
-			UserName:    r.UserName,
-			CreatedAt:   r.CreatedAt.UTC().Format(time.RFC3339),
-		})
-	}
-
-	if activeRole != "tenant_admin" {
-		return out, nil
-	}
-
-	deptRows, err := s.auditLogRepo.DashboardDeptAuditDistribution(c, 12)
-	if err != nil {
-		return nil, err
-	}
-	out.DeptDistribution = make([]dto.DashboardDeptCount, 0, len(deptRows))
-	for _, d := range deptRows {
-		out.DeptDistribution = append(out.DeptDistribution, dto.DashboardDeptCount{
-			Department: d.Department,
-			Count:      d.Count,
-		})
-	}
-
-	completed, failed, err := s.auditLogRepo.DashboardAuditOutcomeForAIStats(c)
-	if err != nil {
-		return nil, err
-	}
-	llmCalls, llmAvgMs, err := s.llmLogRepo.DashboardLLMOverallStats(c)
-	if err != nil {
-		return nil, err
-	}
-	llmWeek, err := s.llmLogRepo.DashboardLLMWeeklyTrend(c, 7)
-	if err != nil {
-		return nil, err
-	}
-	successRate := 100.0
-	if completed+failed > 0 {
-		successRate = float64(completed) * 100.0 / float64(completed+failed)
-	}
-	daily := make([]dto.DashboardLLMDailyPoint, 0, len(llmWeek))
-	for _, p := range llmWeek {
-		daily = append(daily, dto.DashboardLLMDailyPoint{Date: p.Date, AvgMs: p.AvgMs, Calls: p.Calls})
-	}
-	out.AIPerformance = &dto.DashboardAIPerformance{
-		AvgResponseMs: llmAvgMs,
-		SuccessRate:   successRate,
-		TotalCalls:    llmCalls,
-		DailyStats:    daily,
-	}
-
-	tid, _ := tenantUUIDFromContext(c)
-	tn, err := s.tenantRepo.FindByID(tid)
-	if err != nil {
-		return nil, err
-	}
-	totalUsers, err := s.orgRepo.CountActiveMembersInTenant(c)
-	if err != nil {
-		return nil, err
-	}
-	since := time.Now().UTC().AddDate(0, 0, -30)
-	activeUsers, err := s.auditLogRepo.DashboardDistinctUserCountSince(c, since)
-	if err != nil {
-		return nil, err
-	}
-	out.TenantUsage = &dto.DashboardTenantUsage{
-		TokenUsed:      int64(tn.TokenUsed),
-		TokenQuota:     int64(tn.TokenQuota),
-		StorageUsedMB:  0,
-		StorageQuotaMB: 0,
-		ActiveUsers:    activeUsers,
-		TotalUsers:     totalUsers,
-	}
-
-	rankRows, err := s.auditLogRepo.DashboardUserAuditRanking(c, 10)
-	if err != nil {
-		return nil, err
-	}
-	out.UserActivity = make([]dto.DashboardUserActivityRow, 0, len(rankRows))
-	for _, u := range rankRows {
-		out.UserActivity = append(out.UserActivity, dto.DashboardUserActivityRow{
-			Username:    u.Username,
-			DisplayName: u.DisplayName,
-			Department:  u.Department,
-			AuditCount:  u.AuditCount,
-			LastActive:  u.LastActive.UTC().Format(time.RFC3339),
-		})
+	// ── tenant_admin 专属 ──
+	if activeRole == "tenant_admin" {
+		out.DeptDistribution = s.buildDeptDistribution(c)
+		out.UserActivity = s.buildUserActivityRanking(c)
 	}
 
 	return out, nil
@@ -208,261 +118,463 @@ func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole stri
 
 // BuildPlatformOverview 系统管理员全平台仪表盘（不依赖 tenant_id）。
 func (s *DashboardOverviewService) BuildPlatformOverview() (*dto.PlatformDashboardOverviewResponse, error) {
-	out := &dto.PlatformDashboardOverviewResponse{PendingOACount: 0}
+	out := &dto.PlatformDashboardOverviewResponse{}
 
-	totalTenants, activeTenants, err := s.tenantRepo.DashboardPlatformTenantCounts()
-	if err != nil {
-		return nil, err
-	}
-	out.TenantTotal = totalTenants
-	out.TenantActive = activeTenants
+	// ── 租户规模 ──
+	out.TenantStats = s.buildTenantStats()
 
-	tokenUsed, tokenQuota, err := s.tenantRepo.DashboardPlatformTokenSum()
-	if err != nil {
-		return nil, err
-	}
-	out.TokenSummary = &dto.PlatformTokenSummary{TotalUsed: tokenUsed, TotalQuota: tokenQuota}
+	// ── AI 模型表现 ──
+	out.AIPerformance = s.buildAIPerformanceByModel()
 
-	stats, err := s.auditLogRepo.CountStatsGlobal()
-	if err != nil {
-		return nil, err
-	}
-	out.AuditSummary.Total = stats.Total
-	out.AuditSummary.Approved = stats.ApproveCount
-	out.AuditSummary.Returned = stats.ReturnCount
-	out.AuditSummary.Review = stats.ReviewCount
-	out.AuditSummary.PendingAI = stats.PendingAI
+	// ── 租户资源用量 ──
+	out.TenantUsageList = s.buildTenantUsageList()
 
-	archived, err := s.archiveLogRepo.CountCompletedArchiveLogsGlobal()
-	if err != nil {
-		return nil, err
-	}
-	out.AuditSummary.Archived = archived
-
-	weekRows, err := s.auditLogRepo.DashboardWeeklyCompletedTrendGlobal(7)
-	if err != nil {
-		return nil, err
-	}
-	out.WeeklyTrend = make([]dto.DashboardDayCount, 0, len(weekRows))
-	for _, row := range weekRows {
-		out.WeeklyTrend = append(out.WeeklyTrend, dto.DashboardDayCount{Date: row.Date, Count: row.Count})
-	}
-
-	if err := s.fillRecentActivityPlatform(out); err != nil {
-		return nil, err
-	}
-
-	archRows, err := s.archiveLogRepo.DashboardRecentArchiveLogsGlobal(6)
-	if err != nil {
-		return nil, err
-	}
-	out.ArchiveRecent = make([]dto.DashboardArchiveRow, 0, len(archRows))
-	for _, r := range archRows {
-		out.ArchiveRecent = append(out.ArchiveRecent, dto.DashboardArchiveRow{
-			ID:         r.ID.String(),
-			Title:      r.Title,
-			Compliance: r.Compliance,
-			UserName:   r.UserName,
-			CreatedAt:  r.CreatedAt.UTC().Format(time.RFC3339),
-		})
-	}
-
-	rankRows, err := s.auditLogRepo.DashboardTenantAuditRankingGlobal(10)
-	if err != nil {
-		return nil, err
-	}
-	out.TenantRanking = make([]dto.PlatformTenantRankRow, 0, len(rankRows))
-	for _, r := range rankRows {
-		out.TenantRanking = append(out.TenantRanking, dto.PlatformTenantRankRow{
-			TenantID:   r.TenantID.String(),
-			TenantName: r.TenantName,
-			TenantCode: r.TenantCode,
-			AuditCount: r.AuditCount,
-		})
-	}
-
-	completed, failed, err := s.auditLogRepo.DashboardAuditOutcomeForAIStatsGlobal()
-	if err != nil {
-		return nil, err
-	}
-	llmCalls, llmAvgMs, err := s.llmLogRepo.DashboardLLMOverallStatsGlobal()
-	if err != nil {
-		return nil, err
-	}
-	llmWeek, err := s.llmLogRepo.DashboardLLMWeeklyTrendGlobal(7)
-	if err != nil {
-		return nil, err
-	}
-	successRate := 100.0
-	if completed+failed > 0 {
-		successRate = float64(completed) * 100.0 / float64(completed+failed)
-	}
-	daily := make([]dto.DashboardLLMDailyPoint, 0, len(llmWeek))
-	for _, p := range llmWeek {
-		daily = append(daily, dto.DashboardLLMDailyPoint{Date: p.Date, AvgMs: p.AvgMs, Calls: p.Calls})
-	}
-	out.AIPerformance = &dto.DashboardAIPerformance{
-		AvgResponseMs: llmAvgMs,
-		SuccessRate:   successRate,
-		TotalCalls:    llmCalls,
-		DailyStats:    daily,
-	}
+	// ── 租户审核排名 ──
+	out.TenantRanking = s.buildTenantRankingEnriched()
 
 	return out, nil
 }
 
-func (s *DashboardOverviewService) fillRecentActivityPlatform(out *dto.PlatformDashboardOverviewResponse) error {
-	audits, err := s.auditLogRepo.DashboardRecentAuditsGlobal(8)
-	if err != nil {
-		return err
+// ── 辅助方法 ──────────────────────────────────────────────────────────────
+
+// mergeWeeklyTrend 合并三个功能的每日数据为堆叠柱状图格式。
+func mergeWeeklyTrend(audit, cron, archive []repository.DayCount) []dto.WeeklyTrendDayData {
+	dateMap := make(map[string]*dto.WeeklyTrendDayData)
+	var dates []string
+
+	for _, d := range audit {
+		if _, ok := dateMap[d.Date]; !ok {
+			dateMap[d.Date] = &dto.WeeklyTrendDayData{Date: d.Date}
+			dates = append(dates, d.Date)
+		}
+		dateMap[d.Date].AuditCount = d.Count
 	}
-	cronLogs, err := s.cronLogRepo.ListRecentGlobal(8)
-	if err != nil {
-		return err
+	for _, d := range cron {
+		if _, ok := dateMap[d.Date]; !ok {
+			dateMap[d.Date] = &dto.WeeklyTrendDayData{Date: d.Date}
+			dates = append(dates, d.Date)
+		}
+		dateMap[d.Date].CronCount = d.Count
 	}
-	archives, err := s.archiveLogRepo.DashboardRecentArchiveLogsGlobal(6)
-	if err != nil {
-		return err
+	for _, d := range archive {
+		if _, ok := dateMap[d.Date]; !ok {
+			dateMap[d.Date] = &dto.WeeklyTrendDayData{Date: d.Date}
+			dates = append(dates, d.Date)
+		}
+		dateMap[d.Date].ArchiveCount = d.Count
 	}
 
-	var buf []activitySort
-	for _, a := range audits {
-		kind := "audit_completed"
-		if a.Status == model.AuditStatusFailed {
-			kind = "audit_failed"
+	sort.Strings(dates)
+	// 去重
+	unique := dates[:0]
+	seen := make(map[string]bool)
+	for _, d := range dates {
+		if !seen[d] {
+			seen[d] = true
+			unique = append(unique, d)
 		}
-		buf = append(buf, activitySort{
+	}
+
+	result := make([]dto.WeeklyTrendDayData, 0, len(unique))
+	for _, d := range unique {
+		result = append(result, *dateMap[d])
+	}
+	return result
+}
+
+type enrichedSort struct {
+	at   time.Time
+	item dto.ActivityItemEnriched
+}
+
+// buildEnrichedActivity 构建带标注的最近动态。
+func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userScope *uuid.UUID, viewerUsername string, limit int) []dto.ActivityItemEnriched {
+	// 审核快照
+	auditRows, err := s.auditSnapshotRepo.RecentEnriched(c, limit, userScope)
+	if err != nil {
+		log.Printf("dashboard: auditSnapshotRepo.RecentEnriched error: %v", err)
+	}
+	// 归档快照
+	archiveRows, err := s.archiveSnapshotRepo.RecentEnriched(c, limit, userScope)
+	if err != nil {
+		log.Printf("dashboard: archiveSnapshotRepo.RecentEnriched error: %v", err)
+	}
+	// 定时任务日志
+	tid, _ := tenantUUIDFromContext(c)
+	cronRows, err := s.cronLogRepo.RecentEnriched(tid, limit, userScope)
+	if err != nil {
+		log.Printf("dashboard: cronLogRepo.RecentEnriched error: %v", err)
+	}
+
+	var buf []enrichedSort
+	for _, a := range auditRows {
+		buf = append(buf, enrichedSort{
 			at: a.CreatedAt,
-			DashboardActivityItem: dto.DashboardActivityItem{
-				ID:        "a-" + a.ID.String(),
-				Kind:      kind,
-				Title:     a.Title,
-				UserName:  a.UserName,
-				CreatedAt: a.CreatedAt.UTC().Format(time.RFC3339),
+			item: dto.ActivityItemEnriched{
+				ID:             "a-" + a.ID.String(),
+				Kind:           "audit",
+				Title:          a.Title,
+				UserName:       a.UserName,
+				CreatedAt:      a.CreatedAt.UTC().Format(time.RFC3339),
+				Recommendation: a.Recommendation,
+				Score:          a.Score,
 			},
 		})
 	}
-	for _, cl := range cronLogs {
-		title := cl.TaskLabel
-		if title == "" {
-			title = cl.TaskType
-		}
-		buf = append(buf, activitySort{
-			at: cl.StartedAt,
-			DashboardActivityItem: dto.DashboardActivityItem{
-				ID:        "c-" + cl.ID.String(),
-				Kind:      "cron_log",
-				Title:     title,
-				UserName:  cl.CreatedBy,
-				CreatedAt: cl.StartedAt.UTC().Format(time.RFC3339),
+	for _, a := range archiveRows {
+		buf = append(buf, enrichedSort{
+			at: a.CreatedAt,
+			item: dto.ActivityItemEnriched{
+				ID:              "ar-" + a.ID.String(),
+				Kind:            "archive",
+				Title:           a.Title,
+				UserName:        a.UserName,
+				CreatedAt:       a.CreatedAt.UTC().Format(time.RFC3339),
+				Compliance:      a.Compliance,
+				ComplianceScore: a.ComplianceScore,
 			},
 		})
 	}
-	for _, ar := range archives {
-		buf = append(buf, activitySort{
-			at: ar.CreatedAt,
-			DashboardActivityItem: dto.DashboardActivityItem{
-				ID:        "ar-" + ar.ID.String(),
-				Kind:      "archive_reviewed",
-				Title:     ar.Title,
-				UserName:  ar.UserName,
-				CreatedAt: ar.CreatedAt.UTC().Format(time.RFC3339),
+	for _, cl := range cronRows {
+		buf = append(buf, enrichedSort{
+			at: cl.CreatedAt,
+			item: dto.ActivityItemEnriched{
+				ID:         "c-" + cl.ID.String(),
+				Kind:       "cron",
+				Title:      cl.TaskLabel,
+				UserName:   cl.UserName,
+				CreatedAt:  cl.CreatedAt.UTC().Format(time.RFC3339),
+				CronStatus: cl.Status,
+				TaskLabel:  cl.TaskLabel,
 			},
 		})
 	}
 
 	sort.Slice(buf, func(i, j int) bool { return buf[i].at.After(buf[j].at) })
-	if len(buf) > 18 {
-		buf = buf[:18]
+	if len(buf) > limit {
+		buf = buf[:limit]
 	}
-	out.RecentActivity = make([]dto.DashboardActivityItem, 0, len(buf))
+
+	result := make([]dto.ActivityItemEnriched, 0, len(buf))
 	for _, x := range buf {
-		out.RecentActivity = append(out.RecentActivity, x.DashboardActivityItem)
+		result = append(result, x.item)
 	}
-	return nil
+	return result
 }
 
-type activitySort struct {
-	at time.Time
-	dto.DashboardActivityItem
-}
+// buildPendingTasks 构建待办任务数据（近 90 天）。
+func (s *DashboardOverviewService) buildPendingTasks(c *gin.Context, userID uuid.UUID) *dto.PendingTasksData {
+	since := time.Now().UTC().AddDate(0, 0, -90)
 
-func (s *DashboardOverviewService) fillRecentActivity(c *gin.Context, out *dto.DashboardOverviewResponse, forUserID *uuid.UUID, viewerUsername string) error {
-	audits, err := s.auditLogRepo.DashboardRecentAudits(c, 8, forUserID)
+	auditPending, err := s.auditLogRepo.CountPendingSince(c, &userID, since)
 	if err != nil {
-		return err
+		log.Printf("dashboard: auditLogRepo.CountPendingSince error: %v", err)
 	}
+	archivePending, err := s.archiveLogRepo.CountPendingSince(c, &userID, since)
+	if err != nil {
+		log.Printf("dashboard: archiveLogRepo.CountPendingSince error: %v", err)
+	}
+
+	return &dto.PendingTasksData{
+		AuditPending:   auditPending,
+		ArchivePending: archivePending,
+		Total:          auditPending + archivePending,
+	}
+}
+
+// buildCronTaskPreview 构建定时任务预览列表。
+func (s *DashboardOverviewService) buildCronTaskPreview(c *gin.Context, userID uuid.UUID, username string) []dto.CronTaskPreview {
 	tid, err := tenantUUIDFromContext(c)
 	if err != nil {
-		return err
+		return nil
 	}
+
 	var cronLogs []model.CronLog
-	if forUserID != nil {
-		cronLogs, err = s.cronLogRepo.ListByTenantForDashboardMember(tid, *forUserID, viewerUsername, 8)
-	} else {
-		cronLogs, err = s.cronLogRepo.ListByTenant(tid, 8)
-	}
+	cronLogs, err = s.cronLogRepo.ListByTenantForDashboardMember(tid, userID, username, 5)
 	if err != nil {
-		return err
-	}
-	archives, err := s.archiveLogRepo.DashboardRecentArchiveLogs(c, 6, forUserID)
-	if err != nil {
-		return err
+		log.Printf("dashboard: cronLogRepo.ListByTenantForDashboardMember error: %v", err)
+		return nil
 	}
 
-	var buf []activitySort
-	for _, a := range audits {
-		kind := "audit_completed"
-		if a.Status == model.AuditStatusFailed {
-			kind = "audit_failed"
-		}
-		buf = append(buf, activitySort{
-			at: a.CreatedAt,
-			DashboardActivityItem: dto.DashboardActivityItem{
-				ID:        "a-" + a.ID.String(),
-				Kind:      kind,
-				Title:     a.Title,
-				UserName:  a.UserName,
-				CreatedAt: a.CreatedAt.UTC().Format(time.RFC3339),
-			},
-		})
-	}
+	result := make([]dto.CronTaskPreview, 0, len(cronLogs))
 	for _, cl := range cronLogs {
-		title := cl.TaskLabel
-		if title == "" {
-			title = cl.TaskType
+		label := cl.TaskLabel
+		if label == "" {
+			label = cl.TaskType
 		}
-		buf = append(buf, activitySort{
-			at: cl.StartedAt,
-			DashboardActivityItem: dto.DashboardActivityItem{
-				ID:        "c-" + cl.ID.String(),
-				Kind:      "cron_log",
-				Title:     title,
-				UserName:  cl.CreatedBy,
-				CreatedAt: cl.StartedAt.UTC().Format(time.RFC3339),
-			},
+		result = append(result, dto.CronTaskPreview{
+			ID:          cl.ID.String(),
+			TaskLabel:   label,
+			TaskType:    cl.TaskType,
+			Description: label,
+			IsActive:    cl.Status == string(model.AuditStatusCompleted),
 		})
 	}
-	for _, ar := range archives {
-		buf = append(buf, activitySort{
-			at: ar.CreatedAt,
-			DashboardActivityItem: dto.DashboardActivityItem{
-				ID:        "ar-" + ar.ID.String(),
-				Kind:      "archive_reviewed",
-				Title:     ar.Title,
-				UserName:  ar.UserName,
-				CreatedAt: ar.CreatedAt.UTC().Format(time.RFC3339),
-			},
+	return result
+}
+
+// buildDeptDistribution 构建部门分布数据（三个功能分别统计）。
+func (s *DashboardOverviewService) buildDeptDistribution(c *gin.Context) []dto.DeptDistributionData {
+	auditDepts, _ := s.auditSnapshotRepo.CountByDepartment(c)
+	archiveDepts, _ := s.archiveSnapshotRepo.CountByDepartment(c)
+	cronDepts, _ := s.cronLogRepo.CountByDepartment(c)
+
+	deptMap := make(map[string]*dto.DeptDistributionData)
+	for _, d := range auditDepts {
+		if _, ok := deptMap[d.Department]; !ok {
+			deptMap[d.Department] = &dto.DeptDistributionData{Department: d.Department}
+		}
+		deptMap[d.Department].AuditCount = d.Count
+	}
+	for _, d := range archiveDepts {
+		if _, ok := deptMap[d.Department]; !ok {
+			deptMap[d.Department] = &dto.DeptDistributionData{Department: d.Department}
+		}
+		deptMap[d.Department].ArchiveCount = d.Count
+	}
+	for _, d := range cronDepts {
+		if _, ok := deptMap[d.Department]; !ok {
+			deptMap[d.Department] = &dto.DeptDistributionData{Department: d.Department}
+		}
+		deptMap[d.Department].CronCount = d.Count
+	}
+
+	result := make([]dto.DeptDistributionData, 0, len(deptMap))
+	for _, v := range deptMap {
+		v.Total = v.AuditCount + v.CronCount + v.ArchiveCount
+		result = append(result, *v)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Total > result[j].Total })
+	if len(result) > 12 {
+		result = result[:12]
+	}
+	return result
+}
+
+// buildUserActivityRanking 构建用户活跃排名（基于快照数据）。
+func (s *DashboardOverviewService) buildUserActivityRanking(c *gin.Context) []dto.DashboardUserActivityRow {
+	rows, err := s.auditSnapshotRepo.CountByUserRanking(c, 10)
+	if err != nil {
+		log.Printf("dashboard: auditSnapshotRepo.CountByUserRanking error: %v", err)
+		return nil
+	}
+	result := make([]dto.DashboardUserActivityRow, 0, len(rows))
+	for _, u := range rows {
+		result = append(result, dto.DashboardUserActivityRow{
+			Username:    u.Username,
+			DisplayName: u.DisplayName,
+			Department:  u.Department,
+			AuditCount:  u.AuditCount,
+			LastActive:  u.LastActive.UTC().Format(time.RFC3339),
+		})
+	}
+	return result
+}
+
+// ── 系统管理员辅助方法 ──────────────────────────────────────────────────────
+
+// buildTenantStats 构建租户规模数据（含人员数量 + 活跃判断）。
+func (s *DashboardOverviewService) buildTenantStats() *dto.PlatformTenantStatsData {
+	tenants, err := s.tenantRepo.DashboardTenantListWithUserCount()
+	if err != nil {
+		log.Printf("dashboard: tenantRepo.DashboardTenantListWithUserCount error: %v", err)
+		return &dto.PlatformTenantStatsData{ActiveCriteria: "近30天内有审核或归档复盘快照记录"}
+	}
+
+	activeIDs, err := s.tenantRepo.DashboardActiveTenantIDs()
+	if err != nil {
+		log.Printf("dashboard: tenantRepo.DashboardActiveTenantIDs error: %v", err)
+		activeIDs = make(map[string]bool)
+	}
+
+	rows := make([]dto.TenantStatsRow, 0, len(tenants))
+	var activeCount int64
+	for _, t := range tenants {
+		isActive := activeIDs[t.TenantID.String()]
+		if isActive {
+			activeCount++
+		}
+		rows = append(rows, dto.TenantStatsRow{
+			TenantID:   t.TenantID.String(),
+			TenantName: t.TenantName,
+			TenantCode: t.TenantCode,
+			UserCount:  t.UserCount,
+			IsActive:   isActive,
 		})
 	}
 
-	sort.Slice(buf, func(i, j int) bool { return buf[i].at.After(buf[j].at) })
-	if len(buf) > 18 {
-		buf = buf[:18]
+	return &dto.PlatformTenantStatsData{
+		TenantTotal:    int64(len(tenants)),
+		TenantActive:   activeCount,
+		ActiveCriteria: "近30天内有审核或归档复盘快照记录",
+		Tenants:        rows,
 	}
-	out.RecentActivity = make([]dto.DashboardActivityItem, 0, len(buf))
-	for _, x := range buf {
-		out.RecentActivity = append(out.RecentActivity, x.DashboardActivityItem)
+}
+
+// buildAIPerformanceByModel 构建按模型分组的 AI 性能数据。
+func (s *DashboardOverviewService) buildAIPerformanceByModel() *dto.PlatformAIPerformanceData {
+	stats, err := s.llmLogRepo.DashboardAIPerformanceByModel()
+	if err != nil {
+		log.Printf("dashboard: llmLogRepo.DashboardAIPerformanceByModel error: %v", err)
+		return &dto.PlatformAIPerformanceData{Models: []dto.AIModelPerformanceRow{}}
 	}
-	return nil
+
+	// 按 model_config_id 分组
+	type modelGroup struct {
+		ModelConfigID string
+		ModelName     string
+		DisplayName   string
+		Provider      string
+		Reasoning     dto.AICallTypeStats
+		Structured    dto.AICallTypeStats
+	}
+	groupMap := make(map[string]*modelGroup)
+	var order []string
+
+	for _, s := range stats {
+		if _, ok := groupMap[s.ModelConfigID]; !ok {
+			groupMap[s.ModelConfigID] = &modelGroup{
+				ModelConfigID: s.ModelConfigID,
+				ModelName:     s.ModelName,
+				DisplayName:   s.DisplayName,
+				Provider:      s.Provider,
+			}
+			order = append(order, s.ModelConfigID)
+		}
+		g := groupMap[s.ModelConfigID]
+		ct := dto.AICallTypeStats{Calls: s.Calls, AvgMs: s.AvgMs, SuccessRate: 100.0}
+		if s.CallType == "structured" {
+			g.Structured = ct
+		} else {
+			g.Reasoning = ct
+		}
+	}
+
+	models := make([]dto.AIModelPerformanceRow, 0, len(order))
+	for _, id := range order {
+		g := groupMap[id]
+		total := g.Reasoning.Calls + g.Structured.Calls
+		overallRate := 100.0
+		if total > 0 {
+			overallRate = (g.Reasoning.SuccessRate*float64(g.Reasoning.Calls) + g.Structured.SuccessRate*float64(g.Structured.Calls)) / float64(total)
+		}
+		models = append(models, dto.AIModelPerformanceRow{
+			ModelConfigID:      g.ModelConfigID,
+			ModelName:          g.ModelName,
+			DisplayName:        g.DisplayName,
+			Provider:           g.Provider,
+			ReasoningStats:     g.Reasoning,
+			StructuredStats:    g.Structured,
+			OverallSuccessRate: overallRate,
+			TotalCalls:         total,
+		})
+	}
+
+	return &dto.PlatformAIPerformanceData{Models: models}
+}
+
+// buildTenantUsageList 构建按租户分列的资源用量。
+func (s *DashboardOverviewService) buildTenantUsageList() []dto.TenantUsageRow {
+	rows, err := s.tenantRepo.DashboardTenantTokenList()
+	if err != nil {
+		log.Printf("dashboard: tenantRepo.DashboardTenantTokenList error: %v", err)
+		return nil
+	}
+	result := make([]dto.TenantUsageRow, 0, len(rows))
+	for _, r := range rows {
+		result = append(result, dto.TenantUsageRow{
+			TenantID:   r.TenantID.String(),
+			TenantName: r.TenantName,
+			TenantCode: r.TenantCode,
+			TokenUsed:  r.TokenUsed,
+			TokenQuota: r.TokenQuota,
+		})
+	}
+	return result
+}
+
+// buildTenantRankingEnriched 构建含失败记录的租户排名。
+func (s *DashboardOverviewService) buildTenantRankingEnriched() []dto.PlatformTenantRankRowEnriched {
+	auditCounts, _ := s.auditSnapshotRepo.CountByTenantGlobal()
+	archiveCounts, _ := s.archiveSnapshotRepo.CountByTenantGlobal()
+	cronCounts, _ := s.cronLogRepo.CountByTenantGlobal()
+	auditFailed, _ := s.auditLogRepo.CountFailedByTenantGlobal()
+	archiveFailed, _ := s.archiveSnapshotRepo.CountFailedByTenantGlobal()
+
+	// 获取租户名称
+	tenants, _ := s.tenantRepo.List()
+	tenantMap := make(map[string]model.Tenant)
+	for _, t := range tenants {
+		tenantMap[t.ID.String()] = t
+	}
+
+	type rankData struct {
+		dto.PlatformTenantRankRowEnriched
+		total int64
+	}
+	dataMap := make(map[string]*rankData)
+
+	for _, a := range auditCounts {
+		id := a.TenantID.String()
+		if _, ok := dataMap[id]; !ok {
+			t := tenantMap[id]
+			dataMap[id] = &rankData{PlatformTenantRankRowEnriched: dto.PlatformTenantRankRowEnriched{
+				TenantID: id, TenantName: t.Name, TenantCode: t.Code,
+			}}
+		}
+		dataMap[id].AuditCount = a.Count
+	}
+	for _, a := range archiveCounts {
+		id := a.TenantID.String()
+		if _, ok := dataMap[id]; !ok {
+			t := tenantMap[id]
+			dataMap[id] = &rankData{PlatformTenantRankRowEnriched: dto.PlatformTenantRankRowEnriched{
+				TenantID: id, TenantName: t.Name, TenantCode: t.Code,
+			}}
+		}
+		dataMap[id].ArchiveCount = a.Count
+	}
+	for _, a := range cronCounts {
+		id := a.TenantID.String()
+		if _, ok := dataMap[id]; !ok {
+			t := tenantMap[id]
+			dataMap[id] = &rankData{PlatformTenantRankRowEnriched: dto.PlatformTenantRankRowEnriched{
+				TenantID: id, TenantName: t.Name, TenantCode: t.Code,
+			}}
+		}
+		dataMap[id].CronCount = a.Count
+	}
+	for _, a := range auditFailed {
+		id := a.TenantID.String()
+		if _, ok := dataMap[id]; !ok {
+			t := tenantMap[id]
+			dataMap[id] = &rankData{PlatformTenantRankRowEnriched: dto.PlatformTenantRankRowEnriched{
+				TenantID: id, TenantName: t.Name, TenantCode: t.Code,
+			}}
+		}
+		dataMap[id].AuditFailed = a.Count
+	}
+	for _, a := range archiveFailed {
+		id := a.TenantID.String()
+		if _, ok := dataMap[id]; !ok {
+			t := tenantMap[id]
+			dataMap[id] = &rankData{PlatformTenantRankRowEnriched: dto.PlatformTenantRankRowEnriched{
+				TenantID: id, TenantName: t.Name, TenantCode: t.Code,
+			}}
+		}
+		dataMap[id].ArchiveFailed = a.Count
+	}
+
+	result := make([]rankData, 0, len(dataMap))
+	for _, v := range dataMap {
+		v.total = v.AuditCount + v.ArchiveCount + v.CronCount
+		result = append(result, *v)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].total > result[j].total })
+
+	out := make([]dto.PlatformTenantRankRowEnriched, 0, len(result))
+	for _, r := range result {
+		out = append(out, r.PlatformTenantRankRowEnriched)
+	}
+	return out
 }

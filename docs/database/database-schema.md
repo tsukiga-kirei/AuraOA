@@ -430,6 +430,9 @@
 | `output_tokens` | INT | 输出 Token |
 | `total_tokens` | INT | 总 Token |
 | `duration_ms` | INT | 调用耗时 |
+| `call_type` | VARCHAR(20) | LLM 调用类型：`reasoning`（推理调用）/ `structured`（结构化调用），默认 `reasoning`（Migration 029 新增） |
+
+**索引**：`idx_tllm_call_type (tenant_id, call_type)`（Migration 029 新增）
 
 ---
 
@@ -483,5 +486,6 @@ users ──┬── user_role_assignments ──── tenants
 | 000009 | `audit_cron_archive_logs` | 创建审核/定时/归档日志表 |
 | 000010 | `user_personal_configs` | 创建用户个人配置、仪表板偏好表 |
 | 000011 | `tenant_llm_message_logs` | 创建 LLM 调用记录表 |
+| 000029 | `llm_call_type` | tenant_llm_message_logs 新增 call_type 列及复合索引 |
 
 每个迁移脚本均包含对应的 `.down.sql` 回滚脚本。

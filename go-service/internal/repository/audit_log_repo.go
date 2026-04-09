@@ -709,3 +709,31 @@ func applyAuditLogFilter(db *gorm.DB, f AuditLogFilter) *gorm.DB {
 	}
 	return db
 }
+
+// CountPendingSince 统计近 N 天内待处理的审核日志数。
+func (r *AuditLogRepo) CountPendingSince(c *gin.Context, userID *uuid.UUID, since time.Time) (int64, error) {
+	var count int64
+	q := r.WithTenant(c).Model(&model.AuditLog{}).
+		Where("status IN ?", []string{"pending", "assembling", "reasoning", "extracting"}).
+		Where("created_at >= ?", since)
+	if userID != nil {
+		q = q.Where("user_id = ?", *userID)
+	}
+	err := q.Count(&count).Error
+	return count, err
+}
+
+// CountFailedByTenantGlobal 全平台按租户统计审核失败数。
+func (r *AuditLogRepo) CountFailedByTenantGlobal() ([]TenantFailedCount, error) {
+	sql := `
+SELECT tenant_id,
+       COUNT(*)::bigint AS count
+FROM audit_logs
+WHERE status = 'failed'
+GROUP BY tenant_id
+ORDER BY count DESC`
+
+	var rows []TenantFailedCount
+	err := r.DB.Raw(sql).Scan(&rows).Error
+	return rows, err
+}

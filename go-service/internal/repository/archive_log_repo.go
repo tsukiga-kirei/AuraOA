@@ -325,3 +325,16 @@ func applyArchiveLogFilter(db *gorm.DB, f ArchiveLogFilter) *gorm.DB {
 	}
 	return db
 }
+
+// CountPendingSince 统计近 N 天内待处理的归档复盘日志数。
+func (r *ArchiveLogRepo) CountPendingSince(c *gin.Context, userID *uuid.UUID, since time.Time) (int64, error) {
+	var count int64
+	q := r.WithTenant(c).Model(&model.ArchiveLog{}).
+		Where("status IN ?", []string{"pending", "assembling", "reasoning", "extracting"}).
+		Where("created_at >= ?", since)
+	if userID != nil {
+		q = q.Where("user_id = ?", *userID)
+	}
+	err := q.Count(&count).Error
+	return count, err
+}
