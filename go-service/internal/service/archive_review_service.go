@@ -84,6 +84,7 @@ type ArchiveReviewService struct {
 	orgRepo             *repository.OrgRepo
 	db                  *gorm.DB
 	rdb                 *redis.Client
+	notifSvc            *UserNotificationService
 	cancelMap           sync.Map
 }
 
@@ -100,6 +101,7 @@ func NewArchiveReviewService(
 	orgRepo *repository.OrgRepo,
 	db *gorm.DB,
 	rdb *redis.Client,
+	notifSvc *UserNotificationService,
 ) *ArchiveReviewService {
 	return &ArchiveReviewService{
 		archiveLogRepo:      archiveLogRepo,
@@ -114,6 +116,7 @@ func NewArchiveReviewService(
 		orgRepo:             orgRepo,
 		db:                  db,
 		rdb:                 rdb,
+		notifSvc:            notifSvc,
 	}
 }
 
@@ -856,6 +859,14 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	if parseErr == nil && parsed != nil {
 		if err := s.archiveSnapshotRepo.UpsertAppendValid(c, tenantID, logEntry.ProcessID, archiveLogID, logEntry.Title, logEntry.ProcessType, parsed.OverallCompliance, parsed.OverallScore, parsed.Confidence); err != nil {
 			return err
+		}
+		// 归档复盘完成通知
+		if s.notifSvc != nil {
+			s.notifSvc.CreateByTenant(userID, tenantID, "archive",
+				fmt.Sprintf("归档复盘完成：%s", logEntry.Title),
+				fmt.Sprintf("合规性：%s，评分 %d", parsed.OverallCompliance, parsed.OverallScore),
+				fmt.Sprintf("/archive-review?processId=%s", logEntry.ProcessID),
+			)
 		}
 	}
 	return nil

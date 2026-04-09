@@ -242,7 +242,6 @@ const handleSwitchRole = async (role: RoleInfo) => {
                 {{ t('header.notificationsMarkAllRead') }}
               </button>
             </div>
-            <p class="notif-panel-hint">{{ t('header.notificationsUnreadOnlyHint') }}</p>
             <a-spin :spinning="listLoading">
               <div v-if="!notifItems.length && !listLoading" class="notif-empty">
                 {{ t('header.notificationsEmpty') }}
@@ -584,14 +583,6 @@ const handleSwitchRole = async (role: RoleInfo) => {
 }
 .notif-mark-all:hover {
   text-decoration: underline;
-}
-.notif-panel-hint {
-  margin: 0;
-  padding: 6px 14px 8px;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--color-text-tertiary);
-  border-bottom: 1px solid var(--color-border-light);
 }
 .notif-empty {
   padding: 28px 16px;

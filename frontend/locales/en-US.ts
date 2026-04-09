@@ -40,7 +40,6 @@ export default {
     'header.notificationsTitle': 'Notifications',
     'header.notificationsEmpty': 'No notifications',
     'header.notificationsMarkAllRead': 'Mark all as read',
-    'header.notificationsUnreadOnlyHint': 'Unread items show on the badge; switching role shows notifications for that identity only.',
 
     'notifications.category.system_admin': 'Platform',
     'notifications.category.tenant_admin': 'Tenant admin',

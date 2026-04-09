@@ -41,7 +41,6 @@ export default {
     'header.notificationsTitle': '消息通知',
     'header.notificationsEmpty': '暂无通知',
     'header.notificationsMarkAllRead': '全部已读',
-    'header.notificationsUnreadOnlyHint': '未读会显示在角标中；切换角色后仅显示当前身份下的通知',
 
     'notifications.category.system_admin': '平台 / 系统管理',
     'notifications.category.tenant_admin': '租户管理',
