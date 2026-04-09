@@ -731,7 +731,6 @@ function tokenPct(used: number, quota: number) {
   background: var(--color-bg-page);
 }
 .summary-card--total { background: var(--color-primary-bg); }
-.summary-card--approved .summary-icon { color: var(--color-success); font-size: 20px; }
 .summary-num { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
 .summary-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
 .summary-card--total .summary-num { color: var(--color-primary); }
@@ -763,7 +762,6 @@ function tokenPct(used: number, quota: number) {
 .activity-tag--compliant { color: var(--color-success); background: var(--color-success-bg); }
 .activity-tag--non-compliant { color: var(--color-danger); background: var(--color-danger-bg); }
 .activity-tag--partial { color: var(--color-warning); background: var(--color-warning-bg); }
-.activity-tag--archive { color: var(--color-success); background: var(--color-success-bg); }
 .activity-tag--cron { color: var(--color-accent); background: rgba(6,182,212,0.1); }
 .activity-tag--cron-fail { color: var(--color-danger); background: var(--color-danger-bg); }
 .activity-meta { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }

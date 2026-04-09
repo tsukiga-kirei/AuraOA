@@ -203,7 +203,7 @@ func toAIModelResponse(m *model.AIModelConfig) dto.AIModelResponse {
 	}
 }
 
-// TestConnection 根据已保存的 AI 模型 ID 测试连接。
+// TestConnection 根据已保存的 AI 模型 ID 测试连接，并将结果持久化到数据库。
 func (s *AIModelService) TestConnection(id uuid.UUID) error {
 	m, err := s.repo.FindByID(id)
 	if err != nil {
@@ -219,7 +219,16 @@ func (s *AIModelService) TestConnection(id uuid.UUID) error {
 		m.APIKey = decrypted
 	}
 
-	return s.testAIModel(m)
+	testErr := s.testAIModel(m)
+
+	// 持久化连接状态
+	newStatus := "online"
+	if testErr != nil {
+		newStatus = "offline"
+	}
+	_ = s.repo.Update(id, map[string]interface{}{"status": newStatus})
+
+	return testErr
 }
 
 // TestConnectionByParams 根据传入参数直接测试 AI 模型连接（用于新建/编辑时的测试按钮）。

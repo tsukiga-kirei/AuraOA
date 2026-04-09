@@ -201,7 +201,7 @@ func toOAConnectionResponse(c *model.OADatabaseConnection) dto.OAConnectionRespo
 	}
 }
 
-// TestConnection 根据已保存的 OA 连接 ID 测试数据库连通性。
+// TestConnection 根据已保存的 OA 连接 ID 测试数据库连通性，并将结果持久化到数据库。
 func (s *OAConnectionService) TestConnection(id uuid.UUID) error {
 	conn, err := s.repo.FindByID(id)
 	if err != nil {
@@ -215,7 +215,16 @@ func (s *OAConnectionService) TestConnection(id uuid.UUID) error {
 	}
 	conn.Password = password
 
-	return s.testOAConnection(conn)
+	testErr := s.testOAConnection(conn)
+
+	// 持久化连接状态
+	newStatus := "connected"
+	if testErr != nil {
+		newStatus = "disconnected"
+	}
+	_ = s.repo.Update(id, map[string]interface{}{"status": newStatus})
+
+	return testErr
 }
 
 // TestConnectionByParams 根据传入参数直接测试数据库连通性（用于新建/编辑时的测试按钮）。
