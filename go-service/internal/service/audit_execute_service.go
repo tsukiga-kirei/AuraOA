@@ -50,6 +50,7 @@ type AuditExecuteService struct {
 	aiCaller           *AIModelCallerService
 	db                 *gorm.DB
 	rdb                *redis.Client
+	notifSvc           *UserNotificationService
 	cancelMap          sync.Map
 }
 
@@ -65,6 +66,7 @@ func NewAuditExecuteService(
 	aiCaller *AIModelCallerService,
 	db *gorm.DB,
 	rdb *redis.Client,
+	notifSvc *UserNotificationService,
 ) *AuditExecuteService {
 	return &AuditExecuteService{
 		auditLogRepo:      auditLogRepo,
@@ -78,6 +80,7 @@ func NewAuditExecuteService(
 		aiCaller:          aiCaller,
 		db:                db,
 		rdb:               rdb,
+		notifSvc:          notifSvc,
 	}
 }
 
@@ -472,6 +475,14 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	if parseErr == nil && parsed != nil {
 		if err := s.auditSnapshotRepo.UpsertAppendValid(c, tenantID, log.ProcessID, auditLogID, log.Title, log.ProcessType, parsed.Recommendation, parsed.OverallScore, parsed.Confidence); err != nil {
 			return err
+		}
+		// 审核完成通知
+		if s.notifSvc != nil {
+			s.notifSvc.CreateByTenant(userID, tenantID, "audit",
+				fmt.Sprintf("审核完成：%s", log.Title),
+				fmt.Sprintf("评分 %d，建议：%s", parsed.OverallScore, parsed.Recommendation),
+				fmt.Sprintf("/workbench?processId=%s", log.ProcessID),
+			)
 		}
 	}
 	return nil
