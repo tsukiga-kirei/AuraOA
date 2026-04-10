@@ -747,8 +747,12 @@ func (s *AuditExecuteService) ListPendingForBatch(c *gin.Context, workflowIds []
 	}
 	snapshotMap, _ := s.auditSnapshotRepo.GetMapByProcessIDs(c, todoPIDs)
 
-	// 按租户已配置的主表名过滤
+	// 按租户已配置的主表名和流程类型过滤（AND 关系）
 	allowedTables := s.getAllowedMainTables(c)
+	allowedTypes := make(map[string]bool)
+	for _, pt := range s.getAllowedProcessTypes(c) {
+		allowedTypes[strings.ToLower(pt)] = true
+	}
 	wfMap := make(map[string]bool)
 	for _, id := range workflowIds {
 		wfMap[id] = true
@@ -756,8 +760,8 @@ func (s *AuditExecuteService) ListPendingForBatch(c *gin.Context, workflowIds []
 
 	var result []AuditExecuteRequest
 	for _, item := range items {
-		// 1. 权限与配置过滤
-		if !allowedTables[strings.ToLower(item.MainTableName)] {
+		// 1. 权限与配置过滤（主表名 AND 流程类型必须同时匹配）
+		if !allowedTables[strings.ToLower(item.MainTableName)] || !allowedTypes[strings.ToLower(item.ProcessType)] {
 			continue
 		}
 		// 2. 指定流程过滤（若有）
@@ -797,9 +801,13 @@ func (s *AuditExecuteService) collectTodoProcessIDsForExclusion(c *gin.Context, 
 		return nil, err
 	}
 	allowedTables := s.getAllowedMainTables(c)
+	allowedTypes := make(map[string]bool)
+	for _, pt := range s.getAllowedProcessTypes(c) {
+		allowedTypes[strings.ToLower(pt)] = true
+	}
 	var ids []string
 	for _, item := range todoItems {
-		if allowedTables[strings.ToLower(item.MainTableName)] {
+		if allowedTables[strings.ToLower(item.MainTableName)] && allowedTypes[strings.ToLower(item.ProcessType)] {
 			ids = append(ids, item.ProcessID)
 		}
 	}
@@ -895,9 +903,10 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 		return nil, err
 	}
 
-	// 使用筛选后的 OA 数据（keyword/applicant/department/mainTableNames 已下推到 SQL）
+	// 使用筛选后的 OA 数据（keyword/applicant/department/mainTableNames/processTypes 已下推到 SQL）
 	allowedTables := s.getAllowedMainTables(c)
-	todoItems, err := s.fetchTodoListFiltered(c, adapter, username, params, allowedTables)
+	processTypes := s.getAllowedProcessTypes(c)
+	todoItems, err := s.fetchTodoListFiltered(c, adapter, username, params, allowedTables, processTypes)
 	if err != nil {
 		return nil, err
 	}
@@ -984,12 +993,13 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 		return s.listCompletedProcessesPaged(c, tenantID, username, adapter, params)
 	}
 
-	// pending_ai / ai_done：将 keyword/applicant/department/mainTableNames 下推到 OA SQL，
+	// pending_ai / ai_done：将 keyword/applicant/department/mainTableNames/processTypes 下推到 OA SQL，
 	// 减少从 OA 拉取的数据量。tab 分组（是否有 snapshot）仍需在内存中完成。
 	allowedTables := s.getAllowedMainTables(c)
+	processTypes := s.getAllowedProcessTypes(c)
 
 	// 获取筛选后的全量数据（不分页），用于 tab 分组
-	todoResult, err := s.fetchTodoListFiltered(c, adapter, username, params, allowedTables)
+	todoResult, err := s.fetchTodoListFiltered(c, adapter, username, params, allowedTables, processTypes)
 	if err != nil {
 		return nil, err
 	}
@@ -1091,7 +1101,7 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 
 // fetchTodoListFiltered 使用 FetchTodoListPaged 将 keyword/applicant/department/mainTableNames 下推到 OA SQL，
 // 但不做 OA 层分页（因为 tab 分组需要全量筛选后数据）。分批拉取全量筛选结果。
-func (s *AuditExecuteService) fetchTodoListFiltered(c *gin.Context, adapter oa.OAAdapter, username string, params dto.AuditListParams, allowedTables map[string]bool) ([]oa.TodoItem, error) {
+func (s *AuditExecuteService) fetchTodoListFiltered(c *gin.Context, adapter oa.OAAdapter, username string, params dto.AuditListParams, allowedTables map[string]bool, processTypes []string) ([]oa.TodoItem, error) {
 	mainTableNames := make([]string, 0, len(allowedTables))
 	for t := range allowedTables {
 		mainTableNames = append(mainTableNames, t)
@@ -1104,6 +1114,7 @@ func (s *AuditExecuteService) fetchTodoListFiltered(c *gin.Context, adapter oa.O
 		Applicant:      params.Applicant,
 		Department:     params.Department,
 		MainTableNames: mainTableNames,
+		ProcessTypes:   processTypes,
 		Page:           1,
 		PageSize:       batchSize,
 	}

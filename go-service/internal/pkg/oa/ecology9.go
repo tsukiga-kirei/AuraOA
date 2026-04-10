@@ -668,6 +668,17 @@ func (a *Ecology9Adapter) buildTodoFromJoinWhere(e9UserID int, filter TodoListPa
 			a.lowerFunc(), a.col("tablename"), strings.Join(placeholders, ","))
 	}
 
+	// processTypes → 限制 workflow_base.workflowname
+	if len(filter.ProcessTypes) > 0 {
+		placeholders := make([]string, len(filter.ProcessTypes))
+		for i, pt := range filter.ProcessTypes {
+			placeholders[i] = "?"
+			args = append(args, strings.ToLower(pt))
+		}
+		conds += fmt.Sprintf(" AND %s(COALESCE(wb.%s, '')) IN (%s)",
+			a.lowerFunc(), a.col("workflowname"), strings.Join(placeholders, ","))
+	}
+
 	fromJoinWhere := fmt.Sprintf(`FROM %s co
 		JOIN %s r ON co.%s = r.%s
 		LEFT JOIN %s wb ON r.%s = wb.%s
@@ -828,28 +839,24 @@ func (a *Ecology9Adapter) buildArchivedFromJoinWhere(archiveDateExpr string, fil
 		args = append(args, dept)
 	}
 
-	// mainTableNames 和 processTypes 是 OR 关系（类型匹配或主表匹配都算通过）
-	if len(filter.MainTableNames) > 0 || len(filter.ProcessTypes) > 0 {
-		var orParts []string
-		if len(filter.MainTableNames) > 0 {
-			placeholders := make([]string, len(filter.MainTableNames))
-			for i, name := range filter.MainTableNames {
-				placeholders[i] = "?"
-				args = append(args, strings.ToLower(name))
-			}
-			orParts = append(orParts, fmt.Sprintf("%s(COALESCE(bill.%s, '')) IN (%s)",
-				a.lowerFunc(), a.col("tablename"), strings.Join(placeholders, ",")))
+	// mainTableNames 和 processTypes 必须同时满足（AND 关系）
+	if len(filter.MainTableNames) > 0 {
+		placeholders := make([]string, len(filter.MainTableNames))
+		for i, name := range filter.MainTableNames {
+			placeholders[i] = "?"
+			args = append(args, strings.ToLower(name))
 		}
-		if len(filter.ProcessTypes) > 0 {
-			placeholders := make([]string, len(filter.ProcessTypes))
-			for i, pt := range filter.ProcessTypes {
-				placeholders[i] = "?"
-				args = append(args, strings.ToLower(pt))
-			}
-			orParts = append(orParts, fmt.Sprintf("%s(COALESCE(wb.%s, '')) IN (%s)",
-				a.lowerFunc(), a.col("workflowname"), strings.Join(placeholders, ",")))
+		conds += fmt.Sprintf(" AND %s(COALESCE(bill.%s, '')) IN (%s)",
+			a.lowerFunc(), a.col("tablename"), strings.Join(placeholders, ","))
+	}
+	if len(filter.ProcessTypes) > 0 {
+		placeholders := make([]string, len(filter.ProcessTypes))
+		for i, pt := range filter.ProcessTypes {
+			placeholders[i] = "?"
+			args = append(args, strings.ToLower(pt))
 		}
-		conds += " AND (" + strings.Join(orParts, " OR ") + ")"
+		conds += fmt.Sprintf(" AND %s(COALESCE(wb.%s, '')) IN (%s)",
+			a.lowerFunc(), a.col("workflowname"), strings.Join(placeholders, ","))
 	}
 
 	fromJoinWhere := fmt.Sprintf(`FROM %s r
