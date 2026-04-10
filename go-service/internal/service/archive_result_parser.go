@@ -66,7 +66,7 @@ func ParseArchiveReviewResult(raw string) (*model.ArchiveResultJSON, error) {
 		return nil, fmt.Errorf("JSON 解析失败: %w, 原始内容: %s", err, truncate(raw, 500))
 	}
 
-	compliance := normalizeArchiveCompliance(payload.OverallCompliance, payload.Recommendation)
+	compliance := normalizeArchiveCompliance(payload.OverallCompliance)
 	if compliance == "" {
 		return nil, fmt.Errorf("缺少有效结论：请提供 overall_compliance（compliant/non_compliant/partially_compliant）")
 	}
@@ -126,7 +126,11 @@ func ParseArchiveReviewResult(raw string) (*model.ArchiveResultJSON, error) {
 	return result, nil
 }
 
-func normalizeArchiveCompliance(compliance string, recommendation string) string {
+// normalizeArchiveCompliance 将 compliance 别名归一化为 compliant/non_compliant/partially_compliant。
+func normalizeArchiveCompliance(compliance string) string {
+	if compliance == "" {
+		return ""
+	}
 	switch strings.ToLower(strings.TrimSpace(compliance)) {
 	case "compliant":
 		return "compliant"
@@ -134,18 +138,7 @@ func normalizeArchiveCompliance(compliance string, recommendation string) string
 		return "non_compliant"
 	case "partially_compliant", "partial_compliant", "partial", "partial_compliance":
 		return "partially_compliant"
-	}
-
-	switch normalizeAuditRecommendation(recommendation) {
-	case "approve":
-		return "compliant"
-	case "return":
-		return "non_compliant"
-	case "review":
-		return "partially_compliant"
 	default:
 		return ""
 	}
 }
-
-
