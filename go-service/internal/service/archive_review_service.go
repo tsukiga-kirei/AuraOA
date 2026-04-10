@@ -162,7 +162,7 @@ func (s *ArchiveReviewService) ListProcesses(c *gin.Context, params dto.ArchiveL
 	for _, item := range items {
 		_, byType := allowedTypes[strings.ToLower(item.ProcessType)]
 		_, byTable := allowedTables[strings.ToLower(item.MainTableName)]
-		if !byType && !byTable {
+		if !byType || !byTable {
 			continue
 		}
 		if item.ProcessTypeLabel == "" {
@@ -751,10 +751,10 @@ func (s *ArchiveReviewService) ListPendingForBatch(c *gin.Context, workflowIds [
 
 	var result []dto.ArchiveReviewExecuteRequest
 	for _, item := range allItems {
-		// 1. 权限与配置过滤
+		// 1. 权限与配置过滤（主表名 AND 流程类型必须同时匹配）
 		_, byType := allowedTypes[strings.ToLower(item.ProcessType)]
 		_, byTable := allowedTables[strings.ToLower(item.MainTableName)]
-		if !byType && !byTable {
+		if !byType || !byTable {
 			continue
 		}
 

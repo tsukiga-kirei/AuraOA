@@ -23,6 +23,8 @@ type TodoListPagedFilter struct {
 	Department string
 	// MainTableNames 允许的主表名列表（小写），为空则不过滤
 	MainTableNames []string
+	// ProcessTypes 允许的流程类型名列表（小写），为空则不过滤
+	ProcessTypes []string
 	// Page 页码（从 1 开始）
 	Page int
 	// PageSize 每页条数
