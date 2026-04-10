@@ -39,7 +39,7 @@
 - **前端 composable**：`useArchiveReviewApi.listProcesses()` 传递 `page` / `page_size`
 - **后端实现**：
   - `unaudited`：从 OA 分批拉取全量已归档流程（`FetchArchivedListPaged` 每批 500），排除已有 snapshot 的，在 Go 内存中切片分页
-  - `compliant` / `partially_compliant` / `non_compliant`：从 `archive_process_snapshots` 表 DB 真分页（`LIMIT/OFFSET`）
+  - `compliant` / `partially_compliant` / `non_compliant`：从 `archive_process_snapshots` 表 DB 分页（`LIMIT/OFFSET`）；**当存在日期范围筛选时**，会先从 OA 分批拉取该日期范围内的全量流程 ID（`FetchArchivedListPaged` 每批 500），再用 `process_id IN ?` 与 snapshot 表交叉过滤后分页，以保证与 `GetStats` 统计口径一致
 - **默认 pageSize**：20
 - **分页组件**：`<a-pagination>` 带 `show-size-changer`，可选 10/20/50
 
@@ -266,6 +266,10 @@ const paged = computed(() => {
 │  │ ⚠ 伪分页，每次翻页     │  │ ✅ 真分页               │      │
 │  │   重新拉取全量          │  │                          │      │
 │  └─────────────────────────┘  └──────────────────────────┘      │
+│                                                                 │
+│  归档复盘 snapshot 分页（有日期筛选时）：                        │
+│  OA 分批拉取日期范围内流程 ID → process_id IN ? 交叉过滤        │
+│  → DB LIMIT/OFFSET 分页（混合模式，保证与 GetStats 口径一致）   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```

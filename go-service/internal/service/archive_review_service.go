@@ -286,18 +286,74 @@ func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.Arc
 }
 
 // listArchiveBySnapshotPaged 从 archive_process_snapshots 表分页查询已有合规结论的流程。
+// 需要先从 OA 获取日期范围内的流程 ID，再与 snapshot 表交叉过滤，保证与 GetStats 口径一致。
 func (s *ArchiveReviewService) listArchiveBySnapshotPaged(
 	c *gin.Context, tenantID uuid.UUID, configs []model.ProcessArchiveConfig,
 	params dto.ArchiveListParams, compliance string, page, pageSize int,
 ) (*dto.ArchiveProcessListResponse, error) {
 	allowedTypes := make([]string, 0, len(configs))
+	allowedTables := make([]string, 0, len(configs))
 	for _, cfg := range configs {
 		allowedTypes = append(allowedTypes, cfg.ProcessType)
+		if cfg.MainTableName != "" {
+			allowedTables = append(allowedTables, strings.ToLower(cfg.MainTableName))
+		}
+	}
+
+	// 当有日期范围时，先从 OA 获取范围内的 processID 列表，确保与 GetStats 口径一致
+	var oaProcessIDs []string
+	hasDateFilter := params.ArchiveDateStart != nil || params.ArchiveDateEndExclusive != nil
+	if hasDateFilter {
+		adapter, err := s.getOAAdapter(tenantID)
+		if err != nil {
+			return nil, err
+		}
+		const batchSize = 500
+		pagedFilter := oa.ArchivedListPagedFilter{
+			ArchivedListFilter: oa.ArchivedListFilter{
+				ArchiveDateStart:        params.ArchiveDateStart,
+				ArchiveDateEndExclusive: params.ArchiveDateEndExclusive,
+			},
+			MainTableNames: allowedTables,
+			ProcessTypes: func() []string {
+				lowerTypes := make([]string, len(allowedTypes))
+				for i, t := range allowedTypes {
+					lowerTypes[i] = strings.ToLower(t)
+				}
+				return lowerTypes
+			}(),
+			Page:     1,
+			PageSize: batchSize,
+		}
+		firstPage, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 已归档流程失败: "+err.Error())
+		}
+		oaProcessIDs = make([]string, 0, firstPage.Total)
+		for _, item := range firstPage.Items {
+			oaProcessIDs = append(oaProcessIDs, item.ProcessID)
+		}
+		for len(oaProcessIDs) < firstPage.Total {
+			pagedFilter.Page++
+			batch, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
+			if err != nil || len(batch.Items) == 0 {
+				break
+			}
+			for _, item := range batch.Items {
+				oaProcessIDs = append(oaProcessIDs, item.ProcessID)
+			}
+		}
+		if len(oaProcessIDs) == 0 {
+			return &dto.ArchiveProcessListResponse{Items: []map[string]interface{}{}, Total: 0, Page: page, PageSize: pageSize}, nil
+		}
 	}
 
 	baseQ := s.db.Model(&model.ArchiveProcessSnapshot{}).Where("tenant_id = ? AND compliance = ?", tenantID, compliance)
 	if len(allowedTypes) > 0 {
 		baseQ = baseQ.Where("process_type IN ?", allowedTypes)
+	}
+	if hasDateFilter && len(oaProcessIDs) > 0 {
+		baseQ = baseQ.Where("process_id IN ?", oaProcessIDs)
 	}
 	if kw := strings.TrimSpace(params.Keyword); kw != "" {
 		baseQ = baseQ.Where("LOWER(title) LIKE ?", "%"+strings.ToLower(kw)+"%")
