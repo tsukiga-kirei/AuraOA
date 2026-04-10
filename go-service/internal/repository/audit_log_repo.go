@@ -54,6 +54,23 @@ func (r *AuditLogRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.AuditLog, e
 	return &log, err
 }
 
+// GetByIDs 批量查询审核日志（租户隔离），返回 id -> AuditLog 映射。
+func (r *AuditLogRepo) GetByIDs(c *gin.Context, ids []uuid.UUID) (map[uuid.UUID]*model.AuditLog, error) {
+	if len(ids) == 0 {
+		return map[uuid.UUID]*model.AuditLog{}, nil
+	}
+	var logs []model.AuditLog
+	err := r.WithTenant(c).Where("id IN ?", ids).Find(&logs).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[uuid.UUID]*model.AuditLog, len(logs))
+	for i := range logs {
+		result[logs[i].ID] = &logs[i]
+	}
+	return result, nil
+}
+
 // UpdateFields 更新审核日志指定字段（租户隔离）。
 func (r *AuditLogRepo) UpdateFields(c *gin.Context, id uuid.UUID, updates map[string]interface{}) error {
 	return r.WithTenant(c).Model(&model.AuditLog{}).Where("id = ?", id).Updates(updates).Error
@@ -329,9 +346,9 @@ func (r *AuditLogRepo) CountStatsByTimeRange(c *gin.Context, start, end time.Tim
 // CountStatsGlobal 全库审核日志统计（system_admin 平台仪表盘，无租户过滤）。
 func (r *AuditLogRepo) CountStatsGlobal() (*AuditLogStats, error) {
 	type row struct {
-		Status           string
-		Recommendation   string
-		Cnt              int64
+		Status         string
+		Recommendation string
+		Cnt            int64
 	}
 	var rows []row
 	err := r.DB.

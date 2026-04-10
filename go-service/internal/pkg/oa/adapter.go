@@ -12,12 +12,54 @@ type TodoListFilter struct {
 	SubmitDateEndExclusive *time.Time
 }
 
+// TodoListPagedFilter 待办列表分页查询条件，将 keyword/applicant/department 等筛选下推到 OA SQL。
+type TodoListPagedFilter struct {
+	TodoListFilter
+	// Keyword 模糊匹配流程标题（requestname）
+	Keyword string
+	// Applicant 模糊匹配申请人姓名（hrmresource.lastname）
+	Applicant string
+	// Department 精确匹配部门名称（hrmdepartment.departmentname）
+	Department string
+	// MainTableNames 允许的主表名列表（小写），为空则不过滤
+	MainTableNames []string
+	// Page 页码（从 1 开始）
+	Page int
+	// PageSize 每页条数
+	PageSize int
+}
+
+// PagedResult 分页查询通用结果。
+type PagedResult[T any] struct {
+	Items []T
+	Total int
+}
+
 // ArchivedListFilter 控制已归档流程列表在 OA 侧的查询条件（由 SQL 直接过滤）。
 type ArchivedListFilter struct {
 	// ArchiveDateStart 归档时间下界（含），与适配器内用于排序的归档时间表达式一致（如 COALESCE(lastoperatedate, createdate)）。
 	ArchiveDateStart *time.Time
 	// ArchiveDateEndExclusive 归档时间上界（不含），通常为「结束日期」次日 0 点。
 	ArchiveDateEndExclusive *time.Time
+}
+
+// ArchivedListPagedFilter 已归档流程分页查询条件，将筛选下推到 OA SQL。
+type ArchivedListPagedFilter struct {
+	ArchivedListFilter
+	// Keyword 模糊匹配流程标题（requestname）
+	Keyword string
+	// Applicant 模糊匹配申请人姓名
+	Applicant string
+	// Department 精确匹配部门名称
+	Department string
+	// MainTableNames 允许的主表名列表（小写），为空则不过滤
+	MainTableNames []string
+	// ProcessTypes 允许的流程类型名列表（小写），为空则不过滤
+	ProcessTypes []string
+	// Page 页码（从 1 开始）
+	Page int
+	// PageSize 每页条数
+	PageSize int
 }
 
 // OAAdapter 定义 OA 系统适配器接口。
@@ -38,8 +80,14 @@ type OAAdapter interface {
 	// FetchTodoList 拉取指定用户的 OA 待审批流程列表（filter 中日期条件在 SQL 中生效）
 	FetchTodoList(ctx context.Context, username string, filter TodoListFilter) ([]TodoItem, error)
 
+	// FetchTodoListPaged 分页拉取指定用户的 OA 待审批流程列表，将筛选条件下推到 SQL，返回当前页数据和总数。
+	FetchTodoListPaged(ctx context.Context, username string, filter TodoListPagedFilter) (*PagedResult[TodoItem], error)
+
 	// FetchArchivedList 拉取已归档流程列表（filter 中日期条件在 SQL 中生效）
 	FetchArchivedList(ctx context.Context, username string, filter ArchivedListFilter) ([]ArchivedItem, error)
+
+	// FetchArchivedListPaged 分页拉取已归档流程列表，将筛选条件下推到 SQL，返回当前页数据和总数。
+	FetchArchivedListPaged(ctx context.Context, username string, filter ArchivedListPagedFilter) (*PagedResult[ArchivedItem], error)
 
 	// FetchProcessFlow 拉取流程审批流快照
 	FetchProcessFlow(ctx context.Context, processID string) (*ProcessFlowSnapshot, error)

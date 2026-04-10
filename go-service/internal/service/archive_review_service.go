@@ -72,12 +72,12 @@ func archiveItemComplianceClass(item map[string]interface{}, want string) bool {
 
 // ArchiveReviewService 处理归档复盘运行时业务。
 type ArchiveReviewService struct {
-	archiveLogRepo       *repository.ArchiveLogRepo
-	archiveSnapshotRepo  *repository.ArchiveProcessSnapshotRepo
-	archiveConfigRepo    *repository.ProcessArchiveConfigRepo
-	archiveRuleRepo      *repository.ArchiveRuleRepo
-	userConfigRepo       *repository.UserPersonalConfigRepo
-	tenantRepo        *repository.TenantRepo
+	archiveLogRepo      *repository.ArchiveLogRepo
+	archiveSnapshotRepo *repository.ArchiveProcessSnapshotRepo
+	archiveConfigRepo   *repository.ProcessArchiveConfigRepo
+	archiveRuleRepo     *repository.ArchiveRuleRepo
+	userConfigRepo      *repository.UserPersonalConfigRepo
+	tenantRepo          *repository.TenantRepo
 	oaConnRepo          *repository.OAConnectionRepo
 	aiModelRepo         *repository.AIModelRepo
 	aiCaller            *AIModelCallerService
@@ -246,66 +246,25 @@ func (s *ArchiveReviewService) ListProcesses(c *gin.Context, params dto.ArchiveL
 	}, nil
 }
 
-// ListProcessesPaged 分页查询已归档流程（在内存获取全量后做筛选+分页）。
+// ListProcessesPaged 分页查询已归档流程。
+// 根据 audit_status 分两种策略：
+// - unaudited：OA SQL 真分页（keyword/applicant/department 下推），排除已有 snapshot 的流程
+// - compliant/partially_compliant/non_compliant：从 archive_process_snapshots 表 DB 真分页
 func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.ArchiveListParams) (*dto.ArchiveProcessListResponse, error) {
-	full, err := s.ListProcesses(c, params)
+	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
 	}
+	_, _ = s.FailStaleArchiveJobs(context.Background())
 
-	// 筛选（与 GetStats 中「归档未审核」语义一致）
-	filtered := make([]map[string]interface{}, 0, len(full.Items))
-	for _, item := range full.Items {
-		if params.Keyword != "" {
-			kw := strings.ToLower(params.Keyword)
-			title, _ := item["title"].(string)
-			pid, _ := item["process_id"].(string)
-			if !strings.Contains(strings.ToLower(title), kw) && !strings.Contains(strings.ToLower(pid), kw) {
-				continue
-			}
-		}
-		if params.Applicant != "" {
-			applicant, _ := item["applicant"].(string)
-			if !strings.Contains(strings.ToLower(applicant), strings.ToLower(params.Applicant)) {
-				continue
-			}
-		}
-		if params.ProcessType != "" {
-			pt, _ := item["process_type"].(string)
-			if !strings.EqualFold(pt, params.ProcessType) {
-				continue
-			}
-		}
-		if params.Department != "" {
-			dept, _ := item["department"].(string)
-			if dept != params.Department {
-				continue
-			}
-		}
-		if params.AuditStatus != "" {
-			switch params.AuditStatus {
-			case "unaudited":
-				if archiveItemHasComplianceOutcome(item) {
-					continue
-				}
-			case "compliant":
-				if !archiveItemComplianceClass(item, "compliant") {
-					continue
-				}
-			case "partially_compliant":
-				if !archiveItemComplianceClass(item, "partially_compliant") {
-					continue
-				}
-			case "non_compliant":
-				if !archiveItemComplianceClass(item, "non_compliant") {
-					continue
-				}
-			}
-		}
-		filtered = append(filtered, item)
+	configs, err := s.getAccessibleArchiveConfigs(c, userID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if len(configs) == 0 {
+		return &dto.ArchiveProcessListResponse{Items: []map[string]interface{}{}, Total: 0, Page: params.Page, PageSize: params.PageSize}, nil
 	}
 
-	total := len(filtered)
 	page := params.Page
 	pageSize := params.PageSize
 	if page < 1 {
@@ -314,6 +273,202 @@ func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.Arc
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
+
+	auditStatus := strings.TrimSpace(params.AuditStatus)
+
+	switch auditStatus {
+	case "compliant", "partially_compliant", "non_compliant":
+		return s.listArchiveBySnapshotPaged(c, tenantID, configs, params, auditStatus, page, pageSize)
+	default:
+		// "unaudited" 或空：从 OA 真分页
+		return s.listArchiveUnauditedPaged(c, tenantID, configs, params, page, pageSize)
+	}
+}
+
+// listArchiveBySnapshotPaged 从 archive_process_snapshots 表分页查询已有合规结论的流程。
+func (s *ArchiveReviewService) listArchiveBySnapshotPaged(
+	c *gin.Context, tenantID uuid.UUID, configs []model.ProcessArchiveConfig,
+	params dto.ArchiveListParams, compliance string, page, pageSize int,
+) (*dto.ArchiveProcessListResponse, error) {
+	allowedTypes := make([]string, 0, len(configs))
+	for _, cfg := range configs {
+		allowedTypes = append(allowedTypes, cfg.ProcessType)
+	}
+
+	baseQ := s.db.Model(&model.ArchiveProcessSnapshot{}).Where("tenant_id = ? AND compliance = ?", tenantID, compliance)
+	if len(allowedTypes) > 0 {
+		baseQ = baseQ.Where("process_type IN ?", allowedTypes)
+	}
+	if kw := strings.TrimSpace(params.Keyword); kw != "" {
+		baseQ = baseQ.Where("LOWER(title) LIKE ?", "%"+strings.ToLower(kw)+"%")
+	}
+	if pt := strings.TrimSpace(params.ProcessType); pt != "" {
+		baseQ = baseQ.Where("LOWER(process_type) = ?", strings.ToLower(pt))
+	}
+
+	var total int64
+	baseQ.Count(&total)
+
+	if total == 0 {
+		return &dto.ArchiveProcessListResponse{Items: []map[string]interface{}{}, Total: 0, Page: page, PageSize: pageSize}, nil
+	}
+
+	offset := (page - 1) * pageSize
+	var snaps []model.ArchiveProcessSnapshot
+	if err := baseQ.Order("updated_at DESC").Offset(offset).Limit(pageSize).Find(&snaps).Error; err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询归档快照失败")
+	}
+
+	// 批量查询 archive_logs
+	logIDs := make([]uuid.UUID, 0, len(snaps))
+	for _, snap := range snaps {
+		logIDs = append(logIDs, snap.LatestValidArchiveLogID)
+	}
+	logMap, err := s.archiveLogRepo.GetByIDs(c, logIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "批量查询归档日志失败")
+	}
+
+	// 批量查询最新状态（用于显示进行中状态）
+	processIDs := make([]string, len(snaps))
+	for i, snap := range snaps {
+		processIDs[i] = snap.ProcessID
+	}
+	latestMap, err := s.archiveLogRepo.GetLatestResultMap(c, processIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询归档复盘记录失败")
+	}
+
+	results := make([]map[string]interface{}, 0, len(snaps))
+	for _, snap := range snaps {
+		record := map[string]interface{}{
+			"process_id":          snap.ProcessID,
+			"title":               snap.Title,
+			"applicant":           "",
+			"department":          "",
+			"process_type":        snap.ProcessType,
+			"process_type_label":  "",
+			"current_node":        "已归档",
+			"submit_time":         snap.CreatedAt.Format("2006-01-02 15:04"),
+			"archive_time":        snap.UpdatedAt.Format("2006-01-02 15:04"),
+			"has_review":          true,
+			"snapshot_compliance": snap.Compliance,
+			"in_archive":          true,
+		}
+
+		validLog := logMap[snap.LatestValidArchiveLogID]
+		if validLog != nil {
+			record["archive_status"] = model.AuditStatusCompleted
+			record["archive_result"] = buildArchiveResultFromLog(validLog)
+		}
+
+		// 检查是否有进行中的任务
+		if latest, ok := latestMap[snap.ProcessID]; ok {
+			st := latest.Status
+			switch st {
+			case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
+				record["archive_status"] = st
+				record["archive_result"] = buildArchiveResultFromLog(latest)
+			}
+		}
+
+		results = append(results, record)
+	}
+
+	return &dto.ArchiveProcessListResponse{
+		Items:    results,
+		Total:    int(total),
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
+// listArchiveUnauditedPaged 从 OA 真分页查询未审核的已归档流程。
+// listArchiveUnauditedPaged 查询未审核的已归档流程。
+// 先从 OA 获取全量 processID，排除已有 snapshot 的，再对剩余 ID 做分页，
+// 最后只拉取当前页对应的 OA 流程详情。
+func (s *ArchiveReviewService) listArchiveUnauditedPaged(
+	c *gin.Context, tenantID uuid.UUID, configs []model.ProcessArchiveConfig,
+	params dto.ArchiveListParams, page, pageSize int,
+) (*dto.ArchiveProcessListResponse, error) {
+	allowedTables := make([]string, 0, len(configs))
+	allowedTypes := make([]string, 0, len(configs))
+	typeLabelMap := make(map[string]string, len(configs))
+	for _, cfg := range configs {
+		allowedTypes = append(allowedTypes, strings.ToLower(cfg.ProcessType))
+		if cfg.MainTableName != "" {
+			allowedTables = append(allowedTables, strings.ToLower(cfg.MainTableName))
+		}
+		if cfg.ProcessTypeLabel != "" {
+			typeLabelMap[strings.ToLower(cfg.ProcessType)] = cfg.ProcessTypeLabel
+		}
+	}
+
+	adapter, err := s.getOAAdapter(tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1. 从 OA 分批获取全量筛选后的 processID（带 keyword/applicant/department 过滤）
+	const batchSize = 500
+	pagedFilter := oa.ArchivedListPagedFilter{
+		ArchivedListFilter: oa.ArchivedListFilter{
+			ArchiveDateStart:        params.ArchiveDateStart,
+			ArchiveDateEndExclusive: params.ArchiveDateEndExclusive,
+		},
+		Keyword:        params.Keyword,
+		Applicant:      params.Applicant,
+		Department:     params.Department,
+		MainTableNames: allowedTables,
+		ProcessTypes:   allowedTypes,
+		Page:           1,
+		PageSize:       batchSize,
+	}
+
+	firstPage, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 已归档流程失败: "+err.Error())
+	}
+
+	// 收集全量 OA 流程
+	allOAItems := firstPage.Items
+	for len(allOAItems) < firstPage.Total {
+		pagedFilter.Page++
+		batch, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
+		if err != nil || len(batch.Items) == 0 {
+			break
+		}
+		allOAItems = append(allOAItems, batch.Items...)
+	}
+
+	if len(allOAItems) == 0 {
+		return &dto.ArchiveProcessListResponse{Items: []map[string]interface{}{}, Total: 0, Page: page, PageSize: pageSize}, nil
+	}
+
+	// 2. 查 snapshot，排除已审核的流程
+	allProcessIDs := make([]string, len(allOAItems))
+	for i, item := range allOAItems {
+		allProcessIDs[i] = item.ProcessID
+	}
+	snapshotMap, err := s.archiveSnapshotRepo.GetMapByProcessIDs(c, allProcessIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询归档有效结论失败")
+	}
+
+	// 过滤出未审核的流程（保持 OA 返回的顺序）
+	var unauditedItems []oa.ArchivedItem
+	for _, item := range allOAItems {
+		if snapshotMap[item.ProcessID] == nil {
+			unauditedItems = append(unauditedItems, item)
+		}
+	}
+
+	total := len(unauditedItems)
+	if total == 0 {
+		return &dto.ArchiveProcessListResponse{Items: []map[string]interface{}{}, Total: 0, Page: page, PageSize: pageSize}, nil
+	}
+
+	// 3. 对未审核列表做内存分页
 	start := (page - 1) * pageSize
 	end := start + pageSize
 	if start > total {
@@ -322,48 +477,167 @@ func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.Arc
 	if end > total {
 		end = total
 	}
+	pageItems := unauditedItems[start:end]
+
+	// 4. 查询当前页流程的进行中状态
+	pageProcessIDs := make([]string, len(pageItems))
+	for i, item := range pageItems {
+		pageProcessIDs[i] = item.ProcessID
+	}
+	latestMap, err := s.archiveLogRepo.GetLatestResultMap(c, pageProcessIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询归档复盘记录失败")
+	}
+
+	// 5. 构建响应
+	items := make([]map[string]interface{}, 0, len(pageItems))
+	for _, item := range pageItems {
+		ptLabel := item.ProcessTypeLabel
+		if ptLabel == "" {
+			if label, ok := typeLabelMap[strings.ToLower(item.ProcessType)]; ok {
+				ptLabel = label
+			}
+		}
+
+		record := map[string]interface{}{
+			"process_id":         item.ProcessID,
+			"title":              item.Title,
+			"applicant":          item.Applicant,
+			"department":         item.Department,
+			"process_type":       item.ProcessType,
+			"process_type_label": ptLabel,
+			"current_node":       item.CurrentNode,
+			"submit_time":        item.SubmitTime,
+			"archive_time":       item.ArchiveTime,
+			"has_review":         false,
+			"archive_result":     nil,
+			"in_archive":         true,
+		}
+
+		if latest, ok := latestMap[item.ProcessID]; ok {
+			st := latest.Status
+			switch st {
+			case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
+				record["archive_status"] = st
+				record["archive_result"] = buildArchiveResultFromLog(latest)
+			}
+		}
+
+		items = append(items, record)
+	}
 
 	return &dto.ArchiveProcessListResponse{
-		Items:    filtered[start:end],
+		Items:    items,
 		Total:    total,
 		Page:     page,
 		PageSize: pageSize,
 	}, nil
 }
 
+// GetStats 归档复盘统计。使用 OA COUNT 查询 + snapshot 表统计，避免全量拉取。
+// 注意：snapshot 表的统计需要限制在 OA 日期范围内的流程，否则口径不一致。
 func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListParams) (*dto.ArchiveReviewStats, error) {
-	resp, err := s.ListProcesses(c, params)
+	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
 	}
 
-	stats := &dto.ArchiveReviewStats{
-		TotalCount: len(resp.Items),
+	configs, err := s.getAccessibleArchiveConfigs(c, userID, tenantID)
+	if err != nil {
+		return nil, err
 	}
-	for _, item := range resp.Items {
-		if archiveItemHasComplianceOutcome(item) {
-			result, _ := item["archive_result"].(map[string]interface{})
-			c, _ := result["overall_compliance"].(string)
-			switch c {
-			case "compliant":
-				stats.CompliantCount++
-			case "partially_compliant":
-				stats.PartialCount++
-			case "non_compliant":
-				stats.NonCompliantCount++
-			}
+	if len(configs) == 0 {
+		return &dto.ArchiveReviewStats{}, nil
+	}
+
+	allowedTables := make([]string, 0, len(configs))
+	allowedTypes := make([]string, 0, len(configs))
+	for _, cfg := range configs {
+		allowedTypes = append(allowedTypes, strings.ToLower(cfg.ProcessType))
+		if cfg.MainTableName != "" {
+			allowedTables = append(allowedTables, strings.ToLower(cfg.MainTableName))
+		}
+	}
+
+	adapter, err := s.getOAAdapter(tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 从 OA 获取日期范围内的全部归档流程 ID（只取 ID，不取详情）
+	// 使用较大的 pageSize 分批获取全量 processID 列表
+	const batchSize = 500
+	pagedFilter := oa.ArchivedListPagedFilter{
+		ArchivedListFilter: oa.ArchivedListFilter{
+			ArchiveDateStart:        params.ArchiveDateStart,
+			ArchiveDateEndExclusive: params.ArchiveDateEndExclusive,
+		},
+		MainTableNames: allowedTables,
+		ProcessTypes:   allowedTypes,
+		Page:           1,
+		PageSize:       batchSize,
+	}
+
+	firstPage, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 已归档流程总数失败: "+err.Error())
+	}
+	totalOA := firstPage.Total
+
+	// 收集所有 processID
+	allProcessIDs := make([]string, 0, totalOA)
+	for _, item := range firstPage.Items {
+		allProcessIDs = append(allProcessIDs, item.ProcessID)
+	}
+	for len(allProcessIDs) < totalOA {
+		pagedFilter.Page++
+		batch, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
+		if err != nil || len(batch.Items) == 0 {
+			break
+		}
+		for _, item := range batch.Items {
+			allProcessIDs = append(allProcessIDs, item.ProcessID)
+		}
+	}
+
+	// 查询这些 processID 中哪些已有 snapshot（精确匹配 OA 日期范围内的流程）
+	snapshotMap, err := s.archiveSnapshotRepo.GetMapByProcessIDs(c, allProcessIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询归档有效结论失败")
+	}
+
+	var compliant, partial, nonCompliant, unaudited int
+	for _, pid := range allProcessIDs {
+		snap := snapshotMap[pid]
+		if snap == nil {
+			unaudited++
 		} else {
-			stats.UnauditedCount++
+			switch snap.Compliance {
+			case "compliant":
+				compliant++
+			case "partially_compliant":
+				partial++
+			case "non_compliant":
+				nonCompliant++
+			}
 		}
 	}
-	for _, item := range resp.Items {
-		status, _ := item["archive_status"].(string)
-		switch status {
-		case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
-			stats.RunningCount++
-		}
-	}
-	return stats, nil
+
+	// 统计进行中的任务数
+	var runningCount int64
+	s.db.Model(&model.ArchiveLog{}).
+		Where("tenant_id = ? AND status IN ?", tenantID,
+			[]string{model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting}).
+		Count(&runningCount)
+
+	return &dto.ArchiveReviewStats{
+		TotalCount:        totalOA,
+		CompliantCount:    compliant,
+		PartialCount:      partial,
+		NonCompliantCount: nonCompliant,
+		UnauditedCount:    unaudited,
+		RunningCount:      int(runningCount),
+	}, nil
 }
 
 func (s *ArchiveReviewService) Execute(c *gin.Context, req *dto.ArchiveReviewExecuteRequest) (*dto.ArchiveReviewSubmitResponse, error) {

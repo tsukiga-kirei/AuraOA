@@ -39,19 +39,19 @@ const (
 
 // AuditExecuteService 审核执行业务逻辑：串联 OA 数据 → 提示词构建 → AI 调用 → 结果解析 → 写入日志。
 type AuditExecuteService struct {
-	auditLogRepo       *repository.AuditLogRepo
-	auditSnapshotRepo  *repository.AuditProcessSnapshotRepo
-	configRepo         *repository.ProcessAuditConfigRepo
-	ruleRepo           *repository.AuditRuleRepo
-	userConfigRepo     *repository.UserPersonalConfigRepo
-	tenantRepo         *repository.TenantRepo
-	oaConnRepo         *repository.OAConnectionRepo
-	aiModelRepo        *repository.AIModelRepo
-	aiCaller           *AIModelCallerService
-	db                 *gorm.DB
-	rdb                *redis.Client
-	notifSvc           *UserNotificationService
-	cancelMap          sync.Map
+	auditLogRepo      *repository.AuditLogRepo
+	auditSnapshotRepo *repository.AuditProcessSnapshotRepo
+	configRepo        *repository.ProcessAuditConfigRepo
+	ruleRepo          *repository.AuditRuleRepo
+	userConfigRepo    *repository.UserPersonalConfigRepo
+	tenantRepo        *repository.TenantRepo
+	oaConnRepo        *repository.OAConnectionRepo
+	aiModelRepo       *repository.AIModelRepo
+	aiCaller          *AIModelCallerService
+	db                *gorm.DB
+	rdb               *redis.Client
+	notifSvc          *UserNotificationService
+	cancelMap         sync.Map
 }
 
 func NewAuditExecuteService(
@@ -877,6 +877,7 @@ func (s *AuditExecuteService) GetStats(c *gin.Context) (map[string]int, error) {
 }
 
 // GetStatsWithParams 与列表共用提交/审核时间范围（start_date、end_date）。
+// 将 keyword/applicant/department/mainTableNames 下推到 OA SQL，避免全量拉取。
 func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.AuditListParams) (map[string]int, error) {
 	tenantID, _, err := s.extractIDs(c)
 	if err != nil {
@@ -894,22 +895,15 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 		return nil, err
 	}
 
-	tf := todoListFilterFromAuditParams(params)
-	todoItems, err := adapter.FetchTodoList(c.Request.Context(), username, tf)
-	if err != nil {
-		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 待办失败: "+err.Error())
-	}
-
+	// 使用筛选后的 OA 数据（keyword/applicant/department/mainTableNames 已下推到 SQL）
 	allowedTables := s.getAllowedMainTables(c)
-	var filtered []oa.TodoItem
-	for _, item := range todoItems {
-		if allowedTables[strings.ToLower(item.MainTableName)] {
-			filtered = append(filtered, item)
-		}
+	todoItems, err := s.fetchTodoListFiltered(c, adapter, username, params, allowedTables)
+	if err != nil {
+		return nil, err
 	}
 
-	processIDs := make([]string, len(filtered))
-	for i, item := range filtered {
+	processIDs := make([]string, len(todoItems))
+	for i, item := range todoItems {
 		processIDs[i] = item.ProcessID
 	}
 	snapshotMap, err := s.auditSnapshotRepo.GetMapByProcessIDs(c, processIDs)
@@ -918,7 +912,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 	}
 
 	pendingAI, aiDone := 0, 0
-	for _, item := range filtered {
+	for _, item := range todoItems {
 		if snapshotMap[item.ProcessID] != nil {
 			aiDone++
 		} else {
@@ -986,27 +980,22 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 		return nil, err
 	}
 
-	tf := todoListFilterFromAuditParams(params)
-
 	if tab == "completed" {
 		return s.listCompletedProcessesPaged(c, tenantID, username, adapter, params)
 	}
 
-	todoItems, err := adapter.FetchTodoList(c.Request.Context(), username, tf)
-	if err != nil {
-		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 待办失败: "+err.Error())
-	}
-
+	// pending_ai / ai_done：将 keyword/applicant/department/mainTableNames 下推到 OA SQL，
+	// 减少从 OA 拉取的数据量。tab 分组（是否有 snapshot）仍需在内存中完成。
 	allowedTables := s.getAllowedMainTables(c)
-	var filteredTodo []oa.TodoItem
-	for _, item := range todoItems {
-		if allowedTables[strings.ToLower(item.MainTableName)] {
-			filteredTodo = append(filteredTodo, item)
-		}
+
+	// 获取筛选后的全量数据（不分页），用于 tab 分组
+	todoResult, err := s.fetchTodoListFiltered(c, adapter, username, params, allowedTables)
+	if err != nil {
+		return nil, err
 	}
 
-	processIDs := make([]string, len(filteredTodo))
-	for i, item := range filteredTodo {
+	processIDs := make([]string, len(todoResult))
+	for i, item := range todoResult {
 		processIDs[i] = item.ProcessID
 	}
 	auditMap, err := s.auditLogRepo.GetLatestResultMap(c, processIDs)
@@ -1019,7 +1008,7 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 	}
 
 	var results []map[string]interface{}
-	for _, item := range filteredTodo {
+	for _, item := range todoResult {
 		record := map[string]interface{}{
 			"process_id":         item.ProcessID,
 			"title":              item.Title,
@@ -1080,7 +1069,8 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 		}
 	}
 
-	filtered := applyAuditListFilters(results, params)
+	// audit_status 筛选（approve/return/review）仍在内存中完成
+	filtered := applyAuditStatusFilter(results, params)
 	total := len(filtered)
 	page, ps, start, end := normalizeAuditPage(params.Page, params.PageSize)
 	if start > total {
@@ -1099,6 +1089,66 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 	}, nil
 }
 
+// fetchTodoListFiltered 使用 FetchTodoListPaged 将 keyword/applicant/department/mainTableNames 下推到 OA SQL，
+// 但不做 OA 层分页（因为 tab 分组需要全量筛选后数据）。分批拉取全量筛选结果。
+func (s *AuditExecuteService) fetchTodoListFiltered(c *gin.Context, adapter oa.OAAdapter, username string, params dto.AuditListParams, allowedTables map[string]bool) ([]oa.TodoItem, error) {
+	mainTableNames := make([]string, 0, len(allowedTables))
+	for t := range allowedTables {
+		mainTableNames = append(mainTableNames, t)
+	}
+
+	const batchSize = 500
+	pagedFilter := oa.TodoListPagedFilter{
+		TodoListFilter: todoListFilterFromAuditParams(params),
+		Keyword:        params.Keyword,
+		Applicant:      params.Applicant,
+		Department:     params.Department,
+		MainTableNames: mainTableNames,
+		Page:           1,
+		PageSize:       batchSize,
+	}
+
+	result, err := adapter.FetchTodoListPaged(c.Request.Context(), username, pagedFilter)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 待办失败: "+err.Error())
+	}
+
+	items := result.Items
+	// 分批拉取剩余数据
+	for len(items) < result.Total {
+		pagedFilter.Page++
+		batch, err := adapter.FetchTodoListPaged(c.Request.Context(), username, pagedFilter)
+		if err != nil || len(batch.Items) == 0 {
+			break
+		}
+		items = append(items, batch.Items...)
+	}
+
+	return items, nil
+}
+
+// applyAuditStatusFilter 仅过滤 audit_status（approve/return/review），
+// keyword/applicant/department/processType 已在 OA SQL 中过滤。
+func applyAuditStatusFilter(items []map[string]interface{}, params dto.AuditListParams) []map[string]interface{} {
+	st := strings.TrimSpace(params.AuditStatus)
+	if st == "" {
+		return items
+	}
+	out := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		res, _ := item["audit_result"].(map[string]interface{})
+		if res == nil {
+			continue
+		}
+		rec, _ := res["recommendation"].(string)
+		if rec != st {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
 func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenantID uuid.UUID, username string, adapter oa.OAAdapter, params dto.AuditListParams) (*dto.AuditProcessListResponse, error) {
 	todoProcessIDs, err := s.collectTodoProcessIDsForExclusion(c, username, adapter)
 	if err != nil {
@@ -1106,33 +1156,106 @@ func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenant
 	}
 
 	configuredTypes := s.getAllowedProcessTypes(c)
-	var snaps []model.AuditProcessSnapshot
-	query := s.db.Where("tenant_id = ?", tenantID).Order("updated_at DESC")
+
+	// 先查总数（用于分页）
+	countQ := s.db.Model(&model.AuditProcessSnapshot{}).Where("tenant_id = ?", tenantID)
 	if len(todoProcessIDs) > 0 {
-		query = query.Where("process_id NOT IN ?", todoProcessIDs)
+		countQ = countQ.Where("process_id NOT IN ?", todoProcessIDs)
 	}
 	if len(configuredTypes) > 0 {
-		query = query.Where("process_type IN ?", configuredTypes)
+		countQ = countQ.Where("process_type IN ?", configuredTypes)
 	}
 	if params.SubmitDateStart != nil {
-		query = query.Where("updated_at >= ?", params.SubmitDateStart)
+		countQ = countQ.Where("updated_at >= ?", params.SubmitDateStart)
 	}
 	if params.SubmitDateEndExclusive != nil {
-		query = query.Where("updated_at < ?", params.SubmitDateEndExclusive)
+		countQ = countQ.Where("updated_at < ?", params.SubmitDateEndExclusive)
 	}
-	if err := query.Find(&snaps).Error; err != nil {
+	// keyword 筛选 title
+	if kw := strings.TrimSpace(params.Keyword); kw != "" {
+		countQ = countQ.Where("LOWER(title) LIKE ?", "%"+strings.ToLower(kw)+"%")
+	}
+	// processType 筛选
+	if pt := strings.TrimSpace(params.ProcessType); pt != "" {
+		parts := strings.Split(pt, ",")
+		trimmed := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				trimmed = append(trimmed, t)
+			}
+		}
+		if len(trimmed) > 0 {
+			countQ = countQ.Where("process_type IN ?", trimmed)
+		}
+	}
+
+	var total int64
+	countQ.Count(&total)
+
+	page, ps, _, _ := normalizeAuditPage(params.Page, params.PageSize)
+	if total == 0 {
+		return &dto.AuditProcessListResponse{
+			Items: []map[string]interface{}{}, Total: 0, Page: page, PageSize: ps,
+		}, nil
+	}
+
+	// 分页查询 snapshots（真分页，LIMIT/OFFSET 在 DB 层）
+	offset := (page - 1) * ps
+	var snaps []model.AuditProcessSnapshot
+	dataQ := s.db.Where("tenant_id = ?", tenantID).Order("updated_at DESC")
+	if len(todoProcessIDs) > 0 {
+		dataQ = dataQ.Where("process_id NOT IN ?", todoProcessIDs)
+	}
+	if len(configuredTypes) > 0 {
+		dataQ = dataQ.Where("process_type IN ?", configuredTypes)
+	}
+	if params.SubmitDateStart != nil {
+		dataQ = dataQ.Where("updated_at >= ?", params.SubmitDateStart)
+	}
+	if params.SubmitDateEndExclusive != nil {
+		dataQ = dataQ.Where("updated_at < ?", params.SubmitDateEndExclusive)
+	}
+	if kw := strings.TrimSpace(params.Keyword); kw != "" {
+		dataQ = dataQ.Where("LOWER(title) LIKE ?", "%"+strings.ToLower(kw)+"%")
+	}
+	if pt := strings.TrimSpace(params.ProcessType); pt != "" {
+		parts := strings.Split(pt, ",")
+		trimmed := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				trimmed = append(trimmed, t)
+			}
+		}
+		if len(trimmed) > 0 {
+			dataQ = dataQ.Where("process_type IN ?", trimmed)
+		}
+	}
+	if err := dataQ.Offset(offset).Limit(ps).Find(&snaps).Error; err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询已完成审核记录失败")
 	}
 
+	// 批量查询 valid log（替代逐条 GetByID）
+	logIDs := make([]uuid.UUID, 0, len(snaps))
 	seen := make(map[string]bool)
-	var results []map[string]interface{}
+	uniqueSnaps := make([]model.AuditProcessSnapshot, 0, len(snaps))
 	for _, snap := range snaps {
 		if seen[snap.ProcessID] {
 			continue
 		}
 		seen[snap.ProcessID] = true
-		validLog, err := s.auditLogRepo.GetByID(c, snap.LatestValidLogID)
-		if err != nil || validLog == nil {
+		logIDs = append(logIDs, snap.LatestValidLogID)
+		uniqueSnaps = append(uniqueSnaps, snap)
+	}
+
+	logMap, err := s.auditLogRepo.GetByIDs(c, logIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "批量查询审核日志失败")
+	}
+
+	var results []map[string]interface{}
+	for _, snap := range uniqueSnaps {
+		validLog := logMap[snap.LatestValidLogID]
+		if validLog == nil {
 			continue
 		}
 		results = append(results, map[string]interface{}{
@@ -1151,20 +1274,12 @@ func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenant
 		})
 	}
 
-	filtered := applyAuditListFilters(results, params)
-	total := len(filtered)
-	page, ps, start, end := normalizeAuditPage(params.Page, params.PageSize)
-	if start > total {
-		start = total
-	}
-	if end > total {
-		end = total
-	}
-	items := filtered[start:end]
+	// audit_status 筛选（approve/return/review）
+	filtered := applyAuditStatusFilter(results, params)
 
 	return &dto.AuditProcessListResponse{
-		Items:    items,
-		Total:    total,
+		Items:    filtered,
+		Total:    int(total),
 		Page:     page,
 		PageSize: ps,
 	}, nil

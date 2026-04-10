@@ -47,6 +47,23 @@ func (r *ArchiveLogRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.ArchiveLo
 	return &log, err
 }
 
+// GetByIDs 批量查询归档日志（租户隔离），返回 id -> ArchiveLog 映射。
+func (r *ArchiveLogRepo) GetByIDs(c *gin.Context, ids []uuid.UUID) (map[uuid.UUID]*model.ArchiveLog, error) {
+	if len(ids) == 0 {
+		return map[uuid.UUID]*model.ArchiveLog{}, nil
+	}
+	var logs []model.ArchiveLog
+	err := r.WithTenant(c).Where("id IN ?", ids).Find(&logs).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[uuid.UUID]*model.ArchiveLog, len(logs))
+	for i := range logs {
+		result[logs[i].ID] = &logs[i]
+	}
+	return result, nil
+}
+
 func (r *ArchiveLogRepo) UpdateFields(c *gin.Context, id uuid.UUID, updates map[string]interface{}) error {
 	return r.WithTenant(c).Model(&model.ArchiveLog{}).Where("id = ?", id).Updates(updates).Error
 }
