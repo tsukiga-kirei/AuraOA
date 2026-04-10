@@ -1,16 +1,11 @@
-// useRulesApi — 封装规则配置相关 API 调用
+// useAuditConfigApi — 封装审核配置相关 API 调用
 
-import type {
-  ProcessAuditConfig,
-  AuditRule,
-  SystemPromptTemplate,
-  ProcessInfo,
-  ProcessFields,
-} from '~/types/rules'
+import type { ProcessAuditConfig, AuditRule } from '~/types/audit-config'
+import type { SystemPromptTemplate, ProcessInfo, ProcessFields } from '~/types/common'
 
 export type { ProcessAuditConfig, AuditRule, SystemPromptTemplate, ProcessInfo, ProcessFields }
 
-export const useRulesApi = () => {
+export const useAuditConfigApi = () => {
   const { authFetch } = useAuth()
 
   // ============================================================

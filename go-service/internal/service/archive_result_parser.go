@@ -148,11 +148,4 @@ func normalizeArchiveCompliance(compliance string, recommendation string) string
 	}
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
-}
+

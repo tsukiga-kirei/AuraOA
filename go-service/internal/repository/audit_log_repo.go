@@ -126,7 +126,7 @@ func (r *AuditLogRepo) ListCompletedByProcessIDWithUser(c *gin.Context, processI
 		Table("audit_logs").
 		Select("audit_logs.*, users.display_name as user_name").
 		Joins("left join users on audit_logs.user_id = users.id").
-		Where("audit_logs.process_id = ? AND audit_logs.status = ?", processID, model.AuditStatusCompleted).
+		Where("audit_logs.process_id = ? AND audit_logs.status = ?", processID, model.JobStatusCompleted).
 		Order("audit_logs.created_at DESC").
 		Find(&logs).Error
 	return logs, err
@@ -136,7 +136,7 @@ func (r *AuditLogRepo) ListCompletedByProcessIDWithUser(c *gin.Context, processI
 func (r *AuditLogRepo) ListCompletedByProcessID(c *gin.Context, processID string) ([]model.AuditLog, error) {
 	var logs []model.AuditLog
 	err := r.WithTenant(c).
-		Where("process_id = ? AND status = ?", processID, model.AuditStatusCompleted).
+		Where("process_id = ? AND status = ?", processID, model.JobStatusCompleted).
 		Order("created_at DESC").
 		Find(&logs).Error
 	return logs, err
@@ -170,7 +170,7 @@ func (r *AuditLogRepo) ExistsSuccess(c *gin.Context, processID string) (bool, er
 	var count int64
 	err := r.WithTenant(c).
 		Model(&model.AuditLog{}).
-		Where("process_id = ? AND status = ?", processID, model.AuditStatusCompleted).
+		Where("process_id = ? AND status = ?", processID, model.JobStatusCompleted).
 		Count(&count).Error
 	return count > 0, err
 }
@@ -277,13 +277,13 @@ func (r *AuditLogRepo) CountStats(c *gin.Context, forUserID *uuid.UUID) (*AuditL
 	}
 
 	stats := &AuditLogStats{}
-	completedStatuses := map[string]bool{model.AuditStatusCompleted: true}
+	completedStatuses := map[string]bool{model.JobStatusCompleted: true}
 	pendingStatuses := map[string]bool{
-		model.AuditStatusPending:    true,
-		model.AuditStatusAssembling: true,
-		model.AuditStatusReasoning:  true,
-		model.AuditStatusExtracting: true,
-		model.AuditStatusFailed:     true,
+		model.JobStatusPending:    true,
+		model.JobStatusAssembling: true,
+		model.JobStatusReasoning:  true,
+		model.JobStatusExtracting: true,
+		model.JobStatusFailed:     true,
 	}
 	for _, rw := range rows {
 		stats.Total += rw.Cnt
@@ -323,7 +323,7 @@ func (r *AuditLogRepo) CountStatsByTimeRange(c *gin.Context, start, end time.Tim
 	}
 
 	stats := &AuditLogStats{}
-	completedStatuses := map[string]bool{model.AuditStatusCompleted: true}
+	completedStatuses := map[string]bool{model.JobStatusCompleted: true}
 	for _, rw := range rows {
 		stats.Total += rw.Cnt
 		if completedStatuses[rw.Status] {
@@ -361,13 +361,13 @@ func (r *AuditLogRepo) CountStatsGlobal() (*AuditLogStats, error) {
 	}
 
 	stats := &AuditLogStats{}
-	completedStatuses := map[string]bool{model.AuditStatusCompleted: true}
+	completedStatuses := map[string]bool{model.JobStatusCompleted: true}
 	pendingStatuses := map[string]bool{
-		model.AuditStatusPending:    true,
-		model.AuditStatusAssembling: true,
-		model.AuditStatusReasoning:  true,
-		model.AuditStatusExtracting: true,
-		model.AuditStatusFailed:     true,
+		model.JobStatusPending:    true,
+		model.JobStatusAssembling: true,
+		model.JobStatusReasoning:  true,
+		model.JobStatusExtracting: true,
+		model.JobStatusFailed:     true,
 	}
 	for _, row := range rows {
 		stats.Total += row.Cnt
@@ -406,7 +406,7 @@ func (r *AuditLogRepo) DashboardWeeklyCompletedTrend(c *gin.Context, days int, f
 	}
 
 	userClause := ""
-	args := []interface{}{tenantUUID, days, model.AuditStatusCompleted}
+	args := []interface{}{tenantUUID, days, model.JobStatusCompleted}
 	if forUserID != nil {
 		userClause = " AND user_id = $4"
 		args = append(args, *forUserID)
@@ -467,7 +467,7 @@ ORDER BY days.d
 		Date  string `gorm:"column:date"`
 		Count int64  `gorm:"column:count"`
 	}
-	err := r.DB.Raw(q, days, model.AuditStatusCompleted).Scan(&rows).Error
+	err := r.DB.Raw(q, days, model.JobStatusCompleted).Scan(&rows).Error
 	return rows, err
 }
 
@@ -489,7 +489,7 @@ func (r *AuditLogRepo) DashboardRecentAudits(c *gin.Context, limit int, forUserI
 		Table("audit_logs").
 		Select("audit_logs.id, audit_logs.title, COALESCE(users.display_name, users.username, '') as user_name, audit_logs.created_at, audit_logs.status").
 		Joins("LEFT JOIN users ON audit_logs.user_id = users.id").
-		Where("audit_logs.status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed})
+		Where("audit_logs.status IN ?", []string{model.JobStatusCompleted, model.JobStatusFailed})
 	if forUserID != nil {
 		q = q.Where("audit_logs.user_id = ?", *forUserID)
 	}
@@ -508,7 +508,7 @@ func (r *AuditLogRepo) DashboardRecentAuditsGlobal(limit int) ([]DashboardRecent
 		Table("audit_logs").
 		Select("audit_logs.id, audit_logs.title, COALESCE(users.display_name, users.username, '') as user_name, audit_logs.created_at, audit_logs.status").
 		Joins("LEFT JOIN users ON audit_logs.user_id = users.id").
-		Where("audit_logs.status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed}).
+		Where("audit_logs.status IN ?", []string{model.JobStatusCompleted, model.JobStatusFailed}).
 		Order("audit_logs.created_at DESC").
 		Limit(limit).
 		Scan(&rows).Error
@@ -525,7 +525,7 @@ func (r *AuditLogRepo) DashboardAuditOutcomeForAIStats(c *gin.Context) (complete
 	err = r.WithTenant(c).
 		Model(&model.AuditLog{}).
 		Select("status, COUNT(*) as cnt").
-		Where("status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed}).
+		Where("status IN ?", []string{model.JobStatusCompleted, model.JobStatusFailed}).
 		Group("status").
 		Scan(&rows).Error
 	if err != nil {
@@ -533,9 +533,9 @@ func (r *AuditLogRepo) DashboardAuditOutcomeForAIStats(c *gin.Context) (complete
 	}
 	for _, x := range rows {
 		switch x.Status {
-		case model.AuditStatusCompleted:
+		case model.JobStatusCompleted:
 			completed += x.Cnt
-		case model.AuditStatusFailed:
+		case model.JobStatusFailed:
 			failed += x.Cnt
 		}
 	}
@@ -552,7 +552,7 @@ func (r *AuditLogRepo) DashboardAuditOutcomeForAIStatsGlobal() (completed, faile
 	err = r.DB.
 		Model(&model.AuditLog{}).
 		Select("status, COUNT(*) as cnt").
-		Where("status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed}).
+		Where("status IN ?", []string{model.JobStatusCompleted, model.JobStatusFailed}).
 		Group("status").
 		Scan(&rows).Error
 	if err != nil {
@@ -560,9 +560,9 @@ func (r *AuditLogRepo) DashboardAuditOutcomeForAIStatsGlobal() (completed, faile
 	}
 	for _, x := range rows {
 		switch x.Status {
-		case model.AuditStatusCompleted:
+		case model.JobStatusCompleted:
 			completed += x.Cnt
-		case model.AuditStatusFailed:
+		case model.JobStatusFailed:
 			failed += x.Cnt
 		}
 	}
@@ -595,7 +595,7 @@ ORDER BY audit_count DESC
 LIMIT ?
 `
 	var rows []DashboardPlatformTenantRankRow
-	err := r.DB.Raw(q, model.AuditStatusCompleted, limit).Scan(&rows).Error
+	err := r.DB.Raw(q, model.JobStatusCompleted, limit).Scan(&rows).Error
 	return rows, err
 }
 
@@ -638,7 +638,7 @@ ORDER BY audit_count DESC
 LIMIT ?
 `
 	var rows []DashboardUserAuditRankRow
-	err = r.DB.Raw(q, tenantUUID, model.AuditStatusCompleted, limit).Scan(&rows).Error
+	err = r.DB.Raw(q, tenantUUID, model.JobStatusCompleted, limit).Scan(&rows).Error
 	return rows, err
 }
 
@@ -676,7 +676,7 @@ LIMIT ?
 		Department string `gorm:"column:department"`
 		Count      int64  `gorm:"column:count"`
 	}
-	err = r.DB.Raw(q, tenantUUID, model.AuditStatusCompleted, limit).Scan(&rows).Error
+	err = r.DB.Raw(q, tenantUUID, model.JobStatusCompleted, limit).Scan(&rows).Error
 	return rows, err
 }
 
@@ -704,9 +704,9 @@ func (r *AuditLogRepo) DashboardDistinctUserCountSince(c *gin.Context, since tim
 func applyAuditLogFilter(db *gorm.DB, f AuditLogFilter) *gorm.DB {
 	switch f.StatusGroup {
 	case "pending_ai":
-		db = db.Where("audit_logs.status != ?", model.AuditStatusCompleted)
+		db = db.Where("audit_logs.status != ?", model.JobStatusCompleted)
 	case "ai_done":
-		db = db.Where("audit_logs.status = ?", model.AuditStatusCompleted)
+		db = db.Where("audit_logs.status = ?", model.JobStatusCompleted)
 	}
 	if f.Keyword != "" {
 		like := "%" + f.Keyword + "%"

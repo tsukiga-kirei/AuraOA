@@ -58,3 +58,42 @@ export interface CronLog {
   finished_at: string | null
 }
 
+
+// ============================================================
+// 定时任务类型配置（从 rules.ts 迁入）
+// ============================================================
+
+/** 定时任务内容模板 */
+export interface CronContentTemplate {
+  subject: string
+  header: string
+  body_template: string
+  footer: string
+  batch_limit?: number
+}
+
+/** 定时任务类型配置（合并预设+租户覆盖，后端返回） */
+export interface CronTaskConfig {
+  task_type: string                              // 任务类型编码（如 audit_batch / archive_daily）
+  module: 'audit' | 'archive'                   // 所属模块
+  label_zh: string                               // 中文显示名称
+  label_en: string                               // 英文显示名称
+  description_zh: string                         // 中文描述
+  description_en: string                         // 英文描述
+  default_cron: string                           // 预设默认 Cron 表达式（供参考）
+  preset_push_format: string                     // 预设推送格式
+  preset_content_template: CronContentTemplate   // 预设内容模板（用于"恢复默认"）
+  sort_order: number
+  // 租户当前状态
+  is_enabled: boolean                            // 租户是否已启用该任务类型
+  push_format: 'html' | 'markdown' | 'plain'    // 当前生效的推送格式
+  content_template: CronContentTemplate          // 当前生效的内容模板
+  batch_limit?: number                           // 当前批处理上限（null 表示使用默认）
+}
+
+/** 保存 Cron 任务类型配置请求体 */
+export interface SaveCronTaskConfigRequest {
+  push_format: string
+  content_template: CronContentTemplate
+  batch_limit?: number | null
+}

@@ -145,7 +145,7 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		ProcessID:      req.ProcessID,
 		Title:          req.Title,
 		ProcessType:    req.ProcessType,
-		Status:         model.AuditStatusPending,
+		Status:         model.JobStatusPending,
 		Recommendation: "",
 		Score:          0,
 		AuditResult:    datatypes.JSON([]byte("{}")),
@@ -174,7 +174,7 @@ func (s *AuditExecuteService) Execute(c *gin.Context, req *AuditExecuteRequest) 
 
 	if _, err := EnqueueAuditJob(c.Request.Context(), s.rdb, logID, tenantID, userID); err != nil {
 		_ = s.auditLogRepo.UpdateFields(c, logID, map[string]interface{}{
-			"status":        model.AuditStatusFailed,
+			"status":        model.JobStatusFailed,
 			"error_message": "任务入队失败: " + err.Error(),
 			"updated_at":    time.Now(),
 		})
@@ -182,7 +182,7 @@ func (s *AuditExecuteService) Execute(c *gin.Context, req *AuditExecuteRequest) 
 	}
 
 	return &AuditExecuteResponse{
-		Status:    model.AuditStatusPending,
+		Status:    model.JobStatusPending,
 		ID:        logID.String(),
 		TraceID:   fmt.Sprintf("TR-%s", logID.String()[:8]),
 		ProcessID: req.ProcessID,
@@ -207,7 +207,7 @@ func (s *AuditExecuteService) markAuditFailed(c *gin.Context, id uuid.UUID, err 
 		msg = se.Message
 	}
 	_ = s.auditLogRepo.UpdateFields(c, id, map[string]interface{}{
-		"status":        model.AuditStatusFailed,
+		"status":        model.JobStatusFailed,
 		"error_message": msg,
 		"updated_at":    time.Now(),
 	})
@@ -218,7 +218,7 @@ func (s *AuditExecuteService) markAuditFailedDB(tenantID, id uuid.UUID, message 
 	return s.db.Model(&model.AuditLog{}).
 		Where("id = ? AND tenant_id = ?", id, tenantID).
 		Updates(map[string]interface{}{
-			"status":        model.AuditStatusFailed,
+			"status":        model.JobStatusFailed,
 			"error_message": message,
 			"updated_at":    time.Now(),
 		}).Error
@@ -242,14 +242,14 @@ func (s *AuditExecuteService) applyStaleAuditTimeout(c *gin.Context, log *model.
 		return nil, nil
 	}
 	switch log.Status {
-	case model.AuditStatusCompleted, model.AuditStatusFailed:
+	case model.JobStatusCompleted, model.JobStatusFailed:
 		return log, nil
 	}
 	if time.Since(log.CreatedAt) <= auditJobMaxAge {
 		return log, nil
 	}
 	if err := s.auditLogRepo.UpdateFields(c, log.ID, map[string]interface{}{
-		"status":        model.AuditStatusFailed,
+		"status":        model.JobStatusFailed,
 		"error_message": auditErrStaleMessage,
 		"updated_at":    time.Now(),
 	}); err != nil {
@@ -263,13 +263,13 @@ func (s *AuditExecuteService) FailStaleAuditJobs(ctx context.Context) (int64, er
 	cutoff := time.Now().Add(-auditJobMaxAge)
 	res := s.db.WithContext(ctx).Model(&model.AuditLog{}).
 		Where("status IN ? AND created_at < ?", []string{
-			model.AuditStatusPending,
-			model.AuditStatusAssembling,
-			model.AuditStatusReasoning,
-			model.AuditStatusExtracting,
+			model.JobStatusPending,
+			model.JobStatusAssembling,
+			model.JobStatusReasoning,
+			model.JobStatusExtracting,
 		}, cutoff).
 		Updates(map[string]interface{}{
-			"status":        model.AuditStatusFailed,
+			"status":        model.JobStatusFailed,
 			"error_message": auditErrStaleMessage,
 			"updated_at":    time.Now(),
 		})
@@ -279,7 +279,7 @@ func (s *AuditExecuteService) FailStaleAuditJobs(ctx context.Context) (int64, er
 // updateAuditLogIfNotCancelled 用户已中止（failed）时不再被后续阶段覆盖，避免 Cancel 后任务仍写完成为 completed。
 func (s *AuditExecuteService) updateAuditLogIfNotCancelled(tenantID, auditLogID uuid.UUID, updates map[string]interface{}) (int64, error) {
 	res := s.db.Model(&model.AuditLog{}).
-		Where("id = ? AND tenant_id = ? AND status NOT IN ?", auditLogID, tenantID, []string{model.AuditStatusFailed}).
+		Where("id = ? AND tenant_id = ? AND status NOT IN ?", auditLogID, tenantID, []string{model.JobStatusFailed}).
 		Updates(updates)
 	return res.RowsAffected, res.Error
 }
@@ -301,7 +301,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		}
 		return err
 	}
-	if log.Status != model.AuditStatusPending {
+	if log.Status != model.JobStatusPending {
 		return nil
 	}
 	// 队列积压过久：不再执行，直接标记失败（与 FailStaleAuditJobs 一致）
@@ -365,7 +365,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
 
 	n, err := s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
-		"status":     model.AuditStatusAssembling,
+		"status":     model.JobStatusAssembling,
 		"updated_at": time.Now(),
 	})
 	if err != nil {
@@ -397,7 +397,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	}
 
 	n, err = s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
-		"status":     model.AuditStatusReasoning,
+		"status":     model.JobStatusReasoning,
 		"updated_at": time.Now(),
 	})
 	if err != nil {
@@ -415,7 +415,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	aiReasoning := reasoningResp.Content
 
 	n, err = s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
-		"status":       model.AuditStatusExtracting,
+		"status":       model.JobStatusExtracting,
 		"ai_reasoning": aiReasoning,
 		"updated_at":   time.Now(),
 	})
@@ -449,7 +449,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	}
 
 	if parseErr != nil {
-		updates["status"] = model.AuditStatusFailed
+		updates["status"] = model.JobStatusFailed
 		updates["recommendation"] = ""
 		updates["score"] = 0
 		updates["confidence"] = 0
@@ -457,7 +457,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		updates["audit_result"] = datatypes.JSON([]byte("{}"))
 	} else {
 		resultJSON, _ := json.Marshal(parsed)
-		updates["status"] = model.AuditStatusCompleted
+		updates["status"] = model.JobStatusCompleted
 		updates["recommendation"] = parsed.Recommendation
 		updates["score"] = parsed.OverallScore
 		updates["confidence"] = parsed.Confidence
@@ -559,7 +559,7 @@ func auditExecuteResponseFromLog(log *model.AuditLog) *AuditExecuteResponse {
 		CreatedAt:   log.CreatedAt.Format(time.RFC3339),
 		Status:      log.Status,
 	}
-	if log.Status == model.AuditStatusFailed {
+	if log.Status == model.JobStatusFailed {
 		resp.Recommendation = ""
 		resp.ParseError = log.ErrorMessage
 		resp.RuleResults = []model.RuleResultJSON{}
@@ -655,22 +655,22 @@ func auditProgressSteps(status string) []map[string]interface{} {
 		key   string
 		label string
 	}{
-		{model.AuditStatusPending, "排队中"},
-		{model.AuditStatusAssembling, "组装提示词"},
-		{model.AuditStatusReasoning, "推理分析"},
-		{model.AuditStatusExtracting, "结构化提取"},
+		{model.JobStatusPending, "排队中"},
+		{model.JobStatusAssembling, "组装提示词"},
+		{model.JobStatusReasoning, "推理分析"},
+		{model.JobStatusExtracting, "结构化提取"},
 	}
 	phaseIdx := map[string]int{
-		model.AuditStatusPending:    0,
-		model.AuditStatusAssembling: 1,
-		model.AuditStatusReasoning:  2,
-		model.AuditStatusExtracting: 3,
+		model.JobStatusPending:    0,
+		model.JobStatusAssembling: 1,
+		model.JobStatusReasoning:  2,
+		model.JobStatusExtracting: 3,
 	}
 	cur, ok := phaseIdx[status]
 	if !ok {
-		if status == model.AuditStatusCompleted {
+		if status == model.JobStatusCompleted {
 			cur = 3
-		} else if status == model.AuditStatusFailed {
+		} else if status == model.JobStatusFailed {
 			cur = 2
 		} else {
 			cur = 0
@@ -680,16 +680,16 @@ func auditProgressSteps(status string) []map[string]interface{} {
 	for i, d := range defs {
 		m := map[string]interface{}{"key": d.key, "label": d.label}
 		switch {
-		case status == model.AuditStatusFailed && i == cur:
+		case status == model.JobStatusFailed && i == cur:
 			m["failed"] = true
 		case i < cur:
 			m["done"] = true
-		case i == cur && cur < 4 && status != model.AuditStatusFailed:
+		case i == cur && cur < 4 && status != model.JobStatusFailed:
 			m["current"] = true
 		}
 		steps = append(steps, m)
 	}
-	if status == model.AuditStatusCompleted {
+	if status == model.JobStatusCompleted {
 		steps = append(steps, map[string]interface{}{"key": "done", "label": "已完成", "done": true})
 	}
 	return steps
@@ -1043,22 +1043,22 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 			if err == nil && validLog != nil {
 				record["has_audit"] = true
 				record["audit_result"] = buildAuditResultFromLog(validLog)
-				record["audit_status"] = model.AuditStatusCompleted
+				record["audit_status"] = model.JobStatusCompleted
 			}
 		}
 		if hasLatest {
 			st := auditLog.Status
 			switch st {
-			case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
+			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
 				record["audit_status"] = st
 				record["audit_result"] = buildAuditResultFromLog(auditLog)
-			case model.AuditStatusFailed:
+			case model.JobStatusFailed:
 				if !hasValid {
 					record["audit_status"] = nil
 					record["audit_result"] = nil
 					record["has_audit"] = false
 				}
-			case model.AuditStatusCompleted:
+			case model.JobStatusCompleted:
 				if !hasValid {
 					record["audit_status"] = nil
 					record["audit_result"] = nil
@@ -1298,7 +1298,7 @@ func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenant
 
 func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 	switch log.Status {
-	case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
+	case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
 		out := map[string]interface{}{
 			"id":           log.ID.String(),
 			"trace_id":     fmt.Sprintf("TR-%s", log.ID.String()[:8]),
@@ -1311,7 +1311,7 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 			out["error_message"] = log.ErrorMessage
 		}
 		return out
-	case model.AuditStatusFailed:
+	case model.JobStatusFailed:
 		return map[string]interface{}{
 			"id":             log.ID.String(),
 			"trace_id":       fmt.Sprintf("TR-%s", log.ID.String()[:8]),

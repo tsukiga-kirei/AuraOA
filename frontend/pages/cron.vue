@@ -20,7 +20,8 @@ import {
 import { message, Modal } from 'ant-design-vue'
 import { createVNode } from 'vue'
 import type { CronTask, CreateCronTaskRequest, UpdateCronTaskRequest, CronLog } from '~/types/cron'
-import type { CronTaskConfig, ProcessAuditConfig } from '~/types/rules'
+import type { CronTaskConfig } from '~/types/cron'
+import type { ProcessAuditConfig } from '~/types/audit-config'
 import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ middleware: 'auth' })

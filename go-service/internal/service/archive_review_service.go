@@ -40,7 +40,7 @@ func archiveItemHasComplianceOutcome(item map[string]interface{}) bool {
 		return sc == "compliant" || sc == "partially_compliant" || sc == "non_compliant"
 	}
 	status, _ := item["archive_status"].(string)
-	if status != model.AuditStatusCompleted {
+	if status != model.JobStatusCompleted {
 		return false
 	}
 	result, _ := item["archive_result"].(map[string]interface{})
@@ -59,7 +59,7 @@ func archiveItemComplianceClass(item map[string]interface{}, want string) bool {
 		return sc == want
 	}
 	status, _ := item["archive_status"].(string)
-	if status != model.AuditStatusCompleted {
+	if status != model.JobStatusCompleted {
 		return false
 	}
 	result, _ := item["archive_result"].(map[string]interface{})
@@ -211,24 +211,24 @@ func (s *ArchiveReviewService) ListProcesses(c *gin.Context, params dto.ArchiveL
 			record["snapshot_compliance"] = snap.Compliance
 			validLog, err := s.archiveLogRepo.GetByID(c, snap.LatestValidArchiveLogID)
 			if err == nil && validLog != nil {
-				record["archive_status"] = model.AuditStatusCompleted
+				record["archive_status"] = model.JobStatusCompleted
 				record["archive_result"] = buildArchiveResultFromLog(validLog)
 			}
 		}
 		if hasLatest {
 			st := latest.Status
 			switch st {
-			case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
+			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
 				record["archive_status"] = st
 				record["archive_result"] = buildArchiveResultFromLog(latest)
-			case model.AuditStatusFailed:
+			case model.JobStatusFailed:
 				if snap == nil {
 					record["archive_status"] = nil
 					record["archive_result"] = nil
 					record["has_review"] = false
 					delete(record, "snapshot_compliance")
 				}
-			case model.AuditStatusCompleted:
+			case model.JobStatusCompleted:
 				if snap == nil {
 					record["archive_status"] = nil
 					record["archive_result"] = nil
@@ -358,7 +358,7 @@ func (s *ArchiveReviewService) listArchiveBySnapshotPaged(
 
 		validLog := logMap[snap.LatestValidArchiveLogID]
 		if validLog != nil {
-			record["archive_status"] = model.AuditStatusCompleted
+			record["archive_status"] = model.JobStatusCompleted
 			record["archive_result"] = buildArchiveResultFromLog(validLog)
 		}
 
@@ -366,7 +366,7 @@ func (s *ArchiveReviewService) listArchiveBySnapshotPaged(
 		if latest, ok := latestMap[snap.ProcessID]; ok {
 			st := latest.Status
 			switch st {
-			case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
+			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
 				record["archive_status"] = st
 				record["archive_result"] = buildArchiveResultFromLog(latest)
 			}
@@ -517,7 +517,7 @@ func (s *ArchiveReviewService) listArchiveUnauditedPaged(
 		if latest, ok := latestMap[item.ProcessID]; ok {
 			st := latest.Status
 			switch st {
-			case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
+			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
 				record["archive_status"] = st
 				record["archive_result"] = buildArchiveResultFromLog(latest)
 			}
@@ -627,7 +627,7 @@ func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListPa
 	var runningCount int64
 	s.db.Model(&model.ArchiveLog{}).
 		Where("tenant_id = ? AND status IN ?", tenantID,
-			[]string{model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting}).
+			[]string{model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting}).
 		Count(&runningCount)
 
 	return &dto.ArchiveReviewStats{
@@ -653,7 +653,7 @@ func (s *ArchiveReviewService) Execute(c *gin.Context, req *dto.ArchiveReviewExe
 	logEntry, _ := s.archiveLogRepo.GetByID(c, logID)
 	if _, err := EnqueueArchiveJob(c.Request.Context(), s.rdb, logID, tenantID, userID); err != nil {
 		_ = s.archiveLogRepo.UpdateFields(c, logID, map[string]interface{}{
-			"status":        model.AuditStatusFailed,
+			"status":        model.JobStatusFailed,
 			"error_message": "任务入队失败: " + err.Error(),
 			"updated_at":    time.Now(),
 		})
@@ -661,7 +661,7 @@ func (s *ArchiveReviewService) Execute(c *gin.Context, req *dto.ArchiveReviewExe
 	}
 
 	return &dto.ArchiveReviewSubmitResponse{
-		Status:    model.AuditStatusPending,
+		Status:    model.JobStatusPending,
 		ID:        logID.String(),
 		TraceID:   fmt.Sprintf("AR-%s", logID.String()[:8]),
 		ProcessID: req.ProcessID,
@@ -685,7 +685,7 @@ func (s *ArchiveReviewService) BatchExecute(c *gin.Context, items []dto.ArchiveR
 		if err != nil {
 			result.Failed++
 			result.Results = append(result.Results, dto.ArchiveReviewSubmitResponse{
-				Status:    model.AuditStatusFailed,
+				Status:    model.JobStatusFailed,
 				ProcessID: item.ProcessID,
 			})
 			continue
@@ -914,7 +914,7 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 		ProcessID:       req.ProcessID,
 		Title:           req.Title,
 		ProcessType:     req.ProcessType,
-		Status:          model.AuditStatusPending,
+		Status:          model.JobStatusPending,
 		Compliance:      "partially_compliant",
 		ComplianceScore: 0,
 		ArchiveResult:   datatypes.JSON([]byte("{}")),
@@ -944,7 +944,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		}
 		return err
 	}
-	if logEntry.Status != model.AuditStatusPending {
+	if logEntry.Status != model.JobStatusPending {
 		return nil
 	}
 	if time.Since(logEntry.CreatedAt) > archiveJobMaxAge {
@@ -1009,7 +1009,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	}
 
 	_ = s.archiveLogRepo.UpdateFields(c, archiveLogID, map[string]interface{}{
-		"status":     model.AuditStatusAssembling,
+		"status":     model.JobStatusAssembling,
 		"updated_at": time.Now(),
 	})
 
@@ -1070,7 +1070,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	}
 
 	_ = s.archiveLogRepo.UpdateFields(c, archiveLogID, map[string]interface{}{
-		"status":           model.AuditStatusReasoning,
+		"status":           model.JobStatusReasoning,
 		"process_snapshot": datatypes.JSON(snapshotJSON),
 		"updated_at":       time.Now(),
 	})
@@ -1083,7 +1083,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	aiReasoning := reasoningResp.Content
 
 	_ = s.archiveLogRepo.UpdateFields(c, archiveLogID, map[string]interface{}{
-		"status":       model.AuditStatusExtracting,
+		"status":       model.JobStatusExtracting,
 		"ai_reasoning": aiReasoning,
 		"updated_at":   time.Now(),
 	})
@@ -1111,7 +1111,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		"updated_at":       time.Now(),
 	}
 	if parseErr != nil {
-		updates["status"] = model.AuditStatusFailed
+		updates["status"] = model.JobStatusFailed
 		updates["compliance"] = ""
 		updates["compliance_score"] = 0
 		updates["confidence"] = 0
@@ -1119,7 +1119,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		updates["archive_result"] = datatypes.JSON([]byte("{}"))
 	} else {
 		resultJSON, _ := json.Marshal(parsed)
-		updates["status"] = model.AuditStatusCompleted
+		updates["status"] = model.JobStatusCompleted
 		updates["compliance"] = parsed.OverallCompliance
 		updates["compliance_score"] = parsed.OverallScore
 		updates["confidence"] = parsed.Confidence
@@ -1163,7 +1163,7 @@ func (s *ArchiveReviewService) markArchiveFailed(c *gin.Context, id uuid.UUID, e
 		msg = se.Message
 	}
 	_ = s.archiveLogRepo.UpdateFields(c, id, map[string]interface{}{
-		"status":        model.AuditStatusFailed,
+		"status":        model.JobStatusFailed,
 		"error_message": msg,
 		"updated_at":    time.Now(),
 	})
@@ -1173,7 +1173,7 @@ func (s *ArchiveReviewService) markArchiveFailedDB(tenantID, id uuid.UUID, messa
 	return s.db.Model(&model.ArchiveLog{}).
 		Where("id = ? AND tenant_id = ?", id, tenantID).
 		Updates(map[string]interface{}{
-			"status":        model.AuditStatusFailed,
+			"status":        model.JobStatusFailed,
 			"error_message": message,
 			"updated_at":    time.Now(),
 		}).Error
@@ -1195,14 +1195,14 @@ func (s *ArchiveReviewService) applyStaleArchiveTimeout(c *gin.Context, logEntry
 		return nil, nil
 	}
 	switch logEntry.Status {
-	case model.AuditStatusCompleted, model.AuditStatusFailed:
+	case model.JobStatusCompleted, model.JobStatusFailed:
 		return logEntry, nil
 	}
 	if time.Since(logEntry.CreatedAt) <= archiveJobMaxAge {
 		return logEntry, nil
 	}
 	if err := s.archiveLogRepo.UpdateFields(c, logEntry.ID, map[string]interface{}{
-		"status":        model.AuditStatusFailed,
+		"status":        model.JobStatusFailed,
 		"error_message": archiveErrStaleMessage,
 		"updated_at":    time.Now(),
 	}); err != nil {
@@ -1215,13 +1215,13 @@ func (s *ArchiveReviewService) FailStaleArchiveJobs(ctx context.Context) (int64,
 	cutoff := time.Now().Add(-archiveJobMaxAge)
 	res := s.db.WithContext(ctx).Model(&model.ArchiveLog{}).
 		Where("status IN ? AND created_at < ?", []string{
-			model.AuditStatusPending,
-			model.AuditStatusAssembling,
-			model.AuditStatusReasoning,
-			model.AuditStatusExtracting,
+			model.JobStatusPending,
+			model.JobStatusAssembling,
+			model.JobStatusReasoning,
+			model.JobStatusExtracting,
 		}, cutoff).
 		Updates(map[string]interface{}{
-			"status":        model.AuditStatusFailed,
+			"status":        model.JobStatusFailed,
 			"error_message": archiveErrStaleMessage,
 			"updated_at":    time.Now(),
 		})
@@ -1563,9 +1563,9 @@ func buildArchiveResultFromLog(logEntry *model.ArchiveLog) map[string]interface{
 	}
 
 	switch logEntry.Status {
-	case model.AuditStatusPending, model.AuditStatusAssembling, model.AuditStatusReasoning, model.AuditStatusExtracting:
+	case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
 		return base
-	case model.AuditStatusFailed:
+	case model.JobStatusFailed:
 		// 失败不写入合规结论，与「归档未审核」语义一致；前端按未完成展示，避免与部分合规混淆。
 		base["flow_audit"] = emptyArchiveFlowAuditMap()
 		base["field_audit"] = []interface{}{}
@@ -1628,22 +1628,22 @@ func archiveProgressSteps(status string) []map[string]interface{} {
 		key   string
 		label string
 	}{
-		{model.AuditStatusPending, "排队中"},
-		{model.AuditStatusAssembling, "组装复盘提示词"},
-		{model.AuditStatusReasoning, "推理分析"},
-		{model.AuditStatusExtracting, "结构化提取"},
+		{model.JobStatusPending, "排队中"},
+		{model.JobStatusAssembling, "组装复盘提示词"},
+		{model.JobStatusReasoning, "推理分析"},
+		{model.JobStatusExtracting, "结构化提取"},
 	}
 	phaseIdx := map[string]int{
-		model.AuditStatusPending:    0,
-		model.AuditStatusAssembling: 1,
-		model.AuditStatusReasoning:  2,
-		model.AuditStatusExtracting: 3,
+		model.JobStatusPending:    0,
+		model.JobStatusAssembling: 1,
+		model.JobStatusReasoning:  2,
+		model.JobStatusExtracting: 3,
 	}
 	cur, ok := phaseIdx[status]
 	if !ok {
-		if status == model.AuditStatusCompleted {
+		if status == model.JobStatusCompleted {
 			cur = 3
-		} else if status == model.AuditStatusFailed {
+		} else if status == model.JobStatusFailed {
 			cur = 2
 		} else {
 			cur = 0
@@ -1654,16 +1654,16 @@ func archiveProgressSteps(status string) []map[string]interface{} {
 	for i, def := range defs {
 		step := map[string]interface{}{"key": def.key, "label": def.label}
 		switch {
-		case status == model.AuditStatusFailed && i == cur:
+		case status == model.JobStatusFailed && i == cur:
 			step["failed"] = true
 		case i < cur:
 			step["done"] = true
-		case i == cur && cur < 4 && status != model.AuditStatusFailed:
+		case i == cur && cur < 4 && status != model.JobStatusFailed:
 			step["current"] = true
 		}
 		steps = append(steps, step)
 	}
-	if status == model.AuditStatusCompleted {
+	if status == model.JobStatusCompleted {
 		steps = append(steps, map[string]interface{}{"key": "done", "label": "已完成", "done": true})
 	}
 	return steps

@@ -194,10 +194,10 @@ func SetupRouter(
 		tenantArchive.PUT("/configs/:id", archiveConfigHandler.Update)
 		tenantArchive.DELETE("/configs/:id", archiveConfigHandler.Delete)
 		tenantArchive.POST("/configs/:id/fetch-fields", archiveConfigHandler.FetchFields)
-		tenantArchive.GET("/audit-rules", archiveRuleHandler.List)
-		tenantArchive.POST("/audit-rules", archiveRuleHandler.Create)
-		tenantArchive.PUT("/audit-rules/:id", archiveRuleHandler.Update)
-		tenantArchive.DELETE("/audit-rules/:id", archiveRuleHandler.Delete)
+		tenantArchive.GET("/rules", archiveRuleHandler.List)
+		tenantArchive.POST("/rules", archiveRuleHandler.Create)
+		tenantArchive.PUT("/rules/:id", archiveRuleHandler.Update)
+		tenantArchive.DELETE("/rules/:id", archiveRuleHandler.Delete)
 		tenantArchive.GET("/prompt-templates", archiveConfigHandler.ListPromptTemplates)
 	}
 

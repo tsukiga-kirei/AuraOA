@@ -34,19 +34,20 @@ import type {
   AuditRule as ApiAuditRule,
   ProcessAuditConfig as ApiProcessAuditConfig,
   SystemPromptTemplate
-} from '~/composables/useRulesApi'
-import type {ArchiveRule, CronTaskConfig, ProcessArchiveConfig} from '~/types/rules'
+} from '~/composables/useAuditConfigApi'
+import type { ArchiveRule, ProcessArchiveConfig } from '~/types/archive-config'
+import type { CronTaskConfig } from '~/types/cron'
 import {useI18n} from '~/composables/useI18n'
 import {usePagination} from '~/composables/usePagination'
-import {useArchiveApi} from "~/composables/useArchiveApi";
+import {useArchiveConfigApi} from "~/composables/useArchiveConfigApi";
 import {useCronApi} from "~/composables/useCronApi";
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
-const rulesApi = useRulesApi()
+const rulesApi = useAuditConfigApi()
 const cronApi = useCronApi()
-const archiveApi = useArchiveApi()
+const archiveApi = useArchiveConfigApi()
 
 //===== 顶级选项卡：审核工作台 vs 定时任务配置 vs 归档复盘 =====
 const topTab = ref<'audit' | 'cron' | 'archive'>('audit')

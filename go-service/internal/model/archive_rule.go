@@ -22,3 +22,15 @@ type ArchiveRule struct {
 }
 
 func (ArchiveRule) TableName() string { return "archive_rules" }
+
+// GetID 返回规则 ID 字符串，实现 MergeableRule 接口。
+func (r ArchiveRule) GetID() string { return r.ID.String() }
+
+// GetRuleContent 返回规则内容，实现 MergeableRule 接口。
+func (r ArchiveRule) GetRuleContent() string { return r.RuleContent }
+
+// GetRuleScope 返回规则作用域，实现 MergeableRule 接口。
+func (r ArchiveRule) GetRuleScope() string { return r.RuleScope }
+
+// IsEnabled 返回规则是否启用，实现 MergeableRule 接口。
+func (r ArchiveRule) IsEnabled() bool { return r.Enabled == nil || *r.Enabled }

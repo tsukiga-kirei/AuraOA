@@ -114,7 +114,7 @@ func (r *ArchiveLogRepo) ListCompletedByProcessIDWithUser(c *gin.Context, proces
 		Table("archive_logs").
 		Select("archive_logs.*, users.display_name as user_name").
 		Joins("left join users on archive_logs.user_id = users.id").
-		Where("archive_logs.process_id = ? AND archive_logs.status = ?", processID, model.AuditStatusCompleted).
+		Where("archive_logs.process_id = ? AND archive_logs.status = ?", processID, model.JobStatusCompleted).
 		Order("archive_logs.created_at DESC").
 		Find(&logs).Error
 	return logs, err
@@ -203,7 +203,7 @@ func (r *ArchiveLogRepo) CountStats(c *gin.Context) (*ArchiveLogStats, error) {
 	stats := &ArchiveLogStats{}
 	for _, r := range rows {
 		stats.Total += r.Cnt
-		if r.Status == model.AuditStatusCompleted {
+		if r.Status == model.JobStatusCompleted {
 			switch r.Compliance {
 			case "compliant":
 				stats.Compliant += r.Cnt
@@ -240,7 +240,7 @@ func (r *ArchiveLogRepo) CountStatsByTimeRange(c *gin.Context, start, end time.T
 	stats := &ArchiveLogStats{}
 	for _, r := range rows {
 		stats.Total += r.Cnt
-		if r.Status == model.AuditStatusCompleted {
+		if r.Status == model.JobStatusCompleted {
 			switch r.Compliance {
 			case "compliant":
 				stats.Compliant += r.Cnt
@@ -274,7 +274,7 @@ func (r *ArchiveLogRepo) DashboardRecentArchiveLogs(c *gin.Context, limit int, f
 		Table("archive_logs").
 		Select("archive_logs.id, archive_logs.title, archive_logs.compliance, COALESCE(users.display_name, users.username, '') as user_name, archive_logs.created_at").
 		Joins("LEFT JOIN users ON archive_logs.user_id = users.id").
-		Where("archive_logs.status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed})
+		Where("archive_logs.status IN ?", []string{model.JobStatusCompleted, model.JobStatusFailed})
 	if forUserID != nil {
 		q = q.Where("archive_logs.user_id = ?", *forUserID)
 	}
@@ -293,7 +293,7 @@ func (r *ArchiveLogRepo) DashboardRecentArchiveLogsGlobal(limit int) ([]Dashboar
 		Table("archive_logs").
 		Select("archive_logs.id, archive_logs.title, archive_logs.compliance, COALESCE(users.display_name, users.username, '') as user_name, archive_logs.created_at").
 		Joins("LEFT JOIN users ON archive_logs.user_id = users.id").
-		Where("archive_logs.status IN ?", []string{model.AuditStatusCompleted, model.AuditStatusFailed}).
+		Where("archive_logs.status IN ?", []string{model.JobStatusCompleted, model.JobStatusFailed}).
 		Order("archive_logs.created_at DESC").
 		Limit(limit).
 		Scan(&rows).Error
@@ -305,7 +305,7 @@ func (r *ArchiveLogRepo) CountCompletedArchiveLogs(c *gin.Context, forUserID *uu
 	var n int64
 	q := r.WithTenant(c).
 		Model(&model.ArchiveLog{}).
-		Where("status = ?", model.AuditStatusCompleted)
+		Where("status = ?", model.JobStatusCompleted)
 	if forUserID != nil {
 		q = q.Where("user_id = ?", *forUserID)
 	}
@@ -318,7 +318,7 @@ func (r *ArchiveLogRepo) CountCompletedArchiveLogsGlobal() (int64, error) {
 	var n int64
 	err := r.DB.
 		Model(&model.ArchiveLog{}).
-		Where("status = ?", model.AuditStatusCompleted).
+		Where("status = ?", model.JobStatusCompleted).
 		Count(&n).Error
 	return n, err
 }

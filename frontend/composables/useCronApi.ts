@@ -1,6 +1,6 @@
 // useCronApi — 定时任务类型配置 & 任务实例 API 调用封装
 
-import type { CronTaskConfig, SaveCronTaskConfigRequest } from '~/types/rules'
+import type { CronTaskConfig, SaveCronTaskConfigRequest } from '~/types/cron'
 import type { CronTask, CreateCronTaskRequest, UpdateCronTaskRequest, CronLog } from '~/types/cron'
 
 export const useCronApi = () => {
