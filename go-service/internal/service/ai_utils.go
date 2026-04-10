@@ -202,44 +202,6 @@ func formatGroupedDetailData(detailTables map[string][]map[string]interface{}, f
 	return sb.String()
 }
 
-// ── 结论归一化 ──
-
-// normalizeAuditRecommendation 将常见别名转为 approve/return/review。
-func normalizeAuditRecommendation(s string) string {
-	if s == "" {
-		return ""
-	}
-	lower := strings.ToLower(strings.TrimSpace(s))
-	switch lower {
-	case "approve", "approved", "pass", "通过", "同意", "批准":
-		return "approve"
-	case "return", "returned", "reject", "rejected", "退回", "拒绝":
-		return "return"
-	case "review", "pending_review", "manual", "复核", "待复核", "人工":
-		return "review"
-	default:
-		return lower
-	}
-}
-
-// mapComplianceAliasToRecommendation 将 compliant/non_compliant/partially_compliant 等映射为 approve/return/review。
-func mapComplianceAliasToRecommendation(s string) string {
-	if s == "" {
-		return ""
-	}
-	lower := strings.ToLower(strings.TrimSpace(s))
-	switch lower {
-	case "compliant":
-		return "approve"
-	case "non_compliant", "noncompliant", "not_compliant", "incompliant":
-		return "return"
-	case "partially_compliant", "partial_compliant", "partial", "partial_compliance":
-		return "review"
-	default:
-		return ""
-	}
-}
-
 // ── 通用工具 ──
 
 func truncate(s string, maxLen int) string {
