@@ -7,16 +7,6 @@ import (
 	"gorm.io/datatypes"
 )
 
-// 审核日志异步状态（与 DB 迁移 000013 一致）
-const (
-	AuditStatusPending    = "pending"
-	AuditStatusAssembling = "assembling"
-	AuditStatusReasoning  = "reasoning"
-	AuditStatusExtracting = "extracting"
-	AuditStatusCompleted  = "completed"
-	AuditStatusFailed     = "failed"
-)
-
 // AuditLog 审核日志，记录每次审核执行的结果。
 type AuditLog struct {
 	ID             uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`

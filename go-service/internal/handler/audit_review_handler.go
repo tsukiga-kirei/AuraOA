@@ -73,7 +73,7 @@ func (h *AuditHandler) Execute(c *gin.Context) {
 		handleServiceError(c, err)
 		return
 	}
-	if result.Status == model.AuditStatusPending {
+	if result.Status == model.JobStatusPending {
 		c.JSON(http.StatusAccepted, response.Response{
 			Code:    0,
 			Message: "accepted",

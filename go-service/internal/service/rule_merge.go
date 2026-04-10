@@ -2,9 +2,34 @@ package service
 
 import (
 	"sort"
-
-	"oa-smart-audit/go-service/internal/model"
 )
+
+// MergeableRule 可合并规则的通用接口，支持 AuditRule 和 ArchiveRule。
+type MergeableRule interface {
+	GetID() string
+	GetRuleContent() string
+	GetRuleScope() string
+	IsEnabled() bool
+}
+
+// UserRuleOverride 用户规则配置覆盖，抽象自 AuditDetailItem / ArchiveDetailItem。
+type UserRuleOverride struct {
+	CustomRules         []CustomRuleItem
+	RuleToggleOverrides []RuleToggleItem
+}
+
+// CustomRuleItem 用户自定义规则条目。
+type CustomRuleItem struct {
+	ID      string
+	Content string
+	Enabled bool
+}
+
+// RuleToggleItem 用户对租户规则的开关覆盖条目。
+type RuleToggleItem struct {
+	RuleID  string
+	Enabled bool
+}
 
 // MergedRule 合并后的最终生效规则。
 type MergedRule struct {
@@ -17,44 +42,44 @@ type MergedRule struct {
 
 // MergeRules 合并租户规则和用户个性化配置，返回最终生效的规则列表。
 // 优先级：mandatory 始终生效 > 用户私有规则 > 用户 toggle 覆盖 > 租户默认规则
-func MergeRules(tenantRules []model.AuditRule, userDetail *model.AuditDetailItem) []MergedRule {
+func MergeRules(tenantRules []MergeableRule, userOverride *UserRuleOverride) []MergedRule {
 	var result []MergedRule
 
 	// 构建用户 toggle 覆盖映射
 	toggleMap := make(map[string]bool)
-	if userDetail != nil {
-		for _, toggle := range userDetail.RuleConfig.RuleToggleOverrides {
+	if userOverride != nil {
+		for _, toggle := range userOverride.RuleToggleOverrides {
 			toggleMap[toggle.RuleID] = toggle.Enabled
 		}
 	}
 
 	// 处理租户规则
 	for _, rule := range tenantRules {
-		if rule.Enabled != nil && !*rule.Enabled {
+		if !rule.IsEnabled() {
 			continue
 		}
 
 		merged := MergedRule{
-			RuleID:  rule.ID.String(),
-			Content: rule.RuleContent,
-			Scope:   rule.RuleScope,
+			RuleID:  rule.GetID(),
+			Content: rule.GetRuleContent(),
+			Scope:   rule.GetRuleScope(),
 			Source:  "tenant",
 		}
 
-		switch rule.RuleScope {
+		switch rule.GetRuleScope() {
 		case "mandatory":
 			// 强制规则始终生效，忽略用户 toggle
 			merged.Enabled = true
 		case "default_on":
 			// 默认开启，用户可通过 toggle 关闭
 			merged.Enabled = true
-			if userEnabled, exists := toggleMap[rule.ID.String()]; exists {
+			if userEnabled, exists := toggleMap[rule.GetID()]; exists {
 				merged.Enabled = userEnabled
 			}
 		case "default_off":
 			// 默认关闭，用户可通过 toggle 开启
 			merged.Enabled = false
-			if userEnabled, exists := toggleMap[rule.ID.String()]; exists {
+			if userEnabled, exists := toggleMap[rule.GetID()]; exists {
 				merged.Enabled = userEnabled
 			}
 		default:
@@ -65,8 +90,8 @@ func MergeRules(tenantRules []model.AuditRule, userDetail *model.AuditDetailItem
 	}
 
 	// 添加用户私有规则
-	if userDetail != nil {
-		for _, customRule := range userDetail.RuleConfig.CustomRules {
+	if userOverride != nil {
+		for _, customRule := range userOverride.CustomRules {
 			result = append(result, MergedRule{
 				RuleID:  customRule.ID,
 				Content: customRule.Content,

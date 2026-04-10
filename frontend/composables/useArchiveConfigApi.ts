@@ -1,14 +1,9 @@
-// useArchiveApi — 归档复盘配置 API 调用封装
+// useArchiveConfigApi — 归档复盘配置 API 调用封装
 
-import type {
-  ProcessArchiveConfig,
-  ArchiveRule,
-  SystemPromptTemplate,
-  ProcessInfo,
-  ProcessFields,
-} from '~/types/rules'
+import type { ProcessArchiveConfig, ArchiveRule } from '~/types/archive-config'
+import type { SystemPromptTemplate, ProcessInfo, ProcessFields } from '~/types/common'
 
-export const useArchiveApi = () => {
+export const useArchiveConfigApi = () => {
   const { authFetch } = useAuth()
 
   // ============================================================
@@ -62,25 +57,25 @@ export const useArchiveApi = () => {
     const params = new URLSearchParams({ config_id: configId })
     if (ruleScope) params.set('rule_scope', ruleScope)
     if (enabled !== undefined) params.set('enabled', String(enabled))
-    return await authFetch<ArchiveRule[]>(`/api/tenant/archive/audit-rules?${params.toString()}`)
+    return await authFetch<ArchiveRule[]>(`/api/tenant/archive/rules?${params.toString()}`)
   }
 
   async function createRule(rule: Partial<ArchiveRule>): Promise<ArchiveRule> {
-    return await authFetch<ArchiveRule>('/api/tenant/archive/audit-rules', {
+    return await authFetch<ArchiveRule>('/api/tenant/archive/rules', {
       method: 'POST',
       body: rule,
     })
   }
 
   async function updateRule(id: string, rule: Partial<ArchiveRule>): Promise<ArchiveRule> {
-    return await authFetch<ArchiveRule>(`/api/tenant/archive/audit-rules/${id}`, {
+    return await authFetch<ArchiveRule>(`/api/tenant/archive/rules/${id}`, {
       method: 'PUT',
       body: rule,
     })
   }
 
   async function deleteRule(id: string): Promise<void> {
-    await authFetch<null>(`/api/tenant/archive/audit-rules/${id}`, { method: 'DELETE' })
+    await authFetch<null>(`/api/tenant/archive/rules/${id}`, { method: 'DELETE' })
   }
 
   // ============================================================
