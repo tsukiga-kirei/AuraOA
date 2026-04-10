@@ -1131,7 +1131,7 @@ onUnmounted(() => {
               <span v-else-if="auditInProgress && !batchAuditing" class="batch-progress-hint">
                 {{ t('archive.auditingItem') }}
               </span>
-              <span v-else-if="auditedCount > 0" class="panel-header-hint">{{ t('archive.reviewed') }} {{ auditedCount }}/{{ listTotal }}</span>
+              <span v-else-if="filterAuditStatus === 'unaudited' && auditedCount > 0" class="panel-header-hint">{{ t('archive.reviewed') }} {{ auditedCount }}/{{ listTotal }}</span>
             </div>
             <div class="batch-toolbar-right">
               <a-button
