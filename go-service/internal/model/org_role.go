@@ -7,7 +7,7 @@ import (
 	"gorm.io/datatypes"
 )
 
-//OrgRole 代表租户内的组织角色，控制页面级权限。
+// OrgRole 租户内的组织角色，控制页面级访问权限。
 type OrgRole struct {
 	ID              uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
 	TenantID        uuid.UUID      `gorm:"type:uuid;not null;index"`

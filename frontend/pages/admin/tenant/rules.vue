@@ -707,6 +707,7 @@ const insertExtractionVariable = (variable: string) => {
 const promptTemplates = ref<SystemPromptTemplate[]>([])
 const archivePromptTemplates = ref<SystemPromptTemplate[]>([])
 const loadingTemplates = ref(false)
+// 页面初始化：依次加载组织数据、审核配置、提示词模板、定时任务配置、归档配置
 onMounted(async () => {
   loadOrgData()
   // 加载审核工作台配置
@@ -3494,7 +3495,7 @@ const handleSave = async () => {
   padding-left: 6px; border-left: 1px solid var(--color-border-light);
 }
 
-/* Imported data-table styles */
+/* 数据表格样式 */
 .data-table-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); overflow: hidden;

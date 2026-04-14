@@ -13,7 +13,7 @@ import (
 // 这里从配置中读取，由调用方保证长度。
 var encryptionKey []byte
 
-// SetKey 设置全局 AES 密钥。key 长度必须为 16、24 或 32 字节。
+// SetKey 设置全局 AES 加密密钥，长度必须为 16、24 或 32 字节（对应 AES-128/192/256）。
 func SetKey(key string) error {
 	k := []byte(key)
 	switch len(k) {
@@ -21,14 +21,15 @@ func SetKey(key string) error {
 		encryptionKey = k
 		return nil
 	default:
-		return errors.New("encryption key must be 16, 24, or 32 bytes")
+		return errors.New("加密密钥长度必须为 16、24 或 32 字节")
 	}
 }
 
 // Encrypt 使用 AES-GCM 加密明文，返回 base64 编码的密文。
+// 若明文为空字符串，直接返回空字符串。
 func Encrypt(plaintext string) (string, error) {
 	if len(encryptionKey) == 0 {
-		return "", errors.New("encryption key not set")
+		return "", errors.New("加密密钥未设置")
 	}
 	if plaintext == "" {
 		return "", nil
@@ -54,9 +55,10 @@ func Encrypt(plaintext string) (string, error) {
 }
 
 // Decrypt 解密 base64 编码的 AES-GCM 密文，返回明文。
+// 若密文为空字符串，直接返回空字符串。
 func Decrypt(encoded string) (string, error) {
 	if len(encryptionKey) == 0 {
-		return "", errors.New("encryption key not set")
+		return "", errors.New("加密密钥未设置")
 	}
 	if encoded == "" {
 		return "", nil
@@ -79,7 +81,7 @@ func Decrypt(encoded string) (string, error) {
 
 	nonceSize := gcm.NonceSize()
 	if len(ciphertext) < nonceSize {
-		return "", errors.New("ciphertext too short")
+		return "", errors.New("密文长度不足，数据可能已损坏")
 	}
 
 	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
@@ -87,6 +89,5 @@ func Decrypt(encoded string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	return string(plaintext), nil
 }

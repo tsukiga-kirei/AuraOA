@@ -25,6 +25,7 @@ interface AuditResult {
   duration_ms?: number
 }
 
+// props：审核结果数据 / 加载状态
 defineProps<{
   result: AuditResult | null
   loading: boolean
@@ -32,6 +33,7 @@ defineProps<{
 
 const { t } = useI18n()
 
+// 根据审核建议类型返回对应的颜色、背景色、图标和标签配置
 const recommendationConfig = computed(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
   reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: t('dashboard.rec.reject') },
@@ -41,13 +43,13 @@ const recommendationConfig = computed(() => ({
 
 <template>
   <div class="audit-panel">
-    <!--加载中-->
+    <!--加载中状态-->
     <div v-if="loading" class="panel-loading">
       <div class="loading-pulse" />
       <p class="loading-text">{{ t('auditPanel.auditing') }}</p>
     </div>
 
-    <!--结果-->
+    <!--审核结果展示-->
     <template v-else-if="result">
       <div
         class="result-banner"
@@ -91,7 +93,7 @@ const recommendationConfig = computed(() => ({
       </div>
     </template>
 
-    <!--空的-->
+    <!--空状态：尚未发起审核-->
     <div v-else class="panel-empty">
       <div class="empty-icon">
         <ThunderboltOutlined />

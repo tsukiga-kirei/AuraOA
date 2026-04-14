@@ -15,13 +15,16 @@ import { useI18n } from '~/composables/useI18n'
 
 definePageMeta({ layout: false, middleware: 'auth' })
 
+// 鉴权与主题相关 composable
 const { login } = useAuth()
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
 const { t } = useI18n()
 const config = useRuntimeConfig()
 
+// 可选租户列表，用于业务用户和租户管理员登录时选择租户
 const tenants = ref<TenantOption[]>([])
 
+// 页面挂载时：恢复主题偏好，并从后端拉取租户列表
 onMounted(async () => {
   restoreTheme()
   try {
@@ -32,24 +35,32 @@ onMounted(async () => {
       tenants.value = res.data
     }
   } catch (e) {
-    console.error('Failed to fetch tenant list:', e)
+    console.error('[login] 获取租户列表失败:', e)
   }
 })
 
+// 登录入口类型：业务用户 / 租户管理员 / 系统管理员
 type PortalType = 'business' | 'tenant_admin' | 'system_admin'
 
+// 三种入口的展示配置（图标、标题、描述、主题色）
 const portals = computed(() => [
   { key: 'business' as PortalType, icon: DashboardOutlined, title: t('login.portal.business'), desc: t('login.portal.businessDesc'), color: '#4f46e5' },
   { key: 'tenant_admin' as PortalType, icon: SettingOutlined, title: t('login.portal.tenantAdmin'), desc: t('login.portal.tenantAdminDesc'), color: '#f59e0b' },
   { key: 'system_admin' as PortalType, icon: ControlOutlined, title: t('login.portal.systemAdmin'), desc: t('login.portal.systemAdminDesc'), color: '#ef4444' },
 ])
 
+// 当前选中的登录入口
 const activePortal = ref<PortalType>('business')
+// 登录表单数据
 const form = ref<{ username: string; password: string; tenant_id: string | undefined }>({ username: '', password: '', tenant_id: undefined })
+// 登录请求加载状态
 const loading = ref(false)
+// 记住我选项（前端状态，暂未持久化）
 const rememberMe = ref(false)
+// 当前激活入口的完整配置
 const currentPortal = computed(() => portals.value.find(p => p.key === activePortal.value)!)
 
+// 提交登录表单
 const handleLogin = async () => {
   if (!form.value.username || !form.value.password) {
     message.warning(t('login.emptyWarning'))
@@ -281,7 +292,7 @@ const handleLogin = async () => {
   overflow: hidden; box-shadow: 0 25px 60px rgba(0,0,0,0.4);
 }
 
-/*左品牌*/
+/* 左侧品牌展示区域 */
 .login-branding {
   width: 360px; flex-shrink: 0;
   background: linear-gradient(135deg, rgba(79,70,229,0.9), rgba(124,58,237,0.9));
@@ -306,7 +317,7 @@ const handleLogin = async () => {
 .login-feature-item { display: flex; align-items: center; gap: 12px; color: rgba(255,255,255,0.9); font-size: 14px; }
 .login-feature-dot { width: 8px; height: 8px; border-radius: 50%; background: #22d3ee; flex-shrink: 0; }
 
-/*正确的形式*/
+/* 右侧登录表单区域 */
 .login-form-wrapper {
   flex: 1; background: var(--color-bg-card);
   padding: 36px 40px; display: flex; flex-direction: column;
@@ -317,7 +328,7 @@ const handleLogin = async () => {
 .login-form-header h2 { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0 0 6px; }
 .login-form-header p { font-size: 14px; color: var(--color-text-tertiary); margin: 0; }
 
-/*===== 传送丸选择器 =====*/
+/* ===== 入口选择器（药丸式标签页） ===== */
 .portal-selector {
   display: flex; gap: 8px; margin-bottom: 8px;
   overflow-x: auto; scrollbar-width: none;
@@ -364,7 +375,7 @@ const handleLogin = async () => {
   color: var(--pill-color);
 }
 
-/*活动描述行*/
+/* 当前选中入口的描述行 */
 .portal-active-desc {
   display: flex; align-items: center; gap: 6px;
   font-size: 12px; color: var(--color-text-tertiary);
@@ -376,7 +387,7 @@ const handleLogin = async () => {
   transition: background 0.25s ease;
 }
 
-/*形式*/
+/* 表单输入样式 */
 .login-form :deep(.ant-form-item) { margin-bottom: 16px; }
 .login-input {
   height: 46px !important; border-radius: var(--radius-lg) !important;
@@ -387,7 +398,7 @@ const handleLogin = async () => {
 }
 .login-input :deep(input) {
   height: 100% !important;
-  line-height: normal !important; /*允许弹性容器居中*/
+  line-height: normal !important; /* 允许弹性容器垂直居中 */
 }
 
 .login-input:hover { border-color: var(--color-text-tertiary) !important; }
@@ -446,19 +457,19 @@ const handleLogin = async () => {
   .login-container {
     min-height: auto;
     border-radius: 20px;
-    height: auto; /*允许内容决定高度*/
-    margin: 20px 0; /*添加边距以防止粘在边缘上*/
+    height: auto; /* 由内容撑开高度 */
+    margin: 20px 0; /* 防止贴边 */
   }
   .login-form-wrapper { padding: 32px 24px; border-radius: 20px; }
   .login-mobile-brand { display: flex; }
 }
 
 @media (max-width: 480px) {
-  .login-page { align-items: flex-start; overflow-y: auto; } /*允许在小屏幕上滚动*/
+  .login-page { align-items: flex-start; overflow-y: auto; } /* 小屏幕允许滚动 */
   .login-container {
     max-width: calc(100vw - 24px);
-    margin: 60px auto 20px; /*移动品牌利润率最高*/
-    box-shadow: 0 10px 30px rgba(0,0,0,0.15); /*阴影更柔和*/
+    margin: 60px auto 20px; /* 为顶部移动端品牌留出空间 */
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15); /* 阴影更柔和 */
   }
   .login-form-wrapper { padding: 24px 20px; }
   .portal-pill-title { font-size: 12px; }

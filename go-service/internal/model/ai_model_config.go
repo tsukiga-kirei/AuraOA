@@ -7,7 +7,7 @@ import (
 	"gorm.io/datatypes"
 )
 
-// AIModelConfig 代表系统级 AI 模型配置。
+// AIModelConfig 系统级 AI 模型配置。
 type AIModelConfig struct {
 	ID               uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	Provider         string         `gorm:"size:100;not null" json:"provider"`

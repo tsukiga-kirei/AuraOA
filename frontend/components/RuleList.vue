@@ -13,12 +13,15 @@ interface RuleResult {
   content?: string
 }
 
+// props：规则审核结果列表
 defineProps<{
   rules: RuleResult[]
 }>()
 
+// 已展开详情的规则 id 集合
 const expandedKeys = ref<string[]>([])
 
+// 切换规则详情展开/收起状态
 const toggle = (ruleId: string) => {
   const idx = expandedKeys.value.indexOf(ruleId)
   if (idx >= 0) {

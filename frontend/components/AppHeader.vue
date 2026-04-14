@@ -10,11 +10,13 @@ import { message } from 'ant-design-vue'
 import type { RoleInfo } from '~/types/auth'
 import type { UserNotificationItem } from '~/types/user-notifications'
 
+// props：侧边栏折叠状态 / 是否移动端布局
 defineProps<{
   collapsed: boolean
   isMobile: boolean
 }>()
 
+// emit：切换侧边栏折叠 / 切换移动端菜单
 const emit = defineEmits<{
   (e: 'toggleSidebar'): void
   (e: 'toggleMobileMenu'): void
@@ -34,16 +36,19 @@ const {
   formatRelative,
 } = useNotifications()
 
+// 通知下拉面板开关，打开时自动刷新列表
 const notifOpen = ref(false)
 watch(notifOpen, open => {
   if (open) refreshList()
 })
 
+// 将通知分类 key 转换为本地化标签，找不到时回退原始值
 function categoryLabel(cat: string) {
   const key = `notifications.category.${cat}`
   return te(key) ? t(key) : cat
 }
 
+// 点击通知条目：标记已读并跳转关联页面
 async function onNotifItemClick(it: UserNotificationItem) {
   if (!it.read) await markOneRead(it.id)
   if (it.link_path) {
@@ -56,23 +61,26 @@ async function handleMarkAllNotificationsRead() {
   await markAllRead()
 }
 
-//=====角色切换=====
+// 按角色类型分组，用于下拉菜单分区展示
 const systemRoles = computed(() => allRoles.value.filter(r => r.role === 'system_admin'))
 const tenantAdminRoles = computed(() => allRoles.value.filter(r => r.role === 'tenant_admin'))
 const businessRoles = computed(() => allRoles.value.filter(r => r.role === 'business'))
 
+// 仅当用户拥有多个角色时才显示切换器
 const showRoleSwitcher = computed(() => allRoles.value.length > 1)
 
+// 当前激活角色的 id、显示名称、角色类型
 const activeRoleId = computed(() => activeRole.value?.id || '')
 const activeRoleLabel = computed(() => activeRole.value?.label || '')
 const activeRoleType = computed(() => activeRole.value?.role || 'business')
 
-//跟踪下拉可见性
+// 下拉面板可见状态
 const dropdownOpen = ref(false)
 
-//图标动画键 - 在每个开关上递增以触发转换
+// 图标动画触发键，每次切换角色时递增以重新触发过渡动画
 const iconKey = ref(0)
 
+// 切换角色：相同角色不重复请求，切换成功后刷新菜单并跳转首页
 const handleSwitchRole = async (role: RoleInfo) => {
   if (role.id === activeRoleId.value) return
   dropdownOpen.value = false
@@ -119,7 +127,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
         </button>
       </a-tooltip>
 
-      <!--角色切换器下拉菜单-->
+      <!--角色切换下拉菜单-->
       <a-dropdown
         v-if="showRoleSwitcher"
         v-model:open="dropdownOpen"
@@ -135,11 +143,11 @@ const handleSwitchRole = async (role: RoleInfo) => {
           :title="t('header.switchRole')"
         >
           <transition name="role-icon" mode="out-in">
-            <!--业务图标：条形图-->
+            <!--业务角色图标：条形图-->
             <svg v-if="activeRoleType === 'business'" :key="'biz-' + iconKey" class="role-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-            <!--租户管理图标：设置/滑块-->
+            <!--租户管理员图标：滑块-->
             <svg v-else-if="activeRoleType === 'tenant_admin'" :key="'ta-' + iconKey" class="role-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-            <!--系统管理图标：盾牌-->
+            <!--系统管理员图标：盾牌-->
             <svg v-else :key="'sa-' + iconKey" class="role-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </transition>
           <span class="role-switch-label">{{ activeRoleLabel }}</span>
@@ -308,7 +316,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
   box-shadow: 0 0 0 2px var(--color-primary-bg), 0 0 0 4px rgba(79, 70, 229, 0.25);
 }
 
-/*=====角色切换按钮=====*/
+/*===== 角色切换按钮 =====*/
 .role-switch-btn {
   width: auto !important;
   padding: 0 8px !important;
@@ -326,7 +334,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
               background 0.2s ease !important;
 }
 
-/*按钮的角色特定强调色*/
+/*各角色类型对应的强调色*/
 .role-switch-btn--business { color: #10b981; }
 .role-switch-btn--tenant_admin { color: #f59e0b; }
 .role-switch-btn--system_admin { color: #6366f1; }
@@ -365,7 +373,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
               transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/*角色图标切换动画*/
+/*角色图标切换过渡动画*/
 .role-icon-enter-active,
 .role-icon-leave-active {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -398,7 +406,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
   color: var(--color-text-tertiary);
 }
 
-/*组标题*/
+/*分组标题*/
 .role-dropdown-group {
   display: flex;
   align-items: center;
@@ -415,7 +423,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
   margin-top: 0;
 }
 
-/*使用特定于角色的颜色对图标进行分组*/
+/*分组图标按角色类型着色*/
 .role-dropdown-group-icon {
   display: flex;
   align-items: center;
@@ -438,7 +446,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
   background: rgba(99, 102, 241, 0.1);
 }
 
-/*个人角色项目*/
+/*单个角色条目*/
 .role-dropdown-item {
   display: flex;
   align-items: center;
@@ -485,7 +493,7 @@ const handleSwitchRole = async (role: RoleInfo) => {
   flex-shrink: 0;
 }
 
-/*=====主题切换药丸开关=====*/
+/*===== 主题切换药丸开关 =====*/
 .theme-toggle-btn {
   width: auto !important;
   padding: 0 !important;

@@ -1,3 +1,4 @@
+// 定时任务实例处理器，负责任务实例的增删改查、触发执行及日志管理。
 package handler
 
 import (
@@ -21,12 +22,14 @@ type CronTaskHandler struct {
 	svc *service.CronTaskService
 }
 
-// NewCronTaskHandler 创建一个新的 CronTaskHandler 实例。
+// NewCronTaskHandler 创建定时任务实例处理器实例。
 func NewCronTaskHandler(svc *service.CronTaskService) *CronTaskHandler {
 	return &CronTaskHandler{svc: svc}
 }
 
-// ListTasks  GET /api/tenant/cron/tasks
+// ListTasks 获取当前用户在当前租户下的所有定时任务实例列表。
+// GET /api/tenant/cron/tasks
+// 返回：任务实例数组，包含 cron 表达式、启用状态、最近执行时间等。
 func (h *CronTaskHandler) ListTasks(c *gin.Context) {
 	tasks, err := h.svc.ListTasks(c)
 	if err != nil {
@@ -36,7 +39,10 @@ func (h *CronTaskHandler) ListTasks(c *gin.Context) {
 	response.Success(c, tasks)
 }
 
-// CreateTask  POST /api/tenant/cron/tasks
+// CreateTask 创建新的定时任务实例。
+// POST /api/tenant/cron/tasks
+// 请求体：CreateCronTaskRequest（任务类型、cron 表达式、流程范围等）
+// 返回：新建的任务实例对象。
 func (h *CronTaskHandler) CreateTask(c *gin.Context) {
 	var req dto.CreateCronTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -51,7 +57,11 @@ func (h *CronTaskHandler) CreateTask(c *gin.Context) {
 	response.Success(c, task)
 }
 
-// UpdateTask  PUT /api/tenant/cron/tasks/:id
+// UpdateTask 更新指定定时任务实例的配置。
+// PUT /api/tenant/cron/tasks/:id
+// 路径参数：id（任务 UUID）
+// 请求体：UpdateCronTaskRequest
+// 返回：更新后的任务实例对象。
 func (h *CronTaskHandler) UpdateTask(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -71,7 +81,10 @@ func (h *CronTaskHandler) UpdateTask(c *gin.Context) {
 	response.Success(c, task)
 }
 
-// DeleteTask  DELETE /api/tenant/cron/tasks/:id
+// DeleteTask 删除指定定时任务实例。
+// DELETE /api/tenant/cron/tasks/:id
+// 路径参数：id（任务 UUID）
+// 返回：null（成功时）。
 func (h *CronTaskHandler) DeleteTask(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -85,7 +98,10 @@ func (h *CronTaskHandler) DeleteTask(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// ToggleTask  POST /api/tenant/cron/tasks/:id/toggle
+// ToggleTask 切换指定定时任务的启用/禁用状态。
+// POST /api/tenant/cron/tasks/:id/toggle
+// 路径参数：id（任务 UUID）
+// 返回：更新后的任务实例对象（含最新 is_active 状态）。
 func (h *CronTaskHandler) ToggleTask(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -100,7 +116,10 @@ func (h *CronTaskHandler) ToggleTask(c *gin.Context) {
 	response.Success(c, task)
 }
 
-// ExecuteNow  POST /api/tenant/cron/tasks/:id/execute
+// ExecuteNow 立即触发指定定时任务执行一次（手动触发）。
+// POST /api/tenant/cron/tasks/:id/execute
+// 路径参数：id（任务 UUID）
+// 返回：{"status": "triggered"}。
 func (h *CronTaskHandler) ExecuteNow(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -114,7 +133,10 @@ func (h *CronTaskHandler) ExecuteNow(c *gin.Context) {
 	response.Success(c, gin.H{"status": "triggered"})
 }
 
-// ListLogs  GET /api/tenant/cron/tasks/:id/logs
+// ListLogs 获取指定定时任务的执行日志列表。
+// GET /api/tenant/cron/tasks/:id/logs
+// 路径参数：id（任务 UUID）
+// 返回：该任务的执行日志数组，按时间倒序排列。
 func (h *CronTaskHandler) ListLogs(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -129,7 +151,10 @@ func (h *CronTaskHandler) ListLogs(c *gin.Context) {
 	response.Success(c, logs)
 }
 
-// ListAllLogs GET /api/tenant/cron/logs (tenant_admin 数据管理页)
+// ListAllLogs 分页查询当前租户所有定时任务的执行日志（租户管理员数据管理页）。
+// GET /api/tenant/cron/logs
+// 查询参数：keyword、status、task_type、trigger_type、created_by、department、start_date、end_date、page、page_size
+// 返回：分页日志列表（items + total + page + page_size）。
 func (h *CronTaskHandler) ListAllLogs(c *gin.Context) {
 	filter, page, pageSize := parseCronLogQuery(c)
 	items, total, err := h.svc.ListAllLogs(c, filter, page, pageSize)
@@ -145,7 +170,9 @@ func (h *CronTaskHandler) ListAllLogs(c *gin.Context) {
 	})
 }
 
-// GetAllLogsStats GET /api/tenant/cron/logs/stats (tenant_admin)
+// GetAllLogsStats 获取当前租户定时任务执行日志的统计汇总（租户管理员数据管理页）。
+// GET /api/tenant/cron/logs/stats
+// 返回：按状态分类的执行次数统计。
 func (h *CronTaskHandler) GetAllLogsStats(c *gin.Context) {
 	stats, err := h.svc.GetCronLogStats(c)
 	if err != nil {
@@ -155,7 +182,10 @@ func (h *CronTaskHandler) GetAllLogsStats(c *gin.Context) {
 	response.Success(c, stats)
 }
 
-// ExportAllLogs GET /api/tenant/cron/logs/export (tenant_admin) — CSV 下载
+// ExportAllLogs 导出定时任务执行日志为 CSV 文件（最多 5000 条）。
+// GET /api/tenant/cron/logs/export
+// 查询参数：同 ListAllLogs（不分页）
+// 返回：text/csv 格式文件下载，含 UTF-8 BOM 以兼容 Excel。
 func (h *CronTaskHandler) ExportAllLogs(c *gin.Context) {
 	filter, _, _ := parseCronLogQuery(c)
 	items, _, err := h.svc.ListAllLogs(c, filter, 1, 5000)
@@ -167,6 +197,7 @@ func (h *CronTaskHandler) ExportAllLogs(c *gin.Context) {
 	filename := fmt.Sprintf("cron_logs_%s.csv", time.Now().Format("20060102150405"))
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", "attachment; filename="+filename)
+	// 写入 UTF-8 BOM，确保 Excel 正确识别中文
 	c.Writer.Write([]byte("\xef\xbb\xbf"))
 
 	w := csv.NewWriter(c.Writer)
@@ -196,6 +227,7 @@ func (h *CronTaskHandler) ExportAllLogs(c *gin.Context) {
 	w.Flush()
 }
 
+// parseCronLogQuery 解析定时任务日志列表的过滤参数及分页参数。
 func parseCronLogQuery(c *gin.Context) (repository.CronLogFilter, int, int) {
 	filter := repository.CronLogFilter{
 		Keyword:     c.Query("keyword"),
@@ -212,6 +244,7 @@ func parseCronLogQuery(c *gin.Context) (repository.CronLogFilter, int, int) {
 	}
 	if s := c.Query("end_date"); s != "" {
 		if t, err := time.Parse("2006-01-02", s); err == nil {
+			// 结束日期扩展到当天末尾（23:59:59）
 			end := t.Add(24*time.Hour - time.Second)
 			filter.EndDate = &end
 		}

@@ -88,6 +88,7 @@ type ArchiveReviewService struct {
 	cancelMap           sync.Map
 }
 
+// NewArchiveReviewService 创建 ArchiveReviewService，注入所有依赖仓储和服务。
 func NewArchiveReviewService(
 	archiveLogRepo *repository.ArchiveLogRepo,
 	archiveSnapshotRepo *repository.ArchiveProcessSnapshotRepo,
@@ -439,8 +440,7 @@ func (s *ArchiveReviewService) listArchiveBySnapshotPaged(
 	}, nil
 }
 
-// listArchiveUnauditedPaged 从 OA 真分页查询未审核的已归档流程。
-// listArchiveUnauditedPaged 查询未审核的已归档流程。
+// listArchiveUnauditedPaged 查询未审核的已归档流程（OA 真分页）。
 // 先从 OA 获取全量 processID，排除已有 snapshot 的，再对剩余 ID 做分页，
 // 最后只拉取当前页对应的 OA 流程详情。
 func (s *ArchiveReviewService) listArchiveUnauditedPaged(

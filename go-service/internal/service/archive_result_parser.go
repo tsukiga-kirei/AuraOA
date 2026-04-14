@@ -8,6 +8,9 @@ import (
 	"oa-smart-audit/go-service/internal/model"
 )
 
+// archiveExtractionPayload 归档复盘提取阶段的宽松解析结构。
+// 分数字段使用 float64 避免模型输出 85.0 时整型反序列化失败。
+// 同时兼容 rule_audit（标准格式）和 rule_results（dashboard 风格）两种规则结果格式。
 type archiveExtractionPayload struct {
 	Recommendation    string                     `json:"recommendation"`
 	OverallCompliance string                     `json:"overall_compliance"`
@@ -51,14 +54,17 @@ type archiveRuleAuditPayload struct {
 	Reasoning string `json:"reasoning"`
 }
 
-// archiveRuleResultPayload 兼容 dashboard 风格的 rule_results 格式
+// archiveRuleResultPayload 兼容 dashboard 风格的 rule_results 格式，
+// 当模型未输出标准 rule_audit 时作为回退解析目标。
 type archiveRuleResultPayload struct {
 	RuleContent string `json:"rule_content"`
 	Passed      bool   `json:"passed"`
 	Reason      string `json:"reason"`
 }
 
-// ParseArchiveReviewResult 解析归档复盘提取结果。
+// ParseArchiveReviewResult 解析归档复盘提取阶段的 AI 输出，转换为结构化结果对象。
+// 先清理原始文本（去除 markdown 包裹、省略号等），再反序列化并校验必填字段。
+// overall_compliance 缺失或无法归一化时返回错误，要求模型重新输出。
 func ParseArchiveReviewResult(raw string) (*model.ArchiveResultJSON, error) {
 	cleaned := cleanJSONResponse(raw)
 	var payload archiveExtractionPayload
@@ -126,7 +132,9 @@ func ParseArchiveReviewResult(raw string) (*model.ArchiveResultJSON, error) {
 	return result, nil
 }
 
-// normalizeArchiveCompliance 将 compliance 别名归一化为 compliant/non_compliant/partially_compliant。
+// normalizeArchiveCompliance 将模型输出的合规结论别名统一归一化为三种标准值：
+// compliant（合规）、non_compliant（不合规）、partially_compliant（部分合规）。
+// 无法识别的值返回空字符串，由调用方决定是否报错。
 func normalizeArchiveCompliance(compliance string) string {
 	if compliance == "" {
 		return ""

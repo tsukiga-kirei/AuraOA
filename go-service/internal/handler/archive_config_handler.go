@@ -1,3 +1,4 @@
+// 归档复盘配置处理器，负责归档流程数据源配置的增删改查及连接测试。
 package handler
 
 import (
@@ -17,12 +18,14 @@ type ArchiveConfigHandler struct {
 	archiveService *service.ProcessArchiveConfigService
 }
 
-// NewArchiveConfigHandler 创建一个新的 ArchiveConfigHandler 实例。
+// NewArchiveConfigHandler 创建归档复盘配置处理器实例。
 func NewArchiveConfigHandler(archiveService *service.ProcessArchiveConfigService) *ArchiveConfigHandler {
 	return &ArchiveConfigHandler{archiveService: archiveService}
 }
 
-// List 处理 GET /api/tenant/archive/configs
+// List 获取当前租户的所有归档复盘配置列表。
+// GET /api/tenant/archive/configs
+// 返回：配置列表数组，包含数据源连接信息和流程类型。
 func (h *ArchiveConfigHandler) List(c *gin.Context) {
 	cfgs, err := h.archiveService.List(c)
 	if err != nil {
@@ -32,7 +35,10 @@ func (h *ArchiveConfigHandler) List(c *gin.Context) {
 	response.Success(c, cfgs)
 }
 
-// Create 处理 POST /api/tenant/archive/configs
+// Create 创建新的归档复盘配置。
+// POST /api/tenant/archive/configs
+// 请求体：CreateProcessArchiveConfigRequest（流程类型、数据源连接参数等）
+// 返回：新建的配置对象。
 func (h *ArchiveConfigHandler) Create(c *gin.Context) {
 	var req dto.CreateProcessArchiveConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -47,7 +53,10 @@ func (h *ArchiveConfigHandler) Create(c *gin.Context) {
 	response.Success(c, cfg)
 }
 
-// GetByID 处理 GET /api/tenant/archive/configs/:id
+// GetByID 根据 ID 获取单条归档复盘配置详情。
+// GET /api/tenant/archive/configs/:id
+// 路径参数：id（UUID 格式）
+// 返回：配置详情对象。
 func (h *ArchiveConfigHandler) GetByID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -62,7 +71,11 @@ func (h *ArchiveConfigHandler) GetByID(c *gin.Context) {
 	response.Success(c, cfg)
 }
 
-// Update 处理 PUT /api/tenant/archive/configs/:id
+// Update 更新指定归档复盘配置。
+// PUT /api/tenant/archive/configs/:id
+// 路径参数：id（UUID 格式）
+// 请求体：UpdateProcessArchiveConfigRequest
+// 返回：更新后的配置对象。
 func (h *ArchiveConfigHandler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -82,7 +95,10 @@ func (h *ArchiveConfigHandler) Update(c *gin.Context) {
 	response.Success(c, cfg)
 }
 
-// Delete 处理 DELETE /api/tenant/archive/configs/:id
+// Delete 删除指定归档复盘配置。
+// DELETE /api/tenant/archive/configs/:id
+// 路径参数：id（UUID 格式）
+// 返回：null（成功时）。
 func (h *ArchiveConfigHandler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -96,7 +112,10 @@ func (h *ArchiveConfigHandler) Delete(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// TestConnection 处理 POST /api/tenant/archive/configs/test-connection
+// TestConnection 测试归档数据源连接是否可用（不保存配置）。
+// POST /api/tenant/archive/configs/test-connection
+// 请求体：TestConnectionRequest（数据库连接参数）
+// 返回：连接测试结果信息。
 func (h *ArchiveConfigHandler) TestConnection(c *gin.Context) {
 	var req dto.TestConnectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -111,7 +130,10 @@ func (h *ArchiveConfigHandler) TestConnection(c *gin.Context) {
 	response.Success(c, info)
 }
 
-// FetchFields 处理 POST /api/tenant/archive/configs/:id/fetch-fields
+// FetchFields 从已保存的归档配置对应的数据源中拉取可用字段列表。
+// POST /api/tenant/archive/configs/:id/fetch-fields
+// 路径参数：id（UUID 格式）
+// 返回：字段列表（主表字段 + 明细表字段）。
 func (h *ArchiveConfigHandler) FetchFields(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -126,8 +148,9 @@ func (h *ArchiveConfigHandler) FetchFields(c *gin.Context) {
 	response.Success(c, fields)
 }
 
-// ListPromptTemplates 处理 GET /api/tenant/archive/prompt-templates
-// 返回归档复盘专用系统提示词模板（archive_ 前缀）
+// ListPromptTemplates 获取归档复盘专用的系统提示词模板列表（archive_ 前缀）。
+// GET /api/tenant/archive/prompt-templates
+// 返回：提示词模板数组。
 func (h *ArchiveConfigHandler) ListPromptTemplates(c *gin.Context) {
 	templates, err := h.archiveService.ListArchivePromptTemplates()
 	if err != nil {
@@ -136,5 +159,3 @@ func (h *ArchiveConfigHandler) ListPromptTemplates(c *gin.Context) {
 	}
 	response.Success(c, templates)
 }
-
-

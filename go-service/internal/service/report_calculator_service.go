@@ -10,24 +10,25 @@ import (
 
 // ReportCalculatorService 提供日报、周报所需的数据计算公共方法。
 type ReportCalculatorService struct {
-	auditLogRepo    *repository.AuditLogRepo
-	archiveLogRepo  *repository.ArchiveLogRepo
-	tenantRepo      *repository.TenantRepo
+	auditLogRepo   *repository.AuditLogRepo
+	archiveLogRepo *repository.ArchiveLogRepo
+	tenantRepo     *repository.TenantRepo
 }
 
+// NewReportCalculatorService 创建 ReportCalculatorService，注入审核、归档日志仓储和租户仓储。
 func NewReportCalculatorService(
 	auditLogRepo *repository.AuditLogRepo,
 	archiveLogRepo *repository.ArchiveLogRepo,
 	tenantRepo *repository.TenantRepo,
 ) *ReportCalculatorService {
 	return &ReportCalculatorService{
-		auditLogRepo:    auditLogRepo,
-		archiveLogRepo:  archiveLogRepo,
-		tenantRepo:      tenantRepo,
+		auditLogRepo:   auditLogRepo,
+		archiveLogRepo: archiveLogRepo,
+		tenantRepo:     tenantRepo,
 	}
 }
 
-// Stats 包含报告所需的基础变量
+// ReportStats 报告所需的基础统计数据，包含审核统计、归档统计、时间范围和租户名称。
 type ReportStats struct {
 	AuditStats   *repository.AuditLogStats
 	ArchiveStats *repository.ArchiveLogStats
@@ -35,17 +36,17 @@ type ReportStats struct {
 	TenantName   string
 }
 
-// CalculateAuditStats 计算指定时间段内的审核统计
+// CalculateAuditStats 计算指定时间段内的审核统计数据。
 func (s *ReportCalculatorService) CalculateAuditStats(c *gin.Context, start, end time.Time) (*repository.AuditLogStats, error) {
 	return s.auditLogRepo.CountStatsByTimeRange(c, start, end)
 }
 
-// CalculateArchiveStats 计算指定时间段内的归档统计
+// CalculateArchiveStats 计算指定时间段内的归档统计数据。
 func (s *ReportCalculatorService) CalculateArchiveStats(c *gin.Context, start, end time.Time) (*repository.ArchiveLogStats, error) {
 	return s.archiveLogRepo.CountStatsByTimeRange(c, start, end)
 }
 
-// GetSummaryVariables 获取汇总后的文字变量（供邮件模板使用）
+// GetSummaryVariables 将统计数据转换为邮件模板变量映射，供模板渲染使用。
 func (s *ReportCalculatorService) GetSummaryVariables(stats *ReportStats) map[string]interface{} {
 	vars := make(map[string]interface{})
 	vars["tenant_name"] = stats.TenantName

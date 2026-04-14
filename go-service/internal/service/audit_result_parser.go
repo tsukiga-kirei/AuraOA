@@ -8,8 +8,8 @@ import (
 	"oa-smart-audit/go-service/internal/model"
 )
 
-// extractionPayload 提取阶段宽松解析：主字段为 recommendation。
-// 分数类字段用 float64，避免部分模型输出 85.0 导致整型反序列化失败。
+// extractionPayload 审核提取阶段的宽松解析结构，核心字段为 recommendation（审核结论）。
+// 分数字段使用 float64，避免模型输出 85.0 时整型反序列化失败。
 type extractionPayload struct {
 	Recommendation string                 `json:"recommendation"`
 	OverallScore   float64                `json:"overall_score"`
@@ -20,7 +20,8 @@ type extractionPayload struct {
 	Confidence     float64                `json:"confidence"`
 }
 
-// ParseAuditResult 解析 AI 提取阶段返回的 JSON 为结构化结果。
+// ParseAuditResult 解析 AI 提取阶段返回的 JSON，转换为结构化审核结论。
+// recommendation 字段缺失或无法归一化为 approve/return/review 时返回错误。
 func ParseAuditResult(raw string) (*model.AuditResultJSON, error) {
 	cleaned := cleanJSONResponse(raw)
 	var p extractionPayload
@@ -48,6 +49,7 @@ func ParseAuditResult(raw string) (*model.AuditResultJSON, error) {
 	return out, nil
 }
 
+// coalesceRuleResults 将 nil 规则结果切片转为空切片，确保 JSON 序列化输出 [] 而非 null。
 func coalesceRuleResults(r []model.RuleResultJSON) []model.RuleResultJSON {
 	if r == nil {
 		return []model.RuleResultJSON{}
@@ -55,7 +57,9 @@ func coalesceRuleResults(r []model.RuleResultJSON) []model.RuleResultJSON {
 	return r
 }
 
-// normalizeAuditRecommendation 将常见别名转为 approve/return/review。
+// normalizeAuditRecommendation 将模型输出的审核结论别名统一归一化为三种标准值：
+// approve（通过）、return（退回）、review（人工复核）。
+// 无法识别的值原样返回小写，由调用方决定是否报错。
 func normalizeAuditRecommendation(s string) string {
 	if s == "" {
 		return ""

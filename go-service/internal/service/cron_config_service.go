@@ -55,16 +55,16 @@ func (s *CronConfigService) ListConfigs(c *gin.Context) ([]dto.CronTaskTypeConfi
 	result := make([]dto.CronTaskTypeConfigResponse, 0, len(presets))
 	for _, preset := range presets {
 		resp := dto.CronTaskTypeConfigResponse{
-			TaskType:             preset.TaskType,
-			Module:               preset.Module,
-			LabelZh:              preset.LabelZh,
-			LabelEn:              preset.LabelEn,
-			DescriptionZh:        preset.DescriptionZh,
-			DescriptionEn:        preset.DescriptionEn,
-			DefaultCron:          preset.DefaultCron,
-			PresetPushFormat:     preset.PushFormat,
+			TaskType:              preset.TaskType,
+			Module:                preset.Module,
+			LabelZh:               preset.LabelZh,
+			LabelEn:               preset.LabelEn,
+			DescriptionZh:         preset.DescriptionZh,
+			DescriptionEn:         preset.DescriptionEn,
+			DefaultCron:           preset.DefaultCron,
+			PresetPushFormat:      preset.PushFormat,
 			PresetContentTemplate: datatypes.JSON(preset.ContentTemplate),
-			SortOrder:            preset.SortOrder,
+			SortOrder:             preset.SortOrder,
 			// 默认：未启用
 			IsEnabled:       false,
 			PushFormat:      preset.PushFormat,
@@ -175,10 +175,6 @@ func (s *CronConfigService) ResetConfig(c *gin.Context, taskType string) (*dto.C
 
 	return resp, nil
 }
-
-// newServiceError 构造服务层错误（使用 errcode 包）。
-// Note: newServiceError is already defined in process_audit_config_service.go
-// We reference it from there via the same package.
 
 // marshalJSON 将任意对象序列化为 datatypes.JSON（工具函数）。
 func marshalJSON(v interface{}) datatypes.JSON {

@@ -26,6 +26,7 @@ type UserPersonalConfigService struct {
 	orgRepo           *repository.OrgRepo
 }
 
+// NewUserPersonalConfigService 创建 UserPersonalConfigService，注入所有依赖仓储。
 func NewUserPersonalConfigService(
 	userConfigRepo *repository.UserPersonalConfigRepo,
 	configRepo *repository.ProcessAuditConfigRepo,

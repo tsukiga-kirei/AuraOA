@@ -1,3 +1,4 @@
+// 组织架构处理器，负责部门、角色和成员的增删改查。
 package handler
 
 import (
@@ -13,17 +14,17 @@ import (
 	"oa-smart-audit/go-service/internal/service"
 )
 
-//OrgHandler 处理部门、角色和成员 CRUD HTTP 请求。
+// OrgHandler 处理部门、角色和成员相关的 HTTP 请求。
 type OrgHandler struct {
 	orgService *service.OrgService
 }
 
-//NewOrgHandler 创建一个新的 OrgHandler 实例。
+// NewOrgHandler 创建组织架构处理器实例。
 func NewOrgHandler(orgService *service.OrgService) *OrgHandler {
 	return &OrgHandler{orgService: orgService}
 }
 
-//getTenantID 从 gin.Context（由 TenantMiddleware 设置）中提取并解析tenant_id。
+// getTenantID 从 gin.Context（由租户中间件注入）中提取并解析 tenant_id。
 func getTenantID(c *gin.Context) (uuid.UUID, error) {
 	tidVal, exists := c.Get("tenant_id")
 	if !exists {
@@ -36,13 +37,14 @@ func getTenantID(c *gin.Context) (uuid.UUID, error) {
 	return uuid.Parse(tidStr)
 }
 
+// errTenantIDMissing 表示请求上下文中缺少租户 ID 的错误。
 var errTenantIDMissing = &service.ServiceError{Code: errcode.ErrParamValidation, Message: "租户ID缺失"}
 
-// ---------------------------------------------------------------------------
-//部门经理
-// ---------------------------------------------------------------------------
+// ── 部门管理 ──────────────────────────────────────────────────────────────
 
-//ListDepartments 处理 GET /api/tenant/org/departments
+// ListDepartments 获取当前租户的所有部门列表。
+// GET /api/tenant/org/departments
+// 返回：部门列表数组（含层级结构）。
 func (h *OrgHandler) ListDepartments(c *gin.Context) {
 	departments, err := h.orgService.ListDepartments(c)
 	if err != nil {
@@ -52,7 +54,10 @@ func (h *OrgHandler) ListDepartments(c *gin.Context) {
 	response.Success(c, departments)
 }
 
-//CreateDepartment 处理 POST /api/tenant/org/departments
+// CreateDepartment 创建新部门。
+// POST /api/tenant/org/departments
+// 请求体：CreateDepartmentRequest（部门名称、上级部门 ID 等）
+// 返回：新建的部门对象。
 func (h *OrgHandler) CreateDepartment(c *gin.Context) {
 	var req dto.CreateDepartmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -72,7 +77,11 @@ func (h *OrgHandler) CreateDepartment(c *gin.Context) {
 	response.Success(c, dept)
 }
 
-//UpdateDepartment 处理 PUT /api/tenant/org/departments/:id
+// UpdateDepartment 更新指定部门信息。
+// PUT /api/tenant/org/departments/:id
+// 路径参数：id（UUID 格式）
+// 请求体：UpdateDepartmentRequest
+// 返回：更新后的部门对象。
 func (h *OrgHandler) UpdateDepartment(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -92,7 +101,10 @@ func (h *OrgHandler) UpdateDepartment(c *gin.Context) {
 	response.Success(c, dept)
 }
 
-//DeleteDepartment 处理 DELETE /api/tenant/org/departments/:id
+// DeleteDepartment 删除指定部门。
+// DELETE /api/tenant/org/departments/:id
+// 路径参数：id（UUID 格式）
+// 返回：null（成功时）。
 func (h *OrgHandler) DeleteDepartment(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -106,11 +118,11 @@ func (h *OrgHandler) DeleteDepartment(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// ---------------------------------------------------------------------------
-//角色处理程序
-// ---------------------------------------------------------------------------
+// ── 角色管理 ──────────────────────────────────────────────────────────────
 
-//ListRoles 处理 GET /api/tenant/org/roles
+// ListRoles 获取当前租户的所有角色列表。
+// GET /api/tenant/org/roles
+// 返回：角色列表数组。
 func (h *OrgHandler) ListRoles(c *gin.Context) {
 	roles, err := h.orgService.ListRoles(c)
 	if err != nil {
@@ -120,7 +132,10 @@ func (h *OrgHandler) ListRoles(c *gin.Context) {
 	response.Success(c, roles)
 }
 
-//CreateRole 处理 POST /api/tenant/org/roles
+// CreateRole 创建新角色。
+// POST /api/tenant/org/roles
+// 请求体：CreateRoleRequest（角色名称、描述等）
+// 返回：新建的角色对象。
 func (h *OrgHandler) CreateRole(c *gin.Context) {
 	var req dto.CreateRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -140,7 +155,11 @@ func (h *OrgHandler) CreateRole(c *gin.Context) {
 	response.Success(c, role)
 }
 
-//UpdateRole 处理 PUT /api/tenant/org/roles/:id
+// UpdateRole 更新指定角色信息。
+// PUT /api/tenant/org/roles/:id
+// 路径参数：id（UUID 格式）
+// 请求体：UpdateRoleRequest
+// 返回：更新后的角色对象。
 func (h *OrgHandler) UpdateRole(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -160,7 +179,10 @@ func (h *OrgHandler) UpdateRole(c *gin.Context) {
 	response.Success(c, role)
 }
 
-//DeleteRole 处理 DELETE /api/tenant/org/roles/:id
+// DeleteRole 删除指定角色。
+// DELETE /api/tenant/org/roles/:id
+// 路径参数：id（UUID 格式）
+// 返回：null（成功时）。
 func (h *OrgHandler) DeleteRole(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -174,11 +196,11 @@ func (h *OrgHandler) DeleteRole(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// ---------------------------------------------------------------------------
-//会员管理员
-// ---------------------------------------------------------------------------
+// ── 成员管理 ──────────────────────────────────────────────────────────────
 
-//ListMembers 处理 GET /api/tenant/org/members
+// ListMembers 获取当前租户的所有成员列表。
+// GET /api/tenant/org/members
+// 返回：成员列表数组（含部门和角色信息）。
 func (h *OrgHandler) ListMembers(c *gin.Context) {
 	members, err := h.orgService.ListMembers(c)
 	if err != nil {
@@ -188,7 +210,10 @@ func (h *OrgHandler) ListMembers(c *gin.Context) {
 	response.Success(c, members)
 }
 
-//CreateMember 处理 POST /api/tenant/org/members
+// CreateMember 创建新成员（将用户加入当前租户）。
+// POST /api/tenant/org/members
+// 请求体：CreateMemberRequest（用户名、部门 ID、角色 ID 等）
+// 返回：新建的成员对象。
 func (h *OrgHandler) CreateMember(c *gin.Context) {
 	var req dto.CreateMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -208,7 +233,11 @@ func (h *OrgHandler) CreateMember(c *gin.Context) {
 	response.Success(c, member)
 }
 
-//UpdateMember 处理 PUT /api/tenant/org/members/:id
+// UpdateMember 更新指定成员信息。
+// PUT /api/tenant/org/members/:id
+// 路径参数：id（UUID 格式）
+// 请求体：UpdateMemberRequest
+// 返回：更新后的成员对象。
 func (h *OrgHandler) UpdateMember(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -228,7 +257,10 @@ func (h *OrgHandler) UpdateMember(c *gin.Context) {
 	response.Success(c, member)
 }
 
-//DeleteMember 处理 DELETE /api/tenant/org/members/:id
+// DeleteMember 从当前租户中移除指定成员。
+// DELETE /api/tenant/org/members/:id
+// 路径参数：id（UUID 格式）
+// 返回：null（成功时）。
 func (h *OrgHandler) DeleteMember(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -242,10 +274,9 @@ func (h *OrgHandler) DeleteMember(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// ---------------------------------------------------------------------------
-//Helper：将 ServiceError 映射到 HTTP 响应
-// ---------------------------------------------------------------------------
+// ── 公共辅助函数 ──────────────────────────────────────────────────────────
 
+// handleServiceError 将业务层错误映射为对应的 HTTP 响应。
 func handleServiceError(c *gin.Context, err error) {
 	httpStatus := mapServiceErrorToHTTP(err)
 	if svcErr, ok := err.(*service.ServiceError); ok {
@@ -255,7 +286,7 @@ func handleServiceError(c *gin.Context, err error) {
 	response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "服务器内部错误")
 }
 
-// parseIntQuery 从查询参数中解析整数，fallback 到 defaultVal。
+// parseIntQuery 从查询参数中解析整数，解析失败时返回 defaultVal。
 func parseIntQuery(c *gin.Context, key string, defaultVal int) int {
 	s := c.Query(key)
 	if s == "" {

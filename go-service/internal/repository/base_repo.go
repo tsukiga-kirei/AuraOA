@@ -5,19 +5,20 @@ import (
 	"gorm.io/gorm"
 )
 
-//BaseRepo 提供常见的数据库操作和租户隔离支持。
+// BaseRepo 封装公共数据库操作，提供租户隔离支持。
+// 所有业务 Repo 均嵌入此结构体以复用 DB 实例和租户过滤逻辑。
 type BaseRepo struct {
 	DB *gorm.DB
 }
 
-//NewBaseRepo 创建一个新的 BaseRepo 实例。
+// NewBaseRepo 创建 BaseRepo 实例，注入 gorm.DB 连接。
 func NewBaseRepo(db *gorm.DB) *BaseRepo {
 	return &BaseRepo{DB: db}
 }
 
-//WithTenant 返回一个范围为当前租户的 *gorm.DB。
-//如果上下文中存在tenant_id，则会添加WHEREtenant_id = ?。
-//如果tenant_id为空（例如没有特定租户的system_admin），则返回未过滤的数据库。
+// WithTenant 返回已附加当前租户过滤条件的 *gorm.DB。
+// 若 gin.Context 中存在 tenant_id，则自动追加 WHERE tenant_id = ? 条件；
+// 若 tenant_id 为空（如 system_admin 跨租户操作），则返回不带过滤的原始 DB。
 func (r *BaseRepo) WithTenant(c *gin.Context) *gorm.DB {
 	tenantID, exists := c.Get("tenant_id")
 	if exists && tenantID != "" {

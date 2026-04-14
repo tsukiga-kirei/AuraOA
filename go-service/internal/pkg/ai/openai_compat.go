@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-
 	"oa-smart-audit/go-service/internal/model"
 )
 
@@ -62,11 +61,11 @@ func (c *OpenAICompatCaller) TestConnection(ctx context.Context) error {
 
 // openAIRequest OpenAI 兼容 API 请求体
 type openAIRequest struct {
-	Model       string          `json:"model"`
-	Messages    []openAIMessage `json:"messages"`
-	Temperature float64         `json:"temperature"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Stream      bool            `json:"stream,omitempty"`
+	Model              string                 `json:"model"`
+	Messages           []openAIMessage        `json:"messages"`
+	Temperature        float64                `json:"temperature"`
+	MaxTokens          int                    `json:"max_tokens,omitempty"`
+	Stream             bool                   `json:"stream,omitempty"`
 	ChatTemplateKwargs map[string]interface{} `json:"chat_template_kwargs,omitempty"`
 }
 
@@ -172,7 +171,7 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 				}
 			}
 		}
-		// Estimates roughly token usage since SSE often omits usage block.
+		// SSE 流式响应通常不返回 usage 字段，按字符数粗略估算 token 消耗
 		outContent := fullContent.String()
 		return &ChatResponse{
 			Content: outContent,

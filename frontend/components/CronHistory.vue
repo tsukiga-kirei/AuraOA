@@ -4,6 +4,7 @@ import { useI18n } from '~/composables/useI18n'
 
 const { t } = useI18n()
 
+// props：定时任务执行历史记录列表
 defineProps<{
   history: Array<{
     task_id: string

@@ -94,8 +94,8 @@ func (s *TenantService) getSystemConfigInt(key string, defaultVal int) int {
 	return defaultVal
 }
 
-// CreateTenant 在检查代码唯一性后创建一个新租户。
-// 它使用事务创建租户、默认角色、默认部门和租户管理员账号；如果任何步骤失败，则整个操作将回滚。
+// CreateTenant 创建新租户，在事务中完成：校验参数 → 创建租户 → 创建默认角色 → 创建默认部门 → 创建管理员账号。
+// 任意步骤失败时整个事务回滚。
 func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantResponse, error) {
 	// 0. 管理员参数校验
 	usernameRegex := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
@@ -356,8 +356,8 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 	return &resp, nil
 }
 
-// UpdateTenant 更新现有租户的字段。
-// 使用 map 构建更新字段，避免零值覆盖已有数据。
+// UpdateTenant 更新现有租户字段，使用 map 构建更新字段以避免零值覆盖已有数据。
+// 同步更新关联管理员用户的联系人信息。
 func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest) (*dto.TenantResponse, error) {
 	tenant, err := s.tenantRepo.FindByID(id)
 	if err != nil {
@@ -500,9 +500,8 @@ func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest)
 	return &resp, nil
 }
 
-// DeleteTenant 彻底删除租户及其所有关联数据。
+// DeleteTenant 彻底删除租户及其所有关联数据，需要操作者密码确认。
 // 在事务中按依赖顺序清理：org_member_roles → org_members → org_roles → departments → user_role_assignments → 租户专属用户 → tenant。
-// 需要当前操作管理员的密码确认。
 func (s *TenantService) DeleteTenant(id uuid.UUID, operatorUserID uuid.UUID, adminPassword string) error {
 	// 1. 验证操作者密码
 	operator, err := s.userRepo.FindByID(operatorUserID)

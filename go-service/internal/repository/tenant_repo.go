@@ -7,18 +7,18 @@ import (
 	"oa-smart-audit/go-service/internal/model"
 )
 
-//TenantRepo 提供用于租户管理（system_admin 范围）的数据访问方法。
-//与 OrgRepo 不同，TenantRepo 不使用 WithTenant，因为它自己管理租户。
+// TenantRepo 提供租户管理的数据访问方法，供 system_admin 使用。
+// 与 OrgRepo 不同，TenantRepo 不使用 WithTenant，因为它本身就是管理租户的入口。
 type TenantRepo struct {
 	*BaseRepo
 }
 
-//NewTenantRepo 创建一个新的 TenantRepo 实例。
+// NewTenantRepo 创建 TenantRepo 实例。
 func NewTenantRepo(db *gorm.DB) *TenantRepo {
 	return &TenantRepo{BaseRepo: NewBaseRepo(db)}
 }
 
-//列表返回按创建时间排序的所有租户。
+// List 查询所有租户，按创建时间升序排列。
 func (r *TenantRepo) List() ([]model.Tenant, error) {
 	var tenants []model.Tenant
 	if err := r.DB.Order("created_at ASC").Find(&tenants).Error; err != nil {
@@ -27,27 +27,27 @@ func (r *TenantRepo) List() ([]model.Tenant, error) {
 	return tenants, nil
 }
 
-//创建创建新的租户记录。
+// Create 创建新的租户记录。
 func (r *TenantRepo) Create(tenant *model.Tenant) error {
 	return r.DB.Create(tenant).Error
 }
 
-//Update 更新现有租户记录。使用 Model+Select 模式避免零值覆盖。
+// Update 更新租户记录，使用 Model+Updates 模式避免零值字段被覆盖。
 func (r *TenantRepo) Update(tenant *model.Tenant) error {
 	return r.DB.Model(tenant).Where("id = ?", tenant.ID).Updates(tenant).Error
 }
 
-//UpdateFields 通过 map 更新指定字段，支持零值更新。
+// UpdateFields 通过字段 map 更新租户指定字段，支持零值更新。
 func (r *TenantRepo) UpdateFields(id uuid.UUID, fields map[string]interface{}) error {
 	return r.DB.Model(&model.Tenant{}).Where("id = ?", id).Updates(fields).Error
 }
 
-//删除通过 ID 删除租户。
+// Delete 按 ID 删除租户记录。
 func (r *TenantRepo) Delete(id uuid.UUID) error {
 	return r.DB.Where("id = ?", id).Delete(&model.Tenant{}).Error
 }
 
-//FindByID 通过 UUID 查找租户。
+// FindByID 按 UUID 查询单个租户，不存在时返回 gorm.ErrRecordNotFound。
 func (r *TenantRepo) FindByID(id uuid.UUID) (*model.Tenant, error) {
 	var tenant model.Tenant
 	if err := r.DB.Where("id = ?", id).First(&tenant).Error; err != nil {
@@ -56,7 +56,7 @@ func (r *TenantRepo) FindByID(id uuid.UUID) (*model.Tenant, error) {
 	return &tenant, nil
 }
 
-//FindByCode 通过其唯一代码查找租户。
+// FindByCode 按租户唯一标识码查询租户。
 func (r *TenantRepo) FindByCode(code string) (*model.Tenant, error) {
 	var tenant model.Tenant
 	if err := r.DB.Where("code = ?", code).First(&tenant).Error; err != nil {
@@ -65,7 +65,7 @@ func (r *TenantRepo) FindByCode(code string) (*model.Tenant, error) {
 	return &tenant, nil
 }
 
-//ListActive 返回仅活跃状态的租户（用于公共登录页面）。
+// ListActive 查询所有状态为 active 的租户，用于登录页面展示可选租户列表。
 func (r *TenantRepo) ListActive() ([]model.Tenant, error) {
 	var tenants []model.Tenant
 	if err := r.DB.Where("status = ?", "active").Order("created_at ASC").Find(&tenants).Error; err != nil {
@@ -74,7 +74,7 @@ func (r *TenantRepo) ListActive() ([]model.Tenant, error) {
 	return tenants, nil
 }
 
-// DashboardPlatformTenantCounts 全平台租户总数与活跃租户数。
+// DashboardPlatformTenantCounts 统计全平台租户总数与活跃租户数，用于系统管理员仪表盘。
 func (r *TenantRepo) DashboardPlatformTenantCounts() (total, active int64, err error) {
 	if err = r.DB.Model(&model.Tenant{}).Count(&total).Error; err != nil {
 		return 0, 0, err
@@ -85,7 +85,7 @@ func (r *TenantRepo) DashboardPlatformTenantCounts() (total, active int64, err e
 	return total, active, nil
 }
 
-// DashboardPlatformTokenSum 全平台各租户 token_used / token_quota 求和。
+// DashboardPlatformTokenSum 汇总全平台所有租户的 token_used 和 token_quota，用于平台 Token 用量概览。
 func (r *TenantRepo) DashboardPlatformTokenSum() (used, quota int64, err error) {
 	type sumRow struct {
 		SUsed  int64 `gorm:"column:s_used"`
@@ -98,7 +98,7 @@ func (r *TenantRepo) DashboardPlatformTokenSum() (used, quota int64, err error) 
 	return row.SUsed, row.SQuota, err
 }
 
-//GetStats 返回给定租户的成员计数、部门计数和角色计数。
+// GetStats 查询指定租户的成员数、部门数和角色数，用于租户详情页统计展示。
 func (r *TenantRepo) GetStats(tenantID uuid.UUID) (memberCount, deptCount, roleCount int64, err error) {
 	if err = r.DB.Model(&model.OrgMember{}).Where("tenant_id = ?", tenantID).Count(&memberCount).Error; err != nil {
 		return
@@ -112,7 +112,7 @@ func (r *TenantRepo) GetStats(tenantID uuid.UUID) (memberCount, deptCount, roleC
 	return
 }
 
-// TenantWithUserCount 租户列表行（含注册人员数量）。
+// TenantWithUserCount 租户列表行，含活跃成员数量。
 type TenantWithUserCount struct {
 	TenantID   uuid.UUID `gorm:"column:tenant_id"`
 	TenantName string    `gorm:"column:tenant_name"`
@@ -120,7 +120,7 @@ type TenantWithUserCount struct {
 	UserCount  int64     `gorm:"column:user_count"`
 }
 
-// DashboardTenantListWithUserCount 所有租户列表（含注册人员数量）。
+// DashboardTenantListWithUserCount 查询所有租户及其活跃成员数量，用于系统管理员仪表盘租户列表。
 func (r *TenantRepo) DashboardTenantListWithUserCount() ([]TenantWithUserCount, error) {
 	sql := `
 SELECT t.id AS tenant_id,
@@ -141,7 +141,7 @@ ORDER BY t.created_at ASC`
 	return rows, err
 }
 
-// DashboardActiveTenantIDs 近 30 天有快照记录的租户 ID 集合。
+// DashboardActiveTenantIDs 查询近 30 天内有审核或归档快照记录的租户 ID 集合，用于判断活跃租户。
 func (r *TenantRepo) DashboardActiveTenantIDs() (map[string]bool, error) {
 	sql := `
 SELECT DISTINCT tenant_id::text AS tid FROM (
@@ -166,7 +166,7 @@ SELECT DISTINCT tenant_id::text AS tid FROM (
 	return out, nil
 }
 
-// TenantTokenRow 按租户分列的 Token 用量。
+// TenantTokenRow 按租户分列的 Token 用量行。
 type TenantTokenRow struct {
 	TenantID   uuid.UUID `gorm:"column:tenant_id"`
 	TenantName string    `gorm:"column:tenant_name"`
@@ -175,7 +175,7 @@ type TenantTokenRow struct {
 	TokenQuota int64     `gorm:"column:token_quota"`
 }
 
-// DashboardTenantTokenList 按租户分列返回 token_used / token_quota。
+// DashboardTenantTokenList 查询各租户的 token_used 和 token_quota，按用量降序排列，用于 Token 消耗排行。
 func (r *TenantRepo) DashboardTenantTokenList() ([]TenantTokenRow, error) {
 	sql := `
 SELECT id AS tenant_id,

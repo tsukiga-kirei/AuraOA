@@ -14,11 +14,12 @@ import (
 	"oa-smart-audit/go-service/internal/model"
 )
 
-// AuditProcessSnapshotRepo 审核有效结论快照。
+// AuditProcessSnapshotRepo 审核有效结论快照数据访问层，按租户隔离。
 type AuditProcessSnapshotRepo struct {
 	*BaseRepo
 }
 
+// NewAuditProcessSnapshotRepo 创建 AuditProcessSnapshotRepo 实例。
 func NewAuditProcessSnapshotRepo(db *gorm.DB) *AuditProcessSnapshotRepo {
 	return &AuditProcessSnapshotRepo{BaseRepo: NewBaseRepo(db)}
 }
@@ -84,7 +85,7 @@ func (r *AuditProcessSnapshotRepo) GetByProcessID(c *gin.Context, processID stri
 	return &row, err
 }
 
-// GetMapByProcessIDs 批量查询。
+// GetMapByProcessIDs 批量查询多个流程的审核快照，返回 processID → AuditProcessSnapshot 映射。
 func (r *AuditProcessSnapshotRepo) GetMapByProcessIDs(c *gin.Context, processIDs []string) (map[string]*model.AuditProcessSnapshot, error) {
 	if len(processIDs) == 0 {
 		return map[string]*model.AuditProcessSnapshot{}, nil
@@ -104,11 +105,11 @@ func (r *AuditProcessSnapshotRepo) GetMapByProcessIDs(c *gin.Context, processIDs
 
 // AuditSnapshotFilter 快照分页过滤条件。
 type AuditSnapshotFilter struct {
-	Recommendation string     // approve / return / review / "" = 全部
-	Keyword        string     // 标题/流程编号模糊
+	Recommendation string // approve / return / review / "" = 全部
+	Keyword        string // 标题/流程编号模糊
 	ProcessType    string
-	Operator       string     // 操作人模糊
-	Department     string     // 部门精确
+	Operator       string // 操作人模糊
+	Department     string // 部门精确
 	StartDate      *time.Time
 	EndDate        *time.Time
 }
@@ -142,13 +143,13 @@ func (r *AuditProcessSnapshotRepo) ListPagedWithUser(c *gin.Context, filter Audi
 	base := r.DB.
 		Where(t+".tenant_id = ?", tenantID).
 		Table(t).
-		Select(t+".*, "+
-			"COALESCE(u.display_name, u.username, '') AS operator, "+
+		Select(t + ".*, " +
+			"COALESCE(u.display_name, u.username, '') AS operator, " +
 			"COALESCE(d.name, '') AS department").
-		Joins("LEFT JOIN audit_logs al ON al.id = "+t+".latest_valid_log_id").
+		Joins("LEFT JOIN audit_logs al ON al.id = " + t + ".latest_valid_log_id").
 		Joins("LEFT JOIN users u ON u.id = al.user_id").
-		Joins("LEFT JOIN org_members om ON om.user_id = al.user_id AND om.tenant_id = "+t+".tenant_id AND om.status = 'active'").
-		Joins("LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = "+t+".tenant_id")
+		Joins("LEFT JOIN org_members om ON om.user_id = al.user_id AND om.tenant_id = " + t + ".tenant_id AND om.status = 'active'").
+		Joins("LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = " + t + ".tenant_id")
 
 	base = applyAuditSnapshotFilter(base, filter)
 

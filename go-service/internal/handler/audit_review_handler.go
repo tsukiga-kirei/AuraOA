@@ -1,3 +1,4 @@
+// 审核工作台处理器，负责审核任务执行、状态查询、日志管理及快照数据管理。
 package handler
 
 import (
@@ -19,18 +20,22 @@ import (
 	"oa-smart-audit/go-service/internal/service"
 )
 
-// AuditHandler 审核工作台相关 HTTP 请求处理。
+// AuditHandler 处理审核工作台相关的 HTTP 请求。
 type AuditHandler struct {
 	auditService *service.AuditExecuteService
 	snapshotRepo *repository.AuditProcessSnapshotRepo
 	auditLogRepo *repository.AuditLogRepo
 }
 
+// NewAuditHandler 创建审核工作台处理器实例。
 func NewAuditHandler(auditService *service.AuditExecuteService, snapshotRepo *repository.AuditProcessSnapshotRepo, auditLogRepo *repository.AuditLogRepo) *AuditHandler {
 	return &AuditHandler{auditService: auditService, snapshotRepo: snapshotRepo, auditLogRepo: auditLogRepo}
 }
 
-// ListProcesses GET /api/audit/processes?tab=pending_ai&page=1&page_size=20&start_date=&end_date=
+// ListProcesses 分页查询审核工作台流程列表，支持多维度过滤。
+// GET /api/audit/processes
+// 查询参数：tab（pending_ai/等）、keyword、applicant、process_type、department、audit_status、start_date、end_date、page、page_size
+// 返回：分页结果（items + total）。
 func (h *AuditHandler) ListProcesses(c *gin.Context) {
 	if getUsername(c) == "" {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "用户信息缺失")
@@ -46,7 +51,10 @@ func (h *AuditHandler) ListProcesses(c *gin.Context) {
 	response.Success(c, resp)
 }
 
-// GetStats GET /api/audit/stats（与列表共用 start_date / end_date 时统计口径一致）
+// GetStats 获取审核工作台统计数据，与列表共用相同过滤条件。
+// GET /api/audit/stats
+// 查询参数：同 ListProcesses
+// 返回：各状态计数统计对象。
 func (h *AuditHandler) GetStats(c *gin.Context) {
 	if getUsername(c) == "" {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "用户信息缺失")
@@ -60,7 +68,10 @@ func (h *AuditHandler) GetStats(c *gin.Context) {
 	response.Success(c, stats)
 }
 
-// Execute POST /api/audit/execute
+// Execute 对单条流程发起 AI 审核任务。
+// POST /api/audit/execute
+// 请求体：AuditExecuteRequest（流程 ID、配置参数等）
+// 返回：任务结果；若为异步任务则返回 202 Accepted + 任务状态。
 func (h *AuditHandler) Execute(c *gin.Context) {
 	var req service.AuditExecuteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -73,6 +84,7 @@ func (h *AuditHandler) Execute(c *gin.Context) {
 		handleServiceError(c, err)
 		return
 	}
+	// 异步任务返回 202，前端轮询状态
 	if result.Status == model.JobStatusPending {
 		c.JSON(http.StatusAccepted, response.Response{
 			Code:    0,
@@ -84,7 +96,10 @@ func (h *AuditHandler) Execute(c *gin.Context) {
 	response.Success(c, result)
 }
 
-// GetJobStatus GET /api/audit/jobs/:id
+// GetJobStatus 查询审核异步任务的当前状态。
+// GET /api/audit/jobs/:id
+// 路径参数：id（任务 UUID）
+// 返回：任务状态及结果数据。
 func (h *AuditHandler) GetJobStatus(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
@@ -100,7 +115,10 @@ func (h *AuditHandler) GetJobStatus(c *gin.Context) {
 	response.Success(c, data)
 }
 
-// CancelJob POST /api/audit/cancel/:id
+// CancelJob 取消指定审核异步任务。
+// POST /api/audit/cancel/:id
+// 路径参数：id（任务 UUID）
+// 返回：{"status": "cancelled"}。
 func (h *AuditHandler) CancelJob(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
@@ -115,7 +133,10 @@ func (h *AuditHandler) CancelJob(c *gin.Context) {
 	response.Success(c, gin.H{"status": "cancelled"})
 }
 
-// BatchExecute POST /api/audit/batch
+// BatchExecute 批量对多条流程发起 AI 审核任务。
+// POST /api/audit/batch
+// 请求体：{"items": [...AuditExecuteRequest]}
+// 返回：批量任务结果汇总。
 func (h *AuditHandler) BatchExecute(c *gin.Context) {
 	var req struct {
 		Items []service.AuditExecuteRequest `json:"items" binding:"required"`
@@ -133,7 +154,10 @@ func (h *AuditHandler) BatchExecute(c *gin.Context) {
 	response.Success(c, result)
 }
 
-// GetJobStream GET /api/audit/stream/:id
+// GetJobStream 以 SSE 方式推送审核任务的实时流式输出。
+// GET /api/audit/stream/:id
+// 路径参数：id（任务 UUID）
+// 返回：text/event-stream 格式的流式消息。
 func (h *AuditHandler) GetJobStream(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
@@ -168,7 +192,10 @@ func (h *AuditHandler) GetJobStream(c *gin.Context) {
 	}
 }
 
-// GetAuditChain GET /api/audit/chain/:processId
+// GetAuditChain 获取指定流程的完整审核链（所有历史审核记录）。
+// GET /api/audit/chain/:processId
+// 路径参数：processId（OA 流程编号）
+// 返回：审核链记录数组，按时间排序。
 func (h *AuditHandler) GetAuditChain(c *gin.Context) {
 	processID := c.Param("processId")
 	if processID == "" {
@@ -184,7 +211,10 @@ func (h *AuditHandler) GetAuditChain(c *gin.Context) {
 	response.Success(c, chain)
 }
 
-// ListLogs GET /api/audit/logs (tenant_admin)
+// ListLogs 分页查询审核日志（租户管理员数据管理页）。
+// GET /api/audit/logs
+// 查询参数：status_group、keyword、process_type、recommendation、start_date、end_date、page、page_size
+// 返回：分页日志列表（items + total + page + page_size）。
 func (h *AuditHandler) ListLogs(c *gin.Context) {
 	filter, page, pageSize := parseAuditLogQuery(c)
 	items, total, err := h.auditService.ListAuditLogs(c, filter, page, pageSize)
@@ -200,7 +230,9 @@ func (h *AuditHandler) ListLogs(c *gin.Context) {
 	})
 }
 
-// GetLogStats GET /api/audit/logs/stats (tenant_admin)
+// GetLogStats 获取审核日志的统计汇总（租户管理员数据管理页）。
+// GET /api/audit/logs/stats
+// 返回：按审核建议分类的统计数据。
 func (h *AuditHandler) GetLogStats(c *gin.Context) {
 	stats, err := h.auditService.GetAuditLogStats(c)
 	if err != nil {
@@ -210,7 +242,10 @@ func (h *AuditHandler) GetLogStats(c *gin.Context) {
 	response.Success(c, stats)
 }
 
-// ExportLogs GET /api/audit/logs/export (tenant_admin) — CSV 下载
+// ExportLogs 导出审核日志为 CSV 文件（最多 5000 条）。
+// GET /api/audit/logs/export
+// 查询参数：同 ListLogs（不分页）
+// 返回：text/csv 格式文件下载，含 UTF-8 BOM 以兼容 Excel。
 func (h *AuditHandler) ExportLogs(c *gin.Context) {
 	filter, _, _ := parseAuditLogQuery(c)
 	// 导出不分页，最多 5000 条
@@ -223,7 +258,7 @@ func (h *AuditHandler) ExportLogs(c *gin.Context) {
 	filename := fmt.Sprintf("audit_logs_%s.csv", time.Now().Format("20060102150405"))
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", "attachment; filename="+filename)
-	c.Header("BOM", "\xef\xbb\xbf") // UTF-8 BOM for Excel
+	// 写入 UTF-8 BOM，确保 Excel 正确识别中文
 	c.Writer.Write([]byte("\xef\xbb\xbf"))
 
 	w := csv.NewWriter(c.Writer)
@@ -246,7 +281,10 @@ func (h *AuditHandler) ExportLogs(c *gin.Context) {
 
 // ── 快照数据管理页端点 ──────────────────────────────────────────────────────
 
-// ListSnapshots GET /api/audit/snapshots
+// ListSnapshots 分页查询审核流程快照列表（租户管理员数据管理页）。
+// GET /api/audit/snapshots
+// 查询参数：recommendation、keyword、process_type、operator、department、start_date、end_date、page、page_size
+// 返回：分页快照列表，时间字段附带格式化字符串。
 func (h *AuditHandler) ListSnapshots(c *gin.Context) {
 	filter, page, pageSize := parseAuditSnapshotQuery(c)
 	items, total, err := h.snapshotRepo.ListPagedWithUser(c, filter, page, pageSize)
@@ -254,7 +292,7 @@ func (h *AuditHandler) ListSnapshots(c *gin.Context) {
 		handleServiceError(c, err)
 		return
 	}
-	// 格式化时间
+	// 附加格式化时间字段，方便前端直接展示
 	type itemDTO struct {
 		repository.AuditSnapshotListRow
 		UpdatedAtFmt string `json:"updated_at_fmt"`
@@ -276,7 +314,9 @@ func (h *AuditHandler) ListSnapshots(c *gin.Context) {
 	})
 }
 
-// GetSnapshotStats GET /api/audit/snapshots/stats
+// GetSnapshotStats 获取审核快照按审核建议分类的统计数据。
+// GET /api/audit/snapshots/stats
+// 返回：各审核建议状态的快照数量统计。
 func (h *AuditHandler) GetSnapshotStats(c *gin.Context) {
 	stats, err := h.snapshotRepo.CountStatsByRecommendation(c)
 	if err != nil {
@@ -286,7 +326,10 @@ func (h *AuditHandler) GetSnapshotStats(c *gin.Context) {
 	response.Success(c, stats)
 }
 
-// GetSnapshotChain GET /api/audit/snapshots/:processId/chain — 审核链详情
+// GetSnapshotChain 获取指定流程的审核链详情（所有有效审核记录按时间排序）。
+// GET /api/audit/snapshots/:processId/chain
+// 路径参数：processId（OA 流程编号）
+// 返回：{"chain": [...]} 审核链记录数组。
 func (h *AuditHandler) GetSnapshotChain(c *gin.Context) {
 	processID := c.Param("processId")
 	if processID == "" {
@@ -302,6 +345,7 @@ func (h *AuditHandler) GetSnapshotChain(c *gin.Context) {
 		response.Success(c, gin.H{"chain": []interface{}{}})
 		return
 	}
+	// 解析快照中存储的有效审核记录 ID 列表
 	var idStrs []string
 	_ = json.Unmarshal(snapshot.ValidLogIDs, &idStrs)
 	ids := make([]uuid.UUID, 0, len(idStrs))
@@ -318,6 +362,7 @@ func (h *AuditHandler) GetSnapshotChain(c *gin.Context) {
 	response.Success(c, gin.H{"chain": chain})
 }
 
+// parseAuditSnapshotQuery 解析审核快照列表的过滤参数及分页参数。
 func parseAuditSnapshotQuery(c *gin.Context) (repository.AuditSnapshotFilter, int, int) {
 	filter := repository.AuditSnapshotFilter{
 		Recommendation: c.Query("recommendation"),
@@ -342,6 +387,7 @@ func parseAuditSnapshotQuery(c *gin.Context) (repository.AuditSnapshotFilter, in
 	return filter, page, pageSize
 }
 
+// parseAuditLogQuery 解析审核日志列表的过滤参数及分页参数。
 func parseAuditLogQuery(c *gin.Context) (repository.AuditLogFilter, int, int) {
 	filter := repository.AuditLogFilter{
 		StatusGroup:    c.Query("status_group"),
@@ -365,7 +411,8 @@ func parseAuditLogQuery(c *gin.Context) (repository.AuditLogFilter, int, int) {
 	return filter, page, pageSize
 }
 
-// parseAuditListParams 解析审核工作台列表与统计的 query（含 OA 提交时间 start_date、end_date）。
+// parseAuditListParams 解析审核工作台列表与统计的公共查询参数。
+// start_date、end_date 格式为 YYYY-MM-DD，按 OA 提交时间过滤。
 func parseAuditListParams(c *gin.Context) dto.AuditListParams {
 	p := dto.AuditListParams{
 		Tab:         c.DefaultQuery("tab", "pending_ai"),
@@ -384,6 +431,7 @@ func parseAuditListParams(c *gin.Context) dto.AuditListParams {
 	}
 	if s := c.Query("end_date"); s != "" {
 		if t, err := time.ParseInLocation("2006-01-02", s, time.Local); err == nil {
+			// 结束日期取次日零点（不含），实现闭区间查询
 			excl := t.AddDate(0, 0, 1)
 			p.SubmitDateEndExclusive = &excl
 		}
@@ -391,6 +439,8 @@ func parseAuditListParams(c *gin.Context) dto.AuditListParams {
 	return p
 }
 
+// getUsername 从 gin.Context 的 JWT claims 中提取用户名。
+// 若 claims 不存在或类型断言失败则返回空字符串。
 func getUsername(c *gin.Context) string {
 	claimsVal, exists := c.Get("jwt_claims")
 	if !exists {

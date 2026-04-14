@@ -1,23 +1,23 @@
 package dto
 
 // ============================================================
-// 选项 DTO
+// 通用选项 DTO
 // ============================================================
 
-// OptionItem 是通用选项响应。
+// OptionItem 通用键值选项响应。
 type OptionItem struct {
 	Code  string `json:"code"`
 	Label string `json:"label"`
 }
 
-// DBDriverOptionItem 是数据库驱动选项响应，包含默认端口。
+// DBDriverOptionItem 数据库驱动选项响应，含默认端口。
 type DBDriverOptionItem struct {
 	Code        string `json:"code"`
 	Label       string `json:"label"`
 	DefaultPort int    `json:"default_port"`
 }
 
-// AIProviderOptionItem 是 AI 服务商选项响应，包含部署类型。
+// AIProviderOptionItem AI 服务商选项响应，含部署类型。
 type AIProviderOptionItem struct {
 	Code       string `json:"code"`
 	Label      string `json:"label"`
@@ -28,7 +28,7 @@ type AIProviderOptionItem struct {
 // OA 数据库连接 DTO
 // ============================================================
 
-// CreateOAConnectionRequest 是 POST /api/admin/system/oa-connections 的请求体。
+// CreateOAConnectionRequest 创建 OA 数据库连接请求（POST /api/admin/system/oa-connections）。
 type CreateOAConnectionRequest struct {
 	Name              string `json:"name" binding:"required"`
 	OAType            string `json:"oa_type" binding:"required"`
@@ -47,7 +47,7 @@ type CreateOAConnectionRequest struct {
 	Description       string `json:"description"`
 }
 
-// UpdateOAConnectionRequest 是 PUT /api/admin/system/oa-connections/:id 的请求体。
+// UpdateOAConnectionRequest 更新 OA 数据库连接请求（PUT /api/admin/system/oa-connections/:id）。
 type UpdateOAConnectionRequest struct {
 	Name              string `json:"name"`
 	OAType            string `json:"oa_type"`
@@ -66,7 +66,7 @@ type UpdateOAConnectionRequest struct {
 	Description       string `json:"description"`
 }
 
-// OAConnectionResponse 是 OA 连接的响应体。
+// OAConnectionResponse OA 数据库连接详情响应。
 type OAConnectionResponse struct {
 	ID                string `json:"id"`
 	Name              string `json:"name"`
@@ -92,7 +92,7 @@ type OAConnectionResponse struct {
 // AI 模型配置 DTO
 // ============================================================
 
-// CreateAIModelRequest 是 POST /api/admin/system/ai-models 的请求体。
+// CreateAIModelRequest 创建 AI 模型配置请求（POST /api/admin/system/ai-models）。
 type CreateAIModelRequest struct {
 	Provider        string   `json:"provider" binding:"required"`
 	ProviderLabel   string   `json:"provider_label"`
@@ -109,7 +109,7 @@ type CreateAIModelRequest struct {
 	Capabilities    []string `json:"capabilities"`
 }
 
-// UpdateAIModelRequest 是 PUT /api/admin/system/ai-models/:id 的请求体。
+// UpdateAIModelRequest 更新 AI 模型配置请求（PUT /api/admin/system/ai-models/:id）。
 type UpdateAIModelRequest struct {
 	Provider        string   `json:"provider"`
 	ProviderLabel   string   `json:"provider_label"`
@@ -127,7 +127,7 @@ type UpdateAIModelRequest struct {
 	Capabilities    []string `json:"capabilities"`
 }
 
-// AIModelResponse 是 AI 模型的响应体。
+// AIModelResponse AI 模型配置详情响应。
 type AIModelResponse struct {
 	ID               string   `json:"id"`
 	Provider         string   `json:"provider"`

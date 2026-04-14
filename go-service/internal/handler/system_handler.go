@@ -1,3 +1,4 @@
+// 系统设置处理器，负责 OA 连接、AI 模型、选项数据及系统配置的管理。
 package handler
 
 import (
@@ -12,7 +13,7 @@ import (
 	"oa-smart-audit/go-service/internal/service"
 )
 
-// SystemHandler 处理系统设置相关的 HTTP 请求（OA连接、AI模型、选项数据、系统配置）。
+// SystemHandler 处理系统设置相关的 HTTP 请求（OA 连接、AI 模型、选项数据、系统配置）。
 type SystemHandler struct {
 	optionService       *service.OptionService
 	oaConnectionService *service.OAConnectionService
@@ -20,7 +21,7 @@ type SystemHandler struct {
 	systemConfigService *service.SystemConfigService
 }
 
-// NewSystemHandler 创建一个新的 SystemHandler 实例。
+// NewSystemHandler 创建系统设置处理器实例。
 func NewSystemHandler(
 	optionService *service.OptionService,
 	oaConnectionService *service.OAConnectionService,
@@ -35,11 +36,11 @@ func NewSystemHandler(
 	}
 }
 
-// ============================================================
-// 选项数据接口
-// ============================================================
+// ── 选项数据接口 ──────────────────────────────────────────────────────────
 
-// ListOATypes handles GET /api/admin/system/options/oa-types
+// ListOATypes 获取所有 OA 系统类型选项。
+// GET /api/admin/system/options/oa-types
+// 返回：OA 类型选项数组（value + label）。
 func (h *SystemHandler) ListOATypes(c *gin.Context) {
 	items, err := h.optionService.ListOATypes()
 	if err != nil {
@@ -49,7 +50,9 @@ func (h *SystemHandler) ListOATypes(c *gin.Context) {
 	response.Success(c, items)
 }
 
-// ListDBDrivers handles GET /api/admin/system/options/db-drivers
+// ListDBDrivers 获取所有数据库驱动类型选项。
+// GET /api/admin/system/options/db-drivers
+// 返回：数据库驱动选项数组（value + label）。
 func (h *SystemHandler) ListDBDrivers(c *gin.Context) {
 	items, err := h.optionService.ListDBDrivers()
 	if err != nil {
@@ -59,7 +62,9 @@ func (h *SystemHandler) ListDBDrivers(c *gin.Context) {
 	response.Success(c, items)
 }
 
-// ListAIDeployTypes handles GET /api/admin/system/options/ai-deploy-types
+// ListAIDeployTypes 获取所有 AI 部署类型选项。
+// GET /api/admin/system/options/ai-deploy-types
+// 返回：AI 部署类型选项数组（value + label）。
 func (h *SystemHandler) ListAIDeployTypes(c *gin.Context) {
 	items, err := h.optionService.ListAIDeployTypes()
 	if err != nil {
@@ -69,7 +74,9 @@ func (h *SystemHandler) ListAIDeployTypes(c *gin.Context) {
 	response.Success(c, items)
 }
 
-// ListAIProviders handles GET /api/admin/system/options/ai-providers
+// ListAIProviders 获取所有 AI 服务商选项。
+// GET /api/admin/system/options/ai-providers
+// 返回：AI 服务商选项数组（value + label）。
 func (h *SystemHandler) ListAIProviders(c *gin.Context) {
 	items, err := h.optionService.ListAIProviders()
 	if err != nil {
@@ -79,11 +86,11 @@ func (h *SystemHandler) ListAIProviders(c *gin.Context) {
 	response.Success(c, items)
 }
 
-// ============================================================
-// OA 数据库连接 CRUD
-// ============================================================
+// ── OA 数据库连接管理 ─────────────────────────────────────────────────────
 
-// ListOAConnections handles GET /api/admin/system/oa-connections
+// ListOAConnections 获取所有 OA 数据库连接配置列表。
+// GET /api/admin/system/oa-connections
+// 返回：OA 连接配置数组。
 func (h *SystemHandler) ListOAConnections(c *gin.Context) {
 	items, err := h.oaConnectionService.List()
 	if err != nil {
@@ -93,7 +100,10 @@ func (h *SystemHandler) ListOAConnections(c *gin.Context) {
 	response.Success(c, items)
 }
 
-// CreateOAConnection handles POST /api/admin/system/oa-connections
+// CreateOAConnection 创建新的 OA 数据库连接配置。
+// POST /api/admin/system/oa-connections
+// 请求体：CreateOAConnectionRequest（连接类型、主机、端口、数据库名等）
+// 返回：新建的连接配置对象。
 func (h *SystemHandler) CreateOAConnection(c *gin.Context) {
 	var req dto.CreateOAConnectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -108,7 +118,11 @@ func (h *SystemHandler) CreateOAConnection(c *gin.Context) {
 	response.Success(c, item)
 }
 
-// UpdateOAConnection handles PUT /api/admin/system/oa-connections/:id
+// UpdateOAConnection 更新指定 OA 数据库连接配置。
+// PUT /api/admin/system/oa-connections/:id
+// 路径参数：id（UUID 格式）
+// 请求体：UpdateOAConnectionRequest
+// 返回：更新后的连接配置对象。
 func (h *SystemHandler) UpdateOAConnection(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -128,7 +142,10 @@ func (h *SystemHandler) UpdateOAConnection(c *gin.Context) {
 	response.Success(c, item)
 }
 
-// DeleteOAConnection handles DELETE /api/admin/system/oa-connections/:id
+// DeleteOAConnection 删除指定 OA 数据库连接配置。
+// DELETE /api/admin/system/oa-connections/:id
+// 路径参数：id（UUID 格式）
+// 返回：null（成功时）。
 func (h *SystemHandler) DeleteOAConnection(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -142,7 +159,10 @@ func (h *SystemHandler) DeleteOAConnection(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// TestOAConnection handles POST /api/admin/system/oa-connections/:id/test
+// TestOAConnection 测试已保存的 OA 数据库连接是否可用。
+// POST /api/admin/system/oa-connections/:id/test
+// 路径参数：id（UUID 格式）
+// 返回：{"success": true, "message": "连接测试成功"}。
 func (h *SystemHandler) TestOAConnection(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -159,8 +179,10 @@ func (h *SystemHandler) TestOAConnection(c *gin.Context) {
 	})
 }
 
-// TestOAConnectionParams handles POST /api/admin/system/oa-connections/test
-// 接受连接参数直接测试（用于新建/编辑模态框中的测试按钮）。
+// TestOAConnectionParams 使用请求体中的连接参数直接测试连接（用于新建/编辑模态框中的测试按钮）。
+// POST /api/admin/system/oa-connections/test
+// 请求体：CreateOAConnectionRequest（连接参数）
+// 返回：{"success": true, "message": "连接测试成功"}。
 func (h *SystemHandler) TestOAConnectionParams(c *gin.Context) {
 	var req dto.CreateOAConnectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -177,11 +199,11 @@ func (h *SystemHandler) TestOAConnectionParams(c *gin.Context) {
 	})
 }
 
-// ============================================================
-// AI 模型配置 CRUD
-// ============================================================
+// ── AI 模型配置管理 ───────────────────────────────────────────────────────
 
-// ListAIModels handles GET /api/admin/system/ai-models
+// ListAIModels 获取所有 AI 模型配置列表。
+// GET /api/admin/system/ai-models
+// 返回：AI 模型配置数组。
 func (h *SystemHandler) ListAIModels(c *gin.Context) {
 	items, err := h.aiModelService.List()
 	if err != nil {
@@ -191,7 +213,10 @@ func (h *SystemHandler) ListAIModels(c *gin.Context) {
 	response.Success(c, items)
 }
 
-// CreateAIModel handles POST /api/admin/system/ai-models
+// CreateAIModel 创建新的 AI 模型配置。
+// POST /api/admin/system/ai-models
+// 请求体：CreateAIModelRequest（服务商、模型名称、API Key 等）
+// 返回：新建的模型配置对象。
 func (h *SystemHandler) CreateAIModel(c *gin.Context) {
 	var req dto.CreateAIModelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -206,7 +231,11 @@ func (h *SystemHandler) CreateAIModel(c *gin.Context) {
 	response.Success(c, item)
 }
 
-// UpdateAIModel handles PUT /api/admin/system/ai-models/:id
+// UpdateAIModel 更新指定 AI 模型配置。
+// PUT /api/admin/system/ai-models/:id
+// 路径参数：id（UUID 格式）
+// 请求体：UpdateAIModelRequest
+// 返回：更新后的模型配置对象。
 func (h *SystemHandler) UpdateAIModel(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -226,7 +255,10 @@ func (h *SystemHandler) UpdateAIModel(c *gin.Context) {
 	response.Success(c, item)
 }
 
-// DeleteAIModel handles DELETE /api/admin/system/ai-models/:id
+// DeleteAIModel 删除指定 AI 模型配置。
+// DELETE /api/admin/system/ai-models/:id
+// 路径参数：id（UUID 格式）
+// 返回：null（成功时）。
 func (h *SystemHandler) DeleteAIModel(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -240,8 +272,10 @@ func (h *SystemHandler) DeleteAIModel(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// TestAIModelConnection handles POST /api/admin/system/ai-models/test
-// 接受模型参数直接测试连接（用于新建模态框中的测试按钮）。
+// TestAIModelConnection 使用请求体中的模型参数直接测试连接（用于新建模态框中的测试按钮）。
+// POST /api/admin/system/ai-models/test
+// 请求体：CreateAIModelRequest（模型参数）
+// 返回：{"success": true, "message": "模型连接测试成功"}。
 func (h *SystemHandler) TestAIModelConnection(c *gin.Context) {
 	var req dto.CreateAIModelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -258,8 +292,10 @@ func (h *SystemHandler) TestAIModelConnection(c *gin.Context) {
 	})
 }
 
-// TestAIModelConnectionById handles POST /api/admin/system/ai-models/:id/test
-// 根据已保存的模型 ID 测试连接（用于卡片上的测试按钮）。
+// TestAIModelConnectionById 根据已保存的模型 ID 测试连接（用于卡片上的测试按钮）。
+// POST /api/admin/system/ai-models/:id/test
+// 路径参数：id（UUID 格式）
+// 返回：{"success": true, "message": "模型连接测试成功"}。
 func (h *SystemHandler) TestAIModelConnectionById(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -276,11 +312,11 @@ func (h *SystemHandler) TestAIModelConnectionById(c *gin.Context) {
 	})
 }
 
-// ============================================================
-// 系统配置
-// ============================================================
+// ── 系统配置管理 ──────────────────────────────────────────────────────────
 
-// GetSystemConfigs handles GET /api/admin/system/configs
+// GetSystemConfigs 获取所有系统配置项（键值对形式）。
+// GET /api/admin/system/configs
+// 返回：系统配置键值对数组。
 func (h *SystemHandler) GetSystemConfigs(c *gin.Context) {
 	configs, err := h.systemConfigService.GetAll()
 	if err != nil {
@@ -290,7 +326,10 @@ func (h *SystemHandler) GetSystemConfigs(c *gin.Context) {
 	response.Success(c, configs)
 }
 
-// UpdateSystemConfigs handles PUT /api/admin/system/configs
+// UpdateSystemConfigs 批量更新系统配置项。
+// PUT /api/admin/system/configs
+// 请求体：map[string]string（键值对，值不合法时返回 400）
+// 返回：null（成功时）。
 func (h *SystemHandler) UpdateSystemConfigs(c *gin.Context) {
 	var req map[string]string
 	if err := c.ShouldBindJSON(&req); err != nil {

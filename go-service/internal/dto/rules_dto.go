@@ -4,7 +4,7 @@ import "gorm.io/datatypes"
 
 // ===================== 流程审核配置 DTO =====================
 
-// CreateProcessAuditConfigRequest 创建流程审核配置请求
+// CreateProcessAuditConfigRequest 创建流程审核配置请求。
 type CreateProcessAuditConfigRequest struct {
 	ProcessType      string         `json:"process_type" binding:"required"`
 	ProcessTypeLabel string         `json:"process_type_label"`
@@ -19,7 +19,7 @@ type CreateProcessAuditConfigRequest struct {
 	Status           string         `json:"status"`
 }
 
-// UpdateProcessAuditConfigRequest 更新流程审核配置请求
+// UpdateProcessAuditConfigRequest 更新流程审核配置请求。
 type UpdateProcessAuditConfigRequest struct {
 	ProcessType      string         `json:"process_type"`
 	ProcessTypeLabel string         `json:"process_type_label"`
@@ -34,16 +34,16 @@ type UpdateProcessAuditConfigRequest struct {
 	Status           string         `json:"status"`
 }
 
-// TestConnectionRequest 测试 OA 流程连接请求
+// TestConnectionRequest 测试 OA 流程连接请求。
 type TestConnectionRequest struct {
 	ProcessType      string `json:"process_type" binding:"required"`
-	ProcessTypeLabel string `json:"process_type_label"` // 可选，用于校验流程类型是否正确
-	MainTableName    string `json:"main_table_name"` // 可选，用于校验主表名是否正确
+	ProcessTypeLabel string `json:"process_type_label"` // 可选，用于校验流程类型
+	MainTableName    string `json:"main_table_name"`    // 可选，用于校验主表名
 }
 
 // ===================== 审核规则 DTO =====================
 
-// CreateAuditRuleRequest 创建审核规则请求
+// CreateAuditRuleRequest 创建审核规则请求。
 type CreateAuditRuleRequest struct {
 	ConfigID    string `json:"config_id"`
 	ProcessType string `json:"process_type" binding:"required"`
@@ -54,7 +54,7 @@ type CreateAuditRuleRequest struct {
 	RelatedFlow bool   `json:"related_flow"`
 }
 
-// UpdateAuditRuleRequest 更新审核规则请求
+// UpdateAuditRuleRequest 更新审核规则请求。
 type UpdateAuditRuleRequest struct {
 	RuleContent string `json:"rule_content"`
 	RuleScope   string `json:"rule_scope"`
@@ -64,7 +64,7 @@ type UpdateAuditRuleRequest struct {
 
 // ===================== Token 统计 DTO =====================
 
-// TokenUsageQuery Token 消耗查询参数
+// TokenUsageQuery Token 消耗查询参数。
 type TokenUsageQuery struct {
 	StartTime     string `form:"start_time" binding:"required"`
 	EndTime       string `form:"end_time" binding:"required"`

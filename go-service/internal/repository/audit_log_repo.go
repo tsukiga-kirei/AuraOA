@@ -40,14 +40,17 @@ type AuditLogRepo struct {
 	*BaseRepo
 }
 
+// NewAuditLogRepo 创建 AuditLogRepo 实例。
 func NewAuditLogRepo(db *gorm.DB) *AuditLogRepo {
 	return &AuditLogRepo{BaseRepo: NewBaseRepo(db)}
 }
 
+// Create 写入一条审核日志记录（不带租户过滤，由调用方保证 tenant_id 已填充）。
 func (r *AuditLogRepo) Create(log *model.AuditLog) error {
 	return r.DB.Create(log).Error
 }
 
+// GetByID 按 ID 查询单条审核日志（租户隔离）。
 func (r *AuditLogRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.AuditLog, error) {
 	var log model.AuditLog
 	err := r.WithTenant(c).Where("id = ?", id).First(&log).Error
@@ -222,7 +225,7 @@ func (r *AuditLogRepo) GetLatestResultMap(c *gin.Context, processIDs []string) (
 	return result, nil
 }
 
-// AuditLogWithUser 审核日志 + 用户显示名（用于数据管理页）。
+// AuditLogWithUser2 审核日志 + 用户显示名（用于数据管理页分页查询）。
 type AuditLogWithUser2 struct {
 	model.AuditLog
 	UserName string `json:"user_name"`

@@ -1,3 +1,4 @@
+// Package mail 提供 SMTP 邮件发送功能，支持 SSL/TLS 和普通连接两种模式。
 package mail
 
 import (
@@ -23,16 +24,17 @@ type Mailer struct {
 	config Config
 }
 
+// NewMailer 创建邮件发送器实例。
 func NewMailer(cfg Config) *Mailer {
 	return &Mailer{config: cfg}
 }
 
-// Send 发送邮件（支持 HTML 内容，支持逗号分隔的多个收件人）
+// Send 发送 HTML 邮件，支持逗号分隔的多个收件人地址。
 func (m *Mailer) Send(to string, subject, body string) error {
 	addr := fmt.Sprintf("%s:%d", m.config.Host, m.config.Port)
 	auth := smtp.PlainAuth("", m.config.Username, m.config.Password, m.config.Host)
 
-	// 处理多个收件人
+	// 解析并过滤收件人列表
 	toParts := strings.Split(to, ",")
 	var recipients []string
 	for _, p := range toParts {
@@ -42,7 +44,7 @@ func (m *Mailer) Send(to string, subject, body string) error {
 		}
 	}
 	if len(recipients) == 0 {
-		return fmt.Errorf("no valid recipients")
+		return fmt.Errorf("收件人列表为空")
 	}
 
 	header := make(map[string]string)
@@ -59,6 +61,7 @@ func (m *Mailer) Send(to string, subject, body string) error {
 	message += "\r\n" + body
 
 	if m.config.UseSSL {
+		// SSL 模式：先建立 TLS 连接，再创建 SMTP 客户端
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: true,
 			ServerName:         m.config.Host,
@@ -102,10 +105,11 @@ func (m *Mailer) Send(to string, subject, body string) error {
 		return w.Close()
 	}
 
+	// 普通模式（STARTTLS 由 smtp.SendMail 自动协商）
 	return smtp.SendMail(addr, auth, m.config.From, recipients, []byte(message))
 }
 
-// ParsePort 将字符串端口解析为 int，默认 465
+// ParsePort 将字符串端口号解析为整数，解析失败时返回默认值 465。
 func ParsePort(p string) int {
 	port, err := strconv.Atoi(p)
 	if err != nil {

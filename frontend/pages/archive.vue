@@ -970,8 +970,8 @@ const archiveDetailShowsComplianceReport = computed(() =>
 
 const auditedCount = computed(() => processList.value.filter(p => archiveHasFinishedOutcome(p, p.archive_result)).length)
 
+// 页面初始化：恢复批量状态、加载基础数据、尝试续跑批量任务
 onMounted(async () => {
-  // 1. 优先恢复持久化的批量状态（含页签切换状态），确保初始加载使用正确的 filterAuditStatus
   const batchState = readArchiveBatchState()
   if (batchState?.tab) {
     filterAuditStatus.value = batchState.tab
@@ -1904,7 +1904,7 @@ onUnmounted(() => {
   .result-banner { flex-wrap: wrap; padding: 12px 14px; }
   .result-score { font-size: 28px; }
 }
-/*markdown*/
+/* Markdown 渲染样式 */
 .markdown-body { font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); word-break: break-word; }
 .markdown-body :deep(h1), .markdown-body :deep(h2), .markdown-body :deep(h3),
 .markdown-body :deep(h4), .markdown-body :deep(h5), .markdown-body :deep(h6) { margin: 12px 0 6px; font-weight: 600; color: var(--color-text-primary); }

@@ -1,6 +1,6 @@
 package dto
 
-// CreateTenantRequest 是 POST /api/admin/tenants 的请求正文。
+// CreateTenantRequest 创建租户请求（POST /api/admin/tenants）。
 // Code 由后端自动生成，无需前端提供。
 type CreateTenantRequest struct {
 	Name                string  `json:"name" binding:"required"`
@@ -30,7 +30,7 @@ type CreateTenantRequest struct {
 	AdminDeptName    string `json:"admin_dept_name" binding:"required"` // 默认部门名称
 }
 
-// UpdateTenantRequest 是 PUT /api/admin/tenants/:id 的请求正文。
+// UpdateTenantRequest 更新租户信息请求（PUT /api/admin/tenants/:id）。
 type UpdateTenantRequest struct {
 	Name                string   `json:"name"`
 	Status              string   `json:"status"`
@@ -53,7 +53,7 @@ type UpdateTenantRequest struct {
 	ContactPhone        string   `json:"contact_phone"`
 }
 
-// TenantResponse 是租户端点的响应正文。
+// TenantResponse 租户详情响应。
 type TenantResponse struct {
 	ID                  string  `json:"id"`
 	Name                string  `json:"name"`
@@ -82,13 +82,12 @@ type TenantResponse struct {
 	UpdatedAt           string  `json:"updated_at"`
 }
 
-// DeleteTenantRequest 是 DELETE /api/admin/tenants/:id 的请求正文。
-// 需要管理员密码确认以防止误操作。
+// DeleteTenantRequest 删除租户请求，需管理员密码确认以防误操作（DELETE /api/admin/tenants/:id）。
 type DeleteTenantRequest struct {
 	AdminPassword string `json:"admin_password" binding:"required"`
 }
 
-// TenantStatsResponse 是 GET /api/admin/tenants/:id/stats 的响应正文。
+// TenantStatsResponse 租户统计数据响应（GET /api/admin/tenants/:id/stats）。
 type TenantStatsResponse struct {
 	TenantID        string `json:"tenant_id"`
 	MemberCount     int64  `json:"member_count"`
@@ -96,14 +95,14 @@ type TenantStatsResponse struct {
 	RoleCount       int64  `json:"role_count"`
 }
 
-// PublicTenantItem 是公共登录页面的轻量级租户条目。
+// PublicTenantItem 公共登录页面展示的轻量级租户条目。
 type PublicTenantItem struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Code string `json:"code"`
 }
 
-// TenantMemberItem 是系统管理员查看租户成员的响应条目。
+// TenantMemberItem 系统管理员查看租户成员列表的响应条目。
 type TenantMemberItem struct {
 	ID             string   `json:"id"`
 	Username       string   `json:"username"`

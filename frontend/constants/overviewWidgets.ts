@@ -1,5 +1,6 @@
 import type { PermissionGroup } from '~/types/auth'
 
+// 仪表盘组件 ID 联合类型，对应后端 enabled_widgets 字段中存储的字符串值
 export type OverviewWidgetId =
   | 'weekly_overview'
   | 'pending_tasks'
@@ -13,6 +14,7 @@ export type OverviewWidgetId =
   | 'platform_tenant_stats'
   | 'platform_tenant_ranking'
 
+// OverviewWidgetDef 仪表盘组件定义，描述组件的 ID、标题国际化键、权限要求、默认状态和尺寸
 export interface OverviewWidgetDef {
   id: OverviewWidgetId
   /** i18n 键，用于标题 */
@@ -50,4 +52,5 @@ export const OVERVIEW_WIDGETS: OverviewWidgetDef[] = [
   { id: 'platform_tenant_ranking', titleKey: 'overview.widgetTitle.platform_tenant_ranking', descriptionKey: 'overview.widgetDesc.platform_tenant_ranking', requiredPermissions: ['system_admin'], defaultEnabled: true, size: 'lg' },
 ]
 
+// OVERVIEW_WIDGET_ID_SET 所有已注册组件 ID 的集合，用于快速校验 ID 合法性
 export const OVERVIEW_WIDGET_ID_SET = new Set<OverviewWidgetId>(OVERVIEW_WIDGETS.map(w => w.id))

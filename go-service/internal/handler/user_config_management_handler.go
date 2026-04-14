@@ -1,3 +1,4 @@
+// 用户配置管理处理器（租户管理端），负责查看和管理租户内各用户的个人配置及定时任务。
 package handler
 
 import (
@@ -49,8 +50,9 @@ func NewUserConfigManagementHandler(
 	}
 }
 
-// ListUserConfigs 处理 GET /api/tenant/user-configs
-// 返回当前租户内有个人配置记录或定时任务实例的用户，附带成员信息和配置摘要。
+// ListUserConfigs 获取当前租户内有个人配置或定时任务实例的用户列表，附带成员信息和配置摘要。
+// GET /api/tenant/user-configs
+// 返回：用户配置摘要数组，包含审核配置数、归档配置数、定时任务数及最近修改时间。
 func (h *UserConfigManagementHandler) ListUserConfigs(c *gin.Context) {
 	configs, err := h.userConfigRepo.ListByTenant(c)
 	if err != nil {
@@ -114,7 +116,10 @@ func (h *UserConfigManagementHandler) ListUserConfigs(c *gin.Context) {
 	response.Success(c, result)
 }
 
-// GetUserConfig 处理 GET /api/tenant/user-configs/:userId
+// GetUserConfig 获取指定用户的个人配置详情及定时任务列表（租户管理端）。
+// GET /api/tenant/user-configs/:userId
+// 路径参数：userId（UUID 格式）
+// 返回：用户配置详情对象，包含审核/归档各流程的配置内容和定时任务列表。
 func (h *UserConfigManagementHandler) GetUserConfig(c *gin.Context) {
 	userID, err := uuid.Parse(c.Param("userId"))
 	if err != nil {
@@ -519,8 +524,7 @@ func toAdminProcessDetail(
 	}
 
 	// 字段对比
-	// 如果租户管理员已经选择了所有字段，则默认没有修改（不需要标记任何东西，除非用户有冗余字段）
-	// 但通常 'all' 模式下，fieldOverrides 应该是空的。
+	// 如果租户管理员已选择所有字段（all 模式）且用户无覆盖，则无需展示差异。
 	if fieldInfo.FieldMode == "all" && len(fieldOverrides) == 0 {
 		return detail
 	}

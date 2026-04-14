@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// DBDriverOption 代表数据库驱动选项。
+// DBDriverOption 数据库驱动选项。
 type DBDriverOption struct {
 	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	Code        string    `gorm:"uniqueIndex;size:50;not null" json:"code"`

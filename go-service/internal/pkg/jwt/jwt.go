@@ -1,3 +1,4 @@
+// Package jwt 提供 JWT 访问令牌和刷新令牌的签发与校验功能。
 package jwt
 
 import (
@@ -9,7 +10,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-//ActiveRoleClaim 代表 JWT 令牌中当前活动的角色。
+// ActiveRoleClaim 表示 JWT 中当前激活的角色信息。
 type ActiveRoleClaim struct {
 	ID         string  `json:"id"`
 	Role       string  `json:"role"`
@@ -18,7 +19,7 @@ type ActiveRoleClaim struct {
 	Label      string  `json:"label"`
 }
 
-//JWTClaims 是嵌入在访问令牌中的自定义声明结构。
+// JWTClaims 访问令牌的自定义声明结构，嵌入标准 RegisteredClaims。
 type JWTClaims struct {
 	Sub         string          `json:"sub"`
 	Username    string          `json:"username"`
@@ -30,8 +31,8 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
-//GenerateAccessToken 使用给定的声明创建一个签名的访问令牌。
-//TTL从配置中读取（jwt.access_token_ttl），默认2h。
+// GenerateAccessToken 签发访问令牌。
+// TTL 从配置项 jwt.access_token_ttl 读取，默认 2 小时。
 func GenerateAccessToken(claims *JWTClaims) (string, error) {
 	secret := viper.GetString("jwt.secret")
 	ttl := viper.GetDuration("jwt.access_token_ttl")
@@ -54,9 +55,9 @@ func GenerateAccessToken(claims *JWTClaims) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
-//GenerateRefreshToken 为给定用户创建一个签名的刷新令牌。
-//TTL从配置中读取（jwt.refresh_token_ttl），默认7d。
-//返回签名的令牌字符串和使用的 JTI。
+// GenerateRefreshToken 签发刷新令牌，返回签名字符串和 JTI。
+// TTL 从配置项 jwt.refresh_token_ttl 读取，默认 7 天。
+// 若传入非空 jti 则复用，否则自动生成新 UUID。
 func GenerateRefreshToken(userID string, jti string) (string, string, error) {
 	secret := viper.GetString("jwt.secret")
 	ttl := viper.GetDuration("jwt.refresh_token_ttl")
@@ -84,13 +85,13 @@ func GenerateRefreshToken(userID string, jti string) (string, string, error) {
 	return signed, jti, nil
 }
 
-//ParseToken 验证并解析令牌字符串，返回自定义 JWTClaims。
+// ParseToken 验证并解析访问令牌，返回自定义 JWTClaims。
 func ParseToken(tokenString string) (*JWTClaims, error) {
 	secret := viper.GetString("jwt.secret")
 
 	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			return nil, fmt.Errorf("不支持的签名算法: %v", t.Header["alg"])
 		}
 		return []byte(secret), nil
 	})
@@ -100,20 +101,19 @@ func ParseToken(tokenString string) (*JWTClaims, error) {
 
 	claims, ok := token.Claims.(*JWTClaims)
 	if !ok || !token.Valid {
-		return nil, fmt.Errorf("invalid token claims")
+		return nil, fmt.Errorf("令牌声明无效")
 	}
 
 	return claims, nil
 }
 
-// ParseRefreshToken 验证并解析刷新令牌（仅 RegisteredClaims），
-// 返回 JWTClaims（仅填充 Sub 和 JTI）。
+// ParseRefreshToken 验证并解析刷新令牌，返回仅含 Sub 和 JTI 的 JWTClaims。
 func ParseRefreshToken(tokenString string) (*JWTClaims, error) {
 	secret := viper.GetString("jwt.secret")
 
 	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			return nil, fmt.Errorf("不支持的签名算法: %v", t.Header["alg"])
 		}
 		return []byte(secret), nil
 	})
@@ -123,7 +123,7 @@ func ParseRefreshToken(tokenString string) (*JWTClaims, error) {
 
 	rc, ok := token.Claims.(*jwt.RegisteredClaims)
 	if !ok || !token.Valid {
-		return nil, fmt.Errorf("invalid refresh token claims")
+		return nil, fmt.Errorf("刷新令牌声明无效")
 	}
 
 	return &JWTClaims{
@@ -132,4 +132,3 @@ func ParseRefreshToken(tokenString string) (*JWTClaims, error) {
 		RegisteredClaims: *rc,
 	}, nil
 }
-

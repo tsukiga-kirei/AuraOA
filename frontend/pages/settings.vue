@@ -2051,7 +2051,7 @@ const handleSaveArchive = async () => {
   .settings-card { padding: 14px; }
 }
 
-/* Data Table Styles */
+/* 数据表格样式 */
 .data-table-container {
   overflow-x: auto;
   border: 1px solid var(--color-border-light);

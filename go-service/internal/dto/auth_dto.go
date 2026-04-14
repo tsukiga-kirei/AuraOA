@@ -1,18 +1,18 @@
 package dto
 
-// BootstrapStatusResponse 是 GET /api/auth/bootstrap-status 的 data。
+// BootstrapStatusResponse 系统初始化状态响应（GET /api/auth/bootstrap-status）。
 type BootstrapStatusResponse struct {
 	NeedsSetup bool `json:"needs_setup"`
 }
 
-// BootstrapAdminRequest 是 POST /api/auth/bootstrap 的请求正文（仅当系统中无任何用户时允许）。
+// BootstrapAdminRequest 初始化超级管理员请求（仅系统无任何用户时允许，POST /api/auth/bootstrap）。
 type BootstrapAdminRequest struct {
 	Username    string `json:"username" binding:"required"`
 	Password    string `json:"password" binding:"required,min=8"`
 	DisplayName string `json:"display_name" binding:"required"`
 }
 
-//LoginRequest 是 POST /api/auth/login 的请求正文
+// LoginRequest 用户登录请求（POST /api/auth/login）。
 type LoginRequest struct {
 	Username      string `json:"username" binding:"required"`
 	Password      string `json:"password" binding:"required"`
@@ -20,7 +20,7 @@ type LoginRequest struct {
 	PreferredRole string `json:"preferred_role"`
 }
 
-//RoleInfo 表示登录响应中的角色分配
+// RoleInfo 登录响应中的角色分配信息。
 type RoleInfo struct {
 	ID         string  `json:"id"`
 	Role       string  `json:"role"`
@@ -29,7 +29,7 @@ type RoleInfo struct {
 	Label      string  `json:"label"`
 }
 
-//UserInfo 表示登录响应中的用户详细信息
+// UserInfo 登录响应中的用户基本信息。
 type UserInfo struct {
 	ID          string `json:"id"`
 	Username    string `json:"username"`
@@ -39,7 +39,7 @@ type UserInfo struct {
 	Locale      string `json:"locale"`
 }
 
-//LoginResponse 是 POST /api/auth/login 的响应正文
+// LoginResponse 用户登录响应（POST /api/auth/login）。
 type LoginResponse struct {
 	AccessToken  string     `json:"access_token"`
 	RefreshToken string     `json:"refresh_token"`
@@ -49,22 +49,22 @@ type LoginResponse struct {
 	Permissions  []string   `json:"permissions"`
 }
 
-//RefreshRequest 是 POST /api/auth/refresh 的请求正文
+// RefreshRequest 刷新访问令牌请求（POST /api/auth/refresh）。
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
-//RefreshResponse 是 POST /api/auth/refresh 的响应正文
+// RefreshResponse 刷新访问令牌响应（POST /api/auth/refresh）。
 type RefreshResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
-//SwitchRoleRequest 是 PUT /api/auth/switch-role 的请求正文
+// SwitchRoleRequest 切换当前角色请求（PUT /api/auth/switch-role）。
 type SwitchRoleRequest struct {
 	RoleID string `json:"role_id" binding:"required"`
 }
 
-//SwitchRoleResponse 是 PUT /api/auth/switch-role 的响应正文
+// SwitchRoleResponse 切换角色响应，包含新令牌和菜单（PUT /api/auth/switch-role）。
 type SwitchRoleResponse struct {
 	AccessToken string     `json:"access_token"`
 	ActiveRole  RoleInfo   `json:"active_role"`
@@ -72,29 +72,25 @@ type SwitchRoleResponse struct {
 	Menus       []MenuItem `json:"menus"`
 }
 
-//MenuItem 代表单个菜单项
+// MenuItem 单个菜单项。
 type MenuItem struct {
 	Key   string `json:"key"`
 	Label string `json:"label"`
 	Path  string `json:"path"`
 }
 
-//MenuResponse 是 GET /api/auth/menu 的响应正文
+// MenuResponse 菜单列表响应（GET /api/auth/menu）。
 type MenuResponse struct {
 	Menus []MenuItem `json:"menus"`
 }
 
-// ChangePasswordRequest is the request body for PUT /api/auth/change-password
+// ChangePasswordRequest 修改密码请求（PUT /api/auth/change-password）。
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password" binding:"required"`
 	NewPassword     string `json:"new_password" binding:"required"`
 }
 
-// ---------------------------------------------------------------------------
-// GET /api/auth/me
-// ---------------------------------------------------------------------------
-
-// MeOrgRole represents an org role in the /auth/me response.
+// MeOrgRole 当前用户在租户内的组织角色信息。
 type MeOrgRole struct {
 	ID              string   `json:"id"`
 	Name            string   `json:"name"`
@@ -103,43 +99,42 @@ type MeOrgRole struct {
 	IsSystem        bool     `json:"is_system"`
 }
 
-// MeResponse is the response body for GET /api/auth/me.
+// MeResponse 当前登录用户详情响应（GET /api/auth/me）。
 type MeResponse struct {
-	// User basic info
+	// 用户基本信息
 	User UserInfo `json:"user"`
 
-	// All role assignments (system-level, same as login)
+	// 所有角色分配（系统级，与登录响应一致）
 	Roles      []RoleInfo `json:"roles"`
 	ActiveRole RoleInfo   `json:"active_role"`
 
-	// Org-level info (only present when active role has a tenant)
-	TenantName     string      `json:"tenant_name"`
-	DepartmentName string      `json:"department_name"`
-	Position       string      `json:"position"`
+	// 租户级信息（仅当前角色归属某租户时存在）
+	TenantName      string      `json:"tenant_name"`
+	DepartmentName  string      `json:"department_name"`
+	Position        string      `json:"position"`
 	OrgRoles        []MeOrgRole `json:"org_roles"`
 	PagePermissions []string    `json:"page_permissions"`
 
-	// Security info
-	PasswordChangedAt string           `json:"password_changed_at"`
+	// 安全信息
+	PasswordChangedAt string             `json:"password_changed_at"`
 	LoginHistory      []LoginHistoryItem `json:"login_history"`
 }
 
-// LoginHistoryItem represents a single login history entry in the /auth/me response.
+// LoginHistoryItem 单条登录历史记录。
 type LoginHistoryItem struct {
 	Time   string `json:"time"`
 	IP     string `json:"ip"`
 	Device string `json:"device"`
 }
 
-// UpdateProfileRequest is the request body for PUT /api/auth/profile.
+// UpdateProfileRequest 更新个人资料请求（PUT /api/auth/profile）。
 type UpdateProfileRequest struct {
 	DisplayName string `json:"display_name"`
 	Email       string `json:"email"`
 	Phone       string `json:"phone"`
 }
 
-// UpdateLocaleRequest is the request body for PUT /api/auth/locale.
+// UpdateLocaleRequest 更新界面语言偏好请求（PUT /api/auth/locale）。
 type UpdateLocaleRequest struct {
 	Locale string `json:"locale" binding:"required"`
 }
-

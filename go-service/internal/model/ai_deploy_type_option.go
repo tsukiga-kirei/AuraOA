@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// AIDeployTypeOption 代表 AI 部署类型选项。
+// AIDeployTypeOption AI 部署类型选项。
 type AIDeployTypeOption struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	Code      string    `gorm:"uniqueIndex;size:50;not null" json:"code"`

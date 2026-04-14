@@ -5,23 +5,24 @@ import (
 	"oa-smart-audit/go-service/internal/repository"
 )
 
-// SystemConfigService handles system configuration CRUD.
+// SystemConfigService 处理系统配置的查询与批量更新业务逻辑。
 type SystemConfigService struct {
 	repo *repository.SystemConfigRepo
 }
 
+// NewSystemConfigService 创建 SystemConfigService，注入系统配置仓储。
 func NewSystemConfigService(repo *repository.SystemConfigRepo) *SystemConfigService {
 	return &SystemConfigService{repo: repo}
 }
 
-// ConfigItem is a key-value pair returned to the frontend.
+// ConfigItem 返回给前端的键值对配置项。
 type ConfigItem struct {
 	Key    string `json:"key"`
 	Value  string `json:"value"`
 	Remark string `json:"remark"`
 }
 
-// GetAll returns all system configs as key-value pairs.
+// GetAll 返回所有系统配置项（键值对格式）。
 func (s *SystemConfigService) GetAll() ([]ConfigItem, error) {
 	configs, err := s.repo.ListAll()
 	if err != nil {
@@ -34,7 +35,7 @@ func (s *SystemConfigService) GetAll() ([]ConfigItem, error) {
 	return result, nil
 }
 
-// UpdateConfigs batch-updates config values by key.
+// UpdateConfigs 批量更新系统配置值，按 key 逐条更新。
 func (s *SystemConfigService) UpdateConfigs(updates map[string]string) error {
 	for key, value := range updates {
 		if err := s.repo.UpdateByKey(key, value); err != nil {

@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// OATypeOption 代表 OA 系统类型选项。
+// OATypeOption OA 系统类型选项。
 type OATypeOption struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	Code      string    `gorm:"uniqueIndex;size:50;not null" json:"code"`

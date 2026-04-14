@@ -31,6 +31,7 @@ func NewOAAdapter(oaType string, conn *model.OADatabaseConnection) (OAAdapter, e
 	}
 }
 
+// contains 判断字符串切片中是否包含指定元素。
 func contains(ss []string, s string) bool {
 	for _, v := range ss {
 		if v == s {

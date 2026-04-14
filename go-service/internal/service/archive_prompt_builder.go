@@ -8,7 +8,9 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/oa"
 )
 
-// BuildArchiveReasoningPrompt 组装归档复盘推理阶段请求。
+// BuildArchiveReasoningPrompt 组装归档复盘推理阶段的 AI 请求。
+// 将流程数据、规则文本、当前节点、审批流历史和流程图注入用户提示词模板的占位符中。
+// flowSnapshot 为 nil 或内容为空时使用默认占位文本，不影响推理执行。
 func BuildArchiveReasoningPrompt(
 	aiConfig *model.ArchiveAIConfigData,
 	processType string,
@@ -49,7 +51,8 @@ func BuildArchiveReasoningPrompt(
 	}
 }
 
-// BuildArchiveExtractionPrompt 组装归档复盘提取阶段请求。
+// BuildArchiveExtractionPrompt 组装归档复盘提取阶段的 AI 请求。
+// 将推理阶段的输出结果和规则文本注入提取提示词模板，引导模型输出结构化 JSON。
 func BuildArchiveExtractionPrompt(aiConfig *model.ArchiveAIConfigData, reasoningResult string, rules string) *ai.ChatRequest {
 	userPrompt := aiConfig.UserExtractionPrompt
 	userPrompt = strings.ReplaceAll(userPrompt, "{{reasoning_result}}", reasoningResult)

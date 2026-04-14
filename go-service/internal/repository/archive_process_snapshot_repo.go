@@ -14,11 +14,12 @@ import (
 	"oa-smart-audit/go-service/internal/model"
 )
 
-// ArchiveProcessSnapshotRepo 归档复盘有效结论快照。
+// ArchiveProcessSnapshotRepo 归档复盘有效结论快照数据访问层，按租户隔离。
 type ArchiveProcessSnapshotRepo struct {
 	*BaseRepo
 }
 
+// NewArchiveProcessSnapshotRepo 创建 ArchiveProcessSnapshotRepo 实例。
 func NewArchiveProcessSnapshotRepo(db *gorm.DB) *ArchiveProcessSnapshotRepo {
 	return &ArchiveProcessSnapshotRepo{BaseRepo: NewBaseRepo(db)}
 }
@@ -63,14 +64,14 @@ func (r *ArchiveProcessSnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID 
 	}
 	b, _ := json.Marshal(uuidStrs)
 	return r.WithTenant(c).Model(&model.ArchiveProcessSnapshot{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
-		"valid_archive_log_ids":  datatypes.JSON(b),
+		"valid_archive_log_ids":       datatypes.JSON(b),
 		"latest_valid_archive_log_id": archiveLogID,
-		"title":                  title,
-		"process_type":           processType,
-		"compliance":             compliance,
-		"compliance_score":       complianceScore,
-		"confidence":             confidence,
-		"updated_at":             now,
+		"title":                       title,
+		"process_type":                processType,
+		"compliance":                  compliance,
+		"compliance_score":            complianceScore,
+		"confidence":                  confidence,
+		"updated_at":                  now,
 	}).Error
 }
 
@@ -84,7 +85,7 @@ func (r *ArchiveProcessSnapshotRepo) GetByProcessID(c *gin.Context, processID st
 	return &row, err
 }
 
-// GetMapByProcessIDs 批量查询。
+// GetMapByProcessIDs 批量查询多个流程的归档快照，返回 processID → ArchiveProcessSnapshot 映射。
 func (r *ArchiveProcessSnapshotRepo) GetMapByProcessIDs(c *gin.Context, processIDs []string) (map[string]*model.ArchiveProcessSnapshot, error) {
 	if len(processIDs) == 0 {
 		return map[string]*model.ArchiveProcessSnapshot{}, nil
@@ -104,7 +105,7 @@ func (r *ArchiveProcessSnapshotRepo) GetMapByProcessIDs(c *gin.Context, processI
 
 // ArchiveSnapshotFilter 归档快照分页过滤条件。
 type ArchiveSnapshotFilter struct {
-	Compliance  string     // compliant / partially_compliant / non_compliant / "" = 全部
+	Compliance  string // compliant / partially_compliant / non_compliant / "" = 全部
 	Keyword     string
 	ProcessType string
 	Operator    string
@@ -142,13 +143,13 @@ func (r *ArchiveProcessSnapshotRepo) ListPagedWithUser(c *gin.Context, filter Ar
 	base := r.DB.
 		Where(t+".tenant_id = ?", tenantID).
 		Table(t).
-		Select(t+".*, "+
-			"COALESCE(u.display_name, u.username, '') AS operator, "+
+		Select(t + ".*, " +
+			"COALESCE(u.display_name, u.username, '') AS operator, " +
 			"COALESCE(d.name, '') AS department").
-		Joins("LEFT JOIN archive_logs arl ON arl.id = "+t+".latest_valid_archive_log_id").
+		Joins("LEFT JOIN archive_logs arl ON arl.id = " + t + ".latest_valid_archive_log_id").
 		Joins("LEFT JOIN users u ON u.id = arl.user_id").
-		Joins("LEFT JOIN org_members om ON om.user_id = arl.user_id AND om.tenant_id = "+t+".tenant_id AND om.status = 'active'").
-		Joins("LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = "+t+".tenant_id")
+		Joins("LEFT JOIN org_members om ON om.user_id = arl.user_id AND om.tenant_id = " + t + ".tenant_id AND om.status = 'active'").
+		Joins("LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = " + t + ".tenant_id")
 
 	base = applyArchiveSnapshotFilter(base, filter)
 

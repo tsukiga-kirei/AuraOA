@@ -34,7 +34,7 @@ func NewUserPersonalConfigHandler(
 	}
 }
 
-// getUserID 从 JWT claims 中提取用户 ID。
+// getUserID 从 gin.Context 的 JWT claims 中提取当前登录用户的 UUID。
 func getUserID(c *gin.Context) (uuid.UUID, error) {
 	claimsVal, exists := c.Get("jwt_claims")
 	if !exists {
@@ -47,7 +47,8 @@ func getUserID(c *gin.Context) (uuid.UUID, error) {
 	return uuid.Parse(claims.Sub)
 }
 
-// dashboardPrefsTenantScope 仪表盘偏好存储维度：system_admin 使用平台维度（数据库 tenant_id 为 NULL）；其他角色必须带租户上下文。
+// dashboardPrefsTenantScope 确定仪表盘偏好的租户维度：
+// system_admin 使用平台维度（数据库 tenant_id 为 NULL），其他角色必须携带租户上下文。
 func dashboardPrefsTenantScope(c *gin.Context) (*uuid.UUID, error) {
 	claimsVal, ok := c.Get("jwt_claims")
 	if !ok {
@@ -67,7 +68,8 @@ func dashboardPrefsTenantScope(c *gin.Context) (*uuid.UUID, error) {
 	return &tid, nil
 }
 
-// dashboardPrefScope 与当前 JWT active_role 一致，用于分角色存储布局，避免 business / tenant_admin 互相覆盖。
+// dashboardPrefScope 根据当前 JWT active_role 返回仪表盘偏好的作用域标识，
+// 用于分角色存储布局，避免 business 和 tenant_admin 互相覆盖。
 func dashboardPrefScope(c *gin.Context) (string, error) {
 	claimsVal, ok := c.Get("jwt_claims")
 	if !ok {
@@ -89,7 +91,9 @@ func dashboardPrefScope(c *gin.Context) (string, error) {
 	}
 }
 
-// GetProcessList 处理 GET /api/tenant/settings/processes
+// GetProcessList 获取当前用户可访问的审核流程配置列表。
+// GET /api/tenant/settings/processes
+// 返回：流程配置摘要数组（流程类型、名称、启用状态等）。
 func (h *UserPersonalConfigHandler) GetProcessList(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
@@ -104,7 +108,10 @@ func (h *UserPersonalConfigHandler) GetProcessList(c *gin.Context) {
 	response.Success(c, list)
 }
 
-// GetByProcessType 处理 GET /api/tenant/settings/processes/:processType
+// GetByProcessType 获取当前用户指定流程类型的个人配置详情。
+// GET /api/tenant/settings/processes/:processType
+// 路径参数：processType（流程类型标识）
+// 返回：该流程的个人配置对象（AI 严格度、规则开关、字段覆盖等）。
 func (h *UserPersonalConfigHandler) GetByProcessType(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
@@ -124,7 +131,11 @@ func (h *UserPersonalConfigHandler) GetByProcessType(c *gin.Context) {
 	response.Success(c, detail)
 }
 
-// UpdateByProcessType 处理 PUT /api/tenant/settings/processes/:processType
+// UpdateByProcessType 更新当前用户指定流程类型的个人配置。
+// PUT /api/tenant/settings/processes/:processType
+// 路径参数：processType（流程类型标识）
+// 请求体：UpdateUserProcessConfigRequest
+// 返回：null（成功时）。
 func (h *UserPersonalConfigHandler) UpdateByProcessType(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
@@ -148,7 +159,9 @@ func (h *UserPersonalConfigHandler) UpdateByProcessType(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// GetDashboardPrefs 处理 GET /api/tenant/settings/dashboard-prefs
+// GetDashboardPrefs 获取当前用户在当前角色下的仪表盘布局偏好。
+// GET /api/tenant/settings/dashboard-prefs
+// 返回：仪表盘偏好对象（启用的组件列表、组件尺寸配置等）。
 func (h *UserPersonalConfigHandler) GetDashboardPrefs(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
@@ -180,7 +193,10 @@ func (h *UserPersonalConfigHandler) GetDashboardPrefs(c *gin.Context) {
 	response.Success(c, pref)
 }
 
-// UpdateDashboardPrefs 处理 PUT /api/tenant/settings/dashboard-prefs
+// UpdateDashboardPrefs 更新当前用户在当前角色下的仪表盘布局偏好。
+// PUT /api/tenant/settings/dashboard-prefs
+// 请求体：UpdateDashboardPrefRequest（enabled_widgets、widget_sizes）
+// 返回：null（成功时）。
 func (h *UserPersonalConfigHandler) UpdateDashboardPrefs(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
@@ -220,7 +236,10 @@ func (h *UserPersonalConfigHandler) UpdateDashboardPrefs(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// GetFullProcessConfig 处理 GET /api/tenant/settings/processes/:processType/full
+// GetFullProcessConfig 获取当前用户指定流程类型的完整审核配置（含租户规则、字段等合并结果）。
+// GET /api/tenant/settings/processes/:processType/full
+// 路径参数：processType（流程类型标识）
+// 返回：合并后的完整流程配置对象，供审核工作台使用。
 func (h *UserPersonalConfigHandler) GetFullProcessConfig(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
@@ -240,7 +259,9 @@ func (h *UserPersonalConfigHandler) GetFullProcessConfig(c *gin.Context) {
 	response.Success(c, result)
 }
 
-// GetCronPrefs 处理 GET /api/tenant/settings/cron-prefs
+// GetCronPrefs 获取当前用户的定时任务偏好配置。
+// GET /api/tenant/settings/cron-prefs
+// 返回：定时任务偏好对象（邮件推送设置等）。
 func (h *UserPersonalConfigHandler) GetCronPrefs(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
@@ -255,7 +276,10 @@ func (h *UserPersonalConfigHandler) GetCronPrefs(c *gin.Context) {
 	response.Success(c, prefs)
 }
 
-// UpdateCronPrefs 处理 PUT /api/tenant/settings/cron-prefs
+// UpdateCronPrefs 更新当前用户的定时任务偏好配置。
+// PUT /api/tenant/settings/cron-prefs
+// 请求体：UpdateCronPrefsRequest
+// 返回：null（成功时）。
 func (h *UserPersonalConfigHandler) UpdateCronPrefs(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
@@ -274,7 +298,9 @@ func (h *UserPersonalConfigHandler) UpdateCronPrefs(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// GetArchiveConfigList 处理 GET /api/tenant/settings/archive-configs
+// GetArchiveConfigList 获取当前用户有权访问的归档复盘配置列表（经访问控制过滤）。
+// GET /api/tenant/settings/archive-configs
+// 返回：可访问的归档配置摘要数组。
 func (h *UserPersonalConfigHandler) GetArchiveConfigList(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
@@ -289,7 +315,10 @@ func (h *UserPersonalConfigHandler) GetArchiveConfigList(c *gin.Context) {
 	response.Success(c, list)
 }
 
-// GetFullArchiveConfig 处理 GET /api/tenant/settings/archive-configs/:processType/full
+// GetFullArchiveConfig 获取当前用户指定归档流程类型的完整配置（含规则、字段等合并结果）。
+// GET /api/tenant/settings/archive-configs/:processType/full
+// 路径参数：processType（归档流程类型标识）
+// 返回：合并后的完整归档配置对象，供归档复盘工作台使用。
 func (h *UserPersonalConfigHandler) GetFullArchiveConfig(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
@@ -309,7 +338,11 @@ func (h *UserPersonalConfigHandler) GetFullArchiveConfig(c *gin.Context) {
 	response.Success(c, result)
 }
 
-// UpdateArchiveConfig 处理 PUT /api/tenant/settings/archive-configs/:processType
+// UpdateArchiveConfig 更新当前用户指定归档流程类型的个人配置。
+// PUT /api/tenant/settings/archive-configs/:processType
+// 路径参数：processType（归档流程类型标识）
+// 请求体：UpdateArchiveConfigRequest
+// 返回：null（成功时）。
 func (h *UserPersonalConfigHandler) UpdateArchiveConfig(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
@@ -333,7 +366,7 @@ func (h *UserPersonalConfigHandler) UpdateArchiveConfig(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// defaultDashJSON 返回 JSON 值，如果为 nil 则返回默认值。
+// defaultDashJSON 若 val 为 nil 则返回 defaultVal 对应的 JSON，否则返回原值。
 func defaultDashJSON(val datatypes.JSON, defaultVal string) datatypes.JSON {
 	if val == nil {
 		return datatypes.JSON([]byte(defaultVal))

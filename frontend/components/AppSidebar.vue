@@ -5,11 +5,13 @@ import {
   SettingOutlined,
 } from '@ant-design/icons-vue'
 
+// props：侧边栏折叠状态 / 移动端菜单是否展开
 defineProps<{
   collapsed: boolean
   mobileMenuOpen: boolean
 }>()
 
+// emit：更新移动端菜单展开状态（v-model 绑定）
 const emit = defineEmits<{
   (e: 'update:mobileMenuOpen', val: boolean): void
 }>()
@@ -18,8 +20,10 @@ const { currentUser, logout } = useAuth()
 const { sections, isMenuActive, logoTarget } = useSidebarMenu()
 const { t } = useI18n()
 
+// 当前用户显示名，未设置时回退到默认文案
 const displayName = computed(() => currentUser.value?.display_name || t('sidebar.defaultUser'))
 
+// 点击菜单项：跳转路由并关闭移动端菜单
 const handleMenuClick = (path: string) => {
   navigateTo(path)
   emit('update:mobileMenuOpen', false)
@@ -34,7 +38,7 @@ const handleMenuClick = (path: string) => {
       'sidebar--mobile-open': mobileMenuOpen,
     }"
   >
-    <!--标识-->
+    <!--Logo 区域-->
     <div class="sidebar-logo" @click="navigateTo(logoTarget)">
       <div class="sidebar-logo-icon">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -46,7 +50,7 @@ const handleMenuClick = (path: string) => {
       <transition name="fade">
         <span v-if="!collapsed || mobileMenuOpen" class="sidebar-logo-text">{{ t('app.name') }}</span>
       </transition>
-      <!--手机关闭按钮-->
+      <!--移动端关闭按钮-->
       <button
         v-if="mobileMenuOpen"
         class="sidebar-close-btn"
@@ -61,12 +65,12 @@ const handleMenuClick = (path: string) => {
       </button>
     </div>
 
-    <!--纯粹由权限驱动的导航部分-->
+    <!--权限驱动的导航区域-->
     <nav class="sidebar-nav">
       <div v-for="section in sections" :key="section.id" class="sidebar-section">
         <div v-if="!collapsed || mobileMenuOpen" class="sidebar-section-title">{{ t(section.titleKey) }}</div>
         <template v-for="item in section.items" :key="item.key">
-          <!--折叠状态：用工具提示包裹-->
+          <!--折叠状态：用 Tooltip 包裹显示菜单名-->
           <a-tooltip
             v-if="collapsed && !mobileMenuOpen"
             :key="'tooltip-' + item.key"
@@ -81,8 +85,7 @@ const handleMenuClick = (path: string) => {
               @click="handleMenuClick(item.key)"
             >
               <component :is="item.icon" class="sidebar-item-icon" />
-              <!--内容通常隐藏在折叠状态-->
-              <!--但我们保持结构一致-->
+              <!--折叠时隐藏文字，保持结构一致-->
               <div v-if="isMenuActive(item.key)" class="sidebar-item-indicator" />
             </div>
           </a-tooltip>
@@ -108,7 +111,7 @@ const handleMenuClick = (path: string) => {
       </div>
     </nav>
 
-    <!--用户个人资料页脚 — 仅设置 + 注销，无重复导航-->
+    <!--底部用户信息：个人设置 + 退出登录-->
     <div class="sidebar-footer">
       <a-popover
         placement="rightBottom"
@@ -276,7 +279,7 @@ const handleMenuClick = (path: string) => {
     transform: translateX(0);
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
   }
-  /*在移动设备上，始终显示完整的侧边栏（不折叠）*/
+  /*移动端始终展示完整侧边栏，不折叠*/
   .sidebar--collapsed {
     width: 280px;
   }

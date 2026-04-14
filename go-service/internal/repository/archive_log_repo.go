@@ -28,19 +28,22 @@ type ArchiveLogStats struct {
 	PendingReview int64 `json:"pending_review"` // 非 completed 状态
 }
 
-// ArchiveLogRepo 提供归档复盘日志的数据访问方法。
+// ArchiveLogRepo 提供归档复盘日志的数据访问方法，按租户隔离。
 type ArchiveLogRepo struct {
 	*BaseRepo
 }
 
+// NewArchiveLogRepo 创建 ArchiveLogRepo 实例。
 func NewArchiveLogRepo(db *gorm.DB) *ArchiveLogRepo {
 	return &ArchiveLogRepo{BaseRepo: NewBaseRepo(db)}
 }
 
+// Create 写入一条归档复盘日志记录（不带租户过滤，由调用方保证 tenant_id 已填充）。
 func (r *ArchiveLogRepo) Create(log *model.ArchiveLog) error {
 	return r.DB.Create(log).Error
 }
 
+// GetByID 按 ID 查询单条归档复盘日志（租户隔离）。
 func (r *ArchiveLogRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.ArchiveLog, error) {
 	var log model.ArchiveLog
 	err := r.WithTenant(c).Where("id = ?", id).First(&log).Error
@@ -64,10 +67,12 @@ func (r *ArchiveLogRepo) GetByIDs(c *gin.Context, ids []uuid.UUID) (map[uuid.UUI
 	return result, nil
 }
 
+// UpdateFields 更新归档复盘日志的指定字段（租户隔离）。
 func (r *ArchiveLogRepo) UpdateFields(c *gin.Context, id uuid.UUID, updates map[string]interface{}) error {
 	return r.WithTenant(c).Model(&model.ArchiveLog{}).Where("id = ?", id).Updates(updates).Error
 }
 
+// GetLatestByProcessID 查询指定流程的最新一条归档复盘日志，不存在时返回 nil。
 func (r *ArchiveLogRepo) GetLatestByProcessID(c *gin.Context, processID string) (*model.ArchiveLog, error) {
 	var log model.ArchiveLog
 	err := r.WithTenant(c).
@@ -80,6 +85,7 @@ func (r *ArchiveLogRepo) GetLatestByProcessID(c *gin.Context, processID string) 
 	return &log, err
 }
 
+// GetLatestResultMap 批量查询多个流程的最新归档复盘结果，返回 processID → ArchiveLog 映射。
 func (r *ArchiveLogRepo) GetLatestResultMap(c *gin.Context, processIDs []string) (map[string]*model.ArchiveLog, error) {
 	if len(processIDs) == 0 {
 		return map[string]*model.ArchiveLog{}, nil
@@ -103,11 +109,13 @@ func (r *ArchiveLogRepo) GetLatestResultMap(c *gin.Context, processIDs []string)
 	return result, nil
 }
 
+// ArchiveLogWithUser 归档复盘日志 + 操作人显示名（用于审核链展示）。
 type ArchiveLogWithUser struct {
 	model.ArchiveLog
 	UserName string `json:"user_name"`
 }
 
+// ListCompletedByProcessIDWithUser 查询指定流程所有已完成的归档复盘记录，JOIN 用户名，按时间倒序排列。
 func (r *ArchiveLogRepo) ListCompletedByProcessIDWithUser(c *gin.Context, processID string) ([]ArchiveLogWithUser, error) {
 	var logs []ArchiveLogWithUser
 	err := r.WithTenant(c).

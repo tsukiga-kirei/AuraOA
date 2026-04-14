@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const { t } = useI18n()
 
+// props：弹窗开关 / 待编辑的规则数据（新增时为 null）
 const props = defineProps<{
   open: boolean
   rule?: {
@@ -11,6 +12,7 @@ const props = defineProps<{
   } | null
 }>()
 
+// emit：关闭弹窗 / 提交保存的规则数据
 const emit = defineEmits<{
   close: []
   save: [rule: any]
@@ -22,6 +24,7 @@ const form = ref({
   related_flow: false,
 })
 
+// 弹窗打开时初始化表单：编辑模式填充已有数据，新增模式重置为默认值
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
     if (props.rule) {
@@ -40,12 +43,14 @@ watch(() => props.open, (isOpen) => {
   }
 })
 
+// 规则生效范围选项：强制执行 / 默认开启 / 默认关闭
 const scopeOptions = computed(() => [
   { value: 'mandatory', label: t('ruleEditor.mandatory') },
   { value: 'default_on', label: t('ruleEditor.defaultOn') },
   { value: 'default_off', label: t('ruleEditor.defaultOff') },
 ])
 
+// 提交表单数据给父组件处理
 const handleSave = () => {
   emit('save', { ...form.value })
 }

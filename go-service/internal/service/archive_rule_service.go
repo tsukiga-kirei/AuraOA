@@ -10,24 +10,25 @@ import (
 	"oa-smart-audit/go-service/internal/repository"
 )
 
-// ArchiveRuleService 处理归档规则的业务逻辑。
+// ArchiveRuleService 负责归档规则的增删改查，支持按配置 ID 和启用状态筛选。
 type ArchiveRuleService struct {
 	ruleRepo *repository.ArchiveRuleRepo
 }
 
-// NewArchiveRuleService 创建一个新的 ArchiveRuleService 实例。
+// NewArchiveRuleService 初始化归档规则服务。
 func NewArchiveRuleService(ruleRepo *repository.ArchiveRuleRepo) *ArchiveRuleService {
 	return &ArchiveRuleService{ruleRepo: ruleRepo}
 }
 
-// Create 创建归档规则。
+// Create 新增归档规则，未指定 enabled 时默认开启，未指定 rule_scope 时默认为 default_on。
+// 若传入有效的 config_id，则将规则关联到对应的归档配置。
 func (s *ArchiveRuleService) Create(c *gin.Context, req *dto.CreateArchiveRuleRequest) (*model.ArchiveRule, error) {
 	tenantID, err := getTenantUUID(c)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
 
-	// 默认开启
+	// 未指定时默认开启
 	enabled := true
 	if req.Enabled != nil {
 		enabled = *req.Enabled
@@ -57,7 +58,7 @@ func (s *ArchiveRuleService) Create(c *gin.Context, req *dto.CreateArchiveRuleRe
 	return rule, nil
 }
 
-// Update 更新归档规则。
+// Update 按需更新归档规则字段，仅更新请求中非零值的字段，更新后重新查询返回最新数据。
 func (s *ArchiveRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.UpdateArchiveRuleRequest) (*model.ArchiveRule, error) {
 	_, err := s.ruleRepo.GetByID(c, id)
 	if err != nil {
@@ -91,7 +92,8 @@ func (s *ArchiveRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.Updat
 	return rule, nil
 }
 
-// Delete 删除归档规则：manual 来源硬删除，file_import 来源标记禁用。
+// Delete 删除归档规则，根据来源采用不同策略：
+// manual 来源执行硬删除，file_import 来源标记禁用（保留历史记录）。
 func (s *ArchiveRuleService) Delete(c *gin.Context, id uuid.UUID) error {
 	rule, err := s.ruleRepo.GetByID(c, id)
 	if err != nil {
@@ -110,7 +112,7 @@ func (s *ArchiveRuleService) Delete(c *gin.Context, id uuid.UUID) error {
 	return nil
 }
 
-// ListByConfigIDFilter 按配置 ID 查询关联的归档规则。
+// ListByConfigIDFilter 按归档配置 ID 查询关联规则，支持按 rule_scope 和 enabled 状态过滤。
 func (s *ArchiveRuleService) ListByConfigIDFilter(c *gin.Context, configID uuid.UUID, ruleScope *string, enabled *bool) ([]model.ArchiveRule, error) {
 	rules, err := s.ruleRepo.ListByConfigIDFilter(c, configID, ruleScope, enabled)
 	if err != nil {

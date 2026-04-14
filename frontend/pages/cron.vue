@@ -129,9 +129,10 @@ const fetchData = async () => {
   }
 }
 
+// 页面初始化：加载任务列表、配置及偏好数据
 onMounted(fetchData)
 
-// 轮询正在运行的任务状态
+// 轮询正在运行的任务状态（每 5 秒刷新一次）
 let pollTimer: any = null
 onMounted(() => {
   pollTimer = setInterval(async () => {
@@ -1289,7 +1290,7 @@ const renderWorkflowLabels = (workflowIds: string[] | undefined): string => {
   margin-top: 6px;
 }
 
-/* Cron 构建器 */
+/* Cron 表达式构建器 */
 .cron-builder {
   background: var(--color-bg-page);
   border-radius: var(--radius-md);

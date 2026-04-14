@@ -22,29 +22,37 @@ import (
 	"oa-smart-audit/go-service/internal/dbmigrate"
 	"oa-smart-audit/go-service/internal/handler"
 	"oa-smart-audit/go-service/internal/pkg/crypto"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/repository"
 	"oa-smart-audit/go-service/internal/router"
 	"oa-smart-audit/go-service/internal/service"
 )
 
 func main() {
-	// 1. Load config via Viper
+	// 第一步：加载配置文件
 	if err := loadConfig(); err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Fatalf("加载配置文件失败: %v", err)
 	}
 
-	// 2. Initialize logger
-	logger, err := zap.NewProduction()
-	if err != nil {
-		log.Fatalf("Failed to initialize logger: %v", err)
+	// 第二步：初始化全局日志系统
+	logCfg := pkglogger.LogConfig{
+		Level:               viper.GetString("log.level"),
+		Dir:                 viper.GetString("log.dir"),
+		MaxSizeMB:           viper.GetInt("log.max_size_mb"),
+		MaxBackups:          viper.GetInt("log.max_backups"),
+		Compress:            viper.GetBool("log.compress"),
+		GlobalRetentionDays: viper.GetInt("log.global_retention_days"),
 	}
-	defer logger.Sync()
+	if err := pkglogger.Init(logCfg); err != nil {
+		log.Fatalf("初始化日志系统失败: %v", err)
+	}
+	defer pkglogger.Sync()
 
-	// 3. PostgreSQL schema migrations (schema_migrations)，再建立 GORM 连接
+	// 第三步：执行数据库迁移（schema_migrations），再建立 GORM 连接
 	if viper.GetBool("migrations.enabled") {
 		dir := resolveMigrationsPath(viper.GetString("migrations.path"))
 		if dir == "" {
-			logger.Fatal("migrations.enabled is true but migrations.path is empty and no default db/migrations directory was found")
+			pkglogger.Global().Fatal("migrations.enabled 为 true，但未找到有效的迁移目录")
 		}
 		if err := dbmigrate.Up(
 			dir,
@@ -55,34 +63,34 @@ func main() {
 			viper.GetString("database.dbname"),
 			viper.GetString("database.sslmode"),
 		); err != nil {
-			logger.Fatal("Database migrations failed", zap.String("dir", dir), zap.Error(err))
+			pkglogger.Global().Fatal("数据库迁移失败", zap.String("dir", dir), zap.Error(err))
 		}
-		logger.Info("Database migrations applied", zap.String("dir", dir))
+		pkglogger.Global().Info("数据库迁移完成", zap.String("dir", dir))
 	}
 
 	db, err := initDatabase()
 	if err != nil {
-		logger.Fatal("Failed to connect to database", zap.Error(err))
+		pkglogger.Global().Fatal("数据库连接失败", zap.Error(err))
 	}
-	logger.Info("Database connected successfully")
+	pkglogger.Global().Info("数据库连接成功")
 
-	// 4. Connect Redis
+	// 第四步：连接 Redis
 	rdb, err := initRedis()
 	if err != nil {
-		logger.Fatal("Failed to connect to Redis", zap.Error(err))
+		pkglogger.Global().Fatal("Redis 连接失败", zap.Error(err))
 	}
-	logger.Info("Redis connected successfully")
+	pkglogger.Global().Info("Redis 连接成功")
 
-	// 4.5 Initialize AES encryption key
+	// 第四步（补充）：初始化 AES 加密密钥
 	encKey := viper.GetString("encryption.key")
 	if encKey == "" {
-		logger.Fatal("encryption.key is not configured")
+		pkglogger.Global().Fatal("encryption.key 未配置")
 	}
 	if err := crypto.SetKey(encKey); err != nil {
-		logger.Fatal("Failed to set encryption key", zap.Error(err))
+		pkglogger.Global().Fatal("设置加密密钥失败", zap.Error(err))
 	}
 
-	// 5. Initialize repositories
+	// 第五步：初始化各数据访问层（Repository）
 	userRepo := repository.NewUserRepo(db)
 	orgRepo := repository.NewOrgRepo(db)
 	tenantRepo := repository.NewTenantRepo(db)
@@ -109,7 +117,7 @@ func main() {
 	auditSnapshotRepo := repository.NewAuditProcessSnapshotRepo(db)
 	archiveSnapshotRepo := repository.NewArchiveProcessSnapshotRepo(db)
 
-	// 6. Initialize services
+	// 第六步：初始化各业务服务层（Service）
 	authService := service.NewAuthService(userRepo, rdb, db)
 	orgService := service.NewOrgService(orgRepo, userRepo, systemConfigRepo, db)
 	tenantService := service.NewTenantService(tenantRepo, systemConfigRepo, userRepo, db)
@@ -134,26 +142,36 @@ func main() {
 	reportCalculatorService := service.NewReportCalculatorService(auditLogRepo, archiveLogRepo, tenantRepo)
 	mailService := service.NewMailService(systemConfigRepo)
 
-	// Cron 任务实例服务（延迟注入调度器）
+	// 初始化 Cron 任务实例服务（调度器延迟注入）
 	cronTaskService := service.NewCronTaskService(cronTaskRepo, cronLogRepo, cronPresetRepo, cronConfigRepo, userRepo, tenantRepo, auditExecuteService, archiveReviewService, reportCalculatorService, mailService, userNotificationService)
-	cronScheduler := service.NewCronScheduler(cronTaskRepo, cronTaskService, logger)
+	cronScheduler := service.NewCronScheduler(cronTaskRepo, cronTaskService, pkglogger.Global())
 	cronTaskService.SetScheduler(cronScheduler)
 
-	if err := service.StartAuditStreamWorker(context.Background(), rdb, auditExecuteService, logger, 2); err != nil {
-		logger.Warn("audit stream worker not started", zap.Error(err))
+	// 注册日志清理定时任务（每日凌晨 00:00 执行）
+	logCleanupService := service.NewLogCleanupService(systemConfigRepo, tenantRepo, viper.GetInt("log.global_retention_days"))
+	if err := cronScheduler.RegisterCustomJob("0 0 * * *", func() {
+		if cleanErr := logCleanupService.RunCleanup(context.Background()); cleanErr != nil {
+			pkglogger.Global().Warn("日志清理任务执行失败", zap.Error(cleanErr))
+		}
+	}); err != nil {
+		pkglogger.Global().Warn("注册日志清理定时任务失败", zap.Error(err))
 	}
-	service.StartAuditStaleReconciler(context.Background(), auditExecuteService, logger, 30*time.Second)
-	if err := service.StartArchiveStreamWorker(context.Background(), rdb, archiveReviewService, logger, 2); err != nil {
-		logger.Warn("archive stream worker not started", zap.Error(err))
-	}
-	service.StartArchiveStaleReconciler(context.Background(), archiveReviewService, logger, 30*time.Second)
 
-	// 启动 cron 调度器
+	if err := service.StartAuditStreamWorker(context.Background(), rdb, auditExecuteService, pkglogger.Global(), 2); err != nil {
+		pkglogger.Global().Warn("审计流处理器启动失败", zap.Error(err))
+	}
+	service.StartAuditStaleReconciler(context.Background(), auditExecuteService, pkglogger.Global(), 30*time.Second)
+	if err := service.StartArchiveStreamWorker(context.Background(), rdb, archiveReviewService, pkglogger.Global(), 2); err != nil {
+		pkglogger.Global().Warn("归档流处理器启动失败", zap.Error(err))
+	}
+	service.StartArchiveStaleReconciler(context.Background(), archiveReviewService, pkglogger.Global(), 30*time.Second)
+
+	// 启动 Cron 调度器
 	if err := cronScheduler.Start(context.Background()); err != nil {
-		logger.Warn("cron scheduler not started", zap.Error(err))
+		pkglogger.Global().Warn("Cron 调度器启动失败", zap.Error(err))
 	}
 
-	// 7. Initialize handlers
+	// 第七步：初始化各 HTTP 处理器（Handler）
 	authHandler := handler.NewAuthHandler(authService, rdb)
 	orgHandler := handler.NewOrgHandler(orgService)
 	tenantHandler := handler.NewTenantHandler(tenantService)
@@ -173,40 +191,40 @@ func main() {
 	dashboardOverviewHandler := handler.NewDashboardOverviewHandler(dashboardOverviewService)
 	userNotificationHandler := handler.NewUserNotificationHandler(userNotificationService)
 
-	// 8. Setup Gin router with middleware and routes
+	// 第八步：配置 Gin 路由及中间件
 	r := gin.New()
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, logger, allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler, dashboardOverviewHandler, userNotificationHandler)
+	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler, dashboardOverviewHandler, userNotificationHandler)
 
-	// 9. Start HTTP server
+	// 第九步：启动 HTTP 服务器
 	port := viper.GetInt("server.port")
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: r,
 	}
 
-	// 10. Graceful shutdown
+	// 第十步：监听系统信号，优雅关闭服务
 	go func() {
-		logger.Info("Server starting", zap.Int("port", port))
+		pkglogger.Global().Info("服务器启动", zap.Int("port", port))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Server failed to start", zap.Error(err))
+			pkglogger.Global().Fatal("服务器启动失败", zap.Error(err))
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	logger.Info("Shutting down server...")
+	pkglogger.Global().Info("正在关闭服务器...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		logger.Fatal("Server forced to shutdown", zap.Error(err))
+		pkglogger.Global().Fatal("服务器强制关闭", zap.Error(err))
 	}
-	logger.Info("Server exited gracefully")
+	pkglogger.Global().Info("服务器已优雅退出")
 }
 
 func loadConfig() error {
@@ -221,7 +239,8 @@ func loadConfig() error {
 	return viper.ReadInConfig()
 }
 
-// resolveMigrationsPath 返回迁移 SQL 所在目录；优先配置/环境变量，否则在当前工作目录下尝试常见相对路径（便于本地 go run）。
+// resolveMigrationsPath 返回迁移 SQL 所在目录。
+// 优先使用配置或环境变量中的路径，否则在当前工作目录下尝试常见相对路径（便于本地 go run）。
 func resolveMigrationsPath(configured string) string {
 	candidates := []string{}
 	if configured != "" {
@@ -266,12 +285,12 @@ func initDatabase() (*gorm.DB, error) {
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+		return nil, fmt.Errorf("数据库连接失败: %w", err)
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+		return nil, fmt.Errorf("获取底层 sql.DB 失败: %w", err)
 	}
 
 	sqlDB.SetMaxOpenConns(viper.GetInt("database.max_open_conns"))
@@ -291,7 +310,7 @@ func initRedis() (*redis.Client, error) {
 	defer cancel()
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
+		return nil, fmt.Errorf("Redis 连接失败: %w", err)
 	}
 
 	return rdb, nil

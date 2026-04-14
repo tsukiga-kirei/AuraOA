@@ -1,3 +1,4 @@
+// 归档规则处理器，负责归档复盘规则的增删改查。
 package handler
 
 import (
@@ -17,12 +18,15 @@ type ArchiveRuleHandler struct {
 	ruleService *service.ArchiveRuleService
 }
 
-// NewArchiveRuleHandler 创建一个新的 ArchiveRuleHandler 实例。
+// NewArchiveRuleHandler 创建归档规则处理器实例。
 func NewArchiveRuleHandler(ruleService *service.ArchiveRuleService) *ArchiveRuleHandler {
 	return &ArchiveRuleHandler{ruleService: ruleService}
 }
 
-// List 处理 GET /api/tenant/archive/rules
+// List 查询指定归档配置下的规则列表，支持按作用域和启用状态过滤。
+// GET /api/tenant/archive/rules
+// 查询参数：config_id（必填，UUID）、rule_scope（可选）、enabled（可选，true/false）
+// 返回：规则列表数组。
 func (h *ArchiveRuleHandler) List(c *gin.Context) {
 	configIDStr := c.Query("config_id")
 	if configIDStr == "" {
@@ -55,7 +59,10 @@ func (h *ArchiveRuleHandler) List(c *gin.Context) {
 	response.Success(c, rules)
 }
 
-// Create 处理 POST /api/tenant/archive/rules
+// Create 创建新的归档规则。
+// POST /api/tenant/archive/rules
+// 请求体：CreateArchiveRuleRequest（规则内容、作用域、所属配置 ID 等）
+// 返回：新建的规则对象。
 func (h *ArchiveRuleHandler) Create(c *gin.Context) {
 	var req dto.CreateArchiveRuleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -70,7 +77,11 @@ func (h *ArchiveRuleHandler) Create(c *gin.Context) {
 	response.Success(c, rule)
 }
 
-// Update 处理 PUT /api/tenant/archive/rules/:id
+// Update 更新指定归档规则。
+// PUT /api/tenant/archive/rules/:id
+// 路径参数：id（UUID 格式）
+// 请求体：UpdateArchiveRuleRequest
+// 返回：更新后的规则对象。
 func (h *ArchiveRuleHandler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -90,7 +101,10 @@ func (h *ArchiveRuleHandler) Update(c *gin.Context) {
 	response.Success(c, rule)
 }
 
-// Delete 处理 DELETE /api/tenant/archive/rules/:id
+// Delete 删除指定归档规则。
+// DELETE /api/tenant/archive/rules/:id
+// 路径参数：id（UUID 格式）
+// 返回：null（成功时）。
 func (h *ArchiveRuleHandler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {

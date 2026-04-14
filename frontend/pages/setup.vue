@@ -10,16 +10,20 @@ const { t } = useI18n()
 const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
 const config = useRuntimeConfig()
 
+// 初始化管理员账号的表单字段
 const username = ref('')
 const displayName = ref('')
 const password = ref('')
 const confirmPassword = ref('')
+// 提交加载状态
 const loading = ref(false)
 
+// 页面挂载时恢复主题偏好
 onMounted(() => {
   restoreTheme()
 })
 
+// 提交初始化表单，创建系统管理员账号
 const submit = async () => {
   const u = username.value.trim()
   const d = displayName.value.trim()

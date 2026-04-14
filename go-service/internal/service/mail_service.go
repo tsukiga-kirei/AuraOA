@@ -8,16 +8,18 @@ import (
 	"oa-smart-audit/go-service/internal/repository"
 )
 
-// MailService 系统级邮件服务
+// MailService 系统级邮件服务，从系统配置表读取 SMTP 参数后发送邮件。
 type MailService struct {
 	configRepo *repository.SystemConfigRepo
 }
 
+// NewMailService 创建 MailService，注入系统配置仓储。
 func NewMailService(repo *repository.SystemConfigRepo) *MailService {
 	return &MailService{configRepo: repo}
 }
 
-// SendReport 发送周报/日报至指定邮件地址
+// SendReport 发送周报/日报至指定邮件地址。
+// 从 system_configs 表读取 SMTP 配置，若配置不完整则返回错误提示。
 func (s *MailService) SendReport(to string, subject, content string) error {
 	host, _ := s.configRepo.FindByKey("system.smtp_host")
 	portStr, _ := s.configRepo.FindByKey("system.smtp_port")
@@ -36,7 +38,7 @@ func (s *MailService) SendReport(to string, subject, content string) error {
 		Username: username,
 		Password: password,
 		From:     sender,
-		UseSSL:    strings.ToLower(sslStr) == "true",
+		UseSSL:   strings.ToLower(sslStr) == "true",
 	}
 
 	if cfg.From == "" {

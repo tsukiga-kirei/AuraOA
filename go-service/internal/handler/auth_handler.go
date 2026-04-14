@@ -1,3 +1,4 @@
+// 认证处理器，负责登录、登出、令牌刷新、角色切换及用户信息管理。
 package handler
 
 import (
@@ -17,13 +18,13 @@ import (
 	"oa-smart-audit/go-service/internal/service"
 )
 
-//AuthHandler 处理与身份验证相关的 HTTP 请求。
+// AuthHandler 处理身份认证相关的 HTTP 请求。
 type AuthHandler struct {
 	authService *service.AuthService
 	rdb         *redis.Client
 }
 
-//NewAuthHandler 创建一个新的 AuthHandler 实例。
+// NewAuthHandler 创建认证处理器实例。
 func NewAuthHandler(authService *service.AuthService, rdb *redis.Client) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
@@ -31,12 +32,15 @@ func NewAuthHandler(authService *service.AuthService, rdb *redis.Client) *AuthHa
 	}
 }
 
-//logoutBody 是 POST /api/auth/logout 的可选请求正文。
+// logoutBody 是 POST /api/auth/logout 的可选请求体，用于传递 refresh token 的 JTI。
 type logoutBody struct {
 	RefreshJTI string `json:"refresh_jti"`
 }
 
-//登录句柄 POST /api/auth/login
+// Login 用户登录，验证账号密码并签发 access/refresh token。
+// POST /api/auth/login
+// 请求体：LoginRequest（username、password、tenant_code）
+// 返回：access_token、refresh_token 及用户角色信息。
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -58,7 +62,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	response.Success(c, resp)
 }
 
-// GetBootstrapStatus GET /api/auth/bootstrap-status — 是否需要进行首次初始化（无用户）。
+// GetBootstrapStatus 查询系统是否需要进行首次初始化（无任何用户时返回 true）。
+// GET /api/auth/bootstrap-status
+// 返回：{"needs_bootstrap": bool}。
 func (h *AuthHandler) GetBootstrapStatus(c *gin.Context) {
 	resp, err := h.authService.BootstrapStatus()
 	if err != nil {
@@ -73,7 +79,10 @@ func (h *AuthHandler) GetBootstrapStatus(c *gin.Context) {
 	response.Success(c, resp)
 }
 
-// BootstrapAdmin POST /api/auth/bootstrap — 创建首个系统管理员（仅零用户时）。
+// BootstrapAdmin 创建首个系统管理员账号（仅在系统无用户时可调用）。
+// POST /api/auth/bootstrap
+// 请求体：BootstrapAdminRequest（username、password）
+// 返回：null（成功时）。
 func (h *AuthHandler) BootstrapAdmin(c *gin.Context) {
 	var req dto.BootstrapAdminRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -92,9 +101,13 @@ func (h *AuthHandler) BootstrapAdmin(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-//注销处理 POST /api/auth/logout
+// Logout 用户登出，将 access/refresh token 加入黑名单使其失效。
+// POST /api/auth/logout
+// 请求体（可选）：{"refresh_jti": "..."}
+// 若请求体未提供 refresh_jti，则尝试从 Redis 会话中读取。
+// 返回：null（成功时）。
 func (h *AuthHandler) Logout(c *gin.Context) {
-	//从上下文中获取jwt_claims（由JWT中间件设置）
+	// 从上下文中获取 JWT claims（由 JWT 中间件注入）
 	claimsVal, exists := c.Get("jwt_claims")
 	if !exists {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
@@ -106,13 +119,13 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	//尝试从请求体中获取refresh_jti
+	// 尝试从请求体中获取 refresh_jti
 	var body logoutBody
 	_ = c.ShouldBindJSON(&body)
 
 	refreshJTI := body.RefreshJTI
 
-	//如果正文中未提供，请尝试从 Redis 会话中获取
+	// 若请求体未提供，则从 Redis 会话中查找
 	if refreshJTI == "" {
 		sessionKey := fmt.Sprintf("session:%s", claims.Sub)
 		sessionJSON, err := h.rdb.Get(context.Background(), sessionKey).Result()
@@ -140,7 +153,10 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-//刷新句柄 POST /api/auth/refresh
+// Refresh 使用 refresh token 换取新的 access token。
+// POST /api/auth/refresh
+// 请求体：RefreshRequest（refresh_token）
+// 返回：新的 access_token 及过期时间。
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req dto.RefreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -162,7 +178,10 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	response.Success(c, resp)
 }
 
-//SwitchRole 处理 PUT /api/auth/switch-role
+// SwitchRole 切换当前用户的活跃角色，重新签发携带新角色信息的 token。
+// PUT /api/auth/switch-role
+// 请求体：SwitchRoleRequest（role_id）
+// 返回：新的 access_token 及角色信息。
 func (h *AuthHandler) SwitchRole(c *gin.Context) {
 	var req dto.SwitchRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -170,7 +189,7 @@ func (h *AuthHandler) SwitchRole(c *gin.Context) {
 		return
 	}
 
-	//从上下文中获取 user_id 和 jwt_claims
+	// 从上下文中获取当前用户的 JWT claims
 	claimsVal, exists := c.Get("jwt_claims")
 	if !exists {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
@@ -202,9 +221,11 @@ func (h *AuthHandler) SwitchRole(c *gin.Context) {
 	response.Success(c, resp)
 }
 
-//GetMenu 处理 GET /api/auth/menu
+// GetMenu 获取当前用户在当前角色下的菜单权限列表。
+// GET /api/auth/menu
+// 返回：菜单树结构，根据 active_role 动态生成。
 func (h *AuthHandler) GetMenu(c *gin.Context) {
-	//从上下文中获取 jwt_claims
+	// 从上下文中获取 JWT claims
 	claimsVal, exists := c.Get("jwt_claims")
 	if !exists {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
@@ -216,7 +237,7 @@ func (h *AuthHandler) GetMenu(c *gin.Context) {
 		return
 	}
 
-	//确定tenantID：从ActiveRole或system_admin的查询参数
+	// system_admin 无租户上下文，其他角色从 active_role 中取 tenant_id
 	tenantID := ""
 	if claims.ActiveRole.TenantID != nil {
 		tenantID = *claims.ActiveRole.TenantID
@@ -236,11 +257,7 @@ func (h *AuthHandler) GetMenu(c *gin.Context) {
 	response.Success(c, resp)
 }
 
-// ---------------------------------------------------------------------------
-//Helper：将 ServiceError 代码映射到 HTTP 状态
-// ---------------------------------------------------------------------------
-
-//mapServiceErrorToHTTP 将 ServiceError 的业务代码映射到 HTTP 状态代码。
+// mapServiceErrorToHTTP 将业务层 ServiceError 的错误码映射为对应的 HTTP 状态码。
 func mapServiceErrorToHTTP(err error) int {
 	svcErr, ok := err.(*service.ServiceError)
 	if !ok {
@@ -271,7 +288,10 @@ func mapServiceErrorToHTTP(err error) int {
 	}
 }
 
-// ChangePassword handles PUT /api/auth/change-password
+// ChangePassword 修改当前登录用户的密码。
+// PUT /api/auth/change-password
+// 请求体：ChangePasswordRequest（old_password、new_password）
+// 返回：null（成功时）。
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	var req dto.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -309,7 +329,9 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// GetMe handles GET /api/auth/me
+// GetMe 获取当前登录用户的个人信息及角色列表。
+// GET /api/auth/me
+// 返回：用户基本信息、当前活跃角色、所有角色分配列表。
 func (h *AuthHandler) GetMe(c *gin.Context) {
 	claimsVal, exists := c.Get("jwt_claims")
 	if !exists {
@@ -342,7 +364,10 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 	response.Success(c, resp)
 }
 
-// UpdateProfile handles PUT /api/auth/profile
+// UpdateProfile 更新当前登录用户的个人资料（显示名称等）。
+// PUT /api/auth/profile
+// 请求体：UpdateProfileRequest（display_name 等）
+// 返回：null（成功时）。
 func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	var req dto.UpdateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -380,7 +405,10 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// UpdateLocale handles PUT /api/auth/locale
+// UpdateLocale 更新当前登录用户的界面语言偏好。
+// PUT /api/auth/locale
+// 请求体：UpdateLocaleRequest（locale，如 zh-CN / en-US）
+// 返回：null（成功时）。
 func (h *AuthHandler) UpdateLocale(c *gin.Context) {
 	var req dto.UpdateLocaleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -2,7 +2,7 @@ package dto
 
 import "time"
 
-// ArchiveReviewExecuteRequest 发起归档复盘请求。
+// ArchiveReviewExecuteRequest 发起归档复盘任务请求。
 type ArchiveReviewExecuteRequest struct {
 	ProcessID   string `json:"process_id" binding:"required"`
 	ProcessType string `json:"process_type" binding:"required"`
@@ -18,12 +18,12 @@ type ArchiveReviewSubmitResponse struct {
 	CreatedAt string `json:"created_at"`
 }
 
-// ArchiveBatchExecuteRequest 批量提交归档复盘任务。
+// ArchiveBatchExecuteRequest 批量提交归档复盘任务请求。
 type ArchiveBatchExecuteRequest struct {
 	Items []ArchiveReviewExecuteRequest `json:"items" binding:"required"`
 }
 
-// ArchiveBatchExecuteResponse 批量提交结果。
+// ArchiveBatchExecuteResponse 批量提交归档复盘任务响应。
 type ArchiveBatchExecuteResponse struct {
 	Results  []ArchiveReviewSubmitResponse `json:"results"`
 	Total    int                           `json:"total"`
@@ -31,7 +31,7 @@ type ArchiveBatchExecuteResponse struct {
 	Failed   int                           `json:"failed"`
 }
 
-// ArchiveReviewStats 归档复盘统计。
+// ArchiveReviewStats 归档复盘统计数据。
 type ArchiveReviewStats struct {
 	TotalCount        int `json:"total_count"`
 	CompliantCount    int `json:"compliant_count"`
@@ -50,13 +50,13 @@ type ArchiveListParams struct {
 	AuditStatus string `json:"audit_status"`
 	Page        int    `json:"page"`
 	PageSize    int    `json:"page_size"`
-	// ArchiveDateStart 归档日期起（含），由 Handler 从 query start_date 解析，用于 OA SQL。
+	// ArchiveDateStart 归档日期起始（含），由 Handler 从 query start_date 解析，用于 OA SQL。
 	ArchiveDateStart *time.Time `json:"-"`
-	// ArchiveDateEndExclusive 归档日期止的排他上界，由 Handler 从 query end_date 解析为次日 0 点。
+	// ArchiveDateEndExclusive 归档日期结束的排他上界，由 Handler 从 query end_date 解析为次日 0 点。
 	ArchiveDateEndExclusive *time.Time `json:"-"`
 }
 
-// ArchiveProcessListResponse 已归档流程列表响应。
+// ArchiveProcessListResponse 已归档流程列表分页响应。
 type ArchiveProcessListResponse struct {
 	Items    []map[string]interface{} `json:"items"`
 	Total    int                      `json:"total"`

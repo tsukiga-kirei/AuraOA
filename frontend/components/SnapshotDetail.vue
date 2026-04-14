@@ -6,19 +6,22 @@ import {
   CloseOutlined,
 } from '@ant-design/icons-vue'
 
-import { computed } from 'vue' //添加/修改行的开始
+import { computed } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 
 const { t } = useI18n()
 
+// props：当前选中的快照数据，为 null 时抽屉关闭
 defineProps<{
   snapshot: any | null
 }>()
 
+// emit：关闭抽屉
 const emit = defineEmits<{
   close: []
 }>()
 
+// 根据审核建议类型返回对应的颜色、背景色、图标和标签配置
 const recommendationConfig = computed<Record<string, { color: string; bg: string; icon: any; label: string }>>(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
   reject: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: t('dashboard.rec.reject') },
@@ -39,7 +42,7 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
           </div>
 
           <div class="drawer-body">
-            <!--概括-->
+            <!--概览横幅-->
             <div class="detail-section">
               <div
                 class="detail-banner"
@@ -66,7 +69,7 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
               </div>
             </div>
 
-            <!--信息网格-->
+            <!--基本信息网格-->
             <div class="detail-section">
               <h4 class="section-title">{{ t('snapshot.basicInfo') }}</h4>
               <div class="info-grid">
@@ -106,7 +109,7 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
               </div>
             </div>
 
-            <!--规则详细信息的占位符-->
+            <!--审核理由-->
             <div class="detail-section">
               <h4 class="section-title">{{ t('snapshot.auditReason') }}</h4>
               <div class="reasoning-block">
@@ -272,7 +275,7 @@ const recommendationConfig = computed<Record<string, { color: string; bg: string
   color: var(--color-text-secondary);
 }
 
-/*过渡*/
+/*抽屉进出场过渡动画*/
 .drawer-enter-active {
   transition: opacity 0.2s ease;
 }

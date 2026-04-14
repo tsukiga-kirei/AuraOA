@@ -31,6 +31,7 @@ const {
 
 const { currentUser, refreshRoles } = useAuth()
 
+// 页面挂载时加载成员、角色、部门数据
 onMounted(() => {
   loadAll()
 })
@@ -77,7 +78,7 @@ const openEditMember = (m: OrgMember) => {
   showMemberModal.value = true
 }
 
-/** 解析role_ids以显示名称*/
+/** 根据角色 ID 列表解析对应的角色名称 */
 const resolveRoleNames = (roleIds: string[]): string[] => {
   return roleIds.map(rid => roles.value.find(r => r.id === rid)?.name || rid)
 }
@@ -208,9 +209,10 @@ interface PageConfig {
 }
 
 /**
- * 用于角色权限分配的租户范围页面列表。
- * 仅包含租户范围内的页面 — 无系统管理页面。
- * 分为：普通、业务、管理。*/
+ * 租户范围内的页面权限配置列表，用于角色权限分配。
+ * 仅包含租户范围内的页面，不含系统管理页面。
+ * 按分组划分：普通（common）、业务（business）、管理（admin）。
+ */
 const ALL_PAGES_CONFIG: PageConfig[] = [
   { path: '/overview', label: t('admin.org.page.overview'), group: 'common', alwaysOn: true },
   { path: '/dashboard', label: t('admin.org.page.dashboard'), group: 'business' },

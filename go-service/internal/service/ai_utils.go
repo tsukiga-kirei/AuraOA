@@ -7,13 +7,15 @@ import (
 	"strings"
 )
 
-// SelectedFieldSet 描述用户最终生效的选中字段集合。
-// key 为 "main" 或明细表名（如 "formtable_main_151_dt1"），value 为字段 key 的 set。
-// 当 set 为 nil 时表示该表全选所有字段。
+// SelectedFieldSet 描述用户最终生效的字段选择集合。
+// key 为 "main"（主表）或明细表名（如 "formtable_main_151_dt1"），value 为字段 key 的集合。
+// value 为 nil 时表示该表全选所有字段，不做过滤。
 type SelectedFieldSet map[string]map[string]bool
 
 // ── JSON 清理 ──
 
+// cleanJSONResponse 对 AI 返回的原始文本做多步清理，提取出可解析的 JSON 对象。
+// 处理顺序：去除首尾空白 → 剥离省略号前缀 → 提取 markdown 代码块 → 截取首尾花括号范围。
 func cleanJSONResponse(raw string) string {
 	s := strings.TrimSpace(raw)
 	s = stripLeadingEllipsisPrefix(s)
@@ -27,7 +29,8 @@ func cleanJSONResponse(raw string) string {
 	return s
 }
 
-// extractJSONFromMarkdownFence 若模型用 markdown 代码块包裹 JSON（```json … ``` 或 ``` … ```），只取中间正文再交给后续解析。
+// extractJSONFromMarkdownFence 从 markdown 代码块中提取 JSON 正文。
+// 支持 ```json ... ``` 和 ``` ... ``` 两种格式，避免模型包裹代码块导致解析失败。
 func extractJSONFromMarkdownFence(s string) string {
 	lower := strings.ToLower(s)
 	if idx := strings.Index(lower, "```json"); idx >= 0 {
@@ -49,7 +52,8 @@ func extractJSONFromMarkdownFence(s string) string {
 	return s
 }
 
-// stripLeadingEllipsisPrefix 去掉模型在 JSON 前附加的省略号（如 ...、…），避免首字符不是 { 导致截断错位。
+// stripLeadingEllipsisPrefix 去掉模型在 JSON 前附加的省略号（...、…、连续英文句点），
+// 防止首字符不是 { 导致后续截取错位。
 func stripLeadingEllipsisPrefix(s string) string {
 	for {
 		t := strings.TrimSpace(s)
@@ -80,6 +84,7 @@ func stripLeadingEllipsisPrefix(s string) string {
 
 // ── 数值处理 ──
 
+// pickOverallScoreInt 优先取 overall 字段，为零时回退到 score 字段，结果钳制到 [0, 100]。
 func pickOverallScoreInt(overall, score float64) int {
 	if overall != 0 {
 		return clampPercentInt(overall)
@@ -87,6 +92,7 @@ func pickOverallScoreInt(overall, score float64) int {
 	return clampPercentInt(score)
 }
 
+// clampPercentInt 将浮点数四舍五入并钳制到 [0, 100] 整数范围。
 func clampPercentInt(v float64) int {
 	if v <= 0 {
 		return 0
@@ -99,6 +105,7 @@ func clampPercentInt(v float64) int {
 
 // ── 集合工具 ──
 
+// coalesceStringSlice 将 nil 切片转为空切片，确保 JSON 序列化输出 [] 而非 null。
 func coalesceStringSlice(s []string) []string {
 	if s == nil {
 		return []string{}
@@ -106,6 +113,7 @@ func coalesceStringSlice(s []string) []string {
 	return s
 }
 
+// firstNonEmpty 返回参数列表中第一个非空白字符串，全为空时返回空字符串。
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if strings.TrimSpace(v) != "" {
@@ -117,8 +125,8 @@ func firstNonEmpty(values ...string) string {
 
 // ── 字段过滤 ──
 
-// filterFields 从 map 中只保留 allowedKeys 指定的字段。
-// 当 allowedKeys 为 nil 时，返回原始 data（全选）。
+// filterFields 从 map 中只保留 allowedKeys 指定的字段（大小写不敏感匹配）。
+// allowedKeys 为 nil 时直接返回原始 data，表示全选不过滤。
 func filterFields(data map[string]interface{}, allowedKeys map[string]bool) map[string]interface{} {
 	if data == nil {
 		return nil
@@ -136,7 +144,7 @@ func filterFields(data map[string]interface{}, allowedKeys map[string]bool) map[
 	return filtered
 }
 
-// filterRowFields 对一组明细行批量做字段过滤。
+// filterRowFields 对一组明细行批量执行字段过滤，allowedKeys 为 nil 时原样返回。
 func filterRowFields(rows []map[string]interface{}, allowedKeys map[string]bool) []map[string]interface{} {
 	if allowedKeys == nil {
 		return rows
@@ -150,6 +158,7 @@ func filterRowFields(rows []map[string]interface{}, allowedKeys map[string]bool)
 
 // ── 格式化 ──
 
+// formatMainData 将主表数据格式化为缩进 JSON 字符串，数据为空时返回占位提示。
 func formatMainData(data map[string]interface{}) string {
 	if len(data) == 0 {
 		return "（无主表数据）"
@@ -204,6 +213,7 @@ func formatGroupedDetailData(detailTables map[string][]map[string]interface{}, f
 
 // ── 通用工具 ──
 
+// truncate 截断字符串到指定字节长度，超出时追加省略号，用于日志和错误信息中的内容预览。
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s

@@ -63,6 +63,7 @@ const aiModels = ref<AIModel[]>([])
 const generalConfig = ref<SystemGeneralConfig>({} as SystemGeneralConfig)
 const saving = ref(false)
 
+// 页面初始化：并行加载系统配置、OA 连接、AI 模型及各类选项数据
 onMounted(async () => {
   loading.value = true
   try {

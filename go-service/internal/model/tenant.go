@@ -12,7 +12,7 @@ type Tenant struct {
 	Name                string     `gorm:"size:255;not null"`
 	Code                string     `gorm:"uniqueIndex;size:100;not null"`
 	Description         string     `gorm:"type:text"`
-	Status              string     `gorm:"size:20;not null;default:active"` // active | inactive
+	Status              string     `gorm:"size:20;not null;default:active"` // active | inactive（启用 | 停用）
 	OADBConnectionID    *uuid.UUID `gorm:"type:uuid;column:oa_db_connection_id"`
 	TokenQuota          int        `gorm:"not null;default:10000"`
 	TokenUsed           int        `gorm:"not null;default:0"`

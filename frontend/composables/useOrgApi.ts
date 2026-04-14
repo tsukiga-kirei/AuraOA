@@ -1,22 +1,30 @@
 import type { Department, OrgRole, OrgMember } from '~/types/org'
 
 // ============================================================
-// Backend DTO types (nested structure from Go service)
+// 后端响应 DTO 类型（与 Go 服务返回的嵌套结构对应）
 // ============================================================
+
+/** 成员关联的用户基本信息 */
 interface ApiMemberUserInfo {
   id: string; username: string; display_name: string
   email: string; phone: string; avatar_url: string
 }
+
+/** 后端返回的部门数据结构 */
 interface ApiDepartmentResponse {
   id: string; name: string; parent_id?: string | null
   manager: string; sort_order: number; member_count: number
   created_at: string; updated_at: string
 }
+
+/** 后端返回的角色数据结构 */
 interface ApiRoleResponse {
   id: string; name: string; description: string
   page_permissions: string[] | any; is_system: boolean
   created_at: string; updated_at: string
 }
+
+/** 后端返回的成员数据结构（含嵌套用户、部门、角色信息） */
 interface ApiMemberResponse {
   id: string; user: ApiMemberUserInfo; department: ApiDepartmentResponse
   roles: ApiRoleResponse[]; position: string; status: string
@@ -24,8 +32,10 @@ interface ApiMemberResponse {
 }
 
 // ============================================================
-// DTO → Frontend model mappers
+// 后端 DTO → 前端模型转换函数
 // ============================================================
+
+/** 将后端部门响应转换为前端 Department 模型 */
 function mapDepartment(d: ApiDepartmentResponse): Department {
   return {
     id: d.id, name: d.name, parent_id: d.parent_id ?? null,
@@ -33,6 +43,10 @@ function mapDepartment(d: ApiDepartmentResponse): Department {
   }
 }
 
+/**
+ * 将后端角色响应转换为前端 OrgRole 模型。
+ * page_permissions 字段可能为数组或 JSON 字符串，统一转换为字符串数组。
+ */
 function mapRole(r: ApiRoleResponse): OrgRole {
   let perms: string[] = []
   if (Array.isArray(r.page_permissions)) perms = r.page_permissions
@@ -45,6 +59,7 @@ function mapRole(r: ApiRoleResponse): OrgRole {
   }
 }
 
+/** 将后端成员响应转换为前端 OrgMember 模型，提取角色 ID 和名称列表 */
 function mapMember(m: ApiMemberResponse): OrgMember {
   const roleIds = m.roles?.map(r => r.id) ?? []
   const roleNames = m.roles?.map(r => r.name) ?? []
@@ -67,16 +82,22 @@ function mapMember(m: ApiMemberResponse): OrgMember {
 export const useOrgApi = () => {
   const { authFetch } = useAuth()
 
+  /** 部门列表（响应式，供模板直接绑定） */
   const departments = ref<Department[]>([])
+  /** 角色列表（响应式） */
   const roles = ref<OrgRole[]>([])
+  /** 成员列表（响应式） */
   const members = ref<OrgMember[]>([])
+  /** 加载状态标志 */
   const loading = ref(false)
+  /** 错误信息（null 表示无错误） */
   const error = ref<string | null>(null)
 
   // ============================================================
-  // Departments
+  // 部门管理
   // ============================================================
 
+  /** 获取当前租户所有部门列表 */
   async function listDepartments(): Promise<Department[]> {
     loading.value = true
     error.value = null
@@ -86,33 +107,45 @@ export const useOrgApi = () => {
       return departments.value
     }
     catch (e: any) {
-      error.value = e.message || 'Failed to load departments'
+      error.value = e.message || '加载部门列表失败'
       console.error('[useOrgApi] listDepartments failed', e)
       throw e
     }
     finally { loading.value = false }
   }
 
+  /**
+   * 创建新部门。
+   * @param dept 部门信息（名称、上级部门、负责人等）
+   */
   async function createDepartment(dept: Omit<Department, 'id' | 'member_count'>): Promise<Department> {
     const data = await authFetch<ApiDepartmentResponse>('/api/tenant/org/departments', { method: 'POST', body: dept })
-    const mapped = mapDepartment(data)
-    return mapped
+    return mapDepartment(data)
   }
 
+  /**
+   * 更新指定部门信息。
+   * @param id 部门 ID
+   * @param dept 要更新的字段
+   */
   async function updateDepartment(id: string, dept: Partial<Department>): Promise<Department> {
     const data = await authFetch<ApiDepartmentResponse>(`/api/tenant/org/departments/${id}`, { method: 'PUT', body: dept })
-    const mapped = mapDepartment(data)
-    return mapped
+    return mapDepartment(data)
   }
 
+  /**
+   * 删除指定部门（部门下有成员时后端会拦截）。
+   * @param id 部门 ID
+   */
   async function deleteDepartment(id: string): Promise<void> {
     await authFetch<null>(`/api/tenant/org/departments/${id}`, { method: 'DELETE' })
   }
 
   // ============================================================
-  // Roles
+  // 角色管理
   // ============================================================
 
+  /** 获取当前租户所有角色列表（含系统内置角色） */
   async function listRoles(): Promise<OrgRole[]> {
     loading.value = true
     error.value = null
@@ -122,33 +155,45 @@ export const useOrgApi = () => {
       return roles.value
     }
     catch (e: any) {
-      error.value = e.message || 'Failed to load roles'
+      error.value = e.message || '加载角色列表失败'
       console.error('[useOrgApi] listRoles failed', e)
       throw e
     }
     finally { loading.value = false }
   }
 
+  /**
+   * 创建新角色。
+   * @param role 角色信息（名称、描述、页面权限列表）
+   */
   async function createRole(role: Omit<OrgRole, 'id'>): Promise<OrgRole> {
     const data = await authFetch<ApiRoleResponse>('/api/tenant/org/roles', { method: 'POST', body: role })
-    const mapped = mapRole(data)
-    return mapped
+    return mapRole(data)
   }
 
+  /**
+   * 更新指定角色信息。
+   * @param id 角色 ID
+   * @param role 要更新的字段
+   */
   async function updateRole(id: string, role: Partial<OrgRole>): Promise<OrgRole> {
     const data = await authFetch<ApiRoleResponse>(`/api/tenant/org/roles/${id}`, { method: 'PUT', body: role })
-    const mapped = mapRole(data)
-    return mapped
+    return mapRole(data)
   }
 
+  /**
+   * 删除指定角色（系统内置角色后端会拦截）。
+   * @param id 角色 ID
+   */
   async function deleteRole(id: string): Promise<void> {
     await authFetch<null>(`/api/tenant/org/roles/${id}`, { method: 'DELETE' })
   }
 
   // ============================================================
-  // Members
+  // 成员管理
   // ============================================================
 
+  /** 获取当前租户所有成员列表（含用户信息、部门、角色） */
   async function listMembers(): Promise<OrgMember[]> {
     loading.value = true
     error.value = null
@@ -158,13 +203,17 @@ export const useOrgApi = () => {
       return members.value
     }
     catch (e: any) {
-      error.value = e.message || 'Failed to load members'
+      error.value = e.message || '加载成员列表失败'
       console.error('[useOrgApi] listMembers failed', e)
       throw e
     }
     finally { loading.value = false }
   }
 
+  /**
+   * 创建新成员（同时创建系统用户账号）。
+   * @param member 成员信息（用户名、显示名、邮箱、部门、角色等）
+   */
   async function createMember(member: Omit<OrgMember, 'id' | 'created_at'>): Promise<OrgMember> {
     const body = {
       username: member.username,
@@ -176,10 +225,14 @@ export const useOrgApi = () => {
       position: member.position,
     }
     const data = await authFetch<ApiMemberResponse>('/api/tenant/org/members', { method: 'POST', body })
-    const mapped = mapMember(data)
-    return mapped
+    return mapMember(data)
   }
 
+  /**
+   * 更新指定成员信息（仅传入需要修改的字段）。
+   * @param id 成员 ID
+   * @param member 要更新的字段
+   */
   async function updateMember(id: string, member: Partial<OrgMember>): Promise<OrgMember> {
     const body: Record<string, any> = {}
     if (member.name !== undefined) body.display_name = member.name
@@ -191,14 +244,18 @@ export const useOrgApi = () => {
     if (member.status !== undefined) body.status = member.status
 
     const data = await authFetch<ApiMemberResponse>(`/api/tenant/org/members/${id}`, { method: 'PUT', body })
-    const mapped = mapMember(data)
-    return mapped
+    return mapMember(data)
   }
 
+  /**
+   * 删除指定成员（同时禁用其系统账号）。
+   * @param id 成员 ID
+   */
   async function deleteMember(id: string): Promise<void> {
     await authFetch<null>(`/api/tenant/org/members/${id}`, { method: 'DELETE' })
   }
 
+  /** 并发加载部门、角色、成员列表（页面初始化时使用） */
   async function loadAll(): Promise<void> {
     await Promise.all([listDepartments(), listRoles(), listMembers()])
   }

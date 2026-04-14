@@ -1,3 +1,4 @@
+// 仪表盘概览处理器，负责聚合并返回仪表盘所需的统计数据。
 package handler
 
 import (
@@ -6,23 +7,26 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
+	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
 	"oa-smart-audit/go-service/internal/pkg/response"
 	"oa-smart-audit/go-service/internal/service"
 )
 
-// DashboardOverviewHandler GET /api/tenant/settings/dashboard-overview
+// DashboardOverviewHandler 处理仪表盘概览相关的 HTTP 请求。
 type DashboardOverviewHandler struct {
 	svc *service.DashboardOverviewService
 }
 
-// NewDashboardOverviewHandler 创建处理器。
+// NewDashboardOverviewHandler 创建仪表盘概览处理器实例。
 func NewDashboardOverviewHandler(svc *service.DashboardOverviewService) *DashboardOverviewHandler {
 	return &DashboardOverviewHandler{svc: svc}
 }
 
-// GetOverview 聚合仪表盘数据。
+// GetOverview 获取当前租户用户的仪表盘聚合数据。
+// GET /api/tenant/settings/dashboard-overview
+// 从 JWT claims 中提取用户 ID 和角色，按角色维度聚合统计数据。
+// 返回：仪表盘各组件所需的统计数据对象。
 func (h *DashboardOverviewHandler) GetOverview(c *gin.Context) {
 	claimsVal, ok := c.Get("jwt_claims")
 	if !ok {
@@ -48,7 +52,10 @@ func (h *DashboardOverviewHandler) GetOverview(c *gin.Context) {
 	response.Success(c, data)
 }
 
-// GetPlatformOverview GET /api/admin/dashboard-overview（system_admin，全平台聚合，不依赖 tenant_id）。
+// GetPlatformOverview 获取全平台聚合的仪表盘数据（仅系统管理员可用）。
+// GET /api/admin/dashboard-overview
+// 不依赖租户上下文，聚合所有租户的统计数据。
+// 返回：平台级仪表盘统计数据对象。
 func (h *DashboardOverviewHandler) GetPlatformOverview(c *gin.Context) {
 	data, err := h.svc.BuildPlatformOverview()
 	if err != nil {

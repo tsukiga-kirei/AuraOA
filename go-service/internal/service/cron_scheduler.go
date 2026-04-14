@@ -149,6 +149,18 @@ func (s *CronScheduler) addEntryLocked(task model.CronTask) {
 	}
 }
 
+// RegisterCustomJob 向调度器注册一个自定义函数任务（不依赖数据库 CronTask 记录）。
+// 适用于系统内置的定时维护任务，如日志清理、数据归档等。
+// expr 为标准5字段 cron 表达式，fn 为任务执行函数。
+// 若 cron 表达式非法，返回错误。
+func (s *CronScheduler) RegisterCustomJob(expr string, fn func()) error {
+	_, err := s.c.AddFunc(expr, fn)
+	if err != nil {
+		return fmt.Errorf("注册自定义定时任务失败，表达式 %q 非法: %w", expr, err)
+	}
+	return nil
+}
+
 // ParseNextRun 解析 cron 表达式并返回下次执行时间（供外部调用）。
 func ParseNextRun(expr string) *time.Time {
 	p := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)

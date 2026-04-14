@@ -35,3 +35,18 @@ cors:
 
 encryption:
   key: "4f9e2b8c5a1d7f0e3a6c9b2d5e8f1a4c" # 必须为 32 字节（AES-256）
+
+# 日志系统配置
+log:
+  # 日志输出等级：debug / info / warn / error，默认 info
+  level: "info"
+  # 日志文件根目录，全局日志写入 {dir}/app.log，租户日志写入 {dir}/tenants/{code}/tenant.log
+  dir: "logs"
+  # 单个日志文件最大体积（MB），超出后触发轮转，默认 100
+  max_size_mb: 100
+  # 轮转后最多保留的备份文件数量，默认 5
+  max_backups: 5
+  # 是否对轮转备份文件进行 gzip 压缩，默认 true
+  compress: true
+  # 全局日志文件保留天数（兜底值），优先读取 system_configs 表中的配置，默认 30
+  global_retention_days: 30

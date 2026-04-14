@@ -21,6 +21,7 @@ type OAConnectionService struct {
 	repo *repository.OAConnectionRepo
 }
 
+// NewOAConnectionService 创建 OAConnectionService，注入 OA 连接仓储。
 func NewOAConnectionService(repo *repository.OAConnectionRepo) *OAConnectionService {
 	return &OAConnectionService{repo: repo}
 }
@@ -267,4 +268,3 @@ func (s *OAConnectionService) testOAConnection(conn *model.OADatabaseConnection)
 	}
 	return nil
 }
-

@@ -33,9 +33,8 @@ const loadConfigs = async () => {
   catch (e) { console.error('[user-configs] 加载失败', e) }
 }
 
+// 页面挂载时加载用户个人配置列表
 onMounted(loadConfigs)
-
-// =====================================================================
 // 过滤选项（从真实数据派生）
 // =====================================================================
 const departmentOptions = computed(() => {

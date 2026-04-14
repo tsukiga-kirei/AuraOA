@@ -81,7 +81,7 @@ const auditSnapshots = ref<AuditSnapshotItem[]>([])
 const cronLogs = ref<CronLogItem[]>([])
 const archiveSnapshots = ref<ArchiveSnapshotItem[]>([])
 
-// Drawer details variables
+// 抽屉详情相关变量
 const auditDetailVisible = ref(false)
 const selectedAuditLog = ref<AuditSnapshotItem | null>(null)
 const auditChainLogs = ref<AuditLogItem[]>([])
@@ -383,7 +383,7 @@ async function loadProcessCascaderOptions() {
     }
     processCascaderOptions.value = Array.from(categoryMap.values())
   } catch (e) {
-    console.warn('Failed to load process types', e)
+    console.warn('加载流程类型失败', e)
     processCascaderOptions.value = []
   }
 }
@@ -398,16 +398,17 @@ const getAuditCount = (validLogIds: any) => {
       try {
         const parsed = JSON.parse(validLogIds)
         return Array.isArray(parsed) ? parsed.length : 1
-      } catch { /* fallback */ }
+      } catch { /* 降级处理 */ }
     }
     if (validLogIds.includes(',')) return validLogIds.split(',').filter(Boolean).length
-    if (validLogIds.length > 20) return 1 // looks like a single ID
+    if (validLogIds.length > 20) return 1 // 长度超过 20 视为单个 ID
     return isNaN(Number(validLogIds)) ? 1 : Number(validLogIds)
   }
   return 1
 }
 
 
+// 加载审核快照统计数据（各推荐结果的数量）
 async function loadAuditStats() {
   try {
     auditStats.value = await getAuditSnapshotStats()
@@ -416,6 +417,7 @@ async function loadAuditStats() {
   }
 }
 
+// 加载定时任务执行日志统计数据
 async function loadCronStats() {
   try {
     cronStats.value = await getCronLogStats()
@@ -424,6 +426,7 @@ async function loadCronStats() {
   }
 }
 
+// 加载归档复盘快照统计数据（各合规状态的数量）
 async function loadArchiveStats() {
   try {
     archiveStats.value = await getArchiveSnapshotStats()
@@ -432,6 +435,7 @@ async function loadArchiveStats() {
   }
 }
 
+// 加载审核快照列表（分页，支持多维度筛选）
 async function loadAuditLogs() {
   auditLoading.value = true
   try {
@@ -447,6 +451,7 @@ async function loadAuditLogs() {
   }
 }
 
+// 加载定时任务执行日志列表（分页，支持状态和类型筛选）
 async function loadCronLogs() {
   cronLoading.value = true
   try {
@@ -462,6 +467,7 @@ async function loadCronLogs() {
   }
 }
 
+// 加载归档复盘快照列表（分页，支持多维度筛选）
 async function loadArchiveLogs() {
   archiveLoading.value = true
   try {
@@ -510,10 +516,12 @@ watch(auditQuery, loadAuditLogs, { immediate: true })
 watch(cronQuery, loadCronLogs, { immediate: true })
 watch(archiveQuery, loadArchiveLogs, { immediate: true })
 
+// 切换审核子标签时重置分页到第一页
 watch(activeAuditSubTab, () => {
   auditPage.value = 1
 })
 
+// 页面初始化：并行加载流程类型、部门列表及各模块统计数据
 onMounted(async () => {
   await Promise.all([
     loadProcessCascaderOptions(),
@@ -1410,7 +1418,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* markdown override */
+/* Markdown 样式覆盖 */
 .markdown-body { font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); word-break: break-word; }
 .markdown-body :deep(h1), .markdown-body :deep(h2), .markdown-body :deep(h3),
 .markdown-body :deep(h4), .markdown-body :deep(h5), .markdown-body :deep(h6) { margin: 12px 0 6px; font-weight: 600; color: var(--color-text-primary); }

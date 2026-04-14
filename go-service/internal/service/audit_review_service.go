@@ -54,6 +54,7 @@ type AuditExecuteService struct {
 	cancelMap         sync.Map
 }
 
+// NewAuditExecuteService 创建 AuditExecuteService，注入所有依赖仓储和服务。
 func NewAuditExecuteService(
 	auditLogRepo *repository.AuditLogRepo,
 	auditSnapshotRepo *repository.AuditProcessSnapshotRepo,

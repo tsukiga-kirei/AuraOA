@@ -8,6 +8,7 @@ import type { DeptDistributionData } from '~/types/dashboard-overview'
 
 use([BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
+// props：部门分布数据 / 图例标签 / 图表高度
 interface Props {
   data: DeptDistributionData[]
   labels: { audit: string; cron: string; archive: string }
@@ -16,6 +17,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), { height: '300px' })
 
+// 根据传入数据构建 ECharts 横向堆叠柱状图配置
 const option = computed(() => {
   const depts = props.data.map(d => d.department)
   return {

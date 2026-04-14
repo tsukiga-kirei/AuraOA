@@ -21,14 +21,15 @@ import (
 	"oa-smart-audit/go-service/internal/repository"
 )
 
-// AIModelCallerService 处理 AI 模型调用的业务逻辑，包括 Token 统计和日志记录。
+// AIModelCallerService 负责 AI 模型调用的完整生命周期管理：
+// Token 配额预扣与结算、调用执行、异步日志写入。
 type AIModelCallerService struct {
 	tenantRepo *repository.TenantRepo
 	logRepo    *repository.LLMMessageLogRepo
 	db         *gorm.DB
 }
 
-// NewAIModelCallerService 创建一个新的 AIModelCallerService 实例。
+// NewAIModelCallerService 初始化 AI 调用服务，注入租户仓储、日志仓储和数据库连接。
 func NewAIModelCallerService(
 	tenantRepo *repository.TenantRepo,
 	logRepo *repository.LLMMessageLogRepo,
@@ -41,7 +42,11 @@ func NewAIModelCallerService(
 	}
 }
 
-// Chat 执行 AI 模型调用，包含 Token 配额检查、调用执行、Token 累加和异步日志写入。
+// Chat 执行单次 AI 对话调用，完整流程为：
+// 1. 预扣 Token 配额（防止并发超额）
+// 2. 创建对应部署类型的调用器并发起请求
+// 3. 调用失败时回滚预扣额度
+// 4. 调用成功后结算实际消耗，并异步写入调用日志
 func (s *AIModelCallerService) Chat(c *gin.Context, tenantID, userID uuid.UUID, modelCfg *model.AIModelConfig, req *ai.ChatRequest) (*ai.ChatResponse, error) {
 	// 检查 Token 配额（预扣 max_tokens 防止并发超额）
 	reserved := 0
@@ -90,7 +95,7 @@ func (s *AIModelCallerService) Chat(c *gin.Context, tenantID, userID uuid.UUID, 
 	return resp, nil
 }
 
-// pythonAIRequest Go → Python AI 服务的请求体格式。
+// pythonAIRequest 发往 Python AI 服务的请求体，包含提示词和完整模型配置。
 type pythonAIRequest struct {
 	SystemPrompt string                 `json:"system_prompt"`
 	UserPrompt   string                 `json:"user_prompt"`
@@ -98,7 +103,7 @@ type pythonAIRequest struct {
 	AuditContext map[string]interface{} `json:"audit_context"`
 }
 
-// pythonAIResponse Python → Go AI 服务的响应体格式。
+// pythonAIResponse Python AI 服务返回的响应体，包含生成内容和 Token 统计。
 type pythonAIResponse struct {
 	Content    string        `json:"content"`
 	TokenUsage ai.TokenUsage `json:"token_usage"`
@@ -106,8 +111,9 @@ type pythonAIResponse struct {
 	DurationMs int64         `json:"duration_ms"`
 }
 
-// ChatViaPython 通过 HTTP 调用 Python AI 服务执行审核。
+// ChatViaPython 通过 HTTP 转发至 Python AI 服务执行审核推理。
 // 调用前对用户提示词执行数据脱敏，调用后结算 Token 并异步写入日志。
+// 适用于需要 Python 侧特殊处理（如 RAG 检索、复杂上下文注入）的场景。
 func (s *AIModelCallerService) ChatViaPython(c *gin.Context, tenantID, userID uuid.UUID, modelCfg *model.AIModelConfig, req *ai.ChatRequest, auditContext map[string]interface{}) (*ai.ChatResponse, error) {
 	// 预扣 Token 配额
 	reserved := 0
@@ -207,9 +213,8 @@ func (s *AIModelCallerService) ChatViaPython(c *gin.Context, tenantID, userID uu
 
 // ── Token 配额原子操作 ─────────────────────────────────────
 
-// reserveTokenQuota 原子预扣 Token 配额。
-// 使用 UPDATE ... WHERE token_used + ? <= token_quota 保证不超额，
-// 高并发下多个请求同时预扣时，只有总量不超配额的才能成功。
+// reserveTokenQuota 原子预扣 Token 配额，防止并发场景下超额消耗。
+// 使用条件更新 token_used + amount <= token_quota，只有满足条件的请求才能成功预扣。
 func (s *AIModelCallerService) reserveTokenQuota(tenantID uuid.UUID, amount int) error {
 	result := s.db.Model(&model.Tenant{}).
 		Where("id = ? AND token_used + ? <= token_quota", tenantID, amount).
@@ -224,15 +229,16 @@ func (s *AIModelCallerService) reserveTokenQuota(tenantID uuid.UUID, amount int)
 	return nil
 }
 
-// releaseTokenQuota 回滚预扣的 Token 配额（调用失败时使用）。
+// releaseTokenQuota 回滚预扣的 Token 配额，在调用失败时恢复租户可用额度。
+// 使用 GREATEST 防止因并发操作导致 token_used 出现负值。
 func (s *AIModelCallerService) releaseTokenQuota(tenantID uuid.UUID, amount int) error {
 	return s.db.Model(&model.Tenant{}).
 		Where("id = ?", tenantID).
 		Update("token_used", gorm.Expr("GREATEST(token_used - ?, 0)", amount)).Error
 }
 
-// settleTokenUsage 结算实际 Token 消耗：释放预扣额度，加上实际消耗。
-// 等价于 token_used = token_used - reserved + actual
+// settleTokenUsage 结算实际 Token 消耗：释放预扣额度，加上实际消耗量。
+// 等价于 token_used = token_used - reserved + actual，diff 可为负（实际 < 预扣时退还差额）。
 func (s *AIModelCallerService) settleTokenUsage(tenantID uuid.UUID, reserved, actual int) error {
 	diff := actual - reserved // 可能为负（实际消耗 < 预扣）
 	if diff == 0 {
@@ -247,7 +253,8 @@ func (s *AIModelCallerService) settleTokenUsage(tenantID uuid.UUID, reserved, ac
 
 const logMaxRetries = 3
 
-// asyncWriteLog 异步写入 LLM 调用日志，失败时指数退避重试。
+// asyncWriteLog 在独立 goroutine 中异步写入 LLM 调用日志，失败时按指数退避重试最多 3 次。
+// 重试耗尽后降级为标准日志输出，不影响主流程返回。
 func (s *AIModelCallerService) asyncWriteLog(tenantID, userID uuid.UUID, modelConfigID uuid.UUID, requestType string, resp *ai.ChatResponse) {
 	go func() {
 		entry := &model.TenantLLMMessageLog{

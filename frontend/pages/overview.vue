@@ -29,25 +29,33 @@ import DeptDistributionChart from '~/components/charts/DeptDistributionChart.vue
 
 definePageMeta({ middleware: 'auth' })
 
+// 概览页空数据占位，避免模板渲染时出现 undefined 错误
 const EMPTY_OVERVIEW: DashboardOverview = {
   weekly_overview: { total: 0, audit_count: 0, archive_count: 0, cron_count: 0 },
   weekly_trend: [],
   recent_activity: [],
 }
 
+// 鉴权、国际化、数据接口
 const { effectiveActiveRoleForApi, currentUser, menus } = useAuth()
 const { t, locale } = useI18n()
 const { fetchDashboardOverview, fetchPlatformDashboardOverview } = useDashboardOverviewApi()
 const { getDashboardPrefs, updateDashboardPrefs } = useSettingsApi()
 
+// 租户概览数据（业务/租户管理员角色使用）
 const overview = ref<DashboardOverview | null>(null)
+// 平台概览数据（系统管理员角色使用）
 const platformOverview = ref<PlatformDashboardOverview | null>(null)
+// 概览数据加载状态
 const overviewLoading = ref(false)
 
+// 是否为平台管理员（系统管理员）
 const isPlatformAdmin = computed(() => effectiveActiveRoleForApi.value === 'system_admin')
 
+// 当前有效的概览数据，未加载时使用空占位
 const dash = computed(() => overview.value ?? EMPTY_OVERVIEW)
 
+// 根据当前角色和页面权限过滤可用的仪表盘组件
 const availableWidgets = computed(() => {
   const role = effectiveActiveRoleForApi.value
   if (!role) return []
@@ -56,7 +64,7 @@ const availableWidgets = computed(() => {
     w.requiredPermissions.includes(role as PermissionGroup),
   )
 
-  // business 角色额外按 page_permissions 过滤
+  // business 角色额外按 page_permissions 过滤，确保只展示有权限访问的页面对应组件
   if (role === 'business') {
     const allowedPaths = new Set(menus.value.map((m: any) => m.path).filter(Boolean))
     widgets = widgets.filter((w) => {
@@ -69,12 +77,16 @@ const availableWidgets = computed(() => {
   return widgets
 })
 
+// 默认启用的组件 ID 列表（用于首次加载时的初始状态）
 const defaultPrefs = computed(() =>
   availableWidgets.value.filter(w => w.defaultEnabled).map(w => w.id))
 
+// 当前已启用的组件 ID 列表（用户可自定义）
 const enabledWidgets = ref<OverviewWidgetId[]>([])
+// 各组件的尺寸偏好（sm/md/lg）
 const widgetSizes = ref<Partial<Record<OverviewWidgetId, 'sm' | 'md' | 'lg'>>>({})
 
+// 将后端返回的仪表盘偏好应用到本地状态
 function applyDashboardPrefs(prefs: DashboardPref) {
   const allowed = new Set(availableWidgets.value.map(w => w.id))
   const raw = (prefs.enabled_widgets || []).filter((id): id is OverviewWidgetId =>
@@ -83,8 +95,10 @@ function applyDashboardPrefs(prefs: DashboardPref) {
   widgetSizes.value = { ...(prefs.widget_sizes as Partial<Record<OverviewWidgetId, 'sm' | 'md' | 'lg'>> || {}) }
 }
 
+// 空偏好占位，用于接口异常时的降级处理
 const EMPTY_DASH_PREFS: DashboardPref = { enabled_widgets: [], widget_sizes: {} }
 
+// 加载概览页数据：先获取仪表盘偏好，再根据角色拉取对应的概览数据
 async function loadOverviewPage() {
   const role = effectiveActiveRoleForApi.value
   if (!role) return
@@ -123,13 +137,17 @@ async function loadOverviewPage() {
   }
 }
 
+// 监听角色变化，切换角色时重新加载概览数据
 watch(effectiveActiveRoleForApi, () => { void loadOverviewPage() }, { immediate: true })
 
+// 判断指定组件是否已启用
 const isEnabled = (id: OverviewWidgetId) => {
   return enabledWidgets.value.includes(id) && availableWidgets.value.some(w => w.id === id)
 }
 
+// 是否处于自定义布局模式
 const customizing = ref(false)
+// 切换组件的启用/禁用状态（仅在自定义模式下有效）
 const toggleWidget = (id: OverviewWidgetId) => {
   if (!customizing.value) return
   const idx = enabledWidgets.value.indexOf(id)
@@ -137,6 +155,7 @@ const toggleWidget = (id: OverviewWidgetId) => {
   else enabledWidgets.value.push(id)
 }
 
+// 保存仪表盘布局偏好到后端
 const savePrefs = async () => {
   customizing.value = false
   try {
@@ -152,33 +171,37 @@ const savePrefs = async () => {
   }
 }
 
+// 获取指定组件的当前尺寸，未设置时使用默认值
 const getWidgetSize = (id: OverviewWidgetId) => {
   if (widgetSizes.value[id]) return widgetSizes.value[id]
   const w = OVERVIEW_WIDGETS.find(x => x.id === id)
   return w?.size || 'md'
 }
 
+// 循环切换组件尺寸：sm → md → lg → sm
 const cycleWidgetSize = (id: OverviewWidgetId) => {
   const current = getWidgetSize(id)
   const nextSize = current === 'sm' ? 'md' : current === 'md' ? 'lg' : 'sm'
   widgetSizes.value[id] = nextSize
 }
 
+// 根据当前小时生成问候语
 const greeting = computed(() => {
   const h = new Date().getHours()
   return h < 6 ? t('overview.greeting.lateNight') : h < 12 ? t('overview.greeting.morning') : h < 14 ? t('overview.greeting.noon') : h < 18 ? t('overview.greeting.afternoon') : t('overview.greeting.evening')
 })
 
+// 格式化大数字，超过 1 万时显示为 K 单位
 const formatNum = (n: number) => n >= 10000 ? (n / 1000).toFixed(1) + 'K' : n.toLocaleString()
 
-// ── Activity helpers ──
-
+// 最近动态各类型对应的颜色
 const activityKindColor: Record<string, string> = {
   audit: 'var(--color-primary)',
   archive: 'var(--color-success)',
   cron: 'var(--color-accent)',
 }
 
+// 将动态类型 key 转换为可读标签
 function kindLabel(kind: string) {
   switch (kind) {
     case 'audit': return t('overview.activity.audit')
@@ -188,6 +211,7 @@ function kindLabel(kind: string) {
   }
 }
 
+// 格式化动态时间为本地化短格式
 function formatActivityTime(iso: string) {
   try {
     const d = new Date(iso)
@@ -200,6 +224,7 @@ function formatActivityTime(iso: string) {
   }
 }
 
+// 获取定时任务的描述文本，优先使用自定义描述，其次使用国际化翻译
 function cronTaskDescriptionLabel(task: { description?: string; task_type?: string }) {
   if (task.description?.trim()) return task.description
   const key = `cron.taskType.${task.task_type}` as const
@@ -207,32 +232,32 @@ function cronTaskDescriptionLabel(task: { description?: string; task_type?: stri
   return tr && tr !== key ? tr : task.task_type ?? ''
 }
 
-// ── Trend chart data ──
-
+// 趋势图的日期分类数据
 const trendCategories = computed(() => dash.value.weekly_trend.map(d => d.date))
+// 趋势图的系列数据（审核、定时任务、归档）
 const trendSeries = computed(() => [
   { name: t('overview.auditWorkbench'), data: dash.value.weekly_trend.map(d => d.audit_count), color: '#4f46e5' },
   { name: t('overview.cronTasks'), data: dash.value.weekly_trend.map(d => d.cron_count), color: '#06b6d4' },
   { name: t('overview.archiveReview'), data: dash.value.weekly_trend.map(d => d.archive_count), color: '#10b981' },
 ])
 
-// ── Dept distribution chart labels ──
-
+// 部门分布图的标签配置
 const deptChartLabels = computed(() => ({
   audit: t('overview.auditWorkbench'),
   cron: t('overview.cronTasks'),
   archive: t('overview.archiveReview'),
 }))
 
-// ── Widget ordering & drag ──
-
+// 获取组件在已启用列表中的排序位置，未启用时排到末尾
 const getWidgetOrder = (id: OverviewWidgetId) => {
   const index = enabledWidgets.value.indexOf(id)
   return index >= 0 ? index : 999
 }
 
+// 当前正在拖拽的组件 ID
 const draggedWidget = ref<OverviewWidgetId | null>(null)
 
+// 拖拽开始：记录被拖拽的组件 ID
 const onDragStart = (e: DragEvent, id: OverviewWidgetId) => {
   if (!customizing.value) return
   draggedWidget.value = id
@@ -243,6 +268,7 @@ const onDragStart = (e: DragEvent, id: OverviewWidgetId) => {
   }
 }
 
+// 拖拽放置：交换两个组件的排列顺序
 const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
   if (!customizing.value || !draggedWidget.value) return
   if (draggedWidget.value === targetId) return
@@ -255,13 +281,11 @@ const onDrop = (e: DragEvent, targetId: OverviewWidgetId) => {
   draggedWidget.value = null
 }
 
-// ── Token usage bar helper ──
-
+// 计算 Token 使用量占配额的百分比，最大 100%
 function tokenPct(used: number, quota: number) {
   if (quota <= 0) return 0
   return Math.min(100, (used / quota) * 100)
-}
-</script>
+}</script>
 
 <template>
   <div class="overview-page fade-in">

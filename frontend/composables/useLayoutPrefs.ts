@@ -1,45 +1,54 @@
 /**
- * useLayoutPrefs — 集中布局个性化状态。
+ * useLayoutPrefs — 布局个性化偏好管理。
  *
- * 在 localStorage 中保留侧边栏折叠状态，以便它能够生存
- * 页面导航和重新加载。*/
+ * 将侧边栏折叠状态持久化到 localStorage，
+ * 确保页面刷新和路由切换后状态不丢失。
+ */
 export const useLayoutPrefs = () => {
-    const STORAGE_KEY = 'layout_prefs'
+  const STORAGE_KEY = 'layout_prefs'
 
-    interface LayoutPrefs {
-        sidebarCollapsed: boolean
-    }
+  interface LayoutPrefs {
+    sidebarCollapsed: boolean
+  }
 
-    const defaults: LayoutPrefs = {
-        sidebarCollapsed: false,
-    }
+  /** 布局偏好默认值 */
+  const defaults: LayoutPrefs = {
+    sidebarCollapsed: false,
+  }
 
-    const prefs = useState<LayoutPrefs>('layout_prefs', () => ({ ...defaults }))
+  /** 布局偏好响应式状态（全局单例） */
+  const prefs = useState<LayoutPrefs>('layout_prefs', () => ({ ...defaults }))
 
-    const restore = () => {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEY)
-            if (raw) {
-                const saved = JSON.parse(raw) as Partial<LayoutPrefs>
-                prefs.value = { ...defaults, ...saved }
-            }
-        } catch { /*忽略损坏的数据*/ }
-    }
+  /** 从 localStorage 恢复布局偏好，解析失败时静默忽略 */
+  const restore = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<LayoutPrefs>
+        prefs.value = { ...defaults, ...saved }
+      }
+    } catch { /* 数据损坏时忽略，使用默认值 */ }
+  }
 
-    const persist = () => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs.value))
-    }
+  /** 将当前布局偏好持久化到 localStorage */
+  const persist = () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs.value))
+  }
 
-    const sidebarCollapsed = computed({
-        get: () => prefs.value.sidebarCollapsed,
-        set: (v: boolean) => {
-            prefs.value.sidebarCollapsed = v
-            persist()
-        },
-    })
+  /**
+   * 侧边栏折叠状态（双向绑定）。
+   * 写入时自动持久化到 localStorage。
+   */
+  const sidebarCollapsed = computed({
+    get: () => prefs.value.sidebarCollapsed,
+    set: (v: boolean) => {
+      prefs.value.sidebarCollapsed = v
+      persist()
+    },
+  })
 
-    return {
-        sidebarCollapsed,
-        restore,
-    }
+  return {
+    sidebarCollapsed,
+    restore,
+  }
 }

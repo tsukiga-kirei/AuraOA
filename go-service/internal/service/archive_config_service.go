@@ -16,7 +16,7 @@ import (
 	"oa-smart-audit/go-service/internal/repository"
 )
 
-// ProcessArchiveConfigService 处理归档复盘配置的业务逻辑。
+// ProcessArchiveConfigService 负责归档复盘配置的增删改查、OA 连接测试及字段同步。
 type ProcessArchiveConfigService struct {
 	configRepo   *repository.ProcessArchiveConfigRepo
 	tenantRepo   *repository.TenantRepo
@@ -24,7 +24,7 @@ type ProcessArchiveConfigService struct {
 	templateRepo *repository.SystemPromptTemplateRepo
 }
 
-// NewProcessArchiveConfigService 创建一个新的 ProcessArchiveConfigService 实例。
+// NewProcessArchiveConfigService 初始化归档复盘配置服务，注入所需仓储依赖。
 func NewProcessArchiveConfigService(
 	configRepo *repository.ProcessArchiveConfigRepo,
 	tenantRepo *repository.TenantRepo,
@@ -39,7 +39,9 @@ func NewProcessArchiveConfigService(
 	}
 }
 
-// Create 创建归档复盘配置。
+// Create 新增归档复盘配置，同一流程类型不允许重复创建。
+// 若未传入 AI 配置或配置为空，自动从系统提示词模板中加载默认归档提示词。
+// access_control 字段未传入时初始化为空权限结构，避免后续解析出错。
 func (s *ProcessArchiveConfigService) Create(c *gin.Context, req *dto.CreateProcessArchiveConfigRequest) (*model.ProcessArchiveConfig, error) {
 	exists, err := s.configRepo.ExistsByProcessType(c, req.ProcessType)
 	if err != nil {
@@ -102,7 +104,8 @@ func (s *ProcessArchiveConfigService) Create(c *gin.Context, req *dto.CreateProc
 	return cfg, nil
 }
 
-// buildDefaultAIConfig 从归档专用（archive_ 前缀）系统提示词模板构建默认 ai_config JSON。
+// buildDefaultAIConfig 从数据库中查询归档专用提示词模板（prompt_key 以 archive_ 开头），
+// 按 strictness 筛选后组装成完整的 ai_config JSON。模板查询失败时返回仅含 strictness 的兜底配置。
 func (s *ProcessArchiveConfigService) buildDefaultAIConfig(strictness string) datatypes.JSON {
 	// 查询归档专用模板（prompt_key 以 archive_ 开头，strictness 匹配）
 	allTemplates, err := s.templateRepo.ListAll()
@@ -137,7 +140,8 @@ func (s *ProcessArchiveConfigService) buildDefaultAIConfig(strictness string) da
 	return datatypes.JSON(result)
 }
 
-// ListArchivePromptTemplates 返回归档复盘专用的系统提示词模板（archive_ 前缀）。
+// ListArchivePromptTemplates 查询所有归档复盘专用的系统提示词模板（prompt_key 以 archive_ 开头）。
+// 供前端在配置页面展示可选模板列表。
 func (s *ProcessArchiveConfigService) ListArchivePromptTemplates() ([]model.SystemPromptTemplate, error) {
 	all, err := s.templateRepo.ListAll()
 	if err != nil {
@@ -152,7 +156,7 @@ func (s *ProcessArchiveConfigService) ListArchivePromptTemplates() ([]model.Syst
 	return filtered, nil
 }
 
-// List 查询当前租户的所有归档复盘配置。
+// List 查询当前租户下的所有归档复盘配置列表。
 func (s *ProcessArchiveConfigService) List(c *gin.Context) ([]model.ProcessArchiveConfig, error) {
 	cfgs, err := s.configRepo.ListByTenant(c)
 	if err != nil {
@@ -161,7 +165,7 @@ func (s *ProcessArchiveConfigService) List(c *gin.Context) ([]model.ProcessArchi
 	return cfgs, nil
 }
 
-// GetByID 通过 ID 查询单个归档复盘配置。
+// GetByID 按 ID 查询单条归档复盘配置，记录不存在时返回业务错误。
 func (s *ProcessArchiveConfigService) GetByID(c *gin.Context, id uuid.UUID) (*model.ProcessArchiveConfig, error) {
 	cfg, err := s.configRepo.GetByID(c, id)
 	if err != nil {
@@ -170,7 +174,7 @@ func (s *ProcessArchiveConfigService) GetByID(c *gin.Context, id uuid.UUID) (*mo
 	return cfg, nil
 }
 
-// Update 更新归档复盘配置。
+// Update 按需更新归档复盘配置字段，仅更新请求中非零值的字段，更新后重新查询返回最新数据。
 func (s *ProcessArchiveConfigService) Update(c *gin.Context, id uuid.UUID, req *dto.UpdateProcessArchiveConfigRequest) (*model.ProcessArchiveConfig, error) {
 	_, err := s.configRepo.GetByID(c, id)
 	if err != nil {
@@ -225,7 +229,7 @@ func (s *ProcessArchiveConfigService) Update(c *gin.Context, id uuid.UUID, req *
 	return cfg, nil
 }
 
-// Delete 删除归档复盘配置。
+// Delete 删除归档复盘配置，删除前校验记录是否存在。
 func (s *ProcessArchiveConfigService) Delete(c *gin.Context, id uuid.UUID) error {
 	_, err := s.configRepo.GetByID(c, id)
 	if err != nil {
@@ -237,7 +241,8 @@ func (s *ProcessArchiveConfigService) Delete(c *gin.Context, id uuid.UUID) error
 	return nil
 }
 
-// TestConnection 测试 OA 流程连接（与审核工作台共用 OA 适配器逻辑）。
+// TestConnection 验证 OA 流程是否存在，并检查主表名和流程类型标签是否与 OA 系统一致。
+// 不一致时在返回结果中标记 mismatch 标志，由前端决定是否提示用户确认。
 func (s *ProcessArchiveConfigService) TestConnection(c *gin.Context, req *dto.TestConnectionRequest) (*oa.ProcessInfo, error) {
 	adapter, err := s.getOAAdapter(c)
 	if err != nil {
@@ -261,7 +266,7 @@ func (s *ProcessArchiveConfigService) TestConnection(c *gin.Context, req *dto.Te
 	return info, nil
 }
 
-// FetchFields 从 OA 系统拉取字段定义并持久化。
+// FetchFields 从 OA 系统拉取指定流程的字段定义，并将主表字段和明细表结构持久化到配置记录中。
 func (s *ProcessArchiveConfigService) FetchFields(c *gin.Context, id uuid.UUID) (*oa.ProcessFields, error) {
 	cfg, err := s.configRepo.GetByID(c, id)
 	if err != nil {
@@ -291,7 +296,8 @@ func (s *ProcessArchiveConfigService) FetchFields(c *gin.Context, id uuid.UUID) 
 	return fields, nil
 }
 
-// getOAAdapter 获取当前租户的 OA 适配器实例（与审核配置共用逻辑）。
+// getOAAdapter 获取当前租户的 OA 适配器实例。
+// 依次校验：租户存在 → 已配置 OA 数据库连接 → 连接记录存在 → 密码解密成功 → 适配器类型支持。
 func (s *ProcessArchiveConfigService) getOAAdapter(c *gin.Context) (oa.OAAdapter, error) {
 	tenantID, err := getTenantUUID(c)
 	if err != nil {
@@ -325,5 +331,3 @@ func (s *ProcessArchiveConfigService) getOAAdapter(c *gin.Context) (oa.OAAdapter
 
 	return adapter, nil
 }
-
-

@@ -13,9 +13,9 @@ type AuditRule struct {
 	ConfigID    *uuid.UUID `gorm:"type:uuid" json:"config_id"`
 	ProcessType string     `gorm:"size:200;not null" json:"process_type"`
 	RuleContent string     `gorm:"type:text;not null" json:"rule_content"`
-	RuleScope   string     `gorm:"size:20;not null;default:default_on" json:"rule_scope"` // mandatory | default_on | default_off
+	RuleScope   string     `gorm:"size:20;not null;default:default_on" json:"rule_scope"` // 规则作用域：mandatory=强制/default_on=默认开/default_off=默认关
 	Enabled     *bool      `gorm:"not null;default:true" json:"enabled"`
-	Source      string     `gorm:"size:20;not null;default:manual" json:"source"` // manual | file_import
+	Source      string     `gorm:"size:20;not null;default:manual" json:"source"` // 规则来源：manual=手动创建/file_import=文件导入
 	RelatedFlow bool       `gorm:"not null;default:false" json:"related_flow"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
