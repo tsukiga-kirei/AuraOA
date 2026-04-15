@@ -36,6 +36,8 @@ services:
       - LOG_MAX_BACKUPS=0
       - LOG_COMPRESS=false
       - LOG_GLOBAL_RETENTION_DAYS=7
+      # 时区设置，影响日志时间戳显示
+      - TZ=Asia/Shanghai
     volumes:
       # 将日志挂载到宿主机，方便本地查看
       - go_logs_dev:/app/logs

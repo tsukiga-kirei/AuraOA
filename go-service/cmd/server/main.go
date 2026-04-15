@@ -283,7 +283,11 @@ func initDatabase() (*gorm.DB, error) {
 		viper.GetString("database.sslmode"),
 	)
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		// 使用自定义 zap logger，将 GORM 的 SQL 错误（含达梦驱动报错）写入 app.log
+		// record not found 属于正常业务逻辑，忽略；慢查询阈值 200ms
+		Logger: pkglogger.NewGormLogger(200*time.Millisecond, true),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("数据库连接失败: %w", err)
 	}

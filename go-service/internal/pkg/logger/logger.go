@@ -134,9 +134,16 @@ func GetTenantLogger(tenantCode string) *zap.Logger {
 		zap.NewAtomicLevelAt(level),
 	)
 
-	// 使用 zapcore.NewTee 同时写入租户文件和全局文件
+	// 使用 zapcore.NewTee 同时写入租户文件、全局文件和 stdout
+	// stdout 输出便于 docker logs 实时查看租户业务日志
+	consoleCore := zapcore.NewCore(
+		zapcore.NewConsoleEncoder(encoderCfg),
+		zapcore.AddSync(os.Stdout),
+		zap.NewAtomicLevelAt(level),
+	)
+
 	tenantLogger := zap.New(
-		zapcore.NewTee(tenantFileCore, globalFileCore),
+		zapcore.NewTee(tenantFileCore, globalFileCore, consoleCore),
 		zap.AddCaller(),
 		zap.AddStacktrace(zapcore.ErrorLevel),
 		zap.Fields(zap.String("tenantCode", tenantCode)),

@@ -48,6 +48,8 @@ services:
       # 注意：全局日志保留天数优先从数据库 system_configs 表读取（前端系统设置可配置），
       # 此处仅为数据库中无配置时的兜底默认值，通常无需在此修改。
       - LOG_GLOBAL_RETENTION_DAYS=${LOG_GLOBAL_RETENTION_DAYS:-30}
+      # 时区设置，影响日志时间戳显示
+      - TZ=${TZ:-Asia/Shanghai}
     volumes:
       # 将容器内日志目录挂载到宿主机，防止容器重启后日志丢失
       - go_logs:/app/logs
