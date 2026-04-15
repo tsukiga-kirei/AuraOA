@@ -546,13 +546,36 @@ func (s *CronTaskService) runAuditBatch(c *gin.Context, task *model.CronTask) er
 	_ = json.Unmarshal(task.WorkflowIds, &workflowIds)
 
 	items, err := s.auditSvc.ListPendingForBatch(c, workflowIds, task.DateRange, limit)
-	if err != nil || len(items) == 0 {
-		return nil // 无待处理项，正常
+	if err != nil {
+		pkglogger.Global().Warn("批量审核：拉取待处理流程失败",
+			zap.String("taskID", task.ID.String()),
+			zap.Error(err),
+		)
+		return nil
+	}
+	if len(items) == 0 {
+		pkglogger.Global().Info("批量审核：无待处理流程，跳过",
+			zap.String("taskID", task.ID.String()),
+			zap.String("tenantID", task.TenantID.String()),
+		)
+		return nil
 	}
 
+	pkglogger.Global().Info("批量审核：开始执行",
+		zap.String("taskID", task.ID.String()),
+		zap.String("tenantID", task.TenantID.String()),
+		zap.Int("pendingCount", len(items)),
+	)
+
+	successCount, failCount := 0, 0
 	for _, item := range items {
 		// 检查中止信号
 		if s.checkAbort(c, task.ID) {
+			pkglogger.Global().Info("批量审核：收到中止信号，停止执行",
+				zap.String("taskID", task.ID.String()),
+				zap.Int("successCount", successCount),
+				zap.Int("failCount", failCount),
+			)
 			return fmt.Errorf("job_aborted")
 		}
 		// 逐条执行并记录当前子进程 ID 以便 Abort 能立即杀掉该任务
@@ -561,11 +584,28 @@ func (s *CronTaskService) runAuditBatch(c *gin.Context, task *model.CronTask) er
 			subLogID := res.Results[0].ID
 			subKey := fmt.Sprintf("cron:running_sub:%s", task.ID.String())
 			s.auditSvc.BatchRdb().Set(c.Request.Context(), subKey, subLogID, 1*time.Hour)
-			// 此处 BatchExecute 是同步等待单条完成的，完成后由于 BatchRdb 的特性，后续清理在 Abort 之后即可
+			if res.Results[0].ParseError != "" {
+				failCount++
+			} else {
+				successCount++
+			}
+		} else if err != nil {
+			failCount++
+			pkglogger.Global().Warn("批量审核：单条执行失败",
+				zap.String("taskID", task.ID.String()),
+				zap.String("processID", item.ProcessID),
+				zap.Error(err),
+			)
 		}
 	}
 	// 无论成功失败，循环结束清理此标记
 	s.auditSvc.BatchRdb().Del(c.Request.Context(), fmt.Sprintf("cron:running_sub:%s", task.ID.String()))
+	pkglogger.Global().Info("批量审核：执行完成",
+		zap.String("taskID", task.ID.String()),
+		zap.Int("total", len(items)),
+		zap.Int("successCount", successCount),
+		zap.Int("failCount", failCount),
+	)
 	return nil
 }
 
@@ -585,12 +625,35 @@ func (s *CronTaskService) runArchiveBatch(c *gin.Context, task *model.CronTask) 
 	_ = json.Unmarshal(task.WorkflowIds, &workflowIds)
 
 	items, err := s.archiveSvc.ListPendingForBatch(c, workflowIds, task.DateRange, limit)
-	if err != nil || len(items) == 0 {
+	if err != nil {
+		pkglogger.Global().Warn("批量归档复盘：拉取待处理流程失败",
+			zap.String("taskID", task.ID.String()),
+			zap.Error(err),
+		)
+		return nil
+	}
+	if len(items) == 0 {
+		pkglogger.Global().Info("批量归档复盘：无待处理流程，跳过",
+			zap.String("taskID", task.ID.String()),
+			zap.String("tenantID", task.TenantID.String()),
+		)
 		return nil
 	}
 
+	pkglogger.Global().Info("批量归档复盘：开始执行",
+		zap.String("taskID", task.ID.String()),
+		zap.String("tenantID", task.TenantID.String()),
+		zap.Int("pendingCount", len(items)),
+	)
+
+	successCount, failCount := 0, 0
 	for _, item := range items {
 		if s.checkAbort(c, task.ID) {
+			pkglogger.Global().Info("批量归档复盘：收到中止信号，停止执行",
+				zap.String("taskID", task.ID.String()),
+				zap.Int("successCount", successCount),
+				zap.Int("failCount", failCount),
+			)
 			return fmt.Errorf("job_aborted")
 		}
 		res, err := s.archiveSvc.BatchExecute(c, []dto.ArchiveReviewExecuteRequest{item})
@@ -598,9 +661,23 @@ func (s *CronTaskService) runArchiveBatch(c *gin.Context, task *model.CronTask) 
 			subLogID := res.Results[0].ID
 			subKey := fmt.Sprintf("cron:running_sub:%s", task.ID.String())
 			s.auditSvc.BatchRdb().Set(c.Request.Context(), subKey, subLogID, 1*time.Hour)
+			successCount++
+		} else if err != nil {
+			failCount++
+			pkglogger.Global().Warn("批量归档复盘：单条执行失败",
+				zap.String("taskID", task.ID.String()),
+				zap.String("processID", item.ProcessID),
+				zap.Error(err),
+			)
 		}
 	}
 	s.auditSvc.BatchRdb().Del(c.Request.Context(), fmt.Sprintf("cron:running_sub:%s", task.ID.String()))
+	pkglogger.Global().Info("批量归档复盘：执行完成",
+		zap.String("taskID", task.ID.String()),
+		zap.Int("total", len(items)),
+		zap.Int("successCount", successCount),
+		zap.Int("failCount", failCount),
+	)
 	return nil
 }
 

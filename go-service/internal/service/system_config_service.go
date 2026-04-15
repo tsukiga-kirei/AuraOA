@@ -1,7 +1,10 @@
 package service
 
 import (
+	"go.uber.org/zap"
+
 	"oa-smart-audit/go-service/internal/pkg/errcode"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -42,5 +45,10 @@ func (s *SystemConfigService) UpdateConfigs(updates map[string]string) error {
 			return newServiceError(errcode.ErrDatabase, "数据库错误")
 		}
 	}
+	keyList := make([]string, 0, len(updates))
+	for k := range updates {
+		keyList = append(keyList, k)
+	}
+	pkglogger.Global().Info("系统配置更新成功", zap.Strings("keys", keyList))
 	return nil
 }

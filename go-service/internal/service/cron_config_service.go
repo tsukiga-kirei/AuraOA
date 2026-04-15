@@ -5,11 +5,13 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"gorm.io/datatypes"
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -117,6 +119,11 @@ func (s *CronConfigService) SaveConfig(c *gin.Context, taskType string, req *dto
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
+	pkglogger.Global().Info("定时任务类型配置保存成功",
+		zap.String("taskType", taskType),
+		zap.String("tenantID", tenantID.String()),
+	)
+
 	// 返回合并后的配置
 	resp := &dto.CronTaskTypeConfigResponse{
 		TaskType:              preset.TaskType,
@@ -155,6 +162,11 @@ func (s *CronConfigService) ResetConfig(c *gin.Context, taskType string) (*dto.C
 	if err := s.configRepo.Delete(c, tenantID, taskType); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+
+	pkglogger.Global().Info("定时任务类型配置已重置为预设",
+		zap.String("taskType", taskType),
+		zap.String("tenantID", tenantID.String()),
+	)
 
 	// 返回预设值（恢复默认状态）
 	resp := &dto.CronTaskTypeConfigResponse{

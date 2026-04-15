@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	"oa-smart-audit/go-service/internal/pkg/oa"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -90,6 +92,7 @@ func (s *OAConnectionService) Create(req *dto.CreateOAConnectionRequest) (*dto.O
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
+	pkglogger.Global().Info("OA连接创建成功", zap.String("connName", conn.Name), zap.String("oaType", conn.OAType))
 	resp := toOAConnectionResponse(conn)
 	return &resp, nil
 }
@@ -163,6 +166,7 @@ func (s *OAConnectionService) Update(id uuid.UUID, req *dto.UpdateOAConnectionRe
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
+	pkglogger.Global().Info("OA连接更新成功", zap.String("connID", id.String()))
 	resp := toOAConnectionResponse(conn)
 	return &resp, nil
 }
@@ -176,6 +180,7 @@ func (s *OAConnectionService) Delete(id uuid.UUID) error {
 	if err := s.repo.Delete(id); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	pkglogger.Global().Info("OA连接删除成功", zap.String("connID", id.String()))
 	return nil
 }
 
@@ -225,6 +230,9 @@ func (s *OAConnectionService) TestConnection(id uuid.UUID) error {
 	}
 	_ = s.repo.Update(id, map[string]interface{}{"status": newStatus})
 
+	if testErr == nil {
+		pkglogger.Global().Info("OA连接测试成功", zap.String("connID", id.String()), zap.String("status", newStatus))
+	}
 	return testErr
 }
 
@@ -264,7 +272,9 @@ func (s *OAConnectionService) testOAConnection(conn *model.OADatabaseConnection)
 		if strings.Contains(err.Error(), "不存在") {
 			return nil
 		}
-		return newServiceError(errcode.ErrOAConnectionFailed, fmt.Sprintf("连接失败: %s", err.Error()))
+		svcErr := newServiceError(errcode.ErrOAConnectionFailed, fmt.Sprintf("连接失败: %s", err.Error()))
+		pkglogger.Global().Warn("OA连接测试失败", zap.Error(svcErr))
+		return svcErr
 	}
 	return nil
 }
