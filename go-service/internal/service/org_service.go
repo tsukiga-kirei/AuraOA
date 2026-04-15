@@ -8,12 +8,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	"oa-smart-audit/go-service/internal/pkg/hash"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -78,6 +80,7 @@ func (s *OrgService) CreateDepartment(c *gin.Context, tenantID uuid.UUID, req *d
 	if err := s.orgRepo.CreateDepartment(dept); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	pkglogger.Global().Info("部门创建成功", zap.String("deptName", dept.Name), zap.String("tenantID", tenantID.String()))
 	resp := toDepartmentResponse(dept)
 	return &resp, nil
 }
@@ -126,6 +129,7 @@ func (s *OrgService) DeleteDepartment(c *gin.Context, id uuid.UUID) error {
 	if err := s.orgRepo.DeleteDepartment(id); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	pkglogger.Global().Info("部门删除成功", zap.String("deptID", id.String()))
 	return nil
 }
 
@@ -162,6 +166,7 @@ func (s *OrgService) CreateRole(c *gin.Context, tenantID uuid.UUID, req *dto.Cre
 	if err := s.orgRepo.CreateRole(role); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	pkglogger.Global().Info("角色创建成功", zap.String("roleName", role.Name), zap.String("tenantID", tenantID.String()))
 	resp := toRoleResponse(role)
 	return &resp, nil
 }
@@ -204,6 +209,7 @@ func (s *OrgService) DeleteRole(c *gin.Context, id uuid.UUID) error {
 	if err := s.orgRepo.DeleteRole(id); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	pkglogger.Global().Info("角色删除成功", zap.String("roleID", id.String()))
 	return nil
 }
 
@@ -348,6 +354,7 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 	member.Department = *dept
 	member.Roles = roles
 
+	pkglogger.Global().Info("成员创建成功", zap.String("username", req.Username), zap.String("tenantID", tenantID.String()))
 	resp := toMemberResponse(member)
 	return &resp, nil
 }
@@ -463,6 +470,7 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	pkglogger.Global().Info("成员更新成功", zap.String("memberID", id.String()))
 	resp := toMemberResponse(reloaded)
 	return &resp, nil
 }
@@ -497,6 +505,7 @@ func (s *OrgService) DeleteMember(c *gin.Context, id uuid.UUID) error {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
+	pkglogger.Global().Info("成员删除成功", zap.String("memberID", id.String()), zap.String("tenantID", member.TenantID.String()))
 	return nil
 }
 

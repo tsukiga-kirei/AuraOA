@@ -6,12 +6,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/ai"
 	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -90,6 +92,7 @@ func (s *AIModelService) Create(req *dto.CreateAIModelRequest) (*dto.AIModelResp
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
+	pkglogger.Global().Info("AI模型创建成功", zap.String("displayName", m.DisplayName), zap.String("provider", m.Provider), zap.String("deployType", m.DeployType))
 	resp := toAIModelResponse(m)
 	return &resp, nil
 }
@@ -163,6 +166,7 @@ func (s *AIModelService) Update(id uuid.UUID, req *dto.UpdateAIModelRequest) (*d
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
+	pkglogger.Global().Info("AI模型更新成功", zap.String("modelID", id.String()))
 	resp := toAIModelResponse(m)
 	return &resp, nil
 }
@@ -176,6 +180,7 @@ func (s *AIModelService) Delete(id uuid.UUID) error {
 	if err := s.repo.Delete(id); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	pkglogger.Global().Info("AI模型删除成功", zap.String("modelID", id.String()))
 	return nil
 }
 
@@ -233,6 +238,11 @@ func (s *AIModelService) TestConnection(id uuid.UUID) error {
 	}
 	_ = s.repo.Update(id, map[string]interface{}{"status": newStatus})
 
+	if testErr == nil {
+		pkglogger.Global().Info("AI模型连接测试成功", zap.String("modelID", id.String()), zap.String("status", newStatus))
+	} else {
+		pkglogger.Global().Warn("AI模型连接测试失败", zap.String("modelID", id.String()), zap.String("status", newStatus))
+	}
 	return testErr
 }
 
