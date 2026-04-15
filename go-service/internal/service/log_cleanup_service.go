@@ -80,7 +80,7 @@ func (s *LogCleanupService) RunCleanup(ctx context.Context) error {
 		}
 	}
 
-	// 第二步：清理全局日志备份文件
+	// 第二步：清理全局日志备份文件（0 表示不保留备份，立即清理所有轮转文件）
 	globalDeleted, globalFreed, globalErr := logger.CleanupGlobalLogs(retentionDays)
 	if globalErr != nil {
 		logger.Global().Warn("清理全局日志备份文件时发生错误",
@@ -104,14 +104,10 @@ func (s *LogCleanupService) RunCleanup(ctx context.Context) error {
 	}
 
 	// 第四步：构建租户保留天数映射
-	// 若租户的 LogRetentionDays 为 0，则使用全局默认值
+	// 若租户的 LogRetentionDays 为 0，表示不保留备份，轮转后立即清理
 	retentionMap := make(map[string]int, len(tenants))
 	for _, t := range tenants {
-		days := t.LogRetentionDays
-		if days == 0 {
-			days = retentionDays
-		}
-		retentionMap[t.Code] = days
+		retentionMap[t.Code] = t.LogRetentionDays
 	}
 
 	// 第五步：清理各租户日志备份文件

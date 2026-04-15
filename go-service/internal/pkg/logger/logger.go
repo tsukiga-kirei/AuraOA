@@ -177,9 +177,8 @@ func applyDefaults(cfg *LogConfig) {
 	if cfg.MaxSizeMB <= 0 {
 		cfg.MaxSizeMB = 100
 	}
-	if cfg.MaxBackups <= 0 {
-		cfg.MaxBackups = 5
-	}
+	// MaxBackups 默认为 0，表示不限制备份数量，完全依赖天数清理任务控制保留量。
+	// 若需要额外的数量上限保护（防止短时间大量写入撑爆磁盘），可在 config.yaml 中显式设置正整数。
 	if cfg.GlobalRetentionDays <= 0 {
 		cfg.GlobalRetentionDays = 30
 	}

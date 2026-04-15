@@ -84,6 +84,8 @@ const getTenantStat = (tenantId: string, key: 'member_count' | 'department_count
 
 // 页面初始化：并行加载租户列表、OA 连接和 AI 模型数据
 onMounted(async () => {
+  loading.value = true
+  try {
     const [tenantData, oaData, aiData] = await Promise.all([
       fetchTenants(),
       listOAConnections(),

@@ -24,8 +24,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      mongodb:
-        condition: service_started
     env_file:
       - .env
     environment:
@@ -40,8 +38,19 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - JWT_SECRET=${JWT_SECRET}
-      - MONGO_URI=mongodb://mongodb:27017
       - AI_SERVICE_URL=http://ai-service:8000
+      # 日志配置（对应 config.yaml log.* 字段，点号替换为下划线）
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_DIR=/app/logs
+      - LOG_MAX_SIZE_MB=${LOG_MAX_SIZE_MB:-100}
+      - LOG_MAX_BACKUPS=${LOG_MAX_BACKUPS:-5}
+      - LOG_COMPRESS=${LOG_COMPRESS:-true}
+      # 注意：全局日志保留天数优先从数据库 system_configs 表读取（前端系统设置可配置），
+      # 此处仅为数据库中无配置时的兜底默认值，通常无需在此修改。
+      - LOG_GLOBAL_RETENTION_DAYS=${LOG_GLOBAL_RETENTION_DAYS:-30}
+    volumes:
+      # 将容器内日志目录挂载到宿主机，防止容器重启后日志丢失
+      - go_logs:/app/logs
     restart: unless-stopped
 
   ai-service:
@@ -103,8 +112,8 @@ services:
       retries: 5
     restart: unless-stopped
 
-
-
 volumes:
   pg_data:
   redis_data:
+  # 持久化 Go 服务日志，防止容器重启后丢失
+  go_logs:

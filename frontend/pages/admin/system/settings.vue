@@ -789,12 +789,21 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             <a-row :gutter="16">
               <a-col :span="12">
                 <a-form-item :label="t('admin.settings.tenantDefaultLogRetentionDays')">
-                  <a-input-number v-model:value="generalConfig.tenant_default_log_retention_days" :min="1" :max="3650" style="width: 100%;" size="large" :addon-after="t('admin.settings.days')" />
+                  <a-input-number v-model:value="generalConfig.tenant_default_log_retention_days" :min="0" :max="3650" style="width: 100%;" size="large" :addon-after="t('admin.settings.days')" />
+                  <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px;">{{ t('admin.settings.retentionDaysHint', '0 表示不保留备份') }}</div>
                 </a-form-item>
               </a-col>
               <a-col :span="12">
                 <a-form-item :label="t('admin.settings.tenantDefaultDataRetentionDays')">
                   <a-input-number v-model:value="generalConfig.tenant_default_data_retention_days" :min="1" :max="3650" style="width: 100%;" size="large" :addon-after="t('admin.settings.days')" />
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <a-row :gutter="16">
+              <a-col :span="12">
+                <a-form-item :label="t('admin.settings.globalLogRetentionDays', '全局系统日志保留天数')">
+                  <a-input-number v-model:value="generalConfig.global_log_retention_days" :min="0" :max="3650" style="width: 100%;" size="large" :addon-after="t('admin.settings.days')" />
+                  <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px;">{{ t('admin.settings.globalLogRetentionDaysHint', '控制 app.log 备份文件的保留天数，0 表示不保留备份') }}</div>
                 </a-form-item>
               </a-col>
             </a-row>

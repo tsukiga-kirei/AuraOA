@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	"oa-smart-audit/go-service/internal/pkg/hash"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -352,6 +354,11 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
+	pkglogger.Global().Info("租户创建成功",
+		zap.String("tenantName", tenant.Name),
+		zap.String("tenantCode", tenant.Code),
+	)
+
 	resp := toTenantResponse(tenant)
 	return &resp, nil
 }
@@ -496,6 +503,11 @@ func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest)
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
+	pkglogger.Global().Info("租户更新成功",
+		zap.String("tenantID", id.String()),
+		zap.Int("updatedFields", len(fields)),
+	)
+
 	resp := toTenantResponse(tenant)
 	return &resp, nil
 }
@@ -509,6 +521,9 @@ func (s *TenantService) DeleteTenant(id uuid.UUID, operatorUserID uuid.UUID, adm
 		return newServiceError(errcode.ErrResourceNotFound, "操作用户不存在")
 	}
 	if !hash.CheckPassword(adminPassword, operator.PasswordHash) {
+		pkglogger.Global().Warn("租户删除密码验证失败",
+			zap.String("operatorUserID", operatorUserID.String()),
+		)
 		return newServiceError(errcode.ErrWrongPassword, "管理员密码错误")
 	}
 
@@ -519,7 +534,7 @@ func (s *TenantService) DeleteTenant(id uuid.UUID, operatorUserID uuid.UUID, adm
 	}
 
 	// 3. 在事务中执行级联删除
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
 		tenantID := tenant.ID
 
 		// 3a. 删除 org_member_roles（通过 org_members 子查询）
@@ -600,6 +615,15 @@ func (s *TenantService) DeleteTenant(id uuid.UUID, operatorUserID uuid.UUID, adm
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	pkglogger.Global().Info("租户删除成功",
+		zap.String("tenantID", id.String()),
+		zap.String("tenantName", tenant.Name),
+	)
+	return nil
 }
 
 // GetTenantStats 返回租户的成员、部门和角色计数。

@@ -128,6 +128,12 @@ cp .env.example .env
 docker-compose -f docker-compose.dev.yml up -d
 ```
 
+Go 后端日志写入 Docker named volume `go_logs_dev`（挂载至容器 `/app/logs`），可通过以下命令查看：
+
+```bash
+docker volume inspect go_logs_dev
+```
+
 ### 2. 启动前端
 
 ```bash

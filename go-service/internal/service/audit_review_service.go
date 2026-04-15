@@ -17,11 +17,14 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	"go.uber.org/zap"
+
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/pkg/oa"
 	"oa-smart-audit/go-service/internal/repository"
 )
@@ -179,8 +182,18 @@ func (s *AuditExecuteService) Execute(c *gin.Context, req *AuditExecuteRequest) 
 			"error_message": "任务入队失败: " + err.Error(),
 			"updated_at":    time.Now(),
 		})
+		pkglogger.Global().Warn("审核任务入队失败",
+			zap.String("logID", logID.String()),
+			zap.Error(err),
+		)
 		return nil, newServiceError(errcode.ErrRedisConn, "审核任务入队失败: "+err.Error())
 	}
+
+	pkglogger.Global().Info("审核任务已入队",
+		zap.String("logID", logID.String()),
+		zap.String("processID", req.ProcessID),
+		zap.String("tenantID", tenantID.String()),
+	)
 
 	return &AuditExecuteResponse{
 		Status:    model.JobStatusPending,
@@ -274,6 +287,11 @@ func (s *AuditExecuteService) FailStaleAuditJobs(ctx context.Context) (int64, er
 			"error_message": auditErrStaleMessage,
 			"updated_at":    time.Now(),
 		})
+	if res.RowsAffected > 0 {
+		pkglogger.Global().Warn("超时审核任务已标记为失败",
+			zap.Int64("count", res.RowsAffected),
+		)
+	}
 	return res.RowsAffected, res.Error
 }
 
@@ -311,21 +329,42 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		return nil
 	}
 
+	pkglogger.Global().Info("开始执行审核任务",
+		zap.String("auditLogID", auditLogID.String()),
+		zap.String("processType", log.ProcessType),
+	)
+
 	startTime := time.Now()
 	tenant, err := s.tenantRepo.FindByID(tenantID)
 	if err != nil {
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, newServiceError(errcode.ErrDatabase, "获取租户信息失败"))
+		pkglogger.Global().Warn("审核任务执行失败",
+			zap.String("auditLogID", auditLogID.String()),
+			zap.Error(err),
+		)
 		return err
 	}
+
+	// 获取租户专属 logger，后续审核日志同时写入租户文件和全局文件
+	tlog := pkglogger.GetTenantLogger(tenant.Code)
+
 	if tenant.PrimaryModelID == nil {
 		se := newServiceError(errcode.ErrNoAIModelConfig, "租户未配置主用 AI 模型")
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
+		tlog.Warn("审核任务执行失败",
+			zap.String("auditLogID", auditLogID.String()),
+			zap.Error(se),
+		)
 		return se
 	}
 	modelCfg, err := s.aiModelRepo.FindByID(*tenant.PrimaryModelID)
 	if err != nil {
 		se := newServiceError(errcode.ErrNoAIModelConfig, "AI 模型配置不存在")
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
+		tlog.Warn("审核任务执行失败",
+			zap.String("auditLogID", auditLogID.String()),
+			zap.Error(se),
+		)
 		return se
 	}
 
@@ -335,6 +374,10 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		if err != nil {
 			se := newServiceError(errcode.ErrInternalServer, "API Key 解密失败")
 			s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
+			tlog.Warn("审核任务执行失败",
+				zap.String("auditLogID", auditLogID.String()),
+				zap.Error(se),
+			)
 			return se
 		}
 		modelCfg.APIKey = decrypted
@@ -346,6 +389,10 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	if err != nil {
 		se := newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的审核配置不存在", req.ProcessType))
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
+		tlog.Warn("审核任务执行失败",
+			zap.String("auditLogID", auditLogID.String()),
+			zap.Error(se),
+		)
 		return se
 	}
 
@@ -353,6 +400,10 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	if err := json.Unmarshal(config.AIConfig, &aiConfig); err != nil {
 		se := newServiceError(errcode.ErrInternalServer, "AI 配置解析失败")
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
+		tlog.Warn("审核任务执行失败",
+			zap.String("auditLogID", auditLogID.String()),
+			zap.Error(se),
+		)
 		return se
 	}
 
@@ -360,6 +411,10 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	if err != nil {
 		se := newServiceError(errcode.ErrDatabase, "获取审核规则失败")
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
+		tlog.Warn("审核任务执行失败",
+			zap.String("auditLogID", auditLogID.String()),
+			zap.Error(se),
+		)
 		return se
 	}
 
@@ -379,6 +434,10 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	processData, err := s.fetchOAData(c, tenant, req.ProcessID)
 	if err != nil {
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
+		tlog.Warn("审核任务执行失败",
+			zap.String("auditLogID", auditLogID.String()),
+			zap.Error(err),
+		)
 		return err
 	}
 
@@ -411,6 +470,10 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	reasoningResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, reasoningReq)
 	if err != nil {
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
+		tlog.Warn("审核任务执行失败",
+			zap.String("auditLogID", auditLogID.String()),
+			zap.Error(err),
+		)
 		return err
 	}
 	aiReasoning := reasoningResp.Content
@@ -436,11 +499,20 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	extractionResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, extractionReq)
 	if err != nil {
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
+		tlog.Warn("审核任务执行失败",
+			zap.String("auditLogID", auditLogID.String()),
+			zap.Error(err),
+		)
 		return err
 	}
 
 	totalDuration := int(time.Since(startTime).Milliseconds())
 	parsed, parseErr := ParseAuditResult(extractionResp.Content)
+
+	tlog.Info("AI 推理完成",
+		zap.String("auditLogID", auditLogID.String()),
+		zap.Int("durationMs", totalDuration),
+	)
 
 	updates := map[string]interface{}{
 		"duration_ms":  totalDuration,
@@ -456,6 +528,10 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		updates["confidence"] = 0
 		updates["parse_error"] = parseErr.Error()
 		updates["audit_result"] = datatypes.JSON([]byte("{}"))
+		tlog.Warn("审核结果解析失败",
+			zap.String("auditLogID", auditLogID.String()),
+			zap.Error(parseErr),
+		)
 	} else {
 		resultJSON, _ := json.Marshal(parsed)
 		updates["status"] = model.JobStatusCompleted
@@ -463,6 +539,11 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		updates["score"] = parsed.OverallScore
 		updates["confidence"] = parsed.Confidence
 		updates["audit_result"] = datatypes.JSON(resultJSON)
+		tlog.Info("审核任务执行完成",
+			zap.String("auditLogID", auditLogID.String()),
+			zap.String("recommendation", parsed.Recommendation),
+			zap.Int("score", parsed.OverallScore),
+		)
 	}
 
 	finalRows, err := s.updateAuditLogIfNotCancelled(tenantID, auditLogID, updates)
@@ -498,6 +579,12 @@ func (s *AuditExecuteService) CancelJob(c *gin.Context, id uuid.UUID) error {
 	err = s.markAuditFailedDB(tenantID, id, "已主动中止")
 	if cancelFunc, ok := s.cancelMap.Load(id.String()); ok {
 		cancelFunc.(context.CancelFunc)()
+	}
+	if err == nil {
+		pkglogger.Global().Info("审核任务已取消",
+			zap.String("jobID", id.String()),
+			zap.String("tenantID", tenantID.String()),
+		)
 	}
 	return err
 }

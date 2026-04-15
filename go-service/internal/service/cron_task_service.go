@@ -11,11 +11,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -145,6 +147,12 @@ func (s *CronTaskService) CreateTask(c *gin.Context, req *dto.CreateCronTaskRequ
 		s.scheduler.AddOrUpdate(*task)
 	}
 
+	pkglogger.Global().Info("定时任务创建成功",
+		zap.String("taskType", task.TaskType),
+		zap.String("taskLabel", task.TaskLabel),
+		zap.String("tenantID", task.TenantID.String()),
+	)
+
 	resp := taskToResponse(*task, s.loadPresetMap())
 	return &resp, nil
 }
@@ -219,6 +227,10 @@ func (s *CronTaskService) DeleteTask(c *gin.Context, id uuid.UUID) error {
 	if err := s.taskRepo.Delete(c, id, ownerID); err != nil {
 		return newServiceError(errcode.ErrDatabase, "删除任务失败")
 	}
+	pkglogger.Global().Info("定时任务删除成功",
+		zap.String("taskID", id.String()),
+		zap.String("taskType", task.TaskType),
+	)
 	return nil
 }
 
@@ -248,6 +260,11 @@ func (s *CronTaskService) ToggleTask(c *gin.Context, id uuid.UUID) (*dto.CronTas
 			s.scheduler.Remove(task.ID)
 		}
 	}
+
+	pkglogger.Global().Info("定时任务状态切换成功",
+		zap.String("taskID", id.String()),
+		zap.Bool("isActive", newActive),
+	)
 
 	resp := taskToResponse(*task, s.loadPresetMap())
 	return &resp, nil
@@ -299,6 +316,12 @@ func (s *CronTaskService) ExecuteNow(c *gin.Context, id uuid.UUID) error {
 	_ = s.taskRepo.UpdateFields(c, task.ID, ownerID, map[string]interface{}{
 		"current_log_id": logEntry.ID,
 	})
+
+	pkglogger.Global().Info("定时任务手动触发",
+		zap.String("taskID", task.ID.String()),
+		zap.String("taskType", task.TaskType),
+		zap.String("createdBy", createdBy),
+	)
 
 	go func() {
 		ctx := context.Background()
@@ -357,7 +380,13 @@ func (s *CronTaskService) TriggerScheduled(ctx context.Context, taskID uuid.UUID
 	_ = s.logRepo.Create(logEntry)
 	_ = s.taskRepo.DB().Model(&model.CronTask{}).Where("id = ?", task.ID).Update("current_log_id", logEntry.ID)
 
+	pkglogger.Global().Info("定时任务调度触发",
+		zap.String("taskID", task.ID.String()),
+		zap.String("taskType", task.TaskType),
+	)
+
 	task.CurrentLogID = &logEntry.ID
+	startTime := time.Now()
 	execErr := s.runTaskByType(ctx, &task)
 
 	status := "success"
@@ -370,6 +399,21 @@ func (s *CronTaskService) TriggerScheduled(ctx context.Context, taskID uuid.UUID
 			status = "failed"
 			msg = execErr.Error()
 		}
+	}
+
+	elapsed := time.Since(startTime)
+	if execErr == nil {
+		pkglogger.Global().Info("定时任务执行成功",
+			zap.String("taskID", task.ID.String()),
+			zap.String("taskType", task.TaskType),
+			zap.Duration("elapsed", elapsed),
+		)
+	} else {
+		pkglogger.Global().Warn("定时任务执行失败",
+			zap.String("taskID", task.ID.String()),
+			zap.String("taskType", task.TaskType),
+			zap.Error(execErr),
+		)
 	}
 	_ = s.logRepo.Finish(logEntry.ID, status, msg)
 	_ = s.taskRepo.UpdateRunStats(task.ID, time.Now(), nil, execErr == nil)
@@ -482,6 +526,9 @@ func (s *CronTaskService) runTaskByType(ctx context.Context, task *model.CronTas
 	case "audit_daily", "audit_weekly", "archive_daily", "archive_weekly":
 		return s.runReportTask(task)
 	default:
+		pkglogger.Global().Warn("未知任务类型",
+			zap.String("taskType", task.TaskType),
+		)
 		return fmt.Errorf("未知任务类型: %s", task.TaskType)
 	}
 }

@@ -12,11 +12,14 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	"go.uber.org/zap"
+
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	"oa-smart-audit/go-service/internal/pkg/hash"
 	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -120,6 +123,7 @@ func (s *AuthService) BootstrapAdmin(req *dto.BootstrapAdminRequest) error {
 		}
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	pkglogger.Global().Info("系统管理员初始化成功", zap.String("username", username))
 	return nil
 }
 
@@ -143,17 +147,20 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 
 	// 2. 检查账户禁用状态
 	if user.Status == "disabled" {
+		pkglogger.Global().Warn("登录失败：账户已被禁用", zap.String("username", req.Username))
 		return nil, newServiceError(errcode.ErrAccountDisabled, "账户已被禁用")
 	}
 
 	// 3. 检查账户锁定：连续失败 5 次且锁定期未过
 	if user.LoginFailCount >= 5 && user.LockedUntil != nil && user.LockedUntil.After(time.Now()) {
+		pkglogger.Global().Warn("登录失败：账户被锁定", zap.String("username", req.Username))
 		return nil, newServiceError(errcode.ErrAccountLocked, "账户被锁定")
 	}
 
 	// 4. 验证密码（bcrypt 比对）
 	if !hash.CheckPassword(req.Password, user.PasswordHash) {
 		_ = s.userRepo.UpdateLoginFail(user)
+		pkglogger.Global().Warn("登录失败：密码错误", zap.String("username", req.Username))
 		return nil, newServiceError(errcode.ErrWrongPassword, "用户名或密码错误")
 	}
 
@@ -327,6 +334,15 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 		Permissions: permissions,
 	}
 
+	logFields := []zap.Field{
+		zap.String("username", user.Username),
+		zap.String("role", activeAssignment.Role),
+	}
+	if activeRoleClaim.TenantID != nil {
+		logFields = append(logFields, zap.String("tenantID", *activeRoleClaim.TenantID))
+	}
+	pkglogger.Global().Info("登录成功", logFields...)
+
 	return resp, nil
 }
 
@@ -363,6 +379,7 @@ func (s *AuthService) Logout(req *LogoutRequest) error {
 		s.rdb.Del(ctx, sessionKey)
 	}
 
+	pkglogger.Global().Info("用户已退出登录", zap.String("userID", req.UserID))
 	return nil
 }
 
@@ -470,6 +487,10 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 		return nil, newServiceError(errcode.ErrRoleSwitchFailed, "角色切换失败")
 	}
 	if assignment.UserID != userID {
+		pkglogger.Global().Warn("角色切换失败：角色不属于该用户",
+			zap.String("userID", userID.String()),
+			zap.String("roleID", roleID),
+		)
 		return nil, newServiceError(errcode.ErrRoleSwitchFailed, "角色切换失败")
 	}
 
@@ -557,6 +578,10 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 		}
 	}
 
+	pkglogger.Global().Info("角色切换成功",
+		zap.String("userID", userID.String()),
+		zap.String("role", assignment.Role),
+	)
 	return &dto.SwitchRoleResponse{
 		AccessToken: accessToken,
 		ActiveRole: dto.RoleInfo{
@@ -570,9 +595,6 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 		Menus:       menuItems,
 	}, nil
 }
-
-// ---------------------------------------------------------------------------
-// 获取菜单
 // ---------------------------------------------------------------------------
 
 // GetMenu 根据用户的活跃角色返回菜单项。
@@ -838,6 +860,7 @@ func (s *AuthService) ChangePassword(userID uuid.UUID, req *dto.ChangePasswordRe
 	}
 
 	if !hash.CheckPassword(req.CurrentPassword, user.PasswordHash) {
+		pkglogger.Global().Warn("修改密码失败：当前密码错误", zap.String("userID", userID.String()))
 		return newServiceError(errcode.ErrWrongPassword, "当前密码错误")
 	}
 
@@ -855,6 +878,7 @@ func (s *AuthService) ChangePassword(userID uuid.UUID, req *dto.ChangePasswordRe
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
+	pkglogger.Global().Info("密码修改成功", zap.String("userID", userID.String()))
 	return nil
 }
 

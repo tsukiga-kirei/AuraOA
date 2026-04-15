@@ -32,7 +32,17 @@ COPY --from=builder /out/server .
 COPY go-service/config.yaml .
 COPY db/migrations /migrations
 
+# 预建日志目录，容器内默认写入此路径（可通过 LOG_DIR 环境变量覆盖）
+RUN mkdir -p /app/logs/tenants
+
 ENV MIGRATIONS_PATH=/migrations
+# 日志默认配置（可通过环境变量覆盖，对应 config.yaml 的 log.* 字段）
+ENV LOG_LEVEL=info
+ENV LOG_DIR=/app/logs
+ENV LOG_MAX_SIZE_MB=100
+ENV LOG_MAX_BACKUPS=5
+ENV LOG_COMPRESS=true
+ENV LOG_GLOBAL_RETENTION_DAYS=30
 
 EXPOSE 8080
 

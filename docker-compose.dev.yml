@@ -29,6 +29,16 @@ services:
       - SERVER_PORT=8080
       - JWT_SECRET=dev_jwt_secret_change_me
       - ENCRYPTION_KEY=4f9e2b8c5a1d7f0e3a6c9b2d5e8f1a4c
+      # 开发环境日志：debug 级别，写入容器内 /app/logs
+      - LOG_LEVEL=debug
+      - LOG_DIR=/app/logs
+      - LOG_MAX_SIZE_MB=50
+      - LOG_MAX_BACKUPS=0
+      - LOG_COMPRESS=false
+      - LOG_GLOBAL_RETENTION_DAYS=7
+    volumes:
+      # 将日志挂载到宿主机，方便本地查看
+      - go_logs_dev:/app/logs
     restart: unless-stopped
 
   postgres:
@@ -65,3 +75,5 @@ services:
 volumes:
   pg_data:
   redis_data:
+  # 开发环境日志持久化卷
+  go_logs_dev:

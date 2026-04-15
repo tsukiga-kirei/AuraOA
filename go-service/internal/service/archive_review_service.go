@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
@@ -22,6 +23,7 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/pkg/oa"
 	"oa-smart-audit/go-service/internal/repository"
 )
@@ -1014,15 +1016,25 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, newServiceError(errcode.ErrDatabase, "获取租户信息失败"))
 		return err
 	}
+
+	// 获取租户专属 logger，后续归档复盘日志同时写入租户文件和全局文件
+	tlog := pkglogger.GetTenantLogger(tenant.Code)
+	tlog.Info("开始执行归档复盘任务",
+		zap.String("archiveLogID", archiveLogID.String()),
+		zap.String("processType", logEntry.ProcessType),
+	)
+
 	if tenant.PrimaryModelID == nil {
 		se := newServiceError(errcode.ErrNoAIModelConfig, "租户未配置主用 AI 模型")
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
+		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
 		return se
 	}
 	modelCfg, err := s.aiModelRepo.FindByID(*tenant.PrimaryModelID)
 	if err != nil {
 		se := newServiceError(errcode.ErrNoAIModelConfig, "AI 模型配置不存在")
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
+		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
 		return se
 	}
 	if modelCfg.APIKey != "" {
@@ -1030,6 +1042,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		if err != nil {
 			se := newServiceError(errcode.ErrInternalServer, "API Key 解密失败")
 			s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
+			tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
 			return se
 		}
 		modelCfg.APIKey = decrypted
@@ -1039,6 +1052,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	if err != nil {
 		se := newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的归档复盘配置不存在", logEntry.ProcessType))
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
+		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
 		return se
 	}
 
@@ -1046,6 +1060,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	if err := json.Unmarshal(config.AIConfig, &aiConfig); err != nil {
 		se := newServiceError(errcode.ErrInternalServer, "归档 AI 配置解析失败")
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
+		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
 		return se
 	}
 
@@ -1053,6 +1068,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	if err != nil {
 		se := newServiceError(errcode.ErrDatabase, "获取归档复盘规则失败")
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
+		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
 		return se
 	}
 
@@ -1073,6 +1089,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	if err != nil {
 		se := newServiceError(errcode.ErrOAQueryFailed, "拉取 OA 流程数据失败: "+err.Error())
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
+		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
 		return se
 	}
 
@@ -1134,6 +1151,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	reasoningResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, reasoningReq)
 	if err != nil {
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, err)
+		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(err))
 		return err
 	}
 	aiReasoning := reasoningResp.Content
@@ -1153,6 +1171,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	extractionResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, extractionReq)
 	if err != nil {
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, err)
+		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(err))
 		return err
 	}
 
@@ -1173,6 +1192,10 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		updates["confidence"] = 0
 		updates["parse_error"] = parseErr.Error()
 		updates["archive_result"] = datatypes.JSON([]byte("{}"))
+		tlog.Warn("归档复盘结果解析失败",
+			zap.String("archiveLogID", archiveLogID.String()),
+			zap.Error(parseErr),
+		)
 	} else {
 		resultJSON, _ := json.Marshal(parsed)
 		updates["status"] = model.JobStatusCompleted
@@ -1180,6 +1203,12 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		updates["compliance_score"] = parsed.OverallScore
 		updates["confidence"] = parsed.Confidence
 		updates["archive_result"] = datatypes.JSON(resultJSON)
+		tlog.Info("归档复盘任务执行完成",
+			zap.String("archiveLogID", archiveLogID.String()),
+			zap.String("compliance", parsed.OverallCompliance),
+			zap.Int("score", parsed.OverallScore),
+			zap.Int("durationMs", totalDuration),
+		)
 	}
 
 	if err := s.archiveLogRepo.UpdateFields(c, archiveLogID, updates); err != nil {

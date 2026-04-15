@@ -53,10 +53,12 @@ export interface SystemGeneralConfig {
     tenant_default_token_quota: number
     /** tenant.default_max_concurrency — 租户默认最大并发数 */
     tenant_default_max_concurrency: number
-    /** tenant.default_log_retention_days — 租户默认日志保留天数 */
+    /** tenant.default_log_retention_days — 租户默认日志保留天数（0 表示不保留备份） */
     tenant_default_log_retention_days: number
     /** tenant.default_data_retention_days — 租户默认审核数据保留天数 */
     tenant_default_data_retention_days: number
+    /** system.global_log_retention_days — 全局系统日志保留天数（0 表示不保留备份） */
+    global_log_retention_days: number
 
     // ===== 安全开关 =====
     /** system.enable_audit_trail */
@@ -118,6 +120,7 @@ export function mapConfigItems(items: ConfigItem[]): Partial<SystemGeneralConfig
         ...(!isNaN(int('tenant.default_max_concurrency')) && { tenant_default_max_concurrency: int('tenant.default_max_concurrency') }),
         ...(!isNaN(int('tenant.default_log_retention_days')) && { tenant_default_log_retention_days: int('tenant.default_log_retention_days') }),
         ...(!isNaN(int('tenant.default_data_retention_days')) && { tenant_default_data_retention_days: int('tenant.default_data_retention_days') }),
+        ...(!isNaN(int('system.global_log_retention_days')) && { global_log_retention_days: int('system.global_log_retention_days') }),
 
         ...(str('system.enable_audit_trail') !== undefined && { enable_audit_trail: bool('system.enable_audit_trail') }),
         ...(str('system.enable_data_encryption') !== undefined && { enable_data_encryption: bool('system.enable_data_encryption') }),
@@ -154,6 +157,7 @@ export function configToUpdateRequest(cfg: SystemGeneralConfig): ConfigUpdateReq
         'tenant.default_max_concurrency': String(cfg.tenant_default_max_concurrency),
         'tenant.default_log_retention_days': String(cfg.tenant_default_log_retention_days),
         'tenant.default_data_retention_days': String(cfg.tenant_default_data_retention_days),
+        'system.global_log_retention_days': String(cfg.global_log_retention_days),
 
         'system.enable_audit_trail': String(cfg.enable_audit_trail),
         'system.enable_data_encryption': String(cfg.enable_data_encryption),
