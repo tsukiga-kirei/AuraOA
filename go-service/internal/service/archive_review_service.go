@@ -18,6 +18,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	"oa-smart-audit/go-service/internal/cache"
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/crypto"
@@ -88,6 +89,8 @@ type ArchiveReviewService struct {
 	rdb                 *redis.Client
 	notifSvc            *UserNotificationService
 	cancelMap           sync.Map
+	cache               *cache.CacheManager
+	invalidator         *cache.InvalidationManager
 }
 
 // NewArchiveReviewService 创建 ArchiveReviewService，注入所有依赖仓储和服务。
@@ -105,6 +108,8 @@ func NewArchiveReviewService(
 	db *gorm.DB,
 	rdb *redis.Client,
 	notifSvc *UserNotificationService,
+	cacheManager *cache.CacheManager,
+	invalidationManager *cache.InvalidationManager,
 ) *ArchiveReviewService {
 	return &ArchiveReviewService{
 		archiveLogRepo:      archiveLogRepo,
@@ -120,6 +125,8 @@ func NewArchiveReviewService(
 		db:                  db,
 		rdb:                 rdb,
 		notifSvc:            notifSvc,
+		cache:               cacheManager,
+		invalidator:         invalidationManager,
 	}
 }
 
@@ -184,7 +191,7 @@ func (s *ArchiveReviewService) ListProcesses(c *gin.Context, params dto.ArchiveL
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询归档复盘记录失败")
 	}
-	snapshotMap, err := s.archiveSnapshotRepo.GetMapByProcessIDs(c, processIDs)
+	snapshotMap, err := s.getArchiveSnapshotMapCached(c, tenantID, processIDs)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询归档有效结论失败")
 	}
@@ -258,6 +265,25 @@ func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.Arc
 	if err != nil {
 		return nil, err
 	}
+
+	// 构建缓存键
+	keyBuilder := cache.NewKeyBuilder("archive", tenantID)
+	filterHash := cache.ComputeFilterHash(params)
+	cacheKey := keyBuilder.ArchiveList(userID, filterHash)
+
+	// 尝试从缓存获取
+	if s.cache != nil && s.cache.IsEnabled() {
+		var cached cache.CachedArchiveList
+		if hit, _ := s.cache.Get(c.Request.Context(), cacheKey, &cached); hit {
+			return &dto.ArchiveProcessListResponse{
+				Items:    cached.Items,
+				Total:    cached.Total,
+				Page:     cached.Page,
+				PageSize: cached.PageSize,
+			}, nil
+		}
+	}
+
 	_, _ = s.FailStaleArchiveJobs(context.Background())
 
 	configs, err := s.getAccessibleArchiveConfigs(c, userID, tenantID)
@@ -279,13 +305,32 @@ func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.Arc
 
 	auditStatus := strings.TrimSpace(params.AuditStatus)
 
+	var result *dto.ArchiveProcessListResponse
 	switch auditStatus {
 	case "compliant", "partially_compliant", "non_compliant":
-		return s.listArchiveBySnapshotPaged(c, tenantID, configs, params, auditStatus, page, pageSize)
+		result, err = s.listArchiveBySnapshotPaged(c, tenantID, configs, params, auditStatus, page, pageSize)
 	default:
 		// "unaudited" 或空：从 OA 真分页
-		return s.listArchiveUnauditedPaged(c, tenantID, configs, params, page, pageSize)
+		result, err = s.listArchiveUnauditedPaged(c, tenantID, configs, params, page, pageSize)
 	}
+	if err != nil {
+		return nil, err
+	}
+
+	// 写入缓存
+	if s.cache != nil && s.cache.IsEnabled() {
+		toCache := cache.CachedArchiveList{
+			Items:      result.Items,
+			Total:      result.Total,
+			Page:       result.Page,
+			PageSize:   result.PageSize,
+			CachedAt:   time.Now(),
+			FilterHash: filterHash,
+		}
+		_ = s.cache.Set(c.Request.Context(), cacheKey, toCache, cache.DefaultTTLArchiveList)
+	}
+
+	return result, nil
 }
 
 // listArchiveBySnapshotPaged 从 archive_process_snapshots 表分页查询已有合规结论的流程。
@@ -508,7 +553,7 @@ func (s *ArchiveReviewService) listArchiveUnauditedPaged(
 	for i, item := range allOAItems {
 		allProcessIDs[i] = item.ProcessID
 	}
-	snapshotMap, err := s.archiveSnapshotRepo.GetMapByProcessIDs(c, allProcessIDs)
+	snapshotMap, err := s.getArchiveSnapshotMapCached(c, tenantID, allProcessIDs)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询归档有效结论失败")
 	}
@@ -600,6 +645,43 @@ func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListPa
 		return nil, err
 	}
 
+	// 构建缓存键：archive:stats:{tenant_id}:{user_id}:{date_range_hash}
+	// 由于 ArchiveListParams 的日期字段标记为 json:"-"，需要构建包含日期的哈希输入
+	if s.cache != nil && s.cache.IsEnabled() {
+		dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
+			"archive_date_start":         params.ArchiveDateStart,
+			"archive_date_end_exclusive": params.ArchiveDateEndExclusive,
+		})
+		keyBuilder := cache.NewKeyBuilder("archive", tenantID)
+		cacheKey := keyBuilder.Stats(userID, dateRangeHash)
+
+		var cached cache.CachedStats
+		if hit, _ := s.cache.Get(c.Request.Context(), cacheKey, &cached); hit {
+			if statsMap, ok := cached.Stats.(map[string]interface{}); ok {
+				result := &dto.ArchiveReviewStats{}
+				if v, ok := statsMap["total_count"].(float64); ok {
+					result.TotalCount = int(v)
+				}
+				if v, ok := statsMap["compliant_count"].(float64); ok {
+					result.CompliantCount = int(v)
+				}
+				if v, ok := statsMap["partial_count"].(float64); ok {
+					result.PartialCount = int(v)
+				}
+				if v, ok := statsMap["non_compliant_count"].(float64); ok {
+					result.NonCompliantCount = int(v)
+				}
+				if v, ok := statsMap["unaudited_count"].(float64); ok {
+					result.UnauditedCount = int(v)
+				}
+				if v, ok := statsMap["running_count"].(float64); ok {
+					result.RunningCount = int(v)
+				}
+				return result, nil
+			}
+		}
+	}
+
 	configs, err := s.getAccessibleArchiveConfigs(c, userID, tenantID)
 	if err != nil {
 		return nil, err
@@ -659,7 +741,7 @@ func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListPa
 	}
 
 	// 查询这些 processID 中哪些已有 snapshot（精确匹配 OA 日期范围内的流程）
-	snapshotMap, err := s.archiveSnapshotRepo.GetMapByProcessIDs(c, allProcessIDs)
+	snapshotMap, err := s.getArchiveSnapshotMapCached(c, tenantID, allProcessIDs)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询归档有效结论失败")
 	}
@@ -688,14 +770,31 @@ func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListPa
 			[]string{model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting}).
 		Count(&runningCount)
 
-	return &dto.ArchiveReviewStats{
+	result := &dto.ArchiveReviewStats{
 		TotalCount:        totalOA,
 		CompliantCount:    compliant,
 		PartialCount:      partial,
 		NonCompliantCount: nonCompliant,
 		UnauditedCount:    unaudited,
 		RunningCount:      int(runningCount),
-	}, nil
+	}
+
+	// 写入缓存
+	if s.cache != nil && s.cache.IsEnabled() {
+		dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
+			"archive_date_start":         params.ArchiveDateStart,
+			"archive_date_end_exclusive": params.ArchiveDateEndExclusive,
+		})
+		keyBuilder := cache.NewKeyBuilder("archive", tenantID)
+		cacheKey := keyBuilder.Stats(userID, dateRangeHash)
+		toCache := cache.CachedStats{
+			Stats:    result,
+			CachedAt: time.Now(),
+		}
+		_ = s.cache.Set(c.Request.Context(), cacheKey, toCache, cache.DefaultTTLStats)
+	}
+
+	return result, nil
 }
 
 func (s *ArchiveReviewService) Execute(c *gin.Context, req *dto.ArchiveReviewExecuteRequest) (*dto.ArchiveReviewSubmitResponse, error) {
@@ -800,7 +899,7 @@ func (s *ArchiveReviewService) ListPendingForBatch(c *gin.Context, workflowIds [
 	for i, it := range allItems {
 		archPIDs[i] = it.ProcessID
 	}
-	snapshotMap, _ := s.archiveSnapshotRepo.GetMapByProcessIDs(c, archPIDs)
+	snapshotMap, _ := s.getArchiveSnapshotMapCached(c, tenantID, archPIDs)
 
 	wfMap := make(map[string]bool)
 	for _, id := range workflowIds {
@@ -1048,25 +1147,16 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		modelCfg.APIKey = decrypted
 	}
 
-	config, err := s.archiveConfigRepo.GetByProcessType(c, logEntry.ProcessType)
+	config, rules, err := s.getArchiveConfigCached(c, tenantID, logEntry.ProcessType)
 	if err != nil {
-		se := newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的归档复盘配置不存在", logEntry.ProcessType))
-		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
-		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
-		return se
+		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, err)
+		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(err))
+		return err
 	}
 
 	var aiConfig model.ArchiveAIConfigData
 	if err := json.Unmarshal(config.AIConfig, &aiConfig); err != nil {
 		se := newServiceError(errcode.ErrInternalServer, "归档 AI 配置解析失败")
-		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
-		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
-		return se
-	}
-
-	rules, err := s.archiveRuleRepo.ListByConfigIDFilter(c, config.ID, nil, nil)
-	if err != nil {
-		se := newServiceError(errcode.ErrDatabase, "获取归档复盘规则失败")
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
 		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
 		return se
@@ -1226,6 +1316,14 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 				fmt.Sprintf("合规性：%s，评分 %d", parsed.OverallCompliance, parsed.OverallScore),
 				fmt.Sprintf("/archive-review?processId=%s", logEntry.ProcessID),
 			)
+		}
+
+		// 复盘完成后清除相关缓存（使用 Background context 避免请求取消影响缓存失效）
+		if s.invalidator != nil {
+			bgCtx := context.Background()
+			_ = s.invalidator.InvalidateUserArchiveCache(bgCtx, tenantID, userID)
+			_ = s.invalidator.InvalidateSnapshotCache(bgCtx, tenantID, "archive")
+			_ = s.invalidator.InvalidateStatsCache(bgCtx, tenantID, "archive")
 		}
 	}
 	return nil
@@ -1765,4 +1863,112 @@ func parseArchiveSnapshotValidIDs(raw datatypes.JSON) []uuid.UUID {
 		}
 	}
 	return out
+}
+
+// cachedArchiveConfig 缓存的归档配置（config + rules 一起缓存）
+type cachedArchiveConfig struct {
+	Config model.ProcessArchiveConfig `json:"config"`
+	Rules  []model.ArchiveRule        `json:"rules"`
+}
+
+// getArchiveConfigCached 获取流程归档配置和规则，优先从缓存读取。
+// 缓存键格式: archive:config:{tenant_id}:{process_type}，TTL 10 分钟。
+func (s *ArchiveReviewService) getArchiveConfigCached(c *gin.Context, tenantID uuid.UUID, processType string) (*model.ProcessArchiveConfig, []model.ArchiveRule, error) {
+	ctx := c.Request.Context()
+
+	// 尝试从缓存获取
+	if s.cache != nil && s.cache.IsEnabled() {
+		keyBuilder := cache.NewKeyBuilder("archive", tenantID)
+		cacheKey := keyBuilder.ProcessConfig(processType)
+
+		var cached cachedArchiveConfig
+		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
+			return &cached.Config, cached.Rules, nil
+		}
+	}
+
+	// 缓存未命中，从数据库查询
+	config, err := s.archiveConfigRepo.GetByProcessType(c, processType)
+	if err != nil {
+		return nil, nil, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的归档复盘配置不存在", processType))
+	}
+
+	rules, err := s.archiveRuleRepo.ListByConfigIDFilter(c, config.ID, nil, nil)
+	if err != nil {
+		return nil, nil, newServiceError(errcode.ErrDatabase, "获取归档复盘规则失败")
+	}
+
+	// 写入缓存
+	if s.cache != nil && s.cache.IsEnabled() {
+		keyBuilder := cache.NewKeyBuilder("archive", tenantID)
+		cacheKey := keyBuilder.ProcessConfig(processType)
+		toCache := cachedArchiveConfig{
+			Config: *config,
+			Rules:  rules,
+		}
+		_ = s.cache.Set(ctx, cacheKey, toCache, cache.DefaultTTLProcessConfig)
+	}
+
+	return config, rules, nil
+}
+
+// getArchiveSnapshotMapCached 获取归档快照映射，优先从缓存读取。
+// 缓存键格式: archive:snapshot:{tenant_id}:{process_ids_hash}，TTL 5 分钟。
+// 支持批量查询优化：将 processIDs 列表哈希为缓存键，避免逐条查询。
+func (s *ArchiveReviewService) getArchiveSnapshotMapCached(c *gin.Context, tenantID uuid.UUID, processIDs []string) (map[string]*model.ArchiveProcessSnapshot, error) {
+	if len(processIDs) == 0 {
+		return map[string]*model.ArchiveProcessSnapshot{}, nil
+	}
+
+	ctx := c.Request.Context()
+
+	// 尝试从缓存获取
+	if s.cache != nil && s.cache.IsEnabled() {
+		processIDsHash := cache.ComputeFilterHash(processIDs)
+		keyBuilder := cache.NewKeyBuilder("archive", tenantID)
+		cacheKey := keyBuilder.Snapshot(processIDsHash)
+
+		var cached cache.CachedSnapshot
+		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
+			// 将 map[string]interface{} 转换回 map[string]*model.ArchiveProcessSnapshot
+			result := make(map[string]*model.ArchiveProcessSnapshot, len(cached.Snapshots))
+			for pid, raw := range cached.Snapshots {
+				data, err := json.Marshal(raw)
+				if err != nil {
+					continue
+				}
+				var snap model.ArchiveProcessSnapshot
+				if err := json.Unmarshal(data, &snap); err != nil {
+					continue
+				}
+				result[pid] = &snap
+			}
+			return result, nil
+		}
+	}
+
+	// 缓存未命中，从数据库查询
+	snapshotMap, err := s.archiveSnapshotRepo.GetMapByProcessIDs(c, processIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// 写入缓存
+	if s.cache != nil && s.cache.IsEnabled() {
+		processIDsHash := cache.ComputeFilterHash(processIDs)
+		keyBuilder := cache.NewKeyBuilder("archive", tenantID)
+		cacheKey := keyBuilder.Snapshot(processIDsHash)
+
+		snapshots := make(map[string]interface{}, len(snapshotMap))
+		for pid, snap := range snapshotMap {
+			snapshots[pid] = snap
+		}
+		toCache := cache.CachedSnapshot{
+			Snapshots: snapshots,
+			CachedAt:  time.Now(),
+		}
+		_ = s.cache.Set(ctx, cacheKey, toCache, cache.DefaultTTLSnapshot)
+	}
+
+	return snapshotMap, nil
 }

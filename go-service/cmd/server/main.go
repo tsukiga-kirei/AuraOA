@@ -19,6 +19,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
+	"oa-smart-audit/go-service/internal/cache"
 	"oa-smart-audit/go-service/internal/dbmigrate"
 	"oa-smart-audit/go-service/internal/handler"
 	"oa-smart-audit/go-service/internal/pkg/crypto"
@@ -81,6 +82,24 @@ func main() {
 	}
 	pkglogger.Global().Info("Redis 连接成功")
 
+	// 第四步（补充）：初始化缓存组件
+	cacheConfig := cache.Config{
+		Enabled:          viper.GetBool("cache.enabled"),
+		DefaultTTL:       viper.GetDuration("cache.default_ttl"),
+		HitRateThreshold: viper.GetFloat64("cache.hit_rate_threshold"),
+		TTL: cache.TTLConfig{
+			AuditTodo:     viper.GetDuration("cache.ttl.audit_todo"),
+			ArchiveList:   viper.GetDuration("cache.ttl.archive_list"),
+			ProcessConfig: viper.GetDuration("cache.ttl.process_config"),
+			Snapshot:      viper.GetDuration("cache.ttl.snapshot"),
+			Stats:         viper.GetDuration("cache.ttl.stats"),
+			Dashboard:     viper.GetDuration("cache.ttl.dashboard"),
+		},
+	}
+	cacheConfig.ApplyDefaults()
+	cacheManager := cache.NewCacheManager(rdb, pkglogger.Global(), cacheConfig)
+	invalidationManager := cache.NewInvalidationManager(cacheManager, pkglogger.Global())
+
 	// 第四步（补充）：初始化 AES 加密密钥
 	encKey := viper.GetString("encryption.key")
 	if encKey == "" {
@@ -120,25 +139,25 @@ func main() {
 	// 第六步：初始化各业务服务层（Service）
 	authService := service.NewAuthService(userRepo, rdb, db)
 	orgService := service.NewOrgService(orgRepo, userRepo, systemConfigRepo, db)
-	tenantService := service.NewTenantService(tenantRepo, systemConfigRepo, userRepo, db)
+	tenantService := service.NewTenantService(tenantRepo, systemConfigRepo, userRepo, db, invalidationManager)
 	systemConfigService := service.NewSystemConfigService(systemConfigRepo)
 	optionService := service.NewOptionService(optionRepo)
-	oaConnectionService := service.NewOAConnectionService(oaConnectionRepo)
+	oaConnectionService := service.NewOAConnectionService(oaConnectionRepo, tenantRepo, invalidationManager)
 	aiModelService := service.NewAIModelService(aiModelRepo)
-	processAuditConfigService := service.NewProcessAuditConfigService(processAuditConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, db)
-	auditRuleService := service.NewAuditRuleService(auditRuleRepo)
+	processAuditConfigService := service.NewProcessAuditConfigService(processAuditConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, db, invalidationManager)
+	auditRuleService := service.NewAuditRuleService(auditRuleRepo, invalidationManager)
 	userPersonalConfigService := service.NewUserPersonalConfigService(userPersonalConfigRepo, processAuditConfigRepo, auditRuleRepo, archiveConfigRepo, archiveRuleRepo, orgRepo)
 	llmMessageLogService := service.NewLLMMessageLogService(llmMessageLogRepo)
 	cronConfigService := service.NewCronConfigService(cronPresetRepo, cronConfigRepo)
-	archiveConfigService := service.NewProcessArchiveConfigService(archiveConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo)
-	archiveRuleService := service.NewArchiveRuleService(archiveRuleRepo)
+	archiveConfigService := service.NewProcessArchiveConfigService(archiveConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, invalidationManager)
+	archiveRuleService := service.NewArchiveRuleService(archiveRuleRepo, invalidationManager)
 	aiCallerService := service.NewAIModelCallerService(tenantRepo, llmMessageLogRepo, db)
 	userNotificationService := service.NewUserNotificationService(userNotificationRepo, userRepo)
-	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db, rdb, userNotificationService)
+	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db, rdb, userNotificationService, cacheManager, invalidationManager)
 	dashboardOverviewService := service.NewDashboardOverviewService(
-		auditSnapshotRepo, archiveSnapshotRepo, auditLogRepo, archiveLogRepo, cronLogRepo, cronTaskRepo, cronPresetRepo, llmMessageLogRepo, tenantRepo, orgRepo,
+		auditSnapshotRepo, archiveSnapshotRepo, auditLogRepo, archiveLogRepo, cronLogRepo, cronTaskRepo, cronPresetRepo, llmMessageLogRepo, tenantRepo, orgRepo, cacheManager, invalidationManager,
 	)
-	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveSnapshotRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, orgRepo, db, rdb, userNotificationService)
+	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveSnapshotRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, orgRepo, db, rdb, userNotificationService, cacheManager, invalidationManager)
 	reportCalculatorService := service.NewReportCalculatorService(auditLogRepo, archiveLogRepo, tenantRepo)
 	mailService := service.NewMailService(systemConfigRepo)
 
@@ -190,13 +209,14 @@ func main() {
 	archiveReviewHandler := handler.NewArchiveReviewHandler(archiveReviewService, archiveSnapshotRepo, archiveLogRepo)
 	dashboardOverviewHandler := handler.NewDashboardOverviewHandler(dashboardOverviewService)
 	userNotificationHandler := handler.NewUserNotificationHandler(userNotificationService)
+	cacheAdminHandler := handler.NewCacheAdminHandler(cacheManager, invalidationManager)
 
 	// 第八步：配置 Gin 路由及中间件
 	r := gin.New()
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler, dashboardOverviewHandler, userNotificationHandler)
+	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler)
 
 	// 第九步：启动 HTTP 服务器
 	port := viper.GetInt("server.port")
@@ -236,6 +256,18 @@ func loadConfig() error {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.SetDefault("migrations.enabled", true)
 	viper.SetDefault("migrations.path", "")
+
+	// 缓存配置默认值
+	viper.SetDefault("cache.enabled", true)
+	viper.SetDefault("cache.default_ttl", "5m")
+	viper.SetDefault("cache.hit_rate_threshold", 0.5)
+	viper.SetDefault("cache.ttl.audit_todo", "3m")
+	viper.SetDefault("cache.ttl.archive_list", "5m")
+	viper.SetDefault("cache.ttl.process_config", "10m")
+	viper.SetDefault("cache.ttl.snapshot", "5m")
+	viper.SetDefault("cache.ttl.stats", "5m")
+	viper.SetDefault("cache.ttl.dashboard", "2m")
+
 	return viper.ReadInConfig()
 }
 

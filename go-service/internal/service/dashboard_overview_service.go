@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"log"
 	"sort"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"oa-smart-audit/go-service/internal/cache"
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
@@ -26,6 +28,8 @@ type DashboardOverviewService struct {
 	llmLogRepo          *repository.LLMMessageLogRepo
 	tenantRepo          *repository.TenantRepo
 	orgRepo             *repository.OrgRepo
+	cache               *cache.CacheManager
+	invalidator         *cache.InvalidationManager
 }
 
 // NewDashboardOverviewService 创建 DashboardOverviewService。
@@ -40,6 +44,8 @@ func NewDashboardOverviewService(
 	llmLogRepo *repository.LLMMessageLogRepo,
 	tenantRepo *repository.TenantRepo,
 	orgRepo *repository.OrgRepo,
+	cacheManager *cache.CacheManager,
+	invalidationManager *cache.InvalidationManager,
 ) *DashboardOverviewService {
 	return &DashboardOverviewService{
 		auditSnapshotRepo:   auditSnapshotRepo,
@@ -52,6 +58,8 @@ func NewDashboardOverviewService(
 		llmLogRepo:          llmLogRepo,
 		tenantRepo:          tenantRepo,
 		orgRepo:             orgRepo,
+		cache:               cacheManager,
+		invalidator:         invalidationManager,
 	}
 }
 
@@ -66,8 +74,29 @@ func tenantUUIDFromContext(c *gin.Context) (uuid.UUID, error) {
 // BuildOverview 构建当前租户仪表盘数据。
 // business: 仅个人数据；tenant_admin: 租户级汇总。
 func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole string, viewerUserID uuid.UUID, viewerUsername string) (*dto.DashboardOverviewResponse, error) {
-	if _, err := tenantUUIDFromContext(c); err != nil {
+	tenantID, err := tenantUUIDFromContext(c)
+	if err != nil {
 		return nil, err
+	}
+
+	// ── 缓存读取 ──
+	if s.cache != nil {
+		keyBuilder := cache.NewKeyBuilder("dashboard", tenantID)
+		cacheKey := keyBuilder.Dashboard(viewerUserID, activeRole)
+
+		var cached cache.CachedStats
+		if hit, _ := s.cache.Get(c.Request.Context(), cacheKey, &cached); hit {
+			if resp, ok := cached.Stats.(*dto.DashboardOverviewResponse); ok {
+				return resp, nil
+			}
+			// 尝试通过 JSON 反序列化恢复
+			var resp dto.DashboardOverviewResponse
+			if raw, err2 := json.Marshal(cached.Stats); err2 == nil {
+				if err3 := json.Unmarshal(raw, &resp); err3 == nil {
+					return &resp, nil
+				}
+			}
+		}
 	}
 
 	var userScope *uuid.UUID
@@ -117,6 +146,17 @@ func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole stri
 	if activeRole == "tenant_admin" {
 		out.DeptDistribution = s.buildDeptDistribution(c)
 		out.UserActivity = s.buildUserActivityRanking(c)
+	}
+
+	// ── 缓存写入 ──
+	if s.cache != nil {
+		keyBuilder := cache.NewKeyBuilder("dashboard", tenantID)
+		cacheKey := keyBuilder.Dashboard(viewerUserID, activeRole)
+		toCache := cache.CachedStats{
+			Stats:    out,
+			CachedAt: time.Now(),
+		}
+		_ = s.cache.Set(c.Request.Context(), cacheKey, toCache, cache.DefaultTTLDashboard)
 	}
 
 	return out, nil

@@ -9,6 +9,7 @@
 //   - 500xx   服务端内部错误
 //   - 502xx   OA 集成错误
 //   - 503xx   AI 模型错误
+//   - 504xx   缓存错误
 package errcode
 
 const (
@@ -64,4 +65,12 @@ const (
 	ErrAIDeployTypeUnsupported = 50303 // 不支持的 AI 部署类型
 	ErrTokenQuotaExceeded      = 50304 // 租户 Token 配额已用尽
 	ErrAuditParseFailed        = 50305 // AI 审核结果解析失败
+
+	// 504xx - 缓存错误
+	ErrCacheDisabled        = 50401 // 缓存功能已禁用
+	ErrCacheConnFailed      = 50402 // Redis 连接失败
+	ErrCacheSerialize       = 50403 // 序列化失败
+	ErrCacheDeserialize     = 50404 // 反序列化失败
+	ErrCacheKeyInvalid      = 50405 // 缓存键格式无效
+	ErrCacheOperationFailed = 50406 // 缓存操作失败
 )

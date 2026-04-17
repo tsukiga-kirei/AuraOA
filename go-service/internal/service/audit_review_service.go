@@ -19,6 +19,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"oa-smart-audit/go-service/internal/cache"
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/crypto"
@@ -55,6 +56,8 @@ type AuditExecuteService struct {
 	rdb               *redis.Client
 	notifSvc          *UserNotificationService
 	cancelMap         sync.Map
+	cache             *cache.CacheManager
+	invalidator       *cache.InvalidationManager
 }
 
 // NewAuditExecuteService 创建 AuditExecuteService，注入所有依赖仓储和服务。
@@ -71,6 +74,8 @@ func NewAuditExecuteService(
 	db *gorm.DB,
 	rdb *redis.Client,
 	notifSvc *UserNotificationService,
+	cacheManager *cache.CacheManager,
+	invalidationManager *cache.InvalidationManager,
 ) *AuditExecuteService {
 	return &AuditExecuteService{
 		auditLogRepo:      auditLogRepo,
@@ -85,6 +90,8 @@ func NewAuditExecuteService(
 		db:                db,
 		rdb:               rdb,
 		notifSvc:          notifSvc,
+		cache:             cacheManager,
+		invalidator:       invalidationManager,
 	}
 }
 
@@ -385,31 +392,19 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 
 	req := &AuditExecuteRequest{ProcessID: log.ProcessID, ProcessType: log.ProcessType, Title: log.Title}
 
-	config, err := s.configRepo.GetByProcessType(c, req.ProcessType)
+	config, rules, err := s.getProcessConfigCached(c, tenantID, req.ProcessType)
 	if err != nil {
-		se := newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的审核配置不存在", req.ProcessType))
-		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
+		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
 		tlog.Warn("审核任务执行失败",
 			zap.String("auditLogID", auditLogID.String()),
-			zap.Error(se),
+			zap.Error(err),
 		)
-		return se
+		return err
 	}
 
 	var aiConfig model.AIConfigData
 	if err := json.Unmarshal(config.AIConfig, &aiConfig); err != nil {
 		se := newServiceError(errcode.ErrInternalServer, "AI 配置解析失败")
-		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
-		tlog.Warn("审核任务执行失败",
-			zap.String("auditLogID", auditLogID.String()),
-			zap.Error(se),
-		)
-		return se
-	}
-
-	rules, err := s.ruleRepo.ListByConfigID(c, config.ID)
-	if err != nil {
-		se := newServiceError(errcode.ErrDatabase, "获取审核规则失败")
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
 		tlog.Warn("审核任务执行失败",
 			zap.String("auditLogID", auditLogID.String()),
@@ -565,6 +560,14 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 				fmt.Sprintf("评分 %d，建议：%s", parsed.OverallScore, parsed.Recommendation),
 				fmt.Sprintf("/workbench?processId=%s", log.ProcessID),
 			)
+		}
+
+		// 审核完成后清除相关缓存（使用 Background context 避免请求取消影响缓存失效）
+		if s.invalidator != nil {
+			bgCtx := context.Background()
+			_ = s.invalidator.InvalidateUserTodoCache(bgCtx, tenantID, userID)
+			_ = s.invalidator.InvalidateSnapshotCache(bgCtx, tenantID, "audit")
+			_ = s.invalidator.InvalidateStatsCache(bgCtx, tenantID, "audit")
 		}
 	}
 	return nil
@@ -833,7 +836,7 @@ func (s *AuditExecuteService) ListPendingForBatch(c *gin.Context, workflowIds []
 	for i, it := range items {
 		todoPIDs[i] = it.ProcessID
 	}
-	snapshotMap, _ := s.auditSnapshotRepo.GetMapByProcessIDs(c, todoPIDs)
+	snapshotMap, _ := s.getSnapshotMapCached(c, tenantID, todoPIDs)
 
 	// 按租户已配置的主表名和流程类型过滤（AND 关系）
 	allowedTables := s.getAllowedMainTables(c)
@@ -975,10 +978,38 @@ func (s *AuditExecuteService) GetStats(c *gin.Context) (map[string]int, error) {
 // GetStatsWithParams 与列表共用提交/审核时间范围（start_date、end_date）。
 // 将 keyword/applicant/department/mainTableNames 下推到 OA SQL，避免全量拉取。
 func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.AuditListParams) (map[string]int, error) {
-	tenantID, _, err := s.extractIDs(c)
+	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
 	}
+
+	// 构建缓存键：audit:stats:{tenant_id}:{user_id}:{date_range_hash}
+	// 由于 AuditListParams 的日期字段标记为 json:"-"，需要构建包含日期的哈希输入
+	if s.cache != nil && s.cache.IsEnabled() {
+		dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
+			"submit_date_start":         params.SubmitDateStart,
+			"submit_date_end_exclusive": params.SubmitDateEndExclusive,
+		})
+		keyBuilder := cache.NewKeyBuilder("audit", tenantID)
+		cacheKey := keyBuilder.Stats(userID, dateRangeHash)
+
+		var cached cache.CachedStats
+		if hit, _ := s.cache.Get(c.Request.Context(), cacheKey, &cached); hit {
+			if statsMap, ok := cached.Stats.(map[string]interface{}); ok {
+				result := make(map[string]int, len(statsMap))
+				for k, v := range statsMap {
+					switch val := v.(type) {
+					case float64:
+						result[k] = int(val)
+					case int:
+						result[k] = val
+					}
+				}
+				return result, nil
+			}
+		}
+	}
+
 	_, _ = s.FailStaleAuditJobs(context.Background())
 
 	username := s.extractUsername(c)
@@ -1003,7 +1034,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 	for i, item := range todoItems {
 		processIDs[i] = item.ProcessID
 	}
-	snapshotMap, err := s.auditSnapshotRepo.GetMapByProcessIDs(c, processIDs)
+	snapshotMap, err := s.getSnapshotMapCached(c, tenantID, processIDs)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核快照失败")
 	}
@@ -1046,17 +1077,34 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 		Where("tenant_id = ? AND updated_at >= ?", tenantID, startOfDay).
 		Count(&todayCompleted)
 
-	return map[string]int{
+	result := map[string]int{
 		"pending_ai_count":      pendingAI,
 		"ai_done_count":         aiDone,
 		"completed_count":       int(completedCount),
 		"today_completed_count": int(todayCompleted),
-	}, nil
+	}
+
+	// 写入缓存
+	if s.cache != nil && s.cache.IsEnabled() {
+		dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
+			"submit_date_start":         params.SubmitDateStart,
+			"submit_date_end_exclusive": params.SubmitDateEndExclusive,
+		})
+		keyBuilder := cache.NewKeyBuilder("audit", tenantID)
+		cacheKey := keyBuilder.Stats(userID, dateRangeHash)
+		toCache := cache.CachedStats{
+			Stats:    result,
+			CachedAt: time.Now(),
+		}
+		_ = s.cache.Set(c.Request.Context(), cacheKey, toCache, cache.DefaultTTLStats)
+	}
+
+	return result, nil
 }
 
 // ListProcessesPaged 分页查询审核工作台（待 AI / AI 已审核：OA 待办可按 createdate；全部已完成：排除「当前全量待办」后按快照 updated_at）。
 func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.AuditListParams) (*dto.AuditProcessListResponse, error) {
-	tenantID, _, err := s.extractIDs(c)
+	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
 	}
@@ -1081,6 +1129,24 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 		return s.listCompletedProcessesPaged(c, tenantID, username, adapter, params)
 	}
 
+	// 构建缓存键
+	keyBuilder := cache.NewKeyBuilder("audit", tenantID)
+	filterHash := cache.ComputeFilterHash(params)
+	cacheKey := keyBuilder.TodoList(userID, filterHash)
+
+	// 尝试从缓存获取
+	if s.cache != nil && s.cache.IsEnabled() {
+		var cached cache.CachedTodoList
+		if hit, _ := s.cache.Get(c.Request.Context(), cacheKey, &cached); hit {
+			return &dto.AuditProcessListResponse{
+				Items:    cached.Items,
+				Total:    cached.Total,
+				Page:     params.Page,
+				PageSize: params.PageSize,
+			}, nil
+		}
+	}
+
 	// pending_ai / ai_done：将 keyword/applicant/department/mainTableNames/processTypes 下推到 OA SQL，
 	// 减少从 OA 拉取的数据量。tab 分组（是否有 snapshot）仍需在内存中完成。
 	allowedTables := s.getAllowedMainTables(c)
@@ -1100,7 +1166,7 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核记录失败")
 	}
-	snapshotMap, err := s.auditSnapshotRepo.GetMapByProcessIDs(c, processIDs)
+	snapshotMap, err := s.getSnapshotMapCached(c, tenantID, processIDs)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核快照失败")
 	}
@@ -1179,12 +1245,25 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 	}
 	items := filtered[start:end]
 
-	return &dto.AuditProcessListResponse{
+	response := &dto.AuditProcessListResponse{
 		Items:    items,
 		Total:    total,
 		Page:     page,
 		PageSize: ps,
-	}, nil
+	}
+
+	// 写入缓存
+	if s.cache != nil && s.cache.IsEnabled() {
+		toCache := cache.CachedTodoList{
+			Items:      items,
+			Total:      total,
+			CachedAt:   time.Now(),
+			FilterHash: filterHash,
+		}
+		_ = s.cache.Set(c.Request.Context(), cacheKey, toCache, cache.DefaultTTLAuditTodo)
+	}
+
+	return response, nil
 }
 
 // fetchTodoListFiltered 使用 FetchTodoListPaged 将 keyword/applicant/department/mainTableNames 下推到 OA SQL，
@@ -1789,4 +1868,112 @@ func parseSnapshotValidLogIDs(raw datatypes.JSON) []uuid.UUID {
 		}
 	}
 	return out
+}
+
+// cachedAuditConfig 缓存的审核配置（config + rules 一起缓存）
+type cachedAuditConfig struct {
+	Config model.ProcessAuditConfig `json:"config"`
+	Rules  []model.AuditRule        `json:"rules"`
+}
+
+// getProcessConfigCached 获取流程审核配置和规则，优先从缓存读取。
+// 缓存键格式: audit:config:{tenant_id}:{process_type}，TTL 10 分钟。
+func (s *AuditExecuteService) getProcessConfigCached(c *gin.Context, tenantID uuid.UUID, processType string) (*model.ProcessAuditConfig, []model.AuditRule, error) {
+	ctx := c.Request.Context()
+
+	// 尝试从缓存获取
+	if s.cache != nil && s.cache.IsEnabled() {
+		keyBuilder := cache.NewKeyBuilder("audit", tenantID)
+		cacheKey := keyBuilder.ProcessConfig(processType)
+
+		var cached cachedAuditConfig
+		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
+			return &cached.Config, cached.Rules, nil
+		}
+	}
+
+	// 缓存未命中，从数据库查询
+	config, err := s.configRepo.GetByProcessType(c, processType)
+	if err != nil {
+		return nil, nil, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的审核配置不存在", processType))
+	}
+
+	rules, err := s.ruleRepo.ListByConfigID(c, config.ID)
+	if err != nil {
+		return nil, nil, newServiceError(errcode.ErrDatabase, "获取审核规则失败")
+	}
+
+	// 写入缓存
+	if s.cache != nil && s.cache.IsEnabled() {
+		keyBuilder := cache.NewKeyBuilder("audit", tenantID)
+		cacheKey := keyBuilder.ProcessConfig(processType)
+		toCache := cachedAuditConfig{
+			Config: *config,
+			Rules:  rules,
+		}
+		_ = s.cache.Set(ctx, cacheKey, toCache, cache.DefaultTTLProcessConfig)
+	}
+
+	return config, rules, nil
+}
+
+// getSnapshotMapCached 获取审核快照映射，优先从缓存读取。
+// 缓存键格式: audit:snapshot:{tenant_id}:{process_ids_hash}，TTL 5 分钟。
+// 支持批量查询优化：将 processIDs 列表哈希为缓存键，避免逐条查询。
+func (s *AuditExecuteService) getSnapshotMapCached(c *gin.Context, tenantID uuid.UUID, processIDs []string) (map[string]*model.AuditProcessSnapshot, error) {
+	if len(processIDs) == 0 {
+		return map[string]*model.AuditProcessSnapshot{}, nil
+	}
+
+	ctx := c.Request.Context()
+
+	// 尝试从缓存获取
+	if s.cache != nil && s.cache.IsEnabled() {
+		processIDsHash := cache.ComputeFilterHash(processIDs)
+		keyBuilder := cache.NewKeyBuilder("audit", tenantID)
+		cacheKey := keyBuilder.Snapshot(processIDsHash)
+
+		var cached cache.CachedSnapshot
+		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
+			// 将 map[string]interface{} 转换回 map[string]*model.AuditProcessSnapshot
+			result := make(map[string]*model.AuditProcessSnapshot, len(cached.Snapshots))
+			for pid, raw := range cached.Snapshots {
+				data, err := json.Marshal(raw)
+				if err != nil {
+					continue
+				}
+				var snap model.AuditProcessSnapshot
+				if err := json.Unmarshal(data, &snap); err != nil {
+					continue
+				}
+				result[pid] = &snap
+			}
+			return result, nil
+		}
+	}
+
+	// 缓存未命中，从数据库查询
+	snapshotMap, err := s.auditSnapshotRepo.GetMapByProcessIDs(c, processIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// 写入缓存
+	if s.cache != nil && s.cache.IsEnabled() {
+		processIDsHash := cache.ComputeFilterHash(processIDs)
+		keyBuilder := cache.NewKeyBuilder("audit", tenantID)
+		cacheKey := keyBuilder.Snapshot(processIDsHash)
+
+		snapshots := make(map[string]interface{}, len(snapshotMap))
+		for pid, snap := range snapshotMap {
+			snapshots[pid] = snap
+		}
+		toCache := cache.CachedSnapshot{
+			Snapshots: snapshots,
+			CachedAt:  time.Now(),
+		}
+		_ = s.cache.Set(ctx, cacheKey, toCache, cache.DefaultTTLSnapshot)
+	}
+
+	return snapshotMap, nil
 }

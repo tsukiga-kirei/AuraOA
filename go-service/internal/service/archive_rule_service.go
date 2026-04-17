@@ -1,9 +1,12 @@
 package service
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"oa-smart-audit/go-service/internal/cache"
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
@@ -12,12 +15,13 @@ import (
 
 // ArchiveRuleService 负责归档规则的增删改查，支持按配置 ID 和启用状态筛选。
 type ArchiveRuleService struct {
-	ruleRepo *repository.ArchiveRuleRepo
+	ruleRepo    *repository.ArchiveRuleRepo
+	invalidator *cache.InvalidationManager
 }
 
 // NewArchiveRuleService 初始化归档规则服务。
-func NewArchiveRuleService(ruleRepo *repository.ArchiveRuleRepo) *ArchiveRuleService {
-	return &ArchiveRuleService{ruleRepo: ruleRepo}
+func NewArchiveRuleService(ruleRepo *repository.ArchiveRuleRepo, invalidator *cache.InvalidationManager) *ArchiveRuleService {
+	return &ArchiveRuleService{ruleRepo: ruleRepo, invalidator: invalidator}
 }
 
 // Create 新增归档规则，未指定 enabled 时默认开启，未指定 rule_scope 时默认为 default_on。
@@ -55,6 +59,14 @@ func (s *ArchiveRuleService) Create(c *gin.Context, req *dto.CreateArchiveRuleRe
 	if err := s.ruleRepo.Create(c, rule); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+
+	// 清除该租户的归档配置缓存
+	if s.invalidator != nil {
+		if err := s.invalidator.InvalidateConfigCache(context.Background(), tenantID, "archive"); err != nil {
+			_ = err
+		}
+	}
+
 	return rule, nil
 }
 
@@ -89,6 +101,17 @@ func (s *ArchiveRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.Updat
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+
+	// 清除该租户的归档配置缓存
+	if s.invalidator != nil {
+		tenantID, tErr := getTenantUUID(c)
+		if tErr == nil {
+			if err := s.invalidator.InvalidateConfigCache(context.Background(), tenantID, "archive"); err != nil {
+				_ = err
+			}
+		}
+	}
+
 	return rule, nil
 }
 
@@ -109,6 +132,17 @@ func (s *ArchiveRuleService) Delete(c *gin.Context, id uuid.UUID) error {
 			return newServiceError(errcode.ErrDatabase, "数据库错误")
 		}
 	}
+
+	// 清除该租户的归档配置缓存
+	if s.invalidator != nil {
+		tenantID, tErr := getTenantUUID(c)
+		if tErr == nil {
+			if err := s.invalidator.InvalidateConfigCache(context.Background(), tenantID, "archive"); err != nil {
+				_ = err
+			}
+		}
+	}
+
 	return nil
 }
 

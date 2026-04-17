@@ -1,9 +1,12 @@
 package service
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"oa-smart-audit/go-service/internal/cache"
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
@@ -12,12 +15,13 @@ import (
 
 // AuditRuleService 负责审核规则的增删改查，支持按配置 ID 和启用状态筛选。
 type AuditRuleService struct {
-	ruleRepo *repository.AuditRuleRepo
+	ruleRepo    *repository.AuditRuleRepo
+	invalidator *cache.InvalidationManager
 }
 
 // NewAuditRuleService 初始化审核规则服务。
-func NewAuditRuleService(ruleRepo *repository.AuditRuleRepo) *AuditRuleService {
-	return &AuditRuleService{ruleRepo: ruleRepo}
+func NewAuditRuleService(ruleRepo *repository.AuditRuleRepo, invalidator *cache.InvalidationManager) *AuditRuleService {
+	return &AuditRuleService{ruleRepo: ruleRepo, invalidator: invalidator}
 }
 
 // Create 新增审核规则，未指定 enabled 时默认开启，未指定 rule_scope 时默认为 default_on。
@@ -55,6 +59,15 @@ func (s *AuditRuleService) Create(c *gin.Context, req *dto.CreateAuditRuleReques
 	if err := s.ruleRepo.Create(c, rule); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+
+	// 清除该租户的审核配置缓存
+	if s.invalidator != nil {
+		if err := s.invalidator.InvalidateConfigCache(context.Background(), tenantID, "audit"); err != nil {
+			// 缓存清除失败不影响业务
+			_ = err
+		}
+	}
+
 	return rule, nil
 }
 
@@ -89,6 +102,17 @@ func (s *AuditRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.UpdateA
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+
+	// 清除该租户的审核配置缓存
+	if s.invalidator != nil {
+		tenantID, tErr := getTenantUUID(c)
+		if tErr == nil {
+			if err := s.invalidator.InvalidateConfigCache(context.Background(), tenantID, "audit"); err != nil {
+				_ = err
+			}
+		}
+	}
+
 	return rule, nil
 }
 
@@ -103,6 +127,17 @@ func (s *AuditRuleService) Delete(c *gin.Context, id uuid.UUID) error {
 	if err := s.ruleRepo.Delete(c, id); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+
+	// 清除该租户的审核配置缓存
+	if s.invalidator != nil {
+		tenantID, tErr := getTenantUUID(c)
+		if tErr == nil {
+			if err := s.invalidator.InvalidateConfigCache(context.Background(), tenantID, "audit"); err != nil {
+				_ = err
+			}
+		}
+	}
+
 	return nil
 }
 

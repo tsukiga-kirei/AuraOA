@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 
+	"oa-smart-audit/go-service/internal/cache"
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/crypto"
@@ -22,6 +24,7 @@ type ProcessArchiveConfigService struct {
 	tenantRepo   *repository.TenantRepo
 	oaConnRepo   *repository.OAConnectionRepo
 	templateRepo *repository.SystemPromptTemplateRepo
+	invalidator  *cache.InvalidationManager
 }
 
 // NewProcessArchiveConfigService 初始化归档复盘配置服务，注入所需仓储依赖。
@@ -30,12 +33,14 @@ func NewProcessArchiveConfigService(
 	tenantRepo *repository.TenantRepo,
 	oaConnRepo *repository.OAConnectionRepo,
 	templateRepo *repository.SystemPromptTemplateRepo,
+	invalidator *cache.InvalidationManager,
 ) *ProcessArchiveConfigService {
 	return &ProcessArchiveConfigService{
 		configRepo:   configRepo,
 		tenantRepo:   tenantRepo,
 		oaConnRepo:   oaConnRepo,
 		templateRepo: templateRepo,
+		invalidator:  invalidator,
 	}
 }
 
@@ -101,6 +106,14 @@ func (s *ProcessArchiveConfigService) Create(c *gin.Context, req *dto.CreateProc
 	if err := s.configRepo.Create(c, cfg); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+
+	// 清除该租户的归档配置缓存
+	if s.invalidator != nil {
+		if err := s.invalidator.InvalidateConfigCache(context.Background(), tenantID, "archive"); err != nil {
+			_ = err
+		}
+	}
+
 	return cfg, nil
 }
 
@@ -226,6 +239,17 @@ func (s *ProcessArchiveConfigService) Update(c *gin.Context, id uuid.UUID, req *
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+
+	// 清除该租户的归档配置缓存
+	if s.invalidator != nil {
+		tenantID, tErr := getTenantUUID(c)
+		if tErr == nil {
+			if err := s.invalidator.InvalidateConfigCache(context.Background(), tenantID, "archive"); err != nil {
+				_ = err
+			}
+		}
+	}
+
 	return cfg, nil
 }
 
@@ -238,6 +262,17 @@ func (s *ProcessArchiveConfigService) Delete(c *gin.Context, id uuid.UUID) error
 	if err := s.configRepo.Delete(c, id); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+
+	// 清除该租户的归档配置缓存
+	if s.invalidator != nil {
+		tenantID, tErr := getTenantUUID(c)
+		if tErr == nil {
+			if err := s.invalidator.InvalidateConfigCache(context.Background(), tenantID, "archive"); err != nil {
+				_ = err
+			}
+		}
+	}
+
 	return nil
 }
 

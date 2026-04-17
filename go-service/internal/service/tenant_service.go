@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"oa-smart-audit/go-service/internal/cache"
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
@@ -24,15 +26,17 @@ type TenantService struct {
 	systemConfigRepo *repository.SystemConfigRepo
 	userRepo         *repository.UserRepo
 	db               *gorm.DB
+	invalidator      *cache.InvalidationManager
 }
 
 // NewTenantService 创建一个新的 TenantService 实例。
-func NewTenantService(tenantRepo *repository.TenantRepo, systemConfigRepo *repository.SystemConfigRepo, userRepo *repository.UserRepo, db *gorm.DB) *TenantService {
+func NewTenantService(tenantRepo *repository.TenantRepo, systemConfigRepo *repository.SystemConfigRepo, userRepo *repository.UserRepo, db *gorm.DB, invalidator *cache.InvalidationManager) *TenantService {
 	return &TenantService{
 		tenantRepo:       tenantRepo,
 		systemConfigRepo: systemConfigRepo,
 		userRepo:         userRepo,
 		db:               db,
+		invalidator:      invalidator,
 	}
 }
 
@@ -508,6 +512,16 @@ func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest)
 		zap.Int("updatedFields", len(fields)),
 	)
 
+	// 清除该租户的所有配置相关缓存
+	if s.invalidator != nil {
+		if err := s.invalidator.InvalidateTenantCache(context.Background(), id); err != nil {
+			pkglogger.Global().Warn("租户配置变更后清除缓存失败",
+				zap.String("tenantID", id.String()),
+				zap.Error(err),
+			)
+		}
+	}
+
 	resp := toTenantResponse(tenant)
 	return &resp, nil
 }
@@ -623,6 +637,17 @@ func (s *TenantService) DeleteTenant(id uuid.UUID, operatorUserID uuid.UUID, adm
 		zap.String("tenantID", id.String()),
 		zap.String("tenantName", tenant.Name),
 	)
+
+	// 清除该租户的所有缓存
+	if s.invalidator != nil {
+		if err := s.invalidator.InvalidateTenantCache(context.Background(), id); err != nil {
+			pkglogger.Global().Warn("租户删除后清除缓存失败",
+				zap.String("tenantID", id.String()),
+				zap.Error(err),
+			)
+		}
+	}
+
 	return nil
 }
 

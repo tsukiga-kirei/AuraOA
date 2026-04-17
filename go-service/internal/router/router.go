@@ -34,6 +34,7 @@ func SetupRouter(
 	archiveReviewHandler *handler.ArchiveReviewHandler,
 	dashboardOverviewHandler *handler.DashboardOverviewHandler,
 	userNotificationHandler *handler.UserNotificationHandler,
+	cacheAdminHandler *handler.CacheAdminHandler,
 ) {
 	// 挂载全局中间件：结构化请求日志、panic 恢复、跨域（CORS）
 	r.Use(middleware.Logger(logger))
@@ -131,6 +132,17 @@ func SetupRouter(
 		admin.GET("/stats/token-usage", llmLogHandler.QueryAllTenantsTokenUsage)
 
 		admin.GET("/dashboard-overview", dashboardOverviewHandler.GetPlatformOverview)
+	}
+
+	// 缓存管理路由（仅超级管理员 system_admin）
+	if cacheAdminHandler != nil {
+		cacheAdmin := admin.Group("/cache")
+		{
+			cacheAdmin.GET("/stats", cacheAdminHandler.GetStats)
+			cacheAdmin.DELETE("/tenant/:tenant_id", cacheAdminHandler.ClearTenantCache)
+			cacheAdmin.DELETE("/module/:module", cacheAdminHandler.ClearModuleCache)
+			cacheAdmin.POST("/toggle", cacheAdminHandler.ToggleCache)
+		}
 	}
 
 	// 租户管理员 — 流程审核规则配置（需要 JWT + 租户上下文 + tenant_admin 角色）

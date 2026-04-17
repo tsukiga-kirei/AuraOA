@@ -9,23 +9,26 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"oa-smart-audit/go-service/internal/cache"
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
-	"oa-smart-audit/go-service/internal/pkg/oa"
 	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
+	"oa-smart-audit/go-service/internal/pkg/oa"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
 // OAConnectionService 处理 OA 数据库连接的业务逻辑。
 type OAConnectionService struct {
-	repo *repository.OAConnectionRepo
+	repo        *repository.OAConnectionRepo
+	tenantRepo  *repository.TenantRepo
+	invalidator *cache.InvalidationManager
 }
 
 // NewOAConnectionService 创建 OAConnectionService，注入 OA 连接仓储。
-func NewOAConnectionService(repo *repository.OAConnectionRepo) *OAConnectionService {
-	return &OAConnectionService{repo: repo}
+func NewOAConnectionService(repo *repository.OAConnectionRepo, tenantRepo *repository.TenantRepo, invalidator *cache.InvalidationManager) *OAConnectionService {
+	return &OAConnectionService{repo: repo, tenantRepo: tenantRepo, invalidator: invalidator}
 }
 
 // List 返回所有 OA 连接。
@@ -95,6 +98,27 @@ func (s *OAConnectionService) Create(req *dto.CreateOAConnectionRequest) (*dto.O
 	pkglogger.Global().Info("OA连接创建成功", zap.String("connName", conn.Name), zap.String("oaType", conn.OAType))
 	resp := toOAConnectionResponse(conn)
 	return &resp, nil
+}
+
+// invalidateAffectedTenantCaches 查找引用此 OA 连接的所有租户并清除其缓存。
+func (s *OAConnectionService) invalidateAffectedTenantCaches(connID uuid.UUID) {
+	if s.invalidator == nil || s.tenantRepo == nil {
+		return
+	}
+	tenants, err := s.tenantRepo.List()
+	if err != nil {
+		return
+	}
+	for _, t := range tenants {
+		if t.OADBConnectionID != nil && *t.OADBConnectionID == connID {
+			if err := s.invalidator.InvalidateTenantCache(context.Background(), t.ID); err != nil {
+				pkglogger.Global().Warn("OA连接变更后清除租户缓存失败",
+					zap.String("tenantID", t.ID.String()),
+					zap.Error(err),
+				)
+			}
+		}
+	}
 }
 
 // Update 更新 OA 连接。
@@ -167,6 +191,10 @@ func (s *OAConnectionService) Update(id uuid.UUID, req *dto.UpdateOAConnectionRe
 	}
 
 	pkglogger.Global().Info("OA连接更新成功", zap.String("connID", id.String()))
+
+	// 清除引用此 OA 连接的所有租户缓存
+	s.invalidateAffectedTenantCaches(id)
+
 	resp := toOAConnectionResponse(conn)
 	return &resp, nil
 }
@@ -177,6 +205,10 @@ func (s *OAConnectionService) Delete(id uuid.UUID) error {
 	if err != nil {
 		return newServiceError(errcode.ErrResourceNotFound, "OA连接不存在")
 	}
+
+	// 先清除引用此 OA 连接的所有租户缓存（删除前执行，因为删除后无法查找引用）
+	s.invalidateAffectedTenantCaches(id)
+
 	if err := s.repo.Delete(id); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
