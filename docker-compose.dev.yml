@@ -16,6 +16,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      # 数据库连接（需与下方 postgres 服务的 POSTGRES_* 保持一致）
       - DATABASE_HOST=postgres
       - DATABASE_PORT=5432
       - DATABASE_DBNAME=oa_smart_audit
