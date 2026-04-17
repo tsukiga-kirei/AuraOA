@@ -16,8 +16,9 @@ type LogConfig struct {
 	// MaxSizeMB 单个日志文件的最大体积（MB），超出后触发轮转，默认 100。
 	MaxSizeMB int `mapstructure:"max_size_mb"`
 
-	// MaxBackups 轮转后最多保留的备份文件数量，默认 5。
-	// 超出数量的旧备份文件将被自动删除。
+	// MaxBackups 轮转后最多保留的备份文件数量，默认 0（不限数量）。
+	// 设为 0 时完全由 GlobalRetentionDays 天数清理任务控制保留量；
+	// 设为正整数时额外限制备份文件数量上限，超出后旧备份将被自动删除。
 	MaxBackups int `mapstructure:"max_backups"`
 
 	// Compress 是否对轮转备份文件进行 gzip 压缩，默认 true。
