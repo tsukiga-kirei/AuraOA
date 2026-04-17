@@ -31,9 +31,9 @@ OA 智审是一套面向企业内部 OA 流程的 AI 辅助审核平台。通过
 - **ORM**：GORM
 - **数据库**：PostgreSQL 16（pgvector 镜像）
 - **缓存**：Redis 7
-- **认证**：JWT（Access Token + Refresh Token）
+- **认证**：JWT（Access Token 2h + Refresh Token 7d）
 - **配置**：Viper（YAML + 环境变量）
-- **日志**：Zap
+- **日志**：Zap（支持租户级日志隔离）
 - **加密**：AES-256（数据库密码等敏感字段）
 
 ### 前端（Frontend）
@@ -41,12 +41,78 @@ OA 智审是一套面向企业内部 OA 流程的 AI 辅助审核平台。通过
 - **UI 库**：Ant Design Vue 4
 - **语言**：TypeScript / Vue 3 Composition API
 - **国际化**：自研 i18n（基于 `zh-CN.ts` / `en-US.ts`）
-- **数据可视化**：内置图表组件（基于 mock 数据）
+- **数据可视化**：内置图表组件
 
 ### 基础设施
 - **容器化**：Docker Compose（开发环境 + 生产环境）
-- **数据库迁移**：PostgreSQL 原生 SQL 迁移脚本（`db/migrations/`）
-- **种子数据**：SQL 种子脚本（`db/seeds/`）
+- **数据库迁移**：golang-migrate（`db/migrations/`）
+
+---
+
+## 系统架构
+
+### 认证架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      JWT 双令牌架构                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Access Token (2h)          Refresh Token (7d)              │
+│  ├── 用户信息                ├── 用户 ID                    │
+│  ├── 当前角色                └── JTI (用于黑名单)           │
+│  ├── 权限列表                                               │
+│  └── JTI (用于黑名单)                                       │
+│                                                             │
+│  Redis 存储:                                                │
+│  ├── session:{user_id} → 用户会话缓存 (2h TTL)             │
+│  └── blacklist:{jti} → 已吊销令牌 (与 Token TTL 一致)      │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 角色体系
+
+| 层级 | 角色 | 说明 |
+|-----|------|------|
+| 系统级 | `system_admin` | 管理租户、OA 连接、AI 模型、系统配置 |
+| 系统级 | `tenant_admin` | 管理组织架构、流程配置、审核规则、用户配置 |
+| 系统级 | `business` | 使用审核工作台、归档复盘、个人设置 |
+| 组织级 | 自定义角色 | 通过 `page_permissions` 控制页面访问权限 |
+
+### 配置层级
+
+```
+系统配置 (system_configs)
+    │
+    ├── auth.* — 认证相关配置
+    ├── tenant.* — 租户默认配置
+    └── system.* — 系统全局配置
+    │
+    ▼
+租户配置 (tenants + process_audit_configs)
+    │
+    ├── 流程审核配置 — 字段/规则/AI 配置
+    ├── 用户权限控制 — 允许自定义字段/规则/尺度
+    └── 访问控制 — 角色/成员/部门白名单
+    │
+    ▼
+用户个人配置 (user_personal_configs)
+    │
+    ├── 字段覆盖 — 在租户基础上新增字段
+    ├── 规则覆盖 — 开关租户规则 + 自定义规则
+    └── AI 尺度覆盖 — 个人审核严格度偏好
+```
+
+### 审核流程
+
+```
+用户选择流程 → 获取配置 → 从 OA 提取数据 → 合并规则 → 构建提示词 → AI 审核 → 返回结果
+                  │              │              │              │
+                  ▼              ▼              ▼              ▼
+            租户配置 +      OA 适配器      MergeRules()   两阶段审核
+            用户配置       (Weaver E9)    (优先级排序)   (推理→提取)
+```
 
 ---
 
@@ -55,8 +121,8 @@ OA 智审是一套面向企业内部 OA 流程的 AI 辅助审核平台。通过
 ```
 oa-smart-audit/
 ├── README.md                     # 本文件
-├── docker-compose.yml            # 生产环境编排（含 AI 服务）
-├── docker-compose.dev.yml        # 开发环境编排（仅基础设施）
+├── docker-compose.yml            # 生产环境编排
+├── docker-compose.dev.yml        # 开发环境编排
 ├── .env.example                  # 环境变量模板
 │
 ├── go-service/                   # Go 后端服务
@@ -64,48 +130,33 @@ oa-smart-audit/
 │   ├── config.yaml               # 默认配置
 │   └── internal/
 │       ├── config/               # 配置加载
-│       ├── dto/                  # 请求/响应数据传输对象
-│       ├── handler/              # HTTP 处理器（Controller 层）
+│       ├── dto/                  # 请求/响应 DTO
+│       ├── handler/              # HTTP 处理器
 │       ├── middleware/           # 中间件（JWT/CORS/日志/权限）
-│       ├── model/                # 数据模型（对应数据库表）
+│       ├── model/                # 数据模型
 │       ├── pkg/                  # 工具包
-│       │   ├── ai/               # AI 模型调用（OpenAI 兼容协议）
+│       │   ├── ai/               # AI 模型调用
 │       │   ├── crypto/           # AES 加解密
-│       │   ├── errcode/          # 统一错误码
-│       │   ├── hash/             # bcrypt 密码哈希
 │       │   ├── jwt/              # JWT 签发与验证
-│       │   ├── oa/               # OA 系统适配器
-│       │   ├── response/         # 统一响应格式
-│       │   └── sanitize/         # 数据脱敏
-│       ├── repository/           # 数据访问层（Repository 模式）
-│       ├── router/               # 路由注册
+│       │   └── oa/               # OA 系统适配器
+│       ├── repository/           # 数据访问层
 │       └── service/              # 业务逻辑层
 │
 ├── frontend/                     # Nuxt 3 前端
 │   ├── pages/                    # 页面路由
-│   │   ├── login.vue             # 登录页
-│   │   ├── dashboard.vue         # 仪表盘
-│   │   ├── overview.vue          # 审核工作台
-│   │   ├── cron.vue              # 定时任务
-│   │   ├── archive.vue           # 归档复盘
-│   │   ├── settings.vue          # 个人设置
-│   │   └── admin/                # 管理后台
 │   ├── components/               # 公共组件
-│   ├── composables/              # 组合式 API（业务逻辑封装）
-│   ├── layouts/                  # 布局模板
-│   ├── locales/                  # 国际化语言包
-│   ├── types/                    # TypeScript 类型定义
-│   └── middleware/               # 路由守卫
+│   ├── composables/              # 组合式 API
+│   ├── middleware/               # 路由守卫
+│   └── locales/                  # 国际化语言包
 │
 ├── db/                           # 数据库
-│   ├── migrations/               # 迁移脚本（000001 ~ 000011）
-│   └── seeds/                    # 种子数据（001 ~ 012）
+│   └── migrations/               # 迁移脚本（30+ 个）
 │
 └── docs/                         # 项目文档
+    ├── code-review/              # 代码审查报告 ⭐ 新增
     ├── features/                 # 功能说明文档
     ├── database/                 # 数据库设计文档
-    ├── architecture/             # 技术架构文档
-    └── todo/                     # 待办事项与改进计划
+    └── architecture/             # 技术架构文档
 ```
 
 ---
@@ -128,12 +179,6 @@ cp .env.example .env
 docker-compose -f docker-compose.dev.yml up -d
 ```
 
-Go 后端日志写入 Docker named volume `go_logs_dev`（挂载至容器 `/app/logs`），可通过以下命令查看：
-
-```bash
-docker volume inspect go_logs_dev
-```
-
 ### 2. 启动前端
 
 ```bash
@@ -144,37 +189,112 @@ pnpm dev
 
 访问 `http://localhost:3000` 进入系统。
 
-### 3. 全栈启动（生产模式）
+### 3. 首次初始化
 
-```bash
-docker-compose up -d
-```
+系统首次启动时会自动检测是否需要初始化：
+1. 访问 `/setup` 页面创建系统管理员账号
+2. 登录后进入系统管理后台
+3. 创建租户并配置 OA 数据库连接
+4. 配置 AI 模型
+5. 创建流程审核配置
 
 ---
 
-## 系统角色
+## 核心配置说明
 
-| 角色 | 标识 | 说明 |
-|------|------|------|
-| 系统管理员 | `system_admin` | 管理租户、OA 连接、AI 模型、系统配置 |
-| 租户管理员 | `tenant_admin` | 管理组织架构、流程配置、审核规则、用户配置 |
-| 业务用户 | `business` | 使用审核工作台、归档复盘、个人设置 |
+### JWT 配置 (`config.yaml`)
+
+```yaml
+jwt:
+  secret: "change-me-in-production"  # 生产环境必须修改
+  access_token_ttl: 2h               # Access Token 有效期
+  refresh_token_ttl: 168h            # Refresh Token 有效期（7天）
+```
+
+### 数据库配置
+
+```yaml
+database:
+  host: localhost
+  port: 5432
+  user: oa_admin
+  password: changeme_pg_password
+  dbname: oa_smart_audit
+  sslmode: disable
+```
+
+### 加密配置
+
+```yaml
+encryption:
+  key: "4f9e2b8c5a1d7f0e3a6c9b2d5e8f1a4c"  # 32 字节 AES-256 密钥
+```
 
 ---
 
 ## 文档目录
 
+### 代码审查报告 ⭐
+
 | 文档 | 说明 |
 |------|------|
-| [功能说明 — OA 适配](docs/features/oa-integration.md) | OA 系统连接与数据适配能力说明 |
-| [功能说明 — AI 智能审核](docs/features/ai-audit.md) | AI 审核引擎架构与审核流程说明 |
-| [功能说明 — 归档复盘后端化方案](docs/features/archive-review-implementation-plan.md) | `archive.vue` 运行时后端化、队列、接口、数据结构与实施建议 |
+| [认证系统分析](docs/code-review/01-authentication-analysis.md) | Token 机制、刷新逻辑、过期处理分析 |
+| [核心业务逻辑分析](docs/code-review/02-core-business-logic-analysis.md) | OA 数据提取、规则组装、提示词构建分析 |
+| [人员组织与配置分析](docs/code-review/03-organization-and-config-analysis.md) | 角色体系、配置层级、数据关联分析 |
+| [Bug 清单与优化建议](docs/code-review/04-bug-list-and-optimization.md) | 问题汇总、修复方案、优先级排序 |
+
+### 功能文档
+
+| 文档 | 说明 |
+|------|------|
+| [OA 适配](docs/features/oa-integration.md) | OA 系统连接与数据适配能力说明 |
+| [AI 智能审核](docs/features/ai-audit.md) | AI 审核引擎架构与审核流程说明 |
+| [归档复盘方案](docs/features/archive-review-implementation-plan.md) | 归档复盘后端化实施方案 |
+
+### 技术文档
+
+| 文档 | 说明 |
+|------|------|
 | [数据库设计](docs/database/database-schema.md) | 全部数据表结构与关系说明 |
-| [技术架构](docs/architecture/technical-architecture.md) | 系统架构、前后端关联、API 接口说明 |
-| [TODO — 业务待办](docs/todo/business-todo.md) | 审核工作台、定时任务、归档复盘、仪表盘、消息等业务待办 |
-| [TODO — 细节改进](docs/todo/detail-todo.md) | 默认账号、提示词模板、前端分页等细节改进 |
-| [TODO — 技术改造](docs/todo/technical-todo.md) | Redis 扩展、消息队列、OCR、后端分页等技术改造计划 |
-| [TODO — 脏数据清理](docs/todo/personal-config-dirty-data-cleanup.md) | 个人配置脏数据清理方案（已有） |
+| [技术架构](docs/architecture/technical-architecture.md) | 系统架构、API 接口说明 |
+
+---
+
+## 已知问题
+
+> 详见 [Bug 清单与优化建议](docs/code-review/04-bug-list-and-optimization.md)
+
+### 高优先级
+
+1. **Token TTL 配置不同步**: 数据库配置与 config.yaml 配置未关联
+2. **Token 过期未自动清理**: 前端在 Token 过期后不会自动清除本地状态
+
+### 中优先级
+
+3. **默认密码硬编码**: 创建成员时使用固定默认密码 "123456"
+4. **审批流信息未接入**: 提示词中的审批流占位符使用固定文本
+
+---
+
+## 开发指南
+
+### 添加新的 OA 适配器
+
+1. 在 `go-service/internal/pkg/oa/` 下创建新适配器
+2. 实现 `OAAdapter` 接口
+3. 在 `NewOAAdapter` 工厂函数中注册
+
+### 添加新的 AI 模型
+
+1. 在系统管理后台添加 AI 模型配置
+2. 支持 OpenAI 兼容协议的模型可直接使用
+3. 非兼容协议需在 `go-service/internal/pkg/ai/` 中添加适配
+
+### 添加新的系统配置
+
+1. 在 `db/migrations/` 中添加迁移脚本
+2. 在 `system_config_service.go` 中添加读取逻辑
+3. 在前端系统设置页面添加配置项
 
 ---
 
