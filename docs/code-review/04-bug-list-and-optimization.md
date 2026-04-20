@@ -221,6 +221,22 @@ func BuildReasoningPrompt(..., flowHistory *FlowHistory, flowGraph *FlowGraph) *
 
 ---
 
+#### BUG-005.5: 归档列表缓存键未包含日期字段（已修复）
+
+**位置**: `go-service/internal/service/archive_review_service.go`
+
+**问题描述**:
+`ArchiveListParams` 的日期字段（`ArchiveDateStart`、`ArchiveDateEndExclusive`）标记为 `json:"-"`，导致 `cache.ComputeFilterHash` 序列化时忽略这些字段。不同日期范围的查询会生成相同的缓存键，返回错误的缓存数据。
+
+**影响**: 用户切换日期筛选条件后，可能看到其他日期范围的归档数据，造成数据错乱。
+
+**修复方案（已实施）**:
+将 `ComputeFilterHash` 的入参从结构体改为显式构造的 `map[string]interface{}`，手动列出所有筛选字段（含日期字段），确保缓存键唯一。
+
+**状态**: ✅ 已修复
+
+---
+
 ### 🟢 低优先级问题 (P2)
 
 #### BUG-006: 租户管理员保护逻辑重复

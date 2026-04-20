@@ -285,7 +285,7 @@ func (m *InvalidationManager) InvalidateAuditRelatedCaches(ctx context.Context, 
 
 // InvalidateArchiveRelatedCaches 清除归档相关的所有缓存
 // 便捷方法，在复盘操作完成后调用
-// 清除：用户归档列表、归档快照、归档统计、仪表盘
+// 清除：用户归档列表、归档快照、归档统计、OA 归档数据、仪表盘
 func (m *InvalidationManager) InvalidateArchiveRelatedCaches(ctx context.Context, tenantID, userID uuid.UUID) error {
 	var lastErr error
 
@@ -301,9 +301,46 @@ func (m *InvalidationManager) InvalidateArchiveRelatedCaches(ctx context.Context
 		lastErr = err
 	}
 
+	if err := m.InvalidateOADataCache(ctx, tenantID, "archive"); err != nil {
+		lastErr = err
+	}
+
 	if err := m.InvalidateDashboardCache(ctx, tenantID); err != nil {
 		lastErr = err
 	}
 
 	return lastErr
+}
+
+// InvalidateOADataCache 清除 OA 全量数据缓存
+// 当 OA 数据可能变化时调用（复盘/审核完成、OA 连接变更等）
+// module: "audit" 或 "archive"
+func (m *InvalidationManager) InvalidateOADataCache(ctx context.Context, tenantID uuid.UUID, module string) error {
+	keyBuilder := NewKeyBuilder(module, tenantID)
+	var prefix string
+	switch module {
+	case "archive":
+		prefix = keyBuilder.OAArchivedDataPrefix()
+	case "audit":
+		prefix = keyBuilder.OATodoDataPrefix()
+	default:
+		return nil
+	}
+
+	m.logger.Info("清除 OA 数据缓存",
+		zap.String("tenantID", tenantID.String()),
+		zap.String("module", module),
+		zap.String("prefix", prefix),
+	)
+
+	if err := m.cache.DeleteByPrefix(ctx, prefix); err != nil {
+		m.logger.Error("清除 OA 数据缓存失败",
+			zap.String("tenantID", tenantID.String()),
+			zap.String("module", module),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	return nil
 }

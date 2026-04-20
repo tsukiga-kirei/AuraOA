@@ -256,32 +256,124 @@ func (s *ArchiveReviewService) ListProcesses(c *gin.Context, params dto.ArchiveL
 	}, nil
 }
 
+// fetchOAArchivedDataCached 获取 OA 归档全量数据，优先从缓存读取。
+// 缓存键维度：tenant_id + user_id + 日期范围，与具体的筛选条件（keyword/page/audit_status）无关。
+// 这样翻页、切换页签、搜索都可以复用同一份 OA 数据，避免重复跨库查询。
+func (s *ArchiveReviewService) fetchOAArchivedDataCached(
+	c *gin.Context, tenantID, userID uuid.UUID,
+	configs []model.ProcessArchiveConfig,
+	params dto.ArchiveListParams,
+) ([]oa.ArchivedItem, error) {
+	allowedTables := make([]string, 0, len(configs))
+	allowedTypes := make([]string, 0, len(configs))
+	for _, cfg := range configs {
+		allowedTypes = append(allowedTypes, strings.ToLower(cfg.ProcessType))
+		if cfg.MainTableName != "" {
+			allowedTables = append(allowedTables, strings.ToLower(cfg.MainTableName))
+		}
+	}
+
+	// 构建缓存键：只按日期范围区分，不包含 keyword/page 等高变参数
+	dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
+		"archive_date_start":         params.ArchiveDateStart,
+		"archive_date_end_exclusive": params.ArchiveDateEndExclusive,
+	})
+	keyBuilder := cache.NewKeyBuilder("archive", tenantID)
+	cacheKey := keyBuilder.OAArchivedData(userID, dateRangeHash)
+
+	// 尝试从缓存获取
+	if s.cache != nil && s.cache.IsEnabled() {
+		var cached cache.CachedOAArchivedData
+		if hit, _ := s.cache.Get(c.Request.Context(), cacheKey, &cached); hit {
+			items := make([]oa.ArchivedItem, len(cached.Items))
+			for i, ci := range cached.Items {
+				items[i] = oa.ArchivedItem{
+					ProcessID:        ci.ProcessID,
+					Title:            ci.Title,
+					Applicant:        ci.Applicant,
+					Department:       ci.Department,
+					ProcessType:      ci.ProcessType,
+					ProcessTypeLabel: ci.ProcessTypeLabel,
+					CurrentNode:      ci.CurrentNode,
+					SubmitTime:       ci.SubmitTime,
+					ArchiveTime:      ci.ArchiveTime,
+					MainTableName:    ci.MainTableName,
+				}
+			}
+			return items, nil
+		}
+	}
+
+	// 缓存未命中，从 OA 分批拉取全量数据
+	adapter, err := s.getOAAdapter(tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	const batchSize = 500
+	pagedFilter := oa.ArchivedListPagedFilter{
+		ArchivedListFilter: oa.ArchivedListFilter{
+			ArchiveDateStart:        params.ArchiveDateStart,
+			ArchiveDateEndExclusive: params.ArchiveDateEndExclusive,
+		},
+		MainTableNames: allowedTables,
+		ProcessTypes:   allowedTypes,
+		Page:           1,
+		PageSize:       batchSize,
+	}
+
+	firstPage, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 已归档流程失败: "+err.Error())
+	}
+
+	allItems := make([]oa.ArchivedItem, 0, firstPage.Total)
+	allItems = append(allItems, firstPage.Items...)
+	for len(allItems) < firstPage.Total {
+		pagedFilter.Page++
+		batch, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
+		if err != nil || len(batch.Items) == 0 {
+			break
+		}
+		allItems = append(allItems, batch.Items...)
+	}
+
+	// 写入缓存
+	if s.cache != nil && s.cache.IsEnabled() {
+		cachedItems := make([]cache.CachedArchivedItem, len(allItems))
+		for i, item := range allItems {
+			cachedItems[i] = cache.CachedArchivedItem{
+				ProcessID:        item.ProcessID,
+				Title:            item.Title,
+				Applicant:        item.Applicant,
+				Department:       item.Department,
+				ProcessType:      item.ProcessType,
+				ProcessTypeLabel: item.ProcessTypeLabel,
+				CurrentNode:      item.CurrentNode,
+				SubmitTime:       item.SubmitTime,
+				ArchiveTime:      item.ArchiveTime,
+				MainTableName:    item.MainTableName,
+			}
+		}
+		toCache := cache.CachedOAArchivedData{
+			Items:    cachedItems,
+			Total:    len(allItems),
+			CachedAt: time.Now(),
+		}
+		_ = s.cache.Set(c.Request.Context(), cacheKey, toCache, cache.DefaultTTLOAData)
+	}
+
+	return allItems, nil
+}
+
 // ListProcessesPaged 分页查询已归档流程。
 // 根据 audit_status 分两种策略：
-// - unaudited：OA SQL 真分页（keyword/applicant/department 下推），排除已有 snapshot 的流程
+// - unaudited：从缓存的 OA 全量数据中过滤未审核流程，内存分页
 // - compliant/partially_compliant/non_compliant：从 archive_process_snapshots 表 DB 真分页
 func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.ArchiveListParams) (*dto.ArchiveProcessListResponse, error) {
 	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
-	}
-
-	// 构建缓存键
-	keyBuilder := cache.NewKeyBuilder("archive", tenantID)
-	filterHash := cache.ComputeFilterHash(params)
-	cacheKey := keyBuilder.ArchiveList(userID, filterHash)
-
-	// 尝试从缓存获取
-	if s.cache != nil && s.cache.IsEnabled() {
-		var cached cache.CachedArchiveList
-		if hit, _ := s.cache.Get(c.Request.Context(), cacheKey, &cached); hit {
-			return &dto.ArchiveProcessListResponse{
-				Items:    cached.Items,
-				Total:    cached.Total,
-				Page:     cached.Page,
-				PageSize: cached.PageSize,
-			}, nil
-		}
 	}
 
 	_, _ = s.FailStaleArchiveJobs(context.Background())
@@ -310,89 +402,46 @@ func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.Arc
 	case "compliant", "partially_compliant", "non_compliant":
 		result, err = s.listArchiveBySnapshotPaged(c, tenantID, configs, params, auditStatus, page, pageSize)
 	default:
-		// "unaudited" 或空：从 OA 真分页
+		// "unaudited" 或空：从缓存的 OA 全量数据中过滤
 		result, err = s.listArchiveUnauditedPaged(c, tenantID, configs, params, page, pageSize)
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	// 写入缓存
-	if s.cache != nil && s.cache.IsEnabled() {
-		toCache := cache.CachedArchiveList{
-			Items:      result.Items,
-			Total:      result.Total,
-			Page:       result.Page,
-			PageSize:   result.PageSize,
-			CachedAt:   time.Now(),
-			FilterHash: filterHash,
-		}
-		_ = s.cache.Set(c.Request.Context(), cacheKey, toCache, cache.DefaultTTLArchiveList)
-	}
-
 	return result, nil
 }
 
 // listArchiveBySnapshotPaged 从 archive_process_snapshots 表分页查询已有合规结论的流程。
-// 需要先从 OA 获取日期范围内的流程 ID，再与 snapshot 表交叉过滤，保证与 GetStats 口径一致。
+// 使用缓存的 OA 全量数据获取日期范围内的流程 ID，再与 snapshot 表交叉过滤。
 func (s *ArchiveReviewService) listArchiveBySnapshotPaged(
 	c *gin.Context, tenantID uuid.UUID, configs []model.ProcessArchiveConfig,
 	params dto.ArchiveListParams, compliance string, page, pageSize int,
 ) (*dto.ArchiveProcessListResponse, error) {
-	allowedTypes := make([]string, 0, len(configs))
-	allowedTables := make([]string, 0, len(configs))
-	for _, cfg := range configs {
-		allowedTypes = append(allowedTypes, cfg.ProcessType)
-		if cfg.MainTableName != "" {
-			allowedTables = append(allowedTables, strings.ToLower(cfg.MainTableName))
-		}
+	_, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
 	}
 
-	// 当有日期范围时，先从 OA 获取范围内的 processID 列表，确保与 GetStats 口径一致
+	allowedTypes := make([]string, 0, len(configs))
+	for _, cfg := range configs {
+		allowedTypes = append(allowedTypes, cfg.ProcessType)
+	}
+
+	// 当有日期范围时，从缓存的 OA 全量数据获取 processID 列表
 	var oaProcessIDs []string
 	hasDateFilter := params.ArchiveDateStart != nil || params.ArchiveDateEndExclusive != nil
 	if hasDateFilter {
-		adapter, err := s.getOAAdapter(tenantID)
+		allOAItems, err := s.fetchOAArchivedDataCached(c, tenantID, userID, configs, params)
 		if err != nil {
 			return nil, err
 		}
-		const batchSize = 500
-		pagedFilter := oa.ArchivedListPagedFilter{
-			ArchivedListFilter: oa.ArchivedListFilter{
-				ArchiveDateStart:        params.ArchiveDateStart,
-				ArchiveDateEndExclusive: params.ArchiveDateEndExclusive,
-			},
-			MainTableNames: allowedTables,
-			ProcessTypes: func() []string {
-				lowerTypes := make([]string, len(allowedTypes))
-				for i, t := range allowedTypes {
-					lowerTypes[i] = strings.ToLower(t)
-				}
-				return lowerTypes
-			}(),
-			Page:     1,
-			PageSize: batchSize,
-		}
-		firstPage, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
-		if err != nil {
-			return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 已归档流程失败: "+err.Error())
-		}
-		oaProcessIDs = make([]string, 0, firstPage.Total)
-		for _, item := range firstPage.Items {
-			oaProcessIDs = append(oaProcessIDs, item.ProcessID)
-		}
-		for len(oaProcessIDs) < firstPage.Total {
-			pagedFilter.Page++
-			batch, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
-			if err != nil || len(batch.Items) == 0 {
-				break
-			}
-			for _, item := range batch.Items {
-				oaProcessIDs = append(oaProcessIDs, item.ProcessID)
-			}
-		}
-		if len(oaProcessIDs) == 0 {
+		if len(allOAItems) == 0 {
 			return &dto.ArchiveProcessListResponse{Items: []map[string]interface{}{}, Total: 0, Page: page, PageSize: pageSize}, nil
+		}
+		oaProcessIDs = make([]string, len(allOAItems))
+		for i, item := range allOAItems {
+			oaProcessIDs[i] = item.ProcessID
 		}
 	}
 
@@ -487,80 +536,80 @@ func (s *ArchiveReviewService) listArchiveBySnapshotPaged(
 	}, nil
 }
 
-// listArchiveUnauditedPaged 查询未审核的已归档流程（OA 真分页）。
-// 先从 OA 获取全量 processID，排除已有 snapshot 的，再对剩余 ID 做分页，
-// 最后只拉取当前页对应的 OA 流程详情。
+// listArchiveUnauditedPaged 查询未审核的已归档流程。
+// 使用缓存的 OA 全量数据，在内存中做 keyword/applicant/department 过滤，
+// 排除已有 snapshot 的流程，然后内存分页。
 func (s *ArchiveReviewService) listArchiveUnauditedPaged(
 	c *gin.Context, tenantID uuid.UUID, configs []model.ProcessArchiveConfig,
 	params dto.ArchiveListParams, page, pageSize int,
 ) (*dto.ArchiveProcessListResponse, error) {
-	allowedTables := make([]string, 0, len(configs))
-	allowedTypes := make([]string, 0, len(configs))
+	_, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+
 	typeLabelMap := make(map[string]string, len(configs))
 	for _, cfg := range configs {
-		allowedTypes = append(allowedTypes, strings.ToLower(cfg.ProcessType))
-		if cfg.MainTableName != "" {
-			allowedTables = append(allowedTables, strings.ToLower(cfg.MainTableName))
-		}
 		if cfg.ProcessTypeLabel != "" {
 			typeLabelMap[strings.ToLower(cfg.ProcessType)] = cfg.ProcessTypeLabel
 		}
 	}
 
-	adapter, err := s.getOAAdapter(tenantID)
+	// 从缓存获取 OA 全量数据（按日期范围缓存，不含 keyword/page 等）
+	allOAItems, err := s.fetchOAArchivedDataCached(c, tenantID, userID, configs, params)
 	if err != nil {
 		return nil, err
-	}
-
-	// 1. 从 OA 分批获取全量筛选后的 processID（带 keyword/applicant/department 过滤）
-	const batchSize = 500
-	pagedFilter := oa.ArchivedListPagedFilter{
-		ArchivedListFilter: oa.ArchivedListFilter{
-			ArchiveDateStart:        params.ArchiveDateStart,
-			ArchiveDateEndExclusive: params.ArchiveDateEndExclusive,
-		},
-		Keyword:        params.Keyword,
-		Applicant:      params.Applicant,
-		Department:     params.Department,
-		MainTableNames: allowedTables,
-		ProcessTypes:   allowedTypes,
-		Page:           1,
-		PageSize:       batchSize,
-	}
-
-	firstPage, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
-	if err != nil {
-		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 已归档流程失败: "+err.Error())
-	}
-
-	// 收集全量 OA 流程
-	allOAItems := firstPage.Items
-	for len(allOAItems) < firstPage.Total {
-		pagedFilter.Page++
-		batch, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
-		if err != nil || len(batch.Items) == 0 {
-			break
-		}
-		allOAItems = append(allOAItems, batch.Items...)
 	}
 
 	if len(allOAItems) == 0 {
 		return &dto.ArchiveProcessListResponse{Items: []map[string]interface{}{}, Total: 0, Page: page, PageSize: pageSize}, nil
 	}
 
-	// 2. 查 snapshot，排除已审核的流程
-	allProcessIDs := make([]string, len(allOAItems))
-	for i, item := range allOAItems {
+	// 内存过滤：keyword / applicant / department
+	filtered := allOAItems
+	if kw := strings.TrimSpace(params.Keyword); kw != "" {
+		kwLower := strings.ToLower(kw)
+		var tmp []oa.ArchivedItem
+		for _, item := range filtered {
+			if strings.Contains(strings.ToLower(item.Title), kwLower) {
+				tmp = append(tmp, item)
+			}
+		}
+		filtered = tmp
+	}
+	if ap := strings.TrimSpace(params.Applicant); ap != "" {
+		apLower := strings.ToLower(ap)
+		var tmp []oa.ArchivedItem
+		for _, item := range filtered {
+			if strings.Contains(strings.ToLower(item.Applicant), apLower) {
+				tmp = append(tmp, item)
+			}
+		}
+		filtered = tmp
+	}
+	if dept := strings.TrimSpace(params.Department); dept != "" {
+		var tmp []oa.ArchivedItem
+		for _, item := range filtered {
+			if item.Department == dept {
+				tmp = append(tmp, item)
+			}
+		}
+		filtered = tmp
+	}
+
+	// 查 snapshot，排除已审核的流程
+	allProcessIDs := make([]string, len(filtered))
+	for i, item := range filtered {
 		allProcessIDs[i] = item.ProcessID
 	}
-	snapshotMap, err := s.getArchiveSnapshotMapCached(c, tenantID, allProcessIDs)
+	snapshotMap, err := s.getArchiveSnapshotMapDirect(c, tenantID, allProcessIDs)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询归档有效结论失败")
 	}
 
 	// 过滤出未审核的流程（保持 OA 返回的顺序）
 	var unauditedItems []oa.ArchivedItem
-	for _, item := range allOAItems {
+	for _, item := range filtered {
 		if snapshotMap[item.ProcessID] == nil {
 			unauditedItems = append(unauditedItems, item)
 		}
@@ -571,7 +620,7 @@ func (s *ArchiveReviewService) listArchiveUnauditedPaged(
 		return &dto.ArchiveProcessListResponse{Items: []map[string]interface{}{}, Total: 0, Page: page, PageSize: pageSize}, nil
 	}
 
-	// 3. 对未审核列表做内存分页
+	// 内存分页
 	start := (page - 1) * pageSize
 	end := start + pageSize
 	if start > total {
@@ -582,7 +631,7 @@ func (s *ArchiveReviewService) listArchiveUnauditedPaged(
 	}
 	pageItems := unauditedItems[start:end]
 
-	// 4. 查询当前页流程的进行中状态
+	// 查询当前页流程的进行中状态
 	pageProcessIDs := make([]string, len(pageItems))
 	for i, item := range pageItems {
 		pageProcessIDs[i] = item.ProcessID
@@ -592,7 +641,7 @@ func (s *ArchiveReviewService) listArchiveUnauditedPaged(
 		return nil, newServiceError(errcode.ErrDatabase, "查询归档复盘记录失败")
 	}
 
-	// 5. 构建响应
+	// 构建响应
 	items := make([]map[string]interface{}, 0, len(pageItems))
 	for _, item := range pageItems {
 		ptLabel := item.ProcessTypeLabel
@@ -637,7 +686,7 @@ func (s *ArchiveReviewService) listArchiveUnauditedPaged(
 	}, nil
 }
 
-// GetStats 归档复盘统计。使用 OA COUNT 查询 + snapshot 表统计，避免全量拉取。
+// GetStats 归档复盘统计。使用缓存的 OA 全量数据 + snapshot 表统计。
 // 注意：snapshot 表的统计需要限制在 OA 日期范围内的流程，否则口径不一致。
 func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListParams) (*dto.ArchiveReviewStats, error) {
 	tenantID, userID, err := s.extractIDs(c)
@@ -646,7 +695,6 @@ func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListPa
 	}
 
 	// 构建缓存键：archive:stats:{tenant_id}:{user_id}:{date_range_hash}
-	// 由于 ArchiveListParams 的日期字段标记为 json:"-"，需要构建包含日期的哈希输入
 	if s.cache != nil && s.cache.IsEnabled() {
 		dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
 			"archive_date_start":         params.ArchiveDateStart,
@@ -690,58 +738,21 @@ func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListPa
 		return &dto.ArchiveReviewStats{}, nil
 	}
 
-	allowedTables := make([]string, 0, len(configs))
-	allowedTypes := make([]string, 0, len(configs))
-	for _, cfg := range configs {
-		allowedTypes = append(allowedTypes, strings.ToLower(cfg.ProcessType))
-		if cfg.MainTableName != "" {
-			allowedTables = append(allowedTables, strings.ToLower(cfg.MainTableName))
-		}
-	}
-
-	adapter, err := s.getOAAdapter(tenantID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 从 OA 获取日期范围内的全部归档流程 ID（只取 ID，不取详情）
-	// 使用较大的 pageSize 分批获取全量 processID 列表
-	const batchSize = 500
-	pagedFilter := oa.ArchivedListPagedFilter{
-		ArchivedListFilter: oa.ArchivedListFilter{
-			ArchiveDateStart:        params.ArchiveDateStart,
-			ArchiveDateEndExclusive: params.ArchiveDateEndExclusive,
-		},
-		MainTableNames: allowedTables,
-		ProcessTypes:   allowedTypes,
-		Page:           1,
-		PageSize:       batchSize,
-	}
-
-	firstPage, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
+	// 使用缓存的 OA 全量数据（与 ListProcessesPaged 共享同一份缓存）
+	allOAItems, err := s.fetchOAArchivedDataCached(c, tenantID, userID, configs, params)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 已归档流程总数失败: "+err.Error())
 	}
-	totalOA := firstPage.Total
+	totalOA := len(allOAItems)
 
 	// 收集所有 processID
-	allProcessIDs := make([]string, 0, totalOA)
-	for _, item := range firstPage.Items {
-		allProcessIDs = append(allProcessIDs, item.ProcessID)
-	}
-	for len(allProcessIDs) < totalOA {
-		pagedFilter.Page++
-		batch, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
-		if err != nil || len(batch.Items) == 0 {
-			break
-		}
-		for _, item := range batch.Items {
-			allProcessIDs = append(allProcessIDs, item.ProcessID)
-		}
+	allProcessIDs := make([]string, totalOA)
+	for i, item := range allOAItems {
+		allProcessIDs[i] = item.ProcessID
 	}
 
-	// 查询这些 processID 中哪些已有 snapshot（精确匹配 OA 日期范围内的流程）
-	snapshotMap, err := s.getArchiveSnapshotMapCached(c, tenantID, allProcessIDs)
+	// 查询这些 processID 中哪些已有 snapshot（直接查 DB，不走 Redis 缓存）
+	snapshotMap, err := s.getArchiveSnapshotMapDirect(c, tenantID, allProcessIDs)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询归档有效结论失败")
 	}
@@ -779,7 +790,7 @@ func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListPa
 		RunningCount:      int(runningCount),
 	}
 
-	// 写入缓存
+	// 写入统计缓存
 	if s.cache != nil && s.cache.IsEnabled() {
 		dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
 			"archive_date_start":         params.ArchiveDateStart,
@@ -1324,6 +1335,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 			_ = s.invalidator.InvalidateUserArchiveCache(bgCtx, tenantID, userID)
 			_ = s.invalidator.InvalidateSnapshotCache(bgCtx, tenantID, "archive")
 			_ = s.invalidator.InvalidateStatsCache(bgCtx, tenantID, "archive")
+			_ = s.invalidator.InvalidateOADataCache(bgCtx, tenantID, "archive")
 		}
 	}
 	return nil
@@ -1912,9 +1924,21 @@ func (s *ArchiveReviewService) getArchiveConfigCached(c *gin.Context, tenantID u
 	return config, rules, nil
 }
 
+// getArchiveSnapshotMapDirect 直接从数据库查询归档快照映射，不走 Redis 缓存。
+// 快照数据存储在本地 PostgreSQL，有索引，查询本身很快（< 10ms），
+// 不需要 Redis 缓存（缓存键与 processIDs 列表耦合，命中率极低）。
+func (s *ArchiveReviewService) getArchiveSnapshotMapDirect(c *gin.Context, tenantID uuid.UUID, processIDs []string) (map[string]*model.ArchiveProcessSnapshot, error) {
+	if len(processIDs) == 0 {
+		return map[string]*model.ArchiveProcessSnapshot{}, nil
+	}
+	return s.archiveSnapshotRepo.GetMapByProcessIDs(c, processIDs)
+}
+
 // getArchiveSnapshotMapCached 获取归档快照映射，优先从缓存读取。
 // 缓存键格式: archive:snapshot:{tenant_id}:{process_ids_hash}，TTL 5 分钟。
 // 支持批量查询优化：将 processIDs 列表哈希为缓存键，避免逐条查询。
+// 注意：此方法仅保留给外部调用者（如 ListProcesses 旧接口）使用，
+// 新的 ListProcessesPaged/GetStats 已改用 getArchiveSnapshotMapDirect。
 func (s *ArchiveReviewService) getArchiveSnapshotMapCached(c *gin.Context, tenantID uuid.UUID, processIDs []string) (map[string]*model.ArchiveProcessSnapshot, error) {
 	if len(processIDs) == 0 {
 		return map[string]*model.ArchiveProcessSnapshot{}, nil

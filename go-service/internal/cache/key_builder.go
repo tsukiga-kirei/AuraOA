@@ -64,6 +64,20 @@ func (b *CacheKeyBuilder) Dashboard(userID uuid.UUID, role string) string {
 	return fmt.Sprintf("dashboard:%s:%s:%s", b.tenantID, userID.String(), role)
 }
 
+// OAArchivedData 生成 OA 归档全量数据缓存键
+// 格式: archive:oadata:{tenant_id}:{user_id}:{date_range_hash}
+// 缓存 OA 跨库查询的全量归档流程列表，供翻页/页签切换/搜索复用
+func (b *CacheKeyBuilder) OAArchivedData(userID uuid.UUID, dateRangeHash string) string {
+	return fmt.Sprintf("archive:oadata:%s:%s:%s", b.tenantID, userID.String(), dateRangeHash)
+}
+
+// OATodoData 生成 OA 待办全量数据缓存键
+// 格式: audit:oadata:{tenant_id}:{user_id}:{date_range_hash}
+// 缓存 OA 跨库查询的全量待办流程列表，供翻页/页签切换/搜索复用
+func (b *CacheKeyBuilder) OATodoData(userID uuid.UUID, dateRangeHash string) string {
+	return fmt.Sprintf("audit:oadata:%s:%s:%s", b.tenantID, userID.String(), dateRangeHash)
+}
+
 // TodoListPrefix 生成待办列表缓存键前缀（用于批量删除）
 // 格式: audit:todo:{tenant_id}:{user_id}:
 func (b *CacheKeyBuilder) TodoListPrefix(userID uuid.UUID) string {
@@ -74,6 +88,18 @@ func (b *CacheKeyBuilder) TodoListPrefix(userID uuid.UUID) string {
 // 格式: archive:list:{tenant_id}:{user_id}:
 func (b *CacheKeyBuilder) ArchiveListPrefix(userID uuid.UUID) string {
 	return fmt.Sprintf("archive:list:%s:%s:", b.tenantID, userID.String())
+}
+
+// OAArchivedDataPrefix 生成 OA 归档数据缓存键前缀（用于批量删除）
+// 格式: archive:oadata:{tenant_id}:
+func (b *CacheKeyBuilder) OAArchivedDataPrefix() string {
+	return fmt.Sprintf("archive:oadata:%s:", b.tenantID)
+}
+
+// OATodoDataPrefix 生成 OA 待办数据缓存键前缀（用于批量删除）
+// 格式: audit:oadata:{tenant_id}:
+func (b *CacheKeyBuilder) OATodoDataPrefix() string {
+	return fmt.Sprintf("audit:oadata:%s:", b.tenantID)
 }
 
 // ConfigPrefix 生成配置缓存键前缀（用于批量删除）
@@ -108,10 +134,12 @@ func (b *CacheKeyBuilder) TenantPrefixes() []string {
 		fmt.Sprintf("audit:config:%s:", b.tenantID),
 		fmt.Sprintf("audit:snapshot:%s:", b.tenantID),
 		fmt.Sprintf("audit:stats:%s:", b.tenantID),
+		fmt.Sprintf("audit:oadata:%s:", b.tenantID),
 		fmt.Sprintf("archive:list:%s:", b.tenantID),
 		fmt.Sprintf("archive:config:%s:", b.tenantID),
 		fmt.Sprintf("archive:snapshot:%s:", b.tenantID),
 		fmt.Sprintf("archive:stats:%s:", b.tenantID),
+		fmt.Sprintf("archive:oadata:%s:", b.tenantID),
 		fmt.Sprintf("dashboard:%s:", b.tenantID),
 	}
 }

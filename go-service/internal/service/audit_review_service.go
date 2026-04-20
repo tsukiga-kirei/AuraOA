@@ -568,6 +568,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 			_ = s.invalidator.InvalidateUserTodoCache(bgCtx, tenantID, userID)
 			_ = s.invalidator.InvalidateSnapshotCache(bgCtx, tenantID, "audit")
 			_ = s.invalidator.InvalidateStatsCache(bgCtx, tenantID, "audit")
+			_ = s.invalidator.InvalidateOADataCache(bgCtx, tenantID, "audit")
 		}
 	}
 	return nil
@@ -1022,10 +1023,10 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 		return nil, err
 	}
 
-	// 使用筛选后的 OA 数据（keyword/applicant/department/mainTableNames/processTypes 已下推到 SQL）
+	// 使用缓存的 OA 全量数据（与 ListProcessesPaged 共享同一份缓存）
 	allowedTables := s.getAllowedMainTables(c)
 	processTypes := s.getAllowedProcessTypes(c)
-	todoItems, err := s.fetchTodoListFiltered(c, adapter, username, params, allowedTables, processTypes)
+	todoItems, err := s.fetchOATodoDataCached(c, tenantID, userID, adapter, username, params, allowedTables, processTypes)
 	if err != nil {
 		return nil, err
 	}
@@ -1034,7 +1035,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 	for i, item := range todoItems {
 		processIDs[i] = item.ProcessID
 	}
-	snapshotMap, err := s.getSnapshotMapCached(c, tenantID, processIDs)
+	snapshotMap, err := s.getSnapshotMapDirect(c, tenantID, processIDs)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核快照失败")
 	}
@@ -1102,6 +1103,147 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 	return result, nil
 }
 
+// fetchOATodoDataCached 获取 OA 待办全量数据，优先从缓存读取。
+// 缓存键维度：tenant_id + user_id + 日期范围，与具体的筛选条件（keyword/page/tab）无关。
+func (s *AuditExecuteService) fetchOATodoDataCached(
+	c *gin.Context, tenantID, userID uuid.UUID,
+	adapter oa.OAAdapter, username string,
+	params dto.AuditListParams,
+	allowedTables map[string]bool, processTypes []string,
+) ([]oa.TodoItem, error) {
+	// 构建缓存键：只按日期范围区分
+	dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
+		"submit_date_start":         params.SubmitDateStart,
+		"submit_date_end_exclusive": params.SubmitDateEndExclusive,
+	})
+	keyBuilder := cache.NewKeyBuilder("audit", tenantID)
+	cacheKey := keyBuilder.OATodoData(userID, dateRangeHash)
+
+	// 尝试从缓存获取
+	if s.cache != nil && s.cache.IsEnabled() {
+		var cached cache.CachedOATodoData
+		if hit, _ := s.cache.Get(c.Request.Context(), cacheKey, &cached); hit {
+			items := make([]oa.TodoItem, len(cached.Items))
+			for i, ci := range cached.Items {
+				items[i] = oa.TodoItem{
+					ProcessID:        ci.ProcessID,
+					Title:            ci.Title,
+					Applicant:        ci.Applicant,
+					Department:       ci.Department,
+					ProcessType:      ci.ProcessType,
+					ProcessTypeLabel: ci.ProcessTypeLabel,
+					CurrentNode:      ci.CurrentNode,
+					SubmitTime:       ci.SubmitTime,
+					Urgency:          ci.Urgency,
+					MainTableName:    ci.MainTableName,
+				}
+			}
+			return items, nil
+		}
+	}
+
+	// 缓存未命中，从 OA 拉取全量数据（不含 keyword/applicant/department 筛选，这些在内存中做）
+	mainTableNames := make([]string, 0, len(allowedTables))
+	for t := range allowedTables {
+		mainTableNames = append(mainTableNames, t)
+	}
+
+	const batchSize = 500
+	pagedFilter := oa.TodoListPagedFilter{
+		TodoListFilter: todoListFilterFromAuditParams(params),
+		MainTableNames: mainTableNames,
+		ProcessTypes:   processTypes,
+		Page:           1,
+		PageSize:       batchSize,
+	}
+
+	result, err := adapter.FetchTodoListPaged(c.Request.Context(), username, pagedFilter)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 待办失败: "+err.Error())
+	}
+
+	allItems := make([]oa.TodoItem, 0, result.Total)
+	allItems = append(allItems, result.Items...)
+	for len(allItems) < result.Total {
+		pagedFilter.Page++
+		batch, err := adapter.FetchTodoListPaged(c.Request.Context(), username, pagedFilter)
+		if err != nil || len(batch.Items) == 0 {
+			break
+		}
+		allItems = append(allItems, batch.Items...)
+	}
+
+	// 写入缓存
+	if s.cache != nil && s.cache.IsEnabled() {
+		cachedItems := make([]cache.CachedTodoItem, len(allItems))
+		for i, item := range allItems {
+			cachedItems[i] = cache.CachedTodoItem{
+				ProcessID:        item.ProcessID,
+				Title:            item.Title,
+				Applicant:        item.Applicant,
+				Department:       item.Department,
+				ProcessType:      item.ProcessType,
+				ProcessTypeLabel: item.ProcessTypeLabel,
+				CurrentNode:      item.CurrentNode,
+				SubmitTime:       item.SubmitTime,
+				Urgency:          item.Urgency,
+				MainTableName:    item.MainTableName,
+			}
+		}
+		toCache := cache.CachedOATodoData{
+			Items:    cachedItems,
+			Total:    len(allItems),
+			CachedAt: time.Now(),
+		}
+		_ = s.cache.Set(c.Request.Context(), cacheKey, toCache, cache.DefaultTTLOAData)
+	}
+
+	return allItems, nil
+}
+
+// filterTodoItemsInMemory 在内存中对 OA 待办数据做 keyword/applicant/department 过滤
+func filterTodoItemsInMemory(items []oa.TodoItem, params dto.AuditListParams) []oa.TodoItem {
+	filtered := items
+	if kw := strings.TrimSpace(params.Keyword); kw != "" {
+		kwLower := strings.ToLower(kw)
+		var tmp []oa.TodoItem
+		for _, item := range filtered {
+			if strings.Contains(strings.ToLower(item.Title), kwLower) {
+				tmp = append(tmp, item)
+			}
+		}
+		filtered = tmp
+	}
+	if ap := strings.TrimSpace(params.Applicant); ap != "" {
+		apLower := strings.ToLower(ap)
+		var tmp []oa.TodoItem
+		for _, item := range filtered {
+			if strings.Contains(strings.ToLower(item.Applicant), apLower) {
+				tmp = append(tmp, item)
+			}
+		}
+		filtered = tmp
+	}
+	if dept := strings.TrimSpace(params.Department); dept != "" {
+		var tmp []oa.TodoItem
+		for _, item := range filtered {
+			if item.Department == dept {
+				tmp = append(tmp, item)
+			}
+		}
+		filtered = tmp
+	}
+	return filtered
+}
+
+// getSnapshotMapDirect 直接从数据库查询审核快照映射，不走 Redis 缓存。
+func (s *AuditExecuteService) getSnapshotMapDirect(c *gin.Context, tenantID uuid.UUID, processIDs []string) (map[string]*model.AuditProcessSnapshot, error) {
+	if len(processIDs) == 0 {
+		return map[string]*model.AuditProcessSnapshot{}, nil
+	}
+	return s.auditSnapshotRepo.GetMapByProcessIDs(c, processIDs)
+}
+
 // ListProcessesPaged 分页查询审核工作台（待 AI / AI 已审核：OA 待办可按 createdate；全部已完成：排除「当前全量待办」后按快照 updated_at）。
 func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.AuditListParams) (*dto.AuditProcessListResponse, error) {
 	tenantID, userID, err := s.extractIDs(c)
@@ -1129,34 +1271,17 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 		return s.listCompletedProcessesPaged(c, tenantID, username, adapter, params)
 	}
 
-	// 构建缓存键
-	keyBuilder := cache.NewKeyBuilder("audit", tenantID)
-	filterHash := cache.ComputeFilterHash(params)
-	cacheKey := keyBuilder.TodoList(userID, filterHash)
-
-	// 尝试从缓存获取
-	if s.cache != nil && s.cache.IsEnabled() {
-		var cached cache.CachedTodoList
-		if hit, _ := s.cache.Get(c.Request.Context(), cacheKey, &cached); hit {
-			return &dto.AuditProcessListResponse{
-				Items:    cached.Items,
-				Total:    cached.Total,
-				Page:     params.Page,
-				PageSize: params.PageSize,
-			}, nil
-		}
-	}
-
-	// pending_ai / ai_done：将 keyword/applicant/department/mainTableNames/processTypes 下推到 OA SQL，
-	// 减少从 OA 拉取的数据量。tab 分组（是否有 snapshot）仍需在内存中完成。
+	// 使用缓存的 OA 全量数据（按日期范围缓存，不含 keyword/page 等高变参数）
 	allowedTables := s.getAllowedMainTables(c)
 	processTypes := s.getAllowedProcessTypes(c)
 
-	// 获取筛选后的全量数据（不分页），用于 tab 分组
-	todoResult, err := s.fetchTodoListFiltered(c, adapter, username, params, allowedTables, processTypes)
+	allTodoItems, err := s.fetchOATodoDataCached(c, tenantID, userID, adapter, username, params, allowedTables, processTypes)
 	if err != nil {
 		return nil, err
 	}
+
+	// 在内存中做 keyword/applicant/department 过滤
+	todoResult := filterTodoItemsInMemory(allTodoItems, params)
 
 	processIDs := make([]string, len(todoResult))
 	for i, item := range todoResult {
@@ -1166,7 +1291,7 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核记录失败")
 	}
-	snapshotMap, err := s.getSnapshotMapCached(c, tenantID, processIDs)
+	snapshotMap, err := s.getSnapshotMapDirect(c, tenantID, processIDs)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核快照失败")
 	}
@@ -1245,64 +1370,12 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 	}
 	items := filtered[start:end]
 
-	response := &dto.AuditProcessListResponse{
+	return &dto.AuditProcessListResponse{
 		Items:    items,
 		Total:    total,
 		Page:     page,
 		PageSize: ps,
-	}
-
-	// 写入缓存
-	if s.cache != nil && s.cache.IsEnabled() {
-		toCache := cache.CachedTodoList{
-			Items:      items,
-			Total:      total,
-			CachedAt:   time.Now(),
-			FilterHash: filterHash,
-		}
-		_ = s.cache.Set(c.Request.Context(), cacheKey, toCache, cache.DefaultTTLAuditTodo)
-	}
-
-	return response, nil
-}
-
-// fetchTodoListFiltered 使用 FetchTodoListPaged 将 keyword/applicant/department/mainTableNames 下推到 OA SQL，
-// 但不做 OA 层分页（因为 tab 分组需要全量筛选后数据）。分批拉取全量筛选结果。
-func (s *AuditExecuteService) fetchTodoListFiltered(c *gin.Context, adapter oa.OAAdapter, username string, params dto.AuditListParams, allowedTables map[string]bool, processTypes []string) ([]oa.TodoItem, error) {
-	mainTableNames := make([]string, 0, len(allowedTables))
-	for t := range allowedTables {
-		mainTableNames = append(mainTableNames, t)
-	}
-
-	const batchSize = 500
-	pagedFilter := oa.TodoListPagedFilter{
-		TodoListFilter: todoListFilterFromAuditParams(params),
-		Keyword:        params.Keyword,
-		Applicant:      params.Applicant,
-		Department:     params.Department,
-		MainTableNames: mainTableNames,
-		ProcessTypes:   processTypes,
-		Page:           1,
-		PageSize:       batchSize,
-	}
-
-	result, err := adapter.FetchTodoListPaged(c.Request.Context(), username, pagedFilter)
-	if err != nil {
-		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 待办失败: "+err.Error())
-	}
-
-	items := result.Items
-	// 分批拉取剩余数据
-	for len(items) < result.Total {
-		pagedFilter.Page++
-		batch, err := adapter.FetchTodoListPaged(c.Request.Context(), username, pagedFilter)
-		if err != nil || len(batch.Items) == 0 {
-			break
-		}
-		items = append(items, batch.Items...)
-	}
-
-	return items, nil
+	}, nil
 }
 
 // applyAuditStatusFilter 仅过滤 audit_status（approve/return/review），

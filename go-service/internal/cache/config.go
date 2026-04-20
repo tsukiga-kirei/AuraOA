@@ -11,6 +11,10 @@ const (
 	// DefaultTTLArchiveList 归档列表默认 TTL (5分钟)
 	DefaultTTLArchiveList = 5 * time.Minute
 
+	// DefaultTTLOAData OA 全量数据默认 TTL (5分钟)
+	// 缓存 OA 跨库查询的全量结果，供翻页/筛选/统计复用
+	DefaultTTLOAData = 5 * time.Minute
+
 	// DefaultTTLProcessConfig 流程配置默认 TTL (10分钟)
 	DefaultTTLProcessConfig = 10 * time.Minute
 

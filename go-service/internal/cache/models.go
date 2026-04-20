@@ -47,5 +47,50 @@ type CachedStats struct {
 	CachedAt time.Time   `json:"cached_at"` // 缓存时间戳
 }
 
+// CachedOAArchivedData 缓存的 OA 归档全量数据
+// 按日期范围缓存 OA 跨库查询的全量归档流程列表，
+// 供翻页、页签切换、搜索等操作在内存中复用，避免重复查询 OA。
+type CachedOAArchivedData struct {
+	Items    []CachedArchivedItem `json:"items"`     // 全量归档流程列表
+	Total    int                  `json:"total"`     // OA 返回的总数
+	CachedAt time.Time            `json:"cached_at"` // 缓存时间戳
+}
+
+// CachedArchivedItem 缓存的归档流程条目（与 oa.ArchivedItem 字段一致）
+type CachedArchivedItem struct {
+	ProcessID        string `json:"process_id"`
+	Title            string `json:"title"`
+	Applicant        string `json:"applicant"`
+	Department       string `json:"department"`
+	ProcessType      string `json:"process_type"`
+	ProcessTypeLabel string `json:"process_type_label"`
+	CurrentNode      string `json:"current_node"`
+	SubmitTime       string `json:"submit_time"`
+	ArchiveTime      string `json:"archive_time"`
+	MainTableName    string `json:"main_table_name"`
+}
+
+// CachedOATodoData 缓存的 OA 待办全量数据
+// 按日期范围缓存 OA 跨库查询的全量待办流程列表。
+type CachedOATodoData struct {
+	Items    []CachedTodoItem `json:"items"`     // 全量待办流程列表
+	Total    int              `json:"total"`     // OA 返回的总数
+	CachedAt time.Time        `json:"cached_at"` // 缓存时间戳
+}
+
+// CachedTodoItem 缓存的待办流程条目（与 oa.TodoItem 字段一致）
+type CachedTodoItem struct {
+	ProcessID        string `json:"process_id"`
+	Title            string `json:"title"`
+	Applicant        string `json:"applicant"`
+	Department       string `json:"department"`
+	ProcessType      string `json:"process_type"`
+	ProcessTypeLabel string `json:"process_type_label"`
+	CurrentNode      string `json:"current_node"`
+	SubmitTime       string `json:"submit_time"`
+	Urgency          string `json:"urgency"`
+	MainTableName    string `json:"main_table_name"`
+}
+
 // Note: CacheStatsSnapshot is defined in stats.go to avoid circular dependencies
 // and keep cache statistics logic together with the CacheStats struct.
