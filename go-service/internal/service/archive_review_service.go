@@ -264,6 +264,7 @@ func (s *ArchiveReviewService) fetchOAArchivedDataCached(
 	configs []model.ProcessArchiveConfig,
 	params dto.ArchiveListParams,
 ) ([]oa.ArchivedItem, error) {
+	pkglogger.Global().Info("[cache-opt] fetchOAArchivedDataCached called")
 	allowedTables := make([]string, 0, len(configs))
 	allowedTypes := make([]string, 0, len(configs))
 	for _, cfg := range configs {

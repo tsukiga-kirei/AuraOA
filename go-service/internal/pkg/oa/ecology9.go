@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 
 	"oa-smart-audit/go-service/internal/model"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/pkg/oa/dm"
 	"oa-smart-audit/go-service/internal/pkg/oa/oracle"
 )
@@ -63,7 +65,10 @@ func NewEcology9Adapter(conn *model.OADatabaseConnection) (*Ecology9Adapter, err
 	// Oracle/DM 默认将不加引号的标识符转为大写，
 	// 泛微 E9 在 Oracle/DM 上的表名和列名均为大写。
 	// 配置 NamingStrategy 使 GORM 不自动添加引号、不转小写。
-	gormConfig := &gorm.Config{}
+	gormConfig := &gorm.Config{
+		// 使用与主库相同的 zap logger，OA 慢查询也写入 app.log
+		Logger: pkglogger.NewGormLogger(200*time.Millisecond, true),
+	}
 	if conn.Driver == "oracle" || conn.Driver == "dm" {
 		gormConfig.NamingStrategy = schema.NamingStrategy{
 			NoLowerCase: true,
@@ -441,8 +446,9 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string, fi
 	}
 
 	// 查询待办：workflow_currentoperator + requestbase + base + bill + type + node
+	// 使用 DISTINCT 避免同一流程多个审批节点导致重复
 	query := fmt.Sprintf(`
-		SELECT
+		SELECT DISTINCT
 			r.%s AS request_id,
 			r.%s AS request_name,
 			COALESCE(h.%s, '') AS applicant_name,
@@ -551,8 +557,8 @@ func (a *Ecology9Adapter) FetchTodoListPaged(ctx context.Context, username strin
 	// 构建公共 FROM + JOIN + WHERE
 	fromJoinWhere, args := a.buildTodoFromJoinWhere(e9UserID, filter)
 
-	// 1. COUNT 查询
-	countSQL := "SELECT COUNT(*) " + fromJoinWhere
+	// 1. COUNT 查询（按 requestid 去重，避免同一流程多个审批节点导致重复计数）
+	countSQL := "SELECT COUNT(DISTINCT r." + a.col("requestid") + ") " + fromJoinWhere
 	var total int
 	if err := a.db.WithContext(ctx).Raw(countSQL, args...).Row().Scan(&total); err != nil {
 		return nil, fmt.Errorf("查询 OA 待办总数失败: %w", err)
@@ -562,7 +568,7 @@ func (a *Ecology9Adapter) FetchTodoListPaged(ctx context.Context, username strin
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
+	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 20
 	}
 
@@ -590,7 +596,7 @@ func (a *Ecology9Adapter) FetchTodoListPaged(ctx context.Context, username strin
 	)
 
 	offset := (page - 1) * pageSize
-	dataSQL := "SELECT " + selectCols + " " + fromJoinWhere +
+	dataSQL := "SELECT DISTINCT " + selectCols + " " + fromJoinWhere +
 		fmt.Sprintf(" ORDER BY r.%s DESC", a.col("createdate")) +
 		a.limitOffsetClause(pageSize, offset)
 
@@ -744,7 +750,7 @@ func (a *Ecology9Adapter) fetchArchivedListPagedWithArchiveDate(ctx context.Cont
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
+	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 20
 	}
 

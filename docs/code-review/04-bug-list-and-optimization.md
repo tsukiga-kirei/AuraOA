@@ -237,6 +237,22 @@ func BuildReasoningPrompt(..., flowHistory *FlowHistory, flowGraph *FlowGraph) *
 
 ---
 
+#### BUG-005.6: FetchTodoListPaged COUNT 查询未去重导致待办总数偏大
+
+**位置**: `go-service/internal/pkg/oa/ecology9.go` — `FetchTodoListPaged`
+
+**问题描述**:
+`FetchTodoListPaged` 的 COUNT 查询使用 `COUNT(*)`，但由于 `workflow_currentoperator` 中同一流程可能存在多个审批节点记录，导致 COUNT 结果大于实际去重后的流程数。而数据查询已使用 `SELECT DISTINCT`，造成 `total` 与实际返回条目数不一致，前端分页组件显示的总页数偏多。
+
+**影响**: 前端分页显示的总条数偏大，末尾页可能为空页。
+
+**修复方案（已实施）**:
+将 `COUNT(*)` 改为 `COUNT(DISTINCT r.requestid)`，与数据查询的 `SELECT DISTINCT` 保持一致。
+
+**状态**: ✅ 已修复
+
+---
+
 ### 🟢 低优先级问题 (P2)
 
 #### BUG-006: 租户管理员保护逻辑重复
