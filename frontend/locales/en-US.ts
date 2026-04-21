@@ -40,14 +40,28 @@ export default {
     'header.notificationsTitle': 'Notifications',
     'header.notificationsEmpty': 'No notifications',
     'header.notificationsMarkAllRead': 'Mark all as read',
+    'header.notificationsViewAll': 'View all',
 
     'notifications.category.system_admin': 'Platform',
     'notifications.category.tenant_admin': 'Tenant admin',
     'notifications.category.business': 'Business',
-    'notifications.category.audit': 'Smart audit',
+    'notifications.category.audit': 'Audit Workbench',
     'notifications.category.archive': 'Archive review',
     'notifications.category.cron': 'Scheduled tasks',
     'notifications.category.general': 'General',
+
+    //===== Messages =====
+    'messages.title': 'Messages',
+    'messages.subtitle': '{0} unread messages',
+    'messages.empty': 'No messages',
+    'messages.emptyDetail': 'Select a message from the list to view details',
+    'messages.markAllRead': 'Mark all as read',
+    'messages.noMessages': 'No messages yet',
+    'messages.unread': 'Unread',
+    'messages.read': 'Read',
+    'messages.score.high': 'High score',
+    'messages.score.medium': 'Medium score',
+    'messages.score.low': 'Low score',
 
     //=====设置页面=====
     'settings.title': 'Personal Settings',

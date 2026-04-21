@@ -9,6 +9,7 @@ import { message } from 'ant-design-vue'
 
 import type { RoleInfo } from '~/types/auth'
 import type { UserNotificationItem } from '~/types/user-notifications'
+import { extractScore, scoreColor } from '~/utils/scoreColor'
 
 // props：侧边栏折叠状态 / 是否移动端布局
 defineProps<{
@@ -48,17 +49,30 @@ function categoryLabel(cat: string) {
   return te(key) ? t(key) : cat
 }
 
-// 点击通知条目：标记已读并跳转关联页面
+// 点击通知条目：标记已读并跳转到消息中心，选中该消息
 async function onNotifItemClick(it: UserNotificationItem) {
   if (!it.read) await markOneRead(it.id)
-  if (it.link_path) {
-    notifOpen.value = false
-    await navigateTo(it.link_path)
-  }
+  notifOpen.value = false
+  await navigateTo(`/messages?id=${it.id}`)
 }
 
 async function handleMarkAllNotificationsRead() {
   await markAllRead()
+}
+
+// 将 body 中的「评分 {数字}」渲染为带颜色的 HTML
+function renderBodyWithScore(body: string | undefined): string {
+  if (!body) return ''
+  const score = extractScore(body)
+  if (score === null) return body
+  const color = scoreColor(score)
+  return body.replace(/评分\s*(\d+)/, `<span style="color:${color};font-weight:600">评分 $1</span>`)
+}
+
+// 查看全部消息：关闭面板并跳转到消息页面
+function goToMessages() {
+  notifOpen.value = false
+  navigateTo('/messages')
 }
 
 // 按角色类型分组，用于下拉菜单分区展示
@@ -270,10 +284,24 @@ const handleSwitchRole = async (role: RoleInfo) => {
                     <span class="notif-time">{{ formatRelative(it.created_at) }}</span>
                   </div>
                   <div class="notif-title">{{ it.title }}</div>
-                  <div v-if="it.body" class="notif-body">{{ it.body }}</div>
+                  <div v-if="it.body" class="notif-body" v-html="renderBodyWithScore(it.body)" />
                 </li>
               </ul>
             </a-spin>
+            <div class="notif-panel-footer">
+              <button
+                v-if="unreadCount > 0"
+                type="button"
+                class="notif-footer-action notif-footer-mark-all"
+                @click.stop="handleMarkAllNotificationsRead"
+              >
+                {{ t('header.notificationsMarkAllRead') }}
+              </button>
+              <span v-if="unreadCount > 0" class="notif-footer-divider">|</span>
+              <button type="button" class="notif-footer-action" @click="goToMessages">
+                {{ t('header.notificationsViewAll') }}
+              </button>
+            </div>
           </div>
         </template>
       </a-dropdown>
@@ -657,5 +685,30 @@ const handleSwitchRole = async (role: RoleInfo) => {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.notif-panel-footer {
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-top: 1px solid var(--color-border-light);
+}
+.notif-footer-action {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-primary);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.notif-footer-action:hover {
+  opacity: 0.8;
+}
+.notif-footer-divider {
+  color: var(--color-border);
+  font-size: 12px;
 }
 </style>

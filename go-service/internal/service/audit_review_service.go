@@ -25,6 +25,7 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
+	"oa-smart-audit/go-service/internal/pkg/label"
 	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/pkg/oa"
 	"oa-smart-audit/go-service/internal/repository"
@@ -555,9 +556,16 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		}
 		// 审核完成通知
 		if s.notifSvc != nil {
+			recZh := label.RecommendationZh(parsed.Recommendation)
+			if recZh == parsed.Recommendation {
+				tlog.Warn("未知 recommendation 值",
+					zap.String("recommendation", parsed.Recommendation),
+					zap.String("auditLogID", auditLogID.String()),
+				)
+			}
 			s.notifSvc.CreateByTenant(userID, tenantID, "audit",
 				fmt.Sprintf("审核完成：%s", log.Title),
-				fmt.Sprintf("评分 %d，建议：%s", parsed.OverallScore, parsed.Recommendation),
+				fmt.Sprintf("建议：%s，评分 %d", recZh, parsed.OverallScore),
 				fmt.Sprintf("/workbench?processId=%s", log.ProcessID),
 			)
 		}

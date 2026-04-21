@@ -24,6 +24,7 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/crypto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
+	"oa-smart-audit/go-service/internal/pkg/label"
 	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/pkg/oa"
 	"oa-smart-audit/go-service/internal/repository"
@@ -1323,9 +1324,16 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		}
 		// 归档复盘完成通知
 		if s.notifSvc != nil {
+			compZh := label.ComplianceZh(parsed.OverallCompliance)
+			if compZh == parsed.OverallCompliance {
+				tlog.Warn("未知 overall_compliance 值",
+					zap.String("overall_compliance", parsed.OverallCompliance),
+					zap.String("archiveLogID", archiveLogID.String()),
+				)
+			}
 			s.notifSvc.CreateByTenant(userID, tenantID, "archive",
 				fmt.Sprintf("归档复盘完成：%s", logEntry.Title),
-				fmt.Sprintf("合规性：%s，评分 %d", parsed.OverallCompliance, parsed.OverallScore),
+				fmt.Sprintf("合规性：%s，评分 %d", compZh, parsed.OverallScore),
 				fmt.Sprintf("/archive-review?processId=%s", logEntry.ProcessID),
 			)
 		}

@@ -119,8 +119,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   // 第二层：基于后端 menus（org_roles.page_permissions）的细粒度检查
-  // /overview 和 /settings 为通用页面，无需菜单权限校验
-  if (to.path === '/overview' || to.path === '/settings') return
+  // /overview、/settings、/messages 为通用页面，无需菜单权限校验
+  if (to.path === '/overview' || to.path === '/settings' || to.path === '/messages') return
 
   // 菜单尚未加载时放行（等待后续加载后再校验）
   if (menus.value.length === 0) return

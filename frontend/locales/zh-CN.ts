@@ -41,14 +41,28 @@ export default {
     'header.notificationsTitle': '消息通知',
     'header.notificationsEmpty': '暂无通知',
     'header.notificationsMarkAllRead': '全部已读',
+    'header.notificationsViewAll': '查看全部',
 
     'notifications.category.system_admin': '平台 / 系统管理',
     'notifications.category.tenant_admin': '租户管理',
     'notifications.category.business': '业务',
-    'notifications.category.audit': '智能审核',
+    'notifications.category.audit': '审核工作台',
     'notifications.category.archive': '归档复盘',
     'notifications.category.cron': '定时任务',
     'notifications.category.general': '一般',
+
+    //===== 消息中心 =====
+    'messages.title': '消息中心',
+    'messages.subtitle': '未读消息 {0} 条',
+    'messages.empty': '暂无消息',
+    'messages.emptyDetail': '请从左侧列表选择一条消息查看详情',
+    'messages.markAllRead': '全部已读',
+    'messages.noMessages': '暂无消息记录',
+    'messages.unread': '未读消息',
+    'messages.read': '已读消息',
+    'messages.score.high': '高分',
+    'messages.score.medium': '中等',
+    'messages.score.low': '低分',
 
     //=====设置页面=====
     'settings.title': '个人设置',
