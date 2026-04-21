@@ -676,6 +676,22 @@ function tokenPct(used: number, quota: number) {
         <div v-else class="widget-empty">{{ t('overview.noData') }}</div>
       </div>
 
+      <!--===== 系统监控（system_monitor）=====-->
+      <div v-if="isEnabled('system_monitor')"
+       :class="['widget', `widget--${getWidgetSize('system_monitor')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('system_monitor') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'system_monitor')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'system_monitor')">
+        <div class="widget-title">
+          <div class="widget-title-left"><DatabaseOutlined /> {{ t('overview.widgetTitle.system_monitor') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('system_monitor')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
+        <SystemMonitorWidget />
+      </div>
+
     </div>
     </a-spin>
   </div>
@@ -706,8 +722,14 @@ function tokenPct(used: number, quota: number) {
 .customize-chip--active { background: var(--color-primary-bg); border-color: var(--color-primary); color: var(--color-primary); font-weight: 500; }
 
 
-/*小部件网格*/
-.widget-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+/*小部件网格 — 12 列布局，每行高度由内容决定*/
+.widget-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-auto-rows: min-content;
+  gap: 20px;
+  align-items: start;
+}
 .widget {
   background: var(--color-bg-card); border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg); padding: 20px;
@@ -716,9 +738,9 @@ function tokenPct(used: number, quota: number) {
 .widget:hover { box-shadow: var(--shadow-sm); }
 .widget--editing { border: 1px dashed var(--color-primary); cursor: grab; transform: scale(0.99); }
 .widget--editing:active { cursor: grabbing; }
-.widget--sm { grid-column: span 4; }
-.widget--md { grid-column: span 6; }
-.widget--lg { grid-column: span 12; }
+.widget--sm { grid-column: span 4; min-height: 160px; }
+.widget--md { grid-column: span 6; min-height: 200px; }
+.widget--lg { grid-column: span 12; min-height: 240px; }
 
 .widget-title {
   font-size: 14px; font-weight: 600; color: var(--color-text-primary);
@@ -850,13 +872,16 @@ function tokenPct(used: number, quota: number) {
 .tr-cell--fail { font-size: 12px; }
 
 @media (max-width: 1024px) {
-  .widget--sm, .widget--md { grid-column: span 6; }
+  .widget--sm { grid-column: span 6; }
+  .widget--md { grid-column: span 6; }
+  .widget--lg { grid-column: span 12; }
   .summary-cards { grid-template-columns: repeat(2, 1fr); }
   .weekly-overview { flex-direction: column; gap: 16px; }
   .wo-items { width: 100%; }
 }
 @media (max-width: 768px) {
-  .widget--sm, .widget--md, .widget--lg { grid-column: span 12; }
+  .widget-grid { grid-template-columns: 1fr; }
+  .widget--sm, .widget--md, .widget--lg { grid-column: span 1; }
   .summary-cards { grid-template-columns: repeat(2, 1fr); }
   .ov-header { flex-direction: column; }
   .pending-split { flex-direction: column; }

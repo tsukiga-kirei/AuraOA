@@ -267,6 +267,22 @@ export default {
     'overview.monitor.uptime': '系统可用率',
     'overview.monitor.recentAlerts': '最近告警',
     'overview.monitor.noAlerts': '暂无告警',
+    // 系统运行监控小部件
+    'overview.monitor.cpuUsage': 'CPU 使用率',
+    'overview.monitor.memoryUsage': '内存使用率',
+    'overview.monitor.diskUsage': '磁盘使用率',
+    'overview.monitor.serviceStatus': '服务状态',
+    'overview.monitor.online': '在线',
+    'overview.monitor.offline': '离线',
+    'overview.monitor.degraded': '降级',
+    'overview.monitor.responseTime': '响应时间',
+    'overview.monitor.refresh': '刷新',
+    'overview.monitor.loadFailed': '加载监控数据失败',
+    'overview.monitor.retry': '重试',
+    'overview.monitor.uptimeLabel': '运行时间',
+    'overview.monitor.days': '天',
+    'overview.monitor.hours': '小时',
+    'overview.monitor.minutes': '分钟',
 
     //=====页面标签（用于权限显示）=====
     'page./overview': '仪表盘',
@@ -410,6 +426,8 @@ export default {
     'overview.widgetDesc.user_activity': '按有效快照数排名',
     'overview.widgetDesc.platform_tenant_stats': '全平台租户总数、活跃租户与人员数量',
     'overview.widgetDesc.platform_tenant_ranking': '各租户审核/归档/定时任务详细统计',
+    'overview.widgetTitle.system_monitor': '系统运行监控',
+    'overview.widgetDesc.system_monitor': '系统 CPU、内存、磁盘使用率及关键服务状态',
     // 本周概览
     'overview.weeklyTotal': '本周总计',
     'overview.auditWorkbench': '审核工作台',

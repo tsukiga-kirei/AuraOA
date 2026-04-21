@@ -132,6 +132,7 @@ func SetupRouter(
 		admin.GET("/stats/token-usage", llmLogHandler.QueryAllTenantsTokenUsage)
 
 		admin.GET("/dashboard-overview", dashboardOverviewHandler.GetPlatformOverview)
+		admin.GET("/system-monitor", dashboardOverviewHandler.GetSystemMonitor)
 	}
 
 	// 缓存管理路由（仅超级管理员 system_admin）

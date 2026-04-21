@@ -3,9 +3,10 @@
  * 对接后端路由：
  *   GET /api/tenant/settings/dashboard-overview  租户仪表盘概览数据
  *   GET /api/admin/dashboard-overview            平台级仪表盘概览数据（系统管理员）
+ *   GET /api/admin/system-monitor                系统运行监控数据（系统管理员）
  */
 
-import type { DashboardOverview, PlatformDashboardOverview } from '~/types/dashboard-overview'
+import type { DashboardOverview, PlatformDashboardOverview, SystemMonitorData } from '~/types/dashboard-overview'
 
 export const useDashboardOverviewApi = () => {
   const { authFetch } = useAuth()
@@ -26,5 +27,14 @@ export const useDashboardOverviewApi = () => {
     return await authFetch<PlatformDashboardOverview>('/api/admin/dashboard-overview')
   }
 
-  return { fetchDashboardOverview, fetchPlatformDashboardOverview }
+  /**
+   * 获取系统运行监控数据（仅系统管理员可访问）。
+   * 对接后端路由：GET /api/admin/system-monitor
+   * @returns 系统 CPU、内存、磁盘使用率及关键服务状态
+   */
+  async function fetchSystemMonitorData(): Promise<SystemMonitorData> {
+    return await authFetch<SystemMonitorData>('/api/admin/system-monitor')
+  }
+
+  return { fetchDashboardOverview, fetchPlatformDashboardOverview, fetchSystemMonitorData }
 }

@@ -207,7 +207,8 @@ func main() {
 	archiveRuleHandler := handler.NewArchiveRuleHandler(archiveRuleService)
 	auditHandler := handler.NewAuditHandler(auditExecuteService, auditSnapshotRepo, auditLogRepo)
 	archiveReviewHandler := handler.NewArchiveReviewHandler(archiveReviewService, archiveSnapshotRepo, archiveLogRepo)
-	dashboardOverviewHandler := handler.NewDashboardOverviewHandler(dashboardOverviewService)
+	systemMonitorService := service.NewSystemMonitorService(db, rdb)
+	dashboardOverviewHandler := handler.NewDashboardOverviewHandler(dashboardOverviewService, systemMonitorService)
 	userNotificationHandler := handler.NewUserNotificationHandler(userNotificationService)
 	cacheAdminHandler := handler.NewCacheAdminHandler(cacheManager, invalidationManager)
 
