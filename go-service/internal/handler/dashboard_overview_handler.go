@@ -15,12 +15,13 @@ import (
 
 // DashboardOverviewHandler 处理仪表盘概览相关的 HTTP 请求。
 type DashboardOverviewHandler struct {
-	svc *service.DashboardOverviewService
+	svc        *service.DashboardOverviewService
+	monitorSvc *service.SystemMonitorService
 }
 
 // NewDashboardOverviewHandler 创建仪表盘概览处理器实例。
-func NewDashboardOverviewHandler(svc *service.DashboardOverviewService) *DashboardOverviewHandler {
-	return &DashboardOverviewHandler{svc: svc}
+func NewDashboardOverviewHandler(svc *service.DashboardOverviewService, monitorSvc *service.SystemMonitorService) *DashboardOverviewHandler {
+	return &DashboardOverviewHandler{svc: svc, monitorSvc: monitorSvc}
 }
 
 // GetOverview 获取当前租户用户的仪表盘聚合数据。
@@ -58,6 +59,18 @@ func (h *DashboardOverviewHandler) GetOverview(c *gin.Context) {
 // 返回：平台级仪表盘统计数据对象。
 func (h *DashboardOverviewHandler) GetPlatformOverview(c *gin.Context) {
 	data, err := h.svc.BuildPlatformOverview()
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, data)
+}
+
+// GetSystemMonitor 获取系统运行监控数据（仅系统管理员可用）。
+// GET /api/admin/system-monitor
+// 返回：CPU、内存、磁盘使用率及关键服务健康状态。
+func (h *DashboardOverviewHandler) GetSystemMonitor(c *gin.Context) {
+	data, err := h.monitorSvc.GetSystemMonitorData(c.Request.Context())
 	if err != nil {
 		handleServiceError(c, err)
 		return

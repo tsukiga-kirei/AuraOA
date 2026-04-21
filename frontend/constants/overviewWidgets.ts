@@ -13,6 +13,7 @@ export type OverviewWidgetId =
   | 'tenant_usage'
   | 'platform_tenant_stats'
   | 'platform_tenant_ranking'
+  | 'system_monitor'
 
 // OverviewWidgetDef 仪表盘组件定义，描述组件的 ID、标题国际化键、权限要求、默认状态和尺寸
 export interface OverviewWidgetDef {
@@ -50,6 +51,7 @@ export const OVERVIEW_WIDGETS: OverviewWidgetDef[] = [
   { id: 'ai_performance', titleKey: 'overview.widgetTitle.ai_performance', descriptionKey: 'overview.widgetDesc.ai_performance', requiredPermissions: ['system_admin'], defaultEnabled: true, size: 'lg' },
   { id: 'tenant_usage', titleKey: 'overview.widgetTitle.tenant_usage', descriptionKey: 'overview.widgetDesc.tenant_usage', requiredPermissions: ['system_admin'], defaultEnabled: true, size: 'md' },
   { id: 'platform_tenant_ranking', titleKey: 'overview.widgetTitle.platform_tenant_ranking', descriptionKey: 'overview.widgetDesc.platform_tenant_ranking', requiredPermissions: ['system_admin'], defaultEnabled: true, size: 'lg' },
+  { id: 'system_monitor', titleKey: 'overview.widgetTitle.system_monitor', descriptionKey: 'overview.widgetDesc.system_monitor', requiredPermissions: ['system_admin'], defaultEnabled: true, size: 'lg' },
 ]
 
 // OVERVIEW_WIDGET_ID_SET 所有已注册组件 ID 的集合，用于快速校验 ID 合法性

@@ -266,6 +266,22 @@ export default {
     'overview.monitor.uptime': 'System Uptime',
     'overview.monitor.recentAlerts': 'Recent Alerts',
     'overview.monitor.noAlerts': 'No alerts',
+    // System monitor widget
+    'overview.monitor.cpuUsage': 'CPU Usage',
+    'overview.monitor.memoryUsage': 'Memory Usage',
+    'overview.monitor.diskUsage': 'Disk Usage',
+    'overview.monitor.serviceStatus': 'Service Status',
+    'overview.monitor.online': 'Online',
+    'overview.monitor.offline': 'Offline',
+    'overview.monitor.degraded': 'Degraded',
+    'overview.monitor.responseTime': 'Response Time',
+    'overview.monitor.refresh': 'Refresh',
+    'overview.monitor.loadFailed': 'Failed to load monitor data',
+    'overview.monitor.retry': 'Retry',
+    'overview.monitor.uptimeLabel': 'Uptime',
+    'overview.monitor.days': 'days',
+    'overview.monitor.hours': 'hours',
+    'overview.monitor.minutes': 'minutes',
 
     //=====页面标签（用于权限显示）=====
     'page./overview': 'Dashboard',
@@ -409,6 +425,8 @@ export default {
     'overview.widgetDesc.user_activity': 'Ranked by valid snapshot count',
     'overview.widgetDesc.platform_tenant_stats': 'Total tenants, active tenants, and user counts',
     'overview.widgetDesc.platform_tenant_ranking': 'Detailed per-tenant audit/archive/cron stats',
+    'overview.widgetTitle.system_monitor': 'System Monitor',
+    'overview.widgetDesc.system_monitor': 'System CPU, memory, disk usage and service status',
     // Weekly overview
     'overview.weeklyTotal': 'Weekly Total',
     'overview.auditWorkbench': 'Audit Workbench',

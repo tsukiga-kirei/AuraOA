@@ -146,10 +146,29 @@ export interface PlatformTenantRankRowEnriched {
   archive_failed: number
 }
 
+// ── 系统运行监控 ──
+
+/** 单个服务的运行状态 */
+export interface ServiceStatus {
+  name: string                              // 服务名称
+  status: 'online' | 'offline' | 'degraded' // 运行状态
+  response_time_ms: number                  // 响应时间（毫秒）
+}
+
+/** 系统运行监控数据 */
+export interface SystemMonitorData {
+  cpu_usage: number           // CPU 使用率 (0-100)
+  memory_usage: number        // 内存使用率 (0-100)
+  disk_usage: number          // 磁盘使用率 (0-100)
+  services: ServiceStatus[]   // 关键服务状态列表
+  uptime_seconds: number      // 系统运行时间（秒）
+}
+
 /** GET /api/admin/dashboard-overview */
 export interface PlatformDashboardOverview {
   tenant_stats: PlatformTenantStatsData
   ai_performance: PlatformAIPerformanceData
   tenant_usage_list: TenantUsageRow[]
   tenant_ranking: PlatformTenantRankRowEnriched[]
+  system_monitor?: SystemMonitorData  // 系统运行监控（可选）
 }
