@@ -130,7 +130,8 @@ OA 智审是一套面向企业内部 OA 流程的 AI 辅助审核平台。通过
 
 ```
 oa-smart-audit/
-├── README.md                     # 本文件
+├── README.md
+├── LICENSE
 ├── docker-compose.yml            # 生产环境编排
 ├── docker-compose.dev.yml        # 开发环境编排
 ├── .env.example                  # 环境变量模板
@@ -139,34 +140,43 @@ oa-smart-audit/
 │   ├── cmd/server/main.go        # 应用入口
 │   ├── config.yaml               # 默认配置
 │   └── internal/
+│       ├── cache/                # Redis 缓存管理
 │       ├── config/               # 配置加载
+│       ├── dbmigrate/            # 数据库迁移
 │       ├── dto/                  # 请求/响应 DTO
 │       ├── handler/              # HTTP 处理器
-│       ├── middleware/           # 中间件（JWT/CORS/日志/权限）
+│       ├── middleware/           # 中间件（JWT/CORS/日志/权限/租户）
 │       ├── model/                # 数据模型
 │       ├── pkg/                  # 工具包
 │       │   ├── ai/               # AI 模型调用
 │       │   ├── crypto/           # AES 加解密
+│       │   ├── errcode/          # 错误码定义
 │       │   ├── jwt/              # JWT 签发与验证
-│       │   └── oa/               # OA 系统适配器
+│       │   ├── logger/           # 日志工具
+│       │   ├── mail/             # 邮件发送
+│       │   ├── oa/               # OA 系统适配器
+│       │   ├── response/         # 统一响应封装
+│       │   └── sanitize/         # 输入清洗
 │       ├── repository/           # 数据访问层
+│       ├── router/               # 路由注册
 │       └── service/              # 业务逻辑层
 │
 ├── frontend/                     # Nuxt 3 前端
 │   ├── pages/                    # 页面路由
 │   ├── components/               # 公共组件
 │   ├── composables/              # 组合式 API
+│   ├── constants/                # 常量定义
+│   ├── layouts/                  # 布局组件
+│   ├── locales/                  # 国际化语言包
 │   ├── middleware/               # 路由守卫
-│   └── locales/                  # 国际化语言包
+│   ├── types/                    # TypeScript 类型
+│   └── utils/                    # 工具函数
 │
 ├── db/                           # 数据库
-│   └── migrations/               # 迁移脚本（30+ 个）
+│   └── migrations/               # 迁移脚本（30+）
 │
 └── docs/                         # 项目文档
-    ├── code-review/              # 代码审查报告 ⭐ 新增
-    ├── features/                 # 功能说明文档
-    ├── database/                 # 数据库设计文档
-    └── architecture/             # 技术架构文档
+    └── code-review/              # 代码审查与优化分析
 ```
 
 ---
@@ -244,29 +254,23 @@ encryption:
 
 ## 文档目录
 
-| 分类 | 文档 | 说明 |
-|------|------|------|
-| 功能 | [OA 适配](docs/features/oa-integration.md) | OA 系统连接与数据适配能力说明 |
-| 功能 | [AI 智能审核](docs/features/ai-audit.md) | AI 审核引擎架构与审核流程说明 |
-| 功能 | [归档复盘方案](docs/features/archive-review-implementation-plan.md) | 归档复盘后端化实施方案 |
-| 技术 | [数据库设计](docs/database/database-schema.md) | 全部数据表结构与关系说明 |
-| 技术 | [技术架构](docs/architecture/technical-architecture.md) | 系统架构、API 接口说明 |
+项目文档位于 [`docs/code-review/`](docs/code-review/) 目录下：
+
+| 文档 | 说明 |
+|------|------|
+| [总览](docs/code-review/00-summary.md) | 代码审查总结与概览 |
+| [认证系统分析](docs/code-review/01-authentication-analysis.md) | Token 机制、刷新逻辑、过期处理 |
+| [核心业务逻辑分析](docs/code-review/02-core-business-logic-analysis.md) | OA 数据提取、规则组装、提示词构建 |
+| [人员组织与配置分析](docs/code-review/03-organization-and-config-analysis.md) | 角色体系、配置层级、数据关联 |
+| [Bug 清单与优化建议](docs/code-review/04-bug-list-and-optimization.md) | 问题汇总、修复方案、优先级排序 |
+| [分页方案分析](docs/code-review/05-pagination-analysis.md) | 分页实现与优化分析 |
+| [Redis 缓存分析](docs/code-review/06-redis-cache-analysis.md) | 缓存策略与性能优化分析 |
 
 ---
 
 ## 已知问题
 
 > 详见 [Bug 清单与优化建议](docs/code-review/04-bug-list-and-optimization.md)
-
-### 高优先级
-
-1. **Token TTL 配置不同步**: 数据库配置与 config.yaml 配置未关联
-2. **Token 过期未自动清理**: 前端在 Token 过期后不会自动清除本地状态
-
-### 中优先级
-
-3. **默认密码硬编码**: 创建成员时使用固定默认密码 "123456"
-4. **审批流信息未接入**: 提示词中的审批流占位符使用固定文本
 
 ---
 
