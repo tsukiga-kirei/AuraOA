@@ -1,6 +1,16 @@
+<div align="center">
+
 # OA 智审 — 流程智能审核平台
 
-> **OA Smart Audit** — 基于大语言模型的 OA 流程智能审核与归档复盘系统
+**OA Smart Audit** — 基于大语言模型的 OA 流程智能审核与归档复盘系统
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![Nuxt](https://img.shields.io/badge/Nuxt-3-00DC82?logo=nuxt.js&logoColor=white)](https://nuxt.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+
+</div>
 
 ---
 
@@ -234,29 +244,13 @@ encryption:
 
 ## 文档目录
 
-### 代码审查报告 ⭐
-
-| 文档 | 说明 |
-|------|------|
-| [认证系统分析](docs/code-review/01-authentication-analysis.md) | Token 机制、刷新逻辑、过期处理分析 |
-| [核心业务逻辑分析](docs/code-review/02-core-business-logic-analysis.md) | OA 数据提取、规则组装、提示词构建分析 |
-| [人员组织与配置分析](docs/code-review/03-organization-and-config-analysis.md) | 角色体系、配置层级、数据关联分析 |
-| [Bug 清单与优化建议](docs/code-review/04-bug-list-and-optimization.md) | 问题汇总、修复方案、优先级排序 |
-
-### 功能文档
-
-| 文档 | 说明 |
-|------|------|
-| [OA 适配](docs/features/oa-integration.md) | OA 系统连接与数据适配能力说明 |
-| [AI 智能审核](docs/features/ai-audit.md) | AI 审核引擎架构与审核流程说明 |
-| [归档复盘方案](docs/features/archive-review-implementation-plan.md) | 归档复盘后端化实施方案 |
-
-### 技术文档
-
-| 文档 | 说明 |
-|------|------|
-| [数据库设计](docs/database/database-schema.md) | 全部数据表结构与关系说明 |
-| [技术架构](docs/architecture/technical-architecture.md) | 系统架构、API 接口说明 |
+| 分类 | 文档 | 说明 |
+|------|------|------|
+| 功能 | [OA 适配](docs/features/oa-integration.md) | OA 系统连接与数据适配能力说明 |
+| 功能 | [AI 智能审核](docs/features/ai-audit.md) | AI 审核引擎架构与审核流程说明 |
+| 功能 | [归档复盘方案](docs/features/archive-review-implementation-plan.md) | 归档复盘后端化实施方案 |
+| 技术 | [数据库设计](docs/database/database-schema.md) | 全部数据表结构与关系说明 |
+| 技术 | [技术架构](docs/architecture/technical-architecture.md) | 系统架构、API 接口说明 |
 
 ---
 
@@ -298,6 +292,16 @@ encryption:
 
 ---
 
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
+3. 提交更改 (`git commit -m 'feat: add amazing feature'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 提交 Pull Request
+
 ## 许可证
 
-内部项目，仅限授权使用。
+本项目基于 [MIT License](LICENSE) 开源。
