@@ -176,7 +176,8 @@ oa-smart-audit/
 │   └── migrations/               # 迁移脚本（30+）
 │
 └── docs/                         # 项目文档
-    └── code-review/              # 代码审查与优化分析
+    ├── code-review/              # 代码审查报告（00-04）
+    └── optimization/             # 性能优化分析
 ```
 
 ---
@@ -254,7 +255,7 @@ encryption:
 
 ## 文档目录
 
-项目文档位于 [`docs/code-review/`](docs/code-review/) 目录下：
+### 代码审查（[`docs/code-review/`](docs/code-review/)）
 
 | 文档 | 说明 |
 |------|------|
@@ -263,8 +264,13 @@ encryption:
 | [核心业务逻辑分析](docs/code-review/02-core-business-logic-analysis.md) | OA 数据提取、规则组装、提示词构建 |
 | [人员组织与配置分析](docs/code-review/03-organization-and-config-analysis.md) | 角色体系、配置层级、数据关联 |
 | [Bug 清单与优化建议](docs/code-review/04-bug-list-and-optimization.md) | 问题汇总、修复方案、优先级排序 |
-| [分页方案分析](docs/code-review/05-pagination-analysis.md) | 分页实现与优化分析 |
-| [Redis 缓存分析](docs/code-review/06-redis-cache-analysis.md) | 缓存策略与性能优化分析 |
+
+### 性能优化（[`docs/optimization/`](docs/optimization/)）
+
+| 文档 | 说明 |
+|------|------|
+| [分页方案分析](docs/optimization/pagination-analysis.md) | 前后端分页策略梳理与优化建议 |
+| [Redis 缓存分析](docs/optimization/redis-cache-analysis.md) | 缓存使用点梳理与合理性分析 |
 
 ---
 
