@@ -62,7 +62,7 @@ const aiModels = ref<any[]>([])
 // 租户成员列表（详情抽屉中使用）
 const tenantMembers = ref<TenantMember[]>([])
 const membersLoading = ref(false)
-const { paged: pagedMembers, current: memberPage, pageSize: memberPageSize, total: memberTotal, onChange: onMemberPageChange } = usePagination(tenantMembers, 10)
+const { paged: pagedMembers, current: memberPage, pageSize: memberPageSize, total: memberTotal, onChange: onMemberPageChange } = usePagination(tenantMembers, 20)
 
 // 租户统计数据（成员数、部门数、角色数）
 const tenantStatsMap = ref<Record<string, { member_count: number; department_count: number; role_count: number }>>({})

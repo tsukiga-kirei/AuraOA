@@ -54,7 +54,7 @@ const filteredMembers = computed(() => {
 })
 
 //成员分页
-const { paged: pagedMembers, current: memberPage, pageSize: memberPageSize, total: memberTotal, onChange: onMemberPageChange } = usePagination(filteredMembers, 10)
+const { paged: pagedMembers, current: memberPage, pageSize: memberPageSize, total: memberTotal, onChange: onMemberPageChange } = usePagination(filteredMembers, 20)
 
 const showMemberModal = ref(false)
 const editingMember = ref<OrgMember | null>(null)

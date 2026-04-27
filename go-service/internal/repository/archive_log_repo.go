@@ -167,7 +167,7 @@ func (r *ArchiveLogRepo) ListPagedWithUser(c *gin.Context, filter ArchiveLogFilt
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 200 {
+	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
 
