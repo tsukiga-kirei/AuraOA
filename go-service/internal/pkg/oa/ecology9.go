@@ -1091,38 +1091,44 @@ func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, 
 }
 
 // FetchProcessFlow 拉取流程审批流快照。
-// 若历史日志表结构不兼容，则退化为仅返回当前节点快照，避免阻塞归档复盘主链路。
+// 包含完整审批历史（带操作类型映射）和流程路由图（带出口条件）。
+// 若历史日志表结构不兼容，则退化为仅返回当前节点快照，避免阻塞主链路。
 func (a *Ecology9Adapter) FetchProcessFlow(ctx context.Context, processID string) (*ProcessFlowSnapshot, error) {
-	query := fmt.Sprintf(`
+	// ── 1. 获取审批历史（仅最后一次退回之后的有效路径） ──
+	historyQuery := fmt.Sprintf(`
 		SELECT
-			'' AS node_id,
-			COALESCE(n.%s, '') AS node_name,
-			COALESCE(h.%s, '') AS approver_name,
-			COALESCE(l.%s, '') AS operate_date,
-			COALESCE(l.%s, '') AS operate_time,
-			COALESCE(l.%s, '') AS log_type,
-			COALESCE(l.%s, '') AS remark
-		FROM %s l
-		LEFT JOIN %s n ON l.%s = n.%s
-		LEFT JOIN %s h ON l.%s = h.%s
-		WHERE l.%s = ?
-		ORDER BY l.%s ASC, l.%s ASC`,
+			WRL.%s AS log_id,
+			COALESCE(WNB.%s, '') AS node_name,
+			WRL.%s AS log_type,
+			COALESCE(HR.%s, '') AS operator_name,
+			COALESCE(WRL.%s, '') AS remark,
+			COALESCE(WRL.%s, '') AS operate_date,
+			COALESCE(WRL.%s, '') AS operate_time
+		FROM %s WRL
+		LEFT JOIN %s WNB ON WRL.%s = WNB.%s
+		LEFT JOIN %s HR ON WRL.%s = HR.%s
+		WHERE WRL.%s = ?
+		  AND WRL.%s > (
+		    SELECT COALESCE(MAX(%s), 0) FROM %s WHERE %s = WRL.%s AND %s = '3'
+		  )
+		ORDER BY WRL.%s ASC`,
+		a.col("logid"),
 		a.col("nodename"),
+		a.col("logtype"),
 		a.col("lastname"),
+		a.col("remark"),
 		a.col("operatedate"),
 		a.col("operatetime"),
-		a.col("logtype"),
-		a.col("remark"),
 		a.tableName("workflow_requestlog"),
-		a.tableName("workflow_nodebase"),
-		a.col("nodeid"), a.col("id"),
-		a.tableName("hrmresource"),
-		a.col("operator"), a.col("id"),
+		a.tableName("workflow_nodebase"), a.col("nodeid"), a.col("id"),
+		a.tableName("hrmresource"), a.col("operator"), a.col("id"),
 		a.col("requestid"),
-		a.col("operatedate"), a.col("operatetime"),
+		a.col("logid"),
+		a.col("logid"), a.tableName("workflow_requestlog"), a.col("requestid"), a.col("requestid"), a.col("logtype"),
+		a.col("logid"),
 	)
 
-	rows, err := a.db.WithContext(ctx).Raw(query, processID).Rows()
+	rows, err := a.db.WithContext(ctx).Raw(historyQuery, processID).Rows()
 	if err != nil {
 		return a.fetchCurrentNodeSnapshot(ctx, processID)
 	}
@@ -1131,34 +1137,42 @@ func (a *Ecology9Adapter) FetchProcessFlow(ctx context.Context, processID string
 	var nodes []ProcessFlowNode
 	var historyLines []string
 	for rows.Next() {
-		var nodeID, nodeName, approver, operateDate, operateTime, logType, remark string
-		if err := rows.Scan(&nodeID, &nodeName, &approver, &operateDate, &operateTime, &logType, &remark); err != nil {
+		var logID int
+		var nodeName, logType, operator, remark, operateDate, operateTime string
+		if err := rows.Scan(&logID, &nodeName, &logType, &operator, &remark, &operateDate, &operateTime); err != nil {
 			continue
 		}
-		action := "approve"
-		lower := strings.ToLower(logType + " " + remark)
-		if strings.Contains(lower, "退回") || strings.Contains(lower, "reject") || strings.Contains(lower, "return") {
-			action = "return"
-		}
-		actionTime := strings.TrimSpace(strings.TrimSpace(operateDate) + " " + strings.TrimSpace(operateTime))
+		action := mapLogType(logType)
+		actionTime := strings.TrimSpace(operateDate + " " + operateTime)
 		nodes = append(nodes, ProcessFlowNode{
 			NodeID:     nodeName,
 			NodeName:   nodeName,
-			Approver:   approver,
+			Approver:   operator,
 			Action:     action,
 			ActionTime: actionTime,
 			Opinion:    remark,
 		})
-		historyLines = append(historyLines, fmt.Sprintf("%s | %s | %s | %s", actionTime, nodeName, approver, remark))
+		historyLines = append(historyLines, fmt.Sprintf("%s | %s | %s | %s | %s", actionTime, nodeName, operator, action, remark))
 	}
 
 	if len(nodes) == 0 {
 		return a.fetchCurrentNodeSnapshot(ctx, processID)
 	}
 
-	nodeNames := make([]string, 0, len(nodes))
-	for _, node := range nodes {
-		nodeNames = append(nodeNames, node.NodeName)
+	// ── 2. 获取流程路由图（节点连接 + 出口条件） ──
+	graphText := a.fetchFlowRouteGraph(ctx, processID)
+
+	// 如果路由图为空，退化为简单节点路径
+	if graphText == "" {
+		nodeNames := make([]string, 0, len(nodes))
+		seen := make(map[string]bool)
+		for _, node := range nodes {
+			if !seen[node.NodeName] {
+				nodeNames = append(nodeNames, node.NodeName)
+				seen[node.NodeName] = true
+			}
+		}
+		graphText = strings.Join(nodeNames, " → ")
 	}
 
 	return &ProcessFlowSnapshot{
@@ -1166,8 +1180,134 @@ func (a *Ecology9Adapter) FetchProcessFlow(ctx context.Context, processID string
 		MissingNodes: []string{},
 		Nodes:        nodes,
 		HistoryText:  strings.Join(historyLines, "\n"),
-		GraphText:    strings.Join(nodeNames, " -> "),
+		GraphText:    graphText,
 	}, nil
+}
+
+// mapLogType 将泛微 E9 的 LOGTYPE 代码转换为可读的操作类型文本。
+func mapLogType(logType string) string {
+	switch strings.TrimSpace(logType) {
+	case "0":
+		return "批准"
+	case "1":
+		return "保存"
+	case "2":
+		return "提交"
+	case "3":
+		return "退回"
+	case "4":
+		return "重新打开"
+	case "5":
+		return "删除"
+	case "6":
+		return "激活"
+	case "7":
+		return "转发"
+	case "9":
+		return "批注"
+	case "e":
+		return "强制归档"
+	case "t":
+		return "抄送"
+	case "i":
+		return "干预"
+	default:
+		return "其他(" + logType + ")"
+	}
+}
+
+// fetchFlowRouteGraph 获取流程定义的路由图（节点连接关系和出口条件）。
+// 通过 requestid 关联 workflow_requestbase 获取 workflowid，再查询 workflow_nodelink。
+func (a *Ecology9Adapter) fetchFlowRouteGraph(ctx context.Context, processID string) string {
+	// 获取 workflowid
+	var workflowID int
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_requestbase")).
+		Select(a.col("workflowid")).
+		Where(a.col("requestid")+" = ?", processID).
+		Row().Scan(&workflowID)
+	if err != nil {
+		return ""
+	}
+
+	// 查询节点连接和出口条件
+	query := fmt.Sprintf(`
+		SELECT
+			COALESCE(WN1.%s, '') AS src_node_name,
+			COALESCE(WN2.%s, '') AS dest_node_name,
+			COALESCE(WN.%s, '') AS link_name,
+			COALESCE(RB.%s, '') AS condition_text
+		FROM %s WN
+		LEFT JOIN %s WN1 ON WN1.%s = WN.%s
+		LEFT JOIN %s WN2 ON WN2.%s = WN.%s
+		LEFT JOIN %s RB ON TO_CHAR(RB.%s) = WN.%s
+		WHERE WN.%s = ?
+		ORDER BY WN.%s, WN.%s`,
+		a.col("nodename"),
+		a.col("nodename"),
+		a.col("linkname"),
+		a.col("condit"),
+		a.tableName("workflow_nodelink"),
+		a.tableName("workflow_nodebase"), a.col("id"), a.col("nodeid"),
+		a.tableName("workflow_nodebase"), a.col("id"), a.col("destnodeid"),
+		a.tableName("rule_base"), a.col("id"), a.col("newrule"),
+		a.col("workflowid"),
+		a.col("nodeid"), a.col("destnodeid"),
+	)
+
+	// Oracle/DM 使用 TO_CHAR，MySQL 需要 CAST
+	if !a.isOracleCompatible() {
+		query = fmt.Sprintf(`
+			SELECT
+				COALESCE(WN1.%s, '') AS src_node_name,
+				COALESCE(WN2.%s, '') AS dest_node_name,
+				COALESCE(WN.%s, '') AS link_name,
+				COALESCE(RB.%s, '') AS condition_text
+			FROM %s WN
+			LEFT JOIN %s WN1 ON WN1.%s = WN.%s
+			LEFT JOIN %s WN2 ON WN2.%s = WN.%s
+			LEFT JOIN %s RB ON CAST(RB.%s AS CHAR) = WN.%s
+			WHERE WN.%s = ?
+			ORDER BY WN.%s, WN.%s`,
+			a.col("nodename"),
+			a.col("nodename"),
+			a.col("linkname"),
+			a.col("condit"),
+			a.tableName("workflow_nodelink"),
+			a.tableName("workflow_nodebase"), a.col("id"), a.col("nodeid"),
+			a.tableName("workflow_nodebase"), a.col("id"), a.col("destnodeid"),
+			a.tableName("rule_base"), a.col("id"), a.col("newrule"),
+			a.col("workflowid"),
+			a.col("nodeid"), a.col("destnodeid"),
+		)
+	}
+
+	rows, err := a.db.WithContext(ctx).Raw(query, workflowID).Rows()
+	if err != nil {
+		return ""
+	}
+	defer rows.Close()
+
+	var lines []string
+	for rows.Next() {
+		var srcNode, destNode, linkName, condText string
+		if err := rows.Scan(&srcNode, &destNode, &linkName, &condText); err != nil {
+			continue
+		}
+		line := srcNode + " → " + destNode
+		if linkName != "" {
+			line += " [" + linkName + "]"
+		}
+		if condText != "" {
+			line += " 条件: " + condText
+		}
+		lines = append(lines, line)
+	}
+
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (a *Ecology9Adapter) fetchCurrentNodeSnapshot(ctx context.Context, processID string) (*ProcessFlowSnapshot, error) {

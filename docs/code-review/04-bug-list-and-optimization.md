@@ -188,36 +188,19 @@ func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, er
 
 ---
 
-#### BUG-005: 审批流信息未接入
+#### BUG-005: 审批流信息未接入（已修复）
 
-**位置**: `go-service/internal/service/audit_prompt_builder.go`
+**位置**: `go-service/internal/pkg/oa/ecology9.go`、`go-service/internal/service/audit_prompt_builder.go`
 
 **问题描述**:
-提示词模板中的 `{{flow_history}}` 和 `{{flow_graph}}` 占位符使用固定文本 "（暂未提供）"。
+提示词模板中的 `{{flow_history}}` 和 `{{flow_graph}}` 占位符此前使用固定文本 "（暂未提供）"。
 
-**影响**: AI 无法获取审批流上下文，降低审核准确性。
+**修复内容**:
+- `FetchProcessFlow` 重构：审批历史仅取最后一次退回（logtype='3'）之后的有效路径，通过 `mapLogType` 将 E9 LOGTYPE 代码映射为可读操作类型（批准/提交/退回/转发等）
+- 新增 `fetchFlowRouteGraph`：查询 `workflow_nodelink` + `rule_base` 获取流程路由图（节点连接关系和出口条件），兼容 Oracle/DM（TO_CHAR）和 MySQL（CAST）
+- 提示词构建已注入真实 `flowHistory` 和 `flowGraph` 数据
 
-**修复方案**:
-
-```go
-// 1. 在 OA 适配器中添加审批流数据提取方法
-type OAAdapter interface {
-    // ... 现有方法
-    FetchFlowHistory(ctx context.Context, requestID string) (*FlowHistory, error)
-    FetchFlowGraph(ctx context.Context, workflowID string) (*FlowGraph, error)
-}
-
-// 2. 在 BuildReasoningPrompt 中使用真实数据
-func BuildReasoningPrompt(..., flowHistory *FlowHistory, flowGraph *FlowGraph) *ai.ChatRequest {
-    // ...
-    if flowHistory != nil {
-        userPrompt = strings.ReplaceAll(userPrompt, "{{flow_history}}", formatFlowHistory(flowHistory))
-    } else {
-        userPrompt = strings.ReplaceAll(userPrompt, "{{flow_history}}", "（暂未提供）")
-    }
-    // ...
-}
-```
+**状态**: ✅ 已修复
 
 ---
 
@@ -351,7 +334,7 @@ mainFields := mergeFieldConfig(rawMainFields, userDetail.FieldConfig.FieldOverri
 
 | 编号 | 优化项 | 优先级 | 预计工时 |
 |-----|-------|-------|---------|
-| FEAT-001 | 接入审批流数据 | P1 | 8h |
+| FEAT-001 | ~~接入审批流数据~~ | ~~P1~~ | ~~8h~~ ✅ 已完成 |
 | FEAT-002 | 添加操作审计日志 | P2 | 4h |
 
 ### 3.4 代码质量
@@ -375,7 +358,7 @@ mainFields := mergeFieldConfig(rawMainFields, userDetail.FieldConfig.FieldOverri
 
 3. **BUG-003**: 默认密码硬编码
 4. **BUG-004**: Session 缓存 TTL 优化
-5. **BUG-005**: 审批流信息接入
+5. ~~**BUG-005**: 审批流信息接入~~ ✅ 已修复
 
 ### 第三阶段（2 周内）
 

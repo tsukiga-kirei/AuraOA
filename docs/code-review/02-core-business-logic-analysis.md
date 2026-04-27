@@ -161,8 +161,8 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
     userPrompt = strings.ReplaceAll(userPrompt, "{{detail_tables}}", detailDataStr)
     userPrompt = strings.ReplaceAll(userPrompt, "{{rules}}", rules)
     userPrompt = strings.ReplaceAll(userPrompt, "{{current_node}}", currentNode)
-    userPrompt = strings.ReplaceAll(userPrompt, "{{flow_history}}", "（暂未提供）")  // ⚠️ 待实现
-    userPrompt = strings.ReplaceAll(userPrompt, "{{flow_graph}}", "（暂未提供）")   // ⚠️ 待实现
+    userPrompt = strings.ReplaceAll(userPrompt, "{{flow_history}}", flowHistory)
+    userPrompt = strings.ReplaceAll(userPrompt, "{{flow_graph}}", flowGraph)
 
     return &ai.ChatRequest{
         SystemPrompt: aiConfig.SystemReasoningPrompt,
@@ -172,28 +172,25 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
 }
 ```
 
-**⚠️ 待完善**: `{{flow_history}}` 和 `{{flow_graph}}` 占位符尚未实现，当前使用固定文本。
+**✅ 已实现**: `{{flow_history}}` 和 `{{flow_graph}}` 占位符已接入真实审批流数据。
 
 ---
 
 ## 4. 发现的问题
 
-### 🟡 问题 1: 审批流信息未接入
+### ✅ 问题 1: 审批流信息未接入（已修复）
 
 **严重程度**: 中
 
 **问题描述**:
-提示词模板中定义了 `{{flow_history}}` 和 `{{flow_graph}}` 占位符，但实际代码中使用固定文本 "（暂未提供）"。
+提示词模板中定义了 `{{flow_history}}` 和 `{{flow_graph}}` 占位符，此前使用固定文本 "（暂未提供）"。
 
-**影响**:
-- AI 无法获取审批流上下文
-- 无法分析审批节点的完整性和合理性
-- 降低审核准确性
+**修复内容**:
+- `FetchProcessFlow` 已重构：审批历史仅取最后一次退回之后的有效路径，并通过 `mapLogType` 将 E9 LOGTYPE 代码映射为可读操作类型
+- 新增 `fetchFlowRouteGraph`：通过 `workflow_nodelink` + `rule_base` 获取流程路由图（节点连接 + 出口条件），兼容 Oracle/DM 和 MySQL
+- 提示词构建已注入真实 `flowHistory` 和 `flowGraph` 数据
 
-**修复建议**:
-1. 在 OA 适配器中实现审批流数据提取
-2. 格式化审批流历史为结构化文本
-3. 替换占位符时注入真实数据
+**状态**: ✅ 已修复
 
 ---
 
@@ -332,7 +329,7 @@ for _, r := range member.Roles {
 
 ### ⚠️ 待改进
 
-1. 审批流信息尚未接入
+1. ~~审批流信息尚未接入~~ ✅ 已修复
 2. 部分方法复杂度较高，可拆分
 3. 缺少单元测试覆盖
 
@@ -342,7 +339,7 @@ for _, r := range member.Roles {
 
 | 优先级 | 优化项 | 说明 |
 |-------|-------|------|
-| P1 | 接入审批流数据 | 实现 `{{flow_history}}` 和 `{{flow_graph}}` |
+| P1 | ~~接入审批流数据~~ | ~~实现 `{{flow_history}}` 和 `{{flow_graph}}`~~ ✅ 已完成 |
 | P2 | 重构字段合并逻辑 | 抽取为独立函数，提高可读性 |
 | P2 | 添加单元测试 | 覆盖规则合并、配置合并等核心逻辑 |
 | P3 | 性能优化 | 考虑缓存热点配置数据 |

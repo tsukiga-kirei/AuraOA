@@ -437,9 +437,19 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		return err
 	}
 
-	currentNode := "当前节点"
+	// 拉取审批流快照（历史 + 路由图），失败时不阻塞主流程
+	flowSnapshot := s.fetchFlowSnapshot(c, tenant, req.ProcessID)
 
-	reasoningReq := BuildReasoningPrompt(&aiConfig, req.ProcessType, processData, mergedRulesText, currentNode, fieldSet)
+	// 从审批流快照中提取当前节点名称
+	currentNode := "当前节点"
+	if flowSnapshot != nil && len(flowSnapshot.Nodes) > 0 {
+		lastNode := flowSnapshot.Nodes[len(flowSnapshot.Nodes)-1]
+		if lastNode.NodeName != "" {
+			currentNode = lastNode.NodeName
+		}
+	}
+
+	reasoningReq := BuildReasoningPrompt(&aiConfig, req.ProcessType, processData, mergedRulesText, currentNode, fieldSet, flowSnapshot)
 	reasoningReq.Temperature = float64(tenant.Temperature)
 	reasoningReq.MaxTokens = tenant.MaxTokensPerRequest
 	reasoningReq.ModelConfig = modelCfg
@@ -1695,6 +1705,29 @@ func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, 
 		return nil, newServiceError(errcode.ErrOAQueryFailed, "拉取 OA 流程数据失败: "+err.Error())
 	}
 	return data, nil
+}
+
+// fetchFlowSnapshot 拉取审批流快照，失败时返回 nil 不阻塞主流程。
+func (s *AuditExecuteService) fetchFlowSnapshot(c *gin.Context, tenant *model.Tenant, processID string) *oa.ProcessFlowSnapshot {
+	if tenant.OADBConnectionID == nil {
+		return nil
+	}
+	conn, err := s.oaConnRepo.FindByID(*tenant.OADBConnectionID)
+	if err != nil {
+		return nil
+	}
+	if err := s.decryptOAConn(conn); err != nil {
+		return nil
+	}
+	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
+	if err != nil {
+		return nil
+	}
+	snapshot, err := adapter.FetchProcessFlow(c.Request.Context(), processID)
+	if err != nil {
+		return nil
+	}
+	return snapshot
 }
 
 func (s *AuditExecuteService) extractIDs(c *gin.Context) (uuid.UUID, uuid.UUID, error) {
