@@ -178,6 +178,7 @@
 | [02-core-business-logic-analysis.md](02-core-business-logic-analysis.md) | 核心业务逻辑分析 |
 | [03-organization-and-config-analysis.md](03-organization-and-config-analysis.md) | 人员组织与配置分析 |
 | [04-bug-list-and-optimization.md](04-bug-list-and-optimization.md) | Bug 清单与优化建议 |
+| [../system-alerts.md](../system-alerts.md) | 系统告警模块文档 |
 
 ---
 
