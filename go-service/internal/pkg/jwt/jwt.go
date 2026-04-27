@@ -31,14 +31,36 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
-// GenerateAccessToken 签发访问令牌。
-// TTL 从配置项 jwt.access_token_ttl 读取，默认 2 小时。
-func GenerateAccessToken(claims *JWTClaims) (string, error) {
-	secret := viper.GetString("jwt.secret")
+// GetAccessTokenTTL 返回 access_token 的有效期配置值。
+// 从 config.yaml 的 jwt.access_token_ttl 读取，默认 2 小时。
+func GetAccessTokenTTL() time.Duration {
 	ttl := viper.GetDuration("jwt.access_token_ttl")
 	if ttl == 0 {
 		ttl = 2 * time.Hour
 	}
+	return ttl
+}
+
+// GetRefreshTokenTTL 返回 refresh_token 的有效期配置值。
+// 从 config.yaml 的 jwt.refresh_token_ttl 读取，默认 7 天。
+func GetRefreshTokenTTL() time.Duration {
+	ttl := viper.GetDuration("jwt.refresh_token_ttl")
+	if ttl == 0 {
+		ttl = 7 * 24 * time.Hour
+	}
+	return ttl
+}
+
+// GenerateAccessToken 签发访问令牌。
+// TTL 从配置项 jwt.access_token_ttl 读取，默认 2 小时。
+// 可通过 GenerateAccessTokenWithTTL 传入自定义 TTL（优先使用数据库配置时）。
+func GenerateAccessToken(claims *JWTClaims) (string, error) {
+	return GenerateAccessTokenWithTTL(claims, GetAccessTokenTTL())
+}
+
+// GenerateAccessTokenWithTTL 使用指定 TTL 签发访问令牌。
+func GenerateAccessTokenWithTTL(claims *JWTClaims, ttl time.Duration) (string, error) {
+	secret := viper.GetString("jwt.secret")
 
 	jti := uuid.New().String()
 	claims.JTI = jti
@@ -59,11 +81,12 @@ func GenerateAccessToken(claims *JWTClaims) (string, error) {
 // TTL 从配置项 jwt.refresh_token_ttl 读取，默认 7 天。
 // 若传入非空 jti 则复用，否则自动生成新 UUID。
 func GenerateRefreshToken(userID string, jti string) (string, string, error) {
+	return GenerateRefreshTokenWithTTL(userID, jti, GetRefreshTokenTTL())
+}
+
+// GenerateRefreshTokenWithTTL 使用指定 TTL 签发刷新令牌。
+func GenerateRefreshTokenWithTTL(userID string, jti string, ttl time.Duration) (string, string, error) {
 	secret := viper.GetString("jwt.secret")
-	ttl := viper.GetDuration("jwt.refresh_token_ttl")
-	if ttl == 0 {
-		ttl = 7 * 24 * time.Hour
-	}
 
 	if jti == "" {
 		jti = uuid.New().String()

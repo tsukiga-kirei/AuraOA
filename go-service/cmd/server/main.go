@@ -137,7 +137,7 @@ func main() {
 	archiveSnapshotRepo := repository.NewArchiveProcessSnapshotRepo(db)
 
 	// 第六步：初始化各业务服务层（Service）
-	authService := service.NewAuthService(userRepo, rdb, db)
+	authService := service.NewAuthService(userRepo, rdb, db, systemConfigRepo)
 	orgService := service.NewOrgService(orgRepo, userRepo, systemConfigRepo, db)
 	tenantService := service.NewTenantService(tenantRepo, systemConfigRepo, userRepo, db, invalidationManager)
 	systemConfigService := service.NewSystemConfigService(systemConfigRepo)

@@ -25,18 +25,56 @@ import (
 
 // AuthService 负责身份验证、令牌管理、角色切换和菜单权限检索。
 type AuthService struct {
-	userRepo *repository.UserRepo
-	rdb      *redis.Client
-	db       *gorm.DB
+	userRepo         *repository.UserRepo
+	rdb              *redis.Client
+	db               *gorm.DB
+	systemConfigRepo *repository.SystemConfigRepo
 }
 
-// NewAuthService 构造 AuthService，注入用户仓储、Redis 客户端和数据库连接。
-func NewAuthService(userRepo *repository.UserRepo, rdb *redis.Client, db *gorm.DB) *AuthService {
+// NewAuthService 构造 AuthService，注入用户仓储、Redis 客户端、数据库连接和系统配置仓储。
+func NewAuthService(userRepo *repository.UserRepo, rdb *redis.Client, db *gorm.DB, systemConfigRepo *repository.SystemConfigRepo) *AuthService {
 	return &AuthService{
-		userRepo: userRepo,
-		rdb:      rdb,
-		db:       db,
+		userRepo:         userRepo,
+		rdb:              rdb,
+		db:               db,
+		systemConfigRepo: systemConfigRepo,
 	}
+}
+
+// getSessionCacheTTL 返回 session 缓存的 TTL，与 refresh_token 有效期一致。
+// 优先从数据库 system_configs 读取 auth.refresh_token_ttl_days，降级使用 config.yaml。
+func (s *AuthService) getSessionCacheTTL() time.Duration {
+	if val, err := s.systemConfigRepo.FindByKey("auth.refresh_token_ttl_days"); err == nil && val != "" {
+		var days int
+		if _, parseErr := fmt.Sscanf(val, "%d", &days); parseErr == nil && days > 0 {
+			return time.Duration(days) * 24 * time.Hour
+		}
+	}
+	return jwtpkg.GetRefreshTokenTTL()
+}
+
+// getAccessTokenTTL 返回 access_token 有效期。
+// 优先从数据库 system_configs 读取 auth.access_token_ttl_hours，降级使用 config.yaml。
+func (s *AuthService) getAccessTokenTTL() time.Duration {
+	if val, err := s.systemConfigRepo.FindByKey("auth.access_token_ttl_hours"); err == nil && val != "" {
+		var hours int
+		if _, parseErr := fmt.Sscanf(val, "%d", &hours); parseErr == nil && hours > 0 {
+			return time.Duration(hours) * time.Hour
+		}
+	}
+	return jwtpkg.GetAccessTokenTTL()
+}
+
+// getRefreshTokenTTL 返回 refresh_token 有效期。
+// 优先从数据库 system_configs 读取 auth.refresh_token_ttl_days，降级使用 config.yaml。
+func (s *AuthService) getRefreshTokenTTL() time.Duration {
+	if val, err := s.systemConfigRepo.FindByKey("auth.refresh_token_ttl_days"); err == nil && val != "" {
+		var days int
+		if _, parseErr := fmt.Sscanf(val, "%d", &days); parseErr == nil && days > 0 {
+			return time.Duration(days) * 24 * time.Hour
+		}
+	}
+	return jwtpkg.GetRefreshTokenTTL()
 }
 
 // ServiceError 业务层错误，携带错误码和用户可读消息，供 handler 层转换为 HTTP 响应。
@@ -218,7 +256,7 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 	// 权限列表（业务用户由 GetMenu 填充，管理员角色为空）
 	permissions := []string{}
 
-	// 10. 生成 access_token
+	// 10. 生成 access_token（优先使用数据库配置的 TTL）
 	claims := &jwtpkg.JWTClaims{
 		Sub:         user.ID.String(),
 		Username:    user.Username,
@@ -227,13 +265,13 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 		Permissions: permissions,
 		AllRoleIDs:  allRoleIDs,
 	}
-	accessToken, err := jwtpkg.GenerateAccessToken(claims)
+	accessToken, err := jwtpkg.GenerateAccessTokenWithTTL(claims, s.getAccessTokenTTL())
 	if err != nil {
 		return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 	}
 
-	// 11. 生成 refresh_token
-	refreshToken, refreshJTI, err := jwtpkg.GenerateRefreshToken(user.ID.String(), "")
+	// 11. 生成 refresh_token（优先使用数据库配置的 TTL）
+	refreshToken, refreshJTI, err := jwtpkg.GenerateRefreshTokenWithTTL(user.ID.String(), "", s.getRefreshTokenTTL())
 	if err != nil {
 		return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 	}
@@ -266,7 +304,7 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 	}
 	sessionJSON, _ := json.Marshal(sessionData)
 	sessionKey := fmt.Sprintf("session:%s", user.ID.String())
-	s.rdb.Set(context.Background(), sessionKey, string(sessionJSON), 2*time.Hour)
+	s.rdb.Set(context.Background(), sessionKey, string(sessionJSON), s.getSessionCacheTTL())
 
 	// 14. 批量查询所有角色分配对应的租户名称和状态
 	tenantNameCache := make(map[string]string)
@@ -424,7 +462,7 @@ func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, er
 		var sessionData map[string]interface{}
 		if jsonErr := json.Unmarshal([]byte(sessionJSON), &sessionData); jsonErr == nil {
 			jwtClaims := rebuildClaimsFromSession(sessionData)
-			accessToken, err = jwtpkg.GenerateAccessToken(jwtClaims)
+			accessToken, err = jwtpkg.GenerateAccessTokenWithTTL(jwtClaims, s.getAccessTokenTTL())
 			if err != nil {
 				return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 			}
@@ -459,10 +497,22 @@ func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, er
 			Permissions: []string{},
 			AllRoleIDs:  allRoleIDs,
 		}
-		accessToken, err = jwtpkg.GenerateAccessToken(jwtClaims)
+		accessToken, err = jwtpkg.GenerateAccessTokenWithTTL(jwtClaims, s.getAccessTokenTTL())
 		if err != nil {
 			return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 		}
+
+		// 刷新成功后重建 session 缓存，避免后续刷新再次查库
+		sessionData := map[string]interface{}{
+			"user_id":      user.ID.String(),
+			"username":     user.Username,
+			"display_name": user.DisplayName,
+			"active_role":  activeRoleClaim,
+			"all_role_ids": allRoleIDs,
+			"permissions":  []string{},
+		}
+		rebuildJSON, _ := json.Marshal(sessionData)
+		s.rdb.Set(ctx, sessionKey, string(rebuildJSON), s.getSessionCacheTTL())
 	}
 
 	return &dto.RefreshResponse{AccessToken: accessToken}, nil
@@ -522,7 +572,7 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 
 	permissions := []string{}
 
-	// 4. 使用新的 activeRole 生成 access_token
+	// 4. 使用新的 activeRole 生成 access_token（优先使用数据库配置的 TTL）
 	claims := &jwtpkg.JWTClaims{
 		Sub:         user.ID.String(),
 		Username:    user.Username,
@@ -531,7 +581,7 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 		Permissions: permissions,
 		AllRoleIDs:  allRoleIDs,
 	}
-	accessToken, err := jwtpkg.GenerateAccessToken(claims)
+	accessToken, err := jwtpkg.GenerateAccessTokenWithTTL(claims, s.getAccessTokenTTL())
 	if err != nil {
 		return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 	}
@@ -553,7 +603,7 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 	}
 	sessionJSON, _ := json.Marshal(sessionData)
 	sessionKey := fmt.Sprintf("session:%s", user.ID.String())
-	s.rdb.Set(ctx, sessionKey, string(sessionJSON), 2*time.Hour)
+	s.rdb.Set(ctx, sessionKey, string(sessionJSON), s.getSessionCacheTTL())
 
 	// 7. 获取新角色对应的菜单
 	menuResp, _ := s.GetMenu(activeRoleClaim, user.ID.String(), func() string {

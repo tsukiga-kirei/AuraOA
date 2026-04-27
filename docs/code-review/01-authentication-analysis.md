@@ -14,8 +14,8 @@
 
 | Token 类型 | 默认有效期 | 配置项 | 用途 |
 |-----------|-----------|--------|------|
-| Access Token | 2 小时 | `jwt.access_token_ttl` | API 请求认证 |
-| Refresh Token | 7 天 (168h) | `jwt.refresh_token_ttl` | 静默刷新 Access Token |
+| Access Token | 2 小时 | `jwt.access_token_ttl` / `auth.access_token_ttl_hours` | API 请求认证 |
+| Refresh Token | 7 天 (168h) | `jwt.refresh_token_ttl` / `auth.refresh_token_ttl_days` | 静默刷新 Access Token |
 
 **配置文件位置**: `go-service/config.yaml`
 
@@ -31,110 +31,123 @@ jwt:
 **文件**: `go-service/internal/pkg/jwt/jwt.go`
 
 ```go
-// Access Token 生成
-func GenerateAccessToken(claims *JWTClaims) (string, error) {
-    ttl := viper.GetDuration("jwt.access_token_ttl")
-    if ttl == 0 {
-        ttl = 2 * time.Hour  // 默认 2 小时
-    }
-    // ...
-}
+// GenerateAccessTokenWithTTL 使用指定 TTL 签发访问令牌。
+func GenerateAccessTokenWithTTL(claims *JWTClaims, ttl time.Duration) (string, error) { ... }
 
-// Refresh Token 生成
-func GenerateRefreshToken(userID string, jti string) (string, string, error) {
-    ttl := viper.GetDuration("jwt.refresh_token_ttl")
-    if ttl == 0 {
-        ttl = 7 * 24 * time.Hour  // 默认 7 天
-    }
-    // ...
-}
+// GenerateRefreshTokenWithTTL 使用指定 TTL 签发刷新令牌。
+func GenerateRefreshTokenWithTTL(userID string, jti string, ttl time.Duration) (string, string, error) { ... }
 ```
 
 ---
 
-## 3. 发现的问题
+## 3. 已修复的问题
 
-### 🔴 问题 1: Token TTL 与系统配置不同步
+### ✅ 问题 1: Token TTL 与系统配置不同步（已修复）
 
 **严重程度**: 高
 
-**问题描述**:
+**原问题描述**:
 - 数据库 `system_configs` 表中存储了 `auth.access_token_ttl_hours` 和 `auth.refresh_token_ttl_days` 配置
 - 但 JWT 生成代码直接从 `config.yaml` 读取 `jwt.access_token_ttl` 和 `jwt.refresh_token_ttl`
-- **两套配置互不关联**，修改数据库配置不会影响实际 Token 有效期
+- 两套配置互不关联，修改数据库配置不会影响实际 Token 有效期
 
-**数据库配置** (`000004_system_configs.up.sql`):
-```sql
-('auth.access_token_ttl_hours', '2', 'Access Token 有效期（小时）'),
-('auth.refresh_token_ttl_days', '7', 'Refresh Token 有效期（天）'),
-```
+**修复方案**:
 
-**实际使用的配置** (`jwt.go`):
-```go
-ttl := viper.GetDuration("jwt.access_token_ttl")  // 从 config.yaml 读取
-```
+1. **JWT 包新增 TTL 辅助函数** (`go-service/internal/pkg/jwt/jwt.go`):
+   - `GetAccessTokenTTL()` / `GetRefreshTokenTTL()` — 从 config.yaml 读取 TTL
+   - `GenerateAccessTokenWithTTL()` / `GenerateRefreshTokenWithTTL()` — 支持外部传入 TTL
 
-**影响**: 管理员在系统设置页面修改 Token 有效期无效，用户可能困惑为何设置不生效。
+2. **AuthService 注入 SystemConfigRepo** (`go-service/internal/service/auth_service.go`):
+   - `getAccessTokenTTL()` — 优先从数据库读取 `auth.access_token_ttl_hours`，降级使用 config.yaml
+   - `getRefreshTokenTTL()` — 优先从数据库读取 `auth.refresh_token_ttl_days`，降级使用 config.yaml
+   - Login / Refresh / SwitchRole 均使用数据库优先的 TTL
 
-**修复建议**:
-1. 在 JWT 生成时优先读取数据库配置，降级使用 config.yaml
-2. 或移除数据库中的冗余配置项，统一使用 config.yaml
+3. **main.go 更新** (`go-service/cmd/server/main.go`):
+   - `NewAuthService` 新增 `systemConfigRepo` 参数注入
+
+**修改文件**:
+- `go-service/internal/pkg/jwt/jwt.go`
+- `go-service/internal/service/auth_service.go`
+- `go-service/cmd/server/main.go`
 
 ---
 
-### 🔴 问题 2: 前端 Token 过期后未正确清理本地状态
+### ✅ 问题 2: 前端 Token 过期后未正确清理本地状态（已修复）
 
 **严重程度**: 高
 
-**问题描述**:
-用户反馈 "到期之后也没有自动退出，左下角还显示着用户，本地缓存也有 auth_state"
+**原问题描述**:
+用户反馈 "到期之后也没有自动退出，左下角还显示着用户，本地缓存也有 auth_state"。
+原因是只有路由切换或 API 请求时才会触发校验，用户停留在同一页面不操作时 Token 过期不会被检测。
 
-**根本原因分析**:
+**修复方案**:
 
-1. **前端路由守卫的校验时机问题** (`frontend/middleware/auth.ts`):
-```typescript
-// 第三步：本地有 JWT 时向后端校验
-if (isAuthenticated.value) {
-    let ok = await validateAccessToken()
-    if (!ok) {
-        const refreshed = await tryRestoreAsync()
-        if (refreshed) {
-            ok = await validateAccessToken()
-        }
-        if (!ok) {
-            clearLocalSession()  // ✅ 这里会清理
-        }
-    }
-}
-```
+新增 `frontend/composables/useTokenGuard.ts` — 主动 Token 过期检测守卫：
 
-2. **问题**: 只有在**路由切换时**才会触发校验，如果用户停留在同一页面不切换路由：
-   - Token 过期后，页面不会自动刷新
-   - 左下角用户信息来自 `currentUser` 响应式状态，不会自动清除
-   - `auth_state` 在 localStorage 中持久化，不会自动清除
+1. **定时检查**（每 5 分钟）：解析 access_token 的 exp 字段，剩余有效期 < 5 分钟时主动调用 refresh
+2. **visibilitychange 事件**：页面从后台切回前台时立即检查 Token 状态
+3. **Token 丢失检测**：access_token 丢失但 refresh_token 有效时尝试恢复，否则登出
+4. **刷新失败处理**：refresh 也失败时调用 `logout()` 清除所有本地状态并跳转登录页
 
-3. **authFetch 的 401 处理** (`frontend/composables/useAuth.ts`):
-```typescript
-if (statusCode === 401) {
-    // ...
-    const refreshOk = await doRefreshToken()
-    if (!refreshOk) {
-        await logout()  // ✅ 刷新失败会登出
-        throw new Error('登录已过期，请重新登录')
-    }
-}
-```
+在 `frontend/app.vue` 中通过 `onMounted` 启动守卫，`onUnmounted` 停止。
 
-**但问题是**: 如果用户不发起任何 API 请求，就不会触发 401 处理。
-
-**修复建议**:
-1. 添加定时器定期检查 Token 有效期（如每 5 分钟）
-2. 在 Token 即将过期时（如剩余 5 分钟）主动刷新
-3. 使用 `visibilitychange` 事件，在页面重新可见时检查 Token
+**修改文件**:
+- `frontend/composables/useTokenGuard.ts`（新增）
+- `frontend/app.vue`
 
 ---
 
-### 🟡 问题 3: Refresh Token 提前失效的可能原因
+### ✅ 问题 3: 前端错误消息国际化（已修复）
+
+**严重程度**: 中
+
+**原问题描述**:
+`useAuth.ts` 中的错误消息（如 "网络连接失败，请检查网络"、"登录已过期，请重新登录"）为硬编码中文，
+不支持英文环境。
+
+**修复方案**:
+
+1. **新增 i18n 键** (`frontend/locales/zh-CN.ts` & `frontend/locales/en-US.ts`):
+   - `auth.sessionExpired` / `auth.networkError` / `auth.requestFailed` 等通用提示
+   - `auth.error.*` 系列错误码对应的翻译
+
+2. **useAuth.ts 国际化改造**:
+   - 新增 `getErrorMessageByCode(code)` — 优先从 i18n messages 获取翻译，降级使用硬编码映射
+   - 新增 `getI18nText(key)` — 从 localStorage 中的 locale 判断语言并返回翻译文案
+   - `authFetch` 中所有错误消息改用 i18n 函数
+
+**修改文件**:
+- `frontend/composables/useAuth.ts`
+- `frontend/locales/zh-CN.ts`
+- `frontend/locales/en-US.ts`
+
+---
+
+### ✅ 问题 4: Session 缓存与 Token 有效期不一致（已修复）
+
+**严重程度**: 中
+
+**原问题描述**:
+- Session 缓存 TTL: 2 小时
+- Refresh Token TTL: 7 天
+- Session 过期后刷新 Token 需要查库重建 claims，增加数据库压力
+
+**修复方案**:
+
+1. **Session 缓存 TTL 延长至与 Refresh Token 一致**:
+   - `getSessionCacheTTL()` 方法优先从数据库读取 `auth.refresh_token_ttl_days`，降级使用 config.yaml 的 refresh_token_ttl
+   - Login 和 SwitchRole 中的 `s.rdb.Set(...)` 改用 `s.getSessionCacheTTL()`
+
+2. **Refresh 降级查库后重建 Session 缓存**:
+   - 当 session 缓存失效需要查库重建 claims 时，刷新成功后将新的 session 数据写回 Redis
+   - 避免后续刷新再次触发数据库查询
+
+**修改文件**:
+- `go-service/internal/service/auth_service.go`
+
+---
+
+### 🟡 问题 5: Refresh Token 提前失效的可能原因（排查建议）
 
 **严重程度**: 中
 
@@ -142,69 +155,14 @@ if (statusCode === 401) {
 
 **可能原因分析**:
 
-1. **Redis 黑名单机制**:
-```go
-// Logout 时将 refresh_token JTI 加入黑名单
-if req.RefreshJTI != "" {
-    blacklistKey := fmt.Sprintf("blacklist:%s", req.RefreshJTI)
-    s.rdb.Set(ctx, blacklistKey, "1", 7*24*time.Hour)
-}
-```
-如果用户在其他设备登出，会导致 Refresh Token 被吊销。
-
-2. **Session 缓存过期**:
-```go
-// 登录时缓存 session，TTL 2h
-sessionKey := fmt.Sprintf("session:%s", user.ID.String())
-s.rdb.Set(context.Background(), sessionKey, string(sessionJSON), 2*time.Hour)
-```
-Session 缓存 2 小时后过期，但 Refresh 逻辑会降级查库重建，这不是问题。
-
-3. **前端本地判断逻辑**:
-```typescript
-const isRefreshTokenValid = (): boolean => {
-    const rt = refreshToken.value || localStorage.getItem('refresh_token')
-    if (!rt) return false
-    const exp = parseJwtExp(rt)
-    if (!exp) return false
-    return exp > Date.now() / 1000  // 本地时间判断
-}
-```
-**潜在问题**: 如果用户本地时间不准确（快于服务器时间），会导致提前判定过期。
-
-4. **浏览器清理 localStorage**:
-   - 隐私模式下 localStorage 会在关闭浏览器时清除
-   - 某些浏览器设置可能定期清理存储
+1. **Redis 黑名单机制**: 用户在其他设备登出会导致 Refresh Token 被吊销
+2. **前端本地时间不准确**: `isRefreshTokenValid()` 使用 `Date.now() / 1000` 与 token exp 比较
+3. **浏览器清理 localStorage**: 隐私模式或浏览器设置可能清除存储
 
 **排查建议**:
 1. 检查用户是否在多设备登录后在其他设备登出
 2. 检查用户本地时间是否准确
 3. 检查是否使用隐私模式浏览
-
----
-
-### 🟡 问题 4: Session 缓存与 Token 有效期不一致
-
-**严重程度**: 中
-
-**问题描述**:
-- Session 缓存 TTL: 2 小时
-- Access Token TTL: 2 小时
-- Refresh Token TTL: 7 天
-
-当 Session 缓存过期但 Refresh Token 仍有效时，刷新 Token 需要查库重建 claims：
-
-```go
-// Refresh 方法中的降级逻辑
-if accessToken == "" {
-    user, findErr := s.userRepo.FindByID(userID)
-    // ... 重新查询用户和角色
-}
-```
-
-**影响**: 增加数据库查询压力，但功能正常。
-
-**优化建议**: 将 Session 缓存 TTL 延长至与 Refresh Token 一致（7 天），或在刷新成功后更新 Session 缓存。
 
 ---
 
@@ -216,9 +174,9 @@ if accessToken == "" {
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  用户输入凭证 ──► 后端验证 ──► 生成 Access + Refresh Token      │
-│                      │                                          │
+│                      │         (TTL 优先从 DB 读取)             │
 │                      ▼                                          │
-│              写入 Redis Session (TTL 2h)                        │
+│              写入 Redis Session (TTL = Refresh Token TTL)       │
 │                      │                                          │
 │                      ▼                                          │
 │              返回 Token 给前端                                   │
@@ -229,17 +187,22 @@ if accessToken == "" {
 │              - refresh_token                                    │
 │              - auth_state (用户信息)                            │
 │                                                                 │
+│              启动 TokenGuard 定时检查                            │
+│                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Token 刷新流程                              │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  API 请求 401 ──► 检查 Refresh Token 有效性                     │
+│  触发条件：                                                      │
+│  - API 请求 401                                                 │
+│  - TokenGuard 定时检查（每 5 分钟）                              │
+│  - 页面从后台切回前台（visibilitychange）                        │
 │                      │                                          │
 │         ┌────────────┴────────────┐                             │
 │         ▼                         ▼                             │
-│     有效                       无效/过期                         │
+│  Refresh Token 有效          无效/过期                           │
 │         │                         │                             │
 │         ▼                         ▼                             │
 │  调用 /api/auth/refresh      清除本地状态                        │
@@ -249,9 +212,10 @@ if accessToken == "" {
 │  - 解析 JWT                                                     │
 │  - 检查黑名单                                                   │
 │  - 从 Session 或 DB 重建 claims                                 │
+│  - 降级查库后重建 Session 缓存                                   │
 │         │                                                       │
 │         ▼                                                       │
-│  返回新 Access Token                                            │
+│  返回新 Access Token (TTL 从 DB 读取)                           │
 │         │                                                       │
 │         ▼                                                       │
 │  前端更新 localStorage                                          │
@@ -268,23 +232,25 @@ if accessToken == "" {
 
 1. **完善的黑名单机制**: 登出时将 Token JTI 加入 Redis 黑名单，防止已登出 Token 被滥用
 2. **并发刷新保护**: 前端使用 `isRefreshing` 标志和订阅队列，防止多个请求同时触发刷新
-3. **降级策略**: Session 缓存失效时能降级查库重建 claims
+3. **降级策略**: Session 缓存失效时能降级查库重建 claims，并回写缓存
 4. **多角色支持**: 支持用户在多租户间切换角色，切换时生成新 Token
+5. **主动过期检测**: TokenGuard 定时 + visibilitychange 双重机制确保 Token 过期被及时发现
+6. **配置统一**: Token TTL 优先从数据库读取，管理员修改系统设置后立即生效
+7. **国际化支持**: 错误消息支持 zh-CN / en-US 双语，根据用户语言偏好自动切换
 
 ### ⚠️ 待改进
 
-1. Token TTL 配置应统一（数据库 vs config.yaml）
-2. 需要添加主动 Token 过期检测机制
-3. Session 缓存 TTL 应与业务需求对齐
-4. 建议添加 Token 即将过期的预警刷新
+1. 建议为 Token 即将过期添加 UI 提示（如 toast 通知用户正在自动续期）
+2. 可考虑在 Refresh Token 即将过期时（如剩余 1 天）提示用户重新登录以获取新的 Refresh Token
 
 ---
 
-## 6. 修复优先级
+## 6. 修复状态
 
-| 优先级 | 问题 | 建议修复时间 |
-|-------|------|-------------|
-| P0 | Token TTL 配置不同步 | 立即 |
-| P0 | 前端 Token 过期未自动清理 | 立即 |
-| P1 | Session 缓存 TTL 优化 | 1 周内 |
-| P2 | 添加 Token 预警刷新 | 2 周内 |
+| 优先级 | 问题 | 状态 |
+|-------|------|------|
+| P0 | Token TTL 配置不同步 | ✅ 已修复 |
+| P0 | 前端 Token 过期未自动清理 | ✅ 已修复 |
+| P1 | Session 缓存 TTL 优化 | ✅ 已修复 |
+| P1 | 前端错误消息国际化 | ✅ 已修复 |
+| P2 | Refresh Token 提前失效排查 | 📋 已提供排查建议 |
