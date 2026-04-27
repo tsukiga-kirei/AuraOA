@@ -1856,9 +1856,8 @@ func (s *AuditExecuteService) resolveFieldSet(
 			mainSet[strings.ToLower(f.FieldKey)] = true
 		}
 	}
-	if len(mainSet) > 0 {
-		fieldSet["main"] = mainSet
-	}
+	// 始终写入：空 map 表示主表无选中字段，后续过滤时不输出主表数据
+	fieldSet["main"] = mainSet
 
 	for _, dt := range detailTables {
 		dtSet := make(map[string]bool)
@@ -1867,9 +1866,8 @@ func (s *AuditExecuteService) resolveFieldSet(
 				dtSet[strings.ToLower(f.FieldKey)] = true
 			}
 		}
-		if len(dtSet) > 0 {
-			fieldSet[dt.TableName] = dtSet
-		}
+		// 始终写入：空 map 表示该表无选中字段，后续过滤时跳过该表数据
+		fieldSet[dt.TableName] = dtSet
 	}
 
 	return fieldSet

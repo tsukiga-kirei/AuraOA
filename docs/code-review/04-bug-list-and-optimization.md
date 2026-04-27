@@ -253,6 +253,33 @@ func BuildReasoningPrompt(..., flowHistory *FlowHistory, flowGraph *FlowGraph) *
 
 ---
 
+#### BUG-005.7: resolveFieldSet 未选中字段的明细表泄漏全部字段
+
+**位置**: `go-service/internal/service/audit_review_service.go` — `resolveFieldSet`
+
+**问题描述**:
+当某张明细表没有任何字段被选中时（`dtSet` 为空 map），原逻辑跳过写入 `fieldSet[dt.TableName]`。下游 `formatGroupedDetailData` 在 `fieldSet` 中找不到该表名时，`allowedKeys` 为 `nil`，`filterRowFields` 对 `nil` 不做过滤，导致该表的所有字段全部输出给 AI。
+
+**影响**: 租户管理员明确未选中任何字段的明细表仍会被完整发送到 AI 提示词中，违反字段选择语义，可能泄漏不应参与审核的数据。
+
+**修复方案（已实施）**:
+始终将 `dtSet`（即使为空 map）写入 `fieldSet`，使下游 `filterRowFields` 收到空 map 后返回 `nil`，`formatGroupedDetailData` 跳过该表。
+
+```go
+// 修复前
+if len(dtSet) > 0 {
+    fieldSet[dt.TableName] = dtSet
+}
+
+// 修复后
+// 始终写入：空 map 表示该表无选中字段，后续过滤时跳过该表数据
+fieldSet[dt.TableName] = dtSet
+```
+
+**状态**: ✅ 已修复
+
+---
+
 ### 🟢 低优先级问题 (P2)
 
 #### BUG-006: 租户管理员保护逻辑重复

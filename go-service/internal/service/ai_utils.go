@@ -126,13 +126,18 @@ func firstNonEmpty(values ...string) string {
 // ── 字段过滤 ──
 
 // filterFields 从 map 中只保留 allowedKeys 指定的字段（大小写不敏感匹配）。
+// filterFields 从 map 中只保留 allowedKeys 指定的字段（大小写不敏感匹配）。
 // allowedKeys 为 nil 时直接返回原始 data，表示全选不过滤。
+// allowedKeys 为空 map 时返回 nil，表示该表无选中字段不输出。
 func filterFields(data map[string]interface{}, allowedKeys map[string]bool) map[string]interface{} {
 	if data == nil {
 		return nil
 	}
 	if allowedKeys == nil {
 		return data
+	}
+	if len(allowedKeys) == 0 {
+		return nil
 	}
 	filtered := make(map[string]interface{})
 	for k, v := range data {
@@ -144,10 +149,14 @@ func filterFields(data map[string]interface{}, allowedKeys map[string]bool) map[
 	return filtered
 }
 
-// filterRowFields 对一组明细行批量执行字段过滤，allowedKeys 为 nil 时原样返回。
+// filterRowFields 对一组明细行批量执行字段过滤。
+// allowedKeys 为 nil 时原样返回（全选）；allowedKeys 为空 map 时返回 nil（该表不输出）。
 func filterRowFields(rows []map[string]interface{}, allowedKeys map[string]bool) []map[string]interface{} {
 	if allowedKeys == nil {
 		return rows
+	}
+	if len(allowedKeys) == 0 {
+		return nil
 	}
 	result := make([]map[string]interface{}, len(rows))
 	for i, row := range rows {
@@ -197,6 +206,10 @@ func formatGroupedDetailData(detailTables map[string][]map[string]interface{}, f
 			allowedKeys = fieldSet[tableName]
 		}
 		filteredRows := filterRowFields(rows, allowedKeys)
+		// 过滤后为空（该表无选中字段）则跳过，不输出给 AI
+		if filteredRows == nil || len(filteredRows) == 0 {
+			continue
+		}
 
 		sb.WriteString(fmt.Sprintf("### %s（%s）共 %d 行\n", label, tableName, len(filteredRows)))
 		b, err := json.MarshalIndent(filteredRows, "", "  ")
