@@ -1586,7 +1586,7 @@ func (s *ArchiveReviewService) resolveArchiveFieldSet(
 
 	if perms.AllowCustomFields && userDetail != nil {
 		for _, override := range userDetail.FieldConfig.FieldOverrides {
-			table, key := parseFieldOverride(override)
+			table, key := parseFieldOverrideKey(override)
 			if _, ok := fieldSet[table]; !ok {
 				fieldSet[table] = make(map[string]bool)
 			}
