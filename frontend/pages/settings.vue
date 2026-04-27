@@ -294,7 +294,7 @@ const leftSelectedKeys = ref<string[]>([])
 const rightSelectedKeys = ref<string[]>([])
 const fieldSelectedSearchQuery = ref('')
 
-const unselectedPagination = usePagination(unselectedFieldsFlat, 6)
+const unselectedPagination = usePagination(unselectedFieldsFlat, 5)
 const selectedFieldsFiltered = computed(() => {
   const q = fieldSelectedSearchQuery.value.toLowerCase().trim()
   return selectedFieldsFlat.value.filter(f => {
@@ -310,8 +310,8 @@ const workbenchPageSelectedFieldsFlat = computed(() => {
     return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q) || f.sourceLabel.toLowerCase().includes(q)
   })
 })
-const displaySelectedPagination = usePagination(workbenchPageSelectedFieldsFlat, 10)
-const selectedPagination = usePagination(selectedFieldsFiltered, 6)
+const displaySelectedPagination = usePagination(workbenchPageSelectedFieldsFlat, 5)
+const selectedPagination = usePagination(selectedFieldsFiltered, 5)
 
 
 const selectedFieldCount = computed(() => selectedFieldsFlat.value.length)
@@ -580,7 +580,7 @@ const archiveLeftSelectedKeys = ref<string[]>([])
 const archiveRightSelectedKeys = ref<string[]>([])
 const archiveFieldSelectedSearchQuery = ref('')
 
-const archiveUnselectedPagination = usePagination(archiveUnselectedFieldsFlat, 6)
+const archiveUnselectedPagination = usePagination(archiveUnselectedFieldsFlat, 5)
 const archiveSelectedFieldsFiltered = computed(() => {
   const q = archiveFieldSelectedSearchQuery.value.toLowerCase().trim()
   return archiveSelectedFieldsFlat.value.filter(f => {
@@ -596,8 +596,8 @@ const archivePageSelectedFieldsFlat = computed(() => {
     return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q) || f.sourceLabel.toLowerCase().includes(q)
   })
 })
-const archiveDisplaySelectedPagination = usePagination(archivePageSelectedFieldsFlat, 10)
-const archiveSelectedPagination = usePagination(archiveSelectedFieldsFiltered, 6)
+const archiveDisplaySelectedPagination = usePagination(archivePageSelectedFieldsFlat, 5)
+const archiveSelectedPagination = usePagination(archiveSelectedFieldsFiltered, 5)
 
 
 const archiveSelectedCount = computed(() => archiveSelectedFieldsFlat.value.length)

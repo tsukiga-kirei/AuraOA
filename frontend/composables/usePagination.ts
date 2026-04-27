@@ -8,7 +8,7 @@
  */
 export const usePagination = <T>(
   source: Ref<T[]> | ComputedRef<T[]>,
-  defaultPageSize = 10,
+  defaultPageSize = 20,
 ) => {
   /** 当前页码（从 1 开始） */
   const current = ref(1)

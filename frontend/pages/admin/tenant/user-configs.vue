@@ -73,7 +73,7 @@ const filteredConfigs = computed(() =>
   })
 )
 
-const { paged, current, pageSize, total, onChange } = usePagination(filteredConfigs, 10)
+const { paged, current, pageSize, total, onChange } = usePagination(filteredConfigs, 20)
 
 // =====================================================================
 // 统计卡

@@ -196,7 +196,7 @@ const auditStatusOptions = computed(() => {
 })
 
 const listPage = ref(1)
-const listPageSize = ref(10)
+const listPageSize = ref(20)
 const listTotal = ref(0)
 
 // ─── 选中流程 & 审核结果 ───

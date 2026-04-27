@@ -236,7 +236,7 @@ func (r *AuditLogRepo) ListPagedWithUser(c *gin.Context, filter AuditLogFilter, 
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 200 {
+	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
 

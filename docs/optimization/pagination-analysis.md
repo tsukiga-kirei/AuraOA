@@ -106,7 +106,7 @@ const paged = computed(() => {
 
 - **页面**：`frontend/pages/settings.vue`
 - **用途**：工作台字段选择穿梭框中的分页
-- **前端**：多个 `usePagination` 实例，pageSize = 6 或 10
+- **前端**：多个 `usePagination` 实例，pageSize = 5 或 10
 - **数据规模**：字段数通常 < 100，前端分页合理
 
 ### 2.3 无分页模块
@@ -173,18 +173,21 @@ const paged = computed(() => {
 
 ### 4.3 默认 pageSize 不统一
 
-| 模块 | 默认 pageSize |
-|------|--------------|
-| 审核工作台 | 10 |
-| 归档复盘工作台 | 20 |
-| 数据管理页 | 10 |
-| 前端分页（成员/配置） | 10 |
-| 字段选择器 | 5 或 6 |
+`usePagination` composable 的默认 `defaultPageSize` 已调整为 **20**，各管理列表调用点已统一为 20，实际生效值如下：
 
-### 4.4 pageSize 上限不统一
+| 模块 | 实际 pageSize |
+|------|--------------|
+| 审核工作台 | 20 |
+| 归档复盘工作台 | 20 |
+| 数据管理页 | 20 |
+| 前端分页（成员/配置） | 20 |
+| 字段选择器 | 5 |
+
+### 4.4 ~~pageSize 上限不统一~~（已统一）
 
 - 工作台 handler：`normalizeAuditPage` 限制 `pageSize <= 100`
-- 数据管理页 repository：`ListPagedWithUser` 限制 `pageSize <= 200`
+- 归档 service：限制 `pageSize <= 100`
+- 数据管理页 repository：`ListPagedWithUser` / `ListPagedByTenant` 限制 `pageSize <= 100`
 
 ---
 
@@ -204,13 +207,26 @@ const paged = computed(() => {
 
 **预期收益**：翻页响应从秒级降到毫秒级，OA 查询量减少 80%+。
 
-### 5.2 中优先级：统一默认 pageSize
+### 5.2 ~~中优先级：统一默认 pageSize~~（已完成）
 
-**建议**：全局统一默认 `pageSize = 20`，前端可在 `usePagination` 和各 composable 中统一配置。
+**已实施**：全局统一默认 `pageSize = 20`。
+- 前端 `usePagination` composable `defaultPageSize` 改为 20
+- `dashboard.vue` 初始 `listPageSize` 改为 20
+- `data.vue` 三个 tab（审核/归档/定时任务）初始 pageSize 改为 20
+- `org.vue`、`tenants.vue`、`user-configs.vue` 客户端分页改为 20
+- 字段选择器（5）保持不变（穿梭框 UI 空间有限，属于合理的特殊场景）
+- 后端 handler 层 `parseIntQuery(c, "page_size", 20)` 已是 20（无需改动）
+- 后端 `normalizeAuditPage` / `archive_review_service` 默认值已是 20（无需改动）
 
-### 5.3 中优先级：统一 pageSize 上限
+### 5.3 ~~中优先级：统一 pageSize 上限~~（已完成）
 
-**建议**：统一为 `100`，数据管理页的 200 上限过大，可能导致单次查询过慢。
+**已实施**：全部 Repository 层 pageSize 上限统一为 `100`。
+- `AuditLogRepo.ListPagedWithUser` — 200 → 100
+- `ArchiveLogRepo.ListPagedWithUser` — 200 → 100
+- `AuditProcessSnapshotRepo.ListPagedWithUser` — 200 → 100
+- `ArchiveProcessSnapshotRepo.ListPagedWithUser` — 200 → 100
+- `CronLogRepo.ListPagedByTenant` — 200 → 100
+- 工作台 `normalizeAuditPage` / `archive_review_service` 已是 100（无需改动）
 
 ### 5.4 低优先级：前端分页模块暂不需要改动
 
