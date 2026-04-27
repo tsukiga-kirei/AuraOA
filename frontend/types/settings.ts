@@ -47,6 +47,8 @@ export interface SystemGeneralConfig {
     access_token_ttl_hours: number
     /** auth.refresh_token_ttl_days — Refresh Token 有效期（天） */
     refresh_token_ttl_days: number
+    /** auth.default_password — 新建成员默认密码 */
+    default_password: string
 
     // ===== 配额与策略 =====
     /** tenant.default_token_quota — 租户默认 Token 配额 */
@@ -115,6 +117,7 @@ export function mapConfigItems(items: ConfigItem[]): Partial<SystemGeneralConfig
         ...(!isNaN(int('auth.account_lock_minutes')) && { account_lock_minutes: int('auth.account_lock_minutes') }),
         ...(!isNaN(int('auth.access_token_ttl_hours')) && { access_token_ttl_hours: int('auth.access_token_ttl_hours') }),
         ...(!isNaN(int('auth.refresh_token_ttl_days')) && { refresh_token_ttl_days: int('auth.refresh_token_ttl_days') }),
+        ...(str('auth.default_password') !== undefined && { default_password: kv['auth.default_password'] }),
 
         ...(!isNaN(int('tenant.default_token_quota')) && { tenant_default_token_quota: int('tenant.default_token_quota') }),
         ...(!isNaN(int('tenant.default_max_concurrency')) && { tenant_default_max_concurrency: int('tenant.default_max_concurrency') }),
@@ -152,6 +155,7 @@ export function configToUpdateRequest(cfg: SystemGeneralConfig): ConfigUpdateReq
         'auth.account_lock_minutes': String(cfg.account_lock_minutes),
         'auth.access_token_ttl_hours': String(cfg.access_token_ttl_hours),
         'auth.refresh_token_ttl_days': String(cfg.refresh_token_ttl_days),
+        'auth.default_password': cfg.default_password,
 
         'tenant.default_token_quota': String(cfg.tenant_default_token_quota),
         'tenant.default_max_concurrency': String(cfg.tenant_default_max_concurrency),

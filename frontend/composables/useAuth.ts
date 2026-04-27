@@ -11,14 +11,17 @@ interface ApiResponse<T> {
 
 // 后端业务错误码到 i18n 键名的映射表
 const ERROR_CODE_I18N_MAP: Record<number, string> = {
+  40001: 'auth.error.invalidParam',
   40103: 'auth.error.wrongPassword',
   40104: 'auth.error.accountLocked',
   40105: 'auth.error.accountDisabled',
   40106: 'auth.error.tenantNotFound',
   40300: 'auth.error.forbidden',
   40400: 'auth.error.notFound',
+  40900: 'auth.error.conflict',
   40910: 'auth.error.alreadyInitialized',
   50000: 'auth.error.serverError',
+  50001: 'auth.error.databaseError',
 }
 
 /**
@@ -41,14 +44,17 @@ function getErrorMessageByCode(code: number): string | undefined {
 
 // 后端业务错误码到用户友好提示的兜底映射表
 const ERROR_CODE_MAP: Record<number, string> = {
+  40001: '参数校验失败',
   40103: '用户名或密码错误',
   40104: '账户已锁定，请稍后重试',
   40105: '账户已被禁用',
   40106: '租户不存在或已停用',
   40300: '权限不足',
   40400: '资源不存在',
+  40900: '资源冲突',
   40910: '系统已初始化，无法再次创建管理员',
   50000: '服务器错误，请稍后重试',
+  50001: '数据库操作失败',
 }
 
 /**

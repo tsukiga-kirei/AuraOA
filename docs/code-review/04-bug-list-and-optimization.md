@@ -58,7 +58,7 @@ Token 过期后，如果用户不切换路由或发起 API 请求，本地状态
 
 ### 🟡 中等问题 (P1)
 
-#### BUG-003: 默认密码硬编码
+#### BUG-003: 默认密码硬编码 ✅ 已修复
 
 **位置**: `go-service/internal/service/org_service.go`
 
@@ -67,28 +67,25 @@ Token 过期后，如果用户不切换路由或发起 API 请求，本地状态
 
 **影响**: 安全风险，密码过于简单。
 
-**修复方案**:
+**修复内容**:
+- 优先从 `system_configs` 表读取 `auth.default_password` 配置
+- 降级使用更安全的默认密码 `Audit@2026`
+- 新增数据库迁移 `000032_auth_default_password_config` 添加配置项
+- 管理员可在系统设置中随时修改默认密码
 
 ```go
 // org_service.go - CreateMember
 password := req.Password
 if password == "" {
-    // 从系统配置读取默认密码
-    defaultPwd, err := s.systemConfigRepo.FindByKey("auth.default_password")
-    if err != nil || defaultPwd == "" {
-        // 生成随机密码
-        password = generateRandomPassword(12)
-        // TODO: 发送邮件通知用户
-    } else {
+    if defaultPwd, err := s.systemConfigRepo.FindByKey("auth.default_password"); err == nil && defaultPwd != "" {
         password = defaultPwd
+    } else {
+        password = "Audit@2026"
     }
 }
-
-// 标记需要首次登录改密
-user.PasswordMustChange = true
 ```
 
-**状态**: 📋 待修复
+**状态**: ✅ 已修复
 
 ---
 
@@ -189,53 +186,43 @@ Session 缓存 TTL 为 2 小时，而 Refresh Token 有效期为 7 天。Session
 
 ### 🟢 低优先级问题 (P2)
 
-#### BUG-006: 租户管理员保护逻辑重复
+#### BUG-006: 租户管理员保护逻辑重复 ✅ 已修复
 
 **位置**: `go-service/internal/service/org_service.go`
 
 **问题描述**:
 租户管理员的保护检查在 UpdateMember 和 DeleteMember 中重复实现。
 
-**修复方案**:
+**修复内容**:
+已抽取为独立辅助方法 `isTenantAdmin(userID, tenantID) bool`，各调用点统一复用。
 
 ```go
-// 抽取为独立方法
-func (s *OrgService) isTenantAdmin(userID, tenantID uuid.UUID) bool {
+// isTenantAdmin 检查指定用户是否为指定租户的管理员。
+func (s *OrgService) isTenantAdmin(userID uuid.UUID, tenantID uuid.UUID) bool {
     var tenant model.Tenant
     err := s.db.Where("admin_user_id = ? AND id = ?", userID, tenantID).First(&tenant).Error
     return err == nil
 }
-
-// 使用
-if s.isTenantAdmin(member.UserID, member.TenantID) {
-    return newServiceError(errcode.ErrParamValidation, "该成员是租户管理员，不允许此操作")
-}
 ```
 
-**状态**: 📋 待修复
+**状态**: ✅ 已修复
 
 ---
 
-#### BUG-007: 字段合并逻辑复杂度高
+#### BUG-007: 字段合并逻辑复杂度高 ✅ 已重构
 
-**位置**: `go-service/internal/service/user_personal_config_service.go`
+**位置**: `go-service/internal/service/field_merge.go`（从 `user_personal_config_service.go` 抽取）
 
 **问题描述**:
 `GetFullAuditProcessConfig` 方法中字段合并逻辑嵌套较深，可读性差。
 
-**修复方案**:
+**修复内容**:
+- 字段合并逻辑已抽取为独立文件 `go-service/internal/service/field_merge.go`
+- 新增 `MergeFields` 函数，接收 `FieldMergeInput` 结构体，返回 `FieldMergeResult`
+- 合并规则清晰：`field_mode = "all"` 时所有字段强制选中且锁定；`field_mode = "selected"` 时租户选中字段锁定，用户只能新增
+- 辅助函数 `buildUserFieldMap` / `parseFieldOverrideKey` 独立可测试
 
-```go
-// 抽取为独立函数
-func mergeFieldConfig(tenantFields []TenantField, userOverrides []string, fieldMode string, allowCustom bool) []MergedField {
-    // 清晰的合并逻辑
-}
-
-// 在主方法中调用
-mainFields := mergeFieldConfig(rawMainFields, userDetail.FieldConfig.FieldOverrides, effectiveFieldMode, perms.AllowCustomFields)
-```
-
-**状态**: 📋 待修复
+**状态**: ✅ 已重构
 
 ---
 
@@ -246,7 +233,7 @@ mainFields := mergeFieldConfig(rawMainFields, userDetail.FieldConfig.FieldOverri
 | 编号 | 优化项 | 优先级 | 状态 |
 |-----|-------|-------|------|
 | SEC-001 | Token TTL 配置统一 | P0 | ✅ 已修复 |
-| SEC-002 | 默认密码可配置化 | P1 | 📋 待修复 |
+| SEC-002 | 默认密码可配置化 | P1 | ✅ 已修复 |
 | SEC-003 | 首次登录强制改密 | P1 | 📋 待修复 |
 | SEC-004 | 添加密码复杂度校验 | P2 | 📋 待修复 |
 
@@ -270,8 +257,8 @@ mainFields := mergeFieldConfig(rawMainFields, userDetail.FieldConfig.FieldOverri
 
 | 编号 | 优化项 | 优先级 | 状态 |
 |-----|-------|-------|------|
-| CODE-001 | 抽取租户管理员检查方法 | P2 | 📋 待修复 |
-| CODE-002 | 重构字段合并逻辑 | P2 | 📋 待修复 |
+| CODE-001 | 抽取租户管理员检查方法 | P2 | ✅ 已修复 |
+| CODE-002 | 重构字段合并逻辑 | P2 | ✅ 已重构 |
 | CODE-003 | 添加单元测试 | P2 | 📋 待修复 |
 
 ---
@@ -287,13 +274,13 @@ mainFields := mergeFieldConfig(rawMainFields, userDetail.FieldConfig.FieldOverri
 
 ### 第二阶段（1 周内）
 
-5. 📋 **BUG-003**: 默认密码硬编码
+5. ✅ **BUG-003**: 默认密码可配置化（从 system_configs 读取）
 6. ✅ ~~**BUG-005**: 审批流信息接入~~
 
 ### 第三阶段（2 周内）
 
-7. 📋 **BUG-006**: 租户管理员保护逻辑重复
-8. 📋 **BUG-007**: 字段合并逻辑重构
+7. ✅ **BUG-006**: 租户管理员保护逻辑抽取为 `isTenantAdmin()`
+8. ✅ **BUG-007**: 字段合并逻辑重构为 `field_merge.go`
 9. 📋 添加单元测试
 
 ---

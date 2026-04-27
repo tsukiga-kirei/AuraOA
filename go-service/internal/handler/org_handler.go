@@ -38,7 +38,7 @@ func getTenantID(c *gin.Context) (uuid.UUID, error) {
 }
 
 // errTenantIDMissing 表示请求上下文中缺少租户 ID 的错误。
-var errTenantIDMissing = &service.ServiceError{Code: errcode.ErrParamValidation, Message: "租户ID缺失"}
+var errTenantIDMissing = &service.ServiceError{Code: errcode.ErrParamValidation, Message: "tenant ID missing"}
 
 // ── 部门管理 ──────────────────────────────────────────────────────────────
 
@@ -283,7 +283,7 @@ func handleServiceError(c *gin.Context, err error) {
 		response.Error(c, httpStatus, svcErr.Code, svcErr.Message)
 		return
 	}
-	response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "服务器内部错误")
+	response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "internal server error")
 }
 
 // parseIntQuery 从查询参数中解析整数，解析失败时返回 defaultVal。

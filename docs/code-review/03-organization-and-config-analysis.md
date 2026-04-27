@@ -115,10 +115,11 @@ func (s *OrgService) syncUserSystemRoles(userID uuid.UUID, tenantID uuid.UUID, d
 | auth.account_lock_minutes | 15 | 账户锁定时长 |
 | auth.access_token_ttl_hours | 2 | Access Token 有效期 |
 | auth.refresh_token_ttl_days | 7 | Refresh Token 有效期 |
+| auth.default_password | Audit@2026 | 新建成员默认密码 |
 | tenant.default_token_quota | 10000 | 新租户默认 Token 配额 |
 | tenant.default_max_concurrency | 10 | 新租户默认最大并发数 |
 
-**⚠️ 问题**: 如前文所述，auth.* 配置未被 JWT 生成代码使用。
+**✅ 已修复**: auth.* 配置已被 JWT 生成代码和成员创建逻辑正确使用。
 
 ### 3.3 租户配置
 
@@ -165,18 +166,18 @@ CREATE TABLE process_audit_configs (
 **user_permissions 结构**:
 ```json
 {
-    "allow_custom_fields": true,      // 允许用户自定义字段
-    "allow_custom_rules": true,       // 允许用户自定义规则
-    "allow_modify_strictness": true   // 允许用户修改审核尺度
+    "allow_custom_fields": true,
+    "allow_custom_rules": true,
+    "allow_modify_strictness": true
 }
 ```
 
 **access_control 结构**:
 ```json
 {
-    "allowed_roles": ["role-uuid-1"],       // 允许的组织角色
-    "allowed_members": ["member-uuid-1"],   // 允许的成员
-    "allowed_departments": ["dept-uuid-1"]  // 允许的部门
+    "allowed_roles": ["role-uuid-1"],
+    "allowed_members": ["member-uuid-1"],
+    "allowed_departments": ["dept-uuid-1"]
 }
 ```
 
@@ -223,86 +224,116 @@ CREATE TABLE user_personal_configs (
 
 ---
 
-## 4. 发现的问题
+## 4. 发现的问题与修复
 
-### 🟡 问题 1: 租户管理员保护逻辑分散
+### ✅ 问题 1: 租户管理员保护逻辑分散（已修复）
 
 **严重程度**: 低
 
-**问题描述**:
-租户管理员的保护逻辑在多处重复实现：
+**原问题描述**:
+租户管理员的保护逻辑在 `UpdateMember` 和 `DeleteMember` 中各自内联查询 `tenants` 表，代码重复。
+
+**修复内容**:
+- 抽取为独立辅助方法 `isTenantAdmin(userID, tenantID) bool`
+- `UpdateMember` 和 `DeleteMember` 统一调用该方法
+- 反向同步联系人信息也复用该方法判断
 
 ```go
-// org_service.go - UpdateMember
-if req.Status == "disabled" {
+// isTenantAdmin 检查指定用户是否为指定租户的管理员。
+func (s *OrgService) isTenantAdmin(userID uuid.UUID, tenantID uuid.UUID) bool {
     var tenant model.Tenant
-    if err := s.db.Where("admin_user_id = ? AND id = ?", member.UserID, member.TenantID).First(&tenant).Error; err == nil {
-        return nil, newServiceError(errcode.ErrParamValidation, "该成员是租户管理员，不允许禁用。")
-    }
-}
-
-// org_service.go - DeleteMember
-var tenant model.Tenant
-if err := s.db.Where("admin_user_id = ? AND id = ?", member.UserID, member.TenantID).First(&tenant).Error; err == nil {
-    return newServiceError(errcode.ErrParamValidation, "该成员是租户管理员，不允许删除。")
+    err := s.db.Where("admin_user_id = ? AND id = ?", userID, tenantID).First(&tenant).Error
+    return err == nil
 }
 ```
 
-**建议**: 抽取为独立方法 `isTenantAdmin(userID, tenantID)`。
+**修改文件**: `go-service/internal/service/org_service.go`
+
+**状态**: ✅ 已修复
 
 ---
 
-### 🟡 问题 2: 组织成员创建时的默认密码
+### ✅ 问题 2: 组织成员创建时的默认密码（已修复）
 
 **严重程度**: 中
 
-**问题描述**:
-创建组织成员时，如果未提供密码，使用硬编码的默认密码：
+**原问题描述**:
+创建组织成员时使用硬编码的默认密码 `"123456"`，安全风险高。
+
+**修复内容**:
+- 优先从 `system_configs` 表读取 `auth.default_password` 配置
+- 降级使用更安全的默认密码 `Audit@2026`
+- 新增数据库迁移 `000032_auth_default_password_config` 添加配置项
+- 管理员可在系统设置中随时修改默认密码
 
 ```go
-// org_service.go - CreateMember
 password := req.Password
 if password == "" {
-    password = "123456"  // ⚠️ 硬编码默认密码
+    if defaultPwd, err := s.systemConfigRepo.FindByKey("auth.default_password"); err == nil && defaultPwd != "" {
+        password = defaultPwd
+    } else {
+        password = "Audit@2026"
+    }
 }
 ```
 
-**风险**:
-- 安全风险：默认密码过于简单
-- 用户可能忘记修改密码
+**修改文件**:
+- `go-service/internal/service/org_service.go`
+- `db/migrations/000032_auth_default_password_config.up.sql`
+- `db/migrations/000032_auth_default_password_config.down.sql`
 
-**建议**:
-1. 从系统配置读取默认密码策略
-2. 强制用户首次登录时修改密码
-3. 或生成随机密码并通过邮件发送
+**状态**: ✅ 已修复
 
 ---
 
-### 🟢 问题 3: 成员信息同步
+### ✅ 问题 3: 后端错误消息国际化（已修复）
 
-**严重程度**: 低（已处理）
+**严重程度**: 中
+
+**原问题描述**:
+`org_service.go` 中所有 `newServiceError` 的 message 参数为硬编码中文字符串（如 "数据库错误"、"参数校验失败"），不支持多语言环境。
+
+**修复内容**:
+- 后端错误消息统一改为英文（作为 fallback 和日志标识）
+- 前端 `useAuth.ts` 的 `ERROR_CODE_I18N_MAP` 新增 `40001`（参数校验）、`40900`（资源冲突）、`50001`（数据库错误）映射
+- 前端 `zh-CN.ts` / `en-US.ts` 新增对应翻译键
+- 前端根据错误码自动匹配当前语言的翻译文案，后端 message 仅作降级显示
+
+**修改文件**:
+- `go-service/internal/service/org_service.go`
+- `go-service/internal/handler/org_handler.go`
+- `frontend/composables/useAuth.ts`
+- `frontend/locales/zh-CN.ts`
+- `frontend/locales/en-US.ts`
+
+**状态**: ✅ 已修复
+
+---
+
+### ✅ 问题 4: 日志消息国际化统一（已修复）
+
+**严重程度**: 低
+
+**原问题描述**:
+`org_service.go` 中的 `pkglogger.Global().Info(...)` 日志消息为中文（如 "成员创建成功"），在英文环境下不利于日志检索和监控告警匹配。
+
+**修复内容**:
+- 所有结构化日志消息统一改为英文（如 `"member created"`、`"department deleted"`）
+- 日志字段名保持不变（`memberID`、`tenantID` 等）
+
+**状态**: ✅ 已修复
+
+---
+
+### 🟢 问题 5: 成员信息同步
+
+**严重程度**: 低（已正确处理）
 
 **代码位置**: `org_service.go - UpdateMember`
 
-```go
-// 同步更新 users 表字段
-userUpdates := map[string]interface{}{}
-if req.DisplayName != "" { userUpdates["display_name"] = req.DisplayName }
-if req.Email != "" { userUpdates["email"] = req.Email }
-if req.Phone != "" { userUpdates["phone"] = req.Phone }
-if req.Status != "" { userUpdates["status"] = req.Status }
+成员信息更新时会同步到 users 表和租户联系人信息，且反向同步逻辑已改用 `isTenantAdmin()` 方法判断。
 
-// 反向同步：如果该成员是租户管理员，同步更新租户表的联系人信息
-var adminTenant model.Tenant
-if err := s.db.Where("admin_user_id = ? AND id = ?", member.UserID, member.TenantID).First(&adminTenant).Error; err == nil {
-    tenantUpdates := map[string]interface{}{}
-    if req.DisplayName != "" { tenantUpdates["contact_name"] = req.DisplayName }
-    if req.Email != "" { tenantUpdates["contact_email"] = req.Email }
-    if req.Phone != "" { tenantUpdates["contact_phone"] = req.Phone }
-}
-```
-
-**✅ 已正确处理**: 成员信息更新时会同步到 users 表和租户联系人信息。
+**✅ 设计合理**: 无需额外修改。
 
 ---
 
@@ -391,20 +422,26 @@ if activeSystemRole == "tenant_admin" {
 2. **双层角色体系**: 系统角色 + 组织角色，灵活且清晰
 3. **自动角色推断**: 从页面权限自动推断系统角色
 4. **信息同步机制**: 成员信息变更自动同步到相关表
+5. **租户管理员保护**: 统一 `isTenantAdmin()` 方法，逻辑集中
+6. **默认密码可配置**: 从 `system_configs` 读取，管理员可随时修改
+7. **错误消息国际化**: 后端返回错误码，前端按语言映射翻译
+8. **字段合并逻辑独立**: `MergeFields` 函数抽取至 `field_merge.go`，可独立测试
 
 ### ⚠️ 待改进
 
-1. 默认密码应可配置
-2. 租户管理员保护逻辑应抽取
-3. 建议添加首次登录强制改密机制
+1. 首次登录强制改密机制（`password_must_change` 标志）
+2. 添加操作审计日志（记录组织结构变更）
 
 ---
 
 ## 8. 建议优化项
 
-| 优先级 | 优化项 | 说明 |
-|-------|-------|------|
-| P1 | 默认密码可配置化 | 从系统配置读取或生成随机密码 |
-| P1 | 首次登录强制改密 | 增加 password_must_change 标志 |
-| P2 | 抽取租户管理员检查 | 减少代码重复 |
-| P3 | 添加操作审计日志 | 记录组织结构变更 |
+| 优先级 | 优化项 | 说明 | 状态 |
+|-------|-------|------|------|
+| P1 | 默认密码可配置化 | 从系统配置读取 `auth.default_password` | ✅ 已完成 |
+| P1 | 首次登录强制改密 | 增加 `password_must_change` 标志 | 📋 待修复 |
+| P2 | 抽取租户管理员检查 | `isTenantAdmin()` 辅助方法 | ✅ 已完成 |
+| P2 | 后端错误消息国际化 | 错误码 + 前端 i18n 映射 | ✅ 已完成 |
+| P2 | 日志消息统一英文 | 便于日志检索和监控 | ✅ 已完成 |
+| P2 | 字段合并逻辑重构 | 抽取为 `field_merge.go` | ✅ 已完成 |
+| P3 | 添加操作审计日志 | 记录组织结构变更 | 📋 待修复 |

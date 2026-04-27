@@ -1321,6 +1321,8 @@ export default {
     'admin.settings.accountLockMinutes': 'Account Lock Duration (min)',
     'admin.settings.accessTokenTtl': 'Access Token TTL (hours)',
     'admin.settings.refreshTokenTtl': 'Refresh Token TTL (days)',
+    'admin.settings.defaultPassword': 'Default Password for New Members',
+    'admin.settings.defaultPasswordPlaceholder': 'Enter default initial password for new members',
     //General Config - Quota & Policy
     'admin.settings.tenantQuotaConfig': 'Quota & Policy',
     'admin.settings.tenantDefaultTokenQuota': 'Default Token Quota',
@@ -1969,13 +1971,16 @@ export default {
     'auth.requestFailed': 'Request failed',
 
     //===== Auth error codes =====
+    'auth.error.invalidParam': 'Invalid parameter',
     'auth.error.wrongPassword': 'Invalid username or password',
     'auth.error.accountLocked': 'Account locked, please try again later',
     'auth.error.accountDisabled': 'Account has been disabled',
     'auth.error.tenantNotFound': 'Tenant not found or disabled',
     'auth.error.forbidden': 'Permission denied',
     'auth.error.notFound': 'Resource not found',
+    'auth.error.conflict': 'Resource conflict',
     'auth.error.alreadyInitialized': 'System already initialized, cannot create admin again',
     'auth.error.serverError': 'Server error, please try again later',
+    'auth.error.databaseError': 'Database operation failed, please try again later',
 
 } as Record<string, string>

@@ -45,7 +45,7 @@ func NewOrgService(orgRepo *repository.OrgRepo, userRepo *repository.UserRepo, s
 func (s *OrgService) ListDepartments(c *gin.Context) ([]dto.DepartmentResponse, error) {
 	departments, err := s.orgRepo.ListDepartments(c)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
 	// 单次 GROUP BY 查询各部门成员数，避免 N+1
 	countMap, err := s.orgRepo.CountMembersByTenant(c)
@@ -73,14 +73,14 @@ func (s *OrgService) CreateDepartment(c *gin.Context, tenantID uuid.UUID, req *d
 	if req.ParentID != nil {
 		pid, err := uuid.Parse(*req.ParentID)
 		if err != nil {
-			return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
+			return nil, newServiceError(errcode.ErrParamValidation, "invalid parameter")
 		}
 		dept.ParentID = &pid
 	}
 	if err := s.orgRepo.CreateDepartment(dept); err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
-	pkglogger.Global().Info("部门创建成功", zap.String("deptName", dept.Name), zap.String("tenantID", tenantID.String()))
+	pkglogger.Global().Info("department created", zap.String("deptName", dept.Name), zap.String("tenantID", tenantID.String()))
 	resp := toDepartmentResponse(dept)
 	return &resp, nil
 }
@@ -89,7 +89,7 @@ func (s *OrgService) CreateDepartment(c *gin.Context, tenantID uuid.UUID, req *d
 func (s *OrgService) UpdateDepartment(c *gin.Context, id uuid.UUID, req *dto.UpdateDepartmentRequest) (*dto.DepartmentResponse, error) {
 	dept, err := s.orgRepo.FindDepartmentByID(c, id)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrResourceNotFound, "资源不存在")
+		return nil, newServiceError(errcode.ErrResourceNotFound, "resource not found")
 	}
 	if req.Name != "" {
 		dept.Name = req.Name
@@ -97,7 +97,7 @@ func (s *OrgService) UpdateDepartment(c *gin.Context, id uuid.UUID, req *dto.Upd
 	if req.ParentID != nil {
 		pid, err := uuid.Parse(*req.ParentID)
 		if err != nil {
-			return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
+			return nil, newServiceError(errcode.ErrParamValidation, "invalid parameter")
 		}
 		dept.ParentID = &pid
 	}
@@ -105,7 +105,7 @@ func (s *OrgService) UpdateDepartment(c *gin.Context, id uuid.UUID, req *dto.Upd
 	dept.SortOrder = req.SortOrder
 
 	if err := s.orgRepo.UpdateDepartment(dept); err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
 	resp := toDepartmentResponse(dept)
 	return &resp, nil
@@ -116,20 +116,20 @@ func (s *OrgService) DeleteDepartment(c *gin.Context, id uuid.UUID) error {
 	// 校验部门在当前租户中是否存在
 	_, err := s.orgRepo.FindDepartmentByID(c, id)
 	if err != nil {
-		return newServiceError(errcode.ErrResourceNotFound, "资源不存在")
+		return newServiceError(errcode.ErrResourceNotFound, "resource not found")
 	}
 	// 检查部门下是否有成员
 	count, err := s.orgRepo.CountMembersByDept(id)
 	if err != nil {
-		return newServiceError(errcode.ErrDatabase, "数据库错误")
+		return newServiceError(errcode.ErrDatabase, "database error")
 	}
 	if count > 0 {
-		return newServiceError(errcode.ErrParamValidation, "部门下存在成员，无法删除")
+		return newServiceError(errcode.ErrParamValidation, "department has members, cannot delete")
 	}
 	if err := s.orgRepo.DeleteDepartment(id); err != nil {
-		return newServiceError(errcode.ErrDatabase, "数据库错误")
+		return newServiceError(errcode.ErrDatabase, "database error")
 	}
-	pkglogger.Global().Info("部门删除成功", zap.String("deptID", id.String()))
+	pkglogger.Global().Info("department deleted", zap.String("deptID", id.String()))
 	return nil
 }
 
@@ -141,7 +141,7 @@ func (s *OrgService) DeleteDepartment(c *gin.Context, id uuid.UUID) error {
 func (s *OrgService) ListRoles(c *gin.Context) ([]dto.RoleResponse, error) {
 	roles, err := s.orgRepo.ListRoles(c)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
 	result := make([]dto.RoleResponse, len(roles))
 	for i, r := range roles {
@@ -164,9 +164,9 @@ func (s *OrgService) CreateRole(c *gin.Context, tenantID uuid.UUID, req *dto.Cre
 		PagePermissions: pagePerms,
 	}
 	if err := s.orgRepo.CreateRole(role); err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
-	pkglogger.Global().Info("角色创建成功", zap.String("roleName", role.Name), zap.String("tenantID", tenantID.String()))
+	pkglogger.Global().Info("role created", zap.String("roleName", role.Name), zap.String("tenantID", tenantID.String()))
 	resp := toRoleResponse(role)
 	return &resp, nil
 }
@@ -175,7 +175,7 @@ func (s *OrgService) CreateRole(c *gin.Context, tenantID uuid.UUID, req *dto.Cre
 func (s *OrgService) UpdateRole(c *gin.Context, id uuid.UUID, req *dto.UpdateRoleRequest) (*dto.RoleResponse, error) {
 	role, err := s.orgRepo.FindRoleByID(c, id)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrResourceNotFound, "资源不存在")
+		return nil, newServiceError(errcode.ErrResourceNotFound, "resource not found")
 	}
 	if req.Name != "" {
 		role.Name = req.Name
@@ -186,12 +186,12 @@ func (s *OrgService) UpdateRole(c *gin.Context, id uuid.UUID, req *dto.UpdateRol
 	if req.PagePermissions != nil {
 		pagePerms, err := json.Marshal(req.PagePermissions)
 		if err != nil {
-			return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
+			return nil, newServiceError(errcode.ErrParamValidation, "invalid parameter")
 		}
 		role.PagePermissions = pagePerms
 	}
 	if err := s.orgRepo.UpdateRole(role); err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
 	resp := toRoleResponse(role)
 	return &resp, nil
@@ -201,15 +201,15 @@ func (s *OrgService) UpdateRole(c *gin.Context, id uuid.UUID, req *dto.UpdateRol
 func (s *OrgService) DeleteRole(c *gin.Context, id uuid.UUID) error {
 	role, err := s.orgRepo.FindRoleByID(c, id)
 	if err != nil {
-		return newServiceError(errcode.ErrResourceNotFound, "资源不存在")
+		return newServiceError(errcode.ErrResourceNotFound, "resource not found")
 	}
 	if role.IsSystem {
-		return newServiceError(errcode.ErrParamValidation, "系统角色不可删除")
+		return newServiceError(errcode.ErrParamValidation, "system role cannot be deleted")
 	}
 	if err := s.orgRepo.DeleteRole(id); err != nil {
-		return newServiceError(errcode.ErrDatabase, "数据库错误")
+		return newServiceError(errcode.ErrDatabase, "database error")
 	}
-	pkglogger.Global().Info("角色删除成功", zap.String("roleID", id.String()))
+	pkglogger.Global().Info("role deleted", zap.String("roleID", id.String()))
 	return nil
 }
 
@@ -221,7 +221,7 @@ func (s *OrgService) DeleteRole(c *gin.Context, id uuid.UUID) error {
 func (s *OrgService) ListMembers(c *gin.Context) ([]dto.MemberResponse, error) {
 	members, err := s.orgRepo.ListMembers(c)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
 	result := make([]dto.MemberResponse, len(members))
 	for i, m := range members {
@@ -236,20 +236,20 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 	// 用户名只能包含英文字母、数字和下划线
 	usernameRegex := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
 	if !usernameRegex.MatchString(req.Username) {
-		return nil, newServiceError(errcode.ErrParamValidation, "用户名只能包含英文字母、数字和下划线，且以字母开头")
+		return nil, newServiceError(errcode.ErrParamValidation, "username must start with a letter and contain only letters, digits, and underscores")
 	}
 	// 邮箱格式校验（如果提供）
 	if req.Email != "" {
 		emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 		if !emailRegex.MatchString(req.Email) {
-			return nil, newServiceError(errcode.ErrParamValidation, "邮箱格式不正确")
+			return nil, newServiceError(errcode.ErrParamValidation, "invalid email format")
 		}
 	}
 	// 手机号必须为11位数字（如果提供）
 	if req.Phone != "" {
 		phoneRegex := regexp.MustCompile(`^\d{11}$`)
 		if !phoneRegex.MatchString(req.Phone) {
-			return nil, newServiceError(errcode.ErrParamValidation, "手机号必须为11位数字")
+			return nil, newServiceError(errcode.ErrParamValidation, "phone number must be 11 digits")
 		}
 	}
 
@@ -259,18 +259,18 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 		// 检查该用户在此租户中是否已有成员记录
 		existingMember, _ := s.orgRepo.FindByUserAndTenant(existingUser.ID, tenantID)
 		if existingMember != nil {
-			return nil, newServiceError(errcode.ErrResourceConflict, "该用户名已存在于当前租户中")
+			return nil, newServiceError(errcode.ErrResourceConflict, "username already exists in this tenant")
 		}
 	}
 
 	// 2. 校验 department_id 在当前租户中是否存在
 	deptID, err := uuid.Parse(req.DepartmentID)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
+		return nil, newServiceError(errcode.ErrParamValidation, "invalid parameter")
 	}
 	dept, err := s.orgRepo.FindDepartmentByID(c, deptID)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
+		return nil, newServiceError(errcode.ErrParamValidation, "invalid parameter")
 	}
 
 	// 3. 校验 role_ids 在当前租户中是否存在
@@ -278,18 +278,18 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 	for i, rid := range req.RoleIDs {
 		parsed, err := uuid.Parse(rid)
 		if err != nil {
-			return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
+			return nil, newServiceError(errcode.ErrParamValidation, "invalid parameter")
 		}
 		roleUUIDs[i] = parsed
 	}
 	roles, err := s.orgRepo.FindRolesByIDs(roleUUIDs)
 	if err != nil || len(roles) != len(roleUUIDs) {
-		return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
+		return nil, newServiceError(errcode.ErrParamValidation, "invalid parameter")
 	}
 	// 验证所有角色都属于当前租户
 	for _, role := range roles {
 		if role.TenantID != tenantID {
-			return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
+			return nil, newServiceError(errcode.ErrParamValidation, "invalid parameter")
 		}
 	}
 
@@ -298,14 +298,18 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 	if existingUser != nil {
 		user = existingUser
 	} else {
-		// 若请求未提供密码，使用默认密码
+		// 若请求未提供密码，从系统配置读取默认密码
 		password := req.Password
 		if password == "" {
-			password = "123456"
+			if defaultPwd, err := s.systemConfigRepo.FindByKey("auth.default_password"); err == nil && defaultPwd != "" {
+				password = defaultPwd
+			} else {
+				password = "Audit@2026" // 降级默认密码（比 123456 更安全）
+			}
 		}
 		passwordHash, err := hash.HashPassword(password)
 		if err != nil {
-			return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
+			return nil, newServiceError(errcode.ErrInternalServer, "internal server error")
 		}
 		user = &model.User{
 			ID:                uuid.New(),
@@ -322,7 +326,7 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 			user.Locale = defaultLang
 		}
 		if err := s.db.Create(user).Error; err != nil {
-			return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+			return nil, newServiceError(errcode.ErrDatabase, "database error")
 		}
 	}
 
@@ -336,17 +340,17 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 		Status:       "active",
 	}
 	if err := s.orgRepo.CreateMember(member); err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
 
 	// 6. 创建 org_member_roles 关联
 	if err := s.db.Model(member).Association("Roles").Append(&roles); err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
 
 	// 7. 同步系统角色分配
 	if err := s.syncUserSystemRoles(user.ID, tenantID, user.DisplayName, roles); err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
 
 	// 8. 重新加载成员关联以构建响应
@@ -354,7 +358,7 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 	member.Department = *dept
 	member.Roles = roles
 
-	pkglogger.Global().Info("成员创建成功", zap.String("username", req.Username), zap.String("tenantID", tenantID.String()))
+	pkglogger.Global().Info("member created", zap.String("username", req.Username), zap.String("tenantID", tenantID.String()))
 	resp := toMemberResponse(member)
 	return &resp, nil
 }
@@ -363,26 +367,23 @@ func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.C
 func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateMemberRequest) (*dto.MemberResponse, error) {
 	member, err := s.orgRepo.FindMemberByID(c, id)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrResourceNotFound, "资源不存在")
+		return nil, newServiceError(errcode.ErrResourceNotFound, "resource not found")
 	}
 
 	// 租户管理员保护：不允许禁用租户管理员
-	if req.Status == "disabled" {
-		var tenant model.Tenant
-		if err := s.db.Where("admin_user_id = ? AND id = ?", member.UserID, member.TenantID).First(&tenant).Error; err == nil {
-			return nil, newServiceError(errcode.ErrParamValidation, "该成员是租户管理员，不允许禁用。如需更换管理员，请联系系统管理员。")
-		}
+	if req.Status == "disabled" && s.isTenantAdmin(member.UserID, member.TenantID) {
+		return nil, newServiceError(errcode.ErrParamValidation, "tenant admin cannot be disabled")
 	}
 
 	// 更新 department_id（若提供）
 	if req.DepartmentID != "" {
 		deptID, err := uuid.Parse(req.DepartmentID)
 		if err != nil {
-			return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
+			return nil, newServiceError(errcode.ErrParamValidation, "invalid parameter")
 		}
 		_, err = s.orgRepo.FindDepartmentByID(c, deptID)
 		if err != nil {
-			return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
+			return nil, newServiceError(errcode.ErrParamValidation, "invalid parameter")
 		}
 		member.DepartmentID = deptID
 	}
@@ -395,7 +396,7 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 	}
 
 	if err := s.orgRepo.UpdateMember(member); err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
 
 	// 同步更新 users 表字段（display_name, email, phone, status）
@@ -414,13 +415,12 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 	}
 	if len(userUpdates) > 0 {
 		if err := s.db.Model(&model.User{}).Where("id = ?", member.UserID).Updates(userUpdates).Error; err != nil {
-			return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+			return nil, newServiceError(errcode.ErrDatabase, "database error")
 		}
 	}
 
 	// 反向同步：如果该成员是租户管理员，同步更新租户表的联系人信息
-	var adminTenant model.Tenant
-	if err := s.db.Where("admin_user_id = ? AND id = ?", member.UserID, member.TenantID).First(&adminTenant).Error; err == nil {
+	if s.isTenantAdmin(member.UserID, member.TenantID) {
 		tenantUpdates := map[string]interface{}{}
 		if req.DisplayName != "" {
 			tenantUpdates["contact_name"] = req.DisplayName
@@ -432,7 +432,7 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 			tenantUpdates["contact_phone"] = req.Phone
 		}
 		if len(tenantUpdates) > 0 {
-			s.db.Model(&model.Tenant{}).Where("id = ?", adminTenant.ID).Updates(tenantUpdates)
+			s.db.Model(&model.Tenant{}).Where("admin_user_id = ? AND id = ?", member.UserID, member.TenantID).Updates(tenantUpdates)
 		}
 	}
 
@@ -442,35 +442,35 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 		for i, rid := range req.RoleIDs {
 			parsed, err := uuid.Parse(rid)
 			if err != nil {
-				return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
+				return nil, newServiceError(errcode.ErrParamValidation, "invalid parameter")
 			}
 			roleUUIDs[i] = parsed
 		}
 		roles, err := s.orgRepo.FindRolesByIDs(roleUUIDs)
 		if err != nil || len(roles) != len(roleUUIDs) {
-			return nil, newServiceError(errcode.ErrParamValidation, "参数校验失败")
+			return nil, newServiceError(errcode.ErrParamValidation, "invalid parameter")
 		}
 		if err := s.db.Model(member).Association("Roles").Replace(&roles); err != nil {
-			return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+			return nil, newServiceError(errcode.ErrDatabase, "database error")
 		}
 		member.Roles = roles
 	}
 
-	// 8. 同步系统角色分配（每次更新均同步，确保 Label 和 Role 保持最新）
+	// 同步系统角色分配（每次更新均同步，确保 Label 和 Role 保持最新）
 	displayName := member.User.DisplayName
 	if req.DisplayName != "" {
 		displayName = req.DisplayName
 	}
 	if err := s.syncUserSystemRoles(member.UserID, member.TenantID, displayName, member.Roles); err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
 
 	// 重新加载以构建完整响应
 	reloaded, err := s.orgRepo.FindMemberByID(c, id)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
-	pkglogger.Global().Info("成员更新成功", zap.String("memberID", id.String()))
+	pkglogger.Global().Info("member updated", zap.String("memberID", id.String()))
 	resp := toMemberResponse(reloaded)
 	return &resp, nil
 }
@@ -480,32 +480,31 @@ func (s *OrgService) UpdateMember(c *gin.Context, id uuid.UUID, req *dto.UpdateM
 func (s *OrgService) DeleteMember(c *gin.Context, id uuid.UUID) error {
 	member, err := s.orgRepo.FindMemberByID(c, id)
 	if err != nil {
-		return newServiceError(errcode.ErrResourceNotFound, "资源不存在")
+		return newServiceError(errcode.ErrResourceNotFound, "resource not found")
 	}
 
 	// 租户管理员保护：不允许删除租户管理员
-	var tenant model.Tenant
-	if err := s.db.Where("admin_user_id = ? AND id = ?", member.UserID, member.TenantID).First(&tenant).Error; err == nil {
-		return newServiceError(errcode.ErrParamValidation, "该成员是租户管理员，不允许删除。如需更换管理员，请联系系统管理员。")
+	if s.isTenantAdmin(member.UserID, member.TenantID) {
+		return newServiceError(errcode.ErrParamValidation, "tenant admin cannot be deleted")
 	}
 
 	// 1. 清除 org_member_roles 关联
 	if err := s.db.Model(member).Association("Roles").Clear(); err != nil {
-		return newServiceError(errcode.ErrDatabase, "数据库错误")
+		return newServiceError(errcode.ErrDatabase, "database error")
 	}
 
 	// 2. 删除 org_members 记录
 	if err := s.orgRepo.DeleteMember(id); err != nil {
-		return newServiceError(errcode.ErrDatabase, "数据库错误")
+		return newServiceError(errcode.ErrDatabase, "database error")
 	}
 
 	// 3. 删除该用户在该租户下的 user_role_assignments
 	if err := s.db.Where("user_id = ? AND tenant_id = ?", member.UserID, member.TenantID).
 		Delete(&model.UserRoleAssignment{}).Error; err != nil {
-		return newServiceError(errcode.ErrDatabase, "数据库错误")
+		return newServiceError(errcode.ErrDatabase, "database error")
 	}
 
-	pkglogger.Global().Info("成员删除成功", zap.String("memberID", id.String()), zap.String("tenantID", member.TenantID.String()))
+	pkglogger.Global().Info("member deleted", zap.String("memberID", id.String()), zap.String("tenantID", member.TenantID.String()))
 	return nil
 }
 
@@ -568,6 +567,17 @@ func (s *OrgService) syncUserSystemRoles(userID uuid.UUID, tenantID uuid.UUID, d
 	}
 
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// 辅助函数：租户管理员检查
+// ---------------------------------------------------------------------------
+
+// isTenantAdmin 检查指定用户是否为指定租户的管理员。
+func (s *OrgService) isTenantAdmin(userID uuid.UUID, tenantID uuid.UUID) bool {
+	var tenant model.Tenant
+	err := s.db.Where("admin_user_id = ? AND id = ?", userID, tenantID).First(&tenant).Error
+	return err == nil
 }
 
 // ---------------------------------------------------------------------------

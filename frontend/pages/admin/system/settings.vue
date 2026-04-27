@@ -770,6 +770,13 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                 </a-form-item>
               </a-col>
             </a-row>
+            <a-row :gutter="16">
+              <a-col :span="12">
+                <a-form-item :label="t('admin.settings.defaultPassword')">
+                  <a-input-password v-model:value="generalConfig.default_password" style="width: 100%;" size="large" :placeholder="t('admin.settings.defaultPasswordPlaceholder')" />
+                </a-form-item>
+              </a-col>
+            </a-row>
 
             <!-- 配额与策略 -->
             <a-divider style="margin: 8px 0 20px;" />
