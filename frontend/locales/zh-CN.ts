@@ -281,6 +281,15 @@ export default {
     'overview.monitor.uptime': '系统可用率',
     'overview.monitor.recentAlerts': '最近告警',
     'overview.monitor.noAlerts': '暂无告警',
+    // 系统告警消息（{0} 为当前值）
+    'overview.monitor.alert.cpu.critical': 'CPU 使用率严重过高：{0}%',
+    'overview.monitor.alert.cpu.warning': 'CPU 使用率偏高：{0}%',
+    'overview.monitor.alert.memory.critical': '内存使用率严重过高：{0}%',
+    'overview.monitor.alert.memory.warning': '内存使用率偏高：{0}%',
+    'overview.monitor.alert.disk.critical': '磁盘使用率严重过高：{0}%',
+    'overview.monitor.alert.disk.warning': '磁盘使用率偏高：{0}%',
+    'overview.monitor.alert.service.offline': '服务离线：{0}',
+    'overview.monitor.alert.service.degraded': '服务降级：{0}',
     // 系统运行监控小部件
     'overview.monitor.cpuUsage': 'CPU 使用率',
     'overview.monitor.memoryUsage': '内存使用率',

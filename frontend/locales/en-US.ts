@@ -280,6 +280,15 @@ export default {
     'overview.monitor.uptime': 'System Uptime',
     'overview.monitor.recentAlerts': 'Recent Alerts',
     'overview.monitor.noAlerts': 'No alerts',
+    // System alert messages ({0} is the current value)
+    'overview.monitor.alert.cpu.critical': 'CPU usage critically high: {0}%',
+    'overview.monitor.alert.cpu.warning': 'CPU usage elevated: {0}%',
+    'overview.monitor.alert.memory.critical': 'Memory usage critically high: {0}%',
+    'overview.monitor.alert.memory.warning': 'Memory usage elevated: {0}%',
+    'overview.monitor.alert.disk.critical': 'Disk usage critically high: {0}%',
+    'overview.monitor.alert.disk.warning': 'Disk usage elevated: {0}%',
+    'overview.monitor.alert.service.offline': 'Service offline: {0}',
+    'overview.monitor.alert.service.degraded': 'Service degraded: {0}',
     // System monitor widget
     'overview.monitor.cpuUsage': 'CPU Usage',
     'overview.monitor.memoryUsage': 'Memory Usage',

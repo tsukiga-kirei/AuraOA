@@ -33,16 +33,111 @@ func NewSystemMonitorService(db *gorm.DB, rdb *redis.Client) *SystemMonitorServi
 	}
 }
 
-// GetSystemMonitorData 采集系统资源使用率和关键服务健康状态。
+// 告警阈值常量（与前端 MONITOR_THRESHOLDS 保持一致）。
+const (
+	cpuWarningThreshold    = 80
+	cpuDangerThreshold     = 95
+	memoryWarningThreshold = 85
+	memoryDangerThreshold  = 95
+	diskWarningThreshold   = 90
+	diskDangerThreshold    = 95
+)
+
+// GetSystemMonitorData 采集系统资源使用率和关键服务健康状态，并生成告警列表。
 func (s *SystemMonitorService) GetSystemMonitorData(ctx context.Context) (*dto.SystemMonitorResponse, error) {
+	cpuUsage := s.getCPUUsage()
+	memUsage := s.getMemoryUsage()
+	diskUsage := s.getDiskUsage()
+	services := s.checkServices(ctx)
+
 	resp := &dto.SystemMonitorResponse{
-		CPUUsage:      s.getCPUUsage(),
-		MemoryUsage:   s.getMemoryUsage(),
-		DiskUsage:     s.getDiskUsage(),
-		Services:      s.checkServices(ctx),
+		CPUUsage:      cpuUsage,
+		MemoryUsage:   memUsage,
+		DiskUsage:     diskUsage,
+		Services:      services,
 		UptimeSeconds: math.Round(time.Since(s.startTime).Seconds()*100) / 100,
+		Alerts:        s.generateAlerts(cpuUsage, memUsage, diskUsage, services),
 	}
 	return resp, nil
+}
+
+// generateAlerts 根据资源使用率和服务状态生成告警列表。
+// 告警 message 字段为 i18n key，由前端负责翻译展示。
+func (s *SystemMonitorService) generateAlerts(cpu, memory, disk float64, services []dto.ServiceStatusDTO) []dto.SystemAlertDTO {
+	alerts := make([]dto.SystemAlertDTO, 0, 4)
+
+	// CPU 告警
+	if cpu > cpuDangerThreshold {
+		alerts = append(alerts, dto.SystemAlertDTO{
+			Level:   "critical",
+			Source:  "cpu",
+			Message: "alert.cpu.critical",
+			Value:   strconv.FormatFloat(cpu, 'f', 1, 64),
+		})
+	} else if cpu > cpuWarningThreshold {
+		alerts = append(alerts, dto.SystemAlertDTO{
+			Level:   "warning",
+			Source:  "cpu",
+			Message: "alert.cpu.warning",
+			Value:   strconv.FormatFloat(cpu, 'f', 1, 64),
+		})
+	}
+
+	// 内存告警
+	if memory > memoryDangerThreshold {
+		alerts = append(alerts, dto.SystemAlertDTO{
+			Level:   "critical",
+			Source:  "memory",
+			Message: "alert.memory.critical",
+			Value:   strconv.FormatFloat(memory, 'f', 1, 64),
+		})
+	} else if memory > memoryWarningThreshold {
+		alerts = append(alerts, dto.SystemAlertDTO{
+			Level:   "warning",
+			Source:  "memory",
+			Message: "alert.memory.warning",
+			Value:   strconv.FormatFloat(memory, 'f', 1, 64),
+		})
+	}
+
+	// 磁盘告警
+	if disk > diskDangerThreshold {
+		alerts = append(alerts, dto.SystemAlertDTO{
+			Level:   "critical",
+			Source:  "disk",
+			Message: "alert.disk.critical",
+			Value:   strconv.FormatFloat(disk, 'f', 1, 64),
+		})
+	} else if disk > diskWarningThreshold {
+		alerts = append(alerts, dto.SystemAlertDTO{
+			Level:   "warning",
+			Source:  "disk",
+			Message: "alert.disk.warning",
+			Value:   strconv.FormatFloat(disk, 'f', 1, 64),
+		})
+	}
+
+	// 服务状态告警
+	for _, svc := range services {
+		switch svc.Status {
+		case "offline":
+			alerts = append(alerts, dto.SystemAlertDTO{
+				Level:   "critical",
+				Source:  "service",
+				Message: "alert.service.offline",
+				Value:   svc.Name,
+			})
+		case "degraded":
+			alerts = append(alerts, dto.SystemAlertDTO{
+				Level:   "warning",
+				Source:  "service",
+				Message: "alert.service.degraded",
+				Value:   svc.Name,
+			})
+		}
+	}
+
+	return alerts
 }
 
 // ── CPU 使用率（Linux /proc/stat） ──────────────────────────────────────────

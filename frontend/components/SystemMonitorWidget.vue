@@ -2,11 +2,11 @@
 /**
  * SystemMonitorWidget — 系统运行监控小部件。
  *
- * 仅系统管理员可见，展示 CPU / 内存 / 磁盘使用率及关键服务状态。
+ * 仅系统管理员可见，展示 CPU / 内存 / 磁盘使用率、关键服务状态及系统告警。
  * 数据通过 fetchSystemMonitorData() 从后端获取。
  */
-import { ReloadOutlined } from '@ant-design/icons-vue'
-import type { SystemMonitorData } from '~/types/dashboard-overview'
+import { ReloadOutlined, WarningOutlined, CloseCircleOutlined } from '@ant-design/icons-vue'
+import type { SystemMonitorData, SystemAlert } from '~/types/dashboard-overview'
 import { MONITOR_THRESHOLDS, getMetricColor, getServiceStatusColor } from '~/composables/useThemeColors'
 import GaugeChart from '~/components/charts/GaugeChart.vue'
 
@@ -40,7 +40,6 @@ async function loadMonitorData() {
   loading.value = true
   error.value = null
   try {
-    console.warn('[SystemMonitorWidget] 开始获取系统监控数据')
     monitorData.value = await fetchSystemMonitorData()
   }
   catch (e: unknown) {
@@ -60,6 +59,26 @@ async function loadMonitorData() {
 function serviceStatusLabel(status: 'online' | 'offline' | 'degraded'): string {
   return t(`overview.monitor.${status}`)
 }
+
+/**
+ * 将告警 message（i18n key）翻译为本地化文本，并替换 value 占位符。
+ */
+function formatAlertMessage(alert: SystemAlert): string {
+  const key = `overview.monitor.${alert.message}`
+  return t(key, alert.value)
+}
+
+/**
+ * 告警列表（按级别排序：critical 优先）。
+ */
+const sortedAlerts = computed(() => {
+  if (!monitorData.value?.alerts) return []
+  return [...monitorData.value.alerts].sort((a, b) => {
+    if (a.level === 'critical' && b.level !== 'critical') return -1
+    if (a.level !== 'critical' && b.level === 'critical') return 1
+    return 0
+  })
+})
 
 // 组件挂载时自动加载数据
 onMounted(() => {
@@ -159,6 +178,26 @@ onMounted(() => {
             <span class="monitor-service-rt">
               {{ svc.response_time_ms }}ms
             </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 系统告警列表 -->
+      <div class="monitor-alerts">
+        <div class="monitor-alerts-title">{{ t('overview.monitor.recentAlerts') }}</div>
+        <div v-if="sortedAlerts.length === 0" class="monitor-alerts-empty">
+          {{ t('overview.monitor.noAlerts') }}
+        </div>
+        <div v-else class="monitor-alert-list">
+          <div
+            v-for="(alert, idx) in sortedAlerts"
+            :key="idx"
+            class="monitor-alert-item"
+            :class="`monitor-alert-item--${alert.level}`"
+          >
+            <CloseCircleOutlined v-if="alert.level === 'critical'" class="monitor-alert-icon monitor-alert-icon--critical" />
+            <WarningOutlined v-else class="monitor-alert-icon monitor-alert-icon--warning" />
+            <span class="monitor-alert-msg">{{ formatAlertMessage(alert) }}</span>
           </div>
         </div>
       </div>
@@ -314,5 +353,69 @@ onMounted(() => {
   .monitor-gauges {
     grid-template-columns: 1fr;
   }
+}
+
+/* 系统告警列表 */
+.monitor-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.monitor-alerts-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.monitor-alerts-empty {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  padding: 8px 0;
+}
+
+.monitor-alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.monitor-alert-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+
+.monitor-alert-item--critical {
+  background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 20%, transparent);
+  color: var(--color-danger);
+}
+
+.monitor-alert-item--warning {
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 20%, transparent);
+  color: var(--color-warning);
+}
+
+.monitor-alert-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.monitor-alert-icon--critical {
+  color: var(--color-danger);
+}
+
+.monitor-alert-icon--warning {
+  color: var(--color-warning);
+}
+
+.monitor-alert-msg {
+  flex: 1;
+  line-height: 1.4;
 }
 </style>

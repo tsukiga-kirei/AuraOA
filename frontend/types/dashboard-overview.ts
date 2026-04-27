@@ -155,6 +155,14 @@ export interface ServiceStatus {
   response_time_ms: number                  // 响应时间（毫秒）
 }
 
+/** 系统告警条目 */
+export interface SystemAlert {
+  level: 'warning' | 'critical'  // 告警级别
+  source: 'cpu' | 'memory' | 'disk' | 'service' // 告警来源
+  message: string                // i18n key，前端翻译
+  value: string                  // 当前值（用于格式化展示）
+}
+
 /** 系统运行监控数据 */
 export interface SystemMonitorData {
   cpu_usage: number           // CPU 使用率 (0-100)
@@ -162,6 +170,7 @@ export interface SystemMonitorData {
   disk_usage: number          // 磁盘使用率 (0-100)
   services: ServiceStatus[]   // 关键服务状态列表
   uptime_seconds: number      // 系统运行时间（秒）
+  alerts: SystemAlert[]       // 系统告警列表
 }
 
 /** GET /api/admin/dashboard-overview */
