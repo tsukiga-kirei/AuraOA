@@ -194,22 +194,20 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
 
 ---
 
-### 🟡 问题 2: 字段过滤逻辑复杂度高
+### ✅ 问题 2: 字段过滤逻辑复杂度高（已重构）
 
 **严重程度**: 低
 
 **问题描述**:
 `GetFullAuditProcessConfig` 方法中字段合并逻辑较为复杂，涉及多层嵌套判断。
 
-```go
-// 字段同步逻辑：
-// 如果租户是 'all' 模式，用户侧强制显示所有，且不允许自定义减少
-// 如果租户是 'selected' 模式，用户侧默认包含租户选择的所有字段，且只能新增不能减少
-effectiveFieldMode := tenantCfg.FieldMode
-// ... 多层嵌套判断
-```
+**修复内容**:
+- 字段合并逻辑已抽取为独立文件 `go-service/internal/service/field_merge.go`
+- 新增 `MergeFields` 函数，接收 `FieldMergeInput` 结构体，返回 `FieldMergeResult`
+- 合并规则清晰：`field_mode = "all"` 时所有字段强制选中且锁定；`field_mode = "selected"` 时租户选中字段锁定，用户只能新增
+- 辅助函数 `buildUserFieldMap` / `parseFieldOverrideKey` 独立可测试
 
-**建议**: 考虑将字段合并逻辑抽取为独立函数，提高可读性和可测试性。
+**状态**: ✅ 已重构
 
 ---
 
@@ -340,6 +338,6 @@ for _, r := range member.Roles {
 | 优先级 | 优化项 | 说明 |
 |-------|-------|------|
 | P1 | ~~接入审批流数据~~ | ~~实现 `{{flow_history}}` 和 `{{flow_graph}}`~~ ✅ 已完成 |
-| P2 | 重构字段合并逻辑 | 抽取为独立函数，提高可读性 |
+| ~~P2~~ | ~~重构字段合并逻辑~~ | ~~抽取为独立函数，提高可读性~~ ✅ 已完成 |
 | P2 | 添加单元测试 | 覆盖规则合并、配置合并等核心逻辑 |
 | P3 | 性能优化 | 考虑缓存热点配置数据 |

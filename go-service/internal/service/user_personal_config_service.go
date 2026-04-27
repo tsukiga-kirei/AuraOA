@@ -330,64 +330,16 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 		toggleMap[t.RuleID] = t.Enabled
 	}
 
-	// 字段同步逻辑：
-	// 如果租户是 'all' 模式，用户侧强制显示所有，且不允许自定义减少
-	// 如果租户是 'selected' 模式，用户侧默认包含租户选择的所有字段，且只能新增不能减少
-	effectiveFieldMode := tenantCfg.FieldMode
-	// 解析主表字段
-	var rawMainFields []struct {
-		FieldKey  string `json:"field_key"`
-		FieldName string `json:"field_name"`
-		FieldType string `json:"field_type"`
-		Selected  bool   `json:"selected"`
-	}
-	_ = json.Unmarshal(tenantCfg.MainFields, &rawMainFields)
-
-	// 解析明细表
-	var rawDetailTables []struct {
-		TableName  string `json:"table_name"`
-		TableLabel string `json:"table_label"`
-		Fields     []struct {
-			FieldKey  string `json:"field_key"`
-			FieldName string `json:"field_name"`
-			FieldType string `json:"field_type"`
-			Selected  bool   `json:"selected"`
-		} `json:"fields"`
-	}
-	_ = json.Unmarshal(tenantCfg.DetailTables, &rawDetailTables)
-
-	// 构建用户额外选中字段的 Map（仅在允许自定义字段时生效）
-	userAddedFieldMap := make(map[string]map[string]bool)
-	if perms.AllowCustomFields {
-		for _, k := range userDetail.FieldConfig.FieldOverrides {
-			table, key := parseFieldOverride(k)
-			if userAddedFieldMap[table] == nil {
-				userAddedFieldMap[table] = make(map[string]bool)
-			}
-			userAddedFieldMap[table][key] = true
-		}
-	}
-
-	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
-	for i, f := range rawMainFields {
-		// 租户选中的，用户必选（Locked）；租户未选的，看用户是否额外增加
-		locked := effectiveFieldMode == "all" || f.Selected
-		sel := locked || (userAddedFieldMap["main"] != nil && userAddedFieldMap["main"][f.FieldKey])
-
-		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel, Locked: locked}
-	}
-
-	detailTables := make([]dto.DetailTableDTO, len(rawDetailTables))
-	for i, dt := range rawDetailTables {
-		fields := make([]dto.TenantFieldDTO, len(dt.Fields))
-		for j, f := range dt.Fields {
-			locked := effectiveFieldMode == "all" || f.Selected
-			sel := locked || (userAddedFieldMap[dt.TableName] != nil && userAddedFieldMap[dt.TableName][f.FieldKey])
-
-			fields[j] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel, Locked: locked}
-		}
-		detailTables[i] = dto.DetailTableDTO{TableName: dt.TableName, TableLabel: dt.TableLabel, Fields: fields}
-	}
+	// 字段合并
+	fieldResult := MergeFields(FieldMergeInput{
+		FieldMode:         tenantCfg.FieldMode,
+		MainFieldsJSON:    tenantCfg.MainFields,
+		DetailTablesJSON:  tenantCfg.DetailTables,
+		UserOverrides:     userDetail.FieldConfig.FieldOverrides,
+		AllowCustomFields: perms.AllowCustomFields,
+	})
+	mainFields := fieldResult.MainFields
+	detailTables := fieldResult.DetailTables
 
 	// 构建租户规则 DTO（应用用户开关覆盖）
 	tenantRuleDTOs := make([]dto.TenantRuleDTO, len(tenantRules))
@@ -434,7 +386,7 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 		ProcessType:      tenantCfg.ProcessType,
 		ProcessTypeLabel: tenantCfg.ProcessTypeLabel,
 		ConfigID:         tenantCfg.ID.String(),
-		FieldMode:        effectiveFieldMode,
+		FieldMode:        tenantCfg.FieldMode,
 		KBMode:           tenantCfg.KBMode,
 		AuditStrictness:  effectiveStrictness,
 		UserPermissions:  dto.UserPermissionsDTO{AllowCustomFields: perms.AllowCustomFields, AllowCustomRules: perms.AllowCustomRules, AllowModifyStrictness: perms.AllowModifyStrictness},
@@ -651,59 +603,16 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 		toggleMap[t.RuleID] = t.Enabled
 	}
 
-	// 字段同步逻辑
-	effectiveFieldMode := tenantCfg.FieldMode
-
-	// 子表和主表解析
-	var rawMainFields []struct {
-		FieldKey  string `json:"field_key"`
-		FieldName string `json:"field_name"`
-		FieldType string `json:"field_type"`
-		Selected  bool   `json:"selected"`
-	}
-	_ = json.Unmarshal(tenantCfg.MainFields, &rawMainFields)
-
-	var rawDetailTables []struct {
-		TableName  string `json:"table_name"`
-		TableLabel string `json:"table_label"`
-		Fields     []struct {
-			FieldKey  string `json:"field_key"`
-			FieldName string `json:"field_name"`
-			FieldType string `json:"field_type"`
-			Selected  bool   `json:"selected"`
-		} `json:"fields"`
-	}
-	_ = json.Unmarshal(tenantCfg.DetailTables, &rawDetailTables)
-
-	// 构建用户额外选中字段的 Map（仅在允许自定义字段时生效）
-	userAddedFieldMap := make(map[string]map[string]bool)
-	if perms.AllowCustomFields {
-		for _, k := range userDetail.FieldConfig.FieldOverrides {
-			table, key := parseFieldOverride(k)
-			if userAddedFieldMap[table] == nil {
-				userAddedFieldMap[table] = make(map[string]bool)
-			}
-			userAddedFieldMap[table][key] = true
-		}
-	}
-
-	mainFields := make([]dto.TenantFieldDTO, len(rawMainFields))
-	for i, f := range rawMainFields {
-		locked := effectiveFieldMode == "all" || f.Selected
-		sel := locked || (userAddedFieldMap["main"] != nil && userAddedFieldMap["main"][f.FieldKey])
-		mainFields[i] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel, Locked: locked}
-	}
-
-	detailTables := make([]dto.DetailTableDTO, len(rawDetailTables))
-	for i, dt := range rawDetailTables {
-		fields := make([]dto.TenantFieldDTO, len(dt.Fields))
-		for j, f := range dt.Fields {
-			locked := effectiveFieldMode == "all" || f.Selected
-			sel := locked || (userAddedFieldMap[dt.TableName] != nil && userAddedFieldMap[dt.TableName][f.FieldKey])
-			fields[j] = dto.TenantFieldDTO{FieldKey: f.FieldKey, FieldName: f.FieldName, FieldType: f.FieldType, Selected: sel, Locked: locked}
-		}
-		detailTables[i] = dto.DetailTableDTO{TableName: dt.TableName, TableLabel: dt.TableLabel, Fields: fields}
-	}
+	// 字段合并
+	fieldResult := MergeFields(FieldMergeInput{
+		FieldMode:         tenantCfg.FieldMode,
+		MainFieldsJSON:    tenantCfg.MainFields,
+		DetailTablesJSON:  tenantCfg.DetailTables,
+		UserOverrides:     userDetail.FieldConfig.FieldOverrides,
+		AllowCustomFields: perms.AllowCustomFields,
+	})
+	mainFields := fieldResult.MainFields
+	detailTables := fieldResult.DetailTables
 
 	// 构建归档规则 DTO
 	ruleDTOs := make([]dto.TenantRuleDTO, len(archiveRules))
@@ -750,7 +659,7 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 		ProcessType:      tenantCfg.ProcessType,
 		ProcessTypeLabel: tenantCfg.ProcessTypeLabel,
 		ConfigID:         tenantCfg.ID.String(),
-		FieldMode:        effectiveFieldMode,
+		FieldMode:        tenantCfg.FieldMode,
 		KBMode:           tenantCfg.KBMode,
 		AuditStrictness:  effectiveStrictness,
 		UserPermissions:  dto.ArchiveUserPermissionsDTO{AllowCustomFields: perms.AllowCustomFields, AllowCustomRules: perms.AllowCustomRules, AllowModifyStrictness: perms.AllowModifyStrictness},
@@ -866,14 +775,6 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 		cfg.CronDetails = datatypes.JSON([]byte("{}"))
 	}
 	return s.userConfigRepo.Upsert(cfg)
-}
-
-func parseFieldOverride(fo string) (string, string) {
-	if strings.Contains(fo, ":") {
-		parts := strings.SplitN(fo, ":", 2)
-		return parts[0], parts[1]
-	}
-	return "main", fo
 }
 
 // sliceContains 检查字符串切片是否包含指定值。
