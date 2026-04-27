@@ -10,96 +10,49 @@
 
 ### 🔴 严重问题 (P0)
 
-#### BUG-001: Token TTL 配置不同步（Login 已修复，Refresh/SwitchRole 待修复）
+#### BUG-001: Token TTL 配置不同步 ✅ 已修复
 
 **位置**: 
 - `go-service/internal/service/auth_service.go`
 - `go-service/internal/pkg/jwt/jwt.go`
+- `go-service/cmd/server/main.go`
 
 **问题描述**:
 数据库 `system_configs` 表中的 `auth.access_token_ttl_hours` 和 `auth.refresh_token_ttl_days` 配置此前未被 JWT 生成代码使用。
 
-**修复进展**:
-- ✅ **Login 已修复**: `Login` 方法改用 `GenerateAccessTokenWithTTL(claims, s.getAccessTokenTTL())` 和 `GenerateRefreshTokenWithTTL(userID, "", s.getRefreshTokenTTL())`，优先从数据库读取 TTL，降级使用 `config.yaml`。
-- ⚠️ **Refresh 待修复**: 仍调用 `jwtpkg.GenerateAccessToken(claims)`，未使用数据库 TTL。
-- ⚠️ **SwitchRole 待修复**: 仍调用 `jwtpkg.GenerateAccessToken(claims)`，未使用数据库 TTL。
+**修复内容**:
+- ✅ **JWT 包新增辅助函数**: `GetAccessTokenTTL()` / `GetRefreshTokenTTL()` 从 config.yaml 读取 TTL；`GenerateAccessTokenWithTTL()` / `GenerateRefreshTokenWithTTL()` 支持外部传入 TTL
+- ✅ **AuthService 注入 SystemConfigRepo**: 新增 `getAccessTokenTTL()` / `getRefreshTokenTTL()` 方法，优先从数据库读取，降级使用 config.yaml
+- ✅ **Login 已修复**: 改用 `GenerateAccessTokenWithTTL(claims, s.getAccessTokenTTL())` 和 `GenerateRefreshTokenWithTTL(userID, "", s.getRefreshTokenTTL())`
+- ✅ **Refresh 已修复**: 两处 token 生成（session 缓存命中 / 降级查库）均改用 `GenerateAccessTokenWithTTL(jwtClaims, s.getAccessTokenTTL())`
+- ✅ **SwitchRole 已修复**: 改用 `GenerateAccessTokenWithTTL(claims, s.getAccessTokenTTL())`
+- ✅ **main.go 已更新**: `NewAuthService` 新增 `systemConfigRepo` 参数
 
-**状态**: 🔧 部分修复
+**状态**: ✅ 已修复
 
 ---
 
-#### BUG-002: 前端 Token 过期后未自动清理本地状态
+#### BUG-002: 前端 Token 过期后未自动清理本地状态 ✅ 已修复
 
 **位置**: 
-- `frontend/composables/useAuth.ts`
-- `frontend/middleware/auth.ts`
+- `frontend/composables/useTokenGuard.ts`（新增）
+- `frontend/app.vue`
 
 **问题描述**:
 Token 过期后，如果用户不切换路由或发起 API 请求，本地状态（左下角用户信息、localStorage 中的 auth_state）不会自动清除。
 
-**影响**: 用户体验差，可能误以为仍处于登录状态。
+**修复内容**:
 
-**修复方案**:
+新增 `useTokenGuard` composable，实现主动 Token 过期检测：
 
-```typescript
-// useAuth.ts - 添加定时检查
-export const useAuth = () => {
-    // ... 现有代码
+1. **定时检查**（每 5 分钟）：解析 access_token 的 exp 字段，剩余有效期 < 5 分钟时主动调用 refresh
+2. **visibilitychange 事件**：页面从后台切回前台时立即检查 Token 状态
+3. **Token 丢失检测**：access_token 丢失但 refresh_token 有效时尝试恢复，否则登出
+4. **刷新失败处理**：refresh 也失败时调用 `logout()` 清除所有本地状态并跳转登录页
 
-    // 添加 Token 过期检查定时器
-    const startTokenExpiryCheck = () => {
-        const checkInterval = 5 * 60 * 1000 // 5 分钟
-        
-        setInterval(async () => {
-            const t = token.value || localStorage.getItem('token')
-            if (!t) return
-            
-            const exp = parseJwtExp(t)
-            if (!exp) return
-            
-            const now = Date.now() / 1000
-            const remaining = exp - now
-            
-            // Token 已过期
-            if (remaining <= 0) {
-                const refreshed = await tryRestoreAsync()
-                if (!refreshed) {
-                    clearLocalSession()
-                    navigateTo('/login')
-                }
-            }
-            // Token 即将过期（5分钟内），主动刷新
-            else if (remaining < 300) {
-                await doRefreshToken()
-            }
-        }, checkInterval)
-    }
+在 `app.vue` 中通过 `onMounted` 启动守卫，`onUnmounted` 停止。
 
-    // 页面可见性变化时检查
-    const handleVisibilityChange = async () => {
-        if (document.visibilityState === 'visible' && isAuthenticated.value) {
-            const ok = await validateAccessToken()
-            if (!ok) {
-                const refreshed = await tryRestoreAsync()
-                if (!refreshed) {
-                    clearLocalSession()
-                    navigateTo('/login')
-                }
-            }
-        }
-    }
-
-    // 在 onMounted 中启动
-    if (import.meta.client) {
-        startTokenExpiryCheck()
-        document.addEventListener('visibilitychange', handleVisibilityChange)
-    }
-
-    return {
-        // ... 现有返回值
-    }
-}
-```
+**状态**: ✅ 已修复
 
 ---
 
@@ -135,45 +88,28 @@ if password == "" {
 user.PasswordMustChange = true
 ```
 
+**状态**: 📋 待修复
+
 ---
 
-#### BUG-004: Session 缓存 TTL 与 Refresh Token 不一致（部分修复）
+#### BUG-004: Session 缓存 TTL 与 Refresh Token 不一致 ✅ 已修复
 
 **位置**: `go-service/internal/service/auth_service.go`
 
 **问题描述**:
 Session 缓存 TTL 为 2 小时，而 Refresh Token 有效期为 7 天。Session 过期后刷新 Token 需要查库重建 claims。
 
-**影响**: 增加数据库查询压力。
+**修复内容**:
+- ✅ **Session 缓存 TTL 动态对齐**: 新增 `getSessionCacheTTL()` 方法，优先从数据库读取 `auth.refresh_token_ttl_days`，降级使用 config.yaml 的 refresh_token_ttl
+- ✅ **Login 已修复**: `s.rdb.Set(..., s.getSessionCacheTTL())`
+- ✅ **SwitchRole 已修复**: `s.rdb.Set(..., s.getSessionCacheTTL())`
+- ✅ **Refresh 降级查库后重建缓存**: 当 session 缓存失效需要查库重建 claims 时，刷新成功后将新的 session 数据写回 Redis（使用 `s.getSessionCacheTTL()`），避免后续刷新再次触发数据库查询
 
-**修复进展**:
-- `AuthService` 新增 `getSessionCacheTTL()` 方法，优先从数据库 `system_configs` 读取 `auth.refresh_token_ttl_days`，降级使用 `config.yaml`，使 Session 缓存 TTL 与 Refresh Token 有效期动态对齐。
-- `AuthService` 构造函数 `NewAuthService` 新增 `systemConfigRepo` 参数以支持数据库配置读取。
-- 待完成：在 Login/Refresh 方法中将硬编码 TTL 替换为 `s.getSessionCacheTTL()` 调用。
-
-**状态**: 🔧 部分修复
-
-**原修复方案（供参考）**:
-
-```go
-// auth_service.go - Login
-// 将 Session 缓存 TTL 延长至与 Refresh Token 一致
-s.rdb.Set(context.Background(), sessionKey, string(sessionJSON), s.getSessionCacheTTL())
-
-// 或者在 Refresh 成功后更新 Session 缓存
-func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, error) {
-    // ... 生成新 token 后
-    
-    // 更新 Session 缓存
-    sessionData := map[string]interface{}{...}
-    sessionJSON, _ := json.Marshal(sessionData)
-    s.rdb.Set(ctx, sessionKey, string(sessionJSON), s.getSessionCacheTTL())
-}
-```
+**状态**: ✅ 已修复
 
 ---
 
-#### BUG-005: 审批流信息未接入（已修复）
+#### BUG-005: 审批流信息未接入 ✅ 已修复
 
 **位置**: `go-service/internal/pkg/oa/ecology9.go`、`go-service/internal/service/audit_prompt_builder.go`
 
@@ -189,14 +125,12 @@ func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, er
 
 ---
 
-#### BUG-005.5: 归档列表缓存键未包含日期字段（已修复）
+#### BUG-005.5: 归档列表缓存键未包含日期字段 ✅ 已修复
 
 **位置**: `go-service/internal/service/archive_review_service.go`
 
 **问题描述**:
 `ArchiveListParams` 的日期字段（`ArchiveDateStart`、`ArchiveDateEndExclusive`）标记为 `json:"-"`，导致 `cache.ComputeFilterHash` 序列化时忽略这些字段。不同日期范围的查询会生成相同的缓存键，返回错误的缓存数据。
-
-**影响**: 用户切换日期筛选条件后，可能看到其他日期范围的归档数据，造成数据错乱。
 
 **修复方案（已实施）**:
 将 `ComputeFilterHash` 的入参从结构体改为显式构造的 `map[string]interface{}`，手动列出所有筛选字段（含日期字段），确保缓存键唯一。
@@ -205,14 +139,12 @@ func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, er
 
 ---
 
-#### BUG-005.6: FetchTodoListPaged COUNT 查询未去重导致待办总数偏大
+#### BUG-005.6: FetchTodoListPaged COUNT 查询未去重导致待办总数偏大 ✅ 已修复
 
 **位置**: `go-service/internal/pkg/oa/ecology9.go` — `FetchTodoListPaged`
 
 **问题描述**:
-`FetchTodoListPaged` 的 COUNT 查询使用 `COUNT(*)`，但由于 `workflow_currentoperator` 中同一流程可能存在多个审批节点记录，导致 COUNT 结果大于实际去重后的流程数。而数据查询已使用 `SELECT DISTINCT`，造成 `total` 与实际返回条目数不一致，前端分页组件显示的总页数偏多。
-
-**影响**: 前端分页显示的总条数偏大，末尾页可能为空页。
+`FetchTodoListPaged` 的 COUNT 查询使用 `COUNT(*)`，但由于 `workflow_currentoperator` 中同一流程可能存在多个审批节点记录，导致 COUNT 结果大于实际去重后的流程数。
 
 **修复方案（已实施）**:
 将 `COUNT(*)` 改为 `COUNT(DISTINCT r.requestid)`，与数据查询的 `SELECT DISTINCT` 保持一致。
@@ -221,28 +153,35 @@ func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, er
 
 ---
 
-#### BUG-005.7: resolveFieldSet 未选中字段的明细表泄漏全部字段
+#### BUG-005.7: resolveFieldSet 未选中字段的明细表泄漏全部字段 ✅ 已修复
 
 **位置**: `go-service/internal/service/audit_review_service.go` — `resolveFieldSet`
 
 **问题描述**:
 当某张明细表没有任何字段被选中时（`dtSet` 为空 map），原逻辑跳过写入 `fieldSet[dt.TableName]`。下游 `formatGroupedDetailData` 在 `fieldSet` 中找不到该表名时，`allowedKeys` 为 `nil`，`filterRowFields` 对 `nil` 不做过滤，导致该表的所有字段全部输出给 AI。
 
-**影响**: 租户管理员明确未选中任何字段的明细表仍会被完整发送到 AI 提示词中，违反字段选择语义，可能泄漏不应参与审核的数据。
-
 **修复方案（已实施）**:
 始终将 `dtSet`（即使为空 map）写入 `fieldSet`，使下游 `filterRowFields` 收到空 map 后返回 `nil`，`formatGroupedDetailData` 跳过该表。
 
-```go
-// 修复前
-if len(dtSet) > 0 {
-    fieldSet[dt.TableName] = dtSet
-}
+**状态**: ✅ 已修复
 
-// 修复后
-// 始终写入：空 map 表示该表无选中字段，后续过滤时跳过该表数据
-fieldSet[dt.TableName] = dtSet
-```
+---
+
+#### BUG-008: 前端错误消息未国际化 ✅ 已修复
+
+**位置**:
+- `frontend/composables/useAuth.ts`
+- `frontend/locales/zh-CN.ts`
+- `frontend/locales/en-US.ts`
+
+**问题描述**:
+`useAuth.ts` 中的错误消息（如 "网络连接失败，请检查网络"、"登录已过期，请重新登录"、"请求失败"）为硬编码中文，不支持英文环境。
+
+**修复内容**:
+- 新增 `getErrorMessageByCode(code)` — 优先从 i18n messages 获取翻译，降级使用硬编码映射
+- 新增 `getI18nText(key)` — 从 localStorage 中的 locale 判断语言并返回翻译文案
+- `authFetch` 中所有错误消息改用 i18n 函数
+- 新增 i18n 键：`auth.sessionExpired` / `auth.networkError` / `auth.requestFailed` / `auth.error.*` 系列
 
 **状态**: ✅ 已修复
 
@@ -273,6 +212,8 @@ if s.isTenantAdmin(member.UserID, member.TenantID) {
 }
 ```
 
+**状态**: 📋 待修复
+
 ---
 
 #### BUG-007: 字段合并逻辑复杂度高
@@ -294,62 +235,66 @@ func mergeFieldConfig(tenantFields []TenantField, userOverrides []string, fieldM
 mainFields := mergeFieldConfig(rawMainFields, userDetail.FieldConfig.FieldOverrides, effectiveFieldMode, perms.AllowCustomFields)
 ```
 
+**状态**: 📋 待修复
+
 ---
 
 ## 3. 优化建议汇总
 
 ### 3.1 安全性优化
 
-| 编号 | 优化项 | 优先级 | 预计工时 |
-|-----|-------|-------|---------|
-| SEC-001 | Token TTL 配置统一 | P0 → P1 | ~~2h~~ | 🔧 Login 已修复 |
-| SEC-002 | 默认密码可配置化 | P1 | 1h |
-| SEC-003 | 首次登录强制改密 | P1 | 4h |
-| SEC-004 | 添加密码复杂度校验 | P2 | 2h |
+| 编号 | 优化项 | 优先级 | 状态 |
+|-----|-------|-------|------|
+| SEC-001 | Token TTL 配置统一 | P0 | ✅ 已修复 |
+| SEC-002 | 默认密码可配置化 | P1 | 📋 待修复 |
+| SEC-003 | 首次登录强制改密 | P1 | 📋 待修复 |
+| SEC-004 | 添加密码复杂度校验 | P2 | 📋 待修复 |
 
 ### 3.2 用户体验优化
 
-| 编号 | 优化项 | 优先级 | 预计工时 |
-|-----|-------|-------|---------|
-| UX-001 | Token 过期自动清理 | P0 | 4h |
-| UX-002 | Token 即将过期预警刷新 | P1 | 2h |
-| UX-003 | 页面可见性变化时检查登录态 | P1 | 1h |
+| 编号 | 优化项 | 优先级 | 状态 |
+|-----|-------|-------|------|
+| UX-001 | Token 过期自动清理 | P0 | ✅ 已修复 |
+| UX-002 | Token 即将过期预警刷新 | P1 | ✅ 已修复（含在 TokenGuard 中） |
+| UX-003 | 页面可见性变化时检查登录态 | P1 | ✅ 已修复（含在 TokenGuard 中） |
+| UX-004 | 前端错误消息国际化 | P1 | ✅ 已修复 |
 
 ### 3.3 功能完善
 
-| 编号 | 优化项 | 优先级 | 预计工时 |
-|-----|-------|-------|---------|
-| FEAT-001 | ~~接入审批流数据~~ | ~~P1~~ | ~~8h~~ ✅ 已完成 |
-| FEAT-002 | 添加操作审计日志 | P2 | 4h |
+| 编号 | 优化项 | 优先级 | 状态 |
+|-----|-------|-------|------|
+| FEAT-001 | 接入审批流数据 | P1 | ✅ 已修复 |
+| FEAT-002 | 添加操作审计日志 | P2 | 📋 待修复 |
 
 ### 3.4 代码质量
 
-| 编号 | 优化项 | 优先级 | 预计工时 |
-|-----|-------|-------|---------|
-| CODE-001 | 抽取租户管理员检查方法 | P2 | 0.5h |
-| CODE-002 | 重构字段合并逻辑 | P2 | 2h |
-| CODE-003 | 添加单元测试 | P2 | 8h |
+| 编号 | 优化项 | 优先级 | 状态 |
+|-----|-------|-------|------|
+| CODE-001 | 抽取租户管理员检查方法 | P2 | 📋 待修复 |
+| CODE-002 | 重构字段合并逻辑 | P2 | 📋 待修复 |
+| CODE-003 | 添加单元测试 | P2 | 📋 待修复 |
 
 ---
 
 ## 4. 修复优先级排序
 
-### 第一阶段（立即修复）
+### 第一阶段（立即修复）✅ 已完成
 
-1. ~~**BUG-001**: Token TTL 配置不同步~~ 🔧 Login 已修复（Refresh/SwitchRole 待修复）
-2. **BUG-002**: 前端 Token 过期未自动清理
+1. ✅ **BUG-001**: Token TTL 配置不同步（Login / Refresh / SwitchRole 全部修复）
+2. ✅ **BUG-002**: 前端 Token 过期未自动清理
+3. ✅ **BUG-004**: Session 缓存 TTL 优化
+4. ✅ **BUG-008**: 前端错误消息国际化
 
 ### 第二阶段（1 周内）
 
-3. **BUG-003**: 默认密码硬编码
-4. **BUG-004**: Session 缓存 TTL 优化
-5. ~~**BUG-005**: 审批流信息接入~~ ✅ 已修复
+5. 📋 **BUG-003**: 默认密码硬编码
+6. ✅ ~~**BUG-005**: 审批流信息接入~~
 
 ### 第三阶段（2 周内）
 
-6. **BUG-006**: 租户管理员保护逻辑重复
-7. **BUG-007**: 字段合并逻辑重构
-8. 添加单元测试
+7. 📋 **BUG-006**: 租户管理员保护逻辑重复
+8. 📋 **BUG-007**: 字段合并逻辑重构
+9. 📋 添加单元测试
 
 ---
 
@@ -359,17 +304,25 @@ mainFields := mergeFieldConfig(rawMainFields, userDetail.FieldConfig.FieldOverri
 
 ```
 1. Token 过期测试
-   - 等待 Access Token 过期，验证自动刷新
-   - 等待 Refresh Token 过期，验证自动登出
+   - 等待 Access Token 过期，验证 TokenGuard 自动刷新
+   - 等待 Refresh Token 过期，验证自动登出并清除本地状态
    - 在其他设备登出，验证当前设备 Token 失效
+   - 修改数据库 auth.access_token_ttl_hours，验证新 Token 使用新 TTL
 
 2. 并发刷新测试
    - 同时发起多个 API 请求触发 401
    - 验证只有一个刷新请求发出
    - 验证所有请求都能正确重试
 
-3. 本地时间偏差测试
-   - 将本地时间调快，验证 Token 判断逻辑
+3. 页面可见性测试
+   - 将页面切到后台等待 Token 过期
+   - 切回前台验证 TokenGuard 立即检查并刷新
+   - 刷新失败时验证自动跳转登录页
+
+4. 国际化测试
+   - 切换语言为 en-US，验证错误消息显示英文
+   - 切换语言为 zh-CN，验证错误消息显示中文
+   - Token 过期登出提示使用当前语言
 ```
 
 ### 5.2 配置合并测试用例
