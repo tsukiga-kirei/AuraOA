@@ -1992,4 +1992,20 @@ export default {
     'admin.ruleConfig.syncFields': '同步 OA 字段',
     'admin.ruleConfig.syncingFields': '同步中...',
 
+    //===== 认证过期提示 =====
+    'auth.sessionExpired': '登录已过期，请重新登录',
+    'auth.sessionExpiredSoon': '登录即将过期，正在自动续期...',
+    'auth.networkError': '网络连接失败，请检查网络',
+    'auth.requestFailed': '请求失败',
+
+    //===== 认证错误码 =====
+    'auth.error.wrongPassword': '用户名或密码错误',
+    'auth.error.accountLocked': '账户已锁定，请稍后重试',
+    'auth.error.accountDisabled': '账户已被禁用',
+    'auth.error.tenantNotFound': '租户不存在或已停用',
+    'auth.error.forbidden': '权限不足',
+    'auth.error.notFound': '资源不存在',
+    'auth.error.alreadyInitialized': '系统已初始化，无法再次创建管理员',
+    'auth.error.serverError': '服务器错误，请稍后重试',
+
 } as Record<string, string>

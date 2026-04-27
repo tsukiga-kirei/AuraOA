@@ -1,4 +1,5 @@
 import type { LoginRequest, LoginResponse, SwitchRoleResponse, MenuItem, UserRole, PermissionGroup, RoleInfo, MeResponse } from '~/types/auth'
+import { messages } from '~/locales'
 
 // 统一 API 响应格式
 interface ApiResponse<T> {
@@ -8,7 +9,37 @@ interface ApiResponse<T> {
   trace_id: string
 }
 
-// 后端业务错误码到用户友好提示的映射表
+// 后端业务错误码到 i18n 键名的映射表
+const ERROR_CODE_I18N_MAP: Record<number, string> = {
+  40103: 'auth.error.wrongPassword',
+  40104: 'auth.error.accountLocked',
+  40105: 'auth.error.accountDisabled',
+  40106: 'auth.error.tenantNotFound',
+  40300: 'auth.error.forbidden',
+  40400: 'auth.error.notFound',
+  40910: 'auth.error.alreadyInitialized',
+  50000: 'auth.error.serverError',
+}
+
+/**
+ * 根据错误码获取用户友好的错误消息。
+ * 优先使用 i18n 翻译（从 localStorage 中的 auth_state.locale 判断语言），
+ * 降级使用硬编码中文映射。
+ */
+function getErrorMessageByCode(code: number): string | undefined {
+  const i18nKey = ERROR_CODE_I18N_MAP[code]
+  if (i18nKey) {
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_state') : null
+      const locale = raw ? (JSON.parse(raw).locale || 'zh-CN') : 'zh-CN'
+      const text = (messages as any)[locale]?.[i18nKey]
+      if (text) return text
+    } catch { /* 降级 */ }
+  }
+  return ERROR_CODE_MAP[code]
+}
+
+// 后端业务错误码到用户友好提示的兜底映射表
 const ERROR_CODE_MAP: Record<number, string> = {
   40103: '用户名或密码错误',
   40104: '账户已锁定，请稍后重试',
@@ -18,6 +49,20 @@ const ERROR_CODE_MAP: Record<number, string> = {
   40400: '资源不存在',
   40910: '系统已初始化，无法再次创建管理员',
   50000: '服务器错误，请稍后重试',
+}
+
+/**
+ * 获取当前语言下的 i18n 文案，用于 useAuth 内部（不依赖 useI18n 避免循环依赖）。
+ * 降级返回 key 本身。
+ */
+function getI18nText(key: string): string {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_state') : null
+    const locale = raw ? (JSON.parse(raw).locale || 'zh-CN') : 'zh-CN'
+    return (messages as any)[locale]?.[key] || key
+  } catch {
+    return key
+  }
 }
 
 /**
@@ -251,7 +296,7 @@ export const useAuth = () => {
       })
 
       if (res.code !== 0 || !res.data) {
-        const msg = ERROR_CODE_MAP[res.code] || res.message || undefined
+        const msg = getErrorMessageByCode(res.code) || res.message || undefined
         return { ok: false, errorMsg: msg }
       }
       const data = res.data
@@ -303,7 +348,7 @@ export const useAuth = () => {
     } catch (error: any) {
       // 从 $fetch 错误中提取后端返回的业务错误信息
       if (error.data && typeof error.data.code === 'number') {
-        const msg = ERROR_CODE_MAP[error.data.code] || error.data.message || undefined
+        const msg = getErrorMessageByCode(error.data.code) || error.data.message || undefined
         return { ok: false, errorMsg: msg }
       }
       return { ok: false }
@@ -458,23 +503,23 @@ export const useAuth = () => {
     try {
       const res = await doRequest(token.value)
       if (res.code === 0) return res.data
-      const friendlyMsg = ERROR_CODE_MAP[res.code] || res.message || '请求失败'
+      const friendlyMsg = getErrorMessageByCode(res.code) || res.message || getI18nText('auth.requestFailed')
       const err = new Error(friendlyMsg) as any
       err.code = res.code
       throw err
     } catch (error: any) {
-      if (error.code && ERROR_CODE_MAP[error.code]) throw error
+      if (error.code && getErrorMessageByCode(error.code)) throw error
 
       // 网络连接失败（非 HTTP 错误）
       const statusCode = error.statusCode || error.status
       if (!statusCode && (error.name === 'FetchError' || error.message === 'fetch failed' || error.cause)) {
-        throw new Error('网络连接失败，请检查网络')
+        throw new Error(getI18nText('auth.networkError'))
       }
 
       if (statusCode === 401) {
         // 业务层面的认证错误（账户禁用、锁定等），不走 token 刷新流程
-        if (error.data && typeof error.data.code === 'number' && ERROR_CODE_MAP[error.data.code]) {
-          const e = new Error(ERROR_CODE_MAP[error.data.code]) as any
+        if (error.data && typeof error.data.code === 'number' && getErrorMessageByCode(error.data.code)) {
+          const e = new Error(getErrorMessageByCode(error.data.code)!) as any
           e.code = error.data.code
           throw e
         }
@@ -487,7 +532,7 @@ export const useAuth = () => {
                 const retryRes = await doRequest(newToken)
                 if (retryRes.code === 0) resolve(retryRes.data)
                 else {
-                  const msg = ERROR_CODE_MAP[retryRes.code] || retryRes.message || '请求失败'
+                  const msg = getErrorMessageByCode(retryRes.code) || retryRes.message || getI18nText('auth.requestFailed')
                   const e = new Error(msg) as any; e.code = retryRes.code; reject(e)
                 }
               } catch (retryErr) { reject(retryErr) }
@@ -506,19 +551,19 @@ export const useAuth = () => {
           onTokenRefreshed(newToken)
           const retryRes = await doRequest(newToken)
           if (retryRes.code === 0) return retryRes.data
-          const msg = ERROR_CODE_MAP[retryRes.code] || retryRes.message || '请求失败'
+          const msg = getErrorMessageByCode(retryRes.code) || retryRes.message || getI18nText('auth.requestFailed')
           const e = new Error(msg) as any; e.code = retryRes.code; throw e
         } else {
           // 刷新失败，清空队列并触发登出
           refreshSubscribers = []
           await logout()
-          throw new Error('登录已过期，请重新登录')
+          throw new Error(getI18nText('auth.sessionExpired'))
         }
       }
 
       // 其他 HTTP 错误，尝试提取后端业务错误信息
       if (error.data && typeof error.data.code === 'number') {
-        const friendlyMsg = ERROR_CODE_MAP[error.data.code] || error.data.message || '请求失败'
+        const friendlyMsg = getErrorMessageByCode(error.data.code) || error.data.message || getI18nText('auth.requestFailed')
         const e = new Error(friendlyMsg) as any; e.code = error.data.code; throw e
       }
 

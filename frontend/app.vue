@@ -3,6 +3,11 @@ import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 dayjs.locale('zh-cn')
+
+// 启动 Token 主动过期检测守卫
+const { startGuard, stopGuard } = useTokenGuard()
+onMounted(() => { startGuard() })
+onUnmounted(() => { stopGuard() })
 </script>
 
 <template>

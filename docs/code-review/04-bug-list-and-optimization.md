@@ -10,43 +10,21 @@
 
 ### 🔴 严重问题 (P0)
 
-#### BUG-001: Token TTL 配置不同步
+#### BUG-001: Token TTL 配置不同步（Login 已修复，Refresh/SwitchRole 待修复）
 
 **位置**: 
+- `go-service/internal/service/auth_service.go`
 - `go-service/internal/pkg/jwt/jwt.go`
-- `db/migrations/000004_system_configs.up.sql`
 
 **问题描述**:
-数据库 `system_configs` 表中的 `auth.access_token_ttl_hours` 和 `auth.refresh_token_ttl_days` 配置未被 JWT 生成代码使用。JWT 代码直接从 `config.yaml` 读取配置。
+数据库 `system_configs` 表中的 `auth.access_token_ttl_hours` 和 `auth.refresh_token_ttl_days` 配置此前未被 JWT 生成代码使用。
 
-**影响**: 管理员在系统设置页面修改 Token 有效期无效。
+**修复进展**:
+- ✅ **Login 已修复**: `Login` 方法改用 `GenerateAccessTokenWithTTL(claims, s.getAccessTokenTTL())` 和 `GenerateRefreshTokenWithTTL(userID, "", s.getRefreshTokenTTL())`，优先从数据库读取 TTL，降级使用 `config.yaml`。
+- ⚠️ **Refresh 待修复**: 仍调用 `jwtpkg.GenerateAccessToken(claims)`，未使用数据库 TTL。
+- ⚠️ **SwitchRole 待修复**: 仍调用 `jwtpkg.GenerateAccessToken(claims)`，未使用数据库 TTL。
 
-**修复方案**:
-
-```go
-// jwt.go - 修改 GenerateAccessToken
-func GenerateAccessToken(claims *JWTClaims) (string, error) {
-    secret := viper.GetString("jwt.secret")
-    
-    // 优先从数据库读取配置
-    ttl := getAccessTokenTTLFromDB()
-    if ttl == 0 {
-        ttl = viper.GetDuration("jwt.access_token_ttl")
-    }
-    if ttl == 0 {
-        ttl = 2 * time.Hour
-    }
-    // ...
-}
-
-// 新增辅助函数
-func getAccessTokenTTLFromDB() time.Duration {
-    // 从 system_configs 表读取 auth.access_token_ttl_hours
-    // 返回 time.Duration
-}
-```
-
-**或者**: 移除数据库中的冗余配置，统一使用 config.yaml，并在文档中说明。
+**状态**: 🔧 部分修复
 
 ---
 
@@ -159,7 +137,7 @@ user.PasswordMustChange = true
 
 ---
 
-#### BUG-004: Session 缓存 TTL 与 Refresh Token 不一致
+#### BUG-004: Session 缓存 TTL 与 Refresh Token 不一致（部分修复）
 
 **位置**: `go-service/internal/service/auth_service.go`
 
@@ -168,12 +146,19 @@ Session 缓存 TTL 为 2 小时，而 Refresh Token 有效期为 7 天。Session
 
 **影响**: 增加数据库查询压力。
 
-**修复方案**:
+**修复进展**:
+- `AuthService` 新增 `getSessionCacheTTL()` 方法，优先从数据库 `system_configs` 读取 `auth.refresh_token_ttl_days`，降级使用 `config.yaml`，使 Session 缓存 TTL 与 Refresh Token 有效期动态对齐。
+- `AuthService` 构造函数 `NewAuthService` 新增 `systemConfigRepo` 参数以支持数据库配置读取。
+- 待完成：在 Login/Refresh 方法中将硬编码 TTL 替换为 `s.getSessionCacheTTL()` 调用。
+
+**状态**: 🔧 部分修复
+
+**原修复方案（供参考）**:
 
 ```go
 // auth_service.go - Login
-// 将 Session 缓存 TTL 延长至 7 天
-s.rdb.Set(context.Background(), sessionKey, string(sessionJSON), 7*24*time.Hour)
+// 将 Session 缓存 TTL 延长至与 Refresh Token 一致
+s.rdb.Set(context.Background(), sessionKey, string(sessionJSON), s.getSessionCacheTTL())
 
 // 或者在 Refresh 成功后更新 Session 缓存
 func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, error) {
@@ -182,7 +167,7 @@ func (s *AuthService) Refresh(req *dto.RefreshRequest) (*dto.RefreshResponse, er
     // 更新 Session 缓存
     sessionData := map[string]interface{}{...}
     sessionJSON, _ := json.Marshal(sessionData)
-    s.rdb.Set(ctx, sessionKey, string(sessionJSON), 7*24*time.Hour)
+    s.rdb.Set(ctx, sessionKey, string(sessionJSON), s.getSessionCacheTTL())
 }
 ```
 
@@ -317,7 +302,7 @@ mainFields := mergeFieldConfig(rawMainFields, userDetail.FieldConfig.FieldOverri
 
 | 编号 | 优化项 | 优先级 | 预计工时 |
 |-----|-------|-------|---------|
-| SEC-001 | Token TTL 配置统一 | P0 | 2h |
+| SEC-001 | Token TTL 配置统一 | P0 → P1 | ~~2h~~ | 🔧 Login 已修复 |
 | SEC-002 | 默认密码可配置化 | P1 | 1h |
 | SEC-003 | 首次登录强制改密 | P1 | 4h |
 | SEC-004 | 添加密码复杂度校验 | P2 | 2h |
@@ -351,7 +336,7 @@ mainFields := mergeFieldConfig(rawMainFields, userDetail.FieldConfig.FieldOverri
 
 ### 第一阶段（立即修复）
 
-1. **BUG-001**: Token TTL 配置不同步
+1. ~~**BUG-001**: Token TTL 配置不同步~~ 🔧 Login 已修复（Refresh/SwitchRole 待修复）
 2. **BUG-002**: 前端 Token 过期未自动清理
 
 ### 第二阶段（1 周内）

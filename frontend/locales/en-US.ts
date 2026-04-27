@@ -1962,4 +1962,20 @@ export default {
     'admin.ruleConfig.syncFields': 'Sync OA Fields',
     'admin.ruleConfig.syncingFields': 'Syncing...',
 
+    //===== Auth expiry messages =====
+    'auth.sessionExpired': 'Session expired, please log in again',
+    'auth.sessionExpiredSoon': 'Session expiring soon, auto-renewing...',
+    'auth.networkError': 'Network connection failed, please check your network',
+    'auth.requestFailed': 'Request failed',
+
+    //===== Auth error codes =====
+    'auth.error.wrongPassword': 'Invalid username or password',
+    'auth.error.accountLocked': 'Account locked, please try again later',
+    'auth.error.accountDisabled': 'Account has been disabled',
+    'auth.error.tenantNotFound': 'Tenant not found or disabled',
+    'auth.error.forbidden': 'Permission denied',
+    'auth.error.notFound': 'Resource not found',
+    'auth.error.alreadyInitialized': 'System already initialized, cannot create admin again',
+    'auth.error.serverError': 'Server error, please try again later',
+
 } as Record<string, string>
