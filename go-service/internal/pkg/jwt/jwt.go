@@ -24,6 +24,7 @@ type JWTClaims struct {
 	Sub         string          `json:"sub"`
 	Username    string          `json:"username"`
 	DisplayName string          `json:"display_name"`
+	Locale      string          `json:"locale"`
 	ActiveRole  ActiveRoleClaim `json:"active_role"`
 	Permissions []string        `json:"permissions"`
 	AllRoleIDs  []string        `json:"all_role_ids"`

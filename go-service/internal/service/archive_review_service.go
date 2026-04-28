@@ -414,6 +414,45 @@ func (s *ArchiveReviewService) ListProcessesPaged(c *gin.Context, params dto.Arc
 	return result, nil
 }
 
+// ListAllProcesses 查询符合筛选条件的全量归档流程，不受分页限制。
+// 参数与 ListProcessesPaged 一致，但不含分页参数（params.Page / params.PageSize 被忽略）。
+// 适用于导出场景，返回所有匹配记录。
+func (s *ArchiveReviewService) ListAllProcesses(c *gin.Context, params dto.ArchiveListParams) ([]map[string]interface{}, error) {
+	tenantID, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+
+	_, _ = s.FailStaleArchiveJobs(context.Background())
+
+	configs, err := s.getAccessibleArchiveConfigs(c, userID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if len(configs) == 0 {
+		return []map[string]interface{}{}, nil
+	}
+
+	// 使用超大分页一次性取回全量数据（复用现有分页查询逻辑）
+	const allRecordsPageSize = 1<<31 - 1 // math.MaxInt32
+
+	auditStatus := strings.TrimSpace(params.AuditStatus)
+
+	var result *dto.ArchiveProcessListResponse
+	switch auditStatus {
+	case "compliant", "partially_compliant", "non_compliant":
+		result, err = s.listArchiveBySnapshotPaged(c, tenantID, configs, params, auditStatus, 1, allRecordsPageSize)
+	default:
+		// "unaudited" 或空：从缓存的 OA 全量数据中过滤
+		result, err = s.listArchiveUnauditedPaged(c, tenantID, configs, params, 1, allRecordsPageSize)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Items, nil
+}
+
 // listArchiveBySnapshotPaged 从 archive_process_snapshots 表分页查询已有合规结论的流程。
 // 使用缓存的 OA 全量数据获取日期范围内的流程 ID，再与 snapshot 表交叉过滤。
 func (s *ArchiveReviewService) listArchiveBySnapshotPaged(

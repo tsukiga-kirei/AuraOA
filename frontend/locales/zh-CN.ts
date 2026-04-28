@@ -1994,6 +1994,26 @@ export default {
     'admin.ruleConfig.syncFields': '同步 OA 字段',
     'admin.ruleConfig.syncingFields': '同步中...',
 
+    //===== 导出/导入 =====
+    'export.excel': '导出 Excel',
+    'export.exporting': '导出中...',
+    'export.success': '导出成功',
+    'export.failed': '导出失败',
+    'export.report': '导出报告',
+    'org.import.button': '导入成员',
+    'org.import.template': '下载模板',
+    'org.import.uploading': '上传中...',
+    'org.import.result.title': '导入结果',
+    'org.import.result.total': '共处理 {0} 行',
+    'org.import.result.success': '成功导入 {0} 条',
+    'org.import.result.failed': '失败 {0} 条',
+    'org.import.result.row': '第 {0} 行',
+    'org.import.result.rowHeader': '行号',
+    'org.import.result.reasonHeader': '原因',
+    'org.import.error.format': '文件格式不支持，请上传 .xlsx 或 .xls 文件',
+    'org.import.error.size': '文件大小超过 5MB 限制',
+    'userConfig.export.button': '导出 Excel',
+
     //===== 认证过期提示 =====
     'auth.sessionExpired': '登录已过期，请重新登录',
     'auth.sessionExpiredSoon': '登录即将过期，正在自动续期...',

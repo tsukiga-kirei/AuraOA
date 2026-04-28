@@ -14,6 +14,7 @@ import (
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
+	excelpkg "oa-smart-audit/go-service/internal/pkg/excel"
 	"oa-smart-audit/go-service/internal/pkg/response"
 	"oa-smart-audit/go-service/internal/repository"
 	"oa-smart-audit/go-service/internal/service"
@@ -43,6 +44,86 @@ func (h *ArchiveReviewHandler) ListProcesses(c *gin.Context) {
 		return
 	}
 	response.Success(c, resp)
+}
+
+// ExportProcesses 按当前页签和筛选条件导出全量归档流程为 Excel 文件。
+// GET /api/archive/processes/export
+// 查询参数：同 ListProcesses（不含分页参数）
+// 响应：xlsx 文件流，文件名含页签名和时间戳，支持 UTF-8 编码。
+func (h *ArchiveReviewHandler) ExportProcesses(c *gin.Context) {
+	params := parseArchiveListParams(c)
+	locale := excelpkg.ResolveLocale(c)
+
+	records, err := h.archiveService.ListAllProcesses(c, params)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "导出失败: "+err.Error())
+		return
+	}
+
+	auditStatus := c.Query("audit_status")
+
+	var exportType excelpkg.ExportType
+	if auditStatus == "unaudited" || auditStatus == "" {
+		exportType = excelpkg.ExportTypeArchiveUnaudited
+	} else {
+		exportType = excelpkg.ExportTypeArchiveReviewed
+	}
+
+	rows := make([][]string, 0, len(records))
+	for _, rec := range records {
+		getString := func(key string) string {
+			if v, ok := rec[key]; ok && v != nil {
+				return fmt.Sprintf("%v", v)
+			}
+			return ""
+		}
+
+		row := []string{
+			getString("process_id"),
+			getString("title"),
+			getString("applicant"),
+			getString("department"),
+			getString("process_type"),
+			getString("archive_time"),
+		}
+
+		if exportType == excelpkg.ExportTypeArchiveReviewed {
+			compliance := getString("snapshot_compliance")
+			complianceText := excelpkg.TranslateEnum(excelpkg.EnumCompliance, compliance, locale)
+
+			score := ""
+			confidence := ""
+			reviewTime := ""
+			if result, ok := rec["archive_result"].(map[string]interface{}); ok && result != nil {
+				if v := result["overall_score"]; v != nil {
+					score = fmt.Sprintf("%v", v)
+				}
+				if v := result["confidence"]; v != nil {
+					confidence = fmt.Sprintf("%v", v)
+				}
+				if v := result["created_at"]; v != nil {
+					reviewTime = fmt.Sprintf("%v", v)
+				}
+			}
+
+			row = append(row, complianceText, score, confidence, reviewTime)
+		}
+
+		rows = append(rows, row)
+	}
+
+	timestamp := time.Now().Format("20060102_150405")
+	filename := fmt.Sprintf("archive_%s_%s", auditStatus, timestamp)
+
+	config := excelpkg.ExportConfig{
+		ExportType: exportType,
+		Locale:     locale,
+		Filename:   filename,
+	}
+
+	if err := excelpkg.WriteExcel(c, config, rows); err != nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "生成 Excel 失败: "+err.Error())
+	}
 }
 
 // GetStats 获取归档流程统计数据（与列表共用相同过滤条件）。

@@ -29,7 +29,7 @@ definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
 const { token } = useAuth()
-const { getStats, listProcesses, executeAudit, getAuditChain: fetchAuditChain, getProcessTypes, cancelAuditJob, waitAuditJob } = useAuditApi()
+const { getStats, listProcesses, executeAudit, getAuditChain: fetchAuditChain, getProcessTypes, cancelAuditJob, waitAuditJob, exportProcesses } = useAuditApi()
 const { listTasks } = useCronApi()
 
 // ─── 后台定时任务状态 ───
@@ -45,6 +45,7 @@ const checkRunningCron = async () => {
 const activeTab = ref<AuditTab>('pending_ai')
 const processList = ref<OAProcessItem[]>([])
 const listLoading = ref(false)
+const exportLoading = ref(false)
 const stats = ref<AuditStats>({ pending_ai_count: 0, ai_done_count: 0, completed_count: 0, today_completed_count: 0 })
 
 // ─── 流程类型选项（从后端获取） ───
@@ -888,6 +889,27 @@ const getDurationSec = (ms: number | undefined) => {
 const chainItemAiReasoning = (item: AuditChainItem) =>
   (item.ai_reasoning || item.audit_result?.ai_reasoning || '').trim()
 
+// ─── 导出 Excel ───
+const handleExportExcel = async () => {
+  exportLoading.value = true
+  try {
+    const pt = filterProcessNames.value.length > 0 ? filterProcessNames.value.join(',') : undefined
+    await exportProcesses(activeTab.value, {
+      keyword: searchText.value || undefined,
+      applicant: searchApplicant.value || undefined,
+      process_type: pt,
+      department: filterDepartment.value || undefined,
+      audit_status: filterAuditStatus.value || undefined,
+      ...auditListDateQuery(),
+    })
+    message.success(t('export.success'))
+  } catch {
+    message.error(t('export.failed'))
+  } finally {
+    exportLoading.value = false
+  }
+}
+
 // ─── 初始化 ───
 onMounted(async () => {
   const restoredRange = readDashboardDateRange()
@@ -970,6 +992,10 @@ onMounted(async () => {
                 <FilterOutlined />
                 {{ t('dashboard.filter') }}
                 <span v-if="hasActiveFilters" class="filter-active-dot" />
+              </a-button>
+              <a-button size="small" type="default" :loading="exportLoading" @click="handleExportExcel">
+                <ExportOutlined v-if="!exportLoading" />
+                {{ t('export.excel') }}
               </a-button>
             </div>
           </div>

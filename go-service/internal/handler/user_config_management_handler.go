@@ -3,6 +3,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
+	excelpkg "oa-smart-audit/go-service/internal/pkg/excel"
 	"oa-smart-audit/go-service/internal/pkg/response"
 	"oa-smart-audit/go-service/internal/repository"
 )
@@ -114,6 +116,92 @@ func (h *UserConfigManagementHandler) ListUserConfigs(c *gin.Context) {
 	}
 
 	response.Success(c, result)
+}
+
+// ExportUserConfigs 导出当前租户所有用户配置摘要为 Excel 文件。
+// GET /api/tenant/user-configs/export
+// 响应：xlsx 文件流，文件名含时间戳，支持 UTF-8 编码。
+func (h *UserConfigManagementHandler) ExportUserConfigs(c *gin.Context) {
+	locale := excelpkg.ResolveLocale(c)
+
+	configs, err := h.userConfigRepo.ListByTenant(c)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrDatabase, "数据库错误")
+		return
+	}
+	cronTasks, err := h.cronTaskRepo.ListByTenant(c)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrDatabase, "数据库错误")
+		return
+	}
+
+	memberList, memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap := h.loadSharedMaps(c)
+	configMap := make(map[uuid.UUID]*model.UserPersonalConfig, len(configs))
+	cronTasksByUser := groupCronTasksByOwner(cronTasks)
+	orderedUserIDs := make([]uuid.UUID, 0, len(configs)+len(cronTasksByUser))
+	seen := make(map[uuid.UUID]struct{}, len(configs)+len(cronTasksByUser))
+
+	for i := range configs {
+		cfg := &configs[i]
+		configMap[cfg.UserID] = cfg
+		if _, exists := seen[cfg.UserID]; exists {
+			continue
+		}
+		orderedUserIDs = append(orderedUserIDs, cfg.UserID)
+		seen[cfg.UserID] = struct{}{}
+	}
+
+	for _, member := range memberList {
+		if len(cronTasksByUser[member.UserID]) == 0 {
+			continue
+		}
+		if _, exists := seen[member.UserID]; exists {
+			continue
+		}
+		orderedUserIDs = append(orderedUserIDs, member.UserID)
+		seen[member.UserID] = struct{}{}
+	}
+
+	extraUserIDs := make([]string, 0)
+	extraUserMap := make(map[string]uuid.UUID)
+	for userID := range cronTasksByUser {
+		if _, exists := seen[userID]; exists {
+			continue
+		}
+		key := userID.String()
+		extraUserIDs = append(extraUserIDs, key)
+		extraUserMap[key] = userID
+	}
+	sort.Strings(extraUserIDs)
+	for _, key := range extraUserIDs {
+		orderedUserIDs = append(orderedUserIDs, extraUserMap[key])
+	}
+
+	rows := make([][]string, 0, len(orderedUserIDs))
+	for _, userID := range orderedUserIDs {
+		item := buildAdminUserConfigItem(userID, configMap[userID], cronTasksByUser[userID], memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap)
+		rows = append(rows, []string{
+			item.Username,
+			item.DisplayName,
+			item.Department,
+			strings.Join(item.RoleNames, ","),
+			fmt.Sprintf("%d", item.AuditProcessCount),
+			fmt.Sprintf("%d", item.ArchiveProcessCount),
+			fmt.Sprintf("%d", item.CronTaskCount),
+			item.LastModified,
+		})
+	}
+
+	filename := "user_configs_" + time.Now().Format("20060102_150405")
+	config := excelpkg.ExportConfig{
+		ExportType: excelpkg.ExportTypeUserConfig,
+		Locale:     locale,
+		Filename:   filename,
+	}
+	if err := excelpkg.WriteExcel(c, config, rows); err != nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrDatabase, "导出失败")
+		return
+	}
 }
 
 // GetUserConfig 获取指定用户的个人配置详情及定时任务列表（租户管理端）。
