@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
+	"mime/multipart"
 	"regexp"
 	"strings"
 	"time"
@@ -13,6 +15,7 @@ import (
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/model"
+	excelpkg "oa-smart-audit/go-service/internal/pkg/excel"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	"oa-smart-audit/go-service/internal/pkg/hash"
 	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
@@ -505,6 +508,158 @@ func (s *OrgService) DeleteMember(c *gin.Context, id uuid.UUID) error {
 	}
 
 	pkglogger.Global().Info("member deleted", zap.String("memberID", id.String()), zap.String("tenantID", member.TenantID.String()))
+	return nil
+}
+
+// ImportMembers 批量导入成员：
+// 1. 调用 excel.ParseMemberImport 解析文件
+// 2. 查询系统默认密码（system_configs key: "auth.default_password"）
+// 3. 逐行校验（部门存在性、角色存在性、用户名唯一性）
+// 4. 批量创建用户并分配部门/角色
+// 5. 返回导入结果摘要
+func (s *OrgService) ImportMembers(tenantID uuid.UUID, file multipart.File) (*dto.ImportMembersResult, error) {
+	// 1. 解析 Excel 文件（5MB 限制）
+	rows, parseErrors, err := excelpkg.ParseMemberImport(file, 5*1024*1024)
+	if err != nil {
+		if errors.Is(err, excelpkg.ErrFileTooLarge) {
+			return nil, newServiceError(errcode.ErrParamValidation, "file exceeds 5MB limit")
+		}
+		return nil, newServiceError(errcode.ErrParamValidation, "invalid file format")
+	}
+
+	// 2. 查询系统默认密码
+	defaultPassword := "Admin@123"
+	if pwd, err := s.systemConfigRepo.FindByKey("auth.default_password"); err == nil && pwd != "" {
+		defaultPassword = pwd
+	}
+
+	// 3. 收集解析阶段的错误行
+	failedRows := make([]dto.ImportRowError, 0, len(parseErrors))
+	for _, pe := range parseErrors {
+		failedRows = append(failedRows, dto.ImportRowError{
+			RowNumber: pe.RowNumber,
+			Reason:    pe.Reason,
+		})
+	}
+
+	total := len(rows) + len(parseErrors)
+	success := 0
+
+	// 4. 逐行校验并创建
+	// ParseMemberImport 从第 2 行开始（跳过表头），有效行的行号从 2 开始递增。
+	// 由于 parseErrors 已占用了部分行号，我们需要重建有效行的行号。
+	// 简单策略：从第 2 行开始，跳过 parseErrors 中记录的行号。
+	parseErrRowSet := make(map[int]struct{}, len(parseErrors))
+	for _, pe := range parseErrors {
+		parseErrRowSet[pe.RowNumber] = struct{}{}
+	}
+	rowNum := 2
+	for _, row := range rows {
+		// 跳过已被 parseErrors 占用的行号
+		for {
+			if _, occupied := parseErrRowSet[rowNum]; !occupied {
+				break
+			}
+			rowNum++
+		}
+		rowErr := s.importSingleMemberWithRow(tenantID, rowNum, row, defaultPassword)
+		if rowErr != nil {
+			failedRows = append(failedRows, *rowErr)
+		} else {
+			success++
+		}
+		rowNum++
+	}
+
+	return &dto.ImportMembersResult{
+		Total:      total,
+		Success:    success,
+		FailedRows: failedRows,
+	}, nil
+}
+
+// importSingleMember 校验并创建单个导入成员，失败时返回 ImportRowError（行号由调用方通过 MemberRow 的索引推断，
+// 但 ParseMemberImport 已将行号嵌入 ImportError；此处我们需要从 rows 中追踪行号）。
+// 注意：ParseMemberImport 返回的 MemberRow 不含行号，行号仅在 ImportError 中。
+// 为了在 importSingleMember 中报告行号，我们在 ImportMembers 中传入行号。
+func (s *OrgService) importSingleMemberWithRow(tenantID uuid.UUID, rowNum int, row excelpkg.MemberRow, defaultPassword string) *dto.ImportRowError {
+	// 校验部门是否存在
+	var dept model.Department
+	if err := s.db.Where("tenant_id = ? AND name = ?", tenantID, row.DepartmentName).First(&dept).Error; err != nil {
+		return &dto.ImportRowError{RowNumber: rowNum, Reason: "部门不存在: " + row.DepartmentName}
+	}
+
+	// 校验角色是否存在（允许角色列表为空）
+	var roles []model.OrgRole
+	for _, roleName := range row.RoleNames {
+		var role model.OrgRole
+		if err := s.db.Where("tenant_id = ? AND name = ?", tenantID, roleName).First(&role).Error; err != nil {
+			return &dto.ImportRowError{RowNumber: rowNum, Reason: "角色不存在: " + roleName}
+		}
+		roles = append(roles, role)
+	}
+
+	// 校验用户名唯一性
+	existingUser, _ := s.userRepo.FindByUsername(row.Username)
+	if existingUser != nil {
+		existingMember, _ := s.orgRepo.FindByUserAndTenant(existingUser.ID, tenantID)
+		if existingMember != nil {
+			return &dto.ImportRowError{RowNumber: rowNum, Reason: "用户名已存在: " + row.Username}
+		}
+	}
+
+	// 哈希密码
+	passwordHash, err := hash.HashPassword(defaultPassword)
+	if err != nil {
+		return &dto.ImportRowError{RowNumber: rowNum, Reason: "内部错误：密码加密失败"}
+	}
+
+	// 创建用户（若不存在）
+	var user *model.User
+	if existingUser != nil {
+		user = existingUser
+	} else {
+		user = &model.User{
+			ID:                uuid.New(),
+			Username:          row.Username,
+			PasswordHash:      passwordHash,
+			DisplayName:       row.Name,
+			Status:            "active",
+			PasswordChangedAt: time.Now(),
+		}
+		if defaultLang, err := s.systemConfigRepo.FindByKey("system.default_language"); err == nil && defaultLang != "" {
+			user.Locale = defaultLang
+		}
+		if err := s.db.Create(user).Error; err != nil {
+			return &dto.ImportRowError{RowNumber: rowNum, Reason: "创建用户失败: " + row.Username}
+		}
+	}
+
+	// 创建组织成员记录
+	member := &model.OrgMember{
+		ID:           uuid.New(),
+		TenantID:     tenantID,
+		UserID:       user.ID,
+		DepartmentID: dept.ID,
+		Status:       "active",
+	}
+	if err := s.orgRepo.CreateMember(member); err != nil {
+		return &dto.ImportRowError{RowNumber: rowNum, Reason: "创建成员记录失败: " + row.Username}
+	}
+
+	// 分配角色
+	if len(roles) > 0 {
+		if err := s.db.Model(member).Association("Roles").Append(&roles); err != nil {
+			return &dto.ImportRowError{RowNumber: rowNum, Reason: "分配角色失败: " + row.Username}
+		}
+	}
+
+	// 同步系统角色
+	if err := s.syncUserSystemRoles(user.ID, tenantID, user.DisplayName, roles); err != nil {
+		return &dto.ImportRowError{RowNumber: rowNum, Reason: "同步系统角色失败: " + row.Username}
+	}
+
+	pkglogger.Global().Info("member imported", zap.String("username", row.Username), zap.String("tenantID", tenantID.String()))
 	return nil
 }
 

@@ -1396,6 +1396,213 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 	}, nil
 }
 
+// ListAllProcesses 查询符合筛选条件的全量审核流程，不受分页限制。
+// 参数与 ListProcessesPaged 一致，但不含分页参数（Page/PageSize 字段被忽略）。
+// 适用于导出场景，返回所有匹配记录。
+func (s *AuditExecuteService) ListAllProcesses(c *gin.Context, params dto.AuditListParams) ([]map[string]interface{}, error) {
+	tenantID, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	_, _ = s.FailStaleAuditJobs(context.Background())
+
+	username := s.extractUsername(c)
+	if username == "" {
+		return nil, newServiceError(errcode.ErrNoAuthToken, "用户信息缺失")
+	}
+
+	tab := strings.TrimSpace(params.Tab)
+	if tab == "" {
+		tab = "pending_ai"
+	}
+
+	adapter, err := s.getOAAdapter(tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	if tab == "completed" {
+		return s.listAllCompletedProcesses(c, tenantID, username, adapter, params)
+	}
+
+	// 使用缓存的 OA 全量数据（按日期范围缓存，不含 keyword/page 等高变参数）
+	allowedTables := s.getAllowedMainTables(c)
+	processTypes := s.getAllowedProcessTypes(c)
+
+	allTodoItems, err := s.fetchOATodoDataCached(c, tenantID, userID, adapter, username, params, allowedTables, processTypes)
+	if err != nil {
+		return nil, err
+	}
+
+	// 在内存中做 keyword/applicant/department 过滤
+	todoResult := filterTodoItemsInMemory(allTodoItems, params)
+
+	processIDs := make([]string, len(todoResult))
+	for i, item := range todoResult {
+		processIDs[i] = item.ProcessID
+	}
+	auditMap, err := s.auditLogRepo.GetLatestResultMap(c, processIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询审核记录失败")
+	}
+	snapshotMap, err := s.getSnapshotMapDirect(c, tenantID, processIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询审核快照失败")
+	}
+
+	var results []map[string]interface{}
+	for _, item := range todoResult {
+		record := map[string]interface{}{
+			"process_id":         item.ProcessID,
+			"title":              item.Title,
+			"applicant":          item.Applicant,
+			"department":         item.Department,
+			"process_type":       item.ProcessType,
+			"process_type_label": item.ProcessTypeLabel,
+			"current_node":       item.CurrentNode,
+			"submit_time":        item.SubmitTime,
+			"urgency":            item.Urgency,
+			"has_audit":          false,
+			"audit_result":       nil,
+			"in_todo":            true,
+		}
+
+		snap := snapshotMap[item.ProcessID]
+		hasValid := snap != nil
+		auditLog, hasLatest := auditMap[item.ProcessID]
+
+		if hasValid {
+			validLog, err := s.auditLogRepo.GetByID(c, snap.LatestValidLogID)
+			if err == nil && validLog != nil {
+				record["has_audit"] = true
+				record["audit_result"] = buildAuditResultFromLog(validLog)
+				record["audit_status"] = model.JobStatusCompleted
+			}
+		}
+		if hasLatest {
+			st := auditLog.Status
+			switch st {
+			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
+				record["audit_status"] = st
+				record["audit_result"] = buildAuditResultFromLog(auditLog)
+			case model.JobStatusFailed:
+				if !hasValid {
+					record["audit_status"] = nil
+					record["audit_result"] = nil
+					record["has_audit"] = false
+				}
+			case model.JobStatusCompleted:
+				if !hasValid {
+					record["audit_status"] = nil
+					record["audit_result"] = nil
+					record["has_audit"] = false
+				}
+			}
+		}
+
+		switch tab {
+		case "pending_ai":
+			if !hasValid {
+				results = append(results, record)
+			}
+		case "ai_done":
+			if hasValid {
+				results = append(results, record)
+			}
+		}
+	}
+
+	// audit_status 筛选（approve/return/review）仍在内存中完成
+	return applyAuditStatusFilter(results, params), nil
+}
+
+// listAllCompletedProcesses 查询全量已完成审核流程（不分页），供 ListAllProcesses 内部调用。
+func (s *AuditExecuteService) listAllCompletedProcesses(c *gin.Context, tenantID uuid.UUID, username string, adapter oa.OAAdapter, params dto.AuditListParams) ([]map[string]interface{}, error) {
+	todoProcessIDs, err := s.collectTodoProcessIDsForExclusion(c, username, adapter)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 待办失败: "+err.Error())
+	}
+
+	configuredTypes := s.getAllowedProcessTypes(c)
+
+	dataQ := s.db.Where("tenant_id = ?", tenantID).Order("updated_at DESC")
+	if len(todoProcessIDs) > 0 {
+		dataQ = dataQ.Where("process_id NOT IN ?", todoProcessIDs)
+	}
+	if len(configuredTypes) > 0 {
+		dataQ = dataQ.Where("process_type IN ?", configuredTypes)
+	}
+	if params.SubmitDateStart != nil {
+		dataQ = dataQ.Where("updated_at >= ?", params.SubmitDateStart)
+	}
+	if params.SubmitDateEndExclusive != nil {
+		dataQ = dataQ.Where("updated_at < ?", params.SubmitDateEndExclusive)
+	}
+	if kw := strings.TrimSpace(params.Keyword); kw != "" {
+		dataQ = dataQ.Where("LOWER(title) LIKE ?", "%"+strings.ToLower(kw)+"%")
+	}
+	if pt := strings.TrimSpace(params.ProcessType); pt != "" {
+		parts := strings.Split(pt, ",")
+		trimmed := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				trimmed = append(trimmed, t)
+			}
+		}
+		if len(trimmed) > 0 {
+			dataQ = dataQ.Where("process_type IN ?", trimmed)
+		}
+	}
+
+	var snaps []model.AuditProcessSnapshot
+	if err := dataQ.Find(&snaps).Error; err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询已完成审核记录失败")
+	}
+
+	// 批量查询 valid log（替代逐条 GetByID）
+	logIDs := make([]uuid.UUID, 0, len(snaps))
+	seen := make(map[string]bool)
+	uniqueSnaps := make([]model.AuditProcessSnapshot, 0, len(snaps))
+	for _, snap := range snaps {
+		if seen[snap.ProcessID] {
+			continue
+		}
+		seen[snap.ProcessID] = true
+		logIDs = append(logIDs, snap.LatestValidLogID)
+		uniqueSnaps = append(uniqueSnaps, snap)
+	}
+
+	logMap, err := s.auditLogRepo.GetByIDs(c, logIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "批量查询审核日志失败")
+	}
+
+	var results []map[string]interface{}
+	for _, snap := range uniqueSnaps {
+		validLog := logMap[snap.LatestValidLogID]
+		if validLog == nil {
+			continue
+		}
+		results = append(results, map[string]interface{}{
+			"process_id":         snap.ProcessID,
+			"title":              snap.Title,
+			"applicant":          "",
+			"department":         "",
+			"process_type":       snap.ProcessType,
+			"process_type_label": "",
+			"current_node":       "已完成",
+			"submit_time":        validLog.CreatedAt.Format("2006-01-02 15:04"),
+			"urgency":            "low",
+			"has_audit":          true,
+			"audit_result":       buildAuditResultFromLog(validLog),
+			"in_todo":            false,
+		})
+	}
+
+	// audit_status 筛选（approve/return/review）
+	return applyAuditStatusFilter(results, params), nil
+}
+
 // applyAuditStatusFilter 仅过滤 audit_status（approve/return/review），
 // keyword/applicant/department/processType 已在 OA SQL 中过滤。
 func applyAuditStatusFilter(items []map[string]interface{}, params dto.AuditListParams) []map[string]interface{} {

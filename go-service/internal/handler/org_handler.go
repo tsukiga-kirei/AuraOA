@@ -10,6 +10,7 @@ import (
 
 	"oa-smart-audit/go-service/internal/dto"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
+	excelpkg "oa-smart-audit/go-service/internal/pkg/excel"
 	"oa-smart-audit/go-service/internal/pkg/response"
 	"oa-smart-audit/go-service/internal/service"
 )
@@ -272,6 +273,67 @@ func (h *OrgHandler) DeleteMember(c *gin.Context) {
 		return
 	}
 	response.Success(c, nil)
+}
+
+// ── 成员导入 / 模板下载 ───────────────────────────────────────────────────
+
+// ImportMembers 解析上传的 Excel 文件并批量创建成员，使用系统默认密码。
+// POST /api/tenant/org/members/import
+// 请求：multipart/form-data，file 字段（xlsx/xls，最大 5MB）
+// 响应：导入结果摘要（total/success/failed_rows）。
+func (h *OrgHandler) ImportMembers(c *gin.Context) {
+	tenantID, err := getTenantID(c)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "租户ID无效")
+		return
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "请上传文件")
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "文件读取失败")
+		return
+	}
+	defer file.Close()
+
+	result, err := h.orgService.ImportMembers(tenantID, file)
+	if err != nil {
+		if svcErr, ok := err.(*service.ServiceError); ok && svcErr.Message == "file exceeds 5MB limit" {
+			response.Error(c, http.StatusRequestEntityTooLarge, svcErr.Code, svcErr.Message)
+			return
+		}
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// DownloadImportTemplate 下载成员导入 Excel 模板文件。
+// GET /api/tenant/org/members/import-template
+// 查询参数：locale（zh-CN 或 en-US，默认 zh-CN）
+// 响应：xlsx 文件流（嵌入式静态模板）。
+func (h *OrgHandler) DownloadImportTemplate(c *gin.Context) {
+	locale := c.DefaultQuery("locale", "zh-CN")
+
+	filename := "templates/member_import_zh.xlsx"
+	if locale == "en-US" {
+		filename = "templates/member_import_en.xlsx"
+	}
+
+	data, err := excelpkg.TemplateFS.ReadFile(filename)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "模板文件读取失败")
+		return
+	}
+
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", `attachment; filename="member_import_template.xlsx"`)
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", data)
 }
 
 // ── 公共辅助函数 ──────────────────────────────────────────────────────────

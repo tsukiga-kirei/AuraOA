@@ -1964,6 +1964,26 @@ export default {
     'admin.ruleConfig.syncFields': 'Sync OA Fields',
     'admin.ruleConfig.syncingFields': 'Syncing...',
 
+    //===== Export / Import =====
+    'export.excel': 'Export Excel',
+    'export.exporting': 'Exporting...',
+    'export.success': 'Export successful',
+    'export.failed': 'Export failed',
+    'export.report': 'Export Report',
+    'org.import.button': 'Import Members',
+    'org.import.template': 'Download Template',
+    'org.import.uploading': 'Uploading...',
+    'org.import.result.title': 'Import Result',
+    'org.import.result.total': 'Processed {0} rows',
+    'org.import.result.success': 'Successfully imported {0}',
+    'org.import.result.failed': 'Failed {0}',
+    'org.import.result.row': 'Row {0}',
+    'org.import.result.rowHeader': 'Row',
+    'org.import.result.reasonHeader': 'Reason',
+    'org.import.error.format': 'Unsupported format, please upload .xlsx or .xls files',
+    'org.import.error.size': 'File exceeds 5MB limit',
+    'userConfig.export.button': 'Export Excel',
+
     //===== Auth expiry messages =====
     'auth.sessionExpired': 'Session expired, please log in again',
     'auth.sessionExpiredSoon': 'Session expiring soon, auto-renewing...',

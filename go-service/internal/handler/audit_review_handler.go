@@ -15,6 +15,7 @@ import (
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
+	excelpkg "oa-smart-audit/go-service/internal/pkg/excel"
 	"oa-smart-audit/go-service/internal/pkg/response"
 	"oa-smart-audit/go-service/internal/repository"
 	"oa-smart-audit/go-service/internal/service"
@@ -49,6 +50,79 @@ func (h *AuditHandler) ListProcesses(c *gin.Context) {
 		return
 	}
 	response.Success(c, resp)
+}
+
+// ExportProcesses 按当前页签和筛选条件导出全量审核流程为 Excel 文件。
+// GET /api/audit/processes/export
+// 查询参数：同 ListProcesses（不含分页参数）
+// 响应：xlsx 文件流，文件名含页签名和时间戳，支持 UTF-8 编码。
+func (h *AuditHandler) ExportProcesses(c *gin.Context) {
+	if getUsername(c) == "" {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "用户信息缺失")
+		return
+	}
+
+	params := parseAuditListParams(c)
+	locale := excelpkg.ResolveLocale(c)
+
+	records, err := h.auditService.ListAllProcesses(c, params)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	// 根据 tab 选择导出类型
+	var exportType excelpkg.ExportType
+	if params.Tab == "completed" {
+		exportType = excelpkg.ExportTypeAuditCompleted
+	} else {
+		exportType = excelpkg.ExportTypeAuditUnaudited
+	}
+
+	// 将每条记录映射为 []string 行
+	rows := make([][]string, 0, len(records))
+	for _, item := range records {
+		processID, _ := item["process_id"].(string)
+		title, _ := item["title"].(string)
+		applicant, _ := item["applicant"].(string)
+		department, _ := item["department"].(string)
+		processType, _ := item["process_type"].(string)
+		submitTime, _ := item["submit_time"].(string)
+		currentNode, _ := item["current_node"].(string)
+
+		row := []string{processID, title, applicant, department, processType, submitTime, currentNode}
+
+		if exportType == excelpkg.ExportTypeAuditCompleted {
+			var recommendation, score, auditStatus, auditTime string
+			if auditResult, ok := item["audit_result"].(map[string]interface{}); ok {
+				rec, _ := auditResult["recommendation"].(string)
+				recommendation = excelpkg.TranslateEnum(excelpkg.EnumAuditRecommendation, rec, locale)
+
+				if s, ok := auditResult["overall_score"]; ok {
+					score = fmt.Sprintf("%v", s)
+				}
+
+				st, _ := auditResult["status"].(string)
+				auditStatus = excelpkg.TranslateEnum(excelpkg.EnumAuditStatus, st, locale)
+
+				auditTime, _ = auditResult["created_at"].(string)
+			}
+			row = append(row, recommendation, score, auditStatus, auditTime)
+		}
+
+		rows = append(rows, row)
+	}
+
+	filename := fmt.Sprintf("audit_%s_%s", params.Tab, time.Now().Format("20060102_150405"))
+	config := excelpkg.ExportConfig{
+		ExportType: exportType,
+		Locale:     locale,
+		Filename:   filename,
+	}
+
+	if err := excelpkg.WriteExcel(c, config, rows); err != nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "导出失败: "+err.Error())
+	}
 }
 
 // GetStats 获取审核工作台统计数据，与列表共用相同过滤条件。

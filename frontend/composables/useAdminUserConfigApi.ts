@@ -3,6 +3,7 @@
  * 对接后端路由：
  *   GET /api/tenant/user-configs        获取租户内所有用户配置摘要列表
  *   GET /api/tenant/user-configs/:id    获取单个用户的配置详情
+ *   GET /api/tenant/user-configs/export 导出所有用户配置摘要为 Excel 文件
  */
 
 import type {
@@ -22,7 +23,7 @@ export type {
 }
 
 export const useAdminUserConfigApi = () => {
-  const { authFetch } = useAuth()
+  const { authFetch, token } = useAuth()
 
   // 用户配置列表（响应式，供模板直接绑定）
   const configs = ref<AdminUserConfigItem[]>([])
@@ -61,11 +62,57 @@ export const useAdminUserConfigApi = () => {
     return await authFetch<AdminUserConfigItem>(`/api/tenant/user-configs/${userId}`)
   }
 
+  /**
+   * 导出当前租户所有用户配置摘要为 Excel 文件，触发浏览器下载。
+   */
+  async function exportUserConfigs(): Promise<void> {
+    const runtimeConfig = useRuntimeConfig()
+    const baseURL = String(runtimeConfig.public.apiBase || '')
+    const url = `${baseURL}/api/tenant/user-configs/export`
+
+    const accessToken = token.value || (process.client ? localStorage.getItem('token') || '' : '')
+
+    const res = await fetch(url, {
+      headers: accessToken
+        ? { Authorization: `Bearer ${accessToken}` }
+        : {},
+    })
+
+    if (!res.ok) {
+      throw new Error('导出失败')
+    }
+
+    const blob = await res.blob()
+    const blobUrl = URL.createObjectURL(blob)
+
+    try {
+      const a = document.createElement('a')
+      a.href = blobUrl
+
+      const contentDisposition = res.headers.get('Content-Disposition') || ''
+      const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+      const normalMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i)
+
+      const filename = utf8Match?.[1]
+        ? decodeURIComponent(utf8Match[1])
+        : normalMatch?.[1] || 'user_configs.xlsx'
+
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }
+    finally {
+      URL.revokeObjectURL(blobUrl)
+    }
+  }
+
   return {
     configs,
     loading,
     error,
     listUserConfigs,
     getUserConfig,
+    exportUserConfigs,
   }
 }

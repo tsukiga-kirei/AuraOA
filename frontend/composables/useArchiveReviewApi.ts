@@ -42,7 +42,7 @@ const POLL_INTERVAL_MS = 1500
 const ARCHIVE_TIMEOUT_MS = 35 * 60 * 1000
 
 export const useArchiveReviewApi = () => {
-  const { authFetch } = useAuth()
+  const { authFetch, token } = useAuth()
 
   /**
    * 获取归档复盘统计数据（总数、各状态分布、时间范围内的趋势等）。
@@ -178,6 +178,65 @@ export const useArchiveReviewApi = () => {
     return await authFetch<ArchiveProcessTypeOption[]>('/api/tenant/settings/archive-configs')
   }
 
+  /**
+   * 按当前页签和筛选条件导出全量归档流程为 Excel 文件，触发浏览器下载。
+   * @param params 筛选参数（含 audit_status 作为页签标识）
+   */
+  async function exportProcesses(params?: {
+    audit_status?: string
+    keyword?: string
+    applicant?: string
+    process_type?: string
+    department?: string
+    start_date?: string
+    end_date?: string
+  }): Promise<void> {
+    const query = new URLSearchParams()
+    if (params?.audit_status) query.set('audit_status', params.audit_status)
+    if (params?.keyword) query.set('keyword', params.keyword)
+    if (params?.applicant) query.set('applicant', params.applicant)
+    if (params?.process_type) query.set('process_type', params.process_type)
+    if (params?.department) query.set('department', params.department)
+    if (params?.start_date) query.set('start_date', params.start_date)
+    if (params?.end_date) query.set('end_date', params.end_date)
+    const qs = query.toString()
+
+    const runtimeConfig = useRuntimeConfig()
+    const baseURL = String(runtimeConfig.public.apiBase || '')
+    const url = `${baseURL}/api/archive/processes/export${qs ? `?${qs}` : ''}`
+
+    const accessToken = token.value || (process.client ? localStorage.getItem('token') || '' : '')
+    const res = await fetch(url, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    })
+
+    if (!res.ok) {
+      throw new Error('导出失败')
+    }
+
+    const blob = await res.blob()
+    const blobUrl = URL.createObjectURL(blob)
+
+    try {
+      const a = document.createElement('a')
+      a.href = blobUrl
+
+      const contentDisposition = res.headers.get('Content-Disposition') || ''
+      const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+      const normalMatch = contentDisposition.match(/filename="?([^";]+)"?/i)
+      const filename = utf8Match?.[1]
+        ? decodeURIComponent(utf8Match[1])
+        : normalMatch?.[1] || 'archive_processes.xlsx'
+
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    } finally {
+      URL.revokeObjectURL(blobUrl)
+    }
+  }
+
   return {
     getStats,
     listProcesses,
@@ -188,5 +247,6 @@ export const useArchiveReviewApi = () => {
     getArchiveResult,
     getArchiveHistory,
     getProcessTypes,
+    exportProcesses,
   }
 }

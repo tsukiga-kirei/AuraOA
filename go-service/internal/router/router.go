@@ -85,6 +85,8 @@ func SetupRouter(
 		tenantOrg.POST("/members", orgHandler.CreateMember)
 		tenantOrg.PUT("/members/:id", orgHandler.UpdateMember)
 		tenantOrg.DELETE("/members/:id", orgHandler.DeleteMember)
+		tenantOrg.POST("/members/import", orgHandler.ImportMembers)
+		tenantOrg.GET("/members/import-template", orgHandler.DownloadImportTemplate)
 	}
 
 	// 系统管理员路由组（需要 JWT + 租户上下文 + system_admin 角色）
@@ -220,6 +222,7 @@ func SetupRouter(
 	tenantUserConfigs.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
 	{
 		tenantUserConfigs.GET("", userConfigMgmtHandler.ListUserConfigs)
+		tenantUserConfigs.GET("/export", userConfigMgmtHandler.ExportUserConfigs)
 		tenantUserConfigs.GET("/:userId", userConfigMgmtHandler.GetUserConfig)
 	}
 
@@ -262,6 +265,7 @@ func SetupRouter(
 	audit.Use(middleware.JWT(rdb), middleware.TenantContext())
 	{
 		audit.GET("/processes", auditHandler.ListProcesses)
+		audit.GET("/processes/export", auditHandler.ExportProcesses)
 		audit.GET("/stats", auditHandler.GetStats)
 		audit.POST("/execute", auditHandler.Execute)
 		audit.POST("/cancel/:id", auditHandler.CancelJob)
@@ -294,6 +298,7 @@ func SetupRouter(
 	archive.Use(middleware.JWT(rdb), middleware.TenantContext())
 	{
 		archive.GET("/processes", archiveReviewHandler.ListProcesses)
+		archive.GET("/processes/export", archiveReviewHandler.ExportProcesses)
 		archive.GET("/stats", archiveReviewHandler.GetStats)
 		archive.POST("/execute", archiveReviewHandler.Execute)
 		archive.POST("/batch", archiveReviewHandler.BatchExecute)

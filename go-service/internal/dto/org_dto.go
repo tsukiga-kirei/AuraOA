@@ -103,3 +103,18 @@ type MemberUserInfo struct {
 	Phone       string `json:"phone"`
 	AvatarURL   string `json:"avatar_url"`
 }
+
+// --- 导入结果 DTO ---
+
+// ImportRowError 表示单行导入失败的详情。
+type ImportRowError struct {
+	RowNumber int    `json:"row_number"`
+	Reason    string `json:"reason"`
+}
+
+// ImportMembersResult 批量导入成员的结果摘要。
+type ImportMembersResult struct {
+	Total      int              `json:"total"`
+	Success    int              `json:"success"`
+	FailedRows []ImportRowError `json:"failed_rows"`
+}

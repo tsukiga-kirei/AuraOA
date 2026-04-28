@@ -14,7 +14,6 @@ import {
   MailOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import * as XLSX from 'xlsx'
 import type { AdminUserConfigItem, AdminProcessDetail, AdminCronTaskDetail } from '~/types/user-config'
 import { useI18n } from '~/composables/useI18n'
 import { usePagination } from '~/composables/usePagination'
@@ -23,7 +22,7 @@ import { messages } from '~/locales'
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t, te, locale } = useI18n()
-const { configs, loading, listUserConfigs } = useAdminUserConfigApi()
+const { configs, loading, listUserConfigs, exportUserConfigs } = useAdminUserConfigApi()
 
 // =====================================================================
 // 数据加载
@@ -55,7 +54,6 @@ const search = ref('')
 const deptFilter = ref<string | undefined>(undefined)
 const roleFilter = ref<string | undefined>(undefined)
 const hasConfigFilter = ref<string | undefined>(undefined)
-const selectedIds = ref<string[]>([])
 
 const totalChanges = (c: AdminUserConfigItem) =>
   c.audit_process_count + c.cron_task_count + c.archive_process_count
@@ -83,43 +81,22 @@ const totalCronChanges = computed(() => configs.value.reduce((s, c) => s + c.cro
 const totalArchiveChanges = computed(() => configs.value.reduce((s, c) => s + c.archive_process_count, 0))
 
 // =====================================================================
-// 选择
-// =====================================================================
-const toggleSelect = (id: string) => {
-  const idx = selectedIds.value.indexOf(id)
-  if (idx >= 0) selectedIds.value.splice(idx, 1)
-  else selectedIds.value.push(id)
-}
-const toggleSelectAll = () => {
-  if (selectedIds.value.length === filteredConfigs.value.length) selectedIds.value = []
-  else selectedIds.value = filteredConfigs.value.map(c => c.user_id)
-}
-
-// =====================================================================
 // 导出
 // =====================================================================
-const handleExport = () => {
-  if (selectedIds.value.length === 0) {
-    message.warning(t('admin.userConfigs.selectToExport'))
-    return
+const exportLoading = ref(false)
+
+const handleExportExcel = async () => {
+  exportLoading.value = true
+  try {
+    await exportUserConfigs()
+    message.success(t('export.success'))
   }
-  const data = configs.value
-    .filter(c => selectedIds.value.includes(c.user_id))
-    .map(c => ({
-      username: c.username,
-      display_name: c.display_name,
-      department: c.department,
-      roles: c.role_names.join(', '),
-      audit_process_count: c.audit_process_count,
-      cron_task_count: c.cron_task_count,
-      archive_process_count: c.archive_process_count,
-      last_modified: c.last_modified || '-',
-    }))
-  const ws = XLSX.utils.json_to_sheet(data)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'UserPrefs')
-  XLSX.writeFile(wb, `user_preferences_${Date.now()}.xlsx`)
-  message.success(t('common.success'))
+  catch {
+    message.error(t('export.failed'))
+  }
+  finally {
+    exportLoading.value = false
+  }
 }
 
 // =====================================================================
@@ -249,8 +226,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
         </a-select>
       </div>
       <div class="toolbar-right">
-        <span v-if="selectedIds.length > 0" class="batch-selected-hint">{{ t('admin.userConfigs.selected', `${selectedIds.length}`) }}</span>
-        <a-button @click="handleExport"><ExportOutlined /> {{ t('admin.userConfigs.export') }}</a-button>
+        <a-button :loading="exportLoading" @click="handleExportExcel"><ExportOutlined /> {{ t('userConfig.export.button') }}</a-button>
       </div>
     </div>
 
@@ -262,13 +238,6 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
       <table v-else class="data-table">
         <thead>
           <tr>
-            <th style="width: 40px;">
-              <a-checkbox
-                :checked="selectedIds.length > 0 && selectedIds.length === filteredConfigs.length"
-                :indeterminate="selectedIds.length > 0 && selectedIds.length < filteredConfigs.length"
-                @change="toggleSelectAll"
-              />
-            </th>
             <th>{{ t('admin.userConfigs.thUser') }}</th>
             <th>{{ t('admin.userConfigs.thDepartment') }}</th>
             <th>{{ t('admin.userConfigs.thRole') }}</th>
@@ -281,9 +250,6 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
         </thead>
         <tbody>
           <tr v-for="c in paged" :key="c.user_id">
-            <td>
-              <a-checkbox :checked="selectedIds.includes(c.user_id)" @change="toggleSelect(c.user_id)" />
-            </td>
             <td>
               <div class="user-cell">
                 <a-avatar :size="28" class="user-avatar">
@@ -328,7 +294,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
             </td>
           </tr>
           <tr v-if="!loading && filteredConfigs.length === 0">
-            <td colspan="9" class="empty-cell">{{ t('admin.userConfigs.noData') }}</td>
+            <td colspan="8" class="empty-cell">{{ t('admin.userConfigs.noData') }}</td>
           </tr>
         </tbody>
       </table>

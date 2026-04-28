@@ -1,6 +1,21 @@
 import type { Department, OrgRole, OrgMember } from '~/types/org'
 
 // ============================================================
+// 导入相关类型
+// ============================================================
+
+export interface ImportRowError {
+  row_number: number
+  reason: string
+}
+
+export interface ImportMembersResult {
+  total: number
+  success: number
+  failed_rows: ImportRowError[]
+}
+
+// ============================================================
 // 后端响应 DTO 类型（与 Go 服务返回的嵌套结构对应）
 // ============================================================
 
@@ -260,11 +275,75 @@ export const useOrgApi = () => {
     await Promise.all([listDepartments(), listRoles(), listMembers()])
   }
 
+  // ============================================================
+  // 成员导入 / 模板下载
+  // ============================================================
+
+  /**
+   * 上传 Excel 文件批量导入成员。
+   * @param file 用户选择的 Excel 文件
+   * @returns 导入结果摘要（total / success / failed_rows）
+   */
+  async function importMembers(file: File): Promise<ImportMembersResult> {
+    const formData = new FormData()
+    formData.append('file', file)
+    return await authFetch<ImportMembersResult>('/api/tenant/org/members/import', {
+      method: 'POST',
+      body: formData,
+    })
+  }
+
+  /**
+   * 下载成员导入模板文件，触发浏览器下载。
+   * @param locale 语言（zh-CN 或 en-US），默认使用当前用户语言
+   */
+  async function downloadImportTemplate(locale?: string): Promise<void> {
+    const runtimeConfig = useRuntimeConfig()
+    const baseURL = String(runtimeConfig.public.apiBase || '')
+    const query = locale ? `?locale=${encodeURIComponent(locale)}` : ''
+    const url = `${baseURL}/api/tenant/org/members/import-template${query}`
+
+    const { token } = useAuth()
+    const accessToken = token.value || (process.client ? localStorage.getItem('token') || '' : '')
+
+    const res = await fetch(url, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    })
+
+    if (!res.ok) {
+      throw new Error('下载模板失败')
+    }
+
+    const blob = await res.blob()
+    const blobUrl = URL.createObjectURL(blob)
+
+    try {
+      const a = document.createElement('a')
+      a.href = blobUrl
+
+      const contentDisposition = res.headers.get('Content-Disposition') || ''
+      const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+      const normalMatch = contentDisposition.match(/filename="?([^";]+)"?/i)
+      const filename = utf8Match?.[1]
+        ? decodeURIComponent(utf8Match[1])
+        : normalMatch?.[1] || 'member_import_template.xlsx'
+
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }
+    finally {
+      URL.revokeObjectURL(blobUrl)
+    }
+  }
+
   return {
     departments, roles, members, loading, error,
     loadAll,
     listDepartments, createDepartment, updateDepartment, deleteDepartment,
     listRoles, createRole, updateRole, deleteRole,
     listMembers, createMember, updateMember, deleteMember,
+    importMembers, downloadImportTemplate,
   }
 }

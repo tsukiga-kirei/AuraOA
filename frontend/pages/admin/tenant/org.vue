@@ -18,6 +18,7 @@ import {
 import { message } from 'ant-design-vue'
 import type { Department, OrgRole, OrgMember } from '~/types/org'
 import { useOrgApi } from '~/composables/useOrgApi'
+import type { ImportMembersResult } from '~/composables/useOrgApi'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
@@ -27,14 +28,55 @@ const {
   createDepartment, updateDepartment, deleteDepartment: apiDeleteDept,
   createRole, updateRole, deleteRole: apiDeleteRole,
   createMember, updateMember, deleteMember: apiDeleteMember,
+  importMembers, downloadImportTemplate,
 } = useOrgApi()
 
-const { currentUser, refreshRoles } = useAuth()
+const { currentUser, refreshRoles, userLocale } = useAuth()
 
 // 页面挂载时加载成员、角色、部门数据
 onMounted(() => {
   loadAll()
 })
+
+//=====成员导入=====
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const importLoading = ref(false)
+const showImportResult = ref(false)
+const importResult = ref<ImportMembersResult | null>(null)
+
+const handleImportClick = () => {
+  fileInputRef.value?.click()
+}
+
+const handleFileSelected = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  // Reset input so the same file can be selected again
+  input.value = ''
+
+  importLoading.value = true
+  try {
+    const result = await importMembers(file)
+    importResult.value = result
+    showImportResult.value = true
+    if (result.success > 0) {
+      await loadAll()
+    }
+  } catch (e: any) {
+    message.error(e.message || t('admin.org.operationFailed'))
+  } finally {
+    importLoading.value = false
+  }
+}
+
+const handleDownloadTemplate = async () => {
+  try {
+    await downloadImportTemplate(userLocale.value || 'zh-CN')
+  } catch (e: any) {
+    message.error(e.message || t('admin.org.operationFailed'))
+  }
+}
 
 //顶级选项卡
 const topTab = ref<'members' | 'roles' | 'departments'>('members')
@@ -436,7 +478,12 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
             <a-select-option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</a-select-option>
           </a-select>
         </div>
-        <a-button type="primary" @click="openAddMember"><PlusOutlined /> {{ t('admin.org.addMember') }}</a-button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <input ref="fileInputRef" type="file" accept=".xlsx,.xls" style="display: none;" @change="handleFileSelected" />
+          <a-button :loading="importLoading" @click="handleImportClick">{{ t('org.import.button') }}</a-button>
+          <a-button @click="handleDownloadTemplate">{{ t('org.import.template') }}</a-button>
+          <a-button type="primary" @click="openAddMember"><PlusOutlined /> {{ t('admin.org.addMember') }}</a-button>
+        </div>
       </div>
 
       <div class="data-table-card">
@@ -577,6 +624,31 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
         </div>
       </div>
     </div>
+
+    <!--=====导入结果弹窗=====-->
+    <a-modal v-model:open="showImportResult" :title="t('org.import.result.title')" :footer="null" :width="480">
+      <div v-if="importResult" style="padding: 8px 0;">
+        <p style="margin: 0 0 6px;">{{ t('org.import.result.total', importResult.total) }}</p>
+        <p style="margin: 0 0 6px; color: var(--color-success);">{{ t('org.import.result.success', importResult.success) }}</p>
+        <p v-if="importResult.failed_rows.length > 0" style="margin: 0 0 10px; color: var(--color-error);">{{ t('org.import.result.failed', importResult.failed_rows.length) }}</p>
+        <div v-if="importResult.failed_rows.length > 0" style="max-height: 260px; overflow-y: auto; border: 1px solid var(--color-border-light); border-radius: var(--radius-md);">
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead>
+              <tr style="background: var(--color-bg-page);">
+                <th style="padding: 8px 12px; text-align: left; font-weight: 600; color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border-light);">{{ t('org.import.result.rowHeader') }}</th>
+                <th style="padding: 8px 12px; text-align: left; font-weight: 600; color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border-light);">{{ t('org.import.result.reasonHeader') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in importResult.failed_rows" :key="row.row_number" style="border-bottom: 1px solid var(--color-border-light);">
+                <td style="padding: 8px 12px; white-space: nowrap; color: var(--color-text-secondary);">{{ t('org.import.result.row', row.row_number) }}</td>
+                <td style="padding: 8px 12px; color: var(--color-text-primary);">{{ row.reason }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </a-modal>
 
     <!--=====会员模式=====-->
     <a-modal v-model:open="showMemberModal" :title="editingMember ? t('admin.org.editMember') : t('admin.org.addMemberTitle')" @ok="handleSaveMember" :ok-text="t('admin.org.save')" :cancel-text="t('admin.org.cancel')" :width="520">

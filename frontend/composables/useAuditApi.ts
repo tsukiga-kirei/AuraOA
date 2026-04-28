@@ -176,6 +176,58 @@ export const useAuditApi = () => {
     await authFetch(`/api/audit/cancel/${encodeURIComponent(auditLogId)}`, { method: 'POST' })
   }
 
+  /**
+   * 按当前页签和筛选条件导出全量审核流程为 Excel 文件，触发浏览器下载。
+   * @param tab 当前页签（pending_ai / completed 等）
+   * @param params 筛选参数（与 listProcesses 一致，不含分页）
+   */
+  async function exportProcesses(tab: AuditTab, params?: {
+    keyword?: string
+    applicant?: string
+    process_type?: string
+    department?: string
+    audit_status?: string
+    start_date?: string
+    end_date?: string
+  }): Promise<void> {
+    const runtimeConfig = useRuntimeConfig()
+    const baseURL = String(runtimeConfig.public.apiBase || '')
+    const query = new URLSearchParams({ tab })
+    if (params?.keyword) query.set('keyword', params.keyword)
+    if (params?.applicant) query.set('applicant', params.applicant)
+    if (params?.process_type) query.set('process_type', params.process_type)
+    if (params?.department) query.set('department', params.department)
+    if (params?.audit_status) query.set('audit_status', params.audit_status)
+    if (params?.start_date) query.set('start_date', params.start_date)
+    if (params?.end_date) query.set('end_date', params.end_date)
+    const url = `${baseURL}/api/audit/processes/export?${query.toString()}`
+    const { token } = useAuth()
+    const accessToken = token.value || (process.client ? localStorage.getItem('token') || '' : '')
+    const res = await fetch(url, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    })
+    if (!res.ok) {
+      throw new Error('导出失败')
+    }
+    const blob = await res.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    try {
+      const a = document.createElement('a')
+      a.href = blobUrl
+      const contentDisposition = res.headers.get('Content-Disposition') || ''
+      const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+      const normalMatch = contentDisposition.match(/filename="?([^";]+)"?/i)
+      a.download = utf8Match?.[1]
+        ? decodeURIComponent(utf8Match[1])
+        : normalMatch?.[1] || `audit_${tab}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    } finally {
+      URL.revokeObjectURL(blobUrl)
+    }
+  }
+
   return {
     getStats,
     listProcesses,
@@ -186,5 +238,6 @@ export const useAuditApi = () => {
     getAuditChain,
     getAuditResult,
     getProcessTypes,
+    exportProcesses,
   }
 }

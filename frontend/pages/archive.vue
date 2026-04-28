@@ -51,7 +51,30 @@ const {
   getArchiveResult,
   getArchiveHistory,
   getProcessTypes,
+  exportProcesses,
 } = useArchiveReviewApi()
+
+const exportLoading = ref(false)
+
+const handleExportExcel = async () => {
+  exportLoading.value = true
+  try {
+    const pt = filterProcessNames.value.length === 1 ? filterProcessNames.value[0] : ''
+    await exportProcesses({
+      audit_status: filterAuditStatus.value,
+      keyword: searchText.value || undefined,
+      applicant: searchApplicant.value || undefined,
+      process_type: pt || undefined,
+      department: filterDepartment.value || undefined,
+      ...archiveDateQuery(),
+    })
+    message.success(t('export.success'))
+  } catch {
+    message.error(t('export.failed'))
+  } finally {
+    exportLoading.value = false
+  }
+}
 
 const { listTasks } = useCronApi()
 const runningCronTasks = ref<any[]>([])
@@ -748,13 +771,9 @@ const handleAbortBatch = async () => {
 }
 
 //=====导出（仅在选择流程后显示）=====
-const handleExport = async (format: string) => {
+const handleExport = async () => {
   if (!selectedProcess.value || !currentResult.value) {
     message.warning(t('archive.noResultToExport'))
-    return
-  }
-  if (format !== 'json') {
-    message.info(t('archive.exportFormatPending', format.toUpperCase()))
     return
   }
 
@@ -1012,18 +1031,9 @@ onUnmounted(() => {
       </div>
       <div class="page-header-actions">
         <!--导出按钮：仅在选择进程时显示-->
-        <a-dropdown v-if="selectedProcess">
-          <a-button>
-            <DownloadOutlined /> {{ t('archive.exportReport') }}
-          </a-button>
-          <template #overlay>
-            <a-menu>
-              <a-menu-item key="json" @click="handleExport('json')">{{ t('archive.exportJSON') }}</a-menu-item>
-              <a-menu-item key="csv" @click="handleExport('csv')">{{ t('archive.exportCSV') }}</a-menu-item>
-              <a-menu-item key="excel" @click="handleExport('excel')">{{ t('archive.exportExcel') }}</a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown>
+        <a-button v-if="selectedProcess" @click="handleExport">
+          <DownloadOutlined /> {{ t('export.report') }}
+        </a-button>
       </div>
     </div>
 
@@ -1134,6 +1144,13 @@ onUnmounted(() => {
               <span v-else-if="filterAuditStatus === 'unaudited' && auditedCount > 0" class="panel-header-hint">{{ t('archive.reviewed') }} {{ auditedCount }}/{{ listTotal }}</span>
             </div>
             <div class="batch-toolbar-right">
+              <a-button
+                size="small"
+                :loading="exportLoading"
+                @click="handleExportExcel"
+              >
+                <DownloadOutlined v-if="!exportLoading" /> {{ t('export.excel') }}
+              </a-button>
               <a-button
                 v-if="auditInProgress"
                 size="small"
