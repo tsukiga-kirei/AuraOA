@@ -589,7 +589,7 @@ onMounted(async () => {
         </div>
         <div class="toolbar-right">
           <a-button @click="handleExport('audit')">
-            <ExportOutlined /> {{ t('admin.data.export') }}
+            <ExportOutlined /> {{ t('export.excel') }}
           </a-button>
         </div>
       </div>
@@ -767,7 +767,7 @@ onMounted(async () => {
         </div>
         <div class="toolbar-right">
           <a-button @click="handleExport('cron')">
-            <ExportOutlined /> {{ t('admin.data.export') }}
+            <ExportOutlined /> {{ t('export.excel') }}
           </a-button>
         </div>
       </div>
@@ -928,7 +928,7 @@ onMounted(async () => {
         </div>
         <div class="toolbar-right">
           <a-button @click="handleExport('archive')">
-            <ExportOutlined /> {{ t('admin.data.export') }}
+            <ExportOutlined /> {{ t('export.excel') }}
           </a-button>
         </div>
       </div>
