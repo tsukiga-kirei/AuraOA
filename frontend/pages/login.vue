@@ -24,9 +24,11 @@ const config = useRuntimeConfig()
 // 可选租户列表，用于业务用户和租户管理员登录时选择租户
 const tenants = ref<TenantOption[]>([])
 
-// 页面挂载时：恢复主题偏好，并从后端拉取租户列表
+// 页面挂载时：恢复主题偏好，恢复记住的登录信息，并从后端拉取租户列表
 onMounted(async () => {
   restoreTheme()
+  // 先恢复记住的登录信息（tenant_id 在租户列表加载后会自动匹配）
+  restoreRemembered()
   try {
     const res = await $fetch<{ code: number; message: string; data: TenantOption[]; trace_id: string }>(
       `${config.public.apiBase}/api/tenants/list`
@@ -55,10 +57,32 @@ const activePortal = ref<PortalType>('business')
 const form = ref<{ username: string; password: string; tenant_id: string | undefined }>({ username: '', password: '', tenant_id: undefined })
 // 登录请求加载状态
 const loading = ref(false)
-// 记住我选项（前端状态，暂未持久化）
+// 记住我选项
 const rememberMe = ref(false)
 // 当前激活入口的完整配置
 const currentPortal = computed(() => portals.value.find(p => p.key === activePortal.value)!)
+
+// 记住登录信息的 localStorage key
+const REMEMBER_ME_KEY = 'login_remember'
+
+/** 从 localStorage 恢复记住的登录信息 */
+const restoreRemembered = () => {
+  try {
+    const raw = localStorage.getItem(REMEMBER_ME_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw)
+    rememberMe.value = true
+    form.value.username = saved.username || ''
+    form.value.password = saved.password || ''
+    if (saved.portal && ['business', 'tenant_admin', 'system_admin'].includes(saved.portal)) {
+      activePortal.value = saved.portal as PortalType
+    }
+    // tenant_id 需要等租户列表加载完成后再回填
+    if (saved.tenant_id) {
+      form.value.tenant_id = saved.tenant_id
+    }
+  } catch { /* 忽略解析错误 */ }
+}
 
 // 提交登录表单
 const handleLogin = async () => {
@@ -74,6 +98,17 @@ const handleLogin = async () => {
       preferred_role: activePortal.value
     })
     if (result.ok) {
+      // 登录成功后才处理"记住我"逻辑
+      if (rememberMe.value) {
+        localStorage.setItem(REMEMBER_ME_KEY, JSON.stringify({
+          username: form.value.username,
+          password: form.value.password,
+          portal: activePortal.value,
+          tenant_id: form.value.tenant_id || '',
+        }))
+      } else {
+        localStorage.removeItem(REMEMBER_ME_KEY)
+      }
       message.success(t('login.successRedirect'))
       navigateTo('/overview')
     } else {

@@ -245,6 +245,27 @@ func GenerateRefreshTokenWithTTL(userID string, jti string, ttl time.Duration) (
 
 ---
 
+### ✅ 问题 6: 记住登录信息未持久化（已修复）
+
+**严重程度**: 低
+
+**原问题描述**:
+登录页 `rememberMe` 选项仅为前端内存状态，页面刷新后用户需重新输入凭证。
+
+**修复方案**:
+
+新增 `restoreRemembered()` 函数（`frontend/pages/login.vue`）：
+
+- 使用 `localStorage` key `login_remember` 持久化 `username`、`password`、`portal`、`tenant_id`
+- 页面加载时自动恢复已记住的登录信息，`tenant_id` 在租户列表加载完成后回填
+- 仅当 `portal` 值合法（`business` / `tenant_admin` / `system_admin`）时才恢复入口选择
+- JSON 解析异常时静默忽略，不影响正常登录流程
+
+**修改文件**:
+- `frontend/pages/login.vue`
+
+---
+
 ## 6. 修复状态
 
 | 优先级 | 问题 | 状态 |
@@ -254,3 +275,4 @@ func GenerateRefreshTokenWithTTL(userID string, jti string, ttl time.Duration) (
 | P1 | Session 缓存 TTL 优化 | ✅ 已修复 |
 | P1 | 前端错误消息国际化 | ✅ 已修复 |
 | P2 | Refresh Token 提前失效排查 | 📋 已提供排查建议 |
+| P3 | 记住登录信息未持久化 | ✅ 已修复 |
