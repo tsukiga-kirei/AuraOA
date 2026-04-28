@@ -1093,6 +1093,10 @@ onUnmounted(() => {
                 {{ t('archive.filter') }}
                 <span v-if="hasActiveFilters" class="filter-active-dot" />
               </a-button>
+              <a-button size="small" type="default" :loading="exportLoading" @click="handleExportExcel">
+                <ExportOutlined v-if="!exportLoading" />
+                {{ t('export.excel') }}
+              </a-button>
             </div>
           </div>
 
@@ -1144,13 +1148,6 @@ onUnmounted(() => {
               <span v-else-if="filterAuditStatus === 'unaudited' && auditedCount > 0" class="panel-header-hint">{{ t('archive.reviewed') }} {{ auditedCount }}/{{ listTotal }}</span>
             </div>
             <div class="batch-toolbar-right">
-              <a-button
-                size="small"
-                :loading="exportLoading"
-                @click="handleExportExcel"
-              >
-                <DownloadOutlined v-if="!exportLoading" /> {{ t('export.excel') }}
-              </a-button>
               <a-button
                 v-if="auditInProgress"
                 size="small"
