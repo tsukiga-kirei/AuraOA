@@ -176,6 +176,19 @@ oa-smart-audit/
 │   └── migrations/               # 迁移脚本（30+）
 │
 └── docs/                         # 项目文档
+    ├── oa-integration.md         # OA 系统对接说明
+    ├── ai-integration.md         # AI 系统对接说明
+    ├── api/                      # API 接口文档
+    │   ├── README.md             # 接口总览与通用约定
+    │   ├── auth.md               # 认证接口
+    │   ├── system-admin.md       # 系统管理接口
+    │   ├── org.md                # 组织架构接口
+    │   ├── audit-config.md       # 流程审核配置接口
+    │   ├── audit.md              # 审核工作台接口
+    │   ├── archive.md            # 归档复盘接口
+    │   ├── cron.md               # 定时任务接口
+    │   ├── user-settings.md      # 用户设置接口
+    │   └── cache.md              # 缓存管理接口
     ├── code-review/              # 代码审查报告（00-04）
     └── optimization/             # 性能优化分析
 ```
@@ -254,6 +267,28 @@ encryption:
 ---
 
 ## 文档目录
+
+### 核心功能说明
+
+| 文档 | 说明 |
+|------|------|
+| [OA 系统对接说明](docs/oa-integration.md) | OA 适配器架构、泛微 E9 实现、数据提取流程、未完成适配 |
+| [AI 系统对接说明](docs/ai-integration.md) | AI 调用架构、两阶段审核流程、Token 配额管理、未完成适配 |
+
+### API 接口文档（[`docs/api/`](docs/api/)）
+
+| 文档 | 路由前缀 | 说明 |
+|------|---------|------|
+| [接口总览](docs/api/README.md) | `/api` | 通用约定、认证方式、角色说明 |
+| [认证接口](docs/api/auth.md) | `/api/auth` | 登录、登出、Token 刷新、角色切换、通知 |
+| [系统管理接口](docs/api/system-admin.md) | `/api/admin` | 租户管理、OA 连接、AI 模型、系统配置、监控 |
+| [组织架构接口](docs/api/org.md) | `/api/tenant/org` | 部门、角色、成员管理 |
+| [流程审核配置接口](docs/api/audit-config.md) | `/api/tenant/rules` | 流程配置、审核规则、提示词模板 |
+| [审核工作台接口](docs/api/audit.md) | `/api/audit` | 审核执行、任务管理、流式输出、日志、快照 |
+| [归档复盘接口](docs/api/archive.md) | `/api/archive` | 归档复盘执行、历史记录、日志、快照 |
+| [定时任务接口](docs/api/cron.md) | `/api/tenant/cron` | 任务类型配置、任务实例、执行日志 |
+| [用户设置接口](docs/api/user-settings.md) | `/api/tenant/settings` | 个人配置、仪表盘偏好、Token 统计 |
+| [缓存管理接口](docs/api/cache.md) | `/api/admin/cache` | 缓存统计、清除、开关 |
 
 ### 代码审查（[`docs/code-review/`](docs/code-review/)）
 
