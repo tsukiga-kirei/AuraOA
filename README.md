@@ -189,8 +189,8 @@ AuraOA/
     │   ├── cron.md               # 定时任务接口
     │   ├── user-settings.md      # 用户设置接口
     │   └── cache.md              # 缓存管理接口
-    ├── code-review/              # 代码审查报告（00-04）
-    └── optimization/             # 性能优化分析
+    └── known-issues/             # 已知缺陷与待办
+        └── README.md             # 缺陷清单、待完成事项
 ```
 
 ---
@@ -290,28 +290,17 @@ encryption:
 | [用户设置接口](docs/api/user-settings.md) | `/api/tenant/settings` | 个人配置、仪表盘偏好、Token 统计 |
 | [缓存管理接口](docs/api/cache.md) | `/api/admin/cache` | 缓存统计、清除、开关 |
 
-### 代码审查（[`docs/code-review/`](docs/code-review/)）
+### 已知缺陷与待办（[`docs/known-issues/`](docs/known-issues/)）
 
 | 文档 | 说明 |
 |------|------|
-| [总览](docs/code-review/00-summary.md) | 代码审查总结与概览 |
-| [认证系统分析](docs/code-review/01-authentication-analysis.md) | Token 机制、刷新逻辑、过期处理 |
-| [核心业务逻辑分析](docs/code-review/02-core-business-logic-analysis.md) | OA 数据提取、规则组装、提示词构建 |
-| [人员组织与配置分析](docs/code-review/03-organization-and-config-analysis.md) | 角色体系、配置层级、数据关联 |
-| [Bug 清单与优化建议](docs/code-review/04-bug-list-and-optimization.md) | 问题汇总、修复方案、优先级排序 |
-
-### 性能优化（[`docs/optimization/`](docs/optimization/)）
-
-| 文档 | 说明 |
-|------|------|
-| [分页方案分析](docs/optimization/pagination-analysis.md) | 前后端分页策略梳理与优化建议 |
-| [Redis 缓存分析](docs/optimization/redis-cache-analysis.md) | 缓存使用点梳理与合理性分析 |
+| [缺陷与待办总览](docs/known-issues/README.md) | 当前已知缺陷、待完成事项与优先级 |
 
 ---
 
 ## 已知问题
 
-> 详见 [Bug 清单与优化建议](docs/code-review/04-bug-list-and-optimization.md)
+> 详见 [缺陷与待办总览](docs/known-issues/README.md)
 
 ---
 
