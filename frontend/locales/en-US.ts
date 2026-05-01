@@ -2,9 +2,9 @@
  * 英文翻译*/
 export default {
     //=====应用程序级别=====
-    'app.name': 'OA Audit',
-    'app.title': 'OA Audit - Intelligent Process Audit Platform',
-    'app.description': 'OA Intelligent Process Audit Platform - AI-powered Approval Assistant',
+    'app.name': 'AuraOA',
+    'app.title': 'AuraOA — Transparent AI Audit for OA Workflows',
+    'app.description': 'Minimalist, AI-driven audit framework — transparency and intelligence for enterprise workflows.',
 
     //===== 侧边栏部分 =====
     'sidebar.section.overview': 'Dashboard',
@@ -365,8 +365,8 @@ export default {
     'cronTaskType.weeklyReport': 'Weekly Report',
 
     //=====登录页面=====
-    'login.title': 'Intelligent Audit Platform',
-    'login.subtitle': 'AI-powered OA Process Intelligent Audit System',
+    'login.title': 'AuraOA',
+    'login.subtitle': 'Minimalist AI-driven transparency for OA audits and archive review.',
     'login.username': 'Username',
     'login.usernamePlaceholder': 'Enter username',
     'login.password': 'Password',
@@ -1909,7 +1909,7 @@ export default {
     'admin.ruleConfig.pushTemplateDesc': 'Configure push email content structure. After fetching audit data via scheduled task, email is assembled from this template. Click variable tags to insert at cursor.',
     'admin.ruleConfig.pushFormatLabel': 'Content Format',
     'admin.ruleConfig.emailSubjectLabel': 'Email Subject',
-    'admin.ruleConfig.emailSubjectPlaceholder': 'e.g. [OA Audit] Daily Report - {{date}}',
+    'admin.ruleConfig.emailSubjectPlaceholder': 'e.g. [AuraOA] Daily Report - {{date}}',
     'admin.ruleConfig.emailHeaderLabel': 'Header',
     'admin.ruleConfig.emailHeaderPlaceholder': 'Introductory text at the top of the email',
     'admin.ruleConfig.emailBodyLabel': 'Body Template',

@@ -81,7 +81,7 @@ const showFilters = ref(false)
  * 列表日期范围：记住当日选择，避免刷新后回到近 90 天导致批量/长周期任务从列表消失；
  * 跨自然日再打开则丢弃（默认近 90 天），便于次日看到相对「最新」的待办。
  */
-const DASHBOARD_DATE_RANGE_KEY = 'oa-smart-audit:dashboard:list-date-range'
+const DASHBOARD_DATE_RANGE_KEY = 'auraoa:dashboard:list-date-range'
 
 function defaultDashboardDateRange(): [Dayjs, Dayjs] {
   return [dayjs().subtract(90, 'day').startOf('day'), dayjs().endOf('day')]
@@ -253,7 +253,7 @@ type DashboardBatchPersisted = {
   inflightJobId?: string
 }
 
-const DASHBOARD_BATCH_KEY = 'oa-smart-audit:dashboard:batch-queue'
+const DASHBOARD_BATCH_KEY = 'auraoa:dashboard:batch-queue'
 
 function saveDashboardBatchState(
   ids: string[],

@@ -154,7 +154,7 @@ const handleLogin = async () => {
       <div class="login-branding">
         <div class="login-branding-content">
           <div class="login-logo">
-            <img src="/logo-white.svg" alt="OA智审" width="30" height="30" />
+            <img src="/logo-white.svg" alt="AuraOA" width="30" height="30" />
           </div>
           <h1 class="login-brand-title">{{ t('app.name') }}</h1>
           <p class="login-brand-subtitle">{{ t('login.subtitle') }}</p>
