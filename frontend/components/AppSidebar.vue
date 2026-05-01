@@ -41,7 +41,7 @@ const handleMenuClick = (path: string) => {
     <!--Logo 区域-->
     <div class="sidebar-logo" @click="navigateTo(logoTarget)">
       <div class="sidebar-logo-icon">
-        <img src="/favicon.svg" alt="OA智审" width="20" height="20" />
+        <img src="/favicon.svg" alt="AuraOA" width="20" height="20" />
       </div>
       <transition name="fade">
         <span v-if="!collapsed || mobileMenuOpen" class="sidebar-logo-text">{{ t('app.name') }}</span>

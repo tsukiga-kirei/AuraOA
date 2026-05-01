@@ -3,9 +3,9 @@
  */
 export default {
     //=====应用程序级别=====
-    'app.name': 'OA智审',
-    'app.title': 'OA智审 - 流程智能审核平台',
-    'app.description': 'OA流程智能审核平台 - 智能化审批辅助系统',
+    'app.name': 'AuraOA',
+    'app.title': 'AuraOA — AI 驱动的 OA 流程透明审核',
+    'app.description': '极简 AI 驱动 OA 流程审核框架 — 透明、可追溯的企业审批辅助',
 
     //===== 侧边栏部分 =====
     'sidebar.section.overview': '仪表盘',
@@ -366,8 +366,8 @@ export default {
     'cronTaskType.weeklyReport': '周报推送',
 
     //=====登录页面=====
-    'login.title': '智能审核辅助平台',
-    'login.subtitle': '基于 AI 的 OA 流程智能审核系统',
+    'login.title': 'AuraOA',
+    'login.subtitle': '极简 AI 驱动的 OA 流程透明审核与归档复盘',
     'login.username': '用户名',
     'login.usernamePlaceholder': '请输入用户名',
     'login.password': '密码',
@@ -1933,7 +1933,7 @@ export default {
     'admin.ruleConfig.pushTemplateDesc': '配置推送邮件的内容结构，通过定时任务执行审核工作台获取审核数据后，按模板组装邮件内容。点击变量标签可插入到当前编辑的输入框中。',
     'admin.ruleConfig.pushFormatLabel': '内容格式',
     'admin.ruleConfig.emailSubjectLabel': '邮件主题',
-    'admin.ruleConfig.emailSubjectPlaceholder': '如：【OA智审】审核日报 - {{date}}',
+    'admin.ruleConfig.emailSubjectPlaceholder': '如：【AuraOA】审核日报 - {{date}}',
     'admin.ruleConfig.emailHeaderLabel': '头部内容',
     'admin.ruleConfig.emailHeaderPlaceholder': '邮件开头的引导文字',
     'admin.ruleConfig.emailBodyLabel': '正文模板',

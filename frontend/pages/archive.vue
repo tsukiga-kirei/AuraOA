@@ -131,7 +131,7 @@ const blockingProcessId = computed((): string | null => {
   return row?.process_id ?? null
 })
 
-const ARCHIVE_BATCH_KEY = 'oa-smart-audit:archive:batch-queue'
+const ARCHIVE_BATCH_KEY = 'auraoa:archive:batch-queue'
 
 type ArchiveBatchMeta = { process_id: string; process_type: string; title: string }
 type ArchiveBatchPersisted = {
@@ -206,7 +206,7 @@ const filterAuditStatus = ref<ArchiveAuditTab>('unaudited')
  * 列表日期范围：记住当日选择，避免刷新后回到近 90 天导致批量/长周期任务从列表消失；
  * 跨自然日再打开则丢弃（默认近 90 天），便于次日看到相对「最新」的待办。
  */
-const ARCHIVE_DATE_RANGE_KEY = 'oa-smart-audit:archive:list-date-range'
+const ARCHIVE_DATE_RANGE_KEY = 'auraoa:archive:list-date-range'
 
 function defaultArchiveDateRange(): [Dayjs, Dayjs] {
   return [dayjs().subtract(90, 'day').startOf('day'), dayjs().endOf('day')]

@@ -1,5 +1,5 @@
 {
-  "name": "oa-smart-audit-frontend",
+  "name": "auraoa-frontend",
   "private": true,
   "type": "module",
   "scripts": {

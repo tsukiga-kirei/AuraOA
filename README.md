@@ -1,8 +1,8 @@
 <div align="center">
 
-# OA 智审 — 流程智能审核平台
+# AuraOA
 
-**OA Smart Audit** — 基于大语言模型的 OA 流程智能审核与归档复盘系统
+**极简 AI 驱动的企业 OA 流程审核框架** — *Minimalist, AI-driven audit framework designed to bring transparency and intelligence to enterprise workflows.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
@@ -16,7 +16,7 @@
 
 ## 项目简介
 
-OA 智审是一套面向企业内部 OA 流程的 AI 辅助审核平台。通过连接企业 OA 系统的数据库，提取流程表单数据与审批流信息，结合自定义审核规则与大语言模型（LLM），实现对 OA 流程的智能合规性审核与归档复盘。
+**AuraOA** 是一套面向企业内部 OA 流程的极简 AI 审核框架。通过连接企业 OA 系统的数据库，提取流程表单数据与审批流信息，结合自定义审核规则与大语言模型（LLM），实现对 OA 流程的智能合规性审核与归档复盘。
 
 ### 核心能力
 
@@ -129,7 +129,7 @@ OA 智审是一套面向企业内部 OA 流程的 AI 辅助审核平台。通过
 ## 项目结构
 
 ```
-oa-smart-audit/
+AuraOA/
 ├── README.md
 ├── LICENSE
 ├── docker-compose.yml            # 生产环境编排
