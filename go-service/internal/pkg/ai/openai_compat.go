@@ -66,7 +66,13 @@ type openAIRequest struct {
 	Temperature        float64                `json:"temperature"`
 	MaxTokens          int                    `json:"max_tokens,omitempty"`
 	Stream             bool                   `json:"stream,omitempty"`
+	StreamOptions      *openAIStreamOptions   `json:"stream_options,omitempty"`
 	ChatTemplateKwargs map[string]interface{} `json:"chat_template_kwargs,omitempty"`
+}
+
+// openAIStreamOptions OpenAI 兼容流式选项。
+type openAIStreamOptions struct {
+	IncludeUsage bool `json:"include_usage,omitempty"`
 }
 
 // openAIMessage OpenAI 消息格式
@@ -115,6 +121,10 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 			"enable_thinking": false,
 		},
 	}
+	if body.Stream {
+		// 在支持 OpenAI stream_options 的实现中，要求在最终 chunk 返回 usage。
+		body.StreamOptions = &openAIStreamOptions{IncludeUsage: true}
+	}
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -138,8 +148,15 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 	defer resp.Body.Close()
 
 	if body.Stream {
+		if resp.StatusCode != http.StatusOK {
+			respBody, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("[%s] 返回错误 (状态码 %d): %s", c.cfg.Provider, resp.StatusCode, string(respBody))
+		}
+
 		reader := bufio.NewReader(resp.Body)
 		var fullContent strings.Builder
+		tokenUsage := TokenUsage{}
+		usageReceived := false
 		for {
 			line, err := reader.ReadBytes('\n')
 			if err != nil {
@@ -162,24 +179,38 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 						Content string `json:"content"`
 					} `json:"delta"`
 				} `json:"choices"`
+				Usage *struct {
+					PromptTokens     int `json:"prompt_tokens"`
+					CompletionTokens int `json:"completion_tokens"`
+					TotalTokens      int `json:"total_tokens"`
+				} `json:"usage"`
 			}
-			if err := json.Unmarshal(data, &chunk); err == nil && len(chunk.Choices) > 0 {
-				content := chunk.Choices[0].Delta.Content
-				if content != "" {
-					fullContent.WriteString(content)
-					req.StreamChunkFunc(content)
+			if err := json.Unmarshal(data, &chunk); err == nil {
+				if chunk.Usage != nil {
+					tokenUsage = TokenUsage{
+						InputTokens:  chunk.Usage.PromptTokens,
+						OutputTokens: chunk.Usage.CompletionTokens,
+						TotalTokens:  chunk.Usage.TotalTokens,
+					}
+					usageReceived = true
+				}
+				if len(chunk.Choices) > 0 {
+					content := chunk.Choices[0].Delta.Content
+					if content != "" {
+						fullContent.WriteString(content)
+						req.StreamChunkFunc(content)
+					}
 				}
 			}
 		}
-		// SSE 流式响应通常不返回 usage 字段，按字符数粗略估算 token 消耗
 		outContent := fullContent.String()
+		if !usageReceived {
+			// 兼容不返回 usage 的服务：不做估算，保持空值（0）。
+			tokenUsage = TokenUsage{}
+		}
 		return &ChatResponse{
-			Content: outContent,
-			TokenUsage: TokenUsage{
-				InputTokens:  len(req.SystemPrompt)/4 + len(req.UserPrompt)/4,
-				OutputTokens: len(outContent) / 4,
-				TotalTokens:  (len(req.SystemPrompt) + len(req.UserPrompt) + len(outContent)) / 4,
-			},
+			Content:    outContent,
+			TokenUsage: tokenUsage,
 			ModelID:    c.cfg.ModelName,
 			DurationMs: time.Since(startTime).Milliseconds(),
 		}, nil
