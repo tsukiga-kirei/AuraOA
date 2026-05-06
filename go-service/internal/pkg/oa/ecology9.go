@@ -19,8 +19,15 @@ import (
 // Ecology9Adapter 泛微 E9 OA 系统适配器。
 // 支持 MySQL、Oracle 和 DM（达梦）三种底层数据库驱动。
 type Ecology9Adapter struct {
-	db     *gorm.DB
-	driver string // "mysql" | "oracle" | "dm"
+	db                       *gorm.DB
+	driver                   string // "mysql" | "oracle" | "dm"
+	attachmentRecognitionSvc AttachmentRecognitionService // 附件识别服务接口
+}
+
+// AttachmentRecognitionService 附件识别服务接口（避免循环依赖）
+type AttachmentRecognitionService interface {
+	RecognizeAttachmentsByDocIDs(ctx context.Context, docIds string, fieldKey string, fieldName string) ([]AttachmentInfo, error)
+	LoadConfig() (interface{}, error)
 }
 
 // isOracleCompatible 判断当前驱动是否为 Oracle 兼容模式（Oracle / DM）。
@@ -44,7 +51,8 @@ func (a *Ecology9Adapter) col(name string) string {
 
 // NewEcology9Adapter 根据 OA 数据库连接配置创建泛微 E9 适配器实例。
 // 通过 conn.Driver 自动选择 MySQL 或 Oracle 驱动。
-func NewEcology9Adapter(conn *model.OADatabaseConnection) (*Ecology9Adapter, error) {
+// attachmentSvc 可选，如果为 nil 则不提取附件内容。
+func NewEcology9Adapter(conn *model.OADatabaseConnection, attachmentSvc AttachmentRecognitionService) (*Ecology9Adapter, error) {
 	var dialector gorm.Dialector
 
 	switch conn.Driver {
@@ -88,7 +96,11 @@ func NewEcology9Adapter(conn *model.OADatabaseConnection) (*Ecology9Adapter, err
 	sqlDB.SetMaxOpenConns(conn.PoolSize)
 	sqlDB.SetMaxIdleConns(conn.PoolSize / 2)
 
-	return &Ecology9Adapter{db: db, driver: conn.Driver}, nil
+	return &Ecology9Adapter{
+		db:                       db,
+		driver:                   conn.Driver,
+		attachmentRecognitionSvc: attachmentSvc,
+	}, nil
 }
 
 // ── E9 表结构映射 ──────────────────────────────────────────
