@@ -4,7 +4,6 @@ import { message } from 'ant-design-vue'
 import {
   UserOutlined,
   LockOutlined,
-  SafetyCertificateOutlined,
   DashboardOutlined,
   SettingOutlined,
   ControlOutlined,
@@ -154,7 +153,7 @@ const handleLogin = async () => {
       <div class="login-branding">
         <div class="login-branding-content">
           <div class="login-logo">
-            <img src="/logo-white.svg" alt="AuraOA" width="30" height="30" />
+            <img src="/favicon.svg" alt="AuraOA" width="30" height="30" />
           </div>
           <h1 class="login-brand-title">{{ t('app.name') }}</h1>
           <p class="login-brand-subtitle">{{ t('login.subtitle') }}</p>
@@ -234,7 +233,8 @@ const handleLogin = async () => {
     </div>
 
     <div class="login-mobile-brand">
-      <SafetyCertificateOutlined class="login-mobile-logo" /><span>{{ t('app.name') }}</span>
+      <img class="login-mobile-logo" src="/favicon.svg" alt="AuraOA" width="24" height="24" />
+      <span>{{ t('app.name') }}</span>
     </div>
   </div>
 </template>
@@ -341,12 +341,54 @@ const handleLogin = async () => {
 }
 .login-branding-content { position: relative; z-index: 1; }
 .login-logo {
-  width: 64px; height: 64px; background: rgba(255,255,255,0.15);
-  border-radius: 16px; display: flex; align-items: center; justify-content: center;
-  margin-bottom: 24px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);
+  position: relative;
+  width: 76px; height: 76px;
+  border-radius: 18px; display: flex; align-items: center; justify-content: center;
+  margin-bottom: 24px;
+  isolation: isolate;
+}
+.login-logo::before {
+  content: '';
+  position: absolute;
+  inset: -18px;
+  z-index: -1;
+  border-radius: 36px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,0.72), transparent 30%),
+    radial-gradient(circle at 76% 76%, rgba(34,211,238,0.78), transparent 38%),
+    radial-gradient(circle at 38% 78%, rgba(16,185,129,0.58), transparent 34%),
+    linear-gradient(135deg, rgba(165,180,252,0.78), rgba(6,182,212,0.42));
+  filter: blur(14px);
+  opacity: 0.86;
+  animation: login-logo-breathe 2.15s ease-in-out infinite;
+}
+.login-logo::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 19px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.30), rgba(255,255,255,0.04) 52%, rgba(103,232,249,0.24));
+  opacity: 0.45;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+.login-logo img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 18px;
+  box-shadow:
+    0 18px 42px rgba(17,24,39,0.24),
+    0 0 0 1px rgba(255,255,255,0.08);
+}
+@keyframes login-logo-breathe {
+  0%, 100% { transform: scale(0.92); opacity: 0.48; }
+  50% { transform: scale(1.18); opacity: 1; }
 }
 .login-logo-icon { font-size: 30px; color: #fff; }
-.login-brand-title { font-size: 32px; font-weight: 700; color: #fff; margin: 0 0 8px; letter-spacing: -0.02em; }
+.login-brand-title { font-size: 32px; font-weight: 700; color: #fff; margin: 0 0 8px; letter-spacing: 0; }
 .login-brand-subtitle { font-size: 16px; color: rgba(255,255,255,0.8); margin: 0 0 40px; }
 .login-features { display: flex; flex-direction: column; gap: 16px; }
 .login-feature-item { display: flex; align-items: center; gap: 12px; color: rgba(255,255,255,0.9); font-size: 14px; }
@@ -485,7 +527,7 @@ const handleLogin = async () => {
   display: none; position: absolute; top: 24px; left: 24px; z-index: 2;
   color: #fff; font-size: 18px; font-weight: 700; align-items: center; gap: 8px;
 }
-.login-mobile-logo { font-size: 24px; }
+.login-mobile-logo { width: 24px; height: 24px; flex-shrink: 0; }
 
 @media (max-width: 768px) {
   .login-branding { display: none; }
@@ -511,5 +553,11 @@ const handleLogin = async () => {
   .login-form-header h2 { font-size: 20px; }
   .login-input { height: 44px !important; padding: 0 11px !important; }
   .login-btn { height: 42px !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-logo::before {
+    animation: none;
+  }
 }
 </style>
