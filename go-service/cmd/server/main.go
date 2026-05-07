@@ -153,11 +153,13 @@ func main() {
 	archiveRuleService := service.NewArchiveRuleService(archiveRuleRepo, invalidationManager)
 	aiCallerService := service.NewAIModelCallerService(tenantRepo, llmMessageLogRepo, db)
 	userNotificationService := service.NewUserNotificationService(userNotificationRepo, userRepo)
-	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, db, rdb, userNotificationService, cacheManager, invalidationManager)
+	// 附件识别服务依赖 system_configs，须在 audit/archive 之前初始化（两者会注入它）
+	attachmentRecognitionService := service.NewAttachmentRecognitionService(systemConfigRepo)
+	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, userNotificationService, cacheManager, invalidationManager)
 	dashboardOverviewService := service.NewDashboardOverviewService(
 		auditSnapshotRepo, archiveSnapshotRepo, auditLogRepo, archiveLogRepo, cronLogRepo, cronTaskRepo, cronPresetRepo, llmMessageLogRepo, tenantRepo, orgRepo, cacheManager, invalidationManager,
 	)
-	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveSnapshotRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, orgRepo, db, rdb, userNotificationService, cacheManager, invalidationManager)
+	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveSnapshotRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, orgRepo, db, rdb, userNotificationService, cacheManager, invalidationManager)
 	reportCalculatorService := service.NewReportCalculatorService(auditLogRepo, archiveLogRepo, tenantRepo)
 	mailService := service.NewMailService(systemConfigRepo)
 
@@ -194,7 +196,7 @@ func main() {
 	authHandler := handler.NewAuthHandler(authService, rdb)
 	orgHandler := handler.NewOrgHandler(orgService)
 	tenantHandler := handler.NewTenantHandler(tenantService)
-	systemHandler := handler.NewSystemHandler(optionService, oaConnectionService, aiModelService, systemConfigService)
+	systemHandler := handler.NewSystemHandler(optionService, oaConnectionService, aiModelService, systemConfigService, attachmentRecognitionService)
 	healthHandler := handler.NewHealthHandler()
 	configHandler := handler.NewProcessAuditConfigHandler(processAuditConfigService)
 	ruleHandler := handler.NewAuditRuleHandler(auditRuleService)

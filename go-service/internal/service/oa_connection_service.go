@@ -63,6 +63,9 @@ func (s *OAConnectionService) Create(req *dto.CreateOAConnectionRequest) (*dto.O
 		SyncInterval:      req.SyncInterval,
 		Enabled:           req.Enabled,
 		Description:       req.Description,
+		WeaverAPIURL:      req.WeaverAPIURL,
+		WeaverAppID:       req.WeaverAppID,
+		WeaverDefaultUser: req.WeaverDefaultUser,
 	}
 
 	// 加密密码
@@ -178,7 +181,16 @@ func (s *OAConnectionService) Update(id uuid.UUID, req *dto.UpdateOAConnectionRe
 	if req.Description != "" {
 		fields["description"] = req.Description
 	}
-
+	// 泛微 E9 密钥（按字段独立更新；空字符串视为不修改）
+	if req.WeaverAPIURL != "" {
+		fields["weaver_api_url"] = req.WeaverAPIURL
+	}
+	if req.WeaverAppID != "" {
+		fields["weaver_appid"] = req.WeaverAppID
+	}
+	if req.WeaverDefaultUser != "" {
+		fields["weaver_default_user"] = req.WeaverDefaultUser
+	}
 	if len(fields) > 0 {
 		if err := s.repo.Update(id, fields); err != nil {
 			return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
@@ -218,24 +230,27 @@ func (s *OAConnectionService) Delete(id uuid.UUID) error {
 
 func toOAConnectionResponse(c *model.OADatabaseConnection) dto.OAConnectionResponse {
 	return dto.OAConnectionResponse{
-		ID:                c.ID.String(),
-		Name:              c.Name,
-		OAType:            c.OAType,
-		OATypeLabel:       c.OATypeLabel,
-		Driver:            c.Driver,
-		Host:              c.Host,
-		Port:              c.Port,
-		DatabaseName:      c.DatabaseName,
-		Username:          c.Username,
-		PoolSize:          c.PoolSize,
-		ConnectionTimeout: c.ConnectionTimeout,
-		TestOnBorrow:      c.TestOnBorrow,
-		Status:            c.Status,
-		SyncInterval:      c.SyncInterval,
-		Enabled:           c.Enabled,
-		Description:       c.Description,
-		CreatedAt:         c.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:         c.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ID:                        c.ID.String(),
+		Name:                      c.Name,
+		OAType:                    c.OAType,
+		OATypeLabel:               c.OATypeLabel,
+		Driver:                    c.Driver,
+		Host:                      c.Host,
+		Port:                      c.Port,
+		DatabaseName:              c.DatabaseName,
+		Username:                  c.Username,
+		PoolSize:                  c.PoolSize,
+		ConnectionTimeout:         c.ConnectionTimeout,
+		TestOnBorrow:              c.TestOnBorrow,
+		Status:                    c.Status,
+		SyncInterval:              c.SyncInterval,
+		Enabled:                   c.Enabled,
+		Description:               c.Description,
+		WeaverAPIURL:              c.WeaverAPIURL,
+		WeaverAppID:               c.WeaverAppID,
+		WeaverDefaultUser:         c.WeaverDefaultUser,
+		CreatedAt:                 c.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:                 c.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 

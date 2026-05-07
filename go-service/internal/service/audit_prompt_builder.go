@@ -14,6 +14,7 @@ import (
 func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, processData *oa.ProcessData, rules string, currentNode string, fieldSet SelectedFieldSet, flowSnapshot *oa.ProcessFlowSnapshot) *ai.ChatRequest {
 	mainDataStr := formatMainData(filterFields(processData.MainData, fieldSet["main"]))
 	detailDataStr := formatGroupedDetailData(processData.DetailTables, fieldSet)
+	attachmentsStr := formatAttachments(processData.Attachments, 8000)
 
 	flowHistory := "（暂未提供审批流历史）"
 	flowGraph := "（暂未提供审批流图）"
@@ -31,6 +32,7 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
 	userPrompt = strings.ReplaceAll(userPrompt, "{{main_table}}", mainDataStr)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{fields}}", mainDataStr)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{detail_tables}}", detailDataStr)
+	userPrompt = strings.ReplaceAll(userPrompt, "{{attachments}}", attachmentsStr)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{rules}}", rules)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{current_node}}", currentNode)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{flow_history}}", flowHistory)

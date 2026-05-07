@@ -9,9 +9,11 @@ import {
   DatabaseOutlined,
   DeleteOutlined,
   EditOutlined,
+  FileSearchOutlined,
   GlobalOutlined,
   KeyOutlined,
   MailOutlined,
+  PaperClipOutlined,
   PlusOutlined,
   RobotOutlined,
   SafetyCertificateOutlined,
@@ -31,6 +33,7 @@ const {
   listOATypes, listDBDrivers, listAIProviders, listAIDeployTypes,
   listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection: apiDeleteOAConnection, testOAConnection: apiTestOAConnection, testOAConnectionParams: apiTestOAConnectionParams,
   listAIModels, createAIModel, updateAIModel, deleteAIModel: apiDeleteAIModel, testAIModelConnection: apiTestAIModelConnection, testAIModelConnectionById: apiTestAIModelConnectionById,
+  testAttachmentRecognition: apiTestAttachmentRecognition,
 } = useSystemApi()
 
 const loading = ref(false)
@@ -49,6 +52,7 @@ interface OADbConnection {
   username: string; pool_size: number; connection_timeout: number; test_on_borrow: boolean;
   status: string; sync_interval: number; enabled: boolean;
   description: string; created_at: string; updated_at: string;
+  weaver_api_url?: string; weaver_appid?: string; weaver_default_user?: string;
 }
 interface AIModel {
   id: string; provider: string; provider_label: string; model_name: string; display_name: string;
@@ -108,6 +112,7 @@ const newOADb = ref<Record<string, any>>({
   name: '', oa_type: '', oa_type_label: '', description: '', sync_interval: 60,
   driver: 'mysql', host: '', port: 3306, database_name: '',
   username: '', password: '', pool_size: 10, connection_timeout: 30, test_on_borrow: true,
+  weaver_api_url: '', weaver_appid: '', weaver_default_user: '',
 })
 
 const resetNewOADb = () => {
@@ -117,6 +122,7 @@ const resetNewOADb = () => {
     description: '', sync_interval: 60,
     driver: 'mysql', host: '', port: 3306, database_name: '',
     username: '', password: '', pool_size: 10, connection_timeout: 30, test_on_borrow: true,
+    weaver_api_url: '', weaver_appid: '', weaver_default_user: '',
   }
 }
 
@@ -134,6 +140,9 @@ const openEditOADb = (conn: OADbConnection) => {
     driver: conn.driver, host: conn.host, port: conn.port, database_name: conn.database_name,
     username: conn.username, password: '', pool_size: conn.pool_size,
     connection_timeout: conn.connection_timeout, test_on_borrow: conn.test_on_borrow,
+    weaver_api_url: (conn as any).weaver_api_url || '',
+    weaver_appid: (conn as any).weaver_appid || '',
+    weaver_default_user: (conn as any).weaver_default_user || '',
   }
   showAddOADb.value = true
 }
@@ -398,6 +407,28 @@ const testDbConnection = async () => {
   }
 }
 
+//===== 附件识别 — 测试 MinerU 服务 =====
+const testingAttachment = ref(false)
+const testAttachmentConnection = async () => {
+  testingAttachment.value = true
+  try {
+    const result = await apiTestAttachmentRecognition({
+      attachment_recognition_enabled: generalConfig.value.attachment_recognition_enabled,
+      attachment_mineru_endpoint: generalConfig.value.attachment_mineru_endpoint,
+      attachment_mineru_api_key: generalConfig.value.attachment_mineru_api_key || '',
+    })
+    if (result.success) {
+      message.success(result.message || t('admin.settings.attachmentTestOk', 'MinerU 服务可达'))
+    } else {
+      message.warning(result.message || t('admin.settings.attachmentTestFailed', 'MinerU 服务不可达'))
+    }
+  } catch (e: any) {
+    message.error(e?.message || t('admin.settings.attachmentTestFailed', 'MinerU 服务不可达'))
+  } finally {
+    testingAttachment.value = false
+  }
+}
+
 //===== AI 模型模态测试连接 =====
 const testingModelConn = ref(false)
 const testModelConnection = async () => {
@@ -504,6 +535,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         v-for="tab in [
           { key: 'oa', label: t('admin.settings.tabOA'), icon: DatabaseOutlined },
           { key: 'ai', label: t('admin.settings.tabAI'), icon: RobotOutlined },
+          { key: 'attachment', label: t('admin.settings.tabAttachment', '附件识别'), icon: PaperClipOutlined },
           { key: 'general', label: t('admin.settings.tabGeneral'), icon: SettingOutlined },
         ]"
         :key="tab.key"
@@ -699,6 +731,150 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
       </div>
     </div>
 
+    <!--附件识别选项卡-->
+    <div v-if="activeTab === 'attachment'" class="tab-content">
+      <div class="tab-content-header">
+        <p class="tab-desc">{{ t('admin.settings.attachmentDesc', '将流程附件交给 MinerU 解析为文本，连同表单字段一并送给 AI 评审。详见 docs/oa-configurations/01-attachment-recognition.md。') }}</p>
+      </div>
+
+      <div class="config-sections">
+        <div class="config-section">
+          <div class="config-section-header">
+            <div class="config-section-icon config-section-icon--primary"><PaperClipOutlined /></div>
+            <div>
+              <h3>{{ t('admin.settings.attachmentGeneral', '基础开关') }}</h3>
+              <p>{{ t('admin.settings.attachmentGeneralDesc', '关闭后所有附件字段都不会被识别，OA 表单字段照常发送给 AI。') }}</p>
+            </div>
+          </div>
+          <a-form layout="vertical">
+            <div class="toggle-item">
+              <div class="toggle-info">
+                <div class="toggle-label">{{ t('admin.settings.attachmentEnable', '启用附件识别') }}</div>
+                <div class="toggle-desc">{{ t('admin.settings.attachmentEnableDesc', '启用后，FetchProcessData 会自动识别主表附件字段（fieldhtmltype=6），调用 OA 接口取流后送 MinerU。') }}</div>
+              </div>
+              <a-switch v-model:checked="generalConfig.attachment_recognition_enabled" />
+            </div>
+            <a-row :gutter="16" style="margin-top: 12px;">
+              <a-col :span="12">
+                <a-form-item :label="t('admin.settings.attachmentMaxSize', '最大文件大小（MB）')">
+                  <a-input-number v-model:value="generalConfig.attachment_max_file_size_mb" :min="1" :max="500" style="width: 100%;" size="large" :addon-after="'MB'" />
+                </a-form-item>
+              </a-col>
+              <a-col :span="12">
+                <a-form-item :label="t('admin.settings.attachmentTypes', '支持的文件类型（逗号分隔）')">
+                  <a-input v-model:value="generalConfig.attachment_supported_types" size="large" placeholder="pdf,png,jpg,jpeg,docx,xlsx" />
+                </a-form-item>
+              </a-col>
+            </a-row>
+          </a-form>
+        </div>
+
+        <div class="config-section">
+          <div class="config-section-header">
+            <div class="config-section-icon config-section-icon--info"><FileSearchOutlined /></div>
+            <div>
+              <h3>{{ t('admin.settings.attachmentMineru', 'MinerU 解析服务') }}</h3>
+              <p>{{ t('admin.settings.attachmentMineruDesc', '指向自建 MinerU 服务的根地址。测试连接仅探测 /health 接口。') }}</p>
+            </div>
+          </div>
+          <a-form layout="vertical">
+            <a-form-item :label="t('admin.settings.attachmentMineruEndpoint', 'MinerU 端点')">
+              <a-input v-model:value="generalConfig.attachment_mineru_endpoint" size="large" placeholder="http://192.168.1.50:8888" />
+              <div class="form-hint">{{ t('admin.settings.attachmentMineruEndpointHint', '不要带尾部 /；后端会自动拼 /api/v1/parse 与 /health。') }}</div>
+            </a-form-item>
+            <a-form-item :label="t('admin.settings.attachmentMineruApiKey', 'MinerU API Key（可选）')">
+              <a-input-password v-model:value="generalConfig.attachment_mineru_api_key" size="large" :placeholder="t('admin.settings.attachmentMineruApiKeyPlaceholder', '若 MinerU 服务无需鉴权可留空')">
+                <template #prefix><KeyOutlined /></template>
+              </a-input-password>
+            </a-form-item>
+            <a-row :gutter="16">
+              <a-col :span="12">
+                <a-form-item :label="t('admin.settings.attachmentMineruBackend', 'Backend')">
+                  <a-select v-model:value="generalConfig.attachment_mineru_backend" size="large" style="width: 100%;">
+                    <a-select-option value="pipeline">pipeline</a-select-option>
+                    <a-select-option value="vlm-auto-engine">vlm-auto-engine</a-select-option>
+                    <a-select-option value="vlm-http-client">vlm-http-client</a-select-option>
+                    <a-select-option value="hybrid-auto-engine">hybrid-auto-engine</a-select-option>
+                    <a-select-option value="hybrid-http-client">hybrid-http-client</a-select-option>
+                  </a-select>
+                </a-form-item>
+              </a-col>
+              <a-col :span="12">
+                <a-form-item :label="t('admin.settings.attachmentMineruLanguage', '解析语言')">
+                  <a-input v-model:value="generalConfig.attachment_mineru_language" size="large" placeholder="ch" />
+                  <div class="form-hint">{{ t('admin.settings.attachmentMineruLanguageHint', '与 MinerU 服务支持的语言列表一致，常用 ch / en。') }}</div>
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <a-row :gutter="16">
+              <a-col :span="8">
+                <a-form-item>
+                  <div class="toggle-item" style="padding: 0;">
+                    <div class="toggle-info">
+                      <div class="toggle-label">{{ t('admin.settings.attachmentMineruFormula', '公式识别') }}</div>
+                    </div>
+                    <a-switch v-model:checked="generalConfig.attachment_mineru_enable_formula" />
+                  </div>
+                </a-form-item>
+              </a-col>
+              <a-col :span="8">
+                <a-form-item>
+                  <div class="toggle-item" style="padding: 0;">
+                    <div class="toggle-info">
+                      <div class="toggle-label">{{ t('admin.settings.attachmentMineruTable', '表格识别') }}</div>
+                    </div>
+                    <a-switch v-model:checked="generalConfig.attachment_mineru_enable_table" />
+                  </div>
+                </a-form-item>
+              </a-col>
+              <a-col :span="8">
+                <a-form-item>
+                  <div class="toggle-item" style="padding: 0;">
+                    <div class="toggle-info">
+                      <div class="toggle-label">{{ t('admin.settings.attachmentMineruOcr', 'OCR') }}</div>
+                    </div>
+                    <a-switch v-model:checked="generalConfig.attachment_mineru_enable_ocr" />
+                  </div>
+                </a-form-item>
+              </a-col>
+            </a-row>
+          </a-form>
+        </div>
+
+        <div class="config-section">
+          <div class="config-section-header">
+            <div class="config-section-icon config-section-icon--warning"><CloudServerOutlined /></div>
+            <div>
+              <h3>{{ t('admin.settings.attachmentOAApi', 'OA 侧接入策略') }}</h3>
+              <p>{{ t('admin.settings.attachmentOAApiDesc', '附件识别模块只负责 MinerU。不同 OA 的附件接口与认证参数在各自 OA 连接中配置。当前仅支持 ecology9。') }}</p>
+            </div>
+          </div>
+          <a-alert
+            type="info"
+            show-icon
+            :message="t('admin.settings.attachmentOAAuthTip', 'ecology9：请在 OA 数据库连接中配置「附件接口 URL + appid + loginid」。其余 OA 暂未接入。')"
+          />
+        </div>
+
+        <div class="config-save">
+          <a-button class="attachment-action-btn" size="large" :loading="testingAttachment" @click="testAttachmentConnection" style="margin-right: 12px;">
+            <template #icon>
+              <SyncOutlined v-if="testingAttachment" />
+              <FileSearchOutlined v-else />
+            </template>
+            {{ t('admin.settings.attachmentTestConnection', '测试 MinerU /health') }}
+          </a-button>
+          <a-button class="attachment-action-btn" type="primary" size="large" :loading="saving" @click="saveGeneralConfig">
+            <template #icon>
+              <SyncOutlined v-if="saving" />
+              <SaveOutlined v-else />
+            </template>
+            {{ t('admin.settings.saveAll') }}
+          </a-button>
+        </div>
+      </div>
+    </div>
+
     <!--常规配置选项卡-->
     <div v-if="activeTab === 'general'" class="tab-content">
       <div class="tab-content-header">
@@ -738,12 +914,8 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                   </a-select>
                 </a-form-item>
               </a-col>
-              <a-col :span="8">
-                <a-form-item :label="t('admin.settings.maxUpload')">
-                  <a-input-number v-model:value="generalConfig.max_upload_size" :min="1" :max="500" style="width: 100%;" size="large" :addon-after="'MB'" />
-                </a-form-item>
-              </a-col>
             </a-row>
+            
 
             <!-- 认证 & Token 有效期 -->
             <a-divider style="margin: 8px 0 20px;" />
@@ -1007,6 +1179,33 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         <a-form-item :label="t('admin.tenants.description')">
           <a-textarea v-model:value="newOADb.description" :rows="2" :placeholder="t('admin.settings.oaDbDescPlaceholder')" />
         </a-form-item>
+
+        <!-- 泛微 E9 原生 API 密钥（仅 oa_type=weaver_e9 显示） -->
+        <template v-if="newOADb.oa_type === 'weaver_e9'">
+          <a-divider style="margin: 8px 0 16px;" />
+          <div class="config-subsection-title">{{ t('admin.settings.weaverE9Keys', '泛微 E9 接口密钥') }}</div>
+          <a-alert
+            type="info"
+            show-icon
+            style="margin-bottom: 12px;"
+            :message="t('admin.settings.weaverE9Tip', '当前附件识别链路仅使用 URL + appid + loginid（loginid 在 ecology9 中通常为数字用户ID）。详见 docs/oa-configurations/01-attachment-recognition.md。')"
+          />
+          <a-form-item :label="t('admin.settings.weaverApiUrl', '附件接口 URL')">
+            <a-input v-model:value="newOADb.weaver_api_url" size="large" placeholder="http://oa.example.com/api/aurabridge/attachments" />
+          </a-form-item>
+          <a-row :gutter="16">
+            <a-col :span="12">
+              <a-form-item :label="t('admin.settings.weaverAppid', '应用 ID（appid）')">
+                <a-input v-model:value="newOADb.weaver_appid" size="large" placeholder="af09c25938714c26b9736f535ca20fc9" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item :label="t('admin.settings.weaverDefaultUser', '默认调用用户（loginid）')">
+                <a-input v-model:value="newOADb.weaver_default_user" size="large" placeholder="1" />
+              </a-form-item>
+            </a-col>
+          </a-row>
+        </template>
       </a-form>
       <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--color-border-light); margin-top: 8px;">
         <a-button :loading="testingDbConn" @click="testDbConnection">
@@ -1195,6 +1394,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
 .form-hint { font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px; }
 .switch-label-inline { font-size: 13px; color: var(--color-text-tertiary); margin-left: 10px; }
 .config-save { display: flex; justify-content: flex-end; padding: 4px 0; }
+.attachment-action-btn { height: 44px; }
 .config-subsection-title { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 16px; letter-spacing: 0.02em; }
 
 .empty-state { text-align: center; padding: 60px 20px; color: var(--color-text-tertiary); }

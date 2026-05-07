@@ -2,10 +2,15 @@ package oa
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
@@ -22,12 +27,17 @@ type Ecology9Adapter struct {
 	db                       *gorm.DB
 	driver                   string // "mysql" | "oracle" | "dm"
 	attachmentRecognitionSvc AttachmentRecognitionService // 附件识别服务接口
+	weaverAPIURL             string
+	weaverAppID              string
+	weaverLoginID            string
+	httpClient               *http.Client
 }
 
-// AttachmentRecognitionService 附件识别服务接口（避免循环依赖）
+// AttachmentRecognitionService 附件识别服务接口（避免循环依赖）。
+//
+// adapter 层负责从 OA 拉取附件原始载荷，识别服务仅做 MinerU 解析。
 type AttachmentRecognitionService interface {
-	RecognizeAttachmentsByDocIDs(ctx context.Context, docIds string, fieldKey string, fieldName string) ([]AttachmentInfo, error)
-	LoadConfig() (interface{}, error)
+	RecognizeAttachments(ctx context.Context, files []AttachmentFilePayload, fieldKey string, fieldName string) ([]AttachmentInfo, error)
 }
 
 // isOracleCompatible 判断当前驱动是否为 Oracle 兼容模式（Oracle / DM）。
@@ -100,6 +110,12 @@ func NewEcology9Adapter(conn *model.OADatabaseConnection, attachmentSvc Attachme
 		db:                       db,
 		driver:                   conn.Driver,
 		attachmentRecognitionSvc: attachmentSvc,
+		weaverAPIURL:             strings.TrimSpace(conn.WeaverAPIURL),
+		weaverAppID:              strings.TrimSpace(conn.WeaverAppID),
+		weaverLoginID:            strings.TrimSpace(conn.WeaverDefaultUser),
+		httpClient: &http.Client{
+			Timeout: 60 * time.Second,
+		},
 	}, nil
 }
 
@@ -346,6 +362,9 @@ func (a *Ecology9Adapter) CheckUserPermission(ctx context.Context, username stri
 
 // FetchProcessData 拉取指定流程实例的业务数据。
 // 注意：明细表子查询在 Oracle 和 MySQL 中语法不同，需按 driver 分支处理。
+//
+// 当注入了 attachmentRecognitionSvc 时，会顺带识别主表中的附件字段（fieldhtmltype=6），
+// 把字段值（逗号分隔的 docId 列表）交给附件识别服务，结果填入 ProcessData.Attachments。
 func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string) (*ProcessData, error) {
 	// 查询流程请求基本信息，显式扫描避免 struct tag 大小写问题
 	var workflowID int
@@ -422,11 +441,136 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 		}
 	}
 
-	return &ProcessData{
+	pd := &ProcessData{
 		ProcessID:    processID,
 		MainData:     mainData,
 		DetailTables: detailTables,
-	}, nil
+	}
+
+	// 识别主表附件字段并提取内容（仅当注入了识别服务）
+	if a.attachmentRecognitionSvc != nil && len(mainData) > 0 {
+		attachments, attachErr := a.recognizeMainAttachments(ctx, formID, mainData)
+		if attachErr != nil {
+			// 附件识别失败不阻断主流程，只记录日志
+			pkglogger.Global().Warn("附件识别失败，跳过附件内容",
+				zap.String("processID", processID),
+				zap.Error(attachErr))
+		} else {
+			pd.Attachments = attachments
+		}
+	}
+
+	return pd, nil
+}
+
+// recognizeMainAttachments 识别主表中的附件字段（fieldhtmltype=6），
+// 调用注入的识别服务获取每个 docId 的解析文本。
+func (a *Ecology9Adapter) recognizeMainAttachments(
+	ctx context.Context,
+	formID int,
+	mainData map[string]interface{},
+) ([]AttachmentInfo, error) {
+	// 查询主表中所有附件类型字段（detailtable 为空 / 0 / 主表名都视为主表）
+	var rawFields []map[string]interface{}
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_billfield")+" "+a.col("t1")).
+		Select(a.col("t1.fieldname")+" AS fieldkey, "+a.col("t2.labelname")+" AS fieldname, "+a.col("t1.detailtable")+" AS detailtable").
+		Joins("JOIN "+a.tableName("htmllabelinfo")+" "+a.col("t2")+" ON "+a.col("t1.fieldlabel")+" = "+a.col("t2.indexid")).
+		Where(a.col("t1.billid")+" = ? AND "+a.col("t1.fieldhtmltype")+" = ? AND "+a.col("t2.languageid")+" = 7",
+			formID, "6").
+		Find(&rawFields).Error
+	if err != nil {
+		return nil, fmt.Errorf("查询附件字段定义失败: %w", err)
+	}
+
+	var all []AttachmentInfo
+	for _, row := range rawFields {
+		dt := strings.TrimSpace(mapGet(row, "detailtable"))
+		// 仅识别主表附件；明细表附件如有需要后续扩展
+		if dt != "" && dt != "0" {
+			continue
+		}
+		fieldKey := mapGet(row, "fieldkey")
+		fieldName := mapGet(row, "fieldname")
+		if fieldKey == "" {
+			continue
+		}
+		// 主表数据里取附件 docId 列表（逗号分隔）
+		docIds := mapGet(mainData, fieldKey)
+		if strings.TrimSpace(docIds) == "" {
+			continue
+		}
+		files, fetchErr := a.fetchWeaverAttachmentsByDocIDs(ctx, docIds)
+		if fetchErr != nil {
+			pkglogger.Global().Warn("拉取附件文件流失败，跳过该字段",
+				zap.String("field", fieldKey),
+				zap.Error(fetchErr))
+			continue
+		}
+		infos, recogErr := a.attachmentRecognitionSvc.RecognizeAttachments(ctx, files, fieldKey, fieldName)
+		if recogErr != nil {
+			pkglogger.Global().Warn("识别附件字段失败，跳过该字段",
+				zap.String("field", fieldKey),
+				zap.Error(recogErr))
+			continue
+		}
+		all = append(all, infos...)
+	}
+	return all, nil
+}
+
+func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(ctx context.Context, docIDs string) ([]AttachmentFilePayload, error) {
+	if a.weaverAPIURL == "" {
+		return nil, fmt.Errorf("未配置泛微附件接口 URL（weaver_api_url）")
+	}
+	if a.weaverAppID == "" {
+		return nil, fmt.Errorf("未配置泛微 appid（weaver_appid）")
+	}
+	if a.weaverLoginID == "" {
+		return nil, fmt.Errorf("未配置泛微 loginid（weaver_default_user）")
+	}
+
+	reqURL, err := url.Parse(a.weaverAPIURL)
+	if err != nil {
+		return nil, fmt.Errorf("泛微附件接口 URL 非法: %w", err)
+	}
+	query := reqURL.Query()
+	query.Set("docIds", docIDs)
+	query.Set("appid", a.weaverAppID)
+	query.Set("loginid", a.weaverLoginID)
+	reqURL.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建泛微附件请求失败: %w", err)
+	}
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用泛微附件接口失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		errBody := string(body)
+		if len(errBody) > 200 {
+			errBody = errBody[:200] + "..."
+		}
+		return nil, fmt.Errorf("泛微附件接口 HTTP %d: %s", resp.StatusCode, errBody)
+	}
+
+	var result struct {
+		Code int                     `json:"code"`
+		Data []AttachmentFilePayload `json:"data"`
+		Msg  string                  `json:"msg"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析泛微附件接口响应失败: %w", err)
+	}
+	if result.Code != 0 {
+		return nil, fmt.Errorf("泛微附件接口返回错误: %s", result.Msg)
+	}
+	return result.Data, nil
 }
 
 // ── FetchTodoList ──────────────────────────────────────────

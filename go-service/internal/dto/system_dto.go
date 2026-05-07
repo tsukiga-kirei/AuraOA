@@ -45,6 +45,11 @@ type CreateOAConnectionRequest struct {
 	SyncInterval      int    `json:"sync_interval"`
 	Enabled           bool   `json:"enabled"`
 	Description       string `json:"description"`
+
+	// 泛微 E9 原生 API 密钥（仅 oa_type=weaver_e9 使用，其他 OA 类型可留空）
+	WeaverAPIURL      string `json:"weaver_api_url"`
+	WeaverAppID       string `json:"weaver_appid"`
+	WeaverDefaultUser string `json:"weaver_default_user"`
 }
 
 // UpdateOAConnectionRequest 更新 OA 数据库连接请求（PUT /api/admin/system/oa-connections/:id）。
@@ -64,6 +69,11 @@ type UpdateOAConnectionRequest struct {
 	SyncInterval      int    `json:"sync_interval"`
 	Enabled           *bool  `json:"enabled"`
 	Description       string `json:"description"`
+
+	// 泛微 E9 原生 API 密钥（仅 oa_type=weaver_e9 使用）
+	WeaverAPIURL      string `json:"weaver_api_url"`
+	WeaverAppID       string `json:"weaver_appid"`
+	WeaverDefaultUser string `json:"weaver_default_user"`
 }
 
 // OAConnectionResponse OA 数据库连接详情响应。
@@ -84,8 +94,14 @@ type OAConnectionResponse struct {
 	SyncInterval      int    `json:"sync_interval"`
 	Enabled           bool   `json:"enabled"`
 	Description       string `json:"description"`
-	CreatedAt         string `json:"created_at"`
-	UpdatedAt         string `json:"updated_at"`
+
+	// 泛微 E9 原生 API 参数（仅 oa_type=weaver_e9 使用）。
+	WeaverAPIURL              string `json:"weaver_api_url"`
+	WeaverAppID               string `json:"weaver_appid"`
+	WeaverDefaultUser         string `json:"weaver_default_user"`
+
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // ============================================================

@@ -2,6 +2,7 @@
 package handler
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -13,12 +14,13 @@ import (
 	"oa-smart-audit/go-service/internal/service"
 )
 
-// SystemHandler 处理系统设置相关的 HTTP 请求（OA 连接、AI 模型、选项数据、系统配置）。
+// SystemHandler 处理系统设置相关的 HTTP 请求（OA 连接、AI 模型、选项数据、系统配置、附件识别）。
 type SystemHandler struct {
-	optionService       *service.OptionService
-	oaConnectionService *service.OAConnectionService
-	aiModelService      *service.AIModelService
-	systemConfigService *service.SystemConfigService
+	optionService                *service.OptionService
+	oaConnectionService          *service.OAConnectionService
+	aiModelService               *service.AIModelService
+	systemConfigService          *service.SystemConfigService
+	attachmentRecognitionService *service.AttachmentRecognitionService
 }
 
 // NewSystemHandler 创建系统设置处理器实例。
@@ -27,12 +29,14 @@ func NewSystemHandler(
 	oaConnectionService *service.OAConnectionService,
 	aiModelService *service.AIModelService,
 	systemConfigService *service.SystemConfigService,
+	attachmentRecognitionService *service.AttachmentRecognitionService,
 ) *SystemHandler {
 	return &SystemHandler{
-		optionService:       optionService,
-		oaConnectionService: oaConnectionService,
-		aiModelService:      aiModelService,
-		systemConfigService: systemConfigService,
+		optionService:                optionService,
+		oaConnectionService:          oaConnectionService,
+		aiModelService:               aiModelService,
+		systemConfigService:          systemConfigService,
+		attachmentRecognitionService: attachmentRecognitionService,
 	}
 }
 
@@ -341,4 +345,50 @@ func (h *SystemHandler) UpdateSystemConfigs(c *gin.Context) {
 		return
 	}
 	response.Success(c, nil)
+}
+
+// ── 附件识别 ──────────────────────────────────────────────────────────────
+
+// TestAttachmentRecognition 探测 MinerU /health 接口是否可达。
+// POST /api/admin/system/attachment-recognition/test
+// 返回：{"success": true, "message": "MinerU 服务可达"} 或服务错误。
+func (h *SystemHandler) TestAttachmentRecognition(c *gin.Context) {
+	if h.attachmentRecognitionService == nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "附件识别服务未初始化")
+		return
+	}
+	// 支持“未保存先测试”：请求体若带了 attachment_* 字段，则用请求体覆盖当前配置进行测试。
+	var req struct {
+		AttachmentRecognitionEnabled *bool  `json:"attachment_recognition_enabled"`
+		AttachmentMinerUEndpoint     string `json:"attachment_mineru_endpoint"`
+		AttachmentMinerUAPIKey       string `json:"attachment_mineru_api_key"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+
+	cfg, cfgErr := h.attachmentRecognitionService.LoadConfig()
+	if cfgErr != nil {
+		handleServiceError(c, cfgErr)
+		return
+	}
+	if req.AttachmentRecognitionEnabled != nil {
+		cfg.Enabled = *req.AttachmentRecognitionEnabled
+	}
+	if req.AttachmentMinerUEndpoint != "" {
+		cfg.MinerUEndpoint = req.AttachmentMinerUEndpoint
+	}
+	if req.AttachmentMinerUAPIKey != "" {
+		cfg.MinerUAPIKey = req.AttachmentMinerUAPIKey
+	}
+
+	if err := h.attachmentRecognitionService.TestConnectionWithConfig(c.Request.Context(), cfg); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, map[string]interface{}{
+		"success": true,
+		"message": "MinerU 服务可达",
+	})
 }
