@@ -1,6 +1,6 @@
 # 01 - 附件识别（Attachment Recognition）
 
-> 关联需求：[`docs/known-issues/001-流程附件未被AI识别.md`](../known-issues/001-流程附件未被AI识别.md)
+> 说明：本能力已在主干落地，原已知问题 `001-流程附件未被AI识别` 已关闭。
 >
 > 关联代码：
 > - 后端服务：[`go-service/internal/service/attachment_recognition_service.go`](../../go-service/internal/service/attachment_recognition_service.go)
