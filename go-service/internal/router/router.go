@@ -128,6 +128,9 @@ func SetupRouter(
 			// 系统配置 (KV)
 			system.GET("/configs", systemHandler.GetSystemConfigs)
 			system.PUT("/configs", systemHandler.UpdateSystemConfigs)
+
+			// 附件识别（仅探测 MinerU /health；详见 docs/oa-configurations/01-attachment-recognition.md）
+			system.POST("/attachment-recognition/test", systemHandler.TestAttachmentRecognition)
 		}
 
 		// 系统管理员 — Token 消耗统计

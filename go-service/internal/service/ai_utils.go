@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"oa-smart-audit/go-service/internal/pkg/oa"
 )
 
 // SelectedFieldSet 描述用户最终生效的字段选择集合。
@@ -222,6 +224,85 @@ func formatGroupedDetailData(detailTables map[string][]map[string]interface{}, f
 		sb.WriteByte('\n')
 	}
 	return sb.String()
+}
+
+// formatAttachments 将附件识别结果格式化为 prompt 友好的文本块。
+// 每个附件按字段分组展示：字段名 → 文件名（类型/大小） → 解析正文（截断到 maxBytesPerFile 字节）。
+//
+// 当 attachments 为空时返回占位提示，方便 prompt 模板里直接 {{attachments}} 而无需判空。
+func formatAttachments(attachments []oa.AttachmentInfo, maxBytesPerFile int) string {
+	if len(attachments) == 0 {
+		return "（本流程未提取到附件内容）"
+	}
+	if maxBytesPerFile <= 0 {
+		maxBytesPerFile = 8000
+	}
+
+	// 按字段名分组，保持稳定顺序
+	type group struct {
+		fieldName string
+		items     []oa.AttachmentInfo
+	}
+	groupMap := map[string]*group{}
+	var keys []string
+	for _, a := range attachments {
+		k := a.FieldKey
+		if _, ok := groupMap[k]; !ok {
+			groupMap[k] = &group{fieldName: a.FieldName}
+			keys = append(keys, k)
+		}
+		groupMap[k].items = append(groupMap[k].items, a)
+	}
+	sort.Strings(keys)
+
+	var sb strings.Builder
+	for _, k := range keys {
+		g := groupMap[k]
+		header := g.fieldName
+		if header == "" {
+			header = k
+		}
+		sb.WriteString(fmt.Sprintf("### 附件字段：%s（%s）\n", header, k))
+		for i, a := range g.items {
+			sb.WriteString(fmt.Sprintf("- 附件 %d：%s", i+1, a.FileName))
+			if a.FileType != "" {
+				sb.WriteString(fmt.Sprintf("（类型：%s", a.FileType))
+				if a.FileSize > 0 {
+					sb.WriteString(fmt.Sprintf("，大小：%d 字节", a.FileSize))
+				}
+				sb.WriteString("）")
+			}
+			sb.WriteByte('\n')
+			if a.Error != "" {
+				sb.WriteString("  解析失败：")
+				sb.WriteString(a.Error)
+				sb.WriteByte('\n')
+				continue
+			}
+			content := strings.TrimSpace(a.Content)
+			if content == "" {
+				sb.WriteString("  （未提取到正文内容）\n")
+				continue
+			}
+			sb.WriteString("  内容（节选）：\n")
+			sb.WriteString(indentLines(truncate(content, maxBytesPerFile), "    "))
+			sb.WriteByte('\n')
+		}
+		sb.WriteByte('\n')
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// indentLines 给多行字符串的每行加缩进前缀。
+func indentLines(s, prefix string) string {
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		lines[i] = prefix + ln
+	}
+	return strings.Join(lines, "\n")
 }
 
 // ── 通用工具 ──

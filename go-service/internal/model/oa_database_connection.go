@@ -25,6 +25,12 @@ type OADatabaseConnection struct {
 	SyncInterval      int       `gorm:"not null;default:30" json:"sync_interval"`
 	Enabled           bool      `gorm:"not null;default:true" json:"enabled"`
 	Description       string    `gorm:"type:text;default:''" json:"description"`
+
+	// 泛微 E9 原生 API 密钥（仅 oa_type=weaver_e9 使用，其他 OA 类型保持空值）
+	WeaverAPIURL      string    `gorm:"size:500;not null;default:''" json:"weaver_api_url"`
+	WeaverAppID       string    `gorm:"size:200;not null;default:''" json:"weaver_appid"`
+	WeaverDefaultUser string    `gorm:"size:200;not null;default:''" json:"weaver_default_user"`
+
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }

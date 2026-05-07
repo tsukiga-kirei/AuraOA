@@ -590,6 +590,9 @@ const handleAudit = async (processId: string) => {
     item.audit_status = result.status as any
     item.audit_result = result
     item.has_audit = result.status === 'completed'
+    if (result.status === 'failed') {
+      message.error(result.error_message || t('dashboard.auditFailed'))
+    }
     await loadStats()
     await loadProcesses()
   } catch (e: any) {

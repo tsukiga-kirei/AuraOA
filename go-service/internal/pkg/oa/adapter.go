@@ -148,6 +148,15 @@ type AttachmentInfo struct {
 	Error       string `json:"error"`         // 提取错误信息（如有）
 }
 
+// AttachmentFilePayload OA 适配器返回给识别服务的附件原始载荷。
+// FileData 为附件二进制的 base64 编码内容。
+type AttachmentFilePayload struct {
+	DocID    string `json:"doc_id"`
+	FileName string `json:"file_name"`
+	FileSize int64  `json:"file_size"`
+	FileData string `json:"file_data"`
+}
+
 // ProcessData 流程实例业务数据
 type ProcessData struct {
 	ProcessID    string                              `json:"process_id"`

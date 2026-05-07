@@ -53,6 +53,7 @@ type AuditExecuteService struct {
 	oaConnRepo        *repository.OAConnectionRepo
 	aiModelRepo       *repository.AIModelRepo
 	aiCaller          *AIModelCallerService
+	attachmentSvc     *AttachmentRecognitionService
 	db                *gorm.DB
 	rdb               *redis.Client
 	notifSvc          *UserNotificationService
@@ -72,6 +73,7 @@ func NewAuditExecuteService(
 	oaConnRepo *repository.OAConnectionRepo,
 	aiModelRepo *repository.AIModelRepo,
 	aiCaller *AIModelCallerService,
+	attachmentSvc *AttachmentRecognitionService,
 	db *gorm.DB,
 	rdb *redis.Client,
 	notifSvc *UserNotificationService,
@@ -88,6 +90,7 @@ func NewAuditExecuteService(
 		oaConnRepo:        oaConnRepo,
 		aiModelRepo:       aiModelRepo,
 		aiCaller:          aiCaller,
+		attachmentSvc:     attachmentSvc,
 		db:                db,
 		rdb:               rdb,
 		notifSvc:          notifSvc,
@@ -1903,7 +1906,12 @@ func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, 
 	if err := s.decryptOAConn(conn); err != nil {
 		return nil, err
 	}
-	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
+	// 创建 OA 适配器时注入附件识别服务，以便 FetchProcessData 自动识别附件字段
+	var attachmentSvc oa.AttachmentRecognitionService
+	if s.attachmentSvc != nil {
+		attachmentSvc = s.attachmentSvc
+	}
+	adapter, err := oa.NewOAAdapter(conn.OAType, conn, attachmentSvc)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "创建 OA 适配器失败: "+err.Error())
 	}

@@ -153,6 +153,17 @@ export const useSystemApi = () => {
   }
 
   // ============================================================
+  // 附件识别
+  // ============================================================
+
+  /**
+   * 探测 MinerU /health 接口是否可达；不会进行真实文件解析。
+   */
+  async function testAttachmentRecognition(data?: Record<string, any>): Promise<any> {
+    return authFetch<any>('/api/admin/system/attachment-recognition/test', { method: 'POST', body: data || {} })
+  }
+
+  // ============================================================
   // 租户管理
   // ============================================================
 
@@ -212,6 +223,8 @@ export const useSystemApi = () => {
     listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection, testOAConnection, testOAConnectionParams,
     // AI 模型
     listAIModels, createAIModel, updateAIModel, deleteAIModel, testAIModelConnection, testAIModelConnectionById,
+    // 附件识别
+    testAttachmentRecognition,
     // 租户管理
     listTenants, createTenant, updateTenant, deleteTenant, getTenantStats, listTenantMembers,
   }

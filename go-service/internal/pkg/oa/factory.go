@@ -12,8 +12,9 @@ var supportedDrivers = map[string][]string{
 }
 
 // NewOAAdapter 根据 oa_type 和 conn.Driver 创建对应的 OA 适配器实例。
-// 当前支持: "weaver_e9"（泛微 E9）— MySQL / Oracle
-func NewOAAdapter(oaType string, conn *model.OADatabaseConnection) (OAAdapter, error) {
+// 当前支持: "weaver_e9"（泛微 E9）— MySQL / Oracle / DM
+// attachmentSvc 可选，不传时为 nil（不做附件识别）。
+func NewOAAdapter(oaType string, conn *model.OADatabaseConnection, attachmentSvc ...AttachmentRecognitionService) (OAAdapter, error) {
 	drivers, ok := supportedDrivers[oaType]
 	if !ok {
 		return nil, fmt.Errorf("不支持的 OA 类型: %s", oaType)
@@ -25,7 +26,11 @@ func NewOAAdapter(oaType string, conn *model.OADatabaseConnection) (OAAdapter, e
 
 	switch oaType {
 	case "weaver_e9":
-		return NewEcology9Adapter(conn)
+		var svc AttachmentRecognitionService
+		if len(attachmentSvc) > 0 {
+			svc = attachmentSvc[0]
+		}
+		return NewEcology9Adapter(conn, svc)
 	default:
 		return nil, fmt.Errorf("不支持的 OA 类型: %s", oaType)
 	}

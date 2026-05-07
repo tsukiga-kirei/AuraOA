@@ -35,8 +35,6 @@ export interface SystemGeneralConfig {
     platform_version: string
     /** system.default_language */
     default_language: string
-    /** system.max_upload_size_mb */
-    max_upload_size: number
 
     // ===== 认证 & 安全 =====
     /** auth.login_fail_lock_threshold — 登录失败锁定阈值（次） */
@@ -91,6 +89,28 @@ export interface SystemGeneralConfig {
     smtp_password?: string
     /** system.smtp_sender */
     smtp_sender?: string
+
+    // ===== 附件识别（attachment.*） =====
+    /** attachment.recognition_enabled — 是否启用附件识别功能 */
+    attachment_recognition_enabled: boolean
+    /** attachment.mineru_endpoint — MinerU 文档解析服务自建端点 */
+    attachment_mineru_endpoint: string
+    /** attachment.mineru_api_key — MinerU API Key（可选） */
+    attachment_mineru_api_key?: string
+    /** attachment.mineru_backend — pipeline / vlm-* / hybrid-* */
+    attachment_mineru_backend: string
+    /** attachment.mineru_enable_formula — 公式识别 */
+    attachment_mineru_enable_formula: boolean
+    /** attachment.mineru_enable_table — 表格识别 */
+    attachment_mineru_enable_table: boolean
+    /** attachment.mineru_enable_ocr — OCR */
+    attachment_mineru_enable_ocr: boolean
+    /** attachment.mineru_language — 解析语言 */
+    attachment_mineru_language: string
+    /** attachment.max_file_size_mb — 最大文件大小（MB） */
+    attachment_max_file_size_mb: number
+    /** attachment.supported_types — 支持的文件类型（逗号分隔） */
+    attachment_supported_types: string
 }
 
 
@@ -111,7 +131,6 @@ export function mapConfigItems(items: ConfigItem[]): Partial<SystemGeneralConfig
         ...(str('system.name') !== undefined && { platform_name: kv['system.name'] }),
         ...(str('system.version') !== undefined && { platform_version: kv['system.version'] }),
         ...(str('system.default_language') !== undefined && { default_language: kv['system.default_language'] }),
-        ...(!isNaN(int('system.max_upload_size_mb')) && { max_upload_size: int('system.max_upload_size_mb') }),
 
         ...(!isNaN(int('auth.login_fail_lock_threshold')) && { login_fail_lock_threshold: int('auth.login_fail_lock_threshold') }),
         ...(!isNaN(int('auth.account_lock_minutes')) && { account_lock_minutes: int('auth.account_lock_minutes') }),
@@ -138,6 +157,17 @@ export function mapConfigItems(items: ConfigItem[]): Partial<SystemGeneralConfig
         ...(str('system.smtp_ssl') !== undefined && { smtp_ssl: bool('system.smtp_ssl') }),
         ...(str('system.smtp_password') !== undefined && { smtp_password: kv['system.smtp_password'] }),
         ...(str('system.smtp_sender') !== undefined && { smtp_sender: kv['system.smtp_sender'] }),
+
+        ...(str('attachment.recognition_enabled') !== undefined && { attachment_recognition_enabled: bool('attachment.recognition_enabled') }),
+        ...(str('attachment.mineru_endpoint') !== undefined && { attachment_mineru_endpoint: kv['attachment.mineru_endpoint'] }),
+        ...(str('attachment.mineru_api_key') !== undefined && { attachment_mineru_api_key: kv['attachment.mineru_api_key'] }),
+        ...(str('attachment.mineru_backend') !== undefined && { attachment_mineru_backend: kv['attachment.mineru_backend'] }),
+        ...(str('attachment.mineru_enable_formula') !== undefined && { attachment_mineru_enable_formula: bool('attachment.mineru_enable_formula') }),
+        ...(str('attachment.mineru_enable_table') !== undefined && { attachment_mineru_enable_table: bool('attachment.mineru_enable_table') }),
+        ...(str('attachment.mineru_enable_ocr') !== undefined && { attachment_mineru_enable_ocr: bool('attachment.mineru_enable_ocr') }),
+        ...(str('attachment.mineru_language') !== undefined && { attachment_mineru_language: kv['attachment.mineru_language'] }),
+        ...(!isNaN(int('attachment.max_file_size_mb')) && { attachment_max_file_size_mb: int('attachment.max_file_size_mb') }),
+        ...(str('attachment.supported_types') !== undefined && { attachment_supported_types: kv['attachment.supported_types'] }),
     }
 }
 
@@ -149,7 +179,6 @@ export function configToUpdateRequest(cfg: SystemGeneralConfig): ConfigUpdateReq
         'system.name': cfg.platform_name,
         'system.version': cfg.platform_version,
         'system.default_language': cfg.default_language,
-        'system.max_upload_size_mb': String(cfg.max_upload_size),
 
         'auth.login_fail_lock_threshold': String(cfg.login_fail_lock_threshold),
         'auth.account_lock_minutes': String(cfg.account_lock_minutes),
@@ -176,5 +205,16 @@ export function configToUpdateRequest(cfg: SystemGeneralConfig): ConfigUpdateReq
         'system.smtp_ssl': String(cfg.smtp_ssl),
         'system.smtp_password': cfg.smtp_password || '',
         'system.smtp_sender': cfg.smtp_sender || '',
+
+        'attachment.recognition_enabled': String(cfg.attachment_recognition_enabled ?? false),
+        'attachment.mineru_endpoint': cfg.attachment_mineru_endpoint ?? '',
+        'attachment.mineru_api_key': cfg.attachment_mineru_api_key ?? '',
+        'attachment.mineru_backend': cfg.attachment_mineru_backend ?? 'pipeline',
+        'attachment.mineru_enable_formula': String(cfg.attachment_mineru_enable_formula ?? true),
+        'attachment.mineru_enable_table': String(cfg.attachment_mineru_enable_table ?? true),
+        'attachment.mineru_enable_ocr': String(cfg.attachment_mineru_enable_ocr ?? true),
+        'attachment.mineru_language': cfg.attachment_mineru_language ?? 'ch',
+        'attachment.max_file_size_mb': String(cfg.attachment_max_file_size_mb ?? 10),
+        'attachment.supported_types': cfg.attachment_supported_types ?? 'pdf,png,jpg,jpeg,docx,xlsx',
     }
 }

@@ -85,6 +85,7 @@ type ArchiveReviewService struct {
 	oaConnRepo          *repository.OAConnectionRepo
 	aiModelRepo         *repository.AIModelRepo
 	aiCaller            *AIModelCallerService
+	attachmentSvc       *AttachmentRecognitionService
 	orgRepo             *repository.OrgRepo
 	db                  *gorm.DB
 	rdb                 *redis.Client
@@ -105,6 +106,7 @@ func NewArchiveReviewService(
 	oaConnRepo *repository.OAConnectionRepo,
 	aiModelRepo *repository.AIModelRepo,
 	aiCaller *AIModelCallerService,
+	attachmentSvc *AttachmentRecognitionService,
 	orgRepo *repository.OrgRepo,
 	db *gorm.DB,
 	rdb *redis.Client,
@@ -122,6 +124,7 @@ func NewArchiveReviewService(
 		oaConnRepo:          oaConnRepo,
 		aiModelRepo:         aiModelRepo,
 		aiCaller:            aiCaller,
+		attachmentSvc:       attachmentSvc,
 		orgRepo:             orgRepo,
 		db:                  db,
 		rdb:                 rdb,
@@ -1763,7 +1766,12 @@ func (s *ArchiveReviewService) getOAAdapter(tenantID uuid.UUID) (oa.OAAdapter, e
 	if err := s.decryptOAConn(conn); err != nil {
 		return nil, err
 	}
-	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
+	// 注入附件识别服务，FetchProcessData 会自动识别附件字段
+	var attachmentSvc oa.AttachmentRecognitionService
+	if s.attachmentSvc != nil {
+		attachmentSvc = s.attachmentSvc
+	}
+	adapter, err := oa.NewOAAdapter(conn.OAType, conn, attachmentSvc)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "创建 OA 适配器失败: "+err.Error())
 	}

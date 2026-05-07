@@ -20,6 +20,10 @@ const (
 	ErrBatchLimitExceeded = 40002 // 批量审核超过上限
 	ErrNoAIModelConfig    = 40003 // 租户未配置 AI 模型
 	ErrNoProcessConfig    = 40004 // 流程审核配置不存在
+	ErrInvalidParam       = 40005 // 参数无效（业务侧通用）
+
+	// 502xx - 外部依赖错误（详见后文 OA / AI 子段）
+	ErrExternal = 50200 // 外部系统调用失败（通用）
 
 	// 401xx - 身份认证错误
 	ErrNoAuthToken      = 40100 // 未提供认证令牌

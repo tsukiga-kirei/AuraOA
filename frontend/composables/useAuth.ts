@@ -307,6 +307,12 @@ export const useAuth = () => {
       }
       const data = res.data
 
+      // 显式选择了登录身份时，必须与后端返回 active_role 一致，避免静默回退到其他角色。
+      if (req.preferred_role && data.active_role?.role !== req.preferred_role) {
+        clearStorage()
+        return { ok: false, errorMsg: '所选登录身份与账号角色不匹配' }
+      }
+
       // 持久化 token 对
       token.value = data.access_token
       refreshToken.value = data.refresh_token

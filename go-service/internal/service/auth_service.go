@@ -234,9 +234,9 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 	// 8. 按优先级选择活跃角色（preferred_role > system_admin > tenant_admin > business）
 	activeAssignment := selectActiveRole(filtered, req.PreferredRole)
 
-	// 若指定了 preferred_role 且不是 system_admin，但最终选中的角色不匹配，说明该租户下没有对应角色
-	if req.PreferredRole != "" && req.PreferredRole != "system_admin" && activeAssignment.Role != req.PreferredRole {
-		return nil, newServiceError(errcode.ErrNoRoleInTenant, "用户在该租户下没有对应角色")
+	// 若显式指定了 preferred_role，但最终选中的角色不匹配，则拒绝登录，避免静默回退到其他身份。
+	if req.PreferredRole != "" && activeAssignment.Role != req.PreferredRole {
+		return nil, newServiceError(errcode.ErrNoRoleInTenant, "所选登录身份与账号角色不匹配")
 	}
 
 	// 9. 重置登录失败次数
