@@ -28,6 +28,8 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/label"
 	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/pkg/oa"
+	"oa-smart-audit/go-service/internal/pkg/sanitize"
+	"oa-smart-audit/go-service/internal/pkg/systemflags"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -60,6 +62,7 @@ type AuditExecuteService struct {
 	cancelMap         sync.Map
 	cache             *cache.CacheManager
 	invalidator       *cache.InvalidationManager
+	sysFlags          *systemflags.Resolver
 }
 
 // NewAuditExecuteService 创建 AuditExecuteService，注入所有依赖仓储和服务。
@@ -79,6 +82,7 @@ func NewAuditExecuteService(
 	notifSvc *UserNotificationService,
 	cacheManager *cache.CacheManager,
 	invalidationManager *cache.InvalidationManager,
+	sysFlags *systemflags.Resolver,
 ) *AuditExecuteService {
 	return &AuditExecuteService{
 		auditLogRepo:      auditLogRepo,
@@ -96,6 +100,7 @@ func NewAuditExecuteService(
 		notifSvc:          notifSvc,
 		cache:             cacheManager,
 		invalidator:       invalidationManager,
+		sysFlags:          sysFlags,
 	}
 }
 
@@ -443,6 +448,11 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	// 拉取审批流快照（历史 + 路由图），失败时不阻塞主流程
 	flowSnapshot := s.fetchFlowSnapshot(c, tenant, req.ProcessID)
 
+	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+		sanitize.SanitizeProcessData(processData)
+		sanitize.SanitizeFlowSnapshot(flowSnapshot)
+	}
+
 	// 从审批流快照中提取当前节点名称
 	currentNode := "当前节点"
 	if flowSnapshot != nil && len(flowSnapshot.Nodes) > 0 {
@@ -486,6 +496,9 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		return err
 	}
 	aiReasoning := reasoningResp.Content
+	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+		aiReasoning = sanitize.SanitizeText(aiReasoning)
+	}
 
 	n, err = s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
 		"status":       model.JobStatusExtracting,
@@ -518,6 +531,11 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	totalDuration := int(time.Since(startTime).Milliseconds())
 	parsed, parseErr := ParseAuditResult(extractionResp.Content)
 
+	rawStored := extractionResp.Content
+	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+		rawStored = sanitize.SanitizeText(rawStored)
+	}
+
 	tlog.Info("AI 推理完成",
 		zap.String("auditLogID", auditLogID.String()),
 		zap.Int("durationMs", totalDuration),
@@ -525,7 +543,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 
 	updates := map[string]interface{}{
 		"duration_ms":  totalDuration,
-		"raw_content":  extractionResp.Content,
+		"raw_content":  rawStored,
 		"ai_reasoning": aiReasoning,
 		"updated_at":   time.Now(),
 	}

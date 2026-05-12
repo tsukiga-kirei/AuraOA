@@ -1013,6 +1013,19 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               <a-switch v-model:checked="generalConfig.enable_data_encryption" />
             </div>
           </div>
+          <div
+            class="encryption-mask-hint"
+            style="margin-top: 12px; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.65;"
+          >
+            <div style="font-weight: 500; color: var(--color-text-secondary); margin-bottom: 6px;">
+              {{ t('admin.settings.encryptionMaskTitle') }}
+            </div>
+            <ul style="margin: 0; padding-left: 18px;">
+              <li>{{ t('admin.settings.encryptionMaskItemIdCard') }}</li>
+              <li>{{ t('admin.settings.encryptionMaskItemPhone') }}</li>
+              <li>{{ t('admin.settings.encryptionMaskItemBank') }}</li>
+            </ul>
+          </div>
         </div>
 
         <div class="config-section">

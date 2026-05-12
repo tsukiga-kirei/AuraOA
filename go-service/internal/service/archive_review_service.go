@@ -27,6 +27,8 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/label"
 	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/pkg/oa"
+	"oa-smart-audit/go-service/internal/pkg/sanitize"
+	"oa-smart-audit/go-service/internal/pkg/systemflags"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -93,6 +95,7 @@ type ArchiveReviewService struct {
 	cancelMap           sync.Map
 	cache               *cache.CacheManager
 	invalidator         *cache.InvalidationManager
+	sysFlags            *systemflags.Resolver
 }
 
 // NewArchiveReviewService 创建 ArchiveReviewService，注入所有依赖仓储和服务。
@@ -113,6 +116,7 @@ func NewArchiveReviewService(
 	notifSvc *UserNotificationService,
 	cacheManager *cache.CacheManager,
 	invalidationManager *cache.InvalidationManager,
+	sysFlags *systemflags.Resolver,
 ) *ArchiveReviewService {
 	return &ArchiveReviewService{
 		archiveLogRepo:      archiveLogRepo,
@@ -131,6 +135,7 @@ func NewArchiveReviewService(
 		notifSvc:            notifSvc,
 		cache:               cacheManager,
 		invalidator:         invalidationManager,
+		sysFlags:            sysFlags,
 	}
 }
 
@@ -1250,6 +1255,11 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		}
 	}
 
+	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+		sanitize.SanitizeProcessData(processData)
+		sanitize.SanitizeFlowSnapshot(flowSnapshot)
+	}
+
 	currentNode := "已归档"
 	processSnapshot := map[string]interface{}{
 		"process_id":         logEntry.ProcessID,
@@ -1273,6 +1283,13 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		processSnapshot["submit_time"] = archivedItem.SubmitTime
 		processSnapshot["archive_time"] = archivedItem.ArchiveTime
 		processSnapshot["main_table_name"] = archivedItem.MainTableName
+	}
+	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+		for _, k := range []string{"title", "process_type_label", "applicant", "department", "current_node", "submit_time", "archive_time", "main_table_name"} {
+			if v, ok := processSnapshot[k].(string); ok {
+				processSnapshot[k] = sanitize.SanitizeText(v)
+			}
+		}
 	}
 	snapshotJSON, _ := json.Marshal(processSnapshot)
 
@@ -1300,6 +1317,9 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		return err
 	}
 	aiReasoning := reasoningResp.Content
+	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+		aiReasoning = sanitize.SanitizeText(aiReasoning)
+	}
 
 	_ = s.archiveLogRepo.UpdateFields(c, archiveLogID, map[string]interface{}{
 		"status":       model.JobStatusExtracting,
@@ -1323,9 +1343,14 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	totalDuration := int(time.Since(startTime).Milliseconds())
 	parsed, parseErr := ParseArchiveReviewResult(extractionResp.Content)
 
+	rawStored := extractionResp.Content
+	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+		rawStored = sanitize.SanitizeText(rawStored)
+	}
+
 	updates := map[string]interface{}{
 		"duration_ms":      totalDuration,
-		"raw_content":      extractionResp.Content,
+		"raw_content":      rawStored,
 		"ai_reasoning":     aiReasoning,
 		"process_snapshot": datatypes.JSON(snapshotJSON),
 		"updated_at":       time.Now(),

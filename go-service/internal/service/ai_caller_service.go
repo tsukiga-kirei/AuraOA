@@ -18,6 +18,7 @@ import (
 	"oa-smart-audit/go-service/internal/pkg/ai"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
 	"oa-smart-audit/go-service/internal/pkg/sanitize"
+	"oa-smart-audit/go-service/internal/pkg/systemflags"
 	"oa-smart-audit/go-service/internal/repository"
 )
 
@@ -27,18 +28,22 @@ type AIModelCallerService struct {
 	tenantRepo *repository.TenantRepo
 	logRepo    *repository.LLMMessageLogRepo
 	db         *gorm.DB
+	sysFlags   *systemflags.Resolver
 }
 
 // NewAIModelCallerService 初始化 AI 调用服务，注入租户仓储、日志仓储和数据库连接。
+// sysFlags 可为 nil；非 nil 时根据 system.enable_data_encryption 对提示词做脱敏。
 func NewAIModelCallerService(
 	tenantRepo *repository.TenantRepo,
 	logRepo *repository.LLMMessageLogRepo,
 	db *gorm.DB,
+	sysFlags *systemflags.Resolver,
 ) *AIModelCallerService {
 	return &AIModelCallerService{
 		tenantRepo: tenantRepo,
 		logRepo:    logRepo,
 		db:         db,
+		sysFlags:   sysFlags,
 	}
 }
 
@@ -48,6 +53,11 @@ func NewAIModelCallerService(
 // 3. 调用失败时回滚预扣额度
 // 4. 调用成功后结算实际消耗，并异步写入调用日志
 func (s *AIModelCallerService) Chat(c *gin.Context, tenantID, userID uuid.UUID, modelCfg *model.AIModelConfig, req *ai.ChatRequest) (*ai.ChatResponse, error) {
+	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+		req.UserPrompt = sanitize.SanitizeText(req.UserPrompt)
+		req.SystemPrompt = sanitize.SanitizeText(req.SystemPrompt)
+	}
+
 	// 检查 Token 配额（预扣 max_tokens 防止并发超额）
 	reserved := 0
 	if !req.SkipQuotaCheck {
@@ -127,13 +137,18 @@ func (s *AIModelCallerService) ChatViaPython(c *gin.Context, tenantID, userID uu
 		}
 	}
 
-	// 数据脱敏：对用户提示词中的敏感信息进行脱敏
-	sanitizedUserPrompt := sanitize.SanitizeText(req.UserPrompt)
+	// 数据脱敏：与 system.enable_data_encryption 对齐；未注入 sysFlags 时保持原默认（始终脱敏）
+	userPrompt := req.UserPrompt
+	systemPrompt := req.SystemPrompt
+	if s.sysFlags == nil || s.sysFlags.DataEncryptionEnabled() {
+		userPrompt = sanitize.SanitizeText(userPrompt)
+		systemPrompt = sanitize.SanitizeText(systemPrompt)
+	}
 
 	// 构建请求体（包含完整模型配置供 Python 端使用）
 	pyReq := pythonAIRequest{
-		SystemPrompt: req.SystemPrompt,
-		UserPrompt:   sanitizedUserPrompt,
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPrompt,
 		ModelConfig: map[string]interface{}{
 			"model_id":    modelCfg.ID.String(),
 			"provider":    modelCfg.Provider,
