@@ -65,3 +65,10 @@ log:
   compress: true
   # 全局日志文件保留天数（兜底值），优先读取 system_configs 表中的配置，默认 30
   global_retention_days: 30
+
+# 数据库整库自动备份（需安装 pg_dump；策略由管理端 system.backup_* 控制）
+backup:
+  dir: "backups"
+  # system_configs 中无 system.backup_retention_days 时的兜底天数
+  retention_fallback_days: 30
+  dump_timeout: "45m"

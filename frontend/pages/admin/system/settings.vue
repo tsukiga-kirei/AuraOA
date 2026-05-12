@@ -1057,6 +1057,20 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                 </a-form-item>
               </a-col>
             </a-row>
+            <div
+              class="backup-scope-hint"
+              style="margin-top: 12px; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.65;"
+            >
+              <div style="font-weight: 500; color: var(--color-text-secondary); margin-bottom: 6px;">
+                {{ t('admin.settings.backupScopeTitle') }}
+              </div>
+              <ul style="margin: 0; padding-left: 18px;">
+                <li>{{ t('admin.settings.backupScopeItemDb') }}</li>
+                <li>{{ t('admin.settings.backupScopeItemFile') }}</li>
+                <li>{{ t('admin.settings.backupScopeItemDir') }}</li>
+                <li>{{ t('admin.settings.backupScopeItemTool') }}</li>
+              </ul>
+            </div>
           </a-form>
         </div>
 

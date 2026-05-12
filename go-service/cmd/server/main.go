@@ -181,6 +181,43 @@ func main() {
 		pkglogger.Global().Warn("注册日志清理定时任务失败", zap.Error(err))
 	}
 
+	backupDir := filepath.Clean(viper.GetString("backup.dir"))
+	if !filepath.IsAbs(backupDir) {
+		if wd, wdErr := os.Getwd(); wdErr == nil {
+			backupDir = filepath.Join(wd, backupDir)
+		}
+	}
+	dumpTO := viper.GetDuration("backup.dump_timeout")
+	if dumpTO <= 0 {
+		dumpTO = 45 * time.Minute
+	}
+	dbBackupService := service.NewDbBackupService(systemConfigRepo, service.DbBackupConfig{
+		Host:                  viper.GetString("database.host"),
+		Port:                  viper.GetInt("database.port"),
+		User:                  viper.GetString("database.user"),
+		Password:              viper.GetString("database.password"),
+		DBName:                viper.GetString("database.dbname"),
+		SSLMode:               viper.GetString("database.sslmode"),
+		Dir:                   backupDir,
+		RetentionFallbackDays: viper.GetInt("backup.retention_fallback_days"),
+		DumpTimeout:           dumpTO,
+	})
+	if err := cronScheduler.RegisterCustomJob("0 * * * * *", func() {
+		go func() {
+			runTO := dbBackupService.DumpTimeout() + 15*time.Minute
+			ctx, cancel := context.WithTimeout(context.Background(), runTO)
+			defer cancel()
+			dbBackupService.Tick(ctx)
+		}()
+	}); err != nil {
+		pkglogger.Global().Warn("注册数据库备份定时任务失败", zap.Error(err))
+	} else {
+		pkglogger.Global().Info("数据库自动备份任务已注册",
+			zap.String("backup_dir", backupDir),
+			zap.String("note", "每分钟检查 system.backup_*；开启后按 Cron 执行 pg_dump"),
+		)
+	}
+
 	if err := service.StartAuditStreamWorker(context.Background(), rdb, auditExecuteService, pkglogger.Global(), 2); err != nil {
 		pkglogger.Global().Warn("审计流处理器启动失败", zap.Error(err))
 	}
@@ -273,6 +310,10 @@ func loadConfig() error {
 	viper.SetDefault("cache.ttl.snapshot", "5m")
 	viper.SetDefault("cache.ttl.stats", "5m")
 	viper.SetDefault("cache.ttl.dashboard", "2m")
+
+	viper.SetDefault("backup.dir", "backups")
+	viper.SetDefault("backup.retention_fallback_days", 30)
+	viper.SetDefault("backup.dump_timeout", "45m")
 
 	return viper.ReadInConfig()
 }
