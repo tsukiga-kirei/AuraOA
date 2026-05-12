@@ -1,7 +1,5 @@
-version: "3.9"
-
 # 本地开发：启动基础设施 + Go 后端服务，前端在本地运行
-# 用法：docker-compose -f docker-compose.dev.yml up -d
+# 用法：docker compose -f docker-compose.dev.yml up -d
 
 services:
   go-service:
@@ -55,7 +53,8 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U oa_admin"]
+      # 必须指定 -d：否则 pg_isready 会连「与用户名同名的库」→ 报 database "oa_admin" does not exist
+      test: ["CMD-SHELL", "pg_isready -U oa_admin -d oa_smart_audit"]
       interval: 5s
       timeout: 5s
       retries: 5
