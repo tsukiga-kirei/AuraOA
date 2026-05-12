@@ -24,7 +24,7 @@ RUN mkdir -p /out && CGO_ENABLED=0 GOOS=linux go build -o /out/server ./cmd/serv
 # Stage 2: Runtime
 FROM alpine:3.19
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata postgresql-client
 
 WORKDIR /app
 
@@ -32,8 +32,8 @@ COPY --from=builder /out/server .
 COPY go-service/config.yaml .
 COPY db/migrations /migrations
 
-# 预建日志目录，容器内默认写入此路径（可通过 LOG_DIR 环境变量覆盖）
-RUN mkdir -p /app/logs/tenants
+# 预建日志与数据库备份目录（可通过 LOG_DIR、BACKUP_DIR 覆盖）
+RUN mkdir -p /app/logs/tenants /app/backups
 
 ENV MIGRATIONS_PATH=/migrations
 # 日志默认配置（可通过环境变量覆盖，对应 config.yaml 的 log.* 字段）
@@ -43,6 +43,7 @@ ENV LOG_MAX_SIZE_MB=100
 ENV LOG_MAX_BACKUPS=5
 ENV LOG_COMPRESS=true
 ENV LOG_GLOBAL_RETENTION_DAYS=30
+ENV BACKUP_DIR=/app/backups
 
 EXPOSE 8080
 
