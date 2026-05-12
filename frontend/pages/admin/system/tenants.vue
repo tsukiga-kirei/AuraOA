@@ -36,7 +36,6 @@ interface TenantData {
   oa_db_connection_id: string; token_quota: number; token_used: number; max_concurrency: number
   primary_model_id: string; fallback_model_id: string
   max_tokens_per_request: number; temperature: number; timeout_seconds: number; retry_count: number
-  sso_enabled: boolean; sso_endpoint: string
   log_retention_days: number; data_retention_days: number
   contact_name: string; contact_email: string; contact_phone: string
   admin_user_id: string
@@ -296,8 +295,6 @@ const saveTenantDetail = async () => {
       temperature: s.temperature,
       timeout_seconds: s.timeout_seconds,
       retry_count: s.retry_count,
-      sso_enabled: s.sso_enabled,
-      sso_endpoint: s.sso_endpoint,
       log_retention_days: s.log_retention_days,
       data_retention_days: s.data_retention_days,
       contact_name: s.contact_name,
@@ -422,9 +419,6 @@ const confirmDeleteTenant = async () => {
           </span>
           <span class="info-tag info-tag--info">
             <RobotOutlined /> {{ availableModels.find(m => m.id === tenant.primary_model_id)?.display_name || t('admin.tenants.noConfig') }}
-          </span>
-          <span v-if="tenant.sso_enabled" class="info-tag info-tag--success">
-            <SafetyCertificateOutlined /> SSO
           </span>
         </div>
 
@@ -953,23 +947,12 @@ const confirmDeleteTenant = async () => {
           </a-spin>
         </div>
 
-        <!--安全选项卡-->
+        <!--运行状态选项卡-->
         <div v-if="detailActiveTab === 'security'" class="detail-section">
           <div class="section-header">
-            <h3><SafetyCertificateOutlined /> {{ t('admin.tenants.securitySettings') }}</h3>
+            <h3><SafetyCertificateOutlined /> {{ t('admin.tenants.tabSecurity') }}</h3>
           </div>
           <a-form layout="vertical">
-            <div class="config-group">
-              <div class="config-group-title">{{ t('admin.tenants.sso') }}</div>
-              <a-form-item :label="t('admin.tenants.enableSSO')">
-                <a-switch v-model:checked="selectedTenant.sso_enabled" />
-                <span class="switch-label">{{ selectedTenant.sso_enabled ? t('admin.tenants.ssoEnabled') : t('admin.tenants.ssoDisabled') }}</span>
-              </a-form-item>
-              <a-form-item v-if="selectedTenant.sso_enabled" :label="t('admin.tenants.ssoEndpoint')">
-                <a-input v-model:value="selectedTenant.sso_endpoint" placeholder="https://sso.example.com/oauth2" size="large" />
-              </a-form-item>
-            </div>
-
             <div class="config-group">
               <div class="config-group-title">{{ t('admin.tenants.tenantStatus') }}</div>
               <div class="status-display">
