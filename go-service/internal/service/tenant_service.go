@@ -450,12 +450,6 @@ func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest)
 	if req.RetryCount != 0 {
 		fields["retry_count"] = req.RetryCount
 	}
-	if req.SSOEnabled != nil {
-		fields["sso_enabled"] = *req.SSOEnabled
-	}
-	if req.SSOEndpoint != "" {
-		fields["sso_endpoint"] = req.SSOEndpoint
-	}
 	if req.LogRetentionDays != 0 {
 		fields["log_retention_days"] = req.LogRetentionDays
 	}
@@ -747,8 +741,6 @@ func toTenantResponse(t *model.Tenant) dto.TenantResponse {
 		Temperature:         temp,
 		TimeoutSeconds:      t.TimeoutSeconds,
 		RetryCount:          t.RetryCount,
-		SSOEnabled:          t.SSOEnabled,
-		SSOEndpoint:         t.SSOEndpoint,
 		LogRetentionDays:    t.LogRetentionDays,
 		DataRetentionDays:   t.DataRetentionDays,
 		ContactName:         t.ContactName,

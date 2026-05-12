@@ -23,8 +23,6 @@ type Tenant struct {
 	Temperature         float64    `gorm:"type:decimal(3,2);not null;default:0.30"`
 	TimeoutSeconds      int        `gorm:"not null;default:60"`
 	RetryCount          int        `gorm:"not null;default:3"`
-	SSOEnabled          bool       `gorm:"not null;default:false"`
-	SSOEndpoint         string     `gorm:"size:500"`
 	LogRetentionDays    int        `gorm:"not null;default:365"`
 	DataRetentionDays   int        `gorm:"not null;default:1095"`
 	ContactName         string     `gorm:"size:100"`

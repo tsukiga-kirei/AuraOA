@@ -44,8 +44,6 @@ type UpdateTenantRequest struct {
 	Temperature         *float64 `json:"temperature"`
 	TimeoutSeconds      int      `json:"timeout_seconds"`
 	RetryCount          int      `json:"retry_count"`
-	SSOEnabled          *bool    `json:"sso_enabled"`
-	SSOEndpoint         string   `json:"sso_endpoint"`
 	LogRetentionDays    int      `json:"log_retention_days"`
 	DataRetentionDays   int      `json:"data_retention_days"`
 	ContactName         string   `json:"contact_name"`
@@ -70,8 +68,6 @@ type TenantResponse struct {
 	Temperature         float64 `json:"temperature"`
 	TimeoutSeconds      int     `json:"timeout_seconds"`
 	RetryCount          int     `json:"retry_count"`
-	SSOEnabled          bool    `json:"sso_enabled"`
-	SSOEndpoint         string  `json:"sso_endpoint"`
 	LogRetentionDays    int     `json:"log_retention_days"`
 	DataRetentionDays   int     `json:"data_retention_days"`
 	ContactName         string  `json:"contact_name"`
