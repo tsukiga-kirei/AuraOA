@@ -8,6 +8,8 @@ import (
 
 	"oa-smart-audit/go-service/internal/handler"
 	"oa-smart-audit/go-service/internal/middleware"
+	"oa-smart-audit/go-service/internal/pkg/systemflags"
+	"oa-smart-audit/go-service/internal/repository"
 )
 
 // SetupRouter 在给定的 Gin 引擎上挂载全局中间件并注册所有路由分组。
@@ -35,9 +37,12 @@ func SetupRouter(
 	dashboardOverviewHandler *handler.DashboardOverviewHandler,
 	userNotificationHandler *handler.UserNotificationHandler,
 	cacheAdminHandler *handler.CacheAdminHandler,
+	sysFlags *systemflags.Resolver,
+	operationAuditRepo *repository.OperationAuditLogRepo,
 ) {
 	// 挂载全局中间件：结构化请求日志、panic 恢复、跨域（CORS）
 	r.Use(middleware.Logger(logger))
+	r.Use(middleware.AuditTrail(sysFlags, operationAuditRepo))
 	r.Use(middleware.Recovery(logger))
 	r.Use(middleware.CORS(allowedOrigins))
 

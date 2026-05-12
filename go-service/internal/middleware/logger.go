@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -42,27 +41,10 @@ func Logger(log *zap.Logger) gin.HandlerFunc {
 		}
 
 		// 轮询类接口降级为 DEBUG：生产环境 LOG_LEVEL=info 时不输出，调试时改为 debug 才可见
-		if isPollingPath(path) {
+		if IsLowValuePollingPath(path) {
 			pkglogger.Global().Debug("HTTP 请求", fields...)
 		} else {
 			pkglogger.Global().Info("HTTP 请求", fields...)
 		}
 	}
-}
-
-// isPollingPath 判断是否为前端轮询类接口，这类接口频率高但价值低，降级为 DEBUG。
-func isPollingPath(path string) bool {
-	pollingPrefixes := []string{
-		"/api/audit/jobs/",
-		"/api/archive/jobs/",
-		"/api/auth/notifications/unread-count",
-		"/api/audit/stats",
-		"/api/archive/stats",
-	}
-	for _, prefix := range pollingPrefixes {
-		if strings.HasPrefix(path, prefix) || strings.Contains(path, prefix) {
-			return true
-		}
-	}
-	return false
 }

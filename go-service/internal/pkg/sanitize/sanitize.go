@@ -13,8 +13,6 @@ var (
 	phoneRegex = regexp.MustCompile(`\b(1\d{2})\d{4}(\d{4})\b`)
 	// 银行卡号：16-19位数字
 	bankCardRegex = regexp.MustCompile(`\b\d{12,15}(\d{4})\b`)
-	// 薪资金额：常见格式如 ¥12345.67、12345元、12345.00
-	salaryRegex = regexp.MustCompile(`[¥￥]?\s*(\d+(?:\.\d{1,2})?)\s*元?`)
 )
 
 // MaskIDCard 身份证号脱敏：保留前3后4，中间用 * 替换。
@@ -53,29 +51,6 @@ func MaskBankCard(card string) string {
 	suffix := card[len(card)-4:]
 	masked := strings.Repeat("*", len(card)-4) + suffix
 	return masked
-}
-
-// MaskSalary 薪资金额脱敏：替换为区间描述。
-// 示例：15000.00 → [10000-20000]
-func MaskSalary(amount float64) string {
-	switch {
-	case amount < 0:
-		return "[金额异常]"
-	case amount < 3000:
-		return "[0-3000]"
-	case amount < 5000:
-		return "[3000-5000]"
-	case amount < 8000:
-		return "[5000-8000]"
-	case amount < 10000:
-		return "[8000-10000]"
-	case amount < 20000:
-		return "[10000-20000]"
-	case amount < 50000:
-		return "[20000-50000]"
-	default:
-		return "[50000以上]"
-	}
 }
 
 // SanitizeText 对文本中的敏感信息进行批量脱敏。
