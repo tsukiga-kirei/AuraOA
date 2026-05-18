@@ -399,6 +399,18 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		modelCfg.APIKey = decrypted
 	}
 
+	// 获取备用模型配置（如果配置了 fallback_model_id）
+	var fallbackCfg *model.AIModelConfig
+	if tenant.FallbackModelID != nil {
+		if fb, err := s.aiModelRepo.FindByID(*tenant.FallbackModelID); err == nil {
+			if fb.APIKey != "" {
+				if decrypted, err := crypto.Decrypt(fb.APIKey); err == nil {
+					fb.APIKey = decrypted
+				}
+			}
+			fallbackCfg = fb
+		}
+	}
 	req := &AuditExecuteRequest{ProcessID: log.ProcessID, ProcessType: log.ProcessType, Title: log.Title}
 
 	config, rules, err := s.getProcessConfigCached(c, tenantID, req.ProcessType)
@@ -486,7 +498,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		return nil
 	}
 
-	reasoningResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, reasoningReq)
+	reasoningResp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, reasoningReq)
 	if err != nil {
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
 		tlog.Warn("审核任务执行失败",
@@ -518,7 +530,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	extractionReq.ModelConfig = modelCfg
 	extractionReq.SkipQuotaCheck = true
 
-	extractionResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, extractionReq)
+	extractionResp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, extractionReq)
 	if err != nil {
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
 		tlog.Warn("审核任务执行失败",
@@ -1150,10 +1162,11 @@ func (s *AuditExecuteService) fetchOATodoDataCached(
 	params dto.AuditListParams,
 	allowedTables map[string]bool, processTypes []string,
 ) ([]oa.TodoItem, error) {
-	// 构建缓存键：只按日期范围区分
+	// 构建缓存键：按日期范围 + process_type 区分（process_type 影响从 OA 拉取的数据范围）
 	dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
 		"submit_date_start":         params.SubmitDateStart,
 		"submit_date_end_exclusive": params.SubmitDateEndExclusive,
+		"process_type":              params.ProcessType,
 	})
 	keyBuilder := cache.NewKeyBuilder("audit", tenantID)
 	cacheKey := keyBuilder.OATodoData(userID, dateRangeHash)
@@ -1194,6 +1207,19 @@ func (s *AuditExecuteService) fetchOATodoDataCached(
 		ProcessTypes:   processTypes,
 		Page:           1,
 		PageSize:       batchSize,
+	}
+	// 如果前端传了具体的 process_type，精确限定 ProcessTypes 和对应的 MainTableName
+	// 避免 AND (tablename IN all_tables) 把当前流程类型的数据过滤掉
+	if pt := strings.TrimSpace(params.ProcessType); pt != "" {
+		pagedFilter.ProcessTypes = []string{pt}
+		// 从审核配置中找到该流程对应的主表名，缩窄 MainTableNames
+		ptLower := strings.ToLower(pt)
+		for _, cfg := range s.getAllowedConfigsList(c) {
+			if strings.ToLower(cfg.ProcessType) == ptLower && cfg.MainTableName != "" {
+				pagedFilter.MainTableNames = []string{strings.ToLower(cfg.MainTableName)}
+				break
+			}
+		}
 	}
 
 	result, err := adapter.FetchTodoListPaged(c.Request.Context(), username, pagedFilter)
@@ -1240,9 +1266,19 @@ func (s *AuditExecuteService) fetchOATodoDataCached(
 	return allItems, nil
 }
 
-// filterTodoItemsInMemory 在内存中对 OA 待办数据做 keyword/applicant/department 过滤
+// filterTodoItemsInMemory 在内存中对 OA 待办数据做 keyword/applicant/department/process_type 过滤
 func filterTodoItemsInMemory(items []oa.TodoItem, params dto.AuditListParams) []oa.TodoItem {
 	filtered := items
+	// process_type 精确匹配过滤（缓存中可能包含多个类型）
+	if pt := strings.TrimSpace(params.ProcessType); pt != "" {
+		var tmp []oa.TodoItem
+		for _, item := range filtered {
+			if item.ProcessType == pt {
+				tmp = append(tmp, item)
+			}
+		}
+		filtered = tmp
+	}
 	if kw := strings.TrimSpace(params.Keyword); kw != "" {
 		kwLower := strings.ToLower(kw)
 		var tmp []oa.TodoItem
@@ -1881,6 +1917,23 @@ func (s *AuditExecuteService) getAllowedProcessTypes(c *gin.Context) []string {
 	}
 	return types
 }
+
+// getAllowedConfigsList 返回当前租户所有启用的审核配置列表（原始结构），
+// 用于按 process_type 查找对应的 MainTableName 等字段。
+func (s *AuditExecuteService) getAllowedConfigsList(c *gin.Context) []model.ProcessAuditConfig {
+	configs, err := s.configRepo.ListByTenant(c)
+	if err != nil {
+		return nil
+	}
+	var active []model.ProcessAuditConfig
+	for _, cfg := range configs {
+		if cfg.Status == "active" {
+			active = append(active, cfg)
+		}
+	}
+	return active
+}
+
 
 func (s *AuditExecuteService) decryptOAConn(conn *model.OADatabaseConnection) error {
 	password, err := crypto.Decrypt(conn.Password)

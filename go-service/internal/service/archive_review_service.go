@@ -283,10 +283,11 @@ func (s *ArchiveReviewService) fetchOAArchivedDataCached(
 		}
 	}
 
-	// 构建缓存键：只按日期范围区分，不包含 keyword/page 等高变参数
+	// 构建缓存键：按日期范围 + process_type 区分（process_type 影响拉取的数据范围）
 	dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
 		"archive_date_start":         params.ArchiveDateStart,
 		"archive_date_end_exclusive": params.ArchiveDateEndExclusive,
+		"process_type":              params.ProcessType,
 	})
 	keyBuilder := cache.NewKeyBuilder("archive", tenantID)
 	cacheKey := keyBuilder.OAArchivedData(userID, dateRangeHash)
@@ -330,6 +331,19 @@ func (s *ArchiveReviewService) fetchOAArchivedDataCached(
 		ProcessTypes:   allowedTypes,
 		Page:           1,
 		PageSize:       batchSize,
+	}
+	// 如果前端传了具体的 process_type，精确限定 ProcessTypes 和对应的 MainTableName
+	// 避免 AND (tablename IN all_tables) 把当前流程类型的数据过滤掉
+	if pt := strings.TrimSpace(params.ProcessType); pt != "" {
+		ptLower := strings.ToLower(pt)
+		pagedFilter.ProcessTypes = []string{ptLower}
+		// 从归档配置中找到该流程对应的主表名，缩窄 MainTableNames
+		for _, cfg := range configs {
+			if strings.ToLower(cfg.ProcessType) == ptLower && cfg.MainTableName != "" {
+				pagedFilter.MainTableNames = []string{strings.ToLower(cfg.MainTableName)}
+				break
+			}
+		}
 	}
 
 	firstPage, err := adapter.FetchArchivedListPaged(c.Request.Context(), s.extractUsername(c), pagedFilter)
@@ -614,8 +628,17 @@ func (s *ArchiveReviewService) listArchiveUnauditedPaged(
 		return &dto.ArchiveProcessListResponse{Items: []map[string]interface{}{}, Total: 0, Page: page, PageSize: pageSize}, nil
 	}
 
-	// 内存过滤：keyword / applicant / department
+	// 内存过滤：process_type / keyword / applicant / department
 	filtered := allOAItems
+	if pt := strings.TrimSpace(params.ProcessType); pt != "" {
+		var tmp []oa.ArchivedItem
+		for _, item := range filtered {
+			if item.ProcessType == pt {
+				tmp = append(tmp, item)
+			}
+		}
+		filtered = tmp
+	}
 	if kw := strings.TrimSpace(params.Keyword); kw != "" {
 		kwLower := strings.ToLower(kw)
 		var tmp []oa.ArchivedItem
@@ -1207,6 +1230,18 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		modelCfg.APIKey = decrypted
 	}
 
+	// 获取备用模型配置（如果配置了 fallback_model_id）
+	var fallbackCfg *model.AIModelConfig
+	if tenant.FallbackModelID != nil {
+		if fb, err := s.aiModelRepo.FindByID(*tenant.FallbackModelID); err == nil {
+			if fb.APIKey != "" {
+				if decrypted, err := crypto.Decrypt(fb.APIKey); err == nil {
+					fb.APIKey = decrypted
+				}
+			}
+			fallbackCfg = fb
+		}
+	}
 	config, rules, err := s.getArchiveConfigCached(c, tenantID, logEntry.ProcessType)
 	if err != nil {
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, err)
@@ -1310,7 +1345,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		"updated_at":       time.Now(),
 	})
 
-	reasoningResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, reasoningReq)
+	reasoningResp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, reasoningReq)
 	if err != nil {
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, err)
 		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(err))
@@ -1333,7 +1368,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	extractionReq.ModelConfig = modelCfg
 	extractionReq.SkipQuotaCheck = true
 
-	extractionResp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, extractionReq)
+	extractionResp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, extractionReq)
 	if err != nil {
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, err)
 		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(err))

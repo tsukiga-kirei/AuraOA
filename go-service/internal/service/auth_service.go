@@ -400,16 +400,16 @@ type LogoutRequest struct {
 func (s *AuthService) Logout(req *LogoutRequest) error {
 	ctx := context.Background()
 
-	// 1. 将 access_token JTI 加入黑名单，TTL 与令牌有效期一致（2h）
+	// 1. 将 access_token JTI 加入黑名单，TTL 与令牌有效期一致
 	if req.AccessJTI != "" {
 		blacklistKey := fmt.Sprintf("blacklist:%s", req.AccessJTI)
-		s.rdb.Set(ctx, blacklistKey, "1", 2*time.Hour)
+		s.rdb.Set(ctx, blacklistKey, "1", s.getAccessTokenTTL())
 	}
 
-	// 2. 将 refresh_token JTI 加入黑名单，TTL 7 天
+	// 2. 将 refresh_token JTI 加入黑名单，TTL 与刷新令牌有效期一致
 	if req.RefreshJTI != "" {
 		blacklistKey := fmt.Sprintf("blacklist:%s", req.RefreshJTI)
-		s.rdb.Set(ctx, blacklistKey, "1", 7*24*time.Hour)
+		s.rdb.Set(ctx, blacklistKey, "1", s.getRefreshTokenTTL())
 	}
 
 	// 3. 删除 session 缓存
@@ -589,10 +589,10 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 		return nil, newServiceError(errcode.ErrInternalServer, "服务器内部错误")
 	}
 
-	// 5. 将旧 JTI 加入黑名单，使旧令牌立即失效
+	// 5. 将旧 JTI 加入黑名单，使旧令牌立即失效（TTL 与 access_token 有效期一致）
 	if oldJTI != "" {
 		blacklistKey := fmt.Sprintf("blacklist:%s", oldJTI)
-		s.rdb.Set(ctx, blacklistKey, "1", 2*time.Hour)
+		s.rdb.Set(ctx, blacklistKey, "1", s.getAccessTokenTTL())
 	}
 
 	// 6. 更新 session 缓存
@@ -1136,10 +1136,6 @@ func (s *AuthService) UpdateProfile(userID uuid.UUID, req *dto.UpdateProfileRequ
 	// 邮箱和手机号允许传空字符串以清空，直接覆盖写入
 	updates["email"] = req.Email
 	updates["phone"] = req.Phone
-
-	if len(updates) == 0 {
-		return nil
-	}
 
 	if err := s.userRepo.UpdateProfile(userID, updates); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")

@@ -294,10 +294,14 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 		return nil, newServiceError(errcode.ErrDatabase, "创建默认部门失败")
 	}
 
-	// 4. 创建管理员用户
+	// 4. 创建管理员用户（默认密码从系统配置 auth.default_password 读取）
 	password := req.AdminPassword
 	if password == "" {
-		password = "123456"
+		if cfgPwd, err := s.systemConfigRepo.FindByKey("auth.default_password"); err == nil && cfgPwd != "" {
+			password = cfgPwd
+		} else {
+			password = "Aa123456!"
+		}
 	}
 	passwordHash, err := hash.HashPassword(password)
 	if err != nil {
