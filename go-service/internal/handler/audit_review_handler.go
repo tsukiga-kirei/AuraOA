@@ -433,6 +433,9 @@ func (h *AuditHandler) GetSnapshotChain(c *gin.Context) {
 		handleServiceError(c, err)
 		return
 	}
+	for i := range chain {
+		service.NormalizeAuditLogForResponse(&chain[i].AuditLog)
+	}
 	response.Success(c, gin.H{"chain": chain})
 }
 

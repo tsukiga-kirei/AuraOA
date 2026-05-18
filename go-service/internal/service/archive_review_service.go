@@ -1041,6 +1041,9 @@ func (s *ArchiveReviewService) ListArchiveLogs(c *gin.Context, filter repository
 	if err != nil {
 		return nil, 0, newServiceError(errcode.ErrDatabase, "查询归档日志失败")
 	}
+	for i := range items {
+		normalizeArchiveLogInPlace(&items[i].ArchiveLog)
+	}
 	return items, total, nil
 }
 
@@ -1080,7 +1083,14 @@ func (s *ArchiveReviewService) GetArchiveHistory(c *gin.Context, processID strin
 		return []repository.ArchiveLogWithUser{}, nil
 	}
 	ids := parseArchiveSnapshotValidIDs(snap.ValidArchiveLogIDs)
-	return s.archiveLogRepo.ListByIDsWithUserOrdered(c, ids)
+	logs, err := s.archiveLogRepo.ListByIDsWithUserOrdered(c, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range logs {
+		normalizeArchiveLogInPlace(&logs[i].ArchiveLog)
+	}
+	return logs, nil
 }
 
 func (s *ArchiveReviewService) GetArchiveResult(c *gin.Context, id uuid.UUID) (map[string]interface{}, error) {
@@ -1727,7 +1737,7 @@ func (s *ArchiveReviewService) resolveArchiveRulesText(
 		if !enabled {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("%d. [%s] %s", len(lines)+1, rule.RuleScope, rule.RuleContent))
+		lines = append(lines, formatRuleLineForPrompt(len(lines)+1, rule.RuleScope, rule.RuleContent))
 	}
 
 	if perms.AllowCustomRules && userDetail != nil {
@@ -1735,7 +1745,7 @@ func (s *ArchiveReviewService) resolveArchiveRulesText(
 			if !rule.Enabled {
 				continue
 			}
-			lines = append(lines, fmt.Sprintf("%d. [custom] %s", len(lines)+1, rule.Content))
+			lines = append(lines, formatRuleLineForPrompt(len(lines)+1, "custom", rule.Content))
 		}
 	}
 
@@ -1919,7 +1929,7 @@ func buildArchiveResultFromLog(logEntry *model.ArchiveLog) map[string]interface{
 	base["confidence"] = parsed.Confidence
 	base["flow_audit"] = parsed.FlowAudit
 	base["field_audit"] = parsed.FieldAudit
-	base["rule_audit"] = parsed.RuleAudit
+	base["rule_audit"] = normalizeArchiveRuleAudits(parsed.RuleAudit)
 	base["risk_points"] = parsed.RiskPoints
 	base["suggestions"] = parsed.Suggestions
 	base["ai_summary"] = parsed.AISummary

@@ -49,12 +49,9 @@ func ParseAuditResult(raw string) (*model.AuditResultJSON, error) {
 	return out, nil
 }
 
-// coalesceRuleResults 将 nil 规则结果切片转为空切片，确保 JSON 序列化输出 [] 而非 null。
+// coalesceRuleResults 将 nil 规则结果切片转为空切片，并清洗 rule_content 中的作用域前缀。
 func coalesceRuleResults(r []model.RuleResultJSON) []model.RuleResultJSON {
-	if r == nil {
-		return []model.RuleResultJSON{}
-	}
-	return r
+	return normalizeAuditRuleResults(r)
 }
 
 // normalizeAuditRecommendation 将模型输出的审核结论别名统一归一化为三种标准值：

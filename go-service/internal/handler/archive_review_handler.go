@@ -490,6 +490,9 @@ func (h *ArchiveReviewHandler) GetSnapshotChain(c *gin.Context) {
 		handleServiceError(c, err)
 		return
 	}
+	for i := range chain {
+		service.NormalizeArchiveLogForResponse(&chain[i].ArchiveLog)
+	}
 	response.Success(c, gin.H{"chain": chain})
 }
 
