@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // ArchiveLogFilter 归档复盘日志分页查询过滤条件。

@@ -13,10 +13,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/pkg/oa"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/pkg/errcode"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/pkg/oa"
+	"auraoa/go-service/internal/repository"
 )
 
 // AttachmentRecognitionService 附件识别服务，负责：

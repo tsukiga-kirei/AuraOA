@@ -7,9 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"oa-smart-audit/go-service/internal/cache"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	"oa-smart-audit/go-service/internal/pkg/response"
+	"auraoa/go-service/internal/cache"
+	"auraoa/go-service/internal/pkg/errcode"
+	"auraoa/go-service/internal/pkg/response"
 )
 
 // CacheAdminHandler 处理缓存管理相关的 HTTP 请求。

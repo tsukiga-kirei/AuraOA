@@ -9,13 +9,13 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 
-	"oa-smart-audit/go-service/internal/cache"
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/crypto"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	"oa-smart-audit/go-service/internal/pkg/oa"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/cache"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/crypto"
+	"auraoa/go-service/internal/pkg/errcode"
+	"auraoa/go-service/internal/pkg/oa"
+	"auraoa/go-service/internal/repository"
 )
 
 // ProcessArchiveConfigService 负责归档复盘配置的增删改查、OA 连接测试及字段同步。

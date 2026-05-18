@@ -10,8 +10,8 @@ import (
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/repository"
 )
 
 // CronScheduler 基于 robfig/cron/v3 的定时任务调度器。

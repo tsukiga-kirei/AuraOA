@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // ErrNoTenantContext 上下文中缺少 tenant_id。

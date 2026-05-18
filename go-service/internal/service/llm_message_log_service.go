@@ -6,8 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/pkg/errcode"
+	"auraoa/go-service/internal/repository"
 )
 
 // LLMMessageLogService 处理大模型消息记录的查询业务逻辑。

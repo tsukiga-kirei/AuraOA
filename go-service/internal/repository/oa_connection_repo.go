@@ -4,7 +4,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // OAConnectionRepo 提供 OA 数据库连接配置的数据访问方法（全局，无租户隔离）。

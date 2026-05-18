@@ -14,13 +14,13 @@ import (
 
 	"go.uber.org/zap"
 
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	"oa-smart-audit/go-service/internal/pkg/hash"
-	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/errcode"
+	"auraoa/go-service/internal/pkg/hash"
+	jwtpkg "auraoa/go-service/internal/pkg/jwt"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/repository"
 )
 
 // AuthService 负责身份验证、令牌管理、角色切换和菜单权限检索。
@@ -648,6 +648,7 @@ func (s *AuthService) SwitchRole(userID uuid.UUID, roleID string, oldJTI string)
 		Menus:       menuItems,
 	}, nil
 }
+
 // ---------------------------------------------------------------------------
 
 // GetMenu 根据用户的活跃角色返回菜单项。

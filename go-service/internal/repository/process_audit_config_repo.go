@@ -5,7 +5,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // ProcessAuditConfigRepo 提供流程审核配置的数据访问方法，按租户隔离。

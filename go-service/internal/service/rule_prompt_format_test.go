@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 func TestFormatRuleLineForPrompt(t *testing.T) {

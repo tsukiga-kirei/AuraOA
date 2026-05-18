@@ -8,11 +8,11 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/datatypes"
 
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/errcode"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/repository"
 )
 
 // CronConfigService 处理定时任务类型配置的业务逻辑。

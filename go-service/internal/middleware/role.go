@@ -5,9 +5,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
-	"oa-smart-audit/go-service/internal/pkg/response"
+	"auraoa/go-service/internal/pkg/errcode"
+	jwtpkg "auraoa/go-service/internal/pkg/jwt"
+	"auraoa/go-service/internal/pkg/response"
 )
 
 // RequireRole 返回角色权限校验中间件。

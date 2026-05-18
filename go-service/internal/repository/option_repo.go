@@ -3,7 +3,7 @@ package repository
 import (
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // OptionRepo 提供各类系统选项表的只读查询（全局，无租户隔离）。

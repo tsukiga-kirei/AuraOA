@@ -19,18 +19,18 @@ import (
 
 	"go.uber.org/zap"
 
-	"oa-smart-audit/go-service/internal/cache"
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/crypto"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
-	"oa-smart-audit/go-service/internal/pkg/label"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/pkg/oa"
-	"oa-smart-audit/go-service/internal/pkg/sanitize"
-	"oa-smart-audit/go-service/internal/pkg/systemflags"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/cache"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/crypto"
+	"auraoa/go-service/internal/pkg/errcode"
+	jwtpkg "auraoa/go-service/internal/pkg/jwt"
+	"auraoa/go-service/internal/pkg/label"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/pkg/oa"
+	"auraoa/go-service/internal/pkg/sanitize"
+	"auraoa/go-service/internal/pkg/systemflags"
+	"auraoa/go-service/internal/repository"
 )
 
 const (
@@ -1943,7 +1943,6 @@ func (s *AuditExecuteService) getAllowedConfigsList(c *gin.Context) []model.Proc
 	}
 	return active
 }
-
 
 func (s *AuditExecuteService) decryptOAConn(conn *model.OADatabaseConnection) error {
 	password, err := crypto.Decrypt(conn.Password)

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"oa-smart-audit/go-service/internal/pkg/mail"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/pkg/mail"
+	"auraoa/go-service/internal/repository"
 )
 
 // MailService 系统级邮件服务，从系统配置表读取 SMTP 参数后发送邮件。

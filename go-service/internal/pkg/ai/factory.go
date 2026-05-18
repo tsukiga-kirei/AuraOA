@@ -3,7 +3,7 @@ package ai
 import (
 	"fmt"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // providerEndpoints 云端 provider 的默认 API Endpoint。

@@ -18,8 +18,8 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/repository"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/repository"
 )
 
 const (

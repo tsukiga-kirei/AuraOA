@@ -10,9 +10,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
-	"oa-smart-audit/go-service/internal/pkg/response"
+	"auraoa/go-service/internal/pkg/errcode"
+	jwtpkg "auraoa/go-service/internal/pkg/jwt"
+	"auraoa/go-service/internal/pkg/response"
 )
 
 // JWT 返回 JWT 鉴权中间件。

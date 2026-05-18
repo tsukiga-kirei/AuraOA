@@ -1,9 +1,9 @@
 package service
 
 import (
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/pkg/errcode"
+	"auraoa/go-service/internal/repository"
 )
 
 // OptionService 提供选项数据查询服务。

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // archiveExtractionPayload 归档复盘提取阶段的宽松解析结构。

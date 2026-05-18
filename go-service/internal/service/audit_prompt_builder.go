@@ -3,9 +3,9 @@ package service
 import (
 	"strings"
 
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/ai"
-	"oa-smart-audit/go-service/internal/pkg/oa"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/ai"
+	"auraoa/go-service/internal/pkg/oa"
 )
 
 // BuildReasoningPrompt 组装审核推理阶段的 AI 请求。

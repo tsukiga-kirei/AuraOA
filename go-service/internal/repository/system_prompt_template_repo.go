@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // SystemPromptTemplateRepo 提供系统提示词模板的数据访问方法（全局，无租户隔离）。

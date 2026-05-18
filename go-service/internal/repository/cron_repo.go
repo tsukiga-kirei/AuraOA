@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // CronTaskTypePresetRepo 提供 Cron 任务类型系统预设的数据访问方法（全局，无租户隔离）。

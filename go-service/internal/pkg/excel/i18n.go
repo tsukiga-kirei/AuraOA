@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
+	jwtpkg "auraoa/go-service/internal/pkg/jwt"
 )
 
 // Locale 表示支持的语言代码。

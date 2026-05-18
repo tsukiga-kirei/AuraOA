@@ -8,11 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	excelpkg "oa-smart-audit/go-service/internal/pkg/excel"
-	"oa-smart-audit/go-service/internal/pkg/response"
-	"oa-smart-audit/go-service/internal/service"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/pkg/errcode"
+	excelpkg "auraoa/go-service/internal/pkg/excel"
+	"auraoa/go-service/internal/pkg/response"
+	"auraoa/go-service/internal/service"
 )
 
 // OrgHandler 处理部门、角色和成员相关的 HTTP 请求。

@@ -13,12 +13,12 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/errcode"
+	jwtpkg "auraoa/go-service/internal/pkg/jwt"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/repository"
 )
 
 // CronTaskService 处理定时任务实例的业务逻辑。
@@ -328,7 +328,7 @@ func (s *CronTaskService) ExecuteNow(c *gin.Context, id uuid.UUID) error {
 		tcopy := *task
 		tcopy.CurrentLogID = &logEntry.ID
 		execErr := s.runTaskByType(ctx, &tcopy)
-		
+
 		status := "success"
 		msg := fmt.Sprintf("%s 手动触发执行成功", time.Now().Format("2006-01-02 15:04:05"))
 		if execErr != nil {
@@ -833,8 +833,14 @@ func taskToResponse(t model.CronTask, presetMap map[string]model.CronTaskTypePre
 		FailCount:      t.FailCount,
 		WorkflowIds:    t.WorkflowIds,
 		DateRange:      t.DateRange,
-		CurrentLogID:   func() *string { if t.CurrentLogID != nil { s := t.CurrentLogID.String(); return &s }; return nil }(),
-		CreatedAt:      t.CreatedAt,
-		UpdatedAt:      t.UpdatedAt,
+		CurrentLogID: func() *string {
+			if t.CurrentLogID != nil {
+				s := t.CurrentLogID.String()
+				return &s
+			}
+			return nil
+		}(),
+		CreatedAt: t.CreatedAt,
+		UpdatedAt: t.UpdatedAt,
 	}
 }

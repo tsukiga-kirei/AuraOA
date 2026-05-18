@@ -7,9 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/pkg/response"
+	"auraoa/go-service/internal/pkg/errcode"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/pkg/response"
 )
 
 // Recovery 返回 panic 恢复中间件。

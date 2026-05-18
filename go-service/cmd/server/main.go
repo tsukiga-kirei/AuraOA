@@ -19,15 +19,15 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/cache"
-	"oa-smart-audit/go-service/internal/dbmigrate"
-	"oa-smart-audit/go-service/internal/handler"
-	"oa-smart-audit/go-service/internal/pkg/crypto"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/pkg/systemflags"
-	"oa-smart-audit/go-service/internal/repository"
-	"oa-smart-audit/go-service/internal/router"
-	"oa-smart-audit/go-service/internal/service"
+	"auraoa/go-service/internal/cache"
+	"auraoa/go-service/internal/dbmigrate"
+	"auraoa/go-service/internal/handler"
+	"auraoa/go-service/internal/pkg/crypto"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/pkg/systemflags"
+	"auraoa/go-service/internal/repository"
+	"auraoa/go-service/internal/router"
+	"auraoa/go-service/internal/service"
 )
 
 func main() {

@@ -4,7 +4,7 @@ package handler
 import (
 	"github.com/gin-gonic/gin"
 
-	"oa-smart-audit/go-service/internal/pkg/response"
+	"auraoa/go-service/internal/pkg/response"
 )
 
 // HealthHandler 处理健康检查相关的 HTTP 请求。

@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 
 	"gorm.io/datatypes"
 )

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"oa-smart-audit/go-service/internal/pkg/oa"
+	"auraoa/go-service/internal/pkg/oa"
 )
 
 // SelectedFieldSet 描述用户最终生效的字段选择集合。

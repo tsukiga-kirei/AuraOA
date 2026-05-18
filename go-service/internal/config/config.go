@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/viper"
 
-	"oa-smart-audit/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/pkg/logger"
 )
 
 // Config 应用程序全局配置，对应 config.yaml 的顶层结构。

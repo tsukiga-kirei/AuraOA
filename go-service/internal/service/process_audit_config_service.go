@@ -11,13 +11,13 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/cache"
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/crypto"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	"oa-smart-audit/go-service/internal/pkg/oa"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/cache"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/crypto"
+	"auraoa/go-service/internal/pkg/errcode"
+	"auraoa/go-service/internal/pkg/oa"
+	"auraoa/go-service/internal/repository"
 )
 
 // ProcessAuditConfigService 处理流程审核配置的业务逻辑。
