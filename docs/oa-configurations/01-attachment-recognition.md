@@ -178,6 +178,7 @@ public class AttachmentRest {
                 // 2. 取文件名 / 大小
                 RecordSet rs2 = new RecordSet();
                 rs2.executeQuery(
+                    // 达梦/Oracle 物理列名为 FILESIZE（勿写成 imagefilesize）
                     "SELECT imagefilename, filesize FROM imagefile WHERE imagefileid = ?",
                     imageFileId
                 );
