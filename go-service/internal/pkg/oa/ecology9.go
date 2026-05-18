@@ -448,15 +448,29 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 	}
 
 	// 识别主表附件字段并提取内容（仅当注入了识别服务）
-	if a.attachmentRecognitionSvc != nil && len(mainData) > 0 {
-		attachments, attachErr := a.recognizeMainAttachments(ctx, formID, mainData)
+	if a.attachmentRecognitionSvc == nil {
+		pkglogger.Global().Debug("附件识别：未注入识别服务，跳过",
+			zap.String("processID", processID))
+	} else if len(mainData) == 0 {
+		pkglogger.Global().Debug("附件识别：主表无数据，跳过",
+			zap.String("processID", processID))
+	} else {
+		pkglogger.Global().Info("附件识别：开始处理主表附件",
+			zap.String("processID", processID),
+			zap.Int("formID", formID),
+			zap.Bool("weaverApiConfigured", a.weaverAPIURL != ""),
+			zap.Bool("weaverAppidConfigured", a.weaverAppID != ""),
+			zap.Bool("weaverLoginConfigured", a.weaverLoginID != ""))
+		attachments, attachErr := a.recognizeMainAttachments(ctx, processID, formID, mainData)
 		if attachErr != nil {
-			// 附件识别失败不阻断主流程，只记录日志
-			pkglogger.Global().Warn("附件识别失败，跳过附件内容",
+			pkglogger.Global().Warn("附件识别：整体失败，跳过附件内容",
 				zap.String("processID", processID),
 				zap.Error(attachErr))
 		} else {
 			pd.Attachments = attachments
+			pkglogger.Global().Info("附件识别：主表处理完成",
+				zap.String("processID", processID),
+				zap.Int("attachmentCount", len(attachments)))
 		}
 	}
 
@@ -467,6 +481,7 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 // 调用注入的识别服务获取每个 docId 的解析文本。
 func (a *Ecology9Adapter) recognizeMainAttachments(
 	ctx context.Context,
+	processID string,
 	formID int,
 	mainData map[string]interface{},
 ) ([]AttachmentInfo, error) {
@@ -483,11 +498,22 @@ func (a *Ecology9Adapter) recognizeMainAttachments(
 		return nil, fmt.Errorf("查询附件字段定义失败: %w", err)
 	}
 
+	pkglogger.Global().Info("附件识别：查询到附件类字段定义",
+		zap.String("processID", processID),
+		zap.Int("formID", formID),
+		zap.Int("fieldDefinitionCount", len(rawFields)))
+
 	var all []AttachmentInfo
+	var skippedDetail, skippedEmpty, fetchFailed, recogFailed int
 	for _, row := range rawFields {
 		dt := strings.TrimSpace(mapGet(row, "detailtable"))
 		// 仅识别主表附件；明细表附件如有需要后续扩展
 		if dt != "" && dt != "0" {
+			skippedDetail++
+			pkglogger.Global().Debug("附件识别：跳过明细表附件字段",
+				zap.String("processID", processID),
+				zap.String("field", mapGet(row, "fieldkey")),
+				zap.String("detailTable", dt))
 			continue
 		}
 		fieldKey := mapGet(row, "fieldkey")
@@ -496,30 +522,72 @@ func (a *Ecology9Adapter) recognizeMainAttachments(
 			continue
 		}
 		// 主表数据里取附件 docId 列表（逗号分隔）
-		docIds := mapGet(mainData, fieldKey)
-		if strings.TrimSpace(docIds) == "" {
+		docIds := strings.TrimSpace(mapGet(mainData, fieldKey))
+		if docIds == "" {
+			skippedEmpty++
+			pkglogger.Global().Debug("附件识别：主表字段无 docId，跳过",
+				zap.String("processID", processID),
+				zap.String("field", fieldKey),
+				zap.String("fieldName", fieldName))
 			continue
 		}
-		files, fetchErr := a.fetchWeaverAttachmentsByDocIDs(ctx, docIds)
+		pkglogger.Global().Info("附件识别：准备拉取泛微附件",
+			zap.String("processID", processID),
+			zap.String("field", fieldKey),
+			zap.String("fieldName", fieldName),
+			zap.String("docIds", docIds))
+		files, fetchErr := a.fetchWeaverAttachmentsByDocIDs(ctx, processID, fieldKey, docIds)
 		if fetchErr != nil {
-			pkglogger.Global().Warn("拉取附件文件流失败，跳过该字段",
+			fetchFailed++
+			pkglogger.Global().Warn("附件识别：拉取泛微附件失败，跳过该字段",
+				zap.String("processID", processID),
 				zap.String("field", fieldKey),
 				zap.Error(fetchErr))
 			continue
 		}
+		pkglogger.Global().Info("附件识别：泛微附件拉取成功，开始 MinerU 解析",
+			zap.String("processID", processID),
+			zap.String("field", fieldKey),
+			zap.Int("fileCount", len(files)))
 		infos, recogErr := a.attachmentRecognitionSvc.RecognizeAttachments(ctx, files, fieldKey, fieldName)
 		if recogErr != nil {
-			pkglogger.Global().Warn("识别附件字段失败，跳过该字段",
+			recogFailed++
+			pkglogger.Global().Warn("附件识别：MinerU 解析失败，跳过该字段",
+				zap.String("processID", processID),
 				zap.String("field", fieldKey),
 				zap.Error(recogErr))
 			continue
 		}
+		var withContent, withError int
+		for _, info := range infos {
+			if info.Error != "" {
+				withError++
+			} else if info.Content != "" {
+				withContent++
+			}
+		}
+		pkglogger.Global().Info("附件识别：字段处理完成",
+			zap.String("processID", processID),
+			zap.String("field", fieldKey),
+			zap.Int("resultCount", len(infos)),
+			zap.Int("withContent", withContent),
+			zap.Int("withError", withError))
 		all = append(all, infos...)
 	}
+	pkglogger.Global().Info("附件识别：主表字段遍历结束",
+		zap.String("processID", processID),
+		zap.Int("attachmentCount", len(all)),
+		zap.Int("skippedDetailField", skippedDetail),
+		zap.Int("skippedEmptyDocId", skippedEmpty),
+		zap.Int("fetchFailedField", fetchFailed),
+		zap.Int("recognizeFailedField", recogFailed))
 	return all, nil
 }
 
-func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(ctx context.Context, docIDs string) ([]AttachmentFilePayload, error) {
+func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
+	ctx context.Context,
+	processID, fieldKey, docIDs string,
+) ([]AttachmentFilePayload, error) {
 	if a.weaverAPIURL == "" {
 		return nil, fmt.Errorf("未配置泛微附件接口 URL（weaver_api_url）")
 	}
@@ -540,6 +608,12 @@ func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(ctx context.Context, do
 	query.Set("loginid", a.weaverLoginID)
 	reqURL.RawQuery = query.Encode()
 
+	pkglogger.Global().Info("附件识别：请求泛微附件接口",
+		zap.String("processID", processID),
+		zap.String("field", fieldKey),
+		zap.String("docIds", docIDs),
+		zap.String("apiBase", fmt.Sprintf("%s://%s%s", reqURL.Scheme, reqURL.Host, reqURL.Path)))
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建泛微附件请求失败: %w", err)
@@ -556,6 +630,11 @@ func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(ctx context.Context, do
 		if len(errBody) > 200 {
 			errBody = errBody[:200] + "..."
 		}
+		pkglogger.Global().Warn("附件识别：泛微附件接口 HTTP 异常",
+			zap.String("processID", processID),
+			zap.String("field", fieldKey),
+			zap.Int("status", resp.StatusCode),
+			zap.String("body", errBody))
 		return nil, fmt.Errorf("泛微附件接口 HTTP %d: %s", resp.StatusCode, errBody)
 	}
 
@@ -568,8 +647,22 @@ func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(ctx context.Context, do
 		return nil, fmt.Errorf("解析泛微附件接口响应失败: %w", err)
 	}
 	if result.Code != 0 {
+		pkglogger.Global().Warn("附件识别：泛微附件接口业务错误",
+			zap.String("processID", processID),
+			zap.String("field", fieldKey),
+			zap.Int("code", result.Code),
+			zap.String("msg", result.Msg))
 		return nil, fmt.Errorf("泛微附件接口返回错误: %s", result.Msg)
 	}
+	fileNames := make([]string, 0, len(result.Data))
+	for _, f := range result.Data {
+		fileNames = append(fileNames, f.FileName)
+	}
+	pkglogger.Global().Info("附件识别：泛微附件接口返回成功",
+		zap.String("processID", processID),
+		zap.String("field", fieldKey),
+		zap.Int("fileCount", len(result.Data)),
+		zap.Strings("fileNames", fileNames))
 	return result.Data, nil
 }
 

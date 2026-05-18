@@ -52,8 +52,13 @@ interface OADbConnection {
   username: string; pool_size: number; connection_timeout: number; test_on_borrow: boolean;
   status: string; sync_interval: number; enabled: boolean;
   description: string; created_at: string; updated_at: string;
-  weaver_api_url?: string; weaver_appid?: string; weaver_default_user?: string;
+  weaver_api_url?: string;
+  weaver_appid_configured?: boolean;
+  weaver_default_user?: string;
 }
+
+/** 编辑已配置连接时，输入框内展示的掩码（非真实值） */
+const WEAVER_APPID_MASK = '••••••••••••••••••••••••'
 interface AIModel {
   id: string; provider: string; provider_label: string; model_name: string; display_name: string;
   deploy_type: string; endpoint: string; api_key_configured: boolean;
@@ -101,6 +106,7 @@ onMounted(async () => {
 //===== OA数据库连接CRUD =====
 const showAddOADb = ref(false)
 const editingOADb = ref<OADbConnection | null>(null)
+const weaverAppidConfigured = ref(false)
 const testingOADbId = ref<string | null>(null)
 
 const getDriverPort = (driver: string) => {
@@ -128,23 +134,48 @@ const resetNewOADb = () => {
 
 const openAddOADb = () => {
   editingOADb.value = null
+  weaverAppidConfigured.value = false
   resetNewOADb()
   showAddOADb.value = true
 }
 
 const openEditOADb = (conn: OADbConnection) => {
   editingOADb.value = conn
+  const appidConfigured = !!conn.weaver_appid_configured
+  weaverAppidConfigured.value = appidConfigured
   newOADb.value = {
     name: conn.name, oa_type: conn.oa_type, oa_type_label: conn.oa_type_label,
     description: conn.description, sync_interval: conn.sync_interval,
     driver: conn.driver, host: conn.host, port: conn.port, database_name: conn.database_name,
     username: conn.username, password: '', pool_size: conn.pool_size,
     connection_timeout: conn.connection_timeout, test_on_borrow: conn.test_on_borrow,
-    weaver_api_url: (conn as any).weaver_api_url || '',
-    weaver_appid: (conn as any).weaver_appid || '',
-    weaver_default_user: (conn as any).weaver_default_user || '',
+    weaver_api_url: conn.weaver_api_url || '',
+    weaver_appid: appidConfigured ? WEAVER_APPID_MASK : '',
+    weaver_default_user: conn.weaver_default_user || '',
   }
   showAddOADb.value = true
+}
+
+/** 点击 appid 输入框时清除掩码，便于输入新值 */
+const onWeaverAppidFocus = () => {
+  if (newOADb.value.weaver_appid === WEAVER_APPID_MASK) {
+    newOADb.value.weaver_appid = ''
+  }
+}
+
+const buildOADbPayload = () => {
+  const payload = { ...newOADb.value }
+  if (!payload.password?.trim()) {
+    delete payload.password
+  }
+  const appid = String(payload.weaver_appid ?? '').trim()
+  // 掩码或未填写：编辑时不提交（保留库内原值）；新建时由校验拦截
+  if (appid === WEAVER_APPID_MASK || !appid) {
+    delete payload.weaver_appid
+  } else {
+    payload.weaver_appid = appid
+  }
+  return payload
 }
 
 const onOATypeChange = (val: any) => {
@@ -181,14 +212,23 @@ const saveOADb = async () => {
     message.warning(t('admin.settings.oaDbPasswordRequired', '请填写密码'))
     return
   }
+  if (
+    newOADb.value.oa_type === 'weaver_e9'
+    && !editingOADb.value
+    && !String(newOADb.value.weaver_appid ?? '').trim()
+  ) {
+    message.warning(t('admin.settings.weaverAppidRequired', '请填写泛微应用 appid'))
+    return
+  }
   try {
+    const payload = buildOADbPayload()
     if (editingOADb.value) {
-      const updated = await updateOAConnection(editingOADb.value.id, newOADb.value)
+      const updated = await updateOAConnection(editingOADb.value.id, payload)
       const idx = oaDbConnections.value.findIndex(c => c.id === editingOADb.value!.id)
       if (idx >= 0) oaDbConnections.value[idx] = updated
       message.success(t('admin.settings.oaDbUpdated'))
     } else {
-      const created = await createOAConnection(newOADb.value)
+      const created = await createOAConnection(payload)
       oaDbConnections.value.push(created)
       message.success(t('admin.settings.oaDbAdded'))
     }
@@ -1222,8 +1262,21 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
           </a-form-item>
           <a-row :gutter="16">
             <a-col :span="12">
-              <a-form-item :label="t('admin.settings.weaverAppid', '应用 ID（appid）')">
-                <a-input v-model:value="newOADb.weaver_appid" size="large" placeholder="af09c25938714c26b9736f535ca20fc9" />
+              <a-form-item>
+                <template #label>
+                  {{ t('admin.settings.weaverAppid', '应用 ID（appid）') }}
+                  <a-tag v-if="weaverAppidConfigured" color="success" style="margin-left: 8px; vertical-align: middle;">
+                    {{ t('admin.settings.weaverAppidConfigured', '已配置') }}
+                  </a-tag>
+                </template>
+                <a-input
+                  v-model:value="newOADb.weaver_appid"
+                  size="large"
+                  @focus="onWeaverAppidFocus"
+                  :placeholder="weaverAppidConfigured
+                    ? t('admin.settings.weaverAppidKeepCurrent', '已配置，点击可修改')
+                    : t('admin.settings.weaverAppidPlaceholder', '输入泛微应用 appid')"
+                />
               </a-form-item>
             </a-col>
             <a-col :span="12">
