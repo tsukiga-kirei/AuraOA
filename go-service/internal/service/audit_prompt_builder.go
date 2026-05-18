@@ -28,6 +28,7 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
 	}
 
 	userPrompt := aiConfig.UserReasoningPrompt
+	hasAttachmentsPlaceholder := strings.Contains(userPrompt, "{{attachments}}")
 	userPrompt = strings.ReplaceAll(userPrompt, "{{process_type}}", processType)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{main_table}}", mainDataStr)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{fields}}", mainDataStr)
@@ -37,6 +38,9 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
 	userPrompt = strings.ReplaceAll(userPrompt, "{{current_node}}", currentNode)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{flow_history}}", flowHistory)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{flow_graph}}", flowGraph)
+	if !hasAttachmentsPlaceholder {
+		userPrompt += "\n\n附件识别内容：\n" + attachmentsStr
+	}
 
 	return &ai.ChatRequest{
 		SystemPrompt: aiConfig.SystemReasoningPrompt,

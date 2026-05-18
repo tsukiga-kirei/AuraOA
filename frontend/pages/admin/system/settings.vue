@@ -820,7 +820,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
           <a-form layout="vertical">
             <a-form-item :label="t('admin.settings.attachmentMineruEndpoint', 'MinerU 端点')">
               <a-input v-model:value="generalConfig.attachment_mineru_endpoint" size="large" placeholder="http://192.168.1.50:8888" />
-              <div class="form-hint">{{ t('admin.settings.attachmentMineruEndpointHint', '不要带尾部 /；后端会自动拼 /api/v1/parse 与 /health。') }}</div>
+              <div class="form-hint">{{ t('admin.settings.attachmentMineruEndpointHint', '不要带尾部 /；后端会自动拼 /file_parse 与 /health。') }}</div>
             </a-form-item>
             <a-form-item :label="t('admin.settings.attachmentMineruApiKey', 'MinerU API Key（可选）')">
               <a-input-password v-model:value="generalConfig.attachment_mineru_api_key" size="large" :placeholder="t('admin.settings.attachmentMineruApiKeyPlaceholder', '若 MinerU 服务无需鉴权可留空')">
