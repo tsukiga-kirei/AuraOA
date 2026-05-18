@@ -96,9 +96,9 @@ type OAConnectionResponse struct {
 	Description       string `json:"description"`
 
 	// 泛微 E9 原生 API 参数（仅 oa_type=weaver_e9 使用）。
-	WeaverAPIURL              string `json:"weaver_api_url"`
-	WeaverAppID               string `json:"weaver_appid"`
-	WeaverDefaultUser         string `json:"weaver_default_user"`
+	WeaverAPIURL          string `json:"weaver_api_url"`
+	WeaverAppIDConfigured bool   `json:"weaver_appid_configured"`
+	WeaverDefaultUser     string `json:"weaver_default_user"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`

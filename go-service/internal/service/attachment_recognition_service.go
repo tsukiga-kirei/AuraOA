@@ -125,6 +125,8 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 	fieldName string,
 ) ([]oa.AttachmentInfo, error) {
 	if len(files) == 0 {
+		pkglogger.Global().Debug("附件识别：无待解析文件",
+			zap.String("field", fieldKey))
 		return []oa.AttachmentInfo{}, nil
 	}
 
@@ -133,8 +135,19 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 		return nil, newServiceError(errcode.ErrDatabase, "加载附件识别配置失败")
 	}
 	if !cfg.Enabled {
+		pkglogger.Global().Info("附件识别：功能未启用，跳过 MinerU（attachment.recognition_enabled=false）",
+			zap.String("field", fieldKey),
+			zap.String("fieldName", fieldName),
+			zap.Int("fileCount", len(files)))
 		return []oa.AttachmentInfo{}, nil
 	}
+
+	pkglogger.Global().Info("附件识别：开始 MinerU 解析",
+		zap.String("field", fieldKey),
+		zap.String("fieldName", fieldName),
+		zap.Int("fileCount", len(files)),
+		zap.String("mineruEndpoint", cfg.MinerUEndpoint),
+		zap.String("mineruBackend", cfg.MinerUBackend))
 
 	// 过滤不支持的文件类型与超大文件（结果中保留为 Error 标记，让 prompt 里也能看到原因）。
 	maxBytes := int64(cfg.MaxFileSizeMB) * 1024 * 1024
@@ -160,15 +173,31 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 		}
 		if _, ok := supported[ext]; !ok {
 			base.Error = fmt.Sprintf("文件类型 %q 不在 supported_types 列表中，已跳过", ext)
+			pkglogger.Global().Info("附件识别：跳过不支持的文件类型",
+				zap.String("field", fieldKey),
+				zap.String("fileName", f.FileName),
+				zap.String("fileType", ext))
 			results = append(results, base)
 			continue
 		}
 		if maxBytes > 0 && f.FileSize > maxBytes {
 			base.Error = fmt.Sprintf("文件大小 %d 字节超过限制 %d MB，已跳过", f.FileSize, cfg.MaxFileSizeMB)
+			pkglogger.Global().Info("附件识别：跳过超大文件",
+				zap.String("field", fieldKey),
+				zap.String("fileName", f.FileName),
+				zap.Int64("fileSize", f.FileSize),
+				zap.Int("maxSizeMB", cfg.MaxFileSizeMB))
 			results = append(results, base)
 			continue
 		}
 		parseable = append(parseable, f)
+	}
+
+	if len(parseable) == 0 {
+		pkglogger.Global().Info("附件识别：无符合 MinerU 条件的文件",
+			zap.String("field", fieldKey),
+			zap.Int("skippedCount", len(results)))
+		return results, nil
 	}
 
 	parsed, err := s.recognizeViaMinerU(ctx, cfg, parseable, fieldKey, fieldName)
@@ -176,6 +205,19 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 		return nil, err
 	}
 	results = append(results, parsed...)
+	var withContent, withError int
+	for _, r := range results {
+		if r.Error != "" {
+			withError++
+		} else if r.Content != "" {
+			withContent++
+		}
+	}
+	pkglogger.Global().Info("附件识别：MinerU 字段解析结束",
+		zap.String("field", fieldKey),
+		zap.Int("resultCount", len(results)),
+		zap.Int("withContent", withContent),
+		zap.Int("withError", withError))
 	return results, nil
 }
 
@@ -241,10 +283,17 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 			req.Header.Set("Authorization", "Bearer "+cfg.MinerUAPIKey)
 		}
 
+		pkglogger.Global().Info("附件识别：请求 MinerU",
+			zap.String("field", fieldKey),
+			zap.String("fileName", file.FileName),
+			zap.String("docId", file.DocID),
+			zap.Int64("fileSize", file.FileSize))
+
 		resp, err := s.httpClient.Do(req)
 		if err != nil {
-			pkglogger.Global().Error("调用 MinerU 服务失败",
+			pkglogger.Global().Error("附件识别：调用 MinerU 失败",
 				zap.Error(err),
+				zap.String("field", fieldKey),
 				zap.String("fileName", file.FileName))
 			base.Error = "调用 MinerU 失败: " + err.Error()
 			out = append(out, base)
@@ -254,9 +303,10 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 		if resp.StatusCode != http.StatusOK {
 			respBody, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			pkglogger.Global().Error("MinerU 服务返回错误",
+			pkglogger.Global().Error("附件识别：MinerU HTTP 错误",
 				zap.Int("status", resp.StatusCode),
 				zap.String("body", string(respBody)),
+				zap.String("field", fieldKey),
 				zap.String("fileName", file.FileName))
 			base.Error = fmt.Sprintf("MinerU 返回 HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 200))
 			out = append(out, base)
@@ -277,17 +327,34 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 		resp.Body.Close()
 
 		if result.Code != 0 {
+			pkglogger.Global().Warn("附件识别：MinerU 业务错误",
+				zap.String("field", fieldKey),
+				zap.String("fileName", file.FileName),
+				zap.Int("code", result.Code),
+				zap.String("message", result.Message))
 			base.Error = "MinerU 返回错误: " + result.Message
 			out = append(out, base)
 			continue
 		}
 		base.Content = result.Content
+		pkglogger.Global().Info("附件识别：MinerU 单文件解析成功",
+			zap.String("field", fieldKey),
+			zap.String("fileName", file.FileName),
+			zap.Int("contentLength", len(result.Content)))
 		out = append(out, base)
 	}
 
-	pkglogger.Global().Info("通过 MinerU 识别附件完成",
+	var successCount int
+	for _, item := range out {
+		if item.Error == "" && item.Content != "" {
+			successCount++
+		}
+	}
+	pkglogger.Global().Info("附件识别：MinerU 批次完成",
+		zap.String("field", fieldKey),
 		zap.Int("total", len(files)),
-		zap.Int("count", len(out)))
+		zap.Int("resultCount", len(out)),
+		zap.Int("successCount", successCount))
 	return out, nil
 }
 
