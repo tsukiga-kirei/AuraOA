@@ -8,7 +8,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // CronLogFilter 定时任务日志分页查询过滤条件。
@@ -21,7 +21,7 @@ type CronLogFilter struct {
 	Department  string // 部门精确匹配
 	StartDate   *time.Time
 	EndDate     *time.Time
-	DateRange   *int   // 数据范围（天）
+	DateRange   *int // 数据范围（天）
 }
 
 // CronLogStats 定时任务日志统计。

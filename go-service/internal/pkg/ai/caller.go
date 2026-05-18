@@ -3,7 +3,7 @@ package ai
 import (
 	"context"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // AIModelCaller 定义 AI 模型调用接口。

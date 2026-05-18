@@ -6,10 +6,10 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
-	"oa-smart-audit/go-service/internal/handler"
-	"oa-smart-audit/go-service/internal/middleware"
-	"oa-smart-audit/go-service/internal/pkg/systemflags"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/handler"
+	"auraoa/go-service/internal/middleware"
+	"auraoa/go-service/internal/pkg/systemflags"
+	"auraoa/go-service/internal/repository"
 )
 
 // SetupRouter 在给定的 Gin 引擎上挂载全局中间件并注册所有路由分组。

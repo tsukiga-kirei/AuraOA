@@ -13,13 +13,13 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/model"
-	excelpkg "oa-smart-audit/go-service/internal/pkg/excel"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	"oa-smart-audit/go-service/internal/pkg/hash"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/errcode"
+	excelpkg "auraoa/go-service/internal/pkg/excel"
+	"auraoa/go-service/internal/pkg/hash"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/repository"
 )
 
 // OrgService 通过租户隔离处理部门、角色和成员 CRUD 操作。

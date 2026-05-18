@@ -3,9 +3,9 @@ package service
 import (
 	"go.uber.org/zap"
 
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/pkg/errcode"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/repository"
 )
 
 // SystemConfigService 处理系统配置的查询与批量更新业务逻辑。

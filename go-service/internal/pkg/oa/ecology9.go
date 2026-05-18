@@ -15,17 +15,17 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 
-	"oa-smart-audit/go-service/internal/model"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/pkg/oa/dm"
-	"oa-smart-audit/go-service/internal/pkg/oa/oracle"
+	"auraoa/go-service/internal/model"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/pkg/oa/dm"
+	"auraoa/go-service/internal/pkg/oa/oracle"
 )
 
 // Ecology9Adapter 泛微 E9 OA 系统适配器。
 // 支持 MySQL、Oracle 和 DM（达梦）三种底层数据库驱动。
 type Ecology9Adapter struct {
 	db                       *gorm.DB
-	driver                   string // "mysql" | "oracle" | "dm"
+	driver                   string                       // "mysql" | "oracle" | "dm"
 	attachmentRecognitionSvc AttachmentRecognitionService // 附件识别服务接口
 	weaverAPIURL             string
 	weaverAppID              string

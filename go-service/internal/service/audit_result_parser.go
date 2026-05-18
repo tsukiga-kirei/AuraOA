@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // extractionPayload 审核提取阶段的宽松解析结构，核心字段为 recommendation（审核结论）。

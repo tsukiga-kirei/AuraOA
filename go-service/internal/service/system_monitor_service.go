@@ -14,7 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/dto"
+	"auraoa/go-service/internal/dto"
 )
 
 // SystemMonitorService 提供系统资源监控和服务健康检查。

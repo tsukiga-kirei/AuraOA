@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // UserPersonalConfigRepo 提供用户个人配置的数据访问方法，按 tenant_id + user_id 唯一约束。

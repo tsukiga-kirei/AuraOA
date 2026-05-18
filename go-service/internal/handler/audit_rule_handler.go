@@ -7,10 +7,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	"oa-smart-audit/go-service/internal/pkg/response"
-	"oa-smart-audit/go-service/internal/service"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/pkg/errcode"
+	"auraoa/go-service/internal/pkg/response"
+	"auraoa/go-service/internal/service"
 )
 
 // AuditRuleHandler 处理审核规则相关的 HTTP 请求。

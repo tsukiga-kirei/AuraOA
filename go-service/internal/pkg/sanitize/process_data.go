@@ -1,7 +1,7 @@
 package sanitize
 
 import (
-	"oa-smart-audit/go-service/internal/pkg/oa"
+	"auraoa/go-service/internal/pkg/oa"
 )
 
 // sanitizeJSONValue 递归处理 map / []interface{} / string，其它类型原样返回。

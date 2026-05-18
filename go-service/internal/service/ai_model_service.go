@@ -8,13 +8,13 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/ai"
-	"oa-smart-audit/go-service/internal/pkg/crypto"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/ai"
+	"auraoa/go-service/internal/pkg/crypto"
+	"auraoa/go-service/internal/pkg/errcode"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/repository"
 )
 
 // AIModelService 负责 AI 模型配置的增删改查及连接测试。

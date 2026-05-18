@@ -3,7 +3,7 @@ package oa
 import (
 	"fmt"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // supportedDrivers 记录每种 OA 类型支持的数据库驱动。

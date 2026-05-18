@@ -15,13 +15,13 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/ai"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/pkg/sanitize"
-	"oa-smart-audit/go-service/internal/pkg/systemflags"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/ai"
+	"auraoa/go-service/internal/pkg/errcode"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/pkg/sanitize"
+	"auraoa/go-service/internal/pkg/systemflags"
+	"auraoa/go-service/internal/repository"
 )
 
 // AIModelCallerService 负责 AI 模型调用的完整生命周期管理：

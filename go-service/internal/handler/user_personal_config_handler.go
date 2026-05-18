@@ -8,13 +8,13 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
-	"oa-smart-audit/go-service/internal/pkg/response"
-	"oa-smart-audit/go-service/internal/repository"
-	"oa-smart-audit/go-service/internal/service"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/errcode"
+	jwtpkg "auraoa/go-service/internal/pkg/jwt"
+	"auraoa/go-service/internal/pkg/response"
+	"auraoa/go-service/internal/repository"
+	"auraoa/go-service/internal/service"
 )
 
 // UserPersonalConfigHandler 处理用户个人配置相关的 HTTP 请求。

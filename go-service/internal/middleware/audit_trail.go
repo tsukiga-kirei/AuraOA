@@ -8,9 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/systemflags"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/systemflags"
+	"auraoa/go-service/internal/repository"
 )
 
 // AuditTrail 在请求结束后异步写入 operation_audit_logs（需 system.enable_audit_trail 为 true）。

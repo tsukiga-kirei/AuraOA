@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/repository"
 )
 
 const cacheTTL = 5 * time.Second

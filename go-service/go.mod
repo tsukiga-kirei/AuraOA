@@ -1,4 +1,4 @@
-module oa-smart-audit/go-service
+module auraoa/go-service
 
 go 1.25.6
 

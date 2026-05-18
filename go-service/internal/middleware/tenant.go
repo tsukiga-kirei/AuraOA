@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
-	"oa-smart-audit/go-service/internal/pkg/response"
+	jwtpkg "auraoa/go-service/internal/pkg/jwt"
+	"auraoa/go-service/internal/pkg/response"
 )
 
 // TenantContext 返回租户上下文注入中间件。

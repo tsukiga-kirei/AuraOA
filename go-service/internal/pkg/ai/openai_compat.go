@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // OpenAICompatCaller 通用 OpenAI 兼容 API 调用器。

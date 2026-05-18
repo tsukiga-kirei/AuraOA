@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // OperationAuditLogRepo 用户操作审计日志写入。

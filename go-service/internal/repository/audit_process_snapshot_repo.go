@@ -11,7 +11,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // AuditProcessSnapshotRepo 审核有效结论快照数据访问层，按租户隔离。

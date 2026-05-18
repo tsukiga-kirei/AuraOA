@@ -3,7 +3,7 @@ package repository
 import (
 	"gorm.io/gorm"
 
-	"oa-smart-audit/go-service/internal/model"
+	"auraoa/go-service/internal/model"
 )
 
 // SystemConfigRepo 提供 system_configs 表的数据访问方法（全局，无租户隔离）。

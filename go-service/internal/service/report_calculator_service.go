@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"auraoa/go-service/internal/repository"
 	"github.com/gin-gonic/gin"
-	"oa-smart-audit/go-service/internal/repository"
 )
 
 // ReportCalculatorService 提供日报、周报所需的数据计算公共方法。

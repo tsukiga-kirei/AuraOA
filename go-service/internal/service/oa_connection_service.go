@@ -9,14 +9,14 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"oa-smart-audit/go-service/internal/cache"
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/model"
-	"oa-smart-audit/go-service/internal/pkg/crypto"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
-	"oa-smart-audit/go-service/internal/pkg/oa"
-	"oa-smart-audit/go-service/internal/repository"
+	"auraoa/go-service/internal/cache"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/crypto"
+	"auraoa/go-service/internal/pkg/errcode"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/pkg/oa"
+	"auraoa/go-service/internal/repository"
 )
 
 // OAConnectionService 处理 OA 数据库连接的业务逻辑。
@@ -230,27 +230,27 @@ func (s *OAConnectionService) Delete(id uuid.UUID) error {
 
 func toOAConnectionResponse(c *model.OADatabaseConnection) dto.OAConnectionResponse {
 	return dto.OAConnectionResponse{
-		ID:                        c.ID.String(),
-		Name:                      c.Name,
-		OAType:                    c.OAType,
-		OATypeLabel:               c.OATypeLabel,
-		Driver:                    c.Driver,
-		Host:                      c.Host,
-		Port:                      c.Port,
-		DatabaseName:              c.DatabaseName,
-		Username:                  c.Username,
-		PoolSize:                  c.PoolSize,
-		ConnectionTimeout:         c.ConnectionTimeout,
-		TestOnBorrow:              c.TestOnBorrow,
-		Status:                    c.Status,
-		SyncInterval:              c.SyncInterval,
-		Enabled:                   c.Enabled,
-		Description:               c.Description,
-		WeaverAPIURL:              c.WeaverAPIURL,
-		WeaverAppID:               c.WeaverAppID,
-		WeaverDefaultUser:         c.WeaverDefaultUser,
-		CreatedAt:                 c.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:                 c.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ID:                c.ID.String(),
+		Name:              c.Name,
+		OAType:            c.OAType,
+		OATypeLabel:       c.OATypeLabel,
+		Driver:            c.Driver,
+		Host:              c.Host,
+		Port:              c.Port,
+		DatabaseName:      c.DatabaseName,
+		Username:          c.Username,
+		PoolSize:          c.PoolSize,
+		ConnectionTimeout: c.ConnectionTimeout,
+		TestOnBorrow:      c.TestOnBorrow,
+		Status:            c.Status,
+		SyncInterval:      c.SyncInterval,
+		Enabled:           c.Enabled,
+		Description:       c.Description,
+		WeaverAPIURL:      c.WeaverAPIURL,
+		WeaverAppID:       c.WeaverAppID,
+		WeaverDefaultUser: c.WeaverDefaultUser,
+		CreatedAt:         c.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:         c.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 

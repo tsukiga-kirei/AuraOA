@@ -6,7 +6,7 @@ import (
 
 	"gorm.io/datatypes"
 
-	"oa-smart-audit/go-service/internal/dto"
+	"auraoa/go-service/internal/dto"
 )
 
 // ── 字段合并输入结构 ──

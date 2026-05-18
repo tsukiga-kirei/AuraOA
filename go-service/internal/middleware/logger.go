@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
 )
 
 // Logger 返回 HTTP 请求日志中间件。

@@ -11,11 +11,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	jwtpkg "oa-smart-audit/go-service/internal/pkg/jwt"
-	"oa-smart-audit/go-service/internal/pkg/response"
-	"oa-smart-audit/go-service/internal/service"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/pkg/errcode"
+	jwtpkg "auraoa/go-service/internal/pkg/jwt"
+	"auraoa/go-service/internal/pkg/response"
+	"auraoa/go-service/internal/service"
 )
 
 // AuthHandler 处理身份认证相关的 HTTP 请求。

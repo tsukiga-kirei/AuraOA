@@ -8,10 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"oa-smart-audit/go-service/internal/dto"
-	"oa-smart-audit/go-service/internal/pkg/errcode"
-	"oa-smart-audit/go-service/internal/pkg/response"
-	"oa-smart-audit/go-service/internal/service"
+	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/pkg/errcode"
+	"auraoa/go-service/internal/pkg/response"
+	"auraoa/go-service/internal/service"
 )
 
 // SystemHandler 处理系统设置相关的 HTTP 请求（OA 连接、AI 模型、选项数据、系统配置、附件识别）。
