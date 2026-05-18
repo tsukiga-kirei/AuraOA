@@ -5,18 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 
 	"oa-smart-audit/go-service/internal/model"
 	"oa-smart-audit/go-service/internal/pkg/ai"
 	"oa-smart-audit/go-service/internal/pkg/errcode"
+	pkglogger "oa-smart-audit/go-service/internal/pkg/logger"
 	"oa-smart-audit/go-service/internal/pkg/sanitize"
 	"oa-smart-audit/go-service/internal/pkg/systemflags"
 	"oa-smart-audit/go-service/internal/repository"
@@ -103,6 +105,102 @@ func (s *AIModelCallerService) Chat(c *gin.Context, tenantID, userID uuid.UUID, 
 	s.asyncWriteLog(tenantID, userID, modelCfg.ID, req.RequestType, resp)
 
 	return resp, nil
+}
+
+// getRetryCount 从 system_configs 读取 AI 调用重试次数（key: system.ai_retry_count），默认 3。
+func (s *AIModelCallerService) getRetryCount() int {
+	var value string
+	err := s.db.Raw("SELECT value FROM system_configs WHERE key = ?", "system.ai_retry_count").Scan(&value).Error
+	if err != nil || value == "" {
+		return 3
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n <= 0 {
+		return 3
+	}
+	return n
+}
+
+// ChatWithFallback 带重试和备用模型切换的 AI 调用。
+// 流程：主模型重试 N 次 → 若全部失败且有备用模型 → 备用模型重试 N 次 → 全部失败则返回错误。
+// 重试次数 N 读取自 system_configs（key: system.ai_retry_count，默认 3）。
+func (s *AIModelCallerService) ChatWithFallback(
+	c *gin.Context,
+	tenantID, userID uuid.UUID,
+	primaryCfg *model.AIModelConfig,
+	fallbackCfg *model.AIModelConfig,
+	req *ai.ChatRequest,
+) (*ai.ChatResponse, error) {
+	retryCount := s.getRetryCount()
+	if retryCount <= 0 {
+		retryCount = 1
+	}
+
+	// ── 尝试主模型 ──
+	var lastErr error
+	for i := 0; i < retryCount; i++ {
+		resp, err := s.Chat(c, tenantID, userID, primaryCfg, req)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		pkglogger.Global().Warn("主模型调用失败，准备重试",
+			zap.Int("attempt", i+1),
+			zap.Int("maxRetries", retryCount),
+			zap.String("model", primaryCfg.ModelName),
+			zap.Error(err),
+		)
+		if i < retryCount-1 {
+			// 指数退避: 1s, 2s, 4s ...
+			time.Sleep(time.Duration(1<<i) * time.Second)
+		}
+	}
+
+	// ── 主模型全部失败，尝试备用模型 ──
+	if fallbackCfg == nil {
+		pkglogger.Global().Error("主模型调用全部失败且无备用模型",
+			zap.String("model", primaryCfg.ModelName),
+			zap.Int("retries", retryCount),
+			zap.Error(lastErr),
+		)
+		return nil, lastErr
+	}
+
+	pkglogger.Global().Warn("主模型调用全部失败，切换到备用模型",
+		zap.String("primaryModel", primaryCfg.ModelName),
+		zap.String("fallbackModel", fallbackCfg.ModelName),
+		zap.Int("retries", retryCount),
+	)
+
+	for i := 0; i < retryCount; i++ {
+		resp, err := s.Chat(c, tenantID, userID, fallbackCfg, req)
+		if err == nil {
+			pkglogger.Global().Info("备用模型调用成功",
+				zap.String("fallbackModel", fallbackCfg.ModelName),
+				zap.Int("attempt", i+1),
+			)
+			return resp, nil
+		}
+		lastErr = err
+		pkglogger.Global().Warn("备用模型调用失败，准备重试",
+			zap.Int("attempt", i+1),
+			zap.Int("maxRetries", retryCount),
+			zap.String("model", fallbackCfg.ModelName),
+			zap.Error(err),
+		)
+		if i < retryCount-1 {
+			time.Sleep(time.Duration(1<<i) * time.Second)
+		}
+	}
+
+	pkglogger.Global().Error("主模型和备用模型均调用失败",
+		zap.String("primaryModel", primaryCfg.ModelName),
+		zap.String("fallbackModel", fallbackCfg.ModelName),
+		zap.Int("retriesPerModel", retryCount),
+		zap.Error(lastErr),
+	)
+	return nil, newServiceError(errcode.ErrAICallFailed,
+		fmt.Sprintf("主模型和备用模型均调用失败（各重试 %d 次）", retryCount))
 }
 
 // pythonAIRequest 发往 Python AI 服务的请求体，包含提示词和完整模型配置。
@@ -293,8 +391,12 @@ func (s *AIModelCallerService) asyncWriteLog(tenantID, userID uuid.UUID, modelCo
 			// 指数退避: 1s, 2s, 4s
 			time.Sleep(time.Duration(1<<attempt) * time.Second)
 		}
-		// 重试耗尽，记录到标准日志（运维可通过日志采集发现）
-		log.Printf("[WARN] LLM日志写入失败(tenant=%s, model=%s, tokens=%d): %v",
-			tenantID, modelConfigID, resp.TokenUsage.TotalTokens, err)
+		// 重试耗尽，降级写入结构化日志（运维可通过日志采集发现）
+		pkglogger.Global().Warn("LLM调用日志写入失败（重试耗尽）",
+			zap.String("tenantID", tenantID.String()),
+			zap.String("modelConfigID", modelConfigID.String()),
+			zap.Int("totalTokens", resp.TokenUsage.TotalTokens),
+			zap.Error(err),
+		)
 	}()
 }
