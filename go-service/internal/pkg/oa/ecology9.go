@@ -410,34 +410,56 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 		return nil, fmt.Errorf("查询主表数据失败: %w", err)
 	}
 
-	// 查询明细表数量
-	var detailCount int64
-	a.db.WithContext(ctx).
+	// 查询各明细表数据（detailtable 在 E9 中为明细表物理表名或序号，不能按数字比较）
+	var billFieldRows []map[string]interface{}
+	if err := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_billfield")).
-		Where(a.col("billid")+" = ? AND "+a.col("detailtable")+" > 0", formID).
-		Distinct(a.col("detailtable")).
-		Count(&detailCount)
+		Select(a.col("detailtable") + " AS detailtable").
+		Where(a.col("billid")+" = ?", formID).
+		Find(&billFieldRows).Error; err != nil {
+		pkglogger.Global().Warn("查询明细表字段定义失败，跳过明细数据",
+			zap.String("processID", processID),
+			zap.Int("formID", formID),
+			zap.Error(err))
+		billFieldRows = nil
+	}
 
-	// 查询各明细表数据，按表名分组
 	detailTables := make(map[string][]map[string]interface{})
-	for i := 1; i <= int(detailCount); i++ {
-		dtRawName := fmt.Sprintf("%s_dt%d", tableDBName, i)
-		dtTableName := a.tableName(dtRawName)
-		var rows []map[string]interface{}
+	seenDetailTable := make(map[string]struct{})
+	for _, row := range billFieldRows {
+		dt := strings.TrimSpace(mapGet(row, "detailtable"))
+		if dt == "" || dt == "0" || strings.EqualFold(dt, "主表") || strings.EqualFold(dt, tableDBName) {
+			continue
+		}
+		// 部分版本仅存序号（如 "1"），拼成 formtable_main_x_dt1
+		if len(dt) < 3 && !strings.Contains(strings.ToLower(dt), "dt") {
+			dt = fmt.Sprintf("%s_dt%s", tableDBName, dt)
+		}
+		if _, exists := seenDetailTable[dt]; exists {
+			continue
+		}
+		seenDetailTable[dt] = struct{}{}
 
+		dtTableName := a.tableName(dt)
+		var rows []map[string]interface{}
 		subQuery := fmt.Sprintf(
 			"EXISTS (SELECT 1 FROM %s m WHERE m.%s = %s.%s AND m.%s = ?)",
 			mainTableName,
 			a.col("id"), dtTableName, a.col("mainid"),
 			a.col("requestid"),
 		)
-		a.db.WithContext(ctx).
+		if err := a.db.WithContext(ctx).
 			Table(dtTableName).
 			Where(subQuery, processID).
-			Find(&rows)
-
+			Find(&rows).Error; err != nil {
+			pkglogger.Global().Warn("查询明细表数据失败，跳过该表",
+				zap.String("processID", processID),
+				zap.String("detailTable", dt),
+				zap.Error(err))
+			continue
+		}
 		if len(rows) > 0 {
-			detailTables[dtRawName] = rows
+			detailTables[dt] = rows
 		}
 	}
 
