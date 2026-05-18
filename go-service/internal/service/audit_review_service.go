@@ -725,7 +725,7 @@ func auditExecuteResponseFromLog(log *model.AuditLog) *AuditExecuteResponse {
 	if err := json.Unmarshal(log.AuditResult, &parsed); err == nil {
 		resp.Recommendation = parsed.Recommendation
 		resp.OverallScore = parsed.OverallScore
-		resp.RuleResults = parsed.RuleResults
+		resp.RuleResults = normalizeAuditRuleResults(parsed.RuleResults)
 		resp.RiskPoints = parsed.RiskPoints
 		resp.Suggestions = parsed.Suggestions
 		resp.Confidence = parsed.Confidence
@@ -750,7 +750,14 @@ func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([
 		return []repository.AuditLogWithUser{}, nil
 	}
 	ids := parseSnapshotValidLogIDs(snap.ValidLogIDs)
-	return s.auditLogRepo.ListByIDsWithUserOrdered(c, ids)
+	logs, err := s.auditLogRepo.ListByIDsWithUserOrdered(c, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range logs {
+		normalizeAuditLogInPlace(&logs[i].AuditLog)
+	}
+	return logs, nil
 }
 
 // SubscribeJobStream 获取特定流程的 SSE 流和控制句柄
@@ -843,6 +850,9 @@ func (s *AuditExecuteService) ListAuditLogs(c *gin.Context, filter repository.Au
 	items, total, err := s.auditLogRepo.ListPagedWithUser(c, filter, page, pageSize)
 	if err != nil {
 		return nil, 0, newServiceError(errcode.ErrDatabase, "查询审核日志失败")
+	}
+	for i := range items {
+		normalizeAuditLogInPlace(&items[i].AuditLog)
 	}
 	return items, total, nil
 }
@@ -1876,7 +1886,7 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 	} else {
 		var parsed model.AuditResultJSON
 		if err := json.Unmarshal(log.AuditResult, &parsed); err == nil {
-			result["rule_results"] = parsed.RuleResults
+			result["rule_results"] = normalizeAuditRuleResults(parsed.RuleResults)
 			result["risk_points"] = parsed.RiskPoints
 			result["suggestions"] = parsed.Suggestions
 		} else {
@@ -2060,7 +2070,8 @@ func formatRules(rules []model.AuditRule) string {
 		if !isRuleEnabled(&r) {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("%d. [%s] %s\n", i+1, r.RuleScope, r.RuleContent))
+		sb.WriteString(formatRuleLineForPrompt(i+1, r.RuleScope, r.RuleContent))
+		sb.WriteString("\n")
 	}
 	if sb.Len() == 0 {
 		return "（无启用的审核规则）"
@@ -2221,7 +2232,8 @@ func (s *AuditExecuteService) resolveRulesText(
 	for _, r := range tenantRules {
 		// mandatory 规则始终强制启用
 		if r.RuleScope == "mandatory" {
-			sb.WriteString(fmt.Sprintf("%d. [%s] %s\n", idx, r.RuleScope, r.RuleContent))
+			sb.WriteString(formatRuleLineForPrompt(idx, r.RuleScope, r.RuleContent))
+			sb.WriteString("\n")
 			idx++
 			continue
 		}
@@ -2234,7 +2246,8 @@ func (s *AuditExecuteService) resolveRulesText(
 		if !enabled {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("%d. [%s] %s\n", idx, r.RuleScope, r.RuleContent))
+		sb.WriteString(formatRuleLineForPrompt(idx, r.RuleScope, r.RuleContent))
+		sb.WriteString("\n")
 		idx++
 	}
 
@@ -2244,7 +2257,8 @@ func (s *AuditExecuteService) resolveRulesText(
 			if !cr.Enabled {
 				continue
 			}
-			sb.WriteString(fmt.Sprintf("%d. [用户自定义] %s\n", idx, cr.Content))
+			sb.WriteString(formatRuleLineForPrompt(idx, "custom", cr.Content))
+			sb.WriteString("\n")
 			idx++
 		}
 	}

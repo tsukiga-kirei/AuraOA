@@ -121,7 +121,7 @@ package weaver.aurabridge;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import weaver.conn.RecordSet;
-import weaver.docs.docs.ImageFileManager;
+import weaver.file.ImageFileManager;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;

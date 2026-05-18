@@ -120,15 +120,17 @@ func ParseArchiveReviewResult(raw string) (*model.ArchiveResultJSON, error) {
 	// 兼容 dashboard 风格 rule_results：当 rule_audit 为空且 rule_results 非空时回退
 	if len(result.RuleAudit) == 0 && len(payload.RuleResults) > 0 {
 		for _, item := range payload.RuleResults {
+			content := stripRuleScopePrefix(item.RuleContent)
 			result.RuleAudit = append(result.RuleAudit, model.ArchiveRuleAuditJSON{
-				RuleID:    item.RuleContent,
-				RuleName:  item.RuleContent,
+				RuleID:    content,
+				RuleName:  content,
 				Passed:    item.Passed,
 				Reasoning: item.Reason,
 			})
 		}
 	}
 
+	result.RuleAudit = normalizeArchiveRuleAudits(result.RuleAudit)
 	return result, nil
 }
 
