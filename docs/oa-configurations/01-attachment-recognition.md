@@ -49,7 +49,7 @@
 
 | 字段 | system_configs key | 默认值 | 说明 |
 |------|--------------------|--------|------|
-| MinerU 端点 | `attachment.mineru_endpoint` | _(空)_ | 自建 MinerU 服务的根地址，**不要带尾部 `/`**；后端会自动拼 `/api/v1/parse`、`/health` |
+| MinerU 端点 | `attachment.mineru_endpoint` | _(空)_ | 自建 MinerU 服务的根地址，**不要带尾部 `/`**；后端会自动拼 `/file_parse`、`/health`，必要时按返回的 `result_url` 继续拉取任务结果 |
 | API Key（可选） | `attachment.mineru_api_key` | _(空)_ | MinerU 服务若开启了 Bearer 鉴权才需要配置 |
 | Backend | `attachment.mineru_backend` | `pipeline` | 取值：`pipeline` / `vlm-auto-engine` / `vlm-http-client` / `hybrid-auto-engine` / `hybrid-http-client` |
 | 公式识别 | `attachment.mineru_enable_formula` | `true` | |
@@ -57,7 +57,7 @@
 | OCR | `attachment.mineru_enable_ocr` | `true` | |
 | 解析语言 | `attachment.mineru_language` | `ch` | 与 MinerU 服务支持的语言列表保持一致 |
 
-> **测试连接**仅探测 `GET {mineru_endpoint}/health`，不会真实调用 `/api/v1/parse` 解析文件。
+> **测试连接**仅探测 `GET {mineru_endpoint}/health`，不会真实调用 `/file_parse` 解析文件。当前适配同时兼容两类 MinerU 返回：一类直接在同步响应中返回 Markdown，另一类先返回已完成任务摘要，再通过 `result_url` 拉取最终 Markdown。
 
 ### OA 系统附件接口（按 OA 适配器单独配置）
 

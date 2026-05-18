@@ -414,7 +414,7 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 	var billFieldRows []map[string]interface{}
 	if err := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_billfield")).
-		Select(a.col("detailtable") + " AS detailtable").
+		Select(a.col("detailtable")+" AS detailtable").
 		Where(a.col("billid")+" = ?", formID).
 		Find(&billFieldRows).Error; err != nil {
 		pkglogger.Global().Warn("查询明细表字段定义失败，跳过明细数据",
@@ -660,10 +660,19 @@ func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
 		return nil, fmt.Errorf("泛微附件接口 HTTP %d: %s", resp.StatusCode, errBody)
 	}
 
+	// 泛微桥接接口的对外契约使用 camelCase：
+	// { docId, fileName, fileSize, fileData }。
+	// AuraOA 内部模型则统一保留 snake_case JSON tag，故在边界层显式转换，
+	// 避免外部协议细节泄漏到内部结构。
 	var result struct {
-		Code int                     `json:"code"`
-		Data []AttachmentFilePayload `json:"data"`
-		Msg  string                  `json:"msg"`
+		Code int `json:"code"`
+		Data []struct {
+			DocID    string `json:"docId"`
+			FileName string `json:"fileName"`
+			FileSize int64  `json:"fileSize"`
+			FileData string `json:"fileData"`
+		} `json:"data"`
+		Msg string `json:"msg"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("解析泛微附件接口响应失败: %w", err)
@@ -676,8 +685,15 @@ func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
 			zap.String("msg", result.Msg))
 		return nil, fmt.Errorf("泛微附件接口返回错误: %s", result.Msg)
 	}
+	files := make([]AttachmentFilePayload, 0, len(result.Data))
 	fileNames := make([]string, 0, len(result.Data))
 	for _, f := range result.Data {
+		files = append(files, AttachmentFilePayload{
+			DocID:    f.DocID,
+			FileName: f.FileName,
+			FileSize: f.FileSize,
+			FileData: f.FileData,
+		})
 		fileNames = append(fileNames, f.FileName)
 	}
 	pkglogger.Global().Info("附件识别：泛微附件接口返回成功",
@@ -685,7 +701,7 @@ func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
 		zap.String("field", fieldKey),
 		zap.Int("fileCount", len(result.Data)),
 		zap.Strings("fileNames", fileNames))
-	return result.Data, nil
+	return files, nil
 }
 
 // ── FetchTodoList ──────────────────────────────────────────

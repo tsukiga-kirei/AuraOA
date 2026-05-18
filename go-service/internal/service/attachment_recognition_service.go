@@ -3,9 +3,11 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -223,8 +225,9 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 
 // recognizeViaMinerU 把文件 base64 上传到 MinerU 并取回解析后的文本。
 //
-// MinerU 请求体字段由 mineru_backend / mineru_enable_* / mineru_language 控制，
-// 与 MinerU 自建端点 /api/v1/parse 的契约保持一致（详见 docs/oa-configurations/01-attachment-recognition.md）。
+// MinerU 自建服务使用官方 mineru-api 的同步接口：
+// POST /file_parse，multipart/form-data 上传文件。
+// 请求字段由 mineru_backend / mineru_enable_* / mineru_language 控制。
 func (s *AttachmentRecognitionService) recognizeViaMinerU(
 	ctx context.Context,
 	cfg *RecognitionConfig,
@@ -239,7 +242,7 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 		return nil, newServiceError(errcode.ErrInvalidParam, "MinerU 服务地址未配置 (attachment.mineru_endpoint)")
 	}
 
-	parseURL := strings.TrimRight(cfg.MinerUEndpoint, "/") + "/api/v1/parse"
+	parseURL := strings.TrimRight(cfg.MinerUEndpoint, "/") + "/file_parse"
 	now := time.Now().Format(time.RFC3339)
 	out := make([]oa.AttachmentInfo, 0, len(files))
 
@@ -255,30 +258,71 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 			ExtractedAt: now,
 		}
 
-		body := map[string]interface{}{
-			"fileName":       file.FileName,
-			"fileData":       file.FileData,
-			"fileType":       fileType,
-			"backend":        cfg.MinerUBackend,
-			"enable_formula": cfg.MinerUEnableFormula,
-			"enable_table":   cfg.MinerUEnableTable,
-			"enable_ocr":     cfg.MinerUEnableOCR,
-			"language":       cfg.MinerULanguage,
-		}
-		bodyBytes, err := json.Marshal(body)
+		rawBytes, err := base64.StdEncoding.DecodeString(file.FileData)
 		if err != nil {
-			base.Error = "构建请求失败: " + err.Error()
+			base.Error = "解码附件内容失败: " + err.Error()
 			out = append(out, base)
 			continue
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, parseURL, bytes.NewReader(bodyBytes))
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		fields := map[string]string{
+			"return_md":           "true",
+			"return_images":       "false",
+			"table_enable":        fmt.Sprintf("%v", cfg.MinerUEnableTable),
+			"formula_enable":      fmt.Sprintf("%v", cfg.MinerUEnableFormula),
+			"parse_method":        "ocr",
+			"start_page_id":       "0",
+			"end_page_id":         "99999",
+			"backend":             cfg.MinerUBackend,
+			"response_format_zip": "false",
+			"return_middle_json":  "false",
+			"return_model_output": "false",
+			"return_content_list": "false",
+		}
+		if !cfg.MinerUEnableOCR {
+			fields["parse_method"] = "txt"
+		}
+		if cfg.MinerULanguage != "" {
+			fields["lang_list"] = cfg.MinerULanguage
+		}
+		formBuildFailed := false
+		for k, v := range fields {
+			if err := writer.WriteField(k, v); err != nil {
+				base.Error = "构建表单字段失败: " + err.Error()
+				out = append(out, base)
+				formBuildFailed = true
+				break
+			}
+		}
+		if formBuildFailed {
+			continue
+		}
+		part, err := writer.CreateFormFile("files", file.FileName)
+		if err != nil {
+			base.Error = "构建文件表单失败: " + err.Error()
+			out = append(out, base)
+			continue
+		}
+		if _, err := part.Write(rawBytes); err != nil {
+			base.Error = "写入附件内容失败: " + err.Error()
+			out = append(out, base)
+			continue
+		}
+		if err := writer.Close(); err != nil {
+			base.Error = "关闭表单失败: " + err.Error()
+			out = append(out, base)
+			continue
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, parseURL, &body)
 		if err != nil {
 			base.Error = "创建请求失败: " + err.Error()
 			out = append(out, base)
 			continue
 		}
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", writer.FormDataContentType())
 		if cfg.MinerUAPIKey != "" {
 			req.Header.Set("Authorization", "Bearer "+cfg.MinerUAPIKey)
 		}
@@ -313,34 +357,64 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 			continue
 		}
 
-		var result struct {
-			Code    int    `json:"code"`
-			Content string `json:"content"`
-			Message string `json:"message"`
+		respBody, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			base.Error = "读取响应失败: " + err.Error()
+			out = append(out, base)
+			continue
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			resp.Body.Close()
+
+		var result struct {
+			TaskID    string              `json:"task_id"`
+			Status    string              `json:"status"`
+			ResultURL string              `json:"result_url"`
+			Results   mineruInlineResults `json:"results"`
+		}
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			pkglogger.Global().Error("附件识别：解析 MinerU 响应失败",
+				zap.Error(err),
+				zap.String("field", fieldKey),
+				zap.String("fileName", file.FileName),
+				zap.String("body", truncate(string(respBody), 500)))
 			base.Error = "解析响应失败: " + err.Error()
 			out = append(out, base)
 			continue
 		}
-		resp.Body.Close()
 
-		if result.Code != 0 {
-			pkglogger.Global().Warn("附件识别：MinerU 业务错误",
+		content := extractMinerUMarkdown(result.Results)
+		if content == "" && result.Status == "completed" && result.ResultURL != "" {
+			content, err = s.fetchMinerUTaskResult(ctx, result.ResultURL, cfg.MinerUAPIKey)
+			if err != nil {
+				pkglogger.Global().Warn("附件识别：拉取 MinerU 任务结果失败",
+					zap.Error(err),
+					zap.String("field", fieldKey),
+					zap.String("fileName", file.FileName),
+					zap.String("taskId", result.TaskID),
+					zap.String("resultURL", result.ResultURL))
+				base.Error = "拉取 MinerU 任务结果失败: " + err.Error()
+				out = append(out, base)
+				continue
+			}
+		}
+		if content == "" {
+			pkglogger.Global().Warn("附件识别：MinerU 响应缺少 Markdown 内容",
 				zap.String("field", fieldKey),
 				zap.String("fileName", file.FileName),
-				zap.Int("code", result.Code),
-				zap.String("message", result.Message))
-			base.Error = "MinerU 返回错误: " + result.Message
+				zap.String("body", truncate(string(respBody), 500)))
+			base.Error = "MinerU 响应缺少 Markdown 内容"
 			out = append(out, base)
 			continue
 		}
-		base.Content = result.Content
+		base.Content = content
 		pkglogger.Global().Info("附件识别：MinerU 单文件解析成功",
 			zap.String("field", fieldKey),
 			zap.String("fileName", file.FileName),
-			zap.Int("contentLength", len(result.Content)))
+			zap.Int("contentLength", len(content)))
+		pkglogger.Global().Debug("附件识别：MinerU 解析正文预览",
+			zap.String("field", fieldKey),
+			zap.String("fileName", file.FileName),
+			zap.String("contentPreview", truncate(content, 500)))
 		out = append(out, base)
 	}
 
@@ -356,6 +430,61 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 		zap.Int("resultCount", len(out)),
 		zap.Int("successCount", successCount))
 	return out, nil
+}
+
+type mineruInlineResults struct {
+	Document struct {
+		MDContent string `json:"md_content"`
+	} `json:"document"`
+	Files struct {
+		MDContent string `json:"md_content"`
+	} `json:"files"`
+}
+
+func extractMinerUMarkdown(results mineruInlineResults) string {
+	if results.Document.MDContent != "" {
+		return results.Document.MDContent
+	}
+	return results.Files.MDContent
+}
+
+func (s *AttachmentRecognitionService) fetchMinerUTaskResult(ctx context.Context, resultURL, apiKey string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, resultURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("创建任务结果请求失败: %w", err)
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("请求任务结果失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取任务结果失败: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("任务结果返回 HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
+	}
+
+	var payload struct {
+		Results map[string]struct {
+			MDContent string `json:"md_content"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return "", fmt.Errorf("解析任务结果失败: %w", err)
+	}
+	for _, item := range payload.Results {
+		if item.MDContent != "" {
+			return item.MDContent, nil
+		}
+	}
+	return "", fmt.Errorf("任务结果中缺少 Markdown 内容")
 }
 
 // TestConnection 仅探测 MinerU /health；不做真实解析（与产品决策一致）。
