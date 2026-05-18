@@ -120,6 +120,8 @@ package weaver.aurabridge;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import weaver.conn.RecordSet;
 import weaver.file.ImageFileManager;
 
@@ -135,13 +137,18 @@ import java.util.Base64;
 @Path("/aurabridge")
 public class AttachmentRest {
 
+    private static final Log logger = LogFactory.getLog(AttachmentRest.class.getName());
+
     @GET
     @Path("/attachments")
     @Produces(MediaType.APPLICATION_JSON)
     public String getAttachments(@QueryParam("docIds") String docIds) {
         JSONObject result = new JSONObject();
         JSONArray data = new JSONArray();
+        logger.info("[aurabridge] getAttachments called, docIds=" + docIds);
+
         if (docIds == null || docIds.trim().isEmpty()) {
+            logger.warn("[aurabridge] docIds is empty");
             result.put("code", 0);
             result.put("data", data);
             return result.toJSONString();
@@ -149,31 +156,50 @@ public class AttachmentRest {
 
         for (String docId : docIds.split(",")) {
             docId = docId.trim();
-            if (docId.isEmpty()) continue;
+            if (docId.isEmpty()) {
+                continue;
+            }
             try {
+                logger.info("[aurabridge] processing docId=" + docId);
+
                 // 1. 选最新版本：versionid 最大的一条
                 RecordSet rs = new RecordSet();
                 rs.executeQuery(
                     "SELECT imagefileid FROM docimagefile WHERE docid = ? ORDER BY versionid DESC",
                     docId
                 );
-                if (!rs.next()) continue;
+                if (!rs.next()) {
+                    logger.warn("[aurabridge] docimagefile not found, docId=" + docId);
+                    continue;
+                }
                 int imageFileId = rs.getInt("imagefileid");
+                logger.info("[aurabridge] docId=" + docId + " -> imagefileid=" + imageFileId);
 
                 // 2. 取文件名 / 大小
                 RecordSet rs2 = new RecordSet();
                 rs2.executeQuery(
-                    "SELECT imagefilename, imagefilesize FROM imagefile WHERE imagefileid = ?",
+                    "SELECT imagefilename, filesize FROM imagefile WHERE imagefileid = ?",
                     imageFileId
                 );
-                if (!rs2.next()) continue;
+                if (!rs2.next()) {
+                    logger.warn("[aurabridge] imagefile not found, docId=" + docId + ", imagefileid=" + imageFileId);
+                    continue;
+                }
                 String fileName = rs2.getString("imagefilename");
+                logger.info("[aurabridge] docId=" + docId + ", fileName=" + fileName);
 
                 // 3. 拿文件流
                 InputStream is = ImageFileManager.getInputStreamById(imageFileId);
-                if (is == null) continue;
+                if (is == null) {
+                    logger.warn("[aurabridge] ImageFileManager returned null stream, docId=" + docId + ", imagefileid=" + imageFileId);
+                    continue;
+                }
                 byte[] bytes = readAllBytes(is);
                 is.close();
+                if (bytes == null || bytes.length == 0) {
+                    logger.warn("[aurabridge] empty file bytes, docId=" + docId + ", imagefileid=" + imageFileId);
+                    continue;
+                }
 
                 JSONObject item = new JSONObject();
                 item.put("docId", docId);
@@ -181,14 +207,16 @@ public class AttachmentRest {
                 item.put("fileSize", bytes.length);
                 item.put("fileData", Base64.getEncoder().encodeToString(bytes));
                 data.add(item);
+                logger.info("[aurabridge] attachment ready, docId=" + docId + ", fileName=" + fileName + ", size=" + bytes.length);
             } catch (Exception e) {
-                // 单个文件失败不影响其他附件，记日志即可
+                logger.error("[aurabridge] failed docId=" + docId, e);
             }
         }
 
         result.put("code", 0);
         result.put("msg", "ok");
         result.put("data", data);
+        logger.info("[aurabridge] response data.size=" + data.size() + ", docIds=" + docIds);
         return result.toJSONString();
     }
 
@@ -204,6 +232,8 @@ public class AttachmentRest {
 }
 ```
 
+> **排查 `data` 为空**：AuraOA 日志若出现 `泛微附件接口返回成功` 且 `fileCount=0`，说明接口返回了 `code=0` 但 `data=[]`。请在泛微应用日志中搜索 `[aurabridge]`，常见原因是 `docimagefile` 无记录、`imagefile` 无记录，或 `ImageFileManager.getInputStreamById` 返回 `null`（上述分支会打出对应 WARN）。
+
 > 当前版本调用约定：AuraOA 以 `docIds + appid + loginid` 作为请求参数调用 `weaver_api_url`，不使用通用认证配置。
 
 #### 涉及的泛微表 / 字段（仅供参考）
@@ -214,7 +244,7 @@ public class AttachmentRest {
 | `htmllabelinfo`     | `indexid` / `labelname` / `languageid` | 字段中文名（`languageid = 7` 是简体中文） |
 | 主表 `formtable_main_xxx` | `requestid` + 各字段列 | 附件字段保存的是逗号分隔的 `docId` 列表 |
 | `docimagefile`      | `docid` / `imagefileid` / `versionid` | 一个 `docid` 可有多版本，**取 `versionid` 最大的一条** |
-| `imagefile`         | `imagefileid` / `imagefilename` / `imagefilesize` | 附件文件名 / 大小；二进制由 `ImageFileManager.getInputStreamById` 取流 |
+| `imagefile`         | `imagefileid` / `imagefilename` / `filesize` | 附件文件名 / 大小；二进制由 `ImageFileManager.getInputStreamById` 取流 |
 
 ## 行为约定
 
