@@ -597,6 +597,12 @@ export default {
     'dashboard.aiReasoning': 'AI Reasoning',
 
     'embed.title': 'Audit Result',
+    'embed.statusAuditing': 'Auditing',
+    'embed.statusPassed': 'Approve',
+    'embed.statusReturn': 'Return',
+    'embed.statusReview': 'Review',
+    'embed.statusFailed': 'Failed',
+    'embed.statusWaiting': 'Pending',
     'embed.lastAuditAt': 'Last AI audit',
     'embed.staleTag': 'May be outdated',
     'embed.unsupportedTitle': 'Smart audit not available',

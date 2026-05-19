@@ -10,6 +10,7 @@ import {
   LoadingOutlined,
   WarningOutlined,
   ThunderboltOutlined,
+  EyeOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { marked } from 'marked'
@@ -21,6 +22,15 @@ definePageMeta({ layout: 'embed' })
 
 const { t } = useI18n()
 const { getContext, executeEmbed, waitAuditJob } = useEmbedApi()
+
+type AuditProgressStep = NonNullable<AuditResult['progress_steps']>[number]
+
+const DEFAULT_PROGRESS_STEPS: AuditProgressStep[] = [
+  { key: 'pending', label: '排队中', done: false, current: true },
+  { key: 'assembling', label: '组装提示词', done: false, current: false },
+  { key: 'reasoning', label: '推理分析', done: false, current: false },
+  { key: 'extracting', label: '结构化提取', done: false, current: false },
+]
 
 const processId = ref('')
 const pageLoading = ref(true)
@@ -49,6 +59,82 @@ const getScoreColorConfig = (score: number | undefined) => {
 const isResultAsyncRunning = (r: AuditResult | null) =>
   !!(r?.status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(r.status))
 
+const isAuditingActive = computed(
+  () => auditing.value || !!(currentResult.value && isResultAsyncRunning(currentResult.value)),
+)
+
+const filteredProgressSteps = computed((): AuditProgressStep[] => {
+  const steps = currentResult.value?.progress_steps
+  if (!steps?.length) return DEFAULT_PROGRESS_STEPS.map(s => ({ ...s }))
+  return steps.filter(s => s.key !== 'pending')
+})
+
+const embedHeaderStatus = computed(() => {
+  if (pageLoading.value || waitingParent.value) {
+    return {
+      label: t('embed.title'),
+      color: 'var(--color-text-primary)',
+      bg: 'transparent',
+      icon: ThunderboltOutlined,
+      spin: false,
+    }
+  }
+  if (isAuditingActive.value) {
+    return {
+      label: t('embed.statusAuditing'),
+      color: 'var(--color-primary)',
+      bg: 'var(--color-primary-bg)',
+      icon: LoadingOutlined,
+      spin: true,
+    }
+  }
+  const r = currentResult.value
+  if (!r) {
+    return {
+      label: t('embed.statusWaiting'),
+      color: 'var(--color-text-tertiary)',
+      bg: 'var(--color-bg-hover)',
+      icon: ThunderboltOutlined,
+      spin: false,
+    }
+  }
+  if (r.status === 'failed' || r.parse_error) {
+    return {
+      label: t('embed.statusFailed'),
+      color: 'var(--color-danger)',
+      bg: 'var(--color-danger-bg)',
+      icon: CloseCircleOutlined,
+      spin: false,
+    }
+  }
+  const rec = r.recommendation || 'review'
+  if (rec === 'approve') {
+    return {
+      label: t('embed.statusPassed'),
+      color: 'var(--color-success)',
+      bg: 'var(--color-success-bg)',
+      icon: CheckCircleOutlined,
+      spin: false,
+    }
+  }
+  if (rec === 'return') {
+    return {
+      label: t('embed.statusReturn'),
+      color: 'var(--color-danger)',
+      bg: 'var(--color-danger-bg)',
+      icon: CloseCircleOutlined,
+      spin: false,
+    }
+  }
+  return {
+    label: t('embed.statusReview'),
+    color: 'var(--color-info)',
+    bg: 'var(--color-info-bg)',
+    icon: EyeOutlined,
+    spin: false,
+  }
+})
+
 const getDurationSec = (ms?: number) => ((ms || 0) / 1000).toFixed(1)
 
 const renderMarkdown = (text: string) => {
@@ -73,10 +159,8 @@ const processMetaLine = computed(() => {
   return parts.join(' · ')
 })
 
-async function runAudit(trigger: 'embed_auto' | 'embed_manual') {
-  if (!processId.value || auditing.value) return
-  auditing.value = true
-  currentResult.value = {
+function createPendingResult(): AuditResult {
+  return {
     trace_id: '',
     process_id: processId.value,
     status: 'pending',
@@ -86,8 +170,14 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual') {
     confidence: 0,
     ai_reasoning: '',
     duration_ms: 0,
-    progress_steps: [],
+    progress_steps: DEFAULT_PROGRESS_STEPS.map(s => ({ ...s })),
   }
+}
+
+async function runAudit(trigger: 'embed_auto' | 'embed_manual') {
+  if (!processId.value || auditing.value) return
+  auditing.value = true
+  currentResult.value = createPendingResult()
   try {
     const result = await executeEmbed(
       {
@@ -130,6 +220,7 @@ async function refreshContext(autoRun = true) {
       await runAudit('embed_auto')
     } else if (resp.running_job_id && !auditing.value) {
       auditing.value = true
+      currentResult.value = createPendingResult()
       try {
         currentResult.value = await waitAuditJob(resp.running_job_id, (st) => {
           currentResult.value = { ...currentResult.value, ...st } as AuditResult
@@ -173,24 +264,41 @@ onMounted(async () => {
 <template>
   <div class="embed-audit">
     <div class="embed-header">
-      <h2 class="embed-title">
-        <CheckCircleOutlined v-if="context?.supported && currentResult && !isResultAsyncRunning(currentResult)" />
-        <ThunderboltOutlined v-else />
-        {{ t('embed.title') }}
+      <h2
+        class="embed-title"
+        :style="{ color: embedHeaderStatus.color }"
+      >
+        <span
+          class="embed-title-badge"
+          :style="{ background: embedHeaderStatus.bg, color: embedHeaderStatus.color }"
+        >
+          <component
+            :is="embedHeaderStatus.icon"
+            :spin="embedHeaderStatus.spin"
+          />
+        </span>
+        {{ embedHeaderStatus.label }}
       </h2>
-      <div v-if="context?.last_audit_at" class="embed-last-audit">
+      <div
+        v-if="!isAuditingActive && context?.last_audit_at"
+        class="embed-last-audit"
+      >
         {{ t('embed.lastAuditAt') }}：{{ formatLastAuditAt(context.last_audit_at) }}
         <a-tag v-if="context.stale" color="warning" style="margin-left: 8px;">{{ t('embed.staleTag') }}</a-tag>
       </div>
+      <p v-else-if="isAuditingActive" class="embed-last-audit embed-last-audit--active">
+        {{ t('dashboard.aiAnalyzingSub') }}
+      </p>
     </div>
 
-    <a-spin
-      :spinning="pageLoading || waitingParent"
-      :tip="waitingParent ? t('embed.waitingParent') : undefined"
+    <div
+      v-if="pageLoading || waitingParent"
+      class="embed-page-loading"
     >
-      <div v-if="waitingParent && !pageError" class="embed-waiting-placeholder" />
+      <a-spin size="large" :tip="waitingParent ? t('embed.waitingParent') : undefined" />
+    </div>
 
-      <template v-else>
+    <template v-else>
       <a-alert
         v-if="pageError"
         type="error"
@@ -214,38 +322,55 @@ onMounted(async () => {
       </a-result>
 
       <template v-else-if="context?.supported">
-        <div v-if="processInfo" class="dashboard-process-summary">
-          <span class="dashboard-process-summary__title">{{ processInfo.title }}</span>
-          <span class="dashboard-process-summary__meta">{{ processMetaLine }}</span>
-          <span class="dashboard-process-summary__node">
-            <FieldTimeOutlined />
-            {{ t('dashboard.currentNode') }}: {{ processInfo.current_node || '—' }}
-          </span>
-        </div>
-
-        <div class="result-action-bar">
-          <a-button
-            type="default"
-            :loading="auditing"
-            :disabled="!!context.running_job_id && !auditing"
-            @click="handleReAudit"
-          >
-            <ReloadOutlined /> {{ t('dashboard.reAudit') }}
-          </a-button>
-        </div>
-
-        <div v-if="auditing || (currentResult && isResultAsyncRunning(currentResult))" class="result-async-panel">
-          <a-spin size="large">
-            <div class="async-progress-steps">
-              <div v-for="s in (currentResult?.progress_steps || [])" :key="s.key" class="async-step-row">
-                <CheckCircleOutlined v-if="s.done" style="color: var(--color-success);" />
-                <LoadingOutlined v-else-if="s.current" spin style="color: var(--color-primary);" />
-                <CloseCircleOutlined v-else-if="s.failed" style="color: var(--color-danger);" />
-                <span v-else class="async-step-pending-dot" />
-                <span>{{ s.label }}</span>
-              </div>
+        <div v-if="processInfo" class="embed-process-card">
+          <div class="embed-process-card__body">
+            <div class="embed-process-card__head">
+              <h3 class="embed-process-card__title" :title="processInfo.title">
+                {{ processInfo.title }}
+              </h3>
+              <a-button
+                class="embed-process-card__action"
+                type="text"
+                size="small"
+                :loading="auditing"
+                :disabled="!!context.running_job_id && !auditing"
+                @click="handleReAudit"
+              >
+                <ReloadOutlined />
+                <span>{{ t('dashboard.reAudit') }}</span>
+              </a-button>
             </div>
-          </a-spin>
+            <p v-if="processMetaLine" class="embed-process-card__meta">{{ processMetaLine }}</p>
+            <div v-if="processInfo.current_node" class="embed-process-card__node">
+              <FieldTimeOutlined />
+              <span>{{ processInfo.current_node }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="isAuditingActive" class="embed-auditing-center">
+          <a-spin size="large" />
+          <p class="embed-auditing-title">{{ t('dashboard.aiAnalyzing') }}</p>
+          <div class="async-progress-steps">
+            <div
+              v-for="s in filteredProgressSteps"
+              :key="s.key"
+              class="async-step-row"
+              :class="{ 'async-step-row--current': s.current }"
+            >
+              <CheckCircleOutlined v-if="s.done" class="async-step-icon async-step-icon--done" />
+              <LoadingOutlined v-else-if="s.current" spin class="async-step-icon async-step-icon--current" />
+              <CloseCircleOutlined v-else-if="s.failed" class="async-step-icon async-step-icon--fail" />
+              <span v-else class="async-step-pending-dot" />
+              <span class="async-step-label">{{ s.label }}</span>
+            </div>
+          </div>
+          <div v-if="currentResult?.ai_reasoning" class="result-section embed-reasoning-live">
+            <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
+            <div class="ai-reasoning">
+              <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')" />
+            </div>
+          </div>
         </div>
 
         <template v-else-if="currentResult">
@@ -283,7 +408,10 @@ onMounted(async () => {
                 :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }"
               />
               <div class="result-banner-info">
-                <div class="result-banner-title" :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }">
+                <div
+                  class="result-banner-title"
+                  :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }"
+                >
                   {{ recommendationConfig[currentResult.recommendation || 'review']?.label }}
                 </div>
                 <div class="result-banner-meta">
@@ -361,42 +489,115 @@ onMounted(async () => {
           </a-button>
         </div>
       </template>
-      </template>
-    </a-spin>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.embed-audit { max-width: 720px; margin: 0 auto; }
-.embed-waiting-placeholder { min-height: 120px; }
-.embed-header { margin-bottom: 16px; }
-.embed-title {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 18px; font-weight: 700; margin: 0 0 6px; color: var(--color-text-primary);
+.embed-audit { max-width: 720px; margin: 0 auto; min-height: 100vh; }
+
+.embed-header {
+  margin-bottom: 14px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border-light);
 }
-.embed-last-audit { font-size: 12px; color: var(--color-text-tertiary); }
+.embed-title {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 17px; font-weight: 700; margin: 0 0 4px;
+  transition: color 0.25s ease; letter-spacing: -0.02em;
+}
+.embed-title-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 8px; font-size: 16px; flex-shrink: 0;
+}
+.embed-last-audit {
+  font-size: 11px; color: var(--color-text-quaternary); margin: 0; line-height: 1.4;
+}
+.embed-last-audit--active { color: var(--color-primary); font-size: 12px; }
+
+.embed-page-loading {
+  display: flex; align-items: center; justify-content: center;
+  min-height: calc(100vh - 120px); padding: 48px 20px;
+}
+
+.embed-process-card {
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+.embed-process-card__body { padding: 12px 14px; }
+.embed-process-card__head {
+  display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px;
+}
+.embed-process-card__title {
+  flex: 1; min-width: 0; margin: 0;
+  font-size: 14px; font-weight: 600; line-height: 1.5;
+  color: var(--color-text-primary);
+  word-break: keep-all; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.embed-process-card__action {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px;
+  height: 28px; padding: 0 8px; margin: -2px -6px 0 0;
+  font-size: 12px; color: var(--color-primary);
+  border-radius: 6px; white-space: nowrap;
+}
+.embed-process-card__action:hover:not(:disabled) {
+  background: var(--color-primary-bg); color: var(--color-primary);
+}
+.embed-process-card__action:disabled { color: var(--color-text-quaternary); }
+.embed-process-card__meta {
+  margin: 0 0 8px; font-size: 12px; line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+.embed-process-card__node {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 500;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-hover);
+}
+.embed-process-card__node .anticon { font-size: 11px; color: var(--color-text-tertiary); }
+
+.embed-auditing-center {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: calc(100vh - 200px); padding: 32px 16px; text-align: center;
+}
+.embed-auditing-title {
+  margin: 16px 0 20px; font-size: 14px; font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.embed-reasoning-live {
+  width: 100%; margin-top: 24px; text-align: left;
+}
+
 .unsupported-process { text-align: left; margin-top: 8px; }
 .unsupported-process__title { font-weight: 600; color: var(--color-text-primary); }
 .unsupported-process__meta { font-size: 13px; color: var(--color-text-tertiary); margin-top: 4px; }
 
-.dashboard-process-summary {
-  display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px;
-  padding: 12px 14px; border-radius: var(--radius-md);
-  background: var(--color-bg-card); border: 1px solid var(--color-border-light);
+.async-progress-steps {
+  display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 320px;
 }
-.dashboard-process-summary__title { font-size: 15px; font-weight: 600; color: var(--color-text-primary); }
-.dashboard-process-summary__meta { font-size: 13px; color: var(--color-text-secondary); }
-.dashboard-process-summary__node {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 12px; color: var(--color-text-tertiary);
+.async-step-row {
+  display: flex; align-items: center; gap: 10px; font-size: 13px;
+  color: var(--color-text-tertiary); padding: 8px 12px; border-radius: var(--radius-md);
+  transition: background 0.2s ease, color 0.2s ease;
 }
-
-.result-action-bar { display: flex; justify-content: flex-end; margin-bottom: 16px; gap: 8px; }
-
-.result-async-panel { padding: 8px 0 16px; }
-.async-progress-steps { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
-.async-step-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--color-text-secondary); }
-.async-step-pending-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-border); display: inline-block; flex-shrink: 0; }
+.async-step-row--current {
+  background: var(--color-primary-bg); color: var(--color-text-primary); font-weight: 500;
+}
+.async-step-icon { font-size: 16px; flex-shrink: 0; }
+.async-step-icon--done { color: var(--color-success); }
+.async-step-icon--current { color: var(--color-primary); }
+.async-step-icon--fail { color: var(--color-danger); }
+.async-step-label { flex: 1; text-align: left; }
+.async-step-pending-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--color-border);
+  display: inline-block; flex-shrink: 0;
+}
 
 .result-banner {
   display: flex; align-items: center; padding: 16px 20px;
@@ -416,8 +617,14 @@ onMounted(async () => {
   display: flex; gap: 12px; padding: 12px 16px;
   border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
 }
-.rule-check-item--pass { border-left: 3px solid var(--color-success); }
-.rule-check-item--fail { border-left: 3px solid var(--color-danger); background: var(--color-danger-bg); }
+.rule-check-item--pass {
+  border-left: 3px solid var(--color-success);
+  background: var(--color-success-bg);
+}
+.rule-check-item--fail {
+  border-left: 3px solid var(--color-danger);
+  background: var(--color-danger-bg);
+}
 .rule-check-status { font-size: 18px; flex-shrink: 0; padding-top: 1px; }
 .rule-check-content { flex: 1; min-width: 0; }
 .rule-check-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }

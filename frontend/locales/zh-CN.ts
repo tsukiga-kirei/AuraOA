@@ -598,6 +598,12 @@ export default {
     'dashboard.aiReasoning': 'AI 推理分析',
 
     'embed.title': '审核结果',
+    'embed.statusAuditing': '审核中',
+    'embed.statusPassed': '建议通过',
+    'embed.statusReturn': '建议退回',
+    'embed.statusReview': '建议复核',
+    'embed.statusFailed': '审核失败',
+    'embed.statusWaiting': '待审核',
     'embed.lastAuditAt': '最后智能审核时间',
     'embed.staleTag': '结论可能已过期',
     'embed.unsupportedTitle': '暂不支持智能审核',
