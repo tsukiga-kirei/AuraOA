@@ -600,7 +600,7 @@ export default {
     'embed.lastAuditAt': 'Last AI audit',
     'embed.staleTag': 'May be outdated',
     'embed.unsupportedTitle': 'Smart audit not available',
-    'embed.noRequestId': 'Could not parse requestid from parent OA URL. Ensure same-origin iframe or postMessage.',
+    'embed.noRequestId': 'No requestid from OA. Enable aura-embed-notify.js under workflow Basic Settings → Custom Page, and match the iframe id.',
     'embed.waitingParent': 'Reading requestid from OA parent page…',
     'embed.loadFailed': 'Failed to load audit context',
     'embed.auditFailed': 'Audit failed',
