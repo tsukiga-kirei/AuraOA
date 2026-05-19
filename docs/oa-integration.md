@@ -168,3 +168,7 @@ OA 数据库连接通过系统管理后台配置，不依赖环境变量。连�
 2. 新建连接：选择 OA 类型、数据库驱动、填写连接参数
 3. 测试连接：验证数据库连通性
 4. 关联租户：在租户管理中将 OA 连接分配给租户
+
+### 嵌入 AI 审核（iframe）
+
+若需在泛微 E9 审批页侧边展示 AI 审核结论，见 [OA 嵌入 AI 审核侧边栏](./oa-configurations/02-embed-audit-sidebar.md)（AuraOA 开关 + E9 iframe / postMessage 配置）。

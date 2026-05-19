@@ -110,9 +110,10 @@ func (s *AuditExecuteService) BatchRdb() *redis.Client {
 
 // AuditExecuteRequest 审核执行请求
 type AuditExecuteRequest struct {
-	ProcessID   string `json:"process_id" binding:"required"`
-	ProcessType string `json:"process_type" binding:"required"`
-	Title       string `json:"title"`
+	ProcessID     string `json:"process_id" binding:"required"`
+	ProcessType   string `json:"process_type" binding:"required"`
+	Title         string `json:"title"`
+	TriggerSource string `json:"trigger_source"`
 }
 
 // AuditExecuteResponse 审核执行响应
@@ -156,6 +157,11 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的审核配置不存在", req.ProcessType))
 	}
 
+	trigger := normalizeTriggerSource(req.TriggerSource, model.AuditTriggerWorkbenchManual)
+	if err := s.validateEmbedTrigger(c, req.ProcessType, trigger); err != nil {
+		return uuid.Nil, uuid.Nil, uuid.Nil, err
+	}
+
 	logID = uuid.New()
 	now := time.Now()
 	logEntry := &model.AuditLog{
@@ -169,6 +175,7 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		Recommendation: "",
 		Score:          0,
 		AuditResult:    datatypes.JSON([]byte("{}")),
+		TriggerSource:  trigger,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -578,6 +585,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		updates["score"] = parsed.OverallScore
 		updates["confidence"] = parsed.Confidence
 		updates["audit_result"] = datatypes.JSON(resultJSON)
+		updates["oa_context_anchor"] = s.buildOAContextAnchorForJob(c, tenant, req.ProcessID)
 		tlog.Info("审核任务执行完成",
 			zap.String("auditLogID", auditLogID.String()),
 			zap.String("recommendation", parsed.Recommendation),
@@ -655,12 +663,15 @@ func (s *AuditExecuteService) BatchExecute(c *gin.Context, items []AuditExecuteR
 		Total: len(items),
 	}
 
-	for _, item := range items {
-		logID, tenantID, userID, err := s.createPendingAuditLog(c, &item)
+	for i := range items {
+		if items[i].TriggerSource == "" {
+			items[i].TriggerSource = model.AuditTriggerWorkbenchBatch
+		}
+		logID, tenantID, userID, err := s.createPendingAuditLog(c, &items[i])
 		if err != nil {
 			result.Failed++
 			result.Results = append(result.Results, AuditExecuteResponse{
-				ProcessID:  item.ProcessID,
+				ProcessID:  items[i].ProcessID,
 				ParseError: err.Error(),
 			})
 			continue
@@ -669,7 +680,7 @@ func (s *AuditExecuteService) BatchExecute(c *gin.Context, items []AuditExecuteR
 			result.Failed++
 			result.Results = append(result.Results, AuditExecuteResponse{
 				ID:         logID.String(),
-				ProcessID:  item.ProcessID,
+				ProcessID:  items[i].ProcessID,
 				ParseError: err.Error(),
 			})
 			continue
@@ -678,7 +689,7 @@ func (s *AuditExecuteService) BatchExecute(c *gin.Context, items []AuditExecuteR
 		if err != nil {
 			result.Failed++
 			result.Results = append(result.Results, AuditExecuteResponse{
-				ProcessID:  item.ProcessID,
+				ProcessID:  items[i].ProcessID,
 				ParseError: "读取审核结果失败",
 			})
 			continue
@@ -2033,6 +2044,12 @@ func (s *AuditExecuteService) extractIDs(c *gin.Context) (uuid.UUID, uuid.UUID, 
 	tenantID, err := uuid.Parse(fmt.Sprintf("%v", tidVal))
 	if err != nil {
 		return uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoAuthToken, "租户ID格式无效")
+	}
+
+	if embedUID, ok := c.Get("embed_user_id"); ok {
+		if uid, ok2 := embedUID.(uuid.UUID); ok2 && uid != uuid.Nil {
+			return tenantID, uid, nil
+		}
 	}
 
 	claimsVal, _ := c.Get("jwt_claims")

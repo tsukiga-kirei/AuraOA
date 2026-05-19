@@ -1436,6 +1436,7 @@ const handleSave = async () => {
       ai_config: cfg.ai_config,
       user_permissions: cfg.user_permissions,
       access_control: cfg.access_control ?? { allowed_roles: [], allowed_members: [], allowed_departments: [] },
+      embed_enabled: cfg.embed_enabled ?? false,
       status: cfg.status,
     })
     // 更新本地数据并刷新快照
@@ -1924,6 +1925,14 @@ const handleSave = async () => {
                 :un-checked-children="t('admin.ruleConfig.switchDeny')"
               />
             </div>
+          </div>
+
+          <div class="permission-item" style="margin-top: 20px;">
+            <div class="permission-info">
+              <div class="permission-label">{{ t('admin.ruleConfig.embedEnabled') }}</div>
+              <div class="permission-desc">{{ t('admin.ruleConfig.embedEnabledDesc') }}</div>
+            </div>
+            <a-switch v-model:checked="selectedConfig.embed_enabled" />
           </div>
 
           <!-- 审核工作台访问控制 -->

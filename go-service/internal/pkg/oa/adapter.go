@@ -94,6 +94,12 @@ type OAAdapter interface {
 	// FetchProcessFlow 拉取流程审批流快照
 	FetchProcessFlow(ctx context.Context, processID string) (*ProcessFlowSnapshot, error)
 
+	// FetchProcessRequestSummary 按 requestid 拉取流程实例摘要（标题、类型、节点等）
+	FetchProcessRequestSummary(ctx context.Context, processID string) (*ProcessRequestSummary, error)
+
+	// FetchProcessContextAnchor 拉取 OA 流程上下文锚点（退回版本、节点、表单指纹等）
+	FetchProcessContextAnchor(ctx context.Context, processID string, pd *ProcessData) (*OAContextAnchor, error)
+
 	// IsProcessInTodo 判断指定流程是否仍在用户待办中
 	IsProcessInTodo(ctx context.Context, username string, processID string) (bool, error)
 
@@ -155,6 +161,18 @@ type AttachmentFilePayload struct {
 	FileName string `json:"file_name"`
 	FileSize int64  `json:"file_size"`
 	FileData string `json:"file_data"`
+}
+
+// ProcessRequestSummary 流程实例摘要（嵌入页 / 按 requestid 上下文）。
+type ProcessRequestSummary struct {
+	ProcessID        string `json:"process_id"`
+	Title            string `json:"title"`
+	Applicant        string `json:"applicant"`
+	Department       string `json:"department"`
+	ProcessType      string `json:"process_type"`
+	ProcessTypeLabel string `json:"process_type_label"`
+	CurrentNode      string `json:"current_node"`
+	SubmitTime       string `json:"submit_time"`
 }
 
 // ProcessData 流程实例业务数据

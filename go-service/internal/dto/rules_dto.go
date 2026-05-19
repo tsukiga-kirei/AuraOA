@@ -16,6 +16,8 @@ type CreateProcessAuditConfigRequest struct {
 	AIConfig         datatypes.JSON `json:"ai_config"`
 	UserPermissions  datatypes.JSON `json:"user_permissions"`
 	AccessControl    datatypes.JSON `json:"access_control"`
+	EmbedEnabled     *bool          `json:"embed_enabled"`
+	EmbedConfig      datatypes.JSON `json:"embed_config"`
 	Status           string         `json:"status"`
 }
 
@@ -31,6 +33,8 @@ type UpdateProcessAuditConfigRequest struct {
 	AIConfig         datatypes.JSON `json:"ai_config"`
 	UserPermissions  datatypes.JSON `json:"user_permissions"`
 	AccessControl    datatypes.JSON `json:"access_control"`
+	EmbedEnabled     *bool          `json:"embed_enabled"`
+	EmbedConfig      datatypes.JSON `json:"embed_config"`
 	Status           string         `json:"status"`
 }
 

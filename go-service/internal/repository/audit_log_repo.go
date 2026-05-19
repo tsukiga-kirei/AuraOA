@@ -57,6 +57,27 @@ func (r *AuditLogRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.AuditLog, e
 	return &log, err
 }
 
+// GetRunningByProcessID 查询流程进行中的审核任务（最新一条）。
+func (r *AuditLogRepo) GetRunningByProcessID(c *gin.Context, processID string) (*model.AuditLog, error) {
+	var log model.AuditLog
+	err := r.WithTenant(c).
+		Where("process_id = ? AND status IN ?", processID, []string{
+			model.JobStatusPending,
+			model.JobStatusAssembling,
+			model.JobStatusReasoning,
+			model.JobStatusExtracting,
+		}).
+		Order("created_at DESC").
+		First(&log).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &log, nil
+}
+
 // GetByIDs 批量查询审核日志（租户隔离），返回 id -> AuditLog 映射。
 func (r *AuditLogRepo) GetByIDs(c *gin.Context, ids []uuid.UUID) (map[uuid.UUID]*model.AuditLog, error) {
 	if len(ids) == 0 {
