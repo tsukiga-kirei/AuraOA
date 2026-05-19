@@ -18,12 +18,27 @@ export function getEmbedBackend() {
   }
 }
 
+function rethrowEmbedProxyError(e: unknown, fallbackStatus = 502): never {
+  const err = e as {
+    statusCode?: number
+    status?: number
+    data?: { code?: number; message?: string }
+    response?: { _data?: { code?: number; message?: string } }
+  }
+  const body = err.data ?? err.response?._data
+  const message = body?.message || (e instanceof Error ? e.message : '请求失败')
+  const status = err.statusCode ?? err.status ?? fallbackStatus
+  throw createError({ statusCode: status, statusMessage: message })
+}
+
 export async function proxyEmbedGet<T>(path: string, query?: Record<string, string | undefined>): Promise<T> {
   const { apiBase, headers } = getEmbedBackend()
-  const res = await $fetch<{ code: number; message: string; data: T }>(`${apiBase}${path}`, {
-    headers,
-    query,
-  })
+  let res: { code: number; message: string; data: T }
+  try {
+    res = await $fetch(`${apiBase}${path}`, { headers, query })
+  } catch (e: unknown) {
+    rethrowEmbedProxyError(e)
+  }
   if (res.code !== 0) {
     throw createError({ statusCode: 400, statusMessage: res.message || '请求失败' })
   }
@@ -32,22 +47,23 @@ export async function proxyEmbedGet<T>(path: string, query?: Record<string, stri
 
 export async function proxyEmbedPost<T>(path: string, body: unknown): Promise<T> {
   const { apiBase, headers } = getEmbedBackend()
+  let res: { code: number; message: string; data: T }
   try {
-    const res = await $fetch<{ code: number; message: string; data: T }>(`${apiBase}${path}`, {
+    res = await $fetch(`${apiBase}${path}`, {
       method: 'POST',
       headers,
-      body,
+      body: body as Record<string, unknown> | BodyInit | null | undefined,
     })
-    if (res.code !== 0) {
-      throw createError({ statusCode: 400, statusMessage: res.message || '请求失败' })
-    }
-    return res.data
-  } catch (e: any) {
-    // Go 异步审核返回 202，$fetch 可能走 response 分支
-    const data = e?.data
+  } catch (e: unknown) {
+    const err = e as { data?: { code?: number; data?: T } }
+    const data = err.data
     if (data && typeof data === 'object' && data.code === 0 && data.data) {
-      return data.data as T
+      return data.data
     }
-    throw e
+    rethrowEmbedProxyError(e)
   }
+  if (res.code !== 0) {
+    throw createError({ statusCode: 400, statusMessage: res.message || '请求失败' })
+  }
+  return res.data
 }

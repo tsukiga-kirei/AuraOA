@@ -269,7 +269,7 @@ onMounted(async () => {
             </div>
           </template>
 
-          <template v-else-if="currentResult.status !== 'failed'">
+          <template v-else>
             <div
               class="result-banner"
               :style="{
