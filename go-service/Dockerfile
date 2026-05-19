@@ -32,7 +32,7 @@ COPY --from=builder /out/server .
 COPY go-service/config.yaml .
 COPY db/migrations /migrations
 
-# 预建日志与数据库备份目录（可通过 LOG_DIR、BACKUP_DIR 覆盖）
+# 预建目录：/app/logs 为 Zap 应用日志；/app/backups 为 pg_dump 整库备份（由 DbBackupService 写入，非 postgres 镜像内路径）
 RUN mkdir -p /app/logs/tenants /app/backups
 
 ENV MIGRATIONS_PATH=/migrations

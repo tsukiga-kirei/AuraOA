@@ -37,9 +37,12 @@ services:
       - LOG_GLOBAL_RETENTION_DAYS=7
       # 时区设置，影响日志时间戳显示
       - TZ=Asia/Shanghai
+      # 数据库 pg_dump 备份目录（go-service 容器内 /app/backups，需在系统设置开启备份开关）
+      - BACKUP_DIR=/app/backups
     volumes:
-      # 将日志挂载到宿主机，方便本地查看
+      # 将应用日志挂载到宿主机，方便本地查看（不含 pg_dump 备份，除非额外挂载 /app/backups）
       - go_logs_dev:/app/logs
+      # - ./backups:/app/backups
     restart: unless-stopped
 
   postgres:
@@ -51,6 +54,7 @@ services:
       - POSTGRES_USER=oa_admin
       - POSTGRES_PASSWORD=changeme_pg_password
     volumes:
+      # 库在线数据；.dump 备份由 go-service 写入 BACKUP_DIR，不在 postgres 容器内
       - pg_data:/var/lib/postgresql/data
     healthcheck:
       # 必须指定 -d：否则 pg_isready 会连「与用户名同名的库」→ 报 database "oa_admin" does not exist
