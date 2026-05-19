@@ -49,9 +49,16 @@ services:
       - LOG_GLOBAL_RETENTION_DAYS=${LOG_GLOBAL_RETENTION_DAYS:-30}
       # 时区设置，影响日志时间戳显示
       - TZ=${TZ:-Asia/Shanghai}
+      # 数据库整库备份输出目录（pg_dump，非 postgres 容器内路径）。
+      # 由 go-service 按管理端 system.backup_* 定时导出到此处；默认 /app/backups（对应 config.yaml backup.dir / BACKUP_DIR）。
+      # 备份文件形如 aura_pg_<库名>_<UTC时间>.dump；与下方 LOG_DIR 的应用日志不是同一类数据。
+      - BACKUP_DIR=/app/backups
     volumes:
       # 将容器内日志目录挂载到宿主机，防止容器重启后日志丢失
       - go_logs:/app/logs
+      # 数据库 .dump 备份默认仅存在 go-service 容器内 /app/backups，未挂载时重建容器可能丢失备份。
+      # 生产环境建议取消下一行注释，或改用命名卷 go_backups:/app/backups
+      # - ./backups:/app/backups
     restart: unless-stopped
 
   ai-service:
