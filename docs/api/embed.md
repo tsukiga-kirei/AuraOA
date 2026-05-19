@@ -67,6 +67,17 @@ GET /api/embed/jobs/:id
 
 ---
 
+## postMessage 协议（OA 自定义 JS ↔ 嵌入页）
+
+| 方向 | `type` | 载荷 |
+|------|--------|------|
+| iframe → OA | `aura-oa-request-requestid` | 无 |
+| OA → iframe | `aura-oa-requestid` | `{ requestid: string }` |
+
+OA 示例脚本：[../oa-configurations/assets/aura-embed-notify.js](../oa-configurations/assets/aura-embed-notify.js)
+
+---
+
 ## 配置说明
 
 | 配置项 | 位置 |

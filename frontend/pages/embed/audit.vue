@@ -184,11 +184,11 @@ onMounted(async () => {
       </div>
     </div>
 
-    <a-spin :spinning="pageLoading || waitingParent">
-      <div v-if="waitingParent && !pageError" class="result-empty result-empty--loading">
-        <LoadingOutlined spin style="font-size: 24px;" />
-        <p>{{ t('embed.waitingParent') }}</p>
-      </div>
+    <a-spin
+      :spinning="pageLoading || waitingParent"
+      :tip="waitingParent ? t('embed.waitingParent') : undefined"
+    >
+      <div v-if="waitingParent && !pageError" class="embed-waiting-placeholder" />
 
       <template v-else>
       <a-alert
@@ -368,6 +368,7 @@ onMounted(async () => {
 
 <style scoped>
 .embed-audit { max-width: 720px; margin: 0 auto; }
+.embed-waiting-placeholder { min-height: 120px; }
 .embed-header { margin-bottom: 16px; }
 .embed-title {
   display: flex; align-items: center; gap: 8px;

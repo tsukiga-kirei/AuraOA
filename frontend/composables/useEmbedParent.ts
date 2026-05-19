@@ -1,6 +1,15 @@
 /**
- * 从 OA 父页面 URL 解析泛微 requestid（固定嵌入地址，不传 query 参数）。
+ * 嵌入页与 OA 父页面通信：获取泛微 requestid
+ *
+ * 消息协议（与 docs/oa-configurations/assets/aura-embed-notify.js 一致）：
+ * - iframe → parent: { type: 'aura-oa-request-requestid' }
+ * - parent → iframe: { type: 'aura-oa-requestid', requestid: '598488' }
+ * - parent → iframe: { type: 'aura-oa-url', url: '...' }（可选，从 URL 解析）
  */
+
+export const EMBED_MSG_REQUEST_REQUESTID = 'aura-oa-request-requestid'
+export const EMBED_MSG_REQUESTID = 'aura-oa-requestid'
+export const EMBED_MSG_URL = 'aura-oa-url'
 
 export function parseRequestIdFromUrl(url: string): string {
   if (!url) return ''
@@ -21,7 +30,7 @@ export function parseRequestIdFromUrl(url: string): string {
   return ''
 }
 
-/** 尝试读取 iframe 父页面完整 URL 中的 requestid（需同源） */
+/** 尝试读取 iframe 父页面 URL 中的 requestid（仅同源） */
 export function readRequestIdFromParent(): string {
   if (typeof window === 'undefined' || window.parent === window) return ''
   try {
@@ -31,8 +40,14 @@ export function readRequestIdFromParent(): string {
   }
 }
 
+/** 向 OA 父页请求 requestid（跨域时由父页脚本 WfForm + postMessage 响应） */
+export function requestRequestIdFromParent(): void {
+  if (typeof window === 'undefined' || window.parent === window) return
+  window.parent.postMessage({ type: EMBED_MSG_REQUEST_REQUESTID }, '*')
+}
+
 /**
- * 轮询父页面 URL 直至解析到 requestid；跨域时等待 postMessage（OA 可选兜底）。
+ * 等待 requestid：同源读 parent → 主动 postMessage 请求 → 监听父页推送
  */
 export function waitForParentRequestId(options?: { intervalMs?: number; maxAttempts?: number }): Promise<string> {
   if (typeof window === 'undefined') return Promise.resolve('')
@@ -45,15 +60,16 @@ export function waitForParentRequestId(options?: { intervalMs?: number; maxAttem
 
   return new Promise((resolve) => {
     let attempts = 0
+    requestRequestIdFromParent()
 
     const onMessage = (event: MessageEvent) => {
       const data = event.data
       if (!data || typeof data !== 'object') return
-      if (data.type === 'aura-oa-requestid' && data.requestid) {
+      if (data.type === EMBED_MSG_REQUESTID && data.requestid) {
         finish(String(data.requestid))
         return
       }
-      if (data.type === 'aura-oa-url' && data.url) {
+      if (data.type === EMBED_MSG_URL && data.url) {
         const parsed = parseRequestIdFromUrl(String(data.url))
         if (parsed) finish(parsed)
       }
@@ -65,6 +81,10 @@ export function waitForParentRequestId(options?: { intervalMs?: number; maxAttem
       if (found) {
         finish(found)
         return
+      }
+      // 每隔约 3 秒再向父页要一次（WfForm 可能尚未就绪）
+      if (attempts % 10 === 0) {
+        requestRequestIdFromParent()
       }
       if (attempts >= maxAttempts) {
         finish('')

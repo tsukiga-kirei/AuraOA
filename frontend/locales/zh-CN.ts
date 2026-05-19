@@ -601,7 +601,7 @@ export default {
     'embed.lastAuditAt': '最后智能审核时间',
     'embed.staleTag': '结论可能已过期',
     'embed.unsupportedTitle': '暂不支持智能审核',
-    'embed.noRequestId': '未能从 OA 父页面 URL 解析 requestid，请确认 iframe 与 OA 同源或 OA 已配置 postMessage',
+    'embed.noRequestId': '未收到 OA 流程编号。请在流程「基础设置 → 自定义页面」启用 aura-embed-notify.js，并确认 iframe id 与脚本中一致',
     'embed.waitingParent': '正在读取 OA 流程编号…',
     'embed.loadFailed': '加载审核上下文失败',
     'embed.auditFailed': '审核执行失败',
