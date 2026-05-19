@@ -1932,7 +1932,11 @@ const handleSave = async () => {
               <div class="permission-label">{{ t('admin.ruleConfig.embedEnabled') }}</div>
               <div class="permission-desc">{{ t('admin.ruleConfig.embedEnabledDesc') }}</div>
             </div>
-            <a-switch v-model:checked="selectedConfig.embed_enabled" />
+            <a-switch
+              v-model:checked="selectedConfig.embed_enabled"
+              :checked-children="t('admin.ruleConfig.switchAllow')"
+              :un-checked-children="t('admin.ruleConfig.switchDeny')"
+            />
           </div>
 
           <!-- 审核工作台访问控制 -->
