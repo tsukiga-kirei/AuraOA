@@ -139,7 +139,13 @@ AuraOA 前端需允许 OA 域名嵌入（CSP `frame-ancestors` 等，勿全局 `
 
 ---
 
-## 8. 常见问题
+## 8. 已知限制
+
+**单租户部署**：环境变量 `EMBED_TENANT_CODE` 为部署级固定值（如 `T-20260330-0001`），一套 AuraOA 实例 + 一组 `EMBED_*` 当前仅服务一个租户。多租户共用同一嵌入地址需后续扩展，详见 [已知问题 #003](../known-issues/003-embed-single-tenant-config.md)。
+
+---
+
+## 9. 常见问题
 
 | 现象 | 处理 |
 |------|------|
@@ -150,7 +156,7 @@ AuraOA 前端需允许 OA 域名嵌入（CSP `frame-ancestors` 等，勿全局 `
 
 ---
 
-## 9. 相关文档
+## 10. 相关文档
 
 - 示例脚本：[assets/aura-embed-notify.js](./assets/aura-embed-notify.js)  
 - [嵌入审核 API](../api/embed.md)  

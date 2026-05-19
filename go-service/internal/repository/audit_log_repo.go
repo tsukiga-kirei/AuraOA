@@ -57,18 +57,25 @@ func (r *AuditLogRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.AuditLog, e
 	return &log, err
 }
 
-// GetRunningByProcessID 查询流程进行中的审核任务（最新一条）。
+// GetRunningByProcessID 查询流程进行中的审核任务（最新一条，不限渠道）。
 func (r *AuditLogRepo) GetRunningByProcessID(c *gin.Context, processID string) (*model.AuditLog, error) {
-	var log model.AuditLog
-	err := r.WithTenant(c).
+	return r.GetRunningByProcessIDForTriggers(c, processID, nil)
+}
+
+// GetRunningByProcessIDForTriggers 查询流程进行中的审核任务；triggerSources 为空则不过滤来源。
+func (r *AuditLogRepo) GetRunningByProcessIDForTriggers(c *gin.Context, processID string, triggerSources []string) (*model.AuditLog, error) {
+	q := r.WithTenant(c).
 		Where("process_id = ? AND status IN ?", processID, []string{
 			model.JobStatusPending,
 			model.JobStatusAssembling,
 			model.JobStatusReasoning,
 			model.JobStatusExtracting,
-		}).
-		Order("created_at DESC").
-		First(&log).Error
+		})
+	if len(triggerSources) > 0 {
+		q = q.Where("trigger_source IN ?", triggerSources)
+	}
+	var log model.AuditLog
+	err := q.Order("created_at DESC").First(&log).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -222,17 +229,23 @@ func (r *AuditLogRepo) BatchCheckHasAudit(c *gin.Context, processIDs []string) (
 	return result, nil
 }
 
-// GetLatestResultMap 获取多个流程的最新审核结果，返回 processID -> AuditLog 映射。
+// GetLatestResultMap 获取多个流程的最新审核结果（不限渠道，归档等场景用）。
 func (r *AuditLogRepo) GetLatestResultMap(c *gin.Context, processIDs []string) (map[string]*model.AuditLog, error) {
+	return r.GetLatestResultMapForTriggers(c, processIDs, nil)
+}
+
+// GetLatestResultMapForTriggers 按 trigger_source 过滤后取每流程最新一条。
+func (r *AuditLogRepo) GetLatestResultMapForTriggers(c *gin.Context, processIDs []string, triggerSources []string) (map[string]*model.AuditLog, error) {
 	if len(processIDs) == 0 {
 		return map[string]*model.AuditLog{}, nil
 	}
 
+	q := r.WithTenant(c).Where("process_id IN ?", processIDs)
+	if len(triggerSources) > 0 {
+		q = q.Where("trigger_source IN ?", triggerSources)
+	}
 	var logs []model.AuditLog
-	err := r.WithTenant(c).
-		Where("process_id IN ?", processIDs).
-		Order("created_at DESC").
-		Find(&logs).Error
+	err := q.Order("created_at DESC").Find(&logs).Error
 	if err != nil {
 		return nil, err
 	}
