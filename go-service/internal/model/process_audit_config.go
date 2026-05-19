@@ -21,6 +21,8 @@ type ProcessAuditConfig struct {
 	AIConfig         datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"ai_config"`
 	UserPermissions  datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"user_permissions"`
 	AccessControl    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"access_control"`
+	EmbedEnabled     bool           `gorm:"not null;default:false" json:"embed_enabled"`
+	EmbedConfig      datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"embed_config"`
 	Status           string         `gorm:"size:20;not null;default:active" json:"status"`
 	CreatedAt        time.Time      `json:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at"`
@@ -35,6 +37,12 @@ type AIConfigData struct {
 	SystemExtractionPrompt string `json:"system_extraction_prompt"`
 	UserReasoningPrompt    string `json:"user_reasoning_prompt"`
 	UserExtractionPrompt   string `json:"user_extraction_prompt"`
+}
+
+// EmbedConfigData OA 嵌入页行为配置。
+type EmbedConfigData struct {
+	AutoAuditOnOpen  bool `json:"auto_audit_on_open"`
+	AutoAuditOnStale bool `json:"auto_audit_on_stale"`
 }
 
 // UserPermissionsData 用户权限配置的结构化表示

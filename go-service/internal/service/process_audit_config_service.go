@@ -223,6 +223,12 @@ func (s *ProcessAuditConfigService) Update(c *gin.Context, id uuid.UUID, req *dt
 	if req.AccessControl != nil {
 		fields["access_control"] = req.AccessControl
 	}
+	if req.EmbedEnabled != nil {
+		fields["embed_enabled"] = *req.EmbedEnabled
+	}
+	if req.EmbedConfig != nil {
+		fields["embed_config"] = req.EmbedConfig
+	}
 	if req.Status != "" {
 		fields["status"] = req.Status
 	}

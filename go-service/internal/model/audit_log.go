@@ -23,9 +23,11 @@ type AuditLog struct {
 	AIReasoning    string         `gorm:"type:text;default:''" json:"ai_reasoning"`
 	Confidence     int            `gorm:"not null;default:0" json:"confidence"`
 	RawContent     string         `gorm:"type:text;default:''" json:"raw_content"`
-	ParseError     string         `gorm:"type:text;default:''" json:"parse_error"`
-	ErrorMessage   string         `gorm:"type:text;default:''" json:"error_message"`
-	CreatedAt      time.Time      `json:"created_at"`
+	ParseError        string         `gorm:"type:text;default:''" json:"parse_error"`
+	ErrorMessage      string         `gorm:"type:text;default:''" json:"error_message"`
+	TriggerSource     string         `gorm:"size:30;not null;default:workbench_manual" json:"trigger_source"`
+	OAContextAnchor   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"oa_context_anchor"`
+	CreatedAt         time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `gorm:"not null;default:now()" json:"updated_at"`
 }
 
@@ -48,6 +50,14 @@ type RuleResultJSON struct {
 }
 
 func (AuditLog) TableName() string { return "audit_logs" }
+
+const (
+	AuditTriggerWorkbenchManual = "workbench_manual"
+	AuditTriggerWorkbenchBatch  = "workbench_batch"
+	AuditTriggerEmbedAuto       = "embed_auto"
+	AuditTriggerEmbedManual     = "embed_manual"
+	AuditTriggerCronScheduled   = "cron_scheduled"
+)
 
 // CronLog 定时任务日志。
 type CronLog struct {

@@ -259,7 +259,7 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, sysFlagsResolver, operationAuditLogRepo)
+	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, sysFlagsResolver, operationAuditLogRepo, tenantRepo)
 
 	// 第九步：启动 HTTP 服务器
 	port := viper.GetInt("server.port")
@@ -299,6 +299,8 @@ func loadConfig() error {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.SetDefault("migrations.enabled", true)
 	viper.SetDefault("migrations.path", "")
+	viper.SetDefault("embed.tenant_code", "")
+	viper.SetDefault("embed.access_token", "")
 
 	// 缓存配置默认值
 	viper.SetDefault("cache.enabled", true)

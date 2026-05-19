@@ -9,6 +9,7 @@
 | 编号 | 能力 | 说明 | 文档 |
 |------|------|------|------|
 | 01   | 附件识别 | 把流程附件（PDF / 图片 / Office 文档等）解析为文本送入 AI | [01-attachment-recognition.md](./01-attachment-recognition.md) |
+| 02   | 嵌入 AI 审核侧边栏 | 在 E9 审批页 iframe 嵌入 AuraOA 审核结果，按 requestid 自动/手动审核 | [02-embed-audit-sidebar.md](./02-embed-audit-sidebar.md) |
 
 ## OA 类型矩阵
 
@@ -25,7 +26,8 @@
 | OA 数据库连接（host / port / 用户名密码） | `oa_database_connections` 表 | 系统设置 → OA 数据库 |
 | 泛微 E9 原生 API 密钥（仅 weaver_e9） | `oa_database_connections` 表（每条记录独立） | 同上，OA 类型选「泛微 E9」时显示 |
 | 附件识别 / MinerU 参数 | `system_configs` 表（attachment.* key） | 系统设置 → 附件识别 |
-| Ecology9 附件接口参数（`weaver_api_url/appid/loginid`） | `oa_database_connections` 表 | 系统设置 → OA 数据库（Ecology9） |
+| 流程审核配置（含 embed 开关） | `process_audit_configs` 表 | 租户管理 → 规则配置 → 权限 |
+| OA 嵌入 AI 审核 | `process_audit_configs.embed_enabled` / `embed_config` | 租户管理 → 规则配置 → 权限 → OA 嵌入审核 |
 
 ## 维护守则
 

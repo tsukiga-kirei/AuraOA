@@ -1661,6 +1661,108 @@ func (a *Ecology9Adapter) IsProcessInTodo(ctx context.Context, username string, 
 	return count > 0, nil
 }
 
+// FetchProcessRequestSummary 按 requestid 拉取流程实例摘要。
+func (a *Ecology9Adapter) FetchProcessRequestSummary(ctx context.Context, processID string) (*ProcessRequestSummary, error) {
+	query := fmt.Sprintf(`
+		SELECT
+			r.%s AS request_id,
+			COALESCE(r.%s, '') AS request_name,
+			COALESCE(h.%s, '') AS applicant_name,
+			COALESCE(d.%s, '') AS dept_name,
+			COALESCE(wb.%s, '') AS workflow_name,
+			COALESCE(wt.%s, '') AS type_name,
+			COALESCE(n.%s, '') AS node_name,
+			COALESCE(r.%s, '') AS create_date
+		FROM %s r
+		LEFT JOIN %s wb ON r.%s = wb.%s
+		LEFT JOIN %s wt ON wb.%s = wt.%s
+		LEFT JOIN %s h ON r.%s = h.%s
+		LEFT JOIN %s d ON h.%s = d.%s
+		LEFT JOIN %s n ON r.%s = n.%s
+		WHERE r.%s = ?`,
+		a.col("requestid"), a.col("requestname"),
+		a.col("lastname"), a.col("departmentname"),
+		a.col("workflowname"), a.col("typename"),
+		a.col("nodename"), a.col("createdate"),
+		a.tableName("workflow_requestbase"),
+		a.tableName("workflow_base"), a.col("workflowid"), a.col("id"),
+		a.tableName("workflow_type"), a.col("workflowtype"), a.col("id"),
+		a.tableName("hrmresource"), a.col("creater"), a.col("id"),
+		a.tableName("hrmdepartment"), a.col("departmentid"), a.col("id"),
+		a.tableName("workflow_nodebase"), a.col("currentnodeid"), a.col("id"),
+		a.col("requestid"),
+	)
+
+	var requestID, requestName, applicant, department, workflowName, typeName, nodeName, createDate string
+	err := a.db.WithContext(ctx).Raw(query, processID).Row().Scan(
+		&requestID, &requestName, &applicant, &department, &workflowName, &typeName, &nodeName, &createDate,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("查询流程实例失败: %w", err)
+	}
+	return &ProcessRequestSummary{
+		ProcessID:        requestID,
+		Title:            requestName,
+		Applicant:        applicant,
+		Department:       department,
+		ProcessType:      workflowName,
+		ProcessTypeLabel: typeName,
+		CurrentNode:      nodeName,
+		SubmitTime:       createDate,
+	}, nil
+}
+
+// FetchProcessContextAnchor 拉取 OA 流程上下文锚点。
+func (a *Ecology9Adapter) FetchProcessContextAnchor(ctx context.Context, processID string, pd *ProcessData) (*OAContextAnchor, error) {
+	var currentNodeID int
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_requestbase")).
+		Select(a.col("currentnodeid")).
+		Where(a.col("requestid")+" = ?", processID).
+		Row().Scan(&currentNodeID)
+	if err != nil {
+		return nil, fmt.Errorf("查询流程当前节点失败: %w", err)
+	}
+
+	var lastReturnLogID int64
+	returnQuery := fmt.Sprintf(`
+		SELECT COALESCE(MAX(%s), 0) FROM %s WHERE %s = ? AND %s = '3'`,
+		a.col("logid"), a.tableName("workflow_requestlog"), a.col("requestid"), a.col("logtype"),
+	)
+	if err := a.db.WithContext(ctx).Raw(returnQuery, processID).Row().Scan(&lastReturnLogID); err != nil {
+		return nil, fmt.Errorf("查询退回日志失败: %w", err)
+	}
+
+	var flowRevision int64
+	revisionQuery := fmt.Sprintf(`
+		SELECT COALESCE(MAX(%s), 0) FROM %s WHERE %s = ? AND %s > ?`,
+		a.col("logid"), a.tableName("workflow_requestlog"), a.col("requestid"), a.col("logid"),
+	)
+	if err := a.db.WithContext(ctx).Raw(revisionQuery, processID, lastReturnLogID).Row().Scan(&flowRevision); err != nil {
+		return nil, fmt.Errorf("查询流程版本失败: %w", err)
+	}
+
+	var lastResubmitLogID int64
+	if lastReturnLogID > 0 {
+		resubmitQuery := fmt.Sprintf(`
+			SELECT COALESCE(MAX(%s), 0) FROM %s WHERE %s = ? AND %s = '2' AND %s > ?`,
+			a.col("logid"), a.tableName("workflow_requestlog"), a.col("requestid"), a.col("logtype"), a.col("logid"),
+		)
+		_ = a.db.WithContext(ctx).Raw(resubmitQuery, processID, lastReturnLogID).Row().Scan(&lastResubmitLogID)
+	}
+
+	anchor := &OAContextAnchor{
+		LastReturnLogID:   lastReturnLogID,
+		FlowRevision:      flowRevision,
+		LastResubmitLogID: lastResubmitLogID,
+		CurrentNodeID:     currentNodeID,
+	}
+	if pd != nil {
+		anchor.ContentFingerprint = ComputeProcessDataFingerprint(pd)
+	}
+	return anchor, nil
+}
+
 // ── mapFieldType ───────────────────────────────────────────
 
 // mapFieldType 将泛微 E9 的字段 HTML 类型映射为通用字段类型。

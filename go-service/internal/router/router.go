@@ -39,6 +39,7 @@ func SetupRouter(
 	cacheAdminHandler *handler.CacheAdminHandler,
 	sysFlags *systemflags.Resolver,
 	operationAuditRepo *repository.OperationAuditLogRepo,
+	tenantRepo *repository.TenantRepo,
 ) {
 	// 挂载全局中间件：结构化请求日志、panic 恢复、跨域（CORS）
 	r.Use(middleware.Logger(logger))
@@ -281,6 +282,15 @@ func SetupRouter(
 		audit.GET("/stream/:id", auditHandler.GetJobStream)
 		audit.POST("/batch", auditHandler.BatchExecute)
 		audit.GET("/chain/:processId", auditHandler.GetAuditChain)
+	}
+
+	// OA 嵌入审核（固定展示页，无需用户 JWT；由嵌入令牌 + 租户编码鉴权）
+	embed := r.Group("/api/embed")
+	embed.Use(middleware.EmbedAccess(tenantRepo))
+	{
+		embed.GET("/context", auditHandler.GetEmbedContext)
+		embed.POST("/execute", auditHandler.ExecuteEmbed)
+		embed.GET("/jobs/:id", auditHandler.GetJobStatus)
 	}
 
 	// 审核日志数据管理（仅 tenant_admin）：日志列表、统计及导出

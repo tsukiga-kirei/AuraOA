@@ -17,6 +17,8 @@ export interface ProcessAuditConfig {
   ai_config: Record<string, any>
   user_permissions: Record<string, any>
   access_control?: AccessControl
+  embed_enabled?: boolean
+  embed_config?: { auto_audit_on_open?: boolean; auto_audit_on_stale?: boolean }
   status: string
   created_at?: string
   updated_at?: string
