@@ -1,9 +1,12 @@
 import type { AuditResult } from '~/types/audit'
 import type { EmbedContextResponse, EmbedExecuteRequest } from '~/types/embed'
 
-async function embedFetch<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+async function embedFetch<T>(
+  path: string,
+  init?: { method?: 'GET' | 'POST'; body?: unknown },
+): Promise<T> {
   return await $fetch<T>(path, {
-    method: init?.method || 'GET',
+    method: init?.method ?? 'GET',
     body: init?.body as Record<string, unknown> | undefined,
   })
 }
