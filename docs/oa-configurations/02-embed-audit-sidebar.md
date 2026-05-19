@@ -30,19 +30,28 @@
 
 ### 3.1 嵌入令牌
 
-**Go** `config.yaml`：
+**推荐：环境变量**（见项目根 `.env.example` 与 `frontend/.env.example`）
+
+根目录 `.env`（Go / Docker 用）：
+
+```bash
+EMBED_ACCESS_TOKEN=随机长字符串
+EMBED_TENANT_CODE=your-tenant-code   # 租户管理 → 租户编码 tenants.code
+```
+
+本地 Nuxt dev 另建 **`frontend/.env`**（内容与上面 EMBED 两行一致）：
+
+```bash
+cp frontend/.env.example frontend/.env
+# 编辑 EMBED_TENANT_CODE 为实际租户编码
+```
+
+也可用 **Go** `config.yaml`（环境变量优先级更高）：
 
 ```yaml
 embed:
   tenant_code: "your-tenant-code"
   access_token: "随机长字符串"
-```
-
-**前端环境变量**（仅服务端，不暴露给浏览器）：
-
-```bash
-EMBED_ACCESS_TOKEN=与上面 access_token 相同
-EMBED_TENANT_CODE=your-tenant-code
 ```
 
 ### 3.2 流程开关

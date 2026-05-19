@@ -74,6 +74,7 @@ backup:
   dump_timeout: "45m"
 
 # OA 嵌入审核（固定展示页 /embed/audit，无需用户 JWT；令牌由 Nuxt 服务端代理携带）
+# 推荐用环境变量 EMBED_ACCESS_TOKEN / EMBED_TENANT_CODE 配置（优先级高于此处）
 embed:
   tenant_code: ""          # 租户 code，与 tenants.code 一致
   access_token: ""         # 嵌入访问令牌，与 Nuxt EMBED_ACCESS_TOKEN 一致

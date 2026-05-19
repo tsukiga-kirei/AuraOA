@@ -7,8 +7,12 @@ services:
       - "3000:3000"
     depends_on:
       - go-service
+    env_file:
+      - .env
     environment:
       - NUXT_PUBLIC_API_BASE=http://go-service:8080
+      - EMBED_ACCESS_TOKEN=${EMBED_ACCESS_TOKEN}
+      - EMBED_TENANT_CODE=${EMBED_TENANT_CODE}
     restart: unless-stopped
 
   go-service:
@@ -53,6 +57,9 @@ services:
       # 由 go-service 按管理端 system.backup_* 定时导出到此处；默认 /app/backups（对应 config.yaml backup.dir / BACKUP_DIR）。
       # 备份文件形如 aura_pg_<库名>_<UTC时间>.dump；与下方 LOG_DIR 的应用日志不是同一类数据。
       - BACKUP_DIR=/app/backups
+      # OA 嵌入审核（仅 /api/embed/*，见 .env EMBED_*）
+      - EMBED_ACCESS_TOKEN=${EMBED_ACCESS_TOKEN}
+      - EMBED_TENANT_CODE=${EMBED_TENANT_CODE}
     volumes:
       # 将容器内日志目录挂载到宿主机，防止容器重启后日志丢失
       - go_logs:/app/logs
