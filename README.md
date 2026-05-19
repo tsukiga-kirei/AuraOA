@@ -272,6 +272,7 @@ encryption:
 
 | 文档 | 说明 |
 |------|------|
+| [开发规范](docs/development-guide.md) | 前后端约定、i18n、分页、接口、模块关联与自检清单 |
 | [OA 系统对接说明](docs/oa-integration.md) | OA 适配器架构、泛微 E9 实现、数据提取流程、未完成适配 |
 | [AI 系统对接说明](docs/ai-integration.md) | AI 调用架构、两阶段审核流程、Token 配额管理、未完成适配 |
 
@@ -298,13 +299,9 @@ encryption:
 
 ---
 
-## 已知问题
-
-> 详见 [缺陷与待办总览](docs/known-issues/README.md)
-
----
-
 ## 开发指南
+
+日常开发请先阅读 **[开发规范](docs/development-guide.md)**（国际化、分页、注释、API、审核/归档对称模块等）。
 
 ### 添加新的 OA 适配器
 

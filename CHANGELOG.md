@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### In Progress
 - [#001] 流程附件未被 AI 识别 - 数据模型扩展已完成，E9 适配器接口集成已完成，待实现附件查询逻辑与 Prompt 注入
+- [#002] 审核数据保留天数未实现自动清理 - 配置项已存在，待实现按 `data_retention_days` 清理库表审核/归档数据，详见 [docs/known-issues/002-audit-data-retention-cleanup.md](docs/known-issues/002-audit-data-retention-cleanup.md)
 
 ---
 
