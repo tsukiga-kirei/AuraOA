@@ -24,10 +24,13 @@ func NewAuditProcessSnapshotRepo(db *gorm.DB) *AuditProcessSnapshotRepo {
 	return &AuditProcessSnapshotRepo{BaseRepo: NewBaseRepo(db)}
 }
 
-// UpsertAppendValid 成功解析后追加日志 id 并更新最新有效结论。
-func (r *AuditProcessSnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID uuid.UUID, processID string, logID uuid.UUID, title, processType, recommendation string, score, confidence int) error {
+// UpsertAppendValid 成功解析后追加日志 id 并更新最新有效结论（按 channel 隔离工作台与嵌入）。
+func (r *AuditProcessSnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID uuid.UUID, processID, channel string, logID uuid.UUID, title, processType, recommendation string, score, confidence int) error {
+	if channel == "" {
+		channel = model.AuditSnapshotChannelWorkbench
+	}
 	var existing model.AuditProcessSnapshot
-	err := r.WithTenant(c).Where("process_id = ?", processID).First(&existing).Error
+	err := r.WithTenant(c).Where("process_id = ? AND channel = ?", processID, channel).First(&existing).Error
 	now := time.Now()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		ids := []string{logID.String()}
@@ -35,6 +38,7 @@ func (r *AuditProcessSnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID uu
 		row := &model.AuditProcessSnapshot{
 			TenantID:         tenantID,
 			ProcessID:        processID,
+			Channel:          channel,
 			ValidLogIDs:      datatypes.JSON(b),
 			LatestValidLogID: logID,
 			Title:            title,
@@ -75,23 +79,39 @@ func (r *AuditProcessSnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID uu
 	}).Error
 }
 
-// GetByProcessID 单流程快照。
+// GetByProcessID 单流程工作台渠道快照。
 func (r *AuditProcessSnapshotRepo) GetByProcessID(c *gin.Context, processID string) (*model.AuditProcessSnapshot, error) {
+	return r.GetByProcessIDAndChannel(c, processID, model.AuditSnapshotChannelWorkbench)
+}
+
+// GetByProcessIDAndChannel 单流程指定渠道快照。
+func (r *AuditProcessSnapshotRepo) GetByProcessIDAndChannel(c *gin.Context, processID, channel string) (*model.AuditProcessSnapshot, error) {
+	if channel == "" {
+		channel = model.AuditSnapshotChannelWorkbench
+	}
 	var row model.AuditProcessSnapshot
-	err := r.WithTenant(c).Where("process_id = ?", processID).First(&row).Error
+	err := r.WithTenant(c).Where("process_id = ? AND channel = ?", processID, channel).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
 	return &row, err
 }
 
-// GetMapByProcessIDs 批量查询多个流程的审核快照，返回 processID → AuditProcessSnapshot 映射。
+// GetMapByProcessIDs 批量查询多个流程的工作台渠道快照。
 func (r *AuditProcessSnapshotRepo) GetMapByProcessIDs(c *gin.Context, processIDs []string) (map[string]*model.AuditProcessSnapshot, error) {
+	return r.GetMapByProcessIDsAndChannel(c, processIDs, model.AuditSnapshotChannelWorkbench)
+}
+
+// GetMapByProcessIDsAndChannel 批量查询指定渠道快照。
+func (r *AuditProcessSnapshotRepo) GetMapByProcessIDsAndChannel(c *gin.Context, processIDs []string, channel string) (map[string]*model.AuditProcessSnapshot, error) {
 	if len(processIDs) == 0 {
 		return map[string]*model.AuditProcessSnapshot{}, nil
 	}
+	if channel == "" {
+		channel = model.AuditSnapshotChannelWorkbench
+	}
 	var rows []model.AuditProcessSnapshot
-	if err := r.WithTenant(c).Where("process_id IN ?", processIDs).Find(&rows).Error; err != nil {
+	if err := r.WithTenant(c).Where("process_id IN ? AND channel = ?", processIDs, channel).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make(map[string]*model.AuditProcessSnapshot, len(rows))
@@ -141,7 +161,7 @@ func (r *AuditProcessSnapshotRepo) ListPagedWithUser(c *gin.Context, filter Audi
 	const t = "audit_process_snapshots"
 	tenantID, _ := c.Get("tenant_id")
 	base := r.DB.
-		Where(t+".tenant_id = ?", tenantID).
+		Where(t+".tenant_id = ? AND "+t+".channel = ?", tenantID, model.AuditSnapshotChannelWorkbench).
 		Table(t).
 		Select(t + ".*, " +
 			"COALESCE(u.display_name, u.username, '') AS operator, " +
@@ -175,6 +195,7 @@ func (r *AuditProcessSnapshotRepo) CountStatsByRecommendation(c *gin.Context) (*
 	var rows []row
 	err := r.WithTenant(c).
 		Table("audit_process_snapshots").
+		Where("channel = ?", model.AuditSnapshotChannelWorkbench).
 		Select("recommendation, COUNT(*) as cnt").
 		Group("recommendation").
 		Find(&rows).Error
@@ -198,6 +219,7 @@ func (r *AuditProcessSnapshotRepo) CountStatsByRecommendation(c *gin.Context) (*
 
 func applyAuditSnapshotFilter(db *gorm.DB, f AuditSnapshotFilter) *gorm.DB {
 	const t = "audit_process_snapshots."
+	db = db.Where(t+"channel = ?", model.AuditSnapshotChannelWorkbench)
 	if f.Recommendation != "" {
 		db = db.Where(t+"recommendation = ?", f.Recommendation)
 	}
@@ -274,7 +296,7 @@ func (r *AuditProcessSnapshotRepo) CountThisWeek(c *gin.Context, userID *uuid.UU
 	tenantID, _ := c.Get("tenant_id")
 	q := r.DB.Table("audit_process_snapshots AS aps")
 	if tenantID != nil && tenantID != "" {
-		q = q.Where("aps.tenant_id = ?", tenantID)
+		q = q.Where("aps.tenant_id = ? AND aps.channel = ?", tenantID, model.AuditSnapshotChannelWorkbench)
 	}
 	if userID != nil {
 		q = q.Joins("JOIN audit_logs al ON al.id = aps.latest_valid_log_id").
@@ -318,6 +340,7 @@ LEFT JOIN (
 		return ""
 	}() + `
   WHERE aps.tenant_id = ?
+    AND aps.channel = 'workbench'
     AND aps.updated_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
     ` + userFilter + `
   GROUP BY 1
@@ -352,6 +375,7 @@ FROM audit_process_snapshots aps
 LEFT JOIN audit_logs al ON al.id = aps.latest_valid_log_id
 LEFT JOIN users u ON u.id = al.user_id
 WHERE aps.tenant_id = ?
+  AND aps.channel = 'workbench'
   ` + userFilter + `
 ORDER BY aps.updated_at DESC
 LIMIT ?`
@@ -374,6 +398,7 @@ JOIN users u ON u.id = al.user_id
 LEFT JOIN org_members om ON om.user_id = u.id AND om.tenant_id = aps.tenant_id AND om.status = 'active'
 LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = aps.tenant_id
 WHERE aps.tenant_id = ?
+  AND aps.channel = 'workbench'
 GROUP BY d.name
 ORDER BY count DESC`
 
@@ -398,6 +423,7 @@ JOIN users u ON u.id = al.user_id
 LEFT JOIN org_members om ON om.user_id = u.id AND om.tenant_id = aps.tenant_id AND om.status = 'active'
 LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = aps.tenant_id
 WHERE aps.tenant_id = ?
+  AND aps.channel = 'workbench'
 GROUP BY u.id, u.username, u.display_name, d.name
 ORDER BY audit_count DESC, last_active DESC
 LIMIT ?`
@@ -413,6 +439,7 @@ func (r *AuditProcessSnapshotRepo) CountByTenantGlobal() ([]TenantSnapshotCount,
 SELECT tenant_id,
        COUNT(*)::bigint AS count
 FROM audit_process_snapshots
+WHERE channel = 'workbench'
 GROUP BY tenant_id
 ORDER BY count DESC`
 

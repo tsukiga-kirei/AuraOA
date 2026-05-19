@@ -26,17 +26,17 @@ type EmbedExecuteRequest struct {
 
 // EmbedContextResponse 嵌入页上下文。
 type EmbedContextResponse struct {
-	Supported      bool                   `json:"supported"`
-	Reason         string                 `json:"reason,omitempty"`
-	Message        string                 `json:"message,omitempty"`
-	Process        *oa.ProcessRequestSummary `json:"process,omitempty"`
-	EmbedEnabled   bool                   `json:"embed_enabled"`
-	HasAudit       bool                   `json:"has_audit"`
-	Stale          bool                   `json:"stale"`
-	ShouldAutoAudit bool                  `json:"should_auto_audit"`
-	LastAuditAt    string                 `json:"last_audit_at,omitempty"`
-	RunningJobID   string                 `json:"running_job_id,omitempty"`
-	AuditResult    map[string]interface{} `json:"audit_result,omitempty"`
+	Supported       bool                      `json:"supported"`
+	Reason          string                    `json:"reason,omitempty"`
+	Message         string                    `json:"message,omitempty"`
+	Process         *oa.ProcessRequestSummary `json:"process,omitempty"`
+	EmbedEnabled    bool                      `json:"embed_enabled"`
+	HasAudit        bool                      `json:"has_audit"`
+	Stale           bool                      `json:"stale"`
+	ShouldAutoAudit bool                      `json:"should_auto_audit"`
+	LastAuditAt     string                    `json:"last_audit_at,omitempty"`
+	RunningJobID    string                    `json:"running_job_id,omitempty"`
+	AuditResult     map[string]interface{}    `json:"audit_result,omitempty"`
 }
 
 // GetEmbedContext 嵌入页：按 requestid 拉取流程上下文、有效结论与过期状态。
@@ -101,7 +101,7 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		EmbedEnabled: true,
 	}
 
-	running, _ := s.auditLogRepo.GetRunningByProcessID(c, processID)
+	running, _ := s.auditLogRepo.GetRunningByProcessIDForTriggers(c, processID, model.EmbedTriggerSources())
 	if running != nil {
 		resp.RunningJobID = running.ID.String()
 		resp.AuditResult = buildAuditResultFromLog(running)
@@ -109,7 +109,7 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		return resp, nil
 	}
 
-	snap, err := s.auditSnapshotRepo.GetByProcessID(c, processID)
+	snap, err := s.auditSnapshotRepo.GetByProcessIDAndChannel(c, processID, model.AuditSnapshotChannelEmbed)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核快照失败")
 	}
