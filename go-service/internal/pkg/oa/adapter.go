@@ -108,6 +108,11 @@ type OAAdapter interface {
 	FetchAllTodoItems(ctx context.Context, limit int) ([]TodoItem, error)
 }
 
+// BrowseValueResolver 可选接口：支持按字段选择集把浏览按钮原始值增补为显示值。
+type BrowseValueResolver interface {
+	ResolveBrowseDisplayValues(ctx context.Context, processID string, data *ProcessData, fieldSet map[string]map[string]bool) error
+}
+
 // ProcessInfo 流程基本信息
 type ProcessInfo struct {
 	ProcessType       string `json:"process_type"`
@@ -143,15 +148,15 @@ type ProcessFields struct {
 
 // AttachmentInfo 附件信息
 type AttachmentInfo struct {
-	DocID       string `json:"doc_id"`        // OA 系统中的附件 ID
-	FileName    string `json:"file_name"`     // 文件名
-	FileType    string `json:"file_type"`     // 文件类型（扩展名）
-	FileSize    int64  `json:"file_size"`     // 文件大小（字节）
-	FieldKey    string `json:"field_key"`     // 所属字段标识
-	FieldName   string `json:"field_name"`    // 所属字段名称
-	Content     string `json:"content"`       // 提取的文本内容（可选）
-	ExtractedAt string `json:"extracted_at"`  // 提取时间
-	Error       string `json:"error"`         // 提取错误信息（如有）
+	DocID       string `json:"doc_id"`       // OA 系统中的附件 ID
+	FileName    string `json:"file_name"`    // 文件名
+	FileType    string `json:"file_type"`    // 文件类型（扩展名）
+	FileSize    int64  `json:"file_size"`    // 文件大小（字节）
+	FieldKey    string `json:"field_key"`    // 所属字段标识
+	FieldName   string `json:"field_name"`   // 所属字段名称
+	Content     string `json:"content"`      // 提取的文本内容（可选）
+	ExtractedAt string `json:"extracted_at"` // 提取时间
+	Error       string `json:"error"`        // 提取错误信息（如有）
 }
 
 // AttachmentFilePayload OA 适配器返回给识别服务的附件原始载荷。
@@ -180,7 +185,8 @@ type ProcessData struct {
 	ProcessID    string                              `json:"process_id"`
 	MainData     map[string]interface{}              `json:"main_data"`
 	DetailTables map[string][]map[string]interface{} `json:"detail_tables"`
-	Attachments  []AttachmentInfo                    `json:"attachments"` // 附件信息
+	FieldLabels  map[string]map[string]string        `json:"field_labels,omitempty"` // table -> field key -> display label
+	Attachments  []AttachmentInfo                    `json:"attachments"`            // 附件信息
 }
 
 // TodoItem OA 待办流程条目
