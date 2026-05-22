@@ -1983,6 +1983,8 @@ func archiveProgressSteps(status string) []map[string]interface{} {
 	for i, def := range defs {
 		step := map[string]interface{}{"key": def.key, "label": def.label}
 		switch {
+		case status == model.JobStatusCompleted:
+			step["done"] = true
 		case status == model.JobStatusFailed && i == cur:
 			step["failed"] = true
 		case i < cur:

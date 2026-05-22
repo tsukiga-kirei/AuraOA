@@ -291,6 +291,7 @@ func SetupRouter(
 		embed.GET("/context", auditHandler.GetEmbedContext)
 		embed.POST("/execute", auditHandler.ExecuteEmbed)
 		embed.GET("/jobs/:id", auditHandler.GetJobStatus)
+		embed.GET("/stream/:id", auditHandler.GetJobStream)
 	}
 
 	// 审核日志数据管理（仅 tenant_admin）：日志列表、统计及导出

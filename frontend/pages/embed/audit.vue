@@ -40,6 +40,8 @@ const currentResult = ref<AuditResult | null>(null)
 const showReasoning = ref(false)
 const pageError = ref('')
 const waitingParent = ref(true)
+const eventSourceStream = ref<EventSource | null>(null)
+const streamJobId = ref('')
 
 const processInfo = computed<EmbedProcessSummary | null>(() => context.value?.process ?? null)
 
@@ -159,6 +161,43 @@ const processMetaLine = computed(() => {
   return parts.join(' · ')
 })
 
+const mergeAuditProgress = (st: Partial<AuditResult>) => {
+  const oldReasoning = currentResult.value?.ai_reasoning || ''
+  currentResult.value = { ...currentResult.value, ...st } as AuditResult
+  const nextReasoning = currentResult.value?.ai_reasoning || ''
+  if (oldReasoning.length > nextReasoning.length && currentResult.value) {
+    currentResult.value.ai_reasoning = oldReasoning
+  }
+}
+
+const disconnectStream = () => {
+  if (eventSourceStream.value) {
+    eventSourceStream.value.close()
+    eventSourceStream.value = null
+  }
+  streamJobId.value = ''
+}
+
+const startSSE = (auditResultId?: string) => {
+  if (!process.client || !auditResultId || streamJobId.value === auditResultId) return
+  disconnectStream()
+  streamJobId.value = auditResultId
+  eventSourceStream.value = new EventSource(`/api/embed/stream/${encodeURIComponent(auditResultId)}`)
+  eventSourceStream.value.onmessage = (event) => {
+    if (!currentResult.value) return
+    const chunk = event.data || ''
+    const existing = currentResult.value.ai_reasoning || ''
+    if (!existing || chunk.startsWith(existing)) {
+      currentResult.value.ai_reasoning = chunk
+    } else {
+      currentResult.value.ai_reasoning = existing + chunk
+    }
+  }
+  eventSourceStream.value.onerror = () => {
+    disconnectStream()
+  }
+}
+
 function createPendingResult(): AuditResult {
   return {
     trace_id: '',
@@ -176,6 +215,7 @@ function createPendingResult(): AuditResult {
 
 async function runAudit(trigger: 'embed_auto' | 'embed_manual') {
   if (!processId.value || auditing.value) return
+  disconnectStream()
   auditing.value = true
   currentResult.value = createPendingResult()
   try {
@@ -187,14 +227,11 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual') {
         trigger_source: trigger,
       },
       (st) => {
-        const oldReasoning = currentResult.value?.ai_reasoning || ''
-        currentResult.value = { ...currentResult.value, ...st } as AuditResult
-        if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
-          if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
-        }
+        mergeAuditProgress(st)
+        startSSE(st.id)
       },
     )
-    currentResult.value = result
+    mergeAuditProgress(result)
     await refreshContext(false)
     if (trigger === 'embed_manual') {
       message.success(t('embed.reAuditDone'))
@@ -205,6 +242,7 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual') {
     await refreshContext(false)
   } finally {
     auditing.value = false
+    disconnectStream()
   }
 }
 
@@ -220,14 +258,19 @@ async function refreshContext(autoRun = true) {
       await runAudit('embed_auto')
     } else if (resp.running_job_id && !auditing.value) {
       auditing.value = true
-      currentResult.value = createPendingResult()
+      currentResult.value = resp.audit_result
+        ? ({ ...createPendingResult(), ...resp.audit_result } as AuditResult)
+        : createPendingResult()
+      startSSE(resp.running_job_id)
       try {
-        currentResult.value = await waitAuditJob(resp.running_job_id, (st) => {
-          currentResult.value = { ...currentResult.value, ...st } as AuditResult
+        const result = await waitAuditJob(resp.running_job_id, (st) => {
+          mergeAuditProgress(st)
         })
+        mergeAuditProgress(result)
         await refreshContext(false)
       } finally {
         auditing.value = false
+        disconnectStream()
       }
     }
   } catch (e: any) {
@@ -245,10 +288,16 @@ async function bootstrap() {
       pageError.value = t('embed.noRequestId')
       return
     }
-    await refreshContext(true)
+    await refreshContext(false)
   } finally {
     pageLoading.value = false
     waitingParent.value = false
+  }
+  const embedContext = context.value as EmbedContextResponse | null
+  if (embedContext?.supported && embedContext.should_auto_audit && !auditing.value && !embedContext.running_job_id) {
+    await runAudit('embed_auto')
+  } else if (embedContext?.running_job_id && !auditing.value) {
+    await refreshContext(true)
   }
 }
 
@@ -257,7 +306,12 @@ const handleReAudit = () => runAudit('embed_manual')
 onMounted(async () => {
   waitingParent.value = true
   processId.value = await waitForParentRequestId()
+  waitingParent.value = false
   await bootstrap()
+})
+
+onBeforeUnmount(() => {
+  disconnectStream()
 })
 </script>
 
@@ -328,6 +382,13 @@ onMounted(async () => {
               <h3 class="embed-process-card__title" :title="processInfo.title">
                 {{ processInfo.title }}
               </h3>
+            </div>
+            <p v-if="processMetaLine" class="embed-process-card__meta">{{ processMetaLine }}</p>
+            <div class="embed-process-card__footer">
+              <div v-if="processInfo.current_node" class="embed-process-card__node">
+                <FieldTimeOutlined />
+                <span>{{ processInfo.current_node }}</span>
+              </div>
               <a-button
                 class="embed-process-card__action"
                 type="text"
@@ -339,11 +400,6 @@ onMounted(async () => {
                 <ReloadOutlined />
                 <span>{{ t('dashboard.reAudit') }}</span>
               </a-button>
-            </div>
-            <p v-if="processMetaLine" class="embed-process-card__meta">{{ processMetaLine }}</p>
-            <div v-if="processInfo.current_node" class="embed-process-card__node">
-              <FieldTimeOutlined />
-              <span>{{ processInfo.current_node }}</span>
             </div>
           </div>
         </div>
@@ -532,16 +588,19 @@ onMounted(async () => {
   display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px;
 }
 .embed-process-card__title {
-  flex: 1; min-width: 0; margin: 0;
+  min-width: 0; margin: 0;
   font-size: 14px; font-weight: 600; line-height: 1.5;
   color: var(--color-text-primary);
   word-break: keep-all; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.embed-process-card__footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
 .embed-process-card__action {
   flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px;
-  height: 28px; padding: 0 8px; margin: -2px -6px 0 0;
+  height: 24px; padding: 0 8px; margin: 0 -4px 0 0;
   font-size: 12px; color: var(--color-primary);
   border-radius: 6px; white-space: nowrap;
 }
@@ -555,10 +614,14 @@ onMounted(async () => {
 }
 .embed-process-card__node {
   display: inline-flex; align-items: center; gap: 5px;
+  min-width: 0;
   padding: 3px 10px; border-radius: 999px;
   font-size: 11px; font-weight: 500;
   color: var(--color-text-secondary);
   background: var(--color-bg-hover);
+}
+.embed-process-card__node span {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .embed-process-card__node .anticon { font-size: 11px; color: var(--color-text-tertiary); }
 

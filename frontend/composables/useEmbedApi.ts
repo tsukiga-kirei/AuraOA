@@ -5,10 +5,11 @@ async function embedFetch<T>(
   path: string,
   init?: { method?: 'GET' | 'POST'; body?: unknown },
 ): Promise<T> {
-  return await $fetch<T>(path, {
+  const res = await $fetch<T>(path, {
     method: init?.method ?? 'GET',
     body: init?.body as Record<string, unknown> | undefined,
   })
+  return res as T
 }
 
 /**
@@ -53,6 +54,7 @@ export const useEmbedApi = () => {
     if (submit.status !== 'pending' || !submit.id) {
       return submit as unknown as AuditResult
     }
+    onProgress?.(submit as unknown as AuditResult & { progress_steps?: unknown[] })
     return await waitAuditJob(submit.id, onProgress)
   }
 

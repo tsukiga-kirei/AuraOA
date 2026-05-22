@@ -842,6 +842,8 @@ func auditProgressSteps(status string) []map[string]interface{} {
 	for i, d := range defs {
 		m := map[string]interface{}{"key": d.key, "label": d.label}
 		switch {
+		case status == model.JobStatusCompleted:
+			m["done"] = true
 		case status == model.JobStatusFailed && i == cur:
 			m["failed"] = true
 		case i < cur:
