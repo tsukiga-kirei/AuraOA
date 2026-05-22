@@ -35,6 +35,8 @@ type Ecology9Adapter struct {
 	httpClient               *http.Client
 }
 
+var e9MultiLangTextPattern = regexp.MustCompile("(?s)[`~]*\\s*(\\d+)\\s*(.*?)(?=[`~]+\\s*\\d+\\s*|[`~]+\\s*$|$)")
+
 // AttachmentRecognitionService 附件识别服务接口（避免循环依赖）。
 //
 // adapter 层负责从 OA 拉取附件原始载荷，识别服务仅做 MinerU 解析。
@@ -583,12 +585,19 @@ type e9BrowseField struct {
 	FieldDBType string
 }
 
+type e9ChoiceField struct {
+	FieldID     int
+	FieldKey    string
+	DetailTable string
+}
+
 type e9BrowseTarget struct {
 	Table         string
 	IDColumn      string
 	DisplayColumn string
 	Multiple      bool
 	Source        string
+	NumericID     bool
 }
 
 type e9BrowserURLDef struct {
@@ -633,7 +642,10 @@ func (a *Ecology9Adapter) ResolveBrowseDisplayValues(ctx context.Context, proces
 		return fmt.Errorf("查询流程表单定义失败 (formid=%d): %w", formID, err)
 	}
 
-	return a.resolveBrowseDisplayValuesForFields(ctx, processID, formID, tableDBName, pd, fieldSet)
+	if err := a.resolveBrowseDisplayValuesForFields(ctx, processID, formID, tableDBName, pd, fieldSet); err != nil {
+		return err
+	}
+	return a.resolveChoiceDisplayValuesForFields(ctx, processID, formID, tableDBName, pd, fieldSet)
 }
 
 func (a *Ecology9Adapter) resolveBrowseDisplayValuesForFields(ctx context.Context, processID string, formID int, mainTable string, pd *ProcessData, fieldSet map[string]map[string]bool) error {
@@ -687,6 +699,9 @@ func (a *Ecology9Adapter) resolveBrowseDisplayValuesForFields(ctx context.Contex
 				continue
 			}
 			for _, id := range splitBrowseIDs(raw) {
+				if !target.validID(id) {
+					continue
+				}
 				valuesByKey[targetKey][id] = struct{}{}
 			}
 			bindings = append(bindings, fieldBinding{field: field, target: target, row: row, key: actualKey})
@@ -729,6 +744,70 @@ func (a *Ecology9Adapter) resolveBrowseDisplayValuesForFields(ctx context.Contex
 	return nil
 }
 
+func (a *Ecology9Adapter) resolveChoiceDisplayValuesForFields(ctx context.Context, processID string, formID int, mainTable string, pd *ProcessData, fieldSet map[string]map[string]bool) error {
+	if pd == nil {
+		return nil
+	}
+	fields, err := a.fetchChoiceFields(ctx, formID)
+	if err != nil {
+		pkglogger.Global().Warn("选择框解析：查询字段定义失败，保留原始值",
+			zap.String("processID", processID),
+			zap.Int("formID", formID),
+			zap.Error(err))
+		return nil
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+
+	selectedFields := make([]e9ChoiceField, 0, len(fields))
+	fieldIDs := make([]int, 0, len(fields))
+	for _, field := range fields {
+		if !browseFieldSelected(mainTable, e9BrowseField{FieldKey: field.FieldKey, DetailTable: field.DetailTable}, fieldSet) {
+			continue
+		}
+		selectedFields = append(selectedFields, field)
+		fieldIDs = append(fieldIDs, field.FieldID)
+	}
+	if len(selectedFields) == 0 {
+		return nil
+	}
+
+	optionsByField := a.fetchChoiceOptionMaps(ctx, fieldIDs)
+	if len(optionsByField) == 0 {
+		return nil
+	}
+
+	var resolvedCount int
+	for _, field := range selectedFields {
+		optionMap := optionsByField[field.FieldID]
+		if len(optionMap) == 0 {
+			continue
+		}
+		rows := browseRowsForField(pd, mainTable, e9BrowseField{FieldKey: field.FieldKey, DetailTable: field.DetailTable})
+		for _, row := range rows {
+			actualKey, ok := mapFindKey(row, field.FieldKey)
+			if !ok {
+				continue
+			}
+			raw := stringifyDBValue(row[actualKey])
+			if raw == "" {
+				continue
+			}
+			if resolved := buildChoiceResolvedValue(raw, optionMap); resolved != nil {
+				row[actualKey] = resolved
+				resolvedCount++
+			}
+		}
+	}
+	if resolvedCount > 0 {
+		pkglogger.Global().Debug("选择框解析：已增补显示值",
+			zap.String("processID", processID),
+			zap.Int("fieldValueCount", resolvedCount))
+	}
+	return nil
+}
+
 func (a *Ecology9Adapter) fetchBrowseFields(ctx context.Context, formID int) ([]e9BrowseField, error) {
 	var rows []map[string]interface{}
 	err := a.db.WithContext(ctx).
@@ -758,6 +837,87 @@ func (a *Ecology9Adapter) fetchBrowseFields(ctx context.Context, formID int) ([]
 		})
 	}
 	return fields, nil
+}
+
+func (a *Ecology9Adapter) fetchChoiceFields(ctx context.Context, formID int) ([]e9ChoiceField, error) {
+	var rows []map[string]interface{}
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_billfield")).
+		Select(strings.Join([]string{
+			a.col("id") + " AS fieldid",
+			a.col("fieldname") + " AS fieldkey",
+			a.col("detailtable") + " AS detailtable",
+		}, ", ")).
+		Where(a.col("billid")+" = ? AND "+a.col("fieldhtmltype")+" = ?", formID, "5").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	fields := make([]e9ChoiceField, 0, len(rows))
+	for _, row := range rows {
+		fieldID := mapGetInt(row, "fieldid")
+		fieldKey := strings.TrimSpace(mapGet(row, "fieldkey"))
+		if fieldID == 0 || fieldKey == "" {
+			continue
+		}
+		fields = append(fields, e9ChoiceField{
+			FieldID:     fieldID,
+			FieldKey:    fieldKey,
+			DetailTable: strings.TrimSpace(mapGet(row, "detailtable")),
+		})
+	}
+	return fields, nil
+}
+
+func (a *Ecology9Adapter) fetchChoiceOptionMaps(ctx context.Context, fieldIDs []int) map[int]map[string]string {
+	result := map[int]map[string]string{}
+	if len(fieldIDs) == 0 {
+		return result
+	}
+	seen := map[int]struct{}{}
+	ids := make([]int, 0, len(fieldIDs))
+	for _, id := range fieldIDs {
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return result
+	}
+
+	var rows []map[string]interface{}
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_selectitem")).
+		Select(strings.Join([]string{
+			a.col("fieldid") + " AS fieldid",
+			a.col("selectvalue") + " AS option_value",
+			a.col("selectname") + " AS option_display",
+		}, ", ")).
+		Where(a.col("fieldid")+" IN ?", ids).
+		Find(&rows).Error
+	if err != nil {
+		pkglogger.Global().Warn("选择框解析：查询选项定义失败，保留原始值",
+			zap.Error(err))
+		return result
+	}
+	for _, row := range rows {
+		fieldID := mapGetInt(row, "fieldid")
+		value := strings.TrimSpace(mapGet(row, "option_value"))
+		display := normalizeChoiceDisplayName(mapGet(row, "option_display"))
+		if fieldID == 0 || value == "" || display == "" {
+			continue
+		}
+		if _, ok := result[fieldID]; !ok {
+			result[fieldID] = map[string]string{}
+		}
+		result[fieldID][value] = display
+	}
+	return result
 }
 
 func browseRowsForField(pd *ProcessData, mainTable string, field e9BrowseField) []map[string]interface{} {
@@ -818,7 +978,7 @@ func (a *Ecology9Adapter) resolveBrowseTarget(ctx context.Context, field e9Brows
 	if target, ok := builtinBrowseTarget(field.Type); ok {
 		return target, true
 	}
-	if field.Type == 161 || field.Type == 162 || strings.HasPrefix(strings.ToLower(field.FieldDBType), "browser.") {
+	if isCustomBrowseType(field.Type) || strings.HasPrefix(strings.ToLower(field.FieldDBType), "browser.") {
 		def, ok := a.fetchCustomBrowserURLDef(ctx, field)
 		if !ok {
 			return e9BrowseTarget{}, false
@@ -831,19 +991,48 @@ func (a *Ecology9Adapter) resolveBrowseTarget(ctx context.Context, field e9Brows
 				zap.String("browserName", def.BrowserName))
 			return e9BrowseTarget{}, false
 		}
-		target.Multiple = field.Type == 162
+		target.Multiple = isMultipleCustomBrowseType(field.Type)
 		target.Source = "custom"
 		return target, true
 	}
 	return e9BrowseTarget{}, false
 }
 
+func isCustomBrowseType(typeID int) bool {
+	switch typeID {
+	case 161, 162, 226, 256, 257:
+		return true
+	default:
+		return false
+	}
+}
+
+func isMultipleCustomBrowseType(typeID int) bool {
+	switch typeID {
+	case 162, 257:
+		return true
+	default:
+		return false
+	}
+}
+
 func builtinBrowseTarget(typeID int) (e9BrowseTarget, bool) {
 	targets := map[int]e9BrowseTarget{
-		1:  {Table: "hrmresource", IDColumn: "id", DisplayColumn: "lastname", Source: "hrm"},
-		2:  {Table: "hrmdepartment", IDColumn: "id", DisplayColumn: "departmentname", Source: "department"},
-		3:  {Table: "hrmsubcompany", IDColumn: "id", DisplayColumn: "subcompanyname", Source: "subcompany"},
-		17: {Table: "hrmresource", IDColumn: "id", DisplayColumn: "lastname", Multiple: true, Source: "hrm_multi"},
+		1:   {Table: "hrmresource", IDColumn: "id", DisplayColumn: "lastname", Source: "hrm", NumericID: true},
+		4:   {Table: "hrmdepartment", IDColumn: "id", DisplayColumn: "departmentname", Source: "department", NumericID: true},
+		16:  {Table: "workflow_requestbase", IDColumn: "requestid", DisplayColumn: "requestname", Source: "workflow", NumericID: true},
+		17:  {Table: "hrmresource", IDColumn: "id", DisplayColumn: "lastname", Multiple: true, Source: "hrm_multi", NumericID: true},
+		57:  {Table: "hrmdepartment", IDColumn: "id", DisplayColumn: "departmentname", Multiple: true, Source: "department_multi", NumericID: true},
+		152: {Table: "workflow_requestbase", IDColumn: "requestid", DisplayColumn: "requestname", Multiple: true, Source: "workflow_multi", NumericID: true},
+		164: {Table: "hrmsubcompany", IDColumn: "id", DisplayColumn: "subcompanyname", Source: "subcompany", NumericID: true},
+		165: {Table: "hrmresource", IDColumn: "id", DisplayColumn: "lastname", Source: "hrm_authorized", NumericID: true},
+		166: {Table: "hrmresource", IDColumn: "id", DisplayColumn: "lastname", Multiple: true, Source: "hrm_authorized_multi", NumericID: true},
+		167: {Table: "hrmdepartment", IDColumn: "id", DisplayColumn: "departmentname", Source: "department_authorized", NumericID: true},
+		168: {Table: "hrmdepartment", IDColumn: "id", DisplayColumn: "departmentname", Multiple: true, Source: "department_authorized_multi", NumericID: true},
+		169: {Table: "hrmsubcompany", IDColumn: "id", DisplayColumn: "subcompanyname", Source: "subcompany_authorized", NumericID: true},
+		170: {Table: "hrmsubcompany", IDColumn: "id", DisplayColumn: "subcompanyname", Multiple: true, Source: "subcompany_authorized_multi", NumericID: true},
+		171: {Table: "workflow_requestbase", IDColumn: "requestid", DisplayColumn: "requestname", Source: "workflow_archive", NumericID: true},
+		194: {Table: "hrmsubcompany", IDColumn: "id", DisplayColumn: "subcompanyname", Multiple: true, Source: "subcompany_multi", NumericID: true},
 	}
 	target, ok := targets[typeID]
 	return target, ok
@@ -931,11 +1120,20 @@ func (a *Ecology9Adapter) fetchBrowseDisplayMap(ctx context.Context, target e9Br
 	if len(ids) == 0 || !isSafeIdentifier(target.Table) || !isSafeIdentifier(target.IDColumn) || !isSafeIdentifier(target.DisplayColumn) {
 		return result
 	}
+	validIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if target.validID(id) {
+			validIDs = append(validIDs, id)
+		}
+	}
+	if len(validIDs) == 0 {
+		return result
+	}
 	var rows []map[string]interface{}
 	err := a.db.WithContext(ctx).
 		Table(a.tableName(target.Table)).
 		Select(a.col(target.IDColumn)+" AS browse_id, "+a.col(target.DisplayColumn)+" AS browse_display").
-		Where(a.col(target.IDColumn)+" IN ?", ids).
+		Where(a.col(target.IDColumn)+" IN ?", validIDs).
 		Find(&rows).Error
 	if err != nil {
 		pkglogger.Global().Warn("浏览按钮解析：查询显示值失败，保留原始值",
@@ -956,7 +1154,23 @@ func (a *Ecology9Adapter) fetchBrowseDisplayMap(ctx context.Context, target e9Br
 }
 
 func (t e9BrowseTarget) cacheKey() string {
-	return strings.ToLower(strings.Join([]string{t.Table, t.IDColumn, t.DisplayColumn, fmt.Sprintf("%t", t.Multiple), t.Source}, "|"))
+	return strings.ToLower(strings.Join([]string{t.Table, t.IDColumn, t.DisplayColumn, fmt.Sprintf("%t", t.Multiple), fmt.Sprintf("%t", t.NumericID), t.Source}, "|"))
+}
+
+func (t e9BrowseTarget) validID(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	if !t.NumericID {
+		return true
+	}
+	for _, r := range id {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func splitBrowseIDs(raw string) []string {
@@ -1016,6 +1230,83 @@ func buildBrowseResolvedValue(raw string, multiple bool, displayMap map[string]s
 		"display": strings.Join(displays, ", "),
 		"items":   items,
 	}
+}
+
+func buildChoiceResolvedValue(raw string, optionMap map[string]string) map[string]interface{} {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	if display := optionMap[raw]; display != "" {
+		return map[string]interface{}{
+			"value":   raw,
+			"display": display,
+		}
+	}
+
+	values := splitBrowseIDs(raw)
+	if len(values) <= 1 {
+		return nil
+	}
+	items := make([]map[string]interface{}, 0, len(values))
+	displays := make([]string, 0, len(values))
+	hasDisplay := false
+	for _, value := range values {
+		display := optionMap[value]
+		if display != "" {
+			hasDisplay = true
+			displays = append(displays, display)
+		} else {
+			displays = append(displays, value)
+		}
+		items = append(items, map[string]interface{}{
+			"value":   value,
+			"display": display,
+		})
+	}
+	if !hasDisplay {
+		return nil
+	}
+	return map[string]interface{}{
+		"value":   raw,
+		"display": strings.Join(displays, ", "),
+		"items":   items,
+	}
+}
+
+func normalizeChoiceDisplayName(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	labels := parseE9MultiLangText(s)
+	if len(labels) > 0 {
+		for _, langID := range []string{"7", "9", "8"} {
+			if label := strings.TrimSpace(labels[langID]); label != "" {
+				return label
+			}
+		}
+	}
+	return strings.Trim(s, "`~ \t\r\n")
+}
+
+func parseE9MultiLangText(raw string) map[string]string {
+	matches := e9MultiLangTextPattern.FindAllStringSubmatch(raw, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	labels := make(map[string]string, len(matches))
+	for _, match := range matches {
+		if len(match) < 3 {
+			continue
+		}
+		langID := strings.TrimSpace(match[1])
+		label := strings.Trim(match[2], "`~ \t\r\n")
+		if langID != "" && label != "" {
+			labels[langID] = label
+		}
+	}
+	return labels
 }
 
 func parseCustomBrowseTarget(browserURL string) (e9BrowseTarget, bool) {
