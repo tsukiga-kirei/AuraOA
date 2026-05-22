@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -163,10 +165,42 @@ func mapGetInt(m map[string]interface{}, key string) int {
 				return int(n)
 			case float64:
 				return int(n)
+			case string:
+				var out int
+				_, _ = fmt.Sscanf(strings.TrimSpace(n), "%d", &out)
+				return out
+			case []byte:
+				var out int
+				_, _ = fmt.Sscanf(strings.TrimSpace(string(n)), "%d", &out)
+				return out
 			}
 		}
 	}
 	return 0
+}
+
+// mapFindKey 在 OA 原始行中按字段名做大小写不敏感匹配，兼容 Oracle/DM 返回大写列名。
+func mapFindKey(m map[string]interface{}, key string) (string, bool) {
+	for k := range m {
+		if strings.EqualFold(k, key) {
+			return k, true
+		}
+	}
+	return "", false
+}
+
+func stringifyDBValue(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		return strings.TrimSpace(t)
+	case []byte:
+		return strings.TrimSpace(string(t))
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", t))
+	}
 }
 
 // ── ValidateProcess ────────────────────────────────────────
@@ -469,6 +503,8 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 		DetailTables: detailTables,
 	}
 
+	a.resolveBrowseDisplayValues(ctx, processID, formID, tableDBName, pd)
+
 	// 识别主表附件字段并提取内容（仅当注入了识别服务）
 	if a.attachmentRecognitionSvc == nil {
 		pkglogger.Global().Debug("附件识别：未注入识别服务，跳过",
@@ -497,6 +533,467 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 	}
 
 	return pd, nil
+}
+
+type e9BrowseField struct {
+	FieldKey    string
+	DetailTable string
+	Type        int
+	FieldDBType string
+}
+
+type e9BrowseTarget struct {
+	Table         string
+	IDColumn      string
+	DisplayColumn string
+	Multiple      bool
+	Source        string
+}
+
+type e9BrowserURLDef struct {
+	ID          int
+	BrowserName string
+	BrowserURL  string
+	FieldDBType string
+}
+
+// resolveBrowseDisplayValues 将 E9 浏览按钮字段的原始 ID 增补为 {"value","display"} 结构。
+// 解析失败不阻断审核流程；失败字段保持原值，避免 OA 个性化配置影响主链路可用性。
+func (a *Ecology9Adapter) resolveBrowseDisplayValues(ctx context.Context, processID string, formID int, mainTable string, pd *ProcessData) {
+	if pd == nil {
+		return
+	}
+	fields, err := a.fetchBrowseFields(ctx, formID)
+	if err != nil {
+		pkglogger.Global().Warn("浏览按钮解析：查询字段定义失败，保留原始值",
+			zap.String("processID", processID),
+			zap.Int("formID", formID),
+			zap.Error(err))
+		return
+	}
+	if len(fields) == 0 {
+		return
+	}
+
+	targetsByKey := map[string]e9BrowseTarget{}
+	valuesByKey := map[string]map[string]struct{}{}
+	type fieldBinding struct {
+		field  e9BrowseField
+		target e9BrowseTarget
+		row    map[string]interface{}
+		key    string
+	}
+	var bindings []fieldBinding
+
+	for _, field := range fields {
+		target, ok := a.resolveBrowseTarget(ctx, field)
+		if !ok {
+			continue
+		}
+		targetKey := target.cacheKey()
+		targetsByKey[targetKey] = target
+		if _, ok := valuesByKey[targetKey]; !ok {
+			valuesByKey[targetKey] = map[string]struct{}{}
+		}
+
+		rows := browseRowsForField(pd, mainTable, field)
+		for _, row := range rows {
+			actualKey, ok := mapFindKey(row, field.FieldKey)
+			if !ok {
+				continue
+			}
+			raw := stringifyDBValue(row[actualKey])
+			if raw == "" {
+				continue
+			}
+			for _, id := range splitBrowseIDs(raw) {
+				valuesByKey[targetKey][id] = struct{}{}
+			}
+			bindings = append(bindings, fieldBinding{field: field, target: target, row: row, key: actualKey})
+		}
+	}
+
+	if len(bindings) == 0 {
+		return
+	}
+
+	displayByTarget := map[string]map[string]string{}
+	for key, idSet := range valuesByKey {
+		target := targetsByKey[key]
+		ids := make([]string, 0, len(idSet))
+		for id := range idSet {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		displayByTarget[key] = a.fetchBrowseDisplayMap(ctx, target, ids)
+	}
+
+	var resolvedCount int
+	for _, binding := range bindings {
+		raw := stringifyDBValue(binding.row[binding.key])
+		if raw == "" {
+			continue
+		}
+		displayMap := displayByTarget[binding.target.cacheKey()]
+		resolved := buildBrowseResolvedValue(raw, binding.target.Multiple, displayMap)
+		if resolved != nil {
+			binding.row[binding.key] = resolved
+			resolvedCount++
+		}
+	}
+	if resolvedCount > 0 {
+		pkglogger.Global().Debug("浏览按钮解析：已增补显示值",
+			zap.String("processID", processID),
+			zap.Int("fieldValueCount", resolvedCount))
+	}
+}
+
+func (a *Ecology9Adapter) fetchBrowseFields(ctx context.Context, formID int) ([]e9BrowseField, error) {
+	var rows []map[string]interface{}
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_billfield")).
+		Select(strings.Join([]string{
+			a.col("fieldname") + " AS fieldkey",
+			a.col("detailtable") + " AS detailtable",
+			a.col("type") + " AS type",
+			a.col("fielddbtype") + " AS fielddbtype",
+		}, ", ")).
+		Where(a.col("billid")+" = ? AND "+a.col("fieldhtmltype")+" = ?", formID, "3").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	fields := make([]e9BrowseField, 0, len(rows))
+	for _, row := range rows {
+		fieldKey := strings.TrimSpace(mapGet(row, "fieldkey"))
+		if fieldKey == "" {
+			continue
+		}
+		fields = append(fields, e9BrowseField{
+			FieldKey:    fieldKey,
+			DetailTable: strings.TrimSpace(mapGet(row, "detailtable")),
+			Type:        mapGetInt(row, "type"),
+			FieldDBType: strings.TrimSpace(mapGet(row, "fielddbtype")),
+		})
+	}
+	return fields, nil
+}
+
+func browseRowsForField(pd *ProcessData, mainTable string, field e9BrowseField) []map[string]interface{} {
+	dt := strings.TrimSpace(field.DetailTable)
+	if dt == "" || dt == "0" || strings.EqualFold(dt, "主表") || strings.EqualFold(dt, mainTable) {
+		if len(pd.MainData) == 0 {
+			return nil
+		}
+		return []map[string]interface{}{pd.MainData}
+	}
+	if len(dt) < 3 && !strings.Contains(strings.ToLower(dt), "dt") {
+		dt = fmt.Sprintf("%s_dt%s", mainTable, dt)
+	}
+	for tableName, rows := range pd.DetailTables {
+		if strings.EqualFold(tableName, dt) {
+			return rows
+		}
+	}
+	return nil
+}
+
+func (a *Ecology9Adapter) resolveBrowseTarget(ctx context.Context, field e9BrowseField) (e9BrowseTarget, bool) {
+	if target, ok := builtinBrowseTarget(field.Type); ok {
+		return target, true
+	}
+	if field.Type == 161 || field.Type == 162 || strings.HasPrefix(strings.ToLower(field.FieldDBType), "browser.") {
+		def, ok := a.fetchCustomBrowserURLDef(ctx, field)
+		if !ok {
+			return e9BrowseTarget{}, false
+		}
+		target, ok := parseCustomBrowseTarget(def.BrowserURL)
+		if !ok {
+			pkglogger.Global().Warn("浏览按钮解析：无法识别自定义浏览框 SQL，保留原始值",
+				zap.String("fieldKey", field.FieldKey),
+				zap.String("fieldDBType", field.FieldDBType),
+				zap.String("browserName", def.BrowserName))
+			return e9BrowseTarget{}, false
+		}
+		target.Multiple = field.Type == 162
+		target.Source = "custom"
+		return target, true
+	}
+	return e9BrowseTarget{}, false
+}
+
+func builtinBrowseTarget(typeID int) (e9BrowseTarget, bool) {
+	targets := map[int]e9BrowseTarget{
+		1:  {Table: "hrmresource", IDColumn: "id", DisplayColumn: "lastname", Source: "hrm"},
+		2:  {Table: "hrmdepartment", IDColumn: "id", DisplayColumn: "departmentname", Source: "department"},
+		3:  {Table: "hrmsubcompany", IDColumn: "id", DisplayColumn: "subcompanyname", Source: "subcompany"},
+		17: {Table: "hrmresource", IDColumn: "id", DisplayColumn: "lastname", Multiple: true, Source: "hrm_multi"},
+	}
+	target, ok := targets[typeID]
+	return target, ok
+}
+
+func (a *Ecology9Adapter) fetchCustomBrowserURLDef(ctx context.Context, field e9BrowseField) (e9BrowserURLDef, bool) {
+	var rows []map[string]interface{}
+	query := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_browserurl")).
+		Select(strings.Join([]string{
+			a.col("id") + " AS id",
+			a.col("browsername") + " AS browsername",
+			a.col("browserurl") + " AS browserurl",
+			a.col("fielddbtype") + " AS fielddbtype",
+		}, ", "))
+
+	dbType := strings.TrimSpace(field.FieldDBType)
+	browserName := browserNameFromFieldDBType(dbType)
+	if browserName != "" && browserName != dbType {
+		query = query.Where(a.col("browsername")+" = ? OR "+a.col("fielddbtype")+" = ?", browserName, dbType)
+	} else if dbType != "" {
+		query = query.Where(a.col("fielddbtype")+" = ?", dbType)
+	} else {
+		query = query.Where(a.col("id")+" = ?", field.Type)
+	}
+
+	if err := query.Find(&rows).Error; err != nil || len(rows) == 0 {
+		if err != nil {
+			pkglogger.Global().Warn("浏览按钮解析：查询自定义浏览框定义失败",
+				zap.String("fieldKey", field.FieldKey),
+				zap.String("fieldDBType", field.FieldDBType),
+				zap.Error(err))
+		}
+		return e9BrowserURLDef{}, false
+	}
+	row := rows[0]
+	return e9BrowserURLDef{
+		ID:          mapGetInt(row, "id"),
+		BrowserName: mapGet(row, "browsername"),
+		BrowserURL:  mapGet(row, "browserurl"),
+		FieldDBType: mapGet(row, "fielddbtype"),
+	}, true
+}
+
+func browserNameFromFieldDBType(fieldDBType string) string {
+	s := strings.TrimSpace(fieldDBType)
+	if strings.HasPrefix(strings.ToLower(s), "browser.") {
+		return s[len("browser."):]
+	}
+	return s
+}
+
+func (a *Ecology9Adapter) fetchBrowseDisplayMap(ctx context.Context, target e9BrowseTarget, ids []string) map[string]string {
+	result := map[string]string{}
+	if len(ids) == 0 || !isSafeIdentifier(target.Table) || !isSafeIdentifier(target.IDColumn) || !isSafeIdentifier(target.DisplayColumn) {
+		return result
+	}
+	var rows []map[string]interface{}
+	err := a.db.WithContext(ctx).
+		Table(a.tableName(target.Table)).
+		Select(a.col(target.IDColumn)+" AS browse_id, "+a.col(target.DisplayColumn)+" AS browse_display").
+		Where(a.col(target.IDColumn)+" IN ?", ids).
+		Find(&rows).Error
+	if err != nil {
+		pkglogger.Global().Warn("浏览按钮解析：查询显示值失败，保留原始值",
+			zap.String("table", target.Table),
+			zap.String("idColumn", target.IDColumn),
+			zap.String("displayColumn", target.DisplayColumn),
+			zap.Error(err))
+		return result
+	}
+	for _, row := range rows {
+		id := mapGet(row, "browse_id")
+		display := mapGet(row, "browse_display")
+		if id != "" && display != "" {
+			result[id] = display
+		}
+	}
+	return result
+}
+
+func (t e9BrowseTarget) cacheKey() string {
+	return strings.ToLower(strings.Join([]string{t.Table, t.IDColumn, t.DisplayColumn, fmt.Sprintf("%t", t.Multiple), t.Source}, "|"))
+}
+
+func splitBrowseIDs(raw string) []string {
+	parts := strings.Split(raw, ",")
+	ids := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		id := strings.TrimSpace(part)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func buildBrowseResolvedValue(raw string, multiple bool, displayMap map[string]string) map[string]interface{} {
+	ids := splitBrowseIDs(raw)
+	if len(ids) == 0 {
+		return nil
+	}
+	if !multiple && len(ids) == 1 {
+		display := displayMap[ids[0]]
+		if display == "" {
+			return nil
+		}
+		return map[string]interface{}{
+			"value":   ids[0],
+			"display": display,
+		}
+	}
+	items := make([]map[string]interface{}, 0, len(ids))
+	displays := make([]string, 0, len(ids))
+	hasDisplay := false
+	for _, id := range ids {
+		display := displayMap[id]
+		if display != "" {
+			hasDisplay = true
+			displays = append(displays, display)
+		} else {
+			displays = append(displays, id)
+		}
+		items = append(items, map[string]interface{}{
+			"value":   id,
+			"display": display,
+		})
+	}
+	if !hasDisplay {
+		return nil
+	}
+	return map[string]interface{}{
+		"value":   raw,
+		"display": strings.Join(displays, ", "),
+		"items":   items,
+	}
+}
+
+func parseCustomBrowseTarget(browserURL string) (e9BrowseTarget, bool) {
+	sqlText := extractBrowserSQL(browserURL)
+	if sqlText == "" {
+		return e9BrowseTarget{}, false
+	}
+	re := regexp.MustCompile(`(?is)\bselect\s+(.+?)\s+\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)\b`)
+	matches := re.FindStringSubmatch(sqlText)
+	if len(matches) < 3 {
+		return e9BrowseTarget{}, false
+	}
+	columns := splitSelectColumns(matches[1])
+	if len(columns) < 2 {
+		return e9BrowseTarget{}, false
+	}
+	idColumn, ok := cleanSelectColumn(columns[0])
+	if !ok {
+		return e9BrowseTarget{}, false
+	}
+	displayColumn, ok := cleanSelectColumn(columns[1])
+	if !ok {
+		return e9BrowseTarget{}, false
+	}
+	table := strings.TrimSpace(matches[2])
+	if !isSafeIdentifier(table) || !isSafeIdentifier(idColumn) || !isSafeIdentifier(displayColumn) {
+		return e9BrowseTarget{}, false
+	}
+	return e9BrowseTarget{Table: table, IDColumn: idColumn, DisplayColumn: displayColumn}, true
+}
+
+func extractBrowserSQL(browserURL string) string {
+	s := strings.TrimSpace(browserURL)
+	if s == "" {
+		return ""
+	}
+	if decoded, err := url.QueryUnescape(s); err == nil {
+		s = decoded
+	}
+	if parsed, err := url.Parse(s); err == nil && parsed.RawQuery != "" {
+		q := parsed.Query()
+		for _, key := range []string{"sql", "SQL", "Sql"} {
+			if value := strings.TrimSpace(q.Get(key)); value != "" {
+				return value
+			}
+		}
+	}
+	lower := strings.ToLower(s)
+	if idx := strings.Index(lower, "sql="); idx >= 0 {
+		sqlPart := s[idx+4:]
+		if amp := strings.Index(sqlPart, "&"); amp >= 0 {
+			sqlPart = sqlPart[:amp]
+		}
+		if decoded, err := url.QueryUnescape(sqlPart); err == nil {
+			sqlPart = decoded
+		}
+		return strings.TrimSpace(sqlPart)
+	}
+	if idx := strings.Index(lower, "select "); idx >= 0 {
+		return strings.TrimSpace(s[idx:])
+	}
+	return ""
+}
+
+func splitSelectColumns(selectPart string) []string {
+	var cols []string
+	start := 0
+	depth := 0
+	inQuote := rune(0)
+	for i, r := range selectPart {
+		switch {
+		case inQuote != 0:
+			if r == inQuote {
+				inQuote = 0
+			}
+		case r == '\'' || r == '"':
+			inQuote = r
+		case r == '(':
+			depth++
+		case r == ')' && depth > 0:
+			depth--
+		case r == ',' && depth == 0:
+			cols = append(cols, strings.TrimSpace(selectPart[start:i]))
+			start = i + len(string(r))
+		}
+	}
+	cols = append(cols, strings.TrimSpace(selectPart[start:]))
+	return cols
+}
+
+func cleanSelectColumn(expr string) (string, bool) {
+	s := strings.TrimSpace(expr)
+	if s == "" {
+		return "", false
+	}
+	lower := strings.ToLower(s)
+	if idx := strings.LastIndex(lower, " as "); idx >= 0 {
+		s = strings.TrimSpace(s[:idx])
+	}
+	fields := strings.Fields(s)
+	if len(fields) >= 1 {
+		s = fields[0]
+	}
+	if dot := strings.LastIndex(s, "."); dot >= 0 {
+		s = s[dot+1:]
+	}
+	s = strings.Trim(s, "`\"[] ")
+	if !isSafeIdentifier(s) {
+		return "", false
+	}
+	return s, true
+}
+
+func isSafeIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_' || (i > 0 && r >= '0' && r <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // recognizeMainAttachments 识别主表中的附件字段（fieldhtmltype=6），
