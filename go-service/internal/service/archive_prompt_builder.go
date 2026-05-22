@@ -20,8 +20,8 @@ func BuildArchiveReasoningPrompt(
 	fieldSet SelectedFieldSet,
 	flowSnapshot *oa.ProcessFlowSnapshot,
 ) *ai.ChatRequest {
-	mainDataStr := formatMainData(filterFields(processData.MainData, fieldSet["main"]))
-	detailDataStr := formatGroupedDetailData(processData.DetailTables, fieldSet)
+	mainDataStr := formatMainData(filterFields(processData.MainData, fieldSet["main"]), processData.FieldLabels["main"])
+	detailDataStr := formatGroupedDetailData(processData.DetailTables, fieldSet, processData.FieldLabels)
 	attachmentsStr := formatAttachments(processData.Attachments, 8000)
 
 	flowHistory := "（暂未提供审批流历史）"

@@ -128,7 +128,6 @@ func firstNonEmpty(values ...string) string {
 // ── 字段过滤 ──
 
 // filterFields 从 map 中只保留 allowedKeys 指定的字段（大小写不敏感匹配）。
-// filterFields 从 map 中只保留 allowedKeys 指定的字段（大小写不敏感匹配）。
 // allowedKeys 为 nil 时直接返回原始 data，表示全选不过滤。
 // allowedKeys 为空 map 时返回 nil，表示该表无选中字段不输出。
 func filterFields(data map[string]interface{}, allowedKeys map[string]bool) map[string]interface{} {
@@ -170,11 +169,11 @@ func filterRowFields(rows []map[string]interface{}, allowedKeys map[string]bool)
 // ── 格式化 ──
 
 // formatMainData 将主表数据格式化为缩进 JSON 字符串，数据为空时返回占位提示。
-func formatMainData(data map[string]interface{}) string {
+func formatMainData(data map[string]interface{}, labels map[string]string) string {
 	if len(data) == 0 {
 		return "（无主表数据）"
 	}
-	b, err := json.MarshalIndent(data, "", "  ")
+	b, err := json.MarshalIndent(projectPromptRow(data, labels), "", "  ")
 	if err != nil {
 		return fmt.Sprintf("%v", data)
 	}
@@ -182,7 +181,7 @@ func formatMainData(data map[string]interface{}) string {
 }
 
 // formatGroupedDetailData 将按表分组的明细数据格式化为带表名标签的文本。
-func formatGroupedDetailData(detailTables map[string][]map[string]interface{}, fieldSet SelectedFieldSet) string {
+func formatGroupedDetailData(detailTables map[string][]map[string]interface{}, fieldSet SelectedFieldSet, labelsByTable map[string]map[string]string) string {
 	if len(detailTables) == 0 {
 		return "（无明细表数据）"
 	}
@@ -212,11 +211,15 @@ func formatGroupedDetailData(detailTables map[string][]map[string]interface{}, f
 		if filteredRows == nil || len(filteredRows) == 0 {
 			continue
 		}
+		promptRows := make([]map[string]interface{}, 0, len(filteredRows))
+		for _, row := range filteredRows {
+			promptRows = append(promptRows, projectPromptRow(row, labelsByTable[tableName]))
+		}
 
 		sb.WriteString(fmt.Sprintf("### %s（%s）共 %d 行\n", label, tableName, len(filteredRows)))
-		b, err := json.MarshalIndent(filteredRows, "", "  ")
+		b, err := json.MarshalIndent(promptRows, "", "  ")
 		if err != nil {
-			sb.WriteString(fmt.Sprintf("%v\n", filteredRows))
+			sb.WriteString(fmt.Sprintf("%v\n", promptRows))
 		} else {
 			sb.Write(b)
 			sb.WriteByte('\n')
@@ -224,6 +227,77 @@ func formatGroupedDetailData(detailTables map[string][]map[string]interface{}, f
 		sb.WriteByte('\n')
 	}
 	return sb.String()
+}
+
+func projectPromptRow(row map[string]interface{}, labels map[string]string) map[string]interface{} {
+	if len(row) == 0 {
+		return row
+	}
+	out := make(map[string]interface{}, len(row))
+	used := map[string]int{}
+	keys := make([]string, 0, len(row))
+	for key := range row {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		label := promptFieldLabel(key, labels)
+		used[label]++
+		if used[label] > 1 {
+			label = fmt.Sprintf("%s_%d", label, used[label])
+		}
+		out[label] = promptDisplayValue(row[key])
+	}
+	return out
+}
+
+func promptFieldLabel(fieldKey string, labels map[string]string) string {
+	if labels == nil {
+		return fieldKey
+	}
+	if label := strings.TrimSpace(labels[fieldKey]); label != "" {
+		return label
+	}
+	if label := strings.TrimSpace(labels[strings.ToLower(fieldKey)]); label != "" {
+		return label
+	}
+	for key, label := range labels {
+		if strings.EqualFold(key, fieldKey) && strings.TrimSpace(label) != "" {
+			return strings.TrimSpace(label)
+		}
+	}
+	return fieldKey
+}
+
+func promptDisplayValue(v interface{}) interface{} {
+	switch value := v.(type) {
+	case map[string]interface{}:
+		if display := strings.TrimSpace(fmt.Sprintf("%v", value["display"])); display != "" && display != "<nil>" {
+			return display
+		}
+		if raw, ok := value["value"]; ok {
+			return promptDisplayValue(raw)
+		}
+		projected := make(map[string]interface{}, len(value))
+		for k, item := range value {
+			projected[k] = promptDisplayValue(item)
+		}
+		return projected
+	case []interface{}:
+		items := make([]interface{}, len(value))
+		for i, item := range value {
+			items[i] = promptDisplayValue(item)
+		}
+		return items
+	case []map[string]interface{}:
+		items := make([]interface{}, len(value))
+		for i, item := range value {
+			items[i] = promptDisplayValue(item)
+		}
+		return items
+	default:
+		return v
+	}
 }
 
 // formatAttachments 将附件识别结果格式化为 prompt 友好的文本块。

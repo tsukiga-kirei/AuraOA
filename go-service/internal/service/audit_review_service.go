@@ -454,7 +454,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		return nil
 	}
 
-	processData, err := s.fetchOAData(c, tenant, req.ProcessID)
+	processData, err := s.fetchOAData(c, tenant, req.ProcessID, fieldSet)
 	if err != nil {
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
 		tlog.Warn("审核任务执行失败",
@@ -1993,7 +1993,7 @@ func (s *AuditExecuteService) getOAAdapter(tenantID uuid.UUID) (oa.OAAdapter, er
 	return adapter, nil
 }
 
-func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, processID string) (*oa.ProcessData, error) {
+func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, processID string, fieldSets ...SelectedFieldSet) (*oa.ProcessData, error) {
 	if tenant.OADBConnectionID == nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "租户未配置 OA 数据库连接")
 	}
@@ -2016,6 +2016,13 @@ func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, 
 	data, err := adapter.FetchProcessData(c.Request.Context(), processID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAQueryFailed, "拉取 OA 流程数据失败: "+err.Error())
+	}
+	if len(fieldSets) > 0 {
+		if resolver, ok := adapter.(oa.BrowseValueResolver); ok {
+			if err := resolver.ResolveBrowseDisplayValues(c.Request.Context(), processID, data, fieldSets[0]); err != nil {
+				return nil, newServiceError(errcode.ErrOAQueryFailed, "解析 OA 浏览按钮显示值失败: "+err.Error())
+			}
+		}
 	}
 	return data, nil
 }

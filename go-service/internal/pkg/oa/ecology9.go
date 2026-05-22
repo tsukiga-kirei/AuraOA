@@ -501,9 +501,8 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 		ProcessID:    processID,
 		MainData:     mainData,
 		DetailTables: detailTables,
+		FieldLabels:  a.fetchFieldLabels(ctx, formID, tableDBName),
 	}
-
-	a.resolveBrowseDisplayValues(ctx, processID, formID, tableDBName, pd)
 
 	// 识别主表附件字段并提取内容（仅当注入了识别服务）
 	if a.attachmentRecognitionSvc == nil {
@@ -535,6 +534,48 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 	return pd, nil
 }
 
+func (a *Ecology9Adapter) fetchFieldLabels(ctx context.Context, formID int, mainTable string) map[string]map[string]string {
+	labels := map[string]map[string]string{"main": {}}
+	var rawFields []map[string]interface{}
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_billfield")+" "+a.col("t1")).
+		Select(a.col("t1.fieldname")+" AS fieldkey, "+a.col("t2.labelname")+" AS fieldname, "+a.col("t1.detailtable")+" AS detailtable").
+		Joins("JOIN "+a.tableName("htmllabelinfo")+" "+a.col("t2")+" ON "+a.col("t1.fieldlabel")+" = "+a.col("t2.indexid")).
+		Where(a.col("t1.billid")+" = ? AND "+a.col("t2.languageid")+" = 7", formID).
+		Find(&rawFields).Error
+	if err != nil {
+		pkglogger.Global().Warn("查询流程字段中文标签失败，AI prompt 将使用数据库字段名",
+			zap.Int("formID", formID),
+			zap.Error(err))
+		return labels
+	}
+	for _, row := range rawFields {
+		fieldKey := strings.TrimSpace(mapGet(row, "fieldkey"))
+		fieldName := strings.TrimSpace(mapGet(row, "fieldname"))
+		if fieldKey == "" || fieldName == "" {
+			continue
+		}
+		tableKey := normalizeDetailTableKey(mainTable, strings.TrimSpace(mapGet(row, "detailtable")))
+		if _, ok := labels[tableKey]; !ok {
+			labels[tableKey] = map[string]string{}
+		}
+		labels[tableKey][fieldKey] = fieldName
+		labels[tableKey][strings.ToLower(fieldKey)] = fieldName
+	}
+	return labels
+}
+
+func normalizeDetailTableKey(mainTable, detailTable string) string {
+	dt := strings.TrimSpace(detailTable)
+	if dt == "" || dt == "0" || strings.EqualFold(dt, "主表") || strings.EqualFold(dt, mainTable) {
+		return "main"
+	}
+	if len(dt) < 3 && !strings.Contains(strings.ToLower(dt), "dt") {
+		dt = fmt.Sprintf("%s_dt%s", mainTable, dt)
+	}
+	return dt
+}
+
 type e9BrowseField struct {
 	FieldKey    string
 	DetailTable string
@@ -557,11 +598,47 @@ type e9BrowserURLDef struct {
 	FieldDBType string
 }
 
-// resolveBrowseDisplayValues 将 E9 浏览按钮字段的原始 ID 增补为 {"value","display"} 结构。
-// 解析失败不阻断审核流程；失败字段保持原值，避免 OA 个性化配置影响主链路可用性。
-func (a *Ecology9Adapter) resolveBrowseDisplayValues(ctx context.Context, processID string, formID int, mainTable string, pd *ProcessData) {
+// ResolveBrowseDisplayValues 仅解析字段选择集会发送给 AI 的浏览按钮字段。
+func (a *Ecology9Adapter) ResolveBrowseDisplayValues(ctx context.Context, processID string, pd *ProcessData, fieldSet map[string]map[string]bool) error {
 	if pd == nil {
-		return
+		return nil
+	}
+	var workflowID int
+	reqRow := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_requestbase")).
+		Select(a.col("workflowid")).
+		Where(a.col("requestid")+" = ?", processID).
+		Row()
+	if err := reqRow.Scan(&workflowID); err != nil {
+		return fmt.Errorf("查询流程实例失败: %w", err)
+	}
+
+	var formID int
+	wfRow := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_base")).
+		Select(a.col("formid")).
+		Where(a.col("id")+" = ?", workflowID).
+		Row()
+	if err := wfRow.Scan(&formID); err != nil {
+		return fmt.Errorf("查询流程定义失败: %w", err)
+	}
+
+	var tableDBName string
+	billRow := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_bill")).
+		Select(a.col("tablename")).
+		Where(a.col("id")+" = ?", formID).
+		Row()
+	if err := billRow.Scan(&tableDBName); err != nil {
+		return fmt.Errorf("查询流程表单定义失败 (formid=%d): %w", formID, err)
+	}
+
+	return a.resolveBrowseDisplayValuesForFields(ctx, processID, formID, tableDBName, pd, fieldSet)
+}
+
+func (a *Ecology9Adapter) resolveBrowseDisplayValuesForFields(ctx context.Context, processID string, formID int, mainTable string, pd *ProcessData, fieldSet map[string]map[string]bool) error {
+	if pd == nil {
+		return nil
 	}
 	fields, err := a.fetchBrowseFields(ctx, formID)
 	if err != nil {
@@ -569,10 +646,10 @@ func (a *Ecology9Adapter) resolveBrowseDisplayValues(ctx context.Context, proces
 			zap.String("processID", processID),
 			zap.Int("formID", formID),
 			zap.Error(err))
-		return
+		return err
 	}
 	if len(fields) == 0 {
-		return
+		return nil
 	}
 
 	targetsByKey := map[string]e9BrowseTarget{}
@@ -586,6 +663,9 @@ func (a *Ecology9Adapter) resolveBrowseDisplayValues(ctx context.Context, proces
 	var bindings []fieldBinding
 
 	for _, field := range fields {
+		if !browseFieldSelected(mainTable, field, fieldSet) {
+			continue
+		}
 		target, ok := a.resolveBrowseTarget(ctx, field)
 		if !ok {
 			continue
@@ -614,7 +694,7 @@ func (a *Ecology9Adapter) resolveBrowseDisplayValues(ctx context.Context, proces
 	}
 
 	if len(bindings) == 0 {
-		return
+		return nil
 	}
 
 	displayByTarget := map[string]map[string]string{}
@@ -646,6 +726,7 @@ func (a *Ecology9Adapter) resolveBrowseDisplayValues(ctx context.Context, proces
 			zap.String("processID", processID),
 			zap.Int("fieldValueCount", resolvedCount))
 	}
+	return nil
 }
 
 func (a *Ecology9Adapter) fetchBrowseFields(ctx context.Context, formID int) ([]e9BrowseField, error) {
@@ -698,6 +779,41 @@ func browseRowsForField(pd *ProcessData, mainTable string, field e9BrowseField) 
 	return nil
 }
 
+func browseFieldSelected(mainTable string, field e9BrowseField, fieldSet map[string]map[string]bool) bool {
+	if fieldSet == nil {
+		return true
+	}
+	tableKey := browseFieldTableKey(mainTable, field)
+	allowedKeys, ok := fieldSet[tableKey]
+	if !ok && tableKey != "main" {
+		for key, value := range fieldSet {
+			if strings.EqualFold(key, tableKey) {
+				allowedKeys = value
+				ok = true
+				break
+			}
+		}
+	}
+	if !ok || allowedKeys == nil {
+		return true
+	}
+	if len(allowedKeys) == 0 {
+		return false
+	}
+	return allowedKeys[field.FieldKey] || allowedKeys[strings.ToLower(field.FieldKey)]
+}
+
+func browseFieldTableKey(mainTable string, field e9BrowseField) string {
+	dt := strings.TrimSpace(field.DetailTable)
+	if dt == "" || dt == "0" || strings.EqualFold(dt, "主表") || strings.EqualFold(dt, mainTable) {
+		return "main"
+	}
+	if len(dt) < 3 && !strings.Contains(strings.ToLower(dt), "dt") {
+		dt = fmt.Sprintf("%s_dt%s", mainTable, dt)
+	}
+	return dt
+}
+
 func (a *Ecology9Adapter) resolveBrowseTarget(ctx context.Context, field e9BrowseField) (e9BrowseTarget, bool) {
 	if target, ok := builtinBrowseTarget(field.Type); ok {
 		return target, true
@@ -734,42 +850,72 @@ func builtinBrowseTarget(typeID int) (e9BrowseTarget, bool) {
 }
 
 func (a *Ecology9Adapter) fetchCustomBrowserURLDef(ctx context.Context, field e9BrowseField) (e9BrowserURLDef, bool) {
-	var rows []map[string]interface{}
-	query := a.db.WithContext(ctx).
-		Table(a.tableName("workflow_browserurl")).
-		Select(strings.Join([]string{
-			a.col("id") + " AS id",
-			a.col("browsername") + " AS browsername",
-			a.col("browserurl") + " AS browserurl",
-			a.col("fielddbtype") + " AS fielddbtype",
-		}, ", "))
-
 	dbType := strings.TrimSpace(field.FieldDBType)
 	browserName := browserNameFromFieldDBType(dbType)
-	if browserName != "" && browserName != dbType {
-		query = query.Where(a.col("browsername")+" = ? OR "+a.col("fielddbtype")+" = ?", browserName, dbType)
-	} else if dbType != "" {
-		query = query.Where(a.col("fielddbtype")+" = ?", dbType)
-	} else {
-		query = query.Where(a.col("id")+" = ?", field.Type)
-	}
 
-	if err := query.Find(&rows).Error; err != nil || len(rows) == 0 {
+	if dbType != "" {
+		rows, err := a.queryBrowserURLDefs(ctx, a.col("fielddbtype")+" = ?", dbType, true)
+		if err == nil && len(rows) > 0 {
+			return browserURLDefFromRow(rows[0], browserName), true
+		}
 		if err != nil {
-			pkglogger.Global().Warn("浏览按钮解析：查询自定义浏览框定义失败",
+			pkglogger.Global().Debug("浏览按钮解析：按 fielddbtype 查询自定义浏览框失败，尝试降级",
 				zap.String("fieldKey", field.FieldKey),
 				zap.String("fieldDBType", field.FieldDBType),
 				zap.Error(err))
 		}
-		return e9BrowserURLDef{}, false
 	}
-	row := rows[0]
+
+	if field.Type > 0 && field.Type != 161 && field.Type != 162 {
+		rows, err := a.queryBrowserURLDefs(ctx, a.col("id")+" = ?", field.Type, true)
+		if err == nil && len(rows) > 0 {
+			return browserURLDefFromRow(rows[0], browserName), true
+		}
+	}
+
+	if browserName != "" {
+		rows, err := a.queryBrowserURLDefs(ctx, "", nil, false)
+		if err == nil {
+			for _, row := range rows {
+				if strings.Contains(strings.ToLower(mapGet(row, "browserurl")), strings.ToLower(browserName)) {
+					return browserURLDefFromRow(row, browserName), true
+				}
+			}
+		}
+	}
+
+	return e9BrowserURLDef{}, false
+}
+
+func (a *Ecology9Adapter) queryBrowserURLDefs(ctx context.Context, where string, arg interface{}, includeFieldDBType bool) ([]map[string]interface{}, error) {
+	selectParts := []string{
+		a.col("id") + " AS id",
+		a.col("browserurl") + " AS browserurl",
+	}
+	if includeFieldDBType {
+		selectParts = append(selectParts, a.col("fielddbtype")+" AS fielddbtype")
+	}
+	query := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_browserurl")).
+		Select(strings.Join(selectParts, ", "))
+	if strings.TrimSpace(where) != "" {
+		query = query.Where(where, arg)
+	}
+	var rows []map[string]interface{}
+	err := query.Find(&rows).Error
+	if err != nil && includeFieldDBType {
+		return a.queryBrowserURLDefs(ctx, where, arg, false)
+	}
+	return rows, err
+}
+
+func browserURLDefFromRow(row map[string]interface{}, browserName string) e9BrowserURLDef {
 	return e9BrowserURLDef{
 		ID:          mapGetInt(row, "id"),
-		BrowserName: mapGet(row, "browsername"),
+		BrowserName: browserName,
 		BrowserURL:  mapGet(row, "browserurl"),
 		FieldDBType: mapGet(row, "fielddbtype"),
-	}, true
+	}
 }
 
 func browserNameFromFieldDBType(fieldDBType string) string {

@@ -1287,6 +1287,14 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
 		return se
 	}
+	if resolver, ok := adapter.(oa.BrowseValueResolver); ok {
+		if err := resolver.ResolveBrowseDisplayValues(ctx, logEntry.ProcessID, processData, fieldSet); err != nil {
+			se := newServiceError(errcode.ErrOAQueryFailed, "解析 OA 浏览按钮显示值失败: "+err.Error())
+			s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
+			tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
+			return se
+		}
+	}
 
 	archivedItem, _ := s.fetchArchivedItem(ctx, adapter, logEntry.ProcessID)
 	flowSnapshot, err := adapter.FetchProcessFlow(ctx, logEntry.ProcessID)

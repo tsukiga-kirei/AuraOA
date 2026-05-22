@@ -12,8 +12,8 @@ import (
 // 将主表数据、明细表数据、规则文本、当前节点、审批流历史和流程图注入用户提示词模板的占位符中。
 // flowSnapshot 为 nil 或内容为空时使用默认占位文本，不影响推理执行。
 func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, processData *oa.ProcessData, rules string, currentNode string, fieldSet SelectedFieldSet, flowSnapshot *oa.ProcessFlowSnapshot) *ai.ChatRequest {
-	mainDataStr := formatMainData(filterFields(processData.MainData, fieldSet["main"]))
-	detailDataStr := formatGroupedDetailData(processData.DetailTables, fieldSet)
+	mainDataStr := formatMainData(filterFields(processData.MainData, fieldSet["main"]), processData.FieldLabels["main"])
+	detailDataStr := formatGroupedDetailData(processData.DetailTables, fieldSet, processData.FieldLabels)
 	attachmentsStr := formatAttachments(processData.Attachments, 8000)
 
 	flowHistory := "（暂未提供审批流历史）"
