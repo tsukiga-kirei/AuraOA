@@ -54,6 +54,7 @@ func BuildArchiveReasoningPrompt(
 		SystemPrompt: aiConfig.SystemReasoningPrompt,
 		UserPrompt:   userPrompt,
 		RequestType:  "archive",
+		CallType:     "reasoning",
 	}
 }
 
@@ -68,5 +69,6 @@ func BuildArchiveExtractionPrompt(aiConfig *model.ArchiveAIConfigData, reasoning
 		SystemPrompt: aiConfig.SystemExtractionPrompt,
 		UserPrompt:   userPrompt,
 		RequestType:  "archive",
+		CallType:     "structured",
 	}
 }

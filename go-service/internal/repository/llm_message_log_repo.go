@@ -25,6 +25,24 @@ func (r *LLMMessageLogRepo) Create(log *model.TenantLLMMessageLog) error {
 	return r.DB.Create(log).Error
 }
 
+// CreateWithPayload 写入一条大模型消息记录及其输入输出内容。
+func (r *LLMMessageLogRepo) CreateWithPayload(log *model.TenantLLMMessageLog, payload *model.TenantLLMMessagePayload) error {
+	return r.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(log).Error; err != nil {
+			return err
+		}
+		if payload == nil {
+			return nil
+		}
+		payload.LLMMessageLogID = log.ID
+		payload.TenantID = log.TenantID
+		if payload.CreatedAt.IsZero() {
+			payload.CreatedAt = log.CreatedAt
+		}
+		return tx.Create(payload).Error
+	})
+}
+
 // TokenUsageSummary Token 消耗统计汇总结构。
 type TokenUsageSummary struct {
 	TenantID      uuid.UUID `json:"tenant_id"`

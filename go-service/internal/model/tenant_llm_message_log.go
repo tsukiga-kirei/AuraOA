@@ -22,3 +22,17 @@ type TenantLLMMessageLog struct {
 }
 
 func (TenantLLMMessageLog) TableName() string { return "tenant_llm_message_logs" }
+
+// TenantLLMMessagePayload 保存单次 AI 调用的大文本输入输出内容。
+// 与 tenant_llm_message_logs 拆表，避免 token 统计和仪表盘查询扫描大字段。
+type TenantLLMMessagePayload struct {
+	ID              uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	LLMMessageLogID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex" json:"llm_message_log_id"`
+	TenantID        uuid.UUID `gorm:"type:uuid;not null;index" json:"tenant_id"`
+	SystemPrompt    string    `gorm:"type:text;not null;default:''" json:"system_prompt"`
+	UserPrompt      string    `gorm:"type:text;not null;default:''" json:"user_prompt"`
+	ResponseContent string    `gorm:"type:text;not null;default:''" json:"response_content"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+func (TenantLLMMessagePayload) TableName() string { return "tenant_llm_message_payloads" }

@@ -25,6 +25,7 @@ type ChatRequest struct {
 	MaxTokens       int                  `json:"max_tokens"`
 	SkipQuotaCheck  bool                 `json:"skip_quota_check"`
 	RequestType     string               `json:"request_type"`
+	CallType        string               `json:"call_type"` // reasoning | structured
 	StreamChunkFunc func(string)         `json:"-"`
 }
 

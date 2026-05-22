@@ -46,6 +46,7 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
 		SystemPrompt: aiConfig.SystemReasoningPrompt,
 		UserPrompt:   userPrompt,
 		RequestType:  "audit",
+		CallType:     "reasoning",
 	}
 }
 
@@ -60,5 +61,6 @@ func BuildExtractionPrompt(aiConfig *model.AIConfigData, reasoningResult string,
 		SystemPrompt: aiConfig.SystemExtractionPrompt,
 		UserPrompt:   userPrompt,
 		RequestType:  "audit",
+		CallType:     "structured",
 	}
 }
