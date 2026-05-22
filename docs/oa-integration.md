@@ -63,11 +63,14 @@ OA 数据库连接配置存储在 `oa_database_connections` 表中，支持：
 | `workflow_type` | 流程类型分类（类型名称） |
 | `workflow_bill` | 表单定义（主表名） |
 | `workflow_billfield` + `htmllabelinfo` | 字段定义（字段名、字段类型、所属表） |
+| `workflow_selectitem` | 选择框 / 下拉框选项定义 |
+| `workflow_browserurl` | 浏览按钮定义，含内置 / 系统 / 自定义浏览按钮的关联表与显示列 |
 | `workflow_requestbase` | 流程实例（请求 ID、创建人、状态） |
 | `workflow_currentoperator` | 当前审批人（待办列表数据源） |
 | `workflow_nodebase` | 审批节点定义 |
 | `hrmresource` | 人员信息（姓名、登录 ID） |
 | `hrmdepartment` | 部门信息 |
+| `hrmsubcompany` | 分部信息 |
 | `formtable_main_*` | 流程主表数据 |
 | `formtable_main_*_dt*` | 流程明细表数据 |
 
@@ -92,6 +95,7 @@ OA 数据库连接配置存储在 `oa_database_connections` 表中，支持：
    └─ workflow_requestbase → workflow_base → workflow_bill
    └─ 查询主表 formtable_main_* 数据
    └─ 查询明细表 formtable_main_*_dt1, dt2, ... 数据
+   └─ 增补字段中文名、浏览按钮显示值、选择框显示值
 
 4. FetchTodoListPaged(username, filter)
    └─ hrmresource(loginid→id) → workflow_currentoperator
@@ -101,6 +105,63 @@ OA 数据库连接配置存储在 `oa_database_connections` 表中，支持：
 5. FetchProcessFlow(processID)
    └─ 拉取审批流节点快照（节点名、审批人、操作、意见）
 ```
+
+**字段值翻译规则（供 AI prompt 使用）**：
+
+AuraOA 从 OA 物理表读取到的值通常是数据库存储值，例如人员 ID、流程 requestid、下拉框枚举值。进入 AI prompt 前，Ecology9 适配器会尽量把这些值翻译成业务可读文本；解析失败时保留原始值，不阻断审核。
+
+| 字段类型 | 泛微标识 | 数据源 | AuraOA 行为 |
+|----------|----------|--------|-------------|
+| 字段中文名 | `workflow_billfield.fieldlabel` | `htmllabelinfo.indexid`，`languageid=7` | prompt 中使用中文字段名，避免暴露数据库列名 |
+| 浏览按钮 | `fieldhtmltype=3` | `workflow_browserurl` 或内置兜底映射 | 将 ID 增补为显示名，最终 prompt 只展示显示文本 |
+| 选择框 / 下拉框 | `fieldhtmltype=5` | `workflow_selectitem` | 用 `fieldid + selectvalue` 找 `selectname`，再解析泛微多语言串 |
+| 附件 | `fieldhtmltype=6` | OA 附件接口 | 取附件正文并拼入 `{{attachments}}` |
+
+浏览按钮通用解析优先级：
+
+1. 先按 `workflow_billfield.type = workflow_browserurl.id` 查浏览按钮定义。
+2. 若 `workflow_browserurl.TABLENAME`、`COLUMNAME`、`KEYCOLUMNAME` 都不为空，则按通用方式查询显示值：`WHERE KEYCOLUMNAME IN (...)`，展示 `COLUMNAME`。
+3. `COLUMNAME` 是最终展示内容，可以是普通列名（如 `lastname`、`departmentname`、`requestname`），也可能是表达式（如成本中心编码 + 名称）。
+4. 多选字段通常在表单物理列中用英文逗号拼接多个值，AuraOA 会拆分后批量查询，再用 `, ` 拼接显示名。
+5. 若通用元数据不完整，再走少量内置兜底映射；自定义 `browser.xxx` 会继续按建模浏览框规则解析。
+
+常用内置兜底映射：
+
+| TYPE | 名称 | 关联表 | ID 字段 | 显示字段 | 备注 |
+|------|------|--------|---------|----------|------|
+| `1` | 人力资源 | `hrmresource` | `id` | `lastname` | 单选 |
+| `17` | 多人力资源 | `hrmresource` | `id` | `lastname` | 多选，逗号拆分 |
+| `4` | 部门 | `hrmdepartment` | `id` | `departmentname` | 单选 |
+| `57` | 多部门 | `hrmdepartment` | `id` | `departmentname` | 多选 |
+| `164` | 分部 | `hrmsubcompany` | `id` | `subcompanyname` | 单选 |
+| `194` | 多分部 | `hrmsubcompany` | `id` | `subcompanyname` | 多选 |
+| `16` | 流程 | `workflow_requestbase` | `requestid` | `requestname` | 单选 |
+| `152` | 多流程 | `workflow_requestbase` | `requestid` | `requestname` | 多选 |
+| `171` | 归档流程 | `workflow_requestbase` | `requestid` | `requestname` | 单选 |
+| `165` / `166` | 分权人力资源 | `hrmresource` | `id` | `lastname` | 单选 / 多选 |
+| `167` / `168` | 分权部门 | `hrmdepartment` | `id` | `departmentname` | 单选 / 多选 |
+| `169` / `170` | 分权分部 | `hrmsubcompany` | `id` | `subcompanyname` | 单选 / 多选 |
+
+> 不同 E9 版本或客户环境的 `TYPE` 含义可能不同。以客户环境中的浏览按钮配置为准，日期、时间、年份等系统字段本身就是可读值，不应按 ID 查询关联表。
+
+自定义 / 集成浏览按钮处理：
+
+| TYPE / FIELDDBTYPE | 处理方式 |
+|--------------------|----------|
+| `TYPE=161` | 自定义单选，通常 `workflow_browserurl` 只是通用入口；优先用 `FIELDDBTYPE=browser.xxx` 到 `mode_browser.SHOWNAME=xxx` 找建模浏览框 |
+| `TYPE=162` | 自定义多选，同上，表单值按逗号拆分多个 ID |
+| `TYPE=226` | 系统集成单选浏览按钮，按 `workflow_browserurl` 动态解析 |
+| `TYPE=256` | 自定义树形单选，按 `workflow_browserurl` 动态解析 |
+| `TYPE=257` | 自定义树形多选，按 `workflow_browserurl` 动态解析并按多选处理 |
+| `FIELDDBTYPE=browser.xxx` | 即使 `TYPE` 不在上述列表，也会按自定义浏览框尝试解析 |
+
+建模浏览框 `mode_browser` 处理：
+
+`FIELDDBTYPE=browser.keshangfenlei` 会去掉前缀得到 `keshangfenlei`，再查询 `mode_browser.SHOWNAME='keshangfenlei'`。优先解析 `SQLTEXT`，例如 `select id,dabm,dabm from uf_keshangfenlei`，取第一列作为存储值列、第二列作为显示列；若只有 `SEARCHBYID` / `SQLTEXT1`，则从 `where id=?` 中识别存储值列，从 `select` 第一列识别显示列。
+
+选择框 / 下拉框处理：
+
+`workflow_selectitem.FIELDID` 对应 `workflow_billfield.ID`，同一个 `FIELDID` 会有多行，每行是一项选项；真正定位选项的是 `FIELDID + SELECTVALUE`。`SELECTNAME` 在部分 E9 环境中是多语言串，例如 `~\`~7 新客站~\`~8 New passenger station~\`~9 新客站~\`~`，AuraOA 优先取语言 `7`，其次 `9`、`8`，普通文本如 `EMS` 则原样使用。
 
 ## 未完成的 OA 适配
 

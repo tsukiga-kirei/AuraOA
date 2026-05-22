@@ -35,8 +35,6 @@ type Ecology9Adapter struct {
 	httpClient               *http.Client
 }
 
-var e9MultiLangTextPattern = regexp.MustCompile("(?s)[`~]*\\s*(\\d+)\\s*(.*?)(?=[`~]+\\s*\\d+\\s*|[`~]+\\s*$|$)")
-
 // AttachmentRecognitionService 附件识别服务接口（避免循环依赖）。
 //
 // adapter 层负责从 OA 拉取附件原始载荷，识别服务仅做 MinerU 解析。
@@ -592,12 +590,13 @@ type e9ChoiceField struct {
 }
 
 type e9BrowseTarget struct {
-	Table         string
-	IDColumn      string
-	DisplayColumn string
-	Multiple      bool
-	Source        string
-	NumericID     bool
+	Table             string
+	IDColumn          string
+	DisplayColumn     string
+	DisplayExpression bool
+	Multiple          bool
+	Source            string
+	NumericID         bool
 }
 
 type e9BrowserURLDef struct {
@@ -605,6 +604,18 @@ type e9BrowserURLDef struct {
 	BrowserName string
 	BrowserURL  string
 	FieldDBType string
+	TableName   string
+	ColumnName  string
+	KeyColumn   string
+}
+
+type e9ModeBrowserDef struct {
+	ID         int
+	ShowName   string
+	Name       string
+	SQLText    string
+	SearchByID string
+	SQLText1   string
 }
 
 // ResolveBrowseDisplayValues 仅解析字段选择集会发送给 AI 的浏览按钮字段。
@@ -975,32 +986,77 @@ func browseFieldTableKey(mainTable string, field e9BrowseField) string {
 }
 
 func (a *Ecology9Adapter) resolveBrowseTarget(ctx context.Context, field e9BrowseField) (e9BrowseTarget, bool) {
+	if def, ok := a.fetchBrowserURLDefByType(ctx, field); ok {
+		if target, ok := browseTargetFromBrowserURLDef(def); ok {
+			target.Multiple = isMultipleBrowseField(field)
+			target.Source = "workflow_browserurl"
+			return target, true
+		}
+	}
 	if target, ok := builtinBrowseTarget(field.Type); ok {
 		return target, true
 	}
 	if isCustomBrowseType(field.Type) || strings.HasPrefix(strings.ToLower(field.FieldDBType), "browser.") {
+		browserName := browserNameFromFieldDBType(field.FieldDBType)
 		def, ok := a.fetchCustomBrowserURLDef(ctx, field)
 		if !ok {
+			if target, ok := a.resolveModeBrowserTarget(ctx, browserName); ok {
+				target.Multiple = isMultipleBrowseField(field)
+				target.Source = "mode_browser"
+				return target, true
+			}
 			return e9BrowseTarget{}, false
 		}
-		target, ok := parseCustomBrowseTarget(def.BrowserURL)
-		if !ok {
-			pkglogger.Global().Warn("浏览按钮解析：无法识别自定义浏览框 SQL，保留原始值",
-				zap.String("fieldKey", field.FieldKey),
-				zap.String("fieldDBType", field.FieldDBType),
-				zap.String("browserName", def.BrowserName))
-			return e9BrowseTarget{}, false
+		if target, ok := browseTargetFromBrowserURLDef(def); ok {
+			target.Multiple = isMultipleBrowseField(field)
+			target.Source = "workflow_browserurl_custom"
+			return target, true
 		}
-		target.Multiple = isMultipleCustomBrowseType(field.Type)
-		target.Source = "custom"
-		return target, true
+		if target, ok := a.resolveModeBrowserTarget(ctx, browserName); ok {
+			target.Multiple = isMultipleBrowseField(field)
+			target.Source = "mode_browser"
+			return target, true
+		}
+		pkglogger.Global().Warn("浏览按钮解析：未找到可用显示值配置，保留原始值",
+			zap.String("fieldKey", field.FieldKey),
+			zap.String("fieldDBType", field.FieldDBType),
+			zap.String("browserName", def.BrowserName))
+		return e9BrowseTarget{}, false
 	}
 	return e9BrowseTarget{}, false
+}
+
+func (a *Ecology9Adapter) fetchBrowserURLDefByType(ctx context.Context, field e9BrowseField) (e9BrowserURLDef, bool) {
+	if field.Type <= 0 {
+		return e9BrowserURLDef{}, false
+	}
+	rows, err := a.queryBrowserURLDefs(ctx, a.col("id")+" = ?", field.Type, true)
+	if err != nil || len(rows) == 0 {
+		return e9BrowserURLDef{}, false
+	}
+	return browserURLDefFromRow(rows[0], browserNameFromFieldDBType(field.FieldDBType)), true
 }
 
 func isCustomBrowseType(typeID int) bool {
 	switch typeID {
 	case 161, 162, 226, 256, 257:
+		return true
+	default:
+		return false
+	}
+}
+
+func isMultipleBrowseField(field e9BrowseField) bool {
+	if isMultipleCustomBrowseType(field.Type) {
+		return true
+	}
+	dbType := strings.ToLower(strings.TrimSpace(field.FieldDBType))
+	switch dbType {
+	case "text":
+		return true
+	}
+	switch field.Type {
+	case 17, 37, 57, 135, 152, 166, 168, 170, 184, 194, 278, 293, 314, 315, 317, 321, 322:
 		return true
 	default:
 		return false
@@ -1062,21 +1118,92 @@ func (a *Ecology9Adapter) fetchCustomBrowserURLDef(ctx context.Context, field e9
 		}
 	}
 
-	if browserName != "" {
-		rows, err := a.queryBrowserURLDefs(ctx, "", nil, false)
-		if err == nil {
-			for _, row := range rows {
-				if strings.Contains(strings.ToLower(mapGet(row, "browserurl")), strings.ToLower(browserName)) {
-					return browserURLDefFromRow(row, browserName), true
-				}
-			}
-		}
-	}
-
 	return e9BrowserURLDef{}, false
 }
 
+func (a *Ecology9Adapter) resolveModeBrowserTarget(ctx context.Context, browserName string) (e9BrowseTarget, bool) {
+	def, ok := a.fetchModeBrowserDef(ctx, browserName)
+	if !ok {
+		return e9BrowseTarget{}, false
+	}
+	if target, ok := parseModeBrowserSQLTextTarget(def.SQLText); ok {
+		return target, true
+	}
+	for _, sqlText := range []string{def.SearchByID, def.SQLText1} {
+		if target, ok := parseModeBrowserSearchByIDTarget(sqlText); ok {
+			return target, true
+		}
+	}
+	return e9BrowseTarget{}, false
+}
+
+func (a *Ecology9Adapter) fetchModeBrowserDef(ctx context.Context, browserName string) (e9ModeBrowserDef, bool) {
+	browserName = strings.TrimSpace(browserName)
+	if browserName == "" {
+		return e9ModeBrowserDef{}, false
+	}
+	var rows []map[string]interface{}
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("mode_browser")).
+		Select(strings.Join([]string{
+			a.col("id") + " AS id",
+			a.col("showname") + " AS showname",
+			a.col("name") + " AS name",
+			a.col("sqltext") + " AS sqltext",
+			a.col("searchbyid") + " AS searchbyid",
+			a.col("sqltext1") + " AS sqltext1",
+		}, ", ")).
+		Where(a.col("showname")+" = ?", browserName).
+		Find(&rows).Error
+	if err != nil {
+		pkglogger.Global().Debug("浏览按钮解析：查询建模浏览框失败，保留原始值",
+			zap.String("browserName", browserName),
+			zap.Error(err))
+		return e9ModeBrowserDef{}, false
+	}
+	if len(rows) == 0 {
+		return e9ModeBrowserDef{}, false
+	}
+	row := rows[0]
+	return e9ModeBrowserDef{
+		ID:         mapGetInt(row, "id"),
+		ShowName:   mapGet(row, "showname"),
+		Name:       mapGet(row, "name"),
+		SQLText:    mapGet(row, "sqltext"),
+		SearchByID: mapGet(row, "searchbyid"),
+		SQLText1:   mapGet(row, "sqltext1"),
+	}, true
+}
+
 func (a *Ecology9Adapter) queryBrowserURLDefs(ctx context.Context, where string, arg interface{}, includeFieldDBType bool) ([]map[string]interface{}, error) {
+	selectParts := []string{
+		a.col("id") + " AS id",
+		a.col("browserurl") + " AS browserurl",
+		a.col("tablename") + " AS tablename",
+		a.col("columname") + " AS columname",
+		a.col("keycolumname") + " AS keycolumname",
+	}
+	if includeFieldDBType {
+		selectParts = append(selectParts, a.col("fielddbtype")+" AS fielddbtype")
+	}
+	query := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_browserurl")).
+		Select(strings.Join(selectParts, ", "))
+	if strings.TrimSpace(where) != "" {
+		query = query.Where(where, arg)
+	}
+	var rows []map[string]interface{}
+	err := query.Find(&rows).Error
+	if err != nil {
+		if includeFieldDBType {
+			return a.queryBrowserURLDefsLegacy(ctx, where, arg, false)
+		}
+		return a.queryBrowserURLDefsLegacy(ctx, where, arg, includeFieldDBType)
+	}
+	return rows, err
+}
+
+func (a *Ecology9Adapter) queryBrowserURLDefsLegacy(ctx context.Context, where string, arg interface{}, includeFieldDBType bool) ([]map[string]interface{}, error) {
 	selectParts := []string{
 		a.col("id") + " AS id",
 		a.col("browserurl") + " AS browserurl",
@@ -1093,7 +1220,7 @@ func (a *Ecology9Adapter) queryBrowserURLDefs(ctx context.Context, where string,
 	var rows []map[string]interface{}
 	err := query.Find(&rows).Error
 	if err != nil && includeFieldDBType {
-		return a.queryBrowserURLDefs(ctx, where, arg, false)
+		return a.queryBrowserURLDefsLegacy(ctx, where, arg, false)
 	}
 	return rows, err
 }
@@ -1104,7 +1231,45 @@ func browserURLDefFromRow(row map[string]interface{}, browserName string) e9Brow
 		BrowserName: browserName,
 		BrowserURL:  mapGet(row, "browserurl"),
 		FieldDBType: mapGet(row, "fielddbtype"),
+		TableName:   mapGet(row, "tablename"),
+		ColumnName:  mapGet(row, "columname"),
+		KeyColumn:   mapGet(row, "keycolumname"),
 	}
+}
+
+func browseTargetFromBrowserURLDef(def e9BrowserURLDef) (e9BrowseTarget, bool) {
+	table := strings.TrimSpace(def.TableName)
+	idColumn := strings.TrimSpace(def.KeyColumn)
+	displayColumn := strings.TrimSpace(def.ColumnName)
+	if table == "" || idColumn == "" || displayColumn == "" {
+		return e9BrowseTarget{}, false
+	}
+	if !isSafeIdentifier(table) || !isSafeIdentifier(idColumn) {
+		return e9BrowseTarget{}, false
+	}
+	if isSafeIdentifier(displayColumn) {
+		return e9BrowseTarget{
+			Table:         table,
+			IDColumn:      idColumn,
+			DisplayColumn: displayColumn,
+			NumericID:     isLikelyNumericBrowseKey(idColumn),
+		}, true
+	}
+	if !isSafeDisplayExpression(displayColumn) {
+		return e9BrowseTarget{}, false
+	}
+	return e9BrowseTarget{
+		Table:             table,
+		IDColumn:          idColumn,
+		DisplayColumn:     displayColumn,
+		DisplayExpression: true,
+		NumericID:         isLikelyNumericBrowseKey(idColumn),
+	}, true
+}
+
+func isLikelyNumericBrowseKey(column string) bool {
+	col := strings.ToLower(strings.TrimSpace(column))
+	return col == "id" || strings.HasSuffix(col, "id")
 }
 
 func browserNameFromFieldDBType(fieldDBType string) string {
@@ -1117,7 +1282,7 @@ func browserNameFromFieldDBType(fieldDBType string) string {
 
 func (a *Ecology9Adapter) fetchBrowseDisplayMap(ctx context.Context, target e9BrowseTarget, ids []string) map[string]string {
 	result := map[string]string{}
-	if len(ids) == 0 || !isSafeIdentifier(target.Table) || !isSafeIdentifier(target.IDColumn) || !isSafeIdentifier(target.DisplayColumn) {
+	if len(ids) == 0 || !isSafeIdentifier(target.Table) || !isSafeIdentifier(target.IDColumn) || !target.hasSafeDisplaySelector() {
 		return result
 	}
 	validIDs := make([]string, 0, len(ids))
@@ -1130,9 +1295,13 @@ func (a *Ecology9Adapter) fetchBrowseDisplayMap(ctx context.Context, target e9Br
 		return result
 	}
 	var rows []map[string]interface{}
+	displaySelector := target.DisplayColumn
+	if !target.DisplayExpression {
+		displaySelector = a.col(displaySelector)
+	}
 	err := a.db.WithContext(ctx).
 		Table(a.tableName(target.Table)).
-		Select(a.col(target.IDColumn)+" AS browse_id, "+a.col(target.DisplayColumn)+" AS browse_display").
+		Select(a.col(target.IDColumn)+" AS browse_id, "+displaySelector+" AS browse_display").
 		Where(a.col(target.IDColumn)+" IN ?", validIDs).
 		Find(&rows).Error
 	if err != nil {
@@ -1154,7 +1323,14 @@ func (a *Ecology9Adapter) fetchBrowseDisplayMap(ctx context.Context, target e9Br
 }
 
 func (t e9BrowseTarget) cacheKey() string {
-	return strings.ToLower(strings.Join([]string{t.Table, t.IDColumn, t.DisplayColumn, fmt.Sprintf("%t", t.Multiple), fmt.Sprintf("%t", t.NumericID), t.Source}, "|"))
+	return strings.ToLower(strings.Join([]string{t.Table, t.IDColumn, t.DisplayColumn, fmt.Sprintf("%t", t.DisplayExpression), fmt.Sprintf("%t", t.Multiple), fmt.Sprintf("%t", t.NumericID), t.Source}, "|"))
+}
+
+func (t e9BrowseTarget) hasSafeDisplaySelector() bool {
+	if t.DisplayExpression {
+		return isSafeDisplayExpression(t.DisplayColumn)
+	}
+	return isSafeIdentifier(t.DisplayColumn)
 }
 
 func (t e9BrowseTarget) validID(id string) bool {
@@ -1291,26 +1467,70 @@ func normalizeChoiceDisplayName(raw string) string {
 }
 
 func parseE9MultiLangText(raw string) map[string]string {
-	matches := e9MultiLangTextPattern.FindAllStringSubmatch(raw, -1)
-	if len(matches) == 0 {
-		return nil
-	}
-	labels := make(map[string]string, len(matches))
-	for _, match := range matches {
-		if len(match) < 3 {
-			continue
+	s := strings.TrimSpace(raw)
+	labels := map[string]string{}
+	for i := 0; i < len(s); {
+		for i < len(s) && (isE9SelectNameDelimiter(s[i]) || isASCIISpace(s[i])) {
+			i++
 		}
-		langID := strings.TrimSpace(match[1])
-		label := strings.Trim(match[2], "`~ \t\r\n")
+		if i >= len(s) || s[i] < '0' || s[i] > '9' {
+			break
+		}
+
+		langStart := i
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+		langID := strings.TrimSpace(s[langStart:i])
+		for i < len(s) && isASCIISpace(s[i]) {
+			i++
+		}
+
+		labelStart := i
+		labelEnd := len(s)
+		for j := i; j < len(s); j++ {
+			if !isE9SelectNameDelimiter(s[j]) {
+				continue
+			}
+			k := j
+			for k < len(s) && (isE9SelectNameDelimiter(s[k]) || isASCIISpace(s[k])) {
+				k++
+			}
+			if k >= len(s) {
+				labelEnd = j
+				break
+			}
+			if s[k] >= '0' && s[k] <= '9' {
+				labelEnd = j
+				break
+			}
+		}
+
+		label := strings.Trim(s[labelStart:labelEnd], "`~ \t\r\n")
 		if langID != "" && label != "" {
 			labels[langID] = label
 		}
+		if labelEnd >= len(s) {
+			break
+		}
+		i = labelEnd
+	}
+	if len(labels) == 0 {
+		return nil
 	}
 	return labels
 }
 
-func parseCustomBrowseTarget(browserURL string) (e9BrowseTarget, bool) {
-	sqlText := extractBrowserSQL(browserURL)
+func isE9SelectNameDelimiter(b byte) bool {
+	return b == '`' || b == '~'
+}
+
+func isASCIISpace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\r' || b == '\n'
+}
+
+func parseModeBrowserSQLTextTarget(sqlText string) (e9BrowseTarget, bool) {
+	sqlText = strings.TrimSpace(sqlText)
 	if sqlText == "" {
 		return e9BrowseTarget{}, false
 	}
@@ -1338,37 +1558,33 @@ func parseCustomBrowseTarget(browserURL string) (e9BrowseTarget, bool) {
 	return e9BrowseTarget{Table: table, IDColumn: idColumn, DisplayColumn: displayColumn}, true
 }
 
-func extractBrowserSQL(browserURL string) string {
-	s := strings.TrimSpace(browserURL)
-	if s == "" {
-		return ""
+func parseModeBrowserSearchByIDTarget(sqlText string) (e9BrowseTarget, bool) {
+	sqlText = strings.TrimSpace(sqlText)
+	if sqlText == "" {
+		return e9BrowseTarget{}, false
 	}
-	if decoded, err := url.QueryUnescape(s); err == nil {
-		s = decoded
+	re := regexp.MustCompile(`(?is)\bselect\s+(.+?)\s+\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)\b.+?\bwhere\s+([a-zA-Z_][a-zA-Z0-9_\.]*)\s*=\s*\?`)
+	matches := re.FindStringSubmatch(sqlText)
+	if len(matches) < 4 {
+		return e9BrowseTarget{}, false
 	}
-	if parsed, err := url.Parse(s); err == nil && parsed.RawQuery != "" {
-		q := parsed.Query()
-		for _, key := range []string{"sql", "SQL", "Sql"} {
-			if value := strings.TrimSpace(q.Get(key)); value != "" {
-				return value
-			}
-		}
+	columns := splitSelectColumns(matches[1])
+	if len(columns) == 0 {
+		return e9BrowseTarget{}, false
 	}
-	lower := strings.ToLower(s)
-	if idx := strings.Index(lower, "sql="); idx >= 0 {
-		sqlPart := s[idx+4:]
-		if amp := strings.Index(sqlPart, "&"); amp >= 0 {
-			sqlPart = sqlPart[:amp]
-		}
-		if decoded, err := url.QueryUnescape(sqlPart); err == nil {
-			sqlPart = decoded
-		}
-		return strings.TrimSpace(sqlPart)
+	displayColumn, ok := cleanSelectColumn(columns[0])
+	if !ok {
+		return e9BrowseTarget{}, false
 	}
-	if idx := strings.Index(lower, "select "); idx >= 0 {
-		return strings.TrimSpace(s[idx:])
+	idColumn, ok := cleanSelectColumn(matches[3])
+	if !ok {
+		return e9BrowseTarget{}, false
 	}
-	return ""
+	table := strings.TrimSpace(matches[2])
+	if !isSafeIdentifier(table) || !isSafeIdentifier(idColumn) || !isSafeIdentifier(displayColumn) {
+		return e9BrowseTarget{}, false
+	}
+	return e9BrowseTarget{Table: table, IDColumn: idColumn, DisplayColumn: displayColumn, NumericID: isLikelyNumericBrowseKey(idColumn)}, true
 }
 
 func splitSelectColumns(selectPart string) []string {
@@ -1429,6 +1645,29 @@ func isSafeIdentifier(s string) bool {
 			continue
 		}
 		return false
+	}
+	return true
+}
+
+func isSafeDisplayExpression(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	lower := strings.ToLower(s)
+	if strings.Contains(lower, ";") || strings.Contains(lower, "--") || strings.Contains(lower, "/*") || strings.Contains(lower, "*/") {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '_' || r == '.' || r == '(' || r == ')' || r == '+' || r == '-' || r == '*' || r == '/' || r == '\'' || r == '"' || r == '|' || r == ',':
+		case r == ' ' || r == '\t' || r == '\r' || r == '\n':
+		default:
+			return false
+		}
 	}
 	return true
 }
