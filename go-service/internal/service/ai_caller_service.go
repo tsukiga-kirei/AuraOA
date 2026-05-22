@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -102,7 +103,7 @@ func (s *AIModelCallerService) Chat(c *gin.Context, tenantID, userID uuid.UUID, 
 	_ = s.settleTokenUsage(tenantID, reserved, resp.TokenUsage.TotalTokens)
 
 	// 异步写入日志（带重试）
-	s.asyncWriteLog(tenantID, userID, modelCfg.ID, req.RequestType, resp)
+	s.asyncWriteLog(tenantID, userID, modelCfg.ID, req, resp, req.SystemPrompt, req.UserPrompt)
 
 	return resp, nil
 }
@@ -319,7 +320,7 @@ func (s *AIModelCallerService) ChatViaPython(c *gin.Context, tenantID, userID uu
 	_ = s.settleTokenUsage(tenantID, reserved, resp.TokenUsage.TotalTokens)
 
 	// 异步写入日志（带重试）
-	s.asyncWriteLog(tenantID, userID, modelCfg.ID, req.RequestType, resp)
+	s.asyncWriteLog(tenantID, userID, modelCfg.ID, req, resp, systemPrompt, userPrompt)
 
 	return resp, nil
 }
@@ -368,24 +369,49 @@ const logMaxRetries = 3
 
 // asyncWriteLog 在独立 goroutine 中异步写入 LLM 调用日志，失败时按指数退避重试最多 3 次。
 // 重试耗尽后降级为标准日志输出，不影响主流程返回。
-func (s *AIModelCallerService) asyncWriteLog(tenantID, userID uuid.UUID, modelConfigID uuid.UUID, requestType string, resp *ai.ChatResponse) {
+func (s *AIModelCallerService) asyncWriteLog(
+	tenantID, userID uuid.UUID,
+	modelConfigID uuid.UUID,
+	req *ai.ChatRequest,
+	resp *ai.ChatResponse,
+	systemPrompt, userPrompt string,
+) {
 	go func() {
+		requestType := strings.TrimSpace(req.RequestType)
+		if requestType == "" {
+			requestType = "audit"
+		}
+		callType := strings.TrimSpace(req.CallType)
+		if callType == "" {
+			callType = "reasoning"
+		}
+		now := time.Now()
 		entry := &model.TenantLLMMessageLog{
 			ID:            uuid.New(),
 			TenantID:      tenantID,
 			UserID:        &userID,
 			ModelConfigID: &modelConfigID,
 			RequestType:   requestType,
+			CallType:      callType,
 			InputTokens:   resp.TokenUsage.InputTokens,
 			OutputTokens:  resp.TokenUsage.OutputTokens,
 			TotalTokens:   resp.TokenUsage.TotalTokens,
 			DurationMs:    int(resp.DurationMs),
-			CreatedAt:     time.Now(),
+			CreatedAt:     now,
+		}
+		payload := &model.TenantLLMMessagePayload{
+			ID:              uuid.New(),
+			LLMMessageLogID: entry.ID,
+			TenantID:        tenantID,
+			SystemPrompt:    systemPrompt,
+			UserPrompt:      userPrompt,
+			ResponseContent: resp.Content,
+			CreatedAt:       now,
 		}
 
 		var err error
 		for attempt := 0; attempt < logMaxRetries; attempt++ {
-			if err = s.logRepo.Create(entry); err == nil {
+			if err = s.logRepo.CreateWithPayload(entry, payload); err == nil {
 				return
 			}
 			// 指数退避: 1s, 2s, 4s

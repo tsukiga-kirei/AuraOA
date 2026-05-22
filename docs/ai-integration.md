@@ -162,8 +162,11 @@ AI 审核采用两阶段架构，将推理和结构化提取分离，提高审�
 
 - 租户 ID、用户 ID、模型配置 ID
 - 请求类型（`audit` / `archive`）
+- 调用阶段（`reasoning` / `structured`）
 - 输入/输出/总 Token 消耗
 - 调用耗时（毫秒）
+
+同时写入 `tenant_llm_message_payloads` 表，按 `tenant_llm_message_logs.id` 一对一保存本次调用实际发送给模型的 `system_prompt`、`user_prompt`，以及模型返回的 `response_content`。大文本内容与统计表拆分，避免仪表盘和用量报表查询扫描提示词正文。
 
 日志写入采用异步 goroutine + 指数退避重试（最多 3 次），不阻塞主流程。
 
