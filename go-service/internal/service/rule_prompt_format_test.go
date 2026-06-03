@@ -9,7 +9,7 @@ import (
 
 func TestFormatRuleLineForPrompt(t *testing.T) {
 	got := formatRuleLineForPrompt(1, "default_on", "发票是否为国机财务公司")
-	want := "1. （默认开启）发票是否为国机财务公司"
+	want := "1. 发票是否为国机财务公司"
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
