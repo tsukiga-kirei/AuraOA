@@ -2551,10 +2551,15 @@ func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, 
 }
 
 // FetchProcessFlow 拉取流程审批流快照。
-// 包含完整审批历史（带操作类型映射）和流程路由图（带出口条件）。
-// 若历史日志表结构不兼容，则退化为仅返回当前节点快照，避免阻塞主链路。
+// 包含完整审批历史（带操作类型映射）和流程定义路由图（带出口条件）。
+// 路由图基于 workflowid 查询流程定义，与实例是否有审批记录无关。
+// 若历史日志表结构不兼容，审批历史部分退化为当前节点，但路由图仍正常返回。
 func (a *Ecology9Adapter) FetchProcessFlow(ctx context.Context, processID string) (*ProcessFlowSnapshot, error) {
-	// ── 1. 获取审批历史（仅最后一次退回之后的有效路径） ──
+	// ── 1. 获取流程定义路由图（节点连接 + 出口条件） ──
+	// 路由图基于 workflowid，是流程定义级别的信息，与当前实例走了多少步无关。
+	graphText := a.fetchFlowRouteGraph(ctx, processID)
+
+	// ── 2. 获取审批历史（仅最后一次退回之后的有效路径） ──
 	historyQuery := fmt.Sprintf(`
 		SELECT
 			WRL.%s AS log_id,
@@ -2590,7 +2595,12 @@ func (a *Ecology9Adapter) FetchProcessFlow(ctx context.Context, processID string
 
 	rows, err := a.db.WithContext(ctx).Raw(historyQuery, processID).Rows()
 	if err != nil {
-		return a.fetchCurrentNodeSnapshot(ctx, processID)
+		// 审批历史查询失败，退化为当前节点，但路由图仍保留
+		snapshot, _ := a.fetchCurrentNodeSnapshot(ctx, processID)
+		if snapshot != nil && graphText != "" {
+			snapshot.GraphText = graphText
+		}
+		return snapshot, nil
 	}
 	defer rows.Close()
 
@@ -2616,11 +2626,13 @@ func (a *Ecology9Adapter) FetchProcessFlow(ctx context.Context, processID string
 	}
 
 	if len(nodes) == 0 {
-		return a.fetchCurrentNodeSnapshot(ctx, processID)
+		// 审批历史为空（流程还在第一个节点），退化为当前节点，但路由图仍保留
+		snapshot, _ := a.fetchCurrentNodeSnapshot(ctx, processID)
+		if snapshot != nil && graphText != "" {
+			snapshot.GraphText = graphText
+		}
+		return snapshot, nil
 	}
-
-	// ── 2. 获取流程路由图（节点连接 + 出口条件） ──
-	graphText := a.fetchFlowRouteGraph(ctx, processID)
 
 	// 如果路由图为空，退化为简单节点路径
 	if graphText == "" {
