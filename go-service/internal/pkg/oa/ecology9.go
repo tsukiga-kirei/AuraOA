@@ -2631,8 +2631,11 @@ func (a *Ecology9Adapter) FetchProcessFlow(ctx context.Context, processID string
 	if len(nodes) == 0 {
 		// 审批历史为空（流程还在第一个节点），退化为当前节点，但路由图仍保留
 		snapshot, _ := a.fetchCurrentNodeSnapshot(ctx, processID)
-		if snapshot != nil && graphText != "" {
-			snapshot.GraphText = graphText
+		if snapshot != nil {
+			snapshot.HistoryText = "（暂无审批流转记录）"
+			if graphText != "" {
+				snapshot.GraphText = graphText
+			}
 		}
 		return snapshot, nil
 	}
@@ -2824,7 +2827,7 @@ func (a *Ecology9Adapter) fetchCurrentNodeSnapshot(ctx context.Context, processI
 		MissingNodes:    []string{},
 		CurrentNodeName: nodeName,
 		Nodes:           []ProcessFlowNode{node},
-		HistoryText:     nodeName,
+		HistoryText:     "",
 		GraphText:       nodeName,
 	}, nil
 }
