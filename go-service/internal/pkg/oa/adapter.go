@@ -229,9 +229,10 @@ type ProcessFlowNode struct {
 
 // ProcessFlowSnapshot 审批流快照。
 type ProcessFlowSnapshot struct {
-	IsComplete   bool              `json:"is_complete"`
-	MissingNodes []string          `json:"missing_nodes"`
-	Nodes        []ProcessFlowNode `json:"nodes"`
-	HistoryText  string            `json:"history_text"`
-	GraphText    string            `json:"graph_text"`
+	IsComplete      bool              `json:"is_complete"`
+	MissingNodes    []string          `json:"missing_nodes"`
+	CurrentNodeName string            `json:"current_node_name"` // 来自 workflow_requestbase.currentnodeid，OA 系统的真实当前节点
+	Nodes           []ProcessFlowNode `json:"nodes"`
+	HistoryText     string            `json:"history_text"`
+	GraphText       string            `json:"graph_text"`
 }

@@ -472,13 +472,10 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		sanitize.SanitizeFlowSnapshot(flowSnapshot)
 	}
 
-	// 从审批流快照中提取当前节点名称
+	// 从审批流快照中提取当前节点名称（来自 OA 系统 workflow_requestbase.currentnodeid）
 	currentNode := "当前节点"
-	if flowSnapshot != nil && len(flowSnapshot.Nodes) > 0 {
-		lastNode := flowSnapshot.Nodes[len(flowSnapshot.Nodes)-1]
-		if lastNode.NodeName != "" {
-			currentNode = lastNode.NodeName
-		}
+	if flowSnapshot != nil && flowSnapshot.CurrentNodeName != "" {
+		currentNode = flowSnapshot.CurrentNodeName
 	}
 
 	reasoningReq := BuildReasoningPrompt(&aiConfig, req.ProcessType, processData, mergedRulesText, currentNode, fieldSet, flowSnapshot)
