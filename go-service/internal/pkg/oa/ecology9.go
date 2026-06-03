@@ -2555,7 +2555,10 @@ func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, 
 // 路由图基于 workflowid 查询流程定义，与实例是否有审批记录无关。
 // 若历史日志表结构不兼容，审批历史部分退化为当前节点，但路由图仍正常返回。
 func (a *Ecology9Adapter) FetchProcessFlow(ctx context.Context, processID string) (*ProcessFlowSnapshot, error) {
-	// ── 1. 获取流程定义路由图（节点连接 + 出口条件） ──
+	// ── 1. 查询 OA 系统中的真实当前节点（workflow_requestbase.currentnodeid） ──
+	currentNodeName := a.fetchCurrentNodeName(ctx, processID)
+
+	// ── 2. 获取流程定义路由图（节点连接 + 出口条件） ──
 	// 路由图基于 workflowid，是流程定义级别的信息，与当前实例走了多少步无关。
 	graphText := a.fetchFlowRouteGraph(ctx, processID)
 
@@ -2648,11 +2651,12 @@ func (a *Ecology9Adapter) FetchProcessFlow(ctx context.Context, processID string
 	}
 
 	return &ProcessFlowSnapshot{
-		IsComplete:   true,
-		MissingNodes: []string{},
-		Nodes:        nodes,
-		HistoryText:  strings.Join(historyLines, "\n"),
-		GraphText:    graphText,
+		IsComplete:      true,
+		MissingNodes:    []string{},
+		CurrentNodeName: currentNodeName,
+		Nodes:           nodes,
+		HistoryText:     strings.Join(historyLines, "\n"),
+		GraphText:       graphText,
 	}, nil
 }
 
@@ -2782,10 +2786,11 @@ func (a *Ecology9Adapter) fetchFlowRouteGraph(ctx context.Context, processID str
 	return strings.Join(lines, "\n")
 }
 
-func (a *Ecology9Adapter) fetchCurrentNodeSnapshot(ctx context.Context, processID string) (*ProcessFlowSnapshot, error) {
+// fetchCurrentNodeName 查询 OA 系统中流程实例的真实当前节点名称（基于 workflow_requestbase.currentnodeid）。
+func (a *Ecology9Adapter) fetchCurrentNodeName(ctx context.Context, processID string) string {
 	query := fmt.Sprintf(`
 		SELECT
-			COALESCE(n.%s, '已归档')
+			COALESCE(n.%s, '')
 		FROM %s r
 		LEFT JOIN %s n ON r.%s = n.%s
 		WHERE r.%s = ?`,
@@ -2795,16 +2800,17 @@ func (a *Ecology9Adapter) fetchCurrentNodeSnapshot(ctx context.Context, processI
 		a.col("currentnodeid"), a.col("id"),
 		a.col("requestid"),
 	)
-
 	var nodeName string
 	if err := a.db.WithContext(ctx).Raw(query, processID).Row().Scan(&nodeName); err != nil {
-		return &ProcessFlowSnapshot{
-			IsComplete:   true,
-			MissingNodes: []string{},
-			Nodes:        []ProcessFlowNode{},
-			HistoryText:  "",
-			GraphText:    "",
-		}, nil
+		return ""
+	}
+	return nodeName
+}
+
+func (a *Ecology9Adapter) fetchCurrentNodeSnapshot(ctx context.Context, processID string) (*ProcessFlowSnapshot, error) {
+	nodeName := a.fetchCurrentNodeName(ctx, processID)
+	if nodeName == "" {
+		nodeName = "已归档"
 	}
 
 	node := ProcessFlowNode{
@@ -2814,11 +2820,12 @@ func (a *Ecology9Adapter) fetchCurrentNodeSnapshot(ctx context.Context, processI
 	}
 
 	return &ProcessFlowSnapshot{
-		IsComplete:   true,
-		MissingNodes: []string{},
-		Nodes:        []ProcessFlowNode{node},
-		HistoryText:  nodeName,
-		GraphText:    nodeName,
+		IsComplete:      true,
+		MissingNodes:    []string{},
+		CurrentNodeName: nodeName,
+		Nodes:           []ProcessFlowNode{node},
+		HistoryText:     nodeName,
+		GraphText:       nodeName,
 	}, nil
 }
 
