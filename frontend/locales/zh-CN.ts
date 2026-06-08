@@ -1365,6 +1365,7 @@ export default {
     'admin.settings.dbConnSuccess': '数据库连接测试成功',
     'admin.settings.dbConnFailed': '数据库连接测试失败，请检查配置',
     'admin.settings.modelConnSuccess': 'AI 模型端点连接测试成功',
+    'admin.settings.modelConnFailed': 'AI 模型端点连接测试失败，请检查配置',
     //通用配置 - 认证 & Token
     'admin.settings.authTokenConfig': '认证 & Token 配置',
     'admin.settings.loginFailLockThreshold': '登录失败锁定阈值',

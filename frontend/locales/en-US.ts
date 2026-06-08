@@ -1346,6 +1346,7 @@ export default {
     'admin.settings.dbConnSuccess': 'Database connection test successful',
     'admin.settings.dbConnFailed': 'Database connection test failed, please check configuration',
     'admin.settings.modelConnSuccess': 'AI model endpoint connection test successful',
+    'admin.settings.modelConnFailed': 'AI model endpoint connection test failed, please check configuration',
     //General Config - Auth & Token
     'admin.settings.authTokenConfig': 'Authentication & Token',
     'admin.settings.loginFailLockThreshold': 'Login Fail Lock Threshold',

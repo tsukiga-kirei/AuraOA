@@ -420,7 +420,7 @@ const testAIModelById = async (id: string) => {
     }
   } catch (e) {
     model.status = 'offline'
-    message.error(t('admin.settings.dbConnFailed'))
+    message.error(t('admin.settings.modelConnFailed'))
   }
   testingAIModelId.value = null
 }
@@ -482,10 +482,10 @@ const testModelConnection = async () => {
     if (result.success) {
       message.success(t('admin.settings.modelConnSuccess'))
     } else {
-      message.error(result.message || t('admin.settings.dbConnFailed'))
+      message.error(result.message || t('admin.settings.modelConnFailed'))
     }
   } catch (e) {
-    message.error(t('admin.settings.dbConnFailed'))
+    message.error(t('admin.settings.modelConnFailed'))
   } finally {
     testingModelConn.value = false
   }
