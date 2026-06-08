@@ -203,6 +203,34 @@ AuraOA/
 - Node.js 18+（前端本地开发）
 - Go 1.25+（后端本地开发，可选）
 
+### Docker 一键部署（推荐）
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env`，至少修改数据库密码、`JWT_SECRET`、`ENCRYPTION_KEY`、`EMBED_ACCESS_TOKEN`，并按需配置对外访问端口：
+
+```env
+NGINX_HTTP_PORT=80
+AURAOA_PUBLIC_API_BASE=
+AURAOA_PUBLIC_MOCK_MODE=false
+```
+
+`AURAOA_PUBLIC_API_BASE` 留空表示前端使用同源 `/api`，由 Nginx 容器反代到 Go 服务。启动后访问 `http://localhost:${NGINX_HTTP_PORT}`：
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+生产环境如需绑定域名，可设置：
+
+```env
+NGINX_SERVER_NAME=oa.example.com
+NGINX_HTTP_PORT=80
+```
+
 ### 1. 启动基础服务（开发模式）
 
 ```bash
