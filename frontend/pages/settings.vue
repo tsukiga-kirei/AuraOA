@@ -156,12 +156,12 @@ const getRoleLabel = (role: string) => {
 const visibleTabs = computed(() => {
   const role = currentRoleType.value
   const perms = currentOrgPagePermissions.value
-  const isBiz = role === 'business'
+  const canUseFrontendPrefs = role === 'business' || role === 'tenant_admin'
   return [
     { key: 'profile', label: t('settings.tab.profile'), icon: UserOutlined, show: true },
-    { key: 'workbench', label: t('settings.tab.workbench'), icon: DashboardOutlined, show: isBiz && perms.includes('/dashboard') },
-    { key: 'cron', label: t('settings.tab.cron'), icon: ClockCircleOutlined, show: isBiz && perms.includes('/cron') },
-    { key: 'archive', label: t('settings.tab.archive'), icon: FolderOpenOutlined, show: isBiz && perms.includes('/archive') },
+    { key: 'workbench', label: t('settings.tab.workbench'), icon: DashboardOutlined, show: canUseFrontendPrefs && perms.includes('/dashboard') },
+    { key: 'cron', label: t('settings.tab.cron'), icon: ClockCircleOutlined, show: canUseFrontendPrefs && perms.includes('/cron') },
+    { key: 'archive', label: t('settings.tab.archive'), icon: FolderOpenOutlined, show: canUseFrontendPrefs && perms.includes('/archive') },
   ].filter(tab => tab.show)
 })
 
@@ -2081,4 +2081,3 @@ const handleSaveArchive = async () => {
 .text-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 .empty-cell { padding: 32px !important; text-align: center; color: var(--color-text-tertiary); }
 </style>
-
