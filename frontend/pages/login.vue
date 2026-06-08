@@ -60,6 +60,12 @@ const loading = ref(false)
 const rememberMe = ref(false)
 // 当前激活入口的完整配置
 const currentPortal = computed(() => portals.value.find(p => p.key === activePortal.value)!)
+// 当前激活入口的索引，用于驱动分段控件滑块动画
+const activePortalIndex = computed(() => Math.max(0, portals.value.findIndex(p => p.key === activePortal.value)))
+const activePortalOffset = computed(() => {
+  const offsets = ['0px', 'calc(100% + 4px)', 'calc(200% + 8px)']
+  return offsets[activePortalIndex.value] || offsets[0]
+})
 
 // 记住登录信息的 localStorage key
 const REMEMBER_ME_KEY = 'login_remember'
@@ -174,13 +180,15 @@ const handleLogin = async () => {
           </div>
 
           <!--入口选择器：水平药丸选项卡，固定尺寸-->
-          <div class="portal-selector">
+          <div
+            class="portal-selector"
+            :style="{ '--active-offset': activePortalOffset, '--active-color': currentPortal.color }"
+          >
             <div
               v-for="portal in portals"
               :key="portal.key"
               class="portal-pill"
               :class="{ 'portal-pill--active': activePortal === portal.key }"
-              :style="activePortal === portal.key ? { '--pill-color': portal.color } : {}"
               @click="activePortal = portal.key"
             >
               <component :is="portal.icon" class="portal-pill-icon" />
@@ -227,7 +235,7 @@ const handleLogin = async () => {
               </a-button>
             </a-form-item>
           </a-form>
-          <div class="login-footer"><span>{{ t('app.name') }} © 2025</span></div>
+          <div class="login-footer"><span>{{ t('app.name') }} © 2026</span></div>
         </div>
       </div>
     </div>
@@ -405,51 +413,96 @@ const handleLogin = async () => {
 .login-form-header h2 { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0 0 6px; }
 .login-form-header p { font-size: 14px; color: var(--color-text-tertiary); margin: 0; }
 
-/* ===== 入口选择器（药丸式标签页） ===== */
+/* ===== 入口选择器（连体分段控件） ===== */
 .portal-selector {
-  display: flex; gap: 8px; margin-bottom: 8px;
+  --segment-gap: 4px;
+  --segment-padding: 4px;
+  --segment-track-remainder: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--segment-gap);
+  margin-bottom: 8px;
   overflow-x: auto; scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  position: relative;
+  padding: var(--segment-padding);
+  border: 1px solid color-mix(in srgb, var(--color-border) 64%, transparent);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.34)),
+    color-mix(in srgb, var(--color-bg-input) 76%, var(--color-bg-card));
+  box-shadow:
+    inset 0 1px 2px rgba(15, 23, 42, 0.05),
+    0 12px 28px rgba(15, 23, 42, 0.05);
+  isolation: isolate;
+  --active-offset: 0px;
+  --active-color: #4f46e5;
+}
+.portal-selector::before {
+  content: "";
+  position: absolute;
+  top: var(--segment-padding);
+  bottom: var(--segment-padding);
+  left: var(--segment-padding);
+  width: calc((100% - var(--segment-track-remainder)) / 3);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.74)),
+    color-mix(in srgb, var(--active-color) 7%, var(--color-bg-card));
+  box-shadow:
+    0 10px 24px color-mix(in srgb, var(--active-color) 16%, transparent),
+    0 2px 8px rgba(15, 23, 42, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+    inset 0 -1px 0 color-mix(in srgb, var(--active-color) 20%, transparent);
+  transform: translateX(var(--active-offset));
+  transition:
+    transform 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.24s ease,
+    box-shadow 0.24s ease;
+  will-change: transform;
+  z-index: 0;
 }
 .portal-selector::-webkit-scrollbar { display: none; }
 
 .portal-pill {
-  flex: 1 1 0;
+  min-width: 0;
   display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 10px 12px;
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-bg-card);
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition:
+    color 0.22s ease,
+    transform 0.22s ease,
+    opacity 0.22s ease;
   white-space: nowrap;
-  --pill-color: var(--color-text-tertiary);
+  position: relative;
+  z-index: 1;
 }
 .portal-pill:hover {
-  border-color: var(--color-text-tertiary);
-  background: var(--color-bg-hover);
+  transform: translateY(-0.5px);
 }
 .portal-pill--active {
-  border-color: var(--pill-color);
-  background: color-mix(in srgb, var(--pill-color) 8%, var(--color-bg-card));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pill-color) 20%, transparent);
+  transform: translateY(-0.5px);
 }
 .portal-pill-icon {
   font-size: 15px;
   color: var(--color-text-tertiary);
-  transition: color 0.25s ease;
+  transition: color 0.22s ease;
 }
 .portal-pill--active .portal-pill-icon {
-  color: var(--pill-color);
+  color: var(--active-color);
 }
 .portal-pill-title {
   font-size: 13px; font-weight: 500;
   color: var(--color-text-secondary);
-  transition: color 0.25s ease;
+  transition: color 0.22s ease;
 }
 .portal-pill--active .portal-pill-title {
   font-weight: 600;
-  color: var(--pill-color);
+  color: var(--active-color);
 }
 
 /* 当前选中入口的描述行 */
