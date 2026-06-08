@@ -1,16 +1,31 @@
 services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+    environment:
+      - NGINX_SERVER_NAME=${NGINX_SERVER_NAME:-_}
+      - NGINX_CLIENT_MAX_BODY_SIZE=${NGINX_CLIENT_MAX_BODY_SIZE:-20m}
+    volumes:
+      - ./deploy/nginx/templates:/etc/nginx/templates:ro
+    depends_on:
+      - frontend
+      - go-service
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     depends_on:
       - go-service
-    env_file:
-      - .env
     environment:
-      - NUXT_PUBLIC_API_BASE=http://go-service:8080
+      # 空值表示浏览器同源访问：/api 由 nginx 反代到 go-service。
+      # 若前后端分离部署，可在 .env 中设置 AURAOA_PUBLIC_API_BASE=https://api.example.com。
+      - NUXT_PUBLIC_API_BASE=${AURAOA_PUBLIC_API_BASE:-}
+      - NUXT_PUBLIC_MOCK_MODE=${AURAOA_PUBLIC_MOCK_MODE:-false}
       - EMBED_ACCESS_TOKEN=${EMBED_ACCESS_TOKEN}
       - EMBED_TENANT_CODE=${EMBED_TENANT_CODE}
     restart: unless-stopped
@@ -19,8 +34,8 @@ services:
     build:
       context: .
       dockerfile: go-service/Dockerfile
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,7 +56,8 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - JWT_SECRET=${JWT_SECRET}
-      - AI_SERVICE_URL=http://ai-service:8000
+      # Python AI 服务为可选组件；当前仓库未包含 ai-service 时保持为空即可。
+      - AI_SERVICE_URL=${AURAOA_AI_SERVICE_URL:-}
       # 日志配置（对应 config.yaml log.* 字段，点号替换为下划线）
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - LOG_DIR=/app/logs
@@ -68,29 +84,10 @@ services:
       # - ./backups:/app/backups
     restart: unless-stopped
 
-  ai-service:
-    build:
-      context: ./ai-service
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=${POSTGRES_DB}
-      - DB_USER=${POSTGRES_USER}
-      - DB_PASSWORD=${POSTGRES_PASSWORD}
-    restart: unless-stopped
-
   postgres:
     image: pgvector/pgvector:pg16
     ports:
-      - "5432:5432"
+      - "${POSTGRES_BIND_ADDR:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
     environment:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
@@ -108,11 +105,11 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_BIND_ADDR:-127.0.0.1}:${REDIS_HOST_PORT:-6379}:6379"
     command: >
       sh -c '
-        if [ -n "$REDIS_PASSWORD" ]; then
-          redis-server --requirepass "$REDIS_PASSWORD" --appendonly yes
+        if [ -n "$$REDIS_PASSWORD" ]; then
+          redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes
         else
           redis-server --appendonly yes
         fi
@@ -122,7 +119,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping; else redis-cli ping; fi"]
       interval: 5s
       timeout: 5s
       retries: 5
