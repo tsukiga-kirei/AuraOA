@@ -28,6 +28,11 @@ body {
               border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+#__nuxt {
+  min-height: 100vh;
+  position: relative;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -466,6 +471,15 @@ input::-ms-clear {
 .page-enter-active,
 .page-leave-active {
   transition: opacity 200ms ease, transform 200ms ease;
+}
+
+/* setup/login are layout:false pages. Keep their leave transition out of
+   normal flow when entering the authenticated app layout. */
+.page-leave-active {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  pointer-events: none;
 }
 
 .page-enter-from {
