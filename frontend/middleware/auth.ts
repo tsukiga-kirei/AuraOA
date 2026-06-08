@@ -13,13 +13,12 @@ interface ApiBootstrapRes {
  * - /overview、/settings、/login、/setup 对所有人开放
  * - /admin/system 仅系统管理员可访问
  * - /admin/tenant 仅租户管理员可访问
- * - /dashboard、/cron、/archive 仅业务用户可访问
+ * - 其他租户内页面交由后端菜单权限（org_roles.page_permissions）细粒度控制
  */
 function hasRoleAccess(path: string, perms: PermissionGroup[]): boolean {
   if (path === '/overview' || path === '/settings' || path === '/login' || path === '/setup') return true
   if (path.startsWith('/admin/system')) return perms.includes('system_admin')
   if (path.startsWith('/admin/tenant')) return perms.includes('tenant_admin')
-  if (['/dashboard', '/cron', '/archive'].includes(path)) return perms.includes('business')
   return true
 }
 

@@ -40,7 +40,7 @@ const OVERVIEW_ITEMS: SidebarMenuItem[] = [
   { key: '/overview', icon: PieChartOutlined, labelKey: 'menu.overview' },
 ]
 
-/** 业务用户菜单项（需要 business 权限组） */
+/** 前台业务菜单项（由 page_permissions 控制，可分配给 business 或 tenant_admin） */
 const BUSINESS_ITEMS: SidebarMenuItem[] = [
   { key: '/dashboard', icon: DashboardOutlined, labelKey: 'menu.dashboard' },
   { key: '/cron', icon: ClockCircleOutlined, labelKey: 'menu.cron' },
@@ -116,7 +116,7 @@ export const useSidebarMenu = () => {
     // 概览仪表板对所有已登录用户可见
     result.push({ id: 'overview', titleKey: 'sidebar.section.overview', items: OVERVIEW_ITEMS })
 
-    if (perms.includes('business')) {
+    if (perms.includes('business') || perms.includes('tenant_admin')) {
       const pagePerms = menuPagePerms.value
       // 有菜单数据时按权限过滤，菜单未加载时不显示（避免闪烁）
       const filtered = pagePerms.size > 0

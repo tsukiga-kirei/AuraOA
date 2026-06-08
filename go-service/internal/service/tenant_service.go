@@ -346,15 +346,25 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 		return nil, newServiceError(errcode.ErrDatabase, "分配管理员角色失败")
 	}
 
-	// 7. 创建 user_role_assignment（系统级角色）
-	tenantAdminAssignment := &model.UserRoleAssignment{
-		ID:       uuid.New(),
-		UserID:   adminUser.ID,
-		Role:     "tenant_admin",
-		TenantID: &tenant.ID,
-		Label:    "租户管理员 - " + req.AdminDisplayName,
+	// 7. 创建 user_role_assignments（系统级角色）
+	// 默认租户管理员角色同时包含前台和后台页面权限，系统角色也需要同步为 business + tenant_admin。
+	assignments := []model.UserRoleAssignment{
+		{
+			ID:       uuid.New(),
+			UserID:   adminUser.ID,
+			Role:     "business",
+			TenantID: &tenant.ID,
+			Label:    "业务用户 - " + req.AdminDisplayName,
+		},
+		{
+			ID:       uuid.New(),
+			UserID:   adminUser.ID,
+			Role:     "tenant_admin",
+			TenantID: &tenant.ID,
+			Label:    "租户管理员 - " + req.AdminDisplayName,
+		},
 	}
-	if err := tx.Create(tenantAdminAssignment).Error; err != nil {
+	if err := tx.Create(&assignments).Error; err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "创建角色分配失败")
 	}
 
