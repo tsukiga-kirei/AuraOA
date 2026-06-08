@@ -4,6 +4,11 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   ssr: false,
 
+  devServer: {
+    host: '0.0.0.0',
+    port: 3000,
+  },
+
   modules: [
     '@ant-design-vue/nuxt',
   ],
