@@ -101,19 +101,17 @@ function parseJwtActiveRoleRole(tokenVal: string | null): string | null {
   }
 }
 
-// 令牌刷新队列（模块级单例），防止并发请求同时触发多次刷新
-let isRefreshing = false
-let refreshSubscribers: Array<(token: string) => void> = []
+// 全局共享同一个刷新 Promise，防止路由守卫、页面请求和定时守卫并发刷新。
+let refreshPromise: Promise<string | null> | null = null
 
-// 刷新成功后通知所有等待中的请求使用新 token 重试
-function onTokenRefreshed(newToken: string) {
-  refreshSubscribers.forEach(cb => cb(newToken))
-  refreshSubscribers = []
-}
+// 每次主动清理会话或建立新会话时递增。
+// 旧请求返回时若版本已变，不允许再把 token 写回，避免“退出后复活”。
+let sessionRevision = 0
 
-// 将等待刷新的请求回调加入队列
-function addRefreshSubscriber(cb: (token: string) => void) {
-  refreshSubscribers.push(cb)
+function advanceSessionRevision() {
+  sessionRevision++
+  // 新会话不应等待旧会话的刷新请求；旧请求会由 revision 检查丢弃结果。
+  refreshPromise = null
 }
 
 // 合并存储到 localStorage 的认证状态结构（单 key 减少读写次数）
@@ -262,6 +260,9 @@ export const useAuth = () => {
         body: { role_id: roleId },
       })
 
+      // 切换角色建立了新的 token 上下文，废弃可能在途的旧刷新结果。
+      advanceSessionRevision()
+
       // 更新 access_token（切换角色后 token 中的 active_role 声明已变更）
       token.value = data.access_token
       localStorage.setItem('token', data.access_token)
@@ -312,6 +313,9 @@ export const useAuth = () => {
         clearStorage()
         return { ok: false, errorMsg: '所选登录身份与账号角色不匹配' }
       }
+
+      // 建立新会话，废弃登录期间可能在途的旧刷新结果。
+      advanceSessionRevision()
 
       // 持久化 token 对
       token.value = data.access_token
@@ -387,6 +391,7 @@ export const useAuth = () => {
    * 用于令牌失效或用户已被删除时的中间件静默处理。
    */
   const clearLocalSession = () => {
+    advanceSessionRevision()
     token.value = null
     refreshToken.value = null
     menus.value = []
@@ -401,10 +406,10 @@ export const useAuth = () => {
   }
 
   /**
-   * /me 接口校验结果的短期缓存（同 token 前缀 10 秒内复用）。
+   * /me 接口校验结果的短期缓存（同 token 签名键 10 秒内复用）。
    * 避免每次路由切换都发起后端请求，减少不必要的网络开销。
    */
-  const meValidateCache = useState<{ tokenPrefix: string; at: number; ok: boolean } | null>(
+  const meValidateCache = useState<{ tokenKey: string; at: number; ok: boolean } | null>(
     'auth_me_validate_cache',
     () => null,
   )
@@ -417,25 +422,43 @@ export const useAuth = () => {
   const validateAccessToken = async (): Promise<boolean> => {
     const t = token.value || localStorage.getItem('token')
     if (!t) return false
-    // 使用 token 前 48 字符作为缓存键（避免存储完整 token）
-    const prefix = t.slice(0, 48)
+    // JWT 头部和 payload 前缀往往相同；使用签名尾部才能区分刷新前后的 token。
+    const tokenKey = t.slice(-48)
     const now = Date.now()
     const c = meValidateCache.value
     // 命中缓存则直接返回，避免重复请求
-    if (c && c.tokenPrefix === prefix && now - c.at < 10_000) {
+    if (c && c.tokenKey === tokenKey && now - c.at < 10_000) {
       return c.ok
     }
     try {
-      const res = await $fetch<ApiResponse<unknown>>(`${config.public.apiBase}/api/auth/me`, {
+      const res = await $fetch<ApiResponse<MeResponse>>(`${config.public.apiBase}/api/auth/me`, {
         headers: { Authorization: `Bearer ${t}` },
       })
       const ok = res.code === 0
-      meValidateCache.value = { tokenPrefix: prefix, at: now, ok }
+      if (ok && res.data) {
+        // /me 是服务端真相源；即使 auth_state 丢失，也能恢复用户和角色信息。
+        const me = res.data
+        allRoles.value = me.roles
+        activeRole.value = me.active_role
+        userRole.value = me.active_role.role
+        userPermissions.value = [me.active_role.role]
+        currentUser.value = {
+          username: me.user.username,
+          display_name: me.user.display_name,
+          tenant_id: me.active_role.tenant_id || '',
+          role_label: me.active_role.label,
+          email: me.user.email || '',
+          phone: me.user.phone || '',
+        }
+        if (me.user.locale) userLocale.value = me.user.locale
+        persistState()
+      }
+      meValidateCache.value = { tokenKey, at: now, ok }
       return ok
     } catch (e: any) {
       const st = e?.statusCode ?? e?.status ?? e?.response?.status
       if (st === 401) {
-        meValidateCache.value = { tokenPrefix: prefix, at: now, ok: false }
+        meValidateCache.value = { tokenKey, at: now, ok: false }
         return false
       }
       // 非 401 错误（网络超时等）视为校验通过，避免误踢用户
@@ -447,17 +470,20 @@ export const useAuth = () => {
    * 用户主动登出：调用后端注销接口使 token 失效，然后清除本地状态并跳转登录页。
    */
   const logout = async (): Promise<void> => {
+    const baseUrl = String(config.public.apiBase)
+    const currentToken = token.value || localStorage.getItem('token')
+
+    // UI 先立即退出，不让后端超时或过期 token 的 401 阻塞跳转。
+    clearLocalSession()
+    await navigateTo('/login')
+
+    // 后端注销是尽力而为：有效 token 会被拉黑，已过期 token 失败也不影响本地退出。
     try {
-      const baseUrl = String(config.public.apiBase)
-      const currentToken = token.value || localStorage.getItem('token')
       await $fetch(`${baseUrl}/api/auth/logout`, {
         method: 'POST',
         headers: currentToken ? { Authorization: `Bearer ${currentToken}` } : {},
       })
-    } catch { /* 忽略注销接口错误，继续清除本地状态 */ }
-
-    clearLocalSession()
-    navigateTo('/login')
+    } catch { /* 本地会话已清理，忽略注销接口错误 */ }
   }
 
   // 是否已登录（基于 access_token 是否存在）
@@ -468,24 +494,39 @@ export const useAuth = () => {
    * 成功后更新本地 token 状态，失败时返回 false。
    */
   const doRefreshToken = async (): Promise<boolean> => {
+    if (refreshPromise) return !!(await refreshPromise)
+
     const rt = refreshToken.value || localStorage.getItem('refresh_token')
     if (!rt) return false
 
-    try {
-      const res = await $fetch<ApiResponse<{ access_token: string }>>(`${config.public.apiBase}/api/auth/refresh`, {
-        method: 'POST',
-        body: { refresh_token: rt },
-      })
-      if (res.code === 0 && res.data?.access_token) {
-        token.value = res.data.access_token
-        localStorage.setItem('token', res.data.access_token)
-        return true
+    const revision = sessionRevision
+    const request = (async (): Promise<string | null> => {
+      try {
+        const res = await $fetch<ApiResponse<{ access_token: string }>>(`${config.public.apiBase}/api/auth/refresh`, {
+          method: 'POST',
+          body: { refresh_token: rt },
+        })
+        if (res.code === 0 && res.data?.access_token) {
+          // 刷新期间用户可能已退出或重新登录，旧结果必须丢弃。
+          if (revision !== sessionRevision) return null
+          token.value = res.data.access_token
+          localStorage.setItem('token', res.data.access_token)
+          meValidateCache.value = null
+          return res.data.access_token
+        }
+        console.warn('[auth] refresh token response not ok:', res.code, res.message)
+        return null
+      } catch (e) {
+        console.warn('[auth] refresh token failed:', e)
+        return null
       }
-      console.warn('[auth] refresh token response not ok:', res.code, res.message)
-      return false
-    } catch (e) {
-      console.warn('[auth] refresh token failed:', e)
-      return false
+    })()
+
+    refreshPromise = request
+    try {
+      return !!(await request)
+    } finally {
+      if (refreshPromise === request) refreshPromise = null
     }
   }
 
@@ -496,8 +537,8 @@ export const useAuth = () => {
   /**
    * 带认证头的统一请求方法，自动处理 token 刷新和错误映射。
    * - 请求前注入 Authorization 头
-   * - 遇到 401 时自动尝试刷新 token 并重试（使用队列防止并发刷新）
-   * - 刷新失败则触发登出流程
+   * - 遇到 401 时自动尝试刷新 token 并重试（全局共用同一个刷新 Promise）
+   * - 刷新失败则原子化清理本地会话并跳转登录页
    * - 业务错误码映射为用户友好的中文提示
    * @param path 请求路径（相对路径或完整 URL）
    * @param options fetch 选项（method、body、headers 等）
@@ -536,41 +577,26 @@ export const useAuth = () => {
           throw e
         }
 
-        // 已有刷新请求在进行中，将当前请求加入等待队列
-        if (isRefreshing) {
-          return new Promise<T>((resolve, reject) => {
-            addRefreshSubscriber(async (newToken: string) => {
-              try {
-                const retryRes = await doRequest(newToken)
-                if (retryRes.code === 0) resolve(retryRes.data)
-                else {
-                  const msg = getErrorMessageByCode(retryRes.code) || retryRes.message || getI18nText('auth.requestFailed')
-                  const e = new Error(msg) as any; e.code = retryRes.code; reject(e)
-                }
-              } catch (retryErr) { reject(retryErr) }
-            })
-          })
-        }
-
-        // 发起 token 刷新，刷新期间其他 401 请求进入队列
-        isRefreshing = true
+        // 所有并发 401 共用同一个刷新 Promise。
         const refreshOk = await doRefreshToken()
-        isRefreshing = false
 
         if (refreshOk) {
-          // 刷新成功，通知队列中的请求使用新 token 重试
           const newToken = token.value!
-          onTokenRefreshed(newToken)
-          const retryRes = await doRequest(newToken)
-          if (retryRes.code === 0) return retryRes.data
-          const msg = getErrorMessageByCode(retryRes.code) || retryRes.message || getI18nText('auth.requestFailed')
-          const e = new Error(msg) as any; e.code = retryRes.code; throw e
-        } else {
-          // 刷新失败，清空队列并触发登出
-          refreshSubscribers = []
-          await logout()
-          throw new Error(getI18nText('auth.sessionExpired'))
+          try {
+            const retryRes = await doRequest(newToken)
+            if (retryRes.code === 0) return retryRes.data
+            const msg = getErrorMessageByCode(retryRes.code) || retryRes.message || getI18nText('auth.requestFailed')
+            const e = new Error(msg) as any; e.code = retryRes.code; throw e
+          } catch (retryError: any) {
+            const retryStatus = retryError?.statusCode || retryError?.status
+            if (retryStatus !== 401) throw retryError
+          }
         }
+
+        // 刷新失败或新 token 仍被拒绝：原子化清理，不再调用需要 access token 的 logout 接口。
+        clearLocalSession()
+        await navigateTo('/login')
+        throw new Error(getI18nText('auth.sessionExpired'))
       }
 
       // 其他 HTTP 错误，尝试提取后端业务错误信息
@@ -661,20 +687,17 @@ export const useAuth = () => {
   /**
    * 同步恢复认证状态：从 localStorage 读取 token 和用户状态。
    * 在路由守卫最早阶段调用，确保后续逻辑能访问到正确的认证状态。
-   * 恢复成功后异步刷新角色列表（过滤已停用租户），不阻塞页面。
+   * 只负责从本地恢复；服务端校验和状态同步由路由守卫串行完成。
    */
   const restore = () => {
     // 独立恢复 token（高频读写，与状态分离存储）
     const savedToken = localStorage.getItem('token')
-    if (savedToken) token.value = savedToken
+    token.value = savedToken
     const savedRefresh = localStorage.getItem('refresh_token')
-    if (savedRefresh) refreshToken.value = savedRefresh
+    refreshToken.value = savedRefresh
 
     // 从合并 key 恢复其余状态
     loadState()
-
-    // 恢复成功后，异步刷新角色列表，不阻塞页面
-    if (savedToken) refreshRoles()
   }
 
   /** 仅在本地更新语言偏好并持久化（不调用后端接口） */
