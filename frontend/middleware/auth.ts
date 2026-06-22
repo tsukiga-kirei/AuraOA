@@ -40,6 +40,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     tryRestoreAsync,
     isRefreshTokenValid,
     validateAccessToken,
+    doRefreshToken,
     clearLocalSession,
     userPermissions,
     menus,
@@ -71,7 +72,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     let ok = await validateAccessToken()
     if (!ok) {
       // 校验失败时尝试用 refresh_token 换取新 access_token 后再次校验
-      const refreshed = await tryRestoreAsync()
+      const refreshed = isRefreshTokenValid() && await doRefreshToken()
       if (refreshed) {
         ok = await validateAccessToken()
       }
