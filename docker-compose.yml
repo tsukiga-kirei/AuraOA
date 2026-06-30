@@ -14,6 +14,7 @@ services:
     restart: unless-stopped
 
   frontend:
+    image: auraoa-frontend:${AURAOA_IMAGE_TAG:-latest}
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -31,6 +32,7 @@ services:
     restart: unless-stopped
 
   go-service:
+    image: auraoa-go-service:${AURAOA_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: go-service/Dockerfile
@@ -42,7 +44,7 @@ services:
       redis:
         condition: service_healthy
     env_file:
-      - .env
+      - ${AURAOA_ENV_FILE:-.env}
     environment:
       # 数据库连接：固定指向容器内服务名 postgres，端口/库名/账号从 .env 读取
       - DATABASE_HOST=postgres
