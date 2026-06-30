@@ -203,7 +203,7 @@ AuraOA/
 - Node.js 18+（前端本地开发）
 - Go 1.25+（后端本地开发，可选）
 
-### Docker 一键部署（推荐）
+### Docker 本地一键部署（推荐）
 
 ```bash
 cp .env.example .env
@@ -212,6 +212,8 @@ cp .env.example .env
 编辑 `.env`，至少修改数据库密码、`JWT_SECRET`、`ENCRYPTION_KEY`、`EMBED_ACCESS_TOKEN`，并按需配置对外访问端口：
 
 ```env
+AURAOA_ENV_FILE=.env
+AURAOA_IMAGE_TAG=latest
 NGINX_HTTP_PORT=80
 AURAOA_PUBLIC_API_BASE=
 AURAOA_PUBLIC_MOCK_MODE=false
@@ -230,6 +232,169 @@ docker compose ps
 NGINX_SERVER_NAME=oa.example.com
 NGINX_HTTP_PORT=80
 ```
+
+### Docker 镜像打包与服务器部署
+
+服务器部署按“本地构建镜像、导出 tar、上传服务器、服务器加载镜像并启动”的方式组织。`docker-compose.yml` 中前后端服务使用固定镜像名：
+
+```text
+auraoa-go-service:${AURAOA_IMAGE_TAG:-latest}
+auraoa-frontend:${AURAOA_IMAGE_TAG:-latest}
+```
+
+#### 1. 本地构建 Linux 镜像
+
+Mac 构建、Linux 服务器运行时，需要显式指定目标平台。常见 x86_64 服务器使用 `linux/amd64`；ARM 服务器可改为 `linux/arm64`。
+
+```bash
+export AURAOA_IMAGE_TAG=latest
+
+docker buildx build --platform linux/amd64 \
+  -t auraoa-go-service:${AURAOA_IMAGE_TAG} \
+  -f go-service/Dockerfile \
+  --load .
+
+docker buildx build --platform linux/amd64 \
+  -t auraoa-frontend:${AURAOA_IMAGE_TAG} \
+  -f frontend/Dockerfile \
+  --load ./frontend
+```
+
+导出前后端镜像：
+
+```bash
+mkdir -p dist/docker-images
+docker save auraoa-go-service:${AURAOA_IMAGE_TAG} \
+  -o dist/docker-images/auraoa-go-service-${AURAOA_IMAGE_TAG}-linux-amd64.tar
+docker save auraoa-frontend:${AURAOA_IMAGE_TAG} \
+  -o dist/docker-images/auraoa-frontend-${AURAOA_IMAGE_TAG}-linux-amd64.tar
+```
+
+如果服务器不能访问公网，也需要把运行依赖镜像一起导出：
+
+```bash
+docker pull --platform linux/amd64 nginx:1.27-alpine
+docker pull --platform linux/amd64 pgvector/pgvector:pg16
+docker pull --platform linux/amd64 redis:7-alpine
+docker save \
+  nginx:1.27-alpine \
+  pgvector/pgvector:pg16 \
+  redis:7-alpine \
+  -o dist/docker-images/auraoa-runtime-linux-amd64.tar
+```
+
+数据库迁移脚本不需要单独上传，`go-service` 镜像已经包含 `db/migrations`，服务启动时会从容器内 `/migrations` 自动执行迁移。
+
+#### 2. 上传服务器
+
+服务器目录示例使用 `/opt/auraoa`：
+
+```bash
+ssh root@服务器IP "mkdir -p /opt/auraoa/deploy/nginx/templates /opt/auraoa/docker-images"
+
+scp docker-compose.yml .env.example root@服务器IP:/opt/auraoa/
+scp deploy/nginx/templates/default.conf.template \
+  root@服务器IP:/opt/auraoa/deploy/nginx/templates/
+scp dist/docker-images/*.tar root@服务器IP:/opt/auraoa/docker-images/
+```
+
+#### 3. 服务器加载镜像
+
+```bash
+cd /opt/auraoa
+docker load -i docker-images/auraoa-go-service-latest-linux-amd64.tar
+docker load -i docker-images/auraoa-frontend-latest-linux-amd64.tar
+
+# 如果上传了运行依赖镜像，再加载这一份。
+docker load -i docker-images/auraoa-runtime-linux-amd64.tar
+```
+
+#### 4. 测试部署
+
+测试环境用于验收镜像、数据库迁移、初始化登录、OA 连接、AI 模型配置和审核流程：
+
+```bash
+cp .env.example .env.test
+```
+
+编辑 `.env.test`，至少修改：
+
+```env
+AURAOA_ENV_FILE=.env.test
+AURAOA_IMAGE_TAG=latest
+NGINX_HTTP_PORT=8088
+NGINX_SERVER_NAME=测试服务器IP
+AURAOA_PUBLIC_API_BASE=
+AURAOA_PUBLIC_MOCK_MODE=false
+POSTGRES_PASSWORD=测试库强密码
+REDIS_PASSWORD=测试缓存强密码
+JWT_SECRET=测试环境独立随机值
+ENCRYPTION_KEY=32字节加密密钥
+EMBED_ACCESS_TOKEN=测试环境独立随机值
+EMBED_TENANT_CODE=测试租户编码
+```
+
+启动：
+
+```bash
+docker compose --env-file .env.test up -d --no-build
+docker compose --env-file .env.test ps
+docker compose --env-file .env.test logs -f go-service
+```
+
+启动后访问 `http://测试服务器IP:8088`。首次部署空库时，访问 `/setup` 创建首个系统管理员。
+
+#### 5. 正式部署
+
+正式环境应使用正式域名、独立数据库密码、独立 Redis 密码和独立强随机密钥：
+
+```bash
+cp .env.example .env.prod
+```
+
+编辑 `.env.prod`，至少修改：
+
+```env
+AURAOA_ENV_FILE=.env.prod
+AURAOA_IMAGE_TAG=latest
+NGINX_HTTP_PORT=80
+NGINX_SERVER_NAME=oa.example.com
+AURAOA_PUBLIC_API_BASE=
+AURAOA_PUBLIC_MOCK_MODE=false
+POSTGRES_PASSWORD=正式库强密码
+REDIS_PASSWORD=正式缓存强密码
+JWT_SECRET=正式环境独立随机值
+ENCRYPTION_KEY=32字节加密密钥
+EMBED_ACCESS_TOKEN=正式环境独立随机值
+EMBED_TENANT_CODE=正式租户编码
+```
+
+启动：
+
+```bash
+docker compose --env-file .env.prod up -d --no-build
+docker compose --env-file .env.prod ps
+docker compose --env-file .env.prod logs -f go-service
+```
+
+`ENCRYPTION_KEY` 用于敏感字段加密，一旦正式环境已写入 OA 数据库密码、AI 密钥等密文数据，不要在未做密文迁移的情况下直接更换。
+
+#### 6. 更新版本
+
+推荐每次发版使用明确标签，例如日期或 Git commit：
+
+```bash
+export AURAOA_IMAGE_TAG=20260630
+```
+
+按上面的步骤重新构建、导出、上传并 `docker load` 后，修改服务器 `.env.test` 或 `.env.prod` 中的 `AURAOA_IMAGE_TAG`，再执行：
+
+```bash
+docker compose --env-file .env.prod up -d --no-build
+docker compose --env-file .env.prod ps
+```
+
+如需回滚，把 `AURAOA_IMAGE_TAG` 改回服务器已加载的旧标签后再次 `up -d`。
 
 ### 1. 启动基础服务（开发模式）
 
