@@ -665,8 +665,8 @@ func (s *AuthService) GetMenu(activeRole jwtpkg.ActiveRoleClaim, userID string, 
 		}, nil
 
 	case "tenant_admin", "business":
-		// tenant_admin 和 business 统一从 org_roles.page_permissions 读取
-		return s.getMenuFromOrgRoles(userID, tenantID)
+		// tenant_admin 和 business 从 org_roles.page_permissions 读取，再按当前系统角色裁剪前台/后台菜单。
+		return s.getMenuFromOrgRoles(userID, tenantID, activeRole.Role)
 
 	default:
 		return &dto.MenuResponse{Menus: []dto.MenuItem{}}, nil
@@ -674,7 +674,8 @@ func (s *AuthService) GetMenu(activeRole jwtpkg.ActiveRoleClaim, userID string, 
 }
 
 // getMenuFromOrgRoles 查询用户的 OrgMember + OrgRoles 并合并 page_permissions。
-func (s *AuthService) getMenuFromOrgRoles(userID string, tenantID string) (*dto.MenuResponse, error) {
+// activeSystemRole 用于裁剪：tenant_admin 只返回后台管理路径，business 只返回前台业务路径。
+func (s *AuthService) getMenuFromOrgRoles(userID string, tenantID string, activeSystemRole string) (*dto.MenuResponse, error) {
 	uid, err := uuid.Parse(userID)
 	if err != nil {
 		return &dto.MenuResponse{Menus: []dto.MenuItem{}}, nil
@@ -742,6 +743,31 @@ func (s *AuthService) getMenuFromOrgRoles(userID string, tenantID string) (*dto.
 
 	if menus == nil {
 		menus = []dto.MenuItem{}
+	}
+
+	// 按当前系统角色裁剪：tenant_admin 只看后台，business 只看前台；概览与个人设置通用。
+	if activeSystemRole == "tenant_admin" {
+		var filtered []dto.MenuItem
+		for _, m := range menus {
+			if strings.HasPrefix(m.Path, "/admin/tenant/") || m.Path == "/overview" || m.Path == "/settings" {
+				filtered = append(filtered, m)
+			}
+		}
+		if filtered == nil {
+			filtered = []dto.MenuItem{}
+		}
+		menus = filtered
+	} else if activeSystemRole == "business" {
+		var filtered []dto.MenuItem
+		for _, m := range menus {
+			if !strings.HasPrefix(m.Path, "/admin/") {
+				filtered = append(filtered, m)
+			}
+		}
+		if filtered == nil {
+			filtered = []dto.MenuItem{}
+		}
+		menus = filtered
 	}
 
 	return &dto.MenuResponse{Menus: menus}, nil
