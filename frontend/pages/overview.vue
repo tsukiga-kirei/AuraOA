@@ -38,6 +38,7 @@ const EMPTY_OVERVIEW: DashboardOverview = {
 
 // 鉴权、国际化、数据接口
 const { effectiveActiveRoleForApi, currentUser, menus } = useAuth()
+const { chartColors } = useThemeColors()
 const { t, locale } = useI18n()
 const { fetchDashboardOverview, fetchPlatformDashboardOverview } = useDashboardOverviewApi()
 const { getDashboardPrefs, updateDashboardPrefs } = useSettingsApi()
@@ -236,9 +237,9 @@ function cronTaskDescriptionLabel(task: { description?: string; task_type?: stri
 const trendCategories = computed(() => dash.value.weekly_trend.map(d => d.date))
 // 趋势图的系列数据（审核、定时任务、归档）
 const trendSeries = computed(() => [
-  { name: t('overview.auditWorkbench'), data: dash.value.weekly_trend.map(d => d.audit_count), color: '#4f46e5' },
-  { name: t('overview.cronTasks'), data: dash.value.weekly_trend.map(d => d.cron_count), color: '#06b6d4' },
-  { name: t('overview.archiveReview'), data: dash.value.weekly_trend.map(d => d.archive_count), color: '#10b981' },
+  { name: t('overview.auditWorkbench'), data: dash.value.weekly_trend.map(d => d.audit_count), color: chartColors.value.primary },
+  { name: t('overview.cronTasks'), data: dash.value.weekly_trend.map(d => d.cron_count), color: chartColors.value.accent },
+  { name: t('overview.archiveReview'), data: dash.value.weekly_trend.map(d => d.archive_count), color: chartColors.value.success },
 ])
 
 // 部门分布图的标签配置

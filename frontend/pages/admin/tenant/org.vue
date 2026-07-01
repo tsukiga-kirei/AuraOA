@@ -777,7 +777,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
 .empty-cell { text-align: center; padding: 32px 16px !important; color: var(--color-text-tertiary); }
 
 .member-name-cell { display: flex; align-items: center; gap: 8px; font-weight: 500; }
-.member-avatar { background: linear-gradient(135deg, #4f46e5, #7c3aed) !important; flex-shrink: 0; }
+.member-avatar { background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light)) !important; flex-shrink: 0; }
 
 .role-tag {
   font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full);

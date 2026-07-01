@@ -33,8 +33,9 @@ export default {
 
     //=====标题=====
     'header.toggleTheme': '切换主题',
-    'header.lightMode': '切换到浅色模式',
-    'header.darkMode': '切换到深色模式',
+    'header.lightMode': '浅色模式',
+    'header.darkMode': '深色模式',
+    'header.warmMode': '暖色模式',
     'header.notifications': '通知',
     'header.switchRole': '切换角色',
     'header.switchRoleFailed': '角色切换失败，该租户可能已被停用',

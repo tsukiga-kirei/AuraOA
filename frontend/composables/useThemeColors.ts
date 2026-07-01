@@ -19,8 +19,8 @@ export const useThemeColors = () => {
 
   /** 当前主题下的图表配色方案（响应式，主题切换时自动更新） */
   const chartColors = computed(() => ({
-    primary: getCssVar('--color-primary') || '#4f46e5',
-    primaryLight: getCssVar('--color-primary-light') || '#6366f1',
+    primary: getCssVar('--color-primary') || '#5b5bd6',
+    primaryLight: getCssVar('--color-primary-light') || '#7070e8',
     accent: getCssVar('--color-accent') || '#06b6d4',
     success: getCssVar('--color-success') || '#10b981',
     warning: getCssVar('--color-warning') || '#f59e0b',
