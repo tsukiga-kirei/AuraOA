@@ -32,8 +32,9 @@ export default {
 
     //=====标题=====
     'header.toggleTheme': 'Toggle Theme',
-    'header.lightMode': 'Switch to Light Mode',
-    'header.darkMode': 'Switch to Dark Mode',
+    'header.lightMode': 'Light Mode',
+    'header.darkMode': 'Dark Mode',
+    'header.warmMode': 'Warm Mode',
     'header.notifications': 'Notifications',
     'header.switchRole': 'Switch Role',
     'header.switchRoleFailed': 'Failed to switch role. The tenant may have been disabled.',

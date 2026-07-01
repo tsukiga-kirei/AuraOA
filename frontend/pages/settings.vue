@@ -1776,7 +1776,7 @@ const handleSaveArchive = async () => {
   border: 1px solid var(--color-border-light); padding: 24px; max-width: 700px;
 }
 .profile-avatar-section { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
-.profile-avatar { background: linear-gradient(135deg, #4f46e5, #7c3aed) !important; flex-shrink: 0; }
+.profile-avatar { background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light)) !important; flex-shrink: 0; }
 .profile-name { font-size: 18px; font-weight: 600; color: var(--color-text-primary); }
 .role-badge {
   font-size: 12px; font-weight: 500; padding: 2px 10px; border-radius: var(--radius-full);
@@ -1934,7 +1934,7 @@ const handleSaveArchive = async () => {
   cursor: pointer; transition: all 0.2s ease; min-width: 180px; position: relative;
 }
 .language-option:hover { border-color: var(--color-primary-light); background: var(--color-bg-hover); }
-.language-option--active { border-color: var(--color-primary); background: var(--color-primary-bg); box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+.language-option--active { border-color: var(--color-primary); background: var(--color-primary-bg); box-shadow: 0 0 0 3px var(--color-primary-ring); }
 .language-flag { font-size: 24px; }
 .language-label { font-size: 15px; font-weight: 600; color: var(--color-text-primary); }
 .language-check { color: var(--color-primary); font-size: 16px; margin-left: auto; }

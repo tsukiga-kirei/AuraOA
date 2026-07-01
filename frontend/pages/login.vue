@@ -16,7 +16,7 @@ definePageMeta({ layout: false, middleware: 'auth' })
 
 // 鉴权与主题相关 composable
 const { login } = useAuth()
-const { isDark, toggle: toggleTheme, restore: restoreTheme } = useTheme()
+const { restore: restoreTheme } = useTheme()
 const { t } = useI18n()
 const config = useRuntimeConfig()
 
@@ -45,9 +45,9 @@ type PortalType = 'business' | 'tenant_admin' | 'system_admin'
 
 // 三种入口的展示配置（图标、标题、描述、主题色）
 const portals = computed(() => [
-  { key: 'business' as PortalType, icon: DashboardOutlined, title: t('login.portal.business'), desc: t('login.portal.businessDesc'), color: '#4f46e5' },
-  { key: 'tenant_admin' as PortalType, icon: SettingOutlined, title: t('login.portal.tenantAdmin'), desc: t('login.portal.tenantAdminDesc'), color: '#f59e0b' },
-  { key: 'system_admin' as PortalType, icon: ControlOutlined, title: t('login.portal.systemAdmin'), desc: t('login.portal.systemAdminDesc'), color: '#ef4444' },
+  { key: 'business' as PortalType, icon: DashboardOutlined, title: t('login.portal.business'), desc: t('login.portal.businessDesc'), color: 'var(--color-role-business)' },
+  { key: 'tenant_admin' as PortalType, icon: SettingOutlined, title: t('login.portal.tenantAdmin'), desc: t('login.portal.tenantAdminDesc'), color: 'var(--color-role-tenant)' },
+  { key: 'system_admin' as PortalType, icon: ControlOutlined, title: t('login.portal.systemAdmin'), desc: t('login.portal.systemAdminDesc'), color: 'var(--color-role-system)' },
 ])
 
 // 当前选中的登录入口
@@ -134,24 +134,7 @@ const handleLogin = async () => {
     </div>
 
     <div class="login-theme-floating">
-      <a-tooltip :title="t('header.toggleTheme')" placement="bottom" :mouse-enter-delay="0.5">
-        <button
-          type="button"
-          class="theme-toggle-btn"
-          :class="{ 'theme-toggle-btn--dark': isDark }"
-          :aria-label="isDark ? t('header.lightMode') : t('header.darkMode')"
-          @click="toggleTheme"
-        >
-          <span class="theme-toggle-track">
-            <span class="theme-toggle-thumb">
-              <transition name="theme-icon" mode="out-in">
-                <svg v-if="isDark" key="moon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
-                <svg v-else key="sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /><line x1="12" y1="2" x2="12" y2="5" /><line x1="12" y1="19" x2="12" y2="22" /><line x1="4.93" y1="4.93" x2="6.76" y2="6.76" /><line x1="17.24" y1="17.24" x2="19.07" y2="19.07" /><line x1="2" y1="12" x2="5" y2="12" /><line x1="19" y1="12" x2="22" y2="12" /><line x1="4.93" y1="19.07" x2="6.76" y2="17.24" /><line x1="17.24" y1="6.76" x2="19.07" y2="4.93" /></svg>
-              </transition>
-            </span>
-          </span>
-        </button>
-      </a-tooltip>
+      <ThemeSwitcher />
     </div>
 
     <div class="login-container">
@@ -228,7 +211,6 @@ const handleLogin = async () => {
               <a-button
                 type="primary" block size="large" :loading="loading"
                 class="login-btn"
-                :style="{ background: `linear-gradient(135deg, ${currentPortal.color}, ${currentPortal.color}dd)` }"
                 @click="handleLogin"
               >
                 {{ loading ? t('login.logging') : t('login.loginAs', currentPortal.title) }}
@@ -250,77 +232,23 @@ const handleLogin = async () => {
 <style scoped>
 .login-page {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  position: relative; overflow: hidden; background: var(--color-bg-sidebar);
-  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative; overflow: hidden;
+  background: var(--color-login-bg);
+  transition: background 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
-/* 与 AppHeader / setup 一致的药丸主题切换 */
+/* 与 Agentum 一致的主题切换定位 */
 .login-theme-floating {
   position: absolute;
   top: 20px;
   right: 20px;
   z-index: 10;
 }
-.theme-toggle-btn {
-  width: auto !important;
-  padding: 0 !important;
-  background: transparent !important;
-  border: none !important;
-}
-.theme-toggle-btn:hover {
-  background: transparent !important;
-}
-.theme-toggle-track {
-  display: flex;
-  align-items: center;
-  width: 52px;
-  height: 28px;
-  border-radius: 14px;
-  background: #e2e8f0;
-  padding: 3px;
-  transition: background 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
-  position: relative;
-}
-.theme-toggle-btn--dark .theme-toggle-track {
-  background: #334155;
-}
-.theme-toggle-thumb {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-  transition:
-    transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-    background 0.35s ease;
-  color: #f59e0b;
-}
-.theme-toggle-btn--dark .theme-toggle-thumb {
-  transform: translateX(24px);
-  background: #1e293b;
-  color: #818cf8;
-}
-.theme-icon-enter-active,
-.theme-icon-leave-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.theme-icon-enter-from {
-  opacity: 0;
-  transform: rotate(-90deg) scale(0.5);
-}
-.theme-icon-leave-to {
-  opacity: 0;
-  transform: rotate(90deg) scale(0.5);
-}
 
 .login-bg { position: absolute; inset: 0; overflow: hidden; }
-.login-bg-shape { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.5; animation: float 20s ease-in-out infinite; }
-.login-bg-shape--1 { width: 600px; height: 600px; background: linear-gradient(135deg,#4f46e5,#7c3aed); top: -200px; left: -100px; }
-.login-bg-shape--2 { width: 500px; height: 500px; background: linear-gradient(135deg,#06b6d4,#3b82f6); bottom: -150px; right: -100px; animation-delay: -7s; }
-.login-bg-shape--3 { width: 400px; height: 400px; background: linear-gradient(135deg,#8b5cf6,#ec4899); top: 50%; left: 50%; transform: translate(-50%,-50%); animation-delay: -14s; }
+.login-bg-shape { position: absolute; border-radius: 50%; filter: blur(80px); opacity: var(--color-login-blob-opacity); animation: float 20s ease-in-out infinite; }
+.login-bg-shape--1 { width: 600px; height: 600px; background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light)); top: -200px; left: -100px; }
+.login-bg-shape--2 { width: 500px; height: 500px; background: linear-gradient(135deg, var(--color-accent), var(--color-info)); bottom: -150px; right: -100px; animation-delay: -7s; }
+.login-bg-shape--3 { width: 400px; height: 400px; background: linear-gradient(135deg, var(--color-primary-lighter), var(--color-accent-light)); top: 50%; left: 50%; transform: translate(-50%,-50%); animation-delay: -14s; }
 @keyframes float {
   0%,100% { transform: translate(0,0) scale(1); }
   25% { transform: translate(30px,-30px) scale(1.05); }
@@ -332,13 +260,13 @@ const handleLogin = async () => {
   position: relative; z-index: 1; display: flex;
   width: 960px; max-width: calc(100vw - 32px);
   min-height: 600px; border-radius: 24px;
-  overflow: hidden; box-shadow: 0 25px 60px rgba(0,0,0,0.4);
+  overflow: hidden; box-shadow: var(--color-login-container-shadow);
 }
 
 /* 左侧品牌展示区域 */
 .login-branding {
   width: 360px; flex-shrink: 0;
-  background: linear-gradient(135deg, rgba(79,70,229,0.9), rgba(124,58,237,0.9));
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light));
   backdrop-filter: blur(20px); padding: 48px 36px;
   display: flex; flex-direction: column; justify-content: center;
   position: relative; overflow: hidden;
@@ -407,10 +335,11 @@ const handleLogin = async () => {
   flex: 1; background: var(--color-bg-card);
   padding: 36px 40px; display: flex; flex-direction: column;
   justify-content: center; overflow-y: auto;
+  border-left: 1px solid var(--color-border-light);
 }
 .login-form-inner { max-width: 400px; width: 100%; margin: 0 auto; }
 .login-form-header { margin-bottom: 20px; }
-.login-form-header h2 { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0 0 6px; }
+.login-form-header h2 { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0 0 6px; font-family: var(--font-display); }
 .login-form-header p { font-size: 14px; color: var(--color-text-tertiary); margin: 0; }
 
 /* ===== 入口选择器（连体分段控件） ===== */
@@ -426,17 +355,13 @@ const handleLogin = async () => {
   -webkit-overflow-scrolling: touch;
   position: relative;
   padding: var(--segment-padding);
-  border: 1px solid color-mix(in srgb, var(--color-border) 64%, transparent);
+  border: 1px solid var(--color-segment-track-border);
   border-radius: 16px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.34)),
-    color-mix(in srgb, var(--color-bg-input) 76%, var(--color-bg-card));
-  box-shadow:
-    inset 0 1px 2px rgba(15, 23, 42, 0.05),
-    0 12px 28px rgba(15, 23, 42, 0.05);
+  background: var(--color-segment-track);
+  box-shadow: inset 0 1px 2px var(--color-segment-shadow);
   isolation: isolate;
   --active-offset: 0px;
-  --active-color: #4f46e5;
+  --active-color: var(--color-primary);
 }
 .portal-selector::before {
   content: "";
@@ -446,14 +371,9 @@ const handleLogin = async () => {
   left: var(--segment-padding);
   width: calc((100% - var(--segment-track-remainder)) / 3);
   border-radius: 12px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.74)),
-    color-mix(in srgb, var(--active-color) 7%, var(--color-bg-card));
-  box-shadow:
-    0 10px 24px color-mix(in srgb, var(--active-color) 16%, transparent),
-    0 2px 8px rgba(15, 23, 42, 0.08),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
-    inset 0 -1px 0 color-mix(in srgb, var(--active-color) 20%, transparent);
+  background: var(--color-segment-thumb);
+  border: 1px solid var(--color-segment-track-border);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
   transform: translateX(var(--active-offset));
   transition:
     transform 0.38s cubic-bezier(0.22, 1, 0.36, 1),
@@ -481,15 +401,19 @@ const handleLogin = async () => {
   position: relative;
   z-index: 1;
 }
-.portal-pill:hover {
-  transform: translateY(-0.5px);
+.portal-pill:hover:not(.portal-pill--active) {
+  background: color-mix(in srgb, var(--color-segment-thumb) 50%, transparent);
+}
+.portal-pill:hover:not(.portal-pill--active) .portal-pill-icon,
+.portal-pill:hover:not(.portal-pill--active) .portal-pill-title {
+  color: var(--color-segment-inactive-text);
 }
 .portal-pill--active {
   transform: translateY(-0.5px);
 }
 .portal-pill-icon {
   font-size: 15px;
-  color: var(--color-text-tertiary);
+  color: var(--color-segment-inactive-icon);
   transition: color 0.22s ease;
 }
 .portal-pill--active .portal-pill-icon {
@@ -497,7 +421,7 @@ const handleLogin = async () => {
 }
 .portal-pill-title {
   font-size: 13px; font-weight: 500;
-  color: var(--color-text-secondary);
+  color: var(--color-segment-inactive-text);
   transition: color 0.22s ease;
 }
 .portal-pill--active .portal-pill-title {
@@ -535,7 +459,7 @@ const handleLogin = async () => {
 :deep(.ant-input-affix-wrapper:focus),
 :deep(.ant-input-affix-wrapper-focused) {
   border-color: var(--color-primary) !important;
-  box-shadow: 0 0 0 3px rgba(79,70,229,0.1) !important;
+  box-shadow: 0 0 0 3px var(--color-primary-ring) !important;
 }
 .login-input-icon { color: var(--color-text-tertiary); font-size: 15px; }
 .login-select {
@@ -557,20 +481,21 @@ const handleLogin = async () => {
 }
 .login-select.ant-select-focused :deep(.ant-select-selector) {
   border-color: var(--color-primary) !important;
-  box-shadow: 0 0 0 3px rgba(79,70,229,0.1) !important;
+  box-shadow: 0 0 0 3px var(--color-primary-ring) !important;
 }
 .login-options { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 
 .login-btn {
   height: 46px !important; border-radius: var(--radius-lg) !important;
   font-size: 15px !important; font-weight: 600 !important; border: none !important;
-  box-shadow: 0 4px 16px rgba(79,70,229,0.3) !important;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light)) !important;
+  box-shadow: 0 4px 16px var(--color-primary-shadow) !important;
   transition: all 0.3s ease !important;
   display: flex !important; align-items: center !important;
   justify-content: center !important; text-align: center !important; line-height: 1 !important;
 }
 .login-btn:hover {
-  box-shadow: 0 6px 24px rgba(79,70,229,0.4) !important;
+  box-shadow: 0 6px 24px var(--color-primary-shadow) !important;
   transform: translateY(-1px) !important; opacity: 0.95;
 }
 

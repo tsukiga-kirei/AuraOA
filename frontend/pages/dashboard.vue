@@ -1626,7 +1626,7 @@ onMounted(async () => {
 .oa-jump-btn:hover {
   border-color: var(--color-primary); color: var(--color-primary);
   background: var(--color-primary-bg); transform: scale(1.1);
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.15);
+  box-shadow: 0 2px 8px var(--color-primary-shadow);
 }
 .oa-jump-btn:active { transform: scale(0.95); }
 .todo-item-score-badge {
@@ -1703,7 +1703,7 @@ onMounted(async () => {
   border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
   background: var(--color-bg-page); transition: all 0.3s ease;
 }
-.audit-phase--active { border-color: var(--color-primary); background: var(--color-primary-bg); box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1); }
+.audit-phase--active { border-color: var(--color-primary); background: var(--color-primary-bg); box-shadow: 0 2px 8px var(--color-primary-ring); }
 .audit-phase--done { border-color: var(--color-success); background: var(--color-success-bg); }
 .audit-phase--pending { opacity: 0.5; }
 .audit-phase-dot {
@@ -1758,7 +1758,7 @@ onMounted(async () => {
 .risk-suggest-row:has(.insight-card:only-child) { grid-template-columns: 1fr; }
 .insight-card { border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--color-border-light); }
 .insight-card--risk { background: linear-gradient(135deg, rgba(239, 68, 68, 0.04), rgba(239, 68, 68, 0.01)); border-color: rgba(239, 68, 68, 0.15); }
-.insight-card--suggest { background: linear-gradient(135deg, rgba(79, 70, 229, 0.04), rgba(79, 70, 229, 0.01)); border-color: rgba(79, 70, 229, 0.15); }
+.insight-card--suggest { background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 4%, transparent), color-mix(in srgb, var(--color-primary) 1%, transparent)); border-color: color-mix(in srgb, var(--color-primary) 15%, transparent); }
 .insight-card-header { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 10px; }
 .insight-card-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .insight-card-list li { font-size: 13px; line-height: 1.6; color: var(--color-text-secondary); }

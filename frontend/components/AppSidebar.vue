@@ -241,7 +241,7 @@ const handleMenuClick = (path: string) => {
 }
 .sidebar-user-profile:hover { background: var(--color-bg-sidebar-hover); }
 .sidebar-user-profile--collapsed { justify-content: center; padding: 8px; }
-.sidebar-avatar { background: linear-gradient(135deg, #4f46e5, #7c3aed) !important; flex-shrink: 0; }
+.sidebar-avatar { background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light)) !important; flex-shrink: 0; }
 .sidebar-user-info { min-width: 0; flex: 1; }
 .sidebar-user-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

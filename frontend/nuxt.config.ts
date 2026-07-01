@@ -38,7 +38,7 @@ export default defineNuxtConfig({
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1' },
         { name: 'description', content: '极简 AI 驱动 OA 流程审核框架 — 透明、可追溯的企业审批辅助' },
-        { name: 'theme-color', content: '#2563eb' },
+        { name: 'theme-color', content: '#5b5bd6' },
       ],
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
