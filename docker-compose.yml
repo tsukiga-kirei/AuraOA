@@ -1,134 +1,134 @@
-services:
-  nginx:
-    image: nginx:1.27-alpine
-    ports:
-      - "${NGINX_HTTP_PORT:-80}:80"
-    environment:
-      - NGINX_SERVER_NAME=${NGINX_SERVER_NAME:-_}
-      - NGINX_CLIENT_MAX_BODY_SIZE=${NGINX_CLIENT_MAX_BODY_SIZE:-20m}
-    volumes:
-      - ./deploy/nginx/templates:/etc/nginx/templates:ro
-    depends_on:
-      - frontend
-      - go-service
-    restart: unless-stopped
+  services:
+    nginx:
+      image: nginx:1.27-alpine
+      ports:
+        - "${NGINX_HTTP_PORT:-80}:80"
+      environment:
+        - NGINX_SERVER_NAME=${NGINX_SERVER_NAME:-_}
+        - NGINX_CLIENT_MAX_BODY_SIZE=${NGINX_CLIENT_MAX_BODY_SIZE:-20m}
+      volumes:
+        - ./deploy/nginx/templates:/etc/nginx/templates:ro
+      depends_on:
+        - frontend
+        - go-service
+      restart: unless-stopped
 
-  frontend:
-    image: auraoa-frontend:${AURAOA_IMAGE_TAG:-latest}
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    expose:
-      - "3000"
-    depends_on:
-      - go-service
-    environment:
-      # 空值表示浏览器同源访问：/api 由 nginx 反代到 go-service。
-      # 若前后端分离部署，可在 .env 中设置 AURAOA_PUBLIC_API_BASE=https://api.example.com。
-      - NUXT_PUBLIC_API_BASE=${AURAOA_PUBLIC_API_BASE:-}
-      - NUXT_PUBLIC_MOCK_MODE=${AURAOA_PUBLIC_MOCK_MODE:-false}
-      - EMBED_ACCESS_TOKEN=${EMBED_ACCESS_TOKEN}
-      - EMBED_TENANT_CODE=${EMBED_TENANT_CODE}
-    restart: unless-stopped
+    frontend:
+      image: auraoa-frontend:${AURAOA_IMAGE_TAG:-latest}
+      build:
+        context: ./frontend
+        dockerfile: Dockerfile
+      expose:
+        - "3000"
+      depends_on:
+        - go-service
+      environment:
+        # 空值表示浏览器同源访问：/api 由 nginx 反代到 go-service。
+        # 若前后端分离部署，可在 .env 中设置 AURAOA_PUBLIC_API_BASE=https://api.example.com。
+        - NUXT_PUBLIC_API_BASE=${AURAOA_PUBLIC_API_BASE:-}
+        - NUXT_PUBLIC_MOCK_MODE=${AURAOA_PUBLIC_MOCK_MODE:-false}
+        - EMBED_ACCESS_TOKEN=${EMBED_ACCESS_TOKEN}
+        - EMBED_TENANT_CODE=${EMBED_TENANT_CODE}
+      restart: unless-stopped
 
-  go-service:
-    image: auraoa-go-service:${AURAOA_IMAGE_TAG:-latest}
-    build:
-      context: .
-      dockerfile: go-service/Dockerfile
-    expose:
-      - "8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    env_file:
-      - ${AURAOA_ENV_FILE:-.env}
-    environment:
-      # 数据库连接：固定指向容器内服务名 postgres，端口/库名/账号从 .env 读取
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_DBNAME=${POSTGRES_DB}
-      - DATABASE_USER=${POSTGRES_USER}
-      - DATABASE_PASSWORD=${POSTGRES_PASSWORD}
-      - DATABASE_SSLMODE=disable
-      - MIGRATIONS_PATH=/migrations
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - JWT_SECRET=${JWT_SECRET}
-      # Python AI 服务为可选组件；当前仓库未包含 ai-service 时保持为空即可。
-      - AI_SERVICE_URL=${AURAOA_AI_SERVICE_URL:-}
-      # 日志配置（对应 config.yaml log.* 字段，点号替换为下划线）
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - LOG_DIR=/app/logs
-      - LOG_MAX_SIZE_MB=${LOG_MAX_SIZE_MB:-100}
-      - LOG_MAX_BACKUPS=${LOG_MAX_BACKUPS:-0}
-      - LOG_COMPRESS=${LOG_COMPRESS:-true}
-      # 注意：全局日志保留天数优先从数据库 system_configs 表读取（前端系统设置可配置），
-      # 此处仅为数据库中无配置时的兜底默认值，通常无需在此修改。
-      - LOG_GLOBAL_RETENTION_DAYS=${LOG_GLOBAL_RETENTION_DAYS:-30}
-      # 时区设置，影响日志时间戳显示
-      - TZ=${TZ:-Asia/Shanghai}
-      # 数据库整库备份输出目录（pg_dump，非 postgres 容器内路径）。
-      # 由 go-service 按管理端 system.backup_* 定时导出到此处；默认 /app/backups（对应 config.yaml backup.dir / BACKUP_DIR）。
-      # 备份文件形如 aura_pg_<库名>_<UTC时间>.dump；与下方 LOG_DIR 的应用日志不是同一类数据。
-      - BACKUP_DIR=/app/backups
-      # OA 嵌入审核（仅 /api/embed/*，见 .env EMBED_*）
-      - EMBED_ACCESS_TOKEN=${EMBED_ACCESS_TOKEN}
-      - EMBED_TENANT_CODE=${EMBED_TENANT_CODE}
-    volumes:
-      # 将容器内日志目录挂载到宿主机，防止容器重启后日志丢失
-      - go_logs:/app/logs
-      # 数据库 .dump 备份默认仅存在 go-service 容器内 /app/backups，未挂载时重建容器可能丢失备份。
-      # 生产环境建议取消下一行注释，或改用命名卷 go_backups:/app/backups
-      # - ./backups:/app/backups
-    restart: unless-stopped
+    go-service:
+      image: auraoa-go-service:${AURAOA_IMAGE_TAG:-latest}
+      build:
+        context: .
+        dockerfile: go-service/Dockerfile
+      expose:
+        - "8080"
+      depends_on:
+        postgres:
+          condition: service_healthy
+        redis:
+          condition: service_healthy
+      env_file:
+        - ${AURAOA_ENV_FILE:-.env}
+      environment:
+        # 数据库连接：固定指向容器内服务名 postgres，端口/库名/账号从 .env 读取
+        - DATABASE_HOST=postgres
+        - DATABASE_PORT=5432
+        - DATABASE_DBNAME=${POSTGRES_DB}
+        - DATABASE_USER=${POSTGRES_USER}
+        - DATABASE_PASSWORD=${POSTGRES_PASSWORD}
+        - DATABASE_SSLMODE=disable
+        - MIGRATIONS_PATH=/migrations
+        - REDIS_HOST=redis
+        - REDIS_PORT=6379
+        - REDIS_PASSWORD=${REDIS_PASSWORD}
+        - JWT_SECRET=${JWT_SECRET}
+        # Python AI 服务为可选组件；当前仓库未包含 ai-service 时保持为空即可。
+        - AI_SERVICE_URL=${AURAOA_AI_SERVICE_URL:-}
+        # 日志配置（对应 config.yaml log.* 字段，点号替换为下划线）
+        - LOG_LEVEL=${LOG_LEVEL:-info}
+        - LOG_DIR=/app/logs
+        - LOG_MAX_SIZE_MB=${LOG_MAX_SIZE_MB:-100}
+        - LOG_MAX_BACKUPS=${LOG_MAX_BACKUPS:-0}
+        - LOG_COMPRESS=${LOG_COMPRESS:-true}
+        # 注意：全局日志保留天数优先从数据库 system_configs 表读取（前端系统设置可配置），
+        # 此处仅为数据库中无配置时的兜底默认值，通常无需在此修改。
+        - LOG_GLOBAL_RETENTION_DAYS=${LOG_GLOBAL_RETENTION_DAYS:-30}
+        # 时区设置，影响日志时间戳显示
+        - TZ=${TZ:-Asia/Shanghai}
+        # 数据库整库备份输出目录（pg_dump，非 postgres 容器内路径）。
+        # 由 go-service 按管理端 system.backup_* 定时导出到此处；默认 /app/backups（对应 config.yaml backup.dir / BACKUP_DIR）。
+        # 备份文件形如 aura_pg_<库名>_<UTC时间>.dump；与下方 LOG_DIR 的应用日志不是同一类数据。
+        - BACKUP_DIR=/app/backups
+        # OA 嵌入审核（仅 /api/embed/*，见 .env EMBED_*）
+        - EMBED_ACCESS_TOKEN=${EMBED_ACCESS_TOKEN}
+        - EMBED_TENANT_CODE=${EMBED_TENANT_CODE}
+      volumes:
+        # 将容器内日志目录挂载到宿主机，防止容器重启后日志丢失
+        - go_logs:/app/logs
+        # 数据库 .dump 备份默认仅存在 go-service 容器内 /app/backups，未挂载时重建容器可能丢失备份。
+        # 生产环境建议取消下一行注释，或改用命名卷 go_backups:/app/backups
+        # - ./backups:/app/backups
+      restart: unless-stopped
 
-  postgres:
-    image: pgvector/pgvector:pg16
-    ports:
-      - "${POSTGRES_BIND_ADDR:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-    healthcheck:
-      # 必须指定 -d，与 POSTGRES_DB 一致（见 dev 环境说明）
-      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
+    postgres:
+      image: pgvector/pgvector:pg16
+      ports:
+        - "${POSTGRES_BIND_ADDR:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
+      environment:
+        - POSTGRES_DB=${POSTGRES_DB}
+        - POSTGRES_USER=${POSTGRES_USER}
+        - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      volumes:
+        - pg_data:/var/lib/postgresql/data
+      healthcheck:
+        # 必须指定 -d，与 POSTGRES_DB 一致（见 dev 环境说明）
+        test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+        interval: 5s
+        timeout: 5s
+        retries: 5
+      restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "${REDIS_BIND_ADDR:-127.0.0.1}:${REDIS_HOST_PORT:-6379}:6379"
-    command: >
-      sh -c '
-        if [ -n "$$REDIS_PASSWORD" ]; then
-          redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes
-        else
-          redis-server --appendonly yes
-        fi
-      '
-    environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping; else redis-cli ping; fi"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
+    redis:
+      image: redis:7-alpine
+      ports:
+        - "${REDIS_BIND_ADDR:-127.0.0.1}:${REDIS_HOST_PORT:-6379}:6379"
+      command: >
+        sh -c '
+          if [ -n "$$REDIS_PASSWORD" ]; then
+            redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes
+          else
+            redis-server --appendonly yes
+          fi
+        '
+      environment:
+        - REDIS_PASSWORD=${REDIS_PASSWORD}
+      volumes:
+        - redis_data:/data
+      healthcheck:
+        test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping; else redis-cli ping; fi"]
+        interval: 5s
+        timeout: 5s
+        retries: 5
+      restart: unless-stopped
 
-volumes:
-  pg_data:
-  redis_data:
-  # 持久化 Go 服务日志，防止容器重启后丢失
-  go_logs:
+  volumes:
+    pg_data:
+    redis_data:
+    # 持久化 Go 服务日志，防止容器重启后丢失
+    go_logs:

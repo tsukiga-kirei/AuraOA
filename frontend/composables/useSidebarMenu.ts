@@ -1,7 +1,7 @@
 /**
  * useSidebarMenu — 基于用户权限动态构建侧边栏菜单。
  *
- * 菜单分区完全由用户权限组（userPermissions）和后端菜单权限（menus）驱动，
+ * 菜单分区由当前激活系统角色（effectiveActiveRoleForApi）和后端菜单权限（menus）驱动，
  * 无需感知当前路由，确保侧边栏始终展示用户有权访问的所有入口。
  *
  * 登录后默认落地页为 /overview（概览仪表板）。
@@ -40,7 +40,7 @@ const OVERVIEW_ITEMS: SidebarMenuItem[] = [
   { key: '/overview', icon: PieChartOutlined, labelKey: 'menu.overview' },
 ]
 
-/** 前台业务菜单项（由 page_permissions 控制，可分配给 business 或 tenant_admin） */
+/** 前台业务菜单项（business 身份下由 page_permissions 控制） */
 const BUSINESS_ITEMS: SidebarMenuItem[] = [
   { key: '/dashboard', icon: DashboardOutlined, labelKey: 'menu.dashboard' },
   { key: '/cron', icon: ClockCircleOutlined, labelKey: 'menu.cron' },
@@ -66,14 +66,18 @@ const POLL_INTERVAL_MS = 60_000
 
 export const useSidebarMenu = () => {
   const route = useRoute()
-  const { userPermissions, menus, authFetch } = useAuth()
+  const { menus, authFetch, effectiveActiveRoleForApi } = useAuth()
 
   /** 待审核数量（从后端实时获取，用于仪表盘菜单角标） */
   const pendingAuditCount = ref(0)
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
+  // 待审核角标仅业务身份展示；系统管理员无 tenant_id，调用 stats 会触发 authFetch 登出。
+  const shouldPollPendingCount = computed(() => effectiveActiveRoleForApi.value === 'business')
+
   /** 从后端拉取待审核数量，接口失败时不影响侧边栏显示 */
   const fetchPendingCount = async () => {
+    if (!shouldPollPendingCount.value) return
     try {
       const stats = await authFetch<{ pending_ai_count: number }>('/api/audit/stats')
       pendingAuditCount.value = stats.pending_ai_count ?? 0
@@ -84,6 +88,7 @@ export const useSidebarMenu = () => {
 
   // 组件挂载时立即拉取一次，并启动定时轮询
   onMounted(() => {
+    if (!shouldPollPendingCount.value) return
     fetchPendingCount()
     pollTimer = setInterval(fetchPendingCount, POLL_INTERVAL_MS)
   })
@@ -110,13 +115,13 @@ export const useSidebarMenu = () => {
    * 菜单未加载完成时对应分区不显示，等待加载后自动更新。
    */
   const sections = computed<SidebarSection[]>(() => {
-    const perms = userPermissions.value
+    const activeRole = effectiveActiveRoleForApi.value
     const result: SidebarSection[] = []
 
     // 概览仪表板对所有已登录用户可见
     result.push({ id: 'overview', titleKey: 'sidebar.section.overview', items: OVERVIEW_ITEMS })
 
-    if (perms.includes('business') || perms.includes('tenant_admin')) {
+    if (activeRole === 'business') {
       const pagePerms = menuPagePerms.value
       // 有菜单数据时按权限过滤，菜单未加载时不显示（避免闪烁）
       const filtered = pagePerms.size > 0
@@ -133,7 +138,7 @@ export const useSidebarMenu = () => {
       }
     }
 
-    if (perms.includes('tenant_admin')) {
+    if (activeRole === 'tenant_admin') {
       const pagePerms = menuPagePerms.value
       // 从后端 menus 过滤，菜单未加载时不显示
       const filtered = pagePerms.size > 0
@@ -144,7 +149,7 @@ export const useSidebarMenu = () => {
       }
     }
 
-    if (perms.includes('system_admin')) {
+    if (activeRole === 'system_admin') {
       const pagePerms = menuPagePerms.value
       const filtered = pagePerms.size > 0
         ? SYSTEM_ITEMS.filter(item => pagePerms.has(item.key))
