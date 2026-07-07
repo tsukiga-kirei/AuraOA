@@ -1488,6 +1488,7 @@ export default {
     'admin.data.viewDetail': '查看AI审核详情',
     'admin.data.noData': '暂无数据',
     'admin.data.exportingAudit': '审核数据导出中...',
+    'admin.data.exportingSummary': '流程总结导出中...',
     'admin.data.exportingCron': '任务数据导出中...',
     'admin.data.exportingArchive': '归档数据导出中...',
     'admin.data.exportSuccess': '导出成功',
@@ -1515,6 +1516,10 @@ export default {
     'admin.data.thEndTime': '结束时间',
     'admin.data.thMessage': '执行结果',
     'admin.data.filterTriggerType': '触发类型',
+    'admin.data.filterSourceChannel': '发起方式',
+    'admin.data.thSourceChannel': '发起方式',
+    'admin.data.sourceWorkbench': '系统内',
+    'admin.data.sourceEmbed': 'OA 嵌入',
     // 归档相关
     'admin.data.searchArchive': '搜索流程（标题/编号）',
     'admin.data.searchArchiveOperator': '搜索操作人...',

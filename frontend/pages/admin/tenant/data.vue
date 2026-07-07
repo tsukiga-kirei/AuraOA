@@ -54,7 +54,7 @@ const {
   listAuditSnapshots,
   getAuditSnapshotStats,
   getAuditSnapshotChain,
-  exportAuditLogs,
+  exportAuditSnapshots,
   listArchiveSnapshots,
   getArchiveSnapshotStats,
   getArchiveSnapshotChain,
@@ -62,6 +62,7 @@ const {
   listSummarySnapshots,
   getSummarySnapshotStats,
   getSummarySnapshotChain,
+  exportSummarySnapshots,
   listCronLogs,
   getCronLogStats,
   exportCronLogs,
@@ -128,6 +129,7 @@ const auditSearch = ref('')
 const auditFilterProcessPath = ref<string[][]>([])
 const auditFilterProcessType = computed(() => auditFilterProcessPath.value.length ? auditFilterProcessPath.value.map((p: any[]) => p[p.length - 1]).join(',') : undefined)
 const auditFilterOperator = ref('')
+const auditFilterChannel = ref<string | undefined>(undefined)
 const auditFilterDepartment = ref<string | undefined>(undefined)
 const auditFilterDateRange = ref<[Dayjs, Dayjs] | undefined>(undefined)
 const auditShowFilters = ref(false)
@@ -158,6 +160,7 @@ const summarySearch = ref('')
 const summaryFilterProcessPath = ref<string[][]>([])
 const summaryFilterProcessType = computed(() => summaryFilterProcessPath.value.length ? summaryFilterProcessPath.value.map((p: any[]) => p[p.length - 1]).join(',') : undefined)
 const summaryFilterOperator = ref('')
+const summaryFilterChannel = ref<string | undefined>(undefined)
 const summaryFilterDepartment = ref<string | undefined>(undefined)
 const summaryFilterDateRange = ref<[Dayjs, Dayjs] | undefined>(undefined)
 const summaryShowFilters = ref(false)
@@ -212,6 +215,7 @@ const auditHasActiveFilters = computed(() =>
     !!auditSearch.value ||
     !!auditFilterProcessType.value ||
     !!auditFilterOperator.value ||
+    !!auditFilterChannel.value ||
     !!auditFilterDepartment.value ||
     !!auditFilterDateRange.value)
 
@@ -231,6 +235,7 @@ const summaryHasActiveFilters = computed(() =>
     !!summarySearch.value ||
     !!summaryFilterProcessType.value ||
     !!summaryFilterOperator.value ||
+    !!summaryFilterChannel.value ||
     !!summaryFilterDepartment.value ||
     !!summaryFilterDateRange.value)
 
@@ -248,6 +253,7 @@ const cronTaskTypeOptions = computed(() => {
 
 const auditQuery = computed(() => ({
   recommendation: activeAuditSubTab.value === 'all' ? '' : activeAuditSubTab.value,
+  channel: auditFilterChannel.value || '',
   keyword: auditSearch.value.trim(),
   process_type: auditFilterProcessType.value || '',
   operator: auditFilterOperator.value.trim(),
@@ -280,6 +286,7 @@ const archiveQuery = computed(() => ({
 }))
 
 const summaryQuery = computed(() => ({
+  channel: summaryFilterChannel.value || '',
   keyword: summarySearch.value.trim(),
   process_type: summaryFilterProcessType.value || '',
   operator: summaryFilterOperator.value.trim(),
@@ -318,6 +325,14 @@ function getTriggerTypeLabel(value: string) {
   return map[value] || value || '-'
 }
 
+function getSourceChannelLabel(value: string) {
+  const map: Record<string, string> = {
+    workbench: t('admin.data.sourceWorkbench'),
+    embed: t('admin.data.sourceEmbed'),
+  }
+  return map[value] || value || '-'
+}
+
 
 
 async function openAuditDetail(item: AuditSnapshotItem) {
@@ -326,7 +341,7 @@ async function openAuditDetail(item: AuditSnapshotItem) {
   chainLoading.value = true
   expandedAuditChainNodes.value.clear()
   try {
-    const res = await getAuditSnapshotChain(item.process_id)
+    const res = await getAuditSnapshotChain(item.process_id, item.channel || 'workbench')
     auditChainLogs.value = res.chain || []
     if (auditChainLogs.value.length > 0) {
       expandedAuditChainNodes.value.add(auditChainLogs.value[0].id)
@@ -401,6 +416,7 @@ function clearAuditFilters() {
   auditSearch.value = ''
   auditFilterProcessPath.value = []
   auditFilterOperator.value = ''
+  auditFilterChannel.value = undefined
   auditFilterDepartment.value = undefined
   auditFilterDateRange.value = undefined
   auditPage.value = 1
@@ -426,6 +442,7 @@ function clearSummaryFilters() {
   summarySearch.value = ''
   summaryFilterProcessPath.value = []
   summaryFilterOperator.value = ''
+  summaryFilterChannel.value = undefined
   summaryFilterDepartment.value = undefined
   summaryFilterDateRange.value = undefined
   summaryPage.value = 1
@@ -496,7 +513,7 @@ const getAuditCount = (validLogIds: any) => {
 // 加载审核快照统计数据（各推荐结果的数量）
 async function loadAuditStats() {
   try {
-    auditStats.value = await getAuditSnapshotStats()
+    auditStats.value = await getAuditSnapshotStats(auditFilterChannel.value || undefined)
   } catch (e: any) {
     message.error(e?.message || t('admin.data.loadFailed'))
   }
@@ -522,7 +539,7 @@ async function loadArchiveStats() {
 
 async function loadSummaryStats() {
   try {
-    summaryStats.value = await getSummarySnapshotStats()
+    summaryStats.value = await getSummarySnapshotStats(summaryFilterChannel.value || undefined)
   } catch (e: any) {
     message.error(e?.message || t('admin.data.loadFailed'))
   }
@@ -592,23 +609,24 @@ async function loadSummaryLogs() {
 }
 
 async function handleExport(type: MainTab) {
-  if (type === 'summary') {
-    message.info('流程总结暂不支持导出')
-    return
-  }
   const hide = message.loading(
       type === 'audit'
           ? t('admin.data.exportingAudit')
-          : type === 'cron'
-              ? t('admin.data.exportingCron')
-              : t('admin.data.exportingArchive'),
+          : type === 'summary'
+              ? t('admin.data.exportingSummary')
+              : type === 'cron'
+                  ? t('admin.data.exportingCron')
+                  : t('admin.data.exportingArchive'),
       0,
   )
 
   try {
     if (type === 'audit') {
       const { page, page_size, ...filters } = auditQuery.value
-      await exportAuditLogs(filters)
+      await exportAuditSnapshots(filters)
+    } else if (type === 'summary') {
+      const { page, page_size, ...filters } = summaryQuery.value
+      await exportSummarySnapshots(filters)
     } else if (type === 'cron') {
       const { page, page_size, ...filters } = cronQuery.value
       await exportCronLogs(filters)
@@ -625,9 +643,11 @@ async function handleExport(type: MainTab) {
 }
 
 watch(auditQuery, loadAuditLogs, { immediate: true })
+watch(() => auditFilterChannel.value, loadAuditStats)
 watch(cronQuery, loadCronLogs, { immediate: true })
 watch(archiveQuery, loadArchiveLogs, { immediate: true })
 watch(summaryQuery, loadSummaryLogs, { immediate: true })
+watch(() => summaryFilterChannel.value, loadSummaryStats)
 
 // 切换审核子标签时重置分页到第一页
 watch(activeAuditSubTab, () => {
@@ -754,6 +774,17 @@ onMounted(async () => {
           />
 
           <a-select
+              v-model:value="auditFilterChannel"
+              :placeholder="t('admin.data.filterSourceChannel')"
+              allow-clear
+              style="flex: 1; min-width: 140px;"
+              @change="auditPage = 1"
+          >
+            <a-select-option value="workbench">{{ t('admin.data.sourceWorkbench') }}</a-select-option>
+            <a-select-option value="embed">{{ t('admin.data.sourceEmbed') }}</a-select-option>
+          </a-select>
+
+          <a-select
               v-model:value="auditFilterDepartment"
               :placeholder="t('admin.data.filterDepartment')"
               allow-clear
@@ -785,6 +816,7 @@ onMounted(async () => {
             <th>{{ t('admin.data.thOperator') }}</th>
             <th>{{ t('admin.data.thDepartment') }}</th>
             <th>{{ t('admin.data.thProcessType') }}</th>
+            <th>{{ t('admin.data.thSourceChannel') }}</th>
             <th>{{ t('admin.data.thResult') }}</th>
             <th>{{ t('admin.data.thAuditCount') }}</th>
             <th>{{ t('admin.data.thTime') }}</th>
@@ -793,7 +825,7 @@ onMounted(async () => {
           </thead>
           <tbody>
           <tr v-if="auditLoading">
-            <td colspan="10" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td colspan="11" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in auditSnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
@@ -801,6 +833,17 @@ onMounted(async () => {
             <td>{{ item.operator || '-' }}</td>
             <td>{{ item.department || '-' }}</td>
             <td class="text-secondary">{{ item.process_type }}</td>
+            <td>
+              <span
+                  class="result-tag"
+                  :style="{
+                    color: item.channel === 'embed' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                    background: item.channel === 'embed' ? 'var(--color-primary-bg)' : 'var(--color-fill-secondary)',
+                  }"
+              >
+                {{ getSourceChannelLabel(item.channel || 'workbench') }}
+              </span>
+            </td>
             <td>
                 <span
                     v-if="item.recommendation"
@@ -832,7 +875,7 @@ onMounted(async () => {
             </td>
           </tr>
           <tr v-if="!auditLoading && auditSnapshots.length === 0">
-            <td colspan="10" class="empty-cell">{{ t('admin.data.noData') }}</td>
+            <td colspan="11" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>
@@ -1222,6 +1265,11 @@ onMounted(async () => {
             <span v-if="summaryHasActiveFilters" class="filter-active-dot" />
           </a-button>
         </div>
+        <div class="toolbar-right">
+          <a-button @click="handleExport('summary')">
+            <ExportOutlined /> {{ t('export.excel') }}
+          </a-button>
+        </div>
       </div>
 
       <transition name="slide">
@@ -1263,6 +1311,17 @@ onMounted(async () => {
           />
 
           <a-select
+              v-model:value="summaryFilterChannel"
+              :placeholder="t('admin.data.filterSourceChannel')"
+              allow-clear
+              style="flex: 1; min-width: 140px;"
+              @change="summaryPage = 1"
+          >
+            <a-select-option value="workbench">{{ t('admin.data.sourceWorkbench') }}</a-select-option>
+            <a-select-option value="embed">{{ t('admin.data.sourceEmbed') }}</a-select-option>
+          </a-select>
+
+          <a-select
               v-model:value="summaryFilterDepartment"
               :placeholder="t('admin.data.filterDepartment')"
               allow-clear
@@ -1294,6 +1353,7 @@ onMounted(async () => {
             <th>{{ t('admin.data.thOperator') }}</th>
             <th>{{ t('admin.data.thDepartment') }}</th>
             <th>{{ t('admin.data.thProcessType') }}</th>
+            <th>{{ t('admin.data.thSourceChannel') }}</th>
             <th>总结块</th>
             <th>总结次数</th>
             <th>{{ t('admin.data.thTime') }}</th>
@@ -1302,7 +1362,7 @@ onMounted(async () => {
           </thead>
           <tbody>
           <tr v-if="summaryLoading">
-            <td colspan="9" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td colspan="10" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in summarySnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
@@ -1310,6 +1370,17 @@ onMounted(async () => {
             <td>{{ item.operator || '-' }}</td>
             <td>{{ item.department || '-' }}</td>
             <td class="text-secondary">{{ item.process_type }}</td>
+            <td>
+              <span
+                  class="result-tag"
+                  :style="{
+                    color: item.channel === 'embed' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                    background: item.channel === 'embed' ? 'var(--color-primary-bg)' : 'var(--color-fill-secondary)',
+                  }"
+              >
+                {{ getSourceChannelLabel(item.channel || 'workbench') }}
+              </span>
+            </td>
             <td>
               <span class="result-tag" style="color: var(--color-primary); background: var(--color-primary-bg);">
                 <FileTextOutlined />
@@ -1331,7 +1402,7 @@ onMounted(async () => {
             </td>
           </tr>
           <tr v-if="!summaryLoading && summarySnapshots.length === 0">
-            <td colspan="9" class="empty-cell">{{ t('admin.data.noData') }}</td>
+            <td colspan="10" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>

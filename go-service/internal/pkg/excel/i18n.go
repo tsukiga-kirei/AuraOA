@@ -33,6 +33,10 @@ const (
 	ExportTypeArchiveReviewed
 	// ExportTypeUserConfig 用户偏好导出（8 列）。
 	ExportTypeUserConfig
+	// ExportTypeAuditSnapshot 数据管理 — 审核快照（11 列）。
+	ExportTypeAuditSnapshot
+	// ExportTypeSummarySnapshot 数据管理 — 流程总结快照（10 列）。
+	ExportTypeSummarySnapshot
 )
 
 // EnumType 表示需要翻译的枚举字段类型。
@@ -47,6 +51,8 @@ const (
 	EnumCompliance
 	// EnumMemberStatus 成员状态枚举（active / inactive）。
 	EnumMemberStatus
+	// EnumSourceChannel 发起方式（workbench / embed）。
+	EnumSourceChannel
 )
 
 // colHeadersMap 存储各导出类型在不同语言下的列头。
@@ -72,6 +78,14 @@ var colHeadersMap = map[ExportType]map[Locale][]string{
 		LocaleZH: {"用户名", "显示名", "部门", "角色", "审核流程数", "归档流程数", "定时任务数", "最近修改时间"},
 		LocaleEN: {"Username", "Display Name", "Department", "Roles", "Audit Processes", "Archive Processes", "Cron Tasks", "Last Modified"},
 	},
+	ExportTypeAuditSnapshot: {
+		LocaleZH: {"流程编号", "流程标题", "操作人", "部门", "流程类型", "发起方式", "审核建议", "评分", "置信度", "审核次数", "时间"},
+		LocaleEN: {"Process ID", "Title", "Operator", "Department", "Process Type", "Source", "Recommendation", "Score", "Confidence", "Audit Count", "Time"},
+	},
+	ExportTypeSummarySnapshot: {
+		LocaleZH: {"流程编号", "流程标题", "操作人", "部门", "流程类型", "发起方式", "总结块数", "总结次数", "时间"},
+		LocaleEN: {"Process ID", "Title", "Operator", "Department", "Process Type", "Source", "Block Count", "Summary Count", "Time"},
+	},
 }
 
 // enumTranslationsMap 存储各枚举类型的翻译映射。
@@ -95,6 +109,10 @@ var enumTranslationsMap = map[EnumType]map[string]map[Locale]string{
 	EnumMemberStatus: {
 		"active":   {LocaleZH: "启用", LocaleEN: "Active"},
 		"inactive": {LocaleZH: "禁用", LocaleEN: "Inactive"},
+	},
+	EnumSourceChannel: {
+		"workbench": {LocaleZH: "系统内", LocaleEN: "In-App"},
+		"embed":     {LocaleZH: "OA 嵌入", LocaleEN: "OA Embed"},
 	},
 }
 

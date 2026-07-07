@@ -330,6 +330,7 @@ func SetupRouter(
 	{
 		auditSnapshotAdmin.GET("", auditHandler.ListSnapshots)
 		auditSnapshotAdmin.GET("/stats", auditHandler.GetSnapshotStats)
+		auditSnapshotAdmin.GET("/export", auditHandler.ExportSnapshots)
 		auditSnapshotAdmin.GET("/:processId/chain", auditHandler.GetSnapshotChain)
 	}
 
@@ -339,6 +340,7 @@ func SetupRouter(
 	{
 		summarySnapshotAdmin.GET("", summaryHandler.ListSnapshots)
 		summarySnapshotAdmin.GET("/stats", summaryHandler.GetSnapshotStats)
+		summarySnapshotAdmin.GET("/export", summaryHandler.ExportSnapshots)
 		summarySnapshotAdmin.GET("/:processId/chain", summaryHandler.GetSnapshotChain)
 	}
 

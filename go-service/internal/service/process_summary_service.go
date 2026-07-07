@@ -473,8 +473,13 @@ func (s *ProcessSummaryService) ListSnapshots(c *gin.Context, filter repository.
 	return s.snapshotRepo.ListPagedWithUser(c, filter, page, pageSize)
 }
 
-func (s *ProcessSummaryService) GetSnapshotStats(c *gin.Context) (*repository.ProcessSummarySnapshotStats, error) {
-	return s.snapshotRepo.CountStats(c)
+func (s *ProcessSummaryService) ListSnapshotsForExport(c *gin.Context, filter repository.ProcessSummarySnapshotFilter) ([]repository.ProcessSummarySnapshotListRow, error) {
+	items, _, err := s.snapshotRepo.ListPagedWithUser(c, filter, 1, 5000)
+	return items, err
+}
+
+func (s *ProcessSummaryService) GetSnapshotStats(c *gin.Context, channel string) (*repository.ProcessSummarySnapshotStats, error) {
+	return s.snapshotRepo.CountStats(c, channel)
 }
 
 func (s *ProcessSummaryService) GetSnapshotChain(c *gin.Context, processID string) ([]repository.ProcessSummaryLogWithUser, error) {
@@ -486,7 +491,14 @@ func (s *ProcessSummaryService) GetSnapshotChain(c *gin.Context, processID strin
 		return []repository.ProcessSummaryLogWithUser{}, nil
 	}
 	ids := parseSummarySnapshotValidIDs(snap.ValidLogIDs)
-	return s.logRepo.ListByIDsWithUserOrdered(c, ids)
+	chain, err := s.logRepo.ListByIDsWithUserOrdered(c, ids)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(chain, func(i, j int) bool {
+		return chain[i].CreatedAt.After(chain[j].CreatedAt)
+	})
+	return chain, nil
 }
 
 func (s *ProcessSummaryService) summaryLogToResponse(log *model.ProcessSummaryLog) *SummaryExecuteResponse {

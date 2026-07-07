@@ -68,9 +68,23 @@ type ProcessSummaryLog struct {
 func (ProcessSummaryLog) TableName() string { return "process_summary_logs" }
 
 const (
-	SummaryTriggerEmbedAuto   = "summary_embed_auto"
-	SummaryTriggerEmbedManual = "summary_embed_manual"
+	SummaryTriggerWorkbenchManual = "summary_workbench_manual"
+	SummaryTriggerEmbedAuto       = "summary_embed_auto"
+	SummaryTriggerEmbedManual     = "summary_embed_manual"
 )
+
+// IsSummaryEmbedTrigger 是否为 OA 嵌入触发。
+func IsSummaryEmbedTrigger(trigger string) bool {
+	return trigger == SummaryTriggerEmbedAuto || trigger == SummaryTriggerEmbedManual
+}
+
+// SummarySnapshotChannelFromTrigger 将 process_summary_logs.trigger_source 映射为快照渠道。
+func SummarySnapshotChannelFromTrigger(trigger string) string {
+	if IsSummaryEmbedTrigger(trigger) {
+		return AuditSnapshotChannelEmbed
+	}
+	return AuditSnapshotChannelWorkbench
+}
 
 // ProcessSummarySnapshot 流程级有效总结快照。
 type ProcessSummarySnapshot struct {
