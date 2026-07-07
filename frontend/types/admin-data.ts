@@ -169,6 +169,59 @@ export interface ArchiveSnapshotFilter {
   page_size?: number
 }
 
+// ─── 流程总结日志 / 快照 ─────────────────────────────────────────────────
+
+export interface SummaryLogItem {
+  id: string
+  tenant_id: string
+  user_id: string
+  user_name: string
+  process_id: string
+  title: string
+  process_type: string
+  status: string
+  summary_result: any
+  duration_ms: number
+  raw_content: string
+  parse_error: string
+  error_message: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SummarySnapshotItem {
+  id: string
+  tenant_id: string
+  process_id: string
+  title: string
+  process_type: string
+  block_count: number
+  valid_log_ids: string
+  latest_valid_log_id: string
+  operator: string
+  department: string
+  created_at: string
+  updated_at: string
+  updated_at_fmt: string
+  created_at_fmt: string
+}
+
+export interface SummarySnapshotStats {
+  total: number
+  block_count: number
+}
+
+export interface SummarySnapshotFilter {
+  keyword?: string
+  process_type?: string
+  operator?: string
+  department?: string
+  start_date?: string
+  end_date?: string
+  page?: number
+  page_size?: number
+}
+
 // ─── 定时任务日志 ─────────────────────────────────────────────────────────────
 
 export interface CronLogItem {

@@ -3,16 +3,19 @@ import {
   SearchOutlined,
   ClockCircleOutlined,
   FolderOpenOutlined,
+  FileTextOutlined,
   ExportOutlined,
   EyeOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
+  DownOutlined,
   SyncOutlined,
   AppstoreOutlined,
   FilterOutlined,
   AlertOutlined,
   SafetyCertificateOutlined,
   InfoCircleOutlined,
+  UpOutlined,
   CloseOutlined,
 } from '@ant-design/icons-vue'
 import dayjs, { type Dayjs } from 'dayjs'
@@ -31,13 +34,16 @@ import type {
   ArchiveLogItem,
   ArchiveSnapshotItem,
   ArchiveSnapshotStats,
+  SummaryLogItem,
+  SummarySnapshotItem,
+  SummarySnapshotStats,
   CronLogItem,
   CronLogStats,
 } from '~/types/admin-data'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
-type MainTab = 'audit' | 'cron' | 'archive'
+type MainTab = 'audit' | 'cron' | 'archive' | 'summary'
 type AuditSubTab = 'all' | 'approve' | 'return' | 'review'
 type CronSubTab = 'all' | 'success' | 'failed' | 'running'
 type ArchiveSubTab = 'all' | 'compliant' | 'partially_compliant' | 'non_compliant'
@@ -53,6 +59,9 @@ const {
   getArchiveSnapshotStats,
   getArchiveSnapshotChain,
   exportArchiveLogs,
+  listSummarySnapshots,
+  getSummarySnapshotStats,
+  getSummarySnapshotChain,
   listCronLogs,
   getCronLogStats,
   exportCronLogs,
@@ -76,10 +85,12 @@ const cronStats = ref<CronLogStats>({
   running: 0,
 })
 const archiveStats = ref<ArchiveSnapshotStats>({ total: 0, compliant: 0, partial: 0, non_compliant: 0 })
+const summaryStats = ref<SummarySnapshotStats>({ total: 0, block_count: 0 })
 
 const auditSnapshots = ref<AuditSnapshotItem[]>([])
 const cronLogs = ref<CronLogItem[]>([])
 const archiveSnapshots = ref<ArchiveSnapshotItem[]>([])
+const summarySnapshots = ref<SummarySnapshotItem[]>([])
 
 // 抽屉详情相关变量
 const auditDetailVisible = ref(false)
@@ -92,6 +103,11 @@ const selectedArchiveLog = ref<ArchiveSnapshotItem | null>(null)
 const archiveChainLogs = ref<ArchiveLogItem[]>([])
 const expandedArchiveChainNodes = ref<Set<string>>(new Set())
 
+const summaryDetailVisible = ref(false)
+const selectedSummaryLog = ref<SummarySnapshotItem | null>(null)
+const summaryChainLogs = ref<SummaryLogItem[]>([])
+const expandedSummaryChainNodes = ref<Set<string>>(new Set())
+
 const cronDetailVisible = ref(false)
 const selectedCronLog = ref<CronLogItem | null>(null)
 
@@ -103,6 +119,7 @@ const { getProcessTypes } = useAuditApi()
 const auditLoading = ref(false)
 const cronLoading = ref(false)
 const archiveLoading = ref(false)
+const summaryLoading = ref(false)
 
 const departmentOptions = ref<{label: string, value: string}[]>([])
 const processCascaderOptions = ref<any[]>([])
@@ -136,6 +153,17 @@ const archiveShowFilters = ref(false)
 const archivePage = ref(1)
 const archivePageSize = ref(20)
 const archiveTotal = ref(0)
+
+const summarySearch = ref('')
+const summaryFilterProcessPath = ref<string[][]>([])
+const summaryFilterProcessType = computed(() => summaryFilterProcessPath.value.length ? summaryFilterProcessPath.value.map((p: any[]) => p[p.length - 1]).join(',') : undefined)
+const summaryFilterOperator = ref('')
+const summaryFilterDepartment = ref<string | undefined>(undefined)
+const summaryFilterDateRange = ref<[Dayjs, Dayjs] | undefined>(undefined)
+const summaryShowFilters = ref(false)
+const summaryPage = ref(1)
+const summaryPageSize = ref(20)
+const summaryTotal = ref(0)
 
 const recommendationConfig = computed<Record<string, { color: string; bg: string }>>(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
@@ -199,6 +227,13 @@ const archiveHasActiveFilters = computed(() =>
     !!archiveFilterDepartment.value ||
     !!archiveFilterDateRange.value)
 
+const summaryHasActiveFilters = computed(() =>
+    !!summarySearch.value ||
+    !!summaryFilterProcessType.value ||
+    !!summaryFilterOperator.value ||
+    !!summaryFilterDepartment.value ||
+    !!summaryFilterDateRange.value)
+
 const cronTaskTypeOptions = computed(() => {
   const seen = new Map<string, string>()
   for (const item of cronLogs.value) {
@@ -242,6 +277,17 @@ const archiveQuery = computed(() => ({
   end_date: archiveFilterDateRange.value?.[1]?.format('YYYY-MM-DD') || '',
   page: archivePage.value,
   page_size: archivePageSize.value,
+}))
+
+const summaryQuery = computed(() => ({
+  keyword: summarySearch.value.trim(),
+  process_type: summaryFilterProcessType.value || '',
+  operator: summaryFilterOperator.value.trim(),
+  department: summaryFilterDepartment.value || '',
+  start_date: summaryFilterDateRange.value?.[0]?.format('YYYY-MM-DD') || '',
+  end_date: summaryFilterDateRange.value?.[1]?.format('YYYY-MM-DD') || '',
+  page: summaryPage.value,
+  page_size: summaryPageSize.value,
 }))
 
 
@@ -322,6 +368,30 @@ function toggleArchiveChainNode(id: string) {
   else expandedArchiveChainNodes.value.add(id)
 }
 
+async function openSummaryDetail(item: SummarySnapshotItem) {
+  selectedSummaryLog.value = item
+  summaryDetailVisible.value = true
+  chainLoading.value = true
+  expandedSummaryChainNodes.value.clear()
+  try {
+    const res = await getSummarySnapshotChain(item.process_id)
+    summaryChainLogs.value = res.chain || []
+    if (summaryChainLogs.value.length > 0) {
+      expandedSummaryChainNodes.value.add(summaryChainLogs.value[0].id)
+    }
+  } catch (e) {
+    message.error(t('admin.data.fetchFailed'))
+    summaryChainLogs.value = []
+  } finally {
+    chainLoading.value = false
+  }
+}
+
+function toggleSummaryChainNode(id: string) {
+  if (expandedSummaryChainNodes.value.has(id)) expandedSummaryChainNodes.value.delete(id)
+  else expandedSummaryChainNodes.value.add(id)
+}
+
 function openCronDetail(log: CronLogItem) {
   selectedCronLog.value = log
   cronDetailVisible.value = true
@@ -352,6 +422,15 @@ function clearArchiveFilters() {
   archivePage.value = 1
 }
 
+function clearSummaryFilters() {
+  summarySearch.value = ''
+  summaryFilterProcessPath.value = []
+  summaryFilterOperator.value = ''
+  summaryFilterDepartment.value = undefined
+  summaryFilterDateRange.value = undefined
+  summaryPage.value = 1
+}
+
 function handleAuditPageChange(page: number, pageSize: number) {
   auditPage.value = page
   auditPageSize.value = pageSize
@@ -365,6 +444,11 @@ function handleCronPageChange(page: number, pageSize: number) {
 function handleArchivePageChange(page: number, pageSize: number) {
   archivePage.value = page
   archivePageSize.value = pageSize
+}
+
+function handleSummaryPageChange(page: number, pageSize: number) {
+  summaryPage.value = page
+  summaryPageSize.value = pageSize
 }
 
 async function loadProcessCascaderOptions() {
@@ -436,6 +520,14 @@ async function loadArchiveStats() {
   }
 }
 
+async function loadSummaryStats() {
+  try {
+    summaryStats.value = await getSummarySnapshotStats()
+  } catch (e: any) {
+    message.error(e?.message || t('admin.data.loadFailed'))
+  }
+}
+
 // 加载审核快照列表（分页，支持多维度筛选）
 async function loadAuditLogs() {
   auditLoading.value = true
@@ -484,7 +576,26 @@ async function loadArchiveLogs() {
   }
 }
 
+async function loadSummaryLogs() {
+  summaryLoading.value = true
+  try {
+    const res = await listSummarySnapshots(summaryQuery.value)
+    summarySnapshots.value = res.items || []
+    summaryTotal.value = res.total || 0
+  } catch (e: any) {
+    summarySnapshots.value = []
+    summaryTotal.value = 0
+    message.error(e?.message || t('admin.data.loadFailed'))
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
 async function handleExport(type: MainTab) {
+  if (type === 'summary') {
+    message.info('流程总结暂不支持导出')
+    return
+  }
   const hide = message.loading(
       type === 'audit'
           ? t('admin.data.exportingAudit')
@@ -516,10 +627,17 @@ async function handleExport(type: MainTab) {
 watch(auditQuery, loadAuditLogs, { immediate: true })
 watch(cronQuery, loadCronLogs, { immediate: true })
 watch(archiveQuery, loadArchiveLogs, { immediate: true })
+watch(summaryQuery, loadSummaryLogs, { immediate: true })
 
 // 切换审核子标签时重置分页到第一页
 watch(activeAuditSubTab, () => {
   auditPage.value = 1
+})
+
+watch(activeTab, (tab) => {
+  if (tab === 'summary') {
+    loadSummaryStats()
+  }
 })
 
 // 页面初始化：并行加载流程类型、部门列表及各模块统计数据
@@ -530,6 +648,7 @@ onMounted(async () => {
     loadAuditStats(),
     loadCronStats(),
     loadArchiveStats(),
+    loadSummaryStats(),
   ])
 })
 </script>
@@ -549,6 +668,7 @@ onMounted(async () => {
           { key: 'audit', label: t('admin.data.tabAudit'), icon: AppstoreOutlined },
           { key: 'cron', label: t('admin.data.tabCron'), icon: ClockCircleOutlined },
           { key: 'archive', label: t('admin.data.tabArchive'), icon: FolderOpenOutlined },
+          { key: 'summary', label: '流程总结', icon: FileTextOutlined },
         ]"
           :key="tab.key"
           class="tab-btn"
@@ -1073,6 +1193,165 @@ onMounted(async () => {
       </div>
     </div>
 
+    <div v-if="activeTab === 'summary'" class="tab-content fade-in">
+      <div class="stats-row">
+        <div class="stat-card stat-card--info stat-card--selected">
+          <div class="stat-card-icon"><AppstoreOutlined /></div>
+          <div class="stat-card-info">
+            <span class="stat-card-value">{{ summaryStats.total }}</span>
+            <span class="stat-card-label">已总结流程</span>
+          </div>
+        </div>
+        <div class="stat-card stat-card--primary">
+          <div class="stat-card-icon"><FileTextOutlined /></div>
+          <div class="stat-card-info">
+            <span class="stat-card-value">{{ summaryStats.block_count }}</span>
+            <span class="stat-card-label">总结块数量</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <a-button
+              size="small"
+              @click="summaryShowFilters = !summaryShowFilters"
+              :class="{ 'filter-toggle-btn--active': summaryHasActiveFilters }"
+          >
+            <FilterOutlined /> {{ t('admin.data.filter') }}
+            <span v-if="summaryHasActiveFilters" class="filter-active-dot" />
+          </a-button>
+        </div>
+      </div>
+
+      <transition name="slide">
+        <div v-if="summaryShowFilters" class="filter-bar">
+          <a-input
+              v-model:value="summarySearch"
+              placeholder="搜索流程编号或标题"
+              allow-clear
+              style="flex: 2; min-width: 180px;"
+              @update:value="summaryPage = 1"
+          >
+            <template #prefix>
+              <SearchOutlined style="color: var(--color-text-tertiary);" />
+            </template>
+          </a-input>
+
+          <a-input
+              v-model:value="summaryFilterOperator"
+              :placeholder="t('admin.data.filterOperator')"
+              allow-clear
+              style="flex: 1; min-width: 140px;"
+              @update:value="summaryPage = 1"
+          >
+            <template #prefix>
+              <SearchOutlined style="color: var(--color-text-tertiary);" />
+            </template>
+          </a-input>
+
+          <a-cascader
+              v-model:value="summaryFilterProcessPath"
+              :options="processCascaderOptions"
+              :placeholder="t('admin.data.filterProcessType')"
+              multiple
+              :max-tag-count="1"
+              allow-clear
+              style="flex: 1.5; min-width: 160px;"
+              :show-search="{ filter: (inputValue: string, path: any[]) => path.some((o: any) => o.label.toLowerCase().includes(inputValue.toLowerCase())) }"
+              @change="summaryPage = 1"
+          />
+
+          <a-select
+              v-model:value="summaryFilterDepartment"
+              :placeholder="t('admin.data.filterDepartment')"
+              allow-clear
+              style="flex: 1; min-width: 140px;"
+              :options="departmentOptions"
+              @change="summaryPage = 1"
+          />
+
+          <a-range-picker
+              v-model:value="summaryFilterDateRange"
+              :placeholder="[t('admin.data.filterDateRange'), t('admin.data.filterDateRange')]"
+              allow-clear
+              style="flex: 1; min-width: 220px;"
+              @change="summaryPage = 1"
+          />
+
+          <a-button size="small" @click="clearSummaryFilters">
+            {{ t('admin.data.filterReset') }}
+          </a-button>
+        </div>
+      </transition>
+
+      <div class="data-table-card">
+        <table class="data-table">
+          <thead>
+          <tr>
+            <th>{{ t('admin.data.thProcessId') }}</th>
+            <th>{{ t('admin.data.thProcessTitle') }}</th>
+            <th>{{ t('admin.data.thOperator') }}</th>
+            <th>{{ t('admin.data.thDepartment') }}</th>
+            <th>{{ t('admin.data.thProcessType') }}</th>
+            <th>总结块</th>
+            <th>总结次数</th>
+            <th>{{ t('admin.data.thTime') }}</th>
+            <th>{{ t('admin.data.thAction') }}</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr v-if="summaryLoading">
+            <td colspan="9" class="empty-cell">{{ t('admin.data.loading') }}</td>
+          </tr>
+          <tr v-else v-for="item in summarySnapshots" :key="item.id">
+            <td class="text-mono">{{ item.process_id }}</td>
+            <td>{{ item.title }}</td>
+            <td>{{ item.operator || '-' }}</td>
+            <td>{{ item.department || '-' }}</td>
+            <td class="text-secondary">{{ item.process_type }}</td>
+            <td>
+              <span class="result-tag" style="color: var(--color-primary); background: var(--color-primary-bg);">
+                <FileTextOutlined />
+                {{ item.block_count }} 块
+              </span>
+            </td>
+            <td>{{ getAuditCount(item.valid_log_ids) }}</td>
+            <td class="text-secondary">{{ item.updated_at_fmt }}</td>
+            <td>
+              <div class="action-btns">
+                <button
+                    class="icon-btn"
+                    :title="t('admin.data.viewDetail')"
+                    @click="openSummaryDetail(item)"
+                >
+                  <EyeOutlined />
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr v-if="!summaryLoading && summarySnapshots.length === 0">
+            <td colspan="9" class="empty-cell">{{ t('admin.data.noData') }}</td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination-wrapper">
+        <a-pagination
+            :current="summaryPage"
+            :page-size="summaryPageSize"
+            :total="summaryTotal"
+            size="small"
+            show-size-changer
+            show-quick-jumper
+            :page-size-options="['10', '20', '50']"
+            @change="handleSummaryPageChange"
+            @showSizeChange="handleSummaryPageChange"
+        />
+      </div>
+    </div>
+
     <Teleport to="body">
       <transition name="drawer">
         <div v-if="auditDetailVisible" class="drawer-overlay" @click.self="auditDetailVisible = false">
@@ -1300,6 +1579,94 @@ onMounted(async () => {
                         <div v-else class="chain-parse-error">
                           <CloseCircleOutlined />
                           {{ logItem.parse_error || t('admin.data.noData') }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </a-spin>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <transition name="drawer">
+        <div v-if="summaryDetailVisible" class="drawer-overlay" @click.self="summaryDetailVisible = false">
+          <div class="drawer-panel">
+            <div class="drawer-header">
+              <h3>流程总结详情</h3>
+              <button class="drawer-close" @click="summaryDetailVisible = false">
+                <CloseOutlined />
+              </button>
+            </div>
+
+            <div class="drawer-body" v-if="selectedSummaryLog">
+              <div class="detail-process-title">{{ selectedSummaryLog.title }}</div>
+
+              <a-spin :spinning="chainLoading">
+                <div v-if="!chainLoading && summaryChainLogs.length === 0" style="padding: 40px; text-align: center;">
+                  <a-empty :description="t('admin.data.noData')" />
+                </div>
+                <div v-else class="audit-chain" style="margin-top: 16px;">
+                  <div
+                      v-for="(logItem, idx) in summaryChainLogs"
+                      :key="logItem.id"
+                      class="chain-node"
+                  >
+                    <div class="chain-timeline">
+                      <div class="chain-dot" style="background: var(--color-primary);" />
+                      <div v-if="idx < summaryChainLogs.length - 1" class="chain-line" />
+                    </div>
+                    <div class="chain-card">
+                      <div class="chain-card-header" @click="toggleSummaryChainNode(logItem.id)" style="cursor: pointer;">
+                        <span
+                            class="chain-tag"
+                            style="color: var(--color-primary); background: var(--color-primary-bg);"
+                        >
+                          <FileTextOutlined />
+                          {{ logItem.summary_result?.blocks?.length || 0 }} 个总结块
+                        </span>
+                        <span class="chain-score">{{ ((logItem.duration_ms || 0) / 1000).toFixed(1) }}s</span>
+                        <span class="chain-expand-btn">
+                          <DownOutlined v-if="!expandedSummaryChainNodes.has(logItem.id)" />
+                          <UpOutlined v-else />
+                        </span>
+                      </div>
+                      <div class="chain-card-meta">
+                        {{ formatDate(logItem.created_at) }}
+                        <span v-if="logItem.user_name"> · {{ logItem.user_name }}</span>
+                        <span v-if="logItem.parse_error"> · 已使用兜底解析</span>
+                      </div>
+
+                      <div v-if="expandedSummaryChainNodes.has(logItem.id)" class="chain-detail">
+                        <template v-if="logItem.summary_result && Array.isArray(logItem.summary_result.blocks)">
+                          <div
+                              v-for="block in logItem.summary_result.blocks"
+                              :key="block.block_id || block.title"
+                              class="summary-detail-block"
+                          >
+                            <div class="summary-detail-block__title">{{ block.title || '总结块' }}</div>
+                            <div class="markdown-body" v-html="renderMarkdown(block.content || '')"></div>
+                            <ul v-if="block.points?.length" class="summary-detail-points">
+                              <li v-for="(point, pointIndex) in block.points" :key="pointIndex">{{ point }}</li>
+                            </ul>
+                          </div>
+
+                          <div v-if="logItem.parse_error" class="chain-parse-error">
+                            <AlertOutlined />
+                            {{ logItem.parse_error }}
+                          </div>
+
+                          <details v-if="logItem.raw_content" class="summary-raw-details">
+                            <summary>查看模型原始输出</summary>
+                            <pre>{{ logItem.raw_content }}</pre>
+                          </details>
+                        </template>
+                        <div v-else class="chain-parse-error">
+                          <CloseCircleOutlined />
+                          {{ logItem.parse_error || logItem.error_message || t('admin.data.noData') }}
                         </div>
                       </div>
                     </div>
@@ -1958,6 +2325,55 @@ onMounted(async () => {
   display: flex; align-items: center; gap: 8px; padding: 10px 14px;
   border-radius: var(--radius-sm); background: var(--color-danger-bg);
   font-size: 12px; color: var(--color-danger); border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.summary-detail-block {
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-page);
+}
+
+.summary-detail-block__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+}
+
+.summary-detail-points {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.summary-raw-details {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.summary-raw-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.summary-raw-details pre {
+  margin: 10px 0 0;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: monospace;
+  font-size: 12px;
 }
 
 .slide-enter-active,

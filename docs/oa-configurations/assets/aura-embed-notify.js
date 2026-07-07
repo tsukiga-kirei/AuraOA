@@ -1,16 +1,26 @@
 /**
- * 泛微 Ecology9 — AuraOA 嵌入审核：向 iframe 传递 requestid
+ * 泛微 Ecology9 — AuraOA 嵌入页：向 iframe 传递 requestid
  *
  * 使用步骤：
- * 1. 修改下方 AURA_EMBED_ORIGIN、IFRAME_ID
+ * 1. 修改下方 AURA_EMBED_ORIGIN、IFRAME_IDS
  * 2. 上传到 OA 静态目录（如 /oa-front/workflow/xxx/aura-embed-notify.js）
  * 3. 流程 → 基础设置 → 自定义页面 → 填入 js 路径并启用
- * 4. 表单/门户 HTML 中 iframe 的 id 与 IFRAME_ID 一致
+ * 4. 表单/门户 HTML 中 iframe 的 id 与 IFRAME_IDS 一致
  */
 (function () {
   // ========== 按需修改 ==========
   var AURA_EMBED_ORIGIN = 'https://aura.example.com'; // AuraOA 前端地址（无末尾斜杠）
-  var IFRAME_ID = 'aura-embed-audit';
+
+  // OA 页面中「需要接收 requestid」的 AuraOA iframe id 列表。
+  // 脚本会把 WfForm.getBaseInfo().requestid 同时发送给这些 iframe。
+  //
+  // 只嵌入审核页时：
+  //   var IFRAME_IDS = ['aura-embed-audit'];
+  // 只嵌入总结页时：
+  //   var IFRAME_IDS = ['aura-embed-summary'];
+  // 同一页面同时嵌入审核 + 总结时：
+  //   var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
+  var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
   // ==============================
 
   var MSG_REQUEST = 'aura-oa-request-requestid';
@@ -30,8 +40,14 @@
     return '';
   }
 
-  function getIframe() {
-    return document.getElementById(IFRAME_ID);
+  function getIframes() {
+    var seen = {};
+    var ids = Array.isArray(IFRAME_IDS) && IFRAME_IDS.length ? IFRAME_IDS : [];
+    return ids.map(function (id) {
+      if (!id || seen[id]) return null;
+      seen[id] = true;
+      return document.getElementById(id);
+    }).filter(Boolean);
   }
 
   function postRequestIdToAura(win) {
@@ -44,10 +60,12 @@
     }, AURA_EMBED_ORIGIN);
   }
 
-  function notifyAuraIframe() {
-    var iframe = getIframe();
-    if (!iframe || !iframe.contentWindow) return;
-    postRequestIdToAura(iframe.contentWindow);
+  function notifyAuraIframes() {
+    getIframes().forEach(function (iframe) {
+      if (iframe && iframe.contentWindow) {
+        postRequestIdToAura(iframe.contentWindow);
+      }
+    });
   }
 
   function initMessageListener() {
@@ -72,22 +90,21 @@
   function init() {
     initMessageListener();
 
-    var iframe = getIframe();
-    if (iframe) {
-      iframe.addEventListener('load', notifyAuraIframe);
-    }
+    getIframes().forEach(function (iframe) {
+      iframe.addEventListener('load', notifyAuraIframes);
+    });
 
     // WfForm 可能晚于 iframe load，轮询几次
     var tries = 0;
     var timer = setInterval(function () {
       tries++;
-      notifyAuraIframe();
+      notifyAuraIframes();
       if (getRequestId() || tries >= 30) {
         clearInterval(timer);
       }
     }, 300);
 
-    window.addEventListener('hashchange', notifyAuraIframe);
+    window.addEventListener('hashchange', notifyAuraIframes);
   }
 
   if (typeof jQuery !== 'undefined') {

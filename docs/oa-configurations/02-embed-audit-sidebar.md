@@ -70,7 +70,7 @@ embed:
 
 **[assets/aura-embed-notify.js](./assets/aura-embed-notify.js)**
 
-核心逻辑（与你们现有「信贷助手」脚本风格一致）：
+核心逻辑：
 
 | 方向 | type | 说明 |
 |------|------|------|
@@ -79,7 +79,7 @@ embed:
 
 OA 侧用 `WfForm.getBaseInfo().requestid`，**不必**从 URL hash 解析。
 
-### 4.2 在流程里启用（与你截图一致）
+### 4.2 在流程里启用
 
 1. 打开流程 → **基础设置** → **自定义页面**  
 2. **自定义页面地址** 填上传后的路径，例如：  
@@ -90,7 +90,7 @@ OA 侧用 `WfForm.getBaseInfo().requestid`，**不必**从 URL hash 解析。
 
 ### 4.3 页面里放 iframe
 
-iframe 的 `id` 必须与脚本里 `IFRAME_ID` 一致（默认 `aura-embed-audit`）：
+iframe 的 `id` 必须包含在脚本里 `IFRAME_IDS` 中（默认包含 `aura-embed-audit`；若同页还嵌入流程总结，也可同时包含 `aura-embed-summary`）：
 
 ```html
 <iframe
@@ -107,7 +107,7 @@ iframe 的 `id` 必须与脚本里 `IFRAME_ID` 一致（默认 `aura-embed-audit
 
 ```javascript
 var AURA_EMBED_ORIGIN = 'https://aura.example.com'; // 改成实际 AuraOA 前端地址
-var IFRAME_ID = 'aura-embed-audit';                  // 与 iframe id 一致
+var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 ```
 
 ---
