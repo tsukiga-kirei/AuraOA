@@ -2406,7 +2406,7 @@ const handleSave = async () => {
           <div class="permission-item">
             <div class="permission-info">
               <div class="permission-label">流程变化后自动刷新</div>
-              <div class="permission-desc">字段、节点或退回版本变化时重新总结</div>
+              <div class="permission-desc">字段变化、节点变化，或流程被退回后重新提交时重新总结</div>
             </div>
             <a-switch
               v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_stale"
