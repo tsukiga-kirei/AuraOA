@@ -31,6 +31,7 @@ type SummaryBlockConfig struct {
 	ID             string   `json:"id"`
 	Title          string   `json:"title"`
 	UserPrompt     string   `json:"user_prompt"`
+	IncludeMeta    *bool    `json:"include_meta"`
 	FieldMode      string   `json:"field_mode"` // all | selected
 	SelectedFields []string `json:"selected_fields"`
 	Enabled        bool     `json:"enabled"`

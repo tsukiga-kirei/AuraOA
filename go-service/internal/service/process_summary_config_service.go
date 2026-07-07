@@ -26,6 +26,8 @@ type ProcessSummaryConfigService struct {
 	invalidator *cache.InvalidationManager
 }
 
+var defaultSummaryIncludeMeta = true
+
 func NewProcessSummaryConfigService(
 	configRepo *repository.ProcessSummaryConfigRepo,
 	tenantRepo *repository.TenantRepo,
@@ -233,6 +235,10 @@ func boolPtrValue(v *bool, def bool) bool {
 	return *v
 }
 
+func boolPtr(v bool) *bool {
+	return &v
+}
+
 func normalizeSummaryBlocksJSON(raw datatypes.JSON) datatypes.JSON {
 	if len(raw) == 0 || string(raw) == "null" || string(raw) == "{}" {
 		b, _ := json.Marshal(defaultSummaryBlocks())
@@ -254,12 +260,13 @@ func normalizeSummaryBlocksJSON(raw datatypes.JSON) datatypes.JSON {
 func defaultSummaryBlocks() []model.SummaryBlockConfig {
 	return []model.SummaryBlockConfig{
 		{
-			ID:         "overall",
-			Title:      "流程摘要",
-			UserPrompt: "请概括流程背景、关键申请内容、金额/日期/对象等核心信息，并列出审批人最需要关注的要点。",
-			FieldMode:  "all",
-			Enabled:    true,
-			SortOrder:  1,
+			ID:          "overall",
+			Title:       "流程摘要",
+			UserPrompt:  "请概括流程背景、关键申请内容、金额/日期/对象等核心信息，并列出审批人最需要关注的要点。",
+			IncludeMeta: boolPtr(defaultSummaryIncludeMeta),
+			FieldMode:   "all",
+			Enabled:     true,
+			SortOrder:   1,
 		},
 	}
 }
@@ -276,6 +283,9 @@ func normalizeSummaryBlock(block model.SummaryBlockConfig, idx int) model.Summar
 	}
 	if block.FieldMode != "all" && block.FieldMode != "selected" {
 		block.FieldMode = "selected"
+	}
+	if block.IncludeMeta == nil {
+		block.IncludeMeta = boolPtr(defaultSummaryIncludeMeta)
 	}
 	if block.SortOrder == 0 {
 		block.SortOrder = idx + 1

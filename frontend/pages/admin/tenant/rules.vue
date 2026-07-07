@@ -857,6 +857,7 @@ const normalizeSummaryConfigForUI = (cfg: ProcessSummaryConfig): ProcessSummaryC
     id: b.id || createClientId(),
     title: b.title || '流程摘要',
     user_prompt: b.user_prompt || '',
+    include_meta: b.include_meta !== false,
     field_mode: b.field_mode || 'all',
     selected_fields: b.selected_fields || [],
     enabled: b.enabled !== false,
@@ -875,6 +876,7 @@ function createSummaryBlock(): SummaryBlockConfig {
     id: createClientId(),
     title: '流程摘要',
     user_prompt: '请概括流程背景、关键申请内容、金额/日期/对象等核心信息，并列出审批人最需要关注的要点。',
+    include_meta: true,
     field_mode: 'all',
     selected_fields: [],
     enabled: true,
@@ -2449,6 +2451,14 @@ const handleSave = async () => {
               </a-popconfirm>
             </div>
 
+            <div class="summary-block-option-row">
+              <div class="summary-block-option-copy">
+                <div class="summary-block-option-title">流程基础信息</div>
+                <div class="summary-block-option-desc">控制该块是否传入流程标题、申请人、部门、当前节点、提交时间等基础信息</div>
+              </div>
+              <a-switch v-model:checked="block.include_meta" checked-children="传入" un-checked-children="不传" />
+            </div>
+
             <div class="field-mode-switch" style="margin-top: 12px;">
               <div
                 class="field-mode-option"
@@ -3835,6 +3845,7 @@ const handleSave = async () => {
 
 @media (max-width: 768px) {
   .main-layout { grid-template-columns: 1fr; }
+  .summary-block-option-row { flex-direction: column; align-items: flex-start; }
   .field-mode-switch { flex-direction: column; }
   .kb-modes { grid-template-columns: 1fr; }
   .strictness-options { flex-direction: column; }
@@ -3976,6 +3987,31 @@ const handleSave = async () => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.summary-block-option-row {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.summary-block-option-copy {
+  min-width: 0;
+}
+.summary-block-option-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.summary-block-option-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
 }
 .summary-block-index {
   width: 28px;
