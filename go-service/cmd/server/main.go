@@ -165,7 +165,8 @@ func main() {
 	aiCallerService := service.NewAIModelCallerService(tenantRepo, llmMessageLogRepo, db, sysFlagsResolver)
 	userNotificationService := service.NewUserNotificationService(userNotificationRepo, userRepo)
 	// 附件识别服务依赖 system_configs，须在 audit/archive 之前初始化（两者会注入它）
-	attachmentRecognitionService := service.NewAttachmentRecognitionService(systemConfigRepo)
+	minerUTimeout := time.Duration(viper.GetInt("attachment.mineru_timeout_seconds")) * time.Second
+	attachmentRecognitionService := service.NewAttachmentRecognitionService(systemConfigRepo, minerUTimeout)
 	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver)
 	summaryConfigService := service.NewProcessSummaryConfigService(summaryConfigRepo, tenantRepo, oaConnectionRepo, invalidationManager)
 	summaryService := service.NewProcessSummaryService(summaryLogRepo, summarySnapshotRepo, summaryConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, sysFlagsResolver)
@@ -236,7 +237,7 @@ func main() {
 		pkglogger.Global().Warn("归档流处理器启动失败", zap.Error(err))
 	}
 	service.StartArchiveStaleReconciler(context.Background(), archiveReviewService, pkglogger.Global(), 30*time.Second)
-	if err := service.StartSummaryStreamWorker(context.Background(), rdb, summaryService, pkglogger.Global(), 2); err != nil {
+	if err := service.StartSummaryStreamWorker(context.Background(), rdb, summaryService, pkglogger.Global(), viper.GetInt("workers.summary_concurrency")); err != nil {
 		pkglogger.Global().Warn("总结流处理器启动失败", zap.Error(err))
 	}
 	service.StartSummaryStaleReconciler(context.Background(), summaryService, pkglogger.Global(), 30*time.Second)
@@ -331,6 +332,8 @@ func loadConfig() error {
 	viper.SetDefault("backup.dir", "backups")
 	viper.SetDefault("backup.retention_fallback_days", 30)
 	viper.SetDefault("backup.dump_timeout", "45m")
+	viper.SetDefault("attachment.mineru_timeout_seconds", 300)
+	viper.SetDefault("workers.summary_concurrency", 1)
 
 	return viper.ReadInConfig()
 }

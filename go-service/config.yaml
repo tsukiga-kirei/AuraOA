@@ -27,6 +27,15 @@ redis:
   password: ""
   db: 0
 
+attachment:
+  # 调用 MinerU /file_parse、/health 等接口的 HTTP 超时秒数；环境变量 ATTACHMENT_MINERU_TIMEOUT_SECONDS。
+  mineru_timeout_seconds: 300
+
+workers:
+  # 流程总结 Redis Stream worker 并发数；附件识别会占用 MinerU，生产建议先保持 1。
+  # 环境变量 WORKERS_SUMMARY_CONCURRENCY。
+  summary_concurrency: 1
+
 jwt:
   secret: "change-me-in-production"
   access_token_ttl: 2h

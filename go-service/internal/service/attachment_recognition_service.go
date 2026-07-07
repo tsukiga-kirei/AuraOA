@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -32,12 +33,18 @@ type AttachmentRecognitionService struct {
 	httpClient *http.Client
 }
 
+const defaultMinerUHTTPTimeout = 300 * time.Second
+
 // NewAttachmentRecognitionService 创建附件识别服务实例。
-func NewAttachmentRecognitionService(configRepo *repository.SystemConfigRepo) *AttachmentRecognitionService {
+func NewAttachmentRecognitionService(configRepo *repository.SystemConfigRepo, timeout ...time.Duration) *AttachmentRecognitionService {
+	httpTimeout := defaultMinerUHTTPTimeout
+	if len(timeout) > 0 && timeout[0] > 0 {
+		httpTimeout = timeout[0]
+	}
 	return &AttachmentRecognitionService{
 		configRepo: configRepo,
 		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
+			Timeout: httpTimeout,
 		},
 	}
 }
@@ -385,10 +392,10 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 		}
 
 		var result struct {
-			TaskID    string              `json:"task_id"`
-			Status    string              `json:"status"`
-			ResultURL string              `json:"result_url"`
-			Results   mineruInlineResults `json:"results"`
+			TaskID    string          `json:"task_id"`
+			Status    string          `json:"status"`
+			ResultURL string          `json:"result_url"`
+			Results   json.RawMessage `json:"results"`
 		}
 		if err := json.Unmarshal(respBody, &result); err != nil {
 			pkglogger.Global().Error("附件识别：解析 MinerU 响应失败",
@@ -451,20 +458,61 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 	return out, nil
 }
 
-type mineruInlineResults struct {
-	Document struct {
-		MDContent string `json:"md_content"`
-	} `json:"document"`
-	Files struct {
-		MDContent string `json:"md_content"`
-	} `json:"files"`
+type mineruMarkdownResult struct {
+	MDContent string `json:"md_content"`
+	Content   string `json:"content"`
+	Markdown  string `json:"markdown"`
 }
 
-func extractMinerUMarkdown(results mineruInlineResults) string {
-	if results.Document.MDContent != "" {
-		return results.Document.MDContent
+func (r mineruMarkdownResult) text() string {
+	if r.MDContent != "" {
+		return r.MDContent
 	}
-	return results.Files.MDContent
+	if r.Markdown != "" {
+		return r.Markdown
+	}
+	return r.Content
+}
+
+type mineruInlineResults struct {
+	mineruMarkdownResult
+	Document mineruMarkdownResult `json:"document"`
+	Files    mineruMarkdownResult `json:"files"`
+}
+
+func extractMinerUMarkdown(results json.RawMessage) string {
+	if len(results) == 0 || string(results) == "null" {
+		return ""
+	}
+
+	var inline mineruInlineResults
+	if err := json.Unmarshal(results, &inline); err == nil {
+		for _, content := range []string{
+			inline.text(),
+			inline.Document.text(),
+			inline.Files.text(),
+		} {
+			if content != "" {
+				return content
+			}
+		}
+	}
+
+	var byName map[string]mineruMarkdownResult
+	if err := json.Unmarshal(results, &byName); err != nil {
+		return ""
+	}
+	keys := make([]string, 0, len(byName))
+	for key := range byName {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if content := byName[key].text(); content != "" {
+			return content
+		}
+	}
+	return ""
 }
 
 func (s *AttachmentRecognitionService) fetchMinerUTaskResult(ctx context.Context, resultURL, apiKey string) (string, error) {

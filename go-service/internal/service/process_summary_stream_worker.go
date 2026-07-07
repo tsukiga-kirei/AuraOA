@@ -61,7 +61,7 @@ func StartSummaryStreamWorker(ctx context.Context, rdb *redis.Client, svc *Proce
 		return err
 	}
 	if concurrency < 1 {
-		concurrency = 2
+		concurrency = 1
 	}
 	host, _ := os.Hostname()
 	consumerBase := fmt.Sprintf("%s-%d", host, time.Now().UnixNano())
