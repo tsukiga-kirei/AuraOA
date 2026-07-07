@@ -27,6 +27,10 @@ import type {
   ArchiveSnapshotFilter,
   ArchiveSnapshotStats,
   ArchiveSnapshotItem,
+  SummaryLogItem,
+  SummarySnapshotFilter,
+  SummarySnapshotStats,
+  SummarySnapshotItem,
   CronLogFilter,
   CronLogStats,
   CronLogItem,
@@ -120,6 +124,22 @@ export function useAdminDataApi() {
     const params = buildParams(filter)
     const url = buildExportUrl('/api/archive/logs/export', params)
     await triggerDownload(url, 'archive_logs.csv')
+  }
+
+  // ── 流程总结快照 ──────────────────────────────────────────────────────────
+
+  async function listSummarySnapshots(filter: SummarySnapshotFilter = {}): Promise<PagedResult<SummarySnapshotItem>> {
+    const params = buildParams(filter)
+    const query = new URLSearchParams(params).toString()
+    return await authFetch<PagedResult<SummarySnapshotItem>>(`/api/summary/snapshots${query ? `?${query}` : ''}`)
+  }
+
+  async function getSummarySnapshotStats(): Promise<SummarySnapshotStats> {
+    return await authFetch<SummarySnapshotStats>('/api/summary/snapshots/stats')
+  }
+
+  async function getSummarySnapshotChain(processId: string): Promise<{ chain: SummaryLogItem[] }> {
+    return await authFetch<{ chain: SummaryLogItem[] }>(`/api/summary/snapshots/${processId}/chain`)
   }
 
   // ── 定时任务日志 ──────────────────────────────────────────────────────────────
@@ -234,6 +254,10 @@ export function useAdminDataApi() {
     listArchiveLogs,
     getArchiveLogStats,
     exportArchiveLogs,
+    // 流程总结
+    listSummarySnapshots,
+    getSummarySnapshotStats,
+    getSummarySnapshotChain,
     // 定时任务
     listCronLogs,
     getCronLogStats,

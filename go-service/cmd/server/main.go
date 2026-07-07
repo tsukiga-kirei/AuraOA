@@ -138,11 +138,14 @@ func main() {
 	cronLogRepo := repository.NewCronLogRepo(db)
 	archiveConfigRepo := repository.NewProcessArchiveConfigRepo(db)
 	archiveRuleRepo := repository.NewArchiveRuleRepo(db)
+	summaryConfigRepo := repository.NewProcessSummaryConfigRepo(db)
 
 	auditLogRepo := repository.NewAuditLogRepo(db)
 	archiveLogRepo := repository.NewArchiveLogRepo(db)
+	summaryLogRepo := repository.NewProcessSummaryLogRepo(db)
 	auditSnapshotRepo := repository.NewAuditProcessSnapshotRepo(db)
 	archiveSnapshotRepo := repository.NewArchiveProcessSnapshotRepo(db)
+	summarySnapshotRepo := repository.NewProcessSummarySnapshotRepo(db)
 
 	// 第六步：初始化各业务服务层（Service）
 	authService := service.NewAuthService(userRepo, rdb, db, systemConfigRepo)
@@ -164,6 +167,8 @@ func main() {
 	// 附件识别服务依赖 system_configs，须在 audit/archive 之前初始化（两者会注入它）
 	attachmentRecognitionService := service.NewAttachmentRecognitionService(systemConfigRepo)
 	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver)
+	summaryConfigService := service.NewProcessSummaryConfigService(summaryConfigRepo, tenantRepo, oaConnectionRepo, invalidationManager)
+	summaryService := service.NewProcessSummaryService(summaryLogRepo, summarySnapshotRepo, summaryConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, sysFlagsResolver)
 	dashboardOverviewService := service.NewDashboardOverviewService(
 		auditSnapshotRepo, archiveSnapshotRepo, auditLogRepo, archiveLogRepo, cronLogRepo, cronTaskRepo, cronPresetRepo, llmMessageLogRepo, tenantRepo, orgRepo, cacheManager, invalidationManager,
 	)
@@ -231,6 +236,10 @@ func main() {
 		pkglogger.Global().Warn("归档流处理器启动失败", zap.Error(err))
 	}
 	service.StartArchiveStaleReconciler(context.Background(), archiveReviewService, pkglogger.Global(), 30*time.Second)
+	if err := service.StartSummaryStreamWorker(context.Background(), rdb, summaryService, pkglogger.Global(), 2); err != nil {
+		pkglogger.Global().Warn("总结流处理器启动失败", zap.Error(err))
+	}
+	service.StartSummaryStaleReconciler(context.Background(), summaryService, pkglogger.Global(), 30*time.Second)
 
 	// 启动 Cron 调度器
 	if err := cronScheduler.Start(context.Background()); err != nil {
@@ -254,6 +263,8 @@ func main() {
 	archiveRuleHandler := handler.NewArchiveRuleHandler(archiveRuleService)
 	auditHandler := handler.NewAuditHandler(auditExecuteService, auditSnapshotRepo, auditLogRepo)
 	archiveReviewHandler := handler.NewArchiveReviewHandler(archiveReviewService, archiveSnapshotRepo, archiveLogRepo)
+	summaryConfigHandler := handler.NewProcessSummaryConfigHandler(summaryConfigService)
+	summaryHandler := handler.NewProcessSummaryHandler(summaryService)
 	systemMonitorService := service.NewSystemMonitorService(db, rdb)
 	dashboardOverviewHandler := handler.NewDashboardOverviewHandler(dashboardOverviewService, systemMonitorService)
 	userNotificationHandler := handler.NewUserNotificationHandler(userNotificationService)
@@ -264,7 +275,7 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, auditHandler, archiveReviewHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, sysFlagsResolver, operationAuditLogRepo, tenantRepo)
+	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, auditHandler, archiveReviewHandler, summaryHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, sysFlagsResolver, operationAuditLogRepo, tenantRepo)
 
 	// 第九步：启动 HTTP 服务器
 	port := viper.GetInt("server.port")

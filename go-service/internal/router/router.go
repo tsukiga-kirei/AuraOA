@@ -32,8 +32,10 @@ func SetupRouter(
 	cronTaskHandler *handler.CronTaskHandler,
 	archiveConfigHandler *handler.ArchiveConfigHandler,
 	archiveRuleHandler *handler.ArchiveRuleHandler,
+	summaryConfigHandler *handler.ProcessSummaryConfigHandler,
 	auditHandler *handler.AuditHandler,
 	archiveReviewHandler *handler.ArchiveReviewHandler,
+	summaryHandler *handler.ProcessSummaryHandler,
 	dashboardOverviewHandler *handler.DashboardOverviewHandler,
 	userNotificationHandler *handler.UserNotificationHandler,
 	cacheAdminHandler *handler.CacheAdminHandler,
@@ -226,6 +228,19 @@ func SetupRouter(
 		tenantArchive.GET("/prompt-templates", archiveConfigHandler.ListPromptTemplates)
 	}
 
+	// 租户管理员 — 流程总结配置（需要 JWT + 租户上下文 + tenant_admin 角色）
+	tenantSummary := r.Group("/api/tenant/summary")
+	tenantSummary.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		tenantSummary.GET("/configs", summaryConfigHandler.List)
+		tenantSummary.POST("/configs", summaryConfigHandler.Create)
+		tenantSummary.POST("/configs/test-connection", summaryConfigHandler.TestConnection)
+		tenantSummary.GET("/configs/:id", summaryConfigHandler.GetByID)
+		tenantSummary.PUT("/configs/:id", summaryConfigHandler.Update)
+		tenantSummary.DELETE("/configs/:id", summaryConfigHandler.Delete)
+		tenantSummary.POST("/configs/:id/fetch-fields", summaryConfigHandler.FetchFields)
+	}
+
 	// 租户管理员 — 用户个人配置管理（需要 JWT + 租户上下文 + tenant_admin 角色）
 	tenantUserConfigs := r.Group("/api/tenant/user-configs")
 	tenantUserConfigs.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
@@ -292,6 +307,11 @@ func SetupRouter(
 		embed.POST("/execute", auditHandler.ExecuteEmbed)
 		embed.GET("/jobs/:id", auditHandler.GetJobStatus)
 		embed.GET("/stream/:id", auditHandler.GetJobStream)
+
+		embed.GET("/summary/context", summaryHandler.GetEmbedContext)
+		embed.POST("/summary/execute", summaryHandler.ExecuteEmbed)
+		embed.GET("/summary/jobs/:id", summaryHandler.GetJobStatus)
+		embed.GET("/summary/stream/:id", summaryHandler.GetJobStream)
 	}
 
 	// 审核日志数据管理（仅 tenant_admin）：日志列表、统计及导出
@@ -310,6 +330,15 @@ func SetupRouter(
 		auditSnapshotAdmin.GET("", auditHandler.ListSnapshots)
 		auditSnapshotAdmin.GET("/stats", auditHandler.GetSnapshotStats)
 		auditSnapshotAdmin.GET("/:processId/chain", auditHandler.GetSnapshotChain)
+	}
+
+	// 流程总结数据管理（仅 tenant_admin）：快照列表、统计及总结链路查询
+	summarySnapshotAdmin := r.Group("/api/summary/snapshots")
+	summarySnapshotAdmin.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		summarySnapshotAdmin.GET("", summaryHandler.ListSnapshots)
+		summarySnapshotAdmin.GET("/stats", summaryHandler.GetSnapshotStats)
+		summarySnapshotAdmin.GET("/:processId/chain", summaryHandler.GetSnapshotChain)
 	}
 
 	// 归档复盘运行时（需要 JWT + 租户上下文，无角色限制）：发起复盘、查询进度、流式输出、历史记录

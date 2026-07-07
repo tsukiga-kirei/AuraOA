@@ -68,7 +68,7 @@ Authorization: Bearer <access_token>
 | [组织架构接口](./org.md) | `/api/tenant/org` | 部门、角色、成员管理 |
 | [流程审核配置接口](./audit-config.md) | `/api/tenant/rules` | 流程审核配置、审核规则、提示词模板 |
 | [审核工作台接口](./audit.md) | `/api/audit` | 审核执行、任务管理、日志、快照 |
-| [OA 嵌入审核接口](./embed.md) | `/api/embed` | 嵌入页上下文、嵌入场景触发审核 |
+| [OA 嵌入接口](./embed.md) | `/api/embed` | 嵌入页上下文、嵌入场景触发审核与流程总结 |
 | [归档复盘接口](./archive.md) | `/api/archive` | 归档复盘执行、任务管理、日志、快照 |
 | [定时任务接口](./cron.md) | `/api/tenant/cron` | 任务类型配置、任务实例管理、执行日志 |
 | [用户设置接口](./user-settings.md) | `/api/tenant/settings` | 个人审核配置、归档配置、仪表盘偏好 |

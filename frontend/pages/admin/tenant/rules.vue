@@ -37,6 +37,7 @@ import type {
 } from '~/composables/useAuditConfigApi'
 import type { ArchiveRule, ProcessArchiveConfig } from '~/types/archive-config'
 import type { CronTaskConfig } from '~/types/cron'
+import type { ProcessSummaryConfig, SummaryBlockConfig } from '~/types/process-summary'
 import {useI18n} from '~/composables/useI18n'
 import {usePagination} from '~/composables/usePagination'
 import {useArchiveConfigApi} from "~/composables/useArchiveConfigApi";
@@ -48,9 +49,10 @@ const { t } = useI18n()
 const rulesApi = useAuditConfigApi()
 const cronApi = useCronApi()
 const archiveApi = useArchiveConfigApi()
+const summaryApi = useSummaryConfigApi()
 
-//===== 顶级选项卡：审核工作台 vs 定时任务配置 vs 归档复盘 =====
-const topTab = ref<'audit' | 'cron' | 'archive'>('audit')
+//===== 顶级选项卡：审核工作台 vs 定时任务配置 vs 归档复盘 vs 流程总结 =====
+const topTab = ref<'audit' | 'cron' | 'archive' | 'summary'>('audit')
 
 //===== Cron 任务类型配置 =====
 const cronConfigs = ref<CronTaskConfig[]>([])
@@ -743,6 +745,14 @@ onMounted(async () => {
     archivePromptTemplates.value = await archiveApi.listPromptTemplates()
   } catch (e) { console.error('[rules] 加载归档配置失败', e) }
   finally { loadingArchive.value = false }
+  // 加载流程总结配置
+  loadingSummary.value = true
+  try {
+    const summaryList = await summaryApi.listConfigs()
+    summaryConfigs.value = summaryList.map(normalizeSummaryConfigForUI)
+    if (summaryConfigs.value.length > 0) selectedSummaryId.value = summaryConfigs.value[0].id
+  } catch (e) { console.error('[rules] 加载流程总结配置失败', e) }
+  finally { loadingSummary.value = false }
 })
 
 const getTemplateContent = (promptKey: string) => {
@@ -785,6 +795,276 @@ const archiveActiveTab = ref('info')
 const selectedArchiveConfig = computed(() =>
   archiveConfigs.value.find(c => c.id === selectedArchiveId.value)
 )
+
+//===== 流程总结配置 =====
+const summaryConfigs = ref<ProcessSummaryConfig[]>([])
+const loadingSummary = ref(false)
+const selectedSummaryId = ref('')
+const showAddSummaryProcess = ref(false)
+const newSummaryProcessForm = ref({ process_type: '', process_type_label: '', main_table_name: '' })
+const summaryTestingConnection = ref(false)
+const summaryTestConnectionResult = ref<{ success: boolean; message: string } | null>(null)
+const summaryInfoTestingConnection = ref(false)
+const summaryInfoTestConnectionResult = ref<{ success: boolean; message: string } | null>(null)
+const syncingSummaryFields = ref(false)
+const savingSummary = ref(false)
+
+const selectedSummaryConfig = computed(() =>
+  summaryConfigs.value.find(c => c.id === selectedSummaryId.value)
+)
+
+interface SummaryFieldOption {
+  label: string
+  value: string
+  field_type: string
+  sourceLabel: string
+}
+
+const summaryFieldOptions = computed<SummaryFieldOption[]>(() => {
+  if (!selectedSummaryConfig.value) return []
+  const options: SummaryFieldOption[] = []
+  for (const f of selectedSummaryConfig.value.main_fields || []) {
+    options.push({
+      label: `${f.field_name}（主表）`,
+      value: `main:${f.field_key}`,
+      field_type: f.field_type,
+      sourceLabel: '主表',
+    })
+  }
+  ;(selectedSummaryConfig.value.detail_tables || []).forEach((dt, idx) => {
+    const sourceLabel = dt.table_label || `明细表 ${idx + 1}`
+    for (const f of dt.fields || []) {
+      options.push({
+        label: `${f.field_name}（${sourceLabel}）`,
+        value: `${dt.table_name}:${f.field_key}`,
+        field_type: f.field_type,
+        sourceLabel,
+      })
+    }
+  })
+  return options
+})
+
+const getSummaryFieldLabel = (refKey: string) =>
+  summaryFieldOptions.value.find(f => f.value === refKey)?.label || refKey
+
+const normalizeSummaryConfigForUI = (cfg: ProcessSummaryConfig): ProcessSummaryConfig => ({
+  ...cfg,
+  main_fields: cfg.main_fields || [],
+  detail_tables: cfg.detail_tables || [],
+  summary_blocks: (cfg.summary_blocks?.length ? cfg.summary_blocks : [createSummaryBlock()]).map((b, idx) => ({
+    ...b,
+    id: b.id || createClientId(),
+    title: b.title || '流程摘要',
+    user_prompt: b.user_prompt || '',
+    field_mode: b.field_mode || 'all',
+    selected_fields: b.selected_fields || [],
+    enabled: b.enabled !== false,
+    sort_order: b.sort_order || idx + 1,
+  })),
+  embed_enabled: cfg.embed_enabled ?? true,
+  embed_config: {
+    auto_summary_on_open: cfg.embed_config?.auto_summary_on_open ?? true,
+    auto_summary_on_stale: cfg.embed_config?.auto_summary_on_stale ?? true,
+  },
+  status: cfg.status || 'active',
+})
+
+function createSummaryBlock(): SummaryBlockConfig {
+  return {
+    id: createClientId(),
+    title: '流程摘要',
+    user_prompt: '请概括流程背景、关键申请内容、金额/日期/对象等核心信息，并列出审批人最需要关注的要点。',
+    field_mode: 'all',
+    selected_fields: [],
+    enabled: true,
+    sort_order: 1,
+  }
+}
+
+function createClientId() {
+  return globalThis.crypto?.randomUUID?.() || `block_${Date.now()}_${Math.random().toString(16).slice(2)}`
+}
+
+const handleSummaryTestConnectionInModal = async () => {
+  const processType = newSummaryProcessForm.value.process_type.trim()
+  if (!processType) {
+    message.warning(t('admin.ruleConfig.enterProcessName'))
+    return
+  }
+  summaryTestingConnection.value = true
+  summaryTestConnectionResult.value = null
+  try {
+    const info = await summaryApi.testConnection(processType, newSummaryProcessForm.value.main_table_name.trim(), newSummaryProcessForm.value.process_type_label?.trim() || '')
+    if (info.table_mismatch || info.type_label_mismatch) {
+      const msgs = []
+      if (info.table_mismatch) {
+        msgs.push(t('admin.ruleConfig.tableMismatch', [info.expected_table || '-']))
+        if (info.expected_table) newSummaryProcessForm.value.main_table_name = info.expected_table
+      }
+      if (info.type_label_mismatch) {
+        msgs.push(t('admin.ruleConfig.typeLabelMismatch', [info.expected_type_label || '-']))
+        if (info.expected_type_label) newSummaryProcessForm.value.process_type_label = info.expected_type_label
+      }
+      summaryTestConnectionResult.value = { success: false, message: msgs.join('；') }
+    } else {
+      summaryTestConnectionResult.value = {
+        success: true,
+        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
+      }
+      if (info.main_table) newSummaryProcessForm.value.main_table_name = info.main_table
+      if (info.process_type_label) newSummaryProcessForm.value.process_type_label = info.process_type_label
+    }
+  } catch (e: any) {
+    summaryTestConnectionResult.value = { success: false, message: t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']) }
+  } finally {
+    summaryTestingConnection.value = false
+  }
+}
+
+const handleAddSummaryProcess = async () => {
+  if (!newSummaryProcessForm.value.process_type.trim()) {
+    message.warning(t('admin.ruleConfig.enterProcessName'))
+    return
+  }
+  try {
+    const created = await summaryApi.createConfig({
+      process_type: newSummaryProcessForm.value.process_type.trim(),
+      process_type_label: newSummaryProcessForm.value.process_type_label.trim(),
+      main_table_name: newSummaryProcessForm.value.main_table_name.trim(),
+      embed_enabled: true,
+      embed_config: { auto_summary_on_open: true, auto_summary_on_stale: true },
+      summary_blocks: [createSummaryBlock()],
+    })
+    const normalized = normalizeSummaryConfigForUI(created)
+    summaryConfigs.value.push(normalized)
+    selectedSummaryId.value = normalized.id
+    showAddSummaryProcess.value = false
+    newSummaryProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
+    summaryTestConnectionResult.value = null
+    message.success(t('admin.ruleConfig.processAdded'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.createConfigFail') + ': ' + (e.message || ''))
+  }
+}
+
+const handleDeleteSummaryProcess = async (id: string) => {
+  try {
+    await summaryApi.deleteConfig(id)
+    summaryConfigs.value = summaryConfigs.value.filter(c => c.id !== id)
+    if (selectedSummaryId.value === id) {
+      selectedSummaryId.value = summaryConfigs.value[0]?.id || ''
+    }
+    message.success(t('admin.ruleConfig.deleteConfigSuccess'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.deleteConfigFail') + ': ' + (e.message || ''))
+  }
+}
+
+const handleSummaryTestConnectionInInfo = async () => {
+  if (!selectedSummaryConfig.value) return
+  const processType = selectedSummaryConfig.value.process_type.trim()
+  if (!processType) {
+    message.warning(t('admin.ruleConfig.enterProcessName'))
+    return
+  }
+  summaryInfoTestingConnection.value = true
+  summaryInfoTestConnectionResult.value = null
+  try {
+    const info = await summaryApi.testConnection(processType, selectedSummaryConfig.value.main_table_name.trim(), selectedSummaryConfig.value.process_type_label?.trim() || '')
+    if (info.table_mismatch || info.type_label_mismatch) {
+      const msgs = []
+      if (info.table_mismatch) {
+        msgs.push(t('admin.ruleConfig.tableMismatch', [info.expected_table || '-']))
+        if (info.expected_table) selectedSummaryConfig.value.main_table_name = info.expected_table
+      }
+      if (info.type_label_mismatch) {
+        msgs.push(t('admin.ruleConfig.typeLabelMismatch', [info.expected_type_label || '-']))
+        if (info.expected_type_label) selectedSummaryConfig.value.process_type_label = info.expected_type_label
+      }
+      summaryInfoTestConnectionResult.value = { success: false, message: msgs.join('；') }
+    } else {
+      summaryInfoTestConnectionResult.value = {
+        success: true,
+        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
+      }
+      if (info.main_table) selectedSummaryConfig.value.main_table_name = info.main_table
+      if (info.process_type_label) selectedSummaryConfig.value.process_type_label = info.process_type_label
+    }
+  } catch (e: any) {
+    summaryInfoTestConnectionResult.value = { success: false, message: t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']) }
+  } finally {
+    summaryInfoTestingConnection.value = false
+  }
+}
+
+const handleSummarySyncFields = async () => {
+  if (!selectedSummaryConfig.value) return
+  syncingSummaryFields.value = true
+  try {
+    const fields = await summaryApi.fetchFields(selectedSummaryConfig.value.id)
+    selectedSummaryConfig.value.main_fields = (fields.main_fields || []).map((f: any) => ({ ...f, selected: true }))
+    selectedSummaryConfig.value.detail_tables = (fields.detail_tables || []).map((dt: any) => ({
+      ...dt,
+      fields: (dt.fields || []).map((f: any) => ({ ...f, selected: true })),
+    }))
+    message.success(t('admin.ruleConfig.fetchFieldsSuccess'))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.fetchFieldsFail') + ': ' + (e.message || ''))
+  } finally {
+    syncingSummaryFields.value = false
+  }
+}
+
+const addSummaryBlock = () => {
+  if (!selectedSummaryConfig.value) return
+  const block = createSummaryBlock()
+  block.title = `总结块 ${selectedSummaryConfig.value.summary_blocks.length + 1}`
+  block.sort_order = selectedSummaryConfig.value.summary_blocks.length + 1
+  selectedSummaryConfig.value.summary_blocks.push(block)
+}
+
+const removeSummaryBlock = (blockId: string) => {
+  if (!selectedSummaryConfig.value) return
+  selectedSummaryConfig.value.summary_blocks = selectedSummaryConfig.value.summary_blocks.filter(b => b.id !== blockId)
+  selectedSummaryConfig.value.summary_blocks.forEach((b, idx) => { b.sort_order = idx + 1 })
+}
+
+const handleSaveSummaryConfig = async () => {
+  if (!selectedSummaryConfig.value) return
+  const cfg = selectedSummaryConfig.value
+  if (!cfg.summary_blocks.some(block => block.enabled)) {
+    message.warning('至少需要启用一个总结块')
+    return
+  }
+  const emptySelectedBlock = cfg.summary_blocks.find(block => block.enabled && block.field_mode === 'selected' && block.selected_fields.length === 0)
+  if (emptySelectedBlock) {
+    message.warning(`总结块「${emptySelectedBlock.title || '未命名'}」需要至少选择一个字段`)
+    return
+  }
+  savingSummary.value = true
+  try {
+    const updated = await summaryApi.updateConfig(cfg.id, {
+      process_type: cfg.process_type,
+      process_type_label: cfg.process_type_label,
+      main_table_name: cfg.main_table_name,
+      main_fields: cfg.main_fields,
+      detail_tables: cfg.detail_tables,
+      summary_blocks: cfg.summary_blocks.map((b, idx) => ({ ...b, sort_order: idx + 1 })),
+      embed_enabled: cfg.embed_enabled ?? true,
+      embed_config: cfg.embed_config,
+      status: cfg.status,
+    })
+    const normalized = normalizeSummaryConfigForUI(updated)
+    const idx = summaryConfigs.value.findIndex(c => c.id === cfg.id)
+    if (idx >= 0) summaryConfigs.value[idx] = normalized
+    message.success('流程总结配置已保存')
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.updateConfigFail') + ': ' + (e.message || ''))
+  } finally {
+    savingSummary.value = false
+  }
+}
 
 // 快照原始权限，用于保存时检测是否有权限降级
 const originalArchivePerms = ref<Record<string, boolean>>({})
@@ -1461,13 +1741,14 @@ const handleSave = async () => {
       </div>
     </div>
 
-    <!--顶级选项卡：审核工作台 / 定时任务配置 / 归档复盘-->
+    <!--顶级选项卡：审核工作台 / 定时任务配置 / 归档复盘 / 流程总结-->
     <div class="top-tab-nav">
       <button
         v-for="tab in [
           { key: 'audit', label: t('admin.ruleConfig.tabAudit'), icon: DashboardOutlined },
           { key: 'cron', label: t('admin.ruleConfig.tabCron'), icon: ClockCircleOutlined },
           { key: 'archive', label: t('admin.ruleConfig.tabArchive'), icon: FolderOpenOutlined },
+          { key: 'summary', label: '流程总结', icon: FileTextOutlined },
         ]"
         :key="tab.key"
         class="top-tab-btn"
@@ -2026,6 +2307,255 @@ const handleSave = async () => {
         <a-empty :description="t('admin.ruleConfig.selectProcess')" />
       </div>
     </div>
+
+    <!-- ==================== 流程总结配置 ==================== -->
+    <div v-if="topTab === 'summary'" class="main-layout">
+      <div class="process-nav">
+        <div class="process-nav-header">
+          <FileTextOutlined />
+          <span>总结流程</span>
+          <button class="add-process-btn" @click="showAddSummaryProcess = true" title="新增流程">
+            <PlusOutlined />
+          </button>
+        </div>
+        <a-spin v-if="loadingSummary" style="display: block; padding: 20px;" />
+        <div
+          v-for="cfg in summaryConfigs"
+          :key="cfg.id"
+          class="process-nav-item"
+          :class="{ 'process-nav-item--active': selectedSummaryId === cfg.id }"
+          @click="selectedSummaryId = cfg.id"
+        >
+          <div style="flex: 1; min-width: 0;">
+            <div class="process-nav-name">{{ cfg.process_type }}</div>
+            <div v-if="cfg.process_type_label" class="process-nav-path">{{ cfg.process_type_label }}</div>
+          </div>
+          <a-popconfirm title="确认删除该总结配置？" @confirm.stop="handleDeleteSummaryProcess(cfg.id)" placement="right">
+            <button class="icon-btn icon-btn--danger icon-btn--sm" @click.stop style="opacity: 0.5; flex-shrink: 0;">
+              <DeleteOutlined />
+            </button>
+          </a-popconfirm>
+        </div>
+      </div>
+
+      <div v-if="selectedSummaryConfig" class="config-panel">
+        <div class="config-panel-header">
+          <h2 class="config-panel-title">{{ selectedSummaryConfig.process_type }}</h2>
+          <p v-if="selectedSummaryConfig.process_type_label" class="config-panel-subtitle">{{ selectedSummaryConfig.process_type_label }}</p>
+        </div>
+
+        <div class="section-header">
+          <div>
+            <h4 class="section-title">基础信息</h4>
+            <p class="section-desc">流程、主表、嵌入行为和总结块配置</p>
+          </div>
+        </div>
+
+        <a-form layout="vertical" class="info-form">
+          <a-form-item label="流程名称">
+            <a-input v-model:value="selectedSummaryConfig.process_type" placeholder="OA 流程名称" />
+          </a-form-item>
+          <a-form-item label="流程分类">
+            <a-input v-model:value="selectedSummaryConfig.process_type_label" placeholder="流程分类名称" />
+          </a-form-item>
+          <a-form-item label="主表名称">
+            <div style="display: flex; gap: 8px;">
+              <a-input v-model:value="selectedSummaryConfig.main_table_name" placeholder="OA 主表名称" style="flex: 1;" />
+              <a-button :loading="summaryInfoTestingConnection" @click="handleSummaryTestConnectionInInfo">
+                <template #icon><DatabaseOutlined /></template>
+                {{ summaryInfoTestingConnection ? '测试中' : '测试连接' }}
+              </a-button>
+            </div>
+            <div v-if="summaryInfoTestConnectionResult" style="margin-top: 8px;">
+              <a-alert
+                :type="summaryInfoTestConnectionResult.success ? 'success' : 'error'"
+                :message="summaryInfoTestConnectionResult.message"
+                show-icon
+                closable
+                @close="summaryInfoTestConnectionResult = null"
+              />
+            </div>
+          </a-form-item>
+        </a-form>
+
+        <div class="permissions-list" style="margin-top: 12px;">
+          <div class="permission-item">
+            <div class="permission-info">
+              <div class="permission-label">OA 嵌入总结</div>
+              <div class="permission-desc">/embed/summary 使用该开关控制可见性</div>
+            </div>
+            <a-switch
+              v-model:checked="selectedSummaryConfig.embed_enabled"
+              checked-children="启用"
+              un-checked-children="停用"
+            />
+          </div>
+          <div class="permission-item">
+            <div class="permission-info">
+              <div class="permission-label">打开时自动总结</div>
+              <div class="permission-desc">没有历史结果时自动发起总结</div>
+            </div>
+            <a-switch
+              v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_open"
+              checked-children="启用"
+              un-checked-children="停用"
+            />
+          </div>
+          <div class="permission-item">
+            <div class="permission-info">
+              <div class="permission-label">流程变化后自动刷新</div>
+              <div class="permission-desc">字段、节点或退回版本变化时重新总结</div>
+            </div>
+            <a-switch
+              v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_stale"
+              checked-children="启用"
+              un-checked-children="停用"
+            />
+          </div>
+        </div>
+
+        <div class="section-header" style="margin-top: 28px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <h4 class="section-title">总结块</h4>
+            <p class="section-desc">每个块独立选择字段并设置用户提示词</p>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <a-button :loading="syncingSummaryFields" @click="handleSummarySyncFields">
+              <template #icon><DatabaseOutlined /></template>
+              {{ syncingSummaryFields ? '同步中' : '同步字段' }}
+            </a-button>
+            <a-button type="primary" @click="addSummaryBlock">
+              <PlusOutlined /> 新增块
+            </a-button>
+          </div>
+        </div>
+
+        <div class="summary-block-list">
+          <div
+            v-for="(block, idx) in selectedSummaryConfig.summary_blocks"
+            :key="block.id"
+            class="summary-block-card"
+          >
+            <div class="summary-block-head">
+              <div class="summary-block-index">{{ idx + 1 }}</div>
+              <a-input v-model:value="block.title" placeholder="块标题" style="max-width: 280px;" />
+              <a-switch v-model:checked="block.enabled" checked-children="启用" un-checked-children="停用" />
+              <a-popconfirm
+                v-if="selectedSummaryConfig.summary_blocks.length > 1"
+                title="确认删除该总结块？"
+                @confirm="removeSummaryBlock(block.id)"
+              >
+                <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
+              </a-popconfirm>
+            </div>
+
+            <div class="field-mode-switch" style="margin-top: 12px;">
+              <div
+                class="field-mode-option"
+                :class="{ 'field-mode-option--active': block.field_mode === 'all' }"
+                @click="block.field_mode = 'all'"
+              >
+                <div class="field-mode-radio" />
+                <div>
+                  <div class="field-mode-label">全部字段</div>
+                  <div class="field-mode-desc">主表、明细和附件内容全部进入该块</div>
+                </div>
+              </div>
+              <div
+                class="field-mode-option"
+                :class="{ 'field-mode-option--active': block.field_mode === 'selected' }"
+                @click="block.field_mode = 'selected'"
+              >
+                <div class="field-mode-radio" />
+                <div>
+                  <div class="field-mode-label">指定字段</div>
+                  <div class="field-mode-desc">仅使用勾选字段；附件字段被选中时带入识别文本</div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="block.field_mode === 'selected'" class="summary-field-picker">
+              <a-select
+                v-model:value="block.selected_fields"
+                mode="multiple"
+                :options="summaryFieldOptions"
+                option-filter-prop="label"
+                placeholder="选择字段"
+                style="width: 100%;"
+              />
+              <div v-if="block.selected_fields.length" class="summary-selected-fields">
+                <span v-for="refKey in block.selected_fields.slice(0, 8)" :key="refKey" class="selected-field-tag">
+                  {{ getSummaryFieldLabel(refKey) }}
+                </span>
+                <span v-if="block.selected_fields.length > 8" class="field-count">+{{ block.selected_fields.length - 8 }}</span>
+              </div>
+            </div>
+
+            <a-form layout="vertical" style="margin-top: 12px;">
+              <a-form-item label="用户提示词">
+                <a-textarea
+                  v-model:value="block.user_prompt"
+                  :rows="4"
+                  placeholder="输入该块的总结需求、判断重点或输出口径"
+                />
+              </a-form-item>
+            </a-form>
+          </div>
+        </div>
+
+        <div class="config-actions">
+          <a-button type="primary" size="large" :disabled="savingSummary" @click="handleSaveSummaryConfig">
+            <LoadingOutlined v-if="savingSummary" spin />
+            <SaveOutlined v-else />
+            保存总结配置
+          </a-button>
+        </div>
+      </div>
+
+      <div v-else class="config-empty">
+        <a-empty description="请选择或新增总结流程" />
+      </div>
+    </div>
+
+    <!--添加总结流程模态-->
+    <a-modal
+      v-model:open="showAddSummaryProcess"
+      title="新增总结流程"
+      @ok="handleAddSummaryProcess"
+      ok-text="确认"
+      cancel-text="取消"
+    >
+      <a-form layout="vertical" style="margin-top: 16px;">
+        <a-form-item label="流程名称" required>
+          <a-input v-model:value="newSummaryProcessForm.process_type" placeholder="请输入 OA 流程名称" />
+        </a-form-item>
+        <a-form-item label="流程分类">
+          <a-input v-model:value="newSummaryProcessForm.process_type_label" placeholder="可选，OA 流程分类名称" />
+        </a-form-item>
+        <a-form-item label="主表名称">
+          <div style="display: flex; gap: 8px;">
+            <a-input v-model:value="newSummaryProcessForm.main_table_name" placeholder="可选，测试连接后自动填充" style="flex: 1;" />
+            <a-button
+              :loading="summaryTestingConnection"
+              @click="handleSummaryTestConnectionInModal"
+              :disabled="!newSummaryProcessForm.process_type.trim()"
+            >
+              <template #icon><DatabaseOutlined /></template>
+              {{ summaryTestingConnection ? '测试中' : '测试连接' }}
+            </a-button>
+          </div>
+          <div v-if="summaryTestConnectionResult" style="margin-top: 8px;">
+            <a-alert
+              :type="summaryTestConnectionResult.success ? 'success' : 'error'"
+              :message="summaryTestConnectionResult.message"
+              show-icon
+              closable
+              @close="summaryTestConnectionResult = null"
+            />
+          </div>
+        </a-form-item>
+      </a-form>
+    </a-modal>
 
     <!--规则编辑器模式-->
     <RuleEditor
@@ -3433,6 +3963,45 @@ const handleSave = async () => {
 .field-empty-hint {
   padding: 24px; text-align: center; color: var(--color-text-tertiary);
   font-size: 13px; background: var(--color-bg-hover); border-radius: var(--radius-md);
+}
+
+.summary-block-list { display: flex; flex-direction: column; gap: 14px; }
+.summary-block-card {
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card);
+  padding: 16px;
+}
+.summary-block-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.summary-block-index {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.summary-field-picker {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+}
+.summary-selected-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
 }
 
 /*字段选择器模态*/
