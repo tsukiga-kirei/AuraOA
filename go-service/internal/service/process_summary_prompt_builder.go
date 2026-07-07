@@ -63,6 +63,9 @@ func BuildSummaryBlockPrompt(
 			processSummary.SubmitTime,
 		)
 	}
+	if block.IncludeMeta != nil && !*block.IncludeMeta {
+		meta = "（当前总结块未传入流程基础信息）"
+	}
 
 	userPrompt := fmt.Sprintf(`请生成「%s」总结块。
 

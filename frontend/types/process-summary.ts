@@ -4,6 +4,7 @@ export interface SummaryBlockConfig {
   id: string
   title: string
   user_prompt: string
+  include_meta: boolean
   field_mode: 'all' | 'selected'
   selected_fields: string[]
   enabled: boolean
