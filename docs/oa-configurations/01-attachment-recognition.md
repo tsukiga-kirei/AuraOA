@@ -54,7 +54,7 @@
 | Backend | `attachment.mineru_backend` | `pipeline` | 取值：`pipeline` / `vlm-auto-engine` / `vlm-http-client` / `hybrid-auto-engine` / `hybrid-http-client` |
 | 公式识别 | `attachment.mineru_enable_formula` | `true` | |
 | 表格识别 | `attachment.mineru_enable_table` | `true` | |
-| OCR | `attachment.mineru_enable_ocr` | `true` | |
+| 解析方式 | `attachment.mineru_parse_method` | `ocr` | `auto`（自动）/ `txt`（文本提取）/ `ocr`（OCR 识别）；旧版 `attachment.mineru_enable_ocr` 仍可读作兼容 |
 | 解析语言 | `attachment.mineru_language` | `ch` | 与 MinerU 服务支持的语言列表保持一致 |
 
 > **测试连接**仅探测 `GET {mineru_endpoint}/health`，不会真实调用 `/file_parse` 解析文件。当前适配同时兼容两类 MinerU 返回：一类直接在同步响应中返回 Markdown，另一类先返回已完成任务摘要，再通过 `result_url` 拉取最终 Markdown。

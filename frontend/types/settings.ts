@@ -103,8 +103,8 @@ export interface SystemGeneralConfig {
     attachment_mineru_enable_formula: boolean
     /** attachment.mineru_enable_table — 表格识别 */
     attachment_mineru_enable_table: boolean
-    /** attachment.mineru_enable_ocr — OCR */
-    attachment_mineru_enable_ocr: boolean
+    /** attachment.mineru_parse_method — MinerU 解析方式：auto / txt / ocr */
+    attachment_mineru_parse_method: 'auto' | 'txt' | 'ocr'
     /** attachment.mineru_language — 解析语言 */
     attachment_mineru_language: string
     /** attachment.max_file_size_mb — 最大文件大小（MB） */
@@ -164,7 +164,11 @@ export function mapConfigItems(items: ConfigItem[]): Partial<SystemGeneralConfig
         ...(str('attachment.mineru_backend') !== undefined && { attachment_mineru_backend: kv['attachment.mineru_backend'] }),
         ...(str('attachment.mineru_enable_formula') !== undefined && { attachment_mineru_enable_formula: bool('attachment.mineru_enable_formula') }),
         ...(str('attachment.mineru_enable_table') !== undefined && { attachment_mineru_enable_table: bool('attachment.mineru_enable_table') }),
-        ...(str('attachment.mineru_enable_ocr') !== undefined && { attachment_mineru_enable_ocr: bool('attachment.mineru_enable_ocr') }),
+        ...(str('attachment.mineru_parse_method') !== undefined
+            ? { attachment_mineru_parse_method: kv['attachment.mineru_parse_method'] as 'auto' | 'txt' | 'ocr' }
+            : str('attachment.mineru_enable_ocr') !== undefined
+                ? { attachment_mineru_parse_method: bool('attachment.mineru_enable_ocr') ? 'ocr' : 'txt' }
+                : {}),
         ...(str('attachment.mineru_language') !== undefined && { attachment_mineru_language: kv['attachment.mineru_language'] }),
         ...(!isNaN(int('attachment.max_file_size_mb')) && { attachment_max_file_size_mb: int('attachment.max_file_size_mb') }),
         ...(str('attachment.supported_types') !== undefined && { attachment_supported_types: kv['attachment.supported_types'] }),
@@ -212,7 +216,7 @@ export function configToUpdateRequest(cfg: SystemGeneralConfig): ConfigUpdateReq
         'attachment.mineru_backend': cfg.attachment_mineru_backend ?? 'pipeline',
         'attachment.mineru_enable_formula': String(cfg.attachment_mineru_enable_formula ?? true),
         'attachment.mineru_enable_table': String(cfg.attachment_mineru_enable_table ?? true),
-        'attachment.mineru_enable_ocr': String(cfg.attachment_mineru_enable_ocr ?? true),
+        'attachment.mineru_parse_method': cfg.attachment_mineru_parse_method ?? 'ocr',
         'attachment.mineru_language': cfg.attachment_mineru_language ?? 'ch',
         'attachment.max_file_size_mb': String(cfg.attachment_max_file_size_mb ?? 10),
         'attachment.supported_types': cfg.attachment_supported_types ?? 'pdf,png,jpg,jpeg,docx,xlsx',

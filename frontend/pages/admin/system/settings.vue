@@ -88,6 +88,9 @@ onMounted(async () => {
     ])
     // 系统配置
     generalConfig.value = { ...generalConfig.value, ...mapConfigItems(configs) }
+    if (!generalConfig.value.attachment_mineru_parse_method) {
+      generalConfig.value.attachment_mineru_parse_method = 'ocr'
+    }
     // 选项数据
     oaTypeOptions.value = (oaTypes || []).map((o: any) => ({ value: o.code, label: o.label }))
     driverOptions.value = (drivers || []).map((o: any) => ({ value: o.code, label: o.label, default_port: o.default_port }))
@@ -828,7 +831,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               </a-input-password>
             </a-form-item>
             <a-row :gutter="16">
-              <a-col :span="12">
+              <a-col :span="8">
                 <a-form-item :label="t('admin.settings.attachmentMineruBackend', 'Backend')">
                   <a-select v-model:value="generalConfig.attachment_mineru_backend" size="large" style="width: 100%;">
                     <a-select-option value="pipeline">pipeline</a-select-option>
@@ -839,7 +842,17 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                   </a-select>
                 </a-form-item>
               </a-col>
-              <a-col :span="12">
+              <a-col :span="8">
+                <a-form-item :label="t('admin.settings.attachmentMineruParseMethod', '解析方式')">
+                  <a-select v-model:value="generalConfig.attachment_mineru_parse_method" size="large" style="width: 100%;">
+                    <a-select-option value="auto">{{ t('admin.settings.attachmentMineruParseMethodAuto', '自动（auto）') }}</a-select-option>
+                    <a-select-option value="txt">{{ t('admin.settings.attachmentMineruParseMethodTxt', '文本提取（txt）') }}</a-select-option>
+                    <a-select-option value="ocr">{{ t('admin.settings.attachmentMineruParseMethodOcr', 'OCR 识别（ocr）') }}</a-select-option>
+                  </a-select>
+                  <div class="form-hint">{{ t('admin.settings.attachmentMineruParseMethodHint', 'auto 由 MinerU 按文件类型自动选择；电子版 PDF 建议 txt，扫描件建议 ocr。') }}</div>
+                </a-form-item>
+              </a-col>
+              <a-col :span="8">
                 <a-form-item :label="t('admin.settings.attachmentMineruLanguage', '解析语言')">
                   <a-input v-model:value="generalConfig.attachment_mineru_language" size="large" placeholder="ch" />
                   <div class="form-hint">{{ t('admin.settings.attachmentMineruLanguageHint', '与 MinerU 服务支持的语言列表一致，常用 ch / en。') }}</div>
@@ -864,16 +877,6 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                       <div class="toggle-label">{{ t('admin.settings.attachmentMineruTable', '表格识别') }}</div>
                     </div>
                     <a-switch v-model:checked="generalConfig.attachment_mineru_enable_table" />
-                  </div>
-                </a-form-item>
-              </a-col>
-              <a-col :span="8">
-                <a-form-item>
-                  <div class="toggle-item" style="padding: 0;">
-                    <div class="toggle-info">
-                      <div class="toggle-label">{{ t('admin.settings.attachmentMineruOcr', 'OCR') }}</div>
-                    </div>
-                    <a-switch v-model:checked="generalConfig.attachment_mineru_enable_ocr" />
                   </div>
                 </a-form-item>
               </a-col>

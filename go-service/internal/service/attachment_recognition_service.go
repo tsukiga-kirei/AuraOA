@@ -54,8 +54,25 @@ type RecognitionConfig struct {
 	MinerUBackend       string // pipeline / vlm-* / hybrid-*
 	MinerUEnableFormula bool
 	MinerUEnableTable   bool
-	MinerUEnableOCR     bool
+	MinerUParseMethod   string // auto / txt / ocr
 	MinerULanguage      string
+}
+
+var allowedMinerUParseMethods = map[string]struct{}{
+	"auto": {},
+	"txt":  {},
+	"ocr":  {},
+}
+
+func normalizeMinerUParseMethod(method string, legacyOCREnabled bool) string {
+	method = strings.ToLower(strings.TrimSpace(method))
+	if _, ok := allowedMinerUParseMethods[method]; ok {
+		return method
+	}
+	if legacyOCREnabled {
+		return "ocr"
+	}
+	return "txt"
 }
 
 // LoadConfig 从系统配置加载附件识别配置（兼容旧版只配 endpoint 的最小配置）。
@@ -67,7 +84,7 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 		MinerUBackend:       "pipeline",
 		MinerUEnableFormula: true,
 		MinerUEnableTable:   true,
-		MinerUEnableOCR:     true,
+		MinerUParseMethod:   "ocr",
 		MinerULanguage:      "ch",
 	}
 
@@ -95,7 +112,10 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 	}
 	cfg.MinerUEnableFormula = readBool("attachment.mineru_enable_formula", true)
 	cfg.MinerUEnableTable = readBool("attachment.mineru_enable_table", true)
-	cfg.MinerUEnableOCR = readBool("attachment.mineru_enable_ocr", true)
+	cfg.MinerUParseMethod = normalizeMinerUParseMethod(
+		read("attachment.mineru_parse_method"),
+		readBool("attachment.mineru_enable_ocr", true),
+	)
 	if v := read("attachment.mineru_language"); v != "" {
 		cfg.MinerULanguage = v
 	}
@@ -150,7 +170,8 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 		zap.String("fieldName", fieldName),
 		zap.Int("fileCount", len(files)),
 		zap.String("mineruEndpoint", cfg.MinerUEndpoint),
-		zap.String("mineruBackend", cfg.MinerUBackend))
+		zap.String("mineruBackend", cfg.MinerUBackend),
+		zap.String("mineruParseMethod", cfg.MinerUParseMethod))
 
 	// 过滤不支持的文件类型与超大文件（结果中保留为 Error 标记，让 prompt 里也能看到原因）。
 	maxBytes := int64(cfg.MaxFileSizeMB) * 1024 * 1024
@@ -273,7 +294,7 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 			"return_images":       "false",
 			"table_enable":        fmt.Sprintf("%v", cfg.MinerUEnableTable),
 			"formula_enable":      fmt.Sprintf("%v", cfg.MinerUEnableFormula),
-			"parse_method":        "ocr",
+			"parse_method":        cfg.MinerUParseMethod,
 			"start_page_id":       "0",
 			"end_page_id":         "99999",
 			"backend":             cfg.MinerUBackend,
@@ -281,9 +302,6 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 			"return_middle_json":  "false",
 			"return_model_output": "false",
 			"return_content_list": "false",
-		}
-		if !cfg.MinerUEnableOCR {
-			fields["parse_method"] = "txt"
 		}
 		if cfg.MinerULanguage != "" {
 			fields["lang_list"] = cfg.MinerULanguage
