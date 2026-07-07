@@ -455,7 +455,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		return nil
 	}
 
-	processData, err := s.fetchOAData(c, tenant, req.ProcessID, fieldSet)
+	processData, err := s.fetchOAData(c, tenant, req.ProcessID, true, fieldSet)
 	if err != nil {
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
 		tlog.Warn("审核任务执行失败",
@@ -1993,7 +1993,7 @@ func (s *AuditExecuteService) getOAAdapter(tenantID uuid.UUID) (oa.OAAdapter, er
 	return adapter, nil
 }
 
-func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, processID string, fieldSets ...SelectedFieldSet) (*oa.ProcessData, error) {
+func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, processID string, withAttachments bool, fieldSets ...SelectedFieldSet) (*oa.ProcessData, error) {
 	if tenant.OADBConnectionID == nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "租户未配置 OA 数据库连接")
 	}
@@ -2004,9 +2004,9 @@ func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, 
 	if err := s.decryptOAConn(conn); err != nil {
 		return nil, err
 	}
-	// 创建 OA 适配器时注入附件识别服务，以便 FetchProcessData 自动识别附件字段
+	// 创建 OA 适配器；仅在实际执行审核/总结任务时注入附件识别，锚点对比无需 MinerU。
 	var attachmentSvc oa.AttachmentRecognitionService
-	if s.attachmentSvc != nil {
+	if withAttachments && s.attachmentSvc != nil {
 		attachmentSvc = s.attachmentSvc
 	}
 	adapter, err := oa.NewOAAdapter(conn.OAType, conn, attachmentSvc)

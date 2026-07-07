@@ -188,7 +188,7 @@ func (s *AuditExecuteService) fetchCurrentOAAnchor(c *gin.Context, tenantID uuid
 	if err != nil {
 		return oa.OAContextAnchor{}, newServiceError(errcode.ErrDatabase, "获取租户信息失败")
 	}
-	pd, err := s.fetchOAData(c, tenant, processID)
+	pd, err := s.fetchOAData(c, tenant, processID, false)
 	if err != nil {
 		return oa.OAContextAnchor{}, err
 	}
