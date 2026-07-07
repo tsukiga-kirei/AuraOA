@@ -24,6 +24,7 @@ export default defineNuxtConfig({
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE ?? 'http://localhost:8080',
       mockMode: process.env.NUXT_PUBLIC_MOCK_MODE || 'false',
+      timeZone: process.env.NUXT_PUBLIC_TIME_ZONE || process.env.APP_TIMEZONE || 'Asia/Shanghai',
     },
   },
 

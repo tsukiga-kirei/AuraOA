@@ -13,6 +13,7 @@ import (
 
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	excelpkg "auraoa/go-service/internal/pkg/excel"
 	jwtpkg "auraoa/go-service/internal/pkg/jwt"
@@ -113,7 +114,7 @@ func (h *AuditHandler) ExportProcesses(c *gin.Context) {
 		rows = append(rows, row)
 	}
 
-	filename := fmt.Sprintf("audit_%s_%s", params.Tab, time.Now().Format("20060102_150405"))
+	filename := fmt.Sprintf("audit_%s_%s", params.Tab, apptime.Now().Format("20060102_150405"))
 	config := excelpkg.ExportConfig{
 		ExportType: exportType,
 		Locale:     locale,
@@ -329,7 +330,7 @@ func (h *AuditHandler) ExportLogs(c *gin.Context) {
 		return
 	}
 
-	filename := fmt.Sprintf("audit_logs_%s.csv", time.Now().Format("20060102150405"))
+	filename := fmt.Sprintf("audit_logs_%s.csv", apptime.Now().Format("20060102150405"))
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", "attachment; filename="+filename)
 	// 写入 UTF-8 BOM，确保 Excel 正确识别中文
@@ -449,12 +450,12 @@ func parseAuditSnapshotQuery(c *gin.Context) (repository.AuditSnapshotFilter, in
 		Department:     c.Query("department"),
 	}
 	if s := c.Query("start_date"); s != "" {
-		if t, err := time.Parse("2006-01-02", s); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
 			filter.StartDate = &t
 		}
 	}
 	if s := c.Query("end_date"); s != "" {
-		if t, err := time.Parse("2006-01-02", s); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
 			end := t.Add(24*time.Hour - time.Second)
 			filter.EndDate = &end
 		}
@@ -473,12 +474,12 @@ func parseAuditLogQuery(c *gin.Context) (repository.AuditLogFilter, int, int) {
 		Recommendation: c.Query("recommendation"),
 	}
 	if s := c.Query("start_date"); s != "" {
-		if t, err := time.Parse("2006-01-02", s); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
 			filter.StartDate = &t
 		}
 	}
 	if s := c.Query("end_date"); s != "" {
-		if t, err := time.Parse("2006-01-02", s); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
 			end := t.Add(24*time.Hour - time.Second)
 			filter.EndDate = &end
 		}
@@ -502,12 +503,12 @@ func parseAuditListParams(c *gin.Context) dto.AuditListParams {
 		PageSize:    parseIntQuery(c, "page_size", 20),
 	}
 	if s := c.Query("start_date"); s != "" {
-		if t, err := time.ParseInLocation("2006-01-02", s, time.Local); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
 			p.SubmitDateStart = &t
 		}
 	}
 	if s := c.Query("end_date"); s != "" {
-		if t, err := time.ParseInLocation("2006-01-02", s, time.Local); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
 			// 结束日期取次日零点（不含），实现闭区间查询
 			excl := t.AddDate(0, 0, 1)
 			p.SubmitDateEndExclusive = &excl

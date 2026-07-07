@@ -129,8 +129,7 @@ const hasProcessContent = (proc: AdminProcessDetail) =>
   proc.rule_toggle_overrides.length > 0
 
 const formatDateTime = (value?: string | null) => {
-  if (!value) return '-'
-  return new Date(value).toLocaleString(locale.value, { dateStyle: 'short', timeStyle: 'short' })
+  return formatDateTimeInAppZone(value, locale.value, { dateStyle: 'short', timeStyle: 'short' })
 }
 
 const describeCronExpression = (expr: string): string => {

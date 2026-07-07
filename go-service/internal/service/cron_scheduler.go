@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/repository"
 )
 
@@ -35,6 +36,7 @@ func NewCronScheduler(
 	return &CronScheduler{
 		c: cron.New(
 			cron.WithSeconds(), // 支持 6-field（含秒），标准5-field同样兼容
+			cron.WithLocation(apptime.Location()),
 			cron.WithChain(cron.Recover(cron.DefaultLogger)),
 		),
 		taskRepo: taskRepo,
@@ -168,7 +170,7 @@ func ParseNextRun(expr string) *time.Time {
 	if err != nil {
 		return nil
 	}
-	next := schedule.Next(time.Now())
+	next := schedule.Next(apptime.Now())
 	return &next
 }
 

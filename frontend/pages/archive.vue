@@ -26,7 +26,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import dayjs, { type Dayjs } from 'dayjs'
+import type { Dayjs } from 'dayjs'
 import { useI18n } from '~/composables/useI18n'
 import type {
   ArchiveProcessItem,
@@ -209,7 +209,7 @@ const filterAuditStatus = ref<ArchiveAuditTab>('unaudited')
 const ARCHIVE_DATE_RANGE_KEY = 'auraoa:archive:list-date-range'
 
 function defaultArchiveDateRange(): [Dayjs, Dayjs] {
-  return [dayjs().subtract(90, 'day').startOf('day'), dayjs().endOf('day')]
+  return [appDayjs().subtract(90, 'day').startOf('day'), appDayjs().endOf('day')]
 }
 
 function readArchiveDateRange(): [Dayjs, Dayjs] | null {
@@ -220,8 +220,8 @@ function readArchiveDateRange(): [Dayjs, Dayjs] | null {
     const o = JSON.parse(r) as { start?: string; end?: string; savedAt?: string }
     if (!o.start || !o.end) return null
     if (o.savedAt) {
-      const saved = dayjs(o.savedAt)
-      if (!saved.isValid() || !saved.isSame(dayjs(), 'day')) {
+      const saved = appDayjs(o.savedAt)
+      if (!saved.isValid() || !saved.isSame(appDayjs(), 'day')) {
         sessionStorage.removeItem(ARCHIVE_DATE_RANGE_KEY)
         return null
       }
@@ -229,8 +229,8 @@ function readArchiveDateRange(): [Dayjs, Dayjs] | null {
       sessionStorage.removeItem(ARCHIVE_DATE_RANGE_KEY)
       return null
     }
-    const a = dayjs(o.start)
-    const b = dayjs(o.end)
+    const a = appDayjs(o.start)
+    const b = appDayjs(o.end)
     if (!a.isValid() || !b.isValid()) return null
     if (a.isAfter(b)) return null
     const maxSpan = 365 * 3
@@ -946,9 +946,7 @@ const openAuditChain = async (processId: string) => {
 }
 
 const formatChainDate = (dateStr: string) => {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  return isNaN(d.getTime()) ? dateStr : d.toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
+  return formatDateTimeTextInAppZone(dateStr, 'zh-CN')
 }
 
 const getDurationSec = (ms: number | undefined) => {

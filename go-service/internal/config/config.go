@@ -13,6 +13,8 @@ import (
 
 // Config 应用程序全局配置，对应 config.yaml 的顶层结构。
 type Config struct {
+	// App 应用基础配置
+	App AppConfig `mapstructure:"app"`
 	// Server HTTP 服务器配置
 	Server ServerConfig `mapstructure:"server"`
 	// Database PostgreSQL 数据库连接配置
@@ -27,6 +29,12 @@ type Config struct {
 	Encryption EncryptionConfig `mapstructure:"encryption"`
 	// Log 日志系统配置
 	Log logger.LogConfig `mapstructure:"log"`
+}
+
+// AppConfig 应用基础配置。
+type AppConfig struct {
+	// Timezone 应用统一时区（IANA 名称），默认 Asia/Shanghai。
+	Timezone string `mapstructure:"timezone"`
 }
 
 // ServerConfig HTTP 服务器配置。
@@ -128,6 +136,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.Database.MaxIdleConns == 0 {
 		cfg.Database.MaxIdleConns = 10
+	}
+	if cfg.App.Timezone == "" {
+		cfg.App.Timezone = "Asia/Shanghai"
 	}
 
 	// JWT 令牌有效期缺失时使用默认值

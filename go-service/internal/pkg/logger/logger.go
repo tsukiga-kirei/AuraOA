@@ -5,10 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/lumberjack.v2"
+
+	"auraoa/go-service/internal/pkg/apptime"
 )
 
 // globalLogger 全局 logger 实例，通过 Init 初始化，通过 Global() 获取。
@@ -195,7 +198,9 @@ func applyDefaults(cfg *LogConfig) {
 func newEncoderConfig() zapcore.EncoderConfig {
 	cfg := zap.NewProductionEncoderConfig()
 	cfg.TimeKey = "time"
-	cfg.EncodeTime = zapcore.ISO8601TimeEncoder
+	cfg.EncodeTime = func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+		enc.AppendString(t.In(apptime.Location()).Format("2006-01-02T15:04:05.000-0700"))
+	}
 	cfg.EncodeLevel = zapcore.CapitalLevelEncoder
 	return cfg
 }

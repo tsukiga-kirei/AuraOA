@@ -22,6 +22,7 @@ import (
 	"auraoa/go-service/internal/cache"
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/crypto"
 	"auraoa/go-service/internal/pkg/errcode"
 	jwtpkg "auraoa/go-service/internal/pkg/jwt"
@@ -223,7 +224,7 @@ func (s *AuditExecuteService) Execute(c *gin.Context, req *AuditExecuteRequest) 
 		ID:        logID.String(),
 		TraceID:   fmt.Sprintf("TR-%s", logID.String()[:8]),
 		ProcessID: req.ProcessID,
-		CreatedAt: createdAt.Format(time.RFC3339),
+		CreatedAt: apptime.FormatRFC3339(createdAt),
 	}, nil
 }
 
@@ -701,14 +702,14 @@ func (s *AuditExecuteService) BatchExecute(c *gin.Context, items []AuditExecuteR
 }
 
 func auditExecuteResponseFromLog(log *model.AuditLog) *AuditExecuteResponse {
-	traceID := fmt.Sprintf("TR-%s-%s", time.Now().Format("20060102150405"), log.ID.String()[:8])
+	traceID := fmt.Sprintf("TR-%s-%s", apptime.Now().Format("20060102150405"), log.ID.String()[:8])
 	resp := &AuditExecuteResponse{
 		ID:          log.ID.String(),
 		TraceID:     traceID,
 		ProcessID:   log.ProcessID,
 		AIReasoning: log.AIReasoning,
 		DurationMs:  log.DurationMs,
-		CreatedAt:   log.CreatedAt.Format(time.RFC3339),
+		CreatedAt:   apptime.FormatRFC3339(log.CreatedAt),
 		Status:      log.Status,
 	}
 	if log.Status == model.JobStatusFailed {
@@ -804,7 +805,7 @@ func (s *AuditExecuteService) GetAuditJobStatus(c *gin.Context, id uuid.UUID) (m
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核任务失败")
 	}
 	out := buildAuditResultFromLog(log)
-	out["updated_at"] = log.UpdatedAt.Format(time.RFC3339)
+	out["updated_at"] = apptime.FormatRFC3339(log.UpdatedAt)
 	out["progress_steps"] = auditProgressSteps(log.Status)
 	return out, nil
 }
@@ -1854,7 +1855,7 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 			"process_id":   log.ProcessID,
 			"status":       log.Status,
 			"ai_reasoning": log.AIReasoning,
-			"created_at":   log.CreatedAt.Format(time.RFC3339),
+			"created_at":   apptime.FormatRFC3339(log.CreatedAt),
 		}
 		if log.ErrorMessage != "" {
 			out["error_message"] = log.ErrorMessage
@@ -1868,7 +1869,7 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 			"status":         log.Status,
 			"error_message":  log.ErrorMessage,
 			"ai_reasoning":   log.AIReasoning,
-			"created_at":     log.CreatedAt.Format(time.RFC3339),
+			"created_at":     apptime.FormatRFC3339(log.CreatedAt),
 			"recommendation": "review",
 			"overall_score":  0,
 			"confidence":     0,
@@ -1888,7 +1889,7 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 		"confidence":     log.Confidence,
 		"ai_reasoning":   log.AIReasoning,
 		"duration_ms":    log.DurationMs,
-		"created_at":     log.CreatedAt.Format(time.RFC3339),
+		"created_at":     apptime.FormatRFC3339(log.CreatedAt),
 	}
 	if log.ErrorMessage != "" {
 		result["error_message"] = log.ErrorMessage

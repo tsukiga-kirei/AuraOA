@@ -1,6 +1,10 @@
 server:
   port: 8080
 
+app:
+  # 应用统一时区（IANA 名称），影响日志时间戳、Cron 调度、业务日期边界、导出文件名等。
+  timezone: "Asia/Shanghai"
+
 database:
   host: localhost
   port: 5432

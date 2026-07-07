@@ -15,6 +15,7 @@ import (
 
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	excelpkg "auraoa/go-service/internal/pkg/excel"
 	"auraoa/go-service/internal/pkg/hash"
@@ -745,8 +746,8 @@ func toDepartmentResponse(d *model.Department) dto.DepartmentResponse {
 		Name:      d.Name,
 		Manager:   d.Manager,
 		SortOrder: d.SortOrder,
-		CreatedAt: d.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: d.UpdatedAt.Format(time.RFC3339),
+		CreatedAt: apptime.FormatRFC3339(d.CreatedAt),
+		UpdatedAt: apptime.FormatRFC3339(d.UpdatedAt),
 	}
 	if d.ParentID != nil {
 		pid := d.ParentID.String()
@@ -766,8 +767,8 @@ func toRoleResponse(r *model.OrgRole) dto.RoleResponse {
 		Description:     r.Description,
 		PagePermissions: pagePerms,
 		IsSystem:        r.IsSystem,
-		CreatedAt:       r.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:       r.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:       apptime.FormatRFC3339(r.CreatedAt),
+		UpdatedAt:       apptime.FormatRFC3339(r.UpdatedAt),
 	}
 }
 
@@ -790,7 +791,7 @@ func toMemberResponse(m *model.OrgMember) dto.MemberResponse {
 		Roles:      roles,
 		Position:   m.Position,
 		Status:     m.Status,
-		CreatedAt:  m.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:  m.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:  apptime.FormatRFC3339(m.CreatedAt),
+		UpdatedAt:  apptime.FormatRFC3339(m.UpdatedAt),
 	}
 }

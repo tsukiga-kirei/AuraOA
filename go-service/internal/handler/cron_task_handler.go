@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	"auraoa/go-service/internal/pkg/response"
 	"auraoa/go-service/internal/repository"
@@ -194,7 +195,7 @@ func (h *CronTaskHandler) ExportAllLogs(c *gin.Context) {
 		return
 	}
 
-	filename := fmt.Sprintf("cron_logs_%s.csv", time.Now().Format("20060102150405"))
+	filename := fmt.Sprintf("cron_logs_%s.csv", apptime.Now().Format("20060102150405"))
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", "attachment; filename="+filename)
 	// 写入 UTF-8 BOM，确保 Excel 正确识别中文
@@ -238,12 +239,12 @@ func parseCronLogQuery(c *gin.Context) (repository.CronLogFilter, int, int) {
 		Department:  c.Query("department"),
 	}
 	if s := c.Query("start_date"); s != "" {
-		if t, err := time.Parse("2006-01-02", s); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
 			filter.StartDate = &t
 		}
 	}
 	if s := c.Query("end_date"); s != "" {
-		if t, err := time.Parse("2006-01-02", s); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
 			// 结束日期扩展到当天末尾（23:59:59）
 			end := t.Add(24*time.Hour - time.Second)
 			filter.EndDate = &end

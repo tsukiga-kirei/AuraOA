@@ -1310,7 +1310,7 @@ export default {
     'admin.settings.backupRetention': '备份保留天数',
     'admin.settings.backupScopeTitle': '备份说明',
     'admin.settings.backupScopeItemDb': '整库导出（pg_dump -Fc），包含业务表、系统配置等当前库内全部对象',
-    'admin.settings.backupScopeItemFile': '文件命名 aura_pg_库名_UTC时间.dump 格式，仅删除此前缀的过期文件',
+    'admin.settings.backupScopeItemFile': '文件命名 aura_pg_库名_配置时区时间.dump 格式，仅删除此前缀的过期文件',
     'admin.settings.backupScopeItemDir': '输出目录由服务端 backup.dir 配置；Docker 默认 /app/backups，可用环境变量 BACKUP_DIR 覆盖',
     'admin.settings.backupScopeItemTool': '服务器需安装 PostgreSQL 客户端（pg_dump）；官方镜像已包含 postgresql-client',
     'admin.settings.email': '邮件通知',

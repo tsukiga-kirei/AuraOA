@@ -12,6 +12,7 @@ import (
 	"auraoa/go-service/internal/cache"
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	"auraoa/go-service/internal/repository"
 )
@@ -261,7 +262,7 @@ func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userSco
 				Kind:           "audit",
 				Title:          a.Title,
 				UserName:       a.UserName,
-				CreatedAt:      a.CreatedAt.UTC().Format(time.RFC3339),
+				CreatedAt:      apptime.FormatRFC3339(a.CreatedAt),
 				Recommendation: a.Recommendation,
 				Score:          a.Score,
 			},
@@ -275,7 +276,7 @@ func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userSco
 				Kind:            "archive",
 				Title:           a.Title,
 				UserName:        a.UserName,
-				CreatedAt:       a.CreatedAt.UTC().Format(time.RFC3339),
+				CreatedAt:       apptime.FormatRFC3339(a.CreatedAt),
 				Compliance:      a.Compliance,
 				ComplianceScore: a.ComplianceScore,
 			},
@@ -304,7 +305,7 @@ func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userSco
 				Kind:       "cron",
 				Title:      cl.TaskLabel,
 				UserName:   cl.UserName,
-				CreatedAt:  cl.CreatedAt.UTC().Format(time.RFC3339),
+				CreatedAt:  apptime.FormatRFC3339(cl.CreatedAt),
 				CronStatus: cl.Status,
 				TaskLabel:  typeLabel,
 			},
@@ -325,7 +326,7 @@ func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userSco
 
 // buildPendingTasks 构建待办任务数据（近 90 天）。
 func (s *DashboardOverviewService) buildPendingTasks(c *gin.Context, userID uuid.UUID) *dto.PendingTasksData {
-	since := time.Now().UTC().AddDate(0, 0, -90)
+	since := apptime.Now().AddDate(0, 0, -90)
 
 	auditPending, err := s.auditLogRepo.CountPendingSince(c, &userID, since)
 	if err != nil {
@@ -440,7 +441,7 @@ func (s *DashboardOverviewService) buildUserActivityRanking(c *gin.Context) []dt
 			DisplayName: u.DisplayName,
 			Department:  u.Department,
 			AuditCount:  u.AuditCount,
-			LastActive:  u.LastActive.UTC().Format(time.RFC3339),
+			LastActive:  apptime.FormatRFC3339(u.LastActive),
 		})
 	}
 	return result

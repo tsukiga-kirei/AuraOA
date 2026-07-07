@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"auraoa/go-service/internal/pkg/apptime"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
 	"auraoa/go-service/internal/repository"
 )
@@ -142,7 +143,7 @@ func (s *DbBackupService) Tick(parent context.Context) {
 		return
 	}
 
-	now := time.Now()
+	now := apptime.Now()
 	lastSlot, ok := lastCronFireOnOrBefore(sched, now)
 	if !ok {
 		return
@@ -154,7 +155,7 @@ func (s *DbBackupService) Tick(parent context.Context) {
 	pgDump, err := exec.LookPath("pg_dump")
 	if err != nil {
 		if time.Since(s.lastMissingDumpLog) > time.Hour {
-			s.lastMissingDumpLog = time.Now()
+			s.lastMissingDumpLog = apptime.Now()
 			pkglogger.Global().Warn("未找到 pg_dump 可执行文件，已跳过数据库备份（请在运行环境安装 PostgreSQL 客户端）",
 				zap.Error(err),
 			)
@@ -177,7 +178,7 @@ func (s *DbBackupService) Tick(parent context.Context) {
 	s.lastFiredSlot = lastSlot
 	pkglogger.Global().Info("数据库整库备份完成",
 		zap.String("path", outPath),
-		zap.String("cron_slot", lastSlot.UTC().Format(time.RFC3339)),
+		zap.String("cron_slot", apptime.FormatRFC3339(lastSlot)),
 	)
 }
 
@@ -212,7 +213,7 @@ func (s *DbBackupService) safeDBName() string {
 }
 
 func (s *DbBackupService) buildDumpPath(slot time.Time) string {
-	ts := slot.UTC().Format("20060102T150405Z")
+	ts := slot.In(apptime.Location()).Format("20060102T150405-0700")
 	name := fmt.Sprintf("%s%s_%s%s", dbBackupFilePrefix, s.safeDBName(), ts, dbBackupFileSuffix)
 	return filepath.Join(s.cfg.Dir, name)
 }
@@ -251,7 +252,7 @@ func (s *DbBackupService) pruneOldBackups(retentionDays int) error {
 		}
 		return err
 	}
-	cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour)
+	cutoff := apptime.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour)
 	var removed int
 	for _, e := range entries {
 		if e.IsDir() {

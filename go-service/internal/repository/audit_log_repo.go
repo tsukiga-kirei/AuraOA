@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 )
 
 // ErrNoTenantContext 上下文中缺少 tenant_id。
@@ -425,7 +426,7 @@ func (r *AuditLogRepo) CountStatsGlobal() (*AuditLogStats, error) {
 	return stats, nil
 }
 
-// DashboardWeeklyCompletedTrend 最近 n 个自然日（含当日）内，按 UTC 日聚合的已完成审核次数。forUserID 非空时仅统计该用户。
+// DashboardWeeklyCompletedTrend 最近 n 个自然日（含当日）内，按应用配置时区聚合的已完成审核次数。forUserID 非空时仅统计该用户。
 func (r *AuditLogRepo) DashboardWeeklyCompletedTrend(c *gin.Context, days int, forUserID *uuid.UUID) ([]struct {
 	Date  string `gorm:"column:date"`
 	Count int64  `gorm:"column:count"`
@@ -443,23 +444,23 @@ func (r *AuditLogRepo) DashboardWeeklyCompletedTrend(c *gin.Context, days int, f
 	}
 
 	userClause := ""
-	args := []interface{}{tenantUUID, days, model.JobStatusCompleted}
+	args := []interface{}{tenantUUID, days, model.JobStatusCompleted, apptime.Name()}
 	if forUserID != nil {
-		userClause = " AND user_id = $4"
+		userClause = " AND user_id = $5"
 		args = append(args, *forUserID)
 	}
 	q := `
 WITH days AS (
   SELECT generate_series(
-    (CURRENT_DATE AT TIME ZONE 'UTC')::date - ($2::int - 1),
-    (CURRENT_DATE AT TIME ZONE 'UTC')::date,
+    (CURRENT_TIMESTAMP AT TIME ZONE $4)::date - ($2::int - 1),
+    (CURRENT_TIMESTAMP AT TIME ZONE $4)::date,
     INTERVAL '1 day'
   )::date AS d
 )
 SELECT TO_CHAR(days.d, 'MM-DD') AS date, COALESCE(b.cnt, 0)::bigint AS count
 FROM days
 LEFT JOIN (
-  SELECT DATE(created_at AT TIME ZONE 'UTC') AS d, COUNT(*)::bigint AS cnt
+  SELECT DATE(created_at AT TIME ZONE $4) AS d, COUNT(*)::bigint AS cnt
   FROM audit_logs
   WHERE tenant_id = $1 AND status = $3` + userClause + `
   GROUP BY 1
@@ -474,7 +475,7 @@ ORDER BY days.d
 	return rows, err
 }
 
-// DashboardWeeklyCompletedTrendGlobal 全库：最近 n 个 UTC 自然日已完成审核次数。
+// DashboardWeeklyCompletedTrendGlobal 全库：最近 n 个应用配置时区自然日已完成审核次数。
 func (r *AuditLogRepo) DashboardWeeklyCompletedTrendGlobal(days int) ([]struct {
 	Date  string `gorm:"column:date"`
 	Count int64  `gorm:"column:count"`
@@ -485,15 +486,15 @@ func (r *AuditLogRepo) DashboardWeeklyCompletedTrendGlobal(days int) ([]struct {
 	q := `
 WITH days AS (
   SELECT generate_series(
-    (CURRENT_DATE AT TIME ZONE 'UTC')::date - ($1::int - 1),
-    (CURRENT_DATE AT TIME ZONE 'UTC')::date,
+    (CURRENT_TIMESTAMP AT TIME ZONE $3)::date - ($1::int - 1),
+    (CURRENT_TIMESTAMP AT TIME ZONE $3)::date,
     INTERVAL '1 day'
   )::date AS d
 )
 SELECT TO_CHAR(days.d, 'MM-DD') AS date, COALESCE(b.cnt, 0)::bigint AS count
 FROM days
 LEFT JOIN (
-  SELECT DATE(created_at AT TIME ZONE 'UTC') AS d, COUNT(*)::bigint AS cnt
+  SELECT DATE(created_at AT TIME ZONE $3) AS d, COUNT(*)::bigint AS cnt
   FROM audit_logs
   WHERE status = $2
   GROUP BY 1
@@ -504,7 +505,7 @@ ORDER BY days.d
 		Date  string `gorm:"column:date"`
 		Count int64  `gorm:"column:count"`
 	}
-	err := r.DB.Raw(q, days, model.JobStatusCompleted).Scan(&rows).Error
+	err := r.DB.Raw(q, days, model.JobStatusCompleted, apptime.Name()).Scan(&rows).Error
 	return rows, err
 }
 

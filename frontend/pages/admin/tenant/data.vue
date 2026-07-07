@@ -389,7 +389,8 @@ async function loadProcessCascaderOptions() {
 }
 
 const renderMarkdown = (text: string) => text ? marked.parse(text) : ''
-const formatDate = (dateStr: string | null | undefined) => dateStr ? dayjs(dateStr).format('YYYY/MM/DD HH:mm') : '-'
+const formatDate = (dateStr: string | null | undefined) =>
+  dateStr ? appDayjs(dateStr).format('YYYY/MM/DD HH:mm') : '-'
 const getAuditCount = (validLogIds: any) => {
   if (!validLogIds) return 0
   if (Array.isArray(validLogIds)) return validLogIds.length
