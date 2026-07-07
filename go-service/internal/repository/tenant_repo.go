@@ -65,6 +65,15 @@ func (r *TenantRepo) FindByCode(code string) (*model.Tenant, error) {
 	return &tenant, nil
 }
 
+// FindByEmbedTokenHash 按嵌入密钥哈希查询租户。
+func (r *TenantRepo) FindByEmbedTokenHash(tokenHash string) (*model.Tenant, error) {
+	var tenant model.Tenant
+	if err := r.DB.Where("embed_token_hash = ?", tokenHash).First(&tenant).Error; err != nil {
+		return nil, err
+	}
+	return &tenant, nil
+}
+
 // ListActive 查询所有状态为 active 的租户，用于登录页面展示可选租户列表。
 func (r *TenantRepo) ListActive() ([]model.Tenant, error) {
 	var tenants []model.Tenant

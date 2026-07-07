@@ -209,7 +209,7 @@ AuraOA/
 cp .env.example .env
 ```
 
-编辑 `.env`，至少修改数据库密码、`JWT_SECRET`、`ENCRYPTION_KEY`、`EMBED_ACCESS_TOKEN`，并按需配置对外访问端口：
+编辑 `.env`，至少修改数据库密码、`JWT_SECRET`、`ENCRYPTION_KEY`，并按需配置对外访问端口：
 
 ```env
 AURAOA_ENV_FILE=.env
@@ -330,8 +330,7 @@ POSTGRES_PASSWORD=测试库强密码
 REDIS_PASSWORD=测试缓存强密码
 JWT_SECRET=测试环境独立随机值
 ENCRYPTION_KEY=32字节加密密钥
-EMBED_ACCESS_TOKEN=测试环境独立随机值
-EMBED_TENANT_CODE=测试租户编码
+# OA 嵌入密钥在「系统管理 → 租户管理 → OA 嵌入」中按租户生成
 ```
 
 启动：
@@ -365,8 +364,7 @@ POSTGRES_PASSWORD=正式库强密码
 REDIS_PASSWORD=正式缓存强密码
 JWT_SECRET=正式环境独立随机值
 ENCRYPTION_KEY=32字节加密密钥
-EMBED_ACCESS_TOKEN=正式环境独立随机值
-EMBED_TENANT_CODE=正式租户编码
+# OA 嵌入密钥在「系统管理 → 租户管理 → OA 嵌入」中按租户生成
 ```
 
 启动：

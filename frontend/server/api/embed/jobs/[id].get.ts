@@ -5,5 +5,5 @@ export default defineEventHandler(async (event) => {
   if (!id) {
     throw createError({ statusCode: 400, statusMessage: '任务 ID 无效' })
   }
-  return await proxyEmbedGet(`/api/embed/jobs/${encodeURIComponent(id)}`)
+  return await proxyEmbedGet(event, `/api/embed/jobs/${encodeURIComponent(id)}`)
 })

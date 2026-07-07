@@ -22,8 +22,6 @@ export default defineNuxtConfig({
   ],
 
   runtimeConfig: {
-    embedAccessToken: process.env.EMBED_ACCESS_TOKEN || '',
-    embedTenantCode: process.env.EMBED_TENANT_CODE || '',
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE ?? 'http://localhost:8080',
       mockMode: process.env.NUXT_PUBLIC_MOCK_MODE || 'false',

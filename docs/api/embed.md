@@ -2,10 +2,38 @@
 
 ## 概述
 
-供固定地址嵌入页 `/embed/audit` 与 `/embed/summary` 使用。**浏览器不直接调用 Go 接口**，而是请求 Nuxt 代理 `/api/embed/*`；代理携带 `X-Embed-Token` + `X-Tenant-Code` 访问 Go。
+供固定地址嵌入页 `/embed/audit` 与 `/embed/summary` 使用。**浏览器不直接调用 Go 接口**，而是请求 Nuxt 代理 `/api/embed/*`。
+
+鉴权链路：
+
+1. OA 父页面通过 `postMessage` 将 `embed_token` 传给 iframe
+2. 嵌入页调用 `POST /api/embed/session` 写入 httpOnly Cookie
+3. Nuxt 代理从 Cookie 读取令牌，携带 `X-Embed-Token` 访问 Go
+4. Go `EmbedAccess` 中间件根据令牌哈希反查租户，并注入 `tenant_id`
 
 Go 路由前缀：`/api/embed`  
 鉴权：`EmbedAccess` 中间件（**非 JWT**）
+
+---
+
+## 租户级嵌入配置
+
+在 **系统管理 → 租户管理 → OA 嵌入** 中：
+
+| 配置项 | 说明 |
+|--------|------|
+| `embed_enabled` | 是否允许该租户使用嵌入能力 |
+| `embed_access_token` | 每租户独立密钥，生成/重置后仅展示一次明文 |
+| `tenant_code` / `tenant_id` | 展示给实施与排查使用 |
+| 嵌入地址 | `/embed/audit`、`/embed/summary` |
+
+管理端 API：
+
+```
+POST /api/admin/tenants/:id/embed-token
+```
+
+用于生成或重置租户嵌入密钥。
 
 ---
 
@@ -13,6 +41,7 @@ Go 路由前缀：`/api/embed`
 
 | 方法 | 路径 | 转发至 Go |
 |------|------|-----------|
+| POST | `/api/embed/session` | 写入 httpOnly Cookie（不转发 Go） |
 | GET | `/api/embed/context?process_id=` | `GET /api/embed/context` |
 | POST | `/api/embed/execute` | `POST /api/embed/execute` |
 | GET | `/api/embed/jobs/:id` | `GET /api/embed/jobs/:id` |
@@ -20,14 +49,6 @@ Go 路由前缀：`/api/embed`
 | POST | `/api/embed/summary/execute` | `POST /api/embed/summary/execute` |
 | GET | `/api/embed/summary/jobs/:id` | `GET /api/embed/summary/jobs/:id` |
 | GET | `/api/embed/summary/stream/:id` | `GET /api/embed/summary/stream/:id` |
-
-环境变量：
-
-```bash
-EMBED_ACCESS_TOKEN=...
-EMBED_TENANT_CODE=...
-NUXT_PUBLIC_API_BASE=http://localhost:8080
-```
 
 ---
 
@@ -42,11 +63,8 @@ GET /api/embed/context?process_id=598488
 请求头：
 
 ```
-X-Embed-Token: <embed.access_token>
-X-Tenant-Code: <embed.tenant_code>
+X-Embed-Token: <tenant embed access token>
 ```
-
-响应字段见 [OA 嵌入配置文档](../oa-configurations/02-embed-audit-sidebar.md)。
 
 ### 触发嵌入审核
 
@@ -79,61 +97,16 @@ GET /api/embed/jobs/:id
 GET /api/embed/summary/context?process_id=598488
 ```
 
-响应要点：
-
-| 字段 | 说明 |
-|------|------|
-| `supported` | 当前流程是否已配置且允许嵌入总结 |
-| `process` | OA 流程标题、申请人、部门、流程类型、当前节点 |
-| `has_summary` | 是否已有有效总结快照 |
-| `stale` | OA 上下文相对上次总结是否变化 |
-| `should_auto_summary` | 前端是否应自动发起总结 |
-| `running_job_id` | 已有进行中的总结任务 |
-| `summary_result.blocks` | 结构化总结块数组 |
-
 ### 触发总结
 
 ```
 POST /api/embed/summary/execute
 ```
 
-```json
-{
-  "process_id": "598488",
-  "trigger_source": "summary_embed_manual"
-}
-```
-
-`trigger_source` 可选：
-
-| 值 | 说明 |
-|----|------|
-| `summary_embed_auto` | 嵌入页自动发起 |
-| `summary_embed_manual` | 用户点击重新总结 |
-
 ### 查询任务状态
 
 ```
 GET /api/embed/summary/jobs/:id
-```
-
-响应结构：
-
-```json
-{
-  "status": "completed",
-  "id": "uuid",
-  "process_id": "598488",
-  "blocks": [
-    {
-      "block_id": "basic",
-      "title": "流程摘要",
-      "content": "Markdown 正文",
-      "points": ["要点"]
-    }
-  ],
-  "parse_error": ""
-}
 ```
 
 ### SSE 原始模型输出
@@ -142,7 +115,22 @@ GET /api/embed/summary/jobs/:id
 GET /api/embed/summary/stream/:id
 ```
 
-用于嵌入页在任务执行中展示模型原始输出；结构化结果仍以 `jobs/:id` 为准。
+---
+
+## 流程如何命中规则配置
+
+嵌入请求不会直接用 `process_id` 查规则，而是：
+
+1. `X-Embed-Token` → 反查 `tenant_id`
+2. `process_id` → 查询 OA 流程摘要，得到 `process_type`
+3. `tenant_id + process_type` → 查询 `process_audit_configs` 或 `process_summary_configs`
+4. 校验配置 `status=active` 且 `embed_enabled=true`
+
+因此：
+
+- **租户归属** 由嵌入密钥决定
+- **规则归属** 由流程类型决定
+- **是否允许嵌入** 由流程级 `embed_enabled` 决定
 
 ---
 
@@ -151,7 +139,7 @@ GET /api/embed/summary/stream/:id
 | 方向 | `type` | 载荷 |
 |------|--------|------|
 | iframe → OA | `aura-oa-request-requestid` | 无 |
-| OA → iframe | `aura-oa-requestid` | `{ requestid: string }` |
+| OA → iframe | `aura-oa-requestid` | `{ requestid: string, embed_token: string }` |
 
 OA 示例脚本：[../oa-configurations/assets/aura-embed-notify.js](../oa-configurations/assets/aura-embed-notify.js)
 
@@ -161,10 +149,8 @@ OA 示例脚本：[../oa-configurations/assets/aura-embed-notify.js](../oa-confi
 
 | 配置项 | 位置 |
 |--------|------|
-| `embed.access_token` | `go-service/config.yaml` |
-| `embed.tenant_code` | `go-service/config.yaml` |
-| `EMBED_ACCESS_TOKEN` | 前端部署环境变量 |
-| `EMBED_TENANT_CODE` | 前端部署环境变量 |
+| 租户 `embed_enabled` | 系统管理 → 租户管理 → OA 嵌入 |
+| 租户 `embed_access_token` | 系统管理 → 租户管理 → OA 嵌入 |
 | 审核 `embed_enabled` | `process_audit_configs` / 租户规则 UI |
 | 总结 `embed_enabled` | `process_summary_configs` / 租户规则 UI |
 

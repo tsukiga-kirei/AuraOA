@@ -214,6 +214,15 @@ export const useSystemApi = () => {
     return authFetch<any[]>(`/api/admin/tenants/${id}/members`)
   }
 
+  /** 为租户生成或重置 OA 嵌入访问密钥（明文仅本次返回） */
+  async function rotateTenantEmbedToken(id: string): Promise<{
+    access_token: string
+    token_hint: string
+    rotated_at: string
+  }> {
+    return authFetch(`/api/admin/tenants/${id}/embed-token`, { method: 'POST' })
+  }
+
   return {
     // 系统配置
     getConfigs, updateConfigs,
@@ -227,5 +236,6 @@ export const useSystemApi = () => {
     testAttachmentRecognition,
     // 租户管理
     listTenants, createTenant, updateTenant, deleteTenant, getTenantStats, listTenantMembers,
+    rotateTenantEmbedToken,
   }
 }

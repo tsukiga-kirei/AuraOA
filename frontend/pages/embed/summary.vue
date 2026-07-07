@@ -16,11 +16,12 @@ import { marked } from 'marked'
 import type { EmbedProcessSummary } from '~/types/embed'
 import type { SummaryResult } from '~/types/process-summary'
 import type { EmbedSummaryContextResponse } from '~/composables/useEmbedSummaryApi'
-import { waitForParentRequestId } from '~/composables/useEmbedParent'
+import { waitForParentEmbedContext } from '~/composables/useEmbedParent'
 
 definePageMeta({ layout: 'embed' })
 
 const { getSummaryContext, executeSummaryEmbed, waitSummaryJob } = useEmbedSummaryApi()
+const { setupEmbedSession } = useEmbedSession()
 
 const processId = ref('')
 const pageLoading = ref(true)
@@ -187,8 +188,21 @@ async function bootstrap() {
 
 onMounted(async () => {
   waitingParent.value = true
-  processId.value = await waitForParentRequestId()
+  const parentCtx = await waitForParentEmbedContext()
+  processId.value = parentCtx.requestId
   waitingParent.value = false
+  if (!parentCtx.embedToken) {
+    pageError.value = '未获取到嵌入访问令牌，请检查 OA 父页面配置'
+    pageLoading.value = false
+    return
+  }
+  try {
+    await setupEmbedSession(parentCtx.embedToken)
+  } catch (e: any) {
+    pageError.value = e?.message || '未获取到嵌入访问令牌，请检查 OA 父页面配置'
+    pageLoading.value = false
+    return
+  }
   await bootstrap()
 })
 

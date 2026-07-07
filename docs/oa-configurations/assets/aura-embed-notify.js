@@ -1,25 +1,21 @@
 /**
- * 泛微 Ecology9 — AuraOA 嵌入页：向 iframe 传递 requestid
+ * 泛微 Ecology9 — AuraOA 嵌入页：向 iframe 传递 requestid + embed_token
  *
  * 使用步骤：
- * 1. 修改下方 AURA_EMBED_ORIGIN、IFRAME_IDS
- * 2. 上传到 OA 静态目录（如 /oa-front/workflow/xxx/aura-embed-notify.js）
- * 3. 流程 → 基础设置 → 自定义页面 → 填入 js 路径并启用
- * 4. 表单/门户 HTML 中 iframe 的 id 与 IFRAME_IDS 一致
+ * 1. 在 AuraOA「系统管理 → 租户管理 → OA 嵌入」为租户生成嵌入密钥
+ * 2. 修改下方 AURA_EMBED_ORIGIN、EMBED_ACCESS_TOKEN、IFRAME_IDS
+ * 3. 上传到 OA 静态目录（如 /oa-front/workflow/xxx/aura-embed-notify.js）
+ * 4. 流程 → 基础设置 → 自定义页面 → 填入 js 路径并启用
+ * 5. 表单/门户 HTML 中 iframe 的 id 与 IFRAME_IDS 一致
  */
 (function () {
   // ========== 按需修改 ==========
   var AURA_EMBED_ORIGIN = 'https://aura.example.com'; // AuraOA 前端地址（无末尾斜杠）
 
+  // 租户管理 → OA 嵌入 → 生成/重置密钥后复制（仅显示一次）
+  var EMBED_ACCESS_TOKEN = 'aura_emb_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+
   // OA 页面中「需要接收 requestid」的 AuraOA iframe id 列表。
-  // 脚本会把 WfForm.getBaseInfo().requestid 同时发送给这些 iframe。
-  //
-  // 只嵌入审核页时：
-  //   var IFRAME_IDS = ['aura-embed-audit'];
-  // 只嵌入总结页时：
-  //   var IFRAME_IDS = ['aura-embed-summary'];
-  // 同一页面同时嵌入审核 + 总结时：
-  //   var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
   var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
   // ==============================
 
@@ -50,20 +46,29 @@
     }).filter(Boolean);
   }
 
-  function postRequestIdToAura(win) {
+  function buildPayload(requestid) {
+    return {
+      type: MSG_REQUESTID,
+      requestid: requestid,
+      embed_token: EMBED_ACCESS_TOKEN
+    };
+  }
+
+  function postContextToAura(win) {
     if (!win) return;
     var requestid = getRequestId();
     if (!requestid) return;
-    win.postMessage({
-      type: MSG_REQUESTID,
-      requestid: requestid
-    }, AURA_EMBED_ORIGIN);
+    if (!EMBED_ACCESS_TOKEN) {
+      console.warn('[aura-embed] 未配置 EMBED_ACCESS_TOKEN');
+      return;
+    }
+    win.postMessage(buildPayload(requestid), AURA_EMBED_ORIGIN);
   }
 
   function notifyAuraIframes() {
     getIframes().forEach(function (iframe) {
       if (iframe && iframe.contentWindow) {
-        postRequestIdToAura(iframe.contentWindow);
+        postContextToAura(iframe.contentWindow);
       }
     });
   }
@@ -78,11 +83,12 @@
         console.warn('[aura-embed] 无 requestid，请确认流程表单已加载 WfForm');
         return;
       }
+      if (!EMBED_ACCESS_TOKEN) {
+        console.warn('[aura-embed] 未配置 EMBED_ACCESS_TOKEN');
+        return;
+      }
       if (event.source) {
-        event.source.postMessage({
-          type: MSG_REQUESTID,
-          requestid: requestid
-        }, event.origin);
+        event.source.postMessage(buildPayload(requestid), event.origin);
       }
     });
   }
@@ -94,7 +100,6 @@
       iframe.addEventListener('load', notifyAuraIframes);
     });
 
-    // WfForm 可能晚于 iframe load，轮询几次
     var tries = 0;
     var timer = setInterval(function () {
       tries++;

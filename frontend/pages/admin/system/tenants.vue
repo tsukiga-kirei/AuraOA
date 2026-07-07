@@ -20,6 +20,7 @@ import {
   TeamOutlined,
   ThunderboltOutlined,
   UserOutlined,
+  CopyOutlined,
 } from '@ant-design/icons-vue'
 import {message} from 'ant-design-vue'
 
@@ -29,10 +30,12 @@ const {
   listTenants: fetchTenants, createTenant: apiCreateTenant, updateTenant: apiUpdateTenant,
   deleteTenant: apiDeleteTenant, getTenantStats: apiGetTenantStats,
   listOAConnections, listAIModels, listTenantMembers: apiListTenantMembers,
+  rotateTenantEmbedToken: apiRotateTenantEmbedToken,
 } = useSystemApi()
 
 interface TenantData {
   id: string; name: string; code: string; description: string; status: string
+  embed_enabled: boolean; embed_token_configured: boolean; embed_token_hint: string; embed_token_rotated_at: string
   oa_db_connection_id: string; token_quota: number; token_used: number; max_concurrency: number
   primary_model_id: string; fallback_model_id: string
   max_tokens_per_request: number; temperature: number; timeout_seconds: number; retry_count: number
@@ -286,6 +289,7 @@ const saveTenantDetail = async () => {
       name: s.name,
       description: s.description,
       status: s.status,
+      embed_enabled: s.embed_enabled,
       oa_db_connection_id: s.oa_db_connection_id || null,
       token_quota: s.token_quota,
       max_concurrency: s.max_concurrency,
@@ -340,6 +344,56 @@ const showDeleteConfirm = ref(false)
 const deletingTenant = ref<TenantData | null>(null)
 const deletePassword = ref('')
 const deleting = ref(false)
+const rotatingEmbedToken = ref(false)
+const showEmbedTokenModal = ref(false)
+const rotatedEmbedToken = ref('')
+
+const embedOrigin = computed(() => {
+  if (import.meta.client && window.location?.origin) return window.location.origin
+  return ''
+})
+const embedAuditUrl = computed(() => embedOrigin.value ? `${embedOrigin.value}/embed/audit` : '/embed/audit')
+const embedSummaryUrl = computed(() => embedOrigin.value ? `${embedOrigin.value}/embed/summary` : '/embed/summary')
+
+const copyText = async (text: string) => {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    message.success(t('common.copySuccess'))
+  } catch {
+    message.error('复制失败')
+  }
+}
+
+const handleRotateEmbedToken = async () => {
+  if (!selectedTenant.value) return
+  const wasConfigured = selectedTenant.value.embed_token_configured
+  rotatingEmbedToken.value = true
+  try {
+    const resp = await apiRotateTenantEmbedToken(selectedTenant.value.id)
+    rotatedEmbedToken.value = resp.access_token
+    showEmbedTokenModal.value = true
+    selectedTenant.value.embed_enabled = true
+    selectedTenant.value.embed_token_configured = true
+    selectedTenant.value.embed_token_hint = resp.token_hint
+    selectedTenant.value.embed_token_rotated_at = resp.rotated_at
+    const idx = tenants.value.findIndex(x => x.id === selectedTenant.value!.id)
+    if (idx >= 0) {
+      tenants.value[idx] = {
+        ...tenants.value[idx],
+        embed_enabled: true,
+        embed_token_configured: true,
+        embed_token_hint: resp.token_hint,
+        embed_token_rotated_at: resp.rotated_at,
+      }
+    }
+    message.success(wasConfigured ? t('admin.tenants.embedTokenReset') : t('admin.tenants.embedTokenGenerated'))
+  } catch (e: any) {
+    message.error(e.message || '生成嵌入密钥失败')
+  } finally {
+    rotatingEmbedToken.value = false
+  }
+}
 
 const openDeleteConfirm = (tenant: TenantData) => {
   deletingTenant.value = tenant
@@ -644,6 +698,7 @@ const confirmDeleteTenant = async () => {
               { key: 'oadb', label: t('admin.tenants.tabOADb'), icon: DatabaseOutlined },
               { key: 'ai', label: t('admin.tenants.tabAI'), icon: RobotOutlined },
               { key: 'quota', label: t('admin.tenants.tabQuota'), icon: ThunderboltOutlined },
+              { key: 'embed', label: t('admin.tenants.tabEmbed'), icon: LinkOutlined },
               { key: 'members', label: t('admin.tenants.tabMembers'), icon: TeamOutlined },
               { key: 'security', label: t('admin.tenants.tabSecurity'), icon: SafetyCertificateOutlined },
             ]"
@@ -886,6 +941,84 @@ const confirmDeleteTenant = async () => {
           </a-form>
         </div>
 
+        <!--OA 嵌入选项卡-->
+        <div v-if="detailActiveTab === 'embed'" class="detail-section">
+          <div class="section-header">
+            <h3><LinkOutlined /> {{ t('admin.tenants.embedTitle') }}</h3>
+          </div>
+          <div class="jdbc-hint">
+            <InfoCircleOutlined /> {{ t('admin.tenants.embedHint') }}
+          </div>
+          <a-form layout="vertical">
+            <div class="config-group">
+              <div class="config-group-title">{{ t('admin.tenants.basicInfo') }}</div>
+              <a-row :gutter="16">
+                <a-col :span="12">
+                  <a-form-item :label="t('admin.tenants.tenantName')">
+                    <a-input :value="selectedTenant.name" disabled />
+                  </a-form-item>
+                </a-col>
+                <a-col :span="12">
+                  <a-form-item :label="t('admin.tenants.tenantCode')">
+                    <a-input :value="selectedTenant.code" disabled />
+                  </a-form-item>
+                </a-col>
+              </a-row>
+              <a-form-item :label="t('admin.tenants.tenantId')">
+                <a-input :value="selectedTenant.id" disabled />
+              </a-form-item>
+            </div>
+
+            <div class="config-group">
+              <a-form-item :label="t('admin.tenants.embedEnabled')">
+                <a-switch v-model:checked="selectedTenant.embed_enabled" />
+                <span class="switch-label">{{ t('admin.tenants.embedEnabledHint') }}</span>
+              </a-form-item>
+            </div>
+
+            <div class="config-group">
+              <div class="config-group-title">{{ t('admin.tenants.embedToken') }}</div>
+              <div class="embed-token-panel">
+                <div class="embed-token-meta">
+                  <div>
+                    <span class="embed-token-label">{{ t('admin.tenants.embedToken') }}</span>
+                    <div class="embed-token-value">
+                      {{ selectedTenant.embed_token_configured ? selectedTenant.embed_token_hint : t('admin.tenants.embedTokenNotConfigured') }}
+                    </div>
+                  </div>
+                  <div v-if="selectedTenant.embed_token_rotated_at">
+                    <span class="embed-token-label">{{ t('admin.tenants.embedTokenRotatedAt') }}</span>
+                    <div class="embed-token-value">{{ formatDateTime(selectedTenant.embed_token_rotated_at) }}</div>
+                  </div>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                  <a-button type="primary" :loading="rotatingEmbedToken" @click="handleRotateEmbedToken">
+                    {{ selectedTenant.embed_token_configured ? t('admin.tenants.resetEmbedToken') : t('admin.tenants.generateEmbedToken') }}
+                  </a-button>
+                </div>
+              </div>
+            </div>
+
+            <div class="config-group">
+              <div class="config-group-title">{{ t('admin.tenants.tabEmbed') }}</div>
+              <a-form-item :label="t('admin.tenants.embedAuditUrl')">
+                <a-input :value="embedAuditUrl" readonly>
+                  <template #suffix>
+                    <a-button type="text" size="small" @click="copyText(embedAuditUrl)"><CopyOutlined /></a-button>
+                  </template>
+                </a-input>
+              </a-form-item>
+              <a-form-item :label="t('admin.tenants.embedSummaryUrl')">
+                <a-input :value="embedSummaryUrl" readonly>
+                  <template #suffix>
+                    <a-button type="text" size="small" @click="copyText(embedSummaryUrl)"><CopyOutlined /></a-button>
+                  </template>
+                </a-input>
+              </a-form-item>
+            </div>
+          </a-form>
+        </div>
+
         <!--人员选项卡-->
         <div v-if="detailActiveTab === 'members'" class="detail-section">
           <div class="section-header">
@@ -1019,6 +1152,21 @@ const confirmDeleteTenant = async () => {
           </a-form-item>
         </a-form>
       </div>
+    </a-modal>
+
+    <a-modal
+      v-model:open="showEmbedTokenModal"
+      :title="t('admin.tenants.embedTokenModalTitle')"
+      :footer="null"
+      :maskClosable="false"
+      width="560px"
+    >
+      <a-alert type="warning" show-icon :message="t('admin.tenants.embedTokenModalDesc')" style="margin-bottom: 16px;" />
+      <a-input :value="rotatedEmbedToken" readonly>
+        <template #suffix>
+          <a-button type="text" size="small" @click="copyText(rotatedEmbedToken)"><CopyOutlined /></a-button>
+        </template>
+      </a-input>
     </a-modal>
   </div>
 </template>
@@ -1241,6 +1389,15 @@ const confirmDeleteTenant = async () => {
 .member-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
 .member-card-right { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
 .member-contact { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 4px; }
+
+.embed-token-panel {
+  display: flex; flex-direction: column; gap: 12px;
+  background: var(--color-bg-card); border-radius: var(--radius-md); padding: 14px;
+  border: 1px solid var(--color-border-light);
+}
+.embed-token-meta { display: flex; gap: 24px; flex-wrap: wrap; }
+.embed-token-label { font-size: 11px; color: var(--color-text-tertiary); display: block; }
+.embed-token-value { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin-top: 4px; font-family: var(--font-mono); }
 
 @media (max-width: 768px) {
   .page-header { flex-direction: column; gap: 12px; align-items: stretch; }
