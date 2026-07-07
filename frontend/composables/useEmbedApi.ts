@@ -1,23 +1,26 @@
 import type { AuditResult } from '~/types/audit'
 import type { EmbedContextResponse, EmbedExecuteRequest } from '~/types/embed'
 
-async function embedFetch<T>(
-  path: string,
-  init?: { method?: 'GET' | 'POST'; body?: unknown },
-): Promise<T> {
-  const res = await $fetch<T>(path, {
-    method: init?.method ?? 'GET',
-    body: init?.body as Record<string, unknown> | undefined,
-  })
-  return res as T
-}
-
 /**
  * useEmbedApi — OA 嵌入展示页 API（经 Nuxt 服务端代理，无需用户登录）
  */
 export const useEmbedApi = () => {
+  const { embedAuthHeaders } = useEmbedAuth()
   const POLL_INTERVAL_MS = 1500
   const AUDIT_TIMEOUT_MS = 35 * 60 * 1000
+
+  async function embedFetch<T>(
+    path: string,
+    init?: { method?: 'GET' | 'POST'; body?: unknown },
+  ): Promise<T> {
+    const res = await $fetch<T>(path, {
+      method: init?.method ?? 'GET',
+      body: init?.body as Record<string, unknown> | undefined,
+      credentials: 'include',
+      headers: embedAuthHeaders(),
+    })
+    return res as T
+  }
 
   async function getContext(processId: string): Promise<EmbedContextResponse> {
     const q = new URLSearchParams({ process_id: processId })

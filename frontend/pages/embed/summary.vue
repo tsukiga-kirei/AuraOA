@@ -97,7 +97,10 @@ function startSSE(jobId?: string) {
   disconnectStream()
   streamJobId.value = jobId
   streamingText.value = ''
-  eventSourceStream.value = new EventSource(`/api/embed/summary/stream/${encodeURIComponent(jobId)}`)
+  const { appendEmbedTokenQuery } = useEmbedAuth()
+  eventSourceStream.value = new EventSource(
+    appendEmbedTokenQuery(`/api/embed/summary/stream/${encodeURIComponent(jobId)}`),
+  )
   eventSourceStream.value.onmessage = (event) => {
     streamingText.value += event.data || ''
   }

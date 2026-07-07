@@ -22,19 +22,22 @@ export interface EmbedSummaryExecuteRequest {
   trigger_source?: 'summary_embed_auto' | 'summary_embed_manual'
 }
 
-async function embedSummaryFetch<T>(
-  path: string,
-  init?: { method?: 'GET' | 'POST'; body?: unknown },
-): Promise<T> {
-  return await $fetch<T>(path, {
-    method: init?.method ?? 'GET',
-    body: init?.body as Record<string, unknown> | undefined,
-  })
-}
-
 export const useEmbedSummaryApi = () => {
+  const { embedAuthHeaders } = useEmbedAuth()
   const POLL_INTERVAL_MS = 1500
   const SUMMARY_TIMEOUT_MS = 35 * 60 * 1000
+
+  async function embedSummaryFetch<T>(
+    path: string,
+    init?: { method?: 'GET' | 'POST'; body?: unknown },
+  ): Promise<T> {
+    return await $fetch<T>(path, {
+      method: init?.method ?? 'GET',
+      body: init?.body as Record<string, unknown> | undefined,
+      credentials: 'include',
+      headers: embedAuthHeaders(),
+    })
+  }
 
   async function getSummaryContext(processId: string): Promise<EmbedSummaryContextResponse> {
     const q = new URLSearchParams({ process_id: processId })

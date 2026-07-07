@@ -348,7 +348,7 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 	}
 
 	unionFieldSet := buildSummaryUnionFieldSet(blocks)
-	processData, err := s.fetchOAData(c, tenant, logEntry.ProcessID, unionFieldSet)
+	processData, err := s.fetchOAData(c, tenant, logEntry.ProcessID, unionFieldSet, true)
 	if err != nil {
 		s.markSummaryFailedDB(tenantID, summaryLogID, "拉取 OA 流程数据失败: "+err.Error())
 		return err
@@ -567,7 +567,7 @@ func (s *ProcessSummaryService) loadTenantModels(tenant *model.Tenant) (*model.A
 	return modelCfg, fallbackCfg, nil
 }
 
-func (s *ProcessSummaryService) fetchOAData(c *gin.Context, tenant *model.Tenant, processID string, fieldSet SelectedFieldSet) (*oa.ProcessData, error) {
+func (s *ProcessSummaryService) fetchOAData(c *gin.Context, tenant *model.Tenant, processID string, fieldSet SelectedFieldSet, withAttachments bool) (*oa.ProcessData, error) {
 	if tenant.OADBConnectionID == nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "租户未配置 OA 数据库连接")
 	}
@@ -579,7 +579,7 @@ func (s *ProcessSummaryService) fetchOAData(c *gin.Context, tenant *model.Tenant
 		return nil, err
 	}
 	var attachmentSvc oa.AttachmentRecognitionService
-	if s.attachmentSvc != nil {
+	if withAttachments && s.attachmentSvc != nil {
 		attachmentSvc = s.attachmentSvc
 	}
 	adapter, err := oa.NewOAAdapter(conn.OAType, conn, attachmentSvc)
@@ -623,7 +623,7 @@ func (s *ProcessSummaryService) fetchCurrentOAAnchor(c *gin.Context, tenantID uu
 	if err != nil {
 		return oa.OAContextAnchor{}, newServiceError(errcode.ErrDatabase, "获取租户信息失败")
 	}
-	pd, err := s.fetchOAData(c, tenant, processID, nil)
+	pd, err := s.fetchOAData(c, tenant, processID, nil, false)
 	if err != nil {
 		return oa.OAContextAnchor{}, err
 	}

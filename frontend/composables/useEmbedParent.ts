@@ -20,7 +20,7 @@ export function parseRequestIdFromUrl(url: string): string {
   if (!url) return ''
   try {
     const u = new URL(url)
-    const fromSearch = u.searchParams.get('requestid')
+    const fromSearch = u.searchParams.get('requestid') || u.searchParams.get('process_id')
     if (fromSearch) return fromSearch
     const hash = u.hash || ''
     const qIdx = hash.indexOf('?')
@@ -33,6 +33,27 @@ export function parseRequestIdFromUrl(url: string): string {
     if (m?.[1]) return m[1]
   }
   return ''
+}
+
+/** 从 URL 查询参数读取 embed_token（本地联调或 OA 在 iframe src 上拼接时使用） */
+export function readEmbedTokenFromUrl(url: string): string {
+  if (!url) return ''
+  try {
+    const u = new URL(url)
+    return String(u.searchParams.get('embed_token') || u.searchParams.get('embedToken') || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+/** 从当前嵌入页地址读取 requestid + embed_token */
+export function readEmbedContextFromSelfUrl(): EmbedParentContext {
+  if (typeof window === 'undefined') return { requestId: '', embedToken: '' }
+  const href = window.location.href
+  return {
+    requestId: parseRequestIdFromUrl(href),
+    embedToken: readEmbedTokenFromUrl(href),
+  }
 }
 
 /** 尝试读取 iframe 父页面 URL 中的 requestid（仅同源） */
@@ -52,7 +73,7 @@ export function requestRequestIdFromParent(): void {
 }
 
 /**
- * 等待 OA 父页上下文：同源读 parent → 主动 postMessage 请求 → 监听父页推送
+ * 等待 OA 父页上下文：当前页 URL → postMessage → 同源 parent URL
  */
 export function waitForParentEmbedContext(options?: { intervalMs?: number; maxAttempts?: number }): Promise<EmbedParentContext> {
   if (typeof window === 'undefined') {
@@ -62,49 +83,53 @@ export function waitForParentEmbedContext(options?: { intervalMs?: number; maxAt
   const intervalMs = options?.intervalMs ?? 300
   const maxAttempts = options?.maxAttempts ?? 200
 
-  const immediate = readRequestIdFromParent()
-  if (immediate) {
-    return Promise.resolve({
-      requestId: immediate,
-      embedToken: '',
-    })
+  const fromSelf = readEmbedContextFromSelfUrl()
+  if (fromSelf.requestId && fromSelf.embedToken) {
+    return Promise.resolve(fromSelf)
   }
 
   return new Promise((resolve) => {
     let attempts = 0
-    let latestToken = ''
+    let latestRequestId = fromSelf.requestId
+    let latestToken = fromSelf.embedToken
     requestRequestIdFromParent()
+
+    const tryFinish = () => {
+      if (latestRequestId && latestToken) {
+        finish({
+          requestId: latestRequestId,
+          embedToken: latestToken,
+        })
+        return true
+      }
+      return false
+    }
 
     const onMessage = (event: MessageEvent) => {
       const data = event.data
       if (!data || typeof data !== 'object') return
       if (data.type === EMBED_MSG_REQUESTID && data.requestid) {
+        latestRequestId = String(data.requestid)
         latestToken = String(data.embed_token || data.embedToken || '').trim()
-        finish({
-          requestId: String(data.requestid),
-          embedToken: latestToken,
-        })
+        tryFinish()
         return
       }
       if (data.type === EMBED_MSG_URL && data.url) {
         const parsed = parseRequestIdFromUrl(String(data.url))
         if (parsed) {
-          finish({
-            requestId: parsed,
-            embedToken: latestToken,
-          })
+          latestRequestId = parsed
+          tryFinish()
         }
       }
     }
 
     const timer = setInterval(() => {
       attempts++
-      const found = readRequestIdFromParent()
-      if (found) {
-        finish({
-          requestId: found,
-          embedToken: latestToken,
-        })
+      const parentRequestId = readRequestIdFromParent()
+      if (parentRequestId) {
+        latestRequestId = parentRequestId
+      }
+      if (tryFinish()) {
         return
       }
       // 每隔约 3 秒再向父页要一次（WfForm 可能尚未就绪）
@@ -113,7 +138,7 @@ export function waitForParentEmbedContext(options?: { intervalMs?: number; maxAt
       }
       if (attempts >= maxAttempts) {
         finish({
-          requestId: '',
+          requestId: latestRequestId,
           embedToken: latestToken,
         })
       }

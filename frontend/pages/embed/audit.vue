@@ -180,7 +180,9 @@ const startSSE = (auditResultId?: string) => {
   if (!process.client || !auditResultId || streamJobId.value === auditResultId) return
   disconnectStream()
   streamJobId.value = auditResultId
-  eventSourceStream.value = new EventSource(`/api/embed/stream/${encodeURIComponent(auditResultId)}`)
+  eventSourceStream.value = new EventSource(
+    useEmbedAuth().appendEmbedTokenQuery(`/api/embed/stream/${encodeURIComponent(auditResultId)}`),
+  )
   eventSourceStream.value.onmessage = (event) => {
     if (!currentResult.value) return
     const chunk = event.data || ''

@@ -1,9 +1,16 @@
 import type { H3Event } from 'h3'
 
-/** 嵌入页服务端代理：从 httpOnly Cookie 读取租户令牌访问 Go /api/embed */
+/** 嵌入页服务端代理：Cookie / 请求头 / 查询参数读取租户令牌后访问 Go /api/embed */
 export function getEmbedBackend(event: H3Event) {
   const config = useRuntimeConfig()
-  const token = String(getCookie(event, 'aura_embed_token') || '').trim()
+  const query = getQuery(event)
+  const queryToken = typeof query.embed_token === 'string' ? query.embed_token : ''
+  const token = String(
+    getCookie(event, 'aura_embed_token')
+      || getRequestHeader(event, 'x-embed-token')
+      || queryToken
+      || '',
+  ).trim()
   if (!token) {
     throw createError({
       statusCode: 401,
