@@ -1,14 +1,18 @@
 package handler
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
+	excelpkg "auraoa/go-service/internal/pkg/excel"
 	"auraoa/go-service/internal/pkg/response"
 	"auraoa/go-service/internal/repository"
 	"auraoa/go-service/internal/service"
@@ -128,12 +132,58 @@ func (h *ProcessSummaryHandler) ListSnapshots(c *gin.Context) {
 }
 
 func (h *ProcessSummaryHandler) GetSnapshotStats(c *gin.Context) {
-	stats, err := h.summaryService.GetSnapshotStats(c)
+	filter, _, _ := parseProcessSummarySnapshotQuery(c)
+	stats, err := h.summaryService.GetSnapshotStats(c, filter.Channel)
 	if err != nil {
 		handleServiceError(c, err)
 		return
 	}
 	response.Success(c, stats)
+}
+
+func (h *ProcessSummaryHandler) ExportSnapshots(c *gin.Context) {
+	filter, _, _ := parseProcessSummarySnapshotQuery(c)
+	items, err := h.summaryService.ListSnapshotsForExport(c, filter)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	locale := excelpkg.ResolveLocale(c)
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		channel := item.Channel
+		if channel == "" {
+			channel = model.AuditSnapshotChannelWorkbench
+		}
+		rows = append(rows, []string{
+			item.ProcessID,
+			item.Title,
+			item.Operator,
+			item.Department,
+			item.ProcessType,
+			excelpkg.TranslateEnum(excelpkg.EnumSourceChannel, channel, locale),
+			fmt.Sprintf("%d", item.BlockCount),
+			fmt.Sprintf("%d", countSummarySnapshotLogIDs(item.ValidLogIDs)),
+			item.UpdatedAt.Local().Format("2006-01-02 15:04:05"),
+		})
+	}
+	filename := fmt.Sprintf("summary_snapshots_%s", apptime.Now().Format("20060102_150405"))
+	config := excelpkg.ExportConfig{
+		ExportType: excelpkg.ExportTypeSummarySnapshot,
+		Locale:     locale,
+		Filename:   filename,
+	}
+	if err := excelpkg.WriteExcel(c, config, rows); err != nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "导出失败: "+err.Error())
+	}
+}
+
+func countSummarySnapshotLogIDs(raw []byte) int {
+	var ids []string
+	if err := json.Unmarshal(raw, &ids); err != nil {
+		return 0
+	}
+	return len(ids)
 }
 
 func (h *ProcessSummaryHandler) GetSnapshotChain(c *gin.Context) {
@@ -152,6 +202,7 @@ func (h *ProcessSummaryHandler) GetSnapshotChain(c *gin.Context) {
 
 func parseProcessSummarySnapshotQuery(c *gin.Context) (repository.ProcessSummarySnapshotFilter, int, int) {
 	filter := repository.ProcessSummarySnapshotFilter{
+		Channel:     c.Query("channel"),
 		Keyword:     c.Query("keyword"),
 		ProcessType: c.Query("process_type"),
 		Operator:    c.Query("operator"),

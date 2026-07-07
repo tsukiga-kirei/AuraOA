@@ -1469,6 +1469,7 @@ export default {
     'admin.data.viewDetail': 'View AI Audit Details',
     'admin.data.noData': 'No data',
     'admin.data.exportingAudit': 'Exporting audit data...',
+    'admin.data.exportingSummary': 'Exporting summary data...',
     'admin.data.exportingCron': 'Exporting task data...',
     'admin.data.exportingArchive': 'Exporting archive data...',
     'admin.data.exportSuccess': 'Export successful',
@@ -1496,6 +1497,10 @@ export default {
     'admin.data.thEndTime': 'End Time',
     'admin.data.thMessage': 'Execution Result',
     'admin.data.filterTriggerType': 'Trigger Type',
+    'admin.data.filterSourceChannel': 'Source',
+    'admin.data.thSourceChannel': 'Source',
+    'admin.data.sourceWorkbench': 'In-App',
+    'admin.data.sourceEmbed': 'OA Embed',
     // Archive related
     'admin.data.searchArchive': 'Search process (title/ID)',
     'admin.data.searchArchiveOperator': 'Search operator...',

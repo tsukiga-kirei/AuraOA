@@ -127,6 +127,7 @@ func (r *AuditProcessSnapshotRepo) GetMapByProcessIDsAndChannel(c *gin.Context, 
 // AuditSnapshotFilter 快照分页过滤条件。
 type AuditSnapshotFilter struct {
 	Recommendation string // approve / return / review / "" = 全部
+	Channel        string // workbench / embed / "" = 全部
 	Keyword        string // 标题/流程编号模糊
 	ProcessType    string
 	Operator       string // 操作人模糊
@@ -162,7 +163,7 @@ func (r *AuditProcessSnapshotRepo) ListPagedWithUser(c *gin.Context, filter Audi
 	const t = "audit_process_snapshots"
 	tenantID, _ := c.Get("tenant_id")
 	base := r.DB.
-		Where(t+".tenant_id = ? AND "+t+".channel = ?", tenantID, model.AuditSnapshotChannelWorkbench).
+		Where(t+".tenant_id = ?", tenantID).
 		Table(t).
 		Select(t + ".*, " +
 			"COALESCE(u.display_name, u.username, '') AS operator, " +
@@ -188,15 +189,17 @@ func (r *AuditProcessSnapshotRepo) ListPagedWithUser(c *gin.Context, filter Audi
 }
 
 // CountStatsByRecommendation 快照分组统计。
-func (r *AuditProcessSnapshotRepo) CountStatsByRecommendation(c *gin.Context) (*AuditSnapshotStats, error) {
+func (r *AuditProcessSnapshotRepo) CountStatsByRecommendation(c *gin.Context, channel string) (*AuditSnapshotStats, error) {
 	type row struct {
 		Recommendation string
 		Cnt            int64
 	}
 	var rows []row
-	err := r.WithTenant(c).
-		Table("audit_process_snapshots").
-		Where("channel = ?", model.AuditSnapshotChannelWorkbench).
+	q := r.WithTenant(c).Table("audit_process_snapshots")
+	if channel != "" {
+		q = q.Where("channel = ?", channel)
+	}
+	err := q.
 		Select("recommendation, COUNT(*) as cnt").
 		Group("recommendation").
 		Find(&rows).Error
@@ -220,7 +223,9 @@ func (r *AuditProcessSnapshotRepo) CountStatsByRecommendation(c *gin.Context) (*
 
 func applyAuditSnapshotFilter(db *gorm.DB, f AuditSnapshotFilter) *gorm.DB {
 	const t = "audit_process_snapshots."
-	db = db.Where(t+"channel = ?", model.AuditSnapshotChannelWorkbench)
+	if f.Channel != "" {
+		db = db.Where(t+"channel = ?", f.Channel)
+	}
 	if f.Recommendation != "" {
 		db = db.Where(t+"recommendation = ?", f.Recommendation)
 	}

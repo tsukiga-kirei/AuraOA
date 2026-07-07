@@ -4,7 +4,7 @@
  *   GET /api/audit/snapshots             审核快照分页（数据管理页主表）
  *   GET /api/audit/snapshots/stats       审核快照统计
  *   GET /api/audit/snapshots/:id/chain   审核链详情
- *   GET /api/audit/logs/export           审核日志导出
+ *   GET /api/audit/snapshots/export       审核快照导出
  *   GET /api/archive/snapshots           归档快照分页
  *   GET /api/archive/snapshots/stats     归档快照统计
  *   GET /api/archive/snapshots/:id/chain 归档复盘链详情
@@ -50,19 +50,29 @@ export function useAdminDataApi() {
   }
 
   /** 获取审核快照的汇总统计数据（总数、各状态分布等） */
-  async function getAuditSnapshotStats(): Promise<AuditSnapshotStats> {
-    return await authFetch<AuditSnapshotStats>('/api/audit/snapshots/stats')
+  async function getAuditSnapshotStats(channel?: string): Promise<AuditSnapshotStats> {
+    const query = channel ? `?channel=${encodeURIComponent(channel)}` : ''
+    return await authFetch<AuditSnapshotStats>(`/api/audit/snapshots/stats${query}`)
   }
 
   /**
    * 获取指定流程的完整审核链（历次审核记录按时间排列）。
    * @param processId 流程 ID
+   * @param channel 快照渠道 workbench / embed
    */
-  async function getAuditSnapshotChain(processId: string): Promise<{ chain: AuditLogItem[] }> {
-    return await authFetch<{ chain: AuditLogItem[] }>(`/api/audit/snapshots/${processId}/chain`)
+  async function getAuditSnapshotChain(processId: string, channel = 'workbench'): Promise<{ chain: AuditLogItem[] }> {
+    const query = new URLSearchParams({ channel }).toString()
+    return await authFetch<{ chain: AuditLogItem[] }>(`/api/audit/snapshots/${processId}/chain?${query}`)
   }
 
-  // ── 审核日志（保留用于导出） ──────────────────────────────────────────────
+  /** 导出审核快照为 Excel，筛选条件与列表一致 */
+  async function exportAuditSnapshots(filter: AuditSnapshotFilter = {}) {
+    const params = buildParams(filter)
+    const url = buildExportUrl('/api/audit/snapshots/export', params)
+    await triggerDownload(url, 'audit_snapshots.xlsx')
+  }
+
+  // ── 审核日志（保留用于其他场景） ──────────────────────────────────────────────
 
   /** 分页查询审核日志列表（主要用于导出场景） */
   async function listAuditLogs(filter: AuditLogFilter = {}): Promise<PagedResult<AuditLogItem>> {
@@ -134,12 +144,20 @@ export function useAdminDataApi() {
     return await authFetch<PagedResult<SummarySnapshotItem>>(`/api/summary/snapshots${query ? `?${query}` : ''}`)
   }
 
-  async function getSummarySnapshotStats(): Promise<SummarySnapshotStats> {
-    return await authFetch<SummarySnapshotStats>('/api/summary/snapshots/stats')
+  async function getSummarySnapshotStats(channel?: string): Promise<SummarySnapshotStats> {
+    const query = channel ? `?channel=${encodeURIComponent(channel)}` : ''
+    return await authFetch<SummarySnapshotStats>(`/api/summary/snapshots/stats${query}`)
   }
 
   async function getSummarySnapshotChain(processId: string): Promise<{ chain: SummaryLogItem[] }> {
     return await authFetch<{ chain: SummaryLogItem[] }>(`/api/summary/snapshots/${processId}/chain`)
+  }
+
+  /** 导出流程总结快照为 Excel，筛选条件与列表一致 */
+  async function exportSummarySnapshots(filter: SummarySnapshotFilter = {}) {
+    const params = buildParams(filter)
+    const url = buildExportUrl('/api/summary/snapshots/export', params)
+    await triggerDownload(url, 'summary_snapshots.xlsx')
   }
 
   // ── 定时任务日志 ──────────────────────────────────────────────────────────────
@@ -242,6 +260,7 @@ export function useAdminDataApi() {
     listAuditSnapshots,
     getAuditSnapshotStats,
     getAuditSnapshotChain,
+    exportAuditSnapshots,
     // 审核日志（保留）
     listAuditLogs,
     getAuditLogStats,
@@ -258,6 +277,7 @@ export function useAdminDataApi() {
     listSummarySnapshots,
     getSummarySnapshotStats,
     getSummarySnapshotChain,
+    exportSummarySnapshots,
     // 定时任务
     listCronLogs,
     getCronLogStats,

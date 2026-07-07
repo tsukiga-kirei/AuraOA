@@ -393,12 +393,54 @@ func (h *AuditHandler) ListSnapshots(c *gin.Context) {
 // GET /api/audit/snapshots/stats
 // 返回：各审核建议状态的快照数量统计。
 func (h *AuditHandler) GetSnapshotStats(c *gin.Context) {
-	stats, err := h.snapshotRepo.CountStatsByRecommendation(c)
+	filter, _, _ := parseAuditSnapshotQuery(c)
+	stats, err := h.snapshotRepo.CountStatsByRecommendation(c, filter.Channel)
 	if err != nil {
 		handleServiceError(c, err)
 		return
 	}
 	response.Success(c, stats)
+}
+
+// ExportSnapshots 导出审核快照为 Excel（最多 5000 条，筛选条件同列表）。
+// GET /api/audit/snapshots/export
+func (h *AuditHandler) ExportSnapshots(c *gin.Context) {
+	filter, _, _ := parseAuditSnapshotQuery(c)
+	items, _, err := h.snapshotRepo.ListPagedWithUser(c, filter, 1, 5000)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	locale := excelpkg.ResolveLocale(c)
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		channel := item.Channel
+		if channel == "" {
+			channel = model.AuditSnapshotChannelWorkbench
+		}
+		rows = append(rows, []string{
+			item.ProcessID,
+			item.Title,
+			item.Operator,
+			item.Department,
+			item.ProcessType,
+			excelpkg.TranslateEnum(excelpkg.EnumSourceChannel, channel, locale),
+			excelpkg.TranslateEnum(excelpkg.EnumAuditRecommendation, item.Recommendation, locale),
+			fmt.Sprintf("%d", item.Score),
+			fmt.Sprintf("%d%%", item.Confidence),
+			fmt.Sprintf("%d", countSnapshotLogIDs(item.ValidLogIDs)),
+			item.UpdatedAt.Local().Format("2006-01-02 15:04:05"),
+		})
+	}
+	filename := fmt.Sprintf("audit_snapshots_%s", apptime.Now().Format("20060102_150405"))
+	config := excelpkg.ExportConfig{
+		ExportType: excelpkg.ExportTypeAuditSnapshot,
+		Locale:     locale,
+		Filename:   filename,
+	}
+	if err := excelpkg.WriteExcel(c, config, rows); err != nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "导出失败: "+err.Error())
+	}
 }
 
 // GetSnapshotChain 获取指定流程的审核链详情（所有有效审核记录按时间排序）。
@@ -411,7 +453,7 @@ func (h *AuditHandler) GetSnapshotChain(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "流程ID不能为空")
 		return
 	}
-	snapshot, err := h.snapshotRepo.GetByProcessID(c, processID)
+	snapshot, err := h.snapshotRepo.GetByProcessIDAndChannel(c, processID, c.DefaultQuery("channel", model.AuditSnapshotChannelWorkbench))
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -444,6 +486,7 @@ func (h *AuditHandler) GetSnapshotChain(c *gin.Context) {
 func parseAuditSnapshotQuery(c *gin.Context) (repository.AuditSnapshotFilter, int, int) {
 	filter := repository.AuditSnapshotFilter{
 		Recommendation: c.Query("recommendation"),
+		Channel:        c.Query("channel"),
 		Keyword:        c.Query("keyword"),
 		ProcessType:    c.Query("process_type"),
 		Operator:       c.Query("operator"),
@@ -463,6 +506,14 @@ func parseAuditSnapshotQuery(c *gin.Context) (repository.AuditSnapshotFilter, in
 	page := parseIntQuery(c, "page", 1)
 	pageSize := parseIntQuery(c, "page_size", 20)
 	return filter, page, pageSize
+}
+
+func countSnapshotLogIDs(raw []byte) int {
+	var ids []string
+	if err := json.Unmarshal(raw, &ids); err != nil {
+		return 0
+	}
+	return len(ids)
 }
 
 // parseAuditLogQuery 解析审核日志列表的过滤参数及分页参数。

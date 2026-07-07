@@ -55,6 +55,7 @@ export interface AuditSnapshotItem {
   id: string
   tenant_id: string
   process_id: string
+  channel: string            // workbench / embed
   title: string
   process_type: string
   recommendation: string     // approve / return / review
@@ -79,6 +80,7 @@ export interface AuditSnapshotStats {
 
 export interface AuditSnapshotFilter {
   recommendation?: string    // '' | 'approve' | 'return' | 'review'
+  channel?: string           // '' | 'workbench' | 'embed'
   keyword?: string
   process_type?: string
   operator?: string
@@ -193,6 +195,7 @@ export interface SummarySnapshotItem {
   id: string
   tenant_id: string
   process_id: string
+  channel: string            // workbench / embed
   title: string
   process_type: string
   block_count: number
@@ -212,6 +215,7 @@ export interface SummarySnapshotStats {
 }
 
 export interface SummarySnapshotFilter {
+  channel?: string           // '' | 'workbench' | 'embed'
   keyword?: string
   process_type?: string
   operator?: string

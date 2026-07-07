@@ -78,6 +78,7 @@ func (r *ProcessSummarySnapshotRepo) GetByProcessID(c *gin.Context, processID st
 }
 
 type ProcessSummarySnapshotFilter struct {
+	Channel     string // workbench / embed / "" = 全部
 	Keyword     string
 	ProcessType string
 	Operator    string
@@ -88,6 +89,7 @@ type ProcessSummarySnapshotFilter struct {
 
 type ProcessSummarySnapshotListRow struct {
 	model.ProcessSummarySnapshot
+	Channel    string `json:"channel" gorm:"column:channel"`
 	Operator   string `json:"operator" gorm:"column:operator"`
 	Department string `json:"department" gorm:"column:department"`
 }
@@ -110,6 +112,7 @@ func (r *ProcessSummarySnapshotRepo) ListPagedWithUser(c *gin.Context, filter Pr
 		Where(t+".tenant_id = ?", tenantID).
 		Table(t).
 		Select(t + ".*, " +
+			"CASE WHEN psl.trigger_source IN ('" + model.SummaryTriggerEmbedAuto + "','" + model.SummaryTriggerEmbedManual + "') THEN '" + model.AuditSnapshotChannelEmbed + "' ELSE '" + model.AuditSnapshotChannelWorkbench + "' END AS channel, " +
 			"COALESCE(u.display_name, u.username, '') AS operator, " +
 			"COALESCE(d.name, '') AS department").
 		Joins("LEFT JOIN process_summary_logs psl ON psl.id = " + t + ".latest_valid_log_id").
@@ -131,17 +134,34 @@ func (r *ProcessSummarySnapshotRepo) ListPagedWithUser(c *gin.Context, filter Pr
 	return items, total, err
 }
 
-func (r *ProcessSummarySnapshotRepo) CountStats(c *gin.Context) (*ProcessSummarySnapshotStats, error) {
+func (r *ProcessSummarySnapshotRepo) CountStats(c *gin.Context, channel string) (*ProcessSummarySnapshotStats, error) {
+	const t = "process_summary_snapshots"
+	tenantID, _ := c.Get("tenant_id")
+	base := r.DB.
+		Where(t+".tenant_id = ?", tenantID).
+		Table(t).
+		Joins("LEFT JOIN process_summary_logs psl ON psl.id = " + t + ".latest_valid_log_id")
+	base = applyProcessSummarySnapshotChannelFilter(base, channel)
 	var stats ProcessSummarySnapshotStats
-	err := r.WithTenant(c).
-		Table("process_summary_snapshots").
-		Select("COUNT(*) AS total, COALESCE(SUM(block_count), 0)::bigint AS block_count").
+	err := base.
+		Select("COUNT(*) AS total, COALESCE(SUM(" + t + ".block_count), 0)::bigint AS block_count").
 		Scan(&stats).Error
 	return &stats, err
 }
 
+func applyProcessSummarySnapshotChannelFilter(db *gorm.DB, channel string) *gorm.DB {
+	if channel == model.AuditSnapshotChannelEmbed {
+		return db.Where("psl.trigger_source IN ?", []string{model.SummaryTriggerEmbedAuto, model.SummaryTriggerEmbedManual})
+	}
+	if channel == model.AuditSnapshotChannelWorkbench {
+		return db.Where("psl.trigger_source NOT IN ?", []string{model.SummaryTriggerEmbedAuto, model.SummaryTriggerEmbedManual})
+	}
+	return db
+}
+
 func applyProcessSummarySnapshotFilter(db *gorm.DB, f ProcessSummarySnapshotFilter) *gorm.DB {
 	const t = "process_summary_snapshots."
+	db = applyProcessSummarySnapshotChannelFilter(db, f.Channel)
 	if f.Keyword != "" {
 		like := "%" + f.Keyword + "%"
 		db = db.Where("("+t+"title ILIKE ? OR "+t+"process_id ILIKE ?)", like, like)
