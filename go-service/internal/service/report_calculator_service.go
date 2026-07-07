@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/repository"
 	"github.com/gin-gonic/gin"
 )
@@ -51,8 +52,9 @@ func (s *ReportCalculatorService) GetSummaryVariables(stats *ReportStats) map[st
 	vars := make(map[string]interface{})
 	vars["tenant_name"] = stats.TenantName
 	vars["time_range"] = stats.TimeRange
-	vars["date"] = time.Now().Format("2006-01-02")
-	vars["time"] = time.Now().Format("2006-01-02 15:04:05")
+	now := apptime.Now()
+	vars["date"] = now.Format("2006-01-02")
+	vars["time"] = now.Format("2006-01-02 15:04:05")
 
 	// 默认统计占位符（后续可根据业务逻辑生成详情列表）
 	vars["detail_list"] = "（各流程详情请点击进入系统查看）"
@@ -76,7 +78,7 @@ func (s *ReportCalculatorService) GetSummaryVariables(stats *ReportStats) map[st
 		vars["pass_rate"] = fmt.Sprintf("%.2f", vars["audit_pass_rate"])
 
 		// 周报额外变量占位
-		vars["week"] = time.Now().Format("02") // 简单用日期占位或后续计算周数
+		vars["week"] = apptime.Now().Format("02") // 简单用日期占位或后续计算周数
 		vars["trend"] = "持平"
 		vars["compliance_rate"] = vars["pass_rate"]
 		vars["compliance_trend"] = "稳定"
@@ -101,7 +103,7 @@ func (s *ReportCalculatorService) GetSummaryVariables(stats *ReportStats) map[st
 			vars["revised"] = vars["archive_partial"]
 			vars["pass_rate"] = fmt.Sprintf("%.2f", vars["archive_pass_rate"])
 
-			vars["week"] = time.Now().Format("02")
+			vars["week"] = apptime.Now().Format("02")
 			vars["trend"] = "持平"
 			vars["compliance_rate"] = vars["pass_rate"]
 			vars["compliance_trend"] = "稳定"

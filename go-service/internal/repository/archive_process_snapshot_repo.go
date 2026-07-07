@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 )
 
 // ArchiveProcessSnapshotRepo 归档复盘有效结论快照数据访问层，按租户隔离。
@@ -216,7 +217,7 @@ type TenantFailedCount struct {
 
 // ── 仪表盘查询方法 ──────────────────────────────────────────────────────────
 
-// CountThisWeek 本周（周一 00:00 UTC 至今）归档快照条数。
+// CountThisWeek 本周（按应用配置时区周一 00:00 至今）归档快照条数。
 // userID 非 nil 时 JOIN archive_logs 按 user_id 过滤。
 func (r *ArchiveProcessSnapshotRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID) (int64, error) {
 	var count int64
@@ -230,7 +231,7 @@ func (r *ArchiveProcessSnapshotRepo) CountThisWeek(c *gin.Context, userID *uuid.
 		q = q.Joins("JOIN archive_logs arl ON arl.id = aps.latest_valid_archive_log_id").
 			Where("arl.user_id = ?", *userID)
 	}
-	err := q.Where("aps.updated_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')").
+	err := q.Where("aps.updated_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)", apptime.Name()).
 		Count(&count).Error
 	return count, err
 }
@@ -240,7 +241,7 @@ func (r *ArchiveProcessSnapshotRepo) WeeklyTrendByDay(c *gin.Context, userID *uu
 	tenantID, _ := c.Get("tenant_id")
 
 	userFilter := ""
-	args := []interface{}{tenantID}
+	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, apptime.Name()}
 	if userID != nil {
 		userFilter = "AND arl.user_id = ?"
 		args = append(args, *userID)
@@ -249,8 +250,8 @@ func (r *ArchiveProcessSnapshotRepo) WeeklyTrendByDay(c *gin.Context, userID *uu
 	sql := `
 WITH days AS (
   SELECT generate_series(
-    date_trunc('week', CURRENT_DATE AT TIME ZONE 'UTC')::date,
-    (CURRENT_DATE AT TIME ZONE 'UTC')::date,
+    date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)::date,
+    (CURRENT_TIMESTAMP AT TIME ZONE ?)::date,
     INTERVAL '1 day'
   )::date AS d
 )
@@ -258,7 +259,7 @@ SELECT TO_CHAR(days.d, 'MM-DD') AS date,
        COALESCE(b.cnt, 0)::bigint AS count
 FROM days
 LEFT JOIN (
-  SELECT DATE(aps.updated_at AT TIME ZONE 'UTC') AS d,
+  SELECT DATE(aps.updated_at AT TIME ZONE ?) AS d,
          COUNT(*)::bigint AS cnt
   FROM archive_process_snapshots aps
   ` + func() string {
@@ -268,7 +269,7 @@ LEFT JOIN (
 		return ""
 	}() + `
   WHERE aps.tenant_id = ?
-    AND aps.updated_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+    AND aps.updated_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)
     ` + userFilter + `
   GROUP BY 1
 ) b ON b.d = days.d

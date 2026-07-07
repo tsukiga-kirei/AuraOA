@@ -27,6 +27,7 @@
         # 若前后端分离部署，可在 .env 中设置 AURAOA_PUBLIC_API_BASE=https://api.example.com。
         - NUXT_PUBLIC_API_BASE=${AURAOA_PUBLIC_API_BASE:-}
         - NUXT_PUBLIC_MOCK_MODE=${AURAOA_PUBLIC_MOCK_MODE:-false}
+        - NUXT_PUBLIC_TIME_ZONE=${APP_TIMEZONE:-Asia/Shanghai}
         - EMBED_ACCESS_TOKEN=${EMBED_ACCESS_TOKEN}
         - EMBED_TENANT_CODE=${EMBED_TENANT_CODE}
       restart: unless-stopped
@@ -58,6 +59,8 @@
         - REDIS_PORT=6379
         - REDIS_PASSWORD=${REDIS_PASSWORD}
         - JWT_SECRET=${JWT_SECRET}
+        # 应用统一时区：影响日志时间戳、Cron 调度、数据库会话时区、业务日期边界、导出/备份文件名等。
+        - APP_TIMEZONE=${APP_TIMEZONE:-Asia/Shanghai}
         # Python AI 服务为可选组件；当前仓库未包含 ai-service 时保持为空即可。
         - AI_SERVICE_URL=${AURAOA_AI_SERVICE_URL:-}
         # 日志配置（对应 config.yaml log.* 字段，点号替换为下划线）
@@ -69,11 +72,11 @@
         # 注意：全局日志保留天数优先从数据库 system_configs 表读取（前端系统设置可配置），
         # 此处仅为数据库中无配置时的兜底默认值，通常无需在此修改。
         - LOG_GLOBAL_RETENTION_DAYS=${LOG_GLOBAL_RETENTION_DAYS:-30}
-        # 时区设置，影响日志时间戳显示
-        - TZ=${TZ:-Asia/Shanghai}
+        # 容器系统时区，与 APP_TIMEZONE 保持一致，供系统工具/pg_dump 等进程使用。
+        - TZ=${APP_TIMEZONE:-Asia/Shanghai}
         # 数据库整库备份输出目录（pg_dump，非 postgres 容器内路径）。
         # 由 go-service 按管理端 system.backup_* 定时导出到此处；默认 /app/backups（对应 config.yaml backup.dir / BACKUP_DIR）。
-        # 备份文件形如 aura_pg_<库名>_<UTC时间>.dump；与下方 LOG_DIR 的应用日志不是同一类数据。
+        # 备份文件形如 aura_pg_<库名>_<应用时区时间>.dump；与下方 LOG_DIR 的应用日志不是同一类数据。
         - BACKUP_DIR=/app/backups
         # OA 嵌入审核（仅 /api/embed/*，见 .env EMBED_*）
         - EMBED_ACCESS_TOKEN=${EMBED_ACCESS_TOKEN}

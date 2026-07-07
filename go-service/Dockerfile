@@ -36,6 +36,8 @@ COPY db/migrations /migrations
 RUN mkdir -p /app/logs/tenants /app/backups
 
 ENV MIGRATIONS_PATH=/migrations
+ENV APP_TIMEZONE=Asia/Shanghai
+ENV TZ=Asia/Shanghai
 # 日志默认配置（可通过环境变量覆盖，对应 config.yaml 的 log.* 字段）
 ENV LOG_LEVEL=info
 ENV LOG_DIR=/app/logs

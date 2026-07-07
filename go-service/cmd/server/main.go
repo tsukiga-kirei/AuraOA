@@ -22,6 +22,7 @@ import (
 	"auraoa/go-service/internal/cache"
 	"auraoa/go-service/internal/dbmigrate"
 	"auraoa/go-service/internal/handler"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/crypto"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
 	"auraoa/go-service/internal/pkg/systemflags"
@@ -34,6 +35,9 @@ func main() {
 	// 第一步：加载配置文件
 	if err := loadConfig(); err != nil {
 		log.Fatalf("加载配置文件失败: %v", err)
+	}
+	if err := apptime.Configure(viper.GetString("app.timezone")); err != nil {
+		log.Fatalf("初始化应用时区失败: %v", err)
 	}
 
 	// 第二步：初始化全局日志系统
@@ -64,6 +68,7 @@ func main() {
 			viper.GetString("database.password"),
 			viper.GetString("database.dbname"),
 			viper.GetString("database.sslmode"),
+			apptime.Name(),
 		); err != nil {
 			pkglogger.Global().Fatal("数据库迁移失败", zap.String("dir", dir), zap.Error(err))
 		}
@@ -299,6 +304,7 @@ func loadConfig() error {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.SetDefault("migrations.enabled", true)
 	viper.SetDefault("migrations.path", "")
+	viper.SetDefault("app.timezone", apptime.DefaultTimeZone)
 	viper.SetDefault("embed.tenant_code", "")
 	viper.SetDefault("embed.access_token", "")
 
@@ -355,13 +361,14 @@ func resolveMigrationsPath(configured string) string {
 
 func initDatabase() (*gorm.DB, error) {
 	dsn := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s TimeZone=%s",
 		viper.GetString("database.host"),
 		viper.GetInt("database.port"),
 		viper.GetString("database.user"),
 		viper.GetString("database.password"),
 		viper.GetString("database.dbname"),
 		viper.GetString("database.sslmode"),
+		apptime.Name(),
 	)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{

@@ -14,6 +14,7 @@ import (
 
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	excelpkg "auraoa/go-service/internal/pkg/excel"
 	"auraoa/go-service/internal/pkg/response"
@@ -192,7 +193,7 @@ func (h *UserConfigManagementHandler) ExportUserConfigs(c *gin.Context) {
 		})
 	}
 
-	filename := "user_configs_" + time.Now().Format("20060102_150405")
+	filename := "user_configs_" + apptime.Now().Format("20060102_150405")
 	config := excelpkg.ExportConfig{
 		ExportType: excelpkg.ExportTypeUserConfig,
 		Locale:     locale,
@@ -447,7 +448,7 @@ func buildAdminUserConfigItem(
 	}
 
 	if !latestModified.IsZero() {
-		item.LastModified = latestModified.Format(time.RFC3339)
+		item.LastModified = apptime.FormatRFC3339(latestModified)
 	}
 
 	return item

@@ -15,6 +15,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
 	"auraoa/go-service/internal/pkg/oa"
@@ -158,7 +159,7 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 		supported[t] = struct{}{}
 	}
 
-	now := time.Now().Format(time.RFC3339)
+	now := apptime.FormatRFC3339(apptime.Now())
 	results := make([]oa.AttachmentInfo, 0, len(files))
 	parseable := make([]oa.AttachmentFilePayload, 0, len(files))
 
@@ -243,7 +244,7 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 	}
 
 	parseURL := strings.TrimRight(cfg.MinerUEndpoint, "/") + "/file_parse"
-	now := time.Now().Format(time.RFC3339)
+	now := apptime.FormatRFC3339(apptime.Now())
 	out := make([]oa.AttachmentInfo, 0, len(files))
 
 	for _, file := range files {

@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 )
 
 // CronLogFilter 定时任务日志分页查询过滤条件。
@@ -268,12 +269,12 @@ type TenantCronCount struct {
 
 // ── 仪表盘查询方法 ──────────────────────────────────────────────────────────
 
-// CountThisWeek 本周（周一 00:00 UTC 至今）定时任务执行次数。
+// CountThisWeek 本周（按应用配置时区周一 00:00 至今）定时任务执行次数。
 // userID 非 nil 时按 task_owner_user_id 或 created_by（从 gin context 取 username）过滤。
 func (r *CronLogRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID) (int64, error) {
 	tenantID, _ := c.Get("tenant_id")
 
-	args := []interface{}{tenantID}
+	args := []interface{}{tenantID, apptime.Name()}
 	userFilter := ""
 	if userID != nil {
 		username, _ := c.Get("username")
@@ -285,7 +286,7 @@ func (r *CronLogRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID) (int64, e
 SELECT COUNT(*)::bigint
 FROM cron_logs cl
 WHERE cl.tenant_id = ?
-  AND cl.started_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+  AND cl.started_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)
   ` + userFilter
 
 	var count int64
@@ -298,7 +299,7 @@ func (r *CronLogRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UUID) ([]Day
 	tenantID, _ := c.Get("tenant_id")
 
 	userFilter := ""
-	args := []interface{}{tenantID}
+	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, apptime.Name()}
 	if userID != nil {
 		username, _ := c.Get("username")
 		userFilter = "AND (cl.task_owner_user_id = ? OR cl.created_by = ?)"
@@ -308,8 +309,8 @@ func (r *CronLogRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UUID) ([]Day
 	sql := `
 WITH days AS (
   SELECT generate_series(
-    date_trunc('week', CURRENT_DATE AT TIME ZONE 'UTC')::date,
-    (CURRENT_DATE AT TIME ZONE 'UTC')::date,
+    date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)::date,
+    (CURRENT_TIMESTAMP AT TIME ZONE ?)::date,
     INTERVAL '1 day'
   )::date AS d
 )
@@ -317,11 +318,11 @@ SELECT TO_CHAR(days.d, 'MM-DD') AS date,
        COALESCE(b.cnt, 0)::bigint AS count
 FROM days
 LEFT JOIN (
-  SELECT DATE(cl.started_at AT TIME ZONE 'UTC') AS d,
+  SELECT DATE(cl.started_at AT TIME ZONE ?) AS d,
          COUNT(*)::bigint AS cnt
   FROM cron_logs cl
   WHERE cl.tenant_id = ?
-    AND cl.started_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+    AND cl.started_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)
     ` + userFilter + `
   GROUP BY 1
 ) b ON b.d = days.d

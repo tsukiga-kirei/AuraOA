@@ -214,15 +214,9 @@ function kindLabel(kind: string) {
 
 // 格式化动态时间为本地化短格式
 function formatActivityTime(iso: string) {
-  try {
-    const d = new Date(iso)
-    return new Intl.DateTimeFormat(locale.value === 'en-US' ? 'en-US' : 'zh-CN', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-    }).format(d)
-  }
-  catch {
-    return iso
-  }
+  return formatDateTimeInAppZone(iso, locale.value === 'en-US' ? 'en-US' : 'zh-CN', {
+    year: undefined, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
 }
 
 // 获取定时任务的描述文本，优先使用自定义描述，其次使用国际化翻译

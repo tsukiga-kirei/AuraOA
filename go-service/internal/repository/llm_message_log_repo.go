@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 )
 
 // LLMMessageLogRepo 提供租户大模型消息记录的数据访问方法。
@@ -86,14 +87,14 @@ func (r *LLMMessageLogRepo) QueryAllTenantsTokenUsage(startTime, endTime time.Ti
 	return summaries, nil
 }
 
-// DashboardLLMDailyPointRow LLM 按日聚合行（UTC 日期）。
+// DashboardLLMDailyPointRow LLM 按日聚合行（应用配置时区日期）。
 type DashboardLLMDailyPointRow struct {
 	Date  string `gorm:"column:date"`
 	AvgMs int64  `gorm:"column:avg_ms"`
 	Calls int64  `gorm:"column:calls"`
 }
 
-// DashboardLLMWeeklyTrend 最近 n 个 UTC 自然日 LLM 调用：日均耗时与次数。
+// DashboardLLMWeeklyTrend 最近 n 个应用配置时区自然日 LLM 调用：日均耗时与次数。
 func (r *LLMMessageLogRepo) DashboardLLMWeeklyTrend(c *gin.Context, days int) ([]DashboardLLMDailyPointRow, error) {
 	if days < 1 {
 		days = 7
@@ -110,8 +111,8 @@ func (r *LLMMessageLogRepo) DashboardLLMWeeklyTrend(c *gin.Context, days int) ([
 	q := `
 WITH days AS (
   SELECT generate_series(
-    (CURRENT_DATE AT TIME ZONE 'UTC')::date - ($2::int - 1),
-    (CURRENT_DATE AT TIME ZONE 'UTC')::date,
+    (CURRENT_TIMESTAMP AT TIME ZONE $3)::date - ($2::int - 1),
+    (CURRENT_TIMESTAMP AT TIME ZONE $3)::date,
     INTERVAL '1 day'
   )::date AS d
 )
@@ -120,7 +121,7 @@ SELECT TO_CHAR(days.d, 'MM-DD') AS date,
        COALESCE(b.calls, 0)::bigint AS calls
 FROM days
 LEFT JOIN (
-  SELECT DATE(created_at AT TIME ZONE 'UTC') AS d,
+  SELECT DATE(created_at AT TIME ZONE $3) AS d,
          COALESCE(AVG(duration_ms), 0)::bigint AS avg_ms,
          COUNT(*)::bigint AS calls
   FROM tenant_llm_message_logs
@@ -130,11 +131,11 @@ LEFT JOIN (
 ORDER BY days.d
 `
 	var rows []DashboardLLMDailyPointRow
-	err = r.DB.Raw(q, tenantUUID, days).Scan(&rows).Error
+	err = r.DB.Raw(q, tenantUUID, days, apptime.Name()).Scan(&rows).Error
 	return rows, err
 }
 
-// DashboardLLMWeeklyTrendGlobal 全库最近 n 个 UTC 自然日 LLM 调用趋势。
+// DashboardLLMWeeklyTrendGlobal 全库最近 n 个应用配置时区自然日 LLM 调用趋势。
 func (r *LLMMessageLogRepo) DashboardLLMWeeklyTrendGlobal(days int) ([]DashboardLLMDailyPointRow, error) {
 	if days < 1 {
 		days = 7
@@ -142,8 +143,8 @@ func (r *LLMMessageLogRepo) DashboardLLMWeeklyTrendGlobal(days int) ([]Dashboard
 	q := `
 WITH days AS (
   SELECT generate_series(
-    (CURRENT_DATE AT TIME ZONE 'UTC')::date - ($1::int - 1),
-    (CURRENT_DATE AT TIME ZONE 'UTC')::date,
+    (CURRENT_TIMESTAMP AT TIME ZONE $2)::date - ($1::int - 1),
+    (CURRENT_TIMESTAMP AT TIME ZONE $2)::date,
     INTERVAL '1 day'
   )::date AS d
 )
@@ -152,7 +153,7 @@ SELECT TO_CHAR(days.d, 'MM-DD') AS date,
        COALESCE(b.calls, 0)::bigint AS calls
 FROM days
 LEFT JOIN (
-  SELECT DATE(created_at AT TIME ZONE 'UTC') AS d,
+  SELECT DATE(created_at AT TIME ZONE $2) AS d,
          COALESCE(AVG(duration_ms), 0)::bigint AS avg_ms,
          COUNT(*)::bigint AS calls
   FROM tenant_llm_message_logs
@@ -161,7 +162,7 @@ LEFT JOIN (
 ORDER BY days.d
 `
 	var rows []DashboardLLMDailyPointRow
-	err := r.DB.Raw(q, days).Scan(&rows).Error
+	err := r.DB.Raw(q, days, apptime.Name()).Scan(&rows).Error
 	return rows, err
 }
 

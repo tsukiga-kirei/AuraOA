@@ -1293,7 +1293,7 @@ export default {
     'admin.settings.backupRetention': 'Backup Retention (days)',
     'admin.settings.backupScopeTitle': 'What gets backed up',
     'admin.settings.backupScopeItemDb': 'Whole database (pg_dump -Fc), including app tables and system data in the configured DB',
-    'admin.settings.backupScopeItemFile': 'Files named aura_pg_<dbname>_<UTC-timestamp>.dump; only these prefixed files are pruned',
+    'admin.settings.backupScopeItemFile': 'Files named aura_pg_<dbname>_<configured-time-zone-timestamp>.dump; only these prefixed files are pruned',
     'admin.settings.backupScopeItemDir': 'Output directory from server backup.dir; Docker default /app/backups (override with BACKUP_DIR)',
     'admin.settings.backupScopeItemTool': 'PostgreSQL client tools (pg_dump) must be installed; the official image includes postgresql-client',
     'admin.settings.email': 'Email Notification',

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -12,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	"auraoa/go-service/internal/pkg/oa"
 )
@@ -121,7 +121,7 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		if err == nil && latestLog != nil {
 			storedAnchor = parseOAContextAnchor(latestLog.OAContextAnchor)
 			resp.HasAudit = true
-			resp.LastAuditAt = latestLog.UpdatedAt.Format(time.RFC3339)
+			resp.LastAuditAt = apptime.FormatRFC3339(latestLog.UpdatedAt)
 			resp.AuditResult = buildAuditResultFromLog(latestLog)
 		}
 	}

@@ -14,6 +14,7 @@ import (
 	"auraoa/go-service/internal/cache"
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	"auraoa/go-service/internal/pkg/hash"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
@@ -72,7 +73,7 @@ func (s *TenantService) ListPublicTenants() ([]dto.PublicTenantItem, error) {
 
 // generateTenantCode 自动生成租户编码，格式：T-YYYYMMDD-XXXX。
 func (s *TenantService) generateTenantCode() string {
-	dateStr := time.Now().Format("20060102")
+	dateStr := apptime.Now().Format("20060102")
 	prefix := fmt.Sprintf("T-%s-", dateStr)
 
 	// 查询当天已有的最大编号

@@ -16,7 +16,7 @@ import (
 
 // Up 执行所有尚未应用的 Up 迁移脚本，迁移版本记录在 schema_migrations 表中。
 // migrationsDir 必须是包含 *.up.sql 文件的目录的绝对路径或相对路径。
-func Up(migrationsDir string, host string, port int, user, password, dbname, sslmode string) error {
+func Up(migrationsDir string, host string, port int, user, password, dbname, sslmode, timeZone string) error {
 	if migrationsDir == "" {
 		return fmt.Errorf("迁移目录不能为空")
 	}
@@ -28,13 +28,14 @@ func Up(migrationsDir string, host string, port int, user, password, dbname, ssl
 	}
 
 	// 构造 DSN，对用户名、密码等特殊字符进行 URL 编码，避免解析错误
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s&TimeZone=%s",
 		url.QueryEscape(user),
 		url.QueryEscape(password),
 		host,
 		port,
 		url.PathEscape(dbname),
 		url.QueryEscape(sslmode),
+		url.QueryEscape(timeZone),
 	)
 
 	// 使用 pgx 驱动建立数据库连接（仅用于迁移，与主业务连接池相互独立）

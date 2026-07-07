@@ -21,6 +21,7 @@ import (
 	"auraoa/go-service/internal/cache"
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/crypto"
 	"auraoa/go-service/internal/pkg/errcode"
 	jwtpkg "auraoa/go-service/internal/pkg/jwt"
@@ -905,7 +906,7 @@ func (s *ArchiveReviewService) Execute(c *gin.Context, req *dto.ArchiveReviewExe
 		ID:        logID.String(),
 		TraceID:   fmt.Sprintf("AR-%s", logID.String()[:8]),
 		ProcessID: req.ProcessID,
-		CreatedAt: logEntry.CreatedAt.Format(time.RFC3339),
+		CreatedAt: apptime.FormatRFC3339(logEntry.CreatedAt),
 	}, nil
 }
 
@@ -1066,7 +1067,7 @@ func (s *ArchiveReviewService) GetArchiveJobStatus(c *gin.Context, id uuid.UUID)
 		return nil, newServiceError(errcode.ErrDatabase, "查询归档复盘任务失败")
 	}
 	out := buildArchiveResultFromLog(logEntry)
-	out["updated_at"] = logEntry.UpdatedAt.Format(time.RFC3339)
+	out["updated_at"] = apptime.FormatRFC3339(logEntry.UpdatedAt)
 	out["progress_steps"] = archiveProgressSteps(logEntry.Status)
 	return out, nil
 }
@@ -1878,7 +1879,7 @@ func buildArchiveResultFromLog(logEntry *model.ArchiveLog) map[string]interface{
 		"process_type": logEntry.ProcessType,
 		"status":       logEntry.Status,
 		"ai_reasoning": logEntry.AIReasoning,
-		"created_at":   logEntry.CreatedAt.Format(time.RFC3339),
+		"created_at":   apptime.FormatRFC3339(logEntry.CreatedAt),
 		"duration_ms":  logEntry.DurationMs,
 	}
 	if logEntry.ErrorMessage != "" {

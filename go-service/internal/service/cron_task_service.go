@@ -15,6 +15,7 @@ import (
 
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	jwtpkg "auraoa/go-service/internal/pkg/jwt"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
@@ -330,7 +331,7 @@ func (s *CronTaskService) ExecuteNow(c *gin.Context, id uuid.UUID) error {
 		execErr := s.runTaskByType(ctx, &tcopy)
 
 		status := "success"
-		msg := fmt.Sprintf("%s 手动触发执行成功", time.Now().Format("2006-01-02 15:04:05"))
+		msg := fmt.Sprintf("%s 手动触发执行成功", apptime.Now().Format("2006-01-02 15:04:05"))
 		if execErr != nil {
 			if execErr.Error() == "job_aborted" {
 				status = "failed"
@@ -390,7 +391,7 @@ func (s *CronTaskService) TriggerScheduled(ctx context.Context, taskID uuid.UUID
 	execErr := s.runTaskByType(ctx, &task)
 
 	status := "success"
-	msg := fmt.Sprintf("%s 定时触发执行成功", time.Now().Format("2006-01-02 15:04:05"))
+	msg := fmt.Sprintf("%s 定时触发执行成功", apptime.Now().Format("2006-01-02 15:04:05"))
 	if execErr != nil {
 		if execErr.Error() == "job_aborted" {
 			status = "failed"

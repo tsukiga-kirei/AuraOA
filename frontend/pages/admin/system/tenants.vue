@@ -332,16 +332,7 @@ const getQuotaColor = (percent: number) => {
 }
 
 const formatDateTime = (iso: string) => {
-  if (!iso) return '-'
-  try {
-    return new Intl.DateTimeFormat('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit',
-    }).format(new Date(iso))
-  } catch {
-    return iso
-  }
+  return formatDateTimeInAppZone(iso, 'zh-CN')
 }
 
 // ===== 删除租户 =====

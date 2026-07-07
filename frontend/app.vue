@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
 import 'dayjs/locale/zh-cn'
+dayjs.extend(utc)
+dayjs.extend(timezone)
 dayjs.locale('zh-cn')
+dayjs.tz.setDefault(String(useRuntimeConfig().public.timeZone || 'Asia/Shanghai'))
 
 // 启动 Token 主动过期检测守卫
 const { startGuard, stopGuard } = useTokenGuard()
