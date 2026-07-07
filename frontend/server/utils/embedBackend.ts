@@ -1,19 +1,19 @@
-/** 嵌入页服务端代理：携带令牌访问 Go /api/embed，令牌不暴露给浏览器 */
-export function getEmbedBackend() {
+import type { H3Event } from 'h3'
+
+/** 嵌入页服务端代理：从 httpOnly Cookie 读取租户令牌访问 Go /api/embed */
+export function getEmbedBackend(event: H3Event) {
   const config = useRuntimeConfig()
-  const token = String(config.embedAccessToken || '')
-  const tenantCode = String(config.embedTenantCode || '')
-  if (!token || !tenantCode) {
+  const token = String(getCookie(event, 'aura_embed_token') || '').trim()
+  if (!token) {
     throw createError({
-      statusCode: 503,
-      statusMessage: '嵌入审核未配置（请设置 EMBED_ACCESS_TOKEN 与 EMBED_TENANT_CODE）',
+      statusCode: 401,
+      statusMessage: '缺少嵌入访问令牌，请确认 OA 父页面已配置 embed_token',
     })
   }
   return {
     apiBase: String(config.public.apiBase || 'http://localhost:8080').replace(/\/$/, ''),
     headers: {
       'X-Embed-Token': token,
-      'X-Tenant-Code': tenantCode,
     } as Record<string, string>,
   }
 }
@@ -31,8 +31,8 @@ function rethrowEmbedProxyError(e: unknown, fallbackStatus = 502): never {
   throw createError({ statusCode: status, statusMessage: message })
 }
 
-export async function proxyEmbedGet<T>(path: string, query?: Record<string, string | undefined>): Promise<T> {
-  const { apiBase, headers } = getEmbedBackend()
+export async function proxyEmbedGet<T>(event: H3Event, path: string, query?: Record<string, string | undefined>): Promise<T> {
+  const { apiBase, headers } = getEmbedBackend(event)
   let res: { code: number; message: string; data: T }
   try {
     res = await $fetch(`${apiBase}${path}`, { headers, query })
@@ -45,8 +45,8 @@ export async function proxyEmbedGet<T>(path: string, query?: Record<string, stri
   return res.data
 }
 
-export async function proxyEmbedPost<T>(path: string, body: unknown): Promise<T> {
-  const { apiBase, headers } = getEmbedBackend()
+export async function proxyEmbedPost<T>(event: H3Event, path: string, body: unknown): Promise<T> {
+  const { apiBase, headers } = getEmbedBackend(event)
   let res: { code: number; message: string; data: T }
   try {
     res = await $fetch(`${apiBase}${path}`, {

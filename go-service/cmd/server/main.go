@@ -316,8 +316,6 @@ func loadConfig() error {
 	viper.SetDefault("migrations.enabled", true)
 	viper.SetDefault("migrations.path", "")
 	viper.SetDefault("app.timezone", apptime.DefaultTimeZone)
-	viper.SetDefault("embed.tenant_code", "")
-	viper.SetDefault("embed.access_token", "")
 
 	// 缓存配置默认值
 	viper.SetDefault("cache.enabled", true)

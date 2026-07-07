@@ -169,3 +169,19 @@ func (h *TenantHandler) ListTenantMembers(c *gin.Context) {
 	}
 	response.Success(c, members)
 }
+
+// RotateEmbedToken 为租户生成新的嵌入访问密钥。
+// POST /api/admin/tenants/:id/embed-token
+func (h *TenantHandler) RotateEmbedToken(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	resp, err := h.tenantService.RotateEmbedToken(id)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, resp)
+}

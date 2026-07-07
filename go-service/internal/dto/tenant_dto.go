@@ -35,6 +35,7 @@ type UpdateTenantRequest struct {
 	Name                string   `json:"name"`
 	Status              string   `json:"status"`
 	Description         string   `json:"description"`
+	EmbedEnabled        *bool    `json:"embed_enabled"`
 	OADBConnectionID    *string  `json:"oa_db_connection_id"`
 	TokenQuota          int      `json:"token_quota"`
 	MaxConcurrency      int      `json:"max_concurrency"`
@@ -58,6 +59,10 @@ type TenantResponse struct {
 	Code                string  `json:"code"`
 	Description         string  `json:"description"`
 	Status              string  `json:"status"`
+	EmbedEnabled        bool    `json:"embed_enabled"`
+	EmbedTokenConfigured bool   `json:"embed_token_configured"`
+	EmbedTokenHint      string  `json:"embed_token_hint"`
+	EmbedTokenRotatedAt string  `json:"embed_token_rotated_at"`
 	OADBConnectionID    string  `json:"oa_db_connection_id"`
 	TokenQuota          int     `json:"token_quota"`
 	TokenUsed           int     `json:"token_used"`
@@ -110,4 +115,12 @@ type TenantMemberItem struct {
 	Position       string   `json:"position"`
 	Status         string   `json:"status"`
 	CreatedAt      string   `json:"created_at"`
+}
+
+// RotateEmbedTokenResponse 生成或重置租户嵌入密钥后的返回。
+// access_token 仅在本次接口调用时返回一次，后续不会再次展示明文。
+type RotateEmbedTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenHint   string `json:"token_hint"`
+	RotatedAt   string `json:"rotated_at"`
 }

@@ -12,8 +12,8 @@
 |------|------|
 | **嵌入地址** | `https://<aura-frontend>/embed/audit`（固定，不带参数） |
 | **流程编号** | OA 脚本 `WfForm.getBaseInfo().requestid` → `postMessage` |
-| **用户登录** | 不需要；Nuxt 服务端用嵌入令牌代理 Go API |
-| **AuraOA** | 租户规则 → **OA 嵌入审核** 开关 + `EMBED_*` 环境变量 |
+| **用户登录** | 不需要；OA 父页传 `embed_token`，Nuxt 写入 httpOnly Cookie 后代理 Go API |
+| **AuraOA** | 租户管理 → **OA 嵌入** 生成密钥；规则配置 → **OA 嵌入审核/总结** 开关 |
 
 ---
 
@@ -21,38 +21,26 @@
 
 1. 租户已绑定 OA 只读库  
 2. 目标流程已配置 AI 审核规则并开启 **OA 嵌入审核**  
-3. 迁移 `000041_embed_audit_context` 已执行  
-4. `config.yaml` 与前端 `EMBED_ACCESS_TOKEN` / `EMBED_TENANT_CODE` 已配置  
+3. 迁移 `000039_tenant_embed_config` 已执行  
+4. 在 **系统管理 → 租户管理 → OA 嵌入** 中已生成租户嵌入密钥  
 
 ---
 
 ## 3. AuraOA 配置
 
-### 3.1 嵌入令牌
+### 3.1 租户嵌入密钥
 
-**推荐：环境变量**（见项目根 `.env.example` 与 `frontend/.env.example`）
+路径：**系统管理 → 租户管理 → 选择租户 → OA 嵌入**
 
-根目录 `.env`（Go / Docker 用）：
+1. 开启 **启用 OA 嵌入**
+2. 点击 **生成密钥** 或 **重置密钥**
+3. 立即复制弹窗中的明文密钥（仅显示一次）
+4. 将密钥配置到 OA 脚本 `aura-embed-notify.js` 的 `EMBED_ACCESS_TOKEN`
 
-```bash
-EMBED_ACCESS_TOKEN=随机长字符串
-EMBED_TENANT_CODE=your-tenant-code   # 租户管理 → 租户编码 tenants.code
-```
+页面同时展示：
 
-本地 Nuxt dev 另建 **`frontend/.env`**（内容与上面 EMBED 两行一致）：
-
-```bash
-cp frontend/.env.example frontend/.env
-# 编辑 EMBED_TENANT_CODE 为实际租户编码
-```
-
-也可用 **Go** `config.yaml`（环境变量优先级更高）：
-
-```yaml
-embed:
-  tenant_code: "your-tenant-code"
-  access_token: "随机长字符串"
-```
+- 租户名称 / `tenant_code` / `tenant_id`
+- 嵌入地址：`/embed/audit`、`/embed/summary`
 
 ### 3.2 流程开关
 
@@ -75,7 +63,7 @@ embed:
 | 方向 | type | 说明 |
 |------|------|------|
 | iframe → OA | `aura-oa-request-requestid` | 嵌入页加载后主动要 requestid |
-| OA → iframe | `aura-oa-requestid` | `{ requestid: '598488' }` |
+| OA → iframe | `aura-oa-requestid` | `{ requestid: '598488', embed_token: 'aura_emb_...' }` |
 
 OA 侧用 `WfForm.getBaseInfo().requestid`，**不必**从 URL hash 解析。
 
@@ -107,6 +95,7 @@ iframe 的 `id` 必须包含在脚本里 `IFRAME_IDS` 中（默认包含 `aura-e
 
 ```javascript
 var AURA_EMBED_ORIGIN = 'https://aura.example.com'; // 改成实际 AuraOA 前端地址
+var EMBED_ACCESS_TOKEN = 'aura_emb_...'; // 租户管理 → OA 嵌入 → 生成密钥
 var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 ```
 
@@ -119,8 +108,10 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
     → postMessage({ type: 'aura-oa-request-requestid' })  →  OA 父页
 OA aura-embed-notify.js
     → WfForm.getBaseInfo().requestid
-    → postMessage({ type: 'aura-oa-requestid', requestid })  →  iframe
-嵌入页收到 requestid → 调 /api/embed/context → 展示/自动审核
+    → postMessage({ type: 'aura-oa-requestid', requestid, embed_token })  →  iframe
+嵌入页收到 requestid + embed_token
+    → POST /api/embed/session
+    → 调 /api/embed/context → 展示/自动审核
 ```
 
 iframe `load`、WfForm 就绪轮询、`hashchange` 时 OA 脚本会**主动再推一次**，避免切换流程后编号不更新。
@@ -139,9 +130,9 @@ AuraOA 前端需允许 OA 域名嵌入（CSP `frame-ancestors` 等，勿全局 `
 
 ---
 
-## 8. 已知限制
+## 8. 多租户说明
 
-**单租户部署**：环境变量 `EMBED_TENANT_CODE` 为部署级固定值（如 `T-20260330-0001`），一套 AuraOA 实例 + 一组 `EMBED_*` 当前仅服务一个租户。多租户共用同一嵌入地址需后续扩展，详见 [已知问题 #003](../known-issues/003-embed-single-tenant-config.md)。
+同一套 AuraOA 实例可为多个租户分别生成嵌入密钥。运行时由 `embed_token` 识别租户，再由 `process_id → process_type` 命中该租户下的流程规则配置。
 
 ---
 
@@ -150,8 +141,8 @@ AuraOA 前端需允许 OA 域名嵌入（CSP `frame-ancestors` 等，勿全局 `
 | 现象 | 处理 |
 |------|------|
 | 一直「正在读取 OA 流程编号」 | 检查自定义页面 js 是否启用、`AURA_EMBED_ORIGIN` 是否与 iframe src 域名一致、iframe `id` 是否匹配 |
-| 控制台无 `[aura-embed]` 日志但仍失败 | 在 OA 脚本里临时 `console.log(getRequestId())` 确认 WfForm 是否已有 requestid |
-| 503 嵌入未配置 | 核对 `EMBED_*` 与 `config.yaml` `embed.*` |
+| 提示缺少嵌入访问令牌 | 检查 OA 脚本是否配置 `EMBED_ACCESS_TOKEN`，以及 postMessage 是否携带 `embed_token` |
+| 401 嵌入访问令牌无效 | 在租户管理中重置密钥，并同步更新 OA 脚本 |
 | Nuxt DevTools 跨域 SecurityError | 开发环境正常现象，生产可关 DevTools |
 
 ---

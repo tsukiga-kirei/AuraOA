@@ -108,6 +108,7 @@ func SetupRouter(
 		admin.DELETE("/tenants/:id", tenantHandler.DeleteTenant)
 		admin.GET("/tenants/:id/stats", tenantHandler.GetTenantStats)
 		admin.GET("/tenants/:id/members", tenantHandler.ListTenantMembers)
+		admin.POST("/tenants/:id/embed-token", tenantHandler.RotateEmbedToken)
 
 		// 系统设置：枚举选项、OA 数据库连接、AI 模型配置、系统 KV 配置
 		system := admin.Group("/system")

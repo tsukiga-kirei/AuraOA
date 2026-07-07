@@ -16,12 +16,13 @@ import { message } from 'ant-design-vue'
 import { marked } from 'marked'
 import type { AuditResult } from '~/types/audit'
 import type { EmbedContextResponse, EmbedProcessSummary } from '~/types/embed'
-import { waitForParentRequestId } from '~/composables/useEmbedParent'
+import { waitForParentEmbedContext } from '~/composables/useEmbedParent'
 
 definePageMeta({ layout: 'embed' })
 
 const { t } = useI18n()
 const { getContext, executeEmbed, waitAuditJob } = useEmbedApi()
+const { setupEmbedSession } = useEmbedSession()
 
 type AuditProgressStep = NonNullable<AuditResult['progress_steps']>[number]
 
@@ -302,8 +303,21 @@ const handleReAudit = () => runAudit('embed_manual')
 
 onMounted(async () => {
   waitingParent.value = true
-  processId.value = await waitForParentRequestId()
+  const parentCtx = await waitForParentEmbedContext()
+  processId.value = parentCtx.requestId
   waitingParent.value = false
+  if (!parentCtx.embedToken) {
+    pageError.value = t('embed.missingToken')
+    pageLoading.value = false
+    return
+  }
+  try {
+    await setupEmbedSession(parentCtx.embedToken)
+  } catch (e: any) {
+    pageError.value = e?.message || t('embed.missingToken')
+    pageLoading.value = false
+    return
+  }
   await bootstrap()
 })
 

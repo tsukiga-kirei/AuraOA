@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -417,6 +420,9 @@ func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest)
 	if req.Description != "" {
 		fields["description"] = req.Description
 	}
+	if req.EmbedEnabled != nil {
+		fields["embed_enabled"] = *req.EmbedEnabled
+	}
 	if req.OADBConnectionID != nil {
 		if *req.OADBConnectionID == "" {
 			fields["oa_db_connection_id"] = nil
@@ -533,6 +539,50 @@ func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest)
 
 	resp := toTenantResponse(tenant)
 	return &resp, nil
+}
+
+// RotateEmbedToken 为租户生成新的嵌入访问密钥，仅返回一次明文。
+func (s *TenantService) RotateEmbedToken(id uuid.UUID) (*dto.RotateEmbedTokenResponse, error) {
+	tenant, err := s.tenantRepo.FindByID(id)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrResourceNotFound, "租户不存在")
+	}
+
+	token, tokenHash, tokenHint, err := generateEmbedToken()
+	if err != nil {
+		return nil, newServiceError(errcode.ErrInternalServer, "生成嵌入密钥失败")
+	}
+
+	now := time.Now()
+	fields := map[string]interface{}{
+		"embed_enabled":          true,
+		"embed_token_hash":       tokenHash,
+		"embed_token_hint":       tokenHint,
+		"embed_token_rotated_at": now,
+	}
+	if err := s.tenantRepo.UpdateFields(id, fields); err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "保存嵌入密钥失败")
+	}
+
+	if s.invalidator != nil {
+		if err := s.invalidator.InvalidateTenantCache(context.Background(), id); err != nil {
+			pkglogger.Global().Warn("嵌入密钥轮换后清除缓存失败",
+				zap.String("tenantID", id.String()),
+				zap.Error(err),
+			)
+		}
+	}
+
+	pkglogger.Global().Info("租户嵌入密钥已轮换",
+		zap.String("tenantID", id.String()),
+		zap.String("tenantCode", tenant.Code),
+	)
+
+	return &dto.RotateEmbedTokenResponse{
+		AccessToken: token,
+		TokenHint:   tokenHint,
+		RotatedAt:   now.Format("2006-01-02T15:04:05Z07:00"),
+	}, nil
 }
 
 // DeleteTenant 彻底删除租户及其所有关联数据，需要操作者密码确认。
@@ -737,6 +787,10 @@ func toTenantResponse(t *model.Tenant) dto.TenantResponse {
 	if t.AdminUserID != nil {
 		adminUserID = t.AdminUserID.String()
 	}
+	embedTokenRotatedAt := ""
+	if t.EmbedTokenRotatedAt != nil {
+		embedTokenRotatedAt = t.EmbedTokenRotatedAt.Format("2006-01-02T15:04:05Z07:00")
+	}
 
 	temp := t.Temperature
 
@@ -746,6 +800,10 @@ func toTenantResponse(t *model.Tenant) dto.TenantResponse {
 		Code:                t.Code,
 		Description:         t.Description,
 		Status:              t.Status,
+		EmbedEnabled:        t.EmbedEnabled,
+		EmbedTokenConfigured: t.EmbedTokenHash != "",
+		EmbedTokenHint:      t.EmbedTokenHint,
+		EmbedTokenRotatedAt: embedTokenRotatedAt,
 		OADBConnectionID:    oaConnID,
 		TokenQuota:          t.TokenQuota,
 		TokenUsed:           t.TokenUsed,
@@ -765,4 +823,20 @@ func toTenantResponse(t *model.Tenant) dto.TenantResponse {
 		CreatedAt:           t.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:           t.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+func generateEmbedToken() (string, string, string, error) {
+	raw := make([]byte, 24)
+	if _, err := rand.Read(raw); err != nil {
+		return "", "", "", err
+	}
+	token := "aura_emb_" + hex.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(token))
+	tokenHash := hex.EncodeToString(sum[:])
+	suffix := token
+	if len(suffix) > 6 {
+		suffix = suffix[len(suffix)-6:]
+	}
+	tokenHint := "******" + suffix
+	return token, tokenHash, tokenHint, nil
 }

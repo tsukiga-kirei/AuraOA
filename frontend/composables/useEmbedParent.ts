@@ -3,13 +3,18 @@
  *
  * 消息协议（与 docs/oa-configurations/assets/aura-embed-notify.js 一致）：
  * - iframe → parent: { type: 'aura-oa-request-requestid' }
- * - parent → iframe: { type: 'aura-oa-requestid', requestid: '598488' }
+ * - parent → iframe: { type: 'aura-oa-requestid', requestid: '598488', embed_token: '...' }
  * - parent → iframe: { type: 'aura-oa-url', url: '...' }（可选，从 URL 解析）
  */
 
 export const EMBED_MSG_REQUEST_REQUESTID = 'aura-oa-request-requestid'
 export const EMBED_MSG_REQUESTID = 'aura-oa-requestid'
 export const EMBED_MSG_URL = 'aura-oa-url'
+
+export interface EmbedParentContext {
+  requestId: string
+  embedToken: string
+}
 
 export function parseRequestIdFromUrl(url: string): string {
   if (!url) return ''
@@ -47,31 +52,48 @@ export function requestRequestIdFromParent(): void {
 }
 
 /**
- * 等待 requestid：同源读 parent → 主动 postMessage 请求 → 监听父页推送
+ * 等待 OA 父页上下文：同源读 parent → 主动 postMessage 请求 → 监听父页推送
  */
-export function waitForParentRequestId(options?: { intervalMs?: number; maxAttempts?: number }): Promise<string> {
-  if (typeof window === 'undefined') return Promise.resolve('')
+export function waitForParentEmbedContext(options?: { intervalMs?: number; maxAttempts?: number }): Promise<EmbedParentContext> {
+  if (typeof window === 'undefined') {
+    return Promise.resolve({ requestId: '', embedToken: '' })
+  }
 
   const intervalMs = options?.intervalMs ?? 300
   const maxAttempts = options?.maxAttempts ?? 200
 
   const immediate = readRequestIdFromParent()
-  if (immediate) return Promise.resolve(immediate)
+  if (immediate) {
+    return Promise.resolve({
+      requestId: immediate,
+      embedToken: '',
+    })
+  }
 
   return new Promise((resolve) => {
     let attempts = 0
+    let latestToken = ''
     requestRequestIdFromParent()
 
     const onMessage = (event: MessageEvent) => {
       const data = event.data
       if (!data || typeof data !== 'object') return
       if (data.type === EMBED_MSG_REQUESTID && data.requestid) {
-        finish(String(data.requestid))
+        latestToken = String(data.embed_token || data.embedToken || '').trim()
+        finish({
+          requestId: String(data.requestid),
+          embedToken: latestToken,
+        })
         return
       }
       if (data.type === EMBED_MSG_URL && data.url) {
         const parsed = parseRequestIdFromUrl(String(data.url))
-        if (parsed) finish(parsed)
+        if (parsed) {
+          finish({
+            requestId: parsed,
+            embedToken: latestToken,
+          })
+        }
       }
     }
 
@@ -79,7 +101,10 @@ export function waitForParentRequestId(options?: { intervalMs?: number; maxAttem
       attempts++
       const found = readRequestIdFromParent()
       if (found) {
-        finish(found)
+        finish({
+          requestId: found,
+          embedToken: latestToken,
+        })
         return
       }
       // 每隔约 3 秒再向父页要一次（WfForm 可能尚未就绪）
@@ -87,16 +112,23 @@ export function waitForParentRequestId(options?: { intervalMs?: number; maxAttem
         requestRequestIdFromParent()
       }
       if (attempts >= maxAttempts) {
-        finish('')
+        finish({
+          requestId: '',
+          embedToken: latestToken,
+        })
       }
     }, intervalMs)
 
-    function finish(id: string) {
+    function finish(ctx: EmbedParentContext) {
       clearInterval(timer)
       window.removeEventListener('message', onMessage)
-      resolve(id)
+      resolve(ctx)
     }
 
     window.addEventListener('message', onMessage)
   })
+}
+
+export function waitForParentRequestId(options?: { intervalMs?: number; maxAttempts?: number }): Promise<string> {
+  return waitForParentEmbedContext(options).then(ctx => ctx.requestId)
 }

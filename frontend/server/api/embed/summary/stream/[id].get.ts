@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: '任务 ID 无效' })
   }
 
-  const { apiBase, headers } = getEmbedBackend()
+  const { apiBase, headers } = getEmbedBackend(event)
   const upstream = await fetch(`${apiBase}/api/embed/summary/stream/${encodeURIComponent(id)}`, {
     headers,
   })
