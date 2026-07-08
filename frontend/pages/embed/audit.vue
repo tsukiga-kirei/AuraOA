@@ -508,7 +508,6 @@ onBeforeUnmount(() => {
                 <div class="result-banner-meta">
                   {{ t('dashboard.overallScore') }} {{ currentResult.overall_score }}{{ t('dashboard.points') }}
                   · {{ t('dashboard.confidence') }} {{ currentResult.confidence }}%
-                  · {{ t('dashboard.duration') }} {{ getDurationSec(currentResult.duration_ms) }} 秒
                 </div>
               </div>
               <div class="result-score" :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }">
