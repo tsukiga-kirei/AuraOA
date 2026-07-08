@@ -538,45 +538,38 @@ input::-ms-clear {
   border-color: var(--color-border) !important;
 }
 
-/* Page transitions */
-.page-enter-active,
+/* Page transitions — 菜单/路由切换：先淡出再淡入，无位移 */
+.page-enter-active {
+  transition: opacity 0.14s ease-out;
+}
+
 .page-leave-active {
-  transition: opacity 200ms ease, transform 200ms ease;
+  transition: opacity 0.1s ease-in;
 }
 
-/* setup/login are layout:false pages. Keep their leave transition out of
-   normal flow when entering the authenticated app layout. */
-.page-leave-active {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  pointer-events: none;
-}
-
-.page-enter-from {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
+.page-enter-from,
 .page-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
+}
+
+/* 路由切换时禁用页面根节点的 fade-in，避免双重动画叠影 */
+.page-enter-active .fade-in,
+.page-leave-active .fade-in {
+  animation: none;
 }
 
 /* Utility classes */
 .fade-in {
-  animation: fadeIn 0.3s ease-out;
+  animation: fadeIn 0.15s ease-out;
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -834,6 +827,31 @@ input::-ms-clear {
   font-size: 12px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
   min-height: auto !important;
+}
+
+/* 侧栏折叠态：更大更易读的菜单提示 */
+.sidebar-nav-tooltip .ant-tooltip-inner {
+  padding: 10px 16px !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+  border-radius: 10px !important;
+  min-height: 36px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+.sidebar-nav-tooltip.ant-zoom-big-fast-enter,
+.sidebar-nav-tooltip.ant-zoom-big-fast-appear,
+.sidebar-nav-tooltip.ant-zoom-big-fast-enter-active,
+.sidebar-nav-tooltip.ant-zoom-big-fast-appear-active,
+.sidebar-nav-tooltip.ant-zoom-big-fast-leave,
+.sidebar-nav-tooltip.ant-zoom-big-fast-leave-active,
+.sidebar-nav-tooltip[class*='ant-zoom'],
+.sidebar-nav-tooltip[class*='ant-slide'] {
+  animation: none !important;
+  transform: none !important;
+  opacity: 1 !important;
 }
 
 /* Ant Design Button focus */
