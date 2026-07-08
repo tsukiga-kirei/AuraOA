@@ -28,6 +28,8 @@ export default {
     'sidebar.personalSettings': 'Personal Settings',
     'sidebar.logout': 'Logout',
     'sidebar.closeMenu': 'Close Menu',
+    'sidebar.expandMenu': 'Expand sidebar',
+    'sidebar.collapseMenu': 'Collapse sidebar',
     'sidebar.defaultUser': 'User',
 
     //=====标题=====
