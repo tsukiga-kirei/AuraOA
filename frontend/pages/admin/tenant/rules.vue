@@ -800,6 +800,7 @@ const selectedArchiveConfig = computed(() =>
 const summaryConfigs = ref<ProcessSummaryConfig[]>([])
 const loadingSummary = ref(false)
 const selectedSummaryId = ref('')
+const summaryActiveTab = ref('info')
 const showAddSummaryProcess = ref(false)
 const newSummaryProcessForm = ref({ process_type: '', process_type_label: '', main_table_name: '' })
 const summaryTestingConnection = ref(false)
@@ -808,6 +809,21 @@ const summaryInfoTestingConnection = ref(false)
 const summaryInfoTestConnectionResult = ref<{ success: boolean; message: string } | null>(null)
 const syncingSummaryFields = ref(false)
 const savingSummary = ref(false)
+const showSummaryFieldPicker = ref(false)
+const editingSummaryBlockId = ref<string>('')
+const summaryFieldSearchQuery = ref('')
+const summarySelectedFieldSearchQuery = ref('')
+const summaryLeftSelectedKeys = ref<string[]>([])
+const summaryRightSelectedKeys = ref<string[]>([])
+
+const fixedSummarySystemPrompt = `你是企业 OA 审批流程的总结助手。你的任务是基于给定流程字段、明细、附件识别内容和审批流信息，生成给审批人快速阅读的中文总结。
+
+必须遵守：
+1. 只根据输入内容总结，不要编造不存在的事实。
+2. 涉及金额、日期、人员、供应商、项目、附件结论等关键信息时尽量保留原值。
+3. 若字段为空或附件解析失败，需要明确写“未提供”或“附件解析失败”，不要猜测。
+4. 输出必须是 JSON 对象，不要输出 Markdown 代码块、不要添加 JSON 外的解释。
+5. JSON 格式固定为：{"content":"一段可直接展示的总结","points":["要点1","要点2"]}。`
 
 const selectedSummaryConfig = computed(() =>
   summaryConfigs.value.find(c => c.id === selectedSummaryId.value)
@@ -820,33 +836,148 @@ interface SummaryFieldOption {
   sourceLabel: string
 }
 
-const summaryFieldOptions = computed<SummaryFieldOption[]>(() => {
+interface SummaryPickerField {
+  field_key: string
+  field_name: string
+  field_type: string
+  source: string
+  sourceLabel: string
+  value: string
+}
+
+const summaryAllAvailableFields = computed<SummaryPickerField[]>(() => {
   if (!selectedSummaryConfig.value) return []
-  const options: SummaryFieldOption[] = []
+  const fields: SummaryPickerField[] = []
   for (const f of selectedSummaryConfig.value.main_fields || []) {
-    options.push({
-      label: `${f.field_name}（主表）`,
+    fields.push({
+      ...f,
+      source: 'main',
+      sourceLabel: t('admin.ruleConfig.mainTableFields'),
       value: `main:${f.field_key}`,
-      field_type: f.field_type,
-      sourceLabel: '主表',
     })
   }
   ;(selectedSummaryConfig.value.detail_tables || []).forEach((dt, idx) => {
-    const sourceLabel = dt.table_label || `明细表 ${idx + 1}`
+    const sourceLabel = dt.table_label || `${t('admin.ruleConfig.detailTableLabel')} ${idx + 1}`
     for (const f of dt.fields || []) {
-      options.push({
-        label: `${f.field_name}（${sourceLabel}）`,
-        value: `${dt.table_name}:${f.field_key}`,
-        field_type: f.field_type,
+      fields.push({
+        ...f,
+        source: dt.table_name,
         sourceLabel,
+        value: `${dt.table_name}:${f.field_key}`,
       })
     }
   })
-  return options
+  return fields
+})
+
+const summaryFieldOptions = computed<SummaryFieldOption[]>(() => {
+  return summaryAllAvailableFields.value.map(f => ({
+    label: `${f.field_name}（${f.sourceLabel}）`,
+    value: f.value,
+    field_type: f.field_type,
+    sourceLabel: f.sourceLabel,
+  }))
 })
 
 const getSummaryFieldLabel = (refKey: string) =>
   summaryFieldOptions.value.find(f => f.value === refKey)?.label || refKey
+
+const summaryPageFieldSearchQuery = ref('')
+const summaryPageFieldsFlat = computed(() => {
+  const q = summaryPageFieldSearchQuery.value.toLowerCase().trim()
+  return summaryAllAvailableFields.value.filter(f => {
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q) || f.sourceLabel.toLowerCase().includes(q)
+  })
+})
+const summaryPageFieldsPagination = usePagination(summaryPageFieldsFlat, 8)
+
+const editingSummaryBlock = computed(() =>
+  selectedSummaryConfig.value?.summary_blocks.find(b => b.id === editingSummaryBlockId.value)
+)
+
+const editingSummarySelectedSet = computed(() =>
+  new Set(editingSummaryBlock.value?.selected_fields || [])
+)
+
+const summaryUnselectedFieldsFlat = computed(() => {
+  const q = summaryFieldSearchQuery.value.toLowerCase().trim()
+  return summaryAllAvailableFields.value.filter(f => {
+    if (editingSummarySelectedSet.value.has(f.value)) return false
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q) || f.sourceLabel.toLowerCase().includes(q)
+  })
+})
+const summaryUnselectedPagination = usePagination(summaryUnselectedFieldsFlat, 5)
+
+const summarySelectedFieldsFlat = computed(() => {
+  const q = summarySelectedFieldSearchQuery.value.toLowerCase().trim()
+  return summaryAllAvailableFields.value.filter(f => {
+    if (!editingSummarySelectedSet.value.has(f.value)) return false
+    if (!q) return true
+    return f.field_name.toLowerCase().includes(q) || f.field_key.toLowerCase().includes(q) || f.sourceLabel.toLowerCase().includes(q)
+  })
+})
+const summarySelectedPagination = usePagination(summarySelectedFieldsFlat, 5)
+
+const openSummaryFieldPicker = (block: SummaryBlockConfig) => {
+  editingSummaryBlockId.value = block.id
+  summaryFieldSearchQuery.value = ''
+  summarySelectedFieldSearchQuery.value = ''
+  summaryLeftSelectedKeys.value = []
+  summaryRightSelectedKeys.value = []
+  showSummaryFieldPicker.value = true
+}
+
+const pickSummaryField = (field: { value: string }) => {
+  if (!editingSummaryBlock.value) return
+  if (!editingSummaryBlock.value.selected_fields.includes(field.value)) {
+    editingSummaryBlock.value.selected_fields.push(field.value)
+  }
+}
+
+const unpickSummaryField = (field: { value: string }) => {
+  if (!editingSummaryBlock.value) return
+  editingSummaryBlock.value.selected_fields = editingSummaryBlock.value.selected_fields.filter(v => v !== field.value)
+}
+
+const toggleSummaryLeftSelectAll = () => {
+  if (summaryLeftSelectedKeys.value.length === summaryUnselectedFieldsFlat.value.length && summaryUnselectedFieldsFlat.value.length > 0) {
+    summaryLeftSelectedKeys.value = []
+  } else {
+    summaryLeftSelectedKeys.value = summaryUnselectedFieldsFlat.value.map(f => f.value)
+  }
+}
+
+const toggleSummaryLeftSelect = (fieldId: string) => {
+  const idx = summaryLeftSelectedKeys.value.indexOf(fieldId)
+  if (idx >= 0) summaryLeftSelectedKeys.value.splice(idx, 1)
+  else summaryLeftSelectedKeys.value.push(fieldId)
+}
+
+const summaryBatchPick = () => {
+  summaryUnselectedFieldsFlat.value.filter(f => summaryLeftSelectedKeys.value.includes(f.value)).forEach(pickSummaryField)
+  summaryLeftSelectedKeys.value = []
+}
+
+const toggleSummaryRightSelectAll = () => {
+  if (summaryRightSelectedKeys.value.length === summarySelectedFieldsFlat.value.length && summarySelectedFieldsFlat.value.length > 0) {
+    summaryRightSelectedKeys.value = []
+  } else {
+    summaryRightSelectedKeys.value = summarySelectedFieldsFlat.value.map(f => f.value)
+  }
+}
+
+const toggleSummaryRightSelect = (fieldId: string) => {
+  const idx = summaryRightSelectedKeys.value.indexOf(fieldId)
+  if (idx >= 0) summaryRightSelectedKeys.value.splice(idx, 1)
+  else summaryRightSelectedKeys.value.push(fieldId)
+}
+
+const summaryBatchUnpick = () => {
+  summarySelectedFieldsFlat.value.filter(f => summaryRightSelectedKeys.value.includes(f.value)).forEach(unpickSummaryField)
+  summaryRightSelectedKeys.value = []
+}
 
 const normalizeSummaryConfigForUI = (cfg: ProcessSummaryConfig): ProcessSummaryConfig => ({
   ...cfg,
@@ -2346,170 +2477,270 @@ const handleSave = async () => {
           <p v-if="selectedSummaryConfig.process_type_label" class="config-panel-subtitle">{{ selectedSummaryConfig.process_type_label }}</p>
         </div>
 
-        <div class="section-header">
-          <div>
-            <h4 class="section-title">基础信息</h4>
-            <p class="section-desc">流程、主表、嵌入行为和总结块配置</p>
-          </div>
+        <div class="tab-nav">
+          <button
+            v-for="tab in [
+              { key: 'info', label: t('admin.ruleConfig.infoTab'), icon: InfoCircleOutlined },
+              { key: 'fields', label: '引入字段', icon: AppstoreOutlined },
+              { key: 'ai', label: 'AI 总结', icon: RobotOutlined },
+              { key: 'embed', label: 'OA 嵌入', icon: SafetyCertificateOutlined },
+            ]"
+            :key="tab.key"
+            class="tab-btn"
+            :class="{ 'tab-btn--active': summaryActiveTab === tab.key }"
+            @click="summaryActiveTab = tab.key"
+          >
+            <component :is="tab.icon" />
+            {{ tab.label }}
+          </button>
         </div>
 
-        <a-form layout="vertical" class="info-form">
-          <a-form-item label="流程名称">
-            <a-input v-model:value="selectedSummaryConfig.process_type" placeholder="OA 流程名称" />
-          </a-form-item>
-          <a-form-item label="流程分类">
-            <a-input v-model:value="selectedSummaryConfig.process_type_label" placeholder="流程分类名称" />
-          </a-form-item>
-          <a-form-item label="主表名称">
-            <div style="display: flex; gap: 8px;">
-              <a-input v-model:value="selectedSummaryConfig.main_table_name" placeholder="OA 主表名称" style="flex: 1;" />
-              <a-button :loading="summaryInfoTestingConnection" @click="handleSummaryTestConnectionInInfo">
-                <template #icon><DatabaseOutlined /></template>
-                {{ summaryInfoTestingConnection ? '测试中' : '测试连接' }}
-              </a-button>
+        <div v-if="summaryActiveTab === 'info'" class="tab-content">
+          <div class="section-header">
+            <div>
+              <h4 class="section-title">基础信息</h4>
+              <p class="section-desc">维护流程名称、分类和主表映射，保持与 OA 流程一致</p>
             </div>
-            <div v-if="summaryInfoTestConnectionResult" style="margin-top: 8px;">
-              <a-alert
-                :type="summaryInfoTestConnectionResult.success ? 'success' : 'error'"
-                :message="summaryInfoTestConnectionResult.message"
-                show-icon
-                closable
-                @close="summaryInfoTestConnectionResult = null"
-              />
-            </div>
-          </a-form-item>
-        </a-form>
+          </div>
 
-        <div class="permissions-list" style="margin-top: 12px;">
-          <div class="permission-item">
-            <div class="permission-info">
-              <div class="permission-label">OA 嵌入总结</div>
-              <div class="permission-desc">/embed/summary 使用该开关控制可见性</div>
-            </div>
-            <a-switch
-              v-model:checked="selectedSummaryConfig.embed_enabled"
-              checked-children="启用"
-              un-checked-children="停用"
-            />
-          </div>
-          <div class="permission-item">
-            <div class="permission-info">
-              <div class="permission-label">打开时自动总结</div>
-              <div class="permission-desc">没有历史结果时自动发起总结</div>
-            </div>
-            <a-switch
-              v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_open"
-              checked-children="启用"
-              un-checked-children="停用"
-            />
-          </div>
-          <div class="permission-item">
-            <div class="permission-info">
-              <div class="permission-label">流程变化后自动刷新</div>
-              <div class="permission-desc">字段变化、节点变化，或流程被退回后重新提交时重新总结</div>
-            </div>
-            <a-switch
-              v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_stale"
-              checked-children="启用"
-              un-checked-children="停用"
-            />
-          </div>
+          <a-form layout="vertical" class="info-form">
+            <a-form-item label="流程名称">
+              <a-input v-model:value="selectedSummaryConfig.process_type" placeholder="OA 流程名称" />
+            </a-form-item>
+            <a-form-item label="流程分类">
+              <a-input v-model:value="selectedSummaryConfig.process_type_label" placeholder="流程分类名称" />
+            </a-form-item>
+            <a-form-item label="主表名称">
+              <div style="display: flex; gap: 8px;">
+                <a-input v-model:value="selectedSummaryConfig.main_table_name" placeholder="OA 主表名称" style="flex: 1;" />
+                <a-button :loading="summaryInfoTestingConnection" @click="handleSummaryTestConnectionInInfo">
+                  <template #icon><DatabaseOutlined /></template>
+                  {{ summaryInfoTestingConnection ? '测试中' : '测试连接' }}
+                </a-button>
+              </div>
+              <div class="test-connection-hint" style="margin-top: 4px; font-size: 12px; color: var(--color-text-tertiary);">
+                {{ t('admin.ruleConfig.testConnectionHint') }}
+              </div>
+              <div v-if="summaryInfoTestConnectionResult" style="margin-top: 8px;">
+                <a-alert
+                  :type="summaryInfoTestConnectionResult.success ? 'success' : 'error'"
+                  :message="summaryInfoTestConnectionResult.message"
+                  show-icon
+                  closable
+                  @close="summaryInfoTestConnectionResult = null"
+                />
+              </div>
+            </a-form-item>
+          </a-form>
         </div>
 
-        <div class="section-header" style="margin-top: 28px; display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <h4 class="section-title">总结块</h4>
-            <p class="section-desc">每个块独立选择字段并设置用户提示词</p>
-          </div>
-          <div style="display: flex; gap: 8px;">
+        <div v-if="summaryActiveTab === 'fields'" class="tab-content">
+          <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <h4 class="section-title">引入字段</h4>
+              <p class="section-desc">从 OA 同步主表、明细表和附件字段，供总结块按需引用</p>
+            </div>
             <a-button :loading="syncingSummaryFields" @click="handleSummarySyncFields">
               <template #icon><DatabaseOutlined /></template>
               {{ syncingSummaryFields ? '同步中' : '同步字段' }}
             </a-button>
+          </div>
+
+          <div style="margin-bottom: 12px; max-width: 300px;">
+            <a-input
+              v-model:value="summaryPageFieldSearchQuery"
+              :placeholder="t('admin.ruleConfig.searchFieldPlaceholder')"
+              allow-clear
+            >
+              <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+            </a-input>
+          </div>
+          <div class="data-table-card">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="padding-left: 24px;">字段名称</th>
+                  <th>字段标识</th>
+                  <th>字段类型</th>
+                  <th>归属表</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="field in summaryPageFieldsPagination.paged.value" :key="field.value">
+                  <td style="padding-left: 24px; font-weight: 500;">{{ field.field_name }}</td>
+                  <td class="text-mono" style="font-size: 13px;">{{ field.field_key }}</td>
+                  <td><span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span></td>
+                  <td class="text-secondary" style="font-size: 13px;">{{ field.sourceLabel }}</td>
+                </tr>
+                <tr v-if="summaryPageFieldsPagination.paged.value.length === 0">
+                  <td colspan="4" class="empty-cell">{{ summaryPageFieldSearchQuery ? (t('admin.ruleConfig.noSearchResult') || '未找到匹配字段') : '暂无字段，请先同步字段' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination-wrapper" style="margin-top: 12px; text-align: right;">
+            <a-pagination
+              v-model:current="summaryPageFieldsPagination.current.value"
+              v-model:page-size="summaryPageFieldsPagination.pageSize.value"
+              :total="summaryPageFieldsPagination.total.value"
+              size="small"
+              show-size-changer
+              show-quick-jumper
+              :page-size-options="['8', '20', '50']"
+              @change="summaryPageFieldsPagination.onChange"
+              @showSizeChange="summaryPageFieldsPagination.onChange"
+            />
+          </div>
+        </div>
+
+        <div v-if="summaryActiveTab === 'ai'" class="tab-content">
+          <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <h4 class="section-title">AI 总结</h4>
+              <p class="section-desc">系统提示词只读展示；每个总结块独立配置字段范围和用户提示词</p>
+            </div>
             <a-button type="primary" @click="addSummaryBlock">
               <PlusOutlined /> 新增块
             </a-button>
           </div>
+
+          <div class="ai-prompt-section" style="margin-top: 0;">
+            <div class="ai-prompt-section-header">
+              <div class="ai-prompt-section-tag ai-prompt-section-tag--system">{{ t('admin.ruleConfig.systemPromptTag') }}</div>
+            </div>
+            <p class="ai-prompt-section-desc">流程总结使用后端固定系统提示词，前台仅展示，不允许修改。</p>
+            <a-textarea
+              :value="fixedSummarySystemPrompt"
+              :rows="7"
+              disabled
+            />
+            <div class="system-prompt-readonly-hint">系统提示词由后端固定维护，前台仅允许查看，不参与保存。</div>
+          </div>
+
+          <div class="summary-block-list" style="margin-top: 16px;">
+            <div
+              v-for="(block, idx) in selectedSummaryConfig.summary_blocks"
+              :key="block.id"
+              class="summary-block-card"
+            >
+              <div class="summary-block-head">
+                <div class="summary-block-index">{{ idx + 1 }}</div>
+                <a-input v-model:value="block.title" placeholder="块标题" style="max-width: 280px;" />
+                <a-switch v-model:checked="block.enabled" checked-children="启用" un-checked-children="停用" />
+                <a-popconfirm
+                  v-if="selectedSummaryConfig.summary_blocks.length > 1"
+                  title="确认删除该总结块？"
+                  @confirm="removeSummaryBlock(block.id)"
+                >
+                  <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
+                </a-popconfirm>
+              </div>
+
+              <div class="summary-block-option-row">
+                <div class="summary-block-option-copy">
+                  <div class="summary-block-option-title">流程基础信息</div>
+                  <div class="summary-block-option-desc">控制该块是否传入流程标题、申请人、部门、当前节点、提交时间等基础信息</div>
+                </div>
+                <a-switch v-model:checked="block.include_meta" checked-children="传入" un-checked-children="不传" />
+              </div>
+
+              <div class="field-mode-switch" style="margin-top: 12px;">
+                <div
+                  class="field-mode-option"
+                  :class="{ 'field-mode-option--active': block.field_mode === 'all' }"
+                  @click="block.field_mode = 'all'"
+                >
+                  <div class="field-mode-radio" />
+                  <div>
+                    <div class="field-mode-label">全部字段</div>
+                    <div class="field-mode-desc">主表、明细和附件内容全部进入该块</div>
+                  </div>
+                </div>
+                <div
+                  class="field-mode-option"
+                  :class="{ 'field-mode-option--active': block.field_mode === 'selected' }"
+                  @click="block.field_mode = 'selected'"
+                >
+                  <div class="field-mode-radio" />
+                  <div>
+                    <div class="field-mode-label">指定字段</div>
+                    <div class="field-mode-desc">仅使用弹窗中勾选的字段；附件字段被选中时带入识别文本</div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="block.field_mode === 'selected'" class="summary-field-picker">
+                <div class="field-picker-toolbar" style="margin-bottom: 10px;">
+                  <span class="field-count">已选择 {{ block.selected_fields.length }} / {{ summaryAllAvailableFields.length }} 个字段</span>
+                  <a-button type="primary" @click="openSummaryFieldPicker(block)">
+                    <AppstoreOutlined /> 选择字段
+                  </a-button>
+                </div>
+                <div v-if="block.selected_fields.length" class="summary-selected-fields">
+                  <span v-for="refKey in block.selected_fields.slice(0, 8)" :key="refKey" class="selected-field-tag">
+                    {{ getSummaryFieldLabel(refKey) }}
+                  </span>
+                  <span v-if="block.selected_fields.length > 8" class="field-count">+{{ block.selected_fields.length - 8 }}</span>
+                </div>
+                <div v-else class="field-empty-hint" style="padding: 16px;">
+                  尚未选择字段
+                </div>
+              </div>
+
+              <a-form layout="vertical" style="margin-top: 12px;">
+                <a-form-item label="用户提示词">
+                  <a-textarea
+                    v-model:value="block.user_prompt"
+                    :rows="4"
+                    placeholder="输入该块的总结需求、判断重点或输出口径"
+                  />
+                </a-form-item>
+              </a-form>
+            </div>
+          </div>
         </div>
 
-        <div class="summary-block-list">
-          <div
-            v-for="(block, idx) in selectedSummaryConfig.summary_blocks"
-            :key="block.id"
-            class="summary-block-card"
-          >
-            <div class="summary-block-head">
-              <div class="summary-block-index">{{ idx + 1 }}</div>
-              <a-input v-model:value="block.title" placeholder="块标题" style="max-width: 280px;" />
-              <a-switch v-model:checked="block.enabled" checked-children="启用" un-checked-children="停用" />
-              <a-popconfirm
-                v-if="selectedSummaryConfig.summary_blocks.length > 1"
-                title="确认删除该总结块？"
-                @confirm="removeSummaryBlock(block.id)"
-              >
-                <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
-              </a-popconfirm>
+        <div v-if="summaryActiveTab === 'embed'" class="tab-content">
+          <div class="section-header">
+            <div>
+              <h4 class="section-title">OA 嵌入总结</h4>
+              <p class="section-desc">控制 /embed/summary 的可见性和自动总结触发策略</p>
             </div>
-
-            <div class="summary-block-option-row">
-              <div class="summary-block-option-copy">
-                <div class="summary-block-option-title">流程基础信息</div>
-                <div class="summary-block-option-desc">控制该块是否传入流程标题、申请人、部门、当前节点、提交时间等基础信息</div>
+          </div>
+          <div class="permissions-list">
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">OA 嵌入总结</div>
+                <div class="permission-desc">/embed/summary 使用该开关控制可见性</div>
               </div>
-              <a-switch v-model:checked="block.include_meta" checked-children="传入" un-checked-children="不传" />
-            </div>
-
-            <div class="field-mode-switch" style="margin-top: 12px;">
-              <div
-                class="field-mode-option"
-                :class="{ 'field-mode-option--active': block.field_mode === 'all' }"
-                @click="block.field_mode = 'all'"
-              >
-                <div class="field-mode-radio" />
-                <div>
-                  <div class="field-mode-label">全部字段</div>
-                  <div class="field-mode-desc">主表、明细和附件内容全部进入该块</div>
-                </div>
-              </div>
-              <div
-                class="field-mode-option"
-                :class="{ 'field-mode-option--active': block.field_mode === 'selected' }"
-                @click="block.field_mode = 'selected'"
-              >
-                <div class="field-mode-radio" />
-                <div>
-                  <div class="field-mode-label">指定字段</div>
-                  <div class="field-mode-desc">仅使用勾选字段；附件字段被选中时带入识别文本</div>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="block.field_mode === 'selected'" class="summary-field-picker">
-              <a-select
-                v-model:value="block.selected_fields"
-                mode="multiple"
-                :options="summaryFieldOptions"
-                option-filter-prop="label"
-                placeholder="选择字段"
-                style="width: 100%;"
+              <a-switch
+                v-model:checked="selectedSummaryConfig.embed_enabled"
+                checked-children="启用"
+                un-checked-children="停用"
               />
-              <div v-if="block.selected_fields.length" class="summary-selected-fields">
-                <span v-for="refKey in block.selected_fields.slice(0, 8)" :key="refKey" class="selected-field-tag">
-                  {{ getSummaryFieldLabel(refKey) }}
-                </span>
-                <span v-if="block.selected_fields.length > 8" class="field-count">+{{ block.selected_fields.length - 8 }}</span>
-              </div>
             </div>
-
-            <a-form layout="vertical" style="margin-top: 12px;">
-              <a-form-item label="用户提示词">
-                <a-textarea
-                  v-model:value="block.user_prompt"
-                  :rows="4"
-                  placeholder="输入该块的总结需求、判断重点或输出口径"
-                />
-              </a-form-item>
-            </a-form>
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">打开时自动总结</div>
+                <div class="permission-desc">没有历史结果时自动发起总结</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_open"
+                checked-children="启用"
+                un-checked-children="停用"
+              />
+            </div>
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">流程变化后自动刷新</div>
+                <div class="permission-desc">字段变化、节点变化，或流程被退回后重新提交时重新总结</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_stale"
+                checked-children="启用"
+                un-checked-children="停用"
+              />
+            </div>
           </div>
         </div>
 
@@ -2565,6 +2796,140 @@ const handleSave = async () => {
           </div>
         </a-form-item>
       </a-form>
+    </a-modal>
+
+    <!--总结块字段选择器模态-->
+    <a-modal
+      v-model:open="showSummaryFieldPicker"
+      :title="editingSummaryBlock ? `选择字段：${editingSummaryBlock.title || '未命名总结块'}` : '选择字段'"
+      :width="720"
+      :footer="null"
+      @cancel="showSummaryFieldPicker = false"
+    >
+      <div class="field-picker-modal">
+        <div class="field-picker-left">
+          <div class="field-picker-panel-header" style="justify-content: flex-start; gap: 8px;">
+            <a-checkbox
+              :checked="summaryLeftSelectedKeys.length === summaryUnselectedFieldsFlat.length && summaryUnselectedFieldsFlat.length > 0"
+              :indeterminate="summaryLeftSelectedKeys.length > 0 && summaryLeftSelectedKeys.length < summaryUnselectedFieldsFlat.length"
+              @change="toggleSummaryLeftSelectAll"
+            />
+            <span style="flex: 1;">{{ t('admin.ruleConfig.availableFields') }} <span class="field-count" style="margin-left:4px; font-weight:normal;">({{ summaryUnselectedFieldsFlat.length }})</span></span>
+            <a-button type="primary" size="small" :disabled="summaryLeftSelectedKeys.length === 0" @click="summaryBatchPick">
+              {{ t('admin.ruleConfig.add') }}
+            </a-button>
+          </div>
+          <div class="field-picker-search">
+            <a-input
+              v-model:value="summaryFieldSearchQuery"
+              :placeholder="t('admin.ruleConfig.searchFieldPlaceholder')"
+              allow-clear
+              size="small"
+            >
+              <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+            </a-input>
+          </div>
+          <div class="field-picker-list" style="padding: 12px 16px;">
+            <div
+              v-for="field in summaryUnselectedPagination.paged.value"
+              :key="field.value"
+              class="field-picker-item"
+              @click="toggleSummaryLeftSelect(field.value)"
+              style="display: flex; gap: 12px; justify-content: flex-start; margin-bottom: 8px;"
+            >
+              <div class="field-picker-item-checkbox" @click.stop="toggleSummaryLeftSelect(field.value)">
+                <a-checkbox :checked="summaryLeftSelectedKeys.includes(field.value)" />
+              </div>
+              <div class="field-picker-item-info" style="flex: 1;">
+                <div class="field-picker-item-name">{{ field.field_name }} <span class="field-source-tag" style="font-size: 11px; color: var(--color-text-tertiary); font-weight: normal; margin-left: 4px;">({{ field.sourceLabel }})</span></div>
+                <div class="field-picker-item-meta">
+                  <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                  <span class="field-key">{{ field.field_key }}</span>
+                </div>
+              </div>
+              <button class="icon-btn icon-btn--sm" @click.stop="pickSummaryField(field)" style="margin-left: auto;">
+                <SwapRightOutlined />
+              </button>
+            </div>
+            <div v-if="!summaryUnselectedFieldsFlat.length" class="field-picker-empty">
+              {{ summaryFieldSearchQuery ? t('admin.ruleConfig.noSearchResult') : t('admin.ruleConfig.allFieldsAdded') }}
+            </div>
+          </div>
+          <div class="pagination-wrapper" style="padding: 12px 16px; border-top: 1px solid var(--color-border-light);">
+            <a-pagination
+              v-model:current="summaryUnselectedPagination.current.value"
+              v-model:page-size="summaryUnselectedPagination.pageSize.value"
+              :total="summaryUnselectedPagination.total.value"
+              size="small"
+              show-size-changer
+              :page-size-options="['5', '20', '50']"
+              @change="summaryUnselectedPagination.onChange"
+              @showSizeChange="summaryUnselectedPagination.onChange"
+            />
+          </div>
+        </div>
+        <div class="field-picker-right">
+          <div class="field-picker-panel-header" style="justify-content: flex-start; gap: 8px;">
+            <a-checkbox
+              :checked="summaryRightSelectedKeys.length === summarySelectedFieldsFlat.length && summarySelectedFieldsFlat.length > 0"
+              :indeterminate="summaryRightSelectedKeys.length > 0 && summaryRightSelectedKeys.length < summarySelectedFieldsFlat.length"
+              @change="toggleSummaryRightSelectAll"
+            />
+            <span style="flex: 1;">{{ t('admin.ruleConfig.selectedFields') }} <span class="field-picker-count" style="margin-left:4px;">{{ summarySelectedFieldsFlat.length }}</span></span>
+            <a-button danger size="small" :disabled="summaryRightSelectedKeys.length === 0" @click="summaryBatchUnpick">
+              {{ t('admin.ruleConfig.remove') }}
+            </a-button>
+          </div>
+          <div class="field-picker-search">
+            <a-input
+              v-model:value="summarySelectedFieldSearchQuery"
+              :placeholder="t('admin.ruleConfig.searchFieldPlaceholder')"
+              allow-clear
+              size="small"
+            >
+              <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+            </a-input>
+          </div>
+          <div class="field-picker-list" style="padding: 12px 16px;">
+            <div
+              v-for="field in summarySelectedPagination.paged.value"
+              :key="field.value"
+              class="field-picker-item field-picker-item--selected"
+              @click="toggleSummaryRightSelect(field.value)"
+              style="display: flex; gap: 12px; justify-content: flex-start; margin-bottom: 8px;"
+            >
+              <div class="field-picker-item-checkbox" @click.stop="toggleSummaryRightSelect(field.value)">
+                <a-checkbox :checked="summaryRightSelectedKeys.includes(field.value)" />
+              </div>
+              <div class="field-picker-item-info" style="flex: 1;">
+                <div class="field-picker-item-name">{{ field.field_name }} <span class="field-source-tag" style="font-size: 11px; color: var(--color-text-tertiary); font-weight: normal; margin-left: 4px;">({{ field.sourceLabel }})</span></div>
+                <div class="field-picker-item-meta">
+                  <span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span>
+                  <span class="field-key">{{ field.field_key }}</span>
+                </div>
+              </div>
+              <button class="field-picker-remove" @click.stop="unpickSummaryField(field)" style="margin-left: auto;">
+                <CloseOutlined />
+              </button>
+            </div>
+            <div v-if="!summarySelectedFieldsFlat.length" class="field-picker-empty">
+              {{ summarySelectedFieldSearchQuery ? t('admin.ruleConfig.noSearchResult') : t('admin.ruleConfig.noFieldsSelected') }}
+            </div>
+          </div>
+          <div class="pagination-wrapper" style="padding: 12px 16px; border-top: 1px solid var(--color-border-light);">
+            <a-pagination
+              v-model:current="summarySelectedPagination.current.value"
+              v-model:page-size="summarySelectedPagination.pageSize.value"
+              :total="summarySelectedPagination.total.value"
+              size="small"
+              show-size-changer
+              :page-size-options="['5', '20', '50']"
+              @change="summarySelectedPagination.onChange"
+              @showSizeChange="summarySelectedPagination.onChange"
+            />
+          </div>
+        </div>
+      </div>
     </a-modal>
 
     <!--规则编辑器模式-->
