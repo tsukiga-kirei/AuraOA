@@ -3,7 +3,6 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   ReloadOutlined,
-  FieldTimeOutlined,
   DownOutlined,
   UpOutlined,
   InfoCircleOutlined,
@@ -13,7 +12,6 @@ import {
   EyeOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import { marked } from 'marked'
 import type { AuditResult } from '~/types/audit'
 import type { EmbedContextResponse, EmbedProcessSummary } from '~/types/embed'
 import { waitForParentEmbedContext } from '~/composables/useEmbedParent'
@@ -140,23 +138,17 @@ const embedHeaderStatus = computed(() => {
 
 const getDurationSec = (ms?: number) => ((ms || 0) / 1000).toFixed(1)
 
-const renderMarkdown = (text: string) => {
-  try {
-    return marked.parse(text || '') as string
-  } catch {
-    return text
-  }
-}
-
 const formatLastAuditAt = (iso?: string) => {
   return iso ? formatDateTimeInAppZone(iso) : '—'
 }
 
-const processMetaLine = computed(() => {
+const processMetaRows = computed(() => {
   const p = processInfo.value
-  if (!p) return ''
-  const parts = [p.applicant, p.department, p.process_type_label || p.process_type].filter(Boolean)
-  return parts.join(' · ')
+  if (!p) return []
+  return [
+    [p.applicant, p.department].filter(Boolean).join(' · '),
+    [p.process_type_label || p.process_type, p.current_node].filter(Boolean).join(' · '),
+  ].filter(Boolean)
 })
 
 const mergeAuditProgress = (st: Partial<AuditResult>) => {
@@ -303,6 +295,19 @@ async function bootstrap() {
 
 const handleReAudit = () => runAudit('embed_manual')
 
+const processStat = computed(() => {
+  const ms = currentResult.value?.duration_ms
+  if (ms) {
+    const sec = ms / 1000
+    const tone = sec >= 120 ? 'danger' : sec >= 60 ? 'warning' : 'success'
+    return { text: `耗时 ${getDurationSec(ms)} 秒`, tone }
+  }
+  if (isAuditingActive.value) {
+    return { text: '执行中', tone: 'running' }
+  }
+  return null
+})
+
 onMounted(async () => {
   waitingParent.value = true
   const parentCtx = await waitForParentEmbedContext()
@@ -391,28 +396,44 @@ onBeforeUnmount(() => {
       <template v-else-if="context?.supported">
         <div v-if="processInfo" class="embed-process-card">
           <div class="embed-process-card__body">
-            <div class="embed-process-card__head">
-              <h3 class="embed-process-card__title" :title="processInfo.title">
-                {{ processInfo.title }}
-              </h3>
-            </div>
-            <p v-if="processMetaLine" class="embed-process-card__meta">{{ processMetaLine }}</p>
-            <div class="embed-process-card__footer">
-              <div v-if="processInfo.current_node" class="embed-process-card__node">
-                <FieldTimeOutlined />
-                <span>{{ processInfo.current_node }}</span>
+            <h3 class="embed-process-card__title" :title="processInfo.title">
+              {{ processInfo.title }}
+            </h3>
+            <div class="embed-process-card__main">
+              <div class="embed-process-card__copy">
+                <div
+                  v-for="row in processMetaRows"
+                  :key="row"
+                  class="embed-process-card__meta-row"
+                >
+                  <span
+                    class="embed-process-card__meta-chip"
+                    :title="row"
+                  >
+                    {{ row }}
+                  </span>
+                </div>
               </div>
-              <a-button
-                class="embed-process-card__action"
-                type="text"
-                size="small"
-                :loading="auditing"
-                :disabled="!!context.running_job_id && !auditing"
-                @click="handleReAudit"
-              >
-                <ReloadOutlined />
-                <span>{{ t('dashboard.reAudit') }}</span>
-              </a-button>
+              <div class="embed-process-card__actions">
+                <div
+                  v-if="processStat"
+                  class="embed-process-card__stat"
+                  :class="`embed-process-card__stat--${processStat.tone}`"
+                >
+                  {{ processStat.text }}
+                </div>
+                <a-button
+                  class="embed-process-card__action"
+                  type="text"
+                  size="small"
+                  :disabled="auditing || (!!context.running_job_id && !auditing)"
+                  @click="handleReAudit"
+                >
+                  <LoadingOutlined v-if="auditing" spin />
+                  <ReloadOutlined v-else />
+                  <span>{{ t('dashboard.reAudit') }}</span>
+                </a-button>
+              </div>
             </div>
           </div>
         </div>
@@ -435,10 +456,11 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div v-if="currentResult?.ai_reasoning" class="result-section embed-reasoning-live">
-            <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
-            <div class="ai-reasoning">
-              <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')" />
-            </div>
+            <AiMarkdownStream
+              :title="t('dashboard.aiReasoning')"
+              :text="currentResult.ai_reasoning || ''"
+              max-height="260px"
+            />
           </div>
         </div>
 
@@ -486,7 +508,7 @@ onBeforeUnmount(() => {
                 <div class="result-banner-meta">
                   {{ t('dashboard.overallScore') }} {{ currentResult.overall_score }}{{ t('dashboard.points') }}
                   · {{ t('dashboard.confidence') }} {{ currentResult.confidence }}%
-                  · {{ t('dashboard.duration') }} {{ getDurationSec(currentResult.duration_ms) }}s
+                  · {{ t('dashboard.duration') }} {{ getDurationSec(currentResult.duration_ms) }} 秒
                 </div>
               </div>
               <div class="result-score" :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }">
@@ -542,9 +564,11 @@ onBeforeUnmount(() => {
                 <DownOutlined v-if="!showReasoning" />
                 <UpOutlined v-else />
               </button>
-              <div v-show="showReasoning" class="ai-reasoning">
-                <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')" />
-              </div>
+              <AiMarkdownStream
+                v-show="showReasoning"
+                :text="currentResult.ai_reasoning || ''"
+                max-height="320px"
+              />
             </div>
           </template>
         </template>
@@ -563,7 +587,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.embed-audit { max-width: 720px; margin: 0 auto; min-height: 100vh; }
+.embed-audit { max-width: 720px; margin: 0 auto; min-height: 100vh; padding: 12px 12px 28px; }
 
 .embed-header {
   margin-bottom: 14px; padding-bottom: 12px;
@@ -572,14 +596,14 @@ onBeforeUnmount(() => {
 .embed-title {
   display: flex; align-items: center; gap: 10px;
   font-size: 17px; font-weight: 700; margin: 0 0 4px;
-  transition: color 0.25s ease; letter-spacing: -0.02em;
+  transition: color 0.25s ease; letter-spacing: 0;
 }
 .embed-title-badge {
   display: inline-flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; border-radius: 8px; font-size: 16px; flex-shrink: 0;
 }
 .embed-last-audit {
-  font-size: 11px; color: var(--color-text-quaternary); margin: 0; line-height: 1.4;
+  font-size: 12px; color: var(--color-text-secondary); margin: 0; line-height: 1.4;
 }
 .embed-last-audit--active { color: var(--color-primary); font-size: 12px; }
 
@@ -590,53 +614,121 @@ onBeforeUnmount(() => {
 
 .embed-process-card {
   margin-bottom: 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   overflow: hidden;
 }
-.embed-process-card__body { padding: 12px 14px; }
-.embed-process-card__head {
-  display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px;
+.embed-process-card__body { padding: 14px 16px; }
+.embed-process-card__main {
+  display: grid; grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 16px; align-items: center;
 }
+.embed-process-card__copy { min-width: 0; }
 .embed-process-card__title {
-  min-width: 0; margin: 0;
-  font-size: 14px; font-weight: 600; line-height: 1.5;
+  min-width: 0; margin: 0 0 10px;
+  font-size: 15px; font-weight: 700; line-height: 1.5;
   color: var(--color-text-primary);
   word-break: keep-all; overflow-wrap: anywhere;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden;
+  white-space: normal;
 }
-.embed-process-card__footer {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-}
-.embed-process-card__action {
-  flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px;
-  height: 24px; padding: 0 8px; margin: 0 -4px 0 0;
-  font-size: 12px; color: var(--color-primary);
-  border-radius: 6px; white-space: nowrap;
-}
-.embed-process-card__action:hover:not(:disabled) {
-  background: var(--color-primary-bg); color: var(--color-primary);
-}
-.embed-process-card__action:disabled { color: var(--color-text-quaternary); }
-.embed-process-card__meta {
-  margin: 0 0 8px; font-size: 12px; line-height: 1.5;
-  color: var(--color-text-secondary);
-}
-.embed-process-card__node {
-  display: inline-flex; align-items: center; gap: 5px;
+.embed-process-card__actions {
+  display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 8px;
+  flex-shrink: 0;
   min-width: 0;
-  padding: 3px 10px; border-radius: 999px;
-  font-size: 11px; font-weight: 500;
-  color: var(--color-text-secondary);
+  padding-left: 12px;
+  border-left: 1px solid var(--color-border-light);
+}
+.embed-process-card__stat {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 100%; height: 28px; padding: 0 7px; border-radius: var(--radius-md);
   background: var(--color-bg-hover);
+  border: 1px solid var(--color-border-light);
+  text-align: center;
+  color: var(--color-text-secondary); font-size: 12px; font-weight: 700;
+  white-space: nowrap;
 }
-.embed-process-card__node span {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.embed-process-card__stat--success {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  border-color: color-mix(in srgb, var(--color-success) 24%, transparent);
 }
-.embed-process-card__node .anticon { font-size: 11px; color: var(--color-text-tertiary); }
+.embed-process-card__stat--warning {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  border-color: color-mix(in srgb, var(--color-warning) 28%, transparent);
+}
+.embed-process-card__stat--danger {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border-color: color-mix(in srgb, var(--color-danger) 24%, transparent);
+}
+.embed-process-card__stat--running {
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+  border-color: color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+.embed-process-card__action.ant-btn {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  width: 100%; height: 30px !important; padding: 0 8px !important; margin: 0;
+  font-size: 12px !important; line-height: 28px !important;
+  color: var(--color-primary) !important;
+  border-radius: var(--radius-md) !important; white-space: nowrap;
+  background: var(--color-primary-bg) !important;
+}
+.embed-process-card__action.ant-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary-bg) 70%, var(--color-bg-hover)) !important;
+  color: var(--color-primary) !important;
+}
+.embed-process-card__action.ant-btn:disabled {
+  color: color-mix(in srgb, var(--color-primary) 70%, var(--color-text-tertiary)) !important;
+  background: var(--color-primary-bg) !important;
+}
+.embed-process-card__action :deep(.anticon) {
+  width: 14px; font-size: 13px;
+}
+@media (max-width: 420px) {
+  .embed-process-card__actions {
+    gap: 6px;
+    padding-left: 8px;
+  }
+  .embed-process-card__stat {
+    padding: 0 5px;
+  }
+}
+.embed-process-card__meta-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.embed-process-card__meta-row + .embed-process-card__meta-row {
+  margin-top: 7px;
+}
+.embed-process-card__meta-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--color-border-light) 82%, var(--color-primary) 18%);
+  background: color-mix(in srgb, var(--color-bg-hover) 78%, var(--color-bg-card));
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.embed-process-card__meta-row:first-of-type .embed-process-card__meta-chip:first-child {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-primary-bg) 54%, var(--color-bg-card));
+  border-color: color-mix(in srgb, var(--color-primary) 22%, var(--color-border-light));
+}
 
 .embed-auditing-center {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -724,8 +816,6 @@ onBeforeUnmount(() => {
   color: var(--color-text-primary); margin-bottom: 8px;
 }
 .reasoning-toggle:hover { background: var(--color-bg-hover); }
-.ai-reasoning { background: var(--color-bg-page); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--color-border-light); }
-
 .result-empty { text-align: center; padding: 40px 20px; }
 .result-empty-icon {
   width: 64px; height: 64px; border-radius: 50%; background: var(--color-primary-bg);

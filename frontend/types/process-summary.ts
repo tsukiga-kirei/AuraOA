@@ -35,6 +35,7 @@ export interface SummaryBlockResult {
   title: string
   content: string
   points: string[]
+  duration_ms?: number
 }
 
 export interface SummaryResult {

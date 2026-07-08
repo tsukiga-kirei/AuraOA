@@ -3,7 +3,6 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   DownOutlined,
-  FieldTimeOutlined,
   FileTextOutlined,
   LoadingOutlined,
   ReloadOutlined,
@@ -12,9 +11,8 @@ import {
   WarningOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import { marked } from 'marked'
 import type { EmbedProcessSummary } from '~/types/embed'
-import type { SummaryResult } from '~/types/process-summary'
+import type { SummaryBlockResult, SummaryResult } from '~/types/process-summary'
 import type { EmbedSummaryContextResponse } from '~/composables/useEmbedSummaryApi'
 import { waitForParentEmbedContext } from '~/composables/useEmbedParent'
 
@@ -30,13 +28,44 @@ const summarizing = ref(false)
 const pageError = ref('')
 const context = ref<EmbedSummaryContextResponse | null>(null)
 const currentResult = ref<SummaryResult | null>(null)
-const streamingText = ref('')
-const showRaw = ref(false)
+const streamingBlocks = ref<{ block_id: string; title: string; content: string }[]>([])
 const eventSourceStream = ref<EventSource | null>(null)
 const streamJobId = ref('')
+const collapsedBlockIds = ref<Set<string>>(new Set())
 
 const processInfo = computed<EmbedProcessSummary | null>(() => context.value?.process ?? null)
 const isRunning = computed(() => summarizing.value || ['pending', 'assembling', 'reasoning', 'extracting'].includes(currentResult.value?.status || ''))
+
+const SUMMARY_PROGRESS_STEPS = [
+  { key: 'pending', label: '排队中' },
+  { key: 'assembling', label: '解析流程数据/附件' },
+  { key: 'prompt', label: '组装总结提示词' },
+  { key: 'reasoning', label: 'AI 生成总结' },
+  { key: 'extracting', label: '解析总结结构' },
+] as const
+
+const progressStatusOrder: Record<string, number> = {
+  pending: 0,
+  assembling: 1,
+  reasoning: 3,
+  extracting: 4,
+  completed: 5,
+  failed: 5,
+}
+
+const summaryProgressSteps = computed(() => {
+  const status = currentResult.value?.status || 'pending'
+  const order = progressStatusOrder[status] ?? 0
+  return SUMMARY_PROGRESS_STEPS.filter(s => s.key !== 'pending').map((step, index) => {
+    const stepOrder = index + 1
+    return {
+      ...step,
+      done: order > stepOrder || status === 'completed',
+      current: order === stepOrder || (status === 'reasoning' && step.key === 'reasoning'),
+      failed: status === 'failed' && order === stepOrder,
+    }
+  })
+})
 
 const headerStatus = computed(() => {
   if (pageLoading.value || waitingParent.value) {
@@ -54,22 +83,31 @@ const headerStatus = computed(() => {
   return { label: '待总结', color: 'var(--color-text-tertiary)', bg: 'var(--color-bg-hover)', icon: ThunderboltOutlined, spin: false }
 })
 
-const processMetaLine = computed(() => {
+const processMetaRows = computed(() => {
   const p = processInfo.value
-  if (!p) return ''
-  return [p.applicant, p.department, p.process_type_label || p.process_type].filter(Boolean).join(' · ')
+  if (!p) return []
+  return [
+    [p.applicant, p.department].filter(Boolean).join(' · '),
+    [p.process_type_label || p.process_type, p.current_node].filter(Boolean).join(' · '),
+  ].filter(Boolean)
 })
 
 const formatLastSummaryAt = (iso?: string) => iso ? formatDateTimeInAppZone(iso) : '-'
 const getDurationSec = (ms?: number) => ((ms || 0) / 1000).toFixed(1)
 
-const renderMarkdown = (text: string) => {
-  try {
-    return marked.parse(text || '') as string
-  } catch {
-    return text
+const processStat = computed(() => {
+  if (currentResult.value?.duration_ms) {
+    const sec = currentResult.value.duration_ms / 1000
+    const tone = sec >= 120 ? 'danger' : sec >= 60 ? 'warning' : 'success'
+    return { text: `耗时 ${getDurationSec(currentResult.value.duration_ms)} 秒`, tone }
   }
-}
+  if (isRunning.value) {
+    return { text: '执行中', tone: 'running' }
+  }
+  return null
+})
+
+const visibleStreamingBlocks = computed(() => streamingBlocks.value.filter(block => block.content))
 
 function createPendingResult(): SummaryResult {
   return {
@@ -84,6 +122,48 @@ function mergeSummaryProgress(st: SummaryResult) {
   currentResult.value = { ...currentResult.value, ...st }
 }
 
+function getBlockKey(block: SummaryBlockResult, idx: number) {
+  return block.block_id || block.title || `block-${idx}`
+}
+
+function isBlockCollapsed(block: SummaryBlockResult, idx: number) {
+  return collapsedBlockIds.value.has(getBlockKey(block, idx))
+}
+
+function toggleBlock(block: SummaryBlockResult, idx: number) {
+  const key = getBlockKey(block, idx)
+  const next = new Set(collapsedBlockIds.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsedBlockIds.value = next
+}
+
+function resetStreamingBlocks() {
+  streamingBlocks.value = []
+}
+
+function appendStreamingChunk(raw: string) {
+  if (!raw) return
+  let payload: { block_id?: string; title?: string; chunk?: string }
+  try {
+    payload = JSON.parse(raw)
+  } catch {
+    payload = { block_id: 'legacy', title: '模型回复', chunk: raw }
+  }
+  const chunk = payload.chunk || ''
+  if (!chunk) return
+  const key = payload.block_id || payload.title || 'legacy'
+  const title = payload.title || '模型回复'
+  const next = [...streamingBlocks.value]
+  const existing = next.find(block => block.block_id === key)
+  if (existing) {
+    existing.content += chunk
+  } else {
+    next.push({ block_id: key, title, content: chunk })
+  }
+  streamingBlocks.value = next
+}
+
 function disconnectStream() {
   if (eventSourceStream.value) {
     eventSourceStream.value.close()
@@ -96,13 +176,13 @@ function startSSE(jobId?: string) {
   if (!process.client || !jobId || streamJobId.value === jobId) return
   disconnectStream()
   streamJobId.value = jobId
-  streamingText.value = ''
+  resetStreamingBlocks()
   const { appendEmbedTokenQuery } = useEmbedAuth()
   eventSourceStream.value = new EventSource(
     appendEmbedTokenQuery(`/api/embed/summary/stream/${encodeURIComponent(jobId)}`),
   )
   eventSourceStream.value.onmessage = (event) => {
-    streamingText.value += event.data || ''
+    appendStreamingChunk(event.data || '')
   }
   eventSourceStream.value.onerror = () => disconnectStream()
 }
@@ -111,7 +191,8 @@ async function runSummary(trigger: 'summary_embed_auto' | 'summary_embed_manual'
   if (!processId.value || summarizing.value) return
   summarizing.value = true
   currentResult.value = createPendingResult()
-  streamingText.value = ''
+  resetStreamingBlocks()
+  collapsedBlockIds.value = new Set()
   try {
     const result = await executeSummaryEmbed(
       {
@@ -252,29 +333,72 @@ onBeforeUnmount(() => disconnectStream())
       <template v-else-if="context?.supported">
         <div v-if="processInfo" class="process-card">
           <h3 class="process-title" :title="processInfo.title">{{ processInfo.title }}</h3>
-          <p v-if="processMetaLine" class="process-meta">{{ processMetaLine }}</p>
-          <div class="process-footer">
-            <div v-if="processInfo.current_node" class="process-node">
-              <FieldTimeOutlined />
-              <span>{{ processInfo.current_node }}</span>
+          <div class="process-card-main">
+            <div class="process-copy">
+              <div
+                v-for="row in processMetaRows"
+                :key="row"
+                class="process-meta-row"
+              >
+                <span
+                  class="process-meta-chip"
+                  :title="row"
+                >
+                  {{ row }}
+                </span>
+              </div>
             </div>
-            <a-button type="text" size="small" :loading="summarizing" @click="runSummary('summary_embed_manual')">
-              <ReloadOutlined />
-              <span>重新总结</span>
-            </a-button>
+            <div class="process-actions">
+              <div
+                v-if="processStat"
+                class="process-stat"
+                :class="`process-stat--${processStat.tone}`"
+              >
+                {{ processStat.text }}
+              </div>
+              <a-button
+                class="process-action"
+                type="text"
+                size="small"
+                :disabled="summarizing"
+                @click="runSummary('summary_embed_manual')"
+              >
+                <LoadingOutlined v-if="summarizing" spin />
+                <ReloadOutlined v-else />
+                <span>重新总结</span>
+              </a-button>
+            </div>
           </div>
         </div>
 
         <div v-if="isRunning" class="summary-loading">
           <a-spin size="large" />
-          <p>正在生成总结</p>
-          <div v-if="streamingText" class="raw-stream">
-            <button type="button" class="raw-toggle" @click="showRaw = !showRaw">
-              <span>模型输出</span>
-              <DownOutlined v-if="!showRaw" />
-              <UpOutlined v-else />
-            </button>
-            <pre v-show="showRaw">{{ streamingText }}</pre>
+          <p class="summary-loading-title">正在生成总结</p>
+          <div class="async-progress-steps">
+            <div
+              v-for="s in summaryProgressSteps"
+              :key="s.key"
+              class="async-step-row"
+              :class="{ 'async-step-row--current': s.current }"
+            >
+              <CheckCircleOutlined v-if="s.done" class="async-step-icon async-step-icon--done" />
+              <LoadingOutlined v-else-if="s.current" spin class="async-step-icon async-step-icon--current" />
+              <CloseCircleOutlined v-else-if="s.failed" class="async-step-icon async-step-icon--fail" />
+              <span v-else class="async-step-pending-dot" />
+              <span class="async-step-label">{{ s.label }}</span>
+            </div>
+          </div>
+          <div v-if="visibleStreamingBlocks.length" class="summary-stream-blocks">
+            <section v-for="block in visibleStreamingBlocks" :key="block.block_id" class="summary-stream-card">
+              <div class="summary-stream-card__header">
+                <span>{{ block.title }}</span>
+                <em>生成中</em>
+              </div>
+              <AiMarkdownStream
+                :text="block.content"
+                max-height="220px"
+              />
+            </section>
           </div>
         </div>
 
@@ -287,19 +411,30 @@ onBeforeUnmount(() => disconnectStream())
             </div>
           </div>
 
-          <div v-else>
-            <div class="summary-meta">
-              <span v-if="currentResult.duration_ms">耗时 {{ getDurationSec(currentResult.duration_ms) }}s</span>
-              <a-tag v-if="currentResult.parse_error" color="warning">已使用兜底解析</a-tag>
-            </div>
+            <div v-else>
+              <div v-if="currentResult.parse_error" class="summary-meta">
+                <a-tag v-if="currentResult.parse_error" color="warning">已使用兜底解析</a-tag>
+              </div>
 
             <div v-if="currentResult.blocks?.length" class="summary-blocks">
-              <section v-for="block in currentResult.blocks" :key="block.block_id || block.title" class="summary-card">
-                <h4>{{ block.title }}</h4>
-                <div class="markdown-body summary-content" v-html="renderMarkdown(block.content)" />
-                <ul v-if="block.points?.length" class="summary-points">
-                  <li v-for="(point, idx) in block.points" :key="idx">{{ point }}</li>
-                </ul>
+              <section v-for="(block, idx) in currentResult.blocks" :key="getBlockKey(block, idx)" class="summary-card">
+                <button type="button" class="summary-card-header" @click="toggleBlock(block, idx)">
+                  <span class="summary-card-title">{{ block.title }}</span>
+                  <span class="summary-card-tools">
+                    <span v-if="block.duration_ms" class="summary-card-duration">耗时 {{ getDurationSec(block.duration_ms) }} 秒</span>
+                    <DownOutlined v-if="isBlockCollapsed(block, idx)" />
+                    <UpOutlined v-else />
+                  </span>
+                </button>
+                <div v-show="!isBlockCollapsed(block, idx)" class="summary-card-body">
+                  <AiMarkdownStream
+                    :text="block.content"
+                    max-height="300px"
+                  />
+                  <ul v-if="block.points?.length" class="summary-points">
+                    <li v-for="(point, pointIdx) in block.points" :key="pointIdx">{{ point }}</li>
+                  </ul>
+                </div>
               </section>
             </div>
           </div>
@@ -319,7 +454,7 @@ onBeforeUnmount(() => disconnectStream())
 </template>
 
 <style scoped>
-.embed-summary { max-width: 720px; margin: 0 auto; min-height: 100vh; }
+.embed-summary { max-width: 720px; margin: 0 auto; min-height: 100vh; padding: 12px 12px 28px; }
 .embed-header {
   margin-bottom: 14px;
   padding-bottom: 12px;
@@ -332,6 +467,7 @@ onBeforeUnmount(() => disconnectStream())
   font-size: 17px;
   font-weight: 700;
   margin: 0 0 4px;
+  letter-spacing: 0;
 }
 .embed-title-badge {
   display: inline-flex;
@@ -343,7 +479,7 @@ onBeforeUnmount(() => disconnectStream())
   font-size: 16px;
   flex-shrink: 0;
 }
-.embed-subline { font-size: 11px; color: var(--color-text-quaternary); margin: 0; line-height: 1.4; }
+.embed-subline { font-size: 12px; color: var(--color-text-secondary); margin: 0; line-height: 1.4; }
 .embed-subline--active { color: var(--color-primary); font-size: 12px; }
 .embed-page-loading {
   display: flex;
@@ -357,66 +493,224 @@ onBeforeUnmount(() => disconnectStream())
 .unsupported-process__meta { font-size: 13px; color: var(--color-text-tertiary); margin-top: 4px; }
 .process-card {
   margin-bottom: 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
-  padding: 12px 14px;
+  padding: 14px 16px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
+.process-card-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 16px;
+  align-items: center;
+}
+.process-copy { min-width: 0; }
 .process-title {
-  margin: 0 0 6px;
-  font-size: 14px;
-  font-weight: 600;
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
   line-height: 1.5;
   color: var(--color-text-primary);
   overflow-wrap: anywhere;
+  white-space: normal;
 }
-.process-meta { margin: 0 0 8px; font-size: 12px; color: var(--color-text-secondary); }
-.process-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.process-node {
+.process-meta-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.process-meta-row + .process-meta-row {
+  margin-top: 7px;
+}
+.process-meta-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  width: fit-content;
+  max-width: 100%;
   min-width: 0;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--color-border-light) 82%, var(--color-primary) 18%);
+  background: color-mix(in srgb, var(--color-bg-hover) 78%, var(--color-bg-card));
   color: var(--color-text-secondary);
-  background: var(--color-bg-hover);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.process-node span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.process-meta-row:first-of-type .process-meta-chip:first-child {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-primary-bg) 54%, var(--color-bg-card));
+  border-color: color-mix(in srgb, var(--color-primary) 22%, var(--color-border-light));
+}
+.process-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--color-border-light);
+}
+.process-stat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 28px;
+  padding: 0 7px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-border-light);
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.process-stat--success {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  border-color: color-mix(in srgb, var(--color-success) 24%, transparent);
+}
+.process-stat--warning {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  border-color: color-mix(in srgb, var(--color-warning) 28%, transparent);
+}
+.process-stat--danger {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border-color: color-mix(in srgb, var(--color-danger) 24%, transparent);
+}
+.process-stat--running {
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+  border-color: color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+.process-action.ant-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 30px !important;
+  padding: 0 8px !important;
+  margin: 0;
+  border-radius: var(--radius-md) !important;
+  color: var(--color-primary) !important;
+  background: var(--color-primary-bg) !important;
+  font-size: 12px !important;
+  line-height: 28px !important;
+  white-space: nowrap;
+}
+.process-action.ant-btn:hover:not(:disabled) {
+  color: var(--color-primary) !important;
+  background: color-mix(in srgb, var(--color-primary-bg) 70%, var(--color-bg-hover)) !important;
+}
+.process-action.ant-btn:disabled {
+  color: color-mix(in srgb, var(--color-primary) 70%, var(--color-text-tertiary)) !important;
+  background: var(--color-primary-bg) !important;
+}
+.process-action :deep(.anticon) {
+  width: 14px;
+  font-size: 13px;
+}
+@media (max-width: 420px) {
+  .process-actions {
+    gap: 6px;
+    padding-left: 8px;
+  }
+  .process-stat {
+    padding: 0 5px;
+  }
+}
 .summary-loading {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   min-height: calc(100vh - 220px);
-  padding: 32px 16px;
+  padding: 28px 0;
   text-align: center;
 }
-.summary-loading p { margin: 16px 0 0; color: var(--color-text-secondary); }
-.raw-stream { width: 100%; margin-top: 20px; text-align: left; }
-.raw-toggle {
+.summary-loading-title {
+  margin: 14px 0 18px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+.async-progress-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   width: 100%;
+  max-width: 340px;
+  margin-bottom: 18px;
+}
+.async-step-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.async-step-row--current {
+  background: var(--color-primary-bg);
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+.async-step-icon { font-size: 16px; flex-shrink: 0; }
+.async-step-icon--done { color: var(--color-success); }
+.async-step-icon--current { color: var(--color-primary); }
+.async-step-icon--fail { color: var(--color-danger); }
+.async-step-label { flex: 1; text-align: left; }
+.async-step-pending-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-border);
+  display: inline-block;
+  flex-shrink: 0;
+}
+.summary-stream-blocks {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.summary-stream-card {
+  width: 100%;
+}
+.summary-stream-card__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-card);
+  gap: 8px;
+  margin-bottom: 6px;
   color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 600;
 }
-.raw-stream pre {
-  margin: 8px 0 0;
-  max-height: 240px;
-  overflow: auto;
-  white-space: pre-wrap;
-  padding: 12px;
-  border-radius: var(--radius-md);
-  background: var(--color-bg-page);
-  border: 1px solid var(--color-border-light);
+.summary-stream-card__header em {
+  font-style: normal;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: 600;
 }
 .summary-meta {
   display: flex;
@@ -430,15 +724,55 @@ onBeforeUnmount(() => disconnectStream())
 .summary-blocks { display: flex; flex-direction: column; gap: 12px; }
 .summary-card {
   border: 1px solid var(--color-border-light);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--color-bg-card);
-  padding: 14px 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-.summary-card h4 {
-  margin: 0 0 8px;
-  font-size: 15px;
-  font-weight: 700;
+.summary-card-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 46px;
+  padding: 11px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-light);
+  background: var(--color-bg-card);
   color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.summary-card-header:hover {
+  background: color-mix(in srgb, var(--color-bg-hover) 45%, var(--color-bg-card));
+}
+.summary-card-title {
+  min-width: 0;
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.summary-card-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+}
+.summary-card-duration {
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.summary-card-body {
+  padding: 12px 14px 14px;
 }
 .summary-content { font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); }
 .summary-points {
