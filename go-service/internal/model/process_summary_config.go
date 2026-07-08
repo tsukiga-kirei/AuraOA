@@ -108,8 +108,9 @@ type ProcessSummaryResultJSON struct {
 }
 
 type ProcessSummaryBlockResult struct {
-	BlockID string   `json:"block_id"`
-	Title   string   `json:"title"`
-	Content string   `json:"content"`
-	Points  []string `json:"points"`
+	BlockID    string   `json:"block_id"`
+	Title      string   `json:"title"`
+	Content    string   `json:"content"`
+	Points     []string `json:"points"`
+	DurationMs int      `json:"duration_ms,omitempty"`
 }

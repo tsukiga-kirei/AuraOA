@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -114,6 +115,12 @@ type SummaryEmbedContextResponse struct {
 	LastSummaryAt     string                    `json:"last_summary_at,omitempty"`
 	RunningJobID      string                    `json:"running_job_id,omitempty"`
 	SummaryResult     map[string]interface{}    `json:"summary_result,omitempty"`
+}
+
+type summaryStreamChunk struct {
+	BlockID string `json:"block_id"`
+	Title   string `json:"title"`
+	Chunk   string `json:"chunk"`
 }
 
 func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string) (*SummaryEmbedContextResponse, error) {
@@ -364,37 +371,82 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 		return err
 	}
 
-	results := make([]model.ProcessSummaryBlockResult, 0, len(blocks))
-	parseErrors := make([]string, 0)
-	rawParts := make([]string, 0, len(blocks))
+	enabledBlocks := make([]model.SummaryBlockConfig, 0, len(blocks))
 	for _, block := range blocks {
 		if !block.Enabled {
 			continue
 		}
-		fieldSet := buildSummaryBlockFieldSet(block)
-		req := BuildSummaryBlockPrompt(logEntry.ProcessType, processData, flowSnapshot, block, fieldSet, processSummary)
-		req.Temperature = float64(tenant.Temperature)
-		req.MaxTokens = tenant.MaxTokensPerRequest
-		req.ModelConfig = modelCfg
-		req.StreamChunkFunc = func(chunk string) {
-			s.publishSummaryChunk(summaryLogID, chunk)
+		enabledBlocks = append(enabledBlocks, block)
+	}
+
+	resultsByIndex := make([]model.ProcessSummaryBlockResult, len(enabledBlocks))
+	rawPartsByIndex := make([]string, len(enabledBlocks))
+	parseErrorsByIndex := make([]string, len(enabledBlocks))
+
+	blockCtx, cancelBlocks := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+	for idx, block := range enabledBlocks {
+		idx, block := idx, block
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			blockStart := time.Now()
+			fieldSet := buildSummaryBlockFieldSet(block)
+			req := BuildSummaryBlockPrompt(logEntry.ProcessType, processData, flowSnapshot, block, fieldSet, processSummary)
+			req.Temperature = float64(tenant.Temperature)
+			req.MaxTokens = tenant.MaxTokensPerRequest
+			req.ModelConfig = modelCfg
+			req.StreamChunkFunc = func(chunk string) {
+				s.publishSummaryBlockChunk(summaryLogID, block.ID, block.Title, chunk)
+			}
+			blockGinCtx := s.workerGinContext(blockCtx, tenantID, userID)
+			resp, err := s.aiCaller.ChatWithFallback(blockGinCtx, tenantID, userID, modelCfg, fallbackCfg, req)
+			if err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+					cancelBlocks()
+				}
+				mu.Unlock()
+				return
+			}
+			raw := resp.Content
+			if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+				raw = sanitize.SanitizeText(raw)
+			}
+			parsed, parseErr := ParseSummaryBlockResult(raw, block)
+			if parseErr != nil {
+				parseErrorsByIndex[idx] = fmt.Sprintf("%s: %s", block.Title, parseErr.Error())
+			}
+			parsed.DurationMs = int(time.Since(blockStart).Milliseconds())
+			resultsByIndex[idx] = parsed
+			rawPartsByIndex[idx] = fmt.Sprintf("## %s\n%s", block.Title, raw)
+		}()
+	}
+	wg.Wait()
+	cancelBlocks()
+	if firstErr != nil {
+		s.markSummaryFailedDB(tenantID, summaryLogID, firstErr.Error())
+		tlog.Warn("总结任务执行失败", zap.String("summaryLogID", summaryLogID.String()), zap.Error(firstErr))
+		return firstErr
+	}
+
+	results := make([]model.ProcessSummaryBlockResult, 0, len(resultsByIndex))
+	parseErrors := make([]string, 0)
+	rawParts := make([]string, 0, len(rawPartsByIndex))
+	for idx, result := range resultsByIndex {
+		if result.BlockID == "" && result.Title == "" && result.Content == "" {
+			continue
 		}
-		resp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, req)
-		if err != nil {
-			s.markSummaryFailedDB(tenantID, summaryLogID, err.Error())
-			tlog.Warn("总结任务执行失败", zap.String("summaryLogID", summaryLogID.String()), zap.Error(err))
-			return err
+		results = append(results, result)
+		if rawPartsByIndex[idx] != "" {
+			rawParts = append(rawParts, rawPartsByIndex[idx])
 		}
-		raw := resp.Content
-		if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
-			raw = sanitize.SanitizeText(raw)
+		if parseErrorsByIndex[idx] != "" {
+			parseErrors = append(parseErrors, parseErrorsByIndex[idx])
 		}
-		rawParts = append(rawParts, fmt.Sprintf("## %s\n%s", block.Title, raw))
-		parsed, parseErr := ParseSummaryBlockResult(raw, block)
-		if parseErr != nil {
-			parseErrors = append(parseErrors, fmt.Sprintf("%s: %s", block.Title, parseErr.Error()))
-		}
-		results = append(results, parsed)
 	}
 	if len(results) == 0 {
 		results = append(results, model.ProcessSummaryBlockResult{
@@ -457,7 +509,11 @@ func (s *ProcessSummaryService) SubscribeJobStream(ctx context.Context, id uuid.
 	ch := make(chan string, 16)
 	key := summaryStreamKeyPrefix + id.String()
 	if existing, err := s.rdb.Get(ctx, key).Result(); err == nil && existing != "" {
-		ch <- existing
+		for _, line := range strings.Split(existing, "\n") {
+			if strings.TrimSpace(line) != "" {
+				ch <- line
+			}
+		}
 	}
 	pubsub := s.rdb.Subscribe(ctx, summaryPubSubKeyPrefix+id.String())
 	go func() {
@@ -528,14 +584,23 @@ func (s *ProcessSummaryService) buildSummaryResultFromLog(log *model.ProcessSumm
 	return out
 }
 
-func (s *ProcessSummaryService) publishSummaryChunk(id uuid.UUID, chunk string) {
+func (s *ProcessSummaryService) publishSummaryBlockChunk(id uuid.UUID, blockID, title, chunk string) {
 	if s.rdb == nil || chunk == "" {
 		return
 	}
+	payload, err := json.Marshal(summaryStreamChunk{
+		BlockID: blockID,
+		Title:   title,
+		Chunk:   chunk,
+	})
+	if err != nil {
+		return
+	}
+	message := string(payload)
 	key := summaryStreamKeyPrefix + id.String()
-	s.rdb.Append(context.Background(), key, chunk)
+	s.rdb.Append(context.Background(), key, message+"\n")
 	s.rdb.Expire(context.Background(), key, 24*time.Hour)
-	s.rdb.Publish(context.Background(), summaryPubSubKeyPrefix+id.String(), chunk)
+	s.rdb.Publish(context.Background(), summaryPubSubKeyPrefix+id.String(), message)
 }
 
 func (s *ProcessSummaryService) loadTenantModels(tenant *model.Tenant) (*model.AIModelConfig, *model.AIModelConfig, error) {
