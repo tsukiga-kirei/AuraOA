@@ -21,6 +21,7 @@ import {
   ThunderboltOutlined,
   UserOutlined,
   CopyOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons-vue'
 import {message} from 'ant-design-vue'
 
@@ -243,6 +244,9 @@ const createTenant = async () => {
 const openDetail = async (tenant: TenantData) => {
   selectedTenant.value = { ...tenant }
   detailActiveTab.value = 'basic'
+  rotatedEmbedToken.value = ''
+  manualEmbedToken.value = ''
+  embedScriptTarget.value = 'all'
   showDetail.value = true
   // 加载成员列表 & 刷新统计
   loadTenantMembers(tenant.id)
@@ -347,6 +351,8 @@ const deleting = ref(false)
 const rotatingEmbedToken = ref(false)
 const showEmbedTokenModal = ref(false)
 const rotatedEmbedToken = ref('')
+const manualEmbedToken = ref('')
+const embedScriptTarget = ref<'all' | 'audit' | 'summary'>('all')
 
 const embedOrigin = computed(() => {
   if (import.meta.client && window.location?.origin) return window.location.origin
@@ -354,6 +360,12 @@ const embedOrigin = computed(() => {
 })
 const embedAuditUrl = computed(() => embedOrigin.value ? `${embedOrigin.value}/embed/audit` : '/embed/audit')
 const embedSummaryUrl = computed(() => embedOrigin.value ? `${embedOrigin.value}/embed/summary` : '/embed/summary')
+const effectiveEmbedToken = computed(() => manualEmbedToken.value.trim() || rotatedEmbedToken.value.trim())
+const embedScriptTargetOptions = computed(() => [
+  { value: 'all', label: t('admin.tenants.embedScriptTargetAll') },
+  { value: 'audit', label: t('admin.tenants.embedScriptTargetAudit') },
+  { value: 'summary', label: t('admin.tenants.embedScriptTargetSummary') },
+])
 
 const copyText = async (text: string) => {
   if (!text) return
@@ -365,6 +377,191 @@ const copyText = async (text: string) => {
   }
 }
 
+const getEmbedScriptConfig = (target: 'all' | 'audit' | 'summary') => {
+  if (target === 'audit') {
+    return {
+      label: t('admin.tenants.embedScriptTargetAudit'),
+      filename: 'aura-embed-audit-notify.js',
+      urls: [embedAuditUrl.value],
+      iframeIds: ['aura-embed-audit'],
+    }
+  }
+  if (target === 'summary') {
+    return {
+      label: t('admin.tenants.embedScriptTargetSummary'),
+      filename: 'aura-embed-summary-notify.js',
+      urls: [embedSummaryUrl.value],
+      iframeIds: ['aura-embed-summary'],
+    }
+  }
+  return {
+    label: t('admin.tenants.embedScriptTargetAll'),
+    filename: 'aura-embed-notify.js',
+    urls: [embedAuditUrl.value, embedSummaryUrl.value],
+    iframeIds: ['aura-embed-audit', 'aura-embed-summary'],
+  }
+}
+
+const buildEmbedNotifyScript = (target: 'all' | 'audit' | 'summary', token: string) => {
+  const cfg = getEmbedScriptConfig(target)
+  const urlComment = cfg.urls.map(url => ` * - ${url}`).join('\n')
+  return `/**
+ * 泛微 Ecology9 — AuraOA 嵌入页：向 iframe 传递 requestid + embed_token
+ *
+ * 导出范围：${cfg.label}
+ * 对应嵌入地址：
+${urlComment}
+ *
+ * 使用步骤：
+ * 1. 将本文件上传到 OA 静态目录（如 /oa-front/workflow/AuraOA/${cfg.filename}）
+ * 2. 流程 → 基础设置 → 自定义页面 → 填入 js 路径并启用
+ * 3. 表单/门户 HTML 中 iframe 的 id 与 IFRAME_IDS 一致
+ */
+(function () {
+  // ========== AuraOA 已配置项 ==========
+  var AURA_EMBED_ORIGIN = ${JSON.stringify(embedOrigin.value)};
+  var EMBED_ACCESS_TOKEN = ${JSON.stringify(token)};
+  var IFRAME_IDS = ${JSON.stringify(cfg.iframeIds)};
+  // ====================================
+
+  var MSG_REQUEST = 'aura-oa-request-requestid';
+  var MSG_REQUESTID = 'aura-oa-requestid';
+
+  function getRequestId() {
+    try {
+      if (typeof WfForm !== 'undefined' && WfForm.getBaseInfo) {
+        var base = WfForm.getBaseInfo();
+        if (base && base.requestid) {
+          return String(base.requestid);
+        }
+      }
+    } catch (e) {
+      console.warn('[aura-embed] WfForm.getBaseInfo 失败', e);
+    }
+    return '';
+  }
+
+  function getIframes() {
+    var seen = {};
+    var ids = Array.isArray(IFRAME_IDS) && IFRAME_IDS.length ? IFRAME_IDS : [];
+    return ids.map(function (id) {
+      if (!id || seen[id]) return null;
+      seen[id] = true;
+      return document.getElementById(id);
+    }).filter(Boolean);
+  }
+
+  function buildPayload(requestid) {
+    return {
+      type: MSG_REQUESTID,
+      requestid: requestid,
+      embed_token: EMBED_ACCESS_TOKEN
+    };
+  }
+
+  function postContextToAura(win) {
+    if (!win) return;
+    var requestid = getRequestId();
+    if (!requestid) return;
+    if (!EMBED_ACCESS_TOKEN) {
+      console.warn('[aura-embed] 未配置 EMBED_ACCESS_TOKEN');
+      return;
+    }
+    win.postMessage(buildPayload(requestid), AURA_EMBED_ORIGIN);
+  }
+
+  function notifyAuraIframes() {
+    getIframes().forEach(function (iframe) {
+      if (iframe && iframe.contentWindow) {
+        postContextToAura(iframe.contentWindow);
+      }
+    });
+  }
+
+  function initMessageListener() {
+    window.addEventListener('message', function (event) {
+      if (event.origin !== AURA_EMBED_ORIGIN) return;
+      if (!event.data || event.data.type !== MSG_REQUEST) return;
+
+      var requestid = getRequestId();
+      if (!requestid) {
+        console.warn('[aura-embed] 无 requestid，请确认流程表单已加载 WfForm');
+        return;
+      }
+      if (!EMBED_ACCESS_TOKEN) {
+        console.warn('[aura-embed] 未配置 EMBED_ACCESS_TOKEN');
+        return;
+      }
+      if (event.source) {
+        event.source.postMessage(buildPayload(requestid), event.origin);
+      }
+    });
+  }
+
+  function init() {
+    initMessageListener();
+
+    getIframes().forEach(function (iframe) {
+      iframe.addEventListener('load', notifyAuraIframes);
+    });
+
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries++;
+      notifyAuraIframes();
+      if (getRequestId() || tries >= 30) {
+        clearInterval(timer);
+      }
+    }, 300);
+
+    window.addEventListener('hashchange', notifyAuraIframes);
+  }
+
+  if (typeof jQuery !== 'undefined') {
+    jQuery(function () {
+      init();
+    });
+  } else if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+`
+}
+
+const downloadTextFile = (filename: string, content: string) => {
+  if (!import.meta.client) return
+  const blob = new Blob([content], { type: 'text/javascript;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+const exportEmbedScript = (target: 'all' | 'audit' | 'summary' = embedScriptTarget.value) => {
+  if (!selectedTenant.value?.embed_token_configured) {
+    message.warning(t('admin.tenants.embedScriptNeedConfigured'))
+    return
+  }
+  if (!embedOrigin.value) {
+    message.error(t('admin.tenants.embedScriptOriginMissing'))
+    return
+  }
+  const token = effectiveEmbedToken.value
+  if (!token) {
+    message.warning(t('admin.tenants.embedScriptNeedToken'))
+    return
+  }
+  const cfg = getEmbedScriptConfig(target)
+  downloadTextFile(cfg.filename, buildEmbedNotifyScript(target, token))
+  message.success(t('admin.tenants.embedScriptExported'))
+}
+
 const handleRotateEmbedToken = async () => {
   if (!selectedTenant.value) return
   const wasConfigured = selectedTenant.value.embed_token_configured
@@ -372,6 +569,7 @@ const handleRotateEmbedToken = async () => {
   try {
     const resp = await apiRotateTenantEmbedToken(selectedTenant.value.id)
     rotatedEmbedToken.value = resp.access_token
+    manualEmbedToken.value = resp.access_token
     showEmbedTokenModal.value = true
     selectedTenant.value.embed_enabled = true
     selectedTenant.value.embed_token_configured = true
@@ -1005,6 +1203,7 @@ const confirmDeleteTenant = async () => {
                 <a-input :value="embedAuditUrl" readonly>
                   <template #suffix>
                     <a-button type="text" size="small" @click="copyText(embedAuditUrl)"><CopyOutlined /></a-button>
+                    <a-button type="text" size="small" @click="exportEmbedScript('audit')"><DownloadOutlined /></a-button>
                   </template>
                 </a-input>
               </a-form-item>
@@ -1012,9 +1211,42 @@ const confirmDeleteTenant = async () => {
                 <a-input :value="embedSummaryUrl" readonly>
                   <template #suffix>
                     <a-button type="text" size="small" @click="copyText(embedSummaryUrl)"><CopyOutlined /></a-button>
+                    <a-button type="text" size="small" @click="exportEmbedScript('summary')"><DownloadOutlined /></a-button>
                   </template>
                 </a-input>
               </a-form-item>
+              <div class="embed-script-panel">
+                <div class="embed-script-header">
+                  <div>
+                    <div class="embed-script-title">{{ t('admin.tenants.embedScriptExportTitle') }}</div>
+                    <div class="embed-script-desc">{{ t('admin.tenants.embedScriptExportDesc') }}</div>
+                  </div>
+                  <a-button type="primary" :disabled="!selectedTenant.embed_token_configured" @click="exportEmbedScript()">
+                    <DownloadOutlined /> {{ t('admin.tenants.exportEmbedScript') }}
+                  </a-button>
+                </div>
+                <div class="embed-script-fields">
+                  <div class="embed-script-token-field">
+                    <a-form-item :label="t('admin.tenants.embedScriptTokenInput')">
+                      <a-input-password
+                        v-model:value="manualEmbedToken"
+                        autocomplete="off"
+                      />
+                      <div class="form-hint">{{ t('admin.tenants.embedScriptTokenHint') }}</div>
+                    </a-form-item>
+                  </div>
+                  <div class="embed-script-target-field">
+                    <a-form-item :label="t('admin.tenants.embedScriptTarget')">
+                      <a-radio-group v-model:value="embedScriptTarget" button-style="solid" class="embed-script-target-options">
+                        <a-radio-button v-for="opt in embedScriptTargetOptions" :key="opt.value" :value="opt.value">
+                          {{ opt.label }}
+                        </a-radio-button>
+                      </a-radio-group>
+                      <div class="form-hint">{{ t('admin.tenants.embedScriptTargetHint') }}</div>
+                    </a-form-item>
+                  </div>
+                </div>
+              </div>
             </div>
           </a-form>
         </div>
@@ -1167,6 +1399,11 @@ const confirmDeleteTenant = async () => {
           <a-button type="text" size="small" @click="copyText(rotatedEmbedToken)"><CopyOutlined /></a-button>
         </template>
       </a-input>
+      <div class="embed-token-modal-actions">
+        <a-button @click="exportEmbedScript('audit')"><DownloadOutlined /> {{ t('admin.tenants.embedScriptTargetAudit') }}</a-button>
+        <a-button @click="exportEmbedScript('summary')"><DownloadOutlined /> {{ t('admin.tenants.embedScriptTargetSummary') }}</a-button>
+        <a-button type="primary" @click="exportEmbedScript('all')"><DownloadOutlined /> {{ t('admin.tenants.embedScriptTargetAll') }}</a-button>
+      </div>
     </a-modal>
   </div>
 </template>
@@ -1293,10 +1530,12 @@ const confirmDeleteTenant = async () => {
 /* 详情抽屉 */
 .detail-tabs {
   display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
-  border-radius: var(--radius-lg); margin-bottom: 24px; flex-wrap: wrap;
+  border-radius: var(--radius-lg); margin-bottom: 24px; flex-wrap: nowrap;
+  overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
 }
+.detail-tabs::-webkit-scrollbar { display: none; }
 .detail-tab-btn {
-  display: flex; align-items: center; gap: 6px; padding: 8px 14px;
+  display: flex; align-items: center; gap: 6px; padding: 8px 11px; flex: 0 0 auto;
   border: none; background: transparent; border-radius: var(--radius-md);
   font-size: 13px; font-weight: 500; color: var(--color-text-tertiary);
   cursor: pointer; transition: all var(--transition-fast); white-space: nowrap;
@@ -1398,14 +1637,40 @@ const confirmDeleteTenant = async () => {
 .embed-token-meta { display: flex; gap: 24px; flex-wrap: wrap; }
 .embed-token-label { font-size: 11px; color: var(--color-text-tertiary); display: block; }
 .embed-token-value { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin-top: 4px; font-family: var(--font-mono); }
+.embed-script-panel {
+  background: var(--color-bg-card); border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md); padding: 14px; margin-top: 8px;
+}
+.embed-script-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12px; margin-bottom: 14px;
+}
+.embed-script-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
+.embed-script-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; line-height: 1.5; }
+.embed-script-fields {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px; align-items: start;
+}
+.embed-script-token-field,
+.embed-script-target-field { min-width: 0; }
+.embed-script-target-options {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%;
+}
+.embed-script-target-options :deep(.ant-radio-button-wrapper) {
+  margin-inline-start: 0; padding: 0 10px; text-align: center;
+}
+.embed-script-target-options :deep(.ant-radio-button-wrapper span:last-child) {
+  display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.embed-token-modal-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; justify-content: flex-end; }
 
 @media (max-width: 768px) {
   .page-header { flex-direction: column; gap: 12px; align-items: stretch; }
   .tenant-grid { grid-template-columns: 1fr; }
-  .detail-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-  .detail-tabs::-webkit-scrollbar { display: none; }
   .member-card { flex-direction: column; }
   .member-card-right { align-items: flex-start; }
+  .embed-script-header { flex-direction: column; }
+  .embed-script-fields { grid-template-columns: 1fr; }
 }
 @media (max-width: 480px) {
   .page-title { font-size: 20px; }
