@@ -85,6 +85,7 @@ watch(route, () => {
 .app-layout--collapsed .main-wrapper { margin-left: var(--sidebar-collapsed-width); }
 
 .app-content {
+  position: relative;
   flex: 1;
   min-height: 100vh;
   padding: var(--space-page);

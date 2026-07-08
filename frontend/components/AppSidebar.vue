@@ -142,6 +142,7 @@ const handleToggleSidebar = () => {
             placement="right"
             :mouse-enter-delay="0.1"
             :arrow="false"
+            overlay-class-name="sidebar-nav-tooltip"
           >
             <div
               class="sidebar-item"
