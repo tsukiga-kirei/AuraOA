@@ -1,32 +1,59 @@
 <script setup lang="ts">
 import {
-  LogoutOutlined,
-  UserOutlined,
-  SettingOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
 } from '@ant-design/icons-vue'
 
-// props：侧边栏折叠状态 / 移动端菜单是否展开
-defineProps<{
+// props：侧边栏折叠状态 / 移动端菜单是否展开 / 是否移动端
+const props = defineProps<{
   collapsed: boolean
   mobileMenuOpen: boolean
+  isMobile: boolean
 }>()
 
-// emit：更新移动端菜单展开状态（v-model 绑定）
+// emit：更新移动端菜单展开状态 / 切换侧边栏 / 切换移动端菜单
 const emit = defineEmits<{
   (e: 'update:mobileMenuOpen', val: boolean): void
+  (e: 'toggleSidebar'): void
+  (e: 'toggleMobileMenu'): void
 }>()
 
-const { currentUser, logout } = useAuth()
 const { sections, isMenuActive, logoTarget } = useSidebarMenu()
 const { t } = useI18n()
 
-// 当前用户显示名，未设置时回退到默认文案
-const displayName = computed(() => currentUser.value?.display_name || t('sidebar.defaultUser'))
+// 侧栏宽度动画期间先隐藏文字，避免折叠时文字溢出
+const isSidebarTransitioning = ref(false)
+let sidebarTransitionTimer: ReturnType<typeof setTimeout> | null = null
+
+const showSidebarText = computed(() =>
+  (!props.collapsed || props.mobileMenuOpen) && !isSidebarTransitioning.value,
+)
+
+watch(() => props.collapsed, () => {
+  if (sidebarTransitionTimer) clearTimeout(sidebarTransitionTimer)
+  isSidebarTransitioning.value = true
+  sidebarTransitionTimer = setTimeout(() => {
+    isSidebarTransitioning.value = false
+    sidebarTransitionTimer = null
+  }, 320)
+})
+
+onUnmounted(() => {
+  if (sidebarTransitionTimer) clearTimeout(sidebarTransitionTimer)
+})
 
 // 点击菜单项：跳转路由并关闭移动端菜单
 const handleMenuClick = (path: string) => {
   navigateTo(path)
   emit('update:mobileMenuOpen', false)
+}
+
+const handleToggleSidebar = () => {
+  if (props.isMobile) {
+    emit('toggleMobileMenu')
+    return
+  }
+  emit('toggleSidebar')
 }
 </script>
 
@@ -38,33 +65,74 @@ const handleMenuClick = (path: string) => {
       'sidebar--mobile-open': mobileMenuOpen,
     }"
   >
-    <!--Logo 区域-->
-    <div class="sidebar-logo" @click="navigateTo(logoTarget)">
-      <div class="sidebar-logo-icon">
-        <img src="/favicon.svg" alt="AuraOA" width="24" height="24" />
-      </div>
-      <transition name="fade">
-        <span v-if="!collapsed || mobileMenuOpen" class="sidebar-logo-text">{{ t('app.name') }}</span>
-      </transition>
-      <!--移动端关闭按钮-->
-      <button
-        v-if="mobileMenuOpen"
-        class="sidebar-close-btn"
-        @click.stop="emit('update:mobileMenuOpen', false)"
-        :aria-label="t('sidebar.closeMenu')"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-      </button>
+    <!--侧栏头部：Logo + 收起/展开-->
+    <div
+      class="sidebar-header"
+      :class="{
+        'sidebar-header--expanded': !collapsed || mobileMenuOpen,
+        'sidebar-header--compact': collapsed && !mobileMenuOpen,
+      }"
+    >
+      <!--收起态：Logo 悬停切换为展开图标-->
+      <template v-if="collapsed && !mobileMenuOpen">
+        <button
+          type="button"
+          class="sidebar-compact-brand"
+          :aria-label="t('sidebar.expandMenu')"
+          @click="handleToggleSidebar"
+        >
+          <span class="sidebar-mark-slot">
+            <span class="sidebar-mark-logo">
+              <img src="/favicon.svg" alt="AuraOA" width="24" height="24" />
+            </span>
+            <span class="sidebar-mark-toggle" aria-hidden="true">
+              <MenuUnfoldOutlined />
+            </span>
+          </span>
+        </button>
+        <span class="sidebar-expand-hint" aria-hidden="true">{{ t('sidebar.expandMenu') }}</span>
+      </template>
+
+      <!--展开态：品牌区 + 收起按钮-->
+      <template v-else>
+        <div class="sidebar-brand" @click="navigateTo(logoTarget)">
+          <div class="sidebar-logo-icon">
+            <img src="/favicon.svg" alt="AuraOA" width="24" height="24" />
+          </div>
+          <transition name="fade">
+            <span v-if="showSidebarText" class="sidebar-logo-text">{{ t('app.name') }}</span>
+          </transition>
+        </div>
+        <button
+          v-if="!mobileMenuOpen"
+          type="button"
+          class="sidebar-toggle sidebar-hint-below"
+          :aria-label="t('sidebar.collapseMenu')"
+          :data-hint="t('sidebar.collapseMenu')"
+          @click="handleToggleSidebar"
+        >
+          <MenuFoldOutlined />
+        </button>
+        <!--移动端关闭按钮-->
+        <button
+          v-else
+          class="sidebar-close-btn"
+          @click.stop="emit('update:mobileMenuOpen', false)"
+          :aria-label="t('sidebar.closeMenu')"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </template>
     </div>
 
     <!--权限驱动的导航区域-->
     <nav class="sidebar-nav">
       <div v-for="section in sections" :key="section.id" class="sidebar-section">
-        <div v-if="!collapsed || mobileMenuOpen" class="sidebar-section-title">{{ t(section.titleKey) }}</div>
+        <div v-if="showSidebarText" class="sidebar-section-title">{{ t(section.titleKey) }}</div>
         <template v-for="item in section.items" :key="item.key">
           <!--折叠状态：用 Tooltip 包裹显示菜单名-->
           <a-tooltip
@@ -107,37 +175,13 @@ const handleMenuClick = (path: string) => {
       </div>
     </nav>
 
-    <!--底部用户信息：个人设置 + 退出登录-->
+    <!--底部用户菜单-->
     <div class="sidebar-footer">
-      <a-popover
-        placement="rightBottom"
-        trigger="click"
-        overlayClassName="user-profile-popover"
-        :arrow="false"
-      >
-        <template #content>
-          <div class="user-dropdown-panel">
-            <div class="dropdown-item" @click="handleMenuClick('/settings')">
-              <SettingOutlined class="dropdown-item-icon" />
-              <span>{{ t('sidebar.personalSettings') }}</span>
-            </div>
-            <div class="dropdown-divider" />
-            <div class="dropdown-item dropdown-item--danger" @click="logout">
-              <LogoutOutlined class="dropdown-item-icon" />
-              <span>{{ t('sidebar.logout') }}</span>
-            </div>
-          </div>
-        </template>
-
-        <div class="sidebar-user-profile" :class="{ 'sidebar-user-profile--collapsed': collapsed }">
-          <a-avatar :size="36" class="sidebar-avatar">
-            <template #icon><UserOutlined /></template>
-          </a-avatar>
-          <div v-if="!collapsed || mobileMenuOpen" class="sidebar-user-info">
-            <div class="sidebar-user-name">{{ displayName }}</div>
-          </div>
-        </div>
-      </a-popover>
+      <SidebarUserMenu
+        :collapsed="collapsed"
+        :mobile-menu-open="mobileMenuOpen"
+        @navigate="handleMenuClick"
+      />
     </div>
   </aside>
 </template>
@@ -151,17 +195,186 @@ const handleMenuClick = (path: string) => {
   position: fixed; top: 0; left: 0; bottom: 0;
   z-index: 100;
   transition: width var(--transition-slow), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
-  overflow: hidden;
+  overflow: visible;
 }
 .sidebar--collapsed { width: var(--sidebar-collapsed-width); }
 
-.sidebar-logo {
+.sidebar-header {
+  position: relative;
+  display: flex;
+  align-items: center;
   height: var(--header-height);
-  display: flex; align-items: center;
-  padding: 0 20px; gap: 12px;
-  cursor: pointer; flex-shrink: 0;
+  width: 100%;
+  flex-shrink: 0;
   border-bottom: 1px solid var(--color-sidebar-border);
 }
+.sidebar-header--expanded {
+  gap: 8px;
+  padding: 0 12px 0 16px;
+}
+.sidebar-header--compact {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar-brand {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.sidebar-compact-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sidebar-mark-slot {
+  position: relative;
+  display: flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-mark-logo,
+.sidebar-mark-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.sidebar-mark-logo {
+  width: 36px;
+  height: 36px;
+  background: var(--color-bg-hover);
+  border-radius: 10px;
+  color: var(--color-primary);
+}
+
+.sidebar-mark-toggle {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  font-size: 16px;
+  opacity: 0;
+  transform: scale(0.92);
+  pointer-events: none;
+}
+
+.sidebar-header--compact:hover .sidebar-mark-logo,
+.sidebar-header--compact:focus-within .sidebar-mark-logo {
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+.sidebar-header--compact:hover .sidebar-mark-toggle,
+.sidebar-header--compact:focus-within .sidebar-mark-toggle {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.sidebar-expand-hint {
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  z-index: 110;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-4px, -50%);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+html[data-theme='dark'] .sidebar-expand-hint {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.sidebar-header--compact:hover .sidebar-expand-hint,
+.sidebar-header--compact:focus-within .sidebar-expand-hint {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+.sidebar-compact-brand:focus-visible {
+  outline: 2px solid var(--color-primary-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+.sidebar-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+.sidebar-toggle:hover {
+  background: var(--color-bg-sidebar-hover);
+  color: var(--color-text-primary);
+}
+
+.sidebar-hint-below {
+  position: relative;
+}
+.sidebar-hint-below::after {
+  content: attr(data-hint);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 110;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -4px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+html[data-theme='dark'] .sidebar-hint-below::after {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+.sidebar-hint-below:hover::after,
+.sidebar-hint-below:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .sidebar-logo-icon {
   width: 36px; height: 36px;
   background: var(--color-bg-hover);
@@ -192,7 +405,7 @@ const handleMenuClick = (path: string) => {
   color: var(--color-danger);
 }
 
-.sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; overflow-x: hidden; }
+.sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; overflow-x: hidden; min-height: 0; }
 .sidebar-section { margin-bottom: 8px; }
 .sidebar-section-title {
   padding: 8px 24px 6px; font-size: 11px; font-weight: 600;
@@ -234,33 +447,6 @@ const handleMenuClick = (path: string) => {
 }
 
 .sidebar-footer { border-top: 1px solid var(--color-sidebar-border); padding: 8px; flex-shrink: 0; }
-.sidebar-user-profile {
-  display: flex; align-items: center; gap: 12px;
-  padding: 8px 12px; border-radius: 10px;
-  cursor: pointer; transition: background var(--transition-fast);
-}
-.sidebar-user-profile:hover { background: var(--color-bg-sidebar-hover); }
-.sidebar-user-profile--collapsed { justify-content: center; padding: 8px; }
-.sidebar-avatar { background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light)) !important; flex-shrink: 0; }
-.sidebar-user-info { min-width: 0; flex: 1; }
-.sidebar-user-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.user-dropdown-panel { background: var(--color-bg-card); min-width: 200px; padding: 8px 0; }
-.dropdown-divider { height: 1px; background: var(--color-border-light); margin: 4px 0; }
-.dropdown-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 16px; font-size: 13px; font-weight: 500;
-  color: var(--color-text-primary); cursor: pointer;
-  transition: all var(--transition-fast);
-}
-.dropdown-item:hover { background: var(--color-bg-hover); color: var(--color-primary); }
-.dropdown-item-icon { font-size: 15px; color: var(--color-text-tertiary); width: 18px; display: flex; align-items: center; justify-content: center; }
-.dropdown-item:hover .dropdown-item-icon { color: var(--color-primary); }
-.dropdown-item--danger { color: var(--color-text-secondary); }
-.dropdown-item--danger:hover { color: var(--color-danger); background: var(--color-danger-bg); }
-
-:global(.user-profile-popover .ant-popover-inner) { padding: 0; border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); border: 1px solid var(--color-border); overflow: hidden; }
-:global(.user-profile-popover .ant-popover-inner-content) { padding: 0; }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
@@ -282,8 +468,7 @@ const handleMenuClick = (path: string) => {
   .sidebar--collapsed .sidebar-logo-text,
   .sidebar--collapsed .sidebar-item-label,
   .sidebar--collapsed .sidebar-item-badge,
-  .sidebar--collapsed .sidebar-section-title,
-  .sidebar--collapsed .sidebar-user-info {
+  .sidebar--collapsed .sidebar-section-title {
     display: block !important;
     opacity: 1 !important;
   }
@@ -298,16 +483,12 @@ const handleMenuClick = (path: string) => {
   .sidebar--collapsed .sidebar-item--active .sidebar-item-icon {
     transform: none;
   }
-  .sidebar--collapsed .sidebar-user-profile {
-    justify-content: flex-start;
-    padding: 8px 12px;
-  }
-  .sidebar--collapsed .sidebar-user-profile .sidebar-user-info {
-    display: flex !important;
-  }
-  .sidebar--collapsed .sidebar-logo {
+  .sidebar--collapsed .sidebar-header {
     padding: 0 20px;
     gap: 12px;
+  }
+  .sidebar--collapsed .sidebar-header--compact {
+    padding: 0;
   }
   .sidebar-close-btn {
     display: flex;

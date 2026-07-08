@@ -33,7 +33,10 @@ watch(route, () => {
     <AppSidebar
       :collapsed="collapsed"
       :mobile-menu-open="mobileMenuOpen"
+      :is-mobile="isMobile"
       @update:mobile-menu-open="mobileMenuOpen = $event"
+      @toggle-sidebar="collapsed = !collapsed"
+      @toggle-mobile-menu="mobileMenuOpen = !mobileMenuOpen"
     />
 
     <!--移动覆盖-->
@@ -47,12 +50,7 @@ watch(route, () => {
 
     <!--主要内容-->
     <div class="main-wrapper">
-      <AppHeader
-        :collapsed="collapsed"
-        :is-mobile="isMobile"
-        @toggle-sidebar="collapsed = !collapsed"
-        @toggle-mobile-menu="mobileMenuOpen = !mobileMenuOpen"
-      />
+      <AppHeader :is-mobile="isMobile" @toggle-mobile-menu="mobileMenuOpen = !mobileMenuOpen" />
       <main class="app-content">
         <slot />
       </main>
@@ -80,13 +78,15 @@ watch(route, () => {
   flex: 1;
   margin-left: var(--sidebar-width);
   transition: margin-left var(--transition-slow);
-  display: flex; flex-direction: column;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 .app-layout--collapsed .main-wrapper { margin-left: var(--sidebar-collapsed-width); }
 
 .app-content {
   flex: 1;
+  min-height: 100vh;
   padding: var(--space-page);
   max-width: 1400px;
   width: 100%;
@@ -94,8 +94,13 @@ watch(route, () => {
 }
 
 @media (max-width: 768px) {
-  .main-wrapper { margin-left: 0 !important; }
-  .app-content { padding: 16px; }
+  .main-wrapper {
+    margin-left: 0 !important;
+  }
+  .app-content {
+    min-height: calc(100vh - var(--header-height));
+    padding: 16px;
+  }
 }
 @media (max-width: 480px) {
   .app-content { padding: 12px; }

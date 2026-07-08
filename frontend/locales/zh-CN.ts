@@ -29,6 +29,8 @@ export default {
     'sidebar.personalSettings': '个人设置',
     'sidebar.logout': '退出登录',
     'sidebar.closeMenu': '关闭菜单',
+    'sidebar.expandMenu': '展开侧栏',
+    'sidebar.collapseMenu': '收起侧栏',
     'sidebar.defaultUser': '用户',
 
     //=====标题=====
