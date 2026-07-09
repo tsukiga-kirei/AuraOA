@@ -1,28 +1,39 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-### Added
-- 新增附件信息数据模型 `AttachmentInfo`，包含附件 ID、文件名、文件类型、文件大小、所属字段、提取内容等字段
-- 在 `ProcessData` 结构体中新增 `Attachments` 字段，用于存储流程附件信息
-- 在 `Ecology9Adapter` 中集成 `AttachmentRecognitionService` 接口，支持附件识别服务注入
-
-### Changed
+## [0.2.1] - 2026-07-09
 
 ### Fixed
-
-### In Progress
-- [#001] 流程附件未被 AI 识别 - 数据模型扩展已完成，E9 适配器接口集成已完成，待实现附件查询逻辑与 Prompt 注入
-- [#002] 审核数据保留天数未实现自动清理 - 配置项已存在，待实现按 `data_retention_days` 清理库表审核/归档数据，详见 [docs/known-issues/002-audit-data-retention-cleanup.md](docs/known-issues/002-audit-data-retention-cleanup.md)
+- 修正 AI 调用记录详情接口路径
 
 ---
 
-## 版本说明
+## [0.2.0] - 2026-07-09
 
-- **Unreleased**: 开发中的变更，尚未发布
-- 版本号格式：`[主版本.次版本.修订号] - YYYY-MM-DD`
+### Added
+- AI 调用记录功能模块及按流程聚合查询
+- 流程总结多标签页、字段选择器与数据变量自定义传入
+- 系统提示词变量替换
+- OA 嵌入：流程总结侧边栏、租户级嵌入令牌、快照按渠道筛选与导出
+- OA 通知脚本导出
+- 统一应用时区为 `Asia/Shanghai`
+
+### Changed
+- 重构侧边栏与顶部导航组件
+- 优化角色权限、菜单权限与 Token 刷新逻辑
+- 附件识别（MinerU）调用与配置方式
+- Docker 镜像标签与部署文档
+
+### Fixed
+- AI 模型端点连接测试失败提示
+- 审核结果页移除误导性持续时间显示
+
+---
+
+## [0.1.0] - 2026-06-08
+
+### Added
+- 初始版本：Go 后端（认证/RBAC、规则引擎、审核编排、OA 适配、定时任务）、Nuxt 3 前端、Docker Compose 部署
+- 泛微 E9 OA 嵌入 AI 审核
+- Ecology9 浏览按钮/选择框显示值解析
+- 大模型调用输入输出拆表存储
+- 审核快照渠道区分（OA 嵌入 / 工作台）

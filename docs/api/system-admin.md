@@ -264,6 +264,16 @@ PUT /api/admin/system/configs
 
 ---
 
+### 测试附件识别服务
+
+```
+POST /api/admin/system/attachment-recognition/test
+```
+
+探测 MinerU 等附件识别服务的 `/health` 连通性。详见 `docs/oa-configurations/01-attachment-recognition.md`。
+
+---
+
 ## 统计与监控
 
 ### Token 消耗统计（全平台）

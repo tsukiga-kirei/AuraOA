@@ -115,3 +115,22 @@ GET /api/tenant/rules/prompt-templates
 ```
 
 返回系统预置的提示词模板（只读），用于配置流程审核时选择提示词模板。
+
+---
+
+## 外部关联数据
+
+### 测试关联数据配置
+
+```
+POST /api/tenant/rules/context/test
+```
+
+**请求体**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `process_id` | string | OA 流程 ID |
+| `context_mounts` | object | 外部关联数据挂载配置 |
+
+**响应**：`data.context_text` 为注入 AI 的文本预览。

@@ -181,6 +181,16 @@ GET /api/audit/snapshots/stats
 
 ---
 
+### 导出快照
+
+```
+GET /api/audit/snapshots/export
+```
+
+按筛选条件导出 Excel（最多 5000 条）。查询参数与列表接口一致。
+
+---
+
 ### 获取快照审核链
 
 ```
