@@ -39,14 +39,16 @@ func (s *AuditRuleService) Create(c *gin.Context, req *dto.CreateAuditRuleReques
 	}
 
 	rule := &model.AuditRule{
-		ID:          uuid.New(),
-		TenantID:    tenantID,
-		ProcessType: req.ProcessType,
-		RuleContent: req.RuleContent,
-		RuleScope:   defaultStr(req.RuleScope, "default_on"),
-		Enabled:     &enabled,
-		Source:      defaultStr(req.Source, "manual"),
-		RelatedFlow: req.RelatedFlow,
+		ID:             uuid.New(),
+		TenantID:       tenantID,
+		ProcessType:    req.ProcessType,
+		RuleContent:    req.RuleContent,
+		RuleScope:      defaultStr(req.RuleScope, "default_on"),
+		Enabled:        &enabled,
+		Source:         defaultStr(req.Source, "manual"),
+		RelatedFlow:    req.RelatedFlow,
+		ContextEnabled: req.ContextEnabled,
+		ContextMounts:  defaultJSON(req.ContextMounts, "[]"),
 	}
 
 	if req.ConfigID != "" {
@@ -90,6 +92,12 @@ func (s *AuditRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.UpdateA
 	}
 	if req.RelatedFlow != nil {
 		fields["related_flow"] = *req.RelatedFlow
+	}
+	if req.ContextEnabled != nil {
+		fields["context_enabled"] = *req.ContextEnabled
+	}
+	if req.ContextMounts != nil {
+		fields["context_mounts"] = req.ContextMounts
 	}
 
 	if len(fields) > 0 {

@@ -49,21 +49,25 @@ type TestConnectionRequest struct {
 
 // CreateAuditRuleRequest 创建审核规则请求。
 type CreateAuditRuleRequest struct {
-	ConfigID    string `json:"config_id"`
-	ProcessType string `json:"process_type" binding:"required"`
-	RuleContent string `json:"rule_content" binding:"required"`
-	RuleScope   string `json:"rule_scope"`
-	Enabled     *bool  `json:"enabled"`
-	Source      string `json:"source"`
-	RelatedFlow bool   `json:"related_flow"`
+	ConfigID       string         `json:"config_id"`
+	ProcessType    string         `json:"process_type" binding:"required"`
+	RuleContent    string         `json:"rule_content" binding:"required"`
+	RuleScope      string         `json:"rule_scope"`
+	Enabled        *bool          `json:"enabled"`
+	Source         string         `json:"source"`
+	RelatedFlow    bool           `json:"related_flow"`
+	ContextEnabled bool           `json:"context_enabled"`
+	ContextMounts  datatypes.JSON `json:"context_mounts"`
 }
 
 // UpdateAuditRuleRequest 更新审核规则请求。
 type UpdateAuditRuleRequest struct {
-	RuleContent string `json:"rule_content"`
-	RuleScope   string `json:"rule_scope"`
-	Enabled     *bool  `json:"enabled"`
-	RelatedFlow *bool  `json:"related_flow"`
+	RuleContent    string         `json:"rule_content"`
+	RuleScope      string         `json:"rule_scope"`
+	Enabled        *bool          `json:"enabled"`
+	RelatedFlow    *bool          `json:"related_flow"`
+	ContextEnabled *bool          `json:"context_enabled"`
+	ContextMounts  datatypes.JSON `json:"context_mounts"`
 }
 
 // ===================== Token 统计 DTO =====================

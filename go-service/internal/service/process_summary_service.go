@@ -53,6 +53,7 @@ type ProcessSummaryService struct {
 	db            *gorm.DB
 	rdb           *redis.Client
 	sysFlags      *systemflags.Resolver
+	externalCtx   *ExternalContextService
 }
 
 func NewProcessSummaryService(
@@ -67,6 +68,7 @@ func NewProcessSummaryService(
 	db *gorm.DB,
 	rdb *redis.Client,
 	sysFlags *systemflags.Resolver,
+	externalCtx *ExternalContextService,
 ) *ProcessSummaryService {
 	return &ProcessSummaryService{
 		logRepo:       logRepo,
@@ -80,6 +82,7 @@ func NewProcessSummaryService(
 		db:            db,
 		rdb:           rdb,
 		sysFlags:      sysFlags,
+		externalCtx:   externalCtx,
 	}
 }
 
@@ -394,7 +397,14 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 			defer wg.Done()
 			blockStart := time.Now()
 			fieldSet := buildSummaryBlockFieldSet(block)
-			req := BuildSummaryBlockPrompt(logEntry.ProcessType, processData, flowSnapshot, block, fieldSet, processSummary)
+			externalContextText := ""
+			if s.externalCtx != nil && len(block.ContextMounts) > 0 {
+				externalContextText = s.externalCtx.ResolveMountsForPrompt(c, tenant, logEntry.ProcessID, processData, block.ContextMounts)
+				if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+					externalContextText = sanitize.SanitizeText(externalContextText)
+				}
+			}
+			req := BuildSummaryBlockPrompt(logEntry.ProcessType, processData, flowSnapshot, block, fieldSet, processSummary, externalContextText)
 			req.Temperature = float64(tenant.Temperature)
 			req.MaxTokens = tenant.MaxTokensPerRequest
 			req.ModelConfig = modelCfg

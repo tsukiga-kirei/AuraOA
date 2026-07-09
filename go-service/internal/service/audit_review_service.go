@@ -65,6 +65,7 @@ type AuditExecuteService struct {
 	cache             *cache.CacheManager
 	invalidator       *cache.InvalidationManager
 	sysFlags          *systemflags.Resolver
+	externalCtx       *ExternalContextService
 }
 
 // NewAuditExecuteService 创建 AuditExecuteService，注入所有依赖仓储和服务。
@@ -85,6 +86,7 @@ func NewAuditExecuteService(
 	cacheManager *cache.CacheManager,
 	invalidationManager *cache.InvalidationManager,
 	sysFlags *systemflags.Resolver,
+	externalCtx *ExternalContextService,
 ) *AuditExecuteService {
 	return &AuditExecuteService{
 		auditLogRepo:      auditLogRepo,
@@ -103,6 +105,7 @@ func NewAuditExecuteService(
 		cache:             cacheManager,
 		invalidator:       invalidationManager,
 		sysFlags:          sysFlags,
+		externalCtx:       externalCtx,
 	}
 }
 
@@ -468,10 +471,12 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 
 	// 拉取审批流快照（历史 + 路由图），失败时不阻塞主流程
 	flowSnapshot := s.fetchFlowSnapshot(c, tenant, req.ProcessID)
+	externalContextText := s.resolveAuditRulesExternalContext(c, tenant, req.ProcessID, processData, rules)
 
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
 		sanitize.SanitizeProcessData(processData)
 		sanitize.SanitizeFlowSnapshot(flowSnapshot)
+		externalContextText = sanitize.SanitizeText(externalContextText)
 	}
 
 	// 从审批流快照中提取当前节点名称（来自 OA 系统 workflow_requestbase.currentnodeid）
@@ -480,7 +485,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		currentNode = flowSnapshot.CurrentNodeName
 	}
 
-	reasoningReq := BuildReasoningPrompt(&aiConfig, req.ProcessType, processData, mergedRulesText, currentNode, fieldSet, flowSnapshot)
+	reasoningReq := BuildReasoningPrompt(&aiConfig, req.ProcessType, processData, mergedRulesText, currentNode, fieldSet, flowSnapshot, externalContextText)
 	reasoningReq.Temperature = float64(tenant.Temperature)
 	reasoningReq.MaxTokens = tenant.MaxTokensPerRequest
 	reasoningReq.ModelConfig = modelCfg

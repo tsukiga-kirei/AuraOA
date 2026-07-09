@@ -2,6 +2,7 @@ package oa
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -532,6 +533,132 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 	}
 
 	return pd, nil
+}
+
+// QueryModelContext 对 E9 建模表执行受限只读查询。
+// 这里会校验表名/字段名、限制返回行数；自定义 SQL 仅允许使用 :source_value 的单条 SELECT。
+func (a *Ecology9Adapter) QueryModelContext(ctx context.Context, query ModelContextQuery) (*ModelContextQueryResult, error) {
+	mode := strings.TrimSpace(query.Mode)
+	if mode == "" {
+		mode = "exists"
+	}
+	maxRows := query.MaxRows
+	if maxRows <= 0 {
+		maxRows = 5
+	}
+	if maxRows > 50 {
+		maxRows = 50
+	}
+	switch mode {
+	case "exists", "count", "rows":
+		return a.queryModelTableContext(ctx, query, mode, maxRows)
+	case "custom_sql":
+		return a.queryModelCustomSQLContext(ctx, query, maxRows)
+	default:
+		return nil, fmt.Errorf("不支持的建模查询方式: %s", mode)
+	}
+}
+
+func (a *Ecology9Adapter) queryModelTableContext(ctx context.Context, query ModelContextQuery, mode string, maxRows int) (*ModelContextQueryResult, error) {
+	tableName := strings.TrimSpace(query.TableName)
+	joinField := strings.TrimSpace(query.JoinField)
+	if joinField == "" {
+		joinField = "id"
+	}
+	if !isSafeIdentifier(tableName) || !isSafeIdentifier(joinField) {
+		return nil, fmt.Errorf("建模表名或关联字段不合法")
+	}
+	db := a.db.WithContext(ctx).Table(a.tableName(tableName)).Where(a.col(joinField)+" = ?", query.SourceValue)
+	switch mode {
+	case "exists":
+		var count int64
+		if err := db.Count(&count).Error; err != nil {
+			return nil, fmt.Errorf("查询建模记录失败: %w", err)
+		}
+		return &ModelContextQueryResult{Mode: mode, Exists: count > 0, Count: count}, nil
+	case "count":
+		var count int64
+		if err := db.Count(&count).Error; err != nil {
+			return nil, fmt.Errorf("统计建模记录失败: %w", err)
+		}
+		return &ModelContextQueryResult{Mode: mode, Count: count}, nil
+	default:
+		selectExpr := "*"
+		if len(query.ReturnFields) > 0 {
+			fields := make([]string, 0, len(query.ReturnFields))
+			for _, field := range query.ReturnFields {
+				field = strings.TrimSpace(field)
+				if !isSafeIdentifier(field) {
+					return nil, fmt.Errorf("返回字段不合法: %s", field)
+				}
+				fields = append(fields, a.col(field))
+			}
+			selectExpr = strings.Join(fields, ", ")
+		}
+		if orderBy := strings.TrimSpace(query.OrderBy); orderBy != "" {
+			if !isSafeIdentifier(orderBy) {
+				return nil, fmt.Errorf("排序字段不合法: %s", orderBy)
+			}
+			dir := strings.ToUpper(strings.TrimSpace(query.OrderDir))
+			if dir != "ASC" && dir != "DESC" {
+				dir = "ASC"
+			}
+			db = db.Order(a.col(orderBy) + " " + dir)
+		}
+		var rows []map[string]interface{}
+		if err := db.Select(selectExpr).Limit(maxRows).Find(&rows).Error; err != nil {
+			return nil, fmt.Errorf("查询建模行数据失败: %w", err)
+		}
+		return &ModelContextQueryResult{Mode: mode, Rows: rows}, nil
+	}
+}
+
+func (a *Ecology9Adapter) queryModelCustomSQLContext(ctx context.Context, query ModelContextQuery, maxRows int) (*ModelContextQueryResult, error) {
+	sqlText := strings.TrimSpace(query.CustomSQL)
+	if !isReadonlySingleSelect(sqlText) {
+		return nil, fmt.Errorf("自定义 SQL 仅允许单条 SELECT 查询")
+	}
+	if !strings.Contains(sqlText, ":source_value") {
+		return nil, fmt.Errorf("自定义 SQL 必须使用 :source_value 参数")
+	}
+	if !hasSQLLimit(sqlText) {
+		sqlText += a.limitOffsetClause(maxRows, 0)
+	}
+	var rows []map[string]interface{}
+	if err := a.db.WithContext(ctx).Raw(sqlText, sql.Named("source_value", query.SourceValue)).Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("执行自定义 SQL 失败: %w", err)
+	}
+	if len(rows) > maxRows {
+		rows = rows[:maxRows]
+	}
+	return &ModelContextQueryResult{Mode: "custom_sql", Rows: rows}, nil
+}
+
+func isReadonlySingleSelect(sqlText string) bool {
+	trimmed := strings.TrimSpace(sqlText)
+	if trimmed == "" {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	if !strings.HasPrefix(lower, "select ") {
+		return false
+	}
+	if strings.Contains(lower, ";") || strings.Contains(lower, "--") || strings.Contains(lower, "/*") || strings.Contains(lower, "*/") {
+		return false
+	}
+	blocked := []string{" insert ", " update ", " delete ", " drop ", " alter ", " truncate ", " create ", " call ", " exec ", " merge "}
+	padded := " " + lower + " "
+	for _, token := range blocked {
+		if strings.Contains(padded, token) {
+			return false
+		}
+	}
+	return true
+}
+
+func hasSQLLimit(sqlText string) bool {
+	lower := strings.ToLower(sqlText)
+	return strings.Contains(lower, " limit ") || strings.Contains(lower, " fetch next ")
 }
 
 func (a *Ecology9Adapter) fetchFieldLabels(ctx context.Context, formID int, mainTable string) map[string]map[string]string {

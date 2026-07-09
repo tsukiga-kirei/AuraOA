@@ -11,7 +11,7 @@ import (
 // BuildReasoningPrompt 组装审核推理阶段的 AI 请求。
 // 将主表数据、明细表数据、规则文本、当前节点、审批流历史和流程图注入用户提示词模板的占位符中。
 // flowSnapshot 为 nil 或内容为空时使用默认占位文本，不影响推理执行。
-func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, processData *oa.ProcessData, rules string, currentNode string, fieldSet SelectedFieldSet, flowSnapshot *oa.ProcessFlowSnapshot) *ai.ChatRequest {
+func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, processData *oa.ProcessData, rules string, currentNode string, fieldSet SelectedFieldSet, flowSnapshot *oa.ProcessFlowSnapshot, externalContext string) *ai.ChatRequest {
 	mainDataStr := formatMainData(filterFields(processData.MainData, fieldSet["main"]), processData.FieldLabels["main"])
 	detailDataStr := formatGroupedDetailData(processData.DetailTables, fieldSet, processData.FieldLabels)
 	attachmentsStr := formatAttachments(processData.Attachments, 8000)
@@ -29,6 +29,7 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
 
 	userPrompt := aiConfig.UserReasoningPrompt
 	hasAttachmentsPlaceholder := strings.Contains(userPrompt, "{{attachments}}")
+	hasExternalContextPlaceholder := strings.Contains(userPrompt, "{{external_context}}")
 	userPrompt = strings.ReplaceAll(userPrompt, "{{process_type}}", processType)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{main_table}}", mainDataStr)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{fields}}", mainDataStr)
@@ -38,8 +39,12 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
 	userPrompt = strings.ReplaceAll(userPrompt, "{{current_node}}", currentNode)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{flow_history}}", flowHistory)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{flow_graph}}", flowGraph)
+	userPrompt = strings.ReplaceAll(userPrompt, "{{external_context}}", defaultExternalContextText(externalContext))
 	if !hasAttachmentsPlaceholder {
 		userPrompt += "\n\n附件识别内容：\n" + attachmentsStr
+	}
+	if !hasExternalContextPlaceholder && strings.TrimSpace(externalContext) != "" {
+		userPrompt += "\n\n" + externalContext
 	}
 	userPrompt = replaceSystemPromptVariables(userPrompt)
 
@@ -49,6 +54,13 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
 		RequestType:  "audit",
 		CallType:     "reasoning",
 	}
+}
+
+func defaultExternalContextText(externalContext string) string {
+	if strings.TrimSpace(externalContext) == "" {
+		return "（未配置或未查询到外部关联数据）"
+	}
+	return externalContext
 }
 
 // BuildExtractionPrompt 组装审核提取阶段的 AI 请求。

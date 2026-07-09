@@ -8,6 +8,7 @@
 
 import type { ProcessArchiveConfig, ArchiveRule } from '~/types/archive-config'
 import type { SystemPromptTemplate, ProcessInfo, ProcessFields } from '~/types/common'
+import type { ExternalContextMount, ExternalContextTestResponse } from '~/types/external-context'
 
 export const useArchiveConfigApi = () => {
   const { authFetch } = useAuth()
@@ -129,6 +130,13 @@ export const useArchiveConfigApi = () => {
     await authFetch<null>(`/api/tenant/archive/rules/${id}`, { method: 'DELETE' })
   }
 
+  async function testContext(processId: string, mounts: ExternalContextMount[]): Promise<ExternalContextTestResponse> {
+    return await authFetch<ExternalContextTestResponse>('/api/tenant/archive/context/test', {
+      method: 'POST',
+      body: { process_id: processId, context_mounts: mounts },
+    })
+  }
+
   // ============================================================
   // 归档专用系统提示词模板（archive_ 前缀）
   // ============================================================
@@ -149,6 +157,7 @@ export const useArchiveConfigApi = () => {
     createRule,
     updateRule,
     deleteRule,
+    testContext,
     listPromptTemplates,
   }
 }

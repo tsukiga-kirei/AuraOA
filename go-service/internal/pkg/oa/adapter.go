@@ -113,6 +113,34 @@ type BrowseValueResolver interface {
 	ResolveBrowseDisplayValues(ctx context.Context, processID string, data *ProcessData, fieldSet map[string]map[string]bool) error
 }
 
+// ModelContextQuerier 由支持建模表查询的 OA 适配器实现。
+// 实现方必须保证只读查询、结果限量和必要的安全校验。
+type ModelContextQuerier interface {
+	QueryModelContext(ctx context.Context, query ModelContextQuery) (*ModelContextQueryResult, error)
+}
+
+// ModelContextQuery 描述一次受限的建模表查询。
+type ModelContextQuery struct {
+	TableName    string
+	JoinField    string
+	SourceValue  string
+	Mode         string // exists=是否存在；count=存在条数；rows=返回行数据；custom_sql=自定义 SQL
+	ReturnFields []string
+	MaxRows      int
+	OrderBy      string
+	OrderDir     string
+	CustomSQL    string
+}
+
+// ModelContextQueryResult 是建模表查询的标准化结果。
+type ModelContextQueryResult struct {
+	Mode   string                   `json:"mode"`
+	Exists bool                     `json:"exists,omitempty"`
+	Count  int64                    `json:"count,omitempty"`
+	Rows   []map[string]interface{} `json:"rows,omitempty"`
+	Notice string                   `json:"notice,omitempty"`
+}
+
 // ProcessInfo 流程基本信息
 type ProcessInfo struct {
 	ProcessType       string `json:"process_type"`

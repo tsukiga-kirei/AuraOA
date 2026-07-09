@@ -1,0 +1,465 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/crypto"
+	"auraoa/go-service/internal/pkg/oa"
+	"auraoa/go-service/internal/repository"
+)
+
+const (
+	externalContextDefaultSplitter = ","
+	externalContextDefaultMaxRefs  = 5
+	externalContextDefaultMaxRows  = 20
+)
+
+// ExternalContextService 解析规则或总结块级别的外部关联数据。
+type ExternalContextService struct {
+	oaConnRepo    *repository.OAConnectionRepo
+	attachmentSvc *AttachmentRecognitionService
+}
+
+func NewExternalContextService(oaConnRepo *repository.OAConnectionRepo, attachmentSvc *AttachmentRecognitionService) *ExternalContextService {
+	return &ExternalContextService{oaConnRepo: oaConnRepo, attachmentSvc: attachmentSvc}
+}
+
+type ExternalContextTestRequest struct {
+	ProcessID string          `json:"process_id" binding:"required"`
+	Mounts    json.RawMessage `json:"context_mounts" binding:"required"`
+}
+
+type ExternalContextTestResponse struct {
+	ContextText string `json:"context_text"`
+}
+
+func parseExternalContextMounts(raw []byte) []model.ExternalContextMount {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var mounts []model.ExternalContextMount
+	_ = json.Unmarshal(raw, &mounts)
+	return mounts
+}
+
+func (s *ExternalContextService) ResolveForPrompt(c *gin.Context, tenant *model.Tenant, processID string, processData *oa.ProcessData, raw []byte) string {
+	return s.ResolveMountsForPrompt(c, tenant, processID, processData, parseExternalContextMounts(raw))
+}
+
+func (s *ExternalContextService) ResolveMountsForPrompt(c *gin.Context, tenant *model.Tenant, processID string, processData *oa.ProcessData, mounts []model.ExternalContextMount) string {
+	if s == nil || tenant == nil || len(mounts) == 0 {
+		return ""
+	}
+	adapter, err := s.getOAAdapter(tenant, false)
+	if err != nil {
+		return "外部关联数据：\n（创建 OA 查询连接失败：" + err.Error() + "）"
+	}
+	if processData == nil {
+		pd, err := adapter.FetchProcessData(c.Request.Context(), processID)
+		if err != nil {
+			return "外部关联数据：\n（拉取当前流程数据失败：" + err.Error() + "）"
+		}
+		processData = pd
+	}
+
+	var sections []string
+	for _, mount := range mounts {
+		if !mount.Enabled {
+			continue
+		}
+		sections = append(sections, s.resolveMount(c.Request.Context(), adapter, processData, mount))
+	}
+	if len(sections) == 0 {
+		return ""
+	}
+	return "外部关联数据：\n" + strings.Join(sections, "\n\n")
+}
+
+func (s *ExternalContextService) Test(c *gin.Context, tenant *model.Tenant, req ExternalContextTestRequest) (*ExternalContextTestResponse, error) {
+	mounts := parseExternalContextMounts(req.Mounts)
+	text := s.ResolveMountsForPrompt(c, tenant, req.ProcessID, nil, mounts)
+	if strings.TrimSpace(text) == "" {
+		text = "外部关联数据：\n（未配置启用的关联数据）"
+	}
+	return &ExternalContextTestResponse{ContextText: text}, nil
+}
+
+func (s *AuditExecuteService) resolveAuditRulesExternalContext(c *gin.Context, tenant *model.Tenant, processID string, processData *oa.ProcessData, rules []model.AuditRule) string {
+	if s.externalCtx == nil || len(rules) == 0 {
+		return ""
+	}
+	var sections []string
+	for _, rule := range rules {
+		if !isRuleEnabled(&rule) || !rule.ContextEnabled || len(rule.ContextMounts) == 0 {
+			continue
+		}
+		text := s.externalCtx.ResolveForPrompt(c, tenant, processID, processData, rule.ContextMounts)
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
+		sections = append(sections, fmt.Sprintf("规则：%s\n%s", rule.RuleContent, text))
+	}
+	if len(sections) == 0 {
+		return ""
+	}
+	return "规则关联外部数据：\n" + strings.Join(sections, "\n\n")
+}
+
+func (s *ArchiveReviewService) resolveArchiveRulesExternalContext(c *gin.Context, tenant *model.Tenant, processID string, processData *oa.ProcessData, rules []model.ArchiveRule) string {
+	if s.externalCtx == nil || len(rules) == 0 {
+		return ""
+	}
+	var sections []string
+	for _, rule := range rules {
+		if !rule.IsEnabled() || !rule.ContextEnabled || len(rule.ContextMounts) == 0 {
+			continue
+		}
+		text := s.externalCtx.ResolveForPrompt(c, tenant, processID, processData, rule.ContextMounts)
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
+		sections = append(sections, fmt.Sprintf("规则：%s\n%s", rule.RuleContent, text))
+	}
+	if len(sections) == 0 {
+		return ""
+	}
+	return "规则关联外部数据：\n" + strings.Join(sections, "\n\n")
+}
+
+func (s *ExternalContextService) resolveMount(ctx context.Context, adapter oa.OAAdapter, current *oa.ProcessData, mount model.ExternalContextMount) string {
+	name := firstNonEmpty(mount.Name, contextMountTypeLabel(mount.Type))
+	sourceValue := extractContextSourceValue(current, mount.SourceField)
+	if strings.TrimSpace(sourceValue) == "" {
+		return fmt.Sprintf("【%s】\n来源字段 %s 为空，未执行查询。", name, mount.SourceField)
+	}
+	switch mount.Type {
+	case "workflow":
+		return s.resolveWorkflowMount(ctx, adapter, name, sourceValue, mount)
+	case "model":
+		return s.resolveModelMount(ctx, adapter, name, sourceValue, mount)
+	default:
+		return fmt.Sprintf("【%s】\n不支持的关联类型：%s", name, mount.Type)
+	}
+}
+
+func (s *ExternalContextService) resolveWorkflowMount(ctx context.Context, adapter oa.OAAdapter, name, sourceValue string, mount model.ExternalContextMount) string {
+	cfg := mount.Workflow
+	if cfg == nil {
+		cfg = &model.ExternalWorkflowContextConfig{}
+	}
+	maxRefs := cfg.MaxRefs
+	if maxRefs <= 0 {
+		maxRefs = externalContextDefaultMaxRefs
+	}
+	if maxRefs > 20 {
+		maxRefs = 20
+	}
+	splitter := firstNonEmpty(mount.Splitter, externalContextDefaultSplitter)
+	ids := splitExternalValues(sourceValue, splitter, maxRefs)
+	if len(ids) == 0 {
+		return fmt.Sprintf("【%s】\n未解析到有效 requestid。", name)
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("【%s】\n来源字段：%s\n解析到 %d 个 requestid。", name, mount.SourceField, len(ids)))
+	for i, id := range ids {
+		sb.WriteString(fmt.Sprintf("\n\n%d. requestid：%s", i+1, id))
+		summary, err := adapter.FetchProcessRequestSummary(ctx, id)
+		if err != nil {
+			sb.WriteString("\n查询流程基础信息失败：" + err.Error())
+			continue
+		}
+		sb.WriteString(formatReferencedWorkflowBasic(summary, cfg.BasicFields))
+		dataMode := firstNonEmpty(cfg.DataMode, "none")
+		if dataMode == "none" {
+			continue
+		}
+		if cfg.TargetProcessType != "" && summary.ProcessType != "" && !strings.EqualFold(cfg.TargetProcessType, summary.ProcessType) {
+			sb.WriteString(fmt.Sprintf("\n提示：实际流程类型为「%s」，与配置目标流程「%s」不一致。", summary.ProcessType, cfg.TargetProcessType))
+			if firstNonEmpty(cfg.FallbackStrategy, "basic_with_notice") != "all_fields" {
+				sb.WriteString("\n已按兜底策略仅提供流程基础信息。")
+				continue
+			}
+		}
+		pd, err := adapter.FetchProcessData(ctx, id)
+		if err != nil {
+			sb.WriteString("\n查询引用流程表单数据失败：" + err.Error())
+			continue
+		}
+		fieldSet := SelectedFieldSet(nil)
+		if dataMode == "selected_fields" {
+			fieldSet = selectedFieldSetFromRefs(cfg.SelectedFields)
+		}
+		sb.WriteString("\n引用流程表单数据：\n")
+		sb.WriteString(formatProcessDataForExternalContext(pd, fieldSet, cfg.MaxRows))
+	}
+	return sb.String()
+}
+
+func (s *ExternalContextService) resolveModelMount(ctx context.Context, adapter oa.OAAdapter, name, sourceValue string, mount model.ExternalContextMount) string {
+	cfg := mount.Model
+	if cfg == nil {
+		cfg = &model.ExternalModelContextConfig{}
+	}
+	querier, ok := adapter.(oa.ModelContextQuerier)
+	if !ok {
+		return fmt.Sprintf("【%s】\n当前 OA 类型暂不支持建模表关联查询。", name)
+	}
+	res, err := querier.QueryModelContext(ctx, oa.ModelContextQuery{
+		TableName:    cfg.TableName,
+		JoinField:    firstNonEmpty(cfg.JoinField, "id"),
+		SourceValue:  sourceValue,
+		Mode:         firstNonEmpty(cfg.Mode, "exists"),
+		ReturnFields: cfg.ReturnFields,
+		MaxRows:      cfg.MaxRows,
+		OrderBy:      cfg.OrderBy,
+		OrderDir:     cfg.OrderDir,
+		CustomSQL:    cfg.CustomSQL,
+	})
+	if err != nil {
+		return fmt.Sprintf("【%s】\n建模表查询失败：%s", name, err.Error())
+	}
+	return formatModelContextResult(name, mount.SourceField, cfg, res)
+}
+
+func (s *ExternalContextService) getOAAdapter(tenant *model.Tenant, withAttachments bool) (oa.OAAdapter, error) {
+	if tenant.OADBConnectionID == nil {
+		return nil, fmt.Errorf("租户未配置 OA 数据库连接")
+	}
+	conn, err := s.oaConnRepo.FindByID(*tenant.OADBConnectionID)
+	if err != nil {
+		return nil, fmt.Errorf("OA 数据库连接配置不存在")
+	}
+	if conn.Password != "" {
+		password, err := crypto.Decrypt(conn.Password)
+		if err != nil {
+			return nil, fmt.Errorf("OA 数据库密码解密失败")
+		}
+		conn.Password = password
+	}
+	var attachmentSvc oa.AttachmentRecognitionService
+	if withAttachments && s.attachmentSvc != nil {
+		attachmentSvc = s.attachmentSvc
+	}
+	return oa.NewOAAdapter(conn.OAType, conn, attachmentSvc)
+}
+
+func contextMountTypeLabel(t string) string {
+	switch t {
+	case "workflow":
+		return "关联流程"
+	case "model":
+		return "关联建模表"
+	default:
+		return "外部关联数据"
+	}
+}
+
+func extractContextSourceValue(pd *oa.ProcessData, ref string) string {
+	if pd == nil {
+		return ""
+	}
+	table, field := parseExternalFieldRef(ref)
+	var values []string
+	if table == "main" {
+		if v, ok := findValueCaseInsensitive(pd.MainData, field); ok {
+			return stringifyContextValue(v)
+		}
+		return ""
+	}
+	for name, rows := range pd.DetailTables {
+		if !strings.EqualFold(name, table) {
+			continue
+		}
+		for _, row := range rows {
+			if v, ok := findValueCaseInsensitive(row, field); ok {
+				if s := stringifyContextValue(v); s != "" {
+					values = append(values, s)
+				}
+			}
+		}
+	}
+	return strings.Join(values, ",")
+}
+
+func parseExternalFieldRef(ref string) (string, string) {
+	ref = strings.TrimSpace(ref)
+	if strings.Contains(ref, ":") {
+		parts := strings.SplitN(ref, ":", 2)
+		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	}
+	return "main", ref
+}
+
+func findValueCaseInsensitive(row map[string]interface{}, field string) (interface{}, bool) {
+	for k, v := range row {
+		if strings.EqualFold(k, field) {
+			return v, true
+		}
+	}
+	return nil, false
+}
+
+func stringifyContextValue(v interface{}) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(t)
+	case []byte:
+		return strings.TrimSpace(string(t))
+	case map[string]interface{}:
+		if raw, ok := t["value"]; ok {
+			return stringifyContextValue(raw)
+		}
+		b, _ := json.Marshal(t)
+		return string(b)
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", t))
+	}
+}
+
+func splitExternalValues(raw, splitter string, max int) []string {
+	if splitter == "" {
+		splitter = externalContextDefaultSplitter
+	}
+	parts := strings.Split(raw, splitter)
+	out := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		v := strings.TrimSpace(part)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+		if max > 0 && len(out) >= max {
+			break
+		}
+	}
+	return out
+}
+
+func formatReferencedWorkflowBasic(summary *oa.ProcessRequestSummary, fields []string) string {
+	if summary == nil {
+		return ""
+	}
+	enabled := map[string]bool{}
+	if len(fields) == 0 {
+		fields = []string{"title", "applicant", "department", "process_type", "current_node", "submit_time"}
+	}
+	for _, f := range fields {
+		enabled[f] = true
+	}
+	lines := []string{}
+	add := func(key, label, val string) {
+		if enabled[key] && strings.TrimSpace(val) != "" {
+			lines = append(lines, fmt.Sprintf("%s：%s", label, val))
+		}
+	}
+	add("title", "流程标题", summary.Title)
+	add("applicant", "发起人", summary.Applicant)
+	add("department", "发起部门", summary.Department)
+	add("process_type", "流程类型", firstNonEmpty(summary.ProcessTypeLabel, summary.ProcessType))
+	add("current_node", "当前节点", summary.CurrentNode)
+	add("submit_time", "提交时间", summary.SubmitTime)
+	if len(lines) == 0 {
+		return ""
+	}
+	return "\n" + strings.Join(lines, "\n")
+}
+
+func selectedFieldSetFromRefs(refs []string) SelectedFieldSet {
+	fs := SelectedFieldSet{"main": map[string]bool{}}
+	for _, ref := range refs {
+		table, field := parseExternalFieldRef(ref)
+		if table == "" || field == "" {
+			continue
+		}
+		if fs[table] == nil {
+			fs[table] = map[string]bool{}
+		}
+		fs[table][strings.ToLower(field)] = true
+	}
+	return fs
+}
+
+func formatProcessDataForExternalContext(pd *oa.ProcessData, fieldSet SelectedFieldSet, maxRows int) string {
+	if maxRows <= 0 {
+		maxRows = externalContextDefaultMaxRows
+	}
+	if maxRows > 100 {
+		maxRows = 100
+	}
+	main := formatMainData(filterFields(pd.MainData, selectedKeysForTable(fieldSet, "main")), pd.FieldLabels["main"])
+	details := limitDetailRows(pd.DetailTables, maxRows)
+	detailText := formatGroupedDetailData(details, fieldSet, pd.FieldLabels)
+	return "主表字段：\n" + main + "\n\n明细表字段：\n" + detailText
+}
+
+func limitDetailRows(input map[string][]map[string]interface{}, maxRows int) map[string][]map[string]interface{} {
+	out := make(map[string][]map[string]interface{}, len(input))
+	for table, rows := range input {
+		if len(rows) > maxRows {
+			out[table] = rows[:maxRows]
+		} else {
+			out[table] = rows
+		}
+	}
+	return out
+}
+
+func formatModelContextResult(name, sourceField string, cfg *model.ExternalModelContextConfig, res *oa.ModelContextQueryResult) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("【%s】\n来源字段：%s\n查询方式：%s", name, sourceField, firstNonEmpty(cfg.Mode, "exists")))
+	switch res.Mode {
+	case "exists":
+		if res.Exists {
+			sb.WriteString(fmt.Sprintf("\n结果：存在匹配记录（共 %d 条）。", res.Count))
+		} else {
+			sb.WriteString("\n结果：不存在匹配记录。")
+		}
+	case "count":
+		sb.WriteString(fmt.Sprintf("\n结果：匹配记录数 %d 条。", res.Count))
+	default:
+		sb.WriteString(fmt.Sprintf("\n结果：返回 %d 行。", len(res.Rows)))
+		if len(res.Rows) == 0 {
+			break
+		}
+		sb.WriteString("\n行数据：")
+		for i, row := range res.Rows {
+			sb.WriteString(fmt.Sprintf("\n%d. %s", i+1, formatContextRow(row)))
+		}
+	}
+	if strings.TrimSpace(res.Notice) != "" {
+		sb.WriteString("\n提示：" + res.Notice)
+	}
+	return sb.String()
+}
+
+func formatContextRow(row map[string]interface{}) string {
+	if len(row) == 0 {
+		return "（空行）"
+	}
+	parts := make([]string, 0, len(row))
+	for k, v := range row {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, truncateContextValue(stringifyContextValue(v), 500)))
+	}
+	return strings.Join(parts, "；")
+}
+
+func truncateContextValue(s string, max int) string {
+	if max <= 0 || len([]rune(s)) <= max {
+		return s
+	}
+	r := []rune(s)
+	return string(r[:max]) + "..."
+}

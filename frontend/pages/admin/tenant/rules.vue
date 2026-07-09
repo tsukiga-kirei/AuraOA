@@ -456,6 +456,16 @@ const selectedFieldCount = computed(() =>
   allAvailableFields.value.filter(f => f.selected).length
 )
 
+const auditContextFieldOptions = computed(() => {
+  const includeAll = selectedConfig.value?.field_mode === 'all'
+  return allAvailableFields.value
+    .filter(f => includeAll || f.selected)
+    .map(f => ({
+      label: `${f.field_name}（${f.sourceLabel}）`,
+      value: `${f.source}:${f.field_key}`,
+    }))
+})
+
 const selectedFieldSearchQuery = ref('')
 const leftSelectedKeys = ref<string[]>([])
 const rightSelectedKeys = ref<string[]>([])
@@ -595,6 +605,8 @@ const handleSaveRule = async (rule: any) => {
         rule_content: rule.rule_content,
         rule_scope: rule.rule_scope,
         related_flow: rule.related_flow,
+        context_enabled: rule.context_enabled,
+        context_mounts: rule.context_mounts,
         // 强制根据级别同步启用状态
         enabled: rule.rule_scope === 'mandatory' ? true : (rule.rule_scope === 'default_off' ? false : true)
       })
@@ -610,6 +622,8 @@ const handleSaveRule = async (rule: any) => {
         rule_content: rule.rule_content,
         rule_scope: rule.rule_scope,
         related_flow: rule.related_flow,
+        context_enabled: rule.context_enabled,
+        context_mounts: rule.context_mounts,
         enabled: initialEnabled,
       })
       currentRules.value.push(created)
@@ -1060,6 +1074,7 @@ const normalizeSummaryConfigForUI = (cfg: ProcessSummaryConfig): ProcessSummaryC
       enabled_data_variables: enabledDataVariables,
       field_mode: b.field_mode || 'all',
       selected_fields: b.selected_fields || [],
+      context_mounts: Array.isArray(b.context_mounts) ? b.context_mounts : [],
       enabled: b.enabled !== false,
       sort_order: b.sort_order || idx + 1,
     }
@@ -1081,8 +1096,84 @@ function createSummaryBlock(): SummaryBlockConfig {
     enabled_data_variables: [],
     field_mode: 'all',
     selected_fields: [],
+    context_mounts: [],
     enabled: true,
     sort_order: 1,
+  }
+}
+
+const summaryContextTestProcessIds = ref<Record<string, string>>({})
+const summaryContextTesting = ref<Record<string, boolean>>({})
+const summaryContextPreviews = ref<Record<string, string>>({})
+
+const summaryContextFieldOptionsForBlock = (block: SummaryBlockConfig) => {
+  const allowed = block.field_mode === 'selected' ? new Set(block.selected_fields || []) : null
+  return summaryFieldOptions.value
+    .filter(f => !allowed || allowed.has(f.value))
+    .map(f => ({ label: f.label, value: f.value }))
+}
+
+const getSummaryContextMount = (block: SummaryBlockConfig, type: 'workflow' | 'model') =>
+  (block.context_mounts || []).find(m => m.type === type)
+
+const createSummaryWorkflowMount = () => ({
+  type: 'workflow' as const,
+  enabled: true,
+  name: '关联流程',
+  source_field: '',
+  source_splitter: ',',
+  workflow: {
+    include_basic: true,
+    basic_fields: ['title', 'applicant', 'department', 'process_type', 'current_node', 'submit_time'],
+    data_mode: 'none' as const,
+    fallback_strategy: 'basic_with_notice' as const,
+    max_refs: 5,
+    max_rows: 20,
+    selected_fields: [],
+  },
+})
+
+const createSummaryModelMount = () => ({
+  type: 'model' as const,
+  enabled: true,
+  name: '关联建模表',
+  source_field: '',
+  model: {
+    table_name: '',
+    join_field: 'id',
+    mode: 'exists' as const,
+    return_fields: [],
+    max_rows: 5,
+  },
+})
+
+const toggleSummaryContextMount = (block: SummaryBlockConfig, type: 'workflow' | 'model', checked: boolean) => {
+  if (!block.context_mounts) block.context_mounts = []
+  const idx = block.context_mounts.findIndex(m => m.type === type)
+  if (checked && idx < 0) block.context_mounts.push(type === 'workflow' ? createSummaryWorkflowMount() : createSummaryModelMount())
+  if (!checked && idx >= 0) block.context_mounts.splice(idx, 1)
+}
+
+const setSummaryModelReturnFields = (block: SummaryBlockConfig, value: string) => {
+  const mount = getSummaryContextMount(block, 'model')
+  if (mount?.model) mount.model.return_fields = value.split(',').map(v => v.trim()).filter(Boolean)
+}
+
+const testSummaryContext = async (block: SummaryBlockConfig) => {
+  const processId = (summaryContextTestProcessIds.value[block.id] || '').trim()
+  if (!processId) {
+    message.warning('请输入用于测试的当前流程 requestid')
+    return
+  }
+  summaryContextTesting.value[block.id] = true
+  summaryContextPreviews.value[block.id] = ''
+  try {
+    const resp = await summaryApi.testContext(processId, block.context_mounts || [])
+    summaryContextPreviews.value[block.id] = resp.context_text || ''
+  } catch (e: any) {
+    message.error('关联数据测试失败：' + (e.message || '未知错误'))
+  } finally {
+    summaryContextTesting.value[block.id] = false
   }
 }
 
@@ -1415,6 +1506,16 @@ const archiveSelectedFieldCount = computed(() =>
   archiveAllAvailableFields.value.filter(f => f.selected).length
 )
 
+const archiveContextFieldOptions = computed(() => {
+  const includeAll = selectedArchiveConfig.value?.field_mode === 'all'
+  return archiveAllAvailableFields.value
+    .filter(f => includeAll || f.selected)
+    .map(f => ({
+      label: `${f.field_name}（${f.sourceLabel}）`,
+      value: `${f.source}:${f.field_key}`,
+    }))
+})
+
 
 
 const archiveSelectedFieldSearchQuery = ref('')
@@ -1546,6 +1647,8 @@ const handleSaveArchiveRule = async (rule: any) => {
         rule_content: rule.rule_content,
         rule_scope: rule.rule_scope,
         related_flow: rule.related_flow,
+        context_enabled: rule.context_enabled,
+        context_mounts: rule.context_mounts,
         // 强制根据级别同步启用状态
         enabled: rule.rule_scope === 'mandatory' ? true : (rule.rule_scope === 'default_off' ? false : true)
       })
@@ -1561,6 +1664,8 @@ const handleSaveArchiveRule = async (rule: any) => {
         rule_content: rule.rule_content,
         rule_scope: rule.rule_scope,
         related_flow: rule.related_flow,
+        context_enabled: rule.context_enabled,
+        context_mounts: rule.context_mounts,
         enabled: initialEnabled,
       })
       currentArchiveRules.value.push(created)
@@ -2232,6 +2337,9 @@ const handleSave = async () => {
                     <span v-if="rule.related_flow" class="rule-flow-tag">
                       <NodeIndexOutlined /> {{ t('admin.ruleConfig.relatedFlow') }}
                     </span>
+                    <span v-if="rule.context_enabled" class="rule-flow-tag">
+                      <NodeIndexOutlined /> 外部关联
+                    </span>
                   </div>
                 </div>
               </div>
@@ -2758,6 +2866,131 @@ const handleSave = async () => {
                 </div>
               </div>
 
+              <div class="summary-context-panel">
+                <div class="summary-block-option-row">
+                  <div class="summary-block-option-copy">
+                    <div class="summary-block-option-title">外部关联数据</div>
+                    <div class="summary-block-option-desc">本总结块生成前先查询关联流程或建模表，再把结果提供给 AI</div>
+                  </div>
+                  <div class="summary-context-switches">
+                    <label class="context-switch">
+                      <a-switch
+                        :checked="!!getSummaryContextMount(block, 'workflow')"
+                        @change="(checked: any) => toggleSummaryContextMount(block, 'workflow', !!checked)"
+                      />
+                      <span>关联流程</span>
+                    </label>
+                    <label class="context-switch">
+                      <a-switch
+                        :checked="!!getSummaryContextMount(block, 'model')"
+                        @change="(checked: any) => toggleSummaryContextMount(block, 'model', !!checked)"
+                      />
+                      <span>关联建模表</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div v-if="getSummaryContextMount(block, 'workflow')" class="summary-context-box">
+                  <div class="context-panel-title">关联流程</div>
+                  <a-row :gutter="12">
+                    <a-col :span="12">
+                      <a-form-item label="来源字段">
+                        <a-select
+                          v-model:value="getSummaryContextMount(block, 'workflow')!.source_field"
+                          :options="summaryContextFieldOptionsForBlock(block)"
+                          show-search
+                          placeholder="选择已引入字段"
+                        />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :span="6">
+                      <a-form-item label="分隔符">
+                        <a-input v-model:value="getSummaryContextMount(block, 'workflow')!.source_splitter" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :span="6">
+                      <a-form-item label="引用表单数据">
+                        <a-select v-model:value="getSummaryContextMount(block, 'workflow')!.workflow!.data_mode">
+                          <a-select-option value="none">不引用</a-select-option>
+                          <a-select-option value="all_fields">全部字段</a-select-option>
+                          <a-select-option value="selected_fields">指定字段</a-select-option>
+                        </a-select>
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+                  <a-form-item v-if="getSummaryContextMount(block, 'workflow')!.workflow?.data_mode === 'selected_fields'" label="引用流程字段">
+                    <a-select
+                      v-model:value="getSummaryContextMount(block, 'workflow')!.workflow!.selected_fields"
+                      :options="summaryContextFieldOptionsForBlock(block)"
+                      mode="multiple"
+                      show-search
+                      placeholder="选择目标流程字段"
+                    />
+                  </a-form-item>
+                </div>
+
+                <div v-if="getSummaryContextMount(block, 'model')" class="summary-context-box">
+                  <div class="context-panel-title">关联建模表</div>
+                  <a-row :gutter="12">
+                    <a-col :span="8">
+                      <a-form-item label="来源字段">
+                        <a-select
+                          v-model:value="getSummaryContextMount(block, 'model')!.source_field"
+                          :options="summaryContextFieldOptionsForBlock(block)"
+                          show-search
+                          placeholder="选择已引入字段"
+                        />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :span="8">
+                      <a-form-item label="建模表名">
+                        <a-input v-model:value="getSummaryContextMount(block, 'model')!.model!.table_name" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :span="8">
+                      <a-form-item label="关联字段">
+                        <a-input v-model:value="getSummaryContextMount(block, 'model')!.model!.join_field" placeholder="默认 id" />
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+                  <a-row :gutter="12">
+                    <a-col :span="8">
+                      <a-form-item label="查询方式">
+                        <a-select v-model:value="getSummaryContextMount(block, 'model')!.model!.mode">
+                          <a-select-option value="exists">是否存在</a-select-option>
+                          <a-select-option value="count">存在条数</a-select-option>
+                          <a-select-option value="rows">当前行数据</a-select-option>
+                          <a-select-option value="custom_sql">自定义 SQL</a-select-option>
+                        </a-select>
+                      </a-form-item>
+                    </a-col>
+                    <a-col :span="8">
+                      <a-form-item label="最多返回行">
+                        <a-input-number v-model:value="getSummaryContextMount(block, 'model')!.model!.max_rows" :min="1" :max="50" style="width: 100%;" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :span="8" v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'rows'">
+                      <a-form-item label="返回字段">
+                        <a-input
+                          :value="getSummaryContextMount(block, 'model')!.model!.return_fields?.join(',')"
+                          placeholder="逗号分隔"
+                          @update:value="(v: string) => setSummaryModelReturnFields(block, v)"
+                        />
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+                  <a-form-item v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'custom_sql'" label="自定义 SQL">
+                    <a-textarea v-model:value="getSummaryContextMount(block, 'model')!.model!.custom_sql" :rows="4" placeholder="仅允许 SELECT，并使用 :source_value 参数" />
+                  </a-form-item>
+                </div>
+
+                <div v-if="block.context_mounts?.length" class="context-test">
+                  <a-input v-model:value="summaryContextTestProcessIds[block.id]" placeholder="输入当前流程 requestid 测试关联数据" style="max-width: 320px;" />
+                  <a-button :loading="summaryContextTesting[block.id]" @click="testSummaryContext(block)">测试</a-button>
+                </div>
+                <pre v-if="summaryContextPreviews[block.id]" class="context-preview">{{ summaryContextPreviews[block.id] }}</pre>
+              </div>
+
               <a-form layout="vertical" style="margin-top: 12px;">
                 <a-form-item label="用户提示词">
                   <PromptVariableBar
@@ -3017,6 +3250,8 @@ const handleSave = async () => {
     <RuleEditor
       :open="showRuleEditor"
       :rule="editingRule"
+      :field-options="auditContextFieldOptions"
+      context-test-endpoint="/api/tenant/rules/context/test"
       @close="showRuleEditor = false; editingRule = null"
       @save="handleSaveRule"
     />
@@ -3628,6 +3863,9 @@ const handleSave = async () => {
                     <span v-if="rule.related_flow" class="rule-flow-tag">
                       <NodeIndexOutlined /> {{ t('admin.ruleConfig.relatedFlow') }}
                     </span>
+                    <span v-if="rule.context_enabled" class="rule-flow-tag">
+                      <NodeIndexOutlined /> 外部关联
+                    </span>
                     <span v-if="rule.source === 'file_import'" class="rule-source-tag">{{ t('admin.ruleConfig.fileImportTag') }}</span>
                     <span v-else class="rule-source-tag rule-source-tag--manual">{{ t('admin.ruleConfig.manualAddTag') }}</span>
                   </div>
@@ -3894,6 +4132,8 @@ const handleSave = async () => {
     <RuleEditor
       :open="showArchiveRuleEditor"
       :rule="editingArchiveRule"
+      :field-options="archiveContextFieldOptions"
+      context-test-endpoint="/api/tenant/archive/context/test"
       @close="showArchiveRuleEditor = false; editingArchiveRule = null"
       @save="handleSaveArchiveRule"
     />
@@ -4456,6 +4696,53 @@ const handleSave = async () => {
   font-size: 12px;
   line-height: 1.5;
   color: var(--color-text-tertiary);
+}
+.summary-context-panel {
+  margin-top: 12px;
+  border-top: 1px dashed var(--color-border-light);
+  padding-top: 12px;
+}
+.summary-context-switches {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.context-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.summary-context-box {
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-top: 10px;
+  background: var(--color-bg-page);
+}
+.context-panel-title {
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--color-text-primary);
+}
+.context-test {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+.context-preview {
+  margin-top: 10px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.6;
 }
 .summary-custom-data-hint {
   margin-top: 8px;

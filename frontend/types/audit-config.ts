@@ -2,6 +2,7 @@
 
 import type { ProcessField, DetailTableDef } from '~/types/common'
 import type { AccessControl } from '~/types/archive-config'
+import type { ExternalContextMount } from '~/types/external-context'
 
 /** 流程审核配置 */
 export interface ProcessAuditConfig {
@@ -36,6 +37,8 @@ export interface AuditRule {
   enabled: boolean
   source: string
   related_flow: boolean
+  context_enabled?: boolean
+  context_mounts?: ExternalContextMount[]
   created_at?: string
   updated_at?: string
 }

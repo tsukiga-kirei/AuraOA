@@ -19,6 +19,7 @@ func BuildArchiveReasoningPrompt(
 	currentNode string,
 	fieldSet SelectedFieldSet,
 	flowSnapshot *oa.ProcessFlowSnapshot,
+	externalContext string,
 ) *ai.ChatRequest {
 	mainDataStr := formatMainData(filterFields(processData.MainData, fieldSet["main"]), processData.FieldLabels["main"])
 	detailDataStr := formatGroupedDetailData(processData.DetailTables, fieldSet, processData.FieldLabels)
@@ -37,6 +38,7 @@ func BuildArchiveReasoningPrompt(
 
 	userPrompt := aiConfig.UserReasoningPrompt
 	hasAttachmentsPlaceholder := strings.Contains(userPrompt, "{{attachments}}")
+	hasExternalContextPlaceholder := strings.Contains(userPrompt, "{{external_context}}")
 	userPrompt = strings.ReplaceAll(userPrompt, "{{process_type}}", processType)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{main_table}}", mainDataStr)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{fields}}", mainDataStr)
@@ -46,8 +48,12 @@ func BuildArchiveReasoningPrompt(
 	userPrompt = strings.ReplaceAll(userPrompt, "{{current_node}}", currentNode)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{flow_history}}", flowHistory)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{flow_graph}}", flowGraph)
+	userPrompt = strings.ReplaceAll(userPrompt, "{{external_context}}", defaultExternalContextText(externalContext))
 	if !hasAttachmentsPlaceholder {
 		userPrompt += "\n\n附件识别内容：\n" + attachmentsStr
+	}
+	if !hasExternalContextPlaceholder && strings.TrimSpace(externalContext) != "" {
+		userPrompt += "\n\n" + externalContext
 	}
 	userPrompt = replaceSystemPromptVariables(userPrompt)
 

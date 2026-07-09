@@ -98,6 +98,7 @@ type ArchiveReviewService struct {
 	cache               *cache.CacheManager
 	invalidator         *cache.InvalidationManager
 	sysFlags            *systemflags.Resolver
+	externalCtx         *ExternalContextService
 }
 
 // NewArchiveReviewService 创建 ArchiveReviewService，注入所有依赖仓储和服务。
@@ -119,6 +120,7 @@ func NewArchiveReviewService(
 	cacheManager *cache.CacheManager,
 	invalidationManager *cache.InvalidationManager,
 	sysFlags *systemflags.Resolver,
+	externalCtx *ExternalContextService,
 ) *ArchiveReviewService {
 	return &ArchiveReviewService{
 		archiveLogRepo:      archiveLogRepo,
@@ -138,6 +140,7 @@ func NewArchiveReviewService(
 		cache:               cacheManager,
 		invalidator:         invalidationManager,
 		sysFlags:            sysFlags,
+		externalCtx:         externalCtx,
 	}
 }
 
@@ -1342,16 +1345,18 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		processSnapshot["archive_time"] = archivedItem.ArchiveTime
 		processSnapshot["main_table_name"] = archivedItem.MainTableName
 	}
+	externalContextText := s.resolveArchiveRulesExternalContext(c, tenant, logEntry.ProcessID, processData, rules)
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
 		for _, k := range []string{"title", "process_type_label", "applicant", "department", "current_node", "submit_time", "archive_time", "main_table_name"} {
 			if v, ok := processSnapshot[k].(string); ok {
 				processSnapshot[k] = sanitize.SanitizeText(v)
 			}
 		}
+		externalContextText = sanitize.SanitizeText(externalContextText)
 	}
 	snapshotJSON, _ := json.Marshal(processSnapshot)
 
-	reasoningReq := BuildArchiveReasoningPrompt(&aiConfig, logEntry.ProcessType, processData, mergedRulesText, currentNode, fieldSet, flowSnapshot)
+	reasoningReq := BuildArchiveReasoningPrompt(&aiConfig, logEntry.ProcessType, processData, mergedRulesText, currentNode, fieldSet, flowSnapshot, externalContextText)
 	reasoningReq.Temperature = float64(tenant.Temperature)
 	reasoningReq.MaxTokens = tenant.MaxTokensPerRequest
 	reasoningReq.ModelConfig = modelCfg
