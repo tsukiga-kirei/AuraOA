@@ -4,7 +4,9 @@ export interface SummaryBlockConfig {
   id: string
   title: string
   user_prompt: string
+  /** true：传入全部数据；false：仅传入 enabled_data_variables 中选中的数据 */
   include_meta: boolean
+  enabled_data_variables?: string[]
   field_mode: 'all' | 'selected'
   selected_fields: string[]
   enabled: boolean

@@ -1085,7 +1085,13 @@ export default {
 
     //System Variable Descriptions
     'admin.ruleConfig.insertDataVariable': 'Data Variables',
+    'admin.ruleConfig.selectDataVariable': 'Select Data Variables',
+    'admin.ruleConfig.insertDataVariableDisabled': 'Data Variables (all included)',
+    'admin.ruleConfig.insertDataVariableDisabledHint': 'All data is included when "Include all data" is enabled',
     'admin.ruleConfig.insertSystemVariable': 'System Variables',
+    'admin.ruleConfig.summaryIncludeAllData': 'Include All Data',
+    'admin.ruleConfig.summaryIncludeAllDataDesc': 'When enabled, process metadata, main/detail tables, attachments and flow data are all passed in. When disabled, pick data variables individually.',
+    'admin.ruleConfig.summaryCustomDataHint': 'Custom mode: click the data variable tags below to choose what to include',
     'admin.ruleConfig.varCurrentDate': 'Current date, e.g. 2026-07-09',
     'admin.ruleConfig.varCurrentTime': 'Current time, e.g. 14:30:00',
     'admin.ruleConfig.varCurrentDatetime': 'Current date and time, e.g. 2026-07-09 14:30:00',
