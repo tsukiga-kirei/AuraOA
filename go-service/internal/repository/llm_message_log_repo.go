@@ -225,3 +225,148 @@ ORDER BY calls DESC`
 	err := r.DB.Raw(sql).Scan(&rows).Error
 	return rows, err
 }
+
+// LLMLogFilter 数据管理页 AI 调用记录筛选条件。
+type LLMLogFilter struct {
+	RequestType string
+	CallType    string
+	Operator    string
+	StartDate   *time.Time
+	EndDate     *time.Time
+}
+
+// LLMLogListRow 列表行（不含大文本 payload）。
+type LLMLogListRow struct {
+	model.TenantLLMMessageLog
+	UserName         string `gorm:"column:user_name" json:"user_name"`
+	ModelName        string `gorm:"column:model_name" json:"model_name"`
+	ModelDisplayName string `gorm:"column:model_display_name" json:"model_display_name"`
+}
+
+// LLMLogStats AI 调用记录统计。
+type LLMLogStats struct {
+	Total        int64 `json:"total"`
+	AuditCount   int64 `json:"audit_count"`
+	ArchiveCount int64 `json:"archive_count"`
+	SummaryCount int64 `json:"summary_count"`
+}
+
+// LLMLogDetailWithPayload 详情含输入输出提示词。
+type LLMLogDetailWithPayload struct {
+	LLMLogListRow
+	SystemPrompt    string `json:"system_prompt"`
+	UserPrompt      string `json:"user_prompt"`
+	ResponseContent string `json:"response_content"`
+}
+
+// ListPagedWithUser 数据管理页：分页查询 AI 调用记录（按创建时间倒序）。
+func (r *LLMMessageLogRepo) ListPagedWithUser(c *gin.Context, filter LLMLogFilter, page, pageSize int) ([]LLMLogListRow, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	const t = "tenant_llm_message_logs"
+	tenantID, _ := c.Get("tenant_id")
+	base := r.DB.
+		Table(t).
+		Where(t+".tenant_id = ?", tenantID).
+		Select(t + ".*, " +
+			"COALESCE(u.display_name, u.username, '') AS user_name, " +
+			"COALESCE(amc.model_name, '') AS model_name, " +
+			"COALESCE(amc.display_name, '') AS model_display_name").
+		Joins("LEFT JOIN users u ON u.id = " + t + ".user_id").
+		Joins("LEFT JOIN ai_model_configs amc ON amc.id = " + t + ".model_config_id")
+	base = applyLLMLogFilter(base, filter)
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var items []LLMLogListRow
+	err := base.Order(t + ".created_at DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&items).Error
+	return items, total, err
+}
+
+// CountStats 统计租户 AI 调用记录按场景分布。
+func (r *LLMMessageLogRepo) CountStats(c *gin.Context) (*LLMLogStats, error) {
+	type row struct {
+		RequestType string
+		Cnt         int64
+	}
+	var rows []row
+	err := r.WithTenant(c).
+		Model(&model.TenantLLMMessageLog{}).
+		Select("request_type, COUNT(*) as cnt").
+		Group("request_type").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	stats := &LLMLogStats{}
+	for _, row := range rows {
+		stats.Total += row.Cnt
+		switch row.RequestType {
+		case "audit":
+			stats.AuditCount += row.Cnt
+		case "archive":
+			stats.ArchiveCount += row.Cnt
+		case "summary":
+			stats.SummaryCount += row.Cnt
+		}
+	}
+	return stats, nil
+}
+
+// GetByIDWithPayload 按 ID 查询单条 AI 调用记录及输入输出内容。
+func (r *LLMMessageLogRepo) GetByIDWithPayload(c *gin.Context, id uuid.UUID) (*LLMLogDetailWithPayload, error) {
+	const t = "tenant_llm_message_logs"
+	tenantID, _ := c.Get("tenant_id")
+
+	var detail LLMLogDetailWithPayload
+	err := r.DB.
+		Table(t).
+		Select(t+".*, "+
+			"COALESCE(u.display_name, u.username, '') AS user_name, "+
+			"COALESCE(amc.model_name, '') AS model_name, "+
+			"COALESCE(amc.display_name, '') AS model_display_name, "+
+			"COALESCE(p.system_prompt, '') AS system_prompt, "+
+			"COALESCE(p.user_prompt, '') AS user_prompt, "+
+			"COALESCE(p.response_content, '') AS response_content").
+		Joins("LEFT JOIN users u ON u.id = "+t+".user_id").
+		Joins("LEFT JOIN ai_model_configs amc ON amc.id = "+t+".model_config_id").
+		Joins("LEFT JOIN tenant_llm_message_payloads p ON p.llm_message_log_id = "+t+".id").
+		Where(t+".tenant_id = ? AND "+t+".id = ?", tenantID, id).
+		First(&detail).Error
+	if err != nil {
+		return nil, err
+	}
+	return &detail, nil
+}
+
+func applyLLMLogFilter(db *gorm.DB, f LLMLogFilter) *gorm.DB {
+	const t = "tenant_llm_message_logs"
+	if f.RequestType != "" {
+		db = db.Where(t+".request_type = ?", f.RequestType)
+	}
+	if f.CallType != "" {
+		db = db.Where(t+".call_type = ?", f.CallType)
+	}
+	if f.Operator != "" {
+		like := "%" + f.Operator + "%"
+		db = db.Where("(u.display_name ILIKE ? OR u.username ILIKE ?)", like, like)
+	}
+	if f.StartDate != nil {
+		db = db.Where(t+".created_at >= ?", f.StartDate)
+	}
+	if f.EndDate != nil {
+		db = db.Where(t+".created_at <= ?", f.EndDate)
+	}
+	return db
+}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -767,6 +768,9 @@ func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([
 	for i := range logs {
 		normalizeAuditLogInPlace(&logs[i].AuditLog)
 	}
+	sort.Slice(logs, func(i, j int) bool {
+		return logs[i].CreatedAt.After(logs[j].CreatedAt)
+	})
 	return logs, nil
 }
 

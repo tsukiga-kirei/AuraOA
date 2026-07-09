@@ -1461,6 +1461,8 @@ export default {
     'admin.data.tabAudit': 'Audit Workbench',
     'admin.data.tabCron': 'Scheduled Tasks',
     'admin.data.tabArchive': 'Archive Review',
+    'admin.data.tabSummary': 'Process Summary',
+    'admin.data.tabLLM': 'AI Call Logs',
     // Audit sub-tabs
     'admin.data.auditTab.all': 'All',
     'admin.data.auditTab.approve': 'Suggest Approve',
@@ -1494,6 +1496,7 @@ export default {
     'admin.data.exportFailed': 'Export failed, please try again later',
     'admin.data.loading': 'Loading...',
     'admin.data.loadFailed': 'Load failed, please try again later',
+    'admin.data.fetchFailed': 'Failed to load details, please try again later',
     // Cron related
     'admin.data.searchCron': 'Search task/triggered by',
     'admin.data.searchCronTask': 'Search task',
@@ -1577,6 +1580,24 @@ export default {
     'admin.data.cronWorkflows': 'Associated Workflows',
     'admin.data.cronDateRange': 'Data Range',
     'admin.data.days': 'days',
+    // AI call logs
+    'admin.data.llmTab.all': 'All',
+    'admin.data.llmTab.audit': 'Audit Workbench',
+    'admin.data.llmTab.archive': 'Archive Review',
+    'admin.data.llmTab.summary': 'Process Summary',
+    'admin.data.llmTab.other': 'Other',
+    'admin.data.llmDetailTitle': 'AI Call Details',
+    'admin.data.thRequestType': 'Scenario',
+    'admin.data.thCallType': 'Call Type',
+    'admin.data.thModel': 'Model',
+    'admin.data.thTokens': 'Tokens',
+    'admin.data.llmCallReasoning': 'Reasoning',
+    'admin.data.llmCallStructured': 'Structured',
+    'admin.data.llmSystemPrompt': 'System Prompt',
+    'admin.data.llmUserPrompt': 'User Prompt',
+    'admin.data.llmResponse': 'Model Response',
+    'admin.data.llmNoPrompt': 'No content',
+    'admin.data.summaryDetailTitle': 'Process Summary Details',
 
     //===== Admin - System Tenants =====
     'admin.tenants.title': 'Tenant Management',

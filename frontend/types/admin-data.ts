@@ -267,3 +267,45 @@ export interface CronLogFilter {
   page?: number
   page_size?: number
 }
+
+// ─── AI 调用记录 ─────────────────────────────────────────────────────────────
+
+export interface LLMLogItem {
+  id: string
+  tenant_id: string
+  user_id: string | null
+  user_name: string
+  model_config_id: string | null
+  model_name: string
+  model_display_name: string
+  request_type: string
+  call_type: string
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  duration_ms: number
+  created_at: string
+}
+
+export interface LLMLogDetail extends LLMLogItem {
+  system_prompt: string
+  user_prompt: string
+  response_content: string
+}
+
+export interface LLMLogStats {
+  total: number
+  audit_count: number
+  archive_count: number
+  summary_count: number
+}
+
+export interface LLMLogFilter {
+  request_type?: string
+  call_type?: string
+  operator?: string
+  start_date?: string
+  end_date?: string
+  page?: number
+  page_size?: number
+}

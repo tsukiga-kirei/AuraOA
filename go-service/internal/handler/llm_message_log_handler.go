@@ -9,8 +9,10 @@ import (
 	"github.com/google/uuid"
 
 	"auraoa/go-service/internal/dto"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	"auraoa/go-service/internal/pkg/response"
+	"auraoa/go-service/internal/repository"
 	"auraoa/go-service/internal/service"
 )
 
@@ -90,4 +92,70 @@ func (h *LLMMessageLogHandler) QueryAllTenantsTokenUsage(c *gin.Context) {
 		return
 	}
 	response.Success(c, summaries)
+}
+
+// ListLogs 分页查询租户 AI 调用记录（数据管理页）。
+// GET /api/tenant/llm-logs
+func (h *LLMMessageLogHandler) ListLogs(c *gin.Context) {
+	filter, page, pageSize := parseLLMLogQuery(c)
+	items, total, err := h.logService.ListLogs(c, filter, page, pageSize)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"items":     items,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+// GetLogStats 获取租户 AI 调用记录统计（数据管理页）。
+// GET /api/tenant/llm-logs/stats
+func (h *LLMMessageLogHandler) GetLogStats(c *gin.Context) {
+	stats, err := h.logService.GetLogStats(c)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, stats)
+}
+
+// GetLogDetail 获取单条 AI 调用记录详情（含输入输出提示词）。
+// GET /api/tenant/llm-logs/:id
+func (h *LLMMessageLogHandler) GetLogDetail(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "记录ID无效")
+		return
+	}
+	detail, err := h.logService.GetLogDetail(c, id)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, detail)
+}
+
+func parseLLMLogQuery(c *gin.Context) (repository.LLMLogFilter, int, int) {
+	filter := repository.LLMLogFilter{
+		RequestType: c.Query("request_type"),
+		CallType:    c.Query("call_type"),
+		Operator:    c.Query("operator"),
+	}
+	if s := c.Query("start_date"); s != "" {
+		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
+			filter.StartDate = &t
+		}
+	}
+	if s := c.Query("end_date"); s != "" {
+		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
+			end := t.Add(24*time.Hour - time.Second)
+			filter.EndDate = &end
+		}
+	}
+	page := parseIntQuery(c, "page", 1)
+	pageSize := parseIntQuery(c, "page_size", 20)
+	return filter, page, pageSize
 }

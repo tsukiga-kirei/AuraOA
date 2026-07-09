@@ -34,6 +34,10 @@ import type {
   CronLogFilter,
   CronLogStats,
   CronLogItem,
+  LLMLogFilter,
+  LLMLogStats,
+  LLMLogItem,
+  LLMLogDetail,
   PagedResult,
 } from '~/types/admin-data'
 
@@ -181,6 +185,22 @@ export function useAdminDataApi() {
     await triggerDownload(url, 'cron_logs.csv')
   }
 
+  // ── AI 调用记录 ──────────────────────────────────────────────────────────
+
+  async function listLLMLogs(filter: LLMLogFilter = {}): Promise<PagedResult<LLMLogItem>> {
+    const params = buildParams(filter)
+    const query = new URLSearchParams(params).toString()
+    return await authFetch<PagedResult<LLMLogItem>>(`/api/tenant/llm-logs${query ? `?${query}` : ''}`)
+  }
+
+  async function getLLMLogStats(): Promise<LLMLogStats> {
+    return await authFetch<LLMLogStats>('/api/tenant/llm-logs/stats')
+  }
+
+  async function getLLMLogDetail(id: string): Promise<LLMLogDetail> {
+    return await authFetch<LLMLogDetail>(`/api/tenant/llm-logs/${id}`)
+  }
+
   // ── 工具函数 ──────────────────────────────────────────────────────────────────
 
   /**
@@ -282,5 +302,9 @@ export function useAdminDataApi() {
     listCronLogs,
     getCronLogStats,
     exportCronLogs,
+    // AI 调用记录
+    listLLMLogs,
+    getLLMLogStats,
+    getLLMLogDetail,
   }
 }

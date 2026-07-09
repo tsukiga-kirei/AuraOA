@@ -17,6 +17,7 @@ import {
   InfoCircleOutlined,
   UpOutlined,
   CloseOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons-vue'
 import dayjs, { type Dayjs } from 'dayjs'
 import 'dayjs/locale/zh-cn'
@@ -39,14 +40,18 @@ import type {
   SummarySnapshotStats,
   CronLogItem,
   CronLogStats,
+  LLMLogItem,
+  LLMLogDetail,
+  LLMLogStats,
 } from '~/types/admin-data'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
-type MainTab = 'audit' | 'cron' | 'archive' | 'summary'
+type MainTab = 'audit' | 'cron' | 'archive' | 'summary' | 'llm'
 type AuditSubTab = 'all' | 'approve' | 'return' | 'review'
 type CronSubTab = 'all' | 'success' | 'failed' | 'running'
 type ArchiveSubTab = 'all' | 'compliant' | 'partially_compliant' | 'non_compliant'
+type LLMSubTab = 'all' | 'audit' | 'archive' | 'summary'
 
 
 const { t } = useI18n()
@@ -66,12 +71,16 @@ const {
   listCronLogs,
   getCronLogStats,
   exportCronLogs,
+  listLLMLogs,
+  getLLMLogStats,
+  getLLMLogDetail,
 } = useAdminDataApi()
 
 const activeTab = ref<MainTab>('audit')
 const activeAuditSubTab = ref<AuditSubTab>('all')
 const activeCronSubTab = ref<CronSubTab>('all')
 const activeArchiveSubTab = ref<ArchiveSubTab>('all')
+const activeLLMSubTab = ref<LLMSubTab>('all')
 
 const auditStats = ref<AuditSnapshotStats>({
   total: 0,
@@ -87,11 +96,13 @@ const cronStats = ref<CronLogStats>({
 })
 const archiveStats = ref<ArchiveSnapshotStats>({ total: 0, compliant: 0, partial: 0, non_compliant: 0 })
 const summaryStats = ref<SummarySnapshotStats>({ total: 0, block_count: 0 })
+const llmStats = ref<LLMLogStats>({ total: 0, audit_count: 0, archive_count: 0, summary_count: 0 })
 
 const auditSnapshots = ref<AuditSnapshotItem[]>([])
 const cronLogs = ref<CronLogItem[]>([])
 const archiveSnapshots = ref<ArchiveSnapshotItem[]>([])
 const summarySnapshots = ref<SummarySnapshotItem[]>([])
+const llmLogs = ref<LLMLogItem[]>([])
 
 // 抽屉详情相关变量
 const auditDetailVisible = ref(false)
@@ -112,6 +123,12 @@ const expandedSummaryChainNodes = ref<Set<string>>(new Set())
 const cronDetailVisible = ref(false)
 const selectedCronLog = ref<CronLogItem | null>(null)
 
+const llmDetailVisible = ref(false)
+const selectedLLMLog = ref<LLMLogItem | null>(null)
+const llmLogDetail = ref<LLMLogDetail | null>(null)
+const llmDetailLoading = ref(false)
+const expandedLLMPromptSections = ref<Set<string>>(new Set(['system', 'user', 'response']))
+
 const chainLoading = ref(false)
 
 const { listDepartments } = useOrgApi()
@@ -121,6 +138,7 @@ const auditLoading = ref(false)
 const cronLoading = ref(false)
 const archiveLoading = ref(false)
 const summaryLoading = ref(false)
+const llmLoading = ref(false)
 
 const departmentOptions = ref<{label: string, value: string}[]>([])
 const processCascaderOptions = ref<any[]>([])
@@ -167,6 +185,14 @@ const summaryShowFilters = ref(false)
 const summaryPage = ref(1)
 const summaryPageSize = ref(20)
 const summaryTotal = ref(0)
+
+const llmFilterOperator = ref('')
+const llmFilterCallType = ref<string | undefined>(undefined)
+const llmFilterDateRange = ref<[Dayjs, Dayjs] | undefined>(undefined)
+const llmShowFilters = ref(false)
+const llmPage = ref(1)
+const llmPageSize = ref(20)
+const llmTotal = ref(0)
 
 const recommendationConfig = computed<Record<string, { color: string; bg: string }>>(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
@@ -239,6 +265,42 @@ const summaryHasActiveFilters = computed(() =>
     !!summaryFilterDepartment.value ||
     !!summaryFilterDateRange.value)
 
+const llmHasActiveFilters = computed(() =>
+    !!llmFilterOperator.value ||
+    !!llmFilterCallType.value ||
+    !!llmFilterDateRange.value)
+
+const llmSubTabs = computed(() => [
+  {
+    key: 'all' as LLMSubTab,
+    icon: AppstoreOutlined,
+    count: llmStats.value.total,
+    label: t('admin.data.llmTab.all'),
+    cssClass: 'stat-card--info',
+  },
+  {
+    key: 'audit' as LLMSubTab,
+    icon: SafetyCertificateOutlined,
+    count: llmStats.value.audit_count,
+    label: t('admin.data.llmTab.audit'),
+    cssClass: 'stat-card--primary',
+  },
+  {
+    key: 'archive' as LLMSubTab,
+    icon: FolderOpenOutlined,
+    count: llmStats.value.archive_count,
+    label: t('admin.data.llmTab.archive'),
+    cssClass: 'stat-card--success',
+  },
+  {
+    key: 'summary' as LLMSubTab,
+    icon: FileTextOutlined,
+    count: llmStats.value.summary_count,
+    label: t('admin.data.llmTab.summary'),
+    cssClass: 'stat-card--warning',
+  },
+])
+
 const cronTaskTypeOptions = computed(() => {
   const seen = new Map<string, string>()
   for (const item of cronLogs.value) {
@@ -297,6 +359,16 @@ const summaryQuery = computed(() => ({
   page_size: summaryPageSize.value,
 }))
 
+const llmQuery = computed(() => ({
+  request_type: activeLLMSubTab.value === 'all' ? '' : activeLLMSubTab.value,
+  call_type: llmFilterCallType.value || '',
+  operator: llmFilterOperator.value.trim(),
+  start_date: llmFilterDateRange.value?.[0]?.format('YYYY-MM-DD') || '',
+  end_date: llmFilterDateRange.value?.[1]?.format('YYYY-MM-DD') || '',
+  page: llmPage.value,
+  page_size: llmPageSize.value,
+}))
+
 
 
 function getRecLabel(rec: string) {
@@ -331,6 +403,27 @@ function getSourceChannelLabel(value: string) {
     embed: t('admin.data.sourceEmbed'),
   }
   return map[value] || value || '-'
+}
+
+function getLLMRequestTypeLabel(value: string) {
+  const map: Record<string, string> = {
+    audit: t('admin.data.llmTab.audit'),
+    archive: t('admin.data.llmTab.archive'),
+    summary: t('admin.data.llmTab.summary'),
+  }
+  return map[value] || value || '-'
+}
+
+function getLLMCallTypeLabel(value: string) {
+  const map: Record<string, string> = {
+    reasoning: t('admin.data.llmCallReasoning'),
+    structured: t('admin.data.llmCallStructured'),
+  }
+  return map[value] || value || '-'
+}
+
+function getLLMModelLabel(item: LLMLogItem) {
+  return item.model_display_name || item.model_name || '-'
 }
 
 
@@ -412,6 +505,26 @@ function openCronDetail(log: CronLogItem) {
   cronDetailVisible.value = true
 }
 
+async function openLLMDetail(item: LLMLogItem) {
+  selectedLLMLog.value = item
+  llmDetailVisible.value = true
+  llmDetailLoading.value = true
+  llmLogDetail.value = null
+  expandedLLMPromptSections.value = new Set(['system'])
+  try {
+    llmLogDetail.value = await getLLMLogDetail(item.id)
+  } catch (e) {
+    message.error(t('admin.data.fetchFailed'))
+  } finally {
+    llmDetailLoading.value = false
+  }
+}
+
+function toggleLLMPromptSection(key: string) {
+  if (expandedLLMPromptSections.value.has(key)) expandedLLMPromptSections.value.delete(key)
+  else expandedLLMPromptSections.value.add(key)
+}
+
 function clearAuditFilters() {
   auditSearch.value = ''
   auditFilterProcessPath.value = []
@@ -448,6 +561,13 @@ function clearSummaryFilters() {
   summaryPage.value = 1
 }
 
+function clearLLMFilters() {
+  llmFilterOperator.value = ''
+  llmFilterCallType.value = undefined
+  llmFilterDateRange.value = undefined
+  llmPage.value = 1
+}
+
 function handleAuditPageChange(page: number, pageSize: number) {
   auditPage.value = page
   auditPageSize.value = pageSize
@@ -466,6 +586,11 @@ function handleArchivePageChange(page: number, pageSize: number) {
 function handleSummaryPageChange(page: number, pageSize: number) {
   summaryPage.value = page
   summaryPageSize.value = pageSize
+}
+
+function handleLLMPageChange(page: number, pageSize: number) {
+  llmPage.value = page
+  llmPageSize.value = pageSize
 }
 
 async function loadProcessCascaderOptions() {
@@ -545,6 +670,14 @@ async function loadSummaryStats() {
   }
 }
 
+async function loadLLMStats() {
+  try {
+    llmStats.value = await getLLMLogStats()
+  } catch (e: any) {
+    message.error(e?.message || t('admin.data.loadFailed'))
+  }
+}
+
 // 加载审核快照列表（分页，支持多维度筛选）
 async function loadAuditLogs() {
   auditLoading.value = true
@@ -608,6 +741,21 @@ async function loadSummaryLogs() {
   }
 }
 
+async function loadLLMLogs() {
+  llmLoading.value = true
+  try {
+    const res = await listLLMLogs(llmQuery.value)
+    llmLogs.value = res.items || []
+    llmTotal.value = res.total || 0
+  } catch (e: any) {
+    llmLogs.value = []
+    llmTotal.value = 0
+    message.error(e?.message || t('admin.data.loadFailed'))
+  } finally {
+    llmLoading.value = false
+  }
+}
+
 async function handleExport(type: MainTab) {
   const hide = message.loading(
       type === 'audit'
@@ -647,6 +795,7 @@ watch(() => auditFilterChannel.value, loadAuditStats)
 watch(cronQuery, loadCronLogs, { immediate: true })
 watch(archiveQuery, loadArchiveLogs, { immediate: true })
 watch(summaryQuery, loadSummaryLogs, { immediate: true })
+watch(llmQuery, loadLLMLogs, { immediate: true })
 watch(() => summaryFilterChannel.value, loadSummaryStats)
 
 // 切换审核子标签时重置分页到第一页
@@ -657,6 +806,9 @@ watch(activeAuditSubTab, () => {
 watch(activeTab, (tab) => {
   if (tab === 'summary') {
     loadSummaryStats()
+  }
+  if (tab === 'llm') {
+    loadLLMStats()
   }
 })
 
@@ -669,6 +821,7 @@ onMounted(async () => {
     loadCronStats(),
     loadArchiveStats(),
     loadSummaryStats(),
+    loadLLMStats(),
   ])
 })
 </script>
@@ -688,7 +841,8 @@ onMounted(async () => {
           { key: 'audit', label: t('admin.data.tabAudit'), icon: AppstoreOutlined },
           { key: 'cron', label: t('admin.data.tabCron'), icon: ClockCircleOutlined },
           { key: 'archive', label: t('admin.data.tabArchive'), icon: FolderOpenOutlined },
-          { key: 'summary', label: '流程总结', icon: FileTextOutlined },
+          { key: 'summary', label: t('admin.data.tabSummary'), icon: FileTextOutlined },
+          { key: 'llm', label: t('admin.data.tabLLM'), icon: ThunderboltOutlined },
         ]"
           :key="tab.key"
           class="tab-btn"
@@ -1423,6 +1577,135 @@ onMounted(async () => {
       </div>
     </div>
 
+    <div v-if="activeTab === 'llm'" class="tab-content fade-in">
+      <div class="stats-row">
+        <div
+            v-for="tab in llmSubTabs"
+            :key="tab.key"
+            class="stat-card"
+            :class="[tab.cssClass, { 'stat-card--selected': activeLLMSubTab === tab.key }]"
+            @click="activeLLMSubTab = tab.key; llmPage = 1"
+        >
+          <div class="stat-card-icon"><component :is="tab.icon" /></div>
+          <div class="stat-card-info">
+            <span class="stat-card-value">{{ tab.count }}</span>
+            <span class="stat-card-label">{{ tab.label }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <a-button
+              size="small"
+              @click="llmShowFilters = !llmShowFilters"
+              :class="{ 'filter-toggle-btn--active': llmHasActiveFilters }"
+          >
+            <FilterOutlined /> {{ t('admin.data.filter') }}
+            <span v-if="llmHasActiveFilters" class="filter-active-dot" />
+          </a-button>
+        </div>
+      </div>
+
+      <transition name="slide">
+        <div v-if="llmShowFilters" class="filter-bar">
+          <a-input
+              v-model:value="llmFilterOperator"
+              :placeholder="t('admin.data.filterOperator')"
+              allow-clear
+              style="flex: 1; min-width: 140px;"
+              @update:value="llmPage = 1"
+          >
+            <template #prefix>
+              <SearchOutlined style="color: var(--color-text-tertiary);" />
+            </template>
+          </a-input>
+
+          <a-select
+              v-model:value="llmFilterCallType"
+              :placeholder="t('admin.data.thCallType')"
+              allow-clear
+              style="flex: 1; min-width: 140px;"
+              @change="llmPage = 1"
+          >
+            <a-select-option value="reasoning">{{ t('admin.data.llmCallReasoning') }}</a-select-option>
+            <a-select-option value="structured">{{ t('admin.data.llmCallStructured') }}</a-select-option>
+          </a-select>
+
+          <a-range-picker
+              v-model:value="llmFilterDateRange"
+              :placeholder="[t('admin.data.filterDateRange'), t('admin.data.filterDateRange')]"
+              allow-clear
+              style="flex: 1.5; min-width: 220px;"
+              @change="llmPage = 1"
+          />
+
+          <a-button size="small" @click="clearLLMFilters">
+            {{ t('admin.data.filterReset') }}
+          </a-button>
+        </div>
+      </transition>
+
+      <div class="data-table-card">
+        <table class="data-table">
+          <thead>
+          <tr>
+            <th>{{ t('admin.data.thTime') }}</th>
+            <th>{{ t('admin.data.thRequestType') }}</th>
+            <th>{{ t('admin.data.thCallType') }}</th>
+            <th>{{ t('admin.data.thOperator') }}</th>
+            <th>{{ t('admin.data.thModel') }}</th>
+            <th>{{ t('admin.data.thTokens') }}</th>
+            <th>{{ t('admin.data.duration') }}</th>
+            <th>{{ t('admin.data.thAction') }}</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr v-if="llmLoading">
+            <td colspan="8" class="empty-cell">{{ t('admin.data.loading') }}</td>
+          </tr>
+          <tr v-else v-for="item in llmLogs" :key="item.id">
+            <td class="text-secondary">{{ formatDate(item.created_at) }}</td>
+            <td>{{ getLLMRequestTypeLabel(item.request_type) }}</td>
+            <td class="text-secondary">{{ getLLMCallTypeLabel(item.call_type) }}</td>
+            <td>{{ item.user_name || '-' }}</td>
+            <td class="text-secondary">{{ getLLMModelLabel(item) }}</td>
+            <td>{{ item.total_tokens }}</td>
+            <td class="text-secondary">{{ (item.duration_ms / 1000).toFixed(1) }}s</td>
+            <td>
+              <div class="action-btns">
+                <button
+                    class="icon-btn"
+                    :title="t('admin.data.viewDetail')"
+                    @click="openLLMDetail(item)"
+                >
+                  <EyeOutlined />
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr v-if="!llmLoading && llmLogs.length === 0">
+            <td colspan="8" class="empty-cell">{{ t('admin.data.noData') }}</td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination-wrapper">
+        <a-pagination
+            :current="llmPage"
+            :page-size="llmPageSize"
+            :total="llmTotal"
+            size="small"
+            show-size-changer
+            show-quick-jumper
+            :page-size-options="['10', '20', '50']"
+            @change="handleLLMPageChange"
+            @showSizeChange="handleLLMPageChange"
+        />
+      </div>
+    </div>
+
     <Teleport to="body">
       <transition name="drawer">
         <div v-if="auditDetailVisible" class="drawer-overlay" @click.self="auditDetailVisible = false">
@@ -1667,7 +1950,7 @@ onMounted(async () => {
         <div v-if="summaryDetailVisible" class="drawer-overlay" @click.self="summaryDetailVisible = false">
           <div class="drawer-panel">
             <div class="drawer-header">
-              <h3>流程总结详情</h3>
+              <h3>{{ t('admin.data.summaryDetailTitle') }}</h3>
               <button class="drawer-close" @click="summaryDetailVisible = false">
                 <CloseOutlined />
               </button>
@@ -1848,6 +2131,95 @@ onMounted(async () => {
                   <div class="markdown-body" v-html="renderMarkdown(selectedCronLog.message || '')"></div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <transition name="drawer">
+        <div v-if="llmDetailVisible" class="drawer-overlay" @click.self="llmDetailVisible = false">
+          <div class="drawer-panel">
+            <div class="drawer-header">
+              <h3>{{ t('admin.data.llmDetailTitle') }}</h3>
+              <button class="drawer-close" @click="llmDetailVisible = false">
+                <CloseOutlined />
+              </button>
+            </div>
+
+            <div class="drawer-body" v-if="selectedLLMLog">
+              <div class="detail-process-title">
+                {{ getLLMRequestTypeLabel(selectedLLMLog.request_type) }}
+                · {{ getLLMCallTypeLabel(selectedLLMLog.call_type) }}
+              </div>
+
+              <div class="detail-meta-grid" style="margin-bottom: 16px;">
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.thTime') }}</span>
+                  <span class="detail-meta-value">{{ formatDate(selectedLLMLog.created_at) }}</span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.thOperator') }}</span>
+                  <span class="detail-meta-value">{{ selectedLLMLog.user_name || '-' }}</span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.thModel') }}</span>
+                  <span class="detail-meta-value">{{ getLLMModelLabel(selectedLLMLog) }}</span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.thTokens') }}</span>
+                  <span class="detail-meta-value">
+                    {{ selectedLLMLog.total_tokens }}
+                    <span class="text-secondary">({{ selectedLLMLog.input_tokens }} / {{ selectedLLMLog.output_tokens }})</span>
+                  </span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">{{ t('admin.data.duration') }}</span>
+                  <span class="detail-meta-value">{{ (selectedLLMLog.duration_ms / 1000).toFixed(1) }}s</span>
+                </div>
+              </div>
+
+              <a-spin :spinning="llmDetailLoading">
+                <div v-if="!llmDetailLoading && !llmLogDetail" style="padding: 40px; text-align: center;">
+                  <a-empty :description="t('admin.data.noData')" />
+                </div>
+                <div v-else-if="llmLogDetail" class="audit-chain">
+                  <div
+                      v-for="section in [
+                        { key: 'system', label: t('admin.data.llmSystemPrompt'), content: llmLogDetail.system_prompt },
+                        { key: 'user', label: t('admin.data.llmUserPrompt'), content: llmLogDetail.user_prompt },
+                        { key: 'response', label: t('admin.data.llmResponse'), content: llmLogDetail.response_content },
+                      ]"
+                      :key="section.key"
+                      class="chain-node"
+                  >
+                    <div class="chain-timeline">
+                      <div class="chain-dot" style="background: var(--color-primary);" />
+                      <div v-if="section.key !== 'response'" class="chain-line" />
+                    </div>
+                    <div class="chain-card">
+                      <div class="chain-card-header" @click="toggleLLMPromptSection(section.key)" style="cursor: pointer;">
+                        <span
+                            class="chain-tag"
+                            style="color: var(--color-primary); background: var(--color-primary-bg);"
+                        >
+                          <ThunderboltOutlined />
+                          {{ section.label }}
+                        </span>
+                        <span class="chain-expand-btn">
+                          <DownOutlined v-if="!expandedLLMPromptSections.has(section.key)" />
+                          <UpOutlined v-else />
+                        </span>
+                      </div>
+                      <div v-if="expandedLLMPromptSections.has(section.key)" class="chain-detail">
+                        <pre v-if="section.content" class="llm-prompt-pre">{{ section.content }}</pre>
+                        <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </a-spin>
             </div>
           </div>
         </div>
@@ -2445,6 +2817,21 @@ onMounted(async () => {
   word-break: break-word;
   font-family: monospace;
   font-size: 12px;
+}
+
+.llm-prompt-pre {
+  margin: 0;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-page);
+  border-radius: var(--radius-sm);
+  padding: 10px;
 }
 
 .slide-enter-active,
