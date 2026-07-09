@@ -33,6 +33,7 @@ func SetupRouter(
 	archiveConfigHandler *handler.ArchiveConfigHandler,
 	archiveRuleHandler *handler.ArchiveRuleHandler,
 	summaryConfigHandler *handler.ProcessSummaryConfigHandler,
+	externalContextHandler *handler.ExternalContextHandler,
 	auditHandler *handler.AuditHandler,
 	archiveReviewHandler *handler.ArchiveReviewHandler,
 	summaryHandler *handler.ProcessSummaryHandler,
@@ -178,6 +179,7 @@ func SetupRouter(
 		tenantRules.POST("/audit-rules", ruleHandler.Create)
 		tenantRules.PUT("/audit-rules/:id", ruleHandler.Update)
 		tenantRules.DELETE("/audit-rules/:id", ruleHandler.Delete)
+		tenantRules.POST("/context/test", externalContextHandler.Test)
 
 		// 系统提示词模板（只读）
 		tenantRules.GET("/prompt-templates", configHandler.ListPromptTemplates)
@@ -226,6 +228,7 @@ func SetupRouter(
 		tenantArchive.POST("/rules", archiveRuleHandler.Create)
 		tenantArchive.PUT("/rules/:id", archiveRuleHandler.Update)
 		tenantArchive.DELETE("/rules/:id", archiveRuleHandler.Delete)
+		tenantArchive.POST("/context/test", externalContextHandler.Test)
 		tenantArchive.GET("/prompt-templates", archiveConfigHandler.ListPromptTemplates)
 	}
 
@@ -240,6 +243,7 @@ func SetupRouter(
 		tenantSummary.PUT("/configs/:id", summaryConfigHandler.Update)
 		tenantSummary.DELETE("/configs/:id", summaryConfigHandler.Delete)
 		tenantSummary.POST("/configs/:id/fetch-fields", summaryConfigHandler.FetchFields)
+		tenantSummary.POST("/context/test", externalContextHandler.Test)
 	}
 
 	// 租户管理员 — 用户个人配置管理（需要 JWT + 租户上下文 + tenant_admin 角色）

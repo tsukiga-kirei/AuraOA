@@ -19,12 +19,12 @@ const fixedSummarySystemPrompt = `你是企业 OA 审批流程的总结助手。
 5. JSON 格式固定为：{"content":"一段可直接展示的总结","points":["要点1","要点2"]}。`
 
 var summaryDataVariableKeys = map[string]struct{}{
-	"{{process_meta}}":   {},
-	"{{main_table}}":     {},
-	"{{detail_tables}}":  {},
-	"{{attachments}}":    {},
-	"{{flow_history}}":   {},
-	"{{flow_graph}}":     {},
+	"{{process_meta}}":  {},
+	"{{main_table}}":    {},
+	"{{detail_tables}}": {},
+	"{{attachments}}":   {},
+	"{{flow_history}}":  {},
+	"{{flow_graph}}":    {},
 }
 
 // BuildSummaryBlockPrompt 组装单个总结块的 AI 请求。
@@ -35,6 +35,7 @@ func BuildSummaryBlockPrompt(
 	block model.SummaryBlockConfig,
 	fieldSet SelectedFieldSet,
 	processSummary *oa.ProcessRequestSummary,
+	externalContext string,
 ) *ai.ChatRequest {
 	if processData == nil {
 		processData = &oa.ProcessData{
@@ -61,15 +62,16 @@ func BuildSummaryBlockPrompt(
 
 	meta := buildSummaryProcessMeta(processType, processSummary)
 	payload := summaryPromptPayload{
-		meta:          meta,
-		mainTable:     mainDataStr,
-		detailTables:  detailDataStr,
-		attachments:   attachmentsStr,
-		flowHistory:   flowHistory,
-		flowGraph:     flowGraph,
-		userPrompt:    strings.TrimSpace(block.UserPrompt),
-		enabledKeys:   normalizeSummaryEnabledDataVariables(block),
-		includeAllData: summaryBlockIncludeAllData(block),
+		meta:            meta,
+		mainTable:       mainDataStr,
+		detailTables:    detailDataStr,
+		attachments:     attachmentsStr,
+		flowHistory:     flowHistory,
+		flowGraph:       flowGraph,
+		externalContext: externalContext,
+		userPrompt:      strings.TrimSpace(block.UserPrompt),
+		enabledKeys:     normalizeSummaryEnabledDataVariables(block),
+		includeAllData:  summaryBlockIncludeAllData(block),
 	}
 
 	userPrompt := buildSummaryUserPrompt(block.Title, payload)
@@ -83,15 +85,16 @@ func BuildSummaryBlockPrompt(
 }
 
 type summaryPromptPayload struct {
-	meta           string
-	mainTable      string
-	detailTables   string
-	attachments    string
-	flowHistory    string
-	flowGraph      string
-	userPrompt     string
-	enabledKeys    map[string]struct{}
-	includeAllData bool
+	meta            string
+	mainTable       string
+	detailTables    string
+	attachments     string
+	flowHistory     string
+	flowGraph       string
+	externalContext string
+	userPrompt      string
+	enabledKeys     map[string]struct{}
+	includeAllData  bool
 }
 
 func summaryBlockIncludeAllData(block model.SummaryBlockConfig) bool {
@@ -149,6 +152,9 @@ func buildSummaryUserPrompt(title string, payload summaryPromptPayload) string {
 审批流图：
 %s
 
+本总结块外部关联数据：
+%s
+
 本总结块的用户要求：
 %s
 
@@ -160,6 +166,7 @@ func buildSummaryUserPrompt(title string, payload summaryPromptPayload) string {
 			payload.attachments,
 			payload.flowHistory,
 			payload.flowGraph,
+			defaultExternalContextText(payload.externalContext),
 			userRequirements,
 		)
 	}
@@ -182,6 +189,9 @@ func buildSummaryUserPrompt(title string, payload summaryPromptPayload) string {
 	}
 	if _, ok := payload.enabledKeys["{{flow_graph}}"]; ok {
 		sections = append(sections, fmt.Sprintf("审批流图：\n%s", payload.flowGraph))
+	}
+	if strings.TrimSpace(payload.externalContext) != "" {
+		sections = append(sections, fmt.Sprintf("本总结块外部关联数据：\n%s", payload.externalContext))
 	}
 
 	dataSection := "（当前总结块未选择任何数据变量）"

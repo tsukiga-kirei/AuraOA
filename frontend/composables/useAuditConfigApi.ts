@@ -8,6 +8,7 @@
 
 import type { ProcessAuditConfig, AuditRule } from '~/types/audit-config'
 import type { SystemPromptTemplate, ProcessInfo, ProcessFields } from '~/types/common'
+import type { ExternalContextMount, ExternalContextTestResponse } from '~/types/external-context'
 
 export type { ProcessAuditConfig, AuditRule, SystemPromptTemplate, ProcessInfo, ProcessFields }
 
@@ -113,6 +114,13 @@ export const useAuditConfigApi = () => {
     await authFetch<null>(`/api/tenant/rules/audit-rules/${id}`, { method: 'DELETE' })
   }
 
+  async function testContext(processId: string, mounts: ExternalContextMount[]): Promise<ExternalContextTestResponse> {
+    return await authFetch<ExternalContextTestResponse>('/api/tenant/rules/context/test', {
+      method: 'POST',
+      body: { process_id: processId, context_mounts: mounts },
+    })
+  }
+
   // ============================================================
   // 系统提示词模板（审核专用）
   // ============================================================
@@ -125,7 +133,7 @@ export const useAuditConfigApi = () => {
   return {
     listConfigs, createConfig, updateConfig, deleteConfig,
     testConnection, fetchFields,
-    listRules, createRule, updateRule, deleteRule,
+    listRules, createRule, updateRule, deleteRule, testContext,
     listPromptTemplates,
   }
 }

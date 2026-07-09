@@ -1,5 +1,6 @@
 import type { ProcessInfo, ProcessFields } from '~/types/common'
 import type { ProcessSummaryConfig } from '~/types/process-summary'
+import type { ExternalContextMount, ExternalContextTestResponse } from '~/types/external-context'
 
 export const useSummaryConfigApi = () => {
   const { authFetch } = useAuth()
@@ -31,5 +32,12 @@ export const useSummaryConfigApi = () => {
     return await authFetch<ProcessFields>(`/api/tenant/summary/configs/${configId}/fetch-fields`, { method: 'POST' })
   }
 
-  return { listConfigs, createConfig, updateConfig, deleteConfig, testConnection, fetchFields }
+  async function testContext(processId: string, mounts: ExternalContextMount[]): Promise<ExternalContextTestResponse> {
+    return await authFetch<ExternalContextTestResponse>('/api/tenant/summary/context/test', {
+      method: 'POST',
+      body: { process_id: processId, context_mounts: mounts },
+    })
+  }
+
+  return { listConfigs, createConfig, updateConfig, deleteConfig, testConnection, fetchFields, testContext }
 }

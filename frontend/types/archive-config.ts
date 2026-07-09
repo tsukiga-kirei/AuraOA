@@ -1,6 +1,7 @@
 // types/archive-config.ts — 归档配置相关类型
 
 import type { ProcessField, DetailTableDef } from '~/types/common'
+import type { ExternalContextMount } from '~/types/external-context'
 
 /** 访问控制配置（归档复盘专用） */
 export interface AccessControl {
@@ -39,6 +40,8 @@ export interface ArchiveRule {
   enabled: boolean
   source: string
   related_flow: boolean
+  context_enabled?: boolean
+  context_mounts?: ExternalContextMount[]
   created_at?: string
   updated_at?: string
 }

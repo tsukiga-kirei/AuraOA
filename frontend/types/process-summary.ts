@@ -1,4 +1,5 @@
 import type { DetailTableDef, ProcessField } from '~/types/common'
+import type { ExternalContextMount } from '~/types/external-context'
 
 export interface SummaryBlockConfig {
   id: string
@@ -9,6 +10,7 @@ export interface SummaryBlockConfig {
   enabled_data_variables?: string[]
   field_mode: 'all' | 'selected'
   selected_fields: string[]
+  context_mounts?: ExternalContextMount[]
   enabled: boolean
   sort_order: number
 }
