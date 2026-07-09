@@ -119,6 +119,12 @@ type ModelContextQuerier interface {
 	QueryModelContext(ctx context.Context, query ModelContextQuery) (*ModelContextQueryResult, error)
 }
 
+// WorkflowDefinitionSelector 由支持检索流程定义的 OA 适配器实现。
+type WorkflowDefinitionSelector interface {
+	SearchWorkflowDefinitions(ctx context.Context, keyword string) ([]ProcessInfo, error)
+	FetchFieldsByWorkflowID(ctx context.Context, workflowID string) (*ProcessFields, error)
+}
+
 // ModelContextQuery 描述一次受限的建模表查询。
 type ModelContextQuery struct {
 	TableName    string
@@ -143,6 +149,7 @@ type ModelContextQueryResult struct {
 
 // ProcessInfo 流程基本信息
 type ProcessInfo struct {
+	WorkflowID        string `json:"workflow_id,omitempty"`
 	ProcessType       string `json:"process_type"`
 	ProcessName       string `json:"process_name"`
 	ProcessTypeLabel  string `json:"process_type_label,omitempty"`

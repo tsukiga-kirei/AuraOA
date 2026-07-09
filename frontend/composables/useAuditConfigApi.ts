@@ -114,10 +114,10 @@ export const useAuditConfigApi = () => {
     await authFetch<null>(`/api/tenant/rules/audit-rules/${id}`, { method: 'DELETE' })
   }
 
-  async function testContext(processId: string, mounts: ExternalContextMount[]): Promise<ExternalContextTestResponse> {
+  async function testContext(mounts: ExternalContextMount[], processId?: string): Promise<ExternalContextTestResponse> {
     return await authFetch<ExternalContextTestResponse>('/api/tenant/rules/context/test', {
       method: 'POST',
-      body: { process_id: processId, context_mounts: mounts },
+      body: { ...(processId ? { process_id: processId } : {}), context_mounts: mounts },
     })
   }
 

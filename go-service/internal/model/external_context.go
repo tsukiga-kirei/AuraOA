@@ -14,14 +14,16 @@ type ExternalContextMount struct {
 
 // ExternalWorkflowContextConfig 控制 requestid 流程引用如何展开。
 type ExternalWorkflowContextConfig struct {
-	IncludeBasic      bool     `json:"include_basic"`
-	BasicFields       []string `json:"basic_fields"`
-	DataMode          string   `json:"data_mode"` // none=不取表单；all_fields=全部字段；selected_fields=指定字段
-	TargetProcessType string   `json:"target_process_type,omitempty"`
-	SelectedFields    []string `json:"selected_fields,omitempty"` // 字段引用，格式为 main:field 或 detail_table:field
-	FallbackStrategy  string   `json:"fallback_strategy,omitempty"`
-	MaxRefs           int      `json:"max_refs,omitempty"`
-	MaxRows           int      `json:"max_rows,omitempty"`
+	IncludeBasic       bool     `json:"include_basic"`
+	BasicFields        []string `json:"basic_fields"`
+	DataMode           string   `json:"data_mode"` // none=不取表单；all_fields=全部字段；selected_fields=指定字段
+	TargetProcessType  string   `json:"target_process_type,omitempty"`
+	TargetWorkflowID   string   `json:"target_workflow_id,omitempty"`
+	TargetProcessLabel string   `json:"target_process_label,omitempty"`
+	TargetMainTable    string   `json:"target_main_table,omitempty"`
+	SelectedFields     []string `json:"selected_fields,omitempty"` // 字段引用，格式为 main:field 或 detail_table:field
+	FallbackStrategy   string   `json:"fallback_strategy,omitempty"`
+	MaxRows            int      `json:"max_rows,omitempty"`
 }
 
 // ExternalModelContextConfig 控制建模表关联查询。

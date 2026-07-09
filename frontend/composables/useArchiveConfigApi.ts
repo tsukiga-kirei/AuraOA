@@ -130,10 +130,10 @@ export const useArchiveConfigApi = () => {
     await authFetch<null>(`/api/tenant/archive/rules/${id}`, { method: 'DELETE' })
   }
 
-  async function testContext(processId: string, mounts: ExternalContextMount[]): Promise<ExternalContextTestResponse> {
+  async function testContext(mounts: ExternalContextMount[], processId?: string): Promise<ExternalContextTestResponse> {
     return await authFetch<ExternalContextTestResponse>('/api/tenant/archive/context/test', {
       method: 'POST',
-      body: { process_id: processId, context_mounts: mounts },
+      body: { ...(processId ? { process_id: processId } : {}), context_mounts: mounts },
     })
   }
 

@@ -180,6 +180,8 @@ func SetupRouter(
 		tenantRules.PUT("/audit-rules/:id", ruleHandler.Update)
 		tenantRules.DELETE("/audit-rules/:id", ruleHandler.Delete)
 		tenantRules.POST("/context/test", externalContextHandler.Test)
+		tenantRules.POST("/context/workflow-fields", externalContextHandler.FetchWorkflowFields)
+		tenantRules.POST("/context/workflow-search", externalContextHandler.SearchWorkflows)
 
 		// 系统提示词模板（只读）
 		tenantRules.GET("/prompt-templates", configHandler.ListPromptTemplates)
@@ -229,6 +231,8 @@ func SetupRouter(
 		tenantArchive.PUT("/rules/:id", archiveRuleHandler.Update)
 		tenantArchive.DELETE("/rules/:id", archiveRuleHandler.Delete)
 		tenantArchive.POST("/context/test", externalContextHandler.Test)
+		tenantArchive.POST("/context/workflow-fields", externalContextHandler.FetchWorkflowFields)
+		tenantArchive.POST("/context/workflow-search", externalContextHandler.SearchWorkflows)
 		tenantArchive.GET("/prompt-templates", archiveConfigHandler.ListPromptTemplates)
 	}
 
@@ -244,6 +248,8 @@ func SetupRouter(
 		tenantSummary.DELETE("/configs/:id", summaryConfigHandler.Delete)
 		tenantSummary.POST("/configs/:id/fetch-fields", summaryConfigHandler.FetchFields)
 		tenantSummary.POST("/context/test", externalContextHandler.Test)
+		tenantSummary.POST("/context/workflow-fields", externalContextHandler.FetchWorkflowFields)
+		tenantSummary.POST("/context/workflow-search", externalContextHandler.SearchWorkflows)
 	}
 
 	// 租户管理员 — 用户个人配置管理（需要 JWT + 租户上下文 + tenant_admin 角色）

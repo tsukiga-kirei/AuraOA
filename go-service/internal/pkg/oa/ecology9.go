@@ -214,15 +214,16 @@ func stringifyDBValue(v interface{}) string {
 // 使用 Row().Scan() 显式扫描列值，避免 GORM struct tag 大小写映射问题（Oracle/DM 列名大写）。
 func (a *Ecology9Adapter) ValidateProcess(ctx context.Context, processType string) (*ProcessInfo, error) {
 	// 查询 workflow_base：获取流程名称、formid 和 workflowtype
+	var workflowID int
 	var workflowName string
 	var formID int
 	var workflowTypeID int
 	row := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_base")).
-		Select(a.col("workflowname")+", "+a.col("formid")+", "+a.col("workflowtype")).
+		Select(a.col("id")+", "+a.col("workflowname")+", "+a.col("formid")+", "+a.col("workflowtype")).
 		Where(a.col("workflowname")+" = ? AND "+a.col("isvalid")+" = ?", processType, "1").
 		Row()
-	if err := row.Scan(&workflowName, &formID, &workflowTypeID); err != nil {
+	if err := row.Scan(&workflowID, &workflowName, &formID, &workflowTypeID); err != nil {
 		return nil, fmt.Errorf("流程 '%s' 在泛微 E9 系统中不存在或已停用", processType)
 	}
 
@@ -249,6 +250,7 @@ func (a *Ecology9Adapter) ValidateProcess(ctx context.Context, processType strin
 	}
 
 	return &ProcessInfo{
+		WorkflowID:       fmt.Sprintf("%d", workflowID),
 		ProcessType:      processType,
 		ProcessName:      workflowName,
 		ProcessTypeLabel: typeName,
@@ -282,6 +284,78 @@ func (a *Ecology9Adapter) FetchFields(ctx context.Context, processType string) (
 		return nil, fmt.Errorf("查询流程表单定义失败 (formid=%d): %w", formID, err)
 	}
 
+	return a.fetchFieldsByForm(ctx, formID, mainTableName)
+}
+
+// FetchFieldsByWorkflowID 按 OA workflow_base.id 拉取流程字段，避免同名流程取错表单。
+func (a *Ecology9Adapter) FetchFieldsByWorkflowID(ctx context.Context, workflowID string) (*ProcessFields, error) {
+	workflowID = strings.TrimSpace(workflowID)
+	if workflowID == "" {
+		return nil, fmt.Errorf("流程 ID 为空")
+	}
+	var formID int
+	row := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_base")).
+		Select(a.col("formid")).
+		Where(a.col("id")+" = ? AND "+a.col("isvalid")+" = ?", workflowID, "1").
+		Row()
+	if err := row.Scan(&formID); err != nil {
+		return nil, fmt.Errorf("查询流程定义失败 (workflowid=%s): %w", workflowID, err)
+	}
+	var mainTableName string
+	billRow := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_bill")).
+		Select(a.col("tablename")).
+		Where(a.col("id")+" = ?", formID).
+		Row()
+	if err := billRow.Scan(&mainTableName); err != nil {
+		return nil, fmt.Errorf("查询流程表单定义失败 (formid=%d): %w", formID, err)
+	}
+	return a.fetchFieldsByForm(ctx, formID, mainTableName)
+}
+
+// SearchWorkflowDefinitions 检索 OA 流程定义，供外部关联选择目标流程。
+func (a *Ecology9Adapter) SearchWorkflowDefinitions(ctx context.Context, keyword string) ([]ProcessInfo, error) {
+	keyword = strings.TrimSpace(keyword)
+	type rowData struct {
+		WorkflowID int    `gorm:"column:workflow_id"`
+		Name       string `gorm:"column:workflow_name"`
+		TypeName   string `gorm:"column:type_name"`
+		MainTable  string `gorm:"column:main_table"`
+	}
+	rows := []rowData{}
+	db := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_base")+" wb").
+		Select(strings.Join([]string{
+			"wb." + a.col("id") + " AS workflow_id",
+			"COALESCE(wb." + a.col("workflowname") + ", '') AS workflow_name",
+			"COALESCE(wt." + a.col("typename") + ", '') AS type_name",
+			"COALESCE(b." + a.col("tablename") + ", '') AS main_table",
+		}, ", ")).
+		Joins("LEFT JOIN "+a.tableName("workflow_type")+" wt ON wb."+a.col("workflowtype")+" = wt."+a.col("id")).
+		Joins("LEFT JOIN "+a.tableName("workflow_bill")+" b ON wb."+a.col("formid")+" = b."+a.col("id")).
+		Where("wb."+a.col("isvalid")+" = ?", "1")
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		db = db.Where("wb."+a.col("workflowname")+" LIKE ? OR wt."+a.col("typename")+" LIKE ? OR b."+a.col("tablename")+" LIKE ?", like, like, like)
+	}
+	if err := db.Order("wb." + a.col("workflowname") + " ASC").Limit(30).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("检索流程定义失败: %w", err)
+	}
+	out := make([]ProcessInfo, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ProcessInfo{
+			WorkflowID:       fmt.Sprintf("%d", row.WorkflowID),
+			ProcessType:      row.Name,
+			ProcessName:      row.Name,
+			ProcessTypeLabel: row.TypeName,
+			MainTable:        row.MainTable,
+		})
+	}
+	return out, nil
+}
+
+func (a *Ecology9Adapter) fetchFieldsByForm(ctx context.Context, formID int, mainTableName string) (*ProcessFields, error) {
 	var rawFields []map[string]interface{}
 	err := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_billfield")+" "+a.col("t1")).
@@ -536,7 +610,7 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 }
 
 // QueryModelContext 对 E9 建模表执行受限只读查询。
-// 这里会校验表名/字段名、限制返回行数；自定义 SQL 仅允许使用 :source_value 的单条 SELECT。
+// 这里会校验表名/字段名、限制返回行数；自定义 SQL 仅允许单条 SELECT，且必须使用指定变量。
 func (a *Ecology9Adapter) QueryModelContext(ctx context.Context, query ModelContextQuery) (*ModelContextQueryResult, error) {
 	mode := strings.TrimSpace(query.Mode)
 	if mode == "" {
@@ -615,6 +689,19 @@ func (a *Ecology9Adapter) queryModelTableContext(ctx context.Context, query Mode
 
 func (a *Ecology9Adapter) queryModelCustomSQLContext(ctx context.Context, query ModelContextQuery, maxRows int) (*ModelContextQueryResult, error) {
 	sqlText := strings.TrimSpace(query.CustomSQL)
+	tableName := strings.TrimSpace(query.TableName)
+	joinField := strings.TrimSpace(query.JoinField)
+	if joinField == "" {
+		joinField = "id"
+	}
+	if !isSafeIdentifier(tableName) || !isSafeIdentifier(joinField) {
+		return nil, fmt.Errorf("建模表名或关联字段不合法")
+	}
+	if !strings.Contains(sqlText, "{{table_name}}") || !strings.Contains(sqlText, "{{join_field}}") {
+		return nil, fmt.Errorf("自定义 SQL 必须使用 {{table_name}} 和 {{join_field}} 变量")
+	}
+	sqlText = strings.ReplaceAll(sqlText, "{{table_name}}", a.tableName(tableName))
+	sqlText = strings.ReplaceAll(sqlText, "{{join_field}}", a.col(joinField))
 	if !isReadonlySingleSelect(sqlText) {
 		return nil, fmt.Errorf("自定义 SQL 仅允许单条 SELECT 查询")
 	}

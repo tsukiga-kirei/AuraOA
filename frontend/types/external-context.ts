@@ -3,9 +3,11 @@ export interface ExternalWorkflowContextConfig {
   basic_fields?: string[]
   data_mode?: 'none' | 'all_fields' | 'selected_fields'
   target_process_type?: string
+  target_workflow_id?: string
+  target_process_label?: string
+  target_main_table?: string
   selected_fields?: string[]
   fallback_strategy?: 'basic_with_notice' | 'all_fields' | 'ignore'
-  max_refs?: number
   max_rows?: number
 }
 
