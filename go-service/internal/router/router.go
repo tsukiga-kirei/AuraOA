@@ -258,6 +258,15 @@ func SetupRouter(
 		tenantStats.GET("/token-usage", llmLogHandler.QueryTokenUsage)
 	}
 
+	// 租户管理员 — AI 调用记录（数据管理页）
+	tenantLLMLogs := r.Group("/api/tenant/llm-logs")
+	tenantLLMLogs.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		tenantLLMLogs.GET("", llmLogHandler.ListLogs)
+		tenantLLMLogs.GET("/stats", llmLogHandler.GetLogStats)
+		tenantLLMLogs.GET("/:id", llmLogHandler.GetLogDetail)
+	}
+
 	// 业务用户个人设置（需要 JWT + 租户上下文，无角色限制）：流程配置、定时任务偏好、归档配置及仪表盘偏好
 	tenantSettings := r.Group("/api/tenant/settings")
 	tenantSettings.Use(middleware.JWT(rdb), middleware.TenantContext())

@@ -1478,6 +1478,8 @@ export default {
     'admin.data.tabAudit': '审核工作台',
     'admin.data.tabCron': '定时任务',
     'admin.data.tabArchive': '归档复盘',
+    'admin.data.tabSummary': '流程总结',
+    'admin.data.tabLLM': 'AI 调用记录',
     // 审核子页签
     'admin.data.auditTab.all': '全部',
     'admin.data.auditTab.approve': '建议通过',
@@ -1513,6 +1515,7 @@ export default {
     'admin.data.exportFailed': '导出失败，请稍后重试',
     'admin.data.loading': '加载中...',
     'admin.data.loadFailed': '加载失败，请稍后重试',
+    'admin.data.fetchFailed': '获取详情失败，请稍后重试',
     // Cron 相关
     'admin.data.searchCron': '搜索任务/触发人',
     'admin.data.searchCronTask': '搜索任务',
@@ -1594,6 +1597,24 @@ export default {
     'admin.data.cronWorkflows': '关联流程',
     'admin.data.cronDateRange': '数据范围',
     'admin.data.days': '天',
+    // AI 调用记录
+    'admin.data.llmTab.all': '全部',
+    'admin.data.llmTab.audit': '审核工作台',
+    'admin.data.llmTab.archive': '归档复盘',
+    'admin.data.llmTab.summary': '流程总结',
+    'admin.data.llmTab.other': '其他',
+    'admin.data.llmDetailTitle': 'AI 调用详情',
+    'admin.data.thRequestType': '调用场景',
+    'admin.data.thCallType': '调用类型',
+    'admin.data.thModel': '模型',
+    'admin.data.thTokens': 'Token',
+    'admin.data.llmCallReasoning': '推理调用',
+    'admin.data.llmCallStructured': '结构化调用',
+    'admin.data.llmSystemPrompt': '系统提示词',
+    'admin.data.llmUserPrompt': '用户提示词',
+    'admin.data.llmResponse': '模型响应',
+    'admin.data.llmNoPrompt': '无内容',
+    'admin.data.summaryDetailTitle': '流程总结详情',
 
     //===== 管理员 - 系统租户 =====
     'admin.tenants.title': '租户管理',

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -1091,6 +1092,9 @@ func (s *ArchiveReviewService) GetArchiveHistory(c *gin.Context, processID strin
 	for i := range logs {
 		normalizeArchiveLogInPlace(&logs[i].ArchiveLog)
 	}
+	sort.Slice(logs, func(i, j int) bool {
+		return logs[i].CreatedAt.After(logs[j].CreatedAt)
+	})
 	return logs, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -494,6 +495,9 @@ func (h *ArchiveReviewHandler) GetSnapshotChain(c *gin.Context) {
 	for i := range chain {
 		service.NormalizeArchiveLogForResponse(&chain[i].ArchiveLog)
 	}
+	sort.Slice(chain, func(i, j int) bool {
+		return chain[i].CreatedAt.After(chain[j].CreatedAt)
+	})
 	response.Success(c, gin.H{"chain": chain})
 }
 
