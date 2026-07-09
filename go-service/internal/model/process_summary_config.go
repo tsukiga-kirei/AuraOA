@@ -28,14 +28,15 @@ func (ProcessSummaryConfig) TableName() string { return "process_summary_configs
 
 // SummaryBlockConfig 单个总结块配置。
 type SummaryBlockConfig struct {
-	ID             string   `json:"id"`
-	Title          string   `json:"title"`
-	UserPrompt     string   `json:"user_prompt"`
-	IncludeMeta    *bool    `json:"include_meta"`
-	FieldMode      string   `json:"field_mode"` // all | selected
-	SelectedFields []string `json:"selected_fields"`
-	Enabled        bool     `json:"enabled"`
-	SortOrder      int      `json:"sort_order"`
+	ID                   string   `json:"id"`
+	Title                string   `json:"title"`
+	UserPrompt           string   `json:"user_prompt"`
+	IncludeMeta          *bool    `json:"include_meta"`           // true：传入全部数据（固定模板）；false：仅传入 enabled_data_variables
+	EnabledDataVariables []string `json:"enabled_data_variables"` // include_meta=false 时生效
+	FieldMode            string   `json:"field_mode"`             // all | selected
+	SelectedFields       []string `json:"selected_fields"`
+	Enabled              bool     `json:"enabled"`
+	SortOrder            int      `json:"sort_order"`
 }
 
 // SummaryEmbedConfigData OA 嵌入总结页行为配置。

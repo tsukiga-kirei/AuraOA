@@ -287,6 +287,15 @@ func normalizeSummaryBlock(block model.SummaryBlockConfig, idx int) model.Summar
 	if block.IncludeMeta == nil {
 		block.IncludeMeta = boolPtr(defaultSummaryIncludeMeta)
 	}
+	if !summaryBlockIncludeAllData(block) && len(block.EnabledDataVariables) == 0 {
+		block.EnabledDataVariables = []string{
+			"{{main_table}}",
+			"{{detail_tables}}",
+			"{{attachments}}",
+			"{{flow_history}}",
+			"{{flow_graph}}",
+		}
+	}
 	if block.SortOrder == 0 {
 		block.SortOrder = idx + 1
 	}

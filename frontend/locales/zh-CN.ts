@@ -1102,7 +1102,13 @@ export default {
 
     //系统变量描述
     'admin.ruleConfig.insertDataVariable': '数据变量',
+    'admin.ruleConfig.selectDataVariable': '选择数据变量',
+    'admin.ruleConfig.insertDataVariableDisabled': '数据变量（已全部传入）',
+    'admin.ruleConfig.insertDataVariableDisabledHint': '已开启「传入全部数据」，无需单独选择数据变量',
     'admin.ruleConfig.insertSystemVariable': '系统变量',
+    'admin.ruleConfig.summaryIncludeAllData': '传入全部数据',
+    'admin.ruleConfig.summaryIncludeAllDataDesc': '开启后自动传入流程基础信息、主表、明细、附件和审批流；关闭后可按需勾选数据变量',
+    'admin.ruleConfig.summaryCustomDataHint': '已切换为自定义模式，请点击下方数据变量标签选择需要传入的内容',
     'admin.ruleConfig.varCurrentDate': '当前日期，如 2026-07-09',
     'admin.ruleConfig.varCurrentTime': '当前时间，如 14:30:00',
     'admin.ruleConfig.varCurrentDatetime': '当前日期时间，如 2026-07-09 14:30:00',

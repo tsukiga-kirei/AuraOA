@@ -18,6 +18,15 @@ const fixedSummarySystemPrompt = `你是企业 OA 审批流程的总结助手。
 4. 输出必须是 JSON 对象，不要输出 Markdown 代码块、不要添加 JSON 外的解释。
 5. JSON 格式固定为：{"content":"一段可直接展示的总结","points":["要点1","要点2"]}。`
 
+var summaryDataVariableKeys = map[string]struct{}{
+	"{{process_meta}}":   {},
+	"{{main_table}}":     {},
+	"{{detail_tables}}":  {},
+	"{{attachments}}":    {},
+	"{{flow_history}}":   {},
+	"{{flow_graph}}":     {},
+}
+
 // BuildSummaryBlockPrompt 组装单个总结块的 AI 请求。
 func BuildSummaryBlockPrompt(
 	processType string,
@@ -50,34 +59,77 @@ func BuildSummaryBlockPrompt(
 		}
 	}
 
-	meta := "（未提供流程摘要）"
-	if processSummary != nil {
-		meta = fmt.Sprintf(
-			"流程编号：%s\n流程标题：%s\n申请人：%s\n部门：%s\n流程类型：%s\n当前节点：%s\n提交时间：%s",
-			processSummary.ProcessID,
-			processSummary.Title,
-			processSummary.Applicant,
-			processSummary.Department,
-			firstNonEmpty(processSummary.ProcessTypeLabel, processSummary.ProcessType, processType),
-			processSummary.CurrentNode,
-			processSummary.SubmitTime,
-		)
-	}
-	if block.IncludeMeta != nil && !*block.IncludeMeta {
-		meta = "（当前总结块未传入流程基础信息）"
+	meta := buildSummaryProcessMeta(processType, processSummary)
+	payload := summaryPromptPayload{
+		meta:          meta,
+		mainTable:     mainDataStr,
+		detailTables:  detailDataStr,
+		attachments:   attachmentsStr,
+		flowHistory:   flowHistory,
+		flowGraph:     flowGraph,
+		userPrompt:    strings.TrimSpace(block.UserPrompt),
+		enabledKeys:   normalizeSummaryEnabledDataVariables(block),
+		includeAllData: summaryBlockIncludeAllData(block),
 	}
 
-	userRequirements := substituteSummaryBlockUserPrompt(
-		strings.TrimSpace(block.UserPrompt),
-		meta,
-		mainDataStr,
-		detailDataStr,
-		attachmentsStr,
-		flowHistory,
-		flowGraph,
+	userPrompt := buildSummaryUserPrompt(block.Title, payload)
+
+	return &ai.ChatRequest{
+		SystemPrompt: fixedSummarySystemPrompt,
+		UserPrompt:   userPrompt,
+		RequestType:  "summary",
+		CallType:     "structured",
+	}
+}
+
+type summaryPromptPayload struct {
+	meta           string
+	mainTable      string
+	detailTables   string
+	attachments    string
+	flowHistory    string
+	flowGraph      string
+	userPrompt     string
+	enabledKeys    map[string]struct{}
+	includeAllData bool
+}
+
+func summaryBlockIncludeAllData(block model.SummaryBlockConfig) bool {
+	return block.IncludeMeta == nil || *block.IncludeMeta
+}
+
+func buildSummaryProcessMeta(processType string, processSummary *oa.ProcessRequestSummary) string {
+	if processSummary == nil {
+		return "（未提供流程摘要）"
+	}
+	return fmt.Sprintf(
+		"流程编号：%s\n流程标题：%s\n申请人：%s\n部门：%s\n流程类型：%s\n当前节点：%s\n提交时间：%s",
+		processSummary.ProcessID,
+		processSummary.Title,
+		processSummary.Applicant,
+		processSummary.Department,
+		firstNonEmpty(processSummary.ProcessTypeLabel, processSummary.ProcessType, processType),
+		processSummary.CurrentNode,
+		processSummary.SubmitTime,
 	)
+}
 
-	userPrompt := fmt.Sprintf(`请生成「%s」总结块。
+func normalizeSummaryEnabledDataVariables(block model.SummaryBlockConfig) map[string]struct{} {
+	enabled := make(map[string]struct{}, len(block.EnabledDataVariables))
+	for _, key := range block.EnabledDataVariables {
+		key = strings.TrimSpace(key)
+		if _, ok := summaryDataVariableKeys[key]; ok {
+			enabled[key] = struct{}{}
+		}
+	}
+	return enabled
+}
+
+func buildSummaryUserPrompt(title string, payload summaryPromptPayload) string {
+	userRequirements := replaceSystemPromptVariables(payload.userPrompt)
+
+	if payload.includeAllData {
+		return fmt.Sprintf(`请生成「%s」总结块。
 
 流程基础信息：
 %s
@@ -101,40 +153,54 @@ func BuildSummaryBlockPrompt(
 %s
 
 请严格返回 JSON 对象：{"content":"...","points":["..."]}`,
-		block.Title,
-		meta,
-		mainDataStr,
-		detailDataStr,
-		attachmentsStr,
-		flowHistory,
-		flowGraph,
+			title,
+			payload.meta,
+			payload.mainTable,
+			payload.detailTables,
+			payload.attachments,
+			payload.flowHistory,
+			payload.flowGraph,
+			userRequirements,
+		)
+	}
+
+	var sections []string
+	if _, ok := payload.enabledKeys["{{process_meta}}"]; ok {
+		sections = append(sections, fmt.Sprintf("流程基础信息：\n%s", payload.meta))
+	}
+	if _, ok := payload.enabledKeys["{{main_table}}"]; ok {
+		sections = append(sections, fmt.Sprintf("主表字段：\n%s", payload.mainTable))
+	}
+	if _, ok := payload.enabledKeys["{{detail_tables}}"]; ok {
+		sections = append(sections, fmt.Sprintf("明细表字段：\n%s", payload.detailTables))
+	}
+	if _, ok := payload.enabledKeys["{{attachments}}"]; ok {
+		sections = append(sections, fmt.Sprintf("附件识别内容：\n%s", payload.attachments))
+	}
+	if _, ok := payload.enabledKeys["{{flow_history}}"]; ok {
+		sections = append(sections, fmt.Sprintf("审批流历史：\n%s", payload.flowHistory))
+	}
+	if _, ok := payload.enabledKeys["{{flow_graph}}"]; ok {
+		sections = append(sections, fmt.Sprintf("审批流图：\n%s", payload.flowGraph))
+	}
+
+	dataSection := "（当前总结块未选择任何数据变量）"
+	if len(sections) > 0 {
+		dataSection = strings.Join(sections, "\n\n")
+	}
+
+	return fmt.Sprintf(`请生成「%s」总结块。
+
+%s
+
+本总结块的用户要求：
+%s
+
+请严格返回 JSON 对象：{"content":"...","points":["..."]}`,
+		title,
+		dataSection,
 		userRequirements,
 	)
-
-	return &ai.ChatRequest{
-		SystemPrompt: fixedSummarySystemPrompt,
-		UserPrompt:   userPrompt,
-		RequestType:  "summary",
-		CallType:     "structured",
-	}
-}
-
-func substituteSummaryBlockUserPrompt(
-	userPrompt string,
-	processMeta string,
-	mainDataStr string,
-	detailDataStr string,
-	attachmentsStr string,
-	flowHistory string,
-	flowGraph string,
-) string {
-	userPrompt = strings.ReplaceAll(userPrompt, "{{process_meta}}", processMeta)
-	userPrompt = strings.ReplaceAll(userPrompt, "{{main_table}}", mainDataStr)
-	userPrompt = strings.ReplaceAll(userPrompt, "{{detail_tables}}", detailDataStr)
-	userPrompt = strings.ReplaceAll(userPrompt, "{{attachments}}", attachmentsStr)
-	userPrompt = strings.ReplaceAll(userPrompt, "{{flow_history}}", flowHistory)
-	userPrompt = strings.ReplaceAll(userPrompt, "{{flow_graph}}", flowGraph)
-	return replaceSystemPromptVariables(userPrompt)
 }
 
 func selectedKeysForTable(fieldSet SelectedFieldSet, table string) map[string]bool {

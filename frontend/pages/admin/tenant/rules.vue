@@ -705,6 +705,15 @@ const insertExtractionVariable = (variable: string) => {
   insertAtCursor(extractionTextareaRef, 'user_extraction_prompt', variable)
 }
 
+const SUMMARY_DATA_VARIABLE_KEYS = [
+  '{{process_meta}}',
+  '{{main_table}}',
+  '{{detail_tables}}',
+  '{{attachments}}',
+  '{{flow_history}}',
+  '{{flow_graph}}',
+] as const
+
 const summaryPromptDataVariables = computed(() => [
   { key: '{{process_meta}}', desc: t('admin.ruleConfig.varProcessMetaDesc') },
   { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
@@ -713,6 +722,18 @@ const summaryPromptDataVariables = computed(() => [
   { key: '{{flow_history}}', desc: t('admin.ruleConfig.varFlowHistoryDesc') },
   { key: '{{flow_graph}}', desc: t('admin.ruleConfig.varFlowGraphDesc') },
 ])
+
+const toggleSummaryBlockDataVariable = (block: SummaryBlockConfig, variable: string) => {
+  if (!block.enabled_data_variables) {
+    block.enabled_data_variables = []
+  }
+  const idx = block.enabled_data_variables.indexOf(variable)
+  if (idx >= 0) {
+    block.enabled_data_variables.splice(idx, 1)
+  } else {
+    block.enabled_data_variables.push(variable)
+  }
+}
 
 const summaryBlockTextareaRefs = ref<Record<string, any>>({})
 
@@ -1023,17 +1044,26 @@ const normalizeSummaryConfigForUI = (cfg: ProcessSummaryConfig): ProcessSummaryC
   ...cfg,
   main_fields: cfg.main_fields || [],
   detail_tables: cfg.detail_tables || [],
-  summary_blocks: (cfg.summary_blocks?.length ? cfg.summary_blocks : [createSummaryBlock()]).map((b, idx) => ({
-    ...b,
-    id: b.id || createClientId(),
-    title: b.title || '流程摘要',
-    user_prompt: b.user_prompt || '',
-    include_meta: b.include_meta !== false,
-    field_mode: b.field_mode || 'all',
-    selected_fields: b.selected_fields || [],
-    enabled: b.enabled !== false,
-    sort_order: b.sort_order || idx + 1,
-  })),
+  summary_blocks: (cfg.summary_blocks?.length ? cfg.summary_blocks : [createSummaryBlock()]).map((b, idx) => {
+    const includeMeta = b.include_meta !== false
+    let enabledDataVariables = Array.isArray(b.enabled_data_variables) ? [...b.enabled_data_variables] : []
+    // 兼容旧配置：仅关闭 include_meta 时，默认仍传入除流程基础信息外的全部数据
+    if (!includeMeta && enabledDataVariables.length === 0 && b.enabled_data_variables === undefined) {
+      enabledDataVariables = SUMMARY_DATA_VARIABLE_KEYS.filter(key => key !== '{{process_meta}}')
+    }
+    return {
+      ...b,
+      id: b.id || createClientId(),
+      title: b.title || '流程摘要',
+      user_prompt: b.user_prompt || '',
+      include_meta: includeMeta,
+      enabled_data_variables: enabledDataVariables,
+      field_mode: b.field_mode || 'all',
+      selected_fields: b.selected_fields || [],
+      enabled: b.enabled !== false,
+      sort_order: b.sort_order || idx + 1,
+    }
+  }),
   embed_enabled: cfg.embed_enabled ?? true,
   embed_config: {
     auto_summary_on_open: cfg.embed_config?.auto_summary_on_open ?? true,
@@ -1048,6 +1078,7 @@ function createSummaryBlock(): SummaryBlockConfig {
     title: '流程摘要',
     user_prompt: '请概括流程背景、关键申请内容、金额/日期/对象等核心信息，并列出审批人最需要关注的要点。',
     include_meta: true,
+    enabled_data_variables: [],
     field_mode: 'all',
     selected_fields: [],
     enabled: true,
@@ -2670,10 +2701,18 @@ const handleSave = async () => {
 
               <div class="summary-block-option-row">
                 <div class="summary-block-option-copy">
-                  <div class="summary-block-option-title">流程基础信息</div>
-                  <div class="summary-block-option-desc">控制该块是否传入流程标题、申请人、部门、当前节点、提交时间等基础信息</div>
+                  <div class="summary-block-option-title">{{ t('admin.ruleConfig.summaryIncludeAllData') }}</div>
+                  <div class="summary-block-option-desc">{{ t('admin.ruleConfig.summaryIncludeAllDataDesc') }}</div>
                 </div>
-                <a-switch v-model:checked="block.include_meta" checked-children="传入" un-checked-children="不传" />
+                <a-switch
+                  v-model:checked="block.include_meta"
+                  checked-children="全部"
+                  un-checked-children="自定义"
+                />
+              </div>
+
+              <div v-if="!block.include_meta" class="summary-custom-data-hint">
+                {{ t('admin.ruleConfig.summaryCustomDataHint') }}
               </div>
 
               <div class="field-mode-switch" style="margin-top: 12px;">
@@ -2724,7 +2763,11 @@ const handleSave = async () => {
                   <PromptVariableBar
                     :data-variables="summaryPromptDataVariables"
                     :system-variables="systemPromptVariables"
+                    :disable-data-variables="block.include_meta"
+                    :data-variable-mode="block.include_meta ? 'insert' : 'toggle'"
+                    :selected-data-variables="block.enabled_data_variables || []"
                     @insert="insertSummaryBlockVariable(block, $event)"
+                    @toggle-data-variable="toggleSummaryBlockDataVariable(block, $event)"
                   />
                   <a-textarea
                     :ref="(el) => setSummaryBlockTextareaRef(block.id, el)"
@@ -4413,6 +4456,15 @@ const handleSave = async () => {
   font-size: 12px;
   line-height: 1.5;
   color: var(--color-text-tertiary);
+}
+.summary-custom-data-hint {
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-info);
+  background: var(--color-info-bg);
+  border-radius: var(--radius-sm);
 }
 .summary-block-index {
   width: 28px;
