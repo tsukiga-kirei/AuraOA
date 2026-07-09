@@ -16,7 +16,6 @@ import (
 
 const (
 	externalContextDefaultSplitter = ","
-	externalContextDefaultMaxRefs  = 5
 	externalContextDefaultMaxRows  = 20
 )
 
@@ -31,12 +30,21 @@ func NewExternalContextService(oaConnRepo *repository.OAConnectionRepo, attachme
 }
 
 type ExternalContextTestRequest struct {
-	ProcessID string          `json:"process_id" binding:"required"`
+	ProcessID string          `json:"process_id"`
 	Mounts    json.RawMessage `json:"context_mounts" binding:"required"`
 }
 
 type ExternalContextTestResponse struct {
 	ContextText string `json:"context_text"`
+}
+
+type ExternalWorkflowFieldsRequest struct {
+	ProcessType string `json:"process_type"`
+	WorkflowID  string `json:"workflow_id"`
+}
+
+type ExternalWorkflowSearchRequest struct {
+	Keyword string `json:"keyword"`
 }
 
 func parseExternalContextMounts(raw []byte) []model.ExternalContextMount {
@@ -83,11 +91,109 @@ func (s *ExternalContextService) ResolveMountsForPrompt(c *gin.Context, tenant *
 
 func (s *ExternalContextService) Test(c *gin.Context, tenant *model.Tenant, req ExternalContextTestRequest) (*ExternalContextTestResponse, error) {
 	mounts := parseExternalContextMounts(req.Mounts)
+	if strings.TrimSpace(req.ProcessID) == "" {
+		text := s.ValidateMounts(c, tenant, mounts)
+		if strings.TrimSpace(text) == "" {
+			text = "外部关联数据：\n（未配置启用的关联数据）"
+		}
+		return &ExternalContextTestResponse{ContextText: text}, nil
+	}
 	text := s.ResolveMountsForPrompt(c, tenant, req.ProcessID, nil, mounts)
 	if strings.TrimSpace(text) == "" {
 		text = "外部关联数据：\n（未配置启用的关联数据）"
 	}
 	return &ExternalContextTestResponse{ContextText: text}, nil
+}
+
+func (s *ExternalContextService) ValidateMounts(c *gin.Context, tenant *model.Tenant, mounts []model.ExternalContextMount) string {
+	if s == nil || tenant == nil || len(mounts) == 0 {
+		return ""
+	}
+	adapter, err := s.getOAAdapter(tenant, false)
+	if err != nil {
+		return "外部关联数据测试：\n（创建 OA 查询连接失败：" + err.Error() + "）"
+	}
+	var sections []string
+	for _, mount := range mounts {
+		if !mount.Enabled {
+			continue
+		}
+		name := firstNonEmpty(mount.Name, contextMountTypeLabel(mount.Type))
+		switch mount.Type {
+		case "workflow":
+			if mount.Workflow == nil || strings.TrimSpace(mount.Workflow.TargetProcessType) == "" {
+				sections = append(sections, fmt.Sprintf("【%s】\n未指定目标流程：运行时将按 requestid 自动读取引用流程全部字段。", name))
+				continue
+			}
+			if _, err := adapter.ValidateProcess(c.Request.Context(), mount.Workflow.TargetProcessType); err != nil {
+				sections = append(sections, fmt.Sprintf("【%s】\n目标流程校验失败：%s", name, err.Error()))
+			} else {
+				sections = append(sections, fmt.Sprintf("【%s】\n目标流程「%s」存在，配置可用于指定字段引用。", name, mount.Workflow.TargetProcessType))
+			}
+		case "model":
+			if mount.Model == nil {
+				sections = append(sections, fmt.Sprintf("【%s】\n建模表配置为空。", name))
+				continue
+			}
+			querier, ok := adapter.(oa.ModelContextQuerier)
+			if !ok {
+				sections = append(sections, fmt.Sprintf("【%s】\n当前 OA 类型暂不支持建模表关联查询。", name))
+				continue
+			}
+			_, err := querier.QueryModelContext(c.Request.Context(), oa.ModelContextQuery{
+				TableName:    mount.Model.TableName,
+				JoinField:    firstNonEmpty(mount.Model.JoinField, "id"),
+				SourceValue:  "__auraoa_config_probe__",
+				Mode:         firstNonEmpty(mount.Model.Mode, "exists"),
+				ReturnFields: mount.Model.ReturnFields,
+				MaxRows:      1,
+				CustomSQL:    mount.Model.CustomSQL,
+			})
+			if err != nil {
+				sections = append(sections, fmt.Sprintf("【%s】\n建模查询校验失败：%s", name, err.Error()))
+			} else {
+				sections = append(sections, fmt.Sprintf("【%s】\n建模表「%s」和关联字段「%s」可查询。", name, mount.Model.TableName, firstNonEmpty(mount.Model.JoinField, "id")))
+			}
+		}
+	}
+	if len(sections) == 0 {
+		return ""
+	}
+	return "外部关联数据测试：\n" + strings.Join(sections, "\n\n")
+}
+
+func (s *ExternalContextService) FetchWorkflowFields(c *gin.Context, tenant *model.Tenant, req ExternalWorkflowFieldsRequest) (*oa.ProcessFields, error) {
+	adapter, err := s.getOAAdapter(tenant, false)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(req.WorkflowID) != "" {
+		if selector, ok := adapter.(oa.WorkflowDefinitionSelector); ok {
+			return selector.FetchFieldsByWorkflowID(c.Request.Context(), req.WorkflowID)
+		}
+	}
+	if strings.TrimSpace(req.ProcessType) == "" {
+		return nil, fmt.Errorf("目标流程为空")
+	}
+	return adapter.FetchFields(c.Request.Context(), req.ProcessType)
+}
+
+func (s *ExternalContextService) SearchWorkflows(c *gin.Context, tenant *model.Tenant, keyword string) ([]oa.ProcessInfo, error) {
+	adapter, err := s.getOAAdapter(tenant, false)
+	if err != nil {
+		return nil, err
+	}
+	if selector, ok := adapter.(oa.WorkflowDefinitionSelector); ok {
+		return selector.SearchWorkflowDefinitions(c.Request.Context(), keyword)
+	}
+	if strings.TrimSpace(keyword) == "" {
+		return []oa.ProcessInfo{}, nil
+	}
+	info, err := adapter.ValidateProcess(c.Request.Context(), keyword)
+	if err != nil {
+		return nil, err
+	}
+	return []oa.ProcessInfo{*info}, nil
 }
 
 func (s *AuditExecuteService) resolveAuditRulesExternalContext(c *gin.Context, tenant *model.Tenant, processID string, processData *oa.ProcessData, rules []model.AuditRule) string {
@@ -153,15 +259,8 @@ func (s *ExternalContextService) resolveWorkflowMount(ctx context.Context, adapt
 	if cfg == nil {
 		cfg = &model.ExternalWorkflowContextConfig{}
 	}
-	maxRefs := cfg.MaxRefs
-	if maxRefs <= 0 {
-		maxRefs = externalContextDefaultMaxRefs
-	}
-	if maxRefs > 20 {
-		maxRefs = 20
-	}
 	splitter := firstNonEmpty(mount.Splitter, externalContextDefaultSplitter)
-	ids := splitExternalValues(sourceValue, splitter, maxRefs)
+	ids := splitExternalValues(sourceValue, splitter, 0)
 	if len(ids) == 0 {
 		return fmt.Sprintf("【%s】\n未解析到有效 requestid。", name)
 	}
@@ -176,6 +275,9 @@ func (s *ExternalContextService) resolveWorkflowMount(ctx context.Context, adapt
 		}
 		sb.WriteString(formatReferencedWorkflowBasic(summary, cfg.BasicFields))
 		dataMode := firstNonEmpty(cfg.DataMode, "none")
+		if strings.TrimSpace(cfg.TargetProcessType) == "" {
+			dataMode = "all_fields"
+		}
 		if dataMode == "none" {
 			continue
 		}
@@ -354,7 +456,7 @@ func formatReferencedWorkflowBasic(summary *oa.ProcessRequestSummary, fields []s
 	}
 	enabled := map[string]bool{}
 	if len(fields) == 0 {
-		fields = []string{"title", "applicant", "department", "process_type", "current_node", "submit_time"}
+		fields = []string{"archived", "title", "applicant", "department", "process_type", "current_node", "submit_time"}
 	}
 	for _, f := range fields {
 		enabled[f] = true
@@ -366,6 +468,13 @@ func formatReferencedWorkflowBasic(summary *oa.ProcessRequestSummary, fields []s
 		}
 	}
 	add("title", "流程标题", summary.Title)
+	if enabled["archived"] {
+		archived := "否"
+		if strings.Contains(summary.CurrentNode, "归档") {
+			archived = "是"
+		}
+		lines = append(lines, "是否归档："+archived)
+	}
 	add("applicant", "发起人", summary.Applicant)
 	add("department", "发起部门", summary.Department)
 	add("process_type", "流程类型", firstNonEmpty(summary.ProcessTypeLabel, summary.ProcessType))

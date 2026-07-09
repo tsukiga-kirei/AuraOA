@@ -30,6 +30,7 @@ export interface SystemPromptTemplate {
 
 /** OA 流程基本信息（测试连接返回） */
 export interface ProcessInfo {
+  workflow_id?: string
   process_type: string
   process_name: string
   process_type_label?: string

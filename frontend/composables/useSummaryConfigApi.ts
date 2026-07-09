@@ -32,12 +32,33 @@ export const useSummaryConfigApi = () => {
     return await authFetch<ProcessFields>(`/api/tenant/summary/configs/${configId}/fetch-fields`, { method: 'POST' })
   }
 
-  async function testContext(processId: string, mounts: ExternalContextMount[]): Promise<ExternalContextTestResponse> {
+  async function testContext(mounts: ExternalContextMount[], processId?: string): Promise<ExternalContextTestResponse> {
     return await authFetch<ExternalContextTestResponse>('/api/tenant/summary/context/test', {
       method: 'POST',
-      body: { process_id: processId, context_mounts: mounts },
+      body: { ...(processId ? { process_id: processId } : {}), context_mounts: mounts },
     })
   }
 
-  return { listConfigs, createConfig, updateConfig, deleteConfig, testConnection, fetchFields, testContext }
+  async function testContextConfig(mounts: ExternalContextMount[]): Promise<ExternalContextTestResponse> {
+    return await authFetch<ExternalContextTestResponse>('/api/tenant/summary/context/test', {
+      method: 'POST',
+      body: { context_mounts: mounts },
+    })
+  }
+
+  async function fetchWorkflowFields(processType: string, workflowId?: string): Promise<ProcessFields> {
+    return await authFetch<ProcessFields>('/api/tenant/summary/context/workflow-fields', {
+      method: 'POST',
+      body: { process_type: processType, workflow_id: workflowId || '' },
+    })
+  }
+
+  async function searchWorkflows(keyword: string): Promise<ProcessInfo[]> {
+    return await authFetch<ProcessInfo[]>('/api/tenant/summary/context/workflow-search', {
+      method: 'POST',
+      body: { keyword },
+    })
+  }
+
+  return { listConfigs, createConfig, updateConfig, deleteConfig, testConnection, fetchFields, testContext, testContextConfig, fetchWorkflowFields, searchWorkflows }
 }

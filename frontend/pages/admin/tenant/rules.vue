@@ -23,6 +23,7 @@ import {
   SearchOutlined,
   SettingOutlined,
   SwapRightOutlined,
+  DownOutlined,
   TeamOutlined,
   ThunderboltOutlined,
   UnlockOutlined,
@@ -36,6 +37,7 @@ import type {
   SystemPromptTemplate
 } from '~/composables/useAuditConfigApi'
 import type { ArchiveRule, ProcessArchiveConfig } from '~/types/archive-config'
+import type { ProcessInfo } from '~/types/common'
 import type { CronTaskConfig } from '~/types/cron'
 import type { ProcessSummaryConfig, SummaryBlockConfig } from '~/types/process-summary'
 import {useI18n} from '~/composables/useI18n'
@@ -51,6 +53,9 @@ const rulesApi = useAuditConfigApi()
 const cronApi = useCronApi()
 const archiveApi = useArchiveConfigApi()
 const summaryApi = useSummaryConfigApi()
+const tableNameSQLVariable = '{{table_name}}'
+const joinFieldSQLVariable = '{{join_field}}'
+const customSQLPlaceholder = `仅允许 SELECT，必须使用 ${tableNameSQLVariable}、${joinFieldSQLVariable} 与 :source_value`
 
 //===== 顶级选项卡：审核工作台 vs 定时任务配置 vs 归档复盘 vs 流程总结 =====
 const topTab = ref<'audit' | 'cron' | 'archive' | 'summary'>('audit')
@@ -1054,6 +1059,43 @@ const summaryBatchUnpick = () => {
   summaryRightSelectedKeys.value = []
 }
 
+function normalizeSummaryContextMountForUI(mount: any) {
+  if (!mount || typeof mount !== 'object') return mount
+  if (mount.type === 'workflow') {
+    const targetProcessType = mount.workflow?.target_process_type || ''
+    return {
+      ...mount,
+      source_splitter: ',',
+      workflow: {
+        ...(mount.workflow || {}),
+        include_basic: mount.workflow?.include_basic ?? true,
+        basic_fields: mount.workflow?.basic_fields || ['archived', 'title', 'applicant', 'department', 'process_type', 'current_node', 'submit_time'],
+        data_mode: targetProcessType || mount.workflow?.target_workflow_id ? 'selected_fields' : 'all_fields',
+        target_process_type: targetProcessType,
+        target_workflow_id: mount.workflow?.target_workflow_id || '',
+        target_process_label: mount.workflow?.target_process_label || '',
+        target_main_table: mount.workflow?.target_main_table || '',
+        selected_fields: mount.workflow?.selected_fields || [],
+        fallback_strategy: mount.workflow?.fallback_strategy || 'basic_with_notice',
+        max_rows: mount.workflow?.max_rows || 20,
+      },
+    }
+  }
+  if (mount.type === 'model') {
+    return {
+      ...mount,
+      model: {
+        ...(mount.model || {}),
+        join_field: mount.model?.join_field || 'id',
+        mode: mount.model?.mode || 'exists',
+        return_fields: mount.model?.return_fields || [],
+        max_rows: mount.model?.max_rows || 5,
+      },
+    }
+  }
+  return mount
+}
+
 const normalizeSummaryConfigForUI = (cfg: ProcessSummaryConfig): ProcessSummaryConfig => ({
   ...cfg,
   main_fields: cfg.main_fields || [],
@@ -1074,7 +1116,7 @@ const normalizeSummaryConfigForUI = (cfg: ProcessSummaryConfig): ProcessSummaryC
       enabled_data_variables: enabledDataVariables,
       field_mode: b.field_mode || 'all',
       selected_fields: b.selected_fields || [],
-      context_mounts: Array.isArray(b.context_mounts) ? b.context_mounts : [],
+      context_mounts: Array.isArray(b.context_mounts) ? b.context_mounts.map(normalizeSummaryContextMountForUI) : [],
       enabled: b.enabled !== false,
       sort_order: b.sort_order || idx + 1,
     }
@@ -1102,9 +1144,17 @@ function createSummaryBlock(): SummaryBlockConfig {
   }
 }
 
-const summaryContextTestProcessIds = ref<Record<string, string>>({})
 const summaryContextTesting = ref<Record<string, boolean>>({})
 const summaryContextPreviews = ref<Record<string, string>>({})
+const summaryContextExpanded = ref<Record<string, boolean>>({})
+const summaryWorkflowFieldLoading = ref<Record<string, boolean>>({})
+const summaryWorkflowFieldOptions = ref<Record<string, { label: string; value: string }[]>>({})
+const summaryWorkflowConfigOpen = ref(false)
+const summaryWorkflowConfigBlockId = ref('')
+const summaryWorkflowKeyword = ref('')
+const summaryWorkflowRows = ref<ProcessInfo[]>([])
+const summaryWorkflowSelectedID = ref('')
+const summaryWorkflowSearching = ref(false)
 
 const summaryContextFieldOptionsForBlock = (block: SummaryBlockConfig) => {
   const allowed = block.field_mode === 'selected' ? new Set(block.selected_fields || []) : null
@@ -1124,10 +1174,13 @@ const createSummaryWorkflowMount = () => ({
   source_splitter: ',',
   workflow: {
     include_basic: true,
-    basic_fields: ['title', 'applicant', 'department', 'process_type', 'current_node', 'submit_time'],
-    data_mode: 'none' as const,
+    basic_fields: ['archived', 'title', 'applicant', 'department', 'process_type', 'current_node', 'submit_time'],
+    data_mode: 'all_fields' as const,
+    target_process_type: '',
+    target_workflow_id: '',
+    target_process_label: '',
+    target_main_table: '',
     fallback_strategy: 'basic_with_notice' as const,
-    max_refs: 5,
     max_rows: 20,
     selected_fields: [],
   },
@@ -1152,6 +1205,27 @@ const toggleSummaryContextMount = (block: SummaryBlockConfig, type: 'workflow' |
   const idx = block.context_mounts.findIndex(m => m.type === type)
   if (checked && idx < 0) block.context_mounts.push(type === 'workflow' ? createSummaryWorkflowMount() : createSummaryModelMount())
   if (!checked && idx >= 0) block.context_mounts.splice(idx, 1)
+  if (checked) summaryContextExpanded.value[summaryContextKey(block, type)] = true
+}
+
+const isSummaryContextExpanded = (block: SummaryBlockConfig, type: 'workflow' | 'model') =>
+  summaryContextExpanded.value[summaryContextKey(block, type)] !== false
+
+const toggleSummaryContextExpanded = (block: SummaryBlockConfig, type: 'workflow' | 'model') => {
+  const key = summaryContextKey(block, type)
+  summaryContextExpanded.value[key] = !isSummaryContextExpanded(block, type)
+}
+
+const summaryContextCollapsedHint = (block: SummaryBlockConfig, type: 'workflow' | 'model') => {
+  const mount = getSummaryContextMount(block, type)
+  if (!mount) return ''
+  if (type === 'workflow') {
+    const sourceLabel = summaryFieldOptions.value.find(f => f.value === mount.source_field)?.label
+    const mode = mount.workflow?.data_mode === 'selected_fields' ? '指定流程字段' : '全部字段'
+    return [sourceLabel || '未选来源字段', mode].join(' · ')
+  }
+  const table = mount.model?.table_name?.trim()
+  return table ? `表 ${table}` : '未填建模表名'
 }
 
 const setSummaryModelReturnFields = (block: SummaryBlockConfig, value: string) => {
@@ -1159,22 +1233,141 @@ const setSummaryModelReturnFields = (block: SummaryBlockConfig, value: string) =
   if (mount?.model) mount.model.return_fields = value.split(',').map(v => v.trim()).filter(Boolean)
 }
 
-const testSummaryContext = async (block: SummaryBlockConfig) => {
-  const processId = (summaryContextTestProcessIds.value[block.id] || '').trim()
-  if (!processId) {
-    message.warning('请输入用于测试的当前流程 requestid')
-    return
-  }
-  summaryContextTesting.value[block.id] = true
-  summaryContextPreviews.value[block.id] = ''
+const summaryContextKey = (block: SummaryBlockConfig, type: 'workflow' | 'model') => `${block.id}:${type}`
+
+const testSummaryContext = async (block: SummaryBlockConfig, type: 'workflow' | 'model') => {
+  const mount = getSummaryContextMount(block, type)
+  if (!mount) return
+  const key = summaryContextKey(block, type)
+  summaryContextTesting.value[key] = true
+  summaryContextPreviews.value[key] = ''
   try {
-    const resp = await summaryApi.testContext(processId, block.context_mounts || [])
-    summaryContextPreviews.value[block.id] = resp.context_text || ''
+    const resp = await summaryApi.testContextConfig([mount])
+    summaryContextPreviews.value[key] = resp.context_text || ''
   } catch (e: any) {
     message.error('关联数据测试失败：' + (e.message || '未知错误'))
   } finally {
-    summaryContextTesting.value[block.id] = false
+    summaryContextTesting.value[key] = false
   }
+}
+
+const loadSummaryWorkflowFields = async (block: SummaryBlockConfig, target?: ProcessInfo) => {
+  const mount = getSummaryContextMount(block, 'workflow')
+  const processType = target?.process_name || target?.process_type || mount?.workflow?.target_process_type?.trim()
+  const workflowID = target?.workflow_id || mount?.workflow?.target_workflow_id || ''
+  if (!mount?.workflow || (!processType && !workflowID)) {
+    message.warning('请先选择目标流程')
+    return
+  }
+  summaryWorkflowFieldLoading.value[block.id] = true
+  try {
+    const fields = await summaryApi.fetchWorkflowFields(processType || '', workflowID)
+    summaryWorkflowFieldOptions.value[block.id] = [
+      ...(fields.main_fields || []).map(f => ({ label: `${f.field_name}（主表）`, value: `main:${f.field_key}` })),
+      ...(fields.detail_tables || []).flatMap((dt, idx) => (dt.fields || []).map(f => ({
+        label: `${f.field_name}（${dt.table_label || `明细表 ${idx + 1}`}）`,
+        value: `${dt.table_name}:${f.field_key}`,
+      }))),
+    ]
+    message.success('目标流程字段已加载')
+  } catch (e: any) {
+    message.error('目标流程字段加载失败：' + (e.message || '未知错误'))
+  } finally {
+    summaryWorkflowFieldLoading.value[block.id] = false
+  }
+}
+
+const setSummaryWorkflowTargetMode = (block: SummaryBlockConfig, specified: boolean) => {
+  const mount = getSummaryContextMount(block, 'workflow')
+  if (!mount?.workflow) return
+  if (specified) {
+    mount.workflow.data_mode = 'selected_fields'
+    openSummaryWorkflowConfigModal(block)
+  } else {
+    mount.workflow.target_process_type = ''
+    mount.workflow.target_workflow_id = ''
+    mount.workflow.target_process_label = ''
+    mount.workflow.target_main_table = ''
+    mount.workflow.selected_fields = []
+    mount.workflow.data_mode = 'all_fields'
+    summaryWorkflowFieldOptions.value[block.id] = []
+  }
+}
+
+const summaryTargetWorkflowSummary = (block: SummaryBlockConfig) => {
+  const wf = getSummaryContextMount(block, 'workflow')?.workflow
+  if (!wf?.target_process_type && !wf?.target_workflow_id) return ''
+  return [wf.target_process_type, wf.target_process_label, wf.target_main_table].filter(Boolean).join(' / ')
+}
+
+const summaryWorkflowConfigSummary = (block: SummaryBlockConfig) => {
+  const wf = getSummaryContextMount(block, 'workflow')?.workflow
+  if (!wf || wf.data_mode !== 'selected_fields') return ''
+  const target = summaryTargetWorkflowSummary(block)
+  const fieldCount = wf.selected_fields?.length || 0
+  if (!target) return '尚未配置'
+  return `${target} · ${fieldCount} 个字段`
+}
+
+const currentSummaryWorkflowBlock = computed(() =>
+  selectedSummaryConfig.value?.summary_blocks.find(block => block.id === summaryWorkflowConfigBlockId.value)
+)
+
+const openSummaryWorkflowConfigModal = async (block: SummaryBlockConfig) => {
+  const wf = getSummaryContextMount(block, 'workflow')?.workflow
+  if (!wf) return
+  summaryWorkflowConfigBlockId.value = block.id
+  summaryWorkflowKeyword.value = wf.target_process_type || ''
+  summaryWorkflowSelectedID.value = wf.target_workflow_id || wf.target_process_type || ''
+  summaryWorkflowConfigOpen.value = true
+  await searchSummaryWorkflows()
+  if ((wf.target_process_type || wf.target_workflow_id) && !summaryWorkflowFieldOptions.value[block.id]?.length) {
+    await loadSummaryWorkflowFields(block)
+  }
+}
+
+const searchSummaryWorkflows = async () => {
+  summaryWorkflowSearching.value = true
+  try {
+    summaryWorkflowRows.value = await summaryApi.searchWorkflows(summaryWorkflowKeyword.value.trim())
+    if (!summaryWorkflowSelectedID.value && summaryWorkflowRows.value.length) {
+      summaryWorkflowSelectedID.value = summaryWorkflowRows.value[0].workflow_id || summaryWorkflowRows.value[0].process_name
+    }
+  } catch (e: any) {
+    message.error('流程检索失败：' + (e.message || '未知错误'))
+  } finally {
+    summaryWorkflowSearching.value = false
+  }
+}
+
+const confirmSummaryWorkflowConfig = async () => {
+  const block = currentSummaryWorkflowBlock.value
+  const row = summaryWorkflowRows.value.find(item => (item.workflow_id || item.process_name) === summaryWorkflowSelectedID.value)
+  const mount = block ? getSummaryContextMount(block, 'workflow') : undefined
+  if (!block || !row || !mount?.workflow) {
+    message.warning('请选择目标流程')
+    return Promise.reject()
+  }
+  const workflowChanged =
+    mount.workflow.target_workflow_id !== (row.workflow_id || '') ||
+    mount.workflow.target_process_type !== (row.process_name || row.process_type)
+  mount.workflow.target_process_type = row.process_name || row.process_type
+  mount.workflow.target_workflow_id = row.workflow_id || ''
+  mount.workflow.target_process_label = row.process_type_label || ''
+  mount.workflow.target_main_table = row.main_table || ''
+  mount.workflow.data_mode = 'selected_fields'
+  if (workflowChanged) {
+    mount.workflow.selected_fields = []
+    await loadSummaryWorkflowFields(block, row)
+  }
+  summaryWorkflowConfigOpen.value = false
+}
+
+const insertSummaryCustomSQLVariable = (block: SummaryBlockConfig, variable: string) => {
+  const mount = getSummaryContextMount(block, 'model')
+  if (!mount?.model) return
+  const current = mount.model.custom_sql || ''
+  mount.model.custom_sql = current ? `${current} ${variable}` : variable
 }
 
 function createClientId() {
@@ -2849,21 +3042,21 @@ const handleSave = async () => {
               </div>
 
               <div v-if="block.field_mode === 'selected'" class="summary-field-picker">
-                <div class="field-picker-toolbar" style="margin-bottom: 10px;">
-                  <span class="field-count">已选择 {{ block.selected_fields.length }} / {{ summaryAllAvailableFields.length }} 个字段</span>
-                  <a-button type="primary" @click="openSummaryFieldPicker(block)">
-                    <AppstoreOutlined /> 选择字段
-                  </a-button>
-                </div>
-                <div v-if="block.selected_fields.length" class="summary-selected-fields">
-                  <span v-for="refKey in block.selected_fields.slice(0, 8)" :key="refKey" class="selected-field-tag">
-                    {{ getSummaryFieldLabel(refKey) }}
-                  </span>
-                  <span v-if="block.selected_fields.length > 8" class="field-count">+{{ block.selected_fields.length - 8 }}</span>
-                </div>
-                <div v-else class="field-empty-hint" style="padding: 16px;">
-                  尚未选择字段
-                </div>
+                <a-form-item label="选择字段" class="summary-field-select-item">
+                  <a-select
+                    v-model:value="block.selected_fields"
+                    mode="multiple"
+                    :options="summaryFieldOptions"
+                    show-search
+                    allow-clear
+                    option-filter-prop="label"
+                    placeholder="搜索并选择字段"
+                    :max-tag-count="3"
+                  />
+                  <div class="field-count" style="margin-top: 6px; margin-bottom: 0;">
+                    已选择 {{ block.selected_fields.length }} / {{ summaryAllAvailableFields.length }} 个字段
+                  </div>
+                </a-form-item>
               </div>
 
               <div class="summary-context-panel">
@@ -2891,9 +3084,20 @@ const handleSave = async () => {
                 </div>
 
                 <div v-if="getSummaryContextMount(block, 'workflow')" class="summary-context-box">
-                  <div class="context-panel-title">关联流程</div>
+                  <button
+                    type="button"
+                    class="summary-context-box-head"
+                    @click="toggleSummaryContextExpanded(block, 'workflow')"
+                  >
+                    <span class="context-panel-title">关联流程</span>
+                    <span v-if="!isSummaryContextExpanded(block, 'workflow')" class="summary-context-collapsed-hint">
+                      {{ summaryContextCollapsedHint(block, 'workflow') }}
+                    </span>
+                    <DownOutlined class="summary-context-chevron" :class="{ 'summary-context-chevron--collapsed': !isSummaryContextExpanded(block, 'workflow') }" />
+                  </button>
+                  <div v-show="isSummaryContextExpanded(block, 'workflow')" class="summary-context-box-body">
                   <a-row :gutter="12">
-                    <a-col :span="12">
+                    <a-col :span="24">
                       <a-form-item label="来源字段">
                         <a-select
                           v-model:value="getSummaryContextMount(block, 'workflow')!.source_field"
@@ -2903,34 +3107,74 @@ const handleSave = async () => {
                         />
                       </a-form-item>
                     </a-col>
-                    <a-col :span="6">
-                      <a-form-item label="分隔符">
-                        <a-input v-model:value="getSummaryContextMount(block, 'workflow')!.source_splitter" />
-                      </a-form-item>
-                    </a-col>
-                    <a-col :span="6">
-                      <a-form-item label="引用表单数据">
-                        <a-select v-model:value="getSummaryContextMount(block, 'workflow')!.workflow!.data_mode">
-                          <a-select-option value="none">不引用</a-select-option>
-                          <a-select-option value="all_fields">全部字段</a-select-option>
-                          <a-select-option value="selected_fields">指定字段</a-select-option>
-                        </a-select>
-                      </a-form-item>
-                    </a-col>
                   </a-row>
-                  <a-form-item v-if="getSummaryContextMount(block, 'workflow')!.workflow?.data_mode === 'selected_fields'" label="引用流程字段">
-                    <a-select
-                      v-model:value="getSummaryContextMount(block, 'workflow')!.workflow!.selected_fields"
-                      :options="summaryContextFieldOptionsForBlock(block)"
-                      mode="multiple"
-                      show-search
-                      placeholder="选择目标流程字段"
-                    />
+                  <a-form-item label="引用流程表单数据" class="summary-workflow-data-mode-item">
+                    <div class="field-mode-switch summary-context-mode-switch">
+                      <div
+                        class="field-mode-option"
+                        :class="{ 'field-mode-option--active': getSummaryContextMount(block, 'workflow')!.workflow?.data_mode !== 'selected_fields' }"
+                        @click="setSummaryWorkflowTargetMode(block, false)"
+                      >
+                        <div class="field-mode-radio" />
+                        <div class="field-mode-label">自动读取全部字段</div>
+                      </div>
+                      <div
+                        class="field-mode-option"
+                        :class="{ 'field-mode-option--active': getSummaryContextMount(block, 'workflow')!.workflow?.data_mode === 'selected_fields' }"
+                        @click="setSummaryWorkflowTargetMode(block, true)"
+                      >
+                        <div class="field-mode-radio" />
+                        <div class="field-mode-label">指定目标流程并选择字段</div>
+                      </div>
+                    </div>
                   </a-form-item>
+                  <div v-if="getSummaryContextMount(block, 'workflow')!.workflow?.data_mode === 'selected_fields'" class="summary-context-box summary-context-box--inner">
+                    <div class="target-flow-summary">
+                      <div>
+                        <div class="target-flow-label">目标流程</div>
+                        <div class="target-flow-value">{{ summaryTargetWorkflowSummary(block) || '尚未选择' }}</div>
+                      </div>
+                      <a-button :loading="summaryWorkflowFieldLoading[block.id]" @click="openSummaryWorkflowPicker(block)">
+                        {{ summaryTargetWorkflowSummary(block) ? '更换流程' : '选择流程' }}
+                      </a-button>
+                    </div>
+                    <a-form-item label="引用流程字段">
+                      <a-select
+                        v-model:value="getSummaryContextMount(block, 'workflow')!.workflow!.selected_fields"
+                        :options="summaryWorkflowFieldOptions[block.id] || []"
+                        mode="multiple"
+                        show-search
+                        placeholder="先加载目标流程字段，再选择要提供给 AI 的字段"
+                      />
+                    </a-form-item>
+                    <a-form-item label="流程类型不一致时">
+                      <a-select v-model:value="getSummaryContextMount(block, 'workflow')!.workflow!.fallback_strategy">
+                        <a-select-option value="basic_with_notice">仅提供基础信息并提示模型类型不一致</a-select-option>
+                        <a-select-option value="all_fields">尝试读取实际流程全部字段</a-select-option>
+                        <a-select-option value="ignore">忽略该引用流程</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </div>
+                  <div class="context-actions">
+                    <a-button :loading="summaryContextTesting[summaryContextKey(block, 'workflow')]" @click="testSummaryContext(block, 'workflow')">测试关联流程</a-button>
+                  </div>
+                  <pre v-if="summaryContextPreviews[summaryContextKey(block, 'workflow')]" class="context-preview">{{ summaryContextPreviews[summaryContextKey(block, 'workflow')] }}</pre>
+                  </div>
                 </div>
 
                 <div v-if="getSummaryContextMount(block, 'model')" class="summary-context-box">
-                  <div class="context-panel-title">关联建模表</div>
+                  <button
+                    type="button"
+                    class="summary-context-box-head"
+                    @click="toggleSummaryContextExpanded(block, 'model')"
+                  >
+                    <span class="context-panel-title">关联建模表</span>
+                    <span v-if="!isSummaryContextExpanded(block, 'model')" class="summary-context-collapsed-hint">
+                      {{ summaryContextCollapsedHint(block, 'model') }}
+                    </span>
+                    <DownOutlined class="summary-context-chevron" :class="{ 'summary-context-chevron--collapsed': !isSummaryContextExpanded(block, 'model') }" />
+                  </button>
+                  <div v-show="isSummaryContextExpanded(block, 'model')" class="summary-context-box-body">
                   <a-row :gutter="12">
                     <a-col :span="8">
                       <a-form-item label="来源字段">
@@ -2956,17 +3200,12 @@ const handleSave = async () => {
                   <a-row :gutter="12">
                     <a-col :span="8">
                       <a-form-item label="查询方式">
-                        <a-select v-model:value="getSummaryContextMount(block, 'model')!.model!.mode">
+                        <a-select v-model:value="getSummaryContextMount(block, 'model')!.model!.mode" show-search option-filter-prop="label">
                           <a-select-option value="exists">是否存在</a-select-option>
                           <a-select-option value="count">存在条数</a-select-option>
-                          <a-select-option value="rows">当前行数据</a-select-option>
+                          <a-select-option value="rows">返回匹配数据</a-select-option>
                           <a-select-option value="custom_sql">自定义 SQL</a-select-option>
                         </a-select>
-                      </a-form-item>
-                    </a-col>
-                    <a-col :span="8">
-                      <a-form-item label="最多返回行">
-                        <a-input-number v-model:value="getSummaryContextMount(block, 'model')!.model!.max_rows" :min="1" :max="50" style="width: 100%;" />
                       </a-form-item>
                     </a-col>
                     <a-col :span="8" v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'rows'">
@@ -2979,16 +3218,23 @@ const handleSave = async () => {
                       </a-form-item>
                     </a-col>
                   </a-row>
-                  <a-form-item v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'custom_sql'" label="自定义 SQL">
-                    <a-textarea v-model:value="getSummaryContextMount(block, 'model')!.model!.custom_sql" :rows="4" placeholder="仅允许 SELECT，并使用 :source_value 参数" />
+                  <a-form-item v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'rows'" label="返回行数上限">
+                    <a-input-number v-model:value="getSummaryContextMount(block, 'model')!.model!.max_rows" :min="1" :max="50" style="width: 100%;" />
                   </a-form-item>
+                  <a-form-item v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'custom_sql'" label="自定义 SQL">
+                    <div class="sql-variable-bar">
+                      <span>插入变量：</span>
+                      <a-button size="small" @click="insertSummaryCustomSQLVariable(block, tableNameSQLVariable)">{{ tableNameSQLVariable }}</a-button>
+                      <a-button size="small" @click="insertSummaryCustomSQLVariable(block, joinFieldSQLVariable)">{{ joinFieldSQLVariable }}</a-button>
+                    </div>
+                    <a-textarea v-model:value="getSummaryContextMount(block, 'model')!.model!.custom_sql" :rows="4" :placeholder="customSQLPlaceholder" />
+                  </a-form-item>
+                  <div class="context-actions">
+                    <a-button :loading="summaryContextTesting[summaryContextKey(block, 'model')]" @click="testSummaryContext(block, 'model')">测试建模查询</a-button>
+                  </div>
+                  <pre v-if="summaryContextPreviews[summaryContextKey(block, 'model')]" class="context-preview">{{ summaryContextPreviews[summaryContextKey(block, 'model')] }}</pre>
+                  </div>
                 </div>
-
-                <div v-if="block.context_mounts?.length" class="context-test">
-                  <a-input v-model:value="summaryContextTestProcessIds[block.id]" placeholder="输入当前流程 requestid 测试关联数据" style="max-width: 320px;" />
-                  <a-button :loading="summaryContextTesting[block.id]" @click="testSummaryContext(block)">测试</a-button>
-                </div>
-                <pre v-if="summaryContextPreviews[block.id]" class="context-preview">{{ summaryContextPreviews[block.id] }}</pre>
               </div>
 
               <a-form layout="vertical" style="margin-top: 12px;">
@@ -3246,12 +3492,61 @@ const handleSave = async () => {
       </div>
     </a-modal>
 
+    <a-modal
+      v-model:open="summaryWorkflowPickerOpen"
+      title="选择目标流程"
+      :width="720"
+      ok-text="引入流程"
+      cancel-text="取消"
+      :confirm-loading="currentSummaryWorkflowBlock ? !!summaryWorkflowFieldLoading[currentSummaryWorkflowBlock.id] : false"
+      @ok="confirmSummaryWorkflow"
+    >
+      <div class="workflow-picker">
+        <div class="workflow-picker-search">
+          <a-input
+            v-model:value="summaryWorkflowKeyword"
+            placeholder="输入流程名称、流程分类或主表名搜索"
+            allow-clear
+            @press-enter="searchSummaryWorkflows"
+          />
+          <a-button type="primary" :loading="summaryWorkflowSearching" @click="searchSummaryWorkflows">
+            搜索
+          </a-button>
+        </div>
+        <a-spin :spinning="summaryWorkflowSearching">
+          <div class="workflow-result-list">
+            <button
+              v-for="item in summaryWorkflowRows"
+              :key="item.workflow_id || item.process_name"
+              type="button"
+              class="workflow-result-item"
+              :class="{ active: summaryWorkflowSelectedID === (item.workflow_id || item.process_name) }"
+              @click="summaryWorkflowSelectedID = item.workflow_id || item.process_name"
+            >
+              <span class="workflow-result-radio"></span>
+              <span class="workflow-result-main">
+                <span class="workflow-result-name">{{ item.process_name || item.process_type }}</span>
+                <span class="workflow-result-meta">
+                  <span v-if="item.process_type_label">{{ item.process_type_label }}</span>
+                  <span v-if="item.main_table">{{ item.main_table }}</span>
+                  <span v-if="item.workflow_id">ID {{ item.workflow_id }}</span>
+                </span>
+              </span>
+            </button>
+            <a-empty v-if="!summaryWorkflowRows.length && !summaryWorkflowSearching" description="未找到匹配流程" />
+          </div>
+        </a-spin>
+      </div>
+    </a-modal>
+
     <!--规则编辑器模式-->
     <RuleEditor
       :open="showRuleEditor"
       :rule="editingRule"
       :field-options="auditContextFieldOptions"
       context-test-endpoint="/api/tenant/rules/context/test"
+      workflow-fields-endpoint="/api/tenant/rules/context/workflow-fields"
+      workflow-search-endpoint="/api/tenant/rules/context/workflow-search"
       @close="showRuleEditor = false; editingRule = null"
       @save="handleSaveRule"
     />
@@ -4134,6 +4429,8 @@ const handleSave = async () => {
       :rule="editingArchiveRule"
       :field-options="archiveContextFieldOptions"
       context-test-endpoint="/api/tenant/archive/context/test"
+      workflow-fields-endpoint="/api/tenant/archive/context/workflow-fields"
+      workflow-search-endpoint="/api/tenant/archive/context/workflow-search"
       @close="showArchiveRuleEditor = false; editingArchiveRule = null"
       @save="handleSaveArchiveRule"
     />
@@ -4717,13 +5014,101 @@ const handleSave = async () => {
 .summary-context-box {
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
-  padding: 12px;
+  padding: 0;
   margin-top: 10px;
-  background: var(--color-bg-page);
+  background: var(--color-bg-hover);
+  overflow: hidden;
+}
+.summary-context-box-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.summary-context-box-head .context-panel-title {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+.summary-context-collapsed-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.summary-context-chevron {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  transition: transform .18s ease;
+}
+.summary-context-chevron--collapsed {
+  transform: rotate(-90deg);
+}
+.summary-context-box-body {
+  padding: 0 12px 12px;
+}
+.summary-context-box-body > .context-panel-title {
+  display: none;
+}
+.summary-context-box--inner {
+  background: var(--color-bg-card);
+}
+.summary-context-mode-switch {
+  margin-bottom: 0;
+}
+.summary-context-mode-switch .field-mode-option {
+  padding: 10px 12px;
+  align-items: center;
+}
+.summary-context-mode-switch .field-mode-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.summary-field-select-item {
+  margin-bottom: 0;
+}
+.summary-field-select-item :deep(.ant-form-item-label) {
+  padding-bottom: 4px;
+}
+.summary-field-select-item :deep(.ant-form-item-label > label) {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.summary-workflow-data-mode-item {
+  margin-bottom: 12px;
 }
 .context-panel-title {
   font-weight: 600;
   margin-bottom: 10px;
+  color: var(--color-text-primary);
+}
+.target-flow-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  background: var(--color-bg-card);
+}
+.target-flow-label {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+.target-flow-value {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--color-text-primary);
 }
 .context-test {
@@ -4743,6 +5128,74 @@ const handleSave = async () => {
   padding: 10px;
   font-size: 12px;
   line-height: 1.6;
+}
+.sql-variable-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+.workflow-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.workflow-picker-search :deep(.ant-input-affix-wrapper) {
+  flex: 1;
+  min-width: 0;
+}
+.workflow-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+}
+.workflow-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  background: var(--color-bg-card);
+  text-align: left;
+  cursor: pointer;
+}
+.workflow-result-item.active {
+  border-color: rgba(91, 99, 211, .55);
+  background: rgba(91, 99, 211, .06);
+}
+.workflow-result-radio {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-border);
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.workflow-result-item.active .workflow-result-radio {
+  border: 5px solid var(--color-primary);
+}
+.workflow-result-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.workflow-result-name {
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+.workflow-result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
 }
 .summary-custom-data-hint {
   margin-top: 8px;
@@ -4772,12 +5225,6 @@ const handleSave = async () => {
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-hover);
-}
-.summary-selected-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
 }
 
 /*字段选择器模态*/
