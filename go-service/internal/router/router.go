@@ -265,7 +265,7 @@ func SetupRouter(
 		tenantLLMLogs.GET("/processes", llmLogHandler.ListProcesses)
 		tenantLLMLogs.GET("/stats", llmLogHandler.GetLogStats)
 		tenantLLMLogs.GET("/:processId/chain", llmLogHandler.GetProcessChain)
-		tenantLLMLogs.GET("/:id", llmLogHandler.GetLogDetail)
+		tenantLLMLogs.GET("/calls/:id", llmLogHandler.GetLogDetail)
 	}
 
 	// 业务用户个人设置（需要 JWT + 租户上下文，无角色限制）：流程配置、定时任务偏好、归档配置及仪表盘偏好
