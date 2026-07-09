@@ -139,7 +139,7 @@ func (h *LLMMessageLogHandler) GetLogStats(c *gin.Context) {
 }
 
 // GetLogDetail 获取单条 AI 调用记录详情（含输入输出提示词）。
-// GET /api/tenant/llm-logs/:id
+// GET /api/tenant/llm-logs/calls/:id
 func (h *LLMMessageLogHandler) GetLogDetail(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
