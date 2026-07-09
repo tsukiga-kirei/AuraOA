@@ -1080,6 +1080,16 @@ export default {
     'admin.ruleConfig.varFlowHistoryDesc': 'Completed approval flow node info (JSON), injected only when rules reference flow',
     'admin.ruleConfig.varFlowGraphDesc': 'Complete flow graph node info (JSON), all approval nodes, sequence and status',
     'admin.ruleConfig.varCurrentNodeDesc': 'Current approval node name, identifies the current stage in the approval process',
+    'admin.ruleConfig.varProcessMetaDesc': 'Process metadata (ID, title, applicant, department, current node, submit time, etc.)',
+    'admin.ruleConfig.varAttachmentsDesc': 'Attachment recognition content, including OCR/parsed attachment text summaries',
+
+    //System Variable Descriptions
+    'admin.ruleConfig.insertDataVariable': 'Data Variables',
+    'admin.ruleConfig.insertSystemVariable': 'System Variables',
+    'admin.ruleConfig.varCurrentDate': 'Current date, e.g. 2026-07-09',
+    'admin.ruleConfig.varCurrentTime': 'Current time, e.g. 14:30:00',
+    'admin.ruleConfig.varCurrentDatetime': 'Current date and time, e.g. 2026-07-09 14:30:00',
+    'admin.ruleConfig.varWeekday': 'Current weekday, e.g. Thursday',
 
     //System Prompt Editor
     'admin.ruleConfig.systemPromptTag': 'System Prompts',

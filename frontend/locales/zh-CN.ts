@@ -1097,6 +1097,16 @@ export default {
     'admin.ruleConfig.varFlowHistoryDesc': '已过审批流节点信息（JSON），仅当有规则关联审批流时注入',
     'admin.ruleConfig.varFlowGraphDesc': '流程图完整节点信息（JSON），包含流程的全部审批节点、顺序和状态',
     'admin.ruleConfig.varCurrentNodeDesc': '当前审批节点名称，标识流程当前所处的审批环节',
+    'admin.ruleConfig.varProcessMetaDesc': '流程基础信息（编号、标题、申请人、部门、当前节点、提交时间等）',
+    'admin.ruleConfig.varAttachmentsDesc': '附件识别内容，包含 OCR/解析后的附件文本摘要',
+
+    //系统变量描述
+    'admin.ruleConfig.insertDataVariable': '数据变量',
+    'admin.ruleConfig.insertSystemVariable': '系统变量',
+    'admin.ruleConfig.varCurrentDate': '当前日期，如 2026-07-09',
+    'admin.ruleConfig.varCurrentTime': '当前时间，如 14:30:00',
+    'admin.ruleConfig.varCurrentDatetime': '当前日期时间，如 2026-07-09 14:30:00',
+    'admin.ruleConfig.varWeekday': '当前星期，如 星期四',
 
     //系统提示词编辑器
     'admin.ruleConfig.systemPromptTag': '系统提示词',
