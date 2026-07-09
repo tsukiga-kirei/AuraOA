@@ -1,0 +1,5630 @@
+openapi: 3.0.3
+info:
+  title: AuraOA API
+  version: 0.1.0
+  description: 'AuraOA 平台 API 契约。与 docs/api/*.md 互补：Markdown 保留叙述性说明，本文件供机器读取与 IDE 预览。
+
+
+    统一响应：{ code, message, data }，成功时 code=0。
+
+    服务端分页：data 含 items、total、page、page_size。
+
+    角色：system_admin | tenant_admin | business（JWT 内 active_role 决定权限）。'
+servers:
+- url: http://localhost:8080
+  description: 本地开发环境
+tags:
+- name: Health
+  description: 健康检查
+- name: Auth
+  description: 认证与登录
+- name: Notifications
+  description: 站内通知
+- name: Org
+  description: 租户组织架构
+- name: SystemAdmin
+  description: 系统管理员
+- name: Cache
+  description: 缓存管理
+- name: AuditConfig
+  description: 流程审核配置
+- name: ArchiveConfig
+  description: 归档复盘配置
+- name: SummaryConfig
+  description: 流程总结配置
+- name: Cron
+  description: 定时任务
+- name: UserSettings
+  description: 用户个人设置
+- name: UserConfigMgmt
+  description: 租户用户配置管理
+- name: LLMLogs
+  description: AI 调用记录与 Token 统计
+- name: Audit
+  description: 审核工作台
+- name: Summary
+  description: 流程总结数据管理
+- name: Archive
+  description: 归档复盘
+- name: Embed
+  description: OA 嵌入页
+paths:
+  /api/health:
+    get:
+      summary: 服务健康检查
+      tags:
+      - Health
+      security: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+  /api/auth/bootstrap-status:
+    get:
+      summary: 获取系统初始化状态
+      tags:
+      - Auth
+      security: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      needs_setup:
+                        type: boolean
+  /api/auth/bootstrap:
+    post:
+      summary: 初始化首个系统管理员
+      tags:
+      - Auth
+      security: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - username
+              - password
+              - display_name
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                  minLength: 8
+                display_name:
+                  type: string
+  /api/auth/login:
+    post:
+      summary: 用户登录
+      tags:
+      - Auth
+      security: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/LoginResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+  /api/auth/refresh:
+    post:
+      summary: 刷新 Access Token
+      tags:
+      - Auth
+      security: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      access_token:
+                        type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+  /api/tenants/list:
+    get:
+      summary: 获取公开租户列表（登录页）
+      tags:
+      - Auth
+      security: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TenantPublic'
+  /api/auth/logout:
+    post:
+      summary: 登出
+      tags:
+      - Auth
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/auth/switch-role:
+    put:
+      summary: 切换当前激活角色
+      tags:
+      - Auth
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - role_id
+              properties:
+                role_id:
+                  type: string
+                  format: uuid
+  /api/auth/menu:
+    get:
+      summary: 获取当前角色菜单
+      tags:
+      - Auth
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/auth/change-password:
+    put:
+      summary: 修改密码
+      tags:
+      - Auth
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - current_password
+              - new_password
+              properties:
+                current_password:
+                  type: string
+                new_password:
+                  type: string
+  /api/auth/me:
+    get:
+      summary: 获取当前用户信息
+      tags:
+      - Auth
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/UserMe'
+  /api/auth/locale:
+    put:
+      summary: 更新界面语言
+      tags:
+      - Auth
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - locale
+              properties:
+                locale:
+                  type: string
+                  enum:
+                  - zh-CN
+                  - en-US
+  /api/auth/profile:
+    put:
+      summary: 更新个人资料
+      tags:
+      - Auth
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name:
+                  type: string
+                email:
+                  type: string
+                phone:
+                  type: string
+  /api/auth/notifications/unread-count:
+    get:
+      summary: 获取未读通知数
+      tags:
+      - Notifications
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+  /api/auth/notifications:
+    get:
+      summary: 获取通知列表
+      tags:
+      - Notifications
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      description: 使用 limit/offset 分页，非 page/page_size
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 20
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+      - name: unread_only
+        in: query
+        schema:
+          type: boolean
+  /api/auth/notifications/read-all:
+    put:
+      summary: 标记全部通知已读
+      tags:
+      - Notifications
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/auth/notifications/{id}/read:
+    put:
+      summary: 标记单条通知已读
+      tags:
+      - Notifications
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 通知 ID
+  /api/tenant/org/departments:
+    get:
+      summary: 获取部门列表
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    post:
+      summary: 创建部门
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/org/roles:
+    get:
+      summary: 获取角色列表
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    post:
+      summary: 创建角色
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/org/members:
+    get:
+      summary: 获取成员列表
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    post:
+      summary: 创建成员
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/org/departments/{id}:
+    put:
+      summary: 更新部门
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+    delete:
+      summary: 删除部门
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/org/roles/{id}:
+    put:
+      summary: 更新角色
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+    delete:
+      summary: 删除角色
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/org/members/{id}:
+    put:
+      summary: 更新成员
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+    delete:
+      summary: 删除成员
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/org/members/import:
+    post:
+      summary: 批量导入成员
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+  /api/tenant/org/members/import-template:
+    get:
+      summary: 下载成员导入模板
+      tags:
+      - Org
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Excel 文件下载
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+  /api/admin/tenants:
+    get:
+      summary: 获取租户列表
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    post:
+      summary: 创建租户
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantCreateRequest'
+  /api/admin/tenants/{id}:
+    put:
+      summary: 更新租户
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+    delete:
+      summary: 删除租户
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - admin_password
+              properties:
+                admin_password:
+                  type: string
+  /api/admin/tenants/{id}/stats:
+    get:
+      summary: 获取租户统计
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/admin/tenants/{id}/members:
+    get:
+      summary: 获取租户成员列表
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/admin/tenants/{id}/embed-token:
+    post:
+      summary: 生成或重置嵌入访问密钥
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/admin/system/options/oa-types:
+    get:
+      summary: 获取 OA 类型选项
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/admin/system/options/db-drivers:
+    get:
+      summary: 获取数据库驱动选项
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/admin/system/options/ai-deploy-types:
+    get:
+      summary: 获取 AI 部署类型选项
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/admin/system/options/ai-providers:
+    get:
+      summary: 获取 AI 服务商选项
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/admin/system/oa-connections:
+    get:
+      summary: 获取 OA 连接列表
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    post:
+      summary: 创建 OA 连接
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAConnectionRequest'
+  /api/admin/system/ai-models:
+    get:
+      summary: 获取 AI 模型配置列表
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    post:
+      summary: 创建 AI 模型配置
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIModelRequest'
+  /api/admin/system/configs:
+    get:
+      summary: 获取系统 KV 配置
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    put:
+      summary: 批量更新系统配置
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+  /api/admin/system/oa-connections/test:
+    post:
+      summary: 测试 OA 连接参数
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAConnectionRequest'
+  /api/admin/system/oa-connections/{id}:
+    put:
+      summary: 更新 OA 连接
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAConnectionRequest'
+    delete:
+      summary: 删除 OA 连接
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/admin/system/oa-connections/{id}/test:
+    post:
+      summary: 测试已保存 OA 连接
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/admin/system/ai-models/test:
+    post:
+      summary: 测试 AI 模型连接参数
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIModelRequest'
+  /api/admin/system/ai-models/{id}:
+    put:
+      summary: 更新 AI 模型配置
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIModelRequest'
+    delete:
+      summary: 删除 AI 模型配置
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/admin/system/ai-models/{id}/test:
+    post:
+      summary: 测试已保存 AI 模型连接
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/admin/system/attachment-recognition/test:
+    post:
+      summary: 测试附件识别服务连通性
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/admin/stats/token-usage:
+    get:
+      summary: 全平台 Token 消耗统计
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: start_time
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - name: end_time
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date-time
+  /api/admin/dashboard-overview:
+    get:
+      summary: 平台级仪表盘概览
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/admin/system-monitor:
+    get:
+      summary: 系统运行监控
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/admin/cache/stats:
+    get:
+      summary: 获取 Redis 缓存统计
+      tags:
+      - Cache
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/admin/cache/tenant/{tenant_id}:
+    delete:
+      summary: 清除指定租户缓存
+      tags:
+      - Cache
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 租户 ID
+  /api/admin/cache/module/{module}:
+    delete:
+      summary: 清除指定模块缓存
+      tags:
+      - Cache
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: module
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - audit
+          - archive
+          - dashboard
+        description: 模块名
+  /api/admin/cache/toggle:
+    post:
+      summary: 全局启用/禁用缓存
+      tags:
+      - Cache
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - enabled
+              properties:
+                enabled:
+                  type: boolean
+  /api/tenant/rules/configs:
+    get:
+      summary: 获取流程审核配置列表
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    post:
+      summary: 创建流程审核配置
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessConfigRequest'
+  /api/tenant/rules/configs/{id}:
+    get:
+      summary: 获取流程审核配置详情
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+    put:
+      summary: 更新流程审核配置
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessConfigRequest'
+    delete:
+      summary: 删除流程审核配置
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/rules/configs/test-connection:
+    post:
+      summary: 测试审核 OA 连接
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/rules/configs/{id}/fetch-fields:
+    post:
+      summary: 拉取审核流程字段
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/rules/audit-rules:
+    get:
+      summary: 获取审核规则列表
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: config_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: rule_scope
+        in: query
+        schema:
+          type: string
+      - name: enabled
+        in: query
+        schema:
+          type: boolean
+    post:
+      summary: 创建审核规则
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditRuleRequest'
+  /api/tenant/rules/audit-rules/{id}:
+    put:
+      summary: 更新审核规则
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditRuleRequest'
+    delete:
+      summary: 删除审核规则
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/rules/context/test:
+    post:
+      summary: 测试外部关联数据配置
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContextTestRequest'
+  /api/tenant/rules/prompt-templates:
+    get:
+      summary: 获取审核提示词模板（只读）
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/archive/configs:
+    get:
+      summary: 获取归档配置列表
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    post:
+      summary: 创建归档配置
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessConfigRequest'
+  /api/tenant/archive/configs/test-connection:
+    post:
+      summary: 测试归档 OA 连接
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/archive/configs/{id}:
+    get:
+      summary: 获取归档配置详情
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+    put:
+      summary: 更新归档配置
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessConfigRequest'
+    delete:
+      summary: 删除归档配置
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/archive/configs/{id}/fetch-fields:
+    post:
+      summary: 拉取归档流程字段
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/archive/rules:
+    get:
+      summary: 获取归档规则列表
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: config_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: rule_scope
+        in: query
+        schema:
+          type: string
+      - name: enabled
+        in: query
+        schema:
+          type: boolean
+    post:
+      summary: 创建归档规则
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditRuleRequest'
+  /api/tenant/archive/rules/{id}:
+    put:
+      summary: 更新归档规则
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditRuleRequest'
+    delete:
+      summary: 删除归档规则
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/archive/context/test:
+    post:
+      summary: 测试归档外部关联数据
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContextTestRequest'
+  /api/tenant/archive/prompt-templates:
+    get:
+      summary: 获取归档提示词模板（只读）
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/summary/configs:
+    get:
+      summary: 获取流程总结配置列表
+      tags:
+      - SummaryConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    post:
+      summary: 创建流程总结配置
+      tags:
+      - SummaryConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessConfigRequest'
+  /api/tenant/summary/configs/test-connection:
+    post:
+      summary: 测试流程总结 OA 连接
+      tags:
+      - SummaryConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/summary/configs/{id}:
+    get:
+      summary: 获取流程总结配置详情
+      tags:
+      - SummaryConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+    put:
+      summary: 更新流程总结配置
+      tags:
+      - SummaryConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessConfigRequest'
+    delete:
+      summary: 删除流程总结配置
+      tags:
+      - SummaryConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/summary/configs/{id}/fetch-fields:
+    post:
+      summary: 拉取流程总结字段
+      tags:
+      - SummaryConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/summary/context/test:
+    post:
+      summary: 测试流程总结外部关联数据
+      tags:
+      - SummaryConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContextTestRequest'
+  /api/tenant/cron/configs:
+    get:
+      summary: 获取任务类型配置列表
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/cron/configs/{taskType}:
+    put:
+      summary: 保存任务类型配置
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: taskType
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      summary: 重置任务类型为系统预设
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: taskType
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/tenant/cron/tasks:
+    get:
+      summary: 获取任务实例列表
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    post:
+      summary: 创建任务实例
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CronTaskRequest'
+  /api/tenant/cron/tasks/{id}:
+    put:
+      summary: 更新任务实例
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CronTaskRequest'
+    delete:
+      summary: 删除任务实例
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/cron/tasks/{id}/toggle:
+    post:
+      summary: 切换任务启用状态
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/cron/tasks/{id}/execute:
+    post:
+      summary: 立即执行任务
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/cron/tasks/{id}/logs:
+    get:
+      summary: 获取任务执行日志
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/tenant/cron/logs:
+    get:
+      summary: 跨任务全量日志列表
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      page_size:
+                        type: integer
+      parameters:
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: status
+        in: query
+        schema:
+          type: string
+      - name: task_type
+        in: query
+        schema:
+          type: string
+      - name: trigger_type
+        in: query
+        schema:
+          type: string
+      - name: created_by
+        in: query
+        schema:
+          type: string
+      - name: department
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        description: 页码（从 1 开始）
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+        description: 每页条数
+  /api/tenant/cron/logs/stats:
+    get:
+      summary: 全量定时任务日志统计
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/cron/logs/export:
+    get:
+      summary: 导出全量定时任务日志
+      tags:
+      - Cron
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: CSV 文件下载（UTF-8 BOM）
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+  /api/tenant/settings/processes:
+    get:
+      summary: 获取可用审核流程类型
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/settings/processes/{processType}:
+    get:
+      summary: 获取流程个人配置
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: processType
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      summary: 更新流程个人配置
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: processType
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProcessConfigRequest'
+  /api/tenant/settings/processes/{processType}/full:
+    get:
+      summary: 获取完整审核配置（租户+个人合并）
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: processType
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/tenant/settings/cron-prefs:
+    get:
+      summary: 获取定时任务个人偏好
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    put:
+      summary: 更新定时任务个人偏好
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                default_email:
+                  type: string
+  /api/tenant/settings/archive-configs:
+    get:
+      summary: 获取可用归档配置列表
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/settings/archive-configs/{processType}/full:
+    get:
+      summary: 获取完整归档配置合并视图
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: processType
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/tenant/settings/archive-configs/{processType}:
+    put:
+      summary: 更新归档个人配置
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: processType
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProcessConfigRequest'
+  /api/tenant/settings/dashboard-prefs:
+    get:
+      summary: 获取仪表盘 Widget 偏好
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+    put:
+      summary: 更新仪表盘偏好
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled_widgets:
+                  type: object
+                widget_sizes:
+                  type: object
+  /api/tenant/settings/dashboard-overview:
+    get:
+      summary: 获取用户仪表盘聚合数据
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/user-configs:
+    get:
+      summary: 获取租户用户配置摘要列表
+      tags:
+      - UserConfigMgmt
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/user-configs/export:
+    get:
+      summary: 导出用户配置摘要
+      tags:
+      - UserConfigMgmt
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Excel 文件下载
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+  /api/tenant/user-configs/{userId}:
+    get:
+      summary: 获取指定用户配置详情
+      tags:
+      - UserConfigMgmt
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/tenant/stats/token-usage:
+    get:
+      summary: 查询当前租户 Token 消耗
+      tags:
+      - LLMLogs
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: start_time
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - name: end_time
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - name: model_config_id
+        in: query
+        schema:
+          type: string
+          format: uuid
+  /api/tenant/llm-logs/processes:
+    get:
+      summary: 分页查询 AI 调用流程列表
+      tags:
+      - LLMLogs
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      page_size:
+                        type: integer
+      parameters:
+      - name: request_type
+        in: query
+        schema:
+          type: string
+          enum:
+          - audit
+          - archive
+          - summary
+      - name: call_type
+        in: query
+        schema:
+          type: string
+          enum:
+          - reasoning
+          - structured
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: operator
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        description: 页码（从 1 开始）
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+        description: 每页条数
+  /api/tenant/llm-logs/stats:
+    get:
+      summary: AI 调用记录统计
+      tags:
+      - LLMLogs
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/tenant/llm-logs/{processId}/chain:
+    get:
+      summary: 获取流程全部 AI 调用链
+      tags:
+      - LLMLogs
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: processId
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/tenant/llm-logs/calls/{id}:
+    get:
+      summary: 获取单条 AI 调用详情
+      tags:
+      - LLMLogs
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/audit/processes:
+    get:
+      summary: 分页查询审核流程列表
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      page_size:
+                        type: integer
+      parameters:
+      - name: tab
+        in: query
+        schema:
+          type: string
+          enum:
+          - pending_ai
+          - completed
+          default: pending_ai
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: applicant
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: department
+        in: query
+        schema:
+          type: string
+      - name: audit_status
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        description: 页码（从 1 开始）
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+        description: 每页条数
+  /api/audit/processes/export:
+    get:
+      summary: 导出审核流程列表
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Excel 文件下载
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+      parameters:
+      - name: tab
+        in: query
+        schema:
+          type: string
+          enum:
+          - pending_ai
+          - completed
+          default: pending_ai
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: applicant
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: department
+        in: query
+        schema:
+          type: string
+      - name: audit_status
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+  /api/audit/stats:
+    get:
+      summary: 审核统计数据
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+  /api/audit/execute:
+    post:
+      summary: 提交单条 AI 审核任务
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/JobStatus'
+        '202':
+          description: 任务已接受，异步执行中
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteRequest'
+  /api/audit/cancel/{id}:
+    post:
+      summary: 取消审核任务
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/audit/jobs/{id}:
+    get:
+      summary: 查询审核任务状态
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/JobStatus'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/audit/stream/{id}:
+    get:
+      summary: SSE 审核推理流式输出
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: SSE 流式输出（text/event-stream）
+          content:
+            text/event-stream:
+              schema:
+                type: string
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/audit/batch:
+    post:
+      summary: 批量提交审核任务
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ExecuteRequest'
+  /api/audit/chain/{processId}:
+    get:
+      summary: 获取流程完整审核链
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: processId
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/audit/logs:
+    get:
+      summary: 审核日志列表
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      page_size:
+                        type: integer
+      parameters:
+      - name: status_group
+        in: query
+        schema:
+          type: string
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: recommendation
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        description: 页码（从 1 开始）
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+        description: 每页条数
+  /api/audit/logs/stats:
+    get:
+      summary: 审核日志统计
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/audit/logs/export:
+    get:
+      summary: 导出审核日志
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: CSV 文件下载（UTF-8 BOM）
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+      parameters:
+      - name: status_group
+        in: query
+        schema:
+          type: string
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: recommendation
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+  /api/audit/snapshots:
+    get:
+      summary: 审核快照列表
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      page_size:
+                        type: integer
+      parameters:
+      - name: recommendation
+        in: query
+        schema:
+          type: string
+      - name: channel
+        in: query
+        schema:
+          type: string
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: operator
+        in: query
+        schema:
+          type: string
+      - name: department
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        description: 页码（从 1 开始）
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+        description: 每页条数
+  /api/audit/snapshots/stats:
+    get:
+      summary: 审核快照统计
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/audit/snapshots/export:
+    get:
+      summary: 导出审核快照
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Excel 文件下载
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+      parameters:
+      - name: recommendation
+        in: query
+        schema:
+          type: string
+      - name: channel
+        in: query
+        schema:
+          type: string
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: operator
+        in: query
+        schema:
+          type: string
+      - name: department
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+  /api/audit/snapshots/{processId}/chain:
+    get:
+      summary: 获取快照审核链
+      tags:
+      - Audit
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: processId
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/summary/snapshots:
+    get:
+      summary: 流程总结快照列表
+      tags:
+      - Summary
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      page_size:
+                        type: integer
+      parameters:
+      - name: channel
+        in: query
+        schema:
+          type: string
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: operator
+        in: query
+        schema:
+          type: string
+      - name: department
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        description: 页码（从 1 开始）
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+        description: 每页条数
+  /api/summary/snapshots/stats:
+    get:
+      summary: 流程总结快照统计
+      tags:
+      - Summary
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/summary/snapshots/export:
+    get:
+      summary: 导出流程总结快照
+      tags:
+      - Summary
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Excel 文件下载
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+      parameters:
+      - name: channel
+        in: query
+        schema:
+          type: string
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: operator
+        in: query
+        schema:
+          type: string
+      - name: department
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+  /api/summary/snapshots/{processId}/chain:
+    get:
+      summary: 获取流程总结链
+      tags:
+      - Summary
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: processId
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/archive/processes:
+    get:
+      summary: 分页查询已归档流程列表
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      page_size:
+                        type: integer
+      parameters:
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: applicant
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: department
+        in: query
+        schema:
+          type: string
+      - name: audit_status
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        description: 页码（从 1 开始）
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+        description: 每页条数
+  /api/archive/processes/export:
+    get:
+      summary: 导出归档流程列表
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Excel 文件下载
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+      parameters:
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: applicant
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: department
+        in: query
+        schema:
+          type: string
+      - name: audit_status
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+  /api/archive/stats:
+    get:
+      summary: 归档复盘统计
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+  /api/archive/execute:
+    post:
+      summary: 提交单条归档复盘任务
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/JobStatus'
+        '202':
+          description: 任务已接受，异步执行中
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteRequest'
+  /api/archive/batch:
+    post:
+      summary: 批量提交归档复盘
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ExecuteRequest'
+  /api/archive/cancel/{id}:
+    post:
+      summary: 取消归档复盘任务
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/archive/jobs/{id}:
+    get:
+      summary: 查询归档复盘任务状态
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/JobStatus'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/archive/stream/{id}:
+    get:
+      summary: SSE 归档复盘流式输出
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: SSE 流式输出（text/event-stream）
+          content:
+            text/event-stream:
+              schema:
+                type: string
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/archive/history/{processId}:
+    get:
+      summary: 获取流程历史复盘记录
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: processId
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/archive/result/{id}:
+    get:
+      summary: 获取归档复盘最终结果
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/archive/logs:
+    get:
+      summary: 归档日志列表
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      page_size:
+                        type: integer
+      parameters:
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: compliance
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        description: 页码（从 1 开始）
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+        description: 每页条数
+  /api/archive/logs/stats:
+    get:
+      summary: 归档日志统计
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/archive/logs/export:
+    get:
+      summary: 导出归档日志
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: CSV 文件下载（UTF-8 BOM）
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+      parameters:
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: compliance
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+  /api/archive/snapshots:
+    get:
+      summary: 归档快照列表
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      page_size:
+                        type: integer
+      parameters:
+      - name: compliance
+        in: query
+        schema:
+          type: string
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: process_type
+        in: query
+        schema:
+          type: string
+      - name: operator
+        in: query
+        schema:
+          type: string
+      - name: department
+        in: query
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 开始日期 YYYY-MM-DD
+      - name: end_date
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 结束日期 YYYY-MM-DD
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        description: 页码（从 1 开始）
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+        description: 每页条数
+  /api/archive/snapshots/stats:
+    get:
+      summary: 归档快照统计
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/archive/snapshots/{processId}/chain:
+    get:
+      summary: 获取快照复盘链
+      tags:
+      - Archive
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: processId
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/embed/context:
+    get:
+      summary: 获取嵌入审核上下文
+      tags:
+      - Embed
+      security:
+      - embedToken: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: process_id
+        in: query
+        required: true
+        schema:
+          type: string
+        description: OA 流程 ID
+      - name: requestid
+        in: query
+        schema:
+          type: string
+        description: process_id 别名
+  /api/embed/execute:
+    post:
+      summary: 触发嵌入审核
+      tags:
+      - Embed
+      security:
+      - embedToken: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/JobStatus'
+        '202':
+          description: 任务已接受，异步执行中
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - process_id
+              properties:
+                process_id:
+                  type: string
+                trigger_source:
+                  type: string
+                  example: embed_auto
+  /api/embed/jobs/{id}:
+    get:
+      summary: 查询嵌入审核任务状态
+      tags:
+      - Embed
+      security:
+      - embedToken: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/JobStatus'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/embed/stream/{id}:
+    get:
+      summary: 嵌入审核 SSE 流式输出
+      tags:
+      - Embed
+      security:
+      - embedToken: []
+      responses:
+        '200':
+          description: SSE 流式输出（text/event-stream）
+          content:
+            text/event-stream:
+              schema:
+                type: string
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/embed/summary/context:
+    get:
+      summary: 获取嵌入流程总结上下文
+      tags:
+      - Embed
+      security:
+      - embedToken: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+      parameters:
+      - name: process_id
+        in: query
+        required: true
+        schema:
+          type: string
+        description: OA 流程 ID
+  /api/embed/summary/execute:
+    post:
+      summary: 触发嵌入流程总结
+      tags:
+      - Embed
+      security:
+      - embedToken: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/JobStatus'
+        '202':
+          description: 任务已接受，异步执行中
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - process_id
+              properties:
+                process_id:
+                  type: string
+  /api/embed/summary/jobs/{id}:
+    get:
+      summary: 查询嵌入总结任务状态
+      tags:
+      - Embed
+      security:
+      - embedToken: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/JobStatus'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+  /api/embed/summary/stream/{id}:
+    get:
+      summary: 嵌入总结 SSE 流式输出
+      tags:
+      - Embed
+      security:
+      - embedToken: []
+      responses:
+        '200':
+          description: SSE 流式输出（text/event-stream）
+          content:
+            text/event-stream:
+              schema:
+                type: string
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: 资源 ID
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Authorization: Bearer <access_token>'
+    embedToken:
+      type: apiKey
+      in: header
+      name: X-Embed-Token
+      description: OA 嵌入页访问令牌（租户级 embed_token）
+  responses:
+    ErrorResponse:
+      description: 业务错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+        trace_id:
+          type: string
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 40001
+        message:
+          type: string
+        trace_id:
+          type: string
+    PagedResult:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        total:
+          type: integer
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 100
+    LoginRequest:
+      type: object
+      required:
+      - username
+      - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        tenant_id:
+          type: string
+          format: uuid
+        preferred_role:
+          type: string
+    LoginResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        user:
+          type: object
+        roles:
+          type: array
+          items:
+            type: object
+        active_role:
+          type: object
+        permissions:
+          type: array
+          items:
+            type: string
+    TenantPublic:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+    UserMe:
+      type: object
+      description: 当前用户完整信息
+    ExecuteRequest:
+      type: object
+      required:
+      - process_id
+      - process_type
+      properties:
+        process_id:
+          type: string
+        process_type:
+          type: string
+        title:
+          type: string
+        trigger_source:
+          type: string
+    JobStatus:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - pending
+          - assembling
+          - reasoning
+          - extracting
+          - completed
+          - failed
+          - cancelled
+        process_id:
+          type: string
+        error_message:
+          type: string
+    ContextTestRequest:
+      type: object
+      required:
+      - process_id
+      - context_mounts
+      properties:
+        process_id:
+          type: string
+        context_mounts:
+          type: object
+    OAConnectionRequest:
+      type: object
+      required:
+      - name
+      - oa_type
+      - driver
+      - host
+      - database_name
+      - username
+      - password
+      properties:
+        name:
+          type: string
+        oa_type:
+          type: string
+        driver:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+          default: 3306
+        database_name:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        enabled:
+          type: boolean
+    AIModelRequest:
+      type: object
+      required:
+      - provider
+      - model_name
+      - display_name
+      properties:
+        provider:
+          type: string
+        model_name:
+          type: string
+        display_name:
+          type: string
+        deploy_type:
+          type: string
+        endpoint:
+          type: string
+        api_key:
+          type: string
+        max_tokens:
+          type: integer
+        enabled:
+          type: boolean
+    TenantCreateRequest:
+      type: object
+    ProcessConfigRequest:
+      type: object
+    AuditRuleRequest:
+      type: object
+    CronTaskRequest:
+      type: object
+    UserProcessConfigRequest:
+      type: object

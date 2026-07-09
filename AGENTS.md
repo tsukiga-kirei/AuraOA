@@ -10,7 +10,7 @@
 |------|------|
 | 后端 | `go-service/`（Gin + GORM + 分层：handler → service → repository） |
 | 前端 | `frontend/`（Nuxt 3 + Ant Design Vue） |
-| 接口文档 | `docs/api/` |
+| 接口文档 | `docs/api/`（Markdown，按模块拆分） |
 | 数据库迁移 | `db/migrations/` |
 
 **核心原则**：最小改动、沿用既有约定、租户隔离、前后端 `snake_case` 字段一致。
@@ -126,34 +126,141 @@ AuraOA 各模块相互联动。新增或修改功能时，须检查是否触达�
 
 - Repository 查询带租户条件，使用 `WithTenant(c)`。  
 - 结构变更只通过 `db/migrations/` 迁移，禁止手改生产库。  
-- 接口变更同步更新 `docs/api/` 对应文档。
+- 接口变更同步更新 `docs/api/` 对应文档（及 OpenAPI，若已引入，见 §7）。
 
 ---
 
-## 5. 前端要点
+## 5. 分页规范
+
+项目存在**服务端分页**与**客户端分页**两种模式，按数据量选择，**不可混用语义**。
+
+### 5.1 服务端分页（列表接口默认）
+
+**查询参数**（前后端统一）：
+
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `page` | int | `1` | 从 1 开始 |
+| `page_size` | int | `20` | 后端 Repository 通常限制 `1–100`，非法回落 20 |
+
+**响应结构**（`snake_case`，字段名固定）：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "items": [],
+    "total": 0,
+    "page": 1,
+    "page_size": 20
+  }
+}
+```
+
+前端类型：`PagedResult<T>`（`frontend/types/admin-data.ts` 等），与后端 DTO 字段一致。
+
+**后端**：列表分页方法内校正 `page`、`page_size` 范围；Handler 用 `parseIntQuery` 等统一辅助函数解析。
+
+**前端**：
+
+```ts
+const query = computed(() => ({
+  keyword: keyword.value || undefined,
+  page: currentPage.value,
+  page_size: pageSize.value,
+}))
+```
+
+- 翻页容器用 `.pagination-wrapper` + `a-pagination`。  
+- `page-size-options` 与项目一致：`['10', '20', '50']`。  
+- 切换 `page_size` 时通常重置 `page` 为 1（与现有页面行为保持一致）。
+
+**例外**：部分接口（如通知列表）使用 `limit` / `offset`，须在 composable 与 `docs/api` 中单独说明，**不得**与 `page` / `page_size` 混用于同一列表。
+
+### 5.2 客户端分页
+
+适用于**已一次性加载到内存**的数组（如租户内配置列表过滤后展示）：
+
+- 使用 `usePagination(sourceRef, defaultPageSize)`（默认 20）。  
+- 模板绑定 `current`、`pageSize`、`total`、`onChange`。
+
+### 5.3 导出与全量拉取
+
+- 导出接口按筛选条件导出全量，**不**依赖前端当前页数据。  
+- 后端内部全量拉取常用 `page=1, page_size=5000` 等固定上限，新增导出须评估数据量与超时。
+
+### 5.4 分页检查清单
+
+- [ ] 列表接口在 `docs/api/<模块>.md` 写明分页参数与响应字段  
+- [ ] 前端 `types` 与后端 DTO 字段名一致  
+- [ ] 空列表、加载中、错误状态均有 i18n 文案  
+- [ ] 「筛选 + 翻页」组合行为已手动验证  
+
+---
+
+## 6. API 与文档体系
+
+### 6.1 统一响应与认证
+
+完整约定见 [`docs/api/README.md`](docs/api/README.md)。要点：
+
+- 前缀：`/api`；成功 `code: 0`，`data` 为业务载荷。  
+- 认证：`Authorization: Bearer <access_token>`；中间件链 `JWT` → `TenantContext` → `RequireRole`。  
+- JSON 字段 **snake_case**；新增错误码在 `go-service/internal/pkg/errcode/` 登记。  
+- 修改路由、参数、响应字段时，**同一 PR** 更新对应 `docs/api/<模块>.md`。
+
+### 6.2 模块文档索引（按任务查阅）
+
+| 文档 | 何时读 |
+|------|--------|
+| [`docs/api/README.md`](docs/api/README.md) | 认证、响应格式、路由总索引 |
+| [`docs/api/auth.md`](docs/api/auth.md) | 登录、Token、角色切换 |
+| [`docs/api/audit.md`](docs/api/audit.md) | 审核工作台执行、列表、SSE |
+| [`docs/api/audit-config.md`](docs/api/audit-config.md) | 流程审核配置、规则、提示词 |
+| [`docs/api/archive.md`](docs/api/archive.md) | 归档复盘（与 audit 对称） |
+| [`docs/api/archive-config.md`](docs/api/archive-config.md) | 归档复盘配置 |
+| [`docs/api/summary.md`](docs/api/summary.md) | 流程总结配置与快照 |
+| [`docs/api/llm-logs.md`](docs/api/llm-logs.md) | AI 调用记录（数据管理页） |
+| [`docs/api/user-settings.md`](docs/api/user-settings.md) | 个人配置、仪表盘偏好 |
+| [`docs/api/cron.md`](docs/api/cron.md) | 定时任务 |
+| [`docs/api/org.md`](docs/api/org.md) | 组织架构 |
+| [`docs/api/system-admin.md`](docs/api/system-admin.md) | 系统/租户管理、AI 模型 |
+| [`docs/api/embed.md`](docs/api/embed.md) | OA 嵌入页 |
+| [`docs/api/cache.md`](docs/api/cache.md) | 缓存管理 |
+| [`docs/ai-integration.md`](docs/ai-integration.md) | AI 调用架构、两阶段审核 |
+| [`docs/oa-integration.md`](docs/oa-integration.md) | OA 适配器与取数 |
+| [`docs/development-guide.md`](docs/development-guide.md) | i18n、Git、完整日志规范等 |
+
+**Agent 工作流建议**：改接口前先读 `docs/api/README.md` + 对应模块 md；改 AI 链路再读 `ai-integration.md`；改审核/归档时成对阅读 `audit.md` 与 `archive.md`。
+
+### 6.3 OpenAPI（`auraoa.openapi.yaml`）
+
+机器可读契约：[`docs/api/auraoa.openapi.yaml`](docs/api/auraoa.openapi.yaml)（OpenAPI `3.0.3`，覆盖 `router.go` 全部 **175** 个端点）。
+
+| 项 | 说明 |
+|----|------|
+| 与 Markdown 关系 | **互补**：`docs/api/*.md` 保留叙述与示例；OpenAPI 承载路径、参数、响应 schema，供 Agent / IDE 预览 |
+| 维护原则 | 新增/变更接口时，**同一 PR** 更新对应 `.md` **且** 手工同步 OpenAPI 中对应 `paths` / `components` |
+
+二者与代码冲突时，以**代码实际行为**为准，并回头修订 Markdown 与 YAML。
+
+---
+
+## 7. 前端要点
 
 - 用户可见文案走 `useI18n()` + `locales/zh-CN.ts` / `en-US.ts`，**禁止**硬编码 UI 文案。  
 - API 用 `authFetch<T>()`，类型放 `types/`，字段 `snake_case`。  
-- 服务端分页：`page` / `page_size`，响应用 `PagedResult<T>`。  
-- 审核/归档的轮询、SSE、取消任务逻辑保持对称。
+- 列表分页遵循 §5；审核/归档的轮询、SSE、取消任务逻辑保持对称。
 
 ---
 
-## 6. 合并前自检（精简）
+## 8. 合并前自检（精简）
 
 - [ ] 时间相关逻辑是否使用 `apptime`，SQL 聚合是否传入 `apptime.Name()`  
 - [ ] 注释与 Zap 日志消息是否为中文（用户界面文案除外，走 i18n）  
 - [ ] 新增 AI 调用是否经 `AIModelCallerService` 并写入 LLM 日志表  
 - [ ] 审核/归档对称模块是否两侧一致  
-- [ ] 租户隔离、分页字段、`docs/api` 是否已对齐  
-- [ ] 无敏感信息写入日志  
-
----
-
-## 7. 延伸阅读
-
-| 文档 | 说明 |
-|------|------|
-| [开发规范（完整版）](docs/development-guide.md) | 分页、i18n、API、Git 等详细约定 |
-| [AI 集成](docs/ai-integration.md) | 两阶段审核、模型调用架构 |
-| [API 总览](docs/api/README.md) | 认证、响应格式、路由索引 |
+- [ ] 分页参数与 `PagedResult` 结构符合 §5；前后端字段一致  
+- [ ] `docs/api` 与 `auraoa.openapi.yaml` 已同步更新  
+- [ ] 租户隔离、无敏感信息写入日志  

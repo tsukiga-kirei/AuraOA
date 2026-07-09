@@ -45,6 +45,7 @@ POST /api/admin/tenants/:id/embed-token
 | GET | `/api/embed/context?process_id=` | `GET /api/embed/context` |
 | POST | `/api/embed/execute` | `POST /api/embed/execute` |
 | GET | `/api/embed/jobs/:id` | `GET /api/embed/jobs/:id` |
+| GET | `/api/embed/stream/:id` | `GET /api/embed/stream/:id` |
 | GET | `/api/embed/summary/context?process_id=` | `GET /api/embed/summary/context` |
 | POST | `/api/embed/summary/execute` | `POST /api/embed/summary/execute` |
 | GET | `/api/embed/summary/jobs/:id` | `GET /api/embed/summary/jobs/:id` |
@@ -86,6 +87,14 @@ GET /api/embed/jobs/:id
 ```
 
 与审核工作台 `GET /api/audit/jobs/:id` 响应结构相同。
+
+### SSE 审核推理流式输出
+
+```
+GET /api/embed/stream/:id
+```
+
+与 `GET /api/audit/stream/:id` 相同，返回 `text/event-stream`。
 
 ---
 
