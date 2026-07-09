@@ -46,6 +46,7 @@ import {useCronApi} from "~/composables/useCronApi";
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
 const { t } = useI18n()
+const { systemPromptVariables } = usePromptSystemVariables()
 const rulesApi = useAuditConfigApi()
 const cronApi = useCronApi()
 const archiveApi = useArchiveConfigApi()
@@ -702,6 +703,45 @@ const insertReasoningVariable = (variable: string) => {
 
 const insertExtractionVariable = (variable: string) => {
   insertAtCursor(extractionTextareaRef, 'user_extraction_prompt', variable)
+}
+
+const summaryPromptDataVariables = computed(() => [
+  { key: '{{process_meta}}', desc: t('admin.ruleConfig.varProcessMetaDesc') },
+  { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
+  { key: '{{detail_tables}}', desc: t('admin.ruleConfig.varDetailTablesDesc') },
+  { key: '{{attachments}}', desc: t('admin.ruleConfig.varAttachmentsDesc') },
+  { key: '{{flow_history}}', desc: t('admin.ruleConfig.varFlowHistoryDesc') },
+  { key: '{{flow_graph}}', desc: t('admin.ruleConfig.varFlowGraphDesc') },
+])
+
+const summaryBlockTextareaRefs = ref<Record<string, any>>({})
+
+const setSummaryBlockTextareaRef = (blockId: string, el: any) => {
+  if (el) {
+    summaryBlockTextareaRefs.value[blockId] = el
+  }
+}
+
+const insertSummaryBlockVariable = (block: SummaryBlockConfig, variable: string) => {
+  if (!selectedSummaryConfig.value) return
+  const textareaRef = { value: summaryBlockTextareaRefs.value[block.id] }
+  const el: HTMLTextAreaElement | null = textareaRef?.value?.$el?.querySelector?.('textarea')
+    || textareaRef?.value?.resizableTextArea?.textArea
+    || null
+  const currentVal = block.user_prompt || ''
+  if (el) {
+    const start = el.selectionStart ?? currentVal.length
+    const end = el.selectionEnd ?? currentVal.length
+    const newVal = currentVal.slice(0, start) + variable + currentVal.slice(end)
+    block.user_prompt = newVal
+    nextTick(() => {
+      const pos = start + variable.length
+      el.focus()
+      el.setSelectionRange(pos, pos)
+    })
+  } else {
+    block.user_prompt = currentVal + variable
+  }
 }
 
 //=====系统提示词模板=====
@@ -2269,15 +2309,11 @@ const handleSave = async () => {
                   </div>
                   <div class="prompt-section-desc">{{ t('admin.ruleConfig.userReasoningPromptDesc') }}</div>
                 </div>
-                <div class="prompt-variables">
-                  <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
-                  <a-tooltip v-for="v in reasoningPromptVariables" :key="v.key" :title="v.desc">
-                    <button
-                      class="variable-btn"
-                      @click="insertReasoningVariable(v.key)"
-                    >{{ v.key }}</button>
-                  </a-tooltip>
-                </div>
+                <PromptVariableBar
+                  :data-variables="reasoningPromptVariables"
+                  :system-variables="systemPromptVariables"
+                  @insert="insertReasoningVariable"
+                />
                 <a-textarea
                   ref="reasoningTextareaRef"
                   v-model:value="selectedConfig.ai_config.user_reasoning_prompt"
@@ -2294,15 +2330,11 @@ const handleSave = async () => {
                   </div>
                   <div class="prompt-section-desc">{{ t('admin.ruleConfig.userExtractionPromptDesc') }}</div>
                 </div>
-                <div class="prompt-variables">
-                  <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
-                  <a-tooltip v-for="v in extractionPromptVariables" :key="v.key" :title="v.desc">
-                    <button
-                      class="variable-btn"
-                      @click="insertExtractionVariable(v.key)"
-                    >{{ v.key }}</button>
-                  </a-tooltip>
-                </div>
+                <PromptVariableBar
+                  :data-variables="extractionPromptVariables"
+                  :system-variables="systemPromptVariables"
+                  @insert="insertExtractionVariable"
+                />
                 <a-textarea
                   ref="extractionTextareaRef"
                   v-model:value="selectedConfig.ai_config.user_extraction_prompt"
@@ -2689,7 +2721,13 @@ const handleSave = async () => {
 
               <a-form layout="vertical" style="margin-top: 12px;">
                 <a-form-item label="用户提示词">
+                  <PromptVariableBar
+                    :data-variables="summaryPromptDataVariables"
+                    :system-variables="systemPromptVariables"
+                    @insert="insertSummaryBlockVariable(block, $event)"
+                  />
                   <a-textarea
+                    :ref="(el) => setSummaryBlockTextareaRef(block.id, el)"
                     v-model:value="block.user_prompt"
                     :rows="4"
                     placeholder="输入该块的总结需求、判断重点或输出口径"
@@ -3661,12 +3699,11 @@ const handleSave = async () => {
                   </div>
                   <div class="prompt-section-desc">{{ t('admin.ruleConfig.userReasoningPromptDesc') }}</div>
                 </div>
-                <div class="prompt-variables">
-                  <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
-                  <a-tooltip v-for="v in archiveReasoningPromptVariables" :key="v.key" :title="v.desc">
-                    <button class="variable-btn" @click="insertArchiveAtCursor(archiveReasoningTextareaRef, 'user_reasoning_prompt', v.key)">{{ v.key }}</button>
-                  </a-tooltip>
-                </div>
+                <PromptVariableBar
+                  :data-variables="archiveReasoningPromptVariables"
+                  :system-variables="systemPromptVariables"
+                  @insert="insertArchiveAtCursor(archiveReasoningTextareaRef, 'user_reasoning_prompt', $event)"
+                />
                 <a-textarea
                   ref="archiveReasoningTextareaRef"
                   v-model:value="selectedArchiveConfig.ai_config.user_reasoning_prompt"
@@ -3683,12 +3720,11 @@ const handleSave = async () => {
                   </div>
                   <div class="prompt-section-desc">{{ t('admin.ruleConfig.userExtractionPromptDesc') }}</div>
                 </div>
-                <div class="prompt-variables">
-                  <span class="prompt-variables-hint">{{ t('admin.ruleConfig.insertVariable') }}：</span>
-                  <a-tooltip v-for="v in archiveExtractionPromptVariables" :key="v.key" :title="v.desc">
-                    <button class="variable-btn" @click="insertArchiveAtCursor(archiveExtractionTextareaRef, 'user_extraction_prompt', v.key)">{{ v.key }}</button>
-                  </a-tooltip>
-                </div>
+                <PromptVariableBar
+                  :data-variables="archiveExtractionPromptVariables"
+                  :system-variables="systemPromptVariables"
+                  @insert="insertArchiveAtCursor(archiveExtractionTextareaRef, 'user_extraction_prompt', $event)"
+                />
                 <a-textarea
                   ref="archiveExtractionTextareaRef"
                   v-model:value="selectedArchiveConfig.ai_config.user_extraction_prompt"

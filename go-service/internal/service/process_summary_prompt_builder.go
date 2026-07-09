@@ -67,6 +67,16 @@ func BuildSummaryBlockPrompt(
 		meta = "（当前总结块未传入流程基础信息）"
 	}
 
+	userRequirements := substituteSummaryBlockUserPrompt(
+		strings.TrimSpace(block.UserPrompt),
+		meta,
+		mainDataStr,
+		detailDataStr,
+		attachmentsStr,
+		flowHistory,
+		flowGraph,
+	)
+
 	userPrompt := fmt.Sprintf(`请生成「%s」总结块。
 
 流程基础信息：
@@ -98,7 +108,7 @@ func BuildSummaryBlockPrompt(
 		attachmentsStr,
 		flowHistory,
 		flowGraph,
-		strings.TrimSpace(block.UserPrompt),
+		userRequirements,
 	)
 
 	return &ai.ChatRequest{
@@ -107,6 +117,24 @@ func BuildSummaryBlockPrompt(
 		RequestType:  "summary",
 		CallType:     "structured",
 	}
+}
+
+func substituteSummaryBlockUserPrompt(
+	userPrompt string,
+	processMeta string,
+	mainDataStr string,
+	detailDataStr string,
+	attachmentsStr string,
+	flowHistory string,
+	flowGraph string,
+) string {
+	userPrompt = strings.ReplaceAll(userPrompt, "{{process_meta}}", processMeta)
+	userPrompt = strings.ReplaceAll(userPrompt, "{{main_table}}", mainDataStr)
+	userPrompt = strings.ReplaceAll(userPrompt, "{{detail_tables}}", detailDataStr)
+	userPrompt = strings.ReplaceAll(userPrompt, "{{attachments}}", attachmentsStr)
+	userPrompt = strings.ReplaceAll(userPrompt, "{{flow_history}}", flowHistory)
+	userPrompt = strings.ReplaceAll(userPrompt, "{{flow_graph}}", flowGraph)
+	return replaceSystemPromptVariables(userPrompt)
 }
 
 func selectedKeysForTable(fieldSet SelectedFieldSet, table string) map[string]bool {

@@ -49,6 +49,7 @@ func BuildArchiveReasoningPrompt(
 	if !hasAttachmentsPlaceholder {
 		userPrompt += "\n\n附件识别内容：\n" + attachmentsStr
 	}
+	userPrompt = replaceSystemPromptVariables(userPrompt)
 
 	return &ai.ChatRequest{
 		SystemPrompt: aiConfig.SystemReasoningPrompt,
@@ -64,6 +65,7 @@ func BuildArchiveExtractionPrompt(aiConfig *model.ArchiveAIConfigData, reasoning
 	userPrompt := aiConfig.UserExtractionPrompt
 	userPrompt = strings.ReplaceAll(userPrompt, "{{reasoning_result}}", reasoningResult)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{rules}}", rules)
+	userPrompt = replaceSystemPromptVariables(userPrompt)
 
 	return &ai.ChatRequest{
 		SystemPrompt: aiConfig.SystemExtractionPrompt,
