@@ -43,6 +43,7 @@ import type {
   LLMLogItem,
   LLMLogDetail,
   LLMLogStats,
+  LLMProcessItem,
 } from '~/types/admin-data'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
@@ -71,9 +72,9 @@ const {
   listCronLogs,
   getCronLogStats,
   exportCronLogs,
-  listLLMLogs,
+  listLLMProcesses,
   getLLMLogStats,
-  getLLMLogDetail,
+  getLLMProcessChain,
 } = useAdminDataApi()
 
 const activeTab = ref<MainTab>('audit')
@@ -102,7 +103,7 @@ const auditSnapshots = ref<AuditSnapshotItem[]>([])
 const cronLogs = ref<CronLogItem[]>([])
 const archiveSnapshots = ref<ArchiveSnapshotItem[]>([])
 const summarySnapshots = ref<SummarySnapshotItem[]>([])
-const llmLogs = ref<LLMLogItem[]>([])
+const llmProcesses = ref<LLMProcessItem[]>([])
 
 // 抽屉详情相关变量
 const auditDetailVisible = ref(false)
@@ -124,10 +125,10 @@ const cronDetailVisible = ref(false)
 const selectedCronLog = ref<CronLogItem | null>(null)
 
 const llmDetailVisible = ref(false)
-const selectedLLMLog = ref<LLMLogItem | null>(null)
-const llmLogDetail = ref<LLMLogDetail | null>(null)
+const selectedLLMProcess = ref<LLMProcessItem | null>(null)
+const llmChainLogs = ref<LLMLogDetail[]>([])
 const llmDetailLoading = ref(false)
-const expandedLLMPromptSections = ref<Set<string>>(new Set(['system', 'user', 'response']))
+const expandedLLMChainNodes = ref<Set<string>>(new Set())
 
 const chainLoading = ref(false)
 
@@ -188,6 +189,7 @@ const summaryTotal = ref(0)
 
 const llmFilterOperator = ref('')
 const llmFilterCallType = ref<string | undefined>(undefined)
+const llmSearch = ref('')
 const llmFilterDateRange = ref<[Dayjs, Dayjs] | undefined>(undefined)
 const llmShowFilters = ref(false)
 const llmPage = ref(1)
@@ -266,6 +268,7 @@ const summaryHasActiveFilters = computed(() =>
     !!summaryFilterDateRange.value)
 
 const llmHasActiveFilters = computed(() =>
+    !!llmSearch.value ||
     !!llmFilterOperator.value ||
     !!llmFilterCallType.value ||
     !!llmFilterDateRange.value)
@@ -362,6 +365,7 @@ const summaryQuery = computed(() => ({
 const llmQuery = computed(() => ({
   request_type: activeLLMSubTab.value === 'all' ? '' : activeLLMSubTab.value,
   call_type: llmFilterCallType.value || '',
+  keyword: llmSearch.value.trim(),
   operator: llmFilterOperator.value.trim(),
   start_date: llmFilterDateRange.value?.[0]?.format('YYYY-MM-DD') || '',
   end_date: llmFilterDateRange.value?.[1]?.format('YYYY-MM-DD') || '',
@@ -505,14 +509,18 @@ function openCronDetail(log: CronLogItem) {
   cronDetailVisible.value = true
 }
 
-async function openLLMDetail(item: LLMLogItem) {
-  selectedLLMLog.value = item
+async function openLLMDetail(item: LLMProcessItem) {
+  selectedLLMProcess.value = item
   llmDetailVisible.value = true
   llmDetailLoading.value = true
-  llmLogDetail.value = null
-  expandedLLMPromptSections.value = new Set(['system'])
+  llmChainLogs.value = []
+  expandedLLMChainNodes.value.clear()
   try {
-    llmLogDetail.value = await getLLMLogDetail(item.id)
+    const res = await getLLMProcessChain(item.process_id)
+    llmChainLogs.value = res.chain || []
+    if (llmChainLogs.value.length > 0) {
+      expandedLLMChainNodes.value.add(llmChainLogs.value[0].id)
+    }
   } catch (e) {
     message.error(t('admin.data.fetchFailed'))
   } finally {
@@ -520,9 +528,9 @@ async function openLLMDetail(item: LLMLogItem) {
   }
 }
 
-function toggleLLMPromptSection(key: string) {
-  if (expandedLLMPromptSections.value.has(key)) expandedLLMPromptSections.value.delete(key)
-  else expandedLLMPromptSections.value.add(key)
+function toggleLLMChainNode(id: string) {
+  if (expandedLLMChainNodes.value.has(id)) expandedLLMChainNodes.value.delete(id)
+  else expandedLLMChainNodes.value.add(id)
 }
 
 function clearAuditFilters() {
@@ -562,6 +570,7 @@ function clearSummaryFilters() {
 }
 
 function clearLLMFilters() {
+  llmSearch.value = ''
   llmFilterOperator.value = ''
   llmFilterCallType.value = undefined
   llmFilterDateRange.value = undefined
@@ -741,14 +750,14 @@ async function loadSummaryLogs() {
   }
 }
 
-async function loadLLMLogs() {
+async function loadLLMProcesses() {
   llmLoading.value = true
   try {
-    const res = await listLLMLogs(llmQuery.value)
-    llmLogs.value = res.items || []
+    const res = await listLLMProcesses(llmQuery.value)
+    llmProcesses.value = res.items || []
     llmTotal.value = res.total || 0
   } catch (e: any) {
-    llmLogs.value = []
+    llmProcesses.value = []
     llmTotal.value = 0
     message.error(e?.message || t('admin.data.loadFailed'))
   } finally {
@@ -795,7 +804,7 @@ watch(() => auditFilterChannel.value, loadAuditStats)
 watch(cronQuery, loadCronLogs, { immediate: true })
 watch(archiveQuery, loadArchiveLogs, { immediate: true })
 watch(summaryQuery, loadSummaryLogs, { immediate: true })
-watch(llmQuery, loadLLMLogs, { immediate: true })
+watch(llmQuery, loadLLMProcesses, { immediate: true })
 watch(() => summaryFilterChannel.value, loadSummaryStats)
 
 // 切换审核子标签时重置分页到第一页
@@ -1610,6 +1619,18 @@ onMounted(async () => {
       <transition name="slide">
         <div v-if="llmShowFilters" class="filter-bar">
           <a-input
+              v-model:value="llmSearch"
+              :placeholder="t('admin.data.searchAudit')"
+              allow-clear
+              style="flex: 2; min-width: 180px;"
+              @update:value="llmPage = 1"
+          >
+            <template #prefix>
+              <SearchOutlined style="color: var(--color-text-tertiary);" />
+            </template>
+          </a-input>
+
+          <a-input
               v-model:value="llmFilterOperator"
               :placeholder="t('admin.data.filterOperator')"
               allow-clear
@@ -1650,28 +1671,26 @@ onMounted(async () => {
         <table class="data-table">
           <thead>
           <tr>
-            <th>{{ t('admin.data.thTime') }}</th>
-            <th>{{ t('admin.data.thRequestType') }}</th>
-            <th>{{ t('admin.data.thCallType') }}</th>
-            <th>{{ t('admin.data.thOperator') }}</th>
-            <th>{{ t('admin.data.thModel') }}</th>
+            <th>{{ t('admin.data.thProcessId') }}</th>
+            <th>{{ t('admin.data.thProcessTitle') }}</th>
+            <th>{{ t('admin.data.llmProcessCount') }}</th>
             <th>{{ t('admin.data.thTokens') }}</th>
-            <th>{{ t('admin.data.duration') }}</th>
+            <th>{{ t('admin.data.thOperator') }}</th>
+            <th>{{ t('admin.data.llmLatestCall') }}</th>
             <th>{{ t('admin.data.thAction') }}</th>
           </tr>
           </thead>
           <tbody>
           <tr v-if="llmLoading">
-            <td colspan="8" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td colspan="7" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
-          <tr v-else v-for="item in llmLogs" :key="item.id">
-            <td class="text-secondary">{{ formatDate(item.created_at) }}</td>
-            <td>{{ getLLMRequestTypeLabel(item.request_type) }}</td>
-            <td class="text-secondary">{{ getLLMCallTypeLabel(item.call_type) }}</td>
-            <td>{{ item.user_name || '-' }}</td>
-            <td class="text-secondary">{{ getLLMModelLabel(item) }}</td>
+          <tr v-else v-for="item in llmProcesses" :key="item.process_id">
+            <td>{{ item.process_id }}</td>
+            <td>{{ item.process_title || '-' }}</td>
+            <td>{{ item.call_count }}</td>
             <td>{{ item.total_tokens }}</td>
-            <td class="text-secondary">{{ (item.duration_ms / 1000).toFixed(1) }}s</td>
+            <td>{{ item.latest_user_name || '-' }}</td>
+            <td class="text-secondary">{{ formatDate(item.latest_call_at) }}</td>
             <td>
               <div class="action-btns">
                 <button
@@ -1684,8 +1703,8 @@ onMounted(async () => {
               </div>
             </td>
           </tr>
-          <tr v-if="!llmLoading && llmLogs.length === 0">
-            <td colspan="8" class="empty-cell">{{ t('admin.data.noData') }}</td>
+          <tr v-if="!llmLoading && llmProcesses.length === 0">
+            <td colspan="7" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>
@@ -2148,72 +2167,57 @@ onMounted(async () => {
               </button>
             </div>
 
-            <div class="drawer-body" v-if="selectedLLMLog">
-              <div class="detail-process-title">
-                {{ getLLMRequestTypeLabel(selectedLLMLog.request_type) }}
-                · {{ getLLMCallTypeLabel(selectedLLMLog.call_type) }}
-              </div>
-
-              <div class="detail-meta-grid" style="margin-bottom: 16px;">
-                <div class="detail-meta-item">
-                  <span class="detail-meta-label">{{ t('admin.data.thTime') }}</span>
-                  <span class="detail-meta-value">{{ formatDate(selectedLLMLog.created_at) }}</span>
-                </div>
-                <div class="detail-meta-item">
-                  <span class="detail-meta-label">{{ t('admin.data.thOperator') }}</span>
-                  <span class="detail-meta-value">{{ selectedLLMLog.user_name || '-' }}</span>
-                </div>
-                <div class="detail-meta-item">
-                  <span class="detail-meta-label">{{ t('admin.data.thModel') }}</span>
-                  <span class="detail-meta-value">{{ getLLMModelLabel(selectedLLMLog) }}</span>
-                </div>
-                <div class="detail-meta-item">
-                  <span class="detail-meta-label">{{ t('admin.data.thTokens') }}</span>
-                  <span class="detail-meta-value">
-                    {{ selectedLLMLog.total_tokens }}
-                    <span class="text-secondary">({{ selectedLLMLog.input_tokens }} / {{ selectedLLMLog.output_tokens }})</span>
-                  </span>
-                </div>
-                <div class="detail-meta-item">
-                  <span class="detail-meta-label">{{ t('admin.data.duration') }}</span>
-                  <span class="detail-meta-value">{{ (selectedLLMLog.duration_ms / 1000).toFixed(1) }}s</span>
-                </div>
-              </div>
+            <div class="drawer-body" v-if="selectedLLMProcess">
+              <div class="detail-process-title">{{ selectedLLMProcess.process_title || selectedLLMProcess.process_id }}</div>
 
               <a-spin :spinning="llmDetailLoading">
-                <div v-if="!llmDetailLoading && !llmLogDetail" style="padding: 40px; text-align: center;">
+                <div v-if="!llmDetailLoading && llmChainLogs.length === 0" style="padding: 40px; text-align: center;">
                   <a-empty :description="t('admin.data.noData')" />
                 </div>
-                <div v-else-if="llmLogDetail" class="audit-chain">
+                <div v-else class="audit-chain" style="margin-top: 16px;">
                   <div
-                      v-for="section in [
-                        { key: 'system', label: t('admin.data.llmSystemPrompt'), content: llmLogDetail.system_prompt },
-                        { key: 'user', label: t('admin.data.llmUserPrompt'), content: llmLogDetail.user_prompt },
-                        { key: 'response', label: t('admin.data.llmResponse'), content: llmLogDetail.response_content },
-                      ]"
-                      :key="section.key"
+                      v-for="(logItem, idx) in llmChainLogs"
+                      :key="logItem.id"
                       class="chain-node"
                   >
                     <div class="chain-timeline">
                       <div class="chain-dot" style="background: var(--color-primary);" />
-                      <div v-if="section.key !== 'response'" class="chain-line" />
+                      <div v-if="idx < llmChainLogs.length - 1" class="chain-line" />
                     </div>
                     <div class="chain-card">
-                      <div class="chain-card-header" @click="toggleLLMPromptSection(section.key)" style="cursor: pointer;">
+                      <div class="chain-card-header" @click="toggleLLMChainNode(logItem.id)" style="cursor: pointer;">
                         <span
                             class="chain-tag"
                             style="color: var(--color-primary); background: var(--color-primary-bg);"
                         >
                           <ThunderboltOutlined />
-                          {{ section.label }}
+                          {{ getLLMRequestTypeLabel(logItem.request_type) }}
+                          · {{ getLLMCallTypeLabel(logItem.call_type) }}
                         </span>
+                        <span class="chain-score">{{ logItem.total_tokens }} Token</span>
                         <span class="chain-expand-btn">
-                          <DownOutlined v-if="!expandedLLMPromptSections.has(section.key)" />
+                          <DownOutlined v-if="!expandedLLMChainNodes.has(logItem.id)" />
                           <UpOutlined v-else />
                         </span>
                       </div>
-                      <div v-if="expandedLLMPromptSections.has(section.key)" class="chain-detail">
-                        <pre v-if="section.content" class="llm-prompt-pre">{{ section.content }}</pre>
+                      <div class="chain-card-meta">
+                        {{ formatDate(logItem.created_at) }}
+                        <span v-if="logItem.user_name"> · {{ logItem.user_name }}</span>
+                        <span v-if="getLLMModelLabel(logItem) !== '-'"> · {{ getLLMModelLabel(logItem) }}</span>
+                        · {{ t('admin.data.duration') }} {{ (logItem.duration_ms / 1000).toFixed(1) }}s
+                      </div>
+
+                      <div v-if="expandedLLMChainNodes.has(logItem.id)" class="chain-detail">
+                        <div class="chain-section-title">{{ t('admin.data.llmSystemPrompt') }}</div>
+                        <pre v-if="logItem.system_prompt" class="llm-prompt-pre">{{ logItem.system_prompt }}</pre>
+                        <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
+
+                        <div class="chain-section-title" style="margin-top: 12px;">{{ t('admin.data.llmUserPrompt') }}</div>
+                        <pre v-if="logItem.user_prompt" class="llm-prompt-pre">{{ logItem.user_prompt }}</pre>
+                        <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
+
+                        <div class="chain-section-title" style="margin-top: 12px;">{{ t('admin.data.llmResponse') }}</div>
+                        <pre v-if="logItem.response_content" class="llm-prompt-pre">{{ logItem.response_content }}</pre>
                         <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
                       </div>
                     </div>

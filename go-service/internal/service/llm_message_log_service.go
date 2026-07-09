@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -40,13 +41,25 @@ func (s *LLMMessageLogService) QueryAllTenantsTokenUsage(startTime, endTime time
 	return summaries, nil
 }
 
-// ListLogs 分页查询租户 AI 调用记录。
-func (s *LLMMessageLogService) ListLogs(c *gin.Context, filter repository.LLMLogFilter, page, pageSize int) ([]repository.LLMLogListRow, int64, error) {
-	items, total, err := s.logRepo.ListPagedWithUser(c, filter, page, pageSize)
+// ListProcesses 分页查询租户 AI 调用流程列表。
+func (s *LLMMessageLogService) ListProcesses(c *gin.Context, filter repository.LLMLogFilter, page, pageSize int) ([]repository.LLMProcessListRow, int64, error) {
+	items, total, err := s.logRepo.ListProcessesPaged(c, filter, page, pageSize)
 	if err != nil {
 		return nil, 0, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 	return items, total, nil
+}
+
+// GetProcessChain 获取指定流程的全部 AI 调用记录（时间倒序）。
+func (s *LLMMessageLogService) GetProcessChain(c *gin.Context, processID string) ([]repository.LLMLogDetailWithPayload, error) {
+	if strings.TrimSpace(processID) == "" {
+		return nil, newServiceError(errcode.ErrParamValidation, "流程ID不能为空")
+	}
+	items, err := s.logRepo.ListCallsByProcessID(c, processID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	return items, nil
 }
 
 // GetLogStats 获取租户 AI 调用记录统计。

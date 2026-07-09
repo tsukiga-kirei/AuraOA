@@ -38,6 +38,7 @@ import type {
   LLMLogStats,
   LLMLogItem,
   LLMLogDetail,
+  LLMProcessItem,
   PagedResult,
 } from '~/types/admin-data'
 
@@ -187,18 +188,18 @@ export function useAdminDataApi() {
 
   // ── AI 调用记录 ──────────────────────────────────────────────────────────
 
-  async function listLLMLogs(filter: LLMLogFilter = {}): Promise<PagedResult<LLMLogItem>> {
+  async function listLLMProcesses(filter: LLMLogFilter = {}): Promise<PagedResult<LLMProcessItem>> {
     const params = buildParams(filter)
     const query = new URLSearchParams(params).toString()
-    return await authFetch<PagedResult<LLMLogItem>>(`/api/tenant/llm-logs${query ? `?${query}` : ''}`)
+    return await authFetch<PagedResult<LLMProcessItem>>(`/api/tenant/llm-logs/processes${query ? `?${query}` : ''}`)
   }
 
   async function getLLMLogStats(): Promise<LLMLogStats> {
     return await authFetch<LLMLogStats>('/api/tenant/llm-logs/stats')
   }
 
-  async function getLLMLogDetail(id: string): Promise<LLMLogDetail> {
-    return await authFetch<LLMLogDetail>(`/api/tenant/llm-logs/${id}`)
+  async function getLLMProcessChain(processId: string): Promise<{ chain: LLMLogDetail[] }> {
+    return await authFetch<{ chain: LLMLogDetail[] }>(`/api/tenant/llm-logs/${encodeURIComponent(processId)}/chain`)
   }
 
   // ── 工具函数 ──────────────────────────────────────────────────────────────────
@@ -303,8 +304,8 @@ export function useAdminDataApi() {
     getCronLogStats,
     exportCronLogs,
     // AI 调用记录
-    listLLMLogs,
+    listLLMProcesses,
     getLLMLogStats,
-    getLLMLogDetail,
+    getLLMProcessChain,
   }
 }

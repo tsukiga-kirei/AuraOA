@@ -270,6 +270,15 @@ export interface CronLogFilter {
 
 // ─── AI 调用记录 ─────────────────────────────────────────────────────────────
 
+export interface LLMProcessItem {
+  process_id: string
+  process_title: string
+  call_count: number
+  total_tokens: number
+  latest_call_at: string
+  latest_user_name: string
+}
+
 export interface LLMLogItem {
   id: string
   tenant_id: string
@@ -303,6 +312,7 @@ export interface LLMLogStats {
 export interface LLMLogFilter {
   request_type?: string
   call_type?: string
+  keyword?: string
   operator?: string
   start_date?: string
   end_date?: string

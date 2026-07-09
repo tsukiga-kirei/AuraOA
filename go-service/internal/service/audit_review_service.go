@@ -492,6 +492,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		s.rdb.Expire(context.Background(), key, 24*time.Hour)
 		s.rdb.Publish(context.Background(), "audit:stream:"+auditLogID.String(), chunk)
 	}
+	bindLLMProcessContext(reasoningReq, req.ProcessID, req.Title, auditLogID)
 
 	n, err = s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
 		"status":     model.JobStatusReasoning,
@@ -535,6 +536,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	extractionReq.MaxTokens = tenant.MaxTokensPerRequest
 	extractionReq.ModelConfig = modelCfg
 	extractionReq.SkipQuotaCheck = true
+	bindLLMProcessContext(extractionReq, req.ProcessID, req.Title, auditLogID)
 
 	extractionResp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, extractionReq)
 	if err != nil {

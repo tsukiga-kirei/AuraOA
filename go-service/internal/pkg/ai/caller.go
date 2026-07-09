@@ -3,6 +3,8 @@ package ai
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	"auraoa/go-service/internal/model"
 )
 
@@ -26,6 +28,9 @@ type ChatRequest struct {
 	SkipQuotaCheck  bool                 `json:"skip_quota_check"`
 	RequestType     string               `json:"request_type"`
 	CallType        string               `json:"call_type"` // reasoning | structured
+	ProcessID       string               `json:"process_id"`
+	ProcessTitle    string               `json:"process_title"`
+	BusinessLogID   *uuid.UUID           `json:"business_log_id"`
 	StreamChunkFunc func(string)         `json:"-"`
 }
 
