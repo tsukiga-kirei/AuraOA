@@ -262,8 +262,9 @@ func SetupRouter(
 	tenantLLMLogs := r.Group("/api/tenant/llm-logs")
 	tenantLLMLogs.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
 	{
-		tenantLLMLogs.GET("", llmLogHandler.ListLogs)
+		tenantLLMLogs.GET("/processes", llmLogHandler.ListProcesses)
 		tenantLLMLogs.GET("/stats", llmLogHandler.GetLogStats)
+		tenantLLMLogs.GET("/:processId/chain", llmLogHandler.GetProcessChain)
 		tenantLLMLogs.GET("/:id", llmLogHandler.GetLogDetail)
 	}
 

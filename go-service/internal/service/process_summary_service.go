@@ -401,6 +401,11 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 			req.StreamChunkFunc = func(chunk string) {
 				s.publishSummaryBlockChunk(summaryLogID, block.ID, block.Title, chunk)
 			}
+			processTitle := logEntry.Title
+			if processSummary != nil && strings.TrimSpace(processSummary.Title) != "" {
+				processTitle = processSummary.Title
+			}
+			bindLLMProcessContext(req, logEntry.ProcessID, processTitle, summaryLogID)
 			blockGinCtx := s.workerGinContext(blockCtx, tenantID, userID)
 			resp, err := s.aiCaller.ChatWithFallback(blockGinCtx, tenantID, userID, modelCfg, fallbackCfg, req)
 			if err != nil {

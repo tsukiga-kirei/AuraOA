@@ -230,12 +230,23 @@ ORDER BY calls DESC`
 type LLMLogFilter struct {
 	RequestType string
 	CallType    string
+	Keyword     string
 	Operator    string
 	StartDate   *time.Time
 	EndDate     *time.Time
 }
 
-// LLMLogListRow 列表行（不含大文本 payload）。
+// LLMProcessListRow 按流程聚合的列表行。
+type LLMProcessListRow struct {
+	ProcessID      string    `json:"process_id"`
+	ProcessTitle   string    `json:"process_title"`
+	CallCount      int64     `json:"call_count"`
+	TotalTokens    int64     `json:"total_tokens"`
+	LatestCallAt   time.Time `json:"latest_call_at"`
+	LatestUserName string    `json:"latest_user_name"`
+}
+
+// LLMLogListRow 单条调用记录（不含大文本 payload）。
 type LLMLogListRow struct {
 	model.TenantLLMMessageLog
 	UserName         string `gorm:"column:user_name" json:"user_name"`
@@ -243,7 +254,7 @@ type LLMLogListRow struct {
 	ModelDisplayName string `gorm:"column:model_display_name" json:"model_display_name"`
 }
 
-// LLMLogStats AI 调用记录统计。
+// LLMLogStats AI 调用记录统计（按流程维度）。
 type LLMLogStats struct {
 	Total        int64 `json:"total"`
 	AuditCount   int64 `json:"audit_count"`
@@ -259,8 +270,8 @@ type LLMLogDetailWithPayload struct {
 	ResponseContent string `json:"response_content"`
 }
 
-// ListPagedWithUser 数据管理页：分页查询 AI 调用记录（按创建时间倒序）。
-func (r *LLMMessageLogRepo) ListPagedWithUser(c *gin.Context, filter LLMLogFilter, page, pageSize int) ([]LLMLogListRow, int64, error) {
+// ListProcessesPaged 数据管理页：按流程聚合分页查询。
+func (r *LLMMessageLogRepo) ListProcessesPaged(c *gin.Context, filter LLMLogFilter, page, pageSize int) ([]LLMProcessListRow, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -271,57 +282,86 @@ func (r *LLMMessageLogRepo) ListPagedWithUser(c *gin.Context, filter LLMLogFilte
 	const t = "tenant_llm_message_logs"
 	tenantID, _ := c.Get("tenant_id")
 	base := r.DB.
-		Table(t).
-		Where(t+".tenant_id = ?", tenantID).
-		Select(t + ".*, " +
-			"COALESCE(u.display_name, u.username, '') AS user_name, " +
-			"COALESCE(amc.model_name, '') AS model_name, " +
-			"COALESCE(amc.display_name, '') AS model_display_name").
-		Joins("LEFT JOIN users u ON u.id = " + t + ".user_id").
-		Joins("LEFT JOIN ai_model_configs amc ON amc.id = " + t + ".model_config_id")
+		Table(t+" AS l").
+		Where("l.tenant_id = ? AND l.process_id IS NOT NULL AND l.process_id <> ''", tenantID).
+		Joins("LEFT JOIN users u ON u.id = l.user_id")
 	base = applyLLMLogFilter(base, filter)
 
+	countSub := base.Session(&gorm.Session{}).
+		Select("l.process_id").
+		Group("l.process_id")
 	var total int64
-	if err := base.Count(&total).Error; err != nil {
+	if err := r.DB.Table("(?) AS grouped", countSub).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	var items []LLMLogListRow
-	err := base.Order(t + ".created_at DESC").
+	var items []LLMProcessListRow
+	err := base.
+		Select(`l.process_id,
+			(ARRAY_AGG(l.process_title ORDER BY l.created_at DESC))[1] AS process_title,
+			COUNT(*)::bigint AS call_count,
+			COALESCE(SUM(l.total_tokens), 0)::bigint AS total_tokens,
+			MAX(l.created_at) AS latest_call_at,
+			(ARRAY_AGG(COALESCE(u.display_name, u.username, '') ORDER BY l.created_at DESC))[1] AS latest_user_name`).
+		Group("l.process_id").
+		Order("latest_call_at DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&items).Error
 	return items, total, err
 }
 
-// CountStats 统计租户 AI 调用记录按场景分布。
+// ListCallsByProcessID 查询指定流程的全部 AI 调用记录（时间倒序，含提示词）。
+func (r *LLMMessageLogRepo) ListCallsByProcessID(c *gin.Context, processID string) ([]LLMLogDetailWithPayload, error) {
+	const t = "tenant_llm_message_logs"
+	tenantID, _ := c.Get("tenant_id")
+
+	var items []LLMLogDetailWithPayload
+	err := r.DB.
+		Table(t).
+		Select(t+".*, "+
+			"COALESCE(u.display_name, u.username, '') AS user_name, "+
+			"COALESCE(amc.model_name, '') AS model_name, "+
+			"COALESCE(amc.display_name, '') AS model_display_name, "+
+			"COALESCE(p.system_prompt, '') AS system_prompt, "+
+			"COALESCE(p.user_prompt, '') AS user_prompt, "+
+			"COALESCE(p.response_content, '') AS response_content").
+		Joins("LEFT JOIN users u ON u.id = "+t+".user_id").
+		Joins("LEFT JOIN ai_model_configs amc ON amc.id = "+t+".model_config_id").
+		Joins("LEFT JOIN tenant_llm_message_payloads p ON p.llm_message_log_id = "+t+".id").
+		Where(t+".tenant_id = ? AND "+t+".process_id = ?", tenantID, processID).
+		Order(t + ".created_at DESC").
+		Find(&items).Error
+	return items, err
+}
+
+// CountStats 统计租户 AI 调用流程数量（按场景分布）。
 func (r *LLMMessageLogRepo) CountStats(c *gin.Context) (*LLMLogStats, error) {
 	type row struct {
-		RequestType string
-		Cnt         int64
+		Total        int64 `gorm:"column:total"`
+		AuditCount   int64 `gorm:"column:audit_count"`
+		ArchiveCount int64 `gorm:"column:archive_count"`
+		SummaryCount int64 `gorm:"column:summary_count"`
 	}
-	var rows []row
+	var out row
 	err := r.WithTenant(c).
 		Model(&model.TenantLLMMessageLog{}).
-		Select("request_type, COUNT(*) as cnt").
-		Group("request_type").
-		Find(&rows).Error
+		Where("process_id IS NOT NULL AND process_id <> ''").
+		Select(`
+			COUNT(DISTINCT process_id)::bigint AS total,
+			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'audit')::bigint AS audit_count,
+			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'archive')::bigint AS archive_count,
+			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'summary')::bigint AS summary_count`).
+		Scan(&out).Error
 	if err != nil {
 		return nil, err
 	}
-	stats := &LLMLogStats{}
-	for _, row := range rows {
-		stats.Total += row.Cnt
-		switch row.RequestType {
-		case "audit":
-			stats.AuditCount += row.Cnt
-		case "archive":
-			stats.ArchiveCount += row.Cnt
-		case "summary":
-			stats.SummaryCount += row.Cnt
-		}
-	}
-	return stats, nil
+	return &LLMLogStats{
+		Total:        out.Total,
+		AuditCount:   out.AuditCount,
+		ArchiveCount: out.ArchiveCount,
+		SummaryCount: out.SummaryCount,
+	}, nil
 }
 
 // GetByIDWithPayload 按 ID 查询单条 AI 调用记录及输入输出内容。
@@ -353,20 +393,24 @@ func (r *LLMMessageLogRepo) GetByIDWithPayload(c *gin.Context, id uuid.UUID) (*L
 func applyLLMLogFilter(db *gorm.DB, f LLMLogFilter) *gorm.DB {
 	const t = "tenant_llm_message_logs"
 	if f.RequestType != "" {
-		db = db.Where(t+".request_type = ?", f.RequestType)
+		db = db.Where("EXISTS (SELECT 1 FROM "+t+" x WHERE x.tenant_id = l.tenant_id AND x.process_id = l.process_id AND x.request_type = ?)", f.RequestType)
 	}
 	if f.CallType != "" {
-		db = db.Where(t+".call_type = ?", f.CallType)
+		db = db.Where("l.call_type = ?", f.CallType)
+	}
+	if f.Keyword != "" {
+		like := "%" + f.Keyword + "%"
+		db = db.Where("(l.process_id ILIKE ? OR l.process_title ILIKE ?)", like, like)
 	}
 	if f.Operator != "" {
 		like := "%" + f.Operator + "%"
 		db = db.Where("(u.display_name ILIKE ? OR u.username ILIKE ?)", like, like)
 	}
 	if f.StartDate != nil {
-		db = db.Where(t+".created_at >= ?", f.StartDate)
+		db = db.Where("l.created_at >= ?", f.StartDate)
 	}
 	if f.EndDate != nil {
-		db = db.Where(t+".created_at <= ?", f.EndDate)
+		db = db.Where("l.created_at <= ?", f.EndDate)
 	}
 	return db
 }

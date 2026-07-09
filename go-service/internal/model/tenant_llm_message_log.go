@@ -14,6 +14,9 @@ type TenantLLMMessageLog struct {
 	ModelConfigID *uuid.UUID `gorm:"type:uuid" json:"model_config_id"`
 	RequestType   string     `gorm:"size:50;not null;default:audit" json:"request_type"`
 	CallType      string     `gorm:"size:20;not null;default:reasoning" json:"call_type"` // reasoning | structured
+	ProcessID     string     `gorm:"size:100" json:"process_id"`
+	ProcessTitle  string     `gorm:"size:500" json:"process_title"`
+	BusinessLogID *uuid.UUID `gorm:"type:uuid" json:"business_log_id"`
 	InputTokens   int        `gorm:"not null;default:0" json:"input_tokens"`
 	OutputTokens  int        `gorm:"not null;default:0" json:"output_tokens"`
 	TotalTokens   int        `gorm:"not null;default:0" json:"total_tokens"`

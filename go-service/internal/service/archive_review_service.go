@@ -1361,6 +1361,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		s.rdb.Expire(context.Background(), key, 24*time.Hour)
 		s.rdb.Publish(context.Background(), "archive:stream:"+archiveLogID.String(), chunk)
 	}
+	bindLLMProcessContext(reasoningReq, logEntry.ProcessID, logEntry.Title, archiveLogID)
 
 	_ = s.archiveLogRepo.UpdateFields(c, archiveLogID, map[string]interface{}{
 		"status":           model.JobStatusReasoning,
@@ -1390,6 +1391,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	extractionReq.MaxTokens = tenant.MaxTokensPerRequest
 	extractionReq.ModelConfig = modelCfg
 	extractionReq.SkipQuotaCheck = true
+	bindLLMProcessContext(extractionReq, logEntry.ProcessID, logEntry.Title, archiveLogID)
 
 	extractionResp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, extractionReq)
 	if err != nil {

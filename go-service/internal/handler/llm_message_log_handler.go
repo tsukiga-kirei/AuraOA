@@ -94,11 +94,11 @@ func (h *LLMMessageLogHandler) QueryAllTenantsTokenUsage(c *gin.Context) {
 	response.Success(c, summaries)
 }
 
-// ListLogs 分页查询租户 AI 调用记录（数据管理页）。
-// GET /api/tenant/llm-logs
-func (h *LLMMessageLogHandler) ListLogs(c *gin.Context) {
+// ListProcesses 分页查询租户 AI 调用流程列表（数据管理页）。
+// GET /api/tenant/llm-logs/processes
+func (h *LLMMessageLogHandler) ListProcesses(c *gin.Context) {
 	filter, page, pageSize := parseLLMLogQuery(c)
-	items, total, err := h.logService.ListLogs(c, filter, page, pageSize)
+	items, total, err := h.logService.ListProcesses(c, filter, page, pageSize)
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -109,6 +109,22 @@ func (h *LLMMessageLogHandler) ListLogs(c *gin.Context) {
 		"page":      page,
 		"page_size": pageSize,
 	})
+}
+
+// GetProcessChain 获取指定流程的全部 AI 调用记录（时间倒序）。
+// GET /api/tenant/llm-logs/:processId/chain
+func (h *LLMMessageLogHandler) GetProcessChain(c *gin.Context) {
+	processID := c.Param("processId")
+	if processID == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "流程ID不能为空")
+		return
+	}
+	chain, err := h.logService.GetProcessChain(c, processID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"chain": chain})
 }
 
 // GetLogStats 获取租户 AI 调用记录统计（数据管理页）。
@@ -142,6 +158,7 @@ func parseLLMLogQuery(c *gin.Context) (repository.LLMLogFilter, int, int) {
 	filter := repository.LLMLogFilter{
 		RequestType: c.Query("request_type"),
 		CallType:    c.Query("call_type"),
+		Keyword:     c.Query("keyword"),
 		Operator:    c.Query("operator"),
 	}
 	if s := c.Query("start_date"); s != "" {

@@ -1602,6 +1602,8 @@ export default {
     'admin.data.llmTab.audit': '审核工作台',
     'admin.data.llmTab.archive': '归档复盘',
     'admin.data.llmTab.summary': '流程总结',
+    'admin.data.llmProcessCount': '调用次数',
+    'admin.data.llmLatestCall': '最近调用',
     'admin.data.llmTab.other': '其他',
     'admin.data.llmDetailTitle': 'AI 调用详情',
     'admin.data.thRequestType': '调用场景',

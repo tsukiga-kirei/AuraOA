@@ -1585,6 +1585,8 @@ export default {
     'admin.data.llmTab.audit': 'Audit Workbench',
     'admin.data.llmTab.archive': 'Archive Review',
     'admin.data.llmTab.summary': 'Process Summary',
+    'admin.data.llmProcessCount': 'Call Count',
+    'admin.data.llmLatestCall': 'Latest Call',
     'admin.data.llmTab.other': 'Other',
     'admin.data.llmDetailTitle': 'AI Call Details',
     'admin.data.thRequestType': 'Scenario',
