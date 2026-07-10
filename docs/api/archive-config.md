@@ -116,7 +116,7 @@ POST /api/tenant/archive/context/test
 
 请求体与审核侧相同：`process_id`、`context_mounts`。返回注入 AI 的 `context_text`。
 
-建模表挂载的 `mode=rows` 时，`return_fields` 必须填写英文物理列名；服务端会基于泛微字段元数据将返回结果的列名转换为中文显示名。`max_rows=-1` 表示返回全部匹配行，正整数表示行数上限。
+建模表挂载会在 `context_text` 中显示“建模表：中文名（英文表名）”；`mode=rows` 时，`return_fields` 必须填写英文物理列名，服务端会基于泛微字段元数据将返回结果的列名转换为中文显示名。`max_rows=-1` 表示返回全部匹配行，正整数表示行数上限。
 
 ---
 

@@ -645,23 +645,29 @@ func (a *Ecology9Adapter) QueryModelContext(ctx context.Context, query ModelCont
 	}
 }
 
-// FetchModelFieldLabels 查询建模表主表字段的中文显示名，查不到标签时由调用方回退为物理列名。
-func (a *Ecology9Adapter) FetchModelFieldLabels(ctx context.Context, tableName string) (map[string]string, error) {
+// FetchModelTableMetadata 查询建模表中文名称及主表字段显示名，查不到时由调用方回退为物理名称。
+func (a *Ecology9Adapter) FetchModelTableMetadata(ctx context.Context, tableName string) (*ModelTableMetadata, error) {
 	tableName = strings.TrimSpace(tableName)
 	if !isSafeIdentifier(tableName) {
 		return nil, fmt.Errorf("建模表名不合法")
 	}
 	var formID int
+	var displayName string
 	row := a.db.WithContext(ctx).
-		Table(a.tableName("workflow_bill")).
-		Select(a.col("id")).
-		Where("LOWER("+a.col("tablename")+") = LOWER(?)", tableName).
+		Table(a.tableName("workflow_bill")+" wb").
+		Select("wb."+a.col("id")+", COALESCE(mi."+a.col("modename")+", '')").
+		Joins("LEFT JOIN "+a.tableName("modeinfo")+" mi ON mi."+a.col("formid")+" = wb."+a.col("id")).
+		Where("LOWER(wb."+a.col("tablename")+") = LOWER(?)", tableName).
 		Row()
-	if err := row.Scan(&formID); err != nil {
+	if err := row.Scan(&formID, &displayName); err != nil {
 		return nil, fmt.Errorf("查询建模表字段定义失败: %w", err)
 	}
 	labelsByTable := a.fetchFieldLabels(ctx, formID, tableName)
-	return labelsByTable["main"], nil
+	return &ModelTableMetadata{
+		TableName:   tableName,
+		DisplayName: strings.TrimSpace(displayName),
+		FieldLabels: labelsByTable["main"],
+	}, nil
 }
 
 func (a *Ecology9Adapter) queryModelTableContext(ctx context.Context, query ModelContextQuery, mode string, maxRows int) (*ModelContextQueryResult, error) {

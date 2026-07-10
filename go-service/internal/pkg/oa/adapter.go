@@ -119,9 +119,16 @@ type ModelContextQuerier interface {
 	QueryModelContext(ctx context.Context, query ModelContextQuery) (*ModelContextQueryResult, error)
 }
 
-// ModelFieldLabelResolver 由支持建模表元数据的 OA 适配器实现，用于将建模表物理列名转换为显示名称。
-type ModelFieldLabelResolver interface {
-	FetchModelFieldLabels(ctx context.Context, tableName string) (map[string]string, error)
+// ModelTableMetadata 是建模表的显示元数据。
+type ModelTableMetadata struct {
+	TableName   string
+	DisplayName string
+	FieldLabels map[string]string
+}
+
+// ModelTableMetadataResolver 由支持建模表元数据的 OA 适配器实现，用于补充建模表及其物理列名的显示名称。
+type ModelTableMetadataResolver interface {
+	FetchModelTableMetadata(ctx context.Context, tableName string) (*ModelTableMetadata, error)
 }
 
 // WorkflowDefinitionSelector 由支持检索流程定义的 OA 适配器实现。

@@ -38,14 +38,24 @@ func TestFormatExternalContextSourceField(t *testing.T) {
 func TestFormatModelContextResultUsesFieldLabels(t *testing.T) {
 	result := formatModelContextResult(
 		"关联建模表",
+		"流程触发台账（uf_lccftz）",
 		"供应商编码（main:supplier_code）",
 		&model.ExternalModelContextConfig{Mode: "rows"},
 		&oa.ModelContextQueryResult{Mode: "rows", Rows: []map[string]interface{}{{"lcm": "采购申请", "lcid": "1001"}}},
 		map[string]string{"lcm": "流程名", "lcid": "流程ID"},
 	)
-	for _, want := range []string{"流程名=采购申请", "流程ID=1001"} {
+	for _, want := range []string{"建模表：流程触发台账（uf_lccftz）", "流程名=采购申请", "流程ID=1001"} {
 		if !strings.Contains(result, want) {
 			t.Fatalf("formatModelContextResult() = %q, want to contain %q", result, want)
 		}
+	}
+}
+
+func TestFormatModelTableName(t *testing.T) {
+	if got := formatModelTableName("流程触发台账", "uf_lccftz"); got != "流程触发台账（uf_lccftz）" {
+		t.Fatalf("formatModelTableName() = %q", got)
+	}
+	if got := formatModelTableName("", "uf_lccftz"); got != "uf_lccftz" {
+		t.Fatalf("formatModelTableName() = %q", got)
 	}
 }
