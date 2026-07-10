@@ -293,6 +293,10 @@ func (s *ExternalContextService) resolveWorkflowMount(ctx context.Context, adapt
 			sb.WriteString("\n查询引用流程表单数据失败：" + err.Error())
 			continue
 		}
+		if dataMode == "selected_fields" && len(cfg.SelectedFields) == 0 {
+			sb.WriteString("\n引用流程表单数据：未选择字段，已跳过。")
+			continue
+		}
 		fieldSet := SelectedFieldSet(nil)
 		if dataMode == "selected_fields" {
 			fieldSet = selectedFieldSetFromRefs(cfg.SelectedFields)
@@ -451,13 +455,11 @@ func splitExternalValues(raw, splitter string, max int) []string {
 }
 
 func formatReferencedWorkflowBasic(summary *oa.ProcessRequestSummary, fields []string) string {
-	if summary == nil {
+	if summary == nil || len(fields) == 0 {
+		// 未勾选任何基础信息字段时不注入，避免空配置被当成「全选」
 		return ""
 	}
 	enabled := map[string]bool{}
-	if len(fields) == 0 {
-		fields = []string{"archived", "title", "applicant", "department", "process_type", "current_node", "submit_time"}
-	}
 	for _, f := range fields {
 		enabled[f] = true
 	}
