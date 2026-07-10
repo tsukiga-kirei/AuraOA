@@ -4,6 +4,7 @@
  *   /api/tenant/rules/configs          流程审核配置 CRUD
  *   /api/tenant/rules/audit-rules      审核规则 CRUD
  *   /api/tenant/rules/prompt-templates 系统提示词模板查询
+ *   /api/tenant/rules/context/*        外部关联数据测试与流程检索
  */
 
 import type { ProcessAuditConfig, AuditRule } from '~/types/audit-config'
@@ -121,6 +122,13 @@ export const useAuditConfigApi = () => {
     })
   }
 
+  async function searchWorkflows(keyword: string): Promise<ProcessInfo[]> {
+    return await authFetch<ProcessInfo[]>('/api/tenant/rules/context/workflow-search', {
+      method: 'POST',
+      body: { keyword },
+    })
+  }
+
   // ============================================================
   // 系统提示词模板（审核专用）
   // ============================================================
@@ -133,7 +141,7 @@ export const useAuditConfigApi = () => {
   return {
     listConfigs, createConfig, updateConfig, deleteConfig,
     testConnection, fetchFields,
-    listRules, createRule, updateRule, deleteRule, testContext,
+    listRules, createRule, updateRule, deleteRule, testContext, searchWorkflows,
     listPromptTemplates,
   }
 }

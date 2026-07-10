@@ -4,6 +4,7 @@
  *   /api/tenant/archive/configs    归档复盘流程配置 CRUD
  *   /api/tenant/archive/rules      归档规则 CRUD
  *   /api/tenant/archive/prompt-templates  归档专用提示词模板
+ *   /api/tenant/archive/context/*  外部关联数据测试与流程检索
  */
 
 import type { ProcessArchiveConfig, ArchiveRule } from '~/types/archive-config'
@@ -137,6 +138,13 @@ export const useArchiveConfigApi = () => {
     })
   }
 
+  async function searchWorkflows(keyword: string): Promise<ProcessInfo[]> {
+    return await authFetch<ProcessInfo[]>('/api/tenant/archive/context/workflow-search', {
+      method: 'POST',
+      body: { keyword },
+    })
+  }
+
   // ============================================================
   // 归档专用系统提示词模板（archive_ 前缀）
   // ============================================================
@@ -158,6 +166,7 @@ export const useArchiveConfigApi = () => {
     updateRule,
     deleteRule,
     testContext,
+    searchWorkflows,
     listPromptTemplates,
   }
 }

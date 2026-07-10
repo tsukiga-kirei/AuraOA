@@ -188,17 +188,90 @@ const loadingRules = ref(false)
 
 //=====测试连接状态=====
 const testingConnection = ref(false)
-const testConnectionResult = ref<{ success: boolean; message: string } | null>(null)
 // 基本信息页面的测试连接状态（独立于新增弹框）
 const infoTestingConnection = ref(false)
-const infoTestConnectionResult = ref<{ success: boolean; message: string } | null>(null)
 // 同步字段状态
 const syncingFields = ref(false)
 const syncingArchiveFields = ref(false)
 
+const showTestConnectionFeedback = (success: boolean, content: string) => {
+  if (success) message.success(content)
+  else message.error(content)
+}
+
 //=====添加新流程=====
 const showAddProcess = ref(false)
 const newProcessForm = ref({ process_type: '', process_type_label: '', main_table_name: '' })
+const addProcessSearch = ref({
+  keyword: '',
+  rows: [] as ProcessInfo[],
+  searching: false,
+  hasSearched: false,
+  selectedId: '',
+})
+
+const resetAddProcessSearch = (state: typeof addProcessSearch.value) => {
+  state.keyword = ''
+  state.rows = []
+  state.searching = false
+  state.hasSearched = false
+  state.selectedId = ''
+}
+
+const workflowOptionKey = (item: ProcessInfo) =>
+  item.workflow_id || item.process_name || item.process_type
+
+const workflowOptionName = (item: ProcessInfo) =>
+  item.process_name || item.process_type || (item.workflow_id && item.workflow_id !== '0' ? `流程 ${item.workflow_id}` : '未命名流程')
+
+const applyWorkflowToAddForm = (
+  form: { process_type: string; process_type_label: string; main_table_name: string },
+  item: ProcessInfo,
+) => {
+  form.process_type = item.process_name || item.process_type || ''
+  form.process_type_label = item.process_type_label || ''
+  form.main_table_name = item.main_table || ''
+}
+
+const searchAddProcessWorkflows = async (
+  searchApi: (keyword: string) => Promise<ProcessInfo[]>,
+  state: typeof addProcessSearch.value,
+) => {
+  const keyword = state.keyword.trim()
+  if (!keyword) {
+    message.warning('请输入流程名称、分类或主表名后再搜索')
+    state.rows = []
+    state.hasSearched = false
+    return
+  }
+  state.searching = true
+  try {
+    state.rows = await searchApi(keyword)
+    state.hasSearched = true
+  } catch (e: any) {
+    message.error('流程检索失败：' + (e.message || '未知错误'))
+  } finally {
+    state.searching = false
+  }
+}
+
+const selectAddProcessWorkflow = (
+  form: { process_type: string; process_type_label: string; main_table_name: string },
+  state: typeof addProcessSearch.value,
+  item: ProcessInfo,
+  onSelected?: () => void,
+) => {
+  state.selectedId = workflowOptionKey(item)
+  applyWorkflowToAddForm(form, item)
+  onSelected?.()
+}
+
+watch(showAddProcess, (open) => {
+  if (open) {
+    newProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
+    resetAddProcessSearch(addProcessSearch.value)
+  }
+})
 
 // 新增弹框中的测试连接
 const handleTestConnectionInModal = async () => {
@@ -208,7 +281,6 @@ const handleTestConnectionInModal = async () => {
     return
   }
   testingConnection.value = true
-  testConnectionResult.value = null
   try {
     const info = await rulesApi.testConnection(processType, newProcessForm.value.main_table_name.trim(), newProcessForm.value.process_type_label?.trim() || '')
     if (info.table_mismatch || info.type_label_mismatch) {
@@ -225,28 +297,21 @@ const handleTestConnectionInModal = async () => {
           newProcessForm.value.process_type_label = info.expected_type_label
         }
       }
-      testConnectionResult.value = {
-        success: false,
-        message: msgs.join('；'),
-      }
+      showTestConnectionFeedback(false, msgs.join('；'))
     } else {
-      testConnectionResult.value = {
-        success: true,
-        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
-      }
-      // 自动填充主表名称和流程类型
       if (info.main_table) {
         newProcessForm.value.main_table_name = info.main_table
       }
       if (info.process_type_label) {
         newProcessForm.value.process_type_label = info.process_type_label
       }
+      showTestConnectionFeedback(
+        true,
+        t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
+      )
     }
   } catch (e: any) {
-    testConnectionResult.value = {
-      success: false,
-      message: t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']),
-    }
+    showTestConnectionFeedback(false, t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']))
   } finally {
     testingConnection.value = false
   }
@@ -261,7 +326,6 @@ const handleTestConnectionInInfo = async () => {
     return
   }
   infoTestingConnection.value = true
-  infoTestConnectionResult.value = null
   try {
     const info = await rulesApi.testConnection(processType, selectedConfig.value.main_table_name.trim(), selectedConfig.value.process_type_label?.trim() || '')
     if (info.table_mismatch || info.type_label_mismatch) {
@@ -278,28 +342,21 @@ const handleTestConnectionInInfo = async () => {
           selectedConfig.value.process_type_label = info.expected_type_label
         }
       }
-      infoTestConnectionResult.value = {
-        success: false,
-        message: msgs.join('；'),
-      }
+      showTestConnectionFeedback(false, msgs.join('；'))
     } else {
-      infoTestConnectionResult.value = {
-        success: true,
-        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
-      }
-      // 自动填充主表名称和流程类型
       if (info.main_table && selectedConfig.value) {
         selectedConfig.value.main_table_name = info.main_table
       }
       if (info.process_type_label && selectedConfig.value) {
         selectedConfig.value.process_type_label = info.process_type_label
       }
+      showTestConnectionFeedback(
+        true,
+        t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
+      )
     }
   } catch (e: any) {
-    infoTestConnectionResult.value = {
-      success: false,
-      message: t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']),
-    }
+    showTestConnectionFeedback(false, t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']))
   } finally {
     infoTestingConnection.value = false
   }
@@ -361,7 +418,6 @@ const handleAddProcess = async () => {
     selectedProcessId.value = created.id
     showAddProcess.value = false
     newProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
-    testConnectionResult.value = null
     message.success(t('admin.ruleConfig.processAdded'))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.createConfigFail') + ': ' + (e.message || ''))
@@ -408,8 +464,7 @@ watch(selectedProcessId, async (newId) => {
   } finally {
     loadingRules.value = false
   }
-  // 重置基本信息页面的测试连接状态
-  infoTestConnectionResult.value = null
+  // 切换流程时无需额外清理测试连接状态
 })
 
 //===== 字段配置 =====
@@ -883,10 +938,22 @@ const selectedSummaryId = ref('')
 const summaryActiveTab = ref('info')
 const showAddSummaryProcess = ref(false)
 const newSummaryProcessForm = ref({ process_type: '', process_type_label: '', main_table_name: '' })
+const addSummaryProcessSearch = ref({
+  keyword: '',
+  rows: [] as ProcessInfo[],
+  searching: false,
+  hasSearched: false,
+  selectedId: '',
+})
 const summaryTestingConnection = ref(false)
-const summaryTestConnectionResult = ref<{ success: boolean; message: string } | null>(null)
+
+watch(showAddSummaryProcess, (open) => {
+  if (open) {
+    newSummaryProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
+    resetAddProcessSearch(addSummaryProcessSearch.value)
+  }
+})
 const summaryInfoTestingConnection = ref(false)
-const summaryInfoTestConnectionResult = ref<{ success: boolean; message: string } | null>(null)
 const syncingSummaryFields = ref(false)
 const savingSummary = ref(false)
 const showSummaryFieldPicker = ref(false)
@@ -1432,7 +1499,6 @@ const handleSummaryTestConnectionInModal = async () => {
     return
   }
   summaryTestingConnection.value = true
-  summaryTestConnectionResult.value = null
   try {
     const info = await summaryApi.testConnection(processType, newSummaryProcessForm.value.main_table_name.trim(), newSummaryProcessForm.value.process_type_label?.trim() || '')
     if (info.table_mismatch || info.type_label_mismatch) {
@@ -1445,17 +1511,17 @@ const handleSummaryTestConnectionInModal = async () => {
         msgs.push(t('admin.ruleConfig.typeLabelMismatch', [info.expected_type_label || '-']))
         if (info.expected_type_label) newSummaryProcessForm.value.process_type_label = info.expected_type_label
       }
-      summaryTestConnectionResult.value = { success: false, message: msgs.join('；') }
+      showTestConnectionFeedback(false, msgs.join('；'))
     } else {
-      summaryTestConnectionResult.value = {
-        success: true,
-        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
-      }
       if (info.main_table) newSummaryProcessForm.value.main_table_name = info.main_table
       if (info.process_type_label) newSummaryProcessForm.value.process_type_label = info.process_type_label
+      showTestConnectionFeedback(
+        true,
+        t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
+      )
     }
   } catch (e: any) {
-    summaryTestConnectionResult.value = { success: false, message: t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']) }
+    showTestConnectionFeedback(false, t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']))
   } finally {
     summaryTestingConnection.value = false
   }
@@ -1480,7 +1546,6 @@ const handleAddSummaryProcess = async () => {
     selectedSummaryId.value = normalized.id
     showAddSummaryProcess.value = false
     newSummaryProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
-    summaryTestConnectionResult.value = null
     message.success(t('admin.ruleConfig.processAdded'))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.createConfigFail') + ': ' + (e.message || ''))
@@ -1508,7 +1573,6 @@ const handleSummaryTestConnectionInInfo = async () => {
     return
   }
   summaryInfoTestingConnection.value = true
-  summaryInfoTestConnectionResult.value = null
   try {
     const info = await summaryApi.testConnection(processType, selectedSummaryConfig.value.main_table_name.trim(), selectedSummaryConfig.value.process_type_label?.trim() || '')
     if (info.table_mismatch || info.type_label_mismatch) {
@@ -1521,17 +1585,17 @@ const handleSummaryTestConnectionInInfo = async () => {
         msgs.push(t('admin.ruleConfig.typeLabelMismatch', [info.expected_type_label || '-']))
         if (info.expected_type_label) selectedSummaryConfig.value.process_type_label = info.expected_type_label
       }
-      summaryInfoTestConnectionResult.value = { success: false, message: msgs.join('；') }
+      showTestConnectionFeedback(false, msgs.join('；'))
     } else {
-      summaryInfoTestConnectionResult.value = {
-        success: true,
-        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
-      }
       if (info.main_table) selectedSummaryConfig.value.main_table_name = info.main_table
       if (info.process_type_label) selectedSummaryConfig.value.process_type_label = info.process_type_label
+      showTestConnectionFeedback(
+        true,
+        t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
+      )
     }
   } catch (e: any) {
-    summaryInfoTestConnectionResult.value = { success: false, message: t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']) }
+    showTestConnectionFeedback(false, t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']))
   } finally {
     summaryInfoTestingConnection.value = false
   }
@@ -1635,7 +1699,20 @@ watch(selectedArchiveId, async (newId) => {
 const showAddArchiveProcess = ref(false)
 const newArchiveProcessForm = ref({ process_type: '', process_type_label: '', main_table_name: '' })
 const archiveTestingConnection = ref(false)
-const archiveTestConnectionResult = ref<{ success: boolean; message: string } | null>(null)
+const addArchiveProcessSearch = ref({
+  keyword: '',
+  rows: [] as ProcessInfo[],
+  searching: false,
+  hasSearched: false,
+  selectedId: '',
+})
+
+watch(showAddArchiveProcess, (open) => {
+  if (open) {
+    newArchiveProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
+    resetAddProcessSearch(addArchiveProcessSearch.value)
+  }
+})
 
 const handleTestConnectionInArchiveModal = async () => {
   const processType = newArchiveProcessForm.value.process_type.trim()
@@ -1644,7 +1721,6 @@ const handleTestConnectionInArchiveModal = async () => {
     return
   }
   archiveTestingConnection.value = true
-  archiveTestConnectionResult.value = null
   try {
     const info = await archiveApi.testConnection(processType, newArchiveProcessForm.value.main_table_name.trim(), newArchiveProcessForm.value.process_type_label?.trim() || '')
     if (info.table_mismatch || info.type_label_mismatch) {
@@ -1657,17 +1733,17 @@ const handleTestConnectionInArchiveModal = async () => {
         msgs.push(t('admin.ruleConfig.typeLabelMismatch', [info.expected_type_label]))
         newArchiveProcessForm.value.process_type_label = info.expected_type_label
       }
-      archiveTestConnectionResult.value = { success: false, message: msgs.join('；') }
+      showTestConnectionFeedback(false, msgs.join('；'))
     } else {
-      archiveTestConnectionResult.value = {
-        success: true,
-        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
-      }
       if (info.main_table) newArchiveProcessForm.value.main_table_name = info.main_table
       if (info.process_type_label) newArchiveProcessForm.value.process_type_label = info.process_type_label
+      showTestConnectionFeedback(
+        true,
+        t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
+      )
     }
   } catch (e: any) {
-    archiveTestConnectionResult.value = { success: false, message: t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']) }
+    showTestConnectionFeedback(false, t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']))
   } finally {
     archiveTestingConnection.value = false
   }
@@ -1689,7 +1765,6 @@ const handleAddArchiveProcess = async () => {
     selectedArchiveId.value = created.id
     showAddArchiveProcess.value = false
     newArchiveProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
-    archiveTestConnectionResult.value = null
     message.success(t('admin.ruleConfig.processAdded'))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.createConfigFail') + ': ' + (e.message || ''))
@@ -1996,7 +2071,6 @@ const handleArchiveStrictnessChange = (value: string) => {
 }
 
 const archiveInfoTestingConnection = ref(false)
-const archiveInfoTestConnectionResult = ref<{ success: boolean; message: string } | null>(null)
 
 // 归档基本信息也提供测试连接
 const handleArchiveTestConnectionInInfo = async () => {
@@ -2007,7 +2081,6 @@ const handleArchiveTestConnectionInInfo = async () => {
     return
   }
   archiveInfoTestingConnection.value = true
-  archiveInfoTestConnectionResult.value = null
   try {
     const info = await archiveApi.testConnection(processType, selectedArchiveConfig.value.main_table_name.trim(), selectedArchiveConfig.value.process_type_label?.trim() || '')
     if (info.table_mismatch || info.type_label_mismatch) {
@@ -2024,17 +2097,17 @@ const handleArchiveTestConnectionInInfo = async () => {
           selectedArchiveConfig.value.process_type_label = info.expected_type_label
         }
       }
-      archiveInfoTestConnectionResult.value = { success: false, message: msgs.join('；') }
+      showTestConnectionFeedback(false, msgs.join('；'))
     } else {
-      archiveInfoTestConnectionResult.value = {
-        success: true,
-        message: t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
-      }
       if (info.main_table && selectedArchiveConfig.value) selectedArchiveConfig.value.main_table_name = info.main_table
       if (info.process_type_label && selectedArchiveConfig.value) selectedArchiveConfig.value.process_type_label = info.process_type_label
+      showTestConnectionFeedback(
+        true,
+        t('admin.ruleConfig.testConnectionSuccess', [info.process_name || processType, info.main_table || '-', info.process_type_label || '-']),
+      )
     }
   } catch (e: any) {
-    archiveInfoTestConnectionResult.value = { success: false, message: t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']) }
+    showTestConnectionFeedback(false, t('admin.ruleConfig.testConnectionFail', [e.message || '未知错误']))
   } finally {
     archiveInfoTestingConnection.value = false
   }
@@ -2402,15 +2475,6 @@ const handleSave = async () => {
               </div>
               <div class="test-connection-hint" style="margin-top: 4px; font-size: 12px; color: var(--color-text-tertiary);">
                 {{ t('admin.ruleConfig.testConnectionHint') }}
-              </div>
-              <div v-if="infoTestConnectionResult" style="margin-top: 8px;">
-                <a-alert
-                  :type="infoTestConnectionResult.success ? 'success' : 'error'"
-                  :message="infoTestConnectionResult.message"
-                  show-icon
-                  closable
-                  @close="infoTestConnectionResult = null"
-                />
               </div>
             </a-form-item>
           </a-form>
@@ -2936,15 +3000,6 @@ const handleSave = async () => {
               <div class="test-connection-hint" style="margin-top: 4px; font-size: 12px; color: var(--color-text-tertiary);">
                 {{ t('admin.ruleConfig.testConnectionHint') }}
               </div>
-              <div v-if="summaryInfoTestConnectionResult" style="margin-top: 8px;">
-                <a-alert
-                  :type="summaryInfoTestConnectionResult.success ? 'success' : 'error'"
-                  :message="summaryInfoTestConnectionResult.message"
-                  show-icon
-                  closable
-                  @close="summaryInfoTestConnectionResult = null"
-                />
-              </div>
             </a-form-item>
           </a-form>
         </div>
@@ -3393,37 +3448,89 @@ const handleSave = async () => {
       @ok="handleAddSummaryProcess"
       ok-text="确认"
       cancel-text="取消"
+      :width="640"
     >
-      <a-form layout="vertical" style="margin-top: 16px;">
-        <a-form-item label="流程名称" required>
-          <a-input v-model:value="newSummaryProcessForm.process_type" placeholder="请输入 OA 流程名称" />
-        </a-form-item>
-        <a-form-item label="流程分类">
-          <a-input v-model:value="newSummaryProcessForm.process_type_label" placeholder="可选，OA 流程分类名称" />
-        </a-form-item>
-        <a-form-item label="主表名称">
-          <div style="display: flex; gap: 8px;">
-            <a-input v-model:value="newSummaryProcessForm.main_table_name" placeholder="可选，测试连接后自动填充" style="flex: 1;" />
+      <div class="add-process-modal">
+        <section class="add-process-section">
+          <div class="add-process-section-head">
+            <div class="add-process-section-title">从 OA 搜索并填充</div>
+            <div class="add-process-section-desc">搜索后点选流程，自动填入下方信息</div>
+          </div>
+          <div class="workflow-picker-search">
+            <a-input
+              v-model:value="addSummaryProcessSearch.keyword"
+              placeholder="输入流程名称、流程分类或主表名搜索"
+              allow-clear
+              @press-enter="searchAddProcessWorkflows(summaryApi.searchWorkflows, addSummaryProcessSearch)"
+            />
             <a-button
-              :loading="summaryTestingConnection"
-              @click="handleSummaryTestConnectionInModal"
-              :disabled="!newSummaryProcessForm.process_type.trim()"
+              type="primary"
+              :loading="addSummaryProcessSearch.searching"
+              @click="searchAddProcessWorkflows(summaryApi.searchWorkflows, addSummaryProcessSearch)"
             >
-              <template #icon><DatabaseOutlined /></template>
-              {{ summaryTestingConnection ? '测试中' : '测试连接' }}
+              搜索
             </a-button>
           </div>
-          <div v-if="summaryTestConnectionResult" style="margin-top: 8px;">
-            <a-alert
-              :type="summaryTestConnectionResult.success ? 'success' : 'error'"
-              :message="summaryTestConnectionResult.message"
-              show-icon
-              closable
-              @close="summaryTestConnectionResult = null"
-            />
+          <a-spin :spinning="addSummaryProcessSearch.searching">
+            <div class="workflow-result-list workflow-result-list--add">
+              <button
+                v-for="item in addSummaryProcessSearch.rows"
+                :key="workflowOptionKey(item)"
+                type="button"
+                class="workflow-result-item"
+                :class="{ active: addSummaryProcessSearch.selectedId === workflowOptionKey(item) }"
+                @click="selectAddProcessWorkflow(newSummaryProcessForm, addSummaryProcessSearch, item)"
+              >
+                <span class="workflow-result-radio"></span>
+                <span class="workflow-result-main">
+                  <span class="workflow-result-name">{{ workflowOptionName(item) }}</span>
+                  <span class="workflow-result-meta">
+                    <span v-if="item.process_type_label">{{ item.process_type_label }}</span>
+                    <span v-if="item.main_table">{{ item.main_table }}</span>
+                    <span v-if="item.workflow_id && item.workflow_id !== '0'">ID {{ item.workflow_id }}</span>
+                  </span>
+                </span>
+              </button>
+              <a-empty
+                v-if="!addSummaryProcessSearch.rows.length && !addSummaryProcessSearch.searching"
+                :description="addSummaryProcessSearch.hasSearched ? '未找到匹配流程' : '输入关键词后点击搜索'"
+              />
+            </div>
+          </a-spin>
+        </section>
+
+        <div class="add-process-divider">
+          <span>或手动填写</span>
+        </div>
+
+        <section class="add-process-section">
+          <div class="add-process-section-head">
+            <div class="add-process-section-title">流程信息</div>
+            <div class="add-process-section-desc">可直接编辑，也可点测试连接校验</div>
           </div>
-        </a-form-item>
-      </a-form>
+          <a-form layout="vertical">
+            <a-form-item label="流程名称" required>
+              <a-input v-model:value="newSummaryProcessForm.process_type" placeholder="请输入 OA 流程名称" />
+            </a-form-item>
+            <a-form-item label="流程分类">
+              <a-input v-model:value="newSummaryProcessForm.process_type_label" placeholder="可选，OA 流程分类名称" />
+            </a-form-item>
+            <a-form-item label="主表名称">
+              <div style="display: flex; gap: 8px;">
+                <a-input v-model:value="newSummaryProcessForm.main_table_name" placeholder="可选，测试连接后自动填充" style="flex: 1;" />
+                <a-button
+                  :loading="summaryTestingConnection"
+                  @click="handleSummaryTestConnectionInModal"
+                  :disabled="!newSummaryProcessForm.process_type.trim()"
+                >
+                  <template #icon><DatabaseOutlined /></template>
+                  {{ summaryTestingConnection ? '测试中' : '测试连接' }}
+                </a-button>
+              </div>
+            </a-form-item>
+          </a-form>
+        </section>
+      </div>
     </a-modal>
 
     <!--总结块字段选择器模态-->
@@ -3657,40 +3764,89 @@ const handleSave = async () => {
       @ok="handleAddProcess"
       :ok-text="t('admin.ruleConfig.confirm')"
       :cancel-text="t('admin.ruleConfig.cancel')"
+      :width="640"
     >
-      <a-form layout="vertical" style="margin-top: 16px;">
-        <a-form-item :label="t('admin.ruleConfig.processName')" required>
-          <a-input v-model:value="newProcessForm.process_type" :placeholder="t('admin.ruleConfig.processNamePlaceholder')" />
-        </a-form-item>
-        <a-form-item :label="t('admin.ruleConfig.processTypeLabel')">
-          <a-input v-model:value="newProcessForm.process_type_label" :placeholder="t('admin.ruleConfig.processTypeLabelPlaceholder')" />
-        </a-form-item>
-        <a-form-item :label="t('admin.ruleConfig.mainTableName')">
-          <div style="display: flex; gap: 8px;">
-            <a-input v-model:value="newProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" style="flex: 1;" />
+      <div class="add-process-modal">
+        <section class="add-process-section">
+          <div class="add-process-section-head">
+            <div class="add-process-section-title">从 OA 搜索并填充</div>
+            <div class="add-process-section-desc">搜索后点选流程，自动填入下方信息</div>
+          </div>
+          <div class="workflow-picker-search">
+            <a-input
+              v-model:value="addProcessSearch.keyword"
+              placeholder="输入流程名称、流程分类或主表名搜索"
+              allow-clear
+              @press-enter="searchAddProcessWorkflows(rulesApi.searchWorkflows, addProcessSearch)"
+            />
             <a-button
-              :loading="testingConnection"
-              @click="handleTestConnectionInModal"
-              :disabled="!newProcessForm.process_type.trim()"
+              type="primary"
+              :loading="addProcessSearch.searching"
+              @click="searchAddProcessWorkflows(rulesApi.searchWorkflows, addProcessSearch)"
             >
-              <template #icon><DatabaseOutlined /></template>
-              {{ testingConnection ? t('admin.ruleConfig.testingConnection') : t('admin.ruleConfig.testConnection') }}
+              搜索
             </a-button>
           </div>
-          <div class="test-connection-hint" style="margin-top: 4px; font-size: 12px; color: var(--color-text-tertiary);">
-            {{ t('admin.ruleConfig.testConnectionHint') }}
+          <a-spin :spinning="addProcessSearch.searching">
+            <div class="workflow-result-list workflow-result-list--add">
+              <button
+                v-for="item in addProcessSearch.rows"
+                :key="workflowOptionKey(item)"
+                type="button"
+                class="workflow-result-item"
+                :class="{ active: addProcessSearch.selectedId === workflowOptionKey(item) }"
+                @click="selectAddProcessWorkflow(newProcessForm, addProcessSearch, item)"
+              >
+                <span class="workflow-result-radio"></span>
+                <span class="workflow-result-main">
+                  <span class="workflow-result-name">{{ workflowOptionName(item) }}</span>
+                  <span class="workflow-result-meta">
+                    <span v-if="item.process_type_label">{{ item.process_type_label }}</span>
+                    <span v-if="item.main_table">{{ item.main_table }}</span>
+                    <span v-if="item.workflow_id && item.workflow_id !== '0'">ID {{ item.workflow_id }}</span>
+                  </span>
+                </span>
+              </button>
+              <a-empty
+                v-if="!addProcessSearch.rows.length && !addProcessSearch.searching"
+                :description="addProcessSearch.hasSearched ? '未找到匹配流程' : '输入关键词后点击搜索'"
+              />
+            </div>
+          </a-spin>
+        </section>
+
+        <div class="add-process-divider">
+          <span>或手动填写</span>
+        </div>
+
+        <section class="add-process-section">
+          <div class="add-process-section-head">
+            <div class="add-process-section-title">流程信息</div>
+            <div class="add-process-section-desc">可直接编辑，也可点测试连接校验</div>
           </div>
-          <div v-if="testConnectionResult" style="margin-top: 8px;">
-            <a-alert
-              :type="testConnectionResult.success ? 'success' : 'error'"
-              :message="testConnectionResult.message"
-              show-icon
-              closable
-              @close="testConnectionResult = null"
-            />
-          </div>
-        </a-form-item>
-      </a-form>
+          <a-form layout="vertical">
+            <a-form-item :label="t('admin.ruleConfig.processName')" required>
+              <a-input v-model:value="newProcessForm.process_type" :placeholder="t('admin.ruleConfig.processNamePlaceholder')" />
+            </a-form-item>
+            <a-form-item :label="t('admin.ruleConfig.processTypeLabel')">
+              <a-input v-model:value="newProcessForm.process_type_label" :placeholder="t('admin.ruleConfig.processTypeLabelPlaceholder')" />
+            </a-form-item>
+            <a-form-item :label="t('admin.ruleConfig.mainTableName')">
+              <div style="display: flex; gap: 8px;">
+                <a-input v-model:value="newProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" style="flex: 1;" />
+                <a-button
+                  :loading="testingConnection"
+                  @click="handleTestConnectionInModal"
+                  :disabled="!newProcessForm.process_type.trim()"
+                >
+                  <template #icon><DatabaseOutlined /></template>
+                  {{ testingConnection ? t('admin.ruleConfig.testingConnection') : t('admin.ruleConfig.testConnection') }}
+                </a-button>
+              </div>
+            </a-form-item>
+          </a-form>
+        </section>
+      </div>
     </a-modal>
 
     <!--字段选择器模态-->
@@ -4077,15 +4233,6 @@ const handleSave = async () => {
               </div>
               <div class="test-connection-hint" style="margin-top: 4px; font-size: 12px; color: var(--color-text-tertiary);">
                 {{ t('admin.ruleConfig.testConnectionHint') }}
-              </div>
-              <div v-if="archiveInfoTestConnectionResult" style="margin-top: 8px;">
-                <a-alert
-                  :type="archiveInfoTestConnectionResult.success ? 'success' : 'error'"
-                  :message="archiveInfoTestConnectionResult.message"
-                  show-icon
-                  closable
-                  @close="archiveInfoTestConnectionResult = null"
-                />
               </div>
             </a-form-item>
           </a-form>
@@ -4541,40 +4688,89 @@ const handleSave = async () => {
       @ok="handleAddArchiveProcess"
       :ok-text="t('admin.ruleConfig.confirm')"
       :cancel-text="t('admin.ruleConfig.cancel')"
+      :width="640"
     >
-      <a-form layout="vertical" style="margin-top: 16px;">
-        <a-form-item :label="t('admin.ruleConfig.processName')" required>
-          <a-input v-model:value="newArchiveProcessForm.process_type" :placeholder="t('admin.ruleConfig.processNamePlaceholder')" />
-        </a-form-item>
-        <a-form-item :label="t('admin.ruleConfig.processTypeLabel')">
-          <a-input v-model:value="newArchiveProcessForm.process_type_label" :placeholder="t('admin.ruleConfig.processTypeLabelPlaceholder')" />
-        </a-form-item>
-        <a-form-item :label="t('admin.ruleConfig.mainTableName')">
-          <div style="display: flex; gap: 8px;">
-            <a-input v-model:value="newArchiveProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" style="flex: 1;" />
+      <div class="add-process-modal">
+        <section class="add-process-section">
+          <div class="add-process-section-head">
+            <div class="add-process-section-title">从 OA 搜索并填充</div>
+            <div class="add-process-section-desc">搜索后点选流程，自动填入下方信息</div>
+          </div>
+          <div class="workflow-picker-search">
+            <a-input
+              v-model:value="addArchiveProcessSearch.keyword"
+              placeholder="输入流程名称、流程分类或主表名搜索"
+              allow-clear
+              @press-enter="searchAddProcessWorkflows(archiveApi.searchWorkflows, addArchiveProcessSearch)"
+            />
             <a-button
-              :loading="archiveTestingConnection"
-              @click="handleTestConnectionInArchiveModal"
-              :disabled="!newArchiveProcessForm.process_type.trim()"
+              type="primary"
+              :loading="addArchiveProcessSearch.searching"
+              @click="searchAddProcessWorkflows(archiveApi.searchWorkflows, addArchiveProcessSearch)"
             >
-              <template #icon><DatabaseOutlined /></template>
-              {{ archiveTestingConnection ? t('admin.ruleConfig.testingConnection') : t('admin.ruleConfig.testConnection') }}
+              搜索
             </a-button>
           </div>
-          <div class="test-connection-hint" style="margin-top: 4px; font-size: 12px; color: var(--color-text-tertiary);">
-            {{ t('admin.ruleConfig.testConnectionHint') }}
+          <a-spin :spinning="addArchiveProcessSearch.searching">
+            <div class="workflow-result-list workflow-result-list--add">
+              <button
+                v-for="item in addArchiveProcessSearch.rows"
+                :key="workflowOptionKey(item)"
+                type="button"
+                class="workflow-result-item"
+                :class="{ active: addArchiveProcessSearch.selectedId === workflowOptionKey(item) }"
+                @click="selectAddProcessWorkflow(newArchiveProcessForm, addArchiveProcessSearch, item)"
+              >
+                <span class="workflow-result-radio"></span>
+                <span class="workflow-result-main">
+                  <span class="workflow-result-name">{{ workflowOptionName(item) }}</span>
+                  <span class="workflow-result-meta">
+                    <span v-if="item.process_type_label">{{ item.process_type_label }}</span>
+                    <span v-if="item.main_table">{{ item.main_table }}</span>
+                    <span v-if="item.workflow_id && item.workflow_id !== '0'">ID {{ item.workflow_id }}</span>
+                  </span>
+                </span>
+              </button>
+              <a-empty
+                v-if="!addArchiveProcessSearch.rows.length && !addArchiveProcessSearch.searching"
+                :description="addArchiveProcessSearch.hasSearched ? '未找到匹配流程' : '输入关键词后点击搜索'"
+              />
+            </div>
+          </a-spin>
+        </section>
+
+        <div class="add-process-divider">
+          <span>或手动填写</span>
+        </div>
+
+        <section class="add-process-section">
+          <div class="add-process-section-head">
+            <div class="add-process-section-title">流程信息</div>
+            <div class="add-process-section-desc">可直接编辑，也可点测试连接校验</div>
           </div>
-          <div v-if="archiveTestConnectionResult" style="margin-top: 8px;">
-            <a-alert
-              :type="archiveTestConnectionResult.success ? 'success' : 'error'"
-              :message="archiveTestConnectionResult.message"
-              show-icon
-              closable
-              @close="archiveTestConnectionResult = null"
-            />
-          </div>
-        </a-form-item>
-      </a-form>
+          <a-form layout="vertical">
+            <a-form-item :label="t('admin.ruleConfig.processName')" required>
+              <a-input v-model:value="newArchiveProcessForm.process_type" :placeholder="t('admin.ruleConfig.processNamePlaceholder')" />
+            </a-form-item>
+            <a-form-item :label="t('admin.ruleConfig.processTypeLabel')">
+              <a-input v-model:value="newArchiveProcessForm.process_type_label" :placeholder="t('admin.ruleConfig.processTypeLabelPlaceholder')" />
+            </a-form-item>
+            <a-form-item :label="t('admin.ruleConfig.mainTableName')">
+              <div style="display: flex; gap: 8px;">
+                <a-input v-model:value="newArchiveProcessForm.main_table_name" :placeholder="t('admin.ruleConfig.mainTableNamePlaceholder')" style="flex: 1;" />
+                <a-button
+                  :loading="archiveTestingConnection"
+                  @click="handleTestConnectionInArchiveModal"
+                  :disabled="!newArchiveProcessForm.process_type.trim()"
+                >
+                  <template #icon><DatabaseOutlined /></template>
+                  {{ archiveTestingConnection ? t('admin.ruleConfig.testingConnection') : t('admin.ruleConfig.testConnection') }}
+                </a-button>
+              </div>
+            </a-form-item>
+          </a-form>
+        </section>
+      </div>
     </a-modal>
 
     <!--归档字段选择器模式-->
@@ -5190,6 +5386,53 @@ const handleSave = async () => {
 }
 .workflow-result-list--modal {
   max-height: 240px;
+}
+.workflow-result-list--add {
+  max-height: 200px;
+  margin-top: 8px;
+}
+.add-process-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.add-process-section {
+  padding: 14px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+}
+.add-process-section-head {
+  margin-bottom: 12px;
+}
+.add-process-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.add-process-section-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+.add-process-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+.add-process-divider::before,
+.add-process-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border-light);
+}
+.add-process-section :deep(.ant-form-item:last-child) {
+  margin-bottom: 0;
 }
 .summary-context-mode-switch {
   margin-bottom: 0;
