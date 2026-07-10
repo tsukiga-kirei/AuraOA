@@ -272,6 +272,8 @@ export default {
     'ruleEditor.priorityLow': '低',
     'ruleEditor.priorityCurrent': '当前',
     'ruleEditor.priorityHigh': '高',
+    'externalContext.modelReturnFields': '返回字段（英文列名）',
+    'externalContext.modelReturnFieldsPlaceholder': '英文列名以逗号分隔；留空表示全部字段',
 
     //=====系统监视器（合并到仪表板）=====
     'overview.monitorMetrics': '运行指标',

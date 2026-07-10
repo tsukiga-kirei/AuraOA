@@ -66,6 +66,8 @@ POST /api/tenant/summary/configs/:id/fetch-fields
 POST /api/tenant/summary/context/test
 ```
 
+建模表挂载的 `mode=rows` 时，`return_fields` 必须填写英文物理列名；服务端会基于泛微字段元数据将返回结果的列名转换为中文显示名。`max_rows=-1` 表示返回全部匹配行，正整数表示行数上限。
+
 ---
 
 ## 流程总结快照（JWT + TenantContext + `tenant_admin`）

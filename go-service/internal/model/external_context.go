@@ -32,7 +32,7 @@ type ExternalModelContextConfig struct {
 	JoinField    string   `json:"join_field"`
 	Mode         string   `json:"mode"` // exists=是否存在；count=存在条数；rows=返回行数据；custom_sql=自定义 SQL
 	ReturnFields []string `json:"return_fields,omitempty"`
-	MaxRows      int      `json:"max_rows,omitempty"`
+	MaxRows      int      `json:"max_rows,omitempty"` // -1=全部匹配行；正数=返回行数上限
 	OrderBy      string   `json:"order_by,omitempty"`
 	OrderDir     string   `json:"order_dir,omitempty"`
 	CustomSQL    string   `json:"custom_sql,omitempty"`

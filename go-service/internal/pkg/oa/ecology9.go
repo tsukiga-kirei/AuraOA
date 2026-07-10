@@ -622,14 +622,14 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 }
 
 // QueryModelContext 对 E9 建模表执行受限只读查询。
-// 这里会校验表名/字段名、限制返回行数；自定义 SQL 仅允许单条 SELECT，且必须使用指定变量。
+// 这里会校验表名/字段名；自定义 SQL 仅允许单条 SELECT，且必须使用指定变量。
 func (a *Ecology9Adapter) QueryModelContext(ctx context.Context, query ModelContextQuery) (*ModelContextQueryResult, error) {
 	mode := strings.TrimSpace(query.Mode)
 	if mode == "" {
 		mode = "exists"
 	}
 	maxRows := query.MaxRows
-	if maxRows <= 0 {
+	if maxRows == 0 {
 		maxRows = 5
 	}
 	if maxRows > 50 {
@@ -643,6 +643,25 @@ func (a *Ecology9Adapter) QueryModelContext(ctx context.Context, query ModelCont
 	default:
 		return nil, fmt.Errorf("不支持的建模查询方式: %s", mode)
 	}
+}
+
+// FetchModelFieldLabels 查询建模表主表字段的中文显示名，查不到标签时由调用方回退为物理列名。
+func (a *Ecology9Adapter) FetchModelFieldLabels(ctx context.Context, tableName string) (map[string]string, error) {
+	tableName = strings.TrimSpace(tableName)
+	if !isSafeIdentifier(tableName) {
+		return nil, fmt.Errorf("建模表名不合法")
+	}
+	var formID int
+	row := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_bill")).
+		Select(a.col("id")).
+		Where("LOWER("+a.col("tablename")+") = LOWER(?)", tableName).
+		Row()
+	if err := row.Scan(&formID); err != nil {
+		return nil, fmt.Errorf("查询建模表字段定义失败: %w", err)
+	}
+	labelsByTable := a.fetchFieldLabels(ctx, formID, tableName)
+	return labelsByTable["main"], nil
 }
 
 func (a *Ecology9Adapter) queryModelTableContext(ctx context.Context, query ModelContextQuery, mode string, maxRows int) (*ModelContextQueryResult, error) {
@@ -692,7 +711,10 @@ func (a *Ecology9Adapter) queryModelTableContext(ctx context.Context, query Mode
 			db = db.Order(a.col(orderBy) + " " + dir)
 		}
 		var rows []map[string]interface{}
-		if err := db.Select(selectExpr).Limit(maxRows).Find(&rows).Error; err != nil {
+		if maxRows > 0 {
+			db = db.Limit(maxRows)
+		}
+		if err := db.Select(selectExpr).Find(&rows).Error; err != nil {
 			return nil, fmt.Errorf("查询建模行数据失败: %w", err)
 		}
 		return &ModelContextQueryResult{Mode: mode, Rows: rows}, nil
@@ -720,14 +742,14 @@ func (a *Ecology9Adapter) queryModelCustomSQLContext(ctx context.Context, query 
 	if !strings.Contains(sqlText, ":source_value") {
 		return nil, fmt.Errorf("自定义 SQL 必须使用 :source_value 参数")
 	}
-	if !hasSQLLimit(sqlText) {
+	if maxRows > 0 && !hasSQLLimit(sqlText) {
 		sqlText += a.limitOffsetClause(maxRows, 0)
 	}
 	var rows []map[string]interface{}
 	if err := a.db.WithContext(ctx).Raw(sqlText, sql.Named("source_value", query.SourceValue)).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("执行自定义 SQL 失败: %w", err)
 	}
-	if len(rows) > maxRows {
+	if maxRows > 0 && len(rows) > maxRows {
 		rows = rows[:maxRows]
 	}
 	return &ModelContextQueryResult{Mode: "custom_sql", Rows: rows}, nil

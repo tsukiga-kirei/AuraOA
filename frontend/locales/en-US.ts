@@ -271,6 +271,8 @@ export default {
     'ruleEditor.priorityLow': 'Low',
     'ruleEditor.priorityCurrent': 'Current',
     'ruleEditor.priorityHigh': 'High',
+    'externalContext.modelReturnFields': 'Return Fields (English Column Names)',
+    'externalContext.modelReturnFieldsPlaceholder': 'Separate English column names with commas; leave empty for all fields',
 
     //=====系统监视器（合并到仪表板）=====
     'overview.monitorMetrics': 'Operational Metrics',

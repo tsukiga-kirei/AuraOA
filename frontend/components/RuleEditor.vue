@@ -166,7 +166,7 @@ const normalizeModelMount = (mount?: Partial<ExternalContextMount>): ExternalCon
     join_field: mount?.model?.join_field || 'id',
     mode: mount?.model?.mode || 'exists',
     return_fields: mount?.model?.return_fields || [],
-    max_rows: mount?.model?.max_rows || 5,
+    max_rows: mount?.model?.max_rows ?? 5,
     order_by: mount?.model?.order_by || '',
     order_dir: mount?.model?.order_dir || 'ASC',
     custom_sql: mount?.model?.custom_sql || '',
@@ -188,6 +188,11 @@ const fieldListFromText = (text?: string) => (text || '').split(',').map(v => v.
 const setModelReturnFields = (value: string) => {
   const mount = modelMount.value
   if (mount?.model) mount.model.return_fields = fieldListFromText(value)
+}
+
+const setModelAllRows = (checked: boolean) => {
+  const mount = modelMount.value
+  if (mount?.model) mount.model.max_rows = checked ? -1 : 5
 }
 
 const testContext = async (mount: ExternalContextMount, key: 'workflow' | 'model') => {
@@ -425,7 +430,6 @@ const handleSave = () => {
             <div class="context-panel-title">关联流程</div>
             <div class="context-panel-subtitle">先查询已引用的流程，再把选中的信息提供给 AI</div>
           </div>
-          <a-button :loading="testingWorkflowContext" @click="testContext(workflowMount, 'workflow')">测试</a-button>
         </div>
         <a-row :gutter="12">
           <a-col :span="24">
@@ -484,6 +488,9 @@ const handleSave = () => {
           </div>
           <a-button @click="openTargetWorkflowConfigModal">配置</a-button>
         </div>
+        <div class="context-actions">
+          <a-button :loading="testingWorkflowContext" @click="testContext(workflowMount, 'workflow')">测试</a-button>
+        </div>
         <pre v-if="contextPreview.workflow" class="context-preview">{{ contextPreview.workflow }}</pre>
       </div>
 
@@ -518,11 +525,23 @@ const handleSave = () => {
             </a-form-item>
           </a-col>
         </a-row>
-        <a-form-item v-if="modelMount.model?.mode === 'rows'" label="返回字段">
-          <a-input :value="modelMount.model.return_fields?.join(',')" placeholder="逗号分隔；留空表示全部字段" @update:value="setModelReturnFields" />
+        <a-form-item v-if="modelMount.model?.mode === 'rows'" :label="t('externalContext.modelReturnFields')">
+          <a-input :value="modelMount.model.return_fields?.join(',')" :placeholder="t('externalContext.modelReturnFieldsPlaceholder')" @update:value="setModelReturnFields" />
         </a-form-item>
         <a-form-item v-if="modelMount.model?.mode === 'rows'" label="返回行数上限">
-          <a-input-number v-model:value="modelMount.model!.max_rows" :min="1" :max="50" style="width: 100%;" />
+          <a-space>
+            <a-input-number
+              :value="modelMount.model!.max_rows === -1 ? undefined : modelMount.model!.max_rows"
+              :min="1"
+              :max="50"
+              :disabled="modelMount.model!.max_rows === -1"
+              style="width: 160px;"
+              @update:value="(value: number | null) => { if (modelMount?.model && value) modelMount.model.max_rows = value }"
+            />
+            <a-checkbox :checked="modelMount.model!.max_rows === -1" @change="(e: any) => setModelAllRows(!!e?.target?.checked)">
+              {{ t('common.all') }}
+            </a-checkbox>
+          </a-space>
         </a-form-item>
         <a-form-item v-if="modelMount.model?.mode === 'custom_sql'" label="自定义 SQL">
           <div class="sql-variable-bar">
@@ -784,7 +803,6 @@ const handleSave = () => {
 }
 .context-actions {
   display: flex;
-  justify-content: flex-end;
   margin-top: 10px;
 }
 .sql-variable-bar {

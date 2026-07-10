@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -241,20 +242,21 @@ func (s *ArchiveReviewService) resolveArchiveRulesExternalContext(c *gin.Context
 func (s *ExternalContextService) resolveMount(ctx context.Context, adapter oa.OAAdapter, current *oa.ProcessData, mount model.ExternalContextMount) string {
 	name := firstNonEmpty(mount.Name, contextMountTypeLabel(mount.Type))
 	sourceValue := extractContextSourceValue(current, mount.SourceField)
+	sourceField := formatExternalContextSourceField(current, mount.SourceField)
 	if strings.TrimSpace(sourceValue) == "" {
-		return fmt.Sprintf("【%s】\n来源字段 %s 为空，未执行查询。", name, mount.SourceField)
+		return fmt.Sprintf("【%s】\n来源字段 %s 为空，未执行查询。", name, sourceField)
 	}
 	switch mount.Type {
 	case "workflow":
-		return s.resolveWorkflowMount(ctx, adapter, name, sourceValue, mount)
+		return s.resolveWorkflowMount(ctx, adapter, name, sourceValue, sourceField, mount)
 	case "model":
-		return s.resolveModelMount(ctx, adapter, name, sourceValue, mount)
+		return s.resolveModelMount(ctx, adapter, name, sourceValue, sourceField, mount)
 	default:
 		return fmt.Sprintf("【%s】\n不支持的关联类型：%s", name, mount.Type)
 	}
 }
 
-func (s *ExternalContextService) resolveWorkflowMount(ctx context.Context, adapter oa.OAAdapter, name, sourceValue string, mount model.ExternalContextMount) string {
+func (s *ExternalContextService) resolveWorkflowMount(ctx context.Context, adapter oa.OAAdapter, name, sourceValue, sourceField string, mount model.ExternalContextMount) string {
 	cfg := mount.Workflow
 	if cfg == nil {
 		cfg = &model.ExternalWorkflowContextConfig{}
@@ -265,7 +267,7 @@ func (s *ExternalContextService) resolveWorkflowMount(ctx context.Context, adapt
 		return fmt.Sprintf("【%s】\n未解析到有效 requestid。", name)
 	}
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("【%s】\n来源字段：%s\n解析到 %d 个 requestid。", name, mount.SourceField, len(ids)))
+	sb.WriteString(fmt.Sprintf("【%s】\n来源字段：%s\n解析到 %d 个 requestid。", name, sourceField, len(ids)))
 	for i, id := range ids {
 		sb.WriteString(fmt.Sprintf("\n\n%d. requestid：%s", i+1, id))
 		summary, err := adapter.FetchProcessRequestSummary(ctx, id)
@@ -307,7 +309,7 @@ func (s *ExternalContextService) resolveWorkflowMount(ctx context.Context, adapt
 	return sb.String()
 }
 
-func (s *ExternalContextService) resolveModelMount(ctx context.Context, adapter oa.OAAdapter, name, sourceValue string, mount model.ExternalContextMount) string {
+func (s *ExternalContextService) resolveModelMount(ctx context.Context, adapter oa.OAAdapter, name, sourceValue, sourceField string, mount model.ExternalContextMount) string {
 	cfg := mount.Model
 	if cfg == nil {
 		cfg = &model.ExternalModelContextConfig{}
@@ -330,7 +332,13 @@ func (s *ExternalContextService) resolveModelMount(ctx context.Context, adapter 
 	if err != nil {
 		return fmt.Sprintf("【%s】\n建模表查询失败：%s", name, err.Error())
 	}
-	return formatModelContextResult(name, mount.SourceField, cfg, res)
+	var fieldLabels map[string]string
+	if res.Mode == "rows" {
+		if resolver, ok := adapter.(oa.ModelFieldLabelResolver); ok {
+			fieldLabels, _ = resolver.FetchModelFieldLabels(ctx, cfg.TableName)
+		}
+	}
+	return formatModelContextResult(name, sourceField, cfg, res, fieldLabels)
 }
 
 func (s *ExternalContextService) getOAAdapter(tenant *model.Tenant, withAttachments bool) (oa.OAAdapter, error) {
@@ -391,6 +399,32 @@ func extractContextSourceValue(pd *oa.ProcessData, ref string) string {
 		}
 	}
 	return strings.Join(values, ",")
+}
+
+// formatExternalContextSourceField 为外部关联数据中的来源字段补充 OA 字段显示名。
+func formatExternalContextSourceField(pd *oa.ProcessData, ref string) string {
+	ref = strings.TrimSpace(ref)
+	if pd == nil || ref == "" {
+		return ref
+	}
+	table, field := parseExternalFieldRef(ref)
+	if field == "" {
+		return ref
+	}
+	labels := pd.FieldLabels[table]
+	if labels == nil {
+		for tableName, tableLabels := range pd.FieldLabels {
+			if strings.EqualFold(tableName, table) {
+				labels = tableLabels
+				break
+			}
+		}
+	}
+	label := strings.TrimSpace(promptFieldLabel(field, labels))
+	if label == "" || label == field {
+		return ref
+	}
+	return fmt.Sprintf("%s（%s）", label, ref)
 }
 
 func parseExternalFieldRef(ref string) (string, string) {
@@ -528,7 +562,7 @@ func limitDetailRows(input map[string][]map[string]interface{}, maxRows int) map
 	return out
 }
 
-func formatModelContextResult(name, sourceField string, cfg *model.ExternalModelContextConfig, res *oa.ModelContextQueryResult) string {
+func formatModelContextResult(name, sourceField string, cfg *model.ExternalModelContextConfig, res *oa.ModelContextQueryResult, fieldLabels map[string]string) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("【%s】\n来源字段：%s\n查询方式：%s", name, sourceField, firstNonEmpty(cfg.Mode, "exists")))
 	switch res.Mode {
@@ -547,7 +581,7 @@ func formatModelContextResult(name, sourceField string, cfg *model.ExternalModel
 		}
 		sb.WriteString("\n行数据：")
 		for i, row := range res.Rows {
-			sb.WriteString(fmt.Sprintf("\n%d. %s", i+1, formatContextRow(row)))
+			sb.WriteString(fmt.Sprintf("\n%d. %s", i+1, formatContextRow(row, fieldLabels)))
 		}
 	}
 	if strings.TrimSpace(res.Notice) != "" {
@@ -556,13 +590,24 @@ func formatModelContextResult(name, sourceField string, cfg *model.ExternalModel
 	return sb.String()
 }
 
-func formatContextRow(row map[string]interface{}) string {
+func formatContextRow(row map[string]interface{}, fieldLabels map[string]string) string {
 	if len(row) == 0 {
 		return "（空行）"
 	}
 	parts := make([]string, 0, len(row))
-	for k, v := range row {
-		parts = append(parts, fmt.Sprintf("%s=%s", k, truncateContextValue(stringifyContextValue(v), 500)))
+	keys := make([]string, 0, len(row))
+	for key := range row {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	usedLabels := map[string]int{}
+	for _, key := range keys {
+		label := promptFieldLabel(key, fieldLabels)
+		usedLabels[label]++
+		if usedLabels[label] > 1 {
+			label = fmt.Sprintf("%s_%d", label, usedLabels[label])
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", label, truncateContextValue(stringifyContextValue(row[key]), 500)))
 	}
 	return strings.Join(parts, "；")
 }

@@ -1156,7 +1156,7 @@ function normalizeSummaryContextMountForUI(mount: any) {
         join_field: mount.model?.join_field || 'id',
         mode: mount.model?.mode || 'exists',
         return_fields: mount.model?.return_fields || [],
-        max_rows: mount.model?.max_rows || 5,
+        max_rows: mount.model?.max_rows ?? 5,
       },
     }
   }
@@ -1325,6 +1325,11 @@ const summaryContextCollapsedHint = (block: SummaryBlockConfig, type: 'workflow'
 const setSummaryModelReturnFields = (block: SummaryBlockConfig, value: string) => {
   const mount = getSummaryContextMount(block, 'model')
   if (mount?.model) mount.model.return_fields = value.split(',').map(v => v.trim()).filter(Boolean)
+}
+
+const setSummaryModelAllRows = (block: SummaryBlockConfig, checked: boolean) => {
+  const mount = getSummaryContextMount(block, 'model')
+  if (mount?.model) mount.model.max_rows = checked ? -1 : 5
 }
 
 const summaryContextKey = (block: SummaryBlockConfig, type: 'workflow' | 'model') => `${block.id}:${type}`
@@ -3298,53 +3303,58 @@ const handleSave = async () => {
                     <DownOutlined class="summary-context-chevron" :class="{ 'summary-context-chevron--collapsed': !isSummaryContextExpanded(block, 'model') }" />
                   </button>
                   <div v-show="isSummaryContextExpanded(block, 'model')" class="summary-context-box-body">
-                  <a-row :gutter="12">
-                    <a-col :span="8">
-                      <a-form-item label="来源字段">
-                        <a-select
-                          v-model:value="getSummaryContextMount(block, 'model')!.source_field"
-                          :options="summaryContextFieldOptionsForBlock(block)"
-                          show-search
-                          placeholder="选择已引入字段"
+                  <div class="summary-model-config-grid">
+                    <a-form-item label="来源字段">
+                      <a-select
+                        v-model:value="getSummaryContextMount(block, 'model')!.source_field"
+                        :options="summaryContextFieldOptionsForBlock(block)"
+                        show-search
+                        placeholder="选择已引入字段"
+                      />
+                    </a-form-item>
+                    <a-form-item label="建模表名">
+                      <a-input v-model:value="getSummaryContextMount(block, 'model')!.model!.table_name" />
+                    </a-form-item>
+                    <a-form-item label="关联字段">
+                      <a-input v-model:value="getSummaryContextMount(block, 'model')!.model!.join_field" placeholder="默认 id" />
+                    </a-form-item>
+                    <a-form-item label="查询方式">
+                      <a-select v-model:value="getSummaryContextMount(block, 'model')!.model!.mode" show-search option-filter-prop="label">
+                        <a-select-option value="exists">是否存在</a-select-option>
+                        <a-select-option value="count">存在条数</a-select-option>
+                        <a-select-option value="rows">返回匹配数据</a-select-option>
+                        <a-select-option value="custom_sql">自定义 SQL</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                    <a-form-item v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'rows'" class="summary-model-return-fields" :label="t('externalContext.modelReturnFields')">
+                      <a-input
+                        :value="getSummaryContextMount(block, 'model')!.model!.return_fields?.join(',')"
+                        :placeholder="t('externalContext.modelReturnFieldsPlaceholder')"
+                        @update:value="(v: string) => setSummaryModelReturnFields(block, v)"
+                      />
+                    </a-form-item>
+                  </div>
+                  <div v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'rows'" class="summary-model-footer">
+                    <a-form-item label="返回行数上限">
+                      <a-space>
+                        <a-input-number
+                          :value="getSummaryContextMount(block, 'model')!.model!.max_rows === -1 ? undefined : getSummaryContextMount(block, 'model')!.model!.max_rows"
+                          :min="1"
+                          :max="50"
+                          :disabled="getSummaryContextMount(block, 'model')!.model!.max_rows === -1"
+                          style="width: 160px;"
+                          @update:value="(value: number | null) => { const mount = getSummaryContextMount(block, 'model'); if (mount?.model && value) mount.model.max_rows = value }"
                         />
-                      </a-form-item>
-                    </a-col>
-                    <a-col :span="8">
-                      <a-form-item label="建模表名">
-                        <a-input v-model:value="getSummaryContextMount(block, 'model')!.model!.table_name" />
-                      </a-form-item>
-                    </a-col>
-                    <a-col :span="8">
-                      <a-form-item label="关联字段">
-                        <a-input v-model:value="getSummaryContextMount(block, 'model')!.model!.join_field" placeholder="默认 id" />
-                      </a-form-item>
-                    </a-col>
-                  </a-row>
-                  <a-row :gutter="12">
-                    <a-col :span="8">
-                      <a-form-item label="查询方式">
-                        <a-select v-model:value="getSummaryContextMount(block, 'model')!.model!.mode" show-search option-filter-prop="label">
-                          <a-select-option value="exists">是否存在</a-select-option>
-                          <a-select-option value="count">存在条数</a-select-option>
-                          <a-select-option value="rows">返回匹配数据</a-select-option>
-                          <a-select-option value="custom_sql">自定义 SQL</a-select-option>
-                        </a-select>
-                      </a-form-item>
-                    </a-col>
-                    <a-col :span="8" v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'rows'">
-                      <a-form-item label="返回字段">
-                        <a-input
-                          :value="getSummaryContextMount(block, 'model')!.model!.return_fields?.join(',')"
-                          placeholder="逗号分隔"
-                          @update:value="(v: string) => setSummaryModelReturnFields(block, v)"
-                        />
-                      </a-form-item>
-                    </a-col>
-                  </a-row>
-                  <a-form-item v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'rows'" label="返回行数上限">
-                    <a-input-number v-model:value="getSummaryContextMount(block, 'model')!.model!.max_rows" :min="1" :max="50" style="width: 100%;" />
-                  </a-form-item>
-                  <a-form-item v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'custom_sql'" label="自定义 SQL">
+                        <a-checkbox :checked="getSummaryContextMount(block, 'model')!.model!.max_rows === -1" @change="(e: any) => setSummaryModelAllRows(block, !!e?.target?.checked)">
+                          {{ t('common.all') }}
+                        </a-checkbox>
+                      </a-space>
+                    </a-form-item>
+                    <div class="context-actions summary-model-actions">
+                      <a-button :loading="summaryContextTesting[summaryContextKey(block, 'model')]" @click="testSummaryContext(block, 'model')">测试建模查询</a-button>
+                    </div>
+                  </div>
+                  <a-form-item v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'custom_sql'" label="自定义 SQL" class="summary-model-sql-item">
                     <div class="sql-variable-bar">
                       <span>插入变量：</span>
                       <a-button size="small" @click="insertSummaryCustomSQLVariable(block, tableNameSQLVariable)">{{ tableNameSQLVariable }}</a-button>
@@ -3352,7 +3362,7 @@ const handleSave = async () => {
                     </div>
                     <a-textarea v-model:value="getSummaryContextMount(block, 'model')!.model!.custom_sql" :rows="4" :placeholder="customSQLPlaceholder" />
                   </a-form-item>
-                  <div class="context-actions">
+                  <div v-if="getSummaryContextMount(block, 'model')!.model?.mode !== 'rows'" class="context-actions">
                     <a-button :loading="summaryContextTesting[summaryContextKey(block, 'model')]" @click="testSummaryContext(block, 'model')">测试建模查询</a-button>
                   </div>
                   <pre v-if="summaryContextPreviews[summaryContextKey(block, 'model')]" class="context-preview">{{ summaryContextPreviews[summaryContextKey(block, 'model')] }}</pre>
@@ -5353,6 +5363,33 @@ const handleSave = async () => {
 .summary-context-box-body > .context-panel-title {
   display: none;
 }
+.summary-model-config-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 12px;
+}
+.summary-model-config-grid :deep(.ant-form-item) {
+  margin-bottom: 12px;
+}
+.summary-model-return-fields {
+  grid-column: span 2;
+}
+.summary-model-footer {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+}
+.summary-model-footer :deep(.ant-form-item) {
+  margin-bottom: 0;
+}
+.summary-model-actions {
+  margin: 0;
+  padding-bottom: 0;
+}
+.summary-model-sql-item {
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
 .summary-workflow-target-compact {
   display: flex;
   align-items: center;
@@ -5765,5 +5802,8 @@ const handleSave = async () => {
   .page-title { font-size: 20px; }
   .tab-nav { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .tab-btn { flex-shrink: 0; padding: 8px 14px; font-size: 13px; }
+  .summary-model-config-grid { grid-template-columns: 1fr; }
+  .summary-model-return-fields { grid-column: auto; }
+  .summary-model-footer { align-items: flex-start; flex-direction: column; gap: 8px; }
 }
 </style>
