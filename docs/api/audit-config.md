@@ -135,4 +135,4 @@ POST /api/tenant/rules/context/test
 
 **响应**：`data.context_text` 为注入 AI 的文本预览。
 
-建模表挂载的 `mode=rows` 时，`return_fields` 必须填写英文物理列名；服务端会基于泛微字段元数据将返回结果的列名转换为中文显示名。`max_rows=-1` 表示返回全部匹配行，正整数表示行数上限。
+建模表挂载会在 `context_text` 中显示“建模表：中文名（英文表名）”；`mode=rows` 时，`return_fields` 必须填写英文物理列名，服务端会基于泛微字段元数据将返回结果的列名转换为中文显示名。`max_rows=-1` 表示返回全部匹配行，正整数表示行数上限。

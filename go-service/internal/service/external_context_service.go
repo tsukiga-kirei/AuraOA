@@ -332,13 +332,15 @@ func (s *ExternalContextService) resolveModelMount(ctx context.Context, adapter 
 	if err != nil {
 		return fmt.Sprintf("【%s】\n建模表查询失败：%s", name, err.Error())
 	}
+	tableName := strings.TrimSpace(cfg.TableName)
 	var fieldLabels map[string]string
-	if res.Mode == "rows" {
-		if resolver, ok := adapter.(oa.ModelFieldLabelResolver); ok {
-			fieldLabels, _ = resolver.FetchModelFieldLabels(ctx, cfg.TableName)
+	if resolver, ok := adapter.(oa.ModelTableMetadataResolver); ok {
+		if metadata, err := resolver.FetchModelTableMetadata(ctx, cfg.TableName); err == nil && metadata != nil {
+			tableName = formatModelTableName(metadata.DisplayName, metadata.TableName)
+			fieldLabels = metadata.FieldLabels
 		}
 	}
-	return formatModelContextResult(name, sourceField, cfg, res, fieldLabels)
+	return formatModelContextResult(name, tableName, sourceField, cfg, res, fieldLabels)
 }
 
 func (s *ExternalContextService) getOAAdapter(tenant *model.Tenant, withAttachments bool) (oa.OAAdapter, error) {
@@ -562,9 +564,18 @@ func limitDetailRows(input map[string][]map[string]interface{}, maxRows int) map
 	return out
 }
 
-func formatModelContextResult(name, sourceField string, cfg *model.ExternalModelContextConfig, res *oa.ModelContextQueryResult, fieldLabels map[string]string) string {
+func formatModelTableName(displayName, tableName string) string {
+	displayName = strings.TrimSpace(displayName)
+	tableName = strings.TrimSpace(tableName)
+	if displayName == "" || displayName == tableName {
+		return tableName
+	}
+	return fmt.Sprintf("%s（%s）", displayName, tableName)
+}
+
+func formatModelContextResult(name, tableName, sourceField string, cfg *model.ExternalModelContextConfig, res *oa.ModelContextQueryResult, fieldLabels map[string]string) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("【%s】\n来源字段：%s\n查询方式：%s", name, sourceField, firstNonEmpty(cfg.Mode, "exists")))
+	sb.WriteString(fmt.Sprintf("【%s】\n建模表：%s\n来源字段：%s\n查询方式：%s", name, tableName, sourceField, firstNonEmpty(cfg.Mode, "exists")))
 	switch res.Mode {
 	case "exists":
 		if res.Exists {
