@@ -315,42 +315,54 @@ func (a *Ecology9Adapter) FetchFieldsByWorkflowID(ctx context.Context, workflowI
 }
 
 // SearchWorkflowDefinitions 检索 OA 流程定义，供外部关联选择目标流程。
+// 使用 Rows().Scan 显式扫描，避免 Oracle/DM 下 GORM struct tag 大小写映射导致名称/ID 全空。
 func (a *Ecology9Adapter) SearchWorkflowDefinitions(ctx context.Context, keyword string) ([]ProcessInfo, error) {
 	keyword = strings.TrimSpace(keyword)
-	type rowData struct {
-		WorkflowID int    `gorm:"column:workflow_id"`
-		Name       string `gorm:"column:workflow_name"`
-		TypeName   string `gorm:"column:type_name"`
-		MainTable  string `gorm:"column:main_table"`
+	if keyword == "" {
+		return []ProcessInfo{}, nil
 	}
-	rows := []rowData{}
-	db := a.db.WithContext(ctx).
+
+	selectSQL := strings.Join([]string{
+		"wb." + a.col("id"),
+		"COALESCE(wb." + a.col("workflowname") + ", '')",
+		"COALESCE(wt." + a.col("typename") + ", '')",
+		"COALESCE(b." + a.col("tablename") + ", '')",
+	}, ", ")
+	query := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_base")+" wb").
-		Select(strings.Join([]string{
-			"wb." + a.col("id") + " AS workflow_id",
-			"COALESCE(wb." + a.col("workflowname") + ", '') AS workflow_name",
-			"COALESCE(wt." + a.col("typename") + ", '') AS type_name",
-			"COALESCE(b." + a.col("tablename") + ", '') AS main_table",
-		}, ", ")).
+		Select(selectSQL).
 		Joins("LEFT JOIN "+a.tableName("workflow_type")+" wt ON wb."+a.col("workflowtype")+" = wt."+a.col("id")).
 		Joins("LEFT JOIN "+a.tableName("workflow_bill")+" b ON wb."+a.col("formid")+" = b."+a.col("id")).
 		Where("wb."+a.col("isvalid")+" = ?", "1")
-	if keyword != "" {
-		like := "%" + keyword + "%"
-		db = db.Where("wb."+a.col("workflowname")+" LIKE ? OR wt."+a.col("typename")+" LIKE ? OR b."+a.col("tablename")+" LIKE ?", like, like, like)
-	}
-	if err := db.Order("wb." + a.col("workflowname") + " ASC").Limit(30).Find(&rows).Error; err != nil {
+	like := "%" + keyword + "%"
+	query = query.Where(
+		"wb."+a.col("workflowname")+" LIKE ? OR wt."+a.col("typename")+" LIKE ? OR b."+a.col("tablename")+" LIKE ?",
+		like, like, like,
+	).Order("wb." + a.col("workflowname") + " ASC").Limit(30)
+
+	rows, err := query.Rows()
+	if err != nil {
 		return nil, fmt.Errorf("检索流程定义失败: %w", err)
 	}
-	out := make([]ProcessInfo, 0, len(rows))
-	for _, row := range rows {
+	defer rows.Close()
+
+	out := make([]ProcessInfo, 0, 30)
+	for rows.Next() {
+		var workflowID int
+		var workflowName, typeName, mainTable string
+		if err := rows.Scan(&workflowID, &workflowName, &typeName, &mainTable); err != nil {
+			return nil, fmt.Errorf("解析流程定义失败: %w", err)
+		}
 		out = append(out, ProcessInfo{
-			WorkflowID:       fmt.Sprintf("%d", row.WorkflowID),
-			ProcessType:      row.Name,
-			ProcessName:      row.Name,
-			ProcessTypeLabel: row.TypeName,
-			MainTable:        row.MainTable,
+			WorkflowID:       fmt.Sprintf("%d", workflowID),
+			ProcessType:      workflowName,
+			ProcessName:      workflowName,
+			ProcessTypeLabel: typeName,
+			MainTable:        mainTable,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("检索流程定义失败: %w", err)
 	}
 	return out, nil
 }

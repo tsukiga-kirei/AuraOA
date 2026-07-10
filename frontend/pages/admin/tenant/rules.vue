@@ -1155,6 +1155,31 @@ const summaryWorkflowKeyword = ref('')
 const summaryWorkflowRows = ref<ProcessInfo[]>([])
 const summaryWorkflowSelectedID = ref('')
 const summaryWorkflowSearching = ref(false)
+const summaryWorkflowHasSearched = ref(false)
+const summaryWorkflowDraftFields = ref<string[]>([])
+
+const summaryWorkflowBasicOptions = [
+  { label: '是否归档', value: 'archived' },
+  { label: '流程标题', value: 'title' },
+  { label: '发起人', value: 'applicant' },
+  { label: '发起部门', value: 'department' },
+  { label: '流程类型', value: 'process_type' },
+  { label: '当前节点', value: 'current_node' },
+  { label: '提交时间', value: 'submit_time' },
+]
+const summaryWorkflowBasicAllValues = summaryWorkflowBasicOptions.map(o => o.value)
+
+const isSummaryWorkflowBasicAllSelected = (block: SummaryBlockConfig) => {
+  const fields = getSummaryContextMount(block, 'workflow')?.workflow?.basic_fields || []
+  return summaryWorkflowBasicAllValues.every(v => fields.includes(v))
+}
+
+const toggleSummaryWorkflowBasicAll = (block: SummaryBlockConfig, checked: boolean) => {
+  const mount = getSummaryContextMount(block, 'workflow')
+  if (!mount?.workflow) return
+  mount.workflow.basic_fields = checked ? [...summaryWorkflowBasicAllValues] : []
+  mount.workflow.include_basic = checked
+}
 
 const summaryContextFieldOptionsForBlock = (block: SummaryBlockConfig) => {
   const allowed = block.field_mode === 'selected' ? new Set(block.selected_fields || []) : null
@@ -1221,8 +1246,10 @@ const summaryContextCollapsedHint = (block: SummaryBlockConfig, type: 'workflow'
   if (!mount) return ''
   if (type === 'workflow') {
     const sourceLabel = summaryFieldOptions.value.find(f => f.value === mount.source_field)?.label
-    const mode = mount.workflow?.data_mode === 'selected_fields' ? '指定流程字段' : '全部字段'
-    return [sourceLabel || '未选来源字段', mode].join(' · ')
+    if (mount.workflow?.data_mode === 'selected_fields') {
+      return [sourceLabel || '未选来源字段', summaryWorkflowConfigSummary(block) || '未配置目标流程'].join(' · ')
+    }
+    return [sourceLabel || '未选来源字段', '全部字段'].join(' · ')
   }
   const table = mount.model?.table_name?.trim()
   return table ? `表 ${table}` : '未填建模表名'
@@ -1251,7 +1278,7 @@ const testSummaryContext = async (block: SummaryBlockConfig, type: 'workflow' | 
   }
 }
 
-const loadSummaryWorkflowFields = async (block: SummaryBlockConfig, target?: ProcessInfo) => {
+const loadSummaryWorkflowFields = async (block: SummaryBlockConfig, target?: ProcessInfo, options?: { silent?: boolean }) => {
   const mount = getSummaryContextMount(block, 'workflow')
   const processType = target?.process_name || target?.process_type || mount?.workflow?.target_process_type?.trim()
   const workflowID = target?.workflow_id || mount?.workflow?.target_workflow_id || ''
@@ -1269,7 +1296,7 @@ const loadSummaryWorkflowFields = async (block: SummaryBlockConfig, target?: Pro
         value: `${dt.table_name}:${f.field_key}`,
       }))),
     ]
-    message.success('目标流程字段已加载')
+    if (!options?.silent) message.success('目标流程字段已加载')
   } catch (e: any) {
     message.error('目标流程字段加载失败：' + (e.message || '未知错误'))
   } finally {
@@ -1317,22 +1344,40 @@ const openSummaryWorkflowConfigModal = async (block: SummaryBlockConfig) => {
   const wf = getSummaryContextMount(block, 'workflow')?.workflow
   if (!wf) return
   summaryWorkflowConfigBlockId.value = block.id
-  summaryWorkflowKeyword.value = wf.target_process_type || ''
+  summaryWorkflowKeyword.value = ''
+  summaryWorkflowRows.value = []
+  summaryWorkflowHasSearched.value = false
   summaryWorkflowSelectedID.value = wf.target_workflow_id || wf.target_process_type || ''
+  summaryWorkflowDraftFields.value = [...(wf.selected_fields || [])]
   summaryWorkflowConfigOpen.value = true
-  await searchSummaryWorkflows()
+  // 已配置过的目标流程：仅静默加载字段选项，不自动检索 OA
   if ((wf.target_process_type || wf.target_workflow_id) && !summaryWorkflowFieldOptions.value[block.id]?.length) {
-    await loadSummaryWorkflowFields(block)
+    await loadSummaryWorkflowFields(block, undefined, { silent: true })
   }
 }
 
+const selectSummaryWorkflowInModal = async (item: ProcessInfo) => {
+  const nextID = item.workflow_id || item.process_name || item.process_type
+  if (summaryWorkflowSelectedID.value === nextID) return
+  summaryWorkflowSelectedID.value = nextID
+  summaryWorkflowDraftFields.value = []
+  const block = currentSummaryWorkflowBlock.value
+  if (!block) return
+  await loadSummaryWorkflowFields(block, item, { silent: true })
+}
+
 const searchSummaryWorkflows = async () => {
+  const keyword = summaryWorkflowKeyword.value.trim()
+  if (!keyword) {
+    message.warning('请输入流程名称、分类或主表名后再搜索')
+    summaryWorkflowRows.value = []
+    summaryWorkflowHasSearched.value = false
+    return
+  }
   summaryWorkflowSearching.value = true
   try {
-    summaryWorkflowRows.value = await summaryApi.searchWorkflows(summaryWorkflowKeyword.value.trim())
-    if (!summaryWorkflowSelectedID.value && summaryWorkflowRows.value.length) {
-      summaryWorkflowSelectedID.value = summaryWorkflowRows.value[0].workflow_id || summaryWorkflowRows.value[0].process_name
-    }
+    summaryWorkflowRows.value = await summaryApi.searchWorkflows(keyword)
+    summaryWorkflowHasSearched.value = true
   } catch (e: any) {
     message.error('流程检索失败：' + (e.message || '未知错误'))
   } finally {
@@ -1340,26 +1385,32 @@ const searchSummaryWorkflows = async () => {
   }
 }
 
+const summaryWorkflowDisplayName = (item: ProcessInfo) =>
+  item.process_name || item.process_type || (item.workflow_id && item.workflow_id !== '0' ? `流程 ${item.workflow_id}` : '未命名流程')
+
 const confirmSummaryWorkflowConfig = async () => {
   const block = currentSummaryWorkflowBlock.value
-  const row = summaryWorkflowRows.value.find(item => (item.workflow_id || item.process_name) === summaryWorkflowSelectedID.value)
   const mount = block ? getSummaryContextMount(block, 'workflow') : undefined
-  if (!block || !row || !mount?.workflow) {
-    message.warning('请选择目标流程')
+  if (!block || !mount?.workflow) {
+    message.warning('请先搜索并选择目标流程')
     return Promise.reject()
   }
-  const workflowChanged =
-    mount.workflow.target_workflow_id !== (row.workflow_id || '') ||
-    mount.workflow.target_process_type !== (row.process_name || row.process_type)
-  mount.workflow.target_process_type = row.process_name || row.process_type
-  mount.workflow.target_workflow_id = row.workflow_id || ''
-  mount.workflow.target_process_label = row.process_type_label || ''
-  mount.workflow.target_main_table = row.main_table || ''
-  mount.workflow.data_mode = 'selected_fields'
-  if (workflowChanged) {
-    mount.workflow.selected_fields = []
-    await loadSummaryWorkflowFields(block, row)
+
+  const row = summaryWorkflowRows.value.find(item =>
+    (item.workflow_id || item.process_name || item.process_type) === summaryWorkflowSelectedID.value
+  )
+  if (row) {
+    mount.workflow.target_process_type = row.process_name || row.process_type
+    mount.workflow.target_workflow_id = row.workflow_id || ''
+    mount.workflow.target_process_label = row.process_type_label || ''
+    mount.workflow.target_main_table = row.main_table || ''
+  } else if (!mount.workflow.target_process_type && !mount.workflow.target_workflow_id) {
+    message.warning('请先搜索并选择目标流程')
+    return Promise.reject()
   }
+
+  mount.workflow.data_mode = 'selected_fields'
+  mount.workflow.selected_fields = [...summaryWorkflowDraftFields.value]
   summaryWorkflowConfigOpen.value = false
 }
 
@@ -3103,11 +3154,48 @@ const handleSave = async () => {
                           v-model:value="getSummaryContextMount(block, 'workflow')!.source_field"
                           :options="summaryContextFieldOptionsForBlock(block)"
                           show-search
+                          option-filter-prop="label"
                           placeholder="选择已引入字段"
                         />
                       </a-form-item>
                     </a-col>
                   </a-row>
+                  <a-form-item class="summary-basic-fields-item" :colon="false">
+                    <template #label>
+                      <div class="basic-fields-label-row">
+                        <span>流程基础信息</span>
+                        <a-checkbox
+                          :checked="isSummaryWorkflowBasicAllSelected(block)"
+                          :indeterminate="!!getSummaryContextMount(block, 'workflow')!.workflow!.basic_fields?.length && !isSummaryWorkflowBasicAllSelected(block)"
+                          @change="(e: any) => toggleSummaryWorkflowBasicAll(block, !!e?.target?.checked)"
+                        >
+                          全选
+                        </a-checkbox>
+                      </div>
+                    </template>
+                    <div class="basic-fields-panel">
+                      <a-checkbox-group
+                        v-model:value="getSummaryContextMount(block, 'workflow')!.workflow!.basic_fields"
+                        class="basic-fields-group"
+                        @change="(vals: any) => {
+                          const mount = getSummaryContextMount(block, 'workflow')
+                          if (mount?.workflow) mount.workflow.include_basic = Array.isArray(vals) && vals.length > 0
+                        }"
+                      >
+                        <label
+                          v-for="opt in summaryWorkflowBasicOptions"
+                          :key="opt.value"
+                          class="basic-field-chip"
+                          :class="{ active: getSummaryContextMount(block, 'workflow')!.workflow!.basic_fields?.includes(opt.value) }"
+                        >
+                          <a-checkbox :value="opt.value">{{ opt.label }}</a-checkbox>
+                        </label>
+                      </a-checkbox-group>
+                      <div class="basic-fields-hint">
+                        仅勾选的项会注入 AI；全部取消则不传基础信息
+                      </div>
+                    </div>
+                  </a-form-item>
                   <a-form-item label="引用流程表单数据" class="summary-workflow-data-mode-item">
                     <div class="field-mode-switch summary-context-mode-switch">
                       <div
@@ -3128,32 +3216,12 @@ const handleSave = async () => {
                       </div>
                     </div>
                   </a-form-item>
-                  <div v-if="getSummaryContextMount(block, 'workflow')!.workflow?.data_mode === 'selected_fields'" class="summary-context-box summary-context-box--inner">
-                    <div class="target-flow-summary">
-                      <div>
-                        <div class="target-flow-label">目标流程</div>
-                        <div class="target-flow-value">{{ summaryTargetWorkflowSummary(block) || '尚未选择' }}</div>
-                      </div>
-                      <a-button :loading="summaryWorkflowFieldLoading[block.id]" @click="openSummaryWorkflowPicker(block)">
-                        {{ summaryTargetWorkflowSummary(block) ? '更换流程' : '选择流程' }}
-                      </a-button>
+                  <div v-if="getSummaryContextMount(block, 'workflow')!.workflow?.data_mode === 'selected_fields'" class="summary-workflow-target-compact">
+                    <div class="summary-workflow-target-meta">
+                      <div class="target-flow-label">目标流程引用</div>
+                      <div class="target-flow-value">{{ summaryWorkflowConfigSummary(block) || '尚未配置' }}</div>
                     </div>
-                    <a-form-item label="引用流程字段">
-                      <a-select
-                        v-model:value="getSummaryContextMount(block, 'workflow')!.workflow!.selected_fields"
-                        :options="summaryWorkflowFieldOptions[block.id] || []"
-                        mode="multiple"
-                        show-search
-                        placeholder="先加载目标流程字段，再选择要提供给 AI 的字段"
-                      />
-                    </a-form-item>
-                    <a-form-item label="流程类型不一致时">
-                      <a-select v-model:value="getSummaryContextMount(block, 'workflow')!.workflow!.fallback_strategy">
-                        <a-select-option value="basic_with_notice">仅提供基础信息并提示模型类型不一致</a-select-option>
-                        <a-select-option value="all_fields">尝试读取实际流程全部字段</a-select-option>
-                        <a-select-option value="ignore">忽略该引用流程</a-select-option>
-                      </a-select>
-                    </a-form-item>
+                    <a-button @click="openSummaryWorkflowConfigModal(block)">配置</a-button>
                   </div>
                   <div class="context-actions">
                     <a-button :loading="summaryContextTesting[summaryContextKey(block, 'workflow')]" @click="testSummaryContext(block, 'workflow')">测试关联流程</a-button>
@@ -3493,49 +3561,80 @@ const handleSave = async () => {
     </a-modal>
 
     <a-modal
-      v-model:open="summaryWorkflowPickerOpen"
-      title="选择目标流程"
+      v-model:open="summaryWorkflowConfigOpen"
+      title="配置目标流程引用"
       :width="720"
-      ok-text="引入流程"
+      ok-text="确定"
       cancel-text="取消"
       :confirm-loading="currentSummaryWorkflowBlock ? !!summaryWorkflowFieldLoading[currentSummaryWorkflowBlock.id] : false"
-      @ok="confirmSummaryWorkflow"
+      @ok="confirmSummaryWorkflowConfig"
     >
-      <div class="workflow-picker">
-        <div class="workflow-picker-search">
-          <a-input
-            v-model:value="summaryWorkflowKeyword"
-            placeholder="输入流程名称、流程分类或主表名搜索"
-            allow-clear
-            @press-enter="searchSummaryWorkflows"
-          />
-          <a-button type="primary" :loading="summaryWorkflowSearching" @click="searchSummaryWorkflows">
-            搜索
-          </a-button>
+      <div v-if="currentSummaryWorkflowBlock" class="workflow-config-modal">
+        <div
+          v-if="summaryTargetWorkflowSummary(currentSummaryWorkflowBlock) && !summaryWorkflowRows.length"
+          class="summary-workflow-current"
+        >
+          <div class="target-flow-label">当前已选流程</div>
+          <div class="target-flow-value">{{ summaryTargetWorkflowSummary(currentSummaryWorkflowBlock) }}</div>
         </div>
-        <a-spin :spinning="summaryWorkflowSearching">
-          <div class="workflow-result-list">
-            <button
-              v-for="item in summaryWorkflowRows"
-              :key="item.workflow_id || item.process_name"
-              type="button"
-              class="workflow-result-item"
-              :class="{ active: summaryWorkflowSelectedID === (item.workflow_id || item.process_name) }"
-              @click="summaryWorkflowSelectedID = item.workflow_id || item.process_name"
-            >
-              <span class="workflow-result-radio"></span>
-              <span class="workflow-result-main">
-                <span class="workflow-result-name">{{ item.process_name || item.process_type }}</span>
-                <span class="workflow-result-meta">
-                  <span v-if="item.process_type_label">{{ item.process_type_label }}</span>
-                  <span v-if="item.main_table">{{ item.main_table }}</span>
-                  <span v-if="item.workflow_id">ID {{ item.workflow_id }}</span>
-                </span>
-              </span>
-            </button>
-            <a-empty v-if="!summaryWorkflowRows.length && !summaryWorkflowSearching" description="未找到匹配流程" />
+        <div class="workflow-picker">
+          <div class="workflow-picker-search">
+            <a-input
+              v-model:value="summaryWorkflowKeyword"
+              placeholder="输入流程名称、流程分类或主表名搜索"
+              allow-clear
+              @press-enter="searchSummaryWorkflows"
+            />
+            <a-button type="primary" :loading="summaryWorkflowSearching" @click="searchSummaryWorkflows">
+              搜索
+            </a-button>
           </div>
-        </a-spin>
+          <a-spin :spinning="summaryWorkflowSearching">
+            <div class="workflow-result-list workflow-result-list--modal">
+              <button
+                v-for="item in summaryWorkflowRows"
+                :key="item.workflow_id || item.process_name || item.process_type"
+                type="button"
+                class="workflow-result-item"
+                :class="{ active: summaryWorkflowSelectedID === (item.workflow_id || item.process_name || item.process_type) }"
+                @click="selectSummaryWorkflowInModal(item)"
+              >
+                <span class="workflow-result-radio"></span>
+                <span class="workflow-result-main">
+                  <span class="workflow-result-name">{{ summaryWorkflowDisplayName(item) }}</span>
+                  <span class="workflow-result-meta">
+                    <span v-if="item.process_type_label">{{ item.process_type_label }}</span>
+                    <span v-if="item.main_table">{{ item.main_table }}</span>
+                    <span v-if="item.workflow_id && item.workflow_id !== '0'">ID {{ item.workflow_id }}</span>
+                  </span>
+                </span>
+              </button>
+              <a-empty
+                v-if="!summaryWorkflowRows.length && !summaryWorkflowSearching"
+                :description="summaryWorkflowHasSearched ? '未找到匹配流程' : '输入关键词后点击搜索'"
+              />
+            </div>
+          </a-spin>
+        </div>
+        <a-form layout="vertical" class="workflow-config-form">
+          <a-form-item label="引用流程字段">
+            <a-select
+              v-model:value="summaryWorkflowDraftFields"
+              :options="summaryWorkflowFieldOptions[currentSummaryWorkflowBlock.id] || []"
+              mode="multiple"
+              show-search
+              option-filter-prop="label"
+              placeholder="先选择目标流程，再勾选要提供给 AI 的字段"
+            />
+          </a-form-item>
+          <a-form-item label="流程类型不一致时">
+            <a-select v-model:value="getSummaryContextMount(currentSummaryWorkflowBlock, 'workflow')!.workflow!.fallback_strategy">
+              <a-select-option value="basic_with_notice">仅提供基础信息并提示模型类型不一致</a-select-option>
+              <a-select-option value="all_fields">尝试读取实际流程全部字段</a-select-option>
+              <a-select-option value="ignore">忽略该引用流程</a-select-option>
+            </a-select>
+          </a-form-item>
+        </a-form>
       </div>
     </a-modal>
 
@@ -5058,8 +5157,39 @@ const handleSave = async () => {
 .summary-context-box-body > .context-panel-title {
   display: none;
 }
-.summary-context-box--inner {
+.summary-workflow-target-compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-top: 4px;
+  margin-bottom: 12px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
   background: var(--color-bg-card);
+}
+.summary-workflow-target-meta {
+  min-width: 0;
+  flex: 1;
+}
+.context-actions {
+  margin-top: 4px;
+}
+.summary-workflow-current {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+}
+.workflow-config-modal .workflow-config-form {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-light);
+}
+.workflow-result-list--modal {
+  max-height: 240px;
 }
 .summary-context-mode-switch {
   margin-bottom: 0;
@@ -5084,6 +5214,59 @@ const handleSave = async () => {
 }
 .summary-workflow-data-mode-item {
   margin-bottom: 12px;
+}
+.summary-basic-fields-item {
+  margin-bottom: 12px;
+}
+.summary-basic-fields-item :deep(.ant-form-item-label) {
+  width: 100%;
+}
+.summary-basic-fields-item :deep(.ant-form-item-label > label) {
+  width: 100%;
+}
+.basic-fields-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+.basic-fields-panel {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card);
+}
+.basic-fields-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.basic-field-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 999px;
+  background: var(--color-bg-hover);
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.basic-field-chip:hover {
+  border-color: rgba(91, 99, 211, .35);
+}
+.basic-field-chip.active {
+  border-color: rgba(91, 99, 211, .45);
+  background: rgba(91, 99, 211, .08);
+}
+.basic-field-chip :deep(.ant-checkbox-wrapper) {
+  margin: 0;
+}
+.basic-fields-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
 }
 .context-panel-title {
   font-weight: 600;
