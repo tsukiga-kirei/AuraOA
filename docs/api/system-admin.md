@@ -28,6 +28,17 @@ POST /api/admin/tenants
 PUT /api/admin/tenants/:id
 ```
 
+租户 Basic 单点登录相关请求字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `sso_basic_enabled` | boolean | 是否启用租户 Basic 单点登录 |
+| `sso_basic_password` | string | 共享密码，仅设置或轮换时传入，至少 8 位；加密保存且永不回显 |
+| `sso_basic_allowed_ips` | string | 允许的 OA 服务端 IP 或 CIDR，英文逗号分隔；空表示不限制 |
+| `sso_basic_allowed_domains` | string | 允许的 Origin/Referer 域名，英文逗号分隔；空表示不限制 |
+
+租户响应使用 `sso_basic_password_set` 表示是否已配置共享密码，不返回密码或密文。
+
 ---
 
 ### 删除租户

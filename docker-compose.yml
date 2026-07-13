@@ -57,6 +57,8 @@
         - REDIS_PORT=6379
         - REDIS_PASSWORD=${REDIS_PASSWORD}
         - JWT_SECRET=${JWT_SECRET}
+        # Basic 单点登录生成浏览器一次性地址时使用的 AuraOA 对外 HTTPS 地址；留空按请求自动推断。
+        - SSO_PUBLIC_BASE_URL=${SSO_PUBLIC_BASE_URL:-}
         # 应用统一时区：影响日志时间戳、Cron 调度、数据库会话时区、业务日期边界、导出/备份文件名等。
         - APP_TIMEZONE=${APP_TIMEZONE:-Asia/Shanghai}
         # Python AI 服务为可选组件；当前仓库未包含 ai-service 时保持为空即可。

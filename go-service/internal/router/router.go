@@ -19,6 +19,7 @@ func SetupRouter(
 	logger *zap.Logger,
 	allowedOrigins []string,
 	authHandler *handler.AuthHandler,
+	basicSSOHandler *handler.BasicSSOHandler,
 	orgHandler *handler.OrgHandler,
 	tenantHandler *handler.TenantHandler,
 	systemHandler *handler.SystemHandler,
@@ -56,6 +57,8 @@ func SetupRouter(
 	r.POST("/api/auth/bootstrap", authHandler.BootstrapAdmin)
 	r.POST("/api/auth/login", authHandler.Login)
 	r.POST("/api/auth/refresh", authHandler.Refresh)
+	r.GET("/api/auth/sso/basic-redirection", basicSSOHandler.Redirect)
+	r.GET("/api/auth/sso/basic-consume", basicSSOHandler.Consume)
 	r.GET("/api/tenants/list", tenantHandler.ListPublicTenants)
 
 	// 认证相关接口（需要 JWT 验证）：登出、角色切换、菜单获取、密码修改、个人信息及站内通知

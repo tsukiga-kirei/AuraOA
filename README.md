@@ -465,6 +465,7 @@ encryption:
 |------|------|
 | [开发规范](docs/development-guide.md) | 前后端约定、i18n、分页、接口、模块关联与自检清单 |
 | [OA 系统对接说明](docs/oa-integration.md) | OA 适配器架构、泛微 E9 实现、数据提取流程、未完成适配 |
+| [OA Basic 单点登录](docs/oa-basic-sso-integration.md) | OA 服务端 Basic 换取一次性浏览器登录地址的配置、Java 示例与联调说明 |
 | [AI 系统对接说明](docs/ai-integration.md) | AI 调用架构、两阶段审核流程、Token 配额管理、未完成适配 |
 
 ### API 接口文档（[`docs/api/`](docs/api/)）
@@ -472,7 +473,7 @@ encryption:
 | 文档 | 路由前缀 | 说明 |
 |------|---------|------|
 | [接口总览](docs/api/README.md) | `/api` | 通用约定、认证方式、角色说明 |
-| [认证接口](docs/api/auth.md) | `/api/auth` | 登录、登出、Token 刷新、角色切换、通知 |
+| [认证接口](docs/api/auth.md) | `/api/auth` | 登录、OA Basic 单点登录、登出、Token 刷新、角色切换、通知 |
 | [系统管理接口](docs/api/system-admin.md) | `/api/admin` | 租户管理、OA 连接、AI 模型、系统配置、监控 |
 | [组织架构接口](docs/api/org.md) | `/api/tenant/org` | 部门、角色、成员管理 |
 | [流程审核配置接口](docs/api/audit-config.md) | `/api/tenant/rules` | 流程配置、审核规则、提示词模板 |
