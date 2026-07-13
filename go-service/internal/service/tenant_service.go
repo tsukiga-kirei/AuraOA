@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,7 @@ import (
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
+	"auraoa/go-service/internal/pkg/crypto"
 	"auraoa/go-service/internal/pkg/errcode"
 	"auraoa/go-service/internal/pkg/hash"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
@@ -407,6 +409,12 @@ func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest)
 			return nil, newServiceError(errcode.ErrParamValidation, "联系人手机号必须为11位数字")
 		}
 	}
+	if req.SSOBasicPassword != nil && *req.SSOBasicPassword != "" && len(*req.SSOBasicPassword) < 8 {
+		return nil, newServiceError(errcode.ErrParamValidation, "单点登录共享密码至少需要 8 位")
+	}
+	if req.SSOBasicEnabled != nil && *req.SSOBasicEnabled && tenant.SSOBasicPassword == "" && (req.SSOBasicPassword == nil || *req.SSOBasicPassword == "") {
+		return nil, newServiceError(errcode.ErrParamValidation, "启用单点登录前必须设置共享密码")
+	}
 
 	// 构建更新字段 map，只包含实际传入的字段
 	fields := make(map[string]interface{})
@@ -422,6 +430,22 @@ func (s *TenantService) UpdateTenant(id uuid.UUID, req *dto.UpdateTenantRequest)
 	}
 	if req.EmbedEnabled != nil {
 		fields["embed_enabled"] = *req.EmbedEnabled
+	}
+	if req.SSOBasicEnabled != nil {
+		fields["sso_basic_enabled"] = *req.SSOBasicEnabled
+	}
+	if req.SSOBasicPassword != nil && *req.SSOBasicPassword != "" {
+		encrypted, encryptErr := crypto.Encrypt(*req.SSOBasicPassword)
+		if encryptErr != nil {
+			return nil, newServiceError(errcode.ErrInternalServer, "加密单点登录共享密码失败")
+		}
+		fields["sso_basic_password"] = encrypted
+	}
+	if req.SSOBasicAllowedIPs != nil {
+		fields["sso_basic_allowed_ips"] = strings.TrimSpace(*req.SSOBasicAllowedIPs)
+	}
+	if req.SSOBasicAllowedDomains != nil {
+		fields["sso_basic_allowed_domains"] = strings.TrimSpace(*req.SSOBasicAllowedDomains)
 	}
 	if req.OADBConnectionID != nil {
 		if *req.OADBConnectionID == "" {
@@ -795,33 +819,37 @@ func toTenantResponse(t *model.Tenant) dto.TenantResponse {
 	temp := t.Temperature
 
 	return dto.TenantResponse{
-		ID:                  t.ID.String(),
-		Name:                t.Name,
-		Code:                t.Code,
-		Description:         t.Description,
-		Status:              t.Status,
-		EmbedEnabled:        t.EmbedEnabled,
-		EmbedTokenConfigured: t.EmbedTokenHash != "",
-		EmbedTokenHint:      t.EmbedTokenHint,
-		EmbedTokenRotatedAt: embedTokenRotatedAt,
-		OADBConnectionID:    oaConnID,
-		TokenQuota:          t.TokenQuota,
-		TokenUsed:           t.TokenUsed,
-		MaxConcurrency:      t.MaxConcurrency,
-		PrimaryModelID:      primaryModelID,
-		FallbackModelID:     fallbackModelID,
-		MaxTokensPerRequest: t.MaxTokensPerRequest,
-		Temperature:         temp,
-		TimeoutSeconds:      t.TimeoutSeconds,
-		RetryCount:          t.RetryCount,
-		LogRetentionDays:    t.LogRetentionDays,
-		DataRetentionDays:   t.DataRetentionDays,
-		ContactName:         t.ContactName,
-		ContactEmail:        t.ContactEmail,
-		ContactPhone:        t.ContactPhone,
-		AdminUserID:         adminUserID,
-		CreatedAt:           t.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:           t.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ID:                     t.ID.String(),
+		Name:                   t.Name,
+		Code:                   t.Code,
+		Description:            t.Description,
+		Status:                 t.Status,
+		EmbedEnabled:           t.EmbedEnabled,
+		EmbedTokenConfigured:   t.EmbedTokenHash != "",
+		EmbedTokenHint:         t.EmbedTokenHint,
+		EmbedTokenRotatedAt:    embedTokenRotatedAt,
+		SSOBasicEnabled:        t.SSOBasicEnabled,
+		SSOBasicPasswordSet:    t.SSOBasicPassword != "",
+		SSOBasicAllowedIPs:     t.SSOBasicAllowedIPs,
+		SSOBasicAllowedDomains: t.SSOBasicAllowedDomains,
+		OADBConnectionID:       oaConnID,
+		TokenQuota:             t.TokenQuota,
+		TokenUsed:              t.TokenUsed,
+		MaxConcurrency:         t.MaxConcurrency,
+		PrimaryModelID:         primaryModelID,
+		FallbackModelID:        fallbackModelID,
+		MaxTokensPerRequest:    t.MaxTokensPerRequest,
+		Temperature:            temp,
+		TimeoutSeconds:         t.TimeoutSeconds,
+		RetryCount:             t.RetryCount,
+		LogRetentionDays:       t.LogRetentionDays,
+		DataRetentionDays:      t.DataRetentionDays,
+		ContactName:            t.ContactName,
+		ContactEmail:           t.ContactEmail,
+		ContactPhone:           t.ContactPhone,
+		AdminUserID:            adminUserID,
+		CreatedAt:              t.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:              t.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 

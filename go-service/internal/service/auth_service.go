@@ -202,13 +202,35 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 		return nil, newServiceError(errcode.ErrWrongPassword, "用户名或密码错误")
 	}
 
-	// 5. 若指定了 tenant_id 且非 system_admin，校验租户是否存在且处于活跃状态
+	return s.issueLoginSession(user, req.TenantID, req.PreferredRole, clientIP, userAgent, "password")
+}
+
+// LoginWithBasicSSO 为已通过租户 Basic 共享凭据校验的本地用户签发 AuraOA 会话。
+// 该入口不校验用户个人密码，也不允许进入 system_admin 身份。
+func (s *AuthService) LoginWithBasicSSO(username, tenantID, preferredRole, clientIP, userAgent string) (*dto.LoginResponse, error) {
+	if preferredRole != "business" && preferredRole != "tenant_admin" {
+		return nil, newServiceError(errcode.ErrParamValidation, "单点登录入口仅支持 business 或 tenant_admin")
+	}
+	user, err := s.userRepo.FindByUsername(username)
+	if err != nil || user.Status != "active" {
+		return nil, newServiceError(errcode.ErrSSOUserUnavailable, "单点登录对应的本地用户不存在或已停用")
+	}
+	return s.issueLoginSession(user, tenantID, preferredRole, clientIP, userAgent, "basic_sso")
+}
+
+// issueLoginSession 统一完成密码登录与单点登录通过身份校验后的授权、令牌签发和会话落库。
+func (s *AuthService) issueLoginSession(user *model.User, tenantID, preferredRole, clientIP, userAgent, loginSource string) (*dto.LoginResponse, error) {
+	if clientIP == "::1" {
+		clientIP = "127.0.0.1"
+	}
+
 	var tenant *model.Tenant
-	if req.TenantID != "" && req.PreferredRole != "system_admin" {
-		tenantUUID, parseErr := uuid.Parse(req.TenantID)
+	if tenantID != "" && preferredRole != "system_admin" {
+		tenantUUID, parseErr := uuid.Parse(tenantID)
 		if parseErr != nil {
 			return nil, newServiceError(errcode.ErrTenantNotFound, "租户不存在或已停用")
 		}
+		var err error
 		tenant, err = s.userRepo.FindTenantByID(tenantUUID)
 		if err != nil || tenant.Status != "active" {
 			return nil, newServiceError(errcode.ErrTenantNotFound, "租户不存在或已停用")
@@ -223,8 +245,8 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 
 	// 7. 若指定了 tenant_id，过滤出该租户下的角色分配
 	filtered := assignments
-	if req.TenantID != "" && req.PreferredRole != "system_admin" {
-		tenantUUID, _ := uuid.Parse(req.TenantID)
+	if tenantID != "" && preferredRole != "system_admin" {
+		tenantUUID, _ := uuid.Parse(tenantID)
 		filtered = filterAssignmentsByTenant(assignments, &tenantUUID, false)
 		if len(filtered) == 0 {
 			return nil, newServiceError(errcode.ErrNoRoleInTenant, "用户在该租户无角色分配")
@@ -232,10 +254,10 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 	}
 
 	// 8. 按优先级选择活跃角色（preferred_role > system_admin > tenant_admin > business）
-	activeAssignment := selectActiveRole(filtered, req.PreferredRole)
+	activeAssignment := selectActiveRole(filtered, preferredRole)
 
 	// 若显式指定了 preferred_role，但最终选中的角色不匹配，则拒绝登录，避免静默回退到其他身份。
-	if req.PreferredRole != "" && activeAssignment.Role != req.PreferredRole {
+	if preferredRole != "" && activeAssignment.Role != preferredRole {
 		return nil, newServiceError(errcode.ErrNoRoleInTenant, "所选登录身份与账号角色不匹配")
 	}
 
@@ -279,8 +301,8 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 
 	// 12. 写入登录历史记录
 	var loginTenantID *uuid.UUID
-	if req.TenantID != "" {
-		tid, _ := uuid.Parse(req.TenantID)
+	if tenantID != "" {
+		tid, _ := uuid.Parse(tenantID)
 		loginTenantID = &tid
 	}
 	history := &model.LoginHistory{
@@ -376,6 +398,7 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 	logFields := []zap.Field{
 		zap.String("username", user.Username),
 		zap.String("role", activeAssignment.Role),
+		zap.String("loginSource", loginSource),
 	}
 	if activeRoleClaim.TenantID != nil {
 		logFields = append(logFields, zap.String("tenantID", *activeRoleClaim.TenantID))

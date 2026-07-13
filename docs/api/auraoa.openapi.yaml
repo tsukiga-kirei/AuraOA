@@ -201,6 +201,53 @@ paths:
               properties:
                 refresh_token:
                   type: string
+  /api/auth/sso/basic-redirection:
+    get:
+      summary: OA 服务端使用 Basic 凭据换取一次性浏览器登录地址
+      tags:
+      - Auth
+      security:
+      - basicAuth: []
+      parameters:
+      - name: portal
+        in: query
+        schema:
+          type: string
+          enum: [business, tenant_admin]
+          default: business
+      responses:
+        '302':
+          description: 换址成功；Location 指向 60 秒内有效且仅可消费一次的登录地址
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/auth/sso/basic-consume:
+    get:
+      summary: 浏览器消费 Basic 单点登录交接码
+      tags:
+      - Auth
+      security: []
+      parameters:
+      - name: code
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 登录桥接页，写入 AuraOA 本地登录态后跳转工作台
+          content:
+            text/html:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
   /api/tenants/list:
     get:
       summary: 获取公开租户列表（登录页）
@@ -956,6 +1003,25 @@ paths:
           type: string
           format: uuid
         description: 资源 ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sso_basic_enabled:
+                  type: boolean
+                sso_basic_password:
+                  type: string
+                  minLength: 8
+                  description: 仅设置或轮换时传入，响应永不回显
+                sso_basic_allowed_ips:
+                  type: string
+                  description: 逗号分隔的 IP 或 CIDR
+                sso_basic_allowed_domains:
+                  type: string
+                  description: 逗号分隔的 Origin/Referer 域名
     delete:
       summary: 删除租户
       tags:
@@ -5427,6 +5493,10 @@ components:
       in: header
       name: X-Embed-Token
       description: OA 嵌入页访问令牌（租户级 embed_token）
+    basicAuth:
+      type: http
+      scheme: basic
+      description: 用户名格式 tenantCode/username，密码为租户 Basic 单点登录共享密码
   responses:
     ErrorResponse:
       description: 业务错误

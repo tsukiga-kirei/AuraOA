@@ -37,6 +37,8 @@ const {
 interface TenantData {
   id: string; name: string; code: string; description: string; status: string
   embed_enabled: boolean; embed_token_configured: boolean; embed_token_hint: string; embed_token_rotated_at: string
+  sso_basic_enabled: boolean; sso_basic_password_set: boolean
+  sso_basic_allowed_ips: string; sso_basic_allowed_domains: string
   oa_db_connection_id: string; token_quota: number; token_used: number; max_concurrency: number
   primary_model_id: string; fallback_model_id: string
   max_tokens_per_request: number; temperature: number; timeout_seconds: number; retry_count: number
@@ -57,6 +59,16 @@ const selectedTenant = ref<TenantData | null>(null)
 const showCreate = ref(false)
 const showDetail = ref(false)
 const detailActiveTab = ref('basic')
+const ssoBasicPassword = ref('')
+const ssoEndpoint = computed(() => process.client
+  ? `${window.location.origin}/api/auth/sso/basic-redirection`
+  : '/api/auth/sso/basic-redirection')
+const ssoUsernameExample = computed(() => `${selectedTenant.value?.code || ''}/<OA loginid>`)
+
+const copySSOEndpoint = async () => {
+  await navigator.clipboard.writeText(ssoEndpoint.value)
+  message.success(t('admin.tenants.ssoEndpointCopied'))
+}
 
 // 后端获取的 OA 连接 & AI 模型
 const oaConnections = ref<any[]>([])
@@ -244,6 +256,7 @@ const createTenant = async () => {
 const openDetail = async (tenant: TenantData) => {
   selectedTenant.value = { ...tenant }
   detailActiveTab.value = 'basic'
+  ssoBasicPassword.value = ''
   rotatedEmbedToken.value = ''
   manualEmbedToken.value = ''
   embedScriptTarget.value = 'all'
@@ -287,6 +300,16 @@ const saveTenantDetail = async () => {
       return
     }
   }
+  if (selectedTenant.value.sso_basic_enabled && !selectedTenant.value.sso_basic_password_set && !ssoBasicPassword.value) {
+    detailActiveTab.value = 'sso'
+    message.warning(t('admin.tenants.ssoPasswordRequired'))
+    return
+  }
+  if (ssoBasicPassword.value && ssoBasicPassword.value.length < 8) {
+    detailActiveTab.value = 'sso'
+    message.warning(t('admin.tenants.ssoPasswordLength'))
+    return
+  }
   try {
     const s = selectedTenant.value
     const updated = await apiUpdateTenant(s.id, {
@@ -294,6 +317,10 @@ const saveTenantDetail = async () => {
       description: s.description,
       status: s.status,
       embed_enabled: s.embed_enabled,
+      sso_basic_enabled: s.sso_basic_enabled,
+      ...(ssoBasicPassword.value ? { sso_basic_password: ssoBasicPassword.value } : {}),
+      sso_basic_allowed_ips: s.sso_basic_allowed_ips,
+      sso_basic_allowed_domains: s.sso_basic_allowed_domains,
       oa_db_connection_id: s.oa_db_connection_id || null,
       token_quota: s.token_quota,
       max_concurrency: s.max_concurrency,
@@ -897,6 +924,7 @@ const confirmDeleteTenant = async () => {
               { key: 'ai', label: t('admin.tenants.tabAI'), icon: RobotOutlined },
               { key: 'quota', label: t('admin.tenants.tabQuota'), icon: ThunderboltOutlined },
               { key: 'embed', label: t('admin.tenants.tabEmbed'), icon: LinkOutlined },
+              { key: 'sso', label: t('admin.tenants.tabSSO'), icon: LockOutlined },
               { key: 'members', label: t('admin.tenants.tabMembers'), icon: TeamOutlined },
               { key: 'security', label: t('admin.tenants.tabSecurity'), icon: SafetyCertificateOutlined },
             ]"
@@ -1077,6 +1105,53 @@ const confirmDeleteTenant = async () => {
                 </a-form-item>
               </a-col>
             </a-row>
+          </a-form>
+        </div>
+
+        <!--Basic 单点登录选项卡-->
+        <div v-if="detailActiveTab === 'sso'" class="detail-section">
+          <div class="section-header">
+            <h3><LockOutlined /> {{ t('admin.tenants.ssoTitle') }}</h3>
+          </div>
+          <a-alert type="info" show-icon :message="t('admin.tenants.ssoHint')" style="margin-bottom: 16px;" />
+          <a-form layout="vertical">
+            <a-form-item :label="t('admin.tenants.ssoEnabled')">
+              <a-switch v-model:checked="selectedTenant.sso_basic_enabled" />
+              <span style="margin-left: 10px; color: var(--color-text-secondary);">{{ t('admin.tenants.ssoEnabledHint') }}</span>
+            </a-form-item>
+            <a-form-item :label="t('admin.tenants.ssoEndpoint')">
+              <a-space-compact block class="sso-endpoint-field">
+                <a-input :value="ssoEndpoint" readonly />
+                <a-tooltip :title="t('admin.tenants.ssoCopyEndpoint')">
+                  <a-button
+                    class="sso-copy-button"
+                    :aria-label="t('admin.tenants.ssoCopyEndpoint')"
+                    @click="copySSOEndpoint"
+                  >
+                    <CopyOutlined />
+                  </a-button>
+                </a-tooltip>
+              </a-space-compact>
+            </a-form-item>
+            <a-form-item :label="t('admin.tenants.ssoUsernameFormat')">
+              <a-input :value="ssoUsernameExample" readonly />
+            </a-form-item>
+            <a-form-item :label="t('admin.tenants.ssoSharedPassword')" :required="selectedTenant.sso_basic_enabled && !selectedTenant.sso_basic_password_set">
+              <a-input-password
+                v-model:value="ssoBasicPassword"
+                :placeholder="selectedTenant.sso_basic_password_set ? t('admin.tenants.ssoPasswordConfigured') : t('admin.tenants.ssoPasswordPlaceholder')"
+                autocomplete="new-password"
+              />
+              <div class="form-hint">{{ t('admin.tenants.ssoPasswordHint') }}</div>
+            </a-form-item>
+            <a-form-item :label="t('admin.tenants.ssoAllowedIPs')">
+              <a-textarea v-model:value="selectedTenant.sso_basic_allowed_ips" :rows="2" :placeholder="t('admin.tenants.ssoAllowedIPsPlaceholder')" />
+              <div class="form-hint">{{ t('admin.tenants.ssoAllowedIPsHint') }}</div>
+            </a-form-item>
+            <a-form-item :label="t('admin.tenants.ssoAllowedDomains')">
+              <a-textarea v-model:value="selectedTenant.sso_basic_allowed_domains" :rows="2" :placeholder="t('admin.tenants.ssoAllowedDomainsPlaceholder')" />
+              <div class="form-hint">{{ t('admin.tenants.ssoAllowedDomainsHint') }}</div>
+            </a-form-item>
           </a-form>
         </div>
 
@@ -1562,6 +1637,15 @@ const confirmDeleteTenant = async () => {
 .switch-label { font-size: 13px; color: var(--color-text-tertiary); margin-left: 10px; }
 .slider-value { font-size: 14px; font-weight: 600; color: var(--color-primary); margin-left: 8px; }
 .form-hint { font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px; }
+.sso-endpoint-field { width: 100%; }
+.sso-endpoint-field :deep(.ant-input) { min-width: 0; }
+.sso-copy-button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 42px; flex: 0 0 42px; padding-inline: 0;
+  color: var(--color-text-secondary);
+}
+.sso-copy-button:hover,
+.sso-copy-button:focus-visible { color: var(--color-primary); }
 
 .usage-display {
   background: var(--color-bg-card); border-radius: var(--radius-md); padding: 14px;

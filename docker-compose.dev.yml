@@ -29,6 +29,7 @@ services:
       - REDIS_PASSWORD=
       - SERVER_PORT=8080
       - JWT_SECRET=dev_jwt_secret_change_me
+      - SSO_PUBLIC_BASE_URL=${SSO_PUBLIC_BASE_URL:-}
       - ENCRYPTION_KEY=4f9e2b8c5a1d7f0e3a6c9b2d5e8f1a4c
       # 应用统一时区：影响日志、Cron、数据库会话时区、业务日期边界等
       - APP_TIMEZONE=${APP_TIMEZONE:-Asia/Shanghai}

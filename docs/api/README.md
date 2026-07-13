@@ -75,7 +75,7 @@ Authorization: Bearer <access_token>
 
 | 文档 | 路由前缀 | 说明 |
 |------|---------|------|
-| [认证接口](./auth.md) | `/api/auth` | 登录、登出、Token 刷新、角色切换、个人信息 |
+| [认证接口](./auth.md) | `/api/auth` | 登录、OA Basic 单点登录、登出、Token 刷新、角色切换、个人信息 |
 | [系统管理接口](./system-admin.md) | `/api/admin` | 租户管理、OA 连接、AI 模型、系统配置 |
 | [组织架构接口](./org.md) | `/api/tenant/org` | 部门、角色、成员管理 |
 | [流程审核配置接口](./audit-config.md) | `/api/tenant/rules` | 流程审核配置、审核规则、提示词模板 |

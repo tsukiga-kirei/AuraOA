@@ -5,6 +5,11 @@ app:
   # 应用统一时区（IANA 名称），影响日志时间戳、Cron 调度、业务日期边界、导出文件名等。
   timezone: "Asia/Shanghai"
 
+sso:
+  # 浏览器可访问的 AuraOA 对外地址，用于生成 OA Basic 单点登录的一次性跳转 URL。
+  # 留空时根据请求 Host 和 X-Forwarded-Proto 自动推断；生产建议显式配置 HTTPS 地址。
+  public_base_url: ""
+
 database:
   host: localhost
   port: 5432

@@ -84,6 +84,33 @@ POST /api/auth/refresh
 
 ---
 
+### OA Basic 单点登录换址
+
+```
+GET /api/auth/sso/basic-redirection?portal=business
+Authorization: Basic base64(tenantCode/username:sharedPassword)
+```
+
+该接口由已完成用户认证的 OA **服务端**调用。成功时返回 `302`，`Location` 为 60 秒内有效且仅可消费一次的 AuraOA 浏览器登录地址。OA HTTP 客户端必须禁止自动跟随重定向，再将 `Location` 原样交给用户浏览器。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `portal` | string | — | `business`（默认）或 `tenant_admin`；不支持 `system_admin` |
+
+Basic username 固定为 `tenantCode/username`；密码是系统管理 → 租户管理 → 单点登录中配置的租户共享密码。AuraOA 还会校验租户状态、用户状态、本地角色，以及租户配置的来源 IP/CIDR 和 Origin/Referer 域名白名单。
+
+### 消费 Basic 单点登录地址
+
+```
+GET /api/auth/sso/basic-consume?code=<一次性交接码>
+```
+
+该地址只能由用户浏览器访问。成功后写入 AuraOA 登录态并跳转 `/overview`；交接码过期或重复消费返回 `40110`。
+
+完整 OA Java 接入示例见 [`../oa-basic-sso-integration.md`](../oa-basic-sso-integration.md)。
+
+---
+
 ### 获取公开租户列表
 
 ```

@@ -149,6 +149,7 @@ func main() {
 
 	// 第六步：初始化各业务服务层（Service）
 	authService := service.NewAuthService(userRepo, rdb, db, systemConfigRepo)
+	basicSSOService := service.NewBasicSSOService(tenantRepo, userRepo, authService, rdb)
 	orgService := service.NewOrgService(orgRepo, userRepo, systemConfigRepo, db)
 	tenantService := service.NewTenantService(tenantRepo, systemConfigRepo, userRepo, db, invalidationManager)
 	systemConfigService := service.NewSystemConfigService(systemConfigRepo)
@@ -250,6 +251,7 @@ func main() {
 
 	// 第七步：初始化各 HTTP 处理器（Handler）
 	authHandler := handler.NewAuthHandler(authService, rdb)
+	basicSSOHandler := handler.NewBasicSSOHandler(basicSSOService, viper.GetString("sso.public_base_url"))
 	orgHandler := handler.NewOrgHandler(orgService)
 	tenantHandler := handler.NewTenantHandler(tenantService)
 	systemHandler := handler.NewSystemHandler(optionService, oaConnectionService, aiModelService, systemConfigService, attachmentRecognitionService)
@@ -278,7 +280,7 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, externalContextHandler, auditHandler, archiveReviewHandler, summaryHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, sysFlagsResolver, operationAuditLogRepo, tenantRepo)
+	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, externalContextHandler, auditHandler, archiveReviewHandler, summaryHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, sysFlagsResolver, operationAuditLogRepo, tenantRepo)
 
 	// 第九步：启动 HTTP 服务器
 	port := viper.GetInt("server.port")
@@ -336,6 +338,7 @@ func loadConfig() error {
 	viper.SetDefault("backup.dump_timeout", "45m")
 	viper.SetDefault("attachment.mineru_timeout_seconds", 300)
 	viper.SetDefault("workers.summary_concurrency", 1)
+	viper.SetDefault("sso.public_base_url", "")
 
 	return viper.ReadInConfig()
 }
