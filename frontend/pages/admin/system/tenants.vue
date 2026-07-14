@@ -3,13 +3,18 @@ definePageMeta({ middleware: 'auth', layout: 'default' })
 
 import {useI18n} from '~/composables/useI18n'
 import {usePagination} from '~/composables/usePagination'
+import {writeClipboardText} from '~/utils/clipboard'
+import {generateStrongPassword} from '~/utils/password'
 import {
   ClockCircleOutlined,
+  CopyOutlined,
   DatabaseOutlined,
   DeleteOutlined,
   EditOutlined,
   ExclamationCircleOutlined,
+  GlobalOutlined,
   InfoCircleOutlined,
+  KeyOutlined,
   LinkOutlined,
   LockOutlined,
   MailOutlined,
@@ -20,7 +25,6 @@ import {
   TeamOutlined,
   ThunderboltOutlined,
   UserOutlined,
-  CopyOutlined,
   DownloadOutlined,
 } from '@ant-design/icons-vue'
 import {message} from 'ant-design-vue'
@@ -60,14 +64,34 @@ const showCreate = ref(false)
 const showDetail = ref(false)
 const detailActiveTab = ref('basic')
 const ssoBasicPassword = ref('')
+const ssoPasswordVisible = ref(false)
 const ssoEndpoint = computed(() => process.client
   ? `${window.location.origin}/api/auth/sso/basic-redirection`
   : '/api/auth/sso/basic-redirection')
 const ssoUsernameExample = computed(() => `${selectedTenant.value?.code || ''}/<OA loginid>`)
 
-const copySSOEndpoint = async () => {
-  await navigator.clipboard.writeText(ssoEndpoint.value)
-  message.success(t('admin.tenants.ssoEndpointCopied'))
+const copyText = async (text: string, successMessage = t('common.copySuccess')) => {
+  if (!text) return
+  try {
+    await writeClipboardText(text)
+    message.success(successMessage)
+  } catch {
+    message.error(t('common.copyFailed'))
+  }
+}
+
+const copySSOEndpoint = () => {
+  return copyText(ssoEndpoint.value, t('admin.tenants.ssoEndpointCopied'))
+}
+
+const generateSSOPassword = () => {
+  try {
+    ssoBasicPassword.value = generateStrongPassword()
+    ssoPasswordVisible.value = true
+    message.success(t('admin.tenants.ssoPasswordGenerated'))
+  } catch {
+    message.error(t('admin.tenants.ssoPasswordGenerateFailed'))
+  }
 }
 
 // 后端获取的 OA 连接 & AI 模型
@@ -257,6 +281,7 @@ const openDetail = async (tenant: TenantData) => {
   selectedTenant.value = { ...tenant }
   detailActiveTab.value = 'basic'
   ssoBasicPassword.value = ''
+  ssoPasswordVisible.value = false
   rotatedEmbedToken.value = ''
   manualEmbedToken.value = ''
   embedScriptTarget.value = 'all'
@@ -393,16 +418,6 @@ const embedScriptTargetOptions = computed(() => [
   { value: 'audit', label: t('admin.tenants.embedScriptTargetAudit') },
   { value: 'summary', label: t('admin.tenants.embedScriptTargetSummary') },
 ])
-
-const copyText = async (text: string) => {
-  if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
-    message.success(t('common.copySuccess'))
-  } catch {
-    message.error('复制失败')
-  }
-}
 
 const getEmbedScriptConfig = (target: 'all' | 'audit' | 'summary') => {
   if (target === 'audit') {
@@ -1120,29 +1135,59 @@ const confirmDeleteTenant = async () => {
               <span style="margin-left: 10px; color: var(--color-text-secondary);">{{ t('admin.tenants.ssoEnabledHint') }}</span>
             </a-form-item>
             <a-form-item :label="t('admin.tenants.ssoEndpoint')">
-              <a-space-compact block class="sso-endpoint-field">
-                <a-input :value="ssoEndpoint" readonly />
-                <a-tooltip :title="t('admin.tenants.ssoCopyEndpoint')">
-                  <a-button
-                    class="sso-copy-button"
-                    :aria-label="t('admin.tenants.ssoCopyEndpoint')"
-                    @click="copySSOEndpoint"
-                  >
-                    <CopyOutlined />
-                  </a-button>
-                </a-tooltip>
-              </a-space-compact>
+              <div class="sso-value-row">
+                <a-input :value="ssoEndpoint" readonly size="large">
+                  <template #prefix><GlobalOutlined /></template>
+                </a-input>
+                <a-button class="sso-action-button" size="large" @click="copySSOEndpoint">
+                  <CopyOutlined /> {{ t('common.copy') }}
+                </a-button>
+              </div>
             </a-form-item>
             <a-form-item :label="t('admin.tenants.ssoUsernameFormat')">
-              <a-input :value="ssoUsernameExample" readonly />
+              <div class="sso-value-row">
+                <a-input :value="ssoUsernameExample" readonly size="large">
+                  <template #prefix><UserOutlined /></template>
+                </a-input>
+                <a-button
+                  class="sso-action-button"
+                  size="large"
+                  @click="copyText(ssoUsernameExample, t('admin.tenants.ssoUsernameCopied'))"
+                >
+                  <CopyOutlined /> {{ t('common.copy') }}
+                </a-button>
+              </div>
             </a-form-item>
             <a-form-item :label="t('admin.tenants.ssoSharedPassword')" :required="selectedTenant.sso_basic_enabled && !selectedTenant.sso_basic_password_set">
-              <a-input-password
-                v-model:value="ssoBasicPassword"
-                :placeholder="selectedTenant.sso_basic_password_set ? t('admin.tenants.ssoPasswordConfigured') : t('admin.tenants.ssoPasswordPlaceholder')"
-                autocomplete="new-password"
-              />
-              <div class="form-hint">{{ t('admin.tenants.ssoPasswordHint') }}</div>
+              <div class="sso-password-status">
+                <a-tag v-if="ssoBasicPassword" color="processing">{{ t('admin.tenants.ssoPasswordPending') }}</a-tag>
+                <a-tag v-else-if="selectedTenant.sso_basic_password_set" color="success">{{ t('admin.tenants.ssoPasswordConfiguredStatus') }}</a-tag>
+                <a-tag v-else color="warning">{{ t('admin.tenants.ssoPasswordNotConfigured') }}</a-tag>
+                <span>{{ t('admin.tenants.ssoPasswordStatusHint') }}</span>
+              </div>
+              <div class="sso-value-row">
+                <a-input-password
+                  v-model:value="ssoBasicPassword"
+                  v-model:visible="ssoPasswordVisible"
+                  :placeholder="selectedTenant.sso_basic_password_set ? t('admin.tenants.ssoPasswordConfigured') : t('admin.tenants.ssoPasswordPlaceholder')"
+                  autocomplete="new-password"
+                  size="large"
+                >
+                  <template #prefix><KeyOutlined /></template>
+                </a-input-password>
+                <a-button
+                  class="sso-action-button"
+                  size="large"
+                  :disabled="!ssoBasicPassword"
+                  @click="copyText(ssoBasicPassword, t('admin.tenants.ssoPasswordCopied'))"
+                >
+                  <CopyOutlined /> {{ t('common.copy') }}
+                </a-button>
+              </div>
+              <a-button type="link" class="sso-generate-button" @click="generateSSOPassword">
+                <ThunderboltOutlined /> {{ t('admin.tenants.ssoGeneratePassword') }}
+              </a-button>
+              <div class="form-hint sso-password-hint">{{ t('admin.tenants.ssoPasswordHint') }}</div>
             </a-form-item>
             <a-form-item :label="t('admin.tenants.ssoAllowedIPs')">
               <a-textarea v-model:value="selectedTenant.sso_basic_allowed_ips" :rows="2" :placeholder="t('admin.tenants.ssoAllowedIPsPlaceholder')" />
@@ -1637,15 +1682,25 @@ const confirmDeleteTenant = async () => {
 .switch-label { font-size: 13px; color: var(--color-text-tertiary); margin-left: 10px; }
 .slider-value { font-size: 14px; font-weight: 600; color: var(--color-primary); margin-left: 8px; }
 .form-hint { font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px; }
-.sso-endpoint-field { width: 100%; }
-.sso-endpoint-field :deep(.ant-input) { min-width: 0; }
-.sso-copy-button {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 42px; flex: 0 0 42px; padding-inline: 0;
-  color: var(--color-text-secondary);
+.sso-value-row {
+  display: flex; align-items: stretch; gap: 10px; width: 100%;
 }
-.sso-copy-button:hover,
-.sso-copy-button:focus-visible { color: var(--color-primary); }
+.sso-value-row :deep(.ant-input-affix-wrapper) { min-width: 0; flex: 1; }
+.sso-value-row :deep(.ant-input-prefix) { color: var(--color-text-tertiary); margin-inline-end: 10px; }
+.sso-action-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 92px; flex: 0 0 92px; font-weight: 500;
+}
+.sso-password-status {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  color: var(--color-text-tertiary); font-size: 12px; margin-bottom: 10px;
+}
+.sso-password-status :deep(.ant-tag) { margin-inline-end: 0; }
+.sso-generate-button {
+  height: auto; padding: 8px 0 2px; display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 500;
+}
+.sso-password-hint { line-height: 1.6; }
 
 .usage-display {
   background: var(--color-bg-card); border-radius: var(--radius-md); padding: 14px;
@@ -1755,8 +1810,11 @@ const confirmDeleteTenant = async () => {
   .member-card-right { align-items: flex-start; }
   .embed-script-header { flex-direction: column; }
   .embed-script-fields { grid-template-columns: 1fr; }
+  .sso-value-row { align-items: stretch; }
 }
 @media (max-width: 480px) {
   .page-title { font-size: 20px; }
+  .sso-value-row { flex-direction: column; }
+  .sso-action-button { width: 100%; flex-basis: auto; }
 }
 </style>
