@@ -33,6 +33,43 @@
 
 ---
 
+## 界面预览
+
+<p align="center">
+  <img src="docs/assets/screenshots/login.jpg" alt="AuraOA 登录页" width="88%" />
+</p>
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <strong>系统运营总览</strong><br />
+      <sub>租户规模、AI 模型表现、资源用量与服务健康状态</sub><br /><br />
+      <img src="docs/assets/screenshots/system-overview.jpg" alt="AuraOA 系统运营总览" />
+    </td>
+    <td width="50%" align="center">
+      <strong>流程规则配置</strong><br />
+      <sub>统一管理字段、审核规则、AI 参数与用户权限</sub><br /><br />
+      <img src="docs/assets/screenshots/rule-config.jpg" alt="AuraOA 流程规则配置" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <strong>AI 审核工作台</strong><br />
+      <sub>待办筛选、批量审核、流式推理与结果展示</sub><br /><br />
+      <img src="docs/assets/screenshots/audit-workbench.jpg" alt="AuraOA AI 审核工作台" />
+    </td>
+    <td width="50%" align="center">
+      <strong>归档合规复盘</strong><br />
+      <sub>对已归档流程重新审计，保留完整审批链和快照</sub><br /><br />
+      <img src="docs/assets/screenshots/archive-review.jpg" alt="AuraOA 归档合规复盘" />
+    </td>
+  </tr>
+</table>
+
+> 截图来自本地演示环境，页面数据仅用于展示系统功能。
+
+---
+
 ## 技术栈
 
 ### 后端（Go Service）
@@ -60,6 +97,14 @@
 ---
 
 ## 系统架构
+
+### 系统全景
+
+下图为根据实际模块关系使用 AI 生成的中文架构信息图：
+
+![AuraOA 系统全景架构](docs/assets/diagrams/system-architecture.png)
+
+前端只通过 `/api` 与后端交互；后端保持 `handler → service → repository` 分层。认证中间件在请求中注入用户、角色与租户上下文，租户数据查询通过 `WithTenant(c)` 实现隔离。
 
 ### 认证架构
 
@@ -114,7 +159,9 @@
     └── AI 尺度覆盖 — 个人审核严格度偏好
 ```
 
-### 审核流程
+实际审核时按“用户个人配置 > 租户流程配置 > 系统默认值”的优先级合并，使统一治理与个人化需求能够同时生效。
+
+### AI 审核运行流程
 
 ```
 用户选择流程 → 获取配置 → 从 OA 提取数据 → 合并规则 → 构建提示词 → AI 审核 → 返回结果
@@ -123,6 +170,12 @@
             租户配置 +      OA 适配器      MergeRules()   两阶段审核
             用户配置       (Weaver E9)    (优先级排序)   (推理→提取)
 ```
+
+下图为使用 AI 生成的中文流程信息图，将异步入队、OA 取数、流式输出与快照落库串联为完整链路。其中“阶段一：推理分析”和“阶段二：结构化提取”是两次连续的 AI 调用：
+
+![AuraOA 两阶段 AI 审核流程](docs/assets/diagrams/ai-audit-flow-v2.png)
+
+`AIModelCallerService` 统一负责 Token 配额预扣/结算、失败重试、主备模型切换和调用日志。审核与归档复盘共用这套调用基础设施，但分别落入独立的日志与流程快照表。
 
 ---
 
