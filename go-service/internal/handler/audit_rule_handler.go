@@ -15,12 +15,105 @@ import (
 
 // AuditRuleHandler 处理审核规则相关的 HTTP 请求。
 type AuditRuleHandler struct {
-	ruleService *service.AuditRuleService
+	ruleService   *service.AuditRuleService
+	importService *service.RuleImportService
 }
 
 // NewAuditRuleHandler 创建审核规则处理器实例。
-func NewAuditRuleHandler(ruleService *service.AuditRuleService) *AuditRuleHandler {
-	return &AuditRuleHandler{ruleService: ruleService}
+func NewAuditRuleHandler(ruleService *service.AuditRuleService, importServices ...*service.RuleImportService) *AuditRuleHandler {
+	h := &AuditRuleHandler{ruleService: ruleService}
+	if len(importServices) > 0 {
+		h.importService = importServices[0]
+	}
+	return h
+}
+
+// ImportCapability 返回文件识别导入是否可用及文件限制。
+// GET /api/tenant/rules/audit-rules/import-capability
+func (h *AuditRuleHandler) ImportCapability(c *gin.Context) {
+	if h.importService == nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "规则导入服务未初始化")
+		return
+	}
+	capability, err := h.importService.Capability()
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, capability)
+}
+
+// PreviewImport 识别上传文件并返回 AI 生成的审核规则草稿，不直接写库。
+// POST /api/tenant/rules/audit-rules/import-preview
+// 表单参数：config_id、file。
+func (h *AuditRuleHandler) PreviewImport(c *gin.Context) {
+	if h.importService == nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "规则导入服务未初始化")
+		return
+	}
+	capability, err := h.importService.Capability()
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	if !capability.Enabled {
+		response.Error(c, http.StatusForbidden, errcode.ErrPermissionDenied, capability.Reason)
+		return
+	}
+	maxBytes := int64(capability.MaxFileSizeMB+1) * 1024 * 1024
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+	file, err := c.FormFile("file")
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "请选择符合大小限制的文件")
+		return
+	}
+	preview, err := h.importService.Preview(c, "audit", c.PostForm("config_id"), file)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, preview)
+}
+
+// PreviewPastedImport 将粘贴文本交给 AI 并返回审核规则草稿，不经过 MinerU。
+// POST /api/tenant/rules/audit-rules/import-text-preview
+func (h *AuditRuleHandler) PreviewPastedImport(c *gin.Context) {
+	if h.importService == nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "规则导入服务未初始化")
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1024*1024)
+	var req dto.PreviewPastedRuleImportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	preview, err := h.importService.PreviewText(c, "audit", &req)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, preview)
+}
+
+// ConfirmImport 将管理员确认后的审核规则草稿批量写入规则库。
+// POST /api/tenant/rules/audit-rules/import-confirm
+func (h *AuditRuleHandler) ConfirmImport(c *gin.Context) {
+	if h.importService == nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "规则导入服务未初始化")
+		return
+	}
+	var req dto.ConfirmRuleImportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	rules, err := h.importService.Confirm(c, "audit", &req)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, rules)
 }
 
 // List 查询指定审核配置下的规则列表，支持按作用域和启用状态过滤。

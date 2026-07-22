@@ -22,6 +22,7 @@ import {
   SaveOutlined,
   SearchOutlined,
   SettingOutlined,
+  SnippetsOutlined,
   SwapRightOutlined,
   DownOutlined,
   TeamOutlined,
@@ -40,6 +41,7 @@ import type { ArchiveRule, ProcessArchiveConfig } from '~/types/archive-config'
 import type { ProcessInfo } from '~/types/common'
 import type { CronTaskConfig } from '~/types/cron'
 import type { ProcessSummaryConfig, SummaryBlockConfig } from '~/types/process-summary'
+import type { RuleImportCapability, RuleImportDraft, RuleImportSource, SelectableRuleImportDraft } from '~/types/rule-import'
 import {useI18n} from '~/composables/useI18n'
 import {usePagination} from '~/composables/usePagination'
 import {useArchiveConfigApi} from "~/composables/useArchiveConfigApi";
@@ -707,8 +709,134 @@ const deleteRule = async (id: string) => {
   }
 }
 
-const handleImportRules = () => {
-  message.info(t('admin.ruleConfig.fileImportDev'))
+type RuleImportModule = 'audit' | 'archive'
+const ruleImportFileInput = ref<HTMLInputElement | null>(null)
+const ruleImportTarget = ref<RuleImportModule>('audit')
+const ruleImportSource = ref<RuleImportSource>('file_import')
+const ruleImportCapability = ref<RuleImportCapability | null>(null)
+const ruleImportLoading = ref(false)
+const ruleImportSaving = ref(false)
+const showRuleImportPreview = ref(false)
+const ruleImportFileName = ref('')
+const ruleImportWarnings = ref<string[]>([])
+const ruleImportDrafts = ref<SelectableRuleImportDraft[]>([])
+const showPasteRuleImport = ref(false)
+const pastedRuleImportText = ref('')
+const ruleImportAccept = computed(() =>
+  (ruleImportCapability.value?.supported_types || []).map(type => `.${type}`).join(','),
+)
+const selectedRuleImportCount = computed(() => ruleImportDrafts.value.filter(rule => rule.selected).length)
+
+const handleImportRules = (module: RuleImportModule) => {
+  const config = module === 'audit' ? selectedConfig.value : selectedArchiveConfig.value
+  if (!config) return
+  ruleImportTarget.value = module
+  ruleImportSource.value = 'file_import'
+  if (!ruleImportCapability.value?.enabled) {
+    message.warning(ruleImportCapability.value?.reason || t('admin.ruleConfig.fileImportUnavailable'))
+    return
+  }
+  ruleImportFileInput.value?.click()
+}
+
+const handlePasteImport = (module: RuleImportModule) => {
+  const config = module === 'audit' ? selectedConfig.value : selectedArchiveConfig.value
+  if (!config) return
+  ruleImportTarget.value = module
+  ruleImportSource.value = 'paste_import'
+  pastedRuleImportText.value = ''
+  showPasteRuleImport.value = true
+}
+
+const analyzePastedRuleImport = async () => {
+  const text = pastedRuleImportText.value.trim()
+  const config = ruleImportTarget.value === 'audit' ? selectedConfig.value : selectedArchiveConfig.value
+  if (!config || !text) {
+    message.warning(t('admin.ruleConfig.pasteImportRequired'))
+    return
+  }
+  ruleImportLoading.value = true
+  message.loading({ content: t('admin.ruleConfig.pasteImportAnalyzing'), key: 'rule-import', duration: 0 })
+  try {
+    const api = ruleImportTarget.value === 'audit' ? rulesApi : archiveApi
+    const preview = await api.previewPastedRuleImport(config.id, text)
+    ruleImportFileName.value = t('admin.ruleConfig.pasteImportContentName')
+    ruleImportWarnings.value = preview.warnings || []
+    ruleImportDrafts.value = preview.rules.map(rule => ({ ...rule, selected: true }))
+    showPasteRuleImport.value = false
+    showRuleImportPreview.value = true
+    message.success({ content: t('admin.ruleConfig.fileImportRecognized', `${preview.rules.length}`), key: 'rule-import' })
+  } catch (e: any) {
+    message.error({ content: t('admin.ruleConfig.pasteImportFailed') + ': ' + (e.message || ''), key: 'rule-import' })
+  } finally {
+    ruleImportLoading.value = false
+  }
+}
+
+const handleRuleImportFileSelected = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const capability = ruleImportCapability.value
+  const extension = file.name.includes('.') ? file.name.split('.').pop()!.toLowerCase() : ''
+  if (capability && !capability.supported_types.includes(extension)) {
+    message.error(t('admin.ruleConfig.fileImportTypeUnsupported', extension || file.type))
+    input.value = ''
+    return
+  }
+  if (capability?.max_file_size_mb && file.size > capability.max_file_size_mb * 1024 * 1024) {
+    message.error(t('admin.ruleConfig.fileImportTooLarge', `${capability.max_file_size_mb}`))
+    input.value = ''
+    return
+  }
+  const config = ruleImportTarget.value === 'audit' ? selectedConfig.value : selectedArchiveConfig.value
+  if (!config) return
+
+  ruleImportLoading.value = true
+  message.loading({ content: t('admin.ruleConfig.fileImportRecognizing'), key: 'rule-import', duration: 0 })
+  try {
+    const api = ruleImportTarget.value === 'audit' ? rulesApi : archiveApi
+    const preview = await api.previewRuleImport(config.id, file)
+    ruleImportFileName.value = preview.file_name
+    ruleImportWarnings.value = preview.warnings || []
+    ruleImportDrafts.value = preview.rules.map(rule => ({ ...rule, selected: true }))
+    showRuleImportPreview.value = true
+    message.success({ content: t('admin.ruleConfig.fileImportRecognized', `${preview.rules.length}`), key: 'rule-import' })
+  } catch (e: any) {
+    message.error({ content: t('admin.ruleConfig.fileImportFailed') + ': ' + (e.message || ''), key: 'rule-import' })
+  } finally {
+    ruleImportLoading.value = false
+    input.value = ''
+  }
+}
+
+const confirmRuleImport = async () => {
+  const config = ruleImportTarget.value === 'audit' ? selectedConfig.value : selectedArchiveConfig.value
+  const selected = ruleImportDrafts.value.filter(rule => rule.selected)
+  if (!config || selected.length === 0) {
+    message.warning(t('admin.ruleConfig.fileImportSelectOne'))
+    return
+  }
+  ruleImportSaving.value = true
+  try {
+    const drafts: RuleImportDraft[] = selected.map(({ selected: _selected, ...rule }) => rule)
+    let importedCount = 0
+    if (ruleImportTarget.value === 'audit') {
+      const created = await rulesApi.confirmRuleImport(config.id, drafts, ruleImportSource.value)
+      currentRules.value.push(...created)
+      importedCount = created.length
+    } else {
+      const created = await archiveApi.confirmRuleImport(config.id, drafts, ruleImportSource.value)
+      currentArchiveRules.value.push(...created)
+      importedCount = created.length
+    }
+    showRuleImportPreview.value = false
+    message.success(t('admin.ruleConfig.fileImportSaved', `${importedCount}`))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.fileImportSaveFail') + ': ' + (e.message || ''))
+  } finally {
+    ruleImportSaving.value = false
+  }
 }
 
 const kbModes = computed(() => [
@@ -847,6 +975,18 @@ const loadingTemplates = ref(false)
 // 页面初始化：依次加载组织数据、审核配置、提示词模板、定时任务配置、归档配置
 onMounted(async () => {
   loadOrgData()
+  // 文件选择器需要在用户点击的同步事件中打开，因此页面初始化时预先读取系统能力。
+  rulesApi.getRuleImportCapability()
+    .then(capability => { ruleImportCapability.value = capability })
+    .catch((e) => {
+      console.error('[rules] 加载文件识别导入能力失败', e)
+      ruleImportCapability.value = {
+        enabled: false,
+        max_file_size_mb: 0,
+        supported_types: [],
+        reason: t('admin.ruleConfig.fileImportCapabilityFail'),
+      }
+    })
   // 加载审核工作台配置
   try {
     const configs = await rulesApi.listConfigs()
@@ -2625,7 +2765,15 @@ const handleSave = async () => {
           <div class="rules-toolbar">
             <span class="rules-count">{{ t('admin.ruleConfig.totalRules', `${currentRules.length}`) }}</span>
             <div class="rules-toolbar-actions">
-              <a-button @click="handleImportRules">
+              <a-button :disabled="ruleImportLoading" @click="handlePasteImport('audit')">
+                <SnippetsOutlined /> {{ t('admin.ruleConfig.pasteImport') }}
+              </a-button>
+              <a-button
+                :loading="ruleImportLoading && ruleImportTarget === 'audit'"
+                :disabled="ruleImportLoading || !ruleImportCapability?.enabled"
+                :title="ruleImportCapability?.reason || ''"
+                @click="handleImportRules('audit')"
+              >
                 <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
               </a-button>
               <a-button type="primary" @click="openRuleEditor()">
@@ -2646,6 +2794,7 @@ const handleSave = async () => {
                   <div class="rule-card-content">{{ rule.rule_content }}</div>
                   <div class="rule-card-meta">
                     <span v-if="rule.source === 'file_import'" class="rule-source-tag">{{ t('admin.ruleConfig.fileImportTag') }}</span>
+                    <span v-else-if="rule.source === 'paste_import'" class="rule-source-tag">{{ t('admin.ruleConfig.pasteImportTag') }}</span>
                     <span v-else class="rule-source-tag rule-source-tag--manual">{{ t('admin.ruleConfig.manualAddTag') }}</span>
                     <span v-if="rule.related_flow" class="rule-flow-tag">
                       <NodeIndexOutlined /> {{ t('admin.ruleConfig.relatedFlow') }}
@@ -4389,7 +4538,15 @@ const handleSave = async () => {
           <div class="rules-toolbar">
             <span class="rules-count">{{ t('admin.ruleConfig.totalRules', `${currentArchiveRules.length}`) }}</span>
             <div class="rules-toolbar-actions">
-              <a-button @click="handleImportRules">
+              <a-button :disabled="ruleImportLoading" @click="handlePasteImport('archive')">
+                <SnippetsOutlined /> {{ t('admin.ruleConfig.pasteImport') }}
+              </a-button>
+              <a-button
+                :loading="ruleImportLoading && ruleImportTarget === 'archive'"
+                :disabled="ruleImportLoading || !ruleImportCapability?.enabled"
+                :title="ruleImportCapability?.reason || ''"
+                @click="handleImportRules('archive')"
+              >
                 <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
               </a-button>
               <a-button type="primary" @click="openArchiveRuleEditor()">
@@ -4418,6 +4575,7 @@ const handleSave = async () => {
                       <NodeIndexOutlined /> 外部关联
                     </span>
                     <span v-if="rule.source === 'file_import'" class="rule-source-tag">{{ t('admin.ruleConfig.fileImportTag') }}</span>
+                    <span v-else-if="rule.source === 'paste_import'" class="rule-source-tag">{{ t('admin.ruleConfig.pasteImportTag') }}</span>
                     <span v-else class="rule-source-tag rule-source-tag--manual">{{ t('admin.ruleConfig.manualAddTag') }}</span>
                   </div>
                 </div>
@@ -4783,6 +4941,92 @@ const handleSave = async () => {
       </div>
     </a-modal>
 
+    <input
+      ref="ruleImportFileInput"
+      type="file"
+      :accept="ruleImportAccept"
+      class="rule-import-file-input"
+      @change="handleRuleImportFileSelected"
+    />
+
+    <!--粘贴导入：文本直接交给 AI，不依赖 MinerU。-->
+    <a-modal
+      v-model:open="showPasteRuleImport"
+      :title="t('admin.ruleConfig.pasteImportTitle')"
+      :width="760"
+      :ok-text="t('admin.ruleConfig.pasteImportAnalyze')"
+      :cancel-text="t('admin.ruleConfig.cancel')"
+      :confirm-loading="ruleImportLoading"
+      :ok-button-props="{ disabled: !pastedRuleImportText.trim() }"
+      @ok="analyzePastedRuleImport"
+    >
+      <p class="rule-import-help rule-import-paste-help">{{ t('admin.ruleConfig.pasteImportHelp') }}</p>
+      <a-textarea
+        v-model:value="pastedRuleImportText"
+        :placeholder="t('admin.ruleConfig.pasteImportPlaceholder')"
+        :rows="14"
+        :maxlength="120000"
+        show-count
+      />
+    </a-modal>
+
+    <!--规则文件识别导入预览：审核与归档共用，确认后才批量写库-->
+    <a-modal
+      v-model:open="showRuleImportPreview"
+      :title="t('admin.ruleConfig.fileImportPreviewTitle')"
+      :width="900"
+      :ok-text="t('admin.ruleConfig.fileImportConfirm', `${selectedRuleImportCount}`)"
+      :cancel-text="t('admin.ruleConfig.cancel')"
+      :confirm-loading="ruleImportSaving"
+      :ok-button-props="{ disabled: selectedRuleImportCount === 0 }"
+      @ok="confirmRuleImport"
+    >
+      <div class="rule-import-summary">
+        <div>
+          <div class="rule-import-file-name"><FileTextOutlined /> {{ ruleImportFileName }}</div>
+          <div class="rule-import-help">{{ t('admin.ruleConfig.fileImportPreviewHelp') }}</div>
+        </div>
+        <span class="rule-import-count">{{ t('admin.ruleConfig.fileImportSelectedCount', [`${selectedRuleImportCount}`, `${ruleImportDrafts.length}`]) }}</span>
+      </div>
+
+      <a-alert
+        v-for="warning in ruleImportWarnings"
+        :key="warning"
+        type="warning"
+        show-icon
+        :message="warning"
+        class="rule-import-warning"
+      />
+
+      <div class="rule-import-list">
+        <div v-for="(rule, index) in ruleImportDrafts" :key="index" class="rule-import-item" :class="{ 'rule-import-item--disabled': !rule.selected }">
+          <div class="rule-import-item-head">
+            <a-checkbox v-model:checked="rule.selected">{{ t('admin.ruleConfig.fileImportRuleIndex', `${index + 1}`) }}</a-checkbox>
+            <span class="rule-import-confidence">{{ t('admin.ruleConfig.fileImportConfidence', `${Math.round(rule.confidence * 100)}`) }}</span>
+          </div>
+          <a-textarea v-model:value="rule.rule_content" :rows="3" :disabled="!rule.selected" />
+          <div class="rule-import-options">
+            <label>
+              <span>{{ t('admin.ruleConfig.ruleLevel') }}</span>
+              <a-select v-model:value="rule.rule_scope" :disabled="!rule.selected" style="width: 140px;">
+                <a-select-option value="mandatory">{{ t('admin.ruleConfig.mandatory') }}</a-select-option>
+                <a-select-option value="default_on">{{ t('admin.ruleConfig.defaultOn') }}</a-select-option>
+                <a-select-option value="default_off">{{ t('admin.ruleConfig.defaultOff') }}</a-select-option>
+              </a-select>
+            </label>
+            <label><a-switch v-model:checked="rule.related_flow" :disabled="!rule.selected" size="small" /> {{ t('admin.ruleConfig.relatedFlow') }}</label>
+            <label><a-switch v-model:checked="rule.context_enabled" :disabled="!rule.selected" size="small" /> {{ t('admin.ruleConfig.externalContext') }}</label>
+          </div>
+          <div v-if="rule.reasoning" class="rule-import-reasoning">
+            <RobotOutlined /> {{ rule.reasoning }}
+          </div>
+          <div v-if="rule.context_enabled" class="rule-import-context-hint">
+            {{ t('admin.ruleConfig.fileImportContextHint') }}
+          </div>
+        </div>
+      </div>
+    </a-modal>
+
     <!--归档字段选择器模式-->
     <a-modal
       v-model:open="showArchiveFieldPicker"
@@ -5056,6 +5300,47 @@ const handleSave = async () => {
 }
 .rule-source-tag--manual { background: var(--color-bg-hover); color: var(--color-text-tertiary); }
 .rule-card-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.rule-import-file-input { display: none; }
+.rule-import-summary {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  margin-bottom: 14px; padding: 12px 14px; border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+}
+.rule-import-file-name {
+  display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--color-text-primary);
+}
+.rule-import-help { margin-top: 4px; font-size: 12px; color: var(--color-text-tertiary); }
+.rule-import-paste-help { margin: 0 0 12px; line-height: 1.6; }
+.rule-import-count {
+  padding: 3px 10px; border-radius: var(--radius-full); white-space: nowrap;
+  background: var(--color-primary-bg); color: var(--color-primary); font-size: 12px; font-weight: 600;
+}
+.rule-import-warning { margin-bottom: 10px; }
+.rule-import-list {
+  display: flex; flex-direction: column; gap: 12px; max-height: 58vh; overflow-y: auto; padding-right: 4px;
+}
+.rule-import-item {
+  padding: 14px; border: 1px solid var(--color-border-light); border-radius: var(--radius-md);
+  background: var(--color-bg-card); transition: opacity var(--transition-fast);
+}
+.rule-import-item--disabled { opacity: .55; }
+.rule-import-item-head {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+}
+.rule-import-confidence { font-size: 12px; color: var(--color-text-tertiary); }
+.rule-import-options {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-top: 12px;
+}
+.rule-import-options label { display: flex; align-items: center; gap: 8px; color: var(--color-text-secondary); font-size: 13px; }
+.rule-import-reasoning {
+  display: flex; align-items: flex-start; gap: 6px; margin-top: 10px; font-size: 12px;
+  line-height: 1.6; color: var(--color-text-tertiary);
+}
+.rule-import-context-hint {
+  margin-top: 8px; padding: 7px 10px; border-radius: var(--radius-sm);
+  background: var(--color-warning-bg); color: var(--color-warning); font-size: 12px;
+}
 
 .icon-btn {
   width: 32px; height: 32px; border: 1px solid var(--color-border); background: transparent;

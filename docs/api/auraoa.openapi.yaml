@@ -2137,6 +2137,80 @@ paths:
           type: string
           format: uuid
         description: 资源 ID
+  /api/tenant/rules/audit-rules/import-capability:
+    get:
+      summary: 查询审核规则文件识别导入能力
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: MinerU 开关、文件大小与类型限制
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleImportCapabilityResponse'
+  /api/tenant/rules/audit-rules/import-preview:
+    post:
+      summary: 识别文件并生成审核规则草稿
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RuleImportPreviewRequest'
+      responses:
+        '200':
+          description: 待管理员确认的 AI 规则草稿
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleImportPreviewResponse'
+  /api/tenant/rules/audit-rules/import-text-preview:
+    post:
+      summary: 分析粘贴文本并生成审核规则草稿
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PastedRuleImportPreviewRequest'
+      responses:
+        '200':
+          description: 待管理员确认的 AI 规则草稿
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleImportPreviewResponse'
+  /api/tenant/rules/audit-rules/import-confirm:
+    post:
+      summary: 确认批量导入审核规则
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmRuleImportRequest'
+      responses:
+        '200':
+          description: 已创建的审核规则列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
   /api/tenant/rules/context/test:
     post:
       summary: 测试外部关联数据配置
@@ -2498,6 +2572,80 @@ paths:
           type: string
           format: uuid
         description: 资源 ID
+  /api/tenant/archive/rules/import-capability:
+    get:
+      summary: 查询归档规则文件识别导入能力
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: MinerU 开关、文件大小与类型限制
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleImportCapabilityResponse'
+  /api/tenant/archive/rules/import-preview:
+    post:
+      summary: 识别文件并生成归档规则草稿
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RuleImportPreviewRequest'
+      responses:
+        '200':
+          description: 待管理员确认的 AI 规则草稿
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleImportPreviewResponse'
+  /api/tenant/archive/rules/import-text-preview:
+    post:
+      summary: 分析粘贴文本并生成归档规则草稿
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PastedRuleImportPreviewRequest'
+      responses:
+        '200':
+          description: 待管理员确认的 AI 规则草稿
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleImportPreviewResponse'
+  /api/tenant/archive/rules/import-confirm:
+    post:
+      summary: 确认批量导入归档规则
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmRuleImportRequest'
+      responses:
+        '200':
+          description: 已创建的归档规则列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
   /api/tenant/archive/context/test:
     post:
       summary: 测试归档外部关联数据
@@ -5694,6 +5842,119 @@ components:
       type: object
     AuditRuleRequest:
       type: object
+    RuleImportPreviewRequest:
+      type: object
+      required:
+      - config_id
+      - file
+      properties:
+        config_id:
+          type: string
+          format: uuid
+        file:
+          type: string
+          format: binary
+    PastedRuleImportPreviewRequest:
+      type: object
+      required:
+      - config_id
+      - text
+      properties:
+        config_id:
+          type: string
+          format: uuid
+        text:
+          type: string
+          maxLength: 120000
+    RuleImportDraft:
+      type: object
+      required:
+      - rule_content
+      properties:
+        rule_content:
+          type: string
+        rule_scope:
+          type: string
+          enum:
+          - mandatory
+          - default_on
+          - default_off
+        related_flow:
+          type: boolean
+        context_enabled:
+          type: boolean
+        confidence:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        reasoning:
+          type: string
+    RuleImportCapabilityResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: success
+        data:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            max_file_size_mb:
+              type: integer
+            supported_types:
+              type: array
+              items:
+                type: string
+            reason:
+              type: string
+    RuleImportPreviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: success
+        data:
+          type: object
+          properties:
+            file_name:
+              type: string
+            rules:
+              type: array
+              items:
+                $ref: '#/components/schemas/RuleImportDraft'
+            warnings:
+              type: array
+              items:
+                type: string
+    ConfirmRuleImportRequest:
+      type: object
+      required:
+      - config_id
+      - rules
+      properties:
+        config_id:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum:
+          - file_import
+          - paste_import
+          default: file_import
+        rules:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/RuleImportDraft'
     CronTaskRequest:
       type: object
     UserProcessConfigRequest:

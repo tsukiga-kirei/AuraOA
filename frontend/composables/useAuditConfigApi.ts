@@ -10,6 +10,7 @@
 import type { ProcessAuditConfig, AuditRule } from '~/types/audit-config'
 import type { SystemPromptTemplate, ProcessInfo, ProcessFields } from '~/types/common'
 import type { ExternalContextMount, ExternalContextTestResponse } from '~/types/external-context'
+import type { RuleImportCapability, RuleImportDraft, RuleImportPreview, RuleImportSource } from '~/types/rule-import'
 
 export type { ProcessAuditConfig, AuditRule, SystemPromptTemplate, ProcessInfo, ProcessFields }
 
@@ -115,6 +116,38 @@ export const useAuditConfigApi = () => {
     await authFetch<null>(`/api/tenant/rules/audit-rules/${id}`, { method: 'DELETE' })
   }
 
+  /** 查询系统管理员是否已开启 MinerU 文件识别导入。 */
+  async function getRuleImportCapability(): Promise<RuleImportCapability> {
+    return await authFetch<RuleImportCapability>('/api/tenant/rules/audit-rules/import-capability')
+  }
+
+  /** 上传制度文件，经 MinerU 与 AI 生成待确认的规则草稿。 */
+  async function previewRuleImport(configId: string, file: File): Promise<RuleImportPreview> {
+    const formData = new FormData()
+    formData.append('config_id', configId)
+    formData.append('file', file)
+    return await authFetch<RuleImportPreview>('/api/tenant/rules/audit-rules/import-preview', {
+      method: 'POST',
+      body: formData,
+    })
+  }
+
+  /** 将粘贴的制度文本交给 AI 生成待确认的规则草稿。 */
+  async function previewPastedRuleImport(configId: string, text: string): Promise<RuleImportPreview> {
+    return await authFetch<RuleImportPreview>('/api/tenant/rules/audit-rules/import-text-preview', {
+      method: 'POST',
+      body: { config_id: configId, text },
+    })
+  }
+
+  /** 批量写入管理员确认后的规则草稿。 */
+  async function confirmRuleImport(configId: string, rules: RuleImportDraft[], source: RuleImportSource = 'file_import'): Promise<AuditRule[]> {
+    return await authFetch<AuditRule[]>('/api/tenant/rules/audit-rules/import-confirm', {
+      method: 'POST',
+      body: { config_id: configId, source, rules },
+    })
+  }
+
   async function testContext(mounts: ExternalContextMount[], processId?: string): Promise<ExternalContextTestResponse> {
     return await authFetch<ExternalContextTestResponse>('/api/tenant/rules/context/test', {
       method: 'POST',
@@ -141,7 +174,9 @@ export const useAuditConfigApi = () => {
   return {
     listConfigs, createConfig, updateConfig, deleteConfig,
     testConnection, fetchFields,
-    listRules, createRule, updateRule, deleteRule, testContext, searchWorkflows,
+    listRules, createRule, updateRule, deleteRule,
+    getRuleImportCapability, previewRuleImport, previewPastedRuleImport, confirmRuleImport,
+    testContext, searchWorkflows,
     listPromptTemplates,
   }
 }

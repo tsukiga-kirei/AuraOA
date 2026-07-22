@@ -106,6 +106,82 @@ DELETE /api/tenant/rules/audit-rules/:id
 
 ---
 
+### 查询文件识别导入能力
+
+```
+GET /api/tenant/rules/audit-rules/import-capability
+```
+
+仅当系统管理员开启 `attachment.recognition_enabled` 且配置 MinerU 地址时，`data.enabled` 才为 `true`。响应同时返回 `max_file_size_mb`、`supported_types` 与不可用原因 `reason`。
+
+---
+
+### 识别文件并生成规则草稿
+
+```
+POST /api/tenant/rules/audit-rules/import-preview
+Content-Type: multipart/form-data
+```
+
+| 表单字段 | 类型 | 说明 |
+|------|------|------|
+| `config_id` | uuid | 必填，当前流程审核配置 ID |
+| `file` | file | 必填，类型与大小受系统附件识别配置限制 |
+
+服务端先调用 MinerU 识别文件，再通过 `AIModelCallerService` 生成结构化规则草稿。此接口**不写入规则库**。每条草稿包含 `rule_content`、`rule_scope`、`related_flow`、`context_enabled`、`confidence`、`reasoning`。
+
+AI 对规则级别、审批流依赖与外部数据依赖的判断均为建议值。判断外部数据依赖时会同时参考当前流程已配置的主表与明细字段；`context_enabled=true` 只表示规则需要当前表单和审批历史之外的数据，不会虚构 `context_mounts`，确认导入后仍需在规则编辑器中配置具体数据源。
+
+---
+
+### 粘贴文本并生成规则草稿
+
+```
+POST /api/tenant/rules/audit-rules/import-text-preview
+```
+
+请求体：
+
+```json
+{
+  "config_id": "配置 UUID",
+  "text": "需要拆分为规则的制度或条款文本"
+}
+```
+
+粘贴导入不经过 MinerU，因此不依赖附件识别开关；它仍使用租户主用/备用 AI 模型，并进入 Token 配额和 AI 调用日志。最多分析 120000 个字符，返回结构与文件识别预览一致。
+
+---
+
+### 确认批量导入规则
+
+```
+POST /api/tenant/rules/audit-rules/import-confirm
+```
+
+请求体：
+
+```json
+{
+  "config_id": "配置 UUID",
+  "source": "file_import",
+  "rules": [
+    {
+      "rule_content": "合同金额不得超过已批准预算",
+      "rule_scope": "mandatory",
+      "related_flow": false,
+      "context_enabled": true,
+      "confidence": 0.92,
+      "reasoning": "原文使用不得，且需要查询预算数据"
+    }
+  ]
+}
+```
+
+每次最多 100 条。`source` 可为 `file_import` 或 `paste_import`；文件导入会重新校验 MinerU 开关，粘贴导入不受该开关限制。`mandatory`、`default_on` 默认启用，`default_off` 默认关闭。与当前配置下既有规则内容完全重复的项会被跳过；若全部重复则返回冲突错误。
+
+---
+
 ## 提示词模板
 
 ### 获取提示词模板列表

@@ -85,6 +85,14 @@ func (r *ArchiveRuleRepo) Create(c *gin.Context, rule *model.ArchiveRule) error 
 	return r.WithTenant(c).Create(rule).Error
 }
 
+// CreateBatch 在单个事务中批量创建归档规则。
+func (r *ArchiveRuleRepo) CreateBatch(c *gin.Context, rules []model.ArchiveRule) error {
+	if len(rules) == 0 {
+		return nil
+	}
+	return r.WithTenant(c).Create(&rules).Error
+}
+
 // GetByID 通过 ID 查询单条归档规则。
 func (r *ArchiveRuleRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.ArchiveRule, error) {
 	var rule model.ArchiveRule
@@ -124,6 +132,15 @@ func (r *ArchiveRuleRepo) ListByConfigIDFilter(c *gin.Context, configID uuid.UUI
 	}
 	var rules []model.ArchiveRule
 	if err := query.Order("created_at ASC").Find(&rules).Error; err != nil {
+		return nil, err
+	}
+	return rules, nil
+}
+
+// ListByConfigID 查询指定归档配置下的全部规则。
+func (r *ArchiveRuleRepo) ListByConfigID(c *gin.Context, configID uuid.UUID) ([]model.ArchiveRule, error) {
+	var rules []model.ArchiveRule
+	if err := r.WithTenant(c).Where("config_id = ?", configID).Order("created_at ASC").Find(&rules).Error; err != nil {
 		return nil, err
 	}
 	return rules, nil
