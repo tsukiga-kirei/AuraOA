@@ -106,6 +106,16 @@ DELETE /api/tenant/archive/rules/:id
 
 ---
 
+### 批量删除规则
+
+```
+POST /api/tenant/archive/rules/batch-delete
+```
+
+请求体包含 `config_id` 与 `rule_ids`（1–5000 个规则 UUID）。仅删除当前租户、当前配置下匹配的规则，响应 `deleted_count` 为实际删除数量。文件导入、粘贴导入和手工规则均执行硬删除。
+
+---
+
 ### 文件识别导入
 
 归档规则与审核规则保持对称，提供以下接口：

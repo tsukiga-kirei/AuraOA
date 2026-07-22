@@ -130,22 +130,15 @@ func (s *ArchiveRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.Updat
 	return rule, nil
 }
 
-// Delete 删除归档规则，根据来源采用不同策略：
-// manual 来源执行硬删除，file_import 来源标记禁用（保留历史记录）。
+// Delete 硬删除归档规则，确保前端删除后规则不会在刷新时重新出现。
 func (s *ArchiveRuleService) Delete(c *gin.Context, id uuid.UUID) error {
-	rule, err := s.ruleRepo.GetByID(c, id)
+	_, err := s.ruleRepo.GetByID(c, id)
 	if err != nil {
 		return newServiceError(errcode.ErrRuleNotFound, "归档规则不存在")
 	}
 
-	if rule.Source == "manual" {
-		if err := s.ruleRepo.Delete(c, id); err != nil {
-			return newServiceError(errcode.ErrDatabase, "数据库错误")
-		}
-	} else {
-		if err := s.ruleRepo.UpdateFields(c, id, map[string]interface{}{"enabled": false}); err != nil {
-			return newServiceError(errcode.ErrDatabase, "数据库错误")
-		}
+	if err := s.ruleRepo.Delete(c, id); err != nil {
+		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
 
 	// 清除该租户的归档配置缓存
@@ -159,6 +152,28 @@ func (s *ArchiveRuleService) Delete(c *gin.Context, id uuid.UUID) error {
 	}
 
 	return nil
+}
+
+// BatchDelete 批量硬删除当前配置下的归档规则，并返回实际删除数量。
+func (s *ArchiveRuleService) BatchDelete(c *gin.Context, configID uuid.UUID, ids []uuid.UUID) (int64, error) {
+	deletedCount, err := s.ruleRepo.DeleteBatch(c, configID, ids)
+	if err != nil {
+		return 0, newServiceError(errcode.ErrDatabase, "批量删除归档规则失败")
+	}
+	if deletedCount == 0 {
+		return 0, newServiceError(errcode.ErrRuleNotFound, "未找到可删除的归档规则")
+	}
+
+	if s.invalidator != nil {
+		tenantID, tenantErr := getTenantUUID(c)
+		if tenantErr == nil {
+			if err := s.invalidator.InvalidateConfigCache(context.Background(), tenantID, "archive"); err != nil {
+				_ = err
+			}
+		}
+	}
+
+	return deletedCount, nil
 }
 
 // ListByConfigIDFilter 按归档配置 ID 查询关联规则，支持按 rule_scope 和 enabled 状态过滤。

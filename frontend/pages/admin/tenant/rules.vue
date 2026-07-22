@@ -187,6 +187,21 @@ const selectedProcessId = ref('')
 // 当前选中流程的规则列表（从 API 加载）
 const currentRules = ref<ApiAuditRule[]>([])
 const loadingRules = ref(false)
+const selectedRuleIds = ref<string[]>([])
+const batchDeletingRules = ref(false)
+const selectedRuleIdSet = computed(() => new Set(selectedRuleIds.value))
+const allRulesSelected = computed(() => currentRules.value.length > 0 && selectedRuleIds.value.length === currentRules.value.length)
+const rulesSelectionIndeterminate = computed(() => selectedRuleIds.value.length > 0 && !allRulesSelected.value)
+
+const toggleRuleSelection = (id: string, checked: boolean) => {
+  selectedRuleIds.value = checked
+    ? [...new Set([...selectedRuleIds.value, id])]
+    : selectedRuleIds.value.filter(ruleId => ruleId !== id)
+}
+
+const toggleAllRules = (checked: boolean) => {
+  selectedRuleIds.value = checked ? currentRules.value.map(rule => rule.id) : []
+}
 
 //=====测试连接状态=====
 const testingConnection = ref(false)
@@ -454,6 +469,7 @@ watch(selectedProcessId, (newId) => {
 
 // 当选中流程变化时，从 API 加载该流程的规则
 watch(selectedProcessId, async (newId) => {
+  selectedRuleIds.value = []
   if (!newId) { currentRules.value = []; return }
   const cfg = processConfigs.value.find(c => c.id === newId)
   if (!cfg) { currentRules.value = []; return }
@@ -706,9 +722,27 @@ const deleteRule = async (id: string) => {
   try {
     await rulesApi.deleteRule(id)
     currentRules.value = currentRules.value.filter(r => r.id !== id)
+    selectedRuleIds.value = selectedRuleIds.value.filter(ruleId => ruleId !== id)
     message.success(t('admin.ruleConfig.deleted'))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.deleteRuleFail') + ': ' + (e.message || ''))
+  }
+}
+
+const batchDeleteRules = async () => {
+  if (!selectedConfig.value || selectedRuleIds.value.length === 0) return
+  const ids = [...selectedRuleIds.value]
+  batchDeletingRules.value = true
+  try {
+    const deletedCount = await rulesApi.batchDeleteRules(selectedConfig.value.id, ids)
+    const deletedIDs = new Set(ids)
+    currentRules.value = currentRules.value.filter(rule => !deletedIDs.has(rule.id))
+    selectedRuleIds.value = []
+    message.success(t('admin.ruleConfig.batchDeleteSuccess', `${deletedCount}`))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.batchDeleteFail') + ': ' + (e.message || ''))
+  } finally {
+    batchDeletingRules.value = false
   }
 }
 
@@ -1827,8 +1861,24 @@ watch(selectedArchiveId, (newId) => {
 // 当选中归档流程变化时，从 API 加载该流程的规则
 const currentArchiveRules = ref<ArchiveRule[]>([])
 const loadingArchiveRules = ref(false)
+const selectedArchiveRuleIds = ref<string[]>([])
+const batchDeletingArchiveRules = ref(false)
+const selectedArchiveRuleIdSet = computed(() => new Set(selectedArchiveRuleIds.value))
+const allArchiveRulesSelected = computed(() => currentArchiveRules.value.length > 0 && selectedArchiveRuleIds.value.length === currentArchiveRules.value.length)
+const archiveRulesSelectionIndeterminate = computed(() => selectedArchiveRuleIds.value.length > 0 && !allArchiveRulesSelected.value)
+
+const toggleArchiveRuleSelection = (id: string, checked: boolean) => {
+  selectedArchiveRuleIds.value = checked
+    ? [...new Set([...selectedArchiveRuleIds.value, id])]
+    : selectedArchiveRuleIds.value.filter(ruleId => ruleId !== id)
+}
+
+const toggleAllArchiveRules = (checked: boolean) => {
+  selectedArchiveRuleIds.value = checked ? currentArchiveRules.value.map(rule => rule.id) : []
+}
 
 watch(selectedArchiveId, async (newId) => {
+  selectedArchiveRuleIds.value = []
   if (!newId) { currentArchiveRules.value = []; return }
   const cfg = archiveConfigs.value.find(c => c.id === newId)
   if (!cfg) { currentArchiveRules.value = []; return }
@@ -2150,9 +2200,27 @@ const deleteArchiveRule = async (id: string) => {
   try {
     await archiveApi.deleteRule(id)
     currentArchiveRules.value = currentArchiveRules.value.filter(r => r.id !== id)
+    selectedArchiveRuleIds.value = selectedArchiveRuleIds.value.filter(ruleId => ruleId !== id)
     message.success(t('admin.ruleConfig.deleted'))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.deleteRuleFail') + ': ' + (e.message || ''))
+  }
+}
+
+const batchDeleteArchiveRules = async () => {
+  if (!selectedArchiveConfig.value || selectedArchiveRuleIds.value.length === 0) return
+  const ids = [...selectedArchiveRuleIds.value]
+  batchDeletingArchiveRules.value = true
+  try {
+    const deletedCount = await archiveApi.batchDeleteRules(selectedArchiveConfig.value.id, ids)
+    const deletedIDs = new Set(ids)
+    currentArchiveRules.value = currentArchiveRules.value.filter(rule => !deletedIDs.has(rule.id))
+    selectedArchiveRuleIds.value = []
+    message.success(t('admin.ruleConfig.batchDeleteSuccess', `${deletedCount}`))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.batchDeleteFail') + ': ' + (e.message || ''))
+  } finally {
+    batchDeletingArchiveRules.value = false
   }
 }
 
@@ -2766,22 +2834,47 @@ const handleSave = async () => {
           </div>
 
           <div class="rules-toolbar">
-            <span class="rules-count">{{ t('admin.ruleConfig.totalRules', `${currentRules.length}`) }}</span>
-            <div class="rules-toolbar-actions">
-              <a-button :disabled="ruleImportLoading" @click="handlePasteImport('audit')">
-                <SnippetsOutlined /> {{ t('admin.ruleConfig.pasteImport') }}
-              </a-button>
-              <a-button
-                :loading="ruleImportLoading && ruleImportTarget === 'audit'"
-                :disabled="ruleImportLoading || !ruleImportCapability?.enabled"
-                :title="ruleImportCapability?.reason || ''"
-                @click="handleImportRules('audit')"
+            <div class="rules-toolbar-summary">
+              <a-checkbox
+                :checked="allRulesSelected"
+                :indeterminate="rulesSelectionIndeterminate"
+                :disabled="currentRules.length === 0 || batchDeletingRules"
+                @change="(event: any) => toggleAllRules(!!event.target.checked)"
               >
-                <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
-              </a-button>
-              <a-button type="primary" @click="openRuleEditor()">
-                <PlusOutlined /> {{ t('admin.ruleConfig.manualAddBtn') }}
-              </a-button>
+                {{ t('admin.ruleConfig.selectAll') }}
+              </a-checkbox>
+              <span class="rules-count">{{ t('admin.ruleConfig.totalRules', `${currentRules.length}`) }}</span>
+              <span v-if="selectedRuleIds.length" class="rules-selected-count">
+                {{ t('admin.ruleConfig.selectedRules', `${selectedRuleIds.length}`) }}
+              </span>
+            </div>
+            <div class="rules-toolbar-actions">
+              <template v-if="selectedRuleIds.length">
+                <a-popconfirm
+                  :title="t('admin.ruleConfig.batchDeleteConfirm', `${selectedRuleIds.length}`)"
+                  @confirm="batchDeleteRules"
+                >
+                  <a-button danger :loading="batchDeletingRules">
+                    <DeleteOutlined /> {{ t('admin.ruleConfig.batchDelete') }}
+                  </a-button>
+                </a-popconfirm>
+              </template>
+              <template v-else>
+                <a-button :disabled="ruleImportLoading" @click="handlePasteImport('audit')">
+                  <SnippetsOutlined /> {{ t('admin.ruleConfig.pasteImport') }}
+                </a-button>
+                <a-button
+                  :loading="ruleImportLoading && ruleImportTarget === 'audit'"
+                  :disabled="ruleImportLoading || !ruleImportCapability?.enabled"
+                  :title="ruleImportCapability?.reason || ''"
+                  @click="handleImportRules('audit')"
+                >
+                  <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
+                </a-button>
+                <a-button type="primary" @click="openRuleEditor()">
+                  <PlusOutlined /> {{ t('admin.ruleConfig.manualAddBtn') }}
+                </a-button>
+              </template>
             </div>
           </div>
 
@@ -2789,6 +2882,13 @@ const handleSave = async () => {
             <a-spin v-if="loadingRules" style="display: block; text-align: center; padding: 24px;" />
             <div v-for="rule in currentRules" :key="rule.id" class="rule-card">
               <div class="rule-card-left">
+                <a-checkbox
+                  class="rule-select-checkbox"
+                  :checked="selectedRuleIdSet.has(rule.id)"
+                  :disabled="batchDeletingRules"
+                  :aria-label="t('admin.ruleConfig.selectRule')"
+                  @change="(event: any) => toggleRuleSelection(rule.id, !!event.target.checked)"
+                />
                 <div class="rule-scope-badge" :style="{ color: scopeConfig[rule.rule_scope]?.color, background: scopeConfig[rule.rule_scope]?.bg }">
                   <component :is="scopeConfig[rule.rule_scope]?.icon" />
                   {{ scopeConfig[rule.rule_scope]?.label }}
@@ -4539,22 +4639,47 @@ const handleSave = async () => {
           </div>
 
           <div class="rules-toolbar">
-            <span class="rules-count">{{ t('admin.ruleConfig.totalRules', `${currentArchiveRules.length}`) }}</span>
-            <div class="rules-toolbar-actions">
-              <a-button :disabled="ruleImportLoading" @click="handlePasteImport('archive')">
-                <SnippetsOutlined /> {{ t('admin.ruleConfig.pasteImport') }}
-              </a-button>
-              <a-button
-                :loading="ruleImportLoading && ruleImportTarget === 'archive'"
-                :disabled="ruleImportLoading || !ruleImportCapability?.enabled"
-                :title="ruleImportCapability?.reason || ''"
-                @click="handleImportRules('archive')"
+            <div class="rules-toolbar-summary">
+              <a-checkbox
+                :checked="allArchiveRulesSelected"
+                :indeterminate="archiveRulesSelectionIndeterminate"
+                :disabled="currentArchiveRules.length === 0 || batchDeletingArchiveRules"
+                @change="(event: any) => toggleAllArchiveRules(!!event.target.checked)"
               >
-                <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
-              </a-button>
-              <a-button type="primary" @click="openArchiveRuleEditor()">
-                <PlusOutlined /> {{ t('admin.ruleConfig.manualAdd') }}
-              </a-button>
+                {{ t('admin.ruleConfig.selectAll') }}
+              </a-checkbox>
+              <span class="rules-count">{{ t('admin.ruleConfig.totalRules', `${currentArchiveRules.length}`) }}</span>
+              <span v-if="selectedArchiveRuleIds.length" class="rules-selected-count">
+                {{ t('admin.ruleConfig.selectedRules', `${selectedArchiveRuleIds.length}`) }}
+              </span>
+            </div>
+            <div class="rules-toolbar-actions">
+              <template v-if="selectedArchiveRuleIds.length">
+                <a-popconfirm
+                  :title="t('admin.ruleConfig.batchDeleteConfirm', `${selectedArchiveRuleIds.length}`)"
+                  @confirm="batchDeleteArchiveRules"
+                >
+                  <a-button danger :loading="batchDeletingArchiveRules">
+                    <DeleteOutlined /> {{ t('admin.ruleConfig.batchDelete') }}
+                  </a-button>
+                </a-popconfirm>
+              </template>
+              <template v-else>
+                <a-button :disabled="ruleImportLoading" @click="handlePasteImport('archive')">
+                  <SnippetsOutlined /> {{ t('admin.ruleConfig.pasteImport') }}
+                </a-button>
+                <a-button
+                  :loading="ruleImportLoading && ruleImportTarget === 'archive'"
+                  :disabled="ruleImportLoading || !ruleImportCapability?.enabled"
+                  :title="ruleImportCapability?.reason || ''"
+                  @click="handleImportRules('archive')"
+                >
+                  <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
+                </a-button>
+                <a-button type="primary" @click="openArchiveRuleEditor()">
+                  <PlusOutlined /> {{ t('admin.ruleConfig.manualAdd') }}
+                </a-button>
+              </template>
             </div>
           </div>
 
@@ -4564,6 +4689,13 @@ const handleSave = async () => {
             </div>
             <div v-for="rule in currentArchiveRules" :key="rule.id" class="rule-card">
               <div class="rule-card-left">
+                <a-checkbox
+                  class="rule-select-checkbox"
+                  :checked="selectedArchiveRuleIdSet.has(rule.id)"
+                  :disabled="batchDeletingArchiveRules"
+                  :aria-label="t('admin.ruleConfig.selectRule')"
+                  @change="(event: any) => toggleArchiveRuleSelection(rule.id, !!event.target.checked)"
+                />
                 <div class="rule-scope-badge" :style="{ color: scopeConfig[rule.rule_scope]?.color, background: scopeConfig[rule.rule_scope]?.bg }">
                   <component :is="scopeConfig[rule.rule_scope]?.icon" />
                   {{ scopeConfig[rule.rule_scope]?.label }}
@@ -5278,10 +5410,15 @@ const handleSave = async () => {
 
 /*规则*/
 .rules-toolbar {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: nowrap; margin-bottom: 14px;
 }
+.rules-toolbar-summary { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; white-space: nowrap; }
 .rules-count { font-size: 13px; color: var(--color-text-tertiary); }
-.rules-toolbar-actions { display: flex; gap: 8px; }
+.rules-selected-count {
+  padding: 2px 8px; border-radius: var(--radius-full);
+  background: var(--color-primary-bg); color: var(--color-primary); font-size: 12px; font-weight: 600;
+}
+.rules-toolbar-actions { display: flex; gap: 8px; flex-wrap: nowrap; flex-shrink: 0; }
 
 .rules-list { display: flex; flex-direction: column; gap: 10px; }
 .rule-card {
@@ -5291,6 +5428,7 @@ const handleSave = async () => {
 }
 .rule-card:hover { box-shadow: var(--shadow-sm); }
 .rule-card-left { display: flex; align-items: flex-start; gap: 12px; flex: 1; min-width: 0; }
+.rule-select-checkbox { margin-top: 3px; flex-shrink: 0; }
 .rule-scope-badge {
   display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600;
   padding: 4px 10px; border-radius: var(--radius-full); white-space: nowrap; flex-shrink: 0;

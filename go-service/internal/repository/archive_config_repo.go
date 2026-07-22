@@ -112,6 +112,15 @@ func (r *ArchiveRuleRepo) Delete(c *gin.Context, id uuid.UUID) error {
 	return r.WithTenant(c).Where("id = ?", id).Delete(&model.ArchiveRule{}).Error
 }
 
+// DeleteBatch 批量硬删除当前租户指定配置下的归档规则。
+func (r *ArchiveRuleRepo) DeleteBatch(c *gin.Context, configID uuid.UUID, ids []uuid.UUID) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := r.WithTenant(c).Where("config_id = ? AND id IN ?", configID, ids).Delete(&model.ArchiveRule{})
+	return result.RowsAffected, result.Error
+}
+
 // ListByTenant 查询当前租户的所有归档规则，用于构建 ruleID→content 映射。
 func (r *ArchiveRuleRepo) ListByTenant(c *gin.Context) ([]model.ArchiveRule, error) {
 	var rules []model.ArchiveRule

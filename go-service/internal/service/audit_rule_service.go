@@ -157,6 +157,28 @@ func (s *AuditRuleService) Delete(c *gin.Context, id uuid.UUID) error {
 	return nil
 }
 
+// BatchDelete 批量硬删除当前配置下的审核规则，并返回实际删除数量。
+func (s *AuditRuleService) BatchDelete(c *gin.Context, configID uuid.UUID, ids []uuid.UUID) (int64, error) {
+	deletedCount, err := s.ruleRepo.DeleteBatch(c, configID, ids)
+	if err != nil {
+		return 0, newServiceError(errcode.ErrDatabase, "批量删除审核规则失败")
+	}
+	if deletedCount == 0 {
+		return 0, newServiceError(errcode.ErrRuleNotFound, "未找到可删除的审核规则")
+	}
+
+	if s.invalidator != nil {
+		tenantID, tenantErr := getTenantUUID(c)
+		if tenantErr == nil {
+			if err := s.invalidator.InvalidateConfigCache(context.Background(), tenantID, "audit"); err != nil {
+				_ = err
+			}
+		}
+	}
+
+	return deletedCount, nil
+}
+
 // ListByConfigIDFilter 按审核配置 ID 查询关联规则，支持按 rule_scope 和 enabled 状态过滤。
 func (s *AuditRuleService) ListByConfigIDFilter(c *gin.Context, configID uuid.UUID, ruleScope *string, enabled *bool) ([]model.AuditRule, error) {
 	rules, err := s.ruleRepo.ListByConfigIDFilter(c, configID, ruleScope, enabled)

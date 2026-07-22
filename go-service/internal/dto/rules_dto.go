@@ -70,6 +70,17 @@ type UpdateAuditRuleRequest struct {
 	ContextMounts  datatypes.JSON `json:"context_mounts"`
 }
 
+// BatchDeleteRulesRequest 批量删除规则请求。
+type BatchDeleteRulesRequest struct {
+	ConfigID string   `json:"config_id" binding:"required,uuid"`
+	RuleIDs  []string `json:"rule_ids" binding:"required,min=1,max=5000,dive,uuid"`
+}
+
+// BatchDeleteRulesResponse 批量删除规则响应。
+type BatchDeleteRulesResponse struct {
+	DeletedCount int64 `json:"deleted_count"`
+}
+
 // RuleImportCapabilityResponse 文件识别导入能力状态。
 type RuleImportCapabilityResponse struct {
 	Enabled        bool     `json:"enabled"`

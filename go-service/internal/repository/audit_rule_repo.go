@@ -46,6 +46,15 @@ func (r *AuditRuleRepo) Delete(c *gin.Context, id uuid.UUID) error {
 	return r.WithTenant(c).Where("id = ?", id).Delete(&model.AuditRule{}).Error
 }
 
+// DeleteBatch 批量硬删除当前租户指定配置下的审核规则。
+func (r *AuditRuleRepo) DeleteBatch(c *gin.Context, configID uuid.UUID, ids []uuid.UUID) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := r.WithTenant(c).Where("config_id = ? AND id IN ?", configID, ids).Delete(&model.AuditRule{})
+	return result.RowsAffected, result.Error
+}
+
 // GetByID 通过 ID 查询单条审核规则。
 func (r *AuditRuleRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.AuditRule, error) {
 	var rule model.AuditRule

@@ -132,6 +132,15 @@ export const useArchiveConfigApi = () => {
     await authFetch<null>(`/api/tenant/archive/rules/${id}`, { method: 'DELETE' })
   }
 
+  /** 批量删除当前归档配置下选中的规则。 */
+  async function batchDeleteRules(configId: string, ruleIds: string[]): Promise<number> {
+    const result = await authFetch<{ deleted_count: number }>('/api/tenant/archive/rules/batch-delete', {
+      method: 'POST',
+      body: { config_id: configId, rule_ids: ruleIds },
+    })
+    return result.deleted_count
+  }
+
   /** 查询系统管理员是否已开启 MinerU 文件识别导入。 */
   async function getRuleImportCapability(): Promise<RuleImportCapability> {
     return await authFetch<RuleImportCapability>('/api/tenant/archive/rules/import-capability')
@@ -198,6 +207,7 @@ export const useArchiveConfigApi = () => {
     createRule,
     updateRule,
     deleteRule,
+    batchDeleteRules,
     getRuleImportCapability,
     previewRuleImport,
     previewPastedRuleImport,
