@@ -650,6 +650,9 @@ const scopeConfig = computed(() => ({
   default_off: { label: t('admin.ruleConfig.defaultOff'), color: 'var(--color-text-tertiary)', bg: 'var(--color-bg-hover)', icon: UnlockOutlined },
 }))
 
+const hasActualExternalContext = (rule: { context_enabled?: boolean; context_mounts?: { enabled?: boolean }[] }) =>
+  !!rule.context_enabled && !!rule.context_mounts?.some(mount => mount.enabled !== false)
+
 const showRuleEditor = ref(false)
 const editingRule = ref<ApiAuditRule | AuditRule | null>(null)
 
@@ -2799,7 +2802,7 @@ const handleSave = async () => {
                     <span v-if="rule.related_flow" class="rule-flow-tag">
                       <NodeIndexOutlined /> {{ t('admin.ruleConfig.relatedFlow') }}
                     </span>
-                    <span v-if="rule.context_enabled" class="rule-flow-tag">
+                    <span v-if="hasActualExternalContext(rule)" class="rule-flow-tag">
                       <NodeIndexOutlined /> 外部关联
                     </span>
                   </div>
@@ -4571,7 +4574,7 @@ const handleSave = async () => {
                     <span v-if="rule.related_flow" class="rule-flow-tag">
                       <NodeIndexOutlined /> {{ t('admin.ruleConfig.relatedFlow') }}
                     </span>
-                    <span v-if="rule.context_enabled" class="rule-flow-tag">
+                    <span v-if="hasActualExternalContext(rule)" class="rule-flow-tag">
                       <NodeIndexOutlined /> 外部关联
                     </span>
                     <span v-if="rule.source === 'file_import'" class="rule-source-tag">{{ t('admin.ruleConfig.fileImportTag') }}</span>
@@ -5015,12 +5018,12 @@ const handleSave = async () => {
               </a-select>
             </label>
             <label><a-switch v-model:checked="rule.related_flow" :disabled="!rule.selected" size="small" /> {{ t('admin.ruleConfig.relatedFlow') }}</label>
-            <label><a-switch v-model:checked="rule.context_enabled" :disabled="!rule.selected" size="small" /> {{ t('admin.ruleConfig.externalContext') }}</label>
+            <label><a-switch v-model:checked="rule.context_recommended" :disabled="!rule.selected" size="small" /> {{ t('admin.ruleConfig.externalContextRecommendation') }}</label>
           </div>
           <div v-if="rule.reasoning" class="rule-import-reasoning">
             <RobotOutlined /> {{ rule.reasoning }}
           </div>
-          <div v-if="rule.context_enabled" class="rule-import-context-hint">
+          <div v-if="rule.context_recommended" class="rule-import-context-hint">
             {{ t('admin.ruleConfig.fileImportContextHint') }}
           </div>
         </div>

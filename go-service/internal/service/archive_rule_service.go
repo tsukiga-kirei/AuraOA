@@ -38,6 +38,7 @@ func (s *ArchiveRuleService) Create(c *gin.Context, req *dto.CreateArchiveRuleRe
 		enabled = *req.Enabled
 	}
 
+	contextMounts := defaultJSON(req.ContextMounts, "[]")
 	rule := &model.ArchiveRule{
 		ID:             uuid.New(),
 		TenantID:       tenantID,
@@ -47,8 +48,8 @@ func (s *ArchiveRuleService) Create(c *gin.Context, req *dto.CreateArchiveRuleRe
 		Enabled:        &enabled,
 		Source:         defaultStr(req.Source, "manual"),
 		RelatedFlow:    req.RelatedFlow,
-		ContextEnabled: req.ContextEnabled,
-		ContextMounts:  defaultJSON(req.ContextMounts, "[]"),
+		ContextEnabled: req.ContextEnabled && hasEnabledContextMounts(contextMounts),
+		ContextMounts:  contextMounts,
 	}
 
 	if req.ConfigID != "" {
@@ -74,7 +75,7 @@ func (s *ArchiveRuleService) Create(c *gin.Context, req *dto.CreateArchiveRuleRe
 
 // Update 按需更新归档规则字段，仅更新请求中非零值的字段，更新后重新查询返回最新数据。
 func (s *ArchiveRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.UpdateArchiveRuleRequest) (*model.ArchiveRule, error) {
-	_, err := s.ruleRepo.GetByID(c, id)
+	existing, err := s.ruleRepo.GetByID(c, id)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrRuleNotFound, "归档规则不存在")
 	}
@@ -92,11 +93,17 @@ func (s *ArchiveRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.Updat
 	if req.RelatedFlow != nil {
 		fields["related_flow"] = *req.RelatedFlow
 	}
-	if req.ContextEnabled != nil {
-		fields["context_enabled"] = *req.ContextEnabled
-	}
 	if req.ContextMounts != nil {
 		fields["context_mounts"] = req.ContextMounts
+	}
+	effectiveMounts := existing.ContextMounts
+	if req.ContextMounts != nil {
+		effectiveMounts = req.ContextMounts
+	}
+	if req.ContextEnabled != nil {
+		fields["context_enabled"] = *req.ContextEnabled && hasEnabledContextMounts(effectiveMounts)
+	} else if req.ContextMounts != nil {
+		fields["context_enabled"] = existing.ContextEnabled && hasEnabledContextMounts(effectiveMounts)
 	}
 
 	if len(fields) > 0 {
@@ -159,6 +166,11 @@ func (s *ArchiveRuleService) ListByConfigIDFilter(c *gin.Context, configID uuid.
 	rules, err := s.ruleRepo.ListByConfigIDFilter(c, configID, ruleScope, enabled)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	for i := range rules {
+		if !hasEnabledContextMounts(rules[i].ContextMounts) {
+			rules[i].ContextEnabled = false
+		}
 	}
 	return rules, nil
 }

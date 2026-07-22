@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -38,6 +39,7 @@ func (s *AuditRuleService) Create(c *gin.Context, req *dto.CreateAuditRuleReques
 		enabled = *req.Enabled
 	}
 
+	contextMounts := defaultJSON(req.ContextMounts, "[]")
 	rule := &model.AuditRule{
 		ID:             uuid.New(),
 		TenantID:       tenantID,
@@ -47,8 +49,8 @@ func (s *AuditRuleService) Create(c *gin.Context, req *dto.CreateAuditRuleReques
 		Enabled:        &enabled,
 		Source:         defaultStr(req.Source, "manual"),
 		RelatedFlow:    req.RelatedFlow,
-		ContextEnabled: req.ContextEnabled,
-		ContextMounts:  defaultJSON(req.ContextMounts, "[]"),
+		ContextEnabled: req.ContextEnabled && hasEnabledContextMounts(contextMounts),
+		ContextMounts:  contextMounts,
 	}
 
 	if req.ConfigID != "" {
@@ -75,7 +77,7 @@ func (s *AuditRuleService) Create(c *gin.Context, req *dto.CreateAuditRuleReques
 
 // Update 按需更新审核规则字段，仅更新请求中非零值的字段，更新后重新查询返回最新数据。
 func (s *AuditRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.UpdateAuditRuleRequest) (*model.AuditRule, error) {
-	_, err := s.ruleRepo.GetByID(c, id)
+	existing, err := s.ruleRepo.GetByID(c, id)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrRuleNotFound, "审核规则不存在")
 	}
@@ -93,11 +95,17 @@ func (s *AuditRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.UpdateA
 	if req.RelatedFlow != nil {
 		fields["related_flow"] = *req.RelatedFlow
 	}
-	if req.ContextEnabled != nil {
-		fields["context_enabled"] = *req.ContextEnabled
-	}
 	if req.ContextMounts != nil {
 		fields["context_mounts"] = req.ContextMounts
+	}
+	effectiveMounts := existing.ContextMounts
+	if req.ContextMounts != nil {
+		effectiveMounts = req.ContextMounts
+	}
+	if req.ContextEnabled != nil {
+		fields["context_enabled"] = *req.ContextEnabled && hasEnabledContextMounts(effectiveMounts)
+	} else if req.ContextMounts != nil {
+		fields["context_enabled"] = existing.ContextEnabled && hasEnabledContextMounts(effectiveMounts)
 	}
 
 	if len(fields) > 0 {
@@ -155,5 +163,24 @@ func (s *AuditRuleService) ListByConfigIDFilter(c *gin.Context, configID uuid.UU
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	for i := range rules {
+		if !hasEnabledContextMounts(rules[i].ContextMounts) {
+			rules[i].ContextEnabled = false
+		}
+	}
 	return rules, nil
+}
+
+// hasEnabledContextMounts 判断规则是否真正配置了至少一个启用的外部数据挂载。
+func hasEnabledContextMounts(raw []byte) bool {
+	var mounts []model.ExternalContextMount
+	if len(raw) == 0 || json.Unmarshal(raw, &mounts) != nil {
+		return false
+	}
+	for _, mount := range mounts {
+		if mount.Enabled {
+			return true
+		}
+	}
+	return false
 }

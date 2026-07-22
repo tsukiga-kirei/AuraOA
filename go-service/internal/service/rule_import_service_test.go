@@ -27,6 +27,21 @@ func TestNormalizeImportedDrafts(t *testing.T) {
 	if rules[1].RuleScope != "default_on" || rules[1].Confidence != 0 {
 		t.Fatalf("unexpected normalized fallback: %+v", rules[1])
 	}
+	if !rules[1].ContextRecommended || rules[1].ContextEnabled {
+		t.Fatalf("expected legacy context flag converted to recommendation: %+v", rules[1])
+	}
+}
+
+func TestHasEnabledContextMounts(t *testing.T) {
+	if hasEnabledContextMounts([]byte(`[]`)) {
+		t.Fatal("empty mounts must not enable external context")
+	}
+	if hasEnabledContextMounts([]byte(`[ {"type":"workflow","enabled":false} ]`)) {
+		t.Fatal("disabled mounts must not enable external context")
+	}
+	if !hasEnabledContextMounts([]byte(`[ {"type":"workflow","enabled":true} ]`)) {
+		t.Fatal("enabled mount should enable external context")
+	}
 }
 
 func TestConfirmRejectsUnsupportedImportSource(t *testing.T) {

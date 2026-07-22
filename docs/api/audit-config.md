@@ -128,9 +128,9 @@ Content-Type: multipart/form-data
 | `config_id` | uuid | 必填，当前流程审核配置 ID |
 | `file` | file | 必填，类型与大小受系统附件识别配置限制 |
 
-服务端先调用 MinerU 识别文件，再通过 `AIModelCallerService` 生成结构化规则草稿。此接口**不写入规则库**。每条草稿包含 `rule_content`、`rule_scope`、`related_flow`、`context_enabled`、`confidence`、`reasoning`。
+服务端先调用 MinerU 识别文件，再通过 `AIModelCallerService` 生成结构化规则草稿。此接口**不写入规则库**。每条草稿包含 `rule_content`、`rule_scope`、`related_flow`、`context_recommended`、`confidence`、`reasoning`。
 
-AI 对规则级别、审批流依赖与外部数据依赖的判断均为建议值。判断外部数据依赖时会同时参考当前流程已配置的主表与明细字段；`context_enabled=true` 只表示规则需要当前表单和审批历史之外的数据，不会虚构 `context_mounts`，确认导入后仍需在规则编辑器中配置具体数据源。
+AI 对规则级别、审批流依赖与外部数据依赖的判断均为建议值。判断外部数据依赖时会同时参考当前流程已配置的主表与明细字段；`context_recommended=true` 只表示规则可能需要当前表单和审批历史之外的数据，不会直接设置 `context_enabled`，也不会虚构 `context_mounts`。只有管理员在规则编辑器中配置至少一个启用的挂载后，规则才会显示并启用“外部关联”。
 
 ---
 
@@ -170,7 +170,8 @@ POST /api/tenant/rules/audit-rules/import-confirm
       "rule_content": "合同金额不得超过已批准预算",
       "rule_scope": "mandatory",
       "related_flow": false,
-      "context_enabled": true,
+      "context_enabled": false,
+      "context_recommended": true,
       "confidence": 0.92,
       "reasoning": "原文使用不得，且需要查询预算数据"
     }
