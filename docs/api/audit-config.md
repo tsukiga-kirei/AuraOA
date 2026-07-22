@@ -170,7 +170,6 @@ POST /api/tenant/rules/audit-rules/import-confirm
       "rule_content": "合同金额不得超过已批准预算",
       "rule_scope": "mandatory",
       "related_flow": false,
-      "context_enabled": false,
       "context_recommended": true,
       "confidence": 0.92,
       "reasoning": "原文使用不得，且需要查询预算数据"

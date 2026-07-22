@@ -167,10 +167,5 @@ func (s *ArchiveRuleService) ListByConfigIDFilter(c *gin.Context, configID uuid.
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
-	for i := range rules {
-		if !hasEnabledContextMounts(rules[i].ContextMounts) {
-			rules[i].ContextEnabled = false
-		}
-	}
 	return rules, nil
 }

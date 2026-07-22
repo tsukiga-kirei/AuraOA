@@ -12,7 +12,7 @@ func TestNormalizeImportedDrafts(t *testing.T) {
 	rules, err := normalizeImportedDrafts([]dto.RuleImportDraft{
 		{RuleContent: "  合同金额不得超过预算  ", RuleScope: "mandatory", Confidence: 1.2},
 		{RuleContent: "合同金额不得超过预算", RuleScope: "mandatory", Confidence: .8},
-		{RuleContent: "需要查询供应商黑名单", RuleScope: "unknown", ContextEnabled: true, Confidence: -.2},
+		{RuleContent: "需要查询供应商黑名单", RuleScope: "unknown", ContextRecommended: true, Confidence: -.2},
 		{RuleContent: "   "},
 	})
 	if err != nil {
@@ -27,8 +27,8 @@ func TestNormalizeImportedDrafts(t *testing.T) {
 	if rules[1].RuleScope != "default_on" || rules[1].Confidence != 0 {
 		t.Fatalf("unexpected normalized fallback: %+v", rules[1])
 	}
-	if !rules[1].ContextRecommended || rules[1].ContextEnabled {
-		t.Fatalf("expected legacy context flag converted to recommendation: %+v", rules[1])
+	if !rules[1].ContextRecommended {
+		t.Fatalf("expected context recommendation preserved: %+v", rules[1])
 	}
 }
 
