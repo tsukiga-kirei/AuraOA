@@ -453,11 +453,6 @@ func normalizeImportedDraft(item dto.RuleImportDraft) (dto.RuleImportDraft, erro
 	if item.Confidence > 1 {
 		item.Confidence = 1
 	}
-	// 兼容旧提示词返回的 context_enabled；导入草稿只能表达建议，不能伪装成已配置挂载。
-	if item.ContextEnabled {
-		item.ContextRecommended = true
-	}
-	item.ContextEnabled = false
 	item.Reasoning = strings.TrimSpace(item.Reasoning)
 	return item, nil
 }

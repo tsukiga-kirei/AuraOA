@@ -5881,9 +5881,6 @@ components:
           - default_off
         related_flow:
           type: boolean
-        context_enabled:
-          type: boolean
-          description: 是否已实际配置外部数据挂载；导入草稿固定为 false
         context_recommended:
           type: boolean
           description: AI 是否建议后续配置外部数据挂载

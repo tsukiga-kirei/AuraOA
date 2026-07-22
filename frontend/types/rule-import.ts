@@ -13,7 +13,6 @@ export interface RuleImportDraft {
   rule_content: string
   rule_scope: 'mandatory' | 'default_on' | 'default_off'
   related_flow: boolean
-  context_enabled: boolean
   context_recommended: boolean
   confidence: number
   reasoning: string

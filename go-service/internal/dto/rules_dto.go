@@ -84,7 +84,6 @@ type RuleImportDraft struct {
 	RuleContent        string  `json:"rule_content" binding:"required"`
 	RuleScope          string  `json:"rule_scope"`
 	RelatedFlow        bool    `json:"related_flow"`
-	ContextEnabled     bool    `json:"context_enabled"`
 	ContextRecommended bool    `json:"context_recommended"`
 	Confidence         float64 `json:"confidence"`
 	Reasoning          string  `json:"reasoning"`
