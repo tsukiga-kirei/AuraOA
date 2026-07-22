@@ -106,6 +106,26 @@ DELETE /api/tenant/archive/rules/:id
 
 ---
 
+### 文件识别导入
+
+归档规则与审核规则保持对称，提供以下接口：
+
+```
+GET  /api/tenant/archive/rules/import-capability
+POST /api/tenant/archive/rules/import-preview
+POST /api/tenant/archive/rules/import-text-preview
+POST /api/tenant/archive/rules/import-confirm
+```
+
+- `import-capability`：返回 MinerU 是否已由系统管理员启用，以及大小和类型限制。
+- `import-preview`：使用 `multipart/form-data` 上传 `config_id` 与 `file`，先经 MinerU 识别，再由统一 AI 调用入口返回可编辑草稿，不写库。
+- `import-text-preview`：提交 `config_id` 与粘贴的 `text`，不经过 MinerU，直接返回 AI 草稿。
+- `import-confirm`：提交 `config_id`、`source` 与 1–100 条确认后的草稿；`source` 支持 `file_import`、`paste_import`。
+
+草稿字段、AI 建议值语义和外部关联数据注意事项与 [审核规则文件导入](./audit-config.md#识别文件并生成规则草稿) 相同。
+
+---
+
 ## 外部关联数据
 
 ### 测试关联数据配置

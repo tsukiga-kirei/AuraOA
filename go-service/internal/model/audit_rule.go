@@ -16,7 +16,7 @@ type AuditRule struct {
 	RuleContent    string         `gorm:"type:text;not null" json:"rule_content"`
 	RuleScope      string         `gorm:"size:20;not null;default:default_on" json:"rule_scope"` // 规则作用域：mandatory=强制/default_on=默认开/default_off=默认关
 	Enabled        *bool          `gorm:"not null;default:true" json:"enabled"`
-	Source         string         `gorm:"size:20;not null;default:manual" json:"source"` // 规则来源：manual=手动创建/file_import=文件导入
+	Source         string         `gorm:"size:20;not null;default:manual" json:"source"` // 规则来源：manual=手动创建/file_import=文件导入/paste_import=粘贴导入
 	RelatedFlow    bool           `gorm:"not null;default:false" json:"related_flow"`
 	ContextEnabled bool           `gorm:"not null;default:false" json:"context_enabled"`
 	ContextMounts  datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"context_mounts"`

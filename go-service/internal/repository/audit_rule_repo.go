@@ -23,6 +23,14 @@ func (r *AuditRuleRepo) Create(c *gin.Context, rule *model.AuditRule) error {
 	return r.WithTenant(c).Create(rule).Error
 }
 
+// CreateBatch 在单个事务中批量创建审核规则。
+func (r *AuditRuleRepo) CreateBatch(c *gin.Context, rules []model.AuditRule) error {
+	if len(rules) == 0 {
+		return nil
+	}
+	return r.WithTenant(c).Create(&rules).Error
+}
+
 // Update 更新审核规则。
 func (r *AuditRuleRepo) Update(c *gin.Context, rule *model.AuditRule) error {
 	return r.WithTenant(c).Model(rule).Where("id = ?", rule.ID).Updates(rule).Error

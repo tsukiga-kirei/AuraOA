@@ -70,6 +70,45 @@ type UpdateAuditRuleRequest struct {
 	ContextMounts  datatypes.JSON `json:"context_mounts"`
 }
 
+// RuleImportCapabilityResponse 文件识别导入能力状态。
+type RuleImportCapabilityResponse struct {
+	Enabled        bool     `json:"enabled"`
+	MaxFileSizeMB  int      `json:"max_file_size_mb"`
+	SupportedTypes []string `json:"supported_types"`
+	Reason         string   `json:"reason,omitempty"`
+}
+
+// RuleImportDraft AI 从制度文件中提取的单条规则草稿。
+// AI 仅给出建议值，最终由租户管理员确认后才会写入规则库。
+type RuleImportDraft struct {
+	RuleContent    string  `json:"rule_content" binding:"required"`
+	RuleScope      string  `json:"rule_scope"`
+	RelatedFlow    bool    `json:"related_flow"`
+	ContextEnabled bool    `json:"context_enabled"`
+	Confidence     float64 `json:"confidence"`
+	Reasoning      string  `json:"reasoning"`
+}
+
+// RuleImportPreviewResponse 文件识别与 AI 结构化后的预览结果。
+type RuleImportPreviewResponse struct {
+	FileName string            `json:"file_name"`
+	Rules    []RuleImportDraft `json:"rules"`
+	Warnings []string          `json:"warnings"`
+}
+
+// ConfirmRuleImportRequest 确认批量导入规则请求。
+type ConfirmRuleImportRequest struct {
+	ConfigID string            `json:"config_id" binding:"required"`
+	Source   string            `json:"source" binding:"omitempty,oneof=file_import paste_import"`
+	Rules    []RuleImportDraft `json:"rules" binding:"required,min=1,max=100,dive"`
+}
+
+// PreviewPastedRuleImportRequest 粘贴文本生成规则草稿请求。
+type PreviewPastedRuleImportRequest struct {
+	ConfigID string `json:"config_id" binding:"required"`
+	Text     string `json:"text" binding:"required"`
+}
+
 // ===================== Token 统计 DTO =====================
 
 // TokenUsageQuery Token 消耗查询参数。
