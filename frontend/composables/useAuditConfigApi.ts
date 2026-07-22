@@ -116,6 +116,15 @@ export const useAuditConfigApi = () => {
     await authFetch<null>(`/api/tenant/rules/audit-rules/${id}`, { method: 'DELETE' })
   }
 
+  /** 批量删除当前审核配置下选中的规则。 */
+  async function batchDeleteRules(configId: string, ruleIds: string[]): Promise<number> {
+    const result = await authFetch<{ deleted_count: number }>('/api/tenant/rules/audit-rules/batch-delete', {
+      method: 'POST',
+      body: { config_id: configId, rule_ids: ruleIds },
+    })
+    return result.deleted_count
+  }
+
   /** 查询系统管理员是否已开启 MinerU 文件识别导入。 */
   async function getRuleImportCapability(): Promise<RuleImportCapability> {
     return await authFetch<RuleImportCapability>('/api/tenant/rules/audit-rules/import-capability')
@@ -174,7 +183,7 @@ export const useAuditConfigApi = () => {
   return {
     listConfigs, createConfig, updateConfig, deleteConfig,
     testConnection, fetchFields,
-    listRules, createRule, updateRule, deleteRule,
+    listRules, createRule, updateRule, deleteRule, batchDeleteRules,
     getRuleImportCapability, previewRuleImport, previewPastedRuleImport, confirmRuleImport,
     testContext, searchWorkflows,
     listPromptTemplates,

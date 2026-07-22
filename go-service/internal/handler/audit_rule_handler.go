@@ -210,3 +210,37 @@ func (h *AuditRuleHandler) Delete(c *gin.Context) {
 	}
 	response.Success(c, nil)
 }
+
+// BatchDelete 批量删除当前审核配置下选中的规则。
+// POST /api/tenant/rules/audit-rules/batch-delete
+// 请求体：config_id、rule_ids（1–5000 个 UUID）。
+func (h *AuditRuleHandler) BatchDelete(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 512*1024)
+	var req dto.BatchDeleteRulesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+
+	configID, err := uuid.Parse(req.ConfigID)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "config_id 格式错误")
+		return
+	}
+	ruleIDs := make([]uuid.UUID, 0, len(req.RuleIDs))
+	for _, idStr := range req.RuleIDs {
+		id, parseErr := uuid.Parse(idStr)
+		if parseErr != nil {
+			response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "rule_ids 包含无效 UUID")
+			return
+		}
+		ruleIDs = append(ruleIDs, id)
+	}
+
+	deletedCount, err := h.ruleService.BatchDelete(c, configID, ruleIDs)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, &dto.BatchDeleteRulesResponse{DeletedCount: deletedCount})
+}

@@ -2137,6 +2137,26 @@ paths:
           type: string
           format: uuid
         description: 资源 ID
+  /api/tenant/rules/audit-rules/batch-delete:
+    post:
+      summary: 批量删除审核规则
+      tags:
+      - AuditConfig
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchDeleteRulesRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchDeleteRulesResponse'
   /api/tenant/rules/audit-rules/import-capability:
     get:
       summary: 查询审核规则文件识别导入能力
@@ -2572,6 +2592,26 @@ paths:
           type: string
           format: uuid
         description: 资源 ID
+  /api/tenant/archive/rules/batch-delete:
+    post:
+      summary: 批量删除归档规则
+      tags:
+      - ArchiveConfig
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchDeleteRulesRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchDeleteRulesResponse'
   /api/tenant/archive/rules/import-capability:
     get:
       summary: 查询归档规则文件识别导入能力
@@ -5842,6 +5882,37 @@ components:
       type: object
     AuditRuleRequest:
       type: object
+    BatchDeleteRulesRequest:
+      type: object
+      required:
+      - config_id
+      - rule_ids
+      properties:
+        config_id:
+          type: string
+          format: uuid
+        rule_ids:
+          type: array
+          minItems: 1
+          maxItems: 5000
+          items:
+            type: string
+            format: uuid
+    BatchDeleteRulesResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: success
+        data:
+          type: object
+          properties:
+            deleted_count:
+              type: integer
+              format: int64
     RuleImportPreviewRequest:
       type: object
       required:

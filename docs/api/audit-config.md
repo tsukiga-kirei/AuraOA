@@ -106,6 +106,25 @@ DELETE /api/tenant/rules/audit-rules/:id
 
 ---
 
+### 批量删除规则
+
+```
+POST /api/tenant/rules/audit-rules/batch-delete
+```
+
+请求体：
+
+```json
+{
+  "config_id": "配置 UUID",
+  "rule_ids": ["规则 UUID 1", "规则 UUID 2"]
+}
+```
+
+仅删除当前租户、当前配置下匹配的规则，一次支持 1–5000 条；响应 `deleted_count` 为实际删除数量。
+
+---
+
 ### 查询文件识别导入能力
 
 ```
