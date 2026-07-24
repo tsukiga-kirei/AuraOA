@@ -908,40 +908,16 @@ const extractionPromptVariables = computed(() => [
   { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
 ])
 
-//用于光标位置插入的文本区域引用
+// 提示词编辑器会记住最近一次有效选区，变量按钮点击后仍可在原光标位置插入。
 const reasoningTextareaRef = ref<any>(null)
 const extractionTextareaRef = ref<any>(null)
 
-const insertAtCursor = (textareaRef: any, field: 'user_reasoning_prompt' | 'user_extraction_prompt', variable: string) => {
-  if (!selectedConfig.value) return
-  //从ant-design-vue的a-textarea获取原生textarea元素
-  const el: HTMLTextAreaElement | null = textareaRef?.value?.$el?.querySelector?.('textarea')
-    || textareaRef?.value?.resizableTextArea?.textArea
-    || null
-  const currentVal = selectedConfig.value.ai_config[field] || ''
-  if (el) {
-    const start = el.selectionStart ?? currentVal.length
-    const end = el.selectionEnd ?? currentVal.length
-    const newVal = currentVal.slice(0, start) + variable + currentVal.slice(end)
-    selectedConfig.value.ai_config[field] = newVal
-    //Vue重新渲染后恢复光标位置
-    nextTick(() => {
-      const pos = start + variable.length
-      el.focus()
-      el.setSelectionRange(pos, pos)
-    })
-  } else {
-    //后备：追加到最后
-    selectedConfig.value.ai_config[field] = currentVal + variable
-  }
-}
-
 const insertReasoningVariable = (variable: string) => {
-  insertAtCursor(reasoningTextareaRef, 'user_reasoning_prompt', variable)
+  reasoningTextareaRef.value?.insertAtCursor(variable)
 }
 
 const insertExtractionVariable = (variable: string) => {
-  insertAtCursor(extractionTextareaRef, 'user_extraction_prompt', variable)
+  extractionTextareaRef.value?.insertAtCursor(variable)
 }
 
 const SUMMARY_DATA_VARIABLE_KEYS = [
@@ -983,25 +959,7 @@ const setSummaryBlockTextareaRef = (blockId: string, el: any) => {
 }
 
 const insertSummaryBlockVariable = (block: SummaryBlockConfig, variable: string) => {
-  if (!selectedSummaryConfig.value) return
-  const textareaRef = { value: summaryBlockTextareaRefs.value[block.id] }
-  const el: HTMLTextAreaElement | null = textareaRef?.value?.$el?.querySelector?.('textarea')
-    || textareaRef?.value?.resizableTextArea?.textArea
-    || null
-  const currentVal = block.user_prompt || ''
-  if (el) {
-    const start = el.selectionStart ?? currentVal.length
-    const end = el.selectionEnd ?? currentVal.length
-    const newVal = currentVal.slice(0, start) + variable + currentVal.slice(end)
-    block.user_prompt = newVal
-    nextTick(() => {
-      const pos = start + variable.length
-      el.focus()
-      el.setSelectionRange(pos, pos)
-    })
-  } else {
-    block.user_prompt = currentVal + variable
-  }
+  summaryBlockTextareaRefs.value[block.id]?.insertAtCursor(variable)
 }
 
 //=====系统提示词模板=====
@@ -2241,20 +2199,12 @@ const archiveExtractionPromptVariables = computed(() => [
 const archiveReasoningTextareaRef = ref<any>(null)
 const archiveExtractionTextareaRef = ref<any>(null)
 
-const insertArchiveAtCursor = (textareaRef: any, field: 'user_reasoning_prompt' | 'user_extraction_prompt', variable: string) => {
-  if (!selectedArchiveConfig.value) return
-  const el: HTMLTextAreaElement | null = textareaRef?.value?.$el?.querySelector?.('textarea')
-    || textareaRef?.value?.resizableTextArea?.textArea || null
-  const currentVal = selectedArchiveConfig.value.ai_config[field] || ''
-  if (el) {
-    const start = el.selectionStart ?? currentVal.length
-    const end = el.selectionEnd ?? currentVal.length
-    const newVal = currentVal.slice(0, start) + variable + currentVal.slice(end)
-    selectedArchiveConfig.value.ai_config[field] = newVal
-    nextTick(() => { const pos = start + variable.length; el.focus(); el.setSelectionRange(pos, pos) })
-  } else {
-    selectedArchiveConfig.value.ai_config[field] = currentVal + variable
-  }
+const insertArchiveReasoningVariable = (variable: string) => {
+  archiveReasoningTextareaRef.value?.insertAtCursor(variable)
+}
+
+const insertArchiveExtractionVariable = (variable: string) => {
+  archiveExtractionTextareaRef.value?.insertAtCursor(variable)
 }
 
 // 归档复盘：恢复默认提示词模板
@@ -2971,10 +2921,11 @@ const handleSave = async () => {
                     <label class="ai-form-label">{{ t('admin.ruleConfig.systemReasoningPrompt') }}</label>
                   </div>
                 </div>
-                <a-textarea
+                <PromptTextarea
                   v-model:value="selectedConfig.ai_config.system_reasoning_prompt"
                   :rows="6"
                   :placeholder="t('admin.ruleConfig.systemReasoningPlaceholder')"
+                  :dialog-title="t('admin.ruleConfig.systemReasoningPrompt')"
                 />
               </div>
 
@@ -2985,10 +2936,11 @@ const handleSave = async () => {
                     <label class="ai-form-label">{{ t('admin.ruleConfig.systemExtractionPrompt') }}</label>
                   </div>
                 </div>
-                <a-textarea
+                <PromptTextarea
                   v-model:value="selectedConfig.ai_config.system_extraction_prompt"
                   :rows="6"
                   :placeholder="t('admin.ruleConfig.systemExtractionPlaceholder')"
+                  :dialog-title="t('admin.ruleConfig.systemExtractionPrompt')"
                   disabled
                 />
                 <div class="system-prompt-readonly-hint">{{ t('admin.ruleConfig.systemPromptReadonly') }}</div>
@@ -3018,11 +2970,12 @@ const handleSave = async () => {
                   :system-variables="systemPromptVariables"
                   @insert="insertReasoningVariable"
                 />
-                <a-textarea
+                <PromptTextarea
                   ref="reasoningTextareaRef"
                   v-model:value="selectedConfig.ai_config.user_reasoning_prompt"
                   :rows="8"
                   :placeholder="t('admin.ruleConfig.userReasoningPlaceholder')"
+                  :dialog-title="t('admin.ruleConfig.userReasoningPrompt')"
                 />
               </div>
 
@@ -3039,11 +2992,12 @@ const handleSave = async () => {
                   :system-variables="systemPromptVariables"
                   @insert="insertExtractionVariable"
                 />
-                <a-textarea
+                <PromptTextarea
                   ref="extractionTextareaRef"
                   v-model:value="selectedConfig.ai_config.user_extraction_prompt"
                   :rows="6"
                   :placeholder="t('admin.ruleConfig.userExtractionPlaceholder')"
+                  :dialog-title="t('admin.ruleConfig.userExtractionPrompt')"
                 />
               </div>
             </div>
@@ -3336,9 +3290,10 @@ const handleSave = async () => {
               <div class="ai-prompt-section-tag ai-prompt-section-tag--system">{{ t('admin.ruleConfig.systemPromptTag') }}</div>
             </div>
             <p class="ai-prompt-section-desc">流程总结使用后端固定系统提示词，前台仅展示，不允许修改。</p>
-            <a-textarea
+            <PromptTextarea
               :value="fixedSummarySystemPrompt"
               :rows="7"
+              :dialog-title="t('admin.ruleConfig.summarySystemPrompt')"
               disabled
             />
             <div class="system-prompt-readonly-hint">系统提示词由后端固定维护，前台仅允许查看，不参与保存。</div>
@@ -3633,11 +3588,12 @@ const handleSave = async () => {
                     @insert="insertSummaryBlockVariable(block, $event)"
                     @toggle-data-variable="toggleSummaryBlockDataVariable(block, $event)"
                   />
-                  <a-textarea
+                  <PromptTextarea
                     :ref="(el) => setSummaryBlockTextareaRef(block.id, el)"
                     v-model:value="block.user_prompt"
                     :rows="4"
                     placeholder="输入该块的总结需求、判断重点或输出口径"
+                    :dialog-title="`${block.title} · ${t('admin.ruleConfig.userPromptTag')}`"
                   />
                 </a-form-item>
               </a-form>
@@ -4782,10 +4738,11 @@ const handleSave = async () => {
                     <label class="ai-form-label">{{ t('admin.ruleConfig.systemReasoningPrompt') }}</label>
                   </div>
                 </div>
-                <a-textarea
+                <PromptTextarea
                   v-model:value="selectedArchiveConfig.ai_config.system_reasoning_prompt"
                   :rows="6"
                   :placeholder="t('admin.ruleConfig.systemReasoningPlaceholder')"
+                  :dialog-title="t('admin.ruleConfig.systemReasoningPrompt')"
                 />
               </div>
 
@@ -4796,10 +4753,11 @@ const handleSave = async () => {
                     <label class="ai-form-label">{{ t('admin.ruleConfig.systemExtractionPrompt') }}</label>
                   </div>
                 </div>
-                <a-textarea
+                <PromptTextarea
                   v-model:value="selectedArchiveConfig.ai_config.system_extraction_prompt"
                   :rows="6"
                   :placeholder="t('admin.ruleConfig.systemExtractionPlaceholder')"
+                  :dialog-title="t('admin.ruleConfig.systemExtractionPrompt')"
                   disabled
                 />
                 <div class="system-prompt-readonly-hint">{{ t('admin.ruleConfig.systemPromptReadonly') }}</div>
@@ -4827,13 +4785,14 @@ const handleSave = async () => {
                 <PromptVariableBar
                   :data-variables="archiveReasoningPromptVariables"
                   :system-variables="systemPromptVariables"
-                  @insert="insertArchiveAtCursor(archiveReasoningTextareaRef, 'user_reasoning_prompt', $event)"
+                  @insert="insertArchiveReasoningVariable"
                 />
-                <a-textarea
+                <PromptTextarea
                   ref="archiveReasoningTextareaRef"
                   v-model:value="selectedArchiveConfig.ai_config.user_reasoning_prompt"
                   :rows="8"
                   :placeholder="t('admin.ruleConfig.userReasoningPlaceholder')"
+                  :dialog-title="t('admin.ruleConfig.userReasoningPrompt')"
                 />
               </div>
 
@@ -4848,13 +4807,14 @@ const handleSave = async () => {
                 <PromptVariableBar
                   :data-variables="archiveExtractionPromptVariables"
                   :system-variables="systemPromptVariables"
-                  @insert="insertArchiveAtCursor(archiveExtractionTextareaRef, 'user_extraction_prompt', $event)"
+                  @insert="insertArchiveExtractionVariable"
                 />
-                <a-textarea
+                <PromptTextarea
                   ref="archiveExtractionTextareaRef"
                   v-model:value="selectedArchiveConfig.ai_config.user_extraction_prompt"
                   :rows="6"
                   :placeholder="t('admin.ruleConfig.userExtractionPlaceholder')"
+                  :dialog-title="t('admin.ruleConfig.userExtractionPrompt')"
                 />
               </div>
             </div>

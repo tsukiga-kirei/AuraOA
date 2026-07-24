@@ -1139,6 +1139,9 @@ export default {
     //System Prompt Editor
     'admin.ruleConfig.systemPromptTag': 'System Prompts',
     'admin.ruleConfig.userPromptTag': 'User Prompts',
+    'admin.ruleConfig.expandPrompt': 'Expand prompt editor',
+    'admin.ruleConfig.promptEditorTitle': 'Prompt Editor',
+    'admin.ruleConfig.summarySystemPrompt': 'Process Summary System Prompt',
     'admin.ruleConfig.systemPromptDesc': 'System prompts define AI role and behavior. They auto-switch with strictness level. Changes only affect the current process.',
     'admin.ruleConfig.userPromptDesc': 'User prompts define audit task content and data with variable support. Auto-switches with strictness level.',
     'admin.ruleConfig.resetSystemPresets': 'Reset to System Preset',

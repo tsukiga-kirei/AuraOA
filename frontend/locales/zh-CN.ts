@@ -1156,6 +1156,9 @@ export default {
     //系统提示词编辑器
     'admin.ruleConfig.systemPromptTag': '系统提示词',
     'admin.ruleConfig.userPromptTag': '用户提示词',
+    'admin.ruleConfig.expandPrompt': '放大编辑提示词',
+    'admin.ruleConfig.promptEditorTitle': '提示词编辑器',
+    'admin.ruleConfig.summarySystemPrompt': '流程总结系统提示词',
     'admin.ruleConfig.systemPromptDesc': '系统提示词定义 AI 的角色和行为规范，随审核尺度自动切换，修改后仅影响当前流程',
     'admin.ruleConfig.userPromptDesc': '用户提示词定义审核任务内容和数据，支持变量插入，随审核尺度自动切换',
     'admin.ruleConfig.resetSystemPresets': '恢复系统预设',
