@@ -18,7 +18,7 @@ export function getEmbedBackend(event: H3Event) {
     })
   }
   return {
-    apiBase: String(config.public.apiBase || 'http://localhost:8080').replace(/\/$/, ''),
+    apiBase: String(config.internalApiBase).replace(/\/$/, ''),
     headers: {
       'X-Embed-Token': token,
     } as Record<string, string>,

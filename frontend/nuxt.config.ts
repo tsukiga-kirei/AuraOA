@@ -22,9 +22,12 @@ export default defineNuxtConfig({
   ],
 
   runtimeConfig: {
+    // Nuxt 服务端代理访问 Go 的内部地址；Docker 与浏览器公开地址需分离。
+    internalApiBase: process.env.NUXT_INTERNAL_API_BASE
+      || process.env.NUXT_PUBLIC_API_BASE
+      || 'http://localhost:8080',
     public: {
-      apiBase: process.env.NUXT_PUBLIC_API_BASE ?? 'http://localhost:8080',
-      mockMode: process.env.NUXT_PUBLIC_MOCK_MODE || 'false',
+      apiBase: process.env.NUXT_PUBLIC_API_BASE ?? '',
       timeZone: process.env.NUXT_PUBLIC_TIME_ZONE || process.env.APP_TIMEZONE || 'Asia/Shanghai',
     },
   },
