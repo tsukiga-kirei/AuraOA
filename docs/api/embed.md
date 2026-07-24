@@ -11,6 +11,11 @@
 3. Nuxt 代理从 Cookie 读取令牌，携带 `X-Embed-Token` 访问 Go
 4. Go `EmbedAccess` 中间件根据令牌哈希反查租户，并注入 `tenant_id`
 
+Nuxt 服务端通过私有运行时配置 `NUXT_INTERNAL_API_BASE` 访问 Go。Docker Compose
+默认使用 `http://go-service:8080`；该地址不暴露给浏览器，也不应使用
+`localhost:8080`。浏览器公开地址仍由 `AURAOA_PUBLIC_API_BASE` 控制，同源部署时
+保持为空。
+
 Go 路由前缀：`/api/embed`  
 鉴权：`EmbedAccess` 中间件（**非 JWT**）
 

@@ -26,7 +26,8 @@
         # 空值表示浏览器同源访问：/api 由 nginx 反代到 go-service。
         # 若前后端分离部署，可在 .env 中设置 AURAOA_PUBLIC_API_BASE=https://api.example.com。
         - NUXT_PUBLIC_API_BASE=${AURAOA_PUBLIC_API_BASE:-}
-        - NUXT_PUBLIC_MOCK_MODE=${AURAOA_PUBLIC_MOCK_MODE:-false}
+        # Nuxt 服务端嵌入代理通过 Docker 内部网络直连 Go，不能使用 localhost。
+        - NUXT_INTERNAL_API_BASE=${NUXT_INTERNAL_API_BASE:-http://go-service:8080}
         - NUXT_PUBLIC_TIME_ZONE=${APP_TIMEZONE:-Asia/Shanghai}
       restart: unless-stopped
 

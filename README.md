@@ -269,10 +269,10 @@ AURAOA_ENV_FILE=.env
 AURAOA_IMAGE_TAG=latest
 NGINX_HTTP_PORT=80
 AURAOA_PUBLIC_API_BASE=
-AURAOA_PUBLIC_MOCK_MODE=false
+NUXT_INTERNAL_API_BASE=http://go-service:8080
 ```
 
-`AURAOA_PUBLIC_API_BASE` 留空表示前端使用同源 `/api`，由 Nginx 容器反代到 Go 服务。启动后访问 `http://localhost:${NGINX_HTTP_PORT}`：
+`AURAOA_PUBLIC_API_BASE` 留空表示浏览器使用同源 `/api`，由 Nginx 容器反代到 Go 服务。`NUXT_INTERNAL_API_BASE` 是 Nuxt 服务端嵌入代理访问 Go 的 Docker 内部地址，通常保持默认值。启动后访问 `http://localhost:${NGINX_HTTP_PORT}`：
 
 ```bash
 docker compose up -d --build
@@ -378,7 +378,7 @@ AURAOA_IMAGE_TAG=latest
 NGINX_HTTP_PORT=8088
 NGINX_SERVER_NAME=测试服务器IP
 AURAOA_PUBLIC_API_BASE=
-AURAOA_PUBLIC_MOCK_MODE=false
+NUXT_INTERNAL_API_BASE=http://go-service:8080
 POSTGRES_PASSWORD=测试库强密码
 REDIS_PASSWORD=测试缓存强密码
 JWT_SECRET=测试环境独立随机值
@@ -412,7 +412,7 @@ AURAOA_IMAGE_TAG=latest
 NGINX_HTTP_PORT=80
 NGINX_SERVER_NAME=oa.example.com
 AURAOA_PUBLIC_API_BASE=
-AURAOA_PUBLIC_MOCK_MODE=false
+NUXT_INTERNAL_API_BASE=http://go-service:8080
 POSTGRES_PASSWORD=正式库强密码
 REDIS_PASSWORD=正式缓存强密码
 JWT_SECRET=正式环境独立随机值
