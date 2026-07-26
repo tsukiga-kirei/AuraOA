@@ -131,7 +131,7 @@ POST /api/tenant/rules/audit-rules/batch-delete
 GET /api/tenant/rules/audit-rules/import-capability
 ```
 
-仅当系统管理员开启 `attachment.recognition_enabled` 且配置 MinerU 地址时，`data.enabled` 才为 `true`。响应同时返回 `max_file_size_mb`、`supported_types` 与不可用原因 `reason`。
+仅当系统管理员开启 `attachment.recognition_enabled`，且当前至少有一种文件类型具备可用解析路径时，`data.enabled` 才为 `true`。响应同时返回 `max_file_size_mb`、按解析器开关过滤后的 `supported_types` 与不可用原因 `reason`。
 
 ---
 
@@ -147,7 +147,7 @@ Content-Type: multipart/form-data
 | `config_id` | uuid | 必填，当前流程审核配置 ID |
 | `file` | file | 必填，类型与大小受系统附件识别配置限制 |
 
-服务端先调用 MinerU 识别文件，再通过 `AIModelCallerService` 生成结构化规则草稿。此接口**不写入规则库**。每条草稿包含 `rule_content`、`rule_scope`、`related_flow`、`context_recommended`、`confidence`、`reasoning`。
+服务端先按文件类型路由到内置解析、MinerU 或兼容格式解析服务，再通过 `AIModelCallerService` 生成结构化规则草稿。此接口**不写入规则库**。每条草稿包含 `rule_content`、`rule_scope`、`related_flow`、`context_recommended`、`confidence`、`reasoning`。
 
 AI 对规则级别、审批流依赖与外部数据依赖的判断均为建议值。判断外部数据依赖时会同时参考当前流程已配置的主表与明细字段；`context_recommended=true` 只表示规则可能需要当前表单和审批历史之外的数据，不会直接设置 `context_enabled`，也不会虚构 `context_mounts`。只有管理员在规则编辑器中配置至少一个启用的挂载后，规则才会显示并启用“外部关联”。
 

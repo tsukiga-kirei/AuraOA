@@ -7,8 +7,6 @@ import (
 	"auraoa/go-service/internal/model"
 )
 
-func boolPtr(v bool) *bool { return &v }
-
 func TestBuildSummaryUserPromptAllDataMode(t *testing.T) {
 	payload := summaryPromptPayload{
 		meta:           "meta-content",
@@ -33,10 +31,11 @@ func TestBuildSummaryUserPromptCustomModeSelectedOnly(t *testing.T) {
 		meta:         "meta-content",
 		mainTable:    "main-content",
 		detailTables: "detail-content",
+		attachments:  "attach-content",
 		userPrompt:   "请总结重点",
 		enabledKeys: map[string]struct{}{
 			"{{process_meta}}": {},
-			"{{attachments}}": {},
+			"{{attachments}}":  {},
 		},
 		includeAllData: false,
 	}

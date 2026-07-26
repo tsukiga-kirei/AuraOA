@@ -81,19 +81,17 @@ func (s *RuleImportService) Capability() (*dto.RuleImportCapabilityResponse, err
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "加载附件识别配置失败")
 	}
-	types := append([]string(nil), cfg.SupportedTypes...)
+	types := effectiveSupportedTypes(cfg)
 	sort.Strings(types)
 	resp := &dto.RuleImportCapabilityResponse{
-		Enabled:        cfg.Enabled && strings.TrimSpace(cfg.MinerUEndpoint) != "" && len(types) > 0,
+		Enabled:        cfg.Enabled && len(types) > 0,
 		MaxFileSizeMB:  cfg.MaxFileSizeMB,
 		SupportedTypes: types,
 	}
 	if !cfg.Enabled {
 		resp.Reason = "系统管理员尚未开启附件识别"
-	} else if strings.TrimSpace(cfg.MinerUEndpoint) == "" {
-		resp.Reason = "系统管理员尚未配置 MinerU 服务地址"
 	} else if len(types) == 0 {
-		resp.Reason = "系统管理员尚未配置允许识别的文件类型"
+		resp.Reason = "系统管理员尚未配置可用的附件解析器或文件类型"
 	}
 	return resp, nil
 }

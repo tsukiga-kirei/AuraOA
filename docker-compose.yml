@@ -31,6 +31,22 @@
         - NUXT_PUBLIC_TIME_ZONE=${APP_TIMEZONE:-Asia/Shanghai}
       restart: unless-stopped
 
+    document-parser:
+      image: auraoa-document-parser:${AURAOA_IMAGE_TAG:-latest}
+      build:
+        context: ./document-parser
+        dockerfile: Dockerfile
+      expose:
+        - "8090"
+      environment:
+        - SERVER_PORT=8090
+        - PARSER_API_KEY=${DOCUMENT_PARSER_API_KEY:-}
+        - PARSER_MAX_FILE_SIZE=${DOCUMENT_PARSER_MAX_FILE_SIZE:-50MB}
+        - PARSER_MAX_REQUEST_SIZE=${DOCUMENT_PARSER_MAX_REQUEST_SIZE:-51MB}
+        - JAVA_TOOL_OPTIONS=-Djava.awt.headless=true -Dfile.encoding=UTF-8 -Djava.io.tmpdir=/tmp/document-parser ${DOCUMENT_PARSER_JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=75.0}
+        - TZ=${APP_TIMEZONE:-Asia/Shanghai}
+      restart: unless-stopped
+
     go-service:
       image: auraoa-go-service:${AURAOA_IMAGE_TAG:-latest}
       build:

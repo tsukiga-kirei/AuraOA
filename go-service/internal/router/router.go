@@ -142,8 +142,9 @@ func SetupRouter(
 			system.GET("/configs", systemHandler.GetSystemConfigs)
 			system.PUT("/configs", systemHandler.UpdateSystemConfigs)
 
-			// 附件识别（仅探测 MinerU /health；详见 docs/oa-configurations/01-attachment-recognition.md）
+			// 附件解析服务连接测试（不上传真实附件）
 			system.POST("/attachment-recognition/test", systemHandler.TestAttachmentRecognition)
+			system.POST("/attachment-recognition/test-compat", systemHandler.TestAttachmentCompatibility)
 		}
 
 		// 系统管理员 — Token 消耗统计

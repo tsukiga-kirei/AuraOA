@@ -153,7 +153,7 @@ export const useSystemApi = () => {
   }
 
   // ============================================================
-  // 附件识别
+  // 附件解析
   // ============================================================
 
   /**
@@ -161,6 +161,13 @@ export const useSystemApi = () => {
    */
   async function testAttachmentRecognition(data?: Record<string, any>): Promise<any> {
     return authFetch<any>('/api/admin/system/attachment-recognition/test', { method: 'POST', body: data || {} })
+  }
+
+  /**
+   * 使用未保存的配置探测兼容格式解析服务；不会进行真实文件解析。
+   */
+  async function testAttachmentCompatibility(data?: Record<string, any>): Promise<any> {
+    return authFetch<any>('/api/admin/system/attachment-recognition/test-compat', { method: 'POST', body: data || {} })
   }
 
   // ============================================================
@@ -232,8 +239,8 @@ export const useSystemApi = () => {
     listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection, testOAConnection, testOAConnectionParams,
     // AI 模型
     listAIModels, createAIModel, updateAIModel, deleteAIModel, testAIModelConnection, testAIModelConnectionById,
-    // 附件识别
-    testAttachmentRecognition,
+    // 附件解析
+    testAttachmentRecognition, testAttachmentCompatibility,
     // 租户管理
     listTenants, createTenant, updateTenant, deleteTenant, getTenantStats, listTenantMembers,
     rotateTenantEmbedToken,

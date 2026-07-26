@@ -1615,11 +1615,51 @@ paths:
         description: 资源 ID
   /api/admin/system/attachment-recognition/test:
     post:
-      summary: 测试附件识别服务连通性
+      summary: 测试 MinerU 附件解析服务连通性
       tags:
       - SystemAdmin
       security:
       - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+  /api/admin/system/attachment-recognition/test-compat:
+    post:
+      summary: 测试兼容格式解析服务连通性
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                attachment_compat_endpoint:
+                  type: string
+                  example: http://document-parser:8090
+                attachment_compat_api_key:
+                  type: string
+                  format: password
+                attachment_legacy_office_enabled:
+                  type: boolean
+                attachment_ofd_enabled:
+                  type: boolean
+                attachment_visual_fallback_enabled:
+                  type: boolean
       responses:
         '200':
           description: 成功

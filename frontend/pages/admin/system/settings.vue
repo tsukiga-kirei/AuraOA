@@ -33,7 +33,7 @@ const {
   listOATypes, listDBDrivers, listAIProviders, listAIDeployTypes,
   listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection: apiDeleteOAConnection, testOAConnection: apiTestOAConnection, testOAConnectionParams: apiTestOAConnectionParams,
   listAIModels, createAIModel, updateAIModel, deleteAIModel: apiDeleteAIModel, testAIModelConnection: apiTestAIModelConnection, testAIModelConnectionById: apiTestAIModelConnectionById,
-  testAttachmentRecognition: apiTestAttachmentRecognition,
+  testAttachmentRecognition: apiTestAttachmentRecognition, testAttachmentCompatibility: apiTestAttachmentCompatibility,
 } = useSystemApi()
 
 const loading = ref(false)
@@ -69,8 +69,147 @@ interface AIModel {
 
 const oaDbConnections = ref<OADbConnection[]>([])
 const aiModels = ref<AIModel[]>([])
-const generalConfig = ref<SystemGeneralConfig>({} as SystemGeneralConfig)
+const DEFAULT_ATTACHMENT_TYPES = [
+  'pdf', 'png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp',
+  'txt', 'csv', 'md',
+  'docx', 'xlsx', 'pptx',
+  'doc', 'xls', 'ppt',
+  'ofd',
+]
+const generalConfig = ref<SystemGeneralConfig>({
+  attachment_supported_types: DEFAULT_ATTACHMENT_TYPES.join(','),
+  attachment_compat_endpoint: 'http://document-parser:8090',
+  attachment_compat_api_key: '',
+  attachment_legacy_office_enabled: false,
+  attachment_ofd_enabled: false,
+  attachment_visual_fallback_enabled: true,
+} as SystemGeneralConfig)
 const saving = ref(false)
+
+/** 后端仍保存逗号字符串，页面使用标签数组方便分组选择。 */
+const attachmentSupportedTypes = computed<string[]>({
+  get: () => {
+    const rawTypes = generalConfig.value.attachment_supported_types || DEFAULT_ATTACHMENT_TYPES.join(',')
+    return [...new Set(rawTypes.split(',')
+      .map(type => type.trim().toLowerCase().replace(/^\./, ''))
+      .filter(type => DEFAULT_ATTACHMENT_TYPES.includes(type)))]
+  },
+  set: (types) => {
+    generalConfig.value.attachment_supported_types = [...new Set(types
+      .map(type => type.trim().toLowerCase().replace(/^\./, ''))
+      .filter(type => DEFAULT_ATTACHMENT_TYPES.includes(type)))]
+      .join(',')
+  },
+})
+
+const attachmentTypeGroups = computed(() => [
+  {
+    key: 'document',
+    label: t('admin.settings.attachmentTypeGroupDocument'),
+    types: ['pdf', 'png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'],
+  },
+  {
+    key: 'text',
+    label: t('admin.settings.attachmentTypeGroupText'),
+    types: ['txt', 'csv', 'md'],
+  },
+  {
+    key: 'modern-office',
+    label: t('admin.settings.attachmentTypeGroupModernOffice'),
+    types: ['docx', 'xlsx', 'pptx'],
+  },
+  {
+    key: 'legacy-office',
+    label: t('admin.settings.attachmentTypeGroupLegacyOffice'),
+    types: ['doc', 'xls', 'ppt'],
+  },
+  {
+    key: 'ofd',
+    label: t('admin.settings.attachmentTypeGroupOfd'),
+    types: ['ofd'],
+  },
+])
+
+type AttachmentRouteState = 'ready' | 'disabled' | 'needs_config'
+
+interface AttachmentFormatRoute {
+  key: string
+  formats: string[]
+  parser: string
+  description: string
+  state: AttachmentRouteState
+}
+
+const getAttachmentRouteState = (
+  formats: string[],
+  parser: 'builtin' | 'mineru' | 'legacy' | 'ofd',
+): AttachmentRouteState => {
+  if (!generalConfig.value.attachment_recognition_enabled) return 'disabled'
+  if (!formats.some(format => attachmentSupportedTypes.value.includes(format))) return 'disabled'
+  if (parser === 'builtin') return 'ready'
+  if (parser === 'mineru') {
+    return generalConfig.value.attachment_mineru_endpoint?.trim() ? 'ready' : 'needs_config'
+  }
+  if (parser === 'legacy' && !generalConfig.value.attachment_legacy_office_enabled) return 'disabled'
+  if (parser === 'ofd' && !generalConfig.value.attachment_ofd_enabled) return 'disabled'
+  return generalConfig.value.attachment_compat_endpoint?.trim() ? 'ready' : 'needs_config'
+}
+
+const attachmentFormatRoutes = computed<AttachmentFormatRoute[]>(() => [
+  {
+    key: 'builtin',
+    formats: ['txt', 'csv', 'md'],
+    parser: t('admin.settings.attachmentRouteBuiltin'),
+    description: t('admin.settings.attachmentRouteBuiltinDesc'),
+    state: getAttachmentRouteState(['txt', 'csv', 'md'], 'builtin'),
+  },
+  {
+    key: 'mineru-document',
+    formats: ['pdf', 'png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'],
+    parser: 'MinerU',
+    description: t('admin.settings.attachmentRouteMineruDocumentDesc'),
+    state: getAttachmentRouteState(['pdf', 'png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'], 'mineru'),
+  },
+  {
+    key: 'mineru-office',
+    formats: ['docx', 'xlsx', 'pptx'],
+    parser: 'MinerU',
+    description: t('admin.settings.attachmentRouteMineruOfficeDesc'),
+    state: getAttachmentRouteState(['docx', 'xlsx', 'pptx'], 'mineru'),
+  },
+  {
+    key: 'legacy-office',
+    formats: ['doc', 'xls', 'ppt'],
+    parser: t('admin.settings.attachmentRouteCompat'),
+    description: t('admin.settings.attachmentRouteLegacyDesc'),
+    state: getAttachmentRouteState(['doc', 'xls', 'ppt'], 'legacy'),
+  },
+  {
+    key: 'ofd',
+    formats: ['ofd'],
+    parser: t('admin.settings.attachmentRouteCompat'),
+    description: t('admin.settings.attachmentRouteOfdDesc'),
+    state: getAttachmentRouteState(['ofd'], 'ofd'),
+  },
+])
+
+const attachmentRouteStateLabel = (state: AttachmentRouteState) => {
+  const labels: Record<AttachmentRouteState, string> = {
+    ready: t('admin.settings.attachmentRouteReady'),
+    disabled: t('admin.settings.attachmentRouteDisabled'),
+    needs_config: t('admin.settings.attachmentRouteNeedsConfig'),
+  }
+  return labels[state]
+}
+
+const attachmentRouteStateColor = (state: AttachmentRouteState) => {
+  const colors: Record<AttachmentRouteState, string> = {
+    ready: 'success',
+    disabled: 'default',
+    needs_config: 'warning',
+  }
+  return colors[state]
+}
 
 // 页面初始化：并行加载系统配置、OA 连接、AI 模型及各类选项数据
 onMounted(async () => {
@@ -90,6 +229,9 @@ onMounted(async () => {
     generalConfig.value = { ...generalConfig.value, ...mapConfigItems(configs) }
     if (!generalConfig.value.attachment_mineru_parse_method) {
       generalConfig.value.attachment_mineru_parse_method = 'ocr'
+    }
+    if (!generalConfig.value.attachment_supported_types?.trim()) {
+      generalConfig.value.attachment_supported_types = DEFAULT_ATTACHMENT_TYPES.join(',')
     }
     // 选项数据
     oaTypeOptions.value = (oaTypes || []).map((o: any) => ({ value: o.code, label: o.label }))
@@ -450,7 +592,7 @@ const testDbConnection = async () => {
   }
 }
 
-//===== 附件识别 — 测试 MinerU 服务 =====
+//===== 附件解析 — 测试 MinerU 服务 =====
 const testingAttachment = ref(false)
 const testAttachmentConnection = async () => {
   testingAttachment.value = true
@@ -461,14 +603,42 @@ const testAttachmentConnection = async () => {
       attachment_mineru_api_key: generalConfig.value.attachment_mineru_api_key || '',
     })
     if (result.success) {
-      message.success(result.message || t('admin.settings.attachmentTestOk', 'MinerU 服务可达'))
+      message.success(result.message || t('admin.settings.attachmentTestOk'))
     } else {
-      message.warning(result.message || t('admin.settings.attachmentTestFailed', 'MinerU 服务不可达'))
+      message.warning(result.message || t('admin.settings.attachmentTestFailed'))
     }
   } catch (e: any) {
-    message.error(e?.message || t('admin.settings.attachmentTestFailed', 'MinerU 服务不可达'))
+    message.error(e?.message || t('admin.settings.attachmentTestFailed'))
   } finally {
     testingAttachment.value = false
+  }
+}
+
+//===== 附件解析 — 测试兼容格式解析服务 =====
+const testingAttachmentCompat = ref(false)
+const testAttachmentCompatConnection = async () => {
+  if (!generalConfig.value.attachment_compat_endpoint?.trim()) {
+    message.warning(t('admin.settings.attachmentCompatEndpointRequired'))
+    return
+  }
+  testingAttachmentCompat.value = true
+  try {
+    const result = await apiTestAttachmentCompatibility({
+      attachment_compat_endpoint: generalConfig.value.attachment_compat_endpoint,
+      attachment_compat_api_key: generalConfig.value.attachment_compat_api_key || '',
+      attachment_legacy_office_enabled: generalConfig.value.attachment_legacy_office_enabled,
+      attachment_ofd_enabled: generalConfig.value.attachment_ofd_enabled,
+      attachment_visual_fallback_enabled: generalConfig.value.attachment_visual_fallback_enabled,
+    })
+    if (result.success) {
+      message.success(result.message || t('admin.settings.attachmentCompatTestOk'))
+    } else {
+      message.warning(result.message || t('admin.settings.attachmentCompatTestFailed'))
+    }
+  } catch (e: any) {
+    message.error(e?.message || t('admin.settings.attachmentCompatTestFailed'))
+  } finally {
+    testingAttachmentCompat.value = false
   }
 }
 
@@ -578,7 +748,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         v-for="tab in [
           { key: 'oa', label: t('admin.settings.tabOA'), icon: DatabaseOutlined },
           { key: 'ai', label: t('admin.settings.tabAI'), icon: RobotOutlined },
-          { key: 'attachment', label: t('admin.settings.tabAttachment', '附件识别'), icon: PaperClipOutlined },
+          { key: 'attachment', label: t('admin.settings.tabAttachment'), icon: PaperClipOutlined },
           { key: 'general', label: t('admin.settings.tabGeneral'), icon: SettingOutlined },
         ]"
         :key="tab.key"
@@ -774,10 +944,10 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
       </div>
     </div>
 
-    <!--附件识别选项卡-->
+    <!--附件解析选项卡-->
     <div v-if="activeTab === 'attachment'" class="tab-content">
       <div class="tab-content-header">
-        <p class="tab-desc">{{ t('admin.settings.attachmentDesc', '将流程附件交给 MinerU 解析为文本，连同表单字段一并送给 AI 评审。详见 docs/oa-configurations/01-attachment-recognition.md。') }}</p>
+        <p class="tab-desc">{{ t('admin.settings.attachmentDesc') }}</p>
       </div>
 
       <div class="config-sections">
@@ -785,27 +955,45 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
           <div class="config-section-header">
             <div class="config-section-icon config-section-icon--primary"><PaperClipOutlined /></div>
             <div>
-              <h3>{{ t('admin.settings.attachmentGeneral', '基础开关') }}</h3>
-              <p>{{ t('admin.settings.attachmentGeneralDesc', '关闭后所有附件字段都不会被识别，OA 表单字段照常发送给 AI。') }}</p>
+              <h3>{{ t('admin.settings.attachmentGeneral') }}</h3>
+              <p>{{ t('admin.settings.attachmentGeneralDesc') }}</p>
             </div>
           </div>
           <a-form layout="vertical">
             <div class="toggle-item">
               <div class="toggle-info">
-                <div class="toggle-label">{{ t('admin.settings.attachmentEnable', '启用附件识别') }}</div>
-                <div class="toggle-desc">{{ t('admin.settings.attachmentEnableDesc', '启用后，FetchProcessData 会自动识别主表附件字段（fieldhtmltype=6），调用 OA 接口取流后送 MinerU。') }}</div>
+                <div class="toggle-label">{{ t('admin.settings.attachmentEnable') }}</div>
+                <div class="toggle-desc">{{ t('admin.settings.attachmentEnableDesc') }}</div>
               </div>
               <a-switch v-model:checked="generalConfig.attachment_recognition_enabled" />
             </div>
             <a-row :gutter="16" style="margin-top: 12px;">
-              <a-col :span="12">
-                <a-form-item :label="t('admin.settings.attachmentMaxSize', '最大文件大小（MB）')">
+              <a-col :xs="24" :md="7">
+                <a-form-item :label="t('admin.settings.attachmentMaxSize')">
                   <a-input-number v-model:value="generalConfig.attachment_max_file_size_mb" :min="1" :max="500" style="width: 100%;" size="large" :addon-after="'MB'" />
                 </a-form-item>
               </a-col>
-              <a-col :span="12">
-                <a-form-item :label="t('admin.settings.attachmentTypes', '支持的文件类型（逗号分隔）')">
-                  <a-input v-model:value="generalConfig.attachment_supported_types" size="large" placeholder="pdf,png,jpg,jpeg,docx,xlsx" />
+              <a-col :xs="24" :md="17">
+                <a-form-item :label="t('admin.settings.attachmentTypes')">
+                  <a-select
+                    v-model:value="attachmentSupportedTypes"
+                    mode="multiple"
+                    size="large"
+                    style="width: 100%;"
+                    :placeholder="t('admin.settings.attachmentTypesPlaceholder')"
+                    :max-tag-count="'responsive'"
+                  >
+                    <a-select-opt-group
+                      v-for="group in attachmentTypeGroups"
+                      :key="group.key"
+                      :label="group.label"
+                    >
+                      <a-select-option v-for="type in group.types" :key="type" :value="type">
+                        {{ type.toUpperCase() }}
+                      </a-select-option>
+                    </a-select-opt-group>
+                  </a-select>
+                  <div class="form-hint">{{ t('admin.settings.attachmentTypesHint') }}</div>
                 </a-form-item>
               </a-col>
             </a-row>
@@ -816,23 +1004,23 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
           <div class="config-section-header">
             <div class="config-section-icon config-section-icon--info"><FileSearchOutlined /></div>
             <div>
-              <h3>{{ t('admin.settings.attachmentMineru', 'MinerU 解析服务') }}</h3>
-              <p>{{ t('admin.settings.attachmentMineruDesc', '指向自建 MinerU 服务的根地址。测试连接仅探测 /health 接口。') }}</p>
+              <h3>{{ t('admin.settings.attachmentMineru') }}</h3>
+              <p>{{ t('admin.settings.attachmentMineruDesc') }}</p>
             </div>
           </div>
           <a-form layout="vertical">
-            <a-form-item :label="t('admin.settings.attachmentMineruEndpoint', 'MinerU 端点')">
-              <a-input v-model:value="generalConfig.attachment_mineru_endpoint" size="large" placeholder="http://192.168.1.50:8888" />
-              <div class="form-hint">{{ t('admin.settings.attachmentMineruEndpointHint', '不要带尾部 /；后端会自动拼 /file_parse 与 /health。') }}</div>
+            <a-form-item :label="t('admin.settings.attachmentMineruEndpoint')">
+              <a-input v-model:value="generalConfig.attachment_mineru_endpoint" size="large" :placeholder="t('admin.settings.attachmentMineruEndpointPlaceholder')" />
+              <div class="form-hint">{{ t('admin.settings.attachmentMineruEndpointHint') }}</div>
             </a-form-item>
-            <a-form-item :label="t('admin.settings.attachmentMineruApiKey', 'MinerU API Key（可选）')">
-              <a-input-password v-model:value="generalConfig.attachment_mineru_api_key" size="large" :placeholder="t('admin.settings.attachmentMineruApiKeyPlaceholder', '若 MinerU 服务无需鉴权可留空')">
+            <a-form-item :label="t('admin.settings.attachmentMineruApiKey')">
+              <a-input-password v-model:value="generalConfig.attachment_mineru_api_key" size="large" :placeholder="t('admin.settings.attachmentMineruApiKeyPlaceholder')">
                 <template #prefix><KeyOutlined /></template>
               </a-input-password>
             </a-form-item>
             <a-row :gutter="16">
               <a-col :span="8">
-                <a-form-item :label="t('admin.settings.attachmentMineruBackend', 'Backend')">
+                <a-form-item :label="t('admin.settings.attachmentMineruBackend')">
                   <a-select v-model:value="generalConfig.attachment_mineru_backend" size="large" style="width: 100%;">
                     <a-select-option value="pipeline">pipeline</a-select-option>
                     <a-select-option value="vlm-auto-engine">vlm-auto-engine</a-select-option>
@@ -843,19 +1031,19 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                 </a-form-item>
               </a-col>
               <a-col :span="8">
-                <a-form-item :label="t('admin.settings.attachmentMineruParseMethod', '解析方式')">
+                <a-form-item :label="t('admin.settings.attachmentMineruParseMethod')">
                   <a-select v-model:value="generalConfig.attachment_mineru_parse_method" size="large" style="width: 100%;">
-                    <a-select-option value="auto">{{ t('admin.settings.attachmentMineruParseMethodAuto', '自动（auto）') }}</a-select-option>
-                    <a-select-option value="txt">{{ t('admin.settings.attachmentMineruParseMethodTxt', '文本提取（txt）') }}</a-select-option>
-                    <a-select-option value="ocr">{{ t('admin.settings.attachmentMineruParseMethodOcr', 'OCR 识别（ocr）') }}</a-select-option>
+                    <a-select-option value="auto">{{ t('admin.settings.attachmentMineruParseMethodAuto') }}</a-select-option>
+                    <a-select-option value="txt">{{ t('admin.settings.attachmentMineruParseMethodTxt') }}</a-select-option>
+                    <a-select-option value="ocr">{{ t('admin.settings.attachmentMineruParseMethodOcr') }}</a-select-option>
                   </a-select>
-                  <div class="form-hint">{{ t('admin.settings.attachmentMineruParseMethodHint', 'auto 由 MinerU 按文件类型自动选择；电子版 PDF 建议 txt，扫描件建议 ocr。') }}</div>
+                  <div class="form-hint">{{ t('admin.settings.attachmentMineruParseMethodHint') }}</div>
                 </a-form-item>
               </a-col>
               <a-col :span="8">
-                <a-form-item :label="t('admin.settings.attachmentMineruLanguage', '解析语言')">
+                <a-form-item :label="t('admin.settings.attachmentMineruLanguage')">
                   <a-input v-model:value="generalConfig.attachment_mineru_language" size="large" placeholder="ch" />
-                  <div class="form-hint">{{ t('admin.settings.attachmentMineruLanguageHint', '与 MinerU 服务支持的语言列表一致，常用 ch / en。') }}</div>
+                  <div class="form-hint">{{ t('admin.settings.attachmentMineruLanguageHint') }}</div>
                 </a-form-item>
               </a-col>
             </a-row>
@@ -864,7 +1052,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                 <a-form-item>
                   <div class="toggle-item" style="padding: 0;">
                     <div class="toggle-info">
-                      <div class="toggle-label">{{ t('admin.settings.attachmentMineruFormula', '公式识别') }}</div>
+                      <div class="toggle-label">{{ t('admin.settings.attachmentMineruFormula') }}</div>
                     </div>
                     <a-switch v-model:checked="generalConfig.attachment_mineru_enable_formula" />
                   </div>
@@ -874,39 +1062,128 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                 <a-form-item>
                   <div class="toggle-item" style="padding: 0;">
                     <div class="toggle-info">
-                      <div class="toggle-label">{{ t('admin.settings.attachmentMineruTable', '表格识别') }}</div>
+                      <div class="toggle-label">{{ t('admin.settings.attachmentMineruTable') }}</div>
                     </div>
                     <a-switch v-model:checked="generalConfig.attachment_mineru_enable_table" />
                   </div>
                 </a-form-item>
               </a-col>
             </a-row>
+            <div class="service-test-actions">
+              <a-button class="attachment-action-btn" size="large" :loading="testingAttachment" @click="testAttachmentConnection">
+                <template #icon>
+                  <SyncOutlined v-if="testingAttachment" />
+                  <FileSearchOutlined v-else />
+                </template>
+                {{ t('admin.settings.attachmentTestConnection') }}
+              </a-button>
+            </div>
           </a-form>
+        </div>
+
+        <div class="config-section">
+          <div class="config-section-header">
+            <div class="config-section-icon config-section-icon--success"><CloudServerOutlined /></div>
+            <div>
+              <h3>{{ t('admin.settings.attachmentCompat') }}</h3>
+              <p>{{ t('admin.settings.attachmentCompatDesc') }}</p>
+            </div>
+          </div>
+          <a-form layout="vertical">
+            <a-form-item :label="t('admin.settings.attachmentCompatEndpoint')">
+              <a-input v-model:value="generalConfig.attachment_compat_endpoint" size="large" :placeholder="t('admin.settings.attachmentCompatEndpointPlaceholder')" />
+              <div class="form-hint">{{ t('admin.settings.attachmentCompatEndpointHint') }}</div>
+            </a-form-item>
+            <a-form-item :label="t('admin.settings.attachmentCompatApiKey')">
+              <a-input-password v-model:value="generalConfig.attachment_compat_api_key" size="large" :placeholder="t('admin.settings.attachmentCompatApiKeyPlaceholder')">
+                <template #prefix><KeyOutlined /></template>
+              </a-input-password>
+            </a-form-item>
+            <div class="toggle-grid">
+              <div class="toggle-item">
+                <div class="toggle-info">
+                  <div class="toggle-label">{{ t('admin.settings.attachmentLegacyOfficeEnable') }}</div>
+                  <div class="toggle-desc">{{ t('admin.settings.attachmentLegacyOfficeEnableDesc') }}</div>
+                </div>
+                <a-switch v-model:checked="generalConfig.attachment_legacy_office_enabled" />
+              </div>
+              <div class="toggle-item">
+                <div class="toggle-info">
+                  <div class="toggle-label">{{ t('admin.settings.attachmentOfdEnable') }}</div>
+                  <div class="toggle-desc">{{ t('admin.settings.attachmentOfdEnableDesc') }}</div>
+                </div>
+                <a-switch v-model:checked="generalConfig.attachment_ofd_enabled" />
+              </div>
+              <div class="toggle-item">
+                <div class="toggle-info">
+                  <div class="toggle-label">{{ t('admin.settings.attachmentVisualFallbackEnable') }}</div>
+                  <div class="toggle-desc">{{ t('admin.settings.attachmentVisualFallbackEnableDesc') }}</div>
+                </div>
+                <a-switch v-model:checked="generalConfig.attachment_visual_fallback_enabled" />
+              </div>
+            </div>
+            <div class="service-test-actions">
+              <a-button class="attachment-action-btn" size="large" :loading="testingAttachmentCompat" @click="testAttachmentCompatConnection">
+                <template #icon>
+                  <SyncOutlined v-if="testingAttachmentCompat" />
+                  <CloudServerOutlined v-else />
+                </template>
+                {{ t('admin.settings.attachmentCompatTestConnection') }}
+              </a-button>
+            </div>
+          </a-form>
+        </div>
+
+        <div class="config-section">
+          <div class="config-section-header">
+            <div class="config-section-icon config-section-icon--warning"><ToolOutlined /></div>
+            <div>
+              <h3>{{ t('admin.settings.attachmentRouteTitle') }}</h3>
+              <p>{{ t('admin.settings.attachmentRouteDesc') }}</p>
+            </div>
+          </div>
+          <div class="attachment-route-table">
+            <div class="attachment-route-row attachment-route-header">
+              <div>{{ t('admin.settings.attachmentRouteFormats') }}</div>
+              <div>{{ t('admin.settings.attachmentRouteParser') }}</div>
+              <div>{{ t('admin.settings.attachmentRouteDescription') }}</div>
+              <div>{{ t('admin.settings.attachmentRouteStatus') }}</div>
+            </div>
+            <div v-for="route in attachmentFormatRoutes" :key="route.key" class="attachment-route-row">
+              <div class="attachment-route-formats">
+                <a-tag
+                  v-for="format in route.formats"
+                  :key="format"
+                  :color="attachmentSupportedTypes.includes(format) ? 'blue' : undefined"
+                  :class="{ 'attachment-route-format--disabled': !attachmentSupportedTypes.includes(format) }"
+                >
+                  {{ format.toUpperCase() }}
+                </a-tag>
+              </div>
+              <div class="attachment-route-parser">{{ route.parser }}</div>
+              <div class="attachment-route-description">{{ route.description }}</div>
+              <div>
+                <a-tag :color="attachmentRouteStateColor(route.state)">
+                  {{ attachmentRouteStateLabel(route.state) }}
+                </a-tag>
+              </div>
+            </div>
+          </div>
+          <div class="form-hint attachment-route-hint">{{ t('admin.settings.attachmentRouteHint') }}</div>
         </div>
 
         <div class="config-section">
           <div class="config-section-header">
             <div class="config-section-icon config-section-icon--warning"><CloudServerOutlined /></div>
             <div>
-              <h3>{{ t('admin.settings.attachmentOAApi', 'OA 侧接入策略') }}</h3>
-              <p>{{ t('admin.settings.attachmentOAApiDesc', '附件识别模块只负责 MinerU。不同 OA 的附件接口与认证参数在各自 OA 连接中配置。当前仅支持 ecology9。') }}</p>
+              <h3>{{ t('admin.settings.attachmentOAApi') }}</h3>
+              <p>{{ t('admin.settings.attachmentOAApiDesc') }}</p>
             </div>
           </div>
-          <a-alert
-            type="info"
-            show-icon
-            :message="t('admin.settings.attachmentOAAuthTip', 'ecology9：请在 OA 数据库连接中配置「附件接口 URL + appid + loginid」。其余 OA 暂未接入。')"
-          />
+          <a-alert type="info" show-icon :message="t('admin.settings.attachmentOAAuthTip')" />
         </div>
 
         <div class="config-save">
-          <a-button class="attachment-action-btn" size="large" :loading="testingAttachment" @click="testAttachmentConnection" style="margin-right: 12px;">
-            <template #icon>
-              <SyncOutlined v-if="testingAttachment" />
-              <FileSearchOutlined v-else />
-            </template>
-            {{ t('admin.settings.attachmentTestConnection', '测试 MinerU /health') }}
-          </a-button>
           <a-button class="attachment-action-btn" type="primary" size="large" :loading="saving" @click="saveGeneralConfig">
             <template #icon>
               <SyncOutlined v-if="saving" />
@@ -1478,6 +1755,17 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
 .switch-label-inline { font-size: 13px; color: var(--color-text-tertiary); margin-left: 10px; }
 .config-save { display: flex; justify-content: flex-end; padding: 4px 0; }
 .attachment-action-btn { height: 44px; }
+.service-test-actions { display: flex; justify-content: flex-end; padding-top: 16px; margin-top: 8px; border-top: 1px solid var(--color-border-light); }
+.attachment-route-table { border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); overflow: hidden; }
+.attachment-route-row { display: grid; grid-template-columns: minmax(220px, 1.25fr) minmax(130px, 0.7fr) minmax(260px, 1.6fr) minmax(90px, 0.5fr); gap: 16px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--color-border-light); }
+.attachment-route-row:last-child { border-bottom: none; }
+.attachment-route-header { background: var(--color-bg-page); color: var(--color-text-secondary); font-size: 12px; font-weight: 600; }
+.attachment-route-formats { display: flex; flex-wrap: wrap; gap: 4px; }
+.attachment-route-formats :deep(.ant-tag) { margin-inline-end: 0; font-family: var(--font-mono), monospace; }
+.attachment-route-format--disabled { opacity: 0.45; }
+.attachment-route-parser { color: var(--color-text-primary); font-size: 13px; font-weight: 600; }
+.attachment-route-description { color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; }
+.attachment-route-hint { margin-top: 10px; }
 .config-subsection-title { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 16px; letter-spacing: 0.02em; }
 
 .empty-state { text-align: center; padding: 60px 20px; color: var(--color-text-tertiary); }
@@ -1487,10 +1775,18 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
 @media (max-width: 1024px) {
   .overview-stats { grid-template-columns: 1fr 1fr; }
   .oa-grid, .ai-grid { grid-template-columns: 1fr; }
+  .attachment-route-row { grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.65fr) minmax(220px, 1.2fr) minmax(80px, 0.45fr); }
 }
 @media (max-width: 640px) {
   .overview-stats { grid-template-columns: 1fr; }
   .tab-nav { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .tab-btn { flex: 1; text-align: center; padding: 8px 12px; justify-content: center; }
+  .config-section { padding: 18px; }
+  .attachment-route-table { border: none; display: flex; flex-direction: column; gap: 12px; }
+  .attachment-route-header { display: none; }
+  .attachment-route-row { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; padding: 14px; border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); }
+  .attachment-route-formats, .attachment-route-description { grid-column: 1 / -1; }
+  .attachment-route-description { grid-row: 2; }
+  .service-test-actions .attachment-action-btn, .config-save .attachment-action-btn { width: 100%; }
 }
 </style>

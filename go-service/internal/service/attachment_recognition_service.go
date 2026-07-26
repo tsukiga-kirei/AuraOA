@@ -23,13 +23,15 @@ import (
 	"auraoa/go-service/internal/repository"
 )
 
-// AttachmentRecognitionService 附件识别服务，负责：
-//  1. 调用 OA 系统的自建 REST 接口获取附件文件流（base64）
-//  2. 调用 MinerU 服务解析文档为文本
+type systemConfigReader interface {
+	FindByKey(key string) (string, error)
+}
+
+// AttachmentRecognitionService 附件识别服务，负责按文件类型选择内置解析、MinerU 或兼容格式解析服务。
 //
 // 详见 docs/oa-configurations/01-attachment-recognition.md。
 type AttachmentRecognitionService struct {
-	configRepo *repository.SystemConfigRepo
+	configRepo systemConfigReader
 	httpClient *http.Client
 }
 
@@ -54,6 +56,13 @@ type RecognitionConfig struct {
 	Enabled        bool
 	MaxFileSizeMB  int
 	SupportedTypes []string
+
+	// 兼容格式解析服务
+	CompatEndpoint        string
+	CompatAPIKey          string
+	LegacyOfficeEnabled   bool
+	OFDEnabled            bool
+	VisualFallbackEnabled bool
 
 	// MinerU
 	MinerUEndpoint      string
@@ -85,14 +94,18 @@ func normalizeMinerUParseMethod(method string, legacyOCREnabled bool) string {
 // LoadConfig 从系统配置加载附件识别配置（兼容旧版只配 endpoint 的最小配置）。
 func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) {
 	cfg := &RecognitionConfig{
-		Enabled:             false,
-		MaxFileSizeMB:       10,
-		SupportedTypes:      []string{"pdf", "png", "jpg", "jpeg", "bmp", "gif", "tiff", "webp", "docx", "xlsx", "txt"},
-		MinerUBackend:       "pipeline",
-		MinerUEnableFormula: true,
-		MinerUEnableTable:   true,
-		MinerUParseMethod:   "ocr",
-		MinerULanguage:      "ch",
+		Enabled:               false,
+		MaxFileSizeMB:         10,
+		SupportedTypes:        []string{"pdf", "png", "jpg", "jpeg", "bmp", "gif", "tiff", "webp", "txt", "csv", "md", "docx", "xlsx", "pptx", "doc", "xls", "ppt", "ofd"},
+		CompatEndpoint:        "http://document-parser:8090",
+		LegacyOfficeEnabled:   false,
+		OFDEnabled:            false,
+		VisualFallbackEnabled: true,
+		MinerUBackend:         "pipeline",
+		MinerUEnableFormula:   true,
+		MinerUEnableTable:     true,
+		MinerUParseMethod:     "ocr",
+		MinerULanguage:        "ch",
 	}
 
 	read := func(key string) string {
@@ -111,6 +124,14 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 	}
 
 	cfg.Enabled = readBool("attachment.recognition_enabled", false)
+
+	if v, err := s.configRepo.FindByKey("attachment.compat_endpoint"); err == nil {
+		cfg.CompatEndpoint = v
+	}
+	cfg.CompatAPIKey = read("attachment.compat_api_key")
+	cfg.LegacyOfficeEnabled = readBool("attachment.legacy_office_enabled", false)
+	cfg.OFDEnabled = readBool("attachment.ofd_enabled", false)
+	cfg.VisualFallbackEnabled = readBool("attachment.visual_fallback_enabled", true)
 
 	cfg.MinerUEndpoint = read("attachment.mineru_endpoint")
 	cfg.MinerUAPIKey = read("attachment.mineru_api_key")
@@ -147,7 +168,7 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 }
 
 // RecognizeAttachments 解析 OA 适配器传入的附件 base64 内容。
-// 注意：该服务只负责 MinerU 解析，不再负责从 OA 侧拉取附件文件流。
+// 该方法保持附件级容错：单个文件解析失败会写入对应结果的 Error，不阻断其他附件及主业务流程。
 func (s *AttachmentRecognitionService) RecognizeAttachments(
 	ctx context.Context,
 	files []oa.AttachmentFilePayload,
@@ -165,20 +186,17 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 		return nil, newServiceError(errcode.ErrDatabase, "加载附件识别配置失败")
 	}
 	if !cfg.Enabled {
-		pkglogger.Global().Info("附件识别：功能未启用，跳过 MinerU（attachment.recognition_enabled=false）",
+		pkglogger.Global().Info("附件识别：功能未启用，跳过附件解析",
 			zap.String("field", fieldKey),
 			zap.String("fieldName", fieldName),
 			zap.Int("fileCount", len(files)))
 		return []oa.AttachmentInfo{}, nil
 	}
 
-	pkglogger.Global().Info("附件识别：开始 MinerU 解析",
+	pkglogger.Global().Info("附件识别：开始按格式路由解析",
 		zap.String("field", fieldKey),
 		zap.String("fieldName", fieldName),
-		zap.Int("fileCount", len(files)),
-		zap.String("mineruEndpoint", cfg.MinerUEndpoint),
-		zap.String("mineruBackend", cfg.MinerUBackend),
-		zap.String("mineruParseMethod", cfg.MinerUParseMethod))
+		zap.Int("fileCount", len(files)))
 
 	// 过滤不支持的文件类型与超大文件（结果中保留为 Error 标记，让 prompt 里也能看到原因）。
 	maxBytes := int64(cfg.MaxFileSizeMB) * 1024 * 1024
@@ -189,7 +207,6 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 
 	now := apptime.FormatRFC3339(apptime.Now())
 	results := make([]oa.AttachmentInfo, 0, len(files))
-	parseable := make([]oa.AttachmentFilePayload, 0, len(files))
 
 	for _, f := range files {
 		ext := extractFileExt(f.FileName)
@@ -221,21 +238,19 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 			results = append(results, base)
 			continue
 		}
-		parseable = append(parseable, f)
+		raw, decodeErr := decodeAttachmentData(f.FileData, maxBytes)
+		if decodeErr != nil {
+			base.Error = decodeErr.Error()
+			results = append(results, base)
+			continue
+		}
+		if f.FileSize <= 0 {
+			f.FileSize = int64(len(raw))
+			base.FileSize = f.FileSize
+		}
+		results = append(results, s.recognizeAttachment(ctx, cfg, f, raw, base))
 	}
 
-	if len(parseable) == 0 {
-		pkglogger.Global().Info("附件识别：无符合 MinerU 条件的文件",
-			zap.String("field", fieldKey),
-			zap.Int("skippedCount", len(results)))
-		return results, nil
-	}
-
-	parsed, err := s.recognizeViaMinerU(ctx, cfg, parseable, fieldKey, fieldName)
-	if err != nil {
-		return nil, err
-	}
-	results = append(results, parsed...)
 	var withContent, withError int
 	for _, r := range results {
 		if r.Error != "" {
@@ -244,7 +259,7 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 			withContent++
 		}
 	}
-	pkglogger.Global().Info("附件识别：MinerU 字段解析结束",
+	pkglogger.Global().Info("附件识别：字段解析结束",
 		zap.String("field", fieldKey),
 		zap.Int("resultCount", len(results)),
 		zap.Int("withContent", withContent),
@@ -325,7 +340,7 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 		if formBuildFailed {
 			continue
 		}
-		part, err := writer.CreateFormFile("files", file.FileName)
+		part, err := writer.CreateFormFile("files", safeAttachmentFileName(file.FileName))
 		if err != nil {
 			base.Error = "构建文件表单失败: " + err.Error()
 			out = append(out, base)
@@ -375,7 +390,7 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 			resp.Body.Close()
 			pkglogger.Global().Error("附件识别：MinerU HTTP 错误",
 				zap.Int("status", resp.StatusCode),
-				zap.String("body", string(respBody)),
+				zap.Int("responseLength", len(respBody)),
 				zap.String("field", fieldKey),
 				zap.String("fileName", file.FileName))
 			base.Error = fmt.Sprintf("MinerU 返回 HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 200))
@@ -402,7 +417,7 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 				zap.Error(err),
 				zap.String("field", fieldKey),
 				zap.String("fileName", file.FileName),
-				zap.String("body", truncate(string(respBody), 500)))
+				zap.Int("responseLength", len(respBody)))
 			base.Error = "解析响应失败: " + err.Error()
 			out = append(out, base)
 			continue
@@ -427,7 +442,8 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 			pkglogger.Global().Warn("附件识别：MinerU 响应缺少 Markdown 内容",
 				zap.String("field", fieldKey),
 				zap.String("fileName", file.FileName),
-				zap.String("body", truncate(string(respBody), 500)))
+				zap.String("taskId", result.TaskID),
+				zap.Int("responseLength", len(respBody)))
 			base.Error = "MinerU 响应缺少 Markdown 内容"
 			out = append(out, base)
 			continue
@@ -437,10 +453,6 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 			zap.String("field", fieldKey),
 			zap.String("fileName", file.FileName),
 			zap.Int("contentLength", len(content)))
-		pkglogger.Global().Debug("附件识别：MinerU 解析正文预览",
-			zap.String("field", fieldKey),
-			zap.String("fileName", file.FileName),
-			zap.String("contentPreview", truncate(content, 500)))
 		out = append(out, base)
 	}
 
