@@ -43,6 +43,7 @@
         - PARSER_API_KEY=${DOCUMENT_PARSER_API_KEY:-}
         - PARSER_MAX_FILE_SIZE=${DOCUMENT_PARSER_MAX_FILE_SIZE:-50MB}
         - PARSER_MAX_REQUEST_SIZE=${DOCUMENT_PARSER_MAX_REQUEST_SIZE:-51MB}
+        - PARSER_MAX_OFD_COMPRESSION_RATIO=${DOCUMENT_PARSER_MAX_OFD_COMPRESSION_RATIO:-500}
         - JAVA_TOOL_OPTIONS=-Djava.awt.headless=true -Dfile.encoding=UTF-8 -Djava.io.tmpdir=/tmp/document-parser ${DOCUMENT_PARSER_JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=75.0}
         - TZ=${APP_TIMEZONE:-Asia/Shanghai}
       restart: unless-stopped
