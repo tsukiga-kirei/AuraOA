@@ -127,8 +127,8 @@ POST /api/tenant/archive/rules/import-text-preview
 POST /api/tenant/archive/rules/import-confirm
 ```
 
-- `import-capability`：返回 MinerU 是否已由系统管理员启用，以及大小和类型限制。
-- `import-preview`：使用 `multipart/form-data` 上传 `config_id` 与 `file`，先经 MinerU 识别，再由统一 AI 调用入口返回可编辑草稿，不写库。
+- `import-capability`：返回附件解析是否已由系统管理员启用，以及当前实际可用的大小和类型限制。
+- `import-preview`：使用 `multipart/form-data` 上传 `config_id` 与 `file`，先按文件类型路由到内置解析、MinerU 或兼容格式解析服务，再由统一 AI 调用入口返回可编辑草稿，不写库。
 - `import-text-preview`：提交 `config_id` 与粘贴的 `text`，不经过 MinerU，直接返回 AI 草稿。
 - `import-confirm`：提交 `config_id`、`source` 与 1–100 条确认后的草稿；`source` 支持 `file_import`、`paste_import`。
 

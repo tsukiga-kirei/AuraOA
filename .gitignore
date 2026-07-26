@@ -82,6 +82,7 @@ yarn.lock
 
 # pnpm
 pnpm-lock.yaml
+!frontend/pnpm-lock.yaml
 .pnpm-store/
 
 # bun

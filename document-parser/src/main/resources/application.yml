@@ -1,0 +1,38 @@
+server:
+  port: ${SERVER_PORT:8090}
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+spring:
+  application:
+    name: auraoa-document-parser
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  servlet:
+    multipart:
+      max-file-size: ${PARSER_MAX_FILE_SIZE:50MB}
+      max-request-size: ${PARSER_MAX_REQUEST_SIZE:51MB}
+      file-size-threshold: 0B
+
+parser:
+  api-key: ${PARSER_API_KEY:}
+  max-upload-size: ${PARSER_MAX_FILE_SIZE:50MB}
+  max-output-chars: ${PARSER_MAX_OUTPUT_CHARS:5000000}
+  max-converted-pdf-size: ${PARSER_MAX_CONVERTED_PDF_SIZE:64MB}
+  max-poi-allocation-size: ${PARSER_MAX_POI_ALLOCATION_SIZE:100MB}
+  max-ofd-uncompressed-size: ${PARSER_MAX_OFD_UNCOMPRESSED_SIZE:200MB}
+  max-ofd-entries: ${PARSER_MAX_OFD_ENTRIES:10000}
+  max-ofd-compression-ratio: ${PARSER_MAX_OFD_COMPRESSION_RATIO:100}
+  max-xls-sheets: ${PARSER_MAX_XLS_SHEETS:100}
+  max-xls-rows-per-sheet: ${PARSER_MAX_XLS_ROWS_PER_SHEET:10000}
+  max-xls-cells-per-row: ${PARSER_MAX_XLS_CELLS_PER_ROW:256}
+  max-ppt-slides: ${PARSER_MAX_PPT_SLIDES:1000}
+
+logging:
+  level:
+    root: INFO
+    cn.auraoa.documentparser: INFO

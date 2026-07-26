@@ -275,13 +275,37 @@ PUT /api/admin/system/configs
 
 ---
 
-### 测试附件识别服务
+### 测试 MinerU 附件解析服务
 
 ```
 POST /api/admin/system/attachment-recognition/test
 ```
 
-探测 MinerU 等附件识别服务的 `/health` 连通性。详见 `docs/oa-configurations/01-attachment-recognition.md`。
+探测 MinerU 的 `/health` 连通性。请求体可携带尚未保存的
+`attachment_mineru_endpoint`、`attachment_mineru_api_key` 和
+`attachment_recognition_enabled`，用于保存前预检。
+
+---
+
+### 测试兼容格式解析服务
+
+```
+POST /api/admin/system/attachment-recognition/test-compat
+```
+
+探测 DOC、XLS、PPT、OFD 兼容解析服务的受鉴权 `/ready` 接口，同时校验服务连通性和
+API Key。请求体可携带：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `attachment_compat_endpoint` | string | 尚未保存的兼容解析服务根地址 |
+| `attachment_compat_api_key` | string | 可选 Bearer API Key |
+| `attachment_legacy_office_enabled` | boolean | 是否启用 DOC、XLS、PPT |
+| `attachment_ofd_enabled` | boolean | 是否启用 OFD |
+| `attachment_visual_fallback_enabled` | boolean | OFD 无文字层时是否回退到 PDF + MinerU |
+
+两类附件解析服务的配置、格式路由与失败语义详见
+`docs/oa-configurations/01-attachment-recognition.md`。
 
 ---
 

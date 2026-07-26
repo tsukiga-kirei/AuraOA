@@ -90,6 +90,12 @@
 - **国际化**：自研 i18n（基于 `zh-CN.ts` / `en-US.ts`）
 - **数据可视化**：内置图表组件
 
+### 兼容文档解析（Document Parser）
+- **语言**：Java 21
+- **文档解析**：Apache POI（DOC / XLS / PPT）、OFDRW（OFD）
+- **接入方式**：仅通过 Docker 内网向 Go 服务提供 HTTP API
+- **安全边界**：不记录附件正文，临时文件随请求清理，可选 Bearer 鉴权
+
 ### 基础设施
 - **容器化**：Docker Compose（开发环境 + 生产环境）
 - **数据库迁移**：golang-migrate（`db/migrations/`）
@@ -225,6 +231,12 @@ AuraOA/
 │   ├── types/                    # TypeScript 类型
 │   └── utils/                    # 工具函数
 │
+├── document-parser/              # DOC / XLS / PPT / OFD 兼容解析服务
+│   ├── src/main/java/            # Java 解析与 HTTP 接口
+│   ├── src/test/                 # 单元测试与无敏感信息样本
+│   ├── pom.xml                   # Maven 依赖与构建配置
+│   └── Dockerfile                # Java 21 运行镜像
+│
 ├── db/                           # 数据库
 │   └── migrations/               # 迁移脚本（30+）
 │
@@ -288,11 +300,12 @@ NGINX_HTTP_PORT=80
 
 ### Docker 镜像打包与服务器部署
 
-服务器部署按“本地构建镜像、导出 tar、上传服务器、服务器加载镜像并启动”的方式组织。`docker-compose.yml` 中前后端服务使用固定镜像名：
+服务器部署按“本地构建镜像、导出 tar、上传服务器、服务器加载镜像并启动”的方式组织。`docker-compose.yml` 中应用服务使用固定镜像名：
 
 ```text
 auraoa-go-service:${AURAOA_IMAGE_TAG:-latest}
 auraoa-frontend:${AURAOA_IMAGE_TAG:-latest}
+auraoa-document-parser:${AURAOA_IMAGE_TAG:-latest}
 ```
 
 #### 1. 本地构建 Linux 镜像
@@ -311,9 +324,14 @@ docker buildx build --platform linux/amd64 \
   -t auraoa-frontend:${AURAOA_IMAGE_TAG} \
   -f frontend/Dockerfile \
   --load ./frontend
+
+docker buildx build --platform linux/amd64 \
+  -t auraoa-document-parser:${AURAOA_IMAGE_TAG} \
+  -f document-parser/Dockerfile \
+  --load ./document-parser
 ```
 
-导出前后端镜像：
+导出应用镜像：
 
 ```bash
 mkdir -p dist/docker-images
@@ -321,6 +339,8 @@ docker save auraoa-go-service:${AURAOA_IMAGE_TAG} \
   -o dist/docker-images/auraoa-go-service-${AURAOA_IMAGE_TAG}-linux-amd64.tar
 docker save auraoa-frontend:${AURAOA_IMAGE_TAG} \
   -o dist/docker-images/auraoa-frontend-${AURAOA_IMAGE_TAG}-linux-amd64.tar
+docker save auraoa-document-parser:${AURAOA_IMAGE_TAG} \
+  -o dist/docker-images/auraoa-document-parser-${AURAOA_IMAGE_TAG}-linux-amd64.tar
 ```
 
 如果服务器不能访问公网，也需要把运行依赖镜像一起导出：
@@ -357,6 +377,7 @@ scp dist/docker-images/*.tar root@服务器IP:/opt/auraoa/docker-images/
 cd /opt/auraoa
 docker load -i docker-images/auraoa-go-service-latest-linux-amd64.tar
 docker load -i docker-images/auraoa-frontend-latest-linux-amd64.tar
+docker load -i docker-images/auraoa-document-parser-latest-linux-amd64.tar
 
 # 如果上传了运行依赖镜像，再加载这一份。
 docker load -i docker-images/auraoa-runtime-linux-amd64.tar
@@ -383,6 +404,7 @@ POSTGRES_PASSWORD=测试库强密码
 REDIS_PASSWORD=测试缓存强密码
 JWT_SECRET=测试环境独立随机值
 ENCRYPTION_KEY=32字节加密密钥
+DOCUMENT_PARSER_API_KEY=测试环境独立随机值
 # OA 嵌入密钥在「系统管理 → 租户管理 → OA 嵌入」中按租户生成
 ```
 
@@ -417,6 +439,7 @@ POSTGRES_PASSWORD=正式库强密码
 REDIS_PASSWORD=正式缓存强密码
 JWT_SECRET=正式环境独立随机值
 ENCRYPTION_KEY=32字节加密密钥
+DOCUMENT_PARSER_API_KEY=正式环境独立随机值
 # OA 嵌入密钥在「系统管理 → 租户管理 → OA 嵌入」中按租户生成
 ```
 
@@ -428,7 +451,7 @@ docker compose --env-file .env.prod ps
 docker compose --env-file .env.prod logs -f go-service
 ```
 
-`ENCRYPTION_KEY` 用于敏感字段加密，一旦正式环境已写入 OA 数据库密码、AI 密钥等密文数据，不要在未做密文迁移的情况下直接更换。
+`ENCRYPTION_KEY` 用于敏感字段加密，一旦正式环境已写入 OA 数据库密码、AI 密钥等密文数据，不要在未做密文迁移的情况下直接更换。容器启动后，还需在“系统设置 → 附件解析”中填写与 `DOCUMENT_PARSER_API_KEY` 相同的兼容解析服务 API Key，再执行连接测试。
 
 #### 6. 更新版本
 

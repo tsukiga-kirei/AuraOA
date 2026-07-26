@@ -5,7 +5,7 @@
 > 关联代码：
 > - 后端服务：[`go-service/internal/service/attachment_recognition_service.go`](../../go-service/internal/service/attachment_recognition_service.go)
 > - 泛微适配器：[`go-service/internal/pkg/oa/ecology9.go`](../../go-service/internal/pkg/oa/ecology9.go)（`FetchProcessData` / `recognizeMainAttachments`）
-> - 数据库迁移：[`db/migrations/000033_attachment_recognition_configs.up.sql`](../../db/migrations/000033_attachment_recognition_configs.up.sql)、[`db/migrations/000034_attachment_recognition_extended_configs.up.sql`](../../db/migrations/000034_attachment_recognition_extended_configs.up.sql)
+> - 数据库迁移：[`db/migrations/000033_attachment_recognition_configs.up.sql`](../../db/migrations/000033_attachment_recognition_configs.up.sql)、[`db/migrations/000034_attachment_recognition_extended_configs.up.sql`](../../db/migrations/000034_attachment_recognition_extended_configs.up.sql)、[`db/migrations/000050_attachment_compat_parser_configs.up.sql`](../../db/migrations/000050_attachment_compat_parser_configs.up.sql)
 
 ## 背景
 
@@ -13,23 +13,30 @@
 
 1. 从 OA 数据库里识别出**附件类型字段**（泛微 E9 中 `workflow_billfield.fieldhtmltype = 6`）。
 2. 通过 OA 系统暴露的**REST 接口**根据 `docId` 列表取最新版本的附件二进制（base64）。
-3. 把 base64 上传到 [MinerU](https://github.com/opendatalab/MinerU)，得到结构化文本。
+3. 按扩展名将文件路由到 AuraOA 内置文本解析、[MinerU](https://github.com/opendatalab/MinerU)
+   或兼容格式解析服务，得到统一文本。
 4. 把附件文本拼到 AI prompt 的 `{{attachments}}` 占位符。
 
 ## 整体架构
 
 ```
-┌─────────────┐  ① 取附件二进制流  ┌──────────────┐  ② 解析正文      ┌──────────────┐
-│  OA 系统     │ ─────────────────▶│  AuraOA       │ ───────────────▶│   MinerU     │
-│ (Weaver E9) │                    │ 附件识别服务   │                  │ 文档解析服务  │
-└─────────────┘                    └──────────────┘                  └──────────────┘
+┌─────────────┐  ① 取附件二进制流  ┌──────────────────┐
+│  OA 系统     │ ─────────────────▶│ AuraOA 附件解析路由 │
+│ (Weaver E9) │                    └─────────┬────────┘
+└─────────────┘                              │ ② 按格式解析
+                                  ┌──────────┼──────────┐
+                                  ▼          ▼          ▼
+                            AuraOA 内置    MinerU    兼容解析服务
+                            TXT/CSV/MD   PDF/图片/   DOC/XLS/PPT/OFD
+                                         新版 Office
 ```
 
 | 角色 | 职责 |
 |------|------|
 | OA 系统 | 提供按 `docIds` 批量取最新版本附件 base64 的 REST 接口 |
-| AuraOA | 在 `FetchProcessData` 里识别附件字段，调用 OA 接口取流，再调用 MinerU 解析正文，结果作为 `ProcessData.Attachments` 传给 prompt builder |
-| MinerU | 实际做 PDF / 图片 / Office / OCR / 表格 / 公式的提取 |
+| AuraOA | 在 `FetchProcessData` 里识别附件字段、调用 OA 接口取流、校验白名单与大小，并按扩展名选择解析器；结果作为 `ProcessData.Attachments` 传给 prompt builder |
+| MinerU | 解析 PDF、图片、DOCX、XLSX、PPTX，提供 OCR、表格与公式提取 |
+| 兼容解析服务 | 使用 Apache POI 解析 DOC、XLS、PPT，使用 OFDRW 解析 OFD；OFD 没有文字层时可渲染 PDF 后回退到 MinerU |
 
 > **「最新版本」由 OA 系统侧决定**：附件版本表 `docimagefile.versionid` 在 OA 数据库里维护；AuraOA 不直接读它，而是要求 OA 接口在返回时已挑选好最新版本（`SELECT ... ORDER BY versionid DESC LIMIT 1`）。这样选版本逻辑跟 OA 厂商绑定，未来换 OA 不需要改 AuraOA。
 
@@ -42,8 +49,8 @@
 | 字段 | system_configs key | 默认值 | 说明 |
 |------|--------------------|--------|------|
 | 启用附件识别 | `attachment.recognition_enabled` | `false` | 关闭时所有 OA 表单字段照常送入 AI，但跳过附件识别 |
-| 最大文件大小（MB） | `attachment.max_file_size_mb` | `10` | 超出大小的文件以「已跳过」标记进入 prompt，不会下发到 MinerU |
-| 支持的文件类型 | `attachment.supported_types` | `pdf,png,jpg,jpeg,bmp,gif,tiff,webp,docx,xlsx,txt` | 逗号分隔；不在白名单的扩展名按「已跳过」处理 |
+| 最大文件大小（MB） | `attachment.max_file_size_mb` | `10` | 超出大小的文件以「已跳过」标记进入 prompt，不会下发到任何解析器 |
+| 支持的文件类型 | `attachment.supported_types` | `pdf,png,jpg,jpeg,bmp,gif,tiff,webp,txt,csv,md,docx,xlsx,pptx,doc,xls,ppt,ofd` | 逗号分隔；不在白名单的扩展名按「已跳过」处理；旧 Office 与 OFD 还受各自开关控制 |
 
 ### MinerU 解析服务
 
@@ -58,6 +65,40 @@
 | 解析语言 | `attachment.mineru_language` | `ch` | 与 MinerU 服务支持的语言列表保持一致 |
 
 > **测试连接**仅探测 `GET {mineru_endpoint}/health`，不会真实调用 `/file_parse` 解析文件。当前适配同时兼容两类 MinerU 返回：一类直接在同步响应中返回 Markdown，另一类先返回已完成任务摘要，再通过 `result_url` 拉取最终 Markdown。
+
+### 兼容格式解析服务
+
+兼容解析器以独立 Java 容器运行，默认 Docker 内网地址为
+`http://document-parser:8090`。它不调用 LLM，也不会产生 Token 日志。
+
+| 字段 | system_configs key | 默认值 | 说明 |
+|------|--------------------|--------|------|
+| 服务端点 | `attachment.compat_endpoint` | `http://document-parser:8090` | 根地址，不带尾部 `/` |
+| API Key（可选） | `attachment.compat_api_key` | _(空)_ | 与容器环境变量 `DOCUMENT_PARSER_API_KEY` 一致；仅内网且未启用鉴权时可留空 |
+| 旧版 Office | `attachment.legacy_office_enabled` | `false` | 启用 DOC、XLS、PPT 的 Apache POI 解析 |
+| OFD | `attachment.ofd_enabled` | `false` | 启用 OFDRW 文字层解析 |
+| 视觉回退 | `attachment.visual_fallback_enabled` | `true` | OFD 没有文字层时渲染为 PDF，再交给 MinerU |
+
+管理员需先通过“测试兼容解析服务”确认受鉴权的 `/ready` 可达，再启用旧版 Office
+或 OFD；容器自身的存活检查仍使用免鉴权 `/health`。两个格式开关默认关闭，保证旧部署
+在尚未加载新容器镜像时行为不变。
+
+兼容服务自身默认限制单文件 `50MB`。如果把 AuraOA 的“最大文件大小”调高到
+`50MB` 以上，还需同步调整部署环境中的 `DOCUMENT_PARSER_MAX_FILE_SIZE` 与
+`DOCUMENT_PARSER_MAX_REQUEST_SIZE`；实际可处理上限取两侧限制中的较小值。
+
+### 格式路由
+
+| 文件类型 | 解析路径 |
+|----------|----------|
+| `txt,csv,md` | AuraOA Go 服务本地读取，不经过外部服务 |
+| `pdf,png,jpg,jpeg,bmp,gif,tiff,webp` | MinerU |
+| `docx,xlsx,pptx` | MinerU |
+| `doc,xls,ppt` | 兼容解析服务（Apache POI），需开启旧版 Office |
+| `ofd` | 兼容解析服务（OFDRW），需开启 OFD；无文字层时可转 PDF 回退 MinerU |
+
+白名单只决定文件能否进入路由，不代表对应解析器已启用。系统对外返回的规则导入
+能力会按旧版 Office/OFD 开关过滤实际可用类型。
 
 ### OA 系统附件接口（按 OA 适配器单独配置）
 
@@ -251,7 +292,7 @@ public class AttachmentRest {
 
 - **未启用附件识别**：`Attachments` 字段为空切片，prompt 中 `{{attachments}}` 显示「（本流程未提取到附件内容）」。
 - **OA 接口不可达**：附件识别整体失败时**不会**阻断主审核流程，只在日志里 `WARN` 一条；prompt 里 `{{attachments}}` 仍以占位文本呈现。
-- **单个文件失败**：保留在 `Attachments` 里，但 `Error` 字段写明原因（不支持的类型 / 超大 / MinerU 报错），便于 AI 上下文里知晓有附件缺失。
+- **单个文件失败**：保留在 `Attachments` 里，但 `Error` 字段写明原因（不支持的类型 / 超大 / 对应解析器未启用 / 外部服务报错），便于 AI 上下文里知晓有附件缺失。
 - **明细表附件**：当前只识别**主表**附件字段；明细表附件如有需要，后续在 `recognizeMainAttachments` 旁边并行扩展即可。
 
 ## 维护与排查
@@ -261,5 +302,6 @@ public class AttachmentRest {
    - 在本目录新增一节，写清楚该 OA 类型自建接口的实现示例。
 2. 调试时优先看 `app.log` 里的 `WARN`：
    - `调用 OA 附件接口失败`：检查 OA 连接中的 `weaver_api_url / weaver_appid / weaver_default_user`；
-   - `MinerU 服务返回错误`：用「测试连接」按钮先确认 `/health`；再看 backend / language / OCR 配置；
+   - `MinerU 服务返回错误`：用“测试 MinerU”先确认 `/health`；再看 backend / language / OCR 配置；
+   - `DOC/XLS/PPT/OFD 解析失败`：用“测试兼容解析服务”确认 `/ready` 和 API Key，再检查对应格式开关、字体和文件是否加密；
    - `识别附件字段失败，跳过该字段`：通常是某条 `docId` 在 OA 库里被物理清理了，对照 `imagefile` 表确认。

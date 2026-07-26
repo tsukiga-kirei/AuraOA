@@ -349,6 +349,50 @@ func (h *SystemHandler) UpdateSystemConfigs(c *gin.Context) {
 
 // ── 附件识别 ──────────────────────────────────────────────────────────────
 
+type attachmentRecognitionTestRequest struct {
+	AttachmentRecognitionEnabled *bool   `json:"attachment_recognition_enabled"`
+	AttachmentMinerUEndpoint     *string `json:"attachment_mineru_endpoint"`
+	AttachmentMinerUAPIKey       *string `json:"attachment_mineru_api_key"`
+}
+
+func (r attachmentRecognitionTestRequest) apply(cfg *service.RecognitionConfig) {
+	if r.AttachmentRecognitionEnabled != nil {
+		cfg.Enabled = *r.AttachmentRecognitionEnabled
+	}
+	if r.AttachmentMinerUEndpoint != nil {
+		cfg.MinerUEndpoint = *r.AttachmentMinerUEndpoint
+	}
+	if r.AttachmentMinerUAPIKey != nil {
+		cfg.MinerUAPIKey = *r.AttachmentMinerUAPIKey
+	}
+}
+
+type attachmentCompatibilityTestRequest struct {
+	AttachmentCompatEndpoint        *string `json:"attachment_compat_endpoint"`
+	AttachmentCompatAPIKey          *string `json:"attachment_compat_api_key"`
+	AttachmentLegacyOfficeEnabled   *bool   `json:"attachment_legacy_office_enabled"`
+	AttachmentOFDEnabled            *bool   `json:"attachment_ofd_enabled"`
+	AttachmentVisualFallbackEnabled *bool   `json:"attachment_visual_fallback_enabled"`
+}
+
+func (r attachmentCompatibilityTestRequest) apply(cfg *service.RecognitionConfig) {
+	if r.AttachmentCompatEndpoint != nil {
+		cfg.CompatEndpoint = *r.AttachmentCompatEndpoint
+	}
+	if r.AttachmentCompatAPIKey != nil {
+		cfg.CompatAPIKey = *r.AttachmentCompatAPIKey
+	}
+	if r.AttachmentLegacyOfficeEnabled != nil {
+		cfg.LegacyOfficeEnabled = *r.AttachmentLegacyOfficeEnabled
+	}
+	if r.AttachmentOFDEnabled != nil {
+		cfg.OFDEnabled = *r.AttachmentOFDEnabled
+	}
+	if r.AttachmentVisualFallbackEnabled != nil {
+		cfg.VisualFallbackEnabled = *r.AttachmentVisualFallbackEnabled
+	}
+}
+
 // TestAttachmentRecognition 探测 MinerU /health 接口是否可达。
 // POST /api/admin/system/attachment-recognition/test
 // 返回：{"success": true, "message": "MinerU 服务可达"} 或服务错误。
@@ -358,11 +402,7 @@ func (h *SystemHandler) TestAttachmentRecognition(c *gin.Context) {
 		return
 	}
 	// 支持“未保存先测试”：请求体若带了 attachment_* 字段，则用请求体覆盖当前配置进行测试。
-	var req struct {
-		AttachmentRecognitionEnabled *bool  `json:"attachment_recognition_enabled"`
-		AttachmentMinerUEndpoint     string `json:"attachment_mineru_endpoint"`
-		AttachmentMinerUAPIKey       string `json:"attachment_mineru_api_key"`
-	}
+	var req attachmentRecognitionTestRequest
 	if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
 		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
 		return
@@ -373,15 +413,7 @@ func (h *SystemHandler) TestAttachmentRecognition(c *gin.Context) {
 		handleServiceError(c, cfgErr)
 		return
 	}
-	if req.AttachmentRecognitionEnabled != nil {
-		cfg.Enabled = *req.AttachmentRecognitionEnabled
-	}
-	if req.AttachmentMinerUEndpoint != "" {
-		cfg.MinerUEndpoint = req.AttachmentMinerUEndpoint
-	}
-	if req.AttachmentMinerUAPIKey != "" {
-		cfg.MinerUAPIKey = req.AttachmentMinerUAPIKey
-	}
+	req.apply(cfg)
 
 	if err := h.attachmentRecognitionService.TestConnectionWithConfig(c.Request.Context(), cfg); err != nil {
 		handleServiceError(c, err)
@@ -390,5 +422,37 @@ func (h *SystemHandler) TestAttachmentRecognition(c *gin.Context) {
 	response.Success(c, map[string]interface{}{
 		"success": true,
 		"message": "MinerU 服务可达",
+	})
+}
+
+// TestAttachmentCompatibility 探测兼容格式解析服务 /ready 接口是否可达且鉴权有效。
+// POST /api/admin/system/attachment-recognition/test-compat
+// 请求体：可携带尚未保存的 attachment_compat_* 配置。
+// 返回：{"success": true, "message": "兼容格式解析服务可达"} 或服务错误。
+func (h *SystemHandler) TestAttachmentCompatibility(c *gin.Context) {
+	if h.attachmentRecognitionService == nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "附件识别服务未初始化")
+		return
+	}
+	var req attachmentCompatibilityTestRequest
+	if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+
+	cfg, cfgErr := h.attachmentRecognitionService.LoadConfig()
+	if cfgErr != nil {
+		handleServiceError(c, cfgErr)
+		return
+	}
+	req.apply(cfg)
+
+	if err := h.attachmentRecognitionService.TestCompatibilityConnectionWithConfig(c.Request.Context(), cfg); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, map[string]interface{}{
+		"success": true,
+		"message": "兼容格式解析服务就绪且鉴权有效",
 	})
 }

@@ -125,12 +125,12 @@ export const useAuditConfigApi = () => {
     return result.deleted_count
   }
 
-  /** 查询系统管理员是否已开启 MinerU 文件识别导入。 */
+  /** 查询系统管理员是否已开启附件文件解析导入。 */
   async function getRuleImportCapability(): Promise<RuleImportCapability> {
     return await authFetch<RuleImportCapability>('/api/tenant/rules/audit-rules/import-capability')
   }
 
-  /** 上传制度文件，经 MinerU 与 AI 生成待确认的规则草稿。 */
+  /** 上传制度文件，经格式路由解析与 AI 生成待确认的规则草稿。 */
   async function previewRuleImport(configId: string, file: File): Promise<RuleImportPreview> {
     const formData = new FormData()
     formData.append('config_id', configId)
