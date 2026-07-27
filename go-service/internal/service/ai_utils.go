@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"auraoa/go-service/internal/pkg/oa"
 )
@@ -301,7 +302,8 @@ func promptDisplayValue(v interface{}) interface{} {
 }
 
 // formatAttachments 将附件识别结果格式化为 prompt 友好的文本块。
-// 每个附件按字段分组展示：字段名 → 文件名（类型/大小） → 解析正文（截断到 maxBytesPerFile 字节）。
+// 每个附件按字段分组展示：字段名 → 文件名（类型/大小） → 解析正文。
+// 新附件优先使用自身携带的系统级字节/不限制策略；历史数据没有策略时沿用调用方上限。
 //
 // 当 attachments 为空时返回占位提示，方便 prompt 模板里直接 {{attachments}} 而无需判空。
 func formatAttachments(attachments []oa.AttachmentInfo, maxBytesPerFile int) string {
@@ -358,8 +360,15 @@ func formatAttachments(attachments []oa.AttachmentInfo, maxBytesPerFile int) str
 				sb.WriteString("  （未提取到正文内容）\n")
 				continue
 			}
-			sb.WriteString("  内容（节选）：\n")
-			sb.WriteString(indentLines(truncate(content, maxBytesPerFile), "    "))
+			contentLimit := maxBytesPerFile
+			if a.ContentMaxBytes > 0 {
+				contentLimit = a.ContentMaxBytes
+			}
+			if a.ContentLimitMode == attachmentAIContentLimitUnlimited {
+				contentLimit = 0
+			}
+			sb.WriteString("  内容：\n")
+			sb.WriteString(indentLines(truncateUTF8Bytes(content, contentLimit), "    "))
 			sb.WriteByte('\n')
 		}
 		sb.WriteByte('\n')
@@ -383,8 +392,19 @@ func indentLines(s, prefix string) string {
 
 // truncate 截断字符串到指定字节长度，超出时追加省略号，用于日志和错误信息中的内容预览。
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	return truncateUTF8Bytes(s, maxLen)
+}
+
+// truncateUTF8Bytes 按字节限制正文，同时确保截断点不会切断 UTF-8 字符。
+// maxLen 为 0 时不限制长度，但仍替换外部解析器可能返回的非法 UTF-8 字节。
+func truncateUTF8Bytes(s string, maxLen int) string {
+	s = strings.ToValidUTF8(s, "\uFFFD")
+	if maxLen <= 0 || len(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	cut := maxLen
+	for cut > 0 && !utf8.ValidString(s[:cut]) {
+		cut--
+	}
+	return s[:cut] + "..."
 }

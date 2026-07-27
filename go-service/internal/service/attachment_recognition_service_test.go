@@ -71,6 +71,40 @@ func TestExtractMinerUMarkdown(t *testing.T) {
 	}
 }
 
+func TestLoadConfigAIContentLimit(t *testing.T) {
+	service := &AttachmentRecognitionService{configRepo: mapSystemConfigReader{
+		"attachment.ai_content_limit_mode": "unlimited",
+		"attachment.ai_content_max_bytes":  "24000",
+	}}
+	cfg, err := service.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.AIContentLimitMode != attachmentAIContentLimitUnlimited {
+		t.Fatalf("AIContentLimitMode = %q, want %q", cfg.AIContentLimitMode, attachmentAIContentLimitUnlimited)
+	}
+	if cfg.AIContentMaxBytes != 24000 {
+		t.Fatalf("AIContentMaxBytes = %d, want 24000", cfg.AIContentMaxBytes)
+	}
+}
+
+func TestLoadConfigInvalidAIContentLimitFallsBack(t *testing.T) {
+	service := &AttachmentRecognitionService{configRepo: mapSystemConfigReader{
+		"attachment.ai_content_limit_mode": "pages",
+		"attachment.ai_content_max_bytes":  "-1",
+	}}
+	cfg, err := service.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.AIContentLimitMode != attachmentAIContentLimitBytes {
+		t.Fatalf("AIContentLimitMode = %q, want %q", cfg.AIContentLimitMode, attachmentAIContentLimitBytes)
+	}
+	if cfg.AIContentMaxBytes != defaultAttachmentAIContentBytes {
+		t.Fatalf("AIContentMaxBytes = %d, want %d", cfg.AIContentMaxBytes, defaultAttachmentAIContentBytes)
+	}
+}
+
 func TestLoadRecognitionConfigCompatibilityDefaults(t *testing.T) {
 	service := &AttachmentRecognitionService{
 		configRepo: mapSystemConfigReader{},
@@ -171,6 +205,8 @@ func TestRecognizeAttachmentsRoutesAllParsersAndOFDFallback(t *testing.T) {
 	config := mapSystemConfigReader{
 		"attachment.recognition_enabled":     "true",
 		"attachment.max_file_size_mb":        "10",
+		"attachment.ai_content_limit_mode":   "bytes",
+		"attachment.ai_content_max_bytes":    "24000",
 		"attachment.supported_types":         "txt,pdf,doc,ofd",
 		"attachment.mineru_endpoint":         server.URL,
 		"attachment.mineru_api_key":          "test-key",
@@ -209,6 +245,9 @@ func TestRecognizeAttachmentsRoutesAllParsersAndOFDFallback(t *testing.T) {
 		}
 		if results[i].Content != want {
 			t.Fatalf("results[%d].Content = %q, want %q", i, results[i].Content, want)
+		}
+		if results[i].ContentLimitMode != attachmentAIContentLimitBytes || results[i].ContentMaxBytes != 24000 {
+			t.Fatalf("results[%d] 未保留 AI 正文限制配置: %+v", i, results[i])
 		}
 	}
 	if results[3].FileName != "invoice.ofd" || results[3].FileType != "ofd" {

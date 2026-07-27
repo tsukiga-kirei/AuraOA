@@ -37,6 +37,12 @@ type AttachmentRecognitionService struct {
 
 const defaultMinerUHTTPTimeout = 300 * time.Second
 
+const (
+	attachmentAIContentLimitBytes     = "bytes"
+	attachmentAIContentLimitUnlimited = "unlimited"
+	defaultAttachmentAIContentBytes   = 10000
+)
+
 // NewAttachmentRecognitionService 创建附件识别服务实例。
 func NewAttachmentRecognitionService(configRepo *repository.SystemConfigRepo, timeout ...time.Duration) *AttachmentRecognitionService {
 	httpTimeout := defaultMinerUHTTPTimeout
@@ -53,9 +59,11 @@ func NewAttachmentRecognitionService(configRepo *repository.SystemConfigRepo, ti
 
 // RecognitionConfig 附件识别运行时配置（来自 system_configs 表的 attachment.* key）。
 type RecognitionConfig struct {
-	Enabled        bool
-	MaxFileSizeMB  int
-	SupportedTypes []string
+	Enabled            bool
+	MaxFileSizeMB      int
+	SupportedTypes     []string
+	AIContentLimitMode string
+	AIContentMaxBytes  int
 
 	// 兼容格式解析服务
 	CompatEndpoint        string
@@ -97,6 +105,8 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 		Enabled:               false,
 		MaxFileSizeMB:         10,
 		SupportedTypes:        []string{"pdf", "png", "jpg", "jpeg", "bmp", "gif", "tiff", "webp", "txt", "csv", "md", "docx", "xlsx", "pptx", "doc", "xls", "ppt", "ofd"},
+		AIContentLimitMode:    attachmentAIContentLimitBytes,
+		AIContentMaxBytes:     defaultAttachmentAIContentBytes,
 		CompatEndpoint:        "http://document-parser:8090",
 		LegacyOfficeEnabled:   false,
 		OFDEnabled:            false,
@@ -124,6 +134,14 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 	}
 
 	cfg.Enabled = readBool("attachment.recognition_enabled", false)
+	if mode := strings.ToLower(strings.TrimSpace(read("attachment.ai_content_limit_mode"))); mode == attachmentAIContentLimitUnlimited {
+		cfg.AIContentLimitMode = attachmentAIContentLimitUnlimited
+	}
+	if v := read("attachment.ai_content_max_bytes"); v != "" {
+		if maxBytes, parseErr := strconv.Atoi(v); parseErr == nil && maxBytes > 0 {
+			cfg.AIContentMaxBytes = maxBytes
+		}
+	}
 
 	if v, err := s.configRepo.FindByKey("attachment.compat_endpoint"); err == nil {
 		cfg.CompatEndpoint = v
@@ -211,13 +229,15 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 	for _, f := range files {
 		ext := extractFileExt(f.FileName)
 		base := oa.AttachmentInfo{
-			DocID:       f.DocID,
-			FileName:    f.FileName,
-			FileType:    ext,
-			FileSize:    f.FileSize,
-			FieldKey:    fieldKey,
-			FieldName:   fieldName,
-			ExtractedAt: now,
+			DocID:            f.DocID,
+			FileName:         f.FileName,
+			FileType:         ext,
+			FileSize:         f.FileSize,
+			FieldKey:         fieldKey,
+			FieldName:        fieldName,
+			ContentLimitMode: cfg.AIContentLimitMode,
+			ContentMaxBytes:  cfg.AIContentMaxBytes,
+			ExtractedAt:      now,
 		}
 		if _, ok := supported[ext]; !ok {
 			base.Error = fmt.Sprintf("文件类型 %q 不在 supported_types 列表中，已跳过", ext)
@@ -293,13 +313,15 @@ func (s *AttachmentRecognitionService) recognizeViaMinerU(
 	for _, file := range files {
 		fileType := extractFileExt(file.FileName)
 		base := oa.AttachmentInfo{
-			DocID:       file.DocID,
-			FileName:    file.FileName,
-			FileType:    fileType,
-			FileSize:    file.FileSize,
-			FieldKey:    fieldKey,
-			FieldName:   fieldName,
-			ExtractedAt: now,
+			DocID:            file.DocID,
+			FileName:         file.FileName,
+			FileType:         fileType,
+			FileSize:         file.FileSize,
+			FieldKey:         fieldKey,
+			FieldName:        fieldName,
+			ContentLimitMode: cfg.AIContentLimitMode,
+			ContentMaxBytes:  cfg.AIContentMaxBytes,
+			ExtractedAt:      now,
 		}
 
 		rawBytes, err := base64.StdEncoding.DecodeString(file.FileData)

@@ -5,7 +5,7 @@
 > 关联代码：
 > - 后端服务：[`go-service/internal/service/attachment_recognition_service.go`](../../go-service/internal/service/attachment_recognition_service.go)
 > - 泛微适配器：[`go-service/internal/pkg/oa/ecology9.go`](../../go-service/internal/pkg/oa/ecology9.go)（`FetchProcessData` / `recognizeMainAttachments`）
-> - 数据库迁移：[`db/migrations/000033_attachment_recognition_configs.up.sql`](../../db/migrations/000033_attachment_recognition_configs.up.sql)、[`db/migrations/000034_attachment_recognition_extended_configs.up.sql`](../../db/migrations/000034_attachment_recognition_extended_configs.up.sql)、[`db/migrations/000050_attachment_compat_parser_configs.up.sql`](../../db/migrations/000050_attachment_compat_parser_configs.up.sql)
+> - 数据库迁移：[`db/migrations/000033_attachment_recognition_configs.up.sql`](../../db/migrations/000033_attachment_recognition_configs.up.sql)、[`db/migrations/000034_attachment_recognition_extended_configs.up.sql`](../../db/migrations/000034_attachment_recognition_extended_configs.up.sql)、[`db/migrations/000050_attachment_compat_parser_configs.up.sql`](../../db/migrations/000050_attachment_compat_parser_configs.up.sql)、[`db/migrations/000052_attachment_ai_content_limit.up.sql`](../../db/migrations/000052_attachment_ai_content_limit.up.sql)
 
 ## 背景
 
@@ -54,6 +54,16 @@
 | 启用附件识别 | `attachment.recognition_enabled` | `false` | 关闭时所有 OA 表单字段照常送入 AI，但跳过附件识别 |
 | 最大文件大小（MB） | `attachment.max_file_size_mb` | `10` | 超出大小的文件以「已跳过」标记进入 prompt，不会下发到任何解析器 |
 | 支持的文件类型 | `attachment.supported_types` | `pdf,png,jpg,jpeg,bmp,gif,tiff,webp,txt,csv,md,docx,xlsx,pptx,doc,xls,ppt,ofd` | 逗号分隔；不在白名单的扩展名按「已跳过」处理；旧 Office 与 OFD 还受各自开关控制 |
+| 发送给 AI 的附件正文 | `attachment.ai_content_limit_mode` | `bytes` | `bytes` 按单个附件限制正文字节数；`unlimited` 发送全部已解析正文 |
+| 单附件正文上限（字节） | `attachment.ai_content_max_bytes` | `10000` | 仅在 `bytes` 模式生效；按 UTF-8 字符边界安全截断，不会切坏中文 |
+
+正文限制发生在组装 AI 提示词时，因此审核、归档复盘、流程总结及 OA 嵌入工作台
+使用同一策略。AI 调用记录保存的是实际发送给模型的提示词：按字节模式记录截断后的
+正文，不限制模式记录全部正文。无论选择哪种模式，写入 AI 调用日志前还会防御性替换
+外部解析器返回的非法 UTF-8 字节，避免单条附件正文导致整笔调用日志事务回滚。
+
+`unlimited` 不等于模型可以接收无限内容；最终仍受模型上下文窗口、网关请求大小和超时
+限制。大附件较多时建议使用 `bytes`，并根据模型上下文和 Token 预算调整上限。
 
 ### MinerU 解析服务
 

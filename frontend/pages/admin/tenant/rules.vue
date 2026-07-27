@@ -1380,16 +1380,16 @@ const summaryWorkflowSearching = ref(false)
 const summaryWorkflowHasSearched = ref(false)
 const summaryWorkflowDraftFields = ref<string[]>([])
 
-const summaryWorkflowBasicOptions = [
-  { label: '是否归档', value: 'archived' },
-  { label: '流程标题', value: 'title' },
-  { label: '发起人', value: 'applicant' },
-  { label: '发起部门', value: 'department' },
-  { label: '流程类型', value: 'process_type' },
-  { label: '当前节点', value: 'current_node' },
-  { label: '提交时间', value: 'submit_time' },
-]
-const summaryWorkflowBasicAllValues = summaryWorkflowBasicOptions.map(o => o.value)
+const summaryWorkflowBasicOptions = computed(() => [
+  { label: t('externalContext.basic.archived'), value: 'archived' },
+  { label: t('externalContext.basic.title'), value: 'title' },
+  { label: t('externalContext.basic.applicant'), value: 'applicant' },
+  { label: t('externalContext.basic.department'), value: 'department' },
+  { label: t('externalContext.basic.processType'), value: 'process_type' },
+  { label: t('externalContext.basic.currentNode'), value: 'current_node' },
+  { label: t('externalContext.basic.submitTime'), value: 'submit_time' },
+])
+const summaryWorkflowBasicAllValues = ['archived', 'title', 'applicant', 'department', 'process_type', 'current_node', 'submit_time']
 
 const isSummaryWorkflowBasicAllSelected = (block: SummaryBlockConfig) => {
   const fields = getSummaryContextMount(block, 'workflow')?.workflow?.basic_fields || []
@@ -1480,6 +1480,12 @@ const summaryContextCollapsedHint = (block: SummaryBlockConfig, type: 'workflow'
 const setSummaryModelReturnFields = (block: SummaryBlockConfig, value: string) => {
   const mount = getSummaryContextMount(block, 'model')
   if (mount?.model) mount.model.return_fields = value.split(',').map(v => v.trim()).filter(Boolean)
+}
+
+const setSummaryModelMaxRows = (block: SummaryBlockConfig, value: number | string | null) => {
+  const mount = getSummaryContextMount(block, 'model')
+  const rows = Number(value)
+  if (mount?.model && Number.isFinite(rows) && rows > 0) mount.model.max_rows = rows
 }
 
 const setSummaryModelAllRows = (block: SummaryBlockConfig, checked: boolean) => {
@@ -3064,8 +3070,8 @@ const handleSave = async () => {
             </div>
             <a-switch
               v-model:checked="selectedConfig.embed_enabled"
-              :checked-children="t('admin.ruleConfig.switchAllow')"
-              :un-checked-children="t('admin.ruleConfig.switchDeny')"
+              :checked-children="t('common.enabled')"
+              :un-checked-children="t('common.disabled')"
             />
           </div>
           <div class="permission-item">
@@ -3206,8 +3212,8 @@ const handleSave = async () => {
       <div class="process-nav">
         <div class="process-nav-header">
           <FileTextOutlined />
-          <span>总结流程</span>
-          <button class="add-process-btn" @click="showAddSummaryProcess = true" title="新增流程">
+          <span>{{ t('admin.ruleConfig.summaryProcesses') }}</span>
+          <button class="add-process-btn" @click="showAddSummaryProcess = true" :title="t('admin.ruleConfig.addProcess')">
             <PlusOutlined />
           </button>
         </div>
@@ -3223,7 +3229,7 @@ const handleSave = async () => {
             <div class="process-nav-name">{{ cfg.process_type }}</div>
             <div v-if="cfg.process_type_label" class="process-nav-path">{{ cfg.process_type_label }}</div>
           </div>
-          <a-popconfirm title="确认删除该总结配置？" @confirm.stop="handleDeleteSummaryProcess(cfg.id)" placement="right">
+          <a-popconfirm :title="t('admin.ruleConfig.summaryDeleteConfigConfirm')" @confirm.stop="handleDeleteSummaryProcess(cfg.id)" placement="right">
             <button class="icon-btn icon-btn--danger icon-btn--sm" @click.stop style="opacity: 0.5; flex-shrink: 0;">
               <DeleteOutlined />
             </button>
@@ -3241,9 +3247,9 @@ const handleSave = async () => {
           <button
             v-for="tab in [
               { key: 'info', label: t('admin.ruleConfig.infoTab'), icon: InfoCircleOutlined },
-              { key: 'fields', label: '引入字段', icon: AppstoreOutlined },
-              { key: 'ai', label: 'AI 总结', icon: RobotOutlined },
-              { key: 'embed', label: 'OA 嵌入', icon: SafetyCertificateOutlined },
+              { key: 'fields', label: t('admin.ruleConfig.summaryImportedFields'), icon: AppstoreOutlined },
+              { key: 'ai', label: t('admin.ruleConfig.summaryAITab'), icon: RobotOutlined },
+              { key: 'embed', label: t('admin.ruleConfig.summaryEmbedTab'), icon: SafetyCertificateOutlined },
             ]"
             :key="tab.key"
             class="tab-btn"
@@ -3258,24 +3264,24 @@ const handleSave = async () => {
         <div v-if="summaryActiveTab === 'info'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">基础信息</h4>
-              <p class="section-desc">维护流程名称、分类和主表映射，保持与 OA 流程一致</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.summaryBasicInfo') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.summaryBasicInfoDesc') }}</p>
             </div>
           </div>
 
           <a-form layout="vertical" class="info-form">
-            <a-form-item label="流程名称">
-              <a-input v-model:value="selectedSummaryConfig.process_type" placeholder="OA 流程名称" />
+            <a-form-item :label="t('admin.ruleConfig.processName')">
+              <a-input v-model:value="selectedSummaryConfig.process_type" :placeholder="t('admin.ruleConfig.summaryProcessNamePlaceholder')" />
             </a-form-item>
-            <a-form-item label="流程分类">
-              <a-input v-model:value="selectedSummaryConfig.process_type_label" placeholder="流程分类名称" />
+            <a-form-item :label="t('admin.ruleConfig.summaryProcessCategory')">
+              <a-input v-model:value="selectedSummaryConfig.process_type_label" :placeholder="t('admin.ruleConfig.summaryProcessCategoryPlaceholder')" />
             </a-form-item>
-            <a-form-item label="主表名称">
+            <a-form-item :label="t('admin.ruleConfig.mainTableName')">
               <div style="display: flex; gap: 8px;">
-                <a-input v-model:value="selectedSummaryConfig.main_table_name" placeholder="OA 主表名称" style="flex: 1;" />
+                <a-input v-model:value="selectedSummaryConfig.main_table_name" :placeholder="t('admin.ruleConfig.summaryMainTablePlaceholder')" style="flex: 1;" />
                 <a-button :loading="summaryInfoTestingConnection" @click="handleSummaryTestConnectionInInfo">
                   <template #icon><DatabaseOutlined /></template>
-                  {{ summaryInfoTestingConnection ? '测试中' : '测试连接' }}
+                  {{ summaryInfoTestingConnection ? t('admin.ruleConfig.testingConnection') : t('admin.ruleConfig.testConnection') }}
                 </a-button>
               </div>
               <div class="test-connection-hint" style="margin-top: 4px; font-size: 12px; color: var(--color-text-tertiary);">
@@ -3288,12 +3294,12 @@ const handleSave = async () => {
         <div v-if="summaryActiveTab === 'fields'" class="tab-content">
           <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
             <div>
-              <h4 class="section-title">引入字段</h4>
-              <p class="section-desc">从 OA 同步主表、明细表和附件字段，供总结块按需引用</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.summaryImportedFields') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.summaryImportedFieldsDesc') }}</p>
             </div>
             <a-button :loading="syncingSummaryFields" @click="handleSummarySyncFields">
               <template #icon><DatabaseOutlined /></template>
-              {{ syncingSummaryFields ? '同步中' : '同步字段' }}
+              {{ syncingSummaryFields ? t('admin.ruleConfig.syncingFields') : t('admin.ruleConfig.syncFields') }}
             </a-button>
           </div>
 
@@ -3310,10 +3316,10 @@ const handleSave = async () => {
             <table class="data-table">
               <thead>
                 <tr>
-                  <th style="padding-left: 24px;">字段名称</th>
-                  <th>字段标识</th>
-                  <th>字段类型</th>
-                  <th>归属表</th>
+                  <th style="padding-left: 24px;">{{ t('admin.ruleConfig.summaryFieldName') }}</th>
+                  <th>{{ t('admin.ruleConfig.summaryFieldKey') }}</th>
+                  <th>{{ t('admin.ruleConfig.summaryFieldType') }}</th>
+                  <th>{{ t('admin.ruleConfig.summaryFieldTable') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -3324,7 +3330,7 @@ const handleSave = async () => {
                   <td class="text-secondary" style="font-size: 13px;">{{ field.sourceLabel }}</td>
                 </tr>
                 <tr v-if="summaryPageFieldsPagination.paged.value.length === 0">
-                  <td colspan="4" class="empty-cell">{{ summaryPageFieldSearchQuery ? (t('admin.ruleConfig.noSearchResult') || '未找到匹配字段') : '暂无字段，请先同步字段' }}</td>
+                  <td colspan="4" class="empty-cell">{{ summaryPageFieldSearchQuery ? t('admin.ruleConfig.noSearchResult') : t('admin.ruleConfig.summaryNoFields') }}</td>
                 </tr>
               </tbody>
             </table>
@@ -3347,11 +3353,11 @@ const handleSave = async () => {
         <div v-if="summaryActiveTab === 'ai'" class="tab-content">
           <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
             <div>
-              <h4 class="section-title">AI 总结</h4>
-              <p class="section-desc">系统提示词只读展示；每个总结块独立配置字段范围和用户提示词</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.summaryAITab') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.summaryAIDesc') }}</p>
             </div>
             <a-button type="primary" @click="addSummaryBlock">
-              <PlusOutlined /> 新增块
+              <PlusOutlined /> {{ t('admin.ruleConfig.summaryAddBlock') }}
             </a-button>
           </div>
 
@@ -3359,14 +3365,14 @@ const handleSave = async () => {
             <div class="ai-prompt-section-header">
               <div class="ai-prompt-section-tag ai-prompt-section-tag--system">{{ t('admin.ruleConfig.systemPromptTag') }}</div>
             </div>
-            <p class="ai-prompt-section-desc">流程总结使用后端固定系统提示词，前台仅展示，不允许修改。</p>
+            <p class="ai-prompt-section-desc">{{ t('admin.ruleConfig.summarySystemPromptDesc') }}</p>
             <PromptTextarea
               :value="fixedSummarySystemPrompt"
               :rows="7"
               :dialog-title="t('admin.ruleConfig.summarySystemPrompt')"
               disabled
             />
-            <div class="system-prompt-readonly-hint">系统提示词由后端固定维护，前台仅允许查看，不参与保存。</div>
+            <div class="system-prompt-readonly-hint">{{ t('admin.ruleConfig.summarySystemPromptReadonlyHint') }}</div>
           </div>
 
           <div class="summary-block-list" style="margin-top: 16px;">
@@ -3377,11 +3383,11 @@ const handleSave = async () => {
             >
               <div class="summary-block-head">
                 <div class="summary-block-index">{{ idx + 1 }}</div>
-                <a-input v-model:value="block.title" placeholder="块标题" style="max-width: 280px;" />
-                <a-switch v-model:checked="block.enabled" checked-children="启用" un-checked-children="停用" />
+                <a-input v-model:value="block.title" :placeholder="t('admin.ruleConfig.summaryBlockTitlePlaceholder')" style="max-width: 280px;" />
+                <a-switch v-model:checked="block.enabled" :checked-children="t('common.enabled')" :un-checked-children="t('common.disabled')" />
                 <a-popconfirm
                   v-if="selectedSummaryConfig.summary_blocks.length > 1"
-                  title="确认删除该总结块？"
+                  :title="t('admin.ruleConfig.summaryDeleteBlockConfirm')"
                   @confirm="removeSummaryBlock(block.id)"
                 >
                   <button class="icon-btn icon-btn--danger"><DeleteOutlined /></button>
@@ -3395,8 +3401,8 @@ const handleSave = async () => {
                 </div>
                 <a-switch
                   v-model:checked="block.include_meta"
-                  checked-children="全部"
-                  un-checked-children="自定义"
+                  :checked-children="t('common.all')"
+                  :un-checked-children="t('admin.ruleConfig.custom')"
                 />
               </div>
 
@@ -3412,8 +3418,8 @@ const handleSave = async () => {
                 >
                   <div class="field-mode-radio" />
                   <div>
-                    <div class="field-mode-label">全部字段</div>
-                    <div class="field-mode-desc">主表、明细和附件内容全部进入该块</div>
+                    <div class="field-mode-label">{{ t('admin.ruleConfig.summaryAllFields') }}</div>
+                    <div class="field-mode-desc">{{ t('admin.ruleConfig.summaryAllFieldsDesc') }}</div>
                   </div>
                 </div>
                 <div
@@ -3423,14 +3429,14 @@ const handleSave = async () => {
                 >
                   <div class="field-mode-radio" />
                   <div>
-                    <div class="field-mode-label">指定字段</div>
-                    <div class="field-mode-desc">仅使用弹窗中勾选的字段；附件字段被选中时带入识别文本</div>
+                    <div class="field-mode-label">{{ t('admin.ruleConfig.summarySelectedFields') }}</div>
+                    <div class="field-mode-desc">{{ t('admin.ruleConfig.summarySelectedFieldsDesc') }}</div>
                   </div>
                 </div>
               </div>
 
               <div v-if="block.field_mode === 'selected'" class="summary-field-picker">
-                <a-form-item label="选择字段" class="summary-field-select-item">
+                <a-form-item :label="t('admin.ruleConfig.summarySelectFields')" class="summary-field-select-item">
                   <a-select
                     v-model:value="block.selected_fields"
                     mode="multiple"
@@ -3438,11 +3444,11 @@ const handleSave = async () => {
                     show-search
                     allow-clear
                     option-filter-prop="label"
-                    placeholder="搜索并选择字段"
+                    :placeholder="t('admin.ruleConfig.summarySelectFieldsPlaceholder')"
                     :max-tag-count="3"
                   />
                   <div class="field-count" style="margin-top: 6px; margin-bottom: 0;">
-                    已选择 {{ block.selected_fields.length }} / {{ summaryAllAvailableFields.length }} 个字段
+                    {{ t('admin.ruleConfig.summarySelectedFieldCount', [block.selected_fields.length, summaryAllAvailableFields.length]) }}
                   </div>
                 </a-form-item>
               </div>
@@ -3450,8 +3456,8 @@ const handleSave = async () => {
               <div class="summary-context-panel">
                 <div class="summary-block-option-row">
                   <div class="summary-block-option-copy">
-                    <div class="summary-block-option-title">外部关联数据</div>
-                    <div class="summary-block-option-desc">本总结块生成前先查询关联流程或建模表，再把结果提供给 AI</div>
+                    <div class="summary-block-option-title">{{ t('externalContext.title') }}</div>
+                    <div class="summary-block-option-desc">{{ t('admin.ruleConfig.summaryExternalContextDesc') }}</div>
                   </div>
                   <div class="summary-context-switches">
                     <label class="context-switch">
@@ -3459,14 +3465,14 @@ const handleSave = async () => {
                         :checked="!!getSummaryContextMount(block, 'workflow')"
                         @change="(checked: any) => toggleSummaryContextMount(block, 'workflow', !!checked)"
                       />
-                      <span>关联流程</span>
+                      <span>{{ t('externalContext.workflow') }}</span>
                     </label>
                     <label class="context-switch">
                       <a-switch
                         :checked="!!getSummaryContextMount(block, 'model')"
                         @change="(checked: any) => toggleSummaryContextMount(block, 'model', !!checked)"
                       />
-                      <span>关联建模表</span>
+                      <span>{{ t('externalContext.model') }}</span>
                     </label>
                   </div>
                 </div>
@@ -3477,7 +3483,7 @@ const handleSave = async () => {
                     class="summary-context-box-head"
                     @click="toggleSummaryContextExpanded(block, 'workflow')"
                   >
-                    <span class="context-panel-title">关联流程</span>
+                    <span class="context-panel-title">{{ t('externalContext.workflow') }}</span>
                     <span v-if="!isSummaryContextExpanded(block, 'workflow')" class="summary-context-collapsed-hint">
                       {{ summaryContextCollapsedHint(block, 'workflow') }}
                     </span>
@@ -3486,13 +3492,13 @@ const handleSave = async () => {
                   <div v-show="isSummaryContextExpanded(block, 'workflow')" class="summary-context-box-body">
                   <a-row :gutter="12">
                     <a-col :span="24">
-                      <a-form-item label="来源字段">
+                      <a-form-item :label="t('externalContext.sourceField')">
                         <a-select
                           v-model:value="getSummaryContextMount(block, 'workflow')!.source_field"
                           :options="summaryContextFieldOptionsForBlock(block)"
                           show-search
                           option-filter-prop="label"
-                          placeholder="选择已引入字段"
+                          :placeholder="t('externalContext.sourceFieldPlaceholder')"
                         />
                       </a-form-item>
                     </a-col>
@@ -3500,13 +3506,13 @@ const handleSave = async () => {
                   <a-form-item class="summary-basic-fields-item" :colon="false">
                     <template #label>
                       <div class="basic-fields-label-row">
-                        <span>流程基础信息</span>
+                        <span>{{ t('externalContext.basicInfo') }}</span>
                         <a-checkbox
                           :checked="isSummaryWorkflowBasicAllSelected(block)"
                           :indeterminate="!!getSummaryContextMount(block, 'workflow')!.workflow!.basic_fields?.length && !isSummaryWorkflowBasicAllSelected(block)"
                           @change="(e: any) => toggleSummaryWorkflowBasicAll(block, !!e?.target?.checked)"
                         >
-                          全选
+                          {{ t('externalContext.selectAll') }}
                         </a-checkbox>
                       </div>
                     </template>
@@ -3529,11 +3535,11 @@ const handleSave = async () => {
                         </label>
                       </a-checkbox-group>
                       <div class="basic-fields-hint">
-                        仅勾选的项会注入 AI；全部取消则不传基础信息
+                        {{ t('externalContext.basicInfoHint') }}
                       </div>
                     </div>
                   </a-form-item>
-                  <a-form-item label="引用流程表单数据" class="summary-workflow-data-mode-item">
+                  <a-form-item :label="t('externalContext.workflowFormData')" class="summary-workflow-data-mode-item">
                     <div class="field-mode-switch summary-context-mode-switch">
                       <div
                         class="field-mode-option"
@@ -3541,7 +3547,7 @@ const handleSave = async () => {
                         @click="setSummaryWorkflowTargetMode(block, false)"
                       >
                         <div class="field-mode-radio" />
-                        <div class="field-mode-label">自动读取全部字段</div>
+                        <div class="field-mode-label">{{ t('externalContext.allFieldsAuto') }}</div>
                       </div>
                       <div
                         class="field-mode-option"
@@ -3549,19 +3555,19 @@ const handleSave = async () => {
                         @click="setSummaryWorkflowTargetMode(block, true)"
                       >
                         <div class="field-mode-radio" />
-                        <div class="field-mode-label">指定目标流程并选择字段</div>
+                        <div class="field-mode-label">{{ t('externalContext.selectTargetAndFields') }}</div>
                       </div>
                     </div>
                   </a-form-item>
                   <div v-if="getSummaryContextMount(block, 'workflow')!.workflow?.data_mode === 'selected_fields'" class="summary-workflow-target-compact">
                     <div class="summary-workflow-target-meta">
-                      <div class="target-flow-label">目标流程引用</div>
-                      <div class="target-flow-value">{{ summaryWorkflowConfigSummary(block) || '尚未配置' }}</div>
+                      <div class="target-flow-label">{{ t('externalContext.targetWorkflow') }}</div>
+                      <div class="target-flow-value">{{ summaryWorkflowConfigSummary(block) || t('externalContext.notConfigured') }}</div>
                     </div>
-                    <a-button @click="openSummaryWorkflowConfigModal(block)">配置</a-button>
+                    <a-button @click="openSummaryWorkflowConfigModal(block)">{{ t('externalContext.configure') }}</a-button>
                   </div>
                   <div class="context-actions">
-                    <a-button :loading="summaryContextTesting[summaryContextKey(block, 'workflow')]" @click="testSummaryContext(block, 'workflow')">测试关联流程</a-button>
+                    <a-button :loading="summaryContextTesting[summaryContextKey(block, 'workflow')]" @click="testSummaryContext(block, 'workflow')">{{ t('admin.ruleConfig.summaryTestWorkflow') }}</a-button>
                   </div>
                   <pre v-if="summaryContextPreviews[summaryContextKey(block, 'workflow')]" class="context-preview">{{ summaryContextPreviews[summaryContextKey(block, 'workflow')] }}</pre>
                   </div>
@@ -3573,7 +3579,7 @@ const handleSave = async () => {
                     class="summary-context-box-head"
                     @click="toggleSummaryContextExpanded(block, 'model')"
                   >
-                    <span class="context-panel-title">关联建模表</span>
+                    <span class="context-panel-title">{{ t('externalContext.model') }}</span>
                     <span v-if="!isSummaryContextExpanded(block, 'model')" class="summary-context-collapsed-hint">
                       {{ summaryContextCollapsedHint(block, 'model') }}
                     </span>
@@ -3581,26 +3587,26 @@ const handleSave = async () => {
                   </button>
                   <div v-show="isSummaryContextExpanded(block, 'model')" class="summary-context-box-body">
                   <div class="summary-model-config-grid">
-                    <a-form-item label="来源字段">
+                    <a-form-item :label="t('externalContext.sourceField')">
                       <a-select
                         v-model:value="getSummaryContextMount(block, 'model')!.source_field"
                         :options="summaryContextFieldOptionsForBlock(block)"
                         show-search
-                        placeholder="选择已引入字段"
+                        :placeholder="t('externalContext.sourceFieldPlaceholder')"
                       />
                     </a-form-item>
-                    <a-form-item label="建模表名">
+                    <a-form-item :label="t('externalContext.modelTable')">
                       <a-input v-model:value="getSummaryContextMount(block, 'model')!.model!.table_name" />
                     </a-form-item>
-                    <a-form-item label="关联字段">
-                      <a-input v-model:value="getSummaryContextMount(block, 'model')!.model!.join_field" placeholder="默认 id" />
+                    <a-form-item :label="t('externalContext.modelJoinField')">
+                      <a-input v-model:value="getSummaryContextMount(block, 'model')!.model!.join_field" :placeholder="t('externalContext.defaultId')" />
                     </a-form-item>
-                    <a-form-item label="查询方式">
+                    <a-form-item :label="t('externalContext.queryMode')">
                       <a-select v-model:value="getSummaryContextMount(block, 'model')!.model!.mode" show-search option-filter-prop="label">
-                        <a-select-option value="exists">是否存在</a-select-option>
-                        <a-select-option value="count">存在条数</a-select-option>
-                        <a-select-option value="rows">返回匹配数据</a-select-option>
-                        <a-select-option value="custom_sql">自定义 SQL</a-select-option>
+                        <a-select-option value="exists">{{ t('externalContext.mode.exists') }}</a-select-option>
+                        <a-select-option value="count">{{ t('externalContext.mode.count') }}</a-select-option>
+                        <a-select-option value="rows">{{ t('externalContext.mode.rows') }}</a-select-option>
+                        <a-select-option value="custom_sql">{{ t('externalContext.mode.customSQL') }}</a-select-option>
                       </a-select>
                     </a-form-item>
                     <a-form-item v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'rows'" class="summary-model-return-fields" :label="t('externalContext.modelReturnFields')">
@@ -3612,7 +3618,7 @@ const handleSave = async () => {
                     </a-form-item>
                   </div>
                   <div v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'rows'" class="summary-model-footer">
-                    <a-form-item label="返回行数上限">
+                    <a-form-item :label="t('externalContext.maxRows')">
                       <a-space>
                         <a-input-number
                           :value="getSummaryContextMount(block, 'model')!.model!.max_rows === -1 ? undefined : getSummaryContextMount(block, 'model')!.model!.max_rows"
@@ -3620,7 +3626,7 @@ const handleSave = async () => {
                           :max="50"
                           :disabled="getSummaryContextMount(block, 'model')!.model!.max_rows === -1"
                           style="width: 160px;"
-                          @update:value="(value: number | null) => { const mount = getSummaryContextMount(block, 'model'); if (mount?.model && value) mount.model.max_rows = value }"
+                          @update:value="(value) => setSummaryModelMaxRows(block, value)"
                         />
                         <a-checkbox :checked="getSummaryContextMount(block, 'model')!.model!.max_rows === -1" @change="(e: any) => setSummaryModelAllRows(block, !!e?.target?.checked)">
                           {{ t('common.all') }}
@@ -3628,19 +3634,19 @@ const handleSave = async () => {
                       </a-space>
                     </a-form-item>
                     <div class="context-actions summary-model-actions">
-                      <a-button :loading="summaryContextTesting[summaryContextKey(block, 'model')]" @click="testSummaryContext(block, 'model')">测试建模查询</a-button>
+                      <a-button :loading="summaryContextTesting[summaryContextKey(block, 'model')]" @click="testSummaryContext(block, 'model')">{{ t('externalContext.testModel') }}</a-button>
                     </div>
                   </div>
-                  <a-form-item v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'custom_sql'" label="自定义 SQL" class="summary-model-sql-item">
+                  <a-form-item v-if="getSummaryContextMount(block, 'model')!.model?.mode === 'custom_sql'" :label="t('externalContext.customSQL')" class="summary-model-sql-item">
                     <div class="sql-variable-bar">
-                      <span>插入变量：</span>
+                      <span>{{ t('externalContext.insertVariable') }}：</span>
                       <a-button size="small" @click="insertSummaryCustomSQLVariable(block, tableNameSQLVariable)">{{ tableNameSQLVariable }}</a-button>
                       <a-button size="small" @click="insertSummaryCustomSQLVariable(block, joinFieldSQLVariable)">{{ joinFieldSQLVariable }}</a-button>
                     </div>
                     <a-textarea v-model:value="getSummaryContextMount(block, 'model')!.model!.custom_sql" :rows="4" :placeholder="customSQLPlaceholder" />
                   </a-form-item>
                   <div v-if="getSummaryContextMount(block, 'model')!.model?.mode !== 'rows'" class="context-actions">
-                    <a-button :loading="summaryContextTesting[summaryContextKey(block, 'model')]" @click="testSummaryContext(block, 'model')">测试建模查询</a-button>
+                    <a-button :loading="summaryContextTesting[summaryContextKey(block, 'model')]" @click="testSummaryContext(block, 'model')">{{ t('externalContext.testModel') }}</a-button>
                   </div>
                   <pre v-if="summaryContextPreviews[summaryContextKey(block, 'model')]" class="context-preview">{{ summaryContextPreviews[summaryContextKey(block, 'model')] }}</pre>
                   </div>
@@ -3662,7 +3668,7 @@ const handleSave = async () => {
                     :ref="(el) => setSummaryBlockTextareaRef(block.id, el)"
                     v-model:value="block.user_prompt"
                     :rows="4"
-                    placeholder="输入该块的总结需求、判断重点或输出口径"
+                    :placeholder="t('admin.ruleConfig.summaryUserPromptPlaceholder')"
                     :dialog-title="`${block.title} · ${t('admin.ruleConfig.userPromptTag')}`"
                   />
                 </a-form-item>
@@ -3674,20 +3680,20 @@ const handleSave = async () => {
         <div v-if="summaryActiveTab === 'embed'" class="tab-content">
           <div class="section-header">
             <div>
-              <h4 class="section-title">OA 嵌入总结</h4>
-              <p class="section-desc">控制 /embed/summary 的可见性和自动总结触发策略</p>
+              <h4 class="section-title">{{ t('admin.ruleConfig.summaryEmbedTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.summaryEmbedDesc') }}</p>
             </div>
           </div>
           <div class="permissions-list">
             <div class="permission-item">
               <div class="permission-info">
-                <div class="permission-label">OA 嵌入总结</div>
-                <div class="permission-desc">/embed/summary 使用该开关控制可见性</div>
+                <div class="permission-label">{{ t('admin.ruleConfig.summaryEmbedTitle') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.summaryEmbedVisibleDesc') }}</div>
               </div>
               <a-switch
                 v-model:checked="selectedSummaryConfig.embed_enabled"
-                checked-children="启用"
-                un-checked-children="停用"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
               />
             </div>
             <div class="permission-item">

@@ -273,6 +273,16 @@ PUT /api/admin/system/configs
 
 批量更新系统配置项。
 
+附件解析页额外使用以下键控制实际发送给 AI 的解析正文：
+
+| key | 值 | 默认值 | 说明 |
+|-----|----|--------|------|
+| `attachment.ai_content_limit_mode` | `bytes` / `unlimited` | `bytes` | 按单附件字节限制，或发送全部解析正文 |
+| `attachment.ai_content_max_bytes` | 正整数 | `10000` | 仅 `bytes` 模式生效，按 UTF-8 字符边界安全截断 |
+
+该策略同时作用于审核、归档复盘、流程总结和 OA 嵌入入口。调用日志保存实际发送给模型
+的提示词，不再对日志副本单独做有损字节截断。
+
 ---
 
 ### 测试 MinerU 附件解析服务
