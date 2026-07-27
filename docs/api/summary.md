@@ -34,6 +34,18 @@ GET /api/tenant/summary/configs/:id
 PUT /api/tenant/summary/configs/:id
 ```
 
+`embed_config` 控制 OA 嵌入总结的自动刷新策略：
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `auto_summary_on_open` | `true` | 没有历史总结时自动生成 |
+| `auto_summary_on_data_change` | `true` | 按总结块实际使用的字段和附件版本判断并增量刷新 |
+| `auto_summary_on_return_resubmit` | `true` | 退回或重新提交后刷新依赖流程信息的总结块 |
+| `auto_summary_on_flow_change` | `false` | 普通审批推进后刷新使用流程基础信息/审批历史的总结块 |
+
+自动刷新只调用发生变化的启用总结块；未变化的块沿用最近一次有效结果。手动“重新总结”
+仍会执行全部启用块。
+
 ---
 
 ### 删除配置

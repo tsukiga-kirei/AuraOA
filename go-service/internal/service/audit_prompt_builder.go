@@ -14,7 +14,7 @@ import (
 func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, processData *oa.ProcessData, rules string, currentNode string, fieldSet SelectedFieldSet, flowSnapshot *oa.ProcessFlowSnapshot, externalContext string) *ai.ChatRequest {
 	mainDataStr := formatMainData(filterFields(processData.MainData, fieldSet["main"]), processData.FieldLabels["main"])
 	detailDataStr := formatGroupedDetailData(processData.DetailTables, fieldSet, processData.FieldLabels)
-	attachmentsStr := formatAttachments(processData.Attachments, 8000)
+	attachmentsStr := formatAttachments(filterAttachmentsForFieldSet(processData.Attachments, fieldSet), 8000)
 
 	flowHistory := "（暂未提供审批流历史）"
 	flowGraph := "（暂未提供审批流图）"

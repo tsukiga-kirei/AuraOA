@@ -41,13 +41,16 @@ type AIConfigData struct {
 
 // EmbedConfigData OA 嵌入页行为配置。
 type EmbedConfigData struct {
-	AutoAuditOnOpen  bool `json:"auto_audit_on_open"`
-	AutoAuditOnStale bool `json:"auto_audit_on_stale"`
+	AutoAuditOnOpen           bool `json:"auto_audit_on_open"`
+	AutoAuditOnStale          bool `json:"auto_audit_on_stale,omitempty"` // 兼容旧配置，不再直接用于决策
+	AutoAuditOnDataChange     bool `json:"auto_audit_on_data_change"`
+	AutoAuditOnReturnResubmit bool `json:"auto_audit_on_return_resubmit"`
+	AutoAuditOnFlowChange     bool `json:"auto_audit_on_flow_change"`
 }
 
 // UserPermissionsData 用户权限配置的结构化表示
 type UserPermissionsData struct {
-	AllowCustomFields    bool `json:"allow_custom_fields"`
-	AllowCustomRules     bool `json:"allow_custom_rules"`
+	AllowCustomFields     bool `json:"allow_custom_fields"`
+	AllowCustomRules      bool `json:"allow_custom_rules"`
 	AllowModifyStrictness bool `json:"allow_modify_strictness"`
 }

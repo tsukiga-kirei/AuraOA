@@ -109,7 +109,10 @@ func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProces
 		AIConfig:         defaultJSON(aiConfig, "{}"),
 		UserPermissions:  defaultJSON(req.UserPermissions, "{}"),
 		AccessControl:    defaultJSON(req.AccessControl, "{}"),
-		Status:           defaultStr(req.Status, "active"),
+		EmbedEnabled:     req.EmbedEnabled != nil && *req.EmbedEnabled,
+		EmbedConfig: defaultJSON(req.EmbedConfig,
+			`{"auto_audit_on_open":true,"auto_audit_on_data_change":true,"auto_audit_on_return_resubmit":true,"auto_audit_on_flow_change":false}`),
+		Status: defaultStr(req.Status, "active"),
 	}
 
 	if err := s.configRepo.Create(c, cfg); err != nil {

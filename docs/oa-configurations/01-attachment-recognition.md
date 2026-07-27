@@ -38,7 +38,10 @@
 | MinerU | 解析 PDF、图片、DOCX、XLSX、PPTX，提供 OCR、表格与公式提取 |
 | 兼容解析服务 | 使用 Apache POI 解析 DOC、XLS、PPT，使用 OFDRW 解析 OFD；OFD 没有文字层时可渲染 PDF 后回退到 MinerU |
 
-> **「最新版本」由 OA 系统侧决定**：附件版本表 `docimagefile.versionid` 在 OA 数据库里维护；AuraOA 不直接读它，而是要求 OA 接口在返回时已挑选好最新版本（`SELECT ... ORDER BY versionid DESC LIMIT 1`）。这样选版本逻辑跟 OA 厂商绑定，未来换 OA 不需要改 AuraOA。
+> **「最新版本」由 OA 系统侧维护**：附件正文下载仍要求 OA 接口挑选
+> `docimagefile.versionid` 最大的版本；为了判断嵌入审核/总结是否需要刷新，
+> Ecology 9 适配器会只读查询 `docId + versionid + imagefileid + 文件名` 元数据并生成指纹，
+> 不下载文件，也不会触发 MinerU 解析。
 
 ## 在 AuraOA 里配置
 

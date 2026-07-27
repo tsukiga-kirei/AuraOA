@@ -430,8 +430,15 @@ const handleAddProcess = async () => {
       process_type_label: newProcessForm.value.process_type_label.trim(),
       main_table_name: newProcessForm.value.main_table_name.trim(),
       access_control: { allowed_roles: [], allowed_members: [], allowed_departments: [] },
+      embed_enabled: false,
+      embed_config: {
+        auto_audit_on_open: true,
+        auto_audit_on_data_change: true,
+        auto_audit_on_return_resubmit: true,
+        auto_audit_on_flow_change: false,
+      },
     })
-    processConfigs.value.push(created)
+    processConfigs.value.push(normalizeAuditConfigForUI(created))
     selectedProcessId.value = created.id
     showAddProcess.value = false
     newProcessForm.value = { process_type: '', process_type_label: '', main_table_name: '' }
@@ -962,6 +969,17 @@ const insertSummaryBlockVariable = (block: SummaryBlockConfig, variable: string)
   summaryBlockTextareaRefs.value[block.id]?.insertAtCursor(variable)
 }
 
+const normalizeAuditConfigForUI = (cfg: ProcessAuditConfig): ProcessAuditConfig => ({
+  ...cfg,
+  embed_enabled: cfg.embed_enabled ?? false,
+  embed_config: {
+    auto_audit_on_open: cfg.embed_config?.auto_audit_on_open ?? true,
+    auto_audit_on_data_change: cfg.embed_config?.auto_audit_on_data_change ?? true,
+    auto_audit_on_return_resubmit: cfg.embed_config?.auto_audit_on_return_resubmit ?? true,
+    auto_audit_on_flow_change: cfg.embed_config?.auto_audit_on_flow_change ?? false,
+  },
+})
+
 //=====系统提示词模板=====
 
 const promptTemplates = ref<SystemPromptTemplate[]>([])
@@ -985,7 +1003,7 @@ onMounted(async () => {
   // 加载审核工作台配置
   try {
     const configs = await rulesApi.listConfigs()
-    processConfigs.value = configs
+    processConfigs.value = configs.map(normalizeAuditConfigForUI)
     if (configs.length > 0) selectedProcessId.value = configs[0].id
   } catch (e) { console.error('[rules] 加载流程配置失败', e) }
   // 加载提示词模板（审核工作台）
@@ -1326,7 +1344,9 @@ const normalizeSummaryConfigForUI = (cfg: ProcessSummaryConfig): ProcessSummaryC
   embed_enabled: cfg.embed_enabled ?? true,
   embed_config: {
     auto_summary_on_open: cfg.embed_config?.auto_summary_on_open ?? true,
-    auto_summary_on_stale: cfg.embed_config?.auto_summary_on_stale ?? true,
+    auto_summary_on_data_change: cfg.embed_config?.auto_summary_on_data_change ?? true,
+    auto_summary_on_return_resubmit: cfg.embed_config?.auto_summary_on_return_resubmit ?? true,
+    auto_summary_on_flow_change: cfg.embed_config?.auto_summary_on_flow_change ?? false,
   },
   status: cfg.status || 'active',
 })
@@ -1678,7 +1698,12 @@ const handleAddSummaryProcess = async () => {
       process_type_label: newSummaryProcessForm.value.process_type_label.trim(),
       main_table_name: newSummaryProcessForm.value.main_table_name.trim(),
       embed_enabled: true,
-      embed_config: { auto_summary_on_open: true, auto_summary_on_stale: true },
+      embed_config: {
+        auto_summary_on_open: true,
+        auto_summary_on_data_change: true,
+        auto_summary_on_return_resubmit: true,
+        auto_summary_on_flow_change: false,
+      },
       summary_blocks: [createSummaryBlock()],
     })
     const normalized = normalizeSummaryConfigForUI(created)
@@ -2509,11 +2534,12 @@ const handleSave = async () => {
       user_permissions: cfg.user_permissions,
       access_control: cfg.access_control ?? { allowed_roles: [], allowed_members: [], allowed_departments: [] },
       embed_enabled: cfg.embed_enabled ?? false,
+      embed_config: cfg.embed_config,
       status: cfg.status,
     })
     // 更新本地数据并刷新快照
     const idx = processConfigs.value.findIndex(c => c.id === cfg.id)
-    if (idx !== -1) processConfigs.value[idx] = updated
+    if (idx !== -1) processConfigs.value[idx] = normalizeAuditConfigForUI(updated)
     originalAuditPerms.value = { ...(cfg.user_permissions as any) }
     message.success(t('admin.ruleConfig.configSaved'))
   } catch (e: any) {
@@ -3040,6 +3066,50 @@ const handleSave = async () => {
               v-model:checked="selectedConfig.embed_enabled"
               :checked-children="t('admin.ruleConfig.switchAllow')"
               :un-checked-children="t('admin.ruleConfig.switchDeny')"
+            />
+          </div>
+          <div class="permission-item">
+            <div class="permission-info">
+              <div class="permission-label">{{ t('admin.ruleConfig.embedAuditAutoOpen') }}</div>
+              <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditAutoOpenDesc') }}</div>
+            </div>
+            <a-switch
+              v-model:checked="selectedConfig.embed_config!.auto_audit_on_open"
+              :checked-children="t('common.enabled')"
+              :un-checked-children="t('common.disabled')"
+            />
+          </div>
+          <div class="permission-item">
+            <div class="permission-info">
+              <div class="permission-label">{{ t('admin.ruleConfig.embedAuditDataChange') }}</div>
+              <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditDataChangeDesc') }}</div>
+            </div>
+            <a-switch
+              v-model:checked="selectedConfig.embed_config!.auto_audit_on_data_change"
+              :checked-children="t('common.enabled')"
+              :un-checked-children="t('common.disabled')"
+            />
+          </div>
+          <div class="permission-item">
+            <div class="permission-info">
+              <div class="permission-label">{{ t('admin.ruleConfig.embedAuditReturnResubmit') }}</div>
+              <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditReturnResubmitDesc') }}</div>
+            </div>
+            <a-switch
+              v-model:checked="selectedConfig.embed_config!.auto_audit_on_return_resubmit"
+              :checked-children="t('common.enabled')"
+              :un-checked-children="t('common.disabled')"
+            />
+          </div>
+          <div class="permission-item">
+            <div class="permission-info">
+              <div class="permission-label">{{ t('admin.ruleConfig.embedAuditFlowChange') }}</div>
+              <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditFlowChangeDesc') }}</div>
+            </div>
+            <a-switch
+              v-model:checked="selectedConfig.embed_config!.auto_audit_on_flow_change"
+              :checked-children="t('common.enabled')"
+              :un-checked-children="t('common.disabled')"
             />
           </div>
 
@@ -3622,24 +3692,46 @@ const handleSave = async () => {
             </div>
             <div class="permission-item">
               <div class="permission-info">
-                <div class="permission-label">打开时自动总结</div>
-                <div class="permission-desc">没有历史结果时自动发起总结</div>
+                <div class="permission-label">{{ t('admin.ruleConfig.embedSummaryAutoOpen') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.embedSummaryAutoOpenDesc') }}</div>
               </div>
               <a-switch
                 v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_open"
-                checked-children="启用"
-                un-checked-children="停用"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
               />
             </div>
             <div class="permission-item">
               <div class="permission-info">
-                <div class="permission-label">流程变化后自动刷新</div>
-                <div class="permission-desc">字段变化、节点变化，或流程被退回后重新提交时重新总结</div>
+                <div class="permission-label">{{ t('admin.ruleConfig.embedSummaryDataChange') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.embedSummaryDataChangeDesc') }}</div>
               </div>
               <a-switch
-                v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_stale"
-                checked-children="启用"
-                un-checked-children="停用"
+                v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_data_change"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
+              />
+            </div>
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.embedSummaryReturnResubmit') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.embedSummaryReturnResubmitDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_return_resubmit"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
+              />
+            </div>
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.embedSummaryFlowChange') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.embedSummaryFlowChangeDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_flow_change"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
               />
             </div>
           </div>

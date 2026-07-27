@@ -40,6 +40,18 @@ GET /api/tenant/rules/configs/:id
 PUT /api/tenant/rules/configs/:id
 ```
 
+`embed_config` 控制 OA 嵌入审核的自动刷新策略：
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `auto_audit_on_open` | `true` | 没有历史审核结果时自动审核 |
+| `auto_audit_on_data_change` | `true` | 审核实际使用的主表、明细或附件版本变化后自动审核 |
+| `auto_audit_on_return_resubmit` | `true` | 发生退回或退回后的重新提交时自动审核 |
+| `auto_audit_on_flow_change` | `false` | 普通批准、批注、转发、抄送或节点推进后自动审核 |
+
+普通审批推进默认不重新调用 AI，以减少等待时间和 Token 消耗。附件版本通过
+`DocImageFile` 的最新 `versionid` / `imagefileid` 与附件字段 `docId` 共同判断。
+
 ---
 
 ### 删除配置

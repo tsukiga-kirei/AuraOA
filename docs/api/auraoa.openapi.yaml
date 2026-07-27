@@ -5480,6 +5480,8 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    $ref: '#/components/schemas/EmbedAuditContext'
       parameters:
       - name: process_id
         in: query
@@ -5609,6 +5611,8 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    $ref: '#/components/schemas/EmbedSummaryContext'
       parameters:
       - name: process_id
         in: query
@@ -5920,6 +5924,125 @@ components:
       type: object
     ProcessConfigRequest:
       type: object
+      properties:
+        process_type:
+          type: string
+        process_type_label:
+          type: string
+        main_table_name:
+          type: string
+        main_fields:
+          type: array
+          items:
+            type: object
+        detail_tables:
+          type: array
+          items:
+            type: object
+        field_mode:
+          type: string
+          enum:
+          - all
+          - selected
+        kb_mode:
+          type: string
+        ai_config:
+          type: object
+        user_permissions:
+          type: object
+        access_control:
+          type: object
+        embed_enabled:
+          type: boolean
+        embed_config:
+          oneOf:
+          - $ref: '#/components/schemas/AuditEmbedConfig'
+          - $ref: '#/components/schemas/SummaryEmbedConfig'
+        summary_blocks:
+          type: array
+          items:
+            type: object
+        status:
+          type: string
+          enum:
+          - active
+          - inactive
+    AuditEmbedConfig:
+      type: object
+      properties:
+        auto_audit_on_open:
+          type: boolean
+          default: true
+        auto_audit_on_data_change:
+          type: boolean
+          default: true
+        auto_audit_on_return_resubmit:
+          type: boolean
+          default: true
+        auto_audit_on_flow_change:
+          type: boolean
+          default: false
+    SummaryEmbedConfig:
+      type: object
+      properties:
+        auto_summary_on_open:
+          type: boolean
+          default: true
+        auto_summary_on_data_change:
+          type: boolean
+          default: true
+        auto_summary_on_return_resubmit:
+          type: boolean
+          default: true
+        auto_summary_on_flow_change:
+          type: boolean
+          default: false
+    EmbedAuditContext:
+      type: object
+      properties:
+        supported:
+          type: boolean
+        embed_enabled:
+          type: boolean
+        has_audit:
+          type: boolean
+        stale:
+          type: boolean
+        should_auto_audit:
+          type: boolean
+        last_audit_at:
+          type: string
+          format: date-time
+        running_job_id:
+          type: string
+          format: uuid
+        audit_result:
+          type: object
+    EmbedSummaryContext:
+      type: object
+      properties:
+        supported:
+          type: boolean
+        embed_enabled:
+          type: boolean
+        has_summary:
+          type: boolean
+        stale:
+          type: boolean
+        stale_block_ids:
+          type: array
+          items:
+            type: string
+        should_auto_summary:
+          type: boolean
+        last_summary_at:
+          type: string
+          format: date-time
+        running_job_id:
+          type: string
+          format: uuid
+        summary_result:
+          type: object
     AuditRuleRequest:
       type: object
     BatchDeleteRulesRequest:

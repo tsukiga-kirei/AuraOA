@@ -447,6 +447,11 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	}
 
 	fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
+	executionFingerprint := stableJSONFingerprint(map[string]interface{}{
+		"ai_config": config.AIConfig,
+		"field_set": fieldSet,
+		"rules":     mergedRulesText,
+	})
 
 	n, err := s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
 		"status":     model.JobStatusAssembling,
@@ -468,6 +473,14 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		)
 		return err
 	}
+	jobAnchor := s.buildOAContextAnchorForJob(
+		c,
+		tenant,
+		req.ProcessID,
+		processData,
+		fieldSet,
+		executionFingerprint,
+	)
 
 	// 拉取审批流快照（历史 + 路由图），失败时不阻塞主流程
 	flowSnapshot := s.fetchFlowSnapshot(c, tenant, req.ProcessID)
@@ -591,7 +604,7 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 		updates["score"] = parsed.OverallScore
 		updates["confidence"] = parsed.Confidence
 		updates["audit_result"] = datatypes.JSON(resultJSON)
-		updates["oa_context_anchor"] = s.buildOAContextAnchorForJob(c, tenant, req.ProcessID)
+		updates["oa_context_anchor"] = jobAnchor
 		tlog.Info("审核任务执行完成",
 			zap.String("auditLogID", auditLogID.String()),
 			zap.String("recommendation", parsed.Recommendation),

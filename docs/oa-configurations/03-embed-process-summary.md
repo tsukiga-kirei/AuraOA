@@ -20,7 +20,8 @@
 
 ## 2. 数据库设计
 
-迁移文件：`db/migrations/000044_process_summary.up.sql`
+基础表迁移：`db/migrations/000044_process_summary.up.sql`
+细分自动刷新策略：`db/migrations/000051_embed_change_detection.up.sql`
 
 | 表 | 用途 |
 |----|------|
@@ -35,7 +36,9 @@
 | `summary_blocks` | 总结块数组，每块独立配置标题、字段范围、用户提示词、排序和启用状态 |
 | `embed_enabled` | 是否允许 `/embed/summary` 处理该流程类型 |
 | `embed_config.auto_summary_on_open` | 第一次打开嵌入页时自动总结 |
-| `embed_config.auto_summary_on_stale` | OA 字段/附件/流程上下文变化后自动刷新 |
+| `embed_config.auto_summary_on_data_change` | 总结块使用的字段或附件版本变化后自动刷新 |
+| `embed_config.auto_summary_on_return_resubmit` | 退回或重新提交后刷新流程相关总结块 |
+| `embed_config.auto_summary_on_flow_change` | 普通审批推进后刷新流程相关总结块，默认关闭 |
 | `raw_content` / `parse_error` | 模型未严格返回 JSON 时保留原文并记录兜底解析原因 |
 
 ---
@@ -79,6 +82,15 @@
 3. 遇到附件字段时调用附件识别服务，优先使用已有 OCR / MinerU 识别结果。
 4. 浏览按钮字段会解析为可读显示值。
 5. 同步保存流程字段、审批流节点与附件文本到 `process_snapshot`，便于数据页追溯。
+
+自动刷新前先执行轻量比较：
+
+- 主表/明细按每个总结块的 `selected_fields` 计算指纹；
+- 附件按字段保存 `docId + versionid + imagefileid + 文件名` 指纹；
+- 普通批准、批注、转发和节点推进与退回/重提分开判断；
+- 只重新调用发生变化的总结块，其他块沿用最近有效结果。
+
+判断附件版本时不下载文件、不调用 MinerU；只有确认附件块需要刷新后才进入附件识别。
 
 ---
 
