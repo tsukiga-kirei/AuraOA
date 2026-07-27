@@ -78,6 +78,8 @@ const DEFAULT_ATTACHMENT_TYPES = [
 ]
 const generalConfig = ref<SystemGeneralConfig>({
   attachment_supported_types: DEFAULT_ATTACHMENT_TYPES.join(','),
+  attachment_ai_content_limit_mode: 'bytes',
+  attachment_ai_content_max_bytes: 10000,
   attachment_compat_endpoint: 'http://document-parser:8090',
   attachment_compat_api_key: '',
   attachment_legacy_office_enabled: false,
@@ -994,6 +996,31 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                     </a-select-opt-group>
                   </a-select>
                   <div class="form-hint">{{ t('admin.settings.attachmentTypesHint') }}</div>
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <a-row :gutter="16">
+              <a-col :xs="24" :md="12">
+                <a-form-item :label="t('admin.settings.attachmentAIContentMode')">
+                  <a-radio-group v-model:value="generalConfig.attachment_ai_content_limit_mode" button-style="solid">
+                    <a-radio-button value="bytes">{{ t('admin.settings.attachmentAIContentModeBytes') }}</a-radio-button>
+                    <a-radio-button value="unlimited">{{ t('admin.settings.attachmentAIContentModeUnlimited') }}</a-radio-button>
+                  </a-radio-group>
+                  <div class="form-hint">{{ t('admin.settings.attachmentAIContentModeHint') }}</div>
+                </a-form-item>
+              </a-col>
+              <a-col v-if="generalConfig.attachment_ai_content_limit_mode === 'bytes'" :xs="24" :md="12">
+                <a-form-item :label="t('admin.settings.attachmentAIContentMaxBytes')">
+                  <a-input-number
+                    v-model:value="generalConfig.attachment_ai_content_max_bytes"
+                    :min="1000"
+                    :max="10000000"
+                    :step="1000"
+                    style="width: 100%;"
+                    size="large"
+                    :addon-after="t('admin.settings.bytesUnit')"
+                  />
+                  <div class="form-hint">{{ t('admin.settings.attachmentAIContentMaxBytesHint') }}</div>
                 </a-form-item>
               </a-col>
             </a-row>

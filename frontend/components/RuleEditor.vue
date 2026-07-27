@@ -98,18 +98,18 @@ const scopeOptions = computed(() => [
 const fieldOptions = computed(() => props.fieldOptions || [])
 const tableNameSQLVariable = '{{table_name}}'
 const joinFieldSQLVariable = '{{join_field}}'
-const customSQLPlaceholder = `仅允许 SELECT，必须使用 ${tableNameSQLVariable}、${joinFieldSQLVariable} 与 :source_value`
+const customSQLPlaceholder = computed(() => t('externalContext.customSQLPlaceholder', [tableNameSQLVariable, joinFieldSQLVariable]))
 
-const workflowBasicOptions = [
-  { label: '是否归档', value: 'archived' },
-  { label: '流程标题', value: 'title' },
-  { label: '发起人', value: 'applicant' },
-  { label: '发起部门', value: 'department' },
-  { label: '流程类型', value: 'process_type' },
-  { label: '当前节点', value: 'current_node' },
-  { label: '提交时间', value: 'submit_time' },
-]
-const workflowBasicAllValues = workflowBasicOptions.map(o => o.value)
+const workflowBasicOptions = computed(() => [
+  { label: t('externalContext.basic.archived'), value: 'archived' },
+  { label: t('externalContext.basic.title'), value: 'title' },
+  { label: t('externalContext.basic.applicant'), value: 'applicant' },
+  { label: t('externalContext.basic.department'), value: 'department' },
+  { label: t('externalContext.basic.processType'), value: 'process_type' },
+  { label: t('externalContext.basic.currentNode'), value: 'current_node' },
+  { label: t('externalContext.basic.submitTime'), value: 'submit_time' },
+])
+const workflowBasicAllValues = ['archived', 'title', 'applicant', 'department', 'process_type', 'current_node', 'submit_time']
 
 const isWorkflowBasicAllSelected = computed(() => {
   const fields = workflowMount.value?.workflow?.basic_fields || []
@@ -190,6 +190,12 @@ const setModelReturnFields = (value: string) => {
   if (mount?.model) mount.model.return_fields = fieldListFromText(value)
 }
 
+const setModelMaxRows = (value: number | string | null) => {
+  const mount = modelMount.value
+  const rows = Number(value)
+  if (mount?.model && Number.isFinite(rows) && rows > 0) mount.model.max_rows = rows
+}
+
 const setModelAllRows = (checked: boolean) => {
   const mount = modelMount.value
   if (mount?.model) mount.model.max_rows = checked ? -1 : 5
@@ -207,7 +213,7 @@ const testContext = async (mount: ExternalContextMount, key: 'workflow' | 'model
     })
     contextPreview.value[key] = resp.context_text || ''
   } catch (e: any) {
-    message.error(`关联数据测试失败：${e?.message || '未知错误'}`)
+    message.error(t('externalContext.testFailed', [e?.message || t('externalContext.unknownError')]))
   } finally {
     if (key === 'workflow') testingWorkflowContext.value = false
     if (key === 'model') testingModelContext.value = false
@@ -219,7 +225,7 @@ const loadWorkflowTargetFields = async (target?: ProcessInfo, options?: { silent
   const processType = target?.process_name || target?.process_type || mount?.workflow?.target_process_type?.trim()
   const workflowID = target?.workflow_id || mount?.workflow?.target_workflow_id || ''
   if (!props.workflowFieldsEndpoint || !mount?.workflow || (!processType && !workflowID)) {
-    message.warning('请先选择目标流程')
+    message.warning(t('externalContext.selectTargetFirst'))
     return
   }
   loadingWorkflowFields.value = true
@@ -229,10 +235,10 @@ const loadWorkflowTargetFields = async (target?: ProcessInfo, options?: { silent
       body: { process_type: processType || '', workflow_id: workflowID },
     })
     workflowTargetFieldOptions.value = buildFieldOptions(fields)
-    if (!workflowTargetFieldOptions.value.length) message.warning('该流程未返回可选字段')
-    else if (!options?.silent) message.success('目标流程字段已加载')
+    if (!workflowTargetFieldOptions.value.length) message.warning(t('externalContext.noTargetFields'))
+    else if (!options?.silent) message.success(t('externalContext.targetFieldsLoaded'))
   } catch (e: any) {
-    message.error(`目标流程字段加载失败：${e?.message || '未知错误'}`)
+    message.error(t('externalContext.targetFieldsLoadFailed', [e?.message || t('externalContext.unknownError')]))
   } finally {
     loadingWorkflowFields.value = false
   }
@@ -241,10 +247,10 @@ const loadWorkflowTargetFields = async (target?: ProcessInfo, options?: { silent
 const buildFieldOptions = (fields: ProcessFields): FieldOption[] => {
   const out: FieldOption[] = []
   for (const f of fields.main_fields || []) {
-    out.push({ label: `${f.field_name}（主表）`, value: `main:${f.field_key}` })
+    out.push({ label: `${f.field_name}（${t('externalContext.mainTable')}）`, value: `main:${f.field_key}` })
   }
   ;(fields.detail_tables || []).forEach((dt, idx) => {
-    const label = dt.table_label || `明细表 ${idx + 1}`
+    const label = dt.table_label || t('externalContext.detailTable', [idx + 1])
     for (const f of dt.fields || []) {
       out.push({ label: `${f.field_name}（${label}）`, value: `${dt.table_name}:${f.field_key}` })
     }
@@ -295,12 +301,12 @@ const selectTargetWorkflowInModal = async (item: ProcessInfo) => {
 
 const searchTargetWorkflows = async () => {
   if (!props.workflowSearchEndpoint) {
-    message.warning('当前页面未配置流程选择接口')
+    message.warning(t('externalContext.searchEndpointMissing'))
     return
   }
   const keyword = targetWorkflowKeyword.value.trim()
   if (!keyword) {
-    message.warning('请输入流程名称、分类或主表名后再搜索')
+    message.warning(t('externalContext.searchKeywordRequired'))
     targetWorkflowRows.value = []
     hasSearchedWorkflows.value = false
     return
@@ -313,19 +319,21 @@ const searchTargetWorkflows = async () => {
     })
     hasSearchedWorkflows.value = true
   } catch (e: any) {
-    message.error(`流程检索失败：${e?.message || '未知错误'}`)
+    message.error(t('externalContext.searchFailed', [e?.message || t('externalContext.unknownError')]))
   } finally {
     searchingWorkflows.value = false
   }
 }
 
 const targetWorkflowDisplayName = (item: ProcessInfo) =>
-  item.process_name || item.process_type || (item.workflow_id && item.workflow_id !== '0' ? `流程 ${item.workflow_id}` : '未命名流程')
+  item.process_name || item.process_type || (item.workflow_id && item.workflow_id !== '0'
+    ? t('externalContext.workflowWithId', [item.workflow_id])
+    : t('externalContext.unnamedWorkflow'))
 
 const confirmTargetWorkflowConfig = async () => {
   const mount = workflowMount.value
   if (!mount?.workflow) {
-    message.warning('请先搜索并选择目标流程')
+    message.warning(t('externalContext.searchAndSelectTarget'))
     return Promise.reject()
   }
   const row = targetWorkflowRows.value.find(item =>
@@ -337,7 +345,7 @@ const confirmTargetWorkflowConfig = async () => {
     mount.workflow.target_process_label = row.process_type_label || ''
     mount.workflow.target_main_table = row.main_table || ''
   } else if (!mount.workflow.target_process_type && !mount.workflow.target_workflow_id) {
-    message.warning('请先搜索并选择目标流程')
+    message.warning(t('externalContext.searchAndSelectTarget'))
     return Promise.reject()
   }
   mount.workflow.data_mode = 'selected_fields'
@@ -357,8 +365,8 @@ const targetWorkflowConfigSummary = computed(() => {
   if (!wf || wf.data_mode !== 'selected_fields') return ''
   const target = targetWorkflowSummary.value
   const fieldCount = wf.selected_fields?.length || 0
-  if (!target) return '尚未配置'
-  return `${target} · ${fieldCount} 个字段`
+  if (!target) return t('externalContext.notConfigured')
+  return `${target} · ${t('externalContext.fieldCount', [fieldCount])}`
 })
 
 const insertCustomSQLVariable = (variable: string) => {
@@ -408,16 +416,16 @@ const handleSave = () => {
         </div>
       </a-form-item>
 
-      <a-divider orientation="left">外部关联数据</a-divider>
+      <a-divider orientation="left">{{ t('externalContext.title') }}</a-divider>
       <div class="context-toggle-row">
         <button type="button" class="context-toggle-card" :class="{ active: !!workflowMount }" @click="toggleMount('workflow', !workflowMount)">
-          <span class="context-toggle-title">关联流程</span>
+          <span class="context-toggle-title">{{ t('externalContext.workflow') }}</span>
           <span @click.stop>
             <a-switch :checked="!!workflowMount" @change="(checked: any) => toggleMount('workflow', !!checked)" />
           </span>
         </button>
         <button type="button" class="context-toggle-card" :class="{ active: !!modelMount }" @click="toggleMount('model', !modelMount)">
-          <span class="context-toggle-title">关联建模表</span>
+          <span class="context-toggle-title">{{ t('externalContext.model') }}</span>
           <span @click.stop>
             <a-switch :checked="!!modelMount" @change="(checked: any) => toggleMount('model', !!checked)" />
           </span>
@@ -427,27 +435,27 @@ const handleSave = () => {
       <div v-if="workflowMount" class="context-panel">
         <div class="context-panel-head">
           <div>
-            <div class="context-panel-title">关联流程</div>
-            <div class="context-panel-subtitle">先查询已引用的流程，再把选中的信息提供给 AI</div>
+            <div class="context-panel-title">{{ t('externalContext.workflow') }}</div>
+            <div class="context-panel-subtitle">{{ t('externalContext.workflowDesc') }}</div>
           </div>
         </div>
         <a-row :gutter="12">
           <a-col :span="24">
-            <a-form-item label="来源字段">
-              <a-select v-model:value="workflowMount.source_field" :options="fieldOptions" show-search placeholder="选择已引入字段" />
+            <a-form-item :label="t('externalContext.sourceField')">
+              <a-select v-model:value="workflowMount.source_field" :options="fieldOptions" show-search :placeholder="t('externalContext.sourceFieldPlaceholder')" />
             </a-form-item>
           </a-col>
         </a-row>
         <a-form-item class="basic-fields-item" :colon="false">
           <template #label>
             <div class="basic-fields-label-row">
-              <span>流程基础信息</span>
+              <span>{{ t('externalContext.basicInfo') }}</span>
               <a-checkbox
                 :checked="isWorkflowBasicAllSelected"
                 :indeterminate="!!workflowMount.workflow!.basic_fields?.length && !isWorkflowBasicAllSelected"
                 @change="(e: any) => toggleWorkflowBasicAll(!!e?.target?.checked)"
               >
-                全选
+                {{ t('externalContext.selectAll') }}
               </a-checkbox>
             </div>
           </template>
@@ -468,59 +476,59 @@ const handleSave = () => {
                 <a-checkbox :value="opt.value">{{ opt.label }}</a-checkbox>
               </label>
             </a-checkbox-group>
-            <div class="basic-fields-hint">仅勾选的项会注入 AI；全部取消则不传基础信息</div>
+            <div class="basic-fields-hint">{{ t('externalContext.basicInfoHint') }}</div>
           </div>
         </a-form-item>
-        <a-form-item label="引用流程表单数据">
+        <a-form-item :label="t('externalContext.workflowFormData')">
           <div class="context-mode-switch">
             <button type="button" :class="{ active: workflowMount.workflow?.data_mode !== 'selected_fields' }" @click="setWorkflowTargetMode(false)">
-              自动读取全部字段
+              {{ t('externalContext.allFieldsAuto') }}
             </button>
             <button type="button" :class="{ active: workflowMount.workflow?.data_mode === 'selected_fields' }" @click="setWorkflowTargetMode(true)">
-              指定目标流程并选择字段
+              {{ t('externalContext.selectTargetAndFields') }}
             </button>
           </div>
         </a-form-item>
         <div v-if="workflowMount.workflow?.data_mode === 'selected_fields'" class="target-flow-compact">
           <div class="target-flow-meta">
-            <div class="target-flow-label">目标流程引用</div>
-            <div class="target-flow-value">{{ targetWorkflowConfigSummary || '尚未配置' }}</div>
+            <div class="target-flow-label">{{ t('externalContext.targetWorkflow') }}</div>
+            <div class="target-flow-value">{{ targetWorkflowConfigSummary || t('externalContext.notConfigured') }}</div>
           </div>
-          <a-button @click="openTargetWorkflowConfigModal">配置</a-button>
+          <a-button @click="openTargetWorkflowConfigModal">{{ t('externalContext.configure') }}</a-button>
         </div>
         <div class="context-actions">
-          <a-button :loading="testingWorkflowContext" @click="testContext(workflowMount, 'workflow')">测试</a-button>
+          <a-button :loading="testingWorkflowContext" @click="testContext(workflowMount, 'workflow')">{{ t('externalContext.test') }}</a-button>
         </div>
         <pre v-if="contextPreview.workflow" class="context-preview">{{ contextPreview.workflow }}</pre>
       </div>
 
       <div v-if="modelMount" class="context-panel">
-        <div class="context-panel-title">关联建模表</div>
+        <div class="context-panel-title">{{ t('externalContext.model') }}</div>
         <a-row :gutter="12">
           <a-col :span="12">
-            <a-form-item label="来源字段">
-              <a-select v-model:value="modelMount.source_field" :options="fieldOptions" show-search placeholder="选择已引入字段" />
+            <a-form-item :label="t('externalContext.sourceField')">
+              <a-select v-model:value="modelMount.source_field" :options="fieldOptions" show-search :placeholder="t('externalContext.sourceFieldPlaceholder')" />
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="建模表名">
-              <a-input v-model:value="modelMount.model!.table_name" placeholder="例如 uf_supplier_license" />
+            <a-form-item :label="t('externalContext.modelTable')">
+              <a-input v-model:value="modelMount.model!.table_name" :placeholder="t('externalContext.modelTablePlaceholder')" />
             </a-form-item>
           </a-col>
         </a-row>
         <a-row :gutter="12">
           <a-col :span="8">
-            <a-form-item label="建模关联字段">
-              <a-input v-model:value="modelMount.model!.join_field" placeholder="默认 id" />
+            <a-form-item :label="t('externalContext.modelJoinField')">
+              <a-input v-model:value="modelMount.model!.join_field" :placeholder="t('externalContext.defaultId')" />
             </a-form-item>
           </a-col>
           <a-col :span="8">
-            <a-form-item label="查询方式">
+            <a-form-item :label="t('externalContext.queryMode')">
               <a-select v-model:value="modelMount.model!.mode">
-                <a-select-option value="exists">是否存在</a-select-option>
-                <a-select-option value="count">存在条数</a-select-option>
-                <a-select-option value="rows">返回匹配数据</a-select-option>
-                <a-select-option value="custom_sql">自定义 SQL</a-select-option>
+                <a-select-option value="exists">{{ t('externalContext.mode.exists') }}</a-select-option>
+                <a-select-option value="count">{{ t('externalContext.mode.count') }}</a-select-option>
+                <a-select-option value="rows">{{ t('externalContext.mode.rows') }}</a-select-option>
+                <a-select-option value="custom_sql">{{ t('externalContext.mode.customSQL') }}</a-select-option>
               </a-select>
             </a-form-item>
           </a-col>
@@ -528,7 +536,7 @@ const handleSave = () => {
         <a-form-item v-if="modelMount.model?.mode === 'rows'" :label="t('externalContext.modelReturnFields')">
           <a-input :value="modelMount.model.return_fields?.join(',')" :placeholder="t('externalContext.modelReturnFieldsPlaceholder')" @update:value="setModelReturnFields" />
         </a-form-item>
-        <a-form-item v-if="modelMount.model?.mode === 'rows'" label="返回行数上限">
+        <a-form-item v-if="modelMount.model?.mode === 'rows'" :label="t('externalContext.maxRows')">
           <a-space>
             <a-input-number
               :value="modelMount.model!.max_rows === -1 ? undefined : modelMount.model!.max_rows"
@@ -536,23 +544,23 @@ const handleSave = () => {
               :max="50"
               :disabled="modelMount.model!.max_rows === -1"
               style="width: 160px;"
-              @update:value="(value: number | null) => { if (modelMount?.model && value) modelMount.model.max_rows = value }"
+              @update:value="setModelMaxRows"
             />
             <a-checkbox :checked="modelMount.model!.max_rows === -1" @change="(e: any) => setModelAllRows(!!e?.target?.checked)">
               {{ t('common.all') }}
             </a-checkbox>
           </a-space>
         </a-form-item>
-        <a-form-item v-if="modelMount.model?.mode === 'custom_sql'" label="自定义 SQL">
+        <a-form-item v-if="modelMount.model?.mode === 'custom_sql'" :label="t('externalContext.customSQL')">
           <div class="sql-variable-bar">
-            <span>插入变量：</span>
+            <span>{{ t('externalContext.insertVariable') }}：</span>
             <a-button size="small" @click="insertCustomSQLVariable(tableNameSQLVariable)">{{ tableNameSQLVariable }}</a-button>
             <a-button size="small" @click="insertCustomSQLVariable(joinFieldSQLVariable)">{{ joinFieldSQLVariable }}</a-button>
           </div>
           <a-textarea v-model:value="modelMount.model.custom_sql" :rows="4" :placeholder="customSQLPlaceholder" />
         </a-form-item>
         <div class="context-actions">
-          <a-button :loading="testingModelContext" @click="testContext(modelMount, 'model')">测试建模查询</a-button>
+          <a-button :loading="testingModelContext" @click="testContext(modelMount, 'model')">{{ t('externalContext.testModel') }}</a-button>
         </div>
         <pre v-if="contextPreview.model" class="context-preview">{{ contextPreview.model }}</pre>
       </div>
@@ -561,28 +569,28 @@ const handleSave = () => {
 
   <a-modal
     v-model:open="targetWorkflowConfigOpen"
-    title="配置目标流程引用"
+    :title="t('externalContext.configureTarget')"
     :width="720"
-    ok-text="确定"
-    cancel-text="取消"
+    :ok-text="t('common.confirm')"
+    :cancel-text="t('common.cancel')"
     :confirm-loading="loadingWorkflowFields"
     @ok="confirmTargetWorkflowConfig"
   >
     <div class="workflow-config-modal">
       <div v-if="targetWorkflowSummary && !targetWorkflowRows.length" class="workflow-current">
-        <div class="target-flow-label">当前已选流程</div>
+        <div class="target-flow-label">{{ t('externalContext.currentTarget') }}</div>
         <div class="target-flow-value">{{ targetWorkflowSummary }}</div>
       </div>
       <div class="workflow-picker">
         <div class="workflow-picker-search">
           <a-input
             v-model:value="targetWorkflowKeyword"
-            placeholder="输入流程名称、流程分类或主表名搜索"
+            :placeholder="t('externalContext.searchPlaceholder')"
             allow-clear
             @press-enter="searchTargetWorkflows"
           />
           <a-button type="primary" :loading="searchingWorkflows" @click="searchTargetWorkflows">
-            搜索
+            {{ t('common.search') }}
           </a-button>
         </div>
         <a-spin :spinning="searchingWorkflows">
@@ -607,27 +615,27 @@ const handleSave = () => {
             </button>
             <a-empty
               v-if="!targetWorkflowRows.length && !searchingWorkflows"
-              :description="hasSearchedWorkflows ? '未找到匹配流程' : '输入关键词后点击搜索'"
+              :description="hasSearchedWorkflows ? t('externalContext.noSearchResult') : t('externalContext.searchEmptyHint')"
             />
           </div>
         </a-spin>
       </div>
       <a-form layout="vertical" class="workflow-config-form">
-        <a-form-item label="引用流程字段">
+        <a-form-item :label="t('externalContext.workflowFields')">
           <a-select
             v-model:value="targetWorkflowDraftFields"
             :options="workflowTargetFieldOptions"
             mode="multiple"
             show-search
             option-filter-prop="label"
-            placeholder="先选择目标流程，再勾选要提供给 AI 的字段"
+            :placeholder="t('externalContext.workflowFieldsPlaceholder')"
           />
         </a-form-item>
-        <a-form-item label="流程类型不一致时">
+        <a-form-item :label="t('externalContext.typeMismatch')">
           <a-select v-model:value="targetWorkflowDraftFallback">
-            <a-select-option value="basic_with_notice">仅提供基础信息并提示模型类型不一致</a-select-option>
-            <a-select-option value="all_fields">尝试读取实际流程全部字段</a-select-option>
-            <a-select-option value="ignore">忽略该引用流程</a-select-option>
+            <a-select-option value="basic_with_notice">{{ t('externalContext.fallback.basic') }}</a-select-option>
+            <a-select-option value="all_fields">{{ t('externalContext.fallback.allFields') }}</a-select-option>
+            <a-select-option value="ignore">{{ t('externalContext.fallback.ignore') }}</a-select-option>
           </a-select>
         </a-form-item>
       </a-form>

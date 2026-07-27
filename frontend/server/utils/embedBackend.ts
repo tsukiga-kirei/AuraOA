@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import { ofetch } from 'ofetch'
 
 /** 嵌入页服务端代理：Cookie / 请求头 / 查询参数读取租户令牌后访问 Go /api/embed */
 export function getEmbedBackend(event: H3Event) {
@@ -42,7 +43,7 @@ export async function proxyEmbedGet<T>(event: H3Event, path: string, query?: Rec
   const { apiBase, headers } = getEmbedBackend(event)
   let res: { code: number; message: string; data: T }
   try {
-    res = await $fetch(`${apiBase}${path}`, { headers, query })
+    res = await ofetch<{ code: number; message: string; data: T }>(`${apiBase}${path}`, { headers, query })
   } catch (e: unknown) {
     rethrowEmbedProxyError(e)
   }
@@ -56,7 +57,7 @@ export async function proxyEmbedPost<T>(event: H3Event, path: string, body: unkn
   const { apiBase, headers } = getEmbedBackend(event)
   let res: { code: number; message: string; data: T }
   try {
-    res = await $fetch(`${apiBase}${path}`, {
+    res = await ofetch<{ code: number; message: string; data: T }>(`${apiBase}${path}`, {
       method: 'POST',
       headers,
       body: body as Record<string, unknown> | BodyInit | null | undefined,

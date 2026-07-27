@@ -1349,10 +1349,22 @@ paths:
                     example: success
     put:
       summary: 批量更新系统配置
+      description: 通用 KV 更新；附件 AI 正文策略使用 attachment.ai_content_limit_mode（bytes/unlimited）与 attachment.ai_content_max_bytes。
       tags:
       - SystemAdmin
       security:
       - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+            example:
+              attachment.ai_content_limit_mode: bytes
+              attachment.ai_content_max_bytes: '10000'
       responses:
         '200':
           description: 成功

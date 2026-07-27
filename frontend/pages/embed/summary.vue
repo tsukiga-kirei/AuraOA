@@ -20,6 +20,7 @@ definePageMeta({ layout: 'embed' })
 
 const { getSummaryContext, executeSummaryEmbed, waitSummaryJob } = useEmbedSummaryApi()
 const { setupEmbedSession } = useEmbedSession()
+const { t } = useI18n()
 
 const processId = ref('')
 const pageLoading = ref(true)
@@ -36,14 +37,6 @@ const collapsedBlockIds = ref<Set<string>>(new Set())
 const processInfo = computed<EmbedProcessSummary | null>(() => context.value?.process ?? null)
 const isRunning = computed(() => summarizing.value || ['pending', 'assembling', 'reasoning', 'extracting'].includes(currentResult.value?.status || ''))
 
-const SUMMARY_PROGRESS_STEPS = [
-  { key: 'pending', label: '排队中' },
-  { key: 'assembling', label: '解析流程数据/附件' },
-  { key: 'prompt', label: '组装总结提示词' },
-  { key: 'reasoning', label: 'AI 生成总结' },
-  { key: 'extracting', label: '解析总结结构' },
-] as const
-
 const progressStatusOrder: Record<string, number> = {
   pending: 0,
   assembling: 1,
@@ -54,9 +47,16 @@ const progressStatusOrder: Record<string, number> = {
 }
 
 const summaryProgressSteps = computed(() => {
+  const steps = [
+    { key: 'pending', label: t('embed.summary.progress.pending') },
+    { key: 'assembling', label: t('embed.summary.progress.assembling') },
+    { key: 'prompt', label: t('embed.summary.progress.prompt') },
+    { key: 'reasoning', label: t('embed.summary.progress.reasoning') },
+    { key: 'extracting', label: t('embed.summary.progress.extracting') },
+  ] as const
   const status = currentResult.value?.status || 'pending'
   const order = progressStatusOrder[status] ?? 0
-  return SUMMARY_PROGRESS_STEPS.filter(s => s.key !== 'pending').map((step, index) => {
+  return steps.filter(s => s.key !== 'pending').map((step, index) => {
     const stepOrder = index + 1
     return {
       ...step,
@@ -69,18 +69,18 @@ const summaryProgressSteps = computed(() => {
 
 const headerStatus = computed(() => {
   if (pageLoading.value || waitingParent.value) {
-    return { label: '流程总结', color: 'var(--color-text-primary)', bg: 'transparent', icon: FileTextOutlined, spin: false }
+    return { label: t('embed.summary.title'), color: 'var(--color-text-primary)', bg: 'transparent', icon: FileTextOutlined, spin: false }
   }
   if (isRunning.value) {
-    return { label: '正在总结', color: 'var(--color-primary)', bg: 'var(--color-primary-bg)', icon: LoadingOutlined, spin: true }
+    return { label: t('embed.summary.status.running'), color: 'var(--color-primary)', bg: 'var(--color-primary-bg)', icon: LoadingOutlined, spin: true }
   }
   if (currentResult.value?.status === 'failed') {
-    return { label: '总结失败', color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, spin: false }
+    return { label: t('embed.summary.status.failed'), color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, spin: false }
   }
   if (currentResult.value?.blocks?.length) {
-    return { label: '总结完成', color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, spin: false }
+    return { label: t('embed.summary.status.completed'), color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, spin: false }
   }
-  return { label: '待总结', color: 'var(--color-text-tertiary)', bg: 'var(--color-bg-hover)', icon: ThunderboltOutlined, spin: false }
+  return { label: t('embed.summary.status.pending'), color: 'var(--color-text-tertiary)', bg: 'var(--color-bg-hover)', icon: ThunderboltOutlined, spin: false }
 })
 
 const processMetaRows = computed(() => {
@@ -99,10 +99,10 @@ const processStat = computed(() => {
   if (currentResult.value?.duration_ms) {
     const sec = currentResult.value.duration_ms / 1000
     const tone = sec >= 120 ? 'danger' : sec >= 60 ? 'warning' : 'success'
-    return { text: `耗时 ${getDurationSec(currentResult.value.duration_ms)} 秒`, tone }
+    return { text: t('embed.summary.duration', [getDurationSec(currentResult.value.duration_ms)]), tone }
   }
   if (isRunning.value) {
-    return { text: '执行中', tone: 'running' }
+    return { text: t('embed.summary.executing'), tone: 'running' }
   }
   return null
 })
@@ -148,12 +148,12 @@ function appendStreamingChunk(raw: string) {
   try {
     payload = JSON.parse(raw)
   } catch {
-    payload = { block_id: 'legacy', title: '模型回复', chunk: raw }
+    payload = { block_id: 'legacy', title: t('embed.summary.modelResponse'), chunk: raw }
   }
   const chunk = payload.chunk || ''
   if (!chunk) return
   const key = payload.block_id || payload.title || 'legacy'
-  const title = payload.title || '模型回复'
+  const title = payload.title || t('embed.summary.modelResponse')
   const next = [...streamingBlocks.value]
   const existing = next.find(block => block.block_id === key)
   if (existing) {
@@ -208,9 +208,9 @@ async function runSummary(trigger: 'summary_embed_auto' | 'summary_embed_manual'
     )
     mergeSummaryProgress(result)
     await refreshContext(false)
-    if (trigger === 'summary_embed_manual') message.success('总结已刷新')
+    if (trigger === 'summary_embed_manual') message.success(t('embed.summary.refreshed'))
   } catch (e: any) {
-    message.error(e?.message || '总结失败')
+    message.error(e?.message || t('embed.summary.status.failed'))
     currentResult.value = null
     await refreshContext(false)
   } finally {
@@ -243,7 +243,7 @@ async function refreshContext(autoRun = true) {
       }
     }
   } catch (e: any) {
-    pageError.value = e?.message || '加载总结上下文失败'
+    pageError.value = e?.message || t('embed.summary.contextLoadFailed')
   }
 }
 
@@ -254,7 +254,7 @@ async function bootstrap() {
   currentResult.value = null
   try {
     if (!processId.value) {
-      pageError.value = '未获取到 OA 流程编号'
+      pageError.value = t('embed.summary.missingProcessId')
       return
     }
     await refreshContext(false)
@@ -262,7 +262,7 @@ async function bootstrap() {
     pageLoading.value = false
     waitingParent.value = false
   }
-  const ctx = context.value
+  const ctx = context.value as EmbedSummaryContextResponse | null
   if (ctx?.supported && ctx.should_auto_summary && !summarizing.value && !ctx.running_job_id) {
     await runSummary('summary_embed_auto')
   } else if (ctx?.running_job_id && !summarizing.value) {
@@ -276,14 +276,14 @@ onMounted(async () => {
   processId.value = parentCtx.requestId
   waitingParent.value = false
   if (!parentCtx.embedToken) {
-    pageError.value = '未获取到嵌入访问令牌，请检查 OA 父页面配置'
+    pageError.value = t('embed.summary.missingToken')
     pageLoading.value = false
     return
   }
   try {
     await setupEmbedSession(parentCtx.embedToken)
   } catch (e: any) {
-    pageError.value = e?.message || '未获取到嵌入访问令牌，请检查 OA 父页面配置'
+    pageError.value = e?.message || t('embed.summary.missingToken')
     pageLoading.value = false
     return
   }
@@ -303,14 +303,14 @@ onBeforeUnmount(() => disconnectStream())
         {{ headerStatus.label }}
       </h2>
       <div v-if="!isRunning && context?.last_summary_at" class="embed-subline">
-        最近总结：{{ formatLastSummaryAt(context.last_summary_at) }}
-        <a-tag v-if="context.stale" color="warning" style="margin-left: 8px;">已变化</a-tag>
+        {{ t('embed.summary.lastSummary') }}：{{ formatLastSummaryAt(context.last_summary_at) }}
+        <a-tag v-if="context.stale" color="warning" style="margin-left: 8px;">{{ t('embed.summary.changed') }}</a-tag>
       </div>
-      <p v-else-if="isRunning" class="embed-subline embed-subline--active">AI 正在整理流程内容</p>
+      <p v-else-if="isRunning" class="embed-subline embed-subline--active">{{ t('embed.summary.aiOrganizing') }}</p>
     </div>
 
     <div v-if="pageLoading || waitingParent" class="embed-page-loading">
-      <a-spin size="large" :tip="waitingParent ? '等待 OA 流程编号' : undefined" />
+      <a-spin size="large" :tip="waitingParent ? t('embed.summary.waitingProcessId') : undefined" />
     </div>
 
     <template v-else>
@@ -319,7 +319,7 @@ onBeforeUnmount(() => disconnectStream())
       <a-result
         v-else-if="context && !context.supported"
         status="warning"
-        title="暂不支持总结"
+        :title="t('embed.summary.unsupported')"
         :sub-title="context.message"
       >
         <template #extra>
@@ -365,7 +365,7 @@ onBeforeUnmount(() => disconnectStream())
               >
                 <LoadingOutlined v-if="summarizing" spin />
                 <ReloadOutlined v-else />
-                <span>重新总结</span>
+                <span>{{ t('embed.summary.retry') }}</span>
               </a-button>
             </div>
           </div>
@@ -373,7 +373,7 @@ onBeforeUnmount(() => disconnectStream())
 
         <div v-if="isRunning" class="summary-loading">
           <a-spin size="large" />
-          <p class="summary-loading-title">正在生成总结</p>
+          <p class="summary-loading-title">{{ t('embed.summary.generating') }}</p>
           <div class="async-progress-steps">
             <div
               v-for="s in summaryProgressSteps"
@@ -392,7 +392,7 @@ onBeforeUnmount(() => disconnectStream())
             <section v-for="block in visibleStreamingBlocks" :key="block.block_id" class="summary-stream-card">
               <div class="summary-stream-card__header">
                 <span>{{ block.title }}</span>
-                <em>生成中</em>
+                <em>{{ t('embed.summary.generatingShort') }}</em>
               </div>
               <AiMarkdownStream
                 :text="block.content"
@@ -406,14 +406,14 @@ onBeforeUnmount(() => disconnectStream())
           <div v-if="currentResult.status === 'failed'" class="result-error">
             <WarningOutlined />
             <div>
-              <strong>总结失败</strong>
+              <strong>{{ t('embed.summary.status.failed') }}</strong>
               <p>{{ currentResult.error_message }}</p>
             </div>
           </div>
 
             <div v-else>
               <div v-if="currentResult.parse_error" class="summary-meta">
-                <a-tag v-if="currentResult.parse_error" color="warning">已使用兜底解析</a-tag>
+                <a-tag v-if="currentResult.parse_error" color="warning">{{ t('embed.summary.fallbackParse') }}</a-tag>
               </div>
 
             <div v-if="currentResult.blocks?.length" class="summary-blocks">
@@ -421,7 +421,7 @@ onBeforeUnmount(() => disconnectStream())
                 <button type="button" class="summary-card-header" @click="toggleBlock(block, idx)">
                   <span class="summary-card-title">{{ block.title }}</span>
                   <span class="summary-card-tools">
-                    <span v-if="block.duration_ms" class="summary-card-duration">耗时 {{ getDurationSec(block.duration_ms) }} 秒</span>
+                    <span v-if="block.duration_ms" class="summary-card-duration">{{ t('embed.summary.duration', [getDurationSec(block.duration_ms)]) }}</span>
                     <DownOutlined v-if="isBlockCollapsed(block, idx)" />
                     <UpOutlined v-else />
                   </span>
@@ -442,10 +442,10 @@ onBeforeUnmount(() => disconnectStream())
 
         <div v-else class="result-empty">
           <div class="result-empty-icon"><ThunderboltOutlined /></div>
-          <h4>暂无总结</h4>
-          <p>点击下方按钮生成流程总结</p>
+          <h4>{{ t('embed.summary.empty') }}</h4>
+          <p>{{ t('embed.summary.emptyHint') }}</p>
           <a-button type="primary" @click="runSummary('summary_embed_manual')">
-            <ThunderboltOutlined /> 开始总结
+            <ThunderboltOutlined /> {{ t('embed.summary.start') }}
           </a-button>
         </div>
       </template>

@@ -109,6 +109,10 @@ export interface SystemGeneralConfig {
     attachment_mineru_language: string
     /** attachment.max_file_size_mb — 最大文件大小（MB） */
     attachment_max_file_size_mb: number
+    /** attachment.ai_content_limit_mode — AI 正文策略：按字节限制 / 不限制 */
+    attachment_ai_content_limit_mode: 'bytes' | 'unlimited'
+    /** attachment.ai_content_max_bytes — 按字节限制时的单附件正文上限 */
+    attachment_ai_content_max_bytes: number
     /** attachment.supported_types — 支持的文件类型（逗号分隔） */
     attachment_supported_types: string
     /** attachment.compat_endpoint — 兼容格式解析服务端点 */
@@ -181,6 +185,10 @@ export function mapConfigItems(items: ConfigItem[]): Partial<SystemGeneralConfig
                 : {}),
         ...(str('attachment.mineru_language') !== undefined && { attachment_mineru_language: kv['attachment.mineru_language'] }),
         ...(!isNaN(int('attachment.max_file_size_mb')) && { attachment_max_file_size_mb: int('attachment.max_file_size_mb') }),
+        ...(str('attachment.ai_content_limit_mode') !== undefined && {
+            attachment_ai_content_limit_mode: kv['attachment.ai_content_limit_mode'] === 'unlimited' ? 'unlimited' : 'bytes',
+        }),
+        ...(!isNaN(int('attachment.ai_content_max_bytes')) && { attachment_ai_content_max_bytes: int('attachment.ai_content_max_bytes') }),
         ...(str('attachment.supported_types') !== undefined && { attachment_supported_types: kv['attachment.supported_types'] }),
         ...(str('attachment.compat_endpoint') !== undefined && { attachment_compat_endpoint: kv['attachment.compat_endpoint'] }),
         ...(str('attachment.compat_api_key') !== undefined && { attachment_compat_api_key: kv['attachment.compat_api_key'] }),
@@ -234,6 +242,8 @@ export function configToUpdateRequest(cfg: SystemGeneralConfig): ConfigUpdateReq
         'attachment.mineru_parse_method': cfg.attachment_mineru_parse_method ?? 'ocr',
         'attachment.mineru_language': cfg.attachment_mineru_language ?? 'ch',
         'attachment.max_file_size_mb': String(cfg.attachment_max_file_size_mb ?? 10),
+        'attachment.ai_content_limit_mode': cfg.attachment_ai_content_limit_mode ?? 'bytes',
+        'attachment.ai_content_max_bytes': String(cfg.attachment_ai_content_max_bytes ?? 10000),
         'attachment.supported_types': cfg.attachment_supported_types ?? 'pdf,png,jpg,jpeg,bmp,gif,tiff,webp,txt,csv,md,docx,xlsx,pptx,doc,xls,ppt,ofd',
         'attachment.compat_endpoint': cfg.attachment_compat_endpoint ?? 'http://document-parser:8090',
         'attachment.compat_api_key': cfg.attachment_compat_api_key ?? '',
