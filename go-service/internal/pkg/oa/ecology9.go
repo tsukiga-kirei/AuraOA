@@ -146,6 +146,9 @@ func mapGet(m map[string]interface{}, key string) string {
 			if s, ok := v.(string); ok {
 				return s
 			}
+			if b, ok := v.([]byte); ok {
+				return string(b)
+			}
 			return fmt.Sprintf("%v", v)
 		}
 	}
@@ -3191,6 +3194,23 @@ func (a *Ecology9Adapter) FetchProcessContextAnchor(ctx context.Context, process
 		return nil, fmt.Errorf("查询流程版本失败: %w", err)
 	}
 
+	var lastLogID int64
+	lastLogQuery := fmt.Sprintf(
+		"SELECT COALESCE(MAX(%s), 0) FROM %s WHERE %s = ?",
+		a.col("logid"), a.tableName("workflow_requestlog"), a.col("requestid"),
+	)
+	if err := a.db.WithContext(ctx).Raw(lastLogQuery, processID).Row().Scan(&lastLogID); err != nil {
+		return nil, fmt.Errorf("查询最新流程日志失败: %w", err)
+	}
+	var lastLogType string
+	if lastLogID > 0 {
+		lastLogTypeQuery := fmt.Sprintf(
+			"SELECT COALESCE(%s, '') FROM %s WHERE %s = ? AND %s = ?",
+			a.col("logtype"), a.tableName("workflow_requestlog"), a.col("requestid"), a.col("logid"),
+		)
+		_ = a.db.WithContext(ctx).Raw(lastLogTypeQuery, processID, lastLogID).Row().Scan(&lastLogType)
+	}
+
 	var lastResubmitLogID int64
 	if lastReturnLogID > 0 {
 		resubmitQuery := fmt.Sprintf(`
@@ -3204,12 +3224,165 @@ func (a *Ecology9Adapter) FetchProcessContextAnchor(ctx context.Context, process
 		LastReturnLogID:   lastReturnLogID,
 		FlowRevision:      flowRevision,
 		LastResubmitLogID: lastResubmitLogID,
+		LastLogID:         lastLogID,
+		LastLogType:       strings.TrimSpace(lastLogType),
 		CurrentNodeID:     currentNodeID,
 	}
 	if pd != nil {
 		anchor.ContentFingerprint = ComputeProcessDataFingerprint(pd)
+		attachmentVersions, versionErr := a.fetchAttachmentVersionAnchors(ctx, processID, pd)
+		if versionErr != nil {
+			pkglogger.Global().Warn("查询附件版本元数据失败，退化为附件字段值判断",
+				zap.String("processID", processID),
+				zap.Error(versionErr))
+		} else {
+			anchor.AttachmentFingerprint, anchor.AttachmentFieldFingerprints =
+				ComputeAttachmentFingerprints(attachmentVersions)
+		}
 	}
 	return anchor, nil
+}
+
+// fetchAttachmentVersionAnchors 读取主表附件的最新 DocImageFile 版本，不下载附件正文。
+func (a *Ecology9Adapter) fetchAttachmentVersionAnchors(
+	ctx context.Context,
+	processID string,
+	pd *ProcessData,
+) ([]AttachmentVersionAnchor, error) {
+	if pd == nil || len(pd.MainData) == 0 {
+		return nil, nil
+	}
+	var workflowID int
+	if err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_requestbase")).
+		Select(a.col("workflowid")).
+		Where(a.col("requestid")+" = ?", processID).
+		Row().Scan(&workflowID); err != nil {
+		return nil, fmt.Errorf("查询附件流程定义失败: %w", err)
+	}
+	var formID int
+	if err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_base")).
+		Select(a.col("formid")).
+		Where(a.col("id")+" = ?", workflowID).
+		Row().Scan(&formID); err != nil {
+		return nil, fmt.Errorf("查询附件表单定义失败: %w", err)
+	}
+
+	var rawFields []map[string]interface{}
+	if err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_billfield")).
+		Select(a.col("fieldname")+" AS field_key, "+a.col("detailtable")+" AS detail_table").
+		Where(a.col("billid")+" = ? AND "+a.col("fieldhtmltype")+" = ?", formID, "6").
+		Find(&rawFields).Error; err != nil {
+		return nil, fmt.Errorf("查询附件字段定义失败: %w", err)
+	}
+
+	items := make([]AttachmentVersionAnchor, 0)
+	docIDsSet := make(map[string]struct{})
+	for _, field := range rawFields {
+		detailTable := strings.TrimSpace(mapGet(field, "detail_table"))
+		if detailTable != "" && detailTable != "0" {
+			continue
+		}
+		fieldKey := strings.TrimSpace(mapGet(field, "field_key"))
+		if fieldKey == "" {
+			continue
+		}
+		docIDs := splitAttachmentDocIDs(mapGet(pd.MainData, fieldKey))
+		for _, docID := range docIDs {
+			docIDsSet[docID] = struct{}{}
+			items = append(items, AttachmentVersionAnchor{FieldKey: fieldKey, DocID: docID})
+		}
+	}
+	docIDs := make([]string, 0, len(docIDsSet))
+	for docID := range docIDsSet {
+		docIDs = append(docIDs, docID)
+	}
+	sort.Strings(docIDs)
+	versions, err := a.fetchLatestAttachmentVersions(ctx, docIDs)
+	if err != nil {
+		pkglogger.Global().Warn("批量查询附件版本失败，退化为 docId 判断",
+			zap.String("processID", processID),
+			zap.Int("docCount", len(docIDs)),
+			zap.Error(err))
+		return items, nil
+	}
+	for i := range items {
+		if row := versions[items[i].DocID]; row != nil {
+			items[i].VersionID = int64(mapGetInt(row, "version_id"))
+			items[i].ImageFileID = mapGet(row, "image_file_id")
+			items[i].FileName = mapGet(row, "file_name")
+		}
+	}
+	return items, nil
+}
+
+func splitAttachmentDocIDs(raw string) []string {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '，' || r == ';' || r == '；'
+	})
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		id := strings.TrimSpace(part)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (a *Ecology9Adapter) fetchLatestAttachmentVersions(ctx context.Context, docIDs []string) (map[string]map[string]interface{}, error) {
+	out := make(map[string]map[string]interface{}, len(docIDs))
+	if len(docIDs) == 0 {
+		return out, nil
+	}
+	docTable := a.tableName("DocImageFile")
+	imageTable := a.tableName("ImageFile")
+	docIDCol := a.col("docid")
+	versionIDCol := a.col("versionid")
+	imageFileIDCol := a.col("imagefileid")
+	imageFileNameCol := a.col("imagefilename")
+	query := fmt.Sprintf(`
+		SELECT
+			DIF.%s AS doc_id,
+			DIF.%s AS version_id,
+			DIF.%s AS image_file_id,
+			COALESCE(IMG.%s, '') AS file_name
+		FROM %s DIF
+		LEFT JOIN %s IMG ON DIF.%s = IMG.%s
+		WHERE DIF.%s IN ?
+		  AND DIF.%s = (
+			SELECT MAX(D2.%s) FROM %s D2 WHERE D2.%s = DIF.%s
+		  )`,
+		docIDCol,
+		versionIDCol,
+		imageFileIDCol,
+		imageFileNameCol,
+		docTable,
+		imageTable, imageFileIDCol, imageFileIDCol,
+		docIDCol,
+		versionIDCol,
+		versionIDCol, docTable, docIDCol, docIDCol,
+	)
+	var rows []map[string]interface{}
+	if err := a.db.WithContext(ctx).Raw(query, docIDs).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("批量查询附件最新版本失败: %w", err)
+	}
+	for _, row := range rows {
+		docID := strings.TrimSpace(mapGet(row, "doc_id"))
+		if docID != "" {
+			out[docID] = row
+		}
+	}
+	return out, nil
 }
 
 // ── mapFieldType ───────────────────────────────────────────

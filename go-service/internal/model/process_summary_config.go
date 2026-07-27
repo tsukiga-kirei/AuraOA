@@ -42,8 +42,11 @@ type SummaryBlockConfig struct {
 
 // SummaryEmbedConfigData OA 嵌入总结页行为配置。
 type SummaryEmbedConfigData struct {
-	AutoSummaryOnOpen  bool `json:"auto_summary_on_open"`
-	AutoSummaryOnStale bool `json:"auto_summary_on_stale"`
+	AutoSummaryOnOpen           bool `json:"auto_summary_on_open"`
+	AutoSummaryOnStale          bool `json:"auto_summary_on_stale,omitempty"` // 兼容旧配置，不再直接用于决策
+	AutoSummaryOnDataChange     bool `json:"auto_summary_on_data_change"`
+	AutoSummaryOnReturnResubmit bool `json:"auto_summary_on_return_resubmit"`
+	AutoSummaryOnFlowChange     bool `json:"auto_summary_on_flow_change"`
 }
 
 // ProcessSummaryLog 总结执行日志。

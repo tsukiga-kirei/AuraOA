@@ -27,7 +27,9 @@ export interface ProcessSummaryConfig {
   embed_enabled?: boolean
   embed_config?: {
     auto_summary_on_open?: boolean
-    auto_summary_on_stale?: boolean
+    auto_summary_on_data_change?: boolean
+    auto_summary_on_return_resubmit?: boolean
+    auto_summary_on_flow_change?: boolean
   }
   status: string
   created_at?: string

@@ -64,8 +64,9 @@ func (s *ProcessSummaryConfigService) Create(c *gin.Context, req *dto.CreateProc
 		DetailTables:     defaultJSON(req.DetailTables, "[]"),
 		SummaryBlocks:    normalizeSummaryBlocksJSON(req.SummaryBlocks),
 		EmbedEnabled:     boolPtrValue(req.EmbedEnabled, true),
-		EmbedConfig:      defaultJSON(req.EmbedConfig, `{"auto_summary_on_open":true,"auto_summary_on_stale":true}`),
-		Status:           defaultStr(req.Status, "active"),
+		EmbedConfig: defaultJSON(req.EmbedConfig,
+			`{"auto_summary_on_open":true,"auto_summary_on_data_change":true,"auto_summary_on_return_resubmit":true,"auto_summary_on_flow_change":false}`),
+		Status: defaultStr(req.Status, "active"),
 	}
 	if err := s.configRepo.Create(c, cfg); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")

@@ -45,7 +45,7 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		return nil, newServiceError(errcode.ErrParamValidation, "process_id 不能为空")
 	}
 
-	tenantID, _, err := s.extractIDs(c)
+	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
 	}
@@ -93,6 +93,16 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 			EmbedEnabled: false,
 		}, nil
 	}
+	rules, err := s.ruleRepo.ListByConfigID(c, config.ID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询审核规则失败")
+	}
+	fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, summary.ProcessType)
+	executionFingerprint := stableJSONFingerprint(map[string]interface{}{
+		"ai_config": config.AIConfig,
+		"field_set": fieldSet,
+		"rules":     mergedRulesText,
+	})
 
 	embedCfg := parseEmbedConfig(config.EmbedConfig)
 	resp := &EmbedContextResponse{
@@ -126,17 +136,18 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		}
 	}
 
-	currentAnchor, err := s.fetchCurrentOAAnchor(c, tenantID, processID)
+	currentAnchor, err := s.fetchCurrentOAAnchor(c, tenantID, processID, fieldSet, executionFingerprint)
 	if err != nil {
 		return nil, err
 	}
-	resp.Stale = oa.IsAnchorStale(storedAnchor, currentAnchor)
+	changes := oa.CompareContextAnchors(storedAnchor, currentAnchor)
+	resp.Stale = auditRefreshRequired(changes, embedCfg)
 
 	if !resp.HasAudit {
 		resp.ShouldAutoAudit = embedCfg.AutoAuditOnOpen
 		return resp, nil
 	}
-	if resp.Stale && embedCfg.AutoAuditOnStale {
+	if resp.Stale {
 		resp.ShouldAutoAudit = true
 	}
 	return resp, nil
@@ -158,6 +169,9 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 	}
 	if ctxResp.RunningJobID != "" {
 		return nil, newServiceError(errcode.ErrResourceConflict, "该流程已有进行中的审核任务")
+	}
+	if trigger == model.AuditTriggerEmbedAuto && !ctxResp.ShouldAutoAudit {
+		return nil, newServiceError(errcode.ErrResourceConflict, "未检测到需要自动刷新的审核内容")
 	}
 
 	processType := req.ProcessType
@@ -183,7 +197,13 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 	return s.Execute(c, execReq)
 }
 
-func (s *AuditExecuteService) fetchCurrentOAAnchor(c *gin.Context, tenantID uuid.UUID, processID string) (oa.OAContextAnchor, error) {
+func (s *AuditExecuteService) fetchCurrentOAAnchor(
+	c *gin.Context,
+	tenantID uuid.UUID,
+	processID string,
+	fieldSet SelectedFieldSet,
+	executionFingerprint string,
+) (oa.OAContextAnchor, error) {
 	tenant, err := s.tenantRepo.FindByID(tenantID)
 	if err != nil {
 		return oa.OAContextAnchor{}, newServiceError(errcode.ErrDatabase, "获取租户信息失败")
@@ -192,6 +212,17 @@ func (s *AuditExecuteService) fetchCurrentOAAnchor(c *gin.Context, tenantID uuid
 	if err != nil {
 		return oa.OAContextAnchor{}, err
 	}
+	return s.fetchOAAnchorWithData(c, tenantID, processID, pd, fieldSet, executionFingerprint)
+}
+
+func (s *AuditExecuteService) fetchOAAnchorWithData(
+	c *gin.Context,
+	tenantID uuid.UUID,
+	processID string,
+	pd *oa.ProcessData,
+	fieldSet SelectedFieldSet,
+	executionFingerprint string,
+) (oa.OAContextAnchor, error) {
 	adapter, err := s.getOAAdapter(tenantID)
 	if err != nil {
 		return oa.OAContextAnchor{}, err
@@ -200,11 +231,21 @@ func (s *AuditExecuteService) fetchCurrentOAAnchor(c *gin.Context, tenantID uuid
 	if err != nil {
 		return oa.OAContextAnchor{}, newServiceError(errcode.ErrOAQueryFailed, err.Error())
 	}
+	anchor.ContentFingerprint = computeSelectedProcessFingerprint(pd, fieldSet, true, true)
+	anchor.AttachmentFingerprint = attachmentFingerprintForFieldSet(*anchor, fieldSet)
+	anchor.ExecutionFingerprint = executionFingerprint
 	return *anchor, nil
 }
 
-func (s *AuditExecuteService) buildOAContextAnchorForJob(c *gin.Context, tenant *model.Tenant, processID string) datatypes.JSON {
-	anchor, err := s.fetchCurrentOAAnchor(c, tenant.ID, processID)
+func (s *AuditExecuteService) buildOAContextAnchorForJob(
+	c *gin.Context,
+	tenant *model.Tenant,
+	processID string,
+	pd *oa.ProcessData,
+	fieldSet SelectedFieldSet,
+	executionFingerprint string,
+) datatypes.JSON {
+	anchor, err := s.fetchOAAnchorWithData(c, tenant.ID, processID, pd, fieldSet, executionFingerprint)
 	if err != nil {
 		return datatypes.JSON([]byte("{}"))
 	}
@@ -213,7 +254,12 @@ func (s *AuditExecuteService) buildOAContextAnchorForJob(c *gin.Context, tenant 
 }
 
 func parseEmbedConfig(raw datatypes.JSON) model.EmbedConfigData {
-	cfg := model.EmbedConfigData{AutoAuditOnOpen: true, AutoAuditOnStale: true}
+	cfg := model.EmbedConfigData{
+		AutoAuditOnOpen:           true,
+		AutoAuditOnDataChange:     true,
+		AutoAuditOnReturnResubmit: true,
+		AutoAuditOnFlowChange:     false,
+	}
 	if len(raw) == 0 {
 		return cfg
 	}

@@ -9,6 +9,7 @@ export interface EmbedSummaryContextResponse {
   embed_enabled?: boolean
   has_summary?: boolean
   stale?: boolean
+  stale_block_ids?: string[]
   should_auto_summary?: boolean
   last_summary_at?: string
   running_job_id?: string
@@ -31,12 +32,13 @@ export const useEmbedSummaryApi = () => {
     path: string,
     init?: { method?: 'GET' | 'POST'; body?: unknown },
   ): Promise<T> {
-    return await $fetch<T>(path, {
+    const res = await $fetch<T>(path, {
       method: init?.method ?? 'GET',
       body: init?.body as Record<string, unknown> | undefined,
       credentials: 'include',
       headers: embedAuthHeaders(),
     })
+    return res as T
   }
 
   async function getSummaryContext(processId: string): Promise<EmbedSummaryContextResponse> {

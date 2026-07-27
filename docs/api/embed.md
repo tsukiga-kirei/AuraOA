@@ -72,6 +72,16 @@ GET /api/embed/context?process_id=598488
 X-Embed-Token: <tenant embed access token>
 ```
 
+返回中的 `stale` / `should_auto_audit` 已按流程配置过滤。变化来源分为：
+
+- 审核实际使用的主表与明细字段；
+- 主表附件字段的 `docId` 及 `DocImageFile` 最新版本；
+- 退回或退回后的重新提交；
+- 普通审批日志、批注、转发、抄送与当前节点变化。
+
+普通审批流变化是否触发由 `auto_audit_on_flow_change` 单独控制，默认关闭。
+`trigger_source=embed_auto` 时后端会再次校验 `should_auto_audit`，无需刷新时不会创建审核任务。
+
 ### 触发嵌入审核
 
 ```
@@ -110,6 +120,17 @@ GET /api/embed/stream/:id
 ```
 GET /api/embed/summary/context?process_id=598488
 ```
+
+除通用字段外，响应可包含 `stale_block_ids`，列出需要重新生成的总结块 ID。判断以每个块的
+`field_mode`、`selected_fields` 和数据变量为准：
+
+- `{{main_table}}` / `{{detail_tables}}`：只比较该块使用的业务字段；
+- `{{attachments}}`：只比较该块选中的主表附件字段版本；
+- `{{flow_history}}` / `{{flow_graph}}`：审批日志或流程图变化时由流程刷新策略控制；
+- `{{process_meta}}`：当前节点或流程基础信息变化时由相应策略控制。
+
+自动总结只重新调用 `stale_block_ids` 中的块并合并旧结果；手动总结执行全部启用块。
+`trigger_source=summary_embed_auto` 时后端会再次校验 `should_auto_summary`，无需刷新时不会创建总结任务。
 
 ### 触发总结
 
@@ -167,5 +188,18 @@ OA 示例脚本：[../oa-configurations/assets/aura-embed-notify.js](../oa-confi
 | 租户 `embed_access_token` | 系统管理 → 租户管理 → OA 嵌入 |
 | 审核 `embed_enabled` | `process_audit_configs` / 租户规则 UI |
 | 总结 `embed_enabled` | `process_summary_configs` / 租户规则 UI |
+
+流程级自动刷新策略位于对应配置的 `embed_config`。默认行为是：业务数据变化、附件换版、
+退回/重提会自动刷新；普通审批推进不自动刷新。
+
+刷新依据和执行结果可从以下记录追溯：
+
+- `audit_logs.oa_context_anchor`：审核实际使用字段、附件版本、流程日志/节点及执行配置指纹；
+- `process_summary_logs.oa_context_anchor`：总结时的 OA 变化锚点；
+- `process_summary_logs.process_snapshot.block_dependencies`：各总结块的数据、附件、流程依赖指纹；
+- `process_summary_logs.process_snapshot.regenerated_block_ids`：本次实际重新生成的总结块；
+- `tenant_llm_message_logs` / `tenant_llm_message_payloads`：实际发生的审核、总结模型调用及 Token、耗时。
+
+如果普通审批被策略过滤且未调用 AI，不会新增审核/总结执行日志或 LLM 日志。
 
 详细部署步骤见 [02-embed-audit-sidebar.md](../oa-configurations/02-embed-audit-sidebar.md) 与 [03-embed-process-summary.md](../oa-configurations/03-embed-process-summary.md)。

@@ -114,6 +114,7 @@ type SummaryEmbedContextResponse struct {
 	EmbedEnabled      bool                      `json:"embed_enabled"`
 	HasSummary        bool                      `json:"has_summary"`
 	Stale             bool                      `json:"stale"`
+	StaleBlockIDs     []string                  `json:"stale_block_ids,omitempty"`
 	ShouldAutoSummary bool                      `json:"should_auto_summary"`
 	LastSummaryAt     string                    `json:"last_summary_at,omitempty"`
 	RunningJobID      string                    `json:"running_job_id,omitempty"`
@@ -194,8 +195,9 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 	}
 
 	var storedAnchor oa.OAContextAnchor
+	var latestLog *model.ProcessSummaryLog
 	if snap != nil {
-		latestLog, err := s.logRepo.GetByID(c, snap.LatestValidLogID)
+		latestLog, err = s.logRepo.GetByID(c, snap.LatestValidLogID)
 		if err == nil && latestLog != nil {
 			storedAnchor = parseOAContextAnchor(latestLog.OAContextAnchor)
 			resp.HasSummary = true
@@ -204,20 +206,29 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 		}
 	}
 
-	currentAnchor, err := s.fetchCurrentOAAnchor(c, tenantID, processID)
+	currentData, currentAnchor, err := s.fetchCurrentOAState(c, tenantID, processID)
 	if err != nil {
 		return nil, err
 	}
-	resp.Stale = oa.IsAnchorStale(storedAnchor, currentAnchor)
 
 	embedCfg := parseSummaryEmbedConfig(config.EmbedConfig)
 	if !resp.HasSummary {
 		resp.ShouldAutoSummary = embedCfg.AutoSummaryOnOpen
 		return resp, nil
 	}
-	if resp.Stale && embedCfg.AutoSummaryOnStale {
-		resp.ShouldAutoSummary = true
+	blocks := parseSummaryBlocks(config.SummaryBlocks)
+	if len(blocks) == 0 {
+		blocks = defaultSummaryBlocks()
 	}
+	currentDependencies := buildSummaryBlockDependencyFingerprints(blocks, currentData, currentAnchor, summary)
+	storedDependencies := map[string]SummaryBlockDependencyFingerprint{}
+	if latestLog != nil {
+		storedDependencies = parseSummaryBlockDependencies(latestLog.ProcessSnapshot)
+	}
+	changes := oa.CompareContextAnchors(storedAnchor, currentAnchor)
+	resp.StaleBlockIDs = changedSummaryBlockIDs(blocks, storedDependencies, currentDependencies, changes, embedCfg)
+	resp.Stale = len(resp.StaleBlockIDs) > 0
+	resp.ShouldAutoSummary = resp.Stale
 	return resp, nil
 }
 
@@ -238,6 +249,9 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	}
 	if ctxResp.RunningJobID != "" {
 		return nil, newServiceError(errcode.ErrResourceConflict, "该流程已有进行中的总结任务")
+	}
+	if trigger == model.SummaryTriggerEmbedAuto && !ctxResp.ShouldAutoSummary {
+		return nil, newServiceError(errcode.ErrResourceConflict, "未检测到需要自动刷新的总结块")
 	}
 	processType := req.ProcessType
 	title := req.Title
@@ -358,13 +372,62 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 	}
 
 	unionFieldSet := buildSummaryUnionFieldSet(blocks)
-	processData, err := s.fetchOAData(c, tenant, logEntry.ProcessID, unionFieldSet, true)
+	processData, err := s.fetchOAData(c, tenant, logEntry.ProcessID, unionFieldSet, false)
 	if err != nil {
 		s.markSummaryFailedDB(tenantID, summaryLogID, "拉取 OA 流程数据失败: "+err.Error())
 		return err
 	}
-	flowSnapshot := s.fetchFlowSnapshot(c, tenant, logEntry.ProcessID)
 	processSummary, _ := s.fetchRequestSummary(c, tenantID, logEntry.ProcessID)
+	currentAnchor, err := s.fetchOAAnchorWithData(c, tenantID, logEntry.ProcessID, processData)
+	if err != nil {
+		s.markSummaryFailedDB(tenantID, summaryLogID, "读取 OA 变化锚点失败: "+err.Error())
+		return err
+	}
+	currentDependencies := buildSummaryBlockDependencyFingerprints(blocks, processData, currentAnchor, processSummary)
+
+	var previousLog *model.ProcessSummaryLog
+	if snap, snapErr := s.snapshotRepo.GetByProcessID(c, logEntry.ProcessID); snapErr == nil && snap != nil {
+		if row, rowErr := s.logRepo.GetByID(c, snap.LatestValidLogID); rowErr == nil {
+			previousLog = row
+		}
+	}
+
+	blockIDsToRun := make(map[string]bool)
+	if logEntry.TriggerSource == model.SummaryTriggerEmbedAuto && previousLog != nil {
+		storedAnchor := parseOAContextAnchor(previousLog.OAContextAnchor)
+		storedDependencies := parseSummaryBlockDependencies(previousLog.ProcessSnapshot)
+		changes := oa.CompareContextAnchors(storedAnchor, currentAnchor)
+		embedCfg := parseSummaryEmbedConfig(config.EmbedConfig)
+		for _, id := range changedSummaryBlockIDs(blocks, storedDependencies, currentDependencies, changes, embedCfg) {
+			blockIDsToRun[id] = true
+		}
+	} else {
+		for _, block := range blocks {
+			if block.Enabled {
+				blockIDsToRun[block.ID] = true
+			}
+		}
+	}
+
+	enabledBlocks := make([]model.SummaryBlockConfig, 0, len(blockIDsToRun))
+	needsAttachments := false
+	for _, block := range blocks {
+		if !block.Enabled || !blockIDsToRun[block.ID] {
+			continue
+		}
+		enabledBlocks = append(enabledBlocks, block)
+		if summaryBlockUsesVariable(block, "{{attachments}}") {
+			needsAttachments = true
+		}
+	}
+	if needsAttachments {
+		processData, err = s.fetchOAData(c, tenant, logEntry.ProcessID, unionFieldSet, true)
+		if err != nil {
+			s.markSummaryFailedDB(tenantID, summaryLogID, "拉取 OA 附件数据失败: "+err.Error())
+			return err
+		}
+	}
+	flowSnapshot := s.fetchFlowSnapshot(c, tenant, logEntry.ProcessID)
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
 		sanitize.SanitizeProcessData(processData)
 		sanitize.SanitizeFlowSnapshot(flowSnapshot)
@@ -372,14 +435,6 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 
 	if err := s.logRepo.UpdateFields(c, summaryLogID, map[string]interface{}{"status": model.JobStatusReasoning, "updated_at": time.Now()}); err != nil {
 		return err
-	}
-
-	enabledBlocks := make([]model.SummaryBlockConfig, 0, len(blocks))
-	for _, block := range blocks {
-		if !block.Enabled {
-			continue
-		}
-		enabledBlocks = append(enabledBlocks, block)
 	}
 
 	resultsByIndex := make([]model.ProcessSummaryBlockResult, len(enabledBlocks))
@@ -448,19 +503,42 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 		return firstErr
 	}
 
-	results := make([]model.ProcessSummaryBlockResult, 0, len(resultsByIndex))
+	generatedResults := make(map[string]model.ProcessSummaryBlockResult, len(resultsByIndex))
 	parseErrors := make([]string, 0)
 	rawParts := make([]string, 0, len(rawPartsByIndex))
 	for idx, result := range resultsByIndex {
 		if result.BlockID == "" && result.Title == "" && result.Content == "" {
 			continue
 		}
-		results = append(results, result)
+		generatedResults[result.BlockID] = result
 		if rawPartsByIndex[idx] != "" {
 			rawParts = append(rawParts, rawPartsByIndex[idx])
 		}
 		if parseErrorsByIndex[idx] != "" {
 			parseErrors = append(parseErrors, parseErrorsByIndex[idx])
+		}
+	}
+	previousResults := make(map[string]model.ProcessSummaryBlockResult)
+	if previousLog != nil {
+		var previous model.ProcessSummaryResultJSON
+		if json.Unmarshal(previousLog.SummaryResult, &previous) == nil {
+			for _, result := range previous.Blocks {
+				previousResults[result.BlockID] = result
+			}
+		}
+	}
+	results := make([]model.ProcessSummaryBlockResult, 0, len(blocks))
+	for _, block := range blocks {
+		if !block.Enabled {
+			continue
+		}
+		if result, ok := generatedResults[block.ID]; ok {
+			results = append(results, result)
+			continue
+		}
+		if result, ok := previousResults[block.ID]; ok {
+			result.Title = block.Title
+			results = append(results, result)
 		}
 	}
 	if len(results) == 0 {
@@ -479,14 +557,16 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 
 	resultJSON, _ := json.Marshal(model.ProcessSummaryResultJSON{Blocks: results})
 	snapshotJSON, _ := json.Marshal(map[string]interface{}{
-		"process":           processSummary,
-		"process_data":      processData,
-		"flow_snapshot":     flowSnapshot,
-		"summary_block_ids": activeSummaryBlockIDs(blocks),
+		"process":               processSummary,
+		"process_data":          processData,
+		"flow_snapshot":         flowSnapshot,
+		"summary_block_ids":     activeSummaryBlockIDs(blocks),
+		"block_dependencies":    currentDependencies,
+		"regenerated_block_ids": sortedStringSetKeys(blockIDsToRun),
 	})
 	rawStored := strings.Join(rawParts, "\n\n")
 	parseErrText := strings.Join(parseErrors, "\n")
-	anchorJSON := s.buildOAContextAnchorForJob(c, tenant.ID, logEntry.ProcessID)
+	anchorJSON, _ := json.Marshal(currentAnchor)
 	duration := int(time.Since(startTime).Milliseconds())
 
 	if err := s.logRepo.UpdateFields(c, summaryLogID, map[string]interface{}{
@@ -505,7 +585,10 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 	if err := s.snapshotRepo.UpsertAppendValid(c, tenantID, logEntry.ProcessID, summaryLogID, logEntry.Title, logEntry.ProcessType, len(results)); err != nil {
 		return err
 	}
-	tlog.Info("总结任务执行完成", zap.String("summaryLogID", summaryLogID.String()), zap.Int("blocks", len(results)))
+	tlog.Info("总结任务执行完成",
+		zap.String("summaryLogID", summaryLogID.String()),
+		zap.Int("blocks", len(results)),
+		zap.Int("regeneratedBlocks", len(enabledBlocks)))
 	return nil
 }
 
@@ -698,15 +781,20 @@ func (s *ProcessSummaryService) fetchRequestSummary(c *gin.Context, tenantID uui
 	return adapter.FetchProcessRequestSummary(c.Request.Context(), processID)
 }
 
-func (s *ProcessSummaryService) fetchCurrentOAAnchor(c *gin.Context, tenantID uuid.UUID, processID string) (oa.OAContextAnchor, error) {
+func (s *ProcessSummaryService) fetchCurrentOAState(c *gin.Context, tenantID uuid.UUID, processID string) (*oa.ProcessData, oa.OAContextAnchor, error) {
 	tenant, err := s.tenantRepo.FindByID(tenantID)
 	if err != nil {
-		return oa.OAContextAnchor{}, newServiceError(errcode.ErrDatabase, "获取租户信息失败")
+		return nil, oa.OAContextAnchor{}, newServiceError(errcode.ErrDatabase, "获取租户信息失败")
 	}
 	pd, err := s.fetchOAData(c, tenant, processID, nil, false)
 	if err != nil {
-		return oa.OAContextAnchor{}, err
+		return nil, oa.OAContextAnchor{}, err
 	}
+	anchor, err := s.fetchOAAnchorWithData(c, tenantID, processID, pd)
+	return pd, anchor, err
+}
+
+func (s *ProcessSummaryService) fetchOAAnchorWithData(c *gin.Context, tenantID uuid.UUID, processID string, pd *oa.ProcessData) (oa.OAContextAnchor, error) {
 	adapter, err := s.getOAAdapter(tenantID, false)
 	if err != nil {
 		return oa.OAContextAnchor{}, err
@@ -719,7 +807,7 @@ func (s *ProcessSummaryService) fetchCurrentOAAnchor(c *gin.Context, tenantID uu
 }
 
 func (s *ProcessSummaryService) buildOAContextAnchorForJob(c *gin.Context, tenantID uuid.UUID, processID string) []byte {
-	anchor, err := s.fetchCurrentOAAnchor(c, tenantID, processID)
+	_, anchor, err := s.fetchCurrentOAState(c, tenantID, processID)
 	if err != nil {
 		return []byte("{}")
 	}
@@ -821,7 +909,12 @@ func (s *ProcessSummaryService) FailStaleSummaryJobs(ctx context.Context) (int64
 }
 
 func parseSummaryEmbedConfig(raw datatypes.JSON) model.SummaryEmbedConfigData {
-	cfg := model.SummaryEmbedConfigData{AutoSummaryOnOpen: true, AutoSummaryOnStale: true}
+	cfg := model.SummaryEmbedConfigData{
+		AutoSummaryOnOpen:           true,
+		AutoSummaryOnDataChange:     true,
+		AutoSummaryOnReturnResubmit: true,
+		AutoSummaryOnFlowChange:     false,
+	}
 	if len(raw) == 0 {
 		return cfg
 	}

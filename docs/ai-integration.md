@@ -161,7 +161,7 @@ AI 审核采用两阶段架构，将推理和结构化提取分离，提高审�
 每次 AI 调用完成后，异步写入 `tenant_llm_message_logs` 表，记录：
 
 - 租户 ID、用户 ID、模型配置 ID
-- 请求类型（`audit` / `archive`）
+- 请求类型（`audit` / `archive` / `summary`）
 - 调用阶段（`reasoning` / `structured`）
 - 输入/输出/总 Token 消耗
 - 调用耗时（毫秒）
