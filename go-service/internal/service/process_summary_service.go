@@ -232,15 +232,20 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 		return resp, nil
 	}
 
-	currentData, currentAnchor, err := s.fetchCurrentOAState(c, tenantID, processID)
-	if err != nil {
-		return nil, err
-	}
-
 	embedCfg := parseSummaryEmbedConfig(config.EmbedConfig)
 	blocks := parseSummaryBlocks(config.SummaryBlocks)
 	if len(blocks) == 0 {
 		blocks = defaultSummaryBlocks()
+	}
+	// 可见页变化检查只解析总结块实际使用的浏览字段，不识别附件正文，也不调用 AI。
+	currentData, currentAnchor, err := s.fetchCurrentOAState(
+		c,
+		tenantID,
+		processID,
+		buildSummaryUnionFieldSet(blocks),
+	)
+	if err != nil {
+		return nil, err
 	}
 	currentDependencies := buildSummaryBlockDependencyFingerprints(blocks, currentData, currentAnchor, summary)
 	resp.CurrentFingerprint = stableJSONFingerprint(currentDependencies)
@@ -277,7 +282,7 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	if trigger != model.SummaryTriggerEmbedAuto && trigger != model.SummaryTriggerEmbedManual {
 		return nil, newServiceError(errcode.ErrParamValidation, "嵌入总结 trigger_source 无效")
 	}
-	detail, priority := normalizeSummaryTriggerDetail(trigger, req.TriggerDetail)
+	detail, queueKind := normalizeSummaryTriggerDetail(trigger, req.TriggerDetail)
 	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
@@ -300,32 +305,38 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	if running, runningErr := s.logRepo.GetRunningByProcessID(c, req.ProcessID); runningErr != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询进行中的总结任务失败")
 	} else if running != nil {
-		if model.IsSummaryInteractivePriority(priority) &&
+		promoteToInteractive := queueKind == model.JobQueueKindInteractive &&
 			running.Status == model.JobStatusPending &&
-			running.Priority < priority {
+			running.QueueKind != model.JobQueueKindInteractive
+		relabelAsManual := trigger == model.SummaryTriggerEmbedManual &&
+			running.Status == model.JobStatusPending &&
+			running.TriggerDetail != model.SummaryTriggerDetailManual
+		if promoteToInteractive || relabelAsManual {
 			if err := s.logRepo.UpdateFields(c, running.ID, map[string]interface{}{
 				"user_id":            userID,
 				"trigger_source":     trigger,
 				"trigger_detail":     detail,
-				"priority":           priority,
+				"queue_kind":         queueKind,
 				"schedule_config_id": nil,
 				"updated_at":         apptime.Now(),
 			}); err != nil {
-				return nil, newServiceError(errcode.ErrDatabase, "提升总结任务优先级失败")
+				return nil, newServiceError(errcode.ErrDatabase, "切换总结任务队列失败")
 			}
-			if _, err := EnqueueSummaryJob(
-				c.Request.Context(),
-				s.rdb,
-				running.ID,
-				tenantID,
-				userID,
-				priority,
-			); err != nil {
-				return nil, newServiceError(errcode.ErrRedisConn, "提升总结任务入队失败: "+err.Error())
+			if promoteToInteractive {
+				if _, err := EnqueueSummaryJob(
+					c.Request.Context(),
+					s.rdb,
+					running.ID,
+					tenantID,
+					userID,
+					queueKind,
+				); err != nil {
+					return nil, newServiceError(errcode.ErrRedisConn, "总结交互任务入队失败: "+err.Error())
+				}
 			}
 			running.TriggerSource = trigger
 			running.TriggerDetail = detail
-			running.Priority = priority
+			running.QueueKind = queueKind
 		}
 		return s.summaryLogToResponse(running), nil
 	}
@@ -363,14 +374,14 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 		title,
 		trigger,
 		detail,
-		priority,
+		queueKind,
 		ctxResp.CurrentFingerprint,
 		req.ScheduleConfigID,
 	)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := EnqueueSummaryJob(c.Request.Context(), s.rdb, logID, tenantID, userID, priority); err != nil {
+	if _, err := EnqueueSummaryJob(c.Request.Context(), s.rdb, logID, tenantID, userID, queueKind); err != nil {
 		_ = s.logRepo.UpdateFields(c, logID, map[string]interface{}{
 			"status":        model.JobStatusFailed,
 			"error_message": "任务入队失败: " + err.Error(),
@@ -390,7 +401,7 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 func (s *ProcessSummaryService) createPendingSummaryLog(
 	c *gin.Context,
 	processID, processType, title, trigger, detail string,
-	priority int,
+	queueKind string,
 	attemptFingerprint string,
 	scheduleConfigID *uuid.UUID,
 ) (uuid.UUID, uuid.UUID, uuid.UUID, time.Time, error) {
@@ -432,7 +443,7 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 		ProcessSnapshot:    datatypes.JSON([]byte("{}")),
 		TriggerSource:      trigger,
 		TriggerDetail:      detail,
-		Priority:           priority,
+		QueueKind:          queueKind,
 		AttemptFingerprint: attemptFingerprint,
 		ScheduleConfigID:   scheduleConfigID,
 		CreatedAt:          now,
@@ -447,12 +458,12 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 func (s *ProcessSummaryService) processSummaryJob(
 	ctx context.Context,
 	summaryLogID, tenantID, userID uuid.UUID,
-	interactive bool,
+	queueKind string,
 ) error {
 	ctx, cancel := context.WithTimeout(ctx, summaryProcessTimeout)
 	defer cancel()
 	c := s.workerGinContext(ctx, tenantID, userID)
-	claimed, err := s.logRepo.ClaimPending(c, summaryLogID, interactive)
+	claimed, err := s.logRepo.ClaimPending(c, summaryLogID, queueKind)
 	if err != nil {
 		return err
 	}
@@ -905,12 +916,17 @@ func (s *ProcessSummaryService) fetchRequestSummary(c *gin.Context, tenantID uui
 	return adapter.FetchProcessRequestSummary(c.Request.Context(), processID)
 }
 
-func (s *ProcessSummaryService) fetchCurrentOAState(c *gin.Context, tenantID uuid.UUID, processID string) (*oa.ProcessData, oa.OAContextAnchor, error) {
+func (s *ProcessSummaryService) fetchCurrentOAState(
+	c *gin.Context,
+	tenantID uuid.UUID,
+	processID string,
+	fieldSet SelectedFieldSet,
+) (*oa.ProcessData, oa.OAContextAnchor, error) {
 	tenant, err := s.tenantRepo.FindByID(tenantID)
 	if err != nil {
 		return nil, oa.OAContextAnchor{}, newServiceError(errcode.ErrDatabase, "获取租户信息失败")
 	}
-	pd, err := s.fetchOAData(c, tenant, processID, nil, false)
+	pd, err := s.fetchOAData(c, tenant, processID, fieldSet, false)
 	if err != nil {
 		return nil, oa.OAContextAnchor{}, err
 	}
@@ -931,7 +947,7 @@ func (s *ProcessSummaryService) fetchOAAnchorWithData(c *gin.Context, tenantID u
 }
 
 func (s *ProcessSummaryService) buildOAContextAnchorForJob(c *gin.Context, tenantID uuid.UUID, processID string) []byte {
-	_, anchor, err := s.fetchCurrentOAState(c, tenantID, processID)
+	_, anchor, err := s.fetchCurrentOAState(c, tenantID, processID, nil)
 	if err != nil {
 		return []byte("{}")
 	}
@@ -1058,20 +1074,20 @@ func normalizeSummaryTrigger(source, fallback string) string {
 	}
 }
 
-func normalizeSummaryTriggerDetail(trigger, detail string) (string, int) {
+func normalizeSummaryTriggerDetail(trigger, detail string) (string, string) {
 	if trigger == model.SummaryTriggerEmbedManual {
-		return model.SummaryTriggerDetailManual, model.SummaryPriorityManual
+		return model.SummaryTriggerDetailManual, model.JobQueueKindInteractive
 	}
 	switch strings.TrimSpace(detail) {
 	case model.SummaryTriggerDetailVisibleOpen:
-		return model.SummaryTriggerDetailVisibleOpen, model.SummaryPriorityVisible
+		return model.SummaryTriggerDetailVisibleOpen, model.JobQueueKindInteractive
 	case model.SummaryTriggerDetailScheduled:
-		return model.SummaryTriggerDetailScheduled, model.SummaryPriorityScheduled
+		return model.SummaryTriggerDetailScheduled, model.JobQueueKindScheduled
 	case model.SummaryTriggerDetailSaveSubmit:
-		return model.SummaryTriggerDetailSaveSubmit, model.SummaryPrioritySaveSubmit
+		return model.SummaryTriggerDetailSaveSubmit, model.JobQueueKindBackground
 	default:
 		// 兼容旧版可见嵌入页：未传详细来源的自动请求按前台打开处理。
-		return model.SummaryTriggerDetailVisibleOpen, model.SummaryPriorityVisible
+		return model.SummaryTriggerDetailVisibleOpen, model.JobQueueKindInteractive
 	}
 }
 

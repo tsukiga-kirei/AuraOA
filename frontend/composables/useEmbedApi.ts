@@ -22,8 +22,9 @@ export const useEmbedApi = () => {
     return res as T
   }
 
-  async function getContext(processId: string): Promise<EmbedContextResponse> {
+  async function getContext(processId: string, preferCached = false): Promise<EmbedContextResponse> {
     const q = new URLSearchParams({ process_id: processId })
+    if (preferCached) q.set('prefer_cached', 'true')
     return await embedFetch<EmbedContextResponse>(`/api/embed/context?${q.toString()}`)
   }
 
@@ -54,7 +55,7 @@ export const useEmbedApi = () => {
       method: 'POST',
       body: req,
     })
-    if (submit.status !== 'pending' || !submit.id) {
+    if (!['pending', 'assembling', 'reasoning', 'extracting'].includes(submit.status) || !submit.id) {
       return submit as unknown as AuditResult
     }
     onProgress?.(submit as unknown as AuditResult & { progress_steps?: unknown[] })

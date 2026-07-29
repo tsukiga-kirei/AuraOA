@@ -69,7 +69,7 @@ type ProcessSummaryLog struct {
 	ErrorMessage       string         `gorm:"type:text;default:''" json:"error_message"`
 	TriggerSource      string         `gorm:"size:30;not null;default:summary_embed_manual" json:"trigger_source"`
 	TriggerDetail      string         `gorm:"size:30;not null;default:''" json:"trigger_detail"`
-	Priority           int            `gorm:"not null;default:50" json:"priority"`
+	QueueKind          string         `gorm:"size:20;not null;default:background" json:"queue_kind"`
 	AttemptFingerprint string         `gorm:"size:80;not null;default:''" json:"attempt_fingerprint"`
 	ScheduleConfigID   *uuid.UUID     `gorm:"type:uuid" json:"schedule_config_id,omitempty"`
 	OAContextAnchor    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"oa_context_anchor"`
@@ -80,40 +80,14 @@ type ProcessSummaryLog struct {
 func (ProcessSummaryLog) TableName() string { return "process_summary_logs" }
 
 const (
-	SummaryTriggerWorkbenchManual = "summary_workbench_manual"
-	SummaryTriggerEmbedAuto       = "summary_embed_auto"
-	SummaryTriggerEmbedManual     = "summary_embed_manual"
+	SummaryTriggerEmbedAuto   = "summary_embed_auto"
+	SummaryTriggerEmbedManual = "summary_embed_manual"
 
-	SummaryTriggerDetailWorkbench   = "workbench"
 	SummaryTriggerDetailManual      = "manual"
 	SummaryTriggerDetailVisibleOpen = "visible_open"
 	SummaryTriggerDetailSaveSubmit  = "save_or_submit"
 	SummaryTriggerDetailScheduled   = "scheduled_scan"
-
-	SummaryPriorityScheduled  = 10
-	SummaryPrioritySaveSubmit = 20
-	SummaryPriorityWorkbench  = 80
-	SummaryPriorityVisible    = 90
-	SummaryPriorityManual     = 100
 )
-
-// IsSummaryInteractivePriority 判断任务是否应进入交互队列。
-func IsSummaryInteractivePriority(priority int) bool {
-	return priority >= SummaryPriorityVisible
-}
-
-// IsSummaryEmbedTrigger 是否为 OA 嵌入触发。
-func IsSummaryEmbedTrigger(trigger string) bool {
-	return trigger == SummaryTriggerEmbedAuto || trigger == SummaryTriggerEmbedManual
-}
-
-// SummarySnapshotChannelFromTrigger 将 process_summary_logs.trigger_source 映射为快照渠道。
-func SummarySnapshotChannelFromTrigger(trigger string) string {
-	if IsSummaryEmbedTrigger(trigger) {
-		return AuditSnapshotChannelEmbed
-	}
-	return AuditSnapshotChannelWorkbench
-}
 
 // ProcessSummarySnapshot 流程级有效总结快照。
 type ProcessSummarySnapshot struct {

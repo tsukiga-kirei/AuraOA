@@ -135,7 +135,9 @@ OA aura-embed-notify.js
     → postMessage({ type: 'aura-oa-requestid', requestid, embed_token })  →  iframe
 嵌入页收到 requestid + embed_token
     → POST /api/embed/session
-    → 调 /api/embed/context → 直接展示已有结果或运行状态
+    → 调 /api/embed/context
+    → 在展示旧结果前轻量比较 OA/规则指纹（不识别附件正文、不调用 AI）
+    → 未变化则展示已有结果，已变化或已有后台任务则进入交互队列
 ```
 
 iframe `load`、WfForm 就绪轮询、`hashchange` 时 OA 脚本会**主动再推一次**，避免切换流程后编号不更新。

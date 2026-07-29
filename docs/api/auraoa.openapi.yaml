@@ -5536,6 +5536,13 @@ paths:
         schema:
           type: string
         description: process_id 别名
+      - name: prefer_cached
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+        description: 显式跳过已有成功审核结果的 OA 变化检查，主要用于任务完成后的结果刷新
   /api/embed/execute:
     post:
       summary: 触发嵌入审核
@@ -5673,7 +5680,7 @@ paths:
         schema:
           type: boolean
           default: false
-        description: 可见页已有成功结果时直接返回，不执行 OA 变化扫描
+        description: 显式跳过已有成功结果的 OA 变化检查，主要用于任务完成后的结果刷新
   /api/embed/summary/execute:
     post:
       summary: 触发嵌入流程总结
@@ -5919,6 +5926,14 @@ components:
           - cancelled
         process_id:
           type: string
+        queue_kind:
+          type: string
+          enum:
+          - interactive
+          - background
+          - scheduled
+          - workbench
+          description: 任务队列类型；OA 手动/可见页进入 interactive，保存提交进入 background，流程定时扫描进入 scheduled，系统内审核进入 workbench
         error_message:
           type: string
     ContextTestRequest:

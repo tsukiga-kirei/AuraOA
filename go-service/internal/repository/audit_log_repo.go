@@ -108,6 +108,24 @@ func (r *AuditLogRepo) UpdateFields(c *gin.Context, id uuid.UUID, updates map[st
 	return r.WithTenant(c).Model(&model.AuditLog{}).Where("id = ?", id).Updates(updates).Error
 }
 
+// ClaimPending 原子领取待执行审核任务，并校验 Redis Stream 与数据库队列类型一致。
+func (r *AuditLogRepo) ClaimPending(c *gin.Context, id uuid.UUID, queueKind string) (bool, error) {
+	queueKind = model.NormalizeAuditJobQueueKind(queueKind)
+	query := r.WithTenant(c).
+		Model(&model.AuditLog{}).
+		Where(
+			"id = ? AND status = ? AND queue_kind = ?",
+			id,
+			model.JobStatusPending,
+			queueKind,
+		)
+	res := query.Updates(map[string]interface{}{
+		"status":     model.JobStatusAssembling,
+		"updated_at": apptime.Now(),
+	})
+	return res.RowsAffected == 1, res.Error
+}
+
 // CancelPendingScheduled 取消指定审核配置尚未领取的定时任务，保留日志用于追溯。
 func (r *AuditLogRepo) CancelPendingScheduled(
 	tenantID, configID uuid.UUID,
@@ -206,12 +224,22 @@ func (r *AuditLogRepo) ListByProcessType(c *gin.Context, processType string) ([]
 
 // GetLatestByProcessID 获取某流程最新的审核记录。
 func (r *AuditLogRepo) GetLatestByProcessID(c *gin.Context, processID string) (*model.AuditLog, error) {
+	return r.GetLatestByProcessIDForTriggers(c, processID, nil)
+}
+
+// GetLatestByProcessIDForTriggers 获取流程指定来源中的最新审核记录；triggerSources 为空则不过滤来源。
+func (r *AuditLogRepo) GetLatestByProcessIDForTriggers(
+	c *gin.Context,
+	processID string,
+	triggerSources []string,
+) (*model.AuditLog, error) {
+	q := r.WithTenant(c).Where("process_id = ?", processID)
+	if len(triggerSources) > 0 {
+		q = q.Where("trigger_source IN ?", triggerSources)
+	}
 	var log model.AuditLog
-	err := r.WithTenant(c).
-		Where("process_id = ?", processID).
-		Order("created_at DESC").
-		First(&log).Error
-	if err == gorm.ErrRecordNotFound {
+	err := q.Order("created_at DESC").First(&log).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
 	return &log, err

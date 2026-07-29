@@ -18,7 +18,7 @@ import { waitForParentEmbedContext } from '~/composables/useEmbedParent'
 
 definePageMeta({ layout: 'embed' })
 
-const { getSummaryContext, executeSummaryEmbed, waitSummaryJob } = useEmbedSummaryApi()
+const { getSummaryContext, executeSummaryEmbed } = useEmbedSummaryApi()
 const { setupEmbedSession } = useEmbedSession()
 const { t } = useI18n()
 
@@ -209,40 +209,28 @@ async function runSummary(trigger: 'summary_embed_auto' | 'summary_embed_manual'
       },
     )
     mergeSummaryProgress(result)
-    await refreshContext(false)
+    await refreshContext(false, true)
     if (trigger === 'summary_embed_manual') message.success(t('embed.summary.refreshed'))
   } catch (e: any) {
     message.error(e?.message || t('embed.summary.status.failed'))
     currentResult.value = null
-    await refreshContext(false)
+    await refreshContext(false, true)
   } finally {
     summarizing.value = false
     disconnectStream()
   }
 }
 
-async function refreshContext(autoRun = true) {
+async function refreshContext(autoRun = true, preferCached = false) {
   if (!processId.value) return
   try {
-    const resp = await getSummaryContext(processId.value)
+    const resp = await getSummaryContext(processId.value, preferCached)
     context.value = resp
-    if (resp.summary_result && !summarizing.value) {
+    if (resp.summary_result && (!summarizing.value || !autoRun)) {
       currentResult.value = resp.summary_result
     }
-    if (autoRun && !resp.has_summary && resp.should_auto_summary && !summarizing.value) {
+    if (autoRun && (resp.should_auto_summary || resp.running_job_id) && !summarizing.value) {
       await runSummary('summary_embed_auto')
-    } else if (!resp.has_summary && resp.running_job_id && !summarizing.value) {
-      summarizing.value = true
-      currentResult.value = resp.summary_result ? ({ ...createPendingResult(), ...resp.summary_result }) : createPendingResult()
-      startSSE(resp.running_job_id)
-      try {
-        const result = await waitSummaryJob(resp.running_job_id, mergeSummaryProgress)
-        mergeSummaryProgress(result)
-        await refreshContext(false)
-      } finally {
-        summarizing.value = false
-        disconnectStream()
-      }
     }
   } catch (e: any) {
     pageError.value = e?.message || t('embed.summary.contextLoadFailed')
@@ -259,16 +247,15 @@ async function bootstrap() {
       pageError.value = t('embed.summary.missingProcessId')
       return
     }
-    await refreshContext(false)
+    // 首次进入先做轻量指纹检查；不识别附件正文、不调用 AI。
+    await refreshContext(false, false)
   } finally {
     pageLoading.value = false
     waitingParent.value = false
   }
   const ctx = context.value as EmbedSummaryContextResponse | null
-  if (ctx?.supported && !ctx.has_summary && ctx.should_auto_summary && !summarizing.value) {
-    await runSummary('summary_embed_auto')
-  } else if (ctx?.supported && !ctx.has_summary && ctx.running_job_id && !summarizing.value) {
-    // 可见页面进入时将尚未领取的后台任务提升到交互队列；已执行中的任务直接接续。
+  if (ctx?.supported && (ctx.should_auto_summary || ctx.running_job_id) && !summarizing.value) {
+    // 发现变化或已有后台任务时进入交互队列，待执行任务会切换到可见页队列。
     await runSummary('summary_embed_auto')
   }
 }
