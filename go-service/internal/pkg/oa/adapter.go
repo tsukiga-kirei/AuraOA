@@ -137,6 +137,12 @@ type WorkflowDefinitionSelector interface {
 	FetchFieldsByWorkflowID(ctx context.Context, workflowID string) (*ProcessFields, error)
 }
 
+// RecentProcessScanner 由支持流程级定时检查的 OA 适配器实现。
+// since 按业务时区传入，只返回指定流程类型在该时间之后创建的流程。
+type RecentProcessScanner interface {
+	FetchRecentProcessSummaries(ctx context.Context, processType string, since time.Time, limit int) ([]ProcessRequestSummary, error)
+}
+
 // ModelContextQuery 描述一次受限的建模表查询。
 type ModelContextQuery struct {
 	TableName    string

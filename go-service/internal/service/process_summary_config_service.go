@@ -24,6 +24,12 @@ type ProcessSummaryConfigService struct {
 	tenantRepo  *repository.TenantRepo
 	oaConnRepo  *repository.OAConnectionRepo
 	invalidator *cache.InvalidationManager
+	scheduleMgr EmbedRefreshScheduleManager
+}
+
+// SetEmbedRefreshScheduleManager 注入流程级嵌入刷新调度管理器。
+func (s *ProcessSummaryConfigService) SetEmbedRefreshScheduleManager(manager EmbedRefreshScheduleManager) {
+	s.scheduleMgr = manager
 }
 
 var defaultSummaryIncludeMeta = true
@@ -64,12 +70,17 @@ func (s *ProcessSummaryConfigService) Create(c *gin.Context, req *dto.CreateProc
 		DetailTables:     defaultJSON(req.DetailTables, "[]"),
 		SummaryBlocks:    normalizeSummaryBlocksJSON(req.SummaryBlocks),
 		EmbedEnabled:     boolPtrValue(req.EmbedEnabled, true),
-		EmbedConfig: defaultJSON(req.EmbedConfig,
-			`{"auto_summary_on_open":true,"auto_summary_on_data_change":true,"auto_summary_on_return_resubmit":true,"auto_summary_on_flow_change":false}`),
+		EmbedConfig: normalizeSummaryEmbedConfigJSON(defaultJSON(req.EmbedConfig,
+			`{"auto_summary_on_open":true,"auto_summary_on_data_change":true,"auto_summary_on_return_resubmit":true,"auto_summary_on_flow_change":false,"scheduled_refresh_enabled":false,"scheduled_refresh_lookback_days":3,"scheduled_refresh_interval_minutes":5}`)),
 		Status: defaultStr(req.Status, "active"),
 	}
 	if err := s.configRepo.Create(c, cfg); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	if s.scheduleMgr != nil {
+		if err := s.scheduleMgr.SyncSummaryConfig(c.Request.Context(), cfg); err != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "总结配置已保存，但定时检查调度同步失败")
+		}
 	}
 	s.invalidate(tenantID)
 	return cfg, nil
@@ -118,7 +129,7 @@ func (s *ProcessSummaryConfigService) Update(c *gin.Context, id uuid.UUID, req *
 		fields["embed_enabled"] = *req.EmbedEnabled
 	}
 	if req.EmbedConfig != nil {
-		fields["embed_config"] = req.EmbedConfig
+		fields["embed_config"] = normalizeSummaryEmbedConfigJSON(req.EmbedConfig)
 	}
 	if req.Status != "" {
 		fields["status"] = req.Status
@@ -132,10 +143,21 @@ func (s *ProcessSummaryConfigService) Update(c *gin.Context, id uuid.UUID, req *
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	if s.scheduleMgr != nil {
+		if err := s.scheduleMgr.SyncSummaryConfig(c.Request.Context(), cfg); err != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "总结配置已保存，但定时检查调度同步失败")
+		}
+	}
 	if tenantID, tErr := getTenantUUID(c); tErr == nil {
 		s.invalidate(tenantID)
 	}
 	return cfg, nil
+}
+
+func normalizeSummaryEmbedConfigJSON(raw datatypes.JSON) datatypes.JSON {
+	cfg := parseSummaryEmbedConfig(raw)
+	b, _ := json.Marshal(cfg)
+	return datatypes.JSON(b)
 }
 
 func (s *ProcessSummaryConfigService) Delete(c *gin.Context, id uuid.UUID) error {
@@ -144,6 +166,11 @@ func (s *ProcessSummaryConfigService) Delete(c *gin.Context, id uuid.UUID) error
 	}
 	if err := s.configRepo.Delete(c, id); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	if s.scheduleMgr != nil {
+		if err := s.scheduleMgr.DeleteConfig(c.Request.Context(), embedRefreshModuleSummary, id); err != nil {
+			return newServiceError(errcode.ErrDatabase, "总结配置已删除，但定时检查调度清理失败")
+		}
 	}
 	if tenantID, tErr := getTenantUUID(c); tErr == nil {
 		s.invalidate(tenantID)

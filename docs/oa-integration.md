@@ -22,6 +22,10 @@ AuraOA 通过**适配器模式**对接企业 OA 系统，从 OA 数据库中直�
 | `FetchAllTodoItems` | 拉取全量待办（供定时任务批处理使用） |
 | `IsProcessInTodo` | 判断指定流程是否仍在用户待办中 |
 
+流程级嵌入刷新还定义了可选接口 `RecentProcessScanner`。支持该接口的适配器可以通过
+`FetchRecentProcessSummaries` 按流程类型和业务时区起始时间，限量拉取最近创建的流程实例，
+供审核、总结配置中的定时检查使用；不支持该接口的 OA 适配器会跳过定时扫描，不影响事件触发和可见嵌入页。
+
 ### 工厂模式
 
 `NewOAAdapter` 工厂函数（`go-service/internal/pkg/oa/factory.go`）根据 `oa_type` 和数据库驱动类型创建对应的适配器实例：
@@ -104,6 +108,11 @@ OA 数据库连接配置存储在 `oa_database_connections` 表中，支持：
 
 5. FetchProcessFlow(processID)
    └─ 拉取审批流节点快照（节点名、审批人、操作、意见）
+
+6. FetchRecentProcessSummaries(processType, since, limit)
+   └─ workflow_requestbase → workflow_base → hrmresource → hrmdepartment
+   └─ 按流程名称和 createdate 下界筛选，按创建时间倒序限量返回
+   └─ 仅用于安排指纹检查；是否调用 AI 仍由审核/总结上下文判断
 ```
 
 **字段值翻译规则（供 AI prompt 使用）**：
@@ -181,12 +190,14 @@ AuraOA 从 OA 物理表读取到的值通常是数据库存储值，例如人员
 3. 在 `factory.go` 的 `supportedDrivers` 中注册支持的数据库驱动
 4. 在 `NewOAAdapter` 的 `switch` 分支中添加创建逻辑
 5. 如需新的数据库驱动，在 `go-service/internal/pkg/oa/` 下创建驱动子目录
+6. 如需支持流程级定时检查，实现可选接口 `RecentProcessScanner`
 
 **接口实现要点**：
 
 - `FetchTodoListPaged` 和 `FetchArchivedListPaged` 必须实现 SQL 级分页（COUNT + LIMIT/OFFSET），避免全量拉取
 - `FetchProcessData` 需正确处理主表和明细表的关联关系
 - `FetchProcessFlow` 返回的审批流快照需包含 `HistoryText` 和 `GraphText`，供 AI 提示词使用
+- `FetchRecentProcessSummaries` 必须按流程类型和时间下界在 SQL 中过滤，并强制限制返回条数
 - 所有数据库查询应使用参数化查询，防止 SQL 注入
 - 建议使用 `context.Context` 传递超时控制
 

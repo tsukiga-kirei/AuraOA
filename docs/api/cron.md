@@ -60,6 +60,16 @@ GET /api/tenant/cron/tasks
 POST /api/tenant/cron/tasks
 ```
 
+`cron_expression` 同时支持标准五段式和带秒的六段式：
+
+```text
+*/5 * * * *       # 每 5 分钟
+0 */5 * * * *     # 每 5 分钟（显式秒字段）
+```
+
+调度器按 `app.timezone` 计算下一次时间并到点触发，不通过 30 秒轮询。服务停止期间错过的
+执行不会在重启后补跑。
+
 ---
 
 ### 更新任务

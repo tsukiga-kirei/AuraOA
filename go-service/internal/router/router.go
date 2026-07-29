@@ -38,6 +38,7 @@ func SetupRouter(
 	auditHandler *handler.AuditHandler,
 	archiveReviewHandler *handler.ArchiveReviewHandler,
 	summaryHandler *handler.ProcessSummaryHandler,
+	embedEventHandler *handler.EmbedEventHandler,
 	dashboardOverviewHandler *handler.DashboardOverviewHandler,
 	userNotificationHandler *handler.UserNotificationHandler,
 	cacheAdminHandler *handler.CacheAdminHandler,
@@ -338,6 +339,7 @@ func SetupRouter(
 	embed := r.Group("/api/embed")
 	embed.Use(middleware.EmbedAccess(tenantRepo))
 	{
+		embed.POST("/events", embedEventHandler.Schedule)
 		embed.GET("/context", auditHandler.GetEmbedContext)
 		embed.POST("/execute", auditHandler.ExecuteEmbed)
 		embed.GET("/jobs/:id", auditHandler.GetJobStatus)

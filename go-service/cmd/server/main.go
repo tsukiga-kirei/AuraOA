@@ -136,6 +136,7 @@ func main() {
 	cronConfigRepo := repository.NewCronTaskTypeConfigRepo(db)
 	cronTaskRepo := repository.NewCronTaskRepo(db)
 	cronLogRepo := repository.NewCronLogRepo(db)
+	embedRefreshScheduleRepo := repository.NewEmbedRefreshScheduleRepo(db)
 	archiveConfigRepo := repository.NewProcessArchiveConfigRepo(db)
 	archiveRuleRepo := repository.NewArchiveRuleRepo(db)
 	summaryConfigRepo := repository.NewProcessSummaryConfigRepo(db)
@@ -173,6 +174,18 @@ func main() {
 	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver, externalContextService)
 	summaryConfigService := service.NewProcessSummaryConfigService(summaryConfigRepo, tenantRepo, oaConnectionRepo, invalidationManager)
 	summaryService := service.NewProcessSummaryService(summaryLogRepo, summarySnapshotRepo, summaryConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, sysFlagsResolver, externalContextService)
+	embedRefreshService := service.NewEmbedRefreshService(
+		rdb,
+		auditExecuteService,
+		summaryService,
+		processAuditConfigRepo,
+		summaryConfigRepo,
+		embedRefreshScheduleRepo,
+		tenantRepo,
+		pkglogger.Global(),
+	)
+	processAuditConfigService.SetEmbedRefreshScheduleManager(embedRefreshService)
+	summaryConfigService.SetEmbedRefreshScheduleManager(embedRefreshService)
 	dashboardOverviewService := service.NewDashboardOverviewService(
 		auditSnapshotRepo, archiveSnapshotRepo, auditLogRepo, archiveLogRepo, cronLogRepo, cronTaskRepo, cronPresetRepo, llmMessageLogRepo, tenantRepo, orgRepo, cacheManager, invalidationManager,
 	)
@@ -244,6 +257,7 @@ func main() {
 		pkglogger.Global().Warn("总结流处理器启动失败", zap.Error(err))
 	}
 	service.StartSummaryStaleReconciler(context.Background(), summaryService, pkglogger.Global(), 30*time.Second)
+	embedRefreshService.Start(context.Background())
 
 	// 启动 Cron 调度器
 	if err := cronScheduler.Start(context.Background()); err != nil {
@@ -271,6 +285,7 @@ func main() {
 	archiveReviewHandler := handler.NewArchiveReviewHandler(archiveReviewService, archiveSnapshotRepo, archiveLogRepo)
 	summaryConfigHandler := handler.NewProcessSummaryConfigHandler(summaryConfigService)
 	summaryHandler := handler.NewProcessSummaryHandler(summaryService)
+	embedEventHandler := handler.NewEmbedEventHandler(embedRefreshService)
 	systemMonitorService := service.NewSystemMonitorService(db, rdb)
 	dashboardOverviewHandler := handler.NewDashboardOverviewHandler(dashboardOverviewService, systemMonitorService)
 	userNotificationHandler := handler.NewUserNotificationHandler(userNotificationService)
@@ -281,7 +296,7 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, externalContextHandler, auditHandler, archiveReviewHandler, summaryHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, sysFlagsResolver, operationAuditLogRepo, tenantRepo)
+	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, externalContextHandler, auditHandler, archiveReviewHandler, summaryHandler, embedEventHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, sysFlagsResolver, operationAuditLogRepo, tenantRepo)
 
 	// 第九步：启动 HTTP 服务器
 	port := viper.GetInt("server.port")

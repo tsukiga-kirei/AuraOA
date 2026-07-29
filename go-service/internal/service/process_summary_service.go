@@ -240,6 +240,25 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	if trigger != model.SummaryTriggerEmbedAuto && trigger != model.SummaryTriggerEmbedManual {
 		return nil, newServiceError(errcode.ErrParamValidation, "嵌入总结 trigger_source 无效")
 	}
+	tenantID, _, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	release, acquired, lockErr := acquireEmbedCreateLock(
+		c.Request.Context(),
+		s.rdb,
+		embedRefreshModuleSummary,
+		tenantID,
+		req.ProcessID,
+	)
+	if lockErr != nil {
+		return nil, newServiceError(errcode.ErrRedisConn, "总结任务去重锁获取失败")
+	}
+	if !acquired {
+		return nil, newServiceError(errcode.ErrResourceConflict, "该流程正在创建总结任务")
+	}
+	defer release()
+
 	ctxResp, err := s.GetEmbedContext(c, req.ProcessID)
 	if err != nil {
 		return nil, err
@@ -914,11 +933,14 @@ func parseSummaryEmbedConfig(raw datatypes.JSON) model.SummaryEmbedConfigData {
 		AutoSummaryOnDataChange:     true,
 		AutoSummaryOnReturnResubmit: true,
 		AutoSummaryOnFlowChange:     false,
+		ScheduledLookbackDays:       3,
+		ScheduledIntervalMinutes:    5,
 	}
 	if len(raw) == 0 {
 		return cfg
 	}
 	_ = json.Unmarshal(raw, &cfg)
+	normalizeScheduledRefreshConfig(&cfg.ScheduledLookbackDays, &cfg.ScheduledIntervalMinutes)
 	return cfg
 }
 

@@ -28,6 +28,12 @@ type ProcessAuditConfigService struct {
 	templateRepo *repository.SystemPromptTemplateRepo
 	db           *gorm.DB
 	invalidator  *cache.InvalidationManager
+	scheduleMgr  EmbedRefreshScheduleManager
+}
+
+// SetEmbedRefreshScheduleManager 注入流程级嵌入刷新调度管理器。
+func (s *ProcessAuditConfigService) SetEmbedRefreshScheduleManager(manager EmbedRefreshScheduleManager) {
+	s.scheduleMgr = manager
 }
 
 // NewProcessAuditConfigService 创建一个新的 ProcessAuditConfigService 实例。
@@ -110,13 +116,18 @@ func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProces
 		UserPermissions:  defaultJSON(req.UserPermissions, "{}"),
 		AccessControl:    defaultJSON(req.AccessControl, "{}"),
 		EmbedEnabled:     req.EmbedEnabled != nil && *req.EmbedEnabled,
-		EmbedConfig: defaultJSON(req.EmbedConfig,
-			`{"auto_audit_on_open":true,"auto_audit_on_data_change":true,"auto_audit_on_return_resubmit":true,"auto_audit_on_flow_change":false}`),
+		EmbedConfig: normalizeAuditEmbedConfigJSON(defaultJSON(req.EmbedConfig,
+			`{"auto_audit_on_open":true,"auto_audit_on_data_change":true,"auto_audit_on_return_resubmit":true,"auto_audit_on_flow_change":false,"scheduled_refresh_enabled":false,"scheduled_refresh_lookback_days":3,"scheduled_refresh_interval_minutes":5}`)),
 		Status: defaultStr(req.Status, "active"),
 	}
 
 	if err := s.configRepo.Create(c, cfg); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	if s.scheduleMgr != nil {
+		if err := s.scheduleMgr.SyncAuditConfig(c.Request.Context(), cfg); err != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "审核配置已保存，但定时检查调度同步失败")
+		}
 	}
 
 	// 清除该租户的审核配置缓存
@@ -230,7 +241,7 @@ func (s *ProcessAuditConfigService) Update(c *gin.Context, id uuid.UUID, req *dt
 		fields["embed_enabled"] = *req.EmbedEnabled
 	}
 	if req.EmbedConfig != nil {
-		fields["embed_config"] = req.EmbedConfig
+		fields["embed_config"] = normalizeAuditEmbedConfigJSON(req.EmbedConfig)
 	}
 	if req.Status != "" {
 		fields["status"] = req.Status
@@ -246,6 +257,11 @@ func (s *ProcessAuditConfigService) Update(c *gin.Context, id uuid.UUID, req *dt
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	if s.scheduleMgr != nil {
+		if err := s.scheduleMgr.SyncAuditConfig(c.Request.Context(), cfg); err != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "审核配置已保存，但定时检查调度同步失败")
+		}
+	}
 
 	// 清除该租户的审核配置缓存
 	if s.invalidator != nil {
@@ -260,6 +276,12 @@ func (s *ProcessAuditConfigService) Update(c *gin.Context, id uuid.UUID, req *dt
 	return cfg, nil
 }
 
+func normalizeAuditEmbedConfigJSON(raw datatypes.JSON) datatypes.JSON {
+	cfg := parseEmbedConfig(raw)
+	b, _ := json.Marshal(cfg)
+	return datatypes.JSON(b)
+}
+
 // Delete 删除流程审核配置。
 func (s *ProcessAuditConfigService) Delete(c *gin.Context, id uuid.UUID) error {
 	_, err := s.configRepo.GetByID(c, id)
@@ -268,6 +290,11 @@ func (s *ProcessAuditConfigService) Delete(c *gin.Context, id uuid.UUID) error {
 	}
 	if err := s.configRepo.Delete(c, id); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
+	}
+	if s.scheduleMgr != nil {
+		if err := s.scheduleMgr.DeleteConfig(c.Request.Context(), embedRefreshModuleAudit, id); err != nil {
+			return newServiceError(errcode.ErrDatabase, "审核配置已删除，但定时检查调度清理失败")
+		}
 	}
 
 	// 清除该租户的审核配置缓存

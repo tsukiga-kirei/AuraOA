@@ -2,14 +2,15 @@
 
 ## 概述
 
-供固定地址嵌入页 `/embed/audit` 与 `/embed/summary` 使用。**浏览器不直接调用 Go 接口**，而是请求 Nuxt 代理 `/api/embed/*`。
+供固定地址嵌入页 `/embed/audit`、`/embed/summary` 与无界面的 `/embed/runner` 使用。**浏览器不直接调用 Go 接口**，而是请求 Nuxt 代理 `/api/embed/*`。
 
 鉴权链路：
 
 1. OA 父页面通过 `postMessage` 将 `embed_token` 传给 iframe
-2. 嵌入页调用 `POST /api/embed/session` 写入 httpOnly Cookie
-3. Nuxt 代理从 Cookie 读取令牌，携带 `X-Embed-Token` 访问 Go
-4. Go `EmbedAccess` 中间件根据令牌哈希反查租户，并注入 `tenant_id`
+2. 嵌入页把令牌保存在当前 iframe 内存，并调用 `POST /api/embed/session` 尝试写入 httpOnly Cookie
+3. 浏览器请求通过同源 `X-Embed-Token` 请求头传递令牌；Cookie 作为同站场景补充
+4. Nuxt 代理携带 `X-Embed-Token` 访问 Go
+5. Go `EmbedAccess` 中间件根据令牌哈希反查租户，并注入 `tenant_id`
 
 Nuxt 服务端通过私有运行时配置 `NUXT_INTERNAL_API_BASE` 访问 Go。Docker Compose
 默认使用 `http://go-service:8080`；该地址不暴露给浏览器，也不应使用
@@ -47,6 +48,7 @@ POST /api/admin/tenants/:id/embed-token
 | 方法 | 路径 | 转发至 Go |
 |------|------|-----------|
 | POST | `/api/embed/session` | 写入 httpOnly Cookie（不转发 Go） |
+| POST | `/api/embed/events` | `POST /api/embed/events` |
 | GET | `/api/embed/context?process_id=` | `GET /api/embed/context` |
 | POST | `/api/embed/execute` | `POST /api/embed/execute` |
 | GET | `/api/embed/jobs/:id` | `GET /api/embed/jobs/:id` |
@@ -59,6 +61,27 @@ POST /api/admin/tenants/:id/embed-token
 ---
 
 ## Go 接口
+
+### 安排后台刷新检查
+
+```
+POST /api/embed/events
+```
+
+```json
+{
+  "process_id": "598488",
+  "action": "save_or_submit",
+  "event_id": "oa-598488-1722150000000"
+}
+```
+
+`action` 可为 `page_open`、`save`、`submit` 或 `save_or_submit`。接口只把审核和总结检查写入
+Redis 延迟队列并立即返回 `202`，不会等待 OA 查询或 AI 执行。
+
+保存/提交事件首次在约 2 秒后读取 OA；未发现 OA 数据落库时会继续在约 5 秒、10 秒检查。
+同一租户、流程和模块的连续事件自动合并。若审核或总结正在执行，协调器会等待当前任务结束后
+再次比较指纹，避免执行期间的再次保存被遗漏。
 
 ### 获取嵌入上下文
 
@@ -175,6 +198,12 @@ GET /api/embed/summary/stream/:id
 |------|--------|------|
 | iframe → OA | `aura-oa-request-requestid` | 无 |
 | OA → iframe | `aura-oa-requestid` | `{ requestid: string, embed_token: string }` |
+| runner → OA | `aura-runner-ready` | 无 |
+| OA → runner | `aura-oa-refresh-event` | `{ requestid: string, action: string, event_id: string }` |
+| runner → OA | `aura-runner-event-ack` | `{ event_id: string }` |
+
+OA 保存/提交检查最多等待 400ms 的事件接收确认；收到确认会立即放行，超时或 AuraOA
+不可用也会放行。runner 使用 `keepalive` 提交事件，确认或超时都不代表等待 AI 执行完成。
 
 OA 示例脚本：[../oa-configurations/assets/aura-embed-notify.js](../oa-configurations/assets/aura-embed-notify.js)
 
@@ -191,6 +220,25 @@ OA 示例脚本：[../oa-configurations/assets/aura-embed-notify.js](../oa-confi
 
 流程级自动刷新策略位于对应配置的 `embed_config`。默认行为是：业务数据变化、附件换版、
 退回/重提会自动刷新；普通审批推进不自动刷新。
+
+流程配置还可开启定时兜底检查：
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `scheduled_refresh_enabled` | `false` | 是否定时检查该流程类型 |
+| `scheduled_refresh_lookback_days` | `3` | 拉取近几天创建的流程，可选 1–30 天 |
+| `scheduled_refresh_interval_minutes` | `5` | 检查频率，支持 5、10、15、30、60 分钟 |
+
+定时检查单次最多拉取 500 个候选流程，只负责发现候选；最终仍由审核上下文指纹和总结块依赖
+指纹决定是否调用 AI。
+
+流程配置保存时会同步写入独立的 `embed_refresh_schedules` 调度记录，并立即注册或移除内存
+Cron；服务启动时从该表恢复全部活跃任务。因此配置开启、关闭和频率修改立即生效，不再每分钟
+轮询流程配置。5/10/15/30/60 分钟频率分别转换为对应的六段式 Cron 表达式并按
+`app.timezone` 到点执行。多实例通过 Redis 变更通知同步内存调度，并使用分布式执行锁防止
+重复拉取。
+
+调度表保存 `last_run_at`、`next_run_at`、`last_status` 和 `last_error`，便于排查最近执行结果。
 
 刷新依据和执行结果可从以下记录追溯：
 

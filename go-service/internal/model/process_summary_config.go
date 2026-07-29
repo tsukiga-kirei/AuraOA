@@ -47,6 +47,9 @@ type SummaryEmbedConfigData struct {
 	AutoSummaryOnDataChange     bool `json:"auto_summary_on_data_change"`
 	AutoSummaryOnReturnResubmit bool `json:"auto_summary_on_return_resubmit"`
 	AutoSummaryOnFlowChange     bool `json:"auto_summary_on_flow_change"`
+	ScheduledRefreshEnabled     bool `json:"scheduled_refresh_enabled"`
+	ScheduledLookbackDays       int  `json:"scheduled_refresh_lookback_days"`
+	ScheduledIntervalMinutes    int  `json:"scheduled_refresh_interval_minutes"`
 }
 
 // ProcessSummaryLog 总结执行日志。

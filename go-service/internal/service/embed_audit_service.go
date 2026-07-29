@@ -159,6 +159,24 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 	if trigger != model.AuditTriggerEmbedAuto && trigger != model.AuditTriggerEmbedManual {
 		return nil, newServiceError(errcode.ErrParamValidation, "嵌入页 trigger_source 无效")
 	}
+	tenantID, _, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	release, acquired, lockErr := acquireEmbedCreateLock(
+		c.Request.Context(),
+		s.rdb,
+		embedRefreshModuleAudit,
+		tenantID,
+		req.ProcessID,
+	)
+	if lockErr != nil {
+		return nil, newServiceError(errcode.ErrRedisConn, "审核任务去重锁获取失败")
+	}
+	if !acquired {
+		return nil, newServiceError(errcode.ErrResourceConflict, "该流程正在创建审核任务")
+	}
+	defer release()
 
 	ctxResp, err := s.GetEmbedContext(c, req.ProcessID)
 	if err != nil {
@@ -259,11 +277,14 @@ func parseEmbedConfig(raw datatypes.JSON) model.EmbedConfigData {
 		AutoAuditOnDataChange:     true,
 		AutoAuditOnReturnResubmit: true,
 		AutoAuditOnFlowChange:     false,
+		ScheduledLookbackDays:     3,
+		ScheduledIntervalMinutes:  5,
 	}
 	if len(raw) == 0 {
 		return cfg
 	}
 	_ = json.Unmarshal(raw, &cfg)
+	normalizeScheduledRefreshConfig(&cfg.ScheduledLookbackDays, &cfg.ScheduledIntervalMinutes)
 	return cfg
 }
 

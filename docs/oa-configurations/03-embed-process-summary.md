@@ -138,16 +138,25 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 |------|------|------|
 | iframe → OA | `aura-oa-request-requestid` | 嵌入页请求当前 requestid |
 | OA → iframe | `aura-oa-requestid` | `{ requestid: '598488' }` |
+| runner → OA | `aura-runner-ready` | 隐藏 runner 已初始化 |
+| OA → runner | `aura-oa-refresh-event` | 保存/提交后安排后台检查 |
+| runner → OA | `aura-runner-event-ack` | 返回对应 `event_id`，确认事件请求已完成 |
+
+OA 保存/提交最多等待 400ms；收到确认立即放行，超时或 AuraOA 不可用同样放行。
+确认只表示后台事件请求已完成，不等待审核或总结的 AI 任务。
 
 ### 6.3 执行时序
 
 ```text
-/embed/summary 加载
+OA 页面加载或保存/提交
+  → 隐藏 /embed/runner 调用 /api/embed/events
+  → 延迟读取 OA，按总结块依赖指纹决定是否入队
+/embed/summary 可见页加载
   → postMessage 请求 requestid
   → Nuxt /api/embed/summary/context
   → Go /api/embed/summary/context
   → 判断配置、历史快照、OA 上下文是否过期
-  → 需要自动总结时 POST /api/embed/summary/execute
+  → 已有后台任务则直接展示进度，否则按现有自动策略兜底触发
   → Redis Stream 异步执行总结
   → 轮询 /api/embed/summary/jobs/:id，SSE 展示原始模型流
   → 展示结构化 blocks
