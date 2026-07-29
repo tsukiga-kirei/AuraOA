@@ -795,7 +795,17 @@ onBeforeUnmount(() => disconnectStream())
   background: var(--color-danger-bg);
   color: var(--color-danger);
 }
-.result-error p { margin: 4px 0 0; color: var(--color-text-secondary); }
+.result-error > div {
+  flex: 1;
+  min-width: 0;
+}
+.result-error p {
+  margin: 4px 0 0;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .result-empty { text-align: center; padding: 40px 20px; }
 .result-empty-icon {
   width: 64px;
