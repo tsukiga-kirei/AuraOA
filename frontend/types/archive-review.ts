@@ -7,6 +7,7 @@ export type ArchiveRunStatus =
   | 'extracting'
   | 'completed'
   | 'failed'
+  | 'cancelled'
 
 export interface ArchiveFlowNodeResult {
   node_id: string
