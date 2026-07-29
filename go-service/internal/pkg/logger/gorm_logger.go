@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -33,7 +34,11 @@ func (l *GormLogger) LogMode(_ gormlogger.LogLevel) gormlogger.Interface {
 }
 
 // Info 记录 GORM 的 INFO 级别日志。
+// 忽略驱动初始化时替换回调的噪音（如达梦 dm-driver-gorm 的 replacing callback）。
 func (l *GormLogger) Info(_ context.Context, msg string, args ...interface{}) {
+	if strings.Contains(msg, "replacing callback") {
+		return
+	}
 	Global().Sugar().Infof(msg, args...)
 }
 
