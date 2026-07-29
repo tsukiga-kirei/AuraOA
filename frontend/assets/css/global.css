@@ -1021,7 +1021,7 @@ a:focus-visible {
 }
 
 .sidebar-user-profile:hover {
-  background: var(--color-bg-container);
+  background: var(--color-bg-hover);
   /* Subtle background */
   border-color: var(--color-border);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
