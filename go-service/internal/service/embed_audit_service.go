@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -18,25 +19,29 @@ import (
 
 // EmbedExecuteRequest 嵌入页审核执行请求。
 type EmbedExecuteRequest struct {
-	ProcessID     string `json:"process_id" binding:"required"`
-	ProcessType   string `json:"process_type"`
-	Title         string `json:"title"`
-	TriggerSource string `json:"trigger_source"`
+	ProcessID        string     `json:"process_id" binding:"required"`
+	ProcessType      string     `json:"process_type"`
+	Title            string     `json:"title"`
+	TriggerSource    string     `json:"trigger_source"`
+	TriggerDetail    string     `json:"trigger_detail"`
+	ScheduleConfigID *uuid.UUID `json:"-"`
 }
 
 // EmbedContextResponse 嵌入页上下文。
 type EmbedContextResponse struct {
-	Supported       bool                      `json:"supported"`
-	Reason          string                    `json:"reason,omitempty"`
-	Message         string                    `json:"message,omitempty"`
-	Process         *oa.ProcessRequestSummary `json:"process,omitempty"`
-	EmbedEnabled    bool                      `json:"embed_enabled"`
-	HasAudit        bool                      `json:"has_audit"`
-	Stale           bool                      `json:"stale"`
-	ShouldAutoAudit bool                      `json:"should_auto_audit"`
-	LastAuditAt     string                    `json:"last_audit_at,omitempty"`
-	RunningJobID    string                    `json:"running_job_id,omitempty"`
-	AuditResult     map[string]interface{}    `json:"audit_result,omitempty"`
+	Supported          bool                      `json:"supported"`
+	Reason             string                    `json:"reason,omitempty"`
+	Message            string                    `json:"message,omitempty"`
+	Process            *oa.ProcessRequestSummary `json:"process,omitempty"`
+	EmbedEnabled       bool                      `json:"embed_enabled"`
+	HasAudit           bool                      `json:"has_audit"`
+	Stale              bool                      `json:"stale"`
+	ShouldAutoAudit    bool                      `json:"should_auto_audit"`
+	AutoRetryBlocked   bool                      `json:"auto_retry_blocked"`
+	LastAuditAt        string                    `json:"last_audit_at,omitempty"`
+	RunningJobID       string                    `json:"running_job_id,omitempty"`
+	AuditResult        map[string]interface{}    `json:"audit_result,omitempty"`
+	CurrentFingerprint string                    `json:"-"`
 }
 
 // GetEmbedContext 嵌入页：按 requestid 拉取流程上下文、有效结论与过期状态。
@@ -140,15 +145,30 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 	if err != nil {
 		return nil, err
 	}
+	resp.CurrentFingerprint = stableJSONFingerprint(currentAnchor)
 	changes := oa.CompareContextAnchors(storedAnchor, currentAnchor)
 	resp.Stale = auditRefreshRequired(changes, embedCfg)
 
 	if !resp.HasAudit {
 		resp.ShouldAutoAudit = embedCfg.AutoAuditOnOpen
-		return resp, nil
-	}
-	if resp.Stale {
+	} else if resp.Stale {
 		resp.ShouldAutoAudit = true
+	}
+
+	latestAttempt, err := s.auditLogRepo.GetLatestByProcessID(c, processID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询最近审核记录失败")
+	}
+	if latestAttempt != nil &&
+		latestAttempt.Status == model.JobStatusFailed &&
+		latestAttempt.AttemptFingerprint != "" &&
+		latestAttempt.AttemptFingerprint == resp.CurrentFingerprint &&
+		(latestLog == nil || latestAttempt.CreatedAt.After(latestLog.CreatedAt)) {
+		resp.HasAudit = true
+		resp.ShouldAutoAudit = false
+		resp.AutoRetryBlocked = true
+		resp.LastAuditAt = apptime.FormatRFC3339(latestAttempt.UpdatedAt)
+		resp.AuditResult = buildAuditResultFromLog(latestAttempt)
 	}
 	return resp, nil
 }
@@ -158,6 +178,14 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 	trigger := normalizeTriggerSource(req.TriggerSource, model.AuditTriggerEmbedManual)
 	if trigger != model.AuditTriggerEmbedAuto && trigger != model.AuditTriggerEmbedManual {
 		return nil, newServiceError(errcode.ErrParamValidation, "嵌入页 trigger_source 无效")
+	}
+	triggerDetail := strings.TrimSpace(req.TriggerDetail)
+	if triggerDetail == "" {
+		if trigger == model.AuditTriggerEmbedManual {
+			triggerDetail = model.SummaryTriggerDetailManual
+		} else {
+			triggerDetail = model.SummaryTriggerDetailVisibleOpen
+		}
 	}
 	tenantID, _, err := s.extractIDs(c)
 	if err != nil {
@@ -189,6 +217,9 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 		return nil, newServiceError(errcode.ErrResourceConflict, "该流程已有进行中的审核任务")
 	}
 	if trigger == model.AuditTriggerEmbedAuto && !ctxResp.ShouldAutoAudit {
+		if ctxResp.AutoRetryBlocked {
+			return nil, newServiceError(errcode.ErrResourceConflict, "相同数据和规则的自动审核已经失败，请手动重新审核")
+		}
 		return nil, newServiceError(errcode.ErrResourceConflict, "未检测到需要自动刷新的审核内容")
 	}
 
@@ -207,10 +238,13 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 	}
 
 	execReq := &AuditExecuteRequest{
-		ProcessID:     req.ProcessID,
-		ProcessType:   processType,
-		Title:         title,
-		TriggerSource: trigger,
+		ProcessID:          req.ProcessID,
+		ProcessType:        processType,
+		Title:              title,
+		TriggerSource:      trigger,
+		TriggerDetail:      triggerDetail,
+		AttemptFingerprint: ctxResp.CurrentFingerprint,
+		ScheduleConfigID:   req.ScheduleConfigID,
 	}
 	return s.Execute(c, execReq)
 }

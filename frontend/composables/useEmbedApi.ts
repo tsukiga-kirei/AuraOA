@@ -38,7 +38,7 @@ export const useEmbedApi = () => {
       )
       onProgress?.(st)
       const status = st.status
-      if (status === 'completed' || status === 'failed') {
+      if (status === 'completed' || status === 'failed' || status === 'cancelled') {
         return st as AuditResult
       }
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS))

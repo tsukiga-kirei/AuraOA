@@ -76,12 +76,13 @@ POST /api/embed/events
 }
 ```
 
-`action` 可为 `page_open`、`save`、`submit` 或 `save_or_submit`。接口只把审核和总结检查写入
+新脚本只发送 `save_or_submit`。后端仍兼容旧脚本的 `save`、`submit`，并统一归一化为
+`save_or_submit`；旧版 `page_open` 会正常确认但不再创建后台任务。接口只把审核和总结检查写入
 Redis 延迟队列并立即返回 `202`，不会等待 OA 查询或 AI 执行。
 
 保存/提交事件首次在约 2 秒后读取 OA；未发现 OA 数据落库时会继续在约 5 秒、10 秒检查。
-同一租户、流程和模块的连续事件自动合并。若审核或总结正在执行，协调器会等待当前任务结束后
-再次比较指纹，避免执行期间的再次保存被遗漏。
+同一租户、流程和模块的连续事件自动合并。只有保存/提交事件会在任务执行期间保留一次后续检查；
+定时扫描不会持续追踪进行中的任务。
 
 ### 获取嵌入上下文
 
@@ -104,6 +105,9 @@ X-Embed-Token: <tenant embed access token>
 
 普通审批流变化是否触发由 `auto_audit_on_flow_change` 单独控制，默认关闭。
 `trigger_source=embed_auto` 时后端会再次校验 `should_auto_audit`，无需刷新时不会创建审核任务。
+若最近一次相同依赖指纹（流程数据、附件版本、流程信息、审核规则和模型配置）的审核已经失败，
+响应中 `auto_retry_blocked=true`，保存/提交和定时来源不会重复执行；失败记录直接作为结果展示，
+只有用户点击“重新审核”才会再次尝试。
 
 ### 触发嵌入审核
 
@@ -114,9 +118,13 @@ POST /api/embed/execute
 ```json
 {
   "process_id": "598488",
-  "trigger_source": "embed_auto"
+  "trigger_source": "embed_auto",
+  "trigger_detail": "visible_open"
 }
 ```
+
+`trigger_detail` 的可见页取值为 `visible_open`，手动按钮为 `manual`。后台内部使用
+`save_or_submit`、`scheduled_scan` 区分保存提交与定时扫描。
 
 ### 查询任务状态
 
@@ -141,7 +149,7 @@ GET /api/embed/stream/:id
 ### 获取总结嵌入上下文
 
 ```
-GET /api/embed/summary/context?process_id=598488
+GET /api/embed/summary/context?process_id=598488&prefer_cached=true
 ```
 
 除通用字段外，响应可包含 `stale_block_ids`，列出需要重新生成的总结块 ID。判断以每个块的
@@ -154,12 +162,30 @@ GET /api/embed/summary/context?process_id=598488
 
 自动总结只重新调用 `stale_block_ids` 中的块并合并旧结果；手动总结执行全部启用块。
 `trigger_source=summary_embed_auto` 时后端会再次校验 `should_auto_summary`，无需刷新时不会创建总结任务。
+可见页传 `prefer_cached=true` 时，已有成功结果会直接返回，不等待 OA 变化扫描；保存/提交和定时
+协调器仍使用完整上下文检查。
+若最近一次相同依赖指纹（流程数据、附件版本、流程信息和总结块提示词配置）的任务已经失败，
+响应中 `auto_retry_blocked=true`，自动来源不会重复执行，失败记录直接作为可展示结果返回。
+
+可见总结页已有成功结果时直接展示，不因打开页面重新执行；没有结果时以 `visible_open` 进入交互队列。
+手动“重新总结”使用最高优先级。保存/提交进入后台队列，流程级定时扫描优先级最低。
 
 ### 触发总结
 
 ```
 POST /api/embed/summary/execute
 ```
+
+```json
+{
+  "process_id": "598488",
+  "trigger_source": "summary_embed_auto",
+  "trigger_detail": "visible_open"
+}
+```
+
+`trigger_detail` 的可见页取值为 `visible_open`，手动按钮为 `manual`。后台内部还会记录
+`save_or_submit`、`scheduled_scan`，用于查询任务的真实来源。
 
 ### 查询任务状态
 
@@ -202,7 +228,7 @@ GET /api/embed/summary/stream/:id
 | OA → runner | `aura-oa-refresh-event` | `{ requestid: string, action: string, event_id: string }` |
 | runner → OA | `aura-runner-event-ack` | `{ event_id: string }` |
 
-OA 保存/提交检查最多等待 400ms 的事件接收确认；收到确认会立即放行，超时或 AuraOA
+OA 保存/提交检查最多等待 150ms 的事件接收确认；收到确认会立即放行，超时或 AuraOA
 不可用也会放行。runner 使用 `keepalive` 提交事件，确认或超时都不代表等待 AI 执行完成。
 
 OA 示例脚本：[../oa-configurations/assets/aura-embed-notify.js](../oa-configurations/assets/aura-embed-notify.js)
@@ -238,14 +264,21 @@ Cron；服务启动时从该表恢复全部活跃任务。因此配置开启、�
 `app.timezone` 到点执行。多实例通过 Redis 变更通知同步内存调度，并使用分布式执行锁防止
 重复拉取。
 
+关闭定时检查时会同时清除该配置尚未触发的 Redis 候选，并把已经入库但仍为 `pending` 的审核/
+总结任务标记为 `cancelled`；已经开始执行的任务不强制中断。服务升级时还会清理旧版缺少
+`config_id` 的定时候选，启用中的 Cron 会按新格式重新生成。
+
 调度表保存 `last_run_at`、`next_run_at`、`last_status` 和 `last_error`，便于排查最近执行结果。
 
 刷新依据和执行结果可从以下记录追溯：
 
 - `audit_logs.oa_context_anchor`：审核实际使用字段、附件版本、流程日志/节点及执行配置指纹；
+- `audit_logs.attempt_fingerprint`：最近一次审核尝试的完整依赖指纹，用于阻止相同失败被自动重试；
 - `process_summary_logs.oa_context_anchor`：总结时的 OA 变化锚点；
 - `process_summary_logs.process_snapshot.block_dependencies`：各总结块的数据、附件、流程依赖指纹；
 - `process_summary_logs.process_snapshot.regenerated_block_ids`：本次实际重新生成的总结块；
+- `audit_logs.trigger_detail` / `process_summary_logs.trigger_detail`：区分可见页、手动、保存提交和定时扫描；
+- `schedule_config_id`：定时扫描任务归属的流程配置；
 - `tenant_llm_message_logs` / `tenant_llm_message_payloads`：实际发生的审核、总结模型调用及 Token、耗时。
 
 如果普通审批被策略过滤且未调用 AI，不会新增审核/总结执行日志或 LLM 日志。

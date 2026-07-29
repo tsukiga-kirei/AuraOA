@@ -54,23 +54,27 @@ type SummaryEmbedConfigData struct {
 
 // ProcessSummaryLog 总结执行日志。
 type ProcessSummaryLog struct {
-	ID              uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	TenantID        uuid.UUID      `gorm:"type:uuid;not null" json:"tenant_id"`
-	UserID          uuid.UUID      `gorm:"type:uuid;not null" json:"user_id"`
-	ProcessID       string         `gorm:"size:100;not null" json:"process_id"`
-	Title           string         `gorm:"size:500;not null;default:''" json:"title"`
-	ProcessType     string         `gorm:"size:200;not null;default:''" json:"process_type"`
-	Status          string         `gorm:"size:20;not null;default:completed" json:"status"`
-	SummaryResult   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"summary_result"`
-	ProcessSnapshot datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"process_snapshot"`
-	DurationMs      int            `gorm:"not null;default:0" json:"duration_ms"`
-	RawContent      string         `gorm:"type:text;default:''" json:"raw_content"`
-	ParseError      string         `gorm:"type:text;default:''" json:"parse_error"`
-	ErrorMessage    string         `gorm:"type:text;default:''" json:"error_message"`
-	TriggerSource   string         `gorm:"size:30;not null;default:summary_embed_manual" json:"trigger_source"`
-	OAContextAnchor datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"oa_context_anchor"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `gorm:"not null;default:now()" json:"updated_at"`
+	ID                 uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	TenantID           uuid.UUID      `gorm:"type:uuid;not null" json:"tenant_id"`
+	UserID             uuid.UUID      `gorm:"type:uuid;not null" json:"user_id"`
+	ProcessID          string         `gorm:"size:100;not null" json:"process_id"`
+	Title              string         `gorm:"size:500;not null;default:''" json:"title"`
+	ProcessType        string         `gorm:"size:200;not null;default:''" json:"process_type"`
+	Status             string         `gorm:"size:20;not null;default:completed" json:"status"`
+	SummaryResult      datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"summary_result"`
+	ProcessSnapshot    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"process_snapshot"`
+	DurationMs         int            `gorm:"not null;default:0" json:"duration_ms"`
+	RawContent         string         `gorm:"type:text;default:''" json:"raw_content"`
+	ParseError         string         `gorm:"type:text;default:''" json:"parse_error"`
+	ErrorMessage       string         `gorm:"type:text;default:''" json:"error_message"`
+	TriggerSource      string         `gorm:"size:30;not null;default:summary_embed_manual" json:"trigger_source"`
+	TriggerDetail      string         `gorm:"size:30;not null;default:''" json:"trigger_detail"`
+	Priority           int            `gorm:"not null;default:50" json:"priority"`
+	AttemptFingerprint string         `gorm:"size:80;not null;default:''" json:"attempt_fingerprint"`
+	ScheduleConfigID   *uuid.UUID     `gorm:"type:uuid" json:"schedule_config_id,omitempty"`
+	OAContextAnchor    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"oa_context_anchor"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `gorm:"not null;default:now()" json:"updated_at"`
 }
 
 func (ProcessSummaryLog) TableName() string { return "process_summary_logs" }
@@ -79,7 +83,24 @@ const (
 	SummaryTriggerWorkbenchManual = "summary_workbench_manual"
 	SummaryTriggerEmbedAuto       = "summary_embed_auto"
 	SummaryTriggerEmbedManual     = "summary_embed_manual"
+
+	SummaryTriggerDetailWorkbench   = "workbench"
+	SummaryTriggerDetailManual      = "manual"
+	SummaryTriggerDetailVisibleOpen = "visible_open"
+	SummaryTriggerDetailSaveSubmit  = "save_or_submit"
+	SummaryTriggerDetailScheduled   = "scheduled_scan"
+
+	SummaryPriorityScheduled  = 10
+	SummaryPrioritySaveSubmit = 20
+	SummaryPriorityWorkbench  = 80
+	SummaryPriorityVisible    = 90
+	SummaryPriorityManual     = 100
 )
+
+// IsSummaryInteractivePriority 判断任务是否应进入交互队列。
+func IsSummaryInteractivePriority(priority int) bool {
+	return priority >= SummaryPriorityVisible
+}
 
 // IsSummaryEmbedTrigger 是否为 OA 嵌入触发。
 func IsSummaryEmbedTrigger(trigger string) bool {

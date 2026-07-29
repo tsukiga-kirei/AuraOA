@@ -82,7 +82,7 @@
 
 脚本会自动创建隐藏的 `/embed/runner` iframe，并注册 `WfForm.OPER_SAVE` /
 `WfForm.OPER_SUBMIT`。OA 侧用 `WfForm.getBaseInfo().requestid`，**不必**从 URL hash
-解析。保存/提交最多等待 400ms 的确认，收到确认立即放行，超时或 AuraOA 不可用也会
+解析。保存/提交最多等待 150ms 的确认，收到确认立即放行，超时或 AuraOA 不可用也会
 放行；事件只安排延迟检查，不等待 AI。
 
 ### 4.2 在流程里启用
@@ -124,7 +124,7 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 ```
 OA 页面加载
     → 自动创建隐藏 /embed/runner
-    → 安排一次 page_open 后台检查
+    → runner 仅等待保存/提交通知，不因打开页面创建后台任务
 保存/提交
     → postMessage({ type: 'aura-oa-refresh-event' })
     → POST /api/embed/events → 延迟读取 OA → 按指纹决定是否执行 AI

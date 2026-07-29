@@ -142,7 +142,7 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 | OA → runner | `aura-oa-refresh-event` | 保存/提交后安排后台检查 |
 | runner → OA | `aura-runner-event-ack` | 返回对应 `event_id`，确认事件请求已完成 |
 
-OA 保存/提交最多等待 400ms；收到确认立即放行，超时或 AuraOA 不可用同样放行。
+OA 保存/提交最多等待 150ms；收到确认立即放行，超时或 AuraOA 不可用同样放行。
 确认只表示后台事件请求已完成，不等待审核或总结的 AI 任务。
 
 ### 6.3 执行时序

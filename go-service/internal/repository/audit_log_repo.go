@@ -108,6 +108,26 @@ func (r *AuditLogRepo) UpdateFields(c *gin.Context, id uuid.UUID, updates map[st
 	return r.WithTenant(c).Model(&model.AuditLog{}).Where("id = ?", id).Updates(updates).Error
 }
 
+// CancelPendingScheduled 取消指定审核配置尚未领取的定时任务，保留日志用于追溯。
+func (r *AuditLogRepo) CancelPendingScheduled(
+	tenantID, configID uuid.UUID,
+	message string,
+) (int64, error) {
+	res := r.DB.Model(&model.AuditLog{}).
+		Where(
+			"tenant_id = ? AND schedule_config_id = ? AND status = ?",
+			tenantID,
+			configID,
+			model.JobStatusPending,
+		).
+		Updates(map[string]interface{}{
+			"status":        model.JobStatusCancelled,
+			"error_message": message,
+			"updated_at":    apptime.Now(),
+		})
+	return res.RowsAffected, res.Error
+}
+
 // ListByProcessID 查询某流程的所有审核记录（审核链），按时间倒序。
 func (r *AuditLogRepo) ListByProcessID(c *gin.Context, processID string) ([]model.AuditLog, error) {
 	var logs []model.AuditLog

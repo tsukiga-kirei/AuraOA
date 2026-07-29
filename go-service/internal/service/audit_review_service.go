@@ -115,10 +115,13 @@ func (s *AuditExecuteService) BatchRdb() *redis.Client {
 
 // AuditExecuteRequest 审核执行请求
 type AuditExecuteRequest struct {
-	ProcessID     string `json:"process_id" binding:"required"`
-	ProcessType   string `json:"process_type" binding:"required"`
-	Title         string `json:"title"`
-	TriggerSource string `json:"trigger_source"`
+	ProcessID          string     `json:"process_id" binding:"required"`
+	ProcessType        string     `json:"process_type" binding:"required"`
+	Title              string     `json:"title"`
+	TriggerSource      string     `json:"trigger_source"`
+	TriggerDetail      string     `json:"trigger_detail"`
+	AttemptFingerprint string     `json:"-"`
+	ScheduleConfigID   *uuid.UUID `json:"-"`
 }
 
 // AuditExecuteResponse 审核执行响应
@@ -168,21 +171,24 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 	}
 
 	logID = uuid.New()
-	now := time.Now()
+	now := apptime.Now()
 	logEntry := &model.AuditLog{
-		ID:             logID,
-		TenantID:       tenantID,
-		UserID:         userID,
-		ProcessID:      req.ProcessID,
-		Title:          req.Title,
-		ProcessType:    req.ProcessType,
-		Status:         model.JobStatusPending,
-		Recommendation: "",
-		Score:          0,
-		AuditResult:    datatypes.JSON([]byte("{}")),
-		TriggerSource:  trigger,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		ID:                 logID,
+		TenantID:           tenantID,
+		UserID:             userID,
+		ProcessID:          req.ProcessID,
+		Title:              req.Title,
+		ProcessType:        req.ProcessType,
+		Status:             model.JobStatusPending,
+		Recommendation:     "",
+		Score:              0,
+		AuditResult:        datatypes.JSON([]byte("{}")),
+		TriggerSource:      trigger,
+		TriggerDetail:      req.TriggerDetail,
+		AttemptFingerprint: req.AttemptFingerprint,
+		ScheduleConfigID:   req.ScheduleConfigID,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 	if err := s.auditLogRepo.Create(logEntry); err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "审核日志写入失败")
@@ -284,7 +290,7 @@ func (s *AuditExecuteService) applyStaleAuditTimeout(c *gin.Context, log *model.
 		return nil, nil
 	}
 	switch log.Status {
-	case model.JobStatusCompleted, model.JobStatusFailed:
+	case model.JobStatusCompleted, model.JobStatusFailed, model.JobStatusCancelled:
 		return log, nil
 	}
 	if time.Since(log.CreatedAt) <= auditJobMaxAge {
@@ -323,10 +329,13 @@ func (s *AuditExecuteService) FailStaleAuditJobs(ctx context.Context) (int64, er
 	return res.RowsAffected, res.Error
 }
 
-// updateAuditLogIfNotCancelled 用户已中止（failed）时不再被后续阶段覆盖，避免 Cancel 后任务仍写完成为 completed。
+// updateAuditLogIfNotCancelled 用户中止或定时配置取消后不再被后续阶段覆盖。
 func (s *AuditExecuteService) updateAuditLogIfNotCancelled(tenantID, auditLogID uuid.UUID, updates map[string]interface{}) (int64, error) {
 	res := s.db.Model(&model.AuditLog{}).
-		Where("id = ? AND tenant_id = ? AND status NOT IN ?", auditLogID, tenantID, []string{model.JobStatusFailed}).
+		Where("id = ? AND tenant_id = ? AND status NOT IN ?", auditLogID, tenantID, []string{
+			model.JobStatusFailed,
+			model.JobStatusCancelled,
+		}).
 		Updates(updates)
 	return res.RowsAffected, res.Error
 }
@@ -513,8 +522,10 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 	bindLLMProcessContext(reasoningReq, req.ProcessID, req.Title, auditLogID)
 
 	n, err = s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
-		"status":     model.JobStatusReasoning,
-		"updated_at": time.Now(),
+		"status":              model.JobStatusReasoning,
+		"attempt_fingerprint": stableJSONFingerprint(parseOAContextAnchor(jobAnchor)),
+		"oa_context_anchor":   jobAnchor,
+		"updated_at":          apptime.Now(),
 	})
 	if err != nil {
 		return err

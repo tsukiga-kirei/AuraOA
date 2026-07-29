@@ -36,6 +36,16 @@ func main() {
 	if err := loadConfig(); err != nil {
 		log.Fatalf("加载配置文件失败: %v", err)
 	}
+	ginMode := strings.TrimSpace(os.Getenv(gin.EnvGinMode))
+	if ginMode == "" {
+		ginMode = strings.TrimSpace(viper.GetString("server.mode"))
+	}
+	switch ginMode {
+	case gin.DebugMode, gin.TestMode, gin.ReleaseMode:
+		gin.SetMode(ginMode)
+	default:
+		gin.SetMode(gin.ReleaseMode)
+	}
 	if err := apptime.Configure(viper.GetString("app.timezone")); err != nil {
 		log.Fatalf("初始化应用时区失败: %v", err)
 	}
@@ -337,6 +347,7 @@ func loadConfig() error {
 	viper.SetDefault("migrations.enabled", true)
 	viper.SetDefault("migrations.path", "")
 	viper.SetDefault("app.timezone", apptime.DefaultTimeZone)
+	viper.SetDefault("server.mode", gin.ReleaseMode)
 
 	// 缓存配置默认值
 	viper.SetDefault("cache.enabled", true)

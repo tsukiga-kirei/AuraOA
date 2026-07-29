@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -145,12 +146,22 @@ func (s *AIModelCallerService) ChatWithFallback(
 			return resp, nil
 		}
 		lastErr = err
-		pkglogger.Global().Warn("主模型调用失败，准备重试",
+		adjusted, adjustedMaxTokens := adjustMaxTokensForContextError(req, err)
+		retryable := adjusted || isRetryableAIError(err)
+		pkglogger.Global().Warn("主模型调用失败",
 			zap.Int("attempt", i+1),
 			zap.Int("maxRetries", retryCount),
 			zap.String("model", primaryCfg.ModelName),
+			zap.String("processID", req.ProcessID),
+			zap.String("businessLogID", optionalUUIDString(req.BusinessLogID)),
+			zap.Bool("retryable", retryable),
+			zap.Bool("maxTokensAdjusted", adjusted),
+			zap.Int("adjustedMaxTokens", adjustedMaxTokens),
 			zap.Error(err),
 		)
+		if !retryable {
+			break
+		}
 		if i < retryCount-1 {
 			// 指数退避: 1s, 2s, 4s ...
 			time.Sleep(time.Duration(1<<i) * time.Second)
@@ -158,10 +169,12 @@ func (s *AIModelCallerService) ChatWithFallback(
 	}
 
 	// ── 主模型全部失败，尝试备用模型 ──
-	if fallbackCfg == nil {
+	if fallbackCfg == nil || sameAIModelRoute(primaryCfg, fallbackCfg) {
 		pkglogger.Global().Error("主模型调用全部失败且无备用模型",
 			zap.String("model", primaryCfg.ModelName),
 			zap.Int("retries", retryCount),
+			zap.String("processID", req.ProcessID),
+			zap.Bool("fallbackSameAsPrimary", fallbackCfg != nil),
 			zap.Error(lastErr),
 		)
 		return nil, lastErr
@@ -183,12 +196,22 @@ func (s *AIModelCallerService) ChatWithFallback(
 			return resp, nil
 		}
 		lastErr = err
-		pkglogger.Global().Warn("备用模型调用失败，准备重试",
+		adjusted, adjustedMaxTokens := adjustMaxTokensForContextError(req, err)
+		retryable := adjusted || isRetryableAIError(err)
+		pkglogger.Global().Warn("备用模型调用失败",
 			zap.Int("attempt", i+1),
 			zap.Int("maxRetries", retryCount),
 			zap.String("model", fallbackCfg.ModelName),
+			zap.String("processID", req.ProcessID),
+			zap.String("businessLogID", optionalUUIDString(req.BusinessLogID)),
+			zap.Bool("retryable", retryable),
+			zap.Bool("maxTokensAdjusted", adjusted),
+			zap.Int("adjustedMaxTokens", adjustedMaxTokens),
 			zap.Error(err),
 		)
+		if !retryable {
+			break
+		}
 		if i < retryCount-1 {
 			time.Sleep(time.Duration(1<<i) * time.Second)
 		}
@@ -200,8 +223,88 @@ func (s *AIModelCallerService) ChatWithFallback(
 		zap.Int("retriesPerModel", retryCount),
 		zap.Error(lastErr),
 	)
-	return nil, newServiceError(errcode.ErrAICallFailed,
-		fmt.Sprintf("主模型和备用模型均调用失败（各重试 %d 次）", retryCount))
+	return nil, newServiceError(
+		errcode.ErrAICallFailed,
+		fmt.Sprintf("主模型和备用模型均调用失败：%s", truncate(lastErr.Error(), 1200)),
+	)
+}
+
+var contextLengthErrorPattern = regexp.MustCompile(
+	`(?i)maximum context length is ([0-9]+) tokens.*requested ([0-9]+) output tokens.*at least ([0-9]+) input tokens`,
+)
+
+func adjustMaxTokensForContextError(req *ai.ChatRequest, err error) (bool, int) {
+	if req == nil || err == nil {
+		return false, 0
+	}
+	matches := contextLengthErrorPattern.FindStringSubmatch(err.Error())
+	if len(matches) != 4 {
+		return false, 0
+	}
+	contextWindow, parseContextErr := strconv.Atoi(matches[1])
+	requestedOutput, parseOutputErr := strconv.Atoi(matches[2])
+	inputTokens, parseInputErr := strconv.Atoi(matches[3])
+	if parseContextErr != nil || parseOutputErr != nil || parseInputErr != nil {
+		return false, 0
+	}
+	// 保留少量安全余量，避免服务端“至少 N 个输入 token”的估值再次越界。
+	available := contextWindow - inputTokens - 512
+	if available < 512 {
+		return false, 0
+	}
+	current := req.MaxTokens
+	if current <= 0 {
+		current = requestedOutput
+	}
+	if available >= current {
+		return false, 0
+	}
+	req.MaxTokens = available
+	return true, available
+}
+
+func isRetryableAIError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	nonRetryableMarkers := []string{
+		"状态码 400",
+		"status code 400",
+		"maximum context length",
+		"context_length_exceeded",
+		"input_tokens",
+		"badrequesterror",
+		"api key 无效",
+		"unauthorized",
+	}
+	for _, marker := range nonRetryableMarkers {
+		if strings.Contains(message, strings.ToLower(marker)) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameAIModelRoute(primary, fallback *model.AIModelConfig) bool {
+	if primary == nil || fallback == nil {
+		return false
+	}
+	if primary.ID == fallback.ID {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(primary.Provider), strings.TrimSpace(fallback.Provider)) &&
+		strings.EqualFold(strings.TrimSpace(primary.ModelName), strings.TrimSpace(fallback.ModelName)) &&
+		strings.TrimRight(strings.TrimSpace(primary.Endpoint), "/") ==
+			strings.TrimRight(strings.TrimSpace(fallback.Endpoint), "/") &&
+		primary.APIKey == fallback.APIKey
+}
+
+func optionalUUIDString(id *uuid.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
 }
 
 // pythonAIRequest 发往 Python AI 服务的请求体，包含提示词和完整模型配置。

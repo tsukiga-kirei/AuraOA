@@ -99,7 +99,7 @@ const embedHeaderStatus = computed(() => {
       spin: false,
     }
   }
-  if (r.status === 'failed' || r.parse_error) {
+  if (r.status === 'failed' || r.status === 'cancelled' || r.parse_error) {
     return {
       label: t('embed.statusFailed'),
       color: 'var(--color-danger)',
@@ -217,6 +217,7 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual') {
         process_type: processInfo.value?.process_type,
         title: processInfo.value?.title,
         trigger_source: trigger,
+        trigger_detail: trigger === 'embed_manual' ? 'manual' : 'visible_open',
       },
       (st) => {
         mergeAuditProgress(st)
@@ -465,7 +466,7 @@ onBeforeUnmount(() => {
         </div>
 
         <template v-else-if="currentResult">
-          <template v-if="currentResult.status === 'failed'">
+          <template v-if="currentResult.status === 'failed' || currentResult.status === 'cancelled'">
             <div class="result-banner result-banner--error">
               <WarningOutlined class="result-banner-icon" style="color: var(--color-danger);" />
               <div class="result-banner-info">

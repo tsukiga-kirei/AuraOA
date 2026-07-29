@@ -47,11 +47,16 @@ PUT /api/tenant/summary/configs/:id
 | `scheduled_refresh_interval_minutes` | `5` | 检查频率，支持 5、10、15、30、60 分钟 |
 
 保存配置后，系统会立即同步对应的 `embed_refresh_schedules` 持久化调度记录；关闭定时检查
-会停用并移除内存 Cron，不需要等待配置轮询。
+会停用并移除内存 Cron、清除该配置尚未触发的 Redis 检查，并将已入库但未领取的总结任务标记为
+`cancelled`。已经开始执行的任务不会被强制中断。
 
 自动刷新只调用发生变化的启用总结块；未变化的块沿用最近一次有效结果。手动“重新总结”
 仍会执行全部启用块。
 流程级定时检查只发现候选流程，所有总结块均未变化时不会创建总结或 LLM 日志。
+任务日志通过 `trigger_detail` 区分 `visible_open`、`manual`、`save_or_submit` 和
+`scheduled_scan`；自动任务失败后会保存 `attempt_fingerprint`，相同指纹不会被自动来源反复执行。
+worker 会定期接管旧容器遗留的 Redis pending 消息；数据库原子领取保证已完成、失败或取消的记录
+只会被确认清理，不会再次调用 AI。
 
 ---
 

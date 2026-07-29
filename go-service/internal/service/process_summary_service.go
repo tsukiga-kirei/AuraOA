@@ -87,10 +87,12 @@ func NewProcessSummaryService(
 }
 
 type SummaryExecuteRequest struct {
-	ProcessID     string `json:"process_id" binding:"required"`
-	ProcessType   string `json:"process_type"`
-	Title         string `json:"title"`
-	TriggerSource string `json:"trigger_source"`
+	ProcessID        string     `json:"process_id" binding:"required"`
+	ProcessType      string     `json:"process_type"`
+	Title            string     `json:"title"`
+	TriggerSource    string     `json:"trigger_source"`
+	TriggerDetail    string     `json:"trigger_detail"`
+	ScheduleConfigID *uuid.UUID `json:"-"`
 }
 
 type SummaryExecuteResponse struct {
@@ -107,18 +109,20 @@ type SummaryExecuteResponse struct {
 }
 
 type SummaryEmbedContextResponse struct {
-	Supported         bool                      `json:"supported"`
-	Reason            string                    `json:"reason,omitempty"`
-	Message           string                    `json:"message,omitempty"`
-	Process           *oa.ProcessRequestSummary `json:"process,omitempty"`
-	EmbedEnabled      bool                      `json:"embed_enabled"`
-	HasSummary        bool                      `json:"has_summary"`
-	Stale             bool                      `json:"stale"`
-	StaleBlockIDs     []string                  `json:"stale_block_ids,omitempty"`
-	ShouldAutoSummary bool                      `json:"should_auto_summary"`
-	LastSummaryAt     string                    `json:"last_summary_at,omitempty"`
-	RunningJobID      string                    `json:"running_job_id,omitempty"`
-	SummaryResult     map[string]interface{}    `json:"summary_result,omitempty"`
+	Supported          bool                      `json:"supported"`
+	Reason             string                    `json:"reason,omitempty"`
+	Message            string                    `json:"message,omitempty"`
+	Process            *oa.ProcessRequestSummary `json:"process,omitempty"`
+	EmbedEnabled       bool                      `json:"embed_enabled"`
+	HasSummary         bool                      `json:"has_summary"`
+	Stale              bool                      `json:"stale"`
+	StaleBlockIDs      []string                  `json:"stale_block_ids,omitempty"`
+	ShouldAutoSummary  bool                      `json:"should_auto_summary"`
+	LastSummaryAt      string                    `json:"last_summary_at,omitempty"`
+	RunningJobID       string                    `json:"running_job_id,omitempty"`
+	SummaryResult      map[string]interface{}    `json:"summary_result,omitempty"`
+	AutoRetryBlocked   bool                      `json:"auto_retry_blocked"`
+	CurrentFingerprint string                    `json:"-"`
 }
 
 type summaryStreamChunk struct {
@@ -184,8 +188,16 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 	}
 	if running, _ := s.logRepo.GetRunningByProcessID(c, processID); running != nil {
 		resp.RunningJobID = running.ID.String()
-		resp.SummaryResult = s.buildSummaryResultFromLog(running)
-		resp.HasSummary = true
+		if snap, snapErr := s.snapshotRepo.GetByProcessID(c, processID); snapErr == nil && snap != nil {
+			if latest, latestErr := s.logRepo.GetByID(c, snap.LatestValidLogID); latestErr == nil {
+				resp.HasSummary = true
+				resp.LastSummaryAt = apptime.FormatRFC3339(latest.UpdatedAt)
+				resp.SummaryResult = s.buildSummaryResultFromLog(latest)
+			}
+		}
+		if !resp.HasSummary {
+			resp.SummaryResult = s.buildSummaryResultFromLog(running)
+		}
 		return resp, nil
 	}
 
@@ -206,29 +218,54 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 		}
 	}
 
+	latestAttempt, latestErr := s.logRepo.GetLatestByProcessID(c, processID)
+	if latestErr != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询最近总结尝试失败")
+	}
+	if resp.HasSummary && strings.EqualFold(c.Query("prefer_cached"), "true") {
+		if latestAttempt != nil &&
+			latestAttempt.Status == model.JobStatusFailed &&
+			(latestLog == nil || latestAttempt.CreatedAt.After(latestLog.CreatedAt)) {
+			resp.AutoRetryBlocked = latestAttempt.AttemptFingerprint != ""
+			resp.SummaryResult = s.buildSummaryResultFromLog(latestAttempt)
+		}
+		return resp, nil
+	}
+
 	currentData, currentAnchor, err := s.fetchCurrentOAState(c, tenantID, processID)
 	if err != nil {
 		return nil, err
 	}
 
 	embedCfg := parseSummaryEmbedConfig(config.EmbedConfig)
-	if !resp.HasSummary {
-		resp.ShouldAutoSummary = embedCfg.AutoSummaryOnOpen
-		return resp, nil
-	}
 	blocks := parseSummaryBlocks(config.SummaryBlocks)
 	if len(blocks) == 0 {
 		blocks = defaultSummaryBlocks()
 	}
 	currentDependencies := buildSummaryBlockDependencyFingerprints(blocks, currentData, currentAnchor, summary)
+	resp.CurrentFingerprint = stableJSONFingerprint(currentDependencies)
 	storedDependencies := map[string]SummaryBlockDependencyFingerprint{}
 	if latestLog != nil {
 		storedDependencies = parseSummaryBlockDependencies(latestLog.ProcessSnapshot)
 	}
-	changes := oa.CompareContextAnchors(storedAnchor, currentAnchor)
-	resp.StaleBlockIDs = changedSummaryBlockIDs(blocks, storedDependencies, currentDependencies, changes, embedCfg)
-	resp.Stale = len(resp.StaleBlockIDs) > 0
-	resp.ShouldAutoSummary = resp.Stale
+	if resp.HasSummary {
+		changes := oa.CompareContextAnchors(storedAnchor, currentAnchor)
+		resp.StaleBlockIDs = changedSummaryBlockIDs(blocks, storedDependencies, currentDependencies, changes, embedCfg)
+		resp.Stale = len(resp.StaleBlockIDs) > 0
+		resp.ShouldAutoSummary = resp.Stale
+	} else {
+		resp.ShouldAutoSummary = embedCfg.AutoSummaryOnOpen
+	}
+
+	if latestAttempt != nil &&
+		latestAttempt.Status == model.JobStatusFailed &&
+		latestAttempt.AttemptFingerprint != "" &&
+		latestAttempt.AttemptFingerprint == resp.CurrentFingerprint &&
+		(latestLog == nil || latestAttempt.CreatedAt.After(latestLog.CreatedAt)) {
+		resp.AutoRetryBlocked = true
+		resp.ShouldAutoSummary = false
+		resp.SummaryResult = s.buildSummaryResultFromLog(latestAttempt)
+	}
 	return resp, nil
 }
 
@@ -240,7 +277,8 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	if trigger != model.SummaryTriggerEmbedAuto && trigger != model.SummaryTriggerEmbedManual {
 		return nil, newServiceError(errcode.ErrParamValidation, "嵌入总结 trigger_source 无效")
 	}
-	tenantID, _, err := s.extractIDs(c)
+	detail, priority := normalizeSummaryTriggerDetail(trigger, req.TriggerDetail)
+	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
 	}
@@ -259,6 +297,39 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	}
 	defer release()
 
+	if running, runningErr := s.logRepo.GetRunningByProcessID(c, req.ProcessID); runningErr != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询进行中的总结任务失败")
+	} else if running != nil {
+		if model.IsSummaryInteractivePriority(priority) &&
+			running.Status == model.JobStatusPending &&
+			running.Priority < priority {
+			if err := s.logRepo.UpdateFields(c, running.ID, map[string]interface{}{
+				"user_id":            userID,
+				"trigger_source":     trigger,
+				"trigger_detail":     detail,
+				"priority":           priority,
+				"schedule_config_id": nil,
+				"updated_at":         apptime.Now(),
+			}); err != nil {
+				return nil, newServiceError(errcode.ErrDatabase, "提升总结任务优先级失败")
+			}
+			if _, err := EnqueueSummaryJob(
+				c.Request.Context(),
+				s.rdb,
+				running.ID,
+				tenantID,
+				userID,
+				priority,
+			); err != nil {
+				return nil, newServiceError(errcode.ErrRedisConn, "提升总结任务入队失败: "+err.Error())
+			}
+			running.TriggerSource = trigger
+			running.TriggerDetail = detail
+			running.Priority = priority
+		}
+		return s.summaryLogToResponse(running), nil
+	}
+
 	ctxResp, err := s.GetEmbedContext(c, req.ProcessID)
 	if err != nil {
 		return nil, err
@@ -266,10 +337,10 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	if !ctxResp.Supported || !ctxResp.EmbedEnabled {
 		return nil, newServiceError(errcode.ErrNoProcessConfig, ctxResp.Message)
 	}
-	if ctxResp.RunningJobID != "" {
-		return nil, newServiceError(errcode.ErrResourceConflict, "该流程已有进行中的总结任务")
-	}
 	if trigger == model.SummaryTriggerEmbedAuto && !ctxResp.ShouldAutoSummary {
+		if ctxResp.AutoRetryBlocked {
+			return nil, newServiceError(errcode.ErrResourceConflict, "相同数据和提示词的自动总结已经失败，请手动重新总结")
+		}
 		return nil, newServiceError(errcode.ErrResourceConflict, "未检测到需要自动刷新的总结块")
 	}
 	processType := req.ProcessType
@@ -285,15 +356,25 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	if processType == "" {
 		return nil, newServiceError(errcode.ErrParamValidation, "无法识别流程类型")
 	}
-	logID, tenantID, userID, createdAt, err := s.createPendingSummaryLog(c, req.ProcessID, processType, title, trigger)
+	logID, tenantID, userID, createdAt, err := s.createPendingSummaryLog(
+		c,
+		req.ProcessID,
+		processType,
+		title,
+		trigger,
+		detail,
+		priority,
+		ctxResp.CurrentFingerprint,
+		req.ScheduleConfigID,
+	)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := EnqueueSummaryJob(c.Request.Context(), s.rdb, logID, tenantID, userID); err != nil {
+	if _, err := EnqueueSummaryJob(c.Request.Context(), s.rdb, logID, tenantID, userID, priority); err != nil {
 		_ = s.logRepo.UpdateFields(c, logID, map[string]interface{}{
 			"status":        model.JobStatusFailed,
 			"error_message": "任务入队失败: " + err.Error(),
-			"updated_at":    time.Now(),
+			"updated_at":    apptime.Now(),
 		})
 		return nil, newServiceError(errcode.ErrRedisConn, "总结任务入队失败: "+err.Error())
 	}
@@ -306,7 +387,13 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	}, nil
 }
 
-func (s *ProcessSummaryService) createPendingSummaryLog(c *gin.Context, processID, processType, title, trigger string) (uuid.UUID, uuid.UUID, uuid.UUID, time.Time, error) {
+func (s *ProcessSummaryService) createPendingSummaryLog(
+	c *gin.Context,
+	processID, processType, title, trigger, detail string,
+	priority int,
+	attemptFingerprint string,
+	scheduleConfigID *uuid.UUID,
+) (uuid.UUID, uuid.UUID, uuid.UUID, time.Time, error) {
 	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, err
@@ -332,20 +419,24 @@ func (s *ProcessSummaryService) createPendingSummaryLog(c *gin.Context, processI
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrPermissionDenied, fmt.Sprintf("流程 '%s' 未启用 OA 嵌入总结", processType))
 	}
 	id := uuid.New()
-	now := time.Now()
+	now := apptime.Now()
 	row := &model.ProcessSummaryLog{
-		ID:              id,
-		TenantID:        tenantID,
-		UserID:          userID,
-		ProcessID:       processID,
-		Title:           title,
-		ProcessType:     processType,
-		Status:          model.JobStatusPending,
-		SummaryResult:   datatypes.JSON([]byte("{}")),
-		ProcessSnapshot: datatypes.JSON([]byte("{}")),
-		TriggerSource:   trigger,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		ID:                 id,
+		TenantID:           tenantID,
+		UserID:             userID,
+		ProcessID:          processID,
+		Title:              title,
+		ProcessType:        processType,
+		Status:             model.JobStatusPending,
+		SummaryResult:      datatypes.JSON([]byte("{}")),
+		ProcessSnapshot:    datatypes.JSON([]byte("{}")),
+		TriggerSource:      trigger,
+		TriggerDetail:      detail,
+		Priority:           priority,
+		AttemptFingerprint: attemptFingerprint,
+		ScheduleConfigID:   scheduleConfigID,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 	if err := s.logRepo.Create(row); err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrDatabase, "总结日志写入失败")
@@ -353,18 +444,26 @@ func (s *ProcessSummaryService) createPendingSummaryLog(c *gin.Context, processI
 	return id, tenantID, userID, now, nil
 }
 
-func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLogID, tenantID, userID uuid.UUID) error {
+func (s *ProcessSummaryService) processSummaryJob(
+	ctx context.Context,
+	summaryLogID, tenantID, userID uuid.UUID,
+	interactive bool,
+) error {
 	ctx, cancel := context.WithTimeout(ctx, summaryProcessTimeout)
 	defer cancel()
 	c := s.workerGinContext(ctx, tenantID, userID)
+	claimed, err := s.logRepo.ClaimPending(c, summaryLogID, interactive)
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return nil
+	}
 	logEntry, err := s.logRepo.GetByID(c, summaryLogID)
 	if err != nil {
 		return err
 	}
-	if !isSummaryJobRunningStatus(logEntry.Status) {
-		return nil
-	}
-	startTime := time.Now()
+	startTime := apptime.Now()
 	tenant, err := s.tenantRepo.FindByID(tenantID)
 	if err != nil {
 		s.markSummaryFailedDB(tenantID, summaryLogID, "获取租户信息失败")
@@ -386,10 +485,6 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 		blocks = defaultSummaryBlocks()
 	}
 
-	if err := s.logRepo.UpdateFields(c, summaryLogID, map[string]interface{}{"status": model.JobStatusAssembling, "updated_at": time.Now()}); err != nil {
-		return err
-	}
-
 	unionFieldSet := buildSummaryUnionFieldSet(blocks)
 	processData, err := s.fetchOAData(c, tenant, logEntry.ProcessID, unionFieldSet, false)
 	if err != nil {
@@ -403,6 +498,16 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 		return err
 	}
 	currentDependencies := buildSummaryBlockDependencyFingerprints(blocks, processData, currentAnchor, processSummary)
+	attemptSnapshot, _ := json.Marshal(map[string]interface{}{
+		"block_dependencies": currentDependencies,
+	})
+	if err := s.logRepo.UpdateFields(c, summaryLogID, map[string]interface{}{
+		"attempt_fingerprint": stableJSONFingerprint(currentDependencies),
+		"process_snapshot":    datatypes.JSON(attemptSnapshot),
+		"updated_at":          apptime.Now(),
+	}); err != nil {
+		return err
+	}
 
 	var previousLog *model.ProcessSummaryLog
 	if snap, snapErr := s.snapshotRepo.GetByProcessID(c, logEntry.ProcessID); snapErr == nil && snap != nil {
@@ -452,7 +557,7 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 		sanitize.SanitizeFlowSnapshot(flowSnapshot)
 	}
 
-	if err := s.logRepo.UpdateFields(c, summaryLogID, map[string]interface{}{"status": model.JobStatusReasoning, "updated_at": time.Now()}); err != nil {
+	if err := s.logRepo.UpdateFields(c, summaryLogID, map[string]interface{}{"status": model.JobStatusReasoning, "updated_at": apptime.Now()}); err != nil {
 		return err
 	}
 
@@ -469,7 +574,7 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			blockStart := time.Now()
+			blockStart := apptime.Now()
 			fieldSet := buildSummaryBlockFieldSet(block)
 			externalContextText := ""
 			if s.externalCtx != nil && len(block.ContextMounts) > 0 {
@@ -570,7 +675,7 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 		parseErrors = append(parseErrors, "未生成任何启用的总结块")
 	}
 
-	if err := s.logRepo.UpdateFields(c, summaryLogID, map[string]interface{}{"status": model.JobStatusExtracting, "updated_at": time.Now()}); err != nil {
+	if err := s.logRepo.UpdateFields(c, summaryLogID, map[string]interface{}{"status": model.JobStatusExtracting, "updated_at": apptime.Now()}); err != nil {
 		return err
 	}
 
@@ -596,7 +701,7 @@ func (s *ProcessSummaryService) processSummaryJob(ctx context.Context, summaryLo
 		"raw_content":       rawStored,
 		"parse_error":       parseErrText,
 		"oa_context_anchor": datatypes.JSON(anchorJSON),
-		"updated_at":        time.Now(),
+		"updated_at":        apptime.Now(),
 	}); err != nil {
 		s.markSummaryFailedDB(tenantID, summaryLogID, "保存总结结果失败: "+err.Error())
 		return err
@@ -906,12 +1011,12 @@ func (s *ProcessSummaryService) markSummaryFailedDB(tenantID, id uuid.UUID, mess
 		Updates(map[string]interface{}{
 			"status":        model.JobStatusFailed,
 			"error_message": message,
-			"updated_at":    time.Now(),
+			"updated_at":    apptime.Now(),
 		}).Error
 }
 
 func (s *ProcessSummaryService) FailStaleSummaryJobs(ctx context.Context) (int64, error) {
-	cutoff := time.Now().Add(-summaryJobMaxAge)
+	cutoff := apptime.Now().Add(-summaryJobMaxAge)
 	res := s.db.WithContext(ctx).Model(&model.ProcessSummaryLog{}).
 		Where("status IN ? AND updated_at < ?", []string{
 			model.JobStatusPending,
@@ -922,7 +1027,7 @@ func (s *ProcessSummaryService) FailStaleSummaryJobs(ctx context.Context) (int64
 		Updates(map[string]interface{}{
 			"status":        model.JobStatusFailed,
 			"error_message": summaryErrStaleMessage,
-			"updated_at":    time.Now(),
+			"updated_at":    apptime.Now(),
 		})
 	return res.RowsAffected, res.Error
 }
@@ -950,6 +1055,23 @@ func normalizeSummaryTrigger(source, fallback string) string {
 		return source
 	default:
 		return fallback
+	}
+}
+
+func normalizeSummaryTriggerDetail(trigger, detail string) (string, int) {
+	if trigger == model.SummaryTriggerEmbedManual {
+		return model.SummaryTriggerDetailManual, model.SummaryPriorityManual
+	}
+	switch strings.TrimSpace(detail) {
+	case model.SummaryTriggerDetailVisibleOpen:
+		return model.SummaryTriggerDetailVisibleOpen, model.SummaryPriorityVisible
+	case model.SummaryTriggerDetailScheduled:
+		return model.SummaryTriggerDetailScheduled, model.SummaryPriorityScheduled
+	case model.SummaryTriggerDetailSaveSubmit:
+		return model.SummaryTriggerDetailSaveSubmit, model.SummaryPrioritySaveSubmit
+	default:
+		// 兼容旧版可见嵌入页：未传详细来源的自动请求按前台打开处理。
+		return model.SummaryTriggerDetailVisibleOpen, model.SummaryPriorityVisible
 	}
 }
 

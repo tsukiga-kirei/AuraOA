@@ -1,6 +1,6 @@
 export interface EmbedRefreshEventRequest {
   process_id: string
-  action: 'page_open' | 'save' | 'submit' | 'save_or_submit'
+  action: 'save_or_submit'
   event_id?: string
 }
 
