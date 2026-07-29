@@ -1,5 +1,7 @@
 server:
   port: 8080
+  # Gin 运行模式：生产使用 release；本地可通过 GIN_MODE=debug 覆盖。
+  mode: release
 
 app:
   # 应用统一时区（IANA 名称），影响日志时间戳、Cron 调度、业务日期边界、导出文件名等。
@@ -37,7 +39,8 @@ attachment:
   mineru_timeout_seconds: 300
 
 workers:
-  # 流程总结 Redis Stream worker 并发数；附件识别会占用 MinerU，生产建议先保持 1。
+  # 流程总结后台/定时队列并发数；可见页与手动总结另有 1 个保留交互 worker。
+  # 附件识别会占用 MinerU，生产建议后台并发先保持 1。
   # 环境变量 WORKERS_SUMMARY_CONCURRENCY。
   summary_concurrency: 1
 

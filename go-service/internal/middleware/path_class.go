@@ -7,6 +7,8 @@ func IsLowValuePollingPath(path string) bool {
 	pollingPrefixes := []string{
 		"/api/audit/jobs/",
 		"/api/archive/jobs/",
+		"/api/embed/jobs/",
+		"/api/embed/summary/jobs/",
 		"/api/auth/notifications/unread-count",
 		"/api/audit/stats",
 		"/api/archive/stats",

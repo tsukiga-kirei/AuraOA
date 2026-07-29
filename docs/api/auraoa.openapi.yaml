@@ -5579,6 +5579,11 @@ paths:
                 trigger_source:
                   type: string
                   example: embed_auto
+                trigger_detail:
+                  type: string
+                  enum:
+                  - visible_open
+                  - manual
   /api/embed/jobs/{id}:
     get:
       summary: 查询嵌入审核任务状态
@@ -5662,6 +5667,13 @@ paths:
         schema:
           type: string
         description: OA 流程 ID
+      - name: prefer_cached
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+        description: 可见页已有成功结果时直接返回，不执行 OA 变化扫描
   /api/embed/summary/execute:
     post:
       summary: 触发嵌入流程总结
@@ -5702,6 +5714,16 @@ paths:
               properties:
                 process_id:
                   type: string
+                trigger_source:
+                  type: string
+                  enum:
+                  - summary_embed_auto
+                  - summary_embed_manual
+                trigger_detail:
+                  type: string
+                  enum:
+                  - visible_open
+                  - manual
   /api/embed/summary/jobs/{id}:
     get:
       summary: 查询嵌入总结任务状态
@@ -6088,6 +6110,7 @@ components:
           - submit
           - save_or_submit
           default: save_or_submit
+          description: 新版脚本只发送 save_or_submit；save/submit 会归一化，page_open 仅兼容确认且不创建任务
         event_id:
           type: string
     EmbedRefreshEventResponse:
@@ -6119,6 +6142,9 @@ components:
           type: boolean
         should_auto_audit:
           type: boolean
+        auto_retry_blocked:
+          type: boolean
+          description: 最近一次相同依赖指纹的自动审核已失败，本次不会自动重试
         last_audit_at:
           type: string
           format: date-time
@@ -6152,6 +6178,9 @@ components:
           format: uuid
         summary_result:
           type: object
+        auto_retry_blocked:
+          type: boolean
+          description: 最近一次相同依赖指纹的自动总结已失败，本次不会自动重试
     AuditRuleRequest:
       type: object
     BatchDeleteRulesRequest:

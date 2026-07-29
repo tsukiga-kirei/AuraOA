@@ -14,6 +14,7 @@ export interface EmbedSummaryContextResponse {
   last_summary_at?: string
   running_job_id?: string
   summary_result?: SummaryResult | null
+  auto_retry_blocked?: boolean
 }
 
 export interface EmbedSummaryExecuteRequest {
@@ -21,6 +22,7 @@ export interface EmbedSummaryExecuteRequest {
   process_type?: string
   title?: string
   trigger_source?: 'summary_embed_auto' | 'summary_embed_manual'
+  trigger_detail?: 'visible_open' | 'manual'
 }
 
 export const useEmbedSummaryApi = () => {
@@ -42,7 +44,7 @@ export const useEmbedSummaryApi = () => {
   }
 
   async function getSummaryContext(processId: string): Promise<EmbedSummaryContextResponse> {
-    const q = new URLSearchParams({ process_id: processId })
+    const q = new URLSearchParams({ process_id: processId, prefer_cached: 'true' })
     return await embedSummaryFetch<EmbedSummaryContextResponse>(`/api/embed/summary/context?${q.toString()}`)
   }
 
@@ -54,7 +56,7 @@ export const useEmbedSummaryApi = () => {
     while (Date.now() < deadline) {
       const st = await embedSummaryFetch<SummaryResult>(`/api/embed/summary/jobs/${encodeURIComponent(jobId)}`)
       onProgress?.(st)
-      if (st.status === 'completed' || st.status === 'failed') {
+      if (st.status === 'completed' || st.status === 'failed' || st.status === 'cancelled') {
         return st
       }
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS))
@@ -70,7 +72,7 @@ export const useEmbedSummaryApi = () => {
       method: 'POST',
       body: req,
     })
-    if (submit.status !== 'pending' || !submit.id) {
+    if (!['pending', 'assembling', 'reasoning', 'extracting'].includes(submit.status) || !submit.id) {
       return submit
     }
     onProgress?.(submit)

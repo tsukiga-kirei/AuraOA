@@ -448,7 +448,7 @@ const buildEmbedNotifyScript = (target: 'all' | 'audit' | 'summary', token: stri
   const cfg = getEmbedScriptConfig(target)
   const urlComment = cfg.urls.map(url => ` * - ${url}`).join('\n')
   return `/**
- * 泛微 Ecology9 — AuraOA 嵌入页：传递上下文并在打开、保存、提交时安排后台检查
+ * 泛微 Ecology9 — AuraOA 嵌入页：传递打开上下文，并在保存、提交时安排后台检查
  *
  * 导出范围：${cfg.label}
  * 对应嵌入地址：
@@ -602,7 +602,7 @@ ${urlComment}
             callback();
           };
           pendingRunnerAcks[eventId] = release;
-          setTimeout(release, 400);
+          setTimeout(release, 150);
           try {
             notifyAuraRunner('save_or_submit', eventId);
           } catch (e) {
@@ -670,7 +670,6 @@ ${urlComment}
 
     window.addEventListener('hashchange', function () {
       notifyAuraIframes();
-      notifyAuraRunner('page_open');
     });
   }
 

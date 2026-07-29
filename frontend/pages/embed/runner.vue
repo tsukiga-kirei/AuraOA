@@ -31,7 +31,7 @@ async function dispatch(action: EmbedRefreshEventRequest['action'], eventId = cr
       event_id: eventId,
     })
   } catch {
-    // runner 不能影响 OA 保存或提交；分钟级定时扫描和可见 iframe 会继续兜底。
+    // runner 不能影响 OA 保存或提交；流程级定时扫描和可见 iframe 会继续兜底。
   } finally {
     window.parent.postMessage({
       type: 'aura-runner-event-ack',
@@ -47,7 +47,6 @@ function handleParentMessage(event: MessageEvent) {
     const nextProcessId = String(data.requestid || '').trim()
     if (nextProcessId && nextProcessId !== processId.value) {
       processId.value = nextProcessId
-      if (ready.value) void dispatch('page_open')
     }
     return
   }
@@ -73,7 +72,6 @@ onMounted(async () => {
   }
 
   ready.value = true
-  await dispatch('page_open')
   const queued = pendingActions.splice(0)
   for (const item of queued) {
     await dispatch(item.action, item.eventId)

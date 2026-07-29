@@ -1,9 +1,13 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
+
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/ai"
 )
 
 func TestCronParserSupportsFiveAndSixFields(t *testing.T) {
@@ -18,6 +22,49 @@ func TestCronParserSupportsFiveAndSixFields(t *testing.T) {
 		if ParseNextRun(expr) == nil {
 			t.Fatalf("表达式 %q 应能计算下次执行时间", expr)
 		}
+	}
+}
+
+func TestNormalizeSummaryTriggerDetail(t *testing.T) {
+	detail, priority := normalizeSummaryTriggerDetail(
+		model.SummaryTriggerEmbedAuto,
+		model.SummaryTriggerDetailScheduled,
+	)
+	if detail != model.SummaryTriggerDetailScheduled || priority != model.SummaryPriorityScheduled {
+		t.Fatalf("定时总结来源或优先级错误: detail=%s priority=%d", detail, priority)
+	}
+	detail, priority = normalizeSummaryTriggerDetail(
+		model.SummaryTriggerEmbedManual,
+		model.SummaryTriggerDetailScheduled,
+	)
+	if detail != model.SummaryTriggerDetailManual || priority != model.SummaryPriorityManual {
+		t.Fatalf("手动总结必须覆盖来源并使用最高优先级: detail=%s priority=%d", detail, priority)
+	}
+}
+
+func TestAIErrorRetryClassification(t *testing.T) {
+	contextErr := errors.New("返回错误 (状态码 400): maximum context length; input_tokens")
+	if isRetryableAIError(contextErr) {
+		t.Fatal("上下文超限属于确定性 400 错误，不应重复调用")
+	}
+	if !isRetryableAIError(errors.New("connection reset by peer")) {
+		t.Fatal("临时网络错误应允许重试")
+	}
+}
+
+func TestAdjustMaxTokensForContextError(t *testing.T) {
+	req := &ai.ChatRequest{MaxTokens: 8192}
+	err := errors.New(
+		"maximum context length is 131072 tokens. However, you requested 8192 output tokens " +
+			"and your prompt contains at least 122881 input tokens",
+	)
+	adjusted, maxTokens := adjustMaxTokensForContextError(req, err)
+	if !adjusted || maxTokens != 7679 || req.MaxTokens != 7679 {
+		t.Fatalf("上下文超限应自动收缩输出预算，adjusted=%v max=%d req=%d", adjusted, maxTokens, req.MaxTokens)
+	}
+	adjusted, _ = adjustMaxTokensForContextError(req, err)
+	if adjusted {
+		t.Fatal("同一错误已调整到安全预算后不应再次调整")
 	}
 }
 
@@ -55,11 +102,14 @@ func TestNormalizeScheduledRefreshConfig(t *testing.T) {
 }
 
 func TestNormalizeEmbedRefreshAction(t *testing.T) {
-	if got := normalizeEmbedRefreshAction("submit"); got != "submit" {
-		t.Fatalf("合法事件动作不应改变: %s", got)
+	if got := normalizeEmbedRefreshAction("submit"); got != "save_or_submit" {
+		t.Fatalf("保存和提交应统一为 save_or_submit: %s", got)
 	}
 	if got := normalizeEmbedRefreshAction("unknown"); got != "save_or_submit" {
 		t.Fatalf("未知事件动作应回落 save_or_submit: %s", got)
+	}
+	if got := normalizeEmbedRefreshAction("page_open"); got != "page_open" {
+		t.Fatalf("旧版 page_open 应保留为兼容的忽略事件: %s", got)
 	}
 }
 

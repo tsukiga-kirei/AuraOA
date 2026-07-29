@@ -44,6 +44,7 @@ const progressStatusOrder: Record<string, number> = {
   extracting: 4,
   completed: 5,
   failed: 5,
+  cancelled: 5,
 }
 
 const summaryProgressSteps = computed(() => {
@@ -56,8 +57,8 @@ const summaryProgressSteps = computed(() => {
   ] as const
   const status = currentResult.value?.status || 'pending'
   const order = progressStatusOrder[status] ?? 0
-  return steps.filter(s => s.key !== 'pending').map((step, index) => {
-    const stepOrder = index + 1
+  return steps.map((step, index) => {
+    const stepOrder = index
     return {
       ...step,
       done: order > stepOrder || status === 'completed',
@@ -74,7 +75,7 @@ const headerStatus = computed(() => {
   if (isRunning.value) {
     return { label: t('embed.summary.status.running'), color: 'var(--color-primary)', bg: 'var(--color-primary-bg)', icon: LoadingOutlined, spin: true }
   }
-  if (currentResult.value?.status === 'failed') {
+  if (currentResult.value?.status === 'failed' || currentResult.value?.status === 'cancelled') {
     return { label: t('embed.summary.status.failed'), color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, spin: false }
   }
   if (currentResult.value?.blocks?.length) {
@@ -200,6 +201,7 @@ async function runSummary(trigger: 'summary_embed_auto' | 'summary_embed_manual'
         process_type: processInfo.value?.process_type,
         title: processInfo.value?.title,
         trigger_source: trigger,
+        trigger_detail: trigger === 'summary_embed_manual' ? 'manual' : 'visible_open',
       },
       (st) => {
         mergeSummaryProgress(st)
@@ -227,9 +229,9 @@ async function refreshContext(autoRun = true) {
     if (resp.summary_result && !summarizing.value) {
       currentResult.value = resp.summary_result
     }
-    if (autoRun && resp.should_auto_summary && !summarizing.value && !resp.running_job_id) {
+    if (autoRun && !resp.has_summary && resp.should_auto_summary && !summarizing.value) {
       await runSummary('summary_embed_auto')
-    } else if (resp.running_job_id && !summarizing.value) {
+    } else if (!resp.has_summary && resp.running_job_id && !summarizing.value) {
       summarizing.value = true
       currentResult.value = resp.summary_result ? ({ ...createPendingResult(), ...resp.summary_result }) : createPendingResult()
       startSSE(resp.running_job_id)
@@ -263,10 +265,11 @@ async function bootstrap() {
     waitingParent.value = false
   }
   const ctx = context.value as EmbedSummaryContextResponse | null
-  if (ctx?.supported && ctx.should_auto_summary && !summarizing.value && !ctx.running_job_id) {
+  if (ctx?.supported && !ctx.has_summary && ctx.should_auto_summary && !summarizing.value) {
     await runSummary('summary_embed_auto')
-  } else if (ctx?.running_job_id && !summarizing.value) {
-    await refreshContext(true)
+  } else if (ctx?.supported && !ctx.has_summary && ctx.running_job_id && !summarizing.value) {
+    // 可见页面进入时将尚未领取的后台任务提升到交互队列；已执行中的任务直接接续。
+    await runSummary('summary_embed_auto')
   }
 }
 
@@ -403,7 +406,7 @@ onBeforeUnmount(() => disconnectStream())
         </div>
 
         <template v-else-if="currentResult">
-          <div v-if="currentResult.status === 'failed'" class="result-error">
+          <div v-if="currentResult.status === 'failed' || currentResult.status === 'cancelled'" class="result-error">
             <WarningOutlined />
             <div>
               <strong>{{ t('embed.summary.status.failed') }}</strong>

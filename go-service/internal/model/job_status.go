@@ -8,4 +8,5 @@ const (
 	JobStatusExtracting = "extracting"
 	JobStatusCompleted  = "completed"
 	JobStatusFailed     = "failed"
+	JobStatusCancelled  = "cancelled"
 )
