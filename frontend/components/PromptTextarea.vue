@@ -170,7 +170,7 @@ defineExpose({ insertAtCursor })
   height: 26px;
   padding: 0;
   color: var(--color-text-tertiary);
-  background: color-mix(in srgb, var(--color-bg-container) 88%, transparent);
+  background: color-mix(in srgb, var(--color-bg-card) 88%, transparent);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   cursor: pointer;

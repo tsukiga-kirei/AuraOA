@@ -630,7 +630,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
       <div v-if="importResult" style="padding: 8px 0;">
         <p style="margin: 0 0 6px;">{{ t('org.import.result.total', importResult.total) }}</p>
         <p style="margin: 0 0 6px; color: var(--color-success);">{{ t('org.import.result.success', importResult.success) }}</p>
-        <p v-if="importResult.failed_rows.length > 0" style="margin: 0 0 10px; color: var(--color-error);">{{ t('org.import.result.failed', importResult.failed_rows.length) }}</p>
+        <p v-if="importResult.failed_rows.length > 0" style="margin: 0 0 10px; color: var(--color-danger);">{{ t('org.import.result.failed', importResult.failed_rows.length) }}</p>
         <div v-if="importResult.failed_rows.length > 0" style="max-height: 260px; overflow-y: auto; border: 1px solid var(--color-border-light); border-radius: var(--radius-md);">
           <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
             <thead>
