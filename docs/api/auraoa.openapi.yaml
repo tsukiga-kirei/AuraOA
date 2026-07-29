@@ -5471,6 +5471,36 @@ paths:
         required: true
         schema:
           type: string
+  /api/embed/events:
+    post:
+      summary: 安排 OA 嵌入后台刷新检查
+      description: 接收页面打开、保存或提交事件，立即返回 202；审核和总结在后台按 OA 指纹判断是否执行。
+      tags:
+      - Embed
+      security:
+      - embedToken: []
+      responses:
+        '202':
+          description: 后台检查已安排
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: accepted
+                  data:
+                    $ref: '#/components/schemas/EmbedRefreshEventResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmbedRefreshEventRequest'
   /api/embed/context:
     get:
       summary: 获取嵌入审核上下文
@@ -5994,6 +6024,23 @@ components:
         auto_audit_on_flow_change:
           type: boolean
           default: false
+        scheduled_refresh_enabled:
+          type: boolean
+          default: false
+        scheduled_refresh_lookback_days:
+          type: integer
+          minimum: 1
+          maximum: 30
+          default: 3
+        scheduled_refresh_interval_minutes:
+          type: integer
+          enum:
+          - 5
+          - 10
+          - 15
+          - 30
+          - 60
+          default: 5
     SummaryEmbedConfig:
       type: object
       properties:
@@ -6009,6 +6056,56 @@ components:
         auto_summary_on_flow_change:
           type: boolean
           default: false
+        scheduled_refresh_enabled:
+          type: boolean
+          default: false
+        scheduled_refresh_lookback_days:
+          type: integer
+          minimum: 1
+          maximum: 30
+          default: 3
+        scheduled_refresh_interval_minutes:
+          type: integer
+          enum:
+          - 5
+          - 10
+          - 15
+          - 30
+          - 60
+          default: 5
+    EmbedRefreshEventRequest:
+      type: object
+      required:
+      - process_id
+      properties:
+        process_id:
+          type: string
+        action:
+          type: string
+          enum:
+          - page_open
+          - save
+          - submit
+          - save_or_submit
+          default: save_or_submit
+        event_id:
+          type: string
+    EmbedRefreshEventResponse:
+      type: object
+      properties:
+        process_id:
+          type: string
+        action:
+          type: string
+        event_id:
+          type: string
+        scheduled_modules:
+          type: array
+          items:
+            type: string
+            enum:
+            - audit
+            - summary
     EmbedAuditContext:
       type: object
       properties:

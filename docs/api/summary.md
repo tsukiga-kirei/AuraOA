@@ -42,9 +42,16 @@ PUT /api/tenant/summary/configs/:id
 | `auto_summary_on_data_change` | `true` | 按总结块实际使用的字段和附件版本判断并增量刷新 |
 | `auto_summary_on_return_resubmit` | `true` | 退回或重新提交后刷新依赖流程信息的总结块 |
 | `auto_summary_on_flow_change` | `false` | 普通审批推进后刷新使用流程基础信息/审批历史的总结块 |
+| `scheduled_refresh_enabled` | `false` | 是否定时拉取该流程类型的近期实例并检查变化 |
+| `scheduled_refresh_lookback_days` | `3` | 拉取近几天创建的流程，范围 1–30 |
+| `scheduled_refresh_interval_minutes` | `5` | 检查频率，支持 5、10、15、30、60 分钟 |
+
+保存配置后，系统会立即同步对应的 `embed_refresh_schedules` 持久化调度记录；关闭定时检查
+会停用并移除内存 Cron，不需要等待配置轮询。
 
 自动刷新只调用发生变化的启用总结块；未变化的块沿用最近一次有效结果。手动“重新总结”
 仍会执行全部启用块。
+流程级定时检查只发现候选流程，所有总结块均未变化时不会创建总结或 LLM 日志。
 
 ---
 

@@ -1,5 +1,5 @@
 /**
- * 泛微 Ecology9 — AuraOA 嵌入页：向 iframe 传递 requestid + embed_token
+ * 泛微 Ecology9 — AuraOA 嵌入页：传递上下文并在打开、保存、提交时安排后台检查
  *
  * 使用步骤：
  * 1. 在 AuraOA「系统管理 → 租户管理 → OA 嵌入」为租户生成嵌入密钥
@@ -21,6 +21,14 @@
 
   var MSG_REQUEST = 'aura-oa-request-requestid';
   var MSG_REQUESTID = 'aura-oa-requestid';
+  var MSG_REFRESH_EVENT = 'aura-oa-refresh-event';
+  var MSG_RUNNER_READY = 'aura-runner-ready';
+  var MSG_RUNNER_EVENT_ACK = 'aura-runner-event-ack';
+  var RUNNER_IFRAME_ID = 'aura-embed-runner';
+  var runnerReady = false;
+  var pendingRunnerActions = [];
+  var pendingRunnerAcks = {};
+  var oaEventsRegistered = false;
 
   function getRequestId() {
     try {
@@ -44,6 +52,23 @@
       seen[id] = true;
       return document.getElementById(id);
     }).filter(Boolean);
+  }
+
+  function getRunnerIframe() {
+    return document.getElementById(RUNNER_IFRAME_ID);
+  }
+
+  function ensureRunnerIframe() {
+    var existing = getRunnerIframe();
+    if (existing) return existing;
+    var iframe = document.createElement('iframe');
+    iframe.id = RUNNER_IFRAME_ID;
+    iframe.src = AURA_EMBED_ORIGIN + '/embed/runner';
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.setAttribute('tabindex', '-1');
+    iframe.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;border:0;left:-9999px;top:-9999px;';
+    document.body.appendChild(iframe);
+    return iframe;
   }
 
   function buildPayload(requestid) {
@@ -71,12 +96,97 @@
         postContextToAura(iframe.contentWindow);
       }
     });
+    var runner = getRunnerIframe();
+    if (runner && runner.contentWindow) {
+      postContextToAura(runner.contentWindow);
+    }
+  }
+
+  function createEventId() {
+    return 'oa-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+  }
+
+  function postRunnerAction(action, eventId) {
+    var requestid = getRequestId();
+    var runner = ensureRunnerIframe();
+    if (!requestid || !runner || !runner.contentWindow) return;
+    runner.contentWindow.postMessage({
+      type: MSG_REFRESH_EVENT,
+      requestid: requestid,
+      action: action || 'save_or_submit',
+      event_id: eventId || createEventId()
+    }, AURA_EMBED_ORIGIN);
+  }
+
+  function notifyAuraRunner(action, eventId) {
+    if (!getRequestId()) return;
+    if (!runnerReady) {
+      pendingRunnerActions.push({
+        action: action || 'save_or_submit',
+        eventId: eventId || createEventId()
+      });
+      ensureRunnerIframe();
+      return;
+    }
+    postRunnerAction(action, eventId);
+  }
+
+  function flushRunnerActions() {
+    var actions = pendingRunnerActions.splice(0);
+    actions.forEach(function (item) {
+      postRunnerAction(item.action, item.eventId);
+    });
+  }
+
+  function registerOAEvents() {
+    if (oaEventsRegistered) return true;
+    try {
+      if (typeof WfForm === 'undefined' || !WfForm.registerCheckEvent) return false;
+      if (typeof WfForm.OPER_SAVE === 'undefined' || typeof WfForm.OPER_SUBMIT === 'undefined') return false;
+      WfForm.registerCheckEvent(
+        WfForm.OPER_SAVE + ',' + WfForm.OPER_SUBMIT,
+        function (callback) {
+          var eventId = createEventId();
+          var released = false;
+          var release = function () {
+            if (released) return;
+            released = true;
+            delete pendingRunnerAcks[eventId];
+            callback();
+          };
+          pendingRunnerAcks[eventId] = release;
+          setTimeout(release, 400);
+          try {
+            notifyAuraRunner('save_or_submit', eventId);
+          } catch (e) {
+            release();
+          }
+        }
+      );
+      oaEventsRegistered = true;
+      return true;
+    } catch (e) {
+      console.warn('[aura-embed] 注册 OA 保存/提交事件失败', e);
+      return false;
+    }
   }
 
   function initMessageListener() {
     window.addEventListener('message', function (event) {
       if (event.origin !== AURA_EMBED_ORIGIN) return;
-      if (!event.data || event.data.type !== MSG_REQUEST) return;
+      if (!event.data) return;
+      if (event.data.type === MSG_RUNNER_EVENT_ACK) {
+        var release = pendingRunnerAcks[String(event.data.event_id || '')];
+        if (release) release();
+        return;
+      }
+      if (event.data.type === MSG_RUNNER_READY) {
+        runnerReady = true;
+        if (event.source) postContextToAura(event.source);
+        flushRunnerActions();
+        return;
+      }
+      if (event.data.type !== MSG_REQUEST) return;
 
       var requestid = getRequestId();
       if (!requestid) {
@@ -95,6 +205,7 @@
 
   function init() {
     initMessageListener();
+    ensureRunnerIframe();
 
     getIframes().forEach(function (iframe) {
       iframe.addEventListener('load', notifyAuraIframes);
@@ -104,12 +215,16 @@
     var timer = setInterval(function () {
       tries++;
       notifyAuraIframes();
-      if (getRequestId() || tries >= 30) {
+      registerOAEvents();
+      if ((getRequestId() && oaEventsRegistered) || tries >= 200) {
         clearInterval(timer);
       }
     }, 300);
 
-    window.addEventListener('hashchange', notifyAuraIframes);
+    window.addEventListener('hashchange', function () {
+      notifyAuraIframes();
+      notifyAuraRunner('page_open');
+    });
   }
 
   if (typeof jQuery !== 'undefined') {

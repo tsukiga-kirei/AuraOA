@@ -104,6 +104,10 @@ func (s *CronTaskService) CreateTask(c *gin.Context, req *dto.CreateCronTaskRequ
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, "用户ID无效")
 	}
+	if err := validateCronExpression(req.CronExpression); err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "Cron 表达式无效: "+err.Error())
+	}
+	req.CronExpression = normalizeCronExpression(req.CronExpression)
 
 	// 校验任务类型是否在系统预设中存在
 	preset, err := s.presetRepo.GetByTaskType(req.TaskType)
@@ -176,6 +180,10 @@ func (s *CronTaskService) UpdateTask(c *gin.Context, id uuid.UUID, req *dto.Upda
 		task.TaskLabel = req.TaskLabel
 	}
 	if req.CronExpression != "" {
+		if err := validateCronExpression(req.CronExpression); err != nil {
+			return nil, newServiceError(errcode.ErrParamValidation, "Cron 表达式无效: "+err.Error())
+		}
+		req.CronExpression = normalizeCronExpression(req.CronExpression)
 		fields["cron_expression"] = req.CronExpression
 		task.CronExpression = req.CronExpression
 		if next := ParseNextRun(req.CronExpression); next != nil {

@@ -46,6 +46,9 @@ type EmbedConfigData struct {
 	AutoAuditOnDataChange     bool `json:"auto_audit_on_data_change"`
 	AutoAuditOnReturnResubmit bool `json:"auto_audit_on_return_resubmit"`
 	AutoAuditOnFlowChange     bool `json:"auto_audit_on_flow_change"`
+	ScheduledRefreshEnabled   bool `json:"scheduled_refresh_enabled"`
+	ScheduledLookbackDays     int  `json:"scheduled_refresh_lookback_days"`
+	ScheduledIntervalMinutes  int  `json:"scheduled_refresh_interval_minutes"`
 }
 
 // UserPermissionsData 用户权限配置的结构化表示

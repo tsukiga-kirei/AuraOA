@@ -436,6 +436,9 @@ const handleAddProcess = async () => {
         auto_audit_on_data_change: true,
         auto_audit_on_return_resubmit: true,
         auto_audit_on_flow_change: false,
+        scheduled_refresh_enabled: false,
+        scheduled_refresh_lookback_days: 3,
+        scheduled_refresh_interval_minutes: 5,
       },
     })
     processConfigs.value.push(normalizeAuditConfigForUI(created))
@@ -936,6 +939,9 @@ const SUMMARY_DATA_VARIABLE_KEYS = [
   '{{flow_graph}}',
 ] as const
 
+const scheduledLookbackDayOptions = [1, 3, 7, 14, 30]
+const scheduledIntervalOptions = [5, 10, 15, 30, 60]
+
 const summaryPromptDataVariables = computed(() => [
   { key: '{{process_meta}}', desc: t('admin.ruleConfig.varProcessMetaDesc') },
   { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
@@ -977,6 +983,9 @@ const normalizeAuditConfigForUI = (cfg: ProcessAuditConfig): ProcessAuditConfig 
     auto_audit_on_data_change: cfg.embed_config?.auto_audit_on_data_change ?? true,
     auto_audit_on_return_resubmit: cfg.embed_config?.auto_audit_on_return_resubmit ?? true,
     auto_audit_on_flow_change: cfg.embed_config?.auto_audit_on_flow_change ?? false,
+    scheduled_refresh_enabled: cfg.embed_config?.scheduled_refresh_enabled ?? false,
+    scheduled_refresh_lookback_days: cfg.embed_config?.scheduled_refresh_lookback_days ?? 3,
+    scheduled_refresh_interval_minutes: cfg.embed_config?.scheduled_refresh_interval_minutes ?? 5,
   },
 })
 
@@ -1347,6 +1356,9 @@ const normalizeSummaryConfigForUI = (cfg: ProcessSummaryConfig): ProcessSummaryC
     auto_summary_on_data_change: cfg.embed_config?.auto_summary_on_data_change ?? true,
     auto_summary_on_return_resubmit: cfg.embed_config?.auto_summary_on_return_resubmit ?? true,
     auto_summary_on_flow_change: cfg.embed_config?.auto_summary_on_flow_change ?? false,
+    scheduled_refresh_enabled: cfg.embed_config?.scheduled_refresh_enabled ?? false,
+    scheduled_refresh_lookback_days: cfg.embed_config?.scheduled_refresh_lookback_days ?? 3,
+    scheduled_refresh_interval_minutes: cfg.embed_config?.scheduled_refresh_interval_minutes ?? 5,
   },
   status: cfg.status || 'active',
 })
@@ -1709,6 +1721,9 @@ const handleAddSummaryProcess = async () => {
         auto_summary_on_data_change: true,
         auto_summary_on_return_resubmit: true,
         auto_summary_on_flow_change: false,
+        scheduled_refresh_enabled: false,
+        scheduled_refresh_lookback_days: 3,
+        scheduled_refresh_interval_minutes: 5,
       },
       summary_blocks: [createSummaryBlock()],
     })
@@ -3118,6 +3133,41 @@ const handleSave = async () => {
               :un-checked-children="t('common.disabled')"
             />
           </div>
+          <div class="permission-item">
+            <div class="permission-info">
+              <div class="permission-label">{{ t('admin.ruleConfig.scheduledRefreshEnabled') }}</div>
+              <div class="permission-desc">{{ t('admin.ruleConfig.scheduledRefreshEnabledDesc') }}</div>
+            </div>
+            <a-switch
+              v-model:checked="selectedConfig.embed_config!.scheduled_refresh_enabled"
+              :checked-children="t('common.enabled')"
+              :un-checked-children="t('common.disabled')"
+            />
+          </div>
+          <div v-if="selectedConfig.embed_config!.scheduled_refresh_enabled" class="permission-item">
+            <div class="permission-info">
+              <div class="permission-label">{{ t('admin.ruleConfig.scheduledRefreshScope') }}</div>
+              <div class="permission-desc">{{ t('admin.ruleConfig.scheduledRefreshScopeDesc') }}</div>
+            </div>
+            <a-space :size="12" wrap>
+              <a-select
+                v-model:value="selectedConfig.embed_config!.scheduled_refresh_lookback_days"
+                style="width: 140px"
+              >
+                <a-select-option v-for="days in scheduledLookbackDayOptions" :key="days" :value="days">
+                  {{ t('admin.ruleConfig.scheduledRefreshRecentDays', [days]) }}
+                </a-select-option>
+              </a-select>
+              <a-select
+                v-model:value="selectedConfig.embed_config!.scheduled_refresh_interval_minutes"
+                style="width: 140px"
+              >
+                <a-select-option v-for="minutes in scheduledIntervalOptions" :key="minutes" :value="minutes">
+                  {{ t('admin.ruleConfig.scheduledRefreshEveryMinutes', [minutes]) }}
+                </a-select-option>
+              </a-select>
+            </a-space>
+          </div>
 
           <!-- 审核工作台访问控制 -->
           <div class="section-header" style="margin-top: 28px;">
@@ -3739,6 +3789,41 @@ const handleSave = async () => {
                 :checked-children="t('common.enabled')"
                 :un-checked-children="t('common.disabled')"
               />
+            </div>
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.scheduledRefreshEnabled') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.scheduledSummaryRefreshEnabledDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedSummaryConfig.embed_config!.scheduled_refresh_enabled"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
+              />
+            </div>
+            <div v-if="selectedSummaryConfig.embed_config!.scheduled_refresh_enabled" class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.scheduledRefreshScope') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.scheduledRefreshScopeDesc') }}</div>
+              </div>
+              <a-space :size="12" wrap>
+                <a-select
+                  v-model:value="selectedSummaryConfig.embed_config!.scheduled_refresh_lookback_days"
+                  style="width: 140px"
+                >
+                  <a-select-option v-for="days in scheduledLookbackDayOptions" :key="days" :value="days">
+                    {{ t('admin.ruleConfig.scheduledRefreshRecentDays', [days]) }}
+                  </a-select-option>
+                </a-select>
+                <a-select
+                  v-model:value="selectedSummaryConfig.embed_config!.scheduled_refresh_interval_minutes"
+                  style="width: 140px"
+                >
+                  <a-select-option v-for="minutes in scheduledIntervalOptions" :key="minutes" :value="minutes">
+                    {{ t('admin.ruleConfig.scheduledRefreshEveryMinutes', [minutes]) }}
+                  </a-select-option>
+                </a-select>
+              </a-space>
             </div>
           </div>
         </div>

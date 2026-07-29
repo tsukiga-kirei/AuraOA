@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,7 +36,8 @@ func NewCronScheduler(
 ) *CronScheduler {
 	return &CronScheduler{
 		c: cron.New(
-			cron.WithSeconds(), // 支持 6-field（含秒），标准5-field同样兼容
+			// 秒字段可选：同时兼容前端保存的标准五段式和系统内部使用的六段式。
+			cron.WithParser(newCronParser()),
 			cron.WithLocation(apptime.Location()),
 			cron.WithChain(cron.Recover(cron.DefaultLogger)),
 		),
@@ -121,7 +123,7 @@ func (s *CronScheduler) addEntryLocked(task model.CronTask) {
 	var entryID cron.EntryID
 	var err error
 
-	entryID, err = s.c.AddFunc(toFiveFieldCron(task.CronExpression), func() {
+	entryID, err = s.c.AddFunc(normalizeCronExpression(task.CronExpression), func() {
 		if logger != nil {
 			logger.Info("cron task triggered", zap.String("task_id", taskID.String()), zap.String("task_type", task.TaskType))
 		}
@@ -153,10 +155,10 @@ func (s *CronScheduler) addEntryLocked(task model.CronTask) {
 
 // RegisterCustomJob 向调度器注册一个自定义函数任务（不依赖数据库 CronTask 记录）。
 // 适用于系统内置的定时维护任务，如日志清理、数据归档等。
-// expr 为标准5字段 cron 表达式，fn 为任务执行函数。
+// expr 支持标准五段式或带秒的六段式 cron 表达式，fn 为任务执行函数。
 // 若 cron 表达式非法，返回错误。
 func (s *CronScheduler) RegisterCustomJob(expr string, fn func()) error {
-	_, err := s.c.AddFunc(expr, fn)
+	_, err := s.c.AddFunc(normalizeCronExpression(expr), fn)
 	if err != nil {
 		return fmt.Errorf("注册自定义定时任务失败，表达式 %q 非法: %w", expr, err)
 	}
@@ -165,8 +167,7 @@ func (s *CronScheduler) RegisterCustomJob(expr string, fn func()) error {
 
 // ParseNextRun 解析 cron 表达式并返回下次执行时间（供外部调用）。
 func ParseNextRun(expr string) *time.Time {
-	p := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	schedule, err := p.Parse(expr)
+	schedule, err := newCronParser().Parse(normalizeCronExpression(expr))
 	if err != nil {
 		return nil
 	}
@@ -174,7 +175,20 @@ func ParseNextRun(expr string) *time.Time {
 	return &next
 }
 
-// toFiveFieldCron 确保使用标准5字段格式（robfig/cron 默认支持5字段）。
-func toFiveFieldCron(expr string) string {
-	return expr
+// newCronParser 创建秒字段可选的解析器，五段式默认秒数为 0。
+func newCronParser() cron.Parser {
+	return cron.NewParser(
+		cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
+	)
+}
+
+// normalizeCronExpression 清理用户输入的首尾和重复空白。
+func normalizeCronExpression(expr string) string {
+	return strings.Join(strings.Fields(expr), " ")
+}
+
+// validateCronExpression 校验五段式或六段式 Cron 表达式。
+func validateCronExpression(expr string) error {
+	_, err := newCronParser().Parse(normalizeCronExpression(expr))
+	return err
 }

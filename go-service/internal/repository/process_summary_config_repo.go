@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -32,6 +34,18 @@ func (r *ProcessSummaryConfigRepo) GetByID(c *gin.Context, id uuid.UUID) (*model
 func (r *ProcessSummaryConfigRepo) ListByTenant(c *gin.Context) ([]model.ProcessSummaryConfig, error) {
 	var configs []model.ProcessSummaryConfig
 	if err := r.WithTenant(c).Order("created_at ASC").Find(&configs).Error; err != nil {
+		return nil, err
+	}
+	return configs, nil
+}
+
+// ListAllTenants 查询所有租户的总结配置，供系统启动时重建持久化调度记录。
+func (r *ProcessSummaryConfigRepo) ListAllTenants(ctx context.Context) ([]model.ProcessSummaryConfig, error) {
+	var configs []model.ProcessSummaryConfig
+	if err := r.DB.
+		WithContext(ctx).
+		Order("tenant_id ASC, created_at ASC").
+		Find(&configs).Error; err != nil {
 		return nil, err
 	}
 	return configs, nil

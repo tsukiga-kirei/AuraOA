@@ -24,6 +24,9 @@ export interface ProcessAuditConfig {
     auto_audit_on_data_change?: boolean
     auto_audit_on_return_resubmit?: boolean
     auto_audit_on_flow_change?: boolean
+    scheduled_refresh_enabled?: boolean
+    scheduled_refresh_lookback_days?: number
+    scheduled_refresh_interval_minutes?: number
   }
   status: string
   created_at?: string

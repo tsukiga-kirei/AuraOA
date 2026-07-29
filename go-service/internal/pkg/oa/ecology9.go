@@ -3164,6 +3164,83 @@ func (a *Ecology9Adapter) FetchProcessRequestSummary(ctx context.Context, proces
 	}, nil
 }
 
+// FetchRecentProcessSummaries 拉取指定流程类型在时间窗口内创建的流程实例。
+// 该查询只用于发现定时检查候选，是否调用 AI 仍由 AuraOA 的上下文指纹决定。
+func (a *Ecology9Adapter) FetchRecentProcessSummaries(
+	ctx context.Context,
+	processType string,
+	since time.Time,
+	limit int,
+) ([]ProcessRequestSummary, error) {
+	processType = strings.TrimSpace(processType)
+	if processType == "" {
+		return nil, fmt.Errorf("流程类型不能为空")
+	}
+	if limit < 1 || limit > 1000 {
+		limit = 200
+	}
+
+	query := fmt.Sprintf(`
+		SELECT
+			r.%s AS request_id,
+			COALESCE(r.%s, '') AS request_name,
+			COALESCE(h.%s, '') AS applicant_name,
+			COALESCE(d.%s, '') AS dept_name,
+			COALESCE(wb.%s, '') AS workflow_name,
+			COALESCE(wt.%s, '') AS type_name,
+			COALESCE(n.%s, '') AS node_name,
+			COALESCE(r.%s, '') AS create_date
+		FROM %s r
+		LEFT JOIN %s wb ON r.%s = wb.%s
+		LEFT JOIN %s wt ON wb.%s = wt.%s
+		LEFT JOIN %s h ON r.%s = h.%s
+		LEFT JOIN %s d ON h.%s = d.%s
+		LEFT JOIN %s n ON r.%s = n.%s
+		WHERE %s(COALESCE(wb.%s, '')) = %s(?)
+		  AND r.%s >= ?
+		ORDER BY r.%s DESC%s`,
+		a.col("requestid"), a.col("requestname"),
+		a.col("lastname"), a.col("departmentname"),
+		a.col("workflowname"), a.col("typename"),
+		a.col("nodename"), a.col("createdate"),
+		a.tableName("workflow_requestbase"),
+		a.tableName("workflow_base"), a.col("workflowid"), a.col("id"),
+		a.tableName("workflow_type"), a.col("workflowtype"), a.col("id"),
+		a.tableName("hrmresource"), a.col("creater"), a.col("id"),
+		a.tableName("hrmdepartment"), a.col("departmentid"), a.col("id"),
+		a.tableName("workflow_nodebase"), a.col("currentnodeid"), a.col("id"),
+		a.lowerFunc(), a.col("workflowname"), a.lowerFunc(),
+		a.col("createdate"),
+		a.col("createdate"),
+		a.limitOffsetClause(limit, 0),
+	)
+
+	rows, err := a.db.WithContext(ctx).Raw(query, processType, since).Rows()
+	if err != nil {
+		return nil, fmt.Errorf("查询 OA 近期流程失败: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]ProcessRequestSummary, 0, limit)
+	for rows.Next() {
+		var item ProcessRequestSummary
+		if err := rows.Scan(
+			&item.ProcessID,
+			&item.Title,
+			&item.Applicant,
+			&item.Department,
+			&item.ProcessType,
+			&item.ProcessTypeLabel,
+			&item.CurrentNode,
+			&item.SubmitTime,
+		); err != nil {
+			continue
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
 // FetchProcessContextAnchor 拉取 OA 流程上下文锚点。
 func (a *Ecology9Adapter) FetchProcessContextAnchor(ctx context.Context, processID string, pd *ProcessData) (*OAContextAnchor, error) {
 	var currentNodeID int

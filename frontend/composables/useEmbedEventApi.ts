@@ -1,0 +1,38 @@
+export interface EmbedRefreshEventRequest {
+  process_id: string
+  action: 'page_open' | 'save' | 'submit' | 'save_or_submit'
+  event_id?: string
+}
+
+export interface EmbedRefreshEventResponse {
+  process_id: string
+  action: string
+  event_id: string
+  scheduled_modules: string[]
+}
+
+/**
+ * useEmbedEventApi — OA 隐藏 runner 事件接口。
+ * POST /api/embed/events 只安排后台检查，不等待审核或总结完成。
+ */
+export const useEmbedEventApi = () => {
+  const { embedAuthHeaders } = useEmbedAuth()
+
+  async function scheduleEmbedRefresh(req: EmbedRefreshEventRequest): Promise<void> {
+    const response = await fetch('/api/embed/events', {
+      method: 'POST',
+      credentials: 'include',
+      keepalive: true,
+      headers: {
+        'Content-Type': 'application/json',
+        ...embedAuthHeaders(),
+      },
+      body: JSON.stringify(req),
+    })
+    if (!response.ok) {
+      throw new Error(`embed event rejected: ${response.status}`)
+    }
+  }
+
+  return { scheduleEmbedRefresh }
+}
