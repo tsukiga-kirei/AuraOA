@@ -43,8 +43,9 @@ export const useEmbedSummaryApi = () => {
     return res as T
   }
 
-  async function getSummaryContext(processId: string): Promise<EmbedSummaryContextResponse> {
-    const q = new URLSearchParams({ process_id: processId, prefer_cached: 'true' })
+  async function getSummaryContext(processId: string, preferCached = false): Promise<EmbedSummaryContextResponse> {
+    const q = new URLSearchParams({ process_id: processId })
+    if (preferCached) q.set('prefer_cached', 'true')
     return await embedSummaryFetch<EmbedSummaryContextResponse>(`/api/embed/summary/context?${q.toString()}`)
   }
 

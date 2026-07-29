@@ -19,7 +19,7 @@ import { waitForParentEmbedContext } from '~/composables/useEmbedParent'
 definePageMeta({ layout: 'embed' })
 
 const { t } = useI18n()
-const { getContext, executeEmbed, waitAuditJob } = useEmbedApi()
+const { getContext, executeEmbed } = useEmbedApi()
 const { setupEmbedSession } = useEmbedSession()
 
 type AuditProgressStep = NonNullable<AuditResult['progress_steps']>[number]
@@ -225,46 +225,30 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual') {
       },
     )
     mergeAuditProgress(result)
-    await refreshContext(false)
+    await refreshContext(false, true)
     if (trigger === 'embed_manual') {
       message.success(t('embed.reAuditDone'))
     }
   } catch (e: any) {
     message.error(e?.message || t('embed.auditFailed'))
     currentResult.value = null
-    await refreshContext(false)
+    await refreshContext(false, true)
   } finally {
     auditing.value = false
     disconnectStream()
   }
 }
 
-async function refreshContext(autoRun = true) {
+async function refreshContext(autoRun = true, preferCached = false) {
   if (!processId.value) return
   try {
-    const resp = await getContext(processId.value)
+    const resp = await getContext(processId.value, preferCached)
     context.value = resp
-    if (resp.audit_result && !auditing.value) {
+    if (resp.audit_result && (!auditing.value || !autoRun)) {
       currentResult.value = resp.audit_result
     }
-    if (autoRun && resp.should_auto_audit && !auditing.value && !resp.running_job_id) {
+    if (autoRun && (resp.should_auto_audit || resp.running_job_id) && !auditing.value) {
       await runAudit('embed_auto')
-    } else if (resp.running_job_id && !auditing.value) {
-      auditing.value = true
-      currentResult.value = resp.audit_result
-        ? ({ ...createPendingResult(), ...resp.audit_result } as AuditResult)
-        : createPendingResult()
-      startSSE(resp.running_job_id)
-      try {
-        const result = await waitAuditJob(resp.running_job_id, (st) => {
-          mergeAuditProgress(st)
-        })
-        mergeAuditProgress(result)
-        await refreshContext(false)
-      } finally {
-        auditing.value = false
-        disconnectStream()
-      }
     }
   } catch (e: any) {
     pageError.value = e?.message || t('embed.loadFailed')
@@ -281,16 +265,16 @@ async function bootstrap() {
       pageError.value = t('embed.noRequestId')
       return
     }
-    await refreshContext(false)
+    // 首次进入先做轻量指纹检查；不识别附件正文、不调用 AI。
+    await refreshContext(false, false)
   } finally {
     pageLoading.value = false
     waitingParent.value = false
   }
   const embedContext = context.value as EmbedContextResponse | null
-  if (embedContext?.supported && embedContext.should_auto_audit && !auditing.value && !embedContext.running_job_id) {
+  if (embedContext?.supported && (embedContext.should_auto_audit || embedContext.running_job_id) && !auditing.value) {
+    // 发现变化或已有后台任务时进入交互队列，待执行任务会切换到可见页队列。
     await runAudit('embed_auto')
-  } else if (embedContext?.running_job_id && !auditing.value) {
-    await refreshContext(true)
   }
 }
 
@@ -773,9 +757,16 @@ onBeforeUnmount(() => {
 }
 .result-banner--error { background: var(--color-danger-bg); border-color: var(--color-danger); }
 .result-banner-icon { font-size: 28px; flex-shrink: 0; }
-.result-banner-info { flex: 1; }
+.result-banner-info { flex: 1; min-width: 0; }
 .result-banner-title { font-size: 16px; font-weight: 700; }
-.result-banner-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+.result-banner-meta {
+  margin-top: 2px;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .result-score { font-size: 36px; font-weight: 800; line-height: 1; }
 
 .result-section { margin-bottom: 24px; }

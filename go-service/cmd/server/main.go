@@ -255,7 +255,17 @@ func main() {
 		)
 	}
 
-	if err := service.StartAuditStreamWorker(context.Background(), rdb, auditExecuteService, pkglogger.Global(), 2); err != nil {
+	if err := service.StartAuditStreamWorker(
+		context.Background(),
+		rdb,
+		auditExecuteService,
+		pkglogger.Global(),
+		viper.GetInt("workers.audit_workbench_concurrency"),
+		viper.GetInt("workers.audit_interactive_concurrency"),
+		viper.GetInt("workers.audit_background_concurrency"),
+		viper.GetInt("workers.audit_scheduled_concurrency"),
+		viper.GetInt("workers.audit_total_concurrency"),
+	); err != nil {
 		pkglogger.Global().Warn("审计流处理器启动失败", zap.Error(err))
 	}
 	service.StartAuditStaleReconciler(context.Background(), auditExecuteService, pkglogger.Global(), 30*time.Second)
@@ -263,7 +273,16 @@ func main() {
 		pkglogger.Global().Warn("归档流处理器启动失败", zap.Error(err))
 	}
 	service.StartArchiveStaleReconciler(context.Background(), archiveReviewService, pkglogger.Global(), 30*time.Second)
-	if err := service.StartSummaryStreamWorker(context.Background(), rdb, summaryService, pkglogger.Global(), viper.GetInt("workers.summary_concurrency")); err != nil {
+	if err := service.StartSummaryStreamWorker(
+		context.Background(),
+		rdb,
+		summaryService,
+		pkglogger.Global(),
+		viper.GetInt("workers.summary_interactive_concurrency"),
+		viper.GetInt("workers.summary_background_concurrency"),
+		viper.GetInt("workers.summary_scheduled_concurrency"),
+		viper.GetInt("workers.summary_total_concurrency"),
+	); err != nil {
 		pkglogger.Global().Warn("总结流处理器启动失败", zap.Error(err))
 	}
 	service.StartSummaryStaleReconciler(context.Background(), summaryService, pkglogger.Global(), 30*time.Second)
@@ -364,7 +383,15 @@ func loadConfig() error {
 	viper.SetDefault("backup.retention_fallback_days", 30)
 	viper.SetDefault("backup.dump_timeout", "45m")
 	viper.SetDefault("attachment.mineru_timeout_seconds", 300)
-	viper.SetDefault("workers.summary_concurrency", 1)
+	viper.SetDefault("workers.audit_workbench_concurrency", 2)
+	viper.SetDefault("workers.audit_interactive_concurrency", 1)
+	viper.SetDefault("workers.audit_background_concurrency", 1)
+	viper.SetDefault("workers.audit_scheduled_concurrency", 1)
+	viper.SetDefault("workers.audit_total_concurrency", 3)
+	viper.SetDefault("workers.summary_interactive_concurrency", 1)
+	viper.SetDefault("workers.summary_background_concurrency", 1)
+	viper.SetDefault("workers.summary_scheduled_concurrency", 1)
+	viper.SetDefault("workers.summary_total_concurrency", 2)
 	viper.SetDefault("sso.public_base_url", "")
 
 	return viper.ReadInConfig()

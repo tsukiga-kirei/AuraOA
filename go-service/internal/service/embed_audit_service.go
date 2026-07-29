@@ -141,6 +141,25 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		}
 	}
 
+	latestAttempt, err := s.auditLogRepo.GetLatestByProcessIDForTriggers(
+		c,
+		processID,
+		model.EmbedTriggerSources(),
+	)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询最近审核记录失败")
+	}
+	if resp.HasAudit && strings.EqualFold(c.Query("prefer_cached"), "true") {
+		if latestAttempt != nil &&
+			latestAttempt.Status == model.JobStatusFailed &&
+			(latestLog == nil || latestAttempt.CreatedAt.After(latestLog.CreatedAt)) {
+			resp.AutoRetryBlocked = latestAttempt.AttemptFingerprint != ""
+			resp.LastAuditAt = apptime.FormatRFC3339(latestAttempt.UpdatedAt)
+			resp.AuditResult = buildAuditResultFromLog(latestAttempt)
+		}
+		return resp, nil
+	}
+
 	currentAnchor, err := s.fetchCurrentOAAnchor(c, tenantID, processID, fieldSet, executionFingerprint)
 	if err != nil {
 		return nil, err
@@ -155,10 +174,6 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		resp.ShouldAutoAudit = true
 	}
 
-	latestAttempt, err := s.auditLogRepo.GetLatestByProcessID(c, processID)
-	if err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "查询最近审核记录失败")
-	}
 	if latestAttempt != nil &&
 		latestAttempt.Status == model.JobStatusFailed &&
 		latestAttempt.AttemptFingerprint != "" &&
@@ -179,15 +194,8 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 	if trigger != model.AuditTriggerEmbedAuto && trigger != model.AuditTriggerEmbedManual {
 		return nil, newServiceError(errcode.ErrParamValidation, "嵌入页 trigger_source 无效")
 	}
-	triggerDetail := strings.TrimSpace(req.TriggerDetail)
-	if triggerDetail == "" {
-		if trigger == model.AuditTriggerEmbedManual {
-			triggerDetail = model.SummaryTriggerDetailManual
-		} else {
-			triggerDetail = model.SummaryTriggerDetailVisibleOpen
-		}
-	}
-	tenantID, _, err := s.extractIDs(c)
+	triggerDetail, queueKind := normalizeAuditTriggerDetail(trigger, req.TriggerDetail)
+	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
 	}
@@ -206,15 +214,57 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 	}
 	defer release()
 
+	if running, runningErr := s.auditLogRepo.GetRunningByProcessIDForTriggers(
+		c,
+		req.ProcessID,
+		model.EmbedTriggerSources(),
+	); runningErr != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询进行中的审核任务失败")
+	} else if running != nil {
+		promoteToInteractive := queueKind == model.JobQueueKindInteractive &&
+			running.Status == model.JobStatusPending &&
+			running.QueueKind != model.JobQueueKindInteractive
+		relabelAsManual := trigger == model.AuditTriggerEmbedManual &&
+			running.Status == model.JobStatusPending &&
+			running.TriggerDetail != model.SummaryTriggerDetailManual
+		if promoteToInteractive || relabelAsManual {
+			if err := s.auditLogRepo.UpdateFields(c, running.ID, map[string]interface{}{
+				"user_id":            userID,
+				"trigger_source":     trigger,
+				"trigger_detail":     triggerDetail,
+				"queue_kind":         queueKind,
+				"schedule_config_id": nil,
+				"updated_at":         apptime.Now(),
+			}); err != nil {
+				return nil, newServiceError(errcode.ErrDatabase, "切换审核任务队列失败")
+			}
+			if promoteToInteractive {
+				if _, err := EnqueueAuditJob(
+					c.Request.Context(),
+					s.rdb,
+					running.ID,
+					tenantID,
+					userID,
+					queueKind,
+				); err != nil {
+					return nil, newServiceError(errcode.ErrRedisConn, "审核交互任务入队失败: "+err.Error())
+				}
+			}
+			running.UserID = userID
+			running.TriggerSource = trigger
+			running.TriggerDetail = triggerDetail
+			running.QueueKind = queueKind
+			running.ScheduleConfigID = nil
+		}
+		return auditExecuteResponseFromLog(running), nil
+	}
+
 	ctxResp, err := s.GetEmbedContext(c, req.ProcessID)
 	if err != nil {
 		return nil, err
 	}
 	if !ctxResp.Supported || !ctxResp.EmbedEnabled {
 		return nil, newServiceError(errcode.ErrNoProcessConfig, ctxResp.Message)
-	}
-	if ctxResp.RunningJobID != "" {
-		return nil, newServiceError(errcode.ErrResourceConflict, "该流程已有进行中的审核任务")
 	}
 	if trigger == model.AuditTriggerEmbedAuto && !ctxResp.ShouldAutoAudit {
 		if ctxResp.AutoRetryBlocked {
@@ -260,7 +310,7 @@ func (s *AuditExecuteService) fetchCurrentOAAnchor(
 	if err != nil {
 		return oa.OAContextAnchor{}, newServiceError(errcode.ErrDatabase, "获取租户信息失败")
 	}
-	pd, err := s.fetchOAData(c, tenant, processID, false)
+	pd, err := s.fetchOAData(c, tenant, processID, false, fieldSet)
 	if err != nil {
 		return oa.OAContextAnchor{}, err
 	}
@@ -341,6 +391,26 @@ func normalizeTriggerSource(source, fallback string) string {
 		return source
 	default:
 		return fallback
+	}
+}
+
+func normalizeAuditTriggerDetail(trigger, detail string) (string, string) {
+	if trigger == model.AuditTriggerEmbedManual {
+		return model.SummaryTriggerDetailManual, model.JobQueueKindInteractive
+	}
+	if trigger != model.AuditTriggerEmbedAuto {
+		return strings.TrimSpace(detail), model.JobQueueKindWorkbench
+	}
+	switch strings.TrimSpace(detail) {
+	case model.SummaryTriggerDetailVisibleOpen:
+		return model.SummaryTriggerDetailVisibleOpen, model.JobQueueKindInteractive
+	case model.SummaryTriggerDetailScheduled:
+		return model.SummaryTriggerDetailScheduled, model.JobQueueKindScheduled
+	case model.SummaryTriggerDetailSaveSubmit:
+		return model.SummaryTriggerDetailSaveSubmit, model.JobQueueKindBackground
+	default:
+		// 兼容旧版可见嵌入页：未传详细来源的自动请求按前台打开处理。
+		return model.SummaryTriggerDetailVisibleOpen, model.JobQueueKindInteractive
 	}
 }
 

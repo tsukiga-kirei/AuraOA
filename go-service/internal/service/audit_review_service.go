@@ -66,6 +66,7 @@ type AuditExecuteService struct {
 	invalidator       *cache.InvalidationManager
 	sysFlags          *systemflags.Resolver
 	externalCtx       *ExternalContextService
+	executionLimiter  *jobExecutionLimiter
 }
 
 // NewAuditExecuteService 创建 AuditExecuteService，注入所有依赖仓储和服务。
@@ -169,6 +170,7 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 	if err := s.validateEmbedTrigger(c, req.ProcessType, trigger); err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, err
 	}
+	triggerDetail, queueKind := normalizeAuditTriggerDetail(trigger, req.TriggerDetail)
 
 	logID = uuid.New()
 	now := apptime.Now()
@@ -184,7 +186,8 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		Score:              0,
 		AuditResult:        datatypes.JSON([]byte("{}")),
 		TriggerSource:      trigger,
-		TriggerDetail:      req.TriggerDetail,
+		TriggerDetail:      triggerDetail,
+		QueueKind:          queueKind,
 		AttemptFingerprint: req.AttemptFingerprint,
 		ScheduleConfigID:   req.ScheduleConfigID,
 		CreatedAt:          now,
@@ -207,14 +210,17 @@ func (s *AuditExecuteService) Execute(c *gin.Context, req *AuditExecuteRequest) 
 		return nil, err
 	}
 
-	log, _ := s.auditLogRepo.GetByID(c, logID)
+	log, err := s.auditLogRepo.GetByID(c, logID)
+	if err != nil {
+		return nil, err
+	}
 	createdAt := log.CreatedAt
 
-	if _, err := EnqueueAuditJob(c.Request.Context(), s.rdb, logID, tenantID, userID); err != nil {
+	if _, err := EnqueueAuditJob(c.Request.Context(), s.rdb, logID, tenantID, userID, log.QueueKind); err != nil {
 		_ = s.auditLogRepo.UpdateFields(c, logID, map[string]interface{}{
 			"status":        model.JobStatusFailed,
 			"error_message": "任务入队失败: " + err.Error(),
-			"updated_at":    time.Now(),
+			"updated_at":    apptime.Now(),
 		})
 		pkglogger.Global().Warn("审核任务入队失败",
 			zap.String("logID", logID.String()),
@@ -341,7 +347,20 @@ func (s *AuditExecuteService) updateAuditLogIfNotCancelled(tenantID, auditLogID 
 }
 
 // processAuditJob 由 Redis Stream Worker 调用，执行完整审核链路。
-func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, tenantID, userID uuid.UUID) error {
+func (s *AuditExecuteService) processAuditJob(
+	ctx context.Context,
+	auditLogID, tenantID, userID uuid.UUID,
+	queueKind string,
+) error {
+	claimContext := s.workerGinContext(ctx, tenantID, userID)
+	claimed, err := s.auditLogRepo.ClaimPending(claimContext, auditLogID, queueKind)
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, auditProcessTimeout)
 	s.cancelMap.Store(auditLogID.String(), cancel)
 	defer func() {
@@ -356,9 +375,6 @@ func (s *AuditExecuteService) processAuditJob(ctx context.Context, auditLogID, t
 			return nil
 		}
 		return err
-	}
-	if log.Status != model.JobStatusPending {
-		return nil
 	}
 	// 队列积压过久：不再执行，直接标记失败（与 FailStaleAuditJobs 一致）
 	if time.Since(log.CreatedAt) > auditJobMaxAge {
@@ -707,12 +723,38 @@ func (s *AuditExecuteService) BatchExecute(c *gin.Context, items []AuditExecuteR
 			})
 			continue
 		}
-		if err := s.processAuditJob(c.Request.Context(), logID, tenantID, userID); err != nil {
+		release, acquired := s.executionLimiter.Acquire(
+			c.Request.Context(),
+			model.JobQueueKindWorkbench,
+		)
+		if !acquired {
+			_ = s.auditLogRepo.UpdateFields(c, logID, map[string]interface{}{
+				"status":        model.JobStatusCancelled,
+				"error_message": "等待审核执行名额时请求已取消",
+				"updated_at":    apptime.Now(),
+			})
 			result.Failed++
 			result.Results = append(result.Results, AuditExecuteResponse{
 				ID:         logID.String(),
 				ProcessID:  items[i].ProcessID,
-				ParseError: err.Error(),
+				ParseError: "等待审核执行名额时请求已取消",
+			})
+			continue
+		}
+		processErr := s.processAuditJob(
+			c.Request.Context(),
+			logID,
+			tenantID,
+			userID,
+			model.JobQueueKindWorkbench,
+		)
+		release()
+		if processErr != nil {
+			result.Failed++
+			result.Results = append(result.Results, AuditExecuteResponse{
+				ID:         logID.String(),
+				ProcessID:  items[i].ProcessID,
+				ParseError: processErr.Error(),
 			})
 			continue
 		}

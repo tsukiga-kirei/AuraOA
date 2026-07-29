@@ -26,19 +26,40 @@ func TestCronParserSupportsFiveAndSixFields(t *testing.T) {
 }
 
 func TestNormalizeSummaryTriggerDetail(t *testing.T) {
-	detail, priority := normalizeSummaryTriggerDetail(
+	detail, queueKind := normalizeSummaryTriggerDetail(
 		model.SummaryTriggerEmbedAuto,
 		model.SummaryTriggerDetailScheduled,
 	)
-	if detail != model.SummaryTriggerDetailScheduled || priority != model.SummaryPriorityScheduled {
-		t.Fatalf("定时总结来源或优先级错误: detail=%s priority=%d", detail, priority)
+	if detail != model.SummaryTriggerDetailScheduled || queueKind != model.JobQueueKindScheduled {
+		t.Fatalf("定时总结来源或队列类型错误: detail=%s queue_kind=%s", detail, queueKind)
 	}
-	detail, priority = normalizeSummaryTriggerDetail(
+	detail, queueKind = normalizeSummaryTriggerDetail(
 		model.SummaryTriggerEmbedManual,
 		model.SummaryTriggerDetailScheduled,
 	)
-	if detail != model.SummaryTriggerDetailManual || priority != model.SummaryPriorityManual {
-		t.Fatalf("手动总结必须覆盖来源并使用最高优先级: detail=%s priority=%d", detail, priority)
+	if detail != model.SummaryTriggerDetailManual || queueKind != model.JobQueueKindInteractive {
+		t.Fatalf("手动总结必须覆盖来源并进入交互队列: detail=%s queue_kind=%s", detail, queueKind)
+	}
+}
+
+func TestNormalizeAuditTriggerDetail(t *testing.T) {
+	detail, queueKind := normalizeAuditTriggerDetail(
+		model.AuditTriggerEmbedAuto,
+		model.SummaryTriggerDetailScheduled,
+	)
+	if detail != model.SummaryTriggerDetailScheduled || queueKind != model.JobQueueKindScheduled {
+		t.Fatalf("定时嵌入审核来源或队列类型错误: detail=%s queue_kind=%s", detail, queueKind)
+	}
+	detail, queueKind = normalizeAuditTriggerDetail(
+		model.AuditTriggerEmbedManual,
+		model.SummaryTriggerDetailScheduled,
+	)
+	if detail != model.SummaryTriggerDetailManual || queueKind != model.JobQueueKindInteractive {
+		t.Fatalf("手动嵌入审核必须覆盖来源并进入交互队列: detail=%s queue_kind=%s", detail, queueKind)
+	}
+	_, queueKind = normalizeAuditTriggerDetail(model.AuditTriggerWorkbenchManual, "")
+	if queueKind != model.JobQueueKindWorkbench {
+		t.Fatalf("审核工作台必须进入独立工作台队列: queue_kind=%s", queueKind)
 	}
 }
 

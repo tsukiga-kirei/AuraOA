@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"auraoa/go-service/internal/model"
 )
@@ -37,7 +39,7 @@ func EnqueueSummaryJob(
 	ctx context.Context,
 	rdb *redis.Client,
 	summaryLogID, tenantID, userID uuid.UUID,
-	priority int,
+	queueKind string,
 ) (string, error) {
 	if rdb == nil {
 		return "", fmt.Errorf("redis client is nil")
@@ -50,10 +52,11 @@ func EnqueueSummaryJob(
 	if err != nil {
 		return "", err
 	}
+	queueKind = model.NormalizeSummaryJobQueueKind(queueKind)
 	stream := summaryRedisBackgroundStream
-	if model.IsSummaryInteractivePriority(priority) {
+	if queueKind == model.JobQueueKindInteractive {
 		stream = summaryRedisInteractiveStream
-	} else if priority <= model.SummaryPriorityScheduled {
+	} else if queueKind == model.JobQueueKindScheduled {
 		stream = summaryRedisScheduledStream
 	}
 	return rdb.XAdd(ctx, &redis.XAddArgs{
@@ -72,7 +75,14 @@ func ensureSummaryConsumerGroup(ctx context.Context, rdb *redis.Client, stream, 
 	return nil
 }
 
-func StartSummaryStreamWorker(ctx context.Context, rdb *redis.Client, svc *ProcessSummaryService, logger *zap.Logger, concurrency int) error {
+// StartSummaryStreamWorker 启动 OA 交互、保存提交和定时扫描三类独立总结队列。
+func StartSummaryStreamWorker(
+	ctx context.Context,
+	rdb *redis.Client,
+	svc *ProcessSummaryService,
+	logger *zap.Logger,
+	interactiveConcurrency, backgroundConcurrency, scheduledConcurrency, totalConcurrency int,
+) error {
 	if rdb == nil || svc == nil {
 		return nil
 	}
@@ -85,119 +95,57 @@ func StartSummaryStreamWorker(ctx context.Context, rdb *redis.Client, svc *Proce
 	if err := ensureSummaryConsumerGroup(ctx, rdb, summaryRedisScheduledStream, summaryRedisScheduledGroup); err != nil {
 		return err
 	}
-	if concurrency < 1 {
-		concurrency = 1
+	if backgroundConcurrency < 1 {
+		backgroundConcurrency = 1
+	}
+	if interactiveConcurrency < 1 {
+		interactiveConcurrency = 1
+	}
+	if scheduledConcurrency < 1 {
+		scheduledConcurrency = 1
+	}
+	if totalConcurrency < 1 {
+		totalConcurrency = 2
 	}
 	host, _ := os.Hostname()
 	consumerBase := fmt.Sprintf("%s-%d", host, time.Now().UnixNano())
-	for i := 0; i < concurrency; i++ {
-		consumerName := fmt.Sprintf("%s-background-%d", consumerBase, i)
-		go runSummaryBackgroundConsumerLoop(
-			ctx,
-			rdb,
-			svc,
-			logger,
-			consumerName,
-		)
-	}
-	go runSummaryConsumerLoop(
-		ctx,
-		rdb,
-		svc,
-		logger,
-		summaryRedisInteractiveStream,
-		summaryRedisInteractiveGroup,
-		fmt.Sprintf("%s-interactive", consumerBase),
-	)
+	limiter := newJobExecutionLimiter(totalConcurrency)
+	startSummaryQueueConsumers(ctx, rdb, svc, logger, limiter, consumerBase, "interactive",
+		summaryRedisInteractiveStream, summaryRedisInteractiveGroup, interactiveConcurrency)
+	startSummaryQueueConsumers(ctx, rdb, svc, logger, limiter, consumerBase, "background",
+		summaryRedisBackgroundStream, summaryRedisBackgroundGroup, backgroundConcurrency)
+	startSummaryQueueConsumers(ctx, rdb, svc, logger, limiter, consumerBase, "scheduled",
+		summaryRedisScheduledStream, summaryRedisScheduledGroup, scheduledConcurrency)
 	if logger != nil {
 		logger.Info("总结任务队列处理器已启动",
-			zap.Int("backgroundConcurrency", concurrency),
-			zap.Int("interactiveConcurrency", 1))
+			zap.Int("backgroundConcurrency", backgroundConcurrency),
+			zap.Int("interactiveConcurrency", interactiveConcurrency),
+			zap.Int("scheduledConcurrency", scheduledConcurrency),
+			zap.Int("totalConcurrency", totalConcurrency))
 	}
 	return nil
 }
 
-func runSummaryBackgroundConsumerLoop(
+func startSummaryQueueConsumers(
 	ctx context.Context,
 	rdb *redis.Client,
 	svc *ProcessSummaryService,
 	logger *zap.Logger,
-	consumerName string,
+	limiter *jobExecutionLimiter,
+	consumerBase, queueName, stream, group string,
+	concurrency int,
 ) {
-	reclaimIdleSummaryMessages(
-		ctx,
-		rdb,
-		svc,
-		logger,
-		summaryRedisBackgroundStream,
-		summaryRedisBackgroundGroup,
-		consumerName,
-	)
-	reclaimIdleSummaryMessages(
-		ctx,
-		rdb,
-		svc,
-		logger,
-		summaryRedisScheduledStream,
-		summaryRedisScheduledGroup,
-		consumerName,
-	)
-	lastReclaim := time.Now()
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-		if time.Since(lastReclaim) >= summaryRedisReclaimInterval {
-			reclaimIdleSummaryMessages(
-				ctx,
-				rdb,
-				svc,
-				logger,
-				summaryRedisBackgroundStream,
-				summaryRedisBackgroundGroup,
-				consumerName,
-			)
-			reclaimIdleSummaryMessages(
-				ctx,
-				rdb,
-				svc,
-				logger,
-				summaryRedisScheduledStream,
-				summaryRedisScheduledGroup,
-				consumerName,
-			)
-			lastReclaim = time.Now()
-		}
-		consumed, err := consumeOneSummaryMessage(
+	for i := 0; i < concurrency; i++ {
+		go runSummaryConsumerLoop(
 			ctx,
 			rdb,
 			svc,
 			logger,
-			summaryRedisBackgroundStream,
-			summaryRedisBackgroundGroup,
-			consumerName,
-			300*time.Millisecond,
+			limiter,
+			stream,
+			group,
+			fmt.Sprintf("%s-%s-%d", consumerBase, queueName, i),
 		)
-		if err != nil {
-			logSummaryConsumerError(ctx, logger, summaryRedisBackgroundStream, err)
-			continue
-		}
-		if consumed {
-			continue
-		}
-		_, err = consumeOneSummaryMessage(
-			ctx,
-			rdb,
-			svc,
-			logger,
-			summaryRedisScheduledStream,
-			summaryRedisScheduledGroup,
-			consumerName,
-			2*time.Second,
-		)
-		if err != nil {
-			logSummaryConsumerError(ctx, logger, summaryRedisScheduledStream, err)
-		}
 	}
 }
 
@@ -206,9 +154,10 @@ func runSummaryConsumerLoop(
 	rdb *redis.Client,
 	svc *ProcessSummaryService,
 	logger *zap.Logger,
+	limiter *jobExecutionLimiter,
 	stream, group, consumerName string,
 ) {
-	reclaimIdleSummaryMessages(ctx, rdb, svc, logger, stream, group, consumerName)
+	reclaimIdleSummaryMessages(ctx, rdb, svc, logger, limiter, stream, group, consumerName)
 	lastReclaim := time.Now()
 	for {
 		select {
@@ -217,7 +166,7 @@ func runSummaryConsumerLoop(
 		default:
 		}
 		if time.Since(lastReclaim) >= summaryRedisReclaimInterval {
-			reclaimIdleSummaryMessages(ctx, rdb, svc, logger, stream, group, consumerName)
+			reclaimIdleSummaryMessages(ctx, rdb, svc, logger, limiter, stream, group, consumerName)
 			lastReclaim = time.Now()
 		}
 		_, err := consumeOneSummaryMessage(
@@ -225,6 +174,7 @@ func runSummaryConsumerLoop(
 			rdb,
 			svc,
 			logger,
+			limiter,
 			stream,
 			group,
 			consumerName,
@@ -242,6 +192,7 @@ func reclaimIdleSummaryMessages(
 	rdb *redis.Client,
 	svc *ProcessSummaryService,
 	logger *zap.Logger,
+	limiter *jobExecutionLimiter,
 	stream, group, consumerName string,
 ) {
 	start := "0-0"
@@ -263,7 +214,7 @@ func reclaimIdleSummaryMessages(
 			return
 		}
 		for _, msg := range messages {
-			svc.handleSummaryStreamMessage(ctx, rdb, stream, group, msg.ID, msg.Values, logger)
+			svc.handleSummaryStreamMessage(ctx, rdb, limiter, stream, group, msg.ID, msg.Values, logger)
 		}
 		if next == "0-0" {
 			return
@@ -277,6 +228,7 @@ func consumeOneSummaryMessage(
 	rdb *redis.Client,
 	svc *ProcessSummaryService,
 	logger *zap.Logger,
+	limiter *jobExecutionLimiter,
 	stream, group, consumerName string,
 	block time.Duration,
 ) (bool, error) {
@@ -297,7 +249,7 @@ func consumeOneSummaryMessage(
 	for _, result := range streams {
 		for _, msg := range result.Messages {
 			consumed = true
-			svc.handleSummaryStreamMessage(ctx, rdb, result.Stream, group, msg.ID, msg.Values, logger)
+			svc.handleSummaryStreamMessage(ctx, rdb, limiter, result.Stream, group, msg.ID, msg.Values, logger)
 		}
 	}
 	return consumed, nil
@@ -318,6 +270,7 @@ func logSummaryConsumerError(ctx context.Context, logger *zap.Logger, stream str
 func (s *ProcessSummaryService) handleSummaryStreamMessage(
 	ctx context.Context,
 	rdb *redis.Client,
+	limiter *jobExecutionLimiter,
 	stream, group, msgID string,
 	values map[string]interface{},
 	logger *zap.Logger,
@@ -343,11 +296,75 @@ func (s *ProcessSummaryService) handleSummaryStreamMessage(
 		_ = rdb.XAck(ctx, stream, group, msgID).Err()
 		return
 	}
-	interactive := stream == summaryRedisInteractiveStream
-	if err := s.processSummaryJob(ctx, summaryLogID, tenantID, userID, interactive); err != nil && logger != nil {
+	queueKind := summaryQueueKindFromStream(stream)
+	rerouted, rerouteErr := s.rerouteSummaryJobIfNeeded(
+		ctx,
+		rdb,
+		summaryLogID,
+		tenantID,
+		userID,
+		queueKind,
+	)
+	if rerouteErr != nil {
+		if logger != nil {
+			logger.Warn("总结任务按队列类型转投失败",
+				zap.String("summary_log_id", summaryLogID.String()),
+				zap.String("source_stream", stream),
+				zap.Error(rerouteErr))
+		}
+		// 不 ACK，保留 pending 消息供后续接管重试。
+		return
+	}
+	if rerouted {
+		_ = rdb.XAck(ctx, stream, group, msgID).Err()
+		return
+	}
+	release, acquired := limiter.Acquire(ctx, queueKind)
+	if !acquired {
+		return
+	}
+	defer release()
+	if err := s.processSummaryJob(ctx, summaryLogID, tenantID, userID, queueKind); err != nil && logger != nil {
 		logger.Warn("总结任务执行失败", zap.String("summary_log_id", summaryLogID.String()), zap.Error(err))
 	}
 	_ = rdb.XAck(ctx, stream, group, msgID).Err()
+}
+
+// rerouteSummaryJobIfNeeded 将升级前或任务切换队列后遗留在旧 Stream 的 pending 消息转投到正确队列。
+func (s *ProcessSummaryService) rerouteSummaryJobIfNeeded(
+	ctx context.Context,
+	rdb *redis.Client,
+	summaryLogID, tenantID, userID uuid.UUID,
+	streamQueueKind string,
+) (bool, error) {
+	c := s.workerGinContext(ctx, tenantID, userID)
+	logEntry, err := s.logRepo.GetByID(c, summaryLogID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return true, nil
+		}
+		return false, err
+	}
+	targetQueueKind := model.NormalizeSummaryJobQueueKind(logEntry.QueueKind)
+	if targetQueueKind == streamQueueKind {
+		return false, nil
+	}
+	if logEntry.Status != model.JobStatusPending {
+		return true, nil
+	}
+	_, err = EnqueueSummaryJob(ctx, rdb, summaryLogID, tenantID, logEntry.UserID, targetQueueKind)
+	return true, err
+}
+
+func summaryQueueKindFromStream(stream string) string {
+	switch stream {
+	case summaryRedisInteractiveStream:
+		return model.JobQueueKindInteractive
+	case summaryRedisScheduledStream:
+		return model.JobQueueKindScheduled
+	default:
+		return model.JobQueueKindBackground
+	}
 }
 
 func StartSummaryStaleReconciler(ctx context.Context, svc *ProcessSummaryService, logger *zap.Logger, interval time.Duration) {

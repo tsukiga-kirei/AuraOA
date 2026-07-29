@@ -39,10 +39,33 @@ attachment:
   mineru_timeout_seconds: 300
 
 workers:
-  # 流程总结后台/定时队列并发数；可见页与手动总结另有 1 个保留交互 worker。
-  # 附件识别会占用 MinerU，生产建议后台并发先保持 1。
-  # 环境变量 WORKERS_SUMMARY_CONCURRENCY。
-  summary_concurrency: 1
+  # 审核工作台队列并发数，默认保持原系统的 2。
+  # 环境变量 WORKERS_AUDIT_WORKBENCH_CONCURRENCY。
+  audit_workbench_concurrency: 2
+  # OA 审核可见页/手动队列并发数。
+  # 环境变量 WORKERS_AUDIT_INTERACTIVE_CONCURRENCY。
+  audit_interactive_concurrency: 1
+  # OA 审核保存/提交队列并发数。
+  # 环境变量 WORKERS_AUDIT_BACKGROUND_CONCURRENCY。
+  audit_background_concurrency: 1
+  # OA 审核定时扫描队列并发数。
+  # 环境变量 WORKERS_AUDIT_SCHEDULED_CONCURRENCY。
+  audit_scheduled_concurrency: 1
+  # 审核模块总并发；非交互任务最多占用 total-1，给交互任务预留一个名额。
+  # 环境变量 WORKERS_AUDIT_TOTAL_CONCURRENCY。
+  audit_total_concurrency: 3
+  # OA 总结可见页/手动队列并发数。
+  # 环境变量 WORKERS_SUMMARY_INTERACTIVE_CONCURRENCY。
+  summary_interactive_concurrency: 1
+  # OA 总结保存/提交队列并发数。
+  # 环境变量 WORKERS_SUMMARY_BACKGROUND_CONCURRENCY。
+  summary_background_concurrency: 1
+  # OA 总结定时扫描队列并发数。
+  # 环境变量 WORKERS_SUMMARY_SCHEDULED_CONCURRENCY。
+  summary_scheduled_concurrency: 1
+  # 总结模块总并发；附件识别会占用 MinerU，建议先保持 2。
+  # 环境变量 WORKERS_SUMMARY_TOTAL_CONCURRENCY。
+  summary_total_concurrency: 2
 
 jwt:
   secret: "change-me-in-production"

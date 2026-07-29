@@ -105,6 +105,10 @@ X-Embed-Token: <tenant embed access token>
 
 普通审批流变化是否触发由 `auto_audit_on_flow_change` 单独控制，默认关闭。
 `trigger_source=embed_auto` 时后端会再次校验 `should_auto_audit`，无需刷新时不会创建审核任务。
+可见审核页首次加载会先读取审核实际依赖的业务字段、附件版本、流程锚点和规则配置并比较指纹，
+不下载或识别附件正文，也不调用 AI。无变化时直接展示已有结果；有变化时不先展示旧结果，
+直接以 `visible_open` 进入交互队列。显式传 `prefer_cached=true` 时跳过变化检查，主要用于
+任务完成后的结果刷新。
 若最近一次相同依赖指纹（流程数据、附件版本、流程信息、审核规则和模型配置）的审核已经失败，
 响应中 `auto_retry_blocked=true`，保存/提交和定时来源不会重复执行；失败记录直接作为结果展示，
 只有用户点击“重新审核”才会再次尝试。
@@ -125,6 +129,29 @@ POST /api/embed/execute
 
 `trigger_detail` 的可见页取值为 `visible_open`，手动按钮为 `manual`。后台内部使用
 `save_or_submit`、`scheduled_scan` 区分保存提交与定时扫描。
+嵌入审核与总结使用相同的队列路由语义：手动重新执行和可见页进入交互队列，保存/提交进入
+普通后台队列，流程定时扫描进入独立定时队列。尚未领取的同流程任务可从后台队列提升到
+交互队列；已经执行中的任务不会被中断。系统内审核工作台使用独立 `workbench` 队列，
+不参与嵌入来源比较，也不会共享嵌入结果快照。
+
+各任务类型使用独立 Redis Stream 和 worker，并由模块总并发统一限流。总并发大于 `1` 时，
+非交互任务最多占用 `total-1` 个名额，为可见页和手动操作预留一个执行名额：
+
+```env
+WORKERS_AUDIT_WORKBENCH_CONCURRENCY=2
+WORKERS_AUDIT_INTERACTIVE_CONCURRENCY=1
+WORKERS_AUDIT_BACKGROUND_CONCURRENCY=1
+WORKERS_AUDIT_SCHEDULED_CONCURRENCY=1
+WORKERS_AUDIT_TOTAL_CONCURRENCY=3
+
+WORKERS_SUMMARY_INTERACTIVE_CONCURRENCY=1
+WORKERS_SUMMARY_BACKGROUND_CONCURRENCY=1
+WORKERS_SUMMARY_SCHEDULED_CONCURRENCY=1
+WORKERS_SUMMARY_TOTAL_CONCURRENCY=2
+```
+
+以上总并发限制按单个 `go-service` 实例生效；多实例部署时实际集群并发为各实例之和。
+提高任一队列并发前应同时评估模块总并发，以及 MinerU 和模型服务容量。
 
 ### 查询任务状态
 
@@ -149,7 +176,7 @@ GET /api/embed/stream/:id
 ### 获取总结嵌入上下文
 
 ```
-GET /api/embed/summary/context?process_id=598488&prefer_cached=true
+GET /api/embed/summary/context?process_id=598488
 ```
 
 除通用字段外，响应可包含 `stale_block_ids`，列出需要重新生成的总结块 ID。判断以每个块的
@@ -162,13 +189,16 @@ GET /api/embed/summary/context?process_id=598488&prefer_cached=true
 
 自动总结只重新调用 `stale_block_ids` 中的块并合并旧结果；手动总结执行全部启用块。
 `trigger_source=summary_embed_auto` 时后端会再次校验 `should_auto_summary`，无需刷新时不会创建总结任务。
-可见页传 `prefer_cached=true` 时，已有成功结果会直接返回，不等待 OA 变化扫描；保存/提交和定时
-协调器仍使用完整上下文检查。
+可见总结页首次加载不传 `prefer_cached`：页面先读取总结块实际依赖的业务字段、附件版本和流程
+锚点并比较指纹，不下载或识别附件正文，也不调用 AI。无变化时直接展示已有结果；有变化时不先
+展示旧结果，直接以 `visible_open` 进入交互队列。调用方显式传 `prefer_cached=true` 时，已有
+成功结果会直接返回，不执行 OA 变化检查，主要用于任务完成后的结果刷新。
 若最近一次相同依赖指纹（流程数据、附件版本、流程信息和总结块提示词配置）的任务已经失败，
 响应中 `auto_retry_blocked=true`，自动来源不会重复执行，失败记录直接作为可展示结果返回。
 
-可见总结页已有成功结果时直接展示，不因打开页面重新执行；没有结果时以 `visible_open` 进入交互队列。
-手动“重新总结”使用最高优先级。保存/提交进入后台队列，流程级定时扫描优先级最低。
+可见总结页会先轻量比较指纹；已有结果且未变化时直接展示，退回重提、启用策略范围内的数据或
+提示词变化则以 `visible_open` 进入交互队列。没有结果时按首次打开策略执行。手动“重新总结”
+与可见页都进入交互队列，保存/提交进入普通后台队列，流程级定时扫描进入定时队列。
 
 ### 触发总结
 
@@ -278,6 +308,8 @@ Cron；服务启动时从该表恢复全部活跃任务。因此配置开启、�
 - `process_summary_logs.process_snapshot.block_dependencies`：各总结块的数据、附件、流程依赖指纹；
 - `process_summary_logs.process_snapshot.regenerated_block_ids`：本次实际重新生成的总结块；
 - `audit_logs.trigger_detail` / `process_summary_logs.trigger_detail`：区分可见页、手动、保存提交和定时扫描；
+- `audit_logs.queue_kind`：明确记录 `workbench`、`interactive`、`background` 或 `scheduled`；
+- `process_summary_logs.queue_kind`：明确记录 `interactive`、`background` 或 `scheduled`；
 - `schedule_config_id`：定时扫描任务归属的流程配置；
 - `tenant_llm_message_logs` / `tenant_llm_message_payloads`：实际发生的审核、总结模型调用及 Token、耗时。
 

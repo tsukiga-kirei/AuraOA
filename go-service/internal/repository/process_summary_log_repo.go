@@ -35,16 +35,17 @@ func (r *ProcessSummaryLogRepo) UpdateFields(c *gin.Context, id uuid.UUID, field
 	return r.WithTenant(c).Model(&model.ProcessSummaryLog{}).Where("id = ?", id).Updates(fields).Error
 }
 
-// ClaimPending 原子领取待执行任务，并校验交互/后台队列与数据库优先级一致。
-func (r *ProcessSummaryLogRepo) ClaimPending(c *gin.Context, id uuid.UUID, interactive bool) (bool, error) {
+// ClaimPending 原子领取待执行任务，并校验 Redis Stream 与数据库队列类型一致。
+func (r *ProcessSummaryLogRepo) ClaimPending(c *gin.Context, id uuid.UUID, queueKind string) (bool, error) {
+	queueKind = model.NormalizeSummaryJobQueueKind(queueKind)
 	query := r.WithTenant(c).
 		Model(&model.ProcessSummaryLog{}).
-		Where("id = ? AND status = ?", id, model.JobStatusPending)
-	if interactive {
-		query = query.Where("priority >= ?", model.SummaryPriorityVisible)
-	} else {
-		query = query.Where("priority < ?", model.SummaryPriorityVisible)
-	}
+		Where(
+			"id = ? AND status = ? AND queue_kind = ?",
+			id,
+			model.JobStatusPending,
+			queueKind,
+		)
 	res := query.Updates(map[string]interface{}{
 		"status":     model.JobStatusAssembling,
 		"updated_at": apptime.Now(),
