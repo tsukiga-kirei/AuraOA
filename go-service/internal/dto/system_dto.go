@@ -39,8 +39,8 @@ type CreateOAConnectionRequest struct {
 	DatabaseName      string `json:"database_name" binding:"required"`
 	Username          string `json:"username" binding:"required"`
 	Password          string `json:"password" binding:"required"`
-	PoolSize          int    `json:"pool_size"`
-	ConnectionTimeout int    `json:"connection_timeout"`
+	PoolSize          int    `json:"pool_size" binding:"omitempty,min=1,max=100"`
+	ConnectionTimeout int    `json:"connection_timeout" binding:"omitempty,min=5,max=300"`
 	TestOnBorrow      bool   `json:"test_on_borrow"`
 	SyncInterval      int    `json:"sync_interval"`
 	Enabled           bool   `json:"enabled"`
@@ -63,8 +63,8 @@ type UpdateOAConnectionRequest struct {
 	DatabaseName      string `json:"database_name"`
 	Username          string `json:"username"`
 	Password          string `json:"password"`
-	PoolSize          int    `json:"pool_size"`
-	ConnectionTimeout int    `json:"connection_timeout"`
+	PoolSize          int    `json:"pool_size" binding:"omitempty,min=1,max=100"`
+	ConnectionTimeout int    `json:"connection_timeout" binding:"omitempty,min=5,max=300"`
 	TestOnBorrow      *bool  `json:"test_on_borrow"`
 	SyncInterval      int    `json:"sync_interval"`
 	Enabled           *bool  `json:"enabled"`

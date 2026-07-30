@@ -25,6 +25,7 @@ import (
 	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/crypto"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/pkg/oa"
 	"auraoa/go-service/internal/pkg/systemflags"
 	"auraoa/go-service/internal/repository"
 	"auraoa/go-service/internal/router"
@@ -124,6 +125,12 @@ func main() {
 	if err := crypto.SetKey(encKey); err != nil {
 		pkglogger.Global().Fatal("设置加密密钥失败", zap.Error(err))
 	}
+	oaConnectionManager := oa.NewConnectionManager(pkglogger.Global())
+	defer func() {
+		if err := oaConnectionManager.Close(); err != nil {
+			pkglogger.Global().Warn("关闭 OA 数据库共享连接池失败", zap.Error(err))
+		}
+	}()
 
 	// 第五步：初始化各数据访问层（Repository）
 	userRepo := repository.NewUserRepo(db)
@@ -165,14 +172,14 @@ func main() {
 	tenantService := service.NewTenantService(tenantRepo, systemConfigRepo, userRepo, db, invalidationManager)
 	systemConfigService := service.NewSystemConfigService(systemConfigRepo)
 	optionService := service.NewOptionService(optionRepo)
-	oaConnectionService := service.NewOAConnectionService(oaConnectionRepo, tenantRepo, invalidationManager)
+	oaConnectionService := service.NewOAConnectionService(oaConnectionRepo, tenantRepo, invalidationManager, oaConnectionManager)
 	aiModelService := service.NewAIModelService(aiModelRepo)
-	processAuditConfigService := service.NewProcessAuditConfigService(processAuditConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, db, invalidationManager)
+	processAuditConfigService := service.NewProcessAuditConfigService(processAuditConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, db, invalidationManager, oaConnectionManager)
 	auditRuleService := service.NewAuditRuleService(auditRuleRepo, invalidationManager)
 	userPersonalConfigService := service.NewUserPersonalConfigService(userPersonalConfigRepo, processAuditConfigRepo, auditRuleRepo, archiveConfigRepo, archiveRuleRepo, orgRepo)
 	llmMessageLogService := service.NewLLMMessageLogService(llmMessageLogRepo)
 	cronConfigService := service.NewCronConfigService(cronPresetRepo, cronConfigRepo)
-	archiveConfigService := service.NewProcessArchiveConfigService(archiveConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, invalidationManager)
+	archiveConfigService := service.NewProcessArchiveConfigService(archiveConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, invalidationManager, oaConnectionManager)
 	archiveRuleService := service.NewArchiveRuleService(archiveRuleRepo, invalidationManager)
 	aiCallerService := service.NewAIModelCallerService(tenantRepo, llmMessageLogRepo, db, sysFlagsResolver)
 	userNotificationService := service.NewUserNotificationService(userNotificationRepo, userRepo)
@@ -180,10 +187,10 @@ func main() {
 	minerUTimeout := time.Duration(viper.GetInt("attachment.mineru_timeout_seconds")) * time.Second
 	attachmentRecognitionService := service.NewAttachmentRecognitionService(systemConfigRepo, minerUTimeout)
 	ruleImportService := service.NewRuleImportService(attachmentRecognitionService, tenantRepo, aiModelRepo, aiCallerService, processAuditConfigRepo, archiveConfigRepo, auditRuleRepo, archiveRuleRepo, invalidationManager)
-	externalContextService := service.NewExternalContextService(oaConnectionRepo, attachmentRecognitionService)
-	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver, externalContextService)
-	summaryConfigService := service.NewProcessSummaryConfigService(summaryConfigRepo, tenantRepo, oaConnectionRepo, invalidationManager)
-	summaryService := service.NewProcessSummaryService(summaryLogRepo, summarySnapshotRepo, summaryConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, sysFlagsResolver, externalContextService)
+	externalContextService := service.NewExternalContextService(oaConnectionRepo, attachmentRecognitionService, oaConnectionManager)
+	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver, externalContextService, oaConnectionManager)
+	summaryConfigService := service.NewProcessSummaryConfigService(summaryConfigRepo, tenantRepo, oaConnectionRepo, invalidationManager, oaConnectionManager)
+	summaryService := service.NewProcessSummaryService(summaryLogRepo, summarySnapshotRepo, summaryConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, sysFlagsResolver, externalContextService, oaConnectionManager)
 	embedRefreshService := service.NewEmbedRefreshService(
 		rdb,
 		auditExecuteService,
@@ -199,7 +206,7 @@ func main() {
 	dashboardOverviewService := service.NewDashboardOverviewService(
 		auditSnapshotRepo, archiveSnapshotRepo, auditLogRepo, archiveLogRepo, cronLogRepo, cronTaskRepo, cronPresetRepo, llmMessageLogRepo, tenantRepo, orgRepo, cacheManager, invalidationManager,
 	)
-	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveSnapshotRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, orgRepo, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver, externalContextService)
+	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveSnapshotRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, orgRepo, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver, externalContextService, oaConnectionManager)
 	reportCalculatorService := service.NewReportCalculatorService(auditLogRepo, archiveLogRepo, tenantRepo)
 	mailService := service.NewMailService(systemConfigRepo)
 

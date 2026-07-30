@@ -67,6 +67,7 @@ type AuditExecuteService struct {
 	sysFlags          *systemflags.Resolver
 	externalCtx       *ExternalContextService
 	executionLimiter  *jobExecutionLimiter
+	oaConnections     *oa.ConnectionManager
 }
 
 // NewAuditExecuteService 创建 AuditExecuteService，注入所有依赖仓储和服务。
@@ -88,6 +89,7 @@ func NewAuditExecuteService(
 	invalidationManager *cache.InvalidationManager,
 	sysFlags *systemflags.Resolver,
 	externalCtx *ExternalContextService,
+	oaConnections *oa.ConnectionManager,
 ) *AuditExecuteService {
 	return &AuditExecuteService{
 		auditLogRepo:      auditLogRepo,
@@ -107,6 +109,7 @@ func NewAuditExecuteService(
 		invalidator:       invalidationManager,
 		sysFlags:          sysFlags,
 		externalCtx:       externalCtx,
+		oaConnections:     oaConnections,
 	}
 }
 
@@ -966,7 +969,7 @@ func (s *AuditExecuteService) ListPendingForBatch(c *gin.Context, workflowIds []
 	if username == "" {
 		return nil, newServiceError(errcode.ErrParamValidation, "无法解析 OA 登录用户名，请检查任务归属用户账号")
 	}
-	adapter, err := s.getOAAdapter(tenantID)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -1168,7 +1171,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 		return nil, newServiceError(errcode.ErrNoAuthToken, "用户信息缺失")
 	}
 
-	adapter, err := s.getOAAdapter(tenantID)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -1437,7 +1440,7 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 		tab = "pending_ai"
 	}
 
-	adapter, err := s.getOAAdapter(tenantID)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -1573,7 +1576,7 @@ func (s *AuditExecuteService) ListAllProcesses(c *gin.Context, params dto.AuditL
 		tab = "pending_ai"
 	}
 
-	adapter, err := s.getOAAdapter(tenantID)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -2048,7 +2051,10 @@ func (s *AuditExecuteService) decryptOAConn(conn *model.OADatabaseConnection) er
 	return nil
 }
 
-func (s *AuditExecuteService) getOAAdapter(tenantID uuid.UUID) (oa.OAAdapter, error) {
+func (s *AuditExecuteService) getOAAdapter(
+	ctx context.Context,
+	tenantID uuid.UUID,
+) (oa.OAAdapter, error) {
 	tenant, err := s.tenantRepo.FindByID(tenantID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "获取租户失败")
@@ -2063,7 +2069,7 @@ func (s *AuditExecuteService) getOAAdapter(tenantID uuid.UUID) (oa.OAAdapter, er
 	if err := s.decryptOAConn(conn); err != nil {
 		return nil, err
 	}
-	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
+	adapter, err := s.oaConnections.GetAdapter(ctx, conn.OAType, conn)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "创建 OA 适配器失败: "+err.Error())
 	}
@@ -2086,7 +2092,7 @@ func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, 
 	if withAttachments && s.attachmentSvc != nil {
 		attachmentSvc = s.attachmentSvc
 	}
-	adapter, err := oa.NewOAAdapter(conn.OAType, conn, attachmentSvc)
+	adapter, err := s.oaConnections.GetAdapter(c.Request.Context(), conn.OAType, conn, attachmentSvc)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "创建 OA 适配器失败: "+err.Error())
 	}
@@ -2116,7 +2122,7 @@ func (s *AuditExecuteService) fetchFlowSnapshot(c *gin.Context, tenant *model.Te
 	if err := s.decryptOAConn(conn); err != nil {
 		return nil
 	}
-	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
+	adapter, err := s.oaConnections.GetAdapter(c.Request.Context(), conn.OAType, conn)
 	if err != nil {
 		return nil
 	}

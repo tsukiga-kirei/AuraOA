@@ -311,7 +311,8 @@ public class AttachmentRest {
 ## 维护与排查
 
 1. 新接入一种 OA 系统时：
-   - 在 `oa.NewOAAdapter` 工厂里增加分支，并按需把 `AttachmentRecognitionService` 注入到对应 adapter；
+   - 在 `factory.go` 的 `newOAAdapterWithDB` 中增加轻量适配器分支，通过
+     `ConnectionManager` 复用底层连接池，并按需把 `AttachmentRecognitionService` 注入 adapter；
    - 在本目录新增一节，写清楚该 OA 类型自建接口的实现示例。
 2. 调试时优先看 `app.log` 里的 `WARN`：
    - `调用 OA 附件接口失败`：检查 OA 连接中的 `weaver_api_url / weaver_appid / weaver_default_user`；

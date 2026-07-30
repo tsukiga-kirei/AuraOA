@@ -26,20 +26,31 @@ AuraOA 通过**适配器模式**对接企业 OA 系统，从 OA 数据库中直�
 `FetchRecentProcessSummaries` 按流程类型和业务时区起始时间，限量拉取最近创建的流程实例，
 供审核、总结配置中的定时检查使用；不支持该接口的 OA 适配器会跳过定时扫描，不影响事件触发和可见嵌入页。
 
-### 工厂模式
+### 适配器与连接池管理
 
-`NewOAAdapter` 工厂函数（`go-service/internal/pkg/oa/factory.go`）根据 `oa_type` 和数据库驱动类型创建对应的适配器实例：
+`ConnectionManager`（`go-service/internal/pkg/oa/connection_manager.go`）根据 `oa_type`
+和数据库驱动创建适配器，并按 `oa_database_connections.id` 在进程内复用底层
+`*sql.DB` 连接池。适配器对象保持轻量，可按调用注入附件识别服务；MySQL、Oracle
+和达梦共用同一套连接池生命周期。
 
-```go
-func NewOAAdapter(oaType string, conn *model.OADatabaseConnection) (OAAdapter, error)
-```
+连接管理规则：
+
+- 同一个 OA 连接配置在单个 `go-service` 进程内只保留一个共享连接池。
+- 并发首次访问会合并建池操作，避免同一配置同时创建多个连接池。
+- 每次取用都会比较连接配置指纹；主机、端口、数据库、账号、密码或连接池参数变化时，
+  自动关闭旧池并建立新池。
+- 系统管理端更新或删除 OA 连接配置后，会立即使对应共享池失效。
+- `go-service` 优雅退出时统一关闭全部 OA 共享连接池。
+- “测试连接”使用不进入共享缓存的短生命周期连接，测试结束后立即关闭。
+- 建池前先设置最大连接数、最大空闲连接数、空闲时间和生命周期，再按
+  `connection_timeout` 执行显式 Ping。
 
 ### 数据库连接管理
 
 OA 数据库连接配置存储在 `oa_database_connections` 表中，支持：
 
 - 连接参数加密存储（密码使用 AES-256 加密）
-- 连接池管理（可配置最大连接数、超时时间）
+- 共享连接池管理（可配置最大连接数、连接超时；固定设置空闲回收和连接生命周期）
 - 连接状态检测（`connected` / `disconnected`）
 - 保存前/保存后均可测试连通性
 
@@ -188,9 +199,10 @@ AuraOA 从 OA 物理表读取到的值通常是数据库存储值，例如人员
 1. 在 `go-service/internal/pkg/oa/` 下创建新适配器文件（如 `zhiyuan_a8.go`）
 2. 实现 `OAAdapter` 接口的所有方法
 3. 在 `factory.go` 的 `supportedDrivers` 中注册支持的数据库驱动
-4. 在 `NewOAAdapter` 的 `switch` 分支中添加创建逻辑
+4. 在 `newOAAdapterWithDB` 的分支中添加轻量适配器创建逻辑
 5. 如需新的数据库驱动，在 `go-service/internal/pkg/oa/` 下创建驱动子目录
-6. 如需支持流程级定时检查，实现可选接口 `RecentProcessScanner`
+6. 将底层连接创建接入 `ConnectionManager`，禁止在业务 Service 中直接新建连接池
+7. 如需支持流程级定时检查，实现可选接口 `RecentProcessScanner`
 
 **接口实现要点**：
 

@@ -140,8 +140,8 @@ POST /api/admin/system/oa-connections
 | `database_name` | string | ✅ | 数据库名称 |
 | `username` | string | ✅ | 数据库用户名 |
 | `password` | string | ✅ | 数据库密码（加密存储） |
-| `pool_size` | int | — | 连接池大小（默认 10） |
-| `connection_timeout` | int | — | 连接超时秒数（默认 30） |
+| `pool_size` | int | — | 单个 OA 配置的进程级共享连接池最大连接数（默认 10，范围 1–100） |
+| `connection_timeout` | int | — | 首次建池与连通性检查超时秒数（默认 30，范围 5–300） |
 | `enabled` | boolean | — | 是否启用 |
 | `description` | string | — | 描述 |
 
@@ -154,6 +154,7 @@ POST /api/admin/system/oa-connections/test
 ```
 
 使用临时参数测试连通性（保存前预检），请求体与创建接口相同。
+测试使用独立的短生命周期数据库连接，不占用业务共享连接池，完成后立即释放。
 
 ---
 
@@ -180,6 +181,7 @@ POST /api/admin/system/oa-connections/:id/test
 ```
 
 测试已保存连接的连通性，结果会更新连接状态字段。
+测试使用独立的短生命周期数据库连接，不占用业务共享连接池，完成后立即释放。
 
 ---
 

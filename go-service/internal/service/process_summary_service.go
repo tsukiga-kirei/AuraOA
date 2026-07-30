@@ -54,6 +54,7 @@ type ProcessSummaryService struct {
 	rdb           *redis.Client
 	sysFlags      *systemflags.Resolver
 	externalCtx   *ExternalContextService
+	oaConnections *oa.ConnectionManager
 }
 
 func NewProcessSummaryService(
@@ -69,6 +70,7 @@ func NewProcessSummaryService(
 	rdb *redis.Client,
 	sysFlags *systemflags.Resolver,
 	externalCtx *ExternalContextService,
+	oaConnections *oa.ConnectionManager,
 ) *ProcessSummaryService {
 	return &ProcessSummaryService{
 		logRepo:       logRepo,
@@ -83,6 +85,7 @@ func NewProcessSummaryService(
 		rdb:           rdb,
 		sysFlags:      sysFlags,
 		externalCtx:   externalCtx,
+		oaConnections: oaConnections,
 	}
 }
 
@@ -139,7 +142,7 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 	if err != nil {
 		return nil, err
 	}
-	adapter, err := s.getOAAdapter(tenantID, false)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -880,7 +883,7 @@ func (s *ProcessSummaryService) fetchOAData(c *gin.Context, tenant *model.Tenant
 	if withAttachments && s.attachmentSvc != nil {
 		attachmentSvc = s.attachmentSvc
 	}
-	adapter, err := oa.NewOAAdapter(conn.OAType, conn, attachmentSvc)
+	adapter, err := s.oaConnections.GetAdapter(c.Request.Context(), conn.OAType, conn, attachmentSvc)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "创建 OA 适配器失败: "+err.Error())
 	}
@@ -897,7 +900,7 @@ func (s *ProcessSummaryService) fetchOAData(c *gin.Context, tenant *model.Tenant
 }
 
 func (s *ProcessSummaryService) fetchFlowSnapshot(c *gin.Context, tenant *model.Tenant, processID string) *oa.ProcessFlowSnapshot {
-	adapter, err := s.getOAAdapter(tenant.ID, false)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenant.ID, false)
 	if err != nil {
 		return nil
 	}
@@ -909,7 +912,7 @@ func (s *ProcessSummaryService) fetchFlowSnapshot(c *gin.Context, tenant *model.
 }
 
 func (s *ProcessSummaryService) fetchRequestSummary(c *gin.Context, tenantID uuid.UUID, processID string) (*oa.ProcessRequestSummary, error) {
-	adapter, err := s.getOAAdapter(tenantID, false)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -935,7 +938,7 @@ func (s *ProcessSummaryService) fetchCurrentOAState(
 }
 
 func (s *ProcessSummaryService) fetchOAAnchorWithData(c *gin.Context, tenantID uuid.UUID, processID string, pd *oa.ProcessData) (oa.OAContextAnchor, error) {
-	adapter, err := s.getOAAdapter(tenantID, false)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID, false)
 	if err != nil {
 		return oa.OAContextAnchor{}, err
 	}
@@ -955,7 +958,11 @@ func (s *ProcessSummaryService) buildOAContextAnchorForJob(c *gin.Context, tenan
 	return b
 }
 
-func (s *ProcessSummaryService) getOAAdapter(tenantID uuid.UUID, withAttachment bool) (oa.OAAdapter, error) {
+func (s *ProcessSummaryService) getOAAdapter(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	withAttachment bool,
+) (oa.OAAdapter, error) {
 	tenant, err := s.tenantRepo.FindByID(tenantID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "获取租户失败")
@@ -971,9 +978,9 @@ func (s *ProcessSummaryService) getOAAdapter(tenantID uuid.UUID, withAttachment 
 		return nil, err
 	}
 	if withAttachment && s.attachmentSvc != nil {
-		return oa.NewOAAdapter(conn.OAType, conn, s.attachmentSvc)
+		return s.oaConnections.GetAdapter(ctx, conn.OAType, conn, s.attachmentSvc)
 	}
-	return oa.NewOAAdapter(conn.OAType, conn)
+	return s.oaConnections.GetAdapter(ctx, conn.OAType, conn)
 }
 
 func (s *ProcessSummaryService) decryptOAConn(conn *model.OADatabaseConnection) error {

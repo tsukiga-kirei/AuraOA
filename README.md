@@ -575,7 +575,7 @@ encryption:
 
 1. 在 `go-service/internal/pkg/oa/` 下创建新适配器
 2. 实现 `OAAdapter` 接口
-3. 在 `NewOAAdapter` 工厂函数中注册
+3. 在 OA 工厂与 `ConnectionManager` 的数据库创建入口中注册，统一复用和释放底层连接池
 
 ### 添加新的 AI 模型
 

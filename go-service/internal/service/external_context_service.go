@@ -24,10 +24,19 @@ const (
 type ExternalContextService struct {
 	oaConnRepo    *repository.OAConnectionRepo
 	attachmentSvc *AttachmentRecognitionService
+	oaConnections *oa.ConnectionManager
 }
 
-func NewExternalContextService(oaConnRepo *repository.OAConnectionRepo, attachmentSvc *AttachmentRecognitionService) *ExternalContextService {
-	return &ExternalContextService{oaConnRepo: oaConnRepo, attachmentSvc: attachmentSvc}
+func NewExternalContextService(
+	oaConnRepo *repository.OAConnectionRepo,
+	attachmentSvc *AttachmentRecognitionService,
+	oaConnections *oa.ConnectionManager,
+) *ExternalContextService {
+	return &ExternalContextService{
+		oaConnRepo:    oaConnRepo,
+		attachmentSvc: attachmentSvc,
+		oaConnections: oaConnections,
+	}
 }
 
 type ExternalContextTestRequest struct {
@@ -65,7 +74,7 @@ func (s *ExternalContextService) ResolveMountsForPrompt(c *gin.Context, tenant *
 	if s == nil || tenant == nil || len(mounts) == 0 {
 		return ""
 	}
-	adapter, err := s.getOAAdapter(tenant, false)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenant, false)
 	if err != nil {
 		return "外部关联数据：\n（创建 OA 查询连接失败：" + err.Error() + "）"
 	}
@@ -110,7 +119,7 @@ func (s *ExternalContextService) ValidateMounts(c *gin.Context, tenant *model.Te
 	if s == nil || tenant == nil || len(mounts) == 0 {
 		return ""
 	}
-	adapter, err := s.getOAAdapter(tenant, false)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenant, false)
 	if err != nil {
 		return "外部关联数据测试：\n（创建 OA 查询连接失败：" + err.Error() + "）"
 	}
@@ -164,7 +173,7 @@ func (s *ExternalContextService) ValidateMounts(c *gin.Context, tenant *model.Te
 }
 
 func (s *ExternalContextService) FetchWorkflowFields(c *gin.Context, tenant *model.Tenant, req ExternalWorkflowFieldsRequest) (*oa.ProcessFields, error) {
-	adapter, err := s.getOAAdapter(tenant, false)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenant, false)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +189,7 @@ func (s *ExternalContextService) FetchWorkflowFields(c *gin.Context, tenant *mod
 }
 
 func (s *ExternalContextService) SearchWorkflows(c *gin.Context, tenant *model.Tenant, keyword string) ([]oa.ProcessInfo, error) {
-	adapter, err := s.getOAAdapter(tenant, false)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenant, false)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +352,11 @@ func (s *ExternalContextService) resolveModelMount(ctx context.Context, adapter 
 	return formatModelContextResult(name, tableName, sourceField, cfg, res, fieldLabels)
 }
 
-func (s *ExternalContextService) getOAAdapter(tenant *model.Tenant, withAttachments bool) (oa.OAAdapter, error) {
+func (s *ExternalContextService) getOAAdapter(
+	ctx context.Context,
+	tenant *model.Tenant,
+	withAttachments bool,
+) (oa.OAAdapter, error) {
 	if tenant.OADBConnectionID == nil {
 		return nil, fmt.Errorf("租户未配置 OA 数据库连接")
 	}
@@ -362,7 +375,7 @@ func (s *ExternalContextService) getOAAdapter(tenant *model.Tenant, withAttachme
 	if withAttachments && s.attachmentSvc != nil {
 		attachmentSvc = s.attachmentSvc
 	}
-	return oa.NewOAAdapter(conn.OAType, conn, attachmentSvc)
+	return s.oaConnections.GetAdapter(ctx, conn.OAType, conn, attachmentSvc)
 }
 
 func contextMountTypeLabel(t string) string {

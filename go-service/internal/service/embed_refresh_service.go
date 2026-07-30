@@ -819,7 +819,7 @@ func (s *EmbedRefreshService) scanSchedule(
 	if tenant.Status != "active" || !tenant.EmbedEnabled || tenant.AdminUserID == nil {
 		return nil
 	}
-	adapter, err := s.auditSvc.getOAAdapter(schedule.TenantID)
+	adapter, err := s.auditSvc.getOAAdapter(ctx, schedule.TenantID)
 	if err != nil {
 		return err
 	}

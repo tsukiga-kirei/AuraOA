@@ -62,53 +62,124 @@ func (a *Ecology9Adapter) col(name string) string {
 	return a.tableName(name)
 }
 
-// NewEcology9Adapter 根据 OA 数据库连接配置创建泛微 E9 适配器实例。
-// 通过 conn.Driver 自动选择 MySQL 或 Oracle 驱动。
-// attachmentSvc 可选，如果为 nil 则不提取附件内容。
-func NewEcology9Adapter(conn *model.OADatabaseConnection, attachmentSvc AttachmentRecognitionService) (*Ecology9Adapter, error) {
-	var dialector gorm.Dialector
+// openEcology9Database 创建并验证泛微 E9 底层数据库连接池。
+// transient 为 true 时不保留空闲连接，用于连接测试等短生命周期场景。
+func openEcology9Database(
+	ctx context.Context,
+	conn *model.OADatabaseConnection,
+	transient bool,
+) (*gorm.DB, *sql.DB, error) {
+	if conn == nil {
+		return nil, nil, fmt.Errorf("OA 数据库连接配置为空")
+	}
 
+	poolSize := normalizePoolSize(conn.PoolSize)
+	connectionTimeout := normalizeConnectionTimeout(conn.ConnectionTimeout)
+
+	var (
+		dialector gorm.Dialector
+		sqlDB     *sql.DB
+		err       error
+	)
 	switch conn.Driver {
 	case "mysql":
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-			conn.Username, conn.Password, conn.Host, conn.Port, conn.DatabaseName)
-		dialector = mysql.Open(dsn)
+		dsn := fmt.Sprintf(
+			"%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=%s",
+			conn.Username,
+			conn.Password,
+			conn.Host,
+			conn.Port,
+			conn.DatabaseName,
+			connectionTimeout,
+		)
+		sqlDB, err = sql.Open(mysql.DefaultDriverName, dsn)
+		if err == nil {
+			dialector = mysql.New(mysql.Config{DSN: dsn, Conn: sqlDB})
+		}
 	case "oracle":
-		dsn := oracle.BuildDSN(conn.Username, conn.Password, conn.Host, conn.Port, conn.DatabaseName)
-		dialector = oracle.Open(dsn)
+		dsn := oracle.BuildDSN(
+			conn.Username,
+			conn.Password,
+			conn.Host,
+			conn.Port,
+			conn.DatabaseName,
+			int(connectionTimeout/time.Second),
+		)
+		sqlDB, err = sql.Open("oracle", dsn)
+		if err == nil {
+			dialector = oracle.OpenWithConn(dsn, sqlDB)
+		}
 	case "dm":
-		dsn := dm.BuildDSN(conn.Username, conn.Password, conn.Host, conn.Port, conn.DatabaseName)
-		dialector = dm.Open(dsn)
+		dsn := dm.BuildDSN(
+			conn.Username,
+			conn.Password,
+			conn.Host,
+			conn.Port,
+			conn.DatabaseName,
+			int(connectionTimeout/time.Second),
+		)
+		sqlDB, err = sql.Open("dm", dsn)
+		if err == nil {
+			dialector = dm.OpenWithConn(dsn, sqlDB)
+		}
 	default:
-		return nil, fmt.Errorf("泛微 E9 不支持数据库驱动: %s（仅支持 mysql、oracle、dm）", conn.Driver)
+		return nil, nil, fmt.Errorf("泛微 E9 不支持数据库驱动: %s（仅支持 mysql、oracle、dm）", conn.Driver)
 	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("创建泛微 E9 数据库连接池失败 (driver=%s): %w", conn.Driver, err)
+	}
+
+	// 必须在 GORM 初始化前设置连接池限制。MySQL 和 Oracle 驱动会在
+	// Initialize 阶段查询数据库版本，晚于 gorm.Open 设置会留下无界连接窗口。
+	sqlDB.SetMaxOpenConns(poolSize)
+	if transient {
+		sqlDB.SetMaxIdleConns(0)
+	} else {
+		sqlDB.SetMaxIdleConns(normalizeMaxIdleConns(poolSize))
+	}
+	sqlDB.SetConnMaxIdleTime(oaConnectionMaxIdleTime)
+	sqlDB.SetConnMaxLifetime(oaConnectionMaxLifetime)
 
 	// Oracle/DM 默认将不加引号的标识符转为大写，
 	// 泛微 E9 在 Oracle/DM 上的表名和列名均为大写。
 	// 配置 NamingStrategy 使 GORM 不自动添加引号、不转小写。
 	gormConfig := &gorm.Config{
 		// 使用与主库相同的 zap logger，OA 慢查询也写入 app.log
-		Logger: pkglogger.NewGormLogger(200*time.Millisecond, true),
+		Logger:               pkglogger.NewGormLogger(200*time.Millisecond, true),
+		DisableAutomaticPing: true,
 	}
 	if conn.Driver == "oracle" || conn.Driver == "dm" {
 		gormConfig.NamingStrategy = schema.NamingStrategy{
 			NoLowerCase: true,
 		}
-		gormConfig.DisableAutomaticPing = false
 	}
 
 	db, err := gorm.Open(dialector, gormConfig)
 	if err != nil {
-		return nil, fmt.Errorf("连接泛微 E9 数据库失败 (driver=%s): %w", conn.Driver, err)
+		_ = sqlDB.Close()
+		return nil, nil, fmt.Errorf("初始化泛微 E9 数据库驱动失败 (driver=%s): %w", conn.Driver, err)
 	}
 
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("获取数据库连接池失败: %w", err)
+	pingCtx := ctx
+	if pingCtx == nil {
+		pingCtx = context.Background()
 	}
-	sqlDB.SetMaxOpenConns(conn.PoolSize)
-	sqlDB.SetMaxIdleConns(conn.PoolSize / 2)
+	pingCtx, cancel := context.WithTimeout(pingCtx, connectionTimeout)
+	defer cancel()
+	if err := sqlDB.PingContext(pingCtx); err != nil {
+		_ = sqlDB.Close()
+		return nil, nil, fmt.Errorf("连接泛微 E9 数据库失败 (driver=%s): %w", conn.Driver, err)
+	}
 
+	return db, sqlDB, nil
+}
+
+// newEcology9AdapterWithDB 使用已建立的共享连接池创建轻量适配器。
+func newEcology9AdapterWithDB(
+	conn *model.OADatabaseConnection,
+	db *gorm.DB,
+	attachmentSvc AttachmentRecognitionService,
+) *Ecology9Adapter {
 	return &Ecology9Adapter{
 		db:                       db,
 		driver:                   conn.Driver,
@@ -119,7 +190,7 @@ func NewEcology9Adapter(conn *model.OADatabaseConnection, attachmentSvc Attachme
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
-	}, nil
+	}
 }
 
 // ── E9 表结构映射 ──────────────────────────────────────────

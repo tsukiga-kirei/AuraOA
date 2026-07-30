@@ -99,6 +99,7 @@ type ArchiveReviewService struct {
 	invalidator         *cache.InvalidationManager
 	sysFlags            *systemflags.Resolver
 	externalCtx         *ExternalContextService
+	oaConnections       *oa.ConnectionManager
 }
 
 // NewArchiveReviewService 创建 ArchiveReviewService，注入所有依赖仓储和服务。
@@ -121,6 +122,7 @@ func NewArchiveReviewService(
 	invalidationManager *cache.InvalidationManager,
 	sysFlags *systemflags.Resolver,
 	externalCtx *ExternalContextService,
+	oaConnections *oa.ConnectionManager,
 ) *ArchiveReviewService {
 	return &ArchiveReviewService{
 		archiveLogRepo:      archiveLogRepo,
@@ -141,6 +143,7 @@ func NewArchiveReviewService(
 		invalidator:         invalidationManager,
 		sysFlags:            sysFlags,
 		externalCtx:         externalCtx,
+		oaConnections:       oaConnections,
 	}
 }
 
@@ -168,7 +171,7 @@ func (s *ArchiveReviewService) ListProcesses(c *gin.Context, params dto.ArchiveL
 		}
 	}
 
-	adapter, err := s.getOAAdapter(tenantID)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +324,7 @@ func (s *ArchiveReviewService) fetchOAArchivedDataCached(
 	}
 
 	// 缓存未命中，从 OA 分批拉取全量数据
-	adapter, err := s.getOAAdapter(tenantID)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -953,7 +956,7 @@ func (s *ArchiveReviewService) ListPendingForBatch(c *gin.Context, workflowIds [
 	if username == "" {
 		return nil, newServiceError(errcode.ErrParamValidation, "无法解析 OA 登录用户名，请检查任务归属用户账号")
 	}
-	adapter, err := s.getOAAdapter(tenantID)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -1277,7 +1280,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 
 	fieldSet, mergedRulesText := s.resolveArchiveUserConfig(c, userID, config, rules, logEntry.ProcessType)
 
-	adapter, err := s.getOAAdapter(tenantID)
+	adapter, err := s.getOAAdapter(ctx, tenantID)
 	if err != nil {
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, err)
 		return err
@@ -1841,7 +1844,10 @@ func (s *ArchiveReviewService) decryptOAConn(conn *model.OADatabaseConnection) e
 	return nil
 }
 
-func (s *ArchiveReviewService) getOAAdapter(tenantID uuid.UUID) (oa.OAAdapter, error) {
+func (s *ArchiveReviewService) getOAAdapter(
+	ctx context.Context,
+	tenantID uuid.UUID,
+) (oa.OAAdapter, error) {
 	tenant, err := s.tenantRepo.FindByID(tenantID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "获取租户失败")
@@ -1861,7 +1867,7 @@ func (s *ArchiveReviewService) getOAAdapter(tenantID uuid.UUID) (oa.OAAdapter, e
 	if s.attachmentSvc != nil {
 		attachmentSvc = s.attachmentSvc
 	}
-	adapter, err := oa.NewOAAdapter(conn.OAType, conn, attachmentSvc)
+	adapter, err := s.oaConnections.GetAdapter(ctx, conn.OAType, conn, attachmentSvc)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "创建 OA 适配器失败: "+err.Error())
 	}
