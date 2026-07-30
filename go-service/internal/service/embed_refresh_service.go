@@ -770,7 +770,37 @@ func (s *EmbedRefreshService) executeScheduledScan(ctx context.Context, schedule
 	defer release()
 
 	startedAt := apptime.Now()
-	runErr := s.scanSchedule(ctx, schedule)
+	sourceActive, sourceErr := s.isScheduleSourceActive(ctx, schedule)
+	if sourceErr != nil {
+		s.finishScheduledScan(ctx, schedule, startedAt, sourceErr)
+		return
+	}
+	if !sourceActive {
+		schedule.IsActive = false
+		if err := s.persistAndActivateSchedule(ctx, schedule, true); err != nil {
+			s.finishScheduledScan(ctx, schedule, startedAt, fmt.Errorf("停用失配的流程级定时检查失败: %w", err))
+			return
+		}
+		if s.logger != nil {
+			s.logger.Warn("流程级定时检查与源配置不一致，已自动停用",
+				zap.String("scheduleID", schedule.ID.String()),
+				zap.String("tenantID", schedule.TenantID.String()),
+				zap.String("module", schedule.Module),
+				zap.String("configID", schedule.ConfigID.String()),
+				zap.String("processType", schedule.ProcessType))
+		}
+		return
+	}
+
+	s.finishScheduledScan(ctx, schedule, startedAt, s.scanSchedule(ctx, schedule))
+}
+
+func (s *EmbedRefreshService) finishScheduledScan(
+	ctx context.Context,
+	schedule *model.EmbedRefreshSchedule,
+	startedAt time.Time,
+	runErr error,
+) {
 	status := "success"
 	lastError := ""
 	if runErr != nil {
@@ -790,6 +820,50 @@ func (s *EmbedRefreshService) executeScheduledScan(ctx context.Context, schedule
 	}
 	nextRun := ParseNextRun(schedule.CronExpression)
 	_ = s.scheduleRepo.UpdateRunResult(ctx, schedule.ID, startedAt, nextRun, status, lastError)
+}
+
+func (s *EmbedRefreshService) isScheduleSourceActive(
+	ctx context.Context,
+	schedule *model.EmbedRefreshSchedule,
+) (bool, error) {
+	switch schedule.Module {
+	case embedRefreshModuleAudit:
+		cfg, err := s.auditRepo.GetByIDForSchedule(ctx, schedule.TenantID, schedule.ConfigID)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return isAuditScheduleConfigActive(cfg), nil
+	case embedRefreshModuleSummary:
+		cfg, err := s.summaryRepo.GetByIDForSchedule(ctx, schedule.TenantID, schedule.ConfigID)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return isSummaryScheduleConfigActive(cfg), nil
+	default:
+		return false, fmt.Errorf("不支持的流程级定时检查模块: %s", schedule.Module)
+	}
+}
+
+func isAuditScheduleConfigActive(cfg *model.ProcessAuditConfig) bool {
+	if cfg == nil {
+		return false
+	}
+	embedCfg := parseEmbedConfig(cfg.EmbedConfig)
+	return cfg.Status == "active" && cfg.EmbedEnabled && embedCfg.ScheduledRefreshEnabled
+}
+
+func isSummaryScheduleConfigActive(cfg *model.ProcessSummaryConfig) bool {
+	if cfg == nil {
+		return false
+	}
+	embedCfg := parseSummaryEmbedConfig(cfg.EmbedConfig)
+	return cfg.Status == "active" && cfg.EmbedEnabled && embedCfg.ScheduledRefreshEnabled
 }
 
 func (s *EmbedRefreshService) acquireScheduleRunLock(
