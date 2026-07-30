@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/ai"
@@ -152,5 +153,42 @@ func TestBuildEmbedRefreshSchedule(t *testing.T) {
 	}
 	if schedule.LookbackDays != 3 || schedule.IntervalMinutes != 10 {
 		t.Fatalf("调度参数错误: days=%d interval=%d", schedule.LookbackDays, schedule.IntervalMinutes)
+	}
+
+	inactive := buildEmbedRefreshSchedule(
+		embedRefreshModuleAudit,
+		uuid.New(),
+		uuid.New(),
+		"项目立项申请流程",
+		false,
+		3,
+		5,
+	)
+	if inactive.IsActive {
+		t.Fatal("默认关闭的流程配置不应生成活跃调度")
+	}
+}
+
+func TestScheduleSourceConfigMustBeExplicitlyEnabled(t *testing.T) {
+	audit := &model.ProcessAuditConfig{
+		Status:       "active",
+		EmbedEnabled: true,
+		EmbedConfig:  datatypes.JSON([]byte(`{"scheduled_refresh_enabled":true}`)),
+	}
+	if !isAuditScheduleConfigActive(audit) {
+		t.Fatal("满足全部条件的审核配置应允许定时检查")
+	}
+	audit.EmbedEnabled = false
+	if isAuditScheduleConfigActive(audit) {
+		t.Fatal("未启用 OA 嵌入审核时不应允许定时检查")
+	}
+
+	summary := &model.ProcessSummaryConfig{
+		Status:       "active",
+		EmbedEnabled: true,
+		EmbedConfig:  datatypes.JSON([]byte(`{"scheduled_refresh_enabled":false}`)),
+	}
+	if isSummaryScheduleConfigActive(summary) {
+		t.Fatal("未明确开启定时检查的总结配置不应允许执行")
 	}
 }

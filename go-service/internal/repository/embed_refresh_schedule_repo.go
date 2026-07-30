@@ -36,7 +36,8 @@ func (r *EmbedRefreshScheduleRepo) Upsert(ctx context.Context, schedule *model.E
 			"cron_expression",
 			"updated_at",
 		}),
-	}).Create(schedule).Error; err != nil {
+	}).Model(&model.EmbedRefreshSchedule{}).
+		Create(embedRefreshScheduleValues(schedule)).Error; err != nil {
 		return err
 	}
 	var persisted model.EmbedRefreshSchedule
@@ -46,6 +47,31 @@ func (r *EmbedRefreshScheduleRepo) Upsert(ctx context.Context, schedule *model.E
 	}
 	*schedule = persisted
 	return nil
+}
+
+// embedRefreshScheduleValues 显式生成调度写入值，确保 false 不被 GORM 字段默认值替换。
+func embedRefreshScheduleValues(schedule *model.EmbedRefreshSchedule) map[string]interface{} {
+	now := apptime.Now()
+	if schedule.ID == uuid.Nil {
+		schedule.ID = uuid.New()
+	}
+	createdAt := schedule.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = now
+	}
+	return map[string]interface{}{
+		"id":               schedule.ID,
+		"tenant_id":        schedule.TenantID,
+		"module":           schedule.Module,
+		"config_id":        schedule.ConfigID,
+		"process_type":     schedule.ProcessType,
+		"is_active":        schedule.IsActive,
+		"lookback_days":    schedule.LookbackDays,
+		"interval_minutes": schedule.IntervalMinutes,
+		"cron_expression":  schedule.CronExpression,
+		"created_at":       createdAt,
+		"updated_at":       now,
+	}
 }
 
 // ListActive 查询所有租户启用中的嵌入刷新调度，供服务启动恢复。

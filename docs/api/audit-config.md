@@ -53,7 +53,8 @@ PUT /api/tenant/rules/configs/:id
 | `scheduled_refresh_interval_minutes` | `5` | 检查频率，支持 5、10、15、30、60 分钟 |
 
 保存配置后，系统会立即同步对应的 `embed_refresh_schedules` 持久化调度记录；关闭定时检查
-会停用并移除内存 Cron，不需要等待配置轮询。
+会停用并移除内存 Cron，不需要等待配置轮询。定时任务执行前还会重新核验审核配置的状态、
+`embed_enabled` 和 `scheduled_refresh_enabled`，源配置未明确开启时不会访问 OA 数据库。
 
 普通审批推进默认不重新调用 AI，以减少等待时间和 Token 消耗。附件版本通过
 `DocImageFile` 的最新 `versionid` / `imagefileid` 与附件字段 `docId` 共同判断。

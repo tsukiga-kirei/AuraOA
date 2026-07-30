@@ -51,6 +51,20 @@ func (r *ProcessSummaryConfigRepo) ListAllTenants(ctx context.Context) ([]model.
 	return configs, nil
 }
 
+// GetByIDForSchedule 查询定时调度对应的总结配置，并显式校验租户归属。
+func (r *ProcessSummaryConfigRepo) GetByIDForSchedule(
+	ctx context.Context,
+	tenantID, id uuid.UUID,
+) (*model.ProcessSummaryConfig, error) {
+	var cfg model.ProcessSummaryConfig
+	if err := r.DB.WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		First(&cfg).Error; err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
 func (r *ProcessSummaryConfigRepo) UpdateFields(c *gin.Context, id uuid.UUID, fields map[string]interface{}) error {
 	return r.WithTenant(c).Model(&model.ProcessSummaryConfig{}).Where("id = ?", id).Updates(fields).Error
 }

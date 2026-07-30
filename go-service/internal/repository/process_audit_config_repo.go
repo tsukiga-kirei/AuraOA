@@ -55,6 +55,20 @@ func (r *ProcessAuditConfigRepo) ListAllTenants(ctx context.Context) ([]model.Pr
 	return configs, nil
 }
 
+// GetByIDForSchedule 查询定时调度对应的审核配置，并显式校验租户归属。
+func (r *ProcessAuditConfigRepo) GetByIDForSchedule(
+	ctx context.Context,
+	tenantID, id uuid.UUID,
+) (*model.ProcessAuditConfig, error) {
+	var cfg model.ProcessAuditConfig
+	if err := r.DB.WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		First(&cfg).Error; err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
 // Update 更新流程审核配置。
 func (r *ProcessAuditConfigRepo) Update(c *gin.Context, cfg *model.ProcessAuditConfig) error {
 	return r.WithTenant(c).Model(cfg).Where("id = ?", cfg.ID).Updates(cfg).Error
