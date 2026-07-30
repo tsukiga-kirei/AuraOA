@@ -21,14 +21,25 @@ import (
 
 // OAConnectionService 处理 OA 数据库连接的业务逻辑。
 type OAConnectionService struct {
-	repo        *repository.OAConnectionRepo
-	tenantRepo  *repository.TenantRepo
-	invalidator *cache.InvalidationManager
+	repo          *repository.OAConnectionRepo
+	tenantRepo    *repository.TenantRepo
+	invalidator   *cache.InvalidationManager
+	oaConnections *oa.ConnectionManager
 }
 
 // NewOAConnectionService 创建 OAConnectionService，注入 OA 连接仓储。
-func NewOAConnectionService(repo *repository.OAConnectionRepo, tenantRepo *repository.TenantRepo, invalidator *cache.InvalidationManager) *OAConnectionService {
-	return &OAConnectionService{repo: repo, tenantRepo: tenantRepo, invalidator: invalidator}
+func NewOAConnectionService(
+	repo *repository.OAConnectionRepo,
+	tenantRepo *repository.TenantRepo,
+	invalidator *cache.InvalidationManager,
+	oaConnections *oa.ConnectionManager,
+) *OAConnectionService {
+	return &OAConnectionService{
+		repo:          repo,
+		tenantRepo:    tenantRepo,
+		invalidator:   invalidator,
+		oaConnections: oaConnections,
+	}
 }
 
 // List 返回所有 OA 连接。
@@ -126,35 +137,42 @@ func (s *OAConnectionService) invalidateAffectedTenantCaches(connID uuid.UUID) {
 
 // Update 更新 OA 连接。
 func (s *OAConnectionService) Update(id uuid.UUID, req *dto.UpdateOAConnectionRequest) (*dto.OAConnectionResponse, error) {
-	_, err := s.repo.FindByID(id)
+	existing, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrResourceNotFound, "OA连接不存在")
 	}
 
 	fields := make(map[string]interface{})
+	poolConfigChanged := false
 	if req.Name != "" {
 		fields["name"] = req.Name
 	}
 	if req.OAType != "" {
 		fields["oa_type"] = req.OAType
+		poolConfigChanged = poolConfigChanged || req.OAType != existing.OAType
 	}
 	if req.OATypeLabel != "" {
 		fields["oa_type_label"] = req.OATypeLabel
 	}
 	if req.Driver != "" {
 		fields["driver"] = req.Driver
+		poolConfigChanged = poolConfigChanged || req.Driver != existing.Driver
 	}
 	if req.Host != "" {
 		fields["host"] = req.Host
+		poolConfigChanged = poolConfigChanged || req.Host != existing.Host
 	}
 	if req.Port != 0 {
 		fields["port"] = req.Port
+		poolConfigChanged = poolConfigChanged || req.Port != existing.Port
 	}
 	if req.DatabaseName != "" {
 		fields["database_name"] = req.DatabaseName
+		poolConfigChanged = poolConfigChanged || req.DatabaseName != existing.DatabaseName
 	}
 	if req.Username != "" {
 		fields["username"] = req.Username
+		poolConfigChanged = poolConfigChanged || req.Username != existing.Username
 	}
 	if req.Password != "" {
 		encrypted, err := crypto.Encrypt(req.Password)
@@ -162,12 +180,15 @@ func (s *OAConnectionService) Update(id uuid.UUID, req *dto.UpdateOAConnectionRe
 			return nil, newServiceError(errcode.ErrInternalServer, "加密失败")
 		}
 		fields["password"] = encrypted
+		poolConfigChanged = true
 	}
 	if req.PoolSize != 0 {
 		fields["pool_size"] = req.PoolSize
+		poolConfigChanged = poolConfigChanged || req.PoolSize != existing.PoolSize
 	}
 	if req.ConnectionTimeout != 0 {
 		fields["connection_timeout"] = req.ConnectionTimeout
+		poolConfigChanged = poolConfigChanged || req.ConnectionTimeout != existing.ConnectionTimeout
 	}
 	if req.TestOnBorrow != nil {
 		fields["test_on_borrow"] = *req.TestOnBorrow
@@ -177,6 +198,7 @@ func (s *OAConnectionService) Update(id uuid.UUID, req *dto.UpdateOAConnectionRe
 	}
 	if req.Enabled != nil {
 		fields["enabled"] = *req.Enabled
+		poolConfigChanged = poolConfigChanged || (!*req.Enabled && existing.Enabled)
 	}
 	if req.Description != "" {
 		fields["description"] = req.Description
@@ -204,6 +226,12 @@ func (s *OAConnectionService) Update(id uuid.UUID, req *dto.UpdateOAConnectionRe
 
 	pkglogger.Global().Info("OA连接更新成功", zap.String("connID", id.String()))
 
+	if poolConfigChanged {
+		// 建连参数变更或连接被停用后立即关闭旧共享池；
+		// 其他实例也会在下次取用时通过配置指纹自动替换。
+		s.oaConnections.Invalidate(id)
+	}
+
 	// 清除引用此 OA 连接的所有租户缓存
 	s.invalidateAffectedTenantCaches(id)
 
@@ -224,33 +252,34 @@ func (s *OAConnectionService) Delete(id uuid.UUID) error {
 	if err := s.repo.Delete(id); err != nil {
 		return newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
+	s.oaConnections.Invalidate(id)
 	pkglogger.Global().Info("OA连接删除成功", zap.String("connID", id.String()))
 	return nil
 }
 
 func toOAConnectionResponse(c *model.OADatabaseConnection) dto.OAConnectionResponse {
 	return dto.OAConnectionResponse{
-		ID:                c.ID.String(),
-		Name:              c.Name,
-		OAType:            c.OAType,
-		OATypeLabel:       c.OATypeLabel,
-		Driver:            c.Driver,
-		Host:              c.Host,
-		Port:              c.Port,
-		DatabaseName:      c.DatabaseName,
-		Username:          c.Username,
-		PoolSize:          c.PoolSize,
-		ConnectionTimeout: c.ConnectionTimeout,
-		TestOnBorrow:      c.TestOnBorrow,
-		Status:            c.Status,
-		SyncInterval:      c.SyncInterval,
-		Enabled:           c.Enabled,
-		Description:       c.Description,
+		ID:                    c.ID.String(),
+		Name:                  c.Name,
+		OAType:                c.OAType,
+		OATypeLabel:           c.OATypeLabel,
+		Driver:                c.Driver,
+		Host:                  c.Host,
+		Port:                  c.Port,
+		DatabaseName:          c.DatabaseName,
+		Username:              c.Username,
+		PoolSize:              c.PoolSize,
+		ConnectionTimeout:     c.ConnectionTimeout,
+		TestOnBorrow:          c.TestOnBorrow,
+		Status:                c.Status,
+		SyncInterval:          c.SyncInterval,
+		Enabled:               c.Enabled,
+		Description:           c.Description,
 		WeaverAPIURL:          c.WeaverAPIURL,
 		WeaverAppIDConfigured: strings.TrimSpace(c.WeaverAppID) != "",
 		WeaverDefaultUser:     c.WeaverDefaultUser,
-		CreatedAt:         c.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:         c.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		CreatedAt:             c.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:             c.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 
@@ -286,17 +315,18 @@ func (s *OAConnectionService) TestConnection(id uuid.UUID) error {
 // TestConnectionByParams 根据传入参数直接测试数据库连通性（用于新建/编辑时的测试按钮）。
 func (s *OAConnectionService) TestConnectionByParams(req *dto.CreateOAConnectionRequest) error {
 	conn := &model.OADatabaseConnection{
-		OAType:       req.OAType,
-		Driver:       req.Driver,
-		Host:         req.Host,
-		Port:         req.Port,
-		DatabaseName: req.DatabaseName,
-		Username:     req.Username,
-		Password:     req.Password, // 前端传入的是明文
-		PoolSize:     req.PoolSize,
+		OAType:            req.OAType,
+		Driver:            req.Driver,
+		Host:              req.Host,
+		Port:              req.Port,
+		DatabaseName:      req.DatabaseName,
+		Username:          req.Username,
+		Password:          req.Password, // 前端传入的是明文
+		PoolSize:          req.PoolSize,
+		ConnectionTimeout: req.ConnectionTimeout,
 	}
 	if conn.PoolSize == 0 {
-		conn.PoolSize = 5
+		conn.PoolSize = 10
 	}
 
 	return s.testOAConnection(conn)
@@ -304,15 +334,31 @@ func (s *OAConnectionService) TestConnectionByParams(req *dto.CreateOAConnection
 
 // testOAConnection 实际执行 OA 数据库连接测试。
 func (s *OAConnectionService) testOAConnection(conn *model.OADatabaseConnection) error {
-	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
+	// 测试连接使用独立短生命周期连接，不进入业务共享池。
+	timeout := time.Duration(conn.ConnectionTimeout) * time.Second
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	if timeout < 5*time.Second {
+		timeout = 5 * time.Second
+	}
+	if timeout > 5*time.Minute {
+		timeout = 5 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	adapter, closeFn, err := s.oaConnections.OpenTransientAdapter(ctx, conn.OAType, conn)
 	if err != nil {
 		return newServiceError(errcode.ErrOATypeUnsupported, err.Error())
 	}
+	defer func() {
+		if closeErr := closeFn(); closeErr != nil {
+			pkglogger.Global().Warn("关闭 OA 测试连接失败", zap.Error(closeErr))
+		}
+	}()
 
-	// 用 5 秒超时做一次简单查询验证连通性
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
+	// 用配置的连接超时做一次简单查询验证连通性。
 	// ValidateProcess 用一个不存在的流程名测试，只要不报连接错误就算通
 	_, err = adapter.ValidateProcess(ctx, "__connection_test__")
 	if err != nil {

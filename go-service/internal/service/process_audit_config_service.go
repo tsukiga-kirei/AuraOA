@@ -22,13 +22,14 @@ import (
 
 // ProcessAuditConfigService 处理流程审核配置的业务逻辑。
 type ProcessAuditConfigService struct {
-	configRepo   *repository.ProcessAuditConfigRepo
-	tenantRepo   *repository.TenantRepo
-	oaConnRepo   *repository.OAConnectionRepo
-	templateRepo *repository.SystemPromptTemplateRepo
-	db           *gorm.DB
-	invalidator  *cache.InvalidationManager
-	scheduleMgr  EmbedRefreshScheduleManager
+	configRepo    *repository.ProcessAuditConfigRepo
+	tenantRepo    *repository.TenantRepo
+	oaConnRepo    *repository.OAConnectionRepo
+	templateRepo  *repository.SystemPromptTemplateRepo
+	db            *gorm.DB
+	invalidator   *cache.InvalidationManager
+	scheduleMgr   EmbedRefreshScheduleManager
+	oaConnections *oa.ConnectionManager
 }
 
 // SetEmbedRefreshScheduleManager 注入流程级嵌入刷新调度管理器。
@@ -44,14 +45,16 @@ func NewProcessAuditConfigService(
 	templateRepo *repository.SystemPromptTemplateRepo,
 	db *gorm.DB,
 	invalidator *cache.InvalidationManager,
+	oaConnections *oa.ConnectionManager,
 ) *ProcessAuditConfigService {
 	return &ProcessAuditConfigService{
-		configRepo:   configRepo,
-		tenantRepo:   tenantRepo,
-		oaConnRepo:   oaConnRepo,
-		templateRepo: templateRepo,
-		db:           db,
-		invalidator:  invalidator,
+		configRepo:    configRepo,
+		tenantRepo:    tenantRepo,
+		oaConnRepo:    oaConnRepo,
+		templateRepo:  templateRepo,
+		db:            db,
+		invalidator:   invalidator,
+		oaConnections: oaConnections,
 	}
 }
 
@@ -399,8 +402,7 @@ func (s *ProcessAuditConfigService) getOAAdapter(c *gin.Context) (oa.OAAdapter, 
 	}
 	conn.Password = password
 
-	// 创建 OA 适配器
-	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
+	adapter, err := s.oaConnections.GetAdapter(c.Request.Context(), conn.OAType, conn)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOATypeUnsupported, err.Error())
 	}

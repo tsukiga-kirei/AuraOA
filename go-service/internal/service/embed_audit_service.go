@@ -55,7 +55,7 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		return nil, err
 	}
 
-	adapter, err := s.getOAAdapter(tenantID)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +325,7 @@ func (s *AuditExecuteService) fetchOAAnchorWithData(
 	fieldSet SelectedFieldSet,
 	executionFingerprint string,
 ) (oa.OAContextAnchor, error) {
-	adapter, err := s.getOAAdapter(tenantID)
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID)
 	if err != nil {
 		return oa.OAContextAnchor{}, err
 	}

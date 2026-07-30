@@ -20,11 +20,12 @@ import (
 
 // ProcessArchiveConfigService 负责归档复盘配置的增删改查、OA 连接测试及字段同步。
 type ProcessArchiveConfigService struct {
-	configRepo   *repository.ProcessArchiveConfigRepo
-	tenantRepo   *repository.TenantRepo
-	oaConnRepo   *repository.OAConnectionRepo
-	templateRepo *repository.SystemPromptTemplateRepo
-	invalidator  *cache.InvalidationManager
+	configRepo    *repository.ProcessArchiveConfigRepo
+	tenantRepo    *repository.TenantRepo
+	oaConnRepo    *repository.OAConnectionRepo
+	templateRepo  *repository.SystemPromptTemplateRepo
+	invalidator   *cache.InvalidationManager
+	oaConnections *oa.ConnectionManager
 }
 
 // NewProcessArchiveConfigService 初始化归档复盘配置服务，注入所需仓储依赖。
@@ -34,13 +35,15 @@ func NewProcessArchiveConfigService(
 	oaConnRepo *repository.OAConnectionRepo,
 	templateRepo *repository.SystemPromptTemplateRepo,
 	invalidator *cache.InvalidationManager,
+	oaConnections *oa.ConnectionManager,
 ) *ProcessArchiveConfigService {
 	return &ProcessArchiveConfigService{
-		configRepo:   configRepo,
-		tenantRepo:   tenantRepo,
-		oaConnRepo:   oaConnRepo,
-		templateRepo: templateRepo,
-		invalidator:  invalidator,
+		configRepo:    configRepo,
+		tenantRepo:    tenantRepo,
+		oaConnRepo:    oaConnRepo,
+		templateRepo:  templateRepo,
+		invalidator:   invalidator,
+		oaConnections: oaConnections,
 	}
 }
 
@@ -359,7 +362,7 @@ func (s *ProcessArchiveConfigService) getOAAdapter(c *gin.Context) (oa.OAAdapter
 	}
 	conn.Password = password
 
-	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
+	adapter, err := s.oaConnections.GetAdapter(c.Request.Context(), conn.OAType, conn)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOATypeUnsupported, err.Error())
 	}

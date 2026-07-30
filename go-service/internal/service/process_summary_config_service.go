@@ -20,11 +20,12 @@ import (
 
 // ProcessSummaryConfigService 处理流程总结配置。
 type ProcessSummaryConfigService struct {
-	configRepo  *repository.ProcessSummaryConfigRepo
-	tenantRepo  *repository.TenantRepo
-	oaConnRepo  *repository.OAConnectionRepo
-	invalidator *cache.InvalidationManager
-	scheduleMgr EmbedRefreshScheduleManager
+	configRepo    *repository.ProcessSummaryConfigRepo
+	tenantRepo    *repository.TenantRepo
+	oaConnRepo    *repository.OAConnectionRepo
+	invalidator   *cache.InvalidationManager
+	scheduleMgr   EmbedRefreshScheduleManager
+	oaConnections *oa.ConnectionManager
 }
 
 // SetEmbedRefreshScheduleManager 注入流程级嵌入刷新调度管理器。
@@ -39,12 +40,14 @@ func NewProcessSummaryConfigService(
 	tenantRepo *repository.TenantRepo,
 	oaConnRepo *repository.OAConnectionRepo,
 	invalidator *cache.InvalidationManager,
+	oaConnections *oa.ConnectionManager,
 ) *ProcessSummaryConfigService {
 	return &ProcessSummaryConfigService{
-		configRepo:  configRepo,
-		tenantRepo:  tenantRepo,
-		oaConnRepo:  oaConnRepo,
-		invalidator: invalidator,
+		configRepo:    configRepo,
+		tenantRepo:    tenantRepo,
+		oaConnRepo:    oaConnRepo,
+		invalidator:   invalidator,
+		oaConnections: oaConnections,
 	}
 }
 
@@ -243,7 +246,7 @@ func (s *ProcessSummaryConfigService) getOAAdapter(c *gin.Context) (oa.OAAdapter
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "OA数据库密码解密失败")
 	}
 	conn.Password = password
-	adapter, err := oa.NewOAAdapter(conn.OAType, conn)
+	adapter, err := s.oaConnections.GetAdapter(c.Request.Context(), conn.OAType, conn)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOATypeUnsupported, err.Error())
 	}
