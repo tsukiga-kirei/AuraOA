@@ -448,7 +448,7 @@ const buildEmbedNotifyScript = (target: 'all' | 'audit' | 'summary', token: stri
   const cfg = getEmbedScriptConfig(target)
   const urlComment = cfg.urls.map(url => ` * - ${url}`).join('\n')
   return `/**
- * 泛微 Ecology9 — AuraOA 嵌入页：传递打开上下文，并在保存、提交时安排后台检查
+ * 泛微 Ecology9 — AuraOA 嵌入页：传递打开上下文，并在 OA 操作完成后安排后台检查
  *
  * 导出范围：${cfg.label}
  * 对应嵌入地址：
@@ -481,8 +481,13 @@ ${urlComment}
     try {
       if (typeof WfForm !== 'undefined' && WfForm.getBaseInfo) {
         var base = WfForm.getBaseInfo();
-        if (base && base.requestid) {
-          return String(base.requestid);
+        var requestid = base && base.requestid != null ? String(base.requestid).trim() : '';
+        if (requestid &&
+            requestid !== '-1' &&
+            requestid !== '0' &&
+            requestid.toLowerCase() !== 'null' &&
+            requestid.toLowerCase() !== 'undefined') {
+          return requestid;
         }
       }
     } catch (e) {
@@ -556,26 +561,27 @@ ${urlComment}
   function postRunnerAction(action, eventId) {
     var requestid = getRequestId();
     var runner = ensureRunnerIframe();
-    if (!requestid || !runner || !runner.contentWindow) return;
+    if (!requestid || !runner || !runner.contentWindow) return false;
     runner.contentWindow.postMessage({
       type: MSG_REFRESH_EVENT,
       requestid: requestid,
-      action: action || 'save_or_submit',
+      action: action || 'save_complete',
       event_id: eventId || createEventId()
     }, AURA_EMBED_ORIGIN);
+    return true;
   }
 
   function notifyAuraRunner(action, eventId) {
-    if (!getRequestId()) return;
+    if (!getRequestId()) return false;
     if (!runnerReady) {
       pendingRunnerActions.push({
-        action: action || 'save_or_submit',
+        action: action || 'save_complete',
         eventId: eventId || createEventId()
       });
       ensureRunnerIframe();
-      return;
+      return true;
     }
-    postRunnerAction(action, eventId);
+    return postRunnerAction(action, eventId);
   }
 
   function flushRunnerActions() {
@@ -585,35 +591,39 @@ ${urlComment}
     });
   }
 
+  function notifyBeforeRelease(action, eventId, callback) {
+    var released = false;
+    var release = function () {
+      if (released) return;
+      released = true;
+      delete pendingRunnerAcks[eventId];
+      callback();
+    };
+    if (!getRequestId()) {
+      release();
+      return;
+    }
+    pendingRunnerAcks[eventId] = release;
+    setTimeout(release, 400);
+    try {
+      if (!notifyAuraRunner(action, eventId)) release();
+    } catch (e) {
+      release();
+    }
+  }
+
   function registerOAEvents() {
     if (oaEventsRegistered) return true;
     try {
       if (typeof WfForm === 'undefined' || !WfForm.registerCheckEvent) return false;
-      if (typeof WfForm.OPER_SAVE === 'undefined' || typeof WfForm.OPER_SUBMIT === 'undefined') return false;
-      WfForm.registerCheckEvent(
-        WfForm.OPER_SAVE + ',' + WfForm.OPER_SUBMIT,
-        function (callback) {
-          var eventId = createEventId();
-          var released = false;
-          var release = function () {
-            if (released) return;
-            released = true;
-            delete pendingRunnerAcks[eventId];
-            callback();
-          };
-          pendingRunnerAcks[eventId] = release;
-          setTimeout(release, 150);
-          try {
-            notifyAuraRunner('save_or_submit', eventId);
-          } catch (e) {
-            release();
-          }
-        }
-      );
+      if (typeof WfForm.OPER_SAVECOMPLETE === 'undefined') return false;
+      WfForm.registerCheckEvent(WfForm.OPER_SAVECOMPLETE, function (callback) {
+        notifyBeforeRelease('save_complete', createEventId(), callback);
+      });
       oaEventsRegistered = true;
       return true;
     } catch (e) {
-      console.warn('[aura-embed] 注册 OA 保存/提交事件失败', e);
+      console.warn('[aura-embed] 注册 OA 操作完成事件失败', e);
       return false;
     }
   }
@@ -663,7 +673,7 @@ ${urlComment}
       tries++;
       notifyAuraIframes();
       registerOAEvents();
-      if ((getRequestId() && oaEventsRegistered) || tries >= 200) {
+      if (oaEventsRegistered || tries >= 200) {
         clearInterval(timer);
       }
     }, 300);

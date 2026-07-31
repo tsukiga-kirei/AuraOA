@@ -54,7 +54,7 @@ PUT /api/tenant/summary/configs/:id
 自动刷新只调用发生变化的启用总结块；未变化的块沿用最近一次有效结果。手动“重新总结”
 仍会执行全部启用块。
 流程级定时检查只发现候选流程，所有总结块均未变化时不会创建总结或 LLM 日志。
-任务日志通过 `trigger_detail` 区分 `visible_open`、`manual`、`save_or_submit` 和
+任务日志通过 `trigger_detail` 区分 `visible_open`、`manual`、`save_complete` 和
 `scheduled_scan`；自动任务失败后会保存 `attempt_fingerprint`，相同指纹不会被自动来源反复执行。
 worker 会定期接管旧容器遗留的 Redis pending 消息；数据库原子领取保证已完成、失败或取消的记录
 只会被确认清理，不会再次调用 AI。

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,7 @@ func NewEmbedEventHandler(refreshService *service.EmbedRefreshService) *EmbedEve
 	return &EmbedEventHandler{refreshService: refreshService}
 }
 
-// Schedule 接收 OA 保存、提交或页面打开事件，只安排后台检查，不等待 AI。
+// Schedule 接收 OA 保存完成事件，只安排后台检查，不等待 AI。
 // POST /api/embed/events
 func (h *EmbedEventHandler) Schedule(c *gin.Context) {
 	var req service.EmbedRefreshEventRequest
@@ -47,6 +48,10 @@ func (h *EmbedEventHandler) Schedule(c *gin.Context) {
 
 	result, err := h.refreshService.ScheduleEvent(c.Request.Context(), tenantID, userID, req)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidEmbedRefreshAction) {
+			response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, err.Error())
+			return
+		}
 		response.Error(c, http.StatusServiceUnavailable, errcode.ErrRedisConn, "后台刷新事件暂时无法接收")
 		return
 	}

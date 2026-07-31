@@ -5474,7 +5474,7 @@ paths:
   /api/embed/events:
     post:
       summary: 安排 OA 嵌入后台刷新检查
-      description: 接收页面打开、保存或提交事件，立即返回 202；审核和总结在后台按 OA 指纹判断是否执行。
+      description: 接收 OA 保存完成事件，立即返回 202；审核和总结在后台按 OA 指纹判断是否执行。
       tags:
       - Embed
       security:
@@ -5933,7 +5933,7 @@ components:
           - background
           - scheduled
           - workbench
-          description: 任务队列类型；OA 手动/可见页进入 interactive，保存提交进入 background，流程定时扫描进入 scheduled，系统内审核进入 workbench
+          description: 任务队列类型；OA 手动/可见页进入 interactive，保存完成进入 background，流程定时扫描进入 scheduled，系统内审核进入 workbench
         error_message:
           type: string
     ContextTestRequest:
@@ -6126,18 +6126,15 @@ components:
       type: object
       required:
       - process_id
+      - action
       properties:
         process_id:
           type: string
         action:
           type: string
           enum:
-          - page_open
-          - save
-          - submit
-          - save_or_submit
-          default: save_or_submit
-          description: 新版脚本只发送 save_or_submit；save/submit 会归一化，page_open 仅兼容确认且不创建任务
+          - save_complete
+          description: 仅接受 WfForm.OPER_SAVECOMPLETE 对应的 save_complete，不兼容旧动作
         event_id:
           type: string
     EmbedRefreshEventResponse:
