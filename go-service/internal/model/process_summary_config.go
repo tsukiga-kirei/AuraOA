@@ -83,10 +83,10 @@ const (
 	SummaryTriggerEmbedAuto   = "summary_embed_auto"
 	SummaryTriggerEmbedManual = "summary_embed_manual"
 
-	SummaryTriggerDetailManual      = "manual"
-	SummaryTriggerDetailVisibleOpen = "visible_open"
-	SummaryTriggerDetailSaveSubmit  = "save_or_submit"
-	SummaryTriggerDetailScheduled   = "scheduled_scan"
+	SummaryTriggerDetailManual       = "manual"
+	SummaryTriggerDetailVisibleOpen  = "visible_open"
+	SummaryTriggerDetailSaveComplete = "save_complete"
+	SummaryTriggerDetailScheduled    = "scheduled_scan"
 )
 
 // ProcessSummarySnapshot 流程级有效总结快照。

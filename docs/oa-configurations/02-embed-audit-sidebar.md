@@ -77,13 +77,13 @@
 | iframe → OA | `aura-oa-request-requestid` | 嵌入页加载后主动要 requestid |
 | OA → iframe | `aura-oa-requestid` | `{ requestid: '598488', embed_token: 'aura_emb_...' }` |
 | runner → OA | `aura-runner-ready` | 无界面 runner 已可接收事件 |
-| OA → runner | `aura-oa-refresh-event` | 保存/提交后安排后台审核和总结检查 |
+| OA → runner | `aura-oa-refresh-event` | OA 保存完成后安排后台审核和总结检查 |
 | runner → OA | `aura-runner-event-ack` | 返回对应 `event_id`，确认事件请求已完成 |
 
-脚本会自动创建隐藏的 `/embed/runner` iframe，并注册 `WfForm.OPER_SAVE` /
-`WfForm.OPER_SUBMIT`。OA 侧用 `WfForm.getBaseInfo().requestid`，**不必**从 URL hash
-解析。保存/提交最多等待 150ms 的确认，收到确认立即放行，超时或 AuraOA 不可用也会
-放行；事件只安排延迟检查，不等待 AI。
+脚本会自动创建隐藏的 `/embed/runner` iframe，并且只注册
+`WfForm.OPER_SAVECOMPLETE`。OA 侧用 `WfForm.getBaseInfo().requestid`，**不必**从 URL hash
+解析。保存完成事件最多等待 400ms 的确认，收到确认立即放行，超时或 AuraOA 不可用也会
+放行；事件只安排延迟检查，不等待 AI，也不轮询尚未产生的 requestid。
 
 ### 4.2 在流程里启用
 
@@ -124,8 +124,8 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 ```
 OA 页面加载
     → 自动创建隐藏 /embed/runner
-    → runner 仅等待保存/提交通知，不因打开页面创建后台任务
-保存/提交
+    → runner 仅等待保存完成通知，不因打开页面创建后台任务
+保存完成
     → postMessage({ type: 'aura-oa-refresh-event' })
     → POST /api/embed/events → 延迟读取 OA → 按指纹决定是否执行 AI
 可见嵌入页加载

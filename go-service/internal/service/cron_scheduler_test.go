@@ -35,6 +35,13 @@ func TestNormalizeSummaryTriggerDetail(t *testing.T) {
 		t.Fatalf("定时总结来源或队列类型错误: detail=%s queue_kind=%s", detail, queueKind)
 	}
 	detail, queueKind = normalizeSummaryTriggerDetail(
+		model.SummaryTriggerEmbedAuto,
+		model.SummaryTriggerDetailSaveComplete,
+	)
+	if detail != model.SummaryTriggerDetailSaveComplete || queueKind != model.JobQueueKindBackground {
+		t.Fatalf("保存完成总结来源或队列类型错误: detail=%s queue_kind=%s", detail, queueKind)
+	}
+	detail, queueKind = normalizeSummaryTriggerDetail(
 		model.SummaryTriggerEmbedManual,
 		model.SummaryTriggerDetailScheduled,
 	)
@@ -50,6 +57,13 @@ func TestNormalizeAuditTriggerDetail(t *testing.T) {
 	)
 	if detail != model.SummaryTriggerDetailScheduled || queueKind != model.JobQueueKindScheduled {
 		t.Fatalf("定时嵌入审核来源或队列类型错误: detail=%s queue_kind=%s", detail, queueKind)
+	}
+	detail, queueKind = normalizeAuditTriggerDetail(
+		model.AuditTriggerEmbedAuto,
+		model.SummaryTriggerDetailSaveComplete,
+	)
+	if detail != model.SummaryTriggerDetailSaveComplete || queueKind != model.JobQueueKindBackground {
+		t.Fatalf("保存完成审核来源或队列类型错误: detail=%s queue_kind=%s", detail, queueKind)
 	}
 	detail, queueKind = normalizeAuditTriggerDetail(
 		model.AuditTriggerEmbedManual,
@@ -123,15 +137,39 @@ func TestNormalizeScheduledRefreshConfig(t *testing.T) {
 	}
 }
 
-func TestNormalizeEmbedRefreshAction(t *testing.T) {
-	if got := normalizeEmbedRefreshAction("submit"); got != "save_or_submit" {
-		t.Fatalf("保存和提交应统一为 save_or_submit: %s", got)
+func TestEmbedRefreshActionVersionBoundary(t *testing.T) {
+	for _, action := range []string{"page_open", "save", "submit", "save_or_submit", "unknown"} {
+		if !isObsoleteEmbedRefreshAction(action) {
+			t.Fatalf("旧动作应被识别并清理: %s", action)
+		}
 	}
-	if got := normalizeEmbedRefreshAction("unknown"); got != "save_or_submit" {
-		t.Fatalf("未知事件动作应回落 save_or_submit: %s", got)
+	if isObsoleteEmbedRefreshAction(model.SummaryTriggerDetailSaveComplete) {
+		t.Fatal("save_complete 不应被识别为旧动作")
 	}
-	if got := normalizeEmbedRefreshAction("page_open"); got != "page_open" {
-		t.Fatalf("旧版 page_open 应保留为兼容的忽略事件: %s", got)
+	if isObsoleteEmbedRefreshAction(model.SummaryTriggerDetailScheduled) {
+		t.Fatal("scheduled_scan 不应被识别为旧动作")
+	}
+	if !shouldRetryEmbedEvent(model.SummaryTriggerDetailSaveComplete) {
+		t.Fatal("save_complete 应支持延迟重试")
+	}
+	if shouldRetryEmbedEvent("save_or_submit") {
+		t.Fatal("旧动作 save_or_submit 不应继续重试")
+	}
+}
+
+func TestEmbedRefreshResultName(t *testing.T) {
+	tests := []struct {
+		result embedRefreshResult
+		want   string
+	}{
+		{result: embedRefreshDone, want: "done"},
+		{result: embedRefreshRetry, want: "retry"},
+		{result: embedRefreshRunning, want: "running"},
+	}
+	for _, tt := range tests {
+		if got := embedRefreshResultName(tt.result); got != tt.want {
+			t.Fatalf("刷新检查状态名称错误: result=%d got=%s want=%s", tt.result, got, tt.want)
+		}
 	}
 }
 

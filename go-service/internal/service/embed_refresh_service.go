@@ -72,10 +72,13 @@ redis.call("ZREM", KEYS[1], ARGV[1])
 return payload or ""
 `)
 
-// EmbedRefreshEventRequest OA 页面提交的轻量刷新事件。
+// ErrInvalidEmbedRefreshAction 表示 OA 嵌入刷新动作不是当前版本支持的保存完成事件。
+var ErrInvalidEmbedRefreshAction = errors.New("action 仅支持 save_complete")
+
+// EmbedRefreshEventRequest OA 保存完成后的轻量刷新事件。
 type EmbedRefreshEventRequest struct {
 	ProcessID string `json:"process_id" binding:"required"`
-	Action    string `json:"action"`
+	Action    string `json:"action" binding:"required"`
 	EventID   string `json:"event_id"`
 }
 
@@ -109,7 +112,13 @@ const (
 	embedRefreshRunning
 )
 
-// EmbedRefreshService 编排 OA 保存事件、延迟指纹检查和流程级定时扫描。
+type embedRefreshCheckOutcome struct {
+	Result embedRefreshResult
+	Reason string
+	JobID  string
+}
+
+// EmbedRefreshService 编排 OA 保存完成事件、延迟指纹检查和流程级定时扫描。
 type EmbedRefreshService struct {
 	rdb             *redis.Client
 	auditSvc        *AuditExecuteService
@@ -157,7 +166,7 @@ func NewEmbedRefreshService(
 	}
 }
 
-// ScheduleEvent 接收 OA 页面事件，并分别安排审核和总结检查。
+// ScheduleEvent 接收 OA 保存完成事件，并分别安排审核和总结检查。
 func (s *EmbedRefreshService) ScheduleEvent(
 	ctx context.Context,
 	tenantID, userID uuid.UUID,
@@ -170,21 +179,15 @@ func (s *EmbedRefreshService) ScheduleEvent(
 	if req.ProcessID == "" {
 		return nil, fmt.Errorf("process_id 不能为空")
 	}
-	req.Action = normalizeEmbedRefreshAction(req.Action)
+	req.Action = strings.TrimSpace(req.Action)
+	if req.Action != model.SummaryTriggerDetailSaveComplete {
+		return nil, ErrInvalidEmbedRefreshAction
+	}
 	if strings.TrimSpace(req.EventID) == "" {
 		req.EventID = uuid.NewString()
 	}
 
 	modules := []string{embedRefreshModuleAudit, embedRefreshModuleSummary}
-	if req.Action == "page_open" {
-		// 兼容旧版 runner：打开 OA 页面不再创建后台任务。
-		return &EmbedRefreshEventResponse{
-			ProcessID:        req.ProcessID,
-			Action:           req.Action,
-			EventID:          req.EventID,
-			ScheduledModules: []string{},
-		}, nil
-	}
 	for _, module := range modules {
 		payload := embedRefreshPayload{
 			TenantID:      tenantID,
@@ -196,9 +199,18 @@ func (s *EmbedRefreshService) ScheduleEvent(
 			Generation:    uuid.NewString(),
 			FirstReceived: apptime.Now(),
 		}
-		if err := s.schedule(ctx, payload, embedRefreshInitialDelay, false); err != nil {
+		if _, err := s.schedule(ctx, payload, embedRefreshInitialDelay, false); err != nil {
 			return nil, err
 		}
+	}
+	if s.logger != nil {
+		s.logger.Info("OA 嵌入刷新事件已接收",
+			zap.String("tenantID", tenantID.String()),
+			zap.String("processID", req.ProcessID),
+			zap.String("action", req.Action),
+			zap.String("eventID", req.EventID),
+			zap.Strings("scheduledModules", modules),
+			zap.Int64("initialDelayMs", embedRefreshInitialDelay.Milliseconds()))
 	}
 	return &EmbedRefreshEventResponse{
 		ProcessID:        req.ProcessID,
@@ -213,12 +225,12 @@ func (s *EmbedRefreshService) Start(ctx context.Context) {
 	if s == nil || s.rdb == nil || s.scheduleRepo == nil {
 		return
 	}
-	if removed, err := s.purgeLegacyScheduledPayloads(ctx); err != nil {
+	if removed, err := s.purgeObsoletePayloads(ctx); err != nil {
 		if s.logger != nil {
-			s.logger.Warn("清理旧版定时检查队列失败", zap.Error(err))
+			s.logger.Warn("清理旧版嵌入刷新队列失败", zap.Error(err))
 		}
 	} else if removed > 0 && s.logger != nil {
-		s.logger.Info("已清理旧版定时检查队列", zap.Int64("count", removed))
+		s.logger.Info("已清理旧版嵌入刷新队列", zap.Int64("count", removed))
 	}
 	if err := s.reconcileSchedules(ctx); err != nil && s.logger != nil {
 		s.logger.Warn("重建 OA 嵌入刷新调度记录失败", zap.Error(err))
@@ -242,8 +254,8 @@ func (s *EmbedRefreshService) Start(ctx context.Context) {
 	}
 }
 
-// purgeLegacyScheduledPayloads 清理旧版打开页事件及缺少 config_id 的定时候选；启用中的 Cron 会重新生成。
-func (s *EmbedRefreshService) purgeLegacyScheduledPayloads(ctx context.Context) (int64, error) {
+// purgeObsoletePayloads 清理旧动作及缺少 config_id 的定时候选；启用中的 Cron 会重新生成。
+func (s *EmbedRefreshService) purgeObsoletePayloads(ctx context.Context) (int64, error) {
 	members, err := s.rdb.ZRange(ctx, embedRefreshDueKey, 0, -1).Result()
 	if err != nil {
 		return 0, err
@@ -258,7 +270,7 @@ func (s *EmbedRefreshService) purgeLegacyScheduledPayloads(ctx context.Context) 
 		if json.Unmarshal([]byte(raw), &payload) != nil {
 			continue
 		}
-		shouldRemove := payload.Action == "page_open" ||
+		shouldRemove := isObsoleteEmbedRefreshAction(payload.Action) ||
 			(payload.Action == model.SummaryTriggerDetailScheduled && payload.ConfigID == uuid.Nil)
 		if !shouldRemove {
 			continue
@@ -312,47 +324,48 @@ func (s *EmbedRefreshService) processDue(ctx context.Context) {
 		if json.Unmarshal([]byte(raw), &payload) != nil {
 			continue
 		}
-		result, processErr := s.checkAndTrigger(ctx, payload)
-		if processErr != nil && s.logger != nil {
-			s.logger.Warn("OA 嵌入后台刷新检查失败",
-				zap.String("tenantID", payload.TenantID.String()),
-				zap.String("processID", payload.ProcessID),
-				zap.String("module", payload.Module),
-				zap.Error(processErr))
-		}
-
-		switch result {
+		checkAttempt := payload.Attempt
+		outcome, processErr := s.checkAndTrigger(ctx, payload)
+		retryScheduled := false
+		retryDelay := time.Duration(0)
+		retryErr := error(nil)
+		switch outcome.Result {
 		case embedRefreshRunning:
 			if shouldRetryEmbedEvent(payload.Action) &&
 				apptime.Now().Sub(payload.FirstReceived) < embedRefreshRunningMaxAge {
 				payload.Attempt++
-				_ = s.schedule(ctx, payload, embedRefreshRunningDelay, true)
+				retryDelay = embedRefreshRunningDelay
+				retryScheduled, retryErr = s.schedule(ctx, payload, retryDelay, true)
 			}
 		case embedRefreshRetry:
 			if shouldRetryEmbedEvent(payload.Action) && payload.Attempt < 2 {
 				payload.Attempt++
-				delay := time.Duration(2*payload.Attempt+1) * time.Second
-				_ = s.schedule(ctx, payload, delay, true)
+				retryDelay = time.Duration(2*payload.Attempt+1) * time.Second
+				retryScheduled, retryErr = s.schedule(ctx, payload, retryDelay, true)
 			}
 		}
+		s.logCheckOutcome(payload, checkAttempt, outcome, processErr, retryScheduled, retryDelay, retryErr)
 	}
 }
 
 func (s *EmbedRefreshService) checkAndTrigger(
 	ctx context.Context,
 	payload embedRefreshPayload,
-) (embedRefreshResult, error) {
-	if payload.Action == "page_open" {
-		// 兼容升级前已经排入 Redis 的打开页事件，确认后直接丢弃。
-		return embedRefreshDone, nil
+) (embedRefreshCheckOutcome, error) {
+	if isObsoleteEmbedRefreshAction(payload.Action) {
+		// 升级时未被启动清理捕获的旧动作不再执行。
+		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "obsolete_action"}, nil
+	}
+	if payload.Action == model.SummaryTriggerDetailScheduled && payload.ConfigID == uuid.Nil {
+		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "schedule_config_missing"}, nil
 	}
 	if payload.Action == model.SummaryTriggerDetailScheduled && payload.ConfigID != uuid.Nil {
 		schedule, err := s.scheduleRepo.GetByConfig(ctx, payload.Module, payload.ConfigID)
 		if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && !schedule.IsActive) {
-			return embedRefreshDone, nil
+			return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "schedule_disabled"}, nil
 		}
 		if err != nil {
-			return embedRefreshRetry, err
+			return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "schedule_lookup_failed"}, err
 		}
 	}
 	gc := buildWorkerContext(ctx, payload.TenantID, payload.UserID, "embed_scheduler")
@@ -360,60 +373,150 @@ func (s *EmbedRefreshService) checkAndTrigger(
 	case embedRefreshModuleAudit:
 		embedCtx, err := s.auditSvc.GetEmbedContext(gc, payload.ProcessID)
 		if err != nil {
-			return embedRefreshRetry, err
+			return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "context_failed"}, err
 		}
 		if embedCtx.RunningJobID != "" {
-			return embedRefreshRunning, nil
+			return embedRefreshCheckOutcome{
+				Result: embedRefreshRunning,
+				Reason: "job_running",
+				JobID:  embedCtx.RunningJobID,
+			}, nil
 		}
 		if !embedCtx.Supported {
 			if embedCtx.Reason == "not_found_in_oa" {
-				return embedRefreshRetry, nil
+				return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "not_found_in_oa"}, nil
 			}
-			return embedRefreshDone, nil
+			return embedRefreshCheckOutcome{
+				Result: embedRefreshDone,
+				Reason: "unsupported_" + strings.TrimSpace(embedCtx.Reason),
+			}, nil
 		}
 		if !embedCtx.ShouldAutoAudit {
-			return embedRefreshDone, nil
+			reason := "unchanged"
+			if embedCtx.AutoRetryBlocked {
+				reason = "auto_retry_blocked"
+			}
+			return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: reason}, nil
 		}
-		_, err = s.auditSvc.ExecuteEmbed(gc, &EmbedExecuteRequest{
+		executeResp, err := s.auditSvc.ExecuteEmbed(gc, &EmbedExecuteRequest{
 			ProcessID:        payload.ProcessID,
 			TriggerSource:    model.AuditTriggerEmbedAuto,
 			TriggerDetail:    payload.Action,
 			ScheduleConfigID: nullableUUID(payload.ConfigID),
 		})
 		if err != nil {
-			return embedRefreshRetry, err
+			return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "execute_failed"}, err
 		}
-		return embedRefreshDone, nil
+		jobID := ""
+		if executeResp != nil {
+			jobID = executeResp.ID
+		}
+		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "triggered", JobID: jobID}, nil
 
 	case embedRefreshModuleSummary:
 		embedCtx, err := s.summarySvc.GetEmbedContext(gc, payload.ProcessID)
 		if err != nil {
-			return embedRefreshRetry, err
+			return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "context_failed"}, err
 		}
 		if embedCtx.RunningJobID != "" {
-			return embedRefreshRunning, nil
+			return embedRefreshCheckOutcome{
+				Result: embedRefreshRunning,
+				Reason: "job_running",
+				JobID:  embedCtx.RunningJobID,
+			}, nil
 		}
 		if !embedCtx.Supported {
 			if embedCtx.Reason == "not_found_in_oa" {
-				return embedRefreshRetry, nil
+				return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "not_found_in_oa"}, nil
 			}
-			return embedRefreshDone, nil
+			return embedRefreshCheckOutcome{
+				Result: embedRefreshDone,
+				Reason: "unsupported_" + strings.TrimSpace(embedCtx.Reason),
+			}, nil
 		}
 		if !embedCtx.ShouldAutoSummary {
-			return embedRefreshDone, nil
+			reason := "unchanged"
+			if embedCtx.AutoRetryBlocked {
+				reason = "auto_retry_blocked"
+			}
+			return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: reason}, nil
 		}
-		_, err = s.summarySvc.ExecuteEmbed(gc, &SummaryExecuteRequest{
+		executeResp, err := s.summarySvc.ExecuteEmbed(gc, &SummaryExecuteRequest{
 			ProcessID:        payload.ProcessID,
 			TriggerSource:    model.SummaryTriggerEmbedAuto,
 			TriggerDetail:    payload.Action,
 			ScheduleConfigID: nullableUUID(payload.ConfigID),
 		})
 		if err != nil {
-			return embedRefreshRetry, err
+			return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "execute_failed"}, err
 		}
-		return embedRefreshDone, nil
+		jobID := ""
+		if executeResp != nil {
+			jobID = executeResp.ID
+		}
+		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "triggered", JobID: jobID}, nil
 	default:
-		return embedRefreshDone, nil
+		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "unknown_module"}, nil
+	}
+}
+
+// logCheckOutcome 记录保存完成检查的完整结论；定时扫描降为 DEBUG，避免生产 INFO 被候选检查淹没。
+func (s *EmbedRefreshService) logCheckOutcome(
+	payload embedRefreshPayload,
+	checkAttempt int,
+	outcome embedRefreshCheckOutcome,
+	processErr error,
+	retryScheduled bool,
+	retryDelay time.Duration,
+	retryErr error,
+) {
+	if s == nil || s.logger == nil {
+		return
+	}
+	fields := []zap.Field{
+		zap.String("tenantID", payload.TenantID.String()),
+		zap.String("processID", payload.ProcessID),
+		zap.String("module", payload.Module),
+		zap.String("action", payload.Action),
+		zap.String("eventID", payload.EventID),
+		zap.Int("attempt", checkAttempt),
+		zap.String("result", embedRefreshResultName(outcome.Result)),
+		zap.String("reason", outcome.Reason),
+		zap.Bool("retryScheduled", retryScheduled),
+	}
+	if outcome.JobID != "" {
+		fields = append(fields, zap.String("jobID", outcome.JobID))
+	}
+	if retryDelay > 0 {
+		fields = append(fields,
+			zap.Int("nextAttempt", payload.Attempt),
+			zap.Int64("retryDelayMs", retryDelay.Milliseconds()))
+	}
+	if processErr != nil {
+		fields = append(fields, zap.Error(processErr))
+	}
+	if retryErr != nil {
+		fields = append(fields, zap.NamedError("retryError", retryErr))
+	}
+	if processErr != nil || retryErr != nil {
+		s.logger.Warn("OA 嵌入刷新检查失败", fields...)
+		return
+	}
+	if payload.Action == model.SummaryTriggerDetailSaveComplete {
+		s.logger.Info("OA 嵌入刷新检查完成", fields...)
+		return
+	}
+	s.logger.Debug("OA 嵌入刷新检查完成", fields...)
+}
+
+func embedRefreshResultName(result embedRefreshResult) string {
+	switch result {
+	case embedRefreshRetry:
+		return "retry"
+	case embedRefreshRunning:
+		return "running"
+	default:
+		return "done"
 	}
 }
 
@@ -422,11 +525,11 @@ func (s *EmbedRefreshService) schedule(
 	payload embedRefreshPayload,
 	delay time.Duration,
 	onlyIfCurrent bool,
-) error {
+) (bool, error) {
 	member := embedRefreshMember(payload.TenantID, payload.Module, payload.ProcessID)
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return false, err
 	}
 	keys := []string{
 		embedRefreshDueKey,
@@ -441,11 +544,11 @@ func (s *EmbedRefreshService) schedule(
 		member,
 	}
 	if onlyIfCurrent {
-		_, err = retryEmbedRefreshScript.Run(ctx, s.rdb, keys, args...).Result()
-		return err
+		result, runErr := retryEmbedRefreshScript.Run(ctx, s.rdb, keys, args...).Int64()
+		return result == 1, runErr
 	}
-	_, err = scheduleEmbedRefreshScript.Run(ctx, s.rdb, keys, args...).Result()
-	return err
+	result, runErr := scheduleEmbedRefreshScript.Run(ctx, s.rdb, keys, args...).Int64()
+	return result == 1, runErr
 }
 
 // EmbedRefreshScheduleManager 由流程配置服务调用，负责即时同步持久化调度。
@@ -989,7 +1092,7 @@ func embedRefreshScheduleConfigKey(module string, configID uuid.UUID) string {
 	return module + ":" + configID.String()
 }
 
-// scheduleIfIdle 只在当前流程没有待处理检查时安排定时候选，避免覆盖保存/提交事件。
+// scheduleIfIdle 只在当前流程没有待处理检查时安排定时候选，避免覆盖保存完成事件。
 func (s *EmbedRefreshService) scheduleIfIdle(ctx context.Context, payload embedRefreshPayload) error {
 	member := embedRefreshMember(payload.TenantID, payload.Module, payload.ProcessID)
 	raw, err := json.Marshal(payload)
@@ -1013,19 +1116,17 @@ func (s *EmbedRefreshService) scheduleIfIdle(ctx context.Context, payload embedR
 	return err
 }
 
-func normalizeEmbedRefreshAction(action string) string {
+func isObsoleteEmbedRefreshAction(action string) bool {
 	switch strings.TrimSpace(action) {
-	case "page_open":
-		return "page_open"
-	case "save", "submit", "save_or_submit":
-		return "save_or_submit"
+	case model.SummaryTriggerDetailSaveComplete, model.SummaryTriggerDetailScheduled:
+		return false
 	default:
-		return "save_or_submit"
+		return true
 	}
 }
 
 func shouldRetryEmbedEvent(action string) bool {
-	return action == "save_or_submit"
+	return action == model.SummaryTriggerDetailSaveComplete
 }
 
 func nullableUUID(id uuid.UUID) *uuid.UUID {

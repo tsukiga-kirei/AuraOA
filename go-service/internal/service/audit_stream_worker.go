@@ -37,7 +37,7 @@ type auditJobMsg struct {
 	UserID     string `json:"user_id"`
 }
 
-// EnqueueAuditJob 按队列类型将审核任务写入工作台、OA 交互、保存提交或定时 Redis Stream。
+// EnqueueAuditJob 按队列类型将审核任务写入工作台、OA 交互、保存完成或定时 Redis Stream。
 func EnqueueAuditJob(
 	ctx context.Context,
 	rdb *redis.Client,
@@ -80,7 +80,7 @@ func ensureAuditConsumerGroup(ctx context.Context, rdb *redis.Client, stream, gr
 	return nil
 }
 
-// StartAuditStreamWorker 启动审核工作台、OA 交互、保存提交和定时扫描四类独立队列。
+// StartAuditStreamWorker 启动审核工作台、OA 交互、保存完成和定时扫描四类独立队列。
 func StartAuditStreamWorker(
 	ctx context.Context,
 	rdb *redis.Client,

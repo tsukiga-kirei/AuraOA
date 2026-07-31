@@ -53,9 +53,10 @@ function handleParentMessage(event: MessageEvent) {
   if (data.type !== 'aura-oa-refresh-event') return
   const nextProcessId = String(data.requestid || '').trim()
   if (nextProcessId) processId.value = nextProcessId
-  const action = String(data.action || 'save_or_submit') as EmbedRefreshEventRequest['action']
+  const action = String(data.action || '')
+  if (action !== 'save_complete') return
   const eventId = String(data.event_id || createEventId())
-  void dispatch(action, eventId)
+  void dispatch(action as EmbedRefreshEventRequest['action'], eventId)
 }
 
 onMounted(async () => {

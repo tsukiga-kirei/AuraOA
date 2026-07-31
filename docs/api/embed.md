@@ -71,18 +71,41 @@ POST /api/embed/events
 ```json
 {
   "process_id": "598488",
-  "action": "save_or_submit",
+  "action": "save_complete",
   "event_id": "oa-598488-1722150000000"
 }
 ```
 
-新脚本只发送 `save_or_submit`。后端仍兼容旧脚本的 `save`、`submit`，并统一归一化为
-`save_or_submit`；旧版 `page_open` 会正常确认但不再创建后台任务。接口只把审核和总结检查写入
-Redis 延迟队列并立即返回 `202`，不会等待 OA 查询或 AI 执行。
+接口只接受 `save_complete`，对应 `WfForm.OPER_SAVECOMPLETE`。旧脚本发送的 `save`、
+`submit`、`save_or_submit` 或 `page_open` 会返回 `400`，不会再隐式转换。接口只把审核和总结
+检查写入 Redis 延迟队列并立即返回 `202`，不会等待 OA 查询或 AI 执行。
 
-保存/提交事件首次在约 2 秒后读取 OA；未发现 OA 数据落库时会继续在约 5 秒、10 秒检查。
-同一租户、流程和模块的连续事件自动合并。只有保存/提交事件会在任务执行期间保留一次后续检查；
+保存完成事件首次在约 2 秒后读取 OA；OA 暂时查不到流程或查询异常时，会继续在约 5 秒、10 秒检查。
+同一租户、流程和模块的连续事件自动合并。只有保存完成事件会在任务执行期间保留一次后续检查；
 定时扫描不会持续追踪进行中的任务。
+
+通知脚本不再监听提交前的 `OPER_SAVE` / `OPER_SUBMIT`，只注册
+`WfForm.OPER_SAVECOMPLETE`，在 OA 数据保存完成、页面跳转前取得真实 requestid 后安排检查。
+空 requestid、`-1`、`0` 等占位值不会发送给 AuraOA，也不会轮询或跨页面暂存。现场 E9 不支持
+该完成事件时不创建后台事件，由可见嵌入页和流程级定时扫描兜底。
+
+Go 服务会以结构化日志记录事件接收和每个模块的检查结论，不记录表单正文、附件正文或提示词：
+
+```text
+OA 嵌入刷新事件已接收
+processID=598488 action=save_complete eventID=oa-... scheduledModules=[audit,summary]
+
+OA 嵌入刷新检查完成
+processID=598488 module=summary action=save_complete eventID=oa-...
+attempt=0 result=done reason=unchanged retryScheduled=false
+```
+
+常见 `reason` 包括 `triggered`、`unchanged`、`job_running`、`not_found_in_oa`、
+`auto_retry_blocked`、`unsupported_no_config`、`schedule_config_missing` 和 `execute_failed`。保存完成检查使用 INFO，
+定时候选的逐流程检查使用 DEBUG，避免生产 INFO 日志被无变化候选淹没。
+
+服务升级启动时会删除 Redis 延迟集合中尚未执行的旧动作，避免旧事件在新版本继续运行；
+数据库迁移会把审核与总结历史日志中的旧详细来源统一改为 `save_complete`。
 
 ### 获取嵌入上下文
 
@@ -110,7 +133,7 @@ X-Embed-Token: <tenant embed access token>
 直接以 `visible_open` 进入交互队列。显式传 `prefer_cached=true` 时跳过变化检查，主要用于
 任务完成后的结果刷新。
 若最近一次相同依赖指纹（流程数据、附件版本、流程信息、审核规则和模型配置）的审核已经失败，
-响应中 `auto_retry_blocked=true`，保存/提交和定时来源不会重复执行；失败记录直接作为结果展示，
+响应中 `auto_retry_blocked=true`，保存完成和定时来源不会重复执行；失败记录直接作为结果展示，
 只有用户点击“重新审核”才会再次尝试。
 
 ### 触发嵌入审核
@@ -128,8 +151,8 @@ POST /api/embed/execute
 ```
 
 `trigger_detail` 的可见页取值为 `visible_open`，手动按钮为 `manual`。后台内部使用
-`save_or_submit`、`scheduled_scan` 区分保存提交与定时扫描。
-嵌入审核与总结使用相同的队列路由语义：手动重新执行和可见页进入交互队列，保存/提交进入
+`save_complete`、`scheduled_scan` 区分保存完成与定时扫描。
+嵌入审核与总结使用相同的队列路由语义：手动重新执行和可见页进入交互队列，保存完成进入
 普通后台队列，流程定时扫描进入独立定时队列。尚未领取的同流程任务可从后台队列提升到
 交互队列；已经执行中的任务不会被中断。系统内审核工作台使用独立 `workbench` 队列，
 不参与嵌入来源比较，也不会共享嵌入结果快照。
@@ -198,7 +221,7 @@ GET /api/embed/summary/context?process_id=598488
 
 可见总结页会先轻量比较指纹；已有结果且未变化时直接展示，退回重提、启用策略范围内的数据或
 提示词变化则以 `visible_open` 进入交互队列。没有结果时按首次打开策略执行。手动“重新总结”
-与可见页都进入交互队列，保存/提交进入普通后台队列，流程级定时扫描进入定时队列。
+与可见页都进入交互队列，保存完成进入普通后台队列，流程级定时扫描进入定时队列。
 
 ### 触发总结
 
@@ -215,7 +238,7 @@ POST /api/embed/summary/execute
 ```
 
 `trigger_detail` 的可见页取值为 `visible_open`，手动按钮为 `manual`。后台内部还会记录
-`save_or_submit`、`scheduled_scan`，用于查询任务的真实来源。
+`save_complete`、`scheduled_scan`，用于查询任务的真实来源。
 
 ### 查询任务状态
 
@@ -258,7 +281,7 @@ GET /api/embed/summary/stream/:id
 | OA → runner | `aura-oa-refresh-event` | `{ requestid: string, action: string, event_id: string }` |
 | runner → OA | `aura-runner-event-ack` | `{ event_id: string }` |
 
-OA 保存/提交检查最多等待 150ms 的事件接收确认；收到确认会立即放行，超时或 AuraOA
+OA 保存完成检查最多等待 400ms 的事件接收确认；收到确认会立即放行，超时或 AuraOA
 不可用也会放行。runner 使用 `keepalive` 提交事件，确认或超时都不代表等待 AI 执行完成。
 
 OA 示例脚本：[../oa-configurations/assets/aura-embed-notify.js](../oa-configurations/assets/aura-embed-notify.js)
@@ -308,7 +331,7 @@ Cron；服务启动时从该表恢复全部活跃任务。因此配置开启、�
 - `process_summary_logs.oa_context_anchor`：总结时的 OA 变化锚点；
 - `process_summary_logs.process_snapshot.block_dependencies`：各总结块的数据、附件、流程依赖指纹；
 - `process_summary_logs.process_snapshot.regenerated_block_ids`：本次实际重新生成的总结块；
-- `audit_logs.trigger_detail` / `process_summary_logs.trigger_detail`：区分可见页、手动、保存提交和定时扫描；
+- `audit_logs.trigger_detail` / `process_summary_logs.trigger_detail`：区分可见页、手动、保存完成和定时扫描；
 - `audit_logs.queue_kind`：明确记录 `workbench`、`interactive`、`background` 或 `scheduled`；
 - `process_summary_logs.queue_kind`：明确记录 `interactive`、`background` 或 `scheduled`；
 - `schedule_config_id`：定时扫描任务归属的流程配置；

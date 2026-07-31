@@ -139,16 +139,18 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 | iframe → OA | `aura-oa-request-requestid` | 嵌入页请求当前 requestid |
 | OA → iframe | `aura-oa-requestid` | `{ requestid: '598488' }` |
 | runner → OA | `aura-runner-ready` | 隐藏 runner 已初始化 |
-| OA → runner | `aura-oa-refresh-event` | 保存/提交后安排后台检查 |
+| OA → runner | `aura-oa-refresh-event` | OA 保存完成后安排后台检查 |
 | runner → OA | `aura-runner-event-ack` | 返回对应 `event_id`，确认事件请求已完成 |
 
-OA 保存/提交最多等待 150ms；收到确认立即放行，超时或 AuraOA 不可用同样放行。
+OA 保存完成事件最多等待 400ms；收到确认立即放行，超时或 AuraOA 不可用同样放行。
 确认只表示后台事件请求已完成，不等待审核或总结的 AI 任务。
 
 ### 6.3 执行时序
 
 ```text
-OA 页面加载或保存/提交
+OA 页面加载
+  → 创建隐藏 /embed/runner，仅等待保存完成事件
+OA 保存完成
   → 隐藏 /embed/runner 调用 /api/embed/events
   → 延迟读取 OA，按总结块依赖指纹决定是否入队
 /embed/summary 可见页加载
