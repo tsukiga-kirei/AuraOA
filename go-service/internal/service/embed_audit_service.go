@@ -406,8 +406,10 @@ func normalizeAuditTriggerDetail(trigger, detail string) (string, string) {
 		return model.SummaryTriggerDetailVisibleOpen, model.JobQueueKindInteractive
 	case model.SummaryTriggerDetailScheduled:
 		return model.SummaryTriggerDetailScheduled, model.JobQueueKindScheduled
-	case model.SummaryTriggerDetailSaveComplete:
-		return model.SummaryTriggerDetailSaveComplete, model.JobQueueKindBackground
+	case model.SummaryTriggerDetailSaveRequested:
+		return model.SummaryTriggerDetailSaveRequested, model.JobQueueKindBackground
+	case model.SummaryTriggerDetailSubmitRequested:
+		return model.SummaryTriggerDetailSubmitRequested, model.JobQueueKindBackground
 	default:
 		// 兼容旧版可见嵌入页：未传详细来源的自动请求按前台打开处理。
 		return model.SummaryTriggerDetailVisibleOpen, model.JobQueueKindInteractive

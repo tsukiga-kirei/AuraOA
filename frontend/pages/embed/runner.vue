@@ -9,33 +9,41 @@ const { scheduleEmbedRefresh } = useEmbedEventApi()
 
 const processId = ref('')
 const ready = ref(false)
-const pendingActions: Array<{
+type RunnerAction = {
   action: EmbedRefreshEventRequest['action']
   eventId: string
-}> = []
+  processId: string
+  workflowId: string
+  oaBelongUserId: string
+  oaCurrentUserId: string
+}
+const pendingActions: RunnerAction[] = []
 
 function createEventId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
   return `oa-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-async function dispatch(action: EmbedRefreshEventRequest['action'], eventId = createEventId()) {
-  if (!ready.value || !processId.value) {
-    pendingActions.push({ action, eventId })
+async function dispatch(item: RunnerAction) {
+  if (!ready.value) {
+    pendingActions.push(item)
     return
   }
   try {
     await scheduleEmbedRefresh({
-      process_id: processId.value,
-      action,
-      event_id: eventId,
+      process_id: item.processId,
+      workflow_id: item.workflowId,
+      oa_belong_user_id: item.oaBelongUserId,
+      oa_current_user_id: item.oaCurrentUserId,
+      action: item.action,
+      event_id: item.eventId,
     })
   } catch {
     // runner 不能影响 OA 保存或提交；流程级定时扫描和可见 iframe 会继续兜底。
   } finally {
     window.parent.postMessage({
       type: 'aura-runner-event-ack',
-      event_id: eventId,
+      event_id: item.eventId,
     }, '*')
   }
 }
@@ -54,18 +62,25 @@ function handleParentMessage(event: MessageEvent) {
   const nextProcessId = String(data.requestid || '').trim()
   if (nextProcessId) processId.value = nextProcessId
   const action = String(data.action || '')
-  if (action !== 'save_complete') return
+  if (action !== 'save_requested' && action !== 'submit_requested') return
   const eventId = String(data.event_id || createEventId())
-  void dispatch(action as EmbedRefreshEventRequest['action'], eventId)
+  void dispatch({
+    action: action as EmbedRefreshEventRequest['action'],
+    eventId,
+    processId: nextProcessId,
+    workflowId: String(data.workflow_id || '').trim(),
+    oaBelongUserId: String(data.oa_belong_user_id || '').trim(),
+    oaCurrentUserId: String(data.oa_current_user_id || '').trim(),
+  })
 }
 
 onMounted(async () => {
   window.addEventListener('message', handleParentMessage)
   window.parent.postMessage({ type: 'aura-runner-ready' }, '*')
 
-  const parentCtx = await waitForParentEmbedContext()
+  const parentCtx = await waitForParentEmbedContext({ requireRequestId: false })
   processId.value = parentCtx.requestId
-  if (!parentCtx.embedToken || !processId.value) return
+  if (!parentCtx.embedToken) return
   try {
     await setupEmbedSession(parentCtx.embedToken)
   } catch {
@@ -75,7 +90,7 @@ onMounted(async () => {
   ready.value = true
   const queued = pendingActions.splice(0)
   for (const item of queued) {
-    await dispatch(item.action, item.eventId)
+    await dispatch(item)
   }
   window.parent.postMessage({ type: 'aura-runner-ready', requestid: processId.value }, '*')
 })

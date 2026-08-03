@@ -22,7 +22,7 @@ func NewEmbedEventHandler(refreshService *service.EmbedRefreshService) *EmbedEve
 	return &EmbedEventHandler{refreshService: refreshService}
 }
 
-// Schedule 接收 OA 保存完成事件，只安排后台检查，不等待 AI。
+// Schedule 接收 OA 保存/提交事件，只安排后台检查或 requestid 解析，不等待 AI。
 // POST /api/embed/events
 func (h *EmbedEventHandler) Schedule(c *gin.Context) {
 	var req service.EmbedRefreshEventRequest
@@ -48,7 +48,8 @@ func (h *EmbedEventHandler) Schedule(c *gin.Context) {
 
 	result, err := h.refreshService.ScheduleEvent(c.Request.Context(), tenantID, userID, req)
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidEmbedRefreshAction) {
+		if errors.Is(err, service.ErrInvalidEmbedRefreshAction) ||
+			errors.Is(err, service.ErrInvalidEmbedRefreshContext) {
 			response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, err.Error())
 			return
 		}

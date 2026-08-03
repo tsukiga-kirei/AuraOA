@@ -143,6 +143,20 @@ type RecentProcessScanner interface {
 	FetchRecentProcessSummaries(ctx context.Context, processType string, since time.Time, limit int) ([]ProcessRequestSummary, error)
 }
 
+// ProcessRequestWatermarkResolver 由支持首次新建流程 requestid 高水位解析的 OA 适配器实现。
+// CaptureProcessRequestHighWatermark 必须在 OA 保存/提交放行前调用；FindCreatedProcessRequestsAfter
+// 仅返回高水位之后、流程定义和发起人均匹配的候选。
+type ProcessRequestWatermarkResolver interface {
+	CaptureProcessRequestHighWatermark(ctx context.Context) (int64, error)
+	FindCreatedProcessRequestsAfter(
+		ctx context.Context,
+		workflowID string,
+		creatorIDs []string,
+		afterRequestID int64,
+		limit int,
+	) ([]ProcessRequestSummary, error)
+}
+
 // ModelContextQuery 描述一次受限的建模表查询。
 type ModelContextQuery struct {
 	TableName    string

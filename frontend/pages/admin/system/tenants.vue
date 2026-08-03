@@ -448,7 +448,7 @@ const buildEmbedNotifyScript = (target: 'all' | 'audit' | 'summary', token: stri
   const cfg = getEmbedScriptConfig(target)
   const urlComment = cfg.urls.map(url => ` * - ${url}`).join('\n')
   return `/**
- * 泛微 Ecology9 — AuraOA 嵌入页：传递打开上下文，并在 OA 操作完成后安排后台检查
+ * 泛微 Ecology9 — AuraOA 嵌入页：传递打开上下文，并在点击保存、提交时安排后台检查
  *
  * 导出范围：${cfg.label}
  * 对应嵌入地址：
@@ -496,6 +496,28 @@ ${urlComment}
     return '';
   }
 
+  function getOperationContext() {
+    var base = {};
+    var currentUserId = '';
+    try {
+      base = WfForm && WfForm.getBaseInfo ? (WfForm.getBaseInfo() || {}) : {};
+      var store = WfForm && WfForm.getGlobalStore ? WfForm.getGlobalStore() : null;
+      currentUserId = store && store.commonParam && store.commonParam.currentUserid != null
+        ? String(store.commonParam.currentUserid).trim()
+        : '';
+    } catch (e) {
+      console.warn('[aura-embed] 读取 OA 操作上下文失败', e);
+    }
+    return {
+      requestid: getRequestId(),
+      workflow_id: base.workflowid != null ? String(base.workflowid).trim() : '',
+      oa_belong_user_id: base.f_weaver_belongto_userid != null
+        ? String(base.f_weaver_belongto_userid).trim()
+        : '',
+      oa_current_user_id: currentUserId
+    };
+  }
+
   function getIframes() {
     var seen = {};
     var ids = Array.isArray(IFRAME_IDS) && IFRAME_IDS.length ? IFRAME_IDS : [];
@@ -534,7 +556,6 @@ ${urlComment}
   function postContextToAura(win) {
     if (!win) return;
     var requestid = getRequestId();
-    if (!requestid) return;
     if (!EMBED_ACCESS_TOKEN) {
       console.warn('[aura-embed] 未配置 EMBED_ACCESS_TOKEN');
       return;
@@ -559,23 +580,30 @@ ${urlComment}
   }
 
   function postRunnerAction(action, eventId) {
-    var requestid = getRequestId();
+    var context = getOperationContext();
     var runner = ensureRunnerIframe();
-    if (!requestid || !runner || !runner.contentWindow) return false;
+    if (!runner || !runner.contentWindow) return false;
     runner.contentWindow.postMessage({
       type: MSG_REFRESH_EVENT,
-      requestid: requestid,
-      action: action || 'save_complete',
+      requestid: context.requestid,
+      workflow_id: context.workflow_id,
+      oa_belong_user_id: context.oa_belong_user_id,
+      oa_current_user_id: context.oa_current_user_id,
+      action: action,
       event_id: eventId || createEventId()
     }, AURA_EMBED_ORIGIN);
+    console.log('[aura-embed] 已发送 OA 操作事件', {
+      action: action,
+      requestid: context.requestid || '(待解析)',
+      event_id: eventId
+    });
     return true;
   }
 
   function notifyAuraRunner(action, eventId) {
-    if (!getRequestId()) return false;
     if (!runnerReady) {
       pendingRunnerActions.push({
-        action: action || 'save_complete',
+        action: action,
         eventId: eventId || createEventId()
       });
       ensureRunnerIframe();
@@ -599,10 +627,6 @@ ${urlComment}
       delete pendingRunnerAcks[eventId];
       callback();
     };
-    if (!getRequestId()) {
-      release();
-      return;
-    }
     pendingRunnerAcks[eventId] = release;
     setTimeout(release, 400);
     try {
@@ -616,14 +640,18 @@ ${urlComment}
     if (oaEventsRegistered) return true;
     try {
       if (typeof WfForm === 'undefined' || !WfForm.registerCheckEvent) return false;
-      if (typeof WfForm.OPER_SAVECOMPLETE === 'undefined') return false;
-      WfForm.registerCheckEvent(WfForm.OPER_SAVECOMPLETE, function (callback) {
-        notifyBeforeRelease('save_complete', createEventId(), callback);
+      if (typeof WfForm.OPER_SAVE === 'undefined' || typeof WfForm.OPER_SUBMIT === 'undefined') return false;
+      WfForm.registerCheckEvent(WfForm.OPER_SAVE, function (callback) {
+        notifyBeforeRelease('save_requested', createEventId(), callback);
+      });
+      WfForm.registerCheckEvent(WfForm.OPER_SUBMIT, function (callback) {
+        notifyBeforeRelease('submit_requested', createEventId(), callback);
       });
       oaEventsRegistered = true;
+      console.log('[aura-embed] 已注册 OA 保存/提交事件');
       return true;
     } catch (e) {
-      console.warn('[aura-embed] 注册 OA 操作完成事件失败', e);
+      console.warn('[aura-embed] 注册 OA 保存/提交事件失败', e);
       return false;
     }
   }
@@ -646,10 +674,6 @@ ${urlComment}
       if (event.data.type !== MSG_REQUEST) return;
 
       var requestid = getRequestId();
-      if (!requestid) {
-        console.warn('[aura-embed] 无 requestid，请确认流程表单已加载 WfForm');
-        return;
-      }
       if (!EMBED_ACCESS_TOKEN) {
         console.warn('[aura-embed] 未配置 EMBED_ACCESS_TOKEN');
         return;

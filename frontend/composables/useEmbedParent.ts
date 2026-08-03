@@ -75,16 +75,17 @@ export function requestRequestIdFromParent(): void {
 /**
  * 等待 OA 父页上下文：当前页 URL → postMessage → 同源 parent URL
  */
-export function waitForParentEmbedContext(options?: { intervalMs?: number; maxAttempts?: number }): Promise<EmbedParentContext> {
+export function waitForParentEmbedContext(options?: { intervalMs?: number; maxAttempts?: number; requireRequestId?: boolean }): Promise<EmbedParentContext> {
   if (typeof window === 'undefined') {
     return Promise.resolve({ requestId: '', embedToken: '' })
   }
 
   const intervalMs = options?.intervalMs ?? 300
   const maxAttempts = options?.maxAttempts ?? 200
+  const requireRequestId = options?.requireRequestId ?? true
 
   const fromSelf = readEmbedContextFromSelfUrl()
-  if (fromSelf.requestId && fromSelf.embedToken) {
+  if (fromSelf.embedToken && (!requireRequestId || fromSelf.requestId)) {
     return Promise.resolve(fromSelf)
   }
 
@@ -95,7 +96,7 @@ export function waitForParentEmbedContext(options?: { intervalMs?: number; maxAt
     requestRequestIdFromParent()
 
     const tryFinish = () => {
-      if (latestRequestId && latestToken) {
+      if (latestToken && (!requireRequestId || latestRequestId)) {
         finish({
           requestId: latestRequestId,
           embedToken: latestToken,
@@ -108,8 +109,8 @@ export function waitForParentEmbedContext(options?: { intervalMs?: number; maxAt
     const onMessage = (event: MessageEvent) => {
       const data = event.data
       if (!data || typeof data !== 'object') return
-      if (data.type === EMBED_MSG_REQUESTID && data.requestid) {
-        latestRequestId = String(data.requestid)
+      if (data.type === EMBED_MSG_REQUESTID) {
+        latestRequestId = String(data.requestid || '')
         latestToken = String(data.embed_token || data.embedToken || '').trim()
         tryFinish()
         return
