@@ -76,8 +76,8 @@ return payload or ""
 // ErrInvalidEmbedRefreshAction 表示 OA 嵌入刷新动作不是当前版本支持的保存或提交请求。
 var ErrInvalidEmbedRefreshAction = errors.New("action 仅支持 save_requested 或 submit_requested")
 
-// ErrInvalidEmbedRefreshContext 表示首次新建流程缺少用于解析 requestid 的 OA 上下文。
-var ErrInvalidEmbedRefreshContext = errors.New("首次新建流程缺少 workflow_id 或 OA 用户标识")
+// ErrInvalidEmbedRefreshContext 表示首次新建流程缺少用于解析 requestid 的流程定义。
+var ErrInvalidEmbedRefreshContext = errors.New("首次新建流程缺少 workflow_id")
 
 // EmbedRefreshEventRequest OA 保存/提交前的轻量刷新事件；首次新建流程允许 process_id 为空。
 type EmbedRefreshEventRequest struct {
@@ -85,6 +85,7 @@ type EmbedRefreshEventRequest struct {
 	WorkflowID      string `json:"workflow_id"`
 	OABelongUserID  string `json:"oa_belong_user_id"`
 	OACurrentUserID string `json:"oa_current_user_id"`
+	OccurredAtMS    int64  `json:"occurred_at_ms"`
 	Action          string `json:"action" binding:"required"`
 	EventID         string `json:"event_id"`
 }
@@ -114,6 +115,7 @@ type embedRefreshPayload struct {
 	OABelongUserID    string    `json:"oa_belong_user_id,omitempty"`
 	OACurrentUserID   string    `json:"oa_current_user_id,omitempty"`
 	BaselineRequestID int64     `json:"baseline_request_id,omitempty"`
+	OccurredAtMS      int64     `json:"occurred_at_ms,omitempty"`
 }
 
 type embedRefreshResult int
@@ -125,9 +127,10 @@ const (
 )
 
 type embedRefreshCheckOutcome struct {
-	Result embedRefreshResult
-	Reason string
-	JobID  string
+	Result            embedRefreshResult
+	Reason            string
+	JobID             string
+	ResolvedProcessID string
 }
 
 // EmbedRefreshService 编排 OA 保存/提交事件、首次 requestid 解析、延迟指纹检查和流程级定时扫描。
@@ -211,7 +214,7 @@ func (s *EmbedRefreshService) ScheduleEvent(
 	status := model.EmbedRefreshEventScheduled
 	resolutionPending := req.ProcessID == ""
 	if resolutionPending {
-		if req.WorkflowID == "" || (req.OABelongUserID == "" && req.OACurrentUserID == "") {
+		if req.WorkflowID == "" {
 			return nil, ErrInvalidEmbedRefreshContext
 		}
 		adapter, err := s.auditSvc.getOAAdapter(ctx, tenantID)
@@ -238,6 +241,7 @@ func (s *EmbedRefreshService) ScheduleEvent(
 		WorkflowID:        req.WorkflowID,
 		OABelongUserID:    req.OABelongUserID,
 		OACurrentUserID:   req.OACurrentUserID,
+		OccurredAtMS:      req.OccurredAtMS,
 		BaselineRequestID: baselineRequestID,
 		Status:            status,
 		NextAttemptAt:     &nextAttemptAt,
@@ -270,6 +274,7 @@ func (s *EmbedRefreshService) ScheduleEvent(
 			OABelongUserID:    req.OABelongUserID,
 			OACurrentUserID:   req.OACurrentUserID,
 			BaselineRequestID: baselineRequestID,
+			OccurredAtMS:      req.OccurredAtMS,
 		}
 		if _, err := s.schedule(ctx, payload, embedRefreshInitialDelay, false); err != nil {
 			return nil, err
@@ -285,6 +290,7 @@ func (s *EmbedRefreshService) ScheduleEvent(
 				EventID:       req.EventID,
 				Generation:    uuid.NewString(),
 				FirstReceived: now,
+				OccurredAtMS:  req.OccurredAtMS,
 			}
 			if _, err := s.schedule(ctx, payload, embedRefreshInitialDelay, false); err != nil {
 				return nil, err
@@ -297,9 +303,11 @@ func (s *EmbedRefreshService) ScheduleEvent(
 			zap.String("processID", req.ProcessID),
 			zap.String("action", req.Action),
 			zap.String("eventID", req.EventID),
+			zap.String("workflowID", req.WorkflowID),
 			zap.Strings("scheduledModules", modules),
 			zap.Bool("resolutionPending", resolutionPending),
 			zap.Int64("baselineRequestID", baselineRequestID),
+			zap.Int64("clientDelayMs", embedRefreshClientDelay(req.OccurredAtMS, now)),
 			zap.Int64("initialDelayMs", embedRefreshInitialDelay.Milliseconds()))
 	}
 	return &EmbedRefreshEventResponse{
@@ -561,7 +569,8 @@ func (s *EmbedRefreshService) checkAndTrigger(
 	}
 }
 
-// resolveProcessRequest 按“操作前高水位 + 流程定义 + OA 发起人”解析首次新建流程的 requestid。
+// resolveProcessRequest 按“操作前高水位 + 流程定义”解析首次新建流程的 requestid。
+// OA 当前操作人和归属用户不等同于流程创建人，只在出现多个候选时辅助消歧。
 func (s *EmbedRefreshService) resolveProcessRequest(
 	ctx context.Context,
 	payload embedRefreshPayload,
@@ -592,9 +601,8 @@ func (s *EmbedRefreshService) resolveProcessRequest(
 	candidates, err := resolver.FindCreatedProcessRequestsAfter(
 		ctx,
 		payload.WorkflowID,
-		[]string{payload.OABelongUserID, payload.OACurrentUserID},
 		payload.BaselineRequestID,
-		3,
+		20,
 	)
 	if err != nil {
 		if s.updateResolutionFailure(ctx, event, payload, err) {
@@ -613,12 +621,22 @@ func (s *EmbedRefreshService) resolveProcessRequest(
 		}
 		return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "requestid_not_ready"}, nil
 	}
-	if len(candidates) > 1 {
-		_ = s.eventRepo.UpdateResolution(ctx, event.ID, model.EmbedRefreshEventAmbiguous, "", payload.Attempt, nil, "高水位后出现多个匹配流程，未自动猜测", nil)
+	candidate, peopleMatchCount := selectResolvedProcessCandidate(
+		candidates,
+		payload.OABelongUserID,
+		payload.OACurrentUserID,
+	)
+	if candidate == nil {
+		lastError := fmt.Sprintf(
+			"高水位后出现 %d 个同流程候选，人员辅助匹配 %d 个，未自动猜测",
+			len(candidates),
+			peopleMatchCount,
+		)
+		_ = s.eventRepo.UpdateResolution(ctx, event.ID, model.EmbedRefreshEventAmbiguous, "", payload.Attempt, nil, lastError, nil)
 		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "requestid_ambiguous"}, nil
 	}
 
-	processID := strings.TrimSpace(candidates[0].ProcessID)
+	processID := strings.TrimSpace(candidate.ProcessID)
 	for _, module := range []string{embedRefreshModuleAudit, embedRefreshModuleSummary} {
 		child := embedRefreshPayload{
 			TenantID:      payload.TenantID,
@@ -629,6 +647,7 @@ func (s *EmbedRefreshService) resolveProcessRequest(
 			EventID:       payload.EventID,
 			Generation:    uuid.NewString(),
 			FirstReceived: payload.FirstReceived,
+			OccurredAtMS:  payload.OccurredAtMS,
 		}
 		if _, scheduleErr := s.schedule(ctx, child, 0, false); scheduleErr != nil {
 			if s.updateResolutionFailure(ctx, event, payload, scheduleErr) {
@@ -650,7 +669,38 @@ func (s *EmbedRefreshService) resolveProcessRequest(
 	); err != nil {
 		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "requestid_resolved"}, err
 	}
-	return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "requestid_resolved", JobID: processID}, nil
+	return embedRefreshCheckOutcome{
+		Result:            embedRefreshDone,
+		Reason:            "requestid_resolved",
+		ResolvedProcessID: processID,
+	}, nil
+}
+
+// selectResolvedProcessCandidate 先按流程定义得到候选；仅在多候选时使用 OA 人员标识辅助消歧。
+func selectResolvedProcessCandidate(
+	candidates []oa.ProcessRequestCandidate,
+	peopleIDs ...string,
+) (*oa.ProcessRequestCandidate, int) {
+	if len(candidates) == 1 {
+		return &candidates[0], 0
+	}
+	people := make(map[string]struct{}, len(peopleIDs))
+	for _, raw := range peopleIDs {
+		if value := strings.TrimSpace(raw); value != "" {
+			people[value] = struct{}{}
+		}
+	}
+	matches := make([]int, 0, len(candidates))
+	for index := range candidates {
+		creatorID := strings.TrimSpace(candidates[index].CreatorID)
+		if _, ok := people[creatorID]; ok && creatorID != "" {
+			matches = append(matches, index)
+		}
+	}
+	if len(matches) == 1 {
+		return &candidates[matches[0]], 1
+	}
+	return nil, len(matches)
 }
 
 func (s *EmbedRefreshService) updateResolutionFailure(
@@ -703,6 +753,7 @@ func (s *EmbedRefreshService) restorePendingEvents(ctx context.Context) error {
 			OABelongUserID:    event.OABelongUserID,
 			OACurrentUserID:   event.OACurrentUserID,
 			BaselineRequestID: event.BaselineRequestID,
+			OccurredAtMS:      event.OccurredAtMS,
 		}
 		if _, err := s.schedule(ctx, payload, delay, false); err != nil {
 			return err
@@ -738,6 +789,15 @@ func (s *EmbedRefreshService) logCheckOutcome(
 	if outcome.JobID != "" {
 		fields = append(fields, zap.String("jobID", outcome.JobID))
 	}
+	if outcome.ResolvedProcessID != "" {
+		fields = append(fields, zap.String("resolvedProcessID", outcome.ResolvedProcessID))
+	}
+	if payload.OccurredAtMS > 0 {
+		fields = append(fields, zap.Int64(
+			"clientDelayMs",
+			embedRefreshClientDelay(payload.OccurredAtMS, payload.FirstReceived),
+		))
+	}
 	if retryDelay > 0 {
 		fields = append(fields,
 			zap.Int("nextAttempt", payload.Attempt),
@@ -770,6 +830,18 @@ func embedRefreshResultName(result embedRefreshResult) string {
 	default:
 		return "done"
 	}
+}
+
+// embedRefreshClientDelay 返回浏览器点击到服务端接收事件的耗时，负值按客户端时钟偏差归零。
+func embedRefreshClientDelay(occurredAtMS int64, receivedAt time.Time) int64 {
+	if occurredAtMS <= 0 || receivedAt.IsZero() {
+		return 0
+	}
+	delay := receivedAt.UnixMilli() - occurredAtMS
+	if delay < 0 {
+		return 0
+	}
+	return delay
 }
 
 func (s *EmbedRefreshService) schedule(
