@@ -25,6 +25,7 @@ type EmbedRefreshEvent struct {
 	WorkflowID        string     `gorm:"size:100;not null;default:''" json:"workflow_id"`
 	OABelongUserID    string     `gorm:"size:100;not null;default:''" json:"oa_belong_user_id"`
 	OACurrentUserID   string     `gorm:"size:100;not null;default:''" json:"oa_current_user_id"`
+	OccurredAtMS      int64      `gorm:"not null;default:0" json:"occurred_at_ms"`
 	BaselineRequestID int64      `gorm:"not null;default:0" json:"baseline_request_id"`
 	Status            string     `gorm:"size:20;not null;default:pending" json:"status"`
 	Attempt           int        `gorm:"not null;default:0" json:"attempt"`

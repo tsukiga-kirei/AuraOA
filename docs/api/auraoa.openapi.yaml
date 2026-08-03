@@ -6135,10 +6135,14 @@ components:
           description: 首次新建流程缺少 process_id 时必填
         oa_belong_user_id:
           type: string
-          description: OA 代理归属用户 ID，与 oa_current_user_id 至少填写一个
+          description: OA 代理归属用户 ID，仅用于多候选辅助消歧和排错
         oa_current_user_id:
           type: string
-          description: OA 当前操作用户 ID，与 oa_belong_user_id 至少填写一个
+          description: OA 当前操作用户 ID，仅用于多候选辅助消歧和排错，不等同于流程创建人
+        occurred_at_ms:
+          type: integer
+          format: int64
+          description: OA 点击保存或提交时的客户端 Unix 毫秒时间，用于诊断事件传输延迟
         action:
           type: string
           enum:

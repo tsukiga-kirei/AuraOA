@@ -473,7 +473,6 @@ ${urlComment}
   var MSG_RUNNER_EVENT_ACK = 'aura-runner-event-ack';
   var RUNNER_IFRAME_ID = 'aura-embed-runner';
   var runnerReady = false;
-  var pendingRunnerActions = [];
   var pendingRunnerAcks = {};
   var oaEventsRegistered = false;
 
@@ -496,7 +495,7 @@ ${urlComment}
     return '';
   }
 
-  function getOperationContext() {
+  function captureOperationContext(action, eventId) {
     var base = {};
     var currentUserId = '';
     try {
@@ -508,14 +507,17 @@ ${urlComment}
     } catch (e) {
       console.warn('[aura-embed] 读取 OA 操作上下文失败', e);
     }
-    return {
+    return Object.freeze({
+      action: action,
+      event_id: eventId,
+      occurred_at_ms: Date.now(),
       requestid: getRequestId(),
       workflow_id: base.workflowid != null ? String(base.workflowid).trim() : '',
       oa_belong_user_id: base.f_weaver_belongto_userid != null
         ? String(base.f_weaver_belongto_userid).trim()
         : '',
       oa_current_user_id: currentUserId
-    };
+    });
   }
 
   function getIframes() {
@@ -579,8 +581,7 @@ ${urlComment}
     return 'oa-' + Date.now() + '-' + Math.random().toString(16).slice(2);
   }
 
-  function postRunnerAction(action, eventId) {
-    var context = getOperationContext();
+  function postRunnerAction(context) {
     var runner = ensureRunnerIframe();
     if (!runner || !runner.contentWindow) return false;
     runner.contentWindow.postMessage({
@@ -589,34 +590,21 @@ ${urlComment}
       workflow_id: context.workflow_id,
       oa_belong_user_id: context.oa_belong_user_id,
       oa_current_user_id: context.oa_current_user_id,
-      action: action,
-      event_id: eventId || createEventId()
+      occurred_at_ms: context.occurred_at_ms,
+      action: context.action,
+      event_id: context.event_id
     }, AURA_EMBED_ORIGIN);
     console.log('[aura-embed] 已发送 OA 操作事件', {
-      action: action,
+      action: context.action,
       requestid: context.requestid || '(待解析)',
-      event_id: eventId
+      event_id: context.event_id
     });
     return true;
   }
 
-  function notifyAuraRunner(action, eventId) {
-    if (!runnerReady) {
-      pendingRunnerActions.push({
-        action: action,
-        eventId: eventId || createEventId()
-      });
-      ensureRunnerIframe();
-      return true;
-    }
-    return postRunnerAction(action, eventId);
-  }
-
-  function flushRunnerActions() {
-    var actions = pendingRunnerActions.splice(0);
-    actions.forEach(function (item) {
-      postRunnerAction(item.action, item.eventId);
-    });
+  function notifyAuraRunner(context) {
+    if (!runnerReady) return false;
+    return postRunnerAction(context);
   }
 
   function notifyBeforeRelease(action, eventId, callback) {
@@ -627,10 +615,15 @@ ${urlComment}
       delete pendingRunnerAcks[eventId];
       callback();
     };
+    var context = captureOperationContext(action, eventId);
+    if (!runnerReady) {
+      release();
+      return;
+    }
     pendingRunnerAcks[eventId] = release;
     setTimeout(release, 400);
     try {
-      if (!notifyAuraRunner(action, eventId)) release();
+      if (!notifyAuraRunner(context)) release();
     } catch (e) {
       release();
     }
@@ -639,6 +632,7 @@ ${urlComment}
   function registerOAEvents() {
     if (oaEventsRegistered) return true;
     try {
+      if (!runnerReady) return false;
       if (typeof WfForm === 'undefined' || !WfForm.registerCheckEvent) return false;
       if (typeof WfForm.OPER_SAVE === 'undefined' || typeof WfForm.OPER_SUBMIT === 'undefined') return false;
       WfForm.registerCheckEvent(WfForm.OPER_SAVE, function (callback) {
@@ -667,8 +661,7 @@ ${urlComment}
       }
       if (event.data.type === MSG_RUNNER_READY) {
         runnerReady = true;
-        if (event.source) postContextToAura(event.source);
-        flushRunnerActions();
+        registerOAEvents();
         return;
       }
       if (event.data.type !== MSG_REQUEST) return;

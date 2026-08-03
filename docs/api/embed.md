@@ -74,6 +74,7 @@ POST /api/embed/events
   "workflow_id": "127",
   "oa_belong_user_id": "1042",
   "oa_current_user_id": "1042",
+  "occurred_at_ms": 1785748255617,
   "action": "submit_requested",
   "event_id": "oa-598488-1722150000000"
 }
@@ -83,27 +84,39 @@ POST /api/embed/events
 `WfForm.OPER_SUBMIT`。旧动作会返回 `400`，运行时没有兼容转换。已有 `process_id` 时，接口把
 审核和总结检查写入 Redis 延迟队列并返回 `202`，不会等待 AI 执行。
 
-首次新建流程允许 `process_id` 为空，但必须传 `workflow_id` 以及至少一个 OA 用户标识。服务会在
+首次新建流程允许 `process_id` 为空，但必须传 `workflow_id`。服务会在
 放行 OA 操作前读取 `workflow_requestbase.requestid` 高水位并将事件写入
-`embed_refresh_events`；约 2 秒后按“高水位之后 + workflow_id + 发起人”解析新 requestid，
-未落库时继续在约 5 秒、10 秒检查。发现多个候选时标记 `ambiguous`，不会猜测错误流程。
+`embed_refresh_events`；约 2 秒后按“高水位之后 + workflow_id”解析新 requestid，
+未落库时继续在约 5 秒、10 秒检查。唯一候选直接采用；出现多个候选时，
+`oa_belong_user_id` 和 `oa_current_user_id` 只用于辅助消歧，不作为创建人硬过滤条件。
+仍不能唯一确认时标记 `ambiguous`，不会猜测错误流程，也不会影响 OA 流程自身的保存或提交。
+
+`occurred_at_ms` 是 OA 点击保存/提交时冻结的客户端 Unix 毫秒时间。服务会把它写入
+`embed_refresh_events`，并在日志输出 `clientDelayMs`，用于区分正常网络耗时与浏览器晚发事件。
 
 同一租户、流程和模块的连续事件自动合并。只有保存/提交事件会在任务执行期间保留一次后续检查；
 定时扫描不会持续追踪进行中的任务。
 
-通知脚本只注册 `OPER_SAVE` 和 `OPER_SUBMIT`，不再注册 `OPER_SAVECOMPLETE`。事件最多等待
-400ms 接收确认后放行 OA 操作；超时或 AuraOA 不可用也必须放行。浏览器不会轮询 requestid，
-页面跳转后由服务端持久化事件继续解析。
+通知脚本只注册 `OPER_SAVE` 和 `OPER_SUBMIT`，不再注册 `OPER_SAVECOMPLETE`。隐藏 runner
+完成 `/api/embed/session` 认证后才通知父页注册 OA 事件；点击时立即冻结 requestid、workflow_id、
+人员标识和发生时间。浏览器不缓存、不延迟补发未就绪期间的操作，避免把陈旧点击关联到后续流程。
+已注册事件最多等待 400ms 接收确认后放行 OA 操作；超时或 AuraOA 不可用也必须放行。
+浏览器不会轮询 requestid，服务端接收事件后自行持久化并解析。
 
 Go 服务会以结构化日志记录事件接收和每个模块的检查结论，不记录表单正文、附件正文或提示词：
 
 ```text
 OA 嵌入刷新事件已接收
-processID=598488 action=submit_requested eventID=oa-... scheduledModules=[audit,summary]
+processID=598488 workflowID=127 action=submit_requested eventID=oa-...
+clientDelayMs=12 scheduledModules=[audit,summary]
 
 OA 嵌入刷新检查完成
 processID=598488 module=summary action=submit_requested eventID=oa-...
 attempt=0 result=done reason=unchanged retryScheduled=false
+
+OA 嵌入刷新检查完成
+processID= module=resolve action=submit_requested eventID=oa-...
+result=done reason=requestid_resolved resolvedProcessID=617100 clientDelayMs=12
 ```
 
 常见 `reason` 包括 `triggered`、`unchanged`、`unchanged_waiting_commit`、`job_running`、`not_found_in_oa`、
@@ -286,7 +299,7 @@ GET /api/embed/summary/stream/:id
 | iframe → OA | `aura-oa-request-requestid` | 无 |
 | OA → iframe | `aura-oa-requestid` | `{ requestid: string, embed_token: string }` |
 | runner → OA | `aura-runner-ready` | 无 |
-| OA → runner | `aura-oa-refresh-event` | `{ requestid, workflow_id, oa_belong_user_id, oa_current_user_id, action, event_id }` |
+| OA → runner | `aura-oa-refresh-event` | `{ requestid, workflow_id, oa_belong_user_id, oa_current_user_id, occurred_at_ms, action, event_id }` |
 | runner → OA | `aura-runner-event-ack` | `{ event_id: string }` |
 
 OA 保存/提交检查最多等待 400ms 的事件接收确认；收到确认会立即放行，超时或 AuraOA

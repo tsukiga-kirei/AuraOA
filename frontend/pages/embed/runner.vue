@@ -16,8 +16,8 @@ type RunnerAction = {
   workflowId: string
   oaBelongUserId: string
   oaCurrentUserId: string
+  occurredAtMs: number
 }
-const pendingActions: RunnerAction[] = []
 
 function createEventId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
@@ -25,16 +25,14 @@ function createEventId() {
 }
 
 async function dispatch(item: RunnerAction) {
-  if (!ready.value) {
-    pendingActions.push(item)
-    return
-  }
+  if (!ready.value) return
   try {
     await scheduleEmbedRefresh({
       process_id: item.processId,
       workflow_id: item.workflowId,
       oa_belong_user_id: item.oaBelongUserId,
       oa_current_user_id: item.oaCurrentUserId,
+      occurred_at_ms: item.occurredAtMs,
       action: item.action,
       event_id: item.eventId,
     })
@@ -71,12 +69,12 @@ function handleParentMessage(event: MessageEvent) {
     workflowId: String(data.workflow_id || '').trim(),
     oaBelongUserId: String(data.oa_belong_user_id || '').trim(),
     oaCurrentUserId: String(data.oa_current_user_id || '').trim(),
+    occurredAtMs: Number(data.occurred_at_ms || 0),
   })
 }
 
 onMounted(async () => {
   window.addEventListener('message', handleParentMessage)
-  window.parent.postMessage({ type: 'aura-runner-ready' }, '*')
 
   const parentCtx = await waitForParentEmbedContext({ requireRequestId: false })
   processId.value = parentCtx.requestId
@@ -88,10 +86,6 @@ onMounted(async () => {
   }
 
   ready.value = true
-  const queued = pendingActions.splice(0)
-  for (const item of queued) {
-    await dispatch(item)
-  }
   window.parent.postMessage({ type: 'aura-runner-ready', requestid: processId.value }, '*')
 })
 

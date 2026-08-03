@@ -3249,70 +3249,46 @@ func (a *Ecology9Adapter) CaptureProcessRequestHighWatermark(ctx context.Context
 	return watermark, nil
 }
 
-// FindCreatedProcessRequestsAfter 查询高水位之后由指定 OA 用户发起的同一流程定义实例。
+// FindCreatedProcessRequestsAfter 查询高水位之后的同一流程定义实例。
 func (a *Ecology9Adapter) FindCreatedProcessRequestsAfter(
 	ctx context.Context,
 	workflowID string,
-	creatorIDs []string,
 	afterRequestID int64,
 	limit int,
-) ([]ProcessRequestSummary, error) {
+) ([]ProcessRequestCandidate, error) {
 	workflowID = strings.TrimSpace(workflowID)
 	if workflowID == "" {
 		return nil, fmt.Errorf("workflow_id 不能为空")
-	}
-	uniqueCreators := make([]string, 0, len(creatorIDs))
-	seen := make(map[string]struct{}, len(creatorIDs))
-	for _, creatorID := range creatorIDs {
-		creatorID = strings.TrimSpace(creatorID)
-		if creatorID == "" {
-			continue
-		}
-		if _, exists := seen[creatorID]; exists {
-			continue
-		}
-		seen[creatorID] = struct{}{}
-		uniqueCreators = append(uniqueCreators, creatorID)
-	}
-	if len(uniqueCreators) == 0 {
-		return nil, fmt.Errorf("OA 发起人不能为空")
 	}
 	if limit < 1 || limit > 20 {
 		limit = 3
 	}
 
-	creatorPlaceholders := strings.TrimSuffix(strings.Repeat("?,", len(uniqueCreators)), ",")
 	query := fmt.Sprintf(`
 		SELECT
 			r.%s AS request_id,
-			COALESCE(r.%s, '') AS request_name
+			COALESCE(r.%s, '') AS request_name,
+			COALESCE(r.%s, 0) AS creator_id
 		FROM %s r
 		WHERE r.%s > ?
 		  AND r.%s = ?
-		  AND r.%s IN (%s)
 		ORDER BY r.%s ASC%s`,
-		a.col("requestid"), a.col("requestname"),
+		a.col("requestid"), a.col("requestname"), a.col("creater"),
 		a.tableName("workflow_requestbase"),
 		a.col("requestid"),
 		a.col("workflowid"),
-		a.col("creater"), creatorPlaceholders,
 		a.col("requestid"), a.limitOffsetClause(limit, 0),
 	)
-	args := make([]interface{}, 0, 2+len(uniqueCreators))
-	args = append(args, afterRequestID, workflowID)
-	for _, creatorID := range uniqueCreators {
-		args = append(args, creatorID)
-	}
-	rows, err := a.db.WithContext(ctx).Raw(query, args...).Rows()
+	rows, err := a.db.WithContext(ctx).Raw(query, afterRequestID, workflowID).Rows()
 	if err != nil {
 		return nil, fmt.Errorf("解析 OA 新建流程 requestid 失败: %w", err)
 	}
 	defer rows.Close()
 
-	items := make([]ProcessRequestSummary, 0, limit)
+	items := make([]ProcessRequestCandidate, 0, limit)
 	for rows.Next() {
-		var item ProcessRequestSummary
-		if scanErr := rows.Scan(&item.ProcessID, &item.Title); scanErr != nil {
+		var item ProcessRequestCandidate
+		if scanErr := rows.Scan(&item.ProcessID, &item.Title, &item.CreatorID); scanErr != nil {
 			continue
 		}
 		items = append(items, item)

@@ -3,6 +3,7 @@ export interface EmbedRefreshEventRequest {
   workflow_id: string
   oa_belong_user_id: string
   oa_current_user_id: string
+  occurred_at_ms: number
   action: 'save_requested' | 'submit_requested'
   event_id?: string
 }

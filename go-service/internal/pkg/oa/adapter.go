@@ -145,16 +145,22 @@ type RecentProcessScanner interface {
 
 // ProcessRequestWatermarkResolver 由支持首次新建流程 requestid 高水位解析的 OA 适配器实现。
 // CaptureProcessRequestHighWatermark 必须在 OA 保存/提交放行前调用；FindCreatedProcessRequestsAfter
-// 仅返回高水位之后、流程定义和发起人均匹配的候选。
+// 仅返回高水位之后且流程定义匹配的候选，人员标识不能作为硬过滤条件。
 type ProcessRequestWatermarkResolver interface {
 	CaptureProcessRequestHighWatermark(ctx context.Context) (int64, error)
 	FindCreatedProcessRequestsAfter(
 		ctx context.Context,
 		workflowID string,
-		creatorIDs []string,
 		afterRequestID int64,
 		limit int,
-	) ([]ProcessRequestSummary, error)
+	) ([]ProcessRequestCandidate, error)
+}
+
+// ProcessRequestCandidate 是高水位之后的新建流程候选；CreatorID 仅用于多候选辅助消歧。
+type ProcessRequestCandidate struct {
+	ProcessID string
+	Title     string
+	CreatorID string
 }
 
 // ModelContextQuery 描述一次受限的建模表查询。

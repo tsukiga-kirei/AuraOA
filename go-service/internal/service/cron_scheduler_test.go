@@ -3,12 +3,14 @@ package service
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/ai"
+	"auraoa/go-service/internal/pkg/oa"
 )
 
 func TestCronParserSupportsFiveAndSixFields(t *testing.T) {
@@ -174,6 +176,50 @@ func TestEmbedRefreshResultName(t *testing.T) {
 		if got := embedRefreshResultName(tt.result); got != tt.want {
 			t.Fatalf("刷新检查状态名称错误: result=%d got=%s want=%s", tt.result, got, tt.want)
 		}
+	}
+}
+
+func TestSelectResolvedProcessCandidate(t *testing.T) {
+	sole := []oa.ProcessRequestCandidate{{ProcessID: "617100", CreatorID: "198"}}
+	selected, matchCount := selectResolvedProcessCandidate(sole, "28")
+	if selected == nil || selected.ProcessID != "617100" || matchCount != 0 {
+		t.Fatalf("唯一候选不应被人员标识排除: selected=%+v matches=%d", selected, matchCount)
+	}
+
+	multiple := []oa.ProcessRequestCandidate{
+		{ProcessID: "617101", CreatorID: "198"},
+		{ProcessID: "617102", CreatorID: "28"},
+	}
+	selected, matchCount = selectResolvedProcessCandidate(multiple, "28", "29")
+	if selected == nil || selected.ProcessID != "617102" || matchCount != 1 {
+		t.Fatalf("多候选时应使用人员标识辅助消歧: selected=%+v matches=%d", selected, matchCount)
+	}
+
+	selected, matchCount = selectResolvedProcessCandidate(multiple, "99")
+	if selected != nil || matchCount != 0 {
+		t.Fatalf("无法消歧时不应猜测候选: selected=%+v matches=%d", selected, matchCount)
+	}
+
+	sameCreator := []oa.ProcessRequestCandidate{
+		{ProcessID: "617103", CreatorID: "28"},
+		{ProcessID: "617104", CreatorID: "28"},
+	}
+	selected, matchCount = selectResolvedProcessCandidate(sameCreator, "28")
+	if selected != nil || matchCount != 2 {
+		t.Fatalf("人员标识仍匹配多个候选时不应猜测: selected=%+v matches=%d", selected, matchCount)
+	}
+}
+
+func TestEmbedRefreshClientDelay(t *testing.T) {
+	received := time.UnixMilli(10_000)
+	if got := embedRefreshClientDelay(8_500, received); got != 1_500 {
+		t.Fatalf("客户端延迟计算错误: got=%d", got)
+	}
+	if got := embedRefreshClientDelay(11_000, received); got != 0 {
+		t.Fatalf("客户端时钟超前时延迟应归零: got=%d", got)
+	}
+	if got := embedRefreshClientDelay(0, received); got != 0 {
+		t.Fatalf("缺少客户端时间时延迟应为零: got=%d", got)
 	}
 }
 
