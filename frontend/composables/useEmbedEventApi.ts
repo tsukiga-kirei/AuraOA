@@ -1,6 +1,9 @@
 export interface EmbedRefreshEventRequest {
   process_id: string
-  action: 'save_complete'
+  workflow_id: string
+  oa_belong_user_id: string
+  oa_current_user_id: string
+  action: 'save_requested' | 'submit_requested'
   event_id?: string
 }
 
@@ -9,6 +12,7 @@ export interface EmbedRefreshEventResponse {
   action: string
   event_id: string
   scheduled_modules: string[]
+  resolution_pending: boolean
 }
 
 /**

@@ -34,6 +34,7 @@ const (
 
 	embedRefreshModuleAudit   = "audit"
 	embedRefreshModuleSummary = "summary"
+	embedRefreshModuleResolve = "resolve"
 )
 
 var scheduleEmbedRefreshScript = redis.NewScript(`
@@ -72,36 +73,47 @@ redis.call("ZREM", KEYS[1], ARGV[1])
 return payload or ""
 `)
 
-// ErrInvalidEmbedRefreshAction 表示 OA 嵌入刷新动作不是当前版本支持的保存完成事件。
-var ErrInvalidEmbedRefreshAction = errors.New("action 仅支持 save_complete")
+// ErrInvalidEmbedRefreshAction 表示 OA 嵌入刷新动作不是当前版本支持的保存或提交请求。
+var ErrInvalidEmbedRefreshAction = errors.New("action 仅支持 save_requested 或 submit_requested")
 
-// EmbedRefreshEventRequest OA 保存完成后的轻量刷新事件。
+// ErrInvalidEmbedRefreshContext 表示首次新建流程缺少用于解析 requestid 的 OA 上下文。
+var ErrInvalidEmbedRefreshContext = errors.New("首次新建流程缺少 workflow_id 或 OA 用户标识")
+
+// EmbedRefreshEventRequest OA 保存/提交前的轻量刷新事件；首次新建流程允许 process_id 为空。
 type EmbedRefreshEventRequest struct {
-	ProcessID string `json:"process_id" binding:"required"`
-	Action    string `json:"action" binding:"required"`
-	EventID   string `json:"event_id"`
+	ProcessID       string `json:"process_id"`
+	WorkflowID      string `json:"workflow_id"`
+	OABelongUserID  string `json:"oa_belong_user_id"`
+	OACurrentUserID string `json:"oa_current_user_id"`
+	Action          string `json:"action" binding:"required"`
+	EventID         string `json:"event_id"`
 }
 
 // EmbedRefreshEventResponse 事件接收结果。
 type EmbedRefreshEventResponse struct {
-	ProcessID        string   `json:"process_id"`
-	Action           string   `json:"action"`
-	EventID          string   `json:"event_id"`
-	ScheduledModules []string `json:"scheduled_modules"`
+	ProcessID         string   `json:"process_id"`
+	Action            string   `json:"action"`
+	EventID           string   `json:"event_id"`
+	ScheduledModules  []string `json:"scheduled_modules"`
+	ResolutionPending bool     `json:"resolution_pending"`
 }
 
 type embedRefreshPayload struct {
-	TenantID      uuid.UUID `json:"tenant_id"`
-	UserID        uuid.UUID `json:"user_id"`
-	ProcessID     string    `json:"process_id"`
-	Module        string    `json:"module"`
-	Action        string    `json:"action"`
-	EventID       string    `json:"event_id"`
-	Generation    string    `json:"generation"`
-	Attempt       int       `json:"attempt"`
-	FirstReceived time.Time `json:"first_received"`
-	ConfigID      uuid.UUID `json:"config_id,omitempty"`
-	ScheduleID    uuid.UUID `json:"schedule_id,omitempty"`
+	TenantID          uuid.UUID `json:"tenant_id"`
+	UserID            uuid.UUID `json:"user_id"`
+	ProcessID         string    `json:"process_id"`
+	Module            string    `json:"module"`
+	Action            string    `json:"action"`
+	EventID           string    `json:"event_id"`
+	Generation        string    `json:"generation"`
+	Attempt           int       `json:"attempt"`
+	FirstReceived     time.Time `json:"first_received"`
+	ConfigID          uuid.UUID `json:"config_id,omitempty"`
+	ScheduleID        uuid.UUID `json:"schedule_id,omitempty"`
+	WorkflowID        string    `json:"workflow_id,omitempty"`
+	OABelongUserID    string    `json:"oa_belong_user_id,omitempty"`
+	OACurrentUserID   string    `json:"oa_current_user_id,omitempty"`
+	BaselineRequestID int64     `json:"baseline_request_id,omitempty"`
 }
 
 type embedRefreshResult int
@@ -118,7 +130,7 @@ type embedRefreshCheckOutcome struct {
 	JobID  string
 }
 
-// EmbedRefreshService 编排 OA 保存完成事件、延迟指纹检查和流程级定时扫描。
+// EmbedRefreshService 编排 OA 保存/提交事件、首次 requestid 解析、延迟指纹检查和流程级定时扫描。
 type EmbedRefreshService struct {
 	rdb             *redis.Client
 	auditSvc        *AuditExecuteService
@@ -126,6 +138,7 @@ type EmbedRefreshService struct {
 	auditRepo       *repository.ProcessAuditConfigRepo
 	summaryRepo     *repository.ProcessSummaryConfigRepo
 	scheduleRepo    *repository.EmbedRefreshScheduleRepo
+	eventRepo       *repository.EmbedRefreshEventRepo
 	tenantRepo      *repository.TenantRepo
 	scheduleCron    *cron.Cron
 	scheduleMu      sync.Mutex
@@ -143,6 +156,7 @@ func NewEmbedRefreshService(
 	auditRepo *repository.ProcessAuditConfigRepo,
 	summaryRepo *repository.ProcessSummaryConfigRepo,
 	scheduleRepo *repository.EmbedRefreshScheduleRepo,
+	eventRepo *repository.EmbedRefreshEventRepo,
 	tenantRepo *repository.TenantRepo,
 	logger *zap.Logger,
 ) *EmbedRefreshService {
@@ -153,6 +167,7 @@ func NewEmbedRefreshService(
 		auditRepo:    auditRepo,
 		summaryRepo:  summaryRepo,
 		scheduleRepo: scheduleRepo,
+		eventRepo:    eventRepo,
 		tenantRepo:   tenantRepo,
 		scheduleCron: cron.New(
 			cron.WithParser(newCronParser()),
@@ -166,7 +181,7 @@ func NewEmbedRefreshService(
 	}
 }
 
-// ScheduleEvent 接收 OA 保存完成事件，并分别安排审核和总结检查。
+// ScheduleEvent 接收 OA 保存/提交事件；已有 requestid 直接安排检查，首次新建流程先记录高水位再异步解析。
 func (s *EmbedRefreshService) ScheduleEvent(
 	ctx context.Context,
 	tenantID, userID uuid.UUID,
@@ -175,32 +190,105 @@ func (s *EmbedRefreshService) ScheduleEvent(
 	if s.rdb == nil {
 		return nil, fmt.Errorf("Redis 不可用")
 	}
-	req.ProcessID = strings.TrimSpace(req.ProcessID)
-	if req.ProcessID == "" {
-		return nil, fmt.Errorf("process_id 不能为空")
+	if s.eventRepo == nil {
+		return nil, fmt.Errorf("嵌入刷新事件存储不可用")
 	}
+	req.ProcessID = strings.TrimSpace(req.ProcessID)
+	req.WorkflowID = strings.TrimSpace(req.WorkflowID)
+	req.OABelongUserID = strings.TrimSpace(req.OABelongUserID)
+	req.OACurrentUserID = strings.TrimSpace(req.OACurrentUserID)
 	req.Action = strings.TrimSpace(req.Action)
-	if req.Action != model.SummaryTriggerDetailSaveComplete {
+	if req.Action != model.SummaryTriggerDetailSaveRequested &&
+		req.Action != model.SummaryTriggerDetailSubmitRequested {
 		return nil, ErrInvalidEmbedRefreshAction
 	}
 	if strings.TrimSpace(req.EventID) == "" {
 		req.EventID = uuid.NewString()
 	}
 
+	now := apptime.Now()
+	baselineRequestID := int64(0)
+	status := model.EmbedRefreshEventScheduled
+	resolutionPending := req.ProcessID == ""
+	if resolutionPending {
+		if req.WorkflowID == "" || (req.OABelongUserID == "" && req.OACurrentUserID == "") {
+			return nil, ErrInvalidEmbedRefreshContext
+		}
+		adapter, err := s.auditSvc.getOAAdapter(ctx, tenantID)
+		if err != nil {
+			return nil, err
+		}
+		resolver, ok := adapter.(oa.ProcessRequestWatermarkResolver)
+		if !ok {
+			return nil, fmt.Errorf("当前 OA 适配器不支持 requestid 高水位解析")
+		}
+		baselineRequestID, err = resolver.CaptureProcessRequestHighWatermark(ctx)
+		if err != nil {
+			return nil, err
+		}
+		status = model.EmbedRefreshEventPending
+	}
+	nextAttemptAt := now.Add(embedRefreshInitialDelay)
+	event, created, err := s.eventRepo.CreateOrGet(ctx, &model.EmbedRefreshEvent{
+		TenantID:          tenantID,
+		UserID:            userID,
+		EventID:           req.EventID,
+		Action:            req.Action,
+		ProcessID:         req.ProcessID,
+		WorkflowID:        req.WorkflowID,
+		OABelongUserID:    req.OABelongUserID,
+		OACurrentUserID:   req.OACurrentUserID,
+		BaselineRequestID: baselineRequestID,
+		Status:            status,
+		NextAttemptAt:     &nextAttemptAt,
+		ReceivedAt:        now,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !created {
+		return &EmbedRefreshEventResponse{
+			ProcessID:         event.ProcessID,
+			Action:            event.Action,
+			EventID:           event.EventID,
+			ScheduledModules:  []string{embedRefreshModuleAudit, embedRefreshModuleSummary},
+			ResolutionPending: event.Status == model.EmbedRefreshEventPending,
+		}, nil
+	}
+
 	modules := []string{embedRefreshModuleAudit, embedRefreshModuleSummary}
-	for _, module := range modules {
+	if resolutionPending {
 		payload := embedRefreshPayload{
-			TenantID:      tenantID,
-			UserID:        userID,
-			ProcessID:     req.ProcessID,
-			Module:        module,
-			Action:        req.Action,
-			EventID:       req.EventID,
-			Generation:    uuid.NewString(),
-			FirstReceived: apptime.Now(),
+			TenantID:          tenantID,
+			UserID:            userID,
+			Module:            embedRefreshModuleResolve,
+			Action:            req.Action,
+			EventID:           req.EventID,
+			Generation:        uuid.NewString(),
+			FirstReceived:     now,
+			WorkflowID:        req.WorkflowID,
+			OABelongUserID:    req.OABelongUserID,
+			OACurrentUserID:   req.OACurrentUserID,
+			BaselineRequestID: baselineRequestID,
 		}
 		if _, err := s.schedule(ctx, payload, embedRefreshInitialDelay, false); err != nil {
 			return nil, err
+		}
+	} else {
+		for _, module := range modules {
+			payload := embedRefreshPayload{
+				TenantID:      tenantID,
+				UserID:        userID,
+				ProcessID:     req.ProcessID,
+				Module:        module,
+				Action:        req.Action,
+				EventID:       req.EventID,
+				Generation:    uuid.NewString(),
+				FirstReceived: now,
+			}
+			if _, err := s.schedule(ctx, payload, embedRefreshInitialDelay, false); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if s.logger != nil {
@@ -210,13 +298,16 @@ func (s *EmbedRefreshService) ScheduleEvent(
 			zap.String("action", req.Action),
 			zap.String("eventID", req.EventID),
 			zap.Strings("scheduledModules", modules),
+			zap.Bool("resolutionPending", resolutionPending),
+			zap.Int64("baselineRequestID", baselineRequestID),
 			zap.Int64("initialDelayMs", embedRefreshInitialDelay.Milliseconds()))
 	}
 	return &EmbedRefreshEventResponse{
-		ProcessID:        req.ProcessID,
-		Action:           req.Action,
-		EventID:          req.EventID,
-		ScheduledModules: modules,
+		ProcessID:         req.ProcessID,
+		Action:            req.Action,
+		EventID:           req.EventID,
+		ScheduledModules:  modules,
+		ResolutionPending: resolutionPending,
 	}, nil
 }
 
@@ -237,6 +328,9 @@ func (s *EmbedRefreshService) Start(ctx context.Context) {
 	}
 	if err := s.restoreSchedules(ctx); err != nil && s.logger != nil {
 		s.logger.Warn("恢复 OA 嵌入刷新定时任务失败", zap.Error(err))
+	}
+	if err := s.restorePendingEvents(ctx); err != nil && s.logger != nil {
+		s.logger.Warn("恢复 OA requestid 待解析事件失败", zap.Error(err))
 	}
 	s.scheduleMu.Lock()
 	scheduleCount := len(s.scheduleEntries)
@@ -356,6 +450,9 @@ func (s *EmbedRefreshService) checkAndTrigger(
 		// 升级时未被启动清理捕获的旧动作不再执行。
 		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "obsolete_action"}, nil
 	}
+	if payload.Module == embedRefreshModuleResolve {
+		return s.resolveProcessRequest(ctx, payload)
+	}
 	if payload.Action == model.SummaryTriggerDetailScheduled && payload.ConfigID == uuid.Nil {
 		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "schedule_config_missing"}, nil
 	}
@@ -395,6 +492,8 @@ func (s *EmbedRefreshService) checkAndTrigger(
 			reason := "unchanged"
 			if embedCtx.AutoRetryBlocked {
 				reason = "auto_retry_blocked"
+			} else if isEmbedOperationAction(payload.Action) && payload.Attempt < 2 {
+				return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "unchanged_waiting_commit"}, nil
 			}
 			return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: reason}, nil
 		}
@@ -438,6 +537,8 @@ func (s *EmbedRefreshService) checkAndTrigger(
 			reason := "unchanged"
 			if embedCtx.AutoRetryBlocked {
 				reason = "auto_retry_blocked"
+			} else if isEmbedOperationAction(payload.Action) && payload.Attempt < 2 {
+				return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "unchanged_waiting_commit"}, nil
 			}
 			return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: reason}, nil
 		}
@@ -460,7 +561,157 @@ func (s *EmbedRefreshService) checkAndTrigger(
 	}
 }
 
-// logCheckOutcome 记录保存完成检查的完整结论；定时扫描降为 DEBUG，避免生产 INFO 被候选检查淹没。
+// resolveProcessRequest 按“操作前高水位 + 流程定义 + OA 发起人”解析首次新建流程的 requestid。
+func (s *EmbedRefreshService) resolveProcessRequest(
+	ctx context.Context,
+	payload embedRefreshPayload,
+) (embedRefreshCheckOutcome, error) {
+	event, err := s.eventRepo.GetByEventID(ctx, payload.TenantID, payload.EventID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "event_not_found"}, nil
+		}
+		return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "event_lookup_failed"}, err
+	}
+	if event.Status != model.EmbedRefreshEventPending {
+		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "event_" + event.Status}, nil
+	}
+	adapter, err := s.auditSvc.getOAAdapter(ctx, payload.TenantID)
+	if err != nil {
+		if s.updateResolutionFailure(ctx, event, payload, err) {
+			return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "oa_adapter_failed"}, err
+		}
+		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "oa_adapter_failed_final"}, err
+	}
+	resolver, ok := adapter.(oa.ProcessRequestWatermarkResolver)
+	if !ok {
+		err = fmt.Errorf("当前 OA 适配器不支持 requestid 高水位解析")
+		_ = s.eventRepo.UpdateResolution(ctx, event.ID, model.EmbedRefreshEventFailed, "", payload.Attempt, nil, err.Error(), nil)
+		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "resolver_unsupported"}, err
+	}
+	candidates, err := resolver.FindCreatedProcessRequestsAfter(
+		ctx,
+		payload.WorkflowID,
+		[]string{payload.OABelongUserID, payload.OACurrentUserID},
+		payload.BaselineRequestID,
+		3,
+	)
+	if err != nil {
+		if s.updateResolutionFailure(ctx, event, payload, err) {
+			return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "resolve_query_failed"}, err
+		}
+		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "resolve_query_failed_final"}, err
+	}
+	if len(candidates) == 0 {
+		if payload.Attempt >= 2 {
+			_ = s.eventRepo.UpdateResolution(ctx, event.ID, model.EmbedRefreshEventExpired, "", payload.Attempt, nil, "未发现匹配的新建流程", nil)
+			return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "requestid_expired"}, nil
+		} else {
+			nextAttempt := payload.Attempt + 1
+			nextAt := apptime.Now().Add(time.Duration(2*nextAttempt+1) * time.Second)
+			_ = s.eventRepo.UpdateResolution(ctx, event.ID, model.EmbedRefreshEventPending, "", nextAttempt, &nextAt, "", nil)
+		}
+		return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "requestid_not_ready"}, nil
+	}
+	if len(candidates) > 1 {
+		_ = s.eventRepo.UpdateResolution(ctx, event.ID, model.EmbedRefreshEventAmbiguous, "", payload.Attempt, nil, "高水位后出现多个匹配流程，未自动猜测", nil)
+		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "requestid_ambiguous"}, nil
+	}
+
+	processID := strings.TrimSpace(candidates[0].ProcessID)
+	for _, module := range []string{embedRefreshModuleAudit, embedRefreshModuleSummary} {
+		child := embedRefreshPayload{
+			TenantID:      payload.TenantID,
+			UserID:        payload.UserID,
+			ProcessID:     processID,
+			Module:        module,
+			Action:        payload.Action,
+			EventID:       payload.EventID,
+			Generation:    uuid.NewString(),
+			FirstReceived: payload.FirstReceived,
+		}
+		if _, scheduleErr := s.schedule(ctx, child, 0, false); scheduleErr != nil {
+			if s.updateResolutionFailure(ctx, event, payload, scheduleErr) {
+				return embedRefreshCheckOutcome{Result: embedRefreshRetry, Reason: "child_schedule_failed"}, scheduleErr
+			}
+			return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "child_schedule_failed_final"}, scheduleErr
+		}
+	}
+	resolvedAt := apptime.Now()
+	if err := s.eventRepo.UpdateResolution(
+		ctx,
+		event.ID,
+		model.EmbedRefreshEventScheduled,
+		processID,
+		payload.Attempt,
+		nil,
+		"",
+		&resolvedAt,
+	); err != nil {
+		return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "requestid_resolved"}, err
+	}
+	return embedRefreshCheckOutcome{Result: embedRefreshDone, Reason: "requestid_resolved", JobID: processID}, nil
+}
+
+func (s *EmbedRefreshService) updateResolutionFailure(
+	ctx context.Context,
+	event *model.EmbedRefreshEvent,
+	payload embedRefreshPayload,
+	resolveErr error,
+) bool {
+	if s.eventRepo == nil || event == nil {
+		return false
+	}
+	status := model.EmbedRefreshEventPending
+	attempt := payload.Attempt + 1
+	var nextAt *time.Time
+	if payload.Attempt >= 2 {
+		status = model.EmbedRefreshEventFailed
+		attempt = payload.Attempt
+	} else {
+		next := apptime.Now().Add(time.Duration(2*attempt+1) * time.Second)
+		nextAt = &next
+	}
+	_ = s.eventRepo.UpdateResolution(ctx, event.ID, status, "", attempt, nextAt, resolveErr.Error(), nil)
+	return status == model.EmbedRefreshEventPending
+}
+
+// restorePendingEvents 从数据库恢复因服务重启而尚未完成的首次新建流程解析事件。
+func (s *EmbedRefreshService) restorePendingEvents(ctx context.Context) error {
+	if s.eventRepo == nil {
+		return nil
+	}
+	events, err := s.eventRepo.ListPending(ctx, 1000)
+	if err != nil {
+		return err
+	}
+	for _, event := range events {
+		delay := time.Duration(0)
+		if event.NextAttemptAt != nil && event.NextAttemptAt.After(apptime.Now()) {
+			delay = event.NextAttemptAt.Sub(apptime.Now())
+		}
+		payload := embedRefreshPayload{
+			TenantID:          event.TenantID,
+			UserID:            event.UserID,
+			Module:            embedRefreshModuleResolve,
+			Action:            event.Action,
+			EventID:           event.EventID,
+			Generation:        uuid.NewString(),
+			Attempt:           event.Attempt,
+			FirstReceived:     event.ReceivedAt,
+			WorkflowID:        event.WorkflowID,
+			OABelongUserID:    event.OABelongUserID,
+			OACurrentUserID:   event.OACurrentUserID,
+			BaselineRequestID: event.BaselineRequestID,
+		}
+		if _, err := s.schedule(ctx, payload, delay, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// logCheckOutcome 记录保存/提交检查的完整结论；定时扫描降为 DEBUG，避免生产 INFO 被候选检查淹没。
 func (s *EmbedRefreshService) logCheckOutcome(
 	payload embedRefreshPayload,
 	checkAttempt int,
@@ -502,7 +753,8 @@ func (s *EmbedRefreshService) logCheckOutcome(
 		s.logger.Warn("OA 嵌入刷新检查失败", fields...)
 		return
 	}
-	if payload.Action == model.SummaryTriggerDetailSaveComplete {
+	if payload.Action == model.SummaryTriggerDetailSaveRequested ||
+		payload.Action == model.SummaryTriggerDetailSubmitRequested {
 		s.logger.Info("OA 嵌入刷新检查完成", fields...)
 		return
 	}
@@ -526,7 +778,7 @@ func (s *EmbedRefreshService) schedule(
 	delay time.Duration,
 	onlyIfCurrent bool,
 ) (bool, error) {
-	member := embedRefreshMember(payload.TenantID, payload.Module, payload.ProcessID)
+	member := embedRefreshPayloadMember(payload)
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return false, err
@@ -1092,9 +1344,9 @@ func embedRefreshScheduleConfigKey(module string, configID uuid.UUID) string {
 	return module + ":" + configID.String()
 }
 
-// scheduleIfIdle 只在当前流程没有待处理检查时安排定时候选，避免覆盖保存完成事件。
+// scheduleIfIdle 只在当前流程没有待处理检查时安排定时候选，避免覆盖保存/提交事件。
 func (s *EmbedRefreshService) scheduleIfIdle(ctx context.Context, payload embedRefreshPayload) error {
-	member := embedRefreshMember(payload.TenantID, payload.Module, payload.ProcessID)
+	member := embedRefreshPayloadMember(payload)
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -1118,7 +1370,9 @@ func (s *EmbedRefreshService) scheduleIfIdle(ctx context.Context, payload embedR
 
 func isObsoleteEmbedRefreshAction(action string) bool {
 	switch strings.TrimSpace(action) {
-	case model.SummaryTriggerDetailSaveComplete, model.SummaryTriggerDetailScheduled:
+	case model.SummaryTriggerDetailSaveRequested,
+		model.SummaryTriggerDetailSubmitRequested,
+		model.SummaryTriggerDetailScheduled:
 		return false
 	default:
 		return true
@@ -1126,7 +1380,12 @@ func isObsoleteEmbedRefreshAction(action string) bool {
 }
 
 func shouldRetryEmbedEvent(action string) bool {
-	return action == model.SummaryTriggerDetailSaveComplete
+	return isEmbedOperationAction(action)
+}
+
+func isEmbedOperationAction(action string) bool {
+	return action == model.SummaryTriggerDetailSaveRequested ||
+		action == model.SummaryTriggerDetailSubmitRequested
 }
 
 func nullableUUID(id uuid.UUID) *uuid.UUID {
@@ -1138,6 +1397,14 @@ func nullableUUID(id uuid.UUID) *uuid.UUID {
 
 func embedRefreshMember(tenantID uuid.UUID, module, processID string) string {
 	return tenantID.String() + ":" + module + ":" + processID
+}
+
+func embedRefreshPayloadMember(payload embedRefreshPayload) string {
+	key := payload.ProcessID
+	if payload.Module == embedRefreshModuleResolve {
+		key = payload.EventID
+	}
+	return embedRefreshMember(payload.TenantID, payload.Module, key)
 }
 
 func embedRefreshPayloadKey(member string) string {

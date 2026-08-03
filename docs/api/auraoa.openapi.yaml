@@ -5474,7 +5474,7 @@ paths:
   /api/embed/events:
     post:
       summary: 安排 OA 嵌入后台刷新检查
-      description: 接收 OA 保存完成事件，立即返回 202；审核和总结在后台按 OA 指纹判断是否执行。
+      description: 接收 OA 保存或提交请求，立即返回 202；首次新建流程由后台按高水位解析 requestid，随后审核和总结按 OA 指纹判断是否执行。
       tags:
       - Embed
       security:
@@ -5933,7 +5933,7 @@ components:
           - background
           - scheduled
           - workbench
-          description: 任务队列类型；OA 手动/可见页进入 interactive，保存完成进入 background，流程定时扫描进入 scheduled，系统内审核进入 workbench
+          description: 任务队列类型；OA 手动/可见页进入 interactive，保存/提交进入 background，流程定时扫描进入 scheduled，系统内审核进入 workbench
         error_message:
           type: string
     ContextTestRequest:
@@ -6125,16 +6125,26 @@ components:
     EmbedRefreshEventRequest:
       type: object
       required:
-      - process_id
       - action
       properties:
         process_id:
           type: string
+          description: 已有流程的 requestid；首次新建流程可为空
+        workflow_id:
+          type: string
+          description: 首次新建流程缺少 process_id 时必填
+        oa_belong_user_id:
+          type: string
+          description: OA 代理归属用户 ID，与 oa_current_user_id 至少填写一个
+        oa_current_user_id:
+          type: string
+          description: OA 当前操作用户 ID，与 oa_belong_user_id 至少填写一个
         action:
           type: string
           enum:
-          - save_complete
-          description: 仅接受 WfForm.OPER_SAVECOMPLETE 对应的 save_complete，不兼容旧动作
+          - save_requested
+          - submit_requested
+          description: 仅接受 OPER_SAVE/OPER_SUBMIT 对应的新动作，不兼容旧动作
         event_id:
           type: string
     EmbedRefreshEventResponse:
@@ -6153,6 +6163,9 @@ components:
             enum:
             - audit
             - summary
+        resolution_pending:
+          type: boolean
+          description: 是否正在后台解析首次新建流程的 requestid
     EmbedAuditContext:
       type: object
       properties:

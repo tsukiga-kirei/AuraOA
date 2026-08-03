@@ -75,7 +75,7 @@ func ensureSummaryConsumerGroup(ctx context.Context, rdb *redis.Client, stream, 
 	return nil
 }
 
-// StartSummaryStreamWorker 启动 OA 交互、保存完成和定时扫描三类独立总结队列。
+// StartSummaryStreamWorker 启动 OA 交互、保存/提交后台和定时扫描三类独立总结队列。
 func StartSummaryStreamWorker(
 	ctx context.Context,
 	rdb *redis.Client,

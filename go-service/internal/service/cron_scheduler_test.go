@@ -36,10 +36,10 @@ func TestNormalizeSummaryTriggerDetail(t *testing.T) {
 	}
 	detail, queueKind = normalizeSummaryTriggerDetail(
 		model.SummaryTriggerEmbedAuto,
-		model.SummaryTriggerDetailSaveComplete,
+		model.SummaryTriggerDetailSaveRequested,
 	)
-	if detail != model.SummaryTriggerDetailSaveComplete || queueKind != model.JobQueueKindBackground {
-		t.Fatalf("保存完成总结来源或队列类型错误: detail=%s queue_kind=%s", detail, queueKind)
+	if detail != model.SummaryTriggerDetailSaveRequested || queueKind != model.JobQueueKindBackground {
+		t.Fatalf("保存请求总结来源或队列类型错误: detail=%s queue_kind=%s", detail, queueKind)
 	}
 	detail, queueKind = normalizeSummaryTriggerDetail(
 		model.SummaryTriggerEmbedManual,
@@ -60,10 +60,10 @@ func TestNormalizeAuditTriggerDetail(t *testing.T) {
 	}
 	detail, queueKind = normalizeAuditTriggerDetail(
 		model.AuditTriggerEmbedAuto,
-		model.SummaryTriggerDetailSaveComplete,
+		model.SummaryTriggerDetailSubmitRequested,
 	)
-	if detail != model.SummaryTriggerDetailSaveComplete || queueKind != model.JobQueueKindBackground {
-		t.Fatalf("保存完成审核来源或队列类型错误: detail=%s queue_kind=%s", detail, queueKind)
+	if detail != model.SummaryTriggerDetailSubmitRequested || queueKind != model.JobQueueKindBackground {
+		t.Fatalf("提交请求审核来源或队列类型错误: detail=%s queue_kind=%s", detail, queueKind)
 	}
 	detail, queueKind = normalizeAuditTriggerDetail(
 		model.AuditTriggerEmbedManual,
@@ -138,19 +138,23 @@ func TestNormalizeScheduledRefreshConfig(t *testing.T) {
 }
 
 func TestEmbedRefreshActionVersionBoundary(t *testing.T) {
-	for _, action := range []string{"page_open", "save", "submit", "save_or_submit", "unknown"} {
+	for _, action := range []string{"page_open", "save", "submit", "save_or_submit", "save_complete", "unknown"} {
 		if !isObsoleteEmbedRefreshAction(action) {
 			t.Fatalf("旧动作应被识别并清理: %s", action)
 		}
 	}
-	if isObsoleteEmbedRefreshAction(model.SummaryTriggerDetailSaveComplete) {
-		t.Fatal("save_complete 不应被识别为旧动作")
+	if isObsoleteEmbedRefreshAction(model.SummaryTriggerDetailSaveRequested) {
+		t.Fatal("save_requested 不应被识别为旧动作")
+	}
+	if isObsoleteEmbedRefreshAction(model.SummaryTriggerDetailSubmitRequested) {
+		t.Fatal("submit_requested 不应被识别为旧动作")
 	}
 	if isObsoleteEmbedRefreshAction(model.SummaryTriggerDetailScheduled) {
 		t.Fatal("scheduled_scan 不应被识别为旧动作")
 	}
-	if !shouldRetryEmbedEvent(model.SummaryTriggerDetailSaveComplete) {
-		t.Fatal("save_complete 应支持延迟重试")
+	if !shouldRetryEmbedEvent(model.SummaryTriggerDetailSaveRequested) ||
+		!shouldRetryEmbedEvent(model.SummaryTriggerDetailSubmitRequested) {
+		t.Fatal("保存和提交请求都应支持延迟重试")
 	}
 	if shouldRetryEmbedEvent("save_or_submit") {
 		t.Fatal("旧动作 save_or_submit 不应继续重试")

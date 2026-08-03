@@ -3,7 +3,7 @@ package model
 const (
 	// JobQueueKindInteractive 用于用户可见页面和手动重新执行任务。
 	JobQueueKindInteractive = "interactive"
-	// JobQueueKindBackground 用于 OA 保存完成检查。
+	// JobQueueKindBackground 用于 OA 保存/提交后的后台检查。
 	JobQueueKindBackground = "background"
 	// JobQueueKindScheduled 用于流程级定时扫描任务。
 	JobQueueKindScheduled = "scheduled"

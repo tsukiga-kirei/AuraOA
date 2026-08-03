@@ -154,6 +154,7 @@ func main() {
 	cronTaskRepo := repository.NewCronTaskRepo(db)
 	cronLogRepo := repository.NewCronLogRepo(db)
 	embedRefreshScheduleRepo := repository.NewEmbedRefreshScheduleRepo(db)
+	embedRefreshEventRepo := repository.NewEmbedRefreshEventRepo(db)
 	archiveConfigRepo := repository.NewProcessArchiveConfigRepo(db)
 	archiveRuleRepo := repository.NewArchiveRuleRepo(db)
 	summaryConfigRepo := repository.NewProcessSummaryConfigRepo(db)
@@ -198,6 +199,7 @@ func main() {
 		processAuditConfigRepo,
 		summaryConfigRepo,
 		embedRefreshScheduleRepo,
+		embedRefreshEventRepo,
 		tenantRepo,
 		pkglogger.Global(),
 	)
