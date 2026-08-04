@@ -468,13 +468,10 @@ ${urlComment}
 
   var MSG_REQUEST = 'aura-oa-request-requestid';
   var MSG_REQUESTID = 'aura-oa-requestid';
-  var MSG_REFRESH_EVENT = 'aura-oa-refresh-event';
-  var MSG_RUNNER_READY = 'aura-runner-ready';
-  var MSG_RUNNER_EVENT_ACK = 'aura-runner-event-ack';
-  var RUNNER_IFRAME_ID = 'aura-embed-runner';
-  var runnerReady = false;
-  var pendingRunnerAcks = {};
   var oaEventsRegistered = false;
+  var registeredWfForm = null;
+  var registrationTimer = null;
+  var recentOperations = {};
 
   function getRequestId() {
     try {
@@ -495,7 +492,12 @@ ${urlComment}
     return '';
   }
 
-  function captureOperationContext(action, eventId) {
+  function captureOperationContext(action) {
+    var occurredAtMs = Date.now();
+    var recent = recentOperations[action];
+    if (recent && occurredAtMs - recent.occurred_at_ms < 1200) {
+      return recent;
+    }
     var base = {};
     var currentUserId = '';
     try {
@@ -507,10 +509,10 @@ ${urlComment}
     } catch (e) {
       console.warn('[aura-embed] 读取 OA 操作上下文失败', e);
     }
-    return Object.freeze({
+    var context = Object.freeze({
       action: action,
-      event_id: eventId,
-      occurred_at_ms: Date.now(),
+      event_id: createEventId(),
+      occurred_at_ms: occurredAtMs,
       requestid: getRequestId(),
       workflow_id: base.workflowid != null ? String(base.workflowid).trim() : '',
       oa_belong_user_id: base.f_weaver_belongto_userid != null
@@ -518,6 +520,8 @@ ${urlComment}
         : '',
       oa_current_user_id: currentUserId
     });
+    recentOperations[action] = context;
+    return context;
   }
 
   function getIframes() {
@@ -528,23 +532,6 @@ ${urlComment}
       seen[id] = true;
       return document.getElementById(id);
     }).filter(Boolean);
-  }
-
-  function getRunnerIframe() {
-    return document.getElementById(RUNNER_IFRAME_ID);
-  }
-
-  function ensureRunnerIframe() {
-    var existing = getRunnerIframe();
-    if (existing) return existing;
-    var iframe = document.createElement('iframe');
-    iframe.id = RUNNER_IFRAME_ID;
-    iframe.src = AURA_EMBED_ORIGIN + '/embed/runner';
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.setAttribute('tabindex', '-1');
-    iframe.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;border:0;left:-9999px;top:-9999px;';
-    document.body.appendChild(iframe);
-    return iframe;
   }
 
   function buildPayload(requestid) {
@@ -571,77 +558,90 @@ ${urlComment}
         postContextToAura(iframe.contentWindow);
       }
     });
-    var runner = getRunnerIframe();
-    if (runner && runner.contentWindow) {
-      postContextToAura(runner.contentWindow);
-    }
   }
 
   function createEventId() {
     return 'oa-' + Date.now() + '-' + Math.random().toString(16).slice(2);
   }
 
-  function postRunnerAction(context) {
-    var runner = ensureRunnerIframe();
-    if (!runner || !runner.contentWindow) return false;
-    runner.contentWindow.postMessage({
-      type: MSG_REFRESH_EVENT,
-      requestid: context.requestid,
-      workflow_id: context.workflow_id,
-      oa_belong_user_id: context.oa_belong_user_id,
-      oa_current_user_id: context.oa_current_user_id,
-      occurred_at_ms: context.occurred_at_ms,
-      action: context.action,
-      event_id: context.event_id
-    }, AURA_EMBED_ORIGIN);
-    console.log('[aura-embed] 已发送 OA 操作事件', {
-      action: context.action,
-      requestid: context.requestid || '(待解析)',
-      event_id: context.event_id
-    });
-    return true;
+  function buildEventBody(context) {
+    return [
+      ['embed_token', EMBED_ACCESS_TOKEN],
+      ['process_id', context.requestid],
+      ['workflow_id', context.workflow_id],
+      ['oa_belong_user_id', context.oa_belong_user_id],
+      ['oa_current_user_id', context.oa_current_user_id],
+      ['occurred_at_ms', String(context.occurred_at_ms)],
+      ['action', context.action],
+      ['event_id', context.event_id]
+    ].map(function (item) {
+      return encodeURIComponent(item[0]) + '=' + encodeURIComponent(item[1] || '');
+    }).join('&');
   }
 
-  function notifyAuraRunner(context) {
-    if (!runnerReady) return false;
-    return postRunnerAction(context);
-  }
-
-  function notifyBeforeRelease(action, eventId, callback) {
+  function notifyBeforeRelease(action, callback) {
     var released = false;
     var release = function () {
       if (released) return;
       released = true;
-      delete pendingRunnerAcks[eventId];
       callback();
     };
-    var context = captureOperationContext(action, eventId);
-    if (!runnerReady) {
+    var context = captureOperationContext(action);
+    if (!EMBED_ACCESS_TOKEN) {
+      console.warn('[aura-embed] 未配置 EMBED_ACCESS_TOKEN');
       release();
       return;
     }
-    pendingRunnerAcks[eventId] = release;
+    if (!context.requestid && !context.workflow_id) {
+      console.warn('[aura-embed] 未读取到 requestid 或 workflowid，本次事件不发送');
+      release();
+      return;
+    }
     setTimeout(release, 400);
     try {
-      if (!notifyAuraRunner(context)) release();
+      var request = fetch(AURA_EMBED_ORIGIN + '/api/embed/events', {
+        method: 'POST',
+        mode: 'no-cors',
+        credentials: 'omit',
+        keepalive: true,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+        },
+        body: buildEventBody(context)
+      });
+      Promise.resolve(request).then(function () {
+        console.log('[aura-embed] OA 操作事件已提交', {
+          action: context.action,
+          requestid: context.requestid || '(待解析)',
+          workflow_id: context.workflow_id,
+          event_id: context.event_id
+        });
+        release();
+      }, function (error) {
+        console.warn('[aura-embed] OA 操作事件提交失败，已放行 OA', error);
+        release();
+      });
     } catch (e) {
+      console.warn('[aura-embed] OA 操作事件提交失败，已放行 OA', e);
       release();
     }
   }
 
   function registerOAEvents() {
-    if (oaEventsRegistered) return true;
     try {
-      if (!runnerReady) return false;
       if (typeof WfForm === 'undefined' || !WfForm.registerCheckEvent) return false;
       if (typeof WfForm.OPER_SAVE === 'undefined' || typeof WfForm.OPER_SUBMIT === 'undefined') return false;
+      var base = WfForm.getBaseInfo ? (WfForm.getBaseInfo() || {}) : {};
+      if (base.workflowid == null || String(base.workflowid).trim() === '') return false;
+      if (oaEventsRegistered && registeredWfForm === WfForm) return true;
       WfForm.registerCheckEvent(WfForm.OPER_SAVE, function (callback) {
-        notifyBeforeRelease('save_requested', createEventId(), callback);
+        notifyBeforeRelease('save_requested', callback);
       });
       WfForm.registerCheckEvent(WfForm.OPER_SUBMIT, function (callback) {
-        notifyBeforeRelease('submit_requested', createEventId(), callback);
+        notifyBeforeRelease('submit_requested', callback);
       });
       oaEventsRegistered = true;
+      registeredWfForm = WfForm;
       console.log('[aura-embed] 已注册 OA 保存/提交事件');
       return true;
     } catch (e) {
@@ -650,20 +650,30 @@ ${urlComment}
     }
   }
 
+  function startRegistration(force) {
+    if (force) {
+      oaEventsRegistered = false;
+      registeredWfForm = null;
+    }
+    if (registrationTimer) {
+      clearInterval(registrationTimer);
+      registrationTimer = null;
+    }
+    if (registerOAEvents()) return;
+    var tries = 0;
+    registrationTimer = setInterval(function () {
+      tries++;
+      if (registerOAEvents() || tries >= 200) {
+        clearInterval(registrationTimer);
+        registrationTimer = null;
+      }
+    }, 300);
+  }
+
   function initMessageListener() {
     window.addEventListener('message', function (event) {
       if (event.origin !== AURA_EMBED_ORIGIN) return;
       if (!event.data) return;
-      if (event.data.type === MSG_RUNNER_EVENT_ACK) {
-        var release = pendingRunnerAcks[String(event.data.event_id || '')];
-        if (release) release();
-        return;
-      }
-      if (event.data.type === MSG_RUNNER_READY) {
-        runnerReady = true;
-        registerOAEvents();
-        return;
-      }
       if (event.data.type !== MSG_REQUEST) return;
 
       var requestid = getRequestId();
@@ -679,24 +689,28 @@ ${urlComment}
 
   function init() {
     initMessageListener();
-    ensureRunnerIframe();
 
     getIframes().forEach(function (iframe) {
       iframe.addEventListener('load', notifyAuraIframes);
     });
 
-    var tries = 0;
-    var timer = setInterval(function () {
-      tries++;
+    var contextTries = 0;
+    var contextTimer = setInterval(function () {
+      contextTries++;
       notifyAuraIframes();
-      registerOAEvents();
-      if (oaEventsRegistered || tries >= 200) {
-        clearInterval(timer);
+      if (getRequestId() || contextTries >= 200) {
+        clearInterval(contextTimer);
       }
     }, 300);
+    startRegistration(false);
 
     window.addEventListener('hashchange', function () {
       notifyAuraIframes();
+      startRegistration(true);
+    });
+    window.addEventListener('popstate', function () {
+      notifyAuraIframes();
+      startRegistration(true);
     });
   }
 

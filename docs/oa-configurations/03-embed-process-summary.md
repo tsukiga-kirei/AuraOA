@@ -138,23 +138,19 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 |------|------|------|
 | iframe → OA | `aura-oa-request-requestid` | 嵌入页请求当前 requestid |
 | OA → iframe | `aura-oa-requestid` | `{ requestid: '598488' }` |
-| runner → OA | `aura-runner-ready` | 隐藏 runner 已完成嵌入会话认证 |
-| OA → runner | `aura-oa-refresh-event` | OA 点击保存或提交时安排后台检查 |
-| runner → OA | `aura-runner-event-ack` | 返回对应 `event_id`，确认事件请求已完成 |
+| OA JS → AuraOA | `POST /api/embed/events` | OA 点击保存或提交时直接安排后台检查 |
 
-runner 认证完成后父页才注册 OA 保存/提交事件；未就绪期间不缓存或补发旧操作。已注册事件最多
-等待 400ms；收到确认立即放行，超时或 AuraOA 不可用同样放行。确认只表示后台事件请求已完成，
-不等待审核或总结的 AI 任务。
+父页在 WfForm 与 workflowid 就绪后注册 OA 保存/提交事件，不创建隐藏 iframe。事件使用唯一嵌入密钥
+直接异步 POST，最多等待 400ms；请求完成、超时或 AuraOA 不可用同样放行，不等待审核或总结的 AI 任务。
 
 ### 6.3 执行时序
 
 ```text
 OA 页面加载
-  → 创建隐藏 /embed/runner 并完成嵌入会话认证
-  → 父页才注册保存/提交事件；未就绪期间不缓存、不补发旧操作
+  → WfForm 与 workflowid 就绪后注册保存/提交事件
 OA 点击保存或提交
   → 立即冻结 requestid/workflow_id/人员标识/occurred_at_ms
-  → 隐藏 /embed/runner 调用 /api/embed/events
+  → OA JS 直接异步调用 /api/embed/events
   → 延迟读取 OA，按总结块依赖指纹决定是否入队
 /embed/summary 可见页加载
   → postMessage 请求 requestid

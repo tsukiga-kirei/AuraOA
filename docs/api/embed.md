@@ -2,7 +2,7 @@
 
 ## 概述
 
-供固定地址嵌入页 `/embed/audit`、`/embed/summary` 与无界面的 `/embed/runner` 使用。**浏览器不直接调用 Go 接口**，而是请求 Nuxt 代理 `/api/embed/*`。
+供固定地址嵌入页 `/embed/audit`、`/embed/summary` 与 OA 保存/提交事件使用。**浏览器不直接调用 Go 接口**，而是请求 Nuxt 代理 `/api/embed/*`。
 
 鉴权链路：
 
@@ -11,6 +11,9 @@
 3. 浏览器请求通过同源 `X-Embed-Token` 请求头传递令牌；Cookie 作为同站场景补充
 4. Nuxt 代理携带 `X-Embed-Token` 访问 Go
 5. Go `EmbedAccess` 中间件根据令牌哈希反查租户，并注入 `tenant_id`
+
+OA 父页面保存/提交时不创建隐藏 iframe，而是直接向 Nuxt `POST /api/embed/events` 发送简单表单请求。
+表单体中的 `embed_token` 由 Nuxt 移除并转换为内部 `X-Embed-Token`，不会继续进入业务请求体。
 
 Nuxt 服务端通过私有运行时配置 `NUXT_INTERNAL_API_BASE` 访问 Go。Docker Compose
 默认使用 `http://go-service:8080`；该地址不暴露给浏览器，也不应使用
@@ -97,11 +100,11 @@ POST /api/embed/events
 同一租户、流程和模块的连续事件自动合并。只有保存/提交事件会在任务执行期间保留一次后续检查；
 定时扫描不会持续追踪进行中的任务。
 
-通知脚本只注册 `OPER_SAVE` 和 `OPER_SUBMIT`，不再注册 `OPER_SAVECOMPLETE`。隐藏 runner
-完成 `/api/embed/session` 认证后才通知父页注册 OA 事件；点击时立即冻结 requestid、workflow_id、
-人员标识和发生时间。浏览器不缓存、不延迟补发未就绪期间的操作，避免把陈旧点击关联到后续流程。
-已注册事件最多等待 400ms 接收确认后放行 OA 操作；超时或 AuraOA 不可用也必须放行。
-浏览器不会轮询 requestid，服务端接收事件后自行持久化并解析。
+通知脚本只注册 `OPER_SAVE` 和 `OPER_SUBMIT`，不再注册 `OPER_SAVECOMPLETE`，也不再创建隐藏 iframe。
+脚本在 WfForm 与 workflowid 就绪后注册 OA 事件；点击时立即冻结 requestid、workflow_id、
+人员标识和发生时间，并使用唯一嵌入密钥直接异步 POST Nuxt 代理。请求完成或最多等待 400ms 后
+放行 OA 操作；超时或 AuraOA 不可用也必须放行。浏览器不会轮询 requestid，服务端接收事件后
+自行持久化并解析。
 
 Go 服务会以结构化日志记录事件接收和每个模块的检查结论，不记录表单正文、附件正文或提示词：
 
@@ -298,12 +301,10 @@ GET /api/embed/summary/stream/:id
 |------|--------|------|
 | iframe → OA | `aura-oa-request-requestid` | 无 |
 | OA → iframe | `aura-oa-requestid` | `{ requestid: string, embed_token: string }` |
-| runner → OA | `aura-runner-ready` | 无 |
-| OA → runner | `aura-oa-refresh-event` | `{ requestid, workflow_id, oa_belong_user_id, oa_current_user_id, occurred_at_ms, action, event_id }` |
-| runner → OA | `aura-runner-event-ack` | `{ event_id: string }` |
 
-OA 保存/提交检查最多等待 400ms 的事件接收确认；收到确认会立即放行，超时或 AuraOA
-不可用也会放行。runner 使用 `keepalive` 提交事件，确认或超时都不代表等待 AI 执行完成。
+OA 保存/提交事件不使用 postMessage，而是由父页 JS 直接异步 POST Nuxt 代理。请求完成会立即放行，
+最多等待 400ms；超时或 AuraOA 不可用也会放行。`keepalive` 只保证页面跳转时尽量继续发送，
+不代表等待 AI 执行完成。
 
 OA 示例脚本：[../oa-configurations/assets/aura-embed-notify.js](../oa-configurations/assets/aura-embed-notify.js)
 

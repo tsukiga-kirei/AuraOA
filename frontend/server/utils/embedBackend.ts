@@ -1,8 +1,8 @@
 import type { H3Event } from 'h3'
 import { ofetch } from 'ofetch'
 
-/** 嵌入页服务端代理：Cookie / 请求头 / 查询参数读取租户令牌后访问 Go /api/embed */
-export function getEmbedBackend(event: H3Event) {
+/** 嵌入页服务端代理：从 Cookie、请求头、查询参数或调用方已剥离的表单字段读取租户令牌。 */
+export function getEmbedBackend(event: H3Event, bodyToken = '') {
   const config = useRuntimeConfig()
   const query = getQuery(event)
   const queryToken = typeof query.embed_token === 'string' ? query.embed_token : ''
@@ -10,6 +10,7 @@ export function getEmbedBackend(event: H3Event) {
     getCookie(event, 'aura_embed_token')
       || getRequestHeader(event, 'x-embed-token')
       || queryToken
+      || bodyToken
       || '',
   ).trim()
   if (!token) {
@@ -53,8 +54,8 @@ export async function proxyEmbedGet<T>(event: H3Event, path: string, query?: Rec
   return res.data
 }
 
-export async function proxyEmbedPost<T>(event: H3Event, path: string, body: unknown): Promise<T> {
-  const { apiBase, headers } = getEmbedBackend(event)
+export async function proxyEmbedPost<T>(event: H3Event, path: string, body: unknown, bodyToken = ''): Promise<T> {
+  const { apiBase, headers } = getEmbedBackend(event, bodyToken)
   let res: { code: number; message: string; data: T }
   try {
     res = await ofetch<{ code: number; message: string; data: T }>(`${apiBase}${path}`, {
