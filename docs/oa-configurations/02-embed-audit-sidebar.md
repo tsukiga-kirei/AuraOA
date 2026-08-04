@@ -76,16 +76,14 @@
 |------|------|------|
 | iframe → OA | `aura-oa-request-requestid` | 嵌入页加载后主动要 requestid |
 | OA → iframe | `aura-oa-requestid` | `{ requestid: '598488', embed_token: 'aura_emb_...' }` |
-| runner → OA | `aura-runner-ready` | 无界面 runner 已完成嵌入会话认证，可接收事件 |
-| OA → runner | `aura-oa-refresh-event` | OA 点击保存或提交时安排后台审核和总结检查 |
-| runner → OA | `aura-runner-event-ack` | 返回对应 `event_id`，确认事件请求已完成 |
+| OA JS → AuraOA | `POST /api/embed/events` | OA 点击保存或提交时直接安排后台审核和总结检查 |
 
-脚本会自动创建隐藏的 `/embed/runner` iframe；runner 完成嵌入会话认证后，父页才注册
-`WfForm.OPER_SAVE` 和 `WfForm.OPER_SUBMIT`。已有流程直接传点击时冻结的
+脚本在 WfForm 与 workflowid 就绪后注册 `WfForm.OPER_SAVE` 和 `WfForm.OPER_SUBMIT`，不创建隐藏 iframe。
+已有流程直接传点击时冻结的
 `WfForm.getBaseInfo().requestid`；首次新建流程没有 requestid 时，同时传 workflowid 和人员诊断标识，
 由 AuraOA 记录操作前高水位并在后台解析。人员标识只辅助多候选消歧，不等同于流程创建人。
-未就绪期间不缓存或延迟补发旧操作；已注册事件最多等待 400ms 的确认，收到确认立即放行，
-超时或 AuraOA 不可用也会放行。事件只安排延迟检查，不等待 AI，浏览器也不轮询 requestid。
+事件使用唯一嵌入密钥通过简单异步 POST 发送，最多等待 400ms；请求完成、超时或 AuraOA 不可用都会
+放行 OA。事件只安排延迟检查，不等待 AI，浏览器也不轮询 requestid。
 
 ### 4.2 在流程里启用
 
@@ -125,13 +123,11 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 
 ```
 OA 页面加载
-    → 自动创建隐藏 /embed/runner
-    → runner 完成嵌入会话认证
-    → 父页才注册保存/提交事件；未就绪期间不缓存、不补发旧操作
+    → WfForm 与 workflowid 就绪后注册保存/提交事件
 点击保存或提交
     → 立即冻结 requestid/workflow_id/人员标识/occurred_at_ms
-    → postMessage({ type: 'aura-oa-refresh-event', action: 'save_requested | submit_requested' })
-    → POST /api/embed/events → 延迟读取 OA → 按指纹决定是否执行 AI
+    → 简单异步 POST /api/embed/events（action: save_requested | submit_requested）
+    → 延迟读取 OA → 按指纹决定是否执行 AI
 可见嵌入页加载
     → postMessage({ type: 'aura-oa-request-requestid' })  →  OA 父页
 OA aura-embed-notify.js
