@@ -515,6 +515,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 600;
 }
 .account-submenu .account-menu-label {
   overflow: visible;
