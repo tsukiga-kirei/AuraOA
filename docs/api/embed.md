@@ -101,8 +101,8 @@ POST /api/embed/events
 定时扫描不会持续追踪进行中的任务。
 
 通知脚本只注册 `OPER_SAVE` 和 `OPER_SUBMIT`，不再注册 `OPER_SAVECOMPLETE`，也不再创建隐藏 iframe。
-脚本在 WfForm 与 workflowid 就绪后注册 OA 事件；点击时立即冻结 requestid、workflow_id、
-人员标识和发生时间，并使用唯一嵌入密钥直接异步 POST Nuxt 代理。请求完成或最多等待 400ms 后
+脚本在页面就绪后直接注册 OA 事件；点击时立即冻结 requestid、workflow_id、人员标识和发生时间，
+并使用唯一嵌入密钥直接异步 POST Nuxt 代理。请求完成或最多等待 800ms 后
 放行 OA 操作；超时或 AuraOA 不可用也必须放行。浏览器不会轮询 requestid，服务端接收事件后
 自行持久化并解析。
 
@@ -303,8 +303,7 @@ GET /api/embed/summary/stream/:id
 | OA → iframe | `aura-oa-requestid` | `{ requestid: string, embed_token: string }` |
 
 OA 保存/提交事件不使用 postMessage，而是由父页 JS 直接异步 POST Nuxt 代理。请求完成会立即放行，
-最多等待 400ms；超时或 AuraOA 不可用也会放行。`keepalive` 只保证页面跳转时尽量继续发送，
-不代表等待 AI 执行完成。
+最多等待 800ms；超时或 AuraOA 不可用也会放行，不代表等待 AI 执行完成。
 
 OA 示例脚本：[../oa-configurations/assets/aura-embed-notify.js](../oa-configurations/assets/aura-embed-notify.js)
 

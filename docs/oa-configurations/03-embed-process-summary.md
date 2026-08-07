@@ -140,14 +140,14 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 | OA → iframe | `aura-oa-requestid` | `{ requestid: '598488' }` |
 | OA JS → AuraOA | `POST /api/embed/events` | OA 点击保存或提交时直接安排后台检查 |
 
-父页在 WfForm 与 workflowid 就绪后注册 OA 保存/提交事件，不创建隐藏 iframe。事件使用唯一嵌入密钥
-直接异步 POST，最多等待 400ms；请求完成、超时或 AuraOA 不可用同样放行，不等待审核或总结的 AI 任务。
+父页在页面就绪后直接注册 OA 保存/提交事件，不创建隐藏 iframe。事件使用唯一嵌入密钥
+直接异步 POST，最多等待 800ms；请求完成、超时或 AuraOA 不可用同样放行，不等待审核或总结的 AI 任务。
 
 ### 6.3 执行时序
 
 ```text
 OA 页面加载
-  → WfForm 与 workflowid 就绪后注册保存/提交事件
+  → 直接注册保存/提交事件
 OA 点击保存或提交
   → 立即冻结 requestid/workflow_id/人员标识/occurred_at_ms
   → OA JS 直接异步调用 /api/embed/events
