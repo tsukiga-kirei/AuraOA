@@ -460,6 +460,8 @@ ${urlComment}
  * 3. 表单/门户 HTML 中 iframe 的 id 与 IFRAME_IDS 一致
  */
 (function () {
+  console.log('[aura-embed] 脚本已加载');
+
   // ========== AuraOA 已配置项 ==========
   var AURA_EMBED_ORIGIN = ${JSON.stringify(embedOrigin.value)};
   var EMBED_ACCESS_TOKEN = ${JSON.stringify(token)};
@@ -468,10 +470,6 @@ ${urlComment}
 
   var MSG_REQUEST = 'aura-oa-request-requestid';
   var MSG_REQUESTID = 'aura-oa-requestid';
-  var oaEventsRegistered = false;
-  var registeredWfForm = null;
-  var registrationTimer = null;
-  var recentOperations = {};
 
   function getRequestId() {
     try {
@@ -494,22 +492,12 @@ ${urlComment}
 
   function captureOperationContext(action) {
     var occurredAtMs = Date.now();
-    var recent = recentOperations[action];
-    if (recent && occurredAtMs - recent.occurred_at_ms < 1200) {
-      return recent;
-    }
-    var base = {};
-    var currentUserId = '';
-    try {
-      base = WfForm && WfForm.getBaseInfo ? (WfForm.getBaseInfo() || {}) : {};
-      var store = WfForm && WfForm.getGlobalStore ? WfForm.getGlobalStore() : null;
-      currentUserId = store && store.commonParam && store.commonParam.currentUserid != null
-        ? String(store.commonParam.currentUserid).trim()
-        : '';
-    } catch (e) {
-      console.warn('[aura-embed] 读取 OA 操作上下文失败', e);
-    }
-    var context = Object.freeze({
+    var base = WfForm.getBaseInfo() || {};
+    var store = WfForm.getGlobalStore();
+    var currentUserId = store && store.commonParam && store.commonParam.currentUserid != null
+      ? String(store.commonParam.currentUserid).trim()
+      : '';
+    return {
       action: action,
       event_id: createEventId(),
       occurred_at_ms: occurredAtMs,
@@ -519,9 +507,7 @@ ${urlComment}
         ? String(base.f_weaver_belongto_userid).trim()
         : '',
       oa_current_user_id: currentUserId
-    });
-    recentOperations[action] = context;
-    return context;
+    };
   }
 
   function getIframes() {
@@ -581,35 +567,38 @@ ${urlComment}
 
   function notifyBeforeRelease(action, callback) {
     var released = false;
+    var timeoutId = null;
     var release = function () {
       if (released) return;
       released = true;
       callback();
     };
     var context = captureOperationContext(action);
-    if (!EMBED_ACCESS_TOKEN) {
-      console.warn('[aura-embed] 未配置 EMBED_ACCESS_TOKEN');
+    console.log('[aura-embed] OA 操作事件已触发', {
+      action: context.action,
+      requestid: context.requestid || '(待解析)',
+      workflow_id: context.workflow_id,
+      event_id: context.event_id
+    });
+    timeoutId = setTimeout(function () {
+      console.warn('[aura-embed] OA 操作事件提交超时，已放行 OA', {
+        action: context.action,
+        event_id: context.event_id
+      });
       release();
-      return;
-    }
-    if (!context.requestid && !context.workflow_id) {
-      console.warn('[aura-embed] 未读取到 requestid 或 workflowid，本次事件不发送');
-      release();
-      return;
-    }
-    setTimeout(release, 400);
+    }, 800);
     try {
       var request = fetch(AURA_EMBED_ORIGIN + '/api/embed/events', {
         method: 'POST',
         mode: 'no-cors',
         credentials: 'omit',
-        keepalive: true,
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
         },
         body: buildEventBody(context)
       });
       Promise.resolve(request).then(function () {
+        clearTimeout(timeoutId);
         console.log('[aura-embed] OA 操作事件已提交', {
           action: context.action,
           requestid: context.requestid || '(待解析)',
@@ -618,56 +607,25 @@ ${urlComment}
         });
         release();
       }, function (error) {
+        clearTimeout(timeoutId);
         console.warn('[aura-embed] OA 操作事件提交失败，已放行 OA', error);
         release();
       });
     } catch (e) {
+      clearTimeout(timeoutId);
       console.warn('[aura-embed] OA 操作事件提交失败，已放行 OA', e);
       release();
     }
   }
 
   function registerOAEvents() {
-    try {
-      if (typeof WfForm === 'undefined' || !WfForm.registerCheckEvent) return false;
-      if (typeof WfForm.OPER_SAVE === 'undefined' || typeof WfForm.OPER_SUBMIT === 'undefined') return false;
-      var base = WfForm.getBaseInfo ? (WfForm.getBaseInfo() || {}) : {};
-      if (base.workflowid == null || String(base.workflowid).trim() === '') return false;
-      if (oaEventsRegistered && registeredWfForm === WfForm) return true;
-      WfForm.registerCheckEvent(WfForm.OPER_SAVE, function (callback) {
-        notifyBeforeRelease('save_requested', callback);
-      });
-      WfForm.registerCheckEvent(WfForm.OPER_SUBMIT, function (callback) {
-        notifyBeforeRelease('submit_requested', callback);
-      });
-      oaEventsRegistered = true;
-      registeredWfForm = WfForm;
-      console.log('[aura-embed] 已注册 OA 保存/提交事件');
-      return true;
-    } catch (e) {
-      console.warn('[aura-embed] 注册 OA 保存/提交事件失败', e);
-      return false;
-    }
-  }
-
-  function startRegistration(force) {
-    if (force) {
-      oaEventsRegistered = false;
-      registeredWfForm = null;
-    }
-    if (registrationTimer) {
-      clearInterval(registrationTimer);
-      registrationTimer = null;
-    }
-    if (registerOAEvents()) return;
-    var tries = 0;
-    registrationTimer = setInterval(function () {
-      tries++;
-      if (registerOAEvents() || tries >= 200) {
-        clearInterval(registrationTimer);
-        registrationTimer = null;
-      }
-    }, 300);
+    WfForm.registerCheckEvent(WfForm.OPER_SAVE, function (callback) {
+      notifyBeforeRelease('save_requested', callback);
+    });
+    WfForm.registerCheckEvent(WfForm.OPER_SUBMIT, function (callback) {
+      notifyBeforeRelease('submit_requested', callback);
+    });
+    console.log('[aura-embed] 已注册 OA 保存/提交事件');
   }
 
   function initMessageListener() {
@@ -688,6 +646,7 @@ ${urlComment}
   }
 
   function init() {
+    console.log('[aura-embed] 脚本已初始化');
     initMessageListener();
 
     getIframes().forEach(function (iframe) {
@@ -702,27 +661,19 @@ ${urlComment}
         clearInterval(contextTimer);
       }
     }, 300);
-    startRegistration(false);
+    registerOAEvents();
 
     window.addEventListener('hashchange', function () {
       notifyAuraIframes();
-      startRegistration(true);
     });
     window.addEventListener('popstate', function () {
       notifyAuraIframes();
-      startRegistration(true);
     });
   }
 
-  if (typeof jQuery !== 'undefined') {
-    jQuery(function () {
-      init();
-    });
-  } else if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
+  jQuery().ready(function () {
     init();
-  }
+  });
 })();
 `
 }

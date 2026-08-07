@@ -78,11 +78,11 @@
 | OA → iframe | `aura-oa-requestid` | `{ requestid: '598488', embed_token: 'aura_emb_...' }` |
 | OA JS → AuraOA | `POST /api/embed/events` | OA 点击保存或提交时直接安排后台审核和总结检查 |
 
-脚本在 WfForm 与 workflowid 就绪后注册 `WfForm.OPER_SAVE` 和 `WfForm.OPER_SUBMIT`，不创建隐藏 iframe。
+脚本在页面就绪后直接注册 `WfForm.OPER_SAVE` 和 `WfForm.OPER_SUBMIT`，不创建隐藏 iframe。
 已有流程直接传点击时冻结的
 `WfForm.getBaseInfo().requestid`；首次新建流程没有 requestid 时，同时传 workflowid 和人员诊断标识，
 由 AuraOA 记录操作前高水位并在后台解析。人员标识只辅助多候选消歧，不等同于流程创建人。
-事件使用唯一嵌入密钥通过简单异步 POST 发送，最多等待 400ms；请求完成、超时或 AuraOA 不可用都会
+事件使用唯一嵌入密钥通过简单异步 POST 发送，最多等待 800ms；请求完成、超时或 AuraOA 不可用都会
 放行 OA。事件只安排延迟检查，不等待 AI，浏览器也不轮询 requestid。
 
 ### 4.2 在流程里启用
@@ -123,7 +123,7 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 
 ```
 OA 页面加载
-    → WfForm 与 workflowid 就绪后注册保存/提交事件
+    → 直接注册保存/提交事件
 点击保存或提交
     → 立即冻结 requestid/workflow_id/人员标识/occurred_at_ms
     → 简单异步 POST /api/embed/events（action: save_requested | submit_requested）
