@@ -44,9 +44,10 @@ GET /api/tenant/rules/configs/:id
 PUT /api/tenant/rules/configs/:id
 ```
 
-`ai_config.system_extraction_prompt` 为后端锁定字段。保存时服务端会根据
-`ai_config.audit_strictness` 使用系统模板覆盖客户端传值，避免固定 JSON Schema 被误改；
-推理阶段系统提示词及两阶段用户提示词仍按现有权限配置维护。
+`ai_config.system_extraction_prompt` 与 `ai_config.user_extraction_prompt` 均为后端锁定字段。
+保存时服务端会根据 `ai_config.audit_strictness` 使用对应系统模板覆盖客户端传值，
+避免固定 JSON Schema、输出指令和变量结构被误改；
+推理阶段的系统提示词和用户提示词仍按现有配置维护。
 
 `embed_config` 控制 OA 嵌入审核的自动刷新策略：
 

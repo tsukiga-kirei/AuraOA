@@ -6039,7 +6039,7 @@ components:
           type: string
         ai_config:
           type: object
-          description: 审核和归档配置中的 system_extraction_prompt 由服务端按 audit_strictness 模板锁定
+          description: 审核和归档配置中的 system_extraction_prompt、user_extraction_prompt 由服务端按 audit_strictness 模板锁定
         user_permissions:
           type: object
         access_control:

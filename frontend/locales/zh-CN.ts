@@ -1318,6 +1318,7 @@ export default {
     'admin.ruleConfig.resetUserPresets': '恢复用户默认',
     'admin.ruleConfig.systemPromptsReset': '系统提示词已恢复为当前尺度的预设模板',
     'admin.ruleConfig.systemPromptReadonly': '提取阶段系统提示词为只读（内含固定 JSON Schema），由审核尺度预设决定，不可手动编辑',
+    'admin.ruleConfig.userExtractionPromptReadonly': '提取阶段用户提示词为只读（内含固定输出指令和变量结构），由审核尺度预设决定，不可手动编辑',
     'admin.ruleConfig.userPromptsReset': '用户提示词已恢复为当前尺度的默认模板',
     'admin.ruleConfig.systemReasoningPrompt': '系统推理提示词',
     'admin.ruleConfig.systemExtractionPrompt': '系统提取提示词',

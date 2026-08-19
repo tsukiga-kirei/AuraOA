@@ -77,7 +77,7 @@ func (s *ProcessArchiveConfigService) Create(c *gin.Context, req *dto.CreateProc
 			}
 		}
 	}
-	aiConfig = s.lockSystemExtractionPrompt(aiConfig)
+	aiConfig = s.lockExtractionPrompts(aiConfig)
 
 	// 初始化 access_control 默认值
 	accessControl := req.AccessControl
@@ -158,9 +158,9 @@ func (s *ProcessArchiveConfigService) buildDefaultAIConfig(strictness string) da
 	return datatypes.JSON(result)
 }
 
-// lockSystemExtractionPrompt 使用当前复盘尺度的后端模板覆盖结构提取系统提示词。
-// 该提示词包含固定 JSON Schema，租户配置接口不接受客户端改写。
-func (s *ProcessArchiveConfigService) lockSystemExtractionPrompt(raw datatypes.JSON) datatypes.JSON {
+// lockExtractionPrompts 使用当前复盘尺度的后端模板覆盖结构提取阶段的系统与用户提示词。
+// 两段提示词共同约束固定 JSON Schema，租户配置接口不接受客户端改写。
+func (s *ProcessArchiveConfigService) lockExtractionPrompts(raw datatypes.JSON) datatypes.JSON {
 	var data model.ArchiveAIConfigData
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return raw
@@ -171,20 +171,26 @@ func (s *ProcessArchiveConfigService) lockSystemExtractionPrompt(raw datatypes.J
 	if err != nil {
 		return raw
 	}
-	for _, template := range allTemplates {
-		if template.Strictness == nil || *template.Strictness != strictness {
-			continue
-		}
-		if strings.HasPrefix(template.PromptKey, "archive_") && template.PromptType == "system" && template.Phase == "extraction" {
-			data.SystemExtractionPrompt = template.Content
-			break
-		}
-	}
+	applyArchiveExtractionPromptTemplates(&data, allTemplates, strictness)
 	result, err := json.Marshal(data)
 	if err != nil {
 		return raw
 	}
 	return datatypes.JSON(result)
+}
+
+func applyArchiveExtractionPromptTemplates(data *model.ArchiveAIConfigData, templates []model.SystemPromptTemplate, strictness string) {
+	for _, template := range templates {
+		if template.Strictness == nil || *template.Strictness != strictness {
+			continue
+		}
+		if strings.HasPrefix(template.PromptKey, "archive_") && template.PromptType == "system" && template.Phase == "extraction" {
+			data.SystemExtractionPrompt = template.Content
+		}
+		if strings.HasPrefix(template.PromptKey, "archive_") && template.PromptType == "user" && template.Phase == "extraction" {
+			data.UserExtractionPrompt = template.Content
+		}
+	}
 }
 
 // ListArchivePromptTemplates 查询所有归档复盘专用的系统提示词模板（prompt_key 以 archive_ 开头）。
@@ -251,7 +257,7 @@ func (s *ProcessArchiveConfigService) Update(c *gin.Context, id uuid.UUID, req *
 		fields["kb_mode"] = req.KBMode
 	}
 	if req.AIConfig != nil {
-		fields["ai_config"] = s.lockSystemExtractionPrompt(req.AIConfig)
+		fields["ai_config"] = s.lockExtractionPrompts(req.AIConfig)
 	}
 	if req.UserPermissions != nil {
 		fields["user_permissions"] = req.UserPermissions
