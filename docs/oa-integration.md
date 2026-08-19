@@ -70,6 +70,11 @@ OA 数据库连接配置存储在 `oa_database_connections` 表中，支持：
 | `oracle` | Oracle | 1521 |
 | `dm` | 达梦 DM | 5236 |
 
+以上驱动用于连接泛微 E9 的业务数据库；AuraOA 自身的主数据库仍为 PostgreSQL。
+MySQL 驱动可在当前支持的平台运行；达梦上游 Go 驱动仅支持 Linux/Windows，正式 Docker
+部署为 Linux 可启用达梦，macOS 本地进程只能编辑配置和构建占位，不能直接连接达梦。
+是否实际可用仍应通过 OA 连接页的“测试连接”使用目标地址与账号验证。
+
 **核心表映射**：
 
 | 泛微 E9 表 | 用途 |
@@ -91,9 +96,14 @@ OA 数据库连接配置存储在 `oa_database_connections` 表中，支持：
 
 **数据库兼容性处理**：
 
-- Oracle/DM 使用大写标识符，MySQL 不区分大小写 — 通过 `tableName()` / `col()` 方法统一处理
+- Oracle/DM 使用大写标识符，MySQL 保留 E9 元数据中的原始表名与列名 — 通过 `tableName()` / `col()` 方法统一处理
 - Oracle 使用 `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY` 分页语法，MySQL/DM 使用 `LIMIT ... OFFSET`
+- 流程路由条件关联中，Oracle/DM 使用 `TO_CHAR(...)`，MySQL 使用 `CAST(... AS CHAR)`
 - 字段值读取使用 `mapGet()` / `mapGetInt()` 辅助函数，不区分大小写匹配 key
+
+Ecology9 的业务查询默认由三种驱动共用，因此 MySQL 不需要为每条达梦 SQL 再复制一份；
+只有标识符、分页和类型转换等方言差异走驱动分支。仓库单元测试会固定这些 MySQL/DM
+分支，但没有目标 OA MySQL 实例时只能完成代码与 SQL 方言检查，最终仍需在连接页用客户库验证表结构和数据权限。
 
 **数据提取流程**：
 
@@ -135,7 +145,7 @@ AuraOA 从 OA 物理表读取到的值通常是数据库存储值，例如人员
 | 字段中文名 | `workflow_billfield.fieldlabel` | `htmllabelinfo.indexid`，`languageid=7` | prompt 中使用中文字段名，避免暴露数据库列名 |
 | 浏览按钮 | `fieldhtmltype=3` | `workflow_browserurl` 或内置兜底映射 | 将 ID 增补为显示名，最终 prompt 只展示显示文本 |
 | 选择框 / 下拉框 | `fieldhtmltype=5` | `workflow_selectitem` | 用 `fieldid + selectvalue` 找 `selectname`，再解析泛微多语言串 |
-| 附件 | `fieldhtmltype=6` | OA 附件接口 | 取附件正文并拼入 `{{attachments}}` |
+| 附件 | `fieldhtmltype=6` | OA 附件接口 | 仅当附件字段位于最终生效字段范围时下载、识别，并拼入 `{{attachments}}` |
 
 浏览按钮通用解析优先级：
 

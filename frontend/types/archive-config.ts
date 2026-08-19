@@ -3,8 +3,9 @@
 import type { ProcessField, DetailTableDef } from '~/types/common'
 import type { ExternalContextMount } from '~/types/external-context'
 
-/** 访问控制配置（归档复盘专用） */
+/** 审核工作台与归档复盘共用的访问控制配置 */
 export interface AccessControl {
+  allow_all: boolean
   allowed_roles: string[]
   allowed_members: string[]
   allowed_departments: string[]

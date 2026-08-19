@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -10,14 +12,14 @@ import (
 )
 
 // Logger 返回 HTTP 请求日志中间件。
-// 每个请求完成后，使用全局 logger 记录请求方法、路径（含查询参数）、HTTP 状态码、耗时和客户端 IP。
+// 每个请求完成后，使用全局 logger 记录请求方法、路径（敏感查询参数已脱敏）、HTTP 状态码、耗时和客户端 IP。
 // 轮询类接口（任务状态查询、通知未读数、统计等）降级为 DEBUG，避免刷屏。
 // log 参数保留以兼容现有调用方，内部实际使用 pkglogger.Global() 输出结构化日志。
 func Logger(log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
-		query := c.Request.URL.RawQuery
+		query := redactSensitiveQuery(c.Request.URL.RawQuery)
 
 		// 先执行后续处理链，再记录日志，确保状态码已写入
 		c.Next()
@@ -47,4 +49,22 @@ func Logger(log *zap.Logger) gin.HandlerFunc {
 			pkglogger.Global().Info("HTTP 请求", fields...)
 		}
 	}
+}
+
+// redactSensitiveQuery 对日志中的查询参数做脱敏，请求本身仍使用原始参数。
+func redactSensitiveQuery(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	values, err := url.ParseQuery(raw)
+	if err != nil {
+		return ""
+	}
+	for key := range values {
+		switch strings.ToLower(key) {
+		case "token", "access_token", "embed_token", "api_key":
+			values.Set(key, "***")
+		}
+	}
+	return values.Encode()
 }

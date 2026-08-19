@@ -1,3 +1,5 @@
+//go:build linux || windows
+
 // Package dm 提供达梦（DM）数据库的 GORM 驱动封装。
 // 基于 github.com/Rulessly/dm-driver-gorm 驱动。
 // 达梦使用 Oracle 兼容模式，SQL 语法与 Oracle 保持一致。

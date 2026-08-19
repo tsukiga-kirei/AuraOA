@@ -242,7 +242,7 @@ func (h *AuditHandler) GetJobStream(c *gin.Context) {
 		return
 	}
 
-	ch, closeSub, err := h.auditService.SubscribeJobStream(c.Request.Context(), id)
+	ch, closeSub, err := h.auditService.SubscribeJobStream(c, id)
 	if err != nil {
 		handleServiceError(c, err)
 		return

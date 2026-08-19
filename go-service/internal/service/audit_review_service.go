@@ -58,6 +58,7 @@ type AuditExecuteService struct {
 	aiModelRepo       *repository.AIModelRepo
 	aiCaller          *AIModelCallerService
 	attachmentSvc     *AttachmentRecognitionService
+	orgRepo           *repository.OrgRepo
 	db                *gorm.DB
 	rdb               *redis.Client
 	notifSvc          *UserNotificationService
@@ -82,6 +83,7 @@ func NewAuditExecuteService(
 	aiModelRepo *repository.AIModelRepo,
 	aiCaller *AIModelCallerService,
 	attachmentSvc *AttachmentRecognitionService,
+	orgRepo *repository.OrgRepo,
 	db *gorm.DB,
 	rdb *redis.Client,
 	notifSvc *UserNotificationService,
@@ -102,6 +104,7 @@ func NewAuditExecuteService(
 		aiModelRepo:       aiModelRepo,
 		aiCaller:          aiCaller,
 		attachmentSvc:     attachmentSvc,
+		orgRepo:           orgRepo,
 		db:                db,
 		rdb:               rdb,
 		notifSvc:          notifSvc,
@@ -165,8 +168,13 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoAIModelConfig, "AI 模型配置不存在")
 	}
 
-	if _, err := s.configRepo.GetByProcessType(c, req.ProcessType); err != nil {
+	config, err := s.configRepo.GetByProcessType(c, req.ProcessType)
+	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的审核配置不存在", req.ProcessType))
+	}
+	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
+	if !accessControlAllows(config.AccessControl, member) {
+		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权执行该审核流程")
 	}
 
 	trigger := normalizeTriggerSource(req.TriggerSource, model.AuditTriggerWorkbenchManual)
@@ -689,6 +697,9 @@ func (s *AuditExecuteService) CancelJob(c *gin.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
+	if _, err := s.getAccessibleAuditLog(c, id); err != nil {
+		return err
+	}
 	err = s.markAuditFailedDB(tenantID, id, "已主动中止")
 	if cancelFunc, ok := s.cancelMap.Load(id.String()); ok {
 		cancelFunc.(context.CancelFunc)()
@@ -836,6 +847,13 @@ func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([
 	if snap == nil {
 		return []repository.AuditLogWithUser{}, nil
 	}
+	tenantID, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	if !s.userCanAccessAuditProcess(c, tenantID, userID, snap.ProcessType) {
+		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核记录")
+	}
 	ids := parseSnapshotValidLogIDs(snap.ValidLogIDs)
 	logs, err := s.auditLogRepo.ListByIDsWithUserOrdered(c, ids)
 	if err != nil {
@@ -851,7 +869,11 @@ func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([
 }
 
 // SubscribeJobStream 获取特定流程的 SSE 流和控制句柄
-func (s *AuditExecuteService) SubscribeJobStream(ctx context.Context, id uuid.UUID) (<-chan string, func(), error) {
+func (s *AuditExecuteService) SubscribeJobStream(c *gin.Context, id uuid.UUID) (<-chan string, func(), error) {
+	if _, err := s.getAccessibleAuditLog(c, id); err != nil {
+		return nil, nil, err
+	}
+	ctx := c.Request.Context()
 	pubsub := s.rdb.Subscribe(ctx, "audit:stream:"+id.String())
 	ch := make(chan string)
 
@@ -873,12 +895,9 @@ func (s *AuditExecuteService) SubscribeJobStream(ctx context.Context, id uuid.UU
 
 // GetAuditJobStatus 轮询异步审核任务状态（含进度阶段说明）。
 func (s *AuditExecuteService) GetAuditJobStatus(c *gin.Context, id uuid.UUID) (map[string]interface{}, error) {
-	log, err := s.auditLogRepo.GetByID(c, id)
+	log, err := s.getAccessibleAuditLog(c, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, newServiceError(errcode.ErrResourceNotFound, "审核任务不存在")
-		}
-		return nil, newServiceError(errcode.ErrDatabase, "查询审核任务失败")
+		return nil, err
 	}
 	log, err = s.applyStaleAuditTimeout(c, log)
 	if err != nil {
@@ -888,6 +907,37 @@ func (s *AuditExecuteService) GetAuditJobStatus(c *gin.Context, id uuid.UUID) (m
 	out["updated_at"] = apptime.FormatRFC3339(log.UpdatedAt)
 	out["progress_steps"] = auditProgressSteps(log.Status)
 	return out, nil
+}
+
+func (s *AuditExecuteService) getAccessibleAuditLog(c *gin.Context, id uuid.UUID) (*model.AuditLog, error) {
+	log, err := s.auditLogRepo.GetByID(c, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, newServiceError(errcode.ErrResourceNotFound, "审核任务不存在")
+		}
+		return nil, newServiceError(errcode.ErrDatabase, "查询审核任务失败")
+	}
+	tenantID, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	if !s.userCanAccessAuditProcess(c, tenantID, userID, log.ProcessType) {
+		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核任务")
+	}
+	return log, nil
+}
+
+func (s *AuditExecuteService) userCanAccessAuditProcess(
+	c *gin.Context,
+	tenantID, userID uuid.UUID,
+	processType string,
+) bool {
+	config, err := s.configRepo.GetByProcessType(c, processType)
+	if err != nil || config.Status != "active" {
+		return false
+	}
+	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
+	return accessControlAllows(config.AccessControl, member)
 }
 
 func auditProgressSteps(status string) []map[string]interface{} {
@@ -1136,6 +1186,14 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 	if err != nil {
 		return nil, err
 	}
+	processTypes := s.getAllowedProcessTypes(c)
+	if len(processTypes) == 0 {
+		return map[string]int{
+			"pending_ai_count": 0, "ai_done_count": 0, "completed_count": 0, "today_completed_count": 0,
+		}, nil
+	}
+	accessScope := append([]string(nil), processTypes...)
+	sort.Strings(accessScope)
 
 	// 构建缓存键：audit:stats:{tenant_id}:{user_id}:{date_range_hash}
 	// 由于 AuditListParams 的日期字段标记为 json:"-"，需要构建包含日期的哈希输入
@@ -1143,6 +1201,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 		dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
 			"submit_date_start":         params.SubmitDateStart,
 			"submit_date_end_exclusive": params.SubmitDateEndExclusive,
+			"access_scope":              accessScope,
 		})
 		keyBuilder := cache.NewKeyBuilder("audit", tenantID)
 		cacheKey := keyBuilder.Stats(userID, dateRangeHash)
@@ -1178,7 +1237,6 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 
 	// 使用缓存的 OA 全量数据（与 ListProcessesPaged 共享同一份缓存）
 	allowedTables := s.getAllowedMainTables(c)
-	processTypes := s.getAllowedProcessTypes(c)
 	todoItems, err := s.fetchOATodoDataCached(c, tenantID, userID, adapter, username, params, allowedTables, processTypes)
 	if err != nil {
 		return nil, err
@@ -1214,9 +1272,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 		q = q.Where("process_id NOT IN ?", todoExcludeIDs)
 	}
 	configuredTypes := s.getAllowedProcessTypes(c)
-	if len(configuredTypes) > 0 {
-		q = q.Where("process_type IN ?", configuredTypes)
-	}
+	q = q.Where("process_type IN ?", configuredTypes)
 	if params.SubmitDateStart != nil {
 		q = q.Where("updated_at >= ?", params.SubmitDateStart)
 	}
@@ -1229,7 +1285,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	var todayCompleted int64
 	s.db.Model(&model.AuditProcessSnapshot{}).
-		Where("tenant_id = ? AND channel = ? AND updated_at >= ?", tenantID, model.AuditSnapshotChannelWorkbench, startOfDay).
+		Where("tenant_id = ? AND channel = ? AND updated_at >= ? AND process_type IN ?", tenantID, model.AuditSnapshotChannelWorkbench, startOfDay, configuredTypes).
 		Count(&todayCompleted)
 
 	result := map[string]int{
@@ -1244,6 +1300,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 		dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
 			"submit_date_start":         params.SubmitDateStart,
 			"submit_date_end_exclusive": params.SubmitDateEndExclusive,
+			"access_scope":              accessScope,
 		})
 		keyBuilder := cache.NewKeyBuilder("audit", tenantID)
 		cacheKey := keyBuilder.Stats(userID, dateRangeHash)
@@ -1265,11 +1322,23 @@ func (s *AuditExecuteService) fetchOATodoDataCached(
 	params dto.AuditListParams,
 	allowedTables map[string]bool, processTypes []string,
 ) ([]oa.TodoItem, error) {
+	if len(allowedTables) == 0 || len(processTypes) == 0 {
+		return []oa.TodoItem{}, nil
+	}
+	mainTableNames := make([]string, 0, len(allowedTables))
+	for table := range allowedTables {
+		mainTableNames = append(mainTableNames, table)
+	}
+	sort.Strings(mainTableNames)
+	accessTypes := append([]string(nil), processTypes...)
+	sort.Strings(accessTypes)
 	// 构建缓存键：按日期范围 + process_type 区分（process_type 影响从 OA 拉取的数据范围）
 	dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
 		"submit_date_start":         params.SubmitDateStart,
 		"submit_date_end_exclusive": params.SubmitDateEndExclusive,
 		"process_type":              params.ProcessType,
+		"allowed_tables":            mainTableNames,
+		"allowed_types":             accessTypes,
 	})
 	keyBuilder := cache.NewKeyBuilder("audit", tenantID)
 	cacheKey := keyBuilder.OATodoData(userID, dateRangeHash)
@@ -1298,11 +1367,6 @@ func (s *AuditExecuteService) fetchOATodoDataCached(
 	}
 
 	// 缓存未命中，从 OA 拉取全量数据（不含 keyword/applicant/department 筛选，这些在内存中做）
-	mainTableNames := make([]string, 0, len(allowedTables))
-	for t := range allowedTables {
-		mainTableNames = append(mainTableNames, t)
-	}
-
 	const batchSize = 500
 	pagedFilter := oa.TodoListPagedFilter{
 		TodoListFilter: todoListFilterFromAuditParams(params),
@@ -1996,12 +2060,9 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 	return result
 }
 
-// getAllowedMainTables 获取当前租户所有启用的流程审核配置的主表名集合（小写），用于过滤 OA 待办。
+// getAllowedMainTables 获取当前用户有权访问的流程审核配置主表名集合（小写），用于过滤 OA 待办。
 func (s *AuditExecuteService) getAllowedMainTables(c *gin.Context) map[string]bool {
-	configs, err := s.configRepo.ListByTenant(c)
-	if err != nil {
-		return map[string]bool{}
-	}
+	configs := s.getAccessibleAuditConfigs(c)
 	m := make(map[string]bool, len(configs))
 	for _, cfg := range configs {
 		if cfg.Status == "active" && cfg.MainTableName != "" {
@@ -2011,12 +2072,9 @@ func (s *AuditExecuteService) getAllowedMainTables(c *gin.Context) map[string]bo
 	return m
 }
 
-// getAllowedProcessTypes 获取当前租户所有启用的流程类型名称列表。
+// getAllowedProcessTypes 获取当前用户有权访问的流程类型名称列表。
 func (s *AuditExecuteService) getAllowedProcessTypes(c *gin.Context) []string {
-	configs, err := s.configRepo.ListByTenant(c)
-	if err != nil {
-		return nil
-	}
+	configs := s.getAccessibleAuditConfigs(c)
 	var types []string
 	for _, cfg := range configs {
 		if cfg.Status == "active" {
@@ -2026,13 +2084,10 @@ func (s *AuditExecuteService) getAllowedProcessTypes(c *gin.Context) []string {
 	return types
 }
 
-// getAllowedConfigsList 返回当前租户所有启用的审核配置列表（原始结构），
+// getAllowedConfigsList 返回当前用户有权访问的审核配置列表（原始结构），
 // 用于按 process_type 查找对应的 MainTableName 等字段。
 func (s *AuditExecuteService) getAllowedConfigsList(c *gin.Context) []model.ProcessAuditConfig {
-	configs, err := s.configRepo.ListByTenant(c)
-	if err != nil {
-		return nil
-	}
+	configs := s.getAccessibleAuditConfigs(c)
 	var active []model.ProcessAuditConfig
 	for _, cfg := range configs {
 		if cfg.Status == "active" {
@@ -2040,6 +2095,26 @@ func (s *AuditExecuteService) getAllowedConfigsList(c *gin.Context) []model.Proc
 		}
 	}
 	return active
+}
+
+// getAccessibleAuditConfigs 返回当前用户命中角色、成员或部门授权的启用配置。
+func (s *AuditExecuteService) getAccessibleAuditConfigs(c *gin.Context) []model.ProcessAuditConfig {
+	tenantID, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil
+	}
+	configs, err := s.configRepo.ListByTenant(c)
+	if err != nil {
+		return nil
+	}
+	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
+	accessible := make([]model.ProcessAuditConfig, 0, len(configs))
+	for _, cfg := range configs {
+		if cfg.Status == "active" && accessControlAllows(cfg.AccessControl, member) {
+			accessible = append(accessible, cfg)
+		}
+	}
+	return accessible
 }
 
 func (s *AuditExecuteService) decryptOAConn(conn *model.OADatabaseConnection) error {
@@ -2096,7 +2171,18 @@ func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, 
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "创建 OA 适配器失败: "+err.Error())
 	}
-	data, err := adapter.FetchProcessData(c.Request.Context(), processID)
+	fetchCtx := c.Request.Context()
+	if withAttachments && len(fieldSets) > 0 {
+		var allowedMainFields map[string]bool
+		if fieldSets[0] != nil {
+			allowedMainFields = fieldSets[0]["main"]
+			if allowedMainFields == nil {
+				allowedMainFields = map[string]bool{}
+			}
+		}
+		fetchCtx = oa.WithAttachmentFieldFilter(fetchCtx, allowedMainFields)
+	}
+	data, err := adapter.FetchProcessData(fetchCtx, processID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAQueryFailed, "拉取 OA 流程数据失败: "+err.Error())
 	}

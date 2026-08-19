@@ -290,12 +290,19 @@ func (s *ArchiveReviewService) fetchOAArchivedDataCached(
 			allowedTables = append(allowedTables, strings.ToLower(cfg.MainTableName))
 		}
 	}
+	if len(allowedTypes) == 0 {
+		return []oa.ArchivedItem{}, nil
+	}
+	sort.Strings(allowedTables)
+	sort.Strings(allowedTypes)
 
 	// 构建缓存键：按日期范围 + process_type 区分（process_type 影响拉取的数据范围）
 	dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
 		"archive_date_start":         params.ArchiveDateStart,
 		"archive_date_end_exclusive": params.ArchiveDateEndExclusive,
 		"process_type":               params.ProcessType,
+		"allowed_tables":             allowedTables,
+		"allowed_types":              allowedTypes,
 	})
 	keyBuilder := cache.NewKeyBuilder("archive", tenantID)
 	cacheKey := keyBuilder.OAArchivedData(userID, dateRangeHash)
@@ -773,12 +780,25 @@ func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListPa
 	if err != nil {
 		return nil, err
 	}
+	configs, err := s.getAccessibleArchiveConfigs(c, userID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if len(configs) == 0 {
+		return &dto.ArchiveReviewStats{}, nil
+	}
+	accessScope := make([]string, 0, len(configs))
+	for _, cfg := range configs {
+		accessScope = append(accessScope, cfg.ID.String())
+	}
+	sort.Strings(accessScope)
 
 	// 构建缓存键：archive:stats:{tenant_id}:{user_id}:{date_range_hash}
 	if s.cache != nil && s.cache.IsEnabled() {
 		dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
 			"archive_date_start":         params.ArchiveDateStart,
 			"archive_date_end_exclusive": params.ArchiveDateEndExclusive,
+			"access_scope":               accessScope,
 		})
 		keyBuilder := cache.NewKeyBuilder("archive", tenantID)
 		cacheKey := keyBuilder.Stats(userID, dateRangeHash)
@@ -808,14 +828,6 @@ func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListPa
 				return result, nil
 			}
 		}
-	}
-
-	configs, err := s.getAccessibleArchiveConfigs(c, userID, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	if len(configs) == 0 {
-		return &dto.ArchiveReviewStats{}, nil
 	}
 
 	// 使用缓存的 OA 全量数据（与 ListProcessesPaged 共享同一份缓存）
@@ -875,6 +887,7 @@ func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListPa
 		dateRangeHash := cache.ComputeFilterHash(map[string]interface{}{
 			"archive_date_start":         params.ArchiveDateStart,
 			"archive_date_end_exclusive": params.ArchiveDateEndExclusive,
+			"access_scope":               accessScope,
 		})
 		keyBuilder := cache.NewKeyBuilder("archive", tenantID)
 		cacheKey := keyBuilder.Stats(userID, dateRangeHash)
@@ -1291,7 +1304,15 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		"updated_at": time.Now(),
 	})
 
-	processData, err := adapter.FetchProcessData(ctx, logEntry.ProcessID)
+	fetchCtx := ctx
+	if fieldSet != nil {
+		allowedMainFields := fieldSet["main"]
+		if allowedMainFields == nil {
+			allowedMainFields = map[string]bool{}
+		}
+		fetchCtx = oa.WithAttachmentFieldFilter(fetchCtx, allowedMainFields)
+	}
+	processData, err := adapter.FetchProcessData(fetchCtx, logEntry.ProcessID)
 	if err != nil {
 		se := newServiceError(errcode.ErrOAQueryFailed, "拉取 OA 流程数据失败: "+err.Error())
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
@@ -1811,28 +1832,7 @@ func (s *ArchiveReviewService) memberCanAccessArchive(member *model.OrgMember, c
 		return false, nil
 	}
 
-	var ac model.AccessControlData
-	if err := json.Unmarshal(cfg.AccessControl, &ac); err != nil {
-		return true, nil
-	}
-	if len(ac.AllowedRoles) == 0 && len(ac.AllowedMembers) == 0 && len(ac.AllowedDepartments) == 0 {
-		return true, nil
-	}
-	if member == nil {
-		return false, nil
-	}
-	if sliceContains(ac.AllowedMembers, member.ID.String()) {
-		return true, nil
-	}
-	if sliceContains(ac.AllowedDepartments, member.DepartmentID.String()) {
-		return true, nil
-	}
-	for _, role := range member.Roles {
-		if sliceContains(ac.AllowedRoles, role.ID.String()) {
-			return true, nil
-		}
-	}
-	return false, nil
+	return accessControlAllows(cfg.AccessControl, member), nil
 }
 
 func (s *ArchiveReviewService) decryptOAConn(conn *model.OADatabaseConnection) error {
