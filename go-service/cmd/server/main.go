@@ -189,7 +189,7 @@ func main() {
 	attachmentRecognitionService := service.NewAttachmentRecognitionService(systemConfigRepo, minerUTimeout)
 	ruleImportService := service.NewRuleImportService(attachmentRecognitionService, tenantRepo, aiModelRepo, aiCallerService, processAuditConfigRepo, archiveConfigRepo, auditRuleRepo, archiveRuleRepo, invalidationManager)
 	externalContextService := service.NewExternalContextService(oaConnectionRepo, attachmentRecognitionService, oaConnectionManager)
-	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver, externalContextService, oaConnectionManager)
+	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, orgRepo, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver, externalContextService, oaConnectionManager)
 	summaryConfigService := service.NewProcessSummaryConfigService(summaryConfigRepo, tenantRepo, oaConnectionRepo, invalidationManager, oaConnectionManager)
 	summaryService := service.NewProcessSummaryService(summaryLogRepo, summarySnapshotRepo, summaryConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, sysFlagsResolver, externalContextService, oaConnectionManager)
 	embedRefreshService := service.NewEmbedRefreshService(

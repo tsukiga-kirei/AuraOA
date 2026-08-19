@@ -145,6 +145,10 @@ POST /api/admin/system/oa-connections
 | `enabled` | boolean | — | 是否启用 |
 | `description` | string | — | 描述 |
 
+这里的 `driver` 是租户所连接 OA 数据库的驱动，不是 AuraOA 自身主数据库类型。
+达梦运行时驱动支持 Linux/Windows（正式 Docker 部署为 Linux），macOS 本地进程不直接连接达梦；
+MySQL 与达梦都应使用下述测试接口对实际网络、账号、Schema 与泛微表结构做连通性验证。
+
 ---
 
 ### 使用参数测试 OA 连接

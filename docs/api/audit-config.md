@@ -24,6 +24,10 @@ POST /api/tenant/rules/configs
 
 为指定流程类型创建审核配置（字段选择、AI 参数、权限控制等）。
 
+`access_control.allow_all=true` 时允许当前租户内所有成员访问，不需要逐个选择。
+关闭“所有人”后，`allowed_roles`、`allowed_members`、`allowed_departments` 按“任一命中即允许”解释；
+三项全部为空或 JSON 无法解析时默认拒绝前台访问，`tenant_admin` 不会自动绕过此业务访问控制。
+
 ---
 
 ### 获取配置详情
@@ -39,6 +43,10 @@ GET /api/tenant/rules/configs/:id
 ```
 PUT /api/tenant/rules/configs/:id
 ```
+
+`ai_config.system_extraction_prompt` 为后端锁定字段。保存时服务端会根据
+`ai_config.audit_strictness` 使用系统模板覆盖客户端传值，避免固定 JSON Schema 被误改；
+推理阶段系统提示词及两阶段用户提示词仍按现有权限配置维护。
 
 `embed_config` 控制 OA 嵌入审核的自动刷新策略：
 
@@ -59,6 +67,9 @@ PUT /api/tenant/rules/configs/:id
 普通审批推进默认不重新调用 AI，以减少等待时间和 Token 消耗。附件版本通过
 `DocImageFile` 的最新 `versionid` / `imagefileid` 与附件字段 `docId` 共同判断。
 流程级定时检查只发现候选流程，已有结果且指纹未变化时不会创建审核或 LLM 日志。
+
+执行审核时，附件识别遵循最终生效字段范围：`field_mode=all` 才识别全部主表附件；
+选择字段模式仅下载、解析被选中的附件字段，未选附件不会调用 MinerU，也不会进入模型提示词。
 
 ---
 

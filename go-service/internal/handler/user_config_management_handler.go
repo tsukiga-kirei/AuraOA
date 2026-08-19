@@ -540,12 +540,15 @@ func filterToggleOverrides(toggles []model.RuleToggleOverride, ruleMap map[strin
 
 // userCanAccessArchive 判断用户（OrgMember）是否有权访问指定归档配置。
 // 逻辑与 user_personal_config_service.GetAccessibleArchiveConfigs 保持一致：
-// 三列表均为空 → 对所有成员公开；member 为 nil（非租户成员）→ 无权访问。
+// allow_all 开启时允许任意租户成员；三列表均为空或 member 为 nil（非租户成员）时默认拒绝。
 func userCanAccessArchive(ac model.AccessControlData, member *model.OrgMember) bool {
-	if len(ac.AllowedRoles) == 0 && len(ac.AllowedMembers) == 0 && len(ac.AllowedDepartments) == 0 {
+	if member == nil {
+		return false
+	}
+	if ac.AllowAll {
 		return true
 	}
-	if member == nil {
+	if len(ac.AllowedRoles) == 0 && len(ac.AllowedMembers) == 0 && len(ac.AllowedDepartments) == 0 {
 		return false
 	}
 	if sliceContainsLocal(ac.AllowedMembers, member.ID.String()) {

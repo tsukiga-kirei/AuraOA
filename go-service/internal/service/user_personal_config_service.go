@@ -44,9 +44,18 @@ func NewUserPersonalConfigService(
 	}
 }
 
+// userCanAccess 判断用户是否命中流程配置中的成员、角色或部门授权。
+func (s *UserPersonalConfigService) userCanAccess(
+	_ *gin.Context,
+	tenantID, userID uuid.UUID,
+	accessControl datatypes.JSON,
+) bool {
+	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
+	return accessControlAllows(accessControl, member)
+}
+
 // GetProcessList 获取用户可见的审核工作台流程列表。
-// 访问控制规则：access_control 所有列表均为空 → 对所有租户成员开放；
-// 否则用户 ID/角色/部门命中任一列表即可访问。
+// 访问控制规则：用户 ID/角色/部门命中任一列表即可访问；未配置时默认拒绝。
 func (s *UserPersonalConfigService) GetProcessList(c *gin.Context, userID uuid.UUID) ([]dto.ProcessListItem, error) {
 	tenantID, err := getTenantUUID(c)
 	if err != nil {
@@ -69,47 +78,7 @@ func (s *UserPersonalConfigService) GetProcessList(c *gin.Context, userID uuid.U
 		if cfg.Status != "active" {
 			continue
 		}
-		var ac model.AccessControlData
-		if err := json.Unmarshal(cfg.AccessControl, &ac); err != nil {
-			// 解析失败视为公开
-			result = append(result, dto.ProcessListItem{
-				ProcessType:      cfg.ProcessType,
-				ProcessTypeLabel: cfg.ProcessTypeLabel,
-				ConfigID:         cfg.ID.String(),
-			})
-			continue
-		}
-		// 三列表均为空 → 公开
-		if len(ac.AllowedRoles) == 0 && len(ac.AllowedMembers) == 0 && len(ac.AllowedDepartments) == 0 {
-			result = append(result, dto.ProcessListItem{
-				ProcessType:      cfg.ProcessType,
-				ProcessTypeLabel: cfg.ProcessTypeLabel,
-				ConfigID:         cfg.ID.String(),
-			})
-			continue
-		}
-		if member == nil {
-			continue
-		}
-		// 检查成员 ID
-		if sliceContains(ac.AllowedMembers, member.ID.String()) {
-			result = append(result, dto.ProcessListItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
-			continue
-		}
-		// 检查部门
-		if sliceContains(ac.AllowedDepartments, member.DepartmentID.String()) {
-			result = append(result, dto.ProcessListItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
-			continue
-		}
-		// 检查角色
-		found := false
-		for _, r := range member.Roles {
-			if sliceContains(ac.AllowedRoles, r.ID.String()) {
-				found = true
-				break
-			}
-		}
-		if found {
+		if accessControlAllows(cfg.AccessControl, member) {
 			result = append(result, dto.ProcessListItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
 		}
 	}
@@ -125,6 +94,13 @@ func (s *UserPersonalConfigService) GetByProcessType(c *gin.Context, userID uuid
 	tenantID, err := getTenantUUID(c)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+	processCfg, err := s.configRepo.GetByProcessType(c, processType)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrConfigNotFound, "流程审核配置不存在")
+	}
+	if !s.userCanAccess(c, tenantID, userID, processCfg.AccessControl) {
+		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核流程")
 	}
 
 	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
@@ -162,6 +138,9 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 	processCfg, err := s.configRepo.GetByProcessType(c, processType)
 	if err != nil {
 		return newServiceError(errcode.ErrConfigNotFound, "流程审核配置不存在")
+	}
+	if !s.userCanAccess(c, tenantID, userID, processCfg.AccessControl) {
+		return newServiceError(errcode.ErrPermissionDenied, "当前用户无权修改该审核流程配置")
 	}
 
 	configID, _ := uuid.Parse(req.ConfigID)
@@ -270,6 +249,9 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 	tenantCfg, err := s.configRepo.GetByProcessType(c, processType)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrConfigNotFound, "流程审核配置不存在")
+	}
+	if !s.userCanAccess(c, tenantID, userID, tenantCfg.AccessControl) {
+		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核流程")
 	}
 
 	// 解析用户权限
@@ -447,8 +429,7 @@ func (s *UserPersonalConfigService) UpdateCronPrefs(c *gin.Context, userID uuid.
 }
 
 // GetAccessibleArchiveConfigs 获取当前用户在租户内有权访问的归档复盘配置列表。
-// 访问控制规则：access_control 所有列表均为空 → 对所有租户成员开放；
-// 否则用户 ID/角色/部门命中任一列表即可访问。
+// 访问控制规则：用户 ID/角色/部门命中任一列表即可访问；未配置时默认拒绝。
 func (s *UserPersonalConfigService) GetAccessibleArchiveConfigs(c *gin.Context, userID uuid.UUID) ([]dto.AccessibleArchiveConfigItem, error) {
 	tenantID, err := getTenantUUID(c)
 	if err != nil {
@@ -472,47 +453,7 @@ func (s *UserPersonalConfigService) GetAccessibleArchiveConfigs(c *gin.Context, 
 		if cfg.Status != "active" {
 			continue
 		}
-		var ac model.AccessControlData
-		if err := json.Unmarshal(cfg.AccessControl, &ac); err != nil {
-			// 解析失败视为公开
-			result = append(result, dto.AccessibleArchiveConfigItem{
-				ProcessType:      cfg.ProcessType,
-				ProcessTypeLabel: cfg.ProcessTypeLabel,
-				ConfigID:         cfg.ID.String(),
-			})
-			continue
-		}
-		// 三列表均为空 → 公开
-		if len(ac.AllowedRoles) == 0 && len(ac.AllowedMembers) == 0 && len(ac.AllowedDepartments) == 0 {
-			result = append(result, dto.AccessibleArchiveConfigItem{
-				ProcessType:      cfg.ProcessType,
-				ProcessTypeLabel: cfg.ProcessTypeLabel,
-				ConfigID:         cfg.ID.String(),
-			})
-			continue
-		}
-		if member == nil {
-			continue
-		}
-		// 检查成员 ID（OrgMember ID，与前端 member.id 一致）
-		if sliceContains(ac.AllowedMembers, member.ID.String()) {
-			result = append(result, dto.AccessibleArchiveConfigItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
-			continue
-		}
-		// 检查部门
-		if sliceContains(ac.AllowedDepartments, member.DepartmentID.String()) {
-			result = append(result, dto.AccessibleArchiveConfigItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
-			continue
-		}
-		// 检查角色
-		found := false
-		for _, r := range member.Roles {
-			if sliceContains(ac.AllowedRoles, r.ID.String()) {
-				found = true
-				break
-			}
-		}
-		if found {
+		if accessControlAllows(cfg.AccessControl, member) {
 			result = append(result, dto.AccessibleArchiveConfigItem{ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String()})
 		}
 	}
@@ -543,6 +484,9 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 	}
 	if tenantCfg == nil {
 		return nil, newServiceError(errcode.ErrConfigNotFound, "归档复盘配置不存在")
+	}
+	if !s.userCanAccess(c, tenantID, userID, tenantCfg.AccessControl) {
+		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该归档复盘")
 	}
 
 	// 解析用户权限
@@ -690,6 +634,9 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 	}
 	if tenantCfg == nil {
 		return newServiceError(errcode.ErrConfigNotFound, "归档复盘配置不存在")
+	}
+	if !s.userCanAccess(c, tenantID, userID, tenantCfg.AccessControl) {
+		return newServiceError(errcode.ErrPermissionDenied, "当前用户无权修改该归档复盘配置")
 	}
 
 	configID, _ := uuid.Parse(req.ConfigID)

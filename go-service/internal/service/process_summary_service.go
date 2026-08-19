@@ -887,7 +887,15 @@ func (s *ProcessSummaryService) fetchOAData(c *gin.Context, tenant *model.Tenant
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "创建 OA 适配器失败: "+err.Error())
 	}
-	data, err := adapter.FetchProcessData(c.Request.Context(), processID)
+	fetchCtx := c.Request.Context()
+	if withAttachments && fieldSet != nil {
+		allowedMainFields := fieldSet["main"]
+		if allowedMainFields == nil {
+			allowedMainFields = map[string]bool{}
+		}
+		fetchCtx = oa.WithAttachmentFieldFilter(fetchCtx, allowedMainFields)
+	}
+	data, err := adapter.FetchProcessData(fetchCtx, processID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAQueryFailed, err.Error())
 	}

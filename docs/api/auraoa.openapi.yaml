@@ -6039,10 +6039,28 @@ components:
           type: string
         ai_config:
           type: object
+          description: 审核和归档配置中的 system_extraction_prompt 由服务端按 audit_strictness 模板锁定
         user_permissions:
           type: object
         access_control:
           type: object
+          description: 审核和归档访问控制；allow_all=true 时允许当前租户所有成员，否则按角色、成员、部门任一命中授权，三项均为空或配置无效时默认拒绝
+          properties:
+            allow_all:
+              type: boolean
+              default: false
+            allowed_roles:
+              type: array
+              items:
+                type: string
+            allowed_members:
+              type: array
+              items:
+                type: string
+            allowed_departments:
+              type: array
+              items:
+                type: string
         embed_enabled:
           type: boolean
         embed_config:

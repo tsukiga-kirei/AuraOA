@@ -2044,6 +2044,13 @@ func (a *Ecology9Adapter) recognizeMainAttachments(
 		if fieldKey == "" {
 			continue
 		}
+		if !attachmentFieldAllowed(ctx, fieldKey) {
+			pkglogger.Global().Debug("附件识别：字段未被业务配置选中，跳过",
+				zap.String("processID", processID),
+				zap.String("field", fieldKey),
+				zap.String("fieldName", fieldName))
+			continue
+		}
 		// 主表数据里取附件 docId 列表（逗号分隔）
 		docIds := strings.TrimSpace(mapGet(mainData, fieldKey))
 		if docIds == "" {
@@ -2697,6 +2704,14 @@ func (a *Ecology9Adapter) limitOffsetClause(limit, offset int) string {
 	return fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
 }
 
+// castToTextExpr 将字段表达式转换为文本，用于处理不同数据库的类型转换方言。
+func (a *Ecology9Adapter) castToTextExpr(expr string) string {
+	if a.isOracleCompatible() {
+		return "TO_CHAR(" + expr + ")"
+	}
+	return "CAST(" + expr + " AS CHAR)"
+}
+
 // FetchAllTodoItems 拉取所有待审批流程（不过滤用户，供调度器批处理使用）。
 // 与 FetchTodoList 相比，去掉了 WHERE co.userid = ? 条件，并对结果去重（同一流程可能出现在多个审批人的待办中）。
 func (a *Ecology9Adapter) FetchAllTodoItems(ctx context.Context, limit int) ([]TodoItem, error) {
@@ -3037,7 +3052,8 @@ func (a *Ecology9Adapter) fetchFlowRouteGraph(ctx context.Context, processID str
 		return ""
 	}
 
-	// 查询节点连接和出口条件
+	// 查询节点连接和出口条件。规则 ID 的文本转换按数据库方言生成。
+	ruleIDTextExpr := a.castToTextExpr("RB." + a.col("id"))
 	query := fmt.Sprintf(`
 		SELECT
 			COALESCE(WN1.%s, '') AS src_node_name,
@@ -3047,7 +3063,7 @@ func (a *Ecology9Adapter) fetchFlowRouteGraph(ctx context.Context, processID str
 		FROM %s WN
 		LEFT JOIN %s WN1 ON WN1.%s = WN.%s
 		LEFT JOIN %s WN2 ON WN2.%s = WN.%s
-		LEFT JOIN %s RB ON TO_CHAR(RB.%s) = WN.%s
+		LEFT JOIN %s RB ON %s = WN.%s
 		WHERE WN.%s = ?
 		ORDER BY WN.%s, WN.%s`,
 		a.col("nodename"),
@@ -3057,37 +3073,10 @@ func (a *Ecology9Adapter) fetchFlowRouteGraph(ctx context.Context, processID str
 		a.tableName("workflow_nodelink"),
 		a.tableName("workflow_nodebase"), a.col("id"), a.col("nodeid"),
 		a.tableName("workflow_nodebase"), a.col("id"), a.col("destnodeid"),
-		a.tableName("rule_base"), a.col("id"), a.col("newrule"),
+		a.tableName("rule_base"), ruleIDTextExpr, a.col("newrule"),
 		a.col("workflowid"),
 		a.col("nodeid"), a.col("destnodeid"),
 	)
-
-	// Oracle/DM 使用 TO_CHAR，MySQL 需要 CAST
-	if !a.isOracleCompatible() {
-		query = fmt.Sprintf(`
-			SELECT
-				COALESCE(WN1.%s, '') AS src_node_name,
-				COALESCE(WN2.%s, '') AS dest_node_name,
-				COALESCE(WN.%s, '') AS link_name,
-				COALESCE(RB.%s, '') AS condition_text
-			FROM %s WN
-			LEFT JOIN %s WN1 ON WN1.%s = WN.%s
-			LEFT JOIN %s WN2 ON WN2.%s = WN.%s
-			LEFT JOIN %s RB ON CAST(RB.%s AS CHAR) = WN.%s
-			WHERE WN.%s = ?
-			ORDER BY WN.%s, WN.%s`,
-			a.col("nodename"),
-			a.col("nodename"),
-			a.col("linkname"),
-			a.col("condit"),
-			a.tableName("workflow_nodelink"),
-			a.tableName("workflow_nodebase"), a.col("id"), a.col("nodeid"),
-			a.tableName("workflow_nodebase"), a.col("id"), a.col("destnodeid"),
-			a.tableName("rule_base"), a.col("id"), a.col("newrule"),
-			a.col("workflowid"),
-			a.col("nodeid"), a.col("destnodeid"),
-		)
-	}
 
 	rows, err := a.db.WithContext(ctx).Raw(query, workflowID).Rows()
 	if err != nil {

@@ -519,6 +519,9 @@ const trackRunningJob = async (proc: ArchiveProcessItem) => {
       updateLiveResult(proc.process_id, status)
     })
     updateLiveResult(proc.process_id, result)
+    if (result.status === 'failed' && selectedProcess.value?.process_id === proc.process_id) {
+      message.error(result.error_message || t('archive.auditFailed'))
+    }
     await Promise.all([loadStats(), loadProcesses()])
   } catch {
     await Promise.all([loadStats(), loadProcesses()])
@@ -616,7 +619,10 @@ const handleAudit = async () => {
     [processId]: true,
   }
   try {
-    await runArchiveReview(selectedProcess.value)
+    const result = await runArchiveReview(selectedProcess.value)
+    if (result?.status === 'failed') {
+      message.error(result.error_message || t('archive.auditFailed'))
+    }
   } catch (error: any) {
     message.error(error?.message || t('archive.auditFailed'))
     await Promise.all([loadStats(), loadProcesses()])
@@ -669,6 +675,8 @@ async function runArchiveBatchLoop(ids: string[], queueMeta: ArchiveBatchMeta[],
       : undefined
   saveArchiveBatchState(ids, queueMeta, startIndex, carryInflight)
 
+  let failedCount = 0
+
   for (let i = startIndex; i < ids.length; i++) {
     if (batchAborted.value) break
     const id = ids[i]
@@ -690,10 +698,12 @@ async function runArchiveBatchLoop(ids: string[], queueMeta: ArchiveBatchMeta[],
     }
 
     try {
-      await runArchiveReview(procToRun, (jobId) => {
+      const result = await runArchiveReview(procToRun, (jobId) => {
         saveArchiveBatchState(ids, queueMeta, i, jobId)
       })
+      if (result?.status === 'failed') failedCount++
     } catch {
+      failedCount++
     }
 
     processAuditLoading.value = {
@@ -711,6 +721,8 @@ async function runArchiveBatchLoop(ids: string[], queueMeta: ArchiveBatchMeta[],
   await Promise.all([loadStats(), loadProcesses()])
   if (batchAborted.value) {
     message.info(t('archive.batchAborted', '批量审核已中止'))
+  } else if (failedCount > 0) {
+    message.warning(t('archive.batchCompletedWithFailures', [batchAuditDone.value, failedCount]))
   } else {
     message.success(t('archive.batchDone', `${batchAuditDone.value}`))
   }
@@ -1333,6 +1345,24 @@ onUnmounted(() => {
               </div>
             </template>
 
+            <template v-else-if="currentResult && !loading && currentResult.status === 'failed'">
+              <div class="result-banner result-banner--error">
+                <WarningOutlined class="result-banner-icon" style="color: var(--color-danger);" />
+                <div class="result-banner-info">
+                  <div class="result-banner-title" style="color: var(--color-danger);">{{ t('archive.auditFailed') }}</div>
+                  <div class="result-banner-meta">{{ currentResult.error_message || t('archive.auditFailed') }}</div>
+                </div>
+              </div>
+              <div class="result-action-bar">
+                <a-button @click="jumpToOA(selectedProcess.process_id)">
+                  <ExportOutlined /> {{ t('dashboard.jumpOA') }}
+                </a-button>
+                <a-button type="primary" @click="handleReAudit">
+                  <ReloadOutlined /> {{ t('archive.reAudit') }}
+                </a-button>
+              </div>
+            </template>
+
             <!--审核结果：仅已形成合规结论时展示完整报告（与审核工作台「已完成」一致）-->
             <template v-else-if="currentResult && !loading && archiveDetailShowsComplianceReport">
               <!--与 dashboard 一致的操作栏 -->
@@ -1749,6 +1779,7 @@ onUnmounted(() => {
   display: flex; align-items: center; padding: 16px 20px;
   border-radius: var(--radius-lg); border-left: 4px solid; margin-bottom: 24px; gap: 14px;
 }
+.result-banner--error { background: var(--color-danger-bg); border-color: var(--color-danger); }
 .result-banner-icon { font-size: 28px; flex-shrink: 0; }
 .result-banner-info { flex: 1; }
 .result-banner-title { font-size: 16px; font-weight: 700; }

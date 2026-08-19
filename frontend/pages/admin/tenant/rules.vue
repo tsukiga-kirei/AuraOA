@@ -37,7 +37,7 @@ import type {
   ProcessAuditConfig as ApiProcessAuditConfig,
   SystemPromptTemplate
 } from '~/composables/useAuditConfigApi'
-import type { ArchiveRule, ProcessArchiveConfig } from '~/types/archive-config'
+import type { AccessControl, ArchiveRule, ProcessArchiveConfig } from '~/types/archive-config'
 import type { ProcessInfo } from '~/types/common'
 import type { CronTaskConfig } from '~/types/cron'
 import type { ProcessSummaryConfig, SummaryBlockConfig } from '~/types/process-summary'
@@ -429,7 +429,7 @@ const handleAddProcess = async () => {
       process_type: newProcessForm.value.process_type.trim(),
       process_type_label: newProcessForm.value.process_type_label.trim(),
       main_table_name: newProcessForm.value.main_table_name.trim(),
-      access_control: { allowed_roles: [], allowed_members: [], allowed_departments: [] },
+      access_control: { allow_all: false, allowed_roles: [], allowed_members: [], allowed_departments: [] },
       embed_enabled: false,
       embed_config: {
         auto_audit_on_open: true,
@@ -975,8 +975,23 @@ const insertSummaryBlockVariable = (block: SummaryBlockConfig, variable: string)
   summaryBlockTextareaRefs.value[block.id]?.insertAtCursor(variable)
 }
 
+const emptyAccessControl = (): AccessControl => ({
+  allow_all: false,
+  allowed_roles: [],
+  allowed_members: [],
+  allowed_departments: [],
+})
+
+const normalizeAccessControl = (accessControl?: Partial<AccessControl> | null): AccessControl => ({
+  allow_all: accessControl?.allow_all === true,
+  allowed_roles: Array.isArray(accessControl?.allowed_roles) ? accessControl.allowed_roles : [],
+  allowed_members: Array.isArray(accessControl?.allowed_members) ? accessControl.allowed_members : [],
+  allowed_departments: Array.isArray(accessControl?.allowed_departments) ? accessControl.allowed_departments : [],
+})
+
 const normalizeAuditConfigForUI = (cfg: ProcessAuditConfig): ProcessAuditConfig => ({
   ...cfg,
+  access_control: normalizeAccessControl(cfg.access_control),
   embed_enabled: cfg.embed_enabled ?? false,
   embed_config: {
     auto_audit_on_open: cfg.embed_config?.auto_audit_on_open ?? true,
@@ -1036,7 +1051,10 @@ onMounted(async () => {
   loadingArchive.value = true
   try {
     const archiveList = await archiveApi.listConfigs()
-    archiveConfigs.value = archiveList
+    archiveConfigs.value = archiveList.map(cfg => ({
+      ...cfg,
+      access_control: normalizeAccessControl(cfg.access_control),
+    }))
     if (archiveList.length > 0) selectedArchiveId.value = archiveList[0].id
     // 同时加载归档专用提示词模板
     archivePromptTemplates.value = await archiveApi.listPromptTemplates()
@@ -1961,7 +1979,7 @@ const handleAddArchiveProcess = async () => {
       process_type: newArchiveProcessForm.value.process_type.trim(),
       process_type_label: newArchiveProcessForm.value.process_type_label.trim(),
       main_table_name: newArchiveProcessForm.value.main_table_name.trim(),
-      access_control: { allowed_roles: [], allowed_members: [], allowed_departments: [] },
+      access_control: emptyAccessControl(),
     })
     archiveConfigs.value.push(created)
     selectedArchiveId.value = created.id
@@ -2360,8 +2378,9 @@ const ensureArchiveAC = () => {
   if (!selectedArchiveConfig.value) return null
   const ac = selectedArchiveConfig.value.access_control
   if (!ac || typeof ac !== 'object') {
-    selectedArchiveConfig.value.access_control = { allowed_roles: [], allowed_members: [], allowed_departments: [] }
+    selectedArchiveConfig.value.access_control = emptyAccessControl()
   } else {
+    ac.allow_all = ac.allow_all === true
     if (!Array.isArray(ac.allowed_roles)) ac.allowed_roles = []
     if (!Array.isArray(ac.allowed_members)) ac.allowed_members = []
     if (!Array.isArray(ac.allowed_departments)) ac.allowed_departments = []
@@ -2463,8 +2482,9 @@ const ensureAuditAC = () => {
   if (!selectedConfig.value) return null
   const ac = selectedConfig.value.access_control
   if (!ac || typeof ac !== 'object') {
-    selectedConfig.value.access_control = { allowed_roles: [], allowed_members: [], allowed_departments: [] }
+    selectedConfig.value.access_control = emptyAccessControl()
   } else {
+    ac.allow_all = ac.allow_all === true
     if (!Array.isArray(ac.allowed_roles)) ac.allowed_roles = []
     if (!Array.isArray(ac.allowed_members)) ac.allowed_members = []
     if (!Array.isArray(ac.allowed_departments)) ac.allowed_departments = []
@@ -2553,7 +2573,7 @@ const handleSave = async () => {
       kb_mode: cfg.kb_mode,
       ai_config: cfg.ai_config,
       user_permissions: cfg.user_permissions,
-      access_control: cfg.access_control ?? { allowed_roles: [], allowed_members: [], allowed_departments: [] },
+      access_control: cfg.access_control ?? emptyAccessControl(),
       embed_enabled: cfg.embed_enabled ?? false,
       embed_config: cfg.embed_config,
       status: cfg.status,
@@ -3078,7 +3098,8 @@ const handleSave = async () => {
             </div>
           </div>
 
-          <div class="permission-item" style="margin-top: 20px;">
+          <div class="permissions-list audit-embed-permissions">
+          <div class="permission-item">
             <div class="permission-info">
               <div class="permission-label">{{ t('admin.ruleConfig.embedEnabled') }}</div>
               <div class="permission-desc">{{ t('admin.ruleConfig.embedEnabledDesc') }}</div>
@@ -3168,6 +3189,7 @@ const handleSave = async () => {
               </a-select>
             </a-space>
           </div>
+          </div>
 
           <!-- 审核工作台访问控制 -->
           <div class="section-header" style="margin-top: 28px;">
@@ -3178,7 +3200,18 @@ const handleSave = async () => {
           </div>
 
           <div class="access-control-section">
-            <div class="access-control-group">
+            <div class="permission-item access-control-everyone">
+              <div class="permission-info">
+                <div class="permission-label"><TeamOutlined /> {{ t('admin.ruleConfig.auditAllowAll') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.auditAllowAllDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedConfig.access_control!.allow_all"
+                :checked-children="t('admin.ruleConfig.allow')"
+                :un-checked-children="t('admin.ruleConfig.deny')"
+              />
+            </div>
+            <div v-if="!selectedConfig.access_control?.allow_all" class="access-control-group">
               <div class="access-control-label"><TeamOutlined /> {{ t('admin.ruleConfig.auditAllowedRoles') }}</div>
               <div class="access-control-search">
                 <a-input v-model:value="auditRoleSearch" :placeholder="t('admin.ruleConfig.auditAccessSearch')" allow-clear size="small" style="max-width: 280px;">
@@ -3198,7 +3231,7 @@ const handleSave = async () => {
                 </div>
               </div>
             </div>
-            <div class="access-control-group" style="margin-top: 16px;">
+            <div v-if="!selectedConfig.access_control?.allow_all" class="access-control-group" style="margin-top: 16px;">
               <div class="access-control-label"><UserOutlined /> {{ t('admin.ruleConfig.auditAllowedMembers') }}</div>
               <div class="access-control-search">
                 <a-input v-model:value="auditMemberSearch" :placeholder="t('admin.ruleConfig.auditAccessSearch')" allow-clear size="small" style="max-width: 280px;">
@@ -3219,7 +3252,7 @@ const handleSave = async () => {
                 </div>
               </div>
             </div>
-            <div class="access-control-group" style="margin-top: 16px;">
+            <div v-if="!selectedConfig.access_control?.allow_all" class="access-control-group" style="margin-top: 16px;">
               <div class="access-control-label"><AppstoreOutlined /> {{ t('admin.ruleConfig.auditAllowedDepts') }}</div>
               <div class="access-control-search">
                 <a-input v-model:value="auditDeptSearch" :placeholder="t('admin.ruleConfig.auditAccessSearch')" allow-clear size="small" style="max-width: 280px;">
@@ -5036,7 +5069,18 @@ const handleSave = async () => {
           </div>
 
           <div class="access-control-section">
-            <div class="access-control-group">
+            <div class="permission-item access-control-everyone">
+              <div class="permission-info">
+                <div class="permission-label"><TeamOutlined /> {{ t('admin.ruleConfig.archiveAllowAll') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.archiveAllowAllDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedArchiveConfig.access_control.allow_all"
+                :checked-children="t('admin.ruleConfig.allow')"
+                :un-checked-children="t('admin.ruleConfig.deny')"
+              />
+            </div>
+            <div v-if="!selectedArchiveConfig.access_control.allow_all" class="access-control-group">
               <div class="access-control-label"><TeamOutlined /> {{ t('admin.ruleConfig.archiveAllowedRoles') }}</div>
               <div class="access-control-search">
                 <a-input v-model:value="archiveRoleSearch" :placeholder="t('admin.ruleConfig.archiveAccessSearch')" allow-clear size="small" style="max-width: 280px;">
@@ -5056,7 +5100,7 @@ const handleSave = async () => {
                 </div>
               </div>
             </div>
-            <div class="access-control-group" style="margin-top: 16px;">
+            <div v-if="!selectedArchiveConfig.access_control.allow_all" class="access-control-group" style="margin-top: 16px;">
               <div class="access-control-label"><UserOutlined /> {{ t('admin.ruleConfig.archiveAllowedMembers') }}</div>
               <div class="access-control-search">
                 <a-input v-model:value="archiveMemberSearch" :placeholder="t('admin.ruleConfig.archiveAccessSearch')" allow-clear size="small" style="max-width: 280px;">
@@ -5077,7 +5121,7 @@ const handleSave = async () => {
                 </div>
               </div>
             </div>
-            <div class="access-control-group" style="margin-top: 16px;">
+            <div v-if="!selectedArchiveConfig.access_control.allow_all" class="access-control-group" style="margin-top: 16px;">
               <div class="access-control-label"><AppstoreOutlined /> {{ t('admin.ruleConfig.archiveAllowedDepts') }}</div>
               <div class="access-control-search">
                 <a-input v-model:value="archiveDeptSearch" :placeholder="t('admin.ruleConfig.archiveAccessSearch')" allow-clear size="small" style="max-width: 280px;">
@@ -5688,6 +5732,7 @@ const handleSave = async () => {
 
 /*权限*/
 .permissions-list { display: flex; flex-direction: column; gap: 12px; }
+.audit-embed-permissions { margin-top: 20px; }
 .permission-item {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   padding: 16px 20px; background: var(--color-bg-page); border-radius: var(--radius-md);
@@ -6310,6 +6355,7 @@ const handleSave = async () => {
 
 /*访问控制*/
 .access-control-section { display: flex; flex-direction: column; gap: 0; }
+.access-control-everyone { margin-bottom: 16px; }
 .access-control-group { }
 .access-control-label {
   font-size: 13px; font-weight: 600; color: var(--color-text-secondary);
