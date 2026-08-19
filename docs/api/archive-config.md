@@ -42,8 +42,9 @@ GET /api/tenant/archive/configs/:id
 PUT /api/tenant/archive/configs/:id
 ```
 
-`ai_config.system_extraction_prompt` 为后端锁定字段。保存时服务端会根据
-`ai_config.audit_strictness` 使用归档系统模板覆盖客户端传值，固定 JSON Schema 不允许租户侧改写。
+`ai_config.system_extraction_prompt` 与 `ai_config.user_extraction_prompt` 均为后端锁定字段。
+保存时服务端会根据 `ai_config.audit_strictness` 使用对应归档系统模板覆盖客户端传值，
+固定 JSON Schema、输出指令和变量结构不允许租户侧改写。
 
 执行归档复盘时，附件识别遵循最终生效字段范围：`field_mode=all` 才识别全部主表附件；
 选择字段模式仅下载、解析被选中的附件字段，未选附件不会调用 MinerU，也不会进入模型提示词。

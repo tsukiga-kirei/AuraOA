@@ -912,22 +912,11 @@ const reasoningPromptVariables = computed(() => [
   { key: '{{current_node}}', desc: t('admin.ruleConfig.varCurrentNodeDesc') },
 ])
 
-//用户提取提示词可用变量
-const extractionPromptVariables = computed(() => [
-  { key: '{{reasoning_result}}', desc: t('admin.ruleConfig.varReasoningResultDesc') },
-  { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
-])
-
 // 提示词编辑器会记住最近一次有效选区，变量按钮点击后仍可在原光标位置插入。
 const reasoningTextareaRef = ref<any>(null)
-const extractionTextareaRef = ref<any>(null)
 
 const insertReasoningVariable = (variable: string) => {
   reasoningTextareaRef.value?.insertAtCursor(variable)
-}
-
-const insertExtractionVariable = (variable: string) => {
-  extractionTextareaRef.value?.insertAtCursor(variable)
 }
 
 const SUMMARY_DATA_VARIABLE_KEYS = [
@@ -2255,20 +2244,10 @@ const archiveReasoningPromptVariables = computed(() => [
   { key: '{{flow_graph}}', desc: t('admin.ruleConfig.varFlowGraphDesc') },
   { key: '{{current_node}}', desc: t('admin.ruleConfig.varCurrentNodeDesc') },
 ])
-const archiveExtractionPromptVariables = computed(() => [
-  { key: '{{reasoning_result}}', desc: t('admin.ruleConfig.varReasoningResultDesc') },
-  { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
-])
-
 const archiveReasoningTextareaRef = ref<any>(null)
-const archiveExtractionTextareaRef = ref<any>(null)
 
 const insertArchiveReasoningVariable = (variable: string) => {
   archiveReasoningTextareaRef.value?.insertAtCursor(variable)
-}
-
-const insertArchiveExtractionVariable = (variable: string) => {
-  archiveExtractionTextareaRef.value?.insertAtCursor(variable)
 }
 
 // 归档复盘：恢复默认提示词模板
@@ -3054,18 +3033,14 @@ const handleSave = async () => {
                   </div>
                   <div class="prompt-section-desc">{{ t('admin.ruleConfig.userExtractionPromptDesc') }}</div>
                 </div>
-                <PromptVariableBar
-                  :data-variables="extractionPromptVariables"
-                  :system-variables="systemPromptVariables"
-                  @insert="insertExtractionVariable"
-                />
                 <PromptTextarea
-                  ref="extractionTextareaRef"
                   v-model:value="selectedConfig.ai_config.user_extraction_prompt"
                   :rows="6"
                   :placeholder="t('admin.ruleConfig.userExtractionPlaceholder')"
                   :dialog-title="t('admin.ruleConfig.userExtractionPrompt')"
+                  disabled
                 />
+                <div class="system-prompt-readonly-hint">{{ t('admin.ruleConfig.userExtractionPromptReadonly') }}</div>
               </div>
             </div>
           </div>
@@ -5020,18 +4995,14 @@ const handleSave = async () => {
                   </div>
                   <div class="prompt-section-desc">{{ t('admin.ruleConfig.userExtractionPromptDesc') }}</div>
                 </div>
-                <PromptVariableBar
-                  :data-variables="archiveExtractionPromptVariables"
-                  :system-variables="systemPromptVariables"
-                  @insert="insertArchiveExtractionVariable"
-                />
                 <PromptTextarea
-                  ref="archiveExtractionTextareaRef"
                   v-model:value="selectedArchiveConfig.ai_config.user_extraction_prompt"
                   :rows="6"
                   :placeholder="t('admin.ruleConfig.userExtractionPlaceholder')"
                   :dialog-title="t('admin.ruleConfig.userExtractionPrompt')"
+                  disabled
                 />
+                <div class="system-prompt-readonly-hint">{{ t('admin.ruleConfig.userExtractionPromptReadonly') }}</div>
               </div>
             </div>
           </div>

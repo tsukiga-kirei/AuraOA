@@ -104,7 +104,7 @@ func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProces
 			}
 		}
 	}
-	aiConfig = s.lockSystemExtractionPrompt(aiConfig)
+	aiConfig = s.lockExtractionPrompts(aiConfig)
 
 	accessControl := req.AccessControl
 	if accessControl == nil || string(accessControl) == "null" || len(accessControl) == 0 {
@@ -182,9 +182,9 @@ func (s *ProcessAuditConfigService) buildDefaultAIConfig(strictness string) data
 	return datatypes.JSON(result)
 }
 
-// lockSystemExtractionPrompt 使用当前审核尺度的后端模板覆盖结构提取系统提示词。
-// 该提示词包含固定 JSON Schema，租户配置接口不接受客户端改写。
-func (s *ProcessAuditConfigService) lockSystemExtractionPrompt(raw datatypes.JSON) datatypes.JSON {
+// lockExtractionPrompts 使用当前审核尺度的后端模板覆盖结构提取阶段的系统与用户提示词。
+// 两段提示词共同约束固定 JSON Schema，租户配置接口不接受客户端改写。
+func (s *ProcessAuditConfigService) lockExtractionPrompts(raw datatypes.JSON) datatypes.JSON {
 	var data model.AIConfigData
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return raw
@@ -195,17 +195,23 @@ func (s *ProcessAuditConfigService) lockSystemExtractionPrompt(raw datatypes.JSO
 	if err != nil {
 		return raw
 	}
-	for _, template := range templates {
-		if template.PromptType == "system" && template.Phase == "extraction" {
-			data.SystemExtractionPrompt = template.Content
-			break
-		}
-	}
+	applyAuditExtractionPromptTemplates(&data, templates)
 	result, err := json.Marshal(data)
 	if err != nil {
 		return raw
 	}
 	return datatypes.JSON(result)
+}
+
+func applyAuditExtractionPromptTemplates(data *model.AIConfigData, templates []model.SystemPromptTemplate) {
+	for _, template := range templates {
+		if template.PromptType == "system" && template.Phase == "extraction" {
+			data.SystemExtractionPrompt = template.Content
+		}
+		if template.PromptType == "user" && template.Phase == "extraction" {
+			data.UserExtractionPrompt = template.Content
+		}
+	}
 }
 
 // ListPromptTemplates 返回审核工作台系统提示词模板（prompt_key 以 audit_ 为前缀，与归档 archive_ 区分）。
@@ -271,7 +277,7 @@ func (s *ProcessAuditConfigService) Update(c *gin.Context, id uuid.UUID, req *dt
 		fields["kb_mode"] = req.KBMode
 	}
 	if req.AIConfig != nil {
-		fields["ai_config"] = s.lockSystemExtractionPrompt(req.AIConfig)
+		fields["ai_config"] = s.lockExtractionPrompts(req.AIConfig)
 	}
 	if req.UserPermissions != nil {
 		fields["user_permissions"] = req.UserPermissions

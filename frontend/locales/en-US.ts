@@ -1301,6 +1301,7 @@ export default {
     'admin.ruleConfig.resetUserPresets': 'Reset to Default',
     'admin.ruleConfig.systemPromptsReset': 'System prompts reset to preset template for current strictness',
     'admin.ruleConfig.systemPromptReadonly': 'Extraction system prompt is read-only (contains fixed JSON Schema), determined by audit strictness preset',
+    'admin.ruleConfig.userExtractionPromptReadonly': 'The extraction user prompt is read-only (it contains fixed output instructions and variable structure) and is determined by the audit strictness preset.',
     'admin.ruleConfig.userPromptsReset': 'User prompts reset to default template for current strictness',
     'admin.ruleConfig.systemReasoningPrompt': 'System Reasoning Prompt',
     'admin.ruleConfig.systemExtractionPrompt': 'System Extraction Prompt',
