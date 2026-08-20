@@ -218,7 +218,7 @@ const validateCreateForm = (): boolean => {
     message.warning(t('admin.tenants.adminRequired'))
     return false
   }
-  const usernameRegex = /^[a-zA-Z][a-zA-Z0-9_]*$/
+  const usernameRegex = /^[a-zA-Z0-9_]{1,100}$/
   if (!usernameRegex.test(newTenant.value.admin_username)) {
     createTab.value = 'admin'
     message.warning(t('admin.org.usernameFormatError'))

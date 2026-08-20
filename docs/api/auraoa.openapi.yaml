@@ -1379,14 +1379,6 @@ paths:
                   message:
                     type: string
                     example: success
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties:
-                type: string
   /api/admin/system/oa-connections/test:
     post:
       summary: 测试 OA 连接参数
@@ -5988,6 +5980,15 @@ components:
           description: 首次建池与连通性检查超时秒数
         enabled:
           type: boolean
+        weaver_api_url:
+          type: string
+          description: 泛微附件接口 URL。填写后必须同时提供 weaver_appid 与 weaver_default_user
+        weaver_appid:
+          type: string
+          description: 泛微应用 appid；仅在配置附件接口 URL 时必填
+        weaver_default_user:
+          type: string
+          description: 默认调用用户 loginid；仅在配置附件接口 URL 时必填
     AIModelRequest:
       type: object
       required:
@@ -6013,6 +6014,7 @@ components:
           type: boolean
     TenantCreateRequest:
       type: object
+      description: 创建租户。admin_username 为 1–100 位字母、数字或下划线（允许纯数字，可与 OA loginid 一致）；admin_password 可选，空则使用系统配置 auth.default_password
     ProcessConfigRequest:
       type: object
       properties:

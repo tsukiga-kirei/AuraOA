@@ -88,6 +88,8 @@ GET /api/tenant/org/members
 POST /api/tenant/org/members
 ```
 
+`username`：1–100 位英文字母、数字或下划线，允许纯数字（可与 OA `loginid` 一致）。未提供密码时使用系统配置 `auth.default_password`。
+
 ---
 
 ### 更新成员
