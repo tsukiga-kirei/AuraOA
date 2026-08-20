@@ -20,6 +20,11 @@ POST /api/admin/tenants
 
 创建新租户并初始化租户管理员账号。
 
+| 字段 | 说明 |
+|------|------|
+| `admin_username` | 租户管理员登录名。1–100 位英文字母、数字或下划线，允许纯数字（可与 OA `loginid` 一致） |
+| `admin_password` | 可选。不填则使用系统配置 `auth.default_password`（「系统设置 → 新成员默认密码」）；该项也未配置时回退 `Aa123456!` |
+
 ---
 
 ### 更新租户
@@ -144,6 +149,9 @@ POST /api/admin/system/oa-connections
 | `connection_timeout` | int | — | 首次建池与连通性检查超时秒数（默认 30，范围 5–300） |
 | `enabled` | boolean | — | 是否启用 |
 | `description` | string | — | 描述 |
+| `weaver_api_url` | string | — | 泛微附件接口 URL。填写后 `weaver_appid`、`weaver_default_user` 必填 |
+| `weaver_appid` | string | 条件 | 泛微应用 appid |
+| `weaver_default_user` | string | 条件 | 默认调用用户 loginid（ecology9 中通常为数字用户 ID） |
 
 这里的 `driver` 是租户所连接 OA 数据库的驱动，不是 AuraOA 自身主数据库类型。
 达梦运行时驱动支持 Linux/Windows（正式 Docker 部署为 Linux），macOS 本地进程不直接连接达梦；

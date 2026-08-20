@@ -139,8 +139,7 @@ const handleSaveMember = async () => {
     message.warning(t('admin.org.roleRequired'))
     return
   }
-  // 用户名校验：只能英文字母、数字、下划线，且以字母开头
-  const usernameRegex = /^[a-zA-Z][a-zA-Z0-9_]*$/
+  const usernameRegex = /^[a-zA-Z0-9_]{1,100}$/
   if (!usernameRegex.test(memberForm.value.username)) {
     message.warning(t('admin.org.usernameFormatError'))
     return

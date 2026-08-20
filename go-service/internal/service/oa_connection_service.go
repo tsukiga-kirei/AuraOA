@@ -105,6 +105,10 @@ func (s *OAConnectionService) Create(req *dto.CreateOAConnectionRequest) (*dto.O
 		conn.Status = "disconnected"
 	}
 
+	if err := validateWeaverAttachmentKeys(conn.OAType, conn.WeaverAPIURL, conn.WeaverAppID, conn.WeaverDefaultUser); err != nil {
+		return nil, err
+	}
+
 	if err := s.repo.Create(conn); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
@@ -213,6 +217,18 @@ func (s *OAConnectionService) Update(id uuid.UUID, req *dto.UpdateOAConnectionRe
 	if req.WeaverDefaultUser != "" {
 		fields["weaver_default_user"] = req.WeaverDefaultUser
 	}
+
+	oaType := existing.OAType
+	if req.OAType != "" {
+		oaType = req.OAType
+	}
+	apiURL := firstNonEmpty(req.WeaverAPIURL, existing.WeaverAPIURL)
+	appID := firstNonEmpty(req.WeaverAppID, existing.WeaverAppID)
+	loginID := firstNonEmpty(req.WeaverDefaultUser, existing.WeaverDefaultUser)
+	if err := validateWeaverAttachmentKeys(oaType, apiURL, appID, loginID); err != nil {
+		return nil, err
+	}
+
 	if len(fields) > 0 {
 		if err := s.repo.Update(id, fields); err != nil {
 			return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
@@ -368,6 +384,20 @@ func (s *OAConnectionService) testOAConnection(conn *model.OADatabaseConnection)
 		svcErr := newServiceError(errcode.ErrOAConnectionFailed, fmt.Sprintf("连接失败: %s", err.Error()))
 		pkglogger.Global().Warn("OA连接测试失败", zap.Error(svcErr))
 		return svcErr
+	}
+	return nil
+}
+
+// validateWeaverAttachmentKeys：填写附件接口 URL 后，appid 与 loginid 必须齐全。
+func validateWeaverAttachmentKeys(oaType, apiURL, appID, loginID string) error {
+	if oaType != "weaver_e9" || strings.TrimSpace(apiURL) == "" {
+		return nil
+	}
+	if strings.TrimSpace(appID) == "" {
+		return newServiceError(errcode.ErrParamValidation, "配置附件接口 URL 时必须填写泛微 appid")
+	}
+	if strings.TrimSpace(loginID) == "" {
+		return newServiceError(errcode.ErrParamValidation, "配置附件接口 URL 时必须填写默认调用用户 loginid")
 	}
 	return nil
 }

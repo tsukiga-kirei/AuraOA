@@ -23,6 +23,7 @@ import (
 	"auraoa/go-service/internal/pkg/errcode"
 	"auraoa/go-service/internal/pkg/hash"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/pkg/validate"
 	"auraoa/go-service/internal/repository"
 )
 
@@ -110,9 +111,8 @@ func (s *TenantService) getSystemConfigInt(key string, defaultVal int) int {
 // 任意步骤失败时整个事务回滚。
 func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantResponse, error) {
 	// 0. 管理员参数校验
-	usernameRegex := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
-	if !usernameRegex.MatchString(req.AdminUsername) {
-		return nil, newServiceError(errcode.ErrParamValidation, "管理员用户名只能包含英文字母、数字和下划线，且以字母开头")
+	if !validate.IsLoginUsername(req.AdminUsername) {
+		return nil, newServiceError(errcode.ErrParamValidation, "管理员"+validate.LoginUsernameRule)
 	}
 	if req.AdminEmail != "" {
 		emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)

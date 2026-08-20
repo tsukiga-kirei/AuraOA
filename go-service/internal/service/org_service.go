@@ -20,6 +20,7 @@ import (
 	excelpkg "auraoa/go-service/internal/pkg/excel"
 	"auraoa/go-service/internal/pkg/hash"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"auraoa/go-service/internal/pkg/validate"
 	"auraoa/go-service/internal/repository"
 )
 
@@ -237,10 +238,8 @@ func (s *OrgService) ListMembers(c *gin.Context) ([]dto.MemberResponse, error) {
 // CreateMember 创建新的组织成员，自动创建用户账号并分配系统角色。
 func (s *OrgService) CreateMember(c *gin.Context, tenantID uuid.UUID, req *dto.CreateMemberRequest) (*dto.MemberResponse, error) {
 	// 0. 参数格式校验
-	// 用户名只能包含英文字母、数字和下划线
-	usernameRegex := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
-	if !usernameRegex.MatchString(req.Username) {
-		return nil, newServiceError(errcode.ErrParamValidation, "username must start with a letter and contain only letters, digits, and underscores")
+	if !validate.IsLoginUsername(req.Username) {
+		return nil, newServiceError(errcode.ErrParamValidation, validate.LoginUsernameRule)
 	}
 	// 邮箱格式校验（如果提供）
 	if req.Email != "" {
@@ -584,6 +583,10 @@ func (s *OrgService) ImportMembers(tenantID uuid.UUID, file multipart.File) (*dt
 // 注意：ParseMemberImport 返回的 MemberRow 不含行号，行号仅在 ImportError 中。
 // 为了在 importSingleMember 中报告行号，我们在 ImportMembers 中传入行号。
 func (s *OrgService) importSingleMemberWithRow(tenantID uuid.UUID, rowNum int, row excelpkg.MemberRow, defaultPassword string) *dto.ImportRowError {
+	if !validate.IsLoginUsername(row.Username) {
+		return &dto.ImportRowError{RowNumber: rowNum, Reason: validate.LoginUsernameRule + ": " + row.Username}
+	}
+
 	// 校验部门是否存在
 	var dept model.Department
 	if err := s.db.Where("tenant_id = ? AND name = ?", tenantID, row.DepartmentName).First(&dept).Error; err != nil {

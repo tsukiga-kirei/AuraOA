@@ -359,13 +359,18 @@ const saveOADb = async () => {
     message.warning(t('admin.settings.oaDbPasswordRequired', '请填写密码'))
     return
   }
-  if (
-    newOADb.value.oa_type === 'weaver_e9'
-    && !editingOADb.value
-    && !String(newOADb.value.weaver_appid ?? '').trim()
-  ) {
-    message.warning(t('admin.settings.weaverAppidRequired', '请填写泛微应用 appid'))
-    return
+  if (newOADb.value.oa_type === 'weaver_e9' && String(newOADb.value.weaver_api_url ?? '').trim()) {
+    const appid = String(newOADb.value.weaver_appid ?? '').trim()
+    const hasAppid = (appid && appid !== WEAVER_APPID_MASK) || weaverAppidConfigured.value
+    const loginid = String(newOADb.value.weaver_default_user ?? '').trim()
+    if (!hasAppid) {
+      message.warning(t('admin.settings.weaverAppidRequiredWhenUrl'))
+      return
+    }
+    if (!loginid) {
+      message.warning(t('admin.settings.weaverLoginIdRequiredWhenUrl'))
+      return
+    }
   }
   try {
     const payload = buildOADbPayload()
@@ -1562,7 +1567,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             type="info"
             show-icon
             style="margin-bottom: 12px;"
-            :message="t('admin.settings.weaverE9Tip', '当前附件识别链路仅使用 URL + appid + loginid（loginid 在 ecology9 中通常为数字用户ID）。详见 docs/oa-configurations/01-attachment-recognition.md。')"
+            :message="t('admin.settings.weaverE9Tip')"
           />
           <a-form-item :label="t('admin.settings.weaverApiUrl', '附件接口 URL')">
             <a-input v-model:value="newOADb.weaver_api_url" size="large" placeholder="http://oa.example.com/api/aurabridge/attachments" />
