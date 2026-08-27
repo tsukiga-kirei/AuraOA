@@ -111,13 +111,6 @@ function versionStatusTitle(status: ExecutionConfigVersionStatus | null): string
   return t('executionConfig.notGenerated')
 }
 
-function versionStatusHint(status: ExecutionConfigVersionStatus | null): string {
-  if (!status) return t('executionConfig.statusUnavailableHint')
-  return status.status === 'current'
-    ? t('executionConfig.currentHint')
-    : t('executionConfig.pendingHint')
-}
-
 //===== Cron 任务类型配置 =====
 const cronConfigs = ref<CronTaskConfig[]>([])
 const loadingCron = ref(false)
@@ -2714,7 +2707,6 @@ const handleSave = async () => {
               <span class="config-version-status__dot" />
               <div>
                 <strong>{{ versionStatusTitle(auditVersionStatus) }}</strong>
-                <small>{{ versionStatusHint(auditVersionStatus) }}</small>
               </div>
             </template>
           </div>
@@ -3392,7 +3384,6 @@ const handleSave = async () => {
               <span class="config-version-status__dot" />
               <div>
                 <strong>{{ versionStatusTitle(summaryVersionStatus) }}</strong>
-                <small>{{ versionStatusHint(summaryVersionStatus) }}</small>
               </div>
             </template>
           </div>
@@ -4692,7 +4683,6 @@ const handleSave = async () => {
               <span class="config-version-status__dot" />
               <div>
                 <strong>{{ versionStatusTitle(archiveVersionStatus) }}</strong>
-                <small>{{ versionStatusHint(archiveVersionStatus) }}</small>
               </div>
             </template>
           </div>
@@ -5632,7 +5622,6 @@ const handleSave = async () => {
 }
 .config-version-status__dot { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--color-text-tertiary); flex-shrink: 0; }
 .config-version-status strong { display: block; font-size: 13px; line-height: 1.4; color: var(--color-text-primary); }
-.config-version-status small { display: block; margin-top: 2px; font-size: 11px; line-height: 1.45; color: var(--color-text-tertiary); }
 .config-version-status--current { border-color: rgba(16, 185, 129, 0.24); background: var(--color-success-bg); }
 .config-version-status--current .config-version-status__dot { background: var(--color-success); }
 .config-version-status--updated { border-color: rgba(245, 158, 11, 0.28); background: var(--color-warning-bg); }
