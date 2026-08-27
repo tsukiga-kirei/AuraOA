@@ -42,19 +42,20 @@ const (
 
 // ProcessSummaryService 执行 OA 嵌入流程总结。
 type ProcessSummaryService struct {
-	logRepo       *repository.ProcessSummaryLogRepo
-	snapshotRepo  *repository.ProcessSummarySnapshotRepo
-	configRepo    *repository.ProcessSummaryConfigRepo
-	tenantRepo    *repository.TenantRepo
-	oaConnRepo    *repository.OAConnectionRepo
-	aiModelRepo   *repository.AIModelRepo
-	aiCaller      *AIModelCallerService
-	attachmentSvc *AttachmentRecognitionService
-	db            *gorm.DB
-	rdb           *redis.Client
-	sysFlags      *systemflags.Resolver
-	externalCtx   *ExternalContextService
-	oaConnections *oa.ConnectionManager
+	logRepo           *repository.ProcessSummaryLogRepo
+	snapshotRepo      *repository.ProcessSummarySnapshotRepo
+	configRepo        *repository.ProcessSummaryConfigRepo
+	tenantRepo        *repository.TenantRepo
+	oaConnRepo        *repository.OAConnectionRepo
+	aiModelRepo       *repository.AIModelRepo
+	aiCaller          *AIModelCallerService
+	attachmentSvc     *AttachmentRecognitionService
+	db                *gorm.DB
+	rdb               *redis.Client
+	sysFlags          *systemflags.Resolver
+	externalCtx       *ExternalContextService
+	oaConnections     *oa.ConnectionManager
+	executionVersions *repository.ExecutionConfigVersionRepo
 }
 
 func NewProcessSummaryService(
@@ -73,19 +74,20 @@ func NewProcessSummaryService(
 	oaConnections *oa.ConnectionManager,
 ) *ProcessSummaryService {
 	return &ProcessSummaryService{
-		logRepo:       logRepo,
-		snapshotRepo:  snapshotRepo,
-		configRepo:    configRepo,
-		tenantRepo:    tenantRepo,
-		oaConnRepo:    oaConnRepo,
-		aiModelRepo:   aiModelRepo,
-		aiCaller:      aiCaller,
-		attachmentSvc: attachmentSvc,
-		db:            db,
-		rdb:           rdb,
-		sysFlags:      sysFlags,
-		externalCtx:   externalCtx,
-		oaConnections: oaConnections,
+		logRepo:           logRepo,
+		snapshotRepo:      snapshotRepo,
+		configRepo:        configRepo,
+		tenantRepo:        tenantRepo,
+		oaConnRepo:        oaConnRepo,
+		aiModelRepo:       aiModelRepo,
+		aiCaller:          aiCaller,
+		attachmentSvc:     attachmentSvc,
+		db:                db,
+		rdb:               rdb,
+		sysFlags:          sysFlags,
+		externalCtx:       externalCtx,
+		oaConnections:     oaConnections,
+		executionVersions: repository.NewExecutionConfigVersionRepo(db),
 	}
 }
 
@@ -96,36 +98,40 @@ type SummaryExecuteRequest struct {
 	TriggerSource    string     `json:"trigger_source"`
 	TriggerDetail    string     `json:"trigger_detail"`
 	ScheduleConfigID *uuid.UUID `json:"-"`
+	UseLatestConfig  bool       `json:"use_latest_config,omitempty"`
 }
 
 type SummaryExecuteResponse struct {
-	Status       string                            `json:"status,omitempty"`
-	ID           string                            `json:"id"`
-	TraceID      string                            `json:"trace_id"`
-	ProcessID    string                            `json:"process_id"`
-	Blocks       []model.ProcessSummaryBlockResult `json:"blocks,omitempty"`
-	DurationMs   int                               `json:"duration_ms,omitempty"`
-	CreatedAt    string                            `json:"created_at"`
-	ParseError   string                            `json:"parse_error,omitempty"`
-	RawContent   string                            `json:"raw_content,omitempty"`
-	ErrorMessage string                            `json:"error_message,omitempty"`
+	Status          string                            `json:"status,omitempty"`
+	ID              string                            `json:"id"`
+	TraceID         string                            `json:"trace_id"`
+	ProcessID       string                            `json:"process_id"`
+	Blocks          []model.ProcessSummaryBlockResult `json:"blocks,omitempty"`
+	DurationMs      int                               `json:"duration_ms,omitempty"`
+	CreatedAt       string                            `json:"created_at"`
+	ParseError      string                            `json:"parse_error,omitempty"`
+	RawContent      string                            `json:"raw_content,omitempty"`
+	ErrorMessage    string                            `json:"error_message,omitempty"`
+	ConfigVersionNo *int                              `json:"config_version_no,omitempty"`
 }
 
 type SummaryEmbedContextResponse struct {
-	Supported          bool                      `json:"supported"`
-	Reason             string                    `json:"reason,omitempty"`
-	Message            string                    `json:"message,omitempty"`
-	Process            *oa.ProcessRequestSummary `json:"process,omitempty"`
-	EmbedEnabled       bool                      `json:"embed_enabled"`
-	HasSummary         bool                      `json:"has_summary"`
-	Stale              bool                      `json:"stale"`
-	StaleBlockIDs      []string                  `json:"stale_block_ids,omitempty"`
-	ShouldAutoSummary  bool                      `json:"should_auto_summary"`
-	LastSummaryAt      string                    `json:"last_summary_at,omitempty"`
-	RunningJobID       string                    `json:"running_job_id,omitempty"`
-	SummaryResult      map[string]interface{}    `json:"summary_result,omitempty"`
-	AutoRetryBlocked   bool                      `json:"auto_retry_blocked"`
-	CurrentFingerprint string                    `json:"-"`
+	Supported              bool                      `json:"supported"`
+	Reason                 string                    `json:"reason,omitempty"`
+	Message                string                    `json:"message,omitempty"`
+	Process                *oa.ProcessRequestSummary `json:"process,omitempty"`
+	EmbedEnabled           bool                      `json:"embed_enabled"`
+	HasSummary             bool                      `json:"has_summary"`
+	Stale                  bool                      `json:"stale"`
+	StaleBlockIDs          []string                  `json:"stale_block_ids,omitempty"`
+	ShouldAutoSummary      bool                      `json:"should_auto_summary"`
+	LastSummaryAt          string                    `json:"last_summary_at,omitempty"`
+	RunningJobID           string                    `json:"running_job_id,omitempty"`
+	SummaryResult          map[string]interface{}    `json:"summary_result,omitempty"`
+	AutoRetryBlocked       bool                      `json:"auto_retry_blocked"`
+	ConfigVersionNo        *int                      `json:"config_version_no,omitempty"`
+	ConfigUpgradeAvailable bool                      `json:"config_upgrade_available"`
+	CurrentFingerprint     string                    `json:"-"`
 }
 
 type summaryStreamChunk struct {
@@ -184,10 +190,32 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 		}, nil
 	}
 
+	embedCfg := parseSummaryEmbedConfig(config.EmbedConfig)
+	currentBlocks := parseSummaryBlocks(config.SummaryBlocks)
+	if len(currentBlocks) == 0 {
+		currentBlocks = defaultSummaryBlocks()
+	}
+	currentConfigSnapshot := SummaryExecutionConfigSnapshot{Blocks: currentBlocks}
+	currentConfigFingerprint := stableJSONFingerprint(currentConfigSnapshot)
+	blocks := currentBlocks
+	bindingVersion, bindingErr := s.executionVersions.GetBindingVersion(
+		c.Request.Context(), tenantID, model.ExecutionConfigModuleSummary, processID,
+	)
+	if bindingErr == nil {
+		pinned, decodeErr := decodeExecutionSnapshot[SummaryExecutionConfigSnapshot](bindingVersion)
+		if decodeErr != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "读取流程绑定的总结配置版本失败")
+		}
+		blocks = pinned.Blocks
+	} else if !errors.Is(bindingErr, gorm.ErrRecordNotFound) {
+		return nil, newServiceError(errcode.ErrDatabase, "查询流程总结配置版本失败")
+	}
 	resp := &SummaryEmbedContextResponse{
-		Supported:    true,
-		Process:      summary,
-		EmbedEnabled: true,
+		Supported:              true,
+		Process:                summary,
+		EmbedEnabled:           true,
+		ConfigVersionNo:        executionVersionNumber(bindingVersion),
+		ConfigUpgradeAvailable: bindingVersion != nil && bindingVersion.Fingerprint != currentConfigFingerprint,
 	}
 	if running, _ := s.logRepo.GetRunningByProcessID(c, processID); running != nil {
 		resp.RunningJobID = running.ID.String()
@@ -235,8 +263,6 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 		return resp, nil
 	}
 
-	embedCfg := parseSummaryEmbedConfig(config.EmbedConfig)
-	blocks := parseSummaryBlocks(config.SummaryBlocks)
 	if len(blocks) == 0 {
 		blocks = defaultSummaryBlocks()
 	}
@@ -380,6 +406,7 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 		queueKind,
 		ctxResp.CurrentFingerprint,
 		req.ScheduleConfigID,
+		req.UseLatestConfig,
 	)
 	if err != nil {
 		return nil, err
@@ -407,6 +434,7 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 	queueKind string,
 	attemptFingerprint string,
 	scheduleConfigID *uuid.UUID,
+	useLatestConfig bool,
 ) (uuid.UUID, uuid.UUID, uuid.UUID, time.Time, error) {
 	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
@@ -432,6 +460,26 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 	if !config.EmbedEnabled {
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrPermissionDenied, fmt.Sprintf("流程 '%s' 未启用 OA 嵌入总结", processType))
 	}
+	blocks := parseSummaryBlocks(config.SummaryBlocks)
+	if len(blocks) == 0 {
+		blocks = defaultSummaryBlocks()
+	}
+	configSnapshot := SummaryExecutionConfigSnapshot{Blocks: blocks}
+	configVersion, err := s.executionVersions.BindSnapshot(
+		c.Request.Context(),
+		tenantID,
+		userID,
+		model.ExecutionConfigModuleSummary,
+		processID,
+		processType,
+		config.ID,
+		stableJSONFingerprint(configSnapshot),
+		configSnapshot,
+		useLatestConfig,
+	)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrDatabase, "绑定总结配置版本失败")
+	}
 	id := uuid.New()
 	now := apptime.Now()
 	row := &model.ProcessSummaryLog{
@@ -449,12 +497,22 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 		QueueKind:          queueKind,
 		AttemptFingerprint: attemptFingerprint,
 		ScheduleConfigID:   scheduleConfigID,
+		ConfigVersionID:    executionVersionID(configVersion),
+		ConfigVersionNo:    executionVersionNumber(configVersion),
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}
 	if err := s.logRepo.Create(row); err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrDatabase, "总结日志写入失败")
 	}
+	pkglogger.GetTenantLogger(tenant.Code).Info("流程总结执行配置版本已绑定",
+		zap.String("summaryLogID", id.String()),
+		zap.String("tenantID", tenantID.String()),
+		zap.String("userID", userID.String()),
+		zap.String("processID", processID),
+		zap.Int("configVersion", configVersion.VersionNo),
+		zap.Bool("useLatestConfig", useLatestConfig),
+	)
 	return id, tenantID, userID, now, nil
 }
 
@@ -489,12 +547,28 @@ func (s *ProcessSummaryService) processSummaryJob(
 		s.markSummaryFailedDB(tenantID, summaryLogID, err.Error())
 		return err
 	}
-	config, err := s.configRepo.GetByProcessType(c, logEntry.ProcessType)
+	currentConfig, err := s.configRepo.GetByProcessType(c, logEntry.ProcessType)
 	if err != nil {
 		s.markSummaryFailedDB(tenantID, summaryLogID, "总结配置不存在")
 		return err
 	}
-	blocks := parseSummaryBlocks(config.SummaryBlocks)
+	var blocks []model.SummaryBlockConfig
+	if logEntry.ConfigVersionID != nil {
+		version, versionErr := s.executionVersions.GetVersionByID(ctx, tenantID, *logEntry.ConfigVersionID)
+		if versionErr != nil {
+			s.markSummaryFailedDB(tenantID, summaryLogID, "总结配置版本不存在")
+			return versionErr
+		}
+		pinned, decodeErr := decodeExecutionSnapshot[SummaryExecutionConfigSnapshot](version)
+		if decodeErr != nil {
+			s.markSummaryFailedDB(tenantID, summaryLogID, decodeErr.Error())
+			return decodeErr
+		}
+		blocks = pinned.Blocks
+	} else {
+		// 仅兼容迁移前已经入队的总结任务。
+		blocks = parseSummaryBlocks(currentConfig.SummaryBlocks)
+	}
 	if len(blocks) == 0 {
 		blocks = defaultSummaryBlocks()
 	}
@@ -535,7 +609,7 @@ func (s *ProcessSummaryService) processSummaryJob(
 		storedAnchor := parseOAContextAnchor(previousLog.OAContextAnchor)
 		storedDependencies := parseSummaryBlockDependencies(previousLog.ProcessSnapshot)
 		changes := oa.CompareContextAnchors(storedAnchor, currentAnchor)
-		embedCfg := parseSummaryEmbedConfig(config.EmbedConfig)
+		embedCfg := parseSummaryEmbedConfig(currentConfig.EmbedConfig)
 		for _, id := range changedSummaryBlockIDs(blocks, storedDependencies, currentDependencies, changes, embedCfg) {
 			blockIDsToRun[id] = true
 		}
@@ -795,15 +869,16 @@ func (s *ProcessSummaryService) GetSnapshotChain(c *gin.Context, processID strin
 
 func (s *ProcessSummaryService) summaryLogToResponse(log *model.ProcessSummaryLog) *SummaryExecuteResponse {
 	resp := &SummaryExecuteResponse{
-		Status:       log.Status,
-		ID:           log.ID.String(),
-		TraceID:      fmt.Sprintf("SM-%s", log.ID.String()[:8]),
-		ProcessID:    log.ProcessID,
-		DurationMs:   log.DurationMs,
-		CreatedAt:    apptime.FormatRFC3339(log.CreatedAt),
-		ParseError:   log.ParseError,
-		RawContent:   log.RawContent,
-		ErrorMessage: log.ErrorMessage,
+		Status:          log.Status,
+		ID:              log.ID.String(),
+		TraceID:         fmt.Sprintf("SM-%s", log.ID.String()[:8]),
+		ProcessID:       log.ProcessID,
+		DurationMs:      log.DurationMs,
+		CreatedAt:       apptime.FormatRFC3339(log.CreatedAt),
+		ParseError:      log.ParseError,
+		RawContent:      log.RawContent,
+		ErrorMessage:    log.ErrorMessage,
+		ConfigVersionNo: log.ConfigVersionNo,
 	}
 	var parsed model.ProcessSummaryResultJSON
 	if err := json.Unmarshal(log.SummaryResult, &parsed); err == nil {

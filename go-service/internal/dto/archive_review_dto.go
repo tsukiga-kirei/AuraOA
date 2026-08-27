@@ -4,18 +4,20 @@ import "time"
 
 // ArchiveReviewExecuteRequest 发起归档复盘任务请求。
 type ArchiveReviewExecuteRequest struct {
-	ProcessID   string `json:"process_id" binding:"required"`
-	ProcessType string `json:"process_type" binding:"required"`
-	Title       string `json:"title"`
+	ProcessID       string `json:"process_id" binding:"required"`
+	ProcessType     string `json:"process_type" binding:"required"`
+	Title           string `json:"title"`
+	UseLatestConfig bool   `json:"use_latest_config,omitempty"`
 }
 
 // ArchiveReviewSubmitResponse 归档复盘任务提交响应。
 type ArchiveReviewSubmitResponse struct {
-	Status    string `json:"status"`
-	ID        string `json:"id"`
-	TraceID   string `json:"trace_id"`
-	ProcessID string `json:"process_id"`
-	CreatedAt string `json:"created_at"`
+	Status          string `json:"status"`
+	ID              string `json:"id"`
+	TraceID         string `json:"trace_id"`
+	ProcessID       string `json:"process_id"`
+	CreatedAt       string `json:"created_at"`
+	ConfigVersionNo *int   `json:"config_version_no,omitempty"`
 }
 
 // ArchiveBatchExecuteRequest 批量提交归档复盘任务请求。

@@ -151,6 +151,9 @@ X-Embed-Token: <tenant embed access token>
 - 普通审批日志、批注、转发、抄送与当前节点变化。
 
 普通审批流变化是否触发由 `auto_audit_on_flow_change` 单独控制，默认关闭。
+审核规则、尺度、提示词和字段配置变化不属于 OA 业务变化，不会设置 `should_auto_audit`。
+响应中的 `config_version_no` 表示流程已绑定版本；当前管理配置与绑定版本不同时返回
+`config_upgrade_available=true`，但仍需用户明确选择升级。
 `trigger_source=embed_auto` 时后端会再次校验 `should_auto_audit`，无需刷新时不会创建审核任务。
 可见审核页首次加载会先读取审核实际依赖的业务字段、附件版本、流程锚点和规则配置并比较指纹，
 不下载或识别附件正文，也不调用 AI。无变化时直接展示已有结果；有变化时不先展示旧结果，
@@ -170,9 +173,13 @@ POST /api/embed/execute
 {
   "process_id": "598488",
   "trigger_source": "embed_auto",
-  "trigger_detail": "visible_open"
+  "trigger_detail": "visible_open",
+  "use_latest_config": false
 }
 ```
+
+`use_latest_config` 默认 `false`，自动来源必须保持为 `false`。手动传 `true` 会把流程绑定升级到
+当前最终生效配置后执行；普通“重新审核”继续沿用原版本。
 
 `trigger_detail` 的可见页取值为 `visible_open`，手动按钮为 `manual`。后台内部使用
 `save_requested`、`submit_requested`、`scheduled_scan` 区分保存、提交与定时扫描。

@@ -182,9 +182,8 @@ func changedSummaryBlockIDs(
 		before, exists := stored[block.ID]
 		after := current[block.ID]
 		if !exists || before.Config == "" || before.Config != after.Config {
-			if cfg.AutoSummaryOnDataChange {
-				out = append(out, block.ID)
-			}
+			// 总结块配置版本变化不属于 OA 业务数据变化。旧结果继续使用已绑定版本，
+			// 只有用户显式选择升级配置时才重新生成。
 			continue
 		}
 		dataChanged := before.Data != after.Data || before.Attachments != after.Attachments
@@ -221,9 +220,6 @@ func parseSummaryBlockDependencies(raw []byte) map[string]SummaryBlockDependency
 
 func auditRefreshRequired(changes oa.OAContextChanges, cfg model.EmbedConfigData) bool {
 	if changes.LegacyAnchor {
-		return cfg.AutoAuditOnDataChange
-	}
-	if changes.ExecutionConfigChanged {
 		return cfg.AutoAuditOnDataChange
 	}
 	if cfg.AutoAuditOnDataChange && (changes.DataChanged || changes.AttachmentChanged) {

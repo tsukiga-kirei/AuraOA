@@ -71,6 +71,11 @@ POST /api/audit/execute
 | `process_id` | string | ✅ | OA 流程实例 ID |
 | `process_type` | string | ✅ | 流程类型名称 |
 | `title` | string | — | 流程标题 |
+| `use_latest_config` | boolean | — | 默认 `false`，沿用该流程已绑定的执行配置版本；仅明确传 `true` 时升级到当前最新配置后重新审核 |
+
+首次执行会把最终生效的字段范围、规则、审核尺度和提示词保存为不可变执行配置版本，并与流程实例绑定。
+同一流程后续重新审核默认沿用该版本；管理端修改规则、尺度或提示词不会自动使历史结果失效。
+任务与审核链响应中的 `config_version_no` 表示本次实际使用的版本，迁移前历史记录可能为空。
 
 **响应**：返回 `pending` 状态的任务 ID，前端通过轮询获取最终结果。
 

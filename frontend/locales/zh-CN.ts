@@ -661,6 +661,8 @@ export default {
     'dashboard.historyReadonly': '历史记录（只读）',
     'dashboard.auditChain': '审核链',
     'dashboard.reAudit': '重新审核',
+	'executionConfig.version': '执行配置 v{0}',
+	'executionConfig.useLatest': '使用最新配置重新执行',
     'dashboard.overallScore': '综合评分',
     'dashboard.points': '分',
     'dashboard.duration': '耗时',

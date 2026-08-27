@@ -44,6 +44,9 @@ export interface AuditResult {
   parse_error?: string
   /** 原始 AI 回复（parse_error 时用于展示） */
   raw_content?: string
+	/** 本次结果实际使用的不可变执行配置版本；历史存量结果可能为空 */
+	config_version_id?: string
+	config_version_no?: number
 }
 
 /** 单条规则校验结果 */
@@ -68,6 +71,7 @@ export interface AuditChainItem {
   audit_result: AuditResult
   duration_ms: number
   created_at: string
+	config_version_no?: number
 }
 
 /** 批量审核响应 */
@@ -86,6 +90,7 @@ export interface AuditExecuteRequest {
   process_id: string
   process_type: string
   title: string
+	use_latest_config?: boolean
 }
 
 /** 批量审核请求 */

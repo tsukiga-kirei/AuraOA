@@ -660,6 +660,8 @@ export default {
     'dashboard.historyReadonly': 'History (read-only)',
     'dashboard.auditChain': 'Audit Chain',
     'dashboard.reAudit': 'Re-audit',
+	'executionConfig.version': 'Execution config v{0}',
+	'executionConfig.useLatest': 'Run with latest config',
     'dashboard.overallScore': 'Score',
     'dashboard.points': '',
     'dashboard.duration': 'Duration',

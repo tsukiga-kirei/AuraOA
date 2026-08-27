@@ -188,7 +188,7 @@ function startSSE(jobId?: string) {
   eventSourceStream.value.onerror = () => disconnectStream()
 }
 
-async function runSummary(trigger: 'summary_embed_auto' | 'summary_embed_manual') {
+async function runSummary(trigger: 'summary_embed_auto' | 'summary_embed_manual', useLatestConfig = false) {
   if (!processId.value || summarizing.value) return
   summarizing.value = true
   currentResult.value = createPendingResult()
@@ -202,6 +202,7 @@ async function runSummary(trigger: 'summary_embed_auto' | 'summary_embed_manual'
         title: processInfo.value?.title,
         trigger_source: trigger,
         trigger_detail: trigger === 'summary_embed_manual' ? 'manual' : 'visible_open',
+		use_latest_config: useLatestConfig,
       },
       (st) => {
         mergeSummaryProgress(st)
@@ -339,6 +340,9 @@ onBeforeUnmount(() => disconnectStream())
               </div>
             </div>
             <div class="process-actions">
+			  <a-tag v-if="context.config_version_no" color="blue">
+				{{ t('executionConfig.version', [context.config_version_no]) }}
+			  </a-tag>
               <div
                 v-if="processStat"
                 class="process-stat"
@@ -357,6 +361,17 @@ onBeforeUnmount(() => disconnectStream())
                 <ReloadOutlined v-else />
                 <span>{{ t('embed.summary.retry') }}</span>
               </a-button>
+			  <a-button
+				v-if="context?.config_upgrade_available"
+				class="process-action"
+				type="text"
+				size="small"
+				:disabled="summarizing"
+				@click="runSummary('summary_embed_manual', true)"
+			  >
+				<ThunderboltOutlined />
+				<span>{{ t('executionConfig.useLatest') }}</span>
+			  </a-button>
             </div>
           </div>
         </div>

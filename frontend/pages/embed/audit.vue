@@ -205,7 +205,7 @@ function createPendingResult(): AuditResult {
   }
 }
 
-async function runAudit(trigger: 'embed_auto' | 'embed_manual') {
+async function runAudit(trigger: 'embed_auto' | 'embed_manual', useLatestConfig = false) {
   if (!processId.value || auditing.value) return
   disconnectStream()
   auditing.value = true
@@ -218,6 +218,7 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual') {
         title: processInfo.value?.title,
         trigger_source: trigger,
         trigger_detail: trigger === 'embed_manual' ? 'manual' : 'visible_open',
+		use_latest_config: useLatestConfig,
       },
       (st) => {
         mergeAuditProgress(st)
@@ -279,6 +280,7 @@ async function bootstrap() {
 }
 
 const handleReAudit = () => runAudit('embed_manual')
+const handleReAuditWithLatestConfig = () => runAudit('embed_manual', true)
 
 const processStat = computed(() => {
   const ms = currentResult.value?.duration_ms
@@ -342,6 +344,9 @@ onBeforeUnmount(() => {
       >
         {{ t('embed.lastAuditAt') }}：{{ formatLastAuditAt(context.last_audit_at) }}
         <a-tag v-if="context.stale" color="warning" style="margin-left: 8px;">{{ t('embed.staleTag') }}</a-tag>
+		<a-tag v-if="context.config_version_no" color="blue" style="margin-left: 8px;">
+		  {{ t('executionConfig.version', [context.config_version_no]) }}
+		</a-tag>
       </div>
       <p v-else-if="isAuditingActive" class="embed-last-audit embed-last-audit--active">
         {{ t('dashboard.aiAnalyzingSub') }}
@@ -418,6 +423,17 @@ onBeforeUnmount(() => {
                   <ReloadOutlined v-else />
                   <span>{{ t('dashboard.reAudit') }}</span>
                 </a-button>
+				<a-button
+				  v-if="context.config_upgrade_available"
+				  class="embed-process-card__action"
+				  type="text"
+				  size="small"
+				  :disabled="auditing"
+				  @click="handleReAuditWithLatestConfig"
+				>
+				  <ThunderboltOutlined />
+				  <span>{{ t('executionConfig.useLatest') }}</span>
+				</a-button>
               </div>
             </div>
           </div>

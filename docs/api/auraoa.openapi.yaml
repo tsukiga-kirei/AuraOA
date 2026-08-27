@@ -5583,6 +5583,10 @@ paths:
                   enum:
                   - visible_open
                   - manual
+                use_latest_config:
+                  type: boolean
+                  default: false
+                  description: 手动明确升级流程绑定到当前最新执行配置
   /api/embed/jobs/{id}:
     get:
       summary: 查询嵌入审核任务状态
@@ -5723,6 +5727,10 @@ paths:
                   enum:
                   - visible_open
                   - manual
+                use_latest_config:
+                  type: boolean
+                  default: false
+                  description: 手动明确升级流程绑定到当前最新总结配置
   /api/embed/summary/jobs/{id}:
     get:
       summary: 查询嵌入总结任务状态
@@ -5900,6 +5908,10 @@ components:
           type: string
         trigger_source:
           type: string
+        use_latest_config:
+          type: boolean
+          default: false
+          description: 明确使用当前最新配置并升级流程绑定
     JobStatus:
       type: object
       properties:
@@ -5928,6 +5940,10 @@ components:
           description: 任务队列类型；OA 手动/可见页进入 interactive，保存/提交进入 background，流程定时扫描进入 scheduled，系统内审核进入 workbench
         error_message:
           type: string
+        config_version_no:
+          type: integer
+          nullable: true
+          description: 本次任务实际使用的不可变执行配置版本
     ContextTestRequest:
       type: object
       required:

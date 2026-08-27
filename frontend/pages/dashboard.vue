@@ -536,7 +536,7 @@ const handleSelectProcess = (processId: string) => {
 }
 
 // ─── 单条审核 ───
-const handleAudit = async (processId: string) => {
+const handleAudit = async (processId: string, useLatestConfig = false) => {
   const item = processList.value.find(p => p.process_id === processId)
   if (!item) return
   loading.value = true
@@ -560,6 +560,7 @@ const handleAudit = async (processId: string) => {
       process_id: processId,
       process_type: item.process_type,
       title: item.title,
+      use_latest_config: useLatestConfig,
     }, (st: any) => {
       if (!started) {
          started = true
@@ -608,6 +609,11 @@ const handleReAudit = async () => {
   const pid = selectedProcess.value
   await handleAudit(pid)
   // 如果是已完成页签重新审核，它会回到待审核并从当前列表消失，为了不引发困惑，我们不自动退回，而是通过 loadProcesses() 刷新列表
+}
+
+const handleReAuditWithLatestConfig = async () => {
+  if (!selectedProcess.value) return
+  await handleAudit(selectedProcess.value, true)
 }
 
 const handleCancelAudit = async (processId: string) => {
@@ -1280,6 +1286,12 @@ onMounted(async () => {
               <a-button v-if="!isCompletedHistoryTab" @click="handleReAudit">
                 <ReloadOutlined /> {{ t('dashboard.reAudit') }}
               </a-button>
+			  <a-button v-if="!isCompletedHistoryTab" @click="handleReAuditWithLatestConfig">
+				<ThunderboltOutlined /> {{ t('executionConfig.useLatest') }}
+			  </a-button>
+			  <a-tag v-if="currentResult.config_version_no" color="blue">
+				{{ t('executionConfig.version', [currentResult.config_version_no]) }}
+			  </a-tag>
             </div>
 
             <!--已审核流程摘要：标题 + 申请人/部门/类别 + 当前节点-->
@@ -1456,6 +1468,7 @@ onMounted(async () => {
                         {{ formatChainDate(item.created_at) }}
                         <span v-if="item.user_name"> · {{ item.user_name }}</span>
                         · {{ t('dashboard.duration') }} {{ getDurationSec(item.duration_ms) }}s
+						<span v-if="item.config_version_no"> · {{ t('executionConfig.version', [item.config_version_no]) }}</span>
                       </div>
                       <div v-if="expandedChainNodes.has(item.id)" class="chain-detail">
                         <template v-if="item.audit_result">

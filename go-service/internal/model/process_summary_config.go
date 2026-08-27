@@ -72,6 +72,8 @@ type ProcessSummaryLog struct {
 	QueueKind          string         `gorm:"size:20;not null;default:background" json:"queue_kind"`
 	AttemptFingerprint string         `gorm:"size:80;not null;default:''" json:"attempt_fingerprint"`
 	ScheduleConfigID   *uuid.UUID     `gorm:"type:uuid" json:"schedule_config_id,omitempty"`
+	ConfigVersionID    *uuid.UUID     `gorm:"type:uuid" json:"config_version_id,omitempty"`
+	ConfigVersionNo    *int           `json:"config_version_no,omitempty"`
 	OAContextAnchor    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"oa_context_anchor"`
 	CreatedAt          time.Time      `json:"created_at"`
 	UpdatedAt          time.Time      `gorm:"not null;default:now()" json:"updated_at"`
