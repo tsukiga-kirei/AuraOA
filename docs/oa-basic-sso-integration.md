@@ -13,10 +13,12 @@ AuraOA 的 Basic 单点登录采用 HTTP Basic Authentication 作为受信任系
   → AuraOA 返回 302 Location
   → OA 服务端禁止自动跟随 302，只读取 Location
   → OA 将用户浏览器重定向到 Location
-  → 浏览器消费交接码并进入 AuraOA 工作台
+  → 浏览器消费交接码、加载角色菜单并进入 AuraOA 业务审核工作台
 ```
 
 Basic 认证只证明外部用户身份。AuraOA 不自动创建用户，也不会接受外部系统传入业务权限；用户必须已存在，并在对应租户具有 `business` 或 `tenant_admin` 角色。
+
+登录成功固定进入 `/dashboard`。当前角色没有审核工作台菜单权限时，页面显示明确的 403 无权限状态；AuraOA 不会为了绕过权限自动切换角色，也不会回退到概览页。
 
 ## 2. AuraOA 租户配置
 

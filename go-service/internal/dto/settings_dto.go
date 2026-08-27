@@ -6,10 +6,12 @@ import "gorm.io/datatypes"
 
 // UpdateUserProcessConfigRequest 更新用户流程个性化配置请求
 type UpdateUserProcessConfigRequest struct {
-	ConfigID    string              `json:"config_id"`
-	FieldConfig UserFieldConfigDTO  `json:"field_config"`
-	RuleConfig  UserRuleConfigDTO   `json:"rule_config"`
-	AIConfig    UserAIConfigDTO     `json:"ai_config"`
+	ConfigID          string             `json:"config_id"`
+	BaseConfigVersion int                `json:"base_config_version"`
+	PersonalVersion   int                `json:"personal_version"`
+	FieldConfig       UserFieldConfigDTO `json:"field_config"`
+	RuleConfig        UserRuleConfigDTO  `json:"rule_config"`
+	AIConfig          UserAIConfigDTO    `json:"ai_config"`
 }
 
 // UserFieldConfigDTO 用户字段配置 DTO
@@ -31,10 +33,12 @@ type UserAIConfigDTO struct {
 
 // CustomRuleDTO 用户自定义规则 DTO
 type CustomRuleDTO struct {
-	ID          string `json:"id"`
-	Content     string `json:"content"`
-	Enabled     bool   `json:"enabled"`
-	RelatedFlow bool   `json:"related_flow"`
+	ID                     string `json:"id"`
+	Content                string `json:"content"`
+	Enabled                bool   `json:"enabled"`
+	RelatedFlow            bool   `json:"related_flow"`
+	BaseConfigVersion      int    `json:"base_config_version"`
+	AddedInPersonalVersion int    `json:"added_in_personal_version"`
 }
 
 // RuleToggleOverrideDTO 规则开关覆盖 DTO
@@ -92,17 +96,21 @@ type AIConfigDTO struct {
 
 // FullAuditProcessConfigResponse 审核工作台完整配置响应（租户配置+用户覆盖合并）
 type FullAuditProcessConfigResponse struct {
-	ProcessType      string             `json:"process_type"`
-	ProcessTypeLabel string             `json:"process_type_label"`
-	ConfigID         string             `json:"config_id"`
-	FieldMode        string             `json:"field_mode"`         // 租户设置的字段传输模式
-	KBMode           string             `json:"kb_mode"`            // 租户设置的知识库模式
-	AuditStrictness  string             `json:"audit_strictness"`   // 有效严格度（用户覆盖优先）
-	UserPermissions  UserPermissionsDTO `json:"user_permissions"`   // 用户权限
-	MainFields       []TenantFieldDTO   `json:"main_fields"`        // 主表字段（含选中状态）
-	DetailTables     []DetailTableDTO   `json:"detail_tables"`      // 明细表（含字段选中状态）
-	TenantRules      []TenantRuleDTO    `json:"tenant_rules"`       // 租户规则（含开关状态）
-	CustomRules      []CustomRuleDTO    `json:"custom_rules"`       // 用户自定义规则
+	ProcessType              string             `json:"process_type"`
+	ProcessTypeLabel         string             `json:"process_type_label"`
+	ConfigID                 string             `json:"config_id"`
+	BaseConfigVersion        int                `json:"base_config_version"`
+	CurrentBaseConfigVersion int                `json:"current_base_config_version"`
+	PersonalVersion          int                `json:"personal_version"`
+	HasPersonalConfig        bool               `json:"has_personal_config"`
+	FieldMode                string             `json:"field_mode"`       // 租户设置的字段传输模式
+	KBMode                   string             `json:"kb_mode"`          // 租户设置的知识库模式
+	AuditStrictness          string             `json:"audit_strictness"` // 有效严格度（用户覆盖优先）
+	UserPermissions          UserPermissionsDTO `json:"user_permissions"` // 用户权限
+	MainFields               []TenantFieldDTO   `json:"main_fields"`      // 主表字段（含选中状态）
+	DetailTables             []DetailTableDTO   `json:"detail_tables"`    // 明细表（含字段选中状态）
+	TenantRules              []TenantRuleDTO    `json:"tenant_rules"`     // 租户规则（含开关状态）
+	CustomRules              []CustomRuleDTO    `json:"custom_rules"`     // 用户自定义规则
 }
 
 // ===================== Cron 偏好 DTO =====================
@@ -135,25 +143,31 @@ type AccessibleArchiveConfigItem struct {
 
 // FullArchiveConfigResponse 归档复盘完整配置响应（租户配置+用户覆盖合并）
 type FullArchiveConfigResponse struct {
-	ProcessType      string                    `json:"process_type"`
-	ProcessTypeLabel string                    `json:"process_type_label"`
-	ConfigID         string                    `json:"config_id"`
-	FieldMode        string                    `json:"field_mode"`
-	KBMode           string                    `json:"kb_mode"`
-	AuditStrictness  string                    `json:"audit_strictness"`
-	UserPermissions  ArchiveUserPermissionsDTO `json:"user_permissions"`
-	MainFields       []TenantFieldDTO          `json:"main_fields"`
-	DetailTables     []DetailTableDTO          `json:"detail_tables"`
-	TenantRules      []TenantRuleDTO           `json:"tenant_rules"`
-	CustomRules      []CustomRuleDTO           `json:"custom_rules"`
+	ProcessType              string                    `json:"process_type"`
+	ProcessTypeLabel         string                    `json:"process_type_label"`
+	ConfigID                 string                    `json:"config_id"`
+	BaseConfigVersion        int                       `json:"base_config_version"`
+	CurrentBaseConfigVersion int                       `json:"current_base_config_version"`
+	PersonalVersion          int                       `json:"personal_version"`
+	HasPersonalConfig        bool                      `json:"has_personal_config"`
+	FieldMode                string                    `json:"field_mode"`
+	KBMode                   string                    `json:"kb_mode"`
+	AuditStrictness          string                    `json:"audit_strictness"`
+	UserPermissions          ArchiveUserPermissionsDTO `json:"user_permissions"`
+	MainFields               []TenantFieldDTO          `json:"main_fields"`
+	DetailTables             []DetailTableDTO          `json:"detail_tables"`
+	TenantRules              []TenantRuleDTO           `json:"tenant_rules"`
+	CustomRules              []CustomRuleDTO           `json:"custom_rules"`
 }
 
 // UpdateArchiveConfigRequest 更新用户归档复盘个人配置请求
 type UpdateArchiveConfigRequest struct {
-	ConfigID    string              `json:"config_id"`
-	FieldConfig UserFieldConfigDTO  `json:"field_config"`
-	RuleConfig  UserRuleConfigDTO   `json:"rule_config"`
-	AIConfig    UserAIConfigDTO     `json:"ai_config"`
+	ConfigID          string             `json:"config_id"`
+	BaseConfigVersion int                `json:"base_config_version"`
+	PersonalVersion   int                `json:"personal_version"`
+	FieldConfig       UserFieldConfigDTO `json:"field_config"`
+	RuleConfig        UserRuleConfigDTO  `json:"rule_config"`
+	AIConfig          UserAIConfigDTO    `json:"ai_config"`
 }
 
 // ===================== 仪表板偏好 DTO =====================

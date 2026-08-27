@@ -105,12 +105,25 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核规则失败")
 	}
-	fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, summary.ProcessType)
+	fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, err := s.resolveUserConfig(c, userID, config, rules, summary.ProcessType)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人审核尺度失败: "+err.Error())
+	}
+	baseSnapshot := auditConfigSourceSnapshot(config, rules)
+	baseVersion, err := s.executionVersions.EnsureBaseVersion(
+		c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleAudit,
+		config.ID, stableJSONFingerprint(baseSnapshot), baseSnapshot,
+	)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "保存审核基础配置版本失败")
+	}
 	currentConfigSnapshot := AuditExecutionConfigSnapshot{
-		AIConfig:       config.AIConfig,
-		FieldSet:       fieldSet,
-		MergedRules:    mergedRulesText,
-		EffectiveRules: rules,
+		AIConfig:                effectiveAIConfig,
+		FieldSet:                fieldSet,
+		MergedRules:             mergedRulesText,
+		EffectiveRules:          effectiveRules,
+		BaseConfigVersionNo:     baseVersion.VersionNo,
+		PersonalConfigVersionNo: personalVersion,
 	}
 	currentConfigFingerprint := stableJSONFingerprint(currentConfigSnapshot)
 	executionFingerprint := currentConfigFingerprint

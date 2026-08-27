@@ -423,6 +423,9 @@ onBeforeUnmount(() => {
                   <ReloadOutlined v-else />
                   <span>{{ t('dashboard.reAudit') }}</span>
                 </a-button>
+				<!--
+				  OA 嵌入块暂不开放“使用最新配置重新执行”。
+				  仅注释入口，保留完整执行逻辑，后续需要时可直接恢复。
 				<a-button
 				  v-if="context.config_upgrade_available"
 				  class="embed-process-card__action"
@@ -434,6 +437,7 @@ onBeforeUnmount(() => {
 				  <ThunderboltOutlined />
 				  <span>{{ t('executionConfig.useLatest') }}</span>
 				</a-button>
+				-->
               </div>
             </div>
           </div>

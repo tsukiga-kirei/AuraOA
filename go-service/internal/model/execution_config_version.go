@@ -15,6 +15,22 @@ const (
 
 // ExecutionConfigVersion 保存一次实际执行所需的不可变最终生效配置。
 type ExecutionConfigVersion struct {
+	ID                  uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	TenantID            uuid.UUID      `gorm:"type:uuid;not null" json:"tenant_id"`
+	Module              string         `gorm:"size:20;not null" json:"module"`
+	SourceConfigID      uuid.UUID      `gorm:"type:uuid;not null" json:"source_config_id"`
+	BaseConfigVersionID *uuid.UUID     `gorm:"type:uuid" json:"base_config_version_id,omitempty"`
+	VersionNo           int            `gorm:"not null" json:"version_no"`
+	Fingerprint         string         `gorm:"size:80;not null" json:"fingerprint"`
+	ConfigSnapshot      datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"config_snapshot"`
+	CreatedBy           *uuid.UUID     `gorm:"type:uuid" json:"created_by,omitempty"`
+	CreatedAt           time.Time      `json:"created_at"`
+}
+
+func (ExecutionConfigVersion) TableName() string { return "execution_config_versions" }
+
+// TenantConfigVersion 保存管理员租户配置的不可变基础版本，不包含任何用户个人覆盖。
+type TenantConfigVersion struct {
 	ID             uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	TenantID       uuid.UUID      `gorm:"type:uuid;not null" json:"tenant_id"`
 	Module         string         `gorm:"size:20;not null" json:"module"`
@@ -26,7 +42,7 @@ type ExecutionConfigVersion struct {
 	CreatedAt      time.Time      `json:"created_at"`
 }
 
-func (ExecutionConfigVersion) TableName() string { return "execution_config_versions" }
+func (TenantConfigVersion) TableName() string { return "tenant_config_versions" }
 
 // ProcessExecutionConfigBinding 固定流程实例后续执行所沿用的配置版本。
 type ProcessExecutionConfigBinding struct {

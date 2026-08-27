@@ -158,6 +158,7 @@ func main() {
 	archiveConfigRepo := repository.NewProcessArchiveConfigRepo(db)
 	archiveRuleRepo := repository.NewArchiveRuleRepo(db)
 	summaryConfigRepo := repository.NewProcessSummaryConfigRepo(db)
+	executionConfigVersionRepo := repository.NewExecutionConfigVersionRepo(db)
 
 	auditLogRepo := repository.NewAuditLogRepo(db)
 	archiveLogRepo := repository.NewArchiveLogRepo(db)
@@ -177,7 +178,7 @@ func main() {
 	aiModelService := service.NewAIModelService(aiModelRepo)
 	processAuditConfigService := service.NewProcessAuditConfigService(processAuditConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, db, invalidationManager, oaConnectionManager)
 	auditRuleService := service.NewAuditRuleService(auditRuleRepo, invalidationManager)
-	userPersonalConfigService := service.NewUserPersonalConfigService(userPersonalConfigRepo, processAuditConfigRepo, auditRuleRepo, archiveConfigRepo, archiveRuleRepo, orgRepo)
+	userPersonalConfigService := service.NewUserPersonalConfigService(userPersonalConfigRepo, processAuditConfigRepo, auditRuleRepo, archiveConfigRepo, archiveRuleRepo, orgRepo, executionConfigVersionRepo)
 	llmMessageLogService := service.NewLLMMessageLogService(llmMessageLogRepo)
 	cronConfigService := service.NewCronConfigService(cronPresetRepo, cronConfigRepo)
 	archiveConfigService := service.NewProcessArchiveConfigService(archiveConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, invalidationManager, oaConnectionManager)
@@ -189,8 +190,16 @@ func main() {
 	attachmentRecognitionService := service.NewAttachmentRecognitionService(systemConfigRepo, minerUTimeout)
 	ruleImportService := service.NewRuleImportService(attachmentRecognitionService, tenantRepo, aiModelRepo, aiCallerService, processAuditConfigRepo, archiveConfigRepo, auditRuleRepo, archiveRuleRepo, invalidationManager)
 	externalContextService := service.NewExternalContextService(oaConnectionRepo, attachmentRecognitionService, oaConnectionManager)
-	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, orgRepo, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver, externalContextService, oaConnectionManager)
+	auditExecuteService := service.NewAuditExecuteService(auditLogRepo, auditSnapshotRepo, processAuditConfigRepo, auditRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, orgRepo, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver, externalContextService, oaConnectionManager, promptTemplateRepo)
 	summaryConfigService := service.NewProcessSummaryConfigService(summaryConfigRepo, tenantRepo, oaConnectionRepo, invalidationManager, oaConnectionManager)
+	executionConfigSourceService := service.NewExecutionConfigSourceService(
+		executionConfigVersionRepo,
+		processAuditConfigRepo,
+		auditRuleRepo,
+		archiveConfigRepo,
+		archiveRuleRepo,
+		summaryConfigRepo,
+	)
 	summaryService := service.NewProcessSummaryService(summaryLogRepo, summarySnapshotRepo, summaryConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, sysFlagsResolver, externalContextService, oaConnectionManager)
 	embedRefreshService := service.NewEmbedRefreshService(
 		rdb,
@@ -208,7 +217,7 @@ func main() {
 	dashboardOverviewService := service.NewDashboardOverviewService(
 		auditSnapshotRepo, archiveSnapshotRepo, auditLogRepo, archiveLogRepo, cronLogRepo, cronTaskRepo, cronPresetRepo, llmMessageLogRepo, tenantRepo, orgRepo, cacheManager, invalidationManager,
 	)
-	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveSnapshotRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, orgRepo, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver, externalContextService, oaConnectionManager)
+	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveSnapshotRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, orgRepo, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver, externalContextService, oaConnectionManager, promptTemplateRepo)
 	reportCalculatorService := service.NewReportCalculatorService(auditLogRepo, archiveLogRepo, tenantRepo)
 	mailService := service.NewMailService(systemConfigRepo)
 
@@ -322,6 +331,7 @@ func main() {
 	auditHandler := handler.NewAuditHandler(auditExecuteService, auditSnapshotRepo, auditLogRepo)
 	archiveReviewHandler := handler.NewArchiveReviewHandler(archiveReviewService, archiveSnapshotRepo, archiveLogRepo)
 	summaryConfigHandler := handler.NewProcessSummaryConfigHandler(summaryConfigService)
+	executionConfigSourceHandler := handler.NewExecutionConfigSourceHandler(executionConfigSourceService)
 	summaryHandler := handler.NewProcessSummaryHandler(summaryService)
 	embedEventHandler := handler.NewEmbedEventHandler(embedRefreshService)
 	systemMonitorService := service.NewSystemMonitorService(db, rdb)
@@ -334,7 +344,7 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, externalContextHandler, auditHandler, archiveReviewHandler, summaryHandler, embedEventHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, sysFlagsResolver, operationAuditLogRepo, tenantRepo)
+	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, executionConfigSourceHandler, externalContextHandler, auditHandler, archiveReviewHandler, summaryHandler, embedEventHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, sysFlagsResolver, operationAuditLogRepo, tenantRepo)
 
 	// 第九步：启动 HTTP 服务器
 	port := viper.GetInt("server.port")

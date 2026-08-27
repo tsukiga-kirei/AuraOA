@@ -460,25 +460,37 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 	if !config.EmbedEnabled {
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrPermissionDenied, fmt.Sprintf("流程 '%s' 未启用 OA 嵌入总结", processType))
 	}
-	blocks := parseSummaryBlocks(config.SummaryBlocks)
-	if len(blocks) == 0 {
-		blocks = defaultSummaryBlocks()
+	var configVersion *model.ExecutionConfigVersion
+	if !useLatestConfig {
+		configVersion, err = s.executionVersions.GetBindingVersion(
+			c.Request.Context(), tenantID, model.ExecutionConfigModuleSummary, processID,
+		)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrDatabase, "读取总结配置绑定失败")
+		}
 	}
-	configSnapshot := SummaryExecutionConfigSnapshot{Blocks: blocks}
-	configVersion, err := s.executionVersions.BindSnapshot(
-		c.Request.Context(),
-		tenantID,
-		userID,
-		model.ExecutionConfigModuleSummary,
-		processID,
-		processType,
-		config.ID,
-		stableJSONFingerprint(configSnapshot),
-		configSnapshot,
-		useLatestConfig,
-	)
-	if err != nil {
-		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrDatabase, "绑定总结配置版本失败")
+	if configVersion == nil {
+		blocks := parseSummaryBlocks(config.SummaryBlocks)
+		if len(blocks) == 0 {
+			blocks = defaultSummaryBlocks()
+		}
+		configSnapshot := SummaryExecutionConfigSnapshot{Blocks: blocks}
+		baseSnapshot := summaryConfigSourceSnapshot(config)
+		baseVersion, baseErr := s.executionVersions.EnsureBaseVersion(
+			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleSummary,
+			config.ID, stableJSONFingerprint(baseSnapshot), baseSnapshot,
+		)
+		if baseErr != nil {
+			return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrDatabase, "保存总结基础配置版本失败")
+		}
+		configVersion, err = s.executionVersions.BindSnapshot(
+			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleSummary,
+			processID, processType, config.ID, baseVersion.ID,
+			stableJSONFingerprint(configSnapshot), configSnapshot, useLatestConfig,
+		)
+		if err != nil {
+			return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrDatabase, "绑定总结配置版本失败")
+		}
 	}
 	id := uuid.New()
 	now := apptime.Now()

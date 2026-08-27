@@ -79,6 +79,7 @@ Authorization: Bearer <access_token>
 | [系统管理接口](./system-admin.md) | `/api/admin` | 租户管理、OA 连接、AI 模型、系统配置 |
 | [组织架构接口](./org.md) | `/api/tenant/org` | 部门、角色、成员管理 |
 | [流程审核配置接口](./audit-config.md) | `/api/tenant/rules` | 流程审核配置、审核规则、提示词模板 |
+| [执行配置版本状态接口](./execution-config.md) | `/api/tenant/execution-config-versions` | 当前租户配置与真实执行版本的对应状态 |
 | [归档复盘配置接口](./archive-config.md) | `/api/tenant/archive` | 归档数据源配置、归档规则 |
 | [流程总结接口](./summary.md) | `/api/tenant/summary`、`/api/summary` | 总结配置、总结快照 |
 | [审核工作台接口](./audit.md) | `/api/audit` | 审核执行、任务管理、日志、快照 |

@@ -22,6 +22,8 @@ type AdminUserConfigListItem struct {
 // AdminProcessDetail 单个流程的用户个性化配置详情（审核工作台/归档复盘共用）
 type AdminProcessDetail struct {
 	ProcessType         string                   `json:"process_type"`
+	BaseConfigVersion   int                      `json:"base_config_version"`
+	PersonalVersion     int                      `json:"personal_version"`
 	StrictnessOverride  string                   `json:"strictness_override"`
 	CustomRules         []AdminCustomRule        `json:"custom_rules"`
 	FieldOverrides      []AdminFieldOverrideItem `json:"field_overrides"`
@@ -39,9 +41,11 @@ type AdminFieldOverrideItem struct {
 
 // AdminCustomRule 用户自定义规则（管理员视图）
 type AdminCustomRule struct {
-	ID      string `json:"id"`
-	Content string `json:"content"`
-	Enabled bool   `json:"enabled"`
+	ID                     string `json:"id"`
+	Content                string `json:"content"`
+	Enabled                bool   `json:"enabled"`
+	BaseConfigVersion      int    `json:"base_config_version"`
+	AddedInPersonalVersion int    `json:"added_in_personal_version"`
 }
 
 // AdminRuleToggleItem 用户对租户规则的开关覆盖（管理员视图）

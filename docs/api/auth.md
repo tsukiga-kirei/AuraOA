@@ -105,7 +105,7 @@ Basic username 固定为 `tenantCode/username`；密码是系统管理 → 租�
 GET /api/auth/sso/basic-consume?code=<一次性交接码>
 ```
 
-该地址只能由用户浏览器访问。成功后写入 AuraOA 登录态并跳转 `/overview`；交接码过期或重复消费返回 `40110`。
+该地址只能由用户浏览器访问。成功后会先加载当前入口角色对应的菜单权限，再写入 AuraOA 登录态并跳转业务审核工作台 `/dashboard`。如果账号没有审核工作台菜单权限，页面会保留在 `/dashboard` 并明确显示无权限，不会退回概览页。交接码过期或重复消费返回 `40110`。
 
 完整 OA Java 接入示例见 [`../oa-basic-sso-integration.md`](../oa-basic-sso-integration.md)。
 

@@ -101,6 +101,7 @@ type ArchiveReviewService struct {
 	externalCtx         *ExternalContextService
 	oaConnections       *oa.ConnectionManager
 	executionVersions   *repository.ExecutionConfigVersionRepo
+	promptTemplates     *repository.SystemPromptTemplateRepo
 }
 
 // NewArchiveReviewService 创建 ArchiveReviewService，注入所有依赖仓储和服务。
@@ -124,6 +125,7 @@ func NewArchiveReviewService(
 	sysFlags *systemflags.Resolver,
 	externalCtx *ExternalContextService,
 	oaConnections *oa.ConnectionManager,
+	promptTemplates *repository.SystemPromptTemplateRepo,
 ) *ArchiveReviewService {
 	return &ArchiveReviewService{
 		archiveLogRepo:      archiveLogRepo,
@@ -146,6 +148,7 @@ func NewArchiveReviewService(
 		externalCtx:         externalCtx,
 		oaConnections:       oaConnections,
 		executionVersions:   repository.NewExecutionConfigVersionRepo(db),
+		promptTemplates:     promptTemplates,
 	}
 }
 
@@ -1181,27 +1184,41 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 	if !allowed {
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权执行该归档复盘")
 	}
-	fieldSet, mergedRulesText := s.resolveArchiveUserConfig(c, userID, cfg, rules, req.ProcessType)
-	configSnapshot := ArchiveExecutionConfigSnapshot{
-		AIConfig:       cfg.AIConfig,
-		FieldSet:       fieldSet,
-		MergedRules:    mergedRulesText,
-		EffectiveRules: rules,
+	var configVersion *model.ExecutionConfigVersion
+	if !req.UseLatestConfig {
+		configVersion, err = s.executionVersions.GetBindingVersion(
+			c.Request.Context(), tenantID, model.ExecutionConfigModuleArchive, req.ProcessID,
+		)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "读取归档复盘配置绑定失败")
+		}
 	}
-	configVersion, err := s.executionVersions.BindSnapshot(
-		c.Request.Context(),
-		tenantID,
-		userID,
-		model.ExecutionConfigModuleArchive,
-		req.ProcessID,
-		req.ProcessType,
-		cfg.ID,
-		stableJSONFingerprint(configSnapshot),
-		configSnapshot,
-		req.UseLatestConfig,
-	)
-	if err != nil {
-		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "绑定归档复盘配置版本失败")
+	if configVersion == nil {
+		fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, resolveErr := s.resolveArchiveUserConfig(c, userID, cfg, rules, req.ProcessType)
+		if resolveErr != nil {
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人复核尺度失败: "+resolveErr.Error())
+		}
+		baseSnapshot := archiveConfigSourceSnapshot(cfg, rules)
+		baseVersion, baseErr := s.executionVersions.EnsureBaseVersion(
+			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleArchive,
+			cfg.ID, stableJSONFingerprint(baseSnapshot), baseSnapshot,
+		)
+		if baseErr != nil {
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "保存归档复盘基础配置版本失败")
+		}
+		configSnapshot := ArchiveExecutionConfigSnapshot{
+			AIConfig: effectiveAIConfig, FieldSet: fieldSet, MergedRules: mergedRulesText,
+			EffectiveRules: effectiveRules, BaseConfigVersionNo: baseVersion.VersionNo,
+			PersonalConfigVersionNo: personalVersion,
+		}
+		configVersion, err = s.executionVersions.BindSnapshot(
+			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleArchive,
+			req.ProcessID, req.ProcessType, cfg.ID, baseVersion.ID,
+			stableJSONFingerprint(configSnapshot), configSnapshot, req.UseLatestConfig,
+		)
+		if err != nil {
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "绑定归档复盘配置版本失败")
+		}
 	}
 
 	logID := uuid.New()
@@ -1331,12 +1348,17 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 			s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, configErr)
 			return configErr
 		}
-		fieldSet, mergedRulesText := s.resolveArchiveUserConfig(c, userID, config, rules, logEntry.ProcessType)
+		fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, resolveErr := s.resolveArchiveUserConfig(c, userID, config, rules, logEntry.ProcessType)
+		if resolveErr != nil {
+			s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, resolveErr)
+			return resolveErr
+		}
 		configSnapshot = ArchiveExecutionConfigSnapshot{
-			AIConfig:       config.AIConfig,
-			FieldSet:       fieldSet,
-			MergedRules:    mergedRulesText,
-			EffectiveRules: rules,
+			AIConfig:                effectiveAIConfig,
+			FieldSet:                fieldSet,
+			MergedRules:             mergedRulesText,
+			EffectiveRules:          effectiveRules,
+			PersonalConfigVersionNo: personalVersion,
 		}
 	}
 	var aiConfig model.ArchiveAIConfigData
@@ -1734,7 +1756,7 @@ func (s *ArchiveReviewService) resolveArchiveUserConfig(
 	config *model.ProcessArchiveConfig,
 	tenantRules []model.ArchiveRule,
 	processType string,
-) (SelectedFieldSet, string) {
+) (SelectedFieldSet, string, []model.ArchiveRule, datatypes.JSON, int, error) {
 	var perms model.ArchiveUserPermissionsData
 	if err := json.Unmarshal(config.UserPermissions, &perms); err != nil {
 		perms = model.ArchiveUserPermissionsData{
@@ -1756,8 +1778,43 @@ func (s *ArchiveReviewService) resolveArchiveUserConfig(
 	}
 
 	fieldSet := s.resolveArchiveFieldSet(config, userDetail, perms)
-	rulesText := s.resolveArchiveRulesText(tenantRules, userDetail, perms)
-	return fieldSet, rulesText
+	effectiveRules := resolveEffectiveArchiveRules(tenantRules, userDetail)
+	rulesText := s.resolveArchiveRulesText(effectiveRules, userDetail, perms)
+	strictness := ""
+	personalVersion := 0
+	if userDetail != nil {
+		strictness = userDetail.AIConfig.StrictnessOverride
+		personalVersion = userDetail.PersonalVersion
+	}
+	effectiveAIConfig, err := effectiveArchiveAIConfig(config.AIConfig, strictness, perms.AllowModifyStrictness, s.promptTemplates)
+	if err != nil {
+		return nil, "", nil, nil, 0, err
+	}
+	return fieldSet, rulesText, effectiveRules, effectiveAIConfig, personalVersion, nil
+}
+
+// resolveEffectiveArchiveRules 以租户归档规则为底座，仅叠加个人开关。
+// 个人配置不能创造或替换租户规则；mandatory 规则始终启用。
+func resolveEffectiveArchiveRules(tenantRules []model.ArchiveRule, userDetail *model.ArchiveDetailItem) []model.ArchiveRule {
+	toggleMap := make(map[string]bool)
+	if userDetail != nil {
+		for _, toggle := range userDetail.RuleConfig.RuleToggleOverrides {
+			toggleMap[toggle.RuleID] = toggle.Enabled
+		}
+	}
+
+	effectiveRules := make([]model.ArchiveRule, len(tenantRules))
+	copy(effectiveRules, tenantRules)
+	for i := range effectiveRules {
+		enabled := effectiveRules[i].Enabled == nil || *effectiveRules[i].Enabled
+		if effectiveRules[i].RuleScope == "mandatory" {
+			enabled = true
+		} else if override, ok := toggleMap[effectiveRules[i].ID.String()]; ok {
+			enabled = override
+		}
+		effectiveRules[i].Enabled = &enabled
+	}
+	return effectiveRules
 }
 
 func (s *ArchiveReviewService) resolveArchiveFieldSet(
@@ -1831,10 +1888,8 @@ func (s *ArchiveReviewService) resolveArchiveRulesText(
 		enabled := rule.Enabled == nil || *rule.Enabled
 		if rule.RuleScope == "mandatory" {
 			enabled = true
-		} else if perms.AllowCustomRules {
-			if override, ok := toggleMap[rule.ID.String()]; ok {
-				enabled = override
-			}
+		} else if override, ok := toggleMap[rule.ID.String()]; ok {
+			enabled = override
 		}
 		if !enabled {
 			continue

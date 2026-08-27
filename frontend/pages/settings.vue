@@ -415,6 +415,8 @@ const addCustomRule = () => {
     content: newRuleContent.value.trim(),
     enabled: true,
     related_flow: newRuleRelatedFlow.value,
+    base_config_version: 0,
+    added_in_personal_version: 0,
   })
   newRuleContent.value = ''
   newRuleRelatedFlow.value = false
@@ -440,6 +442,8 @@ const handleSaveWorkbench = async () => {
   
   const req: UpdatePersonalConfigRequest = {
     config_id: cfg.config_id,
+    base_config_version: cfg.current_base_config_version,
+    personal_version: cfg.personal_version,
     field_config: {
       field_mode: perms.allow_custom_fields ? cfg.field_mode : 'all',
       field_overrides: perms.allow_custom_fields && cfg.field_mode === 'selected' ? selectedKeys : [],
@@ -456,9 +460,10 @@ const handleSaveWorkbench = async () => {
   saving.value = true
   try {
     await settingsApi.updateProcessConfig(cfg.process_type, req)
+    await loadFullProcessConfig(cfg.process_type)
     message.success(t('settings.workbench.saveSuccess'))
   }
-  catch (e) { message.error(t('settings.workbench.saveFailed')) }
+  catch (e: any) { message.error(e?.message || t('settings.workbench.saveFailed')) }
   finally { saving.value = false }
 }
 
@@ -700,6 +705,8 @@ const addArchiveCustomRule = () => {
     content: newArchiveRuleContent.value.trim(),
     enabled: true,
     related_flow: newArchiveRuleRelatedFlow.value,
+    base_config_version: 0,
+    added_in_personal_version: 0,
   })
   newArchiveRuleContent.value = ''
   newArchiveRuleRelatedFlow.value = false
@@ -725,6 +732,8 @@ const handleSaveArchive = async () => {
   
   const req: UpdatePersonalConfigRequest = {
     config_id: cfg.config_id,
+    base_config_version: cfg.current_base_config_version,
+    personal_version: cfg.personal_version,
     field_config: {
       field_mode: perms.allow_custom_fields ? cfg.field_mode : 'all',
       field_overrides: perms.allow_custom_fields && cfg.field_mode === 'selected' ? selectedKeys : [],
@@ -741,9 +750,10 @@ const handleSaveArchive = async () => {
   saving.value = true
   try {
     await settingsApi.updateArchiveConfig(cfg.process_type, req)
+    await loadFullArchiveConfig(cfg.process_type)
     message.success(t('settings.archive.saveSuccess'))
   }
-  catch (e) { message.error(t('settings.archive.saveFailed')) }
+  catch (e: any) { message.error(e?.message || t('settings.archive.saveFailed')) }
   finally { saving.value = false }
 }
 </script>
@@ -992,6 +1002,16 @@ const handleSaveArchive = async () => {
         <!-- 右：配置详情 -->
         <div v-if="fullProcessConfig && !workbenchLoading" class="process-config-panel">
           <h3 class="config-title">{{ fullProcessConfig.process_type_label || fullProcessConfig.process_type }} — {{ t('settings.workbench.personalConfig') }}</h3>
+          <div class="personal-version-line">
+            {{ fullProcessConfig.personal_version > 0
+              ? t('settings.version.personalBasedOn', [fullProcessConfig.base_config_version, fullProcessConfig.personal_version])
+              : (fullProcessConfig.has_personal_config
+                  ? t('settings.version.legacyPersonal', [fullProcessConfig.current_base_config_version])
+                  : t('settings.version.noPersonal', [fullProcessConfig.current_base_config_version])) }}
+            <span v-if="fullProcessConfig.base_config_version !== fullProcessConfig.current_base_config_version" class="personal-version-warning">
+              {{ t('settings.version.tenantUpdated', [fullProcessConfig.current_base_config_version]) }}
+            </span>
+          </div>
 
           <!-- 子导航 -->
           <div class="section-nav">
@@ -1139,6 +1159,10 @@ const handleSaveArchive = async () => {
                     <NodeIndexOutlined /> {{ t('settings.workbench.relatedFlow') }}
                   </span>
                   <span class="rule-scope-tag rule-scope-tag--custom">{{ t('settings.workbench.personal') }}</span>
+                  <span v-if="rule.added_in_personal_version" class="rule-version-tag">
+                    {{ t('settings.version.ruleAdded', [rule.base_config_version, rule.added_in_personal_version]) }}
+                  </span>
+                  <span v-else class="rule-version-tag">{{ t('settings.version.rulePending') }}</span>
                 </div>
                 <div class="rule-config-actions">
                   <a-switch v-model:checked="rule.enabled" size="small" />
@@ -1399,6 +1423,16 @@ const handleSaveArchive = async () => {
         <!-- 右：归档配置详情 -->
         <div v-if="fullArchiveConfig && !archiveLoading" class="process-config-panel">
           <h3 class="config-title">{{ fullArchiveConfig.process_type_label || fullArchiveConfig.process_type }} — {{ t('settings.archive.personalReviewConfig') }}</h3>
+          <div class="personal-version-line">
+            {{ fullArchiveConfig.personal_version > 0
+              ? t('settings.version.personalBasedOn', [fullArchiveConfig.base_config_version, fullArchiveConfig.personal_version])
+              : (fullArchiveConfig.has_personal_config
+                  ? t('settings.version.legacyPersonal', [fullArchiveConfig.current_base_config_version])
+                  : t('settings.version.noPersonal', [fullArchiveConfig.current_base_config_version])) }}
+            <span v-if="fullArchiveConfig.base_config_version !== fullArchiveConfig.current_base_config_version" class="personal-version-warning">
+              {{ t('settings.version.tenantUpdated', [fullArchiveConfig.current_base_config_version]) }}
+            </span>
+          </div>
 
           <!-- 子导航 -->
           <div class="section-nav">
@@ -1545,6 +1579,10 @@ const handleSaveArchive = async () => {
                     <NodeIndexOutlined /> {{ t('settings.workbench.relatedFlow') }}
                   </span>
                   <span class="rule-scope-tag rule-scope-tag--custom">{{ t('settings.workbench.personal') }}</span>
+                  <span v-if="rule.added_in_personal_version" class="rule-version-tag">
+                    {{ t('settings.version.ruleAdded', [rule.base_config_version, rule.added_in_personal_version]) }}
+                  </span>
+                  <span v-else class="rule-version-tag">{{ t('settings.version.rulePending') }}</span>
                 </div>
                 <div class="rule-config-actions">
                   <a-switch v-model:checked="rule.enabled" size="small" />
@@ -1818,6 +1856,9 @@ const handleSaveArchive = async () => {
 }
 
 .config-title { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 4px; }
+.personal-version-line { margin-bottom: 12px; font-size: 12px; color: var(--color-text-tertiary); }
+.personal-version-warning { margin-left: 8px; color: var(--color-warning); }
+.rule-version-tag { font-size: 11px; color: var(--color-text-tertiary); white-space: normal; }
 
 .section-nav {
   display: flex; flex-direction: row; flex-wrap: nowrap; gap: 4px;

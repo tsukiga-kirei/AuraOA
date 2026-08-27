@@ -53,9 +53,11 @@ const (
 	ErrRuleNotFound     = 40403 // 审核规则不存在
 
 	// 409xx - 资源冲突
-	ErrResourceConflict     = 40900 // 资源冲突
-	ErrDuplicateProcessType = 40901 // 同一租户下流程类型重复
-	ErrBootstrapForbidden   = 40910 // 已有用户，禁止再次执行初始化
+	ErrResourceConflict              = 40900 // 资源冲突
+	ErrDuplicateProcessType          = 40901 // 同一租户下流程类型重复
+	ErrTenantConfigVersionConflict   = 40902 // 租户配置版本冲突
+	ErrPersonalConfigVersionConflict = 40903 // 个人配置版本冲突
+	ErrBootstrapForbidden            = 40910 // 已有用户，禁止再次执行初始化
 
 	// 500xx - 服务端内部错误
 	ErrInternalServer = 50000 // 服务器内部错误
