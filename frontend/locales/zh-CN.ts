@@ -663,6 +663,7 @@ export default {
     'dashboard.reAudit': '重新审核',
 	'executionConfig.version': '执行配置 v{0}',
 	'executionConfig.useLatest': '使用最新配置重新执行',
+	'executionConfig.legacyUnversioned': '历史记录（未记录配置版本）',
     'dashboard.overallScore': '综合评分',
     'dashboard.points': '分',
     'dashboard.duration': '耗时',

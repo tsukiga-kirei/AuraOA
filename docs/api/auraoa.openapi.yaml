@@ -3927,6 +3927,18 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    type: object
+                    properties:
+                      chain:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            config_version_no:
+                              type: integer
+                              nullable: true
+                              description: 本次调用关联业务执行记录实际使用的配置版本，迁移前历史记录为空
       parameters:
       - name: processId
         in: path
@@ -3954,6 +3966,13 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    type: object
+                    properties:
+                      config_version_no:
+                        type: integer
+                        nullable: true
+                        description: 本次调用关联业务执行记录实际使用的配置版本，迁移前历史记录为空
       parameters:
       - name: id
         in: path

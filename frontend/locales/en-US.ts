@@ -662,6 +662,7 @@ export default {
     'dashboard.reAudit': 'Re-audit',
 	'executionConfig.version': 'Execution config v{0}',
 	'executionConfig.useLatest': 'Run with latest config',
+	'executionConfig.legacyUnversioned': 'Legacy record (configuration version not recorded)',
     'dashboard.overallScore': 'Score',
     'dashboard.points': '',
     'dashboard.duration': 'Duration',

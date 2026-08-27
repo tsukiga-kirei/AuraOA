@@ -25,6 +25,8 @@ export interface AuditLogItem {
   duration_ms: number
   audit_result: any          // JSONB 完整审核结果
   parse_error: string
+  /** 本次审核实际使用的执行配置版本；迁移前历史记录为空 */
+  config_version_no?: number
   created_at: string
   updated_at: string
 }
@@ -109,6 +111,8 @@ export interface ArchiveLogItem {
   archive_result: any         // JSONB 完整归档审核结果
   duration_ms: number
   parse_error: string
+  /** 本次复盘实际使用的执行配置版本；迁移前历史记录为空 */
+  config_version_no?: number
   created_at: string
   updated_at: string
 }
@@ -294,6 +298,8 @@ export interface LLMLogItem {
   output_tokens: number
   total_tokens: number
   duration_ms: number
+  /** 通过业务执行记录关联出的实际配置版本；迁移前历史调用为空 */
+  config_version_no?: number
   created_at: string
 }
 

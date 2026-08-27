@@ -252,6 +252,8 @@ type LLMLogListRow struct {
 	UserName         string `gorm:"column:user_name" json:"user_name"`
 	ModelName        string `gorm:"column:model_name" json:"model_name"`
 	ModelDisplayName string `gorm:"column:model_display_name" json:"model_display_name"`
+	// 配置版本通过 business_log_id 关联实际业务执行记录，确保多次调用展示各自真实版本。
+	ConfigVersionNo *int `gorm:"column:config_version_no" json:"config_version_no,omitempty"`
 }
 
 // LLMLogStats AI 调用记录统计（按流程维度）。
@@ -323,12 +325,16 @@ func (r *LLMMessageLogRepo) ListCallsByProcessID(c *gin.Context, processID strin
 			"COALESCE(u.display_name, u.username, '') AS user_name, "+
 			"COALESCE(amc.model_name, '') AS model_name, "+
 			"COALESCE(amc.display_name, '') AS model_display_name, "+
+			"COALESCE(al.config_version_no, arl.config_version_no, psl.config_version_no) AS config_version_no, "+
 			"COALESCE(p.system_prompt, '') AS system_prompt, "+
 			"COALESCE(p.user_prompt, '') AS user_prompt, "+
 			"COALESCE(p.response_content, '') AS response_content").
 		Joins("LEFT JOIN users u ON u.id = "+t+".user_id").
 		Joins("LEFT JOIN ai_model_configs amc ON amc.id = "+t+".model_config_id").
 		Joins("LEFT JOIN tenant_llm_message_payloads p ON p.llm_message_log_id = "+t+".id").
+		Joins("LEFT JOIN audit_logs al ON al.id = "+t+".business_log_id AND al.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'audit'").
+		Joins("LEFT JOIN archive_logs arl ON arl.id = "+t+".business_log_id AND arl.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'archive'").
+		Joins("LEFT JOIN process_summary_logs psl ON psl.id = "+t+".business_log_id AND psl.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'summary'").
 		Where(t+".tenant_id = ? AND "+t+".process_id = ?", tenantID, processID).
 		Order(t + ".created_at DESC").
 		Find(&items).Error
@@ -376,12 +382,16 @@ func (r *LLMMessageLogRepo) GetByIDWithPayload(c *gin.Context, id uuid.UUID) (*L
 			"COALESCE(u.display_name, u.username, '') AS user_name, "+
 			"COALESCE(amc.model_name, '') AS model_name, "+
 			"COALESCE(amc.display_name, '') AS model_display_name, "+
+			"COALESCE(al.config_version_no, arl.config_version_no, psl.config_version_no) AS config_version_no, "+
 			"COALESCE(p.system_prompt, '') AS system_prompt, "+
 			"COALESCE(p.user_prompt, '') AS user_prompt, "+
 			"COALESCE(p.response_content, '') AS response_content").
 		Joins("LEFT JOIN users u ON u.id = "+t+".user_id").
 		Joins("LEFT JOIN ai_model_configs amc ON amc.id = "+t+".model_config_id").
 		Joins("LEFT JOIN tenant_llm_message_payloads p ON p.llm_message_log_id = "+t+".id").
+		Joins("LEFT JOIN audit_logs al ON al.id = "+t+".business_log_id AND al.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'audit'").
+		Joins("LEFT JOIN archive_logs arl ON arl.id = "+t+".business_log_id AND arl.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'archive'").
+		Joins("LEFT JOIN process_summary_logs psl ON psl.id = "+t+".business_log_id AND psl.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'summary'").
 		Where(t+".tenant_id = ? AND "+t+".id = ?", tenantID, id).
 		First(&detail).Error
 	if err != nil {

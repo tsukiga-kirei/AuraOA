@@ -138,4 +138,5 @@ GET /api/summary/snapshots/export
 GET /api/summary/snapshots/:processId/chain
 ```
 
-返回指定流程的历次总结记录链。
+返回指定流程的历次总结记录链。每条记录包含实际使用的 `config_version_no`；迁移前历史记录可能为空，
+数据管理页在“查看详情”抽屉中明确展示为未记录版本。
