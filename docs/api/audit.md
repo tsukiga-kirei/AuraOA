@@ -201,3 +201,6 @@ GET /api/audit/snapshots/export
 ```
 GET /api/audit/snapshots/:processId/chain
 ```
+
+审核链中的每条执行记录均返回其实际使用的 `config_version_no`；迁移前历史记录可能为空，数据管理页
+在“查看详情”抽屉中明确展示为未记录版本。

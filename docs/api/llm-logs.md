@@ -47,7 +47,9 @@ GET /api/tenant/llm-logs/stats
 GET /api/tenant/llm-logs/:processId/chain
 ```
 
-返回指定流程的全部 AI 调用记录（时间倒序，含 Token 与耗时摘要）。
+返回指定流程的全部 AI 调用记录（时间倒序，含 Token、耗时、提示词及本次调用关联业务执行记录的
+`config_version_no`）。同一流程先后使用多个配置版本时，每条调用返回各自实际版本；迁移前无法还原
+配置版本的历史调用该字段为空，管理页展示为“历史记录（未记录配置版本）”。
 
 ---
 
@@ -57,7 +59,8 @@ GET /api/tenant/llm-logs/:processId/chain
 GET /api/tenant/llm-logs/calls/:id
 ```
 
-返回单条调用详情，含系统提示词、用户提示词与模型响应正文。
+返回单条调用详情，含系统提示词、用户提示词、模型响应正文与 `config_version_no`。版本号通过
+`business_log_id` 关联审核、归档复盘或流程总结执行日志获取，不使用流程当前绑定版本覆盖历史调用。
 
 ---
 

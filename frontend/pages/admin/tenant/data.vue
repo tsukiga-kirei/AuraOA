@@ -430,6 +430,12 @@ function getLLMModelLabel(item: LLMLogItem) {
   return item.model_display_name || item.model_name || '-'
 }
 
+function getExecutionConfigVersionLabel(version?: number | null) {
+  return version
+      ? t('executionConfig.version', [version])
+      : t('executionConfig.legacyUnversioned')
+}
+
 
 
 async function openAuditDetail(item: AuditSnapshotItem) {
@@ -1774,6 +1780,7 @@ onMounted(async () => {
                       <div class="chain-card-meta">
                         {{ formatDate(logItem.created_at) }}
                         <span v-if="logItem.user_name"> · {{ logItem.user_name }}</span>
+                        <span> · {{ getExecutionConfigVersionLabel(logItem.config_version_no) }}</span>
                         · {{ t('admin.data.duration') }} {{ (logItem.duration_ms / 1000).toFixed(1) }}s
                       </div>
 
@@ -1887,6 +1894,7 @@ onMounted(async () => {
                       <div class="chain-card-meta">
                         {{ formatDate(logItem.created_at) }}
                         <span v-if="logItem.user_name"> · {{ logItem.user_name }}</span>
+                        <span> · {{ getExecutionConfigVersionLabel(logItem.config_version_no) }}</span>
                         · {{ t('admin.data.duration') }} {{ (logItem.duration_ms / 1000).toFixed(1) }}s
                       </div>
 
@@ -2010,6 +2018,7 @@ onMounted(async () => {
                       <div class="chain-card-meta">
                         {{ formatDate(logItem.created_at) }}
                         <span v-if="logItem.user_name"> · {{ logItem.user_name }}</span>
+                        <span> · {{ getExecutionConfigVersionLabel(logItem.config_version_no) }}</span>
                         <span v-if="logItem.parse_error"> · 已使用兜底解析</span>
                       </div>
 
@@ -2204,6 +2213,7 @@ onMounted(async () => {
                         {{ formatDate(logItem.created_at) }}
                         <span v-if="logItem.user_name"> · {{ logItem.user_name }}</span>
                         <span v-if="getLLMModelLabel(logItem) !== '-'"> · {{ getLLMModelLabel(logItem) }}</span>
+                        <span> · {{ getExecutionConfigVersionLabel(logItem.config_version_no) }}</span>
                         · {{ t('admin.data.duration') }} {{ (logItem.duration_ms / 1000).toFixed(1) }}s
                       </div>
 
