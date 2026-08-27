@@ -571,7 +571,7 @@ const selectProcess = (proc: ArchiveProcessItem) => {
 
 const loading = computed(() => isResultAsyncRunning(currentResult.value))
 
-const runArchiveReview = async (proc: ArchiveProcessItem, onStarted?: (id: string) => void) => {
+const runArchiveReview = async (proc: ArchiveProcessItem, onStarted?: (id: string) => void, useLatestConfig = false) => {
   const pendingResult = normalizeArchiveResult({
     trace_id: '',
     process_id: proc.process_id,
@@ -591,6 +591,7 @@ const runArchiveReview = async (proc: ArchiveProcessItem, onStarted?: (id: strin
       process_id: proc.process_id,
       process_type: proc.process_type,
       title: proc.title,
+      use_latest_config: useLatestConfig,
     }, (status) => {
       if (status.id && !started) {
         started = true
@@ -611,7 +612,7 @@ const runArchiveReview = async (proc: ArchiveProcessItem, onStarted?: (id: strin
   }
 }
 
-const handleAudit = async () => {
+const handleAudit = async (useLatestConfig = false) => {
   if (!selectedProcess.value) return
   const processId = selectedProcess.value.process_id
   processAuditLoading.value = {
@@ -619,7 +620,7 @@ const handleAudit = async () => {
     [processId]: true,
   }
   try {
-    const result = await runArchiveReview(selectedProcess.value)
+    const result = await runArchiveReview(selectedProcess.value, undefined, useLatestConfig)
     if (result?.status === 'failed') {
       message.error(result.error_message || t('archive.auditFailed'))
     }
@@ -636,6 +637,10 @@ const handleAudit = async () => {
 
 const handleReAudit = async () => {
   await handleAudit()
+}
+
+const handleReAuditWithLatestConfig = async () => {
+  await handleAudit(true)
 }
 
 const batchAuditTotal = ref(0)
@@ -1376,6 +1381,12 @@ onUnmounted(() => {
                 <a-button @click="handleReAudit">
                   <ReloadOutlined /> {{ t('archive.reAudit') }}
                 </a-button>
+				<a-button @click="handleReAuditWithLatestConfig">
+				  <ThunderboltOutlined /> {{ t('executionConfig.useLatest') }}
+				</a-button>
+				<a-tag v-if="currentResult.config_version_no" color="blue">
+				  {{ t('executionConfig.version', [currentResult.config_version_no]) }}
+				</a-tag>
               </div>
 
               <!--流程摘要：标题 + 申请人/部门/类别 + 当前节点-->
@@ -1565,6 +1576,7 @@ onUnmounted(() => {
                         {{ formatChainDate(item.created_at) }}
                         <span v-if="item.user_name"> · {{ item.user_name }}</span>
                         · {{ t('dashboard.duration') }} {{ getDurationSec(item.duration_ms) }}s
+						<span v-if="item.config_version_no"> · {{ t('executionConfig.version', [item.config_version_no]) }}</span>
                       </div>
                       <div v-if="expandedChainNodes.has(item.id)" class="chain-detail">
                         <template v-if="item.archive_result">

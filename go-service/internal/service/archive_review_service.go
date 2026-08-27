@@ -100,6 +100,7 @@ type ArchiveReviewService struct {
 	sysFlags            *systemflags.Resolver
 	externalCtx         *ExternalContextService
 	oaConnections       *oa.ConnectionManager
+	executionVersions   *repository.ExecutionConfigVersionRepo
 }
 
 // NewArchiveReviewService 创建 ArchiveReviewService，注入所有依赖仓储和服务。
@@ -144,6 +145,7 @@ func NewArchiveReviewService(
 		sysFlags:            sysFlags,
 		externalCtx:         externalCtx,
 		oaConnections:       oaConnections,
+		executionVersions:   repository.NewExecutionConfigVersionRepo(db),
 	}
 }
 
@@ -922,11 +924,12 @@ func (s *ArchiveReviewService) Execute(c *gin.Context, req *dto.ArchiveReviewExe
 	}
 
 	return &dto.ArchiveReviewSubmitResponse{
-		Status:    model.JobStatusPending,
-		ID:        logID.String(),
-		TraceID:   fmt.Sprintf("AR-%s", logID.String()[:8]),
-		ProcessID: req.ProcessID,
-		CreatedAt: apptime.FormatRFC3339(logEntry.CreatedAt),
+		Status:          model.JobStatusPending,
+		ID:              logID.String(),
+		TraceID:         fmt.Sprintf("AR-%s", logID.String()[:8]),
+		ProcessID:       req.ProcessID,
+		CreatedAt:       apptime.FormatRFC3339(logEntry.CreatedAt),
+		ConfigVersionNo: logEntry.ConfigVersionNo,
 	}, nil
 }
 
@@ -1167,7 +1170,7 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoAIModelConfig, "AI 模型配置不存在")
 	}
 
-	cfg, err := s.archiveConfigRepo.GetByProcessType(c, req.ProcessType)
+	cfg, rules, err := s.getArchiveConfigCached(c, tenantID, req.ProcessType)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的归档复盘配置不存在", req.ProcessType))
 	}
@@ -1177,6 +1180,28 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 	}
 	if !allowed {
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权执行该归档复盘")
+	}
+	fieldSet, mergedRulesText := s.resolveArchiveUserConfig(c, userID, cfg, rules, req.ProcessType)
+	configSnapshot := ArchiveExecutionConfigSnapshot{
+		AIConfig:       cfg.AIConfig,
+		FieldSet:       fieldSet,
+		MergedRules:    mergedRulesText,
+		EffectiveRules: rules,
+	}
+	configVersion, err := s.executionVersions.BindSnapshot(
+		c.Request.Context(),
+		tenantID,
+		userID,
+		model.ExecutionConfigModuleArchive,
+		req.ProcessID,
+		req.ProcessType,
+		cfg.ID,
+		stableJSONFingerprint(configSnapshot),
+		configSnapshot,
+		req.UseLatestConfig,
+	)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "绑定归档复盘配置版本失败")
 	}
 
 	logID := uuid.New()
@@ -1193,12 +1218,22 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 		ComplianceScore: 0,
 		ArchiveResult:   datatypes.JSON([]byte("{}")),
 		ProcessSnapshot: datatypes.JSON([]byte("{}")),
+		ConfigVersionID: executionVersionID(configVersion),
+		ConfigVersionNo: executionVersionNumber(configVersion),
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
 	if err := s.archiveLogRepo.Create(logEntry); err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "归档复盘日志写入失败")
 	}
+	pkglogger.GetTenantLogger(tenant.Code).Info("归档复盘执行配置版本已绑定",
+		zap.String("archiveLogID", logID.String()),
+		zap.String("tenantID", tenantID.String()),
+		zap.String("userID", userID.String()),
+		zap.String("processID", req.ProcessID),
+		zap.Int("configVersion", configVersion.VersionNo),
+		zap.Bool("useLatestConfig", req.UseLatestConfig),
+	)
 	return logID, tenantID, userID, nil
 }
 
@@ -1276,22 +1311,45 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 			fallbackCfg = fb
 		}
 	}
-	config, rules, err := s.getArchiveConfigCached(c, tenantID, logEntry.ProcessType)
-	if err != nil {
-		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, err)
-		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(err))
-		return err
+	var configSnapshot ArchiveExecutionConfigSnapshot
+	if logEntry.ConfigVersionID != nil {
+		version, versionErr := s.executionVersions.GetVersionByID(ctx, tenantID, *logEntry.ConfigVersionID)
+		if versionErr != nil {
+			s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, versionErr)
+			return versionErr
+		}
+		decoded, decodeErr := decodeExecutionSnapshot[ArchiveExecutionConfigSnapshot](version)
+		if decodeErr != nil {
+			s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, decodeErr)
+			return decodeErr
+		}
+		configSnapshot = *decoded
+	} else {
+		// 仅兼容迁移前已经入队的归档复盘任务。
+		config, rules, configErr := s.getArchiveConfigCached(c, tenantID, logEntry.ProcessType)
+		if configErr != nil {
+			s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, configErr)
+			return configErr
+		}
+		fieldSet, mergedRulesText := s.resolveArchiveUserConfig(c, userID, config, rules, logEntry.ProcessType)
+		configSnapshot = ArchiveExecutionConfigSnapshot{
+			AIConfig:       config.AIConfig,
+			FieldSet:       fieldSet,
+			MergedRules:    mergedRulesText,
+			EffectiveRules: rules,
+		}
 	}
-
 	var aiConfig model.ArchiveAIConfigData
-	if err := json.Unmarshal(config.AIConfig, &aiConfig); err != nil {
+	if err := json.Unmarshal(configSnapshot.AIConfig, &aiConfig); err != nil {
 		se := newServiceError(errcode.ErrInternalServer, "归档 AI 配置解析失败")
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, se)
 		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(se))
 		return se
 	}
 
-	fieldSet, mergedRulesText := s.resolveArchiveUserConfig(c, userID, config, rules, logEntry.ProcessType)
+	fieldSet := configSnapshot.FieldSet
+	mergedRulesText := configSnapshot.MergedRules
+	rules := configSnapshot.EffectiveRules
 
 	adapter, err := s.getOAAdapter(ctx, tenantID)
 	if err != nil {
@@ -1899,6 +1957,7 @@ func buildArchiveResultFromLog(logEntry *model.ArchiveLog) map[string]interface{
 		"created_at":   apptime.FormatRFC3339(logEntry.CreatedAt),
 		"duration_ms":  logEntry.DurationMs,
 	}
+	addExecutionConfigVersionMeta(base, logEntry.ConfigVersionID, logEntry.ConfigVersionNo)
 	if logEntry.ErrorMessage != "" {
 		base["error_message"] = logEntry.ErrorMessage
 	}

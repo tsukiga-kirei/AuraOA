@@ -58,4 +58,5 @@ export interface SummaryResult {
   parse_error?: string
   raw_content?: string
   error_message?: string
+	config_version_no?: number
 }

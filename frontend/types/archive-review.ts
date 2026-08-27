@@ -87,6 +87,8 @@ export interface ArchiveReviewResult {
   raw_content?: string
   process_snapshot?: ArchiveProcessSnapshot
   progress_steps?: ArchiveProgressStep[]
+	config_version_id?: string
+	config_version_no?: number
 }
 
 export interface ArchiveProcessItem {
@@ -123,6 +125,7 @@ export interface ArchiveReviewExecuteRequest {
   process_id: string
   process_type: string
   title?: string
+	use_latest_config?: boolean
 }
 
 export interface ArchiveReviewSubmitResponse {
@@ -131,6 +134,7 @@ export interface ArchiveReviewSubmitResponse {
   trace_id: string
   process_id: string
   created_at: string
+	config_version_no?: number
 }
 
 export interface ArchiveBatchExecuteRequest {
@@ -167,4 +171,5 @@ export interface ArchiveReviewHistoryItem {
   created_at: string
   updated_at: string
   user_name?: string
+	config_version_no?: number
 }

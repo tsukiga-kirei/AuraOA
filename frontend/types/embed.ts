@@ -26,6 +26,8 @@ export interface EmbedContextResponse {
   last_audit_at?: string
   running_job_id?: string
   audit_result?: AuditResult | null
+	config_version_no?: number
+	config_upgrade_available?: boolean
 }
 
 export interface EmbedExecuteRequest {
@@ -34,4 +36,5 @@ export interface EmbedExecuteRequest {
   title?: string
   trigger_source?: 'embed_auto' | 'embed_manual'
   trigger_detail?: 'visible_open' | 'manual'
+	use_latest_config?: boolean
 }

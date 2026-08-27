@@ -53,6 +53,9 @@ PUT /api/tenant/summary/configs/:id
 
 自动刷新只调用发生变化的启用总结块；未变化的块沿用最近一次有效结果。手动“重新总结”
 仍会执行全部启用块。
+首次总结会把启用块及其提示词、字段和外部关联配置保存为不可变执行配置版本并绑定流程。
+修改总结块不会借用“业务数据变化”开关自动刷新老流程；普通重新总结沿用已绑定版本，只有请求
+明确传 `use_latest_config=true` 时才升级到当前配置。响应中的 `config_version_no` 为实际使用版本。
 流程级定时检查只发现候选流程，所有总结块均未变化时不会创建总结或 LLM 日志。
 任务日志通过 `trigger_detail` 区分 `visible_open`、`manual`、`save_requested`、`submit_requested` 和
 `scheduled_scan`；自动任务失败后会保存 `attempt_fingerprint`，相同指纹不会被自动来源反复执行。

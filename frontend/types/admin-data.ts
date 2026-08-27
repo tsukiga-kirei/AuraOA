@@ -189,6 +189,7 @@ export interface SummaryLogItem {
   error_message: string
   created_at: string
   updated_at: string
+	config_version_no?: number
 }
 
 export interface SummarySnapshotItem {

@@ -25,23 +25,26 @@ type EmbedExecuteRequest struct {
 	TriggerSource    string     `json:"trigger_source"`
 	TriggerDetail    string     `json:"trigger_detail"`
 	ScheduleConfigID *uuid.UUID `json:"-"`
+	UseLatestConfig  bool       `json:"use_latest_config,omitempty"`
 }
 
 // EmbedContextResponse 嵌入页上下文。
 type EmbedContextResponse struct {
-	Supported          bool                      `json:"supported"`
-	Reason             string                    `json:"reason,omitempty"`
-	Message            string                    `json:"message,omitempty"`
-	Process            *oa.ProcessRequestSummary `json:"process,omitempty"`
-	EmbedEnabled       bool                      `json:"embed_enabled"`
-	HasAudit           bool                      `json:"has_audit"`
-	Stale              bool                      `json:"stale"`
-	ShouldAutoAudit    bool                      `json:"should_auto_audit"`
-	AutoRetryBlocked   bool                      `json:"auto_retry_blocked"`
-	LastAuditAt        string                    `json:"last_audit_at,omitempty"`
-	RunningJobID       string                    `json:"running_job_id,omitempty"`
-	AuditResult        map[string]interface{}    `json:"audit_result,omitempty"`
-	CurrentFingerprint string                    `json:"-"`
+	Supported              bool                      `json:"supported"`
+	Reason                 string                    `json:"reason,omitempty"`
+	Message                string                    `json:"message,omitempty"`
+	Process                *oa.ProcessRequestSummary `json:"process,omitempty"`
+	EmbedEnabled           bool                      `json:"embed_enabled"`
+	HasAudit               bool                      `json:"has_audit"`
+	Stale                  bool                      `json:"stale"`
+	ShouldAutoAudit        bool                      `json:"should_auto_audit"`
+	AutoRetryBlocked       bool                      `json:"auto_retry_blocked"`
+	LastAuditAt            string                    `json:"last_audit_at,omitempty"`
+	RunningJobID           string                    `json:"running_job_id,omitempty"`
+	AuditResult            map[string]interface{}    `json:"audit_result,omitempty"`
+	ConfigVersionNo        *int                      `json:"config_version_no,omitempty"`
+	ConfigUpgradeAvailable bool                      `json:"config_upgrade_available"`
+	CurrentFingerprint     string                    `json:"-"`
 }
 
 // GetEmbedContext 嵌入页：按 requestid 拉取流程上下文、有效结论与过期状态。
@@ -103,17 +106,37 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核规则失败")
 	}
 	fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, summary.ProcessType)
-	executionFingerprint := stableJSONFingerprint(map[string]interface{}{
-		"ai_config": config.AIConfig,
-		"field_set": fieldSet,
-		"rules":     mergedRulesText,
-	})
+	currentConfigSnapshot := AuditExecutionConfigSnapshot{
+		AIConfig:       config.AIConfig,
+		FieldSet:       fieldSet,
+		MergedRules:    mergedRulesText,
+		EffectiveRules: rules,
+	}
+	currentConfigFingerprint := stableJSONFingerprint(currentConfigSnapshot)
+	executionFingerprint := currentConfigFingerprint
+	var bindingVersion *model.ExecutionConfigVersion
+	bindingVersion, err = s.executionVersions.GetBindingVersion(
+		c.Request.Context(), tenantID, model.ExecutionConfigModuleAudit, processID,
+	)
+	if err == nil {
+		pinned, decodeErr := decodeExecutionSnapshot[AuditExecutionConfigSnapshot](bindingVersion)
+		if decodeErr != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "读取流程绑定的审核配置版本失败")
+		}
+		fieldSet = pinned.FieldSet
+		mergedRulesText = pinned.MergedRules
+		executionFingerprint = bindingVersion.Fingerprint
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, newServiceError(errcode.ErrDatabase, "查询流程审核配置版本失败")
+	}
 
 	embedCfg := parseEmbedConfig(config.EmbedConfig)
 	resp := &EmbedContextResponse{
-		Supported:    true,
-		Process:      summary,
-		EmbedEnabled: true,
+		Supported:              true,
+		Process:                summary,
+		EmbedEnabled:           true,
+		ConfigVersionNo:        executionVersionNumber(bindingVersion),
+		ConfigUpgradeAvailable: bindingVersion != nil && bindingVersion.Fingerprint != currentConfigFingerprint,
 	}
 
 	running, _ := s.auditLogRepo.GetRunningByProcessIDForTriggers(c, processID, model.EmbedTriggerSources())
@@ -166,6 +189,12 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 	}
 	resp.CurrentFingerprint = stableJSONFingerprint(currentAnchor)
 	changes := oa.CompareContextAnchors(storedAnchor, currentAnchor)
+	if resp.HasAudit && bindingVersion == nil && changes.ExecutionConfigChanged {
+		// 历史结果没有可恢复的最终配置快照。配置变化时宁可保持原结论并提示手动升级，
+		// 也不能把字段范围变化误判成 OA 业务数据变化后自动调用 AI。
+		changes.DataChanged = false
+		changes.AttachmentChanged = false
+	}
 	resp.Stale = auditRefreshRequired(changes, embedCfg)
 
 	if !resp.HasAudit {
@@ -295,6 +324,7 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 		TriggerDetail:      triggerDetail,
 		AttemptFingerprint: ctxResp.CurrentFingerprint,
 		ScheduleConfigID:   req.ScheduleConfigID,
+		UseLatestConfig:    req.UseLatestConfig,
 	}
 	return s.Execute(c, execReq)
 }

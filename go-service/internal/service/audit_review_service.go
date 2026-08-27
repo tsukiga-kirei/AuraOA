@@ -69,6 +69,7 @@ type AuditExecuteService struct {
 	externalCtx       *ExternalContextService
 	executionLimiter  *jobExecutionLimiter
 	oaConnections     *oa.ConnectionManager
+	executionVersions *repository.ExecutionConfigVersionRepo
 }
 
 // NewAuditExecuteService 创建 AuditExecuteService，注入所有依赖仓储和服务。
@@ -113,6 +114,7 @@ func NewAuditExecuteService(
 		sysFlags:          sysFlags,
 		externalCtx:       externalCtx,
 		oaConnections:     oaConnections,
+		executionVersions: repository.NewExecutionConfigVersionRepo(db),
 	}
 }
 
@@ -129,25 +131,27 @@ type AuditExecuteRequest struct {
 	TriggerDetail      string     `json:"trigger_detail"`
 	AttemptFingerprint string     `json:"-"`
 	ScheduleConfigID   *uuid.UUID `json:"-"`
+	UseLatestConfig    bool       `json:"use_latest_config,omitempty"`
 }
 
 // AuditExecuteResponse 审核执行响应
 type AuditExecuteResponse struct {
-	Status         string                 `json:"status,omitempty"` // pending：已入队异步处理；completed：同步完成（保留兼容）
-	ID             string                 `json:"id"`
-	TraceID        string                 `json:"trace_id"`
-	ProcessID      string                 `json:"process_id"`
-	Recommendation string                 `json:"recommendation,omitempty"`
-	OverallScore   int                    `json:"overall_score,omitempty"`
-	RuleResults    []model.RuleResultJSON `json:"rule_results,omitempty"`
-	RiskPoints     []string               `json:"risk_points,omitempty"`
-	Suggestions    []string               `json:"suggestions,omitempty"`
-	Confidence     int                    `json:"confidence,omitempty"`
-	AIReasoning    string                 `json:"ai_reasoning,omitempty"`
-	DurationMs     int                    `json:"duration_ms,omitempty"`
-	CreatedAt      string                 `json:"created_at"`
-	ParseError     string                 `json:"parse_error,omitempty"`
-	RawContent     string                 `json:"raw_content,omitempty"`
+	Status          string                 `json:"status,omitempty"` // pending：已入队异步处理；completed：同步完成（保留兼容）
+	ID              string                 `json:"id"`
+	TraceID         string                 `json:"trace_id"`
+	ProcessID       string                 `json:"process_id"`
+	Recommendation  string                 `json:"recommendation,omitempty"`
+	OverallScore    int                    `json:"overall_score,omitempty"`
+	RuleResults     []model.RuleResultJSON `json:"rule_results,omitempty"`
+	RiskPoints      []string               `json:"risk_points,omitempty"`
+	Suggestions     []string               `json:"suggestions,omitempty"`
+	Confidence      int                    `json:"confidence,omitempty"`
+	AIReasoning     string                 `json:"ai_reasoning,omitempty"`
+	DurationMs      int                    `json:"duration_ms,omitempty"`
+	CreatedAt       string                 `json:"created_at"`
+	ParseError      string                 `json:"parse_error,omitempty"`
+	RawContent      string                 `json:"raw_content,omitempty"`
+	ConfigVersionNo *int                   `json:"config_version_no,omitempty"`
 }
 
 // createPendingAuditLog 校验配置并写入 pending 记录（供单条异步与批量同步共用）。
@@ -168,7 +172,7 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoAIModelConfig, "AI 模型配置不存在")
 	}
 
-	config, err := s.configRepo.GetByProcessType(c, req.ProcessType)
+	config, rules, err := s.getProcessConfigCached(c, tenantID, req.ProcessType)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的审核配置不存在", req.ProcessType))
 	}
@@ -182,6 +186,28 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		return uuid.Nil, uuid.Nil, uuid.Nil, err
 	}
 	triggerDetail, queueKind := normalizeAuditTriggerDetail(trigger, req.TriggerDetail)
+	fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
+	configSnapshot := AuditExecutionConfigSnapshot{
+		AIConfig:       config.AIConfig,
+		FieldSet:       fieldSet,
+		MergedRules:    mergedRulesText,
+		EffectiveRules: rules,
+	}
+	configVersion, err := s.executionVersions.BindSnapshot(
+		c.Request.Context(),
+		tenantID,
+		userID,
+		model.ExecutionConfigModuleAudit,
+		req.ProcessID,
+		req.ProcessType,
+		config.ID,
+		stableJSONFingerprint(configSnapshot),
+		configSnapshot,
+		req.UseLatestConfig,
+	)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "绑定审核配置版本失败")
+	}
 
 	logID = uuid.New()
 	now := apptime.Now()
@@ -201,12 +227,22 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		QueueKind:          queueKind,
 		AttemptFingerprint: req.AttemptFingerprint,
 		ScheduleConfigID:   req.ScheduleConfigID,
+		ConfigVersionID:    executionVersionID(configVersion),
+		ConfigVersionNo:    executionVersionNumber(configVersion),
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}
 	if err := s.auditLogRepo.Create(logEntry); err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "审核日志写入失败")
 	}
+	pkglogger.GetTenantLogger(tenant.Code).Info("审核执行配置版本已绑定",
+		zap.String("auditLogID", logID.String()),
+		zap.String("tenantID", tenantID.String()),
+		zap.String("userID", userID.String()),
+		zap.String("processID", req.ProcessID),
+		zap.Int("configVersion", configVersion.VersionNo),
+		zap.Bool("useLatestConfig", req.UseLatestConfig),
+	)
 	return logID, tenantID, userID, nil
 }
 
@@ -247,11 +283,12 @@ func (s *AuditExecuteService) Execute(c *gin.Context, req *AuditExecuteRequest) 
 	)
 
 	return &AuditExecuteResponse{
-		Status:    model.JobStatusPending,
-		ID:        logID.String(),
-		TraceID:   fmt.Sprintf("TR-%s", logID.String()[:8]),
-		ProcessID: req.ProcessID,
-		CreatedAt: apptime.FormatRFC3339(createdAt),
+		Status:          model.JobStatusPending,
+		ID:              logID.String(),
+		TraceID:         fmt.Sprintf("TR-%s", logID.String()[:8]),
+		ProcessID:       req.ProcessID,
+		CreatedAt:       apptime.FormatRFC3339(createdAt),
+		ConfigVersionNo: log.ConfigVersionNo,
 	}, nil
 }
 
@@ -461,18 +498,39 @@ func (s *AuditExecuteService) processAuditJob(
 	}
 	req := &AuditExecuteRequest{ProcessID: log.ProcessID, ProcessType: log.ProcessType, Title: log.Title}
 
-	config, rules, err := s.getProcessConfigCached(c, tenantID, req.ProcessType)
-	if err != nil {
-		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
-		tlog.Warn("审核任务执行失败",
-			zap.String("auditLogID", auditLogID.String()),
-			zap.Error(err),
-		)
-		return err
+	var configSnapshot AuditExecutionConfigSnapshot
+	var executionFingerprint string
+	if log.ConfigVersionID != nil {
+		version, versionErr := s.executionVersions.GetVersionByID(ctx, tenantID, *log.ConfigVersionID)
+		if versionErr != nil {
+			s.markAuditFailedOrTimeout(c, tenantID, auditLogID, versionErr)
+			return versionErr
+		}
+		decoded, decodeErr := decodeExecutionSnapshot[AuditExecutionConfigSnapshot](version)
+		if decodeErr != nil {
+			s.markAuditFailedOrTimeout(c, tenantID, auditLogID, decodeErr)
+			return decodeErr
+		}
+		configSnapshot = *decoded
+		executionFingerprint = version.Fingerprint
+	} else {
+		// 仅兼容迁移前已经入队但尚未完成的任务；新任务必须在入队前绑定版本。
+		config, rules, configErr := s.getProcessConfigCached(c, tenantID, req.ProcessType)
+		if configErr != nil {
+			s.markAuditFailedOrTimeout(c, tenantID, auditLogID, configErr)
+			return configErr
+		}
+		fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
+		configSnapshot = AuditExecutionConfigSnapshot{
+			AIConfig:       config.AIConfig,
+			FieldSet:       fieldSet,
+			MergedRules:    mergedRulesText,
+			EffectiveRules: rules,
+		}
+		executionFingerprint = stableJSONFingerprint(configSnapshot)
 	}
-
 	var aiConfig model.AIConfigData
-	if err := json.Unmarshal(config.AIConfig, &aiConfig); err != nil {
+	if err := json.Unmarshal(configSnapshot.AIConfig, &aiConfig); err != nil {
 		se := newServiceError(errcode.ErrInternalServer, "AI 配置解析失败")
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, se)
 		tlog.Warn("审核任务执行失败",
@@ -482,12 +540,9 @@ func (s *AuditExecuteService) processAuditJob(
 		return se
 	}
 
-	fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
-	executionFingerprint := stableJSONFingerprint(map[string]interface{}{
-		"ai_config": config.AIConfig,
-		"field_set": fieldSet,
-		"rules":     mergedRulesText,
-	})
+	fieldSet := configSnapshot.FieldSet
+	mergedRulesText := configSnapshot.MergedRules
+	rules := configSnapshot.EffectiveRules
 
 	n, err := s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
 		"status":     model.JobStatusAssembling,
@@ -792,13 +847,14 @@ func (s *AuditExecuteService) BatchExecute(c *gin.Context, items []AuditExecuteR
 func auditExecuteResponseFromLog(log *model.AuditLog) *AuditExecuteResponse {
 	traceID := fmt.Sprintf("TR-%s-%s", apptime.Now().Format("20060102150405"), log.ID.String()[:8])
 	resp := &AuditExecuteResponse{
-		ID:          log.ID.String(),
-		TraceID:     traceID,
-		ProcessID:   log.ProcessID,
-		AIReasoning: log.AIReasoning,
-		DurationMs:  log.DurationMs,
-		CreatedAt:   apptime.FormatRFC3339(log.CreatedAt),
-		Status:      log.Status,
+		ID:              log.ID.String(),
+		TraceID:         traceID,
+		ProcessID:       log.ProcessID,
+		AIReasoning:     log.AIReasoning,
+		DurationMs:      log.DurationMs,
+		CreatedAt:       apptime.FormatRFC3339(log.CreatedAt),
+		Status:          log.Status,
+		ConfigVersionNo: log.ConfigVersionNo,
 	}
 	if log.Status == model.JobStatusFailed {
 		resp.Recommendation = ""
@@ -2004,9 +2060,10 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 		if log.ErrorMessage != "" {
 			out["error_message"] = log.ErrorMessage
 		}
+		addExecutionConfigVersionMeta(out, log.ConfigVersionID, log.ConfigVersionNo)
 		return out
 	case model.JobStatusFailed:
-		return map[string]interface{}{
+		out := map[string]interface{}{
 			"id":             log.ID.String(),
 			"trace_id":       fmt.Sprintf("TR-%s", log.ID.String()[:8]),
 			"process_id":     log.ProcessID,
@@ -2021,6 +2078,8 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 			"risk_points":    []string{},
 			"suggestions":    []string{},
 		}
+		addExecutionConfigVersionMeta(out, log.ConfigVersionID, log.ConfigVersionNo)
+		return out
 	}
 
 	result := map[string]interface{}{
@@ -2038,6 +2097,7 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 	if log.ErrorMessage != "" {
 		result["error_message"] = log.ErrorMessage
 	}
+	addExecutionConfigVersionMeta(result, log.ConfigVersionID, log.ConfigVersionNo)
 
 	if log.ParseError != "" {
 		result["parse_error"] = log.ParseError
@@ -2058,6 +2118,15 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 		}
 	}
 	return result
+}
+
+func addExecutionConfigVersionMeta(out map[string]interface{}, id *uuid.UUID, versionNo *int) {
+	if id != nil {
+		out["config_version_id"] = id.String()
+	}
+	if versionNo != nil {
+		out["config_version_no"] = *versionNo
+	}
 }
 
 // getAllowedMainTables 获取当前用户有权访问的流程审核配置主表名集合（小写），用于过滤 OA 待办。

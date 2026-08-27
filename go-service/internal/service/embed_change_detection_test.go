@@ -82,3 +82,30 @@ func TestAuditRefreshRequiredIgnoresOrdinaryApprovalByDefault(t *testing.T) {
 		t.Fatal("return/resubmit must refresh when its switch is enabled")
 	}
 }
+
+func TestAuditRefreshRequiredIgnoresExecutionConfigChange(t *testing.T) {
+	cfg := model.EmbedConfigData{AutoAuditOnDataChange: true}
+	if auditRefreshRequired(oa.OAContextChanges{ExecutionConfigChanged: true}, cfg) {
+		t.Fatal("审核规则、尺度或提示词变化不得借用业务数据变化开关自动重审")
+	}
+}
+
+func TestChangedSummaryBlockIDsIgnoresBlockConfigChange(t *testing.T) {
+	blocks := []model.SummaryBlockConfig{{ID: "overview", Title: "新版标题", Enabled: true}}
+	stored := map[string]SummaryBlockDependencyFingerprint{
+		"overview": {Config: "old", Data: "same"},
+	}
+	current := map[string]SummaryBlockDependencyFingerprint{
+		"overview": {Config: "new", Data: "same"},
+	}
+	got := changedSummaryBlockIDs(
+		blocks,
+		stored,
+		current,
+		oa.OAContextChanges{ExecutionConfigChanged: true},
+		model.SummaryEmbedConfigData{AutoSummaryOnDataChange: true},
+	)
+	if len(got) != 0 {
+		t.Fatalf("总结块配置变化不得自动重新总结，got %v", got)
+	}
+}
