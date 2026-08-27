@@ -70,6 +70,7 @@ type AuditExecuteService struct {
 	executionLimiter  *jobExecutionLimiter
 	oaConnections     *oa.ConnectionManager
 	executionVersions *repository.ExecutionConfigVersionRepo
+	promptTemplates   *repository.SystemPromptTemplateRepo
 }
 
 // NewAuditExecuteService 创建 AuditExecuteService，注入所有依赖仓储和服务。
@@ -93,6 +94,7 @@ func NewAuditExecuteService(
 	sysFlags *systemflags.Resolver,
 	externalCtx *ExternalContextService,
 	oaConnections *oa.ConnectionManager,
+	promptTemplates *repository.SystemPromptTemplateRepo,
 ) *AuditExecuteService {
 	return &AuditExecuteService{
 		auditLogRepo:      auditLogRepo,
@@ -115,6 +117,7 @@ func NewAuditExecuteService(
 		externalCtx:       externalCtx,
 		oaConnections:     oaConnections,
 		executionVersions: repository.NewExecutionConfigVersionRepo(db),
+		promptTemplates:   promptTemplates,
 	}
 }
 
@@ -186,27 +189,41 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		return uuid.Nil, uuid.Nil, uuid.Nil, err
 	}
 	triggerDetail, queueKind := normalizeAuditTriggerDetail(trigger, req.TriggerDetail)
-	fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
-	configSnapshot := AuditExecutionConfigSnapshot{
-		AIConfig:       config.AIConfig,
-		FieldSet:       fieldSet,
-		MergedRules:    mergedRulesText,
-		EffectiveRules: rules,
+	var configVersion *model.ExecutionConfigVersion
+	if !req.UseLatestConfig {
+		configVersion, err = s.executionVersions.GetBindingVersion(
+			c.Request.Context(), tenantID, model.ExecutionConfigModuleAudit, req.ProcessID,
+		)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "读取审核配置绑定失败")
+		}
 	}
-	configVersion, err := s.executionVersions.BindSnapshot(
-		c.Request.Context(),
-		tenantID,
-		userID,
-		model.ExecutionConfigModuleAudit,
-		req.ProcessID,
-		req.ProcessType,
-		config.ID,
-		stableJSONFingerprint(configSnapshot),
-		configSnapshot,
-		req.UseLatestConfig,
-	)
-	if err != nil {
-		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "绑定审核配置版本失败")
+	if configVersion == nil {
+		fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, resolveErr := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
+		if resolveErr != nil {
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人审核尺度失败: "+resolveErr.Error())
+		}
+		baseSnapshot := auditConfigSourceSnapshot(config, rules)
+		baseVersion, baseErr := s.executionVersions.EnsureBaseVersion(
+			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleAudit,
+			config.ID, stableJSONFingerprint(baseSnapshot), baseSnapshot,
+		)
+		if baseErr != nil {
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "保存审核基础配置版本失败")
+		}
+		configSnapshot := AuditExecutionConfigSnapshot{
+			AIConfig: effectiveAIConfig, FieldSet: fieldSet, MergedRules: mergedRulesText,
+			EffectiveRules: effectiveRules, BaseConfigVersionNo: baseVersion.VersionNo,
+			PersonalConfigVersionNo: personalVersion,
+		}
+		configVersion, err = s.executionVersions.BindSnapshot(
+			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleAudit,
+			req.ProcessID, req.ProcessType, config.ID, baseVersion.ID,
+			stableJSONFingerprint(configSnapshot), configSnapshot, req.UseLatestConfig,
+		)
+		if err != nil {
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "绑定审核配置版本失败")
+		}
 	}
 
 	logID = uuid.New()
@@ -520,12 +537,17 @@ func (s *AuditExecuteService) processAuditJob(
 			s.markAuditFailedOrTimeout(c, tenantID, auditLogID, configErr)
 			return configErr
 		}
-		fieldSet, mergedRulesText := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
+		fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, resolveErr := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
+		if resolveErr != nil {
+			s.markAuditFailedOrTimeout(c, tenantID, auditLogID, resolveErr)
+			return resolveErr
+		}
 		configSnapshot = AuditExecutionConfigSnapshot{
-			AIConfig:       config.AIConfig,
-			FieldSet:       fieldSet,
-			MergedRules:    mergedRulesText,
-			EffectiveRules: rules,
+			AIConfig:                effectiveAIConfig,
+			FieldSet:                fieldSet,
+			MergedRules:             mergedRulesText,
+			EffectiveRules:          effectiveRules,
+			PersonalConfigVersionNo: personalVersion,
 		}
 		executionFingerprint = stableJSONFingerprint(configSnapshot)
 	}
@@ -2359,7 +2381,7 @@ func (s *AuditExecuteService) resolveUserConfig(
 	config *model.ProcessAuditConfig,
 	tenantRules []model.AuditRule,
 	processType string,
-) (SelectedFieldSet, string) {
+) (SelectedFieldSet, string, []model.AuditRule, datatypes.JSON, int, error) {
 	// 解析租户权限配置
 	var perms model.UserPermissionsData
 	if err := json.Unmarshal(config.UserPermissions, &perms); err != nil {
@@ -2386,9 +2408,44 @@ func (s *AuditExecuteService) resolveUserConfig(
 	fieldSet := s.resolveFieldSet(config, userDetail, perms)
 
 	// ── 规则解析 ──
-	rulesText := s.resolveRulesText(tenantRules, userDetail, perms)
+	effectiveRules := resolveEffectiveAuditRules(tenantRules, userDetail)
+	rulesText := s.resolveRulesText(effectiveRules, userDetail, perms)
+	strictness := ""
+	personalVersion := 0
+	if userDetail != nil {
+		strictness = userDetail.AIConfig.StrictnessOverride
+		personalVersion = userDetail.PersonalVersion
+	}
+	effectiveAIConfig, err := effectiveAuditAIConfig(config.AIConfig, strictness, perms.AllowModifyStrictness, s.promptTemplates)
+	if err != nil {
+		return nil, "", nil, nil, 0, err
+	}
 
-	return fieldSet, rulesText
+	return fieldSet, rulesText, effectiveRules, effectiveAIConfig, personalVersion, nil
+}
+
+// resolveEffectiveAuditRules 以租户规则为底座，仅叠加个人开关。
+// 个人配置不能创造或替换租户规则；mandatory 规则始终启用。
+func resolveEffectiveAuditRules(tenantRules []model.AuditRule, userDetail *model.AuditDetailItem) []model.AuditRule {
+	toggleMap := make(map[string]bool)
+	if userDetail != nil {
+		for _, toggle := range userDetail.RuleConfig.RuleToggleOverrides {
+			toggleMap[toggle.RuleID] = toggle.Enabled
+		}
+	}
+
+	effectiveRules := make([]model.AuditRule, len(tenantRules))
+	copy(effectiveRules, tenantRules)
+	for i := range effectiveRules {
+		enabled := isRuleEnabled(&effectiveRules[i])
+		if effectiveRules[i].RuleScope == "mandatory" {
+			enabled = true
+		} else if override, ok := toggleMap[effectiveRules[i].ID.String()]; ok {
+			enabled = override
+		}
+		effectiveRules[i].Enabled = &enabled
+	}
+	return effectiveRules
 }
 
 func (s *AuditExecuteService) resolveFieldSet(

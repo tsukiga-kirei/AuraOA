@@ -75,7 +75,7 @@ func (h *BasicSSOHandler) Consume(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	c.Header("Referrer-Policy", "no-referrer")
 	c.Header("X-Content-Type-Options", "nosniff")
-	c.Header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'")
+	c.Header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; connect-src 'self'")
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.String(http.StatusOK, renderBasicSSOBridge(encoded))
 }
@@ -109,12 +109,24 @@ func renderBasicSSOBridge(encodedLogin string) string {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AuraOA 单点登录</title></head>
 <body><p>单点登录成功，正在进入 AuraOA…</p>
 <script>
-(() => {
+(async () => {
   const bytes = Uint8Array.from(atob(%q), c => c.charCodeAt(0));
   const data = JSON.parse(new TextDecoder().decode(bytes));
   const activeRole = data.active_role;
   localStorage.setItem('token', data.access_token);
   localStorage.setItem('refresh_token', data.refresh_token);
+  let menus = [];
+  try {
+    const response = await fetch('/api/auth/menu', {
+      headers: { Authorization: 'Bearer ' + data.access_token }
+    });
+    const result = await response.json();
+    if (response.ok && result && result.code === 0 && result.data && Array.isArray(result.data.menus)) {
+      menus = result.data.menus;
+    }
+  } catch (_) {
+    // 菜单会在业务工作台再次加载；这里失败不能阻断单点登录。
+  }
   localStorage.setItem('auth_state', JSON.stringify({
     user_role: activeRole.role,
     user_permissions: data.permissions && data.permissions.length ? data.permissions : [activeRole.role],
@@ -128,10 +140,10 @@ func renderBasicSSOBridge(encodedLogin string) string {
       email: data.user.email || '',
       phone: data.user.phone || ''
     },
-    menus: [],
+    menus,
     locale: data.user.locale || 'zh-CN'
   }));
-  window.location.replace('/overview');
+  window.location.replace('/dashboard');
 })();
 </script></body></html>`, encodedLogin)
 }

@@ -2209,12 +2209,17 @@ onMounted(async () => {
                           <UpOutlined v-else />
                         </span>
                       </div>
-                      <div class="chain-card-meta">
-                        {{ formatDate(logItem.created_at) }}
-                        <span v-if="logItem.user_name"> · {{ logItem.user_name }}</span>
-                        <span v-if="getLLMModelLabel(logItem) !== '-'"> · {{ getLLMModelLabel(logItem) }}</span>
-                        <span> · {{ getExecutionConfigVersionLabel(logItem.config_version_no) }}</span>
-                        · {{ t('admin.data.duration') }} {{ (logItem.duration_ms / 1000).toFixed(1) }}s
+                      <div class="chain-card-meta chain-card-meta--llm">
+                        <span>{{ formatDate(logItem.created_at) }}</span>
+                        <span v-if="logItem.user_name">{{ logItem.user_name }}</span>
+                        <span v-if="getLLMModelLabel(logItem) !== '-'">{{ getLLMModelLabel(logItem) }}</span>
+                        <span>{{ t('admin.data.duration') }} {{ (logItem.duration_ms / 1000).toFixed(1) }}s</span>
+                        <span
+                          class="chain-card-version"
+                          :class="{ 'chain-card-version--legacy': !logItem.config_version_no }"
+                        >
+                          {{ getExecutionConfigVersionLabel(logItem.config_version_no) }}
+                        </span>
                       </div>
 
                       <div v-if="expandedLLMChainNodes.has(logItem.id)" class="chain-detail">
@@ -2761,6 +2766,10 @@ onMounted(async () => {
 }
 .chain-score { font-size: 18px; font-weight: 700; color: var(--color-text-primary); }
 .chain-card-meta { font-size: 12px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 8px; }
+.chain-card-meta--llm { flex-wrap: wrap; row-gap: 4px; }
+.chain-card-meta--llm > span:not(:first-child)::before { content: '·'; margin-right: 8px; }
+.chain-card-version--legacy { flex-basis: 100%; }
+.chain-card-meta--llm > .chain-card-version--legacy::before { content: none; }
 .chain-expand-btn { margin-left: auto; font-size: 12px; color: var(--color-text-tertiary); }
 .chain-detail {
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border-light);

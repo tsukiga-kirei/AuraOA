@@ -28,9 +28,16 @@ import type { OAProcessItem, AuditResult, AuditChainItem, AuditTab, AuditStats }
 definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
-const { token } = useAuth()
+const { token, menus, getMenu } = useAuth()
 const { getStats, listProcesses, executeAudit, getAuditChain: fetchAuditChain, getProcessTypes, cancelAuditJob, waitAuditJob, exportProcesses } = useAuditApi()
 const { listTasks } = useCronApi()
+
+const permissionReady = ref(false)
+const hasDashboardPermission = ref(false)
+
+function canOpenDashboard(menuItems: typeof menus.value): boolean {
+  return menuItems.some(item => item.path === '/dashboard' || canOpenDashboard(item.children || []))
+}
 
 // ─── 后台定时任务状态 ───
 const runningCronTasks = ref<any[]>([])
@@ -919,6 +926,11 @@ const handleExportExcel = async () => {
 
 // ─── 初始化 ───
 onMounted(async () => {
+  const availableMenus = menus.value.length > 0 ? menus.value : await getMenu()
+  hasDashboardPermission.value = canOpenDashboard(availableMenus)
+  permissionReady.value = true
+  if (!hasDashboardPermission.value) return
+
   const restoredRange = readDashboardDateRange()
   if (restoredRange) auditDateRange.value = restoredRange
   const pending = readDashboardBatchState()
@@ -938,6 +950,17 @@ onMounted(async () => {
 
 <template>
   <div class="dashboard fade-in">
+    <div v-if="!permissionReady" class="dashboard-permission-state">
+      <a-spin size="large" />
+    </div>
+    <a-result
+      v-else-if="!hasDashboardPermission"
+      status="403"
+      :title="t('auth.error.forbidden')"
+      :sub-title="t('dashboard.noPermissionHint')"
+      class="dashboard-permission-state"
+    />
+    <template v-else>
     <!-- 后台定时任务提醒 -->
     <a-alert
       v-if="runningCronTasks.length > 0"
@@ -1526,11 +1549,13 @@ onMounted(async () => {
         </div>
       </transition>
     </Teleport>
+    </template>
   </div>
 </template>
 
 <style scoped>
 .dashboard { animation: fadeIn 0.3s ease-out; }
+.dashboard-permission-state { min-height: 56vh; display: flex; align-items: center; justify-content: center; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 .page-header { margin-bottom: 24px; }

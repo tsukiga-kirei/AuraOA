@@ -23,11 +23,13 @@ func (UserPersonalConfig) TableName() string { return "user_personal_configs" }
 
 // AuditDetailItem 用户审核配置中单个流程的个性化设置
 type AuditDetailItem struct {
-	ConfigID    uuid.UUID    `json:"config_id"`    // 对应 process_audit_configs.id
-	ProcessType string       `json:"process_type"`
-	FieldConfig FieldConfig  `json:"field_config"`
-	RuleConfig  RuleConfig   `json:"rule_config"`
-	AIConfig    UserAIConfig `json:"ai_config"`
+	ConfigID          uuid.UUID    `json:"config_id"` // 对应 process_audit_configs.id
+	ProcessType       string       `json:"process_type"`
+	BaseConfigVersion int          `json:"base_config_version"`
+	PersonalVersion   int          `json:"personal_version"`
+	FieldConfig       FieldConfig  `json:"field_config"`
+	RuleConfig        RuleConfig   `json:"rule_config"`
+	AIConfig          UserAIConfig `json:"ai_config"`
 }
 
 // FieldConfig 字段配置
@@ -49,10 +51,12 @@ type UserAIConfig struct {
 
 // CustomRule 用户自定义的私有审核规则
 type CustomRule struct {
-	ID          string `json:"id"`
-	Content     string `json:"content"`
-	Enabled     bool   `json:"enabled"`
-	RelatedFlow bool   `json:"related_flow"`
+	ID                     string `json:"id"`
+	Content                string `json:"content"`
+	Enabled                bool   `json:"enabled"`
+	RelatedFlow            bool   `json:"related_flow"`
+	BaseConfigVersion      int    `json:"base_config_version"`
+	AddedInPersonalVersion int    `json:"added_in_personal_version"`
 }
 
 // RuleToggleOverride 用户对租户规则的开关覆盖
@@ -68,9 +72,11 @@ type CronDetailItem struct {
 
 // ArchiveDetailItem 用户归档复盘中单个流程的个性化设置
 type ArchiveDetailItem struct {
-	ConfigID    uuid.UUID    `json:"config_id"`    // 对应 process_archive_configs.id
-	ProcessType string       `json:"process_type"`
-	FieldConfig FieldConfig  `json:"field_config"`
-	RuleConfig  RuleConfig   `json:"rule_config"`
-	AIConfig    UserAIConfig `json:"ai_config"`
+	ConfigID          uuid.UUID    `json:"config_id"` // 对应 process_archive_configs.id
+	ProcessType       string       `json:"process_type"`
+	BaseConfigVersion int          `json:"base_config_version"`
+	PersonalVersion   int          `json:"personal_version"`
+	FieldConfig       FieldConfig  `json:"field_config"`
+	RuleConfig        RuleConfig   `json:"rule_config"`
+	AIConfig          UserAIConfig `json:"ai_config"`
 }

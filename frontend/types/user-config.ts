@@ -13,6 +13,8 @@ export interface CustomRule {
   content: string
   enabled: boolean
   related_flow: boolean
+  base_config_version: number
+  added_in_personal_version: number
 }
 
 /** 规则开关覆盖 */
@@ -25,6 +27,8 @@ export interface RuleToggleOverride {
 export interface AuditDetailItem {
   config_id: string
   process_type: string
+  base_config_version: number
+  personal_version: number
   field_config: {
     field_mode: string
     field_overrides: string[]
@@ -85,6 +89,10 @@ export interface FullAuditProcessConfig {
   process_type: string
   process_type_label: string
   config_id: string
+  base_config_version: number
+  current_base_config_version: number
+  personal_version: number
+  has_personal_config: boolean
   field_mode: string // 租户设置的字段传输模式
   kb_mode: string
   audit_strictness: string
@@ -123,6 +131,10 @@ export interface FullArchiveConfig {
   process_type: string
   process_type_label: string
   config_id: string
+  base_config_version: number
+  current_base_config_version: number
+  personal_version: number
+  has_personal_config: boolean
   field_mode: string
   kb_mode: string
   audit_strictness: string
@@ -136,6 +148,8 @@ export interface FullArchiveConfig {
 /** 更新审核/归档个人配置请求体 */
 export interface UpdatePersonalConfigRequest {
   config_id: string
+  base_config_version: number
+  personal_version: number
   field_config: {
     field_mode: string
     field_overrides: string[]
@@ -156,6 +170,8 @@ export interface AdminCustomRule {
   id: string
   content: string
   enabled: boolean
+  base_config_version: number
+  added_in_personal_version: number
 }
 
 /** 管理员视图：规则开关覆盖项 */
@@ -180,6 +196,8 @@ export interface AdminFieldOverrideItem {
 /** 管理员视图：单个流程的用户个性化详情（审核工作台/归档复盘共用） */
 export interface AdminProcessDetail {
   process_type: string
+  base_config_version: number
+  personal_version: number
   strictness_override: string
   custom_rules: AdminCustomRule[]
   field_overrides: AdminFieldOverrideItem[]

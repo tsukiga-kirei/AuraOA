@@ -553,6 +553,7 @@ encryption:
 | [系统管理接口](docs/api/system-admin.md) | `/api/admin` | 租户管理、OA 连接、AI 模型、系统配置、监控 |
 | [组织架构接口](docs/api/org.md) | `/api/tenant/org` | 部门、角色、成员管理 |
 | [流程审核配置接口](docs/api/audit-config.md) | `/api/tenant/rules` | 流程配置、审核规则、提示词模板 |
+| [执行配置版本状态接口](docs/api/execution-config.md) | `/api/tenant/execution-config-versions` | 当前配置与执行版本的对应状态 |
 | [审核工作台接口](docs/api/audit.md) | `/api/audit` | 审核执行、任务管理、流式输出、日志、快照 |
 | [归档复盘接口](docs/api/archive.md) | `/api/archive` | 归档复盘执行、历史记录、日志、快照 |
 | [定时任务接口](docs/api/cron.md) | `/api/tenant/cron` | 任务类型配置、任务实例、执行日志 |

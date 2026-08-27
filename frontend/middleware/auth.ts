@@ -125,6 +125,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // 菜单尚未加载时放行（等待后续加载后再校验）
   if (menus.value.length === 0) return
 
+  // 单点登录固定进入业务审核工作台；没有该菜单权限时由页面呈现明确的 403 状态。
+  if (to.path === '/dashboard') return
+
   // 构建允许访问的路径集合，不在集合内则重定向到概览
   const allowed = new Set(menus.value.map((m: any) => m.path).filter(Boolean))
   if (!allowed.has(to.path)) {

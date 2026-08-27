@@ -389,7 +389,7 @@ func buildAdminUserConfigItem(
 		if err := json.Unmarshal(cfg.AuditDetails, &auditDetails); err == nil {
 			for _, d := range auditDetails {
 				perms := auditPermsMap[d.ProcessType] // 未命中时零值（全 false → 全清空，与 settings 一致）
-				detail := toAdminProcessDetail(d.ProcessType,
+				detail := toAdminProcessDetail(d.ProcessType, d.BaseConfigVersion, d.PersonalVersion,
 					applyStrictnessPerm(d.AIConfig.StrictnessOverride, perms.AllowModifyStrictness),
 					applyCustomRulesPerm(d.RuleConfig.CustomRules, perms.AllowCustomRules),
 					applyFieldOverridesPerm(d.FieldConfig.FieldOverrides, perms.AllowCustomFields),
@@ -431,7 +431,7 @@ func buildAdminUserConfigItem(
 					}
 				}
 				perms := archivePermsMap[d.ProcessType]
-				detail := toAdminProcessDetail(d.ProcessType,
+				detail := toAdminProcessDetail(d.ProcessType, d.BaseConfigVersion, d.PersonalVersion,
 					applyStrictnessPerm(d.AIConfig.StrictnessOverride, perms.AllowModifyStrictness),
 					applyCustomRulesPerm(d.RuleConfig.CustomRules, perms.AllowCustomRules),
 					applyFieldOverridesPerm(d.FieldConfig.FieldOverrides, perms.AllowCustomFields),
@@ -585,7 +585,9 @@ func hasAdminProcessContent(d dto.AdminProcessDetail) bool {
 
 // toAdminProcessDetail 将流程内部模型转换为管理员视图 DTO，ruleMap 用于填充规则内容和管理员默认状态。
 func toAdminProcessDetail(
-	processType, strictness string,
+	processType string,
+	baseConfigVersion, personalVersion int,
+	strictness string,
 	customRules []model.CustomRule,
 	fieldOverrides []string,
 	toggles []model.RuleToggleOverride,
@@ -594,6 +596,8 @@ func toAdminProcessDetail(
 ) dto.AdminProcessDetail {
 	detail := dto.AdminProcessDetail{
 		ProcessType:         processType,
+		BaseConfigVersion:   baseConfigVersion,
+		PersonalVersion:     personalVersion,
 		StrictnessOverride:  strictness,
 		FieldOverrides:      []dto.AdminFieldOverrideItem{},
 		CustomRules:         make([]dto.AdminCustomRule, len(customRules)),
@@ -602,7 +606,10 @@ func toAdminProcessDetail(
 
 	// 规则对比
 	for i, r := range customRules {
-		detail.CustomRules[i] = dto.AdminCustomRule{ID: r.ID, Content: r.Content, Enabled: r.Enabled}
+		detail.CustomRules[i] = dto.AdminCustomRule{
+			ID: r.ID, Content: r.Content, Enabled: r.Enabled,
+			BaseConfigVersion: r.BaseConfigVersion, AddedInPersonalVersion: r.AddedInPersonalVersion,
+		}
 	}
 	for i, t := range toggles {
 		info := ruleMap[t.RuleID]

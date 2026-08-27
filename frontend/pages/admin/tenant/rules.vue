@@ -46,6 +46,7 @@ import {useI18n} from '~/composables/useI18n'
 import {usePagination} from '~/composables/usePagination'
 import {useArchiveConfigApi} from "~/composables/useArchiveConfigApi";
 import {useCronApi} from "~/composables/useCronApi";
+import type { ExecutionConfigModule, ExecutionConfigVersionStatus } from '~/composables/useExecutionConfigVersionApi'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
@@ -55,12 +56,67 @@ const rulesApi = useAuditConfigApi()
 const cronApi = useCronApi()
 const archiveApi = useArchiveConfigApi()
 const summaryApi = useSummaryConfigApi()
+const executionConfigVersionApi = useExecutionConfigVersionApi()
 const tableNameSQLVariable = '{{table_name}}'
 const joinFieldSQLVariable = '{{join_field}}'
 const customSQLPlaceholder = `仅允许 SELECT，必须使用 ${tableNameSQLVariable}、${joinFieldSQLVariable} 与 :source_value`
 
 //===== 顶级选项卡：审核工作台 vs 定时任务配置 vs 归档复盘 vs 流程总结 =====
 const topTab = ref<'audit' | 'cron' | 'archive' | 'summary'>('audit')
+
+const auditVersionStatus = ref<ExecutionConfigVersionStatus | null>(null)
+const archiveVersionStatus = ref<ExecutionConfigVersionStatus | null>(null)
+const summaryVersionStatus = ref<ExecutionConfigVersionStatus | null>(null)
+const versionStatusLoading = reactive<Record<ExecutionConfigModule, boolean>>({
+  audit: false,
+  archive: false,
+  summary: false,
+})
+const versionStatusRequestID: Record<ExecutionConfigModule, number> = { audit: 0, archive: 0, summary: 0 }
+
+const versionStatusRefs: Record<ExecutionConfigModule, typeof auditVersionStatus> = {
+  audit: auditVersionStatus,
+  archive: archiveVersionStatus,
+  summary: summaryVersionStatus,
+}
+
+async function refreshVersionStatus(module: ExecutionConfigModule, configId?: string) {
+  const target = versionStatusRefs[module]
+  if (!configId) {
+    target.value = null
+    return
+  }
+  const requestID = ++versionStatusRequestID[module]
+  versionStatusLoading[module] = true
+  try {
+    const status = await executionConfigVersionApi.getStatus(module, configId)
+    // 切换配置时忽略较早请求返回的数据，避免版本标签短暂串到另一条配置。
+    if (versionStatusRequestID[module] === requestID) target.value = status
+  } catch (error) {
+    console.warn('[rules] 加载执行配置版本状态失败', { module, configId, error })
+    if (versionStatusRequestID[module] === requestID) target.value = null
+  } finally {
+    if (versionStatusRequestID[module] === requestID) versionStatusLoading[module] = false
+  }
+}
+
+function versionStatusTitle(status: ExecutionConfigVersionStatus | null): string {
+  if (!status) return t('executionConfig.statusUnavailable')
+  if (status.status === 'current' && status.current_version_no) {
+    return t('executionConfig.currentVersion', `${status.current_version_no}`)
+  }
+  if (status.status === 'updated' && status.latest_version_no) {
+    return t('executionConfig.updatedAfterVersion', `${status.latest_version_no}`)
+  }
+  return t('executionConfig.notGenerated')
+}
+
+function versionStatusHint(status: ExecutionConfigVersionStatus | null): string {
+  if (!status) return t('executionConfig.statusUnavailableHint')
+  return status.status === 'current'
+    ? t('executionConfig.currentHint')
+    : t('executionConfig.pendingHint')
+}
 
 //===== Cron 任务类型配置 =====
 const cronConfigs = ref<CronTaskConfig[]>([])
@@ -477,6 +533,8 @@ watch(selectedProcessId, (newId) => {
   originalAuditPerms.value = cfg ? { ...(cfg.user_permissions as any) } : {}
 }, { immediate: true })
 
+watch(selectedProcessId, newId => refreshVersionStatus('audit', newId), { immediate: true })
+
 // 当选中流程变化时，从 API 加载该流程的规则
 watch(selectedProcessId, async (newId) => {
   selectedRuleIds.value = []
@@ -721,6 +779,7 @@ const handleSaveRule = async (rule: any) => {
     }
     showRuleEditor.value = false
     editingRule.value = null
+    await refreshVersionStatus('audit', selectedConfig.value.id)
     message.success(t('admin.ruleConfig.ruleSaved'))
   } catch (e: any) {
     const key = editingRule.value ? 'admin.ruleConfig.updateRuleFail' : 'admin.ruleConfig.createRuleFail'
@@ -733,6 +792,7 @@ const deleteRule = async (id: string) => {
     await rulesApi.deleteRule(id)
     currentRules.value = currentRules.value.filter(r => r.id !== id)
     selectedRuleIds.value = selectedRuleIds.value.filter(ruleId => ruleId !== id)
+    await refreshVersionStatus('audit', selectedConfig.value?.id)
     message.success(t('admin.ruleConfig.deleted'))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.deleteRuleFail') + ': ' + (e.message || ''))
@@ -748,6 +808,7 @@ const batchDeleteRules = async () => {
     const deletedIDs = new Set(ids)
     currentRules.value = currentRules.value.filter(rule => !deletedIDs.has(rule.id))
     selectedRuleIds.value = []
+    await refreshVersionStatus('audit', selectedConfig.value.id)
     message.success(t('admin.ruleConfig.batchDeleteSuccess', `${deletedCount}`))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.batchDeleteFail') + ': ' + (e.message || ''))
@@ -872,10 +933,12 @@ const confirmRuleImport = async () => {
       const created = await rulesApi.confirmRuleImport(config.id, drafts, ruleImportSource.value)
       currentRules.value.push(...created)
       importedCount = created.length
+      await refreshVersionStatus('audit', config.id)
     } else {
       const created = await archiveApi.confirmRuleImport(config.id, drafts, ruleImportSource.value)
       currentArchiveRules.value.push(...created)
       importedCount = created.length
+      await refreshVersionStatus('archive', config.id)
     }
     showRuleImportPreview.value = false
     message.success(t('admin.ruleConfig.fileImportSaved', `${importedCount}`))
@@ -1144,6 +1207,8 @@ const fixedSummarySystemPrompt = `你是企业 OA 审批流程的总结助手。
 const selectedSummaryConfig = computed(() =>
   summaryConfigs.value.find(c => c.id === selectedSummaryId.value)
 )
+
+watch(selectedSummaryId, newId => refreshVersionStatus('summary', newId), { immediate: true })
 
 interface SummaryFieldOption {
   label: string
@@ -1854,6 +1919,7 @@ const handleSaveSummaryConfig = async () => {
     const normalized = normalizeSummaryConfigForUI(updated)
     const idx = summaryConfigs.value.findIndex(c => c.id === cfg.id)
     if (idx >= 0) summaryConfigs.value[idx] = normalized
+    await refreshVersionStatus('summary', cfg.id)
     message.success('流程总结配置已保存')
   } catch (e: any) {
     message.error(t('admin.ruleConfig.updateConfigFail') + ': ' + (e.message || ''))
@@ -1868,6 +1934,8 @@ watch(selectedArchiveId, (newId) => {
   const cfg = archiveConfigs.value.find(c => c.id === newId)
   originalArchivePerms.value = cfg ? { ...(cfg.user_permissions as any) } : {}
 }, { immediate: true })
+
+watch(selectedArchiveId, newId => refreshVersionStatus('archive', newId), { immediate: true })
 
 // 当选中归档流程变化时，从 API 加载该流程的规则
 const currentArchiveRules = ref<ArchiveRule[]>([])
@@ -2200,6 +2268,7 @@ const handleSaveArchiveRule = async (rule: any) => {
     }
     showArchiveRuleEditor.value = false
     editingArchiveRule.value = null
+    await refreshVersionStatus('archive', selectedArchiveConfig.value.id)
     message.success(t('admin.ruleConfig.ruleSaved'))
   } catch (e: any) {
     const key = editingArchiveRule.value ? 'admin.ruleConfig.updateRuleFail' : 'admin.ruleConfig.createRuleFail'
@@ -2212,6 +2281,7 @@ const deleteArchiveRule = async (id: string) => {
     await archiveApi.deleteRule(id)
     currentArchiveRules.value = currentArchiveRules.value.filter(r => r.id !== id)
     selectedArchiveRuleIds.value = selectedArchiveRuleIds.value.filter(ruleId => ruleId !== id)
+    await refreshVersionStatus('archive', selectedArchiveConfig.value?.id)
     message.success(t('admin.ruleConfig.deleted'))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.deleteRuleFail') + ': ' + (e.message || ''))
@@ -2227,6 +2297,7 @@ const batchDeleteArchiveRules = async () => {
     const deletedIDs = new Set(ids)
     currentArchiveRules.value = currentArchiveRules.value.filter(rule => !deletedIDs.has(rule.id))
     selectedArchiveRuleIds.value = []
+    await refreshVersionStatus('archive', selectedArchiveConfig.value.id)
     message.success(t('admin.ruleConfig.batchDeleteSuccess', `${deletedCount}`))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.batchDeleteFail') + ': ' + (e.message || ''))
@@ -2420,6 +2491,7 @@ const handleSaveArchiveConfig = async () => {
     const idx = archiveConfigs.value.findIndex(c => c.id === cfg.id)
     if (idx >= 0) archiveConfigs.value[idx] = updated
     originalArchivePerms.value = { ...(cfg.user_permissions as any) }
+    await refreshVersionStatus('archive', cfg.id)
     message.success(t('admin.ruleConfig.archiveSaved'))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.updateConfigFail') + ': ' + (e.message || ''))
@@ -2561,6 +2633,7 @@ const handleSave = async () => {
     const idx = processConfigs.value.findIndex(c => c.id === cfg.id)
     if (idx !== -1) processConfigs.value[idx] = normalizeAuditConfigForUI(updated)
     originalAuditPerms.value = { ...(cfg.user_permissions as any) }
+    await refreshVersionStatus('audit', cfg.id)
     message.success(t('admin.ruleConfig.configSaved'))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.updateConfigFail') + ': ' + (e.message || ''))
@@ -2631,8 +2704,20 @@ const handleSave = async () => {
       <!--右：配置面板-->
       <div v-if="selectedConfig" class="config-panel">
         <div class="config-panel-header">
-          <h2 class="config-panel-title">{{ selectedConfig.process_type }}</h2>
-          <p v-if="selectedConfig.process_type_label" class="config-panel-subtitle">{{ selectedConfig.process_type_label }}</p>
+          <div>
+            <h2 class="config-panel-title">{{ selectedConfig.process_type }}</h2>
+            <p v-if="selectedConfig.process_type_label" class="config-panel-subtitle">{{ selectedConfig.process_type_label }}</p>
+          </div>
+          <div class="config-version-status" :class="`config-version-status--${auditVersionStatus?.status || 'unavailable'}`">
+            <a-spin v-if="versionStatusLoading.audit" size="small" />
+            <template v-else>
+              <span class="config-version-status__dot" />
+              <div>
+                <strong>{{ versionStatusTitle(auditVersionStatus) }}</strong>
+                <small>{{ versionStatusHint(auditVersionStatus) }}</small>
+              </div>
+            </template>
+          </div>
         </div>
 
         <!--子选项卡-->
@@ -3297,8 +3382,20 @@ const handleSave = async () => {
 
       <div v-if="selectedSummaryConfig" class="config-panel">
         <div class="config-panel-header">
-          <h2 class="config-panel-title">{{ selectedSummaryConfig.process_type }}</h2>
-          <p v-if="selectedSummaryConfig.process_type_label" class="config-panel-subtitle">{{ selectedSummaryConfig.process_type_label }}</p>
+          <div>
+            <h2 class="config-panel-title">{{ selectedSummaryConfig.process_type }}</h2>
+            <p v-if="selectedSummaryConfig.process_type_label" class="config-panel-subtitle">{{ selectedSummaryConfig.process_type_label }}</p>
+          </div>
+          <div class="config-version-status" :class="`config-version-status--${summaryVersionStatus?.status || 'unavailable'}`">
+            <a-spin v-if="versionStatusLoading.summary" size="small" />
+            <template v-else>
+              <span class="config-version-status__dot" />
+              <div>
+                <strong>{{ versionStatusTitle(summaryVersionStatus) }}</strong>
+                <small>{{ versionStatusHint(summaryVersionStatus) }}</small>
+              </div>
+            </template>
+          </div>
         </div>
 
         <div class="tab-nav">
@@ -4585,8 +4682,20 @@ const handleSave = async () => {
       <!--右：存档配置面板-->
       <div v-if="selectedArchiveConfig" class="config-panel">
         <div class="config-panel-header">
-          <h2 class="config-panel-title">{{ selectedArchiveConfig.process_type }}</h2>
-          <p v-if="selectedArchiveConfig.process_type_label" class="config-panel-subtitle">{{ selectedArchiveConfig.process_type_label }}</p>
+          <div>
+            <h2 class="config-panel-title">{{ selectedArchiveConfig.process_type }}</h2>
+            <p v-if="selectedArchiveConfig.process_type_label" class="config-panel-subtitle">{{ selectedArchiveConfig.process_type_label }}</p>
+          </div>
+          <div class="config-version-status" :class="`config-version-status--${archiveVersionStatus?.status || 'unavailable'}`">
+            <a-spin v-if="versionStatusLoading.archive" size="small" />
+            <template v-else>
+              <span class="config-version-status__dot" />
+              <div>
+                <strong>{{ versionStatusTitle(archiveVersionStatus) }}</strong>
+                <small>{{ versionStatusHint(archiveVersionStatus) }}</small>
+              </div>
+            </template>
+          </div>
         </div>
 
         <!--子选项卡：删除霓虹流规则，与审核工作台景观-->
@@ -5513,9 +5622,22 @@ const handleSave = async () => {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); padding: 24px;
 }
-.config-panel-header { margin-bottom: 20px; }
+.config-panel-header { margin-bottom: 20px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .config-panel-title { font-size: 18px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 4px; }
 .config-panel-subtitle { font-size: 13px; color: var(--color-text-tertiary); margin: 0; }
+.config-version-status {
+  min-width: 230px; padding: 9px 12px; border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md); background: var(--color-bg-page);
+  display: flex; align-items: flex-start; gap: 9px; color: var(--color-text-secondary);
+}
+.config-version-status__dot { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--color-text-tertiary); flex-shrink: 0; }
+.config-version-status strong { display: block; font-size: 13px; line-height: 1.4; color: var(--color-text-primary); }
+.config-version-status small { display: block; margin-top: 2px; font-size: 11px; line-height: 1.45; color: var(--color-text-tertiary); }
+.config-version-status--current { border-color: rgba(16, 185, 129, 0.24); background: var(--color-success-bg); }
+.config-version-status--current .config-version-status__dot { background: var(--color-success); }
+.config-version-status--updated { border-color: rgba(245, 158, 11, 0.28); background: var(--color-warning-bg); }
+.config-version-status--updated .config-version-status__dot { background: var(--color-warning); }
+.config-version-status--unversioned .config-version-status__dot { background: var(--color-primary); }
 .config-empty {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); padding: 48px;
@@ -6391,5 +6513,7 @@ const handleSave = async () => {
   .summary-model-config-grid { grid-template-columns: 1fr; }
   .summary-model-return-fields { grid-column: auto; }
   .summary-model-footer { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .config-panel-header { flex-direction: column; }
+  .config-version-status { width: 100%; min-width: 0; }
 }
 </style>

@@ -367,6 +367,9 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
           <div v-for="proc in detailConfig.audit_details" :key="proc.process_type" class="detail-process-card">
             <div class="detail-process-header">
               <span class="detail-process-name">{{ proc.process_type }}</span>
+              <span class="text-secondary">{{ proc.base_config_version > 0
+                ? (proc.personal_version > 0 ? t('settings.version.personalBasedOn', [proc.base_config_version, proc.personal_version]) : t('settings.version.noPersonal', [proc.base_config_version]))
+                : t('executionConfig.legacyUnversioned') }}</span>
             </div>
 
             <div v-if="proc.strictness_override" class="detail-config-block">
@@ -385,6 +388,9 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
                 <div v-for="rule in proc.custom_rules" :key="rule.id" class="detail-rule-item">
                   <span class="detail-rule-dot" :class="rule.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
                   <span class="detail-rule-text">{{ rule.content }}</span>
+                  <span v-if="rule.added_in_personal_version" class="text-secondary">
+                    {{ t('settings.version.ruleAdded', [rule.base_config_version, rule.added_in_personal_version]) }}
+                  </span>
                 </div>
               </div>
             </div>
@@ -493,6 +499,9 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
           <div v-for="arc in detailConfig.archive_details" :key="arc.process_type" class="detail-process-card">
             <div class="detail-process-header">
               <span class="detail-process-name">{{ arc.process_type }}</span>
+              <span class="text-secondary">{{ arc.base_config_version > 0
+                ? (arc.personal_version > 0 ? t('settings.version.personalBasedOn', [arc.base_config_version, arc.personal_version]) : t('settings.version.noPersonal', [arc.base_config_version]))
+                : t('executionConfig.legacyUnversioned') }}</span>
             </div>
 
             <div v-if="arc.strictness_override" class="detail-config-block">
@@ -511,6 +520,9 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
                 <div v-for="rule in arc.custom_rules" :key="rule.id" class="detail-rule-item">
                   <span class="detail-rule-dot" :class="rule.enabled ? 'detail-rule-dot--on' : 'detail-rule-dot--off'" />
                   <span class="detail-rule-text">{{ rule.content }}</span>
+                  <span v-if="rule.added_in_personal_version" class="text-secondary">
+                    {{ t('settings.version.ruleAdded', [rule.base_config_version, rule.added_in_personal_version]) }}
+                  </span>
                 </div>
               </div>
             </div>

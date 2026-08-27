@@ -23,6 +23,7 @@ type UserPersonalConfigService struct {
 	archiveConfigRepo *repository.ProcessArchiveConfigRepo
 	archiveRuleRepo   *repository.ArchiveRuleRepo
 	orgRepo           *repository.OrgRepo
+	versions          *repository.ExecutionConfigVersionRepo
 }
 
 // NewUserPersonalConfigService 创建 UserPersonalConfigService，注入所有依赖仓储。
@@ -33,6 +34,7 @@ func NewUserPersonalConfigService(
 	archiveConfigRepo *repository.ProcessArchiveConfigRepo,
 	archiveRuleRepo *repository.ArchiveRuleRepo,
 	orgRepo *repository.OrgRepo,
+	versions *repository.ExecutionConfigVersionRepo,
 ) *UserPersonalConfigService {
 	return &UserPersonalConfigService{
 		userConfigRepo:    userConfigRepo,
@@ -41,7 +43,77 @@ func NewUserPersonalConfigService(
 		archiveConfigRepo: archiveConfigRepo,
 		archiveRuleRepo:   archiveRuleRepo,
 		orgRepo:           orgRepo,
+		versions:          versions,
 	}
+}
+
+func (s *UserPersonalConfigService) ensureAuditBaseVersion(
+	c *gin.Context,
+	tenantID, userID uuid.UUID,
+	config *model.ProcessAuditConfig,
+	rules []model.AuditRule,
+) (*model.TenantConfigVersion, error) {
+	snapshot := auditConfigSourceSnapshot(config, rules)
+	version, err := s.versions.EnsureBaseVersion(
+		c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleAudit,
+		config.ID, stableJSONFingerprint(snapshot), snapshot,
+	)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "保存审核基础配置版本失败")
+	}
+	return version, nil
+}
+
+func (s *UserPersonalConfigService) ensureArchiveBaseVersion(
+	c *gin.Context,
+	tenantID, userID uuid.UUID,
+	config *model.ProcessArchiveConfig,
+	rules []model.ArchiveRule,
+) (*model.TenantConfigVersion, error) {
+	snapshot := archiveConfigSourceSnapshot(config, rules)
+	version, err := s.versions.EnsureBaseVersion(
+		c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleArchive,
+		config.ID, stableJSONFingerprint(snapshot), snapshot,
+	)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "保存归档复盘基础配置版本失败")
+	}
+	return version, nil
+}
+
+func validatePersonalVersion(baseVersion, requestBaseVersion, personalVersion, requestPersonalVersion int) error {
+	if requestBaseVersion != baseVersion {
+		return newServiceError(errcode.ErrTenantConfigVersionConflict, "租户配置已更新，请刷新页面后再保存个人配置")
+	}
+	if requestPersonalVersion != personalVersion {
+		return newServiceError(errcode.ErrPersonalConfigVersionConflict, "个人配置已在其他页面更新，请刷新后再保存")
+	}
+	return nil
+}
+
+func versionedCustomRules(
+	requested []dto.CustomRuleDTO,
+	existing []model.CustomRule,
+	baseVersion, nextPersonalVersion int,
+) []model.CustomRule {
+	existingByID := make(map[string]model.CustomRule, len(existing))
+	for _, rule := range existing {
+		existingByID[rule.ID] = rule
+	}
+	result := make([]model.CustomRule, len(requested))
+	for i, rule := range requested {
+		baseAdded := baseVersion
+		personalAdded := nextPersonalVersion
+		if previous, ok := existingByID[rule.ID]; ok && previous.AddedInPersonalVersion > 0 {
+			baseAdded = previous.BaseConfigVersion
+			personalAdded = previous.AddedInPersonalVersion
+		}
+		result[i] = model.CustomRule{
+			ID: rule.ID, Content: rule.Content, Enabled: rule.Enabled, RelatedFlow: rule.RelatedFlow,
+			BaseConfigVersion: baseAdded, AddedInPersonalVersion: personalAdded,
+		}
+	}
+	return result
 }
 
 // userCanAccess 判断用户是否命中流程配置中的成员、角色或部门授权。
@@ -164,6 +236,17 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 	if !perms.AllowModifyStrictness && req.AIConfig.StrictnessOverride != "" {
 		return newServiceError(errcode.ErrPermissionDenied, "审核尺度修改功能已被锁定")
 	}
+	if req.AIConfig.StrictnessOverride != "" && !validStrictness(req.AIConfig.StrictnessOverride) {
+		return newServiceError(errcode.ErrParamValidation, "审核尺度无效")
+	}
+	tenantRules, err := s.auditRuleRepo.ListByConfigID(c, processCfg.ID)
+	if err != nil {
+		return newServiceError(errcode.ErrDatabase, "读取审核规则失败")
+	}
+	baseVersion, err := s.ensureAuditBaseVersion(c, tenantID, userID, processCfg, tenantRules)
+	if err != nil {
+		return err
+	}
 
 	// 获取或创建用户配置
 	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
@@ -175,17 +258,33 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 	if userCfg != nil {
 		_ = json.Unmarshal(userCfg.AuditDetails, &auditDetails)
 	}
+	var existingDetail model.AuditDetailItem
+	for _, detail := range auditDetails {
+		if detail.ProcessType == processType || (detail.ConfigID != uuid.Nil && detail.ConfigID == processCfg.ID) {
+			existingDetail = detail
+			break
+		}
+	}
+	if err := validatePersonalVersion(
+		baseVersion.VersionNo, req.BaseConfigVersion,
+		existingDetail.PersonalVersion, req.PersonalVersion,
+	); err != nil {
+		return err
+	}
+	nextPersonalVersion := existingDetail.PersonalVersion + 1
 
 	// 构建新的 AuditDetailItem
 	newDetail := model.AuditDetailItem{
-		ConfigID:    configID,
-		ProcessType: processType,
+		ConfigID:          configID,
+		ProcessType:       processType,
+		BaseConfigVersion: baseVersion.VersionNo,
+		PersonalVersion:   nextPersonalVersion,
 		FieldConfig: model.FieldConfig{
 			FieldMode:      req.FieldConfig.FieldMode,
 			FieldOverrides: req.FieldConfig.FieldOverrides,
 		},
 		RuleConfig: model.RuleConfig{
-			CustomRules:         make([]model.CustomRule, len(req.RuleConfig.CustomRules)),
+			CustomRules:         versionedCustomRules(req.RuleConfig.CustomRules, existingDetail.RuleConfig.CustomRules, baseVersion.VersionNo, nextPersonalVersion),
 			RuleToggleOverrides: make([]model.RuleToggleOverride, len(req.RuleConfig.RuleToggleOverrides)),
 		},
 		AIConfig: model.UserAIConfig{
@@ -193,9 +292,6 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 		},
 	}
 
-	for i, r := range req.RuleConfig.CustomRules {
-		newDetail.RuleConfig.CustomRules[i] = model.CustomRule{ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow}
-	}
 	for i, t := range req.RuleConfig.RuleToggleOverrides {
 		newDetail.RuleConfig.RuleToggleOverrides[i] = model.RuleToggleOverride{RuleID: t.RuleID, Enabled: t.Enabled}
 	}
@@ -203,7 +299,7 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 	// 更新或追加到 auditDetails
 	found := false
 	for i, detail := range auditDetails {
-		if detail.ProcessType == processType {
+		if detail.ProcessType == processType || (detail.ConfigID != uuid.Nil && detail.ConfigID == processCfg.ID) {
 			auditDetails[i] = newDetail
 			found = true
 			break
@@ -270,7 +366,11 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 	// 获取该流程的租户审核规则
 	tenantRules, err := s.auditRuleRepo.ListByConfigID(c, tenantCfg.ID)
 	if err != nil {
-		tenantRules = []model.AuditRule{}
+		return nil, newServiceError(errcode.ErrDatabase, "读取审核规则失败")
+	}
+	baseVersion, err := s.ensureAuditBaseVersion(c, tenantID, userID, tenantCfg, tenantRules)
+	if err != nil {
+		return nil, err
 	}
 
 	// 获取用户个人配置
@@ -280,12 +380,14 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 	}
 
 	var userDetail model.AuditDetailItem
+	hasPersonalConfig := false
 	if userCfg != nil {
 		var auditDetails []model.AuditDetailItem
 		if err := json.Unmarshal(userCfg.AuditDetails, &auditDetails); err == nil {
 			for _, d := range auditDetails {
 				if d.ProcessType == processType || (d.ConfigID != uuid.Nil && d.ConfigID == tenantCfg.ID) {
 					userDetail = d
+					hasPersonalConfig = true
 					break
 				}
 			}
@@ -357,24 +459,35 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 	if perms.AllowCustomRules {
 		customRuleDTOs = make([]dto.CustomRuleDTO, len(userDetail.RuleConfig.CustomRules))
 		for i, r := range userDetail.RuleConfig.CustomRules {
-			customRuleDTOs[i] = dto.CustomRuleDTO{ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow}
+			customRuleDTOs[i] = dto.CustomRuleDTO{
+				ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow,
+				BaseConfigVersion: r.BaseConfigVersion, AddedInPersonalVersion: r.AddedInPersonalVersion,
+			}
 		}
 	} else {
 		customRuleDTOs = []dto.CustomRuleDTO{}
 	}
 
+	personalBaseVersion := userDetail.BaseConfigVersion
+	if personalBaseVersion == 0 {
+		personalBaseVersion = baseVersion.VersionNo
+	}
 	return &dto.FullAuditProcessConfigResponse{
-		ProcessType:      tenantCfg.ProcessType,
-		ProcessTypeLabel: tenantCfg.ProcessTypeLabel,
-		ConfigID:         tenantCfg.ID.String(),
-		FieldMode:        tenantCfg.FieldMode,
-		KBMode:           tenantCfg.KBMode,
-		AuditStrictness:  effectiveStrictness,
-		UserPermissions:  dto.UserPermissionsDTO{AllowCustomFields: perms.AllowCustomFields, AllowCustomRules: perms.AllowCustomRules, AllowModifyStrictness: perms.AllowModifyStrictness},
-		MainFields:       mainFields,
-		DetailTables:     detailTables,
-		TenantRules:      tenantRuleDTOs,
-		CustomRules:      customRuleDTOs,
+		ProcessType:              tenantCfg.ProcessType,
+		ProcessTypeLabel:         tenantCfg.ProcessTypeLabel,
+		ConfigID:                 tenantCfg.ID.String(),
+		BaseConfigVersion:        personalBaseVersion,
+		CurrentBaseConfigVersion: baseVersion.VersionNo,
+		PersonalVersion:          userDetail.PersonalVersion,
+		HasPersonalConfig:        hasPersonalConfig,
+		FieldMode:                tenantCfg.FieldMode,
+		KBMode:                   tenantCfg.KBMode,
+		AuditStrictness:          effectiveStrictness,
+		UserPermissions:          dto.UserPermissionsDTO{AllowCustomFields: perms.AllowCustomFields, AllowCustomRules: perms.AllowCustomRules, AllowModifyStrictness: perms.AllowModifyStrictness},
+		MainFields:               mainFields,
+		DetailTables:             detailTables,
+		TenantRules:              tenantRuleDTOs,
+		CustomRules:              customRuleDTOs,
 	}, nil
 }
 
@@ -505,7 +618,11 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 	// 获取归档规则
 	archiveRules, err := s.archiveRuleRepo.ListByConfigIDFilter(c, tenantCfg.ID, nil, nil)
 	if err != nil {
-		archiveRules = []model.ArchiveRule{}
+		return nil, newServiceError(errcode.ErrDatabase, "读取归档复盘规则失败")
+	}
+	baseVersion, err := s.ensureArchiveBaseVersion(c, tenantID, userID, tenantCfg, archiveRules)
+	if err != nil {
+		return nil, err
 	}
 
 	// 获取用户个人归档配置
@@ -515,12 +632,14 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 	}
 
 	var userDetail model.ArchiveDetailItem
+	hasPersonalConfig := false
 	if userCfg != nil {
 		var archiveDetails []model.ArchiveDetailItem
 		if err := json.Unmarshal(userCfg.ArchiveDetails, &archiveDetails); err == nil {
 			for _, d := range archiveDetails {
 				if d.ProcessType == processType || (d.ConfigID != uuid.Nil && d.ConfigID == tenantCfg.ID) {
 					userDetail = d
+					hasPersonalConfig = true
 					break
 				}
 			}
@@ -592,24 +711,35 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 	if perms.AllowCustomRules {
 		customRuleDTOs = make([]dto.CustomRuleDTO, len(userDetail.RuleConfig.CustomRules))
 		for i, r := range userDetail.RuleConfig.CustomRules {
-			customRuleDTOs[i] = dto.CustomRuleDTO{ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow}
+			customRuleDTOs[i] = dto.CustomRuleDTO{
+				ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow,
+				BaseConfigVersion: r.BaseConfigVersion, AddedInPersonalVersion: r.AddedInPersonalVersion,
+			}
 		}
 	} else {
 		customRuleDTOs = []dto.CustomRuleDTO{}
 	}
 
+	personalBaseVersion := userDetail.BaseConfigVersion
+	if personalBaseVersion == 0 {
+		personalBaseVersion = baseVersion.VersionNo
+	}
 	return &dto.FullArchiveConfigResponse{
-		ProcessType:      tenantCfg.ProcessType,
-		ProcessTypeLabel: tenantCfg.ProcessTypeLabel,
-		ConfigID:         tenantCfg.ID.String(),
-		FieldMode:        tenantCfg.FieldMode,
-		KBMode:           tenantCfg.KBMode,
-		AuditStrictness:  effectiveStrictness,
-		UserPermissions:  dto.ArchiveUserPermissionsDTO{AllowCustomFields: perms.AllowCustomFields, AllowCustomRules: perms.AllowCustomRules, AllowModifyStrictness: perms.AllowModifyStrictness},
-		MainFields:       mainFields,
-		DetailTables:     detailTables,
-		TenantRules:      ruleDTOs,
-		CustomRules:      customRuleDTOs,
+		ProcessType:              tenantCfg.ProcessType,
+		ProcessTypeLabel:         tenantCfg.ProcessTypeLabel,
+		ConfigID:                 tenantCfg.ID.String(),
+		BaseConfigVersion:        personalBaseVersion,
+		CurrentBaseConfigVersion: baseVersion.VersionNo,
+		PersonalVersion:          userDetail.PersonalVersion,
+		HasPersonalConfig:        hasPersonalConfig,
+		FieldMode:                tenantCfg.FieldMode,
+		KBMode:                   tenantCfg.KBMode,
+		AuditStrictness:          effectiveStrictness,
+		UserPermissions:          dto.ArchiveUserPermissionsDTO{AllowCustomFields: perms.AllowCustomFields, AllowCustomRules: perms.AllowCustomRules, AllowModifyStrictness: perms.AllowModifyStrictness},
+		MainFields:               mainFields,
+		DetailTables:             detailTables,
+		TenantRules:              ruleDTOs,
+		CustomRules:              customRuleDTOs,
 	}, nil
 }
 
@@ -658,6 +788,17 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 	if !perms.AllowModifyStrictness && req.AIConfig.StrictnessOverride != "" {
 		return newServiceError(errcode.ErrPermissionDenied, "复核尺度修改功能已被锁定")
 	}
+	if req.AIConfig.StrictnessOverride != "" && !validStrictness(req.AIConfig.StrictnessOverride) {
+		return newServiceError(errcode.ErrParamValidation, "复核尺度无效")
+	}
+	archiveRules, err := s.archiveRuleRepo.ListByConfigIDFilter(c, tenantCfg.ID, nil, nil)
+	if err != nil {
+		return newServiceError(errcode.ErrDatabase, "读取归档复盘规则失败")
+	}
+	baseVersion, err := s.ensureArchiveBaseVersion(c, tenantID, userID, tenantCfg, archiveRules)
+	if err != nil {
+		return err
+	}
 
 	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
 	if err != nil {
@@ -668,24 +809,37 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 	if userCfg != nil {
 		_ = json.Unmarshal(userCfg.ArchiveDetails, &archiveDetails)
 	}
+	var existingDetail model.ArchiveDetailItem
+	for _, detail := range archiveDetails {
+		if detail.ProcessType == processType || (detail.ConfigID != uuid.Nil && detail.ConfigID == tenantCfg.ID) {
+			existingDetail = detail
+			break
+		}
+	}
+	if err := validatePersonalVersion(
+		baseVersion.VersionNo, req.BaseConfigVersion,
+		existingDetail.PersonalVersion, req.PersonalVersion,
+	); err != nil {
+		return err
+	}
+	nextPersonalVersion := existingDetail.PersonalVersion + 1
 
 	newDetail := model.ArchiveDetailItem{
-		ConfigID:    configID,
-		ProcessType: processType,
+		ConfigID:          configID,
+		ProcessType:       processType,
+		BaseConfigVersion: baseVersion.VersionNo,
+		PersonalVersion:   nextPersonalVersion,
 		FieldConfig: model.FieldConfig{
 			FieldMode:      req.FieldConfig.FieldMode,
 			FieldOverrides: req.FieldConfig.FieldOverrides,
 		},
 		RuleConfig: model.RuleConfig{
-			CustomRules:         make([]model.CustomRule, len(req.RuleConfig.CustomRules)),
+			CustomRules:         versionedCustomRules(req.RuleConfig.CustomRules, existingDetail.RuleConfig.CustomRules, baseVersion.VersionNo, nextPersonalVersion),
 			RuleToggleOverrides: make([]model.RuleToggleOverride, len(req.RuleConfig.RuleToggleOverrides)),
 		},
 		AIConfig: model.UserAIConfig{
 			StrictnessOverride: req.AIConfig.StrictnessOverride,
 		},
-	}
-	for i, r := range req.RuleConfig.CustomRules {
-		newDetail.RuleConfig.CustomRules[i] = model.CustomRule{ID: r.ID, Content: r.Content, Enabled: r.Enabled, RelatedFlow: r.RelatedFlow}
 	}
 	for i, t := range req.RuleConfig.RuleToggleOverrides {
 		newDetail.RuleConfig.RuleToggleOverrides[i] = model.RuleToggleOverride{RuleID: t.RuleID, Enabled: t.Enabled}
@@ -693,7 +847,7 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 
 	found := false
 	for i, d := range archiveDetails {
-		if d.ProcessType == processType {
+		if d.ProcessType == processType || (d.ConfigID != uuid.Nil && d.ConfigID == tenantCfg.ID) {
 			archiveDetails[i] = newDetail
 			found = true
 			break

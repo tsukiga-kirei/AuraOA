@@ -34,6 +34,7 @@ func SetupRouter(
 	archiveConfigHandler *handler.ArchiveConfigHandler,
 	archiveRuleHandler *handler.ArchiveRuleHandler,
 	summaryConfigHandler *handler.ProcessSummaryConfigHandler,
+	executionConfigSourceHandler *handler.ExecutionConfigSourceHandler,
 	externalContextHandler *handler.ExternalContextHandler,
 	auditHandler *handler.AuditHandler,
 	archiveReviewHandler *handler.ArchiveReviewHandler,
@@ -195,6 +196,13 @@ func SetupRouter(
 
 		// 系统提示词模板（只读）
 		tenantRules.GET("/prompt-templates", configHandler.ListPromptTemplates)
+	}
+
+	// 租户管理员 — 当前配置与不可变执行版本的对应状态。
+	executionConfigVersions := r.Group("/api/tenant/execution-config-versions")
+	executionConfigVersions.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		executionConfigVersions.GET("/status", executionConfigSourceHandler.GetStatus)
 	}
 
 	// 定时任务类型配置 — 只读（所有已登录租户用户均可访问，用于前端展示已启用的任务类型）

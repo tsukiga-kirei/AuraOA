@@ -19,6 +19,8 @@ const ERROR_CODE_I18N_MAP: Record<number, string> = {
   40300: 'auth.error.forbidden',
   40400: 'auth.error.notFound',
   40900: 'auth.error.conflict',
+  40902: 'auth.error.tenantConfigVersionConflict',
+  40903: 'auth.error.personalConfigVersionConflict',
   40910: 'auth.error.alreadyInitialized',
   50000: 'auth.error.serverError',
   50001: 'auth.error.databaseError',

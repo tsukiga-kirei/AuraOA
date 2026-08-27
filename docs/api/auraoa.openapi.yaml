@@ -28,6 +28,8 @@ tags:
   description: 缓存管理
 - name: AuditConfig
   description: 流程审核配置
+- name: ExecutionConfigVersion
+  description: 当前配置与执行版本状态
 - name: ArchiveConfig
   description: 归档复盘配置
 - name: SummaryConfig
@@ -241,7 +243,7 @@ paths:
           type: string
       responses:
         '200':
-          description: 登录桥接页，写入 AuraOA 本地登录态后跳转工作台
+          description: 登录桥接页，加载角色菜单、写入 AuraOA 本地登录态后跳转业务审核工作台 /dashboard
           content:
             text/html:
               schema:
@@ -1868,6 +1870,42 @@ paths:
               properties:
                 enabled:
                   type: boolean
+  /api/tenant/execution-config-versions/status:
+    get:
+      summary: 查询并固化当前租户基础配置版本
+      tags:
+      - ExecutionConfigVersion
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: module
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - audit
+          - archive
+          - summary
+      - name: source_config_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionConfigVersionStatusResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
   /api/tenant/rules/configs:
     get:
       summary: 获取流程审核配置列表
@@ -3454,6 +3492,9 @@ paths:
                   message:
                     type: string
                     example: success
+        '409':
+          description: 租户基础版本或个人配置版本已变化
+          $ref: '#/components/responses/ErrorResponse'
       parameters:
       - name: processType
         in: path
@@ -3612,6 +3653,9 @@ paths:
                   message:
                     type: string
                     example: success
+        '409':
+          description: 租户基础版本或个人配置版本已变化
+          $ref: '#/components/responses/ErrorResponse'
       parameters:
       - name: processType
         in: path
@@ -5849,6 +5893,35 @@ components:
           type: string
         trace_id:
           type: string
+    ExecutionConfigVersionStatusResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: success
+        data:
+          type: object
+          required:
+          - status
+          - has_pending_changes
+          properties:
+            status:
+              type: string
+              enum:
+              - current
+              - updated
+              - unversioned
+            current_version_no:
+              type: integer
+              minimum: 1
+            latest_version_no:
+              type: integer
+              minimum: 1
+            has_pending_changes:
+              type: boolean
     PagedResult:
       type: object
       properties:
@@ -6428,3 +6501,38 @@ components:
       type: object
     UserProcessConfigRequest:
       type: object
+      required:
+      - config_id
+      - base_config_version
+      - personal_version
+      - field_config
+      - rule_config
+      - ai_config
+      properties:
+        config_id:
+          type: string
+          format: uuid
+        base_config_version:
+          type: integer
+          minimum: 1
+          description: 页面加载时的当前租户基础配置版本
+        personal_version:
+          type: integer
+          minimum: 0
+          description: 页面加载时的个人配置版本
+        field_config:
+          type: object
+          additionalProperties: true
+        rule_config:
+          type: object
+          additionalProperties: true
+          description: custom_rules 中的版本元数据由服务端维护
+        ai_config:
+          type: object
+          properties:
+            strictness_override:
+              type: string
+              enum:
+              - strict
+              - standard
+              - loose

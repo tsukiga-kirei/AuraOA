@@ -50,6 +50,54 @@ func (r *ExecutionConfigVersionRepo) GetVersionByID(
 	return &version, err
 }
 
+// EnsureBaseVersion 将当前管理员配置固化为不可变基础版本；相同内容直接复用。
+func (r *ExecutionConfigVersionRepo) EnsureBaseVersion(
+	ctx context.Context,
+	tenantID, userID uuid.UUID,
+	module string,
+	sourceConfigID uuid.UUID,
+	fingerprint string,
+	snapshot interface{},
+) (*model.TenantConfigVersion, error) {
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("序列化租户基础配置快照失败: %w", err)
+	}
+	var result model.TenantConfigVersion
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		lockKey := "base:" + tenantID.String() + ":" + module + ":" + sourceConfigID.String()
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", lockKey).Error; err != nil {
+			return err
+		}
+		err := tx.Where(
+			"tenant_id = ? AND module = ? AND source_config_id = ? AND fingerprint = ?",
+			tenantID, module, sourceConfigID, fingerprint,
+		).First(&result).Error
+		if err == nil {
+			return nil
+		}
+		if err != gorm.ErrRecordNotFound {
+			return err
+		}
+		var maxVersion int
+		if err := tx.Model(&model.TenantConfigVersion{}).
+			Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).
+			Select("COALESCE(MAX(version_no), 0)").Scan(&maxVersion).Error; err != nil {
+			return err
+		}
+		result = model.TenantConfigVersion{
+			ID: uuid.New(), TenantID: tenantID, Module: module, SourceConfigID: sourceConfigID,
+			VersionNo: maxVersion + 1, Fingerprint: fingerprint, ConfigSnapshot: datatypes.JSON(raw),
+			CreatedBy: &userID,
+		}
+		return tx.Create(&result).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // BindSnapshot 将流程绑定到内容寻址的不可变配置版本。
 // force=false 时保留既有绑定；force=true 仅用于用户明确选择“按最新配置重新执行”。
 func (r *ExecutionConfigVersionRepo) BindSnapshot(
@@ -57,6 +105,7 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 	tenantID, userID uuid.UUID,
 	module, processID, processType string,
 	sourceConfigID uuid.UUID,
+	baseConfigVersionID uuid.UUID,
 	fingerprint string,
 	snapshot interface{},
 	force bool,
@@ -71,6 +120,21 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 		lockKey := tenantID.String() + ":" + module + ":" + sourceConfigID.String()
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", lockKey).Error; err != nil {
 			return err
+		}
+
+		// 普通重审必须先复用流程已有绑定，不能因为当前租户配置已变化而创建一个实际未使用的新版本。
+		if !force {
+			err := tx.Table("execution_config_versions AS v").
+				Select("v.*").
+				Joins("JOIN process_execution_config_bindings AS b ON b.config_version_id = v.id").
+				Where("b.tenant_id = ? AND b.module = ? AND b.process_id = ?", tenantID, module, processID).
+				First(&result).Error
+			if err == nil {
+				return nil
+			}
+			if err != gorm.ErrRecordNotFound {
+				return err
+			}
 		}
 
 		var version model.ExecutionConfigVersion
@@ -89,14 +153,9 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 				return err
 			}
 			version = model.ExecutionConfigVersion{
-				ID:             uuid.New(),
-				TenantID:       tenantID,
-				Module:         module,
-				SourceConfigID: sourceConfigID,
-				VersionNo:      maxVersion + 1,
-				Fingerprint:    fingerprint,
-				ConfigSnapshot: datatypes.JSON(raw),
-				CreatedBy:      &userID,
+				ID: uuid.New(), TenantID: tenantID, Module: module, SourceConfigID: sourceConfigID,
+				BaseConfigVersionID: &baseConfigVersionID, VersionNo: maxVersion + 1,
+				Fingerprint: fingerprint, ConfigSnapshot: datatypes.JSON(raw), CreatedBy: &userID,
 			}
 			if err := tx.Create(&version).Error; err != nil {
 				return err

@@ -153,7 +153,8 @@ X-Embed-Token: <tenant embed access token>
 普通审批流变化是否触发由 `auto_audit_on_flow_change` 单独控制，默认关闭。
 审核规则、尺度、提示词和字段配置变化不属于 OA 业务变化，不会设置 `should_auto_audit`。
 响应中的 `config_version_no` 表示流程已绑定版本；当前管理配置与绑定版本不同时返回
-`config_upgrade_available=true`，但仍需用户明确选择升级。
+`config_upgrade_available=true`。当前 OA 嵌入审核与总结页面暂不展示“使用最新配置重新执行”入口，
+只保留普通重新执行；后端参数与业务前端入口继续保留，后续启用嵌入入口时无需迁移历史数据。
 `trigger_source=embed_auto` 时后端会再次校验 `should_auto_audit`，无需刷新时不会创建审核任务。
 可见审核页首次加载会先读取审核实际依赖的业务字段、附件版本、流程锚点和规则配置并比较指纹，
 不下载或识别附件正文，也不调用 AI。无变化时直接展示已有结果；有变化时不先展示旧结果，

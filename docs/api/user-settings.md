@@ -37,9 +37,13 @@ PUT /api/tenant/settings/processes/:processType
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `config_id` | string | 流程审核配置 ID |
+| `base_config_version` | integer | 页面加载时的当前租户基础版本；保存时用于阻止覆盖管理员的新配置 |
+| `personal_version` | integer | 页面加载时的个人配置版本；保存时用于阻止多页面互相覆盖 |
 | `field_config` | object | 字段配置（`field_mode`、`field_overrides`） |
 | `rule_config` | object | 规则配置（`custom_rules`、`rule_toggle_overrides`） |
 | `ai_config` | object | AI 配置（`strictness_override`） |
+
+保存成功后个人版本递增。若租户基础版本或个人版本已经变化，接口返回 HTTP `409`，前端应刷新合并视图后由用户重新确认保存。
 
 ---
 
@@ -57,6 +61,13 @@ GET /api/tenant/settings/processes/:processType/full
 - 用户自定义规则
 - 用户权限（是否允许自定义字段/规则/尺度）
 - 有效审核严格度
+- `base_config_version`：当前个人配置原先基于的租户版本
+- `current_base_config_version`：管理员当前租户配置版本
+- `personal_version`：个人配置版本
+
+每条个人规则还返回 `base_config_version` 和 `added_in_personal_version`，用于说明它基于哪个租户版本、在哪个个人版本首次加入。历史个人规则没有版本元数据时显示为未记录，首次重新保存后补齐。
+
+当管理员同时开启流程访问权限和 `allow_modify_strictness` 时，个人尺度可以调整。执行端会按个人尺度装配完整的推理与结构化提示词；未授权时忽略个人尺度并使用租户配置。
 
 ---
 
@@ -113,6 +124,8 @@ GET /api/tenant/settings/archive-configs/:processType/full
 ```
 PUT /api/tenant/settings/archive-configs/:processType
 ```
+
+请求和版本冲突语义与审核工作台一致；个人复核尺度也只有在管理员允许时才会进入最终执行快照。
 
 ---
 
