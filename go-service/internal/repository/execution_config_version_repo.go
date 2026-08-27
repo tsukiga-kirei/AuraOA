@@ -35,7 +35,16 @@ func (r *ExecutionConfigVersionRepo) GetBindingVersion(
 		Joins("JOIN process_execution_config_bindings AS b ON b.config_version_id = v.id").
 		Where("b.tenant_id = ? AND b.module = ? AND b.process_id = ?", tenantID, module, processID).
 		First(&version).Error
-	return &version, err
+	return bindingVersionResult(version, err)
+}
+
+// bindingVersionResult 保证“未找到流程绑定”不会伪装成一个全零配置版本。
+// 调用方依赖 nil 判断是否需要创建首次绑定，因此错误场景不能返回零值对象。
+func bindingVersionResult(version model.ExecutionConfigVersion, err error) (*model.ExecutionConfigVersion, error) {
+	if err != nil {
+		return nil, err
+	}
+	return &version, nil
 }
 
 // GetVersionByID 按租户读取日志实际引用的配置版本。
