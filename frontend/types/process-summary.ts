@@ -18,6 +18,8 @@ export interface SummaryBlockConfig {
 
 export interface ProcessSummaryConfig {
   id: string
+  process_id?: string
+  enabled?: boolean
   tenant_id?: string
   process_type: string
   process_type_label: string

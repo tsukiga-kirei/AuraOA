@@ -166,6 +166,7 @@ export interface ArchiveReviewHistoryItem {
   archive_result: ArchiveReviewResult
   process_snapshot?: ArchiveProcessSnapshot
   duration_ms: number
+  deep_thinking?: string
   ai_reasoning?: string
   confidence: number
   error_message?: string
