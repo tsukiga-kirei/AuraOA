@@ -7,6 +7,7 @@ import type { ExternalContextMount } from '~/types/external-context'
 /** 流程审核配置 */
 export interface ProcessAuditConfig {
   id: string
+  process_id?: string
   tenant_id?: string
   process_type: string
   process_type_label: string
@@ -16,6 +17,12 @@ export interface ProcessAuditConfig {
   field_mode: string
   kb_mode: string
   ai_config: Record<string, any>
+  ai_strictness?: string
+  ai_prompt_template?: string
+  allow_user_custom_rules?: boolean
+  allow_user_fields?: boolean
+  allow_user_ai_strictness?: boolean
+  enabled?: boolean
   user_permissions: Record<string, any>
   access_control?: AccessControl
   embed_enabled?: boolean

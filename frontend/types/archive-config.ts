@@ -14,18 +14,25 @@ export interface AccessControl {
 /** 归档复盘流程配置（参考 ProcessAuditConfig，增加 access_control） */
 export interface ProcessArchiveConfig {
   id: string
+  process_id?: string
   tenant_id?: string
   process_type: string
   process_type_label: string
   main_table_name: string
   main_fields: ProcessField[]
   detail_tables: DetailTableDef[]
-  field_mode: string
-  kb_mode: string
+  field_mode?: string
+  kb_mode?: string
   ai_config: Record<string, any>
-  user_permissions: Record<string, any>
+  ai_strictness?: string
+  ai_prompt_template?: string
+  allow_user_custom_rules?: boolean
+  allow_user_fields?: boolean
+  allow_user_ai_strictness?: boolean
+  enabled?: boolean
+  user_permissions?: Record<string, any>
   access_control: AccessControl              // 访问控制权限
-  status: string
+  status?: string
   created_at?: string
   updated_at?: string
 }

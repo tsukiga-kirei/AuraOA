@@ -103,15 +103,34 @@ async function refreshVersionStatus(module: ExecutionConfigModule, configId?: st
   }
 }
 
-function versionStatusTitle(status: ExecutionConfigVersionStatus | null): string {
-  if (!status) return t('executionConfig.statusUnavailable')
-  if (status.status === 'current' && status.current_version_no) {
-    return t('executionConfig.currentVersion', `${status.current_version_no}`)
+// 记录当前正在编辑的历史版本号（null 表示编辑线上可用版本）
+const editingVersionNo = reactive<Record<ExecutionConfigModule, number | null>>({
+  audit: null,
+  archive: null,
+  summary: null,
+})
+
+function versionStatusTitle(status: ExecutionConfigVersionStatus | null, module: ExecutionConfigModule): string {
+  if (editingVersionNo[module] !== null) {
+    return t('executionConfig.editingHistoryVersion', [`${editingVersionNo[module]}`])
   }
-  if (status.status === 'updated' && status.latest_version_no) {
-    return t('executionConfig.updatedAfterVersion', `${status.latest_version_no}`)
+  if (!status) return t('executionConfig.statusUnavailable')
+  const vNo = status.active_version_no || status.current_version_no
+  if (status.status === 'current' && vNo) {
+    return t('executionConfig.currentVersion', [`${vNo}`])
+  }
+  if (status.status === 'updated' && vNo) {
+    return t('executionConfig.updatedAfterVersion', [`${vNo}`])
   }
   return t('executionConfig.notGenerated')
+}
+
+function versionStatusClass(status: ExecutionConfigVersionStatus | null, module: ExecutionConfigModule): string {
+  if (editingVersionNo[module] !== null) {
+    return 'config-version-status--historical'
+  }
+  if (!status) return 'config-version-status--unavailable'
+  return `config-version-status--${status.status}`
 }
 
 const publishingVersion = reactive<Record<ExecutionConfigModule, boolean>>({
@@ -144,6 +163,7 @@ async function handlePublishVersion(module: ExecutionConfigModule) {
       try {
         const result = await executionConfigVersionApi.publish(module, configId!)
         versionStatusRefs[module].value = result
+        editingVersionNo[module] = null
         message.success(t('admin.ruleConfig.publishSuccess'))
       } catch (e: any) {
         message.error(t('admin.ruleConfig.publishFail') + ': ' + (e.message || ''))
@@ -162,11 +182,12 @@ const activeHistoryModule = ref<ExecutionConfigModule>('audit')
 const activeHistoryConfigId = ref<string>('')
 const selectedHistoryItem = ref<any | null>(null)
 const activatingVersion = ref(false)
+const savingHistoricalVersion = ref(false)
 
 async function reloadCurrentModuleData(module: ExecutionConfigModule) {
   if (module === 'audit') {
     const configs = await rulesApi.listConfigs()
-    processConfigs.value = configs.map(normalizeAuditConfigForUI)
+    processConfigs.value = configs.map(c => typeof normalizeAuditConfigForUI === 'function' ? normalizeAuditConfigForUI(c) : c)
     if (selectedConfig.value) {
       currentRules.value = await rulesApi.listRules(selectedConfig.value.id)
     }
@@ -174,17 +195,14 @@ async function reloadCurrentModuleData(module: ExecutionConfigModule) {
     const archiveList = await archiveApi.listConfigs()
     archiveConfigs.value = archiveList.map(cfg => ({
       ...cfg,
-      access_control: normalizeAccessControl(cfg.access_control),
+      access_control: typeof normalizeAccessControl === 'function' ? normalizeAccessControl(cfg.access_control) : cfg.access_control,
     }))
     if (selectedArchiveConfig.value) {
       currentArchiveRules.value = await archiveApi.listRules(selectedArchiveConfig.value.id)
     }
   } else if (module === 'summary') {
     const summaryList = await summaryApi.listConfigs()
-    summaryConfigs.value = summaryList.map(cfg => ({
-      ...cfg,
-      summary_blocks: parseSummaryBlocks(cfg.summary_blocks),
-    }))
+    summaryConfigs.value = summaryList.map(c => typeof normalizeSummaryConfigForUI === 'function' ? normalizeSummaryConfigForUI(c) : c)
   }
 }
 
@@ -235,6 +253,7 @@ async function handleActivateVersion(item: any) {
           item.version_no,
         )
         versionStatusRefs[activeHistoryModule.value].value = status
+        editingVersionNo[activeHistoryModule.value] = null
 
         // 重新拉取配置与规则数据
         await reloadCurrentModuleData(activeHistoryModule.value)
@@ -254,33 +273,125 @@ async function handleActivateVersion(item: any) {
   })
 }
 
-// 载入历史版本到当前编辑区
-async function handleLoadVersionToEdit(item: any) {
-  Modal.confirm({
-    title: `确认载入 v${item.version_no} 内容？`,
-    content: `载入后，当前编辑区的字段与规则将显示为 v${item.version_no} 快照内容，您可以基于此继续修改保存。确认载入？`,
-    okText: t('admin.ruleConfig.confirm'),
-    cancelText: t('admin.ruleConfig.cancel'),
-    width: 380,
-    centered: true,
-    maskClosable: true,
-    onOk: async () => {
-      try {
-        // 调用 activate 将快照同步至主表编辑区
-        const status = await executionConfigVersionApi.activate(
-          activeHistoryModule.value,
-          activeHistoryConfigId.value,
-          item.version_no,
-        )
-        versionStatusRefs[activeHistoryModule.value].value = status
-        await reloadCurrentModuleData(activeHistoryModule.value)
-        message.success(`已载入 v${item.version_no} 内容至编辑区`)
-        showHistoryDrawer.value = false
-      } catch (e: any) {
-        message.error('载入失败: ' + (e.message || ''))
-      }
-    },
-  })
+// 载入历史版本到当前编辑区（纯前端填充，绝对不调用 activate 改变线上当前可用版本）
+function handleLoadVersionToEdit(item: any) {
+  const module = activeHistoryModule.value
+  const snapshot = item.config_snapshot || {}
+
+  if (module === 'audit' && selectedConfig.value) {
+    if (snapshot.main_fields !== undefined) selectedConfig.value.main_fields = snapshot.main_fields || []
+    if (snapshot.detail_tables !== undefined) selectedConfig.value.detail_tables = snapshot.detail_tables || []
+    if (snapshot.ai_strictness !== undefined) selectedConfig.value.ai_strictness = snapshot.ai_strictness
+    if (snapshot.ai_prompt_template !== undefined) selectedConfig.value.ai_prompt_template = snapshot.ai_prompt_template
+    if (snapshot.allow_user_custom_rules !== undefined) selectedConfig.value.allow_user_custom_rules = snapshot.allow_user_custom_rules
+    if (snapshot.allow_user_fields !== undefined) selectedConfig.value.allow_user_fields = snapshot.allow_user_fields
+    if (snapshot.allow_user_ai_strictness !== undefined) selectedConfig.value.allow_user_ai_strictness = snapshot.allow_user_ai_strictness
+    if (snapshot.rules) {
+      currentRules.value = (snapshot.rules || []).map((r: any) => ({
+        ...r,
+        id: r.id || createClientId(),
+      }))
+    }
+  } else if (module === 'archive' && selectedArchiveConfig.value) {
+    if (snapshot.main_fields !== undefined) selectedArchiveConfig.value.main_fields = snapshot.main_fields || []
+    if (snapshot.detail_tables !== undefined) selectedArchiveConfig.value.detail_tables = snapshot.detail_tables || []
+    if (snapshot.ai_strictness !== undefined) selectedArchiveConfig.value.ai_strictness = snapshot.ai_strictness
+    if (snapshot.ai_prompt_template !== undefined) selectedArchiveConfig.value.ai_prompt_template = snapshot.ai_prompt_template
+    if (snapshot.allow_user_custom_rules !== undefined) selectedArchiveConfig.value.allow_user_custom_rules = snapshot.allow_user_custom_rules
+    if (snapshot.allow_user_fields !== undefined) selectedArchiveConfig.value.allow_user_fields = snapshot.allow_user_fields
+    if (snapshot.allow_user_ai_strictness !== undefined) selectedArchiveConfig.value.allow_user_ai_strictness = snapshot.allow_user_ai_strictness
+    if (snapshot.rules) {
+      currentArchiveRules.value = (snapshot.rules || []).map((r: any) => ({
+        ...r,
+        id: r.id || createClientId(),
+      }))
+    }
+  } else if (module === 'summary' && selectedSummaryConfig.value) {
+    if (snapshot.main_fields !== undefined) selectedSummaryConfig.value.main_fields = snapshot.main_fields || []
+    if (snapshot.detail_tables !== undefined) selectedSummaryConfig.value.detail_tables = snapshot.detail_tables || []
+    if (snapshot.summary_blocks) {
+      selectedSummaryConfig.value.summary_blocks = (snapshot.summary_blocks || []).map((b: any, idx: number) => ({
+        ...b,
+        id: b.id || createClientId(),
+        sort_order: b.sort_order || idx + 1,
+      }))
+    }
+  }
+
+  editingVersionNo[module] = item.version_no
+  message.success(t('executionConfig.editingHistoryVersion', [`${item.version_no}`]))
+  showHistoryDrawer.value = false
+}
+
+// 退出历史版本编辑，恢复当前可用版本内容
+async function handleExitHistoryEditing(module: ExecutionConfigModule) {
+  editingVersionNo[module] = null
+  await reloadCurrentModuleData(module)
+}
+
+// 保存到当前正在编辑的历史版本快照
+async function handleSaveHistoricalVersion(module: ExecutionConfigModule) {
+  const versionNo = editingVersionNo[module]
+  if (versionNo === null) return
+  let configId = ''
+  let snapshot: any = {}
+
+  if (module === 'audit' && selectedConfig.value) {
+    configId = selectedConfig.value.id
+    snapshot = {
+      process_id: selectedConfig.value.process_id,
+      process_type: selectedConfig.value.process_type,
+      process_type_label: selectedConfig.value.process_type_label,
+      main_fields: selectedConfig.value.main_fields,
+      detail_tables: selectedConfig.value.detail_tables,
+      ai_strictness: selectedConfig.value.ai_strictness,
+      ai_prompt_template: selectedConfig.value.ai_prompt_template,
+      allow_user_custom_rules: selectedConfig.value.allow_user_custom_rules,
+      allow_user_fields: selectedConfig.value.allow_user_fields,
+      allow_user_ai_strictness: selectedConfig.value.allow_user_ai_strictness,
+      enabled: selectedConfig.value.enabled,
+      rules: currentRules.value,
+    }
+  } else if (module === 'archive' && selectedArchiveConfig.value) {
+    configId = selectedArchiveConfig.value.id
+    snapshot = {
+      process_id: selectedArchiveConfig.value.process_id,
+      process_type: selectedArchiveConfig.value.process_type,
+      process_type_label: selectedArchiveConfig.value.process_type_label,
+      main_fields: selectedArchiveConfig.value.main_fields,
+      detail_tables: selectedArchiveConfig.value.detail_tables,
+      ai_strictness: selectedArchiveConfig.value.ai_strictness,
+      ai_prompt_template: selectedArchiveConfig.value.ai_prompt_template,
+      allow_user_custom_rules: selectedArchiveConfig.value.allow_user_custom_rules,
+      allow_user_fields: selectedArchiveConfig.value.allow_user_fields,
+      allow_user_ai_strictness: selectedArchiveConfig.value.allow_user_ai_strictness,
+      enabled: selectedArchiveConfig.value.enabled,
+      rules: currentArchiveRules.value,
+    }
+  } else if (module === 'summary' && selectedSummaryConfig.value) {
+    configId = selectedSummaryConfig.value.id
+    snapshot = {
+      process_id: selectedSummaryConfig.value.process_id,
+      process_type: selectedSummaryConfig.value.process_type,
+      process_type_label: selectedSummaryConfig.value.process_type_label,
+      main_fields: selectedSummaryConfig.value.main_fields,
+      detail_tables: selectedSummaryConfig.value.detail_tables,
+      summary_blocks: selectedSummaryConfig.value.summary_blocks,
+      enabled: selectedSummaryConfig.value.enabled,
+    }
+  }
+
+  if (!configId) return
+  savingHistoricalVersion.value = true
+  try {
+    const status = await executionConfigVersionApi.saveVersion(module, configId, versionNo, snapshot)
+    versionStatusRefs[module].value = status
+    message.success(t('admin.ruleConfig.saveVersionSuccess', [`${versionNo}`]))
+  } catch (e: any) {
+    message.error(t('admin.ruleConfig.saveVersionFail') + ': ' + (e.message || ''))
+  } finally {
+    savingHistoricalVersion.value = false
+  }
 }
 
 //===== Cron 任务类型配置 =====
@@ -2877,7 +2988,7 @@ const handleSave = async () => {
           </div>
           <div
             class="config-version-status config-version-status--clickable"
-            :class="`config-version-status--${auditVersionStatus?.status || 'unavailable'}`"
+            :class="versionStatusClass(auditVersionStatus, 'audit')"
             :title="t('executionConfig.viewHistory')"
             @click="openHistoryDrawer('audit')"
           >
@@ -2885,7 +2996,7 @@ const handleSave = async () => {
             <template v-else>
               <span class="config-version-status__dot" />
               <div class="config-version-status__content">
-                <strong>{{ versionStatusTitle(auditVersionStatus) }}</strong>
+                <strong>{{ versionStatusTitle(auditVersionStatus, 'audit') }}</strong>
                 <HistoryOutlined class="config-version-status__history-icon" />
               </div>
             </template>
@@ -3524,20 +3635,34 @@ const handleSave = async () => {
 
         <div v-if="activeTab !== 'rules'" class="config-actions">
           <a-space size="middle">
-            <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
-              <LoadingOutlined v-if="saving" spin />
-              <SaveOutlined v-else />
-              {{ t('admin.ruleConfig.saveConfig') }}
-            </a-button>
-            <a-button size="large" :disabled="publishingVersion.audit || saving" @click="handlePublishVersion('audit')">
-              <LoadingOutlined v-if="publishingVersion.audit" spin />
-              <CloudUploadOutlined v-else />
-              {{ t('executionConfig.publishVersion') }}
-            </a-button>
-            <a-button size="large" @click="openHistoryDrawer('audit')">
-              <HistoryOutlined />
-              {{ t('executionConfig.viewHistory') }}
-            </a-button>
+            <template v-if="editingVersionNo.audit !== null">
+              <a-button type="primary" size="large" :disabled="savingHistoricalVersion" @click="handleSaveHistoricalVersion('audit')">
+                <LoadingOutlined v-if="savingHistoricalVersion" spin />
+                <SaveOutlined v-else />
+                {{ t('executionConfig.saveToHistoryVersion', [`${editingVersionNo.audit}`]) }}
+              </a-button>
+              <a-button size="large" :disabled="publishingVersion.audit || savingHistoricalVersion" @click="handlePublishVersion('audit')">
+                <LoadingOutlined v-if="publishingVersion.audit" spin />
+                <CloudUploadOutlined v-else />
+                {{ t('executionConfig.publishVersion') }}
+              </a-button>
+              <a-button size="large" @click="handleExitHistoryEditing('audit')">
+                <RollbackOutlined />
+                {{ t('executionConfig.exitHistoryEditing') }}
+              </a-button>
+            </template>
+            <template v-else>
+              <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
+                <LoadingOutlined v-if="saving" spin />
+                <SaveOutlined v-else />
+                {{ t('admin.ruleConfig.saveConfig') }}
+              </a-button>
+              <a-button size="large" :disabled="publishingVersion.audit || saving" @click="handlePublishVersion('audit')">
+                <LoadingOutlined v-if="publishingVersion.audit" spin />
+                <CloudUploadOutlined v-else />
+                {{ t('executionConfig.publishVersion') }}
+              </a-button>
+            </template>
           </a-space>
         </div>
       </div>
@@ -3585,7 +3710,7 @@ const handleSave = async () => {
           </div>
           <div
             class="config-version-status config-version-status--clickable"
-            :class="`config-version-status--${summaryVersionStatus?.status || 'unavailable'}`"
+            :class="versionStatusClass(summaryVersionStatus, 'summary')"
             :title="t('executionConfig.viewHistory')"
             @click="openHistoryDrawer('summary')"
           >
@@ -3593,7 +3718,7 @@ const handleSave = async () => {
             <template v-else>
               <span class="config-version-status__dot" />
               <div class="config-version-status__content">
-                <strong>{{ versionStatusTitle(summaryVersionStatus) }}</strong>
+                <strong>{{ versionStatusTitle(summaryVersionStatus, 'summary') }}</strong>
                 <HistoryOutlined class="config-version-status__history-icon" />
               </div>
             </template>
@@ -4148,20 +4273,34 @@ const handleSave = async () => {
 
         <div class="config-actions">
           <a-space size="middle">
-            <a-button type="primary" size="large" :disabled="savingSummary" @click="handleSaveSummaryConfig">
-              <LoadingOutlined v-if="savingSummary" spin />
-              <SaveOutlined v-else />
-              {{ t('admin.ruleConfig.saveConfig') }}
-            </a-button>
-            <a-button size="large" :disabled="publishingVersion.summary || savingSummary" @click="handlePublishVersion('summary')">
-              <LoadingOutlined v-if="publishingVersion.summary" spin />
-              <CloudUploadOutlined v-else />
-              {{ t('executionConfig.publishVersion') }}
-            </a-button>
-            <a-button size="large" @click="openHistoryDrawer('summary')">
-              <HistoryOutlined />
-              {{ t('executionConfig.viewHistory') }}
-            </a-button>
+            <template v-if="editingVersionNo.summary !== null">
+              <a-button type="primary" size="large" :disabled="savingHistoricalVersion" @click="handleSaveHistoricalVersion('summary')">
+                <LoadingOutlined v-if="savingHistoricalVersion" spin />
+                <SaveOutlined v-else />
+                {{ t('executionConfig.saveToHistoryVersion', [`${editingVersionNo.summary}`]) }}
+              </a-button>
+              <a-button size="large" :disabled="publishingVersion.summary || savingHistoricalVersion" @click="handlePublishVersion('summary')">
+                <LoadingOutlined v-if="publishingVersion.summary" spin />
+                <CloudUploadOutlined v-else />
+                {{ t('executionConfig.publishVersion') }}
+              </a-button>
+              <a-button size="large" @click="handleExitHistoryEditing('summary')">
+                <RollbackOutlined />
+                {{ t('executionConfig.exitHistoryEditing') }}
+              </a-button>
+            </template>
+            <template v-else>
+              <a-button type="primary" size="large" :disabled="savingSummary" @click="handleSaveSummaryConfig">
+                <LoadingOutlined v-if="savingSummary" spin />
+                <SaveOutlined v-else />
+                {{ t('admin.ruleConfig.saveConfig') }}
+              </a-button>
+              <a-button size="large" :disabled="publishingVersion.summary || savingSummary" @click="handlePublishVersion('summary')">
+                <LoadingOutlined v-if="publishingVersion.summary" spin />
+                <CloudUploadOutlined v-else />
+                {{ t('executionConfig.publishVersion') }}
+              </a-button>
+            </template>
           </a-space>
         </div>
       </div>
@@ -4912,7 +5051,7 @@ const handleSave = async () => {
           </div>
           <div
             class="config-version-status config-version-status--clickable"
-            :class="`config-version-status--${archiveVersionStatus?.status || 'unavailable'}`"
+            :class="versionStatusClass(archiveVersionStatus, 'archive')"
             :title="t('executionConfig.viewHistory')"
             @click="openHistoryDrawer('archive')"
           >
@@ -4920,7 +5059,7 @@ const handleSave = async () => {
             <template v-else>
               <span class="config-version-status__dot" />
               <div class="config-version-status__content">
-                <strong>{{ versionStatusTitle(archiveVersionStatus) }}</strong>
+                <strong>{{ versionStatusTitle(archiveVersionStatus, 'archive') }}</strong>
                 <HistoryOutlined class="config-version-status__history-icon" />
               </div>
             </template>
@@ -5470,20 +5609,34 @@ const handleSave = async () => {
 
         <div v-if="archiveActiveTab !== 'rules'" class="config-actions">
           <a-space size="middle">
-            <a-button type="primary" size="large" :disabled="savingArchive" @click="handleSaveArchiveConfig">
-              <LoadingOutlined v-if="savingArchive" spin />
-              <SaveOutlined v-else />
-              {{ t('admin.ruleConfig.saveConfig') }}
-            </a-button>
-            <a-button size="large" :disabled="publishingVersion.archive || savingArchive" @click="handlePublishVersion('archive')">
-              <LoadingOutlined v-if="publishingVersion.archive" spin />
-              <CloudUploadOutlined v-else />
-              {{ t('executionConfig.publishVersion') }}
-            </a-button>
-            <a-button size="large" @click="openHistoryDrawer('archive')">
-              <HistoryOutlined />
-              {{ t('executionConfig.viewHistory') }}
-            </a-button>
+            <template v-if="editingVersionNo.archive !== null">
+              <a-button type="primary" size="large" :disabled="savingHistoricalVersion" @click="handleSaveHistoricalVersion('archive')">
+                <LoadingOutlined v-if="savingHistoricalVersion" spin />
+                <SaveOutlined v-else />
+                {{ t('executionConfig.saveToHistoryVersion', [`${editingVersionNo.archive}`]) }}
+              </a-button>
+              <a-button size="large" :disabled="publishingVersion.archive || savingHistoricalVersion" @click="handlePublishVersion('archive')">
+                <LoadingOutlined v-if="publishingVersion.archive" spin />
+                <CloudUploadOutlined v-else />
+                {{ t('executionConfig.publishVersion') }}
+              </a-button>
+              <a-button size="large" @click="handleExitHistoryEditing('archive')">
+                <RollbackOutlined />
+                {{ t('executionConfig.exitHistoryEditing') }}
+              </a-button>
+            </template>
+            <template v-else>
+              <a-button type="primary" size="large" :disabled="savingArchive" @click="handleSaveArchiveConfig">
+                <LoadingOutlined v-if="savingArchive" spin />
+                <SaveOutlined v-else />
+                {{ t('admin.ruleConfig.saveConfig') }}
+              </a-button>
+              <a-button size="large" :disabled="publishingVersion.archive || savingArchive" @click="handlePublishVersion('archive')">
+                <LoadingOutlined v-if="publishingVersion.archive" spin />
+                <CloudUploadOutlined v-else />
+                {{ t('executionConfig.publishVersion') }}
+              </a-button>
+            </template>
           </a-space>
         </div>
       </div>
@@ -6167,16 +6320,18 @@ const handleSave = async () => {
 .config-panel-title { font-size: 18px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 4px; }
 .config-panel-subtitle { font-size: 13px; color: var(--color-text-tertiary); margin: 0; }
 .config-version-status {
-  min-width: 230px; padding: 9px 12px; border: 1px solid var(--color-border-light);
+  width: fit-content; max-width: 100%; padding: 6px 12px; border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md); background: var(--color-bg-page);
-  display: flex; align-items: flex-start; gap: 9px; color: var(--color-text-secondary);
+  display: inline-flex; align-items: center; gap: 8px; color: var(--color-text-secondary);
 }
-.config-version-status__dot { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--color-text-tertiary); flex-shrink: 0; }
-.config-version-status strong { display: block; font-size: 13px; line-height: 1.4; color: var(--color-text-primary); }
-.config-version-status--current { border-color: rgba(16, 185, 129, 0.24); background: var(--color-success-bg); }
+.config-version-status__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-text-tertiary); flex-shrink: 0; }
+.config-version-status strong { display: inline-block; font-size: 13px; line-height: 1.4; color: var(--color-text-primary); white-space: nowrap; }
+.config-version-status--current { border-color: rgba(16, 185, 129, 0.28); background: var(--color-success-bg); }
 .config-version-status--current .config-version-status__dot { background: var(--color-success); }
-.config-version-status--updated { border-color: rgba(245, 158, 11, 0.28); background: var(--color-warning-bg); }
+.config-version-status--updated { border-color: rgba(245, 158, 11, 0.32); background: var(--color-warning-bg); }
 .config-version-status--updated .config-version-status__dot { background: var(--color-warning); }
+.config-version-status--historical { border-color: rgba(139, 92, 246, 0.35); background: rgba(139, 92, 246, 0.08); }
+.config-version-status--historical .config-version-status__dot { background: #8b5cf6; }
 .config-version-status--unversioned .config-version-status__dot { background: var(--color-primary); }
 .config-empty {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
