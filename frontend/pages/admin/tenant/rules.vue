@@ -12,6 +12,7 @@ import {
   EditOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
+  HistoryOutlined,
   InfoCircleOutlined,
   LoadingOutlined,
   LockOutlined,
@@ -19,6 +20,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
   RobotOutlined,
+  RollbackOutlined,
   SafetyCertificateOutlined,
   SaveOutlined,
   SearchOutlined,
@@ -134,6 +136,9 @@ async function handlePublishVersion(module: ExecutionConfigModule) {
     content: t('executionConfig.publishConfirmContent'),
     okText: t('admin.ruleConfig.confirm'),
     cancelText: t('admin.ruleConfig.cancel'),
+    width: 380,
+    centered: true,
+    maskClosable: true,
     onOk: async () => {
       publishingVersion[module] = true
       try {
@@ -144,6 +149,135 @@ async function handlePublishVersion(module: ExecutionConfigModule) {
         message.error(t('admin.ruleConfig.publishFail') + ': ' + (e.message || ''))
       } finally {
         publishingVersion[module] = false
+      }
+    },
+  })
+}
+
+//===== 多版本管理与激活切换 =====
+const showHistoryDrawer = ref(false)
+const historyLoading = ref(false)
+const historyItems = ref<any[]>([])
+const activeHistoryModule = ref<ExecutionConfigModule>('audit')
+const activeHistoryConfigId = ref<string>('')
+const selectedHistoryItem = ref<any | null>(null)
+const activatingVersion = ref(false)
+
+async function reloadCurrentModuleData(module: ExecutionConfigModule) {
+  if (module === 'audit') {
+    const configs = await rulesApi.listConfigs()
+    processConfigs.value = configs.map(normalizeAuditConfigForUI)
+    if (selectedConfig.value) {
+      currentRules.value = await rulesApi.listRules(selectedConfig.value.id)
+    }
+  } else if (module === 'archive') {
+    const archiveList = await archiveApi.listConfigs()
+    archiveConfigs.value = archiveList.map(cfg => ({
+      ...cfg,
+      access_control: normalizeAccessControl(cfg.access_control),
+    }))
+    if (selectedArchiveConfig.value) {
+      currentArchiveRules.value = await archiveApi.listRules(selectedArchiveConfig.value.id)
+    }
+  } else if (module === 'summary') {
+    const summaryList = await summaryApi.listConfigs()
+    summaryConfigs.value = summaryList.map(cfg => ({
+      ...cfg,
+      summary_blocks: parseSummaryBlocks(cfg.summary_blocks),
+    }))
+  }
+}
+
+async function openHistoryDrawer(module: ExecutionConfigModule) {
+  activeHistoryModule.value = module
+  let configId = ''
+  if (module === 'audit') configId = selectedConfig.value?.id || ''
+  else if (module === 'archive') configId = selectedArchiveConfig.value?.id || ''
+  else if (module === 'summary') configId = selectedSummaryConfig.value?.id || ''
+
+  if (!configId) return
+  activeHistoryConfigId.value = configId
+  showHistoryDrawer.value = true
+  historyLoading.value = true
+  selectedHistoryItem.value = null
+  try {
+    const list = await executionConfigVersionApi.getHistory(module, configId)
+    historyItems.value = list
+    if (list.length > 0) {
+      // 优先选中 active 版本，否则选中第一条
+      selectedHistoryItem.value = list.find(v => v.is_active) || list[0]
+    }
+  } catch (e: any) {
+    message.error(t('executionConfig.statusUnavailable') + ': ' + (e.message || ''))
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+// 切换当前可用版本（Active Version）
+async function handleActivateVersion(item: any) {
+  if (item.is_active) return
+
+  Modal.confirm({
+    title: t('executionConfig.activateConfirmTitle', [`${item.version_no}`]),
+    content: t('executionConfig.activateConfirmContent', [`${item.version_no}`]),
+    okText: t('admin.ruleConfig.confirm'),
+    cancelText: t('admin.ruleConfig.cancel'),
+    width: 380,
+    centered: true,
+    maskClosable: true,
+    onOk: async () => {
+      activatingVersion.value = true
+      try {
+        const status = await executionConfigVersionApi.activate(
+          activeHistoryModule.value,
+          activeHistoryConfigId.value,
+          item.version_no,
+        )
+        versionStatusRefs[activeHistoryModule.value].value = status
+
+        // 重新拉取配置与规则数据
+        await reloadCurrentModuleData(activeHistoryModule.value)
+
+        // 刷新抽屉中的版本列表
+        const list = await executionConfigVersionApi.getHistory(activeHistoryModule.value, activeHistoryConfigId.value)
+        historyItems.value = list
+        selectedHistoryItem.value = list.find(v => v.version_no === item.version_no) || list[0]
+
+        message.success(t('admin.ruleConfig.activateSuccess', [`${item.version_no}`]))
+      } catch (e: any) {
+        message.error(t('admin.ruleConfig.activateFail') + ': ' + (e.message || ''))
+      } finally {
+        activatingVersion.value = false
+      }
+    },
+  })
+}
+
+// 载入历史版本到当前编辑区
+async function handleLoadVersionToEdit(item: any) {
+  Modal.confirm({
+    title: `确认载入 v${item.version_no} 内容？`,
+    content: `载入后，当前编辑区的字段与规则将显示为 v${item.version_no} 快照内容，您可以基于此继续修改保存。确认载入？`,
+    okText: t('admin.ruleConfig.confirm'),
+    cancelText: t('admin.ruleConfig.cancel'),
+    width: 380,
+    centered: true,
+    maskClosable: true,
+    onOk: async () => {
+      try {
+        // 调用 activate 将快照同步至主表编辑区
+        const status = await executionConfigVersionApi.activate(
+          activeHistoryModule.value,
+          activeHistoryConfigId.value,
+          item.version_no,
+        )
+        versionStatusRefs[activeHistoryModule.value].value = status
+        await reloadCurrentModuleData(activeHistoryModule.value)
+        message.success(`已载入 v${item.version_no} 内容至编辑区`)
+        showHistoryDrawer.value = false
+      } catch (e: any) {
+        message.error('载入失败: ' + (e.message || ''))
       }
     },
   })
@@ -2741,12 +2875,18 @@ const handleSave = async () => {
             <h2 class="config-panel-title">{{ selectedConfig.process_type }}</h2>
             <p v-if="selectedConfig.process_type_label" class="config-panel-subtitle">{{ selectedConfig.process_type_label }}</p>
           </div>
-          <div class="config-version-status" :class="`config-version-status--${auditVersionStatus?.status || 'unavailable'}`">
+          <div
+            class="config-version-status config-version-status--clickable"
+            :class="`config-version-status--${auditVersionStatus?.status || 'unavailable'}`"
+            :title="t('executionConfig.viewHistory')"
+            @click="openHistoryDrawer('audit')"
+          >
             <a-spin v-if="versionStatusLoading.audit" size="small" />
             <template v-else>
               <span class="config-version-status__dot" />
-              <div>
+              <div class="config-version-status__content">
                 <strong>{{ versionStatusTitle(auditVersionStatus) }}</strong>
+                <HistoryOutlined class="config-version-status__history-icon" />
               </div>
             </template>
           </div>
@@ -3394,6 +3534,10 @@ const handleSave = async () => {
               <CloudUploadOutlined v-else />
               {{ t('executionConfig.publishVersion') }}
             </a-button>
+            <a-button size="large" @click="openHistoryDrawer('audit')">
+              <HistoryOutlined />
+              {{ t('executionConfig.viewHistory') }}
+            </a-button>
           </a-space>
         </div>
       </div>
@@ -3439,12 +3583,18 @@ const handleSave = async () => {
             <h2 class="config-panel-title">{{ selectedSummaryConfig.process_type }}</h2>
             <p v-if="selectedSummaryConfig.process_type_label" class="config-panel-subtitle">{{ selectedSummaryConfig.process_type_label }}</p>
           </div>
-          <div class="config-version-status" :class="`config-version-status--${summaryVersionStatus?.status || 'unavailable'}`">
+          <div
+            class="config-version-status config-version-status--clickable"
+            :class="`config-version-status--${summaryVersionStatus?.status || 'unavailable'}`"
+            :title="t('executionConfig.viewHistory')"
+            @click="openHistoryDrawer('summary')"
+          >
             <a-spin v-if="versionStatusLoading.summary" size="small" />
             <template v-else>
               <span class="config-version-status__dot" />
-              <div>
+              <div class="config-version-status__content">
                 <strong>{{ versionStatusTitle(summaryVersionStatus) }}</strong>
+                <HistoryOutlined class="config-version-status__history-icon" />
               </div>
             </template>
           </div>
@@ -4007,6 +4157,10 @@ const handleSave = async () => {
               <LoadingOutlined v-if="publishingVersion.summary" spin />
               <CloudUploadOutlined v-else />
               {{ t('executionConfig.publishVersion') }}
+            </a-button>
+            <a-button size="large" @click="openHistoryDrawer('summary')">
+              <HistoryOutlined />
+              {{ t('executionConfig.viewHistory') }}
             </a-button>
           </a-space>
         </div>
@@ -4756,12 +4910,18 @@ const handleSave = async () => {
             <h2 class="config-panel-title">{{ selectedArchiveConfig.process_type }}</h2>
             <p v-if="selectedArchiveConfig.process_type_label" class="config-panel-subtitle">{{ selectedArchiveConfig.process_type_label }}</p>
           </div>
-          <div class="config-version-status" :class="`config-version-status--${archiveVersionStatus?.status || 'unavailable'}`">
+          <div
+            class="config-version-status config-version-status--clickable"
+            :class="`config-version-status--${archiveVersionStatus?.status || 'unavailable'}`"
+            :title="t('executionConfig.viewHistory')"
+            @click="openHistoryDrawer('archive')"
+          >
             <a-spin v-if="versionStatusLoading.archive" size="small" />
             <template v-else>
               <span class="config-version-status__dot" />
-              <div>
+              <div class="config-version-status__content">
                 <strong>{{ versionStatusTitle(archiveVersionStatus) }}</strong>
+                <HistoryOutlined class="config-version-status__history-icon" />
               </div>
             </template>
           </div>
@@ -5320,6 +5480,10 @@ const handleSave = async () => {
               <CloudUploadOutlined v-else />
               {{ t('executionConfig.publishVersion') }}
             </a-button>
+            <a-button size="large" @click="openHistoryDrawer('archive')">
+              <HistoryOutlined />
+              {{ t('executionConfig.viewHistory') }}
+            </a-button>
           </a-space>
         </div>
       </div>
@@ -5654,6 +5818,120 @@ const handleSave = async () => {
 
     </a-modal>
 
+    <!-- 版本历史抽屉 -->
+    <a-drawer
+      v-model:open="showHistoryDrawer"
+      :title="t('executionConfig.historyTitle')"
+      placement="right"
+      width="600"
+      class="version-history-drawer"
+    >
+      <div v-if="historyLoading" class="version-history-loading">
+        <a-spin size="large" />
+      </div>
+      <div v-else-if="historyItems.length === 0" class="version-history-empty">
+        <a-empty :description="t('executionConfig.noHistory')" />
+      </div>
+      <div v-else class="version-history-layout">
+        <!-- 版本列表 -->
+        <div class="version-timeline">
+          <div
+            v-for="item in historyItems"
+            :key="item.id"
+            class="version-card"
+            :class="{
+              'version-card--active': selectedHistoryItem?.id === item.id,
+              'version-card--is-active-version': item.is_active
+            }"
+            @click="selectedHistoryItem = item"
+          >
+            <div class="version-card__header">
+              <span class="version-pill">v{{ item.version_no }}</span>
+              <a-tag v-if="item.is_active" color="success" style="margin-left: 4px; font-size: 11px; padding: 0 4px; line-height: 18px;">
+                {{ t('executionConfig.activeBadge') }}
+              </a-tag>
+              <span class="version-date">{{ new Date(item.created_at).toLocaleDateString() }}</span>
+            </div>
+            <div class="version-card__meta">
+              <template v-if="item.config_snapshot?.rules">
+                共 {{ item.config_snapshot.rules.length }} 条规则
+              </template>
+              <template v-else-if="item.config_snapshot?.summary_blocks">
+                共 {{ item.config_snapshot.summary_blocks.length }} 个总结块
+              </template>
+              <template v-else>
+                已固化快照配置
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- 选中的版本详情 -->
+        <div v-if="selectedHistoryItem" class="version-preview">
+          <div class="version-preview__header">
+            <div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="version-preview__title">v{{ selectedHistoryItem.version_no }} 快照详情</span>
+                <a-tag v-if="selectedHistoryItem.is_active" color="success">
+                  {{ t('executionConfig.activeBadge') }}
+                </a-tag>
+              </div>
+              <span class="version-preview__time">{{ new Date(selectedHistoryItem.created_at).toLocaleString() }}</span>
+            </div>
+            <a-space size="small">
+              <a-button
+                v-if="!selectedHistoryItem.is_active"
+                type="primary"
+                size="middle"
+                :disabled="activatingVersion"
+                @click="handleActivateVersion(selectedHistoryItem)"
+              >
+                <CheckOutlined />
+                {{ t('executionConfig.activateButton') }}
+              </a-button>
+              <a-button
+                size="middle"
+                @click="handleLoadVersionToEdit(selectedHistoryItem)"
+              >
+                <EditOutlined />
+                {{ t('executionConfig.loadVersionButton') }}
+              </a-button>
+            </a-space>
+          </div>
+
+          <div class="version-preview__content">
+            <!-- 规则详情 -->
+            <div v-if="selectedHistoryItem.config_snapshot?.rules?.length" class="version-preview__section">
+              <div class="version-section-label">规则列表 ({{ selectedHistoryItem.config_snapshot.rules.length }})</div>
+              <div class="version-rules-list">
+                <div v-for="r in selectedHistoryItem.config_snapshot.rules" :key="r.id" class="version-rule-item">
+                  <span class="version-rule-scope" :class="`version-rule-scope--${r.rule_scope}`">{{ r.rule_scope }}</span>
+                  <span class="version-rule-text">{{ r.rule_content }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 总结块详情 -->
+            <div v-else-if="selectedHistoryItem.config_snapshot?.summary_blocks?.length" class="version-preview__section">
+              <div class="version-section-label">总结块列表 ({{ selectedHistoryItem.config_snapshot.summary_blocks.length }})</div>
+              <div class="version-rules-list">
+                <div v-for="b in selectedHistoryItem.config_snapshot.summary_blocks" :key="b.id" class="version-rule-item">
+                  <span class="version-rule-scope version-rule-scope--default_on">{{ b.id }}</span>
+                  <span class="version-rule-text">{{ b.user_prompt || b.title }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- AI 严格度与模型配置 -->
+            <div v-if="selectedHistoryItem.config_snapshot?.ai_config" class="version-preview__section">
+              <div class="version-section-label">AI 配置</div>
+              <div class="version-json-view">{{ JSON.stringify(selectedHistoryItem.config_snapshot.ai_config, null, 2) }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </a-drawer>
+
   </div>
 </template>
 
@@ -5661,6 +5939,179 @@ const handleSave = async () => {
 .page-header { margin-bottom: 24px; }
 .page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; }
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }
+
+/* 状态徽标与点击效果 */
+.config-version-status--clickable {
+  cursor: pointer;
+  user-select: none;
+  transition: all var(--transition-fast);
+}
+.config-version-status--clickable:hover {
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+.config-version-status__content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.config-version-status__history-icon {
+  font-size: 13px;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+}
+.config-version-status--clickable:hover .config-version-status__history-icon {
+  opacity: 1;
+  color: var(--color-primary);
+}
+
+/* 版本历史抽屉 */
+.version-history-loading,
+.version-history-empty {
+  padding: 60px 0;
+  text-align: center;
+}
+.version-history-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.version-timeline {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.version-card {
+  flex: 0 0 160px;
+  padding: 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-page);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.version-card:hover {
+  border-color: var(--color-primary-border, #bfdbfe);
+  background: var(--color-bg-hover);
+}
+.version-card--active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg);
+  box-shadow: var(--shadow-xs);
+}
+.version-card--is-active-version {
+  border-color: rgba(16, 185, 129, 0.4);
+}
+.version-card--is-active-version:not(.version-card--active) {
+  background: rgba(16, 185, 129, 0.04);
+}
+.version-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.version-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: #fff;
+}
+.version-card--active .version-pill {
+  background: var(--color-primary);
+}
+.version-date {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+.version-card__meta {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.version-preview {
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-card);
+  padding: 16px;
+}
+.version-preview__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.version-preview__title {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.version-preview__time {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+.version-preview__section {
+  margin-bottom: 16px;
+}
+.version-section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+}
+.version-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.version-rule-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--color-bg-page);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.version-rule-scope {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+.version-rule-scope--mandatory {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+.version-rule-scope--default_on {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+.version-rule-text {
+  color: var(--color-text-primary);
+  line-height: 1.4;
+  word-break: break-all;
+}
+.version-json-view {
+  padding: 10px;
+  background: var(--color-bg-page);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  color: var(--color-text-secondary);
+}
 
 /*顶级选项卡*/
 .top-tab-nav {

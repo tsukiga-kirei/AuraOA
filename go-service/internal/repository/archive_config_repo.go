@@ -102,6 +102,11 @@ func (r *ArchiveRuleRepo) GetByID(c *gin.Context, id uuid.UUID) (*model.ArchiveR
 	return &rule, nil
 }
 
+// Update 更新归档规则。
+func (r *ArchiveRuleRepo) Update(c *gin.Context, rule *model.ArchiveRule) error {
+	return r.WithTenant(c).Model(rule).Where("id = ?", rule.ID).Updates(rule).Error
+}
+
 // UpdateFields 通过 map 更新指定字段。
 func (r *ArchiveRuleRepo) UpdateFields(c *gin.Context, id uuid.UUID, fields map[string]interface{}) error {
 	return r.WithTenant(c).Model(&model.ArchiveRule{}).Where("id = ?", id).Updates(fields).Error

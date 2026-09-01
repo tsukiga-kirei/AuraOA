@@ -71,3 +71,64 @@ func (h *ExecutionConfigSourceHandler) Publish(c *gin.Context) {
 	response.Success(c, status)
 }
 
+// ListHistory 查询历史发布版本列表。
+// GET /api/tenant/execution-config-versions/history?module=audit&source_config_id=...
+func (h *ExecutionConfigSourceHandler) ListHistory(c *gin.Context) {
+	configID, err := uuid.Parse(c.Query("source_config_id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	items, err := h.service.ListHistory(c, c.Query("module"), configID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+
+type versionActionRequest struct {
+	Module         string    `json:"module" binding:"required"`
+	SourceConfigID uuid.UUID `json:"source_config_id" binding:"required"`
+	VersionNo      int       `json:"version_no" binding:"required"`
+}
+
+// Activate 将指定版本切换为当前可用版本（Active Version）。
+// POST /api/tenant/execution-config-versions/activate
+func (h *ExecutionConfigSourceHandler) Activate(c *gin.Context) {
+	var req versionActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	status, err := h.service.ActivateVersion(c, req.Module, req.SourceConfigID, req.VersionNo)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
+type saveVersionRequest struct {
+	Module         string      `json:"module" binding:"required"`
+	SourceConfigID uuid.UUID   `json:"source_config_id" binding:"required"`
+	VersionNo      int         `json:"version_no" binding:"required"`
+	Snapshot       interface{} `json:"snapshot" binding:"required"`
+}
+
+// SaveVersion 直接修改并保存指定版本的快照内容。
+// POST /api/tenant/execution-config-versions/save-version
+func (h *ExecutionConfigSourceHandler) SaveVersion(c *gin.Context) {
+	var req saveVersionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	status, err := h.service.SaveVersion(c, req.Module, req.SourceConfigID, req.VersionNo, req.Snapshot)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
