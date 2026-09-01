@@ -1872,7 +1872,7 @@ paths:
                   type: boolean
   /api/tenant/execution-config-versions/status:
     get:
-      summary: 查询并固化当前租户基础配置版本
+      summary: 查询当前租户基础配置版本状态
       tags:
       - ExecutionConfigVersion
       security:
@@ -1893,6 +1893,45 @@ paths:
         schema:
           type: string
           format: uuid
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionConfigVersionStatusResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/tenant/execution-config-versions/publish:
+    post:
+      summary: 显式发布租户基础配置新版本
+      tags:
+      - ExecutionConfigVersion
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - module
+              - source_config_id
+              properties:
+                module:
+                  type: string
+                  enum:
+                  - audit
+                  - archive
+                  - summary
+                source_config_id:
+                  type: string
+                  format: uuid
       responses:
         '200':
           description: 成功

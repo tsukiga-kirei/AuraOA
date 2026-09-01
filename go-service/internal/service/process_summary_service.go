@@ -476,7 +476,7 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 		}
 		configSnapshot := SummaryExecutionConfigSnapshot{Blocks: blocks}
 		baseSnapshot := summaryConfigSourceSnapshot(config)
-		baseVersion, baseErr := s.executionVersions.EnsureBaseVersion(
+		baseVersion, baseErr := s.executionVersions.GetOrCreateLatestBaseVersion(
 			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleSummary,
 			config.ID, stableJSONFingerprint(baseSnapshot), baseSnapshot,
 		)

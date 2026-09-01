@@ -110,7 +110,7 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		return nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人审核尺度失败: "+err.Error())
 	}
 	baseSnapshot := auditConfigSourceSnapshot(config, rules)
-	baseVersion, err := s.executionVersions.EnsureBaseVersion(
+	baseVersion, err := s.executionVersions.GetOrCreateLatestBaseVersion(
 		c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleAudit,
 		config.ID, stableJSONFingerprint(baseSnapshot), baseSnapshot,
 	)

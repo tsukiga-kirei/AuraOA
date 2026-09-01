@@ -205,7 +205,7 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人审核尺度失败: "+resolveErr.Error())
 		}
 		baseSnapshot := auditConfigSourceSnapshot(config, rules)
-		baseVersion, baseErr := s.executionVersions.EnsureBaseVersion(
+		baseVersion, baseErr := s.executionVersions.GetOrCreateLatestBaseVersion(
 			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleAudit,
 			config.ID, stableJSONFingerprint(baseSnapshot), baseSnapshot,
 		)

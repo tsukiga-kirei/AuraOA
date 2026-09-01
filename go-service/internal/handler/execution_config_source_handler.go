@@ -35,3 +35,39 @@ func (h *ExecutionConfigSourceHandler) GetStatus(c *gin.Context) {
 	}
 	response.Success(c, status)
 }
+
+type publishConfigRequest struct {
+	Module         string    `json:"module"`
+	SourceConfigID uuid.UUID `json:"source_config_id"`
+}
+
+// Publish 固化当前配置并发布为新版本。
+// POST /api/tenant/execution-config-versions/publish
+func (h *ExecutionConfigSourceHandler) Publish(c *gin.Context) {
+	var req publishConfigRequest
+	_ = c.ShouldBindJSON(&req)
+
+	module := req.Module
+	if module == "" {
+		module = c.Query("module")
+	}
+	configID := req.SourceConfigID
+	if configID == uuid.Nil {
+		parsed, err := uuid.Parse(c.Query("source_config_id"))
+		if err == nil {
+			configID = parsed
+		}
+	}
+	if module == "" || configID == uuid.Nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+
+	status, err := h.service.Publish(c, module, configID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+

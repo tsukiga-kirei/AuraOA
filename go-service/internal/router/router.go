@@ -203,6 +203,7 @@ func SetupRouter(
 	executionConfigVersions.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
 	{
 		executionConfigVersions.GET("/status", executionConfigSourceHandler.GetStatus)
+		executionConfigVersions.POST("/publish", executionConfigSourceHandler.Publish)
 	}
 
 	// 定时任务类型配置 — 只读（所有已登录租户用户均可访问，用于前端展示已启用的任务类型）

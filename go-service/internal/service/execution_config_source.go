@@ -48,9 +48,67 @@ func NewExecutionConfigSourceService(
 	}
 }
 
-// GetStatus 将已保存的当前配置固化为基础版本并返回版本号。
-// 这里只创建不可变配置记录，不绑定流程，也不会触发总结、审核或归档复盘执行。
+// GetStatus 查询租户当前配置与最新发布基础版本的对应状态。
+// 本方法为纯只读查询，不会自动生成新版本。
 func (s *ExecutionConfigSourceService) GetStatus(
+	c *gin.Context,
+	module string,
+	sourceConfigID uuid.UUID,
+) (*ExecutionConfigVersionStatus, error) {
+	if module != model.ExecutionConfigModuleAudit &&
+		module != model.ExecutionConfigModuleArchive &&
+		module != model.ExecutionConfigModuleSummary {
+		return nil, newServiceError(errcode.ErrParamValidation, "配置模块无效")
+	}
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+
+	snapshot, sourceFingerprint, err := s.currentSourceSnapshot(c, module, sourceConfigID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, newServiceError(errcode.ErrConfigNotFound, "流程配置不存在")
+		}
+		return nil, newServiceError(errcode.ErrDatabase, "读取配置版本状态失败")
+	}
+
+	latest, err := s.versions.GetLatestBaseVersion(c.Request.Context(), tenantID, module, sourceConfigID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// 若尚未创建任何版本，自动初始化 V1
+			userID, userErr := getUserUUID(c)
+			if userErr != nil {
+				return nil, newServiceError(errcode.ErrParamValidation, "用户ID无效")
+			}
+			initial, initErr := s.versions.GetOrCreateLatestBaseVersion(
+				c.Request.Context(), tenantID, userID, module, sourceConfigID, sourceFingerprint, snapshot,
+			)
+			if initErr != nil {
+				return nil, newServiceError(errcode.ErrDatabase, "初始化配置版本失败")
+			}
+			versionNo := initial.VersionNo
+			return &ExecutionConfigVersionStatus{
+				Status: "current", CurrentVersionNo: &versionNo, LatestVersionNo: &versionNo, HasPendingChanges: false,
+			}, nil
+		}
+		return nil, newServiceError(errcode.ErrDatabase, "查询配置版本状态失败")
+	}
+
+	versionNo := latest.VersionNo
+	if latest.Fingerprint == sourceFingerprint {
+		return &ExecutionConfigVersionStatus{
+			Status: "current", CurrentVersionNo: &versionNo, LatestVersionNo: &versionNo, HasPendingChanges: false,
+		}, nil
+	}
+
+	return &ExecutionConfigVersionStatus{
+		Status: "updated", CurrentVersionNo: &versionNo, LatestVersionNo: &versionNo, HasPendingChanges: true,
+	}, nil
+}
+
+// Publish 显式将当前已保存的租户配置固化并发布为新版本。
+func (s *ExecutionConfigSourceService) Publish(
 	c *gin.Context,
 	module string,
 	sourceConfigID uuid.UUID,
@@ -77,15 +135,17 @@ func (s *ExecutionConfigSourceService) GetStatus(
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, "用户ID无效")
 	}
-	current, err := s.versions.EnsureBaseVersion(
+
+	published, err := s.versions.PublishBaseVersion(
 		c.Request.Context(), tenantID, userID, module, sourceConfigID, sourceFingerprint, snapshot,
 	)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "保存配置版本失败")
+		return nil, newServiceError(errcode.ErrDatabase, "发布配置版本失败")
 	}
-	currentNo := current.VersionNo
+
+	versionNo := published.VersionNo
 	return &ExecutionConfigVersionStatus{
-		Status: "current", CurrentVersionNo: &currentNo, LatestVersionNo: &currentNo,
+		Status: "current", CurrentVersionNo: &versionNo, LatestVersionNo: &versionNo, HasPendingChanges: false,
 	}, nil
 }
 

@@ -59,8 +59,28 @@ func (r *ExecutionConfigVersionRepo) GetVersionByID(
 	return &version, err
 }
 
-// EnsureBaseVersion 将当前管理员配置固化为不可变基础版本；相同内容直接复用。
-func (r *ExecutionConfigVersionRepo) EnsureBaseVersion(
+// GetLatestBaseVersion 获取租户当前最新发布的基础配置版本。
+func (r *ExecutionConfigVersionRepo) GetLatestBaseVersion(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	module string,
+	sourceConfigID uuid.UUID,
+) (*model.TenantConfigVersion, error) {
+	var version model.TenantConfigVersion
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).
+		Order("version_no DESC").
+		First(&version).Error
+	if err != nil {
+		return nil, err
+	}
+	return &version, nil
+}
+
+// PublishBaseVersion 显式发布新基础版本。
+// 如果当前最新版本与当前快照指纹一致，则直接返回最新版本（不重复升版）；
+// 否则分配新版本号（maxVersion + 1）并写入快照。
+func (r *ExecutionConfigVersionRepo) PublishBaseVersion(
 	ctx context.Context,
 	tenantID, userID uuid.UUID,
 	module string,
@@ -78,22 +98,28 @@ func (r *ExecutionConfigVersionRepo) EnsureBaseVersion(
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", lockKey).Error; err != nil {
 			return err
 		}
+
+		var latest model.TenantConfigVersion
 		err := tx.Where(
-			"tenant_id = ? AND module = ? AND source_config_id = ? AND fingerprint = ?",
-			tenantID, module, sourceConfigID, fingerprint,
-		).First(&result).Error
-		if err == nil {
+			"tenant_id = ? AND module = ? AND source_config_id = ?",
+			tenantID, module, sourceConfigID,
+		).Order("version_no DESC").First(&latest).Error
+
+		if err == nil && latest.Fingerprint == fingerprint {
+			result = latest
 			return nil
 		}
-		if err != gorm.ErrRecordNotFound {
+		if err != nil && err != gorm.ErrRecordNotFound {
 			return err
 		}
+
 		var maxVersion int
 		if err := tx.Model(&model.TenantConfigVersion{}).
 			Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).
 			Select("COALESCE(MAX(version_no), 0)").Scan(&maxVersion).Error; err != nil {
 			return err
 		}
+
 		result = model.TenantConfigVersion{
 			ID: uuid.New(), TenantID: tenantID, Module: module, SourceConfigID: sourceConfigID,
 			VersionNo: maxVersion + 1, Fingerprint: fingerprint, ConfigSnapshot: datatypes.JSON(raw),
@@ -105,6 +131,62 @@ func (r *ExecutionConfigVersionRepo) EnsureBaseVersion(
 		return nil, err
 	}
 	return &result, nil
+}
+
+// GetOrCreateLatestBaseVersion 获取最新基础版本；若尚无任何版本（首次使用），则创建初始版本 V1。
+func (r *ExecutionConfigVersionRepo) GetOrCreateLatestBaseVersion(
+	ctx context.Context,
+	tenantID, userID uuid.UUID,
+	module string,
+	sourceConfigID uuid.UUID,
+	fingerprint string,
+	snapshot interface{},
+) (*model.TenantConfigVersion, error) {
+	var result model.TenantConfigVersion
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		lockKey := "base:" + tenantID.String() + ":" + module + ":" + sourceConfigID.String()
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", lockKey).Error; err != nil {
+			return err
+		}
+
+		err := tx.Where(
+			"tenant_id = ? AND module = ? AND source_config_id = ?",
+			tenantID, module, sourceConfigID,
+		).Order("version_no DESC").First(&result).Error
+		if err == nil {
+			return nil
+		}
+		if err != gorm.ErrRecordNotFound {
+			return err
+		}
+
+		raw, err := json.Marshal(snapshot)
+		if err != nil {
+			return fmt.Errorf("序列化租户基础配置快照失败: %w", err)
+		}
+		result = model.TenantConfigVersion{
+			ID: uuid.New(), TenantID: tenantID, Module: module, SourceConfigID: sourceConfigID,
+			VersionNo: 1, Fingerprint: fingerprint, ConfigSnapshot: datatypes.JSON(raw),
+			CreatedBy: &userID,
+		}
+		return tx.Create(&result).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// EnsureBaseVersion 将当前管理员配置固化为不可变基础版本；相同内容直接复用。
+func (r *ExecutionConfigVersionRepo) EnsureBaseVersion(
+	ctx context.Context,
+	tenantID, userID uuid.UUID,
+	module string,
+	sourceConfigID uuid.UUID,
+	fingerprint string,
+	snapshot interface{},
+) (*model.TenantConfigVersion, error) {
+	return r.PublishBaseVersion(ctx, tenantID, userID, module, sourceConfigID, fingerprint, snapshot)
 }
 
 // BindSnapshot 将流程绑定到内容寻址的不可变配置版本。

@@ -1199,7 +1199,7 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人复核尺度失败: "+resolveErr.Error())
 		}
 		baseSnapshot := archiveConfigSourceSnapshot(cfg, rules)
-		baseVersion, baseErr := s.executionVersions.EnsureBaseVersion(
+		baseVersion, baseErr := s.executionVersions.GetOrCreateLatestBaseVersion(
 			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleArchive,
 			cfg.ID, stableJSONFingerprint(baseSnapshot), baseSnapshot,
 		)
