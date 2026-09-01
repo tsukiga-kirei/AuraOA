@@ -31,6 +31,7 @@ type SummaryBlockConfig struct {
 	ID                   string                 `json:"id"`
 	Title                string                 `json:"title"`
 	UserPrompt           string                 `json:"user_prompt"`
+	EnableThinking       bool                   `json:"enable_thinking"`
 	IncludeMeta          *bool                  `json:"include_meta"`           // true：传入全部数据（固定模板）；false：仅传入 enabled_data_variables
 	EnabledDataVariables []string               `json:"enabled_data_variables"` // include_meta=false 时生效
 	FieldMode            string                 `json:"field_mode"`             // all | selected
@@ -114,9 +115,10 @@ type ProcessSummaryResultJSON struct {
 }
 
 type ProcessSummaryBlockResult struct {
-	BlockID    string   `json:"block_id"`
-	Title      string   `json:"title"`
-	Content    string   `json:"content"`
-	Points     []string `json:"points"`
-	DurationMs int      `json:"duration_ms,omitempty"`
+	BlockID      string   `json:"block_id"`
+	Title        string   `json:"title"`
+	Content      string   `json:"content"`
+	Points       []string `json:"points"`
+	DeepThinking string   `json:"deep_thinking,omitempty"`
+	DurationMs   int      `json:"duration_ms,omitempty"`
 }

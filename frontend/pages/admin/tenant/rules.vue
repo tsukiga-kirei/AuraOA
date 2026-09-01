@@ -1406,6 +1406,7 @@ const normalizeSummaryConfigForUI = (cfg: ProcessSummaryConfig): ProcessSummaryC
       id: b.id || createClientId(),
       title: b.title || '流程摘要',
       user_prompt: b.user_prompt || '',
+      enable_thinking: b.enable_thinking === true,
       include_meta: includeMeta,
       enabled_data_variables: enabledDataVariables,
       field_mode: b.field_mode || 'all',
@@ -1433,6 +1434,7 @@ function createSummaryBlock(): SummaryBlockConfig {
     id: createClientId(),
     title: '流程摘要',
     user_prompt: '请概括流程背景、关键申请内容、金额/日期/对象等核心信息，并列出审批人最需要关注的要点。',
+    enable_thinking: false,
     include_meta: true,
     enabled_data_variables: [],
     field_mode: 'all',
@@ -3027,6 +3029,20 @@ const handleSave = async () => {
               </div>
             </div>
 
+            <!--深度思考模式开关-->
+            <div class="ai-form-group" style="margin-bottom: 20px;">
+              <div class="summary-block-option-row" style="padding: 12px 16px; background: var(--color-bg-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); margin-bottom: 0;">
+                <div class="summary-block-option-copy">
+                  <div class="summary-block-option-title" style="display: flex; align-items: center; gap: 8px;">
+                    <ThunderboltOutlined style="color: var(--color-primary);" />
+                    {{ t('admin.ruleConfig.enableThinking', '开启深度思考模式') }}
+                  </div>
+                  <div class="summary-block-option-desc">{{ t('admin.ruleConfig.enableThinkingDesc', '启用后，支持思考模式的模型将在审核分析阶段进行深度推理，并完整记录思考链路。') }}</div>
+                </div>
+                <a-switch v-model:checked="selectedConfig.ai_config.enable_thinking" />
+              </div>
+            </div>
+
             <!--系统提示词区域-->
             <div class="ai-prompt-section">
               <div class="ai-prompt-section-header">
@@ -3550,6 +3566,17 @@ const handleSave = async () => {
                   :checked-children="t('common.all')"
                   :un-checked-children="t('admin.ruleConfig.custom')"
                 />
+              </div>
+
+              <div class="summary-block-option-row" style="margin-top: 8px;">
+                <div class="summary-block-option-copy">
+                  <div class="summary-block-option-title" style="display: flex; align-items: center; gap: 6px;">
+                    <ThunderboltOutlined style="color: var(--color-primary);" />
+                    {{ t('admin.ruleConfig.summaryEnableThinking', '开启深度思考') }}
+                  </div>
+                  <div class="summary-block-option-desc">{{ t('admin.ruleConfig.summaryEnableThinkingDesc', '该总结块生成时开启思考模式（需模型支持）') }}</div>
+                </div>
+                <a-switch v-model:checked="block.enable_thinking" />
               </div>
 
               <div v-if="!block.include_meta" class="summary-custom-data-hint">
@@ -5008,6 +5035,20 @@ const handleSave = async () => {
               <!--当前尺度标签-->
               <div class="strictness-hint">
                 {{ t('admin.ruleConfig.strictnessHint') }}
+              </div>
+            </div>
+
+            <!--深度思考模式开关-->
+            <div class="ai-form-group" style="margin-bottom: 20px;">
+              <div class="summary-block-option-row" style="padding: 12px 16px; background: var(--color-bg-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); margin-bottom: 0;">
+                <div class="summary-block-option-copy">
+                  <div class="summary-block-option-title" style="display: flex; align-items: center; gap: 8px;">
+                    <ThunderboltOutlined style="color: var(--color-primary);" />
+                    {{ t('admin.ruleConfig.enableThinking', '开启深度思考模式') }}
+                  </div>
+                  <div class="summary-block-option-desc">{{ t('admin.ruleConfig.enableThinkingDesc', '启用后，支持思考模式的模型将在复盘分析阶段进行深度推理，并完整记录思考链路。') }}</div>
+                </div>
+                <a-switch v-model:checked="selectedArchiveConfig.ai_config.enable_thinking" />
               </div>
             </div>
 

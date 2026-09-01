@@ -32,6 +32,7 @@ func (ProcessArchiveConfig) TableName() string { return "process_archive_configs
 // ArchiveAIConfigData AI配置的结构化表示（归档复盘版）
 type ArchiveAIConfigData struct {
 	AuditStrictness        string `json:"audit_strictness"`
+	EnableThinking         bool   `json:"enable_thinking"`
 	SystemReasoningPrompt  string `json:"system_reasoning_prompt"`
 	SystemExtractionPrompt string `json:"system_extraction_prompt"`
 	UserReasoningPrompt    string `json:"user_reasoning_prompt"`

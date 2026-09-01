@@ -232,6 +232,7 @@ POST /api/admin/system/ai-models
 | `enabled` | boolean | — | 是否启用 |
 | `description` | string | — | 描述 |
 | `capabilities` | array | — | 能力标签列表 |
+| `supports_thinking` | boolean | — | 是否支持思考模式 / 深度思考（默认 `false`） |
 
 ---
 

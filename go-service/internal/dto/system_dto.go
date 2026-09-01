@@ -110,37 +110,39 @@ type OAConnectionResponse struct {
 
 // CreateAIModelRequest 创建 AI 模型配置请求（POST /api/admin/system/ai-models）。
 type CreateAIModelRequest struct {
-	Provider        string   `json:"provider" binding:"required"`
-	ProviderLabel   string   `json:"provider_label"`
-	ModelName       string   `json:"model_name" binding:"required"`
-	DisplayName     string   `json:"display_name" binding:"required"`
-	DeployType      string   `json:"deploy_type" binding:"required"`
-	Endpoint        string   `json:"endpoint" binding:"required"`
-	APIKey          string   `json:"api_key"`
-	MaxTokens       int      `json:"max_tokens"`
-	ContextWindow   int      `json:"context_window"`
-	CostPer1kTokens float64  `json:"cost_per_1k_tokens"`
-	Enabled         bool     `json:"enabled"`
-	Description     string   `json:"description"`
-	Capabilities    []string `json:"capabilities"`
+	Provider         string   `json:"provider" binding:"required"`
+	ProviderLabel    string   `json:"provider_label"`
+	ModelName        string   `json:"model_name" binding:"required"`
+	DisplayName      string   `json:"display_name" binding:"required"`
+	DeployType       string   `json:"deploy_type" binding:"required"`
+	Endpoint         string   `json:"endpoint" binding:"required"`
+	APIKey           string   `json:"api_key"`
+	MaxTokens        int      `json:"max_tokens"`
+	ContextWindow    int      `json:"context_window"`
+	CostPer1kTokens  float64  `json:"cost_per_1k_tokens"`
+	Enabled          bool     `json:"enabled"`
+	Description      string   `json:"description"`
+	SupportsThinking bool     `json:"supports_thinking"`
+	Capabilities     []string `json:"capabilities"`
 }
 
 // UpdateAIModelRequest 更新 AI 模型配置请求（PUT /api/admin/system/ai-models/:id）。
 type UpdateAIModelRequest struct {
-	Provider        string   `json:"provider"`
-	ProviderLabel   string   `json:"provider_label"`
-	ModelName       string   `json:"model_name"`
-	DisplayName     string   `json:"display_name"`
-	DeployType      string   `json:"deploy_type"`
-	Endpoint        string   `json:"endpoint"`
-	APIKey          string   `json:"api_key"`
-	MaxTokens       int      `json:"max_tokens"`
-	ContextWindow   int      `json:"context_window"`
-	CostPer1kTokens *float64 `json:"cost_per_1k_tokens"`
-	Enabled         *bool    `json:"enabled"`
-	Status          string   `json:"status"`
-	Description     string   `json:"description"`
-	Capabilities    []string `json:"capabilities"`
+	Provider         string   `json:"provider"`
+	ProviderLabel    string   `json:"provider_label"`
+	ModelName        string   `json:"model_name"`
+	DisplayName      string   `json:"display_name"`
+	DeployType       string   `json:"deploy_type"`
+	Endpoint         string   `json:"endpoint"`
+	APIKey           string   `json:"api_key"`
+	MaxTokens        int      `json:"max_tokens"`
+	ContextWindow    int      `json:"context_window"`
+	CostPer1kTokens  *float64 `json:"cost_per_1k_tokens"`
+	Enabled          *bool    `json:"enabled"`
+	Status           string   `json:"status"`
+	Description      string   `json:"description"`
+	SupportsThinking *bool    `json:"supports_thinking"`
+	Capabilities     []string `json:"capabilities"`
 }
 
 // AIModelResponse AI 模型配置详情响应。
@@ -159,6 +161,7 @@ type AIModelResponse struct {
 	Status           string   `json:"status"`
 	Enabled          bool     `json:"enabled"`
 	Description      string   `json:"description"`
+	SupportsThinking bool     `json:"supports_thinking"`
 	Capabilities     []string `json:"capabilities"`
 	CreatedAt        string   `json:"created_at"`
 	UpdatedAt        string   `json:"updated_at"`

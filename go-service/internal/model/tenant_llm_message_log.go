@@ -34,6 +34,7 @@ type TenantLLMMessagePayload struct {
 	TenantID        uuid.UUID `gorm:"type:uuid;not null;index" json:"tenant_id"`
 	SystemPrompt    string    `gorm:"type:text;not null;default:''" json:"system_prompt"`
 	UserPrompt      string    `gorm:"type:text;not null;default:''" json:"user_prompt"`
+	ReasoningContent string   `gorm:"type:text;not null;default:''" json:"reasoning_content"`
 	ResponseContent string    `gorm:"type:text;not null;default:''" json:"response_content"`
 	CreatedAt       time.Time `json:"created_at"`
 }

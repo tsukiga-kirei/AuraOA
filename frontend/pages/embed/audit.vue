@@ -37,6 +37,7 @@ const auditing = ref(false)
 const context = ref<EmbedContextResponse | null>(null)
 const currentResult = ref<AuditResult | null>(null)
 const showReasoning = ref(false)
+const showDeepThinking = ref(false)
 const pageError = ref('')
 const waitingParent = ref(true)
 const eventSourceStream = ref<EventSource | null>(null)
@@ -560,6 +561,22 @@ onBeforeUnmount(() => {
                   <li v-for="(sg, i) in currentResult.suggestions" :key="i">{{ sg }}</li>
                 </ul>
               </div>
+            </div>
+
+            <div v-if="currentResult.deep_thinking" class="result-section">
+              <button type="button" class="reasoning-toggle" @click="showDeepThinking = !showDeepThinking">
+                <span style="display: flex; align-items: center; gap: 6px;">
+                  <ThunderboltOutlined style="color: var(--color-primary);" />
+                  {{ t('dashboard.deepThinking', '深度思考过程') }}
+                </span>
+                <DownOutlined v-if="!showDeepThinking" />
+                <UpOutlined v-else />
+              </button>
+              <AiMarkdownStream
+                v-show="showDeepThinking"
+                :text="currentResult.deep_thinking || ''"
+                max-height="320px"
+              />
             </div>
 
             <div v-if="currentResult.ai_reasoning" class="result-section">

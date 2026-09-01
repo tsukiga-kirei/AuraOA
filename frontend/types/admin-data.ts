@@ -21,6 +21,7 @@ export interface AuditLogItem {
   recommendation: string     // approve / return / review
   score: number
   confidence: number
+  deep_thinking?: string
   ai_reasoning: string
   duration_ms: number
   audit_result: any          // JSONB 完整审核结果
@@ -107,6 +108,7 @@ export interface ArchiveLogItem {
   compliance: string          // compliant / partially_compliant / non_compliant
   compliance_score: number
   confidence: number
+  deep_thinking?: string
   ai_reasoning: string
   archive_result: any         // JSONB 完整归档审核结果
   duration_ms: number
@@ -306,6 +308,7 @@ export interface LLMLogItem {
 export interface LLMLogDetail extends LLMLogItem {
   system_prompt: string
   user_prompt: string
+  reasoning_content?: string
   response_content: string
 }
 

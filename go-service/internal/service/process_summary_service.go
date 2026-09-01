@@ -687,6 +687,9 @@ func (s *ProcessSummaryService) processSummaryJob(
 			req.Temperature = float64(tenant.Temperature)
 			req.MaxTokens = tenant.MaxTokensPerRequest
 			req.ModelConfig = modelCfg
+			if modelCfg.SupportsThinking && block.EnableThinking {
+				req.EnableThinking = true
+			}
 			req.StreamChunkFunc = func(chunk string) {
 				s.publishSummaryBlockChunk(summaryLogID, block.ID, block.Title, chunk)
 			}
@@ -707,13 +710,16 @@ func (s *ProcessSummaryService) processSummaryJob(
 				return
 			}
 			raw := resp.Content
+			deepThinking := resp.ReasoningContent
 			if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
 				raw = sanitize.SanitizeText(raw)
+				deepThinking = sanitize.SanitizeText(deepThinking)
 			}
 			parsed, parseErr := ParseSummaryBlockResult(raw, block)
 			if parseErr != nil {
 				parseErrorsByIndex[idx] = fmt.Sprintf("%s: %s", block.Title, parseErr.Error())
 			}
+			parsed.DeepThinking = deepThinking
 			parsed.DurationMs = int(time.Since(blockStart).Milliseconds())
 			resultsByIndex[idx] = parsed
 			rawPartsByIndex[idx] = fmt.Sprintf("## %s\n%s", block.Title, raw)

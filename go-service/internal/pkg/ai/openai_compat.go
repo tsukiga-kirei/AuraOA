@@ -77,14 +77,21 @@ type openAIStreamOptions struct {
 
 // openAIMessage OpenAI 消息格式
 type openAIMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role             string `json:"role"`
+	Content          string `json:"content"`
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+	Reasoning        string `json:"reasoning,omitempty"`
 }
 
 // openAIResponse OpenAI 兼容 API 响应体
 type openAIResponse struct {
 	Choices []struct {
-		Message openAIMessage `json:"message"`
+		Message struct {
+			Role             string `json:"role"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content,omitempty"`
+			Reasoning        string `json:"reasoning,omitempty"`
+		} `json:"message"`
 	} `json:"choices"`
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
@@ -111,15 +118,22 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 		maxTokens = c.cfg.MaxTokens
 	}
 
+	chatTemplateKwargs := map[string]interface{}{}
+	if req.EnableThinking {
+		chatTemplateKwargs["enable_thinking"] = true
+		chatTemplateKwargs["thinking"] = true
+	} else {
+		chatTemplateKwargs["enable_thinking"] = false
+		chatTemplateKwargs["thinking"] = false
+	}
+
 	body := openAIRequest{
-		Model:       c.cfg.ModelName,
-		Messages:    messages,
-		Temperature: temperature,
-		MaxTokens:   maxTokens,
-		Stream:      req.StreamChunkFunc != nil,
-		ChatTemplateKwargs: map[string]interface{}{
-			"enable_thinking": false,
-		},
+		Model:              c.cfg.ModelName,
+		Messages:           messages,
+		Temperature:        temperature,
+		MaxTokens:          maxTokens,
+		Stream:             req.StreamChunkFunc != nil || req.StreamReasoningChunkFunc != nil,
+		ChatTemplateKwargs: chatTemplateKwargs,
 	}
 	if body.Stream {
 		// 在支持 OpenAI stream_options 的实现中，要求在最终 chunk 返回 usage。
@@ -155,6 +169,7 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 
 		reader := bufio.NewReader(resp.Body)
 		var fullContent strings.Builder
+		var fullReasoning strings.Builder
 		tokenUsage := TokenUsage{}
 		usageReceived := false
 		for {
@@ -176,7 +191,9 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 			var chunk struct {
 				Choices []struct {
 					Delta struct {
-						Content string `json:"content"`
+						Content          string `json:"content"`
+						Reasoning        string `json:"reasoning"`         // vLLM 新版
+						ReasoningContent string `json:"reasoning_content"` // DeepSeek / 百炼 / vLLM 旧版
 					} `json:"delta"`
 				} `json:"choices"`
 				Usage *struct {
@@ -195,24 +212,38 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 					usageReceived = true
 				}
 				if len(chunk.Choices) > 0 {
-					content := chunk.Choices[0].Delta.Content
-					if content != "" {
-						fullContent.WriteString(content)
-						req.StreamChunkFunc(content)
+					delta := chunk.Choices[0].Delta
+					deltaReasoning := delta.Reasoning
+					if deltaReasoning == "" {
+						deltaReasoning = delta.ReasoningContent
+					}
+					if deltaReasoning != "" {
+						fullReasoning.WriteString(deltaReasoning)
+						if req.StreamReasoningChunkFunc != nil {
+							req.StreamReasoningChunkFunc(deltaReasoning)
+						}
+					}
+					if delta.Content != "" {
+						fullContent.WriteString(delta.Content)
+						if req.StreamChunkFunc != nil {
+							req.StreamChunkFunc(delta.Content)
+						}
 					}
 				}
 			}
 		}
 		outContent := fullContent.String()
+		outReasoning := fullReasoning.String()
 		if !usageReceived {
 			// 兼容不返回 usage 的服务：不做估算，保持空值（0）。
 			tokenUsage = TokenUsage{}
 		}
 		return &ChatResponse{
-			Content:    outContent,
-			TokenUsage: tokenUsage,
-			ModelID:    c.cfg.ModelName,
-			DurationMs: time.Since(startTime).Milliseconds(),
+			Content:          outContent,
+			ReasoningContent: outReasoning,
+			TokenUsage:       tokenUsage,
+			ModelID:          c.cfg.ModelName,
+			DurationMs:       time.Since(startTime).Milliseconds(),
 		}, nil
 	}
 
@@ -231,12 +262,18 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 	}
 
 	content := ""
+	reasoning := ""
 	if len(oaiResp.Choices) > 0 {
 		content = oaiResp.Choices[0].Message.Content
+		reasoning = oaiResp.Choices[0].Message.Reasoning
+		if reasoning == "" {
+			reasoning = oaiResp.Choices[0].Message.ReasoningContent
+		}
 	}
 
 	return &ChatResponse{
-		Content: content,
+		Content:          content,
+		ReasoningContent: reasoning,
 		TokenUsage: TokenUsage{
 			InputTokens:  oaiResp.Usage.PromptTokens,
 			OutputTokens: oaiResp.Usage.CompletionTokens,

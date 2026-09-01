@@ -47,6 +47,7 @@ type RuleConfig struct {
 // UserAIConfig AI 个性化配置
 type UserAIConfig struct {
 	StrictnessOverride string `json:"strictness_override"`
+	EnableThinking     *bool  `json:"enable_thinking,omitempty"`
 }
 
 // CustomRule 用户自定义的私有审核规则

@@ -67,6 +67,17 @@ type AIModelCaller interface {
 | OpenAI | `openai` | ✅ 已支持 | GPT 系列模型 API |
 | Azure OpenAI | `azure_openai` | ✅ 已支持 | 微软 Azure 托管的 OpenAI 服务 |
 
+## 思考模型（Reasoning / Thinking Models）与深度思考支持
+
+系统全链路支持具备原生思考链（CoT）能力的深度思考模型（如 DeepSeek-R1、Qwen-QwQ 等）：
+
+1. **模型标注**：在系统管理 AI 模型配置中提供 `supports_thinking` 开关，标识模型是否支持原生思考过程。
+2. **规则配置**：在流程审核配置、归档复盘配置及流程总结各块配置的提示词部分提供 `enable_thinking` 开关。开启后，在向模型发起请求时自动注入 `chat_template_kwargs: {"enable_thinking": true, "thinking": true}`（vLLM / Jinja 模板标准参数）。
+3. **思考过程解析与落库**：
+   - AI 调用器兼容解析 vLLM 新版 `reasoning` 字段以及 DeepSeek / 阿里百炼 / 历史 vLLM `reasoning_content` 字段。
+   - 流式请求时支持独立分发思考增量（`StreamReasoningChunkFunc`）与回答增量（`StreamChunkFunc`）。
+   - 深度思考内容自动落库至 `tenant_llm_message_payloads.reasoning_content`、`audit_logs.deep_thinking`、`archive_logs.deep_thinking` 以及总结块结果，并在前端数据管理、审核工作台、归档复盘和 OA 嵌入页完整展示。
+
 ## 两阶段审核流程
 
 AI 审核采用两阶段架构，将推理和结构化提取分离，提高审核质量：
@@ -78,8 +89,9 @@ AI 审核采用两阶段架构，将推理和结构化提取分离，提高审�
 │                                                                 │
 │  阶段一：推理（Reasoning）                                       │
 │  ├── 输入：系统提示词 + 用户提示词（含流程数据、规则、审批流）      │
+│  ├── 思考模式：模型支持且配置开启时激活深度思考                   │
 │  ├── 温度：租户配置值（默认 0.3）                                 │
-│  ├── 输出：自然语言推理分析文本                                   │
+│  ├── 输出：自然语言推理分析文本（含深度思考过程）                 │
 │  └── 流式：支持 SSE 实时推送推理过程到前端                        │
 │                                                                 │
 │  阶段二：提取（Extraction）                                      │

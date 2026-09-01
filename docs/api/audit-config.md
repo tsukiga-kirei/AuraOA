@@ -44,6 +44,7 @@ GET /api/tenant/rules/configs/:id
 PUT /api/tenant/rules/configs/:id
 ```
 
+`ai_config.enable_thinking` 控制是否开启深度思考模式（需模型本身支持思考）。
 `ai_config.system_extraction_prompt` 与 `ai_config.user_extraction_prompt` 均为后端锁定字段。
 保存时服务端会根据 `ai_config.audit_strictness` 使用对应系统模板覆盖客户端传值，
 避免固定 JSON Schema、输出指令和变量结构被误改；

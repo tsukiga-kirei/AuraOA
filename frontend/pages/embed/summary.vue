@@ -436,6 +436,16 @@ onBeforeUnmount(() => disconnectStream())
                   </span>
                 </button>
                 <div v-show="!isBlockCollapsed(block, idx)" class="summary-card-body">
+                  <div v-if="block.deep_thinking" style="margin-bottom: 12px; padding: 10px; background: var(--color-bg-hover); border-radius: var(--radius-md); border-left: 3px solid var(--color-primary);">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+                      <ThunderboltOutlined style="color: var(--color-primary);" />
+                      {{ t('embed.summary.deepThinking', '深度思考过程') }}
+                    </div>
+                    <AiMarkdownStream
+                      :text="block.deep_thinking"
+                      max-height="200px"
+                    />
+                  </div>
                   <AiMarkdownStream
                     :text="block.content"
                     max-height="300px"

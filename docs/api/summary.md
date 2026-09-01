@@ -34,6 +34,7 @@ GET /api/tenant/summary/configs/:id
 PUT /api/tenant/summary/configs/:id
 ```
 
+每个总结块配置项中包含 `enable_thinking`（boolean），控制生成该总结块时是否开启深度思考（需模型支持）。
 `embed_config` 控制 OA 嵌入总结的自动刷新策略：
 
 | 字段 | 默认值 | 说明 |

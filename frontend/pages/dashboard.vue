@@ -903,6 +903,9 @@ const getDurationSec = (ms: number | undefined) => {
 const chainItemAiReasoning = (item: AuditChainItem) =>
   (item.ai_reasoning || item.audit_result?.ai_reasoning || '').trim()
 
+const chainItemDeepThinking = (item: AuditChainItem) =>
+  (item.deep_thinking || item.audit_result?.deep_thinking || '').trim()
+
 // ─── 导出 Excel ───
 const handleExportExcel = async () => {
   exportLoading.value = true
@@ -1342,6 +1345,16 @@ onMounted(async () => {
                   <pre>{{ currentResult.raw_content }}</pre>
                 </div>
               </div>
+              <!-- 深度思考过程 (parse_error) -->
+              <div v-if="currentResult.deep_thinking" class="result-section">
+                <h4 class="result-section-title" style="display: flex; align-items: center; gap: 6px;">
+                  <ThunderboltOutlined style="color: var(--color-primary);" />
+                  {{ t('dashboard.deepThinking', '深度思考过程') }}
+                </h4>
+                <div class="ai-reasoning" style="border-left: 3px solid var(--color-primary);">
+                  <div class="markdown-body" v-html="renderMarkdown(currentResult.deep_thinking || '')"></div>
+                </div>
+              </div>
               <div v-if="currentResult.ai_reasoning" class="result-section">
                 <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
                 <div class="ai-reasoning">
@@ -1527,6 +1540,15 @@ onMounted(async () => {
                               </ul>
                             </div>
                           </div>
+                          <!-- 深度思考过程 -->
+                          <div v-if="chainItemDeepThinking(item)" class="chain-section-title" style="margin-top: 10px; display: flex; align-items: center; gap: 6px;">
+                            <ThunderboltOutlined style="color: var(--color-primary);" />
+                            {{ t('dashboard.deepThinking', '深度思考过程') }}
+                          </div>
+                          <div v-if="chainItemDeepThinking(item)" class="chain-reasoning" style="border-left: 3px solid var(--color-primary);">
+                            <div class="markdown-body" v-html="renderMarkdown(chainItemDeepThinking(item) || '')"></div>
+                          </div>
+
                           <!--AI 推理：后端链数据里推理在行字段 ai_reasoning，不在 audit_result JSONB 内 -->
                           <div v-if="chainItemAiReasoning(item)" class="chain-section-title" style="margin-top: 10px;">{{ t('dashboard.aiReasoning') }}</div>
                           <div v-if="chainItemAiReasoning(item)" class="chain-reasoning">

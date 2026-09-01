@@ -1824,7 +1824,15 @@ onMounted(async () => {
                               </div>
                             </div>
 
-                            <div v-if="logItem.ai_reasoning" class="chain-section-title">AI推理过程</div>
+                            <div v-if="logItem.deep_thinking" class="chain-section-title" style="display: flex; align-items: center; gap: 6px;">
+                              <ThunderboltOutlined style="color: var(--color-primary);" />
+                              {{ t('admin.data.deepThinking', '深度思考过程') }}
+                            </div>
+                            <div v-if="logItem.deep_thinking" class="chain-reasoning" style="border-left: 3px solid var(--color-primary);">
+                              <div class="markdown-body" v-html="renderMarkdown(logItem.deep_thinking)"></div>
+                            </div>
+
+                            <div v-if="logItem.ai_reasoning" class="chain-section-title">{{ t('admin.data.aiReasoning', 'AI推理过程') }}</div>
                             <div v-if="logItem.ai_reasoning" class="chain-reasoning">
                               <div class="markdown-body" v-html="renderMarkdown(logItem.ai_reasoning)"></div>
                             </div>
@@ -1946,6 +1954,17 @@ onMounted(async () => {
                               <ul class="insight-card-list" style="gap: 2px;">
                                 <li v-for="(s, i) in logItem.archive_result.suggestions" :key="i" style="font-size: 12px;">{{ s }}</li>
                               </ul>
+                            </div>
+                          </div>
+
+                          <!-- 深度思考过程 (Archive) -->
+                          <div class="detail-section" v-if="logItem.deep_thinking">
+                            <h4 class="chain-section-title" style="display: flex; align-items: center; gap: 6px;">
+                              <ThunderboltOutlined style="color: var(--color-primary);" />
+                              {{ t('admin.data.deepThinking', '深度思考过程') }}
+                            </h4>
+                            <div class="chain-reasoning" style="border-left: 3px solid var(--color-primary);">
+                              <div class="markdown-body" v-html="renderMarkdown(logItem.deep_thinking)"></div>
                             </div>
                           </div>
 
@@ -2230,6 +2249,14 @@ onMounted(async () => {
                         <div class="chain-section-title" style="margin-top: 12px;">{{ t('admin.data.llmUserPrompt') }}</div>
                         <pre v-if="logItem.user_prompt" class="llm-prompt-pre">{{ logItem.user_prompt }}</pre>
                         <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
+
+                        <template v-if="logItem.reasoning_content">
+                          <div class="chain-section-title" style="margin-top: 12px; display: flex; align-items: center; gap: 6px;">
+                            <ThunderboltOutlined style="color: var(--color-primary);" />
+                            {{ t('admin.data.llmReasoningContent', '深度思考过程') }}
+                          </div>
+                          <pre class="llm-prompt-pre" style="border-left: 3px solid var(--color-primary);">{{ logItem.reasoning_content }}</pre>
+                        </template>
 
                         <div class="chain-section-title" style="margin-top: 12px;">{{ t('admin.data.llmResponse') }}</div>
                         <pre v-if="logItem.response_content" class="llm-prompt-pre">{{ logItem.response_content }}</pre>

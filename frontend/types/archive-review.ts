@@ -69,6 +69,7 @@ export interface ArchiveReviewResult {
   overall_score?: number
   confidence?: number
   duration_ms?: number
+  deep_thinking?: string
   ai_reasoning?: string
   ai_summary?: string
   flow_audit?: {
