@@ -6120,6 +6120,8 @@ components:
           type: integer
         enabled:
           type: boolean
+        supports_thinking:
+          type: boolean
     TenantCreateRequest:
       type: object
       description: 创建租户。admin_username 为 1–100 位字母、数字或下划线（允许纯数字，可与 OA loginid 一致）；admin_password 可选，空则使用系统配置 auth.default_password

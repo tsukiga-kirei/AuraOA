@@ -24,6 +24,7 @@ type AIModelConfig struct {
 	Status           string         `gorm:"size:20;not null;default:offline" json:"status"`
 	Enabled          bool           `gorm:"not null;default:true" json:"enabled"`
 	Description      string         `gorm:"type:text;default:''" json:"description"`
+	SupportsThinking bool           `gorm:"not null;default:false" json:"supports_thinking"`
 	Capabilities     datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"capabilities"`
 	CreatedAt        time.Time      `json:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at"`

@@ -149,6 +149,7 @@ type AuditExecuteResponse struct {
 	RiskPoints      []string               `json:"risk_points,omitempty"`
 	Suggestions     []string               `json:"suggestions,omitempty"`
 	Confidence      int                    `json:"confidence,omitempty"`
+	DeepThinking    string                 `json:"deep_thinking,omitempty"`
 	AIReasoning     string                 `json:"ai_reasoning,omitempty"`
 	DurationMs      int                    `json:"duration_ms,omitempty"`
 	CreatedAt       string                 `json:"created_at"`
@@ -615,6 +616,9 @@ func (s *AuditExecuteService) processAuditJob(
 	reasoningReq.Temperature = float64(tenant.Temperature)
 	reasoningReq.MaxTokens = tenant.MaxTokensPerRequest
 	reasoningReq.ModelConfig = modelCfg
+	if modelCfg.SupportsThinking && aiConfig.EnableThinking {
+		reasoningReq.EnableThinking = true
+	}
 
 	// 注入流式回调，将增量写入 Redis 并通过 PubSub 广播
 	reasoningReq.StreamChunkFunc = func(chunk string) {
@@ -648,14 +652,17 @@ func (s *AuditExecuteService) processAuditJob(
 		return err
 	}
 	aiReasoning := reasoningResp.Content
+	deepThinking := reasoningResp.ReasoningContent
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
 		aiReasoning = sanitize.SanitizeText(aiReasoning)
+		deepThinking = sanitize.SanitizeText(deepThinking)
 	}
 
 	n, err = s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
-		"status":       model.JobStatusExtracting,
-		"ai_reasoning": aiReasoning,
-		"updated_at":   time.Now(),
+		"status":        model.JobStatusExtracting,
+		"ai_reasoning":  aiReasoning,
+		"deep_thinking": deepThinking,
+		"updated_at":    time.Now(),
 	})
 	if err != nil {
 		return err
@@ -695,10 +702,11 @@ func (s *AuditExecuteService) processAuditJob(
 	)
 
 	updates := map[string]interface{}{
-		"duration_ms":  totalDuration,
-		"raw_content":  rawStored,
-		"ai_reasoning": aiReasoning,
-		"updated_at":   time.Now(),
+		"duration_ms":   totalDuration,
+		"raw_content":   rawStored,
+		"ai_reasoning":  aiReasoning,
+		"deep_thinking": deepThinking,
+		"updated_at":    time.Now(),
 	}
 
 	if parseErr != nil {
@@ -872,6 +880,7 @@ func auditExecuteResponseFromLog(log *model.AuditLog) *AuditExecuteResponse {
 		ID:              log.ID.String(),
 		TraceID:         traceID,
 		ProcessID:       log.ProcessID,
+		DeepThinking:    log.DeepThinking,
 		AIReasoning:     log.AIReasoning,
 		DurationMs:      log.DurationMs,
 		CreatedAt:       apptime.FormatRFC3339(log.CreatedAt),
@@ -2072,12 +2081,13 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 	switch log.Status {
 	case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
 		out := map[string]interface{}{
-			"id":           log.ID.String(),
-			"trace_id":     fmt.Sprintf("TR-%s", log.ID.String()[:8]),
-			"process_id":   log.ProcessID,
-			"status":       log.Status,
-			"ai_reasoning": log.AIReasoning,
-			"created_at":   apptime.FormatRFC3339(log.CreatedAt),
+			"id":            log.ID.String(),
+			"trace_id":      fmt.Sprintf("TR-%s", log.ID.String()[:8]),
+			"process_id":    log.ProcessID,
+			"status":        log.Status,
+			"deep_thinking": log.DeepThinking,
+			"ai_reasoning":  log.AIReasoning,
+			"created_at":    apptime.FormatRFC3339(log.CreatedAt),
 		}
 		if log.ErrorMessage != "" {
 			out["error_message"] = log.ErrorMessage
@@ -2091,6 +2101,7 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 			"process_id":     log.ProcessID,
 			"status":         log.Status,
 			"error_message":  log.ErrorMessage,
+			"deep_thinking":  log.DeepThinking,
 			"ai_reasoning":   log.AIReasoning,
 			"created_at":     apptime.FormatRFC3339(log.CreatedAt),
 			"recommendation": "review",
@@ -2112,6 +2123,7 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 		"recommendation": log.Recommendation,
 		"overall_score":  log.Score,
 		"confidence":     log.Confidence,
+		"deep_thinking":  log.DeepThinking,
 		"ai_reasoning":   log.AIReasoning,
 		"duration_ms":    log.DurationMs,
 		"created_at":     apptime.FormatRFC3339(log.CreatedAt),

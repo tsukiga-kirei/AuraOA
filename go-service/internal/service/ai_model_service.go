@@ -62,6 +62,7 @@ func (s *AIModelService) Create(req *dto.CreateAIModelRequest) (*dto.AIModelResp
 		CostPer1kTokens:  req.CostPer1kTokens,
 		Enabled:          req.Enabled,
 		Description:      req.Description,
+		SupportsThinking: req.SupportsThinking,
 		Capabilities:     capsJSON,
 	}
 
@@ -150,6 +151,9 @@ func (s *AIModelService) Update(id uuid.UUID, req *dto.UpdateAIModelRequest) (*d
 	if req.Description != "" {
 		fields["description"] = req.Description
 	}
+	if req.SupportsThinking != nil {
+		fields["supports_thinking"] = *req.SupportsThinking
+	}
 	if req.Capabilities != nil {
 		capsJSON, _ := json.Marshal(req.Capabilities)
 		fields["capabilities"] = capsJSON
@@ -206,6 +210,7 @@ func toAIModelResponse(m *model.AIModelConfig) dto.AIModelResponse {
 		Status:           m.Status,
 		Enabled:          m.Enabled,
 		Description:      m.Description,
+		SupportsThinking: m.SupportsThinking,
 		Capabilities:     caps,
 		CreatedAt:        m.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:        m.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),

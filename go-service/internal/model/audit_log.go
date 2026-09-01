@@ -20,6 +20,7 @@ type AuditLog struct {
 	Score              int            `gorm:"not null;default:0" json:"score"`
 	AuditResult        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"audit_result"`
 	DurationMs         int            `gorm:"not null;default:0" json:"duration_ms"`
+	DeepThinking       string         `gorm:"type:text;default:''" json:"deep_thinking"`
 	AIReasoning        string         `gorm:"type:text;default:''" json:"ai_reasoning"`
 	Confidence         int            `gorm:"not null;default:0" json:"confidence"`
 	RawContent         string         `gorm:"type:text;default:''" json:"raw_content"`
@@ -107,6 +108,7 @@ type ArchiveLog struct {
 	ArchiveResult   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"archive_result"`
 	ProcessSnapshot datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"process_snapshot"`
 	DurationMs      int            `gorm:"not null;default:0" json:"duration_ms"`
+	DeepThinking    string         `gorm:"type:text;default:''" json:"deep_thinking"`
 	AIReasoning     string         `gorm:"type:text;default:''" json:"ai_reasoning"`
 	Confidence      int            `gorm:"not null;default:0" json:"confidence"`
 	RawContent      string         `gorm:"type:text;default:''" json:"raw_content"`

@@ -20,26 +20,29 @@ type AIModelCaller interface {
 
 // ChatRequest AI 对话请求
 type ChatRequest struct {
-	SystemPrompt    string               `json:"system_prompt"`
-	UserPrompt      string               `json:"user_prompt"`
-	ModelConfig     *model.AIModelConfig `json:"-"`
-	Temperature     float64              `json:"temperature"`
-	MaxTokens       int                  `json:"max_tokens"`
-	SkipQuotaCheck  bool                 `json:"skip_quota_check"`
-	RequestType     string               `json:"request_type"`
-	CallType        string               `json:"call_type"` // reasoning | structured
-	ProcessID       string               `json:"process_id"`
-	ProcessTitle    string               `json:"process_title"`
-	BusinessLogID   *uuid.UUID           `json:"business_log_id"`
-	StreamChunkFunc func(string)         `json:"-"`
+	SystemPrompt             string               `json:"system_prompt"`
+	UserPrompt               string               `json:"user_prompt"`
+	ModelConfig              *model.AIModelConfig `json:"-"`
+	Temperature              float64              `json:"temperature"`
+	MaxTokens                int                  `json:"max_tokens"`
+	EnableThinking           bool                 `json:"enable_thinking"`
+	SkipQuotaCheck           bool                 `json:"skip_quota_check"`
+	RequestType              string               `json:"request_type"`
+	CallType                 string               `json:"call_type"` // reasoning | structured
+	ProcessID                string               `json:"process_id"`
+	ProcessTitle             string               `json:"process_title"`
+	BusinessLogID            *uuid.UUID           `json:"business_log_id"`
+	StreamChunkFunc          func(string)         `json:"-"`
+	StreamReasoningChunkFunc func(string)         `json:"-"`
 }
 
 // ChatResponse AI 对话响应
 type ChatResponse struct {
-	Content    string     `json:"content"`
-	TokenUsage TokenUsage `json:"token_usage"`
-	ModelID    string     `json:"model_id"`
-	DurationMs int64      `json:"duration_ms"`
+	Content          string     `json:"content"`
+	ReasoningContent string     `json:"reasoning_content"`
+	TokenUsage       TokenUsage `json:"token_usage"`
+	ModelID          string     `json:"model_id"`
+	DurationMs       int64      `json:"duration_ms"`
 }
 
 // TokenUsage Token 消耗统计

@@ -59,7 +59,7 @@ GET /api/tenant/llm-logs/:processId/chain
 GET /api/tenant/llm-logs/calls/:id
 ```
 
-返回单条调用详情，含系统提示词、用户提示词、模型响应正文与 `config_version_no`。版本号通过
+返回单条调用详情，含系统提示词、用户提示词、深度思考过程（`reasoning_content`）、模型响应正文与 `config_version_no`。版本号通过
 `business_log_id` 关联审核、归档复盘或流程总结执行日志获取，不使用流程当前绑定版本覆盖历史调用。
 
 ---

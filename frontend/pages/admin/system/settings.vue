@@ -64,6 +64,7 @@ interface AIModel {
   deploy_type: string; endpoint: string; api_key_configured: boolean;
   max_tokens: number; context_window: number; cost_per_1k_tokens: number;
   status: string; enabled: boolean; description: string; capabilities: string[];
+  supports_thinking: boolean;
   created_at: string; updated_at: string;
 }
 
@@ -442,6 +443,7 @@ const newAIModel = ref<Record<string, any>>({
   provider: '', provider_label: '', model_name: '', display_name: '', deploy_type: 'local',
   endpoint: '', api_key: '', max_tokens: 4096, context_window: 65536,
   cost_per_1k_tokens: 0, enabled: true, description: '', capabilities: ['text'],
+  supports_thinking: false,
 })
 const resetNewAIModel = () => {
   const defaultProvider = aiProviderOptions.value[0]
@@ -450,6 +452,7 @@ const resetNewAIModel = () => {
     model_name: '', display_name: '', deploy_type: defaultProvider?.deploy_type || 'local',
     endpoint: '', api_key: '', max_tokens: 4096, context_window: 65536,
     cost_per_1k_tokens: 0, enabled: true, description: '', capabilities: ['text'],
+    supports_thinking: false,
   }
 }
 
@@ -468,6 +471,7 @@ const openEditAIModel = (model: AIModel) => {
     api_key: '', max_tokens: model.max_tokens, context_window: model.context_window,
     cost_per_1k_tokens: model.cost_per_1k_tokens, enabled: model.enabled,
     description: model.description, capabilities: [...model.capabilities],
+    supports_thinking: !!model.supports_thinking,
   }
   showAddAIModel.value = true
 }
@@ -873,6 +877,9 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               <span class="ai-card-provider">{{ model.provider_label || model.provider }}</span>
             </div>
             <div class="ai-card-badges">
+              <div v-if="model.supports_thinking" class="ai-type-badge" style="color: var(--color-primary); background: var(--color-primary-bg);">
+                <ThunderboltOutlined /> {{ t('admin.settings.supportsThinkingBadge', '深度思考') }}
+              </div>
               <div class="ai-type-badge" :style="{ color: getModelTypeTag(model.deploy_type).color, background: getModelTypeTag(model.deploy_type).bg }">
                 {{ getModelTypeTag(model.deploy_type).label }}
               </div>
@@ -1680,6 +1687,13 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             <a-checkbox v-for="cap in capabilityOptions" :key="cap.value" :value="cap.value">{{ cap.label }}</a-checkbox>
           </a-checkbox-group>
         </a-form-item>
+        <div class="toggle-item" style="padding: 10px 0; margin-bottom: 12px; border-bottom: 1px solid var(--color-border-light);">
+          <div class="toggle-info">
+            <div class="toggle-label">{{ t('admin.settings.supportsThinking', '支持思考模式 / 深度思考') }}</div>
+            <div class="toggle-desc">{{ t('admin.settings.supportsThinkingDesc', '该模型原生支持思考过程（如 DeepSeek-R1 / Qwen-QwQ 等），开启后允许在流程提示词配置中启用深度思考。') }}</div>
+          </div>
+          <a-switch v-model:checked="newAIModel.supports_thinking" />
+        </div>
         <a-form-item :label="t('admin.tenants.description')">
           <a-textarea v-model:value="newAIModel.description" :rows="2" :placeholder="t('admin.settings.aiModelDescPlaceholder')" />
         </a-form-item>

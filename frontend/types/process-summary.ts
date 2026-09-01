@@ -5,6 +5,7 @@ export interface SummaryBlockConfig {
   id: string
   title: string
   user_prompt: string
+  enable_thinking?: boolean
   /** true：传入全部数据；false：仅传入 enabled_data_variables 中选中的数据 */
   include_meta: boolean
   enabled_data_variables?: string[]
@@ -44,6 +45,7 @@ export interface SummaryBlockResult {
   title: string
   content: string
   points: string[]
+  deep_thinking?: string
   duration_ms?: number
 }
 

@@ -264,12 +264,13 @@ type LLMLogStats struct {
 	SummaryCount int64 `json:"summary_count"`
 }
 
-// LLMLogDetailWithPayload 详情含输入输出提示词。
+// LLMLogDetailWithPayload 详情含输入输出提示词与思考过程。
 type LLMLogDetailWithPayload struct {
 	LLMLogListRow
-	SystemPrompt    string `json:"system_prompt"`
-	UserPrompt      string `json:"user_prompt"`
-	ResponseContent string `json:"response_content"`
+	SystemPrompt     string `json:"system_prompt"`
+	UserPrompt       string `json:"user_prompt"`
+	ReasoningContent string `json:"reasoning_content"`
+	ResponseContent  string `json:"response_content"`
 }
 
 // ListProcessesPaged 数据管理页：按流程聚合分页查询。
@@ -328,6 +329,7 @@ func (r *LLMMessageLogRepo) ListCallsByProcessID(c *gin.Context, processID strin
 			"COALESCE(al.config_version_no, arl.config_version_no, psl.config_version_no) AS config_version_no, "+
 			"COALESCE(p.system_prompt, '') AS system_prompt, "+
 			"COALESCE(p.user_prompt, '') AS user_prompt, "+
+			"COALESCE(p.reasoning_content, '') AS reasoning_content, "+
 			"COALESCE(p.response_content, '') AS response_content").
 		Joins("LEFT JOIN users u ON u.id = "+t+".user_id").
 		Joins("LEFT JOIN ai_model_configs amc ON amc.id = "+t+".model_config_id").

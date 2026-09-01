@@ -21,6 +21,7 @@ interface AuditResult {
   recommendation: 'approve' | 'reject' | 'revise'
   score?: number
   details: ChecklistResult[]
+  deep_thinking?: string
   ai_reasoning: string
   duration_ms?: number
 }
@@ -83,6 +84,16 @@ const recommendationConfig = computed(() => ({
       <div class="section">
         <h4 class="section-title">{{ t('auditPanel.ruleResults') }}</h4>
         <RuleList :rules="result.details" />
+      </div>
+
+      <div v-if="result.deep_thinking" class="section">
+        <h4 class="section-title" style="display: flex; align-items: center; gap: 6px;">
+          <ThunderboltOutlined style="color: var(--color-primary);" />
+          {{ t('auditPanel.deepThinking', '深度思考过程') }}
+        </h4>
+        <div class="reasoning-block" style="border-left: 3px solid var(--color-primary);">
+          <pre>{{ result.deep_thinking }}</pre>
+        </div>
       </div>
 
       <div class="section">

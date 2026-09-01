@@ -511,6 +511,7 @@ func (s *AIModelCallerService) asyncWriteLog(
 			TenantID:        tenantID,
 			SystemPrompt:    strings.ToValidUTF8(systemPrompt, "\uFFFD"),
 			UserPrompt:      strings.ToValidUTF8(userPrompt, "\uFFFD"),
+			ReasoningContent: strings.ToValidUTF8(resp.ReasoningContent, "\uFFFD"),
 			ResponseContent: strings.ToValidUTF8(resp.Content, "\uFFFD"),
 			CreatedAt:       now,
 		}

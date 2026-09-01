@@ -1464,6 +1464,9 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	reasoningReq.Temperature = float64(tenant.Temperature)
 	reasoningReq.MaxTokens = tenant.MaxTokensPerRequest
 	reasoningReq.ModelConfig = modelCfg
+	if modelCfg.SupportsThinking && aiConfig.EnableThinking {
+		reasoningReq.EnableThinking = true
+	}
 	reasoningReq.StreamChunkFunc = func(chunk string) {
 		key := "archive:reasoning:" + archiveLogID.String()
 		s.rdb.Append(context.Background(), key, chunk)
@@ -1485,14 +1488,17 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		return err
 	}
 	aiReasoning := reasoningResp.Content
+	deepThinking := reasoningResp.ReasoningContent
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
 		aiReasoning = sanitize.SanitizeText(aiReasoning)
+		deepThinking = sanitize.SanitizeText(deepThinking)
 	}
 
 	_ = s.archiveLogRepo.UpdateFields(c, archiveLogID, map[string]interface{}{
-		"status":       model.JobStatusExtracting,
-		"ai_reasoning": aiReasoning,
-		"updated_at":   time.Now(),
+		"status":        model.JobStatusExtracting,
+		"ai_reasoning":  aiReasoning,
+		"deep_thinking": deepThinking,
+		"updated_at":    time.Now(),
 	})
 
 	extractionReq := BuildArchiveExtractionPrompt(&aiConfig, aiReasoning, mergedRulesText)
@@ -1521,6 +1527,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		"duration_ms":      totalDuration,
 		"raw_content":      rawStored,
 		"ai_reasoning":     aiReasoning,
+		"deep_thinking":    deepThinking,
 		"process_snapshot": datatypes.JSON(snapshotJSON),
 		"updated_at":       time.Now(),
 	}
@@ -2002,15 +2009,16 @@ func (s *ArchiveReviewService) fetchArchivedItem(ctx context.Context, adapter oa
 
 func buildArchiveResultFromLog(logEntry *model.ArchiveLog) map[string]interface{} {
 	base := map[string]interface{}{
-		"id":           logEntry.ID.String(),
-		"trace_id":     fmt.Sprintf("AR-%s", logEntry.ID.String()[:8]),
-		"process_id":   logEntry.ProcessID,
-		"title":        logEntry.Title,
-		"process_type": logEntry.ProcessType,
-		"status":       logEntry.Status,
-		"ai_reasoning": logEntry.AIReasoning,
-		"created_at":   apptime.FormatRFC3339(logEntry.CreatedAt),
-		"duration_ms":  logEntry.DurationMs,
+		"id":            logEntry.ID.String(),
+		"trace_id":      fmt.Sprintf("AR-%s", logEntry.ID.String()[:8]),
+		"process_id":    logEntry.ProcessID,
+		"title":         logEntry.Title,
+		"process_type":  logEntry.ProcessType,
+		"status":        logEntry.Status,
+		"deep_thinking": logEntry.DeepThinking,
+		"ai_reasoning":  logEntry.AIReasoning,
+		"created_at":    apptime.FormatRFC3339(logEntry.CreatedAt),
+		"duration_ms":   logEntry.DurationMs,
 	}
 	addExecutionConfigVersionMeta(base, logEntry.ConfigVersionID, logEntry.ConfigVersionNo)
 	if logEntry.ErrorMessage != "" {
