@@ -38,8 +38,10 @@ type TenantConfigVersion struct {
 	VersionNo      int            `gorm:"not null" json:"version_no"`
 	Fingerprint    string         `gorm:"size:80;not null" json:"fingerprint"`
 	ConfigSnapshot datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"config_snapshot"`
+	IsActive       bool           `gorm:"not null;default:false" json:"is_active"`
 	CreatedBy      *uuid.UUID     `gorm:"type:uuid" json:"created_by,omitempty"`
 	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 func (TenantConfigVersion) TableName() string { return "tenant_config_versions" }

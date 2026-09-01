@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 )
 
 // ExecutionConfigVersionRepo 管理不可变执行配置版本与流程绑定。
@@ -59,7 +60,122 @@ func (r *ExecutionConfigVersionRepo) GetVersionByID(
 	return &version, err
 }
 
-// GetLatestBaseVersion 获取租户当前最新发布的基础配置版本。
+// GetActiveBaseVersion 获取当前租户生效/启用的基础配置版本。
+func (r *ExecutionConfigVersionRepo) GetActiveBaseVersion(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	module string,
+	sourceConfigID uuid.UUID,
+) (*model.TenantConfigVersion, error) {
+	var version model.TenantConfigVersion
+	// 优先查询 is_active = true 的版本
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND module = ? AND source_config_id = ? AND is_active = ?", tenantID, module, sourceConfigID, true).
+		First(&version).Error
+	if err == nil {
+		return &version, nil
+	}
+	if err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+
+	// 若未显式标记 active（老数据兼容），查询最新版本
+	return r.GetLatestBaseVersion(ctx, tenantID, module, sourceConfigID)
+}
+
+// SetActiveBaseVersion 切换指定版本为当前可用版本（Active Version）。
+func (r *ExecutionConfigVersionRepo) SetActiveBaseVersion(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	module string,
+	sourceConfigID uuid.UUID,
+	versionNo int,
+) (*model.TenantConfigVersion, error) {
+	var target model.TenantConfigVersion
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		lockKey := "base:" + tenantID.String() + ":" + module + ":" + sourceConfigID.String()
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", lockKey).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Where(
+			"tenant_id = ? AND module = ? AND source_config_id = ? AND version_no = ?",
+			tenantID, module, sourceConfigID, versionNo,
+		).First(&target).Error; err != nil {
+			return err
+		}
+
+		// 将其他版本 active 置为 false
+		if err := tx.Model(&model.TenantConfigVersion{}).
+			Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).
+			Update("is_active", false).Error; err != nil {
+			return err
+		}
+
+		// 激活当前版本
+		target.IsActive = true
+		target.UpdatedAt = apptime.Now()
+		return tx.Model(&model.TenantConfigVersion{}).
+			Where("id = ?", target.ID).
+			Updates(map[string]interface{}{
+				"is_active":  true,
+				"updated_at": target.UpdatedAt,
+			}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &target, nil
+}
+
+// UpdateBaseVersionSnapshot 更新指定版本的快照内容与指纹。
+func (r *ExecutionConfigVersionRepo) UpdateBaseVersionSnapshot(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	module string,
+	sourceConfigID uuid.UUID,
+	versionNo int,
+	fingerprint string,
+	snapshot interface{},
+) (*model.TenantConfigVersion, error) {
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("序列化租户基础配置快照失败: %w", err)
+	}
+
+	var target model.TenantConfigVersion
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		lockKey := "base:" + tenantID.String() + ":" + module + ":" + sourceConfigID.String()
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", lockKey).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Where(
+			"tenant_id = ? AND module = ? AND source_config_id = ? AND version_no = ?",
+			tenantID, module, sourceConfigID, versionNo,
+		).First(&target).Error; err != nil {
+			return err
+		}
+
+		target.Fingerprint = fingerprint
+		target.ConfigSnapshot = datatypes.JSON(raw)
+		target.UpdatedAt = apptime.Now()
+
+		return tx.Model(&model.TenantConfigVersion{}).
+			Where("id = ?", target.ID).
+			Updates(map[string]interface{}{
+				"fingerprint":     target.Fingerprint,
+				"config_snapshot": target.ConfigSnapshot,
+				"updated_at":      target.UpdatedAt,
+			}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &target, nil
+}
+
+// GetLatestBaseVersion 获取租户最新发布的基础配置版本。
 func (r *ExecutionConfigVersionRepo) GetLatestBaseVersion(
 	ctx context.Context,
 	tenantID uuid.UUID,
@@ -77,9 +193,40 @@ func (r *ExecutionConfigVersionRepo) GetLatestBaseVersion(
 	return &version, nil
 }
 
-// PublishBaseVersion 显式发布新基础版本。
-// 如果当前最新版本与当前快照指纹一致，则直接返回最新版本（不重复升版）；
-// 否则分配新版本号（maxVersion + 1）并写入快照。
+// ListBaseVersions 获取租户某项配置发布的所有历史基础版本列表。
+func (r *ExecutionConfigVersionRepo) ListBaseVersions(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	module string,
+	sourceConfigID uuid.UUID,
+) ([]model.TenantConfigVersion, error) {
+	var list []model.TenantConfigVersion
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).
+		Order("version_no DESC").
+		Find(&list).Error
+	return list, err
+}
+
+// GetBaseVersionByNo 按版本号获取特定的租户基础版本。
+func (r *ExecutionConfigVersionRepo) GetBaseVersionByNo(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	module string,
+	sourceConfigID uuid.UUID,
+	versionNo int,
+) (*model.TenantConfigVersion, error) {
+	var version model.TenantConfigVersion
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND module = ? AND source_config_id = ? AND version_no = ?", tenantID, module, sourceConfigID, versionNo).
+		First(&version).Error
+	if err != nil {
+		return nil, err
+	}
+	return &version, nil
+}
+
+// PublishBaseVersion 显式发布新基础版本，并自动设为当前启用版本。
 func (r *ExecutionConfigVersionRepo) PublishBaseVersion(
 	ctx context.Context,
 	tenantID, userID uuid.UUID,
@@ -106,6 +253,12 @@ func (r *ExecutionConfigVersionRepo) PublishBaseVersion(
 		).Order("version_no DESC").First(&latest).Error
 
 		if err == nil && latest.Fingerprint == fingerprint {
+			// 指纹一致，直接激活最新版本
+			_ = tx.Model(&model.TenantConfigVersion{}).
+				Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).
+				Update("is_active", false)
+			_ = tx.Model(&model.TenantConfigVersion{}).Where("id = ?", latest.ID).Update("is_active", true)
+			latest.IsActive = true
 			result = latest
 			return nil
 		}
@@ -120,10 +273,19 @@ func (r *ExecutionConfigVersionRepo) PublishBaseVersion(
 			return err
 		}
 
+		// 将先前版本置为非 active
+		_ = tx.Model(&model.TenantConfigVersion{}).
+			Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).
+			Update("is_active", false)
+
+		now := apptime.Now()
 		result = model.TenantConfigVersion{
 			ID: uuid.New(), TenantID: tenantID, Module: module, SourceConfigID: sourceConfigID,
 			VersionNo: maxVersion + 1, Fingerprint: fingerprint, ConfigSnapshot: datatypes.JSON(raw),
+			IsActive:  true,
 			CreatedBy: &userID,
+			CreatedAt: now,
+			UpdatedAt: now,
 		}
 		return tx.Create(&result).Error
 	})
@@ -133,7 +295,7 @@ func (r *ExecutionConfigVersionRepo) PublishBaseVersion(
 	return &result, nil
 }
 
-// GetOrCreateLatestBaseVersion 获取最新基础版本；若尚无任何版本（首次使用），则创建初始版本 V1。
+// GetOrCreateLatestBaseVersion 获取启用或最新基础版本；若尚无任何版本（首次使用），则创建初始版本 V1。
 func (r *ExecutionConfigVersionRepo) GetOrCreateLatestBaseVersion(
 	ctx context.Context,
 	tenantID, userID uuid.UUID,
@@ -149,11 +311,26 @@ func (r *ExecutionConfigVersionRepo) GetOrCreateLatestBaseVersion(
 			return err
 		}
 
+		// 优先取 is_active = true
 		err := tx.Where(
+			"tenant_id = ? AND module = ? AND source_config_id = ? AND is_active = ?",
+			tenantID, module, sourceConfigID, true,
+		).First(&result).Error
+		if err == nil {
+			return nil
+		}
+		if err != gorm.ErrRecordNotFound {
+			return err
+		}
+
+		// 若无 active 记录，取最新版
+		err = tx.Where(
 			"tenant_id = ? AND module = ? AND source_config_id = ?",
 			tenantID, module, sourceConfigID,
 		).Order("version_no DESC").First(&result).Error
 		if err == nil {
+			_ = tx.Model(&model.TenantConfigVersion{}).Where("id = ?", result.ID).Update("is_active", true)
+			result.IsActive = true
 			return nil
 		}
 		if err != gorm.ErrRecordNotFound {
@@ -164,10 +341,14 @@ func (r *ExecutionConfigVersionRepo) GetOrCreateLatestBaseVersion(
 		if err != nil {
 			return fmt.Errorf("序列化租户基础配置快照失败: %w", err)
 		}
+		now := apptime.Now()
 		result = model.TenantConfigVersion{
 			ID: uuid.New(), TenantID: tenantID, Module: module, SourceConfigID: sourceConfigID,
 			VersionNo: 1, Fingerprint: fingerprint, ConfigSnapshot: datatypes.JSON(raw),
+			IsActive:  true,
 			CreatedBy: &userID,
+			CreatedAt: now,
+			UpdatedAt: now,
 		}
 		return tx.Create(&result).Error
 	})

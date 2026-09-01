@@ -1945,6 +1945,115 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '404':
           $ref: '#/components/responses/ErrorResponse'
+  /api/tenant/execution-config-versions/history:
+    get:
+      summary: 查询配置历史发布版本列表
+      tags:
+      - ExecutionConfigVersion
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: module
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - audit
+          - archive
+          - summary
+      - name: source_config_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 成功
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/tenant/execution-config-versions/activate:
+    post:
+      summary: 切换当前可用版本（Active Version）
+      tags:
+      - ExecutionConfigVersion
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - module
+              - source_config_id
+              - version_no
+              properties:
+                module:
+                  type: string
+                  enum:
+                  - audit
+                  - archive
+                  - summary
+                source_config_id:
+                  type: string
+                  format: uuid
+                version_no:
+                  type: integer
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionConfigVersionStatusResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/tenant/execution-config-versions/save-version:
+    post:
+      summary: 直接修改并保存指定版本的快照内容
+      tags:
+      - ExecutionConfigVersion
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - module
+              - source_config_id
+              - version_no
+              - snapshot
+              properties:
+                module:
+                  type: string
+                source_config_id:
+                  type: string
+                  format: uuid
+                version_no:
+                  type: integer
+                snapshot:
+                  type: object
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionConfigVersionStatusResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
   /api/tenant/rules/configs:
     get:
       summary: 获取流程审核配置列表
