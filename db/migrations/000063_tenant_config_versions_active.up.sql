@@ -1,4 +1,4 @@
--- 000062：为租户基础配置版本添加 is_active 标识，支持多版本并存与自由切换当前可用版本。
+-- 000063：为租户基础配置版本添加 is_active 标识，支持多版本并存与自由切换当前可用版本。
 
 ALTER TABLE tenant_config_versions
     ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT false,
