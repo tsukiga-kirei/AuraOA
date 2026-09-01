@@ -54,12 +54,12 @@ func (s *UserPersonalConfigService) ensureAuditBaseVersion(
 	rules []model.AuditRule,
 ) (*model.TenantConfigVersion, error) {
 	snapshot := auditConfigSourceSnapshot(config, rules)
-	version, err := s.versions.EnsureBaseVersion(
+	version, err := s.versions.GetOrCreateLatestBaseVersion(
 		c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleAudit,
 		config.ID, stableJSONFingerprint(snapshot), snapshot,
 	)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "保存审核基础配置版本失败")
+		return nil, newServiceError(errcode.ErrDatabase, "读取审核基础配置版本失败")
 	}
 	return version, nil
 }
@@ -71,12 +71,12 @@ func (s *UserPersonalConfigService) ensureArchiveBaseVersion(
 	rules []model.ArchiveRule,
 ) (*model.TenantConfigVersion, error) {
 	snapshot := archiveConfigSourceSnapshot(config, rules)
-	version, err := s.versions.EnsureBaseVersion(
+	version, err := s.versions.GetOrCreateLatestBaseVersion(
 		c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleArchive,
 		config.ID, stableJSONFingerprint(snapshot), snapshot,
 	)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "保存归档复盘基础配置版本失败")
+		return nil, newServiceError(errcode.ErrDatabase, "读取归档复盘基础配置版本失败")
 	}
 	return version, nil
 }

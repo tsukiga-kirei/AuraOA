@@ -21,5 +21,18 @@ export const useExecutionConfigVersionApi = () => {
     )
   }
 
-  return { getStatus }
+  async function publish(
+    module: ExecutionConfigModule,
+    sourceConfigId: string,
+  ): Promise<ExecutionConfigVersionStatus> {
+    return await authFetch<ExecutionConfigVersionStatus>(
+      '/api/tenant/execution-config-versions/publish',
+      {
+        method: 'POST',
+        body: { module, source_config_id: sourceConfigId },
+      },
+    )
+  }
+
+  return { getStatus, publish }
 }

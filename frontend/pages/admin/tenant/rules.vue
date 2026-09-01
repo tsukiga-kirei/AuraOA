@@ -5,6 +5,7 @@ import {
   CheckOutlined,
   ClockCircleOutlined,
   CloseOutlined,
+  CloudUploadOutlined,
   DashboardOutlined,
   DatabaseOutlined,
   DeleteOutlined,
@@ -109,6 +110,43 @@ function versionStatusTitle(status: ExecutionConfigVersionStatus | null): string
     return t('executionConfig.updatedAfterVersion', `${status.latest_version_no}`)
   }
   return t('executionConfig.notGenerated')
+}
+
+const publishingVersion = reactive<Record<ExecutionConfigModule, boolean>>({
+  audit: false,
+  archive: false,
+  summary: false,
+})
+
+async function handlePublishVersion(module: ExecutionConfigModule) {
+  let configId: string | undefined
+  if (module === 'audit') {
+    configId = selectedConfig.value?.id
+  } else if (module === 'archive') {
+    configId = selectedArchiveConfig.value?.id
+  } else if (module === 'summary') {
+    configId = selectedSummaryConfig.value?.id
+  }
+  if (!configId) return
+
+  Modal.confirm({
+    title: t('executionConfig.publishConfirmTitle'),
+    content: t('executionConfig.publishConfirmContent'),
+    okText: t('admin.ruleConfig.confirm'),
+    cancelText: t('admin.ruleConfig.cancel'),
+    onOk: async () => {
+      publishingVersion[module] = true
+      try {
+        const result = await executionConfigVersionApi.publish(module, configId!)
+        versionStatusRefs[module].value = result
+        message.success(t('admin.ruleConfig.publishSuccess'))
+      } catch (e: any) {
+        message.error(t('admin.ruleConfig.publishFail') + ': ' + (e.message || ''))
+      } finally {
+        publishingVersion[module] = false
+      }
+    },
+  })
 }
 
 //===== Cron 任务类型配置 =====
@@ -3345,11 +3383,18 @@ const handleSave = async () => {
         </div>
 
         <div v-if="activeTab !== 'rules'" class="config-actions">
-          <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
-            <LoadingOutlined v-if="saving" spin />
-            <SaveOutlined v-else />
-            {{ t('admin.ruleConfig.saveConfig') }}
-          </a-button>
+          <a-space size="middle">
+            <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
+              <LoadingOutlined v-if="saving" spin />
+              <SaveOutlined v-else />
+              {{ t('admin.ruleConfig.saveConfig') }}
+            </a-button>
+            <a-button size="large" :disabled="publishingVersion.audit || saving" @click="handlePublishVersion('audit')">
+              <LoadingOutlined v-if="publishingVersion.audit" spin />
+              <CloudUploadOutlined v-else />
+              {{ t('executionConfig.publishVersion') }}
+            </a-button>
+          </a-space>
         </div>
       </div>
 
@@ -3952,11 +3997,18 @@ const handleSave = async () => {
         </div>
 
         <div class="config-actions">
-          <a-button type="primary" size="large" :disabled="savingSummary" @click="handleSaveSummaryConfig">
-            <LoadingOutlined v-if="savingSummary" spin />
-            <SaveOutlined v-else />
-            保存总结配置
-          </a-button>
+          <a-space size="middle">
+            <a-button type="primary" size="large" :disabled="savingSummary" @click="handleSaveSummaryConfig">
+              <LoadingOutlined v-if="savingSummary" spin />
+              <SaveOutlined v-else />
+              {{ t('admin.ruleConfig.saveConfig') }}
+            </a-button>
+            <a-button size="large" :disabled="publishingVersion.summary || savingSummary" @click="handlePublishVersion('summary')">
+              <LoadingOutlined v-if="publishingVersion.summary" spin />
+              <CloudUploadOutlined v-else />
+              {{ t('executionConfig.publishVersion') }}
+            </a-button>
+          </a-space>
         </div>
       </div>
 
@@ -5257,11 +5309,18 @@ const handleSave = async () => {
         </div>
 
         <div v-if="archiveActiveTab !== 'rules'" class="config-actions">
-          <a-button type="primary" size="large" :disabled="savingArchive" @click="handleSaveArchiveConfig">
-            <LoadingOutlined v-if="savingArchive" spin />
-            <SaveOutlined v-else />
-            {{ t('admin.ruleConfig.saveConfig') }}
-          </a-button>
+          <a-space size="middle">
+            <a-button type="primary" size="large" :disabled="savingArchive" @click="handleSaveArchiveConfig">
+              <LoadingOutlined v-if="savingArchive" spin />
+              <SaveOutlined v-else />
+              {{ t('admin.ruleConfig.saveConfig') }}
+            </a-button>
+            <a-button size="large" :disabled="publishingVersion.archive || savingArchive" @click="handlePublishVersion('archive')">
+              <LoadingOutlined v-if="publishingVersion.archive" spin />
+              <CloudUploadOutlined v-else />
+              {{ t('executionConfig.publishVersion') }}
+            </a-button>
+          </a-space>
         </div>
       </div>
 
