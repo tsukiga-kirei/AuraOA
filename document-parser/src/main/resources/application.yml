@@ -31,6 +31,7 @@ parser:
   max-xls-rows-per-sheet: ${PARSER_MAX_XLS_ROWS_PER_SHEET:10000}
   max-xls-cells-per-row: ${PARSER_MAX_XLS_CELLS_PER_ROW:256}
   max-ppt-slides: ${PARSER_MAX_PPT_SLIDES:1000}
+  max-pdf-pages: ${PARSER_MAX_PDF_PAGES:1000}
 
 logging:
   level:

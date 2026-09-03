@@ -46,6 +46,7 @@ class OfdDocumentParserTest {
                 100,
                 10_000,
                 256,
+                1_000,
                 1_000
         );
     }

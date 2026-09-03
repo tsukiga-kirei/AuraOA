@@ -119,6 +119,8 @@ export interface SystemGeneralConfig {
     attachment_compat_endpoint: string
     /** attachment.compat_api_key — 兼容格式解析服务 API Key（可选） */
     attachment_compat_api_key?: string
+    /** attachment.document_parser_types — 使用代码解析正文的文件类型（逗号分隔） */
+    attachment_document_parser_types: string
     /** attachment.legacy_office_enabled — 是否解析 DOC / XLS / PPT */
     attachment_legacy_office_enabled: boolean
     /** attachment.ofd_enabled — 是否解析 OFD */
@@ -192,6 +194,7 @@ export function mapConfigItems(items: ConfigItem[]): Partial<SystemGeneralConfig
         ...(str('attachment.supported_types') !== undefined && { attachment_supported_types: kv['attachment.supported_types'] }),
         ...(str('attachment.compat_endpoint') !== undefined && { attachment_compat_endpoint: kv['attachment.compat_endpoint'] }),
         ...(str('attachment.compat_api_key') !== undefined && { attachment_compat_api_key: kv['attachment.compat_api_key'] }),
+        ...(str('attachment.document_parser_types') !== undefined && { attachment_document_parser_types: kv['attachment.document_parser_types'] }),
         ...(str('attachment.legacy_office_enabled') !== undefined && { attachment_legacy_office_enabled: bool('attachment.legacy_office_enabled') }),
         ...(str('attachment.ofd_enabled') !== undefined && { attachment_ofd_enabled: bool('attachment.ofd_enabled') }),
         ...(str('attachment.visual_fallback_enabled') !== undefined && { attachment_visual_fallback_enabled: bool('attachment.visual_fallback_enabled') }),
@@ -247,6 +250,7 @@ export function configToUpdateRequest(cfg: SystemGeneralConfig): ConfigUpdateReq
         'attachment.supported_types': cfg.attachment_supported_types ?? 'pdf,png,jpg,jpeg,bmp,gif,tiff,webp,txt,csv,md,docx,xlsx,pptx,doc,xls,ppt,ofd',
         'attachment.compat_endpoint': cfg.attachment_compat_endpoint ?? 'http://document-parser:8090',
         'attachment.compat_api_key': cfg.attachment_compat_api_key ?? '',
+        'attachment.document_parser_types': cfg.attachment_document_parser_types ?? '',
         'attachment.legacy_office_enabled': String(cfg.attachment_legacy_office_enabled ?? false),
         'attachment.ofd_enabled': String(cfg.attachment_ofd_enabled ?? false),
         'attachment.visual_fallback_enabled': String(cfg.attachment_visual_fallback_enabled ?? true),

@@ -1642,7 +1642,7 @@ paths:
                     example: success
   /api/admin/system/attachment-recognition/test-compat:
     post:
-      summary: 测试兼容格式解析服务连通性
+      summary: 测试文档内容解析服务连通性
       tags:
       - SystemAdmin
       security:
@@ -1660,10 +1660,15 @@ paths:
                 attachment_compat_api_key:
                   type: string
                   format: password
+                attachment_document_parser_types:
+                  type: string
+                  example: pdf,docx,xlsx,pptx
                 attachment_legacy_office_enabled:
                   type: boolean
+                  deprecated: true
                 attachment_ofd_enabled:
                   type: boolean
+                  deprecated: true
                 attachment_visual_fallback_enabled:
                   type: boolean
       responses:

@@ -20,7 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 兼容文档解析服务接口。
+ * 文档内容解析服务接口。
  */
 @RestController
 @RequestMapping
@@ -57,9 +57,13 @@ public class DocumentParserController {
 
     private HealthResponse status() {
         Map<String, Boolean> capabilities = new LinkedHashMap<>();
+        capabilities.put("pdf", true);
         capabilities.put("doc", true);
+        capabilities.put("docx", true);
         capabilities.put("xls", true);
+        capabilities.put("xlsx", true);
         capabilities.put("ppt", true);
+        capabilities.put("pptx", true);
         capabilities.put("ofd", true);
         capabilities.put("ofd_to_pdf", true);
         return new HealthResponse("ok", capabilities);

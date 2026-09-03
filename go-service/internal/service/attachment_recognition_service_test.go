@@ -121,6 +121,9 @@ func TestLoadRecognitionConfigCompatibilityDefaults(t *testing.T) {
 	if cfg.LegacyOfficeEnabled || cfg.OFDEnabled {
 		t.Fatalf("兼容格式开关默认应关闭: %+v", cfg)
 	}
+	if len(cfg.DocumentParserTypes) != 0 {
+		t.Fatalf("代码文档解析类型默认应为空: %v", cfg.DocumentParserTypes)
+	}
 	if !cfg.VisualFallbackEnabled {
 		t.Fatal("VisualFallbackEnabled 默认应开启")
 	}
@@ -130,6 +133,71 @@ func TestLoadRecognitionConfigCompatibilityDefaults(t *testing.T) {
 	}
 	if !reflect.DeepEqual(cfg.SupportedTypes, wantTypes) {
 		t.Fatalf("SupportedTypes = %v, want %v", cfg.SupportedTypes, wantTypes)
+	}
+}
+
+func TestDocumentParserTypesPreferCodeAndFallbackScannedPDF(t *testing.T) {
+	var parsedFiles []string
+	var minerUFiles []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/parse":
+			fileName, _, err := readMultipartTestFile(r, "file")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			parsedFiles = append(parsedFiles, fileName)
+			if fileName == "scan.pdf" {
+				_, _ = io.WriteString(w, `{"parser":"apache-pdfbox","file_type":"pdf","content":"","has_text_layer":false,"fallback_required":true,"fallback_format":"pdf","warnings":[]}`)
+				return
+			}
+			_, _ = io.WriteString(w, fmt.Sprintf(`{"parser":"code","file_type":"pdf","content":%q,"has_text_layer":true,"fallback_required":false,"warnings":[]}`, "code:"+fileName))
+		case "/file_parse":
+			fileName, _, err := readMultipartTestFile(r, "files")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			minerUFiles = append(minerUFiles, fileName)
+			_, _ = io.WriteString(w, `{"status":"completed","results":{"document":{"md_content":"mineru fallback"}}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	service := &AttachmentRecognitionService{
+		configRepo: mapSystemConfigReader{
+			"attachment.recognition_enabled":     "true",
+			"attachment.supported_types":         "pdf,docx,xlsx",
+			"attachment.document_parser_types":   "pdf,docx",
+			"attachment.compat_endpoint":         server.URL,
+			"attachment.mineru_endpoint":         server.URL,
+			"attachment.visual_fallback_enabled": "true",
+		},
+		httpClient: server.Client(),
+	}
+	results, err := service.RecognizeAttachments(context.Background(), []oa.AttachmentFilePayload{
+		testAttachment("1", "electronic.pdf", []byte("pdf")),
+		testAttachment("2", "scan.pdf", []byte("pdf")),
+		testAttachment("3", "contract.docx", []byte("docx")),
+		testAttachment("4", "budget.xlsx", []byte("xlsx")),
+	}, "attachments", "附件")
+	if err != nil {
+		t.Fatalf("RecognizeAttachments() error = %v", err)
+	}
+	wantContents := []string{"code:electronic.pdf", "mineru fallback", "code:contract.docx", "mineru fallback"}
+	for index, want := range wantContents {
+		if results[index].Error != "" || results[index].Content != want {
+			t.Fatalf("results[%d] = %+v, want content %q", index, results[index], want)
+		}
+	}
+	if !reflect.DeepEqual(parsedFiles, []string{"electronic.pdf", "scan.pdf", "contract.docx"}) {
+		t.Fatalf("document parser files = %v", parsedFiles)
+	}
+	if !reflect.DeepEqual(minerUFiles, []string{"scan.pdf", "budget.xlsx"}) {
+		t.Fatalf("MinerU files = %v", minerUFiles)
 	}
 }
 
@@ -296,7 +364,7 @@ func TestRecognizeAttachmentsFailureDoesNotStopBatch(t *testing.T) {
 	if len(results) != 4 {
 		t.Fatalf("len(results) = %d, want 4", len(results))
 	}
-	if results[0].Error == "" || results[1].Error != "旧版 Office 解析未启用" || results[2].Error != "OFD 解析未启用" {
+	if results[0].Error == "" || results[1].Error != "文件类型 \"doc\" 未选择文档内容解析" || results[2].Error != "文件类型 \"ofd\" 未选择文档内容解析" {
 		t.Fatalf("unexpected failure results: %#v", results[:3])
 	}
 	if results[3].Content != "parsed" || results[3].Error != "" {

@@ -83,6 +83,7 @@ const generalConfig = ref<SystemGeneralConfig>({
   attachment_ai_content_max_bytes: 10000,
   attachment_compat_endpoint: 'http://document-parser:8090',
   attachment_compat_api_key: '',
+  attachment_document_parser_types: '',
   attachment_legacy_office_enabled: false,
   attachment_ofd_enabled: false,
   attachment_visual_fallback_enabled: true,
@@ -133,6 +134,19 @@ const attachmentTypeGroups = computed(() => [
   },
 ])
 
+const DOCUMENT_PARSER_TYPES = ['pdf', 'docx', 'xlsx', 'pptx', 'doc', 'xls', 'ppt', 'ofd']
+const documentParserTypes = computed<string[]>({
+  get: () => [...new Set((generalConfig.value.attachment_document_parser_types || '').split(',')
+    .map(type => type.trim().toLowerCase().replace(/^\./, ''))
+    .filter(type => DOCUMENT_PARSER_TYPES.includes(type)))],
+  set: (types) => {
+    generalConfig.value.attachment_document_parser_types = [...new Set(types
+      .map(type => type.trim().toLowerCase().replace(/^\./, ''))
+      .filter(type => DOCUMENT_PARSER_TYPES.includes(type)))]
+      .join(',')
+  },
+})
+
 type AttachmentRouteState = 'ready' | 'disabled' | 'needs_config'
 
 interface AttachmentFormatRoute {
@@ -145,17 +159,34 @@ interface AttachmentFormatRoute {
 
 const getAttachmentRouteState = (
   formats: string[],
-  parser: 'builtin' | 'mineru' | 'legacy' | 'ofd',
+  parser: 'builtin' | 'mineru' | 'document' | 'none',
 ): AttachmentRouteState => {
   if (!generalConfig.value.attachment_recognition_enabled) return 'disabled'
   if (!formats.some(format => attachmentSupportedTypes.value.includes(format))) return 'disabled'
   if (parser === 'builtin') return 'ready'
+  if (parser === 'none') return 'disabled'
   if (parser === 'mineru') {
     return generalConfig.value.attachment_mineru_endpoint?.trim() ? 'ready' : 'needs_config'
   }
-  if (parser === 'legacy' && !generalConfig.value.attachment_legacy_office_enabled) return 'disabled'
-  if (parser === 'ofd' && !generalConfig.value.attachment_ofd_enabled) return 'disabled'
   return generalConfig.value.attachment_compat_endpoint?.trim() ? 'ready' : 'needs_config'
+}
+
+const documentRoute = (format: string, fallbackToMineru: boolean): AttachmentFormatRoute => {
+  const selected = documentParserTypes.value.includes(format)
+  const parser = selected ? 'document' : fallbackToMineru ? 'mineru' : 'none'
+  return {
+    key: `document-${format}`,
+    formats: [format],
+    parser: selected
+      ? t('admin.settings.attachmentRouteDocumentParser')
+      : fallbackToMineru ? 'MinerU' : t('admin.settings.attachmentRouteNotSelected'),
+    description: selected
+      ? t('admin.settings.attachmentRouteCodeDocumentDesc')
+      : fallbackToMineru
+        ? t('admin.settings.attachmentRouteMineruFallbackDesc')
+        : t('admin.settings.attachmentRouteDocumentNotSelectedDesc'),
+    state: getAttachmentRouteState([format], parser),
+  }
 }
 
 const attachmentFormatRoutes = computed<AttachmentFormatRoute[]>(() => [
@@ -166,34 +197,16 @@ const attachmentFormatRoutes = computed<AttachmentFormatRoute[]>(() => [
     description: t('admin.settings.attachmentRouteBuiltinDesc'),
     state: getAttachmentRouteState(['txt', 'csv', 'md'], 'builtin'),
   },
+  documentRoute('pdf', true),
   {
-    key: 'mineru-document',
-    formats: ['pdf', 'png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'],
+    key: 'mineru-images',
+    formats: ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'],
     parser: 'MinerU',
-    description: t('admin.settings.attachmentRouteMineruDocumentDesc'),
-    state: getAttachmentRouteState(['pdf', 'png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'], 'mineru'),
+    description: t('admin.settings.attachmentRouteMineruImageDesc'),
+    state: getAttachmentRouteState(['png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'], 'mineru'),
   },
-  {
-    key: 'mineru-office',
-    formats: ['docx', 'xlsx', 'pptx'],
-    parser: 'MinerU',
-    description: t('admin.settings.attachmentRouteMineruOfficeDesc'),
-    state: getAttachmentRouteState(['docx', 'xlsx', 'pptx'], 'mineru'),
-  },
-  {
-    key: 'legacy-office',
-    formats: ['doc', 'xls', 'ppt'],
-    parser: t('admin.settings.attachmentRouteCompat'),
-    description: t('admin.settings.attachmentRouteLegacyDesc'),
-    state: getAttachmentRouteState(['doc', 'xls', 'ppt'], 'legacy'),
-  },
-  {
-    key: 'ofd',
-    formats: ['ofd'],
-    parser: t('admin.settings.attachmentRouteCompat'),
-    description: t('admin.settings.attachmentRouteOfdDesc'),
-    state: getAttachmentRouteState(['ofd'], 'ofd'),
-  },
+  ...['docx', 'xlsx', 'pptx'].map(format => documentRoute(format, true)),
+  ...['doc', 'xls', 'ppt', 'ofd'].map(format => documentRoute(format, false)),
 ])
 
 const attachmentRouteStateLabel = (state: AttachmentRouteState) => {
@@ -625,7 +638,7 @@ const testAttachmentConnection = async () => {
   }
 }
 
-//===== 附件解析 — 测试兼容格式解析服务 =====
+//===== 附件解析 — 测试文档内容解析服务 =====
 const testingAttachmentCompat = ref(false)
 const testAttachmentCompatConnection = async () => {
   if (!generalConfig.value.attachment_compat_endpoint?.trim()) {
@@ -637,8 +650,7 @@ const testAttachmentCompatConnection = async () => {
     const result = await apiTestAttachmentCompatibility({
       attachment_compat_endpoint: generalConfig.value.attachment_compat_endpoint,
       attachment_compat_api_key: generalConfig.value.attachment_compat_api_key || '',
-      attachment_legacy_office_enabled: generalConfig.value.attachment_legacy_office_enabled,
-      attachment_ofd_enabled: generalConfig.value.attachment_ofd_enabled,
+      attachment_document_parser_types: generalConfig.value.attachment_document_parser_types,
       attachment_visual_fallback_enabled: generalConfig.value.attachment_visual_fallback_enabled,
     })
     if (result.success) {
@@ -1138,21 +1150,22 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                 <template #prefix><KeyOutlined /></template>
               </a-input-password>
             </a-form-item>
+            <a-form-item :label="t('admin.settings.attachmentDocumentParserTypes')">
+              <a-select
+                v-model:value="documentParserTypes"
+                mode="multiple"
+                size="large"
+                style="width: 100%;"
+                :placeholder="t('admin.settings.attachmentDocumentParserTypesPlaceholder')"
+                :max-tag-count="'responsive'"
+              >
+                <a-select-option v-for="type in DOCUMENT_PARSER_TYPES" :key="type" :value="type">
+                  {{ type.toUpperCase() }}
+                </a-select-option>
+              </a-select>
+              <div class="form-hint">{{ t('admin.settings.attachmentDocumentParserTypesHint') }}</div>
+            </a-form-item>
             <div class="toggle-grid">
-              <div class="toggle-item">
-                <div class="toggle-info">
-                  <div class="toggle-label">{{ t('admin.settings.attachmentLegacyOfficeEnable') }}</div>
-                  <div class="toggle-desc">{{ t('admin.settings.attachmentLegacyOfficeEnableDesc') }}</div>
-                </div>
-                <a-switch v-model:checked="generalConfig.attachment_legacy_office_enabled" />
-              </div>
-              <div class="toggle-item">
-                <div class="toggle-info">
-                  <div class="toggle-label">{{ t('admin.settings.attachmentOfdEnable') }}</div>
-                  <div class="toggle-desc">{{ t('admin.settings.attachmentOfdEnableDesc') }}</div>
-                </div>
-                <a-switch v-model:checked="generalConfig.attachment_ofd_enabled" />
-              </div>
               <div class="toggle-item">
                 <div class="toggle-info">
                   <div class="toggle-label">{{ t('admin.settings.attachmentVisualFallbackEnable') }}</div>
