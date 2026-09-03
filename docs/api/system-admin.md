@@ -294,6 +294,7 @@ PUT /api/admin/system/configs
 |-----|----|--------|------|
 | `attachment.ai_content_limit_mode` | `bytes` / `unlimited` | `bytes` | 按单附件字节限制，或发送全部解析正文 |
 | `attachment.ai_content_max_bytes` | 正整数 | `10000` | 仅 `bytes` 模式生效，按 UTF-8 字符边界安全截断 |
+| `attachment.document_parser_types` | 逗号分隔扩展名 | 空 | 选择由代码直接提取正文的 PDF / Office / OFD 类型 |
 
 该策略同时作用于审核、归档复盘、流程总结和 OA 嵌入入口。调用日志保存实际发送给模型
 的提示词，不再对日志副本单独做有损字节截断。
@@ -312,22 +313,21 @@ POST /api/admin/system/attachment-recognition/test
 
 ---
 
-### 测试兼容格式解析服务
+### 测试文档内容解析服务
 
 ```
 POST /api/admin/system/attachment-recognition/test-compat
 ```
 
-探测 DOC、XLS、PPT、OFD 兼容解析服务的受鉴权 `/ready` 接口，同时校验服务连通性和
+探测 PDF、Word、Excel、PowerPoint、OFD 文档内容解析服务的受鉴权 `/ready` 接口，同时校验服务连通性和
 API Key。请求体可携带：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `attachment_compat_endpoint` | string | 尚未保存的兼容解析服务根地址 |
+| `attachment_compat_endpoint` | string | 尚未保存的文档解析服务根地址（保留兼容配置键名） |
 | `attachment_compat_api_key` | string | 可选 Bearer API Key |
-| `attachment_legacy_office_enabled` | boolean | 是否启用 DOC、XLS、PPT |
-| `attachment_ofd_enabled` | boolean | 是否启用 OFD |
-| `attachment_visual_fallback_enabled` | boolean | OFD 无文字层时是否回退到 PDF + MinerU |
+| `attachment_document_parser_types` | string | 使用代码解析的扩展名，逗号分隔 |
+| `attachment_visual_fallback_enabled` | boolean | PDF/OFD 无文字层时是否回退到 MinerU |
 
 两类附件解析服务的配置、格式路由与失败语义详见
 `docs/oa-configurations/01-attachment-recognition.md`。

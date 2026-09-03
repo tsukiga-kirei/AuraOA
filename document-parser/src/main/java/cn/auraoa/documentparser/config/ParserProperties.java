@@ -34,7 +34,9 @@ public record ParserProperties(
         @Positive
         int maxXlsCellsPerRow,
         @Positive
-        int maxPptSlides
+        int maxPptSlides,
+        @Positive
+        int maxPdfPages
 ) {
     public ParserProperties {
         requirePositive(maxUploadSize, "parser.max-upload-size");

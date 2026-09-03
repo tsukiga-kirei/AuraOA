@@ -16,7 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * 将兼容格式转换为 PDF；第一阶段仅开放 OFD。
+ * 将文档格式转换为 PDF；当前仅开放 OFD。
  */
 @Service
 public class PdfConversionService {

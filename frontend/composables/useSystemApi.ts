@@ -164,7 +164,7 @@ export const useSystemApi = () => {
   }
 
   /**
-   * 使用未保存的配置探测兼容格式解析服务；不会进行真实文件解析。
+   * 使用未保存的配置探测文档内容解析服务；不会进行真实文件解析。
    */
   async function testAttachmentCompatibility(data?: Record<string, any>): Promise<any> {
     return authFetch<any>('/api/admin/system/attachment-recognition/test-compat', { method: 'POST', body: data || {} })

@@ -4,6 +4,15 @@ import org.apache.poi.hslf.usermodel.HSLFSlide;
 import org.apache.poi.hslf.usermodel.HSLFSlideShow;
 import org.apache.poi.hslf.usermodel.HSLFTextBox;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.xslf.usermodel.XMLSlideShow;
+import org.apache.poi.xslf.usermodel.XSLFSlide;
+import org.apache.poi.xslf.usermodel.XSLFTextBox;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.ofdrw.layout.OFDDoc;
@@ -45,6 +54,10 @@ class DocumentParserApiTest {
         mockMvc.perform(get("/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ok"))
+                .andExpect(jsonPath("$.capabilities.pdf").value(true))
+                .andExpect(jsonPath("$.capabilities.docx").value(true))
+                .andExpect(jsonPath("$.capabilities.xlsx").value(true))
+                .andExpect(jsonPath("$.capabilities.pptx").value(true))
                 .andExpect(jsonPath("$.capabilities.ofd_to_pdf").value(true));
     }
 
@@ -137,6 +150,84 @@ class DocumentParserApiTest {
                 .andExpect(jsonPath("$.file_type").value("ppt"))
                 .andExpect(jsonPath("$.has_text_layer").value(true))
                 .andExpect(jsonPath("$.content", containsString("季度工作总结")));
+    }
+
+    @Test
+    void parsesGeneratedPdfTextLayer() throws Exception {
+        byte[] pdfBytes;
+        try (PDDocument document = new PDDocument();
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA, 12);
+                contentStream.newLineAtOffset(72, 720);
+                contentStream.showText("AuraOA PDF contract content");
+                contentStream.endText();
+            }
+            document.save(output);
+            pdfBytes = output.toByteArray();
+        }
+        MockMultipartFile file = new MockMultipartFile("file", "contract.pdf", "application/pdf", pdfBytes);
+
+        mockMvc.perform(multipart("/parse").file(file)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer test-secret"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parser").value("apache-pdfbox"))
+                .andExpect(jsonPath("$.has_text_layer").value(true))
+                .andExpect(jsonPath("$.fallback_required").value(false))
+                .andExpect(jsonPath("$.content", containsString("AuraOA PDF contract content")));
+    }
+
+    @Test
+    void parsesGeneratedModernOfficeDocuments() throws Exception {
+        byte[] docxBytes;
+        try (XWPFDocument document = new XWPFDocument();
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            document.createParagraph().createRun().setText("DOCX 合同正文");
+            document.write(output);
+            docxBytes = output.toByteArray();
+        }
+        mockMvc.perform(multipart("/parse").file(new MockMultipartFile(
+                                "file", "合同.docx",
+                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document", docxBytes))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer test-secret"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parser").value("apache-poi-xwpf"))
+                .andExpect(jsonPath("$.content", containsString("DOCX 合同正文")));
+
+        byte[] xlsxBytes;
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            workbook.createSheet("预算").createRow(0).createCell(0).setCellValue("预算金额");
+            workbook.write(output);
+            xlsxBytes = output.toByteArray();
+        }
+        mockMvc.perform(multipart("/parse").file(new MockMultipartFile(
+                                "file", "预算.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsxBytes))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer test-secret"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parser").value("apache-poi-xssf"))
+                .andExpect(jsonPath("$.content", containsString("预算金额")));
+
+        byte[] pptxBytes;
+        try (XMLSlideShow slideShow = new XMLSlideShow();
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            XSLFSlide slide = slideShow.createSlide();
+            XSLFTextBox textBox = slide.createTextBox();
+            textBox.setText("PPTX 项目汇报");
+            slideShow.write(output);
+            pptxBytes = output.toByteArray();
+        }
+        mockMvc.perform(multipart("/parse").file(new MockMultipartFile(
+                                "file", "汇报.pptx",
+                                "application/vnd.openxmlformats-officedocument.presentationml.presentation", pptxBytes))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer test-secret"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parser").value("apache-poi-xslf"))
+                .andExpect(jsonPath("$.content", containsString("PPTX 项目汇报")));
     }
 
     @Test

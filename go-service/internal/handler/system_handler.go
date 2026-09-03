@@ -370,6 +370,7 @@ func (r attachmentRecognitionTestRequest) apply(cfg *service.RecognitionConfig) 
 type attachmentCompatibilityTestRequest struct {
 	AttachmentCompatEndpoint        *string `json:"attachment_compat_endpoint"`
 	AttachmentCompatAPIKey          *string `json:"attachment_compat_api_key"`
+	AttachmentDocumentParserTypes   *string `json:"attachment_document_parser_types"`
 	AttachmentLegacyOfficeEnabled   *bool   `json:"attachment_legacy_office_enabled"`
 	AttachmentOFDEnabled            *bool   `json:"attachment_ofd_enabled"`
 	AttachmentVisualFallbackEnabled *bool   `json:"attachment_visual_fallback_enabled"`
@@ -381,6 +382,9 @@ func (r attachmentCompatibilityTestRequest) apply(cfg *service.RecognitionConfig
 	}
 	if r.AttachmentCompatAPIKey != nil {
 		cfg.CompatAPIKey = *r.AttachmentCompatAPIKey
+	}
+	if r.AttachmentDocumentParserTypes != nil {
+		cfg.DocumentParserTypes = service.ParseDocumentParserTypes(*r.AttachmentDocumentParserTypes)
 	}
 	if r.AttachmentLegacyOfficeEnabled != nil {
 		cfg.LegacyOfficeEnabled = *r.AttachmentLegacyOfficeEnabled
@@ -425,10 +429,10 @@ func (h *SystemHandler) TestAttachmentRecognition(c *gin.Context) {
 	})
 }
 
-// TestAttachmentCompatibility 探测兼容格式解析服务 /ready 接口是否可达且鉴权有效。
+// TestAttachmentCompatibility 探测文档内容解析服务 /ready 接口是否可达且鉴权有效。
 // POST /api/admin/system/attachment-recognition/test-compat
 // 请求体：可携带尚未保存的 attachment_compat_* 配置。
-// 返回：{"success": true, "message": "兼容格式解析服务可达"} 或服务错误。
+// 返回：{"success": true, "message": "文档内容解析服务可达"} 或服务错误。
 func (h *SystemHandler) TestAttachmentCompatibility(c *gin.Context) {
 	if h.attachmentRecognitionService == nil {
 		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "附件识别服务未初始化")
@@ -453,6 +457,6 @@ func (h *SystemHandler) TestAttachmentCompatibility(c *gin.Context) {
 	}
 	response.Success(c, map[string]interface{}{
 		"success": true,
-		"message": "兼容格式解析服务就绪且鉴权有效",
+		"message": "文档内容解析服务就绪且鉴权有效",
 	})
 }

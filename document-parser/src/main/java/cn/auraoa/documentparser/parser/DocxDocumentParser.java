@@ -2,7 +2,8 @@ package cn.auraoa.documentparser.parser;
 
 import cn.auraoa.documentparser.config.ParserProperties;
 import cn.auraoa.documentparser.exception.DocumentParserException;
-import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -13,44 +14,36 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 使用 Apache POI HSSF 将 Excel 97-2003 工作表转为 Markdown。
+ * 使用 Apache POI XWPF 提取 DOCX 的段落与表格文本。
  */
 @Component
-public class XlsDocumentParser implements DocumentFormatParser {
+public class DocxDocumentParser implements DocumentFormatParser {
 
     private final ParserProperties properties;
 
-    public XlsDocumentParser(ParserProperties properties) {
+    public DocxDocumentParser(ParserProperties properties) {
         this.properties = properties;
     }
 
     @Override
     public String fileType() {
-        return "xls";
+        return "docx";
     }
 
     @Override
     public ParseResult parse(Path input) {
         List<String> warnings = new ArrayList<>();
         try (InputStream stream = Files.newInputStream(input);
-             HSSFWorkbook workbook = new HSSFWorkbook(stream)) {
-            String content = WorkbookTextExtractor.extract(workbook, properties, warnings);
+             XWPFDocument document = new XWPFDocument(stream);
+             XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
+            String content = TextSupport.limit(extractor.getText(), properties.maxOutputChars(), warnings);
             boolean hasText = !content.isBlank();
             if (!hasText) {
-                warnings.add("XLS 中没有可输出的单元格内容");
+                warnings.add("未从 DOCX 中提取到可用文本");
             }
-            return new ParseResult(
-                    "apache-poi-hssf",
-                    fileType(),
-                    content,
-                    hasText,
-                    false,
-                    null,
-                    List.copyOf(warnings)
-            );
+            return new ParseResult("apache-poi-xwpf", fileType(), content, hasText, false, null, List.copyOf(warnings));
         } catch (IOException | RuntimeException exception) {
-            throw new DocumentParserException("XLS 文件解析失败", exception);
+            throw new DocumentParserException("DOCX 文件解析失败", exception);
         }
     }
-
 }

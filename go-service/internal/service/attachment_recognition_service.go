@@ -27,7 +27,7 @@ type systemConfigReader interface {
 	FindByKey(key string) (string, error)
 }
 
-// AttachmentRecognitionService 附件识别服务，负责按文件类型选择内置解析、MinerU 或兼容格式解析服务。
+// AttachmentRecognitionService 附件识别服务，负责按文件类型选择内置解析、代码文档解析或 MinerU。
 //
 // 详见 docs/oa-configurations/01-attachment-recognition.md。
 type AttachmentRecognitionService struct {
@@ -65,9 +65,10 @@ type RecognitionConfig struct {
 	AIContentLimitMode string
 	AIContentMaxBytes  int
 
-	// 兼容格式解析服务
+	// 文档内容解析服务（配置键为兼容历史部署保留 compat 前缀）
 	CompatEndpoint        string
 	CompatAPIKey          string
+	DocumentParserTypes   []string
 	LegacyOfficeEnabled   bool
 	OFDEnabled            bool
 	VisualFallbackEnabled bool
@@ -108,6 +109,7 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 		AIContentLimitMode:    attachmentAIContentLimitBytes,
 		AIContentMaxBytes:     defaultAttachmentAIContentBytes,
 		CompatEndpoint:        "http://document-parser:8090",
+		DocumentParserTypes:   []string{},
 		LegacyOfficeEnabled:   false,
 		OFDEnabled:            false,
 		VisualFallbackEnabled: true,
@@ -150,6 +152,17 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 	cfg.LegacyOfficeEnabled = readBool("attachment.legacy_office_enabled", false)
 	cfg.OFDEnabled = readBool("attachment.ofd_enabled", false)
 	cfg.VisualFallbackEnabled = readBool("attachment.visual_fallback_enabled", true)
+	if value, err := s.configRepo.FindByKey("attachment.document_parser_types"); err == nil {
+		cfg.DocumentParserTypes = splitNormalizedTypes(value, documentParserTypes)
+	} else {
+		// 兼容尚未执行新迁移的部署：沿用旧版 Office / OFD 开关，不改变既有路由。
+		if cfg.LegacyOfficeEnabled {
+			cfg.DocumentParserTypes = append(cfg.DocumentParserTypes, "doc", "xls", "ppt")
+		}
+		if cfg.OFDEnabled {
+			cfg.DocumentParserTypes = append(cfg.DocumentParserTypes, "ofd")
+		}
+	}
 
 	cfg.MinerUEndpoint = read("attachment.mineru_endpoint")
 	cfg.MinerUAPIKey = read("attachment.mineru_api_key")
@@ -183,6 +196,28 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 	}
 
 	return cfg, nil
+}
+
+func splitNormalizedTypes(value string, allowed map[string]struct{}) []string {
+	items := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, raw := range strings.Split(value, ",") {
+		item := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(raw, ".")))
+		if _, ok := allowed[item]; !ok {
+			continue
+		}
+		if _, exists := seen[item]; exists {
+			continue
+		}
+		seen[item] = struct{}{}
+		items = append(items, item)
+	}
+	return items
+}
+
+// ParseDocumentParserTypes 校正管理端提交的代码文档解析扩展名列表。
+func ParseDocumentParserTypes(value string) []string {
+	return splitNormalizedTypes(value, documentParserTypes)
 }
 
 // RecognizeAttachments 解析 OA 适配器传入的附件 base64 内容。

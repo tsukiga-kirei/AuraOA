@@ -1,18 +1,24 @@
-# AuraOA 兼容文档解析服务
+# AuraOA 文档内容解析服务
 
-该服务补充 MinerU 暂不直接支持的旧版 Office 和 OFD 格式。服务不调用大语言模型，也不会在日志中记录附件正文。
+该服务通过 PDFBox、Apache POI 和 OFDRW 直接提取电子文档内容，不依赖 OCR。管理员可在
+AuraOA 中按扩展名选择是否使用本服务；未选择的 PDF 与新版 Office 仍可交给 MinerU。
+服务不调用大语言模型，也不会在日志中记录附件正文。
 
 ## 支持范围
 
 | 格式 | 解析器 | `/parse` | `/convert/pdf` |
 |---|---|---:|---:|
+| `.pdf` | Apache PDFBox | 是 | 否 |
 | `.doc` | Apache POI HWPF | 是 | 否 |
+| `.docx` | Apache POI XWPF | 是 | 否 |
 | `.xls` | Apache POI HSSF | 是 | 否 |
+| `.xlsx` | Apache POI XSSF | 是 | 否 |
 | `.ppt` | Apache POI HSLF | 是 | 否 |
+| `.pptx` | Apache POI XSLF | 是 | 否 |
 | `.ofd` | OFDRW | 是 | 是 |
 
-OFD 没有可提取文字时，`/parse` 会返回 `fallback_required: true` 和
-`fallback_format: "pdf"`，调用方可再请求 `/convert/pdf` 后将 PDF 交给 MinerU。DOC、PPT
+PDF 没有文字层时，`/parse` 会提示调用方把原文件交给 MinerU；OFD 没有可提取文字时，
+调用方可再请求 `/convert/pdf` 后将 PDF 交给 MinerU。DOC、DOCX、PPT、PPTX
 没有文字时会返回警告，但第一阶段没有可执行的 Office 转 PDF 回退，因此
 `fallback_required` 仍为 `false`。
 
@@ -48,9 +54,13 @@ docker run --rm -p 8090:8090 \
 {
   "status": "ok",
   "capabilities": {
+    "pdf": true,
     "doc": true,
+    "docx": true,
     "xls": true,
+    "xlsx": true,
     "ppt": true,
+    "pptx": true,
     "ofd": true,
     "ofd_to_pdf": true
   }
@@ -105,6 +115,11 @@ curl -X POST http://localhost:8090/convert/pdf \
 | `PARSER_MAX_OFD_UNCOMPRESSED_SIZE` | `200MB` | OFD 解压后总大小上限 |
 | `PARSER_MAX_OFD_ENTRIES` | `10000` | OFD ZIP 条目数量上限 |
 | `PARSER_MAX_OFD_COMPRESSION_RATIO` | `100` | OFD 条目最大压缩比 |
+| `PARSER_MAX_XLS_SHEETS` | `100` | XLS / XLSX 最大工作表数 |
+| `PARSER_MAX_XLS_ROWS_PER_SHEET` | `10000` | 每个工作表最大行数 |
+| `PARSER_MAX_XLS_CELLS_PER_ROW` | `256` | 每行最大单元格数 |
+| `PARSER_MAX_PPT_SLIDES` | `1000` | PPT / PPTX 最大幻灯片数 |
+| `PARSER_MAX_PDF_PAGES` | `1000` | PDF 最大文字层解析页数 |
 
 生产环境应设置高强度 `PARSER_API_KEY`，只通过 Docker 内网向 Go 服务开放本服务，不要直接暴露公网。
 
@@ -112,7 +127,7 @@ curl -X POST http://localhost:8090/convert/pdf \
 
 - 每次请求使用独立临时目录，并在成功或失败后递归清理。
 - OFD 在交给 OFDRW 前检查条目路径、重复条目、条目数、实际解压大小和压缩比。
-- POI 设置全局单次字节数组分配上限；XLS、PPT 和输出文本另有数量上限。
+- POI 设置全局单次字节数组分配上限；Excel、PowerPoint、PDF 和输出文本另有数量上限。
 - 服务按扩展名路由，底层解析器仍会验证实际容器；伪造或损坏文件返回 HTTP 422。
 - 加密、带密码、厂商私有扩展或严重损坏的文件可能无法解析。
 - 解析结果用于信息提取，不改变原始附件；带电子签章的 OFD 应保留原件作为法律凭据。
@@ -121,6 +136,7 @@ curl -X POST http://localhost:8090/convert/pdf \
 
 - Spring Boot：Apache-2.0
 - Apache POI：Apache-2.0
+- Apache PDFBox：Apache-2.0
 - OFDRW：Apache-2.0
 
 依赖版本均固定在 `pom.xml`。本服务随 AuraOA 主项目使用 MIT 许可证。

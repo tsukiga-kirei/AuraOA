@@ -45,10 +45,15 @@ var (
 		"xlsx": {},
 		"pptx": {},
 	}
-	legacyOfficeTypes = map[string]struct{}{
-		"doc": {},
-		"xls": {},
-		"ppt": {},
+	documentParserTypes = map[string]struct{}{
+		"pdf":  {},
+		"docx": {},
+		"xlsx": {},
+		"pptx": {},
+		"doc":  {},
+		"xls":  {},
+		"ppt":  {},
+		"ofd":  {},
 	}
 )
 
@@ -63,7 +68,7 @@ type compatibilityParseResult struct {
 }
 
 // effectiveSupportedTypes 返回当前已启用且已配置解析器实际可处理的白名单类型。
-// MinerU、旧版 Office 与 OFD 类型都会按各自端点和功能开关过滤。
+// MinerU 与代码文档解析类型会按管理员选择及各自端点过滤。
 func effectiveSupportedTypes(cfg *RecognitionConfig) []string {
 	if cfg == nil {
 		return nil
@@ -83,12 +88,10 @@ func effectiveSupportedTypes(cfg *RecognitionConfig) []string {
 		switch {
 		case isType(builtinTextTypes, fileType):
 			enabled = true
+		case usesDocumentParser(cfg, fileType):
+			enabled = strings.TrimSpace(cfg.CompatEndpoint) != ""
 		case isType(minerUTypes, fileType):
 			enabled = strings.TrimSpace(cfg.MinerUEndpoint) != ""
-		case isType(legacyOfficeTypes, fileType):
-			enabled = cfg.LegacyOfficeEnabled && strings.TrimSpace(cfg.CompatEndpoint) != ""
-		case fileType == "ofd":
-			enabled = cfg.OFDEnabled && strings.TrimSpace(cfg.CompatEndpoint) != ""
 		}
 		if enabled {
 			types = append(types, fileType)
@@ -116,27 +119,32 @@ func (s *AttachmentRecognitionService) recognizeAttachment(
 		base.Content = content
 		return base
 
+	case usesDocumentParser(cfg, fileType):
+		return s.recognizeOneViaCompatibility(ctx, cfg, file, raw, base, fileType == "pdf" || fileType == "ofd")
+
 	case isType(minerUTypes, fileType):
 		return s.recognizeOneViaMinerU(ctx, cfg, file, base)
 
-	case isType(legacyOfficeTypes, fileType):
-		if !cfg.LegacyOfficeEnabled {
-			base.Error = "旧版 Office 解析未启用"
-			return base
-		}
-		return s.recognizeOneViaCompatibility(ctx, cfg, file, raw, base, false)
-
-	case fileType == "ofd":
-		if !cfg.OFDEnabled {
-			base.Error = "OFD 解析未启用"
-			return base
-		}
-		return s.recognizeOneViaCompatibility(ctx, cfg, file, raw, base, true)
+	case isType(documentParserTypes, fileType):
+		base.Error = fmt.Sprintf("文件类型 %q 未选择文档内容解析", fileType)
+		return base
 
 	default:
 		base.Error = fmt.Sprintf("文件类型 %q 没有可用的解析器", fileType)
 		return base
 	}
+}
+
+func usesDocumentParser(cfg *RecognitionConfig, fileType string) bool {
+	if cfg == nil || !isType(documentParserTypes, fileType) {
+		return false
+	}
+	for _, item := range cfg.DocumentParserTypes {
+		if strings.EqualFold(strings.TrimSpace(item), fileType) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *AttachmentRecognitionService) recognizeOneViaMinerU(
@@ -172,7 +180,7 @@ func (s *AttachmentRecognitionService) recognizeOneViaCompatibility(
 	}
 	content := strings.TrimSpace(result.Content)
 	if len(result.Warnings) > 0 {
-		pkglogger.Global().Warn("附件识别：兼容解析服务返回警告",
+		pkglogger.Global().Warn("附件识别：文档解析服务返回警告",
 			zap.String("fileName", file.FileName),
 			zap.String("fileType", base.FileType),
 			zap.Int("warningCount", len(result.Warnings)))
@@ -188,11 +196,15 @@ func (s *AttachmentRecognitionService) recognizeOneViaCompatibility(
 				base.Content = content
 				return base
 			}
-			base.Error = fmt.Sprintf("兼容解析服务请求了不支持的回退格式 %q", fallbackFormat)
+			base.Error = fmt.Sprintf("文档解析服务请求了不支持的回退格式 %q", fallbackFormat)
 			return base
 		}
 
-		pdf, convertErr := s.convertCompatibilityToPDF(ctx, cfg, file.FileName, raw)
+		pdf := raw
+		var convertErr error
+		if base.FileType != "pdf" {
+			pdf, convertErr = s.convertCompatibilityToPDF(ctx, cfg, file.FileName, raw)
+		}
 		if convertErr == nil {
 			fallbackFile := file
 			fallbackFile.FileName = replaceFileExtension(file.FileName, "pdf")
@@ -213,21 +225,21 @@ func (s *AttachmentRecognitionService) recognizeOneViaCompatibility(
 		}
 
 		if content != "" {
-			pkglogger.Global().Warn("附件识别：OFD 视觉回退失败，保留文字层结果",
+			pkglogger.Global().Warn("附件识别：文档视觉回退失败，保留文字层结果",
 				zap.String("fileName", file.FileName),
 				zap.String("fileType", base.FileType))
 			base.Content = content
 			return base
 		}
-		base.Error = "OFD 视觉回退失败: " + convertErr.Error()
+		base.Error = "文档视觉回退失败: " + convertErr.Error()
 		return base
 	}
 
 	if content == "" {
 		if allowVisualFallback && result.FallbackRequired && !cfg.VisualFallbackEnabled {
-			base.Error = "OFD 未提取到文字层，且视觉回退未启用"
+			base.Error = "文档未提取到文字层，且视觉回退未启用"
 		} else {
-			base.Error = "兼容解析服务未返回文本内容"
+			base.Error = "文档解析服务未返回文本内容"
 		}
 		return base
 	}
@@ -242,7 +254,7 @@ func (s *AttachmentRecognitionService) parseViaCompatibility(
 	raw []byte,
 ) (*compatibilityParseResult, error) {
 	if strings.TrimSpace(cfg.CompatEndpoint) == "" {
-		return nil, fmt.Errorf("兼容格式解析服务地址未配置")
+		return nil, fmt.Errorf("文档内容解析服务地址未配置")
 	}
 	resp, err := s.postCompatibilityFile(
 		ctx,
@@ -252,21 +264,21 @@ func (s *AttachmentRecognitionService) parseViaCompatibility(
 		raw,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("调用兼容格式解析服务失败: %w", err)
+		return nil, fmt.Errorf("调用文档内容解析服务失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, readErr := readBoundedResponse(resp.Body, maxCompatibilityJSONBytes)
 	if readErr != nil {
-		return nil, fmt.Errorf("读取兼容格式解析响应失败: %w", readErr)
+		return nil, fmt.Errorf("读取文档解析响应失败: %w", readErr)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("兼容格式解析服务返回 HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
+		return nil, fmt.Errorf("文档内容解析服务返回 HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
 	}
 
 	var result compatibilityParseResult
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("解析兼容格式服务响应失败: %w", err)
+		return nil, fmt.Errorf("解析文档服务响应失败: %w", err)
 	}
 	return &result, nil
 }
@@ -278,7 +290,7 @@ func (s *AttachmentRecognitionService) convertCompatibilityToPDF(
 	raw []byte,
 ) ([]byte, error) {
 	if strings.TrimSpace(cfg.CompatEndpoint) == "" {
-		return nil, fmt.Errorf("兼容格式解析服务地址未配置")
+		return nil, fmt.Errorf("文档内容解析服务地址未配置")
 	}
 	resp, err := s.postCompatibilityFile(
 		ctx,
@@ -331,7 +343,7 @@ func (s *AttachmentRecognitionService) postCompatibilityFile(
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, &body)
 	if err != nil {
-		return nil, fmt.Errorf("创建兼容解析请求失败: %w", err)
+		return nil, fmt.Errorf("创建文档解析请求失败: %w", err)
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	if apiKey != "" {
@@ -417,7 +429,7 @@ func serviceErrorMessage(err error) string {
 	return err.Error()
 }
 
-// TestCompatibilityConnection 使用已保存配置探测兼容格式解析服务 /ready。
+// TestCompatibilityConnection 使用已保存配置探测文档内容解析服务 /ready。
 func (s *AttachmentRecognitionService) TestCompatibilityConnection(ctx context.Context) error {
 	cfg, err := s.LoadConfig()
 	if err != nil {
@@ -426,7 +438,7 @@ func (s *AttachmentRecognitionService) TestCompatibilityConnection(ctx context.C
 	return s.TestCompatibilityConnectionWithConfig(ctx, cfg)
 }
 
-// TestCompatibilityConnectionWithConfig 使用指定配置探测受鉴权的兼容格式解析服务 /ready。
+// TestCompatibilityConnectionWithConfig 使用指定配置探测受鉴权的文档内容解析服务 /ready。
 // 用于系统设置页面“未保存先测试”，同时校验服务连通性与 API Key。
 func (s *AttachmentRecognitionService) TestCompatibilityConnectionWithConfig(
 	ctx context.Context,
@@ -436,27 +448,27 @@ func (s *AttachmentRecognitionService) TestCompatibilityConnectionWithConfig(
 		return newServiceError(errcode.ErrInvalidParam, "测试配置为空")
 	}
 	if strings.TrimSpace(cfg.CompatEndpoint) == "" {
-		return newServiceError(errcode.ErrInvalidParam, "兼容格式解析服务地址未配置")
+		return newServiceError(errcode.ErrInvalidParam, "文档内容解析服务地址未配置")
 	}
 
 	readyURL := strings.TrimRight(cfg.CompatEndpoint, "/") + "/ready"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, readyURL, nil)
 	if err != nil {
-		return newServiceError(errcode.ErrExternal, "创建兼容解析服务测试请求失败")
+		return newServiceError(errcode.ErrExternal, "创建文档解析服务测试请求失败")
 	}
 	if cfg.CompatAPIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+cfg.CompatAPIKey)
 	}
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return newServiceError(errcode.ErrExternal, "连接兼容格式解析服务失败: "+err.Error())
+		return newServiceError(errcode.ErrExternal, "连接文档内容解析服务失败: "+err.Error())
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= http.StatusBadRequest {
 		body, _ := readBoundedResponse(resp.Body, maxExternalErrorBytes)
 		return newServiceError(
 			errcode.ErrExternal,
-			fmt.Sprintf("兼容格式解析服务 /ready 返回 HTTP %d: %s", resp.StatusCode, truncate(string(body), 200)),
+			fmt.Sprintf("文档内容解析服务 /ready 返回 HTTP %d: %s", resp.StatusCode, truncate(string(body), 200)),
 		)
 	}
 	return nil

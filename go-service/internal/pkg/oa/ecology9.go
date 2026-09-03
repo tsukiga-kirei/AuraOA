@@ -38,7 +38,7 @@ type Ecology9Adapter struct {
 
 // AttachmentRecognitionService 附件识别服务接口（避免循环依赖）。
 //
-// adapter 层负责从 OA 拉取附件原始载荷，识别服务仅做 MinerU 解析。
+// adapter 层负责从 OA 拉取附件原始载荷，识别服务按配置执行代码解析或 MinerU 解析。
 type AttachmentRecognitionService interface {
 	RecognizeAttachments(ctx context.Context, files []AttachmentFilePayload, fieldKey string, fieldName string) ([]AttachmentInfo, error)
 }
@@ -2075,14 +2075,14 @@ func (a *Ecology9Adapter) recognizeMainAttachments(
 				zap.Error(fetchErr))
 			continue
 		}
-		pkglogger.Global().Info("附件识别：泛微附件拉取成功，开始 MinerU 解析",
+		pkglogger.Global().Info("附件识别：泛微附件拉取成功，开始按格式解析",
 			zap.String("processID", processID),
 			zap.String("field", fieldKey),
 			zap.Int("fileCount", len(files)))
 		infos, recogErr := a.attachmentRecognitionSvc.RecognizeAttachments(ctx, files, fieldKey, fieldName)
 		if recogErr != nil {
 			recogFailed++
-			pkglogger.Global().Warn("附件识别：MinerU 解析失败，跳过该字段",
+			pkglogger.Global().Warn("附件识别：附件解析失败，跳过该字段",
 				zap.String("processID", processID),
 				zap.String("field", fieldKey),
 				zap.Error(recogErr))

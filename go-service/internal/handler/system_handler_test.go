@@ -33,12 +33,14 @@ func TestAttachmentRecognitionTestRequestAllowsClearingUnsavedValues(t *testing.
 func TestAttachmentCompatibilityTestRequestAppliesUnsavedValues(t *testing.T) {
 	endpoint := "http://unsaved-parser"
 	apiKey := "unsaved-key"
+	documentTypes := "pdf,docx,xlsx"
 	enabled := true
 	disabled := false
 	cfg := &service.RecognitionConfig{}
 	req := attachmentCompatibilityTestRequest{
 		AttachmentCompatEndpoint:        &endpoint,
 		AttachmentCompatAPIKey:          &apiKey,
+		AttachmentDocumentParserTypes:   &documentTypes,
 		AttachmentLegacyOfficeEnabled:   &enabled,
 		AttachmentOFDEnabled:            &enabled,
 		AttachmentVisualFallbackEnabled: &disabled,
@@ -48,6 +50,9 @@ func TestAttachmentCompatibilityTestRequestAppliesUnsavedValues(t *testing.T) {
 
 	if cfg.CompatEndpoint != endpoint || cfg.CompatAPIKey != apiKey {
 		t.Fatalf("兼容解析服务临时地址或密钥未应用: %+v", cfg)
+	}
+	if len(cfg.DocumentParserTypes) != 3 || cfg.DocumentParserTypes[0] != "pdf" {
+		t.Fatalf("代码文档解析类型未应用: %+v", cfg.DocumentParserTypes)
 	}
 	if !cfg.LegacyOfficeEnabled || !cfg.OFDEnabled || cfg.VisualFallbackEnabled {
 		t.Fatalf("兼容解析服务临时开关未应用: %+v", cfg)
