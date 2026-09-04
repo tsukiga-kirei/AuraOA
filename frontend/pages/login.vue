@@ -236,7 +236,6 @@ const handleLogin = async () => {
   background: var(--color-login-bg);
   transition: background 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
-/* 与 Agentum 一致的主题切换定位 */
 .login-theme-floating {
   position: absolute;
   top: 20px;

@@ -1097,7 +1097,7 @@ a:focus-visible {
   display: none;
 }
 
-/* ==================== 主题切换（对齐 Agentum ThemeToggle） ==================== */
+/* ==================== 主题切换 ==================== */
 .theme-toggle-btn {
   display: inline-flex;
   align-items: center;
@@ -1214,7 +1214,7 @@ a:focus-visible {
   z-index: 10;
 }
 
-/* ==================== 暖色主题：全局字体（对齐 Agentum） ==================== */
+/* ==================== 暖色主题：全局字体 ==================== */
 [data-theme="warm"] body {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.78), transparent 260px),
