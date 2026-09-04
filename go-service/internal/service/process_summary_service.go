@@ -19,6 +19,8 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	"auraoa/go-service/internal/cache"
+	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/crypto"
@@ -45,6 +47,7 @@ type ProcessSummaryService struct {
 	logRepo           *repository.ProcessSummaryLogRepo
 	snapshotRepo      *repository.ProcessSummarySnapshotRepo
 	configRepo        *repository.ProcessSummaryConfigRepo
+	userConfigRepo    *repository.UserPersonalConfigRepo
 	tenantRepo        *repository.TenantRepo
 	oaConnRepo        *repository.OAConnectionRepo
 	aiModelRepo       *repository.AIModelRepo
@@ -55,6 +58,7 @@ type ProcessSummaryService struct {
 	sysFlags          *systemflags.Resolver
 	externalCtx       *ExternalContextService
 	oaConnections     *oa.ConnectionManager
+	invalidator       *cache.InvalidationManager
 	executionVersions *repository.ExecutionConfigVersionRepo
 }
 
@@ -62,6 +66,7 @@ func NewProcessSummaryService(
 	logRepo *repository.ProcessSummaryLogRepo,
 	snapshotRepo *repository.ProcessSummarySnapshotRepo,
 	configRepo *repository.ProcessSummaryConfigRepo,
+	userConfigRepo *repository.UserPersonalConfigRepo,
 	tenantRepo *repository.TenantRepo,
 	oaConnRepo *repository.OAConnectionRepo,
 	aiModelRepo *repository.AIModelRepo,
@@ -72,11 +77,13 @@ func NewProcessSummaryService(
 	sysFlags *systemflags.Resolver,
 	externalCtx *ExternalContextService,
 	oaConnections *oa.ConnectionManager,
+	invalidator *cache.InvalidationManager,
 ) *ProcessSummaryService {
 	return &ProcessSummaryService{
 		logRepo:           logRepo,
 		snapshotRepo:      snapshotRepo,
 		configRepo:        configRepo,
+		userConfigRepo:    userConfigRepo,
 		tenantRepo:        tenantRepo,
 		oaConnRepo:        oaConnRepo,
 		aiModelRepo:       aiModelRepo,
@@ -87,6 +94,7 @@ func NewProcessSummaryService(
 		sysFlags:          sysFlags,
 		externalCtx:       externalCtx,
 		oaConnections:     oaConnections,
+		invalidator:       invalidator,
 		executionVersions: repository.NewExecutionConfigVersionRepo(db),
 	}
 }
@@ -407,6 +415,7 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 		ctxResp.CurrentFingerprint,
 		req.ScheduleConfigID,
 		req.UseLatestConfig,
+		true,
 	)
 	if err != nil {
 		return nil, err
@@ -435,6 +444,7 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 	attemptFingerprint string,
 	scheduleConfigID *uuid.UUID,
 	useLatestConfig bool,
+	requireEmbed bool,
 ) (uuid.UUID, uuid.UUID, uuid.UUID, time.Time, error) {
 	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
@@ -457,7 +467,7 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 	if config.Status != "active" {
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的总结配置已停用", processType))
 	}
-	if !config.EmbedEnabled {
+	if requireEmbed && !config.EmbedEnabled {
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrPermissionDenied, fmt.Sprintf("流程 '%s' 未启用 OA 嵌入总结", processType))
 	}
 	var configVersion *model.ExecutionConfigVersion
@@ -526,6 +536,328 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 		zap.Bool("useLatestConfig", useLatestConfig),
 	)
 	return id, tenantID, userID, now, nil
+}
+
+// ListWorkbenchProcesses 返回当前 OA 用户可见、且已启用流程总结配置的待办和归档流程。
+func (s *ProcessSummaryService) ListWorkbenchProcesses(c *gin.Context, params dto.SummaryWorkbenchListParams) (*dto.SummaryWorkbenchListResponse, error) {
+	items, err := s.collectWorkbenchProcesses(c, params)
+	if err != nil {
+		return nil, err
+	}
+	page, pageSize := params.Page, params.PageSize
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	start := (page - 1) * pageSize
+	if start > len(items) {
+		start = len(items)
+	}
+	end := start + pageSize
+	if end > len(items) {
+		end = len(items)
+	}
+	return &dto.SummaryWorkbenchListResponse{
+		Items: items[start:end], Total: len(items), Page: page, PageSize: pageSize,
+	}, nil
+}
+
+// GetWorkbenchStats 返回当前 OA 用户可见流程的总结状态统计。
+func (s *ProcessSummaryService) GetWorkbenchStats(c *gin.Context, params dto.SummaryWorkbenchListParams) (*dto.SummaryWorkbenchStats, error) {
+	params.Page = 1
+	params.PageSize = 100
+	params.SummaryStatus = ""
+	items, err := s.collectWorkbenchProcesses(c, params)
+	if err != nil {
+		return nil, err
+	}
+	stats := &dto.SummaryWorkbenchStats{TotalCount: len(items)}
+	for _, item := range items {
+		switch {
+		case isSummaryWorkbenchItemRunning(item):
+			stats.RunningCount++
+		case item.SummaryStatus == model.JobStatusFailed:
+			stats.FailedCount++
+		case item.HasSummary:
+			stats.SummarizedCount++
+		default:
+			stats.PendingCount++
+		}
+	}
+	return stats, nil
+}
+
+// ExecuteWorkbench 从前台流程总结工作台发起一次交互式总结。
+func (s *ProcessSummaryService) ExecuteWorkbench(c *gin.Context, req *SummaryExecuteRequest) (*SummaryExecuteResponse, error) {
+	if s.rdb == nil {
+		return nil, newServiceError(errcode.ErrInternalServer, "异步队列未初始化（Redis 不可用）")
+	}
+	tenantID, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	username := s.extractUsername(c)
+	if username == "" {
+		return nil, newServiceError(errcode.ErrNoAuthToken, "用户信息缺失")
+	}
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID, false)
+	if err != nil {
+		return nil, err
+	}
+	processSummary, err := adapter.FetchProcessRequestSummary(c.Request.Context(), req.ProcessID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "读取 OA 流程失败: "+err.Error())
+	}
+	allowed, err := s.userCanAccessSummaryProcess(c, adapter, username, req.ProcessID)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该流程")
+	}
+	config, err := s.configRepo.GetByProcessType(c, processSummary.ProcessType)
+	if err != nil || config.Status != "active" {
+		return nil, newServiceError(errcode.ErrNoProcessConfig, "该流程尚未启用流程总结")
+	}
+	if running, _ := s.logRepo.GetRunningWorkbenchByProcessID(c, req.ProcessID, userID); running != nil {
+		return s.summaryLogToResponse(running), nil
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		title = processSummary.Title
+	}
+	logID, createdTenantID, userID, createdAt, err := s.createPendingSummaryLog(
+		c, req.ProcessID, processSummary.ProcessType, title,
+		model.SummaryTriggerWorkbench, model.SummaryTriggerDetailManual, model.JobQueueKindInteractive,
+		"", nil, req.UseLatestConfig, false,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := EnqueueSummaryJob(c.Request.Context(), s.rdb, logID, createdTenantID, userID, model.JobQueueKindInteractive); err != nil {
+		_ = s.logRepo.UpdateFields(c, logID, map[string]interface{}{
+			"status": model.JobStatusFailed, "error_message": "任务入队失败: " + err.Error(), "updated_at": apptime.Now(),
+		})
+		return nil, newServiceError(errcode.ErrRedisConn, "总结任务入队失败: "+err.Error())
+	}
+	return &SummaryExecuteResponse{
+		Status: model.JobStatusPending, ID: logID.String(), TraceID: fmt.Sprintf("SM-%s", logID.String()[:8]),
+		ProcessID: req.ProcessID, CreatedAt: apptime.FormatRFC3339(createdAt),
+	}, nil
+}
+
+func (s *ProcessSummaryService) collectWorkbenchProcesses(c *gin.Context, params dto.SummaryWorkbenchListParams) ([]dto.SummaryWorkbenchProcessItem, error) {
+	tenantID, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	username := s.extractUsername(c)
+	if username == "" {
+		return nil, newServiceError(errcode.ErrNoAuthToken, "用户信息缺失")
+	}
+	configs, err := s.configRepo.ListByTenant(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "读取流程总结配置失败")
+	}
+	allowedTypes := make(map[string]model.ProcessSummaryConfig)
+	for _, config := range configs {
+		if config.Status == "active" {
+			allowedTypes[strings.ToLower(config.ProcessType)] = config
+		}
+	}
+	if len(allowedTypes) == 0 {
+		return []dto.SummaryWorkbenchProcessItem{}, nil
+	}
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID, false)
+	if err != nil {
+		return nil, err
+	}
+	todos, err := adapter.FetchTodoList(c.Request.Context(), username, oa.TodoListFilter{
+		SubmitDateStart: params.SubmitDateStart, SubmitDateEndExclusive: params.SubmitDateEndExclusive,
+	})
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 待办流程失败: "+err.Error())
+	}
+	archives, err := adapter.FetchArchivedList(c.Request.Context(), username, oa.ArchivedListFilter{
+		ArchiveDateStart: params.SubmitDateStart, ArchiveDateEndExclusive: params.SubmitDateEndExclusive,
+	})
+	if err != nil {
+		return nil, newServiceError(errcode.ErrOAQueryFailed, "获取 OA 归档流程失败: "+err.Error())
+	}
+
+	items := make([]dto.SummaryWorkbenchProcessItem, 0, len(todos)+len(archives))
+	seen := make(map[string]bool)
+	appendItem := func(processID, title, applicant, department, processType, processTypeLabel, currentNode, submitTime, source string) {
+		if seen[processID] || allowedTypes[strings.ToLower(processType)].ID == uuid.Nil {
+			return
+		}
+		if !summaryWorkbenchTextMatches(params, title, applicant, department, processType) {
+			return
+		}
+		seen[processID] = true
+		if processTypeLabel == "" {
+			processTypeLabel = allowedTypes[strings.ToLower(processType)].ProcessTypeLabel
+		}
+		items = append(items, dto.SummaryWorkbenchProcessItem{
+			ProcessID: processID, Title: title, Applicant: applicant, Department: department,
+			ProcessType: processType, ProcessTypeLabel: processTypeLabel, CurrentNode: currentNode,
+			SubmitTime: submitTime, Source: source,
+		})
+	}
+	for _, item := range todos {
+		appendItem(item.ProcessID, item.Title, item.Applicant, item.Department, item.ProcessType, item.ProcessTypeLabel, item.CurrentNode, item.SubmitTime, "todo")
+	}
+	for _, item := range archives {
+		appendItem(item.ProcessID, item.Title, item.Applicant, item.Department, item.ProcessType, item.ProcessTypeLabel, item.CurrentNode, item.SubmitTime, "archived")
+	}
+	processIDs := make([]string, len(items))
+	for i := range items {
+		processIDs[i] = items[i].ProcessID
+	}
+	snapshots, err := s.snapshotRepo.GetMapByProcessIDs(c, processIDs)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询流程总结快照失败")
+	}
+	latestLogs, err := s.logRepo.GetLatestWorkbenchMapByProcessIDs(c, processIDs, userID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询流程总结记录失败")
+	}
+	visibleByType := s.summaryVisibleBlocksByType(c, tenantID, userID)
+	enriched := make([]dto.SummaryWorkbenchProcessItem, 0, len(items))
+	for _, item := range items {
+		if preferredIDs, hasPreference := visibleByType[strings.ToLower(item.ProcessType)]; hasPreference {
+			validIDs := make(map[string]bool)
+			for _, block := range parseSummaryBlocks(allowedTypes[strings.ToLower(item.ProcessType)].SummaryBlocks) {
+				if block.Enabled {
+					validIDs[block.ID] = true
+				}
+			}
+			for _, id := range preferredIDs {
+				if validIDs[id] {
+					item.VisibleBlockIDs = append(item.VisibleBlockIDs, id)
+				}
+			}
+		}
+		if snap := snapshots[item.ProcessID]; snap != nil {
+			item.HasSummary = true
+			item.SummaryUpdatedAt = apptime.FormatRFC3339(snap.UpdatedAt)
+			if validLog, logErr := s.logRepo.GetByID(c, snap.LatestValidLogID); logErr == nil {
+				item.SummaryResult = s.buildSummaryResultFromLog(validLog)
+				item.SummaryStatus = model.JobStatusCompleted
+			}
+		}
+		if latest := latestLogs[item.ProcessID]; latest != nil {
+			item.SummaryStatus = latest.Status
+			if isSummaryJobRunningStatus(latest.Status) {
+				item.RunningJobID = latest.ID.String()
+				item.SummaryResult = s.buildSummaryResultFromLog(latest)
+			}
+		}
+		if item.SummaryStatus == "" {
+			item.SummaryStatus = "pending"
+		}
+		if summaryWorkbenchStatusMatches(params.SummaryStatus, item) {
+			enriched = append(enriched, item)
+		}
+	}
+	sort.SliceStable(enriched, func(i, j int) bool { return enriched[i].SubmitTime > enriched[j].SubmitTime })
+	return enriched, nil
+}
+
+func summaryWorkbenchTextMatches(params dto.SummaryWorkbenchListParams, title, applicant, department, processType string) bool {
+	contains := func(value, query string) bool {
+		return strings.Contains(strings.ToLower(value), strings.ToLower(strings.TrimSpace(query)))
+	}
+	if params.Keyword != "" && !contains(title, params.Keyword) {
+		return false
+	}
+	if params.Applicant != "" && !contains(applicant, params.Applicant) {
+		return false
+	}
+	if params.Department != "" && !strings.EqualFold(strings.TrimSpace(department), strings.TrimSpace(params.Department)) {
+		return false
+	}
+	if params.ProcessType != "" {
+		matched := false
+		for _, candidate := range strings.Split(params.ProcessType, ",") {
+			if strings.EqualFold(strings.TrimSpace(candidate), processType) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
+}
+
+func summaryWorkbenchStatusMatches(status string, item dto.SummaryWorkbenchProcessItem) bool {
+	switch strings.TrimSpace(status) {
+	case "summarized":
+		return item.HasSummary
+	case "pending":
+		return !item.HasSummary && !isSummaryWorkbenchItemRunning(item) && item.SummaryStatus != model.JobStatusFailed
+	case "running":
+		return isSummaryWorkbenchItemRunning(item)
+	case "failed":
+		return item.SummaryStatus == model.JobStatusFailed
+	default:
+		return true
+	}
+}
+
+func isSummaryWorkbenchItemRunning(item dto.SummaryWorkbenchProcessItem) bool {
+	return item.RunningJobID != "" && isSummaryJobRunningStatus(item.SummaryStatus)
+}
+
+func (s *ProcessSummaryService) summaryVisibleBlocksByType(c *gin.Context, tenantID, userID uuid.UUID) map[string][]string {
+	result := make(map[string][]string)
+	if s.userConfigRepo == nil {
+		return result
+	}
+	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
+	if err != nil || userCfg == nil {
+		return result
+	}
+	var details []model.SummaryDetailItem
+	if json.Unmarshal(userCfg.SummaryDetails, &details) != nil {
+		return result
+	}
+	for _, detail := range details {
+		result[strings.ToLower(detail.ProcessType)] = detail.VisibleBlockIDs
+	}
+	return result
+}
+
+func (s *ProcessSummaryService) userCanAccessSummaryProcess(c *gin.Context, adapter oa.OAAdapter, username, processID string) (bool, error) {
+	inTodo, err := adapter.IsProcessInTodo(c.Request.Context(), username, processID)
+	if err != nil {
+		return false, newServiceError(errcode.ErrOAQueryFailed, "校验 OA 待办权限失败: "+err.Error())
+	}
+	if inTodo {
+		return true, nil
+	}
+	archives, err := adapter.FetchArchivedList(c.Request.Context(), username, oa.ArchivedListFilter{})
+	if err != nil {
+		return false, newServiceError(errcode.ErrOAQueryFailed, "校验 OA 归档权限失败: "+err.Error())
+	}
+	for _, item := range archives {
+		if item.ProcessID == processID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *ProcessSummaryService) extractUsername(c *gin.Context) string {
+	claimsVal, _ := c.Get("jwt_claims")
+	if claims, ok := claimsVal.(*jwtpkg.JWTClaims); ok {
+		return claims.Username
+	}
+	return ""
 }
 
 func (s *ProcessSummaryService) processSummaryJob(
@@ -815,6 +1147,9 @@ func (s *ProcessSummaryService) processSummaryJob(
 	if err := s.snapshotRepo.UpsertAppendValid(c, tenantID, logEntry.ProcessID, summaryLogID, logEntry.Title, logEntry.ProcessType, len(results)); err != nil {
 		return err
 	}
+	if s.invalidator != nil {
+		_ = s.invalidator.InvalidateDashboardCache(context.Background(), tenantID)
+	}
 	tlog.Info("总结任务执行完成",
 		zap.String("summaryLogID", summaryLogID.String()),
 		zap.Int("blocks", len(results)),
@@ -826,6 +1161,22 @@ func (s *ProcessSummaryService) GetJobStatus(c *gin.Context, id uuid.UUID) (*Sum
 	logEntry, err := s.logRepo.GetByID(c, id)
 	if err != nil {
 		return nil, err
+	}
+	return s.summaryLogToResponse(logEntry), nil
+}
+
+// GetWorkbenchJobStatus 查询当前用户从流程总结工作台发起的任务。
+func (s *ProcessSummaryService) GetWorkbenchJobStatus(c *gin.Context, id uuid.UUID) (*SummaryExecuteResponse, error) {
+	_, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	logEntry, err := s.logRepo.GetByID(c, id)
+	if err != nil {
+		return nil, err
+	}
+	if logEntry.UserID != userID || logEntry.TriggerSource != model.SummaryTriggerWorkbench {
+		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该总结任务")
 	}
 	return s.summaryLogToResponse(logEntry), nil
 }
@@ -883,6 +1234,30 @@ func (s *ProcessSummaryService) GetSnapshotChain(c *gin.Context, processID strin
 		return chain[i].CreatedAt.After(chain[j].CreatedAt)
 	})
 	return chain, nil
+}
+
+// GetWorkbenchHistory 校验 OA 流程访问权后返回有效总结历史。
+func (s *ProcessSummaryService) GetWorkbenchHistory(c *gin.Context, processID string) ([]repository.ProcessSummaryLogWithUser, error) {
+	tenantID, _, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	username := s.extractUsername(c)
+	if username == "" {
+		return nil, newServiceError(errcode.ErrNoAuthToken, "用户信息缺失")
+	}
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID, false)
+	if err != nil {
+		return nil, err
+	}
+	allowed, err := s.userCanAccessSummaryProcess(c, adapter, username, processID)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该流程")
+	}
+	return s.GetSnapshotChain(c, processID)
 }
 
 func (s *ProcessSummaryService) summaryLogToResponse(log *model.ProcessSummaryLog) *SummaryExecuteResponse {

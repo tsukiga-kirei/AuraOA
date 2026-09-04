@@ -1,5 +1,80 @@
 # 流程总结接口
 
+## 流程总结工作台（JWT + TenantContext）
+
+> 路由前缀：`/api/summary`。用户还需拥有 `/summary` 页面权限。
+
+工作台汇总当前 OA 用户可见的待办与已办流程，只保留租户已启用流程总结配置的流程类型。
+列表和历史查询均按 OA 当前可见性校验，任务状态与流式输出只允许任务发起人读取。
+
+### 获取工作台流程列表
+
+```
+GET /api/summary/processes
+```
+
+**查询参数**：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `keyword` | string | - | 按流程标题模糊查询 |
+| `applicant` | string | - | 按申请人模糊查询 |
+| `department` | string | - | 按部门精确查询 |
+| `process_type` | string | - | 流程类型，多个值用逗号分隔 |
+| `summary_status` | string | - | `pending`、`summarized`、`running`、`failed` |
+| `start_date` | date | - | 提交/归档开始日期 |
+| `end_date` | date | - | 提交/归档结束日期（包含当天） |
+| `page` | integer | `1` | 页码，从 1 开始 |
+| `page_size` | integer | `20` | 每页条数，范围 1–100 |
+
+响应 `data` 使用统一分页结构 `items`、`total`、`page`、`page_size`。列表项包含流程信息、
+`source`（`todo` / `archived`）、`has_summary`、`summary_status`、当前用户的
+`visible_block_ids`，以及存在有效快照时的 `summary_result`。
+
+### 获取工作台统计
+
+```
+GET /api/summary/stats
+```
+
+筛选参数与列表一致（忽略分页与 `summary_status`），返回 `total_count`、`summarized_count`、
+`pending_count`、`running_count`、`failed_count`。
+
+### 发起流程总结
+
+```
+POST /api/summary/execute
+```
+
+**请求体**：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `process_id` | string | 是 | OA 流程 ID |
+| `process_type` | string | 否 | 前端提示值；服务端以 OA 实际流程类型为准 |
+| `title` | string | 否 | 列表标题；为空时使用 OA 标题 |
+| `use_latest_config` | boolean | 否 | 是否升级到租户当前最新总结配置，默认沿用已绑定版本 |
+
+任务使用统一 AI 调用入口，日志 `request_type=summary`、`trigger_source=summary_workbench`。
+返回 HTTP `202` 时，前端通过任务接口轮询。
+
+### 查询任务与流式输出
+
+```
+GET /api/summary/jobs/:id
+GET /api/summary/stream/:id
+```
+
+只允许任务发起人访问。
+
+### 获取流程总结历史
+
+```
+GET /api/summary/history/:processId
+```
+
+服务端重新校验当前用户仍可在 OA 待办或已办中访问该流程，然后返回有效总结链。
+
 ## 流程总结配置（JWT + TenantContext + `tenant_admin`）
 
 > 路由前缀：`/api/tenant/summary`

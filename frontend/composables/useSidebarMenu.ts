@@ -17,6 +17,7 @@ import {
   TeamOutlined,
   SettingOutlined,
   PieChartOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons-vue'
 import type { Component } from 'vue'
 
@@ -45,6 +46,7 @@ const BUSINESS_ITEMS: SidebarMenuItem[] = [
   { key: '/dashboard', icon: DashboardOutlined, labelKey: 'menu.dashboard' },
   { key: '/cron', icon: ClockCircleOutlined, labelKey: 'menu.cron' },
   { key: '/archive', icon: FolderOpenOutlined, labelKey: 'menu.archive' },
+  { key: '/summary', icon: FileTextOutlined, labelKey: 'menu.summary' },
 ]
 
 /** 租户管理员菜单项（需要 tenant_admin 权限组） */

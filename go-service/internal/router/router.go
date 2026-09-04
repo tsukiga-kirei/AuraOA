@@ -324,12 +324,29 @@ func SetupRouter(
 		tenantSettings.GET("/archive-configs/:processType/full", userConfigHandler.GetFullArchiveConfig)
 		tenantSettings.PUT("/archive-configs/:processType", userConfigHandler.UpdateArchiveConfig)
 
+		// 流程总结个人展示偏好
+		tenantSettings.GET("/summary-configs", userConfigHandler.GetSummaryConfigList)
+		tenantSettings.GET("/summary-configs/:processType/full", userConfigHandler.GetFullSummaryPreference)
+		tenantSettings.PUT("/summary-configs/:processType", userConfigHandler.UpdateSummaryPreference)
+
 		// 仪表板偏好
 		tenantSettings.GET("/dashboard-prefs", userConfigHandler.GetDashboardPrefs)
 		tenantSettings.PUT("/dashboard-prefs", userConfigHandler.UpdateDashboardPrefs)
 
 		// 仪表盘聚合数据
 		tenantSettings.GET("/dashboard-overview", dashboardOverviewHandler.GetOverview)
+	}
+
+	// 流程总结工作台（需要 JWT + 租户上下文，无角色限制）。
+	summary := r.Group("/api/summary")
+	summary.Use(middleware.JWT(rdb), middleware.TenantContext())
+	{
+		summary.GET("/processes", summaryHandler.ListWorkbenchProcesses)
+		summary.GET("/stats", summaryHandler.GetWorkbenchStats)
+		summary.POST("/execute", summaryHandler.ExecuteWorkbench)
+		summary.GET("/jobs/:id", summaryHandler.GetWorkbenchJobStatus)
+		summary.GET("/stream/:id", summaryHandler.GetWorkbenchJobStream)
+		summary.GET("/history/:processId", summaryHandler.GetWorkbenchHistory)
 	}
 
 	// 审核工作台（需要 JWT + 租户上下文，无角色限制）：发起审核、查询进度、流式输出、批量审核

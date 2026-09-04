@@ -4,6 +4,7 @@
  *   /api/tenant/settings/processes          审核流程列表及个人配置
  *   /api/tenant/settings/cron-prefs         定时任务推送偏好
  *   /api/tenant/settings/archive-configs    归档复盘可访问配置
+ *   /api/tenant/settings/summary-configs    流程总结个人展示偏好
  *   /api/tenant/settings/dashboard-prefs    仪表板布局偏好
  */
 
@@ -18,6 +19,7 @@ import type {
   CronPrefs,
   AccessibleArchiveConfig,
   FullArchiveConfig,
+  FullSummaryPreference,
   UpdatePersonalConfigRequest,
 } from '~/types/user-config'
 
@@ -25,6 +27,7 @@ export type {
   ProcessListItem, CustomRule, RuleToggleOverride, AuditDetailItem,
   DashboardPref, UserPermissions, FullAuditProcessConfig,
   CronPrefs, AccessibleArchiveConfig, FullArchiveConfig, UpdatePersonalConfigRequest,
+  FullSummaryPreference,
 }
 
 export const useSettingsApi = () => {
@@ -139,6 +142,27 @@ export const useSettingsApi = () => {
   }
 
   // ============================================================
+  // 流程总结 — 个人分块展示偏好
+  // ============================================================
+
+  async function listSummaryConfigs(): Promise<ProcessListItem[]> {
+    return await authFetch<ProcessListItem[]>('/api/tenant/settings/summary-configs')
+  }
+
+  async function getFullSummaryPreference(processType: string): Promise<FullSummaryPreference> {
+    return await authFetch<FullSummaryPreference>(
+      `/api/tenant/settings/summary-configs/${encodeURIComponent(processType)}/full`,
+    )
+  }
+
+  async function updateSummaryPreference(processType: string, configId: string, visibleBlockIds: string[]): Promise<void> {
+    await authFetch<null>(`/api/tenant/settings/summary-configs/${encodeURIComponent(processType)}`, {
+      method: 'PUT',
+      body: { config_id: configId, visible_block_ids: visibleBlockIds },
+    })
+  }
+
+  // ============================================================
   // 仪表板布局偏好
   // ============================================================
 
@@ -187,6 +211,7 @@ export const useSettingsApi = () => {
     listProcesses, getFullProcessConfig, updateProcessConfig,
     getCronPrefs, updateCronPrefs,
     listArchiveConfigs, getFullArchiveConfig, updateArchiveConfig,
+    listSummaryConfigs, getFullSummaryPreference, updateSummaryPreference,
     getDashboardPrefs, updateDashboardPrefs,
     computePermissionLocks,
   }

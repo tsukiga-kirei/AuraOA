@@ -85,6 +85,7 @@ func (ProcessSummaryLog) TableName() string { return "process_summary_logs" }
 const (
 	SummaryTriggerEmbedAuto   = "summary_embed_auto"
 	SummaryTriggerEmbedManual = "summary_embed_manual"
+	SummaryTriggerWorkbench   = "summary_workbench"
 
 	SummaryTriggerDetailManual          = "manual"
 	SummaryTriggerDetailVisibleOpen     = "visible_open"

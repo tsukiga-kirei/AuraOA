@@ -366,6 +366,67 @@ func (h *UserPersonalConfigHandler) UpdateArchiveConfig(c *gin.Context) {
 	response.Success(c, nil)
 }
 
+// GetSummaryConfigList 获取当前用户可设置展示偏好的流程总结配置列表。
+// GET /api/tenant/settings/summary-configs
+func (h *UserPersonalConfigHandler) GetSummaryConfigList(c *gin.Context) {
+	if _, err := getUserID(c); err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
+		return
+	}
+	list, err := h.userConfigService.GetAccessibleSummaryConfigs(c)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, list)
+}
+
+// GetFullSummaryPreference 获取指定流程总结配置与个人展示偏好的合并视图。
+// GET /api/tenant/settings/summary-configs/:processType/full
+func (h *UserPersonalConfigHandler) GetFullSummaryPreference(c *gin.Context) {
+	userID, err := getUserID(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
+		return
+	}
+	processType := c.Param("processType")
+	if processType == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	result, err := h.userConfigService.GetFullSummaryPreference(c, userID, processType)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// UpdateSummaryPreference 更新指定流程的个人总结块展示偏好。
+// PUT /api/tenant/settings/summary-configs/:processType
+func (h *UserPersonalConfigHandler) UpdateSummaryPreference(c *gin.Context) {
+	userID, err := getUserID(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
+		return
+	}
+	processType := c.Param("processType")
+	if processType == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	var req dto.UpdateSummaryPreferenceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	if err := h.userConfigService.UpdateSummaryPreference(c, userID, processType, &req); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, nil)
+}
+
 // defaultDashJSON 若 val 为 nil 则返回 defaultVal 对应的 JSON，否则返回原值。
 func defaultDashJSON(val datatypes.JSON, defaultVal string) datatypes.JSON {
 	if val == nil {

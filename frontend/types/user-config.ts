@@ -126,6 +126,22 @@ export interface AccessibleArchiveConfig {
   config_id: string
 }
 
+/** 流程总结块的个人展示状态。 */
+export interface SummaryBlockPreference {
+  id: string
+  title: string
+  visible: boolean
+  enable_thinking: boolean
+}
+
+/** 流程总结配置与个人展示偏好的合并视图。 */
+export interface FullSummaryPreference {
+  process_type: string
+  process_type_label: string
+  config_id: string
+  blocks: SummaryBlockPreference[]
+}
+
 /** 归档复盘完整配置响应（租户配置+用户覆盖合并） */
 export interface FullArchiveConfig {
   process_type: string

@@ -178,7 +178,7 @@ func main() {
 	aiModelService := service.NewAIModelService(aiModelRepo)
 	processAuditConfigService := service.NewProcessAuditConfigService(processAuditConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, db, invalidationManager, oaConnectionManager)
 	auditRuleService := service.NewAuditRuleService(auditRuleRepo, invalidationManager)
-	userPersonalConfigService := service.NewUserPersonalConfigService(userPersonalConfigRepo, processAuditConfigRepo, auditRuleRepo, archiveConfigRepo, archiveRuleRepo, orgRepo, executionConfigVersionRepo)
+	userPersonalConfigService := service.NewUserPersonalConfigService(userPersonalConfigRepo, processAuditConfigRepo, auditRuleRepo, archiveConfigRepo, archiveRuleRepo, summaryConfigRepo, orgRepo, executionConfigVersionRepo)
 	llmMessageLogService := service.NewLLMMessageLogService(llmMessageLogRepo)
 	cronConfigService := service.NewCronConfigService(cronPresetRepo, cronConfigRepo)
 	archiveConfigService := service.NewProcessArchiveConfigService(archiveConfigRepo, tenantRepo, oaConnectionRepo, promptTemplateRepo, invalidationManager, oaConnectionManager)
@@ -200,7 +200,7 @@ func main() {
 		archiveRuleRepo,
 		summaryConfigRepo,
 	)
-	summaryService := service.NewProcessSummaryService(summaryLogRepo, summarySnapshotRepo, summaryConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, sysFlagsResolver, externalContextService, oaConnectionManager)
+	summaryService := service.NewProcessSummaryService(summaryLogRepo, summarySnapshotRepo, summaryConfigRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, db, rdb, sysFlagsResolver, externalContextService, oaConnectionManager, invalidationManager)
 	embedRefreshService := service.NewEmbedRefreshService(
 		rdb,
 		auditExecuteService,
@@ -215,7 +215,7 @@ func main() {
 	processAuditConfigService.SetEmbedRefreshScheduleManager(embedRefreshService)
 	summaryConfigService.SetEmbedRefreshScheduleManager(embedRefreshService)
 	dashboardOverviewService := service.NewDashboardOverviewService(
-		auditSnapshotRepo, archiveSnapshotRepo, auditLogRepo, archiveLogRepo, cronLogRepo, cronTaskRepo, cronPresetRepo, llmMessageLogRepo, tenantRepo, orgRepo, cacheManager, invalidationManager,
+		auditSnapshotRepo, archiveSnapshotRepo, summaryLogRepo, auditLogRepo, archiveLogRepo, cronLogRepo, cronTaskRepo, cronPresetRepo, llmMessageLogRepo, tenantRepo, orgRepo, cacheManager, invalidationManager,
 	)
 	archiveReviewService := service.NewArchiveReviewService(archiveLogRepo, archiveSnapshotRepo, archiveConfigRepo, archiveRuleRepo, userPersonalConfigRepo, tenantRepo, oaConnectionRepo, aiModelRepo, aiCallerService, attachmentRecognitionService, orgRepo, db, rdb, userNotificationService, cacheManager, invalidationManager, sysFlagsResolver, externalContextService, oaConnectionManager, promptTemplateRepo)
 	reportCalculatorService := service.NewReportCalculatorService(auditLogRepo, archiveLogRepo, tenantRepo)

@@ -129,6 +129,45 @@ PUT /api/tenant/settings/archive-configs/:processType
 
 ---
 
+## 流程总结个人展示偏好
+
+个人设置只控制流程总结工作台中哪些总结块可见，不修改租户总结块、提示词、字段范围、
+深度思考开关或实际生成内容，避免个人偏好改变共享流程级总结快照。
+
+### 获取可用流程总结配置
+
+```
+GET /api/tenant/settings/summary-configs
+```
+
+返回租户内状态为 `active` 的流程总结配置简表。
+
+### 获取完整个人展示偏好
+
+```
+GET /api/tenant/settings/summary-configs/:processType/full
+```
+
+返回流程配置 ID、流程类型、流程名称和启用的总结块。每个块包含 `id`、`title`、
+`visible` 和租户配置的 `enable_thinking`。
+
+### 更新个人展示偏好
+
+```
+PUT /api/tenant/settings/summary-configs/:processType
+```
+
+**请求体**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `config_id` | string | 流程总结配置 ID，须与路径流程类型匹配 |
+| `visible_block_ids` | string[] | 当前用户要展示的启用总结块 ID，至少一项 |
+
+服务端会拒绝已停用、已删除或不属于该配置的总结块 ID。
+
+---
+
 ## 仪表盘偏好
 
 ### 获取仪表盘偏好
@@ -164,7 +203,9 @@ PUT /api/tenant/settings/dashboard-prefs
 GET /api/tenant/settings/dashboard-overview
 ```
 
-返回当前用户的仪表盘聚合数据。
+返回当前用户的仪表盘聚合数据。本周概览、每日趋势与最近动态包含
+`summary_count` / `kind=summary`，普通业务用户只统计本人从流程总结工作台完成的记录；
+租户管理员查看租户级汇总。OA 嵌入页自动或手动生成的总结不计入个人工作台指标。
 
 ---
 

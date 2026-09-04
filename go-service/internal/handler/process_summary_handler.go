@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
@@ -62,6 +63,66 @@ func (h *ProcessSummaryHandler) ExecuteEmbed(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// ListWorkbenchProcesses 获取当前用户可见的流程总结工作台分页列表。
+// GET /api/summary/processes
+func (h *ProcessSummaryHandler) ListWorkbenchProcesses(c *gin.Context) {
+	params := parseSummaryWorkbenchQuery(c)
+	result, err := h.summaryService.ListWorkbenchProcesses(c, params)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// GetWorkbenchStats 获取当前用户可见流程的总结状态统计。
+// GET /api/summary/stats
+func (h *ProcessSummaryHandler) GetWorkbenchStats(c *gin.Context) {
+	params := parseSummaryWorkbenchQuery(c)
+	result, err := h.summaryService.GetWorkbenchStats(c, params)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// ExecuteWorkbench 从流程总结工作台发起交互式总结。
+// POST /api/summary/execute
+func (h *ProcessSummaryHandler) ExecuteWorkbench(c *gin.Context) {
+	var req service.SummaryExecuteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败: "+err.Error())
+		return
+	}
+	result, err := h.summaryService.ExecuteWorkbench(c, &req)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	if result.Status == model.JobStatusPending {
+		c.JSON(http.StatusAccepted, response.Response{Code: 0, Message: "accepted", Data: result})
+		return
+	}
+	response.Success(c, result)
+}
+
+// GetWorkbenchHistory 获取指定流程的有效总结历史。
+// GET /api/summary/history/:processId
+func (h *ProcessSummaryHandler) GetWorkbenchHistory(c *gin.Context) {
+	processID := c.Param("processId")
+	if processID == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "流程ID不能为空")
+		return
+	}
+	chain, err := h.summaryService.GetWorkbenchHistory(c, processID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"chain": chain})
+}
+
 func (h *ProcessSummaryHandler) GetJobStatus(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -74,6 +135,37 @@ func (h *ProcessSummaryHandler) GetJobStatus(c *gin.Context) {
 		return
 	}
 	response.Success(c, data)
+}
+
+// GetWorkbenchJobStatus 查询当前用户发起的流程总结任务。
+// GET /api/summary/jobs/:id
+func (h *ProcessSummaryHandler) GetWorkbenchJobStatus(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "任务 ID 无效")
+		return
+	}
+	data, err := h.summaryService.GetWorkbenchJobStatus(c, id)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, data)
+}
+
+// GetWorkbenchJobStream 校验任务归属后订阅工作台总结流。
+// GET /api/summary/stream/:id
+func (h *ProcessSummaryHandler) GetWorkbenchJobStream(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "任务 ID 无效")
+		return
+	}
+	if _, err := h.summaryService.GetWorkbenchJobStatus(c, id); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	h.GetJobStream(c)
 }
 
 func (h *ProcessSummaryHandler) GetJobStream(c *gin.Context) {
@@ -222,4 +314,28 @@ func parseProcessSummarySnapshotQuery(c *gin.Context) (repository.ProcessSummary
 	page := parseIntQuery(c, "page", 1)
 	pageSize := parseIntQuery(c, "page_size", 20)
 	return filter, page, pageSize
+}
+
+func parseSummaryWorkbenchQuery(c *gin.Context) dto.SummaryWorkbenchListParams {
+	params := dto.SummaryWorkbenchListParams{
+		Keyword:       c.Query("keyword"),
+		Applicant:     c.Query("applicant"),
+		Department:    c.Query("department"),
+		ProcessType:   c.Query("process_type"),
+		SummaryStatus: c.Query("summary_status"),
+		Page:          parseIntQuery(c, "page", 1),
+		PageSize:      parseIntQuery(c, "page_size", 20),
+	}
+	if value := c.Query("start_date"); value != "" {
+		if parsed, err := time.ParseInLocation("2006-01-02", value, apptime.Location()); err == nil {
+			params.SubmitDateStart = &parsed
+		}
+	}
+	if value := c.Query("end_date"); value != "" {
+		if parsed, err := time.ParseInLocation("2006-01-02", value, apptime.Location()); err == nil {
+			end := parsed.AddDate(0, 0, 1)
+			params.SubmitDateEndExclusive = &end
+		}
+	}
+	return params
 }

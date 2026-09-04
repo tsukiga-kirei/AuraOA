@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 )
 
 // ProcessSummarySnapshotRepo 总结有效结果快照数据访问层。
@@ -26,7 +27,7 @@ func NewProcessSummarySnapshotRepo(db *gorm.DB) *ProcessSummarySnapshotRepo {
 func (r *ProcessSummarySnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID uuid.UUID, processID string, logID uuid.UUID, title, processType string, blockCount int) error {
 	var existing model.ProcessSummarySnapshot
 	err := r.WithTenant(c).Where("process_id = ?", processID).First(&existing).Error
-	now := time.Now()
+	now := apptime.Now()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		ids := []string{logID.String()}
 		b, _ := json.Marshal(ids)
@@ -75,6 +76,22 @@ func (r *ProcessSummarySnapshotRepo) GetByProcessID(c *gin.Context, processID st
 		return nil, nil
 	}
 	return &row, err
+}
+
+// GetMapByProcessIDs 批量查询流程总结快照。
+func (r *ProcessSummarySnapshotRepo) GetMapByProcessIDs(c *gin.Context, processIDs []string) (map[string]*model.ProcessSummarySnapshot, error) {
+	result := make(map[string]*model.ProcessSummarySnapshot)
+	if len(processIDs) == 0 {
+		return result, nil
+	}
+	var rows []model.ProcessSummarySnapshot
+	if err := r.WithTenant(c).Where("process_id IN ?", processIDs).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		result[rows[i].ProcessID] = &rows[i]
+	}
+	return result, nil
 }
 
 type ProcessSummarySnapshotFilter struct {

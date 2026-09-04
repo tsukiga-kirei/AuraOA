@@ -36,7 +36,7 @@ func (r *UserPersonalConfigRepo) GetByTenantAndUser(c *gin.Context, tenantID, us
 func (r *UserPersonalConfigRepo) Upsert(cfg *model.UserPersonalConfig) error {
 	return r.DB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "user_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"audit_details", "cron_details", "archive_details", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"audit_details", "cron_details", "archive_details", "summary_details", "updated_at"}),
 	}).Create(cfg).Error
 }
 
