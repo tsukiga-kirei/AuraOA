@@ -257,11 +257,13 @@ interface PageConfig {
 const ALL_PAGES_CONFIG: PageConfig[] = [
   { path: '/overview', label: t('admin.org.page.overview'), group: 'common', alwaysOn: true },
   { path: '/dashboard', label: t('admin.org.page.dashboard'), group: 'business' },
+  { path: '/chat', label: t('menu.chat'), group: 'business' },
   { path: '/cron', label: t('admin.org.page.cron'), group: 'business', dependsOn: ['/dashboard', '/archive'] },
   { path: '/archive', label: t('admin.org.page.archive'), group: 'business' },
   { path: '/summary', label: t('admin.org.page.summary'), group: 'business' },
   { path: '/settings', label: t('admin.org.page.settings'), group: 'common', alwaysOn: true },
   { path: '/admin/tenant/rules', label: t('admin.org.page.tenantConfig'), group: 'admin' },
+  { path: '/admin/tenant/agents', label: t('menu.tenant.agents'), group: 'admin' },
   { path: '/admin/tenant/org', label: t('admin.org.page.tenantOrg'), group: 'admin' },
   { path: '/admin/tenant/data', label: t('admin.org.page.tenantData'), group: 'admin' },
   { path: '/admin/tenant/user-configs', label: t('menu.tenant.userConfigs'), group: 'admin' },

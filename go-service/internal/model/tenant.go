@@ -33,6 +33,10 @@ type Tenant struct {
 	RetryCount             int        `gorm:"not null;default:3"`
 	LogRetentionDays       int        `gorm:"not null;default:365"`
 	DataRetentionDays      int        `gorm:"not null;default:1095"`
+	ChatEnabled            bool       `gorm:"not null;default:true"`
+	ChatRetentionDays      int        `gorm:"not null;default:90"`
+	ChatPrimaryModelID     *uuid.UUID `gorm:"type:uuid"`
+	ChatFallbackModelID    *uuid.UUID `gorm:"type:uuid"`
 	ContactName            string     `gorm:"size:100"`
 	ContactEmail           string     `gorm:"size:255"`
 	ContactPhone           string     `gorm:"size:50"`

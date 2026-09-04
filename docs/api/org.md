@@ -56,6 +56,8 @@ GET /api/tenant/org/roles
 POST /api/tenant/org/roles
 ```
 
+请求体支持：`name`, `description`, `page_permissions[]`, `agent_codes[]`, `tool_codes[]`。
+
 ---
 
 ### 更新角色
@@ -63,6 +65,8 @@ POST /api/tenant/org/roles
 ```
 PUT /api/tenant/org/roles/:id
 ```
+
+请求体支持：`name`, `description`, `page_permissions[]`, `agent_codes[]`, `tool_codes[]`。写入时校验智能体与工具在租户配额内。
 
 ---
 

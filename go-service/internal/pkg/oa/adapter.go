@@ -109,6 +109,9 @@ type OAAdapter interface {
 
 	// ResolveUsernameByOAUserID 根据 OA 人员标识（如泛微 Ecology 的 hrmresource.id 数字主键）反查登录账号（loginid）。
 	ResolveUsernameByOAUserID(ctx context.Context, oaUserID string) (string, error)
+
+	// CheckProcessVisibility 检查指定用户对流程实例是否具有可见性（待办人、申请人或历史审批人）。
+	CheckProcessVisibility(ctx context.Context, username string, processID string) (bool, error)
 }
 
 // BrowseValueResolver 可选接口：支持按字段选择集把浏览按钮原始值增补为显示值。

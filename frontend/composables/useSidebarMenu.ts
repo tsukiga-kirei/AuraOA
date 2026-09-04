@@ -18,6 +18,8 @@ import {
   SettingOutlined,
   PieChartOutlined,
   FileTextOutlined,
+  MessageOutlined,
+  RobotOutlined,
 } from '@ant-design/icons-vue'
 import type { Component } from 'vue'
 
@@ -44,6 +46,7 @@ const OVERVIEW_ITEMS: SidebarMenuItem[] = [
 /** 前台业务菜单项（business 身份下由 page_permissions 控制） */
 const BUSINESS_ITEMS: SidebarMenuItem[] = [
   { key: '/dashboard', icon: DashboardOutlined, labelKey: 'menu.dashboard' },
+  { key: '/chat', icon: MessageOutlined, labelKey: 'menu.chat' },
   { key: '/cron', icon: ClockCircleOutlined, labelKey: 'menu.cron' },
   { key: '/archive', icon: FolderOpenOutlined, labelKey: 'menu.archive' },
   { key: '/summary', icon: FileTextOutlined, labelKey: 'menu.summary' },
@@ -52,6 +55,7 @@ const BUSINESS_ITEMS: SidebarMenuItem[] = [
 /** 租户管理员菜单项（需要 tenant_admin 权限组） */
 const TENANT_ITEMS: SidebarMenuItem[] = [
   { key: '/admin/tenant/rules', icon: AppstoreOutlined, labelKey: 'menu.tenant.rules' },
+  { key: '/admin/tenant/agents', icon: RobotOutlined, labelKey: 'menu.tenant.agents' },
   { key: '/admin/tenant/org', icon: ApartmentOutlined, labelKey: 'menu.tenant.org' },
   { key: '/admin/tenant/data', icon: DatabaseOutlined, labelKey: 'menu.tenant.data' },
   { key: '/admin/tenant/user-configs', icon: SettingOutlined, labelKey: 'menu.tenant.userConfigs' },

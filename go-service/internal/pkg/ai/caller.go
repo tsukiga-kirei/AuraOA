@@ -32,14 +32,53 @@ type ChatRequest struct {
 	ProcessID                string               `json:"process_id"`
 	ProcessTitle             string               `json:"process_title"`
 	BusinessLogID            *uuid.UUID           `json:"business_log_id"`
+	Messages                 []ChatMessage        `json:"messages,omitempty"`
+	Tools                    []ToolDefinition     `json:"tools,omitempty"`
 	StreamChunkFunc          func(string)         `json:"-"`
 	StreamReasoningChunkFunc func(string)         `json:"-"`
+}
+
+// ChatMessage 表示多轮对话中的消息
+type ChatMessage struct {
+	Role             string     `json:"role"` // system, user, assistant, tool
+	Content          string     `json:"content"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"`
+	Name             string     `json:"name,omitempty"`
+	ToolCallID       string     `json:"tool_call_id,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+}
+
+// ToolDefinition 定义传给大模型的工具函数格式
+type ToolDefinition struct {
+	Type     string       `json:"type"` // "function"
+	Function FunctionSpec `json:"function"`
+}
+
+// FunctionSpec 工具函数详情
+type FunctionSpec struct {
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	Parameters  interface{} `json:"parameters"`
+}
+
+// ToolCall 模型发出的工具调用
+type ToolCall struct {
+	ID       string           `json:"id"`
+	Type     string           `json:"type"` // "function"
+	Function ToolCallFunction `json:"function"`
+}
+
+// ToolCallFunction 工具调用的函数名与入参 JSON 字符串
+type ToolCallFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
 }
 
 // ChatResponse AI 对话响应
 type ChatResponse struct {
 	Content          string     `json:"content"`
 	ReasoningContent string     `json:"reasoning_content"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
 	TokenUsage       TokenUsage `json:"token_usage"`
 	ModelID          string     `json:"model_id"`
 	DurationMs       int64      `json:"duration_ms"`

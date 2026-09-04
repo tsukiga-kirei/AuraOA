@@ -31,20 +31,8 @@ func TestOpenAICompatCaller_NonStreaming_Reasoning(t *testing.T) {
 				TotalTokens:      30,
 			},
 		}
-		resp.Choices = append(resp.Choices, struct {
-			Message struct {
-				Role             string `json:"role"`
-				Content          string `json:"content"`
-				ReasoningContent string `json:"reasoning_content,omitempty"`
-				Reasoning        string `json:"reasoning,omitempty"`
-			} `json:"message"`
-		}{
-			Message: struct {
-				Role             string `json:"role"`
-				Content          string `json:"content"`
-				ReasoningContent string `json:"reasoning_content,omitempty"`
-				Reasoning        string `json:"reasoning,omitempty"`
-			}{
+		resp.Choices = append(resp.Choices, openAIChoice{
+			Message: openAIChoiceMessage{
 				Role:      "assistant",
 				Content:   "这是回答正文",
 				Reasoning: "这是思考链路",

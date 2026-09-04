@@ -43,6 +43,8 @@ func SetupRouter(
 	dashboardOverviewHandler *handler.DashboardOverviewHandler,
 	userNotificationHandler *handler.UserNotificationHandler,
 	cacheAdminHandler *handler.CacheAdminHandler,
+	chatHandler *handler.ChatHandler,
+	agentAdminHandler *handler.AgentAdminHandler,
 	sysFlags *systemflags.Resolver,
 	operationAuditRepo *repository.OperationAuditLogRepo,
 	tenantRepo *repository.TenantRepo,
@@ -115,6 +117,11 @@ func SetupRouter(
 		admin.GET("/tenants/:id/stats", tenantHandler.GetTenantStats)
 		admin.GET("/tenants/:id/members", tenantHandler.ListTenantMembers)
 		admin.POST("/tenants/:id/embed-token", tenantHandler.RotateEmbedToken)
+
+		// 智能体平台目录与租户配额管理
+		admin.GET("/agent-catalog", agentAdminHandler.GetAgentCatalog)
+		admin.GET("/tenants/:id/chat-allocation", agentAdminHandler.GetTenantAllocationByAdmin)
+		admin.PUT("/tenants/:id/chat-allocation", agentAdminHandler.UpdateTenantAllocationByAdmin)
 
 		// 系统设置：枚举选项、OA 数据库连接、AI 模型配置、系统 KV 配置
 		system := admin.Group("/system")
@@ -455,5 +462,38 @@ func SetupRouter(
 		cronLogsAdmin.GET("", cronTaskHandler.ListAllLogs)
 		cronLogsAdmin.GET("/stats", cronTaskHandler.GetAllLogsStats)
 		cronLogsAdmin.GET("/export", cronTaskHandler.ExportAllLogs)
+	}
+
+	// 租户智能体与工具管理（需要 JWT + 租户上下文 + tenant_admin 角色）
+	tenantAgents := r.Group("/api/tenant")
+	tenantAgents.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
+	{
+		tenantAgents.GET("/chat-allocation", agentAdminHandler.GetTenantAllocationByTenant)
+		tenantAgents.GET("/agents", agentAdminHandler.ListTenantAgents)
+		tenantAgents.POST("/agents", agentAdminHandler.CreateTenantAgent)
+		tenantAgents.PUT("/agents/:id", agentAdminHandler.UpdateTenantAgent)
+		tenantAgents.DELETE("/agents/:id", agentAdminHandler.DeleteTenantAgent)
+
+		tenantAgents.GET("/mcp-servers", agentAdminHandler.ListMCPServers)
+		tenantAgents.POST("/mcp-servers", agentAdminHandler.SaveMCPServer)
+		tenantAgents.POST("/mcp-servers/:id/test", agentAdminHandler.TestAndRefreshMCPServer)
+		tenantAgents.DELETE("/mcp-servers/:id", agentAdminHandler.DeleteMCPServer)
+
+		tenantAgents.GET("/skills", agentAdminHandler.ListSkills)
+		tenantAgents.POST("/skills", agentAdminHandler.SaveSkill)
+		tenantAgents.DELETE("/skills/:id", agentAdminHandler.DeleteSkill)
+	}
+
+	// AI 对话工作台（需要 JWT + 租户上下文）
+	chat := r.Group("/api/chat")
+	chat.Use(middleware.JWT(rdb), middleware.TenantContext())
+	{
+		chat.GET("/agents", chatHandler.GetEffectiveAgents)
+		chat.GET("/sessions", chatHandler.ListSessions)
+		chat.POST("/sessions", chatHandler.CreateSession)
+		chat.GET("/sessions/:id", chatHandler.GetSessionDetail)
+		chat.PATCH("/sessions/:id", chatHandler.UpdateSession)
+		chat.DELETE("/sessions/:id", chatHandler.DeleteSession)
+		chat.POST("/sessions/:id/messages/stream", chatHandler.StreamMessage)
 	}
 }

@@ -22,6 +22,7 @@ import (
 	"auraoa/go-service/internal/cache"
 	"auraoa/go-service/internal/dbmigrate"
 	"auraoa/go-service/internal/handler"
+	"auraoa/go-service/internal/pkg/agenttools"
 	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/crypto"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
@@ -166,11 +167,13 @@ func main() {
 	auditSnapshotRepo := repository.NewAuditProcessSnapshotRepo(db)
 	archiveSnapshotRepo := repository.NewArchiveProcessSnapshotRepo(db)
 	summarySnapshotRepo := repository.NewProcessSummarySnapshotRepo(db)
+	chatRepo := repository.NewChatRepo(db)
+	agentRepo := repository.NewAgentRepo(db)
 
 	// 第六步：初始化各业务服务层（Service）
 	authService := service.NewAuthService(userRepo, rdb, db, systemConfigRepo)
 	basicSSOService := service.NewBasicSSOService(tenantRepo, userRepo, authService, rdb)
-	orgService := service.NewOrgService(orgRepo, userRepo, systemConfigRepo, db)
+	orgService := service.NewOrgService(orgRepo, userRepo, systemConfigRepo, db, agentRepo)
 	tenantService := service.NewTenantService(tenantRepo, systemConfigRepo, userRepo, db, invalidationManager)
 	systemConfigService := service.NewSystemConfigService(systemConfigRepo)
 	optionService := service.NewOptionService(optionRepo)
@@ -338,13 +341,24 @@ func main() {
 	dashboardOverviewHandler := handler.NewDashboardOverviewHandler(dashboardOverviewService, systemMonitorService)
 	userNotificationHandler := handler.NewUserNotificationHandler(userNotificationService)
 	cacheAdminHandler := handler.NewCacheAdminHandler(cacheManager, invalidationManager)
+	// 初始化智能体与 AI 对话服务
+	agentPermissionService := service.NewAgentPermissionService(agentRepo, tenantRepo, orgRepo)
+	skillService := service.NewSkillService(agentRepo)
+	mcpService := service.NewMCPService(agentRepo)
+	systemToolExecutor := agenttools.NewSystemToolExecutor(db, tenantRepo, oaConnectionRepo, oaConnectionManager, auditLogRepo, summaryLogRepo)
+	agentRuntimeService := service.NewAgentRuntimeService(chatRepo, agentRepo, tenantRepo, aiModelRepo, aiCallerService, agentPermissionService, skillService, mcpService, systemToolExecutor)
+	chatSessionService := service.NewChatSessionService(chatRepo, agentRepo, tenantRepo, agentPermissionService)
+	agentAllocationService := service.NewAgentAllocationService(agentRepo, tenantRepo, orgRepo)
+
+	chatHandler := handler.NewChatHandler(chatSessionService, agentRuntimeService)
+	agentAdminHandler := handler.NewAgentAdminHandler(agentAllocationService, mcpService)
 
 	// 第八步：配置 Gin 路由及中间件
 	r := gin.New()
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, executionConfigSourceHandler, externalContextHandler, auditHandler, archiveReviewHandler, summaryHandler, embedEventHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, sysFlagsResolver, operationAuditLogRepo, tenantRepo)
+	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, executionConfigSourceHandler, externalContextHandler, auditHandler, archiveReviewHandler, summaryHandler, embedEventHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, chatHandler, agentAdminHandler, sysFlagsResolver, operationAuditLogRepo, tenantRepo)
 
 	// 第九步：启动 HTTP 服务器
 	port := viper.GetInt("server.port")
