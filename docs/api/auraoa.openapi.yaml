@@ -4001,6 +4001,29 @@ paths:
                   type: object
                 widget_sizes:
                   type: object
+  /api/tenant/settings/oa-jump-config:
+    get:
+      summary: 获取当前租户 OA 流程跳转配置
+      tags:
+      - UserSettings
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/OAJumpConfigResponse'
   /api/tenant/settings/dashboard-overview:
     get:
       summary: 获取用户仪表盘聚合数据
@@ -6641,6 +6664,27 @@ components:
         weaver_default_user:
           type: string
           description: 默认调用用户 loginid；仅在配置附件接口 URL 时必填
+        oa_base_url:
+          type: string
+          description: OA 系统 Web 访问基准域名或 URL
+        process_url_template:
+          type: string
+          description: 流程跳转 URL 模板，支持 {process_id} 或 {requestid} 占位符
+    OAJumpConfigResponse:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: 是否已启用 OA 流程跳转
+        oa_base_url:
+          type: string
+          description: OA 系统 Web 访问基准域名
+        process_url_template:
+          type: string
+          description: 流程详情跳转 URL 模板
+        resolved_template:
+          type: string
+          description: 解析后的完整流程详情跳转 URL 模板
     AIModelRequest:
       type: object
       required:

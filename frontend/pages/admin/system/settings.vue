@@ -55,6 +55,8 @@ interface OADbConnection {
   weaver_api_url?: string;
   weaver_appid_configured?: boolean;
   weaver_default_user?: string;
+  oa_base_url?: string;
+  process_url_template?: string;
 }
 
 /** 编辑已配置连接时，输入框内展示的掩码（非真实值） */
@@ -280,6 +282,7 @@ const newOADb = ref<Record<string, any>>({
   driver: 'mysql', host: '', port: 3306, database_name: '',
   username: '', password: '', pool_size: 10, connection_timeout: 30, test_on_borrow: true,
   weaver_api_url: '', weaver_appid: '', weaver_default_user: '',
+  oa_base_url: '', process_url_template: '',
 })
 
 const resetNewOADb = () => {
@@ -290,6 +293,7 @@ const resetNewOADb = () => {
     driver: 'mysql', host: '', port: 3306, database_name: '',
     username: '', password: '', pool_size: 10, connection_timeout: 30, test_on_borrow: true,
     weaver_api_url: '', weaver_appid: '', weaver_default_user: '',
+    oa_base_url: '', process_url_template: '',
   }
 }
 
@@ -313,8 +317,14 @@ const openEditOADb = (conn: OADbConnection) => {
     weaver_api_url: conn.weaver_api_url || '',
     weaver_appid: appidConfigured ? WEAVER_APPID_MASK : '',
     weaver_default_user: conn.weaver_default_user || '',
+    oa_base_url: conn.oa_base_url || '',
+    process_url_template: conn.process_url_template || '',
   }
   showAddOADb.value = true
+}
+
+const fillWeaverE9Template = () => {
+  newOADb.value.process_url_template = '/workflow/request/ViewRequestForwardSPA.jsp?requestid={process_id}'
 }
 
 /** 点击 appid 输入框时清除掩码，便于输入新值 */
@@ -827,6 +837,10 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             <div class="oa-meta-item">
               <span class="oa-meta-label">{{ t('admin.settings.syncInterval') }}</span>
               <span class="oa-meta-value">{{ conn.sync_interval }}s</span>
+            </div>
+            <div v-if="conn.oa_base_url" class="oa-meta-item" style="grid-column: span 2;">
+              <span class="oa-meta-label">{{ t('admin.settings.oaBaseUrl') }}</span>
+              <span class="oa-meta-value" style="word-break: break-all;">{{ conn.oa_base_url }}</span>
             </div>
           </div>
 
@@ -1577,6 +1591,46 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
         </a-row>
         <a-form-item :label="t('admin.tenants.description')">
           <a-textarea v-model:value="newOADb.description" :rows="2" :placeholder="t('admin.settings.oaDbDescPlaceholder')" />
+        </a-form-item>
+
+        <!-- OA 流程跳转配置（系统级可配，供工作台直达原流程） -->
+        <a-divider style="margin: 8px 0 16px;" />
+        <div class="config-subsection-title">{{ t('dashboard.jumpToOASystem', '跳转 OA 系统') }}</div>
+        <a-alert
+          type="info"
+          show-icon
+          style="margin-bottom: 12px;"
+          :message="t('admin.settings.oaBaseUrlTip')"
+        />
+        <a-form-item :label="t('admin.settings.oaBaseUrl')">
+          <a-input
+            v-model:value="newOADb.oa_base_url"
+            size="large"
+            :placeholder="t('admin.settings.oaBaseUrlPlaceholder')"
+          />
+        </a-form-item>
+        <a-form-item>
+          <template #label>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+              <span>{{ t('admin.settings.processUrlTemplate') }}</span>
+              <a-button
+                type="link"
+                size="small"
+                style="padding: 0; height: auto;"
+                @click="fillWeaverE9Template"
+              >
+                {{ t('admin.settings.useWeaverE9DefaultTemplate') }}
+              </a-button>
+            </div>
+          </template>
+          <a-input
+            v-model:value="newOADb.process_url_template"
+            size="large"
+            :placeholder="t('admin.settings.processUrlTemplatePlaceholder')"
+          />
+          <div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px;">
+            {{ t('admin.settings.processUrlTemplateTip') }}
+          </div>
         </a-form-item>
 
         <!-- 泛微 E9 原生 API 密钥（仅 oa_type=weaver_e9 显示） -->

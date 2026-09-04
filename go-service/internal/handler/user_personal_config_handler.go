@@ -470,3 +470,19 @@ func defaultDashJSON(val datatypes.JSON, defaultVal string) datatypes.JSON {
 	}
 	return val
 }
+
+// GetOAJumpConfig 获取当前租户的 OA 流程跳转配置。
+// GET /api/tenant/settings/oa-jump-config
+func (h *UserPersonalConfigHandler) GetOAJumpConfig(c *gin.Context) {
+	tenantID, err := getTenantID(c)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "租户信息缺失")
+		return
+	}
+	cfg, err := h.userConfigService.GetOAJumpConfig(tenantID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, cfg)
+}

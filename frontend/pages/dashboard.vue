@@ -832,8 +832,12 @@ const openAuditChain = async (processId: string) => {
 }
 
 // ─── OA 跳转 ───
+const { canJumpToOA, jumpToOA: doJumpToOA, loadOAJumpConfig } = useOAJump()
 const jumpToOA = (processId: string) => {
-  message.info(t('dashboard.jumpingToOA', `Jumping to OA: ${processId}...`))
+  const ok = doJumpToOA(processId)
+  if (!ok) {
+    message.warning(t('admin.settings.oaJumpNotConfigured', '未配置 OA 跳转地址'))
+  }
 }
 
 // ─── 配置常量 ───
@@ -948,6 +952,7 @@ onMounted(async () => {
   loadProcessTypes()
   tryResumeDashboardBatch()
   checkRunningCron()
+  loadOAJumpConfig()
 })
 </script>
 
@@ -1178,7 +1183,7 @@ onMounted(async () => {
                         <HistoryOutlined />
                       </button>
                     </a-tooltip>
-                    <a-tooltip :title="t('dashboard.jumpToOA')" :mouse-enter-delay="0.5">
+                    <a-tooltip v-if="canJumpToOA" :title="t('dashboard.jumpToOA')" :mouse-enter-delay="0.5">
                       <button class="oa-jump-btn" @click.stop="jumpToOA(item.process_id)">
                         <ExportOutlined />
                       </button>
@@ -1243,7 +1248,7 @@ onMounted(async () => {
                 <a-button type="primary" size="large" @click="handleAudit(selectedProcess!)">
                   <ThunderboltOutlined /> {{ t('dashboard.startAIAudit') }}
                 </a-button>
-                <a-button size="large" @click="jumpToOA(selectedProcess!)">
+                <a-button v-if="canJumpToOA" size="large" @click="jumpToOA(selectedProcess!)">
                   <ExportOutlined /> {{ t('dashboard.jumpToOASystem') }}
                 </a-button>
               </div>
@@ -1306,7 +1311,7 @@ onMounted(async () => {
               <a-button @click="openAuditChain(currentResult.process_id)">
                 <EyeOutlined /> {{ t('dashboard.auditChain') }}
               </a-button>
-              <a-button @click="jumpToOA(currentResult.process_id)">
+              <a-button v-if="canJumpToOA" @click="jumpToOA(currentResult.process_id)">
                 <ExportOutlined /> {{ t('dashboard.jumpOA') }}
               </a-button>
               <a-button v-if="!isCompletedHistoryTab" @click="handleReAudit">

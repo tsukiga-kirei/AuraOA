@@ -50,6 +50,10 @@ type CreateOAConnectionRequest struct {
 	WeaverAPIURL      string `json:"weaver_api_url"`
 	WeaverAppID       string `json:"weaver_appid"`
 	WeaverDefaultUser string `json:"weaver_default_user"`
+
+	// OA Web 访问基准地址与流程详情跳转模板
+	OABaseURL          string `json:"oa_base_url"`
+	ProcessURLTemplate string `json:"process_url_template"`
 }
 
 // UpdateOAConnectionRequest 更新 OA 数据库连接请求（PUT /api/admin/system/oa-connections/:id）。
@@ -74,6 +78,10 @@ type UpdateOAConnectionRequest struct {
 	WeaverAPIURL      string `json:"weaver_api_url"`
 	WeaverAppID       string `json:"weaver_appid"`
 	WeaverDefaultUser string `json:"weaver_default_user"`
+
+	// OA Web 访问基准地址与流程详情跳转模板
+	OABaseURL          *string `json:"oa_base_url"`
+	ProcessURLTemplate *string `json:"process_url_template"`
 }
 
 // OAConnectionResponse OA 数据库连接详情响应。
@@ -99,6 +107,10 @@ type OAConnectionResponse struct {
 	WeaverAPIURL          string `json:"weaver_api_url"`
 	WeaverAppIDConfigured bool   `json:"weaver_appid_configured"`
 	WeaverDefaultUser     string `json:"weaver_default_user"`
+
+	// OA Web 访问基准地址与流程详情跳转模板
+	OABaseURL          string `json:"oa_base_url"`
+	ProcessURLTemplate string `json:"process_url_template"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`

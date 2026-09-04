@@ -812,8 +812,12 @@ const handleExport = async () => {
   message.success(t('archive.exportJsonReady'))
 }
 
+const { canJumpToOA, jumpToOA: doJumpToOA, loadOAJumpConfig } = useOAJump()
 const jumpToOA = (processId: string) => {
-  message.info(t('archive.jumpingToOA', processId))
+  const ok = doJumpToOA(processId)
+  if (!ok) {
+    message.warning(t('admin.settings.oaJumpNotConfigured', '未配置 OA 跳转地址'))
+  }
 }
 
 const handleCancelAudit = async (processId: string) => {
@@ -1018,6 +1022,7 @@ onMounted(async () => {
   // 3. 尝试恢复执行批量任务
   tryResumeArchiveBatch()
   checkRunningCron()
+  loadOAJumpConfig()
 })
 
 onUnmounted(() => {
@@ -1271,7 +1276,7 @@ onUnmounted(() => {
                         <HistoryOutlined />
                       </button>
                     </a-tooltip>
-                    <a-tooltip :title="t('dashboard.jumpToOA')" :mouse-enter-delay="0.5">
+                    <a-tooltip v-if="canJumpToOA" :title="t('dashboard.jumpToOA')" :mouse-enter-delay="0.5">
                       <button class="oa-jump-btn" @click.stop="jumpToOA(proc.process_id)">
                         <ExportOutlined />
                       </button>
@@ -1360,7 +1365,7 @@ onUnmounted(() => {
                 </div>
               </div>
               <div class="result-action-bar">
-                <a-button @click="jumpToOA(selectedProcess.process_id)">
+                <a-button v-if="canJumpToOA" @click="jumpToOA(selectedProcess.process_id)">
                   <ExportOutlined /> {{ t('dashboard.jumpOA') }}
                 </a-button>
                 <a-button type="primary" @click="handleReAudit">
@@ -1376,7 +1381,7 @@ onUnmounted(() => {
                 <a-button @click="openAuditChain(selectedProcess.process_id)">
                   <EyeOutlined /> {{ t('dashboard.auditChain') }}
                 </a-button>
-                <a-button @click="jumpToOA(selectedProcess.process_id)">
+                <a-button v-if="canJumpToOA" @click="jumpToOA(selectedProcess.process_id)">
                   <ExportOutlined /> {{ t('dashboard.jumpOA') }}
                 </a-button>
                 <a-button @click="handleReAudit">
@@ -1530,7 +1535,7 @@ onUnmounted(() => {
                 <a-button type="primary" size="large" @click="handleAudit()">
                   <ThunderboltOutlined /> {{ t('archive.startAudit') }}
                 </a-button>
-                <a-button size="large" @click="jumpToOA(selectedProcess.process_id)">
+                <a-button v-if="canJumpToOA" size="large" @click="jumpToOA(selectedProcess.process_id)">
                   <ExportOutlined /> {{ t('dashboard.jumpToOASystem') }}
                 </a-button>
               </div>

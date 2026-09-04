@@ -233,6 +233,33 @@ PUT /api/tenant/settings/dashboard-prefs
 
 ---
 
+## OA 流程跳转配置
+
+### 获取当前租户 OA 流程跳转配置
+
+```
+GET /api/tenant/settings/oa-jump-config
+```
+
+返回当前租户关联 OA 连接的跳转配置。若未关联 OA 库或未配置 Web 访问地址，则 `enabled` 为 `false`。
+
+**响应示例**：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "enabled": true,
+    "oa_base_url": "http://oa.example.com:8088",
+    "process_url_template": "/workflow/request/ViewRequestForwardSPA.jsp?requestid={process_id}",
+    "resolved_template": "http://oa.example.com:8088/workflow/request/ViewRequestForwardSPA.jsp?requestid={process_id}"
+  }
+}
+```
+
+---
+
 ## 仪表盘聚合数据
 
 ### 获取仪表盘概览

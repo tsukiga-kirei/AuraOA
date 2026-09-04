@@ -27,6 +27,8 @@ type UserPersonalConfigService struct {
 	summaryConfigRepo *repository.ProcessSummaryConfigRepo
 	orgRepo           *repository.OrgRepo
 	versions          *repository.ExecutionConfigVersionRepo
+	tenantRepo        *repository.TenantRepo
+	oaConnRepo        *repository.OAConnectionRepo
 }
 
 // NewUserPersonalConfigService 创建 UserPersonalConfigService，注入所有依赖仓储。
@@ -39,6 +41,8 @@ func NewUserPersonalConfigService(
 	summaryConfigRepo *repository.ProcessSummaryConfigRepo,
 	orgRepo *repository.OrgRepo,
 	versions *repository.ExecutionConfigVersionRepo,
+	tenantRepo *repository.TenantRepo,
+	oaConnRepo *repository.OAConnectionRepo,
 ) *UserPersonalConfigService {
 	return &UserPersonalConfigService{
 		userConfigRepo:    userConfigRepo,
@@ -49,6 +53,8 @@ func NewUserPersonalConfigService(
 		summaryConfigRepo: summaryConfigRepo,
 		orgRepo:           orgRepo,
 		versions:          versions,
+		tenantRepo:        tenantRepo,
+		oaConnRepo:        oaConnRepo,
 	}
 }
 
@@ -1246,3 +1252,40 @@ func computeBaselineDiff(processType string, fromVersion, toVersion *model.Tenan
 
 	return resp, nil
 }
+
+// GetOAJumpConfig 获取当前租户关联的 OA 系统流程跳转配置。
+func (s *UserPersonalConfigService) GetOAJumpConfig(tenantID uuid.UUID) (*dto.OAJumpConfigResponse, error) {
+	resp := &dto.OAJumpConfigResponse{
+		Enabled: false,
+	}
+
+	if s.tenantRepo == nil || s.oaConnRepo == nil {
+		return resp, nil
+	}
+
+	tenant, err := s.tenantRepo.FindByID(tenantID)
+	if err != nil || tenant == nil || tenant.OADBConnectionID == nil {
+		return resp, nil
+	}
+
+	oaConn, err := s.oaConnRepo.FindByID(*tenant.OADBConnectionID)
+	if err != nil || oaConn == nil || !oaConn.Enabled {
+		return resp, nil
+	}
+
+	baseURL := strings.TrimSpace(oaConn.OABaseURL)
+	template := strings.TrimSpace(oaConn.ProcessURLTemplate)
+
+	// 若未配置 baseURL 也未配置 template，则说明未开启跳转
+	if baseURL == "" && template == "" {
+		return resp, nil
+	}
+
+	resp.Enabled = true
+	resp.OABaseURL = baseURL
+	resp.ProcessURLTemplate = template
+	resp.ResolvedTemplate = BuildOAProcessURL(baseURL, template, oaConn.OAType, "{process_id}")
+
+	return resp, nil
+}
+

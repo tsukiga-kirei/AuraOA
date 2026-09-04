@@ -31,6 +31,10 @@ type OADatabaseConnection struct {
 	WeaverAppID       string    `gorm:"column:weaver_appid;size:200;not null;default:''" json:"weaver_appid"`
 	WeaverDefaultUser string    `gorm:"size:200;not null;default:''" json:"weaver_default_user"`
 
+	// OA Web 访问基准地址与流程详情跳转模板
+	OABaseURL          string    `gorm:"size:500;not null;default:''" json:"oa_base_url"`
+	ProcessURLTemplate string    `gorm:"size:500;not null;default:''" json:"process_url_template"`
+
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
