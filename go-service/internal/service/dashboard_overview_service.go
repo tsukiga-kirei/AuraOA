@@ -21,6 +21,7 @@ import (
 type DashboardOverviewService struct {
 	auditSnapshotRepo   *repository.AuditProcessSnapshotRepo
 	archiveSnapshotRepo *repository.ArchiveProcessSnapshotRepo
+	summaryLogRepo      *repository.ProcessSummaryLogRepo
 	auditLogRepo        *repository.AuditLogRepo
 	archiveLogRepo      *repository.ArchiveLogRepo
 	cronLogRepo         *repository.CronLogRepo
@@ -37,6 +38,7 @@ type DashboardOverviewService struct {
 func NewDashboardOverviewService(
 	auditSnapshotRepo *repository.AuditProcessSnapshotRepo,
 	archiveSnapshotRepo *repository.ArchiveProcessSnapshotRepo,
+	summaryLogRepo *repository.ProcessSummaryLogRepo,
 	auditLogRepo *repository.AuditLogRepo,
 	archiveLogRepo *repository.ArchiveLogRepo,
 	cronLogRepo *repository.CronLogRepo,
@@ -51,6 +53,7 @@ func NewDashboardOverviewService(
 	return &DashboardOverviewService{
 		auditSnapshotRepo:   auditSnapshotRepo,
 		archiveSnapshotRepo: archiveSnapshotRepo,
+		summaryLogRepo:      summaryLogRepo,
 		auditLogRepo:        auditLogRepo,
 		archiveLogRepo:      archiveLogRepo,
 		cronLogRepo:         cronLogRepo,
@@ -117,6 +120,7 @@ func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole stri
 	if err != nil {
 		log.Printf("dashboard: archiveSnapshotRepo.CountThisWeek error: %v", err)
 	}
+	summaryWeek, _ := s.summaryLogRepo.CountThisWeek(c, userScope)
 	cronWeek, err := s.cronLogRepo.CountThisWeek(c, userScope)
 	if err != nil {
 		log.Printf("dashboard: cronLogRepo.CountThisWeek error: %v", err)
@@ -124,15 +128,17 @@ func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole stri
 	out.WeeklyOverview = &dto.WeeklyOverviewData{
 		AuditCount:   auditWeek,
 		ArchiveCount: archiveWeek,
+		SummaryCount: summaryWeek,
 		CronCount:    cronWeek,
-		Total:        auditWeek + archiveWeek + cronWeek,
+		Total:        auditWeek + archiveWeek + summaryWeek + cronWeek,
 	}
 
 	// ── 审核趋势（堆叠柱状图）──
 	auditTrend, _ := s.auditSnapshotRepo.WeeklyTrendByDay(c, userScope)
 	cronTrend, _ := s.cronLogRepo.WeeklyTrendByDay(c, userScope)
 	archiveTrend, _ := s.archiveSnapshotRepo.WeeklyTrendByDay(c, userScope)
-	out.WeeklyTrend = mergeWeeklyTrend(auditTrend, cronTrend, archiveTrend)
+	summaryTrend, _ := s.summaryLogRepo.WeeklyTrendByDay(c, userScope)
+	out.WeeklyTrend = mergeWeeklyTrend(auditTrend, cronTrend, archiveTrend, summaryTrend)
 
 	// ── 最近动态（前 10 条，带详细标注）──
 	out.RecentActivity = s.buildEnrichedActivity(c, userScope, viewerUsername, 10)
@@ -184,8 +190,8 @@ func (s *DashboardOverviewService) BuildPlatformOverview() (*dto.PlatformDashboa
 
 // ── 辅助方法 ──────────────────────────────────────────────────────────────
 
-// mergeWeeklyTrend 合并三个功能的每日数据为堆叠柱状图格式。
-func mergeWeeklyTrend(audit, cron, archive []repository.DayCount) []dto.WeeklyTrendDayData {
+// mergeWeeklyTrend 合并四个功能的每日数据为堆叠柱状图格式。
+func mergeWeeklyTrend(audit, cron, archive, summary []repository.DayCount) []dto.WeeklyTrendDayData {
 	dateMap := make(map[string]*dto.WeeklyTrendDayData)
 	var dates []string
 
@@ -209,6 +215,13 @@ func mergeWeeklyTrend(audit, cron, archive []repository.DayCount) []dto.WeeklyTr
 			dates = append(dates, d.Date)
 		}
 		dateMap[d.Date].ArchiveCount = d.Count
+	}
+	for _, d := range summary {
+		if _, ok := dateMap[d.Date]; !ok {
+			dateMap[d.Date] = &dto.WeeklyTrendDayData{Date: d.Date}
+			dates = append(dates, d.Date)
+		}
+		dateMap[d.Date].SummaryCount = d.Count
 	}
 
 	sort.Strings(dates)
@@ -246,6 +259,7 @@ func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userSco
 	if err != nil {
 		log.Printf("dashboard: archiveSnapshotRepo.RecentEnriched error: %v", err)
 	}
+	summaryRows, _ := s.summaryLogRepo.RecentEnriched(c, limit, userScope)
 	// 定时任务日志
 	tid, _ := tenantUUIDFromContext(c)
 	cronRows, err := s.cronLogRepo.RecentEnriched(tid, limit, userScope)
@@ -279,6 +293,15 @@ func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userSco
 				CreatedAt:       apptime.FormatRFC3339(a.CreatedAt),
 				Compliance:      a.Compliance,
 				ComplianceScore: a.ComplianceScore,
+			},
+		})
+	}
+	for _, row := range summaryRows {
+		buf = append(buf, enrichedSort{
+			at: row.CreatedAt,
+			item: dto.ActivityItemEnriched{
+				ID: "s-" + row.ID.String(), Kind: "summary", Title: row.Title,
+				UserName: row.UserName, CreatedAt: apptime.FormatRFC3339(row.CreatedAt), BlockCount: row.BlockCount,
 			},
 		})
 	}

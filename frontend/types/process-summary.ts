@@ -62,5 +62,38 @@ export interface SummaryResult {
   parse_error?: string
   raw_content?: string
   error_message?: string
-	config_version_no?: number
+  config_version_no?: number
+}
+
+export interface SummaryWorkbenchProcessItem {
+  process_id: string
+  title: string
+  applicant: string
+  department: string
+  process_type: string
+  process_type_label: string
+  current_node: string
+  submit_time: string
+  source: 'todo' | 'archived'
+  has_summary: boolean
+  summary_status: string
+  summary_result?: SummaryResult | null
+  summary_updated_at?: string
+  running_job_id?: string
+  visible_block_ids?: string[]
+}
+
+export interface SummaryWorkbenchListResponse {
+  items: SummaryWorkbenchProcessItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface SummaryWorkbenchStats {
+  total_count: number
+  summarized_count: number
+  pending_count: number
+  running_count: number
+  failed_count: number
 }

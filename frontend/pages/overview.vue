@@ -31,7 +31,7 @@ definePageMeta({ middleware: 'auth' })
 
 // 概览页空数据占位，避免模板渲染时出现 undefined 错误
 const EMPTY_OVERVIEW: DashboardOverview = {
-  weekly_overview: { total: 0, audit_count: 0, archive_count: 0, cron_count: 0 },
+  weekly_overview: { total: 0, audit_count: 0, archive_count: 0, summary_count: 0, cron_count: 0 },
   weekly_trend: [],
   recent_activity: [],
 }
@@ -199,6 +199,7 @@ const formatNum = (n: number) => n >= 10000 ? (n / 1000).toFixed(1) + 'K' : n.to
 const activityKindColor: Record<string, string> = {
   audit: 'var(--color-primary)',
   archive: 'var(--color-success)',
+  summary: 'var(--color-warning)',
   cron: 'var(--color-accent)',
 }
 
@@ -207,6 +208,7 @@ function kindLabel(kind: string) {
   switch (kind) {
     case 'audit': return t('overview.activity.audit')
     case 'archive': return t('overview.activity.archive')
+    case 'summary': return t('overview.activity.summary')
     case 'cron': return t('overview.activity.cron')
     default: return kind
   }
@@ -234,6 +236,7 @@ const trendSeries = computed(() => [
   { name: t('overview.auditWorkbench'), data: dash.value.weekly_trend.map(d => d.audit_count), color: chartColors.value.primary },
   { name: t('overview.cronTasks'), data: dash.value.weekly_trend.map(d => d.cron_count), color: chartColors.value.accent },
   { name: t('overview.archiveReview'), data: dash.value.weekly_trend.map(d => d.archive_count), color: chartColors.value.success },
+  { name: t('overview.processSummary'), data: dash.value.weekly_trend.map(d => d.summary_count), color: chartColors.value.warning },
 ])
 
 // 部门分布图的标签配置
@@ -336,6 +339,10 @@ function tokenPct(used: number, quota: number) {
             <div class="wo-item">
               <span class="wo-num" style="color: var(--color-success);">{{ dash.weekly_overview.archive_count }}</span>
               <span class="wo-label">{{ t('overview.archiveReview') }}</span>
+            </div>
+            <div class="wo-item">
+              <span class="wo-num" style="color: var(--color-warning);">{{ dash.weekly_overview.summary_count }}</span>
+              <span class="wo-label">{{ t('overview.processSummary') }}</span>
             </div>
             <div class="wo-item">
               <span class="wo-num" style="color: var(--color-accent);">{{ dash.weekly_overview.cron_count }}</span>
@@ -460,6 +467,9 @@ function tokenPct(used: number, quota: number) {
                 'activity-tag--partial': a.compliance === 'partially_compliant',
               }">
                 {{ t(`overview.compliance.${a.compliance}`) }} · {{ a.compliance_score }}{{ t('overview.scoreUnit') }}
+              </span>
+              <span v-if="a.kind === 'summary'" class="activity-tag activity-tag--summary">
+                {{ t('overview.summaryBlocks', [a.block_count ?? 0]) }}
               </span>
               <span v-if="a.kind === 'cron' && a.cron_status" class="activity-tag" :class="a.cron_status === 'failed' ? 'activity-tag--cron-fail' : 'activity-tag--cron'">
                 {{ t(`overview.cronStatus.${a.cron_status}`) }} · {{ a.task_label }}
@@ -803,6 +813,7 @@ function tokenPct(used: number, quota: number) {
 .activity-tag--compliant { color: var(--color-success); background: var(--color-success-bg); }
 .activity-tag--non-compliant { color: var(--color-danger); background: var(--color-danger-bg); }
 .activity-tag--partial { color: var(--color-warning); background: var(--color-warning-bg); }
+.activity-tag--summary { color: var(--color-warning); background: var(--color-warning-bg); }
 .activity-tag--cron { color: var(--color-accent); background: rgba(6,182,212,0.1); }
 .activity-tag--cron-fail { color: var(--color-danger); background: var(--color-danger-bg); }
 .activity-meta { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }

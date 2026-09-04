@@ -2,7 +2,7 @@ package service
 
 import (
 	"encoding/json"
-	"time"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -11,6 +11,7 @@ import (
 
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	"auraoa/go-service/internal/repository"
 )
@@ -22,6 +23,7 @@ type UserPersonalConfigService struct {
 	auditRuleRepo     *repository.AuditRuleRepo
 	archiveConfigRepo *repository.ProcessArchiveConfigRepo
 	archiveRuleRepo   *repository.ArchiveRuleRepo
+	summaryConfigRepo *repository.ProcessSummaryConfigRepo
 	orgRepo           *repository.OrgRepo
 	versions          *repository.ExecutionConfigVersionRepo
 }
@@ -33,6 +35,7 @@ func NewUserPersonalConfigService(
 	auditRuleRepo *repository.AuditRuleRepo,
 	archiveConfigRepo *repository.ProcessArchiveConfigRepo,
 	archiveRuleRepo *repository.ArchiveRuleRepo,
+	summaryConfigRepo *repository.ProcessSummaryConfigRepo,
 	orgRepo *repository.OrgRepo,
 	versions *repository.ExecutionConfigVersionRepo,
 ) *UserPersonalConfigService {
@@ -42,6 +45,7 @@ func NewUserPersonalConfigService(
 		auditRuleRepo:     auditRuleRepo,
 		archiveConfigRepo: archiveConfigRepo,
 		archiveRuleRepo:   archiveRuleRepo,
+		summaryConfigRepo: summaryConfigRepo,
 		orgRepo:           orgRepo,
 		versions:          versions,
 	}
@@ -316,16 +320,18 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 		TenantID:     tenantID,
 		UserID:       userID,
 		AuditDetails: datatypes.JSON(auditDetailsJSON),
-		UpdatedAt:    time.Now(),
+		UpdatedAt:    apptime.Now(),
 	}
 
 	if userCfg != nil {
 		cfg.ID = userCfg.ID
 		cfg.CronDetails = userCfg.CronDetails
 		cfg.ArchiveDetails = userCfg.ArchiveDetails
+		cfg.SummaryDetails = userCfg.SummaryDetails
 	} else {
 		cfg.CronDetails = datatypes.JSON([]byte("{}"))
 		cfg.ArchiveDetails = datatypes.JSON([]byte("[]"))
+		cfg.SummaryDetails = datatypes.JSON([]byte("[]"))
 	}
 
 	if err := s.userConfigRepo.Upsert(cfg); err != nil {
@@ -531,12 +537,14 @@ func (s *UserPersonalConfigService) UpdateCronPrefs(c *gin.Context, userID uuid.
 		AuditDetails:   datatypes.JSON([]byte("[]")),
 		CronDetails:    datatypes.JSON(cronJSON),
 		ArchiveDetails: datatypes.JSON([]byte("[]")),
-		UpdatedAt:      time.Now(),
+		SummaryDetails: datatypes.JSON([]byte("[]")),
+		UpdatedAt:      apptime.Now(),
 	}
 	if userCfg != nil {
 		cfg.ID = userCfg.ID
 		cfg.AuditDetails = userCfg.AuditDetails
 		cfg.ArchiveDetails = userCfg.ArchiveDetails
+		cfg.SummaryDetails = userCfg.SummaryDetails
 	}
 	return s.userConfigRepo.Upsert(cfg)
 }
@@ -864,17 +872,160 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 		TenantID:       tenantID,
 		UserID:         userID,
 		ArchiveDetails: datatypes.JSON(archiveJSON),
-		UpdatedAt:      time.Now(),
+		UpdatedAt:      apptime.Now(),
 	}
 	if userCfg != nil {
 		cfg.ID = userCfg.ID
 		cfg.AuditDetails = userCfg.AuditDetails
 		cfg.CronDetails = userCfg.CronDetails
+		cfg.SummaryDetails = userCfg.SummaryDetails
 	} else {
 		cfg.AuditDetails = datatypes.JSON([]byte("[]"))
 		cfg.CronDetails = datatypes.JSON([]byte("{}"))
+		cfg.SummaryDetails = datatypes.JSON([]byte("[]"))
 	}
 	return s.userConfigRepo.Upsert(cfg)
+}
+
+// GetAccessibleSummaryConfigs 获取当前用户可用的流程总结配置列表。
+// 流程数据的实际可见性仍由工作台调用 OA 用户待办与归档列表决定。
+func (s *UserPersonalConfigService) GetAccessibleSummaryConfigs(c *gin.Context) ([]dto.ProcessListItem, error) {
+	configs, err := s.summaryConfigRepo.ListByTenant(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "读取流程总结配置失败")
+	}
+	result := make([]dto.ProcessListItem, 0, len(configs))
+	for _, cfg := range configs {
+		if cfg.Status != "active" {
+			continue
+		}
+		result = append(result, dto.ProcessListItem{
+			ProcessType: cfg.ProcessType, ProcessTypeLabel: cfg.ProcessTypeLabel, ConfigID: cfg.ID.String(),
+		})
+	}
+	return result, nil
+}
+
+// GetFullSummaryPreference 返回租户定义的总结块与当前用户展示偏好的合并视图。
+func (s *UserPersonalConfigService) GetFullSummaryPreference(c *gin.Context, userID uuid.UUID, processType string) (*dto.FullSummaryPreferenceResponse, error) {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+	config, err := s.summaryConfigRepo.GetByProcessType(c, processType)
+	if err != nil || config.Status != "active" {
+		return nil, newServiceError(errcode.ErrConfigNotFound, "流程总结配置不存在或已停用")
+	}
+
+	visibleIDs := map[string]bool{}
+	hasPreference := false
+	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "读取个人流程总结偏好失败")
+	}
+	if userCfg != nil {
+		var details []model.SummaryDetailItem
+		if json.Unmarshal(userCfg.SummaryDetails, &details) == nil {
+			for _, detail := range details {
+				if detail.ProcessType == processType || (detail.ConfigID != uuid.Nil && detail.ConfigID == config.ID) {
+					hasPreference = true
+					for _, id := range detail.VisibleBlockIDs {
+						visibleIDs[id] = true
+					}
+					break
+				}
+			}
+		}
+	}
+
+	blocks := parseSummaryBlocks(config.SummaryBlocks)
+	resultBlocks := make([]dto.SummaryBlockPreferenceDTO, 0, len(blocks))
+	for _, block := range blocks {
+		if !block.Enabled {
+			continue
+		}
+		resultBlocks = append(resultBlocks, dto.SummaryBlockPreferenceDTO{
+			ID: block.ID, Title: block.Title, Visible: !hasPreference || visibleIDs[block.ID], EnableThinking: block.EnableThinking,
+		})
+	}
+	return &dto.FullSummaryPreferenceResponse{
+		ProcessType: config.ProcessType, ProcessTypeLabel: config.ProcessTypeLabel,
+		ConfigID: config.ID.String(), Blocks: resultBlocks,
+	}, nil
+}
+
+// UpdateSummaryPreference 更新用户在流程总结工作台中的分块展示偏好。
+func (s *UserPersonalConfigService) UpdateSummaryPreference(c *gin.Context, userID uuid.UUID, processType string, req *dto.UpdateSummaryPreferenceRequest) error {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+	config, err := s.summaryConfigRepo.GetByProcessType(c, processType)
+	if err != nil || config.Status != "active" {
+		return newServiceError(errcode.ErrConfigNotFound, "流程总结配置不存在或已停用")
+	}
+	configID, err := uuid.Parse(req.ConfigID)
+	if err != nil || configID != config.ID {
+		return newServiceError(errcode.ErrParamValidation, "流程总结配置与流程类型不匹配")
+	}
+	if len(req.VisibleBlockIDs) == 0 {
+		return newServiceError(errcode.ErrParamValidation, "至少保留一个可见总结块")
+	}
+	validIDs := make(map[string]bool)
+	for _, block := range parseSummaryBlocks(config.SummaryBlocks) {
+		if block.Enabled {
+			validIDs[block.ID] = true
+		}
+	}
+	seen := make(map[string]bool)
+	visibleIDs := make([]string, 0, len(req.VisibleBlockIDs))
+	for _, id := range req.VisibleBlockIDs {
+		id = strings.TrimSpace(id)
+		if id == "" || !validIDs[id] {
+			return newServiceError(errcode.ErrParamValidation, "包含无效或已停用的总结块")
+		}
+		if !seen[id] {
+			seen[id] = true
+			visibleIDs = append(visibleIDs, id)
+		}
+	}
+
+	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
+	if err != nil {
+		return newServiceError(errcode.ErrDatabase, "读取个人流程总结偏好失败")
+	}
+	details := []model.SummaryDetailItem{}
+	if userCfg != nil {
+		_ = json.Unmarshal(userCfg.SummaryDetails, &details)
+	}
+	newDetail := model.SummaryDetailItem{ConfigID: config.ID, ProcessType: processType, VisibleBlockIDs: visibleIDs}
+	found := false
+	for i, detail := range details {
+		if detail.ProcessType == processType || (detail.ConfigID != uuid.Nil && detail.ConfigID == config.ID) {
+			details[i] = newDetail
+			found = true
+			break
+		}
+	}
+	if !found {
+		details = append(details, newDetail)
+	}
+	raw, _ := json.Marshal(details)
+	cfg := &model.UserPersonalConfig{
+		ID: uuid.New(), TenantID: tenantID, UserID: userID,
+		AuditDetails: datatypes.JSON([]byte("[]")), CronDetails: datatypes.JSON([]byte("{}")),
+		ArchiveDetails: datatypes.JSON([]byte("[]")), SummaryDetails: datatypes.JSON(raw), UpdatedAt: apptime.Now(),
+	}
+	if userCfg != nil {
+		cfg.ID = userCfg.ID
+		cfg.AuditDetails = userCfg.AuditDetails
+		cfg.CronDetails = userCfg.CronDetails
+		cfg.ArchiveDetails = userCfg.ArchiveDetails
+	}
+	if err := s.userConfigRepo.Upsert(cfg); err != nil {
+		return newServiceError(errcode.ErrDatabase, "保存个人流程总结偏好失败")
+	}
+	return nil
 }
 
 // sliceContains 检查字符串切片是否包含指定值。

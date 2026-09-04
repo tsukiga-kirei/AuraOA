@@ -726,6 +726,7 @@ func (s *AuthService) getMenuFromOrgRoles(userID string, tenantID string, active
 		"/dashboard":                 {key: "dashboard", label: "审核工作台"},
 		"/cron":                      {key: "cron", label: "定时任务"},
 		"/archive":                   {key: "archive", label: "归档复盘"},
+		"/summary":                   {key: "summary", label: "流程总结"},
 		"/settings":                  {key: "settings", label: "个人设置"},
 		"/admin/tenant/rules":        {key: "rules-management", label: "规则管理"},
 		"/admin/tenant/org":          {key: "org-management", label: "组织管理"},

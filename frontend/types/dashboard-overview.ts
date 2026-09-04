@@ -7,6 +7,7 @@ export interface WeeklyOverviewData {
   total: number
   audit_count: number
   archive_count: number
+  summary_count: number
   cron_count: number
 }
 
@@ -23,12 +24,13 @@ export interface WeeklyTrendDayData {
   audit_count: number
   cron_count: number
   archive_count: number
+  summary_count: number
 }
 
 /** 最近动态（增强版，带详细标注） */
 export interface ActivityItemEnriched {
   id: string
-  kind: 'audit' | 'archive' | 'cron'
+  kind: 'audit' | 'archive' | 'summary' | 'cron'
   title: string
   user_name: string
   created_at: string
@@ -38,6 +40,8 @@ export interface ActivityItemEnriched {
   // 归档复盘标注
   compliance?: string
   compliance_score?: number
+  // 流程总结标注
+  block_count?: number
   // 定时任务标注
   cron_status?: string
   task_label?: string

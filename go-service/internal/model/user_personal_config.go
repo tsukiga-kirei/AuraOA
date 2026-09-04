@@ -15,6 +15,7 @@ type UserPersonalConfig struct {
 	AuditDetails   datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"audit_details"`
 	CronDetails    datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"cron_details"`
 	ArchiveDetails datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"archive_details"`
+	SummaryDetails datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"summary_details"`
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
@@ -80,4 +81,12 @@ type ArchiveDetailItem struct {
 	FieldConfig       FieldConfig  `json:"field_config"`
 	RuleConfig        RuleConfig   `json:"rule_config"`
 	AIConfig          UserAIConfig `json:"ai_config"`
+}
+
+// SummaryDetailItem 用户流程总结工作台的分块展示偏好。
+// 总结提示词、字段范围和是否启用仍由租户配置统一决定，个人偏好只影响前台展示。
+type SummaryDetailItem struct {
+	ConfigID        uuid.UUID `json:"config_id"`
+	ProcessType     string    `json:"process_type"`
+	VisibleBlockIDs []string  `json:"visible_block_ids"`
 }

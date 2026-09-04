@@ -22,6 +22,7 @@ import {
   SwapRightOutlined,
   CloseOutlined,
   LoadingOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { Locale } from '~/composables/useI18n'
@@ -31,6 +32,7 @@ import type {
   TenantField,
   AccessibleArchiveConfig,
   FullArchiveConfig,
+  FullSummaryPreference,
   UpdatePersonalConfigRequest,
 } from '~/types/user-config'
 import { usePagination } from '~/composables/usePagination'
@@ -60,6 +62,7 @@ onMounted(async () => {
   loadProcessList()
   loadCronPrefs()
   loadArchiveList()
+  loadSummaryList()
 })
 
 const currentRoleType = computed(() => activeRole.value?.role || userRole.value)
@@ -160,6 +163,7 @@ const visibleTabs = computed(() => {
   return [
     { key: 'profile', label: t('settings.tab.profile'), icon: UserOutlined, show: true },
     { key: 'workbench', label: t('settings.tab.workbench'), icon: DashboardOutlined, show: canUseFrontendPrefs && perms.includes('/dashboard') },
+    { key: 'summary', label: t('settings.tab.summary'), icon: FileTextOutlined, show: canUseFrontendPrefs && perms.includes('/summary') },
     { key: 'cron', label: t('settings.tab.cron'), icon: ClockCircleOutlined, show: canUseFrontendPrefs && perms.includes('/cron') },
     { key: 'archive', label: t('settings.tab.archive'), icon: FolderOpenOutlined, show: canUseFrontendPrefs && perms.includes('/archive') },
   ].filter(tab => tab.show)
@@ -754,6 +758,59 @@ const handleSaveArchive = async () => {
     message.success(t('settings.archive.saveSuccess'))
   }
   catch (e: any) { message.error(e?.message || t('settings.archive.saveFailed')) }
+  finally { saving.value = false }
+}
+
+// =====================================================================
+// ===== 流程总结 Tab =====
+// =====================================================================
+const summaryLoading = ref(false)
+const summaryList = ref<ProcessListItem[]>([])
+const selectedSummaryProcessType = ref('')
+const fullSummaryPreference = ref<FullSummaryPreference | null>(null)
+
+const loadSummaryList = async () => {
+  summaryLoading.value = true
+  try {
+    summaryList.value = await settingsApi.listSummaryConfigs()
+    if (summaryList.value.length > 0) {
+      selectedSummaryProcessType.value = summaryList.value[0].process_type
+      await loadFullSummaryPreference(selectedSummaryProcessType.value)
+    }
+  }
+  catch (e) { console.error('[settings] 加载流程总结配置失败', e) }
+  finally { summaryLoading.value = false }
+}
+
+const loadFullSummaryPreference = async (processType: string) => {
+  summaryLoading.value = true
+  try {
+    fullSummaryPreference.value = await settingsApi.getFullSummaryPreference(processType)
+  }
+  catch (e) { console.error('[settings] 加载流程总结偏好失败', e) }
+  finally { summaryLoading.value = false }
+}
+
+const selectSummaryProcess = async (processType: string) => {
+  selectedSummaryProcessType.value = processType
+  await loadFullSummaryPreference(processType)
+}
+
+const handleSaveSummary = async () => {
+  const preference = fullSummaryPreference.value
+  if (!preference) return
+  const visibleIds = preference.blocks.filter(block => block.visible).map(block => block.id)
+  if (visibleIds.length === 0) {
+    message.warning(t('settings.summary.keepOneBlock'))
+    return
+  }
+  saving.value = true
+  try {
+    await settingsApi.updateSummaryPreference(preference.process_type, preference.config_id, visibleIds)
+    await loadFullSummaryPreference(preference.process_type)
+    message.success(t('settings.summary.saveSuccess'))
+  }
+  catch (e: any) { message.error(e?.message || t('settings.summary.saveFailed')) }
   finally { saving.value = false }
 }
 </script>
@@ -1664,6 +1721,57 @@ const handleSaveArchive = async () => {
       </div>
     </div>
 
+    <!-- 流程总结展示偏好 -->
+    <div v-if="activeTab === 'summary'" class="tab-content">
+      <div v-if="summaryLoading && !summaryList.length" class="loading-placeholder">
+        <a-spin :tip="t('common.loading')" />
+      </div>
+      <a-empty v-else-if="!summaryList.length" :description="t('settings.summary.noProcess')" />
+      <div v-else class="workbench-layout">
+        <div class="process-list-panel">
+          <div class="process-list-header"><FileTextOutlined /> {{ t('settings.summary.processes') }}</div>
+          <div
+            v-for="process in summaryList"
+            :key="process.config_id"
+            class="process-list-item"
+            :class="{ 'process-list-item--active': selectedSummaryProcessType === process.process_type }"
+            @click="selectSummaryProcess(process.process_type)"
+          >
+            <div class="process-list-item-name">{{ process.process_type_label || process.process_type }}</div>
+            <div class="process-list-item-path">{{ process.process_type }}</div>
+          </div>
+        </div>
+
+        <div v-if="fullSummaryPreference && !summaryLoading" class="process-config-panel">
+          <h3 class="config-title">
+            {{ fullSummaryPreference.process_type_label || fullSummaryPreference.process_type }} — {{ t('settings.summary.personalConfig') }}
+          </h3>
+          <p class="config-section-desc">{{ t('settings.summary.description') }}</p>
+
+          <div class="summary-pref-list">
+            <label v-for="block in fullSummaryPreference.blocks" :key="block.id" class="summary-pref-item">
+              <a-checkbox v-model:checked="block.visible" />
+              <div class="summary-pref-content">
+                <div class="summary-pref-title">{{ block.title }}</div>
+                <div class="summary-pref-meta">
+                  {{ block.enable_thinking ? t('settings.summary.deepThinking') : t('settings.summary.standardGeneration') }}
+                </div>
+              </div>
+            </label>
+          </div>
+
+          <div class="settings-actions">
+            <a-button type="primary" size="large" :loading="saving" @click="handleSaveSummary">
+              <SaveOutlined v-if="!saving" /> {{ t('common.save') }}
+            </a-button>
+          </div>
+        </div>
+        <div v-else-if="summaryLoading" class="process-config-panel loading-placeholder">
+          <a-spin :tip="t('common.loading')" />
+        </div>
+      </div>
+    </div>
+
     <!-- 归档字段选择器 Modal -->
     <a-modal v-model:open="showArchiveFieldPicker" :title="t('settings.archive.fieldPickerTitle')" :width="720" :footer="null">
        <div class="field-picker-modal">
@@ -1875,6 +1983,15 @@ const handleSaveArchive = async () => {
 .section-nav-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
 
 .config-section { margin-bottom: 20px; }
+.summary-pref-list { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+.summary-pref-item {
+  display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;
+  background: var(--color-bg-page); border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md); cursor: pointer;
+}
+.summary-pref-content { min-width: 0; }
+.summary-pref-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
+.summary-pref-meta { margin-top: 3px; font-size: 12px; color: var(--color-text-tertiary); }
 .section-header-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .config-section-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin: 0; }
 .config-section-desc { font-size: 12px; color: var(--color-text-tertiary); margin: 0 0 12px; }

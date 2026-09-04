@@ -259,6 +259,7 @@ const ALL_PAGES_CONFIG: PageConfig[] = [
   { path: '/dashboard', label: t('admin.org.page.dashboard'), group: 'business' },
   { path: '/cron', label: t('admin.org.page.cron'), group: 'business', dependsOn: ['/dashboard', '/archive'] },
   { path: '/archive', label: t('admin.org.page.archive'), group: 'business' },
+  { path: '/summary', label: t('admin.org.page.summary'), group: 'business' },
   { path: '/settings', label: t('admin.org.page.settings'), group: 'common', alwaysOn: true },
   { path: '/admin/tenant/rules', label: t('admin.org.page.tenantConfig'), group: 'admin' },
   { path: '/admin/tenant/org', label: t('admin.org.page.tenantOrg'), group: 'admin' },
@@ -319,7 +320,7 @@ const isPermDisabled = (path: string) => {
 
 const openAddRole = () => {
   editingRole.value = null
-  roleForm.value = { name: '', description: '', page_permissions: ['/overview', '/dashboard', '/settings'] }
+  roleForm.value = { name: '', description: '', page_permissions: ['/overview', '/dashboard', '/summary', '/settings'] }
   showRoleModal.value = true
 }
 

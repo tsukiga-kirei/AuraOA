@@ -28,16 +28,17 @@ type DashboardOverviewResponse struct {
 
 // WeeklyOverviewData 本周概览（周一 00:00 至当前）。
 type WeeklyOverviewData struct {
-	Total        int64 `json:"total"`         // 三项之和
+	Total        int64 `json:"total"`         // 四项之和
 	AuditCount   int64 `json:"audit_count"`   // 审核工作台快照本周条数
 	ArchiveCount int64 `json:"archive_count"` // 归档复盘快照本周条数
+	SummaryCount int64 `json:"summary_count"` // 流程总结工作台本周完成次数
 	CronCount    int64 `json:"cron_count"`    // 定时任务本周执行次数
 }
 
 // PendingTasksData 待办任务（区分类型）。
 type PendingTasksData struct {
 	AuditPending   int64 `json:"audit_pending"`   // 审核工作台待办
-	ArchivePending int64 `json:"archive_pending"`  // 归档复盘待办
+	ArchivePending int64 `json:"archive_pending"` // 归档复盘待办
 	Total          int64 `json:"total"`
 }
 
@@ -47,12 +48,13 @@ type WeeklyTrendDayData struct {
 	AuditCount   int64  `json:"audit_count"`   // 审核工作台
 	CronCount    int64  `json:"cron_count"`    // 定时任务
 	ArchiveCount int64  `json:"archive_count"` // 归档复盘
+	SummaryCount int64  `json:"summary_count"` // 流程总结
 }
 
 // ActivityItemEnriched 带详细标注的动态条目。
 type ActivityItemEnriched struct {
 	ID        string `json:"id"`
-	Kind      string `json:"kind"`       // audit | archive | cron
+	Kind      string `json:"kind"` // audit | archive | summary | cron
 	Title     string `json:"title"`
 	UserName  string `json:"user_name"`
 	CreatedAt string `json:"created_at"` // RFC3339
@@ -64,6 +66,9 @@ type ActivityItemEnriched struct {
 	// 归档复盘标注
 	Compliance      string `json:"compliance,omitempty"`
 	ComplianceScore int    `json:"compliance_score,omitempty"`
+
+	// 流程总结标注
+	BlockCount int `json:"block_count,omitempty"`
 
 	// 定时任务标注
 	CronStatus string `json:"cron_status,omitempty"` // success/failed/running

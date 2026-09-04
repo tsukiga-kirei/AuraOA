@@ -170,6 +170,30 @@ type UpdateArchiveConfigRequest struct {
 	AIConfig          UserAIConfigDTO    `json:"ai_config"`
 }
 
+// ===================== 流程总结个人展示偏好 =====================
+
+// SummaryBlockPreferenceDTO 流程总结块的个人展示状态。
+type SummaryBlockPreferenceDTO struct {
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	Visible        bool   `json:"visible"`
+	EnableThinking bool   `json:"enable_thinking"`
+}
+
+// FullSummaryPreferenceResponse 流程总结租户配置与个人展示偏好的合并视图。
+type FullSummaryPreferenceResponse struct {
+	ProcessType      string                      `json:"process_type"`
+	ProcessTypeLabel string                      `json:"process_type_label"`
+	ConfigID         string                      `json:"config_id"`
+	Blocks           []SummaryBlockPreferenceDTO `json:"blocks"`
+}
+
+// UpdateSummaryPreferenceRequest 更新流程总结个人展示偏好。
+type UpdateSummaryPreferenceRequest struct {
+	ConfigID        string   `json:"config_id" binding:"required"`
+	VisibleBlockIDs []string `json:"visible_block_ids" binding:"required,min=1"`
+}
+
 // ===================== 仪表板偏好 DTO =====================
 
 // UpdateDashboardPrefRequest 更新仪表板偏好请求
