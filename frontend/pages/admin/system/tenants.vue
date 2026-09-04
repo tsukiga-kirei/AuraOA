@@ -1157,6 +1157,10 @@ const confirmDeleteTenant = async () => {
                   <span class="oadb-meta-label">{{ t('admin.settings.syncInterval') }}</span>
                   <span class="oadb-meta-value">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.sync_interval }}s</span>
                 </div>
+                <div v-if="getOADbInfo(selectedTenant.oa_db_connection_id)!.oa_base_url" class="oadb-meta-item" style="grid-column: span 2;">
+                  <span class="oadb-meta-label">{{ t('admin.settings.oaBaseUrl') }}</span>
+                  <span class="oadb-meta-value" style="word-break: break-all;">{{ getOADbInfo(selectedTenant.oa_db_connection_id)!.oa_base_url }}</span>
+                </div>
               </div>
               <div v-if="getOADbInfo(selectedTenant.oa_db_connection_id)!.description" class="oadb-detail-desc">
                 {{ getOADbInfo(selectedTenant.oa_db_connection_id)!.description }}

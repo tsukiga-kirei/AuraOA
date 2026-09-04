@@ -335,6 +335,9 @@ func SetupRouter(
 		tenantSettings.GET("/dashboard-prefs", userConfigHandler.GetDashboardPrefs)
 		tenantSettings.PUT("/dashboard-prefs", userConfigHandler.UpdateDashboardPrefs)
 
+		// OA 跳转配置
+		tenantSettings.GET("/oa-jump-config", userConfigHandler.GetOAJumpConfig)
+
 		// 仪表盘聚合数据
 		tenantSettings.GET("/dashboard-overview", dashboardOverviewHandler.GetOverview)
 	}

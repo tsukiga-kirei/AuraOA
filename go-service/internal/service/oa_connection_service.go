@@ -77,6 +77,8 @@ func (s *OAConnectionService) Create(req *dto.CreateOAConnectionRequest) (*dto.O
 		WeaverAPIURL:      req.WeaverAPIURL,
 		WeaverAppID:       req.WeaverAppID,
 		WeaverDefaultUser: req.WeaverDefaultUser,
+		OABaseURL:          strings.TrimSpace(req.OABaseURL),
+		ProcessURLTemplate: strings.TrimSpace(req.ProcessURLTemplate),
 	}
 
 	// 加密密码
@@ -217,6 +219,12 @@ func (s *OAConnectionService) Update(id uuid.UUID, req *dto.UpdateOAConnectionRe
 	if req.WeaverDefaultUser != "" {
 		fields["weaver_default_user"] = req.WeaverDefaultUser
 	}
+	if req.OABaseURL != nil {
+		fields["oa_base_url"] = strings.TrimSpace(*req.OABaseURL)
+	}
+	if req.ProcessURLTemplate != nil {
+		fields["process_url_template"] = strings.TrimSpace(*req.ProcessURLTemplate)
+	}
 
 	oaType := existing.OAType
 	if req.OAType != "" {
@@ -294,9 +302,65 @@ func toOAConnectionResponse(c *model.OADatabaseConnection) dto.OAConnectionRespo
 		WeaverAPIURL:          c.WeaverAPIURL,
 		WeaverAppIDConfigured: strings.TrimSpace(c.WeaverAppID) != "",
 		WeaverDefaultUser:     c.WeaverDefaultUser,
+		OABaseURL:             c.OABaseURL,
+		ProcessURLTemplate:    c.ProcessURLTemplate,
 		CreatedAt:             c.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:             c.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+// BuildOAProcessURL 根据 OA Web 基础地址、跳转模板、OA 类型与流程 ID 拼接目标流程详情 URL。
+func BuildOAProcessURL(baseURL, template, oaType, processID string) string {
+	processID = strings.TrimSpace(processID)
+	if processID == "" {
+		return ""
+	}
+
+	baseURL = strings.TrimSpace(baseURL)
+	template = strings.TrimSpace(template)
+
+	// 如果配置了模板，先替换占位符
+	if template != "" {
+		replacer := strings.NewReplacer(
+			"{process_id}", processID,
+			"{requestid}", processID,
+			"{processId}", processID,
+			"{requestId}", processID,
+			"{PROCESS_ID}", processID,
+			"{REQUESTID}", processID,
+		)
+		target := replacer.Replace(template)
+
+		// 若已是完整 URL（包含协议），直接返回
+		if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+			return target
+		}
+
+		// 否则作为相对路径与 baseURL 拼接
+		if baseURL == "" {
+			return target
+		}
+		if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+			baseURL = "http://" + baseURL
+		}
+		baseURL = strings.TrimRight(baseURL, "/")
+		if !strings.HasPrefix(target, "/") {
+			target = "/" + target
+		}
+		return baseURL + target
+	}
+
+	// 用户未指定模板，需有 baseURL
+	if baseURL == "" {
+		return ""
+	}
+	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+		baseURL = "http://" + baseURL
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+
+	// 泛微 Ecology 9 默认规则（也作为默认缺省）
+	return baseURL + "/workflow/request/ViewRequestForwardSPA.jsp?requestid=" + processID
 }
 
 // TestConnection 根据已保存的 OA 连接 ID 测试数据库连通性，并将结果持久化到数据库。

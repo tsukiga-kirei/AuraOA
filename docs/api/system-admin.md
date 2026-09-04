@@ -152,6 +152,8 @@ POST /api/admin/system/oa-connections
 | `weaver_api_url` | string | — | 泛微附件接口 URL。填写后 `weaver_appid`、`weaver_default_user` 必填 |
 | `weaver_appid` | string | 条件 | 泛微应用 appid |
 | `weaver_default_user` | string | 条件 | 默认调用用户 loginid（ecology9 中通常为数字用户 ID） |
+| `oa_base_url` | string | — | OA 系统的 Web 访问基准域名或 URL（如 `http://oa.example.com:8088`），配置后工作台可直达原流程 |
+| `process_url_template` | string | — | 流程跳转 URL 模板，支持 `{process_id}` 或 `{requestid}` 占位符；留空且为 `weaver_e9` 时默认 `/workflow/request/ViewRequestForwardSPA.jsp?requestid={process_id}` |
 
 这里的 `driver` 是租户所连接 OA 数据库的驱动，不是 AuraOA 自身主数据库类型。
 达梦运行时驱动支持 Linux/Windows（正式 Docker 部署为 Linux），macOS 本地进程不直接连接达梦；

@@ -132,3 +132,12 @@ type RotateEmbedTokenResponse struct {
 	TokenHint   string `json:"token_hint"`
 	RotatedAt   string `json:"rotated_at"`
 }
+
+// OAJumpConfigResponse 租户 OA 流程跳转配置响应。
+type OAJumpConfigResponse struct {
+	Enabled            bool   `json:"enabled"`
+	OABaseURL          string `json:"oa_base_url"`
+	ProcessURLTemplate string `json:"process_url_template"`
+	ResolvedTemplate   string `json:"resolved_template"`
+}
+
