@@ -314,6 +314,7 @@ func SetupRouter(
 		tenantSettings.GET("/processes/:processType", userConfigHandler.GetByProcessType)
 		tenantSettings.PUT("/processes/:processType", userConfigHandler.UpdateByProcessType)
 		tenantSettings.GET("/processes/:processType/full", userConfigHandler.GetFullProcessConfig)
+		tenantSettings.GET("/processes/:processType/version-diff", userConfigHandler.GetAuditBaselineVersionDiff)
 
 		// 定时任务个人偏好（默认邮箱等）
 		tenantSettings.GET("/cron-prefs", userConfigHandler.GetCronPrefs)
@@ -323,6 +324,7 @@ func SetupRouter(
 		tenantSettings.GET("/archive-configs", userConfigHandler.GetArchiveConfigList)
 		tenantSettings.GET("/archive-configs/:processType/full", userConfigHandler.GetFullArchiveConfig)
 		tenantSettings.PUT("/archive-configs/:processType", userConfigHandler.UpdateArchiveConfig)
+		tenantSettings.GET("/archive-configs/:processType/version-diff", userConfigHandler.GetArchiveBaselineVersionDiff)
 
 		// 流程总结个人展示偏好
 		tenantSettings.GET("/summary-configs", userConfigHandler.GetSummaryConfigList)

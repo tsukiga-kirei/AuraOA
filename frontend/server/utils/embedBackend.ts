@@ -19,11 +19,21 @@ export function getEmbedBackend(event: H3Event, bodyToken = '') {
       statusMessage: '缺少嵌入访问令牌，请确认 OA 父页面已配置 embed_token',
     })
   }
+  const headers: Record<string, string> = {
+    'X-Embed-Token': token,
+  }
+  const oaUserId = String(
+    getRequestHeader(event, 'x-embed-oa-user-id')
+      || query.oa_user_id
+      || query.oa_current_user_id
+      || '',
+  ).trim()
+  if (oaUserId) {
+    headers['X-Embed-OA-User-ID'] = oaUserId
+  }
   return {
     apiBase: String(config.internalApiBase).replace(/\/$/, ''),
-    headers: {
-      'X-Embed-Token': token,
-    } as Record<string, string>,
+    headers,
   }
 }
 

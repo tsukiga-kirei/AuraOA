@@ -134,14 +134,20 @@ result=done reason=requestid_resolved resolvedProcessID=617100 clientDelayMs=12
 ### 获取嵌入上下文
 
 ```
-GET /api/embed/context?process_id=598488
+GET /api/embed/context?process_id=598488&oa_user_id=1042
 ```
 
 请求头：
 
 ```
 X-Embed-Token: <tenant embed access token>
+X-Embed-OA-User-ID: 1042 (可选，当前泛微 OA 用户 ID)
 ```
+
+支持泛微 OA 身份反查与双模审查视角：
+- 若携带 `oa_user_id` / `X-Embed-OA-User-ID`，后端通过泛微 `hrmresource` 反查对应系统用户。
+- 响应中返回 `personal_view`（含该用户的定制规则能力、个人审核结论）及 `default_perspective`（"standard" | "personal"）。
+- 若用户拥有个人定制配置且已有专属审核记录，`default_perspective` 自动设定为 `"personal"`；否则默认 `"standard"`。
 
 返回中的 `stale` / `should_auto_audit` 已按流程配置过滤。变化来源分为：
 
@@ -175,9 +181,15 @@ POST /api/embed/execute
   "process_id": "598488",
   "trigger_source": "embed_auto",
   "trigger_detail": "visible_open",
-  "use_latest_config": false
+  "use_latest_config": false,
+  "perspective": "standard",
+  "oa_user_id": "1042"
 }
 ```
+
+- `perspective`：审查视角，可选 `"standard"`（官方标准基准，默认）或 `"personal"`（当前人员的定制规则视角）。
+  - 当为 `"personal"` 时，任务使用系统内 `workbench` 队列并绑定用户 ID，生成用户专属审核快照，不污染官方公共快照。
+
 
 `use_latest_config` 默认 `false`，自动来源必须保持为 `false`。手动传 `true` 会把流程绑定升级到
 当前最终生效配置后执行；普通“重新审核”继续沿用原版本。

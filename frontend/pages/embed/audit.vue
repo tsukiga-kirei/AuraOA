@@ -43,7 +43,12 @@ const waitingParent = ref(true)
 const eventSourceStream = ref<EventSource | null>(null)
 const streamJobId = ref('')
 
+// 双模视角控制：'standard' (标准审查) | 'personal' (我的定制视角)
+const activePerspective = ref<'standard' | 'personal'>('standard')
+const userManuallySwitchedPerspective = ref(false)
+
 const processInfo = computed<EmbedProcessSummary | null>(() => context.value?.process ?? null)
+
 
 const recommendationConfig = computed(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
@@ -206,6 +211,37 @@ function createPendingResult(): AuditResult {
   }
 }
 
+function updateCurrentResultForPerspective() {
+  if (auditing.value) return
+  if (activePerspective.value === 'personal') {
+    currentResult.value = (context.value?.personal_view?.audit_result as AuditResult | null) || null
+  } else {
+    currentResult.value = (context.value?.audit_result as AuditResult | null) || null
+  }
+}
+
+const handleSwitchPerspective = (p: 'standard' | 'personal') => {
+  if (activePerspective.value === p) return
+  userManuallySwitchedPerspective.value = true
+  activePerspective.value = p
+  disconnectStream()
+  updateCurrentResultForPerspective()
+}
+
+const activeViewLastAuditAt = computed(() => {
+  if (activePerspective.value === 'personal') {
+    return context.value?.personal_view?.last_audit_at
+  }
+  return context.value?.last_audit_at
+})
+
+const activeViewStale = computed(() => {
+  if (activePerspective.value === 'personal') {
+    return false
+  }
+  return !!context.value?.stale
+})
+
 async function runAudit(trigger: 'embed_auto' | 'embed_manual', useLatestConfig = false) {
   if (!processId.value || auditing.value) return
   disconnectStream()
@@ -219,7 +255,8 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual', useLatestConfig 
         title: processInfo.value?.title,
         trigger_source: trigger,
         trigger_detail: trigger === 'embed_manual' ? 'manual' : 'visible_open',
-		use_latest_config: useLatestConfig,
+        use_latest_config: useLatestConfig,
+        perspective: activePerspective.value,
       },
       (st) => {
         mergeAuditProgress(st)
@@ -246,8 +283,11 @@ async function refreshContext(autoRun = true, preferCached = false) {
   try {
     const resp = await getContext(processId.value, preferCached)
     context.value = resp
-    if (resp.audit_result && (!auditing.value || !autoRun)) {
-      currentResult.value = resp.audit_result
+    if (!userManuallySwitchedPerspective.value && resp.default_perspective) {
+      activePerspective.value = resp.default_perspective as 'standard' | 'personal'
+    }
+    if (!auditing.value || !autoRun) {
+      updateCurrentResultForPerspective()
     }
     if (autoRun && (resp.should_auto_audit || resp.running_job_id) && !auditing.value) {
       await runAudit('embed_auto')
@@ -256,6 +296,7 @@ async function refreshContext(autoRun = true, preferCached = false) {
     pageError.value = e?.message || t('embed.loadFailed')
   }
 }
+
 
 async function bootstrap() {
   pageLoading.value = true
@@ -340,11 +381,11 @@ onBeforeUnmount(() => {
         {{ embedHeaderStatus.label }}
       </h2>
       <div
-        v-if="!isAuditingActive && context?.last_audit_at"
+        v-if="!isAuditingActive && activeViewLastAuditAt"
         class="embed-last-audit"
       >
-        {{ t('embed.lastAuditAt') }}：{{ formatLastAuditAt(context.last_audit_at) }}
-        <a-tag v-if="context.stale" color="warning" style="margin-left: 8px;">{{ t('embed.staleTag') }}</a-tag>
+        {{ t('embed.lastAuditAt') }}：{{ formatLastAuditAt(activeViewLastAuditAt) }}
+        <a-tag v-if="activeViewStale" color="warning" style="margin-left: 8px;">{{ t('embed.staleTag') }}</a-tag>
 		<a-tag v-if="context.config_version_no" color="blue" style="margin-left: 8px;">
 		  {{ t('executionConfig.version', [context.config_version_no]) }}
 		</a-tag>
@@ -385,7 +426,33 @@ onBeforeUnmount(() => {
       </a-result>
 
       <template v-else-if="context?.supported">
+        <!-- 双模视角切换器（当且仅当当前 OA 人员在 AuraOA 存在个人定制能力时呈现） -->
+        <div v-if="context?.personal_view?.available" class="perspective-nav-wrap">
+          <div class="perspective-nav">
+            <button
+              type="button"
+              class="perspective-nav-item"
+              :class="{ 'perspective-nav-item--active': activePerspective === 'standard' }"
+              @click="handleSwitchPerspective('standard')"
+            >
+              <span class="perspective-title">{{ t('embed.perspective.standard') }}</span>
+              <span v-if="context.has_audit" class="perspective-dot" :title="t('embed.perspective.standardHasAudit')" />
+            </button>
+            <button
+              type="button"
+              class="perspective-nav-item"
+              :class="{ 'perspective-nav-item--active': activePerspective === 'personal' }"
+              @click="handleSwitchPerspective('personal')"
+            >
+              <span class="perspective-title">{{ t('embed.perspective.personal') }}</span>
+              <span v-if="context.personal_view?.has_audit" class="perspective-dot perspective-dot--personal" :title="t('embed.perspective.personalHasAudit')" />
+              <span v-else class="perspective-unexecuted-tag">{{ t('embed.perspective.unexecuted') }}</span>
+            </button>
+          </div>
+        </div>
+
         <div v-if="processInfo" class="embed-process-card">
+
           <div class="embed-process-card__body">
             <h3 class="embed-process-card__title" :title="processInfo.title">
               {{ processInfo.title }}
@@ -596,12 +663,18 @@ onBeforeUnmount(() => {
 
         <div v-else-if="!auditing" class="result-empty">
           <div class="result-empty-icon"><ThunderboltOutlined /></div>
-          <h4>{{ t('embed.emptyTitle') }}</h4>
-          <p>{{ t('embed.emptyDesc') }}</p>
+          <h4>
+            {{ activePerspective === 'personal' ? t('embed.perspective.personalEmptyTitle') : t('embed.emptyTitle') }}
+          </h4>
+          <p>
+            {{ activePerspective === 'personal' ? t('embed.perspective.personalEmptyDesc') : t('embed.emptyDesc') }}
+          </p>
           <a-button type="primary" @click="handleReAudit">
-            <ThunderboltOutlined /> {{ t('embed.startAudit') }}
+            <ThunderboltOutlined />
+            {{ activePerspective === 'personal' ? t('embed.perspective.startPersonalAudit') : t('embed.startAudit') }}
           </a-button>
         </div>
+
       </template>
     </template>
   </div>
@@ -631,6 +704,60 @@ onBeforeUnmount(() => {
 .embed-page-loading {
   display: flex; align-items: center; justify-content: center;
   min-height: calc(100vh - 120px); padding: 48px 20px;
+}
+
+.perspective-nav-wrap {
+  margin-bottom: 12px;
+}
+.perspective-nav {
+  display: flex;
+  background: var(--color-bg-hover, #f1f5f9);
+  padding: 3px;
+  border-radius: var(--radius-md, 8px);
+  gap: 4px;
+}
+.perspective-nav-item {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast, 0.2s);
+}
+.perspective-nav-item:hover {
+  color: var(--color-text-primary);
+}
+.perspective-nav-item--active {
+  background: var(--color-bg-card, #ffffff);
+  color: var(--color-primary, #1890ff);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.perspective-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-success, #52c41a);
+  display: inline-block;
+}
+.perspective-dot--personal {
+  background: var(--color-primary, #1890ff);
+}
+.perspective-unexecuted-tag {
+  font-size: 10px;
+  font-weight: normal;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--color-text-tertiary);
 }
 
 .embed-process-card {

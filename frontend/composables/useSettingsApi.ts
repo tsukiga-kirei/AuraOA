@@ -21,14 +21,16 @@ import type {
   FullArchiveConfig,
   FullSummaryPreference,
   UpdatePersonalConfigRequest,
+  BaselineVersionDiffResponse,
 } from '~/types/user-config'
 
 export type {
   ProcessListItem, CustomRule, RuleToggleOverride, AuditDetailItem,
   DashboardPref, UserPermissions, FullAuditProcessConfig,
   CronPrefs, AccessibleArchiveConfig, FullArchiveConfig, UpdatePersonalConfigRequest,
-  FullSummaryPreference,
+  FullSummaryPreference, BaselineVersionDiffResponse,
 }
+
 
 export const useSettingsApi = () => {
   const { authFetch } = useAuth()
@@ -206,6 +208,40 @@ export const useSettingsApi = () => {
     }
   }
 
+  // ============================================================
+  // 基线版本变动对比
+  // ============================================================
+
+  /** 获取审核工作台基线版本 Diff */
+  async function getAuditBaselineVersionDiff(
+    processType: string,
+    fromVersion?: number,
+    toVersion?: number,
+  ): Promise<BaselineVersionDiffResponse> {
+    const params = new URLSearchParams()
+    if (fromVersion !== undefined) params.set('from_version', String(fromVersion))
+    if (toVersion !== undefined) params.set('to_version', String(toVersion))
+    const query = params.toString() ? `?${params.toString()}` : ''
+    return await authFetch<BaselineVersionDiffResponse>(
+      `/api/tenant/settings/processes/${encodeURIComponent(processType)}/version-diff${query}`,
+    )
+  }
+
+  /** 获取归档复盘基线版本 Diff */
+  async function getArchiveBaselineVersionDiff(
+    processType: string,
+    fromVersion?: number,
+    toVersion?: number,
+  ): Promise<BaselineVersionDiffResponse> {
+    const params = new URLSearchParams()
+    if (fromVersion !== undefined) params.set('from_version', String(fromVersion))
+    if (toVersion !== undefined) params.set('to_version', String(toVersion))
+    const query = params.toString() ? `?${params.toString()}` : ''
+    return await authFetch<BaselineVersionDiffResponse>(
+      `/api/tenant/settings/archive-configs/${encodeURIComponent(processType)}/version-diff${query}`,
+    )
+  }
+
   return {
     processes, loading, error,
     listProcesses, getFullProcessConfig, updateProcessConfig,
@@ -214,5 +250,7 @@ export const useSettingsApi = () => {
     listSummaryConfigs, getFullSummaryPreference, updateSummaryPreference,
     getDashboardPrefs, updateDashboardPrefs,
     computePermissionLocks,
+    getAuditBaselineVersionDiff, getArchiveBaselineVersionDiff,
   }
 }
+

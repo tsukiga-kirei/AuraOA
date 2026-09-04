@@ -201,3 +201,37 @@ type UpdateDashboardPrefRequest struct {
 	EnabledWidgets datatypes.JSON `json:"enabled_widgets"`
 	WidgetSizes    datatypes.JSON `json:"widget_sizes"`
 }
+
+// ===================== 基线版本 Diff DTO =====================
+
+// BaselineVersionDiffResponse 描述租户基线配置在两个版本之间的差异
+type BaselineVersionDiffResponse struct {
+	ProcessType      string          `json:"process_type"`
+	FromVersionNo    int             `json:"from_version_no"`
+	ToVersionNo      int             `json:"to_version_no"`
+	AddedRules       []RuleDiffItem  `json:"added_rules"`
+	RemovedRules     []RuleDiffItem  `json:"removed_rules"`
+	ModifiedRules    []RuleDiffItem  `json:"modified_rules"`
+	AddedFields      []FieldDiffItem `json:"added_fields"`
+	RemovedFields    []FieldDiffItem `json:"removed_fields"`
+	StrictnessFrom   string          `json:"strictness_from,omitempty"`
+	StrictnessTo     string          `json:"strictness_to,omitempty"`
+	FieldModeFrom    string          `json:"field_mode_from,omitempty"`
+	FieldModeTo      string          `json:"field_mode_to,omitempty"`
+	TotalChanges     int             `json:"total_changes"`
+}
+
+// RuleDiffItem 规则变动项
+type RuleDiffItem struct {
+	ID          string `json:"id"`
+	RuleContent string `json:"rule_content"`
+	RuleScope   string `json:"rule_scope"`
+	ChangeDesc  string `json:"change_desc,omitempty"`
+}
+
+// FieldDiffItem 字段变动项
+type FieldDiffItem struct {
+	Table     string `json:"table"` // "main" 或 明细表名
+	FieldKey  string `json:"field_key"`
+	FieldName string `json:"field_name,omitempty"`
+}

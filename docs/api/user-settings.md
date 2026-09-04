@@ -71,6 +71,44 @@ GET /api/tenant/settings/processes/:processType/full
 
 ---
 
+### 获取审核流程基线版本差异（Diff）
+
+```
+GET /api/tenant/settings/processes/:processType/version-diff?from_version=1&to_version=2
+```
+
+对比租户配置在两个版本之间的基准变更（新增规则、删除规则、修改规则、新增/删除字段、审核尺度调整等）。若不提供参数，默认对比用户当前基于版本 `base_config_version` 与租户最新版本 `current_base_config_version`。
+
+响应示例：
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "process_type": "leave_request",
+    "from_version_no": 1,
+    "to_version_no": 2,
+    "added_rules": [
+      { "id": "TR-102", "rule_content": "请假超过3天须上传病假证明", "rule_scope": "mandatory" }
+    ],
+    "removed_rules": [],
+    "modified_rules": [
+      { "id": "TR-101", "rule_content": "请假理由字数不少于15字", "rule_scope": "default_on", "change_desc": "规则内容已更新" }
+    ],
+    "added_fields": [
+      { "table": "main", "field_key": "hospital_cert", "field_name": "医院证明附件" }
+    ],
+    "removed_fields": [],
+    "strictness_from": "normal",
+    "strictness_to": "strict",
+    "total_changes": 3
+  }
+}
+```
+
+---
+
+
 ## 定时任务个人偏好
 
 ### 获取定时任务偏好

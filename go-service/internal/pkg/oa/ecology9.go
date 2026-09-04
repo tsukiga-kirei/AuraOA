@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -2210,6 +2211,29 @@ func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
 		zap.Int("fileCount", len(result.Data)),
 		zap.Strings("fileNames", fileNames))
 	return files, nil
+}
+
+// ResolveUsernameByOAUserID 根据泛微 E9 人员数值 ID 反查登录账号（loginid）。
+func (a *Ecology9Adapter) ResolveUsernameByOAUserID(ctx context.Context, oaUserID string) (string, error) {
+	trimmed := strings.TrimSpace(oaUserID)
+	if trimmed == "" {
+		return "", fmt.Errorf("oa_user_id 不能为空")
+	}
+	intID, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("无效的泛微人员ID: %s", trimmed)
+	}
+
+	var loginid string
+	err = a.db.WithContext(ctx).
+		Table(a.tableName("hrmresource")).
+		Select(a.col("loginid")).
+		Where(a.col("id")+" = ?", intID).
+		Row().Scan(&loginid)
+	if err != nil {
+		return "", fmt.Errorf("未在 OA 中找到人员 ID 为 '%d' 的用户: %w", intID, err)
+	}
+	return strings.TrimSpace(loginid), nil
 }
 
 // ── FetchTodoList ──────────────────────────────────────────

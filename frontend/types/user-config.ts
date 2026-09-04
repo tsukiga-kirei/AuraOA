@@ -251,3 +251,38 @@ export interface AdminUserConfigItem {
   cron_tasks: AdminCronTaskDetail[]
   archive_details: AdminProcessDetail[]
 }
+
+// ===================== 基线版本对比 Diff 类型 =====================
+
+/** 规则变动项 */
+export interface RuleDiffItem {
+  id: string
+  rule_content: string
+  rule_scope: string
+  change_desc?: string
+}
+
+/** 字段变动项 */
+export interface FieldDiffItem {
+  table: string
+  field_key: string
+  field_name?: string
+}
+
+/** 租户基线配置版本差异响应 */
+export interface BaselineVersionDiffResponse {
+  process_type: string
+  from_version_no: number
+  to_version_no: number
+  added_rules: RuleDiffItem[]
+  removed_rules: RuleDiffItem[]
+  modified_rules: RuleDiffItem[]
+  added_fields: FieldDiffItem[]
+  removed_fields: FieldDiffItem[]
+  strictness_from?: string
+  strictness_to?: string
+  field_mode_from?: string
+  field_mode_to?: string
+  total_changes: number
+}
+
