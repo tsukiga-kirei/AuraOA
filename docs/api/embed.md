@@ -34,7 +34,7 @@ Go 路由前缀：`/api/embed`
 | `embed_enabled` | 是否允许该租户使用嵌入能力 |
 | `embed_access_token` | 每租户独立密钥，生成/重置后仅展示一次明文 |
 | `tenant_code` / `tenant_id` | 展示给实施与排查使用 |
-| 嵌入地址 | `/embed/audit`、`/embed/summary` |
+| 嵌入地址 | `/embed/audit`、`/embed/summary`；规划中的对话嵌入为 `/embed/chat`（见 [docs/agents](../agents/README.md)） |
 
 管理端 API：
 

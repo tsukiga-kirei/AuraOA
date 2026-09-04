@@ -40,6 +40,8 @@ DELETE /api/tenant/org/departments/:id
 
 ## 角色管理
 
+角色的 `page_permissions` 控制可访问页面。规划中的 AI 对话另有智能体/工具再分配字段，见 [`docs/api/agents.md`](./agents.md) 与 [`docs/agents/allocation.md`](../agents/allocation.md)，实现时扩展本模块角色读写接口。
+
 ### 获取角色列表
 
 ```

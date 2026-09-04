@@ -11,6 +11,7 @@
 | 后端 | `go-service/`（Gin + GORM + 分层：handler → service → repository） |
 | 前端 | `frontend/`（Nuxt 3 + Ant Design Vue） |
 | 接口文档 | `docs/api/`（Markdown，按模块拆分） |
+| 智能体需求/设计 | `docs/agents/`（对话、两级分配、系统工具/MCP/Skills、OA 适配器） |
 | 数据库迁移 | `db/migrations/` |
 
 **核心原则**：最小改动、沿用既有约定、租户隔离、前后端 `snake_case` 字段一致。
@@ -79,7 +80,7 @@ AuraOA 各模块相互联动。新增或修改功能时，须检查是否触达�
 
 ```go
 &ai.ChatRequest{
-    RequestType:  "audit",      // 场景：audit | archive | summary | 新业务须扩展并同步统计 SQL
+    RequestType:  "audit",      // 场景：audit | archive | summary | chat | 新业务须扩展并同步统计 SQL
     CallType:     "reasoning",  // 类型：reasoning | structured
     ProcessID:    processID,
     ProcessTitle: title,
@@ -96,7 +97,7 @@ AuraOA 各模块相互联动。新增或修改功能时，须检查是否触达�
 - [ ] 前端数据管理页 `admin/data` 筛选与 i18n 是否需补充  
 - [ ] 仪表盘 `DashboardOverviewService` 是否聚合新指标  
 
-参考：[`docs/ai-integration.md`](docs/ai-integration.md)
+参考：[`docs/ai-integration.md`](docs/ai-integration.md)。对话/智能体另见 [`docs/agents/README.md`](docs/agents/README.md)。
 
 ### 4.2 审核工作台 ↔ 归档复盘（对称模块）
 
@@ -121,6 +122,7 @@ AuraOA 各模块相互联动。新增或修改功能时，须检查是否触达�
 - `rule_merge.go`（`AuditRule` / `ArchiveRule`）  
 - Redis 缓存与 `invalidationManager`  
 - `CronTaskService`、仪表盘 `DashboardOverviewService`  
+- 智能体运行时（系统工具必须走 `OAAdapter`；配额由系统管理员分配、租户管理员再分配，见 `docs/agents/allocation.md`）
 
 ### 4.4 租户与数据
 
@@ -230,9 +232,12 @@ const query = computed(() => ({
 | [`docs/api/cache.md`](docs/api/cache.md) | 缓存管理 |
 | [`docs/ai-integration.md`](docs/ai-integration.md) | AI 调用架构、两阶段审核 |
 | [`docs/oa-integration.md`](docs/oa-integration.md) | OA 适配器与取数 |
+| [`docs/agents/README.md`](docs/agents/README.md) | 智能体需求：两级分配、系统工具/MCP/Skills、对话 |
+| [`docs/api/chat.md`](docs/api/chat.md) | 对话 HTTP/SSE（拟定） |
+| [`docs/api/agents.md`](docs/api/agents.md) | 智能体配额与租户管理 API（拟定） |
 | [`docs/development-guide.md`](docs/development-guide.md) | i18n、Git、完整日志规范等 |
 
-**Agent 工作流建议**：改接口前先读 `docs/api/README.md` + 对应模块 md；改 AI 链路再读 `ai-integration.md`；改审核/归档时成对阅读 `audit.md` 与 `archive.md`。
+**Agent 工作流建议**：改接口前先读 `docs/api/README.md` + 对应模块 md；改 AI 链路再读 `ai-integration.md`；改审核/归档时成对阅读 `audit.md` 与 `archive.md`；改对话/智能体先读 `docs/agents/` 再动代码。
 
 ### 6.3 OpenAPI（`auraoa.openapi.yaml`）
 

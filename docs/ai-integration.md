@@ -255,3 +255,5 @@ AI 审核采用两阶段架构，将推理和结构化提取分离，提高审�
 | `timeout_seconds` | 60 | AI 请求超时时间（秒） |
 | `retry_count` | 3 | AI 请求失败重试次数（未实现） |
 | `token_quota` | — | 租户 Token 总配额 |
+
+对话场景（尚未落地）使用同一调用层，`request_type=chat`，并走智能体有效工具集。需求见 [`docs/agents/README.md`](./agents/README.md)；配额由系统管理员授予租户，与「关联租户主备模型」同一层级。

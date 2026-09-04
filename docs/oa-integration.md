@@ -263,6 +263,8 @@ OA 数据库连接通过系统管理后台配置，不依赖环境变量。连�
 3. 测试连接：验证数据库连通性
 4. 关联租户：在租户管理中将 OA 连接分配给租户
 
+智能体系统工具必须通过本适配器取数，禁止直连 OA 库。对话可见性、工具映射与新 OA 类型清单见 [`docs/agents/oa-adapter.md`](./agents/oa-adapter.md)。系统管理员分配 OA 连接后，还须在租户智能体配额中授予对应系统工具，租户管理员才能再分配给角色。
+
 ### 嵌入 AI 审核（iframe）
 
 若需在泛微 E9 审批页侧边展示 AI 审核结论，见 [OA 嵌入 AI 审核侧边栏](./oa-configurations/02-embed-audit-sidebar.md)（AuraOA 开关 + E9 iframe / postMessage 配置）。
