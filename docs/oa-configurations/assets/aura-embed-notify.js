@@ -73,11 +73,24 @@
     }).filter(Boolean);
   }
 
+  function getCurrentUserId() {
+    try {
+      if (typeof WfForm !== 'undefined' && WfForm.getGlobalStore) {
+        var store = WfForm.getGlobalStore();
+        if (store && store.commonParam && store.commonParam.currentUserid != null) {
+          return String(store.commonParam.currentUserid).trim();
+        }
+      }
+    } catch (e) {}
+    return '';
+  }
+
   function buildPayload(requestid) {
     return {
       type: MSG_REQUESTID,
       requestid: requestid,
-      embed_token: EMBED_ACCESS_TOKEN
+      embed_token: EMBED_ACCESS_TOKEN,
+      oa_current_user_id: getCurrentUserId()
     };
   }
 

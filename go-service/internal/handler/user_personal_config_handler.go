@@ -259,6 +259,42 @@ func (h *UserPersonalConfigHandler) GetFullProcessConfig(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// GetAuditBaselineVersionDiff 获取审核流程在两个基线版本之间的差异概览。
+// GET /api/tenant/settings/processes/:processType/version-diff?from=1&to=2
+func (h *UserPersonalConfigHandler) GetAuditBaselineVersionDiff(c *gin.Context) {
+	processType := c.Param("processType")
+	if processType == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "processType 不能为空")
+		return
+	}
+	fromNo := parseIntQuery(c, "from", 0)
+	toNo := parseIntQuery(c, "to", 0)
+	diff, err := h.userConfigService.GetBaselineVersionDiff(c, model.ExecutionConfigModuleAudit, processType, fromNo, toNo)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, diff)
+}
+
+// GetArchiveBaselineVersionDiff 获取归档复盘在两个基线版本之间的差异概览。
+// GET /api/tenant/settings/archive-configs/:processType/version-diff?from=1&to=2
+func (h *UserPersonalConfigHandler) GetArchiveBaselineVersionDiff(c *gin.Context) {
+	processType := c.Param("processType")
+	if processType == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "processType 不能为空")
+		return
+	}
+	fromNo := parseIntQuery(c, "from", 0)
+	toNo := parseIntQuery(c, "to", 0)
+	diff, err := h.userConfigService.GetBaselineVersionDiff(c, model.ExecutionConfigModuleArchive, processType, fromNo, toNo)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, diff)
+}
+
 // GetCronPrefs 获取当前用户的定时任务偏好配置。
 // GET /api/tenant/settings/cron-prefs
 // 返回：定时任务偏好对象（邮件推送设置等）。

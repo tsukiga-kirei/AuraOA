@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -1037,4 +1038,211 @@ func sliceContains(slice []string, val string) bool {
 		}
 	}
 	return false
+}
+
+// GetBaselineVersionDiff 对比指定流程在两个租户基础版本之间的配置差异（规则变动、字段变动、尺度变动）。
+func (s *UserPersonalConfigService) GetBaselineVersionDiff(
+	c *gin.Context,
+	module, processType string,
+	fromVersionNo, toVersionNo int,
+) (*dto.BaselineVersionDiffResponse, error) {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+
+	var sourceConfigID uuid.UUID
+	switch module {
+	case model.ExecutionConfigModuleAudit:
+		cfg, err := s.configRepo.GetByProcessType(c, processType)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrConfigNotFound, "流程审核配置不存在")
+		}
+		sourceConfigID = cfg.ID
+	case model.ExecutionConfigModuleArchive:
+		cfg, err := s.archiveConfigRepo.GetByProcessType(c, processType)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrConfigNotFound, "流程归档复盘配置不存在")
+		}
+		sourceConfigID = cfg.ID
+	default:
+		return nil, newServiceError(errcode.ErrParamValidation, "不支持的配置模块")
+	}
+
+	// 自动校正版本号
+	if toVersionNo <= 0 {
+		latest, err := s.versions.GetActiveBaseVersion(c.Request.Context(), tenantID, module, sourceConfigID)
+		if err != nil || latest == nil {
+			return nil, newServiceError(errcode.ErrResourceNotFound, "未找到目标基线版本")
+		}
+		toVersionNo = latest.VersionNo
+	}
+	if fromVersionNo <= 0 {
+		fromVersionNo = toVersionNo - 1
+		if fromVersionNo < 1 {
+			fromVersionNo = 1
+		}
+	}
+
+	fromVersion, err := s.versions.GetBaseVersionByNo(c.Request.Context(), tenantID, module, sourceConfigID, fromVersionNo)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrResourceNotFound, fmt.Sprintf("未找到起始版本 v%d", fromVersionNo))
+	}
+	toVersion, err := s.versions.GetBaseVersionByNo(c.Request.Context(), tenantID, module, sourceConfigID, toVersionNo)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrResourceNotFound, fmt.Sprintf("未找到目标版本 v%d", toVersionNo))
+	}
+
+	return computeBaselineDiff(processType, fromVersion, toVersion)
+}
+
+func computeBaselineDiff(processType string, fromVersion, toVersion *model.TenantConfigVersion) (*dto.BaselineVersionDiffResponse, error) {
+	type ruleItem struct {
+		ID          string `json:"id"`
+		RuleContent string `json:"rule_content"`
+		RuleScope   string `json:"rule_scope"`
+	}
+	type fieldItem struct {
+		FieldKey  string `json:"field_key"`
+		FieldName string `json:"field_name"`
+		Selected  bool   `json:"selected"`
+	}
+	type detailTableItem struct {
+		TableName  string      `json:"table_name"`
+		TableLabel string      `json:"table_label"`
+		Fields     []fieldItem `json:"fields"`
+	}
+	type snapshotObj struct {
+		FieldMode    string            `json:"field_mode"`
+		MainFields   datatypes.JSON    `json:"main_fields"`
+		DetailTables datatypes.JSON    `json:"detail_tables"`
+		AIConfig     datatypes.JSON    `json:"ai_config"`
+		Rules        []ruleItem        `json:"rules"`
+	}
+
+	var fromSnap, toSnap snapshotObj
+	_ = json.Unmarshal(fromVersion.ConfigSnapshot, &fromSnap)
+	_ = json.Unmarshal(toVersion.ConfigSnapshot, &toSnap)
+
+	resp := &dto.BaselineVersionDiffResponse{
+		ProcessType:   processType,
+		FromVersionNo: fromVersion.VersionNo,
+		ToVersionNo:   toVersion.VersionNo,
+		AddedRules:    []dto.RuleDiffItem{},
+		RemovedRules:  []dto.RuleDiffItem{},
+		ModifiedRules: []dto.RuleDiffItem{},
+		AddedFields:   []dto.FieldDiffItem{},
+		RemovedFields: []dto.FieldDiffItem{},
+	}
+
+	// 1. 比对规则
+	fromRulesMap := make(map[string]ruleItem, len(fromSnap.Rules))
+	for _, r := range fromSnap.Rules {
+		fromRulesMap[r.ID] = r
+	}
+	toRulesMap := make(map[string]ruleItem, len(toSnap.Rules))
+	for _, r := range toSnap.Rules {
+		toRulesMap[r.ID] = r
+		if old, exists := fromRulesMap[r.ID]; !exists {
+			resp.AddedRules = append(resp.AddedRules, dto.RuleDiffItem{
+				ID: r.ID, RuleContent: r.RuleContent, RuleScope: r.RuleScope,
+			})
+		} else if old.RuleContent != r.RuleContent || old.RuleScope != r.RuleScope {
+			desc := "内容修改"
+			if old.RuleScope != r.RuleScope {
+				desc = fmt.Sprintf("范围变动: %s → %s", old.RuleScope, r.RuleScope)
+			}
+			resp.ModifiedRules = append(resp.ModifiedRules, dto.RuleDiffItem{
+				ID: r.ID, RuleContent: r.RuleContent, RuleScope: r.RuleScope, ChangeDesc: desc,
+			})
+		}
+	}
+	for _, r := range fromSnap.Rules {
+		if _, exists := toRulesMap[r.ID]; !exists {
+			resp.RemovedRules = append(resp.RemovedRules, dto.RuleDiffItem{
+				ID: r.ID, RuleContent: r.RuleContent, RuleScope: r.RuleScope,
+			})
+		}
+	}
+
+	// 2. 比对字段
+	parseSelectedFields := func(mainJSON, detailJSON datatypes.JSON) map[string]string {
+		fieldsMap := make(map[string]string)
+		var main []fieldItem
+		_ = json.Unmarshal(mainJSON, &main)
+		for _, f := range main {
+			if f.Selected {
+				name := f.FieldName
+				if name == "" {
+					name = f.FieldKey
+				}
+				fieldsMap["main:"+f.FieldKey] = name
+			}
+		}
+		var details []detailTableItem
+		_ = json.Unmarshal(detailJSON, &details)
+		for _, dt := range details {
+			for _, f := range dt.Fields {
+				if f.Selected {
+					name := f.FieldName
+					if name == "" {
+						name = f.FieldKey
+					}
+					fieldsMap[dt.TableName+":"+f.FieldKey] = name
+				}
+			}
+		}
+		return fieldsMap
+	}
+
+	fromFields := parseSelectedFields(fromSnap.MainFields, fromSnap.DetailTables)
+	toFields := parseSelectedFields(toSnap.MainFields, toSnap.DetailTables)
+
+	for k, name := range toFields {
+		if _, exists := fromFields[k]; !exists {
+			parts := strings.SplitN(k, ":", 2)
+			table := parts[0]
+			fieldKey := parts[1]
+			resp.AddedFields = append(resp.AddedFields, dto.FieldDiffItem{
+				Table: table, FieldKey: fieldKey, FieldName: name,
+			})
+		}
+	}
+	for k, name := range fromFields {
+		if _, exists := toFields[k]; !exists {
+			parts := strings.SplitN(k, ":", 2)
+			table := parts[0]
+			fieldKey := parts[1]
+			resp.RemovedFields = append(resp.RemovedFields, dto.FieldDiffItem{
+				Table: table, FieldKey: fieldKey, FieldName: name,
+			})
+		}
+	}
+
+	// 3. 严格度与模式变动
+	var fromAI, toAI struct {
+		AuditStrictness string `json:"audit_strictness"`
+	}
+	_ = json.Unmarshal(fromSnap.AIConfig, &fromAI)
+	_ = json.Unmarshal(toSnap.AIConfig, &toAI)
+	if fromAI.AuditStrictness != toAI.AuditStrictness {
+		resp.StrictnessFrom = fromAI.AuditStrictness
+		resp.StrictnessTo = toAI.AuditStrictness
+	}
+	if fromSnap.FieldMode != toSnap.FieldMode {
+		resp.FieldModeFrom = fromSnap.FieldMode
+		resp.FieldModeTo = toSnap.FieldMode
+	}
+
+	changes := len(resp.AddedRules) + len(resp.RemovedRules) + len(resp.ModifiedRules) +
+		len(resp.AddedFields) + len(resp.RemovedFields)
+	if resp.StrictnessFrom != "" {
+		changes++
+	}
+	if resp.FieldModeFrom != "" {
+		changes++
+	}
+	resp.TotalChanges = changes
+
+	return resp, nil
 }

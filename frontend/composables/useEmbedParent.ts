@@ -14,6 +14,7 @@ export const EMBED_MSG_URL = 'aura-oa-url'
 export interface EmbedParentContext {
   requestId: string
   embedToken: string
+  oaUserId?: string
 }
 
 export function parseRequestIdFromUrl(url: string): string {
@@ -46,13 +47,30 @@ export function readEmbedTokenFromUrl(url: string): string {
   }
 }
 
-/** 从当前嵌入页地址读取 requestid + embed_token */
+/** 从 URL 查询参数读取 oa_current_user_id */
+export function readOAUserIdFromUrl(url: string): string {
+  if (!url) return ''
+  try {
+    const u = new URL(url)
+    return String(
+      u.searchParams.get('oa_user_id')
+      || u.searchParams.get('oa_current_user_id')
+      || u.searchParams.get('oaUserId')
+      || '',
+    ).trim()
+  } catch {
+    return ''
+  }
+}
+
+/** 从当前嵌入页地址读取 requestid + embed_token + oa_user_id */
 export function readEmbedContextFromSelfUrl(): EmbedParentContext {
-  if (typeof window === 'undefined') return { requestId: '', embedToken: '' }
+  if (typeof window === 'undefined') return { requestId: '', embedToken: '', oaUserId: '' }
   const href = window.location.href
   return {
     requestId: parseRequestIdFromUrl(href),
     embedToken: readEmbedTokenFromUrl(href),
+    oaUserId: readOAUserIdFromUrl(href),
   }
 }
 
@@ -93,6 +111,7 @@ export function waitForParentEmbedContext(options?: { intervalMs?: number; maxAt
     let attempts = 0
     let latestRequestId = fromSelf.requestId
     let latestToken = fromSelf.embedToken
+    let latestOAUserId = fromSelf.oaUserId || ''
     requestRequestIdFromParent()
 
     const tryFinish = () => {
@@ -100,6 +119,7 @@ export function waitForParentEmbedContext(options?: { intervalMs?: number; maxAt
         finish({
           requestId: latestRequestId,
           embedToken: latestToken,
+          oaUserId: latestOAUserId,
         })
         return true
       }
@@ -112,6 +132,9 @@ export function waitForParentEmbedContext(options?: { intervalMs?: number; maxAt
       if (data.type === EMBED_MSG_REQUESTID) {
         latestRequestId = String(data.requestid || '')
         latestToken = String(data.embed_token || data.embedToken || '').trim()
+        if (data.oa_current_user_id || data.oa_user_id || data.oaUserId) {
+          latestOAUserId = String(data.oa_current_user_id || data.oa_user_id || data.oaUserId || '').trim()
+        }
         tryFinish()
         return
       }

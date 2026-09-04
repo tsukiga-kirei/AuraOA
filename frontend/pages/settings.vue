@@ -34,6 +34,7 @@ import type {
   FullArchiveConfig,
   FullSummaryPreference,
   UpdatePersonalConfigRequest,
+  BaselineVersionDiffResponse,
 } from '~/types/user-config'
 import { usePagination } from '~/composables/usePagination'
 
@@ -762,6 +763,61 @@ const handleSaveArchive = async () => {
 }
 
 // =====================================================================
+// ===== 基线版本 Diff 弹窗 =====
+// =====================================================================
+const diffModalVisible = ref(false)
+const diffLoading = ref(false)
+const diffData = ref<BaselineVersionDiffResponse | null>(null)
+const diffModalTitle = ref('')
+
+const handleOpenAuditDiff = async () => {
+  if (!fullProcessConfig.value) return
+  const cfg = fullProcessConfig.value
+  diffModalTitle.value = `${cfg.process_type_label || cfg.process_type} — ${t('settings.versionDiff.modalTitle')}`
+  diffModalVisible.value = true
+  diffLoading.value = true
+  diffData.value = null
+  try {
+    const data = await settingsApi.getAuditBaselineVersionDiff(
+      cfg.process_type,
+      cfg.base_config_version || 0,
+      cfg.current_base_config_version,
+    )
+    diffData.value = data
+  }
+  catch (e: any) {
+    message.error(e.message || t('settings.versionDiff.loadFailed'))
+  }
+  finally {
+    diffLoading.value = false
+  }
+}
+
+const handleOpenArchiveDiff = async () => {
+  if (!fullArchiveConfig.value) return
+  const cfg = fullArchiveConfig.value
+  diffModalTitle.value = `${cfg.process_type_label || cfg.process_type} — ${t('settings.versionDiff.modalTitle')}`
+  diffModalVisible.value = true
+  diffLoading.value = true
+  diffData.value = null
+  try {
+    const data = await settingsApi.getArchiveBaselineVersionDiff(
+      cfg.process_type,
+      cfg.base_config_version || 0,
+      cfg.current_base_config_version,
+    )
+    diffData.value = data
+  }
+  catch (e: any) {
+    message.error(e.message || t('settings.versionDiff.loadFailed'))
+  }
+  finally {
+    diffLoading.value = false
+  }
+}
+
+
+// =====================================================================
 // ===== 流程总结 Tab =====
 // =====================================================================
 const summaryLoading = ref(false)
@@ -1067,6 +1123,9 @@ const handleSaveSummary = async () => {
                   : t('settings.version.noPersonal', [fullProcessConfig.current_base_config_version])) }}
             <span v-if="fullProcessConfig.base_config_version !== fullProcessConfig.current_base_config_version" class="personal-version-warning">
               {{ t('settings.version.tenantUpdated', [fullProcessConfig.current_base_config_version]) }}
+              <a-button type="link" size="small" class="diff-link-btn" @click="handleOpenAuditDiff">
+                {{ t('settings.versionDiff.viewChanges') }}
+              </a-button>
             </span>
           </div>
 
@@ -1488,6 +1547,9 @@ const handleSaveSummary = async () => {
                   : t('settings.version.noPersonal', [fullArchiveConfig.current_base_config_version])) }}
             <span v-if="fullArchiveConfig.base_config_version !== fullArchiveConfig.current_base_config_version" class="personal-version-warning">
               {{ t('settings.version.tenantUpdated', [fullArchiveConfig.current_base_config_version]) }}
+              <a-button type="link" size="small" class="diff-link-btn" @click="handleOpenArchiveDiff">
+                {{ t('settings.versionDiff.viewChanges') }}
+              </a-button>
             </span>
           </div>
 
@@ -1895,8 +1957,125 @@ const handleSaveSummary = async () => {
         </div>
       </div>
     </a-modal>
+
+    <!-- ===== 基线版本变更对比弹窗 ===== -->
+    <a-modal
+      v-model:open="diffModalVisible"
+      :title="diffModalTitle"
+      :footer="null"
+      :width="760"
+    >
+      <div v-if="diffLoading" class="diff-modal-loading">
+        <LoadingOutlined spin style="font-size: 24px; color: var(--color-primary);" />
+        <span style="margin-left: 10px;">{{ t('settings.versionDiff.loading') }}</span>
+      </div>
+      <div v-else-if="diffData" class="diff-modal-body">
+        <!-- 版本概览卡片 -->
+        <div class="diff-summary-bar">
+          <div class="diff-summary-version">
+            <span class="diff-badge diff-badge--from">v{{ diffData.from_version_no }}</span>
+            <SwapRightOutlined class="diff-arrow" />
+            <span class="diff-badge diff-badge--to">v{{ diffData.to_version_no }}</span>
+          </div>
+          <div class="diff-summary-count">
+            {{ t('settings.versionDiff.totalChanges', [diffData.total_changes]) }}
+          </div>
+        </div>
+
+        <!-- 审核尺度 / 传输模式变更 -->
+        <div v-if="diffData.strictness_from || diffData.field_mode_from" class="diff-section">
+          <h4 class="diff-section-title">{{ t('settings.versionDiff.envChangesTitle') }}</h4>
+          <div class="diff-env-grid">
+            <div v-if="diffData.strictness_from" class="diff-env-item">
+              <span class="diff-env-label">{{ t('settings.versionDiff.strictness') }}:</span>
+              <span class="diff-text-old">{{ diffData.strictness_from }}</span>
+              <SwapRightOutlined class="diff-inline-arrow" />
+              <span class="diff-text-new">{{ diffData.strictness_to }}</span>
+            </div>
+            <div v-if="diffData.field_mode_from" class="diff-env-item">
+              <span class="diff-env-label">{{ t('settings.versionDiff.fieldMode') }}:</span>
+              <span class="diff-text-old">{{ diffData.field_mode_from }}</span>
+              <SwapRightOutlined class="diff-inline-arrow" />
+              <span class="diff-text-new">{{ diffData.field_mode_to }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 规则变动 -->
+        <div class="diff-section">
+          <h4 class="diff-section-title">
+            {{ t('settings.versionDiff.ruleChangesTitle') }}
+            <span class="diff-section-sub">
+              (+{{ diffData.added_rules?.length || 0 }} / ~{{ diffData.modified_rules?.length || 0 }} / -{{ diffData.removed_rules?.length || 0 }})
+            </span>
+          </h4>
+
+          <div v-if="!diffData.added_rules?.length && !diffData.modified_rules?.length && !diffData.removed_rules?.length" class="diff-empty-hint">
+            {{ t('settings.versionDiff.noRuleChanges') }}
+          </div>
+
+          <div v-else class="diff-rule-list">
+            <!-- 新增规则 -->
+            <div v-for="r in diffData.added_rules" :key="'add-' + r.id" class="diff-rule-item diff-rule-item--add">
+              <span class="diff-tag diff-tag--add">{{ t('settings.versionDiff.added') }}</span>
+              <div class="diff-rule-content">
+                <span class="diff-rule-text">{{ r.rule_content }}</span>
+                <span class="diff-rule-scope">({{ r.rule_scope }})</span>
+              </div>
+            </div>
+
+            <!-- 修改规则 -->
+            <div v-for="r in diffData.modified_rules" :key="'mod-' + r.id" class="diff-rule-item diff-rule-item--mod">
+              <span class="diff-tag diff-tag--mod">{{ t('settings.versionDiff.modified') }}</span>
+              <div class="diff-rule-content">
+                <span class="diff-rule-text">{{ r.rule_content }}</span>
+                <span class="diff-rule-scope">({{ r.rule_scope }})</span>
+                <div v-if="r.change_desc" class="diff-change-desc">{{ r.change_desc }}</div>
+              </div>
+            </div>
+
+            <!-- 删除规则 -->
+            <div v-for="r in diffData.removed_rules" :key="'del-' + r.id" class="diff-rule-item diff-rule-item--del">
+              <span class="diff-tag diff-tag--del">{{ t('settings.versionDiff.removed') }}</span>
+              <div class="diff-rule-content">
+                <span class="diff-rule-text diff-rule-text--deleted">{{ r.rule_content }}</span>
+                <span class="diff-rule-scope">({{ r.rule_scope }})</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 字段变动 -->
+        <div class="diff-section">
+          <h4 class="diff-section-title">
+            {{ t('settings.versionDiff.fieldChangesTitle') }}
+            <span class="diff-section-sub">
+              (+{{ diffData.added_fields?.length || 0 }} / -{{ diffData.removed_fields?.length || 0 }})
+            </span>
+          </h4>
+
+          <div v-if="!diffData.added_fields?.length && !diffData.removed_fields?.length" class="diff-empty-hint">
+            {{ t('settings.versionDiff.noFieldChanges') }}
+          </div>
+
+          <div v-else class="diff-field-grid">
+            <div v-for="f in diffData.added_fields" :key="'f-add-' + f.table + '-' + f.field_key" class="diff-field-chip diff-field-chip--add">
+              <span class="diff-field-icon">+</span>
+              <span class="diff-field-label">{{ f.field_name || f.field_key }}</span>
+              <span class="diff-field-table">({{ f.table === 'main' ? t('settings.workbench.mainFields') : f.table }})</span>
+            </div>
+            <div v-for="f in diffData.removed_fields" :key="'f-del-' + f.table + '-' + f.field_key" class="diff-field-chip diff-field-chip--del">
+              <span class="diff-field-icon">-</span>
+              <span class="diff-field-label">{{ f.field_name || f.field_key }}</span>
+              <span class="diff-field-table">({{ f.table === 'main' ? t('settings.workbench.mainFields') : f.table }})</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
+
 
 <style scoped>
 .page-header { margin-bottom: 24px; }
@@ -2238,4 +2417,224 @@ const handleSaveSummary = async () => {
 .settings-data-table tr:hover { background: var(--color-bg-hover); }
 .text-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 .empty-cell { padding: 32px !important; text-align: center; color: var(--color-text-tertiary); }
+
+/* 基线版本 Diff 对比弹窗样式 */
+.diff-link-btn {
+  padding: 0 4px;
+  font-size: 12px;
+  height: auto;
+  line-height: inherit;
+  color: var(--color-primary);
+  font-weight: 500;
+}
+.diff-modal-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 0;
+  color: var(--color-text-secondary);
+}
+.diff-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 65vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.diff-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+.diff-summary-version {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.diff-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+.diff-badge--from {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+.diff-badge--to {
+  background: var(--color-primary-bg, #e6f4ff);
+  color: var(--color-primary);
+}
+.diff-arrow {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+.diff-summary-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.diff-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.diff-section-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.diff-section-sub {
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--color-text-tertiary);
+}
+.diff-env-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-md);
+}
+.diff-env-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.diff-env-label {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+.diff-inline-arrow {
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+}
+.diff-text-old {
+  color: var(--color-text-tertiary);
+  text-decoration: line-through;
+}
+.diff-text-new {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.diff-empty-hint {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  padding: 8px 12px;
+  background: var(--color-bg-page);
+  border-radius: var(--radius-md);
+}
+.diff-rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.diff-rule-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+}
+.diff-rule-item--add {
+  background: #f6ffed;
+  border-color: #b7eb8f;
+}
+.diff-rule-item--mod {
+  background: #fffbe6;
+  border-color: #ffe58f;
+}
+.diff-rule-item--del {
+  background: #fff1f0;
+  border-color: #ffa39e;
+}
+.diff-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+.diff-tag--add {
+  background: #52c41a;
+  color: #fff;
+}
+.diff-tag--mod {
+  background: #faad14;
+  color: #fff;
+}
+.diff-tag--del {
+  background: #ff4d4f;
+  color: #fff;
+}
+.diff-rule-content {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.diff-rule-text {
+  color: var(--color-text-primary);
+}
+.diff-rule-text--deleted {
+  text-decoration: line-through;
+  color: var(--color-text-tertiary);
+}
+.diff-rule-scope {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin-left: 6px;
+}
+.diff-change-desc {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--color-warning);
+}
+.diff-field-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.diff-field-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  border: 1px solid transparent;
+}
+.diff-field-chip--add {
+  background: #f6ffed;
+  border-color: #b7eb8f;
+  color: #389e0d;
+}
+.diff-field-chip--del {
+  background: #fff1f0;
+  border-color: #ffa39e;
+  color: #cf1322;
+  text-decoration: line-through;
+}
+.diff-field-icon {
+  font-weight: 700;
+  font-size: 12px;
+}
+.diff-field-label {
+  font-weight: 500;
+}
+.diff-field-table {
+  font-size: 10px;
+  opacity: 0.75;
+}
 </style>

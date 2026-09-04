@@ -86,6 +86,43 @@ func (r *AuditLogRepo) GetRunningByProcessIDForTriggers(c *gin.Context, processI
 	return &log, nil
 }
 
+// GetLatestValidByProcessIDAndUser 查询指定流程与用户的最近一次成功审核记录（completed）。
+func (r *AuditLogRepo) GetLatestValidByProcessIDAndUser(c *gin.Context, processID string, userID uuid.UUID) (*model.AuditLog, error) {
+	var log model.AuditLog
+	err := r.WithTenant(c).
+		Where("process_id = ? AND user_id = ? AND status = ?", processID, userID, model.JobStatusCompleted).
+		Order("created_at DESC").
+		First(&log).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &log, nil
+}
+
+// GetRunningByProcessIDAndUser 查询指定流程与用户的进行中审核任务。
+func (r *AuditLogRepo) GetRunningByProcessIDAndUser(c *gin.Context, processID string, userID uuid.UUID) (*model.AuditLog, error) {
+	var log model.AuditLog
+	err := r.WithTenant(c).
+		Where("process_id = ? AND user_id = ? AND status IN ?", processID, userID, []string{
+			model.JobStatusPending,
+			model.JobStatusAssembling,
+			model.JobStatusReasoning,
+			model.JobStatusExtracting,
+		}).
+		Order("created_at DESC").
+		First(&log).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &log, nil
+}
+
 // GetByIDs 批量查询审核日志（租户隔离），返回 id -> AuditLog 映射。
 func (r *AuditLogRepo) GetByIDs(c *gin.Context, ids []uuid.UUID) (map[uuid.UUID]*model.AuditLog, error) {
 	if len(ids) == 0 {

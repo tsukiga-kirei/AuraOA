@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +27,20 @@ type EmbedExecuteRequest struct {
 	TriggerDetail    string     `json:"trigger_detail"`
 	ScheduleConfigID *uuid.UUID `json:"-"`
 	UseLatestConfig  bool       `json:"use_latest_config,omitempty"`
+	Perspective      string     `json:"perspective,omitempty"` // "personal" | "standard"
+	OAUserID         string     `json:"oa_user_id,omitempty"`
+}
+
+// EmbedPersonalView 描述当前 OA 人员在 AuraOA 中的个人定制视角状态
+type EmbedPersonalView struct {
+	Available    bool                   `json:"available"` // 是否可用（当前 OA 用户在租户内存在且已配置该流程的个性化规则）
+	UserID       string                 `json:"user_id,omitempty"`
+	Username     string                 `json:"username,omitempty"`
+	DisplayName  string                 `json:"display_name,omitempty"`
+	HasAudit     bool                   `json:"has_audit"` // 是否已有个人视角专属的有效审核结果
+	LastAuditAt  string                 `json:"last_audit_at,omitempty"`
+	RunningJobID string                 `json:"running_job_id,omitempty"`
+	AuditResult  map[string]interface{} `json:"audit_result,omitempty"`
 }
 
 // EmbedContextResponse 嵌入页上下文。
@@ -45,6 +60,8 @@ type EmbedContextResponse struct {
 	ConfigVersionNo        *int                      `json:"config_version_no,omitempty"`
 	ConfigUpgradeAvailable bool                      `json:"config_upgrade_available"`
 	CurrentFingerprint     string                    `json:"-"`
+	PersonalView           *EmbedPersonalView        `json:"personal_view,omitempty"`
+	DefaultPerspective     string                    `json:"default_perspective,omitempty"` // "personal" | "standard"
 }
 
 // GetEmbedContext 嵌入页：按 requestid 拉取流程上下文、有效结论与过期状态。
@@ -227,7 +244,99 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		resp.LastAuditAt = apptime.FormatRFC3339(latestAttempt.UpdatedAt)
 		resp.AuditResult = buildAuditResultFromLog(latestAttempt)
 	}
+
+	// 检查当前 OA 访问人员在 AuraOA 中是否有个人定制规则与专属审核记录
+	oaUserID := strings.TrimSpace(c.GetHeader("X-Embed-OA-User-ID"))
+	if oaUserID == "" {
+		oaUserID = strings.TrimSpace(c.Query("oa_user_id"))
+	}
+	if oaUserID == "" {
+		oaUserID = strings.TrimSpace(c.Query("oa_current_user_id"))
+	}
+
+	var personalView *EmbedPersonalView
+	if oaUserID != "" {
+		personalUser, _ := s.resolveOAUser(c.Request.Context(), tenantID, adapter, oaUserID)
+		if personalUser != nil {
+			hasCustom := s.hasUserCustomizedAudit(c, tenantID, personalUser.ID, config.ID, summary.ProcessType)
+			if hasCustom {
+				personalView = &EmbedPersonalView{
+					Available:   true,
+					UserID:      personalUser.ID.String(),
+					Username:    personalUser.Username,
+					DisplayName: personalUser.DisplayName,
+				}
+				// 检查该用户是否有正在运行的任务
+				personalRunning, _ := s.auditLogRepo.GetRunningByProcessIDAndUser(c, processID, personalUser.ID)
+				if personalRunning != nil {
+					personalView.RunningJobID = personalRunning.ID.String()
+					personalView.AuditResult = buildAuditResultFromLog(personalRunning)
+					personalView.HasAudit = true
+				} else {
+					personalLog, _ := s.auditLogRepo.GetLatestValidByProcessIDAndUser(c, processID, personalUser.ID)
+					if personalLog != nil {
+						personalView.HasAudit = true
+						personalView.LastAuditAt = apptime.FormatRFC3339(personalLog.UpdatedAt)
+						personalView.AuditResult = buildAuditResultFromLog(personalLog)
+					}
+				}
+			}
+		}
+	}
+
+	resp.PersonalView = personalView
+	if personalView != nil && personalView.HasAudit {
+		resp.DefaultPerspective = "personal"
+	} else {
+		resp.DefaultPerspective = "standard"
+	}
+
 	return resp, nil
+}
+
+// resolveOAUser 尝试根据 OA 人员 ID（如泛微 Ecology 的 hrmresource.id）反查租户内的对应用户。
+func (s *AuditExecuteService) resolveOAUser(ctx context.Context, tenantID uuid.UUID, adapter oa.OAAdapter, oaUserID string) (*model.User, error) {
+	oaUserID = strings.TrimSpace(oaUserID)
+	if oaUserID == "" {
+		return nil, nil
+	}
+	username, err := adapter.ResolveUsernameByOAUserID(ctx, oaUserID)
+	if err != nil || username == "" {
+		return nil, err
+	}
+	var user model.User
+	err = s.db.WithContext(ctx).
+		Table("users").
+		Joins("JOIN org_members ON org_members.user_id = users.id").
+		Where("org_members.tenant_id = ? AND users.username = ? AND users.status = 'active'", tenantID, username).
+		First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// hasUserCustomizedAudit 检查指定用户是否对当前流程配置了个性化规则、字段或严格度。
+func (s *AuditExecuteService) hasUserCustomizedAudit(c *gin.Context, tenantID, userID, configID uuid.UUID, processType string) bool {
+	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
+	if err != nil || userCfg == nil {
+		return false
+	}
+	var items []model.AuditDetailItem
+	if err := json.Unmarshal(userCfg.AuditDetails, &items); err != nil {
+		return false
+	}
+	for _, item := range items {
+		if item.ProcessType == processType || (item.ConfigID != uuid.Nil && item.ConfigID == configID) {
+			if len(item.RuleConfig.CustomRules) > 0 ||
+				len(item.RuleConfig.RuleToggleOverrides) > 0 ||
+				len(item.FieldConfig.FieldOverrides) > 0 ||
+				item.AIConfig.StrictnessOverride != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ExecuteEmbed 嵌入页发起审核（自动或手动重新审核）。
@@ -256,49 +365,85 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 	}
 	defer release()
 
-	if running, runningErr := s.auditLogRepo.GetRunningByProcessIDForTriggers(
-		c,
-		req.ProcessID,
-		model.EmbedTriggerSources(),
-	); runningErr != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "查询进行中的审核任务失败")
-	} else if running != nil {
-		promoteToInteractive := queueKind == model.JobQueueKindInteractive &&
-			running.Status == model.JobStatusPending &&
-			running.QueueKind != model.JobQueueKindInteractive
-		relabelAsManual := trigger == model.AuditTriggerEmbedManual &&
-			running.Status == model.JobStatusPending &&
-			running.TriggerDetail != model.SummaryTriggerDetailManual
-		if promoteToInteractive || relabelAsManual {
-			if err := s.auditLogRepo.UpdateFields(c, running.ID, map[string]interface{}{
-				"user_id":            userID,
-				"trigger_source":     trigger,
-				"trigger_detail":     triggerDetail,
-				"queue_kind":         queueKind,
-				"schedule_config_id": nil,
-				"updated_at":         apptime.Now(),
-			}); err != nil {
-				return nil, newServiceError(errcode.ErrDatabase, "切换审核任务队列失败")
-			}
-			if promoteToInteractive {
-				if _, err := EnqueueAuditJob(
-					c.Request.Context(),
-					s.rdb,
-					running.ID,
-					tenantID,
-					userID,
-					queueKind,
-				); err != nil {
-					return nil, newServiceError(errcode.ErrRedisConn, "审核交互任务入队失败: "+err.Error())
-				}
-			}
-			running.UserID = userID
-			running.TriggerSource = trigger
-			running.TriggerDetail = triggerDetail
-			running.QueueKind = queueKind
-			running.ScheduleConfigID = nil
+	isPersonalPerspective := req.Perspective == "personal"
+	if isPersonalPerspective {
+		oaUserID := strings.TrimSpace(req.OAUserID)
+		if oaUserID == "" {
+			oaUserID = strings.TrimSpace(c.GetHeader("X-Embed-OA-User-ID"))
 		}
-		return auditExecuteResponseFromLog(running), nil
+		if oaUserID == "" {
+			oaUserID = strings.TrimSpace(c.Query("oa_user_id"))
+		}
+		if oaUserID == "" {
+			oaUserID = strings.TrimSpace(c.Query("oa_current_user_id"))
+		}
+		if oaUserID == "" {
+			return nil, newServiceError(errcode.ErrParamValidation, "无法识别当前 OA 操作人，无法发起个人定制审核")
+		}
+		adapter, aErr := s.getOAAdapter(c.Request.Context(), tenantID)
+		if aErr != nil {
+			return nil, aErr
+		}
+		personalUser, pErr := s.resolveOAUser(c.Request.Context(), tenantID, adapter, oaUserID)
+		if pErr != nil || personalUser == nil {
+			return nil, newServiceError(errcode.ErrResourceNotFound, "当前 OA 操作人尚未绑定或未加入系统，无法发起个人定制审核")
+		}
+		userID = personalUser.ID
+		c.Set("embed_user_id", personalUser.ID)
+		trigger = model.AuditTriggerWorkbenchManual
+		triggerDetail, queueKind = normalizeAuditTriggerDetail(trigger, "personal_embed_manual")
+
+		// 检查该用户是否已有正在运行的任务
+		if running, rErr := s.auditLogRepo.GetRunningByProcessIDAndUser(c, req.ProcessID, personalUser.ID); rErr != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "查询个人进行中的审核任务失败")
+		} else if running != nil {
+			return auditExecuteResponseFromLog(running), nil
+		}
+	} else {
+		if running, runningErr := s.auditLogRepo.GetRunningByProcessIDForTriggers(
+			c,
+			req.ProcessID,
+			model.EmbedTriggerSources(),
+		); runningErr != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "查询进行中的审核任务失败")
+		} else if running != nil {
+			promoteToInteractive := queueKind == model.JobQueueKindInteractive &&
+				running.Status == model.JobStatusPending &&
+				running.QueueKind != model.JobQueueKindInteractive
+			relabelAsManual := trigger == model.AuditTriggerEmbedManual &&
+				running.Status == model.JobStatusPending &&
+				running.TriggerDetail != model.SummaryTriggerDetailManual
+			if promoteToInteractive || relabelAsManual {
+				if err := s.auditLogRepo.UpdateFields(c, running.ID, map[string]interface{}{
+					"user_id":            userID,
+					"trigger_source":     trigger,
+					"trigger_detail":     triggerDetail,
+					"queue_kind":         queueKind,
+					"schedule_config_id": nil,
+					"updated_at":         apptime.Now(),
+				}); err != nil {
+					return nil, newServiceError(errcode.ErrDatabase, "切换审核任务队列失败")
+				}
+				if promoteToInteractive {
+					if _, err := EnqueueAuditJob(
+						c.Request.Context(),
+						s.rdb,
+						running.ID,
+						tenantID,
+						userID,
+						queueKind,
+					); err != nil {
+						return nil, newServiceError(errcode.ErrRedisConn, "审核交互任务入队失败: "+err.Error())
+					}
+				}
+				running.UserID = userID
+				running.TriggerSource = trigger
+				running.TriggerDetail = triggerDetail
+				running.QueueKind = queueKind
+				running.ScheduleConfigID = nil
+			}
+			return auditExecuteResponseFromLog(running), nil
+		}
 	}
 
 	ctxResp, err := s.GetEmbedContext(c, req.ProcessID)
@@ -329,6 +474,12 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 		return nil, newServiceError(errcode.ErrParamValidation, "无法识别流程类型")
 	}
 
+	useLatest := req.UseLatestConfig
+	if isPersonalPerspective {
+		// 个人视角执行时，必须拉取并绑定该用户的最新个性化规则
+		useLatest = true
+	}
+
 	execReq := &AuditExecuteRequest{
 		ProcessID:          req.ProcessID,
 		ProcessType:        processType,
@@ -337,7 +488,7 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 		TriggerDetail:      triggerDetail,
 		AttemptFingerprint: ctxResp.CurrentFingerprint,
 		ScheduleConfigID:   req.ScheduleConfigID,
-		UseLatestConfig:    req.UseLatestConfig,
+		UseLatestConfig:    useLatest,
 	}
 	return s.Execute(c, execReq)
 }

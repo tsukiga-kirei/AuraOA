@@ -106,6 +106,9 @@ type OAAdapter interface {
 	// FetchAllTodoItems 拉取所有待审批流程（不过滤用户，供调度器批处理使用）
 	// limit <= 0 表示不限制条数
 	FetchAllTodoItems(ctx context.Context, limit int) ([]TodoItem, error)
+
+	// ResolveUsernameByOAUserID 根据 OA 人员标识（如泛微 Ecology 的 hrmresource.id 数字主键）反查登录账号（loginid）。
+	ResolveUsernameByOAUserID(ctx context.Context, oaUserID string) (string, error)
 }
 
 // BrowseValueResolver 可选接口：支持按字段选择集把浏览按钮原始值增补为显示值。
