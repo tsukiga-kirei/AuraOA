@@ -6145,7 +6145,7 @@ const handleSave = async () => {
   transition: all var(--transition-fast);
 }
 .version-card:hover {
-  border-color: var(--color-primary-border, #bfdbfe);
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border-light));
   background: var(--color-bg-hover);
 }
 .version-card--active {
