@@ -60,6 +60,9 @@ func (s *AIModelCallerService) Chat(c *gin.Context, tenantID, userID uuid.UUID, 
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
 		req.UserPrompt = sanitize.SanitizeText(req.UserPrompt)
 		req.SystemPrompt = sanitize.SanitizeText(req.SystemPrompt)
+		for i := range req.Messages {
+			req.Messages[i].Content = sanitize.SanitizeText(req.Messages[i].Content)
+		}
 	}
 
 	// 检查 Token 配额（预扣 max_tokens 防止并发超额）

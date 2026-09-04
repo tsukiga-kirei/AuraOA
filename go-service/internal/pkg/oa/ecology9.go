@@ -3197,6 +3197,47 @@ func (a *Ecology9Adapter) IsProcessInTodo(ctx context.Context, username string, 
 	return count > 0, nil
 }
 
+// CheckProcessVisibility 检查指定用户对流程实例是否具有可见性（待办人、申请人或历史审批人）。
+func (a *Ecology9Adapter) CheckProcessVisibility(ctx context.Context, username string, processID string) (bool, error) {
+	var e9UserID int
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("hrmresource")).
+		Select(a.col("id")).
+		Where(a.col("loginid")+" = ?", username).
+		Row().Scan(&e9UserID)
+	if err != nil {
+		return false, nil
+	}
+
+	// 1. 判断是否在待办中
+	inTodo, err := a.IsProcessInTodo(ctx, username, processID)
+	if err == nil && inTodo {
+		return true, nil
+	}
+
+	// 2. 判断是否是流程创建/申请人
+	var createrCount int64
+	err = a.db.WithContext(ctx).
+		Table(a.tableName("workflow_requestbase")).
+		Where(a.col("requestid")+" = ? AND "+a.col("creater")+" = ?", processID, e9UserID).
+		Count(&createrCount).Error
+	if err == nil && createrCount > 0 {
+		return true, nil
+	}
+
+	// 3. 判断是否在审批历史操作人中
+	var logCount int64
+	err = a.db.WithContext(ctx).
+		Table(a.tableName("workflow_requestlog")).
+		Where(a.col("requestid")+" = ? AND "+a.col("operator")+" = ?", processID, e9UserID).
+		Count(&logCount).Error
+	if err == nil && logCount > 0 {
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // FetchProcessRequestSummary 按 requestid 拉取流程实例摘要。
 func (a *Ecology9Adapter) FetchProcessRequestSummary(ctx context.Context, processID string) (*ProcessRequestSummary, error) {
 	query := fmt.Sprintf(`

@@ -30,15 +30,21 @@ type OrgService struct {
 	userRepo         *repository.UserRepo
 	systemConfigRepo *repository.SystemConfigRepo
 	db               *gorm.DB
+	agentRepo        *repository.AgentRepo
 }
 
 // NewOrgService 创建一个新的 OrgService 实例。
-func NewOrgService(orgRepo *repository.OrgRepo, userRepo *repository.UserRepo, systemConfigRepo *repository.SystemConfigRepo, db *gorm.DB) *OrgService {
+func NewOrgService(orgRepo *repository.OrgRepo, userRepo *repository.UserRepo, systemConfigRepo *repository.SystemConfigRepo, db *gorm.DB, agentRepo ...*repository.AgentRepo) *OrgService {
+	var ar *repository.AgentRepo
+	if len(agentRepo) > 0 {
+		ar = agentRepo[0]
+	}
 	return &OrgService{
 		orgRepo:          orgRepo,
 		userRepo:         userRepo,
 		systemConfigRepo: systemConfigRepo,
 		db:               db,
+		agentRepo:        ar,
 	}
 }
 
@@ -150,7 +156,9 @@ func (s *OrgService) ListRoles(c *gin.Context) ([]dto.RoleResponse, error) {
 	}
 	result := make([]dto.RoleResponse, len(roles))
 	for i, r := range roles {
-		result[i] = toRoleResponse(&r)
+		resp := toRoleResponse(&r)
+		s.populateRoleGrants(&resp, r.ID)
+		result[i] = resp
 	}
 	return result, nil
 }
@@ -171,8 +179,12 @@ func (s *OrgService) CreateRole(c *gin.Context, tenantID uuid.UUID, req *dto.Cre
 	if err := s.orgRepo.CreateRole(role); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
+	if s.agentRepo != nil && (len(req.AgentCodes) > 0 || len(req.ToolCodes) > 0) {
+		_ = s.agentRepo.SaveRoleGrants(tenantID, role.ID, req.AgentCodes, req.ToolCodes)
+	}
 	pkglogger.Global().Info("role created", zap.String("roleName", role.Name), zap.String("tenantID", tenantID.String()))
 	resp := toRoleResponse(role)
+	s.populateRoleGrants(&resp, role.ID)
 	return &resp, nil
 }
 
@@ -198,8 +210,27 @@ func (s *OrgService) UpdateRole(c *gin.Context, id uuid.UUID, req *dto.UpdateRol
 	if err := s.orgRepo.UpdateRole(role); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
+	if s.agentRepo != nil && (req.AgentCodes != nil || req.ToolCodes != nil) {
+		agentCodes := req.AgentCodes
+		if agentCodes == nil {
+			agentCodes, _ = s.agentRepo.ListRoleAgentGrants([]uuid.UUID{role.ID})
+		}
+		toolCodes := req.ToolCodes
+		if toolCodes == nil {
+			toolCodes, _ = s.agentRepo.ListRoleToolGrants([]uuid.UUID{role.ID})
+		}
+		_ = s.agentRepo.SaveRoleGrants(role.TenantID, role.ID, agentCodes, toolCodes)
+	}
 	resp := toRoleResponse(role)
+	s.populateRoleGrants(&resp, role.ID)
 	return &resp, nil
+}
+
+func (s *OrgService) populateRoleGrants(resp *dto.RoleResponse, roleID uuid.UUID) {
+	if s.agentRepo != nil {
+		resp.AgentCodes, _ = s.agentRepo.ListRoleAgentGrants([]uuid.UUID{roleID})
+		resp.ToolCodes, _ = s.agentRepo.ListRoleToolGrants([]uuid.UUID{roleID})
+	}
 }
 
 // DeleteRole 删除组织角色，系统内置角色不可删除。
