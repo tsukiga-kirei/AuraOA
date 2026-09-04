@@ -18,7 +18,7 @@ GET /api/tenant/llm-logs/processes
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| `request_type` | string | 场景：`audit` / `archive` / `summary` |
+| `request_type` | string | 场景：`audit` / `archive` / `summary`；规划增加 `chat`（见 [智能体文档](../agents/README.md)） |
 | `call_type` | string | 类型：`reasoning` / `structured` |
 | `keyword` | string | 流程标题关键词 |
 | `operator` | string | 操作人 |

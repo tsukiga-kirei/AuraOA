@@ -59,9 +59,9 @@ Authorization: Bearer <access_token>
 
 | 角色 | 编码 | 说明 |
 |------|------|------|
-| 系统管理员 | `system_admin` | 管理租户、OA 连接、AI 模型、系统配置 |
-| 租户管理员 | `tenant_admin` | 管理组织架构、流程配置、审核规则 |
-| 业务用户 | `business` | 使用审核工作台、归档复盘、个人设置 |
+| 系统管理员 | `system_admin` | 管理租户、OA 连接、AI 模型、系统配置；将智能体/工具等能力**分配给租户** |
+| 租户管理员 | `tenant_admin` | 管理组织架构、流程配置、审核规则；在配额内组装智能体并**再分配给角色** |
+| 业务用户 | `business` | 使用审核工作台、归档复盘、个人设置、以及授权范围内的 AI 对话 |
 
 ### 中间件链
 
@@ -89,3 +89,5 @@ Authorization: Bearer <access_token>
 | [用户设置接口](./user-settings.md) | `/api/tenant/settings` | 个人审核配置、归档配置、仪表盘偏好 |
 | [AI 调用记录接口](./llm-logs.md) | `/api/tenant/llm-logs` | LLM 调用流程列表、详情、统计 |
 | [缓存管理接口](./cache.md) | `/api/admin/cache` | 缓存统计、清除、开关 |
+| [对话接口](./chat.md)（拟定） | `/api/chat` | 智能体会话、SSE；需求见 [docs/agents](../agents/README.md) |
+| [智能体与分配接口](./agents.md)（拟定） | `/api/admin/tenants/:id/chat-allocation`、`/api/tenant/agents` | 系统管理员配额、租户智能体/MCP/Skills |

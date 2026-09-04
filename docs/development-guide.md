@@ -11,6 +11,7 @@
 | 后端 | `go-service/` |
 | 前端 | `frontend/` |
 | 接口文档 | `docs/api/` |
+| 智能体需求/设计 | `docs/agents/` |
 | 数据库迁移 | `db/migrations/` |
 
 **目标**：保证多租户 OA 审核场景下，功能可维护、接口可预期、中英文界面一致，并在「审核工作台」与「归档复盘」等对称模块间避免遗漏联动修改。
@@ -46,6 +47,7 @@ middleware/      # 如 auth 路由守卫
 ### 2.3 文档与变更
 
 - 接口行为变更须同步更新 `docs/api/` 对应文档。
+- 智能体、系统工具、MCP、Skills、两级分配变更须同步更新 `docs/agents/`（见该目录 [authoring.md](./agents/authoring.md)）。
 - 已知缺陷登记在 `docs/known-issues/`。
 - 面向用户的版本变更写入根目录 `CHANGELOG.md`。
 
@@ -575,6 +577,7 @@ process_archive_configs + archive_rules + user_personal_configs
 | [用户设置](./api/user-settings.md) | 个人配置与仪表盘 |
 | [OA 集成](./oa-integration.md) | OA 适配器与数据提取 |
 | [AI 集成](./ai-integration.md) | 模型调用与两阶段审核 |
+| [智能体与对话](./agents/README.md) | 需求、两级分配、系统工具/MCP/Skills |
 | [已知问题](./known-issues/README.md) | 缺陷跟踪 |
 
 ---

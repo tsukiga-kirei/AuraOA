@@ -11,6 +11,7 @@
 | 01   | 附件识别 | 把流程附件（PDF / 图片 / Office 文档等）解析为文本送入 AI | [01-attachment-recognition.md](./01-attachment-recognition.md) |
 | 02   | 嵌入 AI 审核侧边栏 | 在 E9 审批页 iframe 嵌入 AuraOA 审核结果，按 requestid 自动/手动审核 | [02-embed-audit-sidebar.md](./02-embed-audit-sidebar.md) |
 | 03   | 嵌入流程总结侧边栏 | 在 E9 审批页 iframe 嵌入 AuraOA 总结结果，按多总结块配置摘要流程字段和附件 | [03-embed-process-summary.md](./03-embed-process-summary.md) |
+| —    | 嵌入 AI 对话 | 规划中：审批页侧栏对话，能力受系统→租户→角色两级分配约束 | 产品需求 [docs/agents](../agents/README.md)；OA 侧步骤待实现后补 `04-embed-chat.md` |
 
 ## OA 类型矩阵
 

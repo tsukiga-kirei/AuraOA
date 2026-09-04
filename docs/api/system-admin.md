@@ -20,6 +20,8 @@ POST /api/admin/tenants
 
 创建新租户并初始化租户管理员账号。
 
+规划中的对话能力由系统管理员在租户上配置配额（智能体、系统工具、MCP/Skills），接口草案见 [`docs/api/agents.md`](./agents.md)，需求见 [`docs/agents/allocation.md`](../agents/allocation.md)。
+
 | 字段 | 说明 |
 |------|------|
 | `admin_username` | 租户管理员登录名。1–100 位英文字母、数字或下划线，允许纯数字（可与 OA `loginid` 一致） |
