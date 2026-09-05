@@ -122,7 +122,7 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核规则失败")
 	}
-	fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, err := s.resolveUserConfig(c, userID, config, rules, summary.ProcessType)
+	fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, err := s.resolveUserConfig(c, uuid.Nil, config, rules, summary.ProcessType)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人审核尺度失败: "+err.Error())
 	}
@@ -167,6 +167,52 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		EmbedEnabled:           true,
 		ConfigVersionNo:        executionVersionNumber(bindingVersion),
 		ConfigUpgradeAvailable: bindingVersion != nil && bindingVersion.Fingerprint != currentConfigFingerprint,
+	}
+
+	// 检查当前 OA 访问人员在 AuraOA 中是否有个人定制规则与专属审核记录
+	oaUserID := strings.TrimSpace(c.GetHeader("X-Embed-OA-User-ID"))
+	if oaUserID == "" {
+		oaUserID = strings.TrimSpace(c.Query("oa_user_id"))
+	}
+	if oaUserID == "" {
+		oaUserID = strings.TrimSpace(c.Query("oa_current_user_id"))
+	}
+
+	var personalView *EmbedPersonalView
+	if oaUserID != "" {
+		personalUser, _ := s.resolveOAUser(c.Request.Context(), tenantID, adapter, oaUserID)
+		if personalUser != nil {
+			hasCustom := s.hasUserCustomizedAudit(c, tenantID, personalUser.ID, config.ID, summary.ProcessType)
+			if hasCustom {
+				personalView = &EmbedPersonalView{
+					Available:   true,
+					UserID:      personalUser.ID.String(),
+					Username:    personalUser.Username,
+					DisplayName: personalUser.DisplayName,
+				}
+				// 检查该用户是否有正在运行的任务
+				personalRunning, _ := s.auditLogRepo.GetRunningByProcessIDAndUser(c, processID, personalUser.ID)
+				if personalRunning != nil {
+					personalView.RunningJobID = personalRunning.ID.String()
+					personalView.AuditResult = buildAuditResultFromLog(personalRunning)
+					personalView.HasAudit = true
+				} else {
+					personalLog, _ := s.auditLogRepo.GetLatestValidByProcessIDAndUser(c, processID, personalUser.ID)
+					if personalLog != nil {
+						personalView.HasAudit = true
+						personalView.LastAuditAt = apptime.FormatRFC3339(personalLog.UpdatedAt)
+						personalView.AuditResult = buildAuditResultFromLog(personalLog)
+					}
+				}
+			}
+		}
+	}
+
+	resp.PersonalView = personalView
+	if personalView != nil && personalView.HasAudit {
+		resp.DefaultPerspective = "personal"
+	} else {
+		resp.DefaultPerspective = "standard"
 	}
 
 	running, _ := s.auditLogRepo.GetRunningByProcessIDForTriggers(c, processID, model.EmbedTriggerSources())
@@ -243,52 +289,6 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		resp.AutoRetryBlocked = true
 		resp.LastAuditAt = apptime.FormatRFC3339(latestAttempt.UpdatedAt)
 		resp.AuditResult = buildAuditResultFromLog(latestAttempt)
-	}
-
-	// 检查当前 OA 访问人员在 AuraOA 中是否有个人定制规则与专属审核记录
-	oaUserID := strings.TrimSpace(c.GetHeader("X-Embed-OA-User-ID"))
-	if oaUserID == "" {
-		oaUserID = strings.TrimSpace(c.Query("oa_user_id"))
-	}
-	if oaUserID == "" {
-		oaUserID = strings.TrimSpace(c.Query("oa_current_user_id"))
-	}
-
-	var personalView *EmbedPersonalView
-	if oaUserID != "" {
-		personalUser, _ := s.resolveOAUser(c.Request.Context(), tenantID, adapter, oaUserID)
-		if personalUser != nil {
-			hasCustom := s.hasUserCustomizedAudit(c, tenantID, personalUser.ID, config.ID, summary.ProcessType)
-			if hasCustom {
-				personalView = &EmbedPersonalView{
-					Available:   true,
-					UserID:      personalUser.ID.String(),
-					Username:    personalUser.Username,
-					DisplayName: personalUser.DisplayName,
-				}
-				// 检查该用户是否有正在运行的任务
-				personalRunning, _ := s.auditLogRepo.GetRunningByProcessIDAndUser(c, processID, personalUser.ID)
-				if personalRunning != nil {
-					personalView.RunningJobID = personalRunning.ID.String()
-					personalView.AuditResult = buildAuditResultFromLog(personalRunning)
-					personalView.HasAudit = true
-				} else {
-					personalLog, _ := s.auditLogRepo.GetLatestValidByProcessIDAndUser(c, processID, personalUser.ID)
-					if personalLog != nil {
-						personalView.HasAudit = true
-						personalView.LastAuditAt = apptime.FormatRFC3339(personalLog.UpdatedAt)
-						personalView.AuditResult = buildAuditResultFromLog(personalLog)
-					}
-				}
-			}
-		}
-	}
-
-	resp.PersonalView = personalView
-	if personalView != nil && personalView.HasAudit {
-		resp.DefaultPerspective = "personal"
-	} else {
-		resp.DefaultPerspective = "standard"
 	}
 
 	return resp, nil
@@ -481,14 +481,16 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 	}
 
 	execReq := &AuditExecuteRequest{
-		ProcessID:          req.ProcessID,
-		ProcessType:        processType,
-		Title:              title,
-		TriggerSource:      trigger,
-		TriggerDetail:      triggerDetail,
-		AttemptFingerprint: ctxResp.CurrentFingerprint,
-		ScheduleConfigID:   req.ScheduleConfigID,
-		UseLatestConfig:    useLatest,
+		PersonalPerspective: isPersonalPerspective,
+		StandardPerspective: !isPersonalPerspective,
+		ProcessID:           req.ProcessID,
+		ProcessType:         processType,
+		Title:               title,
+		TriggerSource:       trigger,
+		TriggerDetail:       triggerDetail,
+		AttemptFingerprint:  ctxResp.CurrentFingerprint,
+		ScheduleConfigID:    req.ScheduleConfigID,
+		UseLatestConfig:     useLatest,
 	}
 	return s.Execute(c, execReq)
 }

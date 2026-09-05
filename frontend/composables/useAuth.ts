@@ -545,6 +545,23 @@ export const useAuth = () => {
    * @param path 请求路径（相对路径或完整 URL）
    * @param options fetch 选项（method、body、headers 等）
    */
+  /** 对接 POST SSE 路由，保持与普通 API 相同的认证和刷新语义。 */
+  async function authStreamFetch(path: string, options: RequestInit = {}): Promise<Response> {
+    const contextToken = token.value
+    const request = () => {
+      const headers = new Headers(options.headers)
+      if (token.value) headers.set('Authorization', `Bearer ${token.value}`)
+      return fetch(`${config.public.apiBase}${path}`, { ...options, headers })
+    }
+    let response = await request()
+    if (response.status === 401 && token.value === contextToken && await doRefreshToken()) response = await request()
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      throw new Error(body?.message || getI18nText('auth.requestFailed'))
+    }
+    return response
+  }
+
   async function authFetch<T>(path: string, options?: Record<string, any>): Promise<T> {
     const baseUrl = String(config.public.apiBase)
     const url = path.startsWith('http') ? path : `${baseUrl}${path}`
@@ -741,7 +758,7 @@ export const useAuth = () => {
     login, getMenu, logout, clearLocalSession, validateAccessToken,
     isAuthenticated, restore, tryRestoreAsync, isRefreshTokenValid,
     setUserRole, setUserPermissions, setAllRoles, setActiveRole, switchRole,
-    authFetch, doRefreshToken, changePassword, getProfile, updateProfile, updateLocale, setUserLocale,
+    authFetch, authStreamFetch, doRefreshToken, changePassword, getProfile, updateProfile, updateLocale, setUserLocale,
     refreshRoles,
   }
 }

@@ -28,13 +28,14 @@ func (r *ExecutionConfigVersionRepo) GetBindingVersion(
 	ctx context.Context,
 	tenantID uuid.UUID,
 	module, processID string,
+	scopes ...string,
 ) (*model.ExecutionConfigVersion, error) {
 	var version model.ExecutionConfigVersion
 	err := r.db.WithContext(ctx).
 		Table("execution_config_versions AS v").
 		Select("v.*").
 		Joins("JOIN process_execution_config_bindings AS b ON b.config_version_id = v.id").
-		Where("b.tenant_id = ? AND b.module = ? AND b.process_id = ?", tenantID, module, processID).
+		Where("b.tenant_id = ? AND b.module = ? AND b.process_id = ? AND b.scope = ?", tenantID, module, processID, bindingScope(scopes)).
 		First(&version).Error
 	return bindingVersionResult(version, err)
 }
@@ -246,24 +247,21 @@ func (r *ExecutionConfigVersionRepo) PublishBaseVersion(
 			return err
 		}
 
-		var latest model.TenantConfigVersion
-		err := tx.Where(
-			"tenant_id = ? AND module = ? AND source_config_id = ?",
-			tenantID, module, sourceConfigID,
-		).Order("version_no DESC").First(&latest).Error
-
-		if err == nil && latest.Fingerprint == fingerprint {
-			// 指纹一致，直接激活最新版本
-			_ = tx.Model(&model.TenantConfigVersion{}).
-				Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).
-				Update("is_active", false)
-			_ = tx.Model(&model.TenantConfigVersion{}).Where("id = ?", latest.ID).Update("is_active", true)
-			latest.IsActive = true
-			result = latest
+		var same model.TenantConfigVersion
+		sameErr := tx.Where("tenant_id = ? AND module = ? AND source_config_id = ? AND fingerprint = ?", tenantID, module, sourceConfigID, fingerprint).First(&same).Error
+		if sameErr == nil {
+			if err := tx.Model(&model.TenantConfigVersion{}).Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).Update("is_active", false).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&model.TenantConfigVersion{}).Where("id = ?", same.ID).Update("is_active", true).Error; err != nil {
+				return err
+			}
+			same.IsActive = true
+			result = same
 			return nil
 		}
-		if err != nil && err != gorm.ErrRecordNotFound {
-			return err
+		if sameErr != gorm.ErrRecordNotFound {
+			return sameErr
 		}
 
 		var maxVersion int
@@ -274,9 +272,11 @@ func (r *ExecutionConfigVersionRepo) PublishBaseVersion(
 		}
 
 		// 将先前版本置为非 active
-		_ = tx.Model(&model.TenantConfigVersion{}).
+		if err := tx.Model(&model.TenantConfigVersion{}).
 			Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).
-			Update("is_active", false)
+			Update("is_active", false).Error; err != nil {
+			return err
+		}
 
 		now := apptime.Now()
 		result = model.TenantConfigVersion{
@@ -329,7 +329,9 @@ func (r *ExecutionConfigVersionRepo) GetOrCreateLatestBaseVersion(
 			tenantID, module, sourceConfigID,
 		).Order("version_no DESC").First(&result).Error
 		if err == nil {
-			_ = tx.Model(&model.TenantConfigVersion{}).Where("id = ?", result.ID).Update("is_active", true)
+			if err := tx.Model(&model.TenantConfigVersion{}).Where("id = ?", result.ID).Update("is_active", true).Error; err != nil {
+				return err
+			}
 			result.IsActive = true
 			return nil
 		}
@@ -381,6 +383,7 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 	fingerprint string,
 	snapshot interface{},
 	force bool,
+	scopes ...string,
 ) (*model.ExecutionConfigVersion, error) {
 	raw, err := json.Marshal(snapshot)
 	if err != nil {
@@ -399,7 +402,7 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 			err := tx.Table("execution_config_versions AS v").
 				Select("v.*").
 				Joins("JOIN process_execution_config_bindings AS b ON b.config_version_id = v.id").
-				Where("b.tenant_id = ? AND b.module = ? AND b.process_id = ?", tenantID, module, processID).
+				Where("b.tenant_id = ? AND b.module = ? AND b.process_id = ? AND b.scope = ?", tenantID, module, processID, bindingScope(scopes)).
 				First(&result).Error
 			if err == nil {
 				return nil
@@ -435,6 +438,7 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 		}
 
 		binding := model.ProcessExecutionConfigBinding{
+			Scope:           bindingScope(scopes),
 			ID:              uuid.New(),
 			TenantID:        tenantID,
 			Module:          module,
@@ -445,7 +449,7 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 		}
 		if force {
 			if err := tx.Clauses(clause.OnConflict{
-				Columns: []clause.Column{{Name: "tenant_id"}, {Name: "module"}, {Name: "process_id"}},
+				Columns: []clause.Column{{Name: "tenant_id"}, {Name: "module"}, {Name: "process_id"}, {Name: "scope"}},
 				DoUpdates: clause.Assignments(map[string]interface{}{
 					"process_type":      processType,
 					"config_version_id": version.ID,
@@ -460,7 +464,7 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 		}
 
 		if err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "module"}, {Name: "process_id"}},
+			Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "module"}, {Name: "process_id"}, {Name: "scope"}},
 			DoNothing: true,
 		}).Create(&binding).Error; err != nil {
 			return err
@@ -468,11 +472,18 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 		return tx.Table("execution_config_versions AS v").
 			Select("v.*").
 			Joins("JOIN process_execution_config_bindings AS b ON b.config_version_id = v.id").
-			Where("b.tenant_id = ? AND b.module = ? AND b.process_id = ?", tenantID, module, processID).
+			Where("b.tenant_id = ? AND b.module = ? AND b.process_id = ? AND b.scope = ?", tenantID, module, processID, bindingScope(scopes)).
 			First(&result).Error
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &result, nil
+}
+
+func bindingScope(scopes []string) string {
+	if len(scopes) > 0 {
+		return scopes[0]
+	}
+	return ""
 }

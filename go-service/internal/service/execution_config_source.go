@@ -1,8 +1,10 @@
 package service
 
 import (
+	"auraoa/go-service/internal/cache"
+	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"sort"
 	"time"
 
@@ -27,6 +29,7 @@ type ExecutionConfigVersionStatus struct {
 
 // ExecutionConfigSourceService 为配置页提供可靠的租户基础版本状态。
 type ExecutionConfigSourceService struct {
+	invalidator    *cache.InvalidationManager
 	versions       *repository.ExecutionConfigVersionRepo
 	auditConfigs   *repository.ProcessAuditConfigRepo
 	auditRules     *repository.AuditRuleRepo
@@ -155,6 +158,7 @@ func (s *ExecutionConfigSourceService) Publish(
 		return nil, newServiceError(errcode.ErrDatabase, "发布配置版本失败")
 	}
 
+	s.invalidate(c, tenantID, module)
 	versionNo := published.VersionNo
 	return &ExecutionConfigVersionStatus{
 		Status: "current", ActiveVersionNo: &versionNo, CurrentVersionNo: &versionNo, LatestVersionNo: &versionNo, HasPendingChanges: false,
@@ -224,17 +228,20 @@ func (s *ExecutionConfigSourceService) ActivateVersion(
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
 
-	activated, err := s.versions.SetActiveBaseVersion(c.Request.Context(), tenantID, module, sourceConfigID, versionNo)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, newServiceError(errcode.ErrConfigNotFound, "指定版本不存在")
+	err = s.inTransaction(c, func(scoped *ExecutionConfigSourceService) error {
+		activated, err := scoped.versions.SetActiveBaseVersion(c.Request.Context(), tenantID, module, sourceConfigID, versionNo)
+		if err != nil {
+			return err
 		}
-		return nil, newServiceError(errcode.ErrDatabase, "激活指定版本失败")
+		if err := validateSourceSnapshot(module, activated.ConfigSnapshot); err != nil {
+			return err
+		}
+		return scoped.applySnapshotToSource(c, tenantID, module, sourceConfigID, activated.ConfigSnapshot)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("激活配置版本失败: %w", err)
 	}
-
-	if err := s.applySnapshotToSource(c, tenantID, module, sourceConfigID, activated.ConfigSnapshot); err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "应用版本配置到生效库失败")
-	}
+	s.invalidate(c, tenantID, module)
 
 	return s.GetStatus(c, module, sourceConfigID)
 }
@@ -257,21 +264,28 @@ func (s *ExecutionConfigSourceService) SaveVersion(
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
 
-	fingerprint := stableJSONFingerprint(snapshot)
-	updated, err := s.versions.UpdateBaseVersionSnapshot(
-		c.Request.Context(), tenantID, module, sourceConfigID, versionNo, fingerprint, snapshot,
-	)
+	raw, err := json.Marshal(snapshot)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, newServiceError(errcode.ErrConfigNotFound, "指定版本不存在")
+		return nil, err
+	}
+	if err := validateSourceSnapshot(module, raw); err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, err.Error())
+	}
+	fingerprint := stableJSONFingerprint(snapshot)
+	err = s.inTransaction(c, func(scoped *ExecutionConfigSourceService) error {
+		updated, err := scoped.versions.UpdateBaseVersionSnapshot(c.Request.Context(), tenantID, module, sourceConfigID, versionNo, fingerprint, snapshot)
+		if err != nil {
+			return err
 		}
-		return nil, newServiceError(errcode.ErrDatabase, "保存版本快照失败")
+		if updated.IsActive {
+			return scoped.applySnapshotToSource(c, tenantID, module, sourceConfigID, updated.ConfigSnapshot)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("保存版本快照失败: %w", err)
 	}
-
-	// 若更新的版本恰好是当前启用版本，同步更新主表生效内容
-	if updated.IsActive {
-		_ = s.applySnapshotToSource(c, tenantID, module, sourceConfigID, updated.ConfigSnapshot)
-	}
+	s.invalidate(c, tenantID, module)
 
 	return s.GetStatus(c, module, sourceConfigID)
 }
@@ -314,7 +328,10 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 			return err
 		}
 
-		existingRules, _ := s.auditRules.ListByConfigID(c, sourceConfigID)
+		existingRules, err := s.auditRules.ListByConfigID(c, sourceConfigID)
+		if err != nil {
+			return err
+		}
 		existingMap := make(map[string]uuid.UUID)
 		for _, r := range existingRules {
 			existingMap[r.ID.String()] = r.ID
@@ -344,14 +361,20 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				}
 			}
 			if _, exists := existingMap[ruleID.String()]; exists {
-				_ = s.auditRules.Update(c, ruleModel)
+				if err := s.auditRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "rule_scope", "enabled", "related_flow", "context_enabled", "context_mounts").Updates(ruleModel).Error; err != nil {
+					return err
+				}
 			} else {
-				_ = s.auditRules.Create(c, ruleModel)
+				if err := s.auditRules.Create(c, ruleModel); err != nil {
+					return err
+				}
 			}
 		}
 		for idStr, id := range existingMap {
 			if !snapshotRuleIDs[idStr] {
-				_ = s.auditRules.Delete(c, id)
+				if err := s.auditRules.Delete(c, id); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -385,7 +408,10 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 			return err
 		}
 
-		existingRules, _ := s.archiveRules.ListByConfigID(c, sourceConfigID)
+		existingRules, err := s.archiveRules.ListByConfigID(c, sourceConfigID)
+		if err != nil {
+			return err
+		}
 		existingMap := make(map[string]uuid.UUID)
 		for _, r := range existingRules {
 			existingMap[r.ID.String()] = r.ID
@@ -415,14 +441,20 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				}
 			}
 			if _, exists := existingMap[ruleID.String()]; exists {
-				_ = s.archiveRules.Update(c, ruleModel)
+				if err := s.archiveRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "rule_scope", "enabled", "related_flow", "context_enabled", "context_mounts").Updates(ruleModel).Error; err != nil {
+					return err
+				}
 			} else {
-				_ = s.archiveRules.Create(c, ruleModel)
+				if err := s.archiveRules.Create(c, ruleModel); err != nil {
+					return err
+				}
 			}
 		}
 		for idStr, id := range existingMap {
 			if !snapshotRuleIDs[idStr] {
-				_ = s.archiveRules.Delete(c, id)
+				if err := s.archiveRules.Delete(c, id); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -565,4 +597,56 @@ func summaryConfigSourceSnapshot(config *model.ProcessSummaryConfig) map[string]
 
 func summaryConfigSourceFingerprint(config *model.ProcessSummaryConfig) string {
 	return stableJSONFingerprint(summaryConfigSourceSnapshot(config))
+}
+
+// SetInvalidator 接入共享配置缓存失效器。
+func (s *ExecutionConfigSourceService) SetInvalidator(invalidator *cache.InvalidationManager) {
+	s.invalidator = invalidator
+}
+func (s *ExecutionConfigSourceService) invalidate(c *gin.Context, tenantID uuid.UUID, module string) {
+	if s.invalidator != nil {
+		_ = s.invalidator.InvalidateConfigCache(context.WithoutCancel(c.Request.Context()), tenantID, module)
+	}
+}
+func (s *ExecutionConfigSourceService) inTransaction(c *gin.Context, operation func(*ExecutionConfigSourceService) error) error {
+	return s.auditConfigs.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		scoped := NewExecutionConfigSourceService(repository.NewExecutionConfigVersionRepo(tx), repository.NewProcessAuditConfigRepo(tx), repository.NewAuditRuleRepo(tx), repository.NewProcessArchiveConfigRepo(tx), repository.NewArchiveRuleRepo(tx), repository.NewProcessSummaryConfigRepo(tx))
+		return operation(scoped)
+	})
+}
+
+// validateSourceSnapshot 拒绝缺字段和 JSON null，避免将损坏的历史快照激活到主表。
+func validateSourceSnapshot(module string, raw []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return fmt.Errorf("配置快照格式无效")
+	}
+	required := []string{"process_type", "main_table_name", "main_fields", "detail_tables", "status"}
+	if module == model.ExecutionConfigModuleSummary {
+		required = append(required, "summary_blocks")
+	} else {
+		required = append(required, "field_mode", "kb_mode", "ai_config", "user_permissions", "rules")
+	}
+	for _, key := range required {
+		if len(fields[key]) == 0 || string(fields[key]) == "null" {
+			return fmt.Errorf("配置快照缺少有效字段 %s", key)
+		}
+	}
+	for _, key := range []string{"main_fields", "detail_tables", "rules", "summary_blocks"} {
+		if raw, ok := fields[key]; ok {
+			var values []json.RawMessage
+			if err := json.Unmarshal(raw, &values); err != nil {
+				return fmt.Errorf("配置字段 %s 必须为数组", key)
+			}
+		}
+	}
+	for _, key := range []string{"ai_config", "user_permissions"} {
+		if raw, ok := fields[key]; ok {
+			var values map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &values); err != nil {
+				return fmt.Errorf("配置字段 %s 必须为对象", key)
+			}
+		}
+	}
+	return nil
 }

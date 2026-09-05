@@ -16,7 +16,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const currentAgent = computed(() => {
-  return props.agents.find(a => a.code === props.currentAgentCode) || props.agents[0]
+  return props.agents.find(a => a.agent_code === props.currentAgentCode) || props.agents[0]
 })
 </script>
 
@@ -33,8 +33,8 @@ const currentAgent = computed(() => {
           <a-menu>
             <a-menu-item
               v-for="agent in agents"
-              :key="agent.code"
-              @click="emit('select', agent.code)"
+              :key="agent.agent_code"
+              @click="emit('select', agent.agent_code)"
             >
               <div class="menu-agent-item">
                 <span class="menu-emoji">{{ agent.avatar_emoji }}</span>

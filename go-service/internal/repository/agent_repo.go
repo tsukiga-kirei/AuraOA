@@ -3,6 +3,8 @@ package repository
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
@@ -51,9 +53,17 @@ func (r *AgentRepo) ListAgentsByTenant(tenantID uuid.UUID) ([]model.AgentDefinit
 	var agents []model.AgentDefinition
 	err := r.db.Preload("ToolBindings").
 		Where("tenant_id = ? OR tenant_id IS NULL", tenantID).
-		Order("is_system DESC, created_at ASC").
+		Order("tenant_id DESC NULLS LAST, is_system DESC, created_at ASC").
 		Find(&agents).Error
-	return agents, err
+	seen := make(map[string]bool)
+	unique := make([]model.AgentDefinition, 0, len(agents))
+	for _, agent := range agents {
+		if !seen[agent.AgentCode] {
+			seen[agent.AgentCode] = true
+			unique = append(unique, agent)
+		}
+	}
+	return unique, err
 }
 
 // CreateAgent 创建智能体
@@ -77,14 +87,30 @@ func (r *AgentRepo) DeleteAgent(tenantID, id uuid.UUID) error {
 // ReplaceAgentToolBindings 覆盖更新智能体的工具绑定
 func (r *AgentRepo) ReplaceAgentToolBindings(tenantID, agentID uuid.UUID, toolCodes []string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("agent_id = ?", agentID).Delete(&model.AgentToolBinding{}).Error; err != nil {
+		var owner model.AgentDefinition
+		if err := tx.Where("tenant_id = ? AND id = ?", tenantID, agentID).First(&owner).Error; err != nil {
+			return fmt.Errorf("无权修改该智能体: %w", err)
+		}
+		if err := tx.Where("tenant_id = ? AND agent_id = ?", tenantID, agentID).Delete(&model.AgentToolBinding{}).Error; err != nil {
 			return err
 		}
+		seen := make(map[string]bool)
 		for _, tc := range toolCodes {
+			if seen[tc] {
+				continue
+			}
+			seen[tc] = true
+			kind := "system"
+			if strings.HasPrefix(tc, "skill:") {
+				kind = "skill"
+			}
+			if strings.HasPrefix(tc, "mcp:") {
+				kind = "mcp"
+			}
 			b := model.AgentToolBinding{
 				TenantID: &tenantID,
 				AgentID:  agentID,
-				ToolType: "system",
+				ToolType: kind,
 				ToolCode: tc,
 			}
 			if err := tx.Create(&b).Error; err != nil {
@@ -128,6 +154,18 @@ func (r *AgentRepo) SaveTenantAllocation(alloc *model.TenantChatAllocation) erro
 	return r.db.Save(alloc).Error
 }
 
+// SaveTenantChatSettings 同事务保存聊天开关、模型设置与能力配额。
+func (r *AgentRepo) SaveTenantChatSettings(alloc *model.TenantChatAllocation, updates map[string]interface{}) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if len(updates) > 0 {
+			if err := tx.Model(&model.Tenant{}).Where("id = ?", alloc.TenantID).Updates(updates).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Save(alloc).Error
+	})
+}
+
 // --------------------- Org Role Grants ---------------------
 
 // ListRoleAgentGrants 获取角色的智能体授权
@@ -159,10 +197,14 @@ func (r *AgentRepo) ListRoleToolGrants(roleIDs []uuid.UUID) ([]string, error) {
 // SaveRoleGrants 保存指定角色的智能体和工具授权
 func (r *AgentRepo) SaveRoleGrants(tenantID, roleID uuid.UUID, agentCodes, toolCodes []string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("role_id = ?", roleID).Delete(&model.OrgRoleAgentGrant{}).Error; err != nil {
+		var role model.OrgRole
+		if err := tx.Where("tenant_id = ? AND id = ?", tenantID, roleID).First(&role).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("role_id = ?", roleID).Delete(&model.OrgRoleToolGrant{}).Error; err != nil {
+		if err := tx.Where("tenant_id = ? AND role_id = ?", tenantID, roleID).Delete(&model.OrgRoleAgentGrant{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("tenant_id = ? AND role_id = ?", tenantID, roleID).Delete(&model.OrgRoleToolGrant{}).Error; err != nil {
 			return err
 		}
 		for _, code := range agentCodes {
@@ -236,7 +278,14 @@ func (r *AgentRepo) GetSkillByCode(tenantID uuid.UUID, code string) (*model.Agen
 }
 
 func (r *AgentRepo) CreateSkill(skill *model.AgentSkill) error {
-	return r.db.Create(skill).Error
+	enabled := skill.Enabled
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(skill).Error; err != nil {
+			return err
+		}
+		skill.Enabled = enabled
+		return tx.Model(skill).Update("enabled", enabled).Error
+	})
 }
 
 func (r *AgentRepo) UpdateSkill(tenantID, id uuid.UUID, updates map[string]interface{}) error {
@@ -254,4 +303,86 @@ func ParseJSONSlice(data datatypes.JSON) []string {
 		_ = json.Unmarshal(data, &res)
 	}
 	return res
+}
+
+// SaveTenantAgent 在同一事务内保存租户定义及绑定；修改平台模板时创建租户专属副本。
+func (r *AgentRepo) SaveTenantAgent(tenantID uuid.UUID, agent *model.AgentDefinition, updates map[string]interface{}, toolCodes *[]string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		repo := NewAgentRepo(tx)
+		if agent.TenantID == nil {
+			var existing model.AgentDefinition
+			err := tx.Where("tenant_id = ? AND agent_code = ?", tenantID, agent.AgentCode).First(&existing).Error
+			if err == nil {
+				agent = &existing
+			} else if errors.Is(err, gorm.ErrRecordNotFound) {
+				copy := *agent
+				copy.ID = uuid.New()
+				copy.TenantID = &tenantID
+				copy.ToolBindings = nil
+				if err := tx.Create(&copy).Error; err != nil {
+					return err
+				}
+				if toolCodes == nil {
+					codes := []string{}
+					for _, b := range agent.ToolBindings {
+						codes = append(codes, b.ToolCode)
+					}
+					toolCodes = &codes
+				}
+				agent = &copy
+			} else {
+				return err
+			}
+		} else if *agent.TenantID != tenantID {
+			return fmt.Errorf("无权修改该智能体")
+		}
+		if err := repo.UpdateAgent(tenantID, agent.ID, updates); err != nil {
+			return err
+		}
+		if toolCodes != nil {
+			return repo.ReplaceAgentToolBindings(tenantID, agent.ID, *toolCodes)
+		}
+		return nil
+	})
+}
+
+// CreateAgentWithBindings 原子创建定义与工具绑定，避免出现没有装配完成的智能体。
+func (r *AgentRepo) CreateAgentWithBindings(tenantID uuid.UUID, agent *model.AgentDefinition, codes []string) error {
+	enabled := agent.Enabled
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(agent).Error; err != nil {
+			return err
+		}
+		agent.Enabled = enabled
+		if err := tx.Model(agent).Update("enabled", enabled).Error; err != nil {
+			return err
+		}
+		return NewAgentRepo(tx).ReplaceAgentToolBindings(tenantID, agent.ID, codes)
+	})
+}
+
+// CreateMCPServerWithinQuota 在租户行锁内检查数量，避免并发注册突破配额。
+func (r *AgentRepo) CreateMCPServerWithinQuota(tenantID uuid.UUID, server *model.MCPServer) error {
+	enabled := server.Enabled
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var alloc model.TenantChatAllocation
+		if err := tx.Raw("SELECT * FROM tenant_chat_allocations WHERE tenant_id = ? FOR UPDATE", tenantID).Scan(&alloc).Error; err != nil {
+			return err
+		}
+		if !alloc.AllowTenantMCP {
+			return fmt.Errorf("当前租户未获得 MCP 权限")
+		}
+		var count int64
+		if err := tx.Model(&model.MCPServer{}).Where("tenant_id = ?", tenantID).Count(&count).Error; err != nil {
+			return err
+		}
+		if count >= int64(alloc.MaxMCPServers) {
+			return fmt.Errorf("已达到 MCP 服务数量上限")
+		}
+		if err := tx.Create(server).Error; err != nil {
+			return err
+		}
+		server.Enabled = enabled
+		return tx.Model(server).Update("enabled", enabled).Error
+	})
 }

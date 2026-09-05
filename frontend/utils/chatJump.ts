@@ -20,17 +20,17 @@ export function plainChatPreview(text: string, maxLength = 160): string {
   return `${cleaned.slice(0, maxLength).trim()}…`
 }
 
-export function buildJumpTurns(messages: Array<{ id: string; sender_type: string; content: string; streaming?: boolean }> = []): JumpTurnItem[] {
+export function buildJumpTurns(messages: Array<{ id: string; role: string; content: string; streaming?: boolean }> = []): JumpTurnItem[] {
   const turns: JumpTurnItem[] = []
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index]
-    if (message.sender_type !== 'user') continue
+    if (message.role !== 'user') continue
     let preview = ''
     let streaming = false
     for (let cursor = index + 1; cursor < messages.length; cursor += 1) {
       const next = messages[cursor]
-      if (next.sender_type === 'user') break
-      if (next.sender_type === 'assistant') {
+      if (next.role === 'user') break
+      if (next.role === 'assistant') {
         streaming = Boolean(next.streaming)
         preview = next.content || ''
         if (preview || streaming) break

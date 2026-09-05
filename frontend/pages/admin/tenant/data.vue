@@ -52,7 +52,7 @@ type MainTab = 'audit' | 'cron' | 'archive' | 'summary' | 'llm'
 type AuditSubTab = 'all' | 'approve' | 'return' | 'review'
 type CronSubTab = 'all' | 'success' | 'failed' | 'running'
 type ArchiveSubTab = 'all' | 'compliant' | 'partially_compliant' | 'non_compliant'
-type LLMSubTab = 'all' | 'audit' | 'archive' | 'summary'
+type LLMSubTab = 'all' | 'audit' | 'archive' | 'summary' | 'chat'
 
 
 const { t } = useI18n()
@@ -97,7 +97,7 @@ const cronStats = ref<CronLogStats>({
 })
 const archiveStats = ref<ArchiveSnapshotStats>({ total: 0, compliant: 0, partial: 0, non_compliant: 0 })
 const summaryStats = ref<SummarySnapshotStats>({ total: 0, block_count: 0 })
-const llmStats = ref<LLMLogStats>({ total: 0, audit_count: 0, archive_count: 0, summary_count: 0 })
+const llmStats = ref<LLMLogStats>({ total: 0, audit_count: 0, archive_count: 0, summary_count: 0, chat_count: 0 })
 
 const auditSnapshots = ref<AuditSnapshotItem[]>([])
 const cronLogs = ref<CronLogItem[]>([])
@@ -274,6 +274,7 @@ const llmHasActiveFilters = computed(() =>
     !!llmFilterDateRange.value)
 
 const llmSubTabs = computed(() => [
+  { key: 'chat' as LLMSubTab, icon: AppstoreOutlined, count: llmStats.value.chat_count || 0, label: t('admin.data.llmTab.chat'), cssClass: 'stat-card--info' },
   {
     key: 'all' as LLMSubTab,
     icon: AppstoreOutlined,
@@ -414,6 +415,7 @@ function getLLMRequestTypeLabel(value: string) {
     audit: t('admin.data.llmTab.audit'),
     archive: t('admin.data.llmTab.archive'),
     summary: t('admin.data.llmTab.summary'),
+    chat: t('admin.data.llmTab.chat'),
   }
   return map[value] || value || '-'
 }

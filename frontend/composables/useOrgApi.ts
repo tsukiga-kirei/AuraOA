@@ -34,6 +34,7 @@ interface ApiDepartmentResponse {
 
 /** 后端返回的角色数据结构 */
 interface ApiRoleResponse {
+  agent_codes?: string[]; tool_codes?: string[]
   id: string; name: string; description: string
   page_permissions: string[] | any; is_system: boolean
   created_at: string; updated_at: string
@@ -70,7 +71,7 @@ function mapRole(r: ApiRoleResponse): OrgRole {
   }
   return {
     id: r.id, name: r.name, description: r.description,
-    page_permissions: perms, is_system: r.is_system,
+    page_permissions: perms, is_system: r.is_system, agent_codes: r.agent_codes || [], tool_codes: r.tool_codes || [],
   }
 }
 

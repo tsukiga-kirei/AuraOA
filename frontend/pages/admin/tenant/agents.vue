@@ -20,7 +20,7 @@ import type {
 } from '~/types/chat'
 
 definePageMeta({
-  layout: 'default',
+  layout: 'default', middleware: ['auth'],
 })
 
 const { authFetch } = useAuth()
@@ -40,14 +40,14 @@ const mcpModalVisible = ref(false)
 const skillModalVisible = ref(false)
 
 const agentForm = ref<SaveAgentRequest>({
-  code: '',
+  agent_code: '',
   name: '',
   description: '',
-  avatar_emoji: '🤖',
-  system_prompt_override: '',
-  is_default: false,
-  sort_order: 0,
-  tools: [],
+
+  system_prompt: '',
+  enabled: true,
+
+  tool_codes: [],
 })
 
 const mcpForm = ref<SaveMCPServerRequest>({
@@ -57,14 +57,14 @@ const mcpForm = ref<SaveMCPServerRequest>({
   transport_type: 'http',
   endpoint_url: '',
   headers: '',
-  is_enabled: true,
+  enabled: true,
 })
 
 const skillForm = ref<SaveSkillRequest>({
   skill_code: '',
   name: '',
   description: '',
-  prompt_template: '',
+  content: '', enabled: true,
 })
 
 // 加载数据
@@ -75,12 +75,12 @@ const fetchAll = async () => {
       authFetch<AgentDefinitionItem[]>('/api/tenant/agents'),
       authFetch<MCPServerItem[]>('/api/tenant/mcp-servers'),
       authFetch<AgentSkillItem[]>('/api/tenant/skills'),
-      authFetch<{ system_tools: SystemToolCatalogItem[] }>('/api/admin/agent-catalog'),
+      authFetch<{ tool_catalog: SystemToolCatalogItem[]; skill_catalog: AgentSkillItem[] }>('/api/tenant/agent-catalog'),
     ])
     agents.value = agentsData || []
     mcpServers.value = mcpData || []
     skills.value = skillsData || []
-    systemTools.value = catalogData?.system_tools || []
+    systemTools.value = [...(catalogData?.tool_catalog || []), ...(catalogData?.skill_catalog || []).map(sk => ({tool_code: 'skill:' + sk.skill_code, name: sk.name, description: sk.description, ui_kind: 'skill'}))]
   } catch (err: any) {
     message.error(err.message || t('common.loadFailed'))
   } finally {
@@ -91,14 +91,14 @@ const fetchAll = async () => {
 // 智能体保存/删除
 const openCreateAgent = () => {
   agentForm.value = {
-    code: '',
+    agent_code: '',
     name: '',
     description: '',
-    avatar_emoji: '🤖',
-    system_prompt_override: '',
-    is_default: false,
-    sort_order: 0,
-    tools: [],
+
+    system_prompt: '',
+    enabled: true,
+
+    tool_codes: [],
   }
   agentModalVisible.value = true
 }
@@ -106,26 +106,26 @@ const openCreateAgent = () => {
 const openEditAgent = (item: AgentDefinitionItem) => {
   agentForm.value = {
     id: item.id,
-    code: item.code,
+    agent_code: item.agent_code,
     name: item.name,
     description: item.description,
-    avatar_emoji: item.avatar_emoji,
-    system_prompt_override: item.system_prompt_override,
-    is_default: item.is_default,
-    sort_order: item.sort_order,
-    tools: [...(item.tools || [])],
+
+    system_prompt: item.system_prompt,
+    enabled: item.enabled,
+
+    tool_codes: [...(item.tool_codes || [])],
   }
   agentModalVisible.value = true
 }
 
 const saveAgent = async () => {
-  if (!agentForm.value.code || !agentForm.value.name) {
+  if (!agentForm.value.agent_code || !agentForm.value.name) {
     message.warning(t('agentAdmin.form.required'))
     return
   }
   try {
-    await authFetch('/api/tenant/agents', {
-      method: 'POST',
+    await authFetch(agentForm.value.id ? `/api/tenant/agents/${agentForm.value.id}` : '/api/tenant/agents', {
+      method: agentForm.value.id ? 'PUT' : 'POST',
       body: agentForm.value,
     })
     message.success(t('agentAdmin.saveSuccess'))
@@ -155,7 +155,7 @@ const openCreateMCP = () => {
     transport_type: 'http',
     endpoint_url: '',
     headers: '',
-    is_enabled: true,
+    enabled: true,
   }
   mcpModalVisible.value = true
 }
@@ -166,8 +166,8 @@ const saveMCP = async () => {
     return
   }
   try {
-    await authFetch('/api/tenant/mcp-servers', {
-      method: 'POST',
+    await authFetch(mcpForm.value.id ? `/api/tenant/mcp-servers/${mcpForm.value.id}` : '/api/tenant/mcp-servers', {
+      method: mcpForm.value.id ? 'PUT' : 'POST',
       body: mcpForm.value,
     })
     message.success(t('agentAdmin.saveSuccess'))
@@ -183,7 +183,7 @@ const testMCP = async (id: string) => {
     const res = await authFetch<{ tools: any[] }>(`/api/tenant/mcp-servers/${id}/test`, {
       method: 'POST',
     })
-    message.success(t('agentAdmin.testConnectionSuccess', { count: res.tools?.length || 0 }))
+    message.success(t('agentAdmin.testConnectionSuccess', [res.tools?.length || 0]))
     await fetchAll()
   } catch (err: any) {
     message.error(err.message || t('common.operationFailed'))
@@ -206,19 +206,19 @@ const openCreateSkill = () => {
     skill_code: '',
     name: '',
     description: '',
-    prompt_template: '',
+    content: '', enabled: true,
   }
   skillModalVisible.value = true
 }
 
 const saveSkill = async () => {
-  if (!skillForm.value.skill_code || !skillForm.value.prompt_template) {
+  if (!skillForm.value.skill_code || !skillForm.value.content) {
     message.warning(t('agentAdmin.form.required'))
     return
   }
   try {
-    await authFetch('/api/tenant/skills', {
-      method: 'POST',
+    await authFetch(skillForm.value.id ? `/api/tenant/skills/${skillForm.value.id}` : '/api/tenant/skills', {
+      method: skillForm.value.id ? 'PUT' : 'POST',
       body: skillForm.value,
     })
     message.success(t('agentAdmin.saveSuccess'))
@@ -262,12 +262,7 @@ onMounted(() => {
         </div>
 
         <a-table :dataSource="agents" :rowKey="(r: AgentDefinitionItem) => r.id" :loading="loading" :pagination="false">
-          <a-table-column :title="t('agentAdmin.col.avatar')" dataIndex="avatar_emoji" width="70px">
-            <template #default="{ text }">
-              <span class="agent-emoji-preview">{{ text }}</span>
-            </template>
-          </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.code')" dataIndex="code" width="140px" />
+          <a-table-column :title="t('agentAdmin.col.code')" dataIndex="agent_code" width="140px" />
           <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="160px" />
           <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description" />
           <a-table-column :title="t('agentAdmin.col.type')" dataIndex="is_system" width="100px">
@@ -275,10 +270,10 @@ onMounted(() => {
               <a-tag :color="text ? 'blue' : 'green'">{{ text ? t('agentAdmin.systemBuiltin') : t('agentAdmin.tenantCustom') }}</a-tag>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.tools')" dataIndex="tools" width="180px">
+          <a-table-column :title="t('agentAdmin.col.tools')" dataIndex="tool_codes" width="180px">
             <template #default="{ record }">
-              <span v-if="!record.tools || record.tools.length === 0" class="muted-text">-</span>
-              <a-tag v-for="t in record.tools" :key="t" color="purple">{{ t }}</a-tag>
+              <span v-if="!record.tool_codes || record.tool_codes.length === 0" class="muted-text">-</span>
+              <a-tag v-for="t in record.tool_codes" :key="t" color="purple">{{ t }}</a-tag>
             </template>
           </a-table-column>
           <a-table-column :title="t('agentAdmin.col.actions')" width="150px">
@@ -314,10 +309,10 @@ onMounted(() => {
           <a-table-column :title="t('agentAdmin.col.endpoint')" dataIndex="endpoint_url" />
           <a-table-column :title="t('agentAdmin.col.discoveredTools')" width="140px">
             <template #default="{ record }">
-              <a-tag color="cyan">{{ record.discovered_tools?.length || 0 }}</a-tag>
+              <a-tag color="cyan">{{ record.cached_tools?.length || 0 }}</a-tag>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.status')" dataIndex="is_enabled" width="90px">
+          <a-table-column :title="t('agentAdmin.col.status')" dataIndex="enabled" width="90px">
             <template #default="{ text }">
               <a-badge :status="text ? 'success' : 'default'" :text="text ? t('agentAdmin.enabled') : t('agentAdmin.disabled')" />
             </template>
@@ -325,6 +320,7 @@ onMounted(() => {
           <a-table-column :title="t('agentAdmin.col.actions')" width="180px">
             <template #default="{ record }">
               <a-space>
+                <a-button type="link" size="small" @click="mcpForm = { ...record, headers: '' }; mcpModalVisible = true">{{ t('agentAdmin.edit') }}</a-button>
                 <a-button type="link" size="small" @click="testMCP(record.id)">{{ t('agentAdmin.testConnection') }}</a-button>
                 <a-popconfirm :title="t('agentAdmin.deleteConfirm')" @confirm="deleteMCP(record.id)">
                   <a-button type="link" danger size="small">{{ t('agentAdmin.delete') }}</a-button>
@@ -362,6 +358,7 @@ onMounted(() => {
               >
                 <a-button type="link" danger size="small">{{ t('agentAdmin.delete') }}</a-button>
               </a-popconfirm>
+              <a-button v-if="!record.is_system" type="link" size="small" @click="skillForm = { ...record }; skillModalVisible = true">{{ t('agentAdmin.edit') }}</a-button>
             </template>
           </a-table-column>
         </a-table>
@@ -372,25 +369,23 @@ onMounted(() => {
     <a-modal v-model:open="agentModalVisible" :title="t('agentAdmin.modal.agentTitle')" @ok="saveAgent">
       <a-form :model="agentForm" layout="vertical">
         <a-form-item :label="t('agentAdmin.form.code')" required>
-          <a-input v-model:value="agentForm.code" :placeholder="t('agentAdmin.form.codePlaceholder')" :disabled="Boolean(agentForm.id)" />
+          <a-input v-model:value="agentForm.agent_code" :placeholder="t('agentAdmin.form.codePlaceholder')" :disabled="Boolean(agentForm.id)" />
         </a-form-item>
         <a-form-item :label="t('agentAdmin.form.name')" required>
           <a-input v-model:value="agentForm.name" :placeholder="t('agentAdmin.form.namePlaceholder')" />
         </a-form-item>
-        <a-form-item :label="t('agentAdmin.form.emoji')">
-          <a-input v-model:value="agentForm.avatar_emoji" :placeholder="t('agentAdmin.form.emojiPlaceholder')" />
-        </a-form-item>
+        <a-form-item :label="t('agentAdmin.col.status')"><a-switch v-model:checked="agentForm.enabled" /></a-form-item>
         <a-form-item :label="t('agentAdmin.form.desc')">
           <a-input v-model:value="agentForm.description" />
         </a-form-item>
         <a-form-item :label="t('agentAdmin.form.systemPrompt')">
-          <a-textarea v-model:value="agentForm.system_prompt_override" :rows="4" />
+          <a-textarea v-model:value="agentForm.system_prompt" :rows="4" />
         </a-form-item>
         <a-form-item :label="t('agentAdmin.form.bindTools')">
-          <a-checkbox-group v-model:value="agentForm.tools">
+          <a-checkbox-group v-model:value="agentForm.tool_codes">
             <a-row :gutter="[8, 8]">
-              <a-col :span="12" v-for="t in systemTools" :key="t.code">
-                <a-checkbox :value="t.code">{{ t.name }}</a-checkbox>
+              <a-col :span="12" v-for="tool in systemTools" :key="tool.tool_code">
+                <a-checkbox :value="tool.tool_code">{{ tool.name }}</a-checkbox>
               </a-col>
             </a-row>
           </a-checkbox-group>
@@ -402,7 +397,7 @@ onMounted(() => {
     <a-modal v-model:open="mcpModalVisible" :title="t('agentAdmin.modal.mcpTitle')" @ok="saveMCP">
       <a-form :model="mcpForm" layout="vertical">
         <a-form-item :label="t('agentAdmin.form.code')" required>
-          <a-input v-model:value="mcpForm.server_code" :placeholder="t('agentAdmin.form.codePlaceholder')" />
+          <a-input v-model:value="mcpForm.server_code" :disabled="!!mcpForm.id" :placeholder="t('agentAdmin.form.codePlaceholder')" />
         </a-form-item>
         <a-form-item :label="t('agentAdmin.form.name')" required>
           <a-input v-model:value="mcpForm.name" :placeholder="t('agentAdmin.form.namePlaceholder')" />
@@ -412,7 +407,9 @@ onMounted(() => {
         </a-form-item>
         <a-form-item :label="t('agentAdmin.form.mcpHeaders')">
           <a-textarea v-model:value="mcpForm.headers" :rows="2" placeholder='{"Authorization": "Bearer key-xyz"}' />
+          <p v-if="mcpForm.id" class="form-hint">{{ t('chat.mcpHeadersHint') }}</p>
         </a-form-item>
+        <a-form-item :label="t('agentAdmin.col.status')"><a-switch v-model:checked="mcpForm.enabled" /></a-form-item>
       </a-form>
     </a-modal>
 
@@ -420,14 +417,15 @@ onMounted(() => {
     <a-modal v-model:open="skillModalVisible" :title="t('agentAdmin.modal.skillTitle')" @ok="saveSkill">
       <a-form :model="skillForm" layout="vertical">
         <a-form-item :label="t('agentAdmin.form.code')" required>
-          <a-input v-model:value="skillForm.skill_code" :placeholder="t('agentAdmin.form.codePlaceholder')" />
+          <a-input v-model:value="skillForm.skill_code" :disabled="!!skillForm.id" :placeholder="t('agentAdmin.form.codePlaceholder')" />
         </a-form-item>
         <a-form-item :label="t('agentAdmin.form.name')" required>
           <a-input v-model:value="skillForm.name" :placeholder="t('agentAdmin.form.namePlaceholder')" />
         </a-form-item>
         <a-form-item :label="t('agentAdmin.form.skillTemplate')" required>
-          <a-textarea v-model:value="skillForm.prompt_template" :rows="5" />
+          <a-textarea v-model:value="skillForm.content" :rows="5" />
         </a-form-item>
+        <a-form-item :label="t('agentAdmin.col.status')"><a-switch v-model:checked="skillForm.enabled" /></a-form-item>
       </a-form>
     </a-modal>
   </div>
@@ -436,7 +434,7 @@ onMounted(() => {
 <style scoped>
 .agent-admin-page {
   padding: 24px;
-  background: #ffffff;
+  background: var(--color-bg-card);
   min-height: calc(100vh - 64px);
 }
 .page-header {
@@ -445,11 +443,11 @@ onMounted(() => {
 .header-title {
   font-size: 20px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--color-text-primary);
 }
 .header-subtitle {
   font-size: 13px;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin-top: 4px;
 }
 .tab-toolbar {

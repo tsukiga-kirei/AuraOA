@@ -5,14 +5,14 @@
 
 export interface EffectiveAgentItem {
   id: string
-  code: string
+  agent_code: string
   name: string
   description: string
-  avatar_emoji: string
-  system_prompt_override: string
-  is_default: boolean
+  avatar_emoji?: string
+  system_prompt?: string
+  is_default?: boolean
   is_system: boolean
-  sort_order: number
+  sort_order?: number
 }
 
 export interface ChatSessionItem {
@@ -20,32 +20,34 @@ export interface ChatSessionItem {
   title: string
   agent_id: string
   agent_code: string
-  agent_name: string
-  agent_avatar_emoji: string
-  is_pinned: boolean
-  last_message_at: string | null
+  agent_name?: string
+  agent_avatar_emoji?: string
+  pinned: boolean
+  last_message_at?: string | null
   created_at: string
   updated_at: string
 }
 
 export interface ChatToolExecution {
   tool_code: string
-  tool_name: string
-  arguments: Record<string, any>
-  result: any
-  error?: string
-  execution_ms: number
+  tool_call_id: string
+  ui_kind: string
+  status: 'running' | 'success' | 'error'
+  arguments?: string
+  payload?: any
 }
 
 export interface ChatMessageItem {
   id: string
   session_id: string
-  sender_type: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system'
   agent_code?: string
   content: string
   reasoning_content?: string
-  tool_executions?: ChatToolExecution[]
-  token_cost?: number
+  tool_calls?: ChatToolExecution[]
+  token_usage?: { input_tokens: number; output_tokens: number; total_tokens: number }
+  status?: string
+  error?: string
   created_at: string
   // 前端流式补充字段
   streaming?: boolean
@@ -68,36 +70,38 @@ export interface CreateSessionRequest {
 
 export interface UpdateSessionRequest {
   title?: string
-  is_pinned?: boolean
+  pinned?: boolean
 }
 
 // 智能体管理相关类型
 export interface AgentDefinitionItem {
+  enabled: boolean
   id: string
   tenant_id: string | null
-  code: string
+  agent_code: string
   name: string
   description: string
-  avatar_emoji: string
-  system_prompt_override: string
-  is_default: boolean
+  avatar_emoji?: string
+  system_prompt: string
+  is_default?: boolean
   is_system: boolean
-  sort_order: number
-  tools: string[]
+  sort_order?: number
+  tool_codes: string[]
   created_at: string
   updated_at: string
 }
 
 export interface SaveAgentRequest {
+  enabled: boolean
   id?: string
-  code: string
+  agent_code: string
   name: string
   description: string
-  avatar_emoji: string
-  system_prompt_override: string
-  is_default: boolean
-  sort_order: number
-  tools: string[]
+  avatar_emoji?: string
+  system_prompt: string
+  is_default?: boolean
+  sort_order?: number
+  tool_codes: string[]
 }
 
 export interface MCPServerItem {
@@ -109,8 +113,8 @@ export interface MCPServerItem {
   transport_type: string
   endpoint_url: string
   headers?: string
-  is_enabled: boolean
-  discovered_tools: Array<{
+  enabled: boolean
+  cached_tools: Array<{
     name: string
     description: string
     input_schema: Record<string, any>
@@ -127,16 +131,17 @@ export interface SaveMCPServerRequest {
   transport_type: string
   endpoint_url: string
   headers?: string
-  is_enabled: boolean
+  enabled: boolean
 }
 
 export interface AgentSkillItem {
+  enabled: boolean
   id: string
   tenant_id: string | null
   skill_code: string
   name: string
   description: string
-  prompt_template: string
+  content: string
   input_schema?: Record<string, any>
   is_system: boolean
   created_at: string
@@ -144,25 +149,27 @@ export interface AgentSkillItem {
 }
 
 export interface SaveSkillRequest {
+  enabled: boolean
   id?: string
   skill_code: string
   name: string
   description: string
-  prompt_template: string
+  content: string
   input_schema?: Record<string, any>
 }
 
 export interface SystemToolCatalogItem {
-  code: string
+  tool_code: string
   name: string
   description: string
-  parameters: Record<string, any>
+  parameters?: string
+  ui_kind?: string
 }
 
 export interface AgentCatalogResponse {
-  system_tools: SystemToolCatalogItem[]
-  system_agents: AgentDefinitionItem[]
-  system_skills: AgentSkillItem[]
+  tool_catalog: SystemToolCatalogItem[]
+  agent_catalog: AgentDefinitionItem[]
+  skill_catalog: AgentSkillItem[]
   mcp_templates: MCPServerItem[]
 }
 
@@ -170,8 +177,8 @@ export interface TenantChatAllocationItem {
   tenant_id: string
   chat_enabled: boolean
   chat_retention_days: number
-  primary_model_id: string | null
-  fallback_model_id: string | null
+  chat_primary_model_id: string | null
+  chat_fallback_model_id: string | null
   agent_codes: string[]
   tool_codes: string[]
   skill_codes: string[]

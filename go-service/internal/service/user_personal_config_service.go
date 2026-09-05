@@ -62,15 +62,18 @@ func (s *UserPersonalConfigService) ensureAuditBaseVersion(
 	c *gin.Context,
 	tenantID, userID uuid.UUID,
 	config *model.ProcessAuditConfig,
-	rules []model.AuditRule,
+	rules *[]model.AuditRule,
 ) (*model.TenantConfigVersion, error) {
-	snapshot := auditConfigSourceSnapshot(config, rules)
+	snapshot := auditConfigSourceSnapshot(config, *rules)
 	version, err := s.versions.GetOrCreateLatestBaseVersion(
 		c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleAudit,
 		config.ID, stableJSONFingerprint(snapshot), snapshot,
 	)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "读取审核基础配置版本失败")
+	}
+	if err := decodePublishedConfig(version, config, rules); err != nil {
+		return nil, err
 	}
 	return version, nil
 }
@@ -79,15 +82,18 @@ func (s *UserPersonalConfigService) ensureArchiveBaseVersion(
 	c *gin.Context,
 	tenantID, userID uuid.UUID,
 	config *model.ProcessArchiveConfig,
-	rules []model.ArchiveRule,
+	rules *[]model.ArchiveRule,
 ) (*model.TenantConfigVersion, error) {
-	snapshot := archiveConfigSourceSnapshot(config, rules)
+	snapshot := archiveConfigSourceSnapshot(config, *rules)
 	version, err := s.versions.GetOrCreateLatestBaseVersion(
 		c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleArchive,
 		config.ID, stableJSONFingerprint(snapshot), snapshot,
 	)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "读取归档复盘基础配置版本失败")
+	}
+	if err := decodePublishedConfig(version, config, rules); err != nil {
+		return nil, err
 	}
 	return version, nil
 }
@@ -254,7 +260,7 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 	if err != nil {
 		return newServiceError(errcode.ErrDatabase, "读取审核规则失败")
 	}
-	baseVersion, err := s.ensureAuditBaseVersion(c, tenantID, userID, processCfg, tenantRules)
+	baseVersion, err := s.ensureAuditBaseVersion(c, tenantID, userID, processCfg, &tenantRules)
 	if err != nil {
 		return err
 	}
@@ -381,7 +387,7 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "读取审核规则失败")
 	}
-	baseVersion, err := s.ensureAuditBaseVersion(c, tenantID, userID, tenantCfg, tenantRules)
+	baseVersion, err := s.ensureAuditBaseVersion(c, tenantID, userID, tenantCfg, &tenantRules)
 	if err != nil {
 		return nil, err
 	}
@@ -635,7 +641,7 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "读取归档复盘规则失败")
 	}
-	baseVersion, err := s.ensureArchiveBaseVersion(c, tenantID, userID, tenantCfg, archiveRules)
+	baseVersion, err := s.ensureArchiveBaseVersion(c, tenantID, userID, tenantCfg, &archiveRules)
 	if err != nil {
 		return nil, err
 	}
@@ -810,7 +816,7 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 	if err != nil {
 		return newServiceError(errcode.ErrDatabase, "读取归档复盘规则失败")
 	}
-	baseVersion, err := s.ensureArchiveBaseVersion(c, tenantID, userID, tenantCfg, archiveRules)
+	baseVersion, err := s.ensureArchiveBaseVersion(c, tenantID, userID, tenantCfg, &archiveRules)
 	if err != nil {
 		return err
 	}
@@ -1119,11 +1125,11 @@ func computeBaselineDiff(processType string, fromVersion, toVersion *model.Tenan
 		Fields     []fieldItem `json:"fields"`
 	}
 	type snapshotObj struct {
-		FieldMode    string            `json:"field_mode"`
-		MainFields   datatypes.JSON    `json:"main_fields"`
-		DetailTables datatypes.JSON    `json:"detail_tables"`
-		AIConfig     datatypes.JSON    `json:"ai_config"`
-		Rules        []ruleItem        `json:"rules"`
+		FieldMode    string         `json:"field_mode"`
+		MainFields   datatypes.JSON `json:"main_fields"`
+		DetailTables datatypes.JSON `json:"detail_tables"`
+		AIConfig     datatypes.JSON `json:"ai_config"`
+		Rules        []ruleItem     `json:"rules"`
 	}
 
 	var fromSnap, toSnap snapshotObj
@@ -1288,4 +1294,3 @@ func (s *UserPersonalConfigService) GetOAJumpConfig(tenantID uuid.UUID) (*dto.OA
 
 	return resp, nil
 }
-

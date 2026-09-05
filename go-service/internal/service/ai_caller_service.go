@@ -57,6 +57,11 @@ func NewAIModelCallerService(
 // 3. 调用失败时回滚预扣额度
 // 4. 调用成功后结算实际消耗，并异步写入调用日志
 func (s *AIModelCallerService) Chat(c *gin.Context, tenantID, userID uuid.UUID, modelCfg *model.AIModelConfig, req *ai.ChatRequest) (*ai.ChatResponse, error) {
+	requestCopy := *req
+	requestCopy.Messages = append([]ai.ChatMessage(nil), req.Messages...)
+	requestCopy.EnableThinking = req.EnableThinking && modelCfg.SupportsThinking
+	requestCopy.ModelConfig = modelCfg
+	req = &requestCopy
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
 		req.UserPrompt = sanitize.SanitizeText(req.UserPrompt)
 		req.SystemPrompt = sanitize.SanitizeText(req.SystemPrompt)
@@ -107,7 +112,13 @@ func (s *AIModelCallerService) Chat(c *gin.Context, tenantID, userID uuid.UUID, 
 	_ = s.settleTokenUsage(tenantID, reserved, resp.TokenUsage.TotalTokens)
 
 	// 异步写入日志（带重试）
-	s.asyncWriteLog(tenantID, userID, modelCfg.ID, req, resp, req.SystemPrompt, req.UserPrompt)
+	logUserPrompt := req.UserPrompt
+	if len(req.Messages) > 0 {
+		if raw, err := json.Marshal(map[string]interface{}{"messages": req.Messages, "tools": req.Tools}); err == nil {
+			logUserPrompt = sanitize.SanitizeText(string(raw))
+		}
+	}
+	s.asyncWriteLog(tenantID, userID, modelCfg.ID, req, resp, req.SystemPrompt, logUserPrompt)
 
 	return resp, nil
 }
@@ -144,6 +155,9 @@ func (s *AIModelCallerService) ChatWithFallback(
 	// ── 尝试主模型 ──
 	var lastErr error
 	for i := 0; i < retryCount; i++ {
+		if i > 0 && req.StreamResetFunc != nil {
+			req.StreamResetFunc()
+		}
 		resp, err := s.Chat(c, tenantID, userID, primaryCfg, req)
 		if err == nil {
 			return resp, nil
@@ -190,6 +204,9 @@ func (s *AIModelCallerService) ChatWithFallback(
 	)
 
 	for i := 0; i < retryCount; i++ {
+		if req.StreamResetFunc != nil {
+			req.StreamResetFunc()
+		}
 		resp, err := s.Chat(c, tenantID, userID, fallbackCfg, req)
 		if err == nil {
 			pkglogger.Global().Info("备用模型调用成功",
@@ -509,14 +526,14 @@ func (s *AIModelCallerService) asyncWriteLog(
 			CreatedAt:     now,
 		}
 		payload := &model.TenantLLMMessagePayload{
-			ID:              uuid.New(),
-			LLMMessageLogID: entry.ID,
-			TenantID:        tenantID,
-			SystemPrompt:    strings.ToValidUTF8(systemPrompt, "\uFFFD"),
-			UserPrompt:      strings.ToValidUTF8(userPrompt, "\uFFFD"),
+			ID:               uuid.New(),
+			LLMMessageLogID:  entry.ID,
+			TenantID:         tenantID,
+			SystemPrompt:     strings.ToValidUTF8(systemPrompt, "\uFFFD"),
+			UserPrompt:       strings.ToValidUTF8(userPrompt, "\uFFFD"),
 			ReasoningContent: strings.ToValidUTF8(resp.ReasoningContent, "\uFFFD"),
-			ResponseContent: strings.ToValidUTF8(resp.Content, "\uFFFD"),
-			CreatedAt:       now,
+			ResponseContent:  strings.ToValidUTF8(resp.Content, "\uFFFD"),
+			CreatedAt:        now,
 		}
 
 		var err error

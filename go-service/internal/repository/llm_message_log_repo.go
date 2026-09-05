@@ -258,6 +258,7 @@ type LLMLogListRow struct {
 
 // LLMLogStats AI 调用记录统计（按流程维度）。
 type LLMLogStats struct {
+	ChatCount    int64 `json:"chat_count"`
 	Total        int64 `json:"total"`
 	AuditCount   int64 `json:"audit_count"`
 	ArchiveCount int64 `json:"archive_count"`
@@ -273,7 +274,12 @@ type LLMLogDetailWithPayload struct {
 	ResponseContent  string `json:"response_content"`
 }
 
-// ListProcessesPaged 数据管理页：按流程聚合分页查询。
+// llmBusinessKey 使用场景前缀区分聊天会话与 OA 流程，历史无关联的聊天按调用单列。
+func llmBusinessKey(table string) string {
+	return "CASE WHEN " + table + ".request_type = 'chat' THEN 'chat:' || COALESCE(" + table + ".business_log_id, " + table + ".id)::text ELSE " + table + ".process_id END"
+}
+
+// ListProcessesPaged 数据管理页：按流程或聊天会话聚合分页查询。
 func (r *LLMMessageLogRepo) ListProcessesPaged(c *gin.Context, filter LLMLogFilter, page, pageSize int) ([]LLMProcessListRow, int64, error) {
 	if page < 1 {
 		page = 1
@@ -286,13 +292,13 @@ func (r *LLMMessageLogRepo) ListProcessesPaged(c *gin.Context, filter LLMLogFilt
 	tenantID, _ := c.Get("tenant_id")
 	base := r.DB.
 		Table(t+" AS l").
-		Where("l.tenant_id = ? AND l.process_id IS NOT NULL AND l.process_id <> ''", tenantID).
+		Where("l.tenant_id = ? AND (l.request_type = 'chat' OR (l.process_id IS NOT NULL AND l.process_id <> ''))", tenantID).
 		Joins("LEFT JOIN users u ON u.id = l.user_id")
 	base = applyLLMLogFilter(base, filter)
 
 	countSub := base.Session(&gorm.Session{}).
-		Select("l.process_id").
-		Group("l.process_id")
+		Select(llmBusinessKey("l")).
+		Group(llmBusinessKey("l"))
 	var total int64
 	if err := r.DB.Table("(?) AS grouped", countSub).Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -300,13 +306,13 @@ func (r *LLMMessageLogRepo) ListProcessesPaged(c *gin.Context, filter LLMLogFilt
 
 	var items []LLMProcessListRow
 	err := base.
-		Select(`l.process_id,
+		Select(llmBusinessKey("l") + ` AS process_id,
 			(ARRAY_AGG(l.process_title ORDER BY l.created_at DESC))[1] AS process_title,
 			COUNT(*)::bigint AS call_count,
 			COALESCE(SUM(l.total_tokens), 0)::bigint AS total_tokens,
 			MAX(l.created_at) AS latest_call_at,
 			(ARRAY_AGG(COALESCE(u.display_name, u.username, '') ORDER BY l.created_at DESC))[1] AS latest_user_name`).
-		Group("l.process_id").
+		Group(llmBusinessKey("l")).
 		Order("latest_call_at DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
@@ -337,7 +343,7 @@ func (r *LLMMessageLogRepo) ListCallsByProcessID(c *gin.Context, processID strin
 		Joins("LEFT JOIN audit_logs al ON al.id = "+t+".business_log_id AND al.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'audit'").
 		Joins("LEFT JOIN archive_logs arl ON arl.id = "+t+".business_log_id AND arl.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'archive'").
 		Joins("LEFT JOIN process_summary_logs psl ON psl.id = "+t+".business_log_id AND psl.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'summary'").
-		Where(t+".tenant_id = ? AND "+t+".process_id = ?", tenantID, processID).
+		Where(t+".tenant_id = ? AND "+llmBusinessKey(t)+" = ?", tenantID, processID).
 		Order(t + ".created_at DESC").
 		Find(&items).Error
 	return items, err
@@ -346,6 +352,7 @@ func (r *LLMMessageLogRepo) ListCallsByProcessID(c *gin.Context, processID strin
 // CountStats 统计租户 AI 调用流程数量（按场景分布）。
 func (r *LLMMessageLogRepo) CountStats(c *gin.Context) (*LLMLogStats, error) {
 	type row struct {
+		ChatCount    int64 `gorm:"column:chat_count"`
 		Total        int64 `gorm:"column:total"`
 		AuditCount   int64 `gorm:"column:audit_count"`
 		ArchiveCount int64 `gorm:"column:archive_count"`
@@ -354,9 +361,9 @@ func (r *LLMMessageLogRepo) CountStats(c *gin.Context) (*LLMLogStats, error) {
 	var out row
 	err := r.WithTenant(c).
 		Model(&model.TenantLLMMessageLog{}).
-		Where("process_id IS NOT NULL AND process_id <> ''").
-		Select(`
-			COUNT(DISTINCT process_id)::bigint AS total,
+		Where("request_type = 'chat' OR (process_id IS NOT NULL AND process_id <> '')").
+		Select(`COUNT(DISTINCT ` + llmBusinessKey("tenant_llm_message_logs") + `)::bigint AS total,
+			COUNT(DISTINCT COALESCE(business_log_id, id)) FILTER (WHERE request_type = 'chat')::bigint AS chat_count,
 			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'audit')::bigint AS audit_count,
 			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'archive')::bigint AS archive_count,
 			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'summary')::bigint AS summary_count`).
@@ -365,6 +372,7 @@ func (r *LLMMessageLogRepo) CountStats(c *gin.Context) (*LLMLogStats, error) {
 		return nil, err
 	}
 	return &LLMLogStats{
+		ChatCount:    out.ChatCount,
 		Total:        out.Total,
 		AuditCount:   out.AuditCount,
 		ArchiveCount: out.ArchiveCount,

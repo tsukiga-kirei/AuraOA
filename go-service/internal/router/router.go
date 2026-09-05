@@ -468,6 +468,7 @@ func SetupRouter(
 	tenantAgents := r.Group("/api/tenant")
 	tenantAgents.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
 	{
+		tenantAgents.GET("/agent-catalog", agentAdminHandler.GetTenantCatalog)
 		tenantAgents.GET("/chat-allocation", agentAdminHandler.GetTenantAllocationByTenant)
 		tenantAgents.GET("/agents", agentAdminHandler.ListTenantAgents)
 		tenantAgents.POST("/agents", agentAdminHandler.CreateTenantAgent)
@@ -476,11 +477,13 @@ func SetupRouter(
 
 		tenantAgents.GET("/mcp-servers", agentAdminHandler.ListMCPServers)
 		tenantAgents.POST("/mcp-servers", agentAdminHandler.SaveMCPServer)
+		tenantAgents.PUT("/mcp-servers/:id", agentAdminHandler.SaveMCPServer)
 		tenantAgents.POST("/mcp-servers/:id/test", agentAdminHandler.TestAndRefreshMCPServer)
 		tenantAgents.DELETE("/mcp-servers/:id", agentAdminHandler.DeleteMCPServer)
 
 		tenantAgents.GET("/skills", agentAdminHandler.ListSkills)
 		tenantAgents.POST("/skills", agentAdminHandler.SaveSkill)
+		tenantAgents.PUT("/skills/:id", agentAdminHandler.SaveSkill)
 		tenantAgents.DELETE("/skills/:id", agentAdminHandler.DeleteSkill)
 	}
 

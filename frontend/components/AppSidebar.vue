@@ -20,6 +20,8 @@ const emit = defineEmits<{
 
 const { sections, isMenuActive, logoTarget } = useSidebarMenu()
 const { t } = useI18n()
+const chatAllowed = computed(() => sections.value.some(section => section.items.some(item => item.key === '/chat')))
+const navigationSections = computed(() => sections.value.map(section => ({ ...section, items: section.items.filter(item => item.key !== '/chat') })))
 
 // 侧栏宽度动画期间先隐藏文字，避免折叠时文字溢出
 const isSidebarTransitioning = ref(false)
@@ -131,7 +133,7 @@ const handleToggleSidebar = () => {
 
     <!--权限驱动的导航区域-->
     <nav class="sidebar-nav">
-      <div v-for="section in sections" :key="section.id" class="sidebar-section">
+      <div v-for="section in navigationSections" :key="section.id" class="sidebar-section">
         <div v-if="showSidebarText" class="sidebar-section-title">{{ t(section.titleKey) }}</div>
         <template v-for="item in section.items" :key="item.key">
           <!--折叠状态：用 Tooltip 包裹显示菜单名-->
@@ -174,6 +176,7 @@ const handleToggleSidebar = () => {
           </div>
         </template>
       </div>
+      <ChatNavigation v-if="chatAllowed" :compact="!showSidebarText" @navigate="handleMenuClick" />
     </nav>
 
     <!--底部用户菜单-->

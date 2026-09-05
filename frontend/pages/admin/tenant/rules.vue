@@ -278,44 +278,12 @@ function handleLoadVersionToEdit(item: any) {
   const module = activeHistoryModule.value
   const snapshot = item.config_snapshot || {}
 
-  if (module === 'audit' && selectedConfig.value) {
-    if (snapshot.main_fields !== undefined) selectedConfig.value.main_fields = snapshot.main_fields || []
-    if (snapshot.detail_tables !== undefined) selectedConfig.value.detail_tables = snapshot.detail_tables || []
-    if (snapshot.ai_strictness !== undefined) selectedConfig.value.ai_strictness = snapshot.ai_strictness
-    if (snapshot.ai_prompt_template !== undefined) selectedConfig.value.ai_prompt_template = snapshot.ai_prompt_template
-    if (snapshot.allow_user_custom_rules !== undefined) selectedConfig.value.allow_user_custom_rules = snapshot.allow_user_custom_rules
-    if (snapshot.allow_user_fields !== undefined) selectedConfig.value.allow_user_fields = snapshot.allow_user_fields
-    if (snapshot.allow_user_ai_strictness !== undefined) selectedConfig.value.allow_user_ai_strictness = snapshot.allow_user_ai_strictness
-    if (snapshot.rules) {
-      currentRules.value = (snapshot.rules || []).map((r: any) => ({
-        ...r,
-        id: r.id || createClientId(),
-      }))
-    }
-  } else if (module === 'archive' && selectedArchiveConfig.value) {
-    if (snapshot.main_fields !== undefined) selectedArchiveConfig.value.main_fields = snapshot.main_fields || []
-    if (snapshot.detail_tables !== undefined) selectedArchiveConfig.value.detail_tables = snapshot.detail_tables || []
-    if (snapshot.ai_strictness !== undefined) selectedArchiveConfig.value.ai_strictness = snapshot.ai_strictness
-    if (snapshot.ai_prompt_template !== undefined) selectedArchiveConfig.value.ai_prompt_template = snapshot.ai_prompt_template
-    if (snapshot.allow_user_custom_rules !== undefined) selectedArchiveConfig.value.allow_user_custom_rules = snapshot.allow_user_custom_rules
-    if (snapshot.allow_user_fields !== undefined) selectedArchiveConfig.value.allow_user_fields = snapshot.allow_user_fields
-    if (snapshot.allow_user_ai_strictness !== undefined) selectedArchiveConfig.value.allow_user_ai_strictness = snapshot.allow_user_ai_strictness
-    if (snapshot.rules) {
-      currentArchiveRules.value = (snapshot.rules || []).map((r: any) => ({
-        ...r,
-        id: r.id || createClientId(),
-      }))
-    }
-  } else if (module === 'summary' && selectedSummaryConfig.value) {
-    if (snapshot.main_fields !== undefined) selectedSummaryConfig.value.main_fields = snapshot.main_fields || []
-    if (snapshot.detail_tables !== undefined) selectedSummaryConfig.value.detail_tables = snapshot.detail_tables || []
-    if (snapshot.summary_blocks) {
-      selectedSummaryConfig.value.summary_blocks = (snapshot.summary_blocks || []).map((b: any, idx: number) => ({
-        ...b,
-        id: b.id || createClientId(),
-        sort_order: b.sort_order || idx + 1,
-      }))
-    }
+  const target = module === 'audit' ? selectedConfig.value : module === 'archive' ? selectedArchiveConfig.value : selectedSummaryConfig.value
+  if (target) {
+    const { rules, ...fields } = structuredClone(snapshot)
+    Object.assign(target, fields)
+    if (module === 'audit') currentRules.value = rules || []
+    if (module === 'archive') currentArchiveRules.value = rules || []
   }
 
   editingVersionNo[module] = item.version_no
@@ -336,49 +304,19 @@ async function handleSaveHistoricalVersion(module: ExecutionConfigModule) {
   let configId = ''
   let snapshot: any = {}
 
-  if (module === 'audit' && selectedConfig.value) {
-    configId = selectedConfig.value.id
+  const config = module === 'audit' ? selectedConfig.value : module === 'archive' ? selectedArchiveConfig.value : selectedSummaryConfig.value
+  if (config) {
+    configId = config.id
     snapshot = {
-      process_id: selectedConfig.value.process_id,
-      process_type: selectedConfig.value.process_type,
-      process_type_label: selectedConfig.value.process_type_label,
-      main_fields: selectedConfig.value.main_fields,
-      detail_tables: selectedConfig.value.detail_tables,
-      ai_strictness: selectedConfig.value.ai_strictness,
-      ai_prompt_template: selectedConfig.value.ai_prompt_template,
-      allow_user_custom_rules: selectedConfig.value.allow_user_custom_rules,
-      allow_user_fields: selectedConfig.value.allow_user_fields,
-      allow_user_ai_strictness: selectedConfig.value.allow_user_ai_strictness,
-      enabled: selectedConfig.value.enabled,
-      rules: currentRules.value,
+      process_type: config.process_type, main_table_name: config.main_table_name,
+      main_fields: config.main_fields || [], detail_tables: config.detail_tables || [], status: config.status,
     }
-  } else if (module === 'archive' && selectedArchiveConfig.value) {
-    configId = selectedArchiveConfig.value.id
-    snapshot = {
-      process_id: selectedArchiveConfig.value.process_id,
-      process_type: selectedArchiveConfig.value.process_type,
-      process_type_label: selectedArchiveConfig.value.process_type_label,
-      main_fields: selectedArchiveConfig.value.main_fields,
-      detail_tables: selectedArchiveConfig.value.detail_tables,
-      ai_strictness: selectedArchiveConfig.value.ai_strictness,
-      ai_prompt_template: selectedArchiveConfig.value.ai_prompt_template,
-      allow_user_custom_rules: selectedArchiveConfig.value.allow_user_custom_rules,
-      allow_user_fields: selectedArchiveConfig.value.allow_user_fields,
-      allow_user_ai_strictness: selectedArchiveConfig.value.allow_user_ai_strictness,
-      enabled: selectedArchiveConfig.value.enabled,
-      rules: currentArchiveRules.value,
-    }
-  } else if (module === 'summary' && selectedSummaryConfig.value) {
-    configId = selectedSummaryConfig.value.id
-    snapshot = {
-      process_id: selectedSummaryConfig.value.process_id,
-      process_type: selectedSummaryConfig.value.process_type,
-      process_type_label: selectedSummaryConfig.value.process_type_label,
-      main_fields: selectedSummaryConfig.value.main_fields,
-      detail_tables: selectedSummaryConfig.value.detail_tables,
-      summary_blocks: selectedSummaryConfig.value.summary_blocks,
-      enabled: selectedSummaryConfig.value.enabled,
-    }
+    if (module === 'summary') snapshot.summary_blocks = (config as any).summary_blocks || []
+    else Object.assign(snapshot, {
+      field_mode: (config as any).field_mode, kb_mode: (config as any).kb_mode,
+      ai_config: (config as any).ai_config || {}, user_permissions: (config as any).user_permissions || {},
+      rules: (module === 'audit' ? currentRules.value : currentArchiveRules.value).map(rule => ({ ...rule, context_mounts: rule.context_mounts || [] })),
+    })
   }
 
   if (!configId) return

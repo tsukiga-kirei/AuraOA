@@ -6,6 +6,7 @@ import {
 
 const props = defineProps<{
   submitting: boolean
+  disabled?: boolean
   placeholder?: string
 }>()
 
@@ -21,7 +22,7 @@ const isComposing = ref(false)
 
 const handleKeyDown = (e: KeyboardEvent) => {
   if (e.key === 'Enter' && !e.shiftKey) {
-    if (isComposing.value) return
+    if (isComposing.value || e.isComposing || props.submitting) return
     e.preventDefault()
     handleSubmit()
   }
@@ -32,6 +33,7 @@ const handleSubmit = () => {
     emit('stop')
     return
   }
+  if (props.disabled) return
   const text = inputContent.value.trim()
   if (!text) return
   emit('submit', text)
@@ -70,7 +72,9 @@ defineExpose({
       <textarea
         ref="textareaRef"
         v-model="inputContent"
-        rows="1"
+        rows="2"
+        :disabled="disabled"
+        :aria-label="placeholder || t('chat.composerPlaceholder')"
         class="chat-composer-textarea"
         :placeholder="placeholder || t('chat.composerPlaceholder')"
         @compositionstart="isComposing = true"
@@ -82,7 +86,7 @@ defineExpose({
         type="button"
         class="chat-composer-btn"
         :class="{ 'is-submitting': submitting }"
-        :disabled="!submitting && !inputContent.trim()"
+        :disabled="disabled || (!submitting && !inputContent.trim())"
         :title="submitting ? t('chat.stopGenerating') : t('chat.sendQuestion')"
         :aria-label="submitting ? t('chat.stopGenerating') : t('chat.sendQuestion')"
         @click="handleSubmit"
@@ -95,61 +99,12 @@ defineExpose({
 </template>
 
 <style scoped>
-.chat-composer-wrapper {
-  position: relative;
-  width: min(100%, 820px);
-  margin: 0 auto;
-  padding: 12px 16px 20px;
-}
-.chat-composer-inner {
-  display: flex;
-  align-items: flex-end;
-  background: #ffffff;
-  border: 1px solid #d9d9d9;
-  border-radius: 12px;
-  padding: 8px 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-.chat-composer-inner:focus-within {
-  border-color: #1890ff;
-  box-shadow: 0 4px 16px rgba(24, 144, 255, 0.12);
-}
-.chat-composer-textarea {
-  flex: 1;
-  border: none;
-  outline: none;
-  resize: none;
-  background: transparent;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #1f2937;
-  max-height: 140px;
-  padding: 4px 0;
-}
-.chat-composer-btn {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  border: none;
-  background: #1890ff;
-  color: #ffffff;
-  cursor: pointer;
-  margin-left: 8px;
-  font-size: 16px;
-  transition: background-color 0.2s, opacity 0.2s;
-}
-.chat-composer-btn:hover:not(:disabled) {
-  background: #40a9ff;
-}
-.chat-composer-btn:disabled {
-  background: #d9d9d9;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-.chat-composer-btn.is-submitting {
-  background: #ff4d4f;
-}
+.chat-composer-wrapper { width:min(100%,780px); margin:auto; }
+.chat-composer-inner { display:flex; align-items:flex-end; border:1px solid var(--color-border); background:var(--color-bg-page); border-radius:20px; padding:17px 18px; box-shadow:0 4px 20px rgba(0,0,0,.025); transition:border-color .2s; }
+.chat-composer-inner:focus-within { border-color:var(--color-primary); }
+.chat-composer-textarea { flex:1; min-width:0; border:0; outline:none; resize:none; background:none; color:var(--color-text-primary); font:inherit; font-size:14px; line-height:1.75; max-height:180px; padding:0; }
+.chat-composer-textarea::placeholder { color:var(--color-text-tertiary); }
+.chat-composer-btn { display:grid; place-items:center; flex-shrink:0; width:34px; height:34px; border:0; border-radius:50%; background:var(--color-text-primary); color:var(--color-bg-card); margin-left:14px; font-size:16px; cursor:pointer; }
+.chat-composer-btn:disabled { opacity:.25; cursor:default; }
+.chat-composer-btn.is-submitting { background:var(--color-primary); color:white; }
 </style>

@@ -51,7 +51,7 @@ watch(route, () => {
     <!--主要内容-->
     <div class="main-wrapper">
       <AppHeader :is-mobile="isMobile" @toggle-mobile-menu="mobileMenuOpen = !mobileMenuOpen" />
-      <main class="app-content">
+      <main class="app-content" :class="{ 'app-content--chat': route.path === '/chat' }">
         <slot />
       </main>
     </div>
@@ -94,6 +94,8 @@ watch(route, () => {
   margin: 0 auto;
 }
 
+.app-content.app-content--chat { padding: 0; max-width: none; min-height: 0; height: calc(100dvh - var(--header-height)); flex: none; }
+.main-wrapper { min-width: 0; }
 @media (max-width: 768px) {
   .main-wrapper {
     margin-left: 0 !important;

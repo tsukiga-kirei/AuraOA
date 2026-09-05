@@ -127,14 +127,16 @@ func (s *AuditExecuteService) BatchRdb() *redis.Client {
 
 // AuditExecuteRequest 审核执行请求
 type AuditExecuteRequest struct {
-	ProcessID          string     `json:"process_id" binding:"required"`
-	ProcessType        string     `json:"process_type" binding:"required"`
-	Title              string     `json:"title"`
-	TriggerSource      string     `json:"trigger_source"`
-	TriggerDetail      string     `json:"trigger_detail"`
-	AttemptFingerprint string     `json:"-"`
-	ScheduleConfigID   *uuid.UUID `json:"-"`
-	UseLatestConfig    bool       `json:"use_latest_config,omitempty"`
+	PersonalPerspective bool       `json:"-"`
+	StandardPerspective bool       `json:"-"`
+	ProcessID           string     `json:"process_id" binding:"required"`
+	ProcessType         string     `json:"process_type" binding:"required"`
+	Title               string     `json:"title"`
+	TriggerSource       string     `json:"trigger_source"`
+	TriggerDetail       string     `json:"trigger_detail"`
+	AttemptFingerprint  string     `json:"-"`
+	ScheduleConfigID    *uuid.UUID `json:"-"`
+	UseLatestConfig     bool       `json:"use_latest_config,omitempty"`
 }
 
 // AuditExecuteResponse 审核执行响应
@@ -190,17 +192,23 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		return uuid.Nil, uuid.Nil, uuid.Nil, err
 	}
 	triggerDetail, queueKind := normalizeAuditTriggerDetail(trigger, req.TriggerDetail)
+	scope := "user:" + userID.String()
+	configUserID := userID
+	if req.StandardPerspective || (strings.HasPrefix(trigger, "embed") && !req.PersonalPerspective) {
+		scope = ""
+		configUserID = uuid.Nil
+	}
 	var configVersion *model.ExecutionConfigVersion
 	if !req.UseLatestConfig {
 		configVersion, err = s.executionVersions.GetBindingVersion(
-			c.Request.Context(), tenantID, model.ExecutionConfigModuleAudit, req.ProcessID,
+			c.Request.Context(), tenantID, model.ExecutionConfigModuleAudit, req.ProcessID, scope,
 		)
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "读取审核配置绑定失败")
 		}
 	}
 	if configVersion == nil {
-		fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, resolveErr := s.resolveUserConfig(c, userID, config, rules, req.ProcessType)
+		fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, resolveErr := s.resolveUserConfig(c, configUserID, config, rules, req.ProcessType)
 		if resolveErr != nil {
 			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人审核尺度失败: "+resolveErr.Error())
 		}
@@ -220,7 +228,7 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		configVersion, err = s.executionVersions.BindSnapshot(
 			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleAudit,
 			req.ProcessID, req.ProcessType, config.ID, baseVersion.ID,
-			stableJSONFingerprint(configSnapshot), configSnapshot, req.UseLatestConfig,
+			stableJSONFingerprint(configSnapshot), configSnapshot, req.UseLatestConfig, scope,
 		)
 		if err != nil {
 			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "绑定审核配置版本失败")
@@ -2394,6 +2402,10 @@ func (s *AuditExecuteService) resolveUserConfig(
 	tenantRules []model.AuditRule,
 	processType string,
 ) (SelectedFieldSet, string, []model.AuditRule, datatypes.JSON, int, error) {
+	if err := loadPublishedConfig(c.Request.Context(), s.executionVersions, config.TenantID, model.ExecutionConfigModuleAudit, config.ID, config, &tenantRules); err != nil {
+		return nil, "", nil, nil, 0, err
+	}
+
 	// 解析租户权限配置
 	var perms model.UserPermissionsData
 	if err := json.Unmarshal(config.UserPermissions, &perms); err != nil {

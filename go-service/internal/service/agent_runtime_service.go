@@ -1,6 +1,8 @@
 package service
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -21,15 +23,15 @@ const maxAgentLoopSteps = 8
 
 // AgentRuntimeService 负责智能体单轮对话的编排循环（包括工具多步调用、状态流式推送与落库）
 type AgentRuntimeService struct {
-	chatRepo        *repository.ChatRepo
-	agentRepo       *repository.AgentRepo
-	tenantRepo      *repository.TenantRepo
-	aiModelRepo     *repository.AIModelRepo
-	aiCaller        *AIModelCallerService
-	permService     *AgentPermissionService
-	skillService    *SkillService
-	mcpService      *MCPService
-	toolExecutor    agenttools.ToolExecutor
+	chatRepo     *repository.ChatRepo
+	agentRepo    *repository.AgentRepo
+	tenantRepo   *repository.TenantRepo
+	aiModelRepo  *repository.AIModelRepo
+	aiCaller     *AIModelCallerService
+	permService  *AgentPermissionService
+	skillService *SkillService
+	mcpService   *MCPService
+	toolExecutor agenttools.ToolExecutor
 }
 
 // NewAgentRuntimeService 初始化智能体运行时服务
@@ -80,7 +82,11 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 	sink StreamEventSink,
 ) error {
 	ctx := c.Request.Context()
+	tenantForLog, _ := s.tenantRepo.FindByID(tenantID)
 	logger := pkglogger.Global()
+	if tenantForLog != nil {
+		logger = pkglogger.GetTenantLogger(tenantForLog.Code)
+	}
 
 	// 1. 获取会话与智能体
 	session, err := s.chatRepo.GetSessionByID(tenantID, sessionID)
@@ -96,6 +102,11 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		return fmt.Errorf("智能体定义不存在")
 	}
 
+	// 平台模板在租户创建覆盖后，历史会话也应使用该租户最新定义。
+	agent, err = s.agentRepo.GetAgentByCode(tenantID, agent.AgentCode)
+	if err != nil {
+		return err
+	}
 	// 2. 权限收敛计算：计算有效工具集
 	effectiveTools, err := s.permService.CalculateEffectiveToolsForAgent(ctx, tenantID, userID, agent)
 	if err != nil {
@@ -127,12 +138,30 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 	// 4. 解析智能体 Skills 并拼接入系统提示词
 	var skillCodes []string
 	for _, b := range agent.ToolBindings {
-		if b.ToolType == "skill" {
-			skillCodes = append(skillCodes, b.ToolCode)
+		if b.ToolType == "skill" && effectiveTools[b.ToolCode] {
+			skillCodes = append(skillCodes, strings.TrimPrefix(b.ToolCode, "skill:"))
 		}
 	}
 	skills, _ := s.skillService.ResolveAgentSkillsOverview(ctx, tenantID, skillCodes)
 	skillsPrompt := s.skillService.BuildSkillsPromptSection(skills)
+	skillContents := make(map[string]string)
+	for _, skill := range skills {
+		key := "skill:" + skill.Code
+		skillContents[key] = skill.Content
+		toolDefinitions = append(toolDefinitions, ai.ToolDefinition{Type: "function", Function: ai.FunctionSpec{Name: key, Description: "读取技能指南：" + skill.Name + "。" + skill.Description, Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}}})
+	}
+	// 模型函数名只使用 ASCII；权限键与 UI 仍保留可读的 mcp:/skill: 编码。
+	toolAliases := make(map[string]string)
+	for i := range toolDefinitions {
+		key := toolDefinitions[i].Function.Name
+		alias := key
+		if strings.Contains(key, ":") {
+			sum := sha256.Sum256([]byte(key))
+			alias = "tool_" + hex.EncodeToString(sum[:16])
+		}
+		toolAliases[alias] = key
+		toolDefinitions[i].Function.Name = alias
+	}
 
 	systemPrompt := agent.SystemPrompt + skillsPrompt
 	if session.ProcessID != nil && *session.ProcessID != "" {
@@ -163,6 +192,9 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		Role:    "system",
 		Content: systemPrompt,
 	})
+	if len(historyMsgs) > 40 {
+		historyMsgs = historyMsgs[len(historyMsgs)-40:]
+	}
 	for _, m := range historyMsgs {
 		conversation = append(conversation, ai.ChatMessage{
 			Role:             m.Role,
@@ -189,6 +221,14 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		return fmt.Errorf("AI 模型配置不存在或已停用")
 	}
 
+	var fallbackCfg *model.AIModelConfig
+	fallbackID := tenant.ChatFallbackModelID
+	if fallbackID == nil {
+		fallbackID = tenant.FallbackModelID
+	}
+	if fallbackID != nil {
+		fallbackCfg, _ = s.aiModelRepo.FindByID(*fallbackID)
+	}
 	// 8. 进入智能体编排循环
 	_ = sink("session", map[string]interface{}{
 		"session_id": sessionID.String(),
@@ -233,9 +273,16 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			ModelConfig:    modelCfg,
 			Temperature:    0.3,
 			MaxTokens:      modelCfg.MaxTokens,
-			EnableThinking: true,
+			EnableThinking: modelCfg.SupportsThinking,
 			RequestType:    "chat",
+			BusinessLogID:  &sessionID,
+			ProcessTitle:   session.Title,
 			CallType:       "reasoning",
+			StreamResetFunc: func() {
+				turnDelta.Reset()
+				turnReasoning.Reset()
+				_ = sink("reset", map[string]interface{}{"content": finalContent.String(), "reasoning_content": finalReasoning.String()})
+			},
 			StreamChunkFunc: func(chunk string) {
 				turnDelta.WriteString(chunk)
 				_ = sink("delta", map[string]interface{}{"content": chunk})
@@ -246,12 +293,20 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			},
 		}
 
-		resp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, req)
+		if step == maxAgentLoopSteps {
+			req.Tools = nil
+		}
+		resp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, req)
 		if err != nil {
 			logger.Error("AI 调用失败", zap.Error(err), zap.Int("step", step))
 			_ = sink("error", map[string]interface{}{"message": "AI 模型处理异常: " + err.Error()})
 			s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "error", accumulatedRecords, totalTokenUsage)
 			return err
+		}
+
+		if turnDelta.Len() == 0 && resp.Content != "" {
+			turnDelta.WriteString(resp.Content)
+			_ = sink("delta", map[string]interface{}{"content": resp.Content})
 		}
 
 		totalTokenUsage.InputTokens += resp.TokenUsage.InputTokens
@@ -270,6 +325,12 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			// 没有工具调用，轮次结束！
 			break
 		}
+		if step == maxAgentLoopSteps {
+			if err := s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "error", accumulatedRecords, totalTokenUsage); err != nil {
+				return err
+			}
+			return fmt.Errorf("工具调用已达到本轮上限，请缩小问题范围后继续")
+		}
 
 		// 将助手的 Tool Calls 消息追加到多轮上下文
 		conversation = append(conversation, ai.ChatMessage{
@@ -280,11 +341,17 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 
 		// 逐一执行 Tool Call
 		for _, tc := range resp.ToolCalls {
-			toolName := tc.Function.Name
+			toolName := toolAliases[tc.Function.Name]
+			if toolName == "" {
+				toolName = tc.Function.Name
+			}
 			toolArgs := tc.Function.Arguments
 
 			// 获取 UIKind
 			uiKind := "mcp_generic"
+			if strings.HasPrefix(toolName, "skill:") {
+				uiKind = "skill"
+			}
 			if spec, ok := agenttools.BuiltinTools[toolName]; ok {
 				uiKind = spec.UIKind
 			}
@@ -315,7 +382,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 				})
 				conversation = append(conversation, ai.ChatMessage{
 					Role:       "tool",
-					Name:       toolName,
+					Name:       tc.Function.Name,
 					ToolCallID: tc.ID,
 					Content:    errText,
 				})
@@ -334,7 +401,10 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			var payload interface{}
 			var execErr error
 
-			if strings.HasPrefix(toolName, "mcp:") {
+			if strings.HasPrefix(toolName, "skill:") {
+				uiKind = "skill"
+				payload = map[string]interface{}{"content": skillContents[toolName]}
+			} else if strings.HasPrefix(toolName, "mcp:") {
 				// MCP 工具调用: mcp:{server_code}:{tool_name}
 				parts := strings.SplitN(strings.TrimPrefix(toolName, "mcp:"), ":", 2)
 				if len(parts) == 2 {
@@ -379,7 +449,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			// 回填 tool 结果消息到上下文
 			conversation = append(conversation, ai.ChatMessage{
 				Role:       "tool",
-				Name:       toolName,
+				Name:       tc.Function.Name,
 				ToolCallID: tc.ID,
 				Content:    toolResultContent,
 			})
@@ -387,7 +457,9 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 	}
 
 	// 9. 保存最终 Assistant 消息入库
-	s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "success", accumulatedRecords, totalTokenUsage)
+	if err := s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "success", accumulatedRecords, totalTokenUsage); err != nil {
+		return fmt.Errorf("保存回复失败: %w", err)
+	}
 
 	// 10. 首轮自动生成短标题（如原标题为默认名）
 	if session.Title == "新对话" || session.Title == "" {
@@ -417,7 +489,7 @@ func (s *AgentRuntimeService) saveAssistantMessage(
 	content, reasoning, status string,
 	toolRecords []ToolExecutionRecord,
 	usage ai.TokenUsage,
-) {
+) error {
 	toolJSON, _ := json.Marshal(toolRecords)
 	usageJSON, _ := json.Marshal(usage)
 
@@ -431,5 +503,5 @@ func (s *AgentRuntimeService) saveAssistantMessage(
 		ToolCalls:        datatypes.JSON(toolJSON),
 		TokenUsage:       datatypes.JSON(usageJSON),
 	}
-	_ = s.chatRepo.CreateMessage(&msg)
+	return s.chatRepo.CreateMessage(&msg)
 }

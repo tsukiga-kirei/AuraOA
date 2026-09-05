@@ -656,6 +656,11 @@ paths:
                     type: string
                     example: success
     post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"page_permissions":{"type":"array","items":{"type":"string"}},"agent_codes":{"type":"array","items":{"type":"string"},"description":"空数组清空授权"},"tool_codes":{"type":"array","items":{"type":"string"},"description":"空数组清空授权"}}}
       summary: 创建角色
       tags:
       - Org
@@ -775,6 +780,11 @@ paths:
         description: 资源 ID
   /api/tenant/org/roles/{id}:
     put:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"page_permissions":{"type":"array","items":{"type":"string"}},"agent_codes":{"type":"array","items":{"type":"string"},"description":"空数组清空授权"},"tool_codes":{"type":"array","items":{"type":"string"},"description":"空数组清空授权"}}}
       summary: 更新角色
       tags:
       - Org
@@ -4280,28 +4290,18 @@ paths:
         description: 每页条数
   /api/tenant/llm-logs/stats:
     get:
-      summary: AI 调用记录统计
-      tags:
-      - LLMLogs
-      security:
-      - bearerAuth: []
+      summary: 按流程与对话会话统计 AI 调用链数量
+      tags: [LLMLogs]
+      security: [{bearerAuth: []}]
       responses:
         '200':
-          description: 成功
+          description: 成功，chat_count 为对话链数量
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  code:
-                    type: integer
-                    example: 0
-                  message:
-                    type: string
-                    example: success
+              schema: {"type":"object","properties":{"code":{"type":"integer"},"message":{"type":"string"},"data":{"type":"object","properties":{"total":{"type":"integer"},"audit_count":{"type":"integer"},"archive_count":{"type":"integer"},"summary_count":{"type":"integer"},"chat_count":{"type":"integer"}}}}}
   /api/tenant/llm-logs/{processId}/chain:
     get:
-      summary: 获取流程全部 AI 调用链
+      summary: 获取流程或对话全部 AI 调用链（对话键为 chat:UUID）
       tags:
       - LLMLogs
       security:
@@ -6415,269 +6415,724 @@ paths:
         in: path
         required: true
         schema:
-  /api/chat/agents:
-    get:
-      summary: 获取当前用户有效智能体列表
-      tags:
-      - Chat
-      security:
-      - bearerAuth: []
-      responses:
-        '200':
-          description: 成功
-  /api/chat/sessions:
-    get:
-      summary: 分页获取用户会话列表
-      tags:
-      - Chat
-      security:
-      - bearerAuth: []
-      responses:
-        '200':
-          description: 成功
-    post:
-      summary: 创建新对话会话
-      tags:
-      - Chat
-      security:
-      - bearerAuth: []
-      responses:
-        '200':
-          description: 成功
-  /api/chat/sessions/{id}:
-    get:
-      summary: 获取会话详情及历史消息
-      tags:
-      - Chat
-      security:
-      - bearerAuth: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '200':
-          description: 成功
-    patch:
-      summary: 更新会话（重命名/置顶）
-      tags:
-      - Chat
-      security:
-      - bearerAuth: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '200':
-          description: 成功
-    delete:
-      summary: 删除会话
-      tags:
-      - Chat
-      security:
-      - bearerAuth: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '200':
-          description: 成功
-  /api/chat/sessions/{id}/messages/stream:
-    post:
-      summary: 发送消息并流式返回智能体思考与回答（SSE）
-      tags:
-      - Chat
-      security:
-      - bearerAuth: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '200':
-          description: SSE 流式响应
-  /api/tenant/agents:
-    get:
-      summary: 获取租户智能体列表
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      responses:
-        '200':
-          description: 成功
-    post:
-      summary: 创建或更新智能体
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      responses:
-        '200':
-          description: 成功
-  /api/tenant/agents/{id}:
-    delete:
-      summary: 删除智能体
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '200':
-          description: 成功
-  /api/tenant/mcp-servers:
-    get:
-      summary: 获取租户自建 MCP 服务列表
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      responses:
-        '200':
-          description: 成功
-    post:
-      summary: 注册或更新 MCP 服务
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      responses:
-        '200':
-          description: 成功
-  /api/tenant/mcp-servers/{id}:
-    delete:
-      summary: 删除 MCP 服务
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '200':
-          description: 成功
-  /api/tenant/mcp-servers/{id}/test:
-    post:
-      summary: 测试 MCP 服务连接并刷新工具列表
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '200':
-          description: 成功
-  /api/tenant/skills:
-    get:
-      summary: 获取租户 Skills 列表
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      responses:
-        '200':
-          description: 成功
-    post:
-      summary: 创建或更新自定义 Skill
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      responses:
-        '200':
-          description: 成功
-  /api/tenant/skills/{id}:
-    delete:
-      summary: 删除自定义 Skill
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '200':
-          description: 成功
-  /api/admin/agent-catalog:
-    get:
-      summary: 获取平台智能体与工具目录（只读）
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      responses:
-        '200':
-          description: 成功
-  /api/admin/tenants/{id}/chat-allocation:
-    get:
-      summary: 获取租户对话与智能体配额
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '200':
-          description: 成功
-    put:
-      summary: 更新租户对话与智能体配额
-      tags:
-      - AgentAdmin
-      security:
-      - bearerAuth: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '200':
-          description: 成功
+  "/api/chat/agents":
+    "get":
+      "summary": "获取当前用户有效智能体"
+      "tags":
+        - "Chat"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "type": "array"
+                    "items":
+                      "$ref": "#/components/schemas/ChatAgent"
+  "/api/chat/sessions":
+    "get":
+      "summary": "分页查询本人会话，按标题搜索"
+      "tags":
+        - "Chat"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "type": "object"
+                    "properties":
+                      "items":
+                        "type": "array"
+                        "items":
+                          "$ref": "#/components/schemas/ChatSession"
+                      "total":
+                        "type": "integer"
+                      "page":
+                        "type": "integer"
+                      "page_size":
+                        "type": "integer"
+      "parameters":
+        -
+          "name": "keyword"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "page"
+          "in": "query"
+          "schema":
+            "type": "integer"
+            "default": 1
+            "minimum": 1
+        -
+          "name": "page_size"
+          "in": "query"
+          "schema":
+            "type": "integer"
+            "default": 20
+            "minimum": 1
+            "maximum": 100
+    "post":
+      "summary": "创建指定智能体会话"
+      "tags":
+        - "Chat"
+      "security":
+        -
+          "bearerAuth": []
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "type": "object"
+              "required":
+                - "agent_code"
+              "properties":
+                "agent_code":
+                  "type": "string"
+                "title":
+                  "type": "string"
+                "process_id":
+                  "type": "string"
+                "source":
+                  "type": "string"
+                  "default": "standalone"
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "$ref": "#/components/schemas/ChatSession"
+  "/api/chat/sessions/{id}":
+    "parameters":
+      -
+        "name": "id"
+        "in": "path"
+        "required": true
+        "schema":
+          "type": "string"
+          "format": "uuid"
+    "get":
+      "summary": "获取本人会话历史"
+      "tags":
+        - "Chat"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "type": "object"
+                    "properties":
+                      "session":
+                        "$ref": "#/components/schemas/ChatSession"
+                      "messages":
+                        "type": "array"
+                        "items":
+                          "$ref": "#/components/schemas/ChatMessage"
+    "patch":
+      "summary": "重命名或置顶本人会话"
+      "tags":
+        - "Chat"
+      "security":
+        -
+          "bearerAuth": []
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "type": "object"
+              "properties":
+                "title":
+                  "type": "string"
+                "pinned":
+                  "type": "boolean"
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data": {}
+    "delete":
+      "summary": "删除本人会话和消息"
+      "tags":
+        - "Chat"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data": {}
+  "/api/chat/sessions/{id}/messages/stream":
+    "parameters":
+      -
+        "name": "id"
+        "in": "path"
+        "required": true
+        "schema":
+          "type": "string"
+          "format": "uuid"
+    "post":
+      "summary": "发送消息并执行智能体工具循环"
+      "tags":
+        - "Chat"
+      "security":
+        -
+          "bearerAuth": []
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "type": "object"
+              "required":
+                - "content"
+              "properties":
+                "content":
+                  "type": "string"
+      "responses":
+        "200":
+          "description": "SSE 事件：status、delta、reasoning、reset、tool_start、tool_result、session、done、error、interrupted；见 chat.md"
+          "content":
+            "text/event-stream":
+              "schema":
+                "type": "string"
+  "/api/tenant/agent-catalog":
+    "get":
+      "summary": "读取租户配额内可装配的目录"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "$ref": "#/components/schemas/ChatCatalog"
+  "/api/tenant/agents":
+    "get":
+      "summary": "列出平台模板及租户覆盖"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "type": "array"
+                    "items":
+                      "$ref": "#/components/schemas/ChatAgent"
+    "post":
+      "summary": "创建租户智能体"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ChatAgentSave"
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "$ref": "#/components/schemas/ChatAgent"
+  "/api/tenant/agents/{id}":
+    "parameters":
+      -
+        "name": "id"
+        "in": "path"
+        "required": true
+        "schema":
+          "type": "string"
+          "format": "uuid"
+    "put":
+      "summary": "更新租户智能体，平台模板生成租户覆盖"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ChatAgentUpdate"
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data": {}
+    "delete":
+      "summary": "删除租户智能体"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data": {}
+  "/api/tenant/mcp-servers":
+    "get":
+      "summary": "列出 MCP 服务，不返回密钥"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "type": "array"
+                    "items":
+                      "$ref": "#/components/schemas/ChatMCPServer"
+    "post":
+      "summary": "在配额内注册 Streamable HTTP MCP"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ChatMCPSave"
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "$ref": "#/components/schemas/ChatMCPServer"
+  "/api/tenant/mcp-servers/{id}":
+    "parameters":
+      -
+        "name": "id"
+        "in": "path"
+        "required": true
+        "schema":
+          "type": "string"
+          "format": "uuid"
+    "put":
+      "summary": "更新本租户 MCP 服务"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ChatMCPSave"
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "$ref": "#/components/schemas/ChatMCPServer"
+    "delete":
+      "summary": "删除本租户 MCP 服务"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data": {}
+  "/api/tenant/mcp-servers/{id}/test":
+    "parameters":
+      -
+        "name": "id"
+        "in": "path"
+        "required": true
+        "schema":
+          "type": "string"
+          "format": "uuid"
+    "post":
+      "summary": "初始化 MCP 并刷新分页工具目录"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "type": "object"
+                    "properties":
+                      "tools":
+                        "type": "array"
+                        "items":
+                          "type": "object"
+                          "additionalProperties": true
+  "/api/tenant/skills":
+    "get":
+      "summary": "列出指令技能"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "type": "array"
+                    "items":
+                      "$ref": "#/components/schemas/ChatSkill"
+    "post":
+      "summary": "创建租户技能"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ChatSkillSave"
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "$ref": "#/components/schemas/ChatSkill"
+  "/api/tenant/skills/{id}":
+    "parameters":
+      -
+        "name": "id"
+        "in": "path"
+        "required": true
+        "schema":
+          "type": "string"
+          "format": "uuid"
+    "put":
+      "summary": "更新租户技能"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ChatSkillSave"
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "$ref": "#/components/schemas/ChatSkill"
+    "delete":
+      "summary": "删除租户技能"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data": {}
+  "/api/admin/agent-catalog":
+    "get":
+      "summary": "系统管理员读取平台目录"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "$ref": "#/components/schemas/ChatCatalog"
+  "/api/admin/tenants/{id}/chat-allocation":
+    "parameters":
+      -
+        "name": "id"
+        "in": "path"
+        "required": true
+        "schema":
+          "type": "string"
+          "format": "uuid"
+    "get":
+      "summary": "读取租户对话配额"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "$ref": "#/components/schemas/ChatAllocation"
+    "put":
+      "summary": "更新配额，模型 null 恢复继承"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ChatAllocation"
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data": {}
 components:
   securitySchemes:
     bearerAuth:
@@ -6702,6 +7157,304 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    "ChatAgent":
+      "type": "object"
+      "properties":
+        "id":
+          "type": "string"
+          "format": "uuid"
+        "agent_code":
+          "type": "string"
+        "name":
+          "type": "string"
+        "description":
+          "type": "string"
+        "is_system":
+          "type": "boolean"
+        "enabled":
+          "type": "boolean"
+        "system_prompt":
+          "type": "string"
+        "tool_codes":
+          "type": "array"
+          "items":
+            "type": "string"
+    "ChatSession":
+      "type": "object"
+      "properties":
+        "id":
+          "type": "string"
+          "format": "uuid"
+        "agent_id":
+          "type": "string"
+          "format": "uuid"
+        "agent_code":
+          "type": "string"
+        "title":
+          "type": "string"
+        "source":
+          "type": "string"
+        "process_id":
+          "type": "string"
+          "nullable": true
+        "pinned":
+          "type": "boolean"
+        "created_at":
+          "type": "string"
+          "format": "date-time"
+        "updated_at":
+          "type": "string"
+          "format": "date-time"
+    "ChatToolExecution":
+      "type": "object"
+      "properties":
+        "tool_call_id":
+          "type": "string"
+        "tool_code":
+          "type": "string"
+        "ui_kind":
+          "type": "string"
+        "status":
+          "type": "string"
+          "enum":
+            - "running"
+            - "success"
+            - "error"
+        "arguments":
+          "type": "string"
+        "payload": {}
+    "ChatMessage":
+      "type": "object"
+      "properties":
+        "id":
+          "type": "string"
+          "format": "uuid"
+        "session_id":
+          "type": "string"
+          "format": "uuid"
+        "role":
+          "type": "string"
+        "content":
+          "type": "string"
+        "reasoning_content":
+          "type": "string"
+        "status":
+          "type": "string"
+        "tool_calls":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/ChatToolExecution"
+        "token_usage":
+          "type": "object"
+          "properties":
+            "input_tokens":
+              "type": "integer"
+            "output_tokens":
+              "type": "integer"
+            "total_tokens":
+              "type": "integer"
+        "created_at":
+          "type": "string"
+          "format": "date-time"
+    "ChatAgentSave":
+      "type": "object"
+      "required":
+        - "agent_code"
+        - "name"
+      "properties":
+        "agent_code":
+          "type": "string"
+        "name":
+          "type": "string"
+        "description":
+          "type": "string"
+        "system_prompt":
+          "type": "string"
+        "enabled":
+          "type": "boolean"
+        "tool_codes":
+          "type": "array"
+          "items":
+            "type": "string"
+    "ChatAgentUpdate":
+      "type": "object"
+      "properties":
+        "name":
+          "type": "string"
+        "description":
+          "type": "string"
+        "system_prompt":
+          "type": "string"
+        "enabled":
+          "type": "boolean"
+        "tool_codes":
+          "type": "array"
+          "items":
+            "type": "string"
+    "ChatSkillSave":
+      "type": "object"
+      "required":
+        - "skill_code"
+        - "name"
+        - "content"
+      "properties":
+        "skill_code":
+          "type": "string"
+        "name":
+          "type": "string"
+        "description":
+          "type": "string"
+        "content":
+          "type": "string"
+          "description": "UTF-8 内容最多 64 KB"
+        "enabled":
+          "type": "boolean"
+    "ChatSkill":
+      "type": "object"
+      "properties":
+        "id":
+          "type": "string"
+          "format": "uuid"
+        "skill_code":
+          "type": "string"
+        "name":
+          "type": "string"
+        "description":
+          "type": "string"
+        "content":
+          "type": "string"
+        "enabled":
+          "type": "boolean"
+        "is_system":
+          "type": "boolean"
+    "ChatMCPSave":
+      "type": "object"
+      "required":
+        - "server_code"
+        - "name"
+        - "endpoint_url"
+      "properties":
+        "server_code":
+          "type": "string"
+        "name":
+          "type": "string"
+        "description":
+          "type": "string"
+        "transport_type":
+          "type": "string"
+          "enum":
+            - "http"
+        "endpoint_url":
+          "type": "string"
+          "format": "uri"
+        "headers":
+          "type": "string"
+          "description": "JSON 字符串对象；更新时留空保留，{} 清空"
+        "enabled":
+          "type": "boolean"
+    "ChatMCPServer":
+      "type": "object"
+      "properties":
+        "id":
+          "type": "string"
+          "format": "uuid"
+        "server_code":
+          "type": "string"
+        "name":
+          "type": "string"
+        "description":
+          "type": "string"
+        "transport_type":
+          "type": "string"
+        "endpoint_url":
+          "type": "string"
+        "enabled":
+          "type": "boolean"
+        "cached_tools":
+          "type": "array"
+          "items":
+            "type": "object"
+            "properties":
+              "name":
+                "type": "string"
+              "description":
+                "type": "string"
+              "inputSchema":
+                "type": "object"
+                "additionalProperties": true
+        "last_synced_at":
+          "type": "string"
+          "format": "date-time"
+          "nullable": true
+    "ChatCatalog":
+      "type": "object"
+      "properties":
+        "tool_catalog":
+          "type": "array"
+          "items":
+            "type": "object"
+            "properties":
+              "tool_code":
+                "type": "string"
+              "name":
+                "type": "string"
+              "description":
+                "type": "string"
+              "ui_kind":
+                "type": "string"
+        "agent_catalog":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/ChatAgent"
+        "skill_catalog":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/ChatSkill"
+    "ChatAllocation":
+      "type": "object"
+      "properties":
+        "tenant_id":
+          "type": "string"
+          "format": "uuid"
+        "chat_enabled":
+          "type": "boolean"
+        "chat_retention_days":
+          "type": "integer"
+          "minimum": 1
+          "maximum": 3650
+        "chat_primary_model_id":
+          "type": "string"
+          "format": "uuid"
+          "nullable": true
+        "chat_fallback_model_id":
+          "type": "string"
+          "format": "uuid"
+          "nullable": true
+        "agent_codes":
+          "type": "array"
+          "items":
+            "type": "string"
+        "tool_codes":
+          "type": "array"
+          "items":
+            "type": "string"
+        "skill_codes":
+          "type": "array"
+          "items":
+            "type": "string"
+        "allow_custom_skills":
+          "type": "boolean"
+        "allow_tenant_mcp":
+          "type": "boolean"
+        "max_mcp_servers":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 100
+        "mcp_template_ids":
+          "type": "array"
+          "items":
+            "type": "string"
+            "format": "uuid"
     ApiResponse:
       type: object
       properties:

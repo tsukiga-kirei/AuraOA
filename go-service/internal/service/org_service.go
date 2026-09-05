@@ -180,7 +180,9 @@ func (s *OrgService) CreateRole(c *gin.Context, tenantID uuid.UUID, req *dto.Cre
 		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
 	if s.agentRepo != nil && (len(req.AgentCodes) > 0 || len(req.ToolCodes) > 0) {
-		_ = s.agentRepo.SaveRoleGrants(tenantID, role.ID, req.AgentCodes, req.ToolCodes)
+		if err := s.agentRepo.SaveRoleGrants(tenantID, role.ID, req.AgentCodes, req.ToolCodes); err != nil {
+			return nil, err
+		}
 	}
 	pkglogger.Global().Info("role created", zap.String("roleName", role.Name), zap.String("tenantID", tenantID.String()))
 	resp := toRoleResponse(role)
@@ -219,7 +221,9 @@ func (s *OrgService) UpdateRole(c *gin.Context, id uuid.UUID, req *dto.UpdateRol
 		if toolCodes == nil {
 			toolCodes, _ = s.agentRepo.ListRoleToolGrants([]uuid.UUID{role.ID})
 		}
-		_ = s.agentRepo.SaveRoleGrants(role.TenantID, role.ID, agentCodes, toolCodes)
+		if err := s.agentRepo.SaveRoleGrants(role.TenantID, role.ID, agentCodes, toolCodes); err != nil {
+			return nil, err
+		}
 	}
 	resp := toRoleResponse(role)
 	s.populateRoleGrants(&resp, role.ID)
