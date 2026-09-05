@@ -136,8 +136,8 @@ const runSummary = async (item: SummaryWorkbenchProcessItem, useLatestConfig = f
       process_id: item.process_id,
       process_type: item.process_type,
       title: item.title,
-    }, useLatestConfig, (progress) => { currentResult.value = progress })
-    currentResult.value = result
+    }, useLatestConfig, (progress) => { if (selected.value?.process_id === item.process_id) currentResult.value = progress })
+    if (selected.value?.process_id === item.process_id) currentResult.value = result
     if (result.status === 'completed') message.success(t('summary.executeSuccess'))
     else message.error(result.error_message || t('summary.executeFailed'))
     await loadData()

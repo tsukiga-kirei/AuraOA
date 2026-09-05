@@ -239,7 +239,13 @@ const removeMember = async (m: OrgMember) => {
 //=====角色=====
 const showRoleModal = ref(false)
 const editingRole = ref<OrgRole | null>(null)
-const roleForm = ref({ name: '', description: '', page_permissions: [] as string[] })
+const roleForm = ref({ name: '', description: '', page_permissions: [] as string[], agent_codes: [] as string[], tool_codes: [] as string[] })
+const grantAgents = ref<{agent_code:string; name:string}[]>([])
+const grantTools = ref<{tool_code:string; name:string}[]>([])
+const grantAuth = useAuth()
+const loadGrantCatalog = async () => {
+  try { const { authFetch } = grantAuth; const [agents, catalog] = await Promise.all([authFetch<any[]>('/api/tenant/agents'), authFetch<any>('/api/tenant/agent-catalog')]); grantAgents.value = agents; grantTools.value = catalog.tool_catalog || [] } catch (e: any) { message.error(e.message) }
+}
 
 interface PageConfig {
   path: string
@@ -322,13 +328,15 @@ const isPermDisabled = (path: string) => {
 
 const openAddRole = () => {
   editingRole.value = null
-  roleForm.value = { name: '', description: '', page_permissions: ['/overview', '/dashboard', '/summary', '/settings'] }
+  roleForm.value = { name: '', description: '', page_permissions: ['/overview', '/dashboard', '/summary', '/settings'], agent_codes: [], tool_codes: [] }
+  void loadGrantCatalog()
   showRoleModal.value = true
 }
 
 const openEditRole = (r: OrgRole) => {
   editingRole.value = r
-  roleForm.value = { name: r.name, description: r.description, page_permissions: [...r.page_permissions] }
+  roleForm.value = { name: r.name, description: r.description, page_permissions: [...r.page_permissions], agent_codes: [...(r.agent_codes || [])], tool_codes: [...(r.tool_codes || [])] }
+  void loadGrantCatalog()
   showRoleModal.value = true
 }
 
@@ -343,6 +351,7 @@ const handleSaveRole = async () => {
         name: roleForm.value.name,
         description: roleForm.value.description,
         page_permissions: [...roleForm.value.page_permissions],
+        agent_codes: [...roleForm.value.agent_codes], tool_codes: [...roleForm.value.tool_codes],
       })
       const idx = roles.value.findIndex(r => r.id === editingRole.value!.id)
       if (idx !== -1) roles.value[idx] = mapped
@@ -352,6 +361,7 @@ const handleSaveRole = async () => {
         name: roleForm.value.name,
         description: roleForm.value.description,
         page_permissions: [...roleForm.value.page_permissions],
+        agent_codes: [...roleForm.value.agent_codes], tool_codes: [...roleForm.value.tool_codes],
         is_system: false,
       })
       roles.value.push(mapped)
@@ -720,6 +730,11 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
             </template>
           </div>
         </a-form-item>
+        <template v-if="roleForm.page_permissions.includes('/chat')">
+          <a-form-item :label="t('chat.agents')"><a-select v-model:value="roleForm.agent_codes" mode="multiple" :options="grantAgents.map(item => ({label:item.name,value:item.agent_code}))" /></a-form-item>
+          <a-form-item :label="t('agentAdmin.form.bindTools')"><a-select v-model:value="roleForm.tool_codes" mode="multiple" :options="grantTools.map(item => ({label:item.name,value:item.tool_code}))" /></a-form-item>
+          <p class="perm-hint">{{ t('chat.grantHint') }}</p>
+        </template>
       </a-form>
     </a-modal>
 

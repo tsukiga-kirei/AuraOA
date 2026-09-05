@@ -48,6 +48,7 @@ func (TenantConfigVersion) TableName() string { return "tenant_config_versions" 
 
 // ProcessExecutionConfigBinding 固定流程实例后续执行所沿用的配置版本。
 type ProcessExecutionConfigBinding struct {
+	Scope           string     `gorm:"size:64;not null;default:''" json:"scope"`
 	ID              uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	TenantID        uuid.UUID  `gorm:"type:uuid;not null" json:"tenant_id"`
 	Module          string     `gorm:"size:20;not null" json:"module"`

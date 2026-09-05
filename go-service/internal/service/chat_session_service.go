@@ -1,8 +1,11 @@
 package service
 
 import (
+	pkglogger "auraoa/go-service/internal/pkg/logger"
 	"context"
 	"fmt"
+	"go.uber.org/zap"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -233,4 +236,29 @@ func (s *ChatSessionService) CleanExpiredSessions(ctx context.Context, tenantID 
 	}
 	cutoff := apptime.Now().AddDate(0, 0, -retentionDays)
 	return s.chatRepo.DeleteExpiredSessions(tenantID, cutoff)
+}
+
+// StartRetentionCleanup 按租户配置定期清理过期会话，关闭服务时随上下文结束。
+func (s *ChatSessionService) StartRetentionCleanup(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				tenants, err := s.tenantRepo.ListActive()
+				if err != nil {
+					pkglogger.Global().Warn("查询会话保留配置失败", zap.Error(err))
+					continue
+				}
+				for _, tenant := range tenants {
+					if _, err := s.CleanExpiredSessions(ctx, tenant.ID, tenant.ChatRetentionDays); err != nil {
+						pkglogger.GetTenantLogger(tenant.Code).Warn("清理过期会话失败", zap.Error(err))
+					}
+				}
+			}
+		}
+	}()
 }

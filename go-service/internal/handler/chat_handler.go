@@ -205,7 +205,9 @@ func (h *ChatHandler) StreamMessage(c *gin.Context) {
 		return nil
 	}
 
-	_ = h.runtimeService.ExecuteMessageStream(c, tenantID, userID, username, sessionID, req.Content, sink)
+	if err := h.runtimeService.ExecuteMessageStream(c, tenantID, userID, username, sessionID, req.Content, sink); err != nil {
+		_ = sink("error", gin.H{"message": err.Error()})
+	}
 }
 
 func extractUserAndTenant(c *gin.Context) (tenantID, userID uuid.UUID, username string, err error) {

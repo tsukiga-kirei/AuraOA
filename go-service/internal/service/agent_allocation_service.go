@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
@@ -146,6 +148,12 @@ func (s *AgentAllocationService) UpdateTenantAllocation(ctx context.Context, ten
 		return err
 	}
 
+	if req.ChatRetentionDays != nil && (*req.ChatRetentionDays < 1 || *req.ChatRetentionDays > 3650) {
+		return fmt.Errorf("会话保留天数须为 1–3650")
+	}
+	if req.MaxMCPServers != nil && (*req.MaxMCPServers < 0 || *req.MaxMCPServers > 100) {
+		return fmt.Errorf("MCP 服务数量上限须为 0–100")
+	}
 	// 1. 更新 tenant 表的 chat 字段
 	tenantUpdates := map[string]interface{}{}
 	if req.ChatEnabled != nil {
@@ -154,16 +162,19 @@ func (s *AgentAllocationService) UpdateTenantAllocation(ctx context.Context, ten
 	if req.ChatRetentionDays != nil {
 		tenantUpdates["chat_retention_days"] = *req.ChatRetentionDays
 	}
-	if req.PrimaryModelID != nil {
-		tenantUpdates["chat_primary_model_id"] = *req.PrimaryModelID
-	}
-	if req.FallbackModelID != nil {
-		tenantUpdates["chat_fallback_model_id"] = *req.FallbackModelID
-	}
-	if len(tenantUpdates) > 0 {
-		if err := s.tenantRepo.UpdateFields(tenantID, tenantUpdates); err != nil {
-			return fmt.Errorf("更新租户对话配置失败: %w", err)
+	if len(req.PrimaryModelID) > 0 {
+		var id *uuid.UUID
+		if err := json.Unmarshal(req.PrimaryModelID, &id); err != nil {
+			return fmt.Errorf("模型 ID 无效")
 		}
+		tenantUpdates["chat_primary_model_id"] = id
+	}
+	if len(req.FallbackModelID) > 0 {
+		var id *uuid.UUID
+		if err := json.Unmarshal(req.FallbackModelID, &id); err != nil {
+			return fmt.Errorf("模型 ID 无效")
+		}
+		tenantUpdates["chat_fallback_model_id"] = id
 	}
 
 	// 2. 更新配额表
@@ -193,7 +204,7 @@ func (s *AgentAllocationService) UpdateTenantAllocation(ctx context.Context, ten
 		alloc.MCPTemplateIDs = datatypes.JSON(b)
 	}
 
-	return s.agentRepo.SaveTenantAllocation(alloc)
+	return s.agentRepo.SaveTenantChatSettings(alloc, tenantUpdates)
 }
 
 // ---------------- 租户管理员：智能体 CRUD ----------------
@@ -230,20 +241,17 @@ func (s *AgentAllocationService) ListTenantAgents(ctx context.Context, tenantID 
 
 // CreateTenantAgent 租户管理员新建智能体
 func (s *AgentAllocationService) CreateTenantAgent(ctx context.Context, tenantID uuid.UUID, req *dto.CreateAgentRequest) (*dto.AgentDefinitionDTO, error) {
+	if existing, _ := s.agentRepo.GetAgentByCode(tenantID, req.AgentCode); existing != nil {
+		return nil, fmt.Errorf("智能体编码已存在，请编辑已有配置或使用新的方案编码")
+	}
+
 	// 校验绑定的工具是否都在系统管理员分配给租户的配额内
 	alloc, err := s.agentRepo.GetTenantAllocation(tenantID)
 	if err != nil {
 		return nil, err
 	}
-	quotaTools := make(map[string]bool)
-	for _, code := range repository.ParseJSONSlice(alloc.ToolCodes) {
-		quotaTools[code] = true
-	}
-
-	for _, tc := range req.ToolCodes {
-		if !quotaTools[tc] {
-			return nil, fmt.Errorf("工具「%s」超出系统管理员授予的租户配额", tc)
-		}
+	if err := s.validateBindings(tenantID, alloc, req.ToolCodes); err != nil {
+		return nil, err
 	}
 
 	agent := model.AgentDefinition{
@@ -256,12 +264,9 @@ func (s *AgentAllocationService) CreateTenantAgent(ctx context.Context, tenantID
 		IsSystem:     false,
 	}
 
-	if err := s.agentRepo.CreateAgent(&agent); err != nil {
+	if err := s.agentRepo.CreateAgentWithBindings(tenantID, &agent, req.ToolCodes); err != nil {
 		return nil, fmt.Errorf("创建智能体失败: %w", err)
 	}
-
-	// 绑定工具
-	_ = s.agentRepo.ReplaceAgentToolBindings(tenantID, agent.ID, req.ToolCodes)
 
 	return &dto.AgentDefinitionDTO{
 		ID:           agent.ID,
@@ -304,35 +309,16 @@ func (s *AgentAllocationService) UpdateTenantAgent(ctx context.Context, tenantID
 		updates["enabled"] = *req.Enabled
 	}
 
-	if len(updates) > 0 {
-		if err := s.agentRepo.UpdateAgent(tenantID, agentID, updates); err != nil {
-			return err
-		}
-	}
-
 	if req.ToolCodes != nil {
-		// 校验配额
 		alloc, err := s.agentRepo.GetTenantAllocation(tenantID)
 		if err != nil {
 			return err
 		}
-		quotaTools := make(map[string]bool)
-		for _, code := range repository.ParseJSONSlice(alloc.ToolCodes) {
-			quotaTools[code] = true
-		}
-
-		for _, tc := range *req.ToolCodes {
-			if !quotaTools[tc] {
-				return fmt.Errorf("工具「%s」超出系统管理员授予的租户配额", tc)
-			}
-		}
-
-		if err := s.agentRepo.ReplaceAgentToolBindings(tenantID, agentID, *req.ToolCodes); err != nil {
+		if err := s.validateBindings(tenantID, alloc, *req.ToolCodes); err != nil {
 			return err
 		}
 	}
-
-	return nil
+	return s.agentRepo.SaveTenantAgent(tenantID, agent, updates, req.ToolCodes)
 }
 
 // DeleteTenantAgent 租户管理员删除自定义智能体
@@ -377,7 +363,67 @@ func (s *AgentAllocationService) SaveMCPServer(ctx context.Context, tenantID uui
 	if err != nil || alloc == nil || !alloc.AllowTenantMCP {
 		return nil, fmt.Errorf("当前租户未获得自建 MCP 权限")
 	}
+	endpoint, parseErr := url.Parse(req.EndpointURL)
+	if parseErr != nil || endpoint.Host == "" || endpoint.User != nil || (endpoint.Scheme != "http" && endpoint.Scheme != "https") {
+		return nil, fmt.Errorf("MCP 地址必须是有效的 HTTP(S) 地址")
+	}
+	if req.TransportType != "" && req.TransportType != "http" {
+		return nil, fmt.Errorf("目前仅支持 Streamable HTTP MCP 服务")
+	}
+	if req.Headers != "" {
+		var headers map[string]string
+		if json.Unmarshal([]byte(req.Headers), &headers) != nil {
+			return nil, fmt.Errorf("请求头必须为 JSON 字符串对象")
+		}
+	}
+	if req.ID != uuid.Nil {
+		server, err := s.agentRepo.GetMCPServerByID(tenantID, req.ID)
+		if err != nil || server.TenantID == nil || *server.TenantID != tenantID {
+			return nil, fmt.Errorf("无权修改该 MCP 服务")
+		}
+		if server.ServerCode != req.ServerCode {
+			return nil, fmt.Errorf("MCP 标识码创建后不能修改")
+		}
+		updates := map[string]interface{}{"name": req.Name, "description": req.Description, "endpoint_url": req.EndpointURL, "transport_type": "http", "enabled": req.Enabled}
+		if req.Headers != "" {
+			encrypted, err := crypto.Encrypt(req.Headers)
+			if err != nil {
+				return nil, err
+			}
+			updates["headers_encrypted"] = encrypted
+		}
+		if server.EndpointURL != req.EndpointURL || req.Headers != "" {
+			updates["cached_tools"] = datatypes.JSON([]byte(`[]`))
+			updates["last_synced_at"] = nil
+		}
+		if err := s.agentRepo.UpdateMCPServer(tenantID, server.ID, updates); err != nil {
+			return nil, err
+		}
+		items, err := s.ListMCPServers(ctx, tenantID)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			if item.ID == server.ID {
+				return &item, nil
+			}
+		}
+		return nil, fmt.Errorf("MCP 服务不存在")
+	}
 
+	servers, err := s.agentRepo.ListMCPServers(tenantID)
+	if err != nil {
+		return nil, err
+	}
+	count := 0
+	for _, server := range servers {
+		if server.TenantID != nil && *server.TenantID == tenantID {
+			count++
+		}
+	}
+	if count >= alloc.MaxMCPServers {
+		return nil, fmt.Errorf("已达到租户 MCP 服务数量上限（%d）", alloc.MaxMCPServers)
+	}
 	encHeaders := ""
 	if req.Headers != "" {
 		var encErr error
@@ -404,7 +450,7 @@ func (s *AgentAllocationService) SaveMCPServer(ctx context.Context, tenantID uui
 		CachedTools:      datatypes.JSON([]byte(`[]`)),
 	}
 
-	if err := s.agentRepo.CreateMCPServer(&server); err != nil {
+	if err := s.agentRepo.CreateMCPServerWithinQuota(tenantID, &server); err != nil {
 		return nil, err
 	}
 
@@ -453,6 +499,19 @@ func (s *AgentAllocationService) SaveSkill(ctx context.Context, tenantID uuid.UU
 	if err != nil || alloc == nil || !alloc.AllowCustomSkills {
 		return nil, fmt.Errorf("当前租户未获得自定义 Skills 权限")
 	}
+	if len(req.Content) > 65536 {
+		return nil, fmt.Errorf("技能内容不能超过 64 KB")
+	}
+	if req.ID != uuid.Nil {
+		skill, err := s.agentRepo.GetSkillByCode(tenantID, req.SkillCode)
+		if err != nil || skill.ID != req.ID || skill.TenantID == nil || *skill.TenantID != tenantID {
+			return nil, fmt.Errorf("无权修改该技能，标识码创建后不能修改")
+		}
+		if err := s.agentRepo.UpdateSkill(tenantID, skill.ID, map[string]interface{}{"name": req.Name, "description": req.Description, "content": req.Content, "enabled": req.Enabled}); err != nil {
+			return nil, err
+		}
+		return &dto.SkillItemDTO{ID: skill.ID, SkillCode: skill.SkillCode, Name: req.Name, Description: req.Description, Content: req.Content, Enabled: req.Enabled, IsSystem: false, CreatedAt: skill.CreatedAt}, nil
+	}
 
 	skill := model.AgentSkill{
 		TenantID:    &tenantID,
@@ -481,4 +540,78 @@ func (s *AgentAllocationService) SaveSkill(ctx context.Context, tenantID uuid.UU
 
 func (s *AgentAllocationService) DeleteSkill(ctx context.Context, tenantID, skillID uuid.UUID) error {
 	return s.agentRepo.DeleteSkill(tenantID, skillID)
+}
+
+// GetTenantCatalog 返回租户实际可装配的系统工具、MCP 与技能目录。
+func (s *AgentAllocationService) GetTenantCatalog(ctx context.Context, tenantID uuid.UUID) (*dto.AgentCatalogItemDTO, error) {
+	catalog, err := s.GetAgentCatalog(ctx)
+	if err != nil {
+		return nil, err
+	}
+	alloc, err := s.agentRepo.GetTenantAllocation(tenantID)
+	if err != nil {
+		return nil, err
+	}
+	permitted := make(map[string]bool)
+	for _, code := range repository.ParseJSONSlice(alloc.ToolCodes) {
+		permitted[code] = true
+	}
+	filtered := []dto.SystemToolCatalogItem{}
+	for _, item := range catalog.ToolCatalog {
+		if permitted[item.ToolCode] {
+			filtered = append(filtered, item)
+		}
+	}
+	if alloc.AllowTenantMCP {
+		servers, err := s.agentRepo.ListMCPServers(tenantID)
+		if err != nil {
+			return nil, err
+		}
+		for _, server := range servers {
+			if !server.Enabled || server.TenantID == nil {
+				continue
+			}
+			for _, def := range ConvertMCPToolsToDefinitions(server.ServerCode, server.CachedTools) {
+				filtered = append(filtered, dto.SystemToolCatalogItem{ToolCode: def.Function.Name, Name: server.Name + " / " + def.Function.Name, Description: def.Function.Description, UIKind: "mcp_generic"})
+			}
+		}
+	}
+	catalog.ToolCatalog = filtered
+	skills, err := s.ListSkills(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	catalog.SkillCatalog = []dto.SkillItemDTO{}
+	for _, sk := range skills {
+		allowed := !sk.IsSystem && alloc.AllowCustomSkills
+		for _, code := range repository.ParseJSONSlice(alloc.SkillCodes) {
+			if code == sk.SkillCode {
+				allowed = true
+			}
+		}
+		if allowed && sk.Enabled {
+			catalog.SkillCatalog = append(catalog.SkillCatalog, sk)
+		}
+	}
+	return catalog, nil
+}
+
+func (s *AgentAllocationService) validateBindings(tenantID uuid.UUID, alloc *model.TenantChatAllocation, codes []string) error {
+	catalog, err := s.GetTenantCatalog(context.Background(), tenantID)
+	if err != nil {
+		return err
+	}
+	allowed := make(map[string]bool)
+	for _, tool := range catalog.ToolCatalog {
+		allowed[tool.ToolCode] = true
+	}
+	for _, skill := range catalog.SkillCatalog {
+		allowed["skill:"+skill.SkillCode] = true
+	}
+	for _, code := range codes {
+		if !allowed[strings.TrimSpace(code)] {
+			return fmt.Errorf("工具或技能「%s」未启用或超出当前租户配额", code)
+		}
+	}
+	return nil
 }

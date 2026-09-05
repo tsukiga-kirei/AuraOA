@@ -33,6 +33,8 @@ type ToolExecutor interface {
 
 // SystemToolExecutor 系统工具调度与执行器实现
 type SystemToolExecutor struct {
+	RunAudit      func(*ExecutionContext, *oa.ProcessRequestSummary) (interface{}, error)
+	RunSummary    func(*ExecutionContext, *oa.ProcessRequestSummary) (interface{}, error)
 	db            *gorm.DB
 	tenantRepo    *repository.TenantRepo
 	oaConnRepo    *repository.OAConnectionRepo
@@ -485,13 +487,15 @@ func (e *SystemToolExecutor) executeRunAudit(
 		return nil, "audit_job", fmt.Errorf("无权访问流程 %s 或流程不存在", args.ProcessID)
 	}
 
-	jobID := uuid.New()
-	return map[string]interface{}{
-		"job_id":     jobID.String(),
-		"process_id": args.ProcessID,
-		"status":     "submitted",
-		"message":    "智能审核任务已在后台排队处理",
-	}, "audit_job", nil
+	if e.RunAudit == nil {
+		return nil, "audit_job", fmt.Errorf("执行服务未初始化")
+	}
+	summary, err := adapter.FetchProcessRequestSummary(execCtx.Ctx, args.ProcessID)
+	if err != nil {
+		return nil, "audit_job", err
+	}
+	result, err := e.RunAudit(execCtx, summary)
+	return result, "audit_job", err
 }
 
 // 8. 触发智能总结任务
@@ -512,13 +516,15 @@ func (e *SystemToolExecutor) executeRunSummary(
 		return nil, "summary_job", fmt.Errorf("无权访问流程 %s 或流程不存在", args.ProcessID)
 	}
 
-	jobID := uuid.New()
-	return map[string]interface{}{
-		"job_id":     jobID.String(),
-		"process_id": args.ProcessID,
-		"status":     "submitted",
-		"message":    "流程总结任务已在后台排队处理",
-	}, "summary_job", nil
+	if e.RunSummary == nil {
+		return nil, "summary_job", fmt.Errorf("执行服务未初始化")
+	}
+	summary, err := adapter.FetchProcessRequestSummary(execCtx.Ctx, args.ProcessID)
+	if err != nil {
+		return nil, "summary_job", err
+	}
+	result, err := e.RunSummary(execCtx, summary)
+	return result, "summary_job", err
 }
 
 // 9. 生成 OA 办理链接

@@ -131,3 +131,7 @@ GET /api/tenant/org/members/import-template
 ```
 
 下载成员导入 Excel 模板文件。
+
+## 智能体与工具再分配（2026-09-05）
+
+角色创建、更新与查询均包含 `agent_codes: string[]`、`tool_codes: string[]`。租户管理员从租户工具目录选择绑定；业务用户还需角色的 `page_permissions` 包含 `/chat`。空数组清空授权，不再默认放开全部配额；多角色取授权并集后与租户配额、智能体绑定求交集。参见 [智能体接口](./agents.md)。

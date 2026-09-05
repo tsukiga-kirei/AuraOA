@@ -464,6 +464,10 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的总结配置不存在", processType))
 	}
+	if err := loadPublishedConfig(c.Request.Context(), s.executionVersions, tenantID, model.ExecutionConfigModuleSummary, config.ID, config, nil); err != nil {
+		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, err
+	}
+
 	if config.Status != "active" {
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的总结配置已停用", processType))
 	}

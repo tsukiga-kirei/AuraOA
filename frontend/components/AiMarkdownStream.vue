@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { marked } from 'marked'
+import { renderSafeMarkdown } from '~/utils/markdown'
 
 const props = withDefaults(defineProps<{
   title?: string
@@ -20,7 +20,7 @@ let scrollTimer: ReturnType<typeof setTimeout> | null = null
 
 const html = computed(() => {
   try {
-    return marked.parse(props.text || '') as string
+    return renderSafeMarkdown(props.text || '')
   } catch {
     return (props.text || '').replace(/[&<>"']/g, char => ({
       '&': '&amp;',

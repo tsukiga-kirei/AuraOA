@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -63,11 +65,21 @@ func (s *AgentPermissionService) CalculateEffectivePermissions(ctx context.Conte
 
 	// 2. 获取用户的所有组织角色
 	var roleIDs []uuid.UUID
+	chatPageAllowed := false
 	member, err := s.orgRepo.FindByUserAndTenant(userID, tenantID)
 	if err == nil && member != nil {
 		for _, r := range member.Roles {
 			roleIDs = append(roleIDs, r.ID)
+			for _, page := range repository.ParseJSONSlice(r.PagePermissions) {
+				if page == "/chat" {
+					chatPageAllowed = true
+				}
+			}
 		}
+	}
+
+	if !chatPageAllowed {
+		return &EffectivePermissions{Tools: make(map[string]bool)}, nil
 	}
 
 	// 3. 组织角色授予的智能体与工具
@@ -80,27 +92,15 @@ func (s *AgentPermissionService) CalculateEffectivePermissions(ctx context.Conte
 		return nil, err
 	}
 
-	// 如果角色未显式配置任何智能体授权（初始默认体验），则默认授予租户配额内的基础智能体
+	// 空授权表示拒绝；撤销最后一项授权不能扩大权限。
 	roleAgentSet := make(map[string]bool)
-	if len(grantedAgentCodes) == 0 {
-		for code := range allowedAgentCodes {
-			roleAgentSet[code] = true
-		}
-	} else {
-		for _, code := range grantedAgentCodes {
-			roleAgentSet[code] = true
-		}
+	for _, code := range grantedAgentCodes {
+		roleAgentSet[code] = true
 	}
 
 	roleToolSet := make(map[string]bool)
-	if len(grantedToolCodes) == 0 {
-		for code := range allowedToolCodes {
-			roleToolSet[code] = true
-		}
-	} else {
-		for _, code := range grantedToolCodes {
-			roleToolSet[code] = true
-		}
+	for _, code := range grantedToolCodes {
+		roleToolSet[code] = true
 	}
 
 	// 4. 计算有效智能体 = 租户配额 ∩ 角色授权 ∩ 智能体启用
@@ -114,7 +114,7 @@ func (s *AgentPermissionService) CalculateEffectivePermissions(ctx context.Conte
 		if !ag.Enabled {
 			continue
 		}
-		if allowedAgentCodes[ag.AgentCode] && roleAgentSet[ag.AgentCode] {
+		if (allowedAgentCodes[ag.AgentCode] || !ag.IsSystem) && roleAgentSet[ag.AgentCode] {
 			effectiveAgents = append(effectiveAgents, ag)
 		}
 	}
@@ -124,6 +124,23 @@ func (s *AgentPermissionService) CalculateEffectivePermissions(ctx context.Conte
 	for code := range allowedToolCodes {
 		if roleToolSet[code] {
 			effectiveTools[code] = true
+		}
+	}
+	// 自建 MCP 的授权仍需同时满足角色授权和租户开关。
+	if alloc.AllowTenantMCP {
+		servers, err := s.agentRepo.ListMCPServers(tenantID)
+		if err != nil {
+			return nil, err
+		}
+		for _, server := range servers {
+			if !server.Enabled || server.TenantID == nil || *server.TenantID != tenantID {
+				continue
+			}
+			for _, def := range ConvertMCPToolsToDefinitions(server.ServerCode, server.CachedTools) {
+				if roleToolSet[def.Function.Name] {
+					effectiveTools[def.Function.Name] = true
+				}
+			}
 		}
 	}
 
@@ -140,10 +157,43 @@ func (s *AgentPermissionService) CalculateEffectiveToolsForAgent(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
+	allowed := false
+	for _, ag := range perms.Agents {
+		if ag.ID == agent.ID {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return nil, fmt.Errorf("智能体已停用或当前角色没有对话权限")
+	}
 
 	effective := make(map[string]bool)
 	for _, binding := range agent.ToolBindings {
 		if perms.Tools[binding.ToolCode] {
+			effective[binding.ToolCode] = true
+		}
+	}
+	alloc, err := s.agentRepo.GetTenantAllocation(tenantID)
+	if err != nil {
+		return nil, err
+	}
+	for _, binding := range agent.ToolBindings {
+		if binding.ToolType != "skill" {
+			continue
+		}
+		code := strings.TrimPrefix(binding.ToolCode, "skill:")
+		skill, err := s.agentRepo.GetSkillByCode(tenantID, code)
+		if err != nil || !skill.Enabled {
+			continue
+		}
+		granted := skill.TenantID != nil && alloc.AllowCustomSkills
+		for _, c := range repository.ParseJSONSlice(alloc.SkillCodes) {
+			if c == code {
+				granted = true
+			}
+		}
+		if granted {
 			effective[binding.ToolCode] = true
 		}
 	}

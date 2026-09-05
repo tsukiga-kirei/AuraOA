@@ -39,7 +39,7 @@ func (r *ChatRepo) ListSessionsByUser(tenantID, userID uuid.UUID, keyword string
 	if page <= 0 {
 		page = 1
 	}
-	if pageSize <= 0 {
+	if pageSize <= 0 || pageSize > 100 {
 		pageSize = 20
 	}
 	offset := (page - 1) * pageSize
@@ -88,7 +88,12 @@ func (r *ChatRepo) DeleteExpiredSessions(tenantID uuid.UUID, beforeTime time.Tim
 
 // CreateMessage 创建消息
 func (r *ChatRepo) CreateMessage(msg *model.ChatMessage) error {
-	return r.db.Create(msg).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(msg).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.ChatSession{}).Where("tenant_id = ? AND id = ?", msg.TenantID, msg.SessionID).Update("updated_at", msg.CreatedAt).Error
+	})
 }
 
 // ListMessagesBySession 获取会话内的所有消息（按时间升序）

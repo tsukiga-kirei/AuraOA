@@ -13,22 +13,29 @@ export interface OAJumpConfig {
 
 const configState = ref<OAJumpConfig | null>(null)
 const loadingState = ref(false)
+let cachedIdentity = ''
 let fetchPromise: Promise<OAJumpConfig | null> | null = null
 
 export const useOAJump = () => {
-  const { authFetch } = useAuth()
+  const { authFetch, activeRole } = useAuth()
+  const identity = computed(() => JSON.stringify(activeRole.value))
+  watch(identity, () => { configState.value = null; fetchPromise = null; loadingState.value = false }, { flush: 'sync' })
 
   const loadOAJumpConfig = async (force = false): Promise<OAJumpConfig | null> => {
+    if (cachedIdentity !== identity.value) { configState.value = null; fetchPromise = null; cachedIdentity = identity.value }
     if (configState.value && !force) return configState.value
     if (fetchPromise && !force) return fetchPromise
 
+    const requestIdentity = identity.value
     loadingState.value = true
     fetchPromise = (async () => {
       try {
         const data = await authFetch<OAJumpConfig>('/api/tenant/settings/oa-jump-config')
+        if (requestIdentity !== identity.value) return null
         configState.value = data
         return data
       } catch {
+        if (requestIdentity !== identity.value) return null
         configState.value = {
           enabled: false,
           oa_base_url: '',
@@ -37,26 +44,25 @@ export const useOAJump = () => {
         }
         return configState.value
       } finally {
-        loadingState.value = false
-        fetchPromise = null
+        if (requestIdentity === identity.value) { loadingState.value = false; fetchPromise = null }
       }
     })()
 
     return fetchPromise
   }
 
-  const canJumpToOA = computed(() => !!configState.value?.enabled)
+  const canJumpToOA = computed(() => cachedIdentity === identity.value && !!configState.value?.enabled)
 
   const buildTargetURL = (processId: string): string => {
-    if (!configState.value?.enabled) return ''
+    if (cachedIdentity !== identity.value || !configState.value?.enabled) return ''
     const pid = String(processId || '').trim()
     if (!pid) return ''
 
     const template = configState.value.resolved_template || configState.value.process_url_template
     if (template) {
       return template
-        .replace(/\{process_id\}/gi, pid)
-        .replace(/\{requestid\}/gi, pid)
+        .replace(/\{process_id\}/gi, encodeURIComponent(pid))
+        .replace(/\{requestid\}/gi, encodeURIComponent(pid))
     }
 
     let base = (configState.value.oa_base_url || '').trim()

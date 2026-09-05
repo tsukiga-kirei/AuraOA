@@ -1,249 +1,111 @@
 <script setup lang="ts">
+import { ArrowDownOutlined, ArrowRightOutlined, AppstoreOutlined, FileSearchOutlined, UnorderedListOutlined, BookOutlined } from '@ant-design/icons-vue'
 import { buildJumpTurns } from '~/utils/chatJump'
 import type { ChatMessageItem } from '~/types/chat'
-import ChatSidebar from '~/components/Chat/ChatSidebar.vue'
-import ChatHeader from '~/components/Chat/ChatHeader.vue'
 import ChatThread from '~/components/Chat/ChatThread.vue'
 import ChatComposer from '~/components/Chat/ChatComposer.vue'
 import MessageJumpRail from '~/components/Chat/MessageJumpRail.vue'
-
-definePageMeta({
-  layout: 'default',
-})
-
-const {
-  sessions,
-  effectiveAgents,
-  currentSessionId,
-  currentDetail,
-  loading,
-  fetchEffectiveAgents,
-  fetchSessions,
-  selectSession,
-  createSession,
-  renameSession,
-  deleteSession,
-} = useChatSession()
-
-const messages = ref<ChatMessageItem[]>([])
-const canvasScrollRef = ref<HTMLElement | null>(null)
-const composerRef = ref<any>(null)
-
-const { streaming, sendStreamMessage, stopStreaming } = useChatStream({
-  onDone: () => {
-    scrollToBottom()
-  },
-})
-
-// 当切换选中的会话时，同步会话内的消息记录
-watch(() => currentDetail.value, (val) => {
-  if (val && val.messages) {
-    messages.value = [...val.messages]
-    nextTick(() => {
-      scrollToBottom()
-    })
-  } else {
-    messages.value = []
-  }
-})
-
-// 计算跳转导航轨道 turns
-const jumpTurns = computed(() => {
-  return buildJumpTurns(messages.value)
-})
-
-const scrollToBottom = () => {
-  if (canvasScrollRef.value) {
-    canvasScrollRef.value.scrollTop = canvasScrollRef.value.scrollHeight
-  }
-}
-
-const handleJump = (id: string) => {
-  const el = document.getElementById(id)
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-}
-
-const handleSelectAgent = async (agentCode: string) => {
-  // 切换智能体创建新会话
-  await createSession(agentCode)
-}
-
-const handleCreateSession = async () => {
-  const defaultAgent = effectiveAgents.value[0]?.code
-  await createSession(defaultAgent)
-}
-
-const handleSubmitMessage = async (content: string) => {
-  if (!currentSessionId.value) {
-    const defaultAgent = effectiveAgents.value[0]?.code
-    const created = await createSession(defaultAgent, content.slice(0, 20))
-    if (!created) return
-  }
-  if (currentSessionId.value) {
-    sendStreamMessage(currentSessionId.value, content, messages)
-    nextTick(() => {
-      scrollToBottom()
-    })
-  }
-}
-
+definePageMeta({ layout: 'default', middleware: ['auth'] })
 const { t } = useI18n()
-
-onMounted(async () => {
-  await Promise.all([
-    fetchEffectiveAgents(),
-    fetchSessions(),
-  ])
-  if (sessions.value.length > 0 && !currentSessionId.value) {
-    await selectSession(sessions.value[0].id)
-  }
+const route = useRoute()
+const { effectiveAgents, currentSessionId, currentDetail, selectedAgentCode, detailLoading, error, initialize, selectSession, createSession, newConversation } = useChatSession()
+const messages = ref<ChatMessageItem[]>([])
+const canvas = ref<HTMLElement | null>(null)
+const composer = ref<InstanceType<typeof ChatComposer> | null>(null)
+const pinned = ref(true)
+const agent = computed(() => {
+  const code = currentDetail.value?.session.agent_code || selectedAgentCode.value
+  return code ? effectiveAgents.value.find(item => item.agent_code === code) : effectiveAgents.value[0]
 })
+const { streaming, sendStreamMessage, stopStreaming } = useChatStream()
+const scrollBottom = () => { if (canvas.value) canvas.value.scrollTop = canvas.value.scrollHeight }
+const onScroll = () => { if (canvas.value) pinned.value = canvas.value.scrollHeight - canvas.value.scrollTop - canvas.value.clientHeight < 100 }
+watch(currentDetail, detail => { messages.value = [...(detail?.messages || [])]; pinned.value = true; nextTick(scrollBottom) })
+watch(currentSessionId, () => stopStreaming())
+watch(() => messages.value.map(item => [item.content, item.reasoning_content, item.tool_calls?.length]), () => { if (pinned.value) nextTick(scrollBottom) }, { deep: true })
+const selectFromRoute = async () => {
+  const id = typeof route.query.session === 'string' ? route.query.session : null
+  if (id && currentSessionId.value !== id) await selectSession(id)
+}
+watch(() => route.query.session, selectFromRoute)
+onMounted(async () => { await initialize(); await selectFromRoute() })
+const changeAgent = (code: string) => { stopStreaming(); newConversation(code); navigateTo('/chat') }
+const submit = async (content: string) => {
+  if (detailLoading.value || streaming.value) return
+  if (!currentSessionId.value) {
+    const created = await createSession(agent.value?.agent_code)
+    if (!created) return
+    await nextTick()
+  }
+  pinned.value = true
+  await sendStreamMessage(currentSessionId.value!, content, messages)
+}
+const suggestions = [
+  { icon: UnorderedListOutlined, title: 'chat.quickPill.todos', prompt: 'chat.prompt.todos', detail: 'chat.suggestion.todos' },
+  { icon: FileSearchOutlined, title: 'chat.quickPill.summary', prompt: 'chat.prompt.summary', detail: 'chat.suggestion.summary' },
+  { icon: BookOutlined, title: 'chat.quickPill.guideline', prompt: 'chat.prompt.guideline', detail: 'chat.suggestion.guideline' },
+]
+const jumpTurns = computed(() => buildJumpTurns(messages.value))
+const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 </script>
 
 <template>
   <div class="chat-workspace">
-    <!-- 左侧会话历史侧边栏 -->
-    <ChatSidebar
-      :sessions="sessions"
-      :current-session-id="currentSessionId"
-      :loading="loading"
-      @select="selectSession"
-      @create="handleCreateSession"
-      @rename="renameSession"
-      @delete="deleteSession"
-      @search="fetchSessions"
-    />
-
-    <!-- 右侧对话主工作区 -->
-    <div class="chat-main">
-      <!-- 顶栏：智能体选择与状态 -->
-      <ChatHeader
-        :agents="effectiveAgents"
-        :current-agent-code="currentDetail?.session.agent_code"
-        @select="handleSelectAgent"
-      />
-
-      <!-- 消息画布 -->
-      <div class="chat-canvas" ref="canvasScrollRef">
-        <template v-if="messages.length === 0">
-          <div class="chat-empty-state">
-            <div class="empty-icon">{{ currentDetail?.agent?.avatar_emoji || '🤖' }}</div>
-            <div class="empty-title">{{ t('chat.emptyGreeting') }}</div>
-            <div class="empty-subtitle">{{ t('chat.emptyDesc') }}</div>
-            <div class="quick-pills">
-              <button class="pill-btn" @click="composerRef?.appendPrompt(t('chat.prompt.todos'))">
-                {{ t('chat.quickPill.todos') }}
-              </button>
-              <button class="pill-btn" @click="composerRef?.appendPrompt(t('chat.prompt.summary'))">
-                {{ t('chat.quickPill.summary') }}
-              </button>
-              <button class="pill-btn" @click="composerRef?.appendPrompt(t('chat.prompt.guideline'))">
-                {{ t('chat.quickPill.guideline') }}
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else>
-          <ChatThread
-            :messages="messages"
-            :agent-emoji="currentDetail?.session.agent_avatar_emoji"
-            :agent-name="currentDetail?.session.agent_name"
-          />
-        </template>
+    <header class="workspace-heading">
+      <div class="workspace-agent"><AppstoreOutlined />
+        <a-select :value="agent?.agent_code" :bordered="false" :options="effectiveAgents.map(item => ({ value: item.agent_code, label: item.name }))" :aria-label="t('chat.agents')" @change="value => value && changeAgent(String(value))" />
       </div>
-
-      <!-- 右侧悬浮跳转线 -->
-      <MessageJumpRail
-        :turns="jumpTurns"
-        @jump="handleJump"
-      />
-
-      <!-- 底部输入框与工具栏 -->
-      <div class="chat-bottom-bar">
-        <ChatComposer
-          ref="composerRef"
-          :submitting="streaming"
-          @submit="handleSubmitMessage"
-          @stop="stopStreaming"
-        />
+      <span class="workspace-context">{{ currentDetail?.session.title || t('chat.workspaceLabel') }}</span>
+    </header>
+    <div ref="canvas" class="chat-canvas" @scroll="onScroll">
+      <div v-if="error" class="chat-error" role="alert">{{ error }}</div>
+      <div v-if="detailLoading" class="chat-loading"><a-spin /></div>
+      <div v-else-if="!messages.length" class="chat-welcome">
+        <div class="welcome-mark"><img src="/favicon.svg" alt="" width="34" height="34" /></div>
+        <p class="welcome-eyebrow">{{ agent?.name || t('chat.assistantName') }}</p>
+        <h1>{{ t('chat.welcomeTitle') }}</h1>
+        <p class="welcome-description">{{ agent?.description || t('chat.welcomeDescription') }}</p>
+        <div class="suggestions">
+          <button v-for="item in suggestions" :key="item.title" @click="composer?.appendPrompt(t(item.prompt))">
+            <component :is="item.icon" /><strong>{{ t(item.title) }}</strong><span>{{ t(item.detail) }}</span><ArrowRightOutlined class="suggestion-arrow" />
+          </button>
+        </div>
+        <p v-if="!effectiveAgents.length" class="no-agents">{{ t('chat.noAgents') }}</p>
       </div>
+      <ChatThread v-else :messages="messages" :agent-name="agent?.name" />
+    </div>
+    <MessageJumpRail v-if="jumpTurns.length > 2" :turns="jumpTurns" @jump="jump" />
+    <div class="chat-bottom">
+      <button v-if="!pinned && messages.length" class="scroll-bottom" :aria-label="t('chat.scrollBottom')" @click="pinned = true; scrollBottom()"><ArrowDownOutlined /></button>
+      <ChatComposer ref="composer" :submitting="streaming" :disabled="detailLoading || !agent" @submit="submit" @stop="stopStreaming" />
+      <p class="composer-hint">{{ t('chat.composerHint') }}</p>
     </div>
   </div>
 </template>
 
 <style scoped>
-.chat-workspace {
-  display: flex;
-  height: calc(100vh - 64px);
-  background: #ffffff;
-  position: relative;
-  overflow: hidden;
-}
-.chat-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  height: 100%;
-  background: #fafaf8;
-}
-.chat-canvas {
-  flex: 1;
-  overflow-y: auto;
-  position: relative;
-  padding-bottom: 20px;
-}
-.chat-bottom-bar {
-  background: linear-gradient(180deg, rgba(250, 250, 248, 0) 0%, #fafaf8 20%);
-}
-.chat-empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 80%;
-  text-align: center;
-  padding: 40px 20px;
-}
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
-.empty-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: #1f2937;
-  margin-bottom: 8px;
-}
-.empty-subtitle {
-  font-size: 14px;
-  color: #6b7280;
-  margin-bottom: 24px;
-  max-width: 480px;
-}
-.quick-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: center;
-}
-.pill-btn {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 20px;
-  padding: 8px 16px;
-  font-size: 13px;
-  color: #374151;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-  transition: all 0.2s;
-}
-.pill-btn:hover {
-  border-color: #1890ff;
-  color: #1890ff;
-  transform: translateY(-1px);
-}
+.chat-workspace { height:100%; min-height:0; display:flex; flex-direction:column; position:relative; background:var(--color-bg-card); color:var(--color-text-primary); }
+.workspace-heading { flex-shrink:0; height:62px; padding:0 30px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
+.workspace-agent { display:flex; gap:4px; align-items:center; color:var(--color-text-secondary); }
+.workspace-agent :deep(.ant-select) { min-width:155px; font-weight:600; }
+.workspace-context { font-size:12px; color:var(--color-text-tertiary); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.chat-canvas { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-gutter:stable; }
+.chat-welcome { width:min(780px,100%); margin:auto; padding:clamp(45px,10vh,110px) 30px 48px; }
+.welcome-mark { margin-bottom:26px; }
+.welcome-eyebrow { font-size:12px; color:var(--color-primary); font-weight:600; margin-bottom:12px; letter-spacing:.06em; }
+h1 { font-size:clamp(27px,3vw,38px); font-weight:550; line-height:1.45; letter-spacing:-.035em; margin:0 0 14px; }
+.welcome-description { font-size:14px; color:var(--color-text-secondary); line-height:1.85; max-width:580px; }
+.suggestions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:34px; }
+.suggestions button { position:relative; display:flex; flex-direction:column; align-items:flex-start; text-align:left; padding:20px 18px; border:1px solid var(--color-border-light); background:var(--color-bg-page); border-radius:14px; color:var(--color-text-secondary); cursor:pointer; transition:border-color .2s,transform .2s; }
+.suggestions button:hover { border-color:var(--color-primary); transform:translateY(-2px); }
+.suggestions strong { font-size:13px; margin:16px 0 6px; color:var(--color-text-primary); font-weight:550; }
+.suggestions span { font-size:12px; line-height:1.65; }
+.suggestions .suggestion-arrow { position:absolute; right:16px; top:20px; opacity:0; }.suggestions button:hover .suggestion-arrow { opacity:1; }
+.chat-bottom { flex-shrink:0; position:relative; background:var(--color-bg-card); padding:0 24px 15px; }
+.composer-hint { text-align:center; font-size:11px; color:var(--color-text-tertiary); margin:10px 0 0; }
+.scroll-bottom { position:absolute; top:-44px; left:calc(50% - 17px); width:34px; height:34px; background:var(--color-bg-card); border:1px solid var(--color-border); color:var(--color-text-secondary); border-radius:50%; cursor:pointer; }
+.chat-error,.no-agents { color:var(--color-text-secondary); font-size:13px; padding:14px; background:var(--color-bg-page); border-radius:8px; margin:16px auto; max-width:740px; }
+.chat-loading { padding:60px; text-align:center; }
+@media(max-width:600px) { .workspace-heading { padding:0 14px; height:50px; }.workspace-context { display:none; }.chat-welcome { padding:30px 22px; }.suggestions { grid-template-columns:1fr; gap:8px; margin-top:24px; }.suggestions button { padding:14px; display:grid; grid-template-columns:24px 1fr; gap:4px 8px; }.suggestions strong { margin:0; }.suggestions span:not(.anticon) { grid-column:2; }.chat-bottom { padding:0 12px 12px; }.welcome-mark { margin-bottom:18px; } }
+@media(prefers-reduced-motion:reduce) { .suggestions button { transition:none; } }
 </style>

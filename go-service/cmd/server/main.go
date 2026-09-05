@@ -334,6 +334,7 @@ func main() {
 	auditHandler := handler.NewAuditHandler(auditExecuteService, auditSnapshotRepo, auditLogRepo)
 	archiveReviewHandler := handler.NewArchiveReviewHandler(archiveReviewService, archiveSnapshotRepo, archiveLogRepo)
 	summaryConfigHandler := handler.NewProcessSummaryConfigHandler(summaryConfigService)
+	executionConfigSourceService.SetInvalidator(invalidationManager)
 	executionConfigSourceHandler := handler.NewExecutionConfigSourceHandler(executionConfigSourceService)
 	summaryHandler := handler.NewProcessSummaryHandler(summaryService)
 	embedEventHandler := handler.NewEmbedEventHandler(embedRefreshService)
@@ -346,8 +347,18 @@ func main() {
 	skillService := service.NewSkillService(agentRepo)
 	mcpService := service.NewMCPService(agentRepo)
 	systemToolExecutor := agenttools.NewSystemToolExecutor(db, tenantRepo, oaConnectionRepo, oaConnectionManager, auditLogRepo, summaryLogRepo)
+	systemToolExecutor.RunAudit = func(ctx *agenttools.ExecutionContext, process *oa.ProcessRequestSummary) (interface{}, error) {
+		return auditExecuteService.Execute(ctx.GinCtx, &service.AuditExecuteRequest{ProcessID: process.ProcessID, ProcessType: process.ProcessType, Title: process.Title})
+	}
+	systemToolExecutor.RunSummary = func(ctx *agenttools.ExecutionContext, process *oa.ProcessRequestSummary) (interface{}, error) {
+		return summaryService.ExecuteWorkbench(ctx.GinCtx, &service.SummaryExecuteRequest{ProcessID: process.ProcessID, ProcessType: process.ProcessType, Title: process.Title})
+	}
+
 	agentRuntimeService := service.NewAgentRuntimeService(chatRepo, agentRepo, tenantRepo, aiModelRepo, aiCallerService, agentPermissionService, skillService, mcpService, systemToolExecutor)
 	chatSessionService := service.NewChatSessionService(chatRepo, agentRepo, tenantRepo, agentPermissionService)
+	chatCleanupContext, stopChatCleanup := context.WithCancel(context.Background())
+	defer stopChatCleanup()
+	chatSessionService.StartRetentionCleanup(chatCleanupContext)
 	agentAllocationService := service.NewAgentAllocationService(agentRepo, tenantRepo, orgRepo)
 
 	chatHandler := handler.NewChatHandler(chatSessionService, agentRuntimeService)

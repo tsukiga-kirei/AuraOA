@@ -20,6 +20,8 @@ type AIModelCaller interface {
 
 // ChatRequest AI 对话请求
 type ChatRequest struct {
+	StreamResetFunc func() `json:"-"` // 重试前重置本轮增量，不重复展示失败尝试
+
 	SystemPrompt             string               `json:"system_prompt"`
 	UserPrompt               string               `json:"user_prompt"`
 	ModelConfig              *model.AIModelConfig `json:"-"`

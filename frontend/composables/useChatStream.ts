@@ -1,190 +1,60 @@
-/**
- * useChatStream — 处理智能体单轮对话流式调用（SSE）
- * 包含事件监听：step_start, tool_call, tool_result, token, answer, done, error
- * 并维护当前响应消息的思考过程、工具调用列表与 Markdown 内容
- */
+/** 对接 POST /api/chat/sessions/:id/messages/stream；事件字段与后端一致。 */
+import type { ChatMessageItem } from '~/types/chat'
+import { readSSE } from '~/utils/sse'
 
-import type { ChatMessageItem, ChatToolExecution } from '~/types/chat'
-
-export interface UseChatStreamOptions {
-  onDone?: () => void
-  onError?: (err: string) => void
-}
-
-export const useChatStream = (options: UseChatStreamOptions = {}) => {
-  const { accessToken, effectiveTenantCode } = useAuth()
+export const useChatStream = (options: { onDone?: () => void; onError?: (error: string) => void } = {}) => {
+  const { authStreamFetch } = useAuth()
+  const { t } = useI18n()
+  const { sessions, currentDetail } = useChatSession()
   const streaming = ref(false)
-  const abortController = ref<AbortController | null>(null)
-
-  const sendStreamMessage = async (
-    sessionId: string,
-    content: string,
-    messageListRef: Ref<ChatMessageItem[]>,
-  ) => {
+  let controller: AbortController | null = null
+  const sendStreamMessage = async (sessionId: string, content: string, messages: Ref<ChatMessageItem[]>) => {
     if (!content.trim() || streaming.value) return
-
-    // 1. 推入用户消息
-    const userMsgId = 'user-' + Date.now()
-    const userMsg: ChatMessageItem = {
-      id: userMsgId,
-      session_id: sessionId,
-      sender_type: 'user',
-      content: content.trim(),
-      created_at: new Date().toISOString(),
-    }
-    messageListRef.value.push(userMsg)
-
-    // 2. 推入待响应的 assistant 消息占位
-    const assistantMsgId = 'asst-' + Date.now()
-    const assistantMsg: ChatMessageItem = {
-      id: assistantMsgId,
-      session_id: sessionId,
-      sender_type: 'assistant',
-      content: '',
-      reasoning_content: '',
-      tool_executions: [],
-      created_at: new Date().toISOString(),
-      streaming: true,
-    }
-    messageListRef.value.push(assistantMsg)
-
+    messages.value.push({ id: crypto.randomUUID(), session_id: sessionId, role: 'user', content: content.trim(), created_at: new Date().toISOString() })
+    const msg = reactive<ChatMessageItem>({ id: crypto.randomUUID(), session_id: sessionId, role: 'assistant', content: '', reasoning_content: '', tool_calls: [], streaming: true, status: 'running', created_at: new Date().toISOString() })
+    messages.value.push(msg)
     streaming.value = true
-    const controller = new AbortController()
-    abortController.value = controller
-
+    const activeController = new AbortController()
+    controller = activeController
+    let finished = false
     try {
-      const response = await fetch(`/api/chat/sessions/${sessionId}/messages/stream`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken.value}`,
-          'X-Tenant-Code': effectiveTenantCode.value || '',
-        },
-        body: JSON.stringify({ content: content.trim() }),
-        signal: controller.signal,
+      const response = await authStreamFetch(`/api/chat/sessions/${sessionId}/messages/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({ content: content.trim() }), signal: activeController.signal,
       })
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('流式读取器未就绪')
-
-      const decoder = new TextDecoder('utf-8')
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        let currentEvent = ''
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed) continue
-          if (trimmed.startsWith('event:')) {
-            currentEvent = trimmed.slice(6).trim()
-          } else if (trimmed.startsWith('data:')) {
-            const dataStr = trimmed.slice(5).trim()
-            try {
-              const parsed = JSON.parse(dataStr)
-              handleStreamEvent(currentEvent, parsed, assistantMsg)
-            } catch (e) {
-              console.warn('解析 SSE 数据行失败:', dataStr, e)
-            }
-          }
+      if (!response.body) throw new Error(t('chat.connectionLost'))
+      await readSSE(response.body, (event, data) => {
+        if (event === 'reset') { msg.content = data.content || ''; msg.reasoning_content = data.reasoning_content || '' }
+        if (event === 'delta') msg.content += data.content || ''
+        if (event === 'reasoning') msg.reasoning_content += data.content || ''
+        if (event === 'tool_start') msg.tool_calls!.push({ ...data })
+        if (event === 'tool_result') {
+          const tool = msg.tool_calls!.find(item => item.tool_call_id === data.tool_call_id)
+          if (tool) Object.assign(tool, data)
+          else msg.tool_calls!.push({ ...data })
         }
-      }
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        console.log('用户已中止对话生成')
-      } else {
-        console.error('对话生成异常:', err)
-        assistantMsg.content += `\n\n> ⚠️ 生成异常: ${err.message || '网络中断'}`
-        options.onError?.(err.message)
-      }
+        if (event === 'session' && data.title) {
+          const session = sessions.value.find(item => item.id === sessionId)
+          if (session) session.title = data.title
+          if (currentDetail.value?.session.id === sessionId) currentDetail.value.session.title = data.title
+        }
+        if (event === 'done') { finished = true; msg.status = 'success'; msg.token_usage = data.token_usage }
+        if (event === 'interrupted') { finished = true; msg.status = 'interrupted' }
+        if (event === 'error') { finished = true; msg.status = 'error'; msg.error = data.message || t('chat.connectionLost') }
+      })
+      if (!finished) throw new Error(t('chat.connectionLost'))
+    } catch (error: any) {
+      if (activeController.signal.aborted) msg.status = 'interrupted'
+      else { msg.status = 'error'; msg.error = error.message || t('chat.connectionLost'); options.onError?.(msg.error!) }
     } finally {
-      assistantMsg.streaming = false
+      msg.streaming = false
+      msg.tool_calls?.forEach(tool => { if (tool.status === 'running') tool.status = 'error' })
       streaming.value = false
-      abortController.value = null
+      if (controller === activeController) controller = null
       options.onDone?.()
     }
   }
-
-  const handleStreamEvent = (event: string, data: any, msg: ChatMessageItem) => {
-    switch (event) {
-      case 'step_start':
-        // 新一轮循环开始
-        break
-      case 'tool_call': {
-        // 工具调用请求发起
-        const execution: ChatToolExecution = {
-          tool_code: data.tool_code,
-          tool_name: data.tool_name || data.tool_code,
-          arguments: data.arguments || {},
-          result: null,
-          execution_ms: 0,
-        }
-        if (!msg.tool_executions) msg.tool_executions = []
-        msg.tool_executions.push(execution)
-        break
-      }
-      case 'tool_result': {
-        // 工具调用完成返回
-        if (!msg.tool_executions) msg.tool_executions = []
-        const found = msg.tool_executions.find(t => t.tool_code === data.tool_code && !t.result && !t.error)
-        if (found) {
-          found.result = data.result
-          found.error = data.error
-          found.execution_ms = data.execution_ms || 0
-        } else {
-          msg.tool_executions.push({
-            tool_code: data.tool_code,
-            tool_name: data.tool_code,
-            arguments: {},
-            result: data.result,
-            error: data.error,
-            execution_ms: data.execution_ms || 0,
-          })
-        }
-        break
-      }
-      case 'token':
-        // 正文增量打字
-        if (data.delta) {
-          msg.content += data.delta
-        }
-        break
-      case 'answer':
-        // 全量最终正文校准
-        if (data.content) {
-          msg.content = data.content
-        }
-        break
-      case 'done':
-        msg.token_cost = data.token_cost
-        break
-      case 'error':
-        msg.content += `\n\n> ⚠️ 出错: ${data.message || '未知错误'}`
-        break
-    }
-  }
-
-  const stopStreaming = () => {
-    if (abortController.value) {
-      abortController.value.abort()
-      abortController.value = null
-      streaming.value = false
-    }
-  }
-
-  return {
-    streaming,
-    sendStreamMessage,
-    stopStreaming,
-  }
+  const stopStreaming = () => controller?.abort()
+  onBeforeUnmount(stopStreaming)
+  return { streaming, sendStreamMessage, stopStreaming }
 }

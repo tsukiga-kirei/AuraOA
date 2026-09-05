@@ -386,7 +386,7 @@ onBeforeUnmount(() => {
       >
         {{ t('embed.lastAuditAt') }}：{{ formatLastAuditAt(activeViewLastAuditAt) }}
         <a-tag v-if="activeViewStale" color="warning" style="margin-left: 8px;">{{ t('embed.staleTag') }}</a-tag>
-		<a-tag v-if="context.config_version_no" color="blue" style="margin-left: 8px;">
+		<a-tag v-if="context?.config_version_no" color="blue" style="margin-left: 8px;">
 		  {{ t('executionConfig.version', [context.config_version_no]) }}
 		</a-tag>
       </div>
@@ -445,7 +445,7 @@ onBeforeUnmount(() => {
               @click="handleSwitchPerspective('personal')"
             >
               <span class="perspective-title">{{ t('embed.perspective.personal') }}</span>
-              <span v-if="context.personal_view?.has_audit" class="perspective-dot perspective-dot--personal" :title="t('embed.perspective.personalHasAudit')" />
+              <span v-if="context?.personal_view?.has_audit" class="perspective-dot perspective-dot--personal" :title="t('embed.perspective.personalHasAudit')" />
               <span v-else class="perspective-unexecuted-tag">{{ t('embed.perspective.unexecuted') }}</span>
             </button>
           </div>

@@ -1187,7 +1187,7 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 	var configVersion *model.ExecutionConfigVersion
 	if !req.UseLatestConfig {
 		configVersion, err = s.executionVersions.GetBindingVersion(
-			c.Request.Context(), tenantID, model.ExecutionConfigModuleArchive, req.ProcessID,
+			c.Request.Context(), tenantID, model.ExecutionConfigModuleArchive, req.ProcessID, "user:"+userID.String(),
 		)
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "读取归档复盘配置绑定失败")
@@ -1214,7 +1214,7 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 		configVersion, err = s.executionVersions.BindSnapshot(
 			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleArchive,
 			req.ProcessID, req.ProcessType, cfg.ID, baseVersion.ID,
-			stableJSONFingerprint(configSnapshot), configSnapshot, req.UseLatestConfig,
+			stableJSONFingerprint(configSnapshot), configSnapshot, req.UseLatestConfig, "user:"+userID.String(),
 		)
 		if err != nil {
 			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "绑定归档复盘配置版本失败")
@@ -1764,6 +1764,10 @@ func (s *ArchiveReviewService) resolveArchiveUserConfig(
 	tenantRules []model.ArchiveRule,
 	processType string,
 ) (SelectedFieldSet, string, []model.ArchiveRule, datatypes.JSON, int, error) {
+	if err := loadPublishedConfig(c.Request.Context(), s.executionVersions, config.TenantID, model.ExecutionConfigModuleArchive, config.ID, config, &tenantRules); err != nil {
+		return nil, "", nil, nil, 0, err
+	}
+
 	var perms model.ArchiveUserPermissionsData
 	if err := json.Unmarshal(config.UserPermissions, &perms); err != nil {
 		perms = model.ArchiveUserPermissionsData{

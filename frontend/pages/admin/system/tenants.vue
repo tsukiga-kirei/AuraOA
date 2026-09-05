@@ -879,7 +879,8 @@ const confirmDeleteTenant = async () => {
           v-for="tab in [
             { key: 'basic', label: t('admin.tenants.tabCreateBasic') },
             { key: 'admin', label: t('admin.tenants.tabCreateAdmin') },
-            { key: 'ai', label: t('admin.tenants.tabCreateAI') },
+            { key: 'chat', label: t('agentAdmin.title'), icon: RobotOutlined },
+              { key: 'ai', label: t('admin.tenants.tabCreateAI') },
           ]"
           :key="tab.key"
           class="create-tab-btn"
@@ -1042,6 +1043,7 @@ const confirmDeleteTenant = async () => {
             v-for="tab in [
               { key: 'basic', label: t('admin.tenants.tabBasic'), icon: InfoCircleOutlined },
               { key: 'oadb', label: t('admin.tenants.tabOADb'), icon: DatabaseOutlined },
+              { key: 'chat', label: t('agentAdmin.title'), icon: RobotOutlined },
               { key: 'ai', label: t('admin.tenants.tabAI'), icon: RobotOutlined },
               { key: 'quota', label: t('admin.tenants.tabQuota'), icon: ThunderboltOutlined },
               { key: 'embed', label: t('admin.tenants.tabEmbed'), icon: LinkOutlined },
@@ -1059,6 +1061,7 @@ const confirmDeleteTenant = async () => {
           </button>
         </div>
 
+        <ChatAllocationPanel v-if="detailActiveTab === 'chat'" :tenant-id="selectedTenant.id" :models="availableModels" />
         <!--基本信息选项卡-->
         <div v-if="detailActiveTab === 'basic'" class="detail-section">
           <div class="section-header">

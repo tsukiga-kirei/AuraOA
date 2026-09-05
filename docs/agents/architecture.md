@@ -64,3 +64,7 @@
 - 全局侧栏：仪表盘 → 工作台 → **AI 对话**（仅 `/chat`）。
 - 对话页：左历史（今天 / 近 7 天 / 更早）+ 画布 + 底栏（智能体选择 + 输入）。
 - 参考交互：仓库外 `global-investment-copilot` 的历史列表与流式 Markdown；技术栈仍为 Nuxt 3 + Ant Design Vue。
+
+## 当前实现补充（2026-09-05）
+
+以 [chat API](../api/chat.md) 和 [agents API](../api/agents.md) 为实际契约；上文未实现的设计不代表现有能力。当前路径为 `/chat?session=<id>`，会话放入全局侧栏的智能体目录中。消息表保存 assistant 的 tool_calls 执行摘要；模型上下文使用 Messages/Tools，要求模型支持工具调用，尚未提供自定义 JSON 兜底。Skill 通过可调用指南读取工具装配。MCP 目前为 Streamable HTTP。保留期由每小时后台清理执行；暂无专用嵌入聊天路由。

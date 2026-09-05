@@ -218,6 +218,14 @@ func (h *AgentAdminHandler) SaveMCPServer(c *gin.Context) {
 		return
 	}
 
+	if raw := c.Param("id"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "无效的 ID")
+			return
+		}
+		req.ID = id
+	}
 	server, err := h.allocationService.SaveMCPServer(c.Request.Context(), tenantID, &req)
 	if err != nil {
 		handleServiceError(c, err)
@@ -303,6 +311,14 @@ func (h *AgentAdminHandler) SaveSkill(c *gin.Context) {
 		return
 	}
 
+	if raw := c.Param("id"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "无效的 ID")
+			return
+		}
+		req.ID = id
+	}
 	skill, err := h.allocationService.SaveSkill(c.Request.Context(), tenantID, &req)
 	if err != nil {
 		handleServiceError(c, err)
@@ -331,4 +347,19 @@ func (h *AgentAdminHandler) DeleteSkill(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"deleted": true})
+}
+
+// GetTenantCatalog GET /api/tenant/agent-catalog，返回租户配额内的可装配目录。
+func (h *AgentAdminHandler) GetTenantCatalog(c *gin.Context) {
+	tenantID, err := getTenantID(c)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	catalog, err := h.allocationService.GetTenantCatalog(c.Request.Context(), tenantID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, catalog)
 }

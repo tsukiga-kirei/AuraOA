@@ -69,13 +69,10 @@ func (s *SkillService) BuildSkillsPromptSection(skills []SkillInfo) string {
 		return ""
 	}
 	var sb strings.Builder
-	sb.WriteString("\n\n### 专项技能与参考指南 (Skills):\n")
+	sb.WriteString("\n\n### 专项技能与参考指南 (Skills)，使用前必须调用对应的技能工具读取完整指南:\n")
 	for _, sk := range skills {
 		sb.WriteString("- 【" + sk.Name + " (" + sk.Code + ")】: " + sk.Description + "\n")
-		// 若技能正文不为空且较精简，直接注入指示
-		if len(sk.Content) < 2000 {
-			sb.WriteString("  指南规则: " + strings.TrimSpace(sk.Content) + "\n")
-		}
+
 	}
 	return sb.String()
 }

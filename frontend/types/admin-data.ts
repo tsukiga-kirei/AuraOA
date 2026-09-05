@@ -313,6 +313,7 @@ export interface LLMLogDetail extends LLMLogItem {
 }
 
 export interface LLMLogStats {
+  chat_count: number
   total: number
   audit_count: number
   archive_count: number
