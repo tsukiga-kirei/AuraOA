@@ -293,7 +293,8 @@ func (r *LLMMessageLogRepo) ListProcessesPaged(c *gin.Context, filter LLMLogFilt
 	base := r.DB.
 		Table(t+" AS l").
 		Where("l.tenant_id = ? AND (l.request_type = 'chat' OR (l.process_id IS NOT NULL AND l.process_id <> ''))", tenantID).
-		Joins("LEFT JOIN users u ON u.id = l.user_id")
+		Joins("LEFT JOIN users u ON u.id = l.user_id").
+		Joins("LEFT JOIN chat_sessions cs ON cs.id = l.business_log_id AND cs.tenant_id = l.tenant_id AND l.request_type = 'chat'")
 	base = applyLLMLogFilter(base, filter)
 
 	countSub := base.Session(&gorm.Session{}).
@@ -307,7 +308,7 @@ func (r *LLMMessageLogRepo) ListProcessesPaged(c *gin.Context, filter LLMLogFilt
 	var items []LLMProcessListRow
 	err := base.
 		Select(llmBusinessKey("l") + ` AS process_id,
-			(ARRAY_AGG(l.process_title ORDER BY l.created_at DESC))[1] AS process_title,
+			(ARRAY_AGG(CASE WHEN l.request_type = 'chat' AND NULLIF(cs.title, '') IS NOT NULL THEN cs.title ELSE l.process_title END ORDER BY l.created_at DESC))[1] AS process_title,
 			COUNT(*)::bigint AS call_count,
 			COALESCE(SUM(l.total_tokens), 0)::bigint AS total_tokens,
 			MAX(l.created_at) AS latest_call_at,
@@ -329,6 +330,7 @@ func (r *LLMMessageLogRepo) ListCallsByProcessID(c *gin.Context, processID strin
 	err := r.DB.
 		Table(t).
 		Select(t+".*, "+
+			"CASE WHEN "+t+".request_type = 'chat' AND NULLIF(cs.title, '') IS NOT NULL THEN cs.title ELSE "+t+".process_title END AS process_title, "+
 			"COALESCE(u.display_name, u.username, '') AS user_name, "+
 			"COALESCE(amc.model_name, '') AS model_name, "+
 			"COALESCE(amc.display_name, '') AS model_display_name, "+
@@ -340,6 +342,7 @@ func (r *LLMMessageLogRepo) ListCallsByProcessID(c *gin.Context, processID strin
 		Joins("LEFT JOIN users u ON u.id = "+t+".user_id").
 		Joins("LEFT JOIN ai_model_configs amc ON amc.id = "+t+".model_config_id").
 		Joins("LEFT JOIN tenant_llm_message_payloads p ON p.llm_message_log_id = "+t+".id").
+		Joins("LEFT JOIN chat_sessions cs ON cs.id = "+t+".business_log_id AND cs.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'chat'").
 		Joins("LEFT JOIN audit_logs al ON al.id = "+t+".business_log_id AND al.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'audit'").
 		Joins("LEFT JOIN archive_logs arl ON arl.id = "+t+".business_log_id AND arl.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'archive'").
 		Joins("LEFT JOIN process_summary_logs psl ON psl.id = "+t+".business_log_id AND psl.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'summary'").
@@ -389,16 +392,19 @@ func (r *LLMMessageLogRepo) GetByIDWithPayload(c *gin.Context, id uuid.UUID) (*L
 	err := r.DB.
 		Table(t).
 		Select(t+".*, "+
+			"CASE WHEN "+t+".request_type = 'chat' AND NULLIF(cs.title, '') IS NOT NULL THEN cs.title ELSE "+t+".process_title END AS process_title, "+
 			"COALESCE(u.display_name, u.username, '') AS user_name, "+
 			"COALESCE(amc.model_name, '') AS model_name, "+
 			"COALESCE(amc.display_name, '') AS model_display_name, "+
 			"COALESCE(al.config_version_no, arl.config_version_no, psl.config_version_no) AS config_version_no, "+
 			"COALESCE(p.system_prompt, '') AS system_prompt, "+
 			"COALESCE(p.user_prompt, '') AS user_prompt, "+
+			"COALESCE(p.reasoning_content, '') AS reasoning_content, "+
 			"COALESCE(p.response_content, '') AS response_content").
 		Joins("LEFT JOIN users u ON u.id = "+t+".user_id").
 		Joins("LEFT JOIN ai_model_configs amc ON amc.id = "+t+".model_config_id").
 		Joins("LEFT JOIN tenant_llm_message_payloads p ON p.llm_message_log_id = "+t+".id").
+		Joins("LEFT JOIN chat_sessions cs ON cs.id = "+t+".business_log_id AND cs.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'chat'").
 		Joins("LEFT JOIN audit_logs al ON al.id = "+t+".business_log_id AND al.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'audit'").
 		Joins("LEFT JOIN archive_logs arl ON arl.id = "+t+".business_log_id AND arl.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'archive'").
 		Joins("LEFT JOIN process_summary_logs psl ON psl.id = "+t+".business_log_id AND psl.tenant_id = "+t+".tenant_id AND "+t+".request_type = 'summary'").

@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import { CopyOutlined, CheckOutlined, LoadingOutlined, BulbOutlined, DownOutlined } from '@ant-design/icons-vue'
+import { CopyOutlined, CheckOutlined, LoadingOutlined } from '@ant-design/icons-vue'
 import type { ChatMessageItem } from '~/types/chat'
 import { renderSafeMarkdown } from '~/utils/markdown'
-import ToolActivity from './ToolActivity.vue'
+import { writeClipboardText } from '~/utils/clipboard'
+import ChatProcessTimeline from './ChatProcessTimeline.vue'
 defineProps<{ messages: ChatMessageItem[]; agentEmoji?: string; agentName?: string }>()
 const { t } = useI18n()
 const copied = ref('')
 const copy = async (msg: ChatMessageItem) => {
-  try { await navigator.clipboard.writeText(msg.content); copied.value = msg.id; setTimeout(() => { copied.value = '' }, 1600) } catch { copied.value = '' }
+  try {
+    await writeClipboardText(msg.content)
+    copied.value = msg.id
+    setTimeout(() => { copied.value = '' }, 1600)
+  } catch {
+    copied.value = ''
+  }
 }
 </script>
 
@@ -17,8 +24,7 @@ const copy = async (msg: ChatMessageItem) => {
       <template v-if="msg.role === 'user'"><div class="user-caption">{{ t('chat.you') }}</div><div class="user-prompt">{{ msg.content }}</div></template>
       <template v-else-if="msg.role === 'assistant'">
         <div class="assistant-byline"><img src="/favicon.svg" alt="" width="18" height="18" /><span>{{ agentName || t('chat.assistantName') }}</span></div>
-        <details v-if="msg.reasoning_content" class="reasoning"><summary><BulbOutlined />{{ t('chat.thinking') }}<DownOutlined /></summary><p>{{ msg.reasoning_content }}</p></details>
-        <div v-if="msg.tool_calls?.length" class="tool-timeline"><ToolActivity v-for="tool in msg.tool_calls" :key="tool.tool_call_id" :tool="tool" /></div>
+        <ChatProcessTimeline :message="msg" />
         <div v-if="msg.content" class="answer-document">
           <div v-if="msg.streaming" class="answer-streaming">{{ msg.content }}</div>
           <div v-else v-html="renderSafeMarkdown(msg.content)" />

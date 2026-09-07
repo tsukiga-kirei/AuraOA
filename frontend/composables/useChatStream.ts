@@ -26,6 +26,7 @@ export const useChatStream = (options: { onDone?: () => void; onError?: (error: 
     const msg = reactive<ChatMessageItem>({ id: generateUUID(), session_id: sessionId, role: 'assistant', content: '', reasoning_content: '', tool_calls: [], streaming: true, status: 'running', created_at: new Date().toISOString() })
     messages.value.push(msg)
     streaming.value = true
+    const startTime = Date.now()
     const activeController = new AbortController()
     controller = activeController
     let finished = false
@@ -47,6 +48,7 @@ export const useChatStream = (options: { onDone?: () => void; onError?: (error: 
             status: data?.status || 'running',
             arguments: data?.arguments,
             payload: data?.payload,
+            thought: data?.thought,
           })
         }
         if (event === 'tool_result') {
@@ -59,6 +61,7 @@ export const useChatStream = (options: { onDone?: () => void; onError?: (error: 
             status: data?.status || 'success',
             arguments: data?.arguments,
             payload: data?.payload,
+            thought: data?.thought,
           })
         }
         if (event === 'session' && data.title) {
@@ -66,15 +69,17 @@ export const useChatStream = (options: { onDone?: () => void; onError?: (error: 
           if (session) session.title = data.title
           if (currentDetail.value?.session.id === sessionId) currentDetail.value.session.title = data.title
         }
-        if (event === 'done') { finished = true; msg.status = 'success'; msg.token_usage = data.token_usage }
-        if (event === 'interrupted') { finished = true; msg.status = 'interrupted' }
-        if (event === 'error') { finished = true; msg.status = 'error'; msg.error = data.message || t('chat.connectionLost') }
+        if (event === 'done') { finished = true; msg.status = 'success'; msg.token_usage = data.token_usage; msg.duration_ms = data?.duration_ms || (Date.now() - startTime) }
+        if (event === 'interrupted') { finished = true; msg.status = 'interrupted'; msg.duration_ms = Date.now() - startTime }
+        if (event === 'error') { finished = true; msg.status = 'error'; msg.error = data.message || t('chat.connectionLost'); msg.duration_ms = Date.now() - startTime }
       })
       if (!finished) throw new Error(t('chat.connectionLost'))
     } catch (error: any) {
       if (activeController.signal.aborted) msg.status = 'interrupted'
       else { msg.status = 'error'; msg.error = error.message || t('chat.connectionLost'); options.onError?.(msg.error!) }
+      if (!msg.duration_ms) msg.duration_ms = Date.now() - startTime
     } finally {
+      if (!msg.duration_ms) msg.duration_ms = Date.now() - startTime
       msg.streaming = false
       msg.tool_calls?.forEach(tool => { if (tool.status === 'running') tool.status = 'error' })
       streaming.value = false

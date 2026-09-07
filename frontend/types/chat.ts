@@ -36,6 +36,7 @@ export interface ChatToolExecution {
   status: 'running' | 'success' | 'error'
   arguments?: string
   payload?: any
+  thought?: string
 }
 
 export interface ChatMessageItem {
@@ -52,6 +53,7 @@ export interface ChatMessageItem {
   created_at: string
   // 前端流式补充字段
   streaming?: boolean
+  duration_ms?: number
 }
 
 export interface ChatSessionDetail {

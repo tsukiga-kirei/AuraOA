@@ -13,6 +13,7 @@ import (
 
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
+	"auraoa/go-service/internal/pkg/crypto"
 	"auraoa/go-service/internal/pkg/oa"
 	"auraoa/go-service/internal/repository"
 )
@@ -86,6 +87,13 @@ func (e *SystemToolExecutor) Execute(toolCode string, argumentsJSON string, exec
 		oaConn, err = e.oaConnRepo.FindByID(*tenant.OADBConnectionID)
 		if err != nil || oaConn == nil {
 			return nil, spec.UIKind, fmt.Errorf("未找到租户绑定的 OA 连接")
+		}
+		if oaConn.Password != "" {
+			decrypted, decryptErr := crypto.Decrypt(oaConn.Password)
+			if decryptErr != nil {
+				return nil, spec.UIKind, fmt.Errorf("OA 数据库密码解密失败: %w", decryptErr)
+			}
+			oaConn.Password = decrypted
 		}
 		if spec.OARequired {
 			adapter, err = e.oaConnections.GetAdapter(execCtx.Ctx, oaConn.OAType, oaConn)

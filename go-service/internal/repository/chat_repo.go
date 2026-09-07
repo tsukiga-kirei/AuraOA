@@ -72,11 +72,19 @@ func (r *ChatRepo) ListSessionsByUser(tenantID, userID uuid.UUID, keyword string
 	return items, total, nil
 }
 
-// UpdateSession 更新会话（标题、置顶状态等）
+// UpdateSession 更新会话（标题、置顶状态等），并在修改标题时同步更新相关 AI 调用的流程标题
 func (r *ChatRepo) UpdateSession(tenantID, sessionID uuid.UUID, updates map[string]interface{}) error {
-	return r.db.Model(&model.ChatSession{}).
+	if err := r.db.Model(&model.ChatSession{}).
 		Where("tenant_id = ? AND id = ?", tenantID, sessionID).
-		Updates(updates).Error
+		Updates(updates).Error; err != nil {
+		return err
+	}
+	if title, ok := updates["title"].(string); ok && title != "" {
+		_ = r.db.Model(&model.TenantLLMMessageLog{}).
+			Where("tenant_id = ? AND business_log_id = ?", tenantID, sessionID).
+			Update("process_title", title).Error
+	}
+	return nil
 }
 
 // DeleteSession 删除会话（级联删除消息）

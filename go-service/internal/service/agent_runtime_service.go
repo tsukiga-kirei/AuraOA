@@ -15,6 +15,7 @@ import (
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/agenttools"
 	"auraoa/go-service/internal/pkg/ai"
+	"auraoa/go-service/internal/pkg/apptime"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
 	"auraoa/go-service/internal/repository"
 )
@@ -70,6 +71,7 @@ type ToolExecutionRecord struct {
 	Status     string      `json:"status"` // running | success | error
 	Arguments  string      `json:"arguments"`
 	Payload    interface{} `json:"payload"`
+	Thought    string      `json:"thought,omitempty"`
 }
 
 // ExecuteMessageStream 执行会话消息的多轮编排流式循环
@@ -81,6 +83,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 	userPrompt string,
 	sink StreamEventSink,
 ) error {
+	startTime := apptime.Now()
 	ctx := c.Request.Context()
 	tenantForLog, _ := s.tenantRepo.FindByID(tenantID)
 	logger := pkglogger.Global()
@@ -267,6 +270,16 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		var turnDelta strings.Builder
 		var turnReasoning strings.Builder
 
+		expectedTitle := session.Title
+		if expectedTitle == "新对话" || expectedTitle == "" {
+			trimmed := strings.TrimSpace(userPrompt)
+			if len([]rune(trimmed)) > 20 {
+				expectedTitle = string([]rune(trimmed)[:20]) + "..."
+			} else if trimmed != "" {
+				expectedTitle = trimmed
+			}
+		}
+
 		req := &ai.ChatRequest{
 			Messages:       conversation,
 			Tools:          toolDefinitions,
@@ -277,7 +290,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			RequestType:    "chat",
 			BusinessLogID:  &sessionID,
 			ProcessID:      sessionID.String(),
-			ProcessTitle:   session.Title,
+			ProcessTitle:   expectedTitle,
 			CallType:       "reasoning",
 			StreamResetFunc: func() {
 				turnDelta.Reset()
@@ -314,18 +327,46 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		totalTokenUsage.OutputTokens += resp.TokenUsage.OutputTokens
 		totalTokenUsage.TotalTokens += resp.TokenUsage.TotalTokens
 
-		if turnReasoning.Len() > 0 {
-			finalReasoning.WriteString(turnReasoning.String())
-		}
-		if turnDelta.Len() > 0 {
-			finalContent.WriteString(turnDelta.String())
-		}
-
 		// 检查是否有 Tool Calls
 		if len(resp.ToolCalls) == 0 {
-			// 没有工具调用，轮次结束！
+			// 没有工具调用，轮次结束！本轮 turnDelta 才是最终答复正文
+			if turnReasoning.Len() > 0 {
+				finalReasoning.WriteString(turnReasoning.String())
+			}
+			if turnDelta.Len() > 0 {
+				finalContent.WriteString(turnDelta.String())
+			}
 			break
 		}
+
+		// 有工具调用：当前轮次产生的 turnDelta 属于调用工具前的思考与意图说明，不属于最终正文！
+		var turnThought strings.Builder
+		if turnReasoning.Len() > 0 {
+			turnThought.WriteString(turnReasoning.String())
+		}
+		if turnDelta.Len() > 0 {
+			if turnThought.Len() > 0 {
+				turnThought.WriteString("\n\n")
+			}
+			turnThought.WriteString(turnDelta.String())
+		}
+
+		// 将本轮前置思考追加到全局累计思考中
+		if turnThought.Len() > 0 {
+			if finalReasoning.Len() > 0 {
+				finalReasoning.WriteString("\n\n")
+			}
+			finalReasoning.WriteString(turnThought.String())
+		}
+
+		// 发送 reset 事件清空临时流入正文的调用工具前说明，恢复纯净正文，并同步最新思考内容
+		_ = sink("reset", map[string]interface{}{
+			"content":           finalContent.String(),
+			"reasoning_content": finalReasoning.String(),
+		})
+
+		stepThought := turnThought.String()
+
 		if step == maxAgentLoopSteps {
 			if err := s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "error", accumulatedRecords, totalTokenUsage); err != nil {
 				return err
@@ -365,6 +406,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 					"tool_call_id": tc.ID,
 					"ui_kind":      uiKind,
 					"status":       "running",
+					"thought":      stepThought,
 				})
 				_ = sink("tool_result", map[string]interface{}{
 					"tool_code":    toolName,
@@ -372,6 +414,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 					"ui_kind":      uiKind,
 					"status":       "error",
 					"payload":      map[string]interface{}{"error": errText},
+					"thought":      stepThought,
 				})
 				accumulatedRecords = append(accumulatedRecords, ToolExecutionRecord{
 					ToolCode:   toolName,
@@ -380,6 +423,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 					Status:     "error",
 					Arguments:  toolArgs,
 					Payload:    map[string]interface{}{"error": errText},
+					Thought:    stepThought,
 				})
 				conversation = append(conversation, ai.ChatMessage{
 					Role:       "tool",
@@ -397,6 +441,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 				"ui_kind":      uiKind,
 				"status":       "running",
 				"arguments":    toolArgs,
+				"thought":      stepThought,
 			})
 
 			var payload interface{}
@@ -436,6 +481,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 				"ui_kind":      uiKind,
 				"status":       toolStatus,
 				"payload":      payload,
+				"thought":      stepThought,
 			})
 
 			accumulatedRecords = append(accumulatedRecords, ToolExecutionRecord{
@@ -445,6 +491,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 				Status:     toolStatus,
 				Arguments:  toolArgs,
 				Payload:    payload,
+				Thought:    stepThought,
 			})
 
 			// 回填 tool 结果消息到上下文
@@ -477,9 +524,11 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		})
 	}
 
+	durationMs := apptime.Now().Sub(startTime).Milliseconds()
 	_ = sink("done", map[string]interface{}{
 		"status":      "completed",
 		"token_usage": totalTokenUsage,
+		"duration_ms": durationMs,
 	})
 
 	return nil
