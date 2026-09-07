@@ -91,6 +91,7 @@ func (r *AuditLogRepo) GetLatestValidByProcessIDAndUser(c *gin.Context, processI
 	var log model.AuditLog
 	err := r.WithTenant(c).
 		Where("process_id = ? AND user_id = ? AND status = ?", processID, userID, model.JobStatusCompleted).
+		Where("trigger_source NOT IN ? AND COALESCE(parse_error, '') = ''", model.EmbedTriggerSources()).
 		Order("created_at DESC").
 		First(&log).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -112,6 +113,7 @@ func (r *AuditLogRepo) GetRunningByProcessIDAndUser(c *gin.Context, processID st
 			model.JobStatusReasoning,
 			model.JobStatusExtracting,
 		}).
+		Where("trigger_source NOT IN ?", model.EmbedTriggerSources()).
 		Order("created_at DESC").
 		First(&log).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -876,4 +878,20 @@ ORDER BY count DESC`
 	var rows []TenantFailedCount
 	err := r.DB.Raw(sql).Scan(&rows).Error
 	return rows, err
+}
+
+// GetLatestPersonalResultMap 查询当前用户工作台任务状态，不混入标准嵌入任务。
+func (r *AuditLogRepo) GetLatestPersonalResultMap(c *gin.Context, processIDs []string, userID uuid.UUID) (map[string]*model.AuditLog, error) {
+	result := make(map[string]*model.AuditLog)
+	if len(processIDs) == 0 {
+		return result, nil
+	}
+	var rows []model.AuditLog
+	err := r.WithTenant(c).Where("process_id IN ? AND user_id = ? AND trigger_source IN ?", processIDs, userID, model.WorkbenchTriggerSources()).Order("created_at DESC").Find(&rows).Error
+	for i := range rows {
+		if result[rows[i].ProcessID] == nil {
+			result[rows[i].ProcessID] = &rows[i]
+		}
+	}
+	return result, err
 }

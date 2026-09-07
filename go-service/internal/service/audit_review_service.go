@@ -933,23 +933,32 @@ type BatchAuditResult struct {
 	Failed  int                    `json:"failed"`
 }
 
-// GetAuditChain 获取审核工作台渠道的审核链（不含 OA 嵌入记录）。
+// GetAuditChain 获取授权流程的个人工作台与 OA 嵌入有效审核链。
 func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([]repository.AuditLogWithUser, error) {
-	snap, err := s.auditSnapshotRepo.GetByProcessIDAndChannel(c, processID, model.AuditSnapshotChannelWorkbench)
-	if err != nil {
-		return nil, err
-	}
-	if snap == nil {
-		return []repository.AuditLogWithUser{}, nil
-	}
 	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
 	}
-	if !s.userCanAccessAuditProcess(c, tenantID, userID, snap.ProcessType) {
-		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核记录")
+	var ids []uuid.UUID
+	for _, channel := range []string{model.AuditSnapshotChannelWorkbench, model.AuditSnapshotChannelEmbed} {
+		snap, err := s.auditSnapshotRepo.GetByProcessIDAndChannel(c, processID, channel)
+		if err != nil {
+			return nil, err
+		}
+		if snap == nil {
+			continue
+		}
+		if !s.userCanAccessAuditProcess(c, tenantID, userID, snap.ProcessType) {
+			return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核记录")
+		}
+		if channel == model.AuditSnapshotChannelEmbed {
+			cfg, err := s.configRepo.GetByProcessType(c, snap.ProcessType)
+			if err != nil || !cfg.EmbedEnabled {
+				continue
+			}
+		}
+		ids = append(ids, parseSnapshotValidLogIDs(snap.ValidLogIDs)...)
 	}
-	ids := parseSnapshotValidLogIDs(snap.ValidLogIDs)
 	logs, err := s.auditLogRepo.ListByIDsWithUserOrdered(c, ids)
 	if err != nil {
 		return nil, err
@@ -1297,6 +1306,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 			"submit_date_start":         params.SubmitDateStart,
 			"submit_date_end_exclusive": params.SubmitDateEndExclusive,
 			"access_scope":              accessScope,
+			"result_scope_version":      2,
 		})
 		keyBuilder := cache.NewKeyBuilder("audit", tenantID)
 		cacheKey := keyBuilder.Stats(userID, dateRangeHash)
@@ -1361,8 +1371,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 	}
 
 	var completedCount int64
-	q := s.db.Model(&model.AuditProcessSnapshot{}).
-		Where("tenant_id = ? AND channel = ?", tenantID, model.AuditSnapshotChannelWorkbench)
+	q := s.visibleWorkbenchQuery(c)
 	if len(todoExcludeIDs) > 0 {
 		q = q.Where("process_id NOT IN ?", todoExcludeIDs)
 	}
@@ -1376,11 +1385,11 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 	}
 	q.Count(&completedCount)
 
-	now := time.Now()
+	now := apptime.Now()
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	var todayCompleted int64
-	s.db.Model(&model.AuditProcessSnapshot{}).
-		Where("tenant_id = ? AND channel = ? AND updated_at >= ? AND process_type IN ?", tenantID, model.AuditSnapshotChannelWorkbench, startOfDay, configuredTypes).
+	s.visibleWorkbenchQuery(c).
+		Where("updated_at >= ? AND process_type IN ?", startOfDay, configuredTypes).
 		Count(&todayCompleted)
 
 	result := map[string]int{
@@ -1396,6 +1405,7 @@ func (s *AuditExecuteService) GetStatsWithParams(c *gin.Context, params dto.Audi
 			"submit_date_start":         params.SubmitDateStart,
 			"submit_date_end_exclusive": params.SubmitDateEndExclusive,
 			"access_scope":              accessScope,
+			"result_scope_version":      2,
 		})
 		keyBuilder := cache.NewKeyBuilder("audit", tenantID)
 		cacheKey := keyBuilder.Stats(userID, dateRangeHash)
@@ -1578,7 +1588,11 @@ func (s *AuditExecuteService) getSnapshotMapDirect(c *gin.Context, tenantID uuid
 	if len(processIDs) == 0 {
 		return map[string]*model.AuditProcessSnapshot{}, nil
 	}
-	return s.auditSnapshotRepo.GetMapByProcessIDs(c, processIDs)
+	_, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	return s.auditSnapshotRepo.GetVisibleWorkbenchMap(c, processIDs, userID)
 }
 
 // ListProcessesPaged 分页查询审核工作台（待 AI / AI 已审核：OA 待办可按 createdate；全部已完成：排除「当前全量待办」后按快照 updated_at）。
@@ -1624,7 +1638,7 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 	for i, item := range todoResult {
 		processIDs[i] = item.ProcessID
 	}
-	auditMap, err := s.auditLogRepo.GetLatestResultMapForTriggers(c, processIDs, model.WorkbenchTriggerSources())
+	auditMap, err := s.auditLogRepo.GetLatestPersonalResultMap(c, processIDs, userID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核记录失败")
 	}
@@ -1760,7 +1774,7 @@ func (s *AuditExecuteService) ListAllProcesses(c *gin.Context, params dto.AuditL
 	for i, item := range todoResult {
 		processIDs[i] = item.ProcessID
 	}
-	auditMap, err := s.auditLogRepo.GetLatestResultMapForTriggers(c, processIDs, model.WorkbenchTriggerSources())
+	auditMap, err := s.auditLogRepo.GetLatestPersonalResultMap(c, processIDs, userID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核记录失败")
 	}
@@ -1844,8 +1858,7 @@ func (s *AuditExecuteService) listAllCompletedProcesses(c *gin.Context, tenantID
 
 	configuredTypes := s.getAllowedProcessTypes(c)
 
-	dataQ := s.db.Model(&model.AuditProcessSnapshot{}).
-		Where("tenant_id = ? AND channel = ?", tenantID, model.AuditSnapshotChannelWorkbench).
+	dataQ := s.visibleWorkbenchQuery(c).
 		Order("updated_at DESC")
 	if len(todoProcessIDs) > 0 {
 		dataQ = dataQ.Where("process_id NOT IN ?", todoProcessIDs)
@@ -1955,8 +1968,7 @@ func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenant
 	configuredTypes := s.getAllowedProcessTypes(c)
 
 	// 先查总数（用于分页）
-	countQ := s.db.Model(&model.AuditProcessSnapshot{}).
-		Where("tenant_id = ? AND channel = ?", tenantID, model.AuditSnapshotChannelWorkbench)
+	countQ := s.visibleWorkbenchQuery(c)
 	if len(todoProcessIDs) > 0 {
 		countQ = countQ.Where("process_id NOT IN ?", todoProcessIDs)
 	}
@@ -2000,8 +2012,7 @@ func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenant
 	// 分页查询 snapshots（真分页，LIMIT/OFFSET 在 DB 层）
 	offset := (page - 1) * ps
 	var snaps []model.AuditProcessSnapshot
-	dataQ := s.db.Model(&model.AuditProcessSnapshot{}).
-		Where("tenant_id = ? AND channel = ?", tenantID, model.AuditSnapshotChannelWorkbench).
+	dataQ := s.visibleWorkbenchQuery(c).
 		Order("updated_at DESC")
 	if len(todoProcessIDs) > 0 {
 		dataQ = dataQ.Where("process_id NOT IN ?", todoProcessIDs)
@@ -2085,7 +2096,18 @@ func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenant
 	}, nil
 }
 
-func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
+func buildAuditResultFromLog(log *model.AuditLog) (result map[string]interface{}) {
+	defer func() {
+		if result != nil {
+			result["trigger_source"] = log.TriggerSource
+			result["user_id"] = log.UserID.String()
+			if model.IsEmbedTrigger(log.TriggerSource) {
+				result["result_source"] = "embed"
+			} else {
+				result["result_source"] = "personal"
+			}
+		}
+	}()
 	switch log.Status {
 	case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
 		out := map[string]interface{}{
@@ -2123,7 +2145,7 @@ func buildAuditResultFromLog(log *model.AuditLog) map[string]interface{} {
 		return out
 	}
 
-	result := map[string]interface{}{
+	result = map[string]interface{}{
 		"id":             log.ID.String(),
 		"trace_id":       fmt.Sprintf("TR-%s", log.ID.String()[:8]),
 		"process_id":     log.ProcessID,
@@ -2682,59 +2704,22 @@ func (s *AuditExecuteService) getProcessConfigCached(c *gin.Context, tenantID uu
 // 缓存键格式: audit:snapshot:{tenant_id}:{process_ids_hash}，TTL 5 分钟。
 // 支持批量查询优化：将 processIDs 列表哈希为缓存键，避免逐条查询。
 func (s *AuditExecuteService) getSnapshotMapCached(c *gin.Context, tenantID uuid.UUID, processIDs []string) (map[string]*model.AuditProcessSnapshot, error) {
-	if len(processIDs) == 0 {
-		return map[string]*model.AuditProcessSnapshot{}, nil
-	}
+	// 结果优先级依赖当前用户，直接批量查询，避免复用租户共享缓存。
+	return s.getSnapshotMapDirect(c, tenantID, processIDs)
+}
 
-	ctx := c.Request.Context()
-
-	// 尝试从缓存获取
-	if s.cache != nil && s.cache.IsEnabled() {
-		processIDsHash := cache.ComputeFilterHash(processIDs)
-		keyBuilder := cache.NewKeyBuilder("audit", tenantID)
-		cacheKey := keyBuilder.Snapshot("wb:" + processIDsHash)
-
-		var cached cache.CachedSnapshot
-		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
-			// 将 map[string]interface{} 转换回 map[string]*model.AuditProcessSnapshot
-			result := make(map[string]*model.AuditProcessSnapshot, len(cached.Snapshots))
-			for pid, raw := range cached.Snapshots {
-				data, err := json.Marshal(raw)
-				if err != nil {
-					continue
-				}
-				var snap model.AuditProcessSnapshot
-				if err := json.Unmarshal(data, &snap); err != nil {
-					continue
-				}
-				result[pid] = &snap
-			}
-			return result, nil
-		}
-	}
-
-	// 缓存未命中，从数据库查询
-	snapshotMap, err := s.auditSnapshotRepo.GetMapByProcessIDs(c, processIDs)
+// visibleWorkbenchQuery 保持已完成列表与统计采用相同的个人优先、跨渠道去重规则。
+func (s *AuditExecuteService) visibleWorkbenchQuery(c *gin.Context) *gorm.DB {
+	_, userID, err := s.extractIDs(c)
 	if err != nil {
-		return nil, err
+		return s.db.Model(&model.AuditProcessSnapshot{}).Where("1 = 0")
 	}
+	return s.auditSnapshotRepo.VisibleWorkbenchQueryScoped(c, userID, tenantAdminContext(c))
+}
 
-	// 写入缓存
-	if s.cache != nil && s.cache.IsEnabled() {
-		processIDsHash := cache.ComputeFilterHash(processIDs)
-		keyBuilder := cache.NewKeyBuilder("audit", tenantID)
-		cacheKey := keyBuilder.Snapshot("wb:" + processIDsHash)
-
-		snapshots := make(map[string]interface{}, len(snapshotMap))
-		for pid, snap := range snapshotMap {
-			snapshots[pid] = snap
-		}
-		toCache := cache.CachedSnapshot{
-			Snapshots: snapshots,
-			CachedAt:  time.Now(),
-		}
-		_ = s.cache.Set(ctx, cacheKey, toCache, cache.DefaultTTLSnapshot)
-	}
-
-	return snapshotMap, nil
+// tenantAdminContext 判断当前请求是否为租户管理员，用于开放租户级 OA 嵌入历史结果。
+func tenantAdminContext(c *gin.Context) bool {
+	claimsVal, _ := c.Get("jwt_claims")
+	claims, ok := claimsVal.(*jwtpkg.JWTClaims)
+	return ok && claims.ActiveRole.Role == "tenant_admin"
 }

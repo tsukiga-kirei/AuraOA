@@ -22,6 +22,9 @@ export interface OAProcessItem {
 
 /** AI 审核结构化结果（对应提取阶段 JSON Schema） */
 export interface AuditResult {
+  result_source?: 'personal' | 'embed'
+  trigger_source?: string
+  user_id?: string
   id?: string
   trace_id: string
   process_id: string
@@ -59,6 +62,7 @@ export interface RuleResultItem {
 
 /** 审核链记录（租户级，所有用户共享） */
 export interface AuditChainItem {
+  trigger_source?: string
   id: string
   process_id: string
   process_type: string

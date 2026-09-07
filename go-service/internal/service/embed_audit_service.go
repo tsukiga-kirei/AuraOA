@@ -183,7 +183,8 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		personalUser, _ := s.resolveOAUser(c.Request.Context(), tenantID, adapter, oaUserID)
 		if personalUser != nil {
 			hasCustom := s.hasUserCustomizedAudit(c, tenantID, personalUser.ID, config.ID, summary.ProcessType)
-			if hasCustom {
+			personalLog, _ := s.auditLogRepo.GetLatestValidByProcessIDAndUser(c, processID, personalUser.ID)
+			if hasCustom || personalLog != nil {
 				personalView = &EmbedPersonalView{
 					Available:   true,
 					UserID:      personalUser.ID.String(),

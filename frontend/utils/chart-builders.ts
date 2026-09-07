@@ -39,6 +39,7 @@ export interface DeptChartLabels {
   audit: string
   cron: string
   archive: string
+  summary: string
 }
 
 // ── 工具函数 ──
@@ -61,6 +62,7 @@ const SERIES_COLORS = {
   audit: '#4f46e5',
   cron: '#06b6d4',
   archive: '#10b981',
+  summary: '#f59e0b',
 } as const
 
 /**
@@ -259,6 +261,20 @@ export function buildDeptChartOption(
           color: new LinearGradient(0, 0, 1, 0, [
             { offset: 0, color: hexToRgba(SERIES_COLORS.archive, 0.6) },
             { offset: 1, color: SERIES_COLORS.archive },
+          ]),
+          borderRadius: [0, 4, 4, 0] as [number, number, number, number],
+        },
+      },
+      {
+        name: labels.summary,
+        type: 'bar' as const,
+        stack: 'total',
+        data: data.map(d => d.summary_count),
+        barMaxWidth: 24,
+        itemStyle: {
+          color: new LinearGradient(0, 0, 1, 0, [
+            { offset: 0, color: hexToRgba(SERIES_COLORS.summary, 0.6) },
+            { offset: 1, color: SERIES_COLORS.summary },
           ]),
           borderRadius: [0, 4, 4, 0] as [number, number, number, number],
         },

@@ -9,6 +9,7 @@ import {
   CheckCircleOutlined,
   ExclamationCircleOutlined,
 } from '@ant-design/icons-vue'
+import type { Dayjs } from 'dayjs'
 import { message } from 'ant-design-vue'
 import type { SummaryResult, SummaryWorkbenchProcessItem, SummaryWorkbenchStats } from '~/types/process-summary'
 import type { ProcessListItem } from '~/types/user-config'
@@ -27,8 +28,8 @@ const page = ref(1)
 const pageSize = ref(20)
 const keyword = ref('')
 const applicant = ref('')
-const processType = ref('')
-const summaryStatus = ref('')
+const processType = ref<string>()
+const summaryStatus = ref<string>()
 const summaryConfigs = ref<ProcessListItem[]>([])
 const selected = ref<SummaryWorkbenchProcessItem | null>(null)
 const currentResult = ref<SummaryResult | null>(null)
@@ -41,7 +42,35 @@ const stats = ref<SummaryWorkbenchStats>({
   failed_count: 0,
 })
 
+// 与审核、归档一致：首次近 90 天，同一天刷新保留日期选择。
+const dateStorageKey = 'auraoa:summary:list-date-range'
+const defaultDateRange = (): [Dayjs, Dayjs] => [appDayjs().subtract(90, 'day').startOf('day'), appDayjs().endOf('day')]
+const readDateRange = (): [Dayjs, Dayjs] => {
+  if (import.meta.client) {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(dateStorageKey) || 'null')
+      if (saved && appDayjs(saved.savedAt).isSame(appDayjs(), 'day')) {
+        const start = appDayjs(saved.start), end = appDayjs(saved.end)
+        if (start.isValid() && end.isValid() && !start.isAfter(end) && end.diff(start, 'day') <= 365 * 3) return [start, end]
+      }
+    } catch {}
+  }
+  return defaultDateRange()
+}
+const dateRange = ref<[Dayjs, Dayjs]>(readDateRange())
+const statCards = computed(() => [
+  { key: undefined, label: t('summary.stats.total'), count: stats.value.total_count, icon: FileTextOutlined, tone: 'primary' },
+  { key: 'summarized', label: t('summary.stats.completed'), count: stats.value.summarized_count, icon: CheckCircleOutlined, tone: 'success' },
+  { key: 'pending', label: t('summary.stats.pending'), count: stats.value.pending_count, icon: ClockCircleOutlined, tone: 'warning' },
+])
+const selectStatus = (status?: string) => {
+  summaryStatus.value = summaryStatus.value === status ? undefined : status
+  applyFilters()
+}
+
 const query = computed(() => ({
+  start_date: dateRange.value[0].format('YYYY-MM-DD'),
+  end_date: dateRange.value[1].format('YYYY-MM-DD'),
   keyword: keyword.value || undefined,
   applicant: applicant.value || undefined,
   process_type: processType.value || undefined,
@@ -85,6 +114,7 @@ const loadProcessTypeOptions = async () => {
 }
 
 const applyFilters = () => {
+  try { sessionStorage.setItem(dateStorageKey, JSON.stringify({ start: query.value.start_date, end: query.value.end_date, savedAt: new Date().toISOString() })) } catch {}
   page.value = 1
   void loadData()
 }
@@ -92,15 +122,17 @@ const applyFilters = () => {
 const resetFilters = () => {
   keyword.value = ''
   applicant.value = ''
-  processType.value = ''
-  summaryStatus.value = ''
+  processType.value = undefined
+  summaryStatus.value = undefined
+  dateRange.value = defaultDateRange()
+  try { sessionStorage.removeItem(dateStorageKey) } catch {}
   page.value = 1
   void loadData()
 }
 
-const handlePageChange = () => { void loadData() }
-const handlePageSizeChange = () => {
-  page.value = 1
+const handlePageChange = (nextPage: number, nextSize: number) => {
+  page.value = nextSize !== pageSize.value ? 1 : nextPage
+  pageSize.value = nextSize
   void loadData()
 }
 
@@ -181,39 +213,41 @@ onMounted(() => {
     </div>
 
     <div class="stats-grid">
-      <div class="stat-card"><span>{{ t('summary.stats.total') }}</span><strong>{{ stats.total_count }}</strong></div>
-      <div class="stat-card stat-card--success"><span>{{ t('summary.stats.completed') }}</span><strong>{{ stats.summarized_count }}</strong></div>
-      <div class="stat-card stat-card--warning"><span>{{ t('summary.stats.pending') }}</span><strong>{{ stats.pending_count }}</strong></div>
-      <div class="stat-card stat-card--primary"><span>{{ t('summary.stats.running') }}</span><strong>{{ stats.running_count }}</strong></div>
+      <button v-for="card in statCards" :key="card.key || 'all'" type="button" class="stat-card" :class="[`stat-card--${card.tone}`, { 'stat-card--selected': summaryStatus === card.key }]" :aria-pressed="summaryStatus === card.key" @click="selectStatus(card.key)">
+        <div class="stat-card-icon"><component :is="card.icon" /></div>
+        <div class="stat-card-info"><span class="stat-card-value">{{ card.count }}</span><span class="stat-card-label">{{ card.label }}</span></div>
+      </button>
     </div>
 
     <div class="filter-card">
+      <label class="filter-field filter-field--date"><span>{{ t('summary.dateRange') }}</span><a-range-picker v-model:value="dateRange" :allow-clear="false" @change="applyFilters" /></label>
       <a-input v-model:value="keyword" allow-clear :placeholder="t('summary.searchTitle')" @pressEnter="applyFilters">
         <template #prefix><SearchOutlined /></template>
       </a-input>
       <a-input v-model:value="applicant" allow-clear :placeholder="t('summary.searchApplicant')" @pressEnter="applyFilters" />
-      <a-select v-model:value="processType" allow-clear :placeholder="t('summary.filterProcess')" :options="processTypeOptions" />
-      <a-select v-model:value="summaryStatus" allow-clear :placeholder="t('summary.filterStatus')" :options="[
+      <label class="filter-field"><span>{{ t('summary.filterProcess') }}</span><a-select v-model:value="processType" allow-clear :placeholder="t('summary.filterProcess')" :options="processTypeOptions" /></label>
+      <label class="filter-field"><span>{{ t('summary.filterStatus') }}</span><a-select v-model:value="summaryStatus" allow-clear :placeholder="t('summary.filterStatus')" :options="[
         { value: 'pending', label: t('summary.status.pending') },
         { value: 'summarized', label: t('summary.status.completed') },
         { value: 'running', label: t('summary.status.running') },
         { value: 'failed', label: t('summary.status.failed') },
-      ]" />
+      ]" /></label>
       <a-button type="primary" @click="applyFilters">{{ t('common.search') }}</a-button>
       <a-button @click="resetFilters">{{ t('common.reset') }}</a-button>
     </div>
 
     <div class="process-card">
-      <a-spin :spinning="loading">
+      <a-spin :spinning="loading" :tip="t('common.loading')">
         <a-empty v-if="!loading && items.length === 0" :description="t('summary.noData')" />
-        <div v-else class="process-list">
+        <div v-else class="process-list" :class="{ 'process-list--loading': loading }">
           <div v-for="item in items" :key="item.process_id" class="process-row">
             <div class="process-main">
               <div class="process-title-row">
                 <span class="process-title">{{ item.title }}</span>
-                <a-tag :color="item.source === 'todo' ? 'blue' : 'default'">
-                  {{ item.source === 'todo' ? t('summary.source.todo') : t('summary.source.archived') }}
+                <a-tag :color="item.source === 'todo' ? 'blue' : item.source === 'embed' ? 'purple' : 'default'">
+                  {{ item.source === 'todo' ? t('summary.source.todo') : item.source === 'embed' ? t('summary.source.embed') : t('summary.source.archived') }}
                 </a-tag>
+                <a-tag v-if="item.summary_result?.result_source" color="purple">{{ t(`resultSource.${item.summary_result.result_source}`) }}</a-tag>
                 <a-badge :status="statusColor(item)" :text="statusLabel(item)" />
               </div>
               <div class="process-meta">
@@ -234,18 +268,18 @@ onMounted(() => {
       </a-spin>
       <div class="pagination-wrapper">
         <a-pagination
-          v-model:current="page"
-          v-model:page-size="pageSize"
+          :current="page"
+          :page-size="pageSize"
           :total="total"
           :page-size-options="['10', '20', '50']"
           show-size-changer
           @change="handlePageChange"
-          @showSizeChange="handlePageSizeChange"
         />
       </div>
     </div>
 
     <a-drawer v-model:open="detailOpen" :title="selected?.title || t('summary.detailTitle')" width="720">
+      <a-alert v-if="currentResult?.result_source" type="info" show-icon :message="t(`resultSource.${currentResult.result_source}`)" :description="t('summary.personalHint')" style="margin-bottom: 16px" />
       <div v-if="currentResult && ['pending', 'assembling', 'reasoning', 'extracting'].includes(currentResult.status || '')" class="result-state">
         <a-spin />
         <div><strong>{{ t('summary.status.running') }}</strong><p>{{ t(`summary.progress.${currentResult.status}`) }}</p></div>
@@ -281,13 +315,23 @@ onMounted(() => {
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .page-title { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 24px; font-weight: 700; color: var(--color-text-primary); }
 .page-subtitle { margin: 4px 0 0; color: var(--color-text-tertiary); }
-.stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.stat-card { display: flex; flex-direction: column; gap: 6px; padding: 18px; background: var(--color-bg-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); color: var(--color-text-secondary); }
-.stat-card strong { font-size: 28px; color: var(--color-text-primary); }
-.stat-card--success { border-top: 3px solid var(--color-success); }
-.stat-card--warning { border-top: 3px solid var(--color-warning); }
-.stat-card--primary { border-top: 3px solid var(--color-primary); }
-.filter-card { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr auto auto; gap: 10px; padding: 16px; background: var(--color-bg-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); }
+.stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.stat-card { background: var(--color-bg-card); border-radius: var(--radius-lg); padding: 20px; display: flex; align-items: center; gap: 16px; border: 2px solid var(--color-border-light); cursor: pointer; text-align: left; font: inherit; transition: all var(--transition-base); }
+.stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.stat-card--selected { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }
+.stat-card-icon { width: 48px; height: 48px; border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+.stat-card--primary .stat-card-icon { background: var(--color-primary-bg); color: var(--color-primary); }
+.stat-card--success .stat-card-icon { background: var(--color-success-bg); color: var(--color-success); }
+.stat-card--warning .stat-card-icon { background: var(--color-warning-bg); color: var(--color-warning); }
+.stat-card-info { display: flex; flex-direction: column; }
+.stat-card-value { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
+.stat-card-label { font-size: 13px; color: var(--color-text-tertiary); margin-top: 2px; }
+.filter-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12px; color: var(--color-text-secondary); }
+.filter-field--date { grid-column: 1 / -1; }
+.filter-field--date :deep(.ant-picker) { max-width: 360px; }
+.process-list--loading { min-height: 180px; }
+.process-card :deep(.ant-spin-nested-loading), .process-card :deep(.ant-spin-container) { min-height: 180px; }
+.filter-card { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr auto auto; align-items: end; gap: 10px; padding: 16px; background: var(--color-bg-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); }
 .process-card { background: var(--color-bg-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); overflow: hidden; }
 .process-list { display: flex; flex-direction: column; }
 .process-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 20px; border-bottom: 1px solid var(--color-border-light); }
@@ -296,7 +340,8 @@ onMounted(() => {
 .process-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
 .process-title { font-size: 15px; font-weight: 600; color: var(--color-text-primary); }
 .process-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 7px; color: var(--color-text-tertiary); font-size: 12px; }
-.process-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.process-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+.process-actions :deep(.ant-btn) { white-space: nowrap; min-height: 32px; }
 .pagination-wrapper { display: flex; justify-content: flex-end; padding: 16px 20px; border-top: 1px solid var(--color-border-light); }
 .result-state { display: flex; align-items: center; gap: 16px; padding: 24px; background: var(--color-bg-page); border-radius: var(--radius-lg); }
 .result-state p { margin: 4px 0 0; color: var(--color-text-tertiary); }

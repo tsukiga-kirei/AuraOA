@@ -110,6 +110,8 @@ type SummaryExecuteRequest struct {
 }
 
 type SummaryExecuteResponse struct {
+	ResultSource    string                            `json:"result_source"`
+	TriggerSource   string                            `json:"trigger_source"`
 	Status          string                            `json:"status,omitempty"`
 	ID              string                            `json:"id"`
 	TraceID         string                            `json:"trace_id"`
@@ -124,6 +126,8 @@ type SummaryExecuteResponse struct {
 }
 
 type SummaryEmbedContextResponse struct {
+	PersonalResult         map[string]interface{}    `json:"personal_result,omitempty"`
+	VisibleBlockIDs        []string                  `json:"visible_block_ids,omitempty"`
 	Supported              bool                      `json:"supported"`
 	Reason                 string                    `json:"reason,omitempty"`
 	Message                string                    `json:"message,omitempty"`
@@ -225,14 +229,13 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 		ConfigVersionNo:        executionVersionNumber(bindingVersion),
 		ConfigUpgradeAvailable: bindingVersion != nil && bindingVersion.Fingerprint != currentConfigFingerprint,
 	}
+	defer s.fillSummaryPersonalView(c, tenantID, adapter, processID, summary.ProcessType, resp)
 	if running, _ := s.logRepo.GetRunningByProcessID(c, processID); running != nil {
 		resp.RunningJobID = running.ID.String()
-		if snap, snapErr := s.snapshotRepo.GetByProcessID(c, processID); snapErr == nil && snap != nil {
-			if latest, latestErr := s.logRepo.GetByID(c, snap.LatestValidLogID); latestErr == nil {
-				resp.HasSummary = true
-				resp.LastSummaryAt = apptime.FormatRFC3339(latest.UpdatedAt)
-				resp.SummaryResult = s.buildSummaryResultFromLog(latest)
-			}
+		if latest, err := s.logRepo.GetLatestEmbedResult(c, processID); err == nil && latest != nil {
+			resp.HasSummary = true
+			resp.LastSummaryAt = apptime.FormatRFC3339(latest.UpdatedAt)
+			resp.SummaryResult = s.buildSummaryResultFromLog(latest)
 		}
 		if !resp.HasSummary {
 			resp.SummaryResult = s.buildSummaryResultFromLog(running)
@@ -240,21 +243,16 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 		return resp, nil
 	}
 
-	snap, err := s.snapshotRepo.GetByProcessID(c, processID)
+	latestLog, err := s.logRepo.GetLatestEmbedResult(c, processID)
 	if err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "查询总结快照失败")
+		return nil, newServiceError(errcode.ErrDatabase, "查询总结记录失败")
 	}
-
 	var storedAnchor oa.OAContextAnchor
-	var latestLog *model.ProcessSummaryLog
-	if snap != nil {
-		latestLog, err = s.logRepo.GetByID(c, snap.LatestValidLogID)
-		if err == nil && latestLog != nil {
-			storedAnchor = parseOAContextAnchor(latestLog.OAContextAnchor)
-			resp.HasSummary = true
-			resp.LastSummaryAt = apptime.FormatRFC3339(latestLog.UpdatedAt)
-			resp.SummaryResult = s.buildSummaryResultFromLog(latestLog)
-		}
+	if latestLog != nil {
+		storedAnchor = parseOAContextAnchor(latestLog.OAContextAnchor)
+		resp.HasSummary = true
+		resp.LastSummaryAt = apptime.FormatRFC3339(latestLog.UpdatedAt)
+		resp.SummaryResult = s.buildSummaryResultFromLog(latestLog)
 	}
 
 	latestAttempt, latestErr := s.logRepo.GetLatestByProcessID(c, processID)
@@ -582,10 +580,10 @@ func (s *ProcessSummaryService) GetWorkbenchStats(c *gin.Context, params dto.Sum
 		switch {
 		case isSummaryWorkbenchItemRunning(item):
 			stats.RunningCount++
-		case item.SummaryStatus == model.JobStatusFailed:
-			stats.FailedCount++
 		case item.HasSummary:
 			stats.SummarizedCount++
+		case item.SummaryStatus == model.JobStatusFailed:
+			stats.FailedCount++
 		default:
 			stats.PendingCount++
 		}
@@ -716,11 +714,21 @@ func (s *ProcessSummaryService) collectWorkbenchProcesses(c *gin.Context, params
 	for _, item := range archives {
 		appendItem(item.ProcessID, item.Title, item.Applicant, item.Department, item.ProcessType, item.ProcessTypeLabel, item.CurrentNode, item.SubmitTime, "archived")
 	}
+	// 租户管理员可以查看已启用总结类型的 OA 嵌入结果，即使该流程不在其个人 OA 待办/已办列表中。
+	if tenantAdminContext(c) {
+		embedded, embedErr := s.logRepo.ListCompletedEmbedProcesses(c, params.SubmitDateStart, params.SubmitDateEndExclusive)
+		if embedErr != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "查询 OA 嵌入总结失败")
+		}
+		for _, log := range embedded {
+			appendItem(log.ProcessID, log.Title, "", "", log.ProcessType, allowedTypes[strings.ToLower(log.ProcessType)].ProcessTypeLabel, "已完成", log.CreatedAt.Format("2006-01-02 15:04"), "embed")
+		}
+	}
 	processIDs := make([]string, len(items))
 	for i := range items {
 		processIDs[i] = items[i].ProcessID
 	}
-	snapshots, err := s.snapshotRepo.GetMapByProcessIDs(c, processIDs)
+	validResults, err := s.logRepo.GetVisibleResultMap(c, processIDs, userID)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询流程总结快照失败")
 	}
@@ -744,19 +752,19 @@ func (s *ProcessSummaryService) collectWorkbenchProcesses(c *gin.Context, params
 				}
 			}
 		}
-		if snap := snapshots[item.ProcessID]; snap != nil {
+		if validLog := validResults[item.ProcessID]; validLog != nil && (validLog.TriggerSource == model.SummaryTriggerWorkbench || allowedTypes[strings.ToLower(item.ProcessType)].EmbedEnabled) {
 			item.HasSummary = true
-			item.SummaryUpdatedAt = apptime.FormatRFC3339(snap.UpdatedAt)
-			if validLog, logErr := s.logRepo.GetByID(c, snap.LatestValidLogID); logErr == nil {
-				item.SummaryResult = s.buildSummaryResultFromLog(validLog)
-				item.SummaryStatus = model.JobStatusCompleted
-			}
+			item.SummaryUpdatedAt = apptime.FormatRFC3339(validLog.UpdatedAt)
+			item.SummaryResult = s.buildSummaryResultFromLog(validLog)
+			item.SummaryStatus = model.JobStatusCompleted
 		}
 		if latest := latestLogs[item.ProcessID]; latest != nil {
-			item.SummaryStatus = latest.Status
 			if isSummaryJobRunningStatus(latest.Status) {
+				item.SummaryStatus = latest.Status
 				item.RunningJobID = latest.ID.String()
 				item.SummaryResult = s.buildSummaryResultFromLog(latest)
+			} else if !item.HasSummary {
+				item.SummaryStatus = latest.Status
 			}
 		}
 		if item.SummaryStatus == "" {
@@ -837,6 +845,16 @@ func (s *ProcessSummaryService) summaryVisibleBlocksByType(c *gin.Context, tenan
 }
 
 func (s *ProcessSummaryService) userCanAccessSummaryProcess(c *gin.Context, adapter oa.OAAdapter, username, processID string) (bool, error) {
+	// 租户管理员查看工作台历史时，以已生成的 OA 嵌入结果和租户配置作为权限边界，
+	// 不要求该管理员本人在 OA 中重新出现在待办或已办列表。
+	if tenantAdminContext(c) {
+		if embedded, err := s.logRepo.GetLatestEmbedResult(c, processID); err != nil {
+			return false, newServiceError(errcode.ErrDatabase, "查询 OA 嵌入总结权限失败")
+		} else if embedded != nil {
+			config, configErr := s.configRepo.GetByProcessType(c, embedded.ProcessType)
+			return configErr == nil && config.Status == "active" && config.EmbedEnabled, nil
+		}
+	}
 	inTodo, err := adapter.IsProcessInTodo(c.Request.Context(), username, processID)
 	if err != nil {
 		return false, newServiceError(errcode.ErrOAQueryFailed, "校验 OA 待办权限失败: "+err.Error())
@@ -945,11 +963,9 @@ func (s *ProcessSummaryService) processSummaryJob(
 		return err
 	}
 
-	var previousLog *model.ProcessSummaryLog
-	if snap, snapErr := s.snapshotRepo.GetByProcessID(c, logEntry.ProcessID); snapErr == nil && snap != nil {
-		if row, rowErr := s.logRepo.GetByID(c, snap.LatestValidLogID); rowErr == nil {
-			previousLog = row
-		}
+	previousLog, previousErr := s.logRepo.GetLatestEmbedResult(c, logEntry.ProcessID)
+	if previousErr != nil {
+		return previousErr
 	}
 
 	blockIDsToRun := make(map[string]bool)
@@ -1267,6 +1283,8 @@ func (s *ProcessSummaryService) GetWorkbenchHistory(c *gin.Context, processID st
 func (s *ProcessSummaryService) summaryLogToResponse(log *model.ProcessSummaryLog) *SummaryExecuteResponse {
 	resp := &SummaryExecuteResponse{
 		Status:          log.Status,
+		TriggerSource:   log.TriggerSource,
+		ResultSource:    summaryResultSource(log),
 		ID:              log.ID.String(),
 		TraceID:         fmt.Sprintf("SM-%s", log.ID.String()[:8]),
 		ProcessID:       log.ProcessID,
@@ -1674,4 +1692,44 @@ func isSummaryJobRunningStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+// summaryResultSource 区分个人生成与 OA 嵌入标准总结。
+func summaryResultSource(log *model.ProcessSummaryLog) string {
+	if log.TriggerSource == model.SummaryTriggerWorkbench {
+		return "personal"
+	}
+	return "embed"
+}
+
+// fillSummaryPersonalView 根据当前 OA 人员匹配个人结果与分块展示偏好。
+func (s *ProcessSummaryService) fillSummaryPersonalView(c *gin.Context, tenantID uuid.UUID, adapter oa.OAAdapter, processID, processType string, resp *SummaryEmbedContextResponse) {
+	oaUserID := strings.TrimSpace(c.GetHeader("X-Embed-OA-User-ID"))
+	if oaUserID == "" {
+		oaUserID = strings.TrimSpace(c.Query("oa_user_id"))
+	}
+	if oaUserID == "" {
+		oaUserID = strings.TrimSpace(c.Query("oa_current_user_id"))
+	}
+	if oaUserID == "" {
+		return
+	}
+	username, err := adapter.ResolveUsernameByOAUserID(c.Request.Context(), oaUserID)
+	if err != nil || username == "" {
+		return
+	}
+	var user model.User
+	if err := s.db.WithContext(c.Request.Context()).Table("users").Select("users.*").
+		Joins("JOIN org_members ON org_members.user_id = users.id").
+		Where("org_members.tenant_id = ? AND org_members.status = 'active' AND users.username = ? AND users.status = 'active'", tenantID, username).First(&user).Error; err != nil {
+		return
+	}
+	results, err := s.logRepo.GetVisibleResultMap(c, []string{processID}, user.ID)
+	if err != nil {
+		return
+	}
+	if personal := results[processID]; personal != nil && personal.TriggerSource == model.SummaryTriggerWorkbench {
+		resp.PersonalResult = s.buildSummaryResultFromLog(personal)
+	}
+	resp.VisibleBlockIDs = s.summaryVisibleBlocksByType(c, tenantID, user.ID)[strings.ToLower(processType)]
 }

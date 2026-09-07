@@ -13,6 +13,7 @@ export interface WeeklyOverviewData {
 
 /** 待办任务（区分类型） */
 export interface PendingTasksData {
+  summary_pending: number
   audit_pending: number
   archive_pending: number
   total: number
@@ -59,6 +60,7 @@ export interface CronTaskPreview {
 
 /** 部门分布（三功能分组） */
 export interface DeptDistributionData {
+  summary_count: number
   department: string
   audit_count: number
   cron_count: number
@@ -68,6 +70,9 @@ export interface DeptDistributionData {
 
 /** 用户审核活跃度排行 */
 export interface DashboardUserActivityRow {
+  archive_count: number
+  summary_count: number
+  total: number
   username: string
   display_name: string
   department: string
@@ -140,6 +145,8 @@ export interface TenantUsageRow {
 
 /** 租户审核排名（含失败记录） */
 export interface PlatformTenantRankRowEnriched {
+  summary_count: number
+  summary_failed: number
   tenant_id: string
   tenant_name: string
   tenant_code: string

@@ -31,7 +31,7 @@ const (
 	ExportTypeArchiveUnaudited
 	// ExportTypeArchiveReviewed 归档复盘 — 已复核页签（10 列）。
 	ExportTypeArchiveReviewed
-	// ExportTypeUserConfig 用户偏好导出（8 列）。
+	// ExportTypeUserConfig 用户偏好导出（9 列）。
 	ExportTypeUserConfig
 	// ExportTypeAuditSnapshot 数据管理 — 审核快照（11 列）。
 	ExportTypeAuditSnapshot
@@ -75,8 +75,8 @@ var colHeadersMap = map[ExportType]map[Locale][]string{
 		LocaleEN: {"Process ID", "Title", "Applicant", "Department", "Process Type", "Archive Time", "Compliance", "Score", "Confidence", "Review Time"},
 	},
 	ExportTypeUserConfig: {
-		LocaleZH: {"用户名", "显示名", "部门", "角色", "审核流程数", "归档流程数", "定时任务数", "最近修改时间"},
-		LocaleEN: {"Username", "Display Name", "Department", "Roles", "Audit Processes", "Archive Processes", "Cron Tasks", "Last Modified"},
+		LocaleZH: {"用户名", "显示名", "部门", "角色", "审核流程数", "归档流程数", "总结偏好流程数", "定时任务数", "最近修改时间"},
+		LocaleEN: {"Username", "Display Name", "Department", "Roles", "Audit Processes", "Archive Processes", "Summary Preferences", "Cron Tasks", "Last Modified"},
 	},
 	ExportTypeAuditSnapshot: {
 		LocaleZH: {"流程编号", "流程标题", "操作人", "部门", "流程类型", "发起方式", "审核建议", "评分", "置信度", "审核次数", "时间"},

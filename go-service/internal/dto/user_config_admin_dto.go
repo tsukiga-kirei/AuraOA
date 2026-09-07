@@ -4,6 +4,8 @@ package dto
 
 // AdminUserConfigListItem 管理员视图：单个用户的个人配置摘要（含成员信息）
 type AdminUserConfigListItem struct {
+	SummaryProcessCount int                   `json:"summary_process_count"`
+	SummaryDetails      []AdminSummaryDetail  `json:"summary_details"`
 	UserID              string                `json:"user_id"`
 	MemberID            string                `json:"member_id"`
 	Username            string                `json:"username"`
@@ -69,4 +71,11 @@ type AdminCronTaskDetail struct {
 	PushEmail      string   `json:"push_email"`
 	WorkflowIDs    []string `json:"workflow_ids"`
 	DateRange      int      `json:"date_range"`
+}
+
+// AdminSummaryDetail 管理员查看用户保存的分块展示偏好。
+type AdminSummaryDetail struct {
+	ProcessType      string                      `json:"process_type"`
+	ProcessTypeLabel string                      `json:"process_type_label"`
+	Blocks           []SummaryBlockPreferenceDTO `json:"blocks"`
 }

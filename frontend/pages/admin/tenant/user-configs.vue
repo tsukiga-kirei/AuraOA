@@ -12,6 +12,7 @@ import {
   SwapOutlined,
   ReloadOutlined,
   MailOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { AdminUserConfigItem, AdminProcessDetail, AdminCronTaskDetail } from '~/types/user-config'
@@ -56,7 +57,7 @@ const roleFilter = ref<string | undefined>(undefined)
 const hasConfigFilter = ref<string | undefined>(undefined)
 
 const totalChanges = (c: AdminUserConfigItem) =>
-  c.audit_process_count + c.cron_task_count + c.archive_process_count
+  c.audit_process_count + c.cron_task_count + c.archive_process_count + (c.summary_process_count || 0)
 
 const filteredConfigs = computed(() =>
   configs.value.filter(c => {
@@ -78,6 +79,7 @@ const { paged, current, pageSize, total, onChange } = usePagination(filteredConf
 // =====================================================================
 const totalAuditChanges = computed(() => configs.value.reduce((s, c) => s + c.audit_process_count, 0))
 const totalCronChanges = computed(() => configs.value.reduce((s, c) => s + c.cron_task_count, 0))
+const totalSummaryChanges = computed(() => configs.value.reduce((sum, c) => sum + (c.summary_process_count || 0), 0))
 const totalArchiveChanges = computed(() => configs.value.reduce((s, c) => s + c.archive_process_count, 0))
 
 // =====================================================================
@@ -104,13 +106,14 @@ const handleExportExcel = async () => {
 // =====================================================================
 const showDetail = ref(false)
 const detailConfig = ref<AdminUserConfigItem | null>(null)
-const detailTab = ref<'audit' | 'cron' | 'archive'>('audit')
+const detailTab = ref<'audit' | 'cron' | 'archive' | 'summary'>('audit')
 
 const openDetail = (c: AdminUserConfigItem) => {
   detailConfig.value = c
   if (c.audit_details.length > 0) detailTab.value = 'audit'
   else if (c.cron_task_count > 0) detailTab.value = 'cron'
   else if (c.archive_details.length > 0) detailTab.value = 'archive'
+  else if (c.summary_details?.length) detailTab.value = 'summary'
   else detailTab.value = 'audit'
   showDetail.value = true
 }
@@ -205,6 +208,10 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
           <span class="stat-card-label">{{ t('admin.userConfigs.totalArchiveChanges') }}</span>
         </div>
       </div>
+      <div class="stat-card stat-card--primary">
+        <div class="stat-card-icon"><FileTextOutlined /></div>
+        <div class="stat-card-info"><span class="stat-card-value">{{ totalSummaryChanges }}</span><span class="stat-card-label">{{ t('admin.userConfigs.totalSummaryChanges') }}</span></div>
+      </div>
     </div>
 
     <!-- 工具栏 -->
@@ -243,6 +250,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
             <th>{{ t('admin.userConfigs.thAuditWorkbench') }}</th>
             <th>{{ t('admin.userConfigs.thCronConfig') }}</th>
             <th>{{ t('admin.userConfigs.thArchiveReview') }}</th>
+            <th>{{ t('summary.title') }}</th>
             <th>{{ t('admin.userConfigs.thLastModified') }}</th>
             <th>{{ t('admin.userConfigs.thAction') }}</th>
           </tr>
@@ -285,6 +293,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
               </span>
               <span v-else class="text-secondary">-</span>
             </td>
+            <td><span v-if="c.summary_process_count" class="count-badge count-badge--primary">{{ t('admin.userConfigs.processCount', [c.summary_process_count]) }}</span><span v-else>-</span></td>
             <td class="text-secondary text-mono">{{ formatDateTime(c.last_modified) }}</td>
             <td>
               <div class="action-btns">
@@ -293,7 +302,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
             </td>
           </tr>
           <tr v-if="!loading && filteredConfigs.length === 0">
-            <td colspan="8" class="empty-cell">{{ t('admin.userConfigs.noData') }}</td>
+            <td colspan="9" class="empty-cell">{{ t('admin.userConfigs.noData') }}</td>
           </tr>
         </tbody>
       </table>
@@ -346,6 +355,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
             v-for="tab in [
               { key: 'audit',   label: t('admin.userConfigs.tabAudit'),   icon: AppstoreOutlined,    count: detailConfig.audit_details.length },
               { key: 'cron',    label: t('admin.userConfigs.tabCron'),    icon: ClockCircleOutlined, count: detailConfig.cron_task_count },
+              { key: 'summary', label: t('summary.title'), icon: FileTextOutlined, count: detailConfig.summary_details?.length || 0 },
               { key: 'archive', label: t('admin.userConfigs.tabArchive'), icon: FolderOpenOutlined,  count: detailConfig.archive_details.length },
             ]"
             :key="tab.key"
@@ -570,6 +580,18 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
           </div>
         </div>
 
+        <div v-if="detailTab === 'summary'" class="detail-content">
+          <a-empty v-if="!detailConfig.summary_details?.length" :description="t('admin.userConfigs.noSummaryConfig')" />
+          <p>{{ t('summary.personalHint') }}</p>
+          <div v-for="pref in detailConfig.summary_details" :key="pref.process_type" class="detail-process-card">
+            <strong>{{ pref.process_type_label || pref.process_type }}</strong>
+            <div v-for="block in pref.blocks" :key="block.id" class="detail-rule-item">
+              <span class="detail-rule-text">{{ block.title }}</span>
+              <a-tag :color="block.visible ? 'green' : 'default'">{{ t(block.visible ? 'admin.userConfigs.blockVisible' : 'admin.userConfigs.blockHidden') }}</a-tag>
+            </div>
+          </div>
+        </div>
+
         <!-- 页脚 -->
         <div v-if="detailConfig.last_modified" class="detail-footer-info">
           {{ t('admin.userConfigs.thLastModified') }}：{{ formatDateTime(detailConfig.last_modified) }}
@@ -593,7 +615,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
   background: var(--color-primary-bg);
 }
 
-.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
 .stat-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg); padding: 20px;
   display: flex; align-items: center; gap: 16px; border: 2px solid var(--color-border-light);
@@ -613,7 +635,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
 
 .data-table-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-light); overflow: hidden;
+  border: 1px solid var(--color-border-light); overflow-x: auto;
 }
 .loading-cell { padding: 48px; text-align: center; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }

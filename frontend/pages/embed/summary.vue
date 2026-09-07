@@ -28,14 +28,24 @@ const waitingParent = ref(true)
 const summarizing = ref(false)
 const pageError = ref('')
 const context = ref<EmbedSummaryContextResponse | null>(null)
-const currentResult = ref<SummaryResult | null>(null)
+const standardResult = ref<SummaryResult | null>(null)
+const perspective = ref<'personal' | 'standard'>('personal')
+const currentResult = computed({
+  get: () => perspective.value === 'personal' && context.value?.personal_result ? context.value.personal_result : standardResult.value,
+  set: (value: SummaryResult | null) => { standardResult.value = value },
+})
+const visibleResultBlocks = computed(() => {
+  const ids = context.value?.visible_block_ids || []
+  const blocks = currentResult.value?.blocks || []
+  return ids.length ? blocks.filter(block => ids.includes(block.block_id)) : blocks
+})
 const streamingBlocks = ref<{ block_id: string; title: string; content: string }[]>([])
 const eventSourceStream = ref<EventSource | null>(null)
 const streamJobId = ref('')
 const collapsedBlockIds = ref<Set<string>>(new Set())
 
 const processInfo = computed<EmbedProcessSummary | null>(() => context.value?.process ?? null)
-const isRunning = computed(() => summarizing.value || ['pending', 'assembling', 'reasoning', 'extracting'].includes(currentResult.value?.status || ''))
+const isRunning = computed(() => (perspective.value === 'standard' || !context.value?.personal_result) && (summarizing.value || ['pending', 'assembling', 'reasoning', 'extracting'].includes(currentResult.value?.status || '')))
 
 const progressStatusOrder: Record<string, number> = {
   pending: 0,
@@ -120,7 +130,7 @@ function createPendingResult(): SummaryResult {
 }
 
 function mergeSummaryProgress(st: SummaryResult) {
-  currentResult.value = { ...currentResult.value, ...st }
+  standardResult.value = { ...standardResult.value, ...st }
 }
 
 function getBlockKey(block: SummaryBlockResult, idx: number) {
@@ -287,6 +297,9 @@ onBeforeUnmount(() => disconnectStream())
 <template>
   <div class="embed-summary">
     <div class="embed-header">
+      <div v-if="context?.personal_result" class="result-perspective">
+        <a-radio-group v-model:value="perspective" size="small" option-type="button" :options="[{ value: 'personal', label: t('resultSource.personal') }, { value: 'standard', label: t('resultSource.embed') }]" />
+      </div>
       <h2 class="embed-title" :style="{ color: headerStatus.color }">
         <span class="embed-title-badge" :style="{ background: headerStatus.bg, color: headerStatus.color }">
           <component :is="headerStatus.icon" :spin="headerStatus.spin" />
@@ -412,6 +425,7 @@ onBeforeUnmount(() => disconnectStream())
         </div>
 
         <template v-else-if="currentResult">
+          <a-tag v-if="currentResult.result_source" color="purple">{{ t(`resultSource.${currentResult.result_source}`) }}</a-tag>
           <div v-if="currentResult.status === 'failed' || currentResult.status === 'cancelled'" class="result-error">
             <WarningOutlined />
             <div>
@@ -426,7 +440,7 @@ onBeforeUnmount(() => disconnectStream())
               </div>
 
             <div v-if="currentResult.blocks?.length" class="summary-blocks">
-              <section v-for="(block, idx) in currentResult.blocks" :key="getBlockKey(block, idx)" class="summary-card">
+              <section v-for="(block, idx) in visibleResultBlocks" :key="getBlockKey(block, idx)" class="summary-card">
                 <button type="button" class="summary-card-header" @click="toggleBlock(block, idx)">
                   <span class="summary-card-title">{{ block.title }}</span>
                   <span class="summary-card-tools">
@@ -479,6 +493,7 @@ onBeforeUnmount(() => disconnectStream())
   padding-bottom: 12px;
   border-bottom: 1px solid var(--color-border-light);
 }
+.result-perspective { margin-left: auto; margin-bottom: 8px; }
 .embed-title {
   display: flex;
   align-items: center;

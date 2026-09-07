@@ -932,6 +932,8 @@ const handleExportExcel = async () => {
 }
 
 // ─── 初始化 ───
+const resultSourceLabel = (result: { result_source?: string }) => t(result.result_source === 'embed' ? 'resultSource.embed' : 'resultSource.personal')
+
 onMounted(async () => {
   const availableMenus = menus.value.length > 0 ? menus.value : await getMenu()
   hasDashboardPermission.value = canOpenDashboard(availableMenus)
@@ -1146,6 +1148,7 @@ onMounted(async () => {
                     :style="{ color: getScoreColorConfig(item.audit_result.overall_score).color }"
                   />
                   {{ item.title }}
+                  <a-tag v-if="item.audit_result?.result_source" color="purple">{{ resultSourceLabel(item.audit_result) }}</a-tag>
                 </div>
                 <div class="todo-item-meta">
                   <span>{{ item.applicant }}</span>
@@ -1513,6 +1516,7 @@ onMounted(async () => {
                       </div>
                       <div v-if="expandedChainNodes.has(item.id)" class="chain-detail">
                         <template v-if="item.audit_result">
+                          <a-tag color="purple">{{ t(item.trigger_source === 'embed_auto' || item.trigger_source === 'embed_manual' ? 'resultSource.embed' : 'resultSource.workbench') }}</a-tag>
                           <!--规则校验-->
                           <template v-if="item.audit_result.rule_results?.length">
                             <div class="chain-section-title">{{ t('dashboard.ruleCheckDetail') }}</div>

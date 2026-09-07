@@ -324,7 +324,7 @@ func main() {
 	configHandler := handler.NewProcessAuditConfigHandler(processAuditConfigService)
 	ruleHandler := handler.NewAuditRuleHandler(auditRuleService, ruleImportService)
 	userConfigHandler := handler.NewUserPersonalConfigHandler(userPersonalConfigService, userDashboardPrefRepo)
-	userConfigMgmtHandler := handler.NewUserConfigManagementHandler(userPersonalConfigRepo, cronTaskRepo, orgRepo, auditRuleRepo, archiveRuleRepo, processAuditConfigRepo, archiveConfigRepo)
+	userConfigMgmtHandler := handler.NewUserConfigManagementHandler(userPersonalConfigRepo, cronTaskRepo, orgRepo, auditRuleRepo, archiveRuleRepo, processAuditConfigRepo, archiveConfigRepo, summaryConfigRepo)
 	llmLogHandler := handler.NewLLMMessageLogHandler(llmMessageLogService)
 	cronHandler := handler.NewCronConfigHandler(cronConfigService)
 	cronTaskHandler := handler.NewCronTaskHandler(cronTaskService)

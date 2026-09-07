@@ -30,6 +30,7 @@ type UserConfigManagementHandler struct {
 	archiveRuleRepo   *repository.ArchiveRuleRepo
 	auditConfigRepo   *repository.ProcessAuditConfigRepo
 	archiveConfigRepo *repository.ProcessArchiveConfigRepo
+	summaryConfigRepo *repository.ProcessSummaryConfigRepo
 }
 
 // NewUserConfigManagementHandler 创建一个新的 UserConfigManagementHandler 实例。
@@ -41,6 +42,7 @@ func NewUserConfigManagementHandler(
 	archiveRuleRepo *repository.ArchiveRuleRepo,
 	auditConfigRepo *repository.ProcessAuditConfigRepo,
 	archiveConfigRepo *repository.ProcessArchiveConfigRepo,
+	summaryConfigRepo *repository.ProcessSummaryConfigRepo,
 ) *UserConfigManagementHandler {
 	return &UserConfigManagementHandler{
 		userConfigRepo:    userConfigRepo,
@@ -50,6 +52,7 @@ func NewUserConfigManagementHandler(
 		archiveRuleRepo:   archiveRuleRepo,
 		auditConfigRepo:   auditConfigRepo,
 		archiveConfigRepo: archiveConfigRepo,
+		summaryConfigRepo: summaryConfigRepo,
 	}
 }
 
@@ -69,6 +72,7 @@ func (h *UserConfigManagementHandler) ListUserConfigs(c *gin.Context) {
 	}
 
 	memberList, memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap := h.loadSharedMaps(c)
+	summaryConfigs := h.loadSummaryConfigs(c)
 	configMap := make(map[uuid.UUID]*model.UserPersonalConfig, len(configs))
 	cronTasksByUser := groupCronTasksByOwner(cronTasks)
 	orderedUserIDs := make([]uuid.UUID, 0, len(configs)+len(cronTasksByUser))
@@ -112,7 +116,7 @@ func (h *UserConfigManagementHandler) ListUserConfigs(c *gin.Context) {
 
 	result := make([]dto.AdminUserConfigListItem, 0, len(orderedUserIDs))
 	for _, userID := range orderedUserIDs {
-		item := buildAdminUserConfigItem(userID, configMap[userID], cronTasksByUser[userID], memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap)
+		item := buildAdminUserConfigItem(userID, configMap[userID], cronTasksByUser[userID], memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap, summaryConfigs)
 		result = append(result, item)
 	}
 
@@ -137,6 +141,7 @@ func (h *UserConfigManagementHandler) ExportUserConfigs(c *gin.Context) {
 	}
 
 	memberList, memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap := h.loadSharedMaps(c)
+	summaryConfigs := h.loadSummaryConfigs(c)
 	configMap := make(map[uuid.UUID]*model.UserPersonalConfig, len(configs))
 	cronTasksByUser := groupCronTasksByOwner(cronTasks)
 	orderedUserIDs := make([]uuid.UUID, 0, len(configs)+len(cronTasksByUser))
@@ -180,7 +185,7 @@ func (h *UserConfigManagementHandler) ExportUserConfigs(c *gin.Context) {
 
 	rows := make([][]string, 0, len(orderedUserIDs))
 	for _, userID := range orderedUserIDs {
-		item := buildAdminUserConfigItem(userID, configMap[userID], cronTasksByUser[userID], memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap)
+		item := buildAdminUserConfigItem(userID, configMap[userID], cronTasksByUser[userID], memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap, summaryConfigs)
 		rows = append(rows, []string{
 			item.Username,
 			item.DisplayName,
@@ -188,6 +193,7 @@ func (h *UserConfigManagementHandler) ExportUserConfigs(c *gin.Context) {
 			strings.Join(item.RoleNames, ","),
 			fmt.Sprintf("%d", item.AuditProcessCount),
 			fmt.Sprintf("%d", item.ArchiveProcessCount),
+			fmt.Sprintf("%d", item.SummaryProcessCount),
 			fmt.Sprintf("%d", item.CronTaskCount),
 			item.LastModified,
 		})
@@ -231,7 +237,8 @@ func (h *UserConfigManagementHandler) GetUserConfig(c *gin.Context) {
 	}
 
 	_, memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap := h.loadSharedMaps(c)
-	item := buildAdminUserConfigItem(userID, cfg, cronTasks, memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap)
+	summaryConfigs := h.loadSummaryConfigs(c)
+	item := buildAdminUserConfigItem(userID, cfg, cronTasks, memberMap, auditRuleMap, archiveRuleMap, auditPermsMap, archivePermsMap, archiveAccessMap, auditFieldsMap, archiveFieldsMap, summaryConfigs)
 	response.Success(c, item)
 
 }
@@ -356,6 +363,7 @@ func buildAdminUserConfigItem(
 	archiveAccessMap map[string]model.AccessControlData,
 	auditFieldsMap map[string]processConfigInfo,
 	archiveFieldsMap map[string]processConfigInfo,
+	summaryConfigMaps ...map[string]model.ProcessSummaryConfig,
 ) dto.AdminUserConfigListItem {
 	item := dto.AdminUserConfigListItem{
 		UserID:         userID.String(),
@@ -363,6 +371,7 @@ func buildAdminUserConfigItem(
 		AuditDetails:   []dto.AdminProcessDetail{},
 		CronTasks:      []dto.AdminCronTaskDetail{},
 		ArchiveDetails: []dto.AdminProcessDetail{},
+		SummaryDetails: []dto.AdminSummaryDetail{},
 	}
 	latestModified := time.Time{}
 	if cfg != nil {
@@ -445,6 +454,34 @@ func buildAdminUserConfigItem(
 			}
 			item.ArchiveProcessCount = len(item.ArchiveDetails)
 		}
+	}
+
+	if cfg != nil && len(summaryConfigMaps) > 0 {
+		var details []model.SummaryDetailItem
+		if json.Unmarshal(cfg.SummaryDetails, &details) == nil {
+			for _, detail := range details {
+				config, ok := summaryConfigMaps[0][detail.ProcessType]
+				if !ok || config.ID != detail.ConfigID {
+					continue
+				}
+				var blocks []model.SummaryBlockConfig
+				if json.Unmarshal(config.SummaryBlocks, &blocks) != nil {
+					continue
+				}
+				visible := make(map[string]bool)
+				for _, id := range detail.VisibleBlockIDs {
+					visible[id] = true
+				}
+				itemDetail := dto.AdminSummaryDetail{ProcessType: config.ProcessType, ProcessTypeLabel: config.ProcessTypeLabel, Blocks: []dto.SummaryBlockPreferenceDTO{}}
+				for _, block := range blocks {
+					if block.Enabled {
+						itemDetail.Blocks = append(itemDetail.Blocks, dto.SummaryBlockPreferenceDTO{ID: block.ID, Title: block.Title, EnableThinking: block.EnableThinking, Visible: visible[block.ID]})
+					}
+				}
+				item.SummaryDetails = append(item.SummaryDetails, itemDetail)
+			}
+		}
+		item.SummaryProcessCount = len(item.SummaryDetails)
 	}
 
 	if !latestModified.IsZero() {
@@ -694,4 +731,22 @@ func parseFieldOverride(fo string) (string, string) {
 		return parts[0], parts[1]
 	}
 	return "main", fo
+}
+
+// loadSummaryConfigs 批量读取有效总结配置，供偏好列表、详情与导出共用。
+func (h *UserConfigManagementHandler) loadSummaryConfigs(c *gin.Context) map[string]model.ProcessSummaryConfig {
+	result := make(map[string]model.ProcessSummaryConfig)
+	if h.summaryConfigRepo == nil {
+		return result
+	}
+	configs, err := h.summaryConfigRepo.ListByTenant(c)
+	if err != nil {
+		return result
+	}
+	for _, config := range configs {
+		if config.Status == "active" {
+			result[config.ProcessType] = config
+		}
+	}
+	return result
 }
