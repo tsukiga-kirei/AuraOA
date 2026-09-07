@@ -2,6 +2,18 @@
 import type { ChatMessageItem } from '~/types/chat'
 import { readSSE } from '~/utils/sse'
 
+/** 生成兼容安全与非安全上下文的 UUID */
+function generateUUID(): string {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
 export const useChatStream = (options: { onDone?: () => void; onError?: (error: string) => void } = {}) => {
   const { authStreamFetch } = useAuth()
   const { t } = useI18n()
@@ -10,8 +22,8 @@ export const useChatStream = (options: { onDone?: () => void; onError?: (error: 
   let controller: AbortController | null = null
   const sendStreamMessage = async (sessionId: string, content: string, messages: Ref<ChatMessageItem[]>) => {
     if (!content.trim() || streaming.value) return
-    messages.value.push({ id: crypto.randomUUID(), session_id: sessionId, role: 'user', content: content.trim(), created_at: new Date().toISOString() })
-    const msg = reactive<ChatMessageItem>({ id: crypto.randomUUID(), session_id: sessionId, role: 'assistant', content: '', reasoning_content: '', tool_calls: [], streaming: true, status: 'running', created_at: new Date().toISOString() })
+    messages.value.push({ id: generateUUID(), session_id: sessionId, role: 'user', content: content.trim(), created_at: new Date().toISOString() })
+    const msg = reactive<ChatMessageItem>({ id: generateUUID(), session_id: sessionId, role: 'assistant', content: '', reasoning_content: '', tool_calls: [], streaming: true, status: 'running', created_at: new Date().toISOString() })
     messages.value.push(msg)
     streaming.value = true
     const activeController = new AbortController()
@@ -30,7 +42,7 @@ export const useChatStream = (options: { onDone?: () => void; onError?: (error: 
         if (event === 'tool_start') {
           msg.tool_calls!.push({
             tool_code: data?.tool_code || '',
-            tool_call_id: data?.tool_call_id || crypto.randomUUID(),
+            tool_call_id: data?.tool_call_id || generateUUID(),
             ui_kind: data?.ui_kind || '',
             status: data?.status || 'running',
             arguments: data?.arguments,
@@ -42,7 +54,7 @@ export const useChatStream = (options: { onDone?: () => void; onError?: (error: 
           if (tool) Object.assign(tool, data || {})
           else msg.tool_calls!.push({
             tool_code: data?.tool_code || '',
-            tool_call_id: data?.tool_call_id || crypto.randomUUID(),
+            tool_call_id: data?.tool_call_id || generateUUID(),
             ui_kind: data?.ui_kind || '',
             status: data?.status || 'success',
             arguments: data?.arguments,
