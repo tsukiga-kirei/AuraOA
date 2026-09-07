@@ -48,6 +48,7 @@ node_modules/
 
 # ===== Docker =====
 docker-compose.override.yml
+*.tar
 
 # ===== Environment =====
 .env
