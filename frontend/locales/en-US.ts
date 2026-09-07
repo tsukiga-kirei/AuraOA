@@ -2607,6 +2607,17 @@ export default {
     'chat.toolCard.params': 'Parameters:',
     'chat.toolCard.result': 'Result:',
     'chat.toolCard.error': 'Error:',
+    'chat.processComplete': 'Reasoning & Tool Execution Completed',
+    'chat.thinkingComplete': 'Reasoning Completed',
+    'chat.toolsComplete': 'Tool Execution Completed',
+    'chat.stepCount': '{0} steps',
+    'chat.processing': 'Processing & reasoning...',
+    'chat.reasoningRounds': 'Reasoning {rounds} rounds',
+    'chat.toolCallsCount': 'Called {tools} tools',
+    'chat.durationSuffix': 'Duration {duration}',
+    'chat.stepSummarySeparator': ' · ',
+    'chat.stepFinish': 'Completed',
+    'chat.toolCall': 'Call',
 
     //===== Agent & Extension Mgmt =====
     'agentAdmin.title': 'Agent & Extension Management',

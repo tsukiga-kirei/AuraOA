@@ -2637,6 +2637,17 @@ export default {
     'chat.toolCard.params': '参数:',
     'chat.toolCard.result': '返回结果:',
     'chat.toolCard.error': '错误:',
+    'chat.processComplete': '思考与工具调用完成',
+    'chat.thinkingComplete': '完成思考',
+    'chat.toolsComplete': '工具调用完成',
+    'chat.stepCount': '{0} 个步骤',
+    'chat.processing': '正在处理与思考...',
+    'chat.reasoningRounds': '思考 {rounds} 轮',
+    'chat.toolCallsCount': '调用 {tools} 次工具',
+    'chat.durationSuffix': '耗时 {duration}',
+    'chat.stepSummarySeparator': ' · ',
+    'chat.stepFinish': '完成',
+    'chat.toolCall': '调用',
 
     //===== 智能体与扩展管理 =====
     'agentAdmin.title': '智能体与扩展能力管理',

@@ -456,6 +456,46 @@ function getExecutionConfigVersionLabel(version?: number | null) {
       : t('executionConfig.legacyUnversioned')
 }
 
+interface ParsedChatPrompt {
+  isChatJson: boolean
+  systemPrompt: string
+  messages: Array<{
+    role: string
+    content: string
+    name?: string
+    tool_call_id?: string
+    tool_calls?: any[]
+  }>
+  tools: any[]
+}
+
+function parseChatPrompt(rawPrompt?: string, sysPrompt?: string): ParsedChatPrompt {
+  const result: ParsedChatPrompt = {
+    isChatJson: false,
+    systemPrompt: sysPrompt || '',
+    messages: [],
+    tools: [],
+  }
+  if (!rawPrompt || !rawPrompt.trim().startsWith('{')) {
+    return result
+  }
+  try {
+    const data = JSON.parse(rawPrompt)
+    if (Array.isArray(data.messages)) {
+      result.isChatJson = true
+      const sysMsg = data.messages.find((m: any) => m.role === 'system')
+      if (sysMsg?.content) {
+        result.systemPrompt = sysMsg.content
+      }
+      result.messages = data.messages.filter((m: any) => m.role !== 'system')
+      result.tools = Array.isArray(data.tools) ? data.tools : []
+    }
+  } catch {
+    // 忽略非 JSON
+  }
+  return result
+}
+
 
 
 async function openAuditDetail(item: AuditSnapshotItem) {
@@ -2325,25 +2365,103 @@ onMounted(async () => {
                       </div>
 
                       <div v-if="expandedLLMChainNodes.has(logItem.id)" class="chain-detail">
-                        <div class="chain-section-title">{{ t('admin.data.llmSystemPrompt') }}</div>
-                        <pre v-if="logItem.system_prompt" class="llm-prompt-pre">{{ logItem.system_prompt }}</pre>
-                        <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
+                        <!-- AI 对话场景单独适配结构化视图 -->
+                        <template v-if="logItem.request_type === 'chat' && parseChatPrompt(logItem.user_prompt, logItem.system_prompt).isChatJson">
+                          <div class="chat-call-detail">
+                            <!-- 系统提示词 -->
+                            <div v-if="parseChatPrompt(logItem.user_prompt, logItem.system_prompt).systemPrompt" class="chat-detail-section">
+                              <details class="chat-system-details">
+                                <summary class="chat-section-header">
+                                  <span class="chat-section-tag system">系统预设提示词</span>
+                                  <span class="chat-section-desc">设定智能体的角色定位与能力规范</span>
+                                  <DownOutlined class="chat-section-chevron" />
+                                </summary>
+                                <pre class="llm-prompt-pre chat-pre">{{ parseChatPrompt(logItem.user_prompt, logItem.system_prompt).systemPrompt }}</pre>
+                              </details>
+                            </div>
 
-                        <div class="chain-section-title" style="margin-top: 12px;">{{ t('admin.data.llmUserPrompt') }}</div>
-                        <pre v-if="logItem.user_prompt" class="llm-prompt-pre">{{ logItem.user_prompt }}</pre>
-                        <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
+                            <!-- 可用工具定义 -->
+                            <div v-if="parseChatPrompt(logItem.user_prompt, logItem.system_prompt).tools.length" class="chat-detail-section">
+                              <details class="chat-tools-details">
+                                <summary class="chat-section-header">
+                                  <span class="chat-section-tag tools">可用工具定义 ({{ parseChatPrompt(logItem.user_prompt, logItem.system_prompt).tools.length }})</span>
+                                  <span class="chat-section-desc">本轮挂载的系统工具与扩展能力</span>
+                                  <DownOutlined class="chat-section-chevron" />
+                                </summary>
+                                <div class="chat-tool-badges">
+                                  <div v-for="tool in parseChatPrompt(logItem.user_prompt, logItem.system_prompt).tools" :key="tool.function?.name || tool.name" class="chat-tool-badge">
+                                    <strong>{{ tool.function?.name || tool.name }}</strong>
+                                    <p>{{ tool.function?.description || tool.description }}</p>
+                                  </div>
+                                </div>
+                              </details>
+                            </div>
 
-                        <template v-if="logItem.reasoning_content">
-                          <div class="chain-section-title" style="margin-top: 12px; display: flex; align-items: center; gap: 6px;">
-                            <ThunderboltOutlined style="color: var(--color-primary);" />
-                            {{ t('admin.data.llmReasoningContent', '深度思考过程') }}
+                            <!-- 对话消息上下文 -->
+                            <div class="chat-detail-section">
+                              <div class="chain-section-title" style="margin-bottom: 8px;">对话上下文消息</div>
+                              <div class="chat-messages-flow">
+                                <div v-for="(msg, mIdx) in parseChatPrompt(logItem.user_prompt, logItem.system_prompt).messages" :key="mIdx" class="chat-flow-item" :class="msg.role">
+                                  <div class="chat-flow-role">
+                                    <span class="role-badge" :class="msg.role">
+                                      {{ msg.role === 'user' ? '用户' : msg.role === 'assistant' ? '智能助理' : msg.role === 'tool' ? ('工具返回 · ' + (msg.name || 'tool')) : msg.role }}
+                                    </span>
+                                  </div>
+                                  <div class="chat-flow-body">
+                                    <div v-if="msg.content" class="chat-flow-content">{{ msg.content }}</div>
+                                    <div v-if="msg.tool_calls?.length" class="chat-flow-toolcalls">
+                                      <div v-for="tc in msg.tool_calls" :key="tc.id" class="chat-toolcall-item">
+                                        <span class="tc-name">调用工具: {{ tc.function?.name || tc.name }}</span>
+                                        <pre v-if="tc.function?.arguments" class="tc-args">{{ tc.function.arguments }}</pre>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <!-- 深度思考过程 -->
+                            <template v-if="logItem.reasoning_content">
+                              <div class="chat-detail-section" style="margin-top: 4px;">
+                                <div class="chain-section-title" style="display: flex; align-items: center; gap: 6px;">
+                                  <ThunderboltOutlined style="color: var(--color-primary);" />
+                                  {{ t('admin.data.llmReasoningContent', '深度思考过程') }}
+                                </div>
+                                <pre class="llm-prompt-pre chat-pre" style="border-left: 3px solid var(--color-primary);">{{ logItem.reasoning_content }}</pre>
+                              </div>
+                            </template>
+
+                            <!-- 模型本轮输出 -->
+                            <div class="chat-detail-section" style="margin-top: 4px;">
+                              <div class="chain-section-title">{{ t('admin.data.llmResponse') }}</div>
+                              <pre v-if="logItem.response_content" class="llm-prompt-pre chat-pre">{{ logItem.response_content }}</pre>
+                              <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
+                            </div>
                           </div>
-                          <pre class="llm-prompt-pre" style="border-left: 3px solid var(--color-primary);">{{ logItem.reasoning_content }}</pre>
                         </template>
 
-                        <div class="chain-section-title" style="margin-top: 12px;">{{ t('admin.data.llmResponse') }}</div>
-                        <pre v-if="logItem.response_content" class="llm-prompt-pre">{{ logItem.response_content }}</pre>
-                        <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
+                        <!-- 其他常规审核/归档/总结场景 -->
+                        <template v-else>
+                          <div class="chain-section-title">{{ t('admin.data.llmSystemPrompt') }}</div>
+                          <pre v-if="logItem.system_prompt" class="llm-prompt-pre">{{ logItem.system_prompt }}</pre>
+                          <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
+
+                          <div class="chain-section-title" style="margin-top: 12px;">{{ t('admin.data.llmUserPrompt') }}</div>
+                          <pre v-if="logItem.user_prompt" class="llm-prompt-pre">{{ logItem.user_prompt }}</pre>
+                          <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
+
+                          <template v-if="logItem.reasoning_content">
+                            <div class="chain-section-title" style="margin-top: 12px; display: flex; align-items: center; gap: 6px;">
+                              <ThunderboltOutlined style="color: var(--color-primary);" />
+                              {{ t('admin.data.llmReasoningContent', '深度思考过程') }}
+                            </div>
+                            <pre class="llm-prompt-pre" style="border-left: 3px solid var(--color-primary);">{{ logItem.reasoning_content }}</pre>
+                          </template>
+
+                          <div class="chain-section-title" style="margin-top: 12px;">{{ t('admin.data.llmResponse') }}</div>
+                          <pre v-if="logItem.response_content" class="llm-prompt-pre">{{ logItem.response_content }}</pre>
+                          <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
+                        </template>
                       </div>
                     </div>
                   </div>
@@ -2984,6 +3102,172 @@ onMounted(async () => {
   background: var(--color-bg-page);
   border-radius: var(--radius-sm);
   padding: 10px;
+}
+
+.chat-call-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-detail-section {
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.chat-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.chat-section-header::-webkit-details-marker {
+  display: none;
+}
+
+.chat-section-tag {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.chat-section-tag.system {
+  background: rgba(82, 196, 26, 0.1);
+  color: #52c41a;
+}
+
+.chat-section-tag.tools {
+  background: rgba(24, 144, 255, 0.1);
+  color: #1890ff;
+}
+
+.chat-section-desc {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  flex: 1;
+}
+
+.chat-section-chevron {
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  transition: transform 0.2s ease;
+}
+
+details[open] > summary .chat-section-chevron {
+  transform: rotate(180deg);
+}
+
+.chat-tool-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.chat-tool-badge {
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11.5px;
+}
+
+.chat-tool-badge strong {
+  color: var(--color-text-primary);
+  font-family: monospace;
+}
+
+.chat-tool-badge p {
+  margin: 2px 0 0;
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+}
+
+.chat-messages-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.chat-flow-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.chat-flow-item.user {
+  background: rgba(24, 144, 255, 0.05);
+  border-left: 3px solid var(--color-primary);
+}
+
+.chat-flow-item.assistant {
+  background: var(--color-bg-container);
+  border-left: 3px solid #722ed1;
+}
+
+.chat-flow-item.tool {
+  background: rgba(250, 173, 20, 0.08);
+  border-left: 3px solid #faad14;
+}
+
+.role-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.role-badge.user { color: var(--color-primary); }
+.role-badge.assistant { color: #722ed1; }
+.role-badge.tool { color: #d48806; }
+
+.chat-flow-content {
+  white-space: pre-wrap;
+  line-height: 1.65;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.chat-flow-toolcalls {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-toolcall-item {
+  background: var(--color-bg-container);
+  border: 1px dashed var(--color-border);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.tc-name {
+  font-weight: 500;
+  color: #722ed1;
+}
+
+.tc-args {
+  margin: 4px 0 0;
+  font-family: monospace;
+  font-size: 10.5px;
+  color: var(--color-text-secondary);
+  max-height: 120px;
+  overflow: auto;
+  background: none;
+}
+
+.chat-pre {
+  margin-top: 8px;
 }
 
 .slide-enter-active,
