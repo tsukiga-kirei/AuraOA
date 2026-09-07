@@ -13,7 +13,7 @@ COMMENT ON COLUMN tenants.chat_primary_model_id IS '对话首选 AI 模型 ID（
 COMMENT ON COLUMN tenants.chat_fallback_model_id IS '对话降级 AI 模型 ID（为空时使用租户默认备选模型）';
 
 -- 2. 系统全局默认配置
-INSERT INTO system_configs (key, value, description)
+INSERT INTO system_configs (key, value, remark)
 VALUES ('tenant.default_chat_retention_days', '90', '租户默认会话保留天数')
 ON CONFLICT (key) DO NOTHING;
 
