@@ -13,6 +13,7 @@ export interface EffectiveAgentItem {
   is_default?: boolean
   is_system: boolean
   sort_order?: number
+  tool_codes?: string[]
 }
 
 export interface ChatSessionItem {
@@ -119,6 +120,7 @@ export interface MCPServerItem {
     description: string
     input_schema: Record<string, any>
   }>
+  agent_codes?: string[]
   created_at: string
   updated_at: string
 }
@@ -132,6 +134,7 @@ export interface SaveMCPServerRequest {
   endpoint_url: string
   headers?: string
   enabled: boolean
+  agent_codes?: string[]
 }
 
 export interface AgentSkillItem {
@@ -144,6 +147,7 @@ export interface AgentSkillItem {
   content: string
   input_schema?: Record<string, any>
   is_system: boolean
+  agent_codes?: string[]
   created_at: string
   updated_at: string
 }
@@ -156,6 +160,7 @@ export interface SaveSkillRequest {
   description: string
   content: string
   input_schema?: Record<string, any>
+  agent_codes?: string[]
 }
 
 export interface SystemToolCatalogItem {

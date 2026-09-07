@@ -454,7 +454,7 @@ func (s *AIModelCallerService) ChatViaPython(c *gin.Context, tenantID, userID uu
 // 使用条件更新 token_used + amount <= token_quota，只有满足条件的请求才能成功预扣。
 func (s *AIModelCallerService) reserveTokenQuota(tenantID uuid.UUID, amount int) error {
 	result := s.db.Model(&model.Tenant{}).
-		Where("id = ? AND token_used + ? <= token_quota", tenantID, amount).
+		Where("id = ? AND (token_quota < 0 OR token_used + ? <= token_quota)", tenantID, amount).
 		Update("token_used", gorm.Expr("token_used + ?", amount))
 
 	if result.Error != nil {

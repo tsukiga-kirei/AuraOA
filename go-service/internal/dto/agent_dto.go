@@ -102,6 +102,7 @@ type MCPServerDTO struct {
 	Enabled       bool           `json:"enabled"`
 	CachedTools   datatypes.JSON `json:"cached_tools"`
 	LastSyncedAt  *time.Time     `json:"last_synced_at,omitempty"`
+	AgentCodes    []string       `json:"agent_codes"`
 	CreatedAt     time.Time      `json:"created_at"`
 }
 
@@ -115,6 +116,7 @@ type SaveMCPServerRequest struct {
 	EndpointURL   string    `json:"endpoint_url" binding:"required"`
 	Headers       string    `json:"headers"` // 自定义 headers 字符串或 JSON，后端加密
 	Enabled       bool      `json:"enabled"`
+	AgentCodes    []string  `json:"agent_codes"`
 }
 
 // SkillItemDTO Skill DTO
@@ -126,6 +128,7 @@ type SkillItemDTO struct {
 	Content     string    `json:"content"`
 	Enabled     bool      `json:"enabled"`
 	IsSystem    bool      `json:"is_system"`
+	AgentCodes  []string  `json:"agent_codes"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -137,4 +140,30 @@ type SaveSkillRequest struct {
 	Description string    `json:"description"`
 	Content     string    `json:"content" binding:"required"`
 	Enabled     bool      `json:"enabled"`
+	AgentCodes  []string  `json:"agent_codes"`
+}
+
+// AgentUsageStatsDTO 数据管理页智能体用量
+type AgentUsageStatsDTO struct {
+	SessionCount   int64               `json:"session_count"`
+	MessageCount   int64               `json:"message_count"`
+	ToolCallCount  int64               `json:"tool_call_count"`
+	MCPCallCount   int64               `json:"mcp_call_count"`
+	SkillCallCount int64               `json:"skill_call_count"`
+	Agents         []AgentUsageItemDTO `json:"agents"`
+}
+
+// AgentUsageItemDTO 单个智能体的会话、工具与 Token 统计
+type AgentUsageItemDTO struct {
+	AgentCode      string   `json:"agent_code"`
+	AgentName      string   `json:"agent_name"`
+	SessionCount   int64    `json:"session_count"`
+	MessageCount   int64    `json:"message_count"`
+	TokenCount     int64    `json:"token_count"`
+	ToolCodes      []string `json:"tool_codes"`
+	MCPCodes       []string `json:"mcp_codes"`
+	SkillCodes     []string `json:"skill_codes"`
+	ToolCallCount  int64    `json:"tool_call_count"`
+	MCPCallCount   int64    `json:"mcp_call_count"`
+	SkillCallCount int64    `json:"skill_call_count"`
 }

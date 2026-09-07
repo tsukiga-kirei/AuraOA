@@ -352,6 +352,7 @@ func (s *AgentAllocationService) ListMCPServers(ctx context.Context, tenantID uu
 			Enabled:       sv.Enabled,
 			CachedTools:   sv.CachedTools,
 			LastSyncedAt:  sv.LastSyncedAt,
+			AgentCodes:    s.agentCodesForPrefix(tenantID, "mcp:"+sv.ServerCode),
 			CreatedAt:     sv.CreatedAt,
 		})
 	}
@@ -397,6 +398,9 @@ func (s *AgentAllocationService) SaveMCPServer(ctx context.Context, tenantID uui
 			updates["last_synced_at"] = nil
 		}
 		if err := s.agentRepo.UpdateMCPServer(tenantID, server.ID, updates); err != nil {
+			return nil, err
+		}
+		if err := s.syncMCPBindings(ctx, tenantID, server, req.AgentCodes); err != nil {
 			return nil, err
 		}
 		items, err := s.ListMCPServers(ctx, tenantID)
@@ -453,6 +457,9 @@ func (s *AgentAllocationService) SaveMCPServer(ctx context.Context, tenantID uui
 	if err := s.agentRepo.CreateMCPServerWithinQuota(tenantID, &server); err != nil {
 		return nil, err
 	}
+	if err := s.syncMCPBindings(ctx, tenantID, &server, req.AgentCodes); err != nil {
+		return nil, err
+	}
 
 	return &dto.MCPServerDTO{
 		ID:            server.ID,
@@ -463,11 +470,16 @@ func (s *AgentAllocationService) SaveMCPServer(ctx context.Context, tenantID uui
 		EndpointURL:   server.EndpointURL,
 		Enabled:       server.Enabled,
 		CachedTools:   server.CachedTools,
+		AgentCodes:    req.AgentCodes,
 		CreatedAt:     server.CreatedAt,
 	}, nil
 }
 
 func (s *AgentAllocationService) DeleteMCPServer(ctx context.Context, tenantID, serverID uuid.UUID) error {
+	server, err := s.agentRepo.GetMCPServerByID(tenantID, serverID)
+	if err == nil && server != nil {
+		_ = s.syncMCPBindings(ctx, tenantID, server, nil)
+	}
 	return s.agentRepo.DeleteMCPServer(tenantID, serverID)
 }
 
@@ -488,6 +500,7 @@ func (s *AgentAllocationService) ListSkills(ctx context.Context, tenantID uuid.U
 			Content:     sk.Content,
 			Enabled:     sk.Enabled,
 			IsSystem:    sk.TenantID == nil,
+			AgentCodes:  s.agentCodesForPrefix(tenantID, "skill:"+sk.SkillCode),
 			CreatedAt:   sk.CreatedAt,
 		})
 	}
@@ -510,7 +523,10 @@ func (s *AgentAllocationService) SaveSkill(ctx context.Context, tenantID uuid.UU
 		if err := s.agentRepo.UpdateSkill(tenantID, skill.ID, map[string]interface{}{"name": req.Name, "description": req.Description, "content": req.Content, "enabled": req.Enabled}); err != nil {
 			return nil, err
 		}
-		return &dto.SkillItemDTO{ID: skill.ID, SkillCode: skill.SkillCode, Name: req.Name, Description: req.Description, Content: req.Content, Enabled: req.Enabled, IsSystem: false, CreatedAt: skill.CreatedAt}, nil
+		if err := s.syncSkillBindings(ctx, tenantID, skill.SkillCode, req.AgentCodes); err != nil {
+			return nil, err
+		}
+		return &dto.SkillItemDTO{ID: skill.ID, SkillCode: skill.SkillCode, Name: req.Name, Description: req.Description, Content: req.Content, Enabled: req.Enabled, IsSystem: false, AgentCodes: req.AgentCodes, CreatedAt: skill.CreatedAt}, nil
 	}
 
 	skill := model.AgentSkill{
@@ -525,6 +541,9 @@ func (s *AgentAllocationService) SaveSkill(ctx context.Context, tenantID uuid.UU
 	if err := s.agentRepo.CreateSkill(&skill); err != nil {
 		return nil, err
 	}
+	if err := s.syncSkillBindings(ctx, tenantID, skill.SkillCode, req.AgentCodes); err != nil {
+		return nil, err
+	}
 
 	return &dto.SkillItemDTO{
 		ID:          skill.ID,
@@ -534,11 +553,19 @@ func (s *AgentAllocationService) SaveSkill(ctx context.Context, tenantID uuid.UU
 		Content:     skill.Content,
 		Enabled:     skill.Enabled,
 		IsSystem:    false,
+		AgentCodes:  req.AgentCodes,
 		CreatedAt:   skill.CreatedAt,
 	}, nil
 }
 
 func (s *AgentAllocationService) DeleteSkill(ctx context.Context, tenantID, skillID uuid.UUID) error {
+	skills, _ := s.agentRepo.ListSkills(tenantID)
+	for _, sk := range skills {
+		if sk.ID == skillID {
+			_ = s.syncSkillBindings(ctx, tenantID, sk.SkillCode, nil)
+			break
+		}
+	}
 	return s.agentRepo.DeleteSkill(tenantID, skillID)
 }
 
@@ -552,16 +579,7 @@ func (s *AgentAllocationService) GetTenantCatalog(ctx context.Context, tenantID 
 	if err != nil {
 		return nil, err
 	}
-	permitted := make(map[string]bool)
-	for _, code := range repository.ParseJSONSlice(alloc.ToolCodes) {
-		permitted[code] = true
-	}
-	filtered := []dto.SystemToolCatalogItem{}
-	for _, item := range catalog.ToolCatalog {
-		if permitted[item.ToolCode] {
-			filtered = append(filtered, item)
-		}
-	}
+	filtered := append([]dto.SystemToolCatalogItem{}, catalog.ToolCatalog...)
 	if alloc.AllowTenantMCP {
 		servers, err := s.agentRepo.ListMCPServers(tenantID)
 		if err != nil {
@@ -583,12 +601,7 @@ func (s *AgentAllocationService) GetTenantCatalog(ctx context.Context, tenantID 
 	}
 	catalog.SkillCatalog = []dto.SkillItemDTO{}
 	for _, sk := range skills {
-		allowed := !sk.IsSystem && alloc.AllowCustomSkills
-		for _, code := range repository.ParseJSONSlice(alloc.SkillCodes) {
-			if code == sk.SkillCode {
-				allowed = true
-			}
-		}
+		allowed := sk.IsSystem || alloc.AllowCustomSkills
 		if allowed && sk.Enabled {
 			catalog.SkillCatalog = append(catalog.SkillCatalog, sk)
 		}
@@ -609,9 +622,99 @@ func (s *AgentAllocationService) validateBindings(tenantID uuid.UUID, alloc *mod
 		allowed["skill:"+skill.SkillCode] = true
 	}
 	for _, code := range codes {
-		if !allowed[strings.TrimSpace(code)] {
-			return fmt.Errorf("工具或技能「%s」未启用或超出当前租户配额", code)
+		trimmed := strings.TrimSpace(code)
+		if allowed[trimmed] || strings.HasPrefix(trimmed, "mcp:") {
+			continue
+		}
+		return fmt.Errorf("工具或技能「%s」未启用或超出当前租户配额", code)
+	}
+	return nil
+}
+
+func (s *AgentAllocationService) agentCodesForPrefix(tenantID uuid.UUID, prefix string) []string {
+	agents, err := s.agentRepo.ListAgentsByTenant(tenantID)
+	if err != nil {
+		return []string{}
+	}
+	seen := map[string]bool{}
+	var codes []string
+	for _, agent := range agents {
+		for _, binding := range agent.ToolBindings {
+			if strings.HasPrefix(binding.ToolCode, prefix) && !seen[agent.AgentCode] {
+				seen[agent.AgentCode] = true
+				codes = append(codes, agent.AgentCode)
+			}
+		}
+	}
+	return codes
+}
+
+func (s *AgentAllocationService) mcpToolCodes(server *model.MCPServer) []string {
+	var codes []string
+	for _, def := range ConvertMCPToolsToDefinitions(server.ServerCode, server.CachedTools) {
+		codes = append(codes, def.Function.Name)
+	}
+	if len(codes) == 0 {
+		return []string{"mcp:" + server.ServerCode}
+	}
+	return codes
+}
+
+func (s *AgentAllocationService) syncMCPBindings(_ context.Context, tenantID uuid.UUID, server *model.MCPServer, agentCodes []string) error {
+	return s.syncCapabilityBindings(tenantID, "mcp:"+server.ServerCode, s.mcpToolCodes(server), agentCodes)
+}
+
+func (s *AgentAllocationService) syncSkillBindings(_ context.Context, tenantID uuid.UUID, skillCode string, agentCodes []string) error {
+	return s.syncCapabilityBindings(tenantID, "skill:"+skillCode, []string{"skill:" + skillCode}, agentCodes)
+}
+
+// RefreshMCPAgentBindings 测试连接发现工具后，按原挂载智能体重新写入绑定。
+func (s *AgentAllocationService) RefreshMCPAgentBindings(ctx context.Context, tenantID, serverID uuid.UUID) error {
+	server, err := s.agentRepo.GetMCPServerByID(tenantID, serverID)
+	if err != nil || server == nil {
+		return err
+	}
+	return s.syncMCPBindings(ctx, tenantID, server, s.agentCodesForPrefix(tenantID, "mcp:"+server.ServerCode))
+}
+
+func (s *AgentAllocationService) syncCapabilityBindings(tenantID uuid.UUID, prefix string, toolCodes []string, agentCodes []string) error {
+	wanted := map[string]bool{}
+	for _, code := range agentCodes {
+		if code != "" {
+			wanted[code] = true
+		}
+	}
+	agents, err := s.agentRepo.ListAgentsByTenant(tenantID)
+	if err != nil {
+		return err
+	}
+	for i := range agents {
+		agent := &agents[i]
+		kept := make([]string, 0, len(agent.ToolBindings))
+		had := false
+		for _, binding := range agent.ToolBindings {
+			if strings.HasPrefix(binding.ToolCode, prefix) {
+				had = true
+				continue
+			}
+			kept = append(kept, binding.ToolCode)
+		}
+		should := wanted[agent.AgentCode]
+		if !should && !had {
+			continue
+		}
+		next := kept
+		if should {
+			next = append(next, toolCodes...)
+		}
+		if err := s.agentRepo.SaveTenantAgent(tenantID, agent, map[string]interface{}{}, &next); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// GetAgentUsageStats 汇总租户内各智能体的会话、消息、工具/MCP/Skill 调用与 Token。
+func (s *AgentAllocationService) GetAgentUsageStats(ctx context.Context, tenantID uuid.UUID) (*dto.AgentUsageStatsDTO, error) {
+	return s.agentRepo.QueryAgentUsageStats(tenantID)
 }

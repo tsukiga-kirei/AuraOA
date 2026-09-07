@@ -33,6 +33,9 @@ const agents = ref<AgentDefinitionItem[]>([])
 const mcpServers = ref<MCPServerItem[]>([])
 const skills = ref<AgentSkillItem[]>([])
 const systemTools = ref<SystemToolCatalogItem[]>([])
+const mcpTools = ref<SystemToolCatalogItem[]>([])
+const skillTools = ref<SystemToolCatalogItem[]>([])
+const agentOptions = computed(() => agents.value.map(item => ({ label: item.name, value: item.agent_code })))
 
 // 模态框状态
 const agentModalVisible = ref(false)
@@ -80,7 +83,10 @@ const fetchAll = async () => {
     agents.value = agentsData || []
     mcpServers.value = mcpData || []
     skills.value = skillsData || []
-    systemTools.value = [...(catalogData?.tool_catalog || []), ...(catalogData?.skill_catalog || []).map(sk => ({tool_code: 'skill:' + sk.skill_code, name: sk.name, description: sk.description, ui_kind: 'skill'}))]
+    const catalogTools = catalogData?.tool_catalog || []
+    systemTools.value = catalogTools.filter(item => !item.tool_code.startsWith('mcp:') && !item.tool_code.startsWith('skill:'))
+    mcpTools.value = catalogTools.filter(item => item.tool_code.startsWith('mcp:'))
+    skillTools.value = (catalogData?.skill_catalog || []).map(sk => ({ tool_code: 'skill:' + sk.skill_code, name: sk.name, description: sk.description, ui_kind: 'skill' }))
   } catch (err: any) {
     message.error(err.message || t('common.loadFailed'))
   } finally {
@@ -156,6 +162,7 @@ const openCreateMCP = () => {
     endpoint_url: '',
     headers: '',
     enabled: true,
+    agent_codes: [],
   }
   mcpModalVisible.value = true
 }
@@ -206,7 +213,7 @@ const openCreateSkill = () => {
     skill_code: '',
     name: '',
     description: '',
-    content: '', enabled: true,
+    content: '', enabled: true, agent_codes: [],
   }
   skillModalVisible.value = true
 }
@@ -307,6 +314,12 @@ onMounted(() => {
           <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="160px" />
           <a-table-column :title="t('agentAdmin.col.transport')" dataIndex="transport_type" width="90px" />
           <a-table-column :title="t('agentAdmin.col.endpoint')" dataIndex="endpoint_url" />
+          <a-table-column :title="t('agentAdmin.col.mountAgents')" width="180px">
+            <template #default="{ record }">
+              <span v-if="!record.agent_codes?.length" class="muted-text">-</span>
+              <a-tag v-for="code in record.agent_codes" :key="code">{{ agents.find(item => item.agent_code === code)?.name || code }}</a-tag>
+            </template>
+          </a-table-column>
           <a-table-column :title="t('agentAdmin.col.discoveredTools')" width="140px">
             <template #default="{ record }">
               <a-tag color="cyan">{{ record.cached_tools?.length || 0 }}</a-tag>
@@ -320,7 +333,7 @@ onMounted(() => {
           <a-table-column :title="t('agentAdmin.col.actions')" width="180px">
             <template #default="{ record }">
               <a-space>
-                <a-button type="link" size="small" @click="mcpForm = { ...record, headers: '' }; mcpModalVisible = true">{{ t('agentAdmin.edit') }}</a-button>
+                <a-button type="link" size="small" @click="mcpForm = { ...record, headers: '', agent_codes: [...(record.agent_codes || [])] }; mcpModalVisible = true">{{ t('agentAdmin.edit') }}</a-button>
                 <a-button type="link" size="small" @click="testMCP(record.id)">{{ t('agentAdmin.testConnection') }}</a-button>
                 <a-popconfirm :title="t('agentAdmin.deleteConfirm')" @confirm="deleteMCP(record.id)">
                   <a-button type="link" danger size="small">{{ t('agentAdmin.delete') }}</a-button>
@@ -344,6 +357,12 @@ onMounted(() => {
           <a-table-column :title="t('agentAdmin.col.code')" dataIndex="skill_code" width="160px" />
           <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="180px" />
           <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description" />
+          <a-table-column :title="t('agentAdmin.col.mountAgents')" width="180px">
+            <template #default="{ record }">
+              <span v-if="!record.agent_codes?.length" class="muted-text">-</span>
+              <a-tag v-for="code in record.agent_codes" :key="code">{{ agents.find(item => item.agent_code === code)?.name || code }}</a-tag>
+            </template>
+          </a-table-column>
           <a-table-column :title="t('agentAdmin.col.source')" dataIndex="is_system" width="100px">
             <template #default="{ text }">
               <a-tag :color="text ? 'blue' : 'green'">{{ text ? t('agentAdmin.systemBuiltin') : t('agentAdmin.tenantCustom') }}</a-tag>
@@ -358,7 +377,7 @@ onMounted(() => {
               >
                 <a-button type="link" danger size="small">{{ t('agentAdmin.delete') }}</a-button>
               </a-popconfirm>
-              <a-button v-if="!record.is_system" type="link" size="small" @click="skillForm = { ...record }; skillModalVisible = true">{{ t('agentAdmin.edit') }}</a-button>
+              <a-button v-if="!record.is_system" type="link" size="small" @click="skillForm = { ...record, agent_codes: [...(record.agent_codes || [])] }; skillModalVisible = true">{{ t('agentAdmin.edit') }}</a-button>
             </template>
           </a-table-column>
         </a-table>
@@ -381,15 +400,29 @@ onMounted(() => {
         <a-form-item :label="t('agentAdmin.form.systemPrompt')">
           <a-textarea v-model:value="agentForm.system_prompt" :rows="4" />
         </a-form-item>
-        <a-form-item :label="t('agentAdmin.form.bindTools')">
-          <a-checkbox-group v-model:value="agentForm.tool_codes">
+        <a-checkbox-group v-model:value="agentForm.tool_codes" class="bind-groups">
+          <a-form-item :label="t('agentAdmin.form.bindSystemTools')">
             <a-row :gutter="[8, 8]">
               <a-col :span="12" v-for="tool in systemTools" :key="tool.tool_code">
                 <a-checkbox :value="tool.tool_code">{{ tool.name }}</a-checkbox>
               </a-col>
             </a-row>
-          </a-checkbox-group>
-        </a-form-item>
+          </a-form-item>
+          <a-form-item v-if="mcpTools.length" :label="t('agentAdmin.form.bindMCP')">
+            <a-row :gutter="[8, 8]">
+              <a-col :span="12" v-for="tool in mcpTools" :key="tool.tool_code">
+                <a-checkbox :value="tool.tool_code">{{ tool.name }}</a-checkbox>
+              </a-col>
+            </a-row>
+          </a-form-item>
+          <a-form-item v-if="skillTools.length" :label="t('agentAdmin.form.bindSkills')">
+            <a-row :gutter="[8, 8]">
+              <a-col :span="12" v-for="tool in skillTools" :key="tool.tool_code">
+                <a-checkbox :value="tool.tool_code">{{ tool.name }}</a-checkbox>
+              </a-col>
+            </a-row>
+          </a-form-item>
+        </a-checkbox-group>
       </a-form>
     </a-modal>
 
@@ -410,6 +443,9 @@ onMounted(() => {
           <p v-if="mcpForm.id" class="form-hint">{{ t('chat.mcpHeadersHint') }}</p>
         </a-form-item>
         <a-form-item :label="t('agentAdmin.col.status')"><a-switch v-model:checked="mcpForm.enabled" /></a-form-item>
+        <a-form-item :label="t('agentAdmin.form.mountAgents')">
+          <a-select v-model:value="mcpForm.agent_codes" mode="multiple" :options="agentOptions" :placeholder="t('agentAdmin.form.mountAgentsPlaceholder')" />
+        </a-form-item>
       </a-form>
     </a-modal>
 
@@ -426,6 +462,9 @@ onMounted(() => {
           <a-textarea v-model:value="skillForm.content" :rows="5" />
         </a-form-item>
         <a-form-item :label="t('agentAdmin.col.status')"><a-switch v-model:checked="skillForm.enabled" /></a-form-item>
+        <a-form-item :label="t('agentAdmin.form.mountAgents')">
+          <a-select v-model:value="skillForm.agent_codes" mode="multiple" :options="agentOptions" :placeholder="t('agentAdmin.form.mountAgentsPlaceholder')" />
+        </a-form-item>
       </a-form>
     </a-modal>
   </div>

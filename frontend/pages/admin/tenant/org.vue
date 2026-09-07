@@ -33,6 +33,10 @@ const {
 
 const { currentUser, refreshRoles, userLocale } = useAuth()
 
+const refreshCurrentAccess = async () => {
+  await refreshRoles()
+}
+
 // 页面挂载时加载成员、角色、部门数据
 onMounted(() => {
   loadAll()
@@ -176,7 +180,7 @@ const handleSaveMember = async () => {
       
       // 如果修改的是当前登录用户，刷新角色列表
       if (currentUser.value && editingMember.value.username === currentUser.value.username) {
-        refreshRoles()
+        await refreshCurrentAccess()
       }
       
       message.success(t('admin.org.memberUpdated'))
@@ -211,7 +215,7 @@ const toggleMemberStatus = async (m: OrgMember) => {
     
     // 如果修改的是当前登录用户，刷新角色列表
     if (currentUser.value && m.username === currentUser.value.username) {
-      refreshRoles()
+      await refreshCurrentAccess()
     }
     
     message.success(newStatus === 'active' ? t('admin.org.memberEnabled') : t('admin.org.memberDisabled'))
@@ -227,7 +231,7 @@ const removeMember = async (m: OrgMember) => {
     
     // 如果删除的是当前登录用户，尝试刷新或登出（通常不建议在管理台删除自己，但需处理逻辑）
     if (currentUser.value && m.username === currentUser.value.username) {
-      refreshRoles()
+      await refreshCurrentAccess()
     }
     
     message.success(t('admin.org.memberDeleted'))
@@ -241,10 +245,9 @@ const showRoleModal = ref(false)
 const editingRole = ref<OrgRole | null>(null)
 const roleForm = ref({ name: '', description: '', page_permissions: [] as string[], agent_codes: [] as string[], tool_codes: [] as string[] })
 const grantAgents = ref<{agent_code:string; name:string}[]>([])
-const grantTools = ref<{tool_code:string; name:string}[]>([])
 const grantAuth = useAuth()
 const loadGrantCatalog = async () => {
-  try { const { authFetch } = grantAuth; const [agents, catalog] = await Promise.all([authFetch<any[]>('/api/tenant/agents'), authFetch<any>('/api/tenant/agent-catalog')]); grantAgents.value = agents; grantTools.value = catalog.tool_catalog || [] } catch (e: any) { message.error(e.message) }
+  try { const { authFetch } = grantAuth; grantAgents.value = await authFetch<any[]>('/api/tenant/agents') } catch (e: any) { message.error(e.message) }
 }
 
 interface PageConfig {
@@ -328,7 +331,7 @@ const isPermDisabled = (path: string) => {
 
 const openAddRole = () => {
   editingRole.value = null
-  roleForm.value = { name: '', description: '', page_permissions: ['/overview', '/dashboard', '/summary', '/settings'], agent_codes: [], tool_codes: [] }
+  roleForm.value = { name: '', description: '', page_permissions: ['/overview', '/dashboard', '/chat', '/summary', '/settings'], agent_codes: [], tool_codes: [] }
   void loadGrantCatalog()
   showRoleModal.value = true
 }
@@ -368,6 +371,7 @@ const handleSaveRole = async () => {
       message.success(t('admin.org.roleAdded'))
     }
     showRoleModal.value = false
+    await refreshCurrentAccess()
   } catch (e: any) {
     message.error(e.message || t('admin.org.operationFailed'))
   }
@@ -732,7 +736,6 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
         </a-form-item>
         <template v-if="roleForm.page_permissions.includes('/chat')">
           <a-form-item :label="t('chat.agents')"><a-select v-model:value="roleForm.agent_codes" mode="multiple" :options="grantAgents.map(item => ({label:item.name,value:item.agent_code}))" /></a-form-item>
-          <a-form-item :label="t('agentAdmin.form.bindTools')"><a-select v-model:value="roleForm.tool_codes" mode="multiple" :options="grantTools.map(item => ({label:item.name,value:item.tool_code}))" /></a-form-item>
           <p class="perm-hint">{{ t('chat.grantHint') }}</p>
         </template>
       </a-form>

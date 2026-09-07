@@ -39,6 +39,7 @@ import type {
   LLMLogItem,
   LLMLogDetail,
   LLMProcessItem,
+  AgentUsageStats,
   PagedResult,
 } from '~/types/admin-data'
 
@@ -202,6 +203,10 @@ export function useAdminDataApi() {
     return await authFetch<{ chain: LLMLogDetail[] }>(`/api/tenant/llm-logs/${encodeURIComponent(processId)}/chain`)
   }
 
+  async function getAgentUsageStats(): Promise<AgentUsageStats> {
+    return await authFetch<AgentUsageStats>('/api/tenant/agent-stats')
+  }
+
   // ── 工具函数 ──────────────────────────────────────────────────────────────────
 
   /**
@@ -307,5 +312,6 @@ export function useAdminDataApi() {
     listLLMProcesses,
     getLLMLogStats,
     getLLMProcessChain,
+    getAgentUsageStats,
   }
 }

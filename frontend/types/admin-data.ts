@@ -321,6 +321,29 @@ export interface LLMLogStats {
   summary_count: number
 }
 
+export interface AgentUsageItem {
+  agent_code: string
+  agent_name: string
+  session_count: number
+  message_count: number
+  token_count: number
+  tool_codes: string[]
+  mcp_codes: string[]
+  skill_codes: string[]
+  tool_call_count: number
+  mcp_call_count: number
+  skill_call_count: number
+}
+
+export interface AgentUsageStats {
+  session_count: number
+  message_count: number
+  tool_call_count: number
+  mcp_call_count: number
+  skill_call_count: number
+  agents: AgentUsageItem[]
+}
+
 export interface LLMLogFilter {
   request_type?: string
   call_type?: string

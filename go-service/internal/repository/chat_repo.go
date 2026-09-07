@@ -48,7 +48,11 @@ func (r *ChatRepo) ListSessionsByUser(tenantID, userID uuid.UUID, keyword string
 		Where("tenant_id = ? AND user_id = ?", tenantID, userID)
 
 	if keyword != "" {
-		query = query.Where("title ILIKE ?", "%"+keyword+"%")
+		like := "%" + keyword + "%"
+		query = query.Where(`title ILIKE ? OR EXISTS (
+			SELECT 1 FROM chat_messages m
+			WHERE m.session_id = chat_sessions.id AND m.tenant_id = chat_sessions.tenant_id AND m.content ILIKE ?
+		)`, like, like)
 	}
 
 	var total int64

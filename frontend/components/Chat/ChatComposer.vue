@@ -38,15 +38,20 @@ const handleSubmit = () => {
   if (!text) return
   emit('submit', text)
   inputContent.value = ''
-  if (textareaRef.value) {
-    textareaRef.value.style.height = 'auto'
-  }
+  nextTick(resizeToContent)
+}
+
+const LINE_HEIGHT = 34
+const MAX_HEIGHT = 168
+const resizeToContent = () => {
+  const el = textareaRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(Math.max(el.scrollHeight, LINE_HEIGHT), MAX_HEIGHT)}px`
 }
 
 const handleInput = () => {
-  if (!textareaRef.value) return
-  textareaRef.value.style.height = 'auto'
-  textareaRef.value.style.height = `${Math.min(textareaRef.value.scrollHeight, 140)}px`
+  resizeToContent()
 }
 
 const appendPrompt = (prompt: string) => {
@@ -61,6 +66,8 @@ const appendPrompt = (prompt: string) => {
   })
 }
 
+onMounted(resizeToContent)
+
 defineExpose({
   appendPrompt,
 })
@@ -72,7 +79,7 @@ defineExpose({
       <textarea
         ref="textareaRef"
         v-model="inputContent"
-        rows="2"
+        rows="1"
         :disabled="disabled"
         :aria-label="placeholder || t('chat.composerPlaceholder')"
         class="chat-composer-textarea"
@@ -100,11 +107,11 @@ defineExpose({
 
 <style scoped>
 .chat-composer-wrapper { width:min(100%,780px); margin:auto; }
-.chat-composer-inner { display:flex; align-items:flex-end; border:1px solid var(--color-border); background:var(--color-bg-page); border-radius:20px; padding:17px 18px; box-shadow:0 4px 20px rgba(0,0,0,.025); transition:border-color .2s; }
+.chat-composer-inner { display:flex; align-items:flex-end; border:1px solid var(--color-border); background:var(--color-bg-page); border-radius:22px; padding:6px 8px 6px 16px; box-shadow:0 4px 20px rgba(0,0,0,.025); transition:border-color .2s; }
 .chat-composer-inner:focus-within { border-color:var(--color-primary); }
-.chat-composer-textarea { flex:1; min-width:0; border:0; outline:none; resize:none; background:none; color:var(--color-text-primary); font:inherit; font-size:14px; line-height:1.75; max-height:180px; padding:0; }
+.chat-composer-textarea { flex:1; min-width:0; min-height:34px; border:0; outline:none; resize:none; background:none; color:var(--color-text-primary); font:inherit; font-size:14px; line-height:22px; max-height:168px; padding:6px 0; overflow-y:auto; }
 .chat-composer-textarea::placeholder { color:var(--color-text-tertiary); }
-.chat-composer-btn { display:grid; place-items:center; flex-shrink:0; width:34px; height:34px; border:0; border-radius:50%; background:var(--color-text-primary); color:var(--color-bg-card); margin-left:14px; font-size:16px; cursor:pointer; }
+.chat-composer-btn { display:grid; place-items:center; flex-shrink:0; width:34px; height:34px; border:0; border-radius:50%; background:var(--color-text-primary); color:var(--color-bg-card); margin-left:10px; font-size:16px; cursor:pointer; }
 .chat-composer-btn:disabled { opacity:.25; cursor:default; }
 .chat-composer-btn.is-submitting { background:var(--color-primary); color:white; }
 </style>

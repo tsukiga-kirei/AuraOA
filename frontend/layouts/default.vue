@@ -29,7 +29,7 @@ watch(route, () => {
 </script>
 
 <template>
-  <div class="app-layout" :class="{ 'app-layout--collapsed': collapsed }">
+  <div class="app-layout" :class="{ 'app-layout--collapsed': collapsed, 'app-layout--chat': route.path === '/chat' }">
     <AppSidebar
       :collapsed="collapsed"
       :mobile-menu-open="mobileMenuOpen"
@@ -94,7 +94,25 @@ watch(route, () => {
   margin: 0 auto;
 }
 
-.app-content.app-content--chat { padding: 0; max-width: none; min-height: 0; height: calc(100dvh - var(--header-height)); flex: none; }
+.app-layout--chat {
+  height: 100dvh;
+  overflow: hidden;
+}
+.app-layout--chat .main-wrapper {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.app-content.app-content--chat {
+  padding: 0;
+  max-width: none;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg-card);
+}
 .main-wrapper { min-width: 0; }
 @media (max-width: 768px) {
   .main-wrapper {
@@ -103,6 +121,10 @@ watch(route, () => {
   .app-content {
     min-height: calc(100vh - var(--header-height));
     padding: 16px;
+  }
+  .app-content.app-content--chat {
+    padding: 0;
+    min-height: 0;
   }
 }
 @media (max-width: 480px) {

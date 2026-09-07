@@ -1342,7 +1342,11 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             <a-row :gutter="16">
               <a-col :span="12">
                 <a-form-item :label="t('admin.settings.tenantDefaultTokenQuota')">
-                  <a-input-number v-model:value="generalConfig.tenant_default_token_quota" :min="1000" :max="10000000" :step="1000" style="width: 100%;" size="large" />
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                    <a-switch :checked="generalConfig.tenant_default_token_quota < 0" @change="(checked: boolean) => generalConfig.tenant_default_token_quota = checked ? -1 : 10000" />
+                    <span>{{ t('admin.tenants.unlimitedQuota') }}</span>
+                  </div>
+                  <a-input-number v-if="generalConfig.tenant_default_token_quota >= 0" v-model:value="generalConfig.tenant_default_token_quota" :min="1000" :max="10000000" :step="1000" style="width: 100%;" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="12">

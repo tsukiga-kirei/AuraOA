@@ -6,8 +6,8 @@
 
 | 方法 | 路由 | 说明 |
 |---|---|---|
-| GET | /api/chat/agents | 有效智能体数组，字段 id、agent_code、name、description、is_system |
-| GET | /api/chat/sessions | 本人的会话列表；keyword 按标题搜索；page 默认 1、page_size 默认 20，范围 1–100 |
+| GET | /api/chat/agents | 有效智能体数组，字段 id、agent_code、name、description、is_system、tool_codes |
+| GET | /api/chat/sessions | 本人的会话列表；keyword 匹配标题或消息正文；page 默认 1、page_size 默认 20，范围 1–100 |
 | POST | /api/chat/sessions | 创建：agent_code 必填；title、process_id、source 可选 |
 | GET | /api/chat/sessions/:id | 返回 session 与 messages |
 | PATCH | /api/chat/sessions/:id | 更新 title、pinned，未传字段保持原值 |
@@ -15,7 +15,7 @@
 | POST | /api/chat/sessions/:id/messages/stream | 请求 {"content":"问题"}；返回 SSE |
 
 普通响应为 `{code:0,message:"success",data:...}`。列表 data 为 `{items:[],total:0,page:1,page_size:20}`。
-会话字段：id、agent_id、agent_code、title、source、process_id、pinned、created_at、updated_at。
+会话字段：id、agent_id、agent_code、agent_name、title、source、process_id、pinned、created_at、updated_at。
 消息字段：id、session_id、role、content、reasoning_content、status、tool_calls、token_usage、created_at。字段为 snake_case。
 
 ## 流式事件
@@ -40,7 +40,7 @@ SSE 解析支持 UTF-8 分片、CRLF、跨网络包事件名及多行 data。消
 
 ## 界面与限制
 
-全局侧栏按 agent_code 归组会话，智能体目录可折叠，各组可新建；搜索跨所有本人会话，结果仍按智能体显示，加载更多保持服务端分页语义。已撤销智能体的历史保留在原分组。
+全局侧栏在「AI 助理」分区按智能体归组会话，仅智能体旁提供新建；搜索改为分类弹出框（智能体 / 工具 / 对话），对话检索覆盖标题与消息正文。已撤销智能体的历史保留在原分组。
 回答为安全过滤后的 GFM Markdown 文档；系统工具、MCP、Skill 默认采用紧凑执行行，详细输出按需展开。
 运行时最多 8 轮，末轮不提供工具。所有 AI 调用走统一配额、日志、重试入口；聊天专用主/备用模型为空时继承租户模型。聊天保留期由系统管理员配置，后台每小时清理到期会话。
 当前实现独立对话页；专用嵌入对话路由尚未提供。

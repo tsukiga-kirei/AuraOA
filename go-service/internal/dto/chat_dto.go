@@ -14,6 +14,7 @@ type EffectiveAgentDTO struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	IsSystem    bool      `json:"is_system"`
+	ToolCodes   []string  `json:"tool_codes"`
 }
 
 // CreateSessionRequest 创建会话请求
@@ -35,6 +36,7 @@ type ChatSessionItemDTO struct {
 	ID        uuid.UUID `json:"id"`
 	AgentID   uuid.UUID `json:"agent_id"`
 	AgentCode string    `json:"agent_code"`
+	AgentName string    `json:"agent_name,omitempty"`
 	Title     string    `json:"title"`
 	Source    string    `json:"source"`
 	ProcessID *string   `json:"process_id"`

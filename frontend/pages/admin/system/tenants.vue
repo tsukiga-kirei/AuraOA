@@ -63,6 +63,7 @@ const selectedTenant = ref<TenantData | null>(null)
 const showCreate = ref(false)
 const showDetail = ref(false)
 const detailActiveTab = ref('basic')
+const chatAllocRef = ref<{ save: (silent?: boolean) => Promise<void> } | null>(null)
 const ssoBasicPassword = ref('')
 const ssoPasswordVisible = ref(false)
 const ssoEndpoint = computed(() => process.client
@@ -361,6 +362,7 @@ const saveTenantDetail = async () => {
       contact_email: s.contact_email,
       contact_phone: s.contact_phone,
     })
+    await chatAllocRef.value?.save(true)
     const idx = tenants.value.findIndex(t => t.id === s.id)
     if (idx >= 0) tenants.value[idx] = { ...tenants.value[idx], ...updated }
     showDetail.value = false
@@ -383,7 +385,8 @@ const toggleTenantStatus = async (id: string) => {
   }
 }
 
-const getQuotaPercent = (used: number, total: number) => Math.round((used / total) * 100)
+const isUnlimitedQuota = (total: number) => total < 0
+const getQuotaPercent = (used: number, total: number) => total <= 0 ? 0 : Math.round((used / total) * 100)
 
 const getQuotaColor = (percent: number) => {
   if (percent >= 90) return '#ef4444'
@@ -836,10 +839,13 @@ const confirmDeleteTenant = async () => {
           <div class="token-usage-header">
             <span class="token-usage-label">{{ t('admin.tenants.tokenUsage') }}</span>
             <span class="token-usage-nums">
-              {{ (tenant.token_used / 1000).toFixed(1) }}K / {{ (tenant.token_quota / 1000).toFixed(0) }}K
-              <span class="token-usage-percent" :style="{ color: getQuotaColor(getQuotaPercent(tenant.token_used, tenant.token_quota)) }">
-                {{ getQuotaPercent(tenant.token_used, tenant.token_quota) }}%
-              </span>
+              <template v-if="isUnlimitedQuota(tenant.token_quota)">{{ t('admin.tenants.unlimitedQuota') }}</template>
+              <template v-else>
+                {{ (tenant.token_used / 1000).toFixed(1) }}K / {{ (tenant.token_quota / 1000).toFixed(0) }}K
+                <span class="token-usage-percent" :style="{ color: getQuotaColor(getQuotaPercent(tenant.token_used, tenant.token_quota)) }">
+                  {{ getQuotaPercent(tenant.token_used, tenant.token_quota) }}%
+                </span>
+              </template>
             </span>
           </div>
           <div class="quota-bar">
@@ -920,7 +926,11 @@ const confirmDeleteTenant = async () => {
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item :label="t('admin.tenants.tokenQuota')">
-              <a-input-number v-model:value="newTenant.token_quota" :min="1000" :step="1000" style="width: 100%;" size="large" />
+              <div class="quota-unlimited-row">
+                <a-switch :checked="isUnlimitedQuota(newTenant.token_quota)" @change="(checked: boolean) => newTenant.token_quota = checked ? -1 : 10000" />
+                <span>{{ t('admin.tenants.unlimitedQuota') }}</span>
+              </div>
+              <a-input-number v-if="!isUnlimitedQuota(newTenant.token_quota)" v-model:value="newTenant.token_quota" :min="1000" :step="1000" style="width: 100%; margin-top: 8px;" size="large" />
             </a-form-item>
           </a-col>
           <a-col :span="12">
@@ -1061,7 +1071,7 @@ const confirmDeleteTenant = async () => {
           </button>
         </div>
 
-        <ChatAllocationPanel v-if="detailActiveTab === 'chat'" :tenant-id="selectedTenant.id" :models="availableModels" />
+        <ChatAllocationPanel v-show="detailActiveTab === 'chat'" ref="chatAllocRef" :tenant-id="selectedTenant.id" :models="availableModels" />
         <!--基本信息选项卡-->
         <div v-if="detailActiveTab === 'basic'" class="detail-section">
           <div class="section-header">
@@ -1324,7 +1334,11 @@ const confirmDeleteTenant = async () => {
               <a-row :gutter="16">
                 <a-col :span="12">
                   <a-form-item :label="t('admin.tenants.tokenQuota')">
-                    <a-input-number v-model:value="selectedTenant.token_quota" :min="1000" :step="1000" style="width: 100%;" size="large" />
+                    <div class="quota-unlimited-row">
+                      <a-switch :checked="isUnlimitedQuota(selectedTenant.token_quota)" @change="(checked: boolean) => selectedTenant && (selectedTenant.token_quota = checked ? -1 : 10000)" />
+                      <span>{{ t('admin.tenants.unlimitedQuota') }}</span>
+                    </div>
+                    <a-input-number v-if="!isUnlimitedQuota(selectedTenant.token_quota)" v-model:value="selectedTenant.token_quota" :min="1000" :step="1000" style="width: 100%; margin-top: 8px;" size="large" />
                   </a-form-item>
                 </a-col>
                 <a-col :span="12">
@@ -1335,10 +1349,13 @@ const confirmDeleteTenant = async () => {
               </a-row>
               <div class="usage-display">
                 <div class="usage-info">
-                  <span>{{ t('admin.tenants.usedTokens', [selectedTenant.token_used.toLocaleString(), selectedTenant.token_quota.toLocaleString()]) }}</span>
-                  <span :style="{ color: getQuotaColor(getQuotaPercent(selectedTenant.token_used, selectedTenant.token_quota)) }">
-                    {{ getQuotaPercent(selectedTenant.token_used, selectedTenant.token_quota) }}%
-                  </span>
+                  <span v-if="isUnlimitedQuota(selectedTenant.token_quota)">{{ t('admin.tenants.usedUnlimited', [selectedTenant.token_used.toLocaleString()]) }}</span>
+                  <template v-else>
+                    <span>{{ t('admin.tenants.usedTokens', [selectedTenant.token_used.toLocaleString(), selectedTenant.token_quota.toLocaleString()]) }}</span>
+                    <span :style="{ color: getQuotaColor(getQuotaPercent(selectedTenant.token_used, selectedTenant.token_quota)) }">
+                      {{ getQuotaPercent(selectedTenant.token_used, selectedTenant.token_quota) }}%
+                    </span>
+                  </template>
                 </div>
                 <div class="quota-bar" style="height: 8px;">
                   <div
@@ -1731,6 +1748,7 @@ const confirmDeleteTenant = async () => {
 .stat-value { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
 
 /* Token 用量 */
+.quota-unlimited-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .token-usage-block { margin-bottom: 14px; }
 .token-usage-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .token-usage-label { font-size: 11px; color: var(--color-text-tertiary); }
