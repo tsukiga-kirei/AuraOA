@@ -159,6 +159,8 @@ SELECT DISTINCT tenant_id::text AS tid FROM (
   UNION
   SELECT tenant_id FROM archive_process_snapshots
   WHERE updated_at >= NOW() - INTERVAL '30 days'
+  UNION
+  SELECT tenant_id FROM process_summary_logs WHERE status = 'completed' AND updated_at >= NOW() - INTERVAL '30 days'
 ) sub`
 
 	type row struct {

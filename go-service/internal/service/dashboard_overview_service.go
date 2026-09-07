@@ -360,10 +360,12 @@ func (s *DashboardOverviewService) buildPendingTasks(c *gin.Context, userID uuid
 		log.Printf("dashboard: archiveLogRepo.CountPendingSince error: %v", err)
 	}
 
+	summaryPending, _ := s.summaryLogRepo.CountPendingSince(c, userID, since)
 	return &dto.PendingTasksData{
+		SummaryPending: summaryPending,
 		AuditPending:   auditPending,
 		ArchivePending: archivePending,
-		Total:          auditPending + archivePending,
+		Total:          auditPending + archivePending + summaryPending,
 	}
 }
 
@@ -417,6 +419,7 @@ func (s *DashboardOverviewService) buildDeptDistribution(c *gin.Context) []dto.D
 	auditDepts, _ := s.auditSnapshotRepo.CountByDepartment(c)
 	archiveDepts, _ := s.archiveSnapshotRepo.CountByDepartment(c)
 	cronDepts, _ := s.cronLogRepo.CountByDepartment(c)
+	summaryDepts, _ := s.summaryLogRepo.CountByDepartment(c)
 
 	deptMap := make(map[string]*dto.DeptDistributionData)
 	for _, d := range auditDepts {
@@ -438,9 +441,15 @@ func (s *DashboardOverviewService) buildDeptDistribution(c *gin.Context) []dto.D
 		deptMap[d.Department].CronCount = d.Count
 	}
 
+	for _, d := range summaryDepts {
+		if deptMap[d.Department] == nil {
+			deptMap[d.Department] = &dto.DeptDistributionData{Department: d.Department}
+		}
+		deptMap[d.Department].SummaryCount = d.Count
+	}
 	result := make([]dto.DeptDistributionData, 0, len(deptMap))
 	for _, v := range deptMap {
-		v.Total = v.AuditCount + v.CronCount + v.ArchiveCount
+		v.Total = v.AuditCount + v.CronCount + v.ArchiveCount + v.SummaryCount
 		result = append(result, *v)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Total > result[j].Total })
@@ -452,7 +461,7 @@ func (s *DashboardOverviewService) buildDeptDistribution(c *gin.Context) []dto.D
 
 // buildUserActivityRanking 构建用户活跃排名（基于快照数据）。
 func (s *DashboardOverviewService) buildUserActivityRanking(c *gin.Context) []dto.DashboardUserActivityRow {
-	rows, err := s.auditSnapshotRepo.CountByUserRanking(c, 10)
+	rows, err := s.auditSnapshotRepo.CountCombinedUserRanking(c, 10)
 	if err != nil {
 		log.Printf("dashboard: auditSnapshotRepo.CountByUserRanking error: %v", err)
 		return nil
@@ -460,11 +469,12 @@ func (s *DashboardOverviewService) buildUserActivityRanking(c *gin.Context) []dt
 	result := make([]dto.DashboardUserActivityRow, 0, len(rows))
 	for _, u := range rows {
 		result = append(result, dto.DashboardUserActivityRow{
-			Username:    u.Username,
-			DisplayName: u.DisplayName,
-			Department:  u.Department,
-			AuditCount:  u.AuditCount,
-			LastActive:  apptime.FormatRFC3339(u.LastActive),
+			Username:     u.Username,
+			DisplayName:  u.DisplayName,
+			Department:   u.Department,
+			AuditCount:   u.AuditCount,
+			ArchiveCount: u.ArchiveCount, SummaryCount: u.SummaryCount, Total: u.Total,
+			LastActive: apptime.FormatRFC3339(u.LastActive),
 		})
 	}
 	return result
@@ -477,7 +487,7 @@ func (s *DashboardOverviewService) buildTenantStats() *dto.PlatformTenantStatsDa
 	tenants, err := s.tenantRepo.DashboardTenantListWithUserCount()
 	if err != nil {
 		log.Printf("dashboard: tenantRepo.DashboardTenantListWithUserCount error: %v", err)
-		return &dto.PlatformTenantStatsData{ActiveCriteria: "近30天内有审核或归档复盘快照记录"}
+		return &dto.PlatformTenantStatsData{ActiveCriteria: "近30天内有审核、归档复盘或流程总结有效记录"}
 	}
 
 	activeIDs, err := s.tenantRepo.DashboardActiveTenantIDs()
@@ -505,7 +515,7 @@ func (s *DashboardOverviewService) buildTenantStats() *dto.PlatformTenantStatsDa
 	return &dto.PlatformTenantStatsData{
 		TenantTotal:    int64(len(tenants)),
 		TenantActive:   activeCount,
-		ActiveCriteria: "近30天内有审核或归档复盘快照记录",
+		ActiveCriteria: "近30天内有审核、归档复盘或流程总结有效记录",
 		Tenants:        rows,
 	}
 }
@@ -597,6 +607,8 @@ func (s *DashboardOverviewService) buildTenantRankingEnriched() []dto.PlatformTe
 	auditCounts, _ := s.auditSnapshotRepo.CountByTenantGlobal()
 	archiveCounts, _ := s.archiveSnapshotRepo.CountByTenantGlobal()
 	cronCounts, _ := s.cronLogRepo.CountByTenantGlobal()
+	summaryCounts, _ := s.summaryLogRepo.CountByTenantGlobal(model.JobStatusCompleted)
+	summaryFailed, _ := s.summaryLogRepo.CountByTenantGlobal(model.JobStatusFailed)
 	auditFailed, _ := s.auditLogRepo.CountFailedByTenantGlobal()
 	archiveFailed, _ := s.archiveSnapshotRepo.CountFailedByTenantGlobal()
 
@@ -643,6 +655,26 @@ func (s *DashboardOverviewService) buildTenantRankingEnriched() []dto.PlatformTe
 		}
 		dataMap[id].CronCount = a.Count
 	}
+	for _, a := range summaryCounts {
+		id := a.TenantID.String()
+		if _, ok := dataMap[id]; !ok {
+			t := tenantMap[id]
+			dataMap[id] = &rankData{PlatformTenantRankRowEnriched: dto.PlatformTenantRankRowEnriched{
+				TenantID: id, TenantName: t.Name, TenantCode: t.Code,
+			}}
+		}
+		dataMap[id].SummaryCount = a.Count
+	}
+	for _, a := range summaryFailed {
+		id := a.TenantID.String()
+		if _, ok := dataMap[id]; !ok {
+			t := tenantMap[id]
+			dataMap[id] = &rankData{PlatformTenantRankRowEnriched: dto.PlatformTenantRankRowEnriched{
+				TenantID: id, TenantName: t.Name, TenantCode: t.Code,
+			}}
+		}
+		dataMap[id].SummaryFailed = a.Count
+	}
 	for _, a := range auditFailed {
 		id := a.TenantID.String()
 		if _, ok := dataMap[id]; !ok {
@@ -666,7 +698,7 @@ func (s *DashboardOverviewService) buildTenantRankingEnriched() []dto.PlatformTe
 
 	result := make([]rankData, 0, len(dataMap))
 	for _, v := range dataMap {
-		v.total = v.AuditCount + v.ArchiveCount + v.CronCount
+		v.total = v.AuditCount + v.ArchiveCount + v.CronCount + v.SummaryCount
 		result = append(result, *v)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].total > result[j].total })

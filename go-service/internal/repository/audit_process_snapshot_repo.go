@@ -453,3 +453,80 @@ ORDER BY count DESC`
 	err := r.DB.Raw(sql).Scan(&rows).Error
 	return rows, err
 }
+
+// VisibleWorkbenchQuery 合并有权查看的渠道，个人有效结果优先，其次 OA 嵌入、最后工作台共享结果。
+// 仅用于已通过流程访问控制的工作台查询；每个流程只返回一条，避免跨渠道重复计数。
+func (r *AuditProcessSnapshotRepo) VisibleWorkbenchQuery(c *gin.Context, userID uuid.UUID) *gorm.DB {
+	return r.VisibleWorkbenchQueryScoped(c, userID, true)
+}
+
+// VisibleWorkbenchQueryScoped 按可见范围合并审核结果。
+// includeEmbed 用于区分当前待办（可展示该流程的嵌入结论）与历史列表（仅租户管理员查看租户级嵌入结论）。
+func (r *AuditProcessSnapshotRepo) VisibleWorkbenchQueryScoped(c *gin.Context, userID uuid.UUID, includeEmbed bool) *gorm.DB {
+	tenantID, _ := c.Get("tenant_id")
+	embedScope := "aps.channel = 'workbench'"
+	if includeEmbed {
+		embedScope = "(aps.channel = 'workbench' OR cfg.embed_enabled = true)"
+	}
+	candidates := r.DB.Raw(`
+SELECT al.id, al.tenant_id, al.process_id, 'workbench' AS channel,
+ jsonb_build_array(al.id::text) AS valid_log_ids, al.id AS latest_valid_log_id,
+ al.title, al.process_type, al.recommendation, al.score, al.confidence, al.created_at, al.updated_at, 0 AS priority
+FROM audit_logs al
+WHERE al.tenant_id = ? AND al.user_id = ? AND al.trigger_source NOT IN ('embed_auto', 'embed_manual')
+ AND al.status = 'completed' AND COALESCE(al.parse_error, '') = '' AND al.recommendation IN ('approve', 'return', 'review')
+UNION ALL
+SELECT aps.id, aps.tenant_id, aps.process_id, aps.channel, aps.valid_log_ids, aps.latest_valid_log_id,
+ aps.title, aps.process_type, aps.recommendation, aps.score, aps.confidence, aps.created_at, aps.updated_at, CASE WHEN aps.channel = 'embed' THEN 1 ELSE 2 END AS priority
+FROM audit_process_snapshots aps
+JOIN process_audit_configs cfg ON cfg.tenant_id = aps.tenant_id AND cfg.process_type = aps.process_type
+WHERE aps.tenant_id = ? AND cfg.status = 'active' AND `+embedScope+`
+`, tenantID, userID, tenantID)
+	ranked := r.DB.Table("(?) AS candidates", candidates).Select("candidates.*, ROW_NUMBER() OVER (PARTITION BY process_id ORDER BY priority, updated_at DESC, id DESC) AS row_num")
+	return r.DB.Table("(?) AS visible", ranked).Where("row_num = 1")
+}
+
+// GetVisibleWorkbenchMap 批量返回个人优先且包含嵌入结果的快照视图。
+func (r *AuditProcessSnapshotRepo) GetVisibleWorkbenchMap(c *gin.Context, processIDs []string, userID uuid.UUID) (map[string]*model.AuditProcessSnapshot, error) {
+	result := make(map[string]*model.AuditProcessSnapshot)
+	if len(processIDs) == 0 {
+		return result, nil
+	}
+	var rows []model.AuditProcessSnapshot
+	if err := r.VisibleWorkbenchQuery(c, userID).Where("process_id IN ?", processIDs).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		result[rows[i].ProcessID] = &rows[i]
+	}
+	return result, nil
+}
+
+// CountCombinedUserRanking 将审核、归档、总结完成结果按用户汇总后统一排名。
+func (r *AuditProcessSnapshotRepo) CountCombinedUserRanking(c *gin.Context, limit int) ([]CombinedUserRankRow, error) {
+	tenantID, _ := c.Get("tenant_id")
+	var rows []CombinedUserRankRow
+	err := r.DB.Raw(`WITH activity AS (
+ SELECT al.user_id, 1::bigint AS audit_count, 0::bigint AS archive_count, 0::bigint AS summary_count, aps.updated_at AS at
+ FROM audit_process_snapshots aps JOIN audit_logs al ON al.id = aps.latest_valid_log_id AND al.tenant_id = aps.tenant_id WHERE aps.tenant_id = ?
+ UNION ALL
+ SELECT al.user_id, 0, 1, 0, aps.updated_at FROM archive_process_snapshots aps JOIN archive_logs al ON al.id = aps.latest_valid_log_id AND al.tenant_id = aps.tenant_id WHERE aps.tenant_id = ?
+ UNION ALL
+ SELECT user_id, 0, 0, 1, updated_at FROM process_summary_logs WHERE tenant_id = ? AND status = 'completed'
+ ) SELECT u.username, u.display_name, COALESCE(d.name, '') AS department,
+ SUM(a.audit_count) AS audit_count, SUM(a.archive_count) AS archive_count, SUM(a.summary_count) AS summary_count,
+ SUM(a.audit_count + a.archive_count + a.summary_count) AS total, MAX(a.at) AS last_active
+ FROM activity a JOIN users u ON u.id = a.user_id
+ LEFT JOIN org_members om ON om.user_id = u.id AND om.tenant_id = ? AND om.status = 'active'
+ LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = om.tenant_id
+ GROUP BY u.id, u.username, u.display_name, d.name ORDER BY total DESC, last_active DESC LIMIT ?`, tenantID, tenantID, tenantID, tenantID, limit).Scan(&rows).Error
+	return rows, err
+}
+
+// CombinedUserRankRow 多业务用户活跃度行。
+type CombinedUserRankRow struct {
+	UserRankRow
+	ArchiveCount int64
+	SummaryCount int64
+	Total        int64
+}

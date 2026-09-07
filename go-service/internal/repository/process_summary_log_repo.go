@@ -62,6 +62,7 @@ func (r *ProcessSummaryLogRepo) GetRunningByProcessID(c *gin.Context, processID 
 			model.JobStatusReasoning,
 			model.JobStatusExtracting,
 		}).
+		Where("trigger_source IN ?", []string{model.SummaryTriggerEmbedAuto, model.SummaryTriggerEmbedManual}).
 		Order("created_at DESC").
 		First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -96,6 +97,7 @@ func (r *ProcessSummaryLogRepo) GetLatestByProcessID(c *gin.Context, processID s
 	var row model.ProcessSummaryLog
 	err := r.WithTenant(c).
 		Where("process_id = ?", processID).
+		Where("trigger_source IN ?", []string{model.SummaryTriggerEmbedAuto, model.SummaryTriggerEmbedManual}).
 		Order("created_at DESC").
 		First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -132,7 +134,7 @@ func (r *ProcessSummaryLogRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID)
 	var count int64
 	tenantID, _ := c.Get("tenant_id")
 	q := r.DB.Table("process_summary_logs AS psl").
-		Where("psl.tenant_id = ? AND psl.trigger_source = ? AND psl.status = ?", tenantID, model.SummaryTriggerWorkbench, model.JobStatusCompleted)
+		Where("psl.tenant_id = ? AND psl.status = ?", tenantID, model.JobStatusCompleted)
 	if userID != nil {
 		q = q.Where("psl.user_id = ?", *userID)
 	}
@@ -144,7 +146,7 @@ func (r *ProcessSummaryLogRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID)
 func (r *ProcessSummaryLogRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UUID) ([]DayCount, error) {
 	tenantID, _ := c.Get("tenant_id")
 	userFilter := ""
-	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, model.SummaryTriggerWorkbench, apptime.Name()}
+	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, apptime.Name()}
 	if userID != nil {
 		userFilter = "AND psl.user_id = ?"
 		args = append(args, *userID)
@@ -164,7 +166,6 @@ LEFT JOIN (
   SELECT DATE(psl.created_at AT TIME ZONE ?) AS d, COUNT(*)::bigint AS cnt
   FROM process_summary_logs psl
   WHERE psl.tenant_id = ?
-    AND psl.trigger_source = ?
     AND psl.status = 'completed'
     AND psl.created_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)
     ` + userFilter + `
@@ -189,7 +190,7 @@ type ProcessSummaryLogEnrichedRow struct {
 func (r *ProcessSummaryLogRepo) RecentEnriched(c *gin.Context, limit int, userID *uuid.UUID) ([]ProcessSummaryLogEnrichedRow, error) {
 	tenantID, _ := c.Get("tenant_id")
 	userFilter := ""
-	args := []interface{}{tenantID, model.SummaryTriggerWorkbench}
+	args := []interface{}{tenantID}
 	if userID != nil {
 		userFilter = "AND psl.user_id = ?"
 		args = append(args, *userID)
@@ -202,7 +203,7 @@ SELECT psl.id, psl.title,
        psl.created_at
 FROM process_summary_logs psl
 LEFT JOIN users u ON u.id = psl.user_id
-WHERE psl.tenant_id = ? AND psl.trigger_source = ? AND psl.status = 'completed'
+WHERE psl.tenant_id = ? AND psl.status = 'completed'
   ` + userFilter + `
 ORDER BY psl.created_at DESC
 LIMIT ?`
@@ -277,4 +278,74 @@ func (r *ProcessSummaryLogRepo) FailStale(ctxTenantID uuid.UUID, cutoff time.Tim
 			"updated_at":    apptime.Now(),
 		})
 	return res.RowsAffected, res.Error
+}
+
+// GetVisibleResultMap 查询个人优先的有效总结，嵌入结果作为共享后备，不展示其他人的个人结果。
+func (r *ProcessSummaryLogRepo) GetVisibleResultMap(c *gin.Context, processIDs []string, userID uuid.UUID) (map[string]*model.ProcessSummaryLog, error) {
+	result := make(map[string]*model.ProcessSummaryLog)
+	if len(processIDs) == 0 {
+		return result, nil
+	}
+	var rows []model.ProcessSummaryLog
+	err := r.WithTenant(c).Where("process_id IN ? AND status = ? AND COALESCE(parse_error, '') = ''", processIDs, model.JobStatusCompleted).
+		Where("(user_id = ? AND trigger_source = ?) OR trigger_source IN ?", userID, model.SummaryTriggerWorkbench, []string{model.SummaryTriggerEmbedAuto, model.SummaryTriggerEmbedManual}).
+		Order("CASE WHEN trigger_source = 'summary_workbench' THEN 0 ELSE 1 END, created_at DESC, id DESC").Find(&rows).Error
+	for i := range rows {
+		if result[rows[i].ProcessID] == nil {
+			result[rows[i].ProcessID] = &rows[i]
+		}
+	}
+	return result, err
+}
+
+// GetLatestEmbedResult 返回最近的有效标准总结，避免个人工作台结果参与嵌入自动增量刷新。
+func (r *ProcessSummaryLogRepo) GetLatestEmbedResult(c *gin.Context, processID string) (*model.ProcessSummaryLog, error) {
+	var row model.ProcessSummaryLog
+	err := r.WithTenant(c).Where("process_id = ? AND status = ? AND COALESCE(parse_error, '') = '' AND trigger_source IN ?", processID, model.JobStatusCompleted, []string{model.SummaryTriggerEmbedAuto, model.SummaryTriggerEmbedManual}).Order("created_at DESC, id DESC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &row, err
+}
+
+// ListCompletedEmbedProcesses 返回租户已通过 OA 嵌入生成的有效总结，供租户管理员工作台补充展示。
+func (r *ProcessSummaryLogRepo) ListCompletedEmbedProcesses(c *gin.Context, start, end *time.Time) ([]model.ProcessSummaryLog, error) {
+	q := r.WithTenant(c).Table("process_summary_logs AS psl").
+		Joins("JOIN process_summary_configs cfg ON cfg.tenant_id = psl.tenant_id AND cfg.process_type = psl.process_type").
+		Where("psl.status = ? AND COALESCE(psl.parse_error, '') = '' AND psl.trigger_source IN ? AND cfg.status = 'active' AND cfg.embed_enabled = true", model.JobStatusCompleted, []string{model.SummaryTriggerEmbedAuto, model.SummaryTriggerEmbedManual}).
+		Order("psl.updated_at DESC")
+	if start != nil {
+		q = q.Where("psl.updated_at >= ?", *start)
+	}
+	if end != nil {
+		q = q.Where("psl.updated_at < ?", *end)
+	}
+	var rows []model.ProcessSummaryLog
+	return rows, q.Find(&rows).Error
+}
+
+// CountPendingSince 统计个人近指定日期仍在执行的总结任务。
+func (r *ProcessSummaryLogRepo) CountPendingSince(c *gin.Context, userID uuid.UUID, since time.Time) (int64, error) {
+	var count int64
+	err := r.WithTenant(c).Model(&model.ProcessSummaryLog{}).Where("user_id = ? AND created_at >= ? AND status IN ?", userID, since, []string{"pending", "assembling", "reasoning", "extracting"}).Count(&count).Error
+	return count, err
+}
+
+// CountByDepartment 按操作人所属部门统计总结完成次数。
+func (r *ProcessSummaryLogRepo) CountByDepartment(c *gin.Context) ([]DeptCount, error) {
+	tenantID, _ := c.Get("tenant_id")
+	var rows []DeptCount
+	err := r.DB.Raw(`SELECT COALESCE(d.name, '') AS department, COUNT(*)::bigint AS count
+ FROM process_summary_logs psl
+ LEFT JOIN org_members om ON om.user_id = psl.user_id AND om.tenant_id = psl.tenant_id AND om.status = 'active'
+ LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = psl.tenant_id
+ WHERE psl.tenant_id = ? AND psl.status = 'completed' GROUP BY d.name`, tenantID).Scan(&rows).Error
+	return rows, err
+}
+
+// CountByTenantGlobal 全平台按租户统计指定状态的总结执行次数，仅系统管理员聚合使用。
+func (r *ProcessSummaryLogRepo) CountByTenantGlobal(status string) ([]TenantSnapshotCount, error) {
+	var rows []TenantSnapshotCount
+	err := r.DB.Model(&model.ProcessSummaryLog{}).Select("tenant_id, COUNT(*) AS count").Where("status = ?", status).Group("tenant_id").Scan(&rows).Error
+	return rows, err
 }

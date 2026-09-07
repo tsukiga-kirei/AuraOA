@@ -568,6 +568,7 @@ export default {
     // 待办任务
     'overview.auditPending': '审核待办',
     'overview.archivePending': '归档待办',
+    'overview.summaryPending': '总结待办',
     'overview.totalPending': '总待办',
     // 最近动态标注
     'overview.activity.audit': '审核',
@@ -609,6 +610,7 @@ export default {
     'overview.cronExecutions': '定时任务执行数',
     'overview.auditFailures': '审核失败数',
     'overview.archiveFailures': '归档失败数',
+    'overview.summaryFailures': '总结失败数',
     'overview.subtitlePlatform': '全平台运营数据总览',
     'overview.platformTenantsTotal': '租户总数',
     'overview.platformTenantsActive': '活跃租户',
@@ -736,6 +738,9 @@ export default {
     'dashboard.ruleCheckDetail': '规则校验详情',
     'dashboard.deepThinking': '深度思考过程',
     'dashboard.aiReasoning': 'AI 推理分析',
+    'resultSource.personal': '个人审核/总结',
+    'resultSource.embed': 'OA 嵌入审核/总结',
+    'resultSource.workbench': '工作台结果',
 
     'embed.title': '审核结果',
     'embed.statusAuditing': '审核中',
@@ -765,6 +770,9 @@ export default {
     'embed.perspective.personalEmptyDesc': '您在系统中设置了个性化审核规则与字段，可立即为此流程执行独立审查。',
     'embed.perspective.startPersonalAudit': '执行个人专属审查',
     'embed.summary.title': '流程总结',
+    'summary.dateRange': '数据时间范围',
+    'summary.personalHint': '当前结果优先展示个人在工作台生成的结果；没有个人结果时显示 OA 嵌入结果。',
+    'summary.source.embed': 'OA 嵌入已总结',
 
     'embed.summary.status.running': '正在总结',
     'embed.summary.status.failed': '总结失败',
@@ -1810,6 +1818,10 @@ export default {
     'admin.userConfigs.totalAuditChanges': '审核工作台修改总数',
     'admin.userConfigs.totalCronChanges': '定时任务总数',
     'admin.userConfigs.totalArchiveChanges': '归档复盘修改总数',
+    'admin.userConfigs.totalSummaryChanges': '流程总结偏好修改总数',
+    'admin.userConfigs.noSummaryConfig': '暂无流程总结偏好',
+    'admin.userConfigs.blockVisible': '显示',
+    'admin.userConfigs.blockHidden': '隐藏',
     'admin.userConfigs.thUser': '用户',
     'admin.userConfigs.thDepartment': '部门',
     'admin.userConfigs.thRole': '角色',

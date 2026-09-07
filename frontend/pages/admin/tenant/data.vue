@@ -2030,6 +2030,9 @@ onMounted(async () => {
                           <FileTextOutlined />
                           {{ logItem.summary_result?.blocks?.length || 0 }} 个总结块
                         </span>
+                        <a-tag color="purple">
+                          {{ t(logItem.trigger_source === 'summary_workbench' ? 'resultSource.personal' : 'resultSource.embed') }}
+                        </a-tag>
                         <span class="chain-score">{{ ((logItem.duration_ms || 0) / 1000).toFixed(1) }}s</span>
                         <span class="chain-expand-btn">
                           <DownOutlined v-if="!expandedSummaryChainNodes.has(logItem.id)" />

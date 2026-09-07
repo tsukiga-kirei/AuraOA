@@ -2,6 +2,8 @@ import type { SummaryResult } from '~/types/process-summary'
 import type { EmbedProcessSummary } from '~/types/embed'
 
 export interface EmbedSummaryContextResponse {
+  personal_result?: SummaryResult | null
+  visible_block_ids?: string[]
   supported: boolean
   reason?: 'not_found_in_oa' | 'no_config' | 'config_inactive' | 'embed_disabled'
   message?: string

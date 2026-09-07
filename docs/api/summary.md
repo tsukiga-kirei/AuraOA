@@ -5,6 +5,7 @@
 > 路由前缀：`/api/summary`。用户还需拥有 `/summary` 页面权限。
 
 工作台汇总当前 OA 用户可见的待办与已办流程，只保留租户已启用流程总结配置的流程类型。
+列表会合并 OA 嵌入已生成的标准总结和个人工作台总结；同一流程优先显示当前用户的个人总结，没有个人总结时显示 OA 嵌入总结。租户管理员还会看到有权限流程的 OA 嵌入总结。`summary_result.result_source` 为 `personal` 或 `embed`。
 列表和历史查询均按 OA 当前可见性校验，任务状态与流式输出只允许任务发起人读取。
 
 ### 获取工作台流程列表
@@ -28,8 +29,9 @@ GET /api/summary/processes
 | `page_size` | integer | `20` | 每页条数，范围 1–100 |
 
 响应 `data` 使用统一分页结构 `items`、`total`、`page`、`page_size`。列表项包含流程信息、
-`source`（`todo` / `archived`）、`has_summary`、`summary_status`、当前用户的
+`source`（`todo` / `archived` / `embed`）、`has_summary`、`summary_status`、当前用户的
 `visible_block_ids`，以及存在有效快照时的 `summary_result`。
+嵌入上下文在能识别当前 OA 用户时会额外返回 `personal_result` 和 `visible_block_ids`；嵌入标准结果与个人工作台结果同时存在时，前端可切换查看，工作台默认优先个人结果。
 
 ### 获取工作台统计
 

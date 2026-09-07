@@ -188,6 +188,7 @@ export interface SummaryLogItem {
   title: string
   process_type: string
   status: string
+  trigger_source?: string
   summary_result: any
   duration_ms: number
   raw_content: string

@@ -567,6 +567,7 @@ export default {
     // Pending tasks
     'overview.auditPending': 'Audit Pending',
     'overview.archivePending': 'Archive Pending',
+    'overview.summaryPending': 'Summary Pending',
     'overview.totalPending': 'Total Pending',
     // Activity annotations
     'overview.activity.audit': 'Audit',
@@ -608,6 +609,7 @@ export default {
     'overview.cronExecutions': 'Cron Executions',
     'overview.auditFailures': 'Audit Failures',
     'overview.archiveFailures': 'Archive Failures',
+    'overview.summaryFailures': 'Summary Failures',
     'overview.subtitlePlatform': 'Platform-wide operations overview',
     'overview.platformTenantsTotal': 'Total tenants',
     'overview.platformTenantsActive': 'Active tenants',
@@ -735,6 +737,9 @@ export default {
     'dashboard.ruleCheckDetail': 'Rule Check Details',
     'dashboard.deepThinking': 'Deep Thinking Process',
     'dashboard.aiReasoning': 'AI Reasoning',
+    'resultSource.personal': 'Personal audit/summary',
+    'resultSource.embed': 'OA embedded audit/summary',
+    'resultSource.workbench': 'Workbench result',
 
     'embed.title': 'Audit Result',
     'embed.statusAuditing': 'Auditing',
@@ -764,6 +769,9 @@ export default {
     'embed.perspective.personalEmptyDesc': 'You have customized rules and fields configured in AuraOA. You can start a personal audit for this process.',
     'embed.perspective.startPersonalAudit': 'Execute Custom Audit',
     'embed.summary.title': 'Process Summary',
+    'summary.dateRange': 'Data date range',
+    'summary.personalHint': 'Personal workbench results take priority; OA embedded results are shown when no personal result exists.',
+    'summary.source.embed': 'OA embedded summary',
 
     'embed.summary.status.running': 'Summarizing',
     'embed.summary.status.failed': 'Summary Failed',
@@ -1793,6 +1801,10 @@ export default {
     'admin.userConfigs.totalAuditChanges': 'Audit Workbench Changes',
     'admin.userConfigs.totalCronChanges': 'Scheduled Tasks',
     'admin.userConfigs.totalArchiveChanges': 'Archive Review Changes',
+    'admin.userConfigs.totalSummaryChanges': 'Process Summary Preference Changes',
+    'admin.userConfigs.noSummaryConfig': 'No process summary preferences',
+    'admin.userConfigs.blockVisible': 'Visible',
+    'admin.userConfigs.blockHidden': 'Hidden',
     'admin.userConfigs.thUser': 'User',
     'admin.userConfigs.thDepartment': 'Department',
     'admin.userConfigs.thRole': 'Role',

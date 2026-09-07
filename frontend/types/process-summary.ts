@@ -52,6 +52,9 @@ export interface SummaryBlockResult {
 }
 
 export interface SummaryResult {
+  result_source?: 'personal' | 'embed'
+  trigger_source?: string
+  user_id?: string
   status?: string
   id?: string
   trace_id?: string
@@ -74,7 +77,7 @@ export interface SummaryWorkbenchProcessItem {
   process_type_label: string
   current_node: string
   submit_time: string
-  source: 'todo' | 'archived'
+  source: 'todo' | 'archived' | 'embed'
   has_summary: boolean
   summary_status: string
   summary_result?: SummaryResult | null

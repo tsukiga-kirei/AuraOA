@@ -37,6 +37,7 @@ type WeeklyOverviewData struct {
 
 // PendingTasksData 待办任务（区分类型）。
 type PendingTasksData struct {
+	SummaryPending int64 `json:"summary_pending"`
 	AuditPending   int64 `json:"audit_pending"`   // 审核工作台待办
 	ArchivePending int64 `json:"archive_pending"` // 归档复盘待办
 	Total          int64 `json:"total"`
@@ -87,6 +88,7 @@ type CronTaskPreview struct {
 
 // DeptDistributionData 部门分布（区分三个功能）。
 type DeptDistributionData struct {
+	SummaryCount int64  `json:"summary_count"`
 	Department   string `json:"department"`
 	AuditCount   int64  `json:"audit_count"`
 	CronCount    int64  `json:"cron_count"`
@@ -96,11 +98,14 @@ type DeptDistributionData struct {
 
 // DashboardUserActivityRow 用户审核活跃度排行。
 type DashboardUserActivityRow struct {
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	Department  string `json:"department"`
-	AuditCount  int64  `json:"audit_count"`
-	LastActive  string `json:"last_active"` // RFC3339
+	ArchiveCount int64  `json:"archive_count"`
+	SummaryCount int64  `json:"summary_count"`
+	Total        int64  `json:"total"`
+	Username     string `json:"username"`
+	DisplayName  string `json:"display_name"`
+	Department   string `json:"department"`
+	AuditCount   int64  `json:"audit_count"`
+	LastActive   string `json:"last_active"` // RFC3339
 }
 
 // ─── 系统管理员平台仪表盘（system_admin） ───
@@ -176,6 +181,8 @@ type TenantUsageRow struct {
 
 // PlatformTenantRankRowEnriched 租户审核排名（含失败记录）。
 type PlatformTenantRankRowEnriched struct {
+	SummaryCount  int64  `json:"summary_count"`
+	SummaryFailed int64  `json:"summary_failed"`
 	TenantID      string `json:"tenant_id"`
 	TenantName    string `json:"tenant_name"`
 	TenantCode    string `json:"tenant_code"`

@@ -231,7 +231,7 @@ function cronTaskDescriptionLabel(task: { description?: string; task_type?: stri
 
 // 趋势图的日期分类数据
 const trendCategories = computed(() => dash.value.weekly_trend.map(d => d.date))
-// 趋势图的系列数据（审核、定时任务、归档）
+// 趋势图的系列数据（审核、定时任务、归档、流程总结）
 const trendSeries = computed(() => [
   { name: t('overview.auditWorkbench'), data: dash.value.weekly_trend.map(d => d.audit_count), color: chartColors.value.primary },
   { name: t('overview.cronTasks'), data: dash.value.weekly_trend.map(d => d.cron_count), color: chartColors.value.accent },
@@ -244,6 +244,7 @@ const deptChartLabels = computed(() => ({
   audit: t('overview.auditWorkbench'),
   cron: t('overview.cronTasks'),
   archive: t('overview.archiveReview'),
+  summary: t('overview.processSummary'),
 }))
 
 // 获取组件在已启用列表中的排序位置，未启用时排到末尾
@@ -373,6 +374,10 @@ function tokenPct(used: number, quota: number) {
           <div class="pending-item">
             <div class="pending-num">{{ dash.pending_tasks?.archive_pending ?? 0 }}</div>
             <div class="pending-label">{{ t('overview.archivePending') }}</div>
+          </div>
+          <div class="pending-item">
+            <div class="pending-num">{{ dash.pending_tasks?.summary_pending ?? 0 }}</div>
+            <div class="pending-label">{{ t('overview.summaryPending') }}</div>
           </div>
         </div>
         <div class="pending-total">
@@ -525,8 +530,9 @@ function tokenPct(used: number, quota: number) {
             <div class="rank-info">
               <span class="rank-name">{{ u.display_name }}</span>
               <span class="rank-dept">{{ u.department }}</span>
+              <div class="rank-dept">{{ t('overview.auditWorkbench') }} {{ u.audit_count }} · {{ t('overview.archiveReview') }} {{ u.archive_count }} · {{ t('overview.processSummary') }} {{ u.summary_count }}</div>
             </div>
-            <span class="rank-count">{{ u.audit_count }} {{ t('overview.times') }}</span>
+            <span class="rank-count">{{ u.total }} {{ t('overview.times') }}</span>
           </div>
         </div>
         <div v-else class="widget-empty">{{ t('overview.emptyUserActivity') }}</div>
@@ -662,9 +668,11 @@ function tokenPct(used: number, quota: number) {
             <span class="tr-cell tr-cell--name">{{ t('overview.tenantName') }}</span>
             <span class="tr-cell">{{ t('overview.auditSnapshots') }}</span>
             <span class="tr-cell">{{ t('overview.archiveSnapshots') }}</span>
+            <span class="tr-cell">{{ t('overview.processSummary') }}</span>
             <span class="tr-cell">{{ t('overview.cronExecutions') }}</span>
             <span class="tr-cell tr-cell--fail">{{ t('overview.auditFailures') }}</span>
             <span class="tr-cell tr-cell--fail">{{ t('overview.archiveFailures') }}</span>
+            <span class="tr-cell tr-cell--fail">{{ t('overview.summaryFailures') }}</span>
           </div>
           <div v-for="(row, i) in platformOverview.tenant_ranking" :key="row.tenant_id" class="tr-row">
             <span class="tr-cell tr-cell--rank">
@@ -673,9 +681,11 @@ function tokenPct(used: number, quota: number) {
             <span class="tr-cell tr-cell--name tenant-name">{{ row.tenant_name }}</span>
             <span class="tr-cell">{{ row.audit_count }}</span>
             <span class="tr-cell">{{ row.archive_count }}</span>
+            <span class="tr-cell">{{ row.summary_count }}</span>
             <span class="tr-cell">{{ row.cron_count }}</span>
             <span class="tr-cell tr-cell--fail" :style="{ color: row.audit_failed > 0 ? 'var(--color-danger)' : undefined }">{{ row.audit_failed }}</span>
             <span class="tr-cell tr-cell--fail" :style="{ color: row.archive_failed > 0 ? 'var(--color-danger)' : undefined }">{{ row.archive_failed }}</span>
+            <span class="tr-cell tr-cell--fail">{{ row.summary_failed }}</span>
           </div>
         </div>
         <div v-else class="widget-empty">{{ t('overview.noData') }}</div>
@@ -869,7 +879,7 @@ function tokenPct(used: number, quota: number) {
 
 /*租户审核排名表格*/
 .tenant-ranking-table { display: flex; flex-direction: column; overflow-x: auto; }
-.tr-row { display: grid; grid-template-columns: 40px 2fr 1fr 1fr 1fr 1fr 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--color-border-light); font-size: 13px; color: var(--color-text-secondary); align-items: center; }
+.tr-row { display: grid; grid-template-columns: 40px 2fr repeat(7, 1fr); gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--color-border-light); font-size: 13px; color: var(--color-text-secondary); align-items: center; }
 .tr-row:last-child { border-bottom: none; }
 .tr-row--header { font-weight: 600; color: var(--color-text-tertiary); font-size: 12px; }
 .tr-cell { text-align: center; }
@@ -891,6 +901,6 @@ function tokenPct(used: number, quota: number) {
   .summary-cards { grid-template-columns: repeat(2, 1fr); }
   .ov-header { flex-direction: column; }
   .pending-split { flex-direction: column; }
-  .tr-row { grid-template-columns: 30px 1.5fr repeat(5, 1fr); font-size: 12px; }
+  .tr-row { grid-template-columns: 30px 1.5fr repeat(7, 1fr); font-size: 12px; }
 }
 </style>

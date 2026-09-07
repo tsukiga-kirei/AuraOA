@@ -237,6 +237,8 @@ export interface AdminCronTaskDetail {
 
 /** 管理员视图：单个用户的完整配置摘要（含成员信息） */
 export interface AdminUserConfigItem {
+  summary_process_count: number
+  summary_details: { process_type: string; process_type_label: string; blocks: SummaryBlockPreference[] }[]
   user_id: string
   member_id: string
   username: string

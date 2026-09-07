@@ -15,7 +15,7 @@ const { chartColors } = useThemeColors()
 // props：部门分布数据 / 图例标签 / 图表高度
 interface Props {
   data: DeptDistributionData[]
-  labels: { audit: string; cron: string; archive: string }
+  labels: { audit: string; cron: string; archive: string; summary: string }
   height?: string
 }
 
