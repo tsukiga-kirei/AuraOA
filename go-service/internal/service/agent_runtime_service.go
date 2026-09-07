@@ -276,6 +276,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			EnableThinking: modelCfg.SupportsThinking,
 			RequestType:    "chat",
 			BusinessLogID:  &sessionID,
+			ProcessID:      sessionID.String(),
 			ProcessTitle:   session.Title,
 			CallType:       "reasoning",
 			StreamResetFunc: func() {

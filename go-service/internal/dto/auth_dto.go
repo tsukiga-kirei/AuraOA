@@ -114,6 +114,7 @@ type MeResponse struct {
 	Position        string      `json:"position"`
 	OrgRoles        []MeOrgRole `json:"org_roles"`
 	PagePermissions []string    `json:"page_permissions"`
+	Menus           []MenuItem  `json:"menus"`
 
 	// 安全信息
 	PasswordChangedAt string             `json:"password_changed_at"`

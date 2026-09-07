@@ -47,12 +47,17 @@ func (s *ChatSessionService) GetEffectiveAgents(ctx context.Context, tenantID, u
 
 	result := make([]dto.EffectiveAgentDTO, 0, len(perms.Agents))
 	for _, a := range perms.Agents {
+		toolCodes := make([]string, 0, len(a.ToolBindings))
+		for _, binding := range a.ToolBindings {
+			toolCodes = append(toolCodes, binding.ToolCode)
+		}
 		result = append(result, dto.EffectiveAgentDTO{
 			ID:          a.ID,
 			AgentCode:   a.AgentCode,
 			Name:        a.Name,
 			Description: a.Description,
 			IsSystem:    a.IsSystem,
+			ToolCodes:   toolCodes,
 		})
 	}
 	return result, nil
@@ -106,6 +111,7 @@ func (s *ChatSessionService) CreateSession(ctx context.Context, tenantID, userID
 		ID:        session.ID,
 		AgentID:   session.AgentID,
 		AgentCode: session.AgentCode,
+		AgentName: targetAgent.Name,
 		Title:     session.Title,
 		Source:    session.Source,
 		ProcessID: session.ProcessID,
@@ -122,12 +128,19 @@ func (s *ChatSessionService) ListSessions(ctx context.Context, tenantID, userID 
 		return nil, err
 	}
 
+	names := map[string]string{}
+	if agents, err := s.agentRepo.ListAgentsByTenant(tenantID); err == nil {
+		for _, agent := range agents {
+			names[agent.AgentCode] = agent.Name
+		}
+	}
 	dtos := make([]dto.ChatSessionItemDTO, 0, len(items))
 	for _, it := range items {
 		dtos = append(dtos, dto.ChatSessionItemDTO{
 			ID:        it.ID,
 			AgentID:   it.AgentID,
 			AgentCode: it.AgentCode,
+			AgentName: names[it.AgentCode],
 			Title:     it.Title,
 			Source:    it.Source,
 			ProcessID: it.ProcessID,

@@ -10,6 +10,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
 )
 
@@ -297,6 +298,84 @@ func (r *AgentRepo) DeleteSkill(tenantID, id uuid.UUID) error {
 }
 
 // Helper: ParseJSONSlice 解析 jsonb string slice
+// QueryAgentUsageStats 按智能体汇总会话、消息、工具调用与 Token。
+func (r *AgentRepo) QueryAgentUsageStats(tenantID uuid.UUID) (*dto.AgentUsageStatsDTO, error) {
+	type row struct {
+		AgentCode    string `gorm:"column:agent_code"`
+		AgentName    string `gorm:"column:agent_name"`
+		SessionCount int64  `gorm:"column:session_count"`
+		MessageCount int64  `gorm:"column:message_count"`
+		TokenCount   int64  `gorm:"column:token_count"`
+	}
+	var rows []row
+	err := r.db.Raw(`
+		SELECT s.agent_code,
+		       COALESCE(NULLIF(MAX(ad.name), ''), s.agent_code) AS agent_name,
+		       COUNT(DISTINCT s.id) AS session_count,
+		       COUNT(m.id) FILTER (WHERE m.role = 'user') AS message_count,
+		       COALESCE(SUM(l.total_tokens), 0) AS token_count
+		FROM chat_sessions s
+		LEFT JOIN agent_definitions ad ON ad.id = s.agent_id
+		LEFT JOIN chat_messages m ON m.session_id = s.id AND m.tenant_id = s.tenant_id
+		LEFT JOIN tenant_llm_message_logs l ON l.tenant_id = s.tenant_id AND l.request_type = 'chat' AND l.business_log_id = s.id
+		WHERE s.tenant_id = ?
+		GROUP BY s.agent_code
+		ORDER BY session_count DESC, s.agent_code`, tenantID).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	type toolRow struct {
+		AgentCode string `gorm:"column:agent_code"`
+		ToolCode  string `gorm:"column:tool_code"`
+		CallCount int64  `gorm:"column:call_count"`
+	}
+	var tools []toolRow
+	_ = r.db.Raw(`
+		SELECT s.agent_code, COALESCE(elem->>'tool_code', '') AS tool_code, COUNT(*) AS call_count
+		FROM chat_messages m
+		JOIN chat_sessions s ON s.id = m.session_id AND s.tenant_id = m.tenant_id
+		CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(m.tool_calls) = 'array' THEN m.tool_calls ELSE '[]'::jsonb END) elem
+		WHERE m.tenant_id = ? AND COALESCE(elem->>'tool_code', '') <> ''
+		GROUP BY s.agent_code, elem->>'tool_code'`, tenantID).Scan(&tools).Error
+
+	items := make([]dto.AgentUsageItemDTO, 0, len(rows))
+	stats := &dto.AgentUsageStatsDTO{Agents: items}
+	toolMap := map[string][]toolRow{}
+	for _, t := range tools {
+		toolMap[t.AgentCode] = append(toolMap[t.AgentCode], t)
+	}
+	for _, rrow := range rows {
+		item := dto.AgentUsageItemDTO{
+			AgentCode: rrow.AgentCode, AgentName: rrow.AgentName,
+			SessionCount: rrow.SessionCount, MessageCount: rrow.MessageCount, TokenCount: rrow.TokenCount,
+		}
+		for _, t := range toolMap[rrow.AgentCode] {
+			item.ToolCallCount += t.CallCount
+			switch {
+			case strings.HasPrefix(t.ToolCode, "mcp:"):
+				item.MCPCallCount += t.CallCount
+				item.MCPCodes = append(item.MCPCodes, t.ToolCode)
+			case strings.HasPrefix(t.ToolCode, "skill:"):
+				item.SkillCallCount += t.CallCount
+				item.SkillCodes = append(item.SkillCodes, t.ToolCode)
+			default:
+				item.ToolCodes = append(item.ToolCodes, t.ToolCode)
+			}
+		}
+		stats.SessionCount += item.SessionCount
+		stats.MessageCount += item.MessageCount
+		stats.ToolCallCount += item.ToolCallCount
+		stats.MCPCallCount += item.MCPCallCount
+		stats.SkillCallCount += item.SkillCallCount
+		stats.Agents = append(stats.Agents, item)
+	}
+	if stats.Agents == nil {
+		stats.Agents = []dto.AgentUsageItemDTO{}
+	}
+	return stats, nil
+}
+
 func ParseJSONSlice(data datatypes.JSON) []string {
 	var res []string
 	if len(data) > 0 {

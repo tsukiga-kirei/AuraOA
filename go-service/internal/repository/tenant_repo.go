@@ -102,7 +102,7 @@ func (r *TenantRepo) DashboardPlatformTokenSum() (used, quota int64, err error) 
 	}
 	var row sumRow
 	err = r.DB.Model(&model.Tenant{}).
-		Select("COALESCE(SUM(token_used), 0)::bigint AS s_used, COALESCE(SUM(token_quota), 0)::bigint AS s_quota").
+		Select("COALESCE(SUM(token_used), 0)::bigint AS s_used, COALESCE(SUM(CASE WHEN token_quota < 0 THEN 0 ELSE token_quota END), 0)::bigint AS s_quota").
 		Scan(&row).Error
 	return row.SUsed, row.SQuota, err
 }

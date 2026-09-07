@@ -179,8 +179,8 @@ func (s *OrgService) CreateRole(c *gin.Context, tenantID uuid.UUID, req *dto.Cre
 	if err := s.orgRepo.CreateRole(role); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
-	if s.agentRepo != nil && (len(req.AgentCodes) > 0 || len(req.ToolCodes) > 0) {
-		if err := s.agentRepo.SaveRoleGrants(tenantID, role.ID, req.AgentCodes, req.ToolCodes); err != nil {
+	if s.agentRepo != nil && req.AgentCodes != nil {
+		if err := s.agentRepo.SaveRoleGrants(tenantID, role.ID, req.AgentCodes, nil); err != nil {
 			return nil, err
 		}
 	}
@@ -212,16 +212,8 @@ func (s *OrgService) UpdateRole(c *gin.Context, id uuid.UUID, req *dto.UpdateRol
 	if err := s.orgRepo.UpdateRole(role); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "database error")
 	}
-	if s.agentRepo != nil && (req.AgentCodes != nil || req.ToolCodes != nil) {
-		agentCodes := req.AgentCodes
-		if agentCodes == nil {
-			agentCodes, _ = s.agentRepo.ListRoleAgentGrants([]uuid.UUID{role.ID})
-		}
-		toolCodes := req.ToolCodes
-		if toolCodes == nil {
-			toolCodes, _ = s.agentRepo.ListRoleToolGrants([]uuid.UUID{role.ID})
-		}
-		if err := s.agentRepo.SaveRoleGrants(role.TenantID, role.ID, agentCodes, toolCodes); err != nil {
+	if s.agentRepo != nil && req.AgentCodes != nil {
+		if err := s.agentRepo.SaveRoleGrants(role.TenantID, role.ID, req.AgentCodes, nil); err != nil {
 			return nil, err
 		}
 	}

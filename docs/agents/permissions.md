@@ -5,12 +5,11 @@
 ## 1. 层次
 
 ```
-系统管理员租户配额
-    ∩ 租户 chat_enabled
+租户 chat_enabled
     ∩ 智能体已启用且绑定
     ∩ 组织角色 page_permissions 含 /chat
-    ∩ 组织角色智能体授权
-    ∩ 组织角色工具授权
+    ∩ 组织角色智能体授权（空=全部已启用）
+    ∩ 租户 MCP / Skill 大开关
     ∩ OA 流程可见性（读实例时）
     ∩ 当前用户身份（待办只查自己）
 ```
@@ -18,8 +17,8 @@
 伪代码：
 
 ```text
-effective_agents = tenant_alloc.agents ∩ role_grants.agents ∩ enabled_agents
-effective_tools  = tenant_alloc.tools ∩ agent.bindings ∩ role_grants.tools ∩ enabled
+effective_agents = (role_grants.agents 或全部已启用) ∩ enabled_agents
+effective_tools  = agent.bindings ∩ tenant MCP/Skill 开关 ∩ enabled
 ```
 
 MCP 工具键、Skill 脚本工具键与系统 `tool_code` 走同一 `effective_tools`。
@@ -46,7 +45,7 @@ MCP 工具键、Skill 脚本工具键与系统 `tool_code` 走同一 `effective_
 
 ## 4. 角色叠加
 
-用户多个组织角色时，智能体授权、工具授权、页面权限均取**并集**，再与租户配额求交。
+用户多个组织角色时，智能体授权、页面权限均取**并集**。未勾选智能体的角色视为可用全部已启用智能体。工具不再单独授权，由智能体绑定决定。
 
 租户管理员若要自己试用对话：必须具备业务角色及 `/chat`（与现网「租户管理员切业务身份」一致），不能用 `tenant_admin` 身份直打业务编排接口。
 

@@ -19,7 +19,10 @@ const copy = async (msg: ChatMessageItem) => {
         <div class="assistant-byline"><img src="/favicon.svg" alt="" width="18" height="18" /><span>{{ agentName || t('chat.assistantName') }}</span></div>
         <details v-if="msg.reasoning_content" class="reasoning"><summary><BulbOutlined />{{ t('chat.thinking') }}<DownOutlined /></summary><p>{{ msg.reasoning_content }}</p></details>
         <div v-if="msg.tool_calls?.length" class="tool-timeline"><ToolActivity v-for="tool in msg.tool_calls" :key="tool.tool_call_id" :tool="tool" /></div>
-        <div v-if="msg.content" class="answer-document" v-html="renderSafeMarkdown(msg.content)" />
+        <div v-if="msg.content" class="answer-document">
+          <div v-if="msg.streaming" class="answer-streaming">{{ msg.content }}</div>
+          <div v-else v-html="renderSafeMarkdown(msg.content)" />
+        </div>
         <div v-if="msg.streaming" class="generation-status" role="status"><LoadingOutlined spin />{{ t('chat.generating') }}</div>
         <div v-if="msg.error" class="message-error" role="alert">{{ msg.error }}</div>
         <p v-else-if="msg.status === 'error'" class="message-error" role="alert">{{ t('chat.replyFailed') }}</p>
@@ -38,6 +41,7 @@ const copy = async (msg: ChatMessageItem) => {
 .reasoning { margin:0 0 16px; color:var(--color-text-tertiary); font-size:12px; }.reasoning summary { display:flex; align-items:center; gap:8px; cursor:pointer; list-style:none; }.reasoning summary::-webkit-details-marker { display:none; }.reasoning p { border-left:2px solid var(--color-border); padding:8px 16px; white-space:pre-wrap; line-height:1.85; max-height:260px; overflow:auto; color:var(--color-text-secondary); }
 .tool-timeline { margin:0 0 18px; max-width:620px; }
 .answer-document { font-size:14.5px; line-height:1.95; color:var(--color-text-primary); overflow-wrap:anywhere; }
+.answer-streaming { white-space:pre-wrap; overflow-wrap:anywhere; }
 .answer-document :deep(p) { margin:0 0 17px; }.answer-document :deep(h1) { font-size:25px; }.answer-document :deep(h2) { font-size:20px; }.answer-document :deep(h3) { font-size:16px; }
 .answer-document :deep(h1),.answer-document :deep(h2),.answer-document :deep(h3),.answer-document :deep(h4) { font-weight:600; letter-spacing:-.015em; margin:30px 0 12px; line-height:1.6; }
 .answer-document :deep(ul),.answer-document :deep(ol) { padding-left:24px; margin:12px 0 22px; }.answer-document :deep(li) { padding-left:3px; margin:7px 0; }

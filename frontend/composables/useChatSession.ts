@@ -2,7 +2,7 @@
 import type { ChatSessionItem, ChatSessionDetail, EffectiveAgentItem } from '~/types/chat'
 
 export const useChatSession = () => {
-  const { authFetch, activeRole, currentUser } = useAuth()
+  const { authFetch, activeRole, currentUser, accessRevision } = useAuth()
   const { t } = useI18n()
   const state = useState('chat-workspace', () => ({
     identity: '', sessions: [] as ChatSessionItem[], effectiveAgents: [] as EffectiveAgentItem[],
@@ -35,14 +35,18 @@ export const useChatSession = () => {
     } catch (err: any) { if (key === identity.value && request === state.value.searchRequest) error.value = err.message }
     finally { if (key === identity.value && request === state.value.searchRequest) loading.value = false }
   }
-  const initialize = async () => {
-    if (state.value.initialized || loading.value) return
+  const initialize = async (force = false) => {
+    if (!force && (state.value.initialized || loading.value)) return
     state.value.initialized = true
     const key = identity.value
     try { await Promise.all([fetchEffectiveAgents(), fetchSessions()]) }
     catch (err: any) { if (key === identity.value) { error.value = err.message; state.value.initialized = false } }
   }
   watch(identity, () => { initialize() })
+  watch(accessRevision, (revision, previous) => {
+    if (!previous || revision === previous) return
+    void initialize(true)
+  })
   const selectSession = async (id: string) => {
     const key = identity.value
     currentSessionId.value = id; currentDetail.value = null; detailLoading.value = true; error.value = ''

@@ -18,6 +18,10 @@ import {
   UpOutlined,
   CloseOutlined,
   ThunderboltOutlined,
+  RobotOutlined,
+  MessageOutlined,
+  ApiOutlined,
+  BookOutlined,
 } from '@ant-design/icons-vue'
 import dayjs, { type Dayjs } from 'dayjs'
 import 'dayjs/locale/zh-cn'
@@ -44,11 +48,12 @@ import type {
   LLMLogDetail,
   LLMLogStats,
   LLMProcessItem,
+  AgentUsageStats,
 } from '~/types/admin-data'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
-type MainTab = 'audit' | 'cron' | 'archive' | 'summary' | 'llm'
+type MainTab = 'audit' | 'cron' | 'archive' | 'summary' | 'llm' | 'agents'
 type AuditSubTab = 'all' | 'approve' | 'return' | 'review'
 type CronSubTab = 'all' | 'success' | 'failed' | 'running'
 type ArchiveSubTab = 'all' | 'compliant' | 'partially_compliant' | 'non_compliant'
@@ -75,6 +80,7 @@ const {
   listLLMProcesses,
   getLLMLogStats,
   getLLMProcessChain,
+  getAgentUsageStats,
 } = useAdminDataApi()
 
 const activeTab = ref<MainTab>('audit')
@@ -98,6 +104,10 @@ const cronStats = ref<CronLogStats>({
 const archiveStats = ref<ArchiveSnapshotStats>({ total: 0, compliant: 0, partial: 0, non_compliant: 0 })
 const summaryStats = ref<SummarySnapshotStats>({ total: 0, block_count: 0 })
 const llmStats = ref<LLMLogStats>({ total: 0, audit_count: 0, archive_count: 0, summary_count: 0, chat_count: 0 })
+const agentStats = ref<AgentUsageStats>({
+  session_count: 0, message_count: 0, tool_call_count: 0, mcp_call_count: 0, skill_call_count: 0, agents: [],
+})
+const agentLoading = ref(false)
 
 const auditSnapshots = ref<AuditSnapshotItem[]>([])
 const cronLogs = ref<CronLogItem[]>([])
@@ -274,7 +284,6 @@ const llmHasActiveFilters = computed(() =>
     !!llmFilterDateRange.value)
 
 const llmSubTabs = computed(() => [
-  { key: 'chat' as LLMSubTab, icon: AppstoreOutlined, count: llmStats.value.chat_count || 0, label: t('admin.data.llmTab.chat'), cssClass: 'stat-card--info' },
   {
     key: 'all' as LLMSubTab,
     icon: AppstoreOutlined,
@@ -303,6 +312,15 @@ const llmSubTabs = computed(() => [
     label: t('admin.data.llmTab.summary'),
     cssClass: 'stat-card--warning',
   },
+  { key: 'chat' as LLMSubTab, icon: MessageOutlined, count: llmStats.value.chat_count || 0, label: t('admin.data.llmTab.chat'), cssClass: 'stat-card--info' },
+])
+
+const agentStatCards = computed(() => [
+  { key: 'sessions', icon: MessageOutlined, count: agentStats.value.session_count, label: t('admin.data.agentTab.sessions'), cssClass: 'stat-card--info' },
+  { key: 'messages', icon: RobotOutlined, count: agentStats.value.message_count, label: t('admin.data.agentTab.messages'), cssClass: 'stat-card--primary' },
+  { key: 'tools', icon: ThunderboltOutlined, count: agentStats.value.tool_call_count, label: t('admin.data.agentTab.tools'), cssClass: 'stat-card--success' },
+  { key: 'mcp', icon: ApiOutlined, count: agentStats.value.mcp_call_count, label: t('admin.data.agentTab.mcp'), cssClass: 'stat-card--warning' },
+  { key: 'skills', icon: BookOutlined, count: agentStats.value.skill_call_count, label: t('admin.data.agentTab.skills'), cssClass: 'stat-card--info' },
 ])
 
 const cronTaskTypeOptions = computed(() => {
@@ -695,6 +713,17 @@ async function loadLLMStats() {
   }
 }
 
+async function loadAgentStats() {
+  agentLoading.value = true
+  try {
+    agentStats.value = await getAgentUsageStats()
+  } catch (e: any) {
+    message.error(e?.message || t('admin.data.loadFailed'))
+  } finally {
+    agentLoading.value = false
+  }
+}
+
 // 加载审核快照列表（分页，支持多维度筛选）
 async function loadAuditLogs() {
   auditLoading.value = true
@@ -827,6 +856,9 @@ watch(activeTab, (tab) => {
   if (tab === 'llm') {
     loadLLMStats()
   }
+  if (tab === 'agents') {
+    loadAgentStats()
+  }
 })
 
 // 页面初始化：并行加载流程类型、部门列表及各模块统计数据
@@ -839,6 +871,7 @@ onMounted(async () => {
     loadArchiveStats(),
     loadSummaryStats(),
     loadLLMStats(),
+    loadAgentStats(),
   ])
 })
 </script>
@@ -860,6 +893,7 @@ onMounted(async () => {
           { key: 'archive', label: t('admin.data.tabArchive'), icon: FolderOpenOutlined },
           { key: 'summary', label: t('admin.data.tabSummary'), icon: FileTextOutlined },
           { key: 'llm', label: t('admin.data.tabLLM'), icon: ThunderboltOutlined },
+          { key: 'agents', label: t('admin.data.tabAgents'), icon: RobotOutlined },
         ]"
           :key="tab.key"
           class="tab-btn"
@@ -1594,12 +1628,56 @@ onMounted(async () => {
       </div>
     </div>
 
+    <div v-if="activeTab === 'agents'" class="tab-content fade-in">
+      <div class="stats-row stats-row--five">
+        <div v-for="tab in agentStatCards" :key="tab.key" class="stat-card stat-card--compact" :class="tab.cssClass">
+          <div class="stat-card-icon"><component :is="tab.icon" /></div>
+          <div class="stat-card-info">
+            <span class="stat-card-value">{{ tab.count }}</span>
+            <span class="stat-card-label">{{ tab.label }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="data-table-card">
+        <table class="data-table">
+          <thead>
+          <tr>
+            <th>{{ t('admin.data.agentTab.agent') }}</th>
+            <th>{{ t('admin.data.agentTab.sessions') }}</th>
+            <th>{{ t('admin.data.agentTab.messages') }}</th>
+            <th>{{ t('admin.data.thTokens') }}</th>
+            <th>{{ t('admin.data.agentTab.tools') }}</th>
+            <th>{{ t('admin.data.agentTab.mcp') }}</th>
+            <th>{{ t('admin.data.agentTab.skills') }}</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr v-if="agentLoading">
+            <td colspan="7" class="empty-cell">{{ t('admin.data.loading') }}</td>
+          </tr>
+          <tr v-else v-for="item in agentStats.agents" :key="item.agent_code">
+            <td>{{ item.agent_name || item.agent_code }}</td>
+            <td>{{ item.session_count }}</td>
+            <td>{{ item.message_count }}</td>
+            <td>{{ item.token_count }}</td>
+            <td>{{ item.tool_codes?.length ? item.tool_codes.join(', ') : '-' }}</td>
+            <td>{{ item.mcp_codes?.length ? item.mcp_codes.join(', ') : '-' }}</td>
+            <td>{{ item.skill_codes?.length ? item.skill_codes.join(', ') : '-' }}</td>
+          </tr>
+          <tr v-if="!agentLoading && !agentStats.agents.length">
+            <td colspan="7" class="empty-cell">{{ t('admin.data.noData') }}</td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div v-if="activeTab === 'llm'" class="tab-content fade-in">
-      <div class="stats-row">
+      <div class="stats-row stats-row--five">
         <div
             v-for="tab in llmSubTabs"
             :key="tab.key"
-            class="stat-card"
+            class="stat-card stat-card--compact"
             :class="[tab.cssClass, { 'stat-card--selected': activeLLMSubTab === tab.key }]"
             @click="activeLLMSubTab = tab.key; llmPage = 1"
         >
@@ -2366,6 +2444,10 @@ onMounted(async () => {
   gap: 16px;
   margin-bottom: 20px;
 }
+.stats-row--five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
 
 .stat-card {
   background: var(--color-bg-card);
@@ -2421,6 +2503,21 @@ onMounted(async () => {
   font-size: 13px;
   color: var(--color-text-tertiary);
   margin-top: 2px;
+}
+.stat-card--compact {
+  padding: 12px 14px;
+  gap: 10px;
+}
+.stat-card--compact .stat-card-icon {
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+}
+.stat-card--compact .stat-card-value {
+  font-size: 20px;
+}
+.stat-card--compact .stat-card-label {
+  font-size: 12px;
 }
 
 .toolbar {
@@ -2947,7 +3044,7 @@ onMounted(async () => {
 }
 
 @media (max-width: 768px) {
-  .stats-row { grid-template-columns: repeat(2, 1fr); }
+  .stats-row, .stats-row--five { grid-template-columns: repeat(2, 1fr); }
   .data-table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .data-table { min-width: 760px; }
   .toolbar { flex-direction: column; align-items: stretch; }

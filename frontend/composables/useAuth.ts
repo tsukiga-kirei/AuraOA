@@ -146,6 +146,8 @@ export const useAuth = () => {
   const refreshToken = useState<string | null>('auth_refresh', () => null)
   // 后端返回的菜单权限列表（用于侧边栏渲染和路由守卫细粒度校验）
   const menus = useState<MenuItem[]>('auth_menus', () => [])
+  // 权限/菜单刷新序号，供对话工作区在角色授权变更后重新拉智能体。
+  const accessRevision = useState<number>('auth_access_revision', () => 0)
   // 当前用户的系统角色（business / tenant_admin / system_admin）
   const userRole = useState<UserRole>('auth_role', () => 'business')
   // 用户拥有的所有角色列表（多租户场景下可切换）
@@ -453,6 +455,7 @@ export const useAuth = () => {
           phone: me.user.phone || '',
         }
         if (me.user.locale) userLocale.value = me.user.locale
+        if (Array.isArray(me.menus)) menus.value = me.menus
         persistState()
       }
       meValidateCache.value = { tokenKey, at: now, ok }
@@ -694,8 +697,11 @@ export const useAuth = () => {
           id: r.id, role: r.role, tenant_id: r.tenant_id,
           tenant_name: r.tenant_name, label: r.label,
         }))
-        persistState()
       }
+      if (Array.isArray(me.menus)) menus.value = me.menus
+      meValidateCache.value = null
+      accessRevision.value++
+      persistState()
     } catch { /* 刷新角色失败不影响正常使用 */ }
   }
 
@@ -753,7 +759,7 @@ export const useAuth = () => {
   }
 
   return {
-    token, refreshToken, menus, userRole, userPermissions, currentUser,
+    token, refreshToken, menus, accessRevision, userRole, userPermissions, currentUser,
     allRoles, activeRole, effectiveActiveRoleForApi, userLocale,
     login, getMenu, logout, clearLocalSession, validateAccessToken,
     isAuthenticated, restore, tryRestoreAsync, isRefreshTokenValid,

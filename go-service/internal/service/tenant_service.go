@@ -221,7 +221,7 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 		tenant.Temperature = 0.3
 	}
 
-	// 应用系统默认值（如果未提供）
+	// 应用系统默认值（未提供时）。token_quota < 0 表示不限制，予以保留。
 	if tenant.TokenQuota == 0 {
 		tenant.TokenQuota = defaultTokenQuota
 	}
@@ -254,9 +254,9 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 	}
 
 	// 2. 创建默认角色
-	businessPerms := []byte(`["/overview","/dashboard","/summary","/settings"]`)
-	auditPerms := []byte(`["/overview","/dashboard","/cron","/archive","/summary","/settings"]`)
-	adminPerms := []byte(`["/overview","/dashboard","/cron","/archive","/summary","/settings","/admin/tenant/rules","/admin/tenant/org","/admin/tenant/data","/admin/tenant/user-configs"]`)
+	businessPerms := []byte(`["/overview","/dashboard","/chat","/summary","/settings"]`)
+	auditPerms := []byte(`["/overview","/dashboard","/chat","/cron","/archive","/summary","/settings"]`)
+	adminPerms := []byte(`["/overview","/dashboard","/chat","/cron","/archive","/summary","/settings","/admin/tenant/rules","/admin/tenant/agents","/admin/tenant/org","/admin/tenant/data","/admin/tenant/user-configs"]`)
 
 	defaultRoles := []model.OrgRole{
 		{

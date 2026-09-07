@@ -27,11 +27,27 @@ export const useChatStream = (options: { onDone?: () => void; onError?: (error: 
         if (event === 'reset') { msg.content = data.content || ''; msg.reasoning_content = data.reasoning_content || '' }
         if (event === 'delta') msg.content += data.content || ''
         if (event === 'reasoning') msg.reasoning_content += data.content || ''
-        if (event === 'tool_start') msg.tool_calls!.push({ ...data })
+        if (event === 'tool_start') {
+          msg.tool_calls!.push({
+            tool_code: data?.tool_code || '',
+            tool_call_id: data?.tool_call_id || crypto.randomUUID(),
+            ui_kind: data?.ui_kind || '',
+            status: data?.status || 'running',
+            arguments: data?.arguments,
+            payload: data?.payload,
+          })
+        }
         if (event === 'tool_result') {
-          const tool = msg.tool_calls!.find(item => item.tool_call_id === data.tool_call_id)
-          if (tool) Object.assign(tool, data)
-          else msg.tool_calls!.push({ ...data })
+          const tool = msg.tool_calls!.find(item => item.tool_call_id === data?.tool_call_id)
+          if (tool) Object.assign(tool, data || {})
+          else msg.tool_calls!.push({
+            tool_code: data?.tool_code || '',
+            tool_call_id: data?.tool_call_id || crypto.randomUUID(),
+            ui_kind: data?.ui_kind || '',
+            status: data?.status || 'success',
+            arguments: data?.arguments,
+            payload: data?.payload,
+          })
         }
         if (event === 'session' && data.title) {
           const session = sessions.value.find(item => item.id === sessionId)

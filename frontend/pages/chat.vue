@@ -11,6 +11,7 @@ const route = useRoute()
 const { effectiveAgents, currentSessionId, currentDetail, selectedAgentCode, detailLoading, error, initialize, selectSession, createSession, newConversation } = useChatSession()
 const messages = ref<ChatMessageItem[]>([])
 const canvas = ref<HTMLElement | null>(null)
+const canvasBody = ref<HTMLElement | null>(null)
 const composer = ref<InstanceType<typeof ChatComposer> | null>(null)
 const pinned = ref(true)
 const agent = computed(() => {
@@ -18,18 +19,48 @@ const agent = computed(() => {
   return code ? effectiveAgents.value.find(item => item.agent_code === code) : effectiveAgents.value[0]
 })
 const { streaming, sendStreamMessage, stopStreaming } = useChatStream()
-const scrollBottom = () => { if (canvas.value) canvas.value.scrollTop = canvas.value.scrollHeight }
-const onScroll = () => { if (canvas.value) pinned.value = canvas.value.scrollHeight - canvas.value.scrollTop - canvas.value.clientHeight < 100 }
+const BOTTOM_THRESHOLD = 36
+let ignoreScroll = false
+const distanceToBottom = () => {
+  const el = canvas.value
+  if (!el) return 0
+  return el.scrollHeight - el.scrollTop - el.clientHeight
+}
+const scrollBottom = () => {
+  const el = canvas.value
+  if (!el) return
+  ignoreScroll = true
+  el.scrollTop = el.scrollHeight
+  requestAnimationFrame(() => { ignoreScroll = false })
+}
+const followLatest = () => { if (pinned.value) nextTick(scrollBottom) }
+const onCanvasScroll = () => {
+  if (!canvas.value || ignoreScroll) return
+  pinned.value = distanceToBottom() <= BOTTOM_THRESHOLD
+}
 watch(currentDetail, detail => { messages.value = [...(detail?.messages || [])]; pinned.value = true; nextTick(scrollBottom) })
 watch(currentSessionId, () => stopStreaming())
-watch(() => messages.value.map(item => [item.content, item.reasoning_content, item.tool_calls?.length]), () => { if (pinned.value) nextTick(scrollBottom) }, { deep: true })
+watch(() => messages.value.map(item => [item.content, item.reasoning_content, item.tool_calls?.length, item.status, item.streaming]), followLatest, { deep: true })
+watch(streaming, followLatest)
 const selectFromRoute = async () => {
   const id = typeof route.query.session === 'string' ? route.query.session : null
-  if (id && currentSessionId.value !== id) await selectSession(id)
+  const agentCode = typeof route.query.agent === 'string' ? route.query.agent : ''
+  if (id) {
+    if (currentSessionId.value !== id) await selectSession(id)
+    return
+  }
+  if (agentCode && selectedAgentCode.value !== agentCode) newConversation(agentCode)
 }
-watch(() => route.query.session, selectFromRoute)
-onMounted(async () => { await initialize(); await selectFromRoute() })
-const changeAgent = (code: string) => { stopStreaming(); newConversation(code); navigateTo('/chat') }
+watch(() => [route.query.session, route.query.agent], selectFromRoute)
+onMounted(async () => {
+  await initialize()
+  await selectFromRoute()
+  if (!canvasBody.value) return
+  const observer = new ResizeObserver(followLatest)
+  observer.observe(canvasBody.value)
+  onBeforeUnmount(() => observer.disconnect())
+})
+const changeAgent = (code: string) => { stopStreaming(); newConversation(code); navigateTo({ path: '/chat', query: { agent: code } }) }
 const submit = async (content: string) => {
   if (detailLoading.value || streaming.value) return
   if (!currentSessionId.value) {
@@ -46,7 +77,10 @@ const suggestions = [
   { icon: BookOutlined, title: 'chat.quickPill.guideline', prompt: 'chat.prompt.guideline', detail: 'chat.suggestion.guideline' },
 ]
 const jumpTurns = computed(() => buildJumpTurns(messages.value))
-const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+const jump = (id: string) => {
+  pinned.value = false
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 </script>
 
 <template>
@@ -57,22 +91,24 @@ const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behav
       </div>
       <span class="workspace-context">{{ currentDetail?.session.title || t('chat.workspaceLabel') }}</span>
     </header>
-    <div ref="canvas" class="chat-canvas" @scroll="onScroll">
-      <div v-if="error" class="chat-error" role="alert">{{ error }}</div>
-      <div v-if="detailLoading" class="chat-loading"><a-spin /></div>
-      <div v-else-if="!messages.length" class="chat-welcome">
-        <div class="welcome-mark"><img src="/favicon.svg" alt="" width="34" height="34" /></div>
-        <p class="welcome-eyebrow">{{ agent?.name || t('chat.assistantName') }}</p>
-        <h1>{{ t('chat.welcomeTitle') }}</h1>
-        <p class="welcome-description">{{ agent?.description || t('chat.welcomeDescription') }}</p>
-        <div class="suggestions">
-          <button v-for="item in suggestions" :key="item.title" @click="composer?.appendPrompt(t(item.prompt))">
-            <component :is="item.icon" /><strong>{{ t(item.title) }}</strong><span>{{ t(item.detail) }}</span><ArrowRightOutlined class="suggestion-arrow" />
-          </button>
+    <div ref="canvas" class="chat-canvas" @scroll.passive="onCanvasScroll">
+      <div ref="canvasBody" class="chat-canvas-body">
+        <div v-if="error" class="chat-error" role="alert">{{ error }}</div>
+        <div v-if="detailLoading" class="chat-loading"><a-spin /></div>
+        <div v-else-if="!messages.length" class="chat-welcome">
+          <div class="welcome-mark"><img src="/favicon.svg" alt="" width="34" height="34" /></div>
+          <p class="welcome-eyebrow">{{ agent?.name || t('chat.assistantName') }}</p>
+          <h1>{{ t('chat.welcomeTitle') }}</h1>
+          <p class="welcome-description">{{ agent?.description || t('chat.welcomeDescription') }}</p>
+          <div class="suggestions">
+            <button v-for="item in suggestions" :key="item.title" @click="composer?.appendPrompt(t(item.prompt))">
+              <component :is="item.icon" /><strong>{{ t(item.title) }}</strong><span>{{ t(item.detail) }}</span><ArrowRightOutlined class="suggestion-arrow" />
+            </button>
+          </div>
+          <p v-if="!effectiveAgents.length" class="no-agents">{{ t('chat.noAgents') }}</p>
         </div>
-        <p v-if="!effectiveAgents.length" class="no-agents">{{ t('chat.noAgents') }}</p>
+        <ChatThread v-else :messages="messages" :agent-name="agent?.name" />
       </div>
-      <ChatThread v-else :messages="messages" :agent-name="agent?.name" />
     </div>
     <MessageJumpRail v-if="jumpTurns.length > 2" :turns="jumpTurns" @jump="jump" />
     <div class="chat-bottom">
@@ -84,12 +120,13 @@ const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behav
 </template>
 
 <style scoped>
-.chat-workspace { height:100%; min-height:0; display:flex; flex-direction:column; position:relative; background:var(--color-bg-card); color:var(--color-text-primary); }
+.chat-workspace { flex:1; min-height:0; height:100%; display:flex; flex-direction:column; position:relative; background:var(--color-bg-card); color:var(--color-text-primary); }
 .workspace-heading { flex-shrink:0; height:62px; padding:0 30px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
 .workspace-agent { display:flex; gap:4px; align-items:center; color:var(--color-text-secondary); }
 .workspace-agent :deep(.ant-select) { min-width:155px; font-weight:600; }
 .workspace-context { font-size:12px; color:var(--color-text-tertiary); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .chat-canvas { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-gutter:stable; }
+.chat-canvas-body { min-height:100%; display:flex; flex-direction:column; }
 .chat-welcome { width:min(780px,100%); margin:auto; padding:clamp(45px,10vh,110px) 30px 48px; }
 .welcome-mark { margin-bottom:26px; }
 .welcome-eyebrow { font-size:12px; color:var(--color-primary); font-weight:600; margin-bottom:12px; letter-spacing:.06em; }
@@ -101,11 +138,11 @@ h1 { font-size:clamp(27px,3vw,38px); font-weight:550; line-height:1.45; letter-s
 .suggestions strong { font-size:13px; margin:16px 0 6px; color:var(--color-text-primary); font-weight:550; }
 .suggestions span { font-size:12px; line-height:1.65; }
 .suggestions .suggestion-arrow { position:absolute; right:16px; top:20px; opacity:0; }.suggestions button:hover .suggestion-arrow { opacity:1; }
-.chat-bottom { flex-shrink:0; position:relative; background:var(--color-bg-card); padding:0 24px 15px; }
-.composer-hint { text-align:center; font-size:11px; color:var(--color-text-tertiary); margin:10px 0 0; }
+.chat-bottom { flex-shrink:0; position:relative; background:var(--color-bg-card); padding:8px 24px 10px; }
+.composer-hint { text-align:center; font-size:11px; color:var(--color-text-tertiary); margin:6px 0 0; }
 .scroll-bottom { position:absolute; top:-44px; left:calc(50% - 17px); width:34px; height:34px; background:var(--color-bg-card); border:1px solid var(--color-border); color:var(--color-text-secondary); border-radius:50%; cursor:pointer; }
 .chat-error,.no-agents { color:var(--color-text-secondary); font-size:13px; padding:14px; background:var(--color-bg-page); border-radius:8px; margin:16px auto; max-width:740px; }
 .chat-loading { padding:60px; text-align:center; }
-@media(max-width:600px) { .workspace-heading { padding:0 14px; height:50px; }.workspace-context { display:none; }.chat-welcome { padding:30px 22px; }.suggestions { grid-template-columns:1fr; gap:8px; margin-top:24px; }.suggestions button { padding:14px; display:grid; grid-template-columns:24px 1fr; gap:4px 8px; }.suggestions strong { margin:0; }.suggestions span:not(.anticon) { grid-column:2; }.chat-bottom { padding:0 12px 12px; }.welcome-mark { margin-bottom:18px; } }
+@media(max-width:600px) { .workspace-heading { padding:0 14px; height:50px; }.workspace-context { display:none; }.chat-welcome { padding:30px 22px; }.suggestions { grid-template-columns:1fr; gap:8px; margin-top:24px; }.suggestions button { padding:14px; display:grid; grid-template-columns:24px 1fr; gap:4px 8px; }.suggestions strong { margin:0; }.suggestions span:not(.anticon) { grid-column:2; }.chat-bottom { padding:8px 12px 10px; }.welcome-mark { margin-bottom:18px; } }
 @media(prefers-reduced-motion:reduce) { .suggestions button { transition:none; } }
 </style>

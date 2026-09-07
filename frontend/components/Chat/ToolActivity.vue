@@ -5,8 +5,15 @@ import { renderSafeMarkdown } from '~/utils/markdown'
 const props = defineProps<{ tool: ChatToolExecution }>()
 const { t, te } = useI18n()
 const { loadOAJumpConfig, jumpToOA, canJumpToOA } = useOAJump()
-const kind = computed(() => props.tool.tool_code.startsWith('skill:') ? 'skill' : props.tool.tool_code.startsWith('mcp:') ? 'mcp' : 'system')
-const label = computed(() => te(`chat.tools.${props.tool.tool_code}`) ? t(`chat.tools.${props.tool.tool_code}`) : props.tool.tool_code.replace(/^(skill:|mcp:)/, '').replace(/:/g, ' / '))
+const kind = computed(() => {
+  const code = props.tool?.tool_code || ''
+  return code.startsWith('skill:') ? 'skill' : code.startsWith('mcp:') ? 'mcp' : 'system'
+})
+const label = computed(() => {
+  const code = props.tool?.tool_code || ''
+  return te(`chat.tools.${code}`) ? t(`chat.tools.${code}`) : code.replace(/^(skill:|mcp:)/, '').replace(/:/g, ' / ')
+})
+const statusKey = computed(() => props.tool?.status && ['running', 'success', 'error'].includes(props.tool.status) ? props.tool.status : 'running')
 const rows = computed(() => Array.isArray(props.tool.payload?.items) ? props.tool.payload.items : [])
 const text = computed(() => {
   const result = props.tool.payload
@@ -18,11 +25,11 @@ onMounted(() => { if (props.tool.tool_code === 'list_my_todos') loadOAJumpConfig
 </script>
 
 <template>
-  <details class="tool-activity" :class="[kind, tool.status]">
+  <details v-if="tool" class="tool-activity" :class="[kind, tool.status]">
     <summary>
       <span class="activity-icon"><BookOutlined v-if="kind === 'skill'" /><ApiOutlined v-else-if="kind === 'mcp'" /><SearchOutlined v-else /></span>
       <span class="activity-label">{{ label }}<small>{{ t(`chat.toolKind.${kind}`) }}</small></span>
-      <span class="activity-state"><LoadingOutlined v-if="tool.status === 'running'" spin /><CloseOutlined v-else-if="tool.status === 'error'" /><CheckOutlined v-else />{{ t(`chat.toolStatus.${tool.status}`) }}</span>
+      <span class="activity-state"><LoadingOutlined v-if="statusKey === 'running'" spin /><CloseOutlined v-else-if="statusKey === 'error'" /><CheckOutlined v-else />{{ t(`chat.toolStatus.${statusKey}`) }}</span>
       <DownOutlined class="activity-chevron" />
     </summary>
     <div class="activity-body">

@@ -469,6 +469,7 @@ func SetupRouter(
 	tenantAgents.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
 	{
 		tenantAgents.GET("/agent-catalog", agentAdminHandler.GetTenantCatalog)
+		tenantAgents.GET("/agent-stats", agentAdminHandler.GetAgentUsageStats)
 		tenantAgents.GET("/chat-allocation", agentAdminHandler.GetTenantAllocationByTenant)
 		tenantAgents.GET("/agents", agentAdminHandler.ListTenantAgents)
 		tenantAgents.POST("/agents", agentAdminHandler.CreateTenantAgent)

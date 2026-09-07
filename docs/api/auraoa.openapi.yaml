@@ -6660,6 +6660,29 @@ paths:
             "text/event-stream":
               "schema":
                 "type": "string"
+  "/api/tenant/agent-stats":
+    "get":
+      "summary": "智能体会话、工具、MCP、Skill 用量统计"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "type": "object"
   "/api/tenant/agent-catalog":
     "get":
       "summary": "读取租户配额内可装配的目录"
@@ -7569,7 +7592,19 @@ components:
           type: string
     UserMe:
       type: object
-      description: 当前用户完整信息
+      description: 当前用户完整信息，含与 GET /api/auth/menu 同源的 menus
+      properties:
+        menus:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              path:
+                type: string
     ExecuteRequest:
       type: object
       required:

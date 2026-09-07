@@ -254,7 +254,24 @@ func (h *AgentAdminHandler) TestAndRefreshMCPServer(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, errcode.ErrExternal, "测试连接失败: "+err.Error())
 		return
 	}
+	_ = h.allocationService.RefreshMCPAgentBindings(c.Request.Context(), tenantID, serverID)
 	response.Success(c, gin.H{"tools": tools})
+}
+
+// GetAgentUsageStats 数据管理页智能体用量
+// GET /api/tenant/agent-stats
+func (h *AgentAdminHandler) GetAgentUsageStats(c *gin.Context) {
+	tenantID, err := getTenantID(c)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "租户上下文丢失")
+		return
+	}
+	stats, err := h.allocationService.GetAgentUsageStats(c.Request.Context(), tenantID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, stats)
 }
 
 // DeleteMCPServer 删除 MCP 服务

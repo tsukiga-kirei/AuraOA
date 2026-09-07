@@ -1099,6 +1099,18 @@ func (s *AuthService) GetMe(userID uuid.UUID, activeRole jwtpkg.ActiveRoleClaim,
 		resp.PagePermissions = []string{}
 	}
 
+	// 菜单与 GetMenu 同源，刷新页面即可拿到最新角色权限，不必再切换身份。
+	tenantID := ""
+	if activeRole.TenantID != nil {
+		tenantID = *activeRole.TenantID
+	}
+	if menu, menuErr := s.GetMenu(activeRole, userID.String(), tenantID); menuErr == nil && menu != nil {
+		resp.Menus = menu.Menus
+	}
+	if resp.Menus == nil {
+		resp.Menus = []dto.MenuItem{}
+	}
+
 	// 4. 查询近期登录历史（最近 5 条）
 	loginHistories, _ := s.userRepo.FindRecentLoginHistory(userID, 5)
 	loginItems := make([]dto.LoginHistoryItem, 0, len(loginHistories))

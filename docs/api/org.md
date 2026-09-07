@@ -56,7 +56,7 @@ GET /api/tenant/org/roles
 POST /api/tenant/org/roles
 ```
 
-请求体支持：`name`, `description`, `page_permissions[]`, `agent_codes[]`, `tool_codes[]`。
+请求体支持：`name`, `description`, `page_permissions[]`, `agent_codes[]`。
 
 ---
 
@@ -66,7 +66,7 @@ POST /api/tenant/org/roles
 PUT /api/tenant/org/roles/:id
 ```
 
-请求体支持：`name`, `description`, `page_permissions[]`, `agent_codes[]`, `tool_codes[]`。写入时校验智能体与工具在租户配额内。
+请求体支持：`name`, `description`, `page_permissions[]`, `agent_codes[]`。只授权智能体；不选表示该角色可用全部已启用智能体。
 
 ---
 
@@ -134,4 +134,4 @@ GET /api/tenant/org/members/import-template
 
 ## 智能体与工具再分配（2026-09-05）
 
-角色创建、更新与查询均包含 `agent_codes: string[]`、`tool_codes: string[]`。租户管理员从租户工具目录选择绑定；业务用户还需角色的 `page_permissions` 包含 `/chat`。空数组清空授权，不再默认放开全部配额；多角色取授权并集后与租户配额、智能体绑定求交集。参见 [智能体接口](./agents.md)。
+角色创建、更新与查询包含 `agent_codes: string[]`。业务用户还需 `page_permissions` 包含 `/chat`。不选智能体表示可用全部已启用智能体；多角色取授权并集。工具、MCP、Skill 由智能体绑定决定。参见 [智能体接口](./agents.md)。

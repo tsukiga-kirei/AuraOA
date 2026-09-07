@@ -31,13 +31,16 @@ const showSidebarText = computed(() =>
   (!props.collapsed || props.mobileMenuOpen) && !isSidebarTransitioning.value,
 )
 
-watch(() => props.collapsed, () => {
+watch(() => props.collapsed, (collapsed) => {
   if (sidebarTransitionTimer) clearTimeout(sidebarTransitionTimer)
   isSidebarTransitioning.value = true
-  sidebarTransitionTimer = setTimeout(() => {
-    isSidebarTransitioning.value = false
-    sidebarTransitionTimer = null
-  }, 320)
+  // 收起时立刻隐藏文字，避免对话分组把侧栏撑出横向滚动；展开后再等宽度动画结束显示。
+  if (!collapsed || props.mobileMenuOpen) {
+    sidebarTransitionTimer = setTimeout(() => {
+      isSidebarTransitioning.value = false
+      sidebarTransitionTimer = null
+    }, 280)
+  }
 })
 
 onUnmounted(() => {
@@ -176,7 +179,10 @@ const handleToggleSidebar = () => {
           </div>
         </template>
       </div>
-      <ChatNavigation v-if="chatAllowed" :compact="!showSidebarText" @navigate="handleMenuClick" />
+      <div v-if="chatAllowed" class="sidebar-section sidebar-section--assistant">
+        <div v-if="showSidebarText" class="sidebar-section-title">{{ t('sidebar.section.assistant') }}</div>
+        <ChatNavigation :compact="!showSidebarText" @navigate="handleMenuClick" />
+      </div>
     </nav>
 
     <!--底部用户菜单-->
@@ -409,7 +415,8 @@ html[data-theme='dark'] .sidebar-hint-below::after {
   color: var(--color-danger);
 }
 
-.sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; overflow-x: hidden; min-height: 0; }
+.sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; overflow-x: hidden; min-width: 0; min-height: 0; width: 100%; }
+.sidebar-section--assistant { margin-top: 4px; }
 .sidebar-section { margin-bottom: 8px; }
 .sidebar-section-title {
   padding: 8px 24px 6px; font-size: 11px; font-weight: 600;

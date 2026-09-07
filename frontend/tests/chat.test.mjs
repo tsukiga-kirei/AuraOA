@@ -18,7 +18,7 @@ const { renderSafeMarkdown } = await sourceModule('../utils/markdown.ts')
 const locales = await Promise.all(['zh-CN', 'en-US'].map(name => sourceModule(`../locales/${name}.ts`)))
 
 test('Chat UI translation keys exist in both languages', () => {
-  const paths = ['components/Chat/ChatNavigation.vue', 'components/Chat/ChatThread.vue', 'components/Chat/ToolActivity.vue', 'components/ChatAllocationPanel.vue', 'pages/chat.vue', 'pages/admin/tenant/agents.vue']
+  const paths = ['components/Chat/ChatNavigation.vue', 'components/Chat/ChatSearchModal.vue', 'components/Chat/ChatThread.vue', 'components/Chat/ToolActivity.vue', 'components/ChatAllocationPanel.vue', 'pages/chat.vue', 'pages/admin/tenant/agents.vue']
   for (const path of paths) {
     const source = fs.readFileSync(new URL('../' + path, import.meta.url), 'utf8')
     for (const [, key] of source.matchAll(/\bt\('([^']+)'/g)) {
@@ -37,7 +37,7 @@ test('A slower previous search cannot replace a newer search or another tenant',
   const session = scope.run(() => {
     vm.runInNewContext(js, { ...vue, exports, URLSearchParams, console,
       useState: (key, init) => { if (!shared.has(key)) shared.set(key, vue.ref(init())); return shared.get(key) },
-      useAuth: () => ({ activeRole, currentUser: vue.ref({ username: 'tester' }), authFetch: () => new Promise(resolve => pending.push(resolve)) }),
+      useAuth: () => ({ activeRole, currentUser: vue.ref({ username: 'tester' }), accessRevision: vue.ref(0), authFetch: () => new Promise(resolve => pending.push(resolve)) }),
       useI18n: () => ({ t: key => key }),
     })
     return exports.useChatSession()
