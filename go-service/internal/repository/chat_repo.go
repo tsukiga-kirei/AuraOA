@@ -303,23 +303,24 @@ ORDER BY days.d ASC`
 	return result, err
 }
 
-// GetDashboardAgentOverview 获取仪表盘智能体专属统计数据
+// GetDashboardAgentOverview 获取仪表盘智能体专属统计数据（按近一周统计）
 func (r *ChatRepo) GetDashboardAgentOverview(tenantID uuid.UUID, userScope *uuid.UUID) (*dto.DashboardAgentOverviewData, error) {
+	since := apptime.Now().AddDate(0, 0, -7)
 	if userScope != nil {
-		// 个人视角 (business)
+		// 个人视角 (business，近一周)
 		var mySessions int64
-		_ = r.db.Model(&model.ChatSession{}).Where("tenant_id = ? AND user_id = ?", tenantID, *userScope).Count(&mySessions).Error
+		_ = r.db.Model(&model.ChatSession{}).Where("tenant_id = ? AND user_id = ? AND created_at >= ?", tenantID, *userScope, since).Count(&mySessions).Error
 
 		var myMessages int64
 		_ = r.db.Table("chat_messages m").
 			Joins("JOIN chat_sessions s ON s.id = m.session_id").
-			Where("s.tenant_id = ? AND s.user_id = ? AND m.role = 'user'", tenantID, *userScope).
+			Where("s.tenant_id = ? AND s.user_id = ? AND m.role = 'user' AND m.created_at >= ?", tenantID, *userScope, since).
 			Count(&myMessages).Error
 
 		var myLikes int64
 		_ = r.db.Table("chat_messages m").
 			Joins("JOIN chat_sessions s ON s.id = m.session_id").
-			Where("s.tenant_id = ? AND s.user_id = ? AND m.feedback = 'like'", tenantID, *userScope).
+			Where("s.tenant_id = ? AND s.user_id = ? AND m.feedback = 'like' AND m.created_at >= ?", tenantID, *userScope, since).
 			Count(&myLikes).Error
 
 		var favAgent string
@@ -327,10 +328,10 @@ func (r *ChatRepo) GetDashboardAgentOverview(tenantID uuid.UUID, userScope *uuid
 			SELECT COALESCE(NULLIF(ad.name, ''), s.agent_code) AS agent_name
 			FROM chat_sessions s
 			LEFT JOIN agent_definitions ad ON ad.id = s.agent_id
-			WHERE s.tenant_id = ? AND s.user_id = ?
+			WHERE s.tenant_id = ? AND s.user_id = ? AND s.created_at >= ?
 			GROUP BY s.agent_code, ad.name
 			ORDER BY COUNT(*) DESC
-			LIMIT 1`, tenantID, *userScope).Scan(&favAgent).Error
+			LIMIT 1`, tenantID, *userScope, since).Scan(&favAgent).Error
 
 		type recSession struct {
 			ID        uuid.UUID `gorm:"column:id"`
@@ -344,9 +345,9 @@ func (r *ChatRepo) GetDashboardAgentOverview(tenantID uuid.UUID, userScope *uuid
 			SELECT s.id, s.agent_code, COALESCE(NULLIF(ad.name, ''), s.agent_code) AS agent_name, s.title, s.created_at
 			FROM chat_sessions s
 			LEFT JOIN agent_definitions ad ON ad.id = s.agent_id
-			WHERE s.tenant_id = ? AND s.user_id = ?
+			WHERE s.tenant_id = ? AND s.user_id = ? AND s.created_at >= ?
 			ORDER BY s.updated_at DESC
-			LIMIT 5`, tenantID, *userScope).Scan(&recs).Error
+			LIMIT 5`, tenantID, *userScope, since).Scan(&recs).Error
 
 		recentSessions := make([]dto.DashboardRecentSessionDTO, 0, len(recs))
 		for _, row := range recs {
@@ -369,24 +370,31 @@ func (r *ChatRepo) GetDashboardAgentOverview(tenantID uuid.UUID, userScope *uuid
 		}, nil
 	}
 
-	// 租户视角 (tenant_admin)
+	// 租户视角 (tenant_admin，近一周)
 	var totalSessions int64
-	_ = r.db.Model(&model.ChatSession{}).Where("tenant_id = ?", tenantID).Count(&totalSessions).Error
+	_ = r.db.Model(&model.ChatSession{}).Where("tenant_id = ? AND created_at >= ?", tenantID, since).Count(&totalSessions).Error
 
 	var totalMessages int64
-	_ = r.db.Model(&model.ChatMessage{}).Where("tenant_id = ? AND role = 'user'", tenantID).Count(&totalMessages).Error
+	_ = r.db.Model(&model.ChatMessage{}).Where("tenant_id = ? AND role = 'user' AND created_at >= ?", tenantID, since).Count(&totalMessages).Error
 
 	var activeUsers int64
-	_ = r.db.Model(&model.ChatSession{}).Where("tenant_id = ?", tenantID).Select("COUNT(DISTINCT user_id)").Scan(&activeUsers).Error
+	_ = r.db.Model(&model.ChatSession{}).Where("tenant_id = ? AND created_at >= ?", tenantID, since).Select("COUNT(DISTINCT user_id)").Scan(&activeUsers).Error
+
+	var totalAssistantMessages int64
+	_ = r.db.Model(&model.ChatMessage{}).Where("tenant_id = ? AND role = 'assistant' AND created_at >= ?", tenantID, since).Count(&totalAssistantMessages).Error
 
 	var totalLikes, totalDislikes int64
-	_ = r.db.Model(&model.ChatMessage{}).Where("tenant_id = ? AND feedback = 'like'", tenantID).Count(&totalLikes).Error
-	_ = r.db.Model(&model.ChatMessage{}).Where("tenant_id = ? AND feedback = 'dislike'", tenantID).Count(&totalDislikes).Error
+	_ = r.db.Model(&model.ChatMessage{}).Where("tenant_id = ? AND feedback = 'like' AND created_at >= ?", tenantID, since).Count(&totalLikes).Error
+	_ = r.db.Model(&model.ChatMessage{}).Where("tenant_id = ? AND feedback = 'dislike' AND created_at >= ?", tenantID, since).Count(&totalDislikes).Error
 
+	// 解答满意率：未主动点踩的回复均视为默认认可满意
 	rate := 100.0
-	feedbackTotal := totalLikes + totalDislikes
-	if feedbackTotal > 0 {
-		rate = float64(totalLikes) / float64(feedbackTotal) * 100.0
+	if totalAssistantMessages > 0 {
+		satisfiedCount := totalAssistantMessages - totalDislikes
+		if satisfiedCount < 0 {
+			satisfiedCount = 0
+		}
+		rate = float64(satisfiedCount) / float64(totalAssistantMessages) * 100.0
 	}
 
 	type rankRow struct {
@@ -404,10 +412,10 @@ func (r *ChatRepo) GetDashboardAgentOverview(tenantID uuid.UUID, userScope *uuid
 		FROM chat_sessions s
 		LEFT JOIN agent_definitions ad ON ad.id = s.agent_id
 		LEFT JOIN chat_messages m ON m.session_id = s.id AND m.tenant_id = s.tenant_id
-		WHERE s.tenant_id = ?
+		WHERE s.tenant_id = ? AND s.created_at >= ?
 		GROUP BY s.agent_code
 		ORDER BY session_count DESC
-		LIMIT 5`, tenantID).Scan(&ranks).Error
+		LIMIT 5`, tenantID, since).Scan(&ranks).Error
 
 	agentRanks := make([]dto.DashboardAgentRankDTO, 0, len(ranks))
 	for _, row := range ranks {

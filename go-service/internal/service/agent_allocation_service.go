@@ -163,8 +163,8 @@ func (s *AgentAllocationService) UpdateTenantAllocation(ctx context.Context, ten
 		return err
 	}
 
-	if req.ChatRetentionDays != nil && (*req.ChatRetentionDays < 1 || *req.ChatRetentionDays > 3650) {
-		return fmt.Errorf("会话保留天数须为 1–3650")
+	if req.ChatRetentionDays != nil && *req.ChatRetentionDays != -1 && *req.ChatRetentionDays != 0 && (*req.ChatRetentionDays < 1 || *req.ChatRetentionDays > 3650) {
+		return fmt.Errorf("会话保留天数须为 1–3650 或设为永久保留")
 	}
 	if req.MaxMCPServers != nil && (*req.MaxMCPServers < 0 || *req.MaxMCPServers > 100) {
 		return fmt.Errorf("MCP 服务数量上限须为 0–100")

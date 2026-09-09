@@ -733,6 +733,44 @@ async function loadProcessCascaderOptions() {
 }
 
 const renderMarkdown = (text: string) => text ? marked.parse(text) : ''
+const formatToolArguments = (args: any): string => {
+  if (!args) return ''
+  if (typeof args === 'object') {
+    try {
+      return JSON.stringify(args, null, 2)
+    } catch {
+      return String(args)
+    }
+  }
+  if (typeof args === 'string') {
+    try {
+      const parsed = JSON.parse(args)
+      return JSON.stringify(parsed, null, 2)
+    } catch {
+      return args
+    }
+  }
+  return String(args)
+}
+const formatToolPayload = (payload: any): string => {
+  if (!payload) return ''
+  if (typeof payload === 'object') {
+    try {
+      return JSON.stringify(payload, null, 2)
+    } catch {
+      return String(payload)
+    }
+  }
+  if (typeof payload === 'string') {
+    try {
+      const parsed = JSON.parse(payload)
+      return JSON.stringify(parsed, null, 2)
+    } catch {
+      return payload
+    }
+  }
+  return String(payload)
+}
 const formatDate = (dateStr: string | null | undefined) =>
   dateStr ? appDayjs(dateStr).format('YYYY/MM/DD HH:mm') : '-'
 const getAuditCount = (validLogIds: any) => {
@@ -2728,9 +2766,26 @@ onMounted(async () => {
                           <DownOutlined class="chevron-icon" />
                         </summary>
                         <div class="session-toolcalls-list">
-                          <div v-for="tc in msg.tool_calls" :key="tc.id" class="session-toolcall-item">
-                            <div class="toolcall-name">{{ tc.function?.name || tc.name }}</div>
-                            <pre v-if="tc.function?.arguments" class="toolcall-args">{{ tc.function.arguments }}</pre>
+                          <div v-for="(tc, tcIdx) in msg.tool_calls" :key="tc.tool_call_id || tc.id || tcIdx" class="session-toolcall-item">
+                            <div class="toolcall-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                              <span class="toolcall-name">{{ tc.tool_code || tc.name || tc.function?.name || '未知工具' }}</span>
+                              <a-tag v-if="tc.status" :color="tc.status === 'success' ? 'success' : tc.status === 'error' ? 'error' : 'processing'" style="margin-right: 0; font-size: 11px;">
+                                {{ tc.status === 'success' ? '调用成功' : tc.status === 'error' ? '调用失败' : '执行中' }}
+                              </a-tag>
+                            </div>
+                            <div v-if="tc.thought" class="toolcall-thought" style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px;">
+                              💡 {{ tc.thought }}
+                            </div>
+                            <!-- 参数 -->
+                            <div v-if="tc.arguments || tc.function?.arguments" class="toolcall-block">
+                              <div class="toolcall-block-title" style="font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 2px;">入参：</div>
+                              <pre class="toolcall-args">{{ formatToolArguments(tc.arguments || tc.function?.arguments) }}</pre>
+                            </div>
+                            <!-- 执行结果 -->
+                            <div v-if="tc.payload" class="toolcall-block" style="margin-top: 6px;">
+                              <div class="toolcall-block-title" style="font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 2px;">响应结果：</div>
+                              <pre class="toolcall-args" style="max-height: 160px; overflow-y: auto;">{{ formatToolPayload(tc.payload) }}</pre>
+                            </div>
                           </div>
                         </div>
                       </details>

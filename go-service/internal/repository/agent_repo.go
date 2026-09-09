@@ -311,20 +311,37 @@ func (r *AgentRepo) QueryAgentUsageStats(tenantID uuid.UUID) (*dto.AgentUsageSta
 	}
 	var rows []row
 	err := r.db.Raw(`
-		SELECT s.agent_code,
-		       COALESCE(NULLIF(MAX(ad.name), ''), s.agent_code) AS agent_name,
-		       COUNT(DISTINCT s.id) AS session_count,
-		       COUNT(m.id) FILTER (WHERE m.role = 'user') AS message_count,
-		       COALESCE(SUM(l.total_tokens), 0) AS token_count,
-		       COUNT(m.id) FILTER (WHERE m.feedback = 'like') AS like_count,
-		       COUNT(m.id) FILTER (WHERE m.feedback = 'dislike') AS dislike_count
-		FROM chat_sessions s
-		LEFT JOIN agent_definitions ad ON ad.id = s.agent_id
-		LEFT JOIN chat_messages m ON m.session_id = s.id AND m.tenant_id = s.tenant_id
-		LEFT JOIN tenant_llm_message_logs l ON l.tenant_id = s.tenant_id AND l.request_type = 'chat' AND l.business_log_id = s.id
-		WHERE s.tenant_id = ?
-		GROUP BY s.agent_code
-		ORDER BY session_count DESC, s.agent_code`, tenantID).Scan(&rows).Error
+		WITH msg_stats AS (
+			SELECT s.agent_code,
+			       COUNT(DISTINCT s.id) AS session_count,
+			       COUNT(m.id) FILTER (WHERE m.role = 'user') AS message_count,
+			       COUNT(m.id) FILTER (WHERE m.feedback = 'like') AS like_count,
+			       COUNT(m.id) FILTER (WHERE m.feedback = 'dislike') AS dislike_count
+			FROM chat_sessions s
+			LEFT JOIN chat_messages m ON m.session_id = s.id AND m.tenant_id = s.tenant_id
+			WHERE s.tenant_id = ?
+			GROUP BY s.agent_code
+		),
+		token_stats AS (
+			SELECT s.agent_code,
+			       COALESCE(SUM(l.total_tokens), 0) AS token_count
+			FROM chat_sessions s
+			JOIN tenant_llm_message_logs l ON l.tenant_id = s.tenant_id AND l.request_type = 'chat' AND l.business_log_id = s.id
+			WHERE s.tenant_id = ?
+			GROUP BY s.agent_code
+		)
+		SELECT ms.agent_code,
+		       COALESCE(NULLIF(MAX(ad.name), ''), ms.agent_code) AS agent_name,
+		       ms.session_count,
+		       ms.message_count,
+		       COALESCE(ts.token_count, 0) AS token_count,
+		       ms.like_count,
+		       ms.dislike_count
+		FROM msg_stats ms
+		LEFT JOIN token_stats ts ON ts.agent_code = ms.agent_code
+		LEFT JOIN agent_definitions ad ON ad.agent_code = ms.agent_code AND (ad.tenant_id = ? OR ad.tenant_id IS NULL)
+		GROUP BY ms.agent_code, ms.session_count, ms.message_count, ts.token_count, ms.like_count, ms.dislike_count
+		ORDER BY ms.session_count DESC, ms.agent_code`, tenantID, tenantID, tenantID).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}

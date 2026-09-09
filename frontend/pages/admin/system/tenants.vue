@@ -1822,7 +1822,7 @@ const confirmDeleteTenant = async () => {
 /* Token 用量 */
 .quota-unlimited-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .quota-label-row { display: flex; align-items: center; justify-content: space-between; width: 100%; }
-.quota-switch-inline { display: inline-flex; align-items: center; gap: 6px; font-weight: normal; font-size: 12px; color: var(--color-text-secondary); }
+.quota-switch-inline { display: inline-flex; align-items: center; gap: 8px; margin-left: 12px; font-size: 14px; color: var(--color-text-secondary); }
 .token-usage-block { margin-bottom: 14px; }
 .token-usage-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .token-usage-label { font-size: 11px; color: var(--color-text-tertiary); }
