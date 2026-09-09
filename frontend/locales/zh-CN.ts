@@ -2082,6 +2082,7 @@ export default {
     'admin.tenants.tabBasic': '基本信息',
     'admin.tenants.tabOADb': 'OA 数据库',
     'admin.tenants.tabAI': 'AI 模型',
+    'admin.tenants.tabChat': '智能体扩展',
     'admin.tenants.tabQuota': '配额与策略',
     'admin.tenants.tabSecurity': '运行状态',
     'admin.tenants.tabSSO': '单点登录',

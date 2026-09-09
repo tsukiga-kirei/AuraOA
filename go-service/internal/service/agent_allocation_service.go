@@ -775,7 +775,14 @@ func (s *AgentAllocationService) GetTenantSessionMessages(
 		return nil, err
 	}
 	res := make([]dto.ChatMessageDTO, 0, len(msgs))
-	for _, m := range msgs {
+	for i, m := range msgs {
+		duration := m.DurationMs
+		if duration == 0 && m.Role == "assistant" && i > 0 && msgs[i-1].Role == "user" {
+			diff := m.CreatedAt.Sub(msgs[i-1].CreatedAt).Milliseconds()
+			if diff > 0 && diff < 3600000 {
+				duration = diff
+			}
+		}
 		res = append(res, dto.ChatMessageDTO{
 			ID:               m.ID,
 			SessionID:        m.SessionID,
@@ -787,6 +794,7 @@ func (s *AgentAllocationService) GetTenantSessionMessages(
 			TokenUsage:       m.TokenUsage,
 			Feedback:         m.Feedback,
 			FeedbackAt:       m.FeedbackAt,
+			DurationMs:       duration,
 			CreatedAt:        m.CreatedAt,
 		})
 	}

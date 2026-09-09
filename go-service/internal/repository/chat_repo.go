@@ -170,7 +170,7 @@ func (r *ChatRepo) ListSessionsByTenant(
 	}
 	if userName != "" {
 		like := "%" + userName + "%"
-		baseQuery = baseQuery.Where("(u.name ILIKE ? OR u.username ILIKE ?)", like, like)
+		baseQuery = baseQuery.Where("(u.display_name ILIKE ? OR u.username ILIKE ?)", like, like)
 	}
 	if startDate != "" {
 		baseQuery = baseQuery.Where("s.created_at >= ?", startDate)
@@ -205,7 +205,7 @@ func (r *ChatRepo) ListSessionsByTenant(
 		s.agent_code,
 		COALESCE(NULLIF(ad.name, ''), s.agent_code) AS agent_name,
 		s.user_id,
-		COALESCE(NULLIF(u.name, ''), u.username, '未知用户') AS user_name,
+		COALESCE(NULLIF(u.display_name, ''), u.username, '未知用户') AS user_name,
 		s.title,
 		s.created_at,
 		s.updated_at,
@@ -242,11 +242,13 @@ func (r *ChatRepo) ListSessionsByTenant(
 	return items, total, nil
 }
 
-// CountThisWeek 本周（按应用配置时区周一 00:00 至今）智能体会话创建次数。
+// CountThisWeek 本周（按应用配置时区周一 00:00 至今）智能体会话活跃次数。
 func (r *ChatRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID) (int64, error) {
 	tenantID, _ := c.Get("tenant_id")
 	var count int64
-	q := r.db.Model(&model.ChatSession{}).Where("created_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)", apptime.Name())
+	q := r.db.Model(&model.ChatSession{}).
+		Where("updated_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)", apptime.Name()).
+		Where("EXISTS (SELECT 1 FROM chat_messages cm WHERE cm.session_id = chat_sessions.id)")
 	if tenantID != nil && tenantID != "" {
 		q = q.Where("tenant_id = ?", tenantID)
 	}
@@ -257,7 +259,7 @@ func (r *ChatRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID) (int64, erro
 	return count, err
 }
 
-// WeeklyTrendByDay 本周每天的智能体会话条数（generate_series 填充）。
+// WeeklyTrendByDay 本周每天的智能体会话条数（按实际发生消息的时间聚合，generate_series 填充）。
 func (r *ChatRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UUID) ([]DayCount, error) {
 	tenantID, _ := c.Get("tenant_id")
 	userFilter := ""
@@ -279,13 +281,14 @@ SELECT TO_CHAR(days.d, 'MM-DD') AS date,
        COALESCE(b.cnt, 0)::bigint AS count
 FROM days
 LEFT JOIN (
-  SELECT DATE(s.created_at AT TIME ZONE ?) AS d,
-         COUNT(*)::bigint AS cnt
-  FROM chat_sessions s
+  SELECT DATE(m.created_at AT TIME ZONE ?) AS d,
+         COUNT(DISTINCT s.id)::bigint AS cnt
+  FROM chat_messages m
+  JOIN chat_sessions s ON s.id = m.session_id
   WHERE s.tenant_id = ?
-    AND s.created_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)
+    AND m.created_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)
     ` + userFilter + `
-  GROUP BY DATE(s.created_at AT TIME ZONE ?)
+  GROUP BY DATE(m.created_at AT TIME ZONE ?)
 ) b ON b.d = days.d
 ORDER BY days.d ASC`
 
@@ -441,7 +444,7 @@ func (r *ChatRepo) ListRecentChatActivities(tenantID uuid.UUID, userScope *uuid.
 			s.id,
 			s.title,
 			COALESCE(NULLIF(ad.name, ''), s.agent_code) AS agent_name,
-			COALESCE(NULLIF(u.name, ''), u.username, '用户') AS user_name,
+			COALESCE(NULLIF(u.display_name, ''), u.username, '用户') AS user_name,
 			s.updated_at AS created_at
 		`).
 		Joins("JOIN users u ON u.id = s.user_id").
@@ -468,4 +471,23 @@ func (r *ChatRepo) ListRecentChatActivities(tenantID uuid.UUID, userScope *uuid.
 		})
 	}
 	return acts, nil
+}
+
+// CountByDepartment 按用户所属部门统计智能体会话数（租户仪表盘使用）
+func (r *ChatRepo) CountByDepartment(tenantID uuid.UUID) ([]DeptCount, error) {
+	sql := `
+SELECT COALESCE(d.name, '未分配') AS department,
+       COUNT(DISTINCT cs.id)::bigint AS count
+FROM chat_sessions cs
+JOIN users u ON u.id = cs.user_id
+LEFT JOIN org_members om ON om.user_id = u.id AND om.tenant_id = cs.tenant_id AND om.status = 'active'
+LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = cs.tenant_id
+WHERE cs.tenant_id = ?
+  AND EXISTS (SELECT 1 FROM chat_messages cm WHERE cm.session_id = cs.id)
+GROUP BY d.name
+ORDER BY count DESC`
+
+	var rows []DeptCount
+	err := r.db.Raw(sql, tenantID).Scan(&rows).Error
+	return rows, err
 }

@@ -40,6 +40,7 @@ export interface DeptChartLabels {
   cron: string
   archive: string
   summary: string
+  chat?: string
 }
 
 // ── 工具函数 ──
@@ -63,6 +64,7 @@ const SERIES_COLORS = {
   cron: '#06b6d4',
   archive: '#10b981',
   summary: '#f59e0b',
+  chat: '#722ed1',
 } as const
 
 /**
@@ -279,6 +281,20 @@ export function buildDeptChartOption(
           borderRadius: [0, 4, 4, 0] as [number, number, number, number],
         },
       },
+      ...(labels.chat ? [{
+        name: labels.chat,
+        type: 'bar' as const,
+        stack: 'total',
+        data: data.map(d => d.chat_count ?? 0),
+        barMaxWidth: 24,
+        itemStyle: {
+          color: new LinearGradient(0, 0, 1, 0, [
+            { offset: 0, color: hexToRgba(SERIES_COLORS.chat, 0.6) },
+            { offset: 1, color: SERIES_COLORS.chat },
+          ]),
+          borderRadius: [0, 4, 4, 0] as [number, number, number, number],
+        },
+      }] : []),
     ],
   }
 }

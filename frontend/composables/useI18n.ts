@@ -18,7 +18,7 @@ export const useI18n = () => {
    * @param values 占位符替换值（单个值或数组）
    * @returns 翻译后的文案，键不存在时返回 key 本身
    */
-  const t = (key: string, values?: string | number | (string | number)[]): string => {
+  const t = (key: string, values?: string | number | (string | number)[] | Record<string, string | number>): string => {
     const loc = (userLocale.value || 'zh-CN') as Locale
     let text = messages[loc]?.[key]
 
@@ -27,17 +27,24 @@ export const useI18n = () => {
       return key
     }
 
-    let args: (string | number)[] = []
-    if (Array.isArray(values)) {
-      args = values
-    } else if (values !== undefined && values !== null) {
-      if (text.includes('{0}')) args = [values]
-    }
-
-    if (args.length > 0) {
-      args.forEach((val, idx) => {
-        text = text.replace(new RegExp(`\\{${idx}\\}`, 'g'), String(val))
-      })
+    if (values !== undefined && values !== null) {
+      if (typeof values === 'object' && !Array.isArray(values)) {
+        // 支持命名占位符，例如 {rounds}、{tools}、{duration}
+        Object.entries(values).forEach(([k, val]) => {
+          text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(val))
+        })
+      } else {
+        // 支持位置占位符，例如 {0}、{1}
+        let args: (string | number)[] = []
+        if (Array.isArray(values)) {
+          args = values
+        } else if (text.includes('{0}')) {
+          args = [values]
+        }
+        args.forEach((val, idx) => {
+          text = text.replace(new RegExp(`\\{${idx}\\}`, 'g'), String(val))
+        })
+      }
     }
 
     return text

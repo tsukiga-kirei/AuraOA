@@ -360,6 +360,8 @@ func main() {
 	defer stopChatCleanup()
 	chatSessionService.StartRetentionCleanup(chatCleanupContext)
 	agentAllocationService := service.NewAgentAllocationService(agentRepo, tenantRepo, orgRepo, chatRepo)
+	chatSessionService.SetInvalidator(invalidationManager)
+	agentRuntimeService.SetInvalidator(invalidationManager)
 	dashboardOverviewService.SetChatRepo(chatRepo)
 
 	chatHandler := handler.NewChatHandler(chatSessionService, agentRuntimeService)

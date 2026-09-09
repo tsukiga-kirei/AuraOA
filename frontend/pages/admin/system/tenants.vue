@@ -278,8 +278,28 @@ const createTenant = async () => {
   }
 }
 
+// 记忆租户自定义设置的 Token 配额，避免切换“不限制”后丢失原有配置值
+const previousQuotaMap = ref<Record<string, number>>({})
+const previousNewTenantQuota = ref(100000)
+
+const handleToggleUnlimitedQuota = (checked: boolean) => {
+  if (!selectedTenant.value) return
+  if (checked) {
+    if (selectedTenant.value.token_quota > 0) {
+      previousQuotaMap.value[selectedTenant.value.id] = selectedTenant.value.token_quota
+    }
+    selectedTenant.value.token_quota = -1
+  } else {
+    const remembered = previousQuotaMap.value[selectedTenant.value.id]
+    selectedTenant.value.token_quota = (remembered && remembered > 0) ? remembered : 100000
+  }
+}
+
 const openDetail = async (tenant: TenantData) => {
   selectedTenant.value = { ...tenant }
+  if (tenant.token_quota > 0) {
+    previousQuotaMap.value[tenant.id] = tenant.token_quota
+  }
   detailActiveTab.value = 'basic'
   ssoBasicPassword.value = ''
   ssoPasswordVisible.value = false
@@ -885,8 +905,7 @@ const confirmDeleteTenant = async () => {
           v-for="tab in [
             { key: 'basic', label: t('admin.tenants.tabCreateBasic') },
             { key: 'admin', label: t('admin.tenants.tabCreateAdmin') },
-            { key: 'chat', label: t('agentAdmin.title'), icon: RobotOutlined },
-              { key: 'ai', label: t('admin.tenants.tabCreateAI') },
+            { key: 'ai', label: t('admin.tenants.tabCreateAI') },
           ]"
           :key="tab.key"
           class="create-tab-btn"
@@ -925,12 +944,42 @@ const confirmDeleteTenant = async () => {
         </a-form-item>
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item :label="t('admin.tenants.tokenQuota')">
-              <div class="quota-unlimited-row">
-                <a-switch :checked="isUnlimitedQuota(newTenant.token_quota)" @change="(checked: boolean) => newTenant.token_quota = checked ? -1 : 10000" />
-                <span>{{ t('admin.tenants.unlimitedQuota') }}</span>
-              </div>
-              <a-input-number v-if="!isUnlimitedQuota(newTenant.token_quota)" v-model:value="newTenant.token_quota" :min="1000" :step="1000" style="width: 100%; margin-top: 8px;" size="large" />
+            <a-form-item>
+              <template #label>
+                <div class="quota-label-row">
+                  <span>{{ t('admin.tenants.tokenQuota') }}</span>
+                  <div class="quota-switch-inline">
+                    <span>{{ t('admin.tenants.unlimitedQuota') }}</span>
+                    <a-switch
+                      size="small"
+                      :checked="isUnlimitedQuota(newTenant.token_quota)"
+                      @change="(checked: boolean) => {
+                        if (checked) {
+                          if (newTenant.token_quota > 0) previousNewTenantQuota = newTenant.token_quota
+                          newTenant.token_quota = -1
+                        } else {
+                          newTenant.token_quota = previousNewTenantQuota || 100000
+                        }
+                      }"
+                    />
+                  </div>
+                </div>
+              </template>
+              <a-input-number
+                v-if="!isUnlimitedQuota(newTenant.token_quota)"
+                v-model:value="newTenant.token_quota"
+                :min="1000"
+                :step="1000"
+                style="width: 100%;"
+                size="large"
+              />
+              <a-input
+                v-else
+                size="large"
+                disabled
+                :value="t('admin.tenants.unlimitedQuota')"
+                style="width: 100%;"
+              />
             </a-form-item>
           </a-col>
           <a-col :span="12">
@@ -1053,7 +1102,7 @@ const confirmDeleteTenant = async () => {
             v-for="tab in [
               { key: 'basic', label: t('admin.tenants.tabBasic'), icon: InfoCircleOutlined },
               { key: 'oadb', label: t('admin.tenants.tabOADb'), icon: DatabaseOutlined },
-              { key: 'chat', label: t('agentAdmin.title'), icon: RobotOutlined },
+              { key: 'chat', label: t('admin.tenants.tabChat', '智能体扩展'), icon: RobotOutlined },
               { key: 'ai', label: t('admin.tenants.tabAI'), icon: RobotOutlined },
               { key: 'quota', label: t('admin.tenants.tabQuota'), icon: ThunderboltOutlined },
               { key: 'embed', label: t('admin.tenants.tabEmbed'), icon: LinkOutlined },
@@ -1333,12 +1382,35 @@ const confirmDeleteTenant = async () => {
               <div class="config-group-title">{{ t('admin.tenants.resourceQuota') }}</div>
               <a-row :gutter="16">
                 <a-col :span="12">
-                  <a-form-item :label="t('admin.tenants.tokenQuota')">
-                    <div class="quota-unlimited-row">
-                      <a-switch :checked="isUnlimitedQuota(selectedTenant.token_quota)" @change="(checked: boolean) => selectedTenant && (selectedTenant.token_quota = checked ? -1 : 10000)" />
-                      <span>{{ t('admin.tenants.unlimitedQuota') }}</span>
-                    </div>
-                    <a-input-number v-if="!isUnlimitedQuota(selectedTenant.token_quota)" v-model:value="selectedTenant.token_quota" :min="1000" :step="1000" style="width: 100%; margin-top: 8px;" size="large" />
+                  <a-form-item>
+                    <template #label>
+                      <div class="quota-label-row">
+                        <span>{{ t('admin.tenants.tokenQuota') }}</span>
+                        <div class="quota-switch-inline">
+                          <span>{{ t('admin.tenants.unlimitedQuota') }}</span>
+                          <a-switch
+                            size="small"
+                            :checked="isUnlimitedQuota(selectedTenant.token_quota)"
+                            @change="handleToggleUnlimitedQuota"
+                          />
+                        </div>
+                      </div>
+                    </template>
+                    <a-input-number
+                      v-if="!isUnlimitedQuota(selectedTenant.token_quota)"
+                      v-model:value="selectedTenant.token_quota"
+                      :min="1000"
+                      :step="1000"
+                      style="width: 100%;"
+                      size="large"
+                    />
+                    <a-input
+                      v-else
+                      size="large"
+                      disabled
+                      :value="t('admin.tenants.unlimitedQuota')"
+                      style="width: 100%;"
+                    />
                   </a-form-item>
                 </a-col>
                 <a-col :span="12">
@@ -1749,6 +1821,8 @@ const confirmDeleteTenant = async () => {
 
 /* Token 用量 */
 .quota-unlimited-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.quota-label-row { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.quota-switch-inline { display: inline-flex; align-items: center; gap: 6px; font-weight: normal; font-size: 12px; color: var(--color-text-secondary); }
 .token-usage-block { margin-bottom: 14px; }
 .token-usage-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .token-usage-label { font-size: 11px; color: var(--color-text-tertiary); }

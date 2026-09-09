@@ -62,13 +62,14 @@ export interface CronTaskPreview {
   is_active: boolean
 }
 
-/** 部门分布（三功能分组） */
+/** 部门分布（按功能及智能体分组） */
 export interface DeptDistributionData {
   summary_count: number
   department: string
   audit_count: number
   cron_count: number
   archive_count: number
+  chat_count?: number
   total: number
 }
 
