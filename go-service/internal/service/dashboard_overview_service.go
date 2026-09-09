@@ -75,10 +75,23 @@ func NewDashboardOverviewService(
 
 func tenantUUIDFromContext(c *gin.Context) (uuid.UUID, error) {
 	tid, ok := c.Get("tenant_id")
-	if !ok || tid == nil || tid == "" {
+	if !ok || tid == nil {
 		return uuid.Nil, newServiceError(errcode.ErrParamValidation, "缺少租户上下文，请在系统管理员模式下指定 tenant_id 参数")
 	}
-	return uuid.Parse(tid.(string))
+	switch v := tid.(type) {
+	case uuid.UUID:
+		if v == uuid.Nil {
+			return uuid.Nil, newServiceError(errcode.ErrParamValidation, "缺少租户上下文")
+		}
+		return v, nil
+	case string:
+		if v == "" {
+			return uuid.Nil, newServiceError(errcode.ErrParamValidation, "缺少租户上下文，请在系统管理员模式下指定 tenant_id 参数")
+		}
+		return uuid.Parse(v)
+	default:
+		return uuid.Nil, newServiceError(errcode.ErrParamValidation, "租户上下文类型无效")
+	}
 }
 
 // BuildOverview 构建当前租户仪表盘数据。
@@ -446,12 +459,19 @@ func (s *DashboardOverviewService) buildCronTaskPreview(c *gin.Context, userID u
 	return result
 }
 
-// buildDeptDistribution 构建部门分布数据（三个功能分别统计）。
+// buildDeptDistribution 构建部门分布数据（各功能分别统计）。
 func (s *DashboardOverviewService) buildDeptDistribution(c *gin.Context) []dto.DeptDistributionData {
 	auditDepts, _ := s.auditSnapshotRepo.CountByDepartment(c)
 	archiveDepts, _ := s.archiveSnapshotRepo.CountByDepartment(c)
 	cronDepts, _ := s.cronLogRepo.CountByDepartment(c)
 	summaryDepts, _ := s.summaryLogRepo.CountByDepartment(c)
+
+	var chatDepts []repository.DeptCount
+	if s.chatRepo != nil {
+		if tid, err := tenantUUIDFromContext(c); err == nil {
+			chatDepts, _ = s.chatRepo.CountByDepartment(tid)
+		}
+	}
 
 	deptMap := make(map[string]*dto.DeptDistributionData)
 	for _, d := range auditDepts {
@@ -479,9 +499,17 @@ func (s *DashboardOverviewService) buildDeptDistribution(c *gin.Context) []dto.D
 		}
 		deptMap[d.Department].SummaryCount = d.Count
 	}
+
+	for _, d := range chatDepts {
+		if deptMap[d.Department] == nil {
+			deptMap[d.Department] = &dto.DeptDistributionData{Department: d.Department}
+		}
+		deptMap[d.Department].ChatCount = d.Count
+	}
+
 	result := make([]dto.DeptDistributionData, 0, len(deptMap))
 	for _, v := range deptMap {
-		v.Total = v.AuditCount + v.CronCount + v.ArchiveCount + v.SummaryCount
+		v.Total = v.AuditCount + v.CronCount + v.ArchiveCount + v.SummaryCount + v.ChatCount
 		result = append(result, *v)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Total > result[j].Total })

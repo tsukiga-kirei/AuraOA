@@ -96,13 +96,14 @@ type CronTaskPreview struct {
 	IsActive       bool   `json:"is_active"`
 }
 
-// DeptDistributionData 部门分布（区分三个功能）。
+// DeptDistributionData 部门分布（区分各功能模块与智能体）。
 type DeptDistributionData struct {
 	SummaryCount int64  `json:"summary_count"`
 	Department   string `json:"department"`
 	AuditCount   int64  `json:"audit_count"`
 	CronCount    int64  `json:"cron_count"`
 	ArchiveCount int64  `json:"archive_count"`
+	ChatCount    int64  `json:"chat_count"`
 	Total        int64  `json:"total"`
 }
 

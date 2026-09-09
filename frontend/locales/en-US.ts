@@ -2065,6 +2065,7 @@ export default {
     'admin.tenants.tabBasic': 'Basic Info',
     'admin.tenants.tabOADb': 'OA Database',
     'admin.tenants.tabAI': 'AI Model',
+    'admin.tenants.tabChat': 'AI Agents',
     'admin.tenants.tabQuota': 'Quota & Policy',
     'admin.tenants.tabSecurity': 'Runtime',
     'admin.tenants.tabSSO': 'Single Sign-On',

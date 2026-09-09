@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/datatypes"
 
+	"auraoa/go-service/internal/cache"
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/agenttools"
 	"auraoa/go-service/internal/pkg/ai"
@@ -33,6 +35,7 @@ type AgentRuntimeService struct {
 	skillService *SkillService
 	mcpService   *MCPService
 	toolExecutor agenttools.ToolExecutor
+	invalidator  *cache.InvalidationManager
 }
 
 // NewAgentRuntimeService 初始化智能体运行时服务
@@ -58,6 +61,11 @@ func NewAgentRuntimeService(
 		mcpService:   mcpService,
 		toolExecutor: toolExecutor,
 	}
+}
+
+// SetInvalidator 设置缓存失效管理器
+func (s *AgentRuntimeService) SetInvalidator(invalidator *cache.InvalidationManager) {
+	s.invalidator = invalidator
 }
 
 // StreamEventSink 定义流式事件输出回调
@@ -184,6 +192,21 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		return fmt.Errorf("持久化用户消息失败: %w", err)
 	}
 
+	// 5.1 若会话为首轮（标题为空或默认“新对话”），立即提前推送初始标题，使前端头部与列表即时响应
+	if session.Title == "新对话" || session.Title == "" {
+		initTitle := userPrompt
+		if len([]rune(initTitle)) > 15 {
+			initTitle = string([]rune(initTitle)[:15]) + "..."
+		}
+		_ = s.chatRepo.UpdateSession(tenantID, sessionID, map[string]interface{}{
+			"title": initTitle,
+		})
+		_ = sink("session", map[string]interface{}{
+			"session_id": sessionID.String(),
+			"title":      initTitle,
+		})
+	}
+
 	// 6. 构造历史消息上下文
 	historyMsgs, err := s.chatRepo.ListMessagesBySession(tenantID, sessionID)
 	if err != nil {
@@ -224,6 +247,22 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		return fmt.Errorf("AI 模型配置不存在或已停用")
 	}
 
+	// 7.1 若会话为首轮，更新临时标题并立即通知前端，同时异步调用 AI 提炼更精准的 4-10 字主题标题
+	if session.Title == "新对话" || session.Title == "" {
+		initialTitle := strings.TrimSpace(userPrompt)
+		if len([]rune(initialTitle)) > 15 {
+			initialTitle = string([]rune(initialTitle)[:15]) + "..."
+		}
+		if initialTitle != "" {
+			_ = s.chatRepo.UpdateSession(tenantID, sessionID, map[string]interface{}{
+				"title": initialTitle,
+			})
+			session.Title = initialTitle
+		}
+		cCopy := c.Copy()
+		go s.asyncSummarizeTitle(cCopy, tenantID, userID, sessionID, modelCfg, userPrompt, sink)
+	}
+
 	var fallbackCfg *model.AIModelConfig
 	fallbackID := tenant.ChatFallbackModelID
 	if fallbackID == nil {
@@ -260,7 +299,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		case <-ctx.Done():
 			// 客户端连接中断
 			_ = sink("interrupted", map[string]interface{}{"message": "客户端已取消生成"})
-			s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "interrupted", accumulatedRecords, totalTokenUsage)
+			s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "interrupted", accumulatedRecords, totalTokenUsage, apptime.Now().Sub(startTime).Milliseconds())
 			return nil
 		default:
 		}
@@ -314,7 +353,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		if err != nil {
 			logger.Error("AI 调用失败", zap.Error(err), zap.Int("step", step))
 			_ = sink("error", map[string]interface{}{"message": "AI 模型处理异常: " + err.Error()})
-			s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "error", accumulatedRecords, totalTokenUsage)
+			s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "error", accumulatedRecords, totalTokenUsage, apptime.Now().Sub(startTime).Milliseconds())
 			return err
 		}
 
@@ -368,7 +407,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		stepThought := turnThought.String()
 
 		if step == maxAgentLoopSteps {
-			if err := s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "error", accumulatedRecords, totalTokenUsage); err != nil {
+			if err := s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "error", accumulatedRecords, totalTokenUsage, apptime.Now().Sub(startTime).Milliseconds()); err != nil {
 				return err
 			}
 			return fmt.Errorf("工具调用已达到本轮上限，请缩小问题范围后继续")
@@ -504,27 +543,13 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		}
 	}
 
-	// 9. 保存最终 Assistant 消息入库
-	if err := s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "success", accumulatedRecords, totalTokenUsage); err != nil {
+	durationMs := apptime.Now().Sub(startTime).Milliseconds()
+
+	// 9. 保存最终 Assistant 消息入库（包含执行总耗时）
+	if err := s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "success", accumulatedRecords, totalTokenUsage, durationMs); err != nil {
 		return fmt.Errorf("保存回复失败: %w", err)
 	}
 
-	// 10. 首轮自动生成短标题（如原标题为默认名）
-	if session.Title == "新对话" || session.Title == "" {
-		newTitle := userPrompt
-		if len([]rune(newTitle)) > 20 {
-			newTitle = string([]rune(newTitle)[:20]) + "..."
-		}
-		_ = s.chatRepo.UpdateSession(tenantID, sessionID, map[string]interface{}{
-			"title": newTitle,
-		})
-		_ = sink("session", map[string]interface{}{
-			"session_id": sessionID.String(),
-			"title":      newTitle,
-		})
-	}
-
-	durationMs := apptime.Now().Sub(startTime).Milliseconds()
 	_ = sink("done", map[string]interface{}{
 		"status":      "completed",
 		"token_usage": totalTokenUsage,
@@ -539,6 +564,7 @@ func (s *AgentRuntimeService) saveAssistantMessage(
 	content, reasoning, status string,
 	toolRecords []ToolExecutionRecord,
 	usage ai.TokenUsage,
+	durationMs int64,
 ) error {
 	toolJSON, _ := json.Marshal(toolRecords)
 	usageJSON, _ := json.Marshal(usage)
@@ -552,6 +578,58 @@ func (s *AgentRuntimeService) saveAssistantMessage(
 		Status:           status,
 		ToolCalls:        datatypes.JSON(toolJSON),
 		TokenUsage:       datatypes.JSON(usageJSON),
+		DurationMs:       durationMs,
 	}
-	return s.chatRepo.CreateMessage(&msg)
+	if err := s.chatRepo.CreateMessage(&msg); err != nil {
+		return err
+	}
+	if s.invalidator != nil {
+		_ = s.invalidator.InvalidateDashboardCache(context.Background(), tenantID)
+	}
+	return nil
+}
+
+// asyncSummarizeTitle 异步调用 AI 将用户首轮问题提炼为 4-10 字简练精准的主题标题
+func (s *AgentRuntimeService) asyncSummarizeTitle(
+	c *gin.Context,
+	tenantID, userID, sessionID uuid.UUID,
+	modelCfg *model.AIModelConfig,
+	userPrompt string,
+	sink StreamEventSink,
+) {
+	if modelCfg == nil || strings.TrimSpace(userPrompt) == "" {
+		return
+	}
+
+	sysPrompt := "你是一个专业的对话标题提炼助手。请根据用户的提问，总结出一段精炼、准确的主题标题（4至10个汉字以内），直接输出标题文本，切勿包含标点符号、书名号、引号或多余解释。"
+	req := &ai.ChatRequest{
+		RequestType: "chat",
+		CallType:    "structured",
+		Messages: []ai.ChatMessage{
+			{Role: "system", Content: sysPrompt},
+			{Role: "user", Content: userPrompt},
+		},
+		Temperature: 0.2,
+		MaxTokens:   30,
+	}
+
+	resp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, req)
+	if err != nil || resp == nil || strings.TrimSpace(resp.Content) == "" {
+		return
+	}
+
+	cleanTitle := strings.TrimSpace(resp.Content)
+	cleanTitle = strings.Trim(cleanTitle, "\"'`《》【】。，！？ ")
+	if len([]rune(cleanTitle)) > 20 {
+		cleanTitle = string([]rune(cleanTitle)[:20])
+	}
+	if cleanTitle != "" {
+		_ = s.chatRepo.UpdateSession(tenantID, sessionID, map[string]interface{}{
+			"title": cleanTitle,
+		})
+		_ = sink("session", map[string]interface{}{
+			"session_id": sessionID.String(),
+			"title":      cleanTitle,
+		})
+	}
 }

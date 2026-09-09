@@ -160,7 +160,8 @@ watch(
   () => props.message.duration_ms,
   (ms) => {
     if (ms) liveDuration.value = ms
-  }
+  },
+  { immediate: true }
 )
 
 onUnmounted(() => {

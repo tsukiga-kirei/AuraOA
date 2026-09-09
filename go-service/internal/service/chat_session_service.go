@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"auraoa/go-service/internal/cache"
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
@@ -24,6 +25,7 @@ type ChatSessionService struct {
 	agentRepo   *repository.AgentRepo
 	tenantRepo  *repository.TenantRepo
 	permService *AgentPermissionService
+	invalidator *cache.InvalidationManager
 }
 
 // NewChatSessionService 创建 ChatSessionService
@@ -39,6 +41,11 @@ func NewChatSessionService(
 		tenantRepo:  tenantRepo,
 		permService: permService,
 	}
+}
+
+// SetInvalidator 设置缓存失效管理器
+func (s *ChatSessionService) SetInvalidator(invalidator *cache.InvalidationManager) {
+	s.invalidator = invalidator
 }
 
 // GetEffectiveAgents 获取当前用户可用的有效智能体列表
@@ -118,6 +125,10 @@ func (s *ChatSessionService) CreateSession(ctx context.Context, tenantID, userID
 		return nil, fmt.Errorf("创建会话失败: %w", err)
 	}
 
+	if s.invalidator != nil {
+		_ = s.invalidator.InvalidateDashboardCache(ctx, tenantID)
+	}
+
 	return &dto.ChatSessionItemDTO{
 		ID:        session.ID,
 		AgentID:   session.AgentID,
@@ -185,7 +196,14 @@ func (s *ChatSessionService) GetSessionDetail(ctx context.Context, tenantID, use
 	}
 
 	msgDTOs := make([]dto.ChatMessageDTO, 0, len(messages))
-	for _, m := range messages {
+	for i, m := range messages {
+		duration := m.DurationMs
+		if duration == 0 && m.Role == "assistant" && i > 0 && messages[i-1].Role == "user" {
+			diff := m.CreatedAt.Sub(messages[i-1].CreatedAt).Milliseconds()
+			if diff > 0 && diff < 3600000 {
+				duration = diff
+			}
+		}
 		msgDTOs = append(msgDTOs, dto.ChatMessageDTO{
 			ID:               m.ID,
 			SessionID:        m.SessionID,
@@ -197,6 +215,7 @@ func (s *ChatSessionService) GetSessionDetail(ctx context.Context, tenantID, use
 			TokenUsage:       m.TokenUsage,
 			Feedback:         m.Feedback,
 			FeedbackAt:       m.FeedbackAt,
+			DurationMs:       duration,
 			CreatedAt:        m.CreatedAt,
 		})
 	}
@@ -252,7 +271,14 @@ func (s *ChatSessionService) DeleteSession(ctx context.Context, tenantID, userID
 		return fmt.Errorf("无权删除该会话")
 	}
 
-	return s.chatRepo.DeleteSession(tenantID, sessionID)
+	if err := s.chatRepo.DeleteSession(tenantID, sessionID); err != nil {
+		return err
+	}
+
+	if s.invalidator != nil {
+		_ = s.invalidator.InvalidateDashboardCache(ctx, tenantID)
+	}
+	return nil
 }
 
 // CleanExpiredSessions 硬删除超过指定保留天数的会话

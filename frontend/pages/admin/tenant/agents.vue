@@ -359,7 +359,11 @@ onMounted(() => {
               </span>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description" />
+          <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description" width="220px">
+            <template #default="{ text }">
+              <span class="desc-cell" :title="text">{{ text || '-' }}</span>
+            </template>
+          </a-table-column>
           <a-table-column :title="t('agentAdmin.col.type')" dataIndex="is_system" width="90px">
             <template #default="{ text }">
               <a-tag :color="text ? 'blue' : 'green'">{{ text ? t('agentAdmin.systemBuiltin') : t('agentAdmin.tenantCustom') }}</a-tag>
@@ -421,7 +425,11 @@ onMounted(() => {
           <a-table-column :title="t('agentAdmin.col.code')" dataIndex="server_code" width="140px" />
           <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="160px" />
           <a-table-column :title="t('agentAdmin.col.transport')" dataIndex="transport_type" width="90px" />
-          <a-table-column :title="t('agentAdmin.col.endpoint')" dataIndex="endpoint_url" />
+          <a-table-column :title="t('agentAdmin.col.endpoint')" dataIndex="endpoint_url" width="220px">
+            <template #default="{ text }">
+              <span class="desc-cell" :title="text">{{ text || '-' }}</span>
+            </template>
+          </a-table-column>
           <a-table-column :title="t('agentAdmin.col.mountAgents')" width="180px">
             <template #default="{ record }">
               <span v-if="!record.agent_codes?.length" class="muted-text">-</span>
@@ -464,7 +472,11 @@ onMounted(() => {
         <a-table :dataSource="skills" :rowKey="(r: AgentSkillItem) => r.id" :loading="loading" :pagination="false">
           <a-table-column :title="t('agentAdmin.col.code')" dataIndex="skill_code" width="160px" />
           <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="180px" />
-          <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description" />
+          <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description" width="220px">
+            <template #default="{ text }">
+              <span class="desc-cell" :title="text">{{ text || '-' }}</span>
+            </template>
+          </a-table-column>
           <a-table-column :title="t('agentAdmin.col.mountAgents')" width="180px">
             <template #default="{ record }">
               <span v-if="!record.agent_codes?.length" class="muted-text">-</span>
@@ -902,16 +914,21 @@ onMounted(() => {
   color: var(--color-text-primary);
   margin-bottom: 10px;
 }
+.drawer-form {
+  overflow-x: hidden;
+}
 .caps-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 .cap-card {
   background: var(--color-bg-page);
   border: 1px solid var(--color-border-light);
   border-radius: 6px;
   padding: 8px 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .cap-name {
   font-weight: 500;
@@ -922,6 +939,17 @@ onMounted(() => {
   color: var(--color-text-secondary);
   margin-top: 2px;
   margin-left: 24px;
+}
+
+.desc-cell {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
 }
 
 /* 快捷提问配置 */

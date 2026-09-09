@@ -235,21 +235,21 @@ function cronTaskDescriptionLabel(task: { description?: string; task_type?: stri
 
 // 趋势图的日期分类数据
 const trendCategories = computed(() => dash.value.weekly_trend.map(d => d.date))
-// 趋势图的系列数据（审核、定时任务、归档、流程总结、智能体对话）
+// 趋势图的系列数据（审核、定时任务、归档、流程总结）
 const trendSeries = computed(() => [
   { name: t('overview.auditWorkbench'), data: dash.value.weekly_trend.map(d => d.audit_count), color: chartColors.value.primary },
   { name: t('overview.cronTasks'), data: dash.value.weekly_trend.map(d => d.cron_count), color: chartColors.value.accent },
   { name: t('overview.archiveReview'), data: dash.value.weekly_trend.map(d => d.archive_count), color: chartColors.value.success },
   { name: t('overview.processSummary'), data: dash.value.weekly_trend.map(d => d.summary_count), color: chartColors.value.warning },
-  { name: t('overview.chatAgent'), data: dash.value.weekly_trend.map(d => d.chat_count ?? 0), color: '#722ed1' },
 ])
 
-// 部门分布图的标签配置
+// 部门分布图的标签配置（包含各业务流程及智能体）
 const deptChartLabels = computed(() => ({
   audit: t('overview.auditWorkbench'),
   cron: t('overview.cronTasks'),
   archive: t('overview.archiveReview'),
   summary: t('overview.processSummary'),
+  chat: t('overview.chatAgent'),
 }))
 
 // 获取组件在已启用列表中的排序位置，未启用时排到末尾
@@ -525,10 +525,6 @@ function tokenPct(used: number, quota: number) {
             <div class="agent-kpi-card">
               <div class="agent-kpi-num">{{ dash.agent_overview?.my_messages_count ?? 0 }}</div>
               <div class="agent-kpi-label">{{ t('overview.agent.myMessages') }}</div>
-            </div>
-            <div class="agent-kpi-card">
-              <div class="agent-kpi-num" style="color: var(--color-success);">{{ dash.agent_overview?.my_likes_count ?? 0 }}</div>
-              <div class="agent-kpi-label">{{ t('overview.agent.myLikes') }}</div>
             </div>
           </div>
           <div v-if="dash.agent_overview?.favorite_agent" class="agent-fav-badge">

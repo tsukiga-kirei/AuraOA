@@ -66,6 +66,7 @@ type ChatMessageDTO struct {
 	TokenUsage       datatypes.JSON `json:"token_usage,omitempty"`
 	Feedback         *string        `json:"feedback,omitempty"`
 	FeedbackAt       *time.Time     `json:"feedback_at,omitempty"`
+	DurationMs       int64          `json:"duration_ms"`
 	CreatedAt        time.Time      `json:"created_at"`
 }
 

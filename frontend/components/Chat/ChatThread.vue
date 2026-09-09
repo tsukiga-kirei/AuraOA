@@ -47,6 +47,16 @@ const toggleFeedback = async (msg: ChatMessageItem, type: 'like' | 'dislike') =>
   }
 }
 
+function formatDuration(ms?: number): string {
+  if (!ms || ms <= 0) return ''
+  if (ms < 1000) return `${ms}ms`
+  const seconds = Math.floor(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remSeconds = seconds % 60
+  return remSeconds > 0 ? `${minutes}m ${remSeconds}s` : `${minutes}m`
+}
+
 function formatMsgTime(isoString?: string): string {
   if (!isoString) return ''
   const d = new Date(isoString)
@@ -71,10 +81,9 @@ function formatMsgTime(isoString?: string): string {
         <!-- 思考过程与工具调用时间线 -->
         <ChatProcessTimeline :message="msg" />
 
-        <!-- 回答正文 -->
+        <!-- 回答正文：流式过程中也实时渲染安全 Markdown -->
         <div v-if="msg.content" class="answer-document">
-          <div v-if="msg.streaming" class="answer-streaming">{{ msg.content }}</div>
-          <div v-else v-html="renderSafeMarkdown(msg.content)" />
+          <div :class="{ 'answer-streaming': msg.streaming }" v-html="renderSafeMarkdown(msg.content)" />
         </div>
 
         <div v-if="msg.streaming" class="generation-status" role="status">
@@ -84,7 +93,7 @@ function formatMsgTime(isoString?: string): string {
         <p v-else-if="msg.status === 'error'" class="message-error" role="alert">{{ t('chat.replyFailed') }}</p>
         <p v-else-if="msg.status === 'interrupted'" class="generation-status">{{ t('chat.interrupted') }}</p>
 
-        <!-- 底部功能栏：复制、点赞、点踩、生成时间、AI生成标签 -->
+        <!-- 底部功能栏：复制、点赞、点踩、耗时、生成时间、AI生成标签 -->
         <div v-if="!msg.streaming && msg.content" class="answer-actions">
           <div class="actions-left">
             <button class="action-btn" :title="t('chat.copy')" @click="copy(msg)">
@@ -115,6 +124,9 @@ function formatMsgTime(isoString?: string): string {
               <span>{{ t('chat.dislike', '改进') }}</span>
             </button>
 
+            <span v-if="msg.duration_ms" class="meta-duration">
+              {{ t('chat.durationSuffix', { duration: formatDuration(msg.duration_ms) }) }}
+            </span>
             <span v-if="msg.token_usage?.total_tokens" class="meta-token-count">
               {{ t('chat.tokenCost', [msg.token_usage.total_tokens]) }}
             </span>
@@ -158,14 +170,14 @@ function formatMsgTime(isoString?: string): string {
 
 .user-bubble {
   max-width: min(78%, 560px);
-  border: 1px solid rgba(38, 52, 68, 0.08);
+  border: 1px solid transparent;
   border-radius: 18px 18px 5px 18px;
   padding: 12px 18px;
-  background: #293747;
-  color: #fffbf3;
+  background: var(--color-primary);
+  color: #ffffff;
   font-size: 14.5px;
   line-height: 1.65;
-  box-shadow: 0 4px 16px rgba(33, 45, 58, 0.08);
+  box-shadow: 0 4px 16px var(--color-primary-shadow, rgba(91, 91, 214, 0.25));
 }
 
 .user-content {
@@ -188,7 +200,6 @@ function formatMsgTime(isoString?: string): string {
 }
 
 .answer-streaming {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
@@ -330,6 +341,11 @@ function formatMsgTime(isoString?: string): string {
 .action-btn--disliked {
   color: #ff4d4f;
   background: #fff1f0;
+}
+
+.meta-duration {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
 }
 
 .meta-token-count {
