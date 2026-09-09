@@ -298,7 +298,7 @@ onBeforeUnmount(() => disconnectStream())
   <div class="embed-summary">
     <div class="embed-header">
       <div v-if="context?.personal_result" class="result-perspective">
-        <a-radio-group v-model:value="perspective" size="small" option-type="button" :options="[{ value: 'personal', label: t('resultSource.personal') }, { value: 'standard', label: t('resultSource.embed') }]" />
+        <a-radio-group v-model:value="perspective" size="small" option-type="button" :options="[{ value: 'personal', label: t('embed.perspective.personalSummary', '个人定制') }, { value: 'standard', label: t('embed.perspective.standardSummary', '标准总结') }]" />
       </div>
       <h2 class="embed-title" :style="{ color: headerStatus.color }">
         <span class="embed-title-badge" :style="{ background: headerStatus.bg, color: headerStatus.color }">
@@ -425,7 +425,6 @@ onBeforeUnmount(() => disconnectStream())
         </div>
 
         <template v-else-if="currentResult">
-          <a-tag v-if="currentResult.result_source" color="purple">{{ t(`resultSource.${currentResult.result_source}`) }}</a-tag>
           <div v-if="currentResult.status === 'failed' || currentResult.status === 'cancelled'" class="result-error">
             <WarningOutlined />
             <div>

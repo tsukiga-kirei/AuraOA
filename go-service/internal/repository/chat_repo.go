@@ -125,21 +125,26 @@ func (r *ChatRepo) UpdateMessage(msgID uuid.UUID, updates map[string]interface{}
 	return r.db.Model(&model.ChatMessage{}).Where("id = ?", msgID).Updates(updates).Error
 }
 
-// UpdateMessageFeedback 更新单条消息的点赞/点踩反馈
-func (r *ChatRepo) UpdateMessageFeedback(tenantID, messageID uuid.UUID, feedback *string) error {
-	var val *string
-	var at *time.Time
+// UpdateMessageFeedback 更新单条消息的点赞/点踩反馈及改进建议
+func (r *ChatRepo) UpdateMessageFeedback(tenantID, messageID uuid.UUID, feedback *string, comment *string) error {
+	updates := map[string]interface{}{}
 	if feedback != nil && (*feedback == "like" || *feedback == "dislike") {
-		val = feedback
+		updates["feedback"] = feedback
 		now := apptime.Now()
-		at = &now
+		updates["feedback_at"] = &now
+		if *feedback == "dislike" {
+			updates["feedback_comment"] = comment
+		} else {
+			updates["feedback_comment"] = nil
+		}
+	} else {
+		updates["feedback"] = nil
+		updates["feedback_at"] = nil
+		updates["feedback_comment"] = nil
 	}
 	return r.db.Model(&model.ChatMessage{}).
 		Where("tenant_id = ? AND id = ?", tenantID, messageID).
-		Updates(map[string]interface{}{
-			"feedback":    val,
-			"feedback_at": at,
-		}).Error
+		Updates(updates).Error
 }
 
 // ListSessionsByTenant 分页查询租户下的智能体会话明细（数据管理页使用）

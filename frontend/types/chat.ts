@@ -60,6 +60,7 @@ export interface ChatMessageItem {
   error?: string
   feedback?: 'like' | 'dislike' | null
   feedback_at?: string
+  feedback_comment?: string | null
   created_at: string
   // 前端流式补充字段
   streaming?: boolean

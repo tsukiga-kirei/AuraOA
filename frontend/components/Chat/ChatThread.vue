@@ -8,6 +8,10 @@ import {
   DislikeFilled,
   RobotOutlined,
   LoadingOutlined,
+  EditOutlined,
+  CloseOutlined,
+  SendOutlined,
+  MessageOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ChatMessageItem } from '~/types/chat'
@@ -21,6 +25,84 @@ const { t } = useI18n()
 const { updateMessageFeedback } = useChatSession()
 const copied = ref('')
 
+// 反馈意见小框状态管理
+const activeFeedbackMsgId = ref<string | null>(null)
+const feedbackCommentDraft = ref('')
+const submittingFeedback = ref(false)
+
+const openFeedbackBox = (msg: ChatMessageItem) => {
+  activeFeedbackMsgId.value = msg.id
+  feedbackCommentDraft.value = msg.feedback_comment || ''
+}
+
+const closeFeedbackBox = () => {
+  activeFeedbackMsgId.value = null
+  feedbackCommentDraft.value = ''
+}
+
+const handleDislikeClick = async (msg: ChatMessageItem) => {
+  if (msg.feedback === 'dislike') {
+    // 已经点踩时，点击切换打开/关闭编辑反馈框
+    if (activeFeedbackMsgId.value === msg.id) {
+      closeFeedbackBox()
+    } else {
+      openFeedbackBox(msg)
+    }
+  } else {
+    // 首次点踩：标记为 dislike 并弹出反馈建议小框
+    msg.feedback = 'dislike'
+    openFeedbackBox(msg)
+    try {
+      await updateMessageFeedback(msg.id, 'dislike', msg.feedback_comment || null)
+    } catch (err: any) {
+      message.error(err?.message || '反馈提交失败')
+    }
+  }
+}
+
+const handleCancelDislike = async (msg: ChatMessageItem) => {
+  msg.feedback = null
+  msg.feedback_comment = null
+  closeFeedbackBox()
+  try {
+    await updateMessageFeedback(msg.id, null, null)
+    message.info(t('chat.feedbackCancelled', '已取消评价'))
+  } catch (err: any) {
+    message.error(err?.message || '取消失败')
+  }
+}
+
+const handleSubmitFeedback = async (msg: ChatMessageItem) => {
+  const comment = feedbackCommentDraft.value.trim()
+  submittingFeedback.value = true
+  try {
+    await updateMessageFeedback(msg.id, 'dislike', comment || null)
+    msg.feedback_comment = comment || null
+    closeFeedbackBox()
+    message.success(t('chat.feedbackDislikeSuccess', '已记录您的改进建议'))
+  } catch (err: any) {
+    message.error(err?.message || '提交失败')
+  } finally {
+    submittingFeedback.value = false
+  }
+}
+
+const toggleLike = async (msg: ChatMessageItem) => {
+  const next = msg.feedback === 'like' ? null : 'like'
+  msg.feedback = next
+  if (activeFeedbackMsgId.value === msg.id) {
+    closeFeedbackBox()
+  }
+  try {
+    await updateMessageFeedback(msg.id, next, null)
+    if (next === 'like') {
+      message.success(t('chat.feedbackLikeSuccess', '感谢您的赞同反馈！'))
+    }
+  } catch (err: any) {
+    message.error(err?.message || '反馈提交失败')
+  }
+}
+
 const copy = async (msg: ChatMessageItem) => {
   const ok = await safeCopyText(msg.content)
   if (ok) {
@@ -29,21 +111,6 @@ const copy = async (msg: ChatMessageItem) => {
     setTimeout(() => { copied.value = '' }, 1800)
   } else {
     message.error(t('chat.copyFailed', '复制失败，请手动选择文本复制'))
-  }
-}
-
-const toggleFeedback = async (msg: ChatMessageItem, type: 'like' | 'dislike') => {
-  const next = msg.feedback === type ? null : type
-  msg.feedback = next
-  try {
-    await updateMessageFeedback(msg.id, next)
-    if (next === 'like') {
-      message.success(t('chat.feedbackLikeSuccess', '感谢您的赞同反馈！'))
-    } else if (next === 'dislike') {
-      message.info(t('chat.feedbackDislikeSuccess', '已记录您的改进建议'))
-    }
-  } catch (err: any) {
-    message.error(err?.message || '反馈提交失败')
   }
 }
 
@@ -106,7 +173,7 @@ function formatMsgTime(isoString?: string): string {
               class="action-btn"
               :class="{ 'action-btn--liked': msg.feedback === 'like' }"
               :title="t('chat.like', '赞同')"
-              @click="toggleFeedback(msg, 'like')"
+              @click="toggleLike(msg)"
             >
               <LikeFilled v-if="msg.feedback === 'like'" style="color: #1890ff;" />
               <LikeOutlined v-else />
@@ -117,7 +184,7 @@ function formatMsgTime(isoString?: string): string {
               class="action-btn"
               :class="{ 'action-btn--disliked': msg.feedback === 'dislike' }"
               :title="t('chat.dislike', '改进')"
-              @click="toggleFeedback(msg, 'dislike')"
+              @click="handleDislikeClick(msg)"
             >
               <DislikeFilled v-if="msg.feedback === 'dislike'" style="color: #ff4d4f;" />
               <DislikeOutlined v-else />
@@ -140,6 +207,51 @@ function formatMsgTime(isoString?: string): string {
               <RobotOutlined /> AI 生成
             </span>
           </div>
+        </div>
+
+        <!-- 点踩反馈意见输入小框 -->
+        <div v-if="activeFeedbackMsgId === msg.id" class="feedback-input-container">
+          <div class="feedback-input-box">
+            <div class="feedback-input-header">
+              <span class="feedback-input-title">
+                <DislikeFilled style="color: #ff4d4f; font-size: 13px;" />
+                {{ t('chat.feedbackPrompt', '提供详细改进建议（可选）') }}
+              </span>
+              <button class="feedback-close-btn" :title="t('common.close', '关闭')" @click="closeFeedbackBox">
+                <CloseOutlined />
+              </button>
+            </div>
+            <a-textarea
+              v-model:value="feedbackCommentDraft"
+              class="feedback-textarea"
+              :placeholder="t('chat.feedbackPlaceholder', '请详细描述您认为回答不够准确、逻辑不符或需要改进的地方...')"
+              :rows="2"
+              :maxlength="500"
+              show-count
+              :auto-size="{ minRows: 2, maxRows: 4 }"
+            />
+            <div class="feedback-input-actions">
+              <a-button size="small" @click="handleCancelDislike(msg)">
+                {{ t('chat.cancelDislike', '取消点踩') }}
+              </a-button>
+              <a-button type="primary" size="small" :loading="submittingFeedback" @click="handleSubmitFeedback(msg)">
+                <SendOutlined />
+                {{ t('chat.submitFeedback', '提交意见') }}
+              </a-button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 已提交的反馈意见预览条（支持随时点击再次修改） -->
+        <div
+          v-else-if="msg.feedback === 'dislike' && msg.feedback_comment"
+          class="feedback-comment-pill"
+          :title="t('chat.clickToEditFeedback', '点击修改反馈意见')"
+          @click="openFeedbackBox(msg)"
+        >
+          <span class="feedback-pill-label">改进建议：</span>
+          <span class="feedback-pill-text">{{ msg.feedback_comment }}</span>
+          <EditOutlined class="feedback-pill-edit-icon" />
         </div>
       </div>
     </article>
@@ -385,6 +497,109 @@ function formatMsgTime(isoString?: string): string {
   padding: 12px;
   font-size: 13px;
   margin-top: 14px;
+}
+
+/* 点踩反馈意见输入小框 */
+.feedback-input-container {
+  margin-top: 10px;
+  width: 100%;
+}
+
+.feedback-input-box {
+  background: var(--color-bg-elevated, #ffffff);
+  border: 1px solid var(--color-border-subtle, rgba(0, 0, 0, 0.08));
+  border-radius: var(--radius-md, 8px);
+  padding: 12px 14px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.feedback-input-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.feedback-input-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.feedback-close-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-tertiary, #8c8c8c);
+  padding: 2px 4px;
+  font-size: 12px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.feedback-close-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.feedback-textarea {
+  font-size: 13px;
+  border-radius: var(--radius-sm, 6px);
+}
+
+.feedback-input-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* 已提交反馈意见预览胶囊 */
+.feedback-comment-pill {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 77, 79, 0.08);
+  border: 1px dashed rgba(255, 77, 79, 0.35);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  color: #cf1322;
+  cursor: pointer;
+  max-width: 100%;
+  transition: all 0.2s ease;
+}
+
+.feedback-comment-pill:hover {
+  background: rgba(255, 77, 79, 0.12);
+  border-color: #ff4d4f;
+}
+
+.feedback-pill-label {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.feedback-pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feedback-pill-edit-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+.feedback-comment-pill:hover .feedback-pill-edit-icon {
+  opacity: 1;
 }
 
 @media (max-width: 600px) {

@@ -66,13 +66,15 @@ type ChatMessageDTO struct {
 	TokenUsage       datatypes.JSON `json:"token_usage,omitempty"`
 	Feedback         *string        `json:"feedback,omitempty"`
 	FeedbackAt       *time.Time     `json:"feedback_at,omitempty"`
+	FeedbackComment  *string        `json:"feedback_comment,omitempty"`
 	DurationMs       int64          `json:"duration_ms"`
 	CreatedAt        time.Time      `json:"created_at"`
 }
 
 // UpdateFeedbackRequest 更新消息点赞/点踩评价请求
 type UpdateFeedbackRequest struct {
-	Feedback *string `json:"feedback"` // like | dislike | nil
+	Feedback        *string `json:"feedback"` // like | dislike | nil
+	FeedbackComment *string `json:"feedback_comment"`
 }
 
 // ChatSessionDetailResponse 会话详情响应（含历史消息）

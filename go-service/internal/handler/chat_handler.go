@@ -231,12 +231,16 @@ func (h *ChatHandler) UpdateMessageFeedback(c *gin.Context) {
 		return
 	}
 
-	if err := h.sessionService.UpdateMessageFeedback(c.Request.Context(), tenantID, userID, msgID, req.Feedback); err != nil {
+	if err := h.sessionService.UpdateMessageFeedback(c.Request.Context(), tenantID, userID, msgID, req.Feedback, req.FeedbackComment); err != nil {
 		handleServiceError(c, err)
 		return
 	}
 
-	response.Success(c, gin.H{"updated": true, "feedback": req.Feedback})
+	response.Success(c, gin.H{
+		"updated":          true,
+		"feedback":         req.Feedback,
+		"feedback_comment": req.FeedbackComment,
+	})
 }
 
 func extractUserAndTenant(c *gin.Context) (tenantID, userID uuid.UUID, username string, err error) {

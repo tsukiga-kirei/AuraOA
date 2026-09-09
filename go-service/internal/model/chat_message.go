@@ -21,6 +21,7 @@ type ChatMessage struct {
 	LLMLogID         *uuid.UUID     `gorm:"type:uuid" json:"llm_log_id,omitempty"`
 	Feedback         *string        `gorm:"size:16" json:"feedback,omitempty"` // like | dislike | nil
 	FeedbackAt       *time.Time     `json:"feedback_at,omitempty"`
+	FeedbackComment  *string        `gorm:"type:text" json:"feedback_comment,omitempty"`
 	DurationMs       int64          `gorm:"default:0" json:"duration_ms"`
 	CreatedAt        time.Time      `json:"created_at"`
 }
