@@ -2719,6 +2719,13 @@ export default {
     'agentAdmin.quickIcon.review': 'Verification (✅)',
     'agentAdmin.quickIcon.doc': 'Document & Form (📄)',
     'agentAdmin.col.mountedCaps': 'Mounted Capabilities',
+    'agentAdmin.accessControlTitle': 'Personnel Permissions',
+    'agentAdmin.accessControlDesc': 'Configure which users can access this agent. Default is everyone. When restricted, matches roles, members, or departments.',
+    'agentAdmin.allowAllDesc': 'When enabled, all members in the tenant with chat permission can use this agent',
+    'agentAdmin.col.permissions': 'Permissions',
+    'agentAdmin.permAll': 'All Members',
+    'agentAdmin.permCustom': 'Custom Scope',
+    'agentAdmin.scopeSummary': '{0} roles, {1} members, {2} depts',
 
     //===== Auth error codes =====
     'auth.error.invalidParam': 'Invalid parameter',

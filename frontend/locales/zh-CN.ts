@@ -2749,6 +2749,13 @@ export default {
     'agentAdmin.quickIcon.review': '核验审查 (✅)',
     'agentAdmin.quickIcon.doc': '单据文档 (📄)',
     'agentAdmin.col.mountedCaps': '装配能力概览',
+    'agentAdmin.accessControlTitle': '人员权限',
+    'agentAdmin.accessControlDesc': '配置当前智能体的可用人员范围，默认全员均可使用；关闭全员后按角色、成员、部门任意一项命中判断放行',
+    'agentAdmin.allowAllDesc': '开启后，当前租户内所有具备对话权限的成员都可以使用此智能体',
+    'agentAdmin.col.permissions': '使用权限',
+    'agentAdmin.permAll': '全员可用',
+    'agentAdmin.permCustom': '指定范围',
+    'agentAdmin.scopeSummary': '{0}个角色，{1}名成员，{2}个部门',
 
     //===== 认证错误码 =====
     'auth.error.invalidParam': '参数校验失败',

@@ -237,6 +237,10 @@ func (s *AgentAllocationService) ListTenantAgents(ctx context.Context, tenantID 
 		for _, b := range a.ToolBindings {
 			toolCodes = append(toolCodes, b.ToolCode)
 		}
+		ac := a.AccessControl
+		if len(ac) == 0 || string(ac) == "{}" || string(ac) == "null" {
+			ac = datatypes.JSON(`{"allow_all":true,"allowed_roles":[],"allowed_members":[],"allowed_departments":[]}`)
+		}
 		res = append(res, dto.AgentDefinitionDTO{
 			ID:             a.ID,
 			TenantID:       a.TenantID,
@@ -248,6 +252,7 @@ func (s *AgentAllocationService) ListTenantAgents(ctx context.Context, tenantID 
 			IsSystem:       a.IsSystem,
 			QuickQuestions: parseQuickQuestions(a.QuickQuestions),
 			ToolCodes:      toolCodes,
+			AccessControl:  ac,
 			CreatedAt:      a.CreatedAt,
 			UpdatedAt:      a.UpdatedAt,
 		})
@@ -275,6 +280,11 @@ func (s *AgentAllocationService) CreateTenantAgent(ctx context.Context, tenantID
 		qqJSON = []byte("[]")
 	}
 
+	ac := req.AccessControl
+	if len(ac) == 0 || string(ac) == "{}" || string(ac) == "null" {
+		ac = datatypes.JSON(`{"allow_all":true,"allowed_roles":[],"allowed_members":[],"allowed_departments":[]}`)
+	}
+
 	agent := model.AgentDefinition{
 		TenantID:       &tenantID,
 		AgentCode:      req.AgentCode,
@@ -284,6 +294,7 @@ func (s *AgentAllocationService) CreateTenantAgent(ctx context.Context, tenantID
 		Enabled:        req.Enabled,
 		IsSystem:       false,
 		QuickQuestions: qqJSON,
+		AccessControl:  ac,
 	}
 
 	if err := s.agentRepo.CreateAgentWithBindings(tenantID, &agent, req.ToolCodes); err != nil {
@@ -301,6 +312,7 @@ func (s *AgentAllocationService) CreateTenantAgent(ctx context.Context, tenantID
 		IsSystem:       agent.IsSystem,
 		QuickQuestions: req.QuickQuestions,
 		ToolCodes:      req.ToolCodes,
+		AccessControl:  agent.AccessControl,
 		CreatedAt:      agent.CreatedAt,
 		UpdatedAt:      agent.UpdatedAt,
 	}, nil
@@ -334,6 +346,9 @@ func (s *AgentAllocationService) UpdateTenantAgent(ctx context.Context, tenantID
 	if req.QuickQuestions != nil {
 		qqJSON, _ := json.Marshal(*req.QuickQuestions)
 		updates["quick_questions"] = qqJSON
+	}
+	if len(req.AccessControl) > 0 && string(req.AccessControl) != "null" {
+		updates["access_control"] = req.AccessControl
 	}
 
 	if req.ToolCodes != nil {
