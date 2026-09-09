@@ -39,8 +39,42 @@ definePageMeta({
 
 const { authFetch } = useAuth()
 const { t } = useI18n()
+const { systemPromptVariables } = usePromptSystemVariables()
 const activeTab = ref('agents')
 const loading = ref(false)
+
+// 提示词输入框引用与光标位置记忆
+const agentPromptTextareaRef = ref<any>(null)
+const expandedPromptTextareaRef = ref<any>(null)
+const skillContentTextareaRef = ref<any>(null)
+
+const insertVariableToTextarea = (textareaRef: any, currentValRef: Ref<string>, variable: string) => {
+  const el: HTMLTextAreaElement | null = textareaRef?.$el?.querySelector?.('textarea') || textareaRef?.resizableTextArea?.textArea || null
+  const currentVal = currentValRef.value || ''
+  if (!el) {
+    currentValRef.value = currentVal ? `${currentVal} ${variable}` : variable
+    return
+  }
+  const start = el.selectionStart ?? currentVal.length
+  const end = el.selectionEnd ?? start
+  currentValRef.value = currentVal.slice(0, start) + variable + currentVal.slice(end)
+  nextTick(() => {
+    el.focus()
+    el.setSelectionRange(start + variable.length, start + variable.length)
+  })
+}
+
+const insertAgentPromptVariable = (variable: string) => {
+  if (promptExpanded.value) {
+    insertVariableToTextarea(expandedPromptTextareaRef.value, toRef(agentForm.value, 'system_prompt'), variable)
+  } else {
+    insertVariableToTextarea(agentPromptTextareaRef.value, toRef(agentForm.value, 'system_prompt'), variable)
+  }
+}
+
+const insertSkillPromptVariable = (variable: string) => {
+  insertVariableToTextarea(skillContentTextareaRef.value, toRef(skillForm.value, 'content'), variable)
+}
 
 // 列表数据
 const agents = ref<AgentDefinitionItem[]>([])
@@ -583,7 +617,7 @@ onMounted(() => {
           </a-row>
         </div>
 
-        <!-- 系统提示词配置卡片（支持放大编辑） -->
+        <!-- 系统提示词配置卡片（支持常用系统变量与放大编辑） -->
         <div class="drawer-section">
           <div class="drawer-section-title" style="display: flex; align-items: center; justify-content: space-between;">
             <span>{{ t('agentAdmin.form.systemPrompt') }}</span>
@@ -591,8 +625,14 @@ onMounted(() => {
               <FullscreenOutlined /> {{ t('agentAdmin.promptExpand', '放大全屏编辑') }}
             </a-button>
           </div>
+          <PromptVariableBar
+            :data-variables="[]"
+            :system-variables="systemPromptVariables"
+            @insert="insertAgentPromptVariable"
+          />
           <a-form-item style="margin-bottom: 0;">
             <a-textarea
+              ref="agentPromptTextareaRef"
               v-model:value="agentForm.system_prompt"
               :rows="5"
               placeholder="设定该智能体的业务角色定位、思考链规范、工具使用准则及边界约束..."
@@ -833,8 +873,14 @@ onMounted(() => {
             </a-col>
           </a-row>
 
+          <PromptVariableBar
+            :data-variables="[]"
+            :system-variables="systemPromptVariables"
+            @insert="insertSkillPromptVariable"
+          />
           <a-form-item :label="t('agentAdmin.form.skillTemplate')" required>
             <a-textarea
+              ref="skillContentTextareaRef"
               v-model:value="skillForm.content"
               :rows="8"
               placeholder="编写具体的技能操作指南或专项分析规范提示词..."
@@ -866,12 +912,18 @@ onMounted(() => {
       v-model:open="promptExpanded"
       :title="t('agentAdmin.promptFullscreenTitle', '系统提示词全屏编辑')"
       width="80vw"
-      :bodyStyle="{ height: '62vh', padding: '16px' }"
+      :bodyStyle="{ height: '62vh', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }"
       :footer="null"
     >
+      <PromptVariableBar
+        :data-variables="[]"
+        :system-variables="systemPromptVariables"
+        @insert="insertAgentPromptVariable"
+      />
       <a-textarea
+        ref="expandedPromptTextareaRef"
         v-model:value="agentForm.system_prompt"
-        style="width: 100%; height: 100%; resize: none; font-family: var(--font-mono); font-size: 14px; line-height: 1.6;"
+        style="width: 100%; flex: 1; resize: none; font-family: var(--font-mono); font-size: 14px; line-height: 1.6;"
         placeholder="设定该智能体的业务角色定位、思考链规范、工具使用准则及边界约束..."
       />
     </a-modal>
