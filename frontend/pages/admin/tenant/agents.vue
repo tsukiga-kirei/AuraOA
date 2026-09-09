@@ -19,8 +19,13 @@ import {
   BarChartOutlined,
   BulbOutlined,
   FileTextOutlined,
+  TeamOutlined,
+  UserOutlined,
+  AppstoreOutlined,
+  CheckOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
+import type { AccessControl } from '~/types/archive-config'
 import type {
   AgentDefinitionItem,
   MCPServerItem,
@@ -31,6 +36,7 @@ import type {
   SaveSkillRequest,
   QuickQuestionItem,
 } from '~/types/chat'
+import { useOrgApi } from '~/composables/useOrgApi'
 
 definePageMeta({
   layout: 'default',
@@ -85,6 +91,77 @@ const mcpTools = ref<SystemToolCatalogItem[]>([])
 const skillTools = ref<SystemToolCatalogItem[]>([])
 const agentOptions = computed(() => agents.value.map(item => ({ label: item.name, value: item.agent_code })))
 
+// 组织架构人员与权限支持
+const { departments, roles, members, loadAll: loadOrgData } = useOrgApi()
+
+const emptyAccessControl = (): AccessControl => ({
+  allow_all: true,
+  allowed_roles: [],
+  allowed_members: [],
+  allowed_departments: [],
+})
+
+const normalizeAccessControl = (ac?: Partial<AccessControl> | null): AccessControl => ({
+  allow_all: ac?.allow_all !== false,
+  allowed_roles: Array.isArray(ac?.allowed_roles) ? [...ac.allowed_roles] : [],
+  allowed_members: Array.isArray(ac?.allowed_members) ? [...ac.allowed_members] : [],
+  allowed_departments: Array.isArray(ac?.allowed_departments) ? [...ac.allowed_departments] : [],
+})
+
+const agentRoleSearch = ref('')
+const agentMemberSearch = ref('')
+const agentDeptSearch = ref('')
+
+const filteredAgentRoles = computed(() => {
+  const q = agentRoleSearch.value.toLowerCase().trim()
+  if (!q) return roles.value
+  return roles.value.filter(r => r.name.toLowerCase().includes(q))
+})
+
+const filteredAgentMembers = computed(() => {
+  const q = agentMemberSearch.value.toLowerCase().trim()
+  if (!q) return members.value
+  return members.value.filter(m => m.name.toLowerCase().includes(q) || (m.department_name && m.department_name.toLowerCase().includes(q)))
+})
+
+const filteredAgentDepts = computed(() => {
+  const q = agentDeptSearch.value.toLowerCase().trim()
+  if (!q) return departments.value
+  return departments.value.filter(d => d.name.toLowerCase().includes(q))
+})
+
+const toggleAgentRole = (roleId: string) => {
+  if (!agentForm.value.access_control) agentForm.value.access_control = emptyAccessControl()
+  const ac = agentForm.value.access_control
+  const idx = ac.allowed_roles.indexOf(roleId)
+  if (idx >= 0) ac.allowed_roles.splice(idx, 1)
+  else ac.allowed_roles.push(roleId)
+}
+
+const toggleAgentMember = (memberId: string) => {
+  if (!agentForm.value.access_control) agentForm.value.access_control = emptyAccessControl()
+  const ac = agentForm.value.access_control
+  const idx = ac.allowed_members.indexOf(memberId)
+  if (idx >= 0) ac.allowed_members.splice(idx, 1)
+  else ac.allowed_members.push(memberId)
+}
+
+const toggleAgentDept = (deptId: string) => {
+  if (!agentForm.value.access_control) agentForm.value.access_control = emptyAccessControl()
+  const ac = agentForm.value.access_control
+  const idx = ac.allowed_departments.indexOf(deptId)
+  if (idx >= 0) ac.allowed_departments.splice(idx, 1)
+  else ac.allowed_departments.push(deptId)
+}
+
+const getAccessSummary = (ac?: AccessControl) => {
+  if (!ac || ac.allow_all !== false) return t('agentAdmin.permAll')
+  const rCount = ac.allowed_roles?.length || 0
+  const mCount = ac.allowed_members?.length || 0
+  const dCount = ac.allowed_departments?.length || 0
+  return t('agentAdmin.scopeSummary', [rCount, mCount, dCount])
+}
+
 // 右侧大抽屉展开状态
 const agentDrawerVisible = ref(false)
 const mcpDrawerVisible = ref(false)
@@ -103,6 +180,7 @@ const agentForm = ref<SaveAgentRequest>({
   enabled: true,
   tool_codes: [],
   quick_questions: [],
+  access_control: emptyAccessControl(),
 })
 
 const mcpForm = ref<SaveMCPServerRequest>({
@@ -134,6 +212,7 @@ const fetchAll = async () => {
       authFetch<MCPServerItem[]>('/api/tenant/mcp-servers'),
       authFetch<AgentSkillItem[]>('/api/tenant/skills'),
       authFetch<{ tool_catalog: SystemToolCatalogItem[]; skill_catalog: AgentSkillItem[] }>('/api/tenant/agent-catalog'),
+      loadOrgData(),
     ])
     agents.value = agentsData || []
     mcpServers.value = mcpData || []
@@ -209,6 +288,9 @@ const removeQuickQuestion = (index: number) => {
 
 // 智能体保存/删除
 const openCreateAgent = () => {
+  agentRoleSearch.value = ''
+  agentMemberSearch.value = ''
+  agentDeptSearch.value = ''
   agentForm.value = {
     agent_code: '',
     name: '',
@@ -220,11 +302,15 @@ const openCreateAgent = () => {
       { icon: 'UnorderedListOutlined', title: '待办任务', prompt: '请帮我查询当前我有哪些待办流程？', detail: '快速检阅当前待办事项' },
       { icon: 'FileSearchOutlined', title: '流程总结', prompt: '请帮我总结一下最近的审批流程', detail: '提取流程关键要点与审批流转' },
     ],
+    access_control: emptyAccessControl(),
   }
   agentDrawerVisible.value = true
 }
 
 const openEditAgent = (item: AgentDefinitionItem) => {
+  agentRoleSearch.value = ''
+  agentMemberSearch.value = ''
+  agentDeptSearch.value = ''
   agentForm.value = {
     id: item.id,
     agent_code: item.agent_code,
@@ -239,6 +325,7 @@ const openEditAgent = (item: AgentDefinitionItem) => {
           icon: normalizeQuickIcon(q.icon),
         }))
       : [],
+    access_control: normalizeAccessControl(item.access_control),
   }
   agentDrawerVisible.value = true
 }
@@ -454,6 +541,18 @@ onMounted(() => {
           <a-table-column title="快捷问题" width="90px">
             <template #default="{ record }">
               <a-tag color="geekblue">{{ record.quick_questions?.length || 0 }} 条</a-tag>
+            </template>
+          </a-table-column>
+          <a-table-column :title="t('agentAdmin.col.permissions', '使用权限')" width="110px">
+            <template #default="{ record }">
+              <a-tag v-if="record.access_control?.allow_all !== false" color="green">
+                {{ t('agentAdmin.permAll', '全员可用') }}
+              </a-tag>
+              <a-tooltip v-else :title="getAccessSummary(record.access_control)">
+                <a-tag color="blue" style="cursor: pointer;">
+                  {{ t('agentAdmin.permCustom', '指定范围') }}
+                </a-tag>
+              </a-tooltip>
             </template>
           </a-table-column>
           <a-table-column :title="t('agentAdmin.col.status')" dataIndex="enabled" width="80px">
@@ -745,6 +844,96 @@ onMounted(() => {
                   style="margin-bottom: 8px; font-size: 13px;"
                 />
                 <a-input v-model:value="q.detail" placeholder="卡片下方副说明 (Detail，选填)..." />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 人员权限配置卡片 -->
+        <div class="drawer-section">
+          <div class="drawer-section-title">
+            <span>{{ t('agentAdmin.accessControlTitle', '人员权限') }}</span>
+          </div>
+          <p class="drawer-section-desc">
+            {{ t('agentAdmin.accessControlDesc', '配置当前智能体的可用人员范围，默认全员均可使用；关闭全员后按角色、成员、部门任意一项命中判断放行') }}
+          </p>
+
+          <div class="access-control-section">
+            <div class="access-control-everyone">
+              <div class="permission-info">
+                <div class="permission-label"><TeamOutlined /> {{ t('admin.ruleConfig.auditAllowAll', '所有人可访问') }}</div>
+                <div class="permission-desc">{{ t('agentAdmin.allowAllDesc', '开启后，当前租户内所有具备对话权限的成员都可以使用此智能体') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="agentForm.access_control!.allow_all"
+                :checked-children="t('admin.ruleConfig.allow', '允许')"
+                :un-checked-children="t('admin.ruleConfig.deny', '禁止')"
+              />
+            </div>
+
+            <!-- 指定范围：角色、成员、部门 -->
+            <div v-if="!agentForm.access_control?.allow_all" class="access-control-group">
+              <div class="access-control-label"><TeamOutlined /> {{ t('admin.ruleConfig.auditAllowedRoles', '允许的角色') }}</div>
+              <div class="access-control-search">
+                <a-input v-model:value="agentRoleSearch" :placeholder="t('admin.ruleConfig.auditAccessSearch', '搜索...')" allow-clear size="small" style="max-width: 280px;">
+                  <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                </a-input>
+              </div>
+              <div class="access-control-tags" style="gap: 8px;">
+                <div
+                  v-for="role in filteredAgentRoles"
+                  :key="role.id"
+                  class="access-tag"
+                  :class="{ 'access-tag--active': (agentForm.access_control?.allowed_roles || []).includes(role.id) }"
+                  @click="toggleAgentRole(role.id)"
+                >
+                  <CheckOutlined v-if="(agentForm.access_control?.allowed_roles || []).includes(role.id)" class="access-tag-check" />
+                  {{ role.name }}
+                </div>
+              </div>
+            </div>
+
+            <div v-if="!agentForm.access_control?.allow_all" class="access-control-group" style="margin-top: 16px;">
+              <div class="access-control-label"><UserOutlined /> {{ t('admin.ruleConfig.auditAllowedMembers', '允许的成员') }}</div>
+              <div class="access-control-search">
+                <a-input v-model:value="agentMemberSearch" :placeholder="t('admin.ruleConfig.auditAccessSearch', '搜索...')" allow-clear size="small" style="max-width: 280px;">
+                  <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                </a-input>
+              </div>
+              <div class="access-control-tags" style="gap: 8px;">
+                <div
+                  v-for="member in filteredAgentMembers"
+                  :key="member.id"
+                  class="access-tag"
+                  :class="{ 'access-tag--active': (agentForm.access_control?.allowed_members || []).includes(member.id) }"
+                  @click="toggleAgentMember(member.id)"
+                >
+                  <CheckOutlined v-if="(agentForm.access_control?.allowed_members || []).includes(member.id)" class="access-tag-check" />
+                  {{ member.name }}
+                  <span v-if="member.department_name" class="access-tag-dept">{{ member.department_name }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="!agentForm.access_control?.allow_all" class="access-control-group" style="margin-top: 16px;">
+              <div class="access-control-label"><AppstoreOutlined /> {{ t('admin.ruleConfig.auditAllowedDepts', '允许的部门') }}</div>
+              <div class="access-control-search">
+                <a-input v-model:value="agentDeptSearch" :placeholder="t('admin.ruleConfig.auditAccessSearch', '搜索...')" allow-clear size="small" style="max-width: 280px;">
+                  <template #prefix><SearchOutlined style="color: var(--color-text-tertiary);" /></template>
+                </a-input>
+              </div>
+              <div class="access-control-tags" style="gap: 8px;">
+                <div
+                  v-for="dept in filteredAgentDepts"
+                  :key="dept.id"
+                  class="access-tag"
+                  :class="{ 'access-tag--active': (agentForm.access_control?.allowed_departments || []).includes(dept.id) }"
+                  @click="toggleAgentDept(dept.id)"
+                >
+                  <CheckOutlined v-if="(agentForm.access_control?.allowed_departments || []).includes(dept.id)" class="access-tag-check" />
+                  {{ dept.name }}
+                  <span v-if="dept.member_count !== undefined" class="access-tag-dept">{{ dept.member_count }}人</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1081,4 +1270,61 @@ onMounted(() => {
   color: var(--color-text-tertiary);
   margin-top: 4px;
 }
+
+/* 访问控制与人员权限 */
+.access-control-section { display: flex; flex-direction: column; gap: 0; }
+.access-control-everyone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+.access-control-group {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.access-control-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.access-control-search { margin-bottom: 8px; }
+.access-control-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.access-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border-light);
+  background: var(--color-bg-hover);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.access-tag:hover { border-color: var(--color-primary-lighter); color: var(--color-primary); }
+.access-tag--active { border-color: var(--color-primary); background: var(--color-primary-bg); color: var(--color-primary); }
+.access-tag-check { font-size: 10px; }
+.access-tag-dept {
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  margin-left: 2px;
+  padding-left: 6px;
+  border-left: 1px solid var(--color-border-light);
+}
+.permission-info { display: flex; flex-direction: column; gap: 2px; }
+.permission-label { font-size: 13px; font-weight: 600; color: var(--color-text-primary); display: flex; align-items: center; gap: 6px; }
+.permission-desc { font-size: 12px; color: var(--color-text-tertiary); }
 </style>

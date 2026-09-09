@@ -21,6 +21,25 @@ func accessControlAllows(raw datatypes.JSON, member *model.OrgMember) bool {
 	return accessControlDataAllows(ac, member)
 }
 
+// agentAccessControlAllows 用于智能体访问控制判断。
+// 智能体未配置、为空或解析异常时默认全员可用（allow_all: true）。
+func agentAccessControlAllows(raw datatypes.JSON, member *model.OrgMember) bool {
+	if member == nil {
+		return false
+	}
+	if len(raw) == 0 || string(raw) == "{}" || string(raw) == "null" {
+		return true
+	}
+	var ac model.AccessControlData
+	if err := json.Unmarshal(raw, &ac); err != nil {
+		return true
+	}
+	if ac.AllowAll {
+		return true
+	}
+	return accessControlDataAllows(ac, member)
+}
+
 func accessControlDataAllows(ac model.AccessControlData, member *model.OrgMember) bool {
 	if member == nil {
 		return false

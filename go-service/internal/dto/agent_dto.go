@@ -77,6 +77,7 @@ type AgentDefinitionDTO struct {
 	IsSystem       bool                `json:"is_system"`
 	QuickQuestions []QuickQuestionItem `json:"quick_questions"`
 	ToolCodes      []string            `json:"tool_codes"`
+	AccessControl  datatypes.JSON      `json:"access_control"`
 	CreatedAt      time.Time           `json:"created_at"`
 	UpdatedAt      time.Time           `json:"updated_at"`
 }
@@ -90,6 +91,7 @@ type CreateAgentRequest struct {
 	Enabled        bool                `json:"enabled"`
 	QuickQuestions []QuickQuestionItem `json:"quick_questions"`
 	ToolCodes      []string            `json:"tool_codes"`
+	AccessControl  datatypes.JSON      `json:"access_control"`
 }
 
 // UpdateAgentRequest 更新智能体请求
@@ -100,6 +102,7 @@ type UpdateAgentRequest struct {
 	Enabled        *bool                `json:"enabled"`
 	QuickQuestions *[]QuickQuestionItem `json:"quick_questions"`
 	ToolCodes      *[]string            `json:"tool_codes"`
+	AccessControl  datatypes.JSON       `json:"access_control"`
 }
 
 // MCPServerDTO MCP 服务器 DTO

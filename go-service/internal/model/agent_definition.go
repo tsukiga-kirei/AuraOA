@@ -18,6 +18,7 @@ type AgentDefinition struct {
 	Enabled        bool               `gorm:"not null;default:true" json:"enabled"`
 	IsSystem       bool               `gorm:"not null;default:false" json:"is_system"`
 	QuickQuestions datatypes.JSON     `gorm:"type:jsonb;not null;default:'[]'" json:"quick_questions"`
+	AccessControl  datatypes.JSON     `gorm:"type:jsonb;not null;default:'{}'" json:"access_control"`
 	CreatedAt      time.Time          `json:"created_at"`
 	UpdatedAt      time.Time          `json:"updated_at"`
 

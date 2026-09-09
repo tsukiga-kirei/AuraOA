@@ -7379,6 +7379,25 @@ components:
                 "type": "string"
               "description":
                 "type": "string"
+        "access_control":
+          "type": "object"
+          "description": "人员访问控制配置"
+          "properties":
+            "allow_all":
+              "type": "boolean"
+              "default": true
+            "allowed_roles":
+              "type": "array"
+              "items":
+                "type": "string"
+            "allowed_members":
+              "type": "array"
+              "items":
+                "type": "string"
+            "allowed_departments":
+              "type": "array"
+              "items":
+                "type": "string"
     "ChatSession":
       "type": "object"
       "properties":
@@ -7499,6 +7518,25 @@ components:
                 "type": "string"
               "description":
                 "type": "string"
+        "access_control":
+          "type": "object"
+          "description": "人员访问控制配置"
+          "properties":
+            "allow_all":
+              "type": "boolean"
+              "default": true
+            "allowed_roles":
+              "type": "array"
+              "items":
+                "type": "string"
+            "allowed_members":
+              "type": "array"
+              "items":
+                "type": "string"
+            "allowed_departments":
+              "type": "array"
+              "items":
+                "type": "string"
     "ChatAgentUpdate":
       "type": "object"
       "properties":
@@ -7526,6 +7564,25 @@ components:
               "prompt":
                 "type": "string"
               "description":
+                "type": "string"
+        "access_control":
+          "type": "object"
+          "description": "人员访问控制配置"
+          "properties":
+            "allow_all":
+              "type": "boolean"
+              "default": true
+            "allowed_roles":
+              "type": "array"
+              "items":
+                "type": "string"
+            "allowed_members":
+              "type": "array"
+              "items":
+                "type": "string"
+            "allowed_departments":
+              "type": "array"
+              "items":
                 "type": "string"
     "ChatSkillSave":
       "type": "object"

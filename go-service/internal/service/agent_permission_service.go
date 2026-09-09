@@ -101,6 +101,9 @@ func (s *AgentPermissionService) CalculateEffectivePermissions(ctx context.Conte
 		if !ag.Enabled || !roleAgentSet[ag.AgentCode] {
 			continue
 		}
+		if !agentAccessControlAllows(ag.AccessControl, member) {
+			continue
+		}
 		effectiveAgents = append(effectiveAgents, ag)
 		for _, binding := range ag.ToolBindings {
 			if s.capabilityAllowed(alloc, tenantID, binding.ToolCode) {
@@ -159,7 +162,7 @@ func (s *AgentPermissionService) CalculateEffectiveToolsForAgent(ctx context.Con
 	}
 	allowed := false
 	for _, ag := range perms.Agents {
-		if ag.ID == agent.ID {
+		if ag.ID == agent.ID || ag.AgentCode == agent.AgentCode {
 			allowed = true
 			break
 		}

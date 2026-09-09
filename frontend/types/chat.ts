@@ -3,6 +3,8 @@
  * 严格保持与后端 DTO 及 snake_case 规范一致
  */
 
+import type { AccessControl } from '~/types/archive-config'
+
 export interface QuickQuestionItem {
   icon: string
   title: string
@@ -102,6 +104,7 @@ export interface AgentDefinitionItem {
   sort_order?: number
   quick_questions?: QuickQuestionItem[]
   tool_codes: string[]
+  access_control?: AccessControl
   created_at: string
   updated_at: string
 }
@@ -118,6 +121,7 @@ export interface SaveAgentRequest {
   sort_order?: number
   quick_questions?: QuickQuestionItem[]
   tool_codes: string[]
+  access_control?: AccessControl
 }
 
 export interface MCPServerItem {
