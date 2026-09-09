@@ -9,12 +9,13 @@ import (
 
 // EffectiveAgentDTO 用户可见的有效智能体
 type EffectiveAgentDTO struct {
-	ID          uuid.UUID `json:"id"`
-	AgentCode   string    `json:"agent_code"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	IsSystem    bool      `json:"is_system"`
-	ToolCodes   []string  `json:"tool_codes"`
+	ID             uuid.UUID           `json:"id"`
+	AgentCode      string              `json:"agent_code"`
+	Name           string              `json:"name"`
+	Description    string              `json:"description"`
+	IsSystem       bool                `json:"is_system"`
+	QuickQuestions []QuickQuestionItem `json:"quick_questions"`
+	ToolCodes      []string            `json:"tool_codes"`
 }
 
 // CreateSessionRequest 创建会话请求
@@ -63,7 +64,14 @@ type ChatMessageDTO struct {
 	Status           string         `json:"status"`
 	ToolCalls        datatypes.JSON `json:"tool_calls"`
 	TokenUsage       datatypes.JSON `json:"token_usage,omitempty"`
+	Feedback         *string        `json:"feedback,omitempty"`
+	FeedbackAt       *time.Time     `json:"feedback_at,omitempty"`
 	CreatedAt        time.Time      `json:"created_at"`
+}
+
+// UpdateFeedbackRequest 更新消息点赞/点踩评价请求
+type UpdateFeedbackRequest struct {
+	Feedback *string `json:"feedback"` // like | dislike | nil
 }
 
 // ChatSessionDetailResponse 会话详情响应（含历史消息）

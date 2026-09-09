@@ -3,10 +3,13 @@ package repository
 import (
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 )
 
 // ChatRepo 负责对话会话与消息的持久化
@@ -120,4 +123,349 @@ func (r *ChatRepo) ListMessagesBySession(tenantID, sessionID uuid.UUID) ([]model
 // UpdateMessageStatus 更新消息状态与内容
 func (r *ChatRepo) UpdateMessage(msgID uuid.UUID, updates map[string]interface{}) error {
 	return r.db.Model(&model.ChatMessage{}).Where("id = ?", msgID).Updates(updates).Error
+}
+
+// UpdateMessageFeedback 更新单条消息的点赞/点踩反馈
+func (r *ChatRepo) UpdateMessageFeedback(tenantID, messageID uuid.UUID, feedback *string) error {
+	var val *string
+	var at *time.Time
+	if feedback != nil && (*feedback == "like" || *feedback == "dislike") {
+		val = feedback
+		now := apptime.Now()
+		at = &now
+	}
+	return r.db.Model(&model.ChatMessage{}).
+		Where("tenant_id = ? AND id = ?", tenantID, messageID).
+		Updates(map[string]interface{}{
+			"feedback":    val,
+			"feedback_at": at,
+		}).Error
+}
+
+// ListSessionsByTenant 分页查询租户下的智能体会话明细（数据管理页使用）
+func (r *ChatRepo) ListSessionsByTenant(
+	tenantID uuid.UUID,
+	keyword, agentCode, userName, startDate, endDate string,
+	page, pageSize int,
+) ([]dto.TenantAgentSessionItemDTO, int64, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+	offset := (page - 1) * pageSize
+
+	baseQuery := r.db.Table("chat_sessions s").
+		Joins("JOIN users u ON u.id = s.user_id").
+		Joins("LEFT JOIN agent_definitions ad ON ad.id = s.agent_id").
+		Where("s.tenant_id = ?", tenantID)
+
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		baseQuery = baseQuery.Where("s.title ILIKE ?", like)
+	}
+	if agentCode != "" {
+		baseQuery = baseQuery.Where("s.agent_code = ?", agentCode)
+	}
+	if userName != "" {
+		like := "%" + userName + "%"
+		baseQuery = baseQuery.Where("(u.name ILIKE ? OR u.username ILIKE ?)", like, like)
+	}
+	if startDate != "" {
+		baseQuery = baseQuery.Where("s.created_at >= ?", startDate)
+	}
+	if endDate != "" {
+		baseQuery = baseQuery.Where("s.created_at <= ?", endDate)
+	}
+
+	var total int64
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	type sessionRow struct {
+		ID           uuid.UUID `gorm:"column:id"`
+		AgentCode    string    `gorm:"column:agent_code"`
+		AgentName    string    `gorm:"column:agent_name"`
+		UserID       uuid.UUID `gorm:"column:user_id"`
+		UserName     string    `gorm:"column:user_name"`
+		Title        string    `gorm:"column:title"`
+		MessageCount int64     `gorm:"column:message_count"`
+		TokenCount   int64     `gorm:"column:token_count"`
+		LikeCount    int64     `gorm:"column:like_count"`
+		DislikeCount int64     `gorm:"column:dislike_count"`
+		CreatedAt    time.Time `gorm:"column:created_at"`
+		UpdatedAt    time.Time `gorm:"column:updated_at"`
+	}
+
+	var rows []sessionRow
+	err := baseQuery.Select(`
+		s.id,
+		s.agent_code,
+		COALESCE(NULLIF(ad.name, ''), s.agent_code) AS agent_name,
+		s.user_id,
+		COALESCE(NULLIF(u.name, ''), u.username, '未知用户') AS user_name,
+		s.title,
+		s.created_at,
+		s.updated_at,
+		(SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id AND m.tenant_id = s.tenant_id) AS message_count,
+		(SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id AND m.tenant_id = s.tenant_id AND m.feedback = 'like') AS like_count,
+		(SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id AND m.tenant_id = s.tenant_id AND m.feedback = 'dislike') AS dislike_count,
+		COALESCE((SELECT SUM(l.total_tokens) FROM tenant_llm_message_logs l WHERE l.tenant_id = s.tenant_id AND l.request_type = 'chat' AND l.business_log_id = s.id), 0) AS token_count
+	`).
+		Order("s.updated_at DESC").
+		Offset(offset).
+		Limit(pageSize).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]dto.TenantAgentSessionItemDTO, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, dto.TenantAgentSessionItemDTO{
+			ID:           row.ID,
+			AgentCode:    row.AgentCode,
+			AgentName:    row.AgentName,
+			UserID:       row.UserID,
+			UserName:     row.UserName,
+			Title:        row.Title,
+			MessageCount: row.MessageCount,
+			TokenCount:   row.TokenCount,
+			LikeCount:    row.LikeCount,
+			DislikeCount: row.DislikeCount,
+			CreatedAt:    apptime.FormatRFC3339(row.CreatedAt),
+			UpdatedAt:    apptime.FormatRFC3339(row.UpdatedAt),
+		})
+	}
+	return items, total, nil
+}
+
+// CountThisWeek 本周（按应用配置时区周一 00:00 至今）智能体会话创建次数。
+func (r *ChatRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID) (int64, error) {
+	tenantID, _ := c.Get("tenant_id")
+	var count int64
+	q := r.db.Model(&model.ChatSession{}).Where("created_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)", apptime.Name())
+	if tenantID != nil && tenantID != "" {
+		q = q.Where("tenant_id = ?", tenantID)
+	}
+	if userID != nil {
+		q = q.Where("user_id = ?", *userID)
+	}
+	err := q.Count(&count).Error
+	return count, err
+}
+
+// WeeklyTrendByDay 本周每天的智能体会话条数（generate_series 填充）。
+func (r *ChatRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UUID) ([]DayCount, error) {
+	tenantID, _ := c.Get("tenant_id")
+	userFilter := ""
+	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, apptime.Name()}
+	if userID != nil {
+		userFilter = "AND s.user_id = ?"
+		args = append(args, *userID)
+	}
+
+	sql := `
+WITH days AS (
+  SELECT generate_series(
+    date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)::date,
+    (CURRENT_TIMESTAMP AT TIME ZONE ?)::date,
+    INTERVAL '1 day'
+  )::date AS d
+)
+SELECT TO_CHAR(days.d, 'MM-DD') AS date,
+       COALESCE(b.cnt, 0)::bigint AS count
+FROM days
+LEFT JOIN (
+  SELECT DATE(s.created_at AT TIME ZONE ?) AS d,
+         COUNT(*)::bigint AS cnt
+  FROM chat_sessions s
+  WHERE s.tenant_id = ?
+    AND s.created_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)
+    ` + userFilter + `
+  GROUP BY DATE(s.created_at AT TIME ZONE ?)
+) b ON b.d = days.d
+ORDER BY days.d ASC`
+
+	args = append(args, apptime.Name())
+	var result []DayCount
+	err := r.db.Raw(sql, args...).Scan(&result).Error
+	return result, err
+}
+
+// GetDashboardAgentOverview 获取仪表盘智能体专属统计数据
+func (r *ChatRepo) GetDashboardAgentOverview(tenantID uuid.UUID, userScope *uuid.UUID) (*dto.DashboardAgentOverviewData, error) {
+	if userScope != nil {
+		// 个人视角 (business)
+		var mySessions int64
+		_ = r.db.Model(&model.ChatSession{}).Where("tenant_id = ? AND user_id = ?", tenantID, *userScope).Count(&mySessions).Error
+
+		var myMessages int64
+		_ = r.db.Table("chat_messages m").
+			Joins("JOIN chat_sessions s ON s.id = m.session_id").
+			Where("s.tenant_id = ? AND s.user_id = ? AND m.role = 'user'", tenantID, *userScope).
+			Count(&myMessages).Error
+
+		var myLikes int64
+		_ = r.db.Table("chat_messages m").
+			Joins("JOIN chat_sessions s ON s.id = m.session_id").
+			Where("s.tenant_id = ? AND s.user_id = ? AND m.feedback = 'like'", tenantID, *userScope).
+			Count(&myLikes).Error
+
+		var favAgent string
+		_ = r.db.Raw(`
+			SELECT COALESCE(NULLIF(ad.name, ''), s.agent_code) AS agent_name
+			FROM chat_sessions s
+			LEFT JOIN agent_definitions ad ON ad.id = s.agent_id
+			WHERE s.tenant_id = ? AND s.user_id = ?
+			GROUP BY s.agent_code, ad.name
+			ORDER BY COUNT(*) DESC
+			LIMIT 1`, tenantID, *userScope).Scan(&favAgent).Error
+
+		type recSession struct {
+			ID        uuid.UUID `gorm:"column:id"`
+			AgentCode string    `gorm:"column:agent_code"`
+			AgentName string    `gorm:"column:agent_name"`
+			Title     string    `gorm:"column:title"`
+			CreatedAt time.Time `gorm:"column:created_at"`
+		}
+		var recs []recSession
+		_ = r.db.Raw(`
+			SELECT s.id, s.agent_code, COALESCE(NULLIF(ad.name, ''), s.agent_code) AS agent_name, s.title, s.created_at
+			FROM chat_sessions s
+			LEFT JOIN agent_definitions ad ON ad.id = s.agent_id
+			WHERE s.tenant_id = ? AND s.user_id = ?
+			ORDER BY s.updated_at DESC
+			LIMIT 5`, tenantID, *userScope).Scan(&recs).Error
+
+		recentSessions := make([]dto.DashboardRecentSessionDTO, 0, len(recs))
+		for _, row := range recs {
+			recentSessions = append(recentSessions, dto.DashboardRecentSessionDTO{
+				ID:        row.ID,
+				AgentCode: row.AgentCode,
+				AgentName: row.AgentName,
+				Title:     row.Title,
+				CreatedAt: apptime.FormatRFC3339(row.CreatedAt),
+			})
+		}
+
+		return &dto.DashboardAgentOverviewData{
+			Role:            "business",
+			MySessionsCount: mySessions,
+			MyMessagesCount: myMessages,
+			MyLikesCount:    myLikes,
+			FavoriteAgent:   favAgent,
+			RecentSessions:  recentSessions,
+		}, nil
+	}
+
+	// 租户视角 (tenant_admin)
+	var totalSessions int64
+	_ = r.db.Model(&model.ChatSession{}).Where("tenant_id = ?", tenantID).Count(&totalSessions).Error
+
+	var totalMessages int64
+	_ = r.db.Model(&model.ChatMessage{}).Where("tenant_id = ? AND role = 'user'", tenantID).Count(&totalMessages).Error
+
+	var activeUsers int64
+	_ = r.db.Model(&model.ChatSession{}).Where("tenant_id = ?", tenantID).Select("COUNT(DISTINCT user_id)").Scan(&activeUsers).Error
+
+	var totalLikes, totalDislikes int64
+	_ = r.db.Model(&model.ChatMessage{}).Where("tenant_id = ? AND feedback = 'like'", tenantID).Count(&totalLikes).Error
+	_ = r.db.Model(&model.ChatMessage{}).Where("tenant_id = ? AND feedback = 'dislike'", tenantID).Count(&totalDislikes).Error
+
+	rate := 100.0
+	feedbackTotal := totalLikes + totalDislikes
+	if feedbackTotal > 0 {
+		rate = float64(totalLikes) / float64(feedbackTotal) * 100.0
+	}
+
+	type rankRow struct {
+		AgentCode    string `gorm:"column:agent_code"`
+		AgentName    string `gorm:"column:agent_name"`
+		SessionCount int64  `gorm:"column:session_count"`
+		MessageCount int64  `gorm:"column:message_count"`
+	}
+	var ranks []rankRow
+	_ = r.db.Raw(`
+		SELECT s.agent_code,
+		       COALESCE(NULLIF(MAX(ad.name), ''), s.agent_code) AS agent_name,
+		       COUNT(DISTINCT s.id) AS session_count,
+		       COUNT(m.id) FILTER (WHERE m.role = 'user') AS message_count
+		FROM chat_sessions s
+		LEFT JOIN agent_definitions ad ON ad.id = s.agent_id
+		LEFT JOIN chat_messages m ON m.session_id = s.id AND m.tenant_id = s.tenant_id
+		WHERE s.tenant_id = ?
+		GROUP BY s.agent_code
+		ORDER BY session_count DESC
+		LIMIT 5`, tenantID).Scan(&ranks).Error
+
+	agentRanks := make([]dto.DashboardAgentRankDTO, 0, len(ranks))
+	for _, row := range ranks {
+		agentRanks = append(agentRanks, dto.DashboardAgentRankDTO{
+			AgentCode:    row.AgentCode,
+			AgentName:    row.AgentName,
+			SessionCount: row.SessionCount,
+			MessageCount: row.MessageCount,
+		})
+	}
+
+	return &dto.DashboardAgentOverviewData{
+		Role:             "tenant_admin",
+		TotalSessions:    totalSessions,
+		TotalMessages:    totalMessages,
+		ActiveUsersCount: activeUsers,
+		TotalLikes:       totalLikes,
+		TotalDislikes:    totalDislikes,
+		SatisfactionRate: rate,
+		AgentUsageRank:   agentRanks,
+	}, nil
+}
+
+// ListRecentChatActivities 获取最近的智能体对话动态
+func (r *ChatRepo) ListRecentChatActivities(tenantID uuid.UUID, userScope *uuid.UUID, limit int) ([]dto.ActivityItemEnriched, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	type actRow struct {
+		ID        uuid.UUID `gorm:"column:id"`
+		Title     string    `gorm:"column:title"`
+		AgentName string    `gorm:"column:agent_name"`
+		UserName  string    `gorm:"column:user_name"`
+		CreatedAt time.Time `gorm:"column:created_at"`
+	}
+	var rows []actRow
+	q := r.db.Table("chat_sessions s").
+		Select(`
+			s.id,
+			s.title,
+			COALESCE(NULLIF(ad.name, ''), s.agent_code) AS agent_name,
+			COALESCE(NULLIF(u.name, ''), u.username, '用户') AS user_name,
+			s.updated_at AS created_at
+		`).
+		Joins("JOIN users u ON u.id = s.user_id").
+		Joins("LEFT JOIN agent_definitions ad ON ad.id = s.agent_id").
+		Where("s.tenant_id = ?", tenantID)
+
+	if userScope != nil {
+		q = q.Where("s.user_id = ?", *userScope)
+	}
+
+	if err := q.Order("s.updated_at DESC").Limit(limit).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	acts := make([]dto.ActivityItemEnriched, 0, len(rows))
+	for _, r := range rows {
+		acts = append(acts, dto.ActivityItemEnriched{
+			ID:        r.ID.String(),
+			Kind:      "chat",
+			Title:     r.Title,
+			UserName:  r.UserName,
+			AgentName: r.AgentName,
+			CreatedAt: apptime.FormatRFC3339(r.CreatedAt),
+		})
+	}
+	return acts, nil
 }

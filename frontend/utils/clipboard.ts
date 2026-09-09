@@ -43,3 +43,16 @@ export async function writeClipboardText(text: string): Promise<void> {
     activeElement?.focus({ preventScroll: true })
   }
 }
+
+/**
+ * 安全复制文本，返回是否成功，不会抛出异常。
+ */
+export async function safeCopyText(text: string): Promise<boolean> {
+  try {
+    await writeClipboardText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+

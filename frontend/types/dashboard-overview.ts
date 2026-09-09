@@ -9,6 +9,7 @@ export interface WeeklyOverviewData {
   archive_count: number
   summary_count: number
   cron_count: number
+  chat_count: number
 }
 
 /** 待办任务（区分类型） */
@@ -26,12 +27,13 @@ export interface WeeklyTrendDayData {
   cron_count: number
   archive_count: number
   summary_count: number
+  chat_count: number
 }
 
 /** 最近动态（增强版，带详细标注） */
 export interface ActivityItemEnriched {
   id: string
-  kind: 'audit' | 'archive' | 'summary' | 'cron'
+  kind: 'audit' | 'archive' | 'summary' | 'cron' | 'chat'
   title: string
   user_name: string
   created_at: string
@@ -46,6 +48,8 @@ export interface ActivityItemEnriched {
   // 定时任务标注
   cron_status?: string
   task_label?: string
+  // 智能体对话标注
+  agent_name?: string
 }
 
 /** 定时任务预览（仅 business） */
@@ -80,6 +84,42 @@ export interface DashboardUserActivityRow {
   last_active: string
 }
 
+/** 仪表盘最近对话简略 */
+export interface DashboardRecentSessionDTO {
+  id: string
+  agent_code: string
+  agent_name: string
+  title: string
+  created_at: string
+}
+
+/** 智能体使用排行 */
+export interface DashboardAgentRankDTO {
+  agent_code: string
+  agent_name: string
+  session_count: number
+  message_count: number
+}
+
+/** 智能体专属仪表盘统计（区分个人视角与租户管理员视角） */
+export interface DashboardAgentOverviewData {
+  role: 'business' | 'tenant_admin'
+  // 个人视角专属 (business)
+  my_sessions_count: number
+  my_messages_count: number
+  my_likes_count: number
+  favorite_agent?: string
+  recent_sessions?: DashboardRecentSessionDTO[]
+  // 租户视角专属 (tenant_admin)
+  total_sessions: number
+  total_messages: number
+  active_users_count: number
+  total_likes: number
+  total_dislikes: number
+  satisfaction_rate: number
+  agent_usage_rank?: DashboardAgentRankDTO[]
+}
+
 /** 租户级响应 */
 export interface DashboardOverview {
   weekly_overview: WeeklyOverviewData
@@ -89,6 +129,7 @@ export interface DashboardOverview {
   cron_tasks?: CronTaskPreview[]
   dept_distribution?: DeptDistributionData[]
   user_activity?: DashboardUserActivityRow[]
+  agent_overview?: DashboardAgentOverviewData
 }
 
 // ── 系统管理员平台仪表盘（system_admin）──

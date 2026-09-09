@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 )
 
 // AgentDefinition 表示智能体定义（平台种子或租户自定义）
@@ -14,10 +15,11 @@ type AgentDefinition struct {
 	Name         string             `gorm:"size:128;not null" json:"name"`
 	Description  string             `gorm:"type:text" json:"description"`
 	SystemPrompt string             `gorm:"type:text;not null;default:''" json:"system_prompt"`
-	Enabled      bool               `gorm:"not null;default:true" json:"enabled"`
-	IsSystem     bool               `gorm:"not null;default:false" json:"is_system"`
-	CreatedAt    time.Time          `json:"created_at"`
-	UpdatedAt    time.Time          `json:"updated_at"`
+	Enabled        bool               `gorm:"not null;default:true" json:"enabled"`
+	IsSystem       bool               `gorm:"not null;default:false" json:"is_system"`
+	QuickQuestions datatypes.JSON     `gorm:"type:jsonb;not null;default:'[]'" json:"quick_questions"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
 
 	// 关联工具绑定
 	ToolBindings []AgentToolBinding `gorm:"foreignKey:AgentID" json:"tool_bindings,omitempty"`

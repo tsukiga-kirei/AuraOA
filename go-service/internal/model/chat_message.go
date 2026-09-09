@@ -19,6 +19,8 @@ type ChatMessage struct {
 	ToolCalls        datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"tool_calls"`
 	TokenUsage       datatypes.JSON `gorm:"type:jsonb" json:"token_usage,omitempty"`
 	LLMLogID         *uuid.UUID     `gorm:"type:uuid" json:"llm_log_id,omitempty"`
+	Feedback         *string        `gorm:"size:16" json:"feedback,omitempty"` // like | dislike | nil
+	FeedbackAt       *time.Time     `json:"feedback_at,omitempty"`
 	CreatedAt        time.Time      `json:"created_at"`
 }
 

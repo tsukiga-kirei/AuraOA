@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -272,6 +273,64 @@ func (h *AgentAdminHandler) GetAgentUsageStats(c *gin.Context) {
 		return
 	}
 	response.Success(c, stats)
+}
+
+// ListTenantAgentSessions 租户管理数据信息页分页查询智能体会话列表
+// GET /api/tenant/agent-sessions
+func (h *AgentAdminHandler) ListTenantAgentSessions(c *gin.Context) {
+	tenantID, err := getTenantID(c)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "租户上下文丢失")
+		return
+	}
+
+	keyword := c.Query("keyword")
+	agentCode := c.Query("agent_code")
+	userName := c.Query("user_name")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+
+	res, err := h.allocationService.ListTenantAgentSessions(
+		c.Request.Context(),
+		tenantID,
+		keyword,
+		agentCode,
+		userName,
+		startDate,
+		endDate,
+		page,
+		pageSize,
+	)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, res)
+}
+
+// GetTenantSessionMessages 租户管理数据信息页查询指定会话完整消息流（用于右侧抽屉展示）
+// GET /api/tenant/agent-sessions/:id/messages
+func (h *AgentAdminHandler) GetTenantSessionMessages(c *gin.Context) {
+	tenantID, err := getTenantID(c)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "租户上下文丢失")
+		return
+	}
+
+	sessionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "会话 ID 格式错误")
+		return
+	}
+
+	messages, err := h.allocationService.GetTenantSessionMessages(c.Request.Context(), tenantID, sessionID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"messages": messages})
 }
 
 // DeleteMCPServer 删除 MCP 服务

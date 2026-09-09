@@ -40,8 +40,11 @@ import type {
   LLMLogDetail,
   LLMProcessItem,
   AgentUsageStats,
+  TenantAgentSessionItem,
+  TenantAgentSessionFilter,
   PagedResult,
 } from '~/types/admin-data'
+import type { ChatMessageItem } from '~/types/chat'
 
 export function useAdminDataApi() {
   const { authFetch, token } = useAuth()
@@ -207,6 +210,18 @@ export function useAdminDataApi() {
     return await authFetch<AgentUsageStats>('/api/tenant/agent-stats')
   }
 
+  /** 租户管理数据信息页分页查询智能体会话列表 */
+  async function listTenantAgentSessions(filter: TenantAgentSessionFilter = {}): Promise<PagedResult<TenantAgentSessionItem>> {
+    const params = buildParams(filter)
+    const query = new URLSearchParams(params).toString()
+    return await authFetch<PagedResult<TenantAgentSessionItem>>(`/api/tenant/agent-sessions${query ? `?${query}` : ''}`)
+  }
+
+  /** 租户管理数据信息页查询指定会话完整消息流（用于右侧抽屉展示） */
+  async function getTenantSessionMessages(sessionId: string): Promise<{ messages: ChatMessageItem[] }> {
+    return await authFetch<{ messages: ChatMessageItem[] }>(`/api/tenant/agent-sessions/${encodeURIComponent(sessionId)}/messages`)
+  }
+
   // ── 工具函数 ──────────────────────────────────────────────────────────────────
 
   /**
@@ -308,10 +323,12 @@ export function useAdminDataApi() {
     listCronLogs,
     getCronLogStats,
     exportCronLogs,
-    // AI 调用记录
+    // AI 调用记录与智能体
     listLLMProcesses,
     getLLMLogStats,
     getLLMProcessChain,
     getAgentUsageStats,
+    listTenantAgentSessions,
+    getTenantSessionMessages,
   }
 }

@@ -359,7 +359,8 @@ func main() {
 	chatCleanupContext, stopChatCleanup := context.WithCancel(context.Background())
 	defer stopChatCleanup()
 	chatSessionService.StartRetentionCleanup(chatCleanupContext)
-	agentAllocationService := service.NewAgentAllocationService(agentRepo, tenantRepo, orgRepo)
+	agentAllocationService := service.NewAgentAllocationService(agentRepo, tenantRepo, orgRepo, chatRepo)
+	dashboardOverviewService.SetChatRepo(chatRepo)
 
 	chatHandler := handler.NewChatHandler(chatSessionService, agentRuntimeService)
 	agentAdminHandler := handler.NewAgentAdminHandler(agentAllocationService, mcpService)

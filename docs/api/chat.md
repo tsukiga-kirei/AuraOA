@@ -13,10 +13,12 @@
 | PATCH | /api/chat/sessions/:id | 更新 title、pinned，未传字段保持原值 |
 | DELETE | /api/chat/sessions/:id | 删除本人会话及消息 |
 | POST | /api/chat/sessions/:id/messages/stream | 请求 {"content":"问题"}；返回 SSE |
+| POST | /api/chat/messages/:id/feedback | 提交消息反馈（点赞/点踩）：请求 `{"feedback":"like" | "dislike" | null}` |
 
 普通响应为 `{code:0,message:"success",data:...}`。列表 data 为 `{items:[],total:0,page:1,page_size:20}`。
+智能体字段：id、agent_code、name、description、is_system、tool_codes、quick_questions（快捷问题列表：`[{icon,title,prompt,description}]`）。
 会话字段：id、agent_id、agent_code、agent_name、title、source、process_id、pinned、created_at、updated_at。
-消息字段：id、session_id、role、content、reasoning_content、status、tool_calls、token_usage、created_at。字段为 snake_case。
+消息字段：id、session_id、role、content、reasoning_content、status、tool_calls、token_usage、feedback（`"like"`/`"dislike"`/`null`）、feedback_at、created_at。字段为 snake_case。
 
 ## 流式事件
 

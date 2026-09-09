@@ -1,5 +1,7 @@
 package dto
 
+import "github.com/google/uuid"
+
 // ─── 租户级仪表盘（business / tenant_admin） ───
 
 // DashboardOverviewResponse 仪表盘聚合数据（GET /api/tenant/settings/dashboard-overview）。
@@ -24,15 +26,19 @@ type DashboardOverviewResponse struct {
 
 	// 用户活跃排名（仅 tenant_admin）
 	UserActivity []DashboardUserActivityRow `json:"user_activity,omitempty"`
+
+	// 智能体概览统计（business / tenant_admin）
+	AgentOverview *DashboardAgentOverviewData `json:"agent_overview,omitempty"`
 }
 
 // WeeklyOverviewData 本周概览（周一 00:00 至当前）。
 type WeeklyOverviewData struct {
-	Total        int64 `json:"total"`         // 四项之和
+	Total        int64 `json:"total"`         // 五项之和（审核、归档、总结、定时、智能体）
 	AuditCount   int64 `json:"audit_count"`   // 审核工作台快照本周条数
 	ArchiveCount int64 `json:"archive_count"` // 归档复盘快照本周条数
 	SummaryCount int64 `json:"summary_count"` // 流程总结工作台本周完成次数
 	CronCount    int64 `json:"cron_count"`    // 定时任务本周执行次数
+	ChatCount    int64 `json:"chat_count"`    // 智能体对话本周会话次数
 }
 
 // PendingTasksData 待办任务（区分类型）。
@@ -50,15 +56,19 @@ type WeeklyTrendDayData struct {
 	CronCount    int64  `json:"cron_count"`    // 定时任务
 	ArchiveCount int64  `json:"archive_count"` // 归档复盘
 	SummaryCount int64  `json:"summary_count"` // 流程总结
+	ChatCount    int64  `json:"chat_count"`    // 智能体对话
 }
 
 // ActivityItemEnriched 带详细标注的动态条目。
 type ActivityItemEnriched struct {
 	ID        string `json:"id"`
-	Kind      string `json:"kind"` // audit | archive | summary | cron
+	Kind      string `json:"kind"` // audit | archive | summary | cron | chat
 	Title     string `json:"title"`
 	UserName  string `json:"user_name"`
 	CreatedAt string `json:"created_at"` // RFC3339
+
+	// 智能体对话标注
+	AgentName string `json:"agent_name,omitempty"`
 
 	// 审核工作台标注
 	Recommendation string `json:"recommendation,omitempty"` // approve/return/review
@@ -191,4 +201,42 @@ type PlatformTenantRankRowEnriched struct {
 	CronCount     int64  `json:"cron_count"`     // 定时任务执行数
 	AuditFailed   int64  `json:"audit_failed"`   // 审核失败数
 	ArchiveFailed int64  `json:"archive_failed"` // 归档复盘失败数
+}
+
+// DashboardAgentOverviewData 智能体专属仪表盘统计（区分个人视角与租户管理员视角）
+type DashboardAgentOverviewData struct {
+	Role string `json:"role"` // business | tenant_admin
+
+	// 个人视角专属 (business)
+	MySessionsCount int64                       `json:"my_sessions_count"`
+	MyMessagesCount int64                       `json:"my_messages_count"`
+	MyLikesCount    int64                       `json:"my_likes_count"`
+	FavoriteAgent   string                      `json:"favorite_agent,omitempty"`
+	RecentSessions  []DashboardRecentSessionDTO `json:"recent_sessions,omitempty"`
+
+	// 租户视角专属 (tenant_admin)
+	TotalSessions    int64                   `json:"total_sessions"`
+	TotalMessages    int64                   `json:"total_messages"`
+	ActiveUsersCount int64                   `json:"active_users_count"`
+	TotalLikes       int64                   `json:"total_likes"`
+	TotalDislikes    int64                   `json:"total_dislikes"`
+	SatisfactionRate float64                 `json:"satisfaction_rate"` // 0.0 ~ 100.0%
+	AgentUsageRank   []DashboardAgentRankDTO `json:"agent_usage_rank,omitempty"`
+}
+
+// DashboardRecentSessionDTO 仪表盘最近对话简略
+type DashboardRecentSessionDTO struct {
+	ID        uuid.UUID `json:"id"`
+	AgentCode string    `json:"agent_code"`
+	AgentName string    `json:"agent_name"`
+	Title     string    `json:"title"`
+	CreatedAt string    `json:"created_at"`
+}
+
+// DashboardAgentRankDTO 智能体使用排行
+type DashboardAgentRankDTO struct {
+	AgentCode    string `json:"agent_code"`
+	AgentName    string `json:"agent_name"`
+	SessionCount int64  `json:"session_count"`
+	MessageCount int64  `json:"message_count"`
 }

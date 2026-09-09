@@ -6660,6 +6660,57 @@ paths:
             "text/event-stream":
               "schema":
                 "type": "string"
+  "/api/chat/messages/{id}/feedback":
+    "parameters":
+      -
+        "name": "id"
+        "in": "path"
+        "required": true
+        "schema":
+          "type": "string"
+          "format": "uuid"
+    "post":
+      "summary": "提交或撤销消息反馈（点赞/点踩）"
+      "tags":
+        - "Chat"
+      "security":
+        -
+          "bearerAuth": []
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "type": "object"
+              "properties":
+                "feedback":
+                  "type": "string"
+                  "nullable": true
+                  "enum":
+                    - "like"
+                    - "dislike"
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "type": "object"
+                    "properties":
+                      "id":
+                        "type": "string"
+                        "format": "uuid"
+                      "feedback":
+                        "type": "string"
+                        "nullable": true
   "/api/tenant/agent-stats":
     "get":
       "summary": "智能体会话、工具、MCP、Skill 用量统计"
@@ -7075,6 +7126,111 @@ paths:
                   "message":
                     "type": "string"
                   "data": {}
+  "/api/tenant/agent-sessions":
+    "get":
+      "summary": "租户管理员查询所有用户的智能体会话列表（分页）"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "parameters":
+        -
+          "name": "page"
+          "in": "query"
+          "schema":
+            "type": "integer"
+            "default": 1
+        -
+          "name": "page_size"
+          "in": "query"
+          "schema":
+            "type": "integer"
+            "default": 20
+        -
+          "name": "keyword"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "agent_code"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "username"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "start_date"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "end_date"
+          "in": "query"
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "type": "object"
+                    "properties":
+                      "items":
+                        "type": "array"
+                        "items":
+                          "type": "object"
+                      "total":
+                        "type": "integer"
+                      "page":
+                        "type": "integer"
+                      "page_size":
+                        "type": "integer"
+  "/api/tenant/agent-sessions/{id}/messages":
+    "parameters":
+      -
+        "name": "id"
+        "in": "path"
+        "required": true
+        "schema":
+          "type": "string"
+          "format": "uuid"
+    "get":
+      "summary": "租户管理员查询指定会话的历史消息记录"
+      "tags":
+        - "AgentAdmin"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "type": "array"
+                    "items":
+                      "$ref": "#/components/schemas/ChatMessage"
   "/api/admin/agent-catalog":
     "get":
       "summary": "系统管理员读取平台目录"
@@ -7202,6 +7358,27 @@ components:
           "type": "array"
           "items":
             "type": "string"
+        "skill_codes":
+          "type": "array"
+          "items":
+            "type": "string"
+        "mcp_codes":
+          "type": "array"
+          "items":
+            "type": "string"
+        "quick_questions":
+          "type": "array"
+          "items":
+            "type": "object"
+            "properties":
+              "icon":
+                "type": "string"
+              "title":
+                "type": "string"
+              "prompt":
+                "type": "string"
+              "description":
+                "type": "string"
     "ChatSession":
       "type": "object"
       "properties":
@@ -7276,6 +7453,16 @@ components:
               "type": "integer"
             "total_tokens":
               "type": "integer"
+        "feedback":
+          "type": "string"
+          "nullable": true
+          "enum":
+            - "like"
+            - "dislike"
+        "feedback_at":
+          "type": "string"
+          "format": "date-time"
+          "nullable": true
         "created_at":
           "type": "string"
           "format": "date-time"
@@ -7299,6 +7486,19 @@ components:
           "type": "array"
           "items":
             "type": "string"
+        "quick_questions":
+          "type": "array"
+          "items":
+            "type": "object"
+            "properties":
+              "icon":
+                "type": "string"
+              "title":
+                "type": "string"
+              "prompt":
+                "type": "string"
+              "description":
+                "type": "string"
     "ChatAgentUpdate":
       "type": "object"
       "properties":
@@ -7314,6 +7514,19 @@ components:
           "type": "array"
           "items":
             "type": "string"
+        "quick_questions":
+          "type": "array"
+          "items":
+            "type": "object"
+            "properties":
+              "icon":
+                "type": "string"
+              "title":
+                "type": "string"
+              "prompt":
+                "type": "string"
+              "description":
+                "type": "string"
     "ChatSkillSave":
       "type": "object"
       "required":
