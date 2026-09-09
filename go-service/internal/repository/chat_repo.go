@@ -346,7 +346,7 @@ func (r *ChatRepo) GetDashboardAgentOverview(tenantID uuid.UUID, userScope *uuid
 			FROM chat_sessions s
 			LEFT JOIN agent_definitions ad ON ad.id = s.agent_id
 			WHERE s.tenant_id = ? AND s.user_id = ? AND s.created_at >= ?
-			ORDER BY s.updated_at DESC
+			ORDER BY s.created_at DESC
 			LIMIT 5`, tenantID, *userScope, since).Scan(&recs).Error
 
 		recentSessions := make([]dto.DashboardRecentSessionDTO, 0, len(recs))

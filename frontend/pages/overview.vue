@@ -225,6 +225,12 @@ function formatActivityTime(iso: string) {
   })
 }
 
+// 智能体最近对话按时间倒序排列
+const sortedRecentSessions = computed(() => {
+  const list = dash.value.agent_overview?.recent_sessions || []
+  return [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+})
+
 // 获取定时任务的描述文本，优先使用自定义描述，其次使用国际化翻译
 function cronTaskDescriptionLabel(task: { description?: string; task_type?: string }) {
   if (task.description?.trim()) return task.description
@@ -531,14 +537,14 @@ function tokenPct(used: number, quota: number) {
             <span>{{ t('overview.agent.favoriteAgent') }}: <strong>{{ dash.agent_overview.favorite_agent }}</strong></span>
           </div>
           <!-- 最近对话列表 -->
-          <div class="agent-recent-section" v-if="dash.agent_overview?.recent_sessions?.length">
+          <div class="agent-recent-section" v-if="sortedRecentSessions.length">
             <div class="agent-sub-title">{{ t('overview.agent.recentSessions') }}</div>
             <div class="agent-session-list">
               <div
-                v-for="s in dash.agent_overview.recent_sessions.slice(0, 4)"
+                v-for="s in sortedRecentSessions.slice(0, 4)"
                 :key="s.id"
                 class="agent-session-item"
-                @click="navigateTo(`/chat?session_id=${s.id}`)"
+                @click="navigateTo(`/chat?session=${s.id}`)"
               >
                 <CommentOutlined class="agent-session-icon" />
                 <span class="agent-session-title" :title="s.title">{{ s.title }}</span>

@@ -18,10 +18,11 @@ import type { ChatMessageItem } from '~/types/chat'
 import { renderSafeMarkdown } from '~/utils/markdown'
 import { safeCopyText } from '~/utils/clipboard'
 import { useChatSession } from '~/composables/useChatSession'
+import { formatDateTimeInAppZone } from '~/utils/appTime'
 import ChatProcessTimeline from './ChatProcessTimeline.vue'
 
 defineProps<{ messages: ChatMessageItem[]; agentEmoji?: string; agentName?: string }>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const { updateMessageFeedback } = useChatSession()
 const copied = ref('')
 
@@ -126,10 +127,14 @@ function formatDuration(ms?: number): string {
 
 function formatMsgTime(isoString?: string): string {
   if (!isoString) return ''
-  const d = new Date(isoString)
-  if (isNaN(d.getTime())) return ''
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  return formatDateTimeInAppZone(isoString, locale.value === 'en-US' ? 'en-US' : 'zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).replace(/\//g, '-')
 }
 </script>
 
