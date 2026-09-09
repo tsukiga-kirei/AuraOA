@@ -10,6 +10,12 @@ import {
   QuestionCircleOutlined,
   CheckCircleOutlined,
   SearchOutlined,
+  HourglassOutlined,
+  ClockCircleOutlined,
+  EditOutlined,
+  BarChartOutlined,
+  BulbOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons-vue'
 import { buildJumpTurns } from '~/utils/chatJump'
 import type { ChatMessageItem } from '~/types/chat'
@@ -83,6 +89,7 @@ const submit = async (content: string) => {
   await sendStreamMessage(currentSessionId.value!, content, messages)
 }
 const iconMap: Record<string, any> = {
+  // Component names
   UnorderedListOutlined,
   FileSearchOutlined,
   BookOutlined,
@@ -90,13 +97,41 @@ const iconMap: Record<string, any> = {
   QuestionCircleOutlined,
   CheckCircleOutlined,
   SearchOutlined,
+  HourglassOutlined,
+  ClockCircleOutlined,
+  EditOutlined,
+  BarChartOutlined,
+  BulbOutlined,
+  FileTextOutlined,
+
+  // Lowercase & short aliases
+  clipboard: UnorderedListOutlined,
+  todolist: UnorderedListOutlined,
+  search: FileSearchOutlined,
+  hourglass: HourglassOutlined,
+  clock: ClockCircleOutlined,
+  edit: EditOutlined,
+  barchart: BarChartOutlined,
+  chart: BarChartOutlined,
+  lightbulb: BulbOutlined,
+  bulb: BulbOutlined,
+  book: BookOutlined,
+  thunderbolt: ThunderboltOutlined,
+  question: QuestionCircleOutlined,
+  check: CheckCircleOutlined,
+  file: FileTextOutlined,
+}
+
+const getQuickIcon = (iconName?: string) => {
+  if (!iconName) return FileSearchOutlined
+  return iconMap[iconName] || iconMap[iconName.toLowerCase()] || FileSearchOutlined
 }
 
 const dynamicSuggestions = computed(() => {
   const qq = agent.value?.quick_questions
   if (qq && qq.length > 0) {
     return qq.map(item => ({
-      icon: iconMap[item.icon || ''] || FileSearchOutlined,
+      icon: getQuickIcon(item.icon),
       title: item.title,
       prompt: item.prompt,
       detail: item.detail,

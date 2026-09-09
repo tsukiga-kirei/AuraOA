@@ -794,6 +794,7 @@ func (s *AgentAllocationService) GetTenantSessionMessages(
 			TokenUsage:       m.TokenUsage,
 			Feedback:         m.Feedback,
 			FeedbackAt:       m.FeedbackAt,
+			FeedbackComment:  m.FeedbackComment,
 			DurationMs:       duration,
 			CreatedAt:        m.CreatedAt,
 		})

@@ -215,6 +215,7 @@ func (s *ChatSessionService) GetSessionDetail(ctx context.Context, tenantID, use
 			TokenUsage:       m.TokenUsage,
 			Feedback:         m.Feedback,
 			FeedbackAt:       m.FeedbackAt,
+			FeedbackComment:  m.FeedbackComment,
 			DurationMs:       duration,
 			CreatedAt:        m.CreatedAt,
 		})
@@ -315,8 +316,8 @@ func (s *ChatSessionService) StartRetentionCleanup(ctx context.Context) {
 	}()
 }
 
-// UpdateMessageFeedback 更新单条消息的点赞/点踩反馈
-func (s *ChatSessionService) UpdateMessageFeedback(ctx context.Context, tenantID, userID, messageID uuid.UUID, feedback *string) error {
-	return s.chatRepo.UpdateMessageFeedback(tenantID, messageID, feedback)
+// UpdateMessageFeedback 更新单条消息的点赞/点踩反馈及意见
+func (s *ChatSessionService) UpdateMessageFeedback(ctx context.Context, tenantID, userID, messageID uuid.UUID, feedback *string, comment *string) error {
+	return s.chatRepo.UpdateMessageFeedback(tenantID, messageID, feedback, comment)
 }
 

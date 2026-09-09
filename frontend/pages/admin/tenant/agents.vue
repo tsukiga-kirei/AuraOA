@@ -14,6 +14,11 @@ import {
   FileSearchOutlined,
   UnorderedListOutlined,
   SearchOutlined,
+  HourglassOutlined,
+  ClockCircleOutlined,
+  BarChartOutlined,
+  BulbOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type {
@@ -130,12 +135,34 @@ const getMountedCapabilities = (toolCodes?: string[]) => {
 }
 
 // 智能体快捷问题管理
+const quickQuestionIconOptions = computed(() => [
+  { value: 'UnorderedListOutlined', label: t('agentAdmin.quickIcon.todos', '待办任务 (📋)'), icon: UnorderedListOutlined, aliases: ['clipboard', 'todolist'] },
+  { value: 'FileSearchOutlined', label: t('agentAdmin.quickIcon.search', '流程检索 (🔍)'), icon: FileSearchOutlined, aliases: ['search'] },
+  { value: 'HourglassOutlined', label: t('agentAdmin.quickIcon.delay', '超时滞留 (⏳)'), icon: HourglassOutlined, aliases: ['hourglass', 'clock', 'ClockCircleOutlined'] },
+  { value: 'EditOutlined', label: t('agentAdmin.quickIcon.draft', '起草拟定 (✍️)'), icon: EditOutlined, aliases: ['edit'] },
+  { value: 'BarChartOutlined', label: t('agentAdmin.quickIcon.stats', '统计总结 (📊)'), icon: BarChartOutlined, aliases: ['barchart', 'chart'] },
+  { value: 'BulbOutlined', label: t('agentAdmin.quickIcon.suggest', '灵感建议 (💡)'), icon: BulbOutlined, aliases: ['lightbulb', 'bulb'] },
+  { value: 'BookOutlined', label: t('agentAdmin.quickIcon.rules', '业务规范 (📖)'), icon: BookOutlined, aliases: ['book'] },
+  { value: 'ThunderboltOutlined', label: t('agentAdmin.quickIcon.action', '快捷执行 (⚡)'), icon: ThunderboltOutlined, aliases: ['thunderbolt'] },
+  { value: 'QuestionCircleOutlined', label: t('agentAdmin.quickIcon.inquiry', '疑问咨询 (❓)'), icon: QuestionCircleOutlined, aliases: ['question'] },
+  { value: 'CheckCircleOutlined', label: t('agentAdmin.quickIcon.review', '核验审查 (✅)'), icon: CheckCircleOutlined, aliases: ['check'] },
+  { value: 'FileTextOutlined', label: t('agentAdmin.quickIcon.doc', '单据文档 (📄)'), icon: FileTextOutlined, aliases: ['file', 'document'] },
+])
+
+const normalizeQuickIcon = (rawIcon?: string): string => {
+  if (!rawIcon) return 'UnorderedListOutlined'
+  const matched = quickQuestionIconOptions.value.find(
+    opt => opt.value === rawIcon || opt.aliases?.includes(rawIcon) || opt.aliases?.includes(rawIcon.toLowerCase())
+  )
+  return matched ? matched.value : rawIcon
+}
+
 const addQuickQuestion = () => {
   if (!agentForm.value.quick_questions) {
     agentForm.value.quick_questions = []
   }
   agentForm.value.quick_questions.push({
-    icon: 'FileSearchOutlined',
+    icon: 'UnorderedListOutlined',
     title: '',
     prompt: '',
     detail: '',
@@ -172,7 +199,12 @@ const openEditAgent = (item: AgentDefinitionItem) => {
     system_prompt: item.system_prompt,
     enabled: item.enabled,
     tool_codes: [...(item.tool_codes || [])],
-    quick_questions: item.quick_questions ? JSON.parse(JSON.stringify(item.quick_questions)) : [],
+    quick_questions: item.quick_questions
+      ? item.quick_questions.map((q: any) => ({
+          ...q,
+          icon: normalizeQuickIcon(q.icon),
+        }))
+      : [],
   }
   agentDrawerVisible.value = true
 }
@@ -648,13 +680,18 @@ onMounted(() => {
               <div class="question-header">
                 <span class="q-badge">#{{ qIdx + 1 }}</span>
                 <a-input v-model:value="q.title" placeholder="卡片标题 (如：待办查询)" style="flex: 1; margin: 0 8px;" />
-                <a-select v-model:value="q.icon" style="width: 140px; margin-right: 8px;">
-                  <a-select-option value="UnorderedListOutlined">待办列表</a-select-option>
-                  <a-select-option value="FileSearchOutlined">文件检索</a-select-option>
-                  <a-select-option value="BookOutlined">业务规范</a-select-option>
-                  <a-select-option value="ThunderboltOutlined">快捷执行</a-select-option>
-                  <a-select-option value="QuestionCircleOutlined">疑问咨询</a-select-option>
-                  <a-select-option value="CheckCircleOutlined">核验审查</a-select-option>
+                <a-select
+                  v-model:value="q.icon"
+                  style="width: 170px; margin-right: 8px;"
+                  :placeholder="t('agentAdmin.selectIcon', '选择图标')"
+                  :options="quickQuestionIconOptions"
+                >
+                  <template #option="{ label, icon }">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <component :is="icon" style="color: var(--color-primary); font-size: 14px;" />
+                      <span>{{ label }}</span>
+                    </div>
+                  </template>
                 </a-select>
                 <a-button type="text" danger size="small" @click="removeQuickQuestion(qIdx)">
                   <DeleteOutlined />

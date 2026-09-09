@@ -2749,6 +2749,15 @@ onMounted(async () => {
                           <DislikeOutlined /> {{ t('admin.data.feedbackDisliked', '已踩') }}
                         </span>
                       </div>
+
+                      <!-- 用户反馈意见与改进建议（点踩时附带） -->
+                      <div v-if="msg.feedback_comment" class="session-feedback-comment-card">
+                        <div class="comment-card-header">
+                          <MessageOutlined style="color: #ff4d4f;" />
+                          <span>{{ t('admin.data.userFeedbackAdvice', '用户改进建议/意见') }}</span>
+                        </div>
+                        <div class="comment-card-body">{{ msg.feedback_comment }}</div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2897,6 +2906,29 @@ details[open] .chevron-icon {
 .session-feedback-badge.dislike {
   background: #fff1f0;
   color: #ff4d4f;
+}
+
+.session-feedback-comment-card {
+  margin-top: 8px;
+  background: rgba(255, 77, 79, 0.05);
+  border: 1px solid rgba(255, 77, 79, 0.2);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  width: 100%;
+}
+.comment-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #cf1322;
+  margin-bottom: 4px;
+}
+.comment-card-body {
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  word-break: break-word;
 }
 
 /* Markdown 样式覆盖 */

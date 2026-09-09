@@ -81,13 +81,21 @@ export const useChatSession = () => {
     sessions.value = sessions.value.filter(item => item.id !== id); total.value--
     if (currentSessionId.value === id) newConversation()
   }
-  const updateMessageFeedback = async (messageId: string, feedback: 'like' | 'dislike' | null) => {
-    await authFetch(`/api/chat/messages/${messageId}/feedback`, { method: 'POST', body: { feedback } })
+  const updateMessageFeedback = async (
+    messageId: string,
+    feedback: 'like' | 'dislike' | null,
+    feedbackComment?: string | null,
+  ) => {
+    await authFetch(`/api/chat/messages/${messageId}/feedback`, {
+      method: 'POST',
+      body: { feedback, feedback_comment: feedbackComment },
+    })
     if (currentDetail.value?.messages) {
       const msg = currentDetail.value.messages.find(m => m.id === messageId)
       if (msg) {
         msg.feedback = feedback
         msg.feedback_at = feedback ? new Date().toISOString() : null
+        msg.feedback_comment = feedback === 'dislike' ? (feedbackComment ?? null) : null
       }
     }
   }

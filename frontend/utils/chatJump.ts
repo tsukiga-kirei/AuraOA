@@ -1,6 +1,6 @@
 /**
  * 对话跳转线与平滑滚动导航辅助工具
- * 参考 global-investment-copilot 的 MessageJumpRail 实现
+ *
  */
 
 export interface JumpTurnItem {
