@@ -57,38 +57,49 @@ type UpdateTenantChatAllocationRequest struct {
 	MCPTemplateIDs    []string        `json:"mcp_template_ids"`
 }
 
+// QuickQuestionItem 智能体快捷输入问题
+type QuickQuestionItem struct {
+	Icon   string `json:"icon"`
+	Title  string `json:"title"`
+	Prompt string `json:"prompt"`
+	Detail string `json:"detail"`
+}
+
 // AgentDefinitionDTO 智能体 DTO
 type AgentDefinitionDTO struct {
-	ID           uuid.UUID  `json:"id"`
-	TenantID     *uuid.UUID `json:"tenant_id,omitempty"`
-	AgentCode    string     `json:"agent_code"`
-	Name         string     `json:"name"`
-	Description  string     `json:"description"`
-	SystemPrompt string     `json:"system_prompt"`
-	Enabled      bool       `json:"enabled"`
-	IsSystem     bool       `json:"is_system"`
-	ToolCodes    []string   `json:"tool_codes"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID             uuid.UUID           `json:"id"`
+	TenantID       *uuid.UUID          `json:"tenant_id,omitempty"`
+	AgentCode      string              `json:"agent_code"`
+	Name           string              `json:"name"`
+	Description    string              `json:"description"`
+	SystemPrompt   string              `json:"system_prompt"`
+	Enabled        bool                `json:"enabled"`
+	IsSystem       bool                `json:"is_system"`
+	QuickQuestions []QuickQuestionItem `json:"quick_questions"`
+	ToolCodes      []string            `json:"tool_codes"`
+	CreatedAt      time.Time           `json:"created_at"`
+	UpdatedAt      time.Time           `json:"updated_at"`
 }
 
 // CreateAgentRequest 创建智能体请求
 type CreateAgentRequest struct {
-	AgentCode    string   `json:"agent_code" binding:"required"`
-	Name         string   `json:"name" binding:"required"`
-	Description  string   `json:"description"`
-	SystemPrompt string   `json:"system_prompt"`
-	Enabled      bool     `json:"enabled"`
-	ToolCodes    []string `json:"tool_codes"`
+	AgentCode      string              `json:"agent_code" binding:"required"`
+	Name           string              `json:"name" binding:"required"`
+	Description    string              `json:"description"`
+	SystemPrompt   string              `json:"system_prompt"`
+	Enabled        bool                `json:"enabled"`
+	QuickQuestions []QuickQuestionItem `json:"quick_questions"`
+	ToolCodes      []string            `json:"tool_codes"`
 }
 
 // UpdateAgentRequest 更新智能体请求
 type UpdateAgentRequest struct {
-	Name         *string   `json:"name"`
-	Description  *string   `json:"description"`
-	SystemPrompt *string   `json:"system_prompt"`
-	Enabled      *bool     `json:"enabled"`
-	ToolCodes    *[]string `json:"tool_codes"`
+	Name           *string              `json:"name"`
+	Description    *string              `json:"description"`
+	SystemPrompt   *string              `json:"system_prompt"`
+	Enabled        *bool                `json:"enabled"`
+	QuickQuestions *[]QuickQuestionItem `json:"quick_questions"`
+	ToolCodes      *[]string            `json:"tool_codes"`
 }
 
 // MCPServerDTO MCP 服务器 DTO
@@ -147,9 +158,12 @@ type SaveSkillRequest struct {
 type AgentUsageStatsDTO struct {
 	SessionCount   int64               `json:"session_count"`
 	MessageCount   int64               `json:"message_count"`
+	TokenCount     int64               `json:"token_count"`
 	ToolCallCount  int64               `json:"tool_call_count"`
 	MCPCallCount   int64               `json:"mcp_call_count"`
 	SkillCallCount int64               `json:"skill_call_count"`
+	LikeCount      int64               `json:"like_count"`
+	DislikeCount   int64               `json:"dislike_count"`
 	Agents         []AgentUsageItemDTO `json:"agents"`
 }
 
@@ -160,10 +174,36 @@ type AgentUsageItemDTO struct {
 	SessionCount   int64    `json:"session_count"`
 	MessageCount   int64    `json:"message_count"`
 	TokenCount     int64    `json:"token_count"`
+	LikeCount      int64    `json:"like_count"`
+	DislikeCount   int64    `json:"dislike_count"`
 	ToolCodes      []string `json:"tool_codes"`
 	MCPCodes       []string `json:"mcp_codes"`
 	SkillCodes     []string `json:"skill_codes"`
 	ToolCallCount  int64    `json:"tool_call_count"`
 	MCPCallCount   int64    `json:"mcp_call_count"`
 	SkillCallCount int64    `json:"skill_call_count"`
+}
+
+// TenantAgentSessionItemDTO 租户管理数据信息页的智能体会话明细项
+type TenantAgentSessionItemDTO struct {
+	ID           uuid.UUID `json:"id"`
+	AgentCode    string    `json:"agent_code"`
+	AgentName    string    `json:"agent_name"`
+	UserID       uuid.UUID `json:"user_id"`
+	UserName     string    `json:"user_name"`
+	Title        string    `json:"title"`
+	MessageCount int64     `json:"message_count"`
+	TokenCount   int64     `json:"token_count"`
+	LikeCount    int64     `json:"like_count"`
+	DislikeCount int64     `json:"dislike_count"`
+	CreatedAt    string    `json:"created_at"`
+	UpdatedAt    string    `json:"updated_at"`
+}
+
+// TenantAgentSessionListResponse 租户管理数据信息页会话分页响应（标准服务端分页契约）
+type TenantAgentSessionListResponse struct {
+	Items    []TenantAgentSessionItemDTO `json:"items"`
+	Total    int64                       `json:"total"`
+	Page     int                         `json:"page"`
+	PageSize int                         `json:"page_size"`
 }

@@ -3,6 +3,13 @@
  * 严格保持与后端 DTO 及 snake_case 规范一致
  */
 
+export interface QuickQuestionItem {
+  icon: string
+  title: string
+  prompt: string
+  detail: string
+}
+
 export interface EffectiveAgentItem {
   id: string
   agent_code: string
@@ -13,6 +20,7 @@ export interface EffectiveAgentItem {
   is_default?: boolean
   is_system: boolean
   sort_order?: number
+  quick_questions?: QuickQuestionItem[]
   tool_codes?: string[]
 }
 
@@ -50,6 +58,8 @@ export interface ChatMessageItem {
   token_usage?: { input_tokens: number; output_tokens: number; total_tokens: number }
   status?: string
   error?: string
+  feedback?: 'like' | 'dislike' | null
+  feedback_at?: string
   created_at: string
   // 前端流式补充字段
   streaming?: boolean
@@ -89,6 +99,7 @@ export interface AgentDefinitionItem {
   is_default?: boolean
   is_system: boolean
   sort_order?: number
+  quick_questions?: QuickQuestionItem[]
   tool_codes: string[]
   created_at: string
   updated_at: string
@@ -104,6 +115,7 @@ export interface SaveAgentRequest {
   system_prompt: string
   is_default?: boolean
   sort_order?: number
+  quick_questions?: QuickQuestionItem[]
   tool_codes: string[]
 }
 

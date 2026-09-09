@@ -22,6 +22,7 @@ type AgentAllocationService struct {
 	agentRepo  *repository.AgentRepo
 	tenantRepo *repository.TenantRepo
 	orgRepo    *repository.OrgRepo
+	chatRepo   *repository.ChatRepo
 }
 
 // NewAgentAllocationService 初始化 AgentAllocationService
@@ -29,12 +30,25 @@ func NewAgentAllocationService(
 	agentRepo *repository.AgentRepo,
 	tenantRepo *repository.TenantRepo,
 	orgRepo *repository.OrgRepo,
+	chatRepo *repository.ChatRepo,
 ) *AgentAllocationService {
 	return &AgentAllocationService{
 		agentRepo:  agentRepo,
 		tenantRepo: tenantRepo,
 		orgRepo:    orgRepo,
+		chatRepo:   chatRepo,
 	}
+}
+
+func parseQuickQuestions(data datatypes.JSON) []dto.QuickQuestionItem {
+	var items []dto.QuickQuestionItem
+	if len(data) > 0 {
+		_ = json.Unmarshal(data, &items)
+	}
+	if items == nil {
+		items = []dto.QuickQuestionItem{}
+	}
+	return items
 }
 
 // GetAgentCatalog 获取平台目录（系统工具、内置智能体、内置 Skills）
@@ -68,16 +82,17 @@ func (s *AgentAllocationService) GetAgentCatalog(ctx context.Context) (*dto.Agen
 				toolCodes = append(toolCodes, b.ToolCode)
 			}
 			agentCatalog = append(agentCatalog, dto.AgentDefinitionDTO{
-				ID:           a.ID,
-				AgentCode:    a.AgentCode,
-				Name:         a.Name,
-				Description:  a.Description,
-				SystemPrompt: a.SystemPrompt,
-				Enabled:      a.Enabled,
-				IsSystem:     a.IsSystem,
-				ToolCodes:    toolCodes,
-				CreatedAt:    a.CreatedAt,
-				UpdatedAt:    a.UpdatedAt,
+				ID:             a.ID,
+				AgentCode:      a.AgentCode,
+				Name:           a.Name,
+				Description:    a.Description,
+				SystemPrompt:   a.SystemPrompt,
+				Enabled:        a.Enabled,
+				IsSystem:       a.IsSystem,
+				QuickQuestions: parseQuickQuestions(a.QuickQuestions),
+				ToolCodes:      toolCodes,
+				CreatedAt:      a.CreatedAt,
+				UpdatedAt:      a.UpdatedAt,
 			})
 		}
 	}
@@ -223,17 +238,18 @@ func (s *AgentAllocationService) ListTenantAgents(ctx context.Context, tenantID 
 			toolCodes = append(toolCodes, b.ToolCode)
 		}
 		res = append(res, dto.AgentDefinitionDTO{
-			ID:           a.ID,
-			TenantID:     a.TenantID,
-			AgentCode:    a.AgentCode,
-			Name:         a.Name,
-			Description:  a.Description,
-			SystemPrompt: a.SystemPrompt,
-			Enabled:      a.Enabled,
-			IsSystem:     a.IsSystem,
-			ToolCodes:    toolCodes,
-			CreatedAt:    a.CreatedAt,
-			UpdatedAt:    a.UpdatedAt,
+			ID:             a.ID,
+			TenantID:       a.TenantID,
+			AgentCode:      a.AgentCode,
+			Name:           a.Name,
+			Description:    a.Description,
+			SystemPrompt:   a.SystemPrompt,
+			Enabled:        a.Enabled,
+			IsSystem:       a.IsSystem,
+			QuickQuestions: parseQuickQuestions(a.QuickQuestions),
+			ToolCodes:      toolCodes,
+			CreatedAt:      a.CreatedAt,
+			UpdatedAt:      a.UpdatedAt,
 		})
 	}
 	return res, nil
@@ -254,14 +270,20 @@ func (s *AgentAllocationService) CreateTenantAgent(ctx context.Context, tenantID
 		return nil, err
 	}
 
+	qqJSON, _ := json.Marshal(req.QuickQuestions)
+	if len(qqJSON) == 0 {
+		qqJSON = []byte("[]")
+	}
+
 	agent := model.AgentDefinition{
-		TenantID:     &tenantID,
-		AgentCode:    req.AgentCode,
-		Name:         req.Name,
-		Description:  req.Description,
-		SystemPrompt: req.SystemPrompt,
-		Enabled:      req.Enabled,
-		IsSystem:     false,
+		TenantID:       &tenantID,
+		AgentCode:      req.AgentCode,
+		Name:           req.Name,
+		Description:    req.Description,
+		SystemPrompt:   req.SystemPrompt,
+		Enabled:        req.Enabled,
+		IsSystem:       false,
+		QuickQuestions: qqJSON,
 	}
 
 	if err := s.agentRepo.CreateAgentWithBindings(tenantID, &agent, req.ToolCodes); err != nil {
@@ -269,17 +291,18 @@ func (s *AgentAllocationService) CreateTenantAgent(ctx context.Context, tenantID
 	}
 
 	return &dto.AgentDefinitionDTO{
-		ID:           agent.ID,
-		TenantID:     agent.TenantID,
-		AgentCode:    agent.AgentCode,
-		Name:         agent.Name,
-		Description:  agent.Description,
-		SystemPrompt: agent.SystemPrompt,
-		Enabled:      agent.Enabled,
-		IsSystem:     agent.IsSystem,
-		ToolCodes:    req.ToolCodes,
-		CreatedAt:    agent.CreatedAt,
-		UpdatedAt:    agent.UpdatedAt,
+		ID:             agent.ID,
+		TenantID:       agent.TenantID,
+		AgentCode:      agent.AgentCode,
+		Name:           agent.Name,
+		Description:    agent.Description,
+		SystemPrompt:   agent.SystemPrompt,
+		Enabled:        agent.Enabled,
+		IsSystem:       agent.IsSystem,
+		QuickQuestions: req.QuickQuestions,
+		ToolCodes:      req.ToolCodes,
+		CreatedAt:      agent.CreatedAt,
+		UpdatedAt:      agent.UpdatedAt,
 	}, nil
 }
 
@@ -307,6 +330,10 @@ func (s *AgentAllocationService) UpdateTenantAgent(ctx context.Context, tenantID
 	}
 	if req.Enabled != nil {
 		updates["enabled"] = *req.Enabled
+	}
+	if req.QuickQuestions != nil {
+		qqJSON, _ := json.Marshal(*req.QuickQuestions)
+		updates["quick_questions"] = qqJSON
 	}
 
 	if req.ToolCodes != nil {
@@ -717,4 +744,51 @@ func (s *AgentAllocationService) syncCapabilityBindings(tenantID uuid.UUID, pref
 // GetAgentUsageStats 汇总租户内各智能体的会话、消息、工具/MCP/Skill 调用与 Token。
 func (s *AgentAllocationService) GetAgentUsageStats(ctx context.Context, tenantID uuid.UUID) (*dto.AgentUsageStatsDTO, error) {
 	return s.agentRepo.QueryAgentUsageStats(tenantID)
+}
+
+// ListTenantAgentSessions 租户管理数据信息页分页查询会话列表
+func (s *AgentAllocationService) ListTenantAgentSessions(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	keyword, agentCode, userName, startDate, endDate string,
+	page, pageSize int,
+) (*dto.TenantAgentSessionListResponse, error) {
+	items, total, err := s.chatRepo.ListSessionsByTenant(tenantID, keyword, agentCode, userName, startDate, endDate, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &dto.TenantAgentSessionListResponse{
+		Items:    items,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
+// GetTenantSessionMessages 租户管理数据信息页查询指定会话的历史聊天记录
+func (s *AgentAllocationService) GetTenantSessionMessages(
+	ctx context.Context,
+	tenantID, sessionID uuid.UUID,
+) ([]dto.ChatMessageDTO, error) {
+	msgs, err := s.chatRepo.ListMessagesBySession(tenantID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]dto.ChatMessageDTO, 0, len(msgs))
+	for _, m := range msgs {
+		res = append(res, dto.ChatMessageDTO{
+			ID:               m.ID,
+			SessionID:        m.SessionID,
+			Role:             m.Role,
+			Content:          m.Content,
+			ReasoningContent: m.ReasoningContent,
+			Status:           m.Status,
+			ToolCalls:        m.ToolCalls,
+			TokenUsage:       m.TokenUsage,
+			Feedback:         m.Feedback,
+			FeedbackAt:       m.FeedbackAt,
+			CreatedAt:        m.CreatedAt,
+		})
+	}
+	return res, nil
 }

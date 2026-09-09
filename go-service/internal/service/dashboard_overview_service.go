@@ -30,8 +30,14 @@ type DashboardOverviewService struct {
 	llmLogRepo          *repository.LLMMessageLogRepo
 	tenantRepo          *repository.TenantRepo
 	orgRepo             *repository.OrgRepo
+	chatRepo            *repository.ChatRepo
 	cache               *cache.CacheManager
 	invalidator         *cache.InvalidationManager
+}
+
+// SetChatRepo 注入智能体对话仓储
+func (s *DashboardOverviewService) SetChatRepo(chatRepo *repository.ChatRepo) {
+	s.chatRepo = chatRepo
 }
 
 // NewDashboardOverviewService 创建 DashboardOverviewService。
@@ -111,7 +117,7 @@ func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole stri
 
 	out := &dto.DashboardOverviewResponse{}
 
-	// ── 本周概览（快照表 + cron_logs）──
+	// ── 本周概览（快照表 + cron_logs + 智能体会话）──
 	auditWeek, err := s.auditSnapshotRepo.CountThisWeek(c, userScope)
 	if err != nil {
 		log.Printf("dashboard: auditSnapshotRepo.CountThisWeek error: %v", err)
@@ -125,12 +131,20 @@ func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole stri
 	if err != nil {
 		log.Printf("dashboard: cronLogRepo.CountThisWeek error: %v", err)
 	}
+	var chatWeek int64
+	var chatTrend []repository.DayCount
+	if s.chatRepo != nil {
+		chatWeek, _ = s.chatRepo.CountThisWeek(c, userScope)
+		chatTrend, _ = s.chatRepo.WeeklyTrendByDay(c, userScope)
+		out.AgentOverview, _ = s.chatRepo.GetDashboardAgentOverview(tenantID, userScope)
+	}
 	out.WeeklyOverview = &dto.WeeklyOverviewData{
 		AuditCount:   auditWeek,
 		ArchiveCount: archiveWeek,
 		SummaryCount: summaryWeek,
 		CronCount:    cronWeek,
-		Total:        auditWeek + archiveWeek + summaryWeek + cronWeek,
+		ChatCount:    chatWeek,
+		Total:        auditWeek + archiveWeek + summaryWeek + cronWeek + chatWeek,
 	}
 
 	// ── 审核趋势（堆叠柱状图）──
@@ -138,7 +152,7 @@ func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole stri
 	cronTrend, _ := s.cronLogRepo.WeeklyTrendByDay(c, userScope)
 	archiveTrend, _ := s.archiveSnapshotRepo.WeeklyTrendByDay(c, userScope)
 	summaryTrend, _ := s.summaryLogRepo.WeeklyTrendByDay(c, userScope)
-	out.WeeklyTrend = mergeWeeklyTrend(auditTrend, cronTrend, archiveTrend, summaryTrend)
+	out.WeeklyTrend = mergeWeeklyTrend(auditTrend, cronTrend, archiveTrend, summaryTrend, chatTrend)
 
 	// ── 最近动态（前 10 条，带详细标注）──
 	out.RecentActivity = s.buildEnrichedActivity(c, userScope, viewerUsername, 10)
@@ -190,8 +204,8 @@ func (s *DashboardOverviewService) BuildPlatformOverview() (*dto.PlatformDashboa
 
 // ── 辅助方法 ──────────────────────────────────────────────────────────────
 
-// mergeWeeklyTrend 合并四个功能的每日数据为堆叠柱状图格式。
-func mergeWeeklyTrend(audit, cron, archive, summary []repository.DayCount) []dto.WeeklyTrendDayData {
+// mergeWeeklyTrend 合并五个功能的每日数据为堆叠柱状图格式。
+func mergeWeeklyTrend(audit, cron, archive, summary, chat []repository.DayCount) []dto.WeeklyTrendDayData {
 	dateMap := make(map[string]*dto.WeeklyTrendDayData)
 	var dates []string
 
@@ -222,6 +236,13 @@ func mergeWeeklyTrend(audit, cron, archive, summary []repository.DayCount) []dto
 			dates = append(dates, d.Date)
 		}
 		dateMap[d.Date].SummaryCount = d.Count
+	}
+	for _, d := range chat {
+		if _, ok := dateMap[d.Date]; !ok {
+			dateMap[d.Date] = &dto.WeeklyTrendDayData{Date: d.Date}
+			dates = append(dates, d.Date)
+		}
+		dateMap[d.Date].ChatCount = d.Count
 	}
 
 	sort.Strings(dates)
@@ -333,6 +354,17 @@ func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userSco
 				TaskLabel:  typeLabel,
 			},
 		})
+	}
+
+	// 智能体会话动态
+	if s.chatRepo != nil {
+		if chatActs, err := s.chatRepo.ListRecentChatActivities(tid, userScope, limit); err == nil {
+			for _, act := range chatActs {
+				if t, err := time.Parse(time.RFC3339, act.CreatedAt); err == nil {
+					buf = append(buf, enrichedSort{at: t, item: act})
+				}
+			}
+		}
 	}
 
 	sort.Slice(buf, func(i, j int) bool { return buf[i].at.After(buf[j].at) })

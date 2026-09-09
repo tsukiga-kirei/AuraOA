@@ -298,7 +298,7 @@ func (r *AgentRepo) DeleteSkill(tenantID, id uuid.UUID) error {
 }
 
 // Helper: ParseJSONSlice 解析 jsonb string slice
-// QueryAgentUsageStats 按智能体汇总会话、消息、工具调用与 Token。
+// QueryAgentUsageStats 按智能体汇总会话、消息、工具调用与 Token 及评价情况。
 func (r *AgentRepo) QueryAgentUsageStats(tenantID uuid.UUID) (*dto.AgentUsageStatsDTO, error) {
 	type row struct {
 		AgentCode    string `gorm:"column:agent_code"`
@@ -306,6 +306,8 @@ func (r *AgentRepo) QueryAgentUsageStats(tenantID uuid.UUID) (*dto.AgentUsageSta
 		SessionCount int64  `gorm:"column:session_count"`
 		MessageCount int64  `gorm:"column:message_count"`
 		TokenCount   int64  `gorm:"column:token_count"`
+		LikeCount    int64  `gorm:"column:like_count"`
+		DislikeCount int64  `gorm:"column:dislike_count"`
 	}
 	var rows []row
 	err := r.db.Raw(`
@@ -313,7 +315,9 @@ func (r *AgentRepo) QueryAgentUsageStats(tenantID uuid.UUID) (*dto.AgentUsageSta
 		       COALESCE(NULLIF(MAX(ad.name), ''), s.agent_code) AS agent_name,
 		       COUNT(DISTINCT s.id) AS session_count,
 		       COUNT(m.id) FILTER (WHERE m.role = 'user') AS message_count,
-		       COALESCE(SUM(l.total_tokens), 0) AS token_count
+		       COALESCE(SUM(l.total_tokens), 0) AS token_count,
+		       COUNT(m.id) FILTER (WHERE m.feedback = 'like') AS like_count,
+		       COUNT(m.id) FILTER (WHERE m.feedback = 'dislike') AS dislike_count
 		FROM chat_sessions s
 		LEFT JOIN agent_definitions ad ON ad.id = s.agent_id
 		LEFT JOIN chat_messages m ON m.session_id = s.id AND m.tenant_id = s.tenant_id
@@ -349,6 +353,7 @@ func (r *AgentRepo) QueryAgentUsageStats(tenantID uuid.UUID) (*dto.AgentUsageSta
 		item := dto.AgentUsageItemDTO{
 			AgentCode: rrow.AgentCode, AgentName: rrow.AgentName,
 			SessionCount: rrow.SessionCount, MessageCount: rrow.MessageCount, TokenCount: rrow.TokenCount,
+			LikeCount: rrow.LikeCount, DislikeCount: rrow.DislikeCount,
 		}
 		for _, t := range toolMap[rrow.AgentCode] {
 			item.ToolCallCount += t.CallCount
@@ -365,9 +370,12 @@ func (r *AgentRepo) QueryAgentUsageStats(tenantID uuid.UUID) (*dto.AgentUsageSta
 		}
 		stats.SessionCount += item.SessionCount
 		stats.MessageCount += item.MessageCount
+		stats.TokenCount += item.TokenCount
 		stats.ToolCallCount += item.ToolCallCount
 		stats.MCPCallCount += item.MCPCallCount
 		stats.SkillCallCount += item.SkillCallCount
+		stats.LikeCount += item.LikeCount
+		stats.DislikeCount += item.DislikeCount
 		stats.Agents = append(stats.Agents, item)
 	}
 	if stats.Agents == nil {

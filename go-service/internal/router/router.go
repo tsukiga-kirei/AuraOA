@@ -470,6 +470,8 @@ func SetupRouter(
 	{
 		tenantAgents.GET("/agent-catalog", agentAdminHandler.GetTenantCatalog)
 		tenantAgents.GET("/agent-stats", agentAdminHandler.GetAgentUsageStats)
+		tenantAgents.GET("/agent-sessions", agentAdminHandler.ListTenantAgentSessions)
+		tenantAgents.GET("/agent-sessions/:id/messages", agentAdminHandler.GetTenantSessionMessages)
 		tenantAgents.GET("/chat-allocation", agentAdminHandler.GetTenantAllocationByTenant)
 		tenantAgents.GET("/agents", agentAdminHandler.ListTenantAgents)
 		tenantAgents.POST("/agents", agentAdminHandler.CreateTenantAgent)
@@ -499,5 +501,6 @@ func SetupRouter(
 		chat.PATCH("/sessions/:id", chatHandler.UpdateSession)
 		chat.DELETE("/sessions/:id", chatHandler.DeleteSession)
 		chat.POST("/sessions/:id/messages/stream", chatHandler.StreamMessage)
+		chat.POST("/messages/:id/feedback", chatHandler.UpdateMessageFeedback)
 	}
 }

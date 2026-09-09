@@ -7,6 +7,7 @@ export type OverviewWidgetId =
   | 'weekly_trend'
   | 'cron_tasks'
   | 'recent_activity'
+  | 'agent_overview'
   | 'dept_distribution'
   | 'user_activity'
   | 'ai_performance'
@@ -33,6 +34,7 @@ export const WIDGET_PAGE_PERMISSION_MAP: Partial<Record<OverviewWidgetId, string
   weekly_trend: '',
   cron_tasks: '/cron',
   recent_activity: '',
+  agent_overview: '/chat',
 }
 
 /** 仪表盘组件注册表 */
@@ -43,6 +45,7 @@ export const OVERVIEW_WIDGETS: OverviewWidgetDef[] = [
   { id: 'weekly_trend', titleKey: 'overview.widgetTitle.weekly_trend', descriptionKey: 'overview.widgetDesc.weekly_trend', requiredPermissions: ['business', 'tenant_admin'], defaultEnabled: true, size: 'md' },
   { id: 'cron_tasks', titleKey: 'overview.widgetTitle.cron_tasks', descriptionKey: 'overview.widgetDesc.cron_tasks', requiredPermissions: ['business'], defaultEnabled: true, size: 'md' },
   { id: 'recent_activity', titleKey: 'overview.widgetTitle.recent_activity', descriptionKey: 'overview.widgetDesc.recent_activity', requiredPermissions: ['business', 'tenant_admin'], defaultEnabled: true, size: 'md' },
+  { id: 'agent_overview', titleKey: 'overview.widgetTitle.agent_overview', descriptionKey: 'overview.widgetDesc.agent_overview', requiredPermissions: ['business', 'tenant_admin'], defaultEnabled: true, size: 'md' },
   // tenant_admin only
   { id: 'dept_distribution', titleKey: 'overview.widgetTitle.dept_distribution', descriptionKey: 'overview.widgetDesc.dept_distribution', requiredPermissions: ['tenant_admin'], defaultEnabled: true, size: 'md' },
   { id: 'user_activity', titleKey: 'overview.widgetTitle.user_activity', descriptionKey: 'overview.widgetDesc.user_activity', requiredPermissions: ['tenant_admin'], defaultEnabled: true, size: 'md' },

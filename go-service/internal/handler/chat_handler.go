@@ -210,6 +210,35 @@ func (h *ChatHandler) StreamMessage(c *gin.Context) {
 	}
 }
 
+// UpdateMessageFeedback 更新单条消息点赞/点踩反馈
+// POST /api/chat/messages/:id/feedback
+func (h *ChatHandler) UpdateMessageFeedback(c *gin.Context) {
+	tenantID, userID, _, err := extractUserAndTenant(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "认证失效")
+		return
+	}
+
+	msgID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "消息 ID 格式错误")
+		return
+	}
+
+	var req dto.UpdateFeedbackRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "请求参数校验失败")
+		return
+	}
+
+	if err := h.sessionService.UpdateMessageFeedback(c.Request.Context(), tenantID, userID, msgID, req.Feedback); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"updated": true, "feedback": req.Feedback})
+}
+
 func extractUserAndTenant(c *gin.Context) (tenantID, userID uuid.UUID, username string, err error) {
 	claimsVal, exists := c.Get("jwt_claims")
 	if !exists {

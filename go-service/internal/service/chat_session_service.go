@@ -1,11 +1,14 @@
 package service
 
 import (
-	pkglogger "auraoa/go-service/internal/pkg/logger"
 	"context"
+	"encoding/json"
 	"fmt"
-	"go.uber.org/zap"
 	"time"
+
+	"go.uber.org/zap"
+
+	pkglogger "auraoa/go-service/internal/pkg/logger"
 
 	"github.com/google/uuid"
 
@@ -51,13 +54,21 @@ func (s *ChatSessionService) GetEffectiveAgents(ctx context.Context, tenantID, u
 		for _, binding := range a.ToolBindings {
 			toolCodes = append(toolCodes, binding.ToolCode)
 		}
+		var quickQuestions []dto.QuickQuestionItem
+		if len(a.QuickQuestions) > 0 {
+			_ = json.Unmarshal(a.QuickQuestions, &quickQuestions)
+		}
+		if quickQuestions == nil {
+			quickQuestions = []dto.QuickQuestionItem{}
+		}
 		result = append(result, dto.EffectiveAgentDTO{
-			ID:          a.ID,
-			AgentCode:   a.AgentCode,
-			Name:        a.Name,
-			Description: a.Description,
-			IsSystem:    a.IsSystem,
-			ToolCodes:   toolCodes,
+			ID:             a.ID,
+			AgentCode:      a.AgentCode,
+			Name:           a.Name,
+			Description:    a.Description,
+			IsSystem:       a.IsSystem,
+			QuickQuestions: quickQuestions,
+			ToolCodes:      toolCodes,
 		})
 	}
 	return result, nil
@@ -184,6 +195,8 @@ func (s *ChatSessionService) GetSessionDetail(ctx context.Context, tenantID, use
 			Status:           m.Status,
 			ToolCalls:        m.ToolCalls,
 			TokenUsage:       m.TokenUsage,
+			Feedback:         m.Feedback,
+			FeedbackAt:       m.FeedbackAt,
 			CreatedAt:        m.CreatedAt,
 		})
 	}
@@ -275,3 +288,9 @@ func (s *ChatSessionService) StartRetentionCleanup(ctx context.Context) {
 		}
 	}()
 }
+
+// UpdateMessageFeedback 更新单条消息的点赞/点踩反馈
+func (s *ChatSessionService) UpdateMessageFeedback(ctx context.Context, tenantID, userID, messageID uuid.UUID, feedback *string) error {
+	return s.chatRepo.UpdateMessageFeedback(tenantID, messageID, feedback)
+}
+

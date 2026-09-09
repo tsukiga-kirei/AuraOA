@@ -59,8 +59,9 @@ func TestMergeWeeklyTrendIncludesSummary(t *testing.T) {
 		[]repository.DayCount{{Date: "09-01", Count: 2}},
 		[]repository.DayCount{{Date: "09-01", Count: 3}},
 		[]repository.DayCount{{Date: "09-01", Count: 4}},
+		[]repository.DayCount{{Date: "09-01", Count: 5}},
 	)
-	if len(got) != 1 || got[0].AuditCount+got[0].CronCount+got[0].ArchiveCount+got[0].SummaryCount != 10 || got[0].SummaryCount != 4 {
+	if len(got) != 1 || got[0].AuditCount+got[0].CronCount+got[0].ArchiveCount+got[0].SummaryCount+got[0].ChatCount != 15 || got[0].SummaryCount != 4 || got[0].ChatCount != 5 {
 		t.Fatalf("mergeWeeklyTrend() = %#v", got)
 	}
 }

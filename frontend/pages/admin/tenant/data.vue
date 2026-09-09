@@ -22,6 +22,9 @@ import {
   MessageOutlined,
   ApiOutlined,
   BookOutlined,
+  LikeOutlined,
+  DislikeOutlined,
+  UserOutlined,
 } from '@ant-design/icons-vue'
 import dayjs, { type Dayjs } from 'dayjs'
 import 'dayjs/locale/zh-cn'
@@ -49,11 +52,14 @@ import type {
   LLMLogStats,
   LLMProcessItem,
   AgentUsageStats,
+  TenantAgentSessionItem,
+  TenantAgentSessionFilter,
 } from '~/types/admin-data'
+import type { ChatMessageItem } from '~/types/chat'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
-type MainTab = 'audit' | 'cron' | 'archive' | 'summary' | 'llm' | 'agents'
+type MainTab = 'audit' | 'cron' | 'archive' | 'summary' | 'agents' | 'llm'
 type AuditSubTab = 'all' | 'approve' | 'return' | 'review'
 type CronSubTab = 'all' | 'success' | 'failed' | 'running'
 type ArchiveSubTab = 'all' | 'compliant' | 'partially_compliant' | 'non_compliant'
@@ -81,6 +87,8 @@ const {
   getLLMLogStats,
   getLLMProcessChain,
   getAgentUsageStats,
+  listTenantAgentSessions,
+  getTenantSessionMessages,
 } = useAdminDataApi()
 
 const activeTab = ref<MainTab>('audit')
@@ -108,6 +116,21 @@ const agentStats = ref<AgentUsageStats>({
   session_count: 0, message_count: 0, tool_call_count: 0, mcp_call_count: 0, skill_call_count: 0, agents: [],
 })
 const agentLoading = ref(false)
+
+const agentSessions = ref<TenantAgentSessionItem[]>([])
+const agentSessionsTotal = ref(0)
+const agentSessionPage = ref(1)
+const agentSessionPageSize = ref(20)
+const agentSessionSearch = ref('')
+const agentSessionFilterAgent = ref('')
+const agentSessionFilterUser = ref('')
+const agentSessionFilterDateRange = ref<[Dayjs, Dayjs] | null>(null)
+const agentSessionShowFilters = ref(false)
+
+const agentSessionDetailVisible = ref(false)
+const selectedAgentSession = ref<TenantAgentSessionItem | null>(null)
+const sessionMessages = ref<ChatMessageItem[]>([])
+const sessionMessagesLoading = ref(false)
 
 const auditSnapshots = ref<AuditSnapshotItem[]>([])
 const cronLogs = ref<CronLogItem[]>([])
@@ -318,9 +341,9 @@ const llmSubTabs = computed(() => [
 const agentStatCards = computed(() => [
   { key: 'sessions', icon: MessageOutlined, count: agentStats.value.session_count, label: t('admin.data.agentTab.sessions'), cssClass: 'stat-card--info' },
   { key: 'messages', icon: RobotOutlined, count: agentStats.value.message_count, label: t('admin.data.agentTab.messages'), cssClass: 'stat-card--primary' },
-  { key: 'tools', icon: ThunderboltOutlined, count: agentStats.value.tool_call_count, label: t('admin.data.agentTab.tools'), cssClass: 'stat-card--success' },
-  { key: 'mcp', icon: ApiOutlined, count: agentStats.value.mcp_call_count, label: t('admin.data.agentTab.mcp'), cssClass: 'stat-card--warning' },
-  { key: 'skills', icon: BookOutlined, count: agentStats.value.skill_call_count, label: t('admin.data.agentTab.skills'), cssClass: 'stat-card--info' },
+  { key: 'tokens', icon: ThunderboltOutlined, count: agentStats.value.token_count || 0, label: t('admin.data.thTokens'), cssClass: 'stat-card--warning' },
+  { key: 'likes', icon: LikeOutlined, count: agentStats.value.like_count || 0, label: t('admin.data.agentTab.likes', '好评赞同'), cssClass: 'stat-card--success' },
+  { key: 'dislikes', icon: DislikeOutlined, count: agentStats.value.dislike_count || 0, label: t('admin.data.agentTab.dislikes', '建议踩灭'), cssClass: 'stat-card--danger' },
 ])
 
 const cronTaskTypeOptions = computed(() => {
@@ -391,6 +414,26 @@ const llmQuery = computed(() => ({
   page: llmPage.value,
   page_size: llmPageSize.value,
 }))
+
+const agentSessionQuery = computed(() => ({
+  keyword: agentSessionSearch.value.trim(),
+  agent_code: agentSessionFilterAgent.value || '',
+  user_name: agentSessionFilterUser.value.trim(),
+  start_date: agentSessionFilterDateRange.value?.[0]?.format('YYYY-MM-DD') || '',
+  end_date: agentSessionFilterDateRange.value?.[1]?.format('YYYY-MM-DD') || '',
+  page: agentSessionPage.value,
+  page_size: agentSessionPageSize.value,
+}))
+
+const agentSessionHasActiveFilters = computed(() => {
+  return !!(
+    agentSessionSearch.value ||
+    agentSessionFilterAgent.value ||
+    agentSessionFilterUser.value ||
+    agentSessionFilterDateRange.value
+  )
+})
+
 
 
 
@@ -764,6 +807,45 @@ async function loadAgentStats() {
   }
 }
 
+async function loadAgentSessions() {
+  agentLoading.value = true
+  try {
+    const res = await listTenantAgentSessions(agentSessionQuery.value)
+    agentSessions.value = res.items || []
+    agentSessionsTotal.value = res.total || 0
+  } catch (e: any) {
+    agentSessions.value = []
+    agentSessionsTotal.value = 0
+    message.error(e?.message || t('admin.data.loadFailed'))
+  } finally {
+    agentLoading.value = false
+  }
+}
+
+function clearAgentSessionFilters() {
+  agentSessionSearch.value = ''
+  agentSessionFilterAgent.value = ''
+  agentSessionFilterUser.value = ''
+  agentSessionFilterDateRange.value = null
+  agentSessionPage.value = 1
+}
+
+async function openAgentSessionDetail(item: TenantAgentSessionItem) {
+  selectedAgentSession.value = item
+  agentSessionDetailVisible.value = true
+  sessionMessagesLoading.value = true
+  try {
+    const res = await getTenantSessionMessages(item.id)
+    sessionMessages.value = res.messages || []
+  } catch (e: any) {
+    message.error(e?.message || t('admin.data.loadFailed'))
+    sessionMessages.value = []
+  } finally {
+    sessionMessagesLoading.value = false
+  }
+}
+
+
 // 加载审核快照列表（分页，支持多维度筛选）
 async function loadAuditLogs() {
   auditLoading.value = true
@@ -882,6 +964,7 @@ watch(cronQuery, loadCronLogs, { immediate: true })
 watch(archiveQuery, loadArchiveLogs, { immediate: true })
 watch(summaryQuery, loadSummaryLogs, { immediate: true })
 watch(llmQuery, loadLLMProcesses, { immediate: true })
+watch(agentSessionQuery, loadAgentSessions, { immediate: true })
 watch(() => summaryFilterChannel.value, loadSummaryStats)
 
 // 切换审核子标签时重置分页到第一页
@@ -898,6 +981,7 @@ watch(activeTab, (tab) => {
   }
   if (tab === 'agents') {
     loadAgentStats()
+    loadAgentSessions()
   }
 })
 
@@ -912,6 +996,7 @@ onMounted(async () => {
     loadSummaryStats(),
     loadLLMStats(),
     loadAgentStats(),
+    loadAgentSessions(),
   ])
 })
 </script>
@@ -932,8 +1017,8 @@ onMounted(async () => {
           { key: 'cron', label: t('admin.data.tabCron'), icon: ClockCircleOutlined },
           { key: 'archive', label: t('admin.data.tabArchive'), icon: FolderOpenOutlined },
           { key: 'summary', label: t('admin.data.tabSummary'), icon: FileTextOutlined },
-          { key: 'llm', label: t('admin.data.tabLLM'), icon: ThunderboltOutlined },
           { key: 'agents', label: t('admin.data.tabAgents'), icon: RobotOutlined },
+          { key: 'llm', label: t('admin.data.tabLLM'), icon: ThunderboltOutlined },
         ]"
           :key="tab.key"
           class="tab-btn"
@@ -1678,37 +1763,149 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <a-button
+              size="small"
+              @click="agentSessionShowFilters = !agentSessionShowFilters"
+              :class="{ 'filter-toggle-btn--active': agentSessionHasActiveFilters }"
+          >
+            <FilterOutlined /> {{ t('admin.data.filter') }}
+            <span v-if="agentSessionHasActiveFilters" class="filter-active-dot" />
+          </a-button>
+        </div>
+      </div>
+
+      <transition name="slide">
+        <div v-if="agentSessionShowFilters" class="filter-bar">
+          <a-input
+              v-model:value="agentSessionSearch"
+              :placeholder="t('admin.data.searchAgentSession', '搜索会话主题...')"
+              allow-clear
+              style="flex: 2; min-width: 180px;"
+              @update:value="agentSessionPage = 1"
+          >
+            <template #prefix>
+              <SearchOutlined style="color: var(--color-text-tertiary);" />
+            </template>
+          </a-input>
+
+          <a-select
+              v-model:value="agentSessionFilterAgent"
+              :placeholder="t('admin.data.filterAgent', '筛选智能体')"
+              allow-clear
+              style="flex: 1.2; min-width: 150px;"
+              @change="agentSessionPage = 1"
+          >
+            <a-select-option v-for="a in agentStats.agents" :key="a.agent_code" :value="a.agent_code">
+              {{ a.agent_name || a.agent_code }}
+            </a-select-option>
+          </a-select>
+
+          <a-input
+              v-model:value="agentSessionFilterUser"
+              :placeholder="t('admin.data.filterUser', '筛选用户...')"
+              allow-clear
+              style="flex: 1.2; min-width: 140px;"
+              @update:value="agentSessionPage = 1"
+          >
+            <template #prefix>
+              <UserOutlined style="color: var(--color-text-tertiary);" />
+            </template>
+          </a-input>
+
+          <a-range-picker
+              v-model:value="agentSessionFilterDateRange"
+              :placeholder="[t('admin.data.filterDateRange'), t('admin.data.filterDateRange')]"
+              allow-clear
+              style="flex: 1.5; min-width: 220px;"
+              @change="agentSessionPage = 1"
+          />
+
+          <a-button size="small" @click="clearAgentSessionFilters">
+            {{ t('admin.data.filterReset') }}
+          </a-button>
+        </div>
+      </transition>
+
       <div class="data-table-card">
         <table class="data-table">
           <thead>
           <tr>
+            <th>{{ t('admin.data.thSessionTitle', '会话主题') }}</th>
             <th>{{ t('admin.data.agentTab.agent') }}</th>
-            <th>{{ t('admin.data.agentTab.sessions') }}</th>
+            <th>{{ t('admin.data.thUser', '所属用户') }}</th>
             <th>{{ t('admin.data.agentTab.messages') }}</th>
             <th>{{ t('admin.data.thTokens') }}</th>
-            <th>{{ t('admin.data.agentTab.tools') }}</th>
-            <th>{{ t('admin.data.agentTab.mcp') }}</th>
-            <th>{{ t('admin.data.agentTab.skills') }}</th>
+            <th>{{ t('admin.data.thFeedback', '用户评价') }}</th>
+            <th>{{ t('admin.data.thTime') }}</th>
+            <th>{{ t('admin.data.thAction') }}</th>
           </tr>
           </thead>
           <tbody>
           <tr v-if="agentLoading">
-            <td colspan="7" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td colspan="8" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
-          <tr v-else v-for="item in agentStats.agents" :key="item.agent_code">
-            <td>{{ item.agent_name || item.agent_code }}</td>
-            <td>{{ item.session_count }}</td>
+          <tr v-else v-for="item in agentSessions" :key="item.id">
+            <td style="font-weight: 500; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              {{ item.title || t('chat.defaultSessionTitle', '新对话') }}
+            </td>
+            <td>
+              <span class="result-tag" style="color: var(--color-primary); background: var(--color-primary-bg);">
+                <RobotOutlined style="margin-right: 4px;" />
+                {{ item.agent_name || item.agent_code }}
+              </span>
+            </td>
+            <td>
+              <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--color-text-primary);">
+                <UserOutlined style="color: var(--color-text-tertiary);" />
+                {{ item.user_name || '-' }}
+              </span>
+            </td>
             <td>{{ item.message_count }}</td>
-            <td>{{ item.token_count }}</td>
-            <td>{{ item.tool_codes?.length ? item.tool_codes.join(', ') : '-' }}</td>
-            <td>{{ item.mcp_codes?.length ? item.mcp_codes.join(', ') : '-' }}</td>
-            <td>{{ item.skill_codes?.length ? item.skill_codes.join(', ') : '-' }}</td>
+            <td class="text-mono">{{ item.token_count || 0 }}</td>
+            <td>
+              <span v-if="item.like_count > 0" class="chain-tag" style="color: #52c41a; background: #f6ffed; padding: 2px 8px; border-radius: 10px; font-size: 12px;">
+                <LikeOutlined /> {{ item.like_count }}
+              </span>
+              <span v-if="item.dislike_count > 0" class="chain-tag" style="color: #ff4d4f; background: #fff1f0; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 4px;">
+                <DislikeOutlined /> {{ item.dislike_count }}
+              </span>
+              <span v-if="!item.like_count && !item.dislike_count" class="text-secondary" style="font-size: 12px;">-</span>
+            </td>
+            <td class="text-secondary">{{ formatDate(item.updated_at || item.created_at) }}</td>
+            <td>
+              <div class="action-btns">
+                <button
+                    class="icon-btn"
+                    :title="t('admin.data.viewChat', '查看完整对话')"
+                    @click="openAgentSessionDetail(item)"
+                >
+                  <EyeOutlined />
+                </button>
+              </div>
+            </td>
           </tr>
-          <tr v-if="!agentLoading && !agentStats.agents.length">
-            <td colspan="7" class="empty-cell">{{ t('admin.data.noData') }}</td>
+          <tr v-if="!agentLoading && !agentSessions.length">
+            <td colspan="8" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="pagination-wrapper">
+        <a-pagination
+            v-model:current="agentSessionPage"
+            v-model:pageSize="agentSessionPageSize"
+            :total="agentSessionsTotal"
+            size="small"
+            show-size-changer
+            show-quick-jumper
+            :page-size-options="['10', '20', '50']"
+            @change="loadAgentSessions"
+            @showSizeChange="loadAgentSessions"
+        />
       </div>
     </div>
 
@@ -2471,11 +2668,237 @@ onMounted(async () => {
           </div>
         </div>
       </transition>
+
+      <transition name="drawer">
+        <div v-if="agentSessionDetailVisible" class="drawer-overlay" @click.self="agentSessionDetailVisible = false">
+          <div class="drawer-panel" style="width: 720px; max-width: 90vw;">
+            <div class="drawer-header">
+              <div>
+                <h3 style="margin: 0; font-size: 16px; font-weight: 600;">
+                  {{ selectedAgentSession?.title || t('admin.data.agentChatDetail', '智能体会话记录') }}
+                </h3>
+                <div style="font-size: 13px; color: var(--color-text-secondary); margin-top: 4px; display: flex; align-items: center; gap: 8px;">
+                  <span><RobotOutlined style="color: var(--color-primary);" /> {{ selectedAgentSession?.agent_name }}</span>
+                  <span>·</span>
+                  <span><UserOutlined /> {{ selectedAgentSession?.user_name }}</span>
+                  <span>·</span>
+                  <span>{{ formatDate(selectedAgentSession?.created_at) }}</span>
+                </div>
+              </div>
+              <button class="drawer-close" @click="agentSessionDetailVisible = false">
+                <CloseOutlined />
+              </button>
+            </div>
+
+            <div class="drawer-body" style="padding: 20px; overflow-y: auto;">
+              <a-spin :spinning="sessionMessagesLoading">
+                <div v-if="!sessionMessagesLoading && sessionMessages.length === 0" style="padding: 40px; text-align: center;">
+                  <a-empty :description="t('admin.data.noData')" />
+                </div>
+                <div v-else class="session-chat-stream">
+                    <div
+                      v-for="msg in sessionMessages"
+                      :key="msg.id"
+                      class="session-msg-item"
+                      :class="msg.role === 'user' ? 'session-msg--user' : 'session-msg--assistant'"
+                    >
+                      <!-- 用户消息气泡 -->
+                      <div v-if="msg.role === 'user'" class="session-msg-bubble-user">
+                        <div class="session-msg-user-content">{{ msg.content }}</div>
+                        <div class="session-msg-meta-user">{{ formatDate(msg.created_at) }}</div>
+                      </div>
+
+                    <!-- 助手回复纯净展示 -->
+                    <div v-else class="session-msg-bubble-assistant">
+                      <!-- 深度思考 / 推理过程折叠 -->
+                      <details v-if="msg.reasoning_content" class="session-reasoning-details">
+                        <summary class="session-reasoning-summary">
+                          <ThunderboltOutlined style="color: var(--color-primary);" />
+                          <span>{{ t('admin.data.reasoningProcess', '深度思考过程') }}</span>
+                          <DownOutlined class="chevron-icon" />
+                        </summary>
+                        <pre class="session-reasoning-text">{{ msg.reasoning_content }}</pre>
+                      </details>
+
+                      <!-- 工具调用折叠 -->
+                      <details v-if="msg.tool_calls?.length" class="session-toolcalls-details">
+                        <summary class="session-toolcalls-summary">
+                          <ApiOutlined style="color: var(--color-warning);" />
+                          <span>工具调用 ({{ msg.tool_calls.length }} 次)</span>
+                          <DownOutlined class="chevron-icon" />
+                        </summary>
+                        <div class="session-toolcalls-list">
+                          <div v-for="tc in msg.tool_calls" :key="tc.id" class="session-toolcall-item">
+                            <div class="toolcall-name">{{ tc.function?.name || tc.name }}</div>
+                            <pre v-if="tc.function?.arguments" class="toolcall-args">{{ tc.function.arguments }}</pre>
+                          </div>
+                        </div>
+                      </details>
+
+                      <!-- 回复内容（Markdown） -->
+                      <div class="session-msg-content markdown-body" v-html="renderMarkdown(msg.content)" />
+
+                      <!-- 底部信息：时间、Token、点赞反馈 -->
+                      <div class="session-msg-footer">
+                        <span class="session-footer-time">{{ formatDate(msg.created_at) }}</span>
+                        <span v-if="msg.tokens" class="session-footer-tokens">{{ msg.tokens }} Tokens</span>
+                        <span v-if="msg.feedback === 'like'" class="session-feedback-badge like">
+                          <LikeOutlined /> {{ t('admin.data.feedbackLiked', '已赞') }}
+                        </span>
+                        <span v-else-if="msg.feedback === 'dislike'" class="session-feedback-badge dislike">
+                          <DislikeOutlined /> {{ t('admin.data.feedbackDisliked', '已踩') }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </a-spin>
+            </div>
+          </div>
+        </div>
+      </transition>
     </Teleport>
   </div>
 </template>
 
 <style scoped>
+/* 智能体会话抽屉聊天气泡样式 */
+.session-chat-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.session-msg-item {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+.session-msg--user {
+  align-items: flex-end;
+}
+.session-msg--assistant {
+  align-items: flex-start;
+}
+.session-msg-bubble-user {
+  max-width: 82%;
+  background: #293747;
+  color: #fff;
+  border-radius: 18px 18px 4px 18px;
+  padding: 12px 18px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.session-msg-user-content {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.session-msg-meta-user {
+  margin-top: 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+  text-align: right;
+}
+.session-msg-bubble-assistant {
+  width: 100%;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-light);
+  border-radius: 14px;
+  padding: 16px 20px;
+  box-shadow: var(--shadow-sm);
+}
+.session-reasoning-details,
+.session-toolcalls-details {
+  margin-bottom: 12px;
+  background: var(--color-bg-elevated);
+  border-radius: 8px;
+  border: 1px solid var(--color-border-light);
+  padding: 8px 12px;
+}
+.session-reasoning-summary,
+.session-toolcalls-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.session-reasoning-summary .chevron-icon,
+.session-toolcalls-summary .chevron-icon {
+  margin-left: auto;
+  font-size: 11px;
+  transition: transform 0.2s;
+}
+details[open] .chevron-icon {
+  transform: rotate(180deg);
+}
+.session-reasoning-text {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+.session-toolcalls-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.session-toolcall-item {
+  background: rgba(0, 0, 0, 0.02);
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+.toolcall-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+.toolcall-args {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.session-msg-footer {
+  margin-top: 14px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--color-border-light);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+.session-feedback-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.session-feedback-badge.like {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+.session-feedback-badge.dislike {
+  background: #fff1f0;
+  color: #ff4d4f;
+}
+
 /* Markdown 样式覆盖 */
 .markdown-body { font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); word-break: break-word; }
 .markdown-body :deep(h1), .markdown-body :deep(h2), .markdown-body :deep(h3),

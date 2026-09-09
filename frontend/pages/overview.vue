@@ -12,6 +12,8 @@ import {
   AppstoreOutlined,
   DatabaseOutlined,
   BarChartOutlined,
+  RobotOutlined,
+  CommentOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { OVERVIEW_WIDGETS, OVERVIEW_WIDGET_ID_SET, WIDGET_PAGE_PERMISSION_MAP } from '~/constants/overviewWidgets'
@@ -31,7 +33,7 @@ definePageMeta({ middleware: 'auth' })
 
 // 概览页空数据占位，避免模板渲染时出现 undefined 错误
 const EMPTY_OVERVIEW: DashboardOverview = {
-  weekly_overview: { total: 0, audit_count: 0, archive_count: 0, summary_count: 0, cron_count: 0 },
+  weekly_overview: { total: 0, audit_count: 0, archive_count: 0, summary_count: 0, cron_count: 0, chat_count: 0 },
   weekly_trend: [],
   recent_activity: [],
 }
@@ -201,6 +203,7 @@ const activityKindColor: Record<string, string> = {
   archive: 'var(--color-success)',
   summary: 'var(--color-warning)',
   cron: 'var(--color-accent)',
+  chat: '#722ed1',
 }
 
 // 将动态类型 key 转换为可读标签
@@ -210,6 +213,7 @@ function kindLabel(kind: string) {
     case 'archive': return t('overview.activity.archive')
     case 'summary': return t('overview.activity.summary')
     case 'cron': return t('overview.activity.cron')
+    case 'chat': return t('overview.activity.chat')
     default: return kind
   }
 }
@@ -231,12 +235,13 @@ function cronTaskDescriptionLabel(task: { description?: string; task_type?: stri
 
 // 趋势图的日期分类数据
 const trendCategories = computed(() => dash.value.weekly_trend.map(d => d.date))
-// 趋势图的系列数据（审核、定时任务、归档、流程总结）
+// 趋势图的系列数据（审核、定时任务、归档、流程总结、智能体对话）
 const trendSeries = computed(() => [
   { name: t('overview.auditWorkbench'), data: dash.value.weekly_trend.map(d => d.audit_count), color: chartColors.value.primary },
   { name: t('overview.cronTasks'), data: dash.value.weekly_trend.map(d => d.cron_count), color: chartColors.value.accent },
   { name: t('overview.archiveReview'), data: dash.value.weekly_trend.map(d => d.archive_count), color: chartColors.value.success },
   { name: t('overview.processSummary'), data: dash.value.weekly_trend.map(d => d.summary_count), color: chartColors.value.warning },
+  { name: t('overview.chatAgent'), data: dash.value.weekly_trend.map(d => d.chat_count ?? 0), color: '#722ed1' },
 ])
 
 // 部门分布图的标签配置
@@ -348,6 +353,10 @@ function tokenPct(used: number, quota: number) {
             <div class="wo-item">
               <span class="wo-num" style="color: var(--color-accent);">{{ dash.weekly_overview.cron_count }}</span>
               <span class="wo-label">{{ t('overview.cronTasks') }}</span>
+            </div>
+            <div class="wo-item wo-item--link" @click="navigateTo('/chat')">
+              <span class="wo-num" style="color: #722ed1;">{{ dash.weekly_overview.chat_count ?? 0 }}</span>
+              <span class="wo-label">{{ t('overview.chatAgent') }}</span>
             </div>
           </div>
         </div>
@@ -479,6 +488,9 @@ function tokenPct(used: number, quota: number) {
               <span v-if="a.kind === 'cron' && a.cron_status" class="activity-tag" :class="a.cron_status === 'failed' ? 'activity-tag--cron-fail' : 'activity-tag--cron'">
                 {{ t(`overview.cronStatus.${a.cron_status}`) }} · {{ a.task_label }}
               </span>
+              <span v-if="a.kind === 'chat'" class="activity-tag activity-tag--chat">
+                {{ a.agent_name || t('overview.chatAgent') }}
+              </span>
             </div>
             <div class="activity-meta">
               <span class="activity-user">{{ a.user_name }}</span>
@@ -487,6 +499,104 @@ function tokenPct(used: number, quota: number) {
           </div>
         </div>
         <div v-else class="widget-empty">{{ t('overview.noData') }}</div>
+      </div>
+
+      <!--===== 智能体助手（agent_overview）=====-->
+      <div v-if="isEnabled('agent_overview')"
+       :class="['widget', `widget--${getWidgetSize('agent_overview')}`, { 'widget--editing': customizing }]"
+       :style="{ order: getWidgetOrder('agent_overview') }"
+       :draggable="customizing"
+       @dragstart="onDragStart($event, 'agent_overview')"
+       @dragover.prevent
+       @dragenter.prevent
+       @drop="onDrop($event, 'agent_overview')">
+        <div class="widget-title">
+          <div class="widget-title-left"><RobotOutlined /> {{ t('overview.widgetTitle.agent_overview') }}</div>
+          <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('agent_overview')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
+        </div>
+
+        <!-- 业务用户视角 (personal) -->
+        <div v-if="dash.agent_overview?.role === 'business' || !dash.agent_overview?.role" class="agent-widget-body">
+          <div class="agent-kpis">
+            <div class="agent-kpi-card">
+              <div class="agent-kpi-num">{{ dash.agent_overview?.my_sessions_count ?? 0 }}</div>
+              <div class="agent-kpi-label">{{ t('overview.agent.mySessions') }}</div>
+            </div>
+            <div class="agent-kpi-card">
+              <div class="agent-kpi-num">{{ dash.agent_overview?.my_messages_count ?? 0 }}</div>
+              <div class="agent-kpi-label">{{ t('overview.agent.myMessages') }}</div>
+            </div>
+            <div class="agent-kpi-card">
+              <div class="agent-kpi-num" style="color: var(--color-success);">{{ dash.agent_overview?.my_likes_count ?? 0 }}</div>
+              <div class="agent-kpi-label">{{ t('overview.agent.myLikes') }}</div>
+            </div>
+          </div>
+          <div v-if="dash.agent_overview?.favorite_agent" class="agent-fav-badge">
+            <span>{{ t('overview.agent.favoriteAgent') }}: <strong>{{ dash.agent_overview.favorite_agent }}</strong></span>
+          </div>
+          <!-- 最近对话列表 -->
+          <div class="agent-recent-section" v-if="dash.agent_overview?.recent_sessions?.length">
+            <div class="agent-sub-title">{{ t('overview.agent.recentSessions') }}</div>
+            <div class="agent-session-list">
+              <div
+                v-for="s in dash.agent_overview.recent_sessions.slice(0, 4)"
+                :key="s.id"
+                class="agent-session-item"
+                @click="navigateTo(`/chat?session_id=${s.id}`)"
+              >
+                <CommentOutlined class="agent-session-icon" />
+                <span class="agent-session-title" :title="s.title">{{ s.title }}</span>
+                <span class="agent-session-tag">{{ s.agent_name }}</span>
+                <span class="agent-session-time">{{ formatActivityTime(s.created_at) }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="!dash.agent_overview?.my_sessions_count" class="widget-empty">
+            {{ t('overview.agent.noRecentSessions') }}
+            <div style="margin-top: 8px;">
+              <a-button type="primary" size="small" @click="navigateTo('/chat')">
+                {{ t('overview.agent.goToChat') }} →
+              </a-button>
+            </div>
+          </div>
+          <div v-else class="widget-empty">{{ t('overview.agent.noRecentSessions') }}</div>
+        </div>
+
+        <!-- 租户管理员视角 (tenant_admin) -->
+        <div v-else class="agent-widget-body">
+          <div class="agent-kpis">
+            <div class="agent-kpi-card">
+              <div class="agent-kpi-num">{{ dash.agent_overview?.total_sessions ?? 0 }}</div>
+              <div class="agent-kpi-label">{{ t('overview.agent.totalSessions') }}</div>
+            </div>
+            <div class="agent-kpi-card">
+              <div class="agent-kpi-num">{{ dash.agent_overview?.total_messages ?? 0 }}</div>
+              <div class="agent-kpi-label">{{ t('overview.agent.totalMessages') }}</div>
+            </div>
+            <div class="agent-kpi-card">
+              <div class="agent-kpi-num" style="color: var(--color-primary);">{{ dash.agent_overview?.active_users_count ?? 0 }}</div>
+              <div class="agent-kpi-label">{{ t('overview.agent.activeUsers') }}</div>
+            </div>
+            <div class="agent-kpi-card">
+              <div class="agent-kpi-num" style="color: var(--color-success);">{{ (dash.agent_overview?.satisfaction_rate ?? 0).toFixed(0) }}%</div>
+              <div class="agent-kpi-label">{{ t('overview.agent.satisfactionRate') }}</div>
+            </div>
+          </div>
+          <!-- 智能体热度榜 -->
+          <div class="agent-rank-section" v-if="dash.agent_overview?.agent_usage_rank?.length">
+            <div class="agent-sub-title">{{ t('overview.agent.agentRanking') }}</div>
+            <div class="agent-rank-list">
+              <div v-for="(rank, idx) in dash.agent_overview.agent_usage_rank.slice(0, 5)" :key="rank.agent_code" class="agent-rank-item">
+                <span class="rank-num" :class="{ 'rank-num--top': idx < 3 }">{{ idx + 1 }}</span>
+                <span class="agent-rank-name">{{ rank.agent_name }}</span>
+                <span class="agent-rank-metrics">
+                  {{ t('overview.agent.sessionsCount', [rank.session_count]) }} · {{ t('overview.agent.messagesCount', [rank.message_count]) }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="widget-empty">{{ t('overview.agent.noAgentData') }}</div>
+        </div>
       </div>
 
       <!--===== 部门分布（dept_distribution）=====-->
@@ -886,6 +996,45 @@ function tokenPct(used: number, quota: number) {
 .tr-cell--rank { text-align: center; }
 .tr-cell--name { text-align: left; }
 .tr-cell--fail { font-size: 12px; }
+
+/* 智能体组件与新增样式 */
+.wo-item--link { cursor: pointer; border-radius: var(--radius-sm); transition: background var(--transition-fast); }
+.wo-item--link:hover { background: rgba(114, 46, 209, 0.06); }
+.activity-tag--chat { color: #722ed1; background: rgba(114, 46, 209, 0.1); }
+
+.agent-widget-body { display: flex; flex-direction: column; gap: 14px; }
+.agent-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px; }
+.agent-kpi-card {
+  text-align: center; padding: 12px 6px; border-radius: var(--radius-md);
+  background: var(--color-bg-page);
+}
+.agent-kpi-num { font-size: 22px; font-weight: 700; color: var(--color-text-primary); line-height: 1.2; }
+.agent-kpi-label { font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px; }
+.agent-fav-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; background: rgba(114, 46, 209, 0.08);
+  border-radius: var(--radius-sm); font-size: 12px; color: #722ed1;
+}
+.agent-sub-title { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 6px; }
+.agent-session-list { display: flex; flex-direction: column; gap: 6px; }
+.agent-session-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: var(--radius-sm); font-size: 12px; color: var(--color-text-secondary);
+  cursor: pointer; transition: all var(--transition-fast);
+}
+.agent-session-item:hover { background: var(--color-bg-page); color: var(--color-primary); }
+.agent-session-icon { color: #722ed1; font-size: 13px; flex-shrink: 0; }
+.agent-session-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-session-tag {
+  font-size: 10px; padding: 1px 6px; border-radius: 4px;
+  background: rgba(114, 46, 209, 0.08); color: #722ed1; flex-shrink: 0;
+}
+.agent-session-time { font-size: 11px; color: var(--color-text-tertiary); flex-shrink: 0; }
+
+.agent-rank-list { display: flex; flex-direction: column; gap: 6px; }
+.agent-rank-item { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 12px; }
+.agent-rank-name { flex: 1; font-weight: 500; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-rank-metrics { color: var(--color-text-tertiary); font-size: 11px; flex-shrink: 0; }
 
 @media (max-width: 1024px) {
   .widget--sm { grid-column: span 6; }

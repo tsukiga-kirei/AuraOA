@@ -26,8 +26,12 @@
 | POST | /api/tenant/mcp-servers/:id/test | 初始化连接并发现全部分页工具，返回 tools |
 | GET / POST | /api/tenant/skills | 查询 / 创建 Skill |
 | PUT / DELETE | /api/tenant/skills/:id | 更新 / 删除本租户 Skill |
+| GET | /api/tenant/agent-sessions | 查询租户下所有用户的智能体会话列表（分页）；支持 keyword、agent_code、username、start_date、end_date 筛选 |
+| GET | /api/tenant/agent-sessions/:id/messages | 查询指定会话的完整消息记录（供抽屉审计回放） |
 
-智能体创建字段：agent_code、name、description、system_prompt、enabled、tool_codes。更新支持 name、description、system_prompt、enabled、tool_codes，标识码不可变。
+智能体创建字段：agent_code、name、description、system_prompt、enabled、tool_codes、quick_questions（快捷提问配置数组：`[{icon, title, prompt, description}]`）。
+更新支持 name、description、system_prompt、enabled、tool_codes、quick_questions，标识码不可变。
+返回字段额外包含 `skill_codes`、`mcp_codes`（从 `tool_codes` 解析提取，方便前端快速装配与卡片展示）。
 修改平台智能体时创建租户专属覆盖，平台模板和其他租户保持独立；历史会话按 agent_code 解析本租户当前定义。定义和绑定同事务保存。
 
 MCP 字段：server_code、name、description、transport_type（http）、endpoint_url、headers（JSON 字符串对象，加密存储）、enabled、agent_codes。返回 cached_tools、last_synced_at、agent_codes，不返回密钥。`agent_codes` 表示挂载到哪些智能体；测试连接发现工具后会按原挂载智能体重写绑定。编辑时 headers 留空保留，传 "{}" 清空。地址或请求头改变后清空工具缓存，需要再次测试连接。创建检查租户配额并持行锁防止并发超额；标识码创建后不可变。

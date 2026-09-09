@@ -327,6 +327,8 @@ export interface AgentUsageItem {
   session_count: number
   message_count: number
   token_count: number
+  like_count?: number
+  dislike_count?: number
   tool_codes: string[]
   mcp_codes: string[]
   skill_codes: string[]
@@ -338,10 +340,38 @@ export interface AgentUsageItem {
 export interface AgentUsageStats {
   session_count: number
   message_count: number
+  token_count?: number
   tool_call_count: number
   mcp_call_count: number
   skill_call_count: number
+  like_count?: number
+  dislike_count?: number
   agents: AgentUsageItem[]
+}
+
+export interface TenantAgentSessionItem {
+  id: string
+  agent_code: string
+  agent_name: string
+  user_id: string
+  user_name: string
+  title: string
+  message_count: number
+  token_count: number
+  like_count: number
+  dislike_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TenantAgentSessionFilter {
+  keyword?: string
+  agent_code?: string
+  user_name?: string
+  start_date?: string
+  end_date?: string
+  page?: number
+  page_size?: number
 }
 
 export interface LLMLogFilter {
