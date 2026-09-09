@@ -178,6 +178,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 	if session.ProcessID != nil && *session.ProcessID != "" {
 		systemPrompt += fmt.Sprintf("\n\n当前上下文绑定 OA 流程 ID: %s。在用户询问时可优先围绕该流程进行分析或查询。", *session.ProcessID)
 	}
+	systemPrompt = replaceSystemPromptVariables(systemPrompt)
 
 	// 5. 保存用户消息到数据库
 	userMsg := model.ChatMessage{
