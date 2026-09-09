@@ -18,6 +18,25 @@ const { t } = useI18n()
 const allocation = ref<TenantChatAllocationItem | null>(null)
 const loading = ref(false)
 const error = ref('')
+const previousRetentionDays = ref(90)
+
+const isPermanentRetention = (days?: number | null) => {
+  return days === -1 || days === 0
+}
+
+const handleTogglePermanentRetention = (checked: boolean) => {
+  if (!allocation.value) return
+  if (checked) {
+    if (allocation.value.chat_retention_days && allocation.value.chat_retention_days > 0) {
+      previousRetentionDays.value = allocation.value.chat_retention_days
+    }
+    allocation.value.chat_retention_days = -1
+  } else {
+    allocation.value.chat_retention_days = (previousRetentionDays.value && previousRetentionDays.value > 0)
+      ? previousRetentionDays.value
+      : 90
+  }
+}
 
 watch(
   () => props.tenantId,
@@ -28,7 +47,12 @@ watch(
     error.value = ''
     try {
       const value = await authFetch<TenantChatAllocationItem>(`/api/admin/tenants/${id}/chat-allocation`)
-      if (props.tenantId === id) allocation.value = value
+      if (props.tenantId === id) {
+        allocation.value = value
+        if (value && value.chat_retention_days > 0) {
+          previousRetentionDays.value = value.chat_retention_days
+        }
+      }
     } catch (err: any) {
       error.value = err.message
     } finally {
@@ -155,12 +179,33 @@ defineExpose({ save })
 
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item :label="t('chat.allocation.retention', '对话历史保留天数')">
+                <a-form-item>
+                  <template #label>
+                    <div class="retention-label-row">
+                      <span>{{ t('chat.allocation.retention', '会话保留天数') }}</span>
+                      <div class="retention-switch-inline">
+                        <span>{{ t('chat.allocation.permanent', '永久保留') }}</span>
+                        <a-switch
+                          size="small"
+                          :checked="isPermanentRetention(allocation.chat_retention_days)"
+                          @change="handleTogglePermanentRetention"
+                        />
+                      </div>
+                    </div>
+                  </template>
                   <a-input-number
+                    v-if="!isPermanentRetention(allocation.chat_retention_days)"
                     v-model:value="allocation.chat_retention_days"
                     :min="1"
                     :max="3650"
                     size="large"
+                    style="width: 100%;"
+                  />
+                  <a-input
+                    v-else
+                    size="large"
+                    disabled
+                    :value="t('chat.allocation.permanentHint', '永久保留（不自动清理历史对话）')"
                     style="width: 100%;"
                   />
                 </a-form-item>
@@ -257,5 +302,20 @@ defineExpose({ save })
   color: var(--color-text-tertiary);
   margin-top: 16px;
   margin-bottom: 0;
+}
+
+.retention-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.retention-switch-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 12px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
 }
 </style>

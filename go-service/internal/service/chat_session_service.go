@@ -285,7 +285,7 @@ func (s *ChatSessionService) DeleteSession(ctx context.Context, tenantID, userID
 // CleanExpiredSessions 硬删除超过指定保留天数的会话
 func (s *ChatSessionService) CleanExpiredSessions(ctx context.Context, tenantID uuid.UUID, retentionDays int) (int64, error) {
 	if retentionDays <= 0 {
-		retentionDays = 90
+		return 0, nil // 永久保留，不清理历史会话
 	}
 	cutoff := apptime.Now().AddDate(0, 0, -retentionDays)
 	return s.chatRepo.DeleteExpiredSessions(tenantID, cutoff)
@@ -318,6 +318,12 @@ func (s *ChatSessionService) StartRetentionCleanup(ctx context.Context) {
 
 // UpdateMessageFeedback 更新单条消息的点赞/点踩反馈及意见
 func (s *ChatSessionService) UpdateMessageFeedback(ctx context.Context, tenantID, userID, messageID uuid.UUID, feedback *string, comment *string) error {
-	return s.chatRepo.UpdateMessageFeedback(tenantID, messageID, feedback, comment)
+	if err := s.chatRepo.UpdateMessageFeedback(tenantID, messageID, feedback, comment); err != nil {
+		return err
+	}
+	if s.invalidator != nil {
+		_ = s.invalidator.InvalidateDashboardCache(ctx, tenantID)
+	}
+	return nil
 }
 
