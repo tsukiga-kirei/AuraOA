@@ -26,7 +26,7 @@ definePageMeta({ layout: 'default', middleware: ['auth'] })
 const { t } = useI18n()
 const route = useRoute()
 const { effectiveAgents, currentSessionId, currentDetail, selectedAgentCode, detailLoading, error, initialize, selectSession, createSession, newConversation } = useChatSession()
-const messages = ref<ChatMessageItem[]>([])
+const messages = ref<ChatMessageItem[]>([...(currentDetail.value?.messages || [])])
 const canvas = ref<HTMLElement | null>(null)
 const canvasBody = ref<HTMLElement | null>(null)
 const composer = ref<InstanceType<typeof ChatComposer> | null>(null)
@@ -55,20 +55,27 @@ const onCanvasScroll = () => {
   if (!canvas.value || ignoreScroll) return
   pinned.value = distanceToBottom() <= BOTTOM_THRESHOLD
 }
-watch(currentDetail, detail => { messages.value = [...(detail?.messages || [])]; pinned.value = true; nextTick(scrollBottom) })
+watch(currentDetail, detail => {
+  messages.value = [...(detail?.messages || [])]
+  pinned.value = true
+  nextTick(scrollBottom)
+}, { immediate: true })
 watch(currentSessionId, () => stopStreaming())
 watch(() => messages.value.map(item => [item.content, item.reasoning_content, item.tool_calls?.length, item.status, item.streaming]), followLatest, { deep: true })
 watch(streaming, followLatest)
 const selectFromRoute = async () => {
-  const id = typeof route.query.session === 'string' ? route.query.session : null
-  const agentCode = typeof route.query.agent === 'string' ? route.query.agent : ''
+  const rawId = route.query.session ?? route.query.session_id
+  const id = typeof rawId === 'string' && rawId.trim() ? rawId.trim() : null
+  const agentCode = typeof route.query.agent === 'string' ? route.query.agent.trim() : ''
   if (id) {
-    if (currentSessionId.value !== id) await selectSession(id)
+    if (currentSessionId.value !== id || !currentDetail.value || currentDetail.value.session.id !== id) {
+      await selectSession(id)
+    }
     return
   }
   if (agentCode && selectedAgentCode.value !== agentCode) newConversation(agentCode)
 }
-watch(() => [route.query.session, route.query.agent], selectFromRoute)
+watch(() => [route.query.session, route.query.session_id, route.query.agent], selectFromRoute)
 onMounted(async () => {
   await initialize()
   await selectFromRoute()
