@@ -773,7 +773,7 @@ const diffModalTitle = ref('')
 const handleOpenAuditDiff = async () => {
   if (!fullProcessConfig.value) return
   const cfg = fullProcessConfig.value
-  diffModalTitle.value = `${cfg.process_type_label || cfg.process_type} — ${t('settings.versionDiff.modalTitle')}`
+  diffModalTitle.value = `${cfg.process_type} — ${t('settings.versionDiff.modalTitle')}`
   diffModalVisible.value = true
   diffLoading.value = true
   diffData.value = null
@@ -796,7 +796,7 @@ const handleOpenAuditDiff = async () => {
 const handleOpenArchiveDiff = async () => {
   if (!fullArchiveConfig.value) return
   const cfg = fullArchiveConfig.value
-  diffModalTitle.value = `${cfg.process_type_label || cfg.process_type} — ${t('settings.versionDiff.modalTitle')}`
+  diffModalTitle.value = `${cfg.process_type} — ${t('settings.versionDiff.modalTitle')}`
   diffModalVisible.value = true
   diffLoading.value = true
   diffData.value = null
@@ -1107,14 +1107,14 @@ const handleSaveSummary = async () => {
             :class="{ 'process-list-item--active': selectedProcessType === proc.process_type }"
             @click="selectProcess(proc.process_type)"
           >
-            <div class="process-list-item-name">{{ proc.process_type_label || proc.process_type }}</div>
-            <div v-if="proc.process_type_label" class="process-list-item-path">{{ proc.process_type }}</div>
+            <div class="process-list-item-name">{{ proc.process_type }}</div>
+            <div v-if="proc.process_type_label" class="process-list-item-path">{{ proc.process_type_label }}</div>
           </div>
         </div>
 
         <!-- 右：配置详情 -->
         <div v-if="fullProcessConfig && !workbenchLoading" class="process-config-panel">
-          <h3 class="config-title">{{ fullProcessConfig.process_type_label || fullProcessConfig.process_type }} — {{ t('settings.workbench.personalConfig') }}</h3>
+          <h3 class="config-title">{{ fullProcessConfig.process_type }} — {{ t('settings.workbench.personalConfig') }}</h3>
           <div class="personal-version-line">
             {{ fullProcessConfig.personal_version > 0
               ? t('settings.version.personalBasedOn', [fullProcessConfig.base_config_version, fullProcessConfig.personal_version])
@@ -1531,14 +1531,14 @@ const handleSaveSummary = async () => {
             :class="{ 'process-list-item--active': selectedArchiveProcessType === cfg.process_type }"
             @click="selectArchiveProcess(cfg.process_type)"
           >
-            <div class="process-list-item-name">{{ cfg.process_type_label || cfg.process_type }}</div>
-            <div v-if="cfg.process_type_label" class="process-list-item-path">{{ cfg.process_type }}</div>
+            <div class="process-list-item-name">{{ cfg.process_type }}</div>
+            <div v-if="cfg.process_type_label" class="process-list-item-path">{{ cfg.process_type_label }}</div>
           </div>
         </div>
 
         <!-- 右：归档配置详情 -->
         <div v-if="fullArchiveConfig && !archiveLoading" class="process-config-panel">
-          <h3 class="config-title">{{ fullArchiveConfig.process_type_label || fullArchiveConfig.process_type }} — {{ t('settings.archive.personalReviewConfig') }}</h3>
+          <h3 class="config-title">{{ fullArchiveConfig.process_type }} — {{ t('settings.archive.personalReviewConfig') }}</h3>
           <div class="personal-version-line">
             {{ fullArchiveConfig.personal_version > 0
               ? t('settings.version.personalBasedOn', [fullArchiveConfig.base_config_version, fullArchiveConfig.personal_version])
@@ -1799,14 +1799,14 @@ const handleSaveSummary = async () => {
             :class="{ 'process-list-item--active': selectedSummaryProcessType === process.process_type }"
             @click="selectSummaryProcess(process.process_type)"
           >
-            <div class="process-list-item-name">{{ process.process_type_label || process.process_type }}</div>
-            <div class="process-list-item-path">{{ process.process_type }}</div>
+            <div class="process-list-item-name">{{ process.process_type }}</div>
+            <div v-if="process.process_type_label" class="process-list-item-path">{{ process.process_type_label }}</div>
           </div>
         </div>
 
         <div v-if="fullSummaryPreference && !summaryLoading" class="process-config-panel">
           <h3 class="config-title">
-            {{ fullSummaryPreference.process_type_label || fullSummaryPreference.process_type }} — {{ t('settings.summary.personalConfig') }}
+            {{ fullSummaryPreference.process_type }} — {{ t('settings.summary.personalConfig') }}
           </h3>
           <p class="config-section-desc">{{ t('settings.summary.description') }}</p>
 

@@ -51,6 +51,8 @@ export const useEmbedSummaryApi = () => {
   async function getSummaryContext(processId: string, preferCached = false): Promise<EmbedSummaryContextResponse> {
     const q = new URLSearchParams({ process_id: processId })
     if (preferCached) q.set('prefer_cached', 'true')
+    const oaUser = useEmbedAuth().getOAUserId()
+    if (oaUser) q.set('oa_user_id', oaUser)
     return await embedSummaryFetch<EmbedSummaryContextResponse>(`/api/embed/summary/context?${q.toString()}`)
   }
 

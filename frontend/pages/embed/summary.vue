@@ -282,7 +282,7 @@ onMounted(async () => {
     return
   }
   try {
-    await setupEmbedSession(parentCtx.embedToken)
+    await setupEmbedSession(parentCtx.embedToken, parentCtx.oaUserId)
   } catch (e: any) {
     pageError.value = e?.message || t('embed.summary.missingToken')
     pageLoading.value = false

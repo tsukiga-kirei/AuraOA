@@ -257,6 +257,7 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual', useLatestConfig 
         trigger_detail: trigger === 'embed_manual' ? 'manual' : 'visible_open',
         use_latest_config: useLatestConfig,
         perspective: activePerspective.value,
+        oa_user_id: useEmbedAuth().getOAUserId() || undefined,
       },
       (st) => {
         mergeAuditProgress(st)
@@ -348,7 +349,7 @@ onMounted(async () => {
     return
   }
   try {
-    await setupEmbedSession(parentCtx.embedToken)
+    await setupEmbedSession(parentCtx.embedToken, parentCtx.oaUserId)
   } catch (e: any) {
     pageError.value = e?.message || t('embed.missingToken')
     pageLoading.value = false

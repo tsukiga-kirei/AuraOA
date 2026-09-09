@@ -25,6 +25,8 @@ export const useEmbedApi = () => {
   async function getContext(processId: string, preferCached = false): Promise<EmbedContextResponse> {
     const q = new URLSearchParams({ process_id: processId })
     if (preferCached) q.set('prefer_cached', 'true')
+    const oaUser = useEmbedAuth().getOAUserId()
+    if (oaUser) q.set('oa_user_id', oaUser)
     return await embedFetch<EmbedContextResponse>(`/api/embed/context?${q.toString()}`)
   }
 
