@@ -308,6 +308,7 @@ func (s *ArchiveReviewService) fetchOAArchivedDataCached(
 		"process_type":               params.ProcessType,
 		"allowed_tables":             allowedTables,
 		"allowed_types":              allowedTypes,
+		"visibility_scope":           "oa-user-v1",
 	})
 	keyBuilder := cache.NewKeyBuilder("archive", tenantID)
 	cacheKey := keyBuilder.OAArchivedData(userID, dateRangeHash)

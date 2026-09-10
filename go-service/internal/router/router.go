@@ -47,6 +47,7 @@ func SetupRouter(
 	agentAdminHandler *handler.AgentAdminHandler,
 	sysFlags *systemflags.Resolver,
 	operationAuditRepo *repository.OperationAuditLogRepo,
+	orgRepo *repository.OrgRepo,
 	tenantRepo *repository.TenantRepo,
 ) {
 	// 挂载全局中间件：结构化请求日志、panic 恢复、跨域（CORS）
@@ -349,9 +350,9 @@ func SetupRouter(
 		tenantSettings.GET("/dashboard-overview", dashboardOverviewHandler.GetOverview)
 	}
 
-	// 流程总结工作台（需要 JWT + 租户上下文，无角色限制）。
+	// 流程总结工作台（需要 JWT + 租户上下文 + /summary 页面权限）。
 	summary := r.Group("/api/summary")
-	summary.Use(middleware.JWT(rdb), middleware.TenantContext())
+	summary.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequirePagePermission(orgRepo, "/summary"))
 	{
 		summary.GET("/processes", summaryHandler.ListWorkbenchProcesses)
 		summary.GET("/stats", summaryHandler.GetWorkbenchStats)

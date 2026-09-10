@@ -38,7 +38,7 @@
 
 | 候选 | 原因 |
 |------|------|
-| `list_archived` | `FetchArchivedListPaged` 不按用户过滤 |
+| `list_archived` | 第一期未纳入对话工具范围；后续开放时须复用当前用户可见性边界 |
 | `approve_process` / `reject_process` | 适配器无写接口，产品本期禁止 |
 | `query_model_table` | 建模查询需严格白名单，避免对话变成任意 SQL |
 | `search_org` | 无独立 Org 适配器 API |

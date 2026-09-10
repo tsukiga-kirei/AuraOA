@@ -85,10 +85,10 @@ type OAAdapter interface {
 	// FetchTodoListPaged 分页拉取指定用户的 OA 待审批流程列表，将筛选条件下推到 SQL，返回当前页数据和总数。
 	FetchTodoListPaged(ctx context.Context, username string, filter TodoListPagedFilter) (*PagedResult[TodoItem], error)
 
-	// FetchArchivedList 拉取已归档流程列表（filter 中日期条件在 SQL 中生效）
+	// FetchArchivedList 拉取指定用户发起或审批过的已归档流程列表（filter 中日期条件在 SQL 中生效）
 	FetchArchivedList(ctx context.Context, username string, filter ArchivedListFilter) ([]ArchivedItem, error)
 
-	// FetchArchivedListPaged 分页拉取已归档流程列表，将筛选条件下推到 SQL，返回当前页数据和总数。
+	// FetchArchivedListPaged 分页拉取指定用户发起或审批过的已归档流程列表，将筛选条件下推到 SQL，返回当前页数据和总数。
 	FetchArchivedListPaged(ctx context.Context, username string, filter ArchivedListPagedFilter) (*PagedResult[ArchivedItem], error)
 
 	// FetchProcessFlow 拉取流程审批流快照
@@ -342,4 +342,3 @@ type MyRequestItem struct {
 	Status           string `json:"status"` // 流转中 | 已归档
 	OAURL            string `json:"oa_url,omitempty"`
 }
-

@@ -17,7 +17,7 @@ AuraOA 通过**适配器模式**对接企业 OA 系统，从 OA 数据库中直�
 | `CheckUserPermission` | 检查用户在 OA 中是否具有指定流程的审批权限 |
 | `FetchProcessData` | 拉取指定流程实例的业务数据（主表 + 明细表） |
 | `FetchTodoList` / `FetchTodoListPaged` | 拉取用户待审批流程列表（支持分页和筛选下推） |
-| `FetchArchivedList` / `FetchArchivedListPaged` | 拉取已归档流程列表（支持分页和筛选下推） |
+| `FetchArchivedList` / `FetchArchivedListPaged` | 拉取当前用户发起或审批过的已归档流程列表（支持分页和筛选下推） |
 | `FetchProcessFlow` | 拉取流程审批流快照（审批节点、操作人、意见） |
 | `FetchAllTodoItems` | 拉取全量待办（供定时任务批处理使用） |
 | `IsProcessInTodo` | 判断指定流程是否仍在用户待办中 |
@@ -127,10 +127,15 @@ Ecology9 的业务查询默认由三种驱动共用，因此 MySQL 不需要为�
    └─ JOIN requestbase + base + type + bill + node
    └─ 支持 keyword/applicant/department/processType 筛选下推
 
-5. FetchProcessFlow(processID)
+5. FetchArchivedListPaged(username, filter)
+   └─ hrmresource(loginid→id) → workflow_requestbase + workflow_requestlog
+   └─ 仅返回当前用户发起或在审批历史中实际处理过的已归档流程
+   └─ 支持日期、keyword/applicant/department/processType 筛选下推
+
+6. FetchProcessFlow(processID)
    └─ 拉取审批流节点快照（节点名、审批人、操作、意见）
 
-6. FetchRecentProcessSummaries(processType, since, limit)
+7. FetchRecentProcessSummaries(processType, since, limit)
    └─ workflow_requestbase → workflow_base → hrmresource → hrmdepartment
    └─ 按流程名称和 createdate 下界筛选，按创建时间倒序限量返回
    └─ 仅用于安排指纹检查；是否调用 AI 仍由审核/总结上下文判断

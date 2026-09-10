@@ -2356,16 +2356,19 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string, fi
 	return items, nil
 }
 
-// FetchArchivedList 拉取泛微 E9 中的已归档流程。
+// FetchArchivedList 拉取泛微 E9 中当前用户发起或审批过的已归档流程。
 // 不同客户库对归档时间字段可能不一致，因此优先尝试 lastoperatedate，失败时回退到 createdate。
 // filter 中的归档日期范围在 SQL WHERE 中生效，与 ORDER BY 使用同一归档时间表达式。
 func (a *Ecology9Adapter) FetchArchivedList(ctx context.Context, username string, filter ArchivedListFilter) ([]ArchivedItem, error) {
-	_ = username
-	items, err := a.fetchArchivedListWithArchiveDate(ctx, true, filter)
+	e9UserID, err := a.resolveArchivedVisibilityUserID(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	items, err := a.fetchArchivedListWithArchiveDate(ctx, true, e9UserID, filter)
 	if err == nil {
 		return items, nil
 	}
-	return a.fetchArchivedListWithArchiveDate(ctx, false, filter)
+	return a.fetchArchivedListWithArchiveDate(ctx, false, e9UserID, filter)
 }
 
 // mapTodoType 将泛微 E9 workflow_currentoperator.isremark 操作类型映射为业务可读标签。
@@ -2574,25 +2577,28 @@ func (a *Ecology9Adapter) buildTodoFromJoinWhere(e9UserID int, filter TodoListPa
 	return fromJoinWhere, allArgs
 }
 
-// FetchArchivedListPaged 分页拉取已归档流程列表，将筛选条件下推到 OA SQL。
+// FetchArchivedListPaged 分页拉取当前用户可见的已归档流程列表，将筛选条件下推到 OA SQL。
 func (a *Ecology9Adapter) FetchArchivedListPaged(ctx context.Context, username string, filter ArchivedListPagedFilter) (*PagedResult[ArchivedItem], error) {
-	_ = username
-	result, err := a.fetchArchivedListPagedWithArchiveDate(ctx, true, filter)
+	e9UserID, err := a.resolveArchivedVisibilityUserID(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	result, err := a.fetchArchivedListPagedWithArchiveDate(ctx, true, e9UserID, filter)
 	if err == nil {
 		return result, nil
 	}
-	return a.fetchArchivedListPagedWithArchiveDate(ctx, false, filter)
+	return a.fetchArchivedListPagedWithArchiveDate(ctx, false, e9UserID, filter)
 }
 
 // fetchArchivedListPagedWithArchiveDate 分页查询已归档流程，支持 COUNT + LIMIT/OFFSET 真分页。
-func (a *Ecology9Adapter) fetchArchivedListPagedWithArchiveDate(ctx context.Context, useLastOperateDate bool, filter ArchivedListPagedFilter) (*PagedResult[ArchivedItem], error) {
+func (a *Ecology9Adapter) fetchArchivedListPagedWithArchiveDate(ctx context.Context, useLastOperateDate bool, e9UserID *int, filter ArchivedListPagedFilter) (*PagedResult[ArchivedItem], error) {
 	archiveDateExpr := "r." + a.col("createdate")
 	if useLastOperateDate {
 		archiveDateExpr = fmt.Sprintf("COALESCE(r.%s, r.%s)", a.col("lastoperatedate"), a.col("createdate"))
 	}
 
 	// 构建公共 FROM + JOIN + WHERE
-	fromJoinWhere, args := a.buildArchivedFromJoinWhere(archiveDateExpr, filter)
+	fromJoinWhere, args := a.buildArchivedFromJoinWhere(archiveDateExpr, e9UserID, filter)
 
 	// 1. COUNT 查询
 	countSQL := "SELECT COUNT(*) " + fromJoinWhere
@@ -2668,9 +2674,10 @@ func (a *Ecology9Adapter) fetchArchivedListPagedWithArchiveDate(ctx context.Cont
 }
 
 // buildArchivedFromJoinWhere 构建已归档查询的 FROM + JOIN + WHERE 子句。
-func (a *Ecology9Adapter) buildArchivedFromJoinWhere(archiveDateExpr string, filter ArchivedListPagedFilter) (string, []interface{}) {
+func (a *Ecology9Adapter) buildArchivedFromJoinWhere(archiveDateExpr string, e9UserID *int, filter ArchivedListPagedFilter) (string, []interface{}) {
 	var conds string
 	var args []interface{}
+	visibilityCond, visibilityArgs := a.archivedVisibilityCondition(e9UserID)
 
 	// 日期条件
 	if filter.ArchiveDateStart != nil {
@@ -2727,7 +2734,7 @@ func (a *Ecology9Adapter) buildArchivedFromJoinWhere(archiveDateExpr string, fil
 		LEFT JOIN %s h ON r.%s = h.%s
 		LEFT JOIN %s d ON h.%s = d.%s
 		LEFT JOIN %s n ON r.%s = n.%s
-		WHERE r.%s = 3%s`,
+		WHERE r.%s = 3%s%s`,
 		a.tableName("workflow_requestbase"),
 		a.tableName("workflow_base"),
 		a.col("workflowid"), a.col("id"),
@@ -2742,10 +2749,45 @@ func (a *Ecology9Adapter) buildArchivedFromJoinWhere(archiveDateExpr string, fil
 		a.tableName("workflow_nodebase"),
 		a.col("currentnodeid"), a.col("id"),
 		a.col("currentnodetype"),
+		visibilityCond,
 		conds,
 	)
 
-	return fromJoinWhere, args
+	return fromJoinWhere, append(visibilityArgs, args...)
+}
+
+// resolveArchivedVisibilityUserID 解析已办列表的 OA 用户。
+// username 为空仅供后台任务按 process_id 补充快照信息，前台请求必须传入当前登录账号。
+func (a *Ecology9Adapter) resolveArchivedVisibilityUserID(ctx context.Context, username string) (*int, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil, nil
+	}
+	var e9UserID int
+	if err := a.db.WithContext(ctx).
+		Table(a.tableName("hrmresource")).
+		Select(a.col("id")).
+		Where(a.col("loginid")+" = ?", username).
+		Row().Scan(&e9UserID); err != nil {
+		return nil, fmt.Errorf("OA 用户 '%s' 不存在", username)
+	}
+	return &e9UserID, nil
+}
+
+// archivedVisibilityCondition 将已归档流程限制为当前用户发起或实际审批过的流程。
+func (a *Ecology9Adapter) archivedVisibilityCondition(e9UserID *int) (string, []interface{}) {
+	if e9UserID == nil {
+		return "", nil
+	}
+	condition := fmt.Sprintf(` AND (r.%s = ? OR EXISTS (
+		SELECT 1 FROM %s visibility_log
+		WHERE visibility_log.%s = r.%s AND visibility_log.%s = ?
+	))`,
+		a.col("creater"),
+		a.tableName("workflow_requestlog"),
+		a.col("requestid"), a.col("requestid"), a.col("operator"),
+	)
+	return condition, []interface{}{*e9UserID, *e9UserID}
 }
 
 // lowerFunc 返回当前数据库驱动的小写函数名。
@@ -2862,7 +2904,7 @@ func (a *Ecology9Adapter) FetchAllTodoItems(ctx context.Context, limit int) ([]T
 	return items, nil
 }
 
-func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, useLastOperateDate bool, filter ArchivedListFilter) ([]ArchivedItem, error) {
+func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, useLastOperateDate bool, e9UserID *int, filter ArchivedListFilter) ([]ArchivedItem, error) {
 	archiveDateExpr := "r." + a.col("createdate")
 	if useLastOperateDate {
 		archiveDateExpr = fmt.Sprintf("COALESCE(r.%s, r.%s)", a.col("lastoperatedate"), a.col("createdate"))
@@ -2870,6 +2912,7 @@ func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, 
 
 	var dateCond string
 	var dateArgs []interface{}
+	visibilityCond, visibilityArgs := a.archivedVisibilityCondition(e9UserID)
 	if filter.ArchiveDateStart != nil {
 		dateCond += fmt.Sprintf(" AND (%s) >= ?", archiveDateExpr)
 		dateArgs = append(dateArgs, *filter.ArchiveDateStart)
@@ -2898,7 +2941,7 @@ func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, 
 		LEFT JOIN %s h ON r.%s = h.%s
 		LEFT JOIN %s d ON h.%s = d.%s
 		LEFT JOIN %s n ON r.%s = n.%s
-		WHERE r.%s = 3%s
+		WHERE r.%s = 3%s%s
 		ORDER BY %s DESC`,
 		a.col("requestid"), a.col("requestname"),
 		a.col("lastname"), a.col("departmentname"),
@@ -2921,11 +2964,13 @@ func (a *Ecology9Adapter) fetchArchivedListWithArchiveDate(ctx context.Context, 
 		a.tableName("workflow_nodebase"),
 		a.col("currentnodeid"), a.col("id"),
 		a.col("currentnodetype"),
+		visibilityCond,
 		dateCond,
 		archiveDateExpr,
 	)
 
-	rows, err := a.db.WithContext(ctx).Raw(query, dateArgs...).Rows()
+	queryArgs := append(visibilityArgs, dateArgs...)
+	rows, err := a.db.WithContext(ctx).Raw(query, queryArgs...).Rows()
 	if err != nil {
 		return nil, fmt.Errorf("查询 OA 已归档流程失败: %w", err)
 	}
@@ -3835,4 +3880,3 @@ func (a *Ecology9Adapter) FetchMyRequestsPaged(ctx context.Context, username str
 
 	return &PagedResult[MyRequestItem]{Items: items, Total: total}, nil
 }
-
