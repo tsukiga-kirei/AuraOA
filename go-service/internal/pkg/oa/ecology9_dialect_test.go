@@ -77,24 +77,36 @@ func TestMapTodoType(t *testing.T) {
 }
 
 func TestBuildTodoFromJoinWhereFilters(t *testing.T) {
-	adapter := &Ecology9Adapter{driver: "mysql"}
-	fromWhere, args := adapter.buildTodoFromJoinWhere(247, TodoListPagedFilter{
+	// 1. MySQL 方言测试
+	adapterMySQL := &Ecology9Adapter{driver: "mysql"}
+	fromWhereMySQL, argsMySQL := adapterMySQL.buildTodoFromJoinWhere(247, TodoListPagedFilter{
 		Page:     1,
 		PageSize: 20,
 	})
-	if len(args) == 0 || args[0] != 247 {
-		t.Fatalf("expected args[0] to be 247, got %#v", args)
+	if len(argsMySQL) == 0 || argsMySQL[0] != 247 {
+		t.Fatalf("expected args[0] to be 247, got %#v", argsMySQL)
 	}
-	// 验证包含状态码扩展
-	if !containsStr(fromWhere, "co.isremark IN ('0', '1', 'a', 'h', '9')") {
-		t.Errorf("expected isremark IN ('0', '1', 'a', 'h', '9') in SQL, got: %s", fromWhere)
+	if !containsStr(fromWhereMySQL, "CAST(co.isremark AS CHAR) IN ('0', '1', 'a', 'h', '9')") {
+		t.Errorf("expected CAST(co.isremark AS CHAR) in SQL, got: %s", fromWhereMySQL)
 	}
-	// 验证默认包含主表与系统提醒过滤
-	if !containsStr(fromWhere, "formtable_main_%") {
-		t.Errorf("expected formtable_main_%% in SQL, got: %s", fromWhere)
+	if !containsStr(fromWhereMySQL, "formtable_main_%") {
+		t.Errorf("expected formtable_main_%% in SQL, got: %s", fromWhereMySQL)
 	}
-	if !containsStr(fromWhere, "NOT LIKE '%系统提醒%'") {
-		t.Errorf("expected NOT LIKE '%%系统提醒%%' in SQL, got: %s", fromWhere)
+	if !containsStr(fromWhereMySQL, "NOT LIKE '%系统提醒%'") {
+		t.Errorf("expected NOT LIKE '%%系统提醒%%' in SQL, got: %s", fromWhereMySQL)
+	}
+
+	// 2. DM (达梦) 方言测试：确保使用 TO_CHAR 避免数字列抛出 -6128 错误
+	adapterDM := &Ecology9Adapter{driver: "dm"}
+	fromWhereDM, argsDM := adapterDM.buildTodoFromJoinWhere(247, TodoListPagedFilter{
+		Page:     1,
+		PageSize: 20,
+	})
+	if len(argsDM) == 0 || argsDM[0] != 247 {
+		t.Fatalf("expected args[0] to be 247, got %#v", argsDM)
+	}
+	if !containsStr(fromWhereDM, "TO_CHAR(co.ISREMARK) IN ('0', '1', 'a', 'h', '9')") {
+		t.Errorf("expected TO_CHAR(co.ISREMARK) in DM SQL, got: %s", fromWhereDM)
 	}
 }
 

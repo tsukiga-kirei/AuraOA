@@ -2286,7 +2286,7 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string, fi
 		LEFT JOIN %s h ON r.%s = h.%s
 		LEFT JOIN %s d ON h.%s = d.%s
 		LEFT JOIN %s n ON co.%s = n.%s
-		WHERE co.%s = ? AND co.%s IN ('0', '1', 'a', 'h', '9')
+		WHERE co.%s = ? AND %s IN ('0', '1', 'a', 'h', '9')
 		  AND %s(COALESCE(bill.%s, '')) LIKE 'formtable_main_%%'
 		  AND %s(COALESCE(wb.%s, '')) NOT LIKE '%%系统提醒%%'%s
 		ORDER BY r.%s DESC`,
@@ -2316,7 +2316,7 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string, fi
 		a.tableName("workflow_nodebase"), // n
 		a.col("nodeid"), a.col("id"),
 		// WHERE
-		a.col("userid"), a.col("isremark"),
+		a.col("userid"), a.castToTextExpr("co."+a.col("isremark")),
 		a.lowerFunc(), a.col("tablename"),
 		a.lowerFunc(), a.col("workflowname"),
 		dateCond,
@@ -2547,7 +2547,7 @@ func (a *Ecology9Adapter) buildTodoFromJoinWhere(e9UserID int, filter TodoListPa
 		LEFT JOIN %s h ON r.%s = h.%s
 		LEFT JOIN %s d ON h.%s = d.%s
 		LEFT JOIN %s n ON co.%s = n.%s
-		WHERE co.%s = ? AND co.%s IN ('0', '1', 'a', 'h', '9')%s`,
+		WHERE co.%s = ? AND %s IN ('0', '1', 'a', 'h', '9')%s`,
 		a.tableName("workflow_currentoperator"),
 		a.tableName("workflow_requestbase"),
 		a.col("requestid"), a.col("requestid"),
@@ -2563,7 +2563,8 @@ func (a *Ecology9Adapter) buildTodoFromJoinWhere(e9UserID int, filter TodoListPa
 		a.col("departmentid"), a.col("id"),
 		a.tableName("workflow_nodebase"),
 		a.col("nodeid"), a.col("id"),
-		a.col("userid"), a.col("isremark"),
+		a.col("userid"),
+		a.castToTextExpr("co."+a.col("isremark")),
 		conds,
 	)
 
@@ -3223,7 +3224,7 @@ func (a *Ecology9Adapter) IsProcessInTodo(ctx context.Context, username string, 
 	var count int64
 	err = a.db.WithContext(ctx).
 		Table(a.tableName("workflow_currentoperator")).
-		Where(a.col("userid")+" = ? AND "+a.col("requestid")+" = ? AND "+a.col("isremark")+" IN ('0', '1', 'a', 'h', '9')",
+		Where(a.col("userid")+" = ? AND "+a.col("requestid")+" = ? AND "+a.castToTextExpr(a.col("isremark"))+" IN ('0', '1', 'a', 'h', '9')",
 			e9UserID, processID).
 		Count(&count).Error
 	if err != nil {
