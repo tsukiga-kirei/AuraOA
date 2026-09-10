@@ -2622,6 +2622,7 @@ onMounted(async () => {
                         <span v-if="getLLMModelLabel(logItem) !== '-'">{{ getLLMModelLabel(logItem) }}</span>
                         <span>{{ t('admin.data.duration') }} {{ (logItem.duration_ms / 1000).toFixed(1) }}s</span>
                         <span
+                          v-if="logItem.request_type !== 'chat'"
                           class="chain-card-version"
                           :class="{ 'chain-card-version--legacy': !logItem.config_version_no }"
                         >
