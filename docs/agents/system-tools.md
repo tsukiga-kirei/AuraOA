@@ -13,6 +13,7 @@
 | tool_code | 作用 | 适配器 / 服务 | ui_kind | oa_required |
 |-----------|------|---------------|---------|-------------|
 | `list_my_todos` | 当前用户待办分页 | `FetchTodoListPaged` | `todo_list` | 是 |
+| `list_my_requests` | 当前用户发起的流程列表分页 | `FetchMyRequestsPaged` | `my_request_list` | 是 |
 | `get_process` | 流程主表/明细/附件摘要 | `FetchProcessData` + 可见性 | `process_detail` | 是 |
 | `get_approval_flow` | 审批轨迹 | `FetchProcessFlow` + 可见性 | `approval_flow` | 是 |
 | `get_latest_audit` | AuraOA 最近一次审核结论 | `audit_logs` + 可见性 | `audit_result` | 否（需能定位流程） |

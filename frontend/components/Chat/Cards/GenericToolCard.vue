@@ -26,7 +26,7 @@ const isExpanded = ref(true)
 <template>
   <div class="generic-tool-wrapper">
     <!-- 专属卡片渲染 -->
-    <template v-if="toolCode === 'get_my_todo_list' && result && !error">
+    <template v-if="(toolCode === 'get_my_todo_list' || toolCode === 'list_my_todos' || toolCode === 'list_my_requests') && result && !error">
       <TodoListCard :result="result" />
     </template>
 

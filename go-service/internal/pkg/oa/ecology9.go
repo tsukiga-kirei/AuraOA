@@ -3704,3 +3704,134 @@ func (a *Ecology9Adapter) mapFieldType(htmlType string) string {
 		return "text"
 	}
 }
+
+// FetchMyRequestsPaged 分页查询当前登录用户在 OA 系统中发起的申请与审批流程。
+func (a *Ecology9Adapter) FetchMyRequestsPaged(ctx context.Context, username string, filter MyRequestPagedFilter) (*PagedResult[MyRequestItem], error) {
+	var e9UserID int
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("hrmresource")).
+		Select(a.col("id")).
+		Where(a.col("loginid")+" = ?", username).
+		Row().Scan(&e9UserID)
+	if err != nil {
+		return nil, fmt.Errorf("OA 用户 '%s' 不存在", username)
+	}
+
+	var conds string
+	var args []interface{}
+
+	// 1. 过滤状态：all (全部) | processing (流转中) | archived (已归档/已办结)
+	// 泛微 Ecology 9 中，currentnodetype = '3' 为已办结/已归档节点
+	switch filter.Status {
+	case "processing":
+		conds += fmt.Sprintf(" AND r.%s <> '3'", a.col("currentnodetype"))
+	case "archived":
+		conds += fmt.Sprintf(" AND r.%s = '3'", a.col("currentnodetype"))
+	}
+
+	// 2. keyword 模糊搜索标题
+	if kw := strings.TrimSpace(filter.Keyword); kw != "" {
+		conds += fmt.Sprintf(" AND %s(r.%s) LIKE ?", a.lowerFunc(), a.col("requestname"))
+		args = append(args, "%"+strings.ToLower(kw)+"%")
+	}
+
+	// 3. 排除系统提醒与限定业务主表
+	conds += fmt.Sprintf(" AND %s(COALESCE(bill.%s, '')) LIKE 'formtable_main_%%'", a.lowerFunc(), a.col("tablename"))
+	conds += fmt.Sprintf(" AND %s(COALESCE(wb.%s, '')) NOT LIKE '%%系统提醒%%'", a.lowerFunc(), a.col("workflowname"))
+
+	fromJoinWhere := fmt.Sprintf(`FROM %s r
+		LEFT JOIN %s wb ON r.%s = wb.%s
+		LEFT JOIN %s wt ON wb.%s = wt.%s
+		LEFT JOIN %s bill ON wb.%s = bill.%s
+		LEFT JOIN %s n ON r.%s = n.%s
+		WHERE r.%s = ?%s`,
+		a.tableName("workflow_requestbase"),
+		a.tableName("workflow_base"),
+		a.col("workflowid"), a.col("id"),
+		a.tableName("workflow_type"),
+		a.col("workflowtype"), a.col("id"),
+		a.tableName("workflow_bill"),
+		a.col("formid"), a.col("id"),
+		a.tableName("workflow_nodebase"),
+		a.col("currentnodeid"), a.col("id"),
+		a.col("creater"),
+		conds,
+	)
+
+	allArgs := []interface{}{e9UserID}
+	allArgs = append(allArgs, args...)
+
+	// COUNT 查询
+	countSQL := "SELECT COUNT(DISTINCT r." + a.col("requestid") + ") " + fromJoinWhere
+	var total int
+	if err := a.db.WithContext(ctx).Raw(countSQL, allArgs...).Row().Scan(&total); err != nil {
+		return nil, fmt.Errorf("查询我发起的流程总数失败: %w", err)
+	}
+
+	page, pageSize := filter.Page, filter.PageSize
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	if total == 0 {
+		return &PagedResult[MyRequestItem]{Items: []MyRequestItem{}, Total: 0}, nil
+	}
+
+	// 数据查询
+	selectCols := fmt.Sprintf(`
+		r.%s AS request_id,
+		r.%s AS request_name,
+		COALESCE(wb.%s, '') AS workflow_name,
+		COALESCE(wt.%s, '') AS type_name,
+		COALESCE(n.%s, '') AS node_name,
+		r.%s AS create_date,
+		r.%s AS node_type`,
+		a.col("requestid"), a.col("requestname"),
+		a.col("workflowname"),
+		a.col("typename"),
+		a.col("nodename"),
+		a.col("createdate"),
+		a.col("currentnodetype"),
+	)
+
+	offset := (page - 1) * pageSize
+	dataSQL := "SELECT DISTINCT " + selectCols + " " + fromJoinWhere +
+		fmt.Sprintf(" ORDER BY r.%s DESC", a.col("createdate")) +
+		a.limitOffsetClause(pageSize, offset)
+
+	rows, err := a.db.WithContext(ctx).Raw(dataSQL, allArgs...).Rows()
+	if err != nil {
+		return nil, fmt.Errorf("查询我发起的流程失败: %w", err)
+	}
+	defer rows.Close()
+
+	var items []MyRequestItem
+	for rows.Next() {
+		var requestID, requestName, workflowName, typeName, nodeName, createDate, nodeType string
+		if err := rows.Scan(&requestID, &requestName, &workflowName, &typeName, &nodeName, &createDate, &nodeType); err != nil {
+			continue
+		}
+		statusLabel := "流转中"
+		if nodeType == "3" {
+			statusLabel = "已归档"
+			if nodeName == "" {
+				nodeName = "办结归档"
+			}
+		}
+		items = append(items, MyRequestItem{
+			ProcessID:        requestID,
+			Title:            requestName,
+			ProcessType:      workflowName,
+			ProcessTypeLabel: typeName,
+			CurrentNode:      nodeName,
+			SubmitTime:       createDate,
+			Status:           statusLabel,
+		})
+	}
+
+	return &PagedResult[MyRequestItem]{Items: items, Total: total}, nil
+}
+
