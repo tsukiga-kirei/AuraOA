@@ -464,10 +464,21 @@ func (r *AuditProcessSnapshotRepo) VisibleWorkbenchQuery(c *gin.Context, userID 
 // includeEmbed 用于区分当前待办（可展示该流程的嵌入结论）与历史列表（仅租户管理员查看租户级嵌入结论）。
 func (r *AuditProcessSnapshotRepo) VisibleWorkbenchQueryScoped(c *gin.Context, userID uuid.UUID, includeEmbed bool) *gorm.DB {
 	tenantID, _ := c.Get("tenant_id")
-	embedScope := "aps.channel = 'workbench'"
-	if includeEmbed {
-		embedScope = "(aps.channel = 'workbench' OR cfg.embed_enabled = true)"
+	if !includeEmbed {
+		// 普通用户在历史/已完成列表中，仅查询本人经手或发起的有效审核记录，不展示租户内其他用户的共享快照
+		candidates := r.DB.Raw(`
+SELECT al.id, al.tenant_id, al.process_id, 'workbench' AS channel,
+ jsonb_build_array(al.id::text) AS valid_log_ids, al.id AS latest_valid_log_id,
+ al.title, al.process_type, al.recommendation, al.score, al.confidence, al.created_at, al.updated_at, 0 AS priority
+FROM audit_logs al
+WHERE al.tenant_id = ? AND al.user_id = ? AND al.trigger_source NOT IN ('embed_auto', 'embed_manual')
+ AND al.status = 'completed' AND COALESCE(al.parse_error, '') = '' AND al.recommendation IN ('approve', 'return', 'review')
+`, tenantID, userID)
+		ranked := r.DB.Table("(?) AS candidates", candidates).Select("candidates.*, ROW_NUMBER() OVER (PARTITION BY process_id ORDER BY updated_at DESC, id DESC) AS row_num")
+		return r.DB.Table("(?) AS visible", ranked).Where("row_num = 1")
 	}
+
+	embedScope := "(aps.channel = 'workbench' OR cfg.embed_enabled = true)"
 	candidates := r.DB.Raw(`
 SELECT al.id, al.tenant_id, al.process_id, 'workbench' AS channel,
  jsonb_build_array(al.id::text) AS valid_log_ids, al.id AS latest_valid_log_id,
@@ -480,7 +491,8 @@ SELECT aps.id, aps.tenant_id, aps.process_id, aps.channel, aps.valid_log_ids, ap
  aps.title, aps.process_type, aps.recommendation, aps.score, aps.confidence, aps.created_at, aps.updated_at, CASE WHEN aps.channel = 'embed' THEN 1 ELSE 2 END AS priority
 FROM audit_process_snapshots aps
 JOIN process_audit_configs cfg ON cfg.tenant_id = aps.tenant_id AND cfg.process_type = aps.process_type
-WHERE aps.tenant_id = ? AND cfg.status = 'active' AND `+embedScope+`
+LEFT JOIN audit_logs latest_al ON latest_al.id = aps.latest_valid_log_id
+WHERE aps.tenant_id = ? AND cfg.status = 'active' AND COALESCE(latest_al.trigger_detail, '') != 'personal_embed_manual' AND `+embedScope+`
 `, tenantID, userID, tenantID)
 	ranked := r.DB.Table("(?) AS candidates", candidates).Select("candidates.*, ROW_NUMBER() OVER (PARTITION BY process_id ORDER BY priority, updated_at DESC, id DESC) AS row_num")
 	return r.DB.Table("(?) AS visible", ranked).Where("row_num = 1")
