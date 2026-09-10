@@ -16,6 +16,7 @@ import {
   BarChartOutlined,
   BulbOutlined,
   FileTextOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { buildJumpTurns } from '~/utils/chatJump'
 import type { ChatMessageItem } from '~/types/chat'
@@ -47,6 +48,7 @@ const handleUserStop = async () => {
 }
 const BOTTOM_THRESHOLD = 36
 let ignoreScroll = false
+const hasUnreadNewMessage = ref(false)
 const distanceToBottom = () => {
   const el = canvas.value
   if (!el) return 0
@@ -59,19 +61,60 @@ const scrollBottom = () => {
   el.scrollTop = el.scrollHeight
   requestAnimationFrame(() => { ignoreScroll = false })
 }
-const followLatest = () => { if (pinned.value) nextTick(scrollBottom) }
+const followLatest = () => {
+  if (pinned.value) {
+    nextTick(scrollBottom)
+  } else {
+    hasUnreadNewMessage.value = true
+  }
+}
 const onCanvasScroll = () => {
   if (!canvas.value || ignoreScroll) return
-  pinned.value = distanceToBottom() <= BOTTOM_THRESHOLD
+  const isBottom = distanceToBottom() <= BOTTOM_THRESHOLD
+  pinned.value = isBottom
+  if (isBottom) {
+    hasUnreadNewMessage.value = false
+  }
+}
+const handleScrollToBottom = () => {
+  pinned.value = true
+  hasUnreadNewMessage.value = false
+  scrollBottom()
 }
 watch(currentDetail, detail => {
   messages.value = [...(detail?.messages || [])]
   pinned.value = true
+  hasUnreadNewMessage.value = false
   nextTick(scrollBottom)
 }, { immediate: true })
 watch(currentSessionId, () => stopStreaming())
 watch(() => messages.value.map(item => [item.content, item.reasoning_content, item.tool_calls?.length, item.status, item.streaming]), followLatest, { deep: true })
 watch(streaming, followLatest)
+
+const lastMessage = computed(() => messages.value.length ? messages.value[messages.value.length - 1] : null)
+const canRetryLastMessage = computed(() => {
+  if (streaming.value || detailLoading.value) return false
+  if (!lastMessage.value || lastMessage.value.role !== 'assistant') return false
+  return lastMessage.value.status === 'interrupted' || lastMessage.value.status === 'error'
+})
+
+const handleRetryMessage = async (msg?: ChatMessageItem) => {
+  if (streaming.value || detailLoading.value) return
+  let targetIndex = messages.value.length - 1
+  if (msg) {
+    const idx = messages.value.findIndex(m => m.id === msg.id)
+    if (idx !== -1) targetIndex = idx
+  }
+  for (let i = targetIndex; i >= 0; i--) {
+    if (messages.value[i].role === 'user') {
+      const userPrompt = messages.value[i].content
+      if (userPrompt) {
+        await submit(userPrompt)
+        break
+      }
+    }
+  }
+}
 const selectFromRoute = async () => {
   const rawId = route.query.session ?? route.query.session_id
   const id = typeof rawId === 'string' && rawId.trim() ? rawId.trim() : null
@@ -245,14 +288,29 @@ const jump = (id: string) => {
           <p v-if="!effectiveAgents.length" class="no-agents">{{ t('chat.noAgents') }}</p>
         </div>
         <div v-else class="chat-thread-container">
-          <ChatThread :messages="messages" :agent-name="agent?.name" />
+          <ChatThread :messages="messages" :agent-name="agent?.name" @retry="handleRetryMessage" />
         </div>
       </div>
     </div>
     <MessageJumpRail v-if="jumpTurns.length > 2" :turns="jumpTurns" @jump="jump" />
     <transition name="bottom-slide">
       <div v-if="messages.length" class="chat-bottom chat-bottom--active">
-        <button v-if="!pinned && messages.length" class="scroll-bottom" :aria-label="t('chat.scrollBottom')" @click="pinned = true; scrollBottom()"><ArrowDownOutlined /></button>
+        <div v-if="canRetryLastMessage" class="retry-bar">
+          <span class="retry-bar-text">{{ t('chat.retryPrompt', '生成已被中断或失败') }}</span>
+          <button class="retry-bar-btn" @click="handleRetryMessage()">
+            <ReloadOutlined /> {{ t('chat.regenerate') }}
+          </button>
+        </div>
+        <button
+          v-if="!pinned && messages.length"
+          class="scroll-bottom"
+          :class="{ 'has-unread': hasUnreadNewMessage }"
+          :aria-label="t('chat.scrollBottom')"
+          @click="handleScrollToBottom"
+        >
+          <ArrowDownOutlined />
+          <span v-if="hasUnreadNewMessage" class="unread-badge" />
+        </button>
         <ChatComposer ref="composer" :submitting="streaming" :disabled="detailLoading || !agent" @submit="submit" @stop="handleUserStop" />
         <p class="composer-hint">{{ t('chat.composerHint', '内容由 AI 生成，请结合实际业务审慎核验') }}</p>
       </div>
@@ -422,8 +480,13 @@ h1 {
   }
 }
 
-/* 底部输入框过渡动画 */
-.chat-bottom { flex-shrink:0; position:relative; background:var(--color-bg-card); padding:8px 24px 10px; }
+/* 底部输入框过渡动画与移动端安全区 */
+.chat-bottom {
+  flex-shrink: 0;
+  position: relative;
+  background: var(--color-bg-card);
+  padding: 8px 24px max(10px, env(safe-area-inset-bottom));
+}
 .bottom-slide-enter-active {
   transition: all 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -432,7 +495,71 @@ h1 {
   transform: translateY(20px);
 }
 .composer-hint { text-align:center; font-size:11px; color:var(--color-text-tertiary); margin:6px 0 0; }
-.scroll-bottom { position:absolute; top:-44px; left:calc(50% - 17px); width:34px; height:34px; background:var(--color-bg-card); border:1px solid var(--color-border); color:var(--color-text-secondary); border-radius:50%; cursor:pointer; }
+.scroll-bottom {
+  position: absolute;
+  top: -44px;
+  left: calc(50% - 17px);
+  width: 34px;
+  height: 34px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s;
+}
+.scroll-bottom:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary-lighter);
+}
+.unread-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  background: #ff4d4f;
+  border: 2px solid var(--color-bg-card);
+  border-radius: 50%;
+}
+.retry-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 6px 14px;
+  background: rgba(255, 77, 79, 0.08);
+  border: 1px solid rgba(255, 77, 79, 0.2);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.retry-bar-text {
+  color: var(--color-text-secondary);
+}
+.retry-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.retry-bar-btn:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary-lighter);
+  background: var(--color-bg-hover);
+}
 .chat-error,.no-agents { color:var(--color-text-secondary); font-size:13px; padding:14px; background:var(--color-bg-page); border-radius:8px; margin:16px auto; max-width:740px; }
 .chat-loading { padding:60px; text-align:center; }
 
@@ -441,7 +568,7 @@ h1 {
   .workspace-context { display:none; }
   .chat-welcome { padding:24px 16px; }
   .suggestions { grid-template-columns:1fr; gap:10px; margin-top:20px; }
-  .chat-bottom { padding:8px 12px 10px; }
+  .chat-bottom { padding:8px 12px max(12px, env(safe-area-inset-bottom)); }
   .welcome-mark { margin-bottom:14px; }
 }
 @media(prefers-reduced-motion:reduce) {

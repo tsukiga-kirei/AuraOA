@@ -287,6 +287,9 @@ func (h *AgentAdminHandler) ListTenantAgentSessions(c *gin.Context) {
 	keyword := c.Query("keyword")
 	agentCode := c.Query("agent_code")
 	userName := c.Query("user_name")
+	if userName == "" {
+		userName = c.Query("username")
+	}
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

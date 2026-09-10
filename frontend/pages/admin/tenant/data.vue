@@ -7,6 +7,7 @@ import {
   ExportOutlined,
   EyeOutlined,
   CheckCircleOutlined,
+  CheckOutlined,
   CloseCircleOutlined,
   DownOutlined,
   SyncOutlined,
@@ -25,10 +26,11 @@ import {
   LikeOutlined,
   DislikeOutlined,
   UserOutlined,
+  CopyOutlined,
 } from '@ant-design/icons-vue'
 import dayjs, { type Dayjs } from 'dayjs'
 import 'dayjs/locale/zh-cn'
-import { marked } from 'marked'
+import { renderSafeMarkdown } from '~/utils/markdown'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { message } from 'ant-design-vue'
@@ -124,7 +126,7 @@ const agentSessionPageSize = ref(20)
 const agentSessionSearch = ref('')
 const agentSessionFilterAgent = ref('')
 const agentSessionFilterUser = ref('')
-const agentSessionFilterDateRange = ref<[Dayjs, Dayjs] | null>(null)
+const agentSessionFilterDateRange = ref<[Dayjs, Dayjs] | undefined>(undefined)
 const agentSessionShowFilters = ref(false)
 
 const agentSessionDetailVisible = ref(false)
@@ -742,7 +744,31 @@ async function loadProcessCascaderOptions() {
   }
 }
 
-const renderMarkdown = (text: string) => text ? marked.parse(text) : ''
+const renderMarkdown = (text: string) => text ? renderSafeMarkdown(text) : ''
+
+const copiedKey = ref('')
+const copyText = async (key: string, text: string) => {
+  if (!text) return
+  try {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    copiedKey.value = key
+    message.success(t('common.copied', '已复制到剪贴板'))
+    setTimeout(() => {
+      if (copiedKey.value === key) copiedKey.value = ''
+    }, 2000)
+  } catch {
+    message.error(t('common.copyFailed', '复制失败'))
+  }
+}
 const formatToolArguments = (args: any): string => {
   if (!args) return ''
   if (typeof args === 'object') {
@@ -874,7 +900,7 @@ function clearAgentSessionFilters() {
   agentSessionSearch.value = ''
   agentSessionFilterAgent.value = ''
   agentSessionFilterUser.value = ''
-  agentSessionFilterDateRange.value = null
+  agentSessionFilterDateRange.value = undefined
   agentSessionPage.value = 1
 }
 
@@ -1617,14 +1643,14 @@ onMounted(async () => {
           <div class="stat-card-icon"><AppstoreOutlined /></div>
           <div class="stat-card-info">
             <span class="stat-card-value">{{ summaryStats.total }}</span>
-            <span class="stat-card-label">已总结流程</span>
+            <span class="stat-card-label">{{ t('admin.data.summarizedProcesses', '已总结流程') }}</span>
           </div>
         </div>
         <div class="stat-card stat-card--primary">
           <div class="stat-card-icon"><FileTextOutlined /></div>
           <div class="stat-card-info">
             <span class="stat-card-value">{{ summaryStats.block_count }}</span>
-            <span class="stat-card-label">总结块数量</span>
+            <span class="stat-card-label">{{ t('admin.data.summaryBlockCount', '总结块数量') }}</span>
           </div>
         </div>
       </div>
@@ -1729,8 +1755,8 @@ onMounted(async () => {
             <th>{{ t('admin.data.thDepartment') }}</th>
             <th>{{ t('admin.data.thProcessType') }}</th>
             <th>{{ t('admin.data.thSourceChannel') }}</th>
-            <th>总结块</th>
-            <th>总结次数</th>
+            <th>{{ t('admin.data.thSummaryBlocks', '总结块') }}</th>
+            <th>{{ t('admin.data.thSummaryCount', '总结次数') }}</th>
             <th>{{ t('admin.data.thTime') }}</th>
             <th>{{ t('admin.data.thAction') }}</th>
           </tr>
@@ -2288,7 +2314,7 @@ onMounted(async () => {
                           </div>
 
                           <!-- 流程分析 (Archive) -->
-                          <div v-if="logItem.archive_result?.flow_audit?.node_results?.length" class="chain-section-title">流程分析</div>
+                          <div v-if="logItem.archive_result?.flow_audit?.node_results?.length" class="chain-section-title">{{ t('admin.data.flowAuditTitle', '流程分析') }}</div>
                           <div v-if="logItem.archive_result?.flow_audit?.node_results?.length" class="rule-checks" style="margin-bottom: 12px;">
                              <div v-for="(node, ni) in logItem.archive_result.flow_audit.node_results" :key="ni" class="chain-rule-item" :class="{ 'chain-rule--fail': !node.compliant }">
                                <div class="chain-rule-name">
@@ -2423,7 +2449,7 @@ onMounted(async () => {
                           </div>
 
                           <details v-if="logItem.raw_content" class="summary-raw-details">
-                            <summary>查看模型原始输出</summary>
+                            <summary>{{ t('admin.data.viewRawOutput', '查看模型原始输出') }}</summary>
                             <pre>{{ logItem.raw_content }}</pre>
                           </details>
                         </template>
@@ -2611,8 +2637,8 @@ onMounted(async () => {
                             <div v-if="parseChatPrompt(logItem.user_prompt, logItem.system_prompt).systemPrompt" class="chat-detail-section">
                               <details class="chat-system-details">
                                 <summary class="chat-section-header">
-                                  <span class="chat-section-tag system">系统预设提示词</span>
-                                  <span class="chat-section-desc">设定智能体的角色定位与能力规范</span>
+                                  <span class="chat-section-tag system">{{ t('admin.data.chatSystemPrompt', '系统预设提示词') }}</span>
+                                  <span class="chat-section-desc">{{ t('admin.data.chatSystemPromptDesc', '设定智能体的角色定位与能力规范') }}</span>
                                   <DownOutlined class="chat-section-chevron" />
                                 </summary>
                                 <pre class="llm-prompt-pre chat-pre">{{ parseChatPrompt(logItem.user_prompt, logItem.system_prompt).systemPrompt }}</pre>
@@ -2623,8 +2649,8 @@ onMounted(async () => {
                             <div v-if="parseChatPrompt(logItem.user_prompt, logItem.system_prompt).tools.length" class="chat-detail-section">
                               <details class="chat-tools-details">
                                 <summary class="chat-section-header">
-                                  <span class="chat-section-tag tools">可用工具定义 ({{ parseChatPrompt(logItem.user_prompt, logItem.system_prompt).tools.length }})</span>
-                                  <span class="chat-section-desc">本轮挂载的系统工具与扩展能力</span>
+                                  <span class="chat-section-tag tools">{{ t('admin.data.chatToolsTitle', '可用工具定义') }} ({{ parseChatPrompt(logItem.user_prompt, logItem.system_prompt).tools.length }})</span>
+                                  <span class="chat-section-desc">{{ t('admin.data.chatToolsDesc', '本轮挂载的系统工具与扩展能力') }}</span>
                                   <DownOutlined class="chat-section-chevron" />
                                 </summary>
                                 <div class="chat-tool-badges">
@@ -2638,7 +2664,7 @@ onMounted(async () => {
 
                             <!-- 对话消息上下文 -->
                             <div class="chat-detail-section">
-                              <div class="chain-section-title" style="margin-bottom: 8px;">对话上下文消息</div>
+                              <div class="chain-section-title" style="margin-bottom: 8px;">{{ t('admin.data.chatContextMessages', '对话上下文消息') }}</div>
                               <div class="chat-messages-flow">
                                 <div v-for="(msg, mIdx) in parseChatPrompt(logItem.user_prompt, logItem.system_prompt).messages" :key="mIdx" class="chat-flow-item" :class="msg.role">
                                   <div class="chat-flow-role">
@@ -2766,15 +2792,15 @@ onMounted(async () => {
                       <details v-if="msg.tool_calls?.length" class="session-toolcalls-details">
                         <summary class="session-toolcalls-summary">
                           <ApiOutlined style="color: var(--color-warning);" />
-                          <span>工具调用 ({{ msg.tool_calls.length }} 次)</span>
+                          <span>{{ t('admin.data.toolCallsTitle', '工具调用') }} ({{ msg.tool_calls.length }} {{ t('admin.data.countUnit', '次') }})</span>
                           <DownOutlined class="chevron-icon" />
                         </summary>
                         <div class="session-toolcalls-list">
                           <div v-for="(tc, tcIdx) in msg.tool_calls" :key="tc.tool_call_id || tc.id || tcIdx" class="session-toolcall-item">
                             <div class="toolcall-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-                              <span class="toolcall-name">{{ tc.tool_code || tc.name || tc.function?.name || '未知工具' }}</span>
+                              <span class="toolcall-name">{{ tc.tool_code || tc.name || tc.function?.name || t('admin.data.unknownTool', '未知工具') }}</span>
                               <a-tag v-if="tc.status" :color="tc.status === 'success' ? 'success' : tc.status === 'error' ? 'error' : 'processing'" style="margin-right: 0; font-size: 11px;">
-                                {{ tc.status === 'success' ? '调用成功' : tc.status === 'error' ? '调用失败' : '执行中' }}
+                                {{ tc.status === 'success' ? t('admin.data.toolStatusSuccess', '调用成功') : tc.status === 'error' ? t('admin.data.toolStatusError', '调用失败') : t('admin.data.toolStatusRunning', '执行中') }}
                               </a-tag>
                             </div>
                             <div v-if="tc.thought" class="toolcall-thought" style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px;">
@@ -2782,13 +2808,37 @@ onMounted(async () => {
                             </div>
                             <!-- 参数 -->
                             <div v-if="tc.arguments || tc.function?.arguments" class="toolcall-block">
-                              <div class="toolcall-block-title" style="font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 2px;">入参：</div>
+                              <div class="toolcall-block-title-row">
+                                <span class="toolcall-block-title">{{ t('admin.data.toolInput', '入参：') }}</span>
+                                <a-button
+                                  type="link"
+                                  size="small"
+                                  class="copy-code-btn"
+                                  @click="copyText(`args-${tc.tool_call_id || tc.id || tcIdx}`, formatToolArguments(tc.arguments || tc.function?.arguments))"
+                                >
+                                  <CheckOutlined v-if="copiedKey === `args-${tc.tool_call_id || tc.id || tcIdx}`" style="color: var(--color-success);" />
+                                  <CopyOutlined v-else />
+                                  <span>{{ copiedKey === `args-${tc.tool_call_id || tc.id || tcIdx}` ? t('common.copied', '已复制') : t('common.copy', '复制') }}</span>
+                                </a-button>
+                              </div>
                               <pre class="toolcall-args">{{ formatToolArguments(tc.arguments || tc.function?.arguments) }}</pre>
                             </div>
                             <!-- 执行结果 -->
                             <div v-if="tc.payload" class="toolcall-block" style="margin-top: 6px;">
-                              <div class="toolcall-block-title" style="font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 2px;">响应结果：</div>
-                              <pre class="toolcall-args" style="max-height: 160px; overflow-y: auto;">{{ formatToolPayload(tc.payload) }}</pre>
+                              <div class="toolcall-block-title-row">
+                                <span class="toolcall-block-title">{{ t('admin.data.toolOutput', '响应结果：') }}</span>
+                                <a-button
+                                  type="link"
+                                  size="small"
+                                  class="copy-code-btn"
+                                  @click="copyText(`res-${tc.tool_call_id || tc.id || tcIdx}`, formatToolPayload(tc.payload))"
+                                >
+                                  <CheckOutlined v-if="copiedKey === `res-${tc.tool_call_id || tc.id || tcIdx}`" style="color: var(--color-success);" />
+                                  <CopyOutlined v-else />
+                                  <span>{{ copiedKey === `res-${tc.tool_call_id || tc.id || tcIdx}` ? t('common.copied', '已复制') : t('common.copy', '复制') }}</span>
+                                </a-button>
+                              </div>
+                              <pre class="toolcall-args" style="max-height: 180px; overflow-y: auto;">{{ formatToolPayload(tc.payload) }}</pre>
                             </div>
                           </div>
                         </div>
@@ -2800,7 +2850,7 @@ onMounted(async () => {
                       <!-- 底部信息：时间、Token、点赞反馈 -->
                       <div class="session-msg-footer">
                         <span class="session-footer-time">{{ formatDate(msg.created_at) }}</span>
-                        <span v-if="msg.tokens" class="session-footer-tokens">{{ msg.tokens }} Tokens</span>
+                        <span v-if="msg.token_usage?.total_tokens" class="session-footer-tokens">{{ msg.token_usage.total_tokens }} Tokens</span>
                         <span v-if="msg.feedback === 'like'" class="session-feedback-badge like">
                           <LikeOutlined /> {{ t('admin.data.feedbackLiked', '已赞') }}
                         </span>
@@ -2810,10 +2860,13 @@ onMounted(async () => {
                       </div>
 
                       <!-- 用户反馈意见与改进建议（点踩时附带） -->
-                      <div v-if="msg.feedback_comment" class="session-feedback-comment-card">
+                      <div v-if="msg.feedback_comment" class="session-feedback-comment-card is-negative-highlight">
                         <div class="comment-card-header">
-                          <MessageOutlined style="color: #ff4d4f;" />
+                          <AlertOutlined style="color: #ff4d4f;" />
                           <span>{{ t('admin.data.userFeedbackAdvice', '用户改进建议/意见') }}</span>
+                          <a-tag color="error" style="font-size: 11px; margin-left: auto;">
+                            {{ t('admin.data.feedbackDisliked', '已踩反馈') }}
+                          </a-tag>
                         </div>
                         <div class="comment-card-body">{{ msg.feedback_comment }}</div>
                       </div>
@@ -2967,6 +3020,25 @@ details[open] .chevron-icon {
   color: #ff4d4f;
 }
 
+.toolcall-block-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.copy-code-btn {
+  padding: 0 4px;
+  height: 20px;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-tertiary);
+}
+.copy-code-btn:hover {
+  color: var(--color-primary);
+}
+
 .session-feedback-comment-card {
   margin-top: 8px;
   background: rgba(255, 77, 79, 0.05);
@@ -2975,6 +3047,13 @@ details[open] .chevron-icon {
   padding: 8px 12px;
   font-size: 12.5px;
   width: 100%;
+}
+.session-feedback-comment-card.is-negative-highlight {
+  margin-top: 10px;
+  background: rgba(255, 77, 79, 0.06);
+  border: 1px solid rgba(255, 77, 79, 0.3);
+  border-left: 3px solid #ff4d4f;
+  padding: 10px 14px;
 }
 .comment-card-header {
   display: flex;
@@ -3685,7 +3764,7 @@ details[open] > summary .chat-section-chevron {
 }
 
 .chat-tool-badge {
-  background: var(--color-bg-container);
+  background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
   border-radius: 6px;
   padding: 6px 10px;
@@ -3725,7 +3804,7 @@ details[open] > summary .chat-section-chevron {
 }
 
 .chat-flow-item.assistant {
-  background: var(--color-bg-container);
+  background: var(--color-bg-card);
   border-left: 3px solid #722ed1;
 }
 
@@ -3758,7 +3837,7 @@ details[open] > summary .chat-section-chevron {
 }
 
 .chat-toolcall-item {
-  background: var(--color-bg-container);
+  background: var(--color-bg-card);
   border: 1px dashed var(--color-border);
   border-radius: 4px;
   padding: 5px 8px;

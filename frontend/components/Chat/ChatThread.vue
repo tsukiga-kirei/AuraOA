@@ -12,6 +12,7 @@ import {
   CloseOutlined,
   SendOutlined,
   MessageOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ChatMessageItem } from '~/types/chat'
@@ -22,6 +23,7 @@ import { formatDateTimeInAppZone } from '~/utils/appTime'
 import ChatProcessTimeline from './ChatProcessTimeline.vue'
 
 defineProps<{ messages: ChatMessageItem[]; agentEmoji?: string; agentName?: string }>()
+const emit = defineEmits<{ (e: 'retry', msg: ChatMessageItem): void }>()
 const { t, locale } = useI18n()
 const { updateMessageFeedback } = useChatSession()
 const copied = ref('')
@@ -161,9 +163,24 @@ function formatMsgTime(isoString?: string): string {
         <div v-if="msg.streaming" class="generation-status" role="status">
           <LoadingOutlined spin /> {{ t('chat.generating') }}
         </div>
-        <div v-if="msg.error" class="message-error" role="alert">{{ msg.error }}</div>
-        <p v-else-if="msg.status === 'error'" class="message-error" role="alert">{{ t('chat.replyFailed') }}</p>
-        <p v-else-if="msg.status === 'interrupted'" class="generation-status">{{ t('chat.interrupted') }}</p>
+        <div v-if="msg.error" class="message-error" role="alert">
+          <span>{{ msg.error }}</span>
+          <button class="msg-retry-btn" @click="emit('retry', msg)">
+            <ReloadOutlined /> {{ t('chat.regenerate') }}
+          </button>
+        </div>
+        <div v-else-if="msg.status === 'error'" class="message-error" role="alert">
+          <span>{{ t('chat.replyFailed') }}</span>
+          <button class="msg-retry-btn" @click="emit('retry', msg)">
+            <ReloadOutlined /> {{ t('chat.regenerate') }}
+          </button>
+        </div>
+        <div v-else-if="msg.status === 'interrupted'" class="generation-status generation-status--interrupted">
+          <span>{{ t('chat.interrupted') }}</span>
+          <button class="msg-retry-btn" @click="emit('retry', msg)">
+            <ReloadOutlined /> {{ t('chat.regenerate') }}
+          </button>
+        </div>
 
         <!-- 底部功能栏：复制、点赞、点踩、耗时、生成时间、AI生成标签 -->
         <div v-if="!msg.streaming && msg.content" class="answer-actions">
@@ -605,6 +622,33 @@ function formatMsgTime(isoString?: string): string {
 
 .feedback-comment-pill:hover .feedback-pill-edit-icon {
   opacity: 1;
+}
+
+.msg-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.msg-retry-btn:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary-lighter);
+  background: var(--color-bg-hover);
+}
+
+.generation-status--interrupted {
+  display: flex;
+  align-items: center;
 }
 
 @media (max-width: 600px) {

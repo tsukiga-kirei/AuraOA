@@ -32,7 +32,7 @@ func (r *AuditProcessSnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID uu
 	}
 	var existing model.AuditProcessSnapshot
 	err := r.WithTenant(c).Where("process_id = ? AND channel = ?", processID, channel).First(&existing).Error
-	now := time.Now()
+	now := apptime.Now()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		ids := []string{logID.String()}
 		b, _ := json.Marshal(ids)

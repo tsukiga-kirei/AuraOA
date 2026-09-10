@@ -47,6 +47,10 @@ export interface ChatToolExecution {
   arguments?: string
   payload?: any
   thought?: string
+  // 兼容性字段（如历史或通用 OpenAI 格式）
+  id?: string
+  name?: string
+  function?: { name?: string; arguments?: string }
 }
 
 export interface ChatMessageItem {
@@ -61,7 +65,7 @@ export interface ChatMessageItem {
   status?: string
   error?: string
   feedback?: 'like' | 'dislike' | null
-  feedback_at?: string
+  feedback_at?: string | null
   feedback_comment?: string | null
   created_at: string
   // 前端流式补充字段

@@ -19,6 +19,7 @@ import (
 
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/ai"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
 	"auraoa/go-service/internal/pkg/sanitize"
@@ -508,7 +509,7 @@ func (s *AIModelCallerService) asyncWriteLog(
 		if callType == "" {
 			callType = "reasoning"
 		}
-		now := time.Now()
+		now := apptime.Now()
 		entry := &model.TenantLLMMessageLog{
 			ID:            uuid.New(),
 			TenantID:      tenantID,

@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 )
 
 // UserRepo 提供用户、登录历史、角色分配等数据访问方法。
@@ -52,7 +53,7 @@ func (r *UserRepo) UpdateLoginFail(user *model.User) error {
 		"login_fail_count": user.LoginFailCount,
 	}
 	if user.LoginFailCount >= 5 {
-		lockedUntil := time.Now().Add(15 * time.Minute)
+		lockedUntil := apptime.Now().Add(15 * time.Minute)
 		user.LockedUntil = &lockedUntil
 		updates["locked_until"] = lockedUntil
 	}
@@ -117,7 +118,7 @@ func (r *UserRepo) UpdatePasswordHash(userID uuid.UUID, hash string) error {
 func (r *UserRepo) UpdatePasswordHashAndTime(userID uuid.UUID, hash string) error {
 	return r.DB.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
 		"password_hash":       hash,
-		"password_changed_at": time.Now(),
+		"password_changed_at": apptime.Now(),
 	}).Error
 }
 
