@@ -38,11 +38,11 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: 'AuraOA — AI 驱动的 OA 流程透明审核',
+      title: 'AuraOA — 极简 AI 驱动的企业 OA 流程协同与智能治理中枢',
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1' },
-        { name: 'description', content: '极简 AI 驱动 OA 流程审核框架 — 透明、可追溯的企业审批辅助' },
+        { name: 'description', content: '极简 AI 驱动的企业 OA 流程协同与智能治理中枢 — 智能体协同、流程总结与合规审核' },
         { name: 'theme-color', content: '#5b5bd6' },
       ],
       link: [

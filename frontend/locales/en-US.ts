@@ -3,8 +3,8 @@
 export default {
     //=====应用程序级别=====
     'app.name': 'AuraOA',
-    'app.title': 'AuraOA — Transparent AI Audit for OA Workflows',
-    'app.description': 'Minimalist, AI-driven audit framework — transparency and intelligence for enterprise workflows.',
+    'app.title': 'AuraOA — Minimalist AI-Driven Hub for Enterprise Workflow Collaboration & Governance',
+    'app.description': 'Minimalist AI-driven enterprise OA workflow collaboration & governance hub — agents, process summary, and compliance audit.',
 
     //===== 侧边栏部分 =====
     'sidebar.section.overview': 'Dashboard',
@@ -475,7 +475,7 @@ export default {
 
     //=====登录页面=====
     'login.title': 'AuraOA',
-    'login.subtitle': 'Minimalist AI-driven transparency for OA audits and archive review.',
+    'login.subtitle': 'Minimalist AI-driven hub for enterprise workflow collaboration & governance',
     'login.username': 'Username',
     'login.usernamePlaceholder': 'Enter username',
     'login.password': 'Password',
@@ -927,13 +927,13 @@ export default {
     'login.rememberMe': 'Remember me',
     'login.testAccounts': 'Test accounts (click to fill):',
     'login.loginAs': 'Login as {0}',
-    'login.feature1': 'AI-powered intelligent audit assistance',
-    'login.feature2': 'Multi-dimensional rule auto-validation',
-    'login.feature3': 'Full-process traceable audit',
+    'login.feature1': 'Multi-agent collaboration & workflow assistance',
+    'login.feature2': 'Instant process summarization & node review',
+    'login.feature3': 'Two-stage compliance audit & traceable review',
     'login.portal.business': 'Business User',
-    'login.portal.businessDesc': 'Audit · Cron Tasks · Archive Review',
+    'login.portal.businessDesc': 'Audit · AI Assistant · Summary · Archive Review',
     'login.portal.tenantAdmin': 'Tenant Admin',
-    'login.portal.tenantAdminDesc': 'Rules · Knowledge Base · Organization',
+    'login.portal.tenantAdminDesc': 'Rules · Agent Config · Org & Data Governance',
     'login.portal.systemAdmin': 'System Admin',
     'login.portal.systemAdminDesc': 'Tenants · Monitoring · Settings',
 

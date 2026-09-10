@@ -4,8 +4,8 @@
 export default {
     //=====应用程序级别=====
     'app.name': 'AuraOA',
-    'app.title': 'AuraOA — AI 驱动的 OA 流程透明审核',
-    'app.description': '极简 AI 驱动 OA 流程审核框架 — 透明、可追溯的企业审批辅助',
+    'app.title': 'AuraOA — 极简 AI 驱动的企业 OA 流程协同与智能治理中枢',
+    'app.description': '极简 AI 驱动的企业 OA 流程协同与智能治理中枢 — 智能体协同、流程总结与合规审核',
 
     //===== 侧边栏部分 =====
     'sidebar.section.overview': '仪表盘',
@@ -476,7 +476,7 @@ export default {
 
     //=====登录页面=====
     'login.title': 'AuraOA',
-    'login.subtitle': '极简 AI 驱动的 OA 流程透明审核与归档复盘',
+    'login.subtitle': '极简 AI 驱动的企业 OA 流程协同与智能治理中枢',
     'login.username': '用户名',
     'login.usernamePlaceholder': '请输入用户名',
     'login.password': '密码',
@@ -931,13 +931,13 @@ export default {
     'login.rememberMe': '记住登录',
     'login.testAccounts': '测试账号（点击快速填充）：',
     'login.loginAs': '以{0}身份登录',
-    'login.feature1': 'AI 驱动的智能审批辅助',
-    'login.feature2': '多维度规则自动校验',
-    'login.feature3': '全流程可追溯审计',
+    'login.feature1': '多智能体协同办公与业务问答',
+    'login.feature2': '流程复杂表单秒级摘要与节点复盘',
+    'login.feature3': '两阶段合规性智能审核与归档审计',
     'login.portal.business': '业务用户',
-    'login.portal.businessDesc': '审核工作台 · 定时任务 · 归档复盘',
+    'login.portal.businessDesc': '审核 · 对话助理 · 流程总结 · 归档复盘',
     'login.portal.tenantAdmin': '租户管理员',
-    'login.portal.tenantAdminDesc': '规则配置 · 知识库 · 组织管理',
+    'login.portal.tenantAdminDesc': '规则配置 · 智能体分配 · 组织与数据',
     'login.portal.systemAdmin': '系统管理员',
     'login.portal.systemAdminDesc': '租户管理 · 全局监控 · 系统设置',
 

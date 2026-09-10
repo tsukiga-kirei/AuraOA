@@ -2,7 +2,7 @@
 
 # AuraOA
 
-**极简 AI 驱动的企业 OA 流程审核框架** — *Minimalist, AI-driven audit framework designed to bring transparency and intelligence to enterprise workflows.*
+**极简 AI 驱动的企业 OA 流程协同与智能治理中枢** — *Minimalist, AI-driven hub for enterprise OA workflow collaboration, intelligence, and governance.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
@@ -16,20 +16,22 @@
 
 ## 项目简介
 
-**AuraOA** 是一套面向企业内部 OA 流程的极简 AI 审核框架。通过连接企业 OA 系统的数据库，提取流程表单数据与审批流信息，结合自定义审核规则与大语言模型（LLM），实现对 OA 流程的智能合规性审核与归档复盘。
+**AuraOA** 是一套面向企业内部 OA 流程的极简 AI 协同与智能治理中枢。通过连接企业 OA 系统的数据库，提取流程表单数据与审批流信息，深度整合**企业多智能体协同（Agent Runtime）**、**长流程智能总结（Process Summary）**、**两阶段合规智能审核（Audit Workbench）**与**归档合规复盘（Archive Review）**，打通从流程提炼、合规质检到自然语言协同查办的企业流程全生命周期智能赋能。
 
 ### 核心能力
 
 | 能力 | 说明 |
 |------|------|
-| 🔍 **智能审核** | 两阶段 AI 审核（推理→结构化提取），支持严格/标准/宽松三种审核尺度 |
-| 📦 **归档复盘** | 对已归档流程进行全流程合规复核，含审批流节点完整性分析 |
+| 🤖 **智能体平台** | 多智能体对话协同（内置 OA 查询、辅助办理），支持系统工具（只读 OA 适配器）、Streamable HTTP MCP 与 Skills 扩展，独创系统管理员到租户管理员的「两级分配体系」 |
+| 📝 **流程智能总结** | 复杂表单与流转记录秒级提炼，支持个人工作台与 OA 嵌入侧边栏，结构化呈现核心诉求、关键决策点与附件信息 |
+| 🔍 **智能审核** | 两阶段流式 AI 审核（深度推理→结构化提取），支持多维规则组合与严格/标准/宽松审核尺度 |
+| 📦 **归档复盘** | 对已归档流程进行全流程合规复核，含审批流节点完整性分析与审计快照追溯 |
 | ⏰ **定时任务** | 批量审核、日报/周报自动推送，支持自定义 Cron 表达式 |
-| 🏢 **多租户** | 租户隔离的数据与配置，支持独立 AI 模型分配与 Token 配额管理 |
-| 🔗 **OA 适配** | 可扩展的 OA 适配器架构，当前支持泛微 Ecology E9（MySQL/Oracle/达梦） |
-| 🤖 **多模型** | 支持本地部署（Xinference、Ollama、vLLM）与云端 API（阿里云百炼、DeepSeek、OpenAI 等） |
-| 👤 **个性化配置** | 用户可自定义审核字段、规则、AI 尺度偏好，支持租户管理员集中查看与管理 |
-| 🌐 **国际化** | 支持中文/英文双语界面 |
+| 🏢 **多租户与治理** | 严格的租户级数据隔离，支持独立 AI 模型分配、Token 配额管控与调用审计 |
+| 🔗 **OA 生态适配** | 可扩展的 OA 适配器架构，深度支持泛微 Ecology E9（MySQL/Oracle/达梦）及单点登录无缝嵌入 |
+| 🧩 **多模型支撑** | 支持本地部署（Xinference、Ollama、vLLM）与云端 API（阿里云百炼、DeepSeek、OpenAI 等） |
+| 👤 **个性化配置** | 用户可自定义审核字段、规则、AI 尺度偏好，与租户基线规则智能合并生效 |
+| 🌐 **全栈国际化** | 完整支持中文/英文双语界面及前后端统一设计 |
 
 ---
 
@@ -241,18 +243,26 @@ AuraOA/
 │   └── migrations/               # 迁移脚本（30+）
 │
 └── docs/                         # 项目文档
+    ├── agents/                   # 智能体设计与契约（对话/工具/MCP/Skills/两级分配）
     ├── oa-integration.md         # OA 系统对接说明
     ├── ai-integration.md         # AI 系统对接说明
+    ├── development-guide.md      # 开发与协作规范
     ├── api/                      # API 接口文档
     │   ├── README.md             # 接口总览与通用约定
     │   ├── auth.md               # 认证接口
-    │   ├── system-admin.md       # 系统管理接口
-    │   ├── org.md                # 组织架构接口
-    │   ├── audit-config.md       # 流程审核配置接口
+    │   ├── chat.md               # 智能体对话接口
+    │   ├── agents.md             # 智能体两级分配与配置接口
+    │   ├── summary.md            # 流程总结与工作台接口
     │   ├── audit.md              # 审核工作台接口
     │   ├── archive.md            # 归档复盘接口
+    │   ├── audit-config.md       # 流程审核配置接口
+    │   ├── archive-config.md     # 流程归档配置接口
+    │   ├── embed.md              # OA 页面嵌入接口
+    │   ├── llm-logs.md           # AI 调用与 Token 审计接口
+    │   ├── system-admin.md       # 系统管理与模型配置接口
+    │   ├── org.md                # 组织架构接口
     │   ├── cron.md               # 定时任务接口
-    │   ├── user-settings.md      # 用户设置接口
+    │   ├── user-settings.md      # 用户个人设置接口
     │   └── cache.md              # 缓存管理接口
     └── known-issues/             # 已知缺陷与待办
         └── README.md             # 缺陷清单、待完成事项
