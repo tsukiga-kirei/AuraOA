@@ -39,6 +39,7 @@
   --color-bg-elevated: #ffffff;
   --color-bg-hover: #eef1f7;
   --color-bg-active: #e2e7f0;
+  --color-fill-secondary: #eef1f7;
   --color-bg-input: #ffffff;
   --color-bg-glass: rgba(255, 255, 255, 0.72);
 
@@ -153,6 +154,7 @@
   --color-bg-elevated: #1a2438;
   --color-bg-hover: #243044;
   --color-bg-active: #2e3c54;
+  --color-fill-secondary: rgba(255, 255, 255, 0.08);
   --color-bg-input: #1a2438;
   --color-bg-glass: rgba(21, 29, 46, 0.82);
 
@@ -234,6 +236,7 @@
   --color-bg-elevated: #fffdf9;
   --color-bg-hover: #f3efe8;
   --color-bg-active: #ebe5dc;
+  --color-fill-secondary: #ebe5dc;
   --color-bg-input: #fffdf9;
   --color-bg-glass: rgba(255, 253, 249, 0.78);
 
