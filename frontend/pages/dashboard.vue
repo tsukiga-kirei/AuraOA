@@ -220,10 +220,11 @@ const dashboardProcessSummaryTitle = computed(() => selectedProcessInfo.value?.t
 const dashboardProcessMetaLine2 = computed(() => {
   const p = selectedProcessInfo.value
   if (!p) return ''
-  const ap = p.applicant?.trim() || '—'
-  const dept = p.department?.trim() || '—'
-  const cat = (p.process_type_label || p.process_type || '').trim() || '—'
-  return `${ap} · ${dept} · ${cat}`
+  const ap = p.applicant?.trim()
+  const dept = p.department?.trim()
+  const cat = (p.process_type_label || p.process_type || '').trim()
+  const parts = [ap, dept, cat].filter(x => x && x !== '—')
+  return parts.length > 0 ? parts.join(' · ') : '—'
 })
 
 // ─── 批量审核 ───
@@ -933,6 +934,9 @@ const handleExportExcel = async () => {
 
 // ─── 初始化 ───
 const resultSourceLabel = (result: { result_source?: string }) => t(result.result_source === 'embed' ? 'resultSource.embed' : 'resultSource.personal')
+const isChainItemEmbed = (item: { trigger_source?: string; trigger_detail?: string }) => {
+  return item.trigger_source === 'embed_auto' || item.trigger_source === 'embed_manual' || item.trigger_detail === 'personal_embed_manual'
+}
 
 onMounted(async () => {
   const availableMenus = menus.value.length > 0 ? menus.value : await getMenu()
@@ -1151,11 +1155,11 @@ onMounted(async () => {
                   <a-tag v-if="item.audit_result?.result_source" color="purple">{{ resultSourceLabel(item.audit_result) }}</a-tag>
                 </div>
                 <div class="todo-item-meta">
-                  <span>{{ item.applicant }}</span>
-                  <span class="todo-item-dot">·</span>
-                  <span>{{ item.department }}</span>
-                  <span class="todo-item-dot">·</span>
-                  <span>{{ item.submit_time }}</span>
+                  <span v-if="item.applicant">{{ item.applicant }}</span>
+                  <span v-if="item.applicant && item.department" class="todo-item-dot">·</span>
+                  <span v-if="item.department">{{ item.department }}</span>
+                  <span v-if="(item.applicant || item.department) && item.submit_time" class="todo-item-dot">·</span>
+                  <span v-if="item.submit_time">{{ item.submit_time }}</span>
                 </div>
                 <div class="todo-item-audit-info">
                   <div class="todo-item-audit-left">
@@ -1503,6 +1507,12 @@ onMounted(async () => {
                           {{ recommendationConfig[item.recommendation || 'review']?.label }}
                         </span>
                         <span class="chain-score">{{ item.score }}{{ t('dashboard.points') }}</span>
+                        <a-tag
+                          :color="isChainItemEmbed(item) ? 'purple' : 'blue'"
+                          style="margin-left: 8px; margin-bottom: 0;"
+                        >
+                          {{ t(isChainItemEmbed(item) ? 'resultSource.embed' : 'resultSource.workbench') }}
+                        </a-tag>
                         <span class="chain-expand-btn">
                           <DownOutlined v-if="!expandedChainNodes.has(item.id)" />
                           <UpOutlined v-else />
@@ -1516,7 +1526,6 @@ onMounted(async () => {
                       </div>
                       <div v-if="expandedChainNodes.has(item.id)" class="chain-detail">
                         <template v-if="item.audit_result">
-                          <a-tag :color="item.trigger_source === 'embed_auto' || item.trigger_source === 'embed_manual' ? 'purple' : 'blue'">{{ t(item.trigger_source === 'embed_auto' || item.trigger_source === 'embed_manual' ? 'resultSource.embed' : 'resultSource.workbench') }}</a-tag>
                           <!--规则校验-->
                           <template v-if="item.audit_result.rule_results?.length">
                             <div class="chain-section-title">{{ t('dashboard.ruleCheckDetail') }}</div>

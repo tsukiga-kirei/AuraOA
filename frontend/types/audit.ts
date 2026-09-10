@@ -63,6 +63,7 @@ export interface RuleResultItem {
 /** 审核链记录（租户级，所有用户共享） */
 export interface AuditChainItem {
   trigger_source?: string
+  trigger_detail?: string
   id: string
   process_id: string
   process_type: string

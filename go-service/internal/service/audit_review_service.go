@@ -752,9 +752,13 @@ func (s *AuditExecuteService) processAuditJob(
 		return nil
 	}
 	if parseErr == nil && parsed != nil {
-		channel := model.AuditSnapshotChannelFromTrigger(log.TriggerSource)
-		if err := s.auditSnapshotRepo.UpsertAppendValid(c, tenantID, log.ProcessID, channel, auditLogID, log.Title, log.ProcessType, parsed.Recommendation, parsed.OverallScore, parsed.Confidence); err != nil {
-			return err
+		// 个人定制审核（例如 OA 嵌入发起的个人视角审核 personal_embed_manual）属于用户专有结果，
+		// 不属于租户公共快照，避免污染覆盖租户共享的工作台快照
+		if log.TriggerDetail != "personal_embed_manual" {
+			channel := model.AuditSnapshotChannelFromTrigger(log.TriggerSource)
+			if err := s.auditSnapshotRepo.UpsertAppendValid(c, tenantID, log.ProcessID, channel, auditLogID, log.Title, log.ProcessType, parsed.Recommendation, parsed.OverallScore, parsed.Confidence); err != nil {
+				return err
+			}
 		}
 		// 审核完成通知（嵌入审核不通知，避免误用租户管理员账号）
 		if s.notifSvc != nil && !model.IsEmbedTrigger(log.TriggerSource) {
@@ -1911,6 +1915,13 @@ func (s *AuditExecuteService) listAllCompletedProcesses(c *gin.Context, tenantID
 		return nil, newServiceError(errcode.ErrDatabase, "批量查询审核日志失败")
 	}
 
+	typeLabelMap := make(map[string]string)
+	if cfgs, err := s.configRepo.ListByTenant(c); err == nil {
+		for _, cfg := range cfgs {
+			typeLabelMap[strings.ToLower(cfg.ProcessType)] = cfg.ProcessTypeLabel
+		}
+	}
+
 	var results []map[string]interface{}
 	for _, snap := range uniqueSnaps {
 		validLog := logMap[snap.LatestValidLogID]
@@ -1923,7 +1934,7 @@ func (s *AuditExecuteService) listAllCompletedProcesses(c *gin.Context, tenantID
 			"applicant":          "",
 			"department":         "",
 			"process_type":       snap.ProcessType,
-			"process_type_label": "",
+			"process_type_label": typeLabelMap[strings.ToLower(snap.ProcessType)],
 			"current_node":       "已完成",
 			"submit_time":        validLog.CreatedAt.Format("2006-01-02 15:04"),
 			"urgency":            "low",
@@ -2063,20 +2074,47 @@ func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenant
 		return nil, newServiceError(errcode.ErrDatabase, "批量查询审核日志失败")
 	}
 
+	typeLabelMap := make(map[string]string)
+	if cfgs, err := s.configRepo.ListByTenant(c); err == nil {
+		for _, cfg := range cfgs {
+			typeLabelMap[strings.ToLower(cfg.ProcessType)] = cfg.ProcessTypeLabel
+		}
+	}
+
 	var results []map[string]interface{}
 	for _, snap := range uniqueSnaps {
 		validLog := logMap[snap.LatestValidLogID]
 		if validLog == nil {
 			continue
 		}
+		applicant := ""
+		department := ""
+		processTypeLabel := typeLabelMap[strings.ToLower(snap.ProcessType)]
+		currentNode := "已完成"
+		if adapter != nil {
+			if reqSummary, err := adapter.FetchProcessRequestSummary(c.Request.Context(), snap.ProcessID); err == nil && reqSummary != nil {
+				if reqSummary.Applicant != "" {
+					applicant = reqSummary.Applicant
+				}
+				if reqSummary.Department != "" {
+					department = reqSummary.Department
+				}
+				if reqSummary.ProcessTypeLabel != "" {
+					processTypeLabel = reqSummary.ProcessTypeLabel
+				}
+				if reqSummary.CurrentNode != "" {
+					currentNode = reqSummary.CurrentNode
+				}
+			}
+		}
 		results = append(results, map[string]interface{}{
 			"process_id":         snap.ProcessID,
 			"title":              snap.Title,
-			"applicant":          "",
-			"department":         "",
+			"applicant":          applicant,
+			"department":         department,
 			"process_type":       snap.ProcessType,
-			"process_type_label": "",
-			"current_node":       "已完成",
+			"process_type_label": processTypeLabel,
+			"current_node":       currentNode,
 			"submit_time":        validLog.CreatedAt.Format("2006-01-02 15:04"),
 			"urgency":            "low",
 			"has_audit":          true,
