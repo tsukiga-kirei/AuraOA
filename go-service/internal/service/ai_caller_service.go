@@ -526,6 +526,20 @@ func (s *AIModelCallerService) asyncWriteLog(
 			DurationMs:    int(resp.DurationMs),
 			CreatedAt:     now,
 		}
+		respContent := resp.Content
+		if len(resp.ToolCalls) > 0 {
+			var tcBuilder strings.Builder
+			if respContent != "" {
+				tcBuilder.WriteString(respContent)
+				tcBuilder.WriteString("\n\n")
+			}
+			tcBuilder.WriteString("【工具调用指令】:\n")
+			for _, tc := range resp.ToolCalls {
+				tcBuilder.WriteString(fmt.Sprintf("- %s: %s\n", tc.Function.Name, tc.Function.Arguments))
+			}
+			respContent = tcBuilder.String()
+		}
+
 		payload := &model.TenantLLMMessagePayload{
 			ID:               uuid.New(),
 			LLMMessageLogID:  entry.ID,
@@ -533,7 +547,7 @@ func (s *AIModelCallerService) asyncWriteLog(
 			SystemPrompt:     strings.ToValidUTF8(systemPrompt, "\uFFFD"),
 			UserPrompt:       strings.ToValidUTF8(userPrompt, "\uFFFD"),
 			ReasoningContent: strings.ToValidUTF8(resp.ReasoningContent, "\uFFFD"),
-			ResponseContent:  strings.ToValidUTF8(resp.Content, "\uFFFD"),
+			ResponseContent:  strings.ToValidUTF8(respContent, "\uFFFD"),
 			CreatedAt:        now,
 		}
 
