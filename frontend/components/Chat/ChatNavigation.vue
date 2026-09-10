@@ -6,7 +6,12 @@ const emit = defineEmits<{ navigate: [path: string] }>()
 const { t } = useI18n()
 const route = useRoute()
 const { sessions, effectiveAgents, currentSessionId, selectedAgentCode, loading, error, total, initialize, newConversation, fetchSessions, renameSession, deleteSession } = useChatSession()
-const collapsedAgents = useState<Record<string, boolean>>('chat-collapsed-agents', () => ({}))
+// 智能体对话记录文件夹展开状态：刷新时默认全部折叠收起
+const expandedAgents = useState<Record<string, boolean>>('chat-expanded-agents', () => ({}))
+const isExpanded = (code: string) => Boolean(expandedAgents.value[code])
+const toggleFolder = (code: string) => {
+  expandedAgents.value[code] = !expandedAgents.value[code]
+}
 const searchOpen = ref(false)
 const groups = computed(() => {
   const all = new Map(effectiveAgents.value.map(agent => [agent.agent_code, { code: agent.agent_code, name: agent.name, available: true, sessions: [] as typeof sessions.value }]))
@@ -16,14 +21,12 @@ const groups = computed(() => {
   }
   return [...all.values()]
 })
-const expanded = (code: string) => !collapsedAgents.value[code]
-watch(selectedAgentCode, code => { if (code) collapsedAgents.value[code] = false })
 const editing = ref<string | null>(null)
 const title = ref('')
 onMounted(initialize)
 const start = (code: string) => {
   if (!code) return
-  collapsedAgents.value[code] = false
+  expandedAgents.value[code] = true
   newConversation(code)
   emit('navigate', `/chat?agent=${encodeURIComponent(code)}`)
 }
@@ -53,37 +56,39 @@ const isSessionActive = (id: string) => route.path === '/chat' && currentSession
     </button>
 
     <template v-if="!compact">
-      <section v-for="group in groups" :key="group.code" class="agent-folder">
-        <div class="folder-heading" :class="{ 'sidebar-item--active': isAgentActive(group.code) }">
-          <button class="nav-agent" :aria-expanded="expanded(group.code)" @click="collapsedAgents[group.code] = expanded(group.code)">
-            <DownOutlined class="folder-chevron" :class="{ closed: !expanded(group.code) }" />
-            <FolderOutlined class="sidebar-item-icon" />
-            <span class="sidebar-item-label">{{ group.name }}</span>
-          </button>
-          <button v-if="group.available" class="new-icon" :aria-label="t('chat.newAgentSession', [group.name])" :title="t('chat.newSession')" @click="start(group.code)"><PlusOutlined /></button>
-          <div v-if="isAgentActive(group.code)" class="sidebar-item-indicator" />
-        </div>
-        <div v-if="expanded(group.code)" class="folder-sessions">
-          <div v-for="session in group.sessions" :key="session.id" class="nav-session" :class="{ 'sidebar-item--active': isSessionActive(session.id) }">
-            <button class="session-title" :title="session.title" @click="emit('navigate', `/chat?session=${session.id}`)">{{ session.title || t('chat.newSession') }}</button>
-            <a-dropdown :trigger="['click']">
-              <button class="session-more" :aria-label="t('chat.sessionActions')"><MoreOutlined /></button>
-              <template #overlay>
-                <a-menu>
-                  <a-menu-item @click="editing = session.id; title = session.title">{{ t('chat.renameSession') }}</a-menu-item>
-                  <a-menu-item danger><a-popconfirm :title="t('chat.deleteConfirm')" @confirm="remove(session.id)">{{ t('chat.deleteSession') }}</a-popconfirm></a-menu-item>
-                </a-menu>
-              </template>
-            </a-dropdown>
-            <div v-if="isSessionActive(session.id)" class="sidebar-item-indicator" />
+      <div class="chat-navigation-scroll">
+        <section v-for="group in groups" :key="group.code" class="agent-folder">
+          <div class="folder-heading" :class="{ 'sidebar-item--active': isAgentActive(group.code) }">
+            <button class="nav-agent" :aria-expanded="isExpanded(group.code)" @click="toggleFolder(group.code)">
+              <DownOutlined class="folder-chevron" :class="{ closed: !isExpanded(group.code) }" />
+              <FolderOutlined class="sidebar-item-icon" />
+              <span class="sidebar-item-label">{{ group.name }}</span>
+            </button>
+            <button v-if="group.available" class="new-icon" :aria-label="t('chat.newAgentSession', [group.name])" :title="t('chat.newSession')" @click="start(group.code)"><PlusOutlined /></button>
+            <div v-if="isAgentActive(group.code)" class="sidebar-item-indicator" />
           </div>
-          <button v-if="!group.sessions.length && group.available" class="folder-empty" @click="start(group.code)">{{ t('chat.startAgentSession') }}</button>
-        </div>
-      </section>
-      <div v-if="error" class="nav-empty" role="alert">{{ error }}</div>
-      <div v-else-if="loading" class="nav-empty" role="status">{{ t('chat.searching') }}</div>
-      <div v-else-if="!groups.length" class="nav-empty">{{ t('chat.noAgents') }}</div>
-      <button v-if="sessions.length < total" class="nav-load" :disabled="loading" @click="fetchSessions('', true)">{{ t('chat.loadMore') }}</button>
+          <div v-if="isExpanded(group.code)" class="folder-sessions">
+            <div v-for="session in group.sessions" :key="session.id" class="nav-session" :class="{ 'sidebar-item--active': isSessionActive(session.id) }">
+              <button class="session-title" :title="session.title" @click="emit('navigate', `/chat?session=${session.id}`)">{{ session.title || t('chat.newSession') }}</button>
+              <a-dropdown :trigger="['click']">
+                <button class="session-more" :aria-label="t('chat.sessionActions')"><MoreOutlined /></button>
+                <template #overlay>
+                  <a-menu>
+                    <a-menu-item @click="editing = session.id; title = session.title">{{ t('chat.renameSession') }}</a-menu-item>
+                    <a-menu-item danger><a-popconfirm :title="t('chat.deleteConfirm')" @confirm="remove(session.id)">{{ t('chat.deleteSession') }}</a-popconfirm></a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+              <div v-if="isSessionActive(session.id)" class="sidebar-item-indicator" />
+            </div>
+            <button v-if="!group.sessions.length && group.available" class="folder-empty" @click="start(group.code)">{{ t('chat.startAgentSession') }}</button>
+          </div>
+        </section>
+        <div v-if="error" class="nav-empty" role="alert">{{ error }}</div>
+        <div v-else-if="loading" class="nav-empty" role="status">{{ t('chat.searching') }}</div>
+        <div v-else-if="!groups.length" class="nav-empty">{{ t('chat.noAgents') }}</div>
+        <button v-if="sessions.length < total" class="nav-load" :disabled="loading" @click="fetchSessions('', true)">{{ t('chat.loadMore') }}</button>
+      </div>
     </template>
 
     <a-modal :open="!!editing" :title="t('chat.renameSession')" @ok="rename" @cancel="editing = null">
@@ -94,9 +99,41 @@ const isSessionActive = (id: string) => route.path === '/chat' && currentSession
 </template>
 
 <style scoped>
-.chat-navigation { padding: 0 0 8px; color: var(--color-text-sidebar); min-width: 0; width: 100%; max-width: 100%; overflow: hidden; }
+.chat-navigation {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 4px;
+  color: var(--color-text-sidebar);
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
 button { font: inherit; color: inherit; cursor: pointer; }
-.search-entry { margin-bottom: 6px; }
+.search-entry {
+  flex-shrink: 0;
+  margin-bottom: 6px;
+}
+.chat-navigation-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding-bottom: 8px;
+}
+.chat-navigation-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.chat-navigation-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-border-light);
+  border-radius: 4px;
+}
+.chat-navigation-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-tertiary);
+}
 .sidebar-item {
   display: flex; align-items: center;
   padding: 0 16px; height: 44px;

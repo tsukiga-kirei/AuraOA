@@ -532,7 +532,7 @@ onMounted(() => {
               </span>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description" width="220px">
+          <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description">
             <template #default="{ text }">
               <span class="desc-cell" :title="text">{{ text || '-' }}</span>
             </template>
@@ -612,7 +612,7 @@ onMounted(() => {
           <a-table-column :title="t('agentAdmin.col.code')" dataIndex="server_code" width="140px" />
           <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="160px" />
           <a-table-column :title="t('agentAdmin.col.transport')" dataIndex="transport_type" width="90px" />
-          <a-table-column :title="t('agentAdmin.col.endpoint')" dataIndex="endpoint_url" width="220px">
+          <a-table-column :title="t('agentAdmin.col.endpoint')" dataIndex="endpoint_url">
             <template #default="{ text }">
               <span class="desc-cell" :title="text">{{ text || '-' }}</span>
             </template>
@@ -661,7 +661,7 @@ onMounted(() => {
         <a-table :dataSource="skills" :rowKey="(r: AgentSkillItem) => r.id" :loading="loading" :pagination="false">
           <a-table-column :title="t('agentAdmin.col.code')" dataIndex="skill_code" width="160px" />
           <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="180px" />
-          <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description" width="220px">
+          <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description">
             <template #default="{ text }">
               <span class="desc-cell" :title="text">{{ text || '-' }}</span>
             </template>
@@ -1145,9 +1145,7 @@ onMounted(() => {
 
 <style scoped>
 .tenant-page {
-  padding: 24px 32px;
-  max-width: 1600px;
-  margin: 0 auto;
+  width: 100%;
 }
 .page-header {
   margin-bottom: 24px;
@@ -1199,6 +1197,7 @@ onMounted(() => {
 
 /* 内容面板与卡片 */
 .content-panel {
+  width: 100%;
   background: var(--color-bg-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light);
@@ -1206,9 +1205,12 @@ onMounted(() => {
   box-shadow: var(--shadow-xs);
 }
 .data-table-card {
+  width: 100%;
   overflow-x: auto;
 }
+.data-table-card :deep(.ant-table-wrapper),
 .data-table-card :deep(.ant-table) {
+  width: 100%;
   background: transparent;
 }
 .data-table-card :deep(.ant-table-thead > tr > th) {
