@@ -2,12 +2,12 @@ package repository
 
 import (
 	"errors"
-	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 )
 
 // UserDashboardPrefRepo 提供用户仪表板偏好的数据访问方法。
@@ -51,10 +51,10 @@ func (r *UserDashboardPrefRepo) Upsert(pref *model.UserDashboardPref) error {
 	err := q.First(&existing).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		if pref.CreatedAt.IsZero() {
-			pref.CreatedAt = time.Now()
+			pref.CreatedAt = apptime.Now()
 		}
 		if pref.UpdatedAt.IsZero() {
-			pref.UpdatedAt = time.Now()
+			pref.UpdatedAt = apptime.Now()
 		}
 		return r.DB.Create(pref).Error
 	}

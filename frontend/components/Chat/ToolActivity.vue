@@ -21,7 +21,27 @@ const text = computed(() => {
   if (Array.isArray(result?.content)) return result.content.filter((item: any) => item.type === 'text').map((item: any) => item.text).join('\n\n')
   return result?.summary || result?.content || result?.message || ''
 })
-onMounted(() => { if (props.tool.tool_code === 'list_my_todos') loadOAJumpConfig() })
+const handleOpen = (item: any) => {
+  if (item.oa_url) {
+    window.open(item.oa_url, '_blank')
+  } else if (item.process_id) {
+    jumpToOA(item.process_id)
+  }
+}
+const getRowSubtitle = (item: any) => {
+  return [
+    item.applicant || item.applicant_name || item.creator_name,
+    item.department,
+    item.process_type_label || item.process_type_name || item.workflow_name || item.process_type,
+    item.current_node || item.current_node_name,
+    item.submit_time,
+  ].filter(Boolean).join(' · ')
+}
+onMounted(() => {
+  if (props.tool.tool_code === 'list_my_todos' || props.tool.tool_code === 'list_my_requests') {
+    loadOAJumpConfig()
+  }
+})
 </script>
 
 <template>
@@ -29,12 +49,13 @@ onMounted(() => { if (props.tool.tool_code === 'list_my_todos') loadOAJumpConfig
     <p v-if="tool.status === 'error'" role="alert">{{ tool.payload?.error || t('chat.toolInterrupted') }}</p>
     <div v-else-if="rows.length" class="result-list">
       <div v-for="(item, index) in rows" :key="item.process_id || index" class="result-row">
-        <div><strong>{{ item.title || item.requestname || item.process_id }}</strong><p>{{ [item.applicant_name || item.creator_name, item.process_type_name || item.workflow_name, item.current_node_name].filter(Boolean).join(' · ') }}</p></div>
-        <button v-if="canJumpToOA && item.process_id" @click="jumpToOA(item.process_id)">{{ t('chat.openProcess') }}</button>
+        <div><strong>{{ item.title || item.requestname || item.process_id }}</strong><p>{{ getRowSubtitle(item) }}</p></div>
+        <button v-if="(canJumpToOA || item.oa_url) && (item.process_id || item.oa_url)" @click="handleOpen(item)">{{ t('chat.openProcess') }}</button>
       </div>
     </div>
     <div v-else-if="typeof text === 'string' && text" class="activity-markdown" v-html="renderSafeMarkdown(text)" />
     <p v-else-if="tool.tool_code === 'list_my_todos' && tool.status === 'success'">{{ t('chat.todoCard.empty') }}</p>
+    <p v-else-if="tool.tool_code === 'list_my_requests' && tool.status === 'success'">{{ t('chat.requestCard.empty') }}</p>
     <pre v-else-if="tool.payload">{{ JSON.stringify(tool.payload, null, 2) }}</pre>
     <details v-if="tool.arguments" class="activity-arguments"><summary>{{ t('chat.toolArguments') }}</summary><pre>{{ tool.arguments }}</pre></details>
   </div>
@@ -49,12 +70,13 @@ onMounted(() => { if (props.tool.tool_code === 'list_my_todos') loadOAJumpConfig
       <p v-if="tool.status === 'error'" role="alert">{{ tool.payload?.error || t('chat.toolInterrupted') }}</p>
       <div v-else-if="rows.length" class="result-list">
         <div v-for="(item, index) in rows" :key="item.process_id || index" class="result-row">
-          <div><strong>{{ item.title || item.requestname || item.process_id }}</strong><p>{{ [item.applicant_name || item.creator_name, item.process_type_name || item.workflow_name, item.current_node_name].filter(Boolean).join(' · ') }}</p></div>
-          <button v-if="canJumpToOA && item.process_id" @click="jumpToOA(item.process_id)">{{ t('chat.openProcess') }}</button>
+          <div><strong>{{ item.title || item.requestname || item.process_id }}</strong><p>{{ getRowSubtitle(item) }}</p></div>
+          <button v-if="(canJumpToOA || item.oa_url) && (item.process_id || item.oa_url)" @click="handleOpen(item)">{{ t('chat.openProcess') }}</button>
         </div>
       </div>
       <div v-else-if="typeof text === 'string' && text" class="activity-markdown" v-html="renderSafeMarkdown(text)" />
       <p v-else-if="tool.tool_code === 'list_my_todos' && tool.status === 'success'">{{ t('chat.todoCard.empty') }}</p>
+      <p v-else-if="tool.tool_code === 'list_my_requests' && tool.status === 'success'">{{ t('chat.requestCard.empty') }}</p>
       <pre v-else-if="tool.payload">{{ JSON.stringify(tool.payload, null, 2) }}</pre>
       <details v-if="tool.arguments" class="activity-arguments"><summary>{{ t('chat.toolArguments') }}</summary><pre>{{ tool.arguments }}</pre></details>
     </div>

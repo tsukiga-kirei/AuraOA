@@ -1,12 +1,11 @@
 package repository
 
 import (
-	"time"
-
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 )
 
 // UserNotificationRepo 用户通知数据访问。
@@ -52,7 +51,7 @@ func (r *UserNotificationRepo) UnreadCount(userID, roleAssignmentID uuid.UUID) (
 
 // MarkRead 将单条标记为已读；仅当 user + assignment 匹配时更新。
 func (r *UserNotificationRepo) MarkRead(id, userID, roleAssignmentID uuid.UUID) (int64, error) {
-	now := time.Now()
+	now := apptime.Now()
 	tx := r.DB.Model(&model.UserNotification{}).
 		Where("id = ? AND user_id = ? AND role_assignment_id = ?", id, userID, roleAssignmentID).
 		Update("read_at", now)
@@ -61,7 +60,7 @@ func (r *UserNotificationRepo) MarkRead(id, userID, roleAssignmentID uuid.UUID) 
 
 // MarkAllRead 当前角色分配下全部标为已读。
 func (r *UserNotificationRepo) MarkAllRead(userID, roleAssignmentID uuid.UUID) error {
-	now := time.Now()
+	now := apptime.Now()
 	return r.DB.Model(&model.UserNotification{}).
 		Where("user_id = ? AND role_assignment_id = ? AND read_at IS NULL", userID, roleAssignmentID).
 		Update("read_at", now).Error
@@ -70,7 +69,7 @@ func (r *UserNotificationRepo) MarkAllRead(userID, roleAssignmentID uuid.UUID) e
 // Create 写入一条通知（供业务/定时任务调用）。
 func (r *UserNotificationRepo) Create(n *model.UserNotification) error {
 	if n.CreatedAt.IsZero() {
-		n.CreatedAt = time.Now()
+		n.CreatedAt = apptime.Now()
 	}
 	return r.DB.Create(n).Error
 }

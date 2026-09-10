@@ -114,7 +114,7 @@ func (r *CronLogRepo) ListRecentGlobal(limit int) ([]model.CronLog, error) {
 
 // Finish 更新指定日志的状态和结束时间。
 func (r *CronLogRepo) Finish(id uuid.UUID, status, message string) error {
-	now := time.Now()
+	now := apptime.Now()
 	return r.db.Model(&model.CronLog{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{

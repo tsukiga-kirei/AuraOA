@@ -89,5 +89,5 @@ Authorization: Bearer <access_token>
 | [用户设置接口](./user-settings.md) | `/api/tenant/settings` | 个人审核配置、归档配置、仪表盘偏好 |
 | [AI 调用记录接口](./llm-logs.md) | `/api/tenant/llm-logs` | LLM 调用流程列表、详情、统计 |
 | [缓存管理接口](./cache.md) | `/api/admin/cache` | 缓存统计、清除、开关 |
-| [对话接口](./chat.md)（拟定） | `/api/chat` | 智能体会话、SSE；需求见 [docs/agents](../agents/README.md) |
-| [智能体与分配接口](./agents.md)（拟定） | `/api/admin/tenants/:id/chat-allocation`、`/api/tenant/agents` | 系统管理员配额、租户智能体/MCP/Skills |
+| [对话接口](./chat.md) | `/api/chat` | 智能体会话、SSE；需求见 [docs/agents](../agents/README.md) |
+| [智能体与分配接口](./agents.md) | `/api/admin/tenants/:id/chat-allocation`、`/api/tenant/agents` | 系统管理员配额、租户智能体/MCP/Skills |

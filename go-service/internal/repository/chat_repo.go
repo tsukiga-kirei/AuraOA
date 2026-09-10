@@ -178,9 +178,15 @@ func (r *ChatRepo) ListSessionsByTenant(
 		baseQuery = baseQuery.Where("(u.display_name ILIKE ? OR u.username ILIKE ?)", like, like)
 	}
 	if startDate != "" {
+		if len(startDate) == 10 {
+			startDate += " 00:00:00"
+		}
 		baseQuery = baseQuery.Where("s.created_at >= ?", startDate)
 	}
 	if endDate != "" {
+		if len(endDate) == 10 {
+			endDate += " 23:59:59"
+		}
 		baseQuery = baseQuery.Where("s.created_at <= ?", endDate)
 	}
 

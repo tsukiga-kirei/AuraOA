@@ -233,8 +233,8 @@ const query = computed(() => ({
 | [`docs/ai-integration.md`](docs/ai-integration.md) | AI 调用架构、两阶段审核 |
 | [`docs/oa-integration.md`](docs/oa-integration.md) | OA 适配器与取数 |
 | [`docs/agents/README.md`](docs/agents/README.md) | 智能体需求：两级分配、系统工具/MCP/Skills、对话 |
-| [`docs/api/chat.md`](docs/api/chat.md) | 对话 HTTP/SSE（拟定） |
-| [`docs/api/agents.md`](docs/api/agents.md) | 智能体配额与租户管理 API（拟定） |
+| [`docs/api/chat.md`](docs/api/chat.md) | 对话 HTTP/SSE |
+| [`docs/api/agents.md`](docs/api/agents.md) | 智能体配额与租户管理 API |
 | [`docs/development-guide.md`](docs/development-guide.md) | i18n、Git、完整日志规范等 |
 
 **Agent 工作流建议**：改接口前先读 `docs/api/README.md` + 对应模块 md；改 AI 链路再读 `ai-integration.md`；改审核/归档时成对阅读 `audit.md` 与 `archive.md`；改对话/智能体先读 `docs/agents/` 再动代码。

@@ -282,9 +282,9 @@ const createTenant = async () => {
 const previousQuotaMap = ref<Record<string, number>>({})
 const previousNewTenantQuota = ref(100000)
 
-const handleToggleUnlimitedQuota = (checked: boolean) => {
+const handleToggleUnlimitedQuota = (checked: any) => {
   if (!selectedTenant.value) return
-  if (checked) {
+  if (Boolean(checked)) {
     if (selectedTenant.value.token_quota > 0) {
       previousQuotaMap.value[selectedTenant.value.id] = selectedTenant.value.token_quota
     }
@@ -966,8 +966,8 @@ const confirmDeleteTenant = async () => {
                     <a-switch
                       size="small"
                       :checked="isUnlimitedQuota(newTenant.token_quota)"
-                      @change="(checked: boolean) => {
-                        if (checked) {
+                      @change="(checked: any) => {
+                        if (Boolean(checked)) {
                           if (newTenant.token_quota > 0) previousNewTenantQuota = newTenant.token_quota
                           newTenant.token_quota = -1
                         } else {

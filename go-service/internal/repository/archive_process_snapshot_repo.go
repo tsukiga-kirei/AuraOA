@@ -29,7 +29,7 @@ func NewArchiveProcessSnapshotRepo(db *gorm.DB) *ArchiveProcessSnapshotRepo {
 func (r *ArchiveProcessSnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID uuid.UUID, processID string, archiveLogID uuid.UUID, title, processType, compliance string, complianceScore, confidence int) error {
 	var existing model.ArchiveProcessSnapshot
 	err := r.WithTenant(c).Where("process_id = ?", processID).First(&existing).Error
-	now := time.Now()
+	now := apptime.Now()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		ids := []string{archiveLogID.String()}
 		b, _ := json.Marshal(ids)

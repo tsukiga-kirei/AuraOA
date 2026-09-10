@@ -11,6 +11,7 @@
   --color-primary-lighter: #8b8bf0;
   --color-primary-dark: #4a4ac4;
   --color-primary-bg: #ededfc;
+  --color-primary-bg-alt: #f5f5fd;
   --color-primary-ring: rgba(91, 91, 214, 0.28);
   --color-primary-shadow: rgba(91, 91, 214, 0.32);
 
@@ -25,6 +26,8 @@
   --color-warning-bg: #fffbeb;
   --color-danger: #ef4444;
   --color-danger-bg: #fef2f2;
+  --color-error: #ef4444;
+  --color-error-bg: #fef2f2;
   --color-info: #3b82f6;
   --color-info-bg: #eff6ff;
 
@@ -36,6 +39,7 @@
   /* Neutral Palette */
   --color-bg-page: #f4f6fb;
   --color-bg-card: #ffffff;
+  --color-bg-container: #ffffff;
   --color-bg-elevated: #ffffff;
   --color-bg-hover: #eef1f7;
   --color-bg-active: #e2e7f0;
@@ -63,6 +67,7 @@
   /* Borders */
   --color-border: #dde3ee;
   --color-border-light: #eef1f7;
+  --color-border-subtle: #f8fafc;
 
   /* Segment control (login portal / tabs) */
   --color-segment-track: #e8edf5;
@@ -139,11 +144,15 @@
   --color-primary-lighter: #a8a8f8;
   --color-primary-dark: #6666e8;
   --color-primary-bg: rgba(124, 124, 240, 0.16);
+  --color-primary-bg-alt: rgba(124, 124, 240, 0.24);
   --color-primary-ring: rgba(124, 124, 240, 0.38);
   --color-primary-shadow: rgba(124, 124, 240, 0.35);
 
   --color-accent: #38bdf8;
   --color-accent-light: #7dd3fc;
+
+  --color-error: #f87171;
+  --color-error-bg: rgba(248, 113, 113, 0.16);
 
   --color-role-business: #34d399;
   --color-role-tenant: #fbbf24;
@@ -151,6 +160,7 @@
 
   --color-bg-page: #0c1222;
   --color-bg-card: #151d2e;
+  --color-bg-container: #151d2e;
   --color-bg-elevated: #1a2438;
   --color-bg-hover: #243044;
   --color-bg-active: #2e3c54;
@@ -174,6 +184,7 @@
 
   --color-border: #2e3c54;
   --color-border-light: #1f2a3d;
+  --color-border-subtle: #1e293b;
 
   --color-segment-track: #1a2438;
   --color-segment-track-border: rgba(255, 255, 255, 0.1);
@@ -221,6 +232,7 @@
   --color-primary-lighter: #e8956f;
   --color-primary-dark: #a8522f;
   --color-primary-bg: #f9ebe4;
+  --color-primary-bg-alt: #f7ede3;
   --color-primary-ring: rgba(201, 100, 66, 0.28);
   --color-primary-shadow: rgba(201, 100, 66, 0.28);
 
@@ -233,6 +245,7 @@
 
   --color-bg-page: #faf8f4;
   --color-bg-card: #fffdf9;
+  --color-bg-container: #fffdf9;
   --color-bg-elevated: #fffdf9;
   --color-bg-hover: #f3efe8;
   --color-bg-active: #ebe5dc;
@@ -257,6 +270,7 @@
 
   --color-border: #e5dfd6;
   --color-border-light: #f0ebe4;
+  --color-border-subtle: #f4ede2;
 
   --color-segment-track: #f0ebe4;
   --color-segment-track-border: rgba(45, 42, 38, 0.08);
@@ -291,6 +305,8 @@
   --color-warning-bg: #faf3e6;
   --color-danger: #c45c5c;
   --color-danger-bg: #faeeee;
+  --color-error: #c45c5c;
+  --color-error-bg: #faeeee;
   --color-info: #6b8fbd;
   --color-info-bg: #eef3fa;
 

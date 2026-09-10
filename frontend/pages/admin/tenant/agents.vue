@@ -705,7 +705,7 @@ onMounted(() => {
       <a-form :model="agentForm" layout="vertical" class="drawer-form">
         <!-- 基础信息卡片 -->
         <div class="drawer-section">
-          <div class="drawer-section-title">基础配置</div>
+          <div class="drawer-section-title">{{ t('agentAdmin.form.basicSection', '基础配置') }}</div>
           <a-row :gutter="16">
             <a-col :span="12">
               <a-form-item :label="t('agentAdmin.form.code')" required>
@@ -981,7 +981,7 @@ onMounted(() => {
     >
       <a-form :model="mcpForm" layout="vertical" class="drawer-form">
         <div class="drawer-section">
-          <div class="drawer-section-title">连接配置</div>
+          <div class="drawer-section-title">{{ t('agentAdmin.form.connectionSection', '连接配置') }}</div>
           <a-row :gutter="16">
             <a-col :span="12">
               <a-form-item :label="t('agentAdmin.form.code')" required>
@@ -1052,7 +1052,7 @@ onMounted(() => {
     >
       <a-form :model="skillForm" layout="vertical" class="drawer-form">
         <div class="drawer-section">
-          <div class="drawer-section-title">技能基础</div>
+          <div class="drawer-section-title">{{ t('agentAdmin.form.skillBasicSection', '技能基础') }}</div>
           <a-row :gutter="16">
             <a-col :span="12">
               <a-form-item :label="t('agentAdmin.form.code')" required>

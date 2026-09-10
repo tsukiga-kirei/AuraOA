@@ -2,7 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -10,6 +9,7 @@ import (
 
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	jwtpkg "auraoa/go-service/internal/pkg/jwt"
 	"auraoa/go-service/internal/pkg/response"
@@ -226,7 +226,7 @@ func (h *UserPersonalConfigHandler) UpdateDashboardPrefs(c *gin.Context) {
 		PrefScope:      scope,
 		EnabledWidgets: defaultDashJSON(req.EnabledWidgets, "[]"),
 		WidgetSizes:    defaultDashJSON(req.WidgetSizes, "{}"),
-		UpdatedAt:      time.Now(),
+		UpdatedAt:      apptime.Now(),
 	}
 
 	if err := h.dashPrefRepo.Upsert(pref); err != nil {

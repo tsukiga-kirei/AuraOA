@@ -24,9 +24,9 @@ const isPermanentRetention = (days?: number | null) => {
   return days === -1 || days === 0
 }
 
-const handleTogglePermanentRetention = (checked: boolean) => {
+const handleTogglePermanentRetention = (checked: any) => {
   if (!allocation.value) return
-  if (checked) {
+  if (Boolean(checked)) {
     if (allocation.value.chat_retention_days && allocation.value.chat_retention_days > 0) {
       previousRetentionDays.value = allocation.value.chat_retention_days
     }

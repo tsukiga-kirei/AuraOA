@@ -15,7 +15,7 @@ type ToolSpec struct {
 	Parameters  map[string]interface{} `json:"parameters"`
 }
 
-// BuiltinTools 一期内置的 9 大系统工具规格清单
+// BuiltinTools 一期内置的 10 大系统工具规格清单
 var BuiltinTools = map[string]ToolSpec{
 	"list_my_todos": {
 		Code:        "list_my_todos",
