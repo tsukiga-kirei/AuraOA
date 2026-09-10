@@ -5,8 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -36,6 +39,7 @@ type AgentRuntimeService struct {
 	mcpService   *MCPService
 	toolExecutor agenttools.ToolExecutor
 	invalidator  *cache.InvalidationManager
+	activeTasks  sync.Map // sessionID (uuid.UUID) -> context.CancelFunc
 }
 
 // NewAgentRuntimeService 初始化智能体运行时服务
@@ -68,6 +72,34 @@ func (s *AgentRuntimeService) SetInvalidator(invalidator *cache.InvalidationMana
 	s.invalidator = invalidator
 }
 
+// StopSessionTask 主动停止会话当前后台正在执行的智能体任务
+func (s *AgentRuntimeService) StopSessionTask(tenantID, userID, sessionID uuid.UUID) (bool, error) {
+	session, err := s.chatRepo.GetSessionByID(tenantID, sessionID)
+	if err != nil || session == nil {
+		return false, fmt.Errorf("会话不存在")
+	}
+	if session.UserID != userID {
+		return false, fmt.Errorf("无权操作该会话")
+	}
+
+	val, ok := s.activeTasks.Load(sessionID)
+	if !ok {
+		return false, nil
+	}
+	if cancel, ok := val.(context.CancelFunc); ok && cancel != nil {
+		cancel()
+		s.activeTasks.Delete(sessionID)
+		return true, nil
+	}
+	return false, nil
+}
+
+// IsSessionRunning 查询会话当前是否有正在执行的后台任务
+func (s *AgentRuntimeService) IsSessionRunning(sessionID uuid.UUID) bool {
+	_, ok := s.activeTasks.Load(sessionID)
+	return ok
+}
+
 // StreamEventSink 定义流式事件输出回调
 type StreamEventSink func(event string, data interface{}) error
 
@@ -92,7 +124,6 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 	sink StreamEventSink,
 ) error {
 	startTime := apptime.Now()
-	ctx := c.Request.Context()
 	tenantForLog, _ := s.tenantRepo.FindByID(tenantID)
 	logger := pkglogger.Global()
 	if tenantForLog != nil {
@@ -108,6 +139,29 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		return fmt.Errorf("无权访问该会话")
 	}
 
+	// 顶替或取消该会话之前的后台未完任务，并派生独立带超时的任务 Context（脱壳解耦 HTTP 连接）
+	if oldCancel, ok := s.activeTasks.Load(sessionID); ok {
+		if cancelFn, ok := oldCancel.(context.CancelFunc); ok && cancelFn != nil {
+			cancelFn()
+		}
+		s.activeTasks.Delete(sessionID)
+	}
+	taskCtx, taskCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer taskCancel()
+	s.activeTasks.Store(sessionID, taskCancel)
+	defer s.activeTasks.Delete(sessionID)
+
+	clientDisconnected := false
+	safeSink := func(event string, data interface{}) error {
+		if clientDisconnected {
+			return nil
+		}
+		if err := sink(event, data); err != nil {
+			clientDisconnected = true
+		}
+		return nil
+	}
+
 	agent, err := s.agentRepo.GetAgentByID(session.AgentID)
 	if err != nil || agent == nil {
 		return fmt.Errorf("智能体定义不存在")
@@ -119,7 +173,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		return err
 	}
 	// 2. 权限收敛计算：计算有效工具集
-	effectiveTools, err := s.permService.CalculateEffectiveToolsForAgent(ctx, tenantID, userID, agent)
+	effectiveTools, err := s.permService.CalculateEffectiveToolsForAgent(taskCtx, tenantID, userID, agent)
 	if err != nil {
 		return fmt.Errorf("权限计算失败: %w", err)
 	}
@@ -153,7 +207,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			skillCodes = append(skillCodes, strings.TrimPrefix(b.ToolCode, "skill:"))
 		}
 	}
-	skills, _ := s.skillService.ResolveAgentSkillsOverview(ctx, tenantID, skillCodes)
+	skills, _ := s.skillService.ResolveAgentSkillsOverview(taskCtx, tenantID, skillCodes)
 	skillsPrompt := s.skillService.BuildSkillsPromptSection(skills)
 	skillContents := make(map[string]string)
 	for _, skill := range skills {
@@ -202,7 +256,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		_ = s.chatRepo.UpdateSession(tenantID, sessionID, map[string]interface{}{
 			"title": initTitle,
 		})
-		_ = sink("session", map[string]interface{}{
+		safeSink("session", map[string]interface{}{
 			"session_id": sessionID.String(),
 			"title":      initTitle,
 		})
@@ -261,7 +315,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			session.Title = initialTitle
 		}
 		cCopy := c.Copy()
-		go s.asyncSummarizeTitle(cCopy, tenantID, userID, sessionID, modelCfg, userPrompt, sink)
+		go s.asyncSummarizeTitle(cCopy, tenantID, userID, sessionID, modelCfg, userPrompt, safeSink)
 	}
 
 	var fallbackCfg *model.AIModelConfig
@@ -273,11 +327,11 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		fallbackCfg, _ = s.aiModelRepo.FindByID(*fallbackID)
 	}
 	// 8. 进入智能体编排循环
-	_ = sink("session", map[string]interface{}{
+	safeSink("session", map[string]interface{}{
 		"session_id": sessionID.String(),
 		"title":      session.Title,
 	})
-	_ = sink("agent", map[string]interface{}{
+	safeSink("agent", map[string]interface{}{
 		"agent_code": agent.AgentCode,
 		"name":       agent.Name,
 	})
@@ -288,7 +342,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 	var totalTokenUsage ai.TokenUsage
 
 	execCtx := &agenttools.ExecutionContext{
-		Ctx:      ctx,
+		Ctx:      taskCtx,
 		GinCtx:   c,
 		TenantID: tenantID,
 		UserID:   userID,
@@ -297,15 +351,19 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 
 	for step := 1; step <= maxAgentLoopSteps; step++ {
 		select {
-		case <-ctx.Done():
-			// 客户端连接中断
-			_ = sink("interrupted", map[string]interface{}{"message": "客户端已取消生成"})
+		case <-taskCtx.Done():
+			// 任务被主动停止或执行超时
+			msg := "任务已中止"
+			if errors.Is(taskCtx.Err(), context.DeadlineExceeded) {
+				msg = "任务执行超时，已自动停止"
+			}
+			safeSink("interrupted", map[string]interface{}{"message": msg})
 			s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "interrupted", accumulatedRecords, totalTokenUsage, apptime.Now().Sub(startTime).Milliseconds())
 			return nil
 		default:
 		}
 
-		_ = sink("status", map[string]interface{}{"status": "thinking", "step": step})
+		safeSink("status", map[string]interface{}{"status": "thinking", "step": step})
 
 		var turnDelta strings.Builder
 		var turnReasoning strings.Builder
@@ -335,32 +393,34 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			StreamResetFunc: func() {
 				turnDelta.Reset()
 				turnReasoning.Reset()
-				_ = sink("reset", map[string]interface{}{"content": finalContent.String(), "reasoning_content": finalReasoning.String()})
+				safeSink("reset", map[string]interface{}{"content": finalContent.String(), "reasoning_content": finalReasoning.String()})
 			},
 			StreamChunkFunc: func(chunk string) {
 				turnDelta.WriteString(chunk)
-				_ = sink("delta", map[string]interface{}{"content": chunk})
+				safeSink("delta", map[string]interface{}{"content": chunk})
 			},
 			StreamReasoningChunkFunc: func(chunk string) {
 				turnReasoning.WriteString(chunk)
-				_ = sink("reasoning", map[string]interface{}{"content": chunk})
+				safeSink("reasoning", map[string]interface{}{"content": chunk})
 			},
 		}
 
 		if step == maxAgentLoopSteps {
 			req.Tools = nil
 		}
-		resp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, req)
+		cTask := c.Copy()
+		cTask.Request = c.Request.Clone(taskCtx)
+		resp, err := s.aiCaller.ChatWithFallback(cTask, tenantID, userID, modelCfg, fallbackCfg, req)
 		if err != nil {
 			logger.Error("AI 调用失败", zap.Error(err), zap.Int("step", step))
-			_ = sink("error", map[string]interface{}{"message": "AI 模型处理异常: " + err.Error()})
+			safeSink("error", map[string]interface{}{"message": "AI 模型处理异常: " + err.Error()})
 			s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "error", accumulatedRecords, totalTokenUsage, apptime.Now().Sub(startTime).Milliseconds())
 			return err
 		}
 
 		if turnDelta.Len() == 0 && resp.Content != "" {
 			turnDelta.WriteString(resp.Content)
-			_ = sink("delta", map[string]interface{}{"content": resp.Content})
+			safeSink("delta", map[string]interface{}{"content": resp.Content})
 		}
 
 		totalTokenUsage.InputTokens += resp.TokenUsage.InputTokens
@@ -400,7 +460,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		}
 
 		// 发送 reset 事件清空临时流入正文的调用工具前说明，恢复纯净正文，并同步最新思考内容
-		_ = sink("reset", map[string]interface{}{
+		safeSink("reset", map[string]interface{}{
 			"content":           finalContent.String(),
 			"reasoning_content": finalReasoning.String(),
 		})
@@ -441,14 +501,14 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			// 检查是否具备该工具的权限
 			if !effectiveTools[toolName] {
 				errText := fmt.Sprintf("您没有调用工具「%s」的权限", toolName)
-				_ = sink("tool_start", map[string]interface{}{
+				safeSink("tool_start", map[string]interface{}{
 					"tool_code":    toolName,
 					"tool_call_id": tc.ID,
 					"ui_kind":      uiKind,
 					"status":       "running",
 					"thought":      stepThought,
 				})
-				_ = sink("tool_result", map[string]interface{}{
+				safeSink("tool_result", map[string]interface{}{
 					"tool_code":    toolName,
 					"tool_call_id": tc.ID,
 					"ui_kind":      uiKind,
@@ -475,7 +535,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			}
 
 			// 推送 tool_start 事件
-			_ = sink("tool_start", map[string]interface{}{
+			safeSink("tool_start", map[string]interface{}{
 				"tool_code":    toolName,
 				"tool_call_id": tc.ID,
 				"ui_kind":      uiKind,
@@ -494,7 +554,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 				// MCP 工具调用: mcp:{server_code}:{tool_name}
 				parts := strings.SplitN(strings.TrimPrefix(toolName, "mcp:"), ":", 2)
 				if len(parts) == 2 {
-					payload, execErr = s.mcpService.CallTool(ctx, tenantID, parts[0], parts[1], toolArgs)
+					payload, execErr = s.mcpService.CallTool(taskCtx, tenantID, parts[0], parts[1], toolArgs)
 				} else {
 					execErr = fmt.Errorf("非法的 MCP 工具键格式")
 				}
@@ -515,7 +575,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			}
 
 			// 推送 tool_result 事件
-			_ = sink("tool_result", map[string]interface{}{
+			safeSink("tool_result", map[string]interface{}{
 				"tool_code":    toolName,
 				"tool_call_id": tc.ID,
 				"ui_kind":      uiKind,
@@ -551,7 +611,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		return fmt.Errorf("保存回复失败: %w", err)
 	}
 
-	_ = sink("done", map[string]interface{}{
+	safeSink("done", map[string]interface{}{
 		"status":      "completed",
 		"token_usage": totalTokenUsage,
 		"duration_ms": durationMs,
@@ -614,7 +674,12 @@ func (s *AgentRuntimeService) asyncSummarizeTitle(
 		MaxTokens:   30,
 	}
 
-	resp, err := s.aiCaller.Chat(c, tenantID, userID, modelCfg, req)
+	titleCtx, titleCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer titleCancel()
+	cTask := c.Copy()
+	cTask.Request = c.Request.Clone(titleCtx)
+
+	resp, err := s.aiCaller.Chat(cTask, tenantID, userID, modelCfg, req)
 	if err != nil || resp == nil || strings.TrimSpace(resp.Content) == "" {
 		return
 	}

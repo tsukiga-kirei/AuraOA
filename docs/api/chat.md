@@ -9,15 +9,17 @@
 | GET | /api/chat/agents | 有效智能体数组，字段 id、agent_code、name、description、is_system、tool_codes |
 | GET | /api/chat/sessions | 本人的会话列表；keyword 匹配标题或消息正文；page 默认 1、page_size 默认 20，范围 1–100 |
 | POST | /api/chat/sessions | 创建：agent_code 必填；title、process_id、source 可选 |
-| GET | /api/chat/sessions/:id | 返回 session 与 messages |
+| GET | /api/chat/sessions/:id | 返回 session、messages 以及 is_running（指示当前是否有后台任务在执行） |
 | PATCH | /api/chat/sessions/:id | 更新 title、pinned，未传字段保持原值 |
 | DELETE | /api/chat/sessions/:id | 删除本人会话及消息 |
 | POST | /api/chat/sessions/:id/messages/stream | 请求 {"content":"问题"}；返回 SSE |
+| POST | /api/chat/sessions/:id/stop | 主动中止当前会话正在执行的后台智能体任务；返回 `{stopped: true}` |
 | POST | /api/chat/messages/:id/feedback | 提交消息反馈（点赞/点踩）：请求 `{"feedback":"like" | "dislike" | null}` |
 
 普通响应为 `{code:0,message:"success",data:...}`。列表 data 为 `{items:[],total:0,page:1,page_size:20}`。
 智能体字段：id、agent_code、name、description、is_system、tool_codes、quick_questions（快捷问题列表：`[{icon,title,prompt,description}]`）。
 会话字段：id、agent_id、agent_code、agent_name、title、source、process_id、pinned、created_at、updated_at。
+会话详情额外包含 `is_running: boolean`。
 消息字段：id、session_id、role、content、reasoning_content、status、tool_calls、token_usage、feedback（`"like"`/`"dislike"`/`null`）、feedback_at、created_at。字段为 snake_case。
 
 ## 流式事件
@@ -37,7 +39,8 @@
 | error | message | 失败，包括权限撤销 |
 | interrupted | message | 中断 |
 
-tool status 为 running / success / error。客户端停止通过 AbortController 取消连接。
+tool status 为 running / success / error。客户端停止通过 AbortController 取消本地流式监听。
+后台脱壳执行保障：会话流式任务由独立的后台 Context（带 5 分钟超时与会话级任务管理）托管。客户端断开连接、刷新页面或切换会话时，后端继续执行推理与工具调用并最终落库，不丢失结果。用户主动点击停止时，调用 `/api/chat/sessions/:id/stop` 触发任务精准中止。
 SSE 解析支持 UTF-8 分片、CRLF、跨网络包事件名及多行 data。消息和工具记录为响应式对象。
 
 ## 界面与限制

@@ -501,6 +501,7 @@ func SetupRouter(
 		chat.PATCH("/sessions/:id", chatHandler.UpdateSession)
 		chat.DELETE("/sessions/:id", chatHandler.DeleteSession)
 		chat.POST("/sessions/:id/messages/stream", chatHandler.StreamMessage)
+		chat.POST("/sessions/:id/stop", chatHandler.StopSession)
 		chat.POST("/messages/:id/feedback", chatHandler.UpdateMessageFeedback)
 	}
 }

@@ -6573,6 +6573,9 @@ paths:
                         "type": "array"
                         "items":
                           "$ref": "#/components/schemas/ChatMessage"
+                      "is_running":
+                        "type": "boolean"
+                        "description": "指示当前会话是否有后台智能体任务正在执行"
     "patch":
       "summary": "重命名或置顶本人会话"
       "tags":
@@ -6660,6 +6663,40 @@ paths:
             "text/event-stream":
               "schema":
                 "type": "string"
+  "/api/chat/sessions/{id}/stop":
+    "parameters":
+      -
+        "name": "id"
+        "in": "path"
+        "required": true
+        "schema":
+          "type": "string"
+          "format": "uuid"
+    "post":
+      "summary": "主动中止当前会话正在执行的后台智能体任务"
+      "tags":
+        - "Chat"
+      "security":
+        -
+          "bearerAuth": []
+      "responses":
+        "200":
+          "description": "成功"
+          "content":
+            "application/json":
+              "schema":
+                "type": "object"
+                "properties":
+                  "code":
+                    "type": "integer"
+                    "example": 0
+                  "message":
+                    "type": "string"
+                  "data":
+                    "type": "object"
+                    "properties":
+                      "stopped":
+                        "type": "boolean"
   "/api/chat/messages/{id}/feedback":
     "parameters":
       -
