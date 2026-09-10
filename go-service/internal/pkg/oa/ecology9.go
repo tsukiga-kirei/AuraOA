@@ -2276,7 +2276,8 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string, fi
 			COALESCE(wt.%s, '') AS type_name,
 			COALESCE(n.%s, '') AS node_name,
 			r.%s AS create_date,
-			COALESCE(bill.%s, '') AS main_table_name
+			COALESCE(bill.%s, '') AS main_table_name,
+			co.%s AS is_remark
 		FROM %s co
 		JOIN %s r ON co.%s = r.%s
 		LEFT JOIN %s wb ON r.%s = wb.%s
@@ -2285,7 +2286,9 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string, fi
 		LEFT JOIN %s h ON r.%s = h.%s
 		LEFT JOIN %s d ON h.%s = d.%s
 		LEFT JOIN %s n ON co.%s = n.%s
-		WHERE co.%s = ? AND co.%s = 0%s
+		WHERE co.%s = ? AND co.%s IN ('0', '1', 'a', 'h', '9')
+		  AND %s(COALESCE(bill.%s, '')) LIKE 'formtable_main_%%'
+		  AND %s(COALESCE(wb.%s, '')) NOT LIKE '%%系统提醒%%'%s
 		ORDER BY r.%s DESC`,
 		// SELECT
 		a.col("requestid"), a.col("requestname"),
@@ -2294,6 +2297,7 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string, fi
 		a.col("nodename"),
 		a.col("createdate"),
 		a.col("tablename"), // bill.tablename → 主表名
+		a.col("isremark"),
 		// FROM
 		a.tableName("workflow_currentoperator"), // co
 		// JOINs
@@ -2313,6 +2317,8 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string, fi
 		a.col("nodeid"), a.col("id"),
 		// WHERE
 		a.col("userid"), a.col("isremark"),
+		a.lowerFunc(), a.col("tablename"),
+		a.lowerFunc(), a.col("workflowname"),
 		dateCond,
 		// ORDER BY
 		a.col("createdate"),
@@ -2328,8 +2334,8 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string, fi
 
 	var items []TodoItem
 	for rows.Next() {
-		var requestID, requestName, applicant, department, workflowName, typeName, nodeName, createDate, mainTableName string
-		if err := rows.Scan(&requestID, &requestName, &applicant, &department, &workflowName, &typeName, &nodeName, &createDate, &mainTableName); err != nil {
+		var requestID, requestName, applicant, department, workflowName, typeName, nodeName, createDate, mainTableName, isRemark string
+		if err := rows.Scan(&requestID, &requestName, &applicant, &department, &workflowName, &typeName, &nodeName, &createDate, &mainTableName, &isRemark); err != nil {
 			continue
 		}
 		items = append(items, TodoItem{
@@ -2343,6 +2349,8 @@ func (a *Ecology9Adapter) FetchTodoList(ctx context.Context, username string, fi
 			SubmitTime:       createDate,
 			Urgency:          "medium",
 			MainTableName:    mainTableName,
+			IsRemark:         isRemark,
+			TodoType:         mapTodoType(isRemark),
 		})
 	}
 	return items, nil
@@ -2358,6 +2366,24 @@ func (a *Ecology9Adapter) FetchArchivedList(ctx context.Context, username string
 		return items, nil
 	}
 	return a.fetchArchivedListWithArchiveDate(ctx, false, filter)
+}
+
+// mapTodoType 将泛微 E9 workflow_currentoperator.isremark 操作类型映射为业务可读标签。
+func mapTodoType(isremark string) string {
+	switch strings.TrimSpace(isremark) {
+	case "0":
+		return "待审批"
+	case "1":
+		return "待批注"
+	case "a", "A":
+		return "待意见征询"
+	case "h", "H":
+		return "待转办"
+	case "9":
+		return "抄送待反馈"
+	default:
+		return "待办"
+	}
 }
 
 // FetchTodoListPaged 分页拉取待办列表，将 keyword/applicant/department/mainTableNames 筛选下推到 OA SQL，
@@ -2405,13 +2431,15 @@ func (a *Ecology9Adapter) FetchTodoListPaged(ctx context.Context, username strin
 		COALESCE(wt.%s, '') AS type_name,
 		COALESCE(n.%s, '') AS node_name,
 		r.%s AS create_date,
-		COALESCE(bill.%s, '') AS main_table_name`,
+		COALESCE(bill.%s, '') AS main_table_name,
+		co.%s AS is_remark`,
 		a.col("requestid"), a.col("requestname"),
 		a.col("lastname"), a.col("departmentname"),
 		a.col("workflowname"), a.col("typename"),
 		a.col("nodename"),
 		a.col("createdate"),
 		a.col("tablename"),
+		a.col("isremark"),
 	)
 
 	offset := (page - 1) * pageSize
@@ -2427,8 +2455,8 @@ func (a *Ecology9Adapter) FetchTodoListPaged(ctx context.Context, username strin
 
 	var items []TodoItem
 	for rows.Next() {
-		var requestID, requestName, applicant, department, workflowName, typeName, nodeName, createDate, mainTableName string
-		if err := rows.Scan(&requestID, &requestName, &applicant, &department, &workflowName, &typeName, &nodeName, &createDate, &mainTableName); err != nil {
+		var requestID, requestName, applicant, department, workflowName, typeName, nodeName, createDate, mainTableName, isRemark string
+		if err := rows.Scan(&requestID, &requestName, &applicant, &department, &workflowName, &typeName, &nodeName, &createDate, &mainTableName, &isRemark); err != nil {
 			continue
 		}
 		items = append(items, TodoItem{
@@ -2442,6 +2470,8 @@ func (a *Ecology9Adapter) FetchTodoListPaged(ctx context.Context, username strin
 			SubmitTime:       createDate,
 			Urgency:          "medium",
 			MainTableName:    mainTableName,
+			IsRemark:         isRemark,
+			TodoType:         mapTodoType(isRemark),
 		})
 	}
 	return &PagedResult[TodoItem]{Items: items, Total: total}, nil
@@ -2482,7 +2512,7 @@ func (a *Ecology9Adapter) buildTodoFromJoinWhere(e9UserID int, filter TodoListPa
 		args = append(args, dept)
 	}
 
-	// mainTableNames → 限制 bill.tablename
+	// mainTableNames → 限制 bill.tablename；未指定时默认限定为泛微自定义业务主表 formtable_main_%
 	if len(filter.MainTableNames) > 0 {
 		placeholders := make([]string, len(filter.MainTableNames))
 		for i, name := range filter.MainTableNames {
@@ -2491,6 +2521,8 @@ func (a *Ecology9Adapter) buildTodoFromJoinWhere(e9UserID int, filter TodoListPa
 		}
 		conds += fmt.Sprintf(" AND %s(COALESCE(bill.%s, '')) IN (%s)",
 			a.lowerFunc(), a.col("tablename"), strings.Join(placeholders, ","))
+	} else {
+		conds += fmt.Sprintf(" AND %s(COALESCE(bill.%s, '')) LIKE 'formtable_main_%%'", a.lowerFunc(), a.col("tablename"))
 	}
 
 	// processTypes → 限制 workflow_base.workflowname
@@ -2504,6 +2536,9 @@ func (a *Ecology9Adapter) buildTodoFromJoinWhere(e9UserID int, filter TodoListPa
 			a.lowerFunc(), a.col("workflowname"), strings.Join(placeholders, ","))
 	}
 
+	// 始终排除泛微内置的系统提醒工作流
+	conds += fmt.Sprintf(" AND %s(COALESCE(wb.%s, '')) NOT LIKE '%%系统提醒%%'", a.lowerFunc(), a.col("workflowname"))
+
 	fromJoinWhere := fmt.Sprintf(`FROM %s co
 		JOIN %s r ON co.%s = r.%s
 		LEFT JOIN %s wb ON r.%s = wb.%s
@@ -2512,7 +2547,7 @@ func (a *Ecology9Adapter) buildTodoFromJoinWhere(e9UserID int, filter TodoListPa
 		LEFT JOIN %s h ON r.%s = h.%s
 		LEFT JOIN %s d ON h.%s = d.%s
 		LEFT JOIN %s n ON co.%s = n.%s
-		WHERE co.%s = ? AND co.%s = 0%s`,
+		WHERE co.%s = ? AND co.%s IN ('0', '1', 'a', 'h', '9')%s`,
 		a.tableName("workflow_currentoperator"),
 		a.tableName("workflow_requestbase"),
 		a.col("requestid"), a.col("requestid"),
@@ -3188,7 +3223,7 @@ func (a *Ecology9Adapter) IsProcessInTodo(ctx context.Context, username string, 
 	var count int64
 	err = a.db.WithContext(ctx).
 		Table(a.tableName("workflow_currentoperator")).
-		Where(a.col("userid")+" = ? AND "+a.col("requestid")+" = ? AND "+a.col("isremark")+" = 0",
+		Where(a.col("userid")+" = ? AND "+a.col("requestid")+" = ? AND "+a.col("isremark")+" IN ('0', '1', 'a', 'h', '9')",
 			e9UserID, processID).
 		Count(&count).Error
 	if err != nil {
