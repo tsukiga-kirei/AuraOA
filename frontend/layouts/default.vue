@@ -77,7 +77,7 @@ watch(route, () => {
 .main-wrapper {
   flex: 1;
   margin-left: var(--sidebar-width);
-  transition: margin-left var(--transition-slow);
+  transition: margin-left 0.24s cubic-bezier(0.2, 0, 0, 1);
   min-height: 100vh;
   display: flex;
   flex-direction: column;

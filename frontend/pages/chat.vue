@@ -30,6 +30,8 @@ const messages = ref<ChatMessageItem[]>([...(currentDetail.value?.messages || []
 const canvas = ref<HTMLElement | null>(null)
 const canvasBody = ref<HTMLElement | null>(null)
 const composer = ref<InstanceType<typeof ChatComposer> | null>(null)
+const welcomeComposer = ref<InstanceType<typeof ChatComposer> | null>(null)
+const isSubmittingFirst = ref(false)
 const pinned = ref(true)
 const agent = computed(() => {
   const code = currentDetail.value?.session.agent_code || selectedAgentCode.value
@@ -85,14 +87,32 @@ onMounted(async () => {
   onBeforeUnmount(() => observer.disconnect())
 })
 const changeAgent = (code: string) => { stopStreaming(); newConversation(code); navigateTo({ path: '/chat', query: { agent: code } }) }
+
+const handleSelectSuggestion = (prompt: string) => {
+  if (welcomeComposer.value) {
+    welcomeComposer.value.appendPrompt(prompt)
+  } else if (composer.value) {
+    composer.value.appendPrompt(prompt)
+  }
+}
+
 const submit = async (content: string) => {
   if (detailLoading.value || streaming.value) return
+  const isFirstMessage = !messages.value.length
+  if (isFirstMessage) {
+    isSubmittingFirst.value = true
+    await new Promise(r => setTimeout(r, 160))
+  }
   if (!currentSessionId.value) {
     const created = await createSession(agent.value?.agent_code)
-    if (!created) return
+    if (!created) {
+      isSubmittingFirst.value = false
+      return
+    }
     await nextTick()
   }
   pinned.value = true
+  isSubmittingFirst.value = false
   await sendStreamMessage(currentSessionId.value!, content, messages)
 }
 const iconMap: Record<string, any> = {
@@ -170,17 +190,35 @@ const jump = (id: string) => {
       <div ref="canvasBody" class="chat-canvas-body">
         <div v-if="error" class="chat-error" role="alert">{{ error }}</div>
         <div v-if="detailLoading" class="chat-loading"><a-spin /></div>
-        <div v-else-if="!messages.length" class="chat-welcome">
-          <div class="welcome-mark"><img src="/favicon.svg" alt="" width="34" height="34" /></div>
+        <div
+          v-else-if="!messages.length"
+          class="chat-welcome"
+          :class="{ 'is-exiting': isSubmittingFirst }"
+        >
+          <div class="welcome-mark"><img src="/favicon.svg" alt="" width="36" height="36" /></div>
           <p class="welcome-eyebrow">{{ agent?.name || t('chat.assistantName') }}</p>
           <h1>{{ t('chat.welcomeTitle') }}</h1>
           <p class="welcome-description">{{ agent?.description || t('chat.welcomeDescription') }}</p>
+
+          <!-- 现代 AI 风格：输入框上移至居中 Hero 区 -->
+          <div class="welcome-composer-slot">
+            <ChatComposer
+              ref="welcomeComposer"
+              variant="hero"
+              :submitting="streaming"
+              :disabled="detailLoading || !agent"
+              @submit="submit"
+              @stop="stopStreaming"
+            />
+          </div>
+
+          <!-- 初始推荐卡片：与主题契合，无渐变 -->
           <div class="suggestions">
             <button
               v-for="(item, sIdx) in dynamicSuggestions"
               :key="sIdx"
               class="suggestion-card"
-              @click="composer?.appendPrompt(item.prompt)"
+              @click="handleSelectSuggestion(item.prompt)"
             >
               <div class="suggestion-icon-wrap">
                 <component :is="item.icon" />
@@ -192,17 +230,23 @@ const jump = (id: string) => {
               <ArrowRightOutlined class="suggestion-arrow" />
             </button>
           </div>
+
+          <p class="composer-hint composer-hint--welcome">{{ t('chat.composerHint', '内容由 AI 生成，请结合实际业务审慎核验') }}</p>
           <p v-if="!effectiveAgents.length" class="no-agents">{{ t('chat.noAgents') }}</p>
         </div>
-        <ChatThread v-else :messages="messages" :agent-name="agent?.name" />
+        <div v-else class="chat-thread-container">
+          <ChatThread :messages="messages" :agent-name="agent?.name" />
+        </div>
       </div>
     </div>
     <MessageJumpRail v-if="jumpTurns.length > 2" :turns="jumpTurns" @jump="jump" />
-    <div class="chat-bottom">
-      <button v-if="!pinned && messages.length" class="scroll-bottom" :aria-label="t('chat.scrollBottom')" @click="pinned = true; scrollBottom()"><ArrowDownOutlined /></button>
-      <ChatComposer ref="composer" :submitting="streaming" :disabled="detailLoading || !agent" @submit="submit" @stop="stopStreaming" />
-      <p class="composer-hint">{{ t('chat.composerHint', '内容由 AI 生成，请结合实际业务审慎核验') }}</p>
-    </div>
+    <transition name="bottom-slide">
+      <div v-if="messages.length" class="chat-bottom chat-bottom--active">
+        <button v-if="!pinned && messages.length" class="scroll-bottom" :aria-label="t('chat.scrollBottom')" @click="pinned = true; scrollBottom()"><ArrowDownOutlined /></button>
+        <ChatComposer ref="composer" :submitting="streaming" :disabled="detailLoading || !agent" @submit="submit" @stop="stopStreaming" />
+        <p class="composer-hint">{{ t('chat.composerHint', '内容由 AI 生成，请结合实际业务审慎核验') }}</p>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -214,24 +258,183 @@ const jump = (id: string) => {
 .workspace-context { font-size:12px; color:var(--color-text-tertiary); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .chat-canvas { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-gutter:stable; }
 .chat-canvas-body { min-height:100%; display:flex; flex-direction:column; }
-.chat-welcome { width:min(780px,100%); margin:auto; padding:clamp(45px,10vh,110px) 30px 48px; }
-.welcome-mark { margin-bottom:26px; }
-.welcome-eyebrow { font-size:12px; color:var(--color-primary); font-weight:600; margin-bottom:12px; letter-spacing:.06em; }
-h1 { font-size:clamp(27px,3vw,38px); font-weight:550; line-height:1.45; letter-spacing:-.035em; margin:0 0 14px; }
-.welcome-description { font-size:14px; color:var(--color-text-secondary); line-height:1.85; max-width:580px; }
-.suggestions { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; margin-top:34px; }
-.suggestion-card { position:relative; display:flex; flex-direction:column; align-items:flex-start; text-align:left; padding:20px 18px; border:1px solid var(--color-border-light); background:linear-gradient(180deg, var(--color-bg-page) 0%, var(--color-bg-card) 100%); border-radius:14px; color:var(--color-text-secondary); cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.02); transition:all .25s cubic-bezier(0.2, 0.8, 0.2, 1); }
-.suggestion-card:hover { border-color:var(--color-primary); transform:translateY(-3px); box-shadow:0 8px 24px rgba(0,0,0,0.06); }
-.suggestion-icon-wrap { width:36px; height:36px; border-radius:10px; background:var(--color-primary-bg); color:var(--color-primary); display:flex; align-items:center; justify-content:center; font-size:16px; margin-bottom:14px; }
-.suggestion-card strong { font-size:14px; color:var(--color-text-primary); font-weight:600; margin-bottom:4px; display:block; }
-.suggestion-card span { font-size:12px; line-height:1.6; color:var(--color-text-tertiary); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-.suggestion-arrow { position:absolute; right:16px; top:20px; font-size:12px; color:var(--color-primary); opacity:0; transform:translateX(-4px); transition:all .2s ease; }
-.suggestion-card:hover .suggestion-arrow { opacity:1; transform:translateX(0); }
+
+/* 欢迎区 Hero 布局与淡出过渡 */
+.chat-welcome {
+  width: min(800px, 100%);
+  margin: auto;
+  padding: clamp(32px, 6vh, 60px) 24px 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: opacity 0.32s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.chat-welcome.is-exiting {
+  opacity: 0;
+  transform: translateY(-24px) scale(0.98);
+  pointer-events: none;
+}
+.welcome-mark {
+  margin-bottom: 18px;
+  display: inline-flex;
+  padding: 8px;
+  background: var(--color-primary-bg);
+  border-radius: 14px;
+  box-shadow: 0 2px 8px var(--color-primary-ring);
+}
+.welcome-eyebrow {
+  font-size: 13px;
+  color: var(--color-primary);
+  font-weight: 600;
+  margin-bottom: 8px;
+  letter-spacing: .04em;
+}
+h1 {
+  font-size: clamp(26px, 2.8vw, 36px);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -.03em;
+  margin: 0 0 10px;
+  color: var(--color-text-primary);
+}
+.welcome-description {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  line-height: 1.65;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* 对话框上移至居中偏上 Hero 区 */
+.welcome-composer-slot {
+  width: 100%;
+  margin: 28px 0 24px;
+  text-align: left;
+}
+
+/* 推荐问题卡片 — 去除渐变，符合企业级主题 */
+.suggestions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.suggestion-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  text-align: left;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border-light);
+  background: var(--color-bg-card);
+  border-radius: 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+  transition: all .22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.suggestion-card:hover {
+  border-color: var(--color-primary-lighter);
+  background: var(--color-bg-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+.suggestion-icon-wrap {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+.suggestion-content {
+  flex: 1;
+  min-width: 0;
+}
+.suggestion-card strong {
+  font-size: 13.5px;
+  color: var(--color-text-primary);
+  font-weight: 600;
+  margin-bottom: 3px;
+  display: block;
+}
+.suggestion-card span {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.suggestion-arrow {
+  font-size: 11px;
+  color: var(--color-primary);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all .2s ease;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.suggestion-card:hover .suggestion-arrow {
+  opacity: 0.85;
+  transform: translateX(0);
+}
+
+.composer-hint--welcome {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+/* 聊天线程淡入上升动画 */
+.chat-thread-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  animation: threadFadeIn 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+@keyframes threadFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 底部输入框过渡动画 */
 .chat-bottom { flex-shrink:0; position:relative; background:var(--color-bg-card); padding:8px 24px 10px; }
+.bottom-slide-enter-active {
+  transition: all 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.bottom-slide-enter-from {
+  opacity: 0;
+  transform: translateY(20px);
+}
 .composer-hint { text-align:center; font-size:11px; color:var(--color-text-tertiary); margin:6px 0 0; }
 .scroll-bottom { position:absolute; top:-44px; left:calc(50% - 17px); width:34px; height:34px; background:var(--color-bg-card); border:1px solid var(--color-border); color:var(--color-text-secondary); border-radius:50%; cursor:pointer; }
 .chat-error,.no-agents { color:var(--color-text-secondary); font-size:13px; padding:14px; background:var(--color-bg-page); border-radius:8px; margin:16px auto; max-width:740px; }
 .chat-loading { padding:60px; text-align:center; }
-@media(max-width:600px) { .workspace-heading { padding:0 14px; height:50px; }.workspace-context { display:none; }.chat-welcome { padding:30px 22px; }.suggestions { grid-template-columns:1fr; gap:10px; margin-top:24px; }.chat-bottom { padding:8px 12px 10px; }.welcome-mark { margin-bottom:18px; } }
-@media(prefers-reduced-motion:reduce) { .suggestion-card { transition:none; } }
+
+@media(max-width:768px) {
+  .workspace-heading { padding:0 14px; height:50px; }
+  .workspace-context { display:none; }
+  .chat-welcome { padding:24px 16px; }
+  .suggestions { grid-template-columns:1fr; gap:10px; margin-top:20px; }
+  .chat-bottom { padding:8px 12px 10px; }
+  .welcome-mark { margin-bottom:14px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .suggestion-card, .chat-welcome, .chat-thread-container, .bottom-slide-enter-active { transition:none !important; animation:none !important; }
+}
 </style>
