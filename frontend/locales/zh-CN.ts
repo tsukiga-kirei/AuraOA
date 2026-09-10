@@ -2825,6 +2825,7 @@ export default {
   "chat.toolArguments": "查看查询条件",
   "chat.openProcess": "打开流程",
   "chat.tools.list_my_todos": "查询我的待办",
+  "chat.tools.list_my_requests": "查询我发起的流程",
   "chat.tools.get_process": "读取流程详情",
   "chat.tools.get_approval_flow": "查询审批记录",
   "chat.tools.get_latest_audit": "读取审核结果",

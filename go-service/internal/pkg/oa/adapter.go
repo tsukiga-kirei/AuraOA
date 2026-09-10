@@ -112,6 +112,9 @@ type OAAdapter interface {
 
 	// CheckProcessVisibility 检查指定用户对流程实例是否具有可见性（待办人、申请人或历史审批人）。
 	CheckProcessVisibility(ctx context.Context, username string, processID string) (bool, error)
+
+	// FetchMyRequestsPaged 分页拉取当前用户作为发起人提交的流程列表，支持关键词、流转状态与真分页。
+	FetchMyRequestsPaged(ctx context.Context, username string, filter MyRequestPagedFilter) (*PagedResult[MyRequestItem], error)
 }
 
 // BrowseValueResolver 可选接口：支持按字段选择集把浏览按钮原始值增补为显示值。
@@ -319,3 +322,24 @@ type ProcessFlowSnapshot struct {
 	HistoryText     string            `json:"history_text"`
 	GraphText       string            `json:"graph_text"`
 }
+
+// MyRequestPagedFilter 个人发起流程分页查询条件
+type MyRequestPagedFilter struct {
+	Keyword  string // 流程标题关键词
+	Status   string // all | processing | archived
+	Page     int    // 页码
+	PageSize int    // 每页条数
+}
+
+// MyRequestItem 个人发起的流程条目
+type MyRequestItem struct {
+	ProcessID        string `json:"process_id"`
+	Title            string `json:"title"`
+	ProcessType      string `json:"process_type"`
+	ProcessTypeLabel string `json:"process_type_label"`
+	CurrentNode      string `json:"current_node"`
+	SubmitTime       string `json:"submit_time"`
+	Status           string `json:"status"` // 流转中 | 已归档
+	OAURL            string `json:"oa_url,omitempty"`
+}
+

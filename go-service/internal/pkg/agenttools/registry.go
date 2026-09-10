@@ -52,6 +52,39 @@ var BuiltinTools = map[string]ToolSpec{
 			},
 		},
 	},
+	"list_my_requests": {
+		Code:        "list_my_requests",
+		Name:        "查询我发起的流程",
+		Description: "分页查询当前登录用户在 OA 系统中发起的申请与审批流程，支持根据关键词、流转状态（流转中/已归档）及分页参数筛选。",
+		UIKind:      "my_request_list",
+		OARequired:  true,
+		Risk:        "read",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"keyword": map[string]interface{}{
+					"type":        "string",
+					"description": "流程标题模糊搜索关键词",
+				},
+				"status": map[string]interface{}{
+					"type":        "string",
+					"enum":        []string{"all", "processing", "archived"},
+					"description": "流程状态：all (全部，默认)，processing (流转中/审批中)，archived (已办结/已归档)",
+					"default":     "all",
+				},
+				"page": map[string]interface{}{
+					"type":        "integer",
+					"description": "页码，从 1 开始，默认 1",
+					"default":     1,
+				},
+				"page_size": map[string]interface{}{
+					"type":        "integer",
+					"description": "每页记录条数，默认 20，最大 50",
+					"default":     20,
+				},
+			},
+		},
+	},
 	"get_process": {
 		Code:        "get_process",
 		Name:        "获取流程表单详情",
@@ -223,6 +256,7 @@ func (ts ToolSpec) ToToolDefinition() ai.ToolDefinition {
 func GetAllToolSpecs() []ToolSpec {
 	orderedCodes := []string{
 		"list_my_todos",
+		"list_my_requests",
 		"get_process",
 		"get_approval_flow",
 		"get_latest_audit",

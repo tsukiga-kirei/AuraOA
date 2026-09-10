@@ -17,6 +17,14 @@ func (a executionAdapter) CheckProcessVisibility(context.Context, string, string
 func (a executionAdapter) FetchProcessRequestSummary(context.Context, string) (*oa.ProcessRequestSummary, error) {
 	return &oa.ProcessRequestSummary{ProcessID: "42", ProcessType: "expense", Title: "费用报销"}, nil
 }
+func (a executionAdapter) FetchMyRequestsPaged(context.Context, string, oa.MyRequestPagedFilter) (*oa.PagedResult[oa.MyRequestItem], error) {
+	return &oa.PagedResult[oa.MyRequestItem]{
+		Items: []oa.MyRequestItem{
+			{ProcessID: "1001", Title: "采购申请", Status: "流转中"},
+		},
+		Total: 1,
+	}, nil
+}
 
 func TestExecutionToolsCallRealServiceAndRespectVisibility(t *testing.T) {
 	count := 0
@@ -40,5 +48,21 @@ func TestExecutionToolsCallRealServiceAndRespectVisibility(t *testing.T) {
 	}
 	if count != 2 {
 		t.Fatalf("错误调用次数 %d", count)
+	}
+}
+
+func TestExecuteListMyRequests(t *testing.T) {
+	executor := &SystemToolExecutor{}
+	ctx := &ExecutionContext{Ctx: context.Background(), Username: "user"}
+	res, uiKind, err := executor.executeListMyRequests(`{"status":"processing"}`, ctx, nil, executionAdapter{})
+	if err != nil {
+		t.Fatalf("executeListMyRequests failed: %v", err)
+	}
+	if uiKind != "my_request_list" {
+		t.Fatalf("expected uiKind my_request_list, got %s", uiKind)
+	}
+	m := res.(map[string]interface{})
+	if m["total"] != 1 {
+		t.Fatalf("expected total 1, got %v", m["total"])
 	}
 }

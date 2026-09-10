@@ -107,6 +107,8 @@ func (e *SystemToolExecutor) Execute(toolCode string, argumentsJSON string, exec
 	switch toolCode {
 	case "list_my_todos":
 		return e.executeListMyTodos(argumentsJSON, execCtx, oaConn, adapter)
+	case "list_my_requests":
+		return e.executeListMyRequests(argumentsJSON, execCtx, oaConn, adapter)
 	case "get_process":
 		return e.executeGetProcess(argumentsJSON, execCtx, adapter)
 	case "get_approval_flow":
@@ -201,6 +203,82 @@ func (e *SystemToolExecutor) executeListMyTodos(
 		"page":      args.Page,
 		"page_size": args.PageSize,
 	}, "todo_list", nil
+}
+
+// 查询我发起的流程
+func (e *SystemToolExecutor) executeListMyRequests(
+	argsJSON string,
+	execCtx *ExecutionContext,
+	oaConn *model.OADatabaseConnection,
+	adapter oa.OAAdapter,
+) (interface{}, string, error) {
+	var args struct {
+		Keyword  string `json:"keyword"`
+		Status   string `json:"status"` // all | processing | archived
+		Page     int    `json:"page"`
+		PageSize int    `json:"page_size"`
+	}
+	_ = json.Unmarshal([]byte(argsJSON), &args)
+	if args.Page <= 0 {
+		args.Page = 1
+	}
+	if args.PageSize <= 0 {
+		args.PageSize = 20
+	}
+	if args.PageSize > 50 {
+		args.PageSize = 50
+	}
+	if args.Status == "" {
+		args.Status = "all"
+	}
+
+	filter := oa.MyRequestPagedFilter{
+		Keyword:  args.Keyword,
+		Status:   args.Status,
+		Page:     args.Page,
+		PageSize: args.PageSize,
+	}
+
+	pagedResult, err := adapter.FetchMyRequestsPaged(execCtx.Ctx, execCtx.Username, filter)
+	if err != nil {
+		return nil, "my_request_list", fmt.Errorf("拉取我发起的流程失败: %w", err)
+	}
+
+	type MyRequestPayload struct {
+		ProcessID        string `json:"process_id"`
+		Title            string `json:"title"`
+		ProcessType      string `json:"process_type"`
+		ProcessTypeLabel string `json:"process_type_label"`
+		CurrentNode      string `json:"current_node"`
+		SubmitTime       string `json:"submit_time"`
+		Status           string `json:"status"`
+		OAURL            string `json:"oa_url,omitempty"`
+	}
+
+	items := make([]MyRequestPayload, 0, len(pagedResult.Items))
+	for _, item := range pagedResult.Items {
+		oaURL := ""
+		if oaConn != nil {
+			oaURL = buildProcessURL(oaConn.OABaseURL, oaConn.ProcessURLTemplate, oaConn.OAType, item.ProcessID)
+		}
+		items = append(items, MyRequestPayload{
+			ProcessID:        item.ProcessID,
+			Title:            item.Title,
+			ProcessType:      item.ProcessType,
+			ProcessTypeLabel: item.ProcessTypeLabel,
+			CurrentNode:      item.CurrentNode,
+			SubmitTime:       item.SubmitTime,
+			Status:           item.Status,
+			OAURL:            oaURL,
+		})
+	}
+
+	return map[string]interface{}{
+		"items":     items,
+		"total":     pagedResult.Total,
+		"page":      args.Page,
+		"page_size": args.PageSize,
+	}, "my_request_list", nil
 }
 
 // 2. 获取流程详情

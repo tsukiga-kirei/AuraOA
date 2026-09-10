@@ -2795,6 +2795,7 @@ export default {
   "chat.toolArguments": "View query parameters",
   "chat.openProcess": "Open process",
   "chat.tools.list_my_todos": "Find my tasks",
+  "chat.tools.list_my_requests": "My Initiated Requests",
   "chat.tools.get_process": "Read process",
   "chat.tools.get_approval_flow": "Read approval history",
   "chat.tools.get_latest_audit": "Read latest audit",
