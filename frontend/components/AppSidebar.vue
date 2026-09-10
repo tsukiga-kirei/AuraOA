@@ -110,28 +110,30 @@ const handleToggleSidebar = () => {
 
     <!--权限驱动的导航区域-->
     <nav class="sidebar-nav">
-      <div v-for="section in navigationSections" :key="section.id" class="sidebar-section">
-        <div class="sidebar-section-title">{{ t(section.titleKey) }}</div>
-        <template v-for="item in section.items" :key="item.key">
-          <a-tooltip
-            :title="collapsed && !mobileMenuOpen ? t(item.labelKey) : ''"
-            placement="right"
-            :mouse-enter-delay="0.1"
-            :arrow="false"
-            overlay-class-name="sidebar-nav-tooltip"
-          >
-            <div
-              class="sidebar-item"
-              :class="{ 'sidebar-item--active': isMenuActive(item.key) }"
-              @click="handleMenuClick(item.key)"
+      <div class="sidebar-nav-fixed">
+        <div v-for="section in navigationSections" :key="section.id" class="sidebar-section">
+          <div class="sidebar-section-title">{{ t(section.titleKey) }}</div>
+          <template v-for="item in section.items" :key="item.key">
+            <a-tooltip
+              :title="collapsed && !mobileMenuOpen ? t(item.labelKey) : ''"
+              placement="right"
+              :mouse-enter-delay="0.1"
+              :arrow="false"
+              overlay-class-name="sidebar-nav-tooltip"
             >
-              <component :is="item.icon" class="sidebar-item-icon" />
-              <span class="sidebar-item-label">{{ t(item.labelKey) }}</span>
-              <span v-if="item.badge" class="sidebar-item-badge">{{ item.badge }}</span>
-              <div v-if="isMenuActive(item.key)" class="sidebar-item-indicator" />
-            </div>
-          </a-tooltip>
-        </template>
+              <div
+                class="sidebar-item"
+                :class="{ 'sidebar-item--active': isMenuActive(item.key) }"
+                @click="handleMenuClick(item.key)"
+              >
+                <component :is="item.icon" class="sidebar-item-icon" />
+                <span class="sidebar-item-label">{{ t(item.labelKey) }}</span>
+                <span v-if="item.badge" class="sidebar-item-badge">{{ item.badge }}</span>
+                <div v-if="isMenuActive(item.key)" class="sidebar-item-indicator" />
+              </div>
+            </a-tooltip>
+          </template>
+        </div>
       </div>
       <div v-if="chatAllowed" class="sidebar-section sidebar-section--assistant">
         <div class="sidebar-section-title">{{ t('sidebar.section.assistant') }}</div>
@@ -159,8 +161,7 @@ const handleToggleSidebar = () => {
   position: fixed; top: 0; left: 0; bottom: 0;
   z-index: 100;
   transition: width 0.24s cubic-bezier(0.2, 0, 0, 1), transform 0.28s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.28s ease;
-  overflow-x: hidden;
-  overflow-y: hidden;
+  overflow: visible;
 }
 .sidebar--collapsed { width: var(--sidebar-collapsed-width); }
 
@@ -378,8 +379,28 @@ html[data-theme='dark'] .sidebar-hint-below::after {
   color: var(--color-danger);
 }
 
-.sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; overflow-x: hidden; min-width: 0; min-height: 0; width: 100%; }
-.sidebar-section--assistant { margin-top: 4px; }
+.sidebar-nav {
+  flex: 1;
+  padding: 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+}
+.sidebar-nav-fixed {
+  flex-shrink: 0;
+}
+.sidebar-section--assistant {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-top: 4px;
+  margin-bottom: 0;
+}
 .sidebar-section { margin-bottom: 8px; }
 .sidebar-section-title {
   padding: 8px 24px 6px; font-size: 11px; font-weight: 600;

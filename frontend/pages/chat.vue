@@ -251,7 +251,6 @@ const jump = (id: string) => {
           <div class="welcome-mark"><img src="/favicon.svg" alt="" width="36" height="36" /></div>
           <p class="welcome-eyebrow">{{ agent?.name || t('chat.assistantName') }}</p>
           <h1>{{ t('chat.welcomeTitle') }}</h1>
-          <p class="welcome-description">{{ agent?.description || t('chat.welcomeDescription') }}</p>
 
           <!-- 现代 AI 风格：输入框上移至居中 Hero 区 -->
           <div class="welcome-composer-slot">
@@ -366,18 +365,11 @@ h1 {
   margin: 0 0 10px;
   color: var(--color-text-primary);
 }
-.welcome-description {
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  line-height: 1.65;
-  max-width: 600px;
-  margin: 0 auto;
-}
 
 /* 对话框上移至居中偏上 Hero 区 */
 .welcome-composer-slot {
   width: 100%;
-  margin: 28px 0 24px;
+  margin: 18px 0 24px;
   text-align: left;
 }
 
