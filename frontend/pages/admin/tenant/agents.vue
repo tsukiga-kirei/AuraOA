@@ -1158,8 +1158,8 @@ onMounted(() => {
 }
 .page-subtitle {
   font-size: 14px;
-  color: var(--color-text-secondary);
-  margin-top: 4px;
+  color: var(--color-text-tertiary);
+  margin: 4px 0 0;
 }
 
 /* 顶级胶囊页签导航 */

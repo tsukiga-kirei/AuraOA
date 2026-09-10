@@ -746,6 +746,18 @@ async function loadProcessCascaderOptions() {
 
 const renderMarkdown = (text: string) => text ? renderSafeMarkdown(text) : ''
 
+const expandedChatTools = ref<Set<string>>(new Set())
+const toggleChatToolExpanded = (key: string) => {
+  const next = new Set(expandedChatTools.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  expandedChatTools.value = next
+}
+const isChatToolExpanded = (key: string) => expandedChatTools.value.has(key)
+
 const copiedKey = ref('')
 const copyText = async (key: string, text: string) => {
   if (!text) return
@@ -2668,18 +2680,118 @@ onMounted(async () => {
                               <div class="chain-section-title" style="margin-bottom: 8px;">{{ t('admin.data.chatContextMessages', '对话上下文消息') }}</div>
                               <div class="chat-messages-flow">
                                 <div v-for="(msg, mIdx) in parseChatPrompt(logItem.user_prompt, logItem.system_prompt).messages" :key="mIdx" class="chat-flow-item" :class="msg.role">
+                                  <!-- 角色标题行与操作区 -->
                                   <div class="chat-flow-role">
                                     <span class="role-badge" :class="msg.role">
-                                      {{ msg.role === 'user' ? '用户' : msg.role === 'assistant' ? '智能助理' : msg.role === 'tool' ? ('工具返回 · ' + (msg.name || 'tool')) : msg.role }}
+                                      <template v-if="msg.role === 'user'">
+                                        <UserOutlined /> {{ t('admin.data.roleUser', '用户') }}
+                                      </template>
+                                      <template v-else-if="msg.role === 'assistant'">
+                                        <RobotOutlined /> {{ t('admin.data.roleAssistant', '智能助理') }}
+                                      </template>
+                                      <template v-else-if="msg.role === 'tool'">
+                                        <ApiOutlined /> {{ t('admin.data.toolReturnPrefix', '工具返回') }} · {{ msg.name || 'tool' }}
+                                      </template>
+                                      <template v-else>{{ msg.role }}</template>
                                     </span>
+                                    <div class="chat-flow-role-actions">
+                                      <!-- 工具返回：一键复制 + 展开/收起 -->
+                                      <template v-if="msg.role === 'tool' && msg.content">
+                                        <a-button
+                                          type="link"
+                                          size="small"
+                                          class="copy-code-btn"
+                                          @click="copyText(`tool-res-${logItem.id}-${mIdx}`, formatToolPayload(msg.content))"
+                                        >
+                                          <CheckOutlined v-if="copiedKey === `tool-res-${logItem.id}-${mIdx}`" style="color: var(--color-success);" />
+                                          <CopyOutlined v-else />
+                                          <span>{{ copiedKey === `tool-res-${logItem.id}-${mIdx}` ? t('common.copied', '已复制') : t('common.copy', '复制') }}</span>
+                                        </a-button>
+                                        <a-button
+                                          v-if="msg.content.length > 200"
+                                          type="link"
+                                          size="small"
+                                          class="tool-fold-btn"
+                                          @click="toggleChatToolExpanded(`tool-exp-${logItem.id}-${mIdx}`)"
+                                        >
+                                          <DownOutlined v-if="!isChatToolExpanded(`tool-exp-${logItem.id}-${mIdx}`)" />
+                                          <UpOutlined v-else />
+                                          <span>{{ isChatToolExpanded(`tool-exp-${logItem.id}-${mIdx}`) ? t('admin.data.collapseLines', '恢复默认几行') : t('admin.data.expandAllLines', '展开全部') }}</span>
+                                        </a-button>
+                                      </template>
+                                      <!-- 用户提问：复制 -->
+                                      <template v-else-if="msg.role === 'user' && msg.content">
+                                        <a-button
+                                          type="link"
+                                          size="small"
+                                          class="copy-code-btn"
+                                          @click="copyText(`user-msg-${logItem.id}-${mIdx}`, msg.content)"
+                                        >
+                                          <CheckOutlined v-if="copiedKey === `user-msg-${logItem.id}-${mIdx}`" style="color: var(--color-success);" />
+                                          <CopyOutlined v-else />
+                                          <span>{{ copiedKey === `user-msg-${logItem.id}-${mIdx}` ? t('common.copied', '已复制') : t('common.copy', '复制') }}</span>
+                                        </a-button>
+                                      </template>
+                                      <!-- 助理普通回复：复制 -->
+                                      <template v-else-if="msg.role === 'assistant' && msg.content">
+                                        <a-button
+                                          type="link"
+                                          size="small"
+                                          class="copy-code-btn"
+                                          @click="copyText(`asst-msg-${logItem.id}-${mIdx}`, msg.content)"
+                                        >
+                                          <CheckOutlined v-if="copiedKey === `asst-msg-${logItem.id}-${mIdx}`" style="color: var(--color-success);" />
+                                          <CopyOutlined v-else />
+                                          <span>{{ copiedKey === `asst-msg-${logItem.id}-${mIdx}` ? t('common.copied', '已复制') : t('common.copy', '复制') }}</span>
+                                        </a-button>
+                                      </template>
+                                    </div>
                                   </div>
+
                                   <div class="chat-flow-body">
-                                    <div v-if="msg.content" class="chat-flow-content">{{ msg.content }}</div>
+                                    <!-- 普通消息内容 -->
+                                    <div v-if="msg.content && msg.role !== 'tool'" class="chat-flow-content">{{ msg.content }}</div>
+
+                                    <!-- 助理工具调用：卡片式展示（入参复制 + 格式化 + 滚动条） -->
                                     <div v-if="msg.tool_calls?.length" class="chat-flow-toolcalls">
-                                      <div v-for="tc in msg.tool_calls" :key="tc.id" class="chat-toolcall-item">
-                                        <span class="tc-name">调用工具: {{ tc.function?.name || tc.name }}</span>
-                                        <pre v-if="tc.function?.arguments" class="tc-args">{{ tc.function.arguments }}</pre>
+                                      <div v-for="(tc, tcIdx) in msg.tool_calls" :key="tc.id || tcIdx" class="chat-toolcall-item">
+                                        <div class="toolcall-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                                          <span class="toolcall-name">
+                                            <ApiOutlined style="color: var(--color-warning); margin-right: 4px;" />
+                                            {{ tc.function?.name || tc.name || t('admin.data.unknownTool', '未知工具') }}
+                                          </span>
+                                          <a-tag color="processing" style="margin-right: 0; font-size: 11px;">
+                                            {{ t('admin.data.callToolPrefix', '调用工具') }}
+                                          </a-tag>
+                                        </div>
+                                        <div v-if="tc.thought" class="toolcall-thought" style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                          💡 {{ tc.thought }}
+                                        </div>
+                                        <div v-if="tc.function?.arguments || tc.arguments" class="toolcall-block">
+                                          <div class="toolcall-block-title-row">
+                                            <span class="toolcall-block-title">{{ t('admin.data.toolInput', '入参：') }}</span>
+                                            <a-button
+                                              type="link"
+                                              size="small"
+                                              class="copy-code-btn"
+                                              @click="copyText(`tc-args-${logItem.id}-${mIdx}-${tcIdx}`, formatToolArguments(tc.function?.arguments || tc.arguments))"
+                                            >
+                                              <CheckOutlined v-if="copiedKey === `tc-args-${logItem.id}-${mIdx}-${tcIdx}`" style="color: var(--color-success);" />
+                                              <CopyOutlined v-else />
+                                              <span>{{ copiedKey === `tc-args-${logItem.id}-${mIdx}-${tcIdx}` ? t('common.copied', '已复制') : t('common.copy', '复制') }}</span>
+                                            </a-button>
+                                          </div>
+                                          <pre class="toolcall-args" style="max-height: 140px; overflow-y: auto;">{{ formatToolArguments(tc.function?.arguments || tc.arguments) }}</pre>
+                                        </div>
                                       </div>
+                                    </div>
+
+                                    <!-- 工具返回内容：格式化 JSON、默认限高 180px 带滚动条、支持一键复制与展开/收起 -->
+                                    <div v-if="msg.role === 'tool' && msg.content" class="toolcall-block" style="margin-top: 4px;">
+                                      <pre
+                                        class="toolcall-args toolcall-response-scroll"
+                                        :style="{ maxHeight: isChatToolExpanded(`tool-exp-${logItem.id}-${mIdx}`) ? 'none' : '180px' }"
+                                      >{{ formatToolPayload(msg.content) }}</pre>
                                     </div>
                                   </div>
                                 </div>
@@ -2689,9 +2801,21 @@ onMounted(async () => {
                             <!-- 深度思考过程 -->
                             <template v-if="logItem.reasoning_content">
                               <div class="chat-detail-section" style="margin-top: 4px;">
-                                <div class="chain-section-title" style="display: flex; align-items: center; gap: 6px;">
-                                  <ThunderboltOutlined style="color: var(--color-primary);" />
-                                  {{ t('admin.data.llmReasoningContent', '深度思考过程') }}
+                                <div class="chain-section-title" style="display: flex; align-items: center; justify-content: space-between;">
+                                  <div style="display: flex; align-items: center; gap: 6px;">
+                                    <ThunderboltOutlined style="color: var(--color-primary);" />
+                                    {{ t('admin.data.llmReasoningContent', '深度思考过程') }}
+                                  </div>
+                                  <a-button
+                                    type="link"
+                                    size="small"
+                                    class="copy-code-btn"
+                                    @click="copyText(`reasoning-${logItem.id}`, logItem.reasoning_content)"
+                                  >
+                                    <CheckOutlined v-if="copiedKey === `reasoning-${logItem.id}`" style="color: var(--color-success);" />
+                                    <CopyOutlined v-else />
+                                    <span>{{ copiedKey === `reasoning-${logItem.id}` ? t('common.copied', '已复制') : t('common.copy', '复制') }}</span>
+                                  </a-button>
                                 </div>
                                 <pre class="llm-prompt-pre chat-pre" style="border-left: 3px solid var(--color-primary);">{{ logItem.reasoning_content }}</pre>
                               </div>
@@ -2699,7 +2823,20 @@ onMounted(async () => {
 
                             <!-- 模型本轮输出 -->
                             <div class="chat-detail-section" style="margin-top: 4px;">
-                              <div class="chain-section-title">{{ t('admin.data.llmResponse') }}</div>
+                              <div class="chain-section-title" style="display: flex; align-items: center; justify-content: space-between;">
+                                <span>{{ t('admin.data.llmResponse') }}</span>
+                                <a-button
+                                  v-if="logItem.response_content"
+                                  type="link"
+                                  size="small"
+                                  class="copy-code-btn"
+                                  @click="copyText(`response-${logItem.id}`, logItem.response_content)"
+                                >
+                                  <CheckOutlined v-if="copiedKey === `response-${logItem.id}`" style="color: var(--color-success);" />
+                                  <CopyOutlined v-else />
+                                  <span>{{ copiedKey === `response-${logItem.id}` ? t('common.copied', '已复制') : t('common.copy', '复制') }}</span>
+                                </a-button>
+                              </div>
                               <pre v-if="logItem.response_content" class="llm-prompt-pre chat-pre">{{ logItem.response_content }}</pre>
                               <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
                             </div>
@@ -3810,13 +3947,43 @@ details[open] > summary .chat-section-chevron {
 }
 
 .chat-flow-item.tool {
-  background: rgba(250, 173, 20, 0.08);
+  background: rgba(250, 173, 20, 0.07);
   border-left: 3px solid #faad14;
 }
 
+.chat-flow-role {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-flow-role-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tool-fold-btn {
+  padding: 0 4px;
+  height: 20px;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-tertiary);
+}
+
+.tool-fold-btn:hover {
+  color: var(--color-primary);
+}
+
 .role-badge {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .role-badge.user { color: var(--color-primary); }
@@ -3834,30 +4001,47 @@ details[open] > summary .chat-section-chevron {
   margin-top: 6px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .chat-toolcall-item {
   background: var(--color-bg-card);
-  border: 1px dashed var(--color-border);
-  border-radius: 4px;
-  padding: 5px 8px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  padding: 8px 10px;
   font-size: 11px;
 }
 
-.tc-name {
-  font-weight: 500;
+.chat-toolcall-item .toolcall-name {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
   color: #722ed1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.toolcall-response-scroll {
+  max-height: 180px;
+  overflow-y: auto;
+  transition: max-height 0.2s ease;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-light);
 }
 
 .tc-args {
   margin: 4px 0 0;
   font-family: monospace;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--color-text-secondary);
-  max-height: 120px;
+  max-height: 140px;
   overflow: auto;
-  background: none;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-light);
 }
 
 .chat-pre {
