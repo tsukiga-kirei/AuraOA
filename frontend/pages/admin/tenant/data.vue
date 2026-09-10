@@ -241,6 +241,11 @@ const complianceConfig = computed<Record<string, { color: string; bg: string }>>
   partially_compliant: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' },
 }))
 
+const sourceChannelConfig = computed<Record<string, { color: string; bg: string }>>(() => ({
+  embed: { color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' },
+  workbench: { color: 'var(--color-info)', bg: 'var(--color-info-bg)' },
+}))
+
 const auditSubTabs = computed(() => [
   {
     key: 'all' as AuditSubTab,
@@ -469,6 +474,11 @@ function getSourceChannelLabel(value: string) {
     embed: t('admin.data.sourceEmbed'),
   }
   return map[value] || value || '-'
+}
+
+function getSourceChannelStyle(channel?: string) {
+  const ch = channel || 'workbench'
+  return sourceChannelConfig.value[ch] || sourceChannelConfig.value.workbench
 }
 
 function getLLMRequestTypeLabel(value: string) {
@@ -1204,10 +1214,7 @@ onMounted(async () => {
             <td>
               <span
                   class="result-tag"
-                  :style="{
-                    color: item.channel === 'embed' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                    background: item.channel === 'embed' ? 'var(--color-primary-bg)' : 'var(--color-fill-secondary)',
-                  }"
+                  :style="getSourceChannelStyle(item.channel)"
               >
                 {{ getSourceChannelLabel(item.channel || 'workbench') }}
               </span>
@@ -1741,10 +1748,7 @@ onMounted(async () => {
             <td>
               <span
                   class="result-tag"
-                  :style="{
-                    color: item.channel === 'embed' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                    background: item.channel === 'embed' ? 'var(--color-primary-bg)' : 'var(--color-fill-secondary)',
-                  }"
+                  :style="getSourceChannelStyle(item.channel)"
               >
                 {{ getSourceChannelLabel(item.channel || 'workbench') }}
               </span>
@@ -2383,7 +2387,7 @@ onMounted(async () => {
                           <FileTextOutlined />
                           {{ logItem.summary_result?.blocks?.length || 0 }} 个总结块
                         </span>
-                        <a-tag color="purple">
+                        <a-tag :color="logItem.trigger_source === 'summary_workbench' ? 'blue' : 'purple'">
                           {{ t(logItem.trigger_source === 'summary_workbench' ? 'resultSource.personal' : 'resultSource.embed') }}
                         </a-tag>
                         <span class="chain-score">{{ ((logItem.duration_ms || 0) / 1000).toFixed(1) }}s</span>

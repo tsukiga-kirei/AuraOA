@@ -1516,7 +1516,7 @@ onMounted(async () => {
                       </div>
                       <div v-if="expandedChainNodes.has(item.id)" class="chain-detail">
                         <template v-if="item.audit_result">
-                          <a-tag color="purple">{{ t(item.trigger_source === 'embed_auto' || item.trigger_source === 'embed_manual' ? 'resultSource.embed' : 'resultSource.workbench') }}</a-tag>
+                          <a-tag :color="item.trigger_source === 'embed_auto' || item.trigger_source === 'embed_manual' ? 'purple' : 'blue'">{{ t(item.trigger_source === 'embed_auto' || item.trigger_source === 'embed_manual' ? 'resultSource.embed' : 'resultSource.workbench') }}</a-tag>
                           <!--规则校验-->
                           <template v-if="item.audit_result.rule_results?.length">
                             <div class="chain-section-title">{{ t('dashboard.ruleCheckDetail') }}</div>
