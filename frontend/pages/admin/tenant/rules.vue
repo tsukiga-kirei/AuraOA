@@ -2136,7 +2136,7 @@ const handleSaveSummaryConfig = async () => {
     const idx = summaryConfigs.value.findIndex(c => c.id === cfg.id)
     if (idx >= 0) summaryConfigs.value[idx] = normalized
     await refreshVersionStatus('summary', cfg.id)
-    message.success('流程总结配置已保存')
+    message.success(t('admin.ruleConfig.summarySaved'))
   } catch (e: any) {
     message.error(t('admin.ruleConfig.updateConfigFail') + ': ' + (e.message || ''))
   } finally {
@@ -2875,7 +2875,7 @@ const handleSave = async () => {
           { key: 'audit', label: t('admin.ruleConfig.tabAudit'), icon: DashboardOutlined },
           { key: 'cron', label: t('admin.ruleConfig.tabCron'), icon: ClockCircleOutlined },
           { key: 'archive', label: t('admin.ruleConfig.tabArchive'), icon: FolderOpenOutlined },
-          { key: 'summary', label: '流程总结', icon: FileTextOutlined },
+          { key: 'summary', label: t('admin.ruleConfig.tabSummary'), icon: FileTextOutlined },
         ]"
         :key="tab.key"
         class="top-tab-btn"

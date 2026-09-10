@@ -23,30 +23,6 @@ const { t } = useI18n()
 const chatAllowed = computed(() => sections.value.some(section => section.items.some(item => item.key === '/chat')))
 const navigationSections = computed(() => sections.value.map(section => ({ ...section, items: section.items.filter(item => item.key !== '/chat') })))
 
-// 侧栏宽度动画期间先隐藏文字，避免折叠时文字溢出
-const isSidebarTransitioning = ref(false)
-let sidebarTransitionTimer: ReturnType<typeof setTimeout> | null = null
-
-const showSidebarText = computed(() =>
-  (!props.collapsed || props.mobileMenuOpen) && !isSidebarTransitioning.value,
-)
-
-watch(() => props.collapsed, (collapsed) => {
-  if (sidebarTransitionTimer) clearTimeout(sidebarTransitionTimer)
-  isSidebarTransitioning.value = true
-  // 收起时立刻隐藏文字，避免对话分组把侧栏撑出横向滚动；展开后再等宽度动画结束显示。
-  if (!collapsed || props.mobileMenuOpen) {
-    sidebarTransitionTimer = setTimeout(() => {
-      isSidebarTransitioning.value = false
-      sidebarTransitionTimer = null
-    }, 280)
-  }
-})
-
-onUnmounted(() => {
-  if (sidebarTransitionTimer) clearTimeout(sidebarTransitionTimer)
-})
-
 // 点击菜单项：跳转路由并关闭移动端菜单
 const handleMenuClick = (path: string) => {
   navigateTo(path)
@@ -104,9 +80,7 @@ const handleToggleSidebar = () => {
           <div class="sidebar-logo-icon">
             <img src="/favicon.svg" alt="AuraOA" width="24" height="24" />
           </div>
-          <transition name="fade">
-            <span v-if="showSidebarText" class="sidebar-logo-text">{{ t('app.name') }}</span>
-          </transition>
+          <span class="sidebar-logo-text">{{ t('app.name') }}</span>
         </div>
         <button
           v-if="!mobileMenuOpen"
@@ -137,13 +111,10 @@ const handleToggleSidebar = () => {
     <!--权限驱动的导航区域-->
     <nav class="sidebar-nav">
       <div v-for="section in navigationSections" :key="section.id" class="sidebar-section">
-        <div v-if="showSidebarText" class="sidebar-section-title">{{ t(section.titleKey) }}</div>
+        <div class="sidebar-section-title">{{ t(section.titleKey) }}</div>
         <template v-for="item in section.items" :key="item.key">
-          <!--折叠状态：用 Tooltip 包裹显示菜单名-->
           <a-tooltip
-            v-if="collapsed && !mobileMenuOpen"
-            :key="'tooltip-' + item.key"
-            :title="t(item.labelKey)"
+            :title="collapsed && !mobileMenuOpen ? t(item.labelKey) : ''"
             placement="right"
             :mouse-enter-delay="0.1"
             :arrow="false"
@@ -155,33 +126,16 @@ const handleToggleSidebar = () => {
               @click="handleMenuClick(item.key)"
             >
               <component :is="item.icon" class="sidebar-item-icon" />
-              <!--折叠时隐藏文字，保持结构一致-->
+              <span class="sidebar-item-label">{{ t(item.labelKey) }}</span>
+              <span v-if="item.badge" class="sidebar-item-badge">{{ item.badge }}</span>
               <div v-if="isMenuActive(item.key)" class="sidebar-item-indicator" />
             </div>
           </a-tooltip>
-
-          <!--展开/移动状态：无工具提示-->
-          <div
-            v-else
-            :key="'item-' + item.key"
-            class="sidebar-item"
-            :class="{ 'sidebar-item--active': isMenuActive(item.key) }"
-            @click="handleMenuClick(item.key)"
-          >
-            <component :is="item.icon" class="sidebar-item-icon" />
-            <transition name="fade">
-              <span class="sidebar-item-label">{{ t(item.labelKey) }}</span>
-            </transition>
-            <transition name="fade">
-              <span v-if="item.badge" class="sidebar-item-badge">{{ item.badge }}</span>
-            </transition>
-            <div v-if="isMenuActive(item.key)" class="sidebar-item-indicator" />
-          </div>
         </template>
       </div>
       <div v-if="chatAllowed" class="sidebar-section sidebar-section--assistant">
-        <div v-if="showSidebarText" class="sidebar-section-title">{{ t('sidebar.section.assistant') }}</div>
-        <ChatNavigation :compact="!showSidebarText" @navigate="handleMenuClick" />
+        <div class="sidebar-section-title">{{ t('sidebar.section.assistant') }}</div>
+        <ChatNavigation :compact="collapsed && !mobileMenuOpen" @navigate="handleMenuClick" />
       </div>
     </nav>
 
@@ -204,8 +158,9 @@ const handleToggleSidebar = () => {
   display: flex; flex-direction: column;
   position: fixed; top: 0; left: 0; bottom: 0;
   z-index: 100;
-  transition: width var(--transition-slow), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
-  overflow: visible;
+  transition: width 0.24s cubic-bezier(0.2, 0, 0, 1), transform 0.28s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.28s ease;
+  overflow-x: hidden;
+  overflow-y: hidden;
 }
 .sidebar--collapsed { width: var(--sidebar-collapsed-width); }
 
@@ -396,6 +351,14 @@ html[data-theme='dark'] .sidebar-hint-below::after {
   font-size: 18px; font-weight: 700;
   color: var(--color-sidebar-logo-text);
   white-space: nowrap; letter-spacing: 0;
+  opacity: 1; transform: translateX(0);
+  transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1) 0.04s, transform 0.2s cubic-bezier(0.2, 0, 0, 1) 0.04s;
+}
+.sidebar--collapsed .sidebar-logo-text {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-8px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
 .sidebar-close-btn {
@@ -422,31 +385,68 @@ html[data-theme='dark'] .sidebar-hint-below::after {
   padding: 8px 24px 6px; font-size: 11px; font-weight: 600;
   color: var(--color-sidebar-section-title);
   text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap;
+  opacity: 1; max-height: 32px;
+  overflow: hidden;
+  transform: translateX(0);
+  transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1) 0.04s, transform 0.2s cubic-bezier(0.2, 0, 0, 1) 0.04s, max-height 0.2s cubic-bezier(0.2, 0, 0, 1), padding 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+.sidebar--collapsed .sidebar-section-title {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin: 0;
+  pointer-events: none;
+  transform: translateX(-8px);
+  transition: opacity 0.12s ease, max-height 0.2s cubic-bezier(0.2, 0, 0, 1), padding 0.2s cubic-bezier(0.2, 0, 0, 1);
 }
 
 .sidebar-item {
   display: flex; align-items: center;
   padding: 0 16px; height: 44px;
   margin: 2px 8px; border-radius: 10px;
-  cursor: pointer; transition: all var(--transition-fast);
+  cursor: pointer;
+  transition: padding 0.22s cubic-bezier(0.2, 0, 0, 1), background-color var(--transition-fast), color var(--transition-fast);
   position: relative; gap: 12px;
   color: var(--color-text-sidebar);
+  overflow: hidden;
+  white-space: nowrap;
 }
 .sidebar-item:hover { background: var(--color-bg-sidebar-hover); color: var(--color-text-primary); }
 .sidebar-item--active { background: var(--color-bg-sidebar-active); color: var(--color-text-sidebar-active); }
 .sidebar-item--active .sidebar-item-icon { color: var(--color-primary); }
 .sidebar-item-icon { font-size: 18px; flex-shrink: 0; width: 20px; display: flex; align-items: center; justify-content: center; }
-.sidebar-item-label { font-size: 14px; font-weight: 500; white-space: nowrap; flex: 1; }
+.sidebar-item-label {
+  font-size: 14px; font-weight: 500; white-space: nowrap; flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis;
+  opacity: 1; transform: translateX(0);
+  transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1) 0.04s, transform 0.2s cubic-bezier(0.2, 0, 0, 1) 0.04s;
+}
 .sidebar-item-badge {
   font-size: 11px; font-weight: 700;
   min-width: 20px; height: 20px; padding: 0 6px;
   border-radius: 10px; background: var(--color-primary); color: #fff;
   display: flex; align-items: center; justify-content: center;
+  opacity: 1;
+  transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1) 0.04s;
 }
 .sidebar-item-indicator {
   position: absolute; right: 0; top: 50%; transform: translateY(-50%);
   width: 3px; height: 20px; background: var(--color-primary);
   border-radius: 3px 0 0 3px;
+}
+.sidebar--collapsed .sidebar-item {
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+.sidebar--collapsed .sidebar-item-label,
+.sidebar--collapsed .sidebar-item-badge {
+  opacity: 0;
+  max-width: 0;
+  pointer-events: none;
+  transform: translateX(-8px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
 }
 .sidebar--collapsed .sidebar-item--active {
   background: var(--color-bg-sidebar-active);

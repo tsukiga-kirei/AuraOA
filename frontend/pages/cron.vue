@@ -16,6 +16,7 @@ import {
   GlobalOutlined,
   CalendarOutlined,
   LoadingOutlined,
+  SettingOutlined,
 } from '@ant-design/icons-vue'
 import { message, Modal } from 'ant-design-vue'
 import { createVNode } from 'vue'
@@ -27,6 +28,8 @@ import { useI18n } from '~/composables/useI18n'
 definePageMeta({ middleware: 'auth' })
 
 const { t } = useI18n()
+const { activeRole } = useAuth()
+const canManageRules = computed(() => ['tenant_admin', 'system_admin'].includes(activeRole.value?.role || ''))
 const { listTasks, createTask, updateTask, deleteTask, toggleTask, executeTask, abortTask, listConfigs, listTaskLogs } = useCronApi()
 const { getCronPrefs, listProcesses, listArchiveConfigs } = useSettingsApi()
 
@@ -548,14 +551,22 @@ const renderWorkflowLabels = (workflowIds: string[] | undefined): string => {
     <!-- 加载错误提示 -->
     <a-alert v-if="pageError" type="error" :message="pageError" show-icon style="margin-bottom: 20px;" />
 
-    <!-- 无启用类型提示 -->
-    <a-alert
+    <!-- 无启用类型提示：居中空状态卡片，契合底色与主题风格 -->
+    <div
       v-if="!loading && !pageError && enabledConfigs.length === 0"
-      type="warning"
-      :message="t('cron.noEnabledTypes')"
-      show-icon
-      style="margin-bottom: 20px;"
-    />
+      class="cron-empty-state-card"
+    >
+      <div class="cron-empty-icon-wrap">
+        <ClockCircleOutlined />
+      </div>
+      <h3 class="cron-empty-title">{{ t('cron.noEnabledTypesTitle', '暂无可用任务类型') }}</h3>
+      <p class="cron-empty-desc">{{ t('cron.noEnabledTypes') }}</p>
+      <router-link v-if="canManageRules" to="/admin/tenant/rules">
+        <a-button type="dashed">
+          <SettingOutlined /> {{ t('cron.goToConfig', '前往规则配置开启') }}
+        </a-button>
+      </router-link>
+    </div>
 
     <a-spin :spinning="loading">
       <!-- ===== 审核工作台分组 ===== -->
@@ -1090,6 +1101,51 @@ const renderWorkflowLabels = (workflowIds: string[] | undefined): string => {
   font-size: 48px;
   opacity: 0.25;
   margin-bottom: 12px;
+}
+
+/* 无启用类型全局空状态卡片 */
+.cron-empty-state-card {
+  text-align: center;
+  padding: 64px 24px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  margin: 16px 0 32px;
+  box-shadow: var(--shadow-xs);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.cron-empty-icon-wrap {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--color-bg-hover);
+  color: var(--color-text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  margin-bottom: 16px;
+  transition: all var(--transition-fast);
+}
+.cron-empty-state-card:hover .cron-empty-icon-wrap {
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+.cron-empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 8px;
+}
+.cron-empty-desc {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  max-width: 480px;
+  margin: 0 0 20px;
+  line-height: 1.6;
 }
 
 /* 任务卡片网格 */

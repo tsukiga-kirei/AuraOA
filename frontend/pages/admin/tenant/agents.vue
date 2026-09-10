@@ -486,22 +486,42 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="agent-admin-page">
+  <div class="tenant-page fade-in">
     <div class="page-header">
-      <div class="header-title">{{ t('agentAdmin.title') }}</div>
-      <div class="header-subtitle">{{ t('agentAdmin.subtitle') }}</div>
+      <div>
+        <h1 class="page-title">{{ t('agentAdmin.title') }}</h1>
+        <p class="page-subtitle">{{ t('agentAdmin.subtitle') }}</p>
+      </div>
     </div>
 
-    <a-tabs v-model:activeKey="activeTab" class="admin-tabs">
-      <!-- 智能体配置 -->
-      <a-tab-pane key="agents" :tab="t('agentAdmin.tab.agents')">
-        <div class="tab-toolbar">
-          <a-button type="primary" @click="openCreateAgent">
-            <template #icon><PlusOutlined /></template>
-            {{ t('agentAdmin.createAgent') }}
-          </a-button>
-        </div>
+    <!-- 顶级胶囊页签导航 -->
+    <div class="top-tab-nav">
+      <button
+        v-for="tab in [
+          { key: 'agents', label: t('agentAdmin.tab.agents'), icon: RobotOutlined },
+          { key: 'mcp', label: t('agentAdmin.tab.mcp'), icon: ApiOutlined },
+          { key: 'skills', label: t('agentAdmin.tab.skills'), icon: BookOutlined },
+        ]"
+        :key="tab.key"
+        class="top-tab-btn"
+        :class="{ 'top-tab-btn--active': activeTab === tab.key }"
+        @click="activeTab = tab.key"
+      >
+        <component :is="tab.icon" />
+        {{ tab.label }}
+      </button>
+    </div>
 
+    <!-- 智能体配置面板 -->
+    <div v-if="activeTab === 'agents'" class="content-panel">
+      <div class="tab-toolbar">
+        <a-button type="primary" @click="openCreateAgent">
+          <template #icon><PlusOutlined /></template>
+          {{ t('agentAdmin.createAgent') }}
+        </a-button>
+      </div>
+
+      <div class="data-table-card">
         <a-table :dataSource="agents" :rowKey="(r: AgentDefinitionItem) => r.id" :loading="loading" :pagination="false">
           <a-table-column :title="t('agentAdmin.col.code')" dataIndex="agent_code" width="130px" />
           <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="160px">
@@ -575,17 +595,19 @@ onMounted(() => {
             </template>
           </a-table-column>
         </a-table>
-      </a-tab-pane>
+      </div>
+    </div>
 
-      <!-- MCP 扩展服务 -->
-      <a-tab-pane key="mcp" :tab="t('agentAdmin.tab.mcp')">
-        <div class="tab-toolbar">
-          <a-button type="primary" @click="openCreateMCP">
-            <template #icon><PlusOutlined /></template>
-            {{ t('agentAdmin.createMCP') }}
-          </a-button>
-        </div>
+    <!-- MCP 扩展服务面板 -->
+    <div v-if="activeTab === 'mcp'" class="content-panel">
+      <div class="tab-toolbar">
+        <a-button type="primary" @click="openCreateMCP">
+          <template #icon><PlusOutlined /></template>
+          {{ t('agentAdmin.createMCP') }}
+        </a-button>
+      </div>
 
+      <div class="data-table-card">
         <a-table :dataSource="mcpServers" :rowKey="(r: MCPServerItem) => r.id" :loading="loading" :pagination="false">
           <a-table-column :title="t('agentAdmin.col.code')" dataIndex="server_code" width="140px" />
           <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="160px" />
@@ -623,17 +645,19 @@ onMounted(() => {
             </template>
           </a-table-column>
         </a-table>
-      </a-tab-pane>
+      </div>
+    </div>
 
-      <!-- 自定义 Skills -->
-      <a-tab-pane key="skills" :tab="t('agentAdmin.tab.skills')">
-        <div class="tab-toolbar">
-          <a-button type="primary" @click="openCreateSkill">
-            <template #icon><PlusOutlined /></template>
-            {{ t('agentAdmin.createSkill') }}
-          </a-button>
-        </div>
+    <!-- 自定义 Skills 面板 -->
+    <div v-if="activeTab === 'skills'" class="content-panel">
+      <div class="tab-toolbar">
+        <a-button type="primary" @click="openCreateSkill">
+          <template #icon><PlusOutlined /></template>
+          {{ t('agentAdmin.createSkill') }}
+        </a-button>
+      </div>
 
+      <div class="data-table-card">
         <a-table :dataSource="skills" :rowKey="(r: AgentSkillItem) => r.id" :loading="loading" :pagination="false">
           <a-table-column :title="t('agentAdmin.col.code')" dataIndex="skill_code" width="160px" />
           <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="180px" />
@@ -668,8 +692,8 @@ onMounted(() => {
             </template>
           </a-table-column>
         </a-table>
-      </a-tab-pane>
-    </a-tabs>
+      </div>
+    </div>
 
     <!-- 1. 智能体编辑大抽屉 -->
     <a-drawer
@@ -1120,24 +1144,79 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.agent-admin-page {
-  padding: 24px;
-  background: var(--color-bg-card);
-  min-height: calc(100vh - 64px);
+.tenant-page {
+  padding: 24px 32px;
+  max-width: 1600px;
+  margin: 0 auto;
 }
 .page-header {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
-.header-title {
-  font-size: 20px;
-  font-weight: 600;
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
   color: var(--color-text-primary);
+  margin: 0;
 }
-.header-subtitle {
-  font-size: 13px;
+.page-subtitle {
+  font-size: 14px;
   color: var(--color-text-secondary);
   margin-top: 4px;
 }
+
+/* 顶级胶囊页签导航 */
+.top-tab-nav {
+  display: flex;
+  gap: 4px;
+  background: var(--color-bg-hover);
+  padding: 4px;
+  border-radius: var(--radius-lg);
+  margin-bottom: 24px;
+  width: fit-content;
+}
+.top-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 24px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.top-tab-btn:hover {
+  color: var(--color-text-primary);
+}
+.top-tab-btn--active {
+  background: var(--color-bg-card);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+/* 内容面板与卡片 */
+.content-panel {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light);
+  padding: 24px;
+  box-shadow: var(--shadow-xs);
+}
+.data-table-card {
+  overflow-x: auto;
+}
+.data-table-card :deep(.ant-table) {
+  background: transparent;
+}
+.data-table-card :deep(.ant-table-thead > tr > th) {
+  background: var(--color-bg-page);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
 .tab-toolbar {
   margin-bottom: 16px;
   display: flex;

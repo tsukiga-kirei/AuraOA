@@ -136,5 +136,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .nav-empty, .nav-load { font-size: 12px; color: var(--color-text-tertiary); padding: 10px 16px; }
 .nav-load { border: 0; background: none; }
 .compact .search-entry { justify-content: center; padding: 0; width: calc(100% - 16px); }
+.agent-folder {
+  animation: navFadeIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+@keyframes navFadeIn {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 @media (hover: none) { .session-more, .new-icon { opacity: 1; } }
 </style>
