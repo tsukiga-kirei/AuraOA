@@ -326,7 +326,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
     <a-drawer
       v-model:open="showDetail"
       :title="detailConfig ? t('admin.userConfigs.prefDetail', [detailConfig.display_name || detailConfig.username]) : ''"
-      width="600"
+      width="680"
       placement="right"
     >
       <template v-if="detailConfig">
@@ -364,7 +364,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
             @click="detailTab = tab.key as any"
           >
             <component :is="tab.icon" />
-            {{ tab.label }}
+            <span class="detail-tab-label">{{ tab.label }}</span>
             <span v-if="tab.count > 0" class="detail-tab-count">{{ tab.count }}</span>
           </button>
         </div>
@@ -703,18 +703,23 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
 .detail-tab-nav {
   display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
   border-radius: var(--radius-lg); margin-bottom: 16px;
+  overflow-x: auto;
 }
 .detail-tab-btn {
-  padding: 6px 14px; border: none; background: transparent; border-radius: var(--radius-md);
+  padding: 7px 10px; border: none; background: transparent; border-radius: var(--radius-md);
   font-size: 13px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer;
   transition: all var(--transition-fast); display: flex; align-items: center; gap: 6px; flex: 1;
-  justify-content: center;
+  justify-content: center; white-space: nowrap; flex-shrink: 0;
+}
+.detail-tab-label {
+  white-space: nowrap;
 }
 .detail-tab-btn:hover { color: var(--color-text-primary); }
 .detail-tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
 .detail-tab-count {
   font-size: 10px; font-weight: 700; background: var(--color-primary-bg); color: var(--color-primary);
   padding: 1px 6px; border-radius: var(--radius-full); min-width: 18px; text-align: center;
+  flex-shrink: 0;
 }
 
 .detail-content { display: flex; flex-direction: column; gap: 12px; }
