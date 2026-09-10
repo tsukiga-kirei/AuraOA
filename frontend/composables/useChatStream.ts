@@ -75,8 +75,13 @@ export const useChatStream = (options: { onDone?: () => void; onError?: (error: 
       })
       if (!finished) throw new Error(t('chat.connectionLost'))
     } catch (error: any) {
-      if (activeController.signal.aborted) msg.status = 'interrupted'
-      else { msg.status = 'error'; msg.error = error.message || t('chat.connectionLost'); options.onError?.(msg.error!) }
+      if (activeController.signal.aborted) {
+        if (msg.status === 'running') msg.status = 'interrupted'
+      } else {
+        msg.status = 'error'
+        msg.error = error.message || t('chat.connectionLost')
+        options.onError?.(msg.error!)
+      }
       if (!msg.duration_ms) msg.duration_ms = Date.now() - startTime
     } finally {
       if (!msg.duration_ms) msg.duration_ms = Date.now() - startTime
@@ -87,7 +92,17 @@ export const useChatStream = (options: { onDone?: () => void; onError?: (error: 
       options.onDone?.()
     }
   }
-  const stopStreaming = () => controller?.abort()
-  onBeforeUnmount(stopStreaming)
-  return { streaming, sendStreamMessage, stopStreaming }
+  const abortLocalStream = () => controller?.abort()
+  const stopSessionTask = async (sessionId?: string) => {
+    controller?.abort()
+    if (sessionId) {
+      try {
+        await authStreamFetch(`/api/chat/sessions/${sessionId}/stop`, { method: 'POST' })
+      } catch {
+        // 忽略停止通知网络异常
+      }
+    }
+  }
+  onBeforeUnmount(abortLocalStream)
+  return { streaming, sendStreamMessage, stopStreaming: abortLocalStream, stopSessionTask, abortLocalStream }
 }

@@ -114,6 +114,7 @@ func (h *ChatHandler) GetSessionDetail(c *gin.Context) {
 		handleServiceError(c, err)
 		return
 	}
+	res.IsRunning = h.runtimeService.IsSessionRunning(sessionID)
 	response.Success(c, res)
 }
 
@@ -165,6 +166,29 @@ func (h *ChatHandler) DeleteSession(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"deleted": true})
+}
+
+// StopSession 主动中止会话的后台执行任务
+// POST /api/chat/sessions/:id/stop
+func (h *ChatHandler) StopSession(c *gin.Context) {
+	tenantID, userID, _, err := extractUserAndTenant(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "认证失效")
+		return
+	}
+
+	sessionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "会话 ID 格式错误")
+		return
+	}
+
+	stopped, err := h.runtimeService.StopSessionTask(tenantID, userID, sessionID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"stopped": stopped})
 }
 
 // StreamMessage 发送消息并以 SSE 事件流返回智能体思考过程、工具调用与 Markdown 回答

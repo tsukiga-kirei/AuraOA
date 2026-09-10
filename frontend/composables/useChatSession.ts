@@ -47,16 +47,64 @@ export const useChatSession = () => {
     if (!previous || revision === previous) return
     void initialize(true)
   })
+  let pollTimer: any = null
+  const stopPolling = () => {
+    if (pollTimer) {
+      clearTimeout(pollTimer)
+      pollTimer = null
+    }
+  }
+
+  const pollSessionUntilFinished = (id: string) => {
+    stopPolling()
+    const check = async () => {
+      if (currentSessionId.value !== id) return
+      try {
+        const detail = await authFetch<ChatSessionDetail>(`/api/chat/sessions/${id}`)
+        if (currentSessionId.value !== id) return
+        if (detail.is_running) {
+          pollTimer = setTimeout(check, 1500)
+        } else {
+          currentDetail.value = detail
+          stopPolling()
+        }
+      } catch {
+        stopPolling()
+      }
+    }
+    pollTimer = setTimeout(check, 1500)
+  }
+
   const selectSession = async (id: string) => {
+    stopPolling()
     const key = identity.value
     currentSessionId.value = id; currentDetail.value = null; detailLoading.value = true; error.value = ''
     try {
       const detail = await authFetch<ChatSessionDetail>(`/api/chat/sessions/${id}`)
-      if (key === identity.value && currentSessionId.value === id) { currentDetail.value = detail; selectedAgentCode.value = detail.session.agent_code }
+      if (key === identity.value && currentSessionId.value === id) {
+        if (detail.is_running) {
+          const lastMsg = detail.messages[detail.messages.length - 1]
+          if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.status !== 'running') {
+            detail.messages.push({
+              id: 'running-placeholder',
+              session_id: id,
+              role: 'assistant',
+              content: '',
+              status: 'running',
+              streaming: true,
+              created_at: new Date().toISOString(),
+            })
+          }
+          pollSessionUntilFinished(id)
+        }
+        currentDetail.value = detail
+        selectedAgentCode.value = detail.session.agent_code
+      }
     } catch (err: any) { if (currentSessionId.value === id && key === identity.value) error.value = err.message }
     finally { if (currentSessionId.value === id && key === identity.value) detailLoading.value = false }
   }
   const newConversation = (code = effectiveAgents.value[0]?.agent_code || '') => {
+    stopPolling()
     currentSessionId.value = null; currentDetail.value = null; selectedAgentCode.value = code; error.value = ''
   }
   const createSession = async (agentCode = selectedAgentCode.value || effectiveAgents.value[0]?.agent_code, title?: string) => {
@@ -99,5 +147,5 @@ export const useChatSession = () => {
       }
     }
   }
-  return { sessions, effectiveAgents, currentSessionId, currentDetail, loading, detailLoading, error, total, selectedAgentCode, initialize, newConversation, fetchEffectiveAgents, fetchSessions, selectSession, createSession, renameSession, deleteSession, updateMessageFeedback }
+  return { sessions, effectiveAgents, currentSessionId, currentDetail, loading, detailLoading, error, total, selectedAgentCode, initialize, newConversation, fetchEffectiveAgents, fetchSessions, selectSession, createSession, renameSession, deleteSession, updateMessageFeedback, stopPolling }
 }

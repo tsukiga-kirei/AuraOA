@@ -79,8 +79,9 @@ type UpdateFeedbackRequest struct {
 
 // ChatSessionDetailResponse 会话详情响应（含历史消息）
 type ChatSessionDetailResponse struct {
-	Session  ChatSessionItemDTO `json:"session"`
-	Messages []ChatMessageDTO   `json:"messages"`
+	Session   ChatSessionItemDTO `json:"session"`
+	Messages  []ChatMessageDTO   `json:"messages"`
+	IsRunning bool               `json:"is_running"`
 }
 
 // SendMessageStreamRequest 发送消息流式请求

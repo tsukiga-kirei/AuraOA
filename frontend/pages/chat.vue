@@ -25,7 +25,7 @@ import MessageJumpRail from '~/components/Chat/MessageJumpRail.vue'
 definePageMeta({ layout: 'default', middleware: ['auth'] })
 const { t } = useI18n()
 const route = useRoute()
-const { effectiveAgents, currentSessionId, currentDetail, selectedAgentCode, detailLoading, error, initialize, selectSession, createSession, newConversation } = useChatSession()
+const { effectiveAgents, currentSessionId, currentDetail, selectedAgentCode, detailLoading, error, initialize, selectSession, createSession, newConversation, stopPolling } = useChatSession()
 const messages = ref<ChatMessageItem[]>([...(currentDetail.value?.messages || [])])
 const canvas = ref<HTMLElement | null>(null)
 const canvasBody = ref<HTMLElement | null>(null)
@@ -37,7 +37,14 @@ const agent = computed(() => {
   const code = currentDetail.value?.session.agent_code || selectedAgentCode.value
   return code ? effectiveAgents.value.find(item => item.agent_code === code) : effectiveAgents.value[0]
 })
-const { streaming, sendStreamMessage, stopStreaming } = useChatStream()
+const { streaming, sendStreamMessage, stopStreaming, stopSessionTask } = useChatStream()
+const handleUserStop = async () => {
+  if (currentSessionId.value) {
+    await stopSessionTask(currentSessionId.value)
+  } else {
+    stopStreaming()
+  }
+}
 const BOTTOM_THRESHOLD = 36
 let ignoreScroll = false
 const distanceToBottom = () => {
@@ -84,7 +91,10 @@ onMounted(async () => {
   if (!canvasBody.value) return
   const observer = new ResizeObserver(followLatest)
   observer.observe(canvasBody.value)
-  onBeforeUnmount(() => observer.disconnect())
+  onBeforeUnmount(() => {
+    observer.disconnect()
+    stopPolling()
+  })
 })
 const changeAgent = (code: string) => { stopStreaming(); newConversation(code); navigateTo({ path: '/chat', query: { agent: code } }) }
 
@@ -208,7 +218,7 @@ const jump = (id: string) => {
               :submitting="streaming"
               :disabled="detailLoading || !agent"
               @submit="submit"
-              @stop="stopStreaming"
+              @stop="handleUserStop"
             />
           </div>
 
@@ -243,7 +253,7 @@ const jump = (id: string) => {
     <transition name="bottom-slide">
       <div v-if="messages.length" class="chat-bottom chat-bottom--active">
         <button v-if="!pinned && messages.length" class="scroll-bottom" :aria-label="t('chat.scrollBottom')" @click="pinned = true; scrollBottom()"><ArrowDownOutlined /></button>
-        <ChatComposer ref="composer" :submitting="streaming" :disabled="detailLoading || !agent" @submit="submit" @stop="stopStreaming" />
+        <ChatComposer ref="composer" :submitting="streaming" :disabled="detailLoading || !agent" @submit="submit" @stop="handleUserStop" />
         <p class="composer-hint">{{ t('chat.composerHint', '内容由 AI 生成，请结合实际业务审慎核验') }}</p>
       </div>
     </transition>

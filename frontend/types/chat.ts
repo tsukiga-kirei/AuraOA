@@ -73,6 +73,7 @@ export interface ChatSessionDetail {
   session: ChatSessionItem
   messages: ChatMessageItem[]
   agent?: EffectiveAgentItem
+  is_running?: boolean
 }
 
 export interface SendMessageStreamRequest {
