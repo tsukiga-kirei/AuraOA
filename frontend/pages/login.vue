@@ -142,7 +142,7 @@ const handleLogin = async () => {
       <div class="login-branding">
         <div class="login-branding-content">
           <div class="login-logo">
-            <img src="/favicon.svg" alt="AuraOA" width="30" height="30" />
+            <img src="/favicon.png" alt="AuraOA" width="30" height="30" />
           </div>
           <h1 class="login-brand-title">{{ t('app.name') }}</h1>
           <p class="login-brand-subtitle">{{ t('login.subtitle') }}</p>
@@ -223,7 +223,7 @@ const handleLogin = async () => {
     </div>
 
     <div class="login-mobile-brand">
-      <img class="login-mobile-logo" src="/favicon.svg" alt="AuraOA" width="24" height="24" />
+      <img class="login-mobile-logo" src="/favicon.png" alt="AuraOA" width="24" height="24" />
       <span>{{ t('app.name') }}</span>
     </div>
   </div>

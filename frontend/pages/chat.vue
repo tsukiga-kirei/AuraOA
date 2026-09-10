@@ -248,7 +248,7 @@ const jump = (id: string) => {
           class="chat-welcome"
           :class="{ 'is-exiting': isSubmittingFirst }"
         >
-          <div class="welcome-mark"><img src="/favicon.svg" alt="" width="36" height="36" /></div>
+          <div class="welcome-mark"><img src="/favicon.png" alt="" width="36" height="36" /></div>
           <p class="welcome-eyebrow">{{ agent?.name || t('chat.assistantName') }}</p>
           <h1>{{ t('chat.welcomeTitle') }}</h1>
 

@@ -64,7 +64,7 @@ const handleToggleSidebar = () => {
         >
           <span class="sidebar-mark-slot">
             <span class="sidebar-mark-logo">
-              <img src="/favicon.svg" alt="AuraOA" width="24" height="24" />
+              <img src="/favicon.png" alt="AuraOA" width="24" height="24" />
             </span>
             <span class="sidebar-mark-toggle" aria-hidden="true">
               <MenuUnfoldOutlined />
@@ -78,7 +78,7 @@ const handleToggleSidebar = () => {
       <template v-else>
         <div class="sidebar-brand" @click="navigateTo(logoTarget)">
           <div class="sidebar-logo-icon">
-            <img src="/favicon.svg" alt="AuraOA" width="24" height="24" />
+            <img src="/favicon.png" alt="AuraOA" width="24" height="24" />
           </div>
           <span class="sidebar-logo-text">{{ t('app.name') }}</span>
         </div>
