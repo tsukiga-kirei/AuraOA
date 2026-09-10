@@ -855,23 +855,11 @@ func (s *ProcessSummaryService) userCanAccessSummaryProcess(c *gin.Context, adap
 			return configErr == nil && config.Status == "active" && config.EmbedEnabled, nil
 		}
 	}
-	inTodo, err := adapter.IsProcessInTodo(c.Request.Context(), username, processID)
+	visible, err := adapter.CheckProcessVisibility(c.Request.Context(), username, processID)
 	if err != nil {
-		return false, newServiceError(errcode.ErrOAQueryFailed, "校验 OA 待办权限失败: "+err.Error())
+		return false, newServiceError(errcode.ErrOAQueryFailed, "校验 OA 流程可见性失败: "+err.Error())
 	}
-	if inTodo {
-		return true, nil
-	}
-	archives, err := adapter.FetchArchivedList(c.Request.Context(), username, oa.ArchivedListFilter{})
-	if err != nil {
-		return false, newServiceError(errcode.ErrOAQueryFailed, "校验 OA 归档权限失败: "+err.Error())
-	}
-	for _, item := range archives {
-		if item.ProcessID == processID {
-			return true, nil
-		}
-	}
-	return false, nil
+	return visible, nil
 }
 
 func (s *ProcessSummaryService) extractUsername(c *gin.Context) string {

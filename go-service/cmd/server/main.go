@@ -372,7 +372,7 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, executionConfigSourceHandler, externalContextHandler, auditHandler, archiveReviewHandler, summaryHandler, embedEventHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, chatHandler, agentAdminHandler, sysFlagsResolver, operationAuditLogRepo, tenantRepo)
+	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, executionConfigSourceHandler, externalContextHandler, auditHandler, archiveReviewHandler, summaryHandler, embedEventHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, chatHandler, agentAdminHandler, sysFlagsResolver, operationAuditLogRepo, orgRepo, tenantRepo)
 
 	// 第九步：启动 HTTP 服务器
 	port := viper.GetInt("server.port")

@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"encoding/json"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -92,6 +94,39 @@ func (r *OrgRepo) ListRoles(c *gin.Context) ([]model.OrgRole, error) {
 		return nil, err
 	}
 	return roles, nil
+}
+
+// UserHasPagePermission 判断当前租户的有效组织成员是否拥有指定页面权限。
+func (r *OrgRepo) UserHasPagePermission(c *gin.Context, userID uuid.UUID, page string) (bool, error) {
+	tenantID, _ := c.Get("tenant_id")
+	var members []model.OrgMember
+	if err := r.WithTenant(c).
+		Where("user_id = ? AND status = ?", userID, "active").
+		Preload("Roles", "tenant_id = ?", tenantID).
+		Find(&members).Error; err != nil {
+		return false, err
+	}
+	for _, member := range members {
+		if rolesHavePagePermission(member.Roles, page) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func rolesHavePagePermission(roles []model.OrgRole, page string) bool {
+	for _, role := range roles {
+		var permissions []string
+		if err := json.Unmarshal(role.PagePermissions, &permissions); err != nil {
+			continue
+		}
+		for _, permission := range permissions {
+			if permission == page {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // CreateRole 创建新的组织角色记录。

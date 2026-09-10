@@ -110,6 +110,30 @@ func TestBuildTodoFromJoinWhereFilters(t *testing.T) {
 	}
 }
 
+func TestArchivedVisibilityCondition(t *testing.T) {
+	userID := 247
+	for _, driver := range []string{"mysql", "dm", "oracle"} {
+		t.Run(driver, func(t *testing.T) {
+			adapter := &Ecology9Adapter{driver: driver}
+			condition, args := adapter.archivedVisibilityCondition(&userID)
+			if !containsStr(condition, "visibility_log.") || !containsStr(condition, " = r.") {
+				t.Fatalf("已办权限条件缺少审批历史关联: %s", condition)
+			}
+			if !containsStr(condition, "EXISTS") || !containsStr(condition, adapter.col("creater")+" = ?") {
+				t.Fatalf("已办权限条件必须覆盖申请人与历史审批人: %s", condition)
+			}
+			if len(args) != 2 || args[0] != userID || args[1] != userID {
+				t.Fatalf("已办权限参数不正确: %#v", args)
+			}
+		})
+	}
+
+	adapter := &Ecology9Adapter{driver: "mysql"}
+	if condition, args := adapter.archivedVisibilityCondition(nil); condition != "" || len(args) != 0 {
+		t.Fatalf("后台按流程补充快照时不应附加用户条件: condition=%q args=%#v", condition, args)
+	}
+}
+
 func containsStr(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || (len(s) > 0 && len(substr) > 0 && (stringContains(s, substr))))
 }
@@ -122,4 +146,3 @@ func stringContains(s, substr string) bool {
 	}
 	return false
 }
-

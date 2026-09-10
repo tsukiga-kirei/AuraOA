@@ -5064,6 +5064,7 @@ paths:
   /api/summary/processes:
     get:
       summary: 分页查询当前用户可见的流程总结工作台流程
+      description: 需要当前组织角色拥有 `/summary` 页面权限；已办流程限定为当前用户发起或实际审批过的已归档流程。
       tags:
       - Summary
       security:
@@ -5143,6 +5144,7 @@ paths:
   /api/summary/stats:
     get:
       summary: 获取当前用户流程总结工作台统计
+      description: 需要当前组织角色拥有 `/summary` 页面权限，统计范围与流程列表一致。
       tags:
       - Summary
       security:
@@ -5177,6 +5179,7 @@ paths:
   /api/summary/execute:
     post:
       summary: 从个人工作台发起流程总结
+      description: 需要当前组织角色拥有 `/summary` 页面权限，并校验当前用户对流程实例的 OA 可见性。
       tags:
       - Summary
       security:
@@ -5215,6 +5218,7 @@ paths:
   /api/summary/jobs/{id}:
     get:
       summary: 查询本人发起的流程总结任务状态
+      description: 需要当前组织角色拥有 `/summary` 页面权限，且任务必须由当前用户发起。
       tags:
       - Summary
       security:
@@ -5245,6 +5249,7 @@ paths:
   /api/summary/stream/{id}:
     get:
       summary: 订阅本人发起的流程总结 SSE 输出
+      description: 需要当前组织角色拥有 `/summary` 页面权限，且任务必须由当前用户发起。
       tags:
       - Summary
       security:
@@ -5266,6 +5271,7 @@ paths:
   /api/summary/history/{processId}:
     get:
       summary: 获取 OA 当前可见流程的有效总结历史
+      description: 需要当前组织角色拥有 `/summary` 页面权限，并重新校验当前用户对流程实例的 OA 可见性。
       tags:
       - Summary
       security:

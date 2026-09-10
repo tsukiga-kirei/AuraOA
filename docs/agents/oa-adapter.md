@@ -44,7 +44,7 @@
 | `RecentProcessScanner` | 不进对话 | 定时嵌入用 |
 | `ProcessRequestWatermarkResolver` | 不进对话 | 嵌入提交检测 |
 
-**第一期不提供**基于 `FetchArchivedListPaged` 的对话工具：该方法忽略 `username`，返回租户级全量归档，存在越权风险。若未来要做「我归档过的」，必须先在适配器按参与人/申请人过滤。
+`FetchArchivedListPaged` 已按当前用户的申请人身份或审批历史参与记录过滤。第一期仍不提供独立的归档列表对话工具；如后续开放，应继续复用适配器权限边界，禁止由模型指定任意用户名。
 
 ## 4. 必须新增的适配器能力：流程可见性
 
