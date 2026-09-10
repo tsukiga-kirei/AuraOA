@@ -174,6 +174,7 @@ func (e *SystemToolExecutor) executeListMyTodos(
 		CurrentNode string `json:"current_node"`
 		SubmitTime  string `json:"submit_time"`
 		OAURL       string `json:"oa_url,omitempty"`
+		TodoType    string `json:"todo_type,omitempty"`
 	}
 
 	items := make([]TodoItemPayload, 0, len(pagedResult.Items))
@@ -190,6 +191,7 @@ func (e *SystemToolExecutor) executeListMyTodos(
 			CurrentNode: item.CurrentNode,
 			SubmitTime:  item.SubmitTime,
 			OAURL:       oaURL,
+			TodoType:    item.TodoType,
 		})
 	}
 

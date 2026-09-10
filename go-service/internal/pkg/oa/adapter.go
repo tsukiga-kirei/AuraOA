@@ -282,6 +282,8 @@ type TodoItem struct {
 	SubmitTime       string `json:"submit_time"`
 	Urgency          string `json:"urgency"`
 	MainTableName    string `json:"main_table_name"`
+	IsRemark         string `json:"is_remark,omitempty"`
+	TodoType         string `json:"todo_type,omitempty"`
 }
 
 // ArchivedItem OA 已归档流程条目。
