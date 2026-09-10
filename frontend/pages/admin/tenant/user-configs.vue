@@ -582,7 +582,6 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
 
         <div v-if="detailTab === 'summary'" class="detail-content">
           <a-empty v-if="!detailConfig.summary_details?.length" :description="t('admin.userConfigs.noSummaryConfig')" />
-          <p>{{ t('summary.personalHint') }}</p>
           <div v-for="pref in detailConfig.summary_details" :key="pref.process_type" class="detail-process-card">
             <strong>{{ pref.process_type_label || pref.process_type }}</strong>
             <div v-for="block in pref.blocks" :key="block.id" class="detail-rule-item">
