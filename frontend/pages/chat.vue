@@ -16,7 +16,6 @@ import {
   BarChartOutlined,
   BulbOutlined,
   FileTextOutlined,
-  ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { buildJumpTurns } from '~/utils/chatJump'
 import type { ChatMessageItem } from '~/types/chat'
@@ -91,21 +90,9 @@ watch(currentSessionId, () => stopStreaming())
 watch(() => messages.value.map(item => [item.content, item.reasoning_content, item.tool_calls?.length, item.status, item.streaming]), followLatest, { deep: true })
 watch(streaming, followLatest)
 
-const lastMessage = computed(() => messages.value.length ? messages.value[messages.value.length - 1] : null)
-const canRetryLastMessage = computed(() => {
-  if (streaming.value || detailLoading.value) return false
-  if (!lastMessage.value || lastMessage.value.role !== 'assistant') return false
-  return lastMessage.value.status === 'interrupted' || lastMessage.value.status === 'error'
-})
-
-const handleRetryMessage = async (msg?: ChatMessageItem) => {
-  if (streaming.value || detailLoading.value) return
-  let targetIndex = messages.value.length - 1
-  if (msg) {
-    const idx = messages.value.findIndex(m => m.id === msg.id)
-    if (idx !== -1) targetIndex = idx
-  }
-  for (let i = targetIndex; i >= 0; i--) {
+const handleRetryMessage = async (msg: ChatMessageItem) => {
+  if (streaming.value || detailLoading.value || messages.value[messages.value.length - 1]?.id !== msg.id) return
+  for (let i = messages.value.length - 2; i >= 0; i--) {
     if (messages.value[i].role === 'user') {
       const userPrompt = messages.value[i].content
       if (userPrompt) {
@@ -287,19 +274,13 @@ const jump = (id: string) => {
           <p v-if="!effectiveAgents.length" class="no-agents">{{ t('chat.noAgents') }}</p>
         </div>
         <div v-else class="chat-thread-container">
-          <ChatThread :messages="messages" :agent-name="agent?.name" @retry="handleRetryMessage" />
+          <ChatThread :messages="messages" :agent-name="agent?.name" :retry-disabled="streaming || detailLoading || !agent" @retry="handleRetryMessage" />
         </div>
       </div>
     </div>
     <MessageJumpRail v-if="jumpTurns.length > 2" :turns="jumpTurns" @jump="jump" />
     <transition name="bottom-slide">
       <div v-if="messages.length" class="chat-bottom chat-bottom--active">
-        <div v-if="canRetryLastMessage" class="retry-bar">
-          <span class="retry-bar-text">{{ t('chat.retryPrompt', '生成已被中断或失败') }}</span>
-          <button class="retry-bar-btn" @click="handleRetryMessage()">
-            <ReloadOutlined /> {{ t('chat.regenerate') }}
-          </button>
-        </div>
         <button
           v-if="!pinned && messages.length"
           class="scroll-bottom"
@@ -522,40 +503,6 @@ h1 {
   background: #ff4d4f;
   border: 2px solid var(--color-bg-card);
   border-radius: 50%;
-}
-.retry-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 8px;
-  padding: 6px 14px;
-  background: rgba(255, 77, 79, 0.08);
-  border: 1px solid rgba(255, 77, 79, 0.2);
-  border-radius: 8px;
-  font-size: 12px;
-}
-.retry-bar-text {
-  color: var(--color-text-secondary);
-}
-.retry-bar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-primary);
-  padding: 3px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.retry-bar-btn:hover {
-  color: var(--color-primary);
-  border-color: var(--color-primary-lighter);
-  background: var(--color-bg-hover);
 }
 .chat-error,.no-agents { color:var(--color-text-secondary); font-size:13px; padding:14px; background:var(--color-bg-page); border-radius:8px; margin:16px auto; max-width:740px; }
 .chat-loading { padding:60px; text-align:center; }

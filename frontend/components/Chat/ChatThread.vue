@@ -22,7 +22,7 @@ import { useChatSession } from '~/composables/useChatSession'
 import { formatDateTimeInAppZone } from '~/utils/appTime'
 import ChatProcessTimeline from './ChatProcessTimeline.vue'
 
-defineProps<{ messages: ChatMessageItem[]; agentEmoji?: string; agentName?: string }>()
+defineProps<{ messages: ChatMessageItem[]; agentEmoji?: string; agentName?: string; retryDisabled?: boolean }>()
 const emit = defineEmits<{ (e: 'retry', msg: ChatMessageItem): void }>()
 const { t, locale } = useI18n()
 const { updateMessageFeedback } = useChatSession()
@@ -142,7 +142,7 @@ function formatMsgTime(isoString?: string): string {
 
 <template>
   <div class="chat-thread">
-    <article v-for="msg in messages" :id="msg.id" :key="msg.id" class="message-turn" :class="msg.role">
+    <article v-for="(msg, index) in messages" :id="msg.id" :key="msg.id" class="message-turn" :class="msg.role">
       <!-- 1. 用户提问：纯净右对齐气泡，无头像，无“你”标识 -->
       <div v-if="msg.role === 'user'" class="user-bubble-wrapper">
         <div class="user-bubble">
@@ -165,20 +165,20 @@ function formatMsgTime(isoString?: string): string {
         </div>
         <div v-if="msg.error" class="message-error" role="alert">
           <span>{{ msg.error }}</span>
-          <button class="msg-retry-btn" @click="emit('retry', msg)">
-            <ReloadOutlined /> {{ t('chat.regenerate') }}
-          </button>
         </div>
         <div v-else-if="msg.status === 'error'" class="message-error" role="alert">
           <span>{{ t('chat.replyFailed') }}</span>
-          <button class="msg-retry-btn" @click="emit('retry', msg)">
-            <ReloadOutlined /> {{ t('chat.regenerate') }}
-          </button>
         </div>
         <div v-else-if="msg.status === 'interrupted'" class="generation-status generation-status--interrupted">
           <span>{{ t('chat.interrupted') }}</span>
-          <button class="msg-retry-btn" @click="emit('retry', msg)">
-            <ReloadOutlined /> {{ t('chat.regenerate') }}
+        </div>
+        <div
+          v-if="index === messages.length - 1 && !retryDisabled && !msg.streaming && (msg.error || msg.status === 'error' || msg.status === 'interrupted')"
+          class="message-recovery"
+        >
+          <button type="button" class="msg-retry-btn" @click="emit('retry', msg)">
+            <ReloadOutlined aria-hidden="true" />
+            <span>{{ t('chat.regenerate') }}</span>
           </button>
         </div>
 
@@ -515,9 +515,13 @@ function formatMsgTime(isoString?: string): string {
 
 .message-error {
   background: var(--color-bg-page);
-  border-left: 2px solid var(--color-primary);
-  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: var(--color-text-secondary);
   font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
   margin-top: 14px;
 }
 
@@ -624,26 +628,38 @@ function formatMsgTime(isoString?: string): string {
   opacity: 1;
 }
 
+.message-recovery {
+  margin-top: 12px;
+}
+
 .msg-retry-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 10px;
-  padding: 2px 8px;
-  font-size: 11px;
-  line-height: 1.6;
-  border-radius: 4px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-card);
-  color: var(--color-text-secondary);
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  border-radius: 20px;
+  border: 1px solid var(--color-primary-lighter);
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
 }
 
 .msg-retry-btn:hover {
   color: var(--color-primary);
-  border-color: var(--color-primary-lighter);
+  border-color: var(--color-primary);
   background: var(--color-bg-hover);
+}
+
+.msg-retry-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
 }
 
 .generation-status--interrupted {
