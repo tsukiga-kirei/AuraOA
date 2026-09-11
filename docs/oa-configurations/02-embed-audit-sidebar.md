@@ -155,7 +155,10 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 1. **导出移动端脚本**：
    在 **系统管理 → 租户管理 → 选择租户 → OA 嵌入**：
    - 终端类型切换至 **移动端（状态按钮+弹窗）**
-   - 点击 **导出移动端脚本**，获取已注入当前租户 Origin 与 Token 的 `aura-embed-mobile-notify.js`
+   - 选择 **流程审核** 或 **流程总结**。移动端每个脚本提供一个入口，不支持“全部功能”；PC 端可同时通知审核与总结。
+   - 点击唯一的 **导出移动端脚本**，获取已注入当前租户 Origin 与 Token 的审核脚本 `aura-embed-mobile-notify.js` 或总结脚本 `aura-embed-summary-mobile-notify.js`。总结脚本只查询总结配置，不依赖审核规则。
+   - 状态按钮只读取状态；待生成或正在分析时仍可点击，由详情页启动自动分析或接续任务。
+   - 更新脚本后覆盖 OA 静态文件并更新引用版本参数（例如 `?v=5`），避免继续加载旧缓存。
    - 仓库静态模板见：[assets/aura-embed-mobile-notify.js](./assets/aura-embed-mobile-notify.js)
 2. **上传与启用**：
    - 将脚本上传至 OA 静态目录（如 `/oa-front/workflow/AuraOA/aura-embed-mobile-notify.js`）

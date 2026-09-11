@@ -48,6 +48,8 @@ POST /api/admin/tenants/:id/embed-token
 
 ## Nuxt 代理（浏览器调用）
 
+上下文接口的 Nuxt 代理已解包 Go 的 `{ code, message, data }`，浏览器直接收到包含 `supported` 等字段的业务对象。移动端脚本兼容这两种格式；`supported: false` 是业务不可用状态，应展示对应 `message`，不能当作响应解析失败。审核按钮请求 `/api/embed/context`，流程总结按钮请求 `/api/embed/summary/context`，分别读取审核与总结状态。
+
 | 方法 | 路径 | 转发至 Go |
 |------|------|-----------|
 | POST | `/api/embed/session` | 写入 httpOnly Cookie（不转发 Go） |
