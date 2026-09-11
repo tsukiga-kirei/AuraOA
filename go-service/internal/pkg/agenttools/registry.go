@@ -126,7 +126,7 @@ var BuiltinTools = map[string]ToolSpec{
 		Name:        "获取最新审核结果",
 		Description: "获取 AuraOA 平台对该流程最近一次 AI 审核的结论、风险点与建议（若已进行过审核）。",
 		UIKind:      "audit_result",
-		OARequired:  false,
+		OARequired:  true,
 		Risk:        "read",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -144,7 +144,7 @@ var BuiltinTools = map[string]ToolSpec{
 		Name:        "获取最新流程总结",
 		Description: "获取 AuraOA 平台对该流程最近一次生成的 AI 流程总结要点（若已进行过总结）。",
 		UIKind:      "summary_result",
-		OARequired:  false,
+		OARequired:  true,
 		Risk:        "read",
 		Parameters: map[string]interface{}{
 			"type": "object",

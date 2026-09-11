@@ -2617,6 +2617,7 @@ export default {
     'summary.progress.assembling': '正在整理流程数据',
     'summary.progress.reasoning': '正在生成总结',
     'summary.progress.extracting': '正在汇总结果',
+    'summary.stats.todo': '我的待办',
     'summary.stats.total': '可总结流程',
     'summary.stats.completed': '已有总结',
     'summary.stats.pending': '待生成',

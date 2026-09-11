@@ -158,8 +158,8 @@ export function useAdminDataApi() {
     return await authFetch<SummarySnapshotStats>(`/api/summary/snapshots/stats${query}`)
   }
 
-  async function getSummarySnapshotChain(processId: string): Promise<{ chain: SummaryLogItem[] }> {
-    return await authFetch<{ chain: SummaryLogItem[] }>(`/api/summary/snapshots/${processId}/chain`)
+  async function getSummarySnapshotChain(processId: string, channel?: string, userId?: string): Promise<{ chain: SummaryLogItem[] }> {
+    return await authFetch<{ chain: SummaryLogItem[] }>(`/api/summary/snapshots/${encodeURIComponent(processId)}/chain?${new URLSearchParams(buildParams({ channel, user_id: userId })).toString()}`)
   }
 
   /** 导出流程总结快照为 Excel，筛选条件与列表一致 */

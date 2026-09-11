@@ -406,24 +406,25 @@ func (e *SystemToolExecutor) executeGetLatestAudit(
 		return nil, "audit_result", fmt.Errorf("缺少必填参数 process_id")
 	}
 
-	if adapter != nil {
-		visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, args.ProcessID)
-		if err != nil || !visible {
-			return nil, "audit_result", fmt.Errorf("无权访问流程 %s 或流程不存在", args.ProcessID)
-		}
+	if adapter == nil {
+		return nil, "audit_result", fmt.Errorf("无法校验 OA 流程访问权限")
+	}
+	visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, args.ProcessID)
+	if err != nil || !visible {
+		return nil, "audit_result", fmt.Errorf("无权访问流程 %s 或流程不存在", args.ProcessID)
 	}
 
 	var log model.AuditLog
 	// 1. 优先查询当前用户的个人视角定制审核结论
-	err := e.db.WithContext(execCtx.Ctx).
-		Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_detail = 'personal_embed_manual' AND status = ?",
+	err = e.db.WithContext(execCtx.Ctx).
+		Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_detail = 'personal_embed_manual' AND status = ? AND COALESCE(parse_error, '') = ''",
 			execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
 		Order("created_at DESC").
 		First(&log).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// 2. 其次查询当前用户在工作台执行的审核结论
 		err = e.db.WithContext(execCtx.Ctx).
-			Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_source NOT IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ?",
+			Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_source NOT IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ? AND COALESCE(parse_error, '') = ''",
 				execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
 			Order("created_at DESC").
 			First(&log).Error
@@ -431,7 +432,7 @@ func (e *SystemToolExecutor) executeGetLatestAudit(
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// 3. 兜底查询公共/通用嵌入审核结论（排除任何人的私有定制结论）
 		err = e.db.WithContext(execCtx.Ctx).
-			Where("tenant_id = ? AND process_id = ? AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ?",
+			Where("tenant_id = ? AND process_id = ? AND trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ? AND COALESCE(parse_error, '') = ''",
 				execCtx.TenantID, args.ProcessID, model.JobStatusCompleted).
 			Order("created_at DESC").
 			First(&log).Error
@@ -471,24 +472,25 @@ func (e *SystemToolExecutor) executeGetLatestSummary(
 		return nil, "summary_result", fmt.Errorf("缺少必填参数 process_id")
 	}
 
-	if adapter != nil {
-		visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, args.ProcessID)
-		if err != nil || !visible {
-			return nil, "summary_result", fmt.Errorf("无权访问流程 %s 或流程不存在", args.ProcessID)
-		}
+	if adapter == nil {
+		return nil, "summary_result", fmt.Errorf("无法校验 OA 流程访问权限")
+	}
+	visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, args.ProcessID)
+	if err != nil || !visible {
+		return nil, "summary_result", fmt.Errorf("无权访问流程 %s 或流程不存在", args.ProcessID)
 	}
 
 	var summary model.ProcessSummaryLog
 	// 1. 优先查询当前用户针对该流程的总结记录
-	err := e.db.WithContext(execCtx.Ctx).
-		Where("tenant_id = ? AND process_id = ? AND user_id = ? AND status = ?",
+	err = e.db.WithContext(execCtx.Ctx).
+		Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_source = 'summary_workbench' AND status = ? AND COALESCE(parse_error, '') = ''",
 			execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
 		Order("created_at DESC").
 		First(&summary).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// 2. 兜底查询租户通用总结记录
 		err = e.db.WithContext(execCtx.Ctx).
-			Where("tenant_id = ? AND process_id = ? AND status = ?",
+			Where("tenant_id = ? AND process_id = ? AND trigger_source IN ('summary_embed_auto', 'summary_embed_manual') AND status = ? AND COALESCE(parse_error, '') = ''",
 				execCtx.TenantID, args.ProcessID, model.JobStatusCompleted).
 			Order("created_at DESC").
 			First(&summary).Error
@@ -542,20 +544,20 @@ func (e *SystemToolExecutor) executeDraftComment(
 	summary, _ := adapter.FetchProcessRequestSummary(execCtx.Ctx, args.ProcessID)
 	var latestLog model.AuditLog
 	err = e.db.WithContext(execCtx.Ctx).
-		Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_detail = 'personal_embed_manual' AND status = ?",
+		Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_detail = 'personal_embed_manual' AND status = ? AND COALESCE(parse_error, '') = ''",
 			execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
 		Order("created_at DESC").
 		First(&latestLog).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		err = e.db.WithContext(execCtx.Ctx).
-			Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_source NOT IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ?",
+			Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_source NOT IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ? AND COALESCE(parse_error, '') = ''",
 				execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
 			Order("created_at DESC").
 			First(&latestLog).Error
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		_ = e.db.WithContext(execCtx.Ctx).
-			Where("tenant_id = ? AND process_id = ? AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ?",
+			Where("tenant_id = ? AND process_id = ? AND trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ? AND COALESCE(parse_error, '') = ''",
 				execCtx.TenantID, args.ProcessID, model.JobStatusCompleted).
 			Order("created_at DESC").
 			First(&latestLog).Error

@@ -967,10 +967,27 @@ func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([
 		Where("process_id = ? AND status = ?", processID, model.JobStatusCompleted).
 		Where("COALESCE(parse_error, '') = '' AND recommendation IN ('approve', 'return', 'review')")
 
-	if !tenantAdminContext(c) {
-		// 普通业务用户：仅可见嵌入通用记录，或本人发起的记录（系统内或嵌入个性化）
-		q = q.Where("(trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual') OR user_id = ?", userID)
+	// 前台只按当前用户判断；管理端全量链使用独立接口。
+	var ownCount int64
+	if err := s.auditLogRepo.WithTenant(c).Model(&model.AuditLog{}).
+		Where("process_id = ? AND user_id = ? AND (trigger_detail = 'personal_embed_manual' OR trigger_source NOT IN ('embed_auto', 'embed_manual'))", processID, userID).
+		Count(&ownCount).Error; err != nil {
+		return nil, err
 	}
+	if ownCount == 0 {
+		adapter, err := s.getOAAdapter(c.Request.Context(), tenantID)
+		if err != nil {
+			return nil, err
+		}
+		visible, err := adapter.CheckProcessVisibility(c.Request.Context(), s.extractUsername(c), processID)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrOAQueryFailed, "校验 OA 流程可见性失败")
+		}
+		if !visible {
+			return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核记录")
+		}
+	}
+	q = q.Where("(trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual') OR user_id = ?", userID)
 
 	var ids []uuid.UUID
 	if err := q.Pluck("id", &ids).Error; err != nil {
@@ -1058,6 +1075,22 @@ func (s *AuditExecuteService) getAccessibleAuditLog(c *gin.Context, id uuid.UUID
 	}
 	if !s.userCanAccessAuditProcess(c, tenantID, userID, log.ProcessType) {
 		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核任务")
+	}
+	if log.UserID != userID || (model.IsEmbedTrigger(log.TriggerSource) && log.TriggerDetail != "personal_embed_manual") {
+		if !model.IsEmbedTrigger(log.TriggerSource) || log.TriggerDetail == "personal_embed_manual" {
+			return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核任务")
+		}
+		adapter, err := s.getOAAdapter(c.Request.Context(), tenantID)
+		if err != nil {
+			return nil, err
+		}
+		visible, err := adapter.CheckProcessVisibility(c.Request.Context(), s.extractUsername(c), log.ProcessID)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrOAQueryFailed, "校验 OA 流程可见性失败")
+		}
+		if !visible {
+			return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核任务")
+		}
 	}
 	return log, nil
 }
@@ -2705,19 +2738,6 @@ func (s *AuditExecuteService) resolveRulesText(
 	return sb.String()
 }
 
-func parseSnapshotValidLogIDs(raw datatypes.JSON) []uuid.UUID {
-	var s []string
-	_ = json.Unmarshal(raw, &s)
-	out := make([]uuid.UUID, 0, len(s))
-	for _, x := range s {
-		id, err := uuid.Parse(strings.TrimSpace(x))
-		if err == nil {
-			out = append(out, id)
-		}
-	}
-	return out
-}
-
 // cachedAuditConfig 缓存的审核配置（config + rules 一起缓存）
 type cachedAuditConfig struct {
 	Config model.ProcessAuditConfig `json:"config"`
@@ -2780,11 +2800,4 @@ func (s *AuditExecuteService) visibleWorkbenchQuery(c *gin.Context) *gorm.DB {
 		return s.db.Model(&model.AuditProcessSnapshot{}).Where("1 = 0")
 	}
 	return s.auditSnapshotRepo.VisibleWorkbenchQueryScoped(c, userID, false)
-}
-
-// tenantAdminContext 判断当前请求是否为租户管理员，用于开放租户级 OA 嵌入历史结果。
-func tenantAdminContext(c *gin.Context) bool {
-	claimsVal, _ := c.Get("jwt_claims")
-	claims, ok := claimsVal.(*jwtpkg.JWTClaims)
-	return ok && claims.ActiveRole.Role == "tenant_admin"
 }

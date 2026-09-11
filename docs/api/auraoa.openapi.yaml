@@ -5088,6 +5088,12 @@ paths:
         in: query
         schema:
           type: string
+      - name: source
+        in: query
+        description: 按个人流程来源筛选，省略为全部
+        schema:
+          type: string
+          enum: [todo, archived]
       - name: summary_status
         in: query
         schema:
@@ -5146,7 +5152,7 @@ paths:
   /api/summary/stats:
     get:
       summary: 获取当前用户流程总结工作台统计
-      description: 需要当前组织角色拥有 `/summary` 页面权限，统计范围与流程列表一致。
+      description: 需要当前组织角色拥有 `/summary` 页面权限，按个人可见流程统计，忽略 source 与 summary_status；todo_count 对应 source=todo 的待办列表。
       tags:
       - Summary
       security:
@@ -5168,6 +5174,8 @@ paths:
                   data:
                     type: object
                     properties:
+                      todo_count:
+                        type: integer
                       total_count:
                         type: integer
                       summarized_count:
@@ -5294,6 +5302,7 @@ paths:
   /api/summary/snapshots:
     get:
       summary: 流程总结快照列表
+      description: 嵌入按流程、系统内按流程和操作人分组；各组返回最新有效总结、组内 valid_log_ids 及系统内操作人 user_id。
       tags:
       - Summary
       security:
@@ -5319,6 +5328,23 @@ paths:
                         type: array
                         items:
                           type: object
+                          properties:
+                            channel:
+                              type: string
+                              enum: [embed, workbench]
+                            user_id:
+                              type: string
+                              format: uuid
+                            latest_valid_log_id:
+                              type: string
+                              format: uuid
+                            valid_log_ids:
+                              type: array
+                              items:
+                                type: string
+                                format: uuid
+                            block_count:
+                              type: integer
                       total:
                         type: integer
                       page:
@@ -5445,6 +5471,7 @@ paths:
   /api/summary/snapshots/{processId}/chain:
     get:
       summary: 获取流程总结链
+      description: 按渠道及操作人返回有效总结链，时间倒序。嵌入操作人显示 OA 嵌入总结，省略筛选兼容全流程历史。
       tags:
       - Summary
       security:
@@ -5469,6 +5496,17 @@ paths:
         required: true
         schema:
           type: string
+      - name: channel
+        in: query
+        schema:
+          type: string
+          enum: [embed, workbench]
+      - name: user_id
+        in: query
+        description: 系统内渠道的操作人 ID
+        schema:
+          type: string
+          format: uuid
   /api/archive/processes:
     get:
       summary: 分页查询已归档流程列表

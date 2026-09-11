@@ -13,6 +13,7 @@ export interface SummaryWorkbenchQuery {
   applicant?: string
   department?: string
   process_type?: string
+  source?: string
   summary_status?: string
   start_date?: string
   end_date?: string

@@ -94,6 +94,7 @@ export interface SummaryWorkbenchListResponse {
 }
 
 export interface SummaryWorkbenchStats {
+  todo_count: number
   total_count: number
   summarized_count: number
   pending_count: number

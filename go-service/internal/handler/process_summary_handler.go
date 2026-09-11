@@ -284,7 +284,21 @@ func (h *ProcessSummaryHandler) GetSnapshotChain(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "流程ID不能为空")
 		return
 	}
-	chain, err := h.summaryService.GetSnapshotChain(c, processID)
+	channel := c.Query("channel")
+	if channel != "" && channel != "embed" && channel != "workbench" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "总结渠道无效")
+		return
+	}
+	var userID *uuid.UUID
+	if value := c.Query("user_id"); value != "" {
+		id, err := uuid.Parse(value)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "操作人 ID 无效")
+			return
+		}
+		userID = &id
+	}
+	chain, err := h.summaryService.GetSnapshotChain(c, processID, channel, userID)
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -323,6 +337,7 @@ func parseSummaryWorkbenchQuery(c *gin.Context) dto.SummaryWorkbenchListParams {
 		Department:    c.Query("department"),
 		ProcessType:   c.Query("process_type"),
 		SummaryStatus: c.Query("summary_status"),
+		Source:        c.Query("source"),
 		Page:          parseIntQuery(c, "page", 1),
 		PageSize:      parseIntQuery(c, "page_size", 20),
 	}
