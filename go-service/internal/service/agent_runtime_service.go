@@ -21,11 +21,28 @@ import (
 	"auraoa/go-service/internal/pkg/agenttools"
 	"auraoa/go-service/internal/pkg/ai"
 	"auraoa/go-service/internal/pkg/apptime"
+	"auraoa/go-service/internal/pkg/crypto"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
 	"auraoa/go-service/internal/repository"
 )
 
 const maxAgentLoopSteps = 8
+
+// prepareAgentModelConfig 创建调用配置副本并解密密钥，供对话、标题生成及备用调用复用。
+func prepareAgentModelConfig(cfg *model.AIModelConfig) (*model.AIModelConfig, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+	prepared := *cfg
+	if prepared.APIKey != "" {
+		key, err := crypto.Decrypt(prepared.APIKey)
+		if err != nil {
+			return nil, fmt.Errorf("AI 模型 API Key 解密失败，请联系管理员检查模型配置")
+		}
+		prepared.APIKey = key
+	}
+	return &prepared, nil
+}
 
 // AgentRuntimeService 负责智能体单轮对话的编排循环（包括工具多步调用、状态流式推送与落库）
 type AgentRuntimeService struct {
@@ -301,6 +318,10 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 	if err != nil || modelCfg == nil {
 		return fmt.Errorf("AI 模型配置不存在或已停用")
 	}
+	modelCfg, err = prepareAgentModelConfig(modelCfg)
+	if err != nil {
+		return err
+	}
 
 	// 7.1 若会话为首轮，更新临时标题并立即通知前端，同时异步调用 AI 提炼更精准的 4-10 字主题标题
 	if session.Title == "新对话" || session.Title == "" {
@@ -325,6 +346,11 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 	}
 	if fallbackID != nil {
 		fallbackCfg, _ = s.aiModelRepo.FindByID(*fallbackID)
+		fallbackCfg, err = prepareAgentModelConfig(fallbackCfg)
+		if err != nil {
+			// 备用模型不可用时仍允许主模型执行，禁止将密文发送给模型服务。
+			logger.Warn("智能体备用模型 API Key 解密失败", zap.String("modelID", fallbackID.String()))
+		}
 	}
 	// 8. 进入智能体编排循环
 	safeSink("session", map[string]interface{}{
