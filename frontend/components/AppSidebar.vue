@@ -64,7 +64,7 @@ const handleToggleSidebar = () => {
         >
           <span class="sidebar-mark-slot">
             <span class="sidebar-mark-logo">
-              <img src="/favicon.png" alt="AuraOA" width="24" height="24" />
+              <img src="/favicon.png" alt="AuraOA" width="38" height="38" />
             </span>
             <span class="sidebar-mark-toggle" aria-hidden="true">
               <MenuUnfoldOutlined />
@@ -78,7 +78,7 @@ const handleToggleSidebar = () => {
       <template v-else>
         <div class="sidebar-brand" @click="navigateTo(logoTarget)">
           <div class="sidebar-logo-icon">
-            <img src="/favicon.png" alt="AuraOA" width="24" height="24" />
+            <img src="/favicon.png" alt="AuraOA" width="38" height="38" />
           </div>
           <span class="sidebar-logo-text">{{ t('app.name') }}</span>
         </div>
@@ -205,8 +205,8 @@ const handleToggleSidebar = () => {
 .sidebar-mark-slot {
   position: relative;
   display: flex;
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   align-items: center;
   justify-content: center;
 }
@@ -220,11 +220,14 @@ const handleToggleSidebar = () => {
 }
 
 .sidebar-mark-logo {
-  width: 36px;
-  height: 36px;
-  background: var(--color-bg-hover);
-  border-radius: 10px;
-  color: var(--color-primary);
+  width: 38px;
+  height: 38px;
+}
+.sidebar-mark-logo img {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+  display: block;
 }
 
 .sidebar-mark-toggle {
@@ -342,11 +345,18 @@ html[data-theme='dark'] .sidebar-hint-below::after {
 }
 
 .sidebar-logo-icon {
-  width: 36px; height: 36px;
-  background: var(--color-bg-hover);
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--color-primary); font-size: 18px; flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.sidebar-logo-icon img {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+  display: block;
 }
 .sidebar-logo-text {
   font-size: 18px; font-weight: 700;

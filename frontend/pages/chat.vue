@@ -248,7 +248,7 @@ const jump = (id: string) => {
           class="chat-welcome"
           :class="{ 'is-exiting': isSubmittingFirst }"
         >
-          <div class="welcome-mark"><img src="/favicon.png" alt="" width="36" height="36" /></div>
+          <div class="welcome-mark"><img src="/favicon.png" alt="" width="48" height="48" /></div>
           <p class="welcome-eyebrow">{{ agent?.name || t('chat.assistantName') }}</p>
           <h1>{{ t('chat.welcomeTitle') }}</h1>
 
@@ -343,12 +343,17 @@ const jump = (id: string) => {
   pointer-events: none;
 }
 .welcome-mark {
-  margin-bottom: 18px;
+  margin-bottom: 16px;
   display: inline-flex;
-  padding: 8px;
-  background: var(--color-primary-bg);
-  border-radius: 14px;
-  box-shadow: 0 2px 8px var(--color-primary-ring);
+  align-items: center;
+  justify-content: center;
+}
+.welcome-mark img {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 14px rgba(37, 99, 235, 0.16));
 }
 .welcome-eyebrow {
   font-size: 13px;
