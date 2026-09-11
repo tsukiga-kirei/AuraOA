@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- 为缺少 `Array.prototype.at` 的旧版 OA 浏览器补齐兼容处理，在 Nuxt 路由初始化前生效，修复 `matched.at is not a function` 异常。
+- 移动端嵌入脚本新增 `SHOW_ON_DESKTOP` 开关（默认关闭）；开启后电脑端使用自适应居中详情弹窗，保留原表单占位与悬浮定位规则。
+
 ## [0.3.1] - 2026-09-11
 
 ### Added

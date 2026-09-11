@@ -763,9 +763,60 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
   // ========== AuraOA 已配置项 ==========
   var AURA_EMBED_ORIGIN = ${JSON.stringify(embedOrigin.value)};
   var EMBED_ACCESS_TOKEN = ${JSON.stringify(token)};
+  var SHOW_ON_DESKTOP = false; // 是否在电脑端启用本脚本的按钮和弹窗；移动端不受影响
   var BUTTON_CONTAINER_ID = 'getMyBt';
   var EMBED_TYPE = ${JSON.stringify(defaultEmbedType)};
   // ====================================
+
+  // 不按窗口宽度判断，避免电脑端窄侧栏被识别为移动端；兼容 iPad 桌面 UA。
+  var mobileClient = /Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent || '')
+    || (/Macintosh/i.test(navigator.userAgent || '') && navigator.maxTouchPoints > 1);
+  if (!mobileClient && !SHOW_ON_DESKTOP) return;
+
+  function openDesktopDialog(targetUrl) {
+    var existing = document.getElementById('auraDesktopEmbedDialog');
+    if (existing) return;
+    var previousFocus = document.activeElement;
+    var overlay = document.createElement('div');
+    overlay.id = 'auraDesktopEmbedDialog';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+    var dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'auraDesktopEmbedTitle');
+    dialog.style.cssText = 'width:1100px;max-width:100%;height:85vh;max-height:100%;background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,.2);';
+    var header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border-bottom:1px solid #eee;flex-shrink:0;';
+    var title = document.createElement('span');
+    title.id = 'auraDesktopEmbedTitle';
+    title.textContent = EMBED_TYPE === 'summary' ? 'AI 流程总结' : 'AI 流程审核';
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = '关闭';
+    close.style.cssText = 'cursor:pointer;padding:6px 12px;background:#fff;border:1px solid #ddd;border-radius:6px;';
+    var frame = document.createElement('iframe');
+    frame.title = title.textContent;
+    frame.src = targetUrl;
+    frame.style.cssText = 'width:100%;flex:1;min-height:0;border:0;display:block;';
+    function dismiss() {
+      document.removeEventListener('keydown', onKeyDown);
+      overlay.remove();
+      if (previousFocus && previousFocus.focus) previousFocus.focus();
+    }
+    function onKeyDown(event) {
+      if (event.key === 'Escape') dismiss();
+    }
+    close.onclick = dismiss;
+    overlay.onclick = function (event) { if (event.target === overlay) dismiss(); };
+    header.appendChild(title);
+    header.appendChild(close);
+    dialog.appendChild(header);
+    dialog.appendChild(frame);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    document.addEventListener('keydown', onKeyDown);
+    close.focus();
+  }
 
   var statusConfig = {
     gray: { color: '#909399', text: 'AI审核详情', bg: '#f4f4f5', bgHover: '#e9e9eb' },
@@ -898,7 +949,9 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
 
     console.log('[aura-embed-mobile] 调起嵌入弹窗');
 
-    if (window.weaJs && typeof window.weaJs.showDialog === 'function') {
+    if (!mobileClient) {
+      openDesktopDialog(targetUrl);
+    } else if (window.weaJs && typeof window.weaJs.showDialog === 'function') {
       window.weaJs.showDialog(targetUrl, {
         title: EMBED_TYPE === 'summary' ? 'AI 流程总结' : 'AI 流程审核',
         moduleName: 'workflow',
