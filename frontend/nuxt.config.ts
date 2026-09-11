@@ -7,6 +7,17 @@ export default defineNuxtConfig({
     appManifest: false,
   },
 
+  routeRules: {
+    '/api/embed/**': {
+      cors: true,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': '*',
+      },
+    },
+  },
+
   devServer: {
     host: 'localhost',
     port: 3000,
