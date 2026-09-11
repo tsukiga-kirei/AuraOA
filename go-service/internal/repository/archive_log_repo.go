@@ -12,11 +12,11 @@ import (
 
 // ArchiveLogFilter 归档复盘日志分页查询过滤条件。
 type ArchiveLogFilter struct {
-	Keyword     string
-	ProcessType string
-	Compliance  string
-	StartDate   *time.Time
-	EndDate     *time.Time
+	Keyword          string
+	ProcessType      string
+	Compliance       string
+	StartDate        *time.Time
+	EndDateExclusive *time.Time // 次日零点，不包含该时刻
 }
 
 // ArchiveLogStats 归档复盘日志统计。
@@ -345,8 +345,8 @@ func applyArchiveLogFilter(db *gorm.DB, f ArchiveLogFilter) *gorm.DB {
 	if f.StartDate != nil {
 		db = db.Where("archive_logs.created_at >= ?", f.StartDate)
 	}
-	if f.EndDate != nil {
-		db = db.Where("archive_logs.created_at <= ?", f.EndDate)
+	if f.EndDateExclusive != nil {
+		db = db.Where("archive_logs.created_at < ?", f.EndDateExclusive)
 	}
 	return db
 }

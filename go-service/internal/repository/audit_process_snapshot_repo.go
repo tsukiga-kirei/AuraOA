@@ -126,14 +126,14 @@ func (r *AuditProcessSnapshotRepo) GetMapByProcessIDsAndChannel(c *gin.Context, 
 
 // AuditSnapshotFilter 快照分页过滤条件。
 type AuditSnapshotFilter struct {
-	Recommendation string // approve / return / review / "" = 全部
-	Channel        string // workbench / embed / "" = 全部
-	Keyword        string // 标题/流程编号模糊
-	ProcessType    string
-	Operator       string // 操作人模糊
-	Department     string // 部门精确
-	StartDate      *time.Time
-	EndDate        *time.Time
+	Recommendation   string // approve / return / review / "" = 全部
+	Channel          string // workbench / embed / "" = 全部
+	Keyword          string // 标题/流程编号模糊
+	ProcessType      string
+	Operator         string // 操作人模糊
+	Department       string // 部门精确
+	StartDate        *time.Time
+	EndDateExclusive *time.Time // 次日零点，不包含该时刻
 }
 
 // AuditSnapshotListRow 快照列表行（含操作人+部门）。
@@ -262,8 +262,8 @@ WHERE rl.rn = 1
 	if filter.StartDate != nil {
 		base = base.Where("updated_at >= ?", filter.StartDate)
 	}
-	if filter.EndDate != nil {
-		base = base.Where("updated_at <= ?", filter.EndDate)
+	if filter.EndDateExclusive != nil {
+		base = base.Where("updated_at < ?", filter.EndDateExclusive)
 	}
 	return base
 }
@@ -608,7 +608,7 @@ func (r *AuditProcessSnapshotRepo) CountCombinedUserRanking(c *gin.Context, limi
  SELECT al.user_id, 1::bigint AS audit_count, 0::bigint AS archive_count, 0::bigint AS summary_count, aps.updated_at AS at
  FROM audit_process_snapshots aps JOIN audit_logs al ON al.id = aps.latest_valid_log_id AND al.tenant_id = aps.tenant_id WHERE aps.tenant_id = ?
  UNION ALL
- SELECT al.user_id, 0, 1, 0, aps.updated_at FROM archive_process_snapshots aps JOIN archive_logs al ON al.id = aps.latest_valid_log_id AND al.tenant_id = aps.tenant_id WHERE aps.tenant_id = ?
+ SELECT al.user_id, 0, 1, 0, aps.updated_at FROM archive_process_snapshots aps JOIN archive_logs al ON al.id = aps.latest_valid_archive_log_id AND al.tenant_id = aps.tenant_id WHERE aps.tenant_id = ?
  UNION ALL
  SELECT user_id, 0, 0, 1, updated_at FROM process_summary_logs WHERE tenant_id = ? AND status = 'completed'
  ) SELECT u.username, u.display_name, COALESCE(d.name, '') AS department,

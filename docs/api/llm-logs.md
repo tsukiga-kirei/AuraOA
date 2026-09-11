@@ -83,3 +83,8 @@ GET /api/admin/stats/token-usage
 `request_type=chat` 可用于列表筛选。`business_log_id` 关联聊天会话，`process_title` 保存会话标题，真实 OA 流程 ID 不被虚构。聚合列表在 `process_id` 响应字段使用 `chat:<session UUID>` 作为对话链键，原样 URL 编码传入 `/:processId/chain` 即可查看。同一会话多轮调用合并；历史无关联的调用按 `chat:<log UUID>` 单列。此键不能作为 OA 流程 ID 跳转。
 
 统计新增 `chat_count`（对话链数量），`total` 包含流程及对话链。Token 用量、配额结算和仪表盘 Token 总量沿用统一 LLM 日志聚合。聊天链的 `config_version_no` 不关联审核/归档版本。
+
+### 日期筛选边界
+
+日志/快照列表及其导出接口的 `start_date`、`end_date` 按应用配置时区解释，结束日期包含当天全部记录。
+实现使用 `时间 >= 开始日期零点 AND 时间 < 结束日期次日零点`，包含当天最后一秒内的微秒记录，次日边界按自然日计算以兼容夏令时。

@@ -524,8 +524,8 @@ func parseAuditSnapshotQuery(c *gin.Context) (repository.AuditSnapshotFilter, in
 	}
 	if s := c.Query("end_date"); s != "" {
 		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
-			end := t.Add(24*time.Hour - time.Second)
-			filter.EndDate = &end
+			end := t.AddDate(0, 0, 1)
+			filter.EndDateExclusive = &end
 		}
 	}
 	page := parseIntQuery(c, "page", 1)
@@ -556,8 +556,8 @@ func parseAuditLogQuery(c *gin.Context) (repository.AuditLogFilter, int, int) {
 	}
 	if s := c.Query("end_date"); s != "" {
 		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
-			end := t.Add(24*time.Hour - time.Second)
-			filter.EndDate = &end
+			end := t.AddDate(0, 0, 1)
+			filter.EndDateExclusive = &end
 		}
 	}
 	page := parseIntQuery(c, "page", 1)

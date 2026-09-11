@@ -95,13 +95,13 @@ func (r *ProcessSummarySnapshotRepo) GetMapByProcessIDs(c *gin.Context, processI
 }
 
 type ProcessSummarySnapshotFilter struct {
-	Channel     string // workbench / embed / "" = 全部
-	Keyword     string
-	ProcessType string
-	Operator    string
-	Department  string
-	StartDate   *time.Time
-	EndDate     *time.Time
+	Channel          string // workbench / embed / "" = 全部
+	Keyword          string
+	ProcessType      string
+	Operator         string
+	Department       string
+	StartDate        *time.Time
+	EndDateExclusive *time.Time // 次日零点，不包含该时刻
 }
 
 type ProcessSummarySnapshotListRow struct {
@@ -190,8 +190,8 @@ func applyProcessSummarySnapshotFilter(db *gorm.DB, f ProcessSummarySnapshotFilt
 	if f.StartDate != nil {
 		db = db.Where("updated_at >= ?", f.StartDate)
 	}
-	if f.EndDate != nil {
-		db = db.Where("updated_at <= ?", f.EndDate)
+	if f.EndDateExclusive != nil {
+		db = db.Where("updated_at < ?", f.EndDateExclusive)
 	}
 	return db
 }

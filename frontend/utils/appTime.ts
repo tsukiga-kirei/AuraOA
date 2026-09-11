@@ -15,7 +15,16 @@ export function useAppTimeZone(): string {
 
 export function appDayjs(value?: string | number | Date | Dayjs | null): Dayjs {
   const timeZone = useAppTimeZone()
-  return value == null ? dayjs().tz(timeZone) : dayjs(value).tz(timeZone)
+  if (value == null) return dayjs().tz(timeZone)
+  // OA 无时区日期按应用时区解释；带偏移的时间戳保留其代表的实际时刻。
+  if (typeof value === 'string' && /^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$/.test(value.trim())) {
+    try {
+      return dayjs.tz(value.trim().replace(/\//g, '-'), timeZone)
+    } catch {
+      return dayjs(Number.NaN)
+    }
+  }
+  return dayjs(value).tz(timeZone)
 }
 
 export function formatDateTimeInAppZone(
@@ -23,9 +32,10 @@ export function formatDateTimeInAppZone(
   locale = 'zh-CN',
   options: Intl.DateTimeFormatOptions = {},
 ) {
-  if (!value) return '-'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return String(value)
+  if (value == null || value === '') return '-'
+  const parsed = appDayjs(value)
+  if (!parsed.isValid()) return String(value)
+  const d = parsed.toDate()
   const defaultOptions: Intl.DateTimeFormatOptions = options.dateStyle || options.timeStyle
     ? {}
     : {

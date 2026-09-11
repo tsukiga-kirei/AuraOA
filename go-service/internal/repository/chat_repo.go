@@ -299,11 +299,11 @@ LEFT JOIN (
   WHERE s.tenant_id = ?
     AND m.created_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)
     ` + userFilter + `
-  GROUP BY DATE(m.created_at AT TIME ZONE ?)
+  GROUP BY 1
 ) b ON b.d = days.d
 ORDER BY days.d ASC`
 
-	args = append(args, apptime.Name())
+	// 直接按 SELECT 的日期列分组，避免 PostgreSQL 将重复时区参数视为不同表达式。
 	var result []DayCount
 	err := r.db.Raw(sql, args...).Scan(&result).Error
 	return result, err

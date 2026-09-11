@@ -245,9 +245,9 @@ func parseCronLogQuery(c *gin.Context) (repository.CronLogFilter, int, int) {
 	}
 	if s := c.Query("end_date"); s != "" {
 		if t, err := time.ParseInLocation("2006-01-02", s, apptime.Location()); err == nil {
-			// 结束日期扩展到当天末尾（23:59:59）
-			end := t.Add(24*time.Hour - time.Second)
-			filter.EndDate = &end
+			// 结束日期使用次日零点的开区间，包含当天全部精度的记录。
+			end := t.AddDate(0, 0, 1)
+			filter.EndDateExclusive = &end
 		}
 	}
 	page := parseIntQuery(c, "page", 1)
