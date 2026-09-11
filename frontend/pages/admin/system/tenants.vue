@@ -428,6 +428,7 @@ const showEmbedTokenModal = ref(false)
 const rotatedEmbedToken = ref('')
 const manualEmbedToken = ref('')
 const embedScriptTarget = ref<'all' | 'audit' | 'summary'>('all')
+const embedScriptPlatform = ref<'pc' | 'mobile'>('pc')
 
 const embedOrigin = computed(() => {
   if (import.meta.client && window.location?.origin) return window.location.origin
@@ -440,6 +441,10 @@ const embedScriptTargetOptions = computed(() => [
   { value: 'all', label: t('admin.tenants.embedScriptTargetAll') },
   { value: 'audit', label: t('admin.tenants.embedScriptTargetAudit') },
   { value: 'summary', label: t('admin.tenants.embedScriptTargetSummary') },
+])
+const embedScriptPlatformOptions = computed(() => [
+  { value: 'pc', label: t('admin.tenants.embedScriptPlatformPC') },
+  { value: 'mobile', label: t('admin.tenants.embedScriptPlatformMobile') },
 ])
 
 const getEmbedScriptConfig = (target: 'all' | 'audit' | 'summary') => {
@@ -464,6 +469,23 @@ const getEmbedScriptConfig = (target: 'all' | 'audit' | 'summary') => {
     filename: 'aura-embed-notify.js',
     urls: [embedAuditUrl.value, embedSummaryUrl.value],
     iframeIds: ['aura-embed-audit', 'aura-embed-summary'],
+  }
+}
+
+const getEmbedMobileScriptConfig = (target: 'all' | 'audit' | 'summary') => {
+  if (target === 'summary') {
+    return {
+      label: `${t('admin.tenants.embedScriptPlatformMobile')} - ${t('admin.tenants.embedScriptTargetSummary')}`,
+      filename: 'aura-embed-summary-mobile-notify.js',
+      urls: [embedSummaryUrl.value],
+      embedType: 'summary',
+    }
+  }
+  return {
+    label: `${t('admin.tenants.embedScriptPlatformMobile')} - ${target === 'all' ? t('admin.tenants.embedScriptTargetAll') : t('admin.tenants.embedScriptTargetAudit')}`,
+    filename: 'aura-embed-mobile-notify.js',
+    urls: [embedAuditUrl.value],
+    embedType: 'audit',
   }
 }
 
@@ -714,6 +736,323 @@ ${urlComment}
 `
 }
 
+const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token: string) => {
+  const cfg = getEmbedMobileScriptConfig(target)
+  const isSummary = target === 'summary'
+  const defaultEmbedType = isSummary ? 'summary' : 'audit'
+  return `/**
+ * 泛微 Ecology9 移动端 — AuraOA 嵌入脚本（方案B：状态胶囊按钮 + 弹窗查看详情 + 变更感知）
+ *
+ * 导出范围：${cfg.label}
+ * 对应嵌入地址：${cfg.urls[0] || embedAuditUrl.value}
+ *
+ * 使用步骤：
+ * 1. 将本文件上传到 OA 静态目录（如 /oa-front/workflow/AuraOA/${cfg.filename}）
+ * 2. 流程 → 基础设置 → 自定义页面（或移动端页面设置）填入 js 路径并启用
+ * 3. 表单设计中可添加自定义 HTML 块 <div id="getMyBt"></div> 作为按钮挂载位（如无则自动以悬浮方式挂载）
+ */
+(function () {
+  console.log('[aura-embed-mobile] 移动端脚本已加载');
+
+  // ========== AuraOA 已配置项 ==========
+  var AURA_EMBED_ORIGIN = ${JSON.stringify(embedOrigin.value)};
+  var EMBED_ACCESS_TOKEN = ${JSON.stringify(token)};
+  var BUTTON_CONTAINER_ID = 'getMyBt';
+  var EMBED_TYPE = ${JSON.stringify(defaultEmbedType)};
+  // ====================================
+
+  var statusConfig = {
+    gray: { color: '#909399', text: 'AI审核详情', bg: '#f4f4f5', bgHover: '#e9e9eb' },
+    green: { color: '#67C23A', text: '审核通过', bg: '#f0f9ff', bgHover: '#e1f3f8' },
+    yellow: { color: '#E6A23C', text: '建议关注', bg: '#fdf6ec', bgHover: '#faecd8' },
+    red: { color: '#F56C6C', text: '建议退回', bg: '#fef0f0', bgHover: '#fde2e2' },
+    disabled: { color: '#c0c4cc', text: '暂不可用', bg: '#f5f7fa', bgHover: '#f5f7fa' },
+    error: { color: '#f56c6c', text: '加载失败', bg: '#fef0f0', bgHover: '#fef0f0' },
+    loading: { color: '#409eff', text: '分析中...', bg: '#ecf5ff', bgHover: '#ecf5ff' }
+  };
+
+  function getRequestId() {
+    try {
+      if (typeof WfForm !== 'undefined' && WfForm.getBaseInfo) {
+        var base = WfForm.getBaseInfo();
+        var requestid = base && base.requestid != null ? String(base.requestid).trim() : '';
+        if (requestid &&
+            requestid !== '-1' &&
+            requestid !== '0' &&
+            requestid.toLowerCase() !== 'null' &&
+            requestid.toLowerCase() !== 'undefined') {
+          return requestid;
+        }
+      }
+    } catch (e) {
+      console.warn('[aura-embed-mobile] WfForm.getBaseInfo 失败', e);
+    }
+    return '';
+  }
+
+  function getCurrentUserId() {
+    try {
+      if (typeof WfForm !== 'undefined' && WfForm.getGlobalStore) {
+        var store = WfForm.getGlobalStore();
+        if (store && store.commonParam && store.commonParam.currentUserid != null) {
+          return String(store.commonParam.currentUserid).trim();
+        }
+      }
+      if (typeof WfForm !== 'undefined' && WfForm.getBaseInfo) {
+        var base = WfForm.getBaseInfo();
+        if (base && base.f_weaver_belongto_userid != null) {
+          return String(base.f_weaver_belongto_userid).trim();
+        }
+      }
+    } catch (e) {}
+    return '';
+  }
+
+  function captureOperationContext(action) {
+    var occurredAtMs = Date.now();
+    var base = (typeof WfForm !== 'undefined' && WfForm.getBaseInfo) ? WfForm.getBaseInfo() || {} : {};
+    return {
+      action: action,
+      event_id: 'oa-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+      occurred_at_ms: occurredAtMs,
+      requestid: getRequestId(),
+      workflow_id: base.workflowid != null ? String(base.workflowid).trim() : '',
+      oa_belong_user_id: base.f_weaver_belongto_userid != null ? String(base.f_weaver_belongto_userid).trim() : '',
+      oa_current_user_id: getCurrentUserId()
+    };
+  }
+
+  function buildEventBody(context) {
+    return [
+      ['embed_token', EMBED_ACCESS_TOKEN],
+      ['process_id', context.requestid],
+      ['workflow_id', context.workflow_id],
+      ['oa_belong_user_id', context.oa_belong_user_id],
+      ['oa_current_user_id', context.oa_current_user_id],
+      ['occurred_at_ms', String(context.occurred_at_ms)],
+      ['action', context.action],
+      ['event_id', context.event_id]
+    ].map(function (item) {
+      return encodeURIComponent(item[0]) + '=' + encodeURIComponent(item[1] || '');
+    }).join('&');
+  }
+
+  function notifyBeforeRelease(action, callback) {
+    var released = false;
+    var release = function () {
+      if (released) return;
+      released = true;
+      callback();
+    };
+    var context = captureOperationContext(action);
+    var timeoutId = setTimeout(function () {
+      console.warn('[aura-embed-mobile] OA 操作事件提交超时，已放行 OA', { action: context.action });
+      release();
+    }, 800);
+
+    try {
+      var request = fetch(AURA_EMBED_ORIGIN + '/api/embed/events', {
+        method: 'POST',
+        mode: 'no-cors',
+        credentials: 'omit',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: buildEventBody(context)
+      });
+      Promise.resolve(request).then(function () {
+        clearTimeout(timeoutId);
+        release();
+      }, function (err) {
+        clearTimeout(timeoutId);
+        console.warn('[aura-embed-mobile] OA 操作事件提交失败，已放行 OA', err);
+        release();
+      });
+    } catch (e) {
+      clearTimeout(timeoutId);
+      release();
+    }
+  }
+
+  function registerOAEvents() {
+    if (typeof WfForm === 'undefined' || !WfForm.registerCheckEvent) return;
+    WfForm.registerCheckEvent(WfForm.OPER_SAVE, function (callback) {
+      notifyBeforeRelease('save_requested', callback);
+    });
+    WfForm.registerCheckEvent(WfForm.OPER_SUBMIT, function (callback) {
+      notifyBeforeRelease('submit_requested', callback);
+    });
+    console.log('[aura-embed-mobile] 已注册 OA 保存/提交感知事件');
+  }
+
+  function openEmbedDialog(requestId, userId) {
+    var path = EMBED_TYPE === 'summary' ? '/embed/summary' : '/embed/audit';
+    var targetUrl = AURA_EMBED_ORIGIN + path
+      + '?requestid=' + encodeURIComponent(requestId)
+      + '&embed_token=' + encodeURIComponent(EMBED_ACCESS_TOKEN)
+      + '&oa_user_id=' + encodeURIComponent(userId);
+
+    console.log('[aura-embed-mobile] 调起嵌入弹窗:', targetUrl);
+
+    if (window.weaJs && typeof window.weaJs.showDialog === 'function') {
+      window.weaJs.showDialog(targetUrl, {
+        title: EMBED_TYPE === 'summary' ? 'AI 流程总结' : 'AI 流程审核',
+        moduleName: 'workflow',
+        style: { width: '100%', height: '100%' }
+      });
+    } else {
+      window.open(targetUrl, '_blank');
+    }
+  }
+
+  function renderButton(status, textOverride, errorMessage, isLoading, onClick) {
+    var currentStatus = isLoading ? statusConfig.loading : (statusConfig[status] || statusConfig.gray);
+    var displayText = textOverride || currentStatus.text;
+    var isDisabled = status === 'disabled' || status === 'error';
+    var cursorStyle = isDisabled ? 'not-allowed' : 'pointer';
+    var opacityValue = isDisabled ? '0.65' : '1';
+
+    var btnHtml =
+      '<div style="display: inline-flex; align-items: center; padding: 4px 0;">' +
+        '<button id="auraMobileEmbedBtn" type="button" style="' +
+          'display: inline-flex; align-items: center; justify-content: center;' +
+          'white-space: nowrap; height: 28px; padding: 0 14px;' +
+          'background-color: ' + currentStatus.bg + '; border: 1.5px solid ' + currentStatus.color + ';' +
+          'border-radius: 16px; font-size: 13px; font-weight: 600;' +
+          'color: ' + currentStatus.color + '; cursor: ' + cursorStyle + '; opacity: ' + opacityValue + ';' +
+          'box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all 0.2s ease;' +
+        '">' +
+          '<span style="' +
+            'display: inline-block; width: 8px; height: 8px; border-radius: 50%;' +
+            'background-color: ' + currentStatus.color + '; margin-right: 6px;' +
+            (isLoading ? 'animation: auraBtnPulse 1.2s infinite ease-in-out;' : '') +
+          '"></span>' +
+          '<span>' + displayText + '</span>' +
+        '</button>' +
+      '</div>';
+
+    var $container = jQuery('#' + BUTTON_CONTAINER_ID);
+    if (!$container.length) {
+      if (!jQuery('#auraMobileEmbedFloatContainer').length) {
+        jQuery('body').append('<div id="auraMobileEmbedFloatContainer" style="position:fixed;bottom:16px;left:16px;z-index:9999;"></div>');
+      }
+      $container = jQuery('#auraMobileEmbedFloatContainer');
+    }
+
+    $container.html(btnHtml);
+
+    jQuery('#auraMobileEmbedBtn').off('click').on('click', function () {
+      if (isLoading) {
+        if (typeof WfForm !== 'undefined' && WfForm.showMessage) {
+          WfForm.showMessage('AI 审核数据正在分析中，请稍候...', 2, 2);
+        }
+        return;
+      }
+      if (isDisabled) {
+        if (typeof WfForm !== 'undefined' && WfForm.showMessage) {
+          WfForm.showMessage(errorMessage || '当前节点暂不可用', 2, 3);
+        }
+        return;
+      }
+      if (typeof onClick === 'function') {
+        onClick();
+      }
+    });
+  }
+
+  function queryEmbedStatus(requestId, userId) {
+    var apiUrl = AURA_EMBED_ORIGIN + '/api/embed/context'
+      + '?requestid=' + encodeURIComponent(requestId)
+      + '&embed_token=' + encodeURIComponent(EMBED_ACCESS_TOKEN)
+      + '&oa_user_id=' + encodeURIComponent(userId);
+
+    fetch(apiUrl, { method: 'GET', credentials: 'omit' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (res) {
+        if (!res || res.code !== 0 || !res.data) {
+          renderButton('error', '加载异常', '获取 AI 审核状态失败', false, function () {
+            openEmbedDialog(requestId, userId);
+          });
+          return;
+        }
+
+        var data = res.data;
+        if (!data.supported) {
+          renderButton('disabled', '未开启审核', data.message || '当前流程未配置 AI 审核', false);
+          return;
+        }
+
+        if (data.has_audit && data.audit_result) {
+          var r = data.audit_result;
+          if (r.status === 'failed' || r.status === 'cancelled' || r.parse_error) {
+            renderButton('red', '审核异常', 'AI 审核分析出现异常', false, function () {
+              openEmbedDialog(requestId, userId);
+            });
+            return;
+          }
+
+          var rec = r.recommendation || 'review';
+          var score = r.overall_score != null ? Math.round(Number(r.overall_score)) : null;
+          var scoreText = score != null ? ' (' + score + '分)' : '';
+
+          if (rec === 'approve') {
+            renderButton('green', '审核通过' + scoreText, '', false, function () {
+              openEmbedDialog(requestId, userId);
+            });
+          } else if (rec === 'return') {
+            renderButton('red', '建议退回' + scoreText, '', false, function () {
+              openEmbedDialog(requestId, userId);
+            });
+          } else {
+            renderButton('yellow', '建议关注' + scoreText, '', false, function () {
+              openEmbedDialog(requestId, userId);
+            });
+          }
+          return;
+        }
+
+        if (data.should_auto_audit || data.running_job_id) {
+          renderButton('loading', 'AI分析中...', '', true, function () {
+            openEmbedDialog(requestId, userId);
+          });
+          return;
+        }
+
+        renderButton('gray', 'AI审核建议', '', false, function () {
+          openEmbedDialog(requestId, userId);
+        });
+      })
+      .catch(function (err) {
+        console.warn('[aura-embed-mobile] 请求状态失败:', err);
+        renderButton('gray', 'AI审核', '', false, function () {
+          openEmbedDialog(requestId, userId);
+        });
+      });
+  }
+
+  function init() {
+    var requestId = getRequestId();
+    var userId = getCurrentUserId();
+
+    if (!requestId) {
+      renderButton('disabled', '待保存流程', '流程保存并生成编号后即可查看 AI 审核', false);
+      registerOAEvents();
+      return;
+    }
+
+    renderButton('loading', '加载中...', '', true);
+    queryEmbedStatus(requestId, userId);
+    registerOAEvents();
+  }
+
+  jQuery().ready(function () {
+    init();
+  });
+})();
+`
+}
+
 const downloadTextFile = (filename: string, content: string) => {
   if (!import.meta.client) return
   const blob = new Blob([content], { type: 'text/javascript;charset=utf-8' })
@@ -727,7 +1066,10 @@ const downloadTextFile = (filename: string, content: string) => {
   URL.revokeObjectURL(url)
 }
 
-const exportEmbedScript = (target: 'all' | 'audit' | 'summary' = embedScriptTarget.value) => {
+const exportEmbedScript = (
+  target: 'all' | 'audit' | 'summary' = embedScriptTarget.value,
+  platform: 'pc' | 'mobile' = embedScriptPlatform.value,
+) => {
   if (!selectedTenant.value?.embed_token_configured) {
     message.warning(t('admin.tenants.embedScriptNeedConfigured'))
     return
@@ -741,8 +1083,13 @@ const exportEmbedScript = (target: 'all' | 'audit' | 'summary' = embedScriptTarg
     message.warning(t('admin.tenants.embedScriptNeedToken'))
     return
   }
-  const cfg = getEmbedScriptConfig(target)
-  downloadTextFile(cfg.filename, buildEmbedNotifyScript(target, token))
+  if (platform === 'mobile') {
+    const cfg = getEmbedMobileScriptConfig(target)
+    downloadTextFile(cfg.filename, buildEmbedMobileNotifyScript(target, token))
+  } else {
+    const cfg = getEmbedScriptConfig(target)
+    downloadTextFile(cfg.filename, buildEmbedNotifyScript(target, token))
+  }
   message.success(t('admin.tenants.embedScriptExported'))
 }
 
@@ -1556,11 +1903,26 @@ const confirmDeleteTenant = async () => {
                     <div class="embed-script-title">{{ t('admin.tenants.embedScriptExportTitle') }}</div>
                     <div class="embed-script-desc">{{ t('admin.tenants.embedScriptExportDesc') }}</div>
                   </div>
-                  <a-button type="primary" :disabled="!selectedTenant.embed_token_configured" @click="exportEmbedScript()">
-                    <DownloadOutlined /> {{ t('admin.tenants.exportEmbedScript') }}
-                  </a-button>
+                  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <a-button :disabled="!selectedTenant.embed_token_configured" @click="exportEmbedScript(embedScriptTarget, 'mobile')">
+                      <DownloadOutlined /> {{ t('admin.tenants.exportEmbedMobileScript') }}
+                    </a-button>
+                    <a-button type="primary" :disabled="!selectedTenant.embed_token_configured" @click="exportEmbedScript(embedScriptTarget, embedScriptPlatform)">
+                      <DownloadOutlined /> {{ embedScriptPlatform === 'mobile' ? t('admin.tenants.exportEmbedMobileScript') : t('admin.tenants.exportEmbedPCScript') }}
+                    </a-button>
+                  </div>
                 </div>
                 <div class="embed-script-fields">
+                  <div class="embed-script-token-field">
+                    <a-form-item :label="t('admin.tenants.embedScriptPlatform')">
+                      <a-radio-group v-model:value="embedScriptPlatform" button-style="solid">
+                        <a-radio-button v-for="opt in embedScriptPlatformOptions" :key="opt.value" :value="opt.value">
+                          {{ opt.label }}
+                        </a-radio-button>
+                      </a-radio-group>
+                      <div class="form-hint">{{ t('admin.tenants.embedScriptPlatformHint') }}</div>
+                    </a-form-item>
+                  </div>
                   <div class="embed-script-token-field">
                     <a-form-item :label="t('admin.tenants.embedScriptTokenInput')">
                       <a-input-password
@@ -1734,10 +2096,10 @@ const confirmDeleteTenant = async () => {
           <a-button type="text" size="small" @click="copyText(rotatedEmbedToken)"><CopyOutlined /></a-button>
         </template>
       </a-input>
-      <div class="embed-token-modal-actions">
-        <a-button @click="exportEmbedScript('audit')"><DownloadOutlined /> {{ t('admin.tenants.embedScriptTargetAudit') }}</a-button>
-        <a-button @click="exportEmbedScript('summary')"><DownloadOutlined /> {{ t('admin.tenants.embedScriptTargetSummary') }}</a-button>
-        <a-button type="primary" @click="exportEmbedScript('all')"><DownloadOutlined /> {{ t('admin.tenants.embedScriptTargetAll') }}</a-button>
+      <div class="embed-token-modal-actions" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px;">
+        <a-button @click="exportEmbedScript('audit', 'pc')"><DownloadOutlined /> PC {{ t('admin.tenants.embedScriptTargetAudit') }}</a-button>
+        <a-button @click="exportEmbedScript('all', 'pc')"><DownloadOutlined /> {{ t('admin.tenants.exportEmbedPCScript') }}</a-button>
+        <a-button type="primary" @click="exportEmbedScript('audit', 'mobile')"><DownloadOutlined /> {{ t('admin.tenants.exportEmbedMobileScript') }}</a-button>
       </div>
     </a-modal>
   </div>

@@ -119,7 +119,54 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 
 ---
 
-## 5. 消息时序（简图）
+## 5. 移动端集成（方案B：状态胶囊按钮 + 弹窗查看详情）
+
+泛微 E9 移动端（EMobile、企业微信移动审批）**没有 PC 端那样的常驻协同区/侧边栏**。直接在移动端表单嵌入常驻 iframe 会破坏表单排版。因此移动端采用**状态胶囊按钮 + 弹窗抽屉**的最佳实践集成。
+
+### 5.1 移动端交互与时序
+
+```
+移动端表单加载
+    → 读取 WfForm.getBaseInfo().requestid 与人员标识
+    → 自动注册保存/提交事件（WfForm.OPER_SAVE / OPER_SUBMIT 变更感知）
+    → 异步请求 GET /api/embed/context 轻量预检状态
+    → 渲染状态胶囊按钮到 #getMyBt 容器（红/黄/绿指示灯）
+审批人点击胶囊按钮
+    → 调用 weaJs.showDialog(...) 打开全屏/抽屉弹窗
+    → URL 自带 ?requestid=...&embed_token=...&oa_user_id=...
+    → AuraOA 嵌入页直接初始化展示审核结论与规则明细
+```
+
+### 5.2 状态指示灯定义
+
+按钮视觉风格与泛微移动端深度融合：
+
+| 状态 | 颜色 | 按钮文案示例 | 含义说明 |
+|:---|:---|:---|:---|
+| **通过** | 绿色 | `● 审核通过 (95分)` | AI 建议批准，合规无风险 |
+| **关注** | 黄色 | `● 建议关注 (78分)` | AI 建议人工复核，存在提示项 |
+| **预警** | 红色 | `● 建议退回 (45分)` | 触发高风险规则或阻断项 |
+| **分析中** | 蓝色闪烁 | `● AI分析中...` | 后台正在执行轻量指纹或推理任务 |
+| **待审核/无结论**| 灰色 | `● 点击AI审核` | 尚未生成审核结论，点击弹窗可手动发起 |
+| **未配置/异常** | 灰色禁用 | `● 未开启审核` | 该流程类型尚未在 AuraOA 中启用审核 |
+
+### 5.3 移动端配置与部署
+
+1. **导出移动端脚本**：
+   在 **系统管理 → 租户管理 → 选择租户 → OA 嵌入**：
+   - 终端类型切换至 **移动端（状态按钮+弹窗）**
+   - 点击 **导出移动端脚本**，获取已注入当前租户 Origin 与 Token 的 `aura-embed-mobile-notify.js`
+   - 仓库静态模板见：[assets/aura-embed-mobile-notify.js](./assets/aura-embed-mobile-notify.js)
+2. **上传与启用**：
+   - 将脚本上传至 OA 静态目录（如 `/oa-front/workflow/AuraOA/aura-embed-mobile-notify.js`）
+   - 在流程 **基础设置 → 自定义页面**（或移动端表单脚本设置）中填入地址并勾选启用
+3. **表单挂载位（可选）**：
+   - 表单设计器中预留 `<div id="getMyBt"></div>`（与 `oa-front` 既有业务流程标准统一）
+   - 若表单未配置该元素，脚本会自动在移动端界面左下角创建浮动按钮兜底显示，无需担心漏配
+
+---
+
+## 6. PC 端消息时序（简图）
 
 ```
 OA 页面加载
@@ -144,37 +191,40 @@ iframe `load`、WfForm 就绪轮询、`hashchange` 时 OA 脚本会**主动再�
 
 ---
 
-## 6. 可选：同源读父 URL
+## 7. 可选：同源读父 URL
 
-仅当 OA 与 AuraOA **同协议、同域名、同端口** 时，嵌入页可轮询 `parent.location`；生产一般为跨域，**以第 4 节 JS 为准**。
+仅当 OA 与 AuraOA **同协议、同域名、同端口** 时，嵌入页可轮询 `parent.location`；生产一般为跨域，**以第 4 节与第 5 节 JS 为准**。
 
 ---
 
-## 7. 允许被 iframe 嵌入
+## 8. 允许被 iframe 嵌入
 
 AuraOA 前端需允许 OA 域名嵌入（CSP `frame-ancestors` 等，勿全局 `X-Frame-Options: DENY`）。
 
 ---
 
-## 8. 多租户说明
+## 9. 多租户说明
 
 同一套 AuraOA 实例可为多个租户分别生成嵌入密钥。运行时由 `embed_token` 识别租户，再由 `process_id → process_type` 命中该租户下的流程规则配置。
 
 ---
 
-## 9. 常见问题
+## 10. 常见问题
 
 | 现象 | 处理 |
 |------|------|
 | 一直「正在读取 OA 流程编号」 | 检查自定义页面 js 是否启用、`AURA_EMBED_ORIGIN` 是否与 iframe src 域名一致、iframe `id` 是否匹配 |
-| 提示缺少嵌入访问令牌 | 检查 OA 脚本是否配置 `EMBED_ACCESS_TOKEN`，以及 postMessage 是否携带 `embed_token` |
+| 移动端看不到状态按钮 | 检查移动端自定义脚本是否加载，表单是否有 `#getMyBt` 占位或左下角是否有悬浮按钮 |
+| 移动端按钮点击无反应 | 检查移动端环境是否支持 `weaJs.showDialog`，或查看控制台弹窗报错 |
+| 提示缺少嵌入访问令牌 | 检查 OA 脚本是否配置 `EMBED_ACCESS_TOKEN`，以及 postMessage 或 URL 参数是否携带 `embed_token` |
 | 401 嵌入访问令牌无效 | 在租户管理中重置密钥，并同步更新 OA 脚本 |
 | Nuxt DevTools 跨域 SecurityError | 开发环境正常现象，生产可关 DevTools |
 
 ---
 
-## 10. 相关文档
+## 11. 相关文档
 
-- 示例脚本：[assets/aura-embed-notify.js](./assets/aura-embed-notify.js)  
+- PC 端示例脚本：[assets/aura-embed-notify.js](./assets/aura-embed-notify.js)  
+- 移动端示例脚本：[assets/aura-embed-mobile-notify.js](./assets/aura-embed-mobile-notify.js)  
 - [嵌入审核 API](../api/embed.md)  
 - [OA 系统对接说明](../oa-integration.md)
