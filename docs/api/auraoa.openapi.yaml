@@ -4918,6 +4918,8 @@ paths:
         in: query
         schema:
           type: string
+          enum: [workbench, embed_standard, embed_personal, embed]
+        description: 渠道类型（workbench=系统内 embed_standard=嵌入通用 embed_personal=嵌入个性化 embed=历史兼容）
       - name: keyword
         in: query
         schema:

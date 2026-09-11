@@ -130,8 +130,8 @@ func (r *ProcessSummarySnapshotRepo) ListPagedWithUser(c *gin.Context, filter Pr
 		Table(t).
 		Select(t + ".*, " +
 			"CASE WHEN psl.trigger_source IN ('" + model.SummaryTriggerEmbedAuto + "','" + model.SummaryTriggerEmbedManual + "') THEN '" + model.AuditSnapshotChannelEmbed + "' ELSE '" + model.AuditSnapshotChannelWorkbench + "' END AS channel, " +
-			"COALESCE(u.display_name, u.username, '') AS operator, " +
-			"COALESCE(d.name, '') AS department").
+			"CASE WHEN psl.trigger_source IN ('" + model.SummaryTriggerEmbedAuto + "','" + model.SummaryTriggerEmbedManual + "') THEN 'OA 嵌入总结' ELSE COALESCE(u.display_name, u.username, '') END AS operator, " +
+			"CASE WHEN psl.trigger_source IN ('" + model.SummaryTriggerEmbedAuto + "','" + model.SummaryTriggerEmbedManual + "') THEN '系统自动' ELSE COALESCE(d.name, '') END AS department").
 		Joins("LEFT JOIN process_summary_logs psl ON psl.id = " + t + ".latest_valid_log_id").
 		Joins("LEFT JOIN users u ON u.id = psl.user_id").
 		Joins("LEFT JOIN org_members om ON om.user_id = psl.user_id AND om.tenant_id = " + t + ".tenant_id AND om.status = 'active'").
@@ -189,10 +189,10 @@ func applyProcessSummarySnapshotFilter(db *gorm.DB, f ProcessSummarySnapshotFilt
 	}
 	if f.Operator != "" {
 		like := "%" + f.Operator + "%"
-		db = db.Where("(u.display_name ILIKE ? OR u.username ILIKE ?)", like, like)
+		db = db.Where("(CASE WHEN psl.trigger_source IN ('" + model.SummaryTriggerEmbedAuto + "','" + model.SummaryTriggerEmbedManual + "') THEN 'OA 嵌入总结' ELSE COALESCE(u.display_name, u.username, '') END ILIKE ?)", like)
 	}
 	if f.Department != "" {
-		db = db.Where("d.name = ?", f.Department)
+		db = db.Where("(CASE WHEN psl.trigger_source IN ('" + model.SummaryTriggerEmbedAuto + "','" + model.SummaryTriggerEmbedManual + "') THEN '系统自动' ELSE COALESCE(d.name, '') END = ?)", f.Department)
 	}
 	if f.StartDate != nil {
 		db = db.Where(t+"updated_at >= ?", f.StartDate)

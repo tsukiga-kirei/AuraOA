@@ -414,10 +414,28 @@ func (e *SystemToolExecutor) executeGetLatestAudit(
 	}
 
 	var log model.AuditLog
+	// 1. 优先查询当前用户的个人视角定制审核结论
 	err := e.db.WithContext(execCtx.Ctx).
-		Where("tenant_id = ? AND process_id = ?", execCtx.TenantID, args.ProcessID).
+		Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_detail = 'personal_embed_manual' AND status = ?",
+			execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
 		Order("created_at DESC").
 		First(&log).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// 2. 其次查询当前用户在工作台执行的审核结论
+		err = e.db.WithContext(execCtx.Ctx).
+			Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_source NOT IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ?",
+				execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
+			Order("created_at DESC").
+			First(&log).Error
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// 3. 兜底查询公共/通用嵌入审核结论（排除任何人的私有定制结论）
+		err = e.db.WithContext(execCtx.Ctx).
+			Where("tenant_id = ? AND process_id = ? AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ?",
+				execCtx.TenantID, args.ProcessID, model.JobStatusCompleted).
+			Order("created_at DESC").
+			First(&log).Error
+	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return map[string]interface{}{
 			"process_id": args.ProcessID,
@@ -461,10 +479,20 @@ func (e *SystemToolExecutor) executeGetLatestSummary(
 	}
 
 	var summary model.ProcessSummaryLog
+	// 1. 优先查询当前用户针对该流程的总结记录
 	err := e.db.WithContext(execCtx.Ctx).
-		Where("tenant_id = ? AND process_id = ?", execCtx.TenantID, args.ProcessID).
+		Where("tenant_id = ? AND process_id = ? AND user_id = ? AND status = ?",
+			execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
 		Order("created_at DESC").
 		First(&summary).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// 2. 兜底查询租户通用总结记录
+		err = e.db.WithContext(execCtx.Ctx).
+			Where("tenant_id = ? AND process_id = ? AND status = ?",
+				execCtx.TenantID, args.ProcessID, model.JobStatusCompleted).
+			Order("created_at DESC").
+			First(&summary).Error
+	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return map[string]interface{}{
 			"process_id":  args.ProcessID,
@@ -510,13 +538,28 @@ func (e *SystemToolExecutor) executeDraftComment(
 		return nil, "opinion_draft", fmt.Errorf("无权访问流程 %s 或流程不存在", args.ProcessID)
 	}
 
-	// 读取流程摘要与最新审核建议
+	// 读取流程摘要与最新审核建议（遵循个人优先防泄露原则）
 	summary, _ := adapter.FetchProcessRequestSummary(execCtx.Ctx, args.ProcessID)
 	var latestLog model.AuditLog
-	_ = e.db.WithContext(execCtx.Ctx).
-		Where("tenant_id = ? AND process_id = ?", execCtx.TenantID, args.ProcessID).
+	err = e.db.WithContext(execCtx.Ctx).
+		Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_detail = 'personal_embed_manual' AND status = ?",
+			execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
 		Order("created_at DESC").
 		First(&latestLog).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		err = e.db.WithContext(execCtx.Ctx).
+			Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_source NOT IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ?",
+				execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
+			Order("created_at DESC").
+			First(&latestLog).Error
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		_ = e.db.WithContext(execCtx.Ctx).
+			Where("tenant_id = ? AND process_id = ? AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ?",
+				execCtx.TenantID, args.ProcessID, model.JobStatusCompleted).
+			Order("created_at DESC").
+			First(&latestLog).Error
+	}
 
 	var draft strings.Builder
 	if args.Intent == "approve" {

@@ -459,20 +459,41 @@ func (h *AuditHandler) GetSnapshotChain(c *gin.Context) {
 		handleServiceError(c, err)
 		return
 	}
-	if snapshot == nil {
+	var ids []uuid.UUID
+	if snapshot != nil {
+		// 解析快照中存储的有效审核记录 ID 列表
+		var idStrs []string
+		_ = json.Unmarshal(snapshot.ValidLogIDs, &idStrs)
+		for _, s := range idStrs {
+			if uid, err := uuid.Parse(s); err == nil {
+				ids = append(ids, uid)
+			}
+		}
+	}
+	// 补充查询该流程租户内的有效完成记录（包含个人定制审核）
+	var extraIDs []uuid.UUID
+	_ = h.auditLogRepo.WithTenant(c).
+		Table("audit_logs").
+		Where("process_id = ? AND status = ?", processID, model.JobStatusCompleted).
+		Where("COALESCE(parse_error, '') = '' AND recommendation IN ('approve', 'return', 'review')").
+		Pluck("id", &extraIDs).Error
+	ids = append(ids, extraIDs...)
+
+	if len(ids) == 0 {
 		response.Success(c, gin.H{"chain": []interface{}{}})
 		return
 	}
-	// 解析快照中存储的有效审核记录 ID 列表
-	var idStrs []string
-	_ = json.Unmarshal(snapshot.ValidLogIDs, &idStrs)
-	ids := make([]uuid.UUID, 0, len(idStrs))
-	for _, s := range idStrs {
-		if uid, err := uuid.Parse(s); err == nil {
-			ids = append(ids, uid)
+
+	seen := make(map[uuid.UUID]bool, len(ids))
+	uniqueIDs := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			uniqueIDs = append(uniqueIDs, id)
 		}
 	}
-	chain, err := h.auditLogRepo.ListByIDsWithUserOrdered(c, ids)
+
+	chain, err := h.auditLogRepo.ListByIDsWithUserOrdered(c, uniqueIDs)
 	if err != nil {
 		handleServiceError(c, err)
 		return

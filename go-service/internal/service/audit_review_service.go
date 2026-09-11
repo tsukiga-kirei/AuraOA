@@ -937,33 +937,60 @@ type BatchAuditResult struct {
 	Failed  int                    `json:"failed"`
 }
 
-// GetAuditChain 获取授权流程的个人工作台与 OA 嵌入有效审核链。
+// GetAuditChain 获取授权流程的有效审核链。
+// 规则：嵌入通用全员可见；个人视角审核与系统内工作台审核仅操作人本人可见（避免泄露他人私有结论）。
 func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([]repository.AuditLogWithUser, error) {
 	tenantID, userID, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
 	}
-	var ids []uuid.UUID
-	for _, channel := range []string{model.AuditSnapshotChannelWorkbench, model.AuditSnapshotChannelEmbed} {
-		snap, err := s.auditSnapshotRepo.GetByProcessIDAndChannel(c, processID, channel)
-		if err != nil {
-			return nil, err
-		}
-		if snap == nil {
-			continue
-		}
-		if !s.userCanAccessAuditProcess(c, tenantID, userID, snap.ProcessType) {
+
+	// 查流程类型用于权限校验
+	var sampleLog struct {
+		ProcessType string `gorm:"column:process_type"`
+	}
+	_ = s.auditLogRepo.WithTenant(c).
+		Table("audit_logs").
+		Where("process_id = ?", processID).
+		Select("process_type").
+		Limit(1).
+		Scan(&sampleLog).Error
+
+	if sampleLog.ProcessType != "" {
+		if !s.userCanAccessAuditProcess(c, tenantID, userID, sampleLog.ProcessType) {
 			return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核记录")
 		}
-		if channel == model.AuditSnapshotChannelEmbed {
-			cfg, err := s.configRepo.GetByProcessType(c, snap.ProcessType)
-			if err != nil || !cfg.EmbedEnabled {
-				continue
-			}
-		}
-		ids = append(ids, parseSnapshotValidLogIDs(snap.ValidLogIDs)...)
 	}
-	logs, err := s.auditLogRepo.ListByIDsWithUserOrdered(c, ids)
+
+	q := s.auditLogRepo.WithTenant(c).
+		Table("audit_logs").
+		Where("process_id = ? AND status = ?", processID, model.JobStatusCompleted).
+		Where("COALESCE(parse_error, '') = '' AND recommendation IN ('approve', 'return', 'review')")
+
+	if !tenantAdminContext(c) {
+		// 普通业务用户：仅可见嵌入通用记录，或本人发起的记录（系统内或嵌入个性化）
+		q = q.Where("(trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual') OR user_id = ?", userID)
+	}
+
+	var ids []uuid.UUID
+	if err := q.Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[uuid.UUID]bool, len(ids))
+	uniqueIDs := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			uniqueIDs = append(uniqueIDs, id)
+		}
+	}
+
+	logs, err := s.auditLogRepo.ListByIDsWithUserOrdered(c, uniqueIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -2746,13 +2773,13 @@ func (s *AuditExecuteService) getSnapshotMapCached(c *gin.Context, tenantID uuid
 	return s.getSnapshotMapDirect(c, tenantID, processIDs)
 }
 
-// visibleWorkbenchQuery 保持已完成列表与统计采用相同的个人优先、跨渠道去重规则。
+// visibleWorkbenchQuery 保持已完成列表与统计采用相同的个人优先、跨渠道去重规则（前台工作台完全个人化，无特权）。
 func (s *AuditExecuteService) visibleWorkbenchQuery(c *gin.Context) *gorm.DB {
 	_, userID, err := s.extractIDs(c)
 	if err != nil {
 		return s.db.Model(&model.AuditProcessSnapshot{}).Where("1 = 0")
 	}
-	return s.auditSnapshotRepo.VisibleWorkbenchQueryScoped(c, userID, tenantAdminContext(c))
+	return s.auditSnapshotRepo.VisibleWorkbenchQueryScoped(c, userID, false)
 }
 
 // tenantAdminContext 判断当前请求是否为租户管理员，用于开放租户级 OA 嵌入历史结果。

@@ -151,7 +151,124 @@ type AuditSnapshotStats struct {
 	ReviewCount  int64 `json:"review_count"`
 }
 
-// ListPagedWithUser 数据管理页：快照分页查询，JOIN 最新审核日志→用户→组织→部门。
+// buildAdminAggregatedBaseQuery 构造数据管理页三级渠道汇聚查询：
+// 嵌入通用按流程唯一；系统内与嵌入个性化按（流程 + 操作人）唯一。
+// 顶部统计卡片与列表完全基于此基础查询，保证数量 100% 对齐。
+func (r *AuditProcessSnapshotRepo) buildAdminAggregatedBaseQuery(c *gin.Context, filter AuditSnapshotFilter) *gorm.DB {
+	tenantID, _ := c.Get("tenant_id")
+	baseSQL := `
+WITH classified_logs AS (
+    SELECT
+        al.id,
+        al.tenant_id,
+        al.process_id,
+        al.user_id,
+        al.title,
+        al.process_type,
+        al.recommendation,
+        al.score,
+        al.confidence,
+        al.created_at,
+        al.updated_at,
+        CASE
+            WHEN COALESCE(al.trigger_detail, '') = 'personal_embed_manual' THEN 'embed_personal'
+            WHEN al.trigger_source IN ('embed_auto', 'embed_manual') THEN 'embed_standard'
+            ELSE 'workbench'
+        END AS channel,
+        CASE
+            WHEN al.trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(al.trigger_detail, '') != 'personal_embed_manual'
+                THEN al.process_id || ':embed_standard'
+            WHEN COALESCE(al.trigger_detail, '') = 'personal_embed_manual'
+                THEN al.process_id || ':' || al.user_id::text || ':embed_personal'
+            ELSE
+                al.process_id || ':' || al.user_id::text || ':workbench'
+        END AS group_key
+    FROM audit_logs al
+    WHERE al.tenant_id = ?
+      AND al.status = 'completed'
+      AND COALESCE(al.parse_error, '') = ''
+      AND al.recommendation IN ('approve', 'return', 'review')
+),
+grouped_summary AS (
+    SELECT
+        group_key,
+        jsonb_agg(id::text ORDER BY created_at ASC) AS valid_log_ids,
+        COUNT(*) AS audit_count
+    FROM classified_logs
+    GROUP BY group_key
+),
+ranked_logs AS (
+    SELECT
+        cl.*,
+        ROW_NUMBER() OVER (PARTITION BY cl.group_key ORDER BY cl.created_at DESC, cl.id DESC) AS rn
+    FROM classified_logs cl
+)
+SELECT
+    rl.id,
+    rl.tenant_id,
+    rl.process_id,
+    rl.channel,
+    gs.valid_log_ids,
+    rl.id AS latest_valid_log_id,
+    rl.title,
+    rl.process_type,
+    rl.recommendation,
+    rl.score,
+    rl.confidence,
+    rl.created_at,
+    rl.updated_at,
+    CASE
+        WHEN rl.channel = 'embed_standard' THEN 'OA 嵌入审核'
+        ELSE COALESCE(u.display_name, u.username, '')
+    END AS operator,
+    CASE
+        WHEN rl.channel = 'embed_standard' THEN '系统自动'
+        ELSE COALESCE(d.name, '')
+    END AS department
+FROM ranked_logs rl
+JOIN grouped_summary gs ON gs.group_key = rl.group_key
+LEFT JOIN users u ON u.id = rl.user_id
+LEFT JOIN org_members om ON om.user_id = rl.user_id AND om.tenant_id = rl.tenant_id AND om.status = 'active'
+LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = rl.tenant_id
+WHERE rl.rn = 1
+`
+	base := r.DB.Table("(?) AS agg", r.DB.Raw(baseSQL, tenantID))
+
+	if filter.Channel != "" {
+		if filter.Channel == model.AuditSnapshotChannelEmbed || filter.Channel == model.AuditSnapshotChannelEmbedStandard {
+			base = base.Where("channel IN ('embed_standard', 'embed')")
+		} else {
+			base = base.Where("channel = ?", filter.Channel)
+		}
+	}
+	if filter.Recommendation != "" {
+		base = base.Where("recommendation = ?", filter.Recommendation)
+	}
+	if filter.Keyword != "" {
+		like := "%" + filter.Keyword + "%"
+		base = base.Where("(title ILIKE ? OR process_id ILIKE ?)", like, like)
+	}
+	if filter.ProcessType != "" {
+		types := strings.Split(filter.ProcessType, ",")
+		base = base.Where("process_type IN ?", types)
+	}
+	if filter.Operator != "" {
+		like := "%" + filter.Operator + "%"
+		base = base.Where("operator ILIKE ?", like)
+	}
+	if filter.Department != "" {
+		base = base.Where("department = ?", filter.Department)
+	}
+	if filter.StartDate != nil {
+		base = base.Where("updated_at >= ?", filter.StartDate)
+	}
+	if filter.EndDate != nil {
+		base = base.Where("updated_at <= ?", filter.EndDate)
+	}
+	return base
+}
+
+// ListPagedWithUser 数据管理页：三级渠道聚合快照分页查询。
 func (r *AuditProcessSnapshotRepo) ListPagedWithUser(c *gin.Context, filter AuditSnapshotFilter, page, pageSize int) ([]AuditSnapshotListRow, int64, error) {
 	if page < 1 {
 		page = 1
@@ -160,20 +277,7 @@ func (r *AuditProcessSnapshotRepo) ListPagedWithUser(c *gin.Context, filter Audi
 		pageSize = 20
 	}
 
-	const t = "audit_process_snapshots"
-	tenantID, _ := c.Get("tenant_id")
-	base := r.DB.
-		Where(t+".tenant_id = ?", tenantID).
-		Table(t).
-		Select(t + ".*, " +
-			"COALESCE(u.display_name, u.username, '') AS operator, " +
-			"COALESCE(d.name, '') AS department").
-		Joins("LEFT JOIN audit_logs al ON al.id = " + t + ".latest_valid_log_id").
-		Joins("LEFT JOIN users u ON u.id = al.user_id").
-		Joins("LEFT JOIN org_members om ON om.user_id = al.user_id AND om.tenant_id = " + t + ".tenant_id AND om.status = 'active'").
-		Joins("LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = " + t + ".tenant_id")
-
-	base = applyAuditSnapshotFilter(base, filter)
+	base := r.buildAdminAggregatedBaseQuery(c, filter)
 
 	var total int64
 	if err := base.Count(&total).Error; err != nil {
@@ -181,26 +285,23 @@ func (r *AuditProcessSnapshotRepo) ListPagedWithUser(c *gin.Context, filter Audi
 	}
 
 	var items []AuditSnapshotListRow
-	err := base.Order(t + ".updated_at DESC").
+	err := base.Order("updated_at DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&items).Error
 	return items, total, err
 }
 
-// CountStatsByRecommendation 快照分组统计。
+// CountStatsByRecommendation 快照分组统计（与 ListPagedWithUser 复用相同汇聚逻辑，数值 100% 对齐）。
 func (r *AuditProcessSnapshotRepo) CountStatsByRecommendation(c *gin.Context, channel string) (*AuditSnapshotStats, error) {
+	base := r.buildAdminAggregatedBaseQuery(c, AuditSnapshotFilter{Channel: channel})
+
 	type row struct {
 		Recommendation string
 		Cnt            int64
 	}
 	var rows []row
-	q := r.WithTenant(c).Table("audit_process_snapshots")
-	if channel != "" {
-		q = q.Where("channel = ?", channel)
-	}
-	err := q.
-		Select("recommendation, COUNT(*) as cnt").
+	err := base.Select("recommendation, COUNT(*) as cnt").
 		Group("recommendation").
 		Find(&rows).Error
 	if err != nil {
@@ -219,38 +320,6 @@ func (r *AuditProcessSnapshotRepo) CountStatsByRecommendation(c *gin.Context, ch
 		}
 	}
 	return stats, nil
-}
-
-func applyAuditSnapshotFilter(db *gorm.DB, f AuditSnapshotFilter) *gorm.DB {
-	const t = "audit_process_snapshots."
-	if f.Channel != "" {
-		db = db.Where(t+"channel = ?", f.Channel)
-	}
-	if f.Recommendation != "" {
-		db = db.Where(t+"recommendation = ?", f.Recommendation)
-	}
-	if f.Keyword != "" {
-		like := "%" + f.Keyword + "%"
-		db = db.Where("("+t+"title ILIKE ? OR "+t+"process_id ILIKE ?)", like, like)
-	}
-	if f.ProcessType != "" {
-		types := strings.Split(f.ProcessType, ",")
-		db = db.Where(t+"process_type IN ?", types)
-	}
-	if f.Operator != "" {
-		like := "%" + f.Operator + "%"
-		db = db.Where("(u.display_name ILIKE ? OR u.username ILIKE ?)", like, like)
-	}
-	if f.Department != "" {
-		db = db.Where("d.name = ?", f.Department)
-	}
-	if f.StartDate != nil {
-		db = db.Where(t+"updated_at >= ?", f.StartDate)
-	}
-	if f.EndDate != nil {
-		db = db.Where(t+"updated_at <= ?", f.EndDate)
-	}
-	return db
 }
 
 // ── 仪表盘查询辅助类型 ──────────────────────────────────────────────────────
@@ -461,40 +530,56 @@ func (r *AuditProcessSnapshotRepo) VisibleWorkbenchQuery(c *gin.Context, userID 
 }
 
 // VisibleWorkbenchQueryScoped 按可见范围合并审核结果。
-// includeEmbed 用于区分当前待办（可展示该流程的嵌入结论）与历史列表（仅租户管理员查看租户级嵌入结论）。
+// includeEmbed 用于区分当前待办（可展示该流程的通用嵌入结论）与已完成列表（仅展示本人经手/个人定制结论）。
 func (r *AuditProcessSnapshotRepo) VisibleWorkbenchQueryScoped(c *gin.Context, userID uuid.UUID, includeEmbed bool) *gorm.DB {
 	tenantID, _ := c.Get("tenant_id")
 	if !includeEmbed {
-		// 普通用户在历史/已完成列表中，仅查询本人经手或发起的有效审核记录，不展示租户内其他用户的共享快照
+		// 已完成列表：仅展示本人触发的个人定制审核（监控流程）或系统内工作台审核，不泄露他人私有记录或无关通用记录
 		candidates := r.DB.Raw(`
-SELECT al.id, al.tenant_id, al.process_id, 'workbench' AS channel,
+SELECT al.id, al.tenant_id, al.process_id, 'embed_personal' AS channel,
  jsonb_build_array(al.id::text) AS valid_log_ids, al.id AS latest_valid_log_id,
  al.title, al.process_type, al.recommendation, al.score, al.confidence, al.created_at, al.updated_at, 0 AS priority
 FROM audit_logs al
-WHERE al.tenant_id = ? AND al.user_id = ? AND al.trigger_source NOT IN ('embed_auto', 'embed_manual')
+WHERE al.tenant_id = ? AND al.user_id = ? AND al.trigger_detail = 'personal_embed_manual'
  AND al.status = 'completed' AND COALESCE(al.parse_error, '') = '' AND al.recommendation IN ('approve', 'return', 'review')
-`, tenantID, userID)
-		ranked := r.DB.Table("(?) AS candidates", candidates).Select("candidates.*, ROW_NUMBER() OVER (PARTITION BY process_id ORDER BY updated_at DESC, id DESC) AS row_num")
+UNION ALL
+SELECT al.id, al.tenant_id, al.process_id, 'workbench' AS channel,
+ jsonb_build_array(al.id::text) AS valid_log_ids, al.id AS latest_valid_log_id,
+ al.title, al.process_type, al.recommendation, al.score, al.confidence, al.created_at, al.updated_at, 1 AS priority
+FROM audit_logs al
+WHERE al.tenant_id = ? AND al.user_id = ? AND al.trigger_source NOT IN ('embed_auto', 'embed_manual')
+ AND COALESCE(al.trigger_detail, '') != 'personal_embed_manual'
+ AND al.status = 'completed' AND COALESCE(al.parse_error, '') = '' AND al.recommendation IN ('approve', 'return', 'review')
+`, tenantID, userID, tenantID, userID)
+		ranked := r.DB.Table("(?) AS candidates", candidates).Select("candidates.*, ROW_NUMBER() OVER (PARTITION BY process_id ORDER BY priority ASC, updated_at DESC, id DESC) AS row_num")
 		return r.DB.Table("(?) AS visible", ranked).Where("row_num = 1")
 	}
 
 	embedScope := "(aps.channel = 'workbench' OR cfg.embed_enabled = true)"
 	candidates := r.DB.Raw(`
-SELECT al.id, al.tenant_id, al.process_id, 'workbench' AS channel,
+SELECT al.id, al.tenant_id, al.process_id, 'embed_personal' AS channel,
  jsonb_build_array(al.id::text) AS valid_log_ids, al.id AS latest_valid_log_id,
  al.title, al.process_type, al.recommendation, al.score, al.confidence, al.created_at, al.updated_at, 0 AS priority
 FROM audit_logs al
+WHERE al.tenant_id = ? AND al.user_id = ? AND al.trigger_detail = 'personal_embed_manual'
+ AND al.status = 'completed' AND COALESCE(al.parse_error, '') = '' AND al.recommendation IN ('approve', 'return', 'review')
+UNION ALL
+SELECT al.id, al.tenant_id, al.process_id, 'workbench' AS channel,
+ jsonb_build_array(al.id::text) AS valid_log_ids, al.id AS latest_valid_log_id,
+ al.title, al.process_type, al.recommendation, al.score, al.confidence, al.created_at, al.updated_at, 1 AS priority
+FROM audit_logs al
 WHERE al.tenant_id = ? AND al.user_id = ? AND al.trigger_source NOT IN ('embed_auto', 'embed_manual')
+ AND COALESCE(al.trigger_detail, '') != 'personal_embed_manual'
  AND al.status = 'completed' AND COALESCE(al.parse_error, '') = '' AND al.recommendation IN ('approve', 'return', 'review')
 UNION ALL
 SELECT aps.id, aps.tenant_id, aps.process_id, aps.channel, aps.valid_log_ids, aps.latest_valid_log_id,
- aps.title, aps.process_type, aps.recommendation, aps.score, aps.confidence, aps.created_at, aps.updated_at, CASE WHEN aps.channel = 'embed' THEN 1 ELSE 2 END AS priority
+ aps.title, aps.process_type, aps.recommendation, aps.score, aps.confidence, aps.created_at, aps.updated_at, 2 AS priority
 FROM audit_process_snapshots aps
 JOIN process_audit_configs cfg ON cfg.tenant_id = aps.tenant_id AND cfg.process_type = aps.process_type
 LEFT JOIN audit_logs latest_al ON latest_al.id = aps.latest_valid_log_id
 WHERE aps.tenant_id = ? AND cfg.status = 'active' AND COALESCE(latest_al.trigger_detail, '') != 'personal_embed_manual' AND `+embedScope+`
-`, tenantID, userID, tenantID)
-	ranked := r.DB.Table("(?) AS candidates", candidates).Select("candidates.*, ROW_NUMBER() OVER (PARTITION BY process_id ORDER BY priority, updated_at DESC, id DESC) AS row_num")
+`, tenantID, userID, tenantID, userID, tenantID)
+	ranked := r.DB.Table("(?) AS candidates", candidates).Select("candidates.*, ROW_NUMBER() OVER (PARTITION BY process_id ORDER BY priority ASC, updated_at DESC, id DESC) AS row_num")
 	return r.DB.Table("(?) AS visible", ranked).Where("row_num = 1")
 }
 

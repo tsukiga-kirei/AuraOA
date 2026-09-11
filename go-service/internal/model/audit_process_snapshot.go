@@ -8,9 +8,24 @@ import (
 )
 
 const (
-	AuditSnapshotChannelWorkbench = "workbench"
-	AuditSnapshotChannelEmbed     = "embed"
+	AuditSnapshotChannelWorkbench     = "workbench"
+	AuditSnapshotChannelEmbed         = "embed"          // 兼容历史
+	AuditSnapshotChannelEmbedStandard = "embed_standard" // OA 嵌入通用
+	AuditSnapshotChannelEmbedPersonal = "embed_personal" // OA 嵌入个性化
 )
+
+// AuditLogChannelClassify 根据 trigger_source 与 trigger_detail 判定三级渠道归属。
+func AuditLogChannelClassify(triggerSource, triggerDetail string) string {
+	if triggerDetail == "personal_embed_manual" {
+		return AuditSnapshotChannelEmbedPersonal
+	}
+	switch triggerSource {
+	case AuditTriggerEmbedAuto, AuditTriggerEmbedManual:
+		return AuditSnapshotChannelEmbedStandard
+	default:
+		return AuditSnapshotChannelWorkbench
+	}
+}
 
 // AuditSnapshotChannelFromTrigger 将 audit_logs.trigger_source 映射为快照渠道。
 func AuditSnapshotChannelFromTrigger(trigger string) string {

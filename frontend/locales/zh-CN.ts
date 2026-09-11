@@ -1965,7 +1965,12 @@ export default {
     'admin.data.filterSourceChannel': '发起方式',
     'admin.data.thSourceChannel': '发起方式',
     'admin.data.sourceWorkbench': '系统内',
-    'admin.data.sourceEmbed': 'OA 嵌入',
+    'admin.data.sourceEmbed': '嵌入通用',
+    'admin.data.sourceEmbedStandard': '嵌入通用',
+    'admin.data.sourceEmbedPersonal': '嵌入个性化',
+    'admin.data.operatorEmbedAudit': 'OA 嵌入审核',
+    'admin.data.operatorEmbedSummary': 'OA 嵌入总结',
+    'admin.data.deptSystemAuto': '系统自动',
     // 归档相关
     'admin.data.searchArchive': '搜索流程（标题/编号）',
     'admin.data.searchArchiveOperator': '搜索操作人...',

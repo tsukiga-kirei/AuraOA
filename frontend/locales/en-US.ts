@@ -1946,7 +1946,12 @@ export default {
     'admin.data.filterSourceChannel': 'Source',
     'admin.data.thSourceChannel': 'Source',
     'admin.data.sourceWorkbench': 'In-App',
-    'admin.data.sourceEmbed': 'OA Embed',
+    'admin.data.sourceEmbed': 'OA Embed (Standard)',
+    'admin.data.sourceEmbedStandard': 'OA Embed (Standard)',
+    'admin.data.sourceEmbedPersonal': 'OA Embed (Personal)',
+    'admin.data.operatorEmbedAudit': 'OA Embed Audit',
+    'admin.data.operatorEmbedSummary': 'OA Embed Summary',
+    'admin.data.deptSystemAuto': 'System Auto',
     // Archive related
     'admin.data.searchArchive': 'Search process (title/ID)',
     'admin.data.searchArchiveOperator': 'Search operator...',

@@ -934,8 +934,14 @@ const handleExportExcel = async () => {
 
 // ─── 初始化 ───
 const resultSourceLabel = (result: { result_source?: string }) => t(result.result_source === 'embed' ? 'resultSource.embed' : 'resultSource.personal')
-const isChainItemEmbed = (item: { trigger_source?: string; trigger_detail?: string }) => {
-  return item.trigger_source === 'embed_auto' || item.trigger_source === 'embed_manual' || item.trigger_detail === 'personal_embed_manual'
+const chainItemSourceTag = (item: { trigger_source?: string; trigger_detail?: string }) => {
+  if (item.trigger_detail === 'personal_embed_manual') {
+    return { color: 'purple', text: t('resultSource.personal') }
+  }
+  if (item.trigger_source === 'embed_auto' || item.trigger_source === 'embed_manual') {
+    return { color: 'purple', text: t('resultSource.embed') }
+  }
+  return { color: 'blue', text: t('resultSource.workbench') }
 }
 
 onMounted(async () => {
@@ -1508,10 +1514,10 @@ onMounted(async () => {
                         </span>
                         <span class="chain-score">{{ item.score }}{{ t('dashboard.points') }}</span>
                         <a-tag
-                          :color="isChainItemEmbed(item) ? 'purple' : 'blue'"
+                          :color="chainItemSourceTag(item).color"
                           style="margin-left: 8px; margin-bottom: 0;"
                         >
-                          {{ t(isChainItemEmbed(item) ? 'resultSource.embed' : 'resultSource.workbench') }}
+                          {{ chainItemSourceTag(item).text }}
                         </a-tag>
                         <span class="chain-expand-btn">
                           <DownOutlined v-if="!expandedChainNodes.has(item.id)" />

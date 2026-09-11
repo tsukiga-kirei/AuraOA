@@ -83,7 +83,7 @@ export interface AuditSnapshotStats {
 
 export interface AuditSnapshotFilter {
   recommendation?: string    // '' | 'approve' | 'return' | 'review'
-  channel?: string           // '' | 'workbench' | 'embed'
+  channel?: string           // '' | 'workbench' | 'embed_standard' | 'embed_personal' | 'embed'
   keyword?: string
   process_type?: string
   operator?: string
