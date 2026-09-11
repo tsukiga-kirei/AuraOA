@@ -20,15 +20,29 @@ const factory = vm.runInNewContext(ts.transpileModule(
 })
 
 // 执行实际导出的完整脚本，模拟 OA 容器并记录按钮文案、请求和点击去向。
-async function run(source, payload, httpOK = true) {
-  const state = { requests: [], dialogs: [], messages: [], text: '', click: null }
+async function run(source, payload, httpOK = true, device = {}) {
+  const state = { requests: [], dialogs: [], messages: [], text: '', click: null, elements: [], queries: [], appended: [] }
   const element = {
-    length: 1, ready: fn => fn(), html: () => element, append: () => element,
+    length: 1, ready: fn => fn(), html: () => element, append: html => { state.appended.push(html); return element },
     find: () => element, text: value => { state.text = value; return element },
     off: () => element, on: (event, fn) => { state.click = fn; return element },
   }
   vm.runInNewContext(source, {
-    jQuery: () => element,
+    navigator: { userAgent: device.ua || 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)', maxTouchPoints: device.touch || 0 },
+    document: {
+      activeElement: null, getElementById: () => null,
+      body: { appendChild: node => state.elements.push(node) },
+      addEventListener() {}, removeEventListener() {},
+      createElement: tag => ({ tag, style: {}, children: [], attributes: {},
+        setAttribute(k,v) { this.attributes[k] = v },
+        appendChild(node) { this.children.push(node) }, focus() {}, remove() { this.removed = true },
+      }),
+    },
+    jQuery: selector => {
+      state.queries.push(selector);
+      if (selector === '#auraMobileEmbedFloatContainer' || (selector === '#getMyBt' && device.noContainer)) return { ...element, length: 0 };
+      return element;
+    },
     WfForm: {
       getBaseInfo: () => ({ requestid: '614309', f_weaver_belongto_userid: '23' }),
       showMessage: value => state.messages.push(value),
@@ -50,6 +64,29 @@ for (const origin of ['export', 'template']) {
     const script = origin === 'export'
       ? factory(type, 'test-embed-token')
       : staticSource.replace("var EMBED_TYPE = 'audit'", `var EMBED_TYPE = '${type}'`)
+    test(origin + ' ' + type + ': desktop is opt-in and uses a responsive dialog', async () => {
+      const device = { ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+      const hidden = await run(script, { supported: true }, true, device)
+      assert.equal(hidden.requests.length, 0)
+      assert.equal(hidden.queries.length, 0)
+      const shown = await run(script.replace('var SHOW_ON_DESKTOP = false', 'var SHOW_ON_DESKTOP = true'), { supported: true }, true, device)
+      shown.click()
+      assert.equal(shown.dialogs.length, 0, 'desktop must not use the mobile OA dialog')
+      const overlay = shown.elements[0], dialog = overlay.children[0], frame = dialog.children[1]
+      assert.match(dialog.style.cssText, /height:85vh/)
+      assert.match(dialog.style.cssText, /max-width:100%/)
+      assert.equal(new URL(frame.src).pathname, '/embed/' + type)
+      dialog.children[0].children[1].onclick()
+      assert.equal(overlay.removed, true)
+    })
+    test(origin + ' ' + type + ': mounting behavior and iPad detection stay compatible', async () => {
+      const inline = await run(script, { supported: true })
+      assert.equal(inline.appended.length, 0)
+      const floating = await run(script, { supported: true }, true, { noContainer: true })
+      assert.match(floating.appended[0], /position:fixed;bottom:16px;left:16px/)
+      const ipad = await run(script, { supported: true }, true, { ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)', touch: 5 })
+      assert.equal(ipad.requests.length, 1)
+    })
     const label = type === 'summary' ? '总结' : '审核'
     const result = type === 'summary' ? { status: 'completed', blocks: [] } : { recommendation: 'approve', overall_score: 95 }
     const complete = { supported: true, ['has_' + type]: true, [type + '_result']: result }
