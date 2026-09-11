@@ -309,6 +309,9 @@ onBeforeUnmount(() => disconnectStream())
       <div v-if="!isRunning && context?.last_summary_at" class="embed-subline">
         {{ t('embed.summary.lastSummary') }}：{{ formatLastSummaryAt(context.last_summary_at) }}
         <a-tag v-if="context.stale" color="warning" style="margin-left: 8px;">{{ t('embed.summary.changed') }}</a-tag>
+        <a-tag v-if="context.config_version_no" color="blue" style="margin-left: 8px;">
+          {{ t('executionConfig.version', [context.config_version_no]) }}
+        </a-tag>
       </div>
       <p v-else-if="isRunning" class="embed-subline embed-subline--active">{{ t('embed.summary.aiOrganizing') }}</p>
     </div>
@@ -353,9 +356,6 @@ onBeforeUnmount(() => disconnectStream())
               </div>
             </div>
             <div class="process-actions">
-			  <a-tag v-if="context.config_version_no" color="blue">
-				{{ t('executionConfig.version', [context.config_version_no]) }}
-			  </a-tag>
               <div
                 v-if="processStat"
                 class="process-stat"
