@@ -149,6 +149,7 @@ X-Embed-OA-User-ID: 1042 (可选，当前泛微 OA 用户 ID)
 支持泛微 OA 身份反查与双模审查视角：
 - 若携带 `oa_user_id` / `X-Embed-OA-User-ID`，后端通过泛微 `hrmresource` 反查对应系统用户。
 - 响应中返回 `personal_view`（含该用户的定制规则能力、个人审核结论）及 `default_perspective`（"standard" | "personal"）。
+- `personal_view` 仅在个人生效字段、规则或 AI 配置与已发布通用配置存在差异，或本人已有有效审核结果/运行中任务时返回。关闭的自定义规则、与管理员一致的覆盖值、失效字段/规则及个人版本号不会单独触发入口。
 - 若用户拥有个人定制配置且已有专属审核记录，`default_perspective` 自动设定为 `"personal"`；否则默认 `"standard"`。
 
 返回中的 `stale` / `should_auto_audit` 已按流程配置过滤。变化来源分为：
