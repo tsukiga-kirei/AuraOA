@@ -571,12 +571,21 @@ func (s *ProcessSummaryService) GetWorkbenchStats(c *gin.Context, params dto.Sum
 	params.Page = 1
 	params.PageSize = 100
 	params.SummaryStatus = ""
+	params.Source = ""
 	items, err := s.collectWorkbenchProcesses(c, params)
 	if err != nil {
 		return nil, err
 	}
+	return summaryWorkbenchStatsFromItems(items), nil
+}
+
+// summaryWorkbenchStatsFromItems 按同一批个人可见流程统计，待办数与生成状态分别计数。
+func summaryWorkbenchStatsFromItems(items []dto.SummaryWorkbenchProcessItem) *dto.SummaryWorkbenchStats {
 	stats := &dto.SummaryWorkbenchStats{TotalCount: len(items)}
 	for _, item := range items {
+		if item.Source == "todo" {
+			stats.TodoCount++
+		}
 		switch {
 		case isSummaryWorkbenchItemRunning(item):
 			stats.RunningCount++
@@ -588,7 +597,7 @@ func (s *ProcessSummaryService) GetWorkbenchStats(c *gin.Context, params dto.Sum
 			stats.PendingCount++
 		}
 	}
-	return stats, nil
+	return stats
 }
 
 // ExecuteWorkbench 从前台流程总结工作台发起一次交互式总结。
@@ -692,6 +701,9 @@ func (s *ProcessSummaryService) collectWorkbenchProcesses(c *gin.Context, params
 	items := make([]dto.SummaryWorkbenchProcessItem, 0, len(todos)+len(archives))
 	seen := make(map[string]bool)
 	appendItem := func(processID, title, applicant, department, processType, processTypeLabel, currentNode, submitTime, source string) {
+		if params.Source != "" && params.Source != source {
+			return
+		}
 		if seen[processID] || allowedTypes[strings.ToLower(processType)].ID == uuid.Nil {
 			return
 		}
@@ -713,16 +725,6 @@ func (s *ProcessSummaryService) collectWorkbenchProcesses(c *gin.Context, params
 	}
 	for _, item := range archives {
 		appendItem(item.ProcessID, item.Title, item.Applicant, item.Department, item.ProcessType, item.ProcessTypeLabel, item.CurrentNode, item.SubmitTime, "archived")
-	}
-	// 租户管理员可以查看已启用总结类型的 OA 嵌入结果，即使该流程不在其个人 OA 待办/已办列表中。
-	if tenantAdminContext(c) {
-		embedded, embedErr := s.logRepo.ListCompletedEmbedProcesses(c, params.SubmitDateStart, params.SubmitDateEndExclusive)
-		if embedErr != nil {
-			return nil, newServiceError(errcode.ErrDatabase, "查询 OA 嵌入总结失败")
-		}
-		for _, log := range embedded {
-			appendItem(log.ProcessID, log.Title, "", "", log.ProcessType, allowedTypes[strings.ToLower(log.ProcessType)].ProcessTypeLabel, "已完成", log.CreatedAt.Format("2006-01-02 15:04"), "embed")
-		}
 	}
 	processIDs := make([]string, len(items))
 	for i := range items {
@@ -845,16 +847,6 @@ func (s *ProcessSummaryService) summaryVisibleBlocksByType(c *gin.Context, tenan
 }
 
 func (s *ProcessSummaryService) userCanAccessSummaryProcess(c *gin.Context, adapter oa.OAAdapter, username, processID string) (bool, error) {
-	// 租户管理员查看工作台历史时，以已生成的 OA 嵌入结果和租户配置作为权限边界，
-	// 不要求该管理员本人在 OA 中重新出现在待办或已办列表。
-	if tenantAdminContext(c) {
-		if embedded, err := s.logRepo.GetLatestEmbedResult(c, processID); err != nil {
-			return false, newServiceError(errcode.ErrDatabase, "查询 OA 嵌入总结权限失败")
-		} else if embedded != nil {
-			config, configErr := s.configRepo.GetByProcessType(c, embedded.ProcessType)
-			return configErr == nil && config.Status == "active" && config.EmbedEnabled, nil
-		}
-	}
 	visible, err := adapter.CheckProcessVisibility(c.Request.Context(), username, processID)
 	if err != nil {
 		return false, newServiceError(errcode.ErrOAQueryFailed, "校验 OA 流程可见性失败: "+err.Error())
@@ -1225,23 +1217,23 @@ func (s *ProcessSummaryService) GetSnapshotStats(c *gin.Context, channel string)
 	return s.snapshotRepo.CountStats(c, channel)
 }
 
-func (s *ProcessSummaryService) GetSnapshotChain(c *gin.Context, processID string) ([]repository.ProcessSummaryLogWithUser, error) {
-	snap, err := s.snapshotRepo.GetByProcessID(c, processID)
-	if err != nil {
+// GetSnapshotChain 按渠道及操作人读取管理端总结链；省略筛选时兼容全流程历史。
+func (s *ProcessSummaryService) GetSnapshotChain(c *gin.Context, processID, channel string, userID *uuid.UUID) ([]repository.ProcessSummaryLogWithUser, error) {
+	q := s.logRepo.WithTenant(c).Model(&model.ProcessSummaryLog{}).
+		Where("process_id = ? AND status = ? AND COALESCE(parse_error, '') = ''", processID, model.JobStatusCompleted)
+	if channel == "embed" {
+		q = q.Where("trigger_source IN ?", []string{model.SummaryTriggerEmbedAuto, model.SummaryTriggerEmbedManual})
+	} else if channel == "workbench" {
+		q = q.Where("trigger_source NOT IN ?", []string{model.SummaryTriggerEmbedAuto, model.SummaryTriggerEmbedManual})
+		if userID != nil {
+			q = q.Where("user_id = ?", *userID)
+		}
+	}
+	var ids []uuid.UUID
+	if err := q.Order("created_at DESC, id DESC").Pluck("id", &ids).Error; err != nil {
 		return nil, err
 	}
-	if snap == nil {
-		return []repository.ProcessSummaryLogWithUser{}, nil
-	}
-	ids := parseSummarySnapshotValidIDs(snap.ValidLogIDs)
-	chain, err := s.logRepo.ListByIDsWithUserOrdered(c, ids)
-	if err != nil {
-		return nil, err
-	}
-	sort.Slice(chain, func(i, j int) bool {
-		return chain[i].CreatedAt.After(chain[j].CreatedAt)
-	})
-	return chain, nil
+	return s.logRepo.ListByIDsWithUserOrdered(c, ids)
 }
 
 // GetWorkbenchHistory 校验 OA 流程访问权后返回有效总结历史。
@@ -1265,7 +1257,20 @@ func (s *ProcessSummaryService) GetWorkbenchHistory(c *gin.Context, processID st
 	if !allowed {
 		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该流程")
 	}
-	return s.GetSnapshotChain(c, processID)
+	// 业务历史只包含本人系统内总结与通用嵌入总结。
+	_, userID, err := s.extractIDs(c)
+	if err != nil {
+		return nil, err
+	}
+	var ids []uuid.UUID
+	err = s.logRepo.WithTenant(c).Model(&model.ProcessSummaryLog{}).
+		Where("process_id = ? AND status = ? AND COALESCE(parse_error, '') = ''", processID, model.JobStatusCompleted).
+		Where("user_id = ? OR trigger_source IN ?", userID, []string{model.SummaryTriggerEmbedAuto, model.SummaryTriggerEmbedManual}).
+		Order("created_at DESC, id DESC").Pluck("id", &ids).Error
+	if err != nil {
+		return nil, err
+	}
+	return s.logRepo.ListByIDsWithUserOrdered(c, ids)
 }
 
 func (s *ProcessSummaryService) summaryLogToResponse(log *model.ProcessSummaryLog) *SummaryExecuteResponse {
@@ -1655,19 +1660,6 @@ func activeSummaryBlockIDs(blocks []model.SummaryBlockConfig) []string {
 	for _, block := range blocks {
 		if block.Enabled {
 			out = append(out, block.ID)
-		}
-	}
-	return out
-}
-
-func parseSummarySnapshotValidIDs(raw datatypes.JSON) []uuid.UUID {
-	var s []string
-	_ = json.Unmarshal(raw, &s)
-	out := make([]uuid.UUID, 0, len(s))
-	for _, x := range s {
-		id, err := uuid.Parse(strings.TrimSpace(x))
-		if err == nil {
-			out = append(out, id)
 		}
 	}
 	return out

@@ -1,6 +1,12 @@
 package service
 
 import (
+	jwtpkg "auraoa/go-service/internal/pkg/jwt"
+	"auraoa/go-service/internal/pkg/oa"
+	"context"
+	"errors"
+	"github.com/gin-gonic/gin"
+	"net/http/httptest"
 	"testing"
 
 	"auraoa/go-service/internal/dto"
@@ -63,5 +69,46 @@ func TestMergeWeeklyTrendIncludesSummary(t *testing.T) {
 	)
 	if len(got) != 1 || got[0].AuditCount+got[0].CronCount+got[0].ArchiveCount+got[0].SummaryCount+got[0].ChatCount != 15 || got[0].SummaryCount != 4 || got[0].ChatCount != 5 {
 		t.Fatalf("mergeWeeklyTrend() = %#v", got)
+	}
+}
+
+func TestSummaryTodoCountIncludesExistingEmbedResults(t *testing.T) {
+	items := []dto.SummaryWorkbenchProcessItem{
+		{Source: "todo", HasSummary: true},
+		{Source: "todo", SummaryStatus: model.JobStatusPending},
+		{Source: "archived", HasSummary: true},
+	}
+	stats := summaryWorkbenchStatsFromItems(items)
+	if stats.TotalCount != 3 || stats.TodoCount != 2 || stats.SummarizedCount != 2 || stats.PendingCount != 1 {
+		t.Fatalf("待办应包含已有通用总结与未生成流程，且不包含归档：%+v", stats)
+	}
+}
+
+type summaryVisibilityAdapter struct {
+	oa.OAAdapter
+	visible bool
+	err     error
+}
+
+func (a summaryVisibilityAdapter) CheckProcessVisibility(context.Context, string, string) (bool, error) {
+	return a.visible, a.err
+}
+
+func TestSummaryVisibilityIsPersonalForEveryRole(t *testing.T) {
+	for _, role := range []string{"business", "tenant_admin"} {
+		for _, visible := range []bool{false, true} {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("GET", "/api/summary/history/42", nil)
+			c.Set("jwt_claims", &jwtpkg.JWTClaims{ActiveRole: jwtpkg.ActiveRoleClaim{Role: role}})
+			svc := &ProcessSummaryService{}
+			got, err := svc.userCanAccessSummaryProcess(c, summaryVisibilityAdapter{visible: visible}, "user", "42")
+			if err != nil || got != visible {
+				t.Fatalf("角色 %s 的访问结果应只由 OA 参与权限决定：%v %v", role, got, err)
+			}
+			got, err = svc.userCanAccessSummaryProcess(c, summaryVisibilityAdapter{err: errors.New("OA unavailable")}, "user", "42")
+			if err == nil || got {
+				t.Fatal("OA 校验失败不得放行")
+			}
+		}
 	}
 }

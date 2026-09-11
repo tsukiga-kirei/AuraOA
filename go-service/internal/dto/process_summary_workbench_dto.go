@@ -8,6 +8,7 @@ type SummaryWorkbenchListParams struct {
 	Applicant              string
 	Department             string
 	ProcessType            string
+	Source                 string
 	SummaryStatus          string
 	Page                   int
 	PageSize               int
@@ -44,6 +45,7 @@ type SummaryWorkbenchListResponse struct {
 
 // SummaryWorkbenchStats 流程总结工作台统计。
 type SummaryWorkbenchStats struct {
+	TodoCount       int `json:"todo_count"`
 	TotalCount      int `json:"total_count"`
 	SummarizedCount int `json:"summarized_count"`
 	PendingCount    int `json:"pending_count"`

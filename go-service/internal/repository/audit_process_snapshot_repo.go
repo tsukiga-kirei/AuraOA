@@ -523,7 +523,7 @@ ORDER BY count DESC`
 	return rows, err
 }
 
-// VisibleWorkbenchQuery 合并有权查看的渠道，个人有效结果优先，其次 OA 嵌入、最后工作台共享结果。
+// VisibleWorkbenchQuery 合并当前用户的有效个人结果与通用 OA 嵌入结果，个人结果优先。
 // 仅用于已通过流程访问控制的工作台查询；每个流程只返回一条，避免跨渠道重复计数。
 func (r *AuditProcessSnapshotRepo) VisibleWorkbenchQuery(c *gin.Context, userID uuid.UUID) *gorm.DB {
 	return r.VisibleWorkbenchQueryScoped(c, userID, true)
@@ -555,7 +555,6 @@ WHERE al.tenant_id = ? AND al.user_id = ? AND al.trigger_source NOT IN ('embed_a
 		return r.DB.Table("(?) AS visible", ranked).Where("row_num = 1")
 	}
 
-	embedScope := "(aps.channel = 'workbench' OR cfg.embed_enabled = true)"
 	candidates := r.DB.Raw(`
 SELECT al.id, al.tenant_id, al.process_id, 'embed_personal' AS channel,
  jsonb_build_array(al.id::text) AS valid_log_ids, al.id AS latest_valid_log_id,
@@ -572,12 +571,14 @@ WHERE al.tenant_id = ? AND al.user_id = ? AND al.trigger_source NOT IN ('embed_a
  AND COALESCE(al.trigger_detail, '') != 'personal_embed_manual'
  AND al.status = 'completed' AND COALESCE(al.parse_error, '') = '' AND al.recommendation IN ('approve', 'return', 'review')
 UNION ALL
-SELECT aps.id, aps.tenant_id, aps.process_id, aps.channel, aps.valid_log_ids, aps.latest_valid_log_id,
- aps.title, aps.process_type, aps.recommendation, aps.score, aps.confidence, aps.created_at, aps.updated_at, 2 AS priority
-FROM audit_process_snapshots aps
-JOIN process_audit_configs cfg ON cfg.tenant_id = aps.tenant_id AND cfg.process_type = aps.process_type
-LEFT JOIN audit_logs latest_al ON latest_al.id = aps.latest_valid_log_id
-WHERE aps.tenant_id = ? AND cfg.status = 'active' AND COALESCE(latest_al.trigger_detail, '') != 'personal_embed_manual' AND `+embedScope+`
+SELECT al.id, al.tenant_id, al.process_id, 'embed' AS channel,
+ jsonb_build_array(al.id::text) AS valid_log_ids, al.id AS latest_valid_log_id,
+ al.title, al.process_type, al.recommendation, al.score, al.confidence, al.created_at, al.updated_at, 2 AS priority
+FROM audit_logs al
+JOIN process_audit_configs cfg ON cfg.tenant_id = al.tenant_id AND cfg.process_type = al.process_type
+WHERE al.tenant_id = ? AND cfg.status = 'active' AND cfg.embed_enabled = true
+ AND al.trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(al.trigger_detail, '') != 'personal_embed_manual'
+ AND al.status = 'completed' AND COALESCE(al.parse_error, '') = '' AND al.recommendation IN ('approve', 'return', 'review')
 `, tenantID, userID, tenantID, userID, tenantID)
 	ranked := r.DB.Table("(?) AS candidates", candidates).Select("candidates.*, ROW_NUMBER() OVER (PARTITION BY process_id ORDER BY priority ASC, updated_at DESC, id DESC) AS row_num")
 	return r.DB.Table("(?) AS visible", ranked).Where("row_num = 1")

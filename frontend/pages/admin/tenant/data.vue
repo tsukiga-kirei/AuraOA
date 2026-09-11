@@ -621,7 +621,7 @@ async function openSummaryDetail(item: SummarySnapshotItem) {
   chainLoading.value = true
   expandedSummaryChainNodes.value.clear()
   try {
-    const res = await getSummarySnapshotChain(item.process_id)
+    const res = await getSummarySnapshotChain(item.process_id, item.channel, item.user_id)
     summaryChainLogs.value = res.chain || []
     if (summaryChainLogs.value.length > 0) {
       expandedSummaryChainNodes.value.add(summaryChainLogs.value[0].id)

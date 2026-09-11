@@ -199,7 +199,7 @@ func (r *ProcessSummaryLogRepo) RecentEnriched(c *gin.Context, limit int, userID
 	sql := `
 SELECT psl.id, psl.title,
        COALESCE(jsonb_array_length(psl.summary_result -> 'blocks'), 0) AS block_count,
-       COALESCE(u.display_name, u.username, '') AS user_name,
+       CASE WHEN psl.trigger_source IN ('summary_embed_auto', 'summary_embed_manual') THEN 'OA 嵌入总结' ELSE COALESCE(u.display_name, u.username, '') END AS user_name,
        psl.created_at
 FROM process_summary_logs psl
 LEFT JOIN users u ON u.id = psl.user_id
@@ -244,7 +244,7 @@ func (r *ProcessSummaryLogRepo) ListByIDsWithUserOrdered(c *gin.Context, ids []u
 	var rows []ProcessSummaryLogWithUser
 	err := r.WithTenant(c).
 		Table("process_summary_logs").
-		Select("process_summary_logs.*, users.display_name as user_name").
+		Select("process_summary_logs.*, CASE WHEN process_summary_logs.trigger_source IN ('summary_embed_auto', 'summary_embed_manual') THEN 'OA 嵌入总结' ELSE COALESCE(users.display_name, users.username, '') END as user_name").
 		Joins("LEFT JOIN users ON process_summary_logs.user_id = users.id").
 		Where("process_summary_logs.id IN ?", ids).
 		Find(&rows).Error

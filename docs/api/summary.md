@@ -5,7 +5,7 @@
 > 路由前缀：`/api/summary`。服务端会校验用户组织角色中的 `/summary` 页面权限，不能通过直接调用接口绕过。
 
 工作台汇总当前 OA 用户可见的待办与已办流程，只保留租户已启用流程总结配置的流程类型。泛微 E9 已办范围限定为当前用户发起或在审批历史中实际处理过的已归档流程。
-列表会合并 OA 嵌入已生成的标准总结和个人工作台总结；同一流程优先显示当前用户的个人总结，没有个人总结时显示 OA 嵌入总结。租户管理员还会看到有权限流程的 OA 嵌入总结。`summary_result.result_source` 为 `personal` 或 `embed`。
+列表会合并 OA 嵌入已生成的标准总结和个人工作台总结；同一流程优先显示当前用户的个人总结，没有个人总结时显示 OA 嵌入总结。前台对所有角色统一按当前 OA 用户判断，租户管理员也仅能看到本人可见的流程。`summary_result.result_source` 为 `personal` 或 `embed`。
 列表和历史查询均按 OA 当前可见性校验，任务状态与流式输出只允许任务发起人读取。
 
 ### 获取工作台流程列表
@@ -22,6 +22,7 @@ GET /api/summary/processes
 | `applicant` | string | - | 按申请人模糊查询 |
 | `department` | string | - | 按部门精确查询 |
 | `process_type` | string | - | 流程类型，多个值用逗号分隔 |
+| `source` | string | - | `todo` 仅当前待办、`archived` 仅本人归档流程；省略为全部个人可见流程 |
 | `summary_status` | string | - | `pending`、`summarized`、`running`、`failed` |
 | `start_date` | date | - | 提交/归档开始日期 |
 | `end_date` | date | - | 提交/归档结束日期（包含当天） |
@@ -29,7 +30,7 @@ GET /api/summary/processes
 | `page_size` | integer | `20` | 每页条数，范围 1–100 |
 
 响应 `data` 使用统一分页结构 `items`、`total`、`page`、`page_size`。列表项包含流程信息、
-`source`（`todo` / `archived` / `embed`）、`has_summary`、`summary_status`、当前用户的
+`source`（`todo` / `archived`）、`has_summary`、`summary_status`、当前用户的
 `visible_block_ids`，以及存在有效快照时的 `summary_result`。
 嵌入上下文在能识别当前 OA 用户时会额外返回 `personal_result` 和 `visible_block_ids`；嵌入标准结果与个人工作台结果同时存在时，前端可切换查看，工作台默认优先个人结果。
 
@@ -39,8 +40,8 @@ GET /api/summary/processes
 GET /api/summary/stats
 ```
 
-筛选参数与列表一致（忽略分页与 `summary_status`），返回 `total_count`、`summarized_count`、
-`pending_count`、`running_count`、`failed_count`。
+筛选参数与列表一致（忽略分页、`summary_status` 与 `source`），返回 `total_count`、`summarized_count`、
+`pending_count`、`running_count`、`failed_count`、`todo_count`。其中 `todo_count` 包含已有通用嵌入总结的待办；“我的待办”卡片使用 `source=todo` 获取对应列表。
 
 ### 发起流程总结
 
@@ -75,7 +76,7 @@ GET /api/summary/stream/:id
 GET /api/summary/history/:processId
 ```
 
-服务端重新校验当前用户仍可在 OA 待办或已办中访问该流程，然后返回有效总结链。
+服务端重新校验当前用户仍可在 OA 待办或已办中访问该流程，然后仅返回本人系统内总结与通用嵌入总结的有效历史。
 
 ## 流程总结配置（JWT + TenantContext + `tenant_admin`）
 
@@ -180,7 +181,10 @@ POST /api/tenant/summary/context/test
 
 > 路由前缀：`/api/summary/snapshots`
 
-数据管理页使用，与审核快照结构类似。
+数据管理页使用，从有效总结日志聚合历史数据：嵌入按流程汇总为一组，系统内按流程和操作人汇总为一组。
+每组的展示字段、总结块数与 `latest_valid_log_id` 对应最新有效记录；`valid_log_ids` 仅包含该组历史。
+`channel` 为 `embed` / `workbench`，系统内行包含 `user_id`；列表按最新记录时间倒序。
+统计按相同分组计算，仍只按渠道筛选，不新增人员、部门等筛选联动。现有共享快照保留给运行时使用，无需清空或回填数据库。
 
 ### 获取快照列表
 
@@ -216,5 +220,7 @@ GET /api/summary/snapshots/export
 GET /api/summary/snapshots/:processId/chain
 ```
 
-返回指定流程的历次总结记录链。每条记录包含实际使用的 `config_version_no`；迁移前历史记录可能为空，
+支持 `channel=embed|workbench`、`user_id`（UUID，仅系统内渠道使用）查询参数。
+数据管理页传入所选行的渠道与操作人，返回对应分组的有效总结链，按时间倒序；省略筛选兼容全流程历史。
+嵌入日志的 `user_name` 统一为“OA 嵌入总结”，系统内日志保留实际操作人。每条记录包含实际使用的 `config_version_no`；迁移前历史记录可能为空，
 数据管理页在“查看详情”抽屉中明确展示为未记录版本。

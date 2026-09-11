@@ -16,8 +16,8 @@
 | `list_my_requests` | 当前用户发起的流程列表分页 | `FetchMyRequestsPaged` | `my_request_list` | 是 |
 | `get_process` | 流程主表/明细/附件摘要 | `FetchProcessData` + 可见性 | `process_detail` | 是 |
 | `get_approval_flow` | 审批轨迹 | `FetchProcessFlow` + 可见性 | `approval_flow` | 是 |
-| `get_latest_audit` | AuraOA 最近一次审核结论 | `audit_logs` + 可见性 | `audit_result` | 否（需能定位流程） |
-| `get_latest_summary` | AuraOA 最近一次总结 | `process_summary_*` + 可见性 | `summary_result` | 否 |
+| `get_latest_audit` | AuraOA 最近一次审核结论 | `audit_logs` + 可见性 | `audit_result` | 是 |
+| `get_latest_summary` | AuraOA 最近一次总结 | `process_summary_*` + 可见性 | `summary_result` | 是 |
 
 `list_my_todos` 参数应对齐工作台：`keyword`、`applicant`、`department`、`process_types`、日期范围、`page` / `page_size`（默认 20，上限 50，避免一次塞爆上下文）。
 
@@ -69,3 +69,8 @@ ToolSpec {
 - 流程不可见
 - 工具未在有效集中（配额或角色）
 - 参数非法（含超大 page_size）
+
+## 个人流程边界
+
+读取最新审核/总结与触发审核/总结均强制通过 OAAdapter.CheckProcessVisibility 校验本人待办、发起或历史审批参与关系，校验失败即拒绝。所有角色规则一致。
+结果优先本人个人记录，无个人结果时允许使用该流程通用嵌入结果；不能将其他人的系统内个人记录作为通用兜底。嵌入自动任务与 Agent 共用适配器，但 Agent 必须传当前用户身份并先校验。

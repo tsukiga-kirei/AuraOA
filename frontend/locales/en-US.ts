@@ -2587,6 +2587,7 @@ export default {
     'summary.progress.assembling': 'Preparing process data',
     'summary.progress.reasoning': 'Generating summary',
     'summary.progress.extracting': 'Finalizing result',
+    'summary.stats.todo': 'My to-dos',
     'summary.stats.total': 'Available Processes',
     'summary.stats.completed': 'With Summary',
     'summary.stats.pending': 'Not Generated',

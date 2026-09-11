@@ -35,6 +35,7 @@ const selected = ref<SummaryWorkbenchProcessItem | null>(null)
 const currentResult = ref<SummaryResult | null>(null)
 const detailOpen = ref(false)
 const stats = ref<SummaryWorkbenchStats>({
+  todo_count: 0,
   total_count: 0,
   summarized_count: 0,
   pending_count: 0,
@@ -60,6 +61,7 @@ const readDateRange = (): [Dayjs, Dayjs] => {
 const dateRange = ref<[Dayjs, Dayjs]>(readDateRange())
 const statCards = computed(() => [
   { key: undefined, label: t('summary.stats.total'), count: stats.value.total_count, icon: FileTextOutlined, tone: 'primary' },
+  { key: 'todo', label: t('summary.stats.todo'), count: stats.value.todo_count, icon: ClockCircleOutlined, tone: 'primary' },
   { key: 'summarized', label: t('summary.stats.completed'), count: stats.value.summarized_count, icon: CheckCircleOutlined, tone: 'success' },
   { key: 'pending', label: t('summary.stats.pending'), count: stats.value.pending_count, icon: ClockCircleOutlined, tone: 'warning' },
 ])
@@ -74,7 +76,8 @@ const query = computed(() => ({
   keyword: keyword.value || undefined,
   applicant: applicant.value || undefined,
   process_type: processType.value || undefined,
-  summary_status: summaryStatus.value || undefined,
+  source: summaryStatus.value === 'todo' ? 'todo' : undefined,
+  summary_status: summaryStatus.value === 'todo' ? undefined : summaryStatus.value || undefined,
   page: page.value,
   page_size: pageSize.value,
 }))
@@ -227,6 +230,7 @@ onMounted(() => {
       <a-input v-model:value="applicant" allow-clear :placeholder="t('summary.searchApplicant')" @pressEnter="applyFilters" />
       <label class="filter-field"><span>{{ t('summary.filterProcess') }}</span><a-select v-model:value="processType" allow-clear :placeholder="t('summary.filterProcess')" :options="processTypeOptions" /></label>
       <label class="filter-field"><span>{{ t('summary.filterStatus') }}</span><a-select v-model:value="summaryStatus" allow-clear :placeholder="t('summary.filterStatus')" :options="[
+        { value: 'todo', label: t('summary.stats.todo') },
         { value: 'pending', label: t('summary.status.pending') },
         { value: 'summarized', label: t('summary.status.completed') },
         { value: 'running', label: t('summary.status.running') },
@@ -315,7 +319,7 @@ onMounted(() => {
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .page-title { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 24px; font-weight: 700; color: var(--color-text-primary); }
 .page-subtitle { margin: 4px 0 0; color: var(--color-text-tertiary); }
-.stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .stat-card { background: var(--color-bg-card); border-radius: var(--radius-lg); padding: 20px; display: flex; align-items: center; gap: 16px; border: 2px solid var(--color-border-light); cursor: pointer; text-align: left; font: inherit; transition: all var(--transition-base); }
 .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .stat-card--selected { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }

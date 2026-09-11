@@ -106,14 +106,44 @@ type ProcessSummarySnapshotFilter struct {
 
 type ProcessSummarySnapshotListRow struct {
 	model.ProcessSummarySnapshot
-	Channel    string `json:"channel" gorm:"column:channel"`
-	Operator   string `json:"operator" gorm:"column:operator"`
-	Department string `json:"department" gorm:"column:department"`
+	Channel    string     `json:"channel" gorm:"column:channel"`
+	UserID     *uuid.UUID `json:"user_id,omitempty" gorm:"column:user_id"`
+	Operator   string     `json:"operator" gorm:"column:operator"`
+	Department string     `json:"department" gorm:"column:department"`
 }
 
 type ProcessSummarySnapshotStats struct {
 	Total      int64 `json:"total"`
 	BlockCount int64 `json:"block_count"`
+}
+
+// adminSummaryGroups 从有效日志重建展示分组，历史记录自动纳入，无需改写共享快照。
+// 嵌入按流程汇总，系统内按流程与操作人汇总，各组使用最新有效记录。
+func (r *ProcessSummarySnapshotRepo) adminSummaryGroups(c *gin.Context) *gorm.DB {
+	tenantID, _ := c.Get("tenant_id")
+	const sql = `WITH classified AS (
+ SELECT psl.*,
+ CASE WHEN trigger_source IN ('summary_embed_auto', 'summary_embed_manual') THEN 'embed' ELSE 'workbench' END AS channel,
+ CASE WHEN trigger_source IN ('summary_embed_auto', 'summary_embed_manual') THEN NULL::uuid ELSE user_id END AS group_user_id
+ FROM process_summary_logs psl
+ WHERE tenant_id = ? AND status = 'completed' AND COALESCE(parse_error, '') = ''
+ ), ranked AS (
+ SELECT classified.*, ROW_NUMBER() OVER (PARTITION BY process_id, channel, group_user_id ORDER BY created_at DESC, id DESC) AS rn,
+ jsonb_agg(id::text) OVER (PARTITION BY process_id, channel, group_user_id ORDER BY created_at ASC, id ASC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS valid_log_ids
+ FROM classified
+ )
+ SELECT r.id, r.tenant_id, r.process_id, r.channel, r.group_user_id AS user_id,
+ r.valid_log_ids, r.id AS latest_valid_log_id, r.title, r.process_type,
+ CASE WHEN jsonb_typeof(r.summary_result->'blocks') = 'array' THEN jsonb_array_length(r.summary_result->'blocks') ELSE 0 END AS block_count,
+ r.created_at, r.updated_at,
+ CASE WHEN r.channel = 'embed' THEN 'OA 嵌入总结' ELSE COALESCE(u.display_name, u.username, '') END AS operator,
+ CASE WHEN r.channel = 'embed' THEN '系统自动' ELSE COALESCE(d.name, '') END AS department
+ FROM ranked r
+ LEFT JOIN users u ON u.id = r.group_user_id
+ LEFT JOIN org_members om ON om.user_id = r.group_user_id AND om.tenant_id = r.tenant_id AND om.status = 'active'
+ LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = r.tenant_id
+ WHERE r.rn = 1`
+	return r.DB.Table("(?) AS summary_groups", r.DB.Raw(sql, tenantID))
 }
 
 func (r *ProcessSummarySnapshotRepo) ListPagedWithUser(c *gin.Context, filter ProcessSummarySnapshotFilter, page, pageSize int) ([]ProcessSummarySnapshotListRow, int64, error) {
@@ -123,82 +153,45 @@ func (r *ProcessSummarySnapshotRepo) ListPagedWithUser(c *gin.Context, filter Pr
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	const t = "process_summary_snapshots"
-	tenantID, _ := c.Get("tenant_id")
-	base := r.DB.
-		Where(t+".tenant_id = ?", tenantID).
-		Table(t).
-		Select(t + ".*, " +
-			"CASE WHEN psl.trigger_source IN ('" + model.SummaryTriggerEmbedAuto + "','" + model.SummaryTriggerEmbedManual + "') THEN '" + model.AuditSnapshotChannelEmbed + "' ELSE '" + model.AuditSnapshotChannelWorkbench + "' END AS channel, " +
-			"CASE WHEN psl.trigger_source IN ('" + model.SummaryTriggerEmbedAuto + "','" + model.SummaryTriggerEmbedManual + "') THEN 'OA 嵌入总结' ELSE COALESCE(u.display_name, u.username, '') END AS operator, " +
-			"CASE WHEN psl.trigger_source IN ('" + model.SummaryTriggerEmbedAuto + "','" + model.SummaryTriggerEmbedManual + "') THEN '系统自动' ELSE COALESCE(d.name, '') END AS department").
-		Joins("LEFT JOIN process_summary_logs psl ON psl.id = " + t + ".latest_valid_log_id").
-		Joins("LEFT JOIN users u ON u.id = psl.user_id").
-		Joins("LEFT JOIN org_members om ON om.user_id = psl.user_id AND om.tenant_id = " + t + ".tenant_id AND om.status = 'active'").
-		Joins("LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = " + t + ".tenant_id")
-
-	base = applyProcessSummarySnapshotFilter(base, filter)
-
+	base := applyProcessSummarySnapshotFilter(r.adminSummaryGroups(c), filter)
 	var total int64
 	if err := base.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	var items []ProcessSummarySnapshotListRow
-	err := base.Order(t + ".updated_at DESC").
-		Offset((page - 1) * pageSize).
-		Limit(pageSize).
-		Find(&items).Error
+	err := base.Order("created_at DESC, id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&items).Error
 	return items, total, err
 }
 
 func (r *ProcessSummarySnapshotRepo) CountStats(c *gin.Context, channel string) (*ProcessSummarySnapshotStats, error) {
-	const t = "process_summary_snapshots"
-	tenantID, _ := c.Get("tenant_id")
-	base := r.DB.
-		Where(t+".tenant_id = ?", tenantID).
-		Table(t).
-		Joins("LEFT JOIN process_summary_logs psl ON psl.id = " + t + ".latest_valid_log_id")
-	base = applyProcessSummarySnapshotChannelFilter(base, channel)
+	base := applyProcessSummarySnapshotFilter(r.adminSummaryGroups(c), ProcessSummarySnapshotFilter{Channel: channel})
 	var stats ProcessSummarySnapshotStats
-	err := base.
-		Select("COUNT(*) AS total, COALESCE(SUM(" + t + ".block_count), 0)::bigint AS block_count").
-		Scan(&stats).Error
+	err := base.Select("COUNT(*) AS total, COALESCE(SUM(block_count), 0)::bigint AS block_count").Scan(&stats).Error
 	return &stats, err
 }
 
-func applyProcessSummarySnapshotChannelFilter(db *gorm.DB, channel string) *gorm.DB {
-	if channel == model.AuditSnapshotChannelEmbed {
-		return db.Where("psl.trigger_source IN ?", []string{model.SummaryTriggerEmbedAuto, model.SummaryTriggerEmbedManual})
-	}
-	if channel == model.AuditSnapshotChannelWorkbench {
-		return db.Where("psl.trigger_source NOT IN ?", []string{model.SummaryTriggerEmbedAuto, model.SummaryTriggerEmbedManual})
-	}
-	return db
-}
-
 func applyProcessSummarySnapshotFilter(db *gorm.DB, f ProcessSummarySnapshotFilter) *gorm.DB {
-	const t = "process_summary_snapshots."
-	db = applyProcessSummarySnapshotChannelFilter(db, f.Channel)
+	if f.Channel != "" {
+		db = db.Where("channel = ?", f.Channel)
+	}
 	if f.Keyword != "" {
 		like := "%" + f.Keyword + "%"
-		db = db.Where("("+t+"title ILIKE ? OR "+t+"process_id ILIKE ?)", like, like)
+		db = db.Where("(title ILIKE ? OR process_id ILIKE ?)", like, like)
 	}
 	if f.ProcessType != "" {
-		types := strings.Split(f.ProcessType, ",")
-		db = db.Where(t+"process_type IN ?", types)
+		db = db.Where("process_type IN ?", strings.Split(f.ProcessType, ","))
 	}
 	if f.Operator != "" {
-		like := "%" + f.Operator + "%"
-		db = db.Where("(CASE WHEN psl.trigger_source IN ('" + model.SummaryTriggerEmbedAuto + "','" + model.SummaryTriggerEmbedManual + "') THEN 'OA 嵌入总结' ELSE COALESCE(u.display_name, u.username, '') END ILIKE ?)", like)
+		db = db.Where("operator ILIKE ?", "%"+f.Operator+"%")
 	}
 	if f.Department != "" {
-		db = db.Where("(CASE WHEN psl.trigger_source IN ('" + model.SummaryTriggerEmbedAuto + "','" + model.SummaryTriggerEmbedManual + "') THEN '系统自动' ELSE COALESCE(d.name, '') END = ?)", f.Department)
+		db = db.Where("department = ?", f.Department)
 	}
 	if f.StartDate != nil {
-		db = db.Where(t+"updated_at >= ?", f.StartDate)
+		db = db.Where("updated_at >= ?", f.StartDate)
 	}
 	if f.EndDate != nil {
-		db = db.Where(t+"updated_at <= ?", f.EndDate)
+		db = db.Where("updated_at <= ?", f.EndDate)
 	}
 	return db
 }

@@ -10,6 +10,8 @@ export interface PagedResult<T> {
 // ─── 审核日志（原始日志，保留用于详情链展示） ─────────────────────────────────
 
 export interface AuditLogItem {
+  trigger_source?: string
+  trigger_detail?: string
   id: string
   tenant_id: string
   user_id: string
@@ -200,6 +202,7 @@ export interface SummaryLogItem {
 }
 
 export interface SummarySnapshotItem {
+  user_id?: string
   id: string
   tenant_id: string
   process_id: string

@@ -66,3 +66,21 @@ func TestExecuteListMyRequests(t *testing.T) {
 		t.Fatalf("expected total 1, got %v", m["total"])
 	}
 }
+
+// 结果读取必须在查询数据库前拒绝未参与的流程及缺失的 OA 权限校验。
+func TestResultToolsRequireParticipation(t *testing.T) {
+	executor := &SystemToolExecutor{}
+	ctx := &ExecutionContext{Ctx: context.Background(), Username: "user"}
+	for _, code := range []string{"get_latest_audit", "get_latest_summary"} {
+		if !BuiltinTools[code].OARequired {
+			t.Fatalf("%s 必须初始化 OA 适配器", code)
+		}
+	}
+	for _, run := range []func(string, *ExecutionContext, oa.OAAdapter) (interface{}, string, error){executor.executeGetLatestAudit, executor.executeGetLatestSummary} {
+		for _, adapter := range []oa.OAAdapter{nil, executionAdapter{visible: false}} {
+			if _, _, err := run(`{"process_id":"42"}`, ctx, adapter); err == nil {
+				t.Fatal("缺少参与权限应在数据库查询前拒绝")
+			}
+		}
+	}
+}
