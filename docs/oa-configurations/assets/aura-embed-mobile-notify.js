@@ -148,7 +148,7 @@
       + '&embed_token=' + encodeURIComponent(EMBED_ACCESS_TOKEN)
       + '&oa_user_id=' + encodeURIComponent(userId);
 
-    console.log('[aura-embed-mobile] 调起嵌入弹窗:', targetUrl);
+    console.log('[aura-embed-mobile] 调起嵌入弹窗');
 
     if (window.weaJs && typeof window.weaJs.showDialog === 'function') {
       window.weaJs.showDialog(targetUrl, {
@@ -183,7 +183,7 @@
             'background-color: ' + currentStatus.color + '; margin-right: 6px;' +
             (isLoading ? 'animation: auraBtnPulse 1.2s infinite ease-in-out;' : '') +
           '"></span>' +
-          '<span>' + displayText + '</span>' +
+          '<span class="aura-mobile-label"></span>' +
         '</button>' +
       '</div>';
 
@@ -196,11 +196,12 @@
     }
 
     $container.html(btnHtml);
+    $container.find('.aura-mobile-label').text(displayText);
 
     jQuery('#auraMobileEmbedBtn').off('click').on('click', function () {
       if (isLoading) {
         if (typeof WfForm !== 'undefined' && WfForm.showMessage) {
-          WfForm.showMessage('AI 审核数据正在分析中，请稍候...', 2, 2);
+          WfForm.showMessage('数据加载中，请稍候...', 2, 2);
         }
         return;
       }
@@ -217,10 +218,14 @@
   }
 
   function queryEmbedStatus(requestId, userId) {
-    var apiUrl = AURA_EMBED_ORIGIN + '/api/embed/context'
+    var isSummary = EMBED_TYPE === 'summary';
+    var featureName = isSummary ? '总结' : '审核';
+    var apiPath = isSummary ? '/api/embed/summary/context' : '/api/embed/context';
+    var apiUrl = AURA_EMBED_ORIGIN + apiPath
       + '?requestid=' + encodeURIComponent(requestId)
       + '&embed_token=' + encodeURIComponent(EMBED_ACCESS_TOKEN)
       + '&oa_user_id=' + encodeURIComponent(userId);
+    var openDetails = function () { openEmbedDialog(requestId, userId); };
 
     fetch(apiUrl, { method: 'GET', credentials: 'omit' })
       .then(function (res) {
@@ -228,64 +233,50 @@
         return res.json();
       })
       .then(function (res) {
-        if (!res || res.code !== 0 || !res.data) {
-          renderButton('error', '加载异常', '获取 AI 审核状态失败', false, function () {
-            openEmbedDialog(requestId, userId);
-          });
+        // Nuxt 代理直接返回业务数据；同时兼容 Go 接口的统一响应包装。
+        var wrapped = res && Object.prototype.hasOwnProperty.call(res, 'code');
+        var data = wrapped ? res.data : res;
+        if ((wrapped && res.code !== 0) || !data || typeof data.supported !== 'boolean') {
+          renderButton('error', '加载异常', '获取 AI ' + featureName + '状态失败', false);
           return;
         }
-
-        var data = res.data;
         if (!data.supported) {
-          renderButton('disabled', '未开启审核', data.message || '当前流程未配置 AI 审核', false);
+          renderButton('disabled', '未开启' + featureName, data.message || '当前流程未配置 AI ' + featureName, false);
           return;
         }
 
-        if (data.has_audit && data.audit_result) {
-          var r = data.audit_result;
-          if (r.status === 'failed' || r.status === 'cancelled' || r.parse_error) {
-            renderButton('red', '审核异常', 'AI 审核分析出现异常', false, function () {
-              openEmbedDialog(requestId, userId);
-            });
-            return;
-          }
-
-          var rec = r.recommendation || 'review';
-          var score = r.overall_score != null ? Math.round(Number(r.overall_score)) : null;
-          var scoreText = score != null ? ' (' + score + '分)' : '';
-
-          if (rec === 'approve') {
-            renderButton('green', '审核通过' + scoreText, '', false, function () {
-              openEmbedDialog(requestId, userId);
-            });
-          } else if (rec === 'return') {
-            renderButton('red', '建议退回' + scoreText, '', false, function () {
-              openEmbedDialog(requestId, userId);
-            });
+        var result = isSummary ? data.summary_result : data.audit_result;
+        var hasResult = isSummary ? data.has_summary : data.has_audit;
+        var shouldAutoRun = isSummary ? data.should_auto_summary : data.should_auto_audit;
+        // 状态查询不会启动任务；保留详情入口，由嵌入页接续任务或自动分析。
+        if (data.running_job_id) {
+          renderButton('gray', featureName + '分析中，查看进度', '', false, openDetails);
+          return;
+        }
+        if (hasResult && result) {
+          if (result.status === 'failed' || result.status === 'cancelled' || result.parse_error) {
+            renderButton('red', featureName + '异常', 'AI ' + featureName + '分析出现异常', false, openDetails);
+          } else if (isSummary) {
+            renderButton('green', '查看流程总结', '', false, openDetails);
           } else {
-            renderButton('yellow', '建议关注' + scoreText, '', false, function () {
-              openEmbedDialog(requestId, userId);
-            });
+            var rec = result.recommendation || 'review';
+            var score = result.overall_score != null ? Math.round(Number(result.overall_score)) : null;
+            var scoreText = score != null ? ' (' + score + '分)' : '';
+            if (rec === 'approve') {
+              renderButton('green', '审核通过' + scoreText, '', false, openDetails);
+            } else if (rec === 'return') {
+              renderButton('red', '建议退回' + scoreText, '', false, openDetails);
+            } else {
+              renderButton('yellow', '建议关注' + scoreText, '', false, openDetails);
+            }
           }
           return;
         }
-
-        if (data.should_auto_audit || data.running_job_id) {
-          renderButton('loading', 'AI分析中...', '', true, function () {
-            openEmbedDialog(requestId, userId);
-          });
-          return;
-        }
-
-        renderButton('gray', 'AI审核建议', '', false, function () {
-          openEmbedDialog(requestId, userId);
-        });
+        renderButton('gray', shouldAutoRun ? '查看并生成' + featureName : 'AI' + featureName + '详情', '', false, openDetails);
       })
       .catch(function (err) {
         console.warn('[aura-embed-mobile] 请求状态失败:', err);
-        renderButton('gray', 'AI审核', '', false, function () {
-          openEmbedDialog(requestId, userId);
-        });
+        renderButton('gray', '查看 AI ' + featureName, '', false, openDetails);
       });
   }
 
@@ -294,7 +285,7 @@
     var userId = getCurrentUserId();
 
     if (!requestId) {
-      renderButton('disabled', '待保存流程', '流程保存并生成编号后即可查看 AI 审核', false);
+      renderButton('disabled', '待保存流程', '流程保存并生成编号后即可查看 AI ' + (EMBED_TYPE === 'summary' ? '总结' : '审核'), false);
       registerOAEvents();
       return;
     }

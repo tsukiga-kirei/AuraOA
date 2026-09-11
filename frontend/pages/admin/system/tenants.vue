@@ -305,6 +305,7 @@ const openDetail = async (tenant: TenantData) => {
   ssoPasswordVisible.value = false
   rotatedEmbedToken.value = ''
   manualEmbedToken.value = ''
+  embedScriptPlatform.value = 'pc'
   embedScriptTarget.value = 'all'
   showDetail.value = true
   // 加载成员列表 & 刷新统计
@@ -438,7 +439,7 @@ const embedAuditUrl = computed(() => embedOrigin.value ? `${embedOrigin.value}/e
 const embedSummaryUrl = computed(() => embedOrigin.value ? `${embedOrigin.value}/embed/summary` : '/embed/summary')
 const effectiveEmbedToken = computed(() => manualEmbedToken.value.trim() || rotatedEmbedToken.value.trim())
 const embedScriptTargetOptions = computed(() => [
-  { value: 'all', label: t('admin.tenants.embedScriptTargetAll') },
+  ...(embedScriptPlatform.value === 'pc' ? [{ value: 'all', label: t('admin.tenants.embedScriptTargetAll') }] : []),
   { value: 'audit', label: t('admin.tenants.embedScriptTargetAudit') },
   { value: 'summary', label: t('admin.tenants.embedScriptTargetSummary') },
 ])
@@ -446,6 +447,11 @@ const embedScriptPlatformOptions = computed(() => [
   { value: 'pc', label: t('admin.tenants.embedScriptPlatformPC') },
   { value: 'mobile', label: t('admin.tenants.embedScriptPlatformMobile') },
 ])
+
+// 移动端一个按钮对应一种能力，不提供会被静默降级为审核的“全部”选项。
+watch(embedScriptPlatform, platform => {
+  if (platform === 'mobile' && embedScriptTarget.value === 'all') embedScriptTarget.value = 'audit'
+}, { flush: 'sync' })
 
 const getEmbedScriptConfig = (target: 'all' | 'audit' | 'summary') => {
   if (target === 'audit') {
@@ -482,7 +488,7 @@ const getEmbedMobileScriptConfig = (target: 'all' | 'audit' | 'summary') => {
     }
   }
   return {
-    label: `${t('admin.tenants.embedScriptPlatformMobile')} - ${target === 'all' ? t('admin.tenants.embedScriptTargetAll') : t('admin.tenants.embedScriptTargetAudit')}`,
+    label: `${t('admin.tenants.embedScriptPlatformMobile')} - ${t('admin.tenants.embedScriptTargetAudit')}`,
     filename: 'aura-embed-mobile-notify.js',
     urls: [embedAuditUrl.value],
     embedType: 'audit',
@@ -890,7 +896,7 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
       + '&embed_token=' + encodeURIComponent(EMBED_ACCESS_TOKEN)
       + '&oa_user_id=' + encodeURIComponent(userId);
 
-    console.log('[aura-embed-mobile] 调起嵌入弹窗:', targetUrl);
+    console.log('[aura-embed-mobile] 调起嵌入弹窗');
 
     if (window.weaJs && typeof window.weaJs.showDialog === 'function') {
       window.weaJs.showDialog(targetUrl, {
@@ -925,7 +931,7 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
             'background-color: ' + currentStatus.color + '; margin-right: 6px;' +
             (isLoading ? 'animation: auraBtnPulse 1.2s infinite ease-in-out;' : '') +
           '"></span>' +
-          '<span>' + displayText + '</span>' +
+          '<span class="aura-mobile-label"></span>' +
         '</button>' +
       '</div>';
 
@@ -938,11 +944,12 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
     }
 
     $container.html(btnHtml);
+    $container.find('.aura-mobile-label').text(displayText);
 
     jQuery('#auraMobileEmbedBtn').off('click').on('click', function () {
       if (isLoading) {
         if (typeof WfForm !== 'undefined' && WfForm.showMessage) {
-          WfForm.showMessage('AI 审核数据正在分析中，请稍候...', 2, 2);
+          WfForm.showMessage('数据加载中，请稍候...', 2, 2);
         }
         return;
       }
@@ -959,10 +966,14 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
   }
 
   function queryEmbedStatus(requestId, userId) {
-    var apiUrl = AURA_EMBED_ORIGIN + '/api/embed/context'
+    var isSummary = EMBED_TYPE === 'summary';
+    var featureName = isSummary ? '总结' : '审核';
+    var apiPath = isSummary ? '/api/embed/summary/context' : '/api/embed/context';
+    var apiUrl = AURA_EMBED_ORIGIN + apiPath
       + '?requestid=' + encodeURIComponent(requestId)
       + '&embed_token=' + encodeURIComponent(EMBED_ACCESS_TOKEN)
       + '&oa_user_id=' + encodeURIComponent(userId);
+    var openDetails = function () { openEmbedDialog(requestId, userId); };
 
     fetch(apiUrl, { method: 'GET', credentials: 'omit' })
       .then(function (res) {
@@ -970,64 +981,50 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
         return res.json();
       })
       .then(function (res) {
-        if (!res || res.code !== 0 || !res.data) {
-          renderButton('error', '加载异常', '获取 AI 审核状态失败', false, function () {
-            openEmbedDialog(requestId, userId);
-          });
+        // Nuxt 代理直接返回业务数据；同时兼容 Go 接口的统一响应包装。
+        var wrapped = res && Object.prototype.hasOwnProperty.call(res, 'code');
+        var data = wrapped ? res.data : res;
+        if ((wrapped && res.code !== 0) || !data || typeof data.supported !== 'boolean') {
+          renderButton('error', '加载异常', '获取 AI ' + featureName + '状态失败', false);
           return;
         }
-
-        var data = res.data;
         if (!data.supported) {
-          renderButton('disabled', '未开启审核', data.message || '当前流程未配置 AI 审核', false);
+          renderButton('disabled', '未开启' + featureName, data.message || '当前流程未配置 AI ' + featureName, false);
           return;
         }
 
-        if (data.has_audit && data.audit_result) {
-          var r = data.audit_result;
-          if (r.status === 'failed' || r.status === 'cancelled' || r.parse_error) {
-            renderButton('red', '审核异常', 'AI 审核分析出现异常', false, function () {
-              openEmbedDialog(requestId, userId);
-            });
-            return;
-          }
-
-          var rec = r.recommendation || 'review';
-          var score = r.overall_score != null ? Math.round(Number(r.overall_score)) : null;
-          var scoreText = score != null ? ' (' + score + '分)' : '';
-
-          if (rec === 'approve') {
-            renderButton('green', '审核通过' + scoreText, '', false, function () {
-              openEmbedDialog(requestId, userId);
-            });
-          } else if (rec === 'return') {
-            renderButton('red', '建议退回' + scoreText, '', false, function () {
-              openEmbedDialog(requestId, userId);
-            });
+        var result = isSummary ? data.summary_result : data.audit_result;
+        var hasResult = isSummary ? data.has_summary : data.has_audit;
+        var shouldAutoRun = isSummary ? data.should_auto_summary : data.should_auto_audit;
+        // 状态查询不会启动任务；保留详情入口，由嵌入页接续任务或自动分析。
+        if (data.running_job_id) {
+          renderButton('gray', featureName + '分析中，查看进度', '', false, openDetails);
+          return;
+        }
+        if (hasResult && result) {
+          if (result.status === 'failed' || result.status === 'cancelled' || result.parse_error) {
+            renderButton('red', featureName + '异常', 'AI ' + featureName + '分析出现异常', false, openDetails);
+          } else if (isSummary) {
+            renderButton('green', '查看流程总结', '', false, openDetails);
           } else {
-            renderButton('yellow', '建议关注' + scoreText, '', false, function () {
-              openEmbedDialog(requestId, userId);
-            });
+            var rec = result.recommendation || 'review';
+            var score = result.overall_score != null ? Math.round(Number(result.overall_score)) : null;
+            var scoreText = score != null ? ' (' + score + '分)' : '';
+            if (rec === 'approve') {
+              renderButton('green', '审核通过' + scoreText, '', false, openDetails);
+            } else if (rec === 'return') {
+              renderButton('red', '建议退回' + scoreText, '', false, openDetails);
+            } else {
+              renderButton('yellow', '建议关注' + scoreText, '', false, openDetails);
+            }
           }
           return;
         }
-
-        if (data.should_auto_audit || data.running_job_id) {
-          renderButton('loading', 'AI分析中...', '', true, function () {
-            openEmbedDialog(requestId, userId);
-          });
-          return;
-        }
-
-        renderButton('gray', 'AI审核建议', '', false, function () {
-          openEmbedDialog(requestId, userId);
-        });
+        renderButton('gray', shouldAutoRun ? '查看并生成' + featureName : 'AI' + featureName + '详情', '', false, openDetails);
       })
       .catch(function (err) {
         console.warn('[aura-embed-mobile] 请求状态失败:', err);
-        renderButton('gray', 'AI审核', '', false, function () {
-          openEmbedDialog(requestId, userId);
-        });
+        renderButton('gray', '查看 AI ' + featureName, '', false, openDetails);
       });
   }
 
@@ -1036,7 +1033,7 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
     var userId = getCurrentUserId();
 
     if (!requestId) {
-      renderButton('disabled', '待保存流程', '流程保存并生成编号后即可查看 AI 审核', false);
+      renderButton('disabled', '待保存流程', '流程保存并生成编号后即可查看 AI ' + (EMBED_TYPE === 'summary' ? '总结' : '审核'), false);
       registerOAEvents();
       return;
     }
@@ -1084,6 +1081,10 @@ const exportEmbedScript = (
     return
   }
   if (platform === 'mobile') {
+    if (target === 'all') {
+      message.warning(t('admin.tenants.embedScriptMobileTargetHint'))
+      return
+    }
     const cfg = getEmbedMobileScriptConfig(target)
     downloadTextFile(cfg.filename, buildEmbedMobileNotifyScript(target, token))
   } else {
@@ -1451,9 +1452,9 @@ const confirmDeleteTenant = async () => {
     <!--租户细节抽屉-->
     <a-drawer
       v-model:open="showDetail"
-      :title="selectedTenant?.name + ' — ' + t('admin.tenants.tabBasic')"
+      :title="selectedTenant?.name"
       placement="right"
-      :width="720"
+      width="min(920px, 100vw)"
       @close="showDetail = false"
     >
       <template v-if="selectedTenant">
@@ -1472,6 +1473,7 @@ const confirmDeleteTenant = async () => {
             ]"
             :key="tab.key"
             class="detail-tab-btn"
+            :aria-pressed="detailActiveTab === tab.key"
             :class="{ 'detail-tab-btn--active': detailActiveTab === tab.key }"
             @click="detailActiveTab = tab.key"
           >
@@ -1903,24 +1905,26 @@ const confirmDeleteTenant = async () => {
                     <div class="embed-script-title">{{ t('admin.tenants.embedScriptExportTitle') }}</div>
                     <div class="embed-script-desc">{{ t('admin.tenants.embedScriptExportDesc') }}</div>
                   </div>
-                  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <a-button :disabled="!selectedTenant.embed_token_configured" @click="exportEmbedScript(embedScriptTarget, 'mobile')">
-                      <DownloadOutlined /> {{ t('admin.tenants.exportEmbedMobileScript') }}
-                    </a-button>
-                    <a-button type="primary" :disabled="!selectedTenant.embed_token_configured" @click="exportEmbedScript(embedScriptTarget, embedScriptPlatform)">
-                      <DownloadOutlined /> {{ embedScriptPlatform === 'mobile' ? t('admin.tenants.exportEmbedMobileScript') : t('admin.tenants.exportEmbedPCScript') }}
-                    </a-button>
-                  </div>
                 </div>
                 <div class="embed-script-fields">
                   <div class="embed-script-token-field">
                     <a-form-item :label="t('admin.tenants.embedScriptPlatform')">
-                      <a-radio-group v-model:value="embedScriptPlatform" button-style="solid">
+                      <a-radio-group v-model:value="embedScriptPlatform" button-style="solid" class="embed-script-platform-options">
                         <a-radio-button v-for="opt in embedScriptPlatformOptions" :key="opt.value" :value="opt.value">
                           {{ opt.label }}
                         </a-radio-button>
                       </a-radio-group>
                       <div class="form-hint">{{ t('admin.tenants.embedScriptPlatformHint') }}</div>
+                    </a-form-item>
+                  </div>
+                  <div class="embed-script-target-field">
+                    <a-form-item :label="t('admin.tenants.embedScriptTarget')">
+                      <a-radio-group v-model:value="embedScriptTarget" button-style="solid" class="embed-script-target-options">
+                        <a-radio-button v-for="opt in embedScriptTargetOptions" :key="opt.value" :value="opt.value">
+                          {{ opt.label }}
+                        </a-radio-button>
+                      </a-radio-group>
+                      <div class="form-hint">{{ t(embedScriptPlatform === 'mobile' ? 'admin.tenants.embedScriptMobileTargetHint' : 'admin.tenants.embedScriptTargetHint') }}</div>
                     </a-form-item>
                   </div>
                   <div class="embed-script-token-field">
@@ -1932,16 +1936,11 @@ const confirmDeleteTenant = async () => {
                       <div class="form-hint">{{ t('admin.tenants.embedScriptTokenHint') }}</div>
                     </a-form-item>
                   </div>
-                  <div class="embed-script-target-field">
-                    <a-form-item :label="t('admin.tenants.embedScriptTarget')">
-                      <a-radio-group v-model:value="embedScriptTarget" button-style="solid" class="embed-script-target-options">
-                        <a-radio-button v-for="opt in embedScriptTargetOptions" :key="opt.value" :value="opt.value">
-                          {{ opt.label }}
-                        </a-radio-button>
-                      </a-radio-group>
-                      <div class="form-hint">{{ t('admin.tenants.embedScriptTargetHint') }}</div>
-                    </a-form-item>
-                  </div>
+                </div>
+                <div class="embed-script-actions">
+                  <a-button type="primary" :disabled="!selectedTenant.embed_token_configured" @click="exportEmbedScript(embedScriptTarget, embedScriptPlatform)">
+                    <DownloadOutlined /> {{ t(embedScriptPlatform === 'mobile' ? 'admin.tenants.exportEmbedMobileScript' : 'admin.tenants.exportEmbedPCScript') }}
+                  </a-button>
                 </div>
               </div>
             </div>
@@ -2230,10 +2229,8 @@ const confirmDeleteTenant = async () => {
 /* 详情抽屉 */
 .detail-tabs {
   display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
-  border-radius: var(--radius-lg); margin-bottom: 24px; flex-wrap: nowrap;
-  overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  border-radius: var(--radius-lg); margin-bottom: 24px; flex-wrap: wrap;
 }
-.detail-tabs::-webkit-scrollbar { display: none; }
 .detail-tab-btn {
   display: flex; align-items: center; gap: 6px; padding: 8px 11px; flex: 0 0 auto;
   border: none; background: transparent; border-radius: var(--radius-md);
@@ -2367,19 +2364,26 @@ const confirmDeleteTenant = async () => {
 .embed-script-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
 .embed-script-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; line-height: 1.5; }
 .embed-script-fields {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px; align-items: start;
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  gap: 4px; align-items: start;
 }
 .embed-script-token-field,
 .embed-script-target-field { min-width: 0; }
+.embed-script-platform-options,
 .embed-script-target-options {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%;
+  display: flex; flex-wrap: wrap; gap: 8px; width: 100%;
 }
+.embed-script-platform-options :deep(.ant-radio-button-wrapper),
 .embed-script-target-options :deep(.ant-radio-button-wrapper) {
-  margin-inline-start: 0; padding: 0 10px; text-align: center;
+  height: auto; min-height: 36px; line-height: 1.5; padding: 8px 12px;
+  border: 1px solid var(--color-border-light); border-radius: var(--radius-md);
+  white-space: normal;
 }
-.embed-script-target-options :deep(.ant-radio-button-wrapper span:last-child) {
-  display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.embed-script-platform-options :deep(.ant-radio-button-wrapper::before),
+.embed-script-target-options :deep(.ant-radio-button-wrapper::before) { display: none; }
+.embed-script-actions {
+  display: flex; justify-content: flex-end; padding-top: 16px;
+  border-top: 1px solid var(--color-border-light);
 }
 .embed-token-modal-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; justify-content: flex-end; }
 
