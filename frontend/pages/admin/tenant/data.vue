@@ -245,6 +245,8 @@ const complianceConfig = computed<Record<string, { color: string; bg: string }>>
 
 const sourceChannelConfig = computed<Record<string, { color: string; bg: string }>>(() => ({
   embed: { color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' },
+  embed_standard: { color: 'var(--color-primary)', bg: 'var(--color-primary-bg)' },
+  embed_personal: { color: '#722ed1', bg: '#f9f0ff' },
   workbench: { color: 'var(--color-info)', bg: 'var(--color-info-bg)' },
 }))
 
@@ -473,9 +475,21 @@ function getTriggerTypeLabel(value: string) {
 function getSourceChannelLabel(value: string) {
   const map: Record<string, string> = {
     workbench: t('admin.data.sourceWorkbench'),
-    embed: t('admin.data.sourceEmbed'),
+    embed: t('admin.data.sourceEmbedStandard'),
+    embed_standard: t('admin.data.sourceEmbedStandard'),
+    embed_personal: t('admin.data.sourceEmbedPersonal'),
   }
   return map[value] || value || '-'
+}
+
+const chainItemSourceTag = (item: { trigger_source?: string; trigger_detail?: string }) => {
+  if (item.trigger_detail === 'personal_embed_manual') {
+    return { color: 'purple', text: t('resultSource.personal') }
+  }
+  if (item.trigger_source === 'embed_auto' || item.trigger_source === 'embed_manual') {
+    return { color: 'purple', text: t('resultSource.embed') }
+  }
+  return { color: 'blue', text: t('resultSource.workbench') }
 }
 
 function getSourceChannelStyle(channel?: string) {
@@ -1197,7 +1211,8 @@ onMounted(async () => {
               @change="auditPage = 1"
           >
             <a-select-option value="workbench">{{ t('admin.data.sourceWorkbench') }}</a-select-option>
-            <a-select-option value="embed">{{ t('admin.data.sourceEmbed') }}</a-select-option>
+            <a-select-option value="embed_standard">{{ t('admin.data.sourceEmbedStandard') }}</a-select-option>
+            <a-select-option value="embed_personal">{{ t('admin.data.sourceEmbedPersonal') }}</a-select-option>
           </a-select>
 
           <a-select
@@ -2169,6 +2184,12 @@ onMounted(async () => {
                         </span>
                         <span class="chain-score">{{ logItem.score }}{{ t('admin.data.points') }}</span>
                         <span class="chain-conf-tag">{{ logItem.confidence }}%</span>
+                        <a-tag
+                          :color="chainItemSourceTag(logItem).color"
+                          style="margin-left: 8px; margin-bottom: 0;"
+                        >
+                          {{ chainItemSourceTag(logItem).text }}
+                        </a-tag>
                         <span class="chain-expand-btn">
                           <DownOutlined v-if="!expandedAuditChainNodes.has(logItem.id)" />
                           <UpOutlined v-else />

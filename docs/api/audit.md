@@ -176,6 +176,9 @@ GET /api/audit/logs/export
 GET /api/audit/snapshots
 ```
 
+支持按渠道筛选：`channel` 可选值：`workbench`（系统内）、`embed_standard`（嵌入通用）、`embed_personal`（嵌入个性化）、`embed`（历史兼容）。
+嵌入通用按流程唯一汇总，系统内与嵌入个性化按（流程 + 操作人）唯一汇总。顶部统计卡片与列表总数严格保持一致。
+
 ---
 
 ### 获取快照统计
