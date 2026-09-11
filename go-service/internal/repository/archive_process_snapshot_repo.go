@@ -106,13 +106,13 @@ func (r *ArchiveProcessSnapshotRepo) GetMapByProcessIDs(c *gin.Context, processI
 
 // ArchiveSnapshotFilter 归档快照分页过滤条件。
 type ArchiveSnapshotFilter struct {
-	Compliance  string // compliant / partially_compliant / non_compliant / "" = 全部
-	Keyword     string
-	ProcessType string
-	Operator    string
-	Department  string
-	StartDate   *time.Time
-	EndDate     *time.Time
+	Compliance       string // compliant / partially_compliant / non_compliant / "" = 全部
+	Keyword          string
+	ProcessType      string
+	Operator         string
+	Department       string
+	StartDate        *time.Time
+	EndDateExclusive *time.Time // 次日零点，不包含该时刻
 }
 
 // ArchiveSnapshotListRow 归档快照列表行（含操作人+部门）。
@@ -385,8 +385,8 @@ func applyArchiveSnapshotFilter(db *gorm.DB, f ArchiveSnapshotFilter) *gorm.DB {
 	if f.StartDate != nil {
 		db = db.Where(t+"updated_at >= ?", f.StartDate)
 	}
-	if f.EndDate != nil {
-		db = db.Where(t+"updated_at <= ?", f.EndDate)
+	if f.EndDateExclusive != nil {
+		db = db.Where(t+"updated_at < ?", f.EndDateExclusive)
 	}
 	return db
 }

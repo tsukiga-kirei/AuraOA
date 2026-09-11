@@ -18,12 +18,12 @@ var ErrNoTenantContext = errors.New("missing tenant_id in context")
 // AuditLogFilter 审核日志分页查询过滤条件。
 type AuditLogFilter struct {
 	// status_group: "pending_ai" = 未完成状态，"ai_done" = completed，"" = 全部
-	StatusGroup    string
-	Keyword        string
-	ProcessType    string
-	Recommendation string
-	StartDate      *time.Time
-	EndDate        *time.Time
+	StatusGroup      string
+	Keyword          string
+	ProcessType      string
+	Recommendation   string
+	StartDate        *time.Time
+	EndDateExclusive *time.Time // 次日零点，不包含该时刻
 }
 
 // AuditLogStats 审核日志统计。
@@ -846,8 +846,8 @@ func applyAuditLogFilter(db *gorm.DB, f AuditLogFilter) *gorm.DB {
 	if f.StartDate != nil {
 		db = db.Where("audit_logs.created_at >= ?", f.StartDate)
 	}
-	if f.EndDate != nil {
-		db = db.Where("audit_logs.created_at <= ?", f.EndDate)
+	if f.EndDateExclusive != nil {
+		db = db.Where("audit_logs.created_at < ?", f.EndDateExclusive)
 	}
 	return db
 }

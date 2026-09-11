@@ -14,15 +14,15 @@ import (
 
 // CronLogFilter 定时任务日志分页查询过滤条件。
 type CronLogFilter struct {
-	Keyword     string // 任务名称模糊搜索
-	Status      string
-	TaskType    string
-	TriggerType string // manual / scheduled
-	CreatedBy   string // 触发人（created_by）模糊搜索
-	Department  string // 部门精确匹配
-	StartDate   *time.Time
-	EndDate     *time.Time
-	DateRange   *int // 数据范围（天）
+	Keyword          string // 任务名称模糊搜索
+	Status           string
+	TaskType         string
+	TriggerType      string // manual / scheduled
+	CreatedBy        string // 触发人（created_by）模糊搜索
+	Department       string // 部门精确匹配
+	StartDate        *time.Time
+	EndDateExclusive *time.Time // 次日零点，不包含该时刻
+	DateRange        *int       // 数据范围（天）
 }
 
 // CronLogStats 定时任务日志统计。
@@ -212,8 +212,8 @@ func applyCronLogFilter(db *gorm.DB, f CronLogFilter) *gorm.DB {
 	if f.StartDate != nil {
 		db = db.Where("started_at >= ?", f.StartDate)
 	}
-	if f.EndDate != nil {
-		db = db.Where("started_at <= ?", f.EndDate)
+	if f.EndDateExclusive != nil {
+		db = db.Where("started_at < ?", f.EndDateExclusive)
 	}
 	return db
 }
@@ -243,8 +243,8 @@ func applyCronLogFilterJoined(db *gorm.DB, f CronLogFilter) *gorm.DB {
 	if f.StartDate != nil {
 		db = db.Where(t+"started_at >= ?", f.StartDate)
 	}
-	if f.EndDate != nil {
-		db = db.Where(t+"started_at <= ?", f.EndDate)
+	if f.EndDateExclusive != nil {
+		db = db.Where(t+"started_at < ?", f.EndDateExclusive)
 	}
 	return db
 }

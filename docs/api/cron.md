@@ -147,3 +147,8 @@ GET /api/tenant/cron/logs/stats
 ```
 GET /api/tenant/cron/logs/export
 ```
+
+### 日期筛选边界
+
+日志/快照列表及其导出接口的 `start_date`、`end_date` 按应用配置时区解释，结束日期包含当天全部记录。
+实现使用 `时间 >= 开始日期零点 AND 时间 < 结束日期次日零点`，包含当天最后一秒内的微秒记录，次日边界按自然日计算以兼容夏令时。

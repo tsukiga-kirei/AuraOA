@@ -91,3 +91,8 @@ Authorization: Bearer <access_token>
 | [缓存管理接口](./cache.md) | `/api/admin/cache` | 缓存统计、清除、开关 |
 | [对话接口](./chat.md) | `/api/chat` | 智能体会话、SSE；需求见 [docs/agents](../agents/README.md) |
 | [智能体与分配接口](./agents.md) | `/api/admin/tenants/:id/chat-allocation`、`/api/tenant/agents` | 系统管理员配额、租户智能体/MCP/Skills |
+
+## 日期与展示时区
+
+日期筛选参数 `start_date` / `end_date` 使用应用配置时区，结束日期包含整天；数据库使用次日零点的排他上界，避免漏掉最后一秒内的数据。
+带 `Z` 或偏移量的时间戳表示绝对时刻；OA 返回的不带时区日期时间由前端按应用配置时区解释，不依赖访问者电脑时区。

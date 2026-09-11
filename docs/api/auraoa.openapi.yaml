@@ -9,6 +9,8 @@ info:
 
     服务端分页：data 含 items、total、page、page_size。
 
+    日期筛选：start_date/end_date 按应用配置时区解释，end_date 包含整天，使用次日零点作为排他上界（兼容夏令时）。
+
     角色：system_admin | tenant_admin | business（JWT 内 active_role 决定权限）。'
 servers:
 - url: http://localhost:8080
@@ -3539,7 +3541,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
       - name: page
         in: query
         schema:
@@ -4272,7 +4274,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
       - name: page
         in: query
         schema:
@@ -4448,7 +4450,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
       - name: page
         in: query
         schema:
@@ -4519,7 +4521,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
   /api/audit/stats:
     get:
       summary: 审核统计数据
@@ -4553,7 +4555,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
   /api/audit/execute:
     post:
       summary: 提交单条 AI 审核任务
@@ -4794,7 +4796,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
       - name: page
         in: query
         schema:
@@ -4874,7 +4876,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
   /api/audit/snapshots:
     get:
       summary: 审核快照列表
@@ -4947,7 +4949,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
       - name: page
         in: query
         schema:
@@ -5035,7 +5037,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
   /api/audit/snapshots/{processId}/chain:
     get:
       summary: 获取快照审核链
@@ -5383,7 +5385,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
       - name: page
         in: query
         schema:
@@ -5467,7 +5469,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
   /api/summary/snapshots/{processId}/chain:
     get:
       summary: 获取流程总结链
@@ -5573,7 +5575,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
       - name: page
         in: query
         schema:
@@ -5636,7 +5638,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
   /api/archive/stats:
     get:
       summary: 归档复盘统计
@@ -5670,7 +5672,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
   /api/archive/execute:
     post:
       summary: 提交单条归档复盘任务
@@ -5936,7 +5938,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
       - name: page
         in: query
         schema:
@@ -6012,7 +6014,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
   /api/archive/snapshots:
     get:
       summary: 归档快照列表
@@ -6079,7 +6081,7 @@ paths:
         schema:
           type: string
           format: date
-        description: 结束日期 YYYY-MM-DD
+        description: 结束日期 YYYY-MM-DD，按应用时区包含整天，以次日零点为排他上界
       - name: page
         in: query
         schema:
@@ -6270,6 +6272,7 @@ paths:
   /api/embed/jobs/{id}:
     get:
       summary: 查询嵌入审核任务状态
+      description: 嵌入令牌授权。通用嵌入任务不要求 JWT 用户身份；个人任务需携带 OA 操作人标识并匹配任务所有者。校验任务租户及流程嵌入配置。
       tags:
       - Embed
       security:
@@ -6301,6 +6304,7 @@ paths:
   /api/embed/stream/{id}:
     get:
       summary: 嵌入审核 SSE 流式输出
+      description: 嵌入令牌授权。通用嵌入任务不要求 JWT 用户身份；个人任务需携带 OA 操作人标识并匹配任务所有者。校验任务租户及流程嵌入配置。
       tags:
       - Embed
       security:

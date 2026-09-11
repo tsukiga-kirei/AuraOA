@@ -228,12 +228,12 @@ ORDER BY calls DESC`
 
 // LLMLogFilter 数据管理页 AI 调用记录筛选条件。
 type LLMLogFilter struct {
-	RequestType string
-	CallType    string
-	Keyword     string
-	Operator    string
-	StartDate   *time.Time
-	EndDate     *time.Time
+	RequestType      string
+	CallType         string
+	Keyword          string
+	Operator         string
+	StartDate        *time.Time
+	EndDateExclusive *time.Time // 次日零点，不包含该时刻
 }
 
 // LLMProcessListRow 按流程聚合的列表行。
@@ -435,8 +435,8 @@ func applyLLMLogFilter(db *gorm.DB, f LLMLogFilter) *gorm.DB {
 	if f.StartDate != nil {
 		db = db.Where("l.created_at >= ?", f.StartDate)
 	}
-	if f.EndDate != nil {
-		db = db.Where("l.created_at <= ?", f.EndDate)
+	if f.EndDateExclusive != nil {
+		db = db.Where("l.created_at < ?", f.EndDateExclusive)
 	}
 	return db
 }

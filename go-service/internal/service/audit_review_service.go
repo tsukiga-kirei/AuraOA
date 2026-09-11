@@ -1073,6 +1073,13 @@ func (s *AuditExecuteService) getAccessibleAuditLog(c *gin.Context, id uuid.UUID
 	if err != nil {
 		return nil, err
 	}
+	// 嵌入令牌不是前台 JWT，不能按执行账号的 OA 待办权限读取任务。
+	if c.GetBool("embed_mode") {
+		if err := s.checkEmbedAuditTaskAccess(c, tenantID, log); err != nil {
+			return nil, err
+		}
+		return log, nil
+	}
 	if !s.userCanAccessAuditProcess(c, tenantID, userID, log.ProcessType) {
 		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核任务")
 	}

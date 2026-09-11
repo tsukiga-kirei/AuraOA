@@ -630,3 +630,53 @@ func (s *AuditExecuteService) validateEmbedTrigger(c *gin.Context, processType, 
 	}
 	return nil
 }
+
+// checkEmbedAuditTaskAccess 校验嵌入轮询与 SSE：通用任务使用嵌入授权，个人任务核对实际 OA 操作人。
+func (s *AuditExecuteService) checkEmbedAuditTaskAccess(c *gin.Context, tenantID uuid.UUID, log *model.AuditLog) error {
+	config, err := s.configRepo.GetByProcessType(c, log.ProcessType)
+	if err != nil {
+		return newServiceError(errcode.ErrPermissionDenied, "流程未启用 OA 嵌入审核")
+	}
+	return authorizeEmbedAuditTask(tenantID, log, config, func() (uuid.UUID, error) {
+		oaUserID := strings.TrimSpace(c.GetHeader("X-Embed-OA-User-ID"))
+		if oaUserID == "" {
+			oaUserID = strings.TrimSpace(c.Query("oa_user_id"))
+		}
+		if oaUserID == "" {
+			oaUserID = strings.TrimSpace(c.Query("oa_current_user_id"))
+		}
+		if oaUserID == "" {
+			return uuid.Nil, nil
+		}
+		adapter, err := s.getOAAdapter(c.Request.Context(), tenantID)
+		if err != nil {
+			return uuid.Nil, err
+		}
+		user, err := s.resolveOAUser(c.Request.Context(), tenantID, adapter, oaUserID)
+		if err != nil {
+			return uuid.Nil, err
+		}
+		if user == nil {
+			return uuid.Nil, nil
+		}
+		return user.ID, nil
+	})
+}
+
+// authorizeEmbedAuditTask 不把嵌入的后台执行账号当作实际查看人；通用任务无需登录用户身份。
+func authorizeEmbedAuditTask(tenantID uuid.UUID, log *model.AuditLog, config *model.ProcessAuditConfig, resolveUser func() (uuid.UUID, error)) error {
+	if tenantID == uuid.Nil || log.TenantID != tenantID || config == nil || config.TenantID != tenantID || config.Status != "active" || !config.EmbedEnabled {
+		return newServiceError(errcode.ErrPermissionDenied, "当前租户无权访问该嵌入审核任务")
+	}
+	if model.IsEmbedTrigger(log.TriggerSource) && log.TriggerDetail != "personal_embed_manual" {
+		return nil
+	}
+	userID, err := resolveUser()
+	if err != nil {
+		return err
+	}
+	if userID == uuid.Nil || userID != log.UserID {
+		return newServiceError(errcode.ErrPermissionDenied, "当前 OA 操作人无权访问该个人审核任务")
+	}
+	return nil
+}

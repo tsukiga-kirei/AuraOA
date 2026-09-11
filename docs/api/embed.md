@@ -381,3 +381,10 @@ Cron；服务启动时从该表恢复全部活跃任务。因此配置开启、�
 如果普通审批被策略过滤且未调用 AI，不会新增审核/总结执行日志或 LLM 日志。
 
 详细部署步骤见 [02-embed-audit-sidebar.md](../oa-configurations/02-embed-audit-sidebar.md) 与 [03-embed-process-summary.md](../oa-configurations/03-embed-process-summary.md)。
+
+### 审核任务读取权限
+
+`GET /api/embed/jobs/:id` 与 `GET /api/embed/stream/:id` 使用相同的嵌入权限规则：
+- 通用嵌入审核：校验租户令牌、任务租户及流程配置的启用/嵌入开关，不依赖前台 JWT 或后台执行账号的 OA 待办身份。
+- 个人定制审核（含复用本人系统内正在运行的任务）：另需提供 `X-Embed-OA-User-ID`，或兼容查询参数 `oa_user_id` / `oa_current_user_id`，解析出的租户内用户必须是任务所有者。
+- 不能通过嵌入任务接口读取其他租户或其他人的个人任务。前台 `/api/audit/jobs/:id` 和 `/api/audit/stream/:id` 保持个人权限校验。
