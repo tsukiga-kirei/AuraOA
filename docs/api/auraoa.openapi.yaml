@@ -6177,6 +6177,7 @@ paths:
               $ref: '#/components/schemas/EmbedRefreshEventRequest'
   /api/embed/context:
     get:
+      description: 个人视角仅在配置与已发布通用配置存在实际生效差异，或本人已有有效审核结果、运行中任务时返回；仅保存过覆盖值不构成个人定制。
       summary: 获取嵌入审核上下文
       tags:
       - Embed

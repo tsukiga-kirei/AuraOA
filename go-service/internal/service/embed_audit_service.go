@@ -182,9 +182,13 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 	if oaUserID != "" {
 		personalUser, _ := s.resolveOAUser(c.Request.Context(), tenantID, adapter, oaUserID)
 		if personalUser != nil {
-			hasCustom := s.hasUserCustomizedAudit(c, tenantID, personalUser.ID, config.ID, summary.ProcessType)
+			hasCustom, customErr := s.hasUserCustomizedAudit(c, tenantID, personalUser.ID, config, effectiveRules, summary.ProcessType)
+			if customErr != nil {
+				return nil, newServiceError(errcode.ErrNoProcessConfig, "比较个人审核配置失败: "+customErr.Error())
+			}
 			personalLog, _ := s.auditLogRepo.GetLatestValidByProcessIDAndUser(c, processID, personalUser.ID)
-			if hasCustom || personalLog != nil {
+			personalRunning, _ := s.auditLogRepo.GetRunningByProcessIDAndUser(c, processID, personalUser.ID)
+			if hasCustom || personalLog != nil || personalRunning != nil {
 				personalView = &EmbedPersonalView{
 					Available:   true,
 					UserID:      personalUser.ID.String(),
@@ -192,13 +196,11 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 					DisplayName: personalUser.DisplayName,
 				}
 				// 检查该用户是否有正在运行的任务
-				personalRunning, _ := s.auditLogRepo.GetRunningByProcessIDAndUser(c, processID, personalUser.ID)
 				if personalRunning != nil {
 					personalView.RunningJobID = personalRunning.ID.String()
 					personalView.AuditResult = buildAuditResultFromLog(personalRunning)
 					personalView.HasAudit = true
 				} else {
-					personalLog, _ := s.auditLogRepo.GetLatestValidByProcessIDAndUser(c, processID, personalUser.ID)
 					if personalLog != nil {
 						personalView.HasAudit = true
 						personalView.LastAuditAt = apptime.FormatRFC3339(personalLog.UpdatedAt)
@@ -317,27 +319,37 @@ func (s *AuditExecuteService) resolveOAUser(ctx context.Context, tenantID uuid.U
 	return &user, nil
 }
 
-// hasUserCustomizedAudit 检查指定用户是否对当前流程配置了个性化规则、字段或严格度。
-func (s *AuditExecuteService) hasUserCustomizedAudit(c *gin.Context, tenantID, userID, configID uuid.UUID, processType string) bool {
+// hasUserCustomizedAudit 仅将相对已发布通用配置的生效差异视为个人定制。
+func (s *AuditExecuteService) hasUserCustomizedAudit(c *gin.Context, tenantID, userID uuid.UUID, config *model.ProcessAuditConfig, rules []model.AuditRule, processType string) (bool, error) {
 	userCfg, err := s.userConfigRepo.GetByTenantAndUser(c, tenantID, userID)
 	if err != nil || userCfg == nil {
-		return false
+		return false, nil
 	}
 	var items []model.AuditDetailItem
 	if err := json.Unmarshal(userCfg.AuditDetails, &items); err != nil {
-		return false
+		return false, nil
 	}
-	for _, item := range items {
-		if item.ProcessType == processType || (item.ConfigID != uuid.Nil && item.ConfigID == configID) {
-			if len(item.RuleConfig.CustomRules) > 0 ||
-				len(item.RuleConfig.RuleToggleOverrides) > 0 ||
-				len(item.FieldConfig.FieldOverrides) > 0 ||
-				item.AIConfig.StrictnessOverride != "" {
-				return true
-			}
+	for i := range items {
+		if items[i].ProcessType == processType || (items[i].ConfigID != uuid.Nil && items[i].ConfigID == config.ID) {
+			return s.hasEffectiveAuditCustomization(config, rules, &items[i])
 		}
 	}
-	return false
+	return false, nil
+}
+
+// hasEffectiveAuditCustomization 比较最终字段、规则与 AI 配置，忽略保存记录及版本号。
+func (s *AuditExecuteService) hasEffectiveAuditCustomization(config *model.ProcessAuditConfig, rules []model.AuditRule, detail *model.AuditDetailItem) (bool, error) {
+	baseFields, baseText, baseRules, baseAI, _, err := s.resolveAuditUserDetail(config, rules, nil)
+	if err != nil {
+		return false, err
+	}
+	fields, text, effectiveRules, aiConfig, _, err := s.resolveAuditUserDetail(config, rules, detail)
+	if err != nil {
+		return false, err
+	}
+	base := AuditExecutionConfigSnapshot{FieldSet: baseFields, MergedRules: baseText, EffectiveRules: baseRules, AIConfig: baseAI}
+	personal := AuditExecutionConfigSnapshot{FieldSet: fields, MergedRules: text, EffectiveRules: effectiveRules, AIConfig: aiConfig}
+	return stableJSONFingerprint(base) != stableJSONFingerprint(personal), nil
 }
 
 // ExecuteEmbed 嵌入页发起审核（自动或手动重新审核）。

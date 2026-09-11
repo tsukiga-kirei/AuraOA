@@ -2533,14 +2533,6 @@ func (s *AuditExecuteService) resolveUserConfig(
 		return nil, "", nil, nil, 0, err
 	}
 
-	// 解析租户权限配置
-	var perms model.UserPermissionsData
-	if err := json.Unmarshal(config.UserPermissions, &perms); err != nil {
-		perms = model.UserPermissionsData{
-			AllowCustomFields: true, AllowCustomRules: true, AllowModifyStrictness: true,
-		}
-	}
-
 	// 获取用户个人配置
 	var userDetail *model.AuditDetailItem
 	userCfg, _ := s.userConfigRepo.GetByUserID(c, userID)
@@ -2552,6 +2544,23 @@ func (s *AuditExecuteService) resolveUserConfig(
 				userDetail = &items[i]
 				break
 			}
+		}
+	}
+
+	return s.resolveAuditUserDetail(config, tenantRules, userDetail)
+}
+
+// resolveAuditUserDetail 统一计算执行与嵌入入口判断使用的生效配置。
+func (s *AuditExecuteService) resolveAuditUserDetail(
+	config *model.ProcessAuditConfig,
+	tenantRules []model.AuditRule,
+	userDetail *model.AuditDetailItem,
+) (SelectedFieldSet, string, []model.AuditRule, datatypes.JSON, int, error) {
+	// 解析租户权限配置
+	var perms model.UserPermissionsData
+	if err := json.Unmarshal(config.UserPermissions, &perms); err != nil {
+		perms = model.UserPermissionsData{
+			AllowCustomFields: true, AllowCustomRules: true, AllowModifyStrictness: true,
 		}
 	}
 
