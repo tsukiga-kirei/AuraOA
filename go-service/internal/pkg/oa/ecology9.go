@@ -2236,6 +2236,35 @@ func (a *Ecology9Adapter) ResolveUsernameByOAUserID(ctx context.Context, oaUserI
 	return strings.TrimSpace(loginid), nil
 }
 
+// ResolveUserDisplayNameByOAUserID 根据泛微 E9 人员数值 ID 反查用户姓名，优先返回真实姓名（hrmresource.lastname），若为空则回退到登录账号（loginid）。
+func (a *Ecology9Adapter) ResolveUserDisplayNameByOAUserID(ctx context.Context, oaUserID string) (string, error) {
+	trimmed := strings.TrimSpace(oaUserID)
+	if trimmed == "" {
+		return "", fmt.Errorf("oa_user_id 不能为空")
+	}
+	intID, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("无效的泛微人员ID: %s", trimmed)
+	}
+
+	var row struct {
+		Lastname string `gorm:"column:lastname"`
+		Loginid  string `gorm:"column:loginid"`
+	}
+	err = a.db.WithContext(ctx).
+		Table(a.tableName("hrmresource")).
+		Select(fmt.Sprintf("%s, %s", a.col("lastname"), a.col("loginid"))).
+		Where(a.col("id")+" = ?", intID).
+		Scan(&row).Error
+	if err != nil {
+		return "", fmt.Errorf("未在 OA 中找到人员 ID 为 '%d' 的用户: %w", intID, err)
+	}
+	if name := strings.TrimSpace(row.Lastname); name != "" {
+		return name, nil
+	}
+	return strings.TrimSpace(row.Loginid), nil
+}
+
 // ── FetchTodoList ──────────────────────────────────────────
 
 // FetchTodoList 拉取用户在泛微 E9 中的待审批流程列表。

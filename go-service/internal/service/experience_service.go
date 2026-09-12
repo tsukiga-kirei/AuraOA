@@ -43,7 +43,8 @@ func (s *ExperienceService) auditAccess(c *gin.Context, id uuid.UUID) (*model.Au
 }
 
 // viewer 只使用 OA 父页传入并经 OA 解析的人员身份，绝不使用嵌入后台执行账号署名。
-func (s *ExperienceService) viewer(c *gin.Context) (string, string, error) {
+// 返回: oaUserID, loginUsername, displayName, error
+func (s *ExperienceService) viewer(c *gin.Context) (string, string, string, error) {
 	id := strings.TrimSpace(c.GetHeader("X-Embed-OA-User-ID"))
 	if id == "" {
 		id = strings.TrimSpace(c.Query("oa_user_id"))
@@ -52,21 +53,37 @@ func (s *ExperienceService) viewer(c *gin.Context) (string, string, error) {
 		id = strings.TrimSpace(c.Query("oa_current_user_id"))
 	}
 	if id == "" || utf8.RuneCountInString(id) > 128 {
-		return "", "", newServiceError(errcode.ErrPermissionDenied, "未识别到 OA 操作人，请从 OA 流程页面重新打开")
+		return "", "", "", newServiceError(errcode.ErrPermissionDenied, "未识别到 OA 操作人，请从 OA 流程页面重新打开")
 	}
 	tenantID, err := uuid.Parse(c.GetString("tenant_id"))
 	if err != nil {
-		return "", "", newServiceError(errcode.ErrPermissionDenied, "缺少租户上下文")
+		return "", "", "", newServiceError(errcode.ErrPermissionDenied, "缺少租户上下文")
 	}
 	adapter, err := s.audit.getOAAdapter(c.Request.Context(), tenantID)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	username, err := adapter.ResolveUsernameByOAUserID(c.Request.Context(), id)
 	if err != nil || strings.TrimSpace(username) == "" {
-		return "", "", newServiceError(errcode.ErrPermissionDenied, "无法识别 OA 操作人")
+		return "", "", "", newServiceError(errcode.ErrPermissionDenied, "无法识别 OA 操作人")
 	}
-	return id, username, nil
+
+	displayName, _ := adapter.ResolveUserDisplayNameByOAUserID(c.Request.Context(), id)
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" || displayName == username {
+		var localUser model.User
+		if err := s.audit.db.WithContext(c.Request.Context()).
+			Table("users").
+			Joins("JOIN org_members ON org_members.user_id = users.id").
+			Where("org_members.tenant_id = ? AND users.username = ? AND users.status = 'active'", tenantID, username).
+			First(&localUser).Error; err == nil && strings.TrimSpace(localUser.DisplayName) != "" {
+			displayName = strings.TrimSpace(localUser.DisplayName)
+		}
+	}
+	if displayName == "" {
+		displayName = username
+	}
+	return id, username, displayName, nil
 }
 
 // Interactions 获取有权访问的审核互动；匿名嵌入访问可只读。
@@ -74,7 +91,7 @@ func (s *ExperienceService) Interactions(c *gin.Context, id uuid.UUID, q dto.Exp
 	if _, err := s.auditAccess(c, id); err != nil {
 		return nil, err
 	}
-	oaID, _, identityErr := s.viewer(c)
+	oaID, _, _, identityErr := s.viewer(c)
 	out, err := s.repo.Interactions(c, id, q)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "读取审核互动失败")
@@ -99,11 +116,11 @@ func (s *ExperienceService) Comment(c *gin.Context, id uuid.UUID, req dto.AuditC
 	if log.Status != model.JobStatusCompleted {
 		return nil, newServiceError(errcode.ErrParamValidation, "审核完成后才能评论")
 	}
-	oaID, username, err := s.viewer(c)
+	oaID, _, displayName, err := s.viewer(c)
 	if err != nil {
 		return nil, err
 	}
-	row := &model.AuditComment{ID: uuid.New(), TenantID: log.TenantID, AuditLogID: id, OAUserID: oaID, Username: username, Content: content, Feedback: req.Feedback, CreatedAt: apptime.Now(), UpdatedAt: apptime.Now(), CanManage: true}
+	row := &model.AuditComment{ID: uuid.New(), TenantID: log.TenantID, AuditLogID: id, OAUserID: oaID, Username: displayName, Content: content, Feedback: req.Feedback, CreatedAt: apptime.Now(), UpdatedAt: apptime.Now(), CanManage: true}
 	if err = s.repo.CreateComment(c, row); err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "保存评论失败")
 	}
@@ -152,7 +169,7 @@ func (s *ExperienceService) ManageComment(c *gin.Context, auditID, commentID uui
 	if _, err := s.auditAccess(c, auditID); err != nil {
 		return err
 	}
-	oaID, _, err := s.viewer(c)
+	oaID, _, _, err := s.viewer(c)
 	if err != nil {
 		return err
 	}

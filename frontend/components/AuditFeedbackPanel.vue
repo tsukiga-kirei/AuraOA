@@ -82,7 +82,7 @@ function changePage(value: number) { page.value = value; void load() }
       <p v-if="!data?.items.length" class="comment-empty">{{ t('experience.commentEmpty') }}</p>
       <div v-else class="comment-thread" aria-live="polite">
         <article v-for="item in data.items" :key="item.id" class="comment-item">
-          <span class="comment-avatar">{{ item.username.slice(0, 1).toUpperCase() }}</span>
+          <span class="comment-avatar">{{ (item.username || '').slice(0, 1).toUpperCase() }}</span>
           <div class="comment-body"><div class="comment-meta"><strong>{{ item.username }}</strong><time>{{ formatDateTimeInAppZone(item.created_at) }}</time></div><a-tag v-if="item.feedback" :color="item.feedback === 'like' ? 'success' : 'warning'">{{ t(item.feedback === 'like' ? 'experience.agree' : 'experience.disagree') }}</a-tag><p v-if="item.content">{{ item.content }}</p>
             <div v-if="item.can_manage" class="comment-actions">
               <a-button type="text" size="small" :disabled="saving" @click="startEdit(item)"><EditOutlined />{{ t('experience.edit') }}</a-button>
