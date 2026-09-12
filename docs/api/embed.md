@@ -403,12 +403,12 @@ Cron；服务启动时从该表恢复全部活跃任务。因此配置开启、�
 | POST | /api/embed/audits/:id/comments | `{ "content": "建议补充发票校验说明", "feedback": "dislike" }`，返回新增评论 |
 
 以上 Go 接口均使用 `X-Embed-Token`，Nuxt 同路径代理解包 data。读写继承 `/jobs/:id` 的租户、流程配置与个人任务权限校验。
-写入要求 `X-Embed-OA-User-ID`（兼容 oa_user_id / oa_current_user_id 查询参数），经 OAAdapter 解析为真实 OA 登录名；标准审核评论无需该人员已在 AuraOA 注册。
+写入要求 `X-Embed-OA-User-ID`（兼容 oa_user_id / oa_current_user_id 查询参数），经 OAAdapter 解析为用户真实姓名（优先取 OA `lastname` 或本地 `display_name`，为空回退至 `loginid`）；标准审核评论无需该人员已在 AuraOA 注册。
 未提供或无法解析 OA 人员时，标准审核仍可只读，`can_interact=false`。不使用租户管理员执行账号作为评论人。
 人员身份沿用既有嵌入信任边界：租户共享令牌授权的 OA 父页提供人员 ID，不等同于独立用户 JWT 登录。
 
 互动响应：`{items:[],total:0,page:1,page_size:20,like_count:0,dislike_count:0,can_interact:false}`。
-评论字段：`id`、`audit_log_id`、`oa_user_id`、`username`、`content`、`feedback`（like/dislike/null）、`created_at`。按创建时间及 ID 正序分页。
+评论字段：`id`、`audit_log_id`、`oa_user_id`、`username`（作者姓名快照，优先真实姓名，缺省为登录账号）、`content`、`feedback`（like/dislike/null）、`created_at`。按创建时间及 ID 正序分页。
 计数按评论条数统计，满意度不表示对审核结论的赞成或反对。重新审核不会把旧批次评论移到新批次。
 评论去除首尾空白后须为 1–2000 字，按纯文本保存与展示；不得只提交满意度而无评论正文。
 读取失败显示重试入口，提交失败保留正文和满意度；管理员在 [用户体验优化](./experience.md) 收集查看。

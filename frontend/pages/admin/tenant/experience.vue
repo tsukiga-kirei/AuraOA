@@ -1,5 +1,15 @@
-<script setup lang="ts">
-import { SafetyCertificateOutlined, RobotOutlined, MessageOutlined, LikeOutlined, DislikeOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons-vue'
+import {
+  SafetyCertificateOutlined,
+  RobotOutlined,
+  MessageOutlined,
+  LikeOutlined,
+  DislikeOutlined,
+  ReloadOutlined,
+  EyeOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  InfoCircleOutlined,
+} from '@ant-design/icons-vue'
 import type { AuditExperienceItem, AgentExperienceItem, AuditExperienceDetail, ExperienceQuery } from '~/types/experience'
 import type { ChatMessageItem } from '~/types/chat'
 import { renderSafeMarkdown } from '~/utils/markdown'
@@ -9,6 +19,19 @@ definePageMeta({ middleware: 'auth', layout: 'default' })
 const { t } = useI18n()
 const api = useExperienceApi()
 const { getTenantSessionMessages } = useAdminDataApi()
+
+const recommendationConfig = computed<Record<string, { color: string; bg: string; icon: any; label: string }>>(() => ({
+  approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
+  return: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: t('dashboard.rec.return') },
+  review: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: EyeOutlined, label: t('dashboard.rec.review') },
+}))
+
+const getScoreColorConfig = (score: number | undefined) => {
+  if (score === undefined || score === null) return { color: 'var(--color-info)', bg: 'var(--color-info-bg)' }
+  if (score < 60) return { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)' }
+  if (score > 80) return { color: 'var(--color-success)', bg: 'var(--color-success-bg)' }
+  return { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' }
+}
 const tab = ref<'audit' | 'agents'>('audit')
 const keyword = ref('')
 const search = ref('')
@@ -110,19 +133,127 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
       <a-spin :spinning="detailLoading">
         <a-alert v-if="detailError" type="error" show-icon :message="t('experience.loadError')"><template #action><a-button @click="loadDetail">{{ t('experience.retry') }}</a-button></template></a-alert>
         <template v-else-if="detailKind === 'audit' && detail">
-          <div class="detail-summary"><SafetyCertificateOutlined /><strong>{{ t('experience.originalAudit') }}</strong><span>{{ detail.audit_result.process_id }}</span></div>
-          <div class="audit-result">
-            <a-tag>{{ t(`dashboard.rec.${detail.audit_result.recommendation || 'review'}`) }}</a-tag>
-            <span>{{ t('dashboard.overallScore') }} {{ detail.audit_result.overall_score }}</span>
-            <div v-for="(rule, index) in detail.audit_result.rule_results" :key="index" class="audit-rule"><strong>{{ rule.rule_content }}</strong><p>{{ rule.reason }}</p></div>
-            <div v-if="detail.audit_result.risk_points?.length"><strong>{{ t('dashboard.riskPoints') }}</strong><ul><li v-for="(risk, index) in detail.audit_result.risk_points" :key="index">{{ risk }}</li></ul></div>
-            <div v-if="detail.audit_result.suggestions?.length"><strong>{{ t('dashboard.suggestions') }}</strong><ul><li v-for="(suggestion, index) in detail.audit_result.suggestions" :key="index">{{ suggestion }}</li></ul></div>
-            <AiMarkdownStream v-if="detail.audit_result.ai_reasoning" :text="detail.audit_result.ai_reasoning" :title="t('dashboard.aiReasoning')" max-height="320px" />
+          <div class="detail-summary">
+            <SafetyCertificateOutlined class="summary-icon" />
+            <strong>{{ t('experience.originalAudit') }}</strong>
+            <span class="process-id-badge">{{ detail.audit_result.process_id }}</span>
           </div>
-          <div class="detail-summary"><MessageOutlined /><strong>{{ t('experience.comments') }}</strong><div class="interaction-counts"><span class="positive"><LikeOutlined />{{ detail.interactions.like_count }}</span><span class="negative"><DislikeOutlined />{{ detail.interactions.dislike_count }}</span></div></div>
+          <div class="audit-result-container">
+            <!-- 审核结论横幅 -->
+            <div
+              class="result-banner"
+              :style="{
+                background: getScoreColorConfig(detail.audit_result.overall_score)?.bg,
+                borderColor: getScoreColorConfig(detail.audit_result.overall_score)?.color,
+              }"
+            >
+              <component
+                :is="recommendationConfig[detail.audit_result.recommendation || 'review']?.icon"
+                class="result-banner-icon"
+                :style="{ color: getScoreColorConfig(detail.audit_result.overall_score)?.color }"
+              />
+              <div class="result-banner-info">
+                <div
+                  class="result-banner-title"
+                  :style="{ color: getScoreColorConfig(detail.audit_result.overall_score)?.color }"
+                >
+                  {{ recommendationConfig[detail.audit_result.recommendation || 'review']?.label }}
+                </div>
+                <div class="result-banner-meta">
+                  {{ t('dashboard.overallScore') }} {{ detail.audit_result.overall_score }}{{ t('dashboard.points') }}
+                  <template v-if="detail.audit_result.confidence">
+                    · {{ t('dashboard.confidence') }} {{ detail.audit_result.confidence }}%
+                  </template>
+                  <template v-if="detail.audit_result.duration_ms">
+                    · {{ t('dashboard.duration') }} {{ (detail.audit_result.duration_ms / 1000).toFixed(1) }}s
+                  </template>
+                </div>
+              </div>
+              <div
+                class="result-score"
+                :style="{ color: getScoreColorConfig(detail.audit_result.overall_score)?.color }"
+              >
+                {{ detail.audit_result.overall_score }}
+              </div>
+            </div>
+
+            <!-- 规则校验列表 -->
+            <div v-if="detail.audit_result.rule_results?.length" class="result-section">
+              <h4 class="result-section-title">{{ t('dashboard.ruleCheckDetail') }}</h4>
+              <div class="rule-checks">
+                <div
+                  v-for="(rule, idx) in detail.audit_result.rule_results"
+                  :key="idx"
+                  class="rule-check-item"
+                  :class="{ 'rule-check-item--pass': rule.passed, 'rule-check-item--fail': !rule.passed }"
+                >
+                  <div class="rule-check-status">
+                    <CheckCircleOutlined v-if="rule.passed" style="color: var(--color-success);" />
+                    <CloseCircleOutlined v-else style="color: var(--color-danger);" />
+                  </div>
+                  <div class="rule-check-content">
+                    <div class="rule-check-name">{{ rule.rule_content }}</div>
+                    <div class="rule-check-reasoning">{{ rule.reason }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 风险点 & 改进建议 -->
+            <div v-if="detail.audit_result.risk_points?.length || detail.audit_result.suggestions?.length" class="risk-suggest-row">
+              <div v-if="detail.audit_result.risk_points?.length" class="insight-card insight-card--risk">
+                <div class="insight-card-header">
+                  <CloseCircleOutlined style="color: var(--color-danger);" />
+                  <span>{{ t('dashboard.riskPoints') }}</span>
+                </div>
+                <ul class="insight-card-list">
+                  <li v-for="(rp, i) in detail.audit_result.risk_points" :key="i">{{ rp }}</li>
+                </ul>
+              </div>
+              <div v-if="detail.audit_result.suggestions?.length" class="insight-card insight-card--suggest">
+                <div class="insight-card-header">
+                  <InfoCircleOutlined style="color: var(--color-primary);" />
+                  <span>{{ t('dashboard.suggestions') }}</span>
+                </div>
+                <ul class="insight-card-list">
+                  <li v-for="(sg, i) in detail.audit_result.suggestions" :key="i">{{ sg }}</li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- AI 推理过程 -->
+            <AiMarkdownStream
+              v-if="detail.audit_result.ai_reasoning"
+              :text="detail.audit_result.ai_reasoning"
+              :title="t('dashboard.aiReasoning')"
+              max-height="320px"
+            />
+          </div>
+
+          <!-- 评论区域 -->
+          <div class="detail-summary">
+            <MessageOutlined class="summary-icon" />
+            <strong>{{ t('experience.comments') }}</strong>
+            <div class="interaction-counts">
+              <span class="positive"><LikeOutlined />{{ detail.interactions.like_count }}</span>
+              <span class="negative"><DislikeOutlined />{{ detail.interactions.dislike_count }}</span>
+            </div>
+          </div>
           <a-empty v-if="!detail.interactions.items.length" :description="t('experience.noComments')" />
-          <article v-for="item in detail.interactions.items" :key="item.id" class="detail-message"><div class="message-meta"><strong>{{ item.username }}</strong><time>{{ formatDateTimeInAppZone(item.created_at) }}</time></div><a-tag v-if="item.feedback" :color="item.feedback === 'like' ? 'success' : 'warning'">{{ t(item.feedback === 'like' ? 'experience.agree' : 'experience.disagree') }}</a-tag><p v-if="item.content" class="plain-content">{{ item.content }}</p></article>
-          <div v-if="detail.interactions.total > 20" class="pagination-wrapper"><a-pagination :current="commentPage" :page-size="20" :total="detail.interactions.total" :show-size-changer="false" @change="changeCommentPage" /></div>
+          <article v-for="item in detail.interactions.items" :key="item.id" class="detail-message">
+            <div class="message-meta">
+              <span class="user-avatar-badge">{{ (item.username || '').slice(0, 1).toUpperCase() }}</span>
+              <strong>{{ item.username }}</strong>
+              <time>{{ formatDateTimeInAppZone(item.created_at) }}</time>
+              <a-tag v-if="item.feedback" :color="item.feedback === 'like' ? 'success' : 'warning'">
+                {{ t(item.feedback === 'like' ? 'experience.agree' : 'experience.disagree') }}
+              </a-tag>
+            </div>
+            <p v-if="item.content" class="plain-content">{{ item.content }}</p>
+          </article>
+          <div v-if="detail.interactions.total > 20" class="pagination-wrapper">
+            <a-pagination :current="commentPage" :page-size="20" :total="detail.interactions.total" :show-size-changer="false" @change="changeCommentPage" />
+          </div>
         </template>
         <template v-else-if="detailKind === 'agents'">
           <p class="subject-meta">{{ t('experience.chatContext') }}</p>
@@ -162,13 +293,74 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
 .interaction-counts span { display: inline-flex; align-items: center; gap: 6px; }
 .positive { color: var(--color-success); }.negative { color: var(--color-warning); }
 .pagination-wrapper { display: flex; justify-content: flex-end; margin-top: 24px; }
-.detail-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 18px; color: var(--color-text-primary); }
+.detail-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 16px; color: var(--color-text-primary); }
+.summary-icon { font-size: 16px; color: var(--color-primary); }
+.process-id-badge {
+  display: inline-flex; align-items: center; padding: 2px 8px;
+  background: var(--color-bg-hover); border-radius: 4px;
+  font-size: 12px; font-family: monospace; color: var(--color-text-secondary);
+}
 .detail-summary > span:last-child { font-size: 12px; color: var(--color-text-tertiary); }
-.audit-result, .detail-message { border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 18px; background: var(--color-bg-card); color: var(--color-text-primary); }
-.audit-rule { padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--color-border-light); }.audit-rule p { margin: 6px 0 0; color: var(--color-text-secondary); }
+
+/* 审核结论容器 */
+.audit-result-container {
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 24px;
+  background: var(--color-bg-card);
+}
+
+/* 结果横幅 */
+.result-banner {
+  display: flex; align-items: center; padding: 14px 18px;
+  border-radius: var(--radius-md); border-left: 4px solid; margin-bottom: 20px; gap: 12px;
+}
+.result-banner-icon { font-size: 26px; flex-shrink: 0; }
+.result-banner-info { flex: 1; min-width: 0; }
+.result-banner-title { font-size: 15px; font-weight: 700; line-height: 1.4; }
+.result-banner-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+.result-score { font-size: 32px; font-weight: 800; line-height: 1; flex-shrink: 0; }
+
+/* 规则校验 */
+.result-section { margin-bottom: 20px; }
+.result-section-title { font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 10px; }
+.rule-checks { display: flex; flex-direction: column; gap: 8px; }
+.rule-check-item {
+  display: flex; gap: 10px; padding: 10px 14px;
+  border-radius: var(--radius-md); border: 1px solid var(--color-border-light);
+  background: var(--color-bg-card); transition: background var(--transition-fast);
+}
+.rule-check-item:hover { background: var(--color-bg-hover); }
+.rule-check-item--pass { border-left: 3px solid var(--color-success); }
+.rule-check-item--fail { border-left: 3px solid var(--color-danger); background: var(--color-danger-bg); }
+.rule-check-status { font-size: 16px; flex-shrink: 0; padding-top: 1px; }
+.rule-check-content { flex: 1; min-width: 0; }
+.rule-check-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 4px; line-height: 1.4; }
+.rule-check-reasoning { font-size: 12px; color: var(--color-text-secondary); line-height: 1.6; }
+
+/* 风险 + 建议 */
+.risk-suggest-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+.risk-suggest-row:has(.insight-card:only-child) { grid-template-columns: 1fr; }
+.insight-card { border-radius: var(--radius-md); padding: 14px; border: 1px solid var(--color-border-light); }
+.insight-card--risk { background: linear-gradient(135deg, rgba(239, 68, 68, 0.04), rgba(239, 68, 68, 0.01)); border-color: rgba(239, 68, 68, 0.18); }
+.insight-card--suggest { background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 4%, transparent), color-mix(in srgb, var(--color-primary) 1%, transparent)); border-color: color-mix(in srgb, var(--color-primary) 18%, transparent); }
+.insight-card-header { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 8px; }
+.insight-card-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.insight-card-list li { font-size: 12px; line-height: 1.6; color: var(--color-text-secondary); }
+.insight-card--risk .insight-card-list li { color: var(--color-danger); }
+
+/* 评论卡片与头像 */
+.detail-message { border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 18px; background: var(--color-bg-card); color: var(--color-text-primary); }
+.user-avatar-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 6px;
+  background: var(--color-primary-bg); color: var(--color-primary);
+  font-size: 12px; font-weight: 600; flex-shrink: 0;
+}
 .detail-message.highlighted { border-color: var(--color-primary); background: var(--color-primary-bg); }.user-message { background: var(--color-bg-hover); }
 .message-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; font-size: 12px; }.message-meta time { color: var(--color-text-tertiary); }
 .plain-content { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; margin: 10px 0 0; }.message-feedback { border-top: 1px solid var(--color-border-light); padding-top: 12px; margin-top: 14px; }
 .markdown-content { line-height: 1.8; overflow-wrap: anywhere; }.markdown-content :deep(pre) { overflow-x: auto; }.markdown-content :deep(img) { max-width: 100%; }
-@media (max-width: 640px) { .experience-card { padding: 16px; }.filter-bar > * { width: 100%; }.pagination-wrapper { overflow-x: auto; justify-content: flex-start; } }
+@media (max-width: 640px) { .experience-card { padding: 16px; }.filter-bar > * { width: 100%; }.pagination-wrapper { overflow-x: auto; justify-content: flex-start; }.risk-suggest-row { grid-template-columns: 1fr; } }
 </style>

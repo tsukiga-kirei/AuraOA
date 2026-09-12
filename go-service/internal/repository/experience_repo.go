@@ -55,6 +55,33 @@ func (r *ExperienceRepo) Interactions(c *gin.Context, id uuid.UUID, q dto.Experi
 	if err := query.Order("created_at ASC, id ASC").Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Find(&out.Items).Error; err != nil {
 		return nil, err
 	}
+	if len(out.Items) > 0 {
+		var usernames []string
+		for _, item := range out.Items {
+			if item.Username != "" {
+				usernames = append(usernames, item.Username)
+			}
+		}
+		if len(usernames) > 0 {
+			var users []struct {
+				Username    string `gorm:"column:username"`
+				DisplayName string `gorm:"column:display_name"`
+			}
+			_ = r.WithTenant(c).Table("users").
+				Joins("JOIN org_members ON org_members.user_id = users.id").
+				Where("users.username IN ? AND users.display_name <> ''", usernames).
+				Scan(&users).Error
+			nameMap := make(map[string]string)
+			for _, u := range users {
+				nameMap[u.Username] = u.DisplayName
+			}
+			for i := range out.Items {
+				if disp, ok := nameMap[out.Items[i].Username]; ok && disp != "" {
+					out.Items[i].Username = disp
+				}
+			}
+		}
+	}
 	var counts struct {
 		Likes    int64
 		Dislikes int64
