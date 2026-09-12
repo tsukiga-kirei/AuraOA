@@ -391,3 +391,33 @@ Cron；服务启动时从该表恢复全部活跃任务。因此配置开启、�
 - 通用嵌入审核：校验租户令牌、任务租户及流程配置的启用/嵌入开关，不依赖前台 JWT 或后台执行账号的 OA 待办身份。
 - 个人定制审核（含复用本人系统内正在运行的任务）：另需提供 `X-Embed-OA-User-ID`，或兼容查询参数 `oa_user_id` / `oa_current_user_id`，解析出的租户内用户必须是任务所有者。
 - 不能通过嵌入任务接口读取其他租户或其他人的个人任务。前台 `/api/audit/jobs/:id` 和 `/api/audit/stream/:id` 保持个人权限校验。
+
+
+## 审核体验评论
+
+仅对已完成审核开放，按 `audit_log_id` 关联当前显示的标准/个人审核批次。评论以文字为主，每条可选附加满意度：like 表示满意，dislike 表示不满意，null 表示不评价。同一人可以连续发送多条，逐条追加，既不覆盖旧评论，也不限制每人只能提交一条。
+
+| 方法 | 路由 | 请求/响应 |
+|---|---|---|
+| GET | /api/embed/audits/:id/interactions | page 默认 1；page_size 默认 20，范围 1–100；返回分页评论和满意度计数 |
+| POST | /api/embed/audits/:id/comments | `{ "content": "建议补充发票校验说明", "feedback": "dislike" }`，返回新增评论 |
+
+以上 Go 接口均使用 `X-Embed-Token`，Nuxt 同路径代理解包 data。读写继承 `/jobs/:id` 的租户、流程配置与个人任务权限校验。
+写入要求 `X-Embed-OA-User-ID`（兼容 oa_user_id / oa_current_user_id 查询参数），经 OAAdapter 解析为真实 OA 登录名；标准审核评论无需该人员已在 AuraOA 注册。
+未提供或无法解析 OA 人员时，标准审核仍可只读，`can_interact=false`。不使用租户管理员执行账号作为评论人。
+人员身份沿用既有嵌入信任边界：租户共享令牌授权的 OA 父页提供人员 ID，不等同于独立用户 JWT 登录。
+
+互动响应：`{items:[],total:0,page:1,page_size:20,like_count:0,dislike_count:0,can_interact:false}`。
+评论字段：`id`、`audit_log_id`、`oa_user_id`、`username`、`content`、`feedback`（like/dislike/null）、`created_at`。按创建时间及 ID 正序分页。
+计数按评论条数统计，满意度不表示对审核结论的赞成或反对。重新审核不会把旧批次评论移到新批次。
+评论去除首尾空白后须为 1–2000 字，按纯文本保存与展示；不得只提交满意度而无评论正文。
+读取失败显示重试入口，提交失败保留正文和满意度；管理员在 [用户体验优化](./experience.md) 收集查看。
+
+
+评论新增 `updated_at` 与 `can_manage` 字段。嵌入列表仅对当前已识别 OA 作者返回 `can_manage=true`；该字段只控制界面入口，后端写入仍独立校验租户、审核批次和 OA 作者。
+
+- `POST /api/embed/audits/:id/comments/:comment_id/update`：完整提交 `{content, feedback}`，正文 1–2000 字；feedback 可为 like/dislike/null。只更新本人评论，保留创建时间，更新 updated_at。
+- `POST /api/embed/audits/:id/comments/:comment_id/delete`：删除本人评论，返回 `{updated:true}`。不存在或无权操作均返回权限错误，不能修改或删除他人、其他审核批次或其他租户的评论。
+- 编辑或删除后满意度计数及后台列表随实际记录重新统计；删除最后一条评论后，该审核不再出现在有互动列表。
+
+数据库迁移文件为 `000078_experience_feedback.up.sql` / `.down.sql`，接续当前 77 号迁移。

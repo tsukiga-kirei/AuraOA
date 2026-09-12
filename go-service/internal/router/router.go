@@ -45,6 +45,7 @@ func SetupRouter(
 	cacheAdminHandler *handler.CacheAdminHandler,
 	chatHandler *handler.ChatHandler,
 	agentAdminHandler *handler.AgentAdminHandler,
+	experienceHandler *handler.ExperienceHandler,
 	sysFlags *systemflags.Resolver,
 	operationAuditRepo *repository.OperationAuditLogRepo,
 	orgRepo *repository.OrgRepo,
@@ -380,6 +381,10 @@ func SetupRouter(
 	// OA 嵌入审核（固定展示页，无需用户 JWT；由嵌入令牌 + 租户编码鉴权）
 	embed := r.Group("/api/embed")
 	embed.Use(middleware.EmbedAccess(tenantRepo))
+	embed.GET("/audits/:id/interactions", experienceHandler.Interactions)
+	embed.POST("/audits/:id/comments", experienceHandler.Comment)
+	embed.POST("/audits/:id/comments/:comment_id/update", experienceHandler.UpdateComment)
+	embed.POST("/audits/:id/comments/:comment_id/delete", experienceHandler.DeleteComment)
 	{
 		embed.POST("/events", embedEventHandler.Schedule)
 		embed.GET("/context", auditHandler.GetEmbedContext)
@@ -464,6 +469,13 @@ func SetupRouter(
 		cronLogsAdmin.GET("/stats", cronTaskHandler.GetAllLogsStats)
 		cronLogsAdmin.GET("/export", cronTaskHandler.ExportAllLogs)
 	}
+
+	// 用户体验反馈管理：同时校验租户管理员身份与菜单权限。
+	experience := r.Group("/api/tenant/experience")
+	experience.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"), middleware.RequirePagePermission(orgRepo, "/admin/tenant/experience"))
+	experience.GET("/audit", experienceHandler.ListAudit)
+	experience.GET("/audit/:id", experienceHandler.AuditDetail)
+	experience.GET("/agents", experienceHandler.ListAgents)
 
 	// 租户智能体与工具管理（需要 JWT + 租户上下文 + tenant_admin 角色）
 	tenantAgents := r.Group("/api/tenant")

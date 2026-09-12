@@ -57,6 +57,7 @@ const TENANT_ITEMS: SidebarMenuItem[] = [
   { key: '/admin/tenant/rules', icon: AppstoreOutlined, labelKey: 'menu.tenant.rules' },
   { key: '/admin/tenant/agents', icon: RobotOutlined, labelKey: 'menu.tenant.agents' },
   { key: '/admin/tenant/org', icon: ApartmentOutlined, labelKey: 'menu.tenant.org' },
+  { key: '/admin/tenant/experience', icon: MessageOutlined, labelKey: 'experience.title' },
   { key: '/admin/tenant/data', icon: DatabaseOutlined, labelKey: 'menu.tenant.data' },
   { key: '/admin/tenant/user-configs', icon: SettingOutlined, labelKey: 'menu.tenant.userConfigs' },
 ]

@@ -256,7 +256,7 @@ func (s *TenantService) CreateTenant(req *dto.CreateTenantRequest) (*dto.TenantR
 	// 2. 创建默认角色
 	businessPerms := []byte(`["/overview","/dashboard","/chat","/summary","/settings"]`)
 	auditPerms := []byte(`["/overview","/dashboard","/chat","/cron","/archive","/summary","/settings"]`)
-	adminPerms := []byte(`["/overview","/dashboard","/chat","/cron","/archive","/summary","/settings","/admin/tenant/rules","/admin/tenant/agents","/admin/tenant/org","/admin/tenant/data","/admin/tenant/user-configs"]`)
+	adminPerms := []byte(`["/overview","/dashboard","/chat","/cron","/archive","/summary","/settings","/admin/tenant/rules","/admin/tenant/agents","/admin/tenant/org","/admin/tenant/data","/admin/tenant/experience","/admin/tenant/user-configs"]`)
 
 	defaultRoles := []model.OrgRole{
 		{

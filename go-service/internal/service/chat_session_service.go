@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	pkglogger "auraoa/go-service/internal/pkg/logger"
 
@@ -16,6 +18,7 @@ import (
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
+	"auraoa/go-service/internal/pkg/errcode"
 	"auraoa/go-service/internal/repository"
 )
 
@@ -318,12 +321,20 @@ func (s *ChatSessionService) StartRetentionCleanup(ctx context.Context) {
 
 // UpdateMessageFeedback 更新单条消息的点赞/点踩反馈及意见
 func (s *ChatSessionService) UpdateMessageFeedback(ctx context.Context, tenantID, userID, messageID uuid.UUID, feedback *string, comment *string) error {
-	if err := s.chatRepo.UpdateMessageFeedback(tenantID, messageID, feedback, comment); err != nil {
-		return err
+	if feedback != nil && *feedback != "like" && *feedback != "dislike" {
+		return newServiceError(errcode.ErrParamValidation, "评价无效")
+	}
+	if comment != nil && len([]rune(*comment)) > 2000 {
+		return newServiceError(errcode.ErrParamValidation, "反馈意见最多 2000 字")
+	}
+	if err := s.chatRepo.UpdateMessageFeedback(tenantID, userID, messageID, feedback, comment); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return newServiceError(errcode.ErrPermissionDenied, "消息不存在或无权评价")
+		}
+		return newServiceError(errcode.ErrDatabase, "保存消息评价失败")
 	}
 	if s.invalidator != nil {
 		_ = s.invalidator.InvalidateDashboardCache(ctx, tenantID)
 	}
 	return nil
 }
-

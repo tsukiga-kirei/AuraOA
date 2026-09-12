@@ -366,13 +366,14 @@ func main() {
 
 	chatHandler := handler.NewChatHandler(chatSessionService, agentRuntimeService)
 	agentAdminHandler := handler.NewAgentAdminHandler(agentAllocationService, mcpService)
+	experienceHandler := handler.NewExperienceHandler(service.NewExperienceService(repository.NewExperienceRepo(db), auditExecuteService))
 
 	// 第八步：配置 Gin 路由及中间件
 	r := gin.New()
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, executionConfigSourceHandler, externalContextHandler, auditHandler, archiveReviewHandler, summaryHandler, embedEventHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, chatHandler, agentAdminHandler, sysFlagsResolver, operationAuditLogRepo, orgRepo, tenantRepo)
+	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, executionConfigSourceHandler, externalContextHandler, auditHandler, archiveReviewHandler, summaryHandler, embedEventHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, chatHandler, agentAdminHandler, experienceHandler, sysFlagsResolver, operationAuditLogRepo, orgRepo, tenantRepo)
 
 	// 第九步：启动 HTTP 服务器
 	port := viper.GetInt("server.port")
