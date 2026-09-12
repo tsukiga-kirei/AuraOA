@@ -274,6 +274,7 @@ const ALL_PAGES_CONFIG: PageConfig[] = [
   { path: '/admin/tenant/rules', label: t('admin.org.page.tenantConfig'), group: 'admin' },
   { path: '/admin/tenant/agents', label: t('menu.tenant.agents'), group: 'admin' },
   { path: '/admin/tenant/org', label: t('admin.org.page.tenantOrg'), group: 'admin' },
+  { path: '/admin/tenant/experience', label: t('experience.title'), group: 'admin' },
   { path: '/admin/tenant/data', label: t('admin.org.page.tenantData'), group: 'admin' },
   { path: '/admin/tenant/user-configs', label: t('menu.tenant.userConfigs'), group: 'admin' },
 ]

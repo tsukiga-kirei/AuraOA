@@ -126,7 +126,7 @@ func (r *ChatRepo) UpdateMessage(msgID uuid.UUID, updates map[string]interface{}
 }
 
 // UpdateMessageFeedback 更新单条消息的点赞/点踩反馈及改进建议
-func (r *ChatRepo) UpdateMessageFeedback(tenantID, messageID uuid.UUID, feedback *string, comment *string) error {
+func (r *ChatRepo) UpdateMessageFeedback(tenantID, userID, messageID uuid.UUID, feedback *string, comment *string) error {
 	updates := map[string]interface{}{}
 	if feedback != nil && (*feedback == "like" || *feedback == "dislike") {
 		updates["feedback"] = feedback
@@ -142,9 +142,17 @@ func (r *ChatRepo) UpdateMessageFeedback(tenantID, messageID uuid.UUID, feedback
 		updates["feedback_at"] = nil
 		updates["feedback_comment"] = nil
 	}
-	return r.db.Model(&model.ChatMessage{}).
-		Where("tenant_id = ? AND id = ?", tenantID, messageID).
-		Updates(updates).Error
+	result := r.db.Model(&model.ChatMessage{}).
+		Where("tenant_id = ? AND id = ? AND role = 'assistant'", tenantID, messageID).
+		Where("EXISTS (SELECT 1 FROM chat_sessions s WHERE s.id = chat_messages.session_id AND s.tenant_id = chat_messages.tenant_id AND s.user_id = ?)", userID).
+		Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // ListSessionsByTenant 分页查询租户下的智能体会话明细（数据管理页使用）

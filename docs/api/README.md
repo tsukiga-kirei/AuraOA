@@ -90,6 +90,7 @@ Authorization: Bearer <access_token>
 | [AI 调用记录接口](./llm-logs.md) | `/api/tenant/llm-logs` | LLM 调用流程列表、详情、统计 |
 | [缓存管理接口](./cache.md) | `/api/admin/cache` | 缓存统计、清除、开关 |
 | [对话接口](./chat.md) | `/api/chat` | 智能体会话、SSE；需求见 [docs/agents](../agents/README.md) |
+| [用户体验优化](./experience.md) | `/api/tenant/experience` | 审核互动、智能体评价与上下文回看 |
 | [智能体与分配接口](./agents.md) | `/api/admin/tenants/:id/chat-allocation`、`/api/tenant/agents` | 系统管理员配额、租户智能体/MCP/Skills |
 
 ## 日期与展示时区

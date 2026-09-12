@@ -676,6 +676,7 @@ onBeforeUnmount(() => {
           </a-button>
         </div>
 
+        <AuditFeedbackPanel v-if="currentResult?.id && currentResult.status === 'completed' && !isAuditingActive" :key="currentResult.id" :audit-id="currentResult.id" />
       </template>
     </template>
   </div>

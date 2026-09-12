@@ -14,7 +14,7 @@
 | DELETE | /api/chat/sessions/:id | 删除本人会话及消息 |
 | POST | /api/chat/sessions/:id/messages/stream | 请求 {"content":"问题"}；返回 SSE |
 | POST | /api/chat/sessions/:id/stop | 主动中止当前会话正在执行的后台智能体任务；返回 `{stopped: true}` |
-| POST | /api/chat/messages/:id/feedback | 提交消息反馈（点赞/点踩）：请求 `{"feedback":"like" | "dislike" | null}` |
+| POST | /api/chat/messages/:id/feedback | 提交消息反馈（点赞/点踩）：请求 `{"feedback":"like" | "dislike" | null,"feedback_comment":"改进建议"}` |
 
 普通响应为 `{code:0,message:"success",data:...}`。列表 data 为 `{items:[],total:0,page:1,page_size:20}`。
 智能体字段：id、agent_code、name、description、is_system、tool_codes、quick_questions（快捷问题列表：`[{icon,title,prompt,description}]`）。
@@ -52,3 +52,5 @@ SSE 解析支持 UTF-8 分片、CRLF、跨网络包事件名及多行 data。消
 
 模型配置读取后先解密 API Key，再供对话与自动标题生成使用；备用模型解密失败时跳过该备用配置，主模型仍可正常执行。
 重新生成入口仅出现在会话最后一条失败或中断的助手回复下，加载或生成期间隐藏；点击后重新发送该轮用户问题，历史消息保留。输入框上方不再重复展示重试提示条。
+
+消息反馈只允许修改当前用户本人会话中的助手消息；非法评价返回参数错误，跨租户、其他用户或非助手消息均拒绝。feedback_comment 最多 2000 字，仅点踩时保存；点赞或取消时清除。租户管理员可在「用户体验优化 → 智能体」按评价类型筛选并回看对应聊天记录。

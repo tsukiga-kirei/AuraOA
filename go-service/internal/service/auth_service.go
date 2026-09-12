@@ -732,6 +732,7 @@ func (s *AuthService) getMenuFromOrgRoles(userID string, tenantID string, active
 		"/admin/tenant/org":          {key: "org-management", label: "组织管理"},
 		"/admin/tenant/data":         {key: "data-management", label: "数据管理"},
 		"/admin/tenant/user-configs": {key: "user-configs", label: "用户配置"},
+		"/admin/tenant/experience":   {key: "experience", label: "用户体验优化"},
 		"/admin/tenant/agents":       {key: "agent-management", label: "智能体管理"},
 		"/chat":                      {key: "chat", label: "AI 对话"},
 	}
