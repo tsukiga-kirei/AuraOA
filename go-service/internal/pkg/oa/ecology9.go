@@ -2247,22 +2247,21 @@ func (a *Ecology9Adapter) ResolveUserDisplayNameByOAUserID(ctx context.Context, 
 		return "", fmt.Errorf("无效的泛微人员ID: %s", trimmed)
 	}
 
-	var row struct {
-		Lastname string `gorm:"column:lastname"`
-		Loginid  string `gorm:"column:loginid"`
-	}
+	// 达梦/Oracle 会将未加引号的结果列名返回为大写，使用结构体 Scan 时可能因
+	// column tag 大小写不匹配而得到空值。这里按列顺序显式扫描，并兼容 OA 字段为 NULL。
+	var lastname, loginID sql.NullString
 	err = a.db.WithContext(ctx).
 		Table(a.tableName("hrmresource")).
 		Select(fmt.Sprintf("%s, %s", a.col("lastname"), a.col("loginid"))).
 		Where(a.col("id")+" = ?", intID).
-		Scan(&row).Error
+		Row().Scan(&lastname, &loginID)
 	if err != nil {
 		return "", fmt.Errorf("未在 OA 中找到人员 ID 为 '%d' 的用户: %w", intID, err)
 	}
-	if name := strings.TrimSpace(row.Lastname); name != "" {
+	if name := strings.TrimSpace(lastname.String); name != "" {
 		return name, nil
 	}
-	return strings.TrimSpace(row.Loginid), nil
+	return strings.TrimSpace(loginID.String), nil
 }
 
 // ── FetchTodoList ──────────────────────────────────────────
