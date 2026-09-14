@@ -39,7 +39,7 @@ const visibleResultBlocks = computed(() => {
   const blocks = currentResult.value?.blocks || []
   return ids.length ? blocks.filter(block => ids.includes(block.block_id)) : blocks
 })
-const streamingBlocks = ref<{ block_id: string; title: string; content: string }[]>([])
+const streamingBlocks = ref<{ block_id: string; title: string; content: string; deep_thinking?: string }[]>([])
 const eventSourceStream = ref<EventSource | null>(null)
 const streamJobId = ref('')
 const collapsedBlockIds = ref<Set<string>>(new Set())
@@ -118,7 +118,7 @@ const processStat = computed(() => {
   return null
 })
 
-const visibleStreamingBlocks = computed(() => streamingBlocks.value.filter(block => block.content))
+const visibleStreamingBlocks = computed(() => streamingBlocks.value.filter(block => block.content || block.deep_thinking))
 
 function createPendingResult(): SummaryResult {
   return {
@@ -155,7 +155,7 @@ function resetStreamingBlocks() {
 
 function appendStreamingChunk(raw: string) {
   if (!raw) return
-  let payload: { block_id?: string; title?: string; chunk?: string }
+  let payload: { block_id?: string; title?: string; chunk?: string; type?: string }
   try {
     payload = JSON.parse(raw)
   } catch {
@@ -165,12 +165,22 @@ function appendStreamingChunk(raw: string) {
   if (!chunk) return
   const key = payload.block_id || payload.title || 'legacy'
   const title = payload.title || t('embed.summary.modelResponse')
+  const isThinking = payload.type === 'thinking'
   const next = [...streamingBlocks.value]
   const existing = next.find(block => block.block_id === key)
   if (existing) {
-    existing.content += chunk
+    if (isThinking) {
+      existing.deep_thinking = (existing.deep_thinking || '') + chunk
+    } else {
+      existing.content += chunk
+    }
   } else {
-    next.push({ block_id: key, title, content: chunk })
+    next.push({
+      block_id: key,
+      title,
+      content: isThinking ? '' : chunk,
+      deep_thinking: isThinking ? chunk : '',
+    })
   }
   streamingBlocks.value = next
 }
@@ -416,7 +426,17 @@ onBeforeUnmount(() => disconnectStream())
                 <span>{{ block.title }}</span>
                 <em>{{ t('embed.summary.generatingShort') }}</em>
               </div>
+              <div v-if="block.deep_thinking" style="margin-bottom: 8px;">
+                <div style="font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                  {{ t('embed.summary.deepThinking', '深度思考过程') }}
+                </div>
+                <AiMarkdownStream
+                  :text="block.deep_thinking"
+                  max-height="160px"
+                />
+              </div>
               <AiMarkdownStream
+                v-if="block.content"
                 :text="block.content"
                 max-height="220px"
               />
@@ -449,16 +469,6 @@ onBeforeUnmount(() => disconnectStream())
                   </span>
                 </button>
                 <div v-show="!isBlockCollapsed(block, idx)" class="summary-card-body">
-                  <div v-if="block.deep_thinking" style="margin-bottom: 12px; padding: 10px; background: var(--color-bg-hover); border-radius: var(--radius-md); border-left: 3px solid var(--color-primary);">
-                    <div style="font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-                      <ThunderboltOutlined style="color: var(--color-primary);" />
-                      {{ t('embed.summary.deepThinking', '深度思考过程') }}
-                    </div>
-                    <AiMarkdownStream
-                      :text="block.deep_thinking"
-                      max-height="200px"
-                    />
-                  </div>
                   <AiMarkdownStream
                     :text="block.content"
                     max-height="300px"

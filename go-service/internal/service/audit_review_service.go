@@ -46,6 +46,12 @@ const (
 	auditProcessTimeout = 25 * time.Minute
 )
 
+// JobStreamEvent 定义异步任务流式消息事件结构（支持深度思考 thinking 与常规推理 message）
+type JobStreamEvent struct {
+	Event string `json:"event"`
+	Data  string `json:"data"`
+}
+
 // AuditExecuteService 审核执行业务逻辑：串联 OA 数据 → 提示词构建 → AI 调用 → 结果解析 → 写入日志。
 type AuditExecuteService struct {
 	auditLogRepo      *repository.AuditLogRepo
@@ -629,11 +635,19 @@ func (s *AuditExecuteService) processAuditJob(
 	}
 
 	// 注入流式回调，将增量写入 Redis 并通过 PubSub 广播
+	reasoningReq.StreamReasoningChunkFunc = func(chunk string) {
+		key := "audit:thinking:" + auditLogID.String()
+		s.rdb.Append(context.Background(), key, chunk)
+		s.rdb.Expire(context.Background(), key, 24*time.Hour)
+		payload, _ := json.Marshal(JobStreamEvent{Event: "thinking", Data: chunk})
+		s.rdb.Publish(context.Background(), "audit:stream:"+auditLogID.String(), string(payload))
+	}
 	reasoningReq.StreamChunkFunc = func(chunk string) {
 		key := "audit:reasoning:" + auditLogID.String()
 		s.rdb.Append(context.Background(), key, chunk)
 		s.rdb.Expire(context.Background(), key, 24*time.Hour)
-		s.rdb.Publish(context.Background(), "audit:stream:"+auditLogID.String(), chunk)
+		payload, _ := json.Marshal(JobStreamEvent{Event: "message", Data: chunk})
+		s.rdb.Publish(context.Background(), "audit:stream:"+auditLogID.String(), string(payload))
 	}
 	bindLLMProcessContext(reasoningReq, req.ProcessID, req.Title, auditLogID)
 
@@ -1021,24 +1035,33 @@ func (s *AuditExecuteService) GetAuditChain(c *gin.Context, processID string) ([
 }
 
 // SubscribeJobStream 获取特定流程的 SSE 流和控制句柄
-func (s *AuditExecuteService) SubscribeJobStream(c *gin.Context, id uuid.UUID) (<-chan string, func(), error) {
+func (s *AuditExecuteService) SubscribeJobStream(c *gin.Context, id uuid.UUID) (<-chan JobStreamEvent, func(), error) {
 	if _, err := s.getAccessibleAuditLog(c, id); err != nil {
 		return nil, nil, err
 	}
 	ctx := c.Request.Context()
 	pubsub := s.rdb.Subscribe(ctx, "audit:stream:"+id.String())
-	ch := make(chan string)
+	ch := make(chan JobStreamEvent, 32)
 
-	history, _ := s.rdb.Get(ctx, "audit:reasoning:"+id.String()).Result()
+	thinkingHistory, _ := s.rdb.Get(ctx, "audit:thinking:"+id.String()).Result()
+	reasoningHistory, _ := s.rdb.Get(ctx, "audit:reasoning:"+id.String()).Result()
 
 	go func() {
 		defer close(ch)
 		// 如果已有累计，则首先把累计发给前端铺底
-		if history != "" {
-			ch <- history
+		if thinkingHistory != "" {
+			ch <- JobStreamEvent{Event: "thinking", Data: thinkingHistory}
+		}
+		if reasoningHistory != "" {
+			ch <- JobStreamEvent{Event: "message", Data: reasoningHistory}
 		}
 		for msg := range pubsub.Channel() {
-			ch <- msg.Payload
+			var ev JobStreamEvent
+			if err := json.Unmarshal([]byte(msg.Payload), &ev); err == nil && ev.Event != "" {
+				ch <- ev
+			} else {
+				ch <- JobStreamEvent{Event: "message", Data: msg.Payload}
+			}
 		}
 	}()
 

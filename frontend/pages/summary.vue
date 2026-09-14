@@ -298,11 +298,6 @@ onMounted(() => {
           </div>
           <p class="result-content">{{ block.content }}</p>
           <ul v-if="block.points?.length" class="result-points"><li v-for="point in block.points" :key="point">{{ point }}</li></ul>
-          <a-collapse v-if="block.deep_thinking" ghost>
-            <a-collapse-panel key="thinking" :header="t('summary.deepThinking')">
-              <p class="thinking-content">{{ block.deep_thinking }}</p>
-            </a-collapse-panel>
-          </a-collapse>
         </section>
       </div>
       <template #extra>

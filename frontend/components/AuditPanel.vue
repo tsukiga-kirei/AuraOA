@@ -87,11 +87,8 @@ const recommendationConfig = computed(() => ({
       </div>
 
       <div v-if="result.deep_thinking" class="section">
-        <h4 class="section-title" style="display: flex; align-items: center; gap: 6px;">
-          <ThunderboltOutlined style="color: var(--color-primary);" />
-          {{ t('auditPanel.deepThinking', '深度思考过程') }}
-        </h4>
-        <div class="reasoning-block" style="border-left: 3px solid var(--color-primary);">
+        <h4 class="section-title">{{ t('auditPanel.deepThinking', '深度思考过程') }}</h4>
+        <div class="reasoning-block">
           <pre>{{ result.deep_thinking }}</pre>
         </div>
       </div>

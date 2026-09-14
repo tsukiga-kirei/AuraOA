@@ -486,9 +486,25 @@ const startSSE = (archiveLogId: string, processId: string) => {
   const url = `${String(config.public.apiBase)}/api/archive/stream/${archiveLogId}?token=${encodeURIComponent(tokenVal)}`
 
   eventSourceStream.value = new EventSource(url)
+  eventSourceStream.value.addEventListener('thinking', (event: any) => {
+    if (selectedProcess.value?.process_id !== processId || !currentResult.value) return
+    const chunk = event.data || ''
+    const existing = currentResult.value.deep_thinking || ''
+    if (!existing || chunk.startsWith(existing)) {
+      currentResult.value.deep_thinking = chunk
+    } else {
+      currentResult.value.deep_thinking = existing + chunk
+    }
+  })
   eventSourceStream.value.onmessage = (event) => {
     if (selectedProcess.value?.process_id !== processId || !currentResult.value) return
-    currentResult.value.ai_reasoning = (currentResult.value.ai_reasoning || '') + event.data
+    const chunk = event.data || ''
+    const existing = currentResult.value.ai_reasoning || ''
+    if (!existing || chunk.startsWith(existing)) {
+      currentResult.value.ai_reasoning = chunk
+    } else {
+      currentResult.value.ai_reasoning = existing + chunk
+    }
   }
   eventSourceStream.value.onerror = () => {
     disconnectStream()
@@ -1347,7 +1363,13 @@ onUnmounted(() => {
                     </div>
                   </div>
                 </a-spin>
-                <div v-if="currentResult.ai_reasoning || loading" class="result-section" style="margin-top: 16px;">
+                <div v-if="currentResult.deep_thinking" class="result-section" style="margin-top: 16px;">
+                  <h4 class="result-section-title">{{ t('dashboard.deepThinking', '深度思考过程') }}</h4>
+                  <div class="ai-reasoning">
+                    <div class="markdown-body" v-html="renderMarkdown(currentResult.deep_thinking || '')" />
+                  </div>
+                </div>
+                <div v-if="currentResult.ai_reasoning || (!currentResult.deep_thinking && loading)" class="result-section" style="margin-top: 16px;">
                   <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
                   <div class="ai-reasoning">
                     <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')" />
@@ -1504,18 +1526,15 @@ onUnmounted(() => {
 
               <!-- 深度思考过程 -->
               <div v-if="currentResult.deep_thinking" class="section-block">
-                <h4 class="section-title" style="display: flex; align-items: center; gap: 6px;">
-                  <ThunderboltOutlined style="color: var(--color-primary);" />
-                  {{ t('archive.deepThinking', '深度思考过程') }}
-                </h4>
-                <div class="ai-summary markdown-body" style="border-left: 3px solid var(--color-primary);">
+                <h4 class="section-title">{{ t('archive.deepThinking', '深度思考过程') }}</h4>
+                <div class="ai-summary markdown-body">
                   <div v-html="renderMarkdown(currentResult.deep_thinking)" />
                 </div>
               </div>
 
               <!--人工智能总结-->
               <div class="section-block">
-                <h4 class="section-title"><ThunderboltOutlined /> {{ t('archive.aiSummary') }}</h4>
+                <h4 class="section-title">{{ t('archive.aiSummary') }}</h4>
                 <div class="ai-summary markdown-body">
                   <div v-html="renderMarkdown(currentResult.ai_summary || currentResult.ai_reasoning)" />
                 </div>
@@ -1633,11 +1652,10 @@ onUnmounted(() => {
                             </div>
                           </div>
                           <!-- 深度思考过程 -->
-                          <div v-if="item.archive_result.deep_thinking || item.deep_thinking" class="chain-section-title" style="margin-top: 10px; display: flex; align-items: center; gap: 6px;">
-                            <ThunderboltOutlined style="color: var(--color-primary);" />
+                          <div v-if="item.archive_result.deep_thinking || item.deep_thinking" class="chain-section-title" style="margin-top: 10px;">
                             {{ t('archive.deepThinking', '深度思考过程') }}
                           </div>
-                          <div v-if="item.archive_result.deep_thinking || item.deep_thinking" class="chain-reasoning" style="border-left: 3px solid var(--color-primary);">
+                          <div v-if="item.archive_result.deep_thinking || item.deep_thinking" class="chain-reasoning">
                             <div class="markdown-body" v-html="renderMarkdown(item.archive_result.deep_thinking || item.deep_thinking || '')" />
                           </div>
 
