@@ -9,6 +9,7 @@ import {
   DashboardOutlined,
   DatabaseOutlined,
   DeleteOutlined,
+  DesktopOutlined,
   EditOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
@@ -2950,6 +2951,7 @@ const handleSave = async () => {
               { key: 'rules', label: t('admin.ruleConfig.tabRules'), icon: AuditOutlined },
               { key: 'ai', label: t('admin.ruleConfig.tabAI'), icon: RobotOutlined },
               { key: 'permissions', label: t('admin.ruleConfig.tabPerms'), icon: SafetyCertificateOutlined },
+              { key: 'embed', label: t('admin.ruleConfig.summaryEmbedTab'), icon: DesktopOutlined },
             ]"
             :key="tab.key"
             class="tab-btn"
@@ -3393,99 +3395,6 @@ const handleSave = async () => {
             </div>
           </div>
 
-          <div class="permissions-list audit-embed-permissions">
-          <div class="permission-item">
-            <div class="permission-info">
-              <div class="permission-label">{{ t('admin.ruleConfig.embedEnabled') }}</div>
-              <div class="permission-desc">{{ t('admin.ruleConfig.embedEnabledDesc') }}</div>
-            </div>
-            <a-switch
-              v-model:checked="selectedConfig.embed_enabled"
-              :checked-children="t('common.enabled')"
-              :un-checked-children="t('common.disabled')"
-            />
-          </div>
-          <div class="permission-item">
-            <div class="permission-info">
-              <div class="permission-label">{{ t('admin.ruleConfig.embedAuditAutoOpen') }}</div>
-              <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditAutoOpenDesc') }}</div>
-            </div>
-            <a-switch
-              v-model:checked="selectedConfig.embed_config!.auto_audit_on_open"
-              :checked-children="t('common.enabled')"
-              :un-checked-children="t('common.disabled')"
-            />
-          </div>
-          <div class="permission-item">
-            <div class="permission-info">
-              <div class="permission-label">{{ t('admin.ruleConfig.embedAuditDataChange') }}</div>
-              <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditDataChangeDesc') }}</div>
-            </div>
-            <a-switch
-              v-model:checked="selectedConfig.embed_config!.auto_audit_on_data_change"
-              :checked-children="t('common.enabled')"
-              :un-checked-children="t('common.disabled')"
-            />
-          </div>
-          <div class="permission-item">
-            <div class="permission-info">
-              <div class="permission-label">{{ t('admin.ruleConfig.embedAuditReturnResubmit') }}</div>
-              <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditReturnResubmitDesc') }}</div>
-            </div>
-            <a-switch
-              v-model:checked="selectedConfig.embed_config!.auto_audit_on_return_resubmit"
-              :checked-children="t('common.enabled')"
-              :un-checked-children="t('common.disabled')"
-            />
-          </div>
-          <div class="permission-item">
-            <div class="permission-info">
-              <div class="permission-label">{{ t('admin.ruleConfig.embedAuditFlowChange') }}</div>
-              <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditFlowChangeDesc') }}</div>
-            </div>
-            <a-switch
-              v-model:checked="selectedConfig.embed_config!.auto_audit_on_flow_change"
-              :checked-children="t('common.enabled')"
-              :un-checked-children="t('common.disabled')"
-            />
-          </div>
-          <div class="permission-item">
-            <div class="permission-info">
-              <div class="permission-label">{{ t('admin.ruleConfig.scheduledRefreshEnabled') }}</div>
-              <div class="permission-desc">{{ t('admin.ruleConfig.scheduledRefreshEnabledDesc') }}</div>
-            </div>
-            <a-switch
-              v-model:checked="selectedConfig.embed_config!.scheduled_refresh_enabled"
-              :checked-children="t('common.enabled')"
-              :un-checked-children="t('common.disabled')"
-            />
-          </div>
-          <div v-if="selectedConfig.embed_config!.scheduled_refresh_enabled" class="permission-item">
-            <div class="permission-info">
-              <div class="permission-label">{{ t('admin.ruleConfig.scheduledRefreshScope') }}</div>
-              <div class="permission-desc">{{ t('admin.ruleConfig.scheduledRefreshScopeDesc') }}</div>
-            </div>
-            <a-space :size="12" wrap>
-              <a-select
-                v-model:value="selectedConfig.embed_config!.scheduled_refresh_lookback_days"
-                style="width: 140px"
-              >
-                <a-select-option v-for="days in scheduledLookbackDayOptions" :key="days" :value="days">
-                  {{ t('admin.ruleConfig.scheduledRefreshRecentDays', [days]) }}
-                </a-select-option>
-              </a-select>
-              <a-select
-                v-model:value="selectedConfig.embed_config!.scheduled_refresh_interval_minutes"
-                style="width: 140px"
-              >
-                <a-select-option v-for="minutes in scheduledIntervalOptions" :key="minutes" :value="minutes">
-                  {{ t('admin.ruleConfig.scheduledRefreshEveryMinutes', [minutes]) }}
-                </a-select-option>
-              </a-select>
-            </a-space>
-          </div>
-          </div>
-
           <!-- 审核工作台访问控制 -->
           <div class="section-header" style="margin-top: 28px;">
             <div>
@@ -3567,6 +3476,109 @@ const handleSave = async () => {
                   <span class="access-tag-dept">{{ dept.member_count }}人</span>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!--========== OA 嵌入选项卡 ==========-->
+        <div v-if="activeTab === 'embed'" class="tab-content">
+          <div class="section-header">
+            <div>
+              <h4 class="section-title">{{ t('admin.ruleConfig.auditEmbedTitle') }}</h4>
+              <p class="section-desc">{{ t('admin.ruleConfig.auditEmbedDesc') }}</p>
+            </div>
+          </div>
+
+          <div class="permissions-list">
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.embedEnabled') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.embedEnabledDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedConfig.embed_enabled"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
+              />
+            </div>
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.embedAuditAutoOpen') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditAutoOpenDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedConfig.embed_config!.auto_audit_on_open"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
+              />
+            </div>
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.embedAuditDataChange') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditDataChangeDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedConfig.embed_config!.auto_audit_on_data_change"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
+              />
+            </div>
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.embedAuditReturnResubmit') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditReturnResubmitDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedConfig.embed_config!.auto_audit_on_return_resubmit"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
+              />
+            </div>
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.embedAuditFlowChange') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditFlowChangeDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedConfig.embed_config!.auto_audit_on_flow_change"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
+              />
+            </div>
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.scheduledRefreshEnabled') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.scheduledRefreshEnabledDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedConfig.embed_config!.scheduled_refresh_enabled"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
+              />
+            </div>
+            <div v-if="selectedConfig.embed_config!.scheduled_refresh_enabled" class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.scheduledRefreshScope') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.scheduledRefreshScopeDesc') }}</div>
+              </div>
+              <a-space :size="12" wrap>
+                <a-select
+                  v-model:value="selectedConfig.embed_config!.scheduled_refresh_lookback_days"
+                  style="width: 140px"
+                >
+                  <a-select-option v-for="days in scheduledLookbackDayOptions" :key="days" :value="days">
+                    {{ t('admin.ruleConfig.scheduledRefreshRecentDays', [days]) }}
+                  </a-select-option>
+                </a-select>
+                <a-select
+                  v-model:value="selectedConfig.embed_config!.scheduled_refresh_interval_minutes"
+                  style="width: 140px"
+                >
+                  <a-select-option v-for="minutes in scheduledIntervalOptions" :key="minutes" :value="minutes">
+                    {{ t('admin.ruleConfig.scheduledRefreshEveryMinutes', [minutes]) }}
+                  </a-select-option>
+                </a-select>
+              </a-space>
             </div>
           </div>
         </div>
@@ -6458,7 +6470,6 @@ const handleSave = async () => {
 
 /*权限*/
 .permissions-list { display: flex; flex-direction: column; gap: 12px; }
-.audit-embed-permissions { margin-top: 20px; }
 .permission-item {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   padding: 16px 20px; background: var(--color-bg-page); border-radius: var(--radius-md);
