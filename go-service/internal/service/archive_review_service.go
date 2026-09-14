@@ -1132,7 +1132,7 @@ func (s *ArchiveReviewService) GetArchiveResult(c *gin.Context, id uuid.UUID) (m
 	return buildArchiveResultFromLog(logEntry), nil
 }
 
-func (s *ArchiveReviewService) SubscribeJobStream(c *gin.Context, id uuid.UUID) (<-chan string, func(), error) {
+func (s *ArchiveReviewService) SubscribeJobStream(c *gin.Context, id uuid.UUID) (<-chan JobStreamEvent, func(), error) {
 	if s.rdb == nil {
 		return nil, nil, newServiceError(errcode.ErrRedisConn, "归档复盘流服务未初始化（Redis 不可用）")
 	}
@@ -1142,16 +1142,25 @@ func (s *ArchiveReviewService) SubscribeJobStream(c *gin.Context, id uuid.UUID) 
 
 	ctx := c.Request.Context()
 	pubsub := s.rdb.Subscribe(ctx, "archive:stream:"+id.String())
-	ch := make(chan string)
+	ch := make(chan JobStreamEvent, 32)
 
-	history, _ := s.rdb.Get(ctx, "archive:reasoning:"+id.String()).Result()
+	thinkingHistory, _ := s.rdb.Get(ctx, "archive:thinking:"+id.String()).Result()
+	reasoningHistory, _ := s.rdb.Get(ctx, "archive:reasoning:"+id.String()).Result()
 	go func() {
 		defer close(ch)
-		if history != "" {
-			ch <- history
+		if thinkingHistory != "" {
+			ch <- JobStreamEvent{Event: "thinking", Data: thinkingHistory}
+		}
+		if reasoningHistory != "" {
+			ch <- JobStreamEvent{Event: "message", Data: reasoningHistory}
 		}
 		for msg := range pubsub.Channel() {
-			ch <- msg.Payload
+			var ev JobStreamEvent
+			if err := json.Unmarshal([]byte(msg.Payload), &ev); err == nil && ev.Event != "" {
+				ch <- ev
+			} else {
+				ch <- JobStreamEvent{Event: "message", Data: msg.Payload}
+			}
 		}
 	}()
 	return ch, func() { _ = pubsub.Close() }, nil
@@ -1468,11 +1477,19 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	if modelCfg.SupportsThinking && aiConfig.EnableThinking {
 		reasoningReq.EnableThinking = true
 	}
+	reasoningReq.StreamReasoningChunkFunc = func(chunk string) {
+		key := "archive:thinking:" + archiveLogID.String()
+		s.rdb.Append(context.Background(), key, chunk)
+		s.rdb.Expire(context.Background(), key, 24*time.Hour)
+		payload, _ := json.Marshal(JobStreamEvent{Event: "thinking", Data: chunk})
+		s.rdb.Publish(context.Background(), "archive:stream:"+archiveLogID.String(), string(payload))
+	}
 	reasoningReq.StreamChunkFunc = func(chunk string) {
 		key := "archive:reasoning:" + archiveLogID.String()
 		s.rdb.Append(context.Background(), key, chunk)
 		s.rdb.Expire(context.Background(), key, 24*time.Hour)
-		s.rdb.Publish(context.Background(), "archive:stream:"+archiveLogID.String(), chunk)
+		payload, _ := json.Marshal(JobStreamEvent{Event: "message", Data: chunk})
+		s.rdb.Publish(context.Background(), "archive:stream:"+archiveLogID.String(), string(payload))
 	}
 	bindLLMProcessContext(reasoningReq, logEntry.ProcessID, logEntry.Title, archiveLogID)
 

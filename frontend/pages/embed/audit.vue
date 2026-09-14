@@ -159,10 +159,15 @@ const processMetaRows = computed(() => {
 
 const mergeAuditProgress = (st: Partial<AuditResult>) => {
   const oldReasoning = currentResult.value?.ai_reasoning || ''
+  const oldThinking = currentResult.value?.deep_thinking || ''
   currentResult.value = { ...currentResult.value, ...st } as AuditResult
   const nextReasoning = currentResult.value?.ai_reasoning || ''
+  const nextThinking = currentResult.value?.deep_thinking || ''
   if (oldReasoning.length > nextReasoning.length && currentResult.value) {
     currentResult.value.ai_reasoning = oldReasoning
+  }
+  if (oldThinking.length > nextThinking.length && currentResult.value) {
+    currentResult.value.deep_thinking = oldThinking
   }
 }
 
@@ -181,6 +186,16 @@ const startSSE = (auditResultId?: string) => {
   eventSourceStream.value = new EventSource(
     useEmbedAuth().appendEmbedTokenQuery(`/api/embed/stream/${encodeURIComponent(auditResultId)}`),
   )
+  eventSourceStream.value.addEventListener('thinking', (event: any) => {
+    if (!currentResult.value) return
+    const chunk = event.data || ''
+    const existing = currentResult.value.deep_thinking || ''
+    if (!existing || chunk.startsWith(existing)) {
+      currentResult.value.deep_thinking = chunk
+    } else {
+      currentResult.value.deep_thinking = existing + chunk
+    }
+  })
   eventSourceStream.value.onmessage = (event) => {
     if (!currentResult.value) return
     const chunk = event.data || ''
@@ -206,6 +221,7 @@ function createPendingResult(): AuditResult {
     suggestions: [],
     confidence: 0,
     ai_reasoning: '',
+    deep_thinking: '',
     duration_ms: 0,
     progress_steps: DEFAULT_PROGRESS_STEPS.map(s => ({ ...s })),
   }
@@ -529,6 +545,13 @@ onBeforeUnmount(() => {
               <span class="async-step-label">{{ s.label }}</span>
             </div>
           </div>
+          <div v-if="currentResult?.deep_thinking" class="result-section embed-reasoning-live">
+            <AiMarkdownStream
+              :title="t('dashboard.deepThinking', '深度思考过程')"
+              :text="currentResult.deep_thinking || ''"
+              max-height="260px"
+            />
+          </div>
           <div v-if="currentResult?.ai_reasoning" class="result-section embed-reasoning-live">
             <AiMarkdownStream
               :title="t('dashboard.aiReasoning')"
@@ -633,10 +656,7 @@ onBeforeUnmount(() => {
 
             <div v-if="currentResult.deep_thinking" class="result-section">
               <button type="button" class="reasoning-toggle" @click="showDeepThinking = !showDeepThinking">
-                <span style="display: flex; align-items: center; gap: 6px;">
-                  <ThunderboltOutlined style="color: var(--color-primary);" />
-                  {{ t('dashboard.deepThinking', '深度思考过程') }}
-                </span>
+                <span>{{ t('dashboard.deepThinking', '深度思考过程') }}</span>
                 <DownOutlined v-if="!showDeepThinking" />
                 <UpOutlined v-else />
               </button>

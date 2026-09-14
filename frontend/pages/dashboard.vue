@@ -327,10 +327,31 @@ const startSSE = (auditResultId: string, processId: string) => {
   if (!currentResult.value?.ai_reasoning && selectedProcess.value === processId) {
     if (currentResult.value) currentResult.value.ai_reasoning = ''
   }
+  if (!currentResult.value?.deep_thinking && selectedProcess.value === processId) {
+    if (currentResult.value) currentResult.value.deep_thinking = ''
+  }
   
+  eventSourceStream.value.addEventListener('thinking', (e: any) => {
+    if (selectedProcess.value === processId && currentResult.value) {
+      const chunk = e.data || ''
+      const existing = currentResult.value.deep_thinking || ''
+      if (!existing || chunk.startsWith(existing)) {
+        currentResult.value.deep_thinking = chunk
+      } else {
+        currentResult.value.deep_thinking = existing + chunk
+      }
+    }
+  })
+
   eventSourceStream.value.onmessage = (e) => {
     if (selectedProcess.value === processId && currentResult.value) {
-      currentResult.value.ai_reasoning = (currentResult.value.ai_reasoning || '') + e.data
+      const chunk = e.data || ''
+      const existing = currentResult.value.ai_reasoning || ''
+      if (!existing || chunk.startsWith(existing)) {
+        currentResult.value.ai_reasoning = chunk
+      } else {
+        currentResult.value.ai_reasoning = existing + chunk
+      }
     }
   }
   
@@ -1295,7 +1316,13 @@ onMounted(async () => {
                   </div>
                 </div>
               </a-spin>
-              <div v-if="currentResult.ai_reasoning || isResultAsyncRunning(currentResult)" class="result-section" style="margin-top: 16px;">
+              <div v-if="currentResult.deep_thinking" class="result-section" style="margin-top: 16px;">
+                <h4 class="result-section-title">{{ t('dashboard.deepThinking', '深度思考过程') }}</h4>
+                <div class="ai-reasoning">
+                  <div class="markdown-body" v-html="renderMarkdown(currentResult.deep_thinking || '')"></div>
+                </div>
+              </div>
+              <div v-if="currentResult.ai_reasoning || (!currentResult.deep_thinking && isResultAsyncRunning(currentResult))" class="result-section" style="margin-top: 16px;">
                 <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
                 <div class="ai-reasoning">
                   <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')"></div>
@@ -1365,11 +1392,8 @@ onMounted(async () => {
               </div>
               <!-- 深度思考过程 (parse_error) -->
               <div v-if="currentResult.deep_thinking" class="result-section">
-                <h4 class="result-section-title" style="display: flex; align-items: center; gap: 6px;">
-                  <ThunderboltOutlined style="color: var(--color-primary);" />
-                  {{ t('dashboard.deepThinking', '深度思考过程') }}
-                </h4>
-                <div class="ai-reasoning" style="border-left: 3px solid var(--color-primary);">
+                <h4 class="result-section-title">{{ t('dashboard.deepThinking', '深度思考过程') }}</h4>
+                <div class="ai-reasoning">
                   <div class="markdown-body" v-html="renderMarkdown(currentResult.deep_thinking || '')"></div>
                 </div>
               </div>
@@ -1451,6 +1475,14 @@ onMounted(async () => {
                   <ul class="insight-card-list">
                     <li v-for="(sg, i) in currentResult.suggestions" :key="i">{{ sg }}</li>
                   </ul>
+                </div>
+              </div>
+
+              <!--深度思考过程-->
+              <div v-if="currentResult.deep_thinking" class="result-section">
+                <h4 class="result-section-title">{{ t('dashboard.deepThinking', '深度思考过程') }}</h4>
+                <div class="ai-reasoning">
+                  <div class="markdown-body" v-html="renderMarkdown(currentResult.deep_thinking || '')"></div>
                 </div>
               </div>
 
@@ -1565,11 +1597,10 @@ onMounted(async () => {
                             </div>
                           </div>
                           <!-- 深度思考过程 -->
-                          <div v-if="chainItemDeepThinking(item)" class="chain-section-title" style="margin-top: 10px; display: flex; align-items: center; gap: 6px;">
-                            <ThunderboltOutlined style="color: var(--color-primary);" />
+                          <div v-if="chainItemDeepThinking(item)" class="chain-section-title" style="margin-top: 10px;">
                             {{ t('dashboard.deepThinking', '深度思考过程') }}
                           </div>
-                          <div v-if="chainItemDeepThinking(item)" class="chain-reasoning" style="border-left: 3px solid var(--color-primary);">
+                          <div v-if="chainItemDeepThinking(item)" class="chain-reasoning">
                             <div class="markdown-body" v-html="renderMarkdown(chainItemDeepThinking(item) || '')"></div>
                           </div>
 

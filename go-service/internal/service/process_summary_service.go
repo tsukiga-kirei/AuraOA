@@ -150,6 +150,7 @@ type summaryStreamChunk struct {
 	BlockID string `json:"block_id"`
 	Title   string `json:"title"`
 	Chunk   string `json:"chunk"`
+	Type    string `json:"type,omitempty"`
 }
 
 func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string) (*SummaryEmbedContextResponse, error) {
@@ -1022,8 +1023,11 @@ func (s *ProcessSummaryService) processSummaryJob(
 			if modelCfg.SupportsThinking && block.EnableThinking {
 				req.EnableThinking = true
 			}
+			req.StreamReasoningChunkFunc = func(chunk string) {
+				s.publishSummaryBlockChunk(summaryLogID, block.ID, block.Title, chunk, "thinking")
+			}
 			req.StreamChunkFunc = func(chunk string) {
-				s.publishSummaryBlockChunk(summaryLogID, block.ID, block.Title, chunk)
+				s.publishSummaryBlockChunk(summaryLogID, block.ID, block.Title, chunk, "content")
 			}
 			processTitle := logEntry.Title
 			if processSummary != nil && strings.TrimSpace(processSummary.Title) != "" {
@@ -1303,7 +1307,7 @@ func (s *ProcessSummaryService) buildSummaryResultFromLog(log *model.ProcessSumm
 	return out
 }
 
-func (s *ProcessSummaryService) publishSummaryBlockChunk(id uuid.UUID, blockID, title, chunk string) {
+func (s *ProcessSummaryService) publishSummaryBlockChunk(id uuid.UUID, blockID, title, chunk, chunkType string) {
 	if s.rdb == nil || chunk == "" {
 		return
 	}
@@ -1311,6 +1315,7 @@ func (s *ProcessSummaryService) publishSummaryBlockChunk(id uuid.UUID, blockID, 
 		BlockID: blockID,
 		Title:   title,
 		Chunk:   chunk,
+		Type:    chunkType,
 	})
 	if err != nil {
 		return

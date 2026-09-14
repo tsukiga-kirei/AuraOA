@@ -262,7 +262,7 @@ func (h *AuditHandler) GetJobStream(c *gin.Context) {
 			if !ok {
 				return
 			}
-			c.SSEvent("message", msg)
+			c.SSEvent(msg.Event, msg.Data)
 			c.Writer.Flush()
 		}
 	}
