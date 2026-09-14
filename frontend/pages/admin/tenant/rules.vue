@@ -6220,15 +6220,18 @@ const handleSave = async () => {
 .top-tab-nav {
   display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
   border-radius: var(--radius-lg); margin-bottom: 24px; width: fit-content;
+  max-width: 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
 }
+.top-tab-nav::-webkit-scrollbar { display: none; }
 .top-tab-btn {
   display: flex; align-items: center; gap: 6px;
-  padding: 8px 24px; border: none; background: transparent; border-radius: var(--radius-md);
+  padding: 8px 20px; border: none; background: transparent; border-radius: var(--radius-md);
   font-size: 14px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
   transition: all var(--transition-fast);
 }
 .top-tab-btn:hover { color: var(--color-text-primary); }
-.top-tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
+.top-tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); font-weight: 600; box-shadow: var(--shadow-xs); }
 
 /*主要布局*/
 .main-layout { display: grid; grid-template-columns: 240px 1fr; gap: 20px; align-items: start; }
@@ -6292,15 +6295,22 @@ const handleSave = async () => {
 .tab-nav {
   display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
   border-radius: var(--radius-lg); margin-bottom: 24px; width: fit-content;
+  max-width: 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--color-border-light);
 }
+.tab-nav::-webkit-scrollbar { display: none; }
 .tab-btn {
   display: flex; align-items: center; gap: 6px;
-  padding: 8px 20px; border: none; background: transparent; border-radius: var(--radius-md);
-  font-size: 14px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer;
+  padding: 7px 14px; border: none; background: transparent; border-radius: var(--radius-md);
+  font-size: 13.5px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
   transition: all var(--transition-fast);
 }
-.tab-btn:hover { color: var(--color-text-primary); }
-.tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
+.tab-btn:hover { color: var(--color-text-primary); background: rgba(0, 0, 0, 0.03); }
+.tab-btn--active {
+  background: var(--color-bg-card); color: var(--color-primary);
+  font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
 
 /*部分*/
 .section-header { margin-bottom: 16px; }
