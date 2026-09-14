@@ -6,11 +6,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
+	pkglogger "auraoa/go-service/internal/pkg/logger"
 	"auraoa/go-service/internal/repository"
 )
 
@@ -68,7 +70,17 @@ func (s *ExperienceService) viewer(c *gin.Context) (string, string, string, erro
 		return "", "", "", newServiceError(errcode.ErrPermissionDenied, "无法识别 OA 操作人")
 	}
 
-	displayName, _ := adapter.ResolveUserDisplayNameByOAUserID(c.Request.Context(), id)
+	displayName, displayNameErr := adapter.ResolveUserDisplayNameByOAUserID(c.Request.Context(), id)
+	if displayNameErr != nil {
+		logger := pkglogger.Global()
+		if tenant, tenantErr := s.audit.tenantRepo.FindByID(tenantID); tenantErr == nil {
+			logger = pkglogger.GetTenantLogger(tenant.Code)
+		}
+		logger.Warn("审核体验评论：查询 OA 用户姓名失败，回退本地显示名或登录账号",
+			zap.String("oaUserID", id),
+			zap.String("username", username),
+			zap.Error(displayNameErr))
+	}
 	displayName = strings.TrimSpace(displayName)
 	if displayName == "" || displayName == username {
 		var localUser model.User
