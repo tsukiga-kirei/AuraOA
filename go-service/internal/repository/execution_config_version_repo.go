@@ -84,8 +84,8 @@ func (r *ExecutionConfigVersionRepo) GetActiveBaseVersion(
 	return r.GetLatestBaseVersion(ctx, tenantID, module, sourceConfigID)
 }
 
-// ListActiveSourceConfigIDs 返回当前租户指定模块已发布且处于可用状态的源配置 ID。
-// 不在结果中的配置仍处于草稿阶段，不能进入工作台、个人配置或自动执行。
+// ListActiveSourceConfigIDs 返回当前租户指定模块已发布且可解析出当前版本的源配置 ID。
+// 兼容历史数据未标记 is_active 的情况：只要存在发布版本，GetActiveBaseVersion 就会回落到最新版本。
 func (r *ExecutionConfigVersionRepo) ListActiveSourceConfigIDs(
 	ctx context.Context,
 	tenantID uuid.UUID,
@@ -94,7 +94,8 @@ func (r *ExecutionConfigVersionRepo) ListActiveSourceConfigIDs(
 	var ids []uuid.UUID
 	if err := r.db.WithContext(ctx).
 		Model(&model.TenantConfigVersion{}).
-		Where("tenant_id = ? AND module = ? AND is_active = ?", tenantID, module, true).
+		Where("tenant_id = ? AND module = ?", tenantID, module).
+		Distinct("source_config_id").
 		Pluck("source_config_id", &ids).Error; err != nil {
 		return nil, err
 	}

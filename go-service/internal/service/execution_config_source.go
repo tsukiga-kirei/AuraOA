@@ -354,8 +354,10 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 			return err
 		}
 		existingMap := make(map[string]uuid.UUID)
+		existingSources := make(map[string]string)
 		for _, r := range existingRules {
 			existingMap[r.ID.String()] = r.ID
+			existingSources[r.ID.String()] = r.Source
 		}
 		snapshotRuleIDs := make(map[string]bool)
 		for _, rs := range snapshot.Rules {
@@ -365,7 +367,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 			}
 			snapshotRuleIDs[ruleID.String()] = true
 			enabled := rs.Enabled
-			source := defaultStr(rs.Source, "manual")
+			source := defaultStr(rs.Source, defaultStr(existingSources[ruleID.String()], "manual"))
 			ruleModel := &model.AuditRule{
 				ID:             ruleID,
 				TenantID:       tenantID,
@@ -436,8 +438,10 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 			return err
 		}
 		existingMap := make(map[string]uuid.UUID)
+		existingSources := make(map[string]string)
 		for _, r := range existingRules {
 			existingMap[r.ID.String()] = r.ID
+			existingSources[r.ID.String()] = r.Source
 		}
 		snapshotRuleIDs := make(map[string]bool)
 		for _, rs := range snapshot.Rules {
@@ -447,7 +451,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 			}
 			snapshotRuleIDs[ruleID.String()] = true
 			enabled := rs.Enabled
-			source := defaultStr(rs.Source, "manual")
+			source := defaultStr(rs.Source, defaultStr(existingSources[ruleID.String()], "manual"))
 			ruleModel := &model.ArchiveRule{
 				ID:             ruleID,
 				TenantID:       tenantID,
