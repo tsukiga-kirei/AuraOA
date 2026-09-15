@@ -324,6 +324,7 @@ GET /api/embed/summary/stream/:id
 |------|--------|------|
 | iframe → OA | `aura-oa-request-requestid` | 无 |
 | OA → iframe | `aura-oa-requestid` | `{ requestid: string, embed_token: string }` |
+| 嵌入页 → OA | `aura-oa-embed-status` | `{ embed_type, requestid, running, has_result, status, recommendation, overall_score }` |
 
 OA 保存/提交事件不使用 postMessage，而是由父页 JS 直接异步 POST Nuxt 代理。请求完成会立即放行，
 最多等待 800ms；超时或 AuraOA 不可用也会放行，不代表等待 AI 执行完成。

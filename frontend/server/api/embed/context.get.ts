@@ -9,5 +9,6 @@ export default defineEventHandler(async (event) => {
   const q: Record<string, string | undefined> = { process_id: processId }
   const oaUserId = String(query.oa_user_id || query.oa_current_user_id || '').trim()
   if (oaUserId) q.oa_user_id = oaUserId
+  if (String(query.prefer_cached || '').trim()) q.prefer_cached = 'true'
   return await proxyEmbedGet(event, '/api/embed/context', q)
 })
