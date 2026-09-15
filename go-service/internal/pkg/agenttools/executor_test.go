@@ -25,6 +25,27 @@ func (a executionAdapter) FetchMyRequestsPaged(context.Context, string, oa.MyReq
 		Total: 1,
 	}, nil
 }
+func (a executionAdapter) ResolveProcessID(ctx context.Context, identifier string) (string, error) {
+	if identifier == "CODE-123" {
+		return "1001", nil
+	}
+	return identifier, nil
+}
+func (a executionAdapter) FetchWorkflowCodes(ctx context.Context, processIDs []string) (map[string]string, error) {
+	res := make(map[string]string)
+	for _, id := range processIDs {
+		if id == "1001" {
+			res[id] = "CODE-123"
+		}
+	}
+	return res, nil
+}
+func (a executionAdapter) FetchProcessData(ctx context.Context, processID string) (*oa.ProcessData, error) {
+	return &oa.ProcessData{
+		ProcessID: processID,
+		MainData:  map[string]interface{}{"field1": "val1"},
+	}, nil
+}
 
 func TestExecutionToolsCallRealServiceAndRespectVisibility(t *testing.T) {
 	count := 0
@@ -82,5 +103,37 @@ func TestResultToolsRequireParticipation(t *testing.T) {
 				t.Fatal("缺少参与权限应在数据库查询前拒绝")
 			}
 		}
+	}
+}
+
+func TestExecuteGetProcessWithWorkflowCode(t *testing.T) {
+	executor := &SystemToolExecutor{}
+	ctx := &ExecutionContext{Ctx: context.Background(), Username: "user"}
+	adapt := executionAdapter{visible: true}
+
+	// 1. 通过流程编号反查并获取详情，验证输出 workflow_code
+	res, uiKind, err := executor.executeGetProcess(`{"process_id":"CODE-123"}`, ctx, adapt)
+	if err != nil {
+		t.Fatalf("executeGetProcess failed: %v", err)
+	}
+	if uiKind != "process_detail" {
+		t.Fatalf("expected uiKind process_detail, got %s", uiKind)
+	}
+	m := res.(map[string]interface{})
+	if m["process_id"] != "1001" {
+		t.Fatalf("expected resolved process_id 1001, got %v", m["process_id"])
+	}
+	if m["workflow_code"] != "CODE-123" {
+		t.Fatalf("expected workflow_code CODE-123, got %v", m["workflow_code"])
+	}
+
+	// 2. 没有流程编号的流程，确保“有值放，没有值不放”
+	res2, _, err := executor.executeGetProcess(`{"process_id":"9999"}`, ctx, adapt)
+	if err != nil {
+		t.Fatalf("executeGetProcess for 9999 failed: %v", err)
+	}
+	m2 := res2.(map[string]interface{})
+	if _, exists := m2["workflow_code"]; exists {
+		t.Fatalf("expected no workflow_code field when empty, got %v", m2["workflow_code"])
 	}
 }

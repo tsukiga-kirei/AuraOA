@@ -118,6 +118,14 @@ type OAAdapter interface {
 
 	// FetchMyRequestsPaged 分页拉取当前用户作为发起人提交的流程列表，支持关键词、流转状态与真分页。
 	FetchMyRequestsPaged(ctx context.Context, username string, filter MyRequestPagedFilter) (*PagedResult[MyRequestItem], error)
+
+	// ResolveProcessID 将传入的流程标识（可为流程数字 ID requestid 或流程编号 workflowcode/requestmark）解析为真实的流程 requestid。
+	// 若传入已是有效 requestid 则直接返回；若传入的是流程编号则反查其 requestid；若无法解析则返回原 identifier。
+	ResolveProcessID(ctx context.Context, identifier string) (string, error)
+
+	// FetchWorkflowCodes 批量获取指定流程实例（requestid）的流程编号映射（requestid -> workflowcode）。
+	// 若无编号则不包含在返回的 map 中或映射为空字符串。
+	FetchWorkflowCodes(ctx context.Context, processIDs []string) (map[string]string, error)
 }
 
 // BrowseValueResolver 可选接口：支持按字段选择集把浏览按钮原始值增补为显示值。

@@ -97,7 +97,7 @@ var BuiltinTools = map[string]ToolSpec{
 			"properties": map[string]interface{}{
 				"process_id": map[string]interface{}{
 					"type":        "string",
-					"description": "OA 流程实例 ID (requestid)",
+					"description": "OA 流程实例 ID (requestid) 或流程编号 (如 ZJ182026090162)",
 				},
 			},
 			"required": []string{"process_id"},
