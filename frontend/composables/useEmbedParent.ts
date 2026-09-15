@@ -5,11 +5,24 @@
  * - iframe → parent: { type: 'aura-oa-request-requestid' }
  * - parent → iframe: { type: 'aura-oa-requestid', requestid: '598488', embed_token: '...' }
  * - parent → iframe: { type: 'aura-oa-url', url: '...' }（可选，从 URL 解析）
+ * - iframe/弹窗 → OA: { type: 'aura-oa-embed-status', ... }（移动端胶囊灯刷新）
  */
 
 export const EMBED_MSG_REQUEST_REQUESTID = 'aura-oa-request-requestid'
 export const EMBED_MSG_REQUESTID = 'aura-oa-requestid'
 export const EMBED_MSG_URL = 'aura-oa-url'
+export const EMBED_MSG_STATUS = 'aura-oa-embed-status'
+
+export interface EmbedStatusPayload {
+  embed_type: 'audit' | 'summary'
+  requestid: string
+  running?: boolean
+  has_result?: boolean
+  status?: string
+  recommendation?: string
+  overall_score?: number
+  parse_error?: boolean
+}
 
 export interface EmbedParentContext {
   requestId: string
@@ -180,4 +193,46 @@ export function waitForParentEmbedContext(options?: { intervalMs?: number; maxAt
 
 export function waitForParentRequestId(options?: { intervalMs?: number; maxAttempts?: number }): Promise<string> {
   return waitForParentEmbedContext(options).then(ctx => ctx.requestId)
+}
+
+function collectParentWindows(): Window[] {
+  if (typeof window === 'undefined') return []
+  const targets: Window[] = []
+  const seen = new Set<Window>()
+  const add = (win?: Window | null) => {
+    if (!win || win === window || seen.has(win)) return
+    seen.add(win)
+    targets.push(win)
+  }
+  add(window.parent)
+  add(window.opener)
+  try {
+    add(window.top)
+  } catch {
+    // 跨域 top 不可访问时忽略，parent/opener 仍可 postMessage。
+  }
+  return targets
+}
+
+/** 把当前审核/总结状态推给 OA 父页或 window.opener，供移动端胶囊同步灯色。 */
+export function notifyParentEmbedStatus(payload: EmbedStatusPayload): void {
+  if (typeof window === 'undefined' || !payload.requestid) return
+  const message = {
+    type: EMBED_MSG_STATUS,
+    embed_type: payload.embed_type,
+    requestid: payload.requestid,
+    running: !!payload.running,
+    has_result: !!payload.has_result,
+    status: payload.status || '',
+    recommendation: payload.recommendation || '',
+    overall_score: payload.overall_score,
+    parse_error: !!payload.parse_error,
+  }
+  collectParentWindows().forEach((win) => {
+    try {
+      win.postMessage(message, '*')
+    } catch {
+      // 部分 OA 容器没有 opener/parent，忽略即可。
+    }
+  })
 }

@@ -14,7 +14,7 @@ import {
 import { message } from 'ant-design-vue'
 import type { AuditResult } from '~/types/audit'
 import type { EmbedContextResponse, EmbedProcessSummary } from '~/types/embed'
-import { waitForParentEmbedContext } from '~/composables/useEmbedParent'
+import { notifyParentEmbedStatus, waitForParentEmbedContext } from '~/composables/useEmbedParent'
 
 definePageMeta({ layout: 'embed' })
 
@@ -258,11 +258,28 @@ const activeViewStale = computed(() => {
   return !!context.value?.stale
 })
 
+function publishStatusToParent() {
+  if (!process.client || !processId.value) return
+  const r = currentResult.value
+  const running = isAuditingActive.value
+  notifyParentEmbedStatus({
+    embed_type: 'audit',
+    requestid: processId.value,
+    running,
+    has_result: !!(r && !running),
+    status: r?.status,
+    recommendation: r?.recommendation,
+    overall_score: r?.overall_score,
+    parse_error: !!r?.parse_error,
+  })
+}
+
 async function runAudit(trigger: 'embed_auto' | 'embed_manual', useLatestConfig = false) {
   if (!processId.value || auditing.value) return
   disconnectStream()
   auditing.value = true
   currentResult.value = createPendingResult()
+  publishStatusToParent()
   try {
     const result = await executeEmbed(
       {
@@ -291,6 +308,7 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual', useLatestConfig 
     await refreshContext(false, true)
   } finally {
     auditing.value = false
+    publishStatusToParent()
     disconnectStream()
   }
 }
@@ -308,6 +326,8 @@ async function refreshContext(autoRun = true, preferCached = false) {
     }
     if (autoRun && (resp.should_auto_audit || resp.running_job_id) && !auditing.value) {
       await runAudit('embed_auto')
+    } else {
+      publishStatusToParent()
     }
   } catch (e: any) {
     pageError.value = e?.message || t('embed.loadFailed')
@@ -703,7 +723,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.embed-audit { max-width: 720px; margin: 0 auto; min-height: 100vh; padding: 12px 12px 28px; }
+.embed-audit { width: 100%; max-width: 760px; margin: 0 auto; box-sizing: border-box; min-height: 100vh; padding: 10px 12px 16px; }
 
 .embed-header {
   margin-bottom: 14px; padding-bottom: 12px;

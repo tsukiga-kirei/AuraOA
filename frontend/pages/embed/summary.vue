@@ -14,7 +14,7 @@ import { message } from 'ant-design-vue'
 import type { EmbedProcessSummary } from '~/types/embed'
 import type { SummaryBlockResult, SummaryResult } from '~/types/process-summary'
 import type { EmbedSummaryContextResponse } from '~/composables/useEmbedSummaryApi'
-import { waitForParentEmbedContext } from '~/composables/useEmbedParent'
+import { notifyParentEmbedStatus, waitForParentEmbedContext } from '~/composables/useEmbedParent'
 
 definePageMeta({ layout: 'embed' })
 
@@ -208,12 +208,27 @@ function startSSE(jobId?: string) {
   eventSourceStream.value.onerror = () => disconnectStream()
 }
 
+function publishStatusToParent() {
+  if (!process.client || !processId.value) return
+  const running = isRunning.value
+  const r = currentResult.value
+  notifyParentEmbedStatus({
+    embed_type: 'summary',
+    requestid: processId.value,
+    running,
+    has_result: !!(r && !running),
+    status: r?.status,
+    parse_error: !!r?.parse_error,
+  })
+}
+
 async function runSummary(trigger: 'summary_embed_auto' | 'summary_embed_manual', useLatestConfig = false) {
   if (!processId.value || summarizing.value) return
   summarizing.value = true
   currentResult.value = createPendingResult()
   resetStreamingBlocks()
   collapsedBlockIds.value = new Set()
+  publishStatusToParent()
   try {
     const result = await executeSummaryEmbed(
       {
@@ -238,6 +253,7 @@ async function runSummary(trigger: 'summary_embed_auto' | 'summary_embed_manual'
     await refreshContext(false, true)
   } finally {
     summarizing.value = false
+    publishStatusToParent()
     disconnectStream()
   }
 }
@@ -252,6 +268,8 @@ async function refreshContext(autoRun = true, preferCached = false) {
     }
     if (autoRun && (resp.should_auto_summary || resp.running_job_id) && !summarizing.value) {
       await runSummary('summary_embed_auto')
+    } else {
+      publishStatusToParent()
     }
   } catch (e: any) {
     pageError.value = e?.message || t('embed.summary.contextLoadFailed')
@@ -496,7 +514,7 @@ onBeforeUnmount(() => disconnectStream())
 </template>
 
 <style scoped>
-.embed-summary { max-width: 720px; margin: 0 auto; min-height: 100vh; padding: 12px 12px 28px; }
+.embed-summary { width: 100%; max-width: 760px; margin: 0 auto; box-sizing: border-box; min-height: 100vh; padding: 10px 12px 16px; }
 .embed-header {
   margin-bottom: 14px;
   padding-bottom: 12px;

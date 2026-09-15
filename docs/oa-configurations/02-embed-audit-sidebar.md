@@ -135,6 +135,11 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
     → 调用 weaJs.showDialog(...) 打开全屏/抽屉弹窗
     → URL 自带 ?requestid=...&embed_token=...&oa_user_id=...
     → AuraOA 嵌入页直接初始化展示审核结论与规则明细
+    → 嵌入页将运行中/完成状态 postMessage 给 OA 父页（电脑端 iframe 弹窗可即时改灯）
+审批人关闭弹窗或回到表单
+    → 监听 pageshow / visibilitychange / focus，以及 weaJs 关闭回调
+    → 再次 GET /api/embed/context?prefer_cached=true 刷新胶囊灯色
+    → 若任务仍在运行，则短时轮询直到出结论或超时
 ```
 
 ### 5.2 状态指示灯定义
@@ -158,6 +163,7 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
    - 选择 **流程审核** 或 **流程总结**。移动端每个脚本提供一个入口，不支持“全部功能”；PC 端可同时通知审核与总结。
    - 点击唯一的 **导出移动端脚本**，获取已注入当前租户 Origin 与 Token 的审核脚本 `aura-embed-mobile-notify.js` 或总结脚本 `aura-embed-summary-mobile-notify.js`。总结脚本只查询总结配置，不依赖审核规则。
    - 状态按钮只读取状态；待生成或正在分析时仍可点击，由详情页启动自动分析或接续任务。
+   - 审核/总结结束后，详情页会通知父页；关闭弹窗或回到表单时脚本会再次拉取状态，刷新胶囊灯色。需重新导出并覆盖 OA 脚本（更新 `?v=`）后生效。
    - 更新脚本后覆盖 OA 静态文件并更新引用版本参数（例如 `?v=5`），避免继续加载旧缓存。
    - 仓库静态模板见：[assets/aura-embed-mobile-notify.js](./assets/aura-embed-mobile-notify.js)
 2. **上传与启用**：
@@ -170,7 +176,7 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
 4. **控制电脑端是否启用这份移动端脚本**：
    - 脚本配置区的 `var SHOW_ON_DESKTOP = false;` 默认让电脑端跳过按钮、状态请求和事件注册；电脑端继续使用原 PC 嵌入通知脚本与侧栏。
    - 改为 `true` 后，电脑端也显示按钮，仍按“存在 `getMyBt` 则嵌入，否则左下角悬浮”的规则定位。
-   - 电脑端点击后使用独立的居中详情弹窗，宽度不超过 1100px、高度为当前可视区域的 85%，随窗口缩放；不再使用移动端 OA 弹窗的百分比尺寸。移动端仍使用原来的 OA 弹窗。
+   - 电脑端点击后使用独立的居中详情弹窗，宽度与嵌入页正文一致（760px，窄屏随窗口缩放），高度为当前可视区域的 85%；不再使用移动端 OA 弹窗的百分比尺寸。移动端仍使用原来的 OA 弹窗。
    - 终端判断依据浏览器设备标识并兼容 iPad 桌面标识，不会因电脑窗口或侧栏较窄而启用移动端按钮。
    - 若遇到 `matched.at is not a function`，需更新部署 AuraOA 前端以加载路由初始化前的兼容补丁；仅替换 OA 脚本不能修复嵌入页的浏览器兼容性。
 

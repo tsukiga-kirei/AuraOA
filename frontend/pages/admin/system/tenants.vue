@@ -768,10 +768,19 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
   var EMBED_TYPE = ${JSON.stringify(defaultEmbedType)};
   // ====================================
 
+  var MSG_STATUS = 'aura-oa-embed-status';
+  var STATUS_POLL_MS = 3000;
+  var STATUS_WATCH_MS = 180000;
+
   // 不按窗口宽度判断，避免电脑端窄侧栏被识别为移动端；兼容 iPad 桌面 UA。
   var mobileClient = /Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent || '')
     || (/Macintosh/i.test(navigator.userAgent || '') && navigator.maxTouchPoints > 1);
   if (!mobileClient && !SHOW_ON_DESKTOP) return;
+
+  var statusWatchTimer = null;
+  var statusWatchUntil = 0;
+  var lastStatusSignature = '';
+  var resumeRefreshTimer = null;
 
   function openDesktopDialog(targetUrl) {
     var existing = document.getElementById('auraDesktopEmbedDialog');
@@ -779,12 +788,12 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
     var previousFocus = document.activeElement;
     var overlay = document.createElement('div');
     overlay.id = 'auraDesktopEmbedDialog';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;';
     var dialog = document.createElement('div');
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
     dialog.setAttribute('aria-labelledby', 'auraDesktopEmbedTitle');
-    dialog.style.cssText = 'width:1100px;max-width:100%;height:85vh;max-height:100%;background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,.2);';
+    dialog.style.cssText = 'width:760px;max-width:100%;height:85vh;max-height:100%;background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,.2);';
     var header = document.createElement('div');
     header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border-bottom:1px solid #eee;flex-shrink:0;';
     var title = document.createElement('span');
@@ -802,6 +811,7 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
       document.removeEventListener('keydown', onKeyDown);
       overlay.remove();
       if (previousFocus && previousFocus.focus) previousFocus.focus();
+      refreshCurrentStatus(true);
     }
     function onKeyDown(event) {
       if (event.key === 'Escape') dismiss();
@@ -899,6 +909,7 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
     var release = function () {
       if (released) return;
       released = true;
+      startStatusWatch(STATUS_WATCH_MS);
       callback();
     };
     var context = captureOperationContext(action);
@@ -948,6 +959,7 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
       + '&oa_user_id=' + encodeURIComponent(userId);
 
     console.log('[aura-embed-mobile] 调起嵌入弹窗');
+    startStatusWatch(STATUS_WATCH_MS);
 
     if (!mobileClient) {
       openDesktopDialog(targetUrl);
@@ -955,7 +967,8 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
       window.weaJs.showDialog(targetUrl, {
         title: EMBED_TYPE === 'summary' ? 'AI 流程总结' : 'AI 流程审核',
         moduleName: 'workflow',
-        style: { width: '100%', height: '100%' }
+        style: { width: '100%', height: '100%' },
+        callback: function () { refreshCurrentStatus(true); }
       });
     } else {
       window.open(targetUrl, '_blank');
@@ -1018,15 +1031,110 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
     });
   }
 
-  function queryEmbedStatus(requestId, userId) {
+  function featureName() {
+    return EMBED_TYPE === 'summary' ? '总结' : '审核';
+  }
+
+  function openCurrentDetails() {
+    var requestId = getRequestId();
+    if (!requestId) return;
+    openEmbedDialog(requestId, getCurrentUserId());
+  }
+
+  function statusSignature(status, text) {
+    return status + '|' + (text || '');
+  }
+
+  function renderStatusButton(status, textOverride, errorMessage, isLoading, onClick) {
+    var signature = statusSignature(status, textOverride || '') + '|' + (isLoading ? '1' : '0');
+    if (signature === lastStatusSignature) return;
+    lastStatusSignature = signature;
+    renderButton(status, textOverride, errorMessage, isLoading, onClick);
+  }
+
+  function applyResultToButton(isSummary, result, hasResult, shouldAutoRun, runningJobId) {
+    var name = featureName();
+    var openDetails = openCurrentDetails;
+    if (runningJobId) {
+      renderStatusButton('gray', name + '分析中，查看进度', '', false, openDetails);
+      return 'running';
+    }
+    if (hasResult && result) {
+      if (result.status === 'failed' || result.status === 'cancelled' || result.parse_error) {
+        renderStatusButton('red', name + '异常', 'AI ' + name + '分析出现异常', false, openDetails);
+        return 'failed';
+      }
+      if (isSummary) {
+        renderStatusButton('green', '查看流程总结', '', false, openDetails);
+        return 'completed';
+      }
+      var rec = result.recommendation || 'review';
+      var score = result.overall_score != null ? Math.round(Number(result.overall_score)) : null;
+      var scoreText = score != null ? ' (' + score + '分)' : '';
+      if (rec === 'approve') {
+        renderStatusButton('green', '审核通过' + scoreText, '', false, openDetails);
+      } else if (rec === 'return') {
+        renderStatusButton('red', '建议退回' + scoreText, '', false, openDetails);
+      } else {
+        renderStatusButton('yellow', '建议关注' + scoreText, '', false, openDetails);
+      }
+      return 'completed';
+    }
+    renderStatusButton('gray', shouldAutoRun ? '查看并生成' + name : 'AI' + name + '详情', '', false, openDetails);
+    return 'pending';
+  }
+
+  function applyContextData(data) {
     var isSummary = EMBED_TYPE === 'summary';
-    var featureName = isSummary ? '总结' : '审核';
+    var name = featureName();
+    if (!data || typeof data.supported !== 'boolean') {
+      renderStatusButton('error', '加载异常', '获取 AI ' + name + '状态失败', false);
+      return 'error';
+    }
+    if (!data.supported) {
+      renderStatusButton('disabled', '未开启' + name, data.message || '当前流程未配置 AI ' + name, false);
+      return 'unsupported';
+    }
+    var result = isSummary ? data.summary_result : data.audit_result;
+    var hasResult = isSummary ? data.has_summary : data.has_audit;
+    var shouldAutoRun = isSummary ? data.should_auto_summary : data.should_auto_audit;
+    return applyResultToButton(isSummary, result, hasResult, shouldAutoRun, data.running_job_id);
+  }
+
+  function stopStatusWatch() {
+    if (statusWatchTimer) {
+      clearInterval(statusWatchTimer);
+      statusWatchTimer = null;
+    }
+  }
+
+  function startStatusWatch(durationMs) {
+    statusWatchUntil = Date.now() + (durationMs || STATUS_WATCH_MS);
+    if (statusWatchTimer) return;
+    statusWatchTimer = setInterval(function () {
+      if (Date.now() > statusWatchUntil) {
+        stopStatusWatch();
+        return;
+      }
+      refreshCurrentStatus(true);
+    }, STATUS_POLL_MS);
+  }
+
+  function refreshCurrentStatus(preferCached) {
+    var requestId = getRequestId();
+    if (!requestId) return;
+    queryEmbedStatus(requestId, getCurrentUserId(), !!preferCached);
+  }
+
+  function queryEmbedStatus(requestId, userId, preferCached) {
+    var isSummary = EMBED_TYPE === 'summary';
+    var name = featureName();
     var apiPath = isSummary ? '/api/embed/summary/context' : '/api/embed/context';
     var apiUrl = AURA_EMBED_ORIGIN + apiPath
       + '?requestid=' + encodeURIComponent(requestId)
       + '&embed_token=' + encodeURIComponent(EMBED_ACCESS_TOKEN)
       + '&oa_user_id=' + encodeURIComponent(userId);
-    var openDetails = function () { openEmbedDialog(requestId, userId); };
+    if (preferCached) apiUrl += '&prefer_cached=true';
 
     fetch(apiUrl, { method: 'GET', credentials: 'omit' })
       .then(function (res) {
@@ -1038,61 +1146,74 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
         var wrapped = res && Object.prototype.hasOwnProperty.call(res, 'code');
         var data = wrapped ? res.data : res;
         if ((wrapped && res.code !== 0) || !data || typeof data.supported !== 'boolean') {
-          renderButton('error', '加载异常', '获取 AI ' + featureName + '状态失败', false);
+          renderStatusButton('error', '加载异常', '获取 AI ' + name + '状态失败', false);
           return;
         }
-        if (!data.supported) {
-          renderButton('disabled', '未开启' + featureName, data.message || '当前流程未配置 AI ' + featureName, false);
-          return;
-        }
-
-        var result = isSummary ? data.summary_result : data.audit_result;
-        var hasResult = isSummary ? data.has_summary : data.has_audit;
-        var shouldAutoRun = isSummary ? data.should_auto_summary : data.should_auto_audit;
-        // 状态查询不会启动任务；保留详情入口，由嵌入页接续任务或自动分析。
-        if (data.running_job_id) {
-          renderButton('gray', featureName + '分析中，查看进度', '', false, openDetails);
-          return;
-        }
-        if (hasResult && result) {
-          if (result.status === 'failed' || result.status === 'cancelled' || result.parse_error) {
-            renderButton('red', featureName + '异常', 'AI ' + featureName + '分析出现异常', false, openDetails);
-          } else if (isSummary) {
-            renderButton('green', '查看流程总结', '', false, openDetails);
-          } else {
-            var rec = result.recommendation || 'review';
-            var score = result.overall_score != null ? Math.round(Number(result.overall_score)) : null;
-            var scoreText = score != null ? ' (' + score + '分)' : '';
-            if (rec === 'approve') {
-              renderButton('green', '审核通过' + scoreText, '', false, openDetails);
-            } else if (rec === 'return') {
-              renderButton('red', '建议退回' + scoreText, '', false, openDetails);
-            } else {
-              renderButton('yellow', '建议关注' + scoreText, '', false, openDetails);
-            }
-          }
-          return;
-        }
-        renderButton('gray', shouldAutoRun ? '查看并生成' + featureName : 'AI' + featureName + '详情', '', false, openDetails);
+        var kind = applyContextData(data);
+        if (kind === 'running') startStatusWatch(STATUS_WATCH_MS);
+        else if (kind === 'completed' || kind === 'failed' || kind === 'unsupported') stopStatusWatch();
       })
       .catch(function (err) {
         console.warn('[aura-embed-mobile] 请求状态失败:', err);
-        renderButton('gray', '查看 AI ' + featureName, '', false, openDetails);
+        renderStatusButton('gray', '查看 AI ' + name, '', false, openCurrentDetails);
       });
   }
 
+  function applyStatusMessage(payload) {
+    var isSummary = EMBED_TYPE === 'summary';
+    if (payload.running) {
+      applyResultToButton(isSummary, null, false, false, 'running');
+      startStatusWatch(STATUS_WATCH_MS);
+      return;
+    }
+    var result = {
+      status: payload.status || 'completed',
+      parse_error: !!payload.parse_error,
+      recommendation: payload.recommendation,
+      overall_score: payload.overall_score
+    };
+    var kind = applyResultToButton(isSummary, result, !!payload.has_result, false, '');
+    if (kind === 'completed' || kind === 'failed') stopStatusWatch();
+  }
+
+  function scheduleResumeRefresh() {
+    if (document.visibilityState && document.visibilityState === 'hidden') return;
+    if (resumeRefreshTimer) clearTimeout(resumeRefreshTimer);
+    resumeRefreshTimer = setTimeout(function () {
+      resumeRefreshTimer = null;
+      refreshCurrentStatus(true);
+    }, 300);
+  }
+
+  function bindStatusRefreshListeners() {
+    window.addEventListener('message', function (event) {
+      if (event.origin !== AURA_EMBED_ORIGIN) return;
+      if (!event.data || event.data.type !== MSG_STATUS) return;
+      if (event.data.embed_type && event.data.embed_type !== EMBED_TYPE) return;
+      var requestId = getRequestId();
+      if (event.data.requestid && requestId && String(event.data.requestid) !== String(requestId)) return;
+      applyStatusMessage(event.data);
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') scheduleResumeRefresh();
+    });
+    window.addEventListener('pageshow', scheduleResumeRefresh);
+    window.addEventListener('focus', scheduleResumeRefresh);
+  }
+
   function init() {
+    bindStatusRefreshListeners();
     var requestId = getRequestId();
     var userId = getCurrentUserId();
 
     if (!requestId) {
-      renderButton('disabled', '待保存流程', '流程保存并生成编号后即可查看 AI ' + (EMBED_TYPE === 'summary' ? '总结' : '审核'), false);
+      renderStatusButton('disabled', '待保存流程', '流程保存并生成编号后即可查看 AI ' + featureName(), false);
       registerOAEvents();
       return;
     }
 
-    renderButton('loading', '加载中...', '', true);
-    queryEmbedStatus(requestId, userId);
+    renderStatusButton('loading', '加载中...', '', true);
+    queryEmbedStatus(requestId, userId, false);
     registerOAEvents();
   }
 
