@@ -10,6 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
+var errConfigNotPublished = errors.New("配置尚处于草稿状态，请先发布首个版本")
+
 // loadPublishedConfig 只覆盖快照字段，保留当前租户隔离、访问控制及嵌入开关。
 func loadPublishedConfig(ctx context.Context, versions *repository.ExecutionConfigVersionRepo, tenantID uuid.UUID, module string, configID uuid.UUID, target interface{}, rules interface{}) error {
 	if versions == nil {
@@ -17,7 +19,7 @@ func loadPublishedConfig(ctx context.Context, versions *repository.ExecutionConf
 	}
 	version, err := versions.GetActiveBaseVersion(ctx, tenantID, module, configID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil
+		return errConfigNotPublished
 	}
 	if err != nil {
 		return err

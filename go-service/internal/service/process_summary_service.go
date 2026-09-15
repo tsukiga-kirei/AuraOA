@@ -193,6 +193,17 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 			Process:   summary,
 		}, nil
 	}
+	if err := loadPublishedConfig(c.Request.Context(), s.executionVersions, tenantID, model.ExecutionConfigModuleSummary, config.ID, config, nil); err != nil {
+		if errors.Is(err, errConfigNotPublished) {
+			return &SummaryEmbedContextResponse{
+				Supported: false,
+				Reason:    "config_draft",
+				Message:   fmt.Sprintf("流程「%s」的 AI 总结配置尚处于草稿状态，请先发布首个版本", summary.ProcessType),
+				Process:   summary,
+			}, nil
+		}
+		return nil, newServiceError(errcode.ErrDatabase, "读取流程总结发布版本失败")
+	}
 	if !config.EmbedEnabled {
 		return &SummaryEmbedContextResponse{
 			Supported:    false,
@@ -488,13 +499,14 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 			blocks = defaultSummaryBlocks()
 		}
 		configSnapshot := SummaryExecutionConfigSnapshot{Blocks: blocks}
-		baseSnapshot := summaryConfigSourceSnapshot(config)
-		baseVersion, baseErr := s.executionVersions.GetOrCreateLatestBaseVersion(
-			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleSummary,
-			config.ID, stableJSONFingerprint(baseSnapshot), baseSnapshot,
+		baseVersion, baseErr := s.executionVersions.GetActiveBaseVersion(
+			c.Request.Context(), tenantID, model.ExecutionConfigModuleSummary, config.ID,
 		)
 		if baseErr != nil {
-			return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrDatabase, "保存总结基础配置版本失败")
+			if errors.Is(baseErr, gorm.ErrRecordNotFound) {
+				return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrNoProcessConfig, "流程总结配置尚处于草稿状态，请先发布首个版本")
+			}
+			return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrDatabase, "读取总结基础配置版本失败")
 		}
 		configVersion, err = s.executionVersions.BindSnapshot(
 			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleSummary,
@@ -673,9 +685,13 @@ func (s *ProcessSummaryService) collectWorkbenchProcesses(c *gin.Context, params
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "读取流程总结配置失败")
 	}
+	published, err := s.executionVersions.ListActiveSourceConfigIDs(c.Request.Context(), tenantID, model.ExecutionConfigModuleSummary)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "读取流程总结发布状态失败")
+	}
 	allowedTypes := make(map[string]model.ProcessSummaryConfig)
 	for _, config := range configs {
-		if config.Status == "active" {
+		if config.Status == "active" && published[config.ID] {
 			allowedTypes[strings.ToLower(config.ProcessType)] = config
 		}
 	}

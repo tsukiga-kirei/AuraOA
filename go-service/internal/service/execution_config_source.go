@@ -72,7 +72,7 @@ func (s *ExecutionConfigSourceService) GetStatus(
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
 
-	snapshot, sourceFingerprint, err := s.currentSourceSnapshot(c, module, sourceConfigID)
+	_, sourceFingerprint, err := s.currentSourceSnapshot(c, module, sourceConfigID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, newServiceError(errcode.ErrConfigNotFound, "流程配置不存在")
@@ -83,20 +83,8 @@ func (s *ExecutionConfigSourceService) GetStatus(
 	active, err := s.versions.GetActiveBaseVersion(c.Request.Context(), tenantID, module, sourceConfigID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			// 若尚未创建任何版本，自动初始化 V1
-			userID, userErr := getUserUUID(c)
-			if userErr != nil {
-				return nil, newServiceError(errcode.ErrParamValidation, "用户ID无效")
-			}
-			initial, initErr := s.versions.GetOrCreateLatestBaseVersion(
-				c.Request.Context(), tenantID, userID, module, sourceConfigID, sourceFingerprint, snapshot,
-			)
-			if initErr != nil {
-				return nil, newServiceError(errcode.ErrDatabase, "初始化配置版本失败")
-			}
-			versionNo := initial.VersionNo
 			return &ExecutionConfigVersionStatus{
-				Status: "current", ActiveVersionNo: &versionNo, CurrentVersionNo: &versionNo, LatestVersionNo: &versionNo, HasPendingChanges: false,
+				Status: "unversioned", HasPendingChanges: true,
 			}, nil
 		}
 		return nil, newServiceError(errcode.ErrDatabase, "查询配置版本状态失败")
@@ -163,6 +151,39 @@ func (s *ExecutionConfigSourceService) Publish(
 	return &ExecutionConfigVersionStatus{
 		Status: "current", ActiveVersionNo: &versionNo, CurrentVersionNo: &versionNo, LatestVersionNo: &versionNo, HasPendingChanges: false,
 	}, nil
+}
+
+// SaveDraft 保存管理员当前编辑内容，但不创建发布版本。
+// 首次发布前保持 unversioned 草稿状态；已有版本时仅产生待发布修改。
+func (s *ExecutionConfigSourceService) SaveDraft(
+	c *gin.Context,
+	module string,
+	sourceConfigID uuid.UUID,
+	snapshot interface{},
+) (*ExecutionConfigVersionStatus, error) {
+	if module != model.ExecutionConfigModuleAudit &&
+		module != model.ExecutionConfigModuleArchive &&
+		module != model.ExecutionConfigModuleSummary {
+		return nil, newServiceError(errcode.ErrParamValidation, "配置模块无效")
+	}
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "配置草稿格式无效")
+	}
+	if err := validateSourceSnapshot(module, raw); err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, err.Error())
+	}
+	if err := s.inTransaction(c, func(scoped *ExecutionConfigSourceService) error {
+		return scoped.applySnapshotToSource(c, tenantID, module, sourceConfigID, datatypes.JSON(raw))
+	}); err != nil {
+		return nil, fmt.Errorf("保存配置草稿失败: %w", err)
+	}
+	s.invalidate(c, tenantID, module)
+	return s.GetStatus(c, module, sourceConfigID)
 }
 
 // TenantConfigVersionHistoryItem 描述历史版本的一条记录。
@@ -344,6 +365,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 			}
 			snapshotRuleIDs[ruleID.String()] = true
 			enabled := rs.Enabled
+			source := defaultStr(rs.Source, "manual")
 			ruleModel := &model.AuditRule{
 				ID:             ruleID,
 				TenantID:       tenantID,
@@ -352,6 +374,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				RuleContent:    rs.RuleContent,
 				RuleScope:      rs.RuleScope,
 				Enabled:        &enabled,
+				Source:         source,
 				RelatedFlow:    rs.RelatedFlow,
 				ContextEnabled: rs.ContextEnabled,
 			}
@@ -361,7 +384,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				}
 			}
 			if _, exists := existingMap[ruleID.String()]; exists {
-				if err := s.auditRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "rule_scope", "enabled", "related_flow", "context_enabled", "context_mounts").Updates(ruleModel).Error; err != nil {
+				if err := s.auditRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "rule_scope", "enabled", "source", "related_flow", "context_enabled", "context_mounts").Updates(ruleModel).Error; err != nil {
 					return err
 				}
 			} else {
@@ -424,6 +447,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 			}
 			snapshotRuleIDs[ruleID.String()] = true
 			enabled := rs.Enabled
+			source := defaultStr(rs.Source, "manual")
 			ruleModel := &model.ArchiveRule{
 				ID:             ruleID,
 				TenantID:       tenantID,
@@ -432,6 +456,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				RuleContent:    rs.RuleContent,
 				RuleScope:      rs.RuleScope,
 				Enabled:        &enabled,
+				Source:         source,
 				RelatedFlow:    rs.RelatedFlow,
 				ContextEnabled: rs.ContextEnabled,
 			}
@@ -441,7 +466,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				}
 			}
 			if _, exists := existingMap[ruleID.String()]; exists {
-				if err := s.archiveRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "rule_scope", "enabled", "related_flow", "context_enabled", "context_mounts").Updates(ruleModel).Error; err != nil {
+				if err := s.archiveRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "rule_scope", "enabled", "source", "related_flow", "context_enabled", "context_mounts").Updates(ruleModel).Error; err != nil {
 					return err
 				}
 			} else {
@@ -528,6 +553,7 @@ type ruleSource struct {
 	RuleContent    string      `json:"rule_content"`
 	RuleScope      string      `json:"rule_scope"`
 	Enabled        bool        `json:"enabled"`
+	Source         string      `json:"source,omitempty"`
 	RelatedFlow    bool        `json:"related_flow"`
 	ContextEnabled bool        `json:"context_enabled"`
 	ContextMounts  interface{} `json:"context_mounts"`

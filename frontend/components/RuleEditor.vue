@@ -19,7 +19,7 @@ type ProcessInfo = {
 }
 
 // props：弹窗开关 / 待编辑的规则数据（新增时为 null）
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   open: boolean
   rule?: {
     id?: string
@@ -33,7 +33,10 @@ const props = defineProps<{
   contextTestEndpoint?: string
   workflowFieldsEndpoint?: string
   workflowSearchEndpoint?: string
-}>()
+  deferredSave?: boolean
+}>(), {
+  deferredSave: false,
+})
 
 // emit：关闭弹窗 / 提交保存的规则数据
 const emit = defineEmits<{
@@ -389,7 +392,7 @@ const handleSave = () => {
     :title="rule ? t('ruleEditor.editRule') : t('ruleEditor.addRule')"
     @cancel="emit('close')"
     @ok="handleSave"
-    :okText="t('ruleEditor.save')"
+    :okText="props.deferredSave ? t('ruleEditor.stageChanges') : t('ruleEditor.save')"
     :cancelText="t('ruleEditor.cancel')"
     :width="760"
   >

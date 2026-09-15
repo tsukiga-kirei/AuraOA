@@ -212,6 +212,7 @@ func SetupRouter(
 	executionConfigVersions.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"))
 	{
 		executionConfigVersions.GET("/status", executionConfigSourceHandler.GetStatus)
+		executionConfigVersions.POST("/save-draft", executionConfigSourceHandler.SaveDraft)
 		executionConfigVersions.POST("/publish", executionConfigSourceHandler.Publish)
 		executionConfigVersions.GET("/history", executionConfigSourceHandler.ListHistory)
 		executionConfigVersions.POST("/activate", executionConfigSourceHandler.Activate)

@@ -45,6 +45,21 @@ export const useExecutionConfigVersionApi = () => {
     )
   }
 
+  /** 保存当前配置草稿，不生成发布版本。 */
+  async function saveDraft(
+    module: ExecutionConfigModule,
+    sourceConfigId: string,
+    snapshot: Record<string, any>,
+  ): Promise<ExecutionConfigVersionStatus> {
+    return await authFetch<ExecutionConfigVersionStatus>(
+      '/api/tenant/execution-config-versions/save-draft',
+      {
+        method: 'POST',
+        body: { module, source_config_id: sourceConfigId, snapshot },
+      },
+    )
+  }
+
   async function getHistory(
     module: ExecutionConfigModule,
     sourceConfigId: string,
@@ -69,20 +84,5 @@ export const useExecutionConfigVersionApi = () => {
     )
   }
 
-  async function saveVersion(
-    module: ExecutionConfigModule,
-    sourceConfigId: string,
-    versionNo: number,
-    snapshot: any,
-  ): Promise<ExecutionConfigVersionStatus> {
-    return await authFetch<ExecutionConfigVersionStatus>(
-      '/api/tenant/execution-config-versions/save-version',
-      {
-        method: 'POST',
-        body: { module, source_config_id: sourceConfigId, version_no: versionNo, snapshot },
-      },
-    )
-  }
-
-  return { getStatus, publish, getHistory, activate, saveVersion }
+  return { getStatus, saveDraft, publish, getHistory, activate }
 }
