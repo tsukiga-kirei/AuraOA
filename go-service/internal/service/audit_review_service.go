@@ -218,13 +218,14 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		if resolveErr != nil {
 			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人审核尺度失败: "+resolveErr.Error())
 		}
-		baseSnapshot := auditConfigSourceSnapshot(config, rules)
-		baseVersion, baseErr := s.executionVersions.GetOrCreateLatestBaseVersion(
-			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleAudit,
-			config.ID, stableJSONFingerprint(baseSnapshot), baseSnapshot,
+		baseVersion, baseErr := s.executionVersions.GetActiveBaseVersion(
+			c.Request.Context(), tenantID, model.ExecutionConfigModuleAudit, config.ID,
 		)
 		if baseErr != nil {
-			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "保存审核基础配置版本失败")
+			if errors.Is(baseErr, gorm.ErrRecordNotFound) {
+				return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "审核配置尚处于草稿状态，请先发布首个版本")
+			}
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "读取审核基础配置版本失败")
 		}
 		configSnapshot := AuditExecutionConfigSnapshot{
 			AIConfig: effectiveAIConfig, FieldSet: fieldSet, MergedRules: mergedRulesText,
@@ -1132,6 +1133,9 @@ func (s *AuditExecuteService) userCanAccessAuditProcess(
 ) bool {
 	config, err := s.configRepo.GetByProcessType(c, processType)
 	if err != nil || config.Status != "active" {
+		return false
+	}
+	if _, err := s.executionVersions.GetActiveBaseVersion(c.Request.Context(), tenantID, model.ExecutionConfigModuleAudit, config.ID); err != nil {
 		return false
 	}
 	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
@@ -2368,10 +2372,14 @@ func (s *AuditExecuteService) getAccessibleAuditConfigs(c *gin.Context) []model.
 	if err != nil {
 		return nil
 	}
+	published, err := s.executionVersions.ListActiveSourceConfigIDs(c.Request.Context(), tenantID, model.ExecutionConfigModuleAudit)
+	if err != nil {
+		return nil
+	}
 	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
 	accessible := make([]model.ProcessAuditConfig, 0, len(configs))
 	for _, cfg := range configs {
-		if cfg.Status == "active" && accessControlAllows(cfg.AccessControl, member) {
+		if cfg.Status == "active" && published[cfg.ID] && accessControlAllows(cfg.AccessControl, member) {
 			accessible = append(accessible, cfg)
 		}
 	}

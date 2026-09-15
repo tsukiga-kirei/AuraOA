@@ -41,6 +41,28 @@ type publishConfigRequest struct {
 	SourceConfigID uuid.UUID `json:"source_config_id"`
 }
 
+type saveDraftRequest struct {
+	Module         string      `json:"module" binding:"required"`
+	SourceConfigID uuid.UUID   `json:"source_config_id" binding:"required"`
+	Snapshot       interface{} `json:"snapshot" binding:"required"`
+}
+
+// SaveDraft 保存当前配置草稿，不创建或更新发布版本。
+// POST /api/tenant/execution-config-versions/save-draft
+func (h *ExecutionConfigSourceHandler) SaveDraft(c *gin.Context) {
+	var req saveDraftRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	status, err := h.service.SaveDraft(c, req.Module, req.SourceConfigID, req.Snapshot)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
 // Publish 固化当前配置并发布为新版本。
 // POST /api/tenant/execution-config-versions/publish
 func (h *ExecutionConfigSourceHandler) Publish(c *gin.Context) {
@@ -131,4 +153,3 @@ func (h *ExecutionConfigSourceHandler) SaveVersion(c *gin.Context) {
 	}
 	response.Success(c, status)
 }
-

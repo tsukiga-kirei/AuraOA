@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
+	"gorm.io/gorm"
 
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
@@ -60,16 +62,17 @@ func NewUserPersonalConfigService(
 
 func (s *UserPersonalConfigService) ensureAuditBaseVersion(
 	c *gin.Context,
-	tenantID, userID uuid.UUID,
+	tenantID, _ uuid.UUID,
 	config *model.ProcessAuditConfig,
 	rules *[]model.AuditRule,
 ) (*model.TenantConfigVersion, error) {
-	snapshot := auditConfigSourceSnapshot(config, *rules)
-	version, err := s.versions.GetOrCreateLatestBaseVersion(
-		c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleAudit,
-		config.ID, stableJSONFingerprint(snapshot), snapshot,
+	version, err := s.versions.GetActiveBaseVersion(
+		c.Request.Context(), tenantID, model.ExecutionConfigModuleAudit, config.ID,
 	)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, newServiceError(errcode.ErrConfigNotFound, "审核配置尚处于草稿状态，请先发布首个版本")
+		}
 		return nil, newServiceError(errcode.ErrDatabase, "读取审核基础配置版本失败")
 	}
 	if err := decodePublishedConfig(version, config, rules); err != nil {
@@ -80,16 +83,17 @@ func (s *UserPersonalConfigService) ensureAuditBaseVersion(
 
 func (s *UserPersonalConfigService) ensureArchiveBaseVersion(
 	c *gin.Context,
-	tenantID, userID uuid.UUID,
+	tenantID, _ uuid.UUID,
 	config *model.ProcessArchiveConfig,
 	rules *[]model.ArchiveRule,
 ) (*model.TenantConfigVersion, error) {
-	snapshot := archiveConfigSourceSnapshot(config, *rules)
-	version, err := s.versions.GetOrCreateLatestBaseVersion(
-		c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleArchive,
-		config.ID, stableJSONFingerprint(snapshot), snapshot,
+	version, err := s.versions.GetActiveBaseVersion(
+		c.Request.Context(), tenantID, model.ExecutionConfigModuleArchive, config.ID,
 	)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, newServiceError(errcode.ErrConfigNotFound, "归档复盘配置尚处于草稿状态，请先发布首个版本")
+		}
 		return nil, newServiceError(errcode.ErrDatabase, "读取归档复盘基础配置版本失败")
 	}
 	if err := decodePublishedConfig(version, config, rules); err != nil {
@@ -158,13 +162,17 @@ func (s *UserPersonalConfigService) GetProcessList(c *gin.Context, userID uuid.U
 	if len(configs) == 0 {
 		return []dto.ProcessListItem{}, nil
 	}
+	published, err := s.versions.ListActiveSourceConfigIDs(c.Request.Context(), tenantID, model.ExecutionConfigModuleAudit)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "读取审核配置发布状态失败")
+	}
 
 	// 获取用户在租户内的成员信息（角色、部门）
 	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
 
 	var result []dto.ProcessListItem
 	for _, cfg := range configs {
-		if cfg.Status != "active" {
+		if cfg.Status != "active" || !published[cfg.ID] {
 			continue
 		}
 		if accessControlAllows(cfg.AccessControl, member) {
@@ -578,13 +586,17 @@ func (s *UserPersonalConfigService) GetAccessibleArchiveConfigs(c *gin.Context, 
 	if len(allCfgs) == 0 {
 		return []dto.AccessibleArchiveConfigItem{}, nil
 	}
+	published, err := s.versions.ListActiveSourceConfigIDs(c.Request.Context(), tenantID, model.ExecutionConfigModuleArchive)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "读取归档复盘发布状态失败")
+	}
 
 	// 获取用户在租户内的成员信息（角色、部门）
 	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
 
 	var result []dto.AccessibleArchiveConfigItem
 	for _, cfg := range allCfgs {
-		if cfg.Status != "active" {
+		if cfg.Status != "active" || !published[cfg.ID] {
 			continue
 		}
 		if accessControlAllows(cfg.AccessControl, member) {
@@ -903,13 +915,21 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 // GetAccessibleSummaryConfigs 获取当前用户可用的流程总结配置列表。
 // 流程数据的实际可见性仍由工作台调用 OA 用户待办与归档列表决定。
 func (s *UserPersonalConfigService) GetAccessibleSummaryConfigs(c *gin.Context) ([]dto.ProcessListItem, error) {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
 	configs, err := s.summaryConfigRepo.ListByTenant(c)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "读取流程总结配置失败")
 	}
+	published, err := s.versions.ListActiveSourceConfigIDs(c.Request.Context(), tenantID, model.ExecutionConfigModuleSummary)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "读取流程总结发布状态失败")
+	}
 	result := make([]dto.ProcessListItem, 0, len(configs))
 	for _, cfg := range configs {
-		if cfg.Status != "active" {
+		if cfg.Status != "active" || !published[cfg.ID] {
 			continue
 		}
 		result = append(result, dto.ProcessListItem{
@@ -928,6 +948,12 @@ func (s *UserPersonalConfigService) GetFullSummaryPreference(c *gin.Context, use
 	config, err := s.summaryConfigRepo.GetByProcessType(c, processType)
 	if err != nil || config.Status != "active" {
 		return nil, newServiceError(errcode.ErrConfigNotFound, "流程总结配置不存在或已停用")
+	}
+	if err := loadPublishedConfig(c.Request.Context(), s.versions, tenantID, model.ExecutionConfigModuleSummary, config.ID, config, nil); err != nil {
+		if errors.Is(err, errConfigNotPublished) {
+			return nil, newServiceError(errcode.ErrConfigNotFound, "流程总结配置尚处于草稿状态，请先发布首个版本")
+		}
+		return nil, newServiceError(errcode.ErrDatabase, "读取流程总结发布版本失败")
 	}
 
 	visibleIDs := map[string]bool{}
@@ -976,6 +1002,12 @@ func (s *UserPersonalConfigService) UpdateSummaryPreference(c *gin.Context, user
 	config, err := s.summaryConfigRepo.GetByProcessType(c, processType)
 	if err != nil || config.Status != "active" {
 		return newServiceError(errcode.ErrConfigNotFound, "流程总结配置不存在或已停用")
+	}
+	if err := loadPublishedConfig(c.Request.Context(), s.versions, tenantID, model.ExecutionConfigModuleSummary, config.ID, config, nil); err != nil {
+		if errors.Is(err, errConfigNotPublished) {
+			return newServiceError(errcode.ErrConfigNotFound, "流程总结配置尚处于草稿状态，请先发布首个版本")
+		}
+		return newServiceError(errcode.ErrDatabase, "读取流程总结发布版本失败")
 	}
 	configID, err := uuid.Parse(req.ConfigID)
 	if err != nil || configID != config.ID {

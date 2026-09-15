@@ -65,6 +65,15 @@ const tableNameSQLVariable = '{{table_name}}'
 const joinFieldSQLVariable = '{{join_field}}'
 const customSQLPlaceholder = `仅允许 SELECT，必须使用 ${tableNameSQLVariable}、${joinFieldSQLVariable} 与 :source_value`
 
+function cloneSerializable<T>(value: T): T {
+  return JSON.parse(JSON.stringify(toRaw(value))) as T
+}
+
+function createDraftRuleID(): string {
+  const suffix = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return `draft-${suffix}`
+}
+
 //===== 顶级选项卡：审核工作台 vs 定时任务配置 vs 归档复盘 vs 流程总结 =====
 const topTab = ref<'audit' | 'cron' | 'archive' | 'summary'>('audit')
 
@@ -151,6 +160,11 @@ async function handlePublishVersion(module: ExecutionConfigModule) {
   }
   if (!configId) return
 
+  if ((module === 'audit' && auditRulesDirty.value) || (module === 'archive' && archiveRulesDirty.value)) {
+    message.warning(t('admin.ruleConfig.saveRulesBeforePublish'))
+    return
+  }
+
   Modal.confirm({
     title: t('executionConfig.publishConfirmTitle'),
     content: t('executionConfig.publishConfirmContent'),
@@ -190,7 +204,9 @@ async function reloadCurrentModuleData(module: ExecutionConfigModule) {
     const configs = await rulesApi.listConfigs()
     processConfigs.value = configs.map(c => typeof normalizeAuditConfigForUI === 'function' ? normalizeAuditConfigForUI(c) : c)
     if (selectedConfig.value) {
-      currentRules.value = await rulesApi.listRules(selectedConfig.value.id)
+      const rules = await rulesApi.listRules(selectedConfig.value.id)
+      auditRuleDraftsByConfig[selectedConfig.value.id] = cloneSerializable(rules)
+      savedAuditRulesByConfig[selectedConfig.value.id] = cloneSerializable(rules)
     }
   } else if (module === 'archive') {
     const archiveList = await archiveApi.listConfigs()
@@ -199,7 +215,9 @@ async function reloadCurrentModuleData(module: ExecutionConfigModule) {
       access_control: typeof normalizeAccessControl === 'function' ? normalizeAccessControl(cfg.access_control) : cfg.access_control,
     }))
     if (selectedArchiveConfig.value) {
-      currentArchiveRules.value = await archiveApi.listRules(selectedArchiveConfig.value.id)
+      const rules = await archiveApi.listRules(selectedArchiveConfig.value.id)
+      archiveRuleDraftsByConfig[selectedArchiveConfig.value.id] = cloneSerializable(rules)
+      savedArchiveRulesByConfig[selectedArchiveConfig.value.id] = cloneSerializable(rules)
     }
   } else if (module === 'summary') {
     const summaryList = await summaryApi.listConfigs()
@@ -277,14 +295,14 @@ async function handleActivateVersion(item: any) {
 // 载入历史版本到当前编辑区（纯前端填充，绝对不调用 activate 改变线上当前可用版本）
 function handleLoadVersionToEdit(item: any) {
   const module = activeHistoryModule.value
-  const snapshot = item.config_snapshot || {}
+  const snapshot = cloneSerializable(item.config_snapshot || {})
 
   const target = module === 'audit' ? selectedConfig.value : module === 'archive' ? selectedArchiveConfig.value : selectedSummaryConfig.value
   if (target) {
-    const { rules, ...fields } = structuredClone(snapshot)
+    const { rules, ...fields } = snapshot
     Object.assign(target, fields)
-    if (module === 'audit') currentRules.value = rules || []
-    if (module === 'archive') currentArchiveRules.value = rules || []
+    if (module === 'audit') currentRules.value = cloneSerializable(rules || [])
+    if (module === 'archive') currentArchiveRules.value = cloneSerializable(rules || [])
   }
 
   editingVersionNo[module] = item.version_no
@@ -298,36 +316,14 @@ async function handleExitHistoryEditing(module: ExecutionConfigModule) {
   await reloadCurrentModuleData(module)
 }
 
-// 保存到当前正在编辑的历史版本快照
+// 将历史版本内容保存到工作草稿，不修改历史发布版本。
 async function handleSaveHistoricalVersion(module: ExecutionConfigModule) {
   const versionNo = editingVersionNo[module]
   if (versionNo === null) return
-  let configId = ''
-  let snapshot: any = {}
-
-  const config = module === 'audit' ? selectedConfig.value : module === 'archive' ? selectedArchiveConfig.value : selectedSummaryConfig.value
-  if (config) {
-    configId = config.id
-    snapshot = {
-      process_type: config.process_type, main_table_name: config.main_table_name,
-      main_fields: config.main_fields || [], detail_tables: config.detail_tables || [], status: config.status,
-    }
-    if (module === 'summary') snapshot.summary_blocks = (config as any).summary_blocks || []
-    else Object.assign(snapshot, {
-      field_mode: (config as any).field_mode, kb_mode: (config as any).kb_mode,
-      ai_config: (config as any).ai_config || {}, user_permissions: (config as any).user_permissions || {},
-      rules: (module === 'audit' ? currentRules.value : currentArchiveRules.value).map(rule => ({ ...rule, context_mounts: rule.context_mounts || [] })),
-    })
-  }
-
-  if (!configId) return
   savingHistoricalVersion.value = true
   try {
-    const status = await executionConfigVersionApi.saveVersion(module, configId, versionNo, snapshot)
-    versionStatusRefs[module].value = status
-    message.success(t('admin.ruleConfig.saveVersionSuccess', [`${versionNo}`]))
-  } catch (e: any) {
-    message.error(t('admin.ruleConfig.saveVersionFail') + ': ' + (e.message || ''))
+    const saved = await saveModuleDraft(module, true)
+    if (saved) message.success(t('admin.ruleConfig.loadedVersionSavedAsDraft', [`${versionNo}`]))
   } finally {
     savingHistoricalVersion.value = false
   }
@@ -455,8 +451,21 @@ const handleResetCronTemplate = async () => {
 
 const processConfigs = ref<ApiProcessAuditConfig[]>([])
 const selectedProcessId = ref('')
-// 当前选中流程的规则列表（从 API 加载）
-const currentRules = ref<ApiAuditRule[]>([])
+// 规则修改先保留在页面草稿中，点击页面“保存”后才写入后端。
+const auditRuleDraftsByConfig = reactive<Record<string, ApiAuditRule[]>>({})
+const savedAuditRulesByConfig = reactive<Record<string, ApiAuditRule[]>>({})
+const currentRules = computed<ApiAuditRule[]>({
+  get: () => auditRuleDraftsByConfig[selectedProcessId.value] || [],
+  set: value => {
+    if (selectedProcessId.value) auditRuleDraftsByConfig[selectedProcessId.value] = value
+  },
+})
+const auditRulesDirty = computed(() => {
+  const id = selectedProcessId.value
+  if (!id) return false
+  return JSON.stringify(auditRuleDraftsByConfig[id] || []) !== JSON.stringify(savedAuditRulesByConfig[id] || [])
+})
+const savingAuditRules = ref(false)
 const loadingRules = ref(false)
 const selectedRuleIds = ref<string[]>([])
 const batchDeletingRules = ref(false)
@@ -756,9 +765,12 @@ watch(selectedProcessId, async (newId) => {
   if (!newId) { currentRules.value = []; return }
   const cfg = processConfigs.value.find(c => c.id === newId)
   if (!cfg) { currentRules.value = []; return }
+  if (auditRuleDraftsByConfig[newId]) return
   loadingRules.value = true
   try {
-    currentRules.value = await rulesApi.listRules(cfg.id)
+    const rules = await rulesApi.listRules(cfg.id)
+    auditRuleDraftsByConfig[newId] = cloneSerializable(rules)
+    savedAuditRulesByConfig[newId] = cloneSerializable(rules)
   } catch (e) {
     console.error('[rules] 加载规则失败', e)
     currentRules.value = []
@@ -962,73 +974,93 @@ const openRuleEditor = (rule?: ApiAuditRule | AuditRule) => {
 
 const handleSaveRule = async (rule: any) => {
   if (!selectedConfig.value) return
-  try {
-    if (editingRule.value) {
-      // 更新规则
-      const updated = await rulesApi.updateRule(editingRule.value.id, {
-        rule_content: rule.rule_content,
-        rule_scope: rule.rule_scope,
-        related_flow: rule.related_flow,
-        context_enabled: rule.context_enabled,
-        context_mounts: rule.context_mounts,
-        // 强制根据级别同步启用状态
-        enabled: rule.rule_scope === 'mandatory' ? true : (rule.rule_scope === 'default_off' ? false : true)
-      })
-      const idx = currentRules.value.findIndex(r => r.id === editingRule.value!.id)
-      if (idx >= 0) currentRules.value[idx] = updated
-    } else {
-      // 创建规则
-      // 根据规则级别设置初始状态：强制或默认开启则设为true，默认关闭则设为false
-      const initialEnabled = rule.rule_scope !== 'default_off'
-      const created = await rulesApi.createRule({
-        config_id: selectedConfig.value.id,
-        process_type: selectedConfig.value.process_type,
-        rule_content: rule.rule_content,
-        rule_scope: rule.rule_scope,
-        related_flow: rule.related_flow,
-        context_enabled: rule.context_enabled,
-        context_mounts: rule.context_mounts,
-        enabled: initialEnabled,
-      })
-      currentRules.value.push(created)
+  const enabled = rule.rule_scope === 'mandatory' ? true : rule.rule_scope !== 'default_off'
+  if (editingRule.value) {
+    const idx = currentRules.value.findIndex(r => r.id === editingRule.value!.id)
+    if (idx >= 0) {
+      currentRules.value[idx] = {
+        ...currentRules.value[idx], ...cloneSerializable(rule), enabled,
+      }
     }
-    showRuleEditor.value = false
-    editingRule.value = null
-    await refreshVersionStatus('audit', selectedConfig.value.id)
-    message.success(t('admin.ruleConfig.ruleSaved'))
-  } catch (e: any) {
-    const key = editingRule.value ? 'admin.ruleConfig.updateRuleFail' : 'admin.ruleConfig.createRuleFail'
-    message.error(t(key) + ': ' + (e.message || ''))
+  } else {
+    currentRules.value.push({
+      id: createDraftRuleID(),
+      config_id: selectedConfig.value.id,
+      process_type: selectedConfig.value.process_type,
+      rule_content: rule.rule_content,
+      rule_scope: rule.rule_scope,
+      priority: 0,
+      enabled,
+      source: 'manual',
+      related_flow: !!rule.related_flow,
+      context_enabled: !!rule.context_enabled,
+      context_mounts: cloneSerializable(rule.context_mounts || []),
+    })
   }
+  showRuleEditor.value = false
+  editingRule.value = null
+  message.success(t('admin.ruleConfig.ruleStaged'))
 }
 
 const deleteRule = async (id: string) => {
-  try {
-    await rulesApi.deleteRule(id)
-    currentRules.value = currentRules.value.filter(r => r.id !== id)
-    selectedRuleIds.value = selectedRuleIds.value.filter(ruleId => ruleId !== id)
-    await refreshVersionStatus('audit', selectedConfig.value?.id)
-    message.success(t('admin.ruleConfig.deleted'))
-  } catch (e: any) {
-    message.error(t('admin.ruleConfig.deleteRuleFail') + ': ' + (e.message || ''))
-  }
+  currentRules.value = currentRules.value.filter(r => r.id !== id)
+  selectedRuleIds.value = selectedRuleIds.value.filter(ruleId => ruleId !== id)
 }
 
 const batchDeleteRules = async () => {
   if (!selectedConfig.value || selectedRuleIds.value.length === 0) return
   const ids = [...selectedRuleIds.value]
   batchDeletingRules.value = true
+  const deletedIDs = new Set(ids)
+  currentRules.value = currentRules.value.filter(rule => !deletedIDs.has(rule.id))
+  selectedRuleIds.value = []
+  batchDeletingRules.value = false
+}
+
+function buildAuditDraftSnapshot(): Record<string, any> | null {
+  const config = selectedConfig.value
+  if (!config) return null
+  return {
+    process_type: config.process_type,
+    main_table_name: config.main_table_name,
+    main_fields: cloneSerializable(config.main_fields || []),
+    detail_tables: cloneSerializable(config.detail_tables || []),
+    status: config.status,
+    field_mode: config.field_mode,
+    kb_mode: config.kb_mode,
+    ai_config: cloneSerializable(config.ai_config || {}),
+    user_permissions: cloneSerializable(config.user_permissions || {}),
+    rules: cloneSerializable(currentRules.value).map(rule => ({
+      id: rule.id,
+      rule_content: rule.rule_content,
+      rule_scope: rule.rule_scope,
+      enabled: rule.rule_scope === 'mandatory' ? true : rule.enabled,
+      source: rule.source || 'manual',
+      related_flow: !!rule.related_flow,
+      context_enabled: !!rule.context_enabled,
+      context_mounts: rule.context_mounts || [],
+    })),
+  }
+}
+
+async function persistAuditRuleDrafts(silent = false): Promise<boolean> {
+  const config = selectedConfig.value
+  const snapshot = buildAuditDraftSnapshot()
+  if (!config || !snapshot) return false
+  savingAuditRules.value = true
   try {
-    const deletedCount = await rulesApi.batchDeleteRules(selectedConfig.value.id, ids)
-    const deletedIDs = new Set(ids)
-    currentRules.value = currentRules.value.filter(rule => !deletedIDs.has(rule.id))
-    selectedRuleIds.value = []
-    await refreshVersionStatus('audit', selectedConfig.value.id)
-    message.success(t('admin.ruleConfig.batchDeleteSuccess', `${deletedCount}`))
+    const status = await executionConfigVersionApi.saveDraft('audit', config.id, snapshot)
+    const rules = await rulesApi.listRules(config.id)
+    auditRuleDraftsByConfig[config.id] = cloneSerializable(rules)
+    savedAuditRulesByConfig[config.id] = cloneSerializable(rules)
+    auditVersionStatus.value = status
+    if (!silent) message.success(t('admin.ruleConfig.rulesSavedAsDraft'))
+    return true
   } catch (e: any) {
-    message.error(t('admin.ruleConfig.batchDeleteFail') + ': ' + (e.message || ''))
+    message.error(t('admin.ruleConfig.saveRulesFail') + ': ' + (e.message || ''))
+    return false
   } finally {
-    batchDeletingRules.value = false
+    savingAuditRules.value = false
   }
 }
 
@@ -1140,28 +1172,27 @@ const confirmRuleImport = async () => {
     message.warning(t('admin.ruleConfig.fileImportSelectOne'))
     return
   }
-  ruleImportSaving.value = true
-  try {
-    const drafts: RuleImportDraft[] = selected.map(({ selected: _selected, ...rule }) => rule)
-    let importedCount = 0
-    if (ruleImportTarget.value === 'audit') {
-      const created = await rulesApi.confirmRuleImport(config.id, drafts, ruleImportSource.value)
-      currentRules.value.push(...created)
-      importedCount = created.length
-      await refreshVersionStatus('audit', config.id)
-    } else {
-      const created = await archiveApi.confirmRuleImport(config.id, drafts, ruleImportSource.value)
-      currentArchiveRules.value.push(...created)
-      importedCount = created.length
-      await refreshVersionStatus('archive', config.id)
-    }
-    showRuleImportPreview.value = false
-    message.success(t('admin.ruleConfig.fileImportSaved', `${importedCount}`))
-  } catch (e: any) {
-    message.error(t('admin.ruleConfig.fileImportSaveFail') + ': ' + (e.message || ''))
-  } finally {
-    ruleImportSaving.value = false
+  const drafts: RuleImportDraft[] = selected.map(({ selected: _selected, ...rule }) => rule)
+  const staged = drafts.map(rule => ({
+    id: createDraftRuleID(),
+    config_id: config.id,
+    process_type: config.process_type,
+    rule_content: rule.rule_content,
+    rule_scope: rule.rule_scope,
+    priority: 0,
+    enabled: rule.rule_scope !== 'default_off',
+    source: ruleImportSource.value,
+    related_flow: !!rule.related_flow,
+    context_enabled: false,
+    context_mounts: [],
+  }))
+  if (ruleImportTarget.value === 'audit') {
+    currentRules.value.push(...staged)
+  } else {
+    currentArchiveRules.value.push(...staged)
   }
+  showRuleImportPreview.value = false
+  message.success(t('admin.ruleConfig.fileImportStaged', [`${staged.length}`]))
 }
 
 const kbModes = computed(() => [
@@ -2108,17 +2139,17 @@ const removeSummaryBlock = (blockId: string) => {
   selectedSummaryConfig.value.summary_blocks.forEach((b, idx) => { b.sort_order = idx + 1 })
 }
 
-const handleSaveSummaryConfig = async () => {
-  if (!selectedSummaryConfig.value) return
+const handleSaveSummaryConfig = async (silent = false): Promise<boolean> => {
+  if (!selectedSummaryConfig.value) return false
   const cfg = selectedSummaryConfig.value
   if (!cfg.summary_blocks.some(block => block.enabled)) {
     message.warning('至少需要启用一个总结块')
-    return
+    return false
   }
   const emptySelectedBlock = cfg.summary_blocks.find(block => block.enabled && block.field_mode === 'selected' && block.selected_fields.length === 0)
   if (emptySelectedBlock) {
     message.warning(`总结块「${emptySelectedBlock.title || '未命名'}」需要至少选择一个字段`)
-    return
+    return false
   }
   savingSummary.value = true
   try {
@@ -2137,9 +2168,11 @@ const handleSaveSummaryConfig = async () => {
     const idx = summaryConfigs.value.findIndex(c => c.id === cfg.id)
     if (idx >= 0) summaryConfigs.value[idx] = normalized
     await refreshVersionStatus('summary', cfg.id)
-    message.success(t('admin.ruleConfig.summarySaved'))
+    if (!silent) message.success(t('admin.ruleConfig.summarySaved'))
+    return true
   } catch (e: any) {
     message.error(t('admin.ruleConfig.updateConfigFail') + ': ' + (e.message || ''))
+    return false
   } finally {
     savingSummary.value = false
   }
@@ -2155,7 +2188,20 @@ watch(selectedArchiveId, (newId) => {
 watch(selectedArchiveId, newId => refreshVersionStatus('archive', newId), { immediate: true })
 
 // 当选中归档流程变化时，从 API 加载该流程的规则
-const currentArchiveRules = ref<ArchiveRule[]>([])
+const archiveRuleDraftsByConfig = reactive<Record<string, ArchiveRule[]>>({})
+const savedArchiveRulesByConfig = reactive<Record<string, ArchiveRule[]>>({})
+const currentArchiveRules = computed<ArchiveRule[]>({
+  get: () => archiveRuleDraftsByConfig[selectedArchiveId.value] || [],
+  set: value => {
+    if (selectedArchiveId.value) archiveRuleDraftsByConfig[selectedArchiveId.value] = value
+  },
+})
+const archiveRulesDirty = computed(() => {
+  const id = selectedArchiveId.value
+  if (!id) return false
+  return JSON.stringify(archiveRuleDraftsByConfig[id] || []) !== JSON.stringify(savedArchiveRulesByConfig[id] || [])
+})
+const savingArchiveRules = ref(false)
 const loadingArchiveRules = ref(false)
 const selectedArchiveRuleIds = ref<string[]>([])
 const batchDeletingArchiveRules = ref(false)
@@ -2178,9 +2224,12 @@ watch(selectedArchiveId, async (newId) => {
   if (!newId) { currentArchiveRules.value = []; return }
   const cfg = archiveConfigs.value.find(c => c.id === newId)
   if (!cfg) { currentArchiveRules.value = []; return }
+  if (archiveRuleDraftsByConfig[newId]) return
   loadingArchiveRules.value = true
   try {
-    currentArchiveRules.value = await archiveApi.listRules(cfg.id)
+    const rules = await archiveApi.listRules(cfg.id)
+    archiveRuleDraftsByConfig[newId] = cloneSerializable(rules)
+    savedArchiveRulesByConfig[newId] = cloneSerializable(rules)
   } catch (e) {
     console.error('[rules] 加载归档规则失败', e)
     currentArchiveRules.value = []
@@ -2454,72 +2503,92 @@ const openArchiveRuleEditor = (rule?: ArchiveRule) => {
 
 const handleSaveArchiveRule = async (rule: any) => {
   if (!selectedArchiveConfig.value) return
-  try {
-    if (editingArchiveRule.value) {
-      const updated = await archiveApi.updateRule(editingArchiveRule.value.id, {
-        rule_content: rule.rule_content,
-        rule_scope: rule.rule_scope,
-        related_flow: rule.related_flow,
-        context_enabled: rule.context_enabled,
-        context_mounts: rule.context_mounts,
-        // 强制根据级别同步启用状态
-        enabled: rule.rule_scope === 'mandatory' ? true : (rule.rule_scope === 'default_off' ? false : true)
-      })
-      const idx = currentArchiveRules.value.findIndex(r => r.id === editingArchiveRule.value!.id)
-      if (idx >= 0) currentArchiveRules.value[idx] = updated
-    } else {
-      // 创建规则
-      // 根据规则级别设置初始状态
-      const initialEnabled = rule.rule_scope !== 'default_off'
-      const created = await archiveApi.createRule({
-        config_id: selectedArchiveConfig.value.id,
-        process_type: selectedArchiveConfig.value.process_type,
-        rule_content: rule.rule_content,
-        rule_scope: rule.rule_scope,
-        related_flow: rule.related_flow,
-        context_enabled: rule.context_enabled,
-        context_mounts: rule.context_mounts,
-        enabled: initialEnabled,
-      })
-      currentArchiveRules.value.push(created)
+  const enabled = rule.rule_scope === 'mandatory' ? true : rule.rule_scope !== 'default_off'
+  if (editingArchiveRule.value) {
+    const idx = currentArchiveRules.value.findIndex(r => r.id === editingArchiveRule.value!.id)
+    if (idx >= 0) {
+      currentArchiveRules.value[idx] = {
+        ...currentArchiveRules.value[idx], ...cloneSerializable(rule), enabled,
+      }
     }
-    showArchiveRuleEditor.value = false
-    editingArchiveRule.value = null
-    await refreshVersionStatus('archive', selectedArchiveConfig.value.id)
-    message.success(t('admin.ruleConfig.ruleSaved'))
-  } catch (e: any) {
-    const key = editingArchiveRule.value ? 'admin.ruleConfig.updateRuleFail' : 'admin.ruleConfig.createRuleFail'
-    message.error(t(key) + ': ' + (e.message || ''))
+  } else {
+    currentArchiveRules.value.push({
+      id: createDraftRuleID(),
+      config_id: selectedArchiveConfig.value.id,
+      process_type: selectedArchiveConfig.value.process_type,
+      rule_content: rule.rule_content,
+      rule_scope: rule.rule_scope,
+      enabled,
+      source: 'manual',
+      related_flow: !!rule.related_flow,
+      context_enabled: !!rule.context_enabled,
+      context_mounts: cloneSerializable(rule.context_mounts || []),
+    })
   }
+  showArchiveRuleEditor.value = false
+  editingArchiveRule.value = null
+  message.success(t('admin.ruleConfig.ruleStaged'))
 }
 
 const deleteArchiveRule = async (id: string) => {
-  try {
-    await archiveApi.deleteRule(id)
-    currentArchiveRules.value = currentArchiveRules.value.filter(r => r.id !== id)
-    selectedArchiveRuleIds.value = selectedArchiveRuleIds.value.filter(ruleId => ruleId !== id)
-    await refreshVersionStatus('archive', selectedArchiveConfig.value?.id)
-    message.success(t('admin.ruleConfig.deleted'))
-  } catch (e: any) {
-    message.error(t('admin.ruleConfig.deleteRuleFail') + ': ' + (e.message || ''))
-  }
+  currentArchiveRules.value = currentArchiveRules.value.filter(r => r.id !== id)
+  selectedArchiveRuleIds.value = selectedArchiveRuleIds.value.filter(ruleId => ruleId !== id)
 }
 
 const batchDeleteArchiveRules = async () => {
   if (!selectedArchiveConfig.value || selectedArchiveRuleIds.value.length === 0) return
   const ids = [...selectedArchiveRuleIds.value]
   batchDeletingArchiveRules.value = true
+  const deletedIDs = new Set(ids)
+  currentArchiveRules.value = currentArchiveRules.value.filter(rule => !deletedIDs.has(rule.id))
+  selectedArchiveRuleIds.value = []
+  batchDeletingArchiveRules.value = false
+}
+
+function buildArchiveDraftSnapshot(): Record<string, any> | null {
+  const config = selectedArchiveConfig.value
+  if (!config) return null
+  return {
+    process_type: config.process_type,
+    main_table_name: config.main_table_name,
+    main_fields: cloneSerializable(config.main_fields || []),
+    detail_tables: cloneSerializable(config.detail_tables || []),
+    status: config.status || 'active',
+    field_mode: config.field_mode || 'all',
+    kb_mode: config.kb_mode || 'rules_only',
+    ai_config: cloneSerializable(config.ai_config || {}),
+    user_permissions: cloneSerializable(config.user_permissions || {}),
+    rules: cloneSerializable(currentArchiveRules.value).map(rule => ({
+      id: rule.id,
+      rule_content: rule.rule_content,
+      rule_scope: rule.rule_scope,
+      enabled: rule.rule_scope === 'mandatory' ? true : rule.enabled,
+      source: rule.source || 'manual',
+      related_flow: !!rule.related_flow,
+      context_enabled: !!rule.context_enabled,
+      context_mounts: rule.context_mounts || [],
+    })),
+  }
+}
+
+async function persistArchiveRuleDrafts(silent = false): Promise<boolean> {
+  const config = selectedArchiveConfig.value
+  const snapshot = buildArchiveDraftSnapshot()
+  if (!config || !snapshot) return false
+  savingArchiveRules.value = true
   try {
-    const deletedCount = await archiveApi.batchDeleteRules(selectedArchiveConfig.value.id, ids)
-    const deletedIDs = new Set(ids)
-    currentArchiveRules.value = currentArchiveRules.value.filter(rule => !deletedIDs.has(rule.id))
-    selectedArchiveRuleIds.value = []
-    await refreshVersionStatus('archive', selectedArchiveConfig.value.id)
-    message.success(t('admin.ruleConfig.batchDeleteSuccess', `${deletedCount}`))
+    const status = await executionConfigVersionApi.saveDraft('archive', config.id, snapshot)
+    const rules = await archiveApi.listRules(config.id)
+    archiveRuleDraftsByConfig[config.id] = cloneSerializable(rules)
+    savedArchiveRulesByConfig[config.id] = cloneSerializable(rules)
+    archiveVersionStatus.value = status
+    if (!silent) message.success(t('admin.ruleConfig.rulesSavedAsDraft'))
+    return true
   } catch (e: any) {
-    message.error(t('admin.ruleConfig.batchDeleteFail') + ': ' + (e.message || ''))
+    message.error(t('admin.ruleConfig.saveRulesFail') + ': ' + (e.message || ''))
+    return false
   } finally {
-    batchDeletingArchiveRules.value = false
+    savingArchiveRules.value = false
   }
 }
 
@@ -2679,15 +2748,15 @@ const toggleArchiveDept = (deptId: string) => {
   else ac.allowed_departments.push(deptId)
 }
 
-const handleSaveArchiveConfig = async () => {
-  if (!selectedArchiveConfig.value) return
+const handleSaveArchiveConfig = async (silent = false): Promise<boolean> => {
+  if (!selectedArchiveConfig.value) return false
   const cfg = selectedArchiveConfig.value
 
   // 检测权限降级，需要用户确认
   const disabledKeys = getDowngradedPermKeys(originalArchivePerms.value, cfg.user_permissions as any)
   if (disabledKeys.length > 0) {
     const confirmed = await confirmPermDowngrade(disabledKeys, archivePermissionLabels.value)
-    if (!confirmed) return
+    if (!confirmed) return false
   }
 
   savingArchive.value = true
@@ -2709,9 +2778,11 @@ const handleSaveArchiveConfig = async () => {
     if (idx >= 0) archiveConfigs.value[idx] = updated
     originalArchivePerms.value = { ...(cfg.user_permissions as any) }
     await refreshVersionStatus('archive', cfg.id)
-    message.success(t('admin.ruleConfig.archiveSaved'))
+    if (!silent) message.success(t('admin.ruleConfig.archiveSaved'))
+    return true
   } catch (e: any) {
     message.error(t('admin.ruleConfig.updateConfigFail') + ': ' + (e.message || ''))
+    return false
   } finally {
     savingArchive.value = false
   }
@@ -2818,15 +2889,15 @@ function confirmPermDowngrade(
   })
 }
 
-const handleSave = async () => {
-  if (!selectedConfig.value) return
+const handleSave = async (silent = false): Promise<boolean> => {
+  if (!selectedConfig.value) return false
   const cfg = selectedConfig.value
 
   // 检测权限降级，需要用户确认
   const disabledKeys = getDowngradedPermKeys(originalAuditPerms.value, cfg.user_permissions as any)
   if (disabledKeys.length > 0) {
     const confirmed = await confirmPermDowngrade(disabledKeys, permissionLabels.value)
-    if (!confirmed) return
+    if (!confirmed) return false
   }
 
   saving.value = true
@@ -2851,12 +2922,28 @@ const handleSave = async () => {
     if (idx !== -1) processConfigs.value[idx] = normalizeAuditConfigForUI(updated)
     originalAuditPerms.value = { ...(cfg.user_permissions as any) }
     await refreshVersionStatus('audit', cfg.id)
-    message.success(t('admin.ruleConfig.configSaved'))
+    if (!silent) message.success(t('admin.ruleConfig.configSaved'))
+    return true
   } catch (e: any) {
     message.error(t('admin.ruleConfig.updateConfigFail') + ': ' + (e.message || ''))
+    return false
   } finally {
     saving.value = false
   }
+}
+
+async function saveModuleDraft(module: ExecutionConfigModule, silent = false): Promise<boolean> {
+  if (module === 'audit') {
+    if (!await handleSave(true)) return false
+    if (!await persistAuditRuleDrafts(true)) return false
+  } else if (module === 'archive') {
+    if (!await handleSaveArchiveConfig(true)) return false
+    if (!await persistArchiveRuleDrafts(true)) return false
+  } else if (!await handleSaveSummaryConfig(true)) {
+    return false
+  }
+  if (!silent) message.success(t('admin.ruleConfig.draftSaved'))
+  return true
 }
 </script>
 
@@ -3217,7 +3304,7 @@ const handleSave = async () => {
                   :checked="rule.enabled"
                   :disabled="rule.rule_scope === 'mandatory'"
                   size="small"
-                  @change="(checked: any) => { rulesApi.updateRule(rule.id, { enabled: !!checked }).then(updated => { const idx = currentRules.findIndex(r => r.id === rule.id); if (idx >= 0) currentRules[idx] = updated }) }"
+                  @change="(checked: any) => { rule.enabled = !!checked }"
                 />
                 <button class="icon-btn" @click="openRuleEditor(rule)"><EditOutlined /></button>
                 <a-popconfirm :title="t('admin.ruleConfig.deleteRuleConfirm')" @confirm="deleteRule(rule.id)">
@@ -3225,6 +3312,36 @@ const handleSave = async () => {
                 </a-popconfirm>
               </div>
             </div>
+          </div>
+
+          <div class="config-actions">
+            <a-space size="middle">
+              <template v-if="editingVersionNo.audit !== null">
+                <a-button type="primary" size="large" :loading="savingHistoricalVersion" @click="handleSaveHistoricalVersion('audit')">
+                  <SaveOutlined />
+                  {{ t('executionConfig.saveLoadedAsDraft') }}
+                </a-button>
+                <a-button size="large" :disabled="auditRulesDirty || publishingVersion.audit || savingHistoricalVersion" @click="handlePublishVersion('audit')">
+                  <CloudUploadOutlined />
+                  {{ t('executionConfig.publishVersion') }}
+                </a-button>
+                <a-button size="large" @click="handleExitHistoryEditing('audit')">
+                  <RollbackOutlined />
+                  {{ t('executionConfig.exitHistoryEditing') }}
+                </a-button>
+              </template>
+              <template v-else>
+                <a-button type="primary" size="large" :loading="savingAuditRules" :disabled="!auditRulesDirty" @click="persistAuditRuleDrafts()">
+                  <SaveOutlined />
+                  {{ t('admin.ruleConfig.saveConfig') }}
+                </a-button>
+                <a-button size="large" :disabled="auditRulesDirty || publishingVersion.audit || savingAuditRules" @click="handlePublishVersion('audit')">
+                  <CloudUploadOutlined />
+                  {{ t('executionConfig.publishVersion') }}
+                </a-button>
+                <span v-if="auditRulesDirty" class="rules-unsaved-hint">{{ t('admin.ruleConfig.unsavedRuleChanges') }}</span>
+              </template>
+            </a-space>
           </div>
         </div>
 
@@ -3589,7 +3706,7 @@ const handleSave = async () => {
               <a-button type="primary" size="large" :disabled="savingHistoricalVersion" @click="handleSaveHistoricalVersion('audit')">
                 <LoadingOutlined v-if="savingHistoricalVersion" spin />
                 <SaveOutlined v-else />
-                {{ t('executionConfig.saveToHistoryVersion', [`${editingVersionNo.audit}`]) }}
+                {{ t('executionConfig.saveLoadedAsDraft') }}
               </a-button>
               <a-button size="large" :disabled="publishingVersion.audit || savingHistoricalVersion" @click="handlePublishVersion('audit')">
                 <LoadingOutlined v-if="publishingVersion.audit" spin />
@@ -3602,7 +3719,7 @@ const handleSave = async () => {
               </a-button>
             </template>
             <template v-else>
-              <a-button type="primary" size="large" :disabled="saving" @click="handleSave">
+              <a-button type="primary" size="large" :disabled="saving" @click="handleSave()">
                 <LoadingOutlined v-if="saving" spin />
                 <SaveOutlined v-else />
                 {{ t('admin.ruleConfig.saveConfig') }}
@@ -4227,7 +4344,7 @@ const handleSave = async () => {
               <a-button type="primary" size="large" :disabled="savingHistoricalVersion" @click="handleSaveHistoricalVersion('summary')">
                 <LoadingOutlined v-if="savingHistoricalVersion" spin />
                 <SaveOutlined v-else />
-                {{ t('executionConfig.saveToHistoryVersion', [`${editingVersionNo.summary}`]) }}
+                {{ t('executionConfig.saveLoadedAsDraft') }}
               </a-button>
               <a-button size="large" :disabled="publishingVersion.summary || savingHistoricalVersion" @click="handlePublishVersion('summary')">
                 <LoadingOutlined v-if="publishingVersion.summary" spin />
@@ -4240,7 +4357,7 @@ const handleSave = async () => {
               </a-button>
             </template>
             <template v-else>
-              <a-button type="primary" size="large" :disabled="savingSummary" @click="handleSaveSummaryConfig">
+              <a-button type="primary" size="large" :disabled="savingSummary" @click="handleSaveSummaryConfig()">
                 <LoadingOutlined v-if="savingSummary" spin />
                 <SaveOutlined v-else />
                 {{ t('admin.ruleConfig.saveConfig') }}
@@ -4572,6 +4689,7 @@ const handleSave = async () => {
       context-test-endpoint="/api/tenant/rules/context/test"
       workflow-fields-endpoint="/api/tenant/rules/context/workflow-fields"
       workflow-search-endpoint="/api/tenant/rules/context/workflow-search"
+      deferred-save
       @close="showRuleEditor = false; editingRule = null"
       @save="handleSaveRule"
     />
@@ -5294,7 +5412,7 @@ const handleSave = async () => {
                   :checked="rule.enabled"
                   :disabled="rule.rule_scope === 'mandatory'"
                   size="small"
-                  @change="(checked: any) => { archiveApi.updateRule(rule.id, { enabled: !!checked }).then(updated => { const idx = currentArchiveRules.findIndex(r => r.id === rule.id); if (idx >= 0) currentArchiveRules[idx] = updated }) }"
+                  @change="(checked: any) => { rule.enabled = !!checked }"
                 />
                 <button class="icon-btn" @click="openArchiveRuleEditor(rule)"><EditOutlined /></button>
                 <a-popconfirm :title="t('admin.ruleConfig.deleteRuleConfirm')" @confirm="deleteArchiveRule(rule.id)">
@@ -5302,6 +5420,36 @@ const handleSave = async () => {
                 </a-popconfirm>
               </div>
             </div>
+          </div>
+
+          <div class="config-actions">
+            <a-space size="middle">
+              <template v-if="editingVersionNo.archive !== null">
+                <a-button type="primary" size="large" :loading="savingHistoricalVersion" @click="handleSaveHistoricalVersion('archive')">
+                  <SaveOutlined />
+                  {{ t('executionConfig.saveLoadedAsDraft') }}
+                </a-button>
+                <a-button size="large" :disabled="archiveRulesDirty || publishingVersion.archive || savingHistoricalVersion" @click="handlePublishVersion('archive')">
+                  <CloudUploadOutlined />
+                  {{ t('executionConfig.publishVersion') }}
+                </a-button>
+                <a-button size="large" @click="handleExitHistoryEditing('archive')">
+                  <RollbackOutlined />
+                  {{ t('executionConfig.exitHistoryEditing') }}
+                </a-button>
+              </template>
+              <template v-else>
+                <a-button type="primary" size="large" :loading="savingArchiveRules" :disabled="!archiveRulesDirty" @click="persistArchiveRuleDrafts()">
+                  <SaveOutlined />
+                  {{ t('admin.ruleConfig.saveConfig') }}
+                </a-button>
+                <a-button size="large" :disabled="archiveRulesDirty || publishingVersion.archive || savingArchiveRules" @click="handlePublishVersion('archive')">
+                  <CloudUploadOutlined />
+                  {{ t('executionConfig.publishVersion') }}
+                </a-button>
+                <span v-if="archiveRulesDirty" class="rules-unsaved-hint">{{ t('admin.ruleConfig.unsavedRuleChanges') }}</span>
+              </template>
+            </a-space>
           </div>
         </div>
 
@@ -5563,7 +5711,7 @@ const handleSave = async () => {
               <a-button type="primary" size="large" :disabled="savingHistoricalVersion" @click="handleSaveHistoricalVersion('archive')">
                 <LoadingOutlined v-if="savingHistoricalVersion" spin />
                 <SaveOutlined v-else />
-                {{ t('executionConfig.saveToHistoryVersion', [`${editingVersionNo.archive}`]) }}
+                {{ t('executionConfig.saveLoadedAsDraft') }}
               </a-button>
               <a-button size="large" :disabled="publishingVersion.archive || savingHistoricalVersion" @click="handlePublishVersion('archive')">
                 <LoadingOutlined v-if="publishingVersion.archive" spin />
@@ -5576,7 +5724,7 @@ const handleSave = async () => {
               </a-button>
             </template>
             <template v-else>
-              <a-button type="primary" size="large" :disabled="savingArchive" @click="handleSaveArchiveConfig">
+              <a-button type="primary" size="large" :disabled="savingArchive" @click="handleSaveArchiveConfig()">
                 <LoadingOutlined v-if="savingArchive" spin />
                 <SaveOutlined v-else />
                 {{ t('admin.ruleConfig.saveConfig') }}
@@ -5604,6 +5752,7 @@ const handleSave = async () => {
       context-test-endpoint="/api/tenant/archive/context/test"
       workflow-fields-endpoint="/api/tenant/archive/context/workflow-fields"
       workflow-search-endpoint="/api/tenant/archive/context/workflow-search"
+      deferred-save
       @close="showArchiveRuleEditor = false; editingArchiveRule = null"
       @save="handleSaveArchiveRule"
     />
@@ -6285,7 +6434,9 @@ const handleSave = async () => {
 .config-version-status--updated .config-version-status__dot { background: var(--color-warning); }
 .config-version-status--historical { border-color: rgba(139, 92, 246, 0.35); background: rgba(139, 92, 246, 0.08); }
 .config-version-status--historical .config-version-status__dot { background: #8b5cf6; }
-.config-version-status--unversioned .config-version-status__dot { background: var(--color-primary); }
+.config-version-status--unversioned { border-color: rgba(245, 158, 11, 0.32); background: var(--color-warning-bg); }
+.config-version-status--unversioned .config-version-status__dot { background: var(--color-warning); }
+.rules-unsaved-hint { color: var(--color-warning); font-size: 13px; }
 .config-empty {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); padding: 48px;

@@ -70,7 +70,7 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		return nil, newServiceError(errcode.ErrParamValidation, "process_id 不能为空")
 	}
 
-	tenantID, userID, err := s.extractIDs(c)
+	tenantID, _, err := s.extractIDs(c)
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +109,20 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 			Process:   summary,
 		}, nil
 	}
+	baseVersion, err := s.executionVersions.GetActiveBaseVersion(
+		c.Request.Context(), tenantID, model.ExecutionConfigModuleAudit, config.ID,
+	)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return &EmbedContextResponse{
+				Supported: false,
+				Reason:    "config_draft",
+				Message:   fmt.Sprintf("流程「%s」的 AI 审核配置尚处于草稿状态，请先发布首个版本", summary.ProcessType),
+				Process:   summary,
+			}, nil
+		}
+		return nil, newServiceError(errcode.ErrDatabase, "读取审核基础配置版本失败")
+	}
 	if !config.EmbedEnabled {
 		return &EmbedContextResponse{
 			Supported:    false,
@@ -125,14 +139,6 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 	fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, err := s.resolveUserConfig(c, uuid.Nil, config, rules, summary.ProcessType)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人审核尺度失败: "+err.Error())
-	}
-	baseSnapshot := auditConfigSourceSnapshot(config, rules)
-	baseVersion, err := s.executionVersions.GetOrCreateLatestBaseVersion(
-		c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleAudit,
-		config.ID, stableJSONFingerprint(baseSnapshot), baseSnapshot,
-	)
-	if err != nil {
-		return nil, newServiceError(errcode.ErrDatabase, "保存审核基础配置版本失败")
 	}
 	currentConfigSnapshot := AuditExecutionConfigSnapshot{
 		AIConfig:                effectiveAIConfig,

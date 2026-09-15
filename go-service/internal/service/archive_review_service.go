@@ -1208,13 +1208,14 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 		if resolveErr != nil {
 			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人复核尺度失败: "+resolveErr.Error())
 		}
-		baseSnapshot := archiveConfigSourceSnapshot(cfg, rules)
-		baseVersion, baseErr := s.executionVersions.GetOrCreateLatestBaseVersion(
-			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleArchive,
-			cfg.ID, stableJSONFingerprint(baseSnapshot), baseSnapshot,
+		baseVersion, baseErr := s.executionVersions.GetActiveBaseVersion(
+			c.Request.Context(), tenantID, model.ExecutionConfigModuleArchive, cfg.ID,
 		)
 		if baseErr != nil {
-			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "保存归档复盘基础配置版本失败")
+			if errors.Is(baseErr, gorm.ErrRecordNotFound) {
+				return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "归档复盘配置尚处于草稿状态，请先发布首个版本")
+			}
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "读取归档复盘基础配置版本失败")
 		}
 		configSnapshot := ArchiveExecutionConfigSnapshot{
 			AIConfig: effectiveAIConfig, FieldSet: fieldSet, MergedRules: mergedRulesText,
@@ -1949,10 +1950,17 @@ func (s *ArchiveReviewService) getAccessibleArchiveConfigs(c *gin.Context, userI
 	if len(allCfgs) == 0 {
 		return []model.ProcessArchiveConfig{}, nil
 	}
+	published, err := s.executionVersions.ListActiveSourceConfigIDs(c.Request.Context(), tenantID, model.ExecutionConfigModuleArchive)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "读取归档复盘发布状态失败")
+	}
 
 	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
 	result := make([]model.ProcessArchiveConfig, 0, len(allCfgs))
 	for _, cfg := range allCfgs {
+		if !published[cfg.ID] {
+			continue
+		}
 		allowed, err := s.memberCanAccessArchive(member, &cfg)
 		if err != nil {
 			return nil, err
@@ -1965,6 +1973,15 @@ func (s *ArchiveReviewService) getAccessibleArchiveConfigs(c *gin.Context, userI
 }
 
 func (s *ArchiveReviewService) userCanAccessArchive(c *gin.Context, tenantID, userID uuid.UUID, cfg *model.ProcessArchiveConfig) (bool, error) {
+	if cfg == nil {
+		return false, nil
+	}
+	if _, err := s.executionVersions.GetActiveBaseVersion(c.Request.Context(), tenantID, model.ExecutionConfigModuleArchive, cfg.ID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, newServiceError(errcode.ErrDatabase, "读取归档复盘发布状态失败")
+	}
 	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
 	return s.memberCanAccessArchive(member, cfg)
 }

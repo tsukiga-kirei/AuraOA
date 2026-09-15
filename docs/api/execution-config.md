@@ -10,10 +10,6 @@
 GET /api/tenant/execution-config-versions/status?module=audit&source_config_id=<配置 UUID>
 ```
 
-```http
-GET /api/tenant/execution-config-versions/status?module=audit&source_config_id=<配置 UUID>
-```
-
 `module` 支持 `audit`、`archive`、`summary`。该接口为纯只读查询，比对当前保存的配置指纹与当前激活版本（`is_active = true`）的指纹，用于配置页展示版本状态，不会自动递增版本号。
 
 响应示例：
@@ -36,7 +32,25 @@ GET /api/tenant/execution-config-versions/status?module=audit&source_config_id=<
 |------|------|
 | `current` | 当前配置与当前激活版本一致（`has_pending_changes: false`） |
 | `updated` | 当前配置在当前激活版本上有未发布的修改（`has_pending_changes: true`） |
-| `unversioned` | 尚未生成过版本 |
+| `unversioned` | 当前仅有草稿，流程尚未启用；首次发布后生成 v1 |
+
+## 保存当前配置草稿
+
+```http
+POST /api/tenant/execution-config-versions/save-draft
+```
+
+请求 Body（JSON）：
+
+```json
+{
+  "module": "audit",
+  "source_config_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "snapshot": { "process_type": "contract", "rules": [] }
+}
+```
+
+接口将页面中已确认的配置和规则写回当前工作草稿，但不会创建或更新发布版本。首次发布前，配置始终保持 `unversioned`，不会进入审核、归档复盘、流程总结工作台或 OA 嵌入执行；已有发布版本时，保存草稿只会将状态变为 `updated`，线上仍继续使用当前激活版本。
 
 ## 发布新租户基础配置版本
 
@@ -53,7 +67,7 @@ POST /api/tenant/execution-config-versions/publish
 }
 ```
 
-接口将当前已保存的管理员配置固化为不可变的基础配置新版本（`version_no` 递增），并自动将新版本激活为当前可用版本（`is_active = true`）。后续新发起的审核、归档或总结流程将开始使用该新版本。若内容相较最新版本无变化，则直接激活现有最新版本。
+接口将当前已保存的管理员草稿固化为基础配置新版本，并自动将新版本激活为当前可用版本（`is_active = true`）。首次发布生成 v1；后续草稿有变化时发布才递增 `version_no`。后续新发起的审核、归档或总结流程将开始使用该新版本。若内容相较最新版本无变化，则直接激活现有最新版本。
 
 ## 查询配置历史发布版本列表
 
@@ -108,7 +122,7 @@ POST /api/tenant/execution-config-versions/activate
 
 接口将指定版本（例如 v2）切换为当前可用版本（`is_active = true`），并将其快照内容同步到主表生效视图中。后续新流程、OA 嵌入页以及个人配置将立即对齐使用该版本。
 
-## 修改并重新保存指定版本快照
+## 修改并重新保存指定版本快照（兼容接口）
 
 ```http
 POST /api/tenant/execution-config-versions/save-version
@@ -125,13 +139,12 @@ POST /api/tenant/execution-config-versions/save-version
 }
 ```
 
-支持管理员对历史版本（例如 v2）的内容进行直接编辑并保存更新。
+该兼容接口保留给既有调用方。当前管理页面不再直接修改历史版本；“基于此版本编辑草稿”会把历史快照载入工作草稿，管理员保存草稿后再发布为新版本。
 
 ---
 
 租户基础版本只记录会影响 AI 执行的数据源字段、规则、尺度、提示词、个人调整权限和启停状态，不包含流程访问名单，也不包含任何用户个人覆盖。
 
 执行版本是另一层版本：它引用租户基础版本，再叠加执行用户当时的个人字段、个人规则、个人尺度和个人版本，形成最终不可变快照。老流程若已绑定旧执行版本，点击重新审核会继续复用原版本，新发起的流程与 OA 嵌入页面则始终使用当前激活的可用版本。
-
 
 
