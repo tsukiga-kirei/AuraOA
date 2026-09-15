@@ -169,14 +169,24 @@ func (e *SystemToolExecutor) executeListMyTodos(
 	}
 
 	type TodoItemPayload struct {
-		ProcessID   string `json:"process_id"`
-		Title       string `json:"title"`
-		Applicant   string `json:"applicant"`
-		Department  string `json:"department"`
-		CurrentNode string `json:"current_node"`
-		SubmitTime  string `json:"submit_time"`
-		OAURL       string `json:"oa_url,omitempty"`
-		TodoType    string `json:"todo_type,omitempty"`
+		ProcessID    string `json:"process_id"`
+		WorkflowCode string `json:"workflow_code,omitempty"`
+		Title        string `json:"title"`
+		Applicant    string `json:"applicant"`
+		Department   string `json:"department"`
+		CurrentNode  string `json:"current_node"`
+		SubmitTime   string `json:"submit_time"`
+		OAURL        string `json:"oa_url,omitempty"`
+		TodoType     string `json:"todo_type,omitempty"`
+	}
+
+	pids := make([]string, 0, len(pagedResult.Items))
+	for _, item := range pagedResult.Items {
+		pids = append(pids, item.ProcessID)
+	}
+	var codes map[string]string
+	if adapter != nil && len(pids) > 0 {
+		codes, _ = adapter.FetchWorkflowCodes(execCtx.Ctx, pids)
 	}
 
 	items := make([]TodoItemPayload, 0, len(pagedResult.Items))
@@ -185,15 +195,20 @@ func (e *SystemToolExecutor) executeListMyTodos(
 		if oaConn != nil {
 			oaURL = buildProcessURL(oaConn.OABaseURL, oaConn.ProcessURLTemplate, oaConn.OAType, item.ProcessID)
 		}
+		var code string
+		if codes != nil {
+			code = codes[item.ProcessID]
+		}
 		items = append(items, TodoItemPayload{
-			ProcessID:   item.ProcessID,
-			Title:       item.Title,
-			Applicant:   item.Applicant,
-			Department:  item.Department,
-			CurrentNode: item.CurrentNode,
-			SubmitTime:  item.SubmitTime,
-			OAURL:       oaURL,
-			TodoType:    item.TodoType,
+			ProcessID:    item.ProcessID,
+			WorkflowCode: code,
+			Title:        item.Title,
+			Applicant:    item.Applicant,
+			Department:   item.Department,
+			CurrentNode:  item.CurrentNode,
+			SubmitTime:   item.SubmitTime,
+			OAURL:        oaURL,
+			TodoType:     item.TodoType,
 		})
 	}
 
@@ -246,6 +261,7 @@ func (e *SystemToolExecutor) executeListMyRequests(
 
 	type MyRequestPayload struct {
 		ProcessID        string `json:"process_id"`
+		WorkflowCode     string `json:"workflow_code,omitempty"`
 		Title            string `json:"title"`
 		ProcessType      string `json:"process_type"`
 		ProcessTypeLabel string `json:"process_type_label"`
@@ -255,14 +271,28 @@ func (e *SystemToolExecutor) executeListMyRequests(
 		OAURL            string `json:"oa_url,omitempty"`
 	}
 
+	pids := make([]string, 0, len(pagedResult.Items))
+	for _, item := range pagedResult.Items {
+		pids = append(pids, item.ProcessID)
+	}
+	var codes map[string]string
+	if adapter != nil && len(pids) > 0 {
+		codes, _ = adapter.FetchWorkflowCodes(execCtx.Ctx, pids)
+	}
+
 	items := make([]MyRequestPayload, 0, len(pagedResult.Items))
 	for _, item := range pagedResult.Items {
 		oaURL := ""
 		if oaConn != nil {
 			oaURL = buildProcessURL(oaConn.OABaseURL, oaConn.ProcessURLTemplate, oaConn.OAType, item.ProcessID)
 		}
+		var code string
+		if codes != nil {
+			code = codes[item.ProcessID]
+		}
 		items = append(items, MyRequestPayload{
 			ProcessID:        item.ProcessID,
+			WorkflowCode:     code,
 			Title:            item.Title,
 			ProcessType:      item.ProcessType,
 			ProcessTypeLabel: item.ProcessTypeLabel,
@@ -290,23 +320,30 @@ func (e *SystemToolExecutor) executeGetProcess(
 	var args struct {
 		ProcessID string `json:"process_id"`
 	}
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil || args.ProcessID == "" {
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil || strings.TrimSpace(args.ProcessID) == "" {
 		return nil, "process_detail", fmt.Errorf("缺少必填参数 process_id")
 	}
 
+	targetID := strings.TrimSpace(args.ProcessID)
+	if adapter != nil {
+		if realID, err := adapter.ResolveProcessID(execCtx.Ctx, targetID); err == nil && realID != "" {
+			targetID = realID
+		}
+	}
+
 	// 校验可见性
-	visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, args.ProcessID)
+	visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, targetID)
 	if err != nil || !visible {
 		return nil, "process_detail", fmt.Errorf("无权访问流程 %s 或流程不存在", args.ProcessID)
 	}
 
-	data, err := adapter.FetchProcessData(execCtx.Ctx, args.ProcessID)
+	data, err := adapter.FetchProcessData(execCtx.Ctx, targetID)
 	if err != nil {
 		return nil, "process_detail", fmt.Errorf("读取流程数据失败: %w", err)
 	}
 
-	summary, _ := adapter.FetchProcessRequestSummary(execCtx.Ctx, args.ProcessID)
-	title := args.ProcessID
+	summary, _ := adapter.FetchProcessRequestSummary(execCtx.Ctx, targetID)
+	title := targetID
 	applicant := ""
 	department := ""
 	processType := ""
@@ -332,8 +369,8 @@ func (e *SystemToolExecutor) executeGetProcess(
 		attachments = append(attachments, att.FileName)
 	}
 
-	return map[string]interface{}{
-		"process_id":    args.ProcessID,
+	resp := map[string]interface{}{
+		"process_id":    targetID,
 		"title":         title,
 		"process_type":  processType,
 		"applicant":     applicant,
@@ -341,7 +378,18 @@ func (e *SystemToolExecutor) executeGetProcess(
 		"main_fields":   mainFields,
 		"detail_tables": data.DetailTables,
 		"attachments":   attachments,
-	}, "process_detail", nil
+	}
+
+	// 动态装配流程编号（有值放，没有值不放）
+	if adapter != nil {
+		if codes, err := adapter.FetchWorkflowCodes(execCtx.Ctx, []string{targetID}); err == nil {
+			if code := strings.TrimSpace(codes[targetID]); code != "" {
+				resp["workflow_code"] = code
+			}
+		}
+	}
+
+	return resp, "process_detail", nil
 }
 
 // 3. 获取审批流
@@ -353,17 +401,24 @@ func (e *SystemToolExecutor) executeGetApprovalFlow(
 	var args struct {
 		ProcessID string `json:"process_id"`
 	}
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil || args.ProcessID == "" {
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil || strings.TrimSpace(args.ProcessID) == "" {
 		return nil, "approval_flow", fmt.Errorf("缺少必填参数 process_id")
 	}
 
+	targetID := strings.TrimSpace(args.ProcessID)
+	if adapter != nil {
+		if realID, err := adapter.ResolveProcessID(execCtx.Ctx, targetID); err == nil && realID != "" {
+			targetID = realID
+		}
+	}
+
 	// 可见性校验
-	visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, args.ProcessID)
+	visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, targetID)
 	if err != nil || !visible {
 		return nil, "approval_flow", fmt.Errorf("无权访问流程 %s 或流程不存在", args.ProcessID)
 	}
 
-	flow, err := adapter.FetchProcessFlow(execCtx.Ctx, args.ProcessID)
+	flow, err := adapter.FetchProcessFlow(execCtx.Ctx, targetID)
 	if err != nil {
 		return nil, "approval_flow", fmt.Errorf("获取审批流失败: %w", err)
 	}
@@ -387,10 +442,20 @@ func (e *SystemToolExecutor) executeGetApprovalFlow(
 		})
 	}
 
-	return map[string]interface{}{
-		"process_id": args.ProcessID,
+	resp := map[string]interface{}{
+		"process_id": targetID,
 		"nodes":      nodes,
-	}, "approval_flow", nil
+	}
+
+	if adapter != nil {
+		if codes, err := adapter.FetchWorkflowCodes(execCtx.Ctx, []string{targetID}); err == nil {
+			if code := strings.TrimSpace(codes[targetID]); code != "" {
+				resp["workflow_code"] = code
+			}
+		}
+	}
+
+	return resp, "approval_flow", nil
 }
 
 // 4. 获取最新审核结果

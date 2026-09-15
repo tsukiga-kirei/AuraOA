@@ -3908,3 +3908,132 @@ func (a *Ecology9Adapter) FetchMyRequestsPaged(ctx context.Context, username str
 
 	return &PagedResult[MyRequestItem]{Items: items, Total: total}, nil
 }
+
+// ResolveProcessID 将传入的流程标识（可为流程数字 ID requestid 或流程编号 workflowcode/requestmark）解析为真实的流程 requestid。
+func (a *Ecology9Adapter) ResolveProcessID(ctx context.Context, identifier string) (string, error) {
+	rawID := strings.TrimSpace(identifier)
+	if rawID == "" {
+		return "", fmt.Errorf("流程标识不能为空")
+	}
+
+	// 1. 如果传入的是纯数字，先检查是否本身就是有效的 requestid
+	isAllDigits := true
+	for _, ch := range rawID {
+		if ch < '0' || ch > '9' {
+			isAllDigits = false
+			break
+		}
+	}
+
+	if isAllDigits {
+		var reqID int64
+		err := a.db.WithContext(ctx).
+			Table(a.tableName("workflow_requestbase")).
+			Select(a.col("requestid")).
+			Where(a.col("requestid")+" = ?", rawID).
+			Row().Scan(&reqID)
+		if err == nil && reqID > 0 {
+			return strconv.FormatInt(reqID, 10), nil
+		}
+	}
+
+	// 2. 根据流程编号在 workflow_codeSeqRecord 中反查 requestid
+	var seqReqID int64
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_codeSeqRecord")).
+		Select(a.col("requestid")).
+		Where(a.col("workflowcode")+" = ?", rawID).
+		Limit(1).
+		Row().Scan(&seqReqID)
+	if err == nil && seqReqID > 0 {
+		return strconv.FormatInt(seqReqID, 10), nil
+	}
+
+	// 3. 兜底检查 workflow_requestbase.requestmark
+	var rbReqID int64
+	err = a.db.WithContext(ctx).
+		Table(a.tableName("workflow_requestbase")).
+		Select(a.col("requestid")).
+		Where(a.col("requestmark")+" = ?", rawID).
+		Limit(1).
+		Row().Scan(&rbReqID)
+	if err == nil && rbReqID > 0 {
+		return strconv.FormatInt(rbReqID, 10), nil
+	}
+
+	// 4. 若无法解析，保留原输入
+	return rawID, nil
+}
+
+// FetchWorkflowCodes 批量获取指定流程实例（requestid）的流程编号映射（requestid -> workflowcode）。
+func (a *Ecology9Adapter) FetchWorkflowCodes(ctx context.Context, processIDs []string) (map[string]string, error) {
+	result := make(map[string]string)
+	if len(processIDs) == 0 {
+		return result, nil
+	}
+
+	uniqueIDs := make([]string, 0, len(processIDs))
+	seen := make(map[string]bool)
+	for _, pid := range processIDs {
+		pid = strings.TrimSpace(pid)
+		if pid != "" && !seen[pid] {
+			seen[pid] = true
+			uniqueIDs = append(uniqueIDs, pid)
+		}
+	}
+	if len(uniqueIDs) == 0 {
+		return result, nil
+	}
+
+	// 1. 优先查 workflow_codeSeqRecord
+	rows, err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_codeSeqRecord")).
+		Select(a.col("requestid"), a.col("workflowcode")).
+		Where(a.col("requestid")+" IN ?", uniqueIDs).
+		Rows()
+	if err == nil && rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var reqID int64
+			var code string
+			if scanErr := rows.Scan(&reqID, &code); scanErr == nil {
+				code = strings.TrimSpace(code)
+				if code != "" {
+					result[strconv.FormatInt(reqID, 10)] = code
+				}
+			}
+		}
+	}
+
+	// 2. 对于未查到编号的 ID，尝试从 workflow_requestbase.requestmark 补充
+	missingIDs := make([]string, 0)
+	for _, id := range uniqueIDs {
+		if _, ok := result[id]; !ok {
+			missingIDs = append(missingIDs, id)
+		}
+	}
+
+	if len(missingIDs) > 0 {
+		rbRows, rbErr := a.db.WithContext(ctx).
+			Table(a.tableName("workflow_requestbase")).
+			Select(a.col("requestid"), a.col("requestmark")).
+			Where(a.col("requestid")+" IN ?", missingIDs).
+			Rows()
+		if rbErr == nil && rbRows != nil {
+			defer rbRows.Close()
+			for rbRows.Next() {
+				var reqID int64
+				var mark string
+				if scanErr := rbRows.Scan(&reqID, &mark); scanErr == nil {
+					mark = strings.TrimSpace(mark)
+					if mark != "" {
+						result[strconv.FormatInt(reqID, 10)] = mark
+					}
+				}
+			}
+		}
+	}
+
+	return result, nil
+}
+
