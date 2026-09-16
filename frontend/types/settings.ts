@@ -135,6 +135,8 @@ export interface SystemGeneralConfig {
     attachment_aliyun_ocr_access_key_id: string
     /** attachment.aliyun_ocr_access_key_secret — 阿里云 AccessKey Secret */
     attachment_aliyun_ocr_access_key_secret?: string
+    /** attachment.aliyun_ocr_access_key_secret_configured — 阿里云 AccessKey Secret 是否已配置 */
+    attachment_aliyun_ocr_access_key_secret_configured?: boolean
     /** attachment.aliyun_ocr_type — 阿里云 OCR 识别类型（General / Advanced） */
     attachment_aliyun_ocr_type: string
 }
@@ -214,6 +216,9 @@ export function mapConfigItems(items: ConfigItem[]): Partial<SystemGeneralConfig
         ...(str('attachment.aliyun_ocr_endpoint') !== undefined && { attachment_aliyun_ocr_endpoint: kv['attachment.aliyun_ocr_endpoint'] }),
         ...(str('attachment.aliyun_ocr_access_key_id') !== undefined && { attachment_aliyun_ocr_access_key_id: kv['attachment.aliyun_ocr_access_key_id'] }),
         ...(str('attachment.aliyun_ocr_access_key_secret') !== undefined && { attachment_aliyun_ocr_access_key_secret: kv['attachment.aliyun_ocr_access_key_secret'] }),
+        ...(str('attachment.aliyun_ocr_access_key_secret_configured') !== undefined && {
+            attachment_aliyun_ocr_access_key_secret_configured: kv['attachment.aliyun_ocr_access_key_secret_configured'] === 'true',
+        }),
         ...(str('attachment.aliyun_ocr_type') !== undefined && { attachment_aliyun_ocr_type: kv['attachment.aliyun_ocr_type'] }),
     }
 }

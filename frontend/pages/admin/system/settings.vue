@@ -85,6 +85,7 @@ const generalConfig = ref<SystemGeneralConfig>({
   attachment_aliyun_ocr_endpoint: 'ocr-api.cn-hangzhou.aliyuncs.com',
   attachment_aliyun_ocr_access_key_id: '',
   attachment_aliyun_ocr_access_key_secret: '',
+  attachment_aliyun_ocr_access_key_secret_configured: false,
   attachment_aliyun_ocr_type: 'General',
   attachment_supported_types: DEFAULT_ATTACHMENT_TYPES.join(','),
   attachment_ai_content_limit_mode: 'bytes',
@@ -177,10 +178,23 @@ const getAttachmentRouteState = (
     return generalConfig.value.attachment_mineru_endpoint?.trim() ? 'ready' : 'needs_config'
   }
   if (parser === 'aliyun') {
-    return (generalConfig.value.attachment_aliyun_ocr_access_key_id?.trim() && generalConfig.value.attachment_aliyun_ocr_access_key_secret?.trim()) ? 'ready' : 'needs_config'
+    const hasSecret = Boolean(generalConfig.value.attachment_aliyun_ocr_access_key_secret?.trim() || generalConfig.value.attachment_aliyun_ocr_access_key_secret_configured)
+    return (generalConfig.value.attachment_aliyun_ocr_access_key_id?.trim() && hasSecret) ? 'ready' : 'needs_config'
   }
   return generalConfig.value.attachment_compat_endpoint?.trim() ? 'ready' : 'needs_config'
 }
+
+const attachmentDocumentParserTypesHintText = computed(() => {
+  return generalConfig.value.attachment_ocr_provider === 'aliyun'
+    ? t('admin.settings.attachmentDocumentParserTypesAliyunHint')
+    : t('admin.settings.attachmentDocumentParserTypesMineruHint')
+})
+
+const attachmentVisualFallbackEnableDescText = computed(() => {
+  return generalConfig.value.attachment_ocr_provider === 'aliyun'
+    ? t('admin.settings.attachmentVisualFallbackEnableAliyunDesc')
+    : t('admin.settings.attachmentVisualFallbackEnableMineruDesc')
+})
 
 const documentRoute = (format: string, fallbackToVisual: boolean): AttachmentFormatRoute => {
   const selected = documentParserTypes.value.includes(format)
@@ -672,7 +686,8 @@ const testAttachmentConnection = async () => {
 //===== 附件解析 — 测试阿里云 OCR 服务 =====
 const testingAliyunOCR = ref(false)
 const testAliyunOCRConnection = async () => {
-  if (!generalConfig.value.attachment_aliyun_ocr_access_key_id?.trim() || !generalConfig.value.attachment_aliyun_ocr_access_key_secret?.trim()) {
+  const hasSecret = Boolean(generalConfig.value.attachment_aliyun_ocr_access_key_secret?.trim() || generalConfig.value.attachment_aliyun_ocr_access_key_secret_configured)
+  if (!generalConfig.value.attachment_aliyun_ocr_access_key_id?.trim() || !hasSecret) {
     message.warning(t('admin.settings.attachmentAliyunOcrAccessKeyIdPlaceholder'))
     return
   }
@@ -682,7 +697,7 @@ const testAliyunOCRConnection = async () => {
       attachment_recognition_enabled: generalConfig.value.attachment_recognition_enabled,
       attachment_aliyun_ocr_endpoint: generalConfig.value.attachment_aliyun_ocr_endpoint,
       attachment_aliyun_ocr_access_key_id: generalConfig.value.attachment_aliyun_ocr_access_key_id,
-      attachment_aliyun_ocr_access_key_secret: generalConfig.value.attachment_aliyun_ocr_access_key_secret,
+      attachment_aliyun_ocr_access_key_secret: generalConfig.value.attachment_aliyun_ocr_access_key_secret?.trim() || undefined,
       attachment_aliyun_ocr_type: generalConfig.value.attachment_aliyun_ocr_type || 'General',
     })
     if (result.success) {
@@ -1235,7 +1250,11 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               </a-col>
               <a-col :xs="24" :md="12">
                 <a-form-item :label="t('admin.settings.attachmentAliyunOcrAccessKeySecret')">
-                  <a-input-password v-model:value="generalConfig.attachment_aliyun_ocr_access_key_secret" size="large" :placeholder="t('admin.settings.attachmentAliyunOcrAccessKeySecretPlaceholder')">
+                  <a-input-password
+                    v-model:value="generalConfig.attachment_aliyun_ocr_access_key_secret"
+                    size="large"
+                    :placeholder="generalConfig.attachment_aliyun_ocr_access_key_secret_configured ? t('admin.settings.apiKeyKeepCurrent', '留空则保持当前密钥') : t('admin.settings.attachmentAliyunOcrAccessKeySecretPlaceholder')"
+                  >
                     <template #prefix><KeyOutlined /></template>
                   </a-input-password>
                 </a-form-item>
@@ -1295,13 +1314,13 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                   {{ type.toUpperCase() }}
                 </a-select-option>
               </a-select>
-              <div class="form-hint">{{ t('admin.settings.attachmentDocumentParserTypesHint') }}</div>
+              <div class="form-hint">{{ attachmentDocumentParserTypesHintText }}</div>
             </a-form-item>
             <div class="toggle-grid">
               <div class="toggle-item">
                 <div class="toggle-info">
                   <div class="toggle-label">{{ t('admin.settings.attachmentVisualFallbackEnable') }}</div>
-                  <div class="toggle-desc">{{ t('admin.settings.attachmentVisualFallbackEnableDesc') }}</div>
+                  <div class="toggle-desc">{{ attachmentVisualFallbackEnableDescText }}</div>
                 </div>
                 <a-switch v-model:checked="generalConfig.attachment_visual_fallback_enabled" />
               </div>

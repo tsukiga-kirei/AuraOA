@@ -348,7 +348,7 @@ POST /api/admin/system/attachment-recognition/test-aliyun-ocr
 | `attachment_recognition_enabled` | boolean | 是否启用附件识别 |
 | `attachment_aliyun_ocr_endpoint` | string | 阿里云 OCR Endpoint，例如 `ocr-api.cn-hangzhou.aliyuncs.com` |
 | `attachment_aliyun_ocr_access_key_id` | string | 阿里云 RAM 访问凭证 AccessKey ID |
-| `attachment_aliyun_ocr_access_key_secret` | string | 阿里云 RAM 访问凭证 AccessKey Secret |
+| `attachment_aliyun_ocr_access_key_secret` | string | 阿里云 RAM 访问凭证 AccessKey Secret（可选；若已保存可留空，服务自动使用已保存凭据） |
 | `attachment_aliyun_ocr_type` | string | 识别类型，默认 `General`（可选 `Advanced`） |
 
 各类附件解析服务的配置、格式路由与失败语义详见

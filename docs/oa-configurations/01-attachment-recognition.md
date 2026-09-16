@@ -86,11 +86,11 @@
 | 字段 | system_configs key | 默认值 | 说明 |
 |------|--------------------|--------|------|
 | 服务接入地址 | `attachment.aliyun_ocr_endpoint` | `ocr-api.cn-hangzhou.aliyuncs.com` | 阿里云 OpenAPI Endpoint，支持根据地域自定义 |
-| AccessKey ID | `attachment.aliyun_ocr_access_key_id` | _(空)_ | 阿里云 RAM 访问凭证 AccessKey ID |
-| AccessKey Secret | `attachment.aliyun_ocr_access_key_secret` | _(空)_ | 阿里云 RAM 访问凭证 AccessKey Secret |
+| AccessKey ID | `attachment.aliyun_ocr_access_key_id` | _(空)_ | 阿里云 RAM 访问凭证 AccessKey ID（数据库使用 AES 加密存储） |
+| AccessKey Secret | `attachment.aliyun_ocr_access_key_secret` | _(空)_ | 阿里云 RAM 访问凭证 AccessKey Secret（数据库使用 AES 加密存储，前端脱敏不回显，留空保存不覆盖） |
 | 识别类型 | `attachment.aliyun_ocr_type` | `General` | `General`（通用文字识别）/ `Advanced`（通用文字识别高精版） |
 
-> **测试连接**：通过生成 20×20 内存测试 PNG 发送 `RecognizeAllText` 请求，真实验证 Endpoint 可达性、AccessKey 签名鉴权与 RAM 权限，无需提前保存配置。
+> **测试连接**：通过生成 20×20 内存测试 PNG 发送 `RecognizeAllText` 请求，真实验证 Endpoint 可达性、AccessKey 签名鉴权与 RAM 权限。支持使用已保存密钥直接测试（此时 Secret 可留空），亦支持携带未保存的新凭据进行探测。
 
 ### 文档内容解析服务
 

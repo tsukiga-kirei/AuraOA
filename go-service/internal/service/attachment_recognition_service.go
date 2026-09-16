@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	"auraoa/go-service/internal/pkg/apptime"
+	"auraoa/go-service/internal/pkg/crypto"
 	"auraoa/go-service/internal/pkg/errcode"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
 	"auraoa/go-service/internal/pkg/oa"
@@ -184,8 +185,22 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 	if ep := strings.TrimSpace(read("attachment.aliyun_ocr_endpoint")); ep != "" {
 		cfg.AliyunOCREndpoint = ep
 	}
-	cfg.AliyunOCRAccessKeyID = strings.TrimSpace(read("attachment.aliyun_ocr_access_key_id"))
-	cfg.AliyunOCRAccessKeySecret = strings.TrimSpace(read("attachment.aliyun_ocr_access_key_secret"))
+	akRaw := strings.TrimSpace(read("attachment.aliyun_ocr_access_key_id"))
+	if akRaw != "" {
+		if decAK, err := crypto.Decrypt(akRaw); err == nil {
+			cfg.AliyunOCRAccessKeyID = decAK
+		} else {
+			cfg.AliyunOCRAccessKeyID = akRaw
+		}
+	}
+	skRaw := strings.TrimSpace(read("attachment.aliyun_ocr_access_key_secret"))
+	if skRaw != "" {
+		if decSK, err := crypto.Decrypt(skRaw); err == nil {
+			cfg.AliyunOCRAccessKeySecret = decSK
+		} else {
+			cfg.AliyunOCRAccessKeySecret = skRaw
+		}
+	}
 	if t := strings.TrimSpace(read("attachment.aliyun_ocr_type")); t != "" {
 		cfg.AliyunOCRType = t
 	}
