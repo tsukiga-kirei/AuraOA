@@ -2264,6 +2264,39 @@ func (a *Ecology9Adapter) ResolveUserDisplayNameByOAUserID(ctx context.Context, 
 	return strings.TrimSpace(loginID.String), nil
 }
 
+// ResolveUserIdentityByOAUserID 根据泛微人员 ID 一次性解析姓名、登录账号和所属部门。
+func (a *Ecology9Adapter) ResolveUserIdentityByOAUserID(ctx context.Context, oaUserID string) (*UserIdentity, error) {
+	trimmed := strings.TrimSpace(oaUserID)
+	if trimmed == "" {
+		return nil, fmt.Errorf("oa_user_id 不能为空")
+	}
+	intID, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("无效的泛微人员ID: %s", trimmed)
+	}
+
+	var lastname, loginID, departmentName sql.NullString
+	err = a.db.WithContext(ctx).
+		Table(a.tableName("hrmresource")+" h").
+		Select(fmt.Sprintf("h.%s, h.%s, d.%s", a.col("lastname"), a.col("loginid"), a.col("departmentname"))).
+		Joins(fmt.Sprintf("LEFT JOIN %s d ON h.%s = d.%s", a.tableName("hrmdepartment"), a.col("departmentid"), a.col("id"))).
+		Where("h."+a.col("id")+" = ?", intID).
+		Row().Scan(&lastname, &loginID, &departmentName)
+	if err != nil {
+		return nil, fmt.Errorf("未在 OA 中找到人员 ID 为 '%d' 的用户: %w", intID, err)
+	}
+	displayName := strings.TrimSpace(lastname.String)
+	if displayName == "" {
+		displayName = strings.TrimSpace(loginID.String)
+	}
+	return &UserIdentity{
+		UserID:         trimmed,
+		Username:       strings.TrimSpace(loginID.String),
+		DisplayName:    displayName,
+		DepartmentName: strings.TrimSpace(departmentName.String),
+	}, nil
+}
+
 // ── FetchTodoList ──────────────────────────────────────────
 
 // FetchTodoList 拉取用户在泛微 E9 中的待审批流程列表。
@@ -4036,4 +4069,3 @@ func (a *Ecology9Adapter) FetchWorkflowCodes(ctx context.Context, processIDs []s
 
 	return result, nil
 }
-

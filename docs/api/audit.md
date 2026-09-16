@@ -179,6 +179,8 @@ GET /api/audit/snapshots
 
 支持按渠道筛选：`channel` 可选值：`workbench`（系统内）、`embed_standard`（嵌入通用）、`embed_personal`（嵌入个性化）、`embed`（历史兼容）。
 嵌入通用按流程唯一汇总，系统内与嵌入个性化按（流程 + 操作人）唯一汇总。顶部统计卡片与列表总数严格保持一致。
+嵌入通用行返回最新有效记录的 `trigger_detail`。若 OA 当前操作人员可解析，`operator` 展示为
+“OA 嵌入审核（姓名）”，`department` 返回其 OA 部门；无法解析时展示“OA 嵌入审核”且部门为空。
 
 ---
 
@@ -206,7 +208,8 @@ GET /api/audit/snapshots/export
 GET /api/audit/snapshots/:processId/chain
 ```
 
-审核链中的每条执行记录均返回其实际使用的 `config_version_no`；迁移前历史记录可能为空，数据管理页
+审核链中的每条嵌入执行记录分别返回当次 `user_name` 与 `trigger_detail`，用于展示当次操作人及
+保存、提交、打开、重新审核或定时检查动作。每条记录均返回其实际使用的 `config_version_no`；迁移前历史记录可能为空，数据管理页
 在“查看详情”抽屉中明确展示为未记录版本。
 
 ### 前台审核数据可见范围

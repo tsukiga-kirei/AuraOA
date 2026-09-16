@@ -208,7 +208,7 @@ func (r *AuditLogRepo) ListByIDsWithUserOrdered(c *gin.Context, ids []uuid.UUID)
 	var logs []AuditLogWithUser
 	err := r.WithTenant(c).
 		Table("audit_logs").
-		Select("audit_logs.*, CASE WHEN audit_logs.trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(audit_logs.trigger_detail, '') != 'personal_embed_manual' THEN 'OA 嵌入审核' ELSE COALESCE(users.display_name, users.username, '') END as user_name").
+		Select("audit_logs.*, "+auditOperatorDisplaySQL("audit_logs", "users")+" as user_name").
 		Joins("LEFT JOIN users ON audit_logs.user_id = users.id").
 		Where("audit_logs.id IN ?", ids).
 		Find(&logs).Error
@@ -233,7 +233,7 @@ func (r *AuditLogRepo) ListCompletedByProcessIDWithUser(c *gin.Context, processI
 	var logs []AuditLogWithUser
 	err := r.WithTenant(c).
 		Table("audit_logs").
-		Select("audit_logs.*, CASE WHEN audit_logs.trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(audit_logs.trigger_detail, '') != 'personal_embed_manual' THEN 'OA 嵌入审核' ELSE COALESCE(users.display_name, users.username, '') END as user_name").
+		Select("audit_logs.*, "+auditOperatorDisplaySQL("audit_logs", "users")+" as user_name").
 		Joins("left join users on audit_logs.user_id = users.id").
 		Where("audit_logs.process_id = ? AND audit_logs.status = ?", processID, model.JobStatusCompleted).
 		Order("audit_logs.created_at DESC").
@@ -364,7 +364,7 @@ func (r *AuditLogRepo) ListPagedWithUser(c *gin.Context, filter AuditLogFilter, 
 
 	base := r.WithTenant(c).
 		Table("audit_logs").
-		Select("audit_logs.*, CASE WHEN audit_logs.trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(audit_logs.trigger_detail, '') != 'personal_embed_manual' THEN 'OA 嵌入审核' ELSE COALESCE(users.display_name, users.username, '') END as user_name").
+		Select("audit_logs.*, " + auditOperatorDisplaySQL("audit_logs", "users") + " as user_name").
 		Joins("LEFT JOIN users ON audit_logs.user_id = users.id")
 
 	base = applyAuditLogFilter(base, filter)
@@ -612,7 +612,7 @@ func (r *AuditLogRepo) DashboardRecentAudits(c *gin.Context, limit int, forUserI
 	}
 	q := r.WithTenant(c).
 		Table("audit_logs").
-		Select("audit_logs.id, audit_logs.title, CASE WHEN audit_logs.trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(audit_logs.trigger_detail, '') != 'personal_embed_manual' THEN 'OA 嵌入审核' ELSE COALESCE(users.display_name, users.username, '') END as user_name, audit_logs.created_at, audit_logs.status").
+		Select("audit_logs.id, audit_logs.title, "+auditOperatorDisplaySQL("audit_logs", "users")+" as user_name, audit_logs.created_at, audit_logs.status").
 		Joins("LEFT JOIN users ON audit_logs.user_id = users.id").
 		Where("audit_logs.status IN ?", []string{model.JobStatusCompleted, model.JobStatusFailed})
 	if forUserID != nil {
@@ -631,7 +631,7 @@ func (r *AuditLogRepo) DashboardRecentAuditsGlobal(limit int) ([]DashboardRecent
 	var rows []DashboardRecentAuditRow
 	err := r.DB.
 		Table("audit_logs").
-		Select("audit_logs.id, audit_logs.title, CASE WHEN audit_logs.trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(audit_logs.trigger_detail, '') != 'personal_embed_manual' THEN 'OA 嵌入审核' ELSE COALESCE(users.display_name, users.username, '') END as user_name, audit_logs.created_at, audit_logs.status").
+		Select("audit_logs.id, audit_logs.title, "+auditOperatorDisplaySQL("audit_logs", "users")+" as user_name, audit_logs.created_at, audit_logs.status").
 		Joins("LEFT JOIN users ON audit_logs.user_id = users.id").
 		Where("audit_logs.status IN ?", []string{model.JobStatusCompleted, model.JobStatusFailed}).
 		Order("audit_logs.created_at DESC").

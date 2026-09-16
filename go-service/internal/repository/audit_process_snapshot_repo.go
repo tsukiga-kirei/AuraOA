@@ -139,8 +139,9 @@ type AuditSnapshotFilter struct {
 // AuditSnapshotListRow 快照列表行（含操作人+部门）。
 type AuditSnapshotListRow struct {
 	model.AuditProcessSnapshot
-	Operator   string `json:"operator" gorm:"column:operator"`
-	Department string `json:"department" gorm:"column:department"`
+	Operator      string `json:"operator" gorm:"column:operator"`
+	Department    string `json:"department" gorm:"column:department"`
+	TriggerDetail string `json:"trigger_detail" gorm:"column:trigger_detail"`
 }
 
 // AuditSnapshotStats 快照分组统计。
@@ -168,6 +169,9 @@ WITH classified_logs AS (
         al.recommendation,
         al.score,
         al.confidence,
+		al.trigger_detail,
+		al.oa_operator_name,
+		al.oa_operator_dept,
         al.created_at,
         al.updated_at,
         CASE
@@ -215,14 +219,17 @@ SELECT
     rl.recommendation,
     rl.score,
     rl.confidence,
+	rl.trigger_detail,
     rl.created_at,
     rl.updated_at,
     CASE
+        WHEN rl.channel = 'embed_standard' AND NULLIF(TRIM(COALESCE(rl.oa_operator_name, '')), '') IS NOT NULL
+            THEN 'OA 嵌入审核（' || TRIM(rl.oa_operator_name) || '）'
         WHEN rl.channel = 'embed_standard' THEN 'OA 嵌入审核'
         ELSE COALESCE(u.display_name, u.username, '')
     END AS operator,
     CASE
-        WHEN rl.channel = 'embed_standard' THEN '系统自动'
+        WHEN rl.channel = 'embed_standard' THEN COALESCE(rl.oa_operator_dept, '')
         ELSE COALESCE(d.name, '')
     END AS department
 FROM ranked_logs rl
@@ -460,25 +467,15 @@ LIMIT ?`
 	return rows, err
 }
 
-// CountByDepartment 按部门统计快照数（tenant_admin 用）。
+// CountByDepartment 按部门统计审核展示分组；OA 通用嵌入使用触发人员的 OA 部门快照。
 func (r *AuditProcessSnapshotRepo) CountByDepartment(c *gin.Context) ([]DeptCount, error) {
-	tenantID, _ := c.Get("tenant_id")
-
-	sql := `
-SELECT COALESCE(d.name, '未分配') AS department,
-       COUNT(*)::bigint AS count
-FROM audit_process_snapshots aps
-JOIN audit_logs al ON al.id = aps.latest_valid_log_id
-JOIN users u ON u.id = al.user_id
-LEFT JOIN org_members om ON om.user_id = u.id AND om.tenant_id = aps.tenant_id AND om.status = 'active'
-LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = aps.tenant_id
-WHERE aps.tenant_id = ?
-  AND aps.channel = 'workbench'
-GROUP BY d.name
-ORDER BY count DESC`
-
 	var rows []DeptCount
-	err := r.DB.Raw(sql, tenantID).Scan(&rows).Error
+	base := r.buildAdminAggregatedBaseQuery(c, AuditSnapshotFilter{})
+	err := base.
+		Select("COALESCE(NULLIF(department, ''), '未分配') AS department, COUNT(*)::bigint AS count").
+		Group("COALESCE(NULLIF(department, ''), '未分配')").
+		Order("count DESC").
+		Scan(&rows).Error
 	return rows, err
 }
 

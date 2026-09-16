@@ -37,12 +37,25 @@ type PagedResult[T any] struct {
 	Total int
 }
 
+// UserIdentity 是按 OA 人员标识解析出的展示身份快照。
+type UserIdentity struct {
+	UserID         string
+	Username       string
+	DisplayName    string
+	DepartmentName string
+}
+
 // ArchivedListFilter 控制已归档流程列表在 OA 侧的查询条件（由 SQL 直接过滤）。
 type ArchivedListFilter struct {
 	// ArchiveDateStart 归档时间下界（含），与适配器内用于排序的归档时间表达式一致（如 COALESCE(lastoperatedate, createdate)）。
 	ArchiveDateStart *time.Time
 	// ArchiveDateEndExclusive 归档时间上界（不含），通常为「结束日期」次日 0 点。
 	ArchiveDateEndExclusive *time.Time
+}
+
+// UserIdentityResolver 是支持一次查询 OA 人员姓名与部门的可选适配器能力。
+type UserIdentityResolver interface {
+	ResolveUserIdentityByOAUserID(ctx context.Context, oaUserID string) (*UserIdentity, error)
 }
 
 // ArchivedListPagedFilter 已归档流程分页查询条件，将筛选下推到 OA SQL。

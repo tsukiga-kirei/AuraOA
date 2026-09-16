@@ -385,6 +385,15 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 	defer release()
 
 	isPersonalPerspective := req.Perspective == "personal"
+	oaOperatorID, oaOperatorName, oaOperatorDept := "", "", ""
+	if !isPersonalPerspective {
+		oaOperatorID = embedOAOperatorID(c, req.OAUserID)
+		if oaOperatorID != "" {
+			if adapter, adapterErr := s.getOAAdapter(c.Request.Context(), tenantID); adapterErr == nil {
+				oaOperatorID, oaOperatorName, oaOperatorDept = resolveEmbedOAOperator(c.Request.Context(), adapter, oaOperatorID)
+			}
+		}
+	}
 	if isPersonalPerspective {
 		oaUserID := strings.TrimSpace(req.OAUserID)
 		if oaUserID == "" {
@@ -437,6 +446,9 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 					"user_id":            userID,
 					"trigger_source":     trigger,
 					"trigger_detail":     triggerDetail,
+					"oa_operator_id":     oaOperatorID,
+					"oa_operator_name":   oaOperatorName,
+					"oa_operator_dept":   oaOperatorDept,
 					"queue_kind":         queueKind,
 					"schedule_config_id": nil,
 					"updated_at":         apptime.Now(),
@@ -507,6 +519,9 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 		Title:               title,
 		TriggerSource:       trigger,
 		TriggerDetail:       triggerDetail,
+		OAOperatorID:        oaOperatorID,
+		OAOperatorName:      oaOperatorName,
+		OAOperatorDept:      oaOperatorDept,
 		AttemptFingerprint:  ctxResp.CurrentFingerprint,
 		ScheduleConfigID:    req.ScheduleConfigID,
 		UseLatestConfig:     useLatest,

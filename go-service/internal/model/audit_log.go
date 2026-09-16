@@ -28,6 +28,9 @@ type AuditLog struct {
 	ErrorMessage       string         `gorm:"type:text;default:''" json:"error_message"`
 	TriggerSource      string         `gorm:"size:30;not null;default:workbench_manual" json:"trigger_source"`
 	TriggerDetail      string         `gorm:"size:30;not null;default:''" json:"trigger_detail"`
+	OAOperatorID       string         `gorm:"size:128;not null;default:''" json:"-"`
+	OAOperatorName     string         `gorm:"size:200;not null;default:''" json:"-"`
+	OAOperatorDept     string         `gorm:"size:200;not null;default:''" json:"-"`
 	QueueKind          string         `gorm:"size:20;not null;default:workbench" json:"queue_kind"`
 	AttemptFingerprint string         `gorm:"size:80;not null;default:''" json:"attempt_fingerprint"`
 	ScheduleConfigID   *uuid.UUID     `gorm:"type:uuid" json:"schedule_config_id,omitempty"`

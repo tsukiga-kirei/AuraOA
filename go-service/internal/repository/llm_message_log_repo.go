@@ -238,12 +238,13 @@ type LLMLogFilter struct {
 
 // LLMProcessListRow 按流程聚合的列表行。
 type LLMProcessListRow struct {
-	ProcessID      string    `json:"process_id"`
-	ProcessTitle   string    `json:"process_title"`
-	CallCount      int64     `json:"call_count"`
-	TotalTokens    int64     `json:"total_tokens"`
-	LatestCallAt   time.Time `json:"latest_call_at"`
-	LatestUserName string    `json:"latest_user_name"`
+	ProcessID           string    `json:"process_id"`
+	ProcessTitle        string    `json:"process_title"`
+	CallCount           int64     `json:"call_count"`
+	TotalTokens         int64     `json:"total_tokens"`
+	LatestCallAt        time.Time `json:"latest_call_at"`
+	LatestUserName      string    `json:"latest_user_name"`
+	LatestTriggerDetail string    `json:"latest_trigger_detail"`
 }
 
 // LLMLogListRow 单条调用记录（不含大文本 payload）。
@@ -252,6 +253,7 @@ type LLMLogListRow struct {
 	UserName         string `gorm:"column:user_name" json:"user_name"`
 	ModelName        string `gorm:"column:model_name" json:"model_name"`
 	ModelDisplayName string `gorm:"column:model_display_name" json:"model_display_name"`
+	TriggerDetail    string `gorm:"column:trigger_detail" json:"trigger_detail"`
 	// 配置版本通过 business_log_id 关联实际业务执行记录，确保多次调用展示各自真实版本。
 	ConfigVersionNo *int `gorm:"column:config_version_no" json:"config_version_no,omitempty"`
 }
@@ -294,7 +296,9 @@ func (r *LLMMessageLogRepo) ListProcessesPaged(c *gin.Context, filter LLMLogFilt
 		Table(t+" AS l").
 		Where("l.tenant_id = ? AND (l.request_type = 'chat' OR (l.process_id IS NOT NULL AND l.process_id <> ''))", tenantID).
 		Joins("LEFT JOIN users u ON u.id = l.user_id").
-		Joins("LEFT JOIN chat_sessions cs ON cs.id = l.business_log_id AND cs.tenant_id = l.tenant_id AND l.request_type = 'chat'")
+		Joins("LEFT JOIN chat_sessions cs ON cs.id = l.business_log_id AND cs.tenant_id = l.tenant_id AND l.request_type = 'chat'").
+		Joins("LEFT JOIN audit_logs al ON al.id = l.business_log_id AND al.tenant_id = l.tenant_id AND l.request_type = 'audit'").
+		Joins("LEFT JOIN process_summary_logs psl ON psl.id = l.business_log_id AND psl.tenant_id = l.tenant_id AND l.request_type = 'summary'")
 	base = applyLLMLogFilter(base, filter)
 
 	countSub := base.Session(&gorm.Session{}).
@@ -312,7 +316,8 @@ func (r *LLMMessageLogRepo) ListProcessesPaged(c *gin.Context, filter LLMLogFilt
 			COUNT(*)::bigint AS call_count,
 			COALESCE(SUM(l.total_tokens), 0)::bigint AS total_tokens,
 			MAX(l.created_at) AS latest_call_at,
-			(ARRAY_AGG(COALESCE(u.display_name, u.username, '') ORDER BY l.created_at DESC))[1] AS latest_user_name`).
+			(ARRAY_AGG(` + llmOperatorDisplaySQL("l", "u", "al", "psl") + ` ORDER BY l.created_at DESC))[1] AS latest_user_name,
+			(ARRAY_AGG(` + llmTriggerDetailSQL("l", "al", "psl") + ` ORDER BY l.created_at DESC))[1] AS latest_trigger_detail`).
 		Group(llmBusinessKey("l")).
 		Order("latest_call_at DESC").
 		Offset((page - 1) * pageSize).
@@ -331,7 +336,8 @@ func (r *LLMMessageLogRepo) ListCallsByProcessID(c *gin.Context, processID strin
 		Table(t).
 		Select(t+".*, "+
 			"CASE WHEN "+t+".request_type = 'chat' AND NULLIF(cs.title, '') IS NOT NULL THEN cs.title ELSE "+t+".process_title END AS process_title, "+
-			"COALESCE(u.display_name, u.username, '') AS user_name, "+
+			llmOperatorDisplaySQL(t, "u", "al", "psl")+" AS user_name, "+
+			llmTriggerDetailSQL(t, "al", "psl")+" AS trigger_detail, "+
 			"COALESCE(amc.model_name, '') AS model_name, "+
 			"COALESCE(amc.display_name, '') AS model_display_name, "+
 			"COALESCE(al.config_version_no, arl.config_version_no, psl.config_version_no) AS config_version_no, "+
@@ -393,7 +399,8 @@ func (r *LLMMessageLogRepo) GetByIDWithPayload(c *gin.Context, id uuid.UUID) (*L
 		Table(t).
 		Select(t+".*, "+
 			"CASE WHEN "+t+".request_type = 'chat' AND NULLIF(cs.title, '') IS NOT NULL THEN cs.title ELSE "+t+".process_title END AS process_title, "+
-			"COALESCE(u.display_name, u.username, '') AS user_name, "+
+			llmOperatorDisplaySQL(t, "u", "al", "psl")+" AS user_name, "+
+			llmTriggerDetailSQL(t, "al", "psl")+" AS trigger_detail, "+
 			"COALESCE(amc.model_name, '') AS model_name, "+
 			"COALESCE(amc.display_name, '') AS model_display_name, "+
 			"COALESCE(al.config_version_no, arl.config_version_no, psl.config_version_no) AS config_version_no, "+
@@ -430,7 +437,7 @@ func applyLLMLogFilter(db *gorm.DB, f LLMLogFilter) *gorm.DB {
 	}
 	if f.Operator != "" {
 		like := "%" + f.Operator + "%"
-		db = db.Where("(u.display_name ILIKE ? OR u.username ILIKE ?)", like, like)
+		db = db.Where(llmOperatorDisplaySQL("l", "u", "al", "psl")+" ILIKE ?", like)
 	}
 	if f.StartDate != nil {
 		db = db.Where("l.created_at >= ?", f.StartDate)

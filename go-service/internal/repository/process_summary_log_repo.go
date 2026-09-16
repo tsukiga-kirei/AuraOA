@@ -199,7 +199,7 @@ func (r *ProcessSummaryLogRepo) RecentEnriched(c *gin.Context, limit int, userID
 	sql := `
 SELECT psl.id, psl.title,
        COALESCE(jsonb_array_length(psl.summary_result -> 'blocks'), 0) AS block_count,
-       CASE WHEN psl.trigger_source IN ('summary_embed_auto', 'summary_embed_manual') THEN 'OA 嵌入总结' ELSE COALESCE(u.display_name, u.username, '') END AS user_name,
+       ` + summaryOperatorDisplaySQL("psl", "u") + ` AS user_name,
        psl.created_at
 FROM process_summary_logs psl
 LEFT JOIN users u ON u.id = psl.user_id
@@ -244,7 +244,7 @@ func (r *ProcessSummaryLogRepo) ListByIDsWithUserOrdered(c *gin.Context, ids []u
 	var rows []ProcessSummaryLogWithUser
 	err := r.WithTenant(c).
 		Table("process_summary_logs").
-		Select("process_summary_logs.*, CASE WHEN process_summary_logs.trigger_source IN ('summary_embed_auto', 'summary_embed_manual') THEN 'OA 嵌入总结' ELSE COALESCE(users.display_name, users.username, '') END as user_name").
+		Select("process_summary_logs.*, "+summaryOperatorDisplaySQL("process_summary_logs", "users")+" as user_name").
 		Joins("LEFT JOIN users ON process_summary_logs.user_id = users.id").
 		Where("process_summary_logs.id IN ?", ids).
 		Find(&rows).Error
@@ -331,15 +331,25 @@ func (r *ProcessSummaryLogRepo) CountPendingSince(c *gin.Context, userID uuid.UU
 	return count, err
 }
 
-// CountByDepartment 按操作人所属部门统计总结完成次数。
+// CountByDepartment 按操作人所属部门统计总结完成次数；OA 嵌入使用触发人员的 OA 部门快照。
 func (r *ProcessSummaryLogRepo) CountByDepartment(c *gin.Context) ([]DeptCount, error) {
 	tenantID, _ := c.Get("tenant_id")
 	var rows []DeptCount
-	err := r.DB.Raw(`SELECT COALESCE(d.name, '') AS department, COUNT(*)::bigint AS count
+	err := r.DB.Raw(`SELECT CASE
+   WHEN psl.trigger_source IN ('summary_embed_auto', 'summary_embed_manual')
+     THEN COALESCE(NULLIF(TRIM(psl.oa_operator_dept), ''), '未分配')
+   ELSE COALESCE(d.name, '未分配')
+ END AS department,
+ COUNT(*)::bigint AS count
  FROM process_summary_logs psl
  LEFT JOIN org_members om ON om.user_id = psl.user_id AND om.tenant_id = psl.tenant_id AND om.status = 'active'
  LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = psl.tenant_id
- WHERE psl.tenant_id = ? AND psl.status = 'completed' GROUP BY d.name`, tenantID).Scan(&rows).Error
+ WHERE psl.tenant_id = ? AND psl.status = 'completed'
+ GROUP BY CASE
+   WHEN psl.trigger_source IN ('summary_embed_auto', 'summary_embed_manual')
+     THEN COALESCE(NULLIF(TRIM(psl.oa_operator_dept), ''), '未分配')
+   ELSE COALESCE(d.name, '未分配')
+ END`, tenantID).Scan(&rows).Error
 	return rows, err
 }
 

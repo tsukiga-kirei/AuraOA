@@ -140,6 +140,9 @@ type AuditExecuteRequest struct {
 	Title               string     `json:"title"`
 	TriggerSource       string     `json:"trigger_source"`
 	TriggerDetail       string     `json:"trigger_detail"`
+	OAOperatorID        string     `json:"-"`
+	OAOperatorName      string     `json:"-"`
+	OAOperatorDept      string     `json:"-"`
 	AttemptFingerprint  string     `json:"-"`
 	ScheduleConfigID    *uuid.UUID `json:"-"`
 	UseLatestConfig     bool       `json:"use_latest_config,omitempty"`
@@ -257,6 +260,9 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		AuditResult:        datatypes.JSON([]byte("{}")),
 		TriggerSource:      trigger,
 		TriggerDetail:      triggerDetail,
+		OAOperatorID:       strings.TrimSpace(req.OAOperatorID),
+		OAOperatorName:     strings.TrimSpace(req.OAOperatorName),
+		OAOperatorDept:     strings.TrimSpace(req.OAOperatorDept),
 		QueueKind:          queueKind,
 		AttemptFingerprint: req.AttemptFingerprint,
 		ScheduleConfigID:   req.ScheduleConfigID,

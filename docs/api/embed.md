@@ -77,7 +77,6 @@ POST /api/embed/events
 {
   "process_id": "598488",
   "workflow_id": "127",
-  "oa_belong_user_id": "1042",
   "oa_current_user_id": "1042",
   "occurred_at_ms": 1785748255617,
   "action": "submit_requested",
@@ -93,8 +92,13 @@ POST /api/embed/events
 放行 OA 操作前读取 `workflow_requestbase.requestid` 高水位并将事件写入
 `embed_refresh_events`；约 2 秒后按“高水位之后 + workflow_id”解析新 requestid，
 未落库时继续在约 5 秒、10 秒检查。唯一候选直接采用；出现多个候选时，
-`oa_belong_user_id` 和 `oa_current_user_id` 只用于辅助消歧，不作为创建人硬过滤条件。
+只使用 `oa_current_user_id` 辅助消歧，不使用 `oa_belong_user_id`，也不把当前人员作为创建人硬过滤条件。
 仍不能唯一确认时标记 `ambiguous`，不会猜测错误流程，也不会影响 OA 流程自身的保存或提交。
+
+`oa_current_user_id` 同时作为本次嵌入操作人的唯一来源。审核或总结任务创建时会通过 OA 组织数据解析
+人员姓名与所属部门，并把结果固化到执行日志。解析成功后，数据管理页展示
+“OA 嵌入审核（姓名）”或“OA 嵌入总结（姓名）”及其部门；解析失败时省略姓名括号，部门显示为空。
+人员解析失败不会阻断审核或总结。
 
 `occurred_at_ms` 是 OA 点击保存/提交时冻结的客户端 Unix 毫秒时间。服务会把它写入
 `embed_refresh_events`，并在日志输出 `clientDelayMs`，用于区分正常网络耗时与浏览器晚发事件。
@@ -103,7 +107,7 @@ POST /api/embed/events
 定时扫描不会持续追踪进行中的任务。
 
 通知脚本只注册 `OPER_SAVE` 和 `OPER_SUBMIT`，不再注册 `OPER_SAVECOMPLETE`，也不再创建隐藏 iframe。
-脚本在页面就绪后直接注册 OA 事件；点击时立即冻结 requestid、workflow_id、人员标识和发生时间，
+脚本在页面就绪后直接注册 OA 事件；点击时立即冻结 requestid、workflow_id、当前操作人员标识和发生时间，
 并使用唯一嵌入密钥直接异步 POST Nuxt 代理。请求完成或最多等待 800ms 后
 放行 OA 操作；超时或 AuraOA 不可用也必须放行。浏览器不会轮询 requestid，服务端接收事件后
 自行持久化并解析。
