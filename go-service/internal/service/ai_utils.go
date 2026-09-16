@@ -314,17 +314,26 @@ func formatAttachments(attachments []oa.AttachmentInfo, maxBytesPerFile int) str
 		maxBytesPerFile = 8000
 	}
 
-	// 按字段名分组，保持稳定顺序
+	// 按字段与明细行分组，保持稳定顺序
 	type group struct {
-		fieldName string
-		items     []oa.AttachmentInfo
+		fieldName   string
+		detailTable string
+		rowIndex    int
+		items       []oa.AttachmentInfo
 	}
 	groupMap := map[string]*group{}
 	var keys []string
 	for _, a := range attachments {
 		k := a.FieldKey
+		if a.DetailTable != "" && a.RowIndex > 0 {
+			k = fmt.Sprintf("%s|%s|%04d", a.DetailTable, a.FieldKey, a.RowIndex)
+		}
 		if _, ok := groupMap[k]; !ok {
-			groupMap[k] = &group{fieldName: a.FieldName}
+			groupMap[k] = &group{
+				fieldName:   a.FieldName,
+				detailTable: a.DetailTable,
+				rowIndex:    a.RowIndex,
+			}
 			keys = append(keys, k)
 		}
 		groupMap[k].items = append(groupMap[k].items, a)
@@ -335,10 +344,26 @@ func formatAttachments(attachments []oa.AttachmentInfo, maxBytesPerFile int) str
 	for _, k := range keys {
 		g := groupMap[k]
 		header := g.fieldName
-		if header == "" {
-			header = k
+		fieldDisplay := k
+		if g.detailTable != "" && g.rowIndex > 0 {
+			parts := strings.Split(k, "|")
+			if len(parts) >= 2 {
+				fieldDisplay = parts[1]
+			}
+			if header == "" {
+				header = fieldDisplay
+			}
+			dtLabel := g.detailTable
+			if idx := strings.LastIndex(g.detailTable, "_dt"); idx != -1 && idx+3 < len(g.detailTable) {
+				dtLabel = "明细表" + g.detailTable[idx+3:]
+			}
+			sb.WriteString(fmt.Sprintf("### 附件字段：%s（%s - %s 第 %d 行）\n", header, fieldDisplay, dtLabel, g.rowIndex))
+		} else {
+			if header == "" {
+				header = fieldDisplay
+			}
+			sb.WriteString(fmt.Sprintf("### 附件字段：%s（%s）\n", header, fieldDisplay))
 		}
-		sb.WriteString(fmt.Sprintf("### 附件字段：%s（%s）\n", header, k))
 		for i, a := range g.items {
 			sb.WriteString(fmt.Sprintf("- 附件 %d：%s", i+1, a.FileName))
 			if a.FileType != "" {

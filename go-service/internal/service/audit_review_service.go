@@ -2447,15 +2447,8 @@ func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, 
 		return nil, newServiceError(errcode.ErrOAConnectionFailed, "创建 OA 适配器失败: "+err.Error())
 	}
 	fetchCtx := c.Request.Context()
-	if withAttachments && len(fieldSets) > 0 {
-		var allowedMainFields map[string]bool
-		if fieldSets[0] != nil {
-			allowedMainFields = fieldSets[0]["main"]
-			if allowedMainFields == nil {
-				allowedMainFields = map[string]bool{}
-			}
-		}
-		fetchCtx = oa.WithAttachmentFieldFilter(fetchCtx, allowedMainFields)
+	if withAttachments && len(fieldSets) > 0 && fieldSets[0] != nil {
+		fetchCtx = oa.WithAttachmentFieldSetFilter(fetchCtx, fieldSets[0])
 	}
 	data, err := adapter.FetchProcessData(fetchCtx, processID)
 	if err != nil {

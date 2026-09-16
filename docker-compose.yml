@@ -93,6 +93,9 @@
         - WORKERS_SUMMARY_TOTAL_CONCURRENCY=${WORKERS_SUMMARY_TOTAL_CONCURRENCY:-2}
         # Python AI 服务为可选组件；当前仓库未包含 ai-service 时保持为空即可。
         - AI_SERVICE_URL=${AURAOA_AI_SERVICE_URL:-}
+        # 单流程附件识别数量上限控制（防止明细表海量发票导致 OCR 超时或 Token 暴增）
+        - AURAOA_ATTACHMENT_ENABLE_COUNT_LIMIT=${AURAOA_ATTACHMENT_ENABLE_COUNT_LIMIT:-true}
+        - AURAOA_ATTACHMENT_MAX_COUNT=${AURAOA_ATTACHMENT_MAX_COUNT:-10}
         # 日志配置（对应 config.yaml log.* 字段，点号替换为下划线）
         - LOG_LEVEL=${LOG_LEVEL:-info}
         - LOG_DIR=/app/logs

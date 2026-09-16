@@ -260,6 +260,8 @@ type AttachmentInfo struct {
 	FileSize         int64  `json:"file_size"`          // 文件大小（字节）
 	FieldKey         string `json:"field_key"`          // 所属字段标识
 	FieldName        string `json:"field_name"`         // 所属字段名称
+	DetailTable      string `json:"detail_table,omitempty"` // 所属明细表（主表为空）
+	RowIndex         int    `json:"row_index,omitempty"`    // 明细表行索引（1-based，主表为 0）
 	Content          string `json:"content"`            // 提取的文本内容（可选）
 	ContentLimitMode string `json:"content_limit_mode"` // AI 正文策略：bytes / unlimited
 	ContentMaxBytes  int    `json:"content_max_bytes"`  // bytes 模式下单附件正文上限

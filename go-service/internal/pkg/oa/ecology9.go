@@ -674,20 +674,20 @@ func (a *Ecology9Adapter) FetchProcessData(ctx context.Context, processID string
 		pkglogger.Global().Debug("附件识别：主表无数据，跳过",
 			zap.String("processID", processID))
 	} else {
-		pkglogger.Global().Info("附件识别：开始处理主表附件",
+		pkglogger.Global().Info("附件识别：开始处理流程附件",
 			zap.String("processID", processID),
 			zap.Int("formID", formID),
 			zap.Bool("weaverApiConfigured", a.weaverAPIURL != ""),
 			zap.Bool("weaverAppidConfigured", a.weaverAppID != ""),
 			zap.Bool("weaverLoginConfigured", a.weaverLoginID != ""))
-		attachments, attachErr := a.recognizeMainAttachments(ctx, processID, formID, mainData)
+		attachments, attachErr := a.recognizeProcessAttachments(ctx, processID, formID, tableDBName, pd)
 		if attachErr != nil {
 			pkglogger.Global().Warn("附件识别：整体失败，跳过附件内容",
 				zap.String("processID", processID),
 				zap.Error(attachErr))
 		} else {
 			pd.Attachments = attachments
-			pkglogger.Global().Info("附件识别：主表处理完成",
+			pkglogger.Global().Info("附件识别：流程附件处理完成",
 				zap.String("processID", processID),
 				zap.Int("attachmentCount", len(attachments)))
 		}
@@ -1327,29 +1327,28 @@ func (a *Ecology9Adapter) resolveBrowseTarget(ctx context.Context, field e9Brows
 	}
 	if isCustomBrowseType(field.Type) || strings.HasPrefix(strings.ToLower(field.FieldDBType), "browser.") {
 		browserName := browserNameFromFieldDBType(field.FieldDBType)
-		def, ok := a.fetchCustomBrowserURLDef(ctx, field)
-		if !ok {
-			if target, ok := a.resolveModeBrowserTarget(ctx, browserName); ok {
+		if def, ok := a.fetchCustomBrowserURLDef(ctx, field); ok {
+			if target, ok := browseTargetFromBrowserURLDef(def); ok {
 				target.Multiple = isMultipleBrowseField(field)
-				target.Source = "mode_browser"
+				target.Source = "workflow_browserurl_custom"
 				return target, true
 			}
-			return e9BrowseTarget{}, false
-		}
-		if target, ok := browseTargetFromBrowserURLDef(def); ok {
-			target.Multiple = isMultipleBrowseField(field)
-			target.Source = "workflow_browserurl_custom"
-			return target, true
 		}
 		if target, ok := a.resolveModeBrowserTarget(ctx, browserName); ok {
 			target.Multiple = isMultipleBrowseField(field)
 			target.Source = "mode_browser"
 			return target, true
 		}
+		// 建模物理表直接嗅探兜底（如 browser.fplx -> uf_fplx 自动识别显示列）
+		if target, ok := a.resolveModelingTableTarget(ctx, browserName); ok {
+			target.Multiple = isMultipleBrowseField(field)
+			target.Source = "mode_table_probe"
+			return target, true
+		}
 		pkglogger.Global().Warn("浏览按钮解析：未找到可用显示值配置，保留原始值",
 			zap.String("fieldKey", field.FieldKey),
 			zap.String("fieldDBType", field.FieldDBType),
-			zap.String("browserName", def.BrowserName))
+			zap.String("browserName", browserName))
 		return e9BrowseTarget{}, false
 	}
 	return e9BrowseTarget{}, false
@@ -1482,7 +1481,7 @@ func (a *Ecology9Adapter) fetchModeBrowserDef(ctx context.Context, browserName s
 			a.col("searchbyid") + " AS searchbyid",
 			a.col("sqltext1") + " AS sqltext1",
 		}, ", ")).
-		Where(a.col("showname")+" = ?", browserName).
+		Where(a.col("showname")+" = ? OR "+a.col("name")+" = ?", browserName, browserName).
 		Find(&rows).Error
 	if err != nil {
 		pkglogger.Global().Debug("浏览按钮解析：查询建模浏览框失败，保留原始值",
@@ -1502,6 +1501,122 @@ func (a *Ecology9Adapter) fetchModeBrowserDef(ctx context.Context, browserName s
 		SearchByID: mapGet(row, "searchbyid"),
 		SQLText1:   mapGet(row, "sqltext1"),
 	}, true
+}
+
+// resolveModelingTableTarget 自动探测泛微建模表（形如 uf_xxx 或 xxx）并推导最佳显示列。
+// 泛微表单建模中，任何模块（如发票类型 fplx）在 workflow_bill 中均有物理表 uf_fplx，其主键永远为 id。
+func (a *Ecology9Adapter) resolveModelingTableTarget(ctx context.Context, browserName string) (e9BrowseTarget, bool) {
+	browserName = strings.TrimSpace(browserName)
+	if browserName == "" {
+		return e9BrowseTarget{}, false
+	}
+	rawName := strings.ToLower(browserName)
+	candidateTableNames := []string{rawName}
+	if !strings.HasPrefix(rawName, "uf_") {
+		candidateTableNames = append(candidateTableNames, "uf_"+rawName)
+	}
+
+	var rows []map[string]interface{}
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_bill")).
+		Select(strings.Join([]string{
+			a.col("id") + " AS billid",
+			a.col("tablename") + " AS tablename",
+		}, ", ")).
+		Where("LOWER("+a.col("tablename")+") IN ?", candidateTableNames).
+		Find(&rows).Error
+	if err != nil || len(rows) == 0 {
+		return e9BrowseTarget{}, false
+	}
+
+	billID := mapGetInt(rows[0], "billid")
+	actualTableName := strings.TrimSpace(mapGet(rows[0], "tablename"))
+	if billID == 0 || actualTableName == "" || !isSafeIdentifier(actualTableName) {
+		return e9BrowseTarget{}, false
+	}
+
+	// 查该建模表的所有字段定义，智能评选最佳显示列
+	var fieldRows []map[string]interface{}
+	err = a.db.WithContext(ctx).
+		Table(a.tableName("workflow_billfield")+" "+a.col("t1")).
+		Select(strings.Join([]string{
+			a.col("t1.fieldname") + " AS fieldname",
+			a.col("t2.labelname") + " AS labelname",
+			a.col("t1.fieldhtmltype") + " AS fieldhtmltype",
+		}, ", ")).
+		Joins("LEFT JOIN "+a.tableName("htmllabelinfo")+" "+a.col("t2")+" ON "+a.col("t1.fieldlabel")+" = "+a.col("t2.indexid")+" AND "+a.col("t2.languageid")+" = 7").
+		Where(a.col("t1.billid")+" = ?", billID).
+		Order(a.col("t1.id") + " ASC").
+		Find(&fieldRows).Error
+	if err != nil || len(fieldRows) == 0 {
+		return e9BrowseTarget{}, false
+	}
+
+	displayColumn := pickBestModelingDisplayColumn(fieldRows)
+	if displayColumn == "" || !isSafeIdentifier(displayColumn) {
+		return e9BrowseTarget{}, false
+	}
+
+	pkglogger.Global().Info("浏览按钮解析：成功探测到泛微建模物理表",
+		zap.String("browserName", browserName),
+		zap.String("table", actualTableName),
+		zap.String("displayColumn", displayColumn))
+
+	return e9BrowseTarget{
+		Table:         actualTableName,
+		IDColumn:      "id",
+		DisplayColumn: displayColumn,
+		NumericID:     true,
+		Source:        "mode_table_probe",
+	}, true
+}
+
+func pickBestModelingDisplayColumn(fields []map[string]interface{}) string {
+	type candidate struct {
+		column   string
+		priority int
+	}
+	var cands []candidate
+
+	for _, f := range fields {
+		col := strings.TrimSpace(mapGet(f, "fieldname"))
+		if col == "" || strings.EqualFold(col, "id") || strings.EqualFold(col, "requestid") || strings.EqualFold(col, "mainid") {
+			continue
+		}
+		label := strings.TrimSpace(mapGet(f, "labelname"))
+		htmlType := strings.TrimSpace(mapGet(f, "fieldhtmltype"))
+		lowerCol := strings.ToLower(col)
+		lowerLabel := strings.ToLower(label)
+
+		// 优先级 1：包含 wb（文本）、mc（名称）、name、title、subject 的单行文本字段（如 fplxwb）
+		if htmlType == "1" && (strings.Contains(lowerCol, "wb") || strings.Contains(lowerCol, "mc") || strings.Contains(lowerCol, "name") || strings.Contains(lowerCol, "title") || strings.Contains(lowerLabel, "文本") || strings.Contains(lowerLabel, "名称")) {
+			cands = append(cands, candidate{column: col, priority: 1})
+			continue
+		}
+
+		// 优先级 2：其他包含 name/mc/title/wb 的列（即使不是单行文本）
+		if strings.Contains(lowerCol, "name") || strings.Contains(lowerCol, "mc") || strings.Contains(lowerCol, "wb") || strings.Contains(lowerLabel, "名称") {
+			cands = append(cands, candidate{column: col, priority: 2})
+			continue
+		}
+
+		// 优先级 3：单行文本列（排除纯主键类如 zj）
+		if htmlType == "1" && !strings.EqualFold(lowerCol, "zj") {
+			cands = append(cands, candidate{column: col, priority: 3})
+			continue
+		}
+
+		// 优先级 4：普通字段
+		cands = append(cands, candidate{column: col, priority: 4})
+	}
+
+	if len(cands) == 0 {
+		return ""
+	}
+	sort.SliceStable(cands, func(i, j int) bool {
+		return cands[i].priority < cands[j].priority
+	})
+	return cands[0].column
 }
 
 func (a *Ecology9Adapter) queryBrowserURLDefs(ctx context.Context, where string, arg interface{}, includeFieldDBType bool) ([]map[string]interface{}, error) {
@@ -2002,117 +2117,155 @@ func isSafeDisplayExpression(s string) bool {
 }
 
 // recognizeMainAttachments 识别主表中的附件字段（fieldhtmltype=6），
-// 调用注入的识别服务获取每个 docId 的解析文本。
+// recognizeProcessAttachments 识别主表及明细表中的附件字段：
+// 1. fieldhtmltype = 6（标准附件上传）
+// 2. fieldhtmltype = 3 AND type = 9（文档浏览框）
+// 调用注入的识别服务获取每个 docId 的解析文本，并为明细表附件标注 DetailTable 和 RowIndex。
+func (a *Ecology9Adapter) recognizeProcessAttachments(
+	ctx context.Context,
+	processID string,
+	formID int,
+	mainTable string,
+	pd *ProcessData,
+) ([]AttachmentInfo, error) {
+	if pd == nil {
+		return nil, nil
+	}
+
+	// 查询表单定义中所有附件类字段（标准附件 fieldhtmltype=6 与文档浏览框 fieldhtmltype=3 AND type=9）
+	var rawFields []map[string]interface{}
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_billfield")+" "+a.col("t1")).
+		Select(strings.Join([]string{
+			a.col("t1.fieldname") + " AS fieldkey",
+			a.col("t2.labelname") + " AS fieldname",
+			a.col("t1.detailtable") + " AS detailtable",
+			a.col("t1.fieldhtmltype") + " AS fieldhtmltype",
+			a.col("t1.type") + " AS fieldtype",
+		}, ", ")).
+		Joins("JOIN "+a.tableName("htmllabelinfo")+" "+a.col("t2")+" ON "+a.col("t1.fieldlabel")+" = "+a.col("t2.indexid")).
+		Where(a.col("t1.billid")+" = ? AND ("+a.col("t1.fieldhtmltype")+" = '6' OR ("+a.col("t1.fieldhtmltype")+" = '3' AND "+a.col("t1.type")+" = 9)) AND "+a.col("t2.languageid")+" = 7", formID).
+		Find(&rawFields).Error
+	if err != nil {
+		return nil, fmt.Errorf("查询附件字段定义失败: %w", err)
+	}
+
+	pkglogger.Global().Info("附件识别：查询到附件与文档类字段定义",
+		zap.String("processID", processID),
+		zap.Int("formID", formID),
+		zap.Int("fieldDefinitionCount", len(rawFields)))
+
+	var all []AttachmentInfo
+	var skippedFilter, skippedEmpty, fetchFailed, recogFailed int
+
+	type targetItem struct {
+		docIDs      string
+		detailTable string
+		rowIndex    int
+	}
+
+	for _, row := range rawFields {
+		fieldKey := strings.TrimSpace(mapGet(row, "fieldkey"))
+		fieldName := strings.TrimSpace(mapGet(row, "fieldname"))
+		if fieldKey == "" {
+			continue
+		}
+		rawDT := strings.TrimSpace(mapGet(row, "detailtable"))
+		tableKey := normalizeDetailTableKey(mainTable, rawDT)
+
+		if !attachmentFieldAllowedForTable(ctx, tableKey, fieldKey) {
+			skippedFilter++
+			pkglogger.Global().Debug("附件识别：字段未被业务配置选中，跳过",
+				zap.String("processID", processID),
+				zap.String("tableKey", tableKey),
+				zap.String("field", fieldKey),
+				zap.String("fieldName", fieldName))
+			continue
+		}
+
+		var targets []targetItem
+		if tableKey == "main" {
+			docIDs := strings.TrimSpace(mapGet(pd.MainData, fieldKey))
+			if docIDs != "" {
+				targets = append(targets, targetItem{docIDs: docIDs, detailTable: "", rowIndex: 0})
+			}
+		} else {
+			detailRows := pd.DetailTables[tableKey]
+			for idx, dRow := range detailRows {
+				docIDs := strings.TrimSpace(mapGet(dRow, fieldKey))
+				if docIDs != "" {
+					targets = append(targets, targetItem{
+						docIDs:      docIDs,
+						detailTable: tableKey,
+						rowIndex:    idx + 1,
+					})
+				}
+			}
+		}
+
+		if len(targets) == 0 {
+			skippedEmpty++
+			continue
+		}
+
+		for _, tgt := range targets {
+			pkglogger.Global().Info("附件识别：准备拉取泛微附件",
+				zap.String("processID", processID),
+				zap.String("tableKey", tableKey),
+				zap.Int("rowIndex", tgt.rowIndex),
+				zap.String("field", fieldKey),
+				zap.String("fieldName", fieldName),
+				zap.String("docIDs", tgt.docIDs))
+
+			files, fetchErr := a.fetchWeaverAttachmentsByDocIDs(ctx, processID, fieldKey, tgt.docIDs)
+			if fetchErr != nil {
+				fetchFailed++
+				pkglogger.Global().Warn("附件识别：拉取泛微附件失败，跳过该项",
+					zap.String("processID", processID),
+					zap.String("field", fieldKey),
+					zap.Int("rowIndex", tgt.rowIndex),
+					zap.Error(fetchErr))
+				continue
+			}
+
+			infos, recogErr := a.attachmentRecognitionSvc.RecognizeAttachments(ctx, files, fieldKey, fieldName)
+			if recogErr != nil {
+				recogFailed++
+				pkglogger.Global().Warn("附件识别：附件解析失败，跳过该项",
+					zap.String("processID", processID),
+					zap.String("field", fieldKey),
+					zap.Int("rowIndex", tgt.rowIndex),
+					zap.Error(recogErr))
+				continue
+			}
+
+			for i := range infos {
+				infos[i].DetailTable = tgt.detailTable
+				infos[i].RowIndex = tgt.rowIndex
+			}
+			all = append(all, infos...)
+		}
+	}
+
+	pkglogger.Global().Info("附件识别：流程附件遍历结束",
+		zap.String("processID", processID),
+		zap.Int("attachmentCount", len(all)),
+		zap.Int("skippedFilterField", skippedFilter),
+		zap.Int("skippedEmptyDocId", skippedEmpty),
+		zap.Int("fetchFailedField", fetchFailed),
+		zap.Int("recognizeFailedField", recogFailed))
+	return all, nil
+}
+
+// recognizeMainAttachments 保持向后兼容性，代理至 recognizeProcessAttachments。
 func (a *Ecology9Adapter) recognizeMainAttachments(
 	ctx context.Context,
 	processID string,
 	formID int,
 	mainData map[string]interface{},
 ) ([]AttachmentInfo, error) {
-	// 查询主表中所有附件类型字段（detailtable 为空 / 0 / 主表名都视为主表）
-	var rawFields []map[string]interface{}
-	err := a.db.WithContext(ctx).
-		Table(a.tableName("workflow_billfield")+" "+a.col("t1")).
-		Select(a.col("t1.fieldname")+" AS fieldkey, "+a.col("t2.labelname")+" AS fieldname, "+a.col("t1.detailtable")+" AS detailtable").
-		Joins("JOIN "+a.tableName("htmllabelinfo")+" "+a.col("t2")+" ON "+a.col("t1.fieldlabel")+" = "+a.col("t2.indexid")).
-		Where(a.col("t1.billid")+" = ? AND "+a.col("t1.fieldhtmltype")+" = ? AND "+a.col("t2.languageid")+" = 7",
-			formID, "6").
-		Find(&rawFields).Error
-	if err != nil {
-		return nil, fmt.Errorf("查询附件字段定义失败: %w", err)
-	}
-
-	pkglogger.Global().Info("附件识别：查询到附件类字段定义",
-		zap.String("processID", processID),
-		zap.Int("formID", formID),
-		zap.Int("fieldDefinitionCount", len(rawFields)))
-
-	var all []AttachmentInfo
-	var skippedDetail, skippedEmpty, fetchFailed, recogFailed int
-	for _, row := range rawFields {
-		dt := strings.TrimSpace(mapGet(row, "detailtable"))
-		// 仅识别主表附件；明细表附件如有需要后续扩展
-		if dt != "" && dt != "0" {
-			skippedDetail++
-			pkglogger.Global().Debug("附件识别：跳过明细表附件字段",
-				zap.String("processID", processID),
-				zap.String("field", mapGet(row, "fieldkey")),
-				zap.String("detailTable", dt))
-			continue
-		}
-		fieldKey := mapGet(row, "fieldkey")
-		fieldName := mapGet(row, "fieldname")
-		if fieldKey == "" {
-			continue
-		}
-		if !attachmentFieldAllowed(ctx, fieldKey) {
-			pkglogger.Global().Debug("附件识别：字段未被业务配置选中，跳过",
-				zap.String("processID", processID),
-				zap.String("field", fieldKey),
-				zap.String("fieldName", fieldName))
-			continue
-		}
-		// 主表数据里取附件 docId 列表（逗号分隔）
-		docIds := strings.TrimSpace(mapGet(mainData, fieldKey))
-		if docIds == "" {
-			skippedEmpty++
-			pkglogger.Global().Debug("附件识别：主表字段无 docId，跳过",
-				zap.String("processID", processID),
-				zap.String("field", fieldKey),
-				zap.String("fieldName", fieldName))
-			continue
-		}
-		pkglogger.Global().Info("附件识别：准备拉取泛微附件",
-			zap.String("processID", processID),
-			zap.String("field", fieldKey),
-			zap.String("fieldName", fieldName),
-			zap.String("docIds", docIds))
-		files, fetchErr := a.fetchWeaverAttachmentsByDocIDs(ctx, processID, fieldKey, docIds)
-		if fetchErr != nil {
-			fetchFailed++
-			pkglogger.Global().Warn("附件识别：拉取泛微附件失败，跳过该字段",
-				zap.String("processID", processID),
-				zap.String("field", fieldKey),
-				zap.Error(fetchErr))
-			continue
-		}
-		pkglogger.Global().Info("附件识别：泛微附件拉取成功，开始按格式解析",
-			zap.String("processID", processID),
-			zap.String("field", fieldKey),
-			zap.Int("fileCount", len(files)))
-		infos, recogErr := a.attachmentRecognitionSvc.RecognizeAttachments(ctx, files, fieldKey, fieldName)
-		if recogErr != nil {
-			recogFailed++
-			pkglogger.Global().Warn("附件识别：附件解析失败，跳过该字段",
-				zap.String("processID", processID),
-				zap.String("field", fieldKey),
-				zap.Error(recogErr))
-			continue
-		}
-		var withContent, withError int
-		for _, info := range infos {
-			if info.Error != "" {
-				withError++
-			} else if info.Content != "" {
-				withContent++
-			}
-		}
-		pkglogger.Global().Info("附件识别：字段处理完成",
-			zap.String("processID", processID),
-			zap.String("field", fieldKey),
-			zap.Int("resultCount", len(infos)),
-			zap.Int("withContent", withContent),
-			zap.Int("withError", withError))
-		all = append(all, infos...)
-	}
-	pkglogger.Global().Info("附件识别：主表字段遍历结束",
-		zap.String("processID", processID),
-		zap.Int("attachmentCount", len(all)),
-		zap.Int("skippedDetailField", skippedDetail),
-		zap.Int("skippedEmptyDocId", skippedEmpty),
-		zap.Int("fetchFailedField", fetchFailed),
-		zap.Int("recognizeFailedField", recogFailed))
-	return all, nil
+	pd := &ProcessData{MainData: mainData}
+	return a.recognizeProcessAttachments(ctx, processID, formID, "", pd)
 }
 
 func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
@@ -3648,13 +3801,13 @@ func (a *Ecology9Adapter) FetchProcessContextAnchor(ctx context.Context, process
 	return anchor, nil
 }
 
-// fetchAttachmentVersionAnchors 读取主表附件的最新 DocImageFile 版本，不下载附件正文。
+// fetchAttachmentVersionAnchors 读取主表及明细表附件的最新 DocImageFile 版本，不下载附件正文。
 func (a *Ecology9Adapter) fetchAttachmentVersionAnchors(
 	ctx context.Context,
 	processID string,
 	pd *ProcessData,
 ) ([]AttachmentVersionAnchor, error) {
-	if pd == nil || len(pd.MainData) == 0 {
+	if pd == nil || (len(pd.MainData) == 0 && len(pd.DetailTables) == 0) {
 		return nil, nil
 	}
 	var workflowID int
@@ -3674,11 +3827,18 @@ func (a *Ecology9Adapter) fetchAttachmentVersionAnchors(
 		return nil, fmt.Errorf("查询附件表单定义失败: %w", err)
 	}
 
+	var tableDBName string
+	_ = a.db.WithContext(ctx).
+		Table(a.tableName("workflow_bill")).
+		Select(a.col("tablename")).
+		Where(a.col("id")+" = ?", formID).
+		Row().Scan(&tableDBName)
+
 	var rawFields []map[string]interface{}
 	if err := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_billfield")).
 		Select(a.col("fieldname")+" AS field_key, "+a.col("detailtable")+" AS detail_table").
-		Where(a.col("billid")+" = ? AND "+a.col("fieldhtmltype")+" = ?", formID, "6").
+		Where(a.col("billid")+" = ? AND ("+a.col("fieldhtmltype")+" = '6' OR ("+a.col("fieldhtmltype")+" = '3' AND "+a.col("type")+" = 9))", formID).
 		Find(&rawFields).Error; err != nil {
 		return nil, fmt.Errorf("查询附件字段定义失败: %w", err)
 	}
@@ -3686,18 +3846,27 @@ func (a *Ecology9Adapter) fetchAttachmentVersionAnchors(
 	items := make([]AttachmentVersionAnchor, 0)
 	docIDsSet := make(map[string]struct{})
 	for _, field := range rawFields {
-		detailTable := strings.TrimSpace(mapGet(field, "detail_table"))
-		if detailTable != "" && detailTable != "0" {
-			continue
-		}
+		rawDT := strings.TrimSpace(mapGet(field, "detail_table"))
+		tableKey := normalizeDetailTableKey(tableDBName, rawDT)
 		fieldKey := strings.TrimSpace(mapGet(field, "field_key"))
 		if fieldKey == "" {
 			continue
 		}
-		docIDs := splitAttachmentDocIDs(mapGet(pd.MainData, fieldKey))
-		for _, docID := range docIDs {
-			docIDsSet[docID] = struct{}{}
-			items = append(items, AttachmentVersionAnchor{FieldKey: fieldKey, DocID: docID})
+
+		if tableKey == "main" {
+			docIDs := splitAttachmentDocIDs(mapGet(pd.MainData, fieldKey))
+			for _, docID := range docIDs {
+				docIDsSet[docID] = struct{}{}
+				items = append(items, AttachmentVersionAnchor{FieldKey: fieldKey, DocID: docID})
+			}
+		} else {
+			for _, dRow := range pd.DetailTables[tableKey] {
+				docIDs := splitAttachmentDocIDs(mapGet(dRow, fieldKey))
+				for _, docID := range docIDs {
+					docIDsSet[docID] = struct{}{}
+					items = append(items, AttachmentVersionAnchor{FieldKey: fieldKey, DocID: docID})
+				}
+			}
 		}
 	}
 	docIDs := make([]string, 0, len(docIDsSet))

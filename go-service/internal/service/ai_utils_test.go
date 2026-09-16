@@ -74,3 +74,40 @@ func TestFormatAttachmentsUnlimitedKeepsAllContent(t *testing.T) {
 		t.Fatalf("formatAttachments() truncated unlimited content: %q", got)
 	}
 }
+
+func TestFormatAttachmentsWithDetailTableAndRow(t *testing.T) {
+	attachments := []oa.AttachmentInfo{
+		{
+			FileName:    "主表附件.pdf",
+			FieldKey:    "T006",
+			FieldName:   "附件上传",
+			Content:     "主表内容",
+		},
+		{
+			FileName:    "发票1.pdf",
+			FieldKey:    "fpfj",
+			FieldName:   "发票附件",
+			DetailTable: "formtable_main_60_dt1",
+			RowIndex:    1,
+			Content:     "发票1内容",
+		},
+		{
+			FileName:    "发票2.pdf",
+			FieldKey:    "fpfj",
+			FieldName:   "发票附件",
+			DetailTable: "formtable_main_60_dt1",
+			RowIndex:    2,
+			Content:     "发票2内容",
+		},
+	}
+	got := formatAttachments(attachments, 8000)
+	if !strings.Contains(got, "### 附件字段：附件上传（T006）") {
+		t.Errorf("未能正确格式化主表附件头: %q", got)
+	}
+	if !strings.Contains(got, "### 附件字段：发票附件（fpfj - 明细表1 第 1 行）") {
+		t.Errorf("未能正确格式化明细表第1行附件头: %q", got)
+	}
+	if !strings.Contains(got, "### 附件字段：发票附件（fpfj - 明细表1 第 2 行）") {
+		t.Errorf("未能正确格式化明细表第2行附件头: %q", got)
+	}
+}
