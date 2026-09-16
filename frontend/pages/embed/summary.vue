@@ -248,7 +248,7 @@ async function runSummary(trigger: 'summary_embed_auto' | 'summary_embed_manual'
     await refreshContext(false, true)
     if (trigger === 'summary_embed_manual') message.success(t('embed.summary.refreshed'))
   } catch (e: any) {
-    message.error(e?.message || t('embed.summary.status.failed'))
+    message.error(extractEmbedErrorMessage(e, t('embed.summary.status.failed')))
     currentResult.value = null
     await refreshContext(false, true)
   } finally {
@@ -272,7 +272,7 @@ async function refreshContext(autoRun = true, preferCached = false) {
       publishStatusToParent()
     }
   } catch (e: any) {
-    pageError.value = e?.message || t('embed.summary.contextLoadFailed')
+    pageError.value = extractEmbedErrorMessage(e, t('embed.summary.contextLoadFailed'))
   }
 }
 
@@ -312,7 +312,7 @@ onMounted(async () => {
   try {
     await setupEmbedSession(parentCtx.embedToken, parentCtx.oaUserId)
   } catch (e: any) {
-    pageError.value = e?.message || t('embed.summary.missingToken')
+    pageError.value = extractEmbedErrorMessage(e, t('embed.summary.missingToken'))
     pageLoading.value = false
     return
   }

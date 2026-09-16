@@ -34,6 +34,10 @@ func Success(c *gin.Context, data interface{}) {
 
 // Error 返回指定 HTTP 状态码和业务错误码的错误响应。
 func Error(c *gin.Context, httpStatus int, code int, message string) {
+	if c != nil {
+		c.Set("error_code", code)
+		c.Set("error_message", message)
+	}
 	c.JSON(httpStatus, Response{
 		Code:    code,
 		Message: message,

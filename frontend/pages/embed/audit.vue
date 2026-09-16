@@ -303,7 +303,7 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual', useLatestConfig 
       message.success(t('embed.reAuditDone'))
     }
   } catch (e: any) {
-    message.error(e?.message || t('embed.auditFailed'))
+    message.error(extractEmbedErrorMessage(e, t('embed.auditFailed')))
     currentResult.value = null
     await refreshContext(false, true)
   } finally {
@@ -330,7 +330,7 @@ async function refreshContext(autoRun = true, preferCached = false) {
       publishStatusToParent()
     }
   } catch (e: any) {
-    pageError.value = e?.message || t('embed.loadFailed')
+    pageError.value = extractEmbedErrorMessage(e, t('embed.loadFailed'))
   }
 }
 
@@ -387,7 +387,7 @@ onMounted(async () => {
   try {
     await setupEmbedSession(parentCtx.embedToken, parentCtx.oaUserId)
   } catch (e: any) {
-    pageError.value = e?.message || t('embed.missingToken')
+    pageError.value = extractEmbedErrorMessage(e, t('embed.missingToken'))
     pageLoading.value = false
     return
   }

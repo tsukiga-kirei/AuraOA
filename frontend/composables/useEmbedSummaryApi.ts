@@ -39,13 +39,22 @@ export const useEmbedSummaryApi = () => {
     path: string,
     init?: { method?: 'GET' | 'POST'; body?: unknown },
   ): Promise<T> {
-    const res = await $fetch<T>(path, {
-      method: init?.method ?? 'GET',
-      body: init?.body as Record<string, unknown> | undefined,
-      credentials: 'include',
-      headers: embedAuthHeaders(),
-    })
-    return res as T
+    try {
+      const res = await $fetch<T>(path, {
+        method: init?.method ?? 'GET',
+        body: init?.body as Record<string, unknown> | undefined,
+        credentials: 'include',
+        headers: embedAuthHeaders(),
+      })
+      return res as T
+    } catch (err: any) {
+      const friendlyMsg = extractEmbedErrorMessage(err)
+      const error = new Error(friendlyMsg) as any
+      error.statusCode = err?.statusCode || err?.status
+      error.data = err?.data
+      error.originalError = err
+      throw error
+    }
   }
 
   async function getSummaryContext(processId: string, preferCached = false): Promise<EmbedSummaryContextResponse> {
