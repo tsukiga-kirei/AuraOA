@@ -106,10 +106,11 @@ type ProcessSummarySnapshotFilter struct {
 
 type ProcessSummarySnapshotListRow struct {
 	model.ProcessSummarySnapshot
-	Channel    string     `json:"channel" gorm:"column:channel"`
-	UserID     *uuid.UUID `json:"user_id,omitempty" gorm:"column:user_id"`
-	Operator   string     `json:"operator" gorm:"column:operator"`
-	Department string     `json:"department" gorm:"column:department"`
+	Channel       string     `json:"channel" gorm:"column:channel"`
+	UserID        *uuid.UUID `json:"user_id,omitempty" gorm:"column:user_id"`
+	Operator      string     `json:"operator" gorm:"column:operator"`
+	Department    string     `json:"department" gorm:"column:department"`
+	TriggerDetail string     `json:"trigger_detail" gorm:"column:trigger_detail"`
 }
 
 type ProcessSummarySnapshotStats struct {
@@ -133,11 +134,14 @@ func (r *ProcessSummarySnapshotRepo) adminSummaryGroups(c *gin.Context) *gorm.DB
  FROM classified
  )
  SELECT r.id, r.tenant_id, r.process_id, r.channel, r.group_user_id AS user_id,
- r.valid_log_ids, r.id AS latest_valid_log_id, r.title, r.process_type,
+ r.valid_log_ids, r.id AS latest_valid_log_id, r.title, r.process_type, r.trigger_detail,
  CASE WHEN jsonb_typeof(r.summary_result->'blocks') = 'array' THEN jsonb_array_length(r.summary_result->'blocks') ELSE 0 END AS block_count,
  r.created_at, r.updated_at,
- CASE WHEN r.channel = 'embed' THEN 'OA 嵌入总结' ELSE COALESCE(u.display_name, u.username, '') END AS operator,
- CASE WHEN r.channel = 'embed' THEN '系统自动' ELSE COALESCE(d.name, '') END AS department
+ CASE WHEN r.channel = 'embed' AND NULLIF(TRIM(COALESCE(r.oa_operator_name, '')), '') IS NOT NULL
+      THEN 'OA 嵌入总结（' || TRIM(r.oa_operator_name) || '）'
+      WHEN r.channel = 'embed' THEN 'OA 嵌入总结'
+      ELSE COALESCE(u.display_name, u.username, '') END AS operator,
+ CASE WHEN r.channel = 'embed' THEN COALESCE(r.oa_operator_dept, '') ELSE COALESCE(d.name, '') END AS department
  FROM ranked r
  LEFT JOIN users u ON u.id = r.group_user_id
  LEFT JOIN org_members om ON om.user_id = r.group_user_id AND om.tenant_id = r.tenant_id AND om.status = 'active'

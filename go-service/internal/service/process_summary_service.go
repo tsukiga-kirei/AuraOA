@@ -105,6 +105,10 @@ type SummaryExecuteRequest struct {
 	Title            string     `json:"title"`
 	TriggerSource    string     `json:"trigger_source"`
 	TriggerDetail    string     `json:"trigger_detail"`
+	OAUserID         string     `json:"oa_user_id,omitempty"`
+	OAOperatorID     string     `json:"-"`
+	OAOperatorName   string     `json:"-"`
+	OAOperatorDept   string     `json:"-"`
 	ScheduleConfigID *uuid.UUID `json:"-"`
 	UseLatestConfig  bool       `json:"use_latest_config,omitempty"`
 }
@@ -334,6 +338,13 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	if err != nil {
 		return nil, err
 	}
+	oaOperatorID := embedOAOperatorID(c, req.OAUserID)
+	oaOperatorName, oaOperatorDept := "", ""
+	if oaOperatorID != "" {
+		if adapter, adapterErr := s.getOAAdapter(c.Request.Context(), tenantID, false); adapterErr == nil {
+			oaOperatorID, oaOperatorName, oaOperatorDept = resolveEmbedOAOperator(c.Request.Context(), adapter, oaOperatorID)
+		}
+	}
 	release, acquired, lockErr := acquireEmbedCreateLock(
 		c.Request.Context(),
 		s.rdb,
@@ -363,6 +374,9 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 				"user_id":            userID,
 				"trigger_source":     trigger,
 				"trigger_detail":     detail,
+				"oa_operator_id":     oaOperatorID,
+				"oa_operator_name":   oaOperatorName,
+				"oa_operator_dept":   oaOperatorDept,
 				"queue_kind":         queueKind,
 				"schedule_config_id": nil,
 				"updated_at":         apptime.Now(),
@@ -421,6 +435,9 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 		title,
 		trigger,
 		detail,
+		oaOperatorID,
+		oaOperatorName,
+		oaOperatorDept,
 		queueKind,
 		ctxResp.CurrentFingerprint,
 		req.ScheduleConfigID,
@@ -450,6 +467,7 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 func (s *ProcessSummaryService) createPendingSummaryLog(
 	c *gin.Context,
 	processID, processType, title, trigger, detail string,
+	oaOperatorID, oaOperatorName, oaOperatorDept string,
 	queueKind string,
 	attemptFingerprint string,
 	scheduleConfigID *uuid.UUID,
@@ -531,6 +549,9 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 		ProcessSnapshot:    datatypes.JSON([]byte("{}")),
 		TriggerSource:      trigger,
 		TriggerDetail:      detail,
+		OAOperatorID:       strings.TrimSpace(oaOperatorID),
+		OAOperatorName:     strings.TrimSpace(oaOperatorName),
+		OAOperatorDept:     strings.TrimSpace(oaOperatorDept),
 		QueueKind:          queueKind,
 		AttemptFingerprint: attemptFingerprint,
 		ScheduleConfigID:   scheduleConfigID,
@@ -654,7 +675,8 @@ func (s *ProcessSummaryService) ExecuteWorkbench(c *gin.Context, req *SummaryExe
 	}
 	logID, createdTenantID, userID, createdAt, err := s.createPendingSummaryLog(
 		c, req.ProcessID, processSummary.ProcessType, title,
-		model.SummaryTriggerWorkbench, model.SummaryTriggerDetailManual, model.JobQueueKindInteractive,
+		model.SummaryTriggerWorkbench, model.SummaryTriggerDetailManual,
+		"", "", "", model.JobQueueKindInteractive,
 		"", nil, req.UseLatestConfig, false,
 	)
 	if err != nil {

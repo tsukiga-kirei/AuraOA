@@ -83,7 +83,6 @@ var ErrInvalidEmbedRefreshContext = errors.New("首次新建流程缺少 workflo
 type EmbedRefreshEventRequest struct {
 	ProcessID       string `json:"process_id"`
 	WorkflowID      string `json:"workflow_id"`
-	OABelongUserID  string `json:"oa_belong_user_id"`
 	OACurrentUserID string `json:"oa_current_user_id"`
 	OccurredAtMS    int64  `json:"occurred_at_ms"`
 	Action          string `json:"action" binding:"required"`
@@ -112,7 +111,6 @@ type embedRefreshPayload struct {
 	ConfigID          uuid.UUID `json:"config_id,omitempty"`
 	ScheduleID        uuid.UUID `json:"schedule_id,omitempty"`
 	WorkflowID        string    `json:"workflow_id,omitempty"`
-	OABelongUserID    string    `json:"oa_belong_user_id,omitempty"`
 	OACurrentUserID   string    `json:"oa_current_user_id,omitempty"`
 	BaselineRequestID int64     `json:"baseline_request_id,omitempty"`
 	OccurredAtMS      int64     `json:"occurred_at_ms,omitempty"`
@@ -198,7 +196,6 @@ func (s *EmbedRefreshService) ScheduleEvent(
 	}
 	req.ProcessID = strings.TrimSpace(req.ProcessID)
 	req.WorkflowID = strings.TrimSpace(req.WorkflowID)
-	req.OABelongUserID = strings.TrimSpace(req.OABelongUserID)
 	req.OACurrentUserID = strings.TrimSpace(req.OACurrentUserID)
 	req.Action = strings.TrimSpace(req.Action)
 	if req.Action != model.SummaryTriggerDetailSaveRequested &&
@@ -239,7 +236,6 @@ func (s *EmbedRefreshService) ScheduleEvent(
 		Action:            req.Action,
 		ProcessID:         req.ProcessID,
 		WorkflowID:        req.WorkflowID,
-		OABelongUserID:    req.OABelongUserID,
 		OACurrentUserID:   req.OACurrentUserID,
 		OccurredAtMS:      req.OccurredAtMS,
 		BaselineRequestID: baselineRequestID,
@@ -271,7 +267,6 @@ func (s *EmbedRefreshService) ScheduleEvent(
 			Generation:        uuid.NewString(),
 			FirstReceived:     now,
 			WorkflowID:        req.WorkflowID,
-			OABelongUserID:    req.OABelongUserID,
 			OACurrentUserID:   req.OACurrentUserID,
 			BaselineRequestID: baselineRequestID,
 			OccurredAtMS:      req.OccurredAtMS,
@@ -282,15 +277,16 @@ func (s *EmbedRefreshService) ScheduleEvent(
 	} else {
 		for _, module := range modules {
 			payload := embedRefreshPayload{
-				TenantID:      tenantID,
-				UserID:        userID,
-				ProcessID:     req.ProcessID,
-				Module:        module,
-				Action:        req.Action,
-				EventID:       req.EventID,
-				Generation:    uuid.NewString(),
-				FirstReceived: now,
-				OccurredAtMS:  req.OccurredAtMS,
+				TenantID:        tenantID,
+				UserID:          userID,
+				ProcessID:       req.ProcessID,
+				Module:          module,
+				Action:          req.Action,
+				EventID:         req.EventID,
+				Generation:      uuid.NewString(),
+				FirstReceived:   now,
+				OACurrentUserID: req.OACurrentUserID,
+				OccurredAtMS:    req.OccurredAtMS,
 			}
 			if _, err := s.schedule(ctx, payload, embedRefreshInitialDelay, false); err != nil {
 				return nil, err
@@ -509,6 +505,7 @@ func (s *EmbedRefreshService) checkAndTrigger(
 			ProcessID:        payload.ProcessID,
 			TriggerSource:    model.AuditTriggerEmbedAuto,
 			TriggerDetail:    payload.Action,
+			OAUserID:         payload.OACurrentUserID,
 			ScheduleConfigID: nullableUUID(payload.ConfigID),
 		})
 		if err != nil {
@@ -554,6 +551,7 @@ func (s *EmbedRefreshService) checkAndTrigger(
 			ProcessID:        payload.ProcessID,
 			TriggerSource:    model.SummaryTriggerEmbedAuto,
 			TriggerDetail:    payload.Action,
+			OAUserID:         payload.OACurrentUserID,
 			ScheduleConfigID: nullableUUID(payload.ConfigID),
 		})
 		if err != nil {
@@ -623,7 +621,6 @@ func (s *EmbedRefreshService) resolveProcessRequest(
 	}
 	candidate, peopleMatchCount := selectResolvedProcessCandidate(
 		candidates,
-		payload.OABelongUserID,
 		payload.OACurrentUserID,
 	)
 	if candidate == nil {
@@ -639,15 +636,16 @@ func (s *EmbedRefreshService) resolveProcessRequest(
 	processID := strings.TrimSpace(candidate.ProcessID)
 	for _, module := range []string{embedRefreshModuleAudit, embedRefreshModuleSummary} {
 		child := embedRefreshPayload{
-			TenantID:      payload.TenantID,
-			UserID:        payload.UserID,
-			ProcessID:     processID,
-			Module:        module,
-			Action:        payload.Action,
-			EventID:       payload.EventID,
-			Generation:    uuid.NewString(),
-			FirstReceived: payload.FirstReceived,
-			OccurredAtMS:  payload.OccurredAtMS,
+			TenantID:        payload.TenantID,
+			UserID:          payload.UserID,
+			ProcessID:       processID,
+			Module:          module,
+			Action:          payload.Action,
+			EventID:         payload.EventID,
+			Generation:      uuid.NewString(),
+			FirstReceived:   payload.FirstReceived,
+			OACurrentUserID: payload.OACurrentUserID,
+			OccurredAtMS:    payload.OccurredAtMS,
 		}
 		if _, scheduleErr := s.schedule(ctx, child, 0, false); scheduleErr != nil {
 			if s.updateResolutionFailure(ctx, event, payload, scheduleErr) {
@@ -676,24 +674,19 @@ func (s *EmbedRefreshService) resolveProcessRequest(
 	}, nil
 }
 
-// selectResolvedProcessCandidate 先按流程定义得到候选；仅在多候选时使用 OA 人员标识辅助消歧。
+// selectResolvedProcessCandidate 先按流程定义得到候选；仅在多候选时使用 OA 当前操作人标识辅助消歧。
 func selectResolvedProcessCandidate(
 	candidates []oa.ProcessRequestCandidate,
-	peopleIDs ...string,
+	currentUserID string,
 ) (*oa.ProcessRequestCandidate, int) {
 	if len(candidates) == 1 {
 		return &candidates[0], 0
 	}
-	people := make(map[string]struct{}, len(peopleIDs))
-	for _, raw := range peopleIDs {
-		if value := strings.TrimSpace(raw); value != "" {
-			people[value] = struct{}{}
-		}
-	}
+	currentUserID = strings.TrimSpace(currentUserID)
 	matches := make([]int, 0, len(candidates))
 	for index := range candidates {
 		creatorID := strings.TrimSpace(candidates[index].CreatorID)
-		if _, ok := people[creatorID]; ok && creatorID != "" {
+		if currentUserID != "" && creatorID == currentUserID {
 			matches = append(matches, index)
 		}
 	}
@@ -750,7 +743,6 @@ func (s *EmbedRefreshService) restorePendingEvents(ctx context.Context) error {
 			Attempt:           event.Attempt,
 			FirstReceived:     event.ReceivedAt,
 			WorkflowID:        event.WorkflowID,
-			OABelongUserID:    event.OABelongUserID,
 			OACurrentUserID:   event.OACurrentUserID,
 			BaselineRequestID: event.BaselineRequestID,
 			OccurredAtMS:      event.OccurredAtMS,

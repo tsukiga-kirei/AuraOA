@@ -185,6 +185,8 @@ POST /api/tenant/summary/context/test
 数据管理页使用，从有效总结日志聚合历史数据：嵌入按流程汇总为一组，系统内按流程和操作人汇总为一组。
 每组的展示字段、总结块数与 `latest_valid_log_id` 对应最新有效记录；`valid_log_ids` 仅包含该组历史。
 `channel` 为 `embed` / `workbench`，系统内行包含 `user_id`；列表按最新记录时间倒序。
+嵌入行同时返回最新有效记录的 `trigger_detail`。若 OA 当前操作人员可解析，`operator` 展示为
+“OA 嵌入总结（姓名）”，`department` 返回其 OA 部门；无法解析时展示“OA 嵌入总结”且部门为空。
 统计按相同分组计算，仍只按渠道筛选，不新增人员、部门等筛选联动。现有共享快照保留给运行时使用，无需清空或回填数据库。
 
 ### 获取快照列表
@@ -223,7 +225,8 @@ GET /api/summary/snapshots/:processId/chain
 
 支持 `channel=embed|workbench`、`user_id`（UUID，仅系统内渠道使用）查询参数。
 数据管理页传入所选行的渠道与操作人，返回对应分组的有效总结链，按时间倒序；省略筛选兼容全流程历史。
-嵌入日志的 `user_name` 统一为“OA 嵌入总结”，系统内日志保留实际操作人。每条记录包含实际使用的 `config_version_no`；迁移前历史记录可能为空，
+嵌入日志的 `user_name` 按当次 OA 当前操作人展示为“OA 嵌入总结（姓名）”；无法解析时为“OA 嵌入总结”。
+系统内日志保留实际操作人。每条嵌入记录返回 `trigger_detail`，并包含实际使用的 `config_version_no`；迁移前历史记录可能为空，
 数据管理页在“查看详情”抽屉中明确展示为未记录版本。
 
 ### 日期筛选边界

@@ -66,6 +66,7 @@ async function run(source, payload, httpOK = true, device = {}) {
     },
     WfForm: {
       getBaseInfo: () => ({ requestid: '614309', f_weaver_belongto_userid: '23' }),
+      getGlobalStore: () => ({ commonParam: { currentUserid: Object.hasOwn(device, 'currentUser') ? device.currentUser : '42' } }),
       showMessage: value => state.messages.push(value),
       registerCheckEvent: () => {}, OPER_SAVE: 'save', OPER_SUBMIT: 'submit',
     },
@@ -143,7 +144,7 @@ for (const origin of ['export', 'template']) {
         const request = new URL(state.requests[0])
         assert.equal(request.pathname, type === 'summary' ? '/api/embed/summary/context' : '/api/embed/context')
         assert.equal(request.searchParams.get('requestid'), '614309')
-        assert.equal(request.searchParams.get('oa_user_id'), '23')
+        assert.equal(request.searchParams.get('oa_user_id'), '42')
         assert.equal(state.text, type === 'summary' ? '查看流程总结' : '审核通过 (95分)')
         state.click()
         assert.equal(new URL(state.dialogs[0]).pathname, '/embed/' + type)
@@ -156,6 +157,11 @@ for (const origin of ['export', 'template']) {
       state.click()
       assert.equal(state.messages[0], '此流程尚未配置 AI ' + label)
       assert.equal(state.dialogs.length, 0)
+    })
+    test(`${origin} ${type}: never uses the belong user as the current operator`, async () => {
+      const state = await run(script, complete, true, { currentUser: null })
+      const request = new URL(state.requests[0])
+      assert.equal(request.searchParams.get('oa_user_id'), '')
     })
     test(`${origin} ${type}: pending auto-run and running jobs remain clickable`, async () => {
       for (const fields of [{ ['should_auto_' + type]: true }, { running_job_id: 'job-1' }]) {

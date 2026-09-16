@@ -492,6 +492,47 @@ const chainItemSourceTag = (item: { trigger_source?: string; trigger_detail?: st
   return { color: 'blue', text: t('resultSource.workbench') }
 }
 
+function isStandardEmbedAudit(item: { trigger_source?: string; trigger_detail?: string }) {
+  return (item.trigger_source === 'embed_auto' || item.trigger_source === 'embed_manual')
+      && item.trigger_detail !== 'personal_embed_manual'
+}
+
+function getEmbedTriggerAction(value?: string) {
+  const map: Record<string, { label: string; color: string; background: string }> = {
+    save_requested: {
+      label: t('admin.data.embedActionSave'),
+      color: '#1677ff',
+      background: 'rgba(22, 119, 255, 0.10)',
+    },
+    submit_requested: {
+      label: t('admin.data.embedActionSubmit'),
+      color: '#08979c',
+      background: 'rgba(19, 194, 194, 0.12)',
+    },
+    visible_open: {
+      label: t('admin.data.embedActionOpen'),
+      color: '#722ed1',
+      background: 'rgba(114, 46, 209, 0.10)',
+    },
+    manual: {
+      label: t('admin.data.embedActionManual'),
+      color: '#d46b08',
+      background: 'rgba(250, 140, 22, 0.13)',
+    },
+    scheduled_scan: {
+      label: t('admin.data.embedActionScheduled'),
+      color: '#597ef7',
+      background: 'rgba(89, 126, 247, 0.11)',
+    },
+  }
+  return value ? map[value] : undefined
+}
+
+function getEmbedTriggerActionStyle(value?: string) {
+  const action = getEmbedTriggerAction(value)
+  return action ? { color: action.color, background: action.background } : undefined
+}
+
 function getSourceChannelStyle(channel?: string) {
   const ch = channel || 'workbench'
   return sourceChannelConfig.value[ch] || sourceChannelConfig.value.workbench
@@ -1256,21 +1297,30 @@ onMounted(async () => {
           </thead>
           <tbody>
           <tr v-if="auditLoading">
-            <td colspan="11" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td colspan="10" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in auditSnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
             <td>{{ item.title }}</td>
-            <td>{{ item.operator || '-' }}</td>
+            <td class="operator-cell">{{ item.operator || '-' }}</td>
             <td>{{ item.department || '-' }}</td>
             <td class="text-secondary">{{ item.process_type }}</td>
-            <td>
-              <span
-                  class="result-tag"
-                  :style="getSourceChannelStyle(item.channel)"
-              >
-                {{ getSourceChannelLabel(item.channel || 'workbench') }}
-              </span>
+            <td class="source-action-cell">
+              <div class="source-action-stack">
+                <span
+                    class="result-tag"
+                    :style="getSourceChannelStyle(item.channel)"
+                >
+                  {{ getSourceChannelLabel(item.channel || 'workbench') }}
+                </span>
+                <span
+                    v-if="item.channel === 'embed_standard' && getEmbedTriggerAction(item.trigger_detail)"
+                    class="result-tag result-tag--action"
+                    :style="getEmbedTriggerActionStyle(item.trigger_detail)"
+                >
+                  {{ getEmbedTriggerAction(item.trigger_detail)?.label }}
+                </span>
+              </div>
             </td>
             <td>
                 <span
@@ -1303,7 +1353,7 @@ onMounted(async () => {
             </td>
           </tr>
           <tr v-if="!auditLoading && auditSnapshots.length === 0">
-            <td colspan="11" class="empty-cell">{{ t('admin.data.noData') }}</td>
+            <td colspan="10" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>
@@ -1795,16 +1845,25 @@ onMounted(async () => {
           <tr v-else v-for="item in summarySnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
             <td>{{ item.title }}</td>
-            <td>{{ item.operator || '-' }}</td>
+            <td class="operator-cell">{{ item.operator || '-' }}</td>
             <td>{{ item.department || '-' }}</td>
             <td class="text-secondary">{{ item.process_type }}</td>
-            <td>
-              <span
-                  class="result-tag"
-                  :style="getSourceChannelStyle(item.channel)"
-              >
-                {{ getSourceChannelLabel(item.channel || 'workbench') }}
-              </span>
+            <td class="source-action-cell">
+              <div class="source-action-stack">
+                <span
+                    class="result-tag"
+                    :style="getSourceChannelStyle(item.channel)"
+                >
+                  {{ getSourceChannelLabel(item.channel || 'workbench') }}
+                </span>
+                <span
+                    v-if="item.channel === 'embed' && getEmbedTriggerAction(item.trigger_detail)"
+                    class="result-tag result-tag--action"
+                    :style="getEmbedTriggerActionStyle(item.trigger_detail)"
+                >
+                  {{ getEmbedTriggerAction(item.trigger_detail)?.label }}
+                </span>
+              </div>
             </td>
             <td>
               <span class="result-tag" style="color: var(--color-primary); background: var(--color-primary-bg);">
@@ -2107,7 +2166,18 @@ onMounted(async () => {
             <td>{{ item.process_title || '-' }}</td>
             <td>{{ item.call_count }}</td>
             <td>{{ item.total_tokens }}</td>
-            <td>{{ item.latest_user_name || '-' }}</td>
+            <td class="operator-cell">
+              <div class="source-action-stack">
+                <span>{{ item.latest_user_name || '-' }}</span>
+                <span
+                    v-if="getEmbedTriggerAction(item.latest_trigger_detail)"
+                    class="result-tag result-tag--action"
+                    :style="getEmbedTriggerActionStyle(item.latest_trigger_detail)"
+                >
+                  {{ getEmbedTriggerAction(item.latest_trigger_detail)?.label }}
+                </span>
+              </div>
+            </td>
             <td class="text-secondary">{{ formatDate(item.latest_call_at) }}</td>
             <td>
               <div class="action-btns">
@@ -2190,6 +2260,13 @@ onMounted(async () => {
                         >
                           {{ chainItemSourceTag(logItem).text }}
                         </a-tag>
+                        <span
+                            v-if="isStandardEmbedAudit(logItem) && getEmbedTriggerAction(logItem.trigger_detail)"
+                            class="result-tag result-tag--action"
+                            :style="getEmbedTriggerActionStyle(logItem.trigger_detail)"
+                        >
+                          {{ getEmbedTriggerAction(logItem.trigger_detail)?.label }}
+                        </span>
                         <span class="chain-expand-btn">
                           <DownOutlined v-if="!expandedAuditChainNodes.has(logItem.id)" />
                           <UpOutlined v-else />
@@ -2449,6 +2526,13 @@ onMounted(async () => {
                         <a-tag :color="logItem.trigger_source === 'summary_workbench' ? 'blue' : 'purple'">
                           {{ t(logItem.trigger_source === 'summary_workbench' ? 'resultSource.personal' : 'resultSource.embed') }}
                         </a-tag>
+                        <span
+                            v-if="logItem.trigger_source !== 'summary_workbench' && getEmbedTriggerAction(logItem.trigger_detail)"
+                            class="result-tag result-tag--action"
+                            :style="getEmbedTriggerActionStyle(logItem.trigger_detail)"
+                        >
+                          {{ getEmbedTriggerAction(logItem.trigger_detail)?.label }}
+                        </span>
                         <span class="chain-score">{{ ((logItem.duration_ms || 0) / 1000).toFixed(1) }}s</span>
                         <span class="chain-expand-btn">
                           <DownOutlined v-if="!expandedSummaryChainNodes.has(logItem.id)" />
@@ -2642,6 +2726,13 @@ onMounted(async () => {
                           <ThunderboltOutlined />
                           {{ getLLMRequestTypeLabel(logItem.request_type) }}
                           · {{ getLLMCallTypeLabel(logItem.call_type) }}
+                        </span>
+                        <span
+                            v-if="getEmbedTriggerAction(logItem.trigger_detail)"
+                            class="result-tag result-tag--action"
+                            :style="getEmbedTriggerActionStyle(logItem.trigger_detail)"
+                        >
+                          {{ getEmbedTriggerAction(logItem.trigger_detail)?.label }}
                         </span>
                         <span class="chain-score">{{ logItem.total_tokens }} Token</span>
                         <span class="chain-expand-btn">
@@ -3499,6 +3590,28 @@ details[open] .chevron-icon {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.operator-cell {
+  min-width: 168px;
+  white-space: nowrap;
+}
+
+.source-action-cell {
+  min-width: 186px;
+}
+
+.source-action-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.result-tag--action {
+  padding: 3px 8px;
+  font-weight: 500;
 }
 
 .status-tag {

@@ -70,6 +70,7 @@ export interface AuditSnapshotItem {
   latest_valid_log_id: string
   operator: string           // 操作人显示名（JOIN）
   department: string         // 部门名称（JOIN）
+  trigger_detail?: string    // OA 嵌入触发动作
   created_at: string
   updated_at: string
   updated_at_fmt: string     // 格式化后 "2026/4/3 17:44"
@@ -191,6 +192,7 @@ export interface SummaryLogItem {
   process_type: string
   status: string
   trigger_source?: string
+  trigger_detail?: string
   summary_result: any
   duration_ms: number
   raw_content: string
@@ -214,6 +216,7 @@ export interface SummarySnapshotItem {
   latest_valid_log_id: string
   operator: string
   department: string
+  trigger_detail?: string
   created_at: string
   updated_at: string
   updated_at_fmt: string
@@ -288,6 +291,7 @@ export interface LLMProcessItem {
   total_tokens: number
   latest_call_at: string
   latest_user_name: string
+  latest_trigger_detail?: string
 }
 
 export interface LLMLogItem {
@@ -300,6 +304,7 @@ export interface LLMLogItem {
   model_display_name: string
   request_type: string
   call_type: string
+  trigger_detail?: string
   input_tokens: number
   output_tokens: number
   total_tokens: number

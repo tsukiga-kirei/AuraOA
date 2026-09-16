@@ -4318,6 +4318,13 @@ paths:
                         type: array
                         items:
                           type: object
+                          properties:
+                            latest_user_name:
+                              type: string
+                              description: 最新调用操作人；OA 通用嵌入优先使用当次 OA 当前操作人姓名快照
+                            latest_trigger_detail:
+                              type: string
+                              description: OA 通用嵌入最新业务执行动作；系统内及其他场景为空
                       total:
                         type: integer
                       page:
@@ -4415,6 +4422,12 @@ paths:
                         items:
                           type: object
                           properties:
+                            user_name:
+                              type: string
+                              description: 当次调用操作人；OA 通用嵌入优先使用当次 OA 当前操作人姓名快照
+                            trigger_detail:
+                              type: string
+                              description: OA 通用嵌入当次业务执行动作；系统内及其他场景为空
                             config_version_no:
                               type: integer
                               nullable: true
@@ -4965,6 +4978,7 @@ paths:
   /api/audit/snapshots:
     get:
       summary: 审核快照列表
+      description: 保持按流程和渠道聚合；OA 通用嵌入返回最新有效记录的 trigger_detail，并以 OA 当前操作人的姓名和部门快照作为 operator、department。
       tags:
       - Audit
       security:
@@ -4990,6 +5004,14 @@ paths:
                         type: array
                         items:
                           type: object
+                          properties:
+                            operator:
+                              type: string
+                            department:
+                              type: string
+                            trigger_detail:
+                              type: string
+                              description: OA 通用嵌入最新有效记录的触发动作；其他渠道为空或 manual
                       total:
                         type: integer
                       page:
@@ -5389,7 +5411,7 @@ paths:
   /api/summary/snapshots:
     get:
       summary: 流程总结快照列表
-      description: 嵌入按流程、系统内按流程和操作人分组；各组返回最新有效总结、组内 valid_log_ids 及系统内操作人 user_id。
+      description: 嵌入按流程、系统内按流程和操作人分组；各组返回最新有效总结、组内 valid_log_ids 及系统内操作人 user_id。OA 嵌入还返回最新 trigger_detail，并以 OA 当前操作人的姓名和部门快照作为 operator、department。
       tags:
       - Summary
       security:
@@ -5432,6 +5454,13 @@ paths:
                                 format: uuid
                             block_count:
                               type: integer
+                            operator:
+                              type: string
+                            department:
+                              type: string
+                            trigger_detail:
+                              type: string
+                              description: OA 嵌入最新有效记录的触发动作；系统内为空或 manual
                       total:
                         type: integer
                       page:
@@ -5558,7 +5587,7 @@ paths:
   /api/summary/snapshots/{processId}/chain:
     get:
       summary: 获取流程总结链
-      description: 按渠道及操作人返回有效总结链，时间倒序。嵌入操作人显示 OA 嵌入总结，省略筛选兼容全流程历史。
+      description: 按渠道及操作人返回有效总结链，时间倒序。嵌入记录按当次 OA 当前操作人显示 OA 嵌入总结（姓名），并返回 trigger_detail；无法解析姓名时省略括号。省略筛选兼容全流程历史。
       tags:
       - Summary
       security:
@@ -8934,12 +8963,9 @@ components:
         workflow_id:
           type: string
           description: 首次新建流程缺少 process_id 时必填
-        oa_belong_user_id:
-          type: string
-          description: OA 代理归属用户 ID，仅用于多候选辅助消歧和排错
         oa_current_user_id:
           type: string
-          description: OA 当前操作用户 ID，仅用于多候选辅助消歧和排错，不等同于流程创建人
+          description: OA 当前操作用户 ID；用于多候选辅助消歧，并解析当次操作人的姓名和部门快照。不使用 oa_belong_user_id
         occurred_at_ms:
           type: integer
           format: int64

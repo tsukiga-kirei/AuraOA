@@ -554,9 +554,6 @@ ${urlComment}
       occurred_at_ms: occurredAtMs,
       requestid: getRequestId(),
       workflow_id: base.workflowid != null ? String(base.workflowid).trim() : '',
-      oa_belong_user_id: base.f_weaver_belongto_userid != null
-        ? String(base.f_weaver_belongto_userid).trim()
-        : '',
       oa_current_user_id: currentUserId
     };
   }
@@ -619,7 +616,6 @@ ${urlComment}
       ['embed_token', EMBED_ACCESS_TOKEN],
       ['process_id', context.requestid],
       ['workflow_id', context.workflow_id],
-      ['oa_belong_user_id', context.oa_belong_user_id],
       ['oa_current_user_id', context.oa_current_user_id],
       ['occurred_at_ms', String(context.occurred_at_ms)],
       ['action', context.action],
@@ -865,12 +861,6 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
           return String(store.commonParam.currentUserid).trim();
         }
       }
-      if (typeof WfForm !== 'undefined' && WfForm.getBaseInfo) {
-        var base = WfForm.getBaseInfo();
-        if (base && base.f_weaver_belongto_userid != null) {
-          return String(base.f_weaver_belongto_userid).trim();
-        }
-      }
     } catch (e) {}
     return '';
   }
@@ -884,7 +874,6 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
       occurred_at_ms: occurredAtMs,
       requestid: getRequestId(),
       workflow_id: base.workflowid != null ? String(base.workflowid).trim() : '',
-      oa_belong_user_id: base.f_weaver_belongto_userid != null ? String(base.f_weaver_belongto_userid).trim() : '',
       oa_current_user_id: getCurrentUserId()
     };
   }
@@ -894,7 +883,6 @@ const buildEmbedMobileNotifyScript = (target: 'all' | 'audit' | 'summary', token
       ['embed_token', EMBED_ACCESS_TOKEN],
       ['process_id', context.requestid],
       ['workflow_id', context.workflow_id],
-      ['oa_belong_user_id', context.oa_belong_user_id],
       ['oa_current_user_id', context.oa_current_user_id],
       ['occurred_at_ms', String(context.occurred_at_ms)],
       ['action', context.action],

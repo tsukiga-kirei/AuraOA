@@ -190,7 +190,7 @@ func TestSelectResolvedProcessCandidate(t *testing.T) {
 		{ProcessID: "617101", CreatorID: "198"},
 		{ProcessID: "617102", CreatorID: "28"},
 	}
-	selected, matchCount = selectResolvedProcessCandidate(multiple, "28", "29")
+	selected, matchCount = selectResolvedProcessCandidate(multiple, "28")
 	if selected == nil || selected.ProcessID != "617102" || matchCount != 1 {
 		t.Fatalf("多候选时应使用人员标识辅助消歧: selected=%+v matches=%d", selected, matchCount)
 	}
