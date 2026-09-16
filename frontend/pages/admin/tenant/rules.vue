@@ -34,8 +34,14 @@ import {
   UnlockOutlined,
   UploadOutlined,
   UserOutlined,
+  ExportOutlined,
+  ImportOutlined,
 } from '@ant-design/icons-vue'
 import { message, Modal } from 'ant-design-vue'
+import type { ConfigExportModule, RuleConflictStrategy } from '~/types/config-export-import'
+import { applyRuleConflictStrategy } from '~/utils/configExportImportHelper'
+import ConfigExportModal from '~/components/ConfigExportModal.vue'
+import ConfigImportModal from '~/components/ConfigImportModal.vue'
 import type {
   AuditRule as ApiAuditRule,
   ProcessAuditConfig as ApiProcessAuditConfig,
@@ -222,6 +228,104 @@ async function reloadCurrentModuleData(module: ExecutionConfigModule) {
   } else if (module === 'summary') {
     const summaryList = await summaryApi.listConfigs()
     summaryConfigs.value = summaryList.map(c => typeof normalizeSummaryConfigForUI === 'function' ? normalizeSummaryConfigForUI(c) : c)
+  }
+}
+
+//===== 流程配置导出与导入 (JSON) =====
+const showExportModal = ref(false)
+const exportModalModule = ref<ConfigExportModule>('audit')
+const exportModalInitialSection = ref<'all' | 'rules' | 'ai'>('all')
+
+const showImportModal = ref(false)
+const importModalModule = ref<ConfigExportModule>('audit')
+const importModalInitialSection = ref<'all' | 'rules' | 'ai'>('all')
+
+function openExportModal(module: ConfigExportModule, section: 'all' | 'rules' | 'ai' = 'all') {
+  exportModalModule.value = module
+  exportModalInitialSection.value = section
+  showExportModal.value = true
+}
+
+function openImportModal(module: ConfigExportModule, section: 'all' | 'rules' | 'ai' = 'all') {
+  importModalModule.value = module
+  importModalInitialSection.value = section
+  showImportModal.value = true
+}
+
+function handleConfigImportConfirm(
+  module: ConfigExportModule,
+  payload: {
+    rules?: any[]
+    ai?: any
+    summary_blocks?: any[]
+    strategy: RuleConflictStrategy
+    importRules: boolean
+    importAi: boolean
+    importSummaryBlocks: boolean
+  }
+) {
+  let importedRulesCount = 0
+  let importedAiUpdated = false
+  let importedSummaryCount = 0
+
+  if (module === 'audit') {
+    if (payload.importRules && payload.rules && payload.rules.length > 0) {
+      const merged = applyRuleConflictStrategy(
+        currentRules.value,
+        payload.rules,
+        payload.strategy,
+        createDraftRuleID
+      )
+      currentRules.value = merged
+      importedRulesCount = payload.rules.length
+    }
+    if (payload.importAi && payload.ai && selectedConfig.value) {
+      selectedConfig.value.ai_config = {
+        ...(selectedConfig.value.ai_config || {}),
+        ...payload.ai,
+      }
+      importedAiUpdated = true
+    }
+  } else if (module === 'archive') {
+    if (payload.importRules && payload.rules && payload.rules.length > 0) {
+      const merged = applyRuleConflictStrategy(
+        currentArchiveRules.value,
+        payload.rules,
+        payload.strategy,
+        createDraftRuleID
+      )
+      currentArchiveRules.value = merged
+      importedRulesCount = payload.rules.length
+    }
+    if (payload.importAi && payload.ai && selectedArchiveConfig.value) {
+      selectedArchiveConfig.value.ai_config = {
+        ...(selectedArchiveConfig.value.ai_config || {}),
+        ...payload.ai,
+      }
+      importedAiUpdated = true
+    }
+  } else if (module === 'summary') {
+    if (payload.importSummaryBlocks && payload.summary_blocks && selectedSummaryConfig.value) {
+      const existingBlocks = selectedSummaryConfig.value.summary_blocks || []
+      const newBlocks = payload.summary_blocks.map((b: any, idx: number) => ({
+        ...b,
+        id: b.id || `blk_${Date.now()}_${idx}`,
+        sort_order: existingBlocks.length + idx + 1,
+      }))
+      selectedSummaryConfig.value.summary_blocks = [...existingBlocks, ...newBlocks]
+      importedSummaryCount = newBlocks.length
+    }
+  }
+
+  // 提示信息
+  if (module === 'summary' && importedSummaryCount > 0) {
+    message.success(t('admin.ruleConfig.importSuccessSummary', [`${importedSummaryCount}`]))
+  } else if (importedRulesCount > 0 && importedAiUpdated) {
+    message.success(t('admin.ruleConfig.importSuccessStaged', [`${importedRulesCount}`]))
+  } else if (importedRulesCount > 0) {
+    message.success(t('admin.ruleConfig.importSuccessRulesOnly', [`${importedRulesCount}`]))
+  } else if (importedAiUpdated) {
+    message.success(t('admin.ruleConfig.importSuccessAiOnly'))
   }
 }
 
@@ -3012,20 +3116,28 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             <h2 class="config-panel-title">{{ selectedConfig.process_type }}</h2>
             <p v-if="selectedConfig.process_type_label" class="config-panel-subtitle">{{ selectedConfig.process_type_label }}</p>
           </div>
-          <div
-            class="config-version-status config-version-status--clickable"
-            :class="versionStatusClass(auditVersionStatus, 'audit')"
-            :title="t('executionConfig.viewHistory')"
-            @click="openHistoryDrawer('audit')"
-          >
-            <a-spin v-if="versionStatusLoading.audit" size="small" />
-            <template v-else>
-              <span class="config-version-status__dot" />
-              <div class="config-version-status__content">
-                <strong>{{ versionStatusTitle(auditVersionStatus, 'audit') }}</strong>
-                <HistoryOutlined class="config-version-status__history-icon" />
-              </div>
-            </template>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <a-button @click="openExportModal('audit', 'all')">
+              <ExportOutlined /> {{ t('admin.ruleConfig.exportConfig') }}
+            </a-button>
+            <a-button @click="openImportModal('audit', 'all')">
+              <ImportOutlined /> {{ t('admin.ruleConfig.importConfig') }}
+            </a-button>
+            <div
+              class="config-version-status config-version-status--clickable"
+              :class="versionStatusClass(auditVersionStatus, 'audit')"
+              :title="t('executionConfig.viewHistory')"
+              @click="openHistoryDrawer('audit')"
+            >
+              <a-spin v-if="versionStatusLoading.audit" size="small" />
+              <template v-else>
+                <span class="config-version-status__dot" />
+                <div class="config-version-status__content">
+                  <strong>{{ versionStatusTitle(auditVersionStatus, 'audit') }}</strong>
+                  <HistoryOutlined class="config-version-status__history-icon" />
+                </div>
+              </template>
+            </div>
           </div>
         </div>
 
@@ -3241,6 +3353,9 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             </div>
             <div class="rules-toolbar-actions">
               <template v-if="selectedRuleIds.length">
+                <a-button @click="openExportModal('audit', 'rules')">
+                  <ExportOutlined /> {{ t('admin.ruleConfig.exportSelectedRules') }}
+                </a-button>
                 <a-popconfirm
                   :title="t('admin.ruleConfig.batchDeleteConfirm', `${selectedRuleIds.length}`)"
                   @confirm="batchDeleteRules"
@@ -3251,6 +3366,12 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                 </a-popconfirm>
               </template>
               <template v-else>
+                <a-button :disabled="currentRules.length === 0" @click="openExportModal('audit', 'rules')">
+                  <ExportOutlined /> {{ t('admin.ruleConfig.exportAllRules') }}
+                </a-button>
+                <a-button @click="openImportModal('audit', 'rules')">
+                  <ImportOutlined /> {{ t('admin.ruleConfig.importRules') }}
+                </a-button>
                 <a-button :disabled="ruleImportLoading" @click="handlePasteImport('audit')">
                   <SnippetsOutlined /> {{ t('admin.ruleConfig.pasteImport') }}
                 </a-button>
@@ -3347,10 +3468,18 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
 
         <!--========== AI 标签==========-->
         <div v-if="activeTab === 'ai'" class="tab-content">
-          <div class="section-header">
+          <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
               <h4 class="section-title">{{ t('admin.ruleConfig.aiTitle') }}</h4>
               <p class="section-desc">{{ t('admin.ruleConfig.aiDescNew') }}</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <a-button @click="openExportModal('audit', 'ai')">
+                <ExportOutlined /> {{ t('admin.ruleConfig.exportAIConfig') }}
+              </a-button>
+              <a-button @click="openImportModal('audit', 'ai')">
+                <ImportOutlined /> {{ t('admin.ruleConfig.importAIConfig') }}
+              </a-button>
             </div>
           </div>
 
@@ -3775,20 +3904,28 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             <h2 class="config-panel-title">{{ selectedSummaryConfig.process_type }}</h2>
             <p v-if="selectedSummaryConfig.process_type_label" class="config-panel-subtitle">{{ selectedSummaryConfig.process_type_label }}</p>
           </div>
-          <div
-            class="config-version-status config-version-status--clickable"
-            :class="versionStatusClass(summaryVersionStatus, 'summary')"
-            :title="t('executionConfig.viewHistory')"
-            @click="openHistoryDrawer('summary')"
-          >
-            <a-spin v-if="versionStatusLoading.summary" size="small" />
-            <template v-else>
-              <span class="config-version-status__dot" />
-              <div class="config-version-status__content">
-                <strong>{{ versionStatusTitle(summaryVersionStatus, 'summary') }}</strong>
-                <HistoryOutlined class="config-version-status__history-icon" />
-              </div>
-            </template>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <a-button @click="openExportModal('summary', 'all')">
+              <ExportOutlined /> {{ t('admin.ruleConfig.exportConfig') }}
+            </a-button>
+            <a-button @click="openImportModal('summary', 'all')">
+              <ImportOutlined /> {{ t('admin.ruleConfig.importConfig') }}
+            </a-button>
+            <div
+              class="config-version-status config-version-status--clickable"
+              :class="versionStatusClass(summaryVersionStatus, 'summary')"
+              :title="t('executionConfig.viewHistory')"
+              @click="openHistoryDrawer('summary')"
+            >
+              <a-spin v-if="versionStatusLoading.summary" size="small" />
+              <template v-else>
+                <span class="config-version-status__dot" />
+                <div class="config-version-status__content">
+                  <strong>{{ versionStatusTitle(summaryVersionStatus, 'summary') }}</strong>
+                  <HistoryOutlined class="config-version-status__history-icon" />
+                </div>
+              </template>
+            </div>
           </div>
         </div>
 
@@ -3905,9 +4042,17 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
               <h4 class="section-title">{{ t('admin.ruleConfig.summaryAITab') }}</h4>
               <p class="section-desc">{{ t('admin.ruleConfig.summaryAIDesc') }}</p>
             </div>
-            <a-button type="primary" @click="addSummaryBlock">
-              <PlusOutlined /> {{ t('admin.ruleConfig.summaryAddBlock') }}
-            </a-button>
+            <div style="display: flex; gap: 8px;">
+              <a-button :disabled="!selectedSummaryConfig.summary_blocks?.length" @click="openExportModal('summary', 'ai')">
+                <ExportOutlined /> {{ t('admin.ruleConfig.exportSummaryBlocks') }}
+              </a-button>
+              <a-button @click="openImportModal('summary', 'ai')">
+                <ImportOutlined /> {{ t('admin.ruleConfig.importSummaryBlocks') }}
+              </a-button>
+              <a-button type="primary" @click="addSummaryBlock">
+                <PlusOutlined /> {{ t('admin.ruleConfig.summaryAddBlock') }}
+              </a-button>
+            </div>
           </div>
 
           <div class="ai-prompt-section" style="margin-top: 0;">
@@ -5117,20 +5262,28 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             <h2 class="config-panel-title">{{ selectedArchiveConfig.process_type }}</h2>
             <p v-if="selectedArchiveConfig.process_type_label" class="config-panel-subtitle">{{ selectedArchiveConfig.process_type_label }}</p>
           </div>
-          <div
-            class="config-version-status config-version-status--clickable"
-            :class="versionStatusClass(archiveVersionStatus, 'archive')"
-            :title="t('executionConfig.viewHistory')"
-            @click="openHistoryDrawer('archive')"
-          >
-            <a-spin v-if="versionStatusLoading.archive" size="small" />
-            <template v-else>
-              <span class="config-version-status__dot" />
-              <div class="config-version-status__content">
-                <strong>{{ versionStatusTitle(archiveVersionStatus, 'archive') }}</strong>
-                <HistoryOutlined class="config-version-status__history-icon" />
-              </div>
-            </template>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <a-button @click="openExportModal('archive', 'all')">
+              <ExportOutlined /> {{ t('admin.ruleConfig.exportConfig') }}
+            </a-button>
+            <a-button @click="openImportModal('archive', 'all')">
+              <ImportOutlined /> {{ t('admin.ruleConfig.importConfig') }}
+            </a-button>
+            <div
+              class="config-version-status config-version-status--clickable"
+              :class="versionStatusClass(archiveVersionStatus, 'archive')"
+              :title="t('executionConfig.viewHistory')"
+              @click="openHistoryDrawer('archive')"
+            >
+              <a-spin v-if="versionStatusLoading.archive" size="small" />
+              <template v-else>
+                <span class="config-version-status__dot" />
+                <div class="config-version-status__content">
+                  <strong>{{ versionStatusTitle(archiveVersionStatus, 'archive') }}</strong>
+                  <HistoryOutlined class="config-version-status__history-icon" />
+                </div>
+              </template>
+            </div>
           </div>
         </div>
 
@@ -5347,6 +5500,9 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             </div>
             <div class="rules-toolbar-actions">
               <template v-if="selectedArchiveRuleIds.length">
+                <a-button @click="openExportModal('archive', 'rules')">
+                  <ExportOutlined /> {{ t('admin.ruleConfig.exportSelectedRules') }}
+                </a-button>
                 <a-popconfirm
                   :title="t('admin.ruleConfig.batchDeleteConfirm', `${selectedArchiveRuleIds.length}`)"
                   @confirm="batchDeleteArchiveRules"
@@ -5357,6 +5513,12 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                 </a-popconfirm>
               </template>
               <template v-else>
+                <a-button :disabled="currentArchiveRules.length === 0" @click="openExportModal('archive', 'rules')">
+                  <ExportOutlined /> {{ t('admin.ruleConfig.exportAllRules') }}
+                </a-button>
+                <a-button @click="openImportModal('archive', 'rules')">
+                  <ImportOutlined /> {{ t('admin.ruleConfig.importRules') }}
+                </a-button>
                 <a-button :disabled="ruleImportLoading" @click="handlePasteImport('archive')">
                   <SnippetsOutlined /> {{ t('admin.ruleConfig.pasteImport') }}
                 </a-button>
@@ -5455,10 +5617,18 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
 
         <!--========== AI选项卡（两级提示）==========-->
         <div v-if="archiveActiveTab === 'ai'" class="tab-content">
-          <div class="section-header">
+          <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
               <h4 class="section-title">{{ t('admin.ruleConfig.aiTitle') }}</h4>
               <p class="section-desc">{{ t('admin.ruleConfig.aiDescNew') }}</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <a-button @click="openExportModal('archive', 'ai')">
+                <ExportOutlined /> {{ t('admin.ruleConfig.exportAIConfig') }}
+              </a-button>
+              <a-button @click="openImportModal('archive', 'ai')">
+                <ImportOutlined /> {{ t('admin.ruleConfig.importAIConfig') }}
+              </a-button>
             </div>
           </div>
 
@@ -6183,6 +6353,62 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
         </div>
       </div>
     </a-drawer>
+
+    <!-- 流程配置通用导出弹窗 -->
+    <ConfigExportModal
+      v-model:open="showExportModal"
+      :module="exportModalModule"
+      :initial-section="exportModalInitialSection"
+      :process-type="
+        exportModalModule === 'audit'
+          ? (selectedConfig?.process_type || '')
+          : exportModalModule === 'archive'
+            ? (selectedArchiveConfig?.process_type || '')
+            : (selectedSummaryConfig?.process_type || '')
+      "
+      :process-type-label="
+        exportModalModule === 'audit'
+          ? selectedConfig?.process_type_label
+          : exportModalModule === 'archive'
+            ? selectedArchiveConfig?.process_type_label
+            : selectedSummaryConfig?.process_type_label
+      "
+      :main-table-name="
+        exportModalModule === 'audit'
+          ? selectedConfig?.main_table_name
+          : exportModalModule === 'archive'
+            ? selectedArchiveConfig?.main_table_name
+            : selectedSummaryConfig?.main_table_name
+      "
+      :rules="exportModalModule === 'audit' ? currentRules : exportModalModule === 'archive' ? currentArchiveRules : []"
+      :preselected-rule-ids="exportModalModule === 'audit' ? selectedRuleIds : exportModalModule === 'archive' ? selectedArchiveRuleIds : []"
+      :ai-config="exportModalModule === 'audit' ? selectedConfig?.ai_config : exportModalModule === 'archive' ? selectedArchiveConfig?.ai_config : null"
+      :summary-blocks="exportModalModule === 'summary' ? selectedSummaryConfig?.summary_blocks : []"
+    />
+
+    <!-- 流程配置通用导入预检弹窗 -->
+    <ConfigImportModal
+      v-model:open="showImportModal"
+      :module="importModalModule"
+      :initial-section="importModalInitialSection"
+      :process-type="
+        importModalModule === 'audit'
+          ? (selectedConfig?.process_type || '')
+          : importModalModule === 'archive'
+            ? (selectedArchiveConfig?.process_type || '')
+            : (selectedSummaryConfig?.process_type || '')
+      "
+      :process-type-label="
+        importModalModule === 'audit'
+          ? selectedConfig?.process_type_label
+          : importModalModule === 'archive'
+            ? selectedArchiveConfig?.process_type_label
+            : selectedSummaryConfig?.process_type_label
+      "
+      :existing-rules="importModalModule === 'audit' ? currentRules : importModalModule === 'archive' ? currentArchiveRules : []"
+      :existing-summary-blocks="importModalModule === 'summary' ? selectedSummaryConfig?.summary_blocks : []"
+      @confirm="(payload) => handleConfigImportConfirm(importModalModule, payload)"
+    />
 
   </div>
 </template>
