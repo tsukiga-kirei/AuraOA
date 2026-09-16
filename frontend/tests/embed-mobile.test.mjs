@@ -216,3 +216,12 @@ for (const origin of ['export', 'template']) {
     })
   }
 }
+
+test('export all: requests both audit and summary context and renders dual buttons', async () => {
+  const allScript = factory('all', 'test-embed-token')
+  const state = await run(allScript, { supported: true, has_audit: true, audit_result: { recommendation: 'approve', overall_score: 98 }, has_summary: true, summary_result: { status: 'completed' } })
+  const paths = state.requests.map(r => new URL(r).pathname)
+  assert.ok(paths.includes('/api/embed/context'))
+  assert.ok(paths.includes('/api/embed/summary/context'))
+})
+
