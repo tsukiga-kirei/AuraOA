@@ -837,6 +837,8 @@ export default {
     'embed.waitingParent': 'Reading requestid from OA parent page…',
     'embed.loadFailed': 'Failed to load audit context',
     'embed.auditFailed': 'Audit failed',
+    'embed.permissionDenied': 'Permission denied. Please contact an administrator to grant process access permissions.',
+    'embed.tokenExpired': 'Embed access token is invalid or expired. Please refresh the OA page.',
     'embed.reAuditDone': 'Updated to latest audit result',
     'embed.emptyTitle': 'No audit result yet',
     'embed.emptyDesc': 'Click below to start AI audit',

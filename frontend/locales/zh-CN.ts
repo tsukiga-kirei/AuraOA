@@ -838,6 +838,8 @@ export default {
     'embed.waitingParent': '正在读取 OA 流程编号…',
     'embed.loadFailed': '加载审核上下文失败',
     'embed.auditFailed': '审核执行失败',
+    'embed.permissionDenied': '当前用户无权执行该操作，请联系管理员分配流程访问权限',
+    'embed.tokenExpired': '嵌入访问令牌无效或已过期，请刷新 OA 页面',
     'embed.reAuditDone': '已更新为最新审核结果',
     'embed.emptyTitle': '暂无审核结果',
     'embed.emptyDesc': '点击下方按钮开始 AI 智能审核',

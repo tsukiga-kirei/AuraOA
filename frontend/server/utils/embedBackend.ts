@@ -47,7 +47,12 @@ function rethrowEmbedProxyError(e: unknown, fallbackStatus = 502): never {
   const body = err.data ?? err.response?._data
   const message = body?.message || (e instanceof Error ? e.message : '请求失败')
   const status = err.statusCode ?? err.status ?? fallbackStatus
-  throw createError({ statusCode: status, statusMessage: message })
+  throw createError({
+    statusCode: status,
+    statusMessage: message,
+    message,
+    data: body,
+  })
 }
 
 export async function proxyEmbedGet<T>(event: H3Event, path: string, query?: Record<string, string | undefined>): Promise<T> {
