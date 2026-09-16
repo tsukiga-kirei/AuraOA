@@ -93,6 +93,25 @@ test('validateImportBundle handles raw rule arrays and invalid scopes', () => {
   assert.equal(report.parsed_data.rules[0].rule_scope, 'default_on') // 自动回退修正
 })
 
+test('validateImportBundle recognizes system default prompt variables without warnings', () => {
+  const raw = JSON.stringify({
+    schema_version: '1.0',
+    module: 'audit',
+    contents: {
+      ai: {
+        audit_strictness: 'standard',
+        user_reasoning_prompt: '{{main_table}} {{detail_tables}} {{attachments}} {{rules}} {{flow_history}} {{flow_graph}} {{current_node}}',
+        user_extraction_prompt: '{{reasoning_result}} {{rules}}',
+      },
+    },
+  })
+
+  const report = validateImportBundle(raw, 'audit', [])
+  assert.equal(report.valid, true)
+  assert.equal(report.ai_stats.unknown_variables.length, 0)
+  assert.equal(report.warnings.some(w => w.includes('系统未预设的变量')), false)
+})
+
 test('validateImportBundle warns about unrecognized prompt variables', () => {
   const raw = JSON.stringify({
     schema_version: '1.0',
@@ -100,15 +119,16 @@ test('validateImportBundle warns about unrecognized prompt variables', () => {
     contents: {
       ai: {
         audit_strictness: 'standard',
-        user_reasoning_prompt: '请核查 {{unknown_var}} 与 {{current_date}}',
+        user_reasoning_prompt: '请核查 {{unknown_var}} 与 {{current_date}} 及 {{main_table}}',
       },
     },
   })
 
   const report = validateImportBundle(raw, 'audit', [])
   assert.equal(report.valid, true)
-  assert.equal(report.ai_stats.unknown_variables.includes('{{unknown_var}}'), true)
+  assert.deepEqual(report.ai_stats.unknown_variables, ['{{unknown_var}}'])
   assert.equal(report.warnings.some(w => w.includes('{{unknown_var}}')), true)
+  assert.equal(report.warnings.some(w => w.includes('{{main_table}}')), false)
 })
 
 test('applyRuleConflictStrategy works for skip, overwrite, and append', () => {

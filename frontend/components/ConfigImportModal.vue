@@ -301,7 +301,7 @@ function handleCancel() {
               </div>
               <div class="header-right">
                 <a-tag color="green">
-                  {{ t('admin.ruleConfig.validRulesCount', `有效 ${report.rule_stats?.valid} 条`) }}
+                  {{ t('admin.ruleConfig.validRulesCount', [report.rule_stats?.valid || 0]) }}
                 </a-tag>
               </div>
             </div>
@@ -309,10 +309,10 @@ function handleCancel() {
             <div class="report-card-body">
               <div class="rule-stats-row">
                 <span>
-                  {{ t('admin.ruleConfig.newRulesCount', `新增: ${report.rule_stats?.new_rules} 条`) }}
+                  {{ t('admin.ruleConfig.newRulesCount', [report.rule_stats?.new_rules || 0]) }}
                 </span>
                 <span :class="{ 'highlight-duplicate': (report.rule_stats?.duplicate || 0) > 0 }">
-                  {{ t('admin.ruleConfig.dupRulesCount', `与当前重复: ${report.rule_stats?.duplicate} 条`) }}
+                  {{ t('admin.ruleConfig.dupRulesCount', [report.rule_stats?.duplicate || 0]) }}
                 </span>
               </div>
 
@@ -373,7 +373,7 @@ function handleCancel() {
               </div>
               <div class="header-right">
                 <a-tag color="green">
-                  {{ t('admin.ruleConfig.summaryBlocksCount', `共 ${report.summary_stats?.total_blocks} 个总结块`) }}
+                  {{ t('admin.ruleConfig.summaryBlocksCount', [report.summary_stats?.total_blocks || 0]) }}
                 </a-tag>
               </div>
             </div>
