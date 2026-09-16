@@ -460,3 +460,58 @@ func (h *SystemHandler) TestAttachmentCompatibility(c *gin.Context) {
 		"message": "文档内容解析服务就绪且鉴权有效",
 	})
 }
+
+type attachmentAliyunOCRTestRequest struct {
+	AttachmentAliyunOCREndpoint        *string `json:"attachment_aliyun_ocr_endpoint"`
+	AttachmentAliyunOCRAccessKeyID     *string `json:"attachment_aliyun_ocr_access_key_id"`
+	AttachmentAliyunOCRAccessKeySecret *string `json:"attachment_aliyun_ocr_access_key_secret"`
+	AttachmentAliyunOCRType            *string `json:"attachment_aliyun_ocr_type"`
+}
+
+func (r attachmentAliyunOCRTestRequest) apply(cfg *service.RecognitionConfig) {
+	if r.AttachmentAliyunOCREndpoint != nil {
+		cfg.AliyunOCREndpoint = *r.AttachmentAliyunOCREndpoint
+	}
+	if r.AttachmentAliyunOCRAccessKeyID != nil {
+		cfg.AliyunOCRAccessKeyID = *r.AttachmentAliyunOCRAccessKeyID
+	}
+	if r.AttachmentAliyunOCRAccessKeySecret != nil {
+		cfg.AliyunOCRAccessKeySecret = *r.AttachmentAliyunOCRAccessKeySecret
+	}
+	if r.AttachmentAliyunOCRType != nil {
+		cfg.AliyunOCRType = *r.AttachmentAliyunOCRType
+	}
+}
+
+// TestAliyunOCR 探测阿里云 OCR 接口是否可达且凭证有效。
+// POST /api/admin/system/attachment-recognition/test-aliyun-ocr
+// 请求体：可携带尚未保存的 attachment_aliyun_ocr_* 配置。
+// 返回：{"success": true, "message": "阿里云 OCR 服务连接成功且凭证有效"} 或服务错误。
+func (h *SystemHandler) TestAliyunOCR(c *gin.Context) {
+	if h.attachmentRecognitionService == nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "附件识别服务未初始化")
+		return
+	}
+	var req attachmentAliyunOCRTestRequest
+	if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+
+	cfg, cfgErr := h.attachmentRecognitionService.LoadConfig()
+	if cfgErr != nil {
+		handleServiceError(c, cfgErr)
+		return
+	}
+	req.apply(cfg)
+
+	if err := h.attachmentRecognitionService.TestAliyunOCRConnectionWithConfig(c.Request.Context(), cfg); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, map[string]interface{}{
+		"success": true,
+		"message": "阿里云 OCR 服务连接成功且凭证有效",
+	})
+}
+

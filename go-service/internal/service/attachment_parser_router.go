@@ -91,7 +91,11 @@ func effectiveSupportedTypes(cfg *RecognitionConfig) []string {
 		case usesDocumentParser(cfg, fileType):
 			enabled = strings.TrimSpace(cfg.CompatEndpoint) != ""
 		case isType(minerUTypes, fileType):
-			enabled = strings.TrimSpace(cfg.MinerUEndpoint) != ""
+			if cfg.OCRProvider == "aliyun" {
+				enabled = strings.TrimSpace(cfg.AliyunOCRAccessKeyID) != "" && strings.TrimSpace(cfg.AliyunOCRAccessKeySecret) != ""
+			} else {
+				enabled = strings.TrimSpace(cfg.MinerUEndpoint) != ""
+			}
 		}
 		if enabled {
 			types = append(types, fileType)
@@ -123,6 +127,9 @@ func (s *AttachmentRecognitionService) recognizeAttachment(
 		return s.recognizeOneViaCompatibility(ctx, cfg, file, raw, base, fileType == "pdf" || fileType == "ofd")
 
 	case isType(minerUTypes, fileType):
+		if cfg.OCRProvider == "aliyun" {
+			return s.recognizeOneViaAliyunOCR(ctx, cfg, file, raw, base)
+		}
 		return s.recognizeOneViaMinerU(ctx, cfg, file, base)
 
 	case isType(documentParserTypes, fileType):
@@ -212,14 +219,21 @@ func (s *AttachmentRecognitionService) recognizeOneViaCompatibility(
 			fallbackFile.FileData = base64.StdEncoding.EncodeToString(pdf)
 			fallbackBase := base
 			fallbackBase.FileSize = fallbackFile.FileSize
-			minerUResult := s.recognizeOneViaMinerU(ctx, cfg, fallbackFile, fallbackBase)
-			if minerUResult.Error == "" && strings.TrimSpace(minerUResult.Content) != "" {
-				base.Content = minerUResult.Content
+
+			var fallbackResult oa.AttachmentInfo
+			if cfg.OCRProvider == "aliyun" {
+				fallbackResult = s.recognizeOneViaAliyunOCR(ctx, cfg, fallbackFile, pdf, fallbackBase)
+			} else {
+				fallbackResult = s.recognizeOneViaMinerU(ctx, cfg, fallbackFile, fallbackBase)
+			}
+
+			if fallbackResult.Error == "" && strings.TrimSpace(fallbackResult.Content) != "" {
+				base.Content = fallbackResult.Content
 				return base
 			}
-			fallbackMessage := strings.TrimSpace(minerUResult.Error)
+			fallbackMessage := strings.TrimSpace(fallbackResult.Error)
 			if fallbackMessage == "" {
-				fallbackMessage = "MinerU 未返回文本内容"
+				fallbackMessage = "OCR 服务未返回文本内容"
 			}
 			convertErr = fmt.Errorf("%s", fallbackMessage)
 		}

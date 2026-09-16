@@ -58,3 +58,33 @@ func TestAttachmentCompatibilityTestRequestAppliesUnsavedValues(t *testing.T) {
 		t.Fatalf("兼容解析服务临时开关未应用: %+v", cfg)
 	}
 }
+
+func TestAttachmentAliyunOCRTestRequestAppliesUnsavedValues(t *testing.T) {
+	endpoint := "ocr-api.cn-beijing.aliyuncs.com"
+	ak := "test-ak"
+	sk := "test-sk"
+	ocrType := "Advanced"
+	cfg := &service.RecognitionConfig{}
+	req := attachmentAliyunOCRTestRequest{
+		AttachmentAliyunOCREndpoint:        &endpoint,
+		AttachmentAliyunOCRAccessKeyID:     &ak,
+		AttachmentAliyunOCRAccessKeySecret: &sk,
+		AttachmentAliyunOCRType:            &ocrType,
+	}
+
+	req.apply(cfg)
+
+	if cfg.AliyunOCREndpoint != endpoint {
+		t.Fatalf("AliyunOCREndpoint = %q, want %q", cfg.AliyunOCREndpoint, endpoint)
+	}
+	if cfg.AliyunOCRAccessKeyID != ak {
+		t.Fatalf("AliyunOCRAccessKeyID = %q, want %q", cfg.AliyunOCRAccessKeyID, ak)
+	}
+	if cfg.AliyunOCRAccessKeySecret != sk {
+		t.Fatalf("AliyunOCRAccessKeySecret = %q, want %q", cfg.AliyunOCRAccessKeySecret, sk)
+	}
+	if cfg.AliyunOCRType != ocrType {
+		t.Fatalf("AliyunOCRType = %q, want %q", cfg.AliyunOCRType, ocrType)
+	}
+}
+

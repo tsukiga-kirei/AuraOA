@@ -5,7 +5,7 @@
 > 关联代码：
 > - 后端服务：[`go-service/internal/service/attachment_recognition_service.go`](../../go-service/internal/service/attachment_recognition_service.go)
 > - 泛微适配器：[`go-service/internal/pkg/oa/ecology9.go`](../../go-service/internal/pkg/oa/ecology9.go)（`FetchProcessData` / `recognizeMainAttachments`）
-> - 数据库迁移：[`db/migrations/000033_attachment_recognition_configs.up.sql`](../../db/migrations/000033_attachment_recognition_configs.up.sql)、[`db/migrations/000034_attachment_recognition_extended_configs.up.sql`](../../db/migrations/000034_attachment_recognition_extended_configs.up.sql)、[`db/migrations/000050_attachment_compat_parser_configs.up.sql`](../../db/migrations/000050_attachment_compat_parser_configs.up.sql)、[`db/migrations/000052_attachment_ai_content_limit.up.sql`](../../db/migrations/000052_attachment_ai_content_limit.up.sql)、[`db/migrations/000064_attachment_document_parser_types.up.sql`](../../db/migrations/000064_attachment_document_parser_types.up.sql)
+> - 数据库迁移：[`db/migrations/000033_attachment_recognition_configs.up.sql`](../../db/migrations/000033_attachment_recognition_configs.up.sql)、[`db/migrations/000034_attachment_recognition_extended_configs.up.sql`](../../db/migrations/000034_attachment_recognition_extended_configs.up.sql)、[`db/migrations/000050_attachment_compat_parser_configs.up.sql`](../../db/migrations/000050_attachment_compat_parser_configs.up.sql)、[`db/migrations/000052_attachment_ai_content_limit.up.sql`](../../db/migrations/000052_attachment_ai_content_limit.up.sql)、[`db/migrations/000064_attachment_document_parser_types.up.sql`](../../db/migrations/000064_attachment_document_parser_types.up.sql)、[`db/migrations/000079_attachment_aliyun_ocr_configs.up.sql`](../../db/migrations/000079_attachment_aliyun_ocr_configs.up.sql)
 
 ## 背景
 
@@ -53,6 +53,7 @@
 | 启用附件识别 | `attachment.recognition_enabled` | `false` | 关闭时所有 OA 表单字段照常送入 AI，但跳过附件识别 |
 | 最大文件大小（MB） | `attachment.max_file_size_mb` | `10` | 超出大小的文件以「已跳过」标记进入 prompt，不会下发到任何解析器 |
 | 支持的文件类型 | `attachment.supported_types` | `pdf,png,jpg,jpeg,bmp,gif,tiff,webp,txt,csv,md,docx,xlsx,pptx,doc,xls,ppt,ofd` | 逗号分隔；不在白名单的扩展名按「已跳过」处理；旧 Office 与 OFD 还受各自开关控制 |
+| OCR 解析引擎 | `attachment.ocr_provider` | `mineru` | 可选 `mineru`（MinerU 自建服务）或 `aliyun`（阿里云统一文字识别） |
 | 发送给 AI 的附件正文 | `attachment.ai_content_limit_mode` | `bytes` | `bytes` 按单个附件限制正文字节数；`unlimited` 发送全部已解析正文 |
 | 单附件正文上限（字节） | `attachment.ai_content_max_bytes` | `10000` | 仅在 `bytes` 模式生效；按 UTF-8 字符边界安全截断，不会切坏中文 |
 
@@ -78,6 +79,19 @@
 
 > **测试连接**仅探测 `GET {mineru_endpoint}/health`，不会真实调用 `/file_parse` 解析文件。当前适配同时兼容两类 MinerU 返回：一类直接在同步响应中返回 Markdown，另一类先返回已完成任务摘要，再通过 `result_url` 拉取最终 Markdown。
 
+### 阿里云 OCR 服务
+
+当 `attachment.ocr_provider` 设为 `aliyun` 时，系统使用阿里云文字识别（RecognizeAllText 2021-07-07）执行图片全文识别及文档视觉回退。云端按次/量计费，开箱即用，无需维护自建 GPU 推理服务器。
+
+| 字段 | system_configs key | 默认值 | 说明 |
+|------|--------------------|--------|------|
+| 服务接入地址 | `attachment.aliyun_ocr_endpoint` | `ocr-api.cn-hangzhou.aliyuncs.com` | 阿里云 OpenAPI Endpoint，支持根据地域自定义 |
+| AccessKey ID | `attachment.aliyun_ocr_access_key_id` | _(空)_ | 阿里云 RAM 访问凭证 AccessKey ID |
+| AccessKey Secret | `attachment.aliyun_ocr_access_key_secret` | _(空)_ | 阿里云 RAM 访问凭证 AccessKey Secret |
+| 识别类型 | `attachment.aliyun_ocr_type` | `General` | `General`（通用文字识别）/ `Advanced`（通用文字识别高精版） |
+
+> **测试连接**：通过生成 20×20 内存测试 PNG 发送 `RecognizeAllText` 请求，真实验证 Endpoint 可达性、AccessKey 签名鉴权与 RAM 权限，无需提前保存配置。
+
 ### 文档内容解析服务
 
 文档解析器以独立 Java 容器运行，默认 Docker 内网地址为
@@ -88,7 +102,7 @@
 | 服务端点 | `attachment.compat_endpoint` | `http://document-parser:8090` | 根地址，不带尾部 `/` |
 | API Key（可选） | `attachment.compat_api_key` | _(空)_ | 与容器环境变量 `DOCUMENT_PARSER_API_KEY` 一致；仅内网且未启用鉴权时可留空 |
 | 代码解析文件类型 | `attachment.document_parser_types` | _(空)_ | 可选 `pdf,docx,xlsx,pptx,doc,xls,ppt,ofd`；按扩展名选择哪些文件直接提取正文 |
-| 视觉回退 | `attachment.visual_fallback_enabled` | `true` | PDF/OFD 没有文字层时，把原 PDF 或 OFD 转出的 PDF 交给 MinerU |
+| 视觉回退 | `attachment.visual_fallback_enabled` | `true` | PDF/OFD 没有文字层时，把原 PDF 或 OFD 转出的 PDF 交给 OCR 引擎（MinerU 或阿里云 OCR） |
 
 管理员需先通过“测试文档解析服务”确认受鉴权的 `/ready` 可达，再选择代码解析文件类型；
 容器自身的存活检查仍使用免鉴权 `/health`。新配置默认不选择任何扩展名，保证升级后 PDF
@@ -104,11 +118,11 @@ Office/OFD 开关转换为对应扩展名选择。
 | 文件类型 | 解析路径 |
 |----------|----------|
 | `txt,csv,md` | AuraOA Go 服务本地读取 |
-| `png,jpg,jpeg,bmp,gif,tiff,webp` | MinerU OCR / 版面识别 |
-| `pdf` | 选择代码解析时由 PDFBox 提取文字层，否则走 MinerU；无文字层可自动回退 MinerU |
-| `docx,xlsx,pptx` | 选择代码解析时由 Apache POI 提取，否则走 MinerU |
+| `png,jpg,jpeg,bmp,gif,tiff,webp` | 经由所选 OCR 引擎（MinerU 或 阿里云 OCR）直接识别 |
+| `pdf` | 选择代码解析时由 PDFBox 提取文字层，否则走所选 OCR 引擎；无文字层可自动回退 OCR 引擎 |
+| `docx,xlsx,pptx` | 选择代码解析时由 Apache POI 提取，否则走所选 OCR 引擎 |
 | `doc,xls,ppt` | 选择代码解析时由 Apache POI 提取；未选择则不处理 |
-| `ofd` | 选择代码解析时由 OFDRW 提取；无文字层时可转 PDF 回退 MinerU |
+| `ofd` | 选择代码解析时由 OFDRW 提取；无文字层时可转 PDF 回退至 OCR 引擎 |
 
 白名单只决定文件能否进入路由，不代表对应解析器已启用。系统对外返回的规则导入
 能力会按代码解析类型、MinerU 与文档解析服务地址过滤实际可用类型。

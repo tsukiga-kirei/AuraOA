@@ -156,6 +156,7 @@ func SetupRouter(
 			// 附件解析服务连接测试（不上传真实附件）
 			system.POST("/attachment-recognition/test", systemHandler.TestAttachmentRecognition)
 			system.POST("/attachment-recognition/test-compat", systemHandler.TestAttachmentCompatibility)
+			system.POST("/attachment-recognition/test-aliyun-ocr", systemHandler.TestAliyunOCR)
 		}
 
 		// 系统管理员 — Token 消耗统计

@@ -333,7 +333,25 @@ API Key。请求体可携带：
 | `attachment_document_parser_types` | string | 使用代码解析的扩展名，逗号分隔 |
 | `attachment_visual_fallback_enabled` | boolean | PDF/OFD 无文字层时是否回退到 MinerU |
 
-两类附件解析服务的配置、格式路由与失败语义详见
+---
+
+### 测试阿里云 OCR 服务
+
+```
+POST /api/admin/system/attachment-recognition/test-aliyun-ocr
+```
+
+探测阿里云文字识别（RecognizeAllText 2021-07-07）服务连通性与 RAM 凭据有效性。通过内存生成 20×20 测试 PNG 图像调用 OpenAPI，同时校验服务连通性、RAM 凭据签名与权限。请求体可携带尚未保存的配置用于预检：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `attachment_recognition_enabled` | boolean | 是否启用附件识别 |
+| `attachment_aliyun_ocr_endpoint` | string | 阿里云 OCR Endpoint，例如 `ocr-api.cn-hangzhou.aliyuncs.com` |
+| `attachment_aliyun_ocr_access_key_id` | string | 阿里云 RAM 访问凭证 AccessKey ID |
+| `attachment_aliyun_ocr_access_key_secret` | string | 阿里云 RAM 访问凭证 AccessKey Secret |
+| `attachment_aliyun_ocr_type` | string | 识别类型，默认 `General`（可选 `Advanced`） |
+
+各类附件解析服务的配置、格式路由与失败语义详见
 `docs/oa-configurations/01-attachment-recognition.md`。
 
 ---
