@@ -213,10 +213,10 @@ function handleCancel() {
             </a-checkbox>
             <span class="option-desc">
               <template v-if="hasSelectedSubset">
-                {{ t('admin.ruleConfig.exportSelectedRulesCount', `已选中 ${preselectedRuleIds.length} / 共 ${rules.length} 条`) }}
+                {{ t('admin.ruleConfig.exportSelectedRulesCount', [preselectedRuleIds.length, rules.length]) }}
               </template>
               <template v-else>
-                {{ t('admin.ruleConfig.exportAllRulesCount', `共 ${rules.length} 条`) }}
+                {{ t('admin.ruleConfig.exportAllRulesCount', [rules.length]) }}
               </template>
             </span>
           </div>
@@ -244,28 +244,28 @@ function handleCancel() {
               </span>
             </a-checkbox>
             <span class="option-desc">
-              {{ t('admin.ruleConfig.summaryBlocksCount', `共 ${summaryBlocks.length} 个总结块`) }}
+              {{ t('admin.ruleConfig.summaryBlocksCount', [summaryBlocks.length]) }}
             </span>
           </div>
 
-          <!-- 字段配置（敬请期待） -->
+          <!-- 字段配置（暂不支持） -->
           <div class="export-option-row export-option-row--disabled">
             <a-checkbox disabled>
               <span class="option-label">
                 <AppstoreOutlined /> {{ t('admin.ruleConfig.tabFields', '字段配置') }}
               </span>
             </a-checkbox>
-            <a-tag size="small">{{ t('admin.ruleConfig.phaseTwoComing', '第二期支持') }}</a-tag>
+            <a-tag size="small">{{ t('admin.ruleConfig.notSupported', '暂不支持') }}</a-tag>
           </div>
 
-          <!-- 权限配置（敬请期待） -->
+          <!-- 权限配置（暂不支持） -->
           <div class="export-option-row export-option-row--disabled">
             <a-checkbox disabled>
               <span class="option-label">
                 <SafetyCertificateOutlined /> {{ t('admin.ruleConfig.tabPerms', '权限配置') }}
               </span>
             </a-checkbox>
-            <a-tag size="small">{{ t('admin.ruleConfig.phaseThreeComing', '第三期支持') }}</a-tag>
+            <a-tag size="small">{{ t('admin.ruleConfig.notSupported', '暂不支持') }}</a-tag>
           </div>
         </div>
       </div>

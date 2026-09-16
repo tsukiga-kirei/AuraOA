@@ -57,23 +57,42 @@ export function buildExportBundle(params: {
   }
 }
 
-/** 已知的合法系统通用提示词占位符白名单 */
-const KNOWN_SYSTEM_VARIABLES = new Set([
+/** 系统通用的时间占位符白名单 */
+export const KNOWN_SYSTEM_TIME_VARIABLES = new Set([
   '{{current_date}}',
   '{{current_time}}',
   '{{current_datetime}}',
   '{{weekday}}',
 ])
 
+/** 审核/归档 AI 提示词支持的系统预设变量白名单 */
+export const KNOWN_AUDIT_AI_VARIABLES = new Set([
+  '{{process_type}}',
+  '{{main_table}}',
+  '{{fields}}',
+  '{{detail_tables}}',
+  '{{attachments}}',
+  '{{rules}}',
+  '{{current_node}}',
+  '{{flow_history}}',
+  '{{flow_graph}}',
+  '{{external_context}}',
+  '{{reasoning_result}}',
+  ...KNOWN_SYSTEM_TIME_VARIABLES,
+])
+
+/** 保持历史命名兼容 */
+export const KNOWN_SYSTEM_VARIABLES = KNOWN_AUDIT_AI_VARIABLES
+
 /** 流程总结特有的数据占位符白名单 */
-const KNOWN_SUMMARY_DATA_VARIABLES = new Set([
+export const KNOWN_SUMMARY_DATA_VARIABLES = new Set([
   '{{process_meta}}',
   '{{main_table}}',
   '{{detail_tables}}',
   '{{attachments}}',
   '{{flow_history}}',
   '{{flow_graph}}',
-  ...KNOWN_SYSTEM_VARIABLES,
+  ...KNOWN_SYSTEM_TIME_VARIABLES,
 ])
 
 /** 提取文本中所有的占位符变量形如 {{xxx}} */
@@ -220,7 +239,7 @@ export function validateImportBundle(
 
     const vars = extractPlaceholderVariables(allPrompts)
     vars.forEach(v => {
-      if (!KNOWN_SYSTEM_VARIABLES.has(v)) {
+      if (!KNOWN_AUDIT_AI_VARIABLES.has(v)) {
         unknownVars.push(v)
       }
     })
