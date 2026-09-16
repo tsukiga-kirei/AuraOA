@@ -6,6 +6,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   CloudServerOutlined,
+  CloudUploadOutlined,
   DatabaseOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -33,7 +34,7 @@ const {
   listOATypes, listDBDrivers, listAIProviders, listAIDeployTypes,
   listOAConnections, createOAConnection, updateOAConnection, deleteOAConnection: apiDeleteOAConnection, testOAConnection: apiTestOAConnection, testOAConnectionParams: apiTestOAConnectionParams,
   listAIModels, createAIModel, updateAIModel, deleteAIModel: apiDeleteAIModel, testAIModelConnection: apiTestAIModelConnection, testAIModelConnectionById: apiTestAIModelConnectionById,
-  testAttachmentRecognition: apiTestAttachmentRecognition, testAttachmentCompatibility: apiTestAttachmentCompatibility,
+  testAttachmentRecognition: apiTestAttachmentRecognition, testAttachmentCompatibility: apiTestAttachmentCompatibility, testAttachmentAliyunOCR: apiTestAttachmentAliyunOCR,
 } = useSystemApi()
 
 const loading = ref(false)
@@ -80,6 +81,11 @@ const DEFAULT_ATTACHMENT_TYPES = [
   'ofd',
 ]
 const generalConfig = ref<SystemGeneralConfig>({
+  attachment_ocr_provider: 'mineru',
+  attachment_aliyun_ocr_endpoint: 'ocr-api.cn-hangzhou.aliyuncs.com',
+  attachment_aliyun_ocr_access_key_id: '',
+  attachment_aliyun_ocr_access_key_secret: '',
+  attachment_aliyun_ocr_type: 'General',
   attachment_supported_types: DEFAULT_ATTACHMENT_TYPES.join(','),
   attachment_ai_content_limit_mode: 'bytes',
   attachment_ai_content_max_bytes: 10000,
@@ -161,7 +167,7 @@ interface AttachmentFormatRoute {
 
 const getAttachmentRouteState = (
   formats: string[],
-  parser: 'builtin' | 'mineru' | 'document' | 'none',
+  parser: 'builtin' | 'mineru' | 'aliyun' | 'document' | 'none',
 ): AttachmentRouteState => {
   if (!generalConfig.value.attachment_recognition_enabled) return 'disabled'
   if (!formats.some(format => attachmentSupportedTypes.value.includes(format))) return 'disabled'
@@ -170,22 +176,37 @@ const getAttachmentRouteState = (
   if (parser === 'mineru') {
     return generalConfig.value.attachment_mineru_endpoint?.trim() ? 'ready' : 'needs_config'
   }
+  if (parser === 'aliyun') {
+    return (generalConfig.value.attachment_aliyun_ocr_access_key_id?.trim() && generalConfig.value.attachment_aliyun_ocr_access_key_secret?.trim()) ? 'ready' : 'needs_config'
+  }
   return generalConfig.value.attachment_compat_endpoint?.trim() ? 'ready' : 'needs_config'
 }
 
-const documentRoute = (format: string, fallbackToMineru: boolean): AttachmentFormatRoute => {
+const documentRoute = (format: string, fallbackToVisual: boolean): AttachmentFormatRoute => {
   const selected = documentParserTypes.value.includes(format)
-  const parser = selected ? 'document' : fallbackToMineru ? 'mineru' : 'none'
+  const isAliyun = generalConfig.value.attachment_ocr_provider === 'aliyun'
+  const visualParser = isAliyun ? 'aliyun' : 'mineru'
+  const visualLabel = isAliyun ? t('admin.settings.attachmentAliyunOcr') : 'MinerU'
+  const visualDesc = isAliyun ? t('admin.settings.attachmentRouteAliyunFallbackDesc') : t('admin.settings.attachmentRouteMineruFallbackDesc')
+  const parser = selected ? 'document' : fallbackToVisual ? visualParser : 'none'
+
+  let codeDesc = t('admin.settings.attachmentRouteCodeDocumentDesc')
+  if (fallbackToVisual && generalConfig.value.attachment_visual_fallback_enabled) {
+    codeDesc = isAliyun
+      ? t('admin.settings.attachmentRouteCodeWithAliyunFallbackDesc')
+      : t('admin.settings.attachmentRouteCodeWithMineruFallbackDesc')
+  }
+
   return {
     key: `document-${format}`,
     formats: [format],
     parser: selected
       ? t('admin.settings.attachmentRouteDocumentParser')
-      : fallbackToMineru ? 'MinerU' : t('admin.settings.attachmentRouteNotSelected'),
+      : fallbackToVisual ? visualLabel : t('admin.settings.attachmentRouteNotSelected'),
     description: selected
-      ? t('admin.settings.attachmentRouteCodeDocumentDesc')
-      : fallbackToMineru
-        ? t('admin.settings.attachmentRouteMineruFallbackDesc')
+      ? codeDesc
+      : fallbackToVisual
+        ? visualDesc
         : t('admin.settings.attachmentRouteDocumentNotSelectedDesc'),
     state: getAttachmentRouteState([format], parser),
   }
@@ -201,11 +222,11 @@ const attachmentFormatRoutes = computed<AttachmentFormatRoute[]>(() => [
   },
   documentRoute('pdf', true),
   {
-    key: 'mineru-images',
+    key: 'ocr-images',
     formats: ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'],
-    parser: 'MinerU',
-    description: t('admin.settings.attachmentRouteMineruImageDesc'),
-    state: getAttachmentRouteState(['png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'], 'mineru'),
+    parser: generalConfig.value.attachment_ocr_provider === 'aliyun' ? t('admin.settings.attachmentAliyunOcr') : 'MinerU',
+    description: generalConfig.value.attachment_ocr_provider === 'aliyun' ? t('admin.settings.attachmentRouteAliyunImageDesc') : t('admin.settings.attachmentRouteMineruImageDesc'),
+    state: getAttachmentRouteState(['png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'], generalConfig.value.attachment_ocr_provider === 'aliyun' ? 'aliyun' : 'mineru'),
   },
   ...['docx', 'xlsx', 'pptx'].map(format => documentRoute(format, true)),
   ...['doc', 'xls', 'ppt', 'ofd'].map(format => documentRoute(format, false)),
@@ -648,6 +669,34 @@ const testAttachmentConnection = async () => {
   }
 }
 
+//===== 附件解析 — 测试阿里云 OCR 服务 =====
+const testingAliyunOCR = ref(false)
+const testAliyunOCRConnection = async () => {
+  if (!generalConfig.value.attachment_aliyun_ocr_access_key_id?.trim() || !generalConfig.value.attachment_aliyun_ocr_access_key_secret?.trim()) {
+    message.warning(t('admin.settings.attachmentAliyunOcrAccessKeyIdPlaceholder'))
+    return
+  }
+  testingAliyunOCR.value = true
+  try {
+    const result = await apiTestAttachmentAliyunOCR({
+      attachment_recognition_enabled: generalConfig.value.attachment_recognition_enabled,
+      attachment_aliyun_ocr_endpoint: generalConfig.value.attachment_aliyun_ocr_endpoint,
+      attachment_aliyun_ocr_access_key_id: generalConfig.value.attachment_aliyun_ocr_access_key_id,
+      attachment_aliyun_ocr_access_key_secret: generalConfig.value.attachment_aliyun_ocr_access_key_secret,
+      attachment_aliyun_ocr_type: generalConfig.value.attachment_aliyun_ocr_type || 'General',
+    })
+    if (result.success) {
+      message.success(result.message || t('admin.settings.attachmentAliyunTestOk'))
+    } else {
+      message.warning(result.message || t('admin.settings.attachmentAliyunTestFailed'))
+    }
+  } catch (e: any) {
+    message.error(e?.message || t('admin.settings.attachmentAliyunTestFailed'))
+  } finally {
+    testingAliyunOCR.value = false
+  }
+}
+
 //===== 附件解析 — 测试文档内容解析服务 =====
 const testingAttachmentCompat = ref(false)
 const testAttachmentCompatConnection = async () => {
@@ -1062,10 +1111,27 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                 </a-form-item>
               </a-col>
             </a-row>
+            <a-row :gutter="16">
+              <a-col :xs="24" :md="12">
+                <a-form-item :label="t('admin.settings.attachmentOCRProvider')">
+                  <a-radio-group v-model:value="generalConfig.attachment_ocr_provider" button-style="solid">
+                    <a-radio-button value="mineru">
+                      <FileSearchOutlined style="margin-right: 6px;" />
+                      {{ t('admin.settings.attachmentOCRProviderMineru') }}
+                    </a-radio-button>
+                    <a-radio-button value="aliyun">
+                      <CloudUploadOutlined style="margin-right: 6px;" />
+                      {{ t('admin.settings.attachmentOCRProviderAliyun') }}
+                    </a-radio-button>
+                  </a-radio-group>
+                  <div class="form-hint">{{ t('admin.settings.attachmentOCRProviderHint') }}</div>
+                </a-form-item>
+              </a-col>
+            </a-row>
           </a-form>
         </div>
 
-        <div class="config-section">
+        <div v-if="generalConfig.attachment_ocr_provider === 'mineru'" class="config-section">
           <div class="config-section-header">
             <div class="config-section-icon config-section-icon--info"><FileSearchOutlined /></div>
             <div>
@@ -1141,6 +1207,58 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                   <FileSearchOutlined v-else />
                 </template>
                 {{ t('admin.settings.attachmentTestConnection') }}
+              </a-button>
+            </div>
+          </a-form>
+        </div>
+
+        <div v-else-if="generalConfig.attachment_ocr_provider === 'aliyun'" class="config-section">
+          <div class="config-section-header">
+            <div class="config-section-icon config-section-icon--info"><CloudUploadOutlined /></div>
+            <div>
+              <h3>{{ t('admin.settings.attachmentAliyunOcr') }}</h3>
+              <p>{{ t('admin.settings.attachmentAliyunOcrDesc') }}</p>
+            </div>
+          </div>
+          <a-form layout="vertical">
+            <a-form-item :label="t('admin.settings.attachmentAliyunOcrEndpoint')">
+              <a-input v-model:value="generalConfig.attachment_aliyun_ocr_endpoint" size="large" :placeholder="t('admin.settings.attachmentAliyunOcrEndpointPlaceholder')" />
+              <div class="form-hint">{{ t('admin.settings.attachmentAliyunOcrEndpointHint') }}</div>
+            </a-form-item>
+            <a-row :gutter="16">
+              <a-col :xs="24" :md="12">
+                <a-form-item :label="t('admin.settings.attachmentAliyunOcrAccessKeyId')">
+                  <a-input v-model:value="generalConfig.attachment_aliyun_ocr_access_key_id" size="large" :placeholder="t('admin.settings.attachmentAliyunOcrAccessKeyIdPlaceholder')">
+                    <template #prefix><KeyOutlined /></template>
+                  </a-input>
+                </a-form-item>
+              </a-col>
+              <a-col :xs="24" :md="12">
+                <a-form-item :label="t('admin.settings.attachmentAliyunOcrAccessKeySecret')">
+                  <a-input-password v-model:value="generalConfig.attachment_aliyun_ocr_access_key_secret" size="large" :placeholder="t('admin.settings.attachmentAliyunOcrAccessKeySecretPlaceholder')">
+                    <template #prefix><KeyOutlined /></template>
+                  </a-input-password>
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <a-row :gutter="16">
+              <a-col :xs="24" :md="12">
+                <a-form-item :label="t('admin.settings.attachmentAliyunOcrType')">
+                  <a-select v-model:value="generalConfig.attachment_aliyun_ocr_type" size="large" style="width: 100%;">
+                    <a-select-option value="General">{{ t('admin.settings.attachmentAliyunOcrTypeGeneral') }}</a-select-option>
+                    <a-select-option value="Advanced">{{ t('admin.settings.attachmentAliyunOcrTypeAdvanced') }}</a-select-option>
+                  </a-select>
+                  <div class="form-hint">{{ t('admin.settings.attachmentAliyunOcrTypeHint') }}</div>
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <div class="service-test-actions">
+              <a-button class="attachment-action-btn" size="large" :loading="testingAliyunOCR" @click="testAliyunOCRConnection">
+                <template #icon>
+                  <SyncOutlined v-if="testingAliyunOCR" />
+                  <CloudUploadOutlined v-else />
+                </template>
+                {{ t('admin.settings.attachmentAliyunTestConnection') }}
               </a-button>
             </div>
           </a-form>

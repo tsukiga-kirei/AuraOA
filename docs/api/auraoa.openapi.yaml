@@ -1703,6 +1703,47 @@ paths:
                   message:
                     type: string
                     example: success
+  /api/admin/system/attachment-recognition/test-aliyun-ocr:
+    post:
+      summary: 测试阿里云 OCR 服务连通性
+      tags:
+      - SystemAdmin
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                attachment_recognition_enabled:
+                  type: boolean
+                attachment_aliyun_ocr_endpoint:
+                  type: string
+                  example: ocr-api.cn-hangzhou.aliyuncs.com
+                attachment_aliyun_ocr_access_key_id:
+                  type: string
+                attachment_aliyun_ocr_access_key_secret:
+                  type: string
+                  format: password
+                attachment_aliyun_ocr_type:
+                  type: string
+                  example: General
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
   /api/admin/stats/token-usage:
     get:
       summary: 全平台 Token 消耗统计

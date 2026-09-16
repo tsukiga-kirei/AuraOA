@@ -170,6 +170,13 @@ export const useSystemApi = () => {
     return authFetch<any>('/api/admin/system/attachment-recognition/test-compat', { method: 'POST', body: data || {} })
   }
 
+  /**
+   * 使用未保存的配置探测阿里云 OCR 服务是否可达且凭证有效。
+   */
+  async function testAttachmentAliyunOCR(data?: Record<string, any>): Promise<any> {
+    return authFetch<any>('/api/admin/system/attachment-recognition/test-aliyun-ocr', { method: 'POST', body: data || {} })
+  }
+
   // ============================================================
   // 租户管理
   // ============================================================
@@ -199,34 +206,24 @@ export const useSystemApi = () => {
   /**
    * 删除指定租户（需要系统管理员密码二次确认）。
    * @param id 租户 ID
-   * @param adminPassword 系统管理员密码（用于二次确认）
+   * @param adminPassword 系统管理员密码
    */
-  async function deleteTenant(id: string, adminPassword: string): Promise<void> {
-    await authFetch<null>(`/api/admin/tenants/${id}`, { method: 'DELETE', body: { admin_password: adminPassword } })
+  async function deleteTenant(id: string, adminPassword?: string): Promise<any> {
+    return authFetch<any>(`/api/admin/tenants/${id}`, { method: 'DELETE', body: adminPassword ? { admin_password: adminPassword } : undefined })
   }
 
-  /**
-   * 获取指定租户的统计数据（成员数、审核数、归档数等）。
-   * @param id 租户 ID
-   */
+  /** 获取指定租户统计信息 */
   async function getTenantStats(id: string): Promise<any> {
     return authFetch<any>(`/api/admin/tenants/${id}/stats`)
   }
 
-  /**
-   * 获取指定租户的成员列表。
-   * @param id 租户 ID
-   */
+  /** 获取指定租户成员列表 */
   async function listTenantMembers(id: string): Promise<any[]> {
     return authFetch<any[]>(`/api/admin/tenants/${id}/members`)
   }
 
-  /** 为租户生成或重置 OA 嵌入访问密钥（明文仅本次返回） */
-  async function rotateTenantEmbedToken(id: string): Promise<{
-    access_token: string
-    token_hint: string
-    rotated_at: string
-  }> {
+  /** 轮换租户嵌入令牌 */
+  async function rotateTenantEmbedToken(id: string): Promise<any> {
     return authFetch(`/api/admin/tenants/${id}/embed-token`, { method: 'POST' })
   }
 
@@ -240,7 +237,7 @@ export const useSystemApi = () => {
     // AI 模型
     listAIModels, createAIModel, updateAIModel, deleteAIModel, testAIModelConnection, testAIModelConnectionById,
     // 附件解析
-    testAttachmentRecognition, testAttachmentCompatibility,
+    testAttachmentRecognition, testAttachmentCompatibility, testAttachmentAliyunOCR,
     // 租户管理
     listTenants, createTenant, updateTenant, deleteTenant, getTenantStats, listTenantMembers,
     rotateTenantEmbedToken,

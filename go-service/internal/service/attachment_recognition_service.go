@@ -73,6 +73,15 @@ type RecognitionConfig struct {
 	OFDEnabled            bool
 	VisualFallbackEnabled bool
 
+	// OCR 提供商（mineru / aliyun）
+	OCRProvider string
+
+	// 阿里云 OCR（attachment.aliyun_ocr_*）
+	AliyunOCREndpoint        string
+	AliyunOCRAccessKeyID     string
+	AliyunOCRAccessKeySecret string
+	AliyunOCRType            string
+
 	// MinerU
 	MinerUEndpoint      string
 	MinerUAPIKey        string
@@ -103,21 +112,26 @@ func normalizeMinerUParseMethod(method string, legacyOCREnabled bool) string {
 // LoadConfig 从系统配置加载附件识别配置（兼容旧版只配 endpoint 的最小配置）。
 func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) {
 	cfg := &RecognitionConfig{
-		Enabled:               false,
-		MaxFileSizeMB:         10,
-		SupportedTypes:        []string{"pdf", "png", "jpg", "jpeg", "bmp", "gif", "tiff", "webp", "txt", "csv", "md", "docx", "xlsx", "pptx", "doc", "xls", "ppt", "ofd"},
-		AIContentLimitMode:    attachmentAIContentLimitBytes,
-		AIContentMaxBytes:     defaultAttachmentAIContentBytes,
-		CompatEndpoint:        "http://document-parser:8090",
-		DocumentParserTypes:   []string{},
-		LegacyOfficeEnabled:   false,
-		OFDEnabled:            false,
-		VisualFallbackEnabled: true,
-		MinerUBackend:         "pipeline",
-		MinerUEnableFormula:   true,
-		MinerUEnableTable:     true,
-		MinerUParseMethod:     "ocr",
-		MinerULanguage:        "ch",
+		Enabled:                  false,
+		MaxFileSizeMB:            10,
+		SupportedTypes:           []string{"pdf", "png", "jpg", "jpeg", "bmp", "gif", "tiff", "webp", "txt", "csv", "md", "docx", "xlsx", "pptx", "doc", "xls", "ppt", "ofd"},
+		AIContentLimitMode:       attachmentAIContentLimitBytes,
+		AIContentMaxBytes:        defaultAttachmentAIContentBytes,
+		OCRProvider:              "mineru",
+		AliyunOCREndpoint:        "ocr-api.cn-hangzhou.aliyuncs.com",
+		AliyunOCRAccessKeyID:     "",
+		AliyunOCRAccessKeySecret: "",
+		AliyunOCRType:            "General",
+		CompatEndpoint:           "http://document-parser:8090",
+		DocumentParserTypes:      []string{},
+		LegacyOfficeEnabled:      false,
+		OFDEnabled:               false,
+		VisualFallbackEnabled:    true,
+		MinerUBackend:            "pipeline",
+		MinerUEnableFormula:      true,
+		MinerUEnableTable:        true,
+		MinerUParseMethod:        "ocr",
+		MinerULanguage:           "ch",
 	}
 
 	read := func(key string) string {
@@ -162,6 +176,18 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 		if cfg.OFDEnabled {
 			cfg.DocumentParserTypes = append(cfg.DocumentParserTypes, "ofd")
 		}
+	}
+
+	if p := strings.ToLower(strings.TrimSpace(read("attachment.ocr_provider"))); p != "" {
+		cfg.OCRProvider = p
+	}
+	if ep := strings.TrimSpace(read("attachment.aliyun_ocr_endpoint")); ep != "" {
+		cfg.AliyunOCREndpoint = ep
+	}
+	cfg.AliyunOCRAccessKeyID = strings.TrimSpace(read("attachment.aliyun_ocr_access_key_id"))
+	cfg.AliyunOCRAccessKeySecret = strings.TrimSpace(read("attachment.aliyun_ocr_access_key_secret"))
+	if t := strings.TrimSpace(read("attachment.aliyun_ocr_type")); t != "" {
+		cfg.AliyunOCRType = t
 	}
 
 	cfg.MinerUEndpoint = read("attachment.mineru_endpoint")

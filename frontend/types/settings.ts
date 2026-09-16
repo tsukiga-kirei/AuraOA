@@ -127,6 +127,16 @@ export interface SystemGeneralConfig {
     attachment_ofd_enabled: boolean
     /** attachment.visual_fallback_enabled — 复杂版式是否回退到 MinerU */
     attachment_visual_fallback_enabled: boolean
+    /** attachment.ocr_provider — OCR 解析服务提供商：mineru / aliyun */
+    attachment_ocr_provider: 'mineru' | 'aliyun'
+    /** attachment.aliyun_ocr_endpoint — 阿里云 OCR 服务端点 */
+    attachment_aliyun_ocr_endpoint: string
+    /** attachment.aliyun_ocr_access_key_id — 阿里云 AccessKey ID */
+    attachment_aliyun_ocr_access_key_id: string
+    /** attachment.aliyun_ocr_access_key_secret — 阿里云 AccessKey Secret */
+    attachment_aliyun_ocr_access_key_secret?: string
+    /** attachment.aliyun_ocr_type — 阿里云 OCR 识别类型（General / Advanced） */
+    attachment_aliyun_ocr_type: string
 }
 
 
@@ -198,6 +208,13 @@ export function mapConfigItems(items: ConfigItem[]): Partial<SystemGeneralConfig
         ...(str('attachment.legacy_office_enabled') !== undefined && { attachment_legacy_office_enabled: bool('attachment.legacy_office_enabled') }),
         ...(str('attachment.ofd_enabled') !== undefined && { attachment_ofd_enabled: bool('attachment.ofd_enabled') }),
         ...(str('attachment.visual_fallback_enabled') !== undefined && { attachment_visual_fallback_enabled: bool('attachment.visual_fallback_enabled') }),
+        ...(str('attachment.ocr_provider') !== undefined && {
+            attachment_ocr_provider: kv['attachment.ocr_provider'] === 'aliyun' ? 'aliyun' : 'mineru',
+        }),
+        ...(str('attachment.aliyun_ocr_endpoint') !== undefined && { attachment_aliyun_ocr_endpoint: kv['attachment.aliyun_ocr_endpoint'] }),
+        ...(str('attachment.aliyun_ocr_access_key_id') !== undefined && { attachment_aliyun_ocr_access_key_id: kv['attachment.aliyun_ocr_access_key_id'] }),
+        ...(str('attachment.aliyun_ocr_access_key_secret') !== undefined && { attachment_aliyun_ocr_access_key_secret: kv['attachment.aliyun_ocr_access_key_secret'] }),
+        ...(str('attachment.aliyun_ocr_type') !== undefined && { attachment_aliyun_ocr_type: kv['attachment.aliyun_ocr_type'] }),
     }
 }
 
@@ -237,6 +254,11 @@ export function configToUpdateRequest(cfg: SystemGeneralConfig): ConfigUpdateReq
         'system.smtp_sender': cfg.smtp_sender || '',
 
         'attachment.recognition_enabled': String(cfg.attachment_recognition_enabled ?? false),
+        'attachment.ocr_provider': cfg.attachment_ocr_provider ?? 'mineru',
+        'attachment.aliyun_ocr_endpoint': cfg.attachment_aliyun_ocr_endpoint ?? 'ocr-api.cn-hangzhou.aliyuncs.com',
+        'attachment.aliyun_ocr_access_key_id': cfg.attachment_aliyun_ocr_access_key_id ?? '',
+        'attachment.aliyun_ocr_access_key_secret': cfg.attachment_aliyun_ocr_access_key_secret ?? '',
+        'attachment.aliyun_ocr_type': cfg.attachment_aliyun_ocr_type ?? 'General',
         'attachment.mineru_endpoint': cfg.attachment_mineru_endpoint ?? '',
         'attachment.mineru_api_key': cfg.attachment_mineru_api_key ?? '',
         'attachment.mineru_backend': cfg.attachment_mineru_backend ?? 'pipeline',

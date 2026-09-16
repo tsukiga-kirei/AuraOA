@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -541,3 +542,70 @@ func readMultipartTestFile(r *http.Request, field string) (string, []byte, error
 	}
 	return header.Filename, body, nil
 }
+
+func TestLoadConfigAliyunOCR(t *testing.T) {
+	service := &AttachmentRecognitionService{configRepo: mapSystemConfigReader{
+		"attachment.ocr_provider":               "aliyun",
+		"attachment.aliyun_ocr_endpoint":        "ocr-api.cn-shanghai.aliyuncs.com",
+		"attachment.aliyun_ocr_access_key_id":   "test-ak",
+		"attachment.aliyun_ocr_access_key_secret": "test-sk",
+		"attachment.aliyun_ocr_type":            "Advanced",
+	}}
+	cfg, err := service.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.OCRProvider != "aliyun" {
+		t.Fatalf("OCRProvider = %q, want aliyun", cfg.OCRProvider)
+	}
+	if cfg.AliyunOCREndpoint != "ocr-api.cn-shanghai.aliyuncs.com" {
+		t.Fatalf("AliyunOCREndpoint = %q, want ocr-api.cn-shanghai.aliyuncs.com", cfg.AliyunOCREndpoint)
+	}
+	if cfg.AliyunOCRAccessKeyID != "test-ak" {
+		t.Fatalf("AliyunOCRAccessKeyID = %q, want test-ak", cfg.AliyunOCRAccessKeyID)
+	}
+	if cfg.AliyunOCRAccessKeySecret != "test-sk" {
+		t.Fatalf("AliyunOCRAccessKeySecret = %q, want test-sk", cfg.AliyunOCRAccessKeySecret)
+	}
+	if cfg.AliyunOCRType != "Advanced" {
+		t.Fatalf("AliyunOCRType = %q, want Advanced", cfg.AliyunOCRType)
+	}
+}
+
+func TestTestAliyunOCRConnectionMissingCredentials(t *testing.T) {
+	service := &AttachmentRecognitionService{}
+	err := service.TestAliyunOCRConnectionWithConfig(context.Background(), &RecognitionConfig{
+		AliyunOCRAccessKeyID:     "",
+		AliyunOCRAccessKeySecret: "",
+	})
+	if err == nil || !strings.Contains(err.Error(), "AccessKey ID 尚未填写") {
+		t.Fatalf("TestAliyunOCRConnectionWithConfig() want error for missing AK, got %v", err)
+	}
+
+	err = service.TestAliyunOCRConnectionWithConfig(context.Background(), &RecognitionConfig{
+		AliyunOCRAccessKeyID:     "ak",
+		AliyunOCRAccessKeySecret: "",
+	})
+	if err == nil || !strings.Contains(err.Error(), "AccessKey Secret 尚未填写") {
+		t.Fatalf("TestAliyunOCRConnectionWithConfig() want error for missing SK, got %v", err)
+	}
+}
+
+func TestCreateTestPNGImage(t *testing.T) {
+	bytes, err := createTestPNGImage()
+	if err != nil {
+		t.Fatalf("createTestPNGImage() error = %v", err)
+	}
+	if len(bytes) == 0 {
+		t.Fatalf("createTestPNGImage() returned empty bytes")
+	}
+	img, err := png.Decode(strings.NewReader(string(bytes)))
+	if err != nil {
+		t.Fatalf("png.Decode() error = %v", err)
+	}
+	bounds := img.Bounds()
+	if bounds.Dx() < 15 || bounds.Dy() < 15 {
+		t.Fatalf("image dimensions (%d x %d) must be >= 15x15", bounds.Dx(), bounds.Dy())
+	}
+}
+
