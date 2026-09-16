@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -65,6 +66,10 @@ type RecognitionConfig struct {
 	SupportedTypes     []string
 	AIContentLimitMode string
 	AIContentMaxBytes  int
+
+	// 单流程附件数量上限控制（环境变量 + 系统配置）
+	EnableCountLimit   bool
+	MaxAttachmentCount int
 
 	// 文档内容解析服务（配置键为兼容历史部署保留 compat 前缀）
 	CompatEndpoint        string
@@ -236,6 +241,25 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 		}
 	}
 
+	// 单流程附件数量上限控制（环境变量 > 系统配置 > 默认值 10）
+	cfg.EnableCountLimit = true
+	if envVal := os.Getenv("AURAOA_ATTACHMENT_ENABLE_COUNT_LIMIT"); envVal != "" {
+		cfg.EnableCountLimit = envVal == "true" || envVal == "1"
+	} else if v := read("attachment.enable_count_limit"); v != "" {
+		cfg.EnableCountLimit = v == "true" || v == "1"
+	}
+
+	cfg.MaxAttachmentCount = 10
+	if envVal := os.Getenv("AURAOA_ATTACHMENT_MAX_COUNT"); envVal != "" {
+		if count, parseErr := strconv.Atoi(envVal); parseErr == nil {
+			cfg.MaxAttachmentCount = count
+		}
+	} else if v := read("attachment.max_attachment_count"); v != "" {
+		if count, parseErr := strconv.Atoi(v); parseErr == nil {
+			cfg.MaxAttachmentCount = count
+		}
+	}
+
 	return cfg, nil
 }
 
@@ -314,6 +338,15 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 			ContentLimitMode: cfg.AIContentLimitMode,
 			ContentMaxBytes:  cfg.AIContentMaxBytes,
 			ExtractedAt:      now,
+		}
+		if cfg.EnableCountLimit && cfg.MaxAttachmentCount > 0 && len(results) >= cfg.MaxAttachmentCount {
+			base.Error = fmt.Sprintf("已达到单流程附件识别上限（%d个），跳过内容解析", cfg.MaxAttachmentCount)
+			pkglogger.Global().Info("附件识别：达到单流程数量上限，跳过内容解析",
+				zap.String("field", fieldKey),
+				zap.String("fileName", f.FileName),
+				zap.Int("maxCount", cfg.MaxAttachmentCount))
+			results = append(results, base)
+			continue
 		}
 		if _, ok := supported[ext]; !ok {
 			base.Error = fmt.Sprintf("文件类型 %q 不在 supported_types 列表中，已跳过", ext)

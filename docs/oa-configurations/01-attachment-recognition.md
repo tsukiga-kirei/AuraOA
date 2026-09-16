@@ -56,6 +56,8 @@
 | OCR 解析引擎 | `attachment.ocr_provider` | `mineru` | 可选 `mineru`（MinerU 自建服务）或 `aliyun`（阿里云统一文字识别） |
 | 发送给 AI 的附件正文 | `attachment.ai_content_limit_mode` | `bytes` | `bytes` 按单个附件限制正文字节数；`unlimited` 发送全部已解析正文 |
 | 单附件正文上限（字节） | `attachment.ai_content_max_bytes` | `10000` | 仅在 `bytes` 模式生效；按 UTF-8 字符边界安全截断，不会切坏中文 |
+| 启用单流程附件数量上限 | `attachment.enable_count_limit` | `true` | 可由环境变量 `AURAOA_ATTACHMENT_ENABLE_COUNT_LIMIT` 覆盖；开启时超出数量的附件跳过内容解析，防止超时与 Token 暴增 |
+| 单流程最大附件数量上限 | `attachment.max_attachment_count` | `10` | 可由环境变量 `AURAOA_ATTACHMENT_MAX_COUNT` 覆盖；默认最多解析前 10 个附件，设为 `0` 或 `-1` 表示无限制 |
 
 正文限制发生在组装 AI 提示词时，因此审核、归档复盘、流程总结及 OA 嵌入工作台
 使用同一策略。AI 调用记录保存的是实际发送给模型的提示词：按字节模式记录截断后的
@@ -320,7 +322,8 @@ public class AttachmentRest {
 - **未启用附件识别**：`Attachments` 字段为空切片，prompt 中 `{{attachments}}` 显示「（本流程未提取到附件内容）」。
 - **OA 接口不可达**：附件识别整体失败时**不会**阻断主审核流程，只在日志里 `WARN` 一条；prompt 里 `{{attachments}}` 仍以占位文本呈现。
 - **单个文件失败**：保留在 `Attachments` 里，但 `Error` 字段写明原因（不支持的类型 / 超大 / 对应解析器未启用 / 外部服务报错），便于 AI 上下文里知晓有附件缺失。
-- **明细表附件**：当前只识别**主表**附件字段；明细表附件如有需要，后续在 `recognizeMainAttachments` 旁边并行扩展即可。
+- **主表与明细表附件**：系统支持识别主表与明细表中的附件字段，支持标准附件上传控件（`fieldhtmltype=6`）以及文档浏览框（`fieldhtmltype=3, type=9`）。明细表附件在 prompt 中会按 `### 附件字段：字段名（field_key - 明细表X 第 Y 行）` 标注，确保 AI 逐行比对。
+- **数量上限保护**：当单笔流程识别的附件数超出 `attachment.max_attachment_count` 时，超额附件保留在列表中并标记「已达到单流程附件识别上限，跳过内容解析」，避免 OCR 超时与 Token 膨胀。
 
 ## 维护与排查
 

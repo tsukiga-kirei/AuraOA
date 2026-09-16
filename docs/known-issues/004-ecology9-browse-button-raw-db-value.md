@@ -15,11 +15,11 @@
 3. **字段中文名**：通过 `workflow_billfield.fieldlabel → htmllabelinfo.indexid`，优先使用 `languageid=7` 的中文标签。
 4. **浏览按钮通用解析**：优先按 `workflow_billfield.type = workflow_browserurl.id` 查询定义。若 `TABLENAME`、`COLUMNAME`、`KEYCOLUMNAME` 都不为空，则通过 `KEYCOLUMNAME` 查值并展示 `COLUMNAME`。
 5. **内置浏览按钮兜底**：若 `workflow_browserurl` 元数据不完整，再使用人员、部门、分部、相关流程等少量兜底映射；`TYPE` 映射以当前客户环境为准，例如本环境中 `TYPE=2` 是日期，不是部门。
-6. **自定义 / 集成浏览框**：对 `TYPE=161/162/226/256/257` 或 `FIELDDBTYPE=browser.xx` 的字段，会查询 `workflow_browserurl`，优先使用通用元数据；`161/162` 这类建模浏览框会继续按 `FIELDDBTYPE=browser.xxx → mode_browser.SHOWNAME=xxx` 查询 `SQLTEXT` / `SEARCHBYID`，解析出关联表和显示字段。
+6. **自定义 / 集成浏览框**：对 `TYPE=161/162/226/256/257` 或 `FIELDDBTYPE=browser.xx` 的字段，优先查询 `workflow_browserurl` 或 `mode_browser`（支持 `showname/name` 模糊匹配）；若上述配置表均未登记，启用**建模物理表直接探测引擎**（通过 `workflow_bill` 自动匹配 `uf_` + 模块代号，如 `browser.fplx` 探测 `uf_fplx`，并从 `workflow_billfield` 智能选取包含 `wb`、`mc`、`name` 等文本特征的最佳显示列，如 `fplxwb`），主表与明细表均全面生效。
 7. **选择框 / 下拉框**：对 `fieldhtmltype = 5` 的字段，通过 `workflow_billfield.id = workflow_selectitem.fieldid` 和 `selectvalue` 匹配选项；`selectname` 若为泛微多语言串，优先取语言 `7`。
 8. **AI 审核**：prompt 中会尽量只展示中文字段名和业务显示值，例如 `"报销人": "张三"`、`"酒店级别": "四星级"`，不暴露 `value/display` 结构。
 
-作为对比：**附件字段**（`fieldhtmltype = 6`）会识别 docId 并调用泛微 `weaver_api_url` 拉取文件内容；浏览按钮解析则直接基于 OA 数据库中的字段定义与关联表。
+作为对比：**附件字段**（支持 `fieldhtmltype = 6` 与明细表 `fieldhtmltype = 3, type = 9` 文档浏览框）会识别 docId 并调用泛微 `weaver_api_url` 拉取文件内容；浏览按钮解析则直接基于 OA 数据库中的字段定义与关联表。
 
 ## 影响范围
 

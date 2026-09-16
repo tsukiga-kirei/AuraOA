@@ -1415,11 +1415,7 @@ func (s *ProcessSummaryService) fetchOAData(c *gin.Context, tenant *model.Tenant
 	}
 	fetchCtx := c.Request.Context()
 	if withAttachments && fieldSet != nil {
-		allowedMainFields := fieldSet["main"]
-		if allowedMainFields == nil {
-			allowedMainFields = map[string]bool{}
-		}
-		fetchCtx = oa.WithAttachmentFieldFilter(fetchCtx, allowedMainFields)
+		fetchCtx = oa.WithAttachmentFieldSetFilter(fetchCtx, fieldSet)
 	}
 	data, err := adapter.FetchProcessData(fetchCtx, processID)
 	if err != nil {

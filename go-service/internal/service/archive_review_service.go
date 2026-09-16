@@ -1397,11 +1397,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 
 	fetchCtx := ctx
 	if fieldSet != nil {
-		allowedMainFields := fieldSet["main"]
-		if allowedMainFields == nil {
-			allowedMainFields = map[string]bool{}
-		}
-		fetchCtx = oa.WithAttachmentFieldFilter(fetchCtx, allowedMainFields)
+		fetchCtx = oa.WithAttachmentFieldSetFilter(fetchCtx, fieldSet)
 	}
 	processData, err := adapter.FetchProcessData(fetchCtx, logEntry.ProcessID)
 	if err != nil {
