@@ -4,6 +4,7 @@ package handler
 import (
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -469,16 +470,16 @@ type attachmentAliyunOCRTestRequest struct {
 }
 
 func (r attachmentAliyunOCRTestRequest) apply(cfg *service.RecognitionConfig) {
-	if r.AttachmentAliyunOCREndpoint != nil {
+	if r.AttachmentAliyunOCREndpoint != nil && strings.TrimSpace(*r.AttachmentAliyunOCREndpoint) != "" {
 		cfg.AliyunOCREndpoint = *r.AttachmentAliyunOCREndpoint
 	}
-	if r.AttachmentAliyunOCRAccessKeyID != nil {
+	if r.AttachmentAliyunOCRAccessKeyID != nil && strings.TrimSpace(*r.AttachmentAliyunOCRAccessKeyID) != "" {
 		cfg.AliyunOCRAccessKeyID = *r.AttachmentAliyunOCRAccessKeyID
 	}
-	if r.AttachmentAliyunOCRAccessKeySecret != nil {
+	if r.AttachmentAliyunOCRAccessKeySecret != nil && strings.TrimSpace(*r.AttachmentAliyunOCRAccessKeySecret) != "" {
 		cfg.AliyunOCRAccessKeySecret = *r.AttachmentAliyunOCRAccessKeySecret
 	}
-	if r.AttachmentAliyunOCRType != nil {
+	if r.AttachmentAliyunOCRType != nil && strings.TrimSpace(*r.AttachmentAliyunOCRType) != "" {
 		cfg.AliyunOCRType = *r.AttachmentAliyunOCRType
 	}
 }

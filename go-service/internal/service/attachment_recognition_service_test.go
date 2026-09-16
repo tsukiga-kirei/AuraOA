@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"auraoa/go-service/internal/pkg/crypto"
 	"auraoa/go-service/internal/pkg/oa"
 )
 
@@ -569,6 +570,38 @@ func TestLoadConfigAliyunOCR(t *testing.T) {
 	}
 	if cfg.AliyunOCRType != "Advanced" {
 		t.Fatalf("AliyunOCRType = %q, want Advanced", cfg.AliyunOCRType)
+	}
+}
+
+func TestLoadConfigAliyunOCREncrypted(t *testing.T) {
+	if err := crypto.SetKey(strings.Repeat("k", 32)); err != nil {
+		t.Fatal(err)
+	}
+	encAK, err := crypto.Encrypt("encrypted-ak")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encSK, err := crypto.Encrypt("encrypted-sk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	service := &AttachmentRecognitionService{configRepo: mapSystemConfigReader{
+		"attachment.ocr_provider":                 "aliyun",
+		"attachment.aliyun_ocr_endpoint":          "ocr-api.cn-hangzhou.aliyuncs.com",
+		"attachment.aliyun_ocr_access_key_id":     encAK,
+		"attachment.aliyun_ocr_access_key_secret": encSK,
+		"attachment.aliyun_ocr_type":              "General",
+	}}
+	cfg, err := service.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.AliyunOCRAccessKeyID != "encrypted-ak" {
+		t.Fatalf("AliyunOCRAccessKeyID = %q, want encrypted-ak", cfg.AliyunOCRAccessKeyID)
+	}
+	if cfg.AliyunOCRAccessKeySecret != "encrypted-sk" {
+		t.Fatalf("AliyunOCRAccessKeySecret = %q, want encrypted-sk", cfg.AliyunOCRAccessKeySecret)
 	}
 }
 
