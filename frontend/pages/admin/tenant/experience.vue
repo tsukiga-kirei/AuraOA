@@ -10,6 +10,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   InfoCircleOutlined,
+  SearchOutlined,
 } from '@ant-design/icons-vue'
 import type { AuditExperienceItem, AgentExperienceItem, AuditExperienceDetail, ExperienceQuery } from '~/types/experience'
 import type { ChatMessageItem } from '~/types/chat'
@@ -107,7 +108,18 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
     <section id="experience-list" class="experience-card" role="tabpanel" :aria-labelledby="`experience-${tab}-tab`">
       <div class="section-intro"><span class="section-icon"><MessageOutlined /></span><div><h2>{{ t(tab === 'audit' ? 'experience.auditTitle' : 'experience.agentTitle') }}</h2><p>{{ t(tab === 'audit' ? 'experience.auditHint' : 'experience.agentHint') }}</p></div></div>
       <div class="filter-bar">
-        <a-input-search v-model:value="keyword" allow-clear :placeholder="t('experience.search')" :aria-label="t('experience.search')" class="search-input" @search="applySearch" />
+        <a-input
+            v-model:value="keyword"
+            allow-clear
+            :placeholder="t('experience.search')"
+            :aria-label="t('experience.search')"
+            class="search-input"
+            @pressEnter="applySearch"
+        >
+          <template #prefix>
+            <SearchOutlined class="search-prefix-icon" @click="applySearch" />
+          </template>
+        </a-input>
         <a-select :value="feedback || ''" :options="filters" :aria-label="t('experience.filter')" class="feedback-filter" @change="(value: any) => { feedback = value || undefined; filterChanged() }" />
         <a-button :loading="loading" @click="load"><ReloadOutlined />{{ t('experience.refresh') }}</a-button>
       </div>
@@ -285,6 +297,27 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
 .section-intro p { font-size: 12px; line-height: 1.6; }
 .filter-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
 .search-input { width: 360px; max-width: 100%; }
+.search-input.ant-input-affix-wrapper,
+.search-input :deep(.ant-input-affix-wrapper) {
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 12px;
+}
+.search-input :deep(.ant-input-prefix) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-inline-end: 8px;
+}
+.search-prefix-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-tertiary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
 .feedback-filter { min-width: 150px; }
 .subject-title { display: block; padding: 0; border: 0; background: none; text-align: left; color: var(--color-text-primary); font: inherit; font-weight: 500; cursor: pointer; overflow-wrap: anywhere; }
 .subject-title:hover { color: var(--color-primary); }
