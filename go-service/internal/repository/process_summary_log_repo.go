@@ -129,14 +129,15 @@ func (r *ProcessSummaryLogRepo) GetLatestWorkbenchMapByProcessIDs(c *gin.Context
 	return result, nil
 }
 
-// CountThisWeek 本周流程总结工作台完成记录数；userID 非空时只统计个人记录。
+// CountThisWeek 本周流程总结完成记录数。
+// userID 非空时只统计本人工作台记录（不含 OA 嵌入）；租户管理员统计租户内全部完成记录。
 func (r *ProcessSummaryLogRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID) (int64, error) {
 	var count int64
 	tenantID, _ := c.Get("tenant_id")
 	q := r.DB.Table("process_summary_logs AS psl").
 		Where("psl.tenant_id = ? AND psl.status = ?", tenantID, model.JobStatusCompleted)
 	if userID != nil {
-		q = q.Where("psl.user_id = ?", *userID)
+		q = q.Where("psl.user_id = ? AND psl.trigger_source = ?", *userID, model.SummaryTriggerWorkbench)
 	}
 	err := q.Where("psl.created_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)", apptime.Name()).Count(&count).Error
 	return count, err
@@ -148,7 +149,7 @@ func (r *ProcessSummaryLogRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UU
 	userFilter := ""
 	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, apptime.Name()}
 	if userID != nil {
-		userFilter = "AND psl.user_id = ?"
+		userFilter = summaryDashboardPersonalWhere(userID)
 		args = append(args, *userID)
 	}
 	sql := `
@@ -186,13 +187,13 @@ type ProcessSummaryLogEnrichedRow struct {
 	CreatedAt  time.Time `gorm:"column:created_at"`
 }
 
-// RecentEnriched 最近 N 条流程总结工作台完成记录。
-func (r *ProcessSummaryLogRepo) RecentEnriched(c *gin.Context, limit int, userID *uuid.UUID) ([]ProcessSummaryLogEnrichedRow, error) {
+// RecentEnriched 最近 N 条流程总结完成记录。
+// since 非零时只返回该时间之后的记录；个人视角排除 OA 嵌入总结。
+func (r *ProcessSummaryLogRepo) RecentEnriched(c *gin.Context, limit int, userID *uuid.UUID, since time.Time) ([]ProcessSummaryLogEnrichedRow, error) {
 	tenantID, _ := c.Get("tenant_id")
-	userFilter := ""
-	args := []interface{}{tenantID}
+	userFilter := summaryDashboardPersonalWhere(userID)
+	args := []interface{}{tenantID, since}
 	if userID != nil {
-		userFilter = "AND psl.user_id = ?"
 		args = append(args, *userID)
 	}
 	args = append(args, limit)
@@ -204,6 +205,7 @@ SELECT psl.id, psl.title,
 FROM process_summary_logs psl
 LEFT JOIN users u ON u.id = psl.user_id
 WHERE psl.tenant_id = ? AND psl.status = 'completed'
+  AND psl.created_at >= ?
   ` + userFilter + `
 ORDER BY psl.created_at DESC
 LIMIT ?`
@@ -331,25 +333,22 @@ func (r *ProcessSummaryLogRepo) CountPendingSince(c *gin.Context, userID uuid.UU
 	return count, err
 }
 
-// CountByDepartment 按操作人所属部门统计总结完成次数；OA 嵌入使用触发人员的 OA 部门快照。
-func (r *ProcessSummaryLogRepo) CountByDepartment(c *gin.Context) ([]DeptCount, error) {
+// CountByDepartment 按操作人所属部门统计总结完成次数（since 起）；OA 嵌入部门名与当前组织同名时并入该部门。
+func (r *ProcessSummaryLogRepo) CountByDepartment(c *gin.Context, since time.Time) ([]DeptCount, error) {
 	tenantID, _ := c.Get("tenant_id")
 	var rows []DeptCount
-	err := r.DB.Raw(`SELECT CASE
+	deptExpr := `CASE
    WHEN psl.trigger_source IN ('summary_embed_auto', 'summary_embed_manual')
-     THEN COALESCE(NULLIF(TRIM(psl.oa_operator_dept), ''), '未分配')
-   ELSE COALESCE(d.name, '未分配')
- END AS department,
+     THEN ` + resolvedDepartmentByNameSQL("psl.tenant_id", "NULL", "psl.oa_operator_dept") + `
+   ELSE COALESCE(NULLIF(TRIM(d.name), ''), '未分配')
+ END`
+	err := r.DB.Raw(`SELECT `+deptExpr+` AS department,
  COUNT(*)::bigint AS count
  FROM process_summary_logs psl
  LEFT JOIN org_members om ON om.user_id = psl.user_id AND om.tenant_id = psl.tenant_id AND om.status = 'active'
  LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = psl.tenant_id
- WHERE psl.tenant_id = ? AND psl.status = 'completed'
- GROUP BY CASE
-   WHEN psl.trigger_source IN ('summary_embed_auto', 'summary_embed_manual')
-     THEN COALESCE(NULLIF(TRIM(psl.oa_operator_dept), ''), '未分配')
-   ELSE COALESCE(d.name, '未分配')
- END`, tenantID).Scan(&rows).Error
+ WHERE psl.tenant_id = ? AND psl.status = 'completed' AND psl.created_at >= ?
+ GROUP BY 1`, tenantID, since).Scan(&rows).Error
 	return rows, err
 }
 

@@ -454,7 +454,7 @@ func (r *ChatRepo) GetDashboardAgentOverview(tenantID uuid.UUID, userScope *uuid
 }
 
 // ListRecentChatActivities 获取最近的智能体对话动态
-func (r *ChatRepo) ListRecentChatActivities(tenantID uuid.UUID, userScope *uuid.UUID, limit int) ([]dto.ActivityItemEnriched, error) {
+func (r *ChatRepo) ListRecentChatActivities(tenantID uuid.UUID, userScope *uuid.UUID, limit int, since time.Time) ([]dto.ActivityItemEnriched, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -476,7 +476,8 @@ func (r *ChatRepo) ListRecentChatActivities(tenantID uuid.UUID, userScope *uuid.
 		`).
 		Joins("JOIN users u ON u.id = s.user_id").
 		Joins("LEFT JOIN agent_definitions ad ON ad.id = s.agent_id").
-		Where("s.tenant_id = ?", tenantID)
+		Where("s.tenant_id = ?", tenantID).
+		Where("s.updated_at >= ?", since)
 
 	if userScope != nil {
 		q = q.Where("s.user_id = ?", *userScope)
@@ -501,20 +502,22 @@ func (r *ChatRepo) ListRecentChatActivities(tenantID uuid.UUID, userScope *uuid.
 }
 
 // CountByDepartment 按用户所属部门统计智能体会话数（租户仪表盘使用）
-func (r *ChatRepo) CountByDepartment(tenantID uuid.UUID) ([]DeptCount, error) {
+func (r *ChatRepo) CountByDepartment(tenantID uuid.UUID, since time.Time) ([]DeptCount, error) {
+	deptExpr := resolvedDepartmentByNameSQL("cs.tenant_id", "d.name", "''")
 	sql := `
-SELECT COALESCE(d.name, '未分配') AS department,
+SELECT ` + deptExpr + ` AS department,
        COUNT(DISTINCT cs.id)::bigint AS count
 FROM chat_sessions cs
 JOIN users u ON u.id = cs.user_id
 LEFT JOIN org_members om ON om.user_id = u.id AND om.tenant_id = cs.tenant_id AND om.status = 'active'
 LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = cs.tenant_id
 WHERE cs.tenant_id = ?
+  AND cs.updated_at >= ?
   AND EXISTS (SELECT 1 FROM chat_messages cm WHERE cm.session_id = cs.id)
-GROUP BY d.name
+GROUP BY 1
 ORDER BY count DESC`
 
 	var rows []DeptCount
-	err := r.db.Raw(sql, tenantID).Scan(&rows).Error
+	err := r.db.Raw(sql, tenantID, since).Scan(&rows).Error
 	return rows, err
 }
