@@ -455,6 +455,27 @@ function getRecLabel(rec: string) {
   return map[rec] || rec || '-'
 }
 
+function getResultTitle(label: string, score?: number | string | null, confidence?: number | null) {
+  const text = `${label} ${score ?? '-'}${t('admin.data.points')}`
+  if (confidence == null) return text
+  return `${text} · AI ${confidence}%`
+}
+
+const resultOverflowTitle = ref<Record<string, string>>({})
+
+function syncResultOverflow(id: string, el: EventTarget | null, fullText: string) {
+  const node = el as HTMLElement | null
+  if (!node) return
+  const textEl = node.querySelector('.result-tag-text') as HTMLElement | null
+  const overflowing =
+    node.scrollWidth > node.clientWidth + 1 ||
+    !!(textEl && textEl.scrollWidth > textEl.clientWidth + 1)
+  const next = overflowing ? fullText : ''
+  if (resultOverflowTitle.value[id] !== next) {
+    resultOverflowTitle.value[id] = next
+  }
+}
+
 function getComplianceLabel(value: string) {
   const map: Record<string, string> = {
     compliant: t('admin.data.compliant'),
@@ -1288,7 +1309,7 @@ onMounted(async () => {
             <col style="width: 100px;" />
             <col style="width: 150px;" />
             <col style="width: 170px;" />
-            <col style="width: 185px;" />
+            <col style="width: 248px;" />
             <col style="width: 75px;" />
             <col style="width: 130px;" />
             <col style="width: 56px;" />
@@ -1334,21 +1355,31 @@ onMounted(async () => {
                 </span>
               </div>
             </td>
-            <td>
+            <td class="result-cell">
+              <a-tooltip
+                  v-if="item.recommendation"
+                  :title="resultOverflowTitle[`audit:${item.id}`] || undefined"
+                  :mouse-enter-delay="0.35"
+              >
                 <span
-                    v-if="item.recommendation"
-                    class="result-tag"
+                    class="result-tag result-tag--fit"
                     :style="{
                     color: recommendationConfig[item.recommendation]?.color,
                     background: recommendationConfig[item.recommendation]?.bg,
                   }"
+                    @mouseenter="syncResultOverflow(
+                      `audit:${item.id}`,
+                      $event.currentTarget,
+                      getResultTitle(getRecLabel(item.recommendation), item.score, item.confidence),
+                    )"
                 >
                   <CheckCircleOutlined v-if="item.recommendation === 'approve'" />
                   <CloseCircleOutlined v-else-if="item.recommendation === 'return'" />
                   <AlertOutlined v-else />
-                  {{ getRecLabel(item.recommendation) }} {{ item.score }}{{ t('admin.data.points') }}
+                  <span class="result-tag-text">{{ getRecLabel(item.recommendation) }} {{ item.score }}{{ t('admin.data.points') }}</span>
                   <span class="conf-pill">AI {{ item.confidence }}%</span>
                 </span>
+              </a-tooltip>
             </td>
             <td>{{ getAuditCount(item.valid_log_ids) }}</td>
             <td class="text-secondary table-time-cell">{{ item.updated_at_fmt }}</td>
@@ -1673,21 +1704,31 @@ onMounted(async () => {
             <td>{{ item.operator || '-' }}</td>
             <td>{{ item.department || '-' }}</td>
             <td class="text-secondary">{{ item.process_type }}</td>
-            <td>
+            <td class="result-cell">
+              <a-tooltip
+                  v-if="item.compliance"
+                  :title="resultOverflowTitle[`archive:${item.id}`] || undefined"
+                  :mouse-enter-delay="0.35"
+              >
                 <span
-                    v-if="item.compliance"
-                    class="result-tag"
+                    class="result-tag result-tag--fit"
                     :style="{
                     color: complianceConfig[item.compliance]?.color,
                     background: complianceConfig[item.compliance]?.bg,
                   }"
+                    @mouseenter="syncResultOverflow(
+                      `archive:${item.id}`,
+                      $event.currentTarget,
+                      getResultTitle(getComplianceLabel(item.compliance), item.compliance_score, item.confidence),
+                    )"
                 >
                   <CheckCircleOutlined v-if="item.compliance === 'compliant'" />
                   <AlertOutlined v-else-if="item.compliance === 'partially_compliant'" />
                   <CloseCircleOutlined v-else />
-                  {{ getComplianceLabel(item.compliance) }} {{ item.compliance_score }}{{ t('admin.data.points') }}
+                  <span class="result-tag-text">{{ getComplianceLabel(item.compliance) }} {{ item.compliance_score }}{{ t('admin.data.points') }}</span>
                   <span class="conf-pill">AI {{ item.confidence }}%</span>
                 </span>
+              </a-tooltip>
               <span v-else class="text-secondary">-</span>
             </td>
             <td>{{ getAuditCount(item.valid_archive_log_ids) }}</td>
@@ -3588,7 +3629,7 @@ details[open] .chevron-icon {
 
 .data-table--audit,
 .data-table--summary {
-  min-width: 1336px;
+  min-width: 1399px;
   table-layout: fixed;
 }
 
@@ -3659,6 +3700,14 @@ details[open] .chevron-icon {
   background: var(--color-bg-page);
 }
 
+.data-table td.result-cell {
+  overflow: hidden;
+}
+
+.data-table td.result-cell > :deep(*) {
+  max-width: 100%;
+}
+
 .result-tag {
   font-size: 11px;
   font-weight: 600;
@@ -3668,6 +3717,30 @@ details[open] .chevron-icon {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.result-tag--fit {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.result-tag--fit :deep(.anticon) {
+  flex-shrink: 0;
+}
+
+.result-tag-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-tag--fit .conf-pill {
+  flex-shrink: 0;
+  margin-left: 0;
 }
 
 .operator-cell {
