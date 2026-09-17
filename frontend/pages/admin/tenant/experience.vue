@@ -105,7 +105,7 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
       <button id="experience-audit-tab" type="button" role="tab" aria-controls="experience-list" :aria-selected="tab === 'audit'" :class="['tab-btn', { active: tab === 'audit' }]" @click="tab = 'audit'"><SafetyCertificateOutlined />{{ t('experience.audit') }}</button>
       <button id="experience-agents-tab" type="button" role="tab" aria-controls="experience-list" :aria-selected="tab === 'agents'" :class="['tab-btn', { active: tab === 'agents' }]" @click="tab = 'agents'"><RobotOutlined />{{ t('experience.agents') }}</button>
     </div>
-    <section id="experience-list" class="experience-card" role="tabpanel" :aria-labelledby="`experience-${tab}-tab`">
+    <section id="experience-list" class="tab-content" role="tabpanel" :aria-labelledby="`experience-${tab}-tab`">
       <div class="section-intro"><span class="section-icon"><MessageOutlined /></span><div><h2>{{ t(tab === 'audit' ? 'experience.auditTitle' : 'experience.agentTitle') }}</h2><p>{{ t(tab === 'audit' ? 'experience.auditHint' : 'experience.agentHint') }}</p></div></div>
       <div class="filter-bar">
         <a-input
@@ -124,22 +124,24 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
         <a-button :loading="loading" @click="load"><ReloadOutlined />{{ t('experience.refresh') }}</a-button>
       </div>
       <a-alert v-if="error" type="error" show-icon :message="t('experience.loadError')"><template #action><a-button size="small" @click="load">{{ t('experience.retry') }}</a-button></template></a-alert>
-      <a-table v-else :columns="columns" :data-source="tab === 'audit' ? audits : agents" row-key="id" :pagination="false" :loading="loading" :scroll="{ x: 800 }">
-        <template #emptyText><a-empty :description="t('experience.empty')" /></template>
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'subject'">
-            <button class="subject-title" type="button" @click="openDetail(record as AuditExperienceItem | AgentExperienceItem)">{{ record.title }}</button>
-            <p class="subject-meta">{{ tab === 'audit' ? `${record.process_type} · ${record.process_id}` : `${record.agent_name} · ${record.username}` }}</p>
-            <p v-if="tab === 'agents' && record.feedback_comment" class="feedback-excerpt">{{ record.feedback_comment }}</p>
+      <div v-else class="data-table-card">
+        <a-table :columns="columns" :data-source="tab === 'audit' ? audits : agents" row-key="id" :pagination="false" :loading="loading">
+          <template #emptyText><a-empty :description="t('experience.empty')" /></template>
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'subject'">
+              <button class="subject-title" type="button" @click="openDetail(record as AuditExperienceItem | AgentExperienceItem)">{{ record.title }}</button>
+              <p class="subject-meta">{{ tab === 'audit' ? `${record.process_type} · ${record.process_id}` : `${record.agent_name} · ${record.username}` }}</p>
+              <p v-if="tab === 'agents' && record.feedback_comment" class="feedback-excerpt">{{ record.feedback_comment }}</p>
+            </template>
+            <template v-else-if="column.key === 'interaction'">
+              <div v-if="tab === 'audit'" class="interaction-counts"><span class="positive"><LikeOutlined />{{ record.like_count }}</span><span class="negative"><DislikeOutlined />{{ record.dislike_count }}</span><span><MessageOutlined />{{ record.comment_count }}</span></div>
+              <a-tag v-else :color="record.feedback === 'like' ? 'success' : 'warning'"><LikeOutlined v-if="record.feedback === 'like'" /><DislikeOutlined v-else /> {{ t(record.feedback === 'like' ? 'experience.likes' : 'experience.dislikes') }}</a-tag>
+            </template>
+            <template v-else-if="column.key === 'updated_at'"><span class="subject-meta">{{ formatDateTimeInAppZone(record.updated_at) }}</span></template>
+            <template v-else-if="column.key === 'actions'"><a-button type="link" size="small" @click="openDetail(record as AuditExperienceItem | AgentExperienceItem)"><EyeOutlined />{{ t('experience.view') }}</a-button></template>
           </template>
-          <template v-else-if="column.key === 'interaction'">
-            <div v-if="tab === 'audit'" class="interaction-counts"><span class="positive"><LikeOutlined />{{ record.like_count }}</span><span class="negative"><DislikeOutlined />{{ record.dislike_count }}</span><span><MessageOutlined />{{ record.comment_count }}</span></div>
-            <a-tag v-else :color="record.feedback === 'like' ? 'success' : 'warning'"><LikeOutlined v-if="record.feedback === 'like'" /><DislikeOutlined v-else /> {{ t(record.feedback === 'like' ? 'experience.likes' : 'experience.dislikes') }}</a-tag>
-          </template>
-          <template v-else-if="column.key === 'updated_at'"><span class="subject-meta">{{ formatDateTimeInAppZone(record.updated_at) }}</span></template>
-          <template v-else-if="column.key === 'actions'"><a-button type="link" size="small" @click="openDetail(record as AuditExperienceItem | AgentExperienceItem)"><EyeOutlined />{{ t('experience.view') }}</a-button></template>
-        </template>
-      </a-table>
+        </a-table>
+      </div>
       <div v-if="total" class="pagination-wrapper"><a-pagination :current="page" :page-size="pageSize" :total="total" show-size-changer :page-size-options="['10', '20', '50']" :show-total="(count: number) => t('experience.total', count)" @change="changePage" /></div>
     </section>
     <a-drawer v-model:open="drawer" :title="selected?.title" width="min(760px, 100vw)" :destroy-on-close="true">
@@ -290,12 +292,36 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
 .tab-btn { display: flex; align-items: center; gap: 8px; padding: 10px 24px; border: none; border-radius: var(--radius-md); background: transparent; font-size: 14px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer; transition: all var(--transition-fast); }
 .tab-btn.active { background: var(--color-bg-card); color: var(--color-primary); box-shadow: var(--shadow-xs); }
 .tab-btn:focus-visible, .subject-title:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
-.experience-card { padding: 24px; background: var(--color-bg-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); }
+.tab-content { width: 100%; }
 .section-intro { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
 .section-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: var(--color-primary-bg); color: var(--color-primary); font-size: 20px; flex-shrink: 0; }
 .section-intro h2 { margin: 0; font-size: 16px; color: var(--color-text-primary); }
 .section-intro p { font-size: 12px; line-height: 1.6; }
 .filter-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.data-table-card {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.data-table-card::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.data-table-card :deep(.ant-table-wrapper),
+.data-table-card :deep(.ant-table) { background: transparent; }
+.data-table-card :deep(.ant-table-thead > tr > th) {
+  background: var(--color-bg-page);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.data-table-card :deep(.ant-table-content),
+.data-table-card :deep(.ant-table-body) {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.data-table-card :deep(.ant-table-content)::-webkit-scrollbar,
+.data-table-card :deep(.ant-table-body)::-webkit-scrollbar { height: 0; display: none; }
 .search-input { width: 360px; max-width: 100%; }
 .search-input.ant-input-affix-wrapper,
 .search-input :deep(.ant-input-affix-wrapper) {
@@ -396,5 +422,5 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
 .message-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; font-size: 12px; }.message-meta time { color: var(--color-text-tertiary); }
 .plain-content { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; margin: 10px 0 0; }.message-feedback { border-top: 1px solid var(--color-border-light); padding-top: 12px; margin-top: 14px; }
 .markdown-content { line-height: 1.8; overflow-wrap: anywhere; }.markdown-content :deep(pre) { overflow-x: auto; }.markdown-content :deep(img) { max-width: 100%; }
-@media (max-width: 640px) { .experience-card { padding: 16px; }.filter-bar > * { width: 100%; }.pagination-wrapper { overflow-x: auto; justify-content: flex-start; }.risk-suggest-row { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .filter-bar > * { width: 100%; }.pagination-wrapper { overflow-x: auto; justify-content: flex-start; }.risk-suggest-row { grid-template-columns: 1fr; } }
 </style>
