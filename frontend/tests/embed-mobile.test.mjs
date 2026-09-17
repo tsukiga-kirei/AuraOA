@@ -38,7 +38,7 @@ function addListener(map, type, fn) {
 // 执行实际导出的完整脚本，模拟 OA 容器并记录按钮文案、请求和点击去向。
 async function run(source, payload, httpOK = true, device = {}) {
   const state = {
-    requests: [], dialogs: [], dialogOpts: [], messages: [], text: '', click: null, elements: [], queries: [], appended: [],
+    requests: [], dialogs: [], dialogOpts: [], messages: [], text: '', click: null, elements: [], styles: [], queries: [], appended: [],
     windowListeners: {}, docListeners: {}, timeouts: [], intervals: [], timerId: 0,
   }
   const element = {
@@ -49,6 +49,7 @@ async function run(source, payload, httpOK = true, device = {}) {
   const document = {
     visibilityState: 'visible',
     activeElement: null, getElementById: () => null,
+    head: { appendChild: node => state.styles.push(node) },
     body: { appendChild: node => state.elements.push(node) },
     addEventListener: (type, fn) => addListener(state.docListeners, type, fn),
     removeEventListener() {},
@@ -140,7 +141,10 @@ for (const origin of ['export', 'template']) {
       const inline = await run(script, { supported: true })
       assert.equal(inline.appended.length, 0)
       const floating = await run(script, { supported: true }, true, { noContainer: true })
-      assert.match(floating.appended[0], /position:fixed;bottom:16px;left:16px/)
+      assert.match(floating.appended[0], /id="auraMobileEmbedFloatContainer"/)
+      const styles = floating.styles.map(node => node.textContent).join('')
+      assert.match(styles, /#auraMobileEmbedFloatContainer\{position:fixed;bottom:16px/)
+      assert.match(styles, /safe-area-inset-bottom/)
       const ipad = await run(script, { supported: true }, true, { ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)', touch: 5 })
       assert.equal(ipad.requests.length, 1)
     })
