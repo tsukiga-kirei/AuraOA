@@ -8807,6 +8807,10 @@ components:
       - model_name
       - display_name
       properties:
+        id:
+          type: string
+          format: uuid
+          description: 编辑时可选；api_key 留空则回填该模型已保存密钥
         provider:
           type: string
         model_name:

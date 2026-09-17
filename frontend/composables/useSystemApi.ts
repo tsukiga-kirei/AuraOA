@@ -138,6 +138,7 @@ export const useSystemApi = () => {
 
   /**
    * 使用临时参数测试 AI 模型连接（保存前预检）。
+   * 编辑已有模型时请带上 `id`；`api_key` 留空则后端回填已保存密钥。
    * @param data 模型配置参数
    */
   async function testAIModelConnection(data: Record<string, any>): Promise<any> {
