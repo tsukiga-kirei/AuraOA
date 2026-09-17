@@ -748,14 +748,22 @@ const testModelConnection = async () => {
   }
   testingModelConn.value = true
   try {
-    const result = await apiTestAIModelConnection(newAIModel.value)
+    const payload = { ...newAIModel.value }
+    // 编辑时密钥不回显：留空则带上已保存模型 id，由后端回填密钥
+    if (editingAIModel.value) {
+      payload.id = editingAIModel.value.id
+      if (!payload.api_key) {
+        delete payload.api_key
+      }
+    }
+    const result = await apiTestAIModelConnection(payload)
     if (result.success) {
       message.success(t('admin.settings.modelConnSuccess'))
     } else {
       message.error(result.message || t('admin.settings.modelConnFailed'))
     }
-  } catch (e) {
-    message.error(t('admin.settings.modelConnFailed'))
+  } catch (e: any) {
+    message.error(e?.message || t('admin.settings.modelConnFailed'))
   } finally {
     testingModelConn.value = false
   }

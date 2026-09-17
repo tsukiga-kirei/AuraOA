@@ -277,9 +277,9 @@ func (h *SystemHandler) DeleteAIModel(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// TestAIModelConnection 使用请求体中的模型参数直接测试连接（用于新建模态框中的测试按钮）。
+// TestAIModelConnection 使用请求体中的模型参数直接测试连接（用于新建/编辑模态框中的测试按钮）。
 // POST /api/admin/system/ai-models/test
-// 请求体：CreateAIModelRequest（模型参数）
+// 请求体：CreateAIModelRequest（模型参数；编辑时可带 id，api_key 留空则回填已保存密钥）
 // 返回：{"success": true, "message": "模型连接测试成功"}。
 func (h *SystemHandler) TestAIModelConnection(c *gin.Context) {
 	var req dto.CreateAIModelRequest

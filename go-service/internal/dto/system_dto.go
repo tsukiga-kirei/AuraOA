@@ -121,7 +121,9 @@ type OAConnectionResponse struct {
 // ============================================================
 
 // CreateAIModelRequest 创建 AI 模型配置请求（POST /api/admin/system/ai-models）。
+// 测试连接接口复用本结构：编辑场景下可附带 id，api_key 留空时回填已保存密钥。
 type CreateAIModelRequest struct {
+	ID               string   `json:"id"`
 	Provider         string   `json:"provider" binding:"required"`
 	ProviderLabel    string   `json:"provider_label"`
 	ModelName        string   `json:"model_name" binding:"required"`

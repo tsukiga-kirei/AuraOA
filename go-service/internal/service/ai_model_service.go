@@ -225,14 +225,11 @@ func (s *AIModelService) TestConnection(id uuid.UUID) error {
 		return newServiceError(errcode.ErrResourceNotFound, "AI模型不存在")
 	}
 
-	// 解密 API Key
-	if m.APIKey != "" {
-		decrypted, err := crypto.Decrypt(m.APIKey)
-		if err != nil {
-			return newServiceError(errcode.ErrInternalServer, "API Key解密失败")
-		}
-		m.APIKey = decrypted
+	decrypted, err := decryptModelAPIKey(m.APIKey)
+	if err != nil {
+		return err
 	}
+	m.APIKey = decrypted
 
 	testErr := s.testAIModel(m)
 
@@ -253,13 +250,31 @@ func (s *AIModelService) TestConnection(id uuid.UUID) error {
 
 // TestConnectionByParams 使用前端传入的明文参数直接测试连接，无需先保存配置。
 // 适用于新建或编辑模型时的"测试连接"按钮场景。
+// 编辑时 api_key 可留空：若同时传入已保存模型 id，则回填数据库中的密钥（与保存逻辑一致）。
 func (s *AIModelService) TestConnectionByParams(req *dto.CreateAIModelRequest) error {
+	apiKey := req.APIKey
+	if apiKey == "" && req.ID != "" {
+		id, err := uuid.Parse(req.ID)
+		if err != nil {
+			return newServiceError(errcode.ErrParamValidation, "参数校验失败")
+		}
+		saved, err := s.repo.FindByID(id)
+		if err != nil {
+			return newServiceError(errcode.ErrResourceNotFound, "AI模型不存在")
+		}
+		decrypted, err := decryptModelAPIKey(saved.APIKey)
+		if err != nil {
+			return err
+		}
+		apiKey = decrypted
+	}
+
 	m := &model.AIModelConfig{
 		Provider:   req.Provider,
 		ModelName:  req.ModelName,
 		DeployType: req.DeployType,
 		Endpoint:   req.Endpoint,
-		APIKey:     req.APIKey, // 前端传入的是明文
+		APIKey:     apiKey, // 前端传入明文，或编辑留空时使用已保存密钥
 		MaxTokens:  req.MaxTokens,
 	}
 	if m.MaxTokens == 0 {
@@ -267,6 +282,18 @@ func (s *AIModelService) TestConnectionByParams(req *dto.CreateAIModelRequest) e
 	}
 
 	return s.testAIModel(m)
+}
+
+// decryptModelAPIKey 解密已存储的 API Key；空字符串视为未配置。
+func decryptModelAPIKey(encrypted string) (string, error) {
+	if encrypted == "" {
+		return "", nil
+	}
+	decrypted, err := crypto.Decrypt(encrypted)
+	if err != nil {
+		return "", newServiceError(errcode.ErrInternalServer, "API Key解密失败")
+	}
+	return decrypted, nil
 }
 
 // testAIModel 实际执行连接测试：创建对应部署类型的调用器，发送探测请求，超时 10 秒。

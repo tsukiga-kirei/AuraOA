@@ -246,6 +246,15 @@ POST /api/admin/system/ai-models
 POST /api/admin/system/ai-models/test
 ```
 
+使用当前表单参数探测端点（保存前预检）。请求体与创建模型相同，另支持：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | string | — | 编辑已有模型时传入。`api_key` 留空则使用该模型已保存的密钥 |
+| `api_key` | string | — | 明文密钥。新建必填（云端）；编辑留空表示沿用已保存密钥 |
+
+卡片上的「测试连接」走 `POST /api/admin/system/ai-models/:id/test`，始终使用库中已保存配置。
+
 ---
 
 ### 更新 AI 模型
