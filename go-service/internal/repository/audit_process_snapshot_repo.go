@@ -597,24 +597,98 @@ func (r *AuditProcessSnapshotRepo) GetVisibleWorkbenchMap(c *gin.Context, proces
 	return result, nil
 }
 
-// CountCombinedUserRanking 将审核、归档、总结完成结果按用户汇总后统一排名。
+// CountCombinedUserRanking 将审核、归档、总结完成结果按实际操作人汇总后统一排名。
+// OA 通用嵌入使用执行时保存的 OA 人员快照；系统内操作继续使用 AuraOA 用户归属。
 func (r *AuditProcessSnapshotRepo) CountCombinedUserRanking(c *gin.Context, limit int) ([]CombinedUserRankRow, error) {
 	tenantID, _ := c.Get("tenant_id")
 	var rows []CombinedUserRankRow
-	err := r.DB.Raw(`WITH activity AS (
- SELECT al.user_id, 1::bigint AS audit_count, 0::bigint AS archive_count, 0::bigint AS summary_count, aps.updated_at AS at
- FROM audit_process_snapshots aps JOIN audit_logs al ON al.id = aps.latest_valid_log_id AND al.tenant_id = aps.tenant_id WHERE aps.tenant_id = ?
+	err := r.DB.Raw(`WITH raw_activity AS (
+ SELECT aps.tenant_id,
+        al.user_id,
+        (al.trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(al.trigger_detail, '') != 'personal_embed_manual') AS is_oa_embed,
+        al.oa_operator_id,
+        al.oa_operator_name,
+        al.oa_operator_dept,
+        1::bigint AS audit_count,
+        0::bigint AS archive_count,
+        0::bigint AS summary_count,
+        aps.updated_at AS at
+ FROM audit_process_snapshots aps
+ JOIN audit_logs al ON al.id = aps.latest_valid_log_id AND al.tenant_id = aps.tenant_id
+ WHERE aps.tenant_id = ?
  UNION ALL
- SELECT al.user_id, 0, 1, 0, aps.updated_at FROM archive_process_snapshots aps JOIN archive_logs al ON al.id = aps.latest_valid_archive_log_id AND al.tenant_id = aps.tenant_id WHERE aps.tenant_id = ?
+ SELECT aps.tenant_id,
+        al.user_id,
+        FALSE AS is_oa_embed,
+        '' AS oa_operator_id,
+        '' AS oa_operator_name,
+        '' AS oa_operator_dept,
+        0::bigint,
+        1::bigint,
+        0::bigint,
+        aps.updated_at
+ FROM archive_process_snapshots aps
+ JOIN archive_logs al ON al.id = aps.latest_valid_archive_log_id AND al.tenant_id = aps.tenant_id
+ WHERE aps.tenant_id = ?
  UNION ALL
- SELECT user_id, 0, 0, 1, updated_at FROM process_summary_logs WHERE tenant_id = ? AND status = 'completed'
- ) SELECT u.username, u.display_name, COALESCE(d.name, '') AS department,
- SUM(a.audit_count) AS audit_count, SUM(a.archive_count) AS archive_count, SUM(a.summary_count) AS summary_count,
- SUM(a.audit_count + a.archive_count + a.summary_count) AS total, MAX(a.at) AS last_active
- FROM activity a JOIN users u ON u.id = a.user_id
- LEFT JOIN org_members om ON om.user_id = u.id AND om.tenant_id = ? AND om.status = 'active'
- LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = om.tenant_id
- GROUP BY u.id, u.username, u.display_name, d.name ORDER BY total DESC, last_active DESC LIMIT ?`, tenantID, tenantID, tenantID, tenantID, limit).Scan(&rows).Error
+ SELECT psl.tenant_id,
+        psl.user_id,
+        (psl.trigger_source IN ('summary_embed_auto', 'summary_embed_manual')) AS is_oa_embed,
+        psl.oa_operator_id,
+        psl.oa_operator_name,
+        psl.oa_operator_dept,
+        0::bigint,
+        0::bigint,
+        1::bigint,
+        psl.updated_at
+ FROM process_summary_logs psl
+ WHERE psl.tenant_id = ? AND psl.status = 'completed'
+), identified_activity AS (
+ SELECT CASE
+          WHEN a.is_oa_embed AND NULLIF(TRIM(COALESCE(a.oa_operator_name, '')), '') IS NOT NULL
+            THEN 'oa:' || TRIM(COALESCE(a.oa_operator_id, '')) || ':' || TRIM(a.oa_operator_name) || ':' || COALESCE(NULLIF(TRIM(a.oa_operator_dept), ''), '未分配')
+          WHEN a.is_oa_embed THEN 'oa:unknown'
+          ELSE 'user:' || a.user_id::text
+        END AS identity_key,
+        CASE
+          WHEN a.is_oa_embed AND NULLIF(TRIM(COALESCE(a.oa_operator_name, '')), '') IS NOT NULL
+            THEN 'oa:' || TRIM(COALESCE(a.oa_operator_id, '')) || ':' || TRIM(a.oa_operator_name) || ':' || COALESCE(NULLIF(TRIM(a.oa_operator_dept), ''), '未分配')
+          WHEN a.is_oa_embed THEN 'oa:unknown'
+          ELSE u.username
+        END AS username,
+        CASE
+          WHEN a.is_oa_embed AND NULLIF(TRIM(COALESCE(a.oa_operator_name, '')), '') IS NOT NULL THEN TRIM(a.oa_operator_name)
+          WHEN a.is_oa_embed THEN 'OA 嵌入用户/未识别'
+          ELSE COALESCE(NULLIF(TRIM(u.display_name), ''), u.username, '')
+        END AS display_name,
+        CASE
+          WHEN a.is_oa_embed AND NULLIF(TRIM(COALESCE(a.oa_operator_name, '')), '') IS NOT NULL
+            THEN COALESCE(NULLIF(TRIM(a.oa_operator_dept), ''), '未分配')
+          WHEN a.is_oa_embed THEN '未分配'
+          ELSE COALESCE(d.name, '')
+        END AS department,
+        a.audit_count,
+        a.archive_count,
+        a.summary_count,
+        a.at
+ FROM raw_activity a
+ LEFT JOIN users u ON u.id = a.user_id
+ LEFT JOIN org_members om ON NOT a.is_oa_embed AND om.user_id = a.user_id AND om.tenant_id = a.tenant_id AND om.status = 'active'
+ LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = a.tenant_id
+ WHERE a.is_oa_embed OR u.id IS NOT NULL
+)
+SELECT username,
+       display_name,
+       department,
+       SUM(audit_count) AS audit_count,
+       SUM(archive_count) AS archive_count,
+       SUM(summary_count) AS summary_count,
+       SUM(audit_count + archive_count + summary_count) AS total,
+       MAX(at) AS last_active
+FROM identified_activity
+GROUP BY identity_key, username, display_name, department
+ORDER BY total DESC, last_active DESC
+LIMIT ?`, tenantID, tenantID, tenantID, limit).Scan(&rows).Error
 	return rows, err
 }
 
