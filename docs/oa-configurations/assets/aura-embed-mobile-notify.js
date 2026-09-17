@@ -70,10 +70,10 @@
 
   function getCurrentUserId() {
     try {
-      if (typeof WfForm !== 'undefined' && WfForm.getGlobalStore) {
-        var store = WfForm.getGlobalStore();
-        if (store && store.commonParam && store.commonParam.currentUserid != null) {
-          return String(store.commonParam.currentUserid).trim();
+      if (typeof WfForm !== 'undefined' && WfForm.getBaseInfo) {
+        var base = WfForm.getBaseInfo() || {};
+        if (base.f_weaver_belongto_userid != null) {
+          return String(base.f_weaver_belongto_userid).trim();
         }
       }
     } catch (e) {}

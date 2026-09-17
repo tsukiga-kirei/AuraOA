@@ -1280,7 +1280,19 @@ onMounted(async () => {
       </transition>
 
       <div class="data-table-card">
-        <table class="data-table">
+        <table class="data-table data-table--audit">
+          <colgroup>
+            <col style="width: 90px;" />
+            <col style="width: 220px;" />
+            <col style="width: 170px;" />
+            <col style="width: 100px;" />
+            <col style="width: 150px;" />
+            <col style="width: 170px;" />
+            <col style="width: 185px;" />
+            <col style="width: 75px;" />
+            <col style="width: 130px;" />
+            <col style="width: 56px;" />
+          </colgroup>
           <thead>
           <tr>
             <th>{{ t('admin.data.thProcessId') }}</th>
@@ -1301,10 +1313,10 @@ onMounted(async () => {
           </tr>
           <tr v-else v-for="item in auditSnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
-            <td>{{ item.title }}</td>
-            <td class="operator-cell">{{ item.operator || '-' }}</td>
-            <td>{{ item.department || '-' }}</td>
-            <td class="text-secondary">{{ item.process_type }}</td>
+            <td class="table-title-cell"><span :title="item.title">{{ item.title }}</span></td>
+            <td class="operator-cell" :title="item.operator || '-'">{{ item.operator || '-' }}</td>
+            <td :title="item.department || '-'">{{ item.department || '-' }}</td>
+            <td class="text-secondary table-type-cell"><span :title="item.process_type">{{ item.process_type }}</span></td>
             <td class="source-action-cell">
               <div class="source-action-stack">
                 <span
@@ -1339,7 +1351,7 @@ onMounted(async () => {
                 </span>
             </td>
             <td>{{ getAuditCount(item.valid_log_ids) }}</td>
-            <td class="text-secondary">{{ item.updated_at_fmt }}</td>
+            <td class="text-secondary table-time-cell">{{ item.updated_at_fmt }}</td>
             <td>
               <div class="action-btns">
                 <button
@@ -1823,7 +1835,19 @@ onMounted(async () => {
       </transition>
 
       <div class="data-table-card">
-        <table class="data-table">
+        <table class="data-table data-table--summary">
+          <colgroup>
+            <col style="width: 90px;" />
+            <col style="width: 220px;" />
+            <col style="width: 170px;" />
+            <col style="width: 100px;" />
+            <col style="width: 150px;" />
+            <col style="width: 170px;" />
+            <col style="width: 105px;" />
+            <col style="width: 80px;" />
+            <col style="width: 130px;" />
+            <col style="width: 56px;" />
+          </colgroup>
           <thead>
           <tr>
             <th>{{ t('admin.data.thProcessId') }}</th>
@@ -1844,10 +1868,10 @@ onMounted(async () => {
           </tr>
           <tr v-else v-for="item in summarySnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
-            <td>{{ item.title }}</td>
-            <td class="operator-cell">{{ item.operator || '-' }}</td>
-            <td>{{ item.department || '-' }}</td>
-            <td class="text-secondary">{{ item.process_type }}</td>
+            <td class="table-title-cell"><span :title="item.title">{{ item.title }}</span></td>
+            <td class="operator-cell" :title="item.operator || '-'">{{ item.operator || '-' }}</td>
+            <td :title="item.department || '-'">{{ item.department || '-' }}</td>
+            <td class="text-secondary table-type-cell"><span :title="item.process_type">{{ item.process_type }}</span></td>
             <td class="source-action-cell">
               <div class="source-action-stack">
                 <span
@@ -1872,7 +1896,7 @@ onMounted(async () => {
               </span>
             </td>
             <td>{{ getAuditCount(item.valid_log_ids) }}</td>
-            <td class="text-secondary">{{ item.updated_at_fmt }}</td>
+            <td class="text-secondary table-time-cell">{{ item.updated_at_fmt }}</td>
             <td>
               <div class="action-btns">
                 <button
@@ -2145,7 +2169,16 @@ onMounted(async () => {
       </transition>
 
       <div class="data-table-card">
-        <table class="data-table">
+        <table class="data-table data-table--llm">
+          <colgroup>
+            <col style="width: 100px;" />
+            <col style="width: 260px;" />
+            <col style="width: 80px;" />
+            <col style="width: 100px;" />
+            <col style="width: 210px;" />
+            <col style="width: 150px;" />
+            <col style="width: 56px;" />
+          </colgroup>
           <thead>
           <tr>
             <th>{{ t('admin.data.thProcessId') }}</th>
@@ -2163,7 +2196,7 @@ onMounted(async () => {
           </tr>
           <tr v-else v-for="item in llmProcesses" :key="item.process_id">
             <td>{{ item.process_id }}</td>
-            <td>{{ item.process_title || '-' }}</td>
+            <td class="table-title-cell"><span :title="item.process_title || '-'">{{ item.process_title || '-' }}</span></td>
             <td>{{ item.call_count }}</td>
             <td>{{ item.total_tokens }}</td>
             <td class="operator-cell">
@@ -2178,7 +2211,7 @@ onMounted(async () => {
                 </span>
               </div>
             </td>
-            <td class="text-secondary">{{ formatDate(item.latest_call_at) }}</td>
+            <td class="text-secondary table-time-cell">{{ formatDate(item.latest_call_at) }}</td>
             <td>
               <div class="action-btns">
                 <button
@@ -3532,17 +3565,40 @@ details[open] .chevron-icon {
   background: var(--color-bg-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.data-table-card::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .data-table {
   width: 100%;
+  min-width: 860px;
   border-collapse: collapse;
   font-size: 13px;
 }
 
+.data-table--audit,
+.data-table--summary {
+  min-width: 1336px;
+  table-layout: fixed;
+}
+
+.data-table--llm {
+  min-width: 956px;
+  table-layout: fixed;
+}
+
 .data-table th {
-  padding: 12px 16px;
+  padding: 10px 12px;
   text-align: left;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -3555,9 +3611,12 @@ details[open] .chevron-icon {
 }
 
 .data-table td {
-  padding: 12px 16px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--color-border-light);
   color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .data-table tbody tr:hover { background: var(--color-bg-hover); }
@@ -3565,6 +3624,25 @@ details[open] .chevron-icon {
 
 .text-secondary { color: var(--color-text-tertiary); }
 .text-mono { font-family: monospace; font-size: 12px; color: var(--color-text-secondary); }
+
+.table-title-cell,
+.table-type-cell {
+  white-space: normal !important;
+}
+
+.table-title-cell > span,
+.table-type-cell > span {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.table-time-cell {
+  font-variant-numeric: tabular-nums;
+}
 
 .empty-cell {
   text-align: center;
@@ -3593,12 +3671,12 @@ details[open] .chevron-icon {
 }
 
 .operator-cell {
-  min-width: 168px;
+  min-width: 150px;
   white-space: nowrap;
 }
 
 .source-action-cell {
-  min-width: 186px;
+  min-width: 164px;
 }
 
 .source-action-stack {
@@ -4241,8 +4319,6 @@ details[open] > summary .chat-section-chevron {
 
 @media (max-width: 768px) {
   .stats-row, .stats-row--five { grid-template-columns: repeat(2, 1fr); }
-  .data-table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .data-table { min-width: 760px; }
   .toolbar { flex-direction: column; align-items: stretch; }
   .filter-bar { flex-direction: column; }
   .page-title { font-size: 20px; }

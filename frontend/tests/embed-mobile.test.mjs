@@ -18,6 +18,17 @@ const factory = vm.runInNewContext(ts.transpileModule(
   embedAuditUrl: { value: 'https://aura.example.com/embed/audit' },
   embedSummaryUrl: { value: 'https://aura.example.com/embed/summary' },
 })
+const pcFactory = vm.runInNewContext(ts.transpileModule(
+  extract('const getEmbedScriptConfig =', 'const getEmbedMobileScriptConfig =')
+  + extract('const buildEmbedNotifyScript =', 'const buildEmbedMobileNotifyScript =')
+  + '\nbuildEmbedNotifyScript',
+  { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
+).outputText, {
+  t: key => key,
+  embedOrigin: { value: 'https://aura.example.com' },
+  embedAuditUrl: { value: 'https://aura.example.com/embed/audit' },
+  embedSummaryUrl: { value: 'https://aura.example.com/embed/summary' },
+})
 
 function addListener(map, type, fn) {
   if (!map[type]) map[type] = []
@@ -66,7 +77,6 @@ async function run(source, payload, httpOK = true, device = {}) {
     },
     WfForm: {
       getBaseInfo: () => ({ requestid: '614309', f_weaver_belongto_userid: '23' }),
-      getGlobalStore: () => ({ commonParam: { currentUserid: Object.hasOwn(device, 'currentUser') ? device.currentUser : '42' } }),
       showMessage: value => state.messages.push(value),
       registerCheckEvent: () => {}, OPER_SAVE: 'save', OPER_SUBMIT: 'submit',
     },
@@ -144,7 +154,7 @@ for (const origin of ['export', 'template']) {
         const request = new URL(state.requests[0])
         assert.equal(request.pathname, type === 'summary' ? '/api/embed/summary/context' : '/api/embed/context')
         assert.equal(request.searchParams.get('requestid'), '614309')
-        assert.equal(request.searchParams.get('oa_user_id'), '42')
+        assert.equal(request.searchParams.get('oa_user_id'), '23')
         assert.equal(state.text, type === 'summary' ? '查看流程总结' : '审核通过 (95分)')
         state.click()
         assert.equal(new URL(state.dialogs[0]).pathname, '/embed/' + type)
@@ -158,10 +168,10 @@ for (const origin of ['export', 'template']) {
       assert.equal(state.messages[0], '此流程尚未配置 AI ' + label)
       assert.equal(state.dialogs.length, 0)
     })
-    test(`${origin} ${type}: never uses the belong user as the current operator`, async () => {
-      const state = await run(script, complete, true, { currentUser: null })
+    test(`${origin} ${type}: uses the request belong user as the current operator`, async () => {
+      const state = await run(script, complete)
       const request = new URL(state.requests[0])
-      assert.equal(request.searchParams.get('oa_user_id'), '')
+      assert.equal(request.searchParams.get('oa_user_id'), '23')
     })
     test(`${origin} ${type}: pending auto-run and running jobs remain clickable`, async () => {
       for (const fields of [{ ['should_auto_' + type]: true }, { running_job_id: 'job-1' }]) {
@@ -225,3 +235,44 @@ test('export all: requests both audit and summary context and renders dual butto
   assert.ok(paths.includes('/api/embed/summary/context'))
 })
 
+for (const [origin, source] of [
+  ['export', pcFactory('all', 'test-embed-token')],
+  ['template', fs.readFileSync(new URL('../../docs/oa-configurations/assets/aura-embed-notify.js', import.meta.url), 'utf8')],
+]) {
+  test(`${origin} pc: passes the request belong user to iframe context and operation events`, async () => {
+    const state = { listeners: {}, checks: {}, posted: [], requests: [] }
+    const iframe = {
+      contentWindow: { postMessage: (payload, target) => state.posted.push({ payload, target }) },
+      addEventListener() {},
+    }
+    vm.runInNewContext(source, {
+      document: { getElementById: () => iframe },
+      window: { addEventListener: (type, fn) => { state.listeners[type] = fn } },
+      WfForm: {
+        getBaseInfo: () => ({ requestid: '2110118', workflowid: '815', f_weaver_belongto_userid: '2480' }),
+        registerCheckEvent: (type, fn) => { state.checks[type] = fn },
+        OPER_SAVE: 'save', OPER_SUBMIT: 'submit',
+      },
+      jQuery: () => ({ ready: fn => fn() }),
+      fetch: async (url, options) => { state.requests.push({ url, options }); return { ok: true } },
+      console: { log() {}, warn() {} },
+      setTimeout: () => 1,
+      clearTimeout() {},
+      setInterval: () => 1,
+      clearInterval() {},
+    })
+
+    const direct = { postMessage: (payload, target) => state.posted.push({ payload, target }) }
+    state.listeners.message({
+      origin: 'https://aura.example.com',
+      data: { type: 'aura-oa-request-requestid' },
+      source: direct,
+    })
+    assert.equal(state.posted.at(-1).payload.oa_current_user_id, '2480')
+
+    await new Promise(resolve => state.checks.submit(resolve))
+    const body = new URLSearchParams(state.requests.at(-1).options.body)
+    assert.equal(body.get('oa_current_user_id'), '2480')
+    assert.equal(body.get('action'), 'submit_requested')
+  })
+}
