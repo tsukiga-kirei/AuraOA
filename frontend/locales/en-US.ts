@@ -3061,6 +3061,7 @@ export default {
   "admin.data.summarizedProcesses": "Summarized",
   "admin.data.summaryBlockCount": "Summary Blocks",
   "admin.data.thSummaryBlocks": "Summary Blocks",
+  "admin.data.summaryBlocksUnit": "blocks",
   "admin.data.thSummaryCount": "Summary Count",
   "admin.data.flowAuditTitle": "Flow Analysis",
   "admin.data.viewRawOutput": "View Raw Output",

@@ -461,19 +461,16 @@ function getResultTitle(label: string, score?: number | string | null, confidenc
   return `${text} · AI ${confidence}%`
 }
 
-const resultOverflowTitle = ref<Record<string, string>>({})
+function joinTitle(...parts: Array<string | undefined | null>) {
+  return parts.map((part) => (part == null ? '' : String(part).trim())).filter(Boolean).join(' · ')
+}
 
-function syncResultOverflow(id: string, el: EventTarget | null, fullText: string) {
-  const node = el as HTMLElement | null
-  if (!node) return
-  const textEl = node.querySelector('.result-tag-text') as HTMLElement | null
-  const overflowing =
-    node.scrollWidth > node.clientWidth + 1 ||
-    !!(textEl && textEl.scrollWidth > textEl.clientWidth + 1)
-  const next = overflowing ? fullText : ''
-  if (resultOverflowTitle.value[id] !== next) {
-    resultOverflowTitle.value[id] = next
-  }
+function getSourceActionTitle(channel?: string, triggerDetail?: string) {
+  return joinTitle(getSourceChannelLabel(channel || 'workbench'), getEmbedTriggerAction(triggerDetail)?.label)
+}
+
+function getOperatorActionTitle(name?: string, triggerDetail?: string) {
+  return joinTitle(name || '-', getEmbedTriggerAction(triggerDetail)?.label)
 }
 
 function getComplianceLabel(value: string) {
@@ -1334,32 +1331,46 @@ onMounted(async () => {
           </tr>
           <tr v-else v-for="item in auditSnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
-            <td class="table-title-cell"><span :title="item.title">{{ item.title }}</span></td>
-            <td class="operator-cell" :title="item.operator || '-'">{{ item.operator || '-' }}</td>
-            <td :title="item.department || '-'">{{ item.department || '-' }}</td>
-            <td class="text-secondary table-type-cell"><span :title="item.process_type">{{ item.process_type }}</span></td>
+            <td class="table-title-cell">
+              <OverflowTooltip :text="item.title" block>
+                <span class="table-clamp" data-overflow-check>{{ item.title }}</span>
+              </OverflowTooltip>
+            </td>
+            <td class="operator-cell">
+              <OverflowTooltip :text="item.operator || '-'" block>{{ item.operator || '-' }}</OverflowTooltip>
+            </td>
+            <td>
+              <OverflowTooltip :text="item.department || '-'" block>{{ item.department || '-' }}</OverflowTooltip>
+            </td>
+            <td class="text-secondary table-type-cell">
+              <OverflowTooltip :text="item.process_type" block>
+                <span class="table-clamp" data-overflow-check>{{ item.process_type }}</span>
+              </OverflowTooltip>
+            </td>
             <td class="source-action-cell">
-              <div class="source-action-stack">
-                <span
-                    class="result-tag"
-                    :style="getSourceChannelStyle(item.channel)"
-                >
-                  {{ getSourceChannelLabel(item.channel || 'workbench') }}
-                </span>
-                <span
-                    v-if="item.channel === 'embed_standard' && getEmbedTriggerAction(item.trigger_detail)"
-                    class="result-tag result-tag--action"
-                    :style="getEmbedTriggerActionStyle(item.trigger_detail)"
-                >
-                  {{ getEmbedTriggerAction(item.trigger_detail)?.label }}
-                </span>
-              </div>
+              <OverflowTooltip :text="getSourceActionTitle(item.channel, item.trigger_detail)" block>
+                <div class="source-action-stack">
+                  <span
+                      class="result-tag"
+                      :style="getSourceChannelStyle(item.channel)"
+                  >
+                    {{ getSourceChannelLabel(item.channel || 'workbench') }}
+                  </span>
+                  <span
+                      v-if="item.channel === 'embed_standard' && getEmbedTriggerAction(item.trigger_detail)"
+                      class="result-tag result-tag--action"
+                      :style="getEmbedTriggerActionStyle(item.trigger_detail)"
+                  >
+                    {{ getEmbedTriggerAction(item.trigger_detail)?.label }}
+                  </span>
+                </div>
+              </OverflowTooltip>
             </td>
             <td class="result-cell">
-              <a-tooltip
+              <OverflowTooltip
                   v-if="item.recommendation"
-                  :title="resultOverflowTitle[`audit:${item.id}`] || undefined"
-                  :mouse-enter-delay="0.35"
+                  :text="getResultTitle(getRecLabel(item.recommendation), item.score, item.confidence)"
+                  block
               >
                 <span
                     class="result-tag result-tag--fit"
@@ -1367,19 +1378,14 @@ onMounted(async () => {
                     color: recommendationConfig[item.recommendation]?.color,
                     background: recommendationConfig[item.recommendation]?.bg,
                   }"
-                    @mouseenter="syncResultOverflow(
-                      `audit:${item.id}`,
-                      $event.currentTarget,
-                      getResultTitle(getRecLabel(item.recommendation), item.score, item.confidence),
-                    )"
                 >
                   <CheckCircleOutlined v-if="item.recommendation === 'approve'" />
                   <CloseCircleOutlined v-else-if="item.recommendation === 'return'" />
                   <AlertOutlined v-else />
-                  <span class="result-tag-text">{{ getRecLabel(item.recommendation) }} {{ item.score }}{{ t('admin.data.points') }}</span>
+                  <span class="result-tag-text" data-overflow-check>{{ getRecLabel(item.recommendation) }} {{ item.score }}{{ t('admin.data.points') }}</span>
                   <span class="conf-pill">AI {{ item.confidence }}%</span>
                 </span>
-              </a-tooltip>
+              </OverflowTooltip>
             </td>
             <td>{{ getAuditCount(item.valid_log_ids) }}</td>
             <td class="text-secondary table-time-cell">{{ item.updated_at_fmt }}</td>
@@ -1514,12 +1520,24 @@ onMounted(async () => {
             <td colspan="9" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in cronLogs" :key="item.id">
-            <td>{{ item.task_label }}</td>
-            <td class="text-secondary">{{ item.task_type_label || item.task_type }}</td>
-            <td>{{ getTriggerTypeLabel(item.trigger_type) }}</td>
-            <td>{{ item.created_by || '-' }}</td>
-            <td>{{ item.task_owner_display_name || '-' }}</td>
-            <td>{{ item.department || '-' }}</td>
+            <td>
+              <OverflowTooltip :text="item.task_label" block>{{ item.task_label }}</OverflowTooltip>
+            </td>
+            <td class="text-secondary">
+              <OverflowTooltip :text="item.task_type_label || item.task_type" block>{{ item.task_type_label || item.task_type }}</OverflowTooltip>
+            </td>
+            <td>
+              <OverflowTooltip :text="getTriggerTypeLabel(item.trigger_type)" block>{{ getTriggerTypeLabel(item.trigger_type) }}</OverflowTooltip>
+            </td>
+            <td>
+              <OverflowTooltip :text="item.created_by || '-'" block>{{ item.created_by || '-' }}</OverflowTooltip>
+            </td>
+            <td>
+              <OverflowTooltip :text="item.task_owner_display_name || '-'" block>{{ item.task_owner_display_name || '-' }}</OverflowTooltip>
+            </td>
+            <td>
+              <OverflowTooltip :text="item.department || '-'" block>{{ item.department || '-' }}</OverflowTooltip>
+            </td>
             <td>
                 <span
                     class="status-tag"
@@ -1700,15 +1718,27 @@ onMounted(async () => {
           </tr>
           <tr v-else v-for="item in archiveSnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
-            <td>{{ item.title }}</td>
-            <td>{{ item.operator || '-' }}</td>
-            <td>{{ item.department || '-' }}</td>
-            <td class="text-secondary">{{ item.process_type }}</td>
+            <td class="table-title-cell">
+              <OverflowTooltip :text="item.title" block>
+                <span class="table-clamp" data-overflow-check>{{ item.title }}</span>
+              </OverflowTooltip>
+            </td>
+            <td class="operator-cell">
+              <OverflowTooltip :text="item.operator || '-'" block>{{ item.operator || '-' }}</OverflowTooltip>
+            </td>
+            <td>
+              <OverflowTooltip :text="item.department || '-'" block>{{ item.department || '-' }}</OverflowTooltip>
+            </td>
+            <td class="text-secondary table-type-cell">
+              <OverflowTooltip :text="item.process_type" block>
+                <span class="table-clamp" data-overflow-check>{{ item.process_type }}</span>
+              </OverflowTooltip>
+            </td>
             <td class="result-cell">
-              <a-tooltip
+              <OverflowTooltip
                   v-if="item.compliance"
-                  :title="resultOverflowTitle[`archive:${item.id}`] || undefined"
-                  :mouse-enter-delay="0.35"
+                  :text="getResultTitle(getComplianceLabel(item.compliance), item.compliance_score, item.confidence)"
+                  block
               >
                 <span
                     class="result-tag result-tag--fit"
@@ -1716,19 +1746,14 @@ onMounted(async () => {
                     color: complianceConfig[item.compliance]?.color,
                     background: complianceConfig[item.compliance]?.bg,
                   }"
-                    @mouseenter="syncResultOverflow(
-                      `archive:${item.id}`,
-                      $event.currentTarget,
-                      getResultTitle(getComplianceLabel(item.compliance), item.compliance_score, item.confidence),
-                    )"
                 >
                   <CheckCircleOutlined v-if="item.compliance === 'compliant'" />
                   <AlertOutlined v-else-if="item.compliance === 'partially_compliant'" />
                   <CloseCircleOutlined v-else />
-                  <span class="result-tag-text">{{ getComplianceLabel(item.compliance) }} {{ item.compliance_score }}{{ t('admin.data.points') }}</span>
+                  <span class="result-tag-text" data-overflow-check>{{ getComplianceLabel(item.compliance) }} {{ item.compliance_score }}{{ t('admin.data.points') }}</span>
                   <span class="conf-pill">AI {{ item.confidence }}%</span>
                 </span>
-              </a-tooltip>
+              </OverflowTooltip>
               <span v-else class="text-secondary">-</span>
             </td>
             <td>{{ getAuditCount(item.valid_archive_log_ids) }}</td>
@@ -1909,32 +1934,48 @@ onMounted(async () => {
           </tr>
           <tr v-else v-for="item in summarySnapshots" :key="item.id">
             <td class="text-mono">{{ item.process_id }}</td>
-            <td class="table-title-cell"><span :title="item.title">{{ item.title }}</span></td>
-            <td class="operator-cell" :title="item.operator || '-'">{{ item.operator || '-' }}</td>
-            <td :title="item.department || '-'">{{ item.department || '-' }}</td>
-            <td class="text-secondary table-type-cell"><span :title="item.process_type">{{ item.process_type }}</span></td>
-            <td class="source-action-cell">
-              <div class="source-action-stack">
-                <span
-                    class="result-tag"
-                    :style="getSourceChannelStyle(item.channel)"
-                >
-                  {{ getSourceChannelLabel(item.channel || 'workbench') }}
-                </span>
-                <span
-                    v-if="item.channel === 'embed' && getEmbedTriggerAction(item.trigger_detail)"
-                    class="result-tag result-tag--action"
-                    :style="getEmbedTriggerActionStyle(item.trigger_detail)"
-                >
-                  {{ getEmbedTriggerAction(item.trigger_detail)?.label }}
-                </span>
-              </div>
+            <td class="table-title-cell">
+              <OverflowTooltip :text="item.title" block>
+                <span class="table-clamp" data-overflow-check>{{ item.title }}</span>
+              </OverflowTooltip>
+            </td>
+            <td class="operator-cell">
+              <OverflowTooltip :text="item.operator || '-'" block>{{ item.operator || '-' }}</OverflowTooltip>
             </td>
             <td>
-              <span class="result-tag" style="color: var(--color-primary); background: var(--color-primary-bg);">
-                <FileTextOutlined />
-                {{ item.block_count }} 块
-              </span>
+              <OverflowTooltip :text="item.department || '-'" block>{{ item.department || '-' }}</OverflowTooltip>
+            </td>
+            <td class="text-secondary table-type-cell">
+              <OverflowTooltip :text="item.process_type" block>
+                <span class="table-clamp" data-overflow-check>{{ item.process_type }}</span>
+              </OverflowTooltip>
+            </td>
+            <td class="source-action-cell">
+              <OverflowTooltip :text="getSourceActionTitle(item.channel, item.trigger_detail)" block>
+                <div class="source-action-stack">
+                  <span
+                      class="result-tag"
+                      :style="getSourceChannelStyle(item.channel)"
+                  >
+                    {{ getSourceChannelLabel(item.channel || 'workbench') }}
+                  </span>
+                  <span
+                      v-if="item.channel === 'embed' && getEmbedTriggerAction(item.trigger_detail)"
+                      class="result-tag result-tag--action"
+                      :style="getEmbedTriggerActionStyle(item.trigger_detail)"
+                  >
+                    {{ getEmbedTriggerAction(item.trigger_detail)?.label }}
+                  </span>
+                </div>
+              </OverflowTooltip>
+            </td>
+            <td>
+              <OverflowTooltip :text="`${item.block_count} ${t('admin.data.summaryBlocksUnit', '块')}`" block>
+                <span class="result-tag" style="color: var(--color-primary); background: var(--color-primary-bg);">
+                  <FileTextOutlined />
+                  {{ item.block_count }} {{ t('admin.data.summaryBlocksUnit', '块') }}
+                </span>
+              </OverflowTooltip>
             </td>
             <td>{{ getAuditCount(item.valid_log_ids) }}</td>
             <td class="text-secondary table-time-cell">{{ item.updated_at_fmt }}</td>
@@ -2067,20 +2108,26 @@ onMounted(async () => {
             <td colspan="8" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in agentSessions" :key="item.id">
-            <td style="font-weight: 500; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              {{ item.title || t('chat.defaultSessionTitle', '新对话') }}
+            <td class="table-title-cell">
+              <OverflowTooltip :text="item.title || t('chat.defaultSessionTitle', '新对话')" block>
+                <span class="table-clamp" data-overflow-check>{{ item.title || t('chat.defaultSessionTitle', '新对话') }}</span>
+              </OverflowTooltip>
             </td>
             <td>
-              <span class="result-tag" style="color: var(--color-primary); background: var(--color-primary-bg);">
-                <RobotOutlined style="margin-right: 4px;" />
-                {{ item.agent_name || item.agent_code }}
-              </span>
+              <OverflowTooltip :text="item.agent_name || item.agent_code" block>
+                <span class="result-tag result-tag--fit" style="color: var(--color-primary); background: var(--color-primary-bg);">
+                  <RobotOutlined />
+                  <span class="result-tag-text" data-overflow-check>{{ item.agent_name || item.agent_code }}</span>
+                </span>
+              </OverflowTooltip>
             </td>
-            <td>
-              <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--color-text-primary);">
-                <UserOutlined style="color: var(--color-text-tertiary);" />
-                {{ item.user_name || '-' }}
-              </span>
+            <td class="operator-cell">
+              <OverflowTooltip :text="item.user_name || '-'" block>
+                <span class="source-action-stack">
+                  <UserOutlined style="color: var(--color-text-tertiary); flex-shrink: 0;" />
+                  <span class="cell-ellipsis-text" data-overflow-check>{{ item.user_name || '-' }}</span>
+                </span>
+              </OverflowTooltip>
             </td>
             <td>{{ item.message_count }}</td>
             <td class="text-mono">{{ item.token_count || 0 }}</td>
@@ -2213,10 +2260,10 @@ onMounted(async () => {
         <table class="data-table data-table--llm">
           <colgroup>
             <col style="width: 100px;" />
-            <col style="width: 260px;" />
+            <col style="width: 240px;" />
             <col style="width: 80px;" />
             <col style="width: 100px;" />
-            <col style="width: 210px;" />
+            <col style="width: 300px;" />
             <col style="width: 150px;" />
             <col style="width: 56px;" />
           </colgroup>
@@ -2237,20 +2284,26 @@ onMounted(async () => {
           </tr>
           <tr v-else v-for="item in llmProcesses" :key="item.process_id">
             <td>{{ item.process_id }}</td>
-            <td class="table-title-cell"><span :title="item.process_title || '-'">{{ item.process_title || '-' }}</span></td>
+            <td class="table-title-cell">
+              <OverflowTooltip :text="item.process_title || '-'" block>
+                <span class="table-clamp" data-overflow-check>{{ item.process_title || '-' }}</span>
+              </OverflowTooltip>
+            </td>
             <td>{{ item.call_count }}</td>
             <td>{{ item.total_tokens }}</td>
             <td class="operator-cell">
-              <div class="source-action-stack">
-                <span>{{ item.latest_user_name || '-' }}</span>
-                <span
-                    v-if="getEmbedTriggerAction(item.latest_trigger_detail)"
-                    class="result-tag result-tag--action"
-                    :style="getEmbedTriggerActionStyle(item.latest_trigger_detail)"
-                >
-                  {{ getEmbedTriggerAction(item.latest_trigger_detail)?.label }}
-                </span>
-              </div>
+              <OverflowTooltip :text="getOperatorActionTitle(item.latest_user_name, item.latest_trigger_detail)" block>
+                <div class="source-action-stack">
+                  <span class="cell-ellipsis-text" data-overflow-check>{{ item.latest_user_name || '-' }}</span>
+                  <span
+                      v-if="getEmbedTriggerAction(item.latest_trigger_detail)"
+                      class="result-tag result-tag--action"
+                      :style="getEmbedTriggerActionStyle(item.latest_trigger_detail)"
+                  >
+                    {{ getEmbedTriggerAction(item.latest_trigger_detail)?.label }}
+                  </span>
+                </div>
+              </OverflowTooltip>
             </td>
             <td class="text-secondary table-time-cell">{{ formatDate(item.latest_call_at) }}</td>
             <td>
@@ -3634,7 +3687,7 @@ details[open] .chevron-icon {
 }
 
 .data-table--llm {
-  min-width: 956px;
+  min-width: 1026px;
   table-layout: fixed;
 }
 
@@ -3671,8 +3724,7 @@ details[open] .chevron-icon {
   white-space: normal !important;
 }
 
-.table-title-cell > span,
-.table-type-cell > span {
+.table-clamp {
   display: -webkit-box;
   overflow: hidden;
   line-height: 1.45;
@@ -3758,11 +3810,23 @@ details[open] .chevron-icon {
   gap: 6px;
   flex-wrap: nowrap;
   white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+
+.cell-ellipsis-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .result-tag--action {
   padding: 3px 8px;
   font-weight: 500;
+  flex-shrink: 0;
 }
 
 .status-tag {
