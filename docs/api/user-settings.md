@@ -274,6 +274,12 @@ GET /api/tenant/settings/dashboard-overview
 `summary_count` / `kind=summary`，普通业务用户只统计本人从流程总结工作台完成的记录；
 租户管理员查看租户级汇总。OA 嵌入页自动或手动生成的总结不计入个人工作台指标。
 
+租户管理员的“用户活跃排行”采用混合身份口径：系统内审核、个人嵌入审核、归档复盘与
+工作台总结仍按 AuraOA 用户统计；OA 通用嵌入审核与嵌入总结按执行时保存的
+`oa_operator_id`、人员姓名和 OA 部门快照统计。无法识别 OA 人员时统一显示为
+“OA 嵌入用户/未识别”，不会归到内部承载任务的管理员名下。该展示口径不改变任务归属、
+Token 配额结算和各业务主列表的聚合规则。
+
 ---
 
 ## 用户配置管理（JWT + TenantContext + `tenant_admin`）
