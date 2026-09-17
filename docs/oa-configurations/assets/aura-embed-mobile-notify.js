@@ -16,6 +16,7 @@
   var AURA_EMBED_ORIGIN = 'https://aura.example.com'; // AuraOA 访问地址（末尾不加斜杠）
   var EMBED_ACCESS_TOKEN = 'aura_emb_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // 租户嵌入访问密钥
   var SHOW_ON_DESKTOP = false; // 是否在电脑端启用本脚本的按钮和弹窗；移动端不受影响
+  var AUTO_RUN_BEFORE_OPEN = false; // true=进入表单即自动审/总结（仍受「打开即审」等配置约束）；false=点开详情才审（默认）
   var BUTTON_CONTAINER_ID = 'getMyBt'; // 表单设计器中预留的挂载容器 ID（与 oa-front 习惯一致）
   var EMBED_TYPE = 'audit'; // 嵌入类型：'all'（全部功能双按钮）、'audit'（AI 审核）或 'summary'（流程总结）
   // ==============================
@@ -153,6 +154,47 @@
     ].map(function (item) {
       return encodeURIComponent(item[0]) + '=' + encodeURIComponent(item[1] || '');
     }).join('&');
+  }
+
+  var formOpenPrefetchState = {};
+
+  // 进入表单后按需后台预审：仅当 AUTO_RUN_BEFORE_OPEN 且后端判定 should_auto_* 时发起。
+  function startFormOpenPrefetch(featType, shouldAutoRun, runningJobId, onFail) {
+    if (!AUTO_RUN_BEFORE_OPEN || !shouldAutoRun || runningJobId) return false;
+    var requestId = getRequestId();
+    if (!requestId) return false;
+    var key = featType + ':' + requestId;
+    var state = formOpenPrefetchState[key];
+    if (state === 'inflight' || state === 'done') return true;
+    if (state === 'failed') return false;
+    formOpenPrefetchState[key] = 'inflight';
+    var isSummary = featType === 'summary';
+    var userId = getCurrentUserId();
+    var apiPath = isSummary ? '/api/embed/summary/execute' : '/api/embed/execute';
+    var apiUrl = AURA_EMBED_ORIGIN + apiPath
+      + '?embed_token=' + encodeURIComponent(EMBED_ACCESS_TOKEN)
+      + '&oa_user_id=' + encodeURIComponent(userId);
+    fetch(apiUrl, {
+      method: 'POST',
+      credentials: 'omit',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        process_id: requestId,
+        trigger_source: isSummary ? 'summary_embed_auto' : 'embed_auto',
+        trigger_detail: 'form_open',
+        oa_user_id: userId
+      })
+    }).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).then(function () {
+      formOpenPrefetchState[key] = 'done';
+    }).catch(function (err) {
+      formOpenPrefetchState[key] = 'failed';
+      console.warn('[aura-embed-mobile] 进入表单预审发起失败', err);
+      if (typeof onFail === 'function') onFail();
+    });
+    return true;
   }
 
   // =========================================================================
@@ -320,6 +362,14 @@
           renderStatusButton('yellow', '建议关注' + scoreText, '', false, openDetails);
         }
         return 'completed';
+      }
+      if (shouldAutoRun && startFormOpenPrefetch(isSummary ? 'summary' : 'audit', true, '', function () {
+        lastStatusSignature = '';
+        renderStatusButton('gray', '查看并生成' + name, '', false, openDetails);
+        stopStatusWatch();
+      })) {
+        renderStatusButton('gray', name + '分析中，查看进度', '', false, openDetails);
+        return 'running';
       }
       renderStatusButton('gray', shouldAutoRun ? '查看并生成' + name : 'AI' + name + '详情', '', false, openDetails);
       return 'pending';
@@ -693,6 +743,13 @@
         setDualFeatureState(featType, 'yellow', '建议关注' + scoreText, '', false);
       }
       return 'completed';
+    }
+    if (shouldAutoRun && startFormOpenPrefetch(featType, true, '', function () {
+      dualState[featType].lastSig = '';
+      setDualFeatureState(featType, 'gray', '生成' + name, '', false);
+    })) {
+      setDualFeatureState(featType, 'loading', name + '分析中...', '', true);
+      return 'running';
     }
     setDualFeatureState(featType, 'gray', shouldAutoRun ? '生成' + name : 'AI' + name + '详情', '', false);
     return 'pending';

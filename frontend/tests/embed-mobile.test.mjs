@@ -38,7 +38,7 @@ function addListener(map, type, fn) {
 // 执行实际导出的完整脚本，模拟 OA 容器并记录按钮文案、请求和点击去向。
 async function run(source, payload, httpOK = true, device = {}) {
   const state = {
-    requests: [], dialogs: [], dialogOpts: [], messages: [], text: '', click: null, elements: [], styles: [], queries: [], appended: [],
+    requests: [], requestInits: [], dialogs: [], dialogOpts: [], messages: [], text: '', click: null, elements: [], styles: [], queries: [], appended: [],
     windowListeners: {}, docListeners: {}, timeouts: [], intervals: [], timerId: 0,
   }
   const element = {
@@ -82,8 +82,9 @@ async function run(source, payload, httpOK = true, device = {}) {
       registerCheckEvent: () => {}, OPER_SAVE: 'save', OPER_SUBMIT: 'submit',
     },
     window: win,
-    fetch: async url => {
+    fetch: async (url, init) => {
       state.requests.push(url)
+      state.requestInits.push(init || {})
       return { ok: httpOK, status: httpOK ? 200 : 500, json: async () => payload }
     },
     console: { log() {}, warn() {} },
@@ -186,6 +187,25 @@ for (const origin of ['export', 'template']) {
         assert.ok(state.intervals.length >= 1, 'opening details should watch for a later result')
       }
     })
+    test(`${origin} ${type}: AUTO_RUN_BEFORE_OPEN starts a background job without opening`, async () => {
+      const enabled = script.replace('var AUTO_RUN_BEFORE_OPEN = false', 'var AUTO_RUN_BEFORE_OPEN = true')
+      const skipped = await run(enabled, { supported: true })
+      assert.ok(!skipped.requests.some(url => String(url).includes('/execute')))
+      const state = await run(enabled, { supported: true, ['should_auto_' + type]: true })
+      await flush(state)
+      const executeUrl = state.requests.find(url => String(url).includes('/execute'))
+      assert.ok(executeUrl, 'form load must POST execute when AUTO_RUN_BEFORE_OPEN is true')
+      assert.equal(new URL(executeUrl).pathname, type === 'summary' ? '/api/embed/summary/execute' : '/api/embed/execute')
+      const init = state.requestInits[state.requests.indexOf(executeUrl)]
+      assert.equal(init.method, 'POST')
+      const body = JSON.parse(init.body)
+      assert.equal(body.process_id, '614309')
+      assert.equal(body.trigger_detail, 'form_open')
+      assert.equal(body.trigger_source, type === 'summary' ? 'summary_embed_auto' : 'embed_auto')
+      assert.match(state.text, new RegExp(label + '分析中'))
+      state.click()
+      assert.equal(state.dialogs.length, 1)
+    })
     test(`${origin} ${type}: errors and malformed payloads do not appear successful`, async () => {
       for (const payload of [null, {}, { code: 403, data: complete }, { code: 0, data: null }]) {
         const state = await run(script, payload)
@@ -237,6 +257,20 @@ test('export all: requests both audit and summary context and renders dual butto
   const paths = state.requests.map(r => new URL(r).pathname)
   assert.ok(paths.includes('/api/embed/context'))
   assert.ok(paths.includes('/api/embed/summary/context'))
+})
+
+test('export all: AUTO_RUN_BEFORE_OPEN prefetches both features', async () => {
+  const allScript = factory('all', 'test-embed-token').replace('var AUTO_RUN_BEFORE_OPEN = false', 'var AUTO_RUN_BEFORE_OPEN = true')
+  const state = await run(allScript, { supported: true, should_auto_audit: true, should_auto_summary: true })
+  await flush(state)
+  const paths = state.requests.map(r => new URL(r).pathname)
+  assert.ok(paths.includes('/api/embed/execute'))
+  assert.ok(paths.includes('/api/embed/summary/execute'))
+  const executeInits = state.requestInits.filter(init => init.method === 'POST')
+  assert.equal(executeInits.length, 2)
+  executeInits.forEach(init => {
+    assert.equal(JSON.parse(init.body).trigger_detail, 'form_open')
+  })
 })
 
 for (const [origin, source] of [

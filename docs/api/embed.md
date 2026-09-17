@@ -203,9 +203,9 @@ POST /api/embed/execute
 `use_latest_config` 默认 `false`，自动来源必须保持为 `false`。手动传 `true` 会把流程绑定升级到
 当前最终生效配置后执行；普通“重新审核”继续沿用原版本。
 
-`trigger_detail` 的可见页取值为 `visible_open`，手动按钮为 `manual`。后台内部使用
+`trigger_detail` 的可见页取值为 `visible_open`，手动按钮为 `manual`，移动端进入表单预审为 `form_open`。后台内部使用
 `save_requested`、`submit_requested`、`scheduled_scan` 区分保存、提交与定时扫描。
-嵌入审核与总结使用相同的队列路由语义：手动重新执行和可见页进入交互队列，保存/提交进入
+嵌入审核与总结使用相同的队列路由语义：手动重新执行和可见页进入交互队列，保存/提交与进入表单预审进入
 普通后台队列，流程定时扫描进入独立定时队列。尚未领取的同流程任务可从后台队列提升到
 交互队列；已经执行中的任务不会被中断。系统内审核工作台使用独立 `workbench` 队列，
 不参与嵌入来源比较，也不会共享嵌入结果快照。
@@ -274,7 +274,7 @@ GET /api/embed/summary/context?process_id=598488
 
 可见总结页会先轻量比较指纹；已有结果且未变化时直接展示，退回重提、启用策略范围内的数据或
 提示词变化则以 `visible_open` 进入交互队列。没有结果时按首次打开策略执行。手动“重新总结”
-与可见页都进入交互队列，保存/提交进入普通后台队列，流程级定时扫描进入定时队列。
+与可见页都进入交互队列，保存/提交与进入表单预审进入普通后台队列，流程级定时扫描进入定时队列。
 
 ### 触发总结
 
@@ -290,7 +290,7 @@ POST /api/embed/summary/execute
 }
 ```
 
-`trigger_detail` 的可见页取值为 `visible_open`，手动按钮为 `manual`。后台内部还会记录
+`trigger_detail` 的可见页取值为 `visible_open`，手动按钮为 `manual`，进入表单预审为 `form_open`。后台内部还会记录
 `save_requested`、`submit_requested`、`scheduled_scan`，用于查询任务的真实来源。
 
 ### 查询任务状态
@@ -382,7 +382,7 @@ Cron；服务启动时从该表恢复全部活跃任务。因此配置开启、�
 - `process_summary_logs.oa_context_anchor`：总结时的 OA 变化锚点；
 - `process_summary_logs.process_snapshot.block_dependencies`：各总结块的数据、附件、流程依赖指纹；
 - `process_summary_logs.process_snapshot.regenerated_block_ids`：本次实际重新生成的总结块；
-- `audit_logs.trigger_detail` / `process_summary_logs.trigger_detail`：区分可见页、手动、保存、提交和定时扫描；
+- `audit_logs.trigger_detail` / `process_summary_logs.trigger_detail`：区分可见页、进入表单预审、手动、保存、提交和定时扫描；
 - `audit_logs.queue_kind`：明确记录 `workbench`、`interactive`、`background` 或 `scheduled`；
 - `process_summary_logs.queue_kind`：明确记录 `interactive`、`background` 或 `scheduled`；
 - `schedule_config_id`：定时扫描任务归属的流程配置；

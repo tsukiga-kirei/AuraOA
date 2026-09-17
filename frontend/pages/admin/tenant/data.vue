@@ -532,6 +532,11 @@ function getEmbedTriggerAction(value?: string) {
       color: '#722ed1',
       background: 'rgba(114, 46, 209, 0.10)',
     },
+    form_open: {
+      label: t('admin.data.embedActionFormOpen'),
+      color: '#1d4ed8',
+      background: 'rgba(29, 78, 216, 0.10)',
+    },
     manual: {
       label: t('admin.data.embedActionManual'),
       color: '#d46b08',

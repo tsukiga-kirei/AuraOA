@@ -48,7 +48,7 @@ export interface EmbedExecuteRequest {
   process_type?: string
   title?: string
   trigger_source?: 'embed_auto' | 'embed_manual'
-  trigger_detail?: 'visible_open' | 'manual'
+  trigger_detail?: 'visible_open' | 'manual' | 'form_open'
   use_latest_config?: boolean
   perspective?: 'personal' | 'standard'
   oa_user_id?: string

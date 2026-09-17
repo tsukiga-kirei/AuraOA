@@ -2112,6 +2112,7 @@ export default {
     'admin.data.embedActionSave': '保存触发',
     'admin.data.embedActionSubmit': '提交触发',
     'admin.data.embedActionOpen': '打开触发',
+    'admin.data.embedActionFormOpen': '进入表单',
     'admin.data.embedActionManual': '重新审核',
     'admin.data.embedActionScheduled': '定时检查',
     'admin.data.operatorEmbedAudit': 'OA 嵌入审核',

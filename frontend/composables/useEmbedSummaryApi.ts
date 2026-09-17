@@ -26,7 +26,7 @@ export interface EmbedSummaryExecuteRequest {
   process_type?: string
   title?: string
   trigger_source?: 'summary_embed_auto' | 'summary_embed_manual'
-  trigger_detail?: 'visible_open' | 'manual'
+  trigger_detail?: 'visible_open' | 'manual' | 'form_open'
 	use_latest_config?: boolean
 }
 
