@@ -6380,6 +6380,7 @@ paths:
                   type: string
                   enum:
                   - visible_open
+                  - form_open
                   - manual
                 use_latest_config:
                   type: boolean
@@ -6526,6 +6527,7 @@ paths:
                   type: string
                   enum:
                   - visible_open
+                  - form_open
                   - manual
                 use_latest_config:
                   type: boolean
@@ -8709,7 +8711,7 @@ components:
           - background
           - scheduled
           - workbench
-          description: 任务队列类型；OA 手动/可见页进入 interactive，保存/提交进入 background，流程定时扫描进入 scheduled，系统内审核进入 workbench
+          description: 任务队列类型；OA 手动/可见页进入 interactive，保存/提交/进入表单预审进入 background，流程定时扫描进入 scheduled，系统内审核进入 workbench
         error_message:
           type: string
         config_version_no:

@@ -92,6 +92,7 @@ const (
 
 	SummaryTriggerDetailManual          = "manual"
 	SummaryTriggerDetailVisibleOpen     = "visible_open"
+	SummaryTriggerDetailFormOpen        = "form_open"
 	SummaryTriggerDetailSaveRequested   = "save_requested"
 	SummaryTriggerDetailSubmitRequested = "submit_requested"
 	SummaryTriggerDetailScheduled       = "scheduled_scan"

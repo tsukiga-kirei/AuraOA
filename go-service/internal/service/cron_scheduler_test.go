@@ -44,6 +44,13 @@ func TestNormalizeSummaryTriggerDetail(t *testing.T) {
 		t.Fatalf("保存请求总结来源或队列类型错误: detail=%s queue_kind=%s", detail, queueKind)
 	}
 	detail, queueKind = normalizeSummaryTriggerDetail(
+		model.SummaryTriggerEmbedAuto,
+		model.SummaryTriggerDetailFormOpen,
+	)
+	if detail != model.SummaryTriggerDetailFormOpen || queueKind != model.JobQueueKindBackground {
+		t.Fatalf("进入表单预审总结必须进入后台队列: detail=%s queue_kind=%s", detail, queueKind)
+	}
+	detail, queueKind = normalizeSummaryTriggerDetail(
 		model.SummaryTriggerEmbedManual,
 		model.SummaryTriggerDetailScheduled,
 	)
@@ -66,6 +73,13 @@ func TestNormalizeAuditTriggerDetail(t *testing.T) {
 	)
 	if detail != model.SummaryTriggerDetailSubmitRequested || queueKind != model.JobQueueKindBackground {
 		t.Fatalf("提交请求审核来源或队列类型错误: detail=%s queue_kind=%s", detail, queueKind)
+	}
+	detail, queueKind = normalizeAuditTriggerDetail(
+		model.AuditTriggerEmbedAuto,
+		model.SummaryTriggerDetailFormOpen,
+	)
+	if detail != model.SummaryTriggerDetailFormOpen || queueKind != model.JobQueueKindBackground {
+		t.Fatalf("进入表单预审必须进入后台队列: detail=%s queue_kind=%s", detail, queueKind)
 	}
 	detail, queueKind = normalizeAuditTriggerDetail(
 		model.AuditTriggerEmbedManual,

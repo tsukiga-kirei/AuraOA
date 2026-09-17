@@ -2093,6 +2093,7 @@ export default {
     'admin.data.embedActionSave': 'Saved',
     'admin.data.embedActionSubmit': 'Submitted',
     'admin.data.embedActionOpen': 'Opened',
+    'admin.data.embedActionFormOpen': 'Form Load',
     'admin.data.embedActionManual': 'Re-audited',
     'admin.data.embedActionScheduled': 'Scheduled Check',
     'admin.data.operatorEmbedAudit': 'OA Embed Audit',

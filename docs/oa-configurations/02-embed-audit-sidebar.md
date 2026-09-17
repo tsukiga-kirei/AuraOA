@@ -131,6 +131,7 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
     → 自动注册保存/提交事件（WfForm.OPER_SAVE / OPER_SUBMIT 变更感知）
     → 异步请求 GET /api/embed/context 轻量预检状态
     → 渲染状态胶囊按钮到 #getMyBt 容器（红/黄/绿指示灯）
+    → 若脚本 `AUTO_RUN_BEFORE_OPEN = true` 且预检 `should_auto_audit`，后台 POST execute（`form_open`）
 审批人点击胶囊按钮
     → 调用 weaJs.showDialog(...) 打开全屏/抽屉弹窗
     → URL 自带 ?requestid=...&embed_token=...&oa_user_id=...
@@ -164,7 +165,8 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
    - 终端类型切换至 **移动端（状态按钮+弹窗）**
    - 选择 **流程审核** 或 **流程总结**。移动端每个脚本提供一个入口，不支持“全部功能”；PC 端可同时通知审核与总结。
    - 点击唯一的 **导出移动端脚本**，获取已注入当前租户 Origin 与 Token 的审核脚本 `aura-embed-mobile-notify.js` 或总结脚本 `aura-embed-summary-mobile-notify.js`。总结脚本只查询总结配置，不依赖审核规则。
-   - 状态按钮只读取状态；待生成或正在分析时仍可点击，由详情页启动自动分析或接续任务。
+   - 状态按钮默认只读取状态；待生成或正在分析时仍可点击，由详情页启动自动分析或接续任务。
+   - 脚本配置区的 `var AUTO_RUN_BEFORE_OPEN = false;` 默认点开详情才审。改为 `true` 后，预检到需要自动审/总结时会在打开详情前发起后台任务（`trigger_detail=form_open`），按钮变为分析中，点开可查看进度。仍受流程配置「打开即审 / 数据变化」等开关约束；没有 `requestid` 的编辑态不会预审。
    - 审核/总结结束后，详情页会通知父页；关闭弹窗或回到表单时脚本会再次拉取状态，刷新胶囊灯色。需重新导出并覆盖 OA 脚本（更新 `?v=`）后生效。
    - 更新脚本后覆盖 OA 静态文件并更新引用版本参数（例如 `?v=5`），避免继续加载旧缓存。
    - 仓库静态模板见：[assets/aura-embed-mobile-notify.js](./assets/aura-embed-mobile-notify.js)
@@ -180,6 +182,7 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
    - 改为 `true` 后，电脑端也显示按钮，仍按“存在 `getMyBt` 则嵌入，否则左下角悬浮”的规则定位。
    - 电脑端点击后使用独立的居中详情弹窗，宽度与嵌入页正文一致（760px，窄屏随窗口缩放），高度为当前可视区域的 85%；不再使用移动端 OA 弹窗的百分比尺寸。移动端仍使用原来的 OA 弹窗。
    - 终端判断依据浏览器设备标识并兼容 iPad 桌面标识，不会因电脑窗口或侧栏较窄而启用移动端按钮。
+   - 若同时开启 `AUTO_RUN_BEFORE_OPEN`，电脑端弹窗入口也会在进入表单后预审，不占用详情页交互队列。
    - 若遇到 `matched.at is not a function`，需更新部署 AuraOA 前端以加载路由初始化前的兼容补丁；仅替换 OA 脚本不能修复嵌入页的浏览器兼容性。
 
 ---

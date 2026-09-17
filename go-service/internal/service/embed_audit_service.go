@@ -634,6 +634,8 @@ func normalizeAuditTriggerDetail(trigger, detail string) (string, string) {
 	switch strings.TrimSpace(detail) {
 	case model.SummaryTriggerDetailVisibleOpen:
 		return model.SummaryTriggerDetailVisibleOpen, model.JobQueueKindInteractive
+	case model.SummaryTriggerDetailFormOpen:
+		return model.SummaryTriggerDetailFormOpen, model.JobQueueKindBackground
 	case model.SummaryTriggerDetailScheduled:
 		return model.SummaryTriggerDetailScheduled, model.JobQueueKindScheduled
 	case model.SummaryTriggerDetailSaveRequested:
