@@ -3065,6 +3065,7 @@ export default {
   "admin.data.summarizedProcesses": "已总结流程",
   "admin.data.summaryBlockCount": "总结块数量",
   "admin.data.thSummaryBlocks": "总结块",
+  "admin.data.summaryBlocksUnit": "块",
   "admin.data.thSummaryCount": "总结次数",
   "admin.data.flowAuditTitle": "流程分析",
   "admin.data.viewRawOutput": "查看模型原始输出",
