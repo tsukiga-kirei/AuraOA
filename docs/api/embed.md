@@ -92,7 +92,9 @@ POST /api/embed/events
 放行 OA 操作前读取 `workflow_requestbase.requestid` 高水位并将事件写入
 `embed_refresh_events`；约 2 秒后按“高水位之后 + workflow_id”解析新 requestid，
 未落库时继续在约 5 秒、10 秒检查。唯一候选直接采用；出现多个候选时，
-只使用 `oa_current_user_id` 辅助消歧，不使用 `oa_belong_user_id`，也不把当前人员作为创建人硬过滤条件。
+只使用 `oa_current_user_id` 辅助消歧，也不把当前人员作为创建人硬过滤条件。OA 脚本从
+`WfForm.getBaseInfo().f_weaver_belongto_userid` 读取当前打开请求的人员上下文，并以
+`oa_current_user_id` 字段传给 AuraOA；不再依赖部分流程监控页面可能为空的 `getGlobalStore().commonParam.currentUserid`。
 仍不能唯一确认时标记 `ambiguous`，不会猜测错误流程，也不会影响 OA 流程自身的保存或提交。
 
 `oa_current_user_id` 同时作为本次嵌入操作人的唯一来源。审核或总结任务创建时会通过 OA 组织数据解析

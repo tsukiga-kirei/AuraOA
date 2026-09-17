@@ -547,17 +547,13 @@ ${urlComment}
   function captureOperationContext(action) {
     var occurredAtMs = Date.now();
     var base = WfForm.getBaseInfo() || {};
-    var store = WfForm.getGlobalStore();
-    var currentUserId = store && store.commonParam && store.commonParam.currentUserid != null
-      ? String(store.commonParam.currentUserid).trim()
-      : '';
     return {
       action: action,
       event_id: createEventId(),
       occurred_at_ms: occurredAtMs,
       requestid: getRequestId(),
       workflow_id: base.workflowid != null ? String(base.workflowid).trim() : '',
-      oa_current_user_id: currentUserId
+      oa_current_user_id: getCurrentUserId()
     };
   }
 
@@ -573,10 +569,10 @@ ${urlComment}
 
   function getCurrentUserId() {
     try {
-      if (typeof WfForm !== 'undefined' && WfForm.getGlobalStore) {
-        var store = WfForm.getGlobalStore();
-        if (store && store.commonParam && store.commonParam.currentUserid != null) {
-          return String(store.commonParam.currentUserid).trim();
+      if (typeof WfForm !== 'undefined' && WfForm.getBaseInfo) {
+        var base = WfForm.getBaseInfo() || {};
+        if (base.f_weaver_belongto_userid != null) {
+          return String(base.f_weaver_belongto_userid).trim();
         }
       }
     } catch (e) {}
@@ -819,10 +815,10 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
 
   function getCurrentUserId() {
     try {
-      if (typeof WfForm !== 'undefined' && WfForm.getGlobalStore) {
-        var store = WfForm.getGlobalStore();
-        if (store && store.commonParam && store.commonParam.currentUserid != null) {
-          return String(store.commonParam.currentUserid).trim();
+      if (typeof WfForm !== 'undefined' && WfForm.getBaseInfo) {
+        var base = WfForm.getBaseInfo() || {};
+        if (base.f_weaver_belongto_userid != null) {
+          return String(base.f_weaver_belongto_userid).trim();
         }
       }
     } catch (e) {}

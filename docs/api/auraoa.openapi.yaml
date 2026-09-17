@@ -8965,7 +8965,7 @@ components:
           description: 首次新建流程缺少 process_id 时必填
         oa_current_user_id:
           type: string
-          description: OA 当前操作用户 ID；用于多候选辅助消歧，并解析当次操作人的姓名和部门快照。不使用 oa_belong_user_id
+          description: OA 当前操作用户 ID；OA 脚本从 WfForm.getBaseInfo().f_weaver_belongto_userid 读取当前打开请求的人员上下文，用于多候选辅助消歧，并解析当次操作人的姓名和部门快照
         occurred_at_ms:
           type: integer
           format: int64
