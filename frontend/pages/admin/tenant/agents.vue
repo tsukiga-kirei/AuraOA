@@ -535,13 +535,13 @@ onMounted(() => {
       </div>
 
       <div class="data-table-card data-table-card--agents">
-        <a-table :dataSource="agents" :rowKey="(r: AgentDefinitionItem) => r.id" :loading="loading" :pagination="false">
-          <a-table-column :title="t('agentAdmin.col.code')" dataIndex="agent_code" width="130px">
+        <a-table :dataSource="agents" :rowKey="(r: AgentDefinitionItem) => r.id" :loading="loading" :pagination="false" :scroll="{ x: 1192 }">
+          <a-table-column :title="t('agentAdmin.col.code')" dataIndex="agent_code" :width="120">
             <template #default="{ text }">
               <OverflowTooltip :text="text" block>{{ text }}</OverflowTooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="200px">
+          <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" :width="180">
             <template #default="{ record }">
               <OverflowTooltip :text="record.name" block>
                 <span class="name-cell">
@@ -551,19 +551,21 @@ onMounted(() => {
               </OverflowTooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description">
+          <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description" :width="240">
             <template #default="{ text }">
               <OverflowTooltip :text="text || '-'" block>
                 <span class="cell-ellipsis-text desc-cell" data-overflow-check>{{ text || '-' }}</span>
               </OverflowTooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.type')" dataIndex="is_system" width="90px">
+          <a-table-column :title="t('agentAdmin.col.type')" dataIndex="is_system" :width="80">
             <template #default="{ text }">
-              <a-tag :color="text ? 'blue' : 'green'">{{ text ? t('agentAdmin.systemBuiltin') : t('agentAdmin.tenantCustom') }}</a-tag>
+              <OverflowTooltip :text="text ? t('agentAdmin.systemBuiltin') : t('agentAdmin.tenantCustom')" block>
+                <a-tag :color="text ? 'blue' : 'green'">{{ text ? t('agentAdmin.systemBuiltin') : t('agentAdmin.tenantCustom') }}</a-tag>
+              </OverflowTooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.mountedCaps')" width="240px">
+          <a-table-column :title="t('agentAdmin.col.mountedCaps')" :width="200">
             <template #default="{ record }">
               <OverflowTooltip :text="getCapsSummary(record.tool_codes)" block>
                 <div class="caps-row">
@@ -581,12 +583,12 @@ onMounted(() => {
               </OverflowTooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.quickQuestions')" width="90px">
+          <a-table-column :title="t('agentAdmin.col.quickQuestions')" :width="88">
             <template #default="{ record }">
               <a-tag color="geekblue">{{ record.quick_questions?.length || 0 }} {{ t('agentAdmin.quickQuestionUnit', '条') }}</a-tag>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.permissions')" width="110px">
+          <a-table-column :title="t('agentAdmin.col.permissions')" :width="100">
             <template #default="{ record }">
               <a-tag v-if="record.access_control?.allow_all !== false" color="green">
                 {{ t('agentAdmin.permAll') }}
@@ -598,12 +600,14 @@ onMounted(() => {
               </a-tooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.status')" dataIndex="enabled" width="100px">
+          <a-table-column :title="t('agentAdmin.col.status')" dataIndex="enabled" :width="88">
             <template #default="{ text }">
-              <a-badge :status="text ? 'success' : 'default'" :text="text ? t('agentAdmin.enabled') : t('agentAdmin.disabled')" />
+              <OverflowTooltip :text="text ? t('agentAdmin.enabled') : t('agentAdmin.disabled')" block>
+                <a-badge :status="text ? 'success' : 'default'" :text="text ? t('agentAdmin.enabled') : t('agentAdmin.disabled')" />
+              </OverflowTooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.actions')" width="120px">
+          <a-table-column :title="t('agentAdmin.col.actions')" :width="96" :fixed="'right'">
             <template #default="{ record }">
               <a-space>
                 <a-button type="link" size="small" @click="openEditAgent(record)">{{ t('agentAdmin.edit') }}</a-button>
@@ -631,19 +635,23 @@ onMounted(() => {
       </div>
 
       <div class="data-table-card data-table-card--mcp">
-        <a-table :dataSource="mcpServers" :rowKey="(r: MCPServerItem) => r.id" :loading="loading" :pagination="false">
-          <a-table-column :title="t('agentAdmin.col.code')" dataIndex="server_code" width="140px">
+        <a-table :dataSource="mcpServers" :rowKey="(r: MCPServerItem) => r.id" :loading="loading" :pagination="false" :scroll="{ x: 1280 }">
+          <a-table-column :title="t('agentAdmin.col.code')" dataIndex="server_code" :width="140">
             <template #default="{ text }">
               <OverflowTooltip :text="text" block>{{ text }}</OverflowTooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="180px">
+          <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" :width="160">
             <template #default="{ text }">
               <OverflowTooltip :text="text" block>{{ text }}</OverflowTooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.transport')" dataIndex="transport_type" width="90px" />
-          <a-table-column :title="t('agentAdmin.col.endpoint')" dataIndex="endpoint_url">
+          <a-table-column :title="t('agentAdmin.col.transport')" dataIndex="transport_type" :width="90">
+            <template #default="{ text }">
+              <OverflowTooltip :text="text" block>{{ text }}</OverflowTooltip>
+            </template>
+          </a-table-column>
+          <a-table-column :title="t('agentAdmin.col.endpoint')" dataIndex="endpoint_url" :width="240">
             <template #default="{ text }">
               <OverflowTooltip :text="text || '-'" block>
                 <span class="cell-ellipsis-text desc-cell" data-overflow-check>{{ text || '-' }}</span>
@@ -665,12 +673,14 @@ onMounted(() => {
               <a-tag color="cyan">{{ record.cached_tools?.length || 0 }} {{ t('agentAdmin.toolsUnit', '个工具') }}</a-tag>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.status')" dataIndex="enabled" width="100px">
+          <a-table-column :title="t('agentAdmin.col.status')" dataIndex="enabled" :width="88">
             <template #default="{ text }">
-              <a-badge :status="text ? 'success' : 'default'" :text="text ? t('agentAdmin.enabled') : t('agentAdmin.disabled')" />
+              <OverflowTooltip :text="text ? t('agentAdmin.enabled') : t('agentAdmin.disabled')" block>
+                <a-badge :status="text ? 'success' : 'default'" :text="text ? t('agentAdmin.enabled') : t('agentAdmin.disabled')" />
+              </OverflowTooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.actions')" width="200px">
+          <a-table-column :title="t('agentAdmin.col.actions')" :width="200" :fixed="'right'">
             <template #default="{ record }">
               <a-space>
                 <a-button type="link" size="small" @click="openEditMCP(record)">{{ t('agentAdmin.edit') }}</a-button>
@@ -695,18 +705,18 @@ onMounted(() => {
       </div>
 
       <div class="data-table-card data-table-card--skills">
-        <a-table :dataSource="skills" :rowKey="(r: AgentSkillItem) => r.id" :loading="loading" :pagination="false">
-          <a-table-column :title="t('agentAdmin.col.code')" dataIndex="skill_code" width="160px">
+        <a-table :dataSource="skills" :rowKey="(r: AgentSkillItem) => r.id" :loading="loading" :pagination="false" :scroll="{ x: 1000 }">
+          <a-table-column :title="t('agentAdmin.col.code')" dataIndex="skill_code" :width="140">
             <template #default="{ text }">
               <OverflowTooltip :text="text" block>{{ text }}</OverflowTooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" width="180px">
+          <a-table-column :title="t('agentAdmin.col.name')" dataIndex="name" :width="160">
             <template #default="{ text }">
               <OverflowTooltip :text="text" block>{{ text }}</OverflowTooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description">
+          <a-table-column :title="t('agentAdmin.col.desc')" dataIndex="description" :width="240">
             <template #default="{ text }">
               <OverflowTooltip :text="text || '-'" block>
                 <span class="cell-ellipsis-text desc-cell" data-overflow-check>{{ text || '-' }}</span>
@@ -728,7 +738,7 @@ onMounted(() => {
               <a-tag :color="text ? 'blue' : 'green'">{{ text ? t('agentAdmin.systemBuiltin') : t('agentAdmin.tenantCustom') }}</a-tag>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.actions')" width="130px">
+          <a-table-column :title="t('agentAdmin.col.actions')" :width="130" :fixed="'right'">
             <template #default="{ record }">
               <a-space>
                 <a-button v-if="!record.is_system" type="link" size="small" @click="openEditSkill(record)">{{ t('agentAdmin.edit') }}</a-button>
@@ -1272,20 +1282,18 @@ onMounted(() => {
   width: 100%;
   background: transparent;
 }
-.data-table-card :deep(.ant-table-container),
 .data-table-card :deep(.ant-table-content),
-.data-table-card :deep(.ant-table-body) {
-  overflow: visible !important;
+.data-table-card :deep(.ant-table-body),
+.data-table-card :deep(.ant-table-hide-scrollbar) {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
-.data-table-card :deep(.ant-table table) {
-  table-layout: fixed;
+.data-table-card :deep(.ant-table-content)::-webkit-scrollbar,
+.data-table-card :deep(.ant-table-body)::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
-.data-table-card--agents :deep(.ant-table),
-.data-table-card--agents :deep(.ant-table table) { min-width: 1240px; }
-.data-table-card--mcp :deep(.ant-table),
-.data-table-card--mcp :deep(.ant-table table) { min-width: 1280px; }
-.data-table-card--skills :deep(.ant-table),
-.data-table-card--skills :deep(.ant-table table) { min-width: 1000px; }
 .data-table-card :deep(.ant-table-thead > tr > th) {
   background: var(--color-bg-page);
   font-weight: 600;
@@ -1302,6 +1310,15 @@ onMounted(() => {
 }
 .data-table-card :deep(.ant-badge-status-text) {
   white-space: nowrap;
+}
+.data-table-card :deep(.ant-table-cell-fix-right) {
+  background: var(--color-bg-card);
+}
+.data-table-card :deep(.ant-table-thead .ant-table-cell-fix-right) {
+  background: var(--color-bg-page);
+}
+.data-table-card :deep(.ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right) {
+  background: var(--color-bg-hover);
 }
 .data-table-card :deep(.ant-space) {
   flex-wrap: nowrap;

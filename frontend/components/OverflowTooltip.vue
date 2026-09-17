@@ -1,19 +1,21 @@
 <script setup lang="ts">
 /**
- * 表格单元格溢出提示：仅当内容超出可视宽度/高度时，才用主题 tooltip 展示全文。
+ * 表格单元格溢出提示：内容被截断时才显示主题 tooltip，适用于任意可能省略的列。
  */
 const props = withDefaults(defineProps<{
   text?: string
   block?: boolean
   delay?: number
 }>(), {
-  delay: 0.35,
+  delay: 0.2,
 })
 
 const overflowing = ref(false)
 
 function isOverflowing(el: HTMLElement) {
   if (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1) return true
+  const parent = el.parentElement
+  if (parent && (parent.scrollWidth > parent.clientWidth + 1 || parent.scrollHeight > parent.clientHeight + 1)) return true
   return Array.from(el.querySelectorAll('[data-overflow-check]')).some((child) => {
     const node = child as HTMLElement
     return node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1
