@@ -37,9 +37,11 @@
       style.id = 'aura-btn-pulse-style';
       style.textContent =
         '@keyframes auraBtnSpin{to{transform:rotate(360deg)}}' +
+        '@keyframes auraDraw{to{stroke-dashoffset:0}}' +
+        '@keyframes auraDrawLoop{0%,8%{stroke-dashoffset:1}42%,62%{stroke-dashoffset:0}100%{stroke-dashoffset:1}}' +
         '.aura-status-button{box-sizing:border-box;appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;gap:9px;min-height:40px;max-width:100%;padding:6px 11px 6px 7px;margin:0;border:1px solid rgba(148,163,184,.22);border-radius:14px;background:#fff;color:#263247;box-shadow:0 4px 16px rgba(15,23,42,.08),0 1px 3px rgba(15,23,42,.04);font:600 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.1px;text-align:left;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:box-shadow .18s ease,transform .18s ease,border-color .18s ease;}' +
         '.aura-status-icon{display:flex;align-items:center;justify-content:center;width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:var(--aura-status-tint);color:var(--aura-status-color);}' +
-        '.aura-status-icon svg{display:block;width:18px;height:18px;}' +
+        '.aura-status-icon svg{display:block;width:18px;height:18px;transform-origin:center;}' +
         '.aura-status-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
         '.aura-status-score{display:inline-flex;align-items:baseline;gap:2px;flex:none;padding-left:10px;border-left:1px solid #e8edf3;color:var(--aura-status-color);font-variant-numeric:tabular-nums;}' +
         '.aura-status-score b{font-size:17px;font-weight:700;line-height:1;}' +
@@ -49,14 +51,27 @@
         '.aura-status-button:active{transform:scale(.98);}' +
         '.aura-status-button[aria-disabled="true"]{cursor:default;}' +
         '.aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading){color:#64748b;box-shadow:0 1px 4px rgba(15,23,42,.05);}' +
-        '.aura-status-button--loading .aura-status-icon svg{animation:auraBtnSpin 1s linear infinite;}' +
+        '.aura-status-button--enter-shake .aura-status-icon svg>*,.aura-status-button--enter-pop .aura-status-icon svg>*,.aura-status-button--enter-bounce .aura-status-icon svg>*,.aura-status-button--enter-rise .aura-status-icon svg>*,.aura-status-button--enter-fade .aura-status-icon svg>*,.aura-status-button--running .aura-status-icon svg>*{stroke-dasharray:1;stroke-dashoffset:1}' +
+        '.aura-status-button--loading .aura-status-icon svg{animation:auraBtnSpin .9s linear infinite}' +
+        '.aura-status-button--running .aura-status-icon svg>*{animation:auraDrawLoop 1.55s ease-in-out infinite}' +
+        '.aura-status-button--running .aura-status-icon svg>:nth-child(2){animation-delay:.22s}' +
+        '.aura-status-button--enter-shake .aura-status-icon svg>*{animation:auraDraw .34s cubic-bezier(.22,.7,.2,1) forwards}' +
+        '.aura-status-button--enter-shake .aura-status-icon svg>:nth-child(2){animation-delay:.13s}' +
+        '.aura-status-button--enter-pop .aura-status-icon svg>*{animation:auraDraw .55s cubic-bezier(.22,.72,.2,1) forwards}' +
+        '.aura-status-button--enter-bounce .aura-status-icon svg>*{animation:auraDraw .36s cubic-bezier(.22,.7,.2,1) forwards}' +
+        '.aura-status-button--enter-bounce .aura-status-icon svg>:nth-child(2){animation-delay:.16s}' +
+        '.aura-status-button--enter-rise .aura-status-icon svg>*{animation:auraDraw .32s cubic-bezier(.22,.7,.2,1) forwards}' +
+        '.aura-status-button--enter-rise .aura-status-icon svg>:nth-child(2){animation-delay:.1s}' +
+        '.aura-status-button--enter-rise .aura-status-icon svg>:nth-child(3){animation-delay:.2s}' +
+        '.aura-status-button--enter-rise .aura-status-icon svg>:nth-child(4){animation-delay:.28s}' +
+        '.aura-status-button--enter-fade .aura-status-icon svg>*{animation:auraDraw .4s cubic-bezier(.22,.7,.2,1) forwards}' +
+        '.aura-status-button--enter-fade .aura-status-icon svg>:nth-child(2){animation-delay:.14s}' +
         '.aura-status-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}' +
         '.aura-status-group{display:inline-flex;max-width:100%;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;}' +
         '#auraMobileEmbedFloatContainer{position:fixed;bottom:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:16px;left:calc(16px + env(safe-area-inset-left,0px));max-width:calc(100vw - 32px);z-index:9999;}' +
         '@media(hover:hover){.aura-status-button:not([aria-disabled="true"]):hover{transform:translateY(-2px);border-color:var(--aura-status-color);box-shadow:0 7px 22px rgba(15,23,42,.12);}}' +
         '@media(pointer:coarse){.aura-status-button{min-height:44px;}}' +
-        '@media(prefers-reduced-motion:reduce){.aura-status-button{transition:none;}' +
-        '.aura-status-button--loading .aura-status-icon svg{animation:none;}}';
+        '@media(prefers-reduced-motion:reduce){.aura-status-button{transition:none;}.aura-status-icon svg,.aura-status-icon svg>*{animation:none!important;stroke-dashoffset:0!important;}}';
       document.head.appendChild(style);
     }
   } catch (e) {}
@@ -64,11 +79,11 @@
   var statusConfig = {
     gray: { color: '#475569', text: 'AI审核详情', bg: '#ffffff', border: '#cbd5e1', dot: '#94a3b8', shadow: '0 1px 3px rgba(0,0,0,0.06)' },
     green: { color: '#15803d', text: '审核通过', bg: '#f0fdf4', border: '#86efac', dot: '#22c55e', shadow: '0 2px 6px rgba(34,197,94,0.12)' },
-    yellow: { color: '#b45309', text: '建议关注', bg: '#fffbeb', border: '#fde68a', dot: '#f59e0b', shadow: '0 2px 6px rgba(245,158,11,0.12)' },
+    yellow: { color: '#c2410c', text: '建议关注', bg: '#ffedd5', border: '#fdba74', dot: '#f97316', shadow: '0 2px 6px rgba(234,88,12,0.16)' },
     red: { color: '#b91c1c', text: '建议退回', bg: '#fef2f2', border: '#fca5a5', dot: '#ef4444', shadow: '0 2px 6px rgba(239,68,68,0.12)' },
     disabled: { color: '#94a3b8', text: '暂不可用', bg: '#f8fafc', border: '#e2e8f0', dot: '#cbd5e1', shadow: 'none' },
     error: { color: '#dc2626', text: '加载失败', bg: '#fef2f2', border: '#fca5a5', dot: '#ef4444', shadow: 'none' },
-    loading: { color: '#1d4ed8', text: '分析中...', bg: '#eff6ff', border: '#93c5fd', dot: '#3b82f6', shadow: '0 2px 6px rgba(59,130,246,0.12)' }
+    loading: { color: '#1d4ed8', text: '加载中...', bg: '#dbeafe', border: '#60a5fa', dot: '#2563eb', shadow: '0 2px 8px rgba(37,99,235,0.16)' }
   };
 
   // 单功能、双功能及电脑端共用按钮结构，分数独立排版，完整文案保留给辅助技术。
@@ -76,20 +91,33 @@
     return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  function statusMotionClass(status, isLoading) {
+    if (isLoading) return ' aura-status-button--loading';
+    if (status === 'loading') return ' aura-status-button--running';
+    if (status === 'red' || status === 'error') return ' aura-status-button--enter-shake';
+    if (status === 'green') return ' aura-status-button--enter-pop';
+    if (status === 'yellow') return ' aura-status-button--enter-bounce';
+    if (status === 'disabled') return ' aura-status-button--enter-fade';
+    return ' aura-status-button--enter-rise';
+  }
+
   function buildStatusButton(btnId, feature, status, displayText, isLoading, labelClass) {
-    var theme = isLoading ? statusConfig.loading : (statusConfig[status] || statusConfig.gray);
+    var fetching = !!isLoading;
+    var running = !fetching && status === 'loading';
+    var theme = (fetching || running) ? statusConfig.loading : (statusConfig[status] || statusConfig.gray);
     var unavailable = status === 'disabled' || status === 'error';
     var scoreMatch = displayText.match(/ [(]([0-9]+)([^()]*)[)]$/);
     var label = scoreMatch ? displayText.slice(0, scoreMatch.index) : displayText;
-    var iconPath = '<path d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z"/>';
-    if (feature === 'summary') iconPath = '<path d="M14 3H6v18h12V7Z M14 3v5h4 M9 12h6 M9 16h4"/>';
-    if (status === 'green' && feature === 'audit') iconPath = '<path d="m6 12 4 4 8-8"/>';
-    if (status === 'red' || status === 'error') iconPath = '<path d="m8 8 8 8 M16 8l-8 8"/>';
-    if (status === 'yellow') iconPath = '<path d="M12 6v7 M12 17h.01"/>';
-    if (status === 'disabled') iconPath = '<rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>';
-    if (isLoading) iconPath = '<path d="M20 12a8 8 0 1 1-8-8"/>';
+    var iconPath = '<path pathLength="1" d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z"/>';
+    if (feature === 'summary') iconPath = '<path pathLength="1" d="M14 3H6v18h12V7Z" stroke-width="2.4"/><path pathLength="1" d="M14 3v5h4" stroke-width="2.4"/><path pathLength="1" d="M9 12h6" stroke-width="2.4"/><path pathLength="1" d="M9 16h4" stroke-width="2.4"/>';
+    if (status === 'green' && feature === 'audit') iconPath = '<path pathLength="1" d="m6 12 4 4 8-8" stroke-width="2.8"/>';
+    if (status === 'red' || status === 'error') iconPath = '<path pathLength="1" d="M8 8l8 8" stroke-width="2.7"/><path pathLength="1" d="M16 8l-8 8" stroke-width="2.7"/>';
+    if (status === 'yellow') iconPath = '<path pathLength="1" d="M12 4.1v9.4" stroke-width="3.6"/><path pathLength="1" d="M12 18.25v.02" stroke-width="4.4"/>';
+    if (status === 'disabled') iconPath = '<path pathLength="1" d="M8 10V7a4 4 0 0 1 8 0v3" stroke-width="2.4"/><rect pathLength="1" x="5" y="10" width="14" height="11" rx="3" stroke-width="2.4"/>';
+    if (running) iconPath = '<path pathLength="1" d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z" stroke-width="2.5"/><path pathLength="1" d="m18.4 3.6.75 2.05 2.05.75-2.05.75-.75 2.05-.75-2.05-2.05-.75 2.05-.75Z" stroke-width="2.5"/>';
+    if (fetching) iconPath = '<circle cx="12" cy="12" r="8.1" fill="none" stroke="currentColor" stroke-width="2.7" opacity="0.22"/><path d="M12 3.9a8.1 8.1 0 0 1 0 16.2" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>';
     var icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + iconPath + '</svg>';
-    return '<button id="' + btnId + '" type="button" class="aura-status-button' + (isLoading ? ' aura-status-button--loading' : '') + '" aria-disabled="' + (unavailable || isLoading ? 'true' : 'false') + '" style="--aura-status-color:' + theme.color + ';--aura-status-tint:' + theme.bg + ';">' +
+    return '<button id="' + btnId + '" type="button" class="aura-status-button' + statusMotionClass(status, isLoading) + '" aria-disabled="' + (unavailable || isLoading ? 'true' : 'false') + '" style="--aura-status-color:' + theme.color + ';--aura-status-tint:' + theme.bg + ';">' +
       '<span class="aura-status-icon" aria-hidden="true">' + icon + '</span>' +
       '<span class="aura-status-text" aria-hidden="true">' + escapeButtonText(label) + '</span>' +
       (scoreMatch ? '<span class="aura-status-score" aria-hidden="true"><b>' + escapeButtonText(scoreMatch[1]) + '</b><small>' + escapeButtonText(scoreMatch[2]) + '</small></span>' : '') +
@@ -339,7 +367,7 @@
       var name = featureName();
       var openDetails = openCurrentDetails;
       if (runningJobId) {
-        renderStatusButton('gray', name + '分析中，查看进度', '', false, openDetails);
+        renderStatusButton('loading', name + '分析中，查看进度', '', false, openDetails);
         return 'running';
       }
       if (hasResult && result) {
@@ -368,7 +396,7 @@
         renderStatusButton('gray', '查看并生成' + name, '', false, openDetails);
         stopStatusWatch();
       })) {
-        renderStatusButton('gray', name + '分析中，查看进度', '', false, openDetails);
+        renderStatusButton('loading', name + '分析中，查看进度', '', false, openDetails);
         return 'running';
       }
       renderStatusButton('gray', shouldAutoRun ? '查看并生成' + name : 'AI' + name + '详情', '', false, openDetails);
@@ -720,7 +748,7 @@
     var hasResult = isSummary ? data.has_summary : data.has_audit;
     var shouldAutoRun = isSummary ? data.should_auto_summary : data.should_auto_audit;
     if (data.running_job_id) {
-      setDualFeatureState(featType, 'loading', name + '分析中...', '', true);
+      setDualFeatureState(featType, 'loading', name + '分析中...', '', false);
       return 'running';
     }
     if (hasResult && result) {
@@ -748,7 +776,7 @@
       dualState[featType].lastSig = '';
       setDualFeatureState(featType, 'gray', '生成' + name, '', false);
     })) {
-      setDualFeatureState(featType, 'loading', name + '分析中...', '', true);
+      setDualFeatureState(featType, 'loading', name + '分析中...', '', false);
       return 'running';
     }
     setDualFeatureState(featType, 'gray', shouldAutoRun ? '生成' + name : 'AI' + name + '详情', '', false);
@@ -864,7 +892,7 @@
       if (event.data.requestid && requestId && String(event.data.requestid) !== String(requestId)) return;
       var featType = event.data.embed_type === 'summary' ? 'summary' : 'audit';
       if (event.data.running) {
-        setDualFeatureState(featType, 'loading', (featType === 'summary' ? '总结' : '审核') + '分析中...', '', true);
+        setDualFeatureState(featType, 'loading', (featType === 'summary' ? '总结' : '审核') + '分析中...', '', false);
         startDualStatusWatch(STATUS_WATCH_MS);
         return;
       }
