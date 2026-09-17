@@ -34,7 +34,28 @@
     if (typeof document !== 'undefined' && document.head && document.head.appendChild && (!document.getElementById || !document.getElementById('aura-btn-pulse-style'))) {
       var style = document.createElement('style');
       style.id = 'aura-btn-pulse-style';
-      style.textContent = '@keyframes auraBtnPulse { 0%, 100% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.35); opacity: 1; } }';
+      style.textContent =
+        '@keyframes auraBtnSpin{to{transform:rotate(360deg)}}' +
+        '.aura-status-button{box-sizing:border-box;appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;gap:9px;min-height:40px;max-width:100%;padding:6px 11px 6px 7px;margin:0;border:1px solid rgba(148,163,184,.22);border-radius:14px;background:#fff;color:#263247;box-shadow:0 4px 16px rgba(15,23,42,.08),0 1px 3px rgba(15,23,42,.04);font:600 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.1px;text-align:left;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:box-shadow .18s ease,transform .18s ease,border-color .18s ease;}' +
+        '.aura-status-icon{display:flex;align-items:center;justify-content:center;width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:var(--aura-status-tint);color:var(--aura-status-color);}' +
+        '.aura-status-icon svg{display:block;width:18px;height:18px;}' +
+        '.aura-status-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+        '.aura-status-score{display:inline-flex;align-items:baseline;gap:2px;flex:none;padding-left:10px;border-left:1px solid #e8edf3;color:var(--aura-status-color);font-variant-numeric:tabular-nums;}' +
+        '.aura-status-score b{font-size:17px;font-weight:700;line-height:1;}' +
+        '.aura-status-score small{font-size:10px;font-weight:500;}' +
+        '.aura-status-arrow{display:block;width:14px;height:14px;flex:0 0 14px;color:#94a3b8;}' +
+        '.aura-status-button:focus-visible{outline:2px solid var(--aura-status-color);outline-offset:3px;}' +
+        '.aura-status-button:active{transform:scale(.98);}' +
+        '.aura-status-button[aria-disabled="true"]{cursor:default;}' +
+        '.aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading){color:#64748b;box-shadow:0 1px 4px rgba(15,23,42,.05);}' +
+        '.aura-status-button--loading .aura-status-icon svg{animation:auraBtnSpin 1s linear infinite;}' +
+        '.aura-status-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}' +
+        '.aura-status-group{display:inline-flex;max-width:100%;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;}' +
+        '#auraMobileEmbedFloatContainer{position:fixed;bottom:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:16px;left:calc(16px + env(safe-area-inset-left,0px));max-width:calc(100vw - 32px);z-index:9999;}' +
+        '@media(hover:hover){.aura-status-button:not([aria-disabled="true"]):hover{transform:translateY(-2px);border-color:var(--aura-status-color);box-shadow:0 7px 22px rgba(15,23,42,.12);}}' +
+        '@media(pointer:coarse){.aura-status-button{min-height:44px;}}' +
+        '@media(prefers-reduced-motion:reduce){.aura-status-button{transition:none;}' +
+        '.aura-status-button--loading .aura-status-icon svg{animation:none;}}';
       document.head.appendChild(style);
     }
   } catch (e) {}
@@ -48,6 +69,33 @@
     error: { color: '#dc2626', text: '加载失败', bg: '#fef2f2', border: '#fca5a5', dot: '#ef4444', shadow: 'none' },
     loading: { color: '#1d4ed8', text: '分析中...', bg: '#eff6ff', border: '#93c5fd', dot: '#3b82f6', shadow: '0 2px 6px rgba(59,130,246,0.12)' }
   };
+
+  // 单功能、双功能及电脑端共用按钮结构，分数独立排版，完整文案保留给辅助技术。
+  function escapeButtonText(value) {
+    return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function buildStatusButton(btnId, feature, status, displayText, isLoading, labelClass) {
+    var theme = isLoading ? statusConfig.loading : (statusConfig[status] || statusConfig.gray);
+    var unavailable = status === 'disabled' || status === 'error';
+    var scoreMatch = displayText.match(/ [(]([0-9]+)([^()]*)[)]$/);
+    var label = scoreMatch ? displayText.slice(0, scoreMatch.index) : displayText;
+    var iconPath = '<path d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z"/>';
+    if (feature === 'summary') iconPath = '<path d="M14 3H6v18h12V7Z M14 3v5h4 M9 12h6 M9 16h4"/>';
+    if (status === 'green' && feature === 'audit') iconPath = '<path d="m6 12 4 4 8-8"/>';
+    if (status === 'red' || status === 'error') iconPath = '<path d="m8 8 8 8 M16 8l-8 8"/>';
+    if (status === 'yellow') iconPath = '<path d="M12 6v7 M12 17h.01"/>';
+    if (status === 'disabled') iconPath = '<rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>';
+    if (isLoading) iconPath = '<path d="M20 12a8 8 0 1 1-8-8"/>';
+    var icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + iconPath + '</svg>';
+    return '<button id="' + btnId + '" type="button" class="aura-status-button' + (isLoading ? ' aura-status-button--loading' : '') + '" aria-disabled="' + (unavailable || isLoading ? 'true' : 'false') + '" style="--aura-status-color:' + theme.color + ';--aura-status-tint:' + theme.bg + ';">' +
+      '<span class="aura-status-icon" aria-hidden="true">' + icon + '</span>' +
+      '<span class="aura-status-text" aria-hidden="true">' + escapeButtonText(label) + '</span>' +
+      (scoreMatch ? '<span class="aura-status-score" aria-hidden="true"><b>' + escapeButtonText(scoreMatch[1]) + '</b><small>' + escapeButtonText(scoreMatch[2]) + '</small></span>' : '') +
+      (!unavailable && !isLoading ? '<svg class="aura-status-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>' : '') +
+      '<span class="aura-status-sr ' + labelClass + '">' + escapeButtonText(displayText) + '</span>' +
+    '</button>';
+  }
 
   function getRequestId() {
     try {
@@ -190,32 +238,14 @@
       var currentStatus = isLoading ? statusConfig.loading : (statusConfig[status] || statusConfig.gray);
       var displayText = textOverride || currentStatus.text;
       var isDisabled = status === 'disabled' || status === 'error';
-      var cursorStyle = isDisabled ? 'not-allowed' : 'pointer';
-      var opacityValue = isDisabled ? '0.65' : '1';
-
-      var btnHtml =
-        '<div style="display: inline-flex; align-items: center; padding: 4px 0;">' +
-          '<button id="auraMobileEmbedBtn" type="button" style="' +
-            'display: inline-flex; align-items: center; justify-content: center;' +
-            'white-space: nowrap; height: 30px; padding: 0 13px;' +
-            'background-color: ' + currentStatus.bg + '; border: 1px solid ' + (currentStatus.border || currentStatus.color) + ';' +
-            'border-radius: 15px; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, \'PingFang SC\', \'Microsoft YaHei\', sans-serif; font-size: 12.5px; font-weight: 600;' +
-            'color: ' + currentStatus.color + '; cursor: ' + cursorStyle + '; opacity: ' + opacityValue + ';' +
-            'box-shadow: ' + (currentStatus.shadow || '0 1px 3px rgba(0,0,0,0.06)') + '; transition: all 0.2s ease; outline: none;' +
-          '">' +
-            '<span style="' +
-              'display: inline-block; width: 6.5px; height: 6.5px; border-radius: 50%;' +
-              'background-color: ' + (currentStatus.dot || currentStatus.color) + '; margin-right: 6px; flex-shrink: 0;' +
-              (isLoading ? 'animation: auraBtnPulse 1.2s infinite ease-in-out;' : '') +
-            '"></span>' +
-            '<span class="aura-mobile-label"></span>' +
-          '</button>' +
+      var btnHtml = '<div class="aura-status-group">' +
+        buildStatusButton('auraMobileEmbedBtn', EMBED_TYPE, status, displayText, isLoading, 'aura-mobile-label') +
         '</div>';
 
       var $container = jQuery('#' + BUTTON_CONTAINER_ID);
       if (!$container.length) {
         if (!jQuery('#auraMobileEmbedFloatContainer').length) {
-          jQuery('body').append('<div id="auraMobileEmbedFloatContainer" style="position:fixed;bottom:16px;left:16px;z-index:9999;"></div>');
+          jQuery('body').append('<div id="auraMobileEmbedFloatContainer"></div>');
         }
         $container = jQuery('#auraMobileEmbedFloatContainer');
       }
@@ -569,29 +599,12 @@
       var currentStatus = item.isLoading ? statusConfig.loading : (statusConfig[item.status] || statusConfig.gray);
       var displayText = item.text || currentStatus.text;
       var isDisabled = item.status === 'disabled' || item.status === 'error';
-      var cursorStyle = isDisabled ? 'not-allowed' : 'pointer';
-      var opacityValue = isDisabled ? '0.65' : '1';
       var btnId = featType === 'summary' ? 'auraMobileEmbedSummaryBtn' : 'auraMobileEmbedAuditBtn';
-
-      return '<button id="' + btnId + '" type="button" style="' +
-        'display: inline-flex; align-items: center; justify-content: center;' +
-        'white-space: nowrap; height: 30px; padding: 0 13px;' +
-        'background-color: ' + currentStatus.bg + '; border: 1px solid ' + (currentStatus.border || currentStatus.color) + ';' +
-        'border-radius: 15px; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, \'PingFang SC\', \'Microsoft YaHei\', sans-serif; font-size: 12.5px; font-weight: 600;' +
-        'color: ' + currentStatus.color + '; cursor: ' + cursorStyle + '; opacity: ' + opacityValue + ';' +
-        'box-shadow: ' + (currentStatus.shadow || '0 1px 3px rgba(0,0,0,0.06)') + '; transition: all 0.2s ease; outline: none;' +
-      '">' +
-        '<span style="' +
-          'display: inline-block; width: 6.5px; height: 6.5px; border-radius: 50%;' +
-          'background-color: ' + (currentStatus.dot || currentStatus.color) + '; margin-right: 6px; flex-shrink: 0;' +
-          (item.isLoading ? 'animation: auraBtnPulse 1.2s infinite ease-in-out;' : '') +
-        '"></span>' +
-        '<span class="aura-mobile-label-' + featType + '">' + displayText + '</span>' +
-      '</button>';
+      return buildStatusButton(btnId, featType, item.status, displayText, item.isLoading, 'aura-mobile-label-' + featType);
     }
 
     var dualHtml =
-      '<div style="display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0;">' +
+      '<div class="aura-status-group">' +
         buildBtn('audit') +
         buildBtn('summary') +
       '</div>';
@@ -599,7 +612,7 @@
     var $container = jQuery('#' + BUTTON_CONTAINER_ID);
     if (!$container.length) {
       if (!jQuery('#auraMobileEmbedFloatContainer').length) {
-        jQuery('body').append('<div id="auraMobileEmbedFloatContainer" style="position:fixed;bottom:16px;left:16px;z-index:9999;"></div>');
+        jQuery('body').append('<div id="auraMobileEmbedFloatContainer"></div>');
       }
       $container = jQuery('#auraMobileEmbedFloatContainer');
     }
