@@ -3284,11 +3284,11 @@ onMounted(async () => {
 }
 .session-msg-bubble-user {
   max-width: 82%;
-  background: #293747;
+  background: var(--color-primary);
   color: #fff;
   border-radius: 18px 18px 4px 18px;
   padding: 12px 18px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px var(--color-primary-shadow);
 }
 .session-msg-user-content {
   font-size: 14px;

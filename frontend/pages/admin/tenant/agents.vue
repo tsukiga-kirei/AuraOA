@@ -526,7 +526,7 @@ onMounted(() => {
     </div>
 
     <!-- 智能体配置面板 -->
-    <div v-if="activeTab === 'agents'" class="content-panel">
+    <div v-if="activeTab === 'agents'" class="tab-content">
       <div class="tab-toolbar">
         <a-button type="primary" @click="openCreateAgent">
           <template #icon><PlusOutlined /></template>
@@ -622,7 +622,7 @@ onMounted(() => {
     </div>
 
     <!-- MCP 扩展服务面板 -->
-    <div v-if="activeTab === 'mcp'" class="content-panel">
+    <div v-if="activeTab === 'mcp'" class="tab-content">
       <div class="tab-toolbar">
         <a-button type="primary" @click="openCreateMCP">
           <template #icon><PlusOutlined /></template>
@@ -686,7 +686,7 @@ onMounted(() => {
     </div>
 
     <!-- 自定义 Skills 面板 -->
-    <div v-if="activeTab === 'skills'" class="content-panel">
+    <div v-if="activeTab === 'skills'" class="tab-content">
       <div class="tab-toolbar">
         <a-button type="primary" @click="openCreateSkill">
           <template #icon><PlusOutlined /></template>
@@ -1247,16 +1247,14 @@ onMounted(() => {
 }
 
 /* 内容面板与卡片 */
-.content-panel {
+.tab-content {
+  width: 100%;
+}
+.data-table-card {
   width: 100%;
   background: var(--color-bg-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light);
-  padding: 24px;
-  box-shadow: var(--shadow-xs);
-}
-.data-table-card {
-  width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-inline: contain;
@@ -1274,16 +1272,19 @@ onMounted(() => {
   width: 100%;
   background: transparent;
 }
+.data-table-card :deep(.ant-table-container),
 .data-table-card :deep(.ant-table-content),
 .data-table-card :deep(.ant-table-body) {
   overflow: visible !important;
 }
 .data-table-card :deep(.ant-table table) {
-  width: 100%;
   table-layout: fixed;
 }
+.data-table-card--agents :deep(.ant-table),
 .data-table-card--agents :deep(.ant-table table) { min-width: 1240px; }
+.data-table-card--mcp :deep(.ant-table),
 .data-table-card--mcp :deep(.ant-table table) { min-width: 1280px; }
+.data-table-card--skills :deep(.ant-table),
 .data-table-card--skills :deep(.ant-table table) { min-width: 1000px; }
 .data-table-card :deep(.ant-table-thead > tr > th) {
   background: var(--color-bg-page);
