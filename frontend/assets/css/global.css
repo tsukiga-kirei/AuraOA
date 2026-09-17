@@ -1297,3 +1297,25 @@ a:focus-visible {
 [data-theme="warm"] .font-mono {
   font-family: var(--font-mono) !important;
 }
+
+/* 带「操作」列的表格：末列固定在右侧，横向滚动时仍可点击 */
+.data-table.data-table--with-actions {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.data-table.data-table--with-actions th:last-child,
+.data-table.data-table--with-actions td:last-child:not(.empty-cell) {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  overflow: visible;
+  background: var(--color-bg-card);
+  box-shadow: -8px 0 16px -10px color-mix(in srgb, var(--color-text-primary) 22%, transparent);
+}
+.data-table.data-table--with-actions thead th:last-child {
+  z-index: 4;
+  background: var(--color-bg-page);
+}
+.data-table.data-table--with-actions tbody tr:hover td:last-child:not(.empty-cell) {
+  background: var(--color-bg-hover);
+}

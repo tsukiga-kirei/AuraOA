@@ -241,7 +241,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
       <div v-if="loading" class="loading-cell">
         <a-spin />
       </div>
-      <table v-else class="data-table">
+      <table v-else class="data-table data-table--with-actions">
         <thead>
           <tr>
             <th>{{ t('admin.userConfigs.thUser') }}</th>
@@ -634,10 +634,15 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
 
 .data-table-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-light); overflow-x: auto;
+  border: 1px solid var(--color-border-light);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.data-table-card::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .loading-cell { padding: 48px; text-align: center; }
-.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table { width: 100%; min-width: 1000px; border-collapse: collapse; font-size: 13px; }
 .data-table th {
   padding: 12px 16px; text-align: left; font-weight: 600; color: var(--color-text-secondary);
   background: var(--color-bg-page); border-bottom: 1px solid var(--color-border-light);
@@ -807,8 +812,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
   .stat-card { padding: 14px; }
   .stat-card-value { font-size: 22px; }
   .stat-card-icon { width: 40px; height: 40px; font-size: 18px; }
-  .data-table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .data-table { min-width: 800px; }
+  .data-table-card { -webkit-overflow-scrolling: touch; }
   .toolbar { flex-direction: column; align-items: stretch; }
   .toolbar-left { flex-direction: column; }
   .toolbar-left > * { width: 100% !important; }

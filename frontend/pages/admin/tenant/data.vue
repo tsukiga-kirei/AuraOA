@@ -1303,7 +1303,7 @@ onMounted(async () => {
       </transition>
 
       <div class="data-table-card">
-        <table class="data-table data-table--audit">
+        <table class="data-table data-table--audit data-table--with-actions">
           <colgroup>
             <col style="width: 90px;" />
             <col style="width: 220px;" />
@@ -1335,7 +1335,9 @@ onMounted(async () => {
             <td colspan="10" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in auditSnapshots" :key="item.id">
-            <td class="text-mono">{{ item.process_id }}</td>
+            <td class="text-mono">
+              <OverflowTooltip :text="item.process_id" block>{{ item.process_id }}</OverflowTooltip>
+            </td>
             <td class="table-title-cell">
               <OverflowTooltip :text="item.title" block>
                 <span class="table-clamp" data-overflow-check>{{ item.title }}</span>
@@ -1392,8 +1394,12 @@ onMounted(async () => {
                 </span>
               </OverflowTooltip>
             </td>
-            <td>{{ getAuditCount(item.valid_log_ids) }}</td>
-            <td class="text-secondary table-time-cell">{{ item.updated_at_fmt }}</td>
+            <td>
+              <OverflowTooltip :text="String(getAuditCount(item.valid_log_ids))" block>{{ getAuditCount(item.valid_log_ids) }}</OverflowTooltip>
+            </td>
+            <td class="text-secondary table-time-cell">
+              <OverflowTooltip :text="item.updated_at_fmt" block>{{ item.updated_at_fmt }}</OverflowTooltip>
+            </td>
             <td>
               <div class="action-btns">
                 <button
@@ -1506,7 +1512,7 @@ onMounted(async () => {
       </transition>
 
       <div class="data-table-card">
-        <table class="data-table">
+        <table class="data-table data-table--with-actions">
           <thead>
           <tr>
             <th>{{ t('admin.data.thTaskName') }}</th>
@@ -1566,7 +1572,9 @@ onMounted(async () => {
                   }}
                 </span>
             </td>
-            <td class="text-secondary">{{ formatDate(item.started_at) }}</td>
+            <td class="text-secondary">
+              <OverflowTooltip :text="formatDate(item.started_at)" block>{{ formatDate(item.started_at) }}</OverflowTooltip>
+            </td>
             <td>
               <div class="action-btns">
                 <button
@@ -1703,7 +1711,7 @@ onMounted(async () => {
       </transition>
 
       <div class="data-table-card">
-        <table class="data-table">
+        <table class="data-table data-table--with-actions">
           <thead>
           <tr>
             <th>{{ t('admin.data.thProcessId') }}</th>
@@ -1722,7 +1730,9 @@ onMounted(async () => {
             <td colspan="9" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in archiveSnapshots" :key="item.id">
-            <td class="text-mono">{{ item.process_id }}</td>
+            <td class="text-mono">
+              <OverflowTooltip :text="item.process_id" block>{{ item.process_id }}</OverflowTooltip>
+            </td>
             <td class="table-title-cell">
               <OverflowTooltip :text="item.title" block>
                 <span class="table-clamp" data-overflow-check>{{ item.title }}</span>
@@ -1761,8 +1771,12 @@ onMounted(async () => {
               </OverflowTooltip>
               <span v-else class="text-secondary">-</span>
             </td>
-            <td>{{ getAuditCount(item.valid_archive_log_ids) }}</td>
-            <td class="text-secondary">{{ item.updated_at_fmt }}</td>
+            <td>
+              <OverflowTooltip :text="String(getAuditCount(item.valid_archive_log_ids))" block>{{ getAuditCount(item.valid_archive_log_ids) }}</OverflowTooltip>
+            </td>
+            <td class="text-secondary">
+              <OverflowTooltip :text="item.updated_at_fmt" block>{{ item.updated_at_fmt }}</OverflowTooltip>
+            </td>
             <td>
               <div class="action-btns">
                 <button
@@ -1906,7 +1920,7 @@ onMounted(async () => {
       </transition>
 
       <div class="data-table-card">
-        <table class="data-table data-table--summary">
+        <table class="data-table data-table--summary data-table--with-actions">
           <colgroup>
             <col style="width: 90px;" />
             <col style="width: 220px;" />
@@ -1938,7 +1952,9 @@ onMounted(async () => {
             <td colspan="10" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in summarySnapshots" :key="item.id">
-            <td class="text-mono">{{ item.process_id }}</td>
+            <td class="text-mono">
+              <OverflowTooltip :text="item.process_id" block>{{ item.process_id }}</OverflowTooltip>
+            </td>
             <td class="table-title-cell">
               <OverflowTooltip :text="item.title" block>
                 <span class="table-clamp" data-overflow-check>{{ item.title }}</span>
@@ -1982,8 +1998,12 @@ onMounted(async () => {
                 </span>
               </OverflowTooltip>
             </td>
-            <td>{{ getAuditCount(item.valid_log_ids) }}</td>
-            <td class="text-secondary table-time-cell">{{ item.updated_at_fmt }}</td>
+            <td>
+              <OverflowTooltip :text="String(getAuditCount(item.valid_log_ids))" block>{{ getAuditCount(item.valid_log_ids) }}</OverflowTooltip>
+            </td>
+            <td class="text-secondary table-time-cell">
+              <OverflowTooltip :text="item.updated_at_fmt" block>{{ item.updated_at_fmt }}</OverflowTooltip>
+            </td>
             <td>
               <div class="action-btns">
                 <button
@@ -2095,7 +2115,7 @@ onMounted(async () => {
       </transition>
 
       <div class="data-table-card">
-        <table class="data-table">
+        <table class="data-table data-table--with-actions">
           <thead>
           <tr>
             <th>{{ t('admin.data.thSessionTitle', '会话主题') }}</th>
@@ -2134,8 +2154,12 @@ onMounted(async () => {
                 </span>
               </OverflowTooltip>
             </td>
-            <td>{{ item.message_count }}</td>
-            <td class="text-mono">{{ item.token_count || 0 }}</td>
+            <td>
+              <OverflowTooltip :text="String(item.message_count)" block>{{ item.message_count }}</OverflowTooltip>
+            </td>
+            <td class="text-mono">
+              <OverflowTooltip :text="String(item.token_count || 0)" block>{{ item.token_count || 0 }}</OverflowTooltip>
+            </td>
             <td>
               <span v-if="item.like_count > 0" class="chain-tag" style="color: #52c41a; background: #f6ffed; padding: 2px 8px; border-radius: 10px; font-size: 12px;">
                 <LikeOutlined /> {{ item.like_count }}
@@ -2145,7 +2169,9 @@ onMounted(async () => {
               </span>
               <span v-if="!item.like_count && !item.dislike_count" class="text-secondary" style="font-size: 12px;">-</span>
             </td>
-            <td class="text-secondary">{{ formatDate(item.updated_at || item.created_at) }}</td>
+            <td class="text-secondary">
+              <OverflowTooltip :text="formatDate(item.updated_at || item.created_at)" block>{{ formatDate(item.updated_at || item.created_at) }}</OverflowTooltip>
+            </td>
             <td>
               <div class="action-btns">
                 <button
@@ -2262,7 +2288,7 @@ onMounted(async () => {
       </transition>
 
       <div class="data-table-card">
-        <table class="data-table data-table--llm">
+        <table class="data-table data-table--llm data-table--with-actions">
           <colgroup>
             <col style="width: 100px;" />
             <col style="width: 240px;" />
@@ -2288,14 +2314,20 @@ onMounted(async () => {
             <td colspan="7" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in llmProcesses" :key="item.process_id">
-            <td>{{ item.process_id }}</td>
+            <td>
+              <OverflowTooltip :text="item.process_id" block>{{ item.process_id }}</OverflowTooltip>
+            </td>
             <td class="table-title-cell">
               <OverflowTooltip :text="item.process_title || '-'" block>
                 <span class="table-clamp" data-overflow-check>{{ item.process_title || '-' }}</span>
               </OverflowTooltip>
             </td>
-            <td>{{ item.call_count }}</td>
-            <td>{{ item.total_tokens }}</td>
+            <td>
+              <OverflowTooltip :text="String(item.call_count)" block>{{ item.call_count }}</OverflowTooltip>
+            </td>
+            <td>
+              <OverflowTooltip :text="String(item.total_tokens)" block>{{ item.total_tokens }}</OverflowTooltip>
+            </td>
             <td class="operator-cell">
               <OverflowTooltip :text="getOperatorActionTitle(item.latest_user_name, item.latest_trigger_detail)" block>
                 <div class="source-action-stack">
@@ -2310,7 +2342,9 @@ onMounted(async () => {
                 </div>
               </OverflowTooltip>
             </td>
-            <td class="text-secondary table-time-cell">{{ formatDate(item.latest_call_at) }}</td>
+            <td class="text-secondary table-time-cell">
+              <OverflowTooltip :text="formatDate(item.latest_call_at)" block>{{ formatDate(item.latest_call_at) }}</OverflowTooltip>
+            </td>
             <td>
               <div class="action-btns">
                 <button

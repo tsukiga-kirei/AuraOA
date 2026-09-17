@@ -63,7 +63,7 @@ const columns = computed(() => [
   { title: t(tab.value === 'audit' ? 'experience.process' : 'experience.conversation'), key: 'subject' },
   { title: t('experience.interaction'), key: 'interaction', width: 250 },
   { title: t('experience.updatedAt'), key: 'updated_at', width: 170 },
-  { title: t('experience.actions'), key: 'actions', width: 110 },
+  { title: t('experience.actions'), key: 'actions', width: 110, fixed: 'right' },
 ])
 async function load() {
   const seq = ++listRequest
@@ -121,23 +121,29 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
           </template>
         </a-input>
         <a-select :value="feedback || ''" :options="filters" :aria-label="t('experience.filter')" class="feedback-filter" @change="(value: any) => { feedback = value || undefined; filterChanged() }" />
-        <a-button :loading="loading" @click="load"><ReloadOutlined />{{ t('experience.refresh') }}</a-button>
+        <a-button :disabled="loading" @click="load"><ReloadOutlined :spin="loading" /> {{ t('experience.refresh') }}</a-button>
       </div>
       <a-alert v-if="error" type="error" show-icon :message="t('experience.loadError')"><template #action><a-button size="small" @click="load">{{ t('experience.retry') }}</a-button></template></a-alert>
       <div v-else class="data-table-card">
-        <a-table :columns="columns" :data-source="tab === 'audit' ? audits : agents" row-key="id" :pagination="false" :loading="loading">
+        <a-table :columns="columns" :data-source="tab === 'audit' ? audits : agents" row-key="id" :pagination="false" :loading="loading" :scroll="{ x: 920 }">
           <template #emptyText><a-empty :description="t('experience.empty')" /></template>
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'subject'">
+          <template v-if="column.key === 'subject'">
+            <OverflowTooltip :text="record.title" block>
               <button class="subject-title" type="button" @click="openDetail(record as AuditExperienceItem | AgentExperienceItem)">{{ record.title }}</button>
-              <p class="subject-meta">{{ tab === 'audit' ? `${record.process_type} · ${record.process_id}` : `${record.agent_name} · ${record.username}` }}</p>
-              <p v-if="tab === 'agents' && record.feedback_comment" class="feedback-excerpt">{{ record.feedback_comment }}</p>
-            </template>
+            </OverflowTooltip>
+            <p class="subject-meta">{{ tab === 'audit' ? `${record.process_type} · ${record.process_id}` : `${record.agent_name} · ${record.username}` }}</p>
+            <p v-if="tab === 'agents' && record.feedback_comment" class="feedback-excerpt">{{ record.feedback_comment }}</p>
+          </template>
             <template v-else-if="column.key === 'interaction'">
               <div v-if="tab === 'audit'" class="interaction-counts"><span class="positive"><LikeOutlined />{{ record.like_count }}</span><span class="negative"><DislikeOutlined />{{ record.dislike_count }}</span><span><MessageOutlined />{{ record.comment_count }}</span></div>
               <a-tag v-else :color="record.feedback === 'like' ? 'success' : 'warning'"><LikeOutlined v-if="record.feedback === 'like'" /><DislikeOutlined v-else /> {{ t(record.feedback === 'like' ? 'experience.likes' : 'experience.dislikes') }}</a-tag>
             </template>
-            <template v-else-if="column.key === 'updated_at'"><span class="subject-meta">{{ formatDateTimeInAppZone(record.updated_at) }}</span></template>
+            <template v-else-if="column.key === 'updated_at'">
+            <OverflowTooltip :text="formatDateTimeInAppZone(record.updated_at)" block>
+              <span class="subject-meta">{{ formatDateTimeInAppZone(record.updated_at) }}</span>
+            </OverflowTooltip>
+          </template>
             <template v-else-if="column.key === 'actions'"><a-button type="link" size="small" @click="openDetail(record as AuditExperienceItem | AgentExperienceItem)"><EyeOutlined />{{ t('experience.view') }}</a-button></template>
           </template>
         </a-table>
@@ -322,6 +328,15 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
 }
 .data-table-card :deep(.ant-table-content)::-webkit-scrollbar,
 .data-table-card :deep(.ant-table-body)::-webkit-scrollbar { height: 0; display: none; }
+.data-table-card :deep(.ant-table-cell-fix-right) {
+  background: var(--color-bg-card);
+}
+.data-table-card :deep(.ant-table-thead .ant-table-cell-fix-right) {
+  background: var(--color-bg-page);
+}
+.data-table-card :deep(.ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right) {
+  background: var(--color-bg-hover);
+}
 .search-input { width: 360px; max-width: 100%; }
 .search-input.ant-input-affix-wrapper,
 .search-input :deep(.ant-input-affix-wrapper) {

@@ -504,7 +504,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
       </div>
 
       <div class="data-table-card">
-        <table class="data-table">
+        <table class="data-table data-table--with-actions">
           <thead>
             <tr>
               <th>{{ t('admin.org.thName') }}</th>
@@ -780,9 +780,14 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
 /*数据表*/
 .data-table-card {
   background: var(--color-bg-card); border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-light); overflow: hidden;
+  border: 1px solid var(--color-border-light);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
-.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table-card::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.data-table { width: 100%; min-width: 960px; border-collapse: collapse; font-size: 13px; }
 .data-table th {
   padding: 12px 16px; text-align: left; font-weight: 600; color: var(--color-text-secondary);
   background: var(--color-bg-page); border-bottom: 1px solid var(--color-border-light);
@@ -868,8 +873,7 @@ const getDeptMemberCount = (deptId: string) => members.value.filter(m => m.depar
 @media (max-width: 768px) {
   .role-grid { grid-template-columns: 1fr; }
   .dept-grid { grid-template-columns: 1fr; }
-  .data-table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .data-table { min-width: 700px; }
+  .data-table-card { -webkit-overflow-scrolling: touch; }
   .toolbar { flex-direction: column; align-items: stretch; }
   .toolbar-left { flex-direction: column; }
   .toolbar-left > * { width: 100% !important; }
