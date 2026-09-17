@@ -281,11 +281,11 @@ ORDER BY days.d`
 }
 
 // RecentEnriched 最近 N 条归档快照（带 compliance + compliance_score + 操作人信息）。
-func (r *ArchiveProcessSnapshotRepo) RecentEnriched(c *gin.Context, limit int, userID *uuid.UUID) ([]ArchiveSnapshotEnrichedRow, error) {
+func (r *ArchiveProcessSnapshotRepo) RecentEnriched(c *gin.Context, limit int, userID *uuid.UUID, since time.Time) ([]ArchiveSnapshotEnrichedRow, error) {
 	tenantID, _ := c.Get("tenant_id")
 
 	userFilter := ""
-	args := []interface{}{tenantID}
+	args := []interface{}{tenantID, since}
 	if userID != nil {
 		userFilter = "AND arl.user_id = ?"
 		args = append(args, *userID)
@@ -303,6 +303,7 @@ FROM archive_process_snapshots aps
 LEFT JOIN archive_logs arl ON arl.id = aps.latest_valid_archive_log_id
 LEFT JOIN users u ON u.id = arl.user_id
 WHERE aps.tenant_id = ?
+  AND aps.updated_at >= ?
   ` + userFilter + `
 ORDER BY aps.updated_at DESC
 LIMIT ?`
@@ -312,24 +313,25 @@ LIMIT ?`
 	return rows, err
 }
 
-// CountByDepartment 按部门统计归档快照数（tenant_admin 用）。
-func (r *ArchiveProcessSnapshotRepo) CountByDepartment(c *gin.Context) ([]DeptCount, error) {
+// CountByDepartment 按部门统计归档快照数（since 起，tenant_admin 用）。
+func (r *ArchiveProcessSnapshotRepo) CountByDepartment(c *gin.Context, since time.Time) ([]DeptCount, error) {
 	tenantID, _ := c.Get("tenant_id")
+	deptExpr := resolvedDepartmentByNameSQL("aps.tenant_id", "d.name", "''")
 
 	sql := `
-SELECT COALESCE(d.name, '未分配') AS department,
+SELECT ` + deptExpr + ` AS department,
        COUNT(*)::bigint AS count
 FROM archive_process_snapshots aps
 JOIN archive_logs arl ON arl.id = aps.latest_valid_archive_log_id
 JOIN users u ON u.id = arl.user_id
 LEFT JOIN org_members om ON om.user_id = u.id AND om.tenant_id = aps.tenant_id AND om.status = 'active'
 LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = aps.tenant_id
-WHERE aps.tenant_id = ?
-GROUP BY d.name
+WHERE aps.tenant_id = ? AND aps.updated_at >= ?
+GROUP BY 1
 ORDER BY count DESC`
 
 	var rows []DeptCount
-	err := r.DB.Raw(sql, tenantID).Scan(&rows).Error
+	err := r.DB.Raw(sql, tenantID, since).Scan(&rows).Error
 	return rows, err
 }
 

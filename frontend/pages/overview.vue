@@ -247,6 +247,7 @@ const trendSeries = computed(() => [
   { name: t('overview.cronTasks'), data: dash.value.weekly_trend.map(d => d.cron_count), color: chartColors.value.accent },
   { name: t('overview.archiveReview'), data: dash.value.weekly_trend.map(d => d.archive_count), color: chartColors.value.success },
   { name: t('overview.processSummary'), data: dash.value.weekly_trend.map(d => d.summary_count), color: chartColors.value.warning },
+  { name: t('overview.chatAgent'), data: dash.value.weekly_trend.map(d => d.chat_count ?? 0), color: '#722ed1' },
 ])
 
 // 部门分布图的标签配置（包含各业务流程及智能体）
@@ -637,7 +638,7 @@ function tokenPct(used: number, quota: number) {
           <div class="widget-actions" v-if="customizing" @click.stop="cycleWidgetSize('user_activity')" :title="t('overview.resizeWidget')" style="cursor: pointer; color: var(--color-primary);"><AppstoreOutlined /></div>
         </div>
         <div class="rank-list" v-if="dash.user_activity?.length">
-          <div v-for="(u, i) in dash.user_activity" :key="u.username" class="rank-item">
+          <div v-for="(u, i) in dash.user_activity" :key="`${u.username}-${u.department}-${i}`" class="rank-item">
             <span class="rank-num" :class="{ 'rank-num--top': i < 3 }">{{ i + 1 }}</span>
             <div class="rank-info">
               <span class="rank-name">{{ u.display_name }}</span>

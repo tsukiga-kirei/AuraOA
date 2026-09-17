@@ -335,8 +335,8 @@ ORDER BY days.d`
 
 // RecentEnriched 最近 N 条定时任务日志（带 status + task_label + 操作人信息）。
 // userID 非 nil 时按 task_owner_user_id 过滤。
-func (r *CronLogRepo) RecentEnriched(tenantID uuid.UUID, limit int, userID *uuid.UUID) ([]CronLogEnrichedRow, error) {
-	args := []interface{}{tenantID}
+func (r *CronLogRepo) RecentEnriched(tenantID uuid.UUID, limit int, userID *uuid.UUID, since time.Time) ([]CronLogEnrichedRow, error) {
+	args := []interface{}{tenantID, since}
 	userFilter := ""
 	if userID != nil {
 		userFilter = "AND cl.task_owner_user_id = ?"
@@ -354,6 +354,7 @@ SELECT cl.id,
 FROM cron_logs cl
 LEFT JOIN users u ON u.id = cl.task_owner_user_id
 WHERE cl.tenant_id = ?
+  AND cl.started_at >= ?
   ` + userFilter + `
 ORDER BY cl.started_at DESC
 LIMIT ?`
@@ -363,22 +364,23 @@ LIMIT ?`
 	return rows, err
 }
 
-// CountByDepartment 按部门统计定时任务执行数（通过 task_owner_user_id → org_members → departments）。
-func (r *CronLogRepo) CountByDepartment(c *gin.Context) ([]DeptCount, error) {
+// CountByDepartment 按部门统计定时任务执行数（since 起，通过 task_owner_user_id → org_members → departments）。
+func (r *CronLogRepo) CountByDepartment(c *gin.Context, since time.Time) ([]DeptCount, error) {
 	tenantID, _ := c.Get("tenant_id")
+	deptExpr := resolvedDepartmentByNameSQL("cl.tenant_id", "d.name", "''")
 
 	sql := `
-SELECT COALESCE(d.name, '未分配') AS department,
+SELECT ` + deptExpr + ` AS department,
        COUNT(*)::bigint AS count
 FROM cron_logs cl
 LEFT JOIN org_members om ON om.user_id = cl.task_owner_user_id AND om.tenant_id = cl.tenant_id AND om.status = 'active'
 LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = cl.tenant_id
-WHERE cl.tenant_id = ?
-GROUP BY d.name
+WHERE cl.tenant_id = ? AND cl.started_at >= ?
+GROUP BY 1
 ORDER BY count DESC`
 
 	var rows []DeptCount
-	err := r.db.Raw(sql, tenantID).Scan(&rows).Error
+	err := r.db.Raw(sql, tenantID, since).Scan(&rows).Error
 	return rows, err
 }
 

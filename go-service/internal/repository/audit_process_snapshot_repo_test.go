@@ -42,7 +42,7 @@ func TestCountCombinedUserRankingUsesOAOperatorSnapshot(t *testing.T) {
 
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Set("tenant_id", uuid.MustParse("11111111-1111-4111-8111-111111111111").String())
-	_, _ = NewAuditProcessSnapshotRepo(db).CountCombinedUserRanking(c, 10)
+	_, _ = NewAuditProcessSnapshotRepo(db).CountCombinedUserRanking(c, time.Now().AddDate(0, 0, -30), 10)
 
 	query := strings.Join(recorder.statements, "\n")
 	for _, fragment := range []string{
@@ -54,6 +54,9 @@ func TestCountCombinedUserRankingUsesOAOperatorSnapshot(t *testing.T) {
 		"'OA 嵌入用户/未识别'",
 		"LEFT JOIN org_members om ON NOT a.is_oa_embed",
 		"GROUP BY identity_key, username, display_name, department",
+		"aps.updated_at >=",
+		"psl.updated_at >=",
+		"NULLIF(TRIM(d.name), '') = NULLIF(TRIM(a.oa_operator_dept), '')",
 	} {
 		if !strings.Contains(query, fragment) {
 			t.Errorf("用户活跃排名 SQL 缺少 OA 操作人归并规则 %q: %s", fragment, query)

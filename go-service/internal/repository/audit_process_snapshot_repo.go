@@ -371,18 +371,21 @@ type TenantSnapshotCount struct {
 // ── 仪表盘查询方法 ──────────────────────────────────────────────────────────
 
 // CountThisWeek 本周（按应用配置时区周一 00:00 至今）快照条数。
-// userID 非 nil 时 JOIN audit_logs 按 user_id 过滤。
+// userID 非 nil 时只统计本人工作台与个人嵌入；租户管理员统计全部渠道（含 OA 通用嵌入）。
 func (r *AuditProcessSnapshotRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID) (int64, error) {
 	var count int64
 
 	tenantID, _ := c.Get("tenant_id")
 	q := r.DB.Table("audit_process_snapshots AS aps")
 	if tenantID != nil && tenantID != "" {
-		q = q.Where("aps.tenant_id = ? AND aps.channel = ?", tenantID, model.AuditSnapshotChannelWorkbench)
+		q = q.Where("aps.tenant_id = ?", tenantID)
 	}
 	if userID != nil {
 		q = q.Joins("JOIN audit_logs al ON al.id = aps.latest_valid_log_id").
-			Where("al.user_id = ?", *userID)
+			Where("al.user_id = ? AND aps.channel IN ?", *userID, []string{
+				model.AuditSnapshotChannelWorkbench,
+				model.AuditSnapshotChannelEmbedPersonal,
+			})
 	}
 	err := q.Where("aps.updated_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)", apptime.Name()).
 		Count(&count).Error
@@ -393,10 +396,9 @@ func (r *AuditProcessSnapshotRepo) CountThisWeek(c *gin.Context, userID *uuid.UU
 func (r *AuditProcessSnapshotRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UUID) ([]DayCount, error) {
 	tenantID, _ := c.Get("tenant_id")
 
-	userFilter := ""
+	userFilter := auditDashboardPersonalWhere(userID)
 	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, apptime.Name()}
 	if userID != nil {
-		userFilter = "AND al.user_id = ?"
 		args = append(args, *userID)
 	}
 
@@ -422,7 +424,6 @@ LEFT JOIN (
 		return ""
 	}() + `
   WHERE aps.tenant_id = ?
-    AND aps.channel = 'workbench'
     AND aps.updated_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)
     ` + userFilter + `
   GROUP BY 1
@@ -435,29 +436,34 @@ ORDER BY days.d`
 }
 
 // RecentEnriched 最近 N 条快照（带 recommendation + score + 操作人信息）。
-func (r *AuditProcessSnapshotRepo) RecentEnriched(c *gin.Context, limit int, userID *uuid.UUID) ([]AuditSnapshotEnrichedRow, error) {
+// since 非零时只返回该时间之后的记录；个人视角排除 OA 通用嵌入。
+func (r *AuditProcessSnapshotRepo) RecentEnriched(c *gin.Context, limit int, userID *uuid.UUID, since time.Time) ([]AuditSnapshotEnrichedRow, error) {
 	tenantID, _ := c.Get("tenant_id")
 
-	userFilter := ""
-	args := []interface{}{tenantID}
+	userFilter := auditDashboardPersonalWhere(userID)
+	args := []interface{}{tenantID, since}
 	if userID != nil {
-		userFilter = "AND al.user_id = ?"
 		args = append(args, *userID)
 	}
 	args = append(args, limit)
+
+	joinSQL := "LEFT JOIN audit_logs al ON al.id = aps.latest_valid_log_id"
+	if userID != nil {
+		joinSQL = "JOIN audit_logs al ON al.id = aps.latest_valid_log_id"
+	}
 
 	sql := `
 SELECT aps.id,
        aps.title,
        aps.recommendation,
        aps.score,
-       COALESCE(u.display_name, u.username, '') AS user_name,
+       ` + auditOperatorDisplaySQL("al", "u") + ` AS user_name,
        aps.updated_at AS created_at
 FROM audit_process_snapshots aps
-LEFT JOIN audit_logs al ON al.id = aps.latest_valid_log_id
+` + joinSQL + `
 LEFT JOIN users u ON u.id = al.user_id
 WHERE aps.tenant_id = ?
-  AND aps.channel = 'workbench'
+  AND aps.updated_at >= ?
   ` + userFilter + `
 ORDER BY aps.updated_at DESC
 LIMIT ?`
@@ -467,13 +473,18 @@ LIMIT ?`
 	return rows, err
 }
 
-// CountByDepartment 按部门统计审核展示分组；OA 通用嵌入使用触发人员的 OA 部门快照。
-func (r *AuditProcessSnapshotRepo) CountByDepartment(c *gin.Context) ([]DeptCount, error) {
+// CountByDepartment 按部门统计审核展示分组（since 起）；OA 嵌入部门名与当前组织同名时并入该部门。
+func (r *AuditProcessSnapshotRepo) CountByDepartment(c *gin.Context, since time.Time) ([]DeptCount, error) {
 	var rows []DeptCount
-	base := r.buildAdminAggregatedBaseQuery(c, AuditSnapshotFilter{})
-	err := base.
-		Select("COALESCE(NULLIF(department, ''), '未分配') AS department, COUNT(*)::bigint AS count").
-		Group("COALESCE(NULLIF(department, ''), '未分配')").
+	filter := AuditSnapshotFilter{}
+	if !since.IsZero() {
+		filter.StartDate = &since
+	}
+	base := r.buildAdminAggregatedBaseQuery(c, filter)
+	deptExpr := resolvedDepartmentByNameSQL("agg.tenant_id", "NULL", "agg.department")
+	err := r.DB.Table("(?) AS agg", base).
+		Select(deptExpr + " AS department, COUNT(*)::bigint AS count").
+		Group("department").
 		Order("count DESC").
 		Scan(&rows).Error
 	return rows, err
@@ -597,11 +608,12 @@ func (r *AuditProcessSnapshotRepo) GetVisibleWorkbenchMap(c *gin.Context, proces
 	return result, nil
 }
 
-// CountCombinedUserRanking 将审核、归档、总结完成结果按实际操作人汇总后统一排名。
-// OA 通用嵌入使用执行时保存的 OA 人员快照；系统内操作继续使用 AuraOA 用户归属。
-func (r *AuditProcessSnapshotRepo) CountCombinedUserRanking(c *gin.Context, limit int) ([]CombinedUserRankRow, error) {
+// CountCombinedUserRanking 将审核、归档、总结完成结果按实际操作人汇总后统一排名（since 起）。
+// OA 通用嵌入使用执行时保存的 OA 人员快照；部门名与当前组织同名时并入该部门。
+func (r *AuditProcessSnapshotRepo) CountCombinedUserRanking(c *gin.Context, since time.Time, limit int) ([]CombinedUserRankRow, error) {
 	tenantID, _ := c.Get("tenant_id")
 	var rows []CombinedUserRankRow
+	deptExpr := resolvedDepartmentByNameSQL("a.tenant_id", "d.name", "a.oa_operator_dept")
 	err := r.DB.Raw(`WITH raw_activity AS (
  SELECT aps.tenant_id,
         al.user_id,
@@ -615,7 +627,7 @@ func (r *AuditProcessSnapshotRepo) CountCombinedUserRanking(c *gin.Context, limi
         aps.updated_at AS at
  FROM audit_process_snapshots aps
  JOIN audit_logs al ON al.id = aps.latest_valid_log_id AND al.tenant_id = aps.tenant_id
- WHERE aps.tenant_id = ?
+ WHERE aps.tenant_id = ? AND aps.updated_at >= ?
  UNION ALL
  SELECT aps.tenant_id,
         al.user_id,
@@ -629,7 +641,7 @@ func (r *AuditProcessSnapshotRepo) CountCombinedUserRanking(c *gin.Context, limi
         aps.updated_at
  FROM archive_process_snapshots aps
  JOIN archive_logs al ON al.id = aps.latest_valid_archive_log_id AND al.tenant_id = aps.tenant_id
- WHERE aps.tenant_id = ?
+ WHERE aps.tenant_id = ? AND aps.updated_at >= ?
  UNION ALL
  SELECT psl.tenant_id,
         psl.user_id,
@@ -642,17 +654,17 @@ func (r *AuditProcessSnapshotRepo) CountCombinedUserRanking(c *gin.Context, limi
         1::bigint,
         psl.updated_at
  FROM process_summary_logs psl
- WHERE psl.tenant_id = ? AND psl.status = 'completed'
+ WHERE psl.tenant_id = ? AND psl.status = 'completed' AND psl.updated_at >= ?
 ), identified_activity AS (
  SELECT CASE
           WHEN a.is_oa_embed AND NULLIF(TRIM(COALESCE(a.oa_operator_name, '')), '') IS NOT NULL
-            THEN 'oa:' || TRIM(COALESCE(a.oa_operator_id, '')) || ':' || TRIM(a.oa_operator_name) || ':' || COALESCE(NULLIF(TRIM(a.oa_operator_dept), ''), '未分配')
+            THEN 'oa:' || TRIM(COALESCE(a.oa_operator_id, '')) || ':' || TRIM(a.oa_operator_name)
           WHEN a.is_oa_embed THEN 'oa:unknown'
           ELSE 'user:' || a.user_id::text
         END AS identity_key,
         CASE
           WHEN a.is_oa_embed AND NULLIF(TRIM(COALESCE(a.oa_operator_name, '')), '') IS NOT NULL
-            THEN 'oa:' || TRIM(COALESCE(a.oa_operator_id, '')) || ':' || TRIM(a.oa_operator_name) || ':' || COALESCE(NULLIF(TRIM(a.oa_operator_dept), ''), '未分配')
+            THEN 'oa:' || TRIM(COALESCE(a.oa_operator_id, '')) || ':' || TRIM(a.oa_operator_name)
           WHEN a.is_oa_embed THEN 'oa:unknown'
           ELSE u.username
         END AS username,
@@ -663,9 +675,9 @@ func (r *AuditProcessSnapshotRepo) CountCombinedUserRanking(c *gin.Context, limi
         END AS display_name,
         CASE
           WHEN a.is_oa_embed AND NULLIF(TRIM(COALESCE(a.oa_operator_name, '')), '') IS NOT NULL
-            THEN COALESCE(NULLIF(TRIM(a.oa_operator_dept), ''), '未分配')
+            THEN `+deptExpr+`
           WHEN a.is_oa_embed THEN '未分配'
-          ELSE COALESCE(d.name, '')
+          ELSE COALESCE(NULLIF(TRIM(d.name), ''), '未分配')
         END AS department,
         a.audit_count,
         a.archive_count,
@@ -688,7 +700,7 @@ SELECT username,
 FROM identified_activity
 GROUP BY identity_key, username, display_name, department
 ORDER BY total DESC, last_active DESC
-LIMIT ?`, tenantID, tenantID, tenantID, limit).Scan(&rows).Error
+LIMIT ?`, tenantID, since, tenantID, since, tenantID, since, limit).Scan(&rows).Error
 	return rows, err
 }
 

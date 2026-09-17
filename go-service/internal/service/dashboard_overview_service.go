@@ -17,6 +17,16 @@ import (
 	"auraoa/go-service/internal/repository"
 )
 
+const (
+	dashboardDeptLookbackDays     = 30
+	dashboardUserRankLookbackDays = 30
+	dashboardActivityLookbackDays = 7
+)
+
+func dashboardLookbackStart(days int) time.Time {
+	return apptime.Now().AddDate(0, 0, -days)
+}
+
 // DashboardOverviewService 聚合仪表盘数据。
 type DashboardOverviewService struct {
 	auditSnapshotRepo   *repository.AuditProcessSnapshotRepo
@@ -167,8 +177,8 @@ func (s *DashboardOverviewService) BuildOverview(c *gin.Context, activeRole stri
 	summaryTrend, _ := s.summaryLogRepo.WeeklyTrendByDay(c, userScope)
 	out.WeeklyTrend = mergeWeeklyTrend(auditTrend, cronTrend, archiveTrend, summaryTrend, chatTrend)
 
-	// ── 最近动态（前 10 条，带详细标注）──
-	out.RecentActivity = s.buildEnrichedActivity(c, userScope, viewerUsername, 10)
+	// ── 最近动态（近 7 天，最多前 10 条，带详细标注）──
+	out.RecentActivity = s.buildEnrichedActivity(c, userScope, viewerUsername, 10, dashboardLookbackStart(dashboardActivityLookbackDays))
 
 	// ── business 专属 ──
 	if activeRole == "business" {
@@ -282,21 +292,21 @@ type enrichedSort struct {
 }
 
 // buildEnrichedActivity 构建带标注的最近动态。
-func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userScope *uuid.UUID, viewerUsername string, limit int) []dto.ActivityItemEnriched {
+func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userScope *uuid.UUID, viewerUsername string, limit int, since time.Time) []dto.ActivityItemEnriched {
 	// 审核快照
-	auditRows, err := s.auditSnapshotRepo.RecentEnriched(c, limit, userScope)
+	auditRows, err := s.auditSnapshotRepo.RecentEnriched(c, limit, userScope, since)
 	if err != nil {
 		log.Printf("dashboard: auditSnapshotRepo.RecentEnriched error: %v", err)
 	}
 	// 归档快照
-	archiveRows, err := s.archiveSnapshotRepo.RecentEnriched(c, limit, userScope)
+	archiveRows, err := s.archiveSnapshotRepo.RecentEnriched(c, limit, userScope, since)
 	if err != nil {
 		log.Printf("dashboard: archiveSnapshotRepo.RecentEnriched error: %v", err)
 	}
-	summaryRows, _ := s.summaryLogRepo.RecentEnriched(c, limit, userScope)
+	summaryRows, _ := s.summaryLogRepo.RecentEnriched(c, limit, userScope, since)
 	// 定时任务日志
 	tid, _ := tenantUUIDFromContext(c)
-	cronRows, err := s.cronLogRepo.RecentEnriched(tid, limit, userScope)
+	cronRows, err := s.cronLogRepo.RecentEnriched(tid, limit, userScope, since)
 	if err != nil {
 		log.Printf("dashboard: cronLogRepo.RecentEnriched error: %v", err)
 	}
@@ -371,7 +381,7 @@ func (s *DashboardOverviewService) buildEnrichedActivity(c *gin.Context, userSco
 
 	// 智能体会话动态
 	if s.chatRepo != nil {
-		if chatActs, err := s.chatRepo.ListRecentChatActivities(tid, userScope, limit); err == nil {
+		if chatActs, err := s.chatRepo.ListRecentChatActivities(tid, userScope, limit, since); err == nil {
 			for _, act := range chatActs {
 				if t, err := time.Parse(time.RFC3339, act.CreatedAt); err == nil {
 					buf = append(buf, enrichedSort{at: t, item: act})
@@ -459,17 +469,18 @@ func (s *DashboardOverviewService) buildCronTaskPreview(c *gin.Context, userID u
 	return result
 }
 
-// buildDeptDistribution 构建部门分布数据（各功能分别统计）。
+// buildDeptDistribution 构建近 30 天部门分布数据。OA 嵌入部门名与当前组织同名时并入该部门。
 func (s *DashboardOverviewService) buildDeptDistribution(c *gin.Context) []dto.DeptDistributionData {
-	auditDepts, _ := s.auditSnapshotRepo.CountByDepartment(c)
-	archiveDepts, _ := s.archiveSnapshotRepo.CountByDepartment(c)
-	cronDepts, _ := s.cronLogRepo.CountByDepartment(c)
-	summaryDepts, _ := s.summaryLogRepo.CountByDepartment(c)
+	since := dashboardLookbackStart(dashboardDeptLookbackDays)
+	auditDepts, _ := s.auditSnapshotRepo.CountByDepartment(c, since)
+	archiveDepts, _ := s.archiveSnapshotRepo.CountByDepartment(c, since)
+	cronDepts, _ := s.cronLogRepo.CountByDepartment(c, since)
+	summaryDepts, _ := s.summaryLogRepo.CountByDepartment(c, since)
 
 	var chatDepts []repository.DeptCount
 	if s.chatRepo != nil {
 		if tid, err := tenantUUIDFromContext(c); err == nil {
-			chatDepts, _ = s.chatRepo.CountByDepartment(tid)
+			chatDepts, _ = s.chatRepo.CountByDepartment(tid, since)
 		}
 	}
 
@@ -521,7 +532,7 @@ func (s *DashboardOverviewService) buildDeptDistribution(c *gin.Context) []dto.D
 
 // buildUserActivityRanking 构建用户活跃排名（基于快照数据）。
 func (s *DashboardOverviewService) buildUserActivityRanking(c *gin.Context) []dto.DashboardUserActivityRow {
-	rows, err := s.auditSnapshotRepo.CountCombinedUserRanking(c, 10)
+	rows, err := s.auditSnapshotRepo.CountCombinedUserRanking(c, dashboardLookbackStart(dashboardUserRankLookbackDays), 10)
 	if err != nil {
 		log.Printf("dashboard: auditSnapshotRepo.CountByUserRanking error: %v", err)
 		return nil

@@ -31,7 +31,7 @@ type DashboardOverviewResponse struct {
 	AgentOverview *DashboardAgentOverviewData `json:"agent_overview,omitempty"`
 }
 
-// WeeklyOverviewData 本周概览（周一 00:00 至当前）。
+// WeeklyOverviewData 本周概览（周一 00:00 至当前）。与 weekly_trend 同源：租户管理员为全租户（含 OA 嵌入），业务用户为本人工作台。
 type WeeklyOverviewData struct {
 	Total        int64 `json:"total"`         // 五项之和（审核、归档、总结、定时、智能体）
 	AuditCount   int64 `json:"audit_count"`   // 审核工作台快照本周条数
@@ -96,7 +96,7 @@ type CronTaskPreview struct {
 	IsActive       bool   `json:"is_active"`
 }
 
-// DeptDistributionData 部门分布（区分各功能模块与智能体）。
+// DeptDistributionData 近 30 天部门分布（区分各功能模块与智能体）。
 type DeptDistributionData struct {
 	SummaryCount int64  `json:"summary_count"`
 	Department   string `json:"department"`
@@ -107,7 +107,7 @@ type DeptDistributionData struct {
 	Total        int64  `json:"total"`
 }
 
-// DashboardUserActivityRow 用户审核活跃度排行。
+// DashboardUserActivityRow 近 30 天用户审核活跃度排行。
 type DashboardUserActivityRow struct {
 	ArchiveCount int64  `json:"archive_count"`
 	SummaryCount int64  `json:"summary_count"`

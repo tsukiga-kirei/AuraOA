@@ -4128,7 +4128,7 @@ paths:
   /api/tenant/settings/dashboard-overview:
     get:
       summary: 获取用户仪表盘聚合数据
-      description: 租户管理员的用户活跃排行中，OA 通用嵌入按 OA 操作人快照统计，未识别人员不会归到内部承载任务的管理员名下；任务归属与配额结算不变。
+      description: 业务用户看本人工作台；租户管理员看全租户（含 OA 嵌入）。本周概览与审核趋势为本周一至今且同源。部门分布与用户活跃排行为近 30 天，OA 嵌入部门名与组织同名时合并。最近动态为近 7 天。用户活跃排行中未识别的 OA 人员不会归到内部承载账号。
       tags:
       - UserSettings
       security:
