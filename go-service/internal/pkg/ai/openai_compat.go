@@ -33,30 +33,70 @@ func NewOpenAICompatCaller(cfg *model.AIModelConfig) (*OpenAICompatCaller, error
 	}, nil
 }
 
-// TestConnection 测试模型连接是否可用。
-func (c *OpenAICompatCaller) TestConnection(ctx context.Context) error {
-	url := fmt.Sprintf("%s/models", c.cfg.Endpoint)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("创建请求失败: %w", err)
-	}
+// setAuthHeader 有 API Key 时附加 Authorization: Bearer。
+func (c *OpenAICompatCaller) setAuthHeader(req *http.Request) {
 	if c.cfg.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
 	}
+}
+
+// setCompatHeaders 设置对话请求头：JSON body 必须带 Content-Type，有 Key 时带 Bearer。
+func (c *OpenAICompatCaller) setCompatHeaders(req *http.Request) {
+	req.Header.Set("Content-Type", "application/json")
+	c.setAuthHeader(req)
+}
+
+// TestConnection 测试模型连接是否可用。
+// 先带 Content-Type: application/json（部分网关会校验）；
+// 若对端因该头拒绝（400/403/406/415），再去掉该头重试一次。
+func (c *OpenAICompatCaller) TestConnection(ctx context.Context) error {
+	status, err := c.probeModels(ctx, true)
+	if err == nil {
+		return nil
+	}
+	if !shouldRetryTestWithoutJSONContentType(status) {
+		return err
+	}
+	if _, retryErr := c.probeModels(ctx, false); retryErr == nil {
+		return nil
+	}
+	return err
+}
+
+func shouldRetryTestWithoutJSONContentType(status int) bool {
+	switch status {
+	case http.StatusBadRequest, http.StatusForbidden, http.StatusNotAcceptable, http.StatusUnsupportedMediaType:
+		return true
+	default:
+		return false
+	}
+}
+
+// probeModels 探测 GET {endpoint}/models；withJSONContentType 控制是否带 Content-Type。
+func (c *OpenAICompatCaller) probeModels(ctx context.Context, withJSONContentType bool) (int, error) {
+	url := fmt.Sprintf("%s/models", c.cfg.Endpoint)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("创建请求失败: %w", err)
+	}
+	if withJSONContentType {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	c.setAuthHeader(req)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("[%s] 连接失败: %w", c.cfg.Provider, err)
+		return 0, fmt.Errorf("[%s] 连接失败: %w", c.cfg.Provider, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("[%s] API Key 无效", c.cfg.Provider)
+		return resp.StatusCode, fmt.Errorf("[%s] API Key 无效", c.cfg.Provider)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("[%s] 返回状态码: %d", c.cfg.Provider, resp.StatusCode)
+		return resp.StatusCode, fmt.Errorf("[%s] 返回状态码: %d", c.cfg.Provider, resp.StatusCode)
 	}
-	return nil
+	return resp.StatusCode, nil
 }
 
 // openAIRequest OpenAI 兼容 API 请求体
@@ -174,10 +214,7 @@ func (c *OpenAICompatCaller) Chat(ctx context.Context, req *ChatRequest) (*ChatR
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if c.cfg.APIKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
-	}
+	c.setCompatHeaders(httpReq)
 
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
