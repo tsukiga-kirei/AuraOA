@@ -38,8 +38,16 @@
       style.textContent =
         '@keyframes auraBtnSpin{to{transform:rotate(360deg)}}' +
         '@keyframes auraDraw{to{stroke-dashoffset:0}}' +
-        '@keyframes auraDrawLoop{0%,8%{stroke-dashoffset:1}42%,62%{stroke-dashoffset:0}100%{stroke-dashoffset:1}}' +
-        '.aura-status-button{box-sizing:border-box;appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;gap:9px;min-height:40px;max-width:100%;padding:6px 11px 6px 7px;margin:0;border:1px solid rgba(148,163,184,.22);border-radius:14px;background:#fff;color:#263247;box-shadow:0 4px 16px rgba(15,23,42,.08),0 1px 3px rgba(15,23,42,.04);font:600 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.1px;text-align:left;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:box-shadow .18s ease,transform .18s ease,border-color .18s ease;}' +
+        '@keyframes auraButtonEnter{0%{opacity:0;transform:translate3d(-10px,6px,0) scale(.78);filter:blur(2px)}55%{opacity:1;transform:translate3d(1px,-1px,0) scale(1.035);filter:blur(0)}100%{opacity:1;transform:none;filter:none}}' +
+        '@keyframes auraIconEnter{0%{opacity:0;transform:scale(.64) rotate(-10deg)}72%{opacity:1;transform:scale(1.08) rotate(3deg)}100%{opacity:1;transform:scale(1) rotate(0)}}' +
+        '@keyframes auraTextEnter{0%{opacity:0;transform:translate3d(-5px,0,0)}100%{opacity:1;transform:none}}' +
+        '@keyframes auraBtnShine{0%,100%{opacity:0;transform:translateX(-120%)}18%{opacity:.48}42%{opacity:0;transform:translateX(120%)}}' +
+        '@keyframes auraStatusBreath{0%,100%{opacity:.22;transform:scale(.985)}50%{opacity:.48;transform:scale(1.01)}}' +
+        '@keyframes auraStarSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}' +
+        '.aura-status-button{box-sizing:border-box;appearance:none;-webkit-appearance:none;position:relative;isolation:isolate;overflow:hidden;display:inline-flex;align-items:center;gap:9px;min-height:40px;max-width:100%;padding:6px 11px 6px 7px;margin:0;border:1px solid var(--aura-status-border,rgba(148,163,184,.22));border-radius:14px;background:var(--aura-status-surface,#fff);color:#263247;box-shadow:var(--aura-status-shadow,0 4px 16px rgba(15,23,42,.08),0 1px 3px rgba(15,23,42,.04));font:600 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.1px;text-align:left;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:box-shadow .18s ease,transform .18s ease,border-color .18s ease;}' +
+        '.aura-status-button::before{content:"";position:absolute;inset:1px;border-radius:13px;background:radial-gradient(circle at 8% 50%,var(--aura-status-tint),transparent 62%);opacity:.22;pointer-events:none;z-index:0;transform-origin:8% 50%;animation:auraStatusBreath 4.2s ease-in-out infinite;}' +
+        '.aura-status-button::after{content:"";position:absolute;top:0;bottom:0;left:0;width:36%;background:linear-gradient(105deg,transparent,rgba(255,255,255,.66),transparent);pointer-events:none;z-index:0;opacity:0;transform:translateX(-120%);animation:auraBtnShine 3.6s ease-out .65s both;}' +
+        '.aura-status-icon,.aura-status-text,.aura-status-score,.aura-status-arrow{position:relative;z-index:1;}' +
         '.aura-status-icon{display:flex;align-items:center;justify-content:center;width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:var(--aura-status-tint);color:var(--aura-status-color);}' +
         '.aura-status-icon svg{display:block;width:18px;height:18px;transform-origin:center;}' +
         '.aura-status-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
@@ -51,39 +59,44 @@
         '.aura-status-button:active{transform:scale(.98);}' +
         '.aura-status-button[aria-disabled="true"]{cursor:default;}' +
         '.aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading){color:#64748b;box-shadow:0 1px 4px rgba(15,23,42,.05);}' +
-        '.aura-status-button--enter-shake .aura-status-icon svg>*,.aura-status-button--enter-pop .aura-status-icon svg>*,.aura-status-button--enter-bounce .aura-status-icon svg>*,.aura-status-button--enter-rise .aura-status-icon svg>*,.aura-status-button--enter-fade .aura-status-icon svg>*,.aura-status-button--running .aura-status-icon svg>*{stroke-dasharray:1;stroke-dashoffset:1}' +
-        '.aura-status-button--loading .aura-status-icon svg{animation:auraBtnSpin .9s linear infinite}' +
-        '.aura-status-button--running .aura-status-icon svg>*{animation:auraDrawLoop 1.55s ease-in-out infinite}' +
-        '.aura-status-button--running .aura-status-icon svg>:nth-child(2){animation-delay:.22s}' +
-        '.aura-status-button--enter-shake .aura-status-icon svg>*{animation:auraDraw .34s cubic-bezier(.22,.7,.2,1) forwards}' +
-        '.aura-status-button--enter-shake .aura-status-icon svg>:nth-child(2){animation-delay:.13s}' +
-        '.aura-status-button--enter-pop .aura-status-icon svg>*{animation:auraDraw .55s cubic-bezier(.22,.72,.2,1) forwards}' +
-        '.aura-status-button--enter-bounce .aura-status-icon svg>*{animation:auraDraw .36s cubic-bezier(.22,.7,.2,1) forwards}' +
-        '.aura-status-button--enter-bounce .aura-status-icon svg>:nth-child(2){animation-delay:.16s}' +
-        '.aura-status-button--enter-rise .aura-status-icon svg>*{animation:auraDraw .32s cubic-bezier(.22,.7,.2,1) forwards}' +
-        '.aura-status-button--enter-rise .aura-status-icon svg>:nth-child(2){animation-delay:.1s}' +
-        '.aura-status-button--enter-rise .aura-status-icon svg>:nth-child(3){animation-delay:.2s}' +
-        '.aura-status-button--enter-rise .aura-status-icon svg>:nth-child(4){animation-delay:.28s}' +
-        '.aura-status-button--enter-fade .aura-status-icon svg>*{animation:auraDraw .4s cubic-bezier(.22,.7,.2,1) forwards}' +
-        '.aura-status-button--enter-fade .aura-status-icon svg>:nth-child(2){animation-delay:.14s}' +
+        '.aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading)::before{animation:none;opacity:.12;}' +
+        '.aura-status-button--enter{animation:auraButtonEnter .62s cubic-bezier(.22,.7,.2,1) both;}' +
+        '.aura-status-button--enter .aura-status-icon{opacity:0;transform:scale(.76);animation:auraIconEnter .38s cubic-bezier(.22,.7,.2,1) .36s both;}' +
+        '.aura-status-button--enter .aura-status-text{opacity:0;transform:translate3d(-5px,0,0);animation:auraTextEnter .34s ease-out .53s both;}' +
+        '.aura-status-button--enter .aura-status-score{opacity:0;transform:translate3d(-4px,0,0);animation:auraTextEnter .34s ease-out .6s both;}' +
+        '.aura-status-button--enter .aura-status-arrow{opacity:0;transform:translate3d(-3px,0,0);animation:auraTextEnter .34s ease-out .66s both;}' +
+        '.aura-status-button--enter-shake .aura-status-icon svg>*,.aura-status-button--enter-pop .aura-status-icon svg>*,.aura-status-button--enter-bounce .aura-status-icon svg>*,.aura-status-button--enter-rise .aura-status-icon svg>*,.aura-status-button--enter-fade .aura-status-icon svg>*{stroke-dasharray:1;stroke-dashoffset:1}' +
+        '.aura-status-button--loading .aura-status-icon svg{animation:auraBtnSpin .9s linear .36s infinite}' +
+        '.aura-status-button--running .aura-status-icon .aura-running-star{transform-box:fill-box;transform-origin:center;animation:auraStarSpin 1.6s linear .36s infinite}' +
+        '.aura-status-button--enter-shake .aura-status-icon svg>*{animation:auraDraw .34s cubic-bezier(.22,.7,.2,1) .36s forwards}' +
+        '.aura-status-button--enter-shake .aura-status-icon svg>:nth-child(2){animation-delay:.49s}' +
+        '.aura-status-button--enter-pop .aura-status-icon svg>*{animation:auraDraw .55s cubic-bezier(.22,.72,.2,1) .36s forwards}' +
+        '.aura-status-button--enter-bounce .aura-status-icon svg>*{animation:auraDraw .36s cubic-bezier(.22,.7,.2,1) .36s forwards}' +
+        '.aura-status-button--enter-bounce .aura-status-icon svg>:nth-child(2){animation-delay:.52s}' +
+        '.aura-status-button--enter-rise .aura-status-icon svg>*{animation:auraDraw .32s cubic-bezier(.22,.7,.2,1) .36s forwards}' +
+        '.aura-status-button--enter-rise .aura-status-icon svg>:nth-child(2){animation-delay:.46s}' +
+        '.aura-status-button--enter-rise .aura-status-icon svg>:nth-child(3){animation-delay:.56s}' +
+        '.aura-status-button--enter-rise .aura-status-icon svg>:nth-child(4){animation-delay:.64s}' +
+        '.aura-status-button--enter-fade .aura-status-icon svg>*{animation:auraDraw .4s cubic-bezier(.22,.7,.2,1) .36s forwards}' +
+        '.aura-status-button--enter-fade .aura-status-icon svg>:nth-child(2){animation-delay:.5s}' +
         '.aura-status-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}' +
         '.aura-status-group{display:inline-flex;max-width:100%;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;}' +
         '#auraMobileEmbedFloatContainer{position:fixed;bottom:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:16px;left:calc(16px + env(safe-area-inset-left,0px));max-width:calc(100vw - 32px);z-index:9999;}' +
         '@media(hover:hover){.aura-status-button:not([aria-disabled="true"]):hover{transform:translateY(-2px);border-color:var(--aura-status-color);box-shadow:0 7px 22px rgba(15,23,42,.12);}}' +
         '@media(pointer:coarse){.aura-status-button{min-height:44px;}}' +
-        '@media(prefers-reduced-motion:reduce){.aura-status-button{transition:none;}.aura-status-icon svg,.aura-status-icon svg>*{animation:none!important;stroke-dashoffset:0!important;}}';
+        '@media(prefers-reduced-motion:reduce){.aura-status-button{transition:none;animation:none!important;}.aura-status-button::before,.aura-status-button::after,.aura-status-icon,.aura-status-text,.aura-status-score,.aura-status-arrow{animation:none!important;opacity:1!important;transform:none!important;}.aura-status-icon svg,.aura-status-icon svg>*{animation:none!important;stroke-dashoffset:0!important;}}';
       document.head.appendChild(style);
     }
   } catch (e) {}
 
   var statusConfig = {
-    gray: { color: '#475569', text: 'AI审核详情', bg: '#ffffff', border: '#cbd5e1', dot: '#94a3b8', shadow: '0 1px 3px rgba(0,0,0,0.06)' },
-    green: { color: '#15803d', text: '审核通过', bg: '#f0fdf4', border: '#86efac', dot: '#22c55e', shadow: '0 2px 6px rgba(34,197,94,0.12)' },
-    yellow: { color: '#c2410c', text: '建议关注', bg: '#ffedd5', border: '#fdba74', dot: '#f97316', shadow: '0 2px 6px rgba(234,88,12,0.16)' },
-    red: { color: '#b91c1c', text: '建议退回', bg: '#fef2f2', border: '#fca5a5', dot: '#ef4444', shadow: '0 2px 6px rgba(239,68,68,0.12)' },
-    disabled: { color: '#94a3b8', text: '暂不可用', bg: '#f8fafc', border: '#e2e8f0', dot: '#cbd5e1', shadow: 'none' },
-    error: { color: '#dc2626', text: '加载失败', bg: '#fef2f2', border: '#fca5a5', dot: '#ef4444', shadow: 'none' },
-    loading: { color: '#1d4ed8', text: '加载中...', bg: '#dbeafe', border: '#60a5fa', dot: '#2563eb', shadow: '0 2px 8px rgba(37,99,235,0.16)' }
+    gray: { color: '#475569', text: 'AI审核详情', bg: '#eef2f7', surface: '#f8fafc', border: '#cbd5e1', dot: '#94a3b8', shadow: '0 2px 8px rgba(15,23,42,.06)' },
+    green: { color: '#15803d', text: '审核通过', bg: '#e5f7ed', surface: '#f1fbf5', border: '#86efac', dot: '#16a36a', shadow: '0 3px 12px rgba(22,163,106,.13)' },
+    yellow: { color: '#a15c00', text: '建议关注', bg: '#fff0d2', surface: '#fff9ee', border: '#f2c078', dot: '#d98200', shadow: '0 3px 12px rgba(217,130,0,.14)' },
+    red: { color: '#c62828', text: '建议退回', bg: '#ffe8e6', surface: '#fff3f2', border: '#ef8a84', dot: '#d92d20', shadow: '0 4px 14px rgba(198,40,40,.16)' },
+    disabled: { color: '#94a3b8', text: '暂不可用', bg: '#f1f4f8', surface: '#f8fafc', border: '#e2e8f0', dot: '#cbd5e1', shadow: '0 1px 4px rgba(15,23,42,.05)' },
+    error: { color: '#b42318', text: '加载失败', bg: '#ffe1df', surface: '#fff1f0', border: '#e97870', dot: '#d92d20', shadow: '0 4px 16px rgba(180,35,24,.2)' },
+    loading: { color: '#1d4ed8', text: '加载中...', bg: '#dbeafe', surface: '#eef5ff', border: '#60a5fa', dot: '#2563eb', shadow: '0 3px 12px rgba(37,99,235,.15)' }
   };
 
   // 单功能、双功能及电脑端共用按钮结构，分数独立排版，完整文案保留给辅助技术。
@@ -92,13 +105,13 @@
   }
 
   function statusMotionClass(status, isLoading) {
-    if (isLoading) return ' aura-status-button--loading';
-    if (status === 'loading') return ' aura-status-button--running';
-    if (status === 'red' || status === 'error') return ' aura-status-button--enter-shake';
-    if (status === 'green') return ' aura-status-button--enter-pop';
-    if (status === 'yellow') return ' aura-status-button--enter-bounce';
-    if (status === 'disabled') return ' aura-status-button--enter-fade';
-    return ' aura-status-button--enter-rise';
+    if (isLoading) return ' aura-status-button--enter aura-status-button--loading';
+    if (status === 'loading') return ' aura-status-button--enter aura-status-button--running';
+    if (status === 'red' || status === 'error') return ' aura-status-button--enter aura-status-button--enter-shake';
+    if (status === 'green') return ' aura-status-button--enter aura-status-button--enter-pop';
+    if (status === 'yellow') return ' aura-status-button--enter aura-status-button--enter-bounce';
+    if (status === 'disabled') return ' aura-status-button--enter aura-status-button--enter-fade';
+    return ' aura-status-button--enter aura-status-button--enter-rise';
   }
 
   function buildStatusButton(btnId, feature, status, displayText, isLoading, labelClass) {
@@ -114,10 +127,10 @@
     if (status === 'red' || status === 'error') iconPath = '<path pathLength="1" d="M8 8l8 8" stroke-width="2.7"/><path pathLength="1" d="M16 8l-8 8" stroke-width="2.7"/>';
     if (status === 'yellow') iconPath = '<path pathLength="1" d="M12 4.1v9.4" stroke-width="3.6"/><path pathLength="1" d="M12 18.25v.02" stroke-width="4.4"/>';
     if (status === 'disabled') iconPath = '<path pathLength="1" d="M8 10V7a4 4 0 0 1 8 0v3" stroke-width="2.4"/><rect pathLength="1" x="5" y="10" width="14" height="11" rx="3" stroke-width="2.4"/>';
-    if (running) iconPath = '<path pathLength="1" d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z" stroke-width="2.5"/><path pathLength="1" d="m18.4 3.6.75 2.05 2.05.75-2.05.75-.75 2.05-.75-2.05-2.05-.75 2.05-.75Z" stroke-width="2.5"/>';
+    if (running) iconPath = '<path class="aura-running-star" d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z"/>';
     if (fetching) iconPath = '<circle cx="12" cy="12" r="8.1" fill="none" stroke="currentColor" stroke-width="2.7" opacity="0.22"/><path d="M12 3.9a8.1 8.1 0 0 1 0 16.2" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>';
     var icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + iconPath + '</svg>';
-    return '<button id="' + btnId + '" type="button" class="aura-status-button' + statusMotionClass(status, isLoading) + '" aria-disabled="' + (unavailable || isLoading ? 'true' : 'false') + '" style="--aura-status-color:' + theme.color + ';--aura-status-tint:' + theme.bg + ';">' +
+    return '<button id="' + btnId + '" type="button" class="aura-status-button' + statusMotionClass(status, isLoading) + '" aria-disabled="' + (unavailable || isLoading ? 'true' : 'false') + '" style="--aura-status-color:' + theme.color + ';--aura-status-tint:' + theme.bg + ';--aura-status-surface:' + theme.surface + ';--aura-status-border:' + theme.border + ';--aura-status-shadow:' + theme.shadow + ';">' +
       '<span class="aura-status-icon" aria-hidden="true">' + icon + '</span>' +
       '<span class="aura-status-text" aria-hidden="true">' + escapeButtonText(label) + '</span>' +
       (scoreMatch ? '<span class="aura-status-score" aria-hidden="true"><b>' + escapeButtonText(scoreMatch[1]) + '</b><small>' + escapeButtonText(scoreMatch[2]) + '</small></span>' : '') +

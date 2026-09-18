@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AuraOA 移动端嵌入按钮示例</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --page-bg: #f8fafc;
+      --ink: #1e293b;
+      --muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: linear-gradient(180deg, #ffffff 0%, var(--page-bg) 100%);
+    }
+
+    .mock-form {
+      min-height: 100vh;
+      padding: 28px 20px 150px;
+    }
+
+    .mock-form h1 { margin: 0 0 8px; font-size: 22px; }
+    .mock-form p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .demo-panel {
+      max-width: 640px;
+      margin: 38px auto 0;
+      padding: 22px;
+      border: 1px solid #e8edf3;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, .78);
+    }
+
+    .demo-panel h2 { margin: 0 0 8px; font-size: 17px; }
+    .demo-panel p { line-height: 1.7; }
+
+    .aura-status-float {
+      position: fixed;
+      bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      left: 16px;
+      z-index: 10;
+      display: flex;
+      justify-content: flex-start;
+      pointer-events: none;
+    }
+
+    .aura-status-group {
+      display: flex;
+      max-width: 100%;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 8px;
+      flex-wrap: wrap;
+      pointer-events: auto;
+    }
+
+    .aura-status-button {
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      display: inline-flex;
+      min-height: 44px;
+      max-width: 100%;
+      align-items: center;
+      gap: 9px;
+      padding: 6px 11px 6px 7px;
+      border: 1px solid var(--aura-status-border);
+      border-radius: 14px;
+      color: #263247;
+      background: var(--aura-status-surface);
+      box-shadow: var(--aura-status-shadow);
+      font: 600 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      letter-spacing: .1px;
+      text-align: left;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    }
+
+    .aura-status-button::before {
+      position: absolute;
+      inset: 1px;
+      z-index: 0;
+      content: "";
+      border-radius: 13px;
+      background: radial-gradient(circle at 8% 50%, var(--aura-status-tint), transparent 62%);
+      pointer-events: none;
+      animation: auraStatusBreath 4.2s ease-in-out infinite;
+    }
+
+    .aura-status-button::after {
+      position: absolute;
+      inset: 0 auto 0 0;
+      z-index: 0;
+      width: 36%;
+      content: "";
+      background: linear-gradient(105deg, transparent, rgba(255, 255, 255, .66), transparent);
+      pointer-events: none;
+      opacity: 0;
+      transform: translateX(-120%);
+      animation: auraBtnShine 3.6s ease-out .65s both;
+    }
+
+    .aura-status-icon,
+    .aura-status-text,
+    .aura-status-score,
+    .aura-status-arrow { position: relative; z-index: 1; }
+
+    .aura-status-icon {
+      display: flex;
+      width: 28px;
+      height: 28px;
+      flex: 0 0 28px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9px;
+      color: var(--aura-status-color);
+      background: var(--aura-status-tint);
+    }
+
+    .aura-status-icon svg { display: block; width: 18px; height: 18px; transform-origin: center; }
+    .aura-status-text { overflow: hidden; min-width: 0; white-space: nowrap; text-overflow: ellipsis; }
+
+    .aura-status-score {
+      display: inline-flex;
+      flex: none;
+      align-items: baseline;
+      gap: 2px;
+      padding-left: 10px;
+      border-left: 1px solid #e8edf3;
+      color: var(--aura-status-color);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .aura-status-score b { font-size: 17px; line-height: 1; }
+    .aura-status-score small { font-size: 10px; font-weight: 500; }
+    .aura-status-arrow { width: 14px; height: 14px; flex: 0 0 14px; color: #94a3b8; }
+    .aura-status-button[aria-disabled="true"] { cursor: default; }
+    .aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading) { color: #64748b; box-shadow: 0 1px 4px rgba(15, 23, 42, .05); }
+    .aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading)::before { animation: none; opacity: .12; }
+
+    .aura-status-button--enter { animation: auraButtonEnter .62s cubic-bezier(.22, .7, .2, 1) both; }
+    .aura-status-button--enter .aura-status-icon { opacity: 0; transform: scale(.76); animation: auraIconEnter .38s cubic-bezier(.22, .7, .2, 1) .36s both; }
+    .aura-status-button--enter .aura-status-text { opacity: 0; transform: translateX(-5px); animation: auraTextEnter .34s ease-out .53s both; }
+    .aura-status-button--enter .aura-status-score { opacity: 0; transform: translateX(-4px); animation: auraTextEnter .34s ease-out .6s both; }
+    .aura-status-button--enter .aura-status-arrow { opacity: 0; transform: translateX(-3px); animation: auraTextEnter .34s ease-out .66s both; }
+
+    .aura-status-button--enter-shake .aura-status-icon svg > *,
+    .aura-status-button--enter-bounce .aura-status-icon svg > * { stroke-dasharray: 1; stroke-dashoffset: 1; animation: auraDraw .36s cubic-bezier(.22, .7, .2, 1) .36s forwards; }
+    .aura-status-button--enter-shake .aura-status-icon svg > :nth-child(2),
+    .aura-status-button--enter-bounce .aura-status-icon svg > :nth-child(2) { animation-delay: .52s; }
+    .aura-status-button--loading .aura-status-icon svg,
+    .aura-status-button--loading .aura-status-icon svg { animation: auraBtnSpin 1.6s linear .36s infinite; }
+    .aura-status-button--running .aura-status-icon .aura-running-star { transform-box: fill-box; transform-origin: center; animation: auraStarSpin 1.6s linear .36s infinite; }
+
+    @keyframes auraBtnSpin { to { transform: rotate(360deg); } }
+    @keyframes auraDraw { to { stroke-dashoffset: 0; } }
+    @keyframes auraStarSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes auraButtonEnter {
+      0% { opacity: 0; transform: translate3d(-10px, 6px, 0) scale(.78); filter: blur(2px); }
+      55% { opacity: 1; transform: translate3d(1px, -1px, 0) scale(1.035); filter: blur(0); }
+      100% { opacity: 1; transform: none; filter: none; }
+    }
+    @keyframes auraIconEnter {
+      0% { opacity: 0; transform: scale(.64) rotate(-10deg); }
+      72% { opacity: 1; transform: scale(1.08) rotate(3deg); }
+      100% { opacity: 1; transform: scale(1) rotate(0); }
+    }
+    @keyframes auraTextEnter { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: none; } }
+    @keyframes auraBtnShine {
+      0%, 100% { opacity: 0; transform: translateX(-120%); }
+      18% { opacity: .48; }
+      42% { opacity: 0; transform: translateX(120%); }
+    }
+    @keyframes auraStatusBreath {
+      0%, 100% { opacity: .22; transform: scale(.985); }
+      50% { opacity: .48; transform: scale(1.01); }
+    }
+
+    @media (hover: hover) {
+      .aura-status-button:hover { transform: translateY(-2px); border-color: var(--aura-status-color); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .aura-status-button,
+      .aura-status-button::before,
+      .aura-status-button::after,
+      .aura-status-icon,
+      .aura-status-text,
+      .aura-status-score,
+      .aura-status-arrow,
+      .aura-status-icon svg,
+      .aura-status-icon svg > * { animation: none !important; opacity: 1 !important; transform: none !important; stroke-dashoffset: 0 !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="mock-form">
+    <h1>项目审批表单</h1>
+    <p>白色表单背景下的移动端嵌入入口示例</p>
+    <section class="demo-panel">
+      <h2>动画顺序</h2>
+      <p>按钮先出现，再绘制图标，最后让文字、分数和箭头依次进入。点击任意按钮可模拟打开详情。</p>
+      <button id="replay" type="button">重新播放动画</button>
+    </section>
+  </main>
+
+  <div class="aura-status-float">
+    <div id="statusGroup" class="aura-status-group">
+      <button class="aura-status-button aura-status-button--enter aura-status-button--enter-bounce" style="--aura-status-color:#15803d;--aura-status-tint:#e5f7ed;--aura-status-surface:#f1fbf5;--aura-status-border:#86efac;--aura-status-shadow:0 3px 12px rgba(22,163,106,.13);" type="button">
+        <span class="aura-status-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path pathLength="1" d="m6 12 4 4 8-8" /></svg></span>
+        <span class="aura-status-text">审核通过</span><span class="aura-status-score"><b>95</b><small>分</small></span>
+        <svg class="aura-status-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m6 4 4 4-4 4" /></svg>
+      </button>
+      <button class="aura-status-button aura-status-button--enter aura-status-button--enter-bounce" style="--aura-status-color:#a15c00;--aura-status-tint:#fff0d2;--aura-status-surface:#fff9ee;--aura-status-border:#f2c078;--aura-status-shadow:0 3px 12px rgba(217,130,0,.14);" type="button">
+        <span class="aura-status-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path pathLength="1" d="M12 4.1v9.4" /><path pathLength="1" d="M12 18.25v.02" /></svg></span>
+        <span class="aura-status-text">建议关注</span><span class="aura-status-score"><b>78</b><small>分</small></span>
+        <svg class="aura-status-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m6 4 4 4-4 4" /></svg>
+      </button>
+      <button class="aura-status-button aura-status-button--enter aura-status-button--enter-shake" style="--aura-status-color:#c62828;--aura-status-tint:#ffe8e6;--aura-status-surface:#fff3f2;--aura-status-border:#ef8a84;--aura-status-shadow:0 4px 14px rgba(198,40,40,.16);" type="button">
+        <span class="aura-status-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round"><path pathLength="1" d="M8 8l8 8" /><path pathLength="1" d="M16 8l-8 8" /></svg></span>
+        <span class="aura-status-text">建议退回</span><span class="aura-status-score"><b>45</b><small>分</small></span>
+        <svg class="aura-status-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m6 4 4 4-4 4" /></svg>
+      </button>
+      <button class="aura-status-button aura-status-button--enter aura-status-button--running" style="--aura-status-color:#1d4ed8;--aura-status-tint:#dbeafe;--aura-status-surface:#eef5ff;--aura-status-border:#60a5fa;--aura-status-shadow:0 3px 12px rgba(37,99,235,.15);" type="button">
+        <span class="aura-status-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path class="aura-running-star" d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z" /></svg></span>
+        <span class="aura-status-text">审核分析中</span><svg class="aura-status-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m6 4 4 4-4 4" /></svg>
+      </button>
+      <button class="aura-status-button aura-status-button--enter aura-status-button--loading" aria-disabled="true" style="--aura-status-color:#1d4ed8;--aura-status-tint:#dbeafe;--aura-status-surface:#eef5ff;--aura-status-border:#60a5fa;--aura-status-shadow:0 3px 12px rgba(37,99,235,.15);" type="button">
+        <span class="aura-status-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.1" opacity=".22" /><path d="M12 3.9a8.1 8.1 0 0 1 0 16.2" /></svg></span>
+        <span class="aura-status-text">加载中...</span>
+      </button>
+      <button class="aura-status-button aura-status-button--enter aura-status-button--enter-fade" aria-disabled="true" style="--aura-status-color:#94a3b8;--aura-status-tint:#f1f4f8;--aura-status-surface:#f8fafc;--aura-status-border:#e2e8f0;--aura-status-shadow:0 1px 4px rgba(15,23,42,.05);" type="button">
+        <span class="aura-status-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path pathLength="1" d="M8 10V7a4 4 0 0 1 8 0v3" /><rect pathLength="1" x="5" y="10" width="14" height="11" rx="3" /></svg></span>
+        <span class="aura-status-text">待保存流程</span>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // 示例交互：点击按钮仅显示提示，不连接 AuraOA 接口。
+    document.querySelectorAll('.aura-status-button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const label = button.querySelector('.aura-status-text')?.textContent || '状态按钮'
+        alert('点击：' + label)
+      })
+    })
+
+    document.getElementById('replay').addEventListener('click', () => {
+      document.querySelectorAll('.aura-status-button').forEach((button) => {
+        button.classList.remove('aura-status-button--enter')
+        void button.offsetWidth
+        button.classList.add('aura-status-button--enter')
+      })
+    })
+  </script>
+</body>
+</html>
