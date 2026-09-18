@@ -10,6 +10,76 @@ import (
 	"auraoa/go-service/internal/model"
 )
 
+func TestOpenAICompatCaller_TestConnection_SendsJSONContentType(t *testing.T) {
+	var gotContentType, gotAuth, gotMethod, gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotContentType = r.Header.Get("Content-Type")
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+
+	caller, err := NewOpenAICompatCaller(&model.AIModelConfig{
+		Provider: "openai",
+		Endpoint: server.URL + "/v1",
+		APIKey:   "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("create caller failed: %v", err)
+	}
+
+	if err := caller.TestConnection(context.Background()); err != nil {
+		t.Fatalf("TestConnection failed: %v", err)
+	}
+	if gotMethod != http.MethodGet {
+		t.Errorf("expected GET, got %s", gotMethod)
+	}
+	if gotPath != "/v1/models" {
+		t.Errorf("expected /v1/models, got %s", gotPath)
+	}
+	if gotContentType != "application/json" {
+		t.Errorf("expected Content-Type application/json, got %q", gotContentType)
+	}
+	if gotAuth != "Bearer sk-test" {
+		t.Errorf("expected Authorization Bearer sk-test, got %q", gotAuth)
+	}
+}
+
+func TestOpenAICompatCaller_TestConnection_RetriesWithoutContentType(t *testing.T) {
+	var contentTypes []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ct := r.Header.Get("Content-Type")
+		contentTypes = append(contentTypes, ct)
+		if ct == "application/json" {
+			w.WriteHeader(http.StatusUnsupportedMediaType)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+
+	caller, err := NewOpenAICompatCaller(&model.AIModelConfig{
+		Provider: "vllm",
+		Endpoint: server.URL + "/v1",
+	})
+	if err != nil {
+		t.Fatalf("create caller failed: %v", err)
+	}
+	if err := caller.TestConnection(context.Background()); err != nil {
+		t.Fatalf("TestConnection failed: %v", err)
+	}
+	if len(contentTypes) != 2 {
+		t.Fatalf("expected 2 probes, got %d (%v)", len(contentTypes), contentTypes)
+	}
+	if contentTypes[0] != "application/json" || contentTypes[1] != "" {
+		t.Errorf("expected json then empty Content-Type, got %v", contentTypes)
+	}
+}
+
 func TestOpenAICompatCaller_NonStreaming_Reasoning(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req openAIRequest
