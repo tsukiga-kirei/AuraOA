@@ -116,10 +116,11 @@
         '.aura-status-button--enter.aura-status-button--enter-fade .aura-status-icon svg>*,.aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg>*{animation:auraDraw .4s cubic-bezier(.22,.7,.2,1) .08s forwards}' +
         '.aura-status-button--enter.aura-status-button--enter-fade .aura-status-icon svg>:nth-child(2),.aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg>:nth-child(2){animation-delay:.2s}' +
         '.aura-status-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}' +
-        '.aura-status-group{display:inline-flex;max-width:100%;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;}' +
+        '.aura-status-group{display:inline-flex;flex-direction:column;max-width:100%;align-items:stretch;gap:8px;padding:4px 0;}' +
+        '.aura-status-group .aura-status-button{width:100%;}' +
         '#auraMobileEmbedFloatContainer{position:fixed;max-width:calc(100vw - 32px);z-index:9999;}' +
         '#auraMobileEmbedFloatContainer.aura-float--bottom-left{bottom:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:16px;left:calc(16px + env(safe-area-inset-left,0px));}' +
-        '#auraMobileEmbedFloatContainer.aura-float--top-right{top:64px;top:calc(64px + env(safe-area-inset-top,0px));right:24px;right:calc(24px + env(safe-area-inset-right,0px));}' +
+        '#auraMobileEmbedFloatContainer.aura-float--top-right{top:88px;top:calc(88px + env(safe-area-inset-top,0px));right:24px;right:calc(24px + env(safe-area-inset-right,0px));}' +
         '@media(hover:hover){.aura-status-button:not([aria-disabled="true"]):not(.aura-status-button--morph):hover{transform:translateY(-2px);border-color:var(--aura-status-color);box-shadow:0 7px 22px rgba(15,23,42,.12);}}' +
         '@media(pointer:coarse){.aura-status-button{min-height:44px;}}' +
         '@media(prefers-reduced-motion:reduce){.aura-status-button{transition:none;animation:none!important;}.aura-status-button::before,.aura-status-button::after,.aura-status-icon,.aura-status-copy,.aura-status-text,.aura-status-score,.aura-status-arrow,.aura-status-icon-layer,.aura-status-copy-inner{animation:none!important;opacity:1!important;transform:none!important;filter:none!important;}.aura-status-icon svg,.aura-status-icon svg>*{animation:none!important;stroke-dashoffset:0!important;}}';
@@ -132,7 +133,7 @@
     green: { color: '#15803d', text: '审核通过', bg: '#e5f7ed', surface: '#f1fbf5', border: '#86efac', dot: '#16a36a', shadow: '0 3px 12px rgba(22,163,106,.13)' },
     yellow: { color: '#a15c00', text: '建议关注', bg: '#fff0d2', surface: '#fff9ee', border: '#f2c078', dot: '#d98200', shadow: '0 3px 12px rgba(217,130,0,.14)' },
     red: { color: '#c62828', text: '建议退回', bg: '#ffe8e6', surface: '#fff3f2', border: '#ef8a84', dot: '#d92d20', shadow: '0 4px 14px rgba(198,40,40,.16)' },
-    disabled: { color: '#2563eb', text: '暂不可用', bg: '#dbeafe', surface: '#f5f9ff', border: '#93c5fd', dot: '#3b82f6', shadow: '0 2px 10px rgba(37,99,235,.14)' },
+    disabled: { color: '#6d28d9', text: '暂不可用', bg: '#f3e8ff', surface: '#faf5ff', border: '#d8b4fe', dot: '#8b5cf6', shadow: '0 2px 10px rgba(109,40,217,.16)' },
     error: { color: '#b42318', text: '加载失败', bg: '#ffe1df', surface: '#fff1f0', border: '#e97870', dot: '#d92d20', shadow: '0 4px 16px rgba(180,35,24,.2)' },
     loading: { color: '#1d4ed8', text: '加载中...', bg: '#dbeafe', surface: '#eef5ff', border: '#60a5fa', dot: '#2563eb', shadow: '0 3px 12px rgba(37,99,235,.15)' }
   };
@@ -877,7 +878,7 @@
       var userId = getCurrentUserId();
 
       if (!requestId) {
-        renderStatusButton('disabled', EMBED_TYPE === 'summary' ? '保存流程查看AI总结' : '保存流程查看AI智审', '流程保存并生成编号后即可查看 AI ' + featureName(), false);
+        renderStatusButton('disabled', EMBED_TYPE === 'summary' ? '保存查看AI总结' : '保存查看AI智审', '流程保存并生成编号后即可查看 AI ' + featureName(), false);
         registerOAEvents();
         return;
       }
@@ -1216,8 +1217,8 @@
     bindDualStatusRefreshListeners();
     var reqId = getRequestId();
     if (!reqId) {
-      setDualFeatureState('audit', 'disabled', '保存流程查看AI智审', '流程保存并生成编号后即可查看 AI 审核', false);
-      setDualFeatureState('summary', 'disabled', '保存流程查看AI总结', '流程保存并生成编号后即可查看 AI 总结', false);
+      setDualFeatureState('audit', 'disabled', '保存查看AI智审', '流程保存并生成编号后即可查看 AI 审核', false);
+      setDualFeatureState('summary', 'disabled', '保存查看AI总结', '流程保存并生成编号后即可查看 AI 总结', false);
       registerDualOAEvents();
       return;
     }
