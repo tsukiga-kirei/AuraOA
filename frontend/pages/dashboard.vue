@@ -212,6 +212,13 @@ const selectedProcess = ref<string | null>(null)
 const currentResult = ref<AuditResult | null>(null)
 const loading = ref(false)
 
+const currentRuleDetails = computed(() => (currentResult.value?.rule_results || []).map((rule, index) => ({
+  id: index,
+  name: rule.rule_content,
+  passed: rule.passed,
+  reason: rule.reason,
+})))
+
 const selectedProcessInfo = computed(() => processList.value.find(p => p.process_id === selectedProcess.value))
 
 /** 摘要第一行仅展示流程标题（避免与下方元信息重复） */
@@ -1391,18 +1398,18 @@ onMounted(async () => {
                 </div>
               </div>
               <!-- 深度思考过程 (parse_error) -->
-              <div v-if="currentResult.deep_thinking" class="result-section">
-                <h4 class="result-section-title">{{ t('dashboard.deepThinking', '深度思考过程') }}</h4>
-                <div class="ai-reasoning">
-                  <div class="markdown-body" v-html="renderMarkdown(currentResult.deep_thinking || '')"></div>
-                </div>
-              </div>
-              <div v-if="currentResult.ai_reasoning" class="result-section">
-                <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
-                <div class="ai-reasoning">
-                  <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')"></div>
-                </div>
-              </div>
+              <ResultReasoningPanel
+                v-if="currentResult.deep_thinking"
+                :key="`parse-thinking-${currentResult.id || currentResult.process_id}`"
+                :title="t('dashboard.deepThinking', '深度思考过程')"
+                :text="currentResult.deep_thinking || ''"
+              />
+              <ResultReasoningPanel
+                v-if="currentResult.ai_reasoning"
+                :key="`parse-reasoning-${currentResult.id || currentResult.process_id}`"
+                :title="t('dashboard.aiReasoning')"
+                :text="currentResult.ai_reasoning || ''"
+              />
             </template>
 
             <!--正常结果展示（failed 仅展示上方错误条 + 操作栏，不再套结论横幅）-->
@@ -1435,26 +1442,12 @@ onMounted(async () => {
               </div>
 
               <!--规则校验-->
-              <div v-if="currentResult.rule_results?.length" class="result-section">
-                <h4 class="result-section-title">{{ t('dashboard.ruleCheckDetail') }}</h4>
-                <div class="rule-checks">
-                  <div
-                    v-for="(rule, idx) in currentResult.rule_results"
-                    :key="idx"
-                    class="rule-check-item"
-                    :class="{ 'rule-check-item--pass': rule.passed, 'rule-check-item--fail': !rule.passed }"
-                  >
-                    <div class="rule-check-status">
-                      <CheckCircleOutlined v-if="rule.passed" style="color: var(--color-success);" />
-                      <CloseCircleOutlined v-else style="color: var(--color-danger);" />
-                    </div>
-                    <div class="rule-check-content">
-                      <div class="rule-check-name">{{ rule.rule_content }}</div>
-                      <div class="rule-check-reasoning">{{ rule.reason }}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <ResultRuleDetails
+                v-if="currentRuleDetails.length"
+                :key="`rules-${currentResult.id || currentResult.process_id}`"
+                :title="t('dashboard.ruleCheckDetail')"
+                :rules="currentRuleDetails"
+              />
 
               <!--风险点 & 建议-->
               <div v-if="currentResult.risk_points?.length || currentResult.suggestions?.length" class="risk-suggest-row">
@@ -1479,20 +1472,20 @@ onMounted(async () => {
               </div>
 
               <!--深度思考过程-->
-              <div v-if="currentResult.deep_thinking" class="result-section">
-                <h4 class="result-section-title">{{ t('dashboard.deepThinking', '深度思考过程') }}</h4>
-                <div class="ai-reasoning">
-                  <div class="markdown-body" v-html="renderMarkdown(currentResult.deep_thinking || '')"></div>
-                </div>
-              </div>
+              <ResultReasoningPanel
+                v-if="currentResult.deep_thinking"
+                :key="`thinking-${currentResult.id || currentResult.process_id}`"
+                :title="t('dashboard.deepThinking', '深度思考过程')"
+                :text="currentResult.deep_thinking || ''"
+              />
 
               <!--AI 推理-->
-              <div v-if="currentResult.ai_reasoning" class="result-section">
-                <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
-                <div class="ai-reasoning">
-                  <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')"></div>
-                </div>
-              </div>
+              <ResultReasoningPanel
+                v-if="currentResult.ai_reasoning"
+                :key="`reasoning-${currentResult.id || currentResult.process_id}`"
+                :title="t('dashboard.aiReasoning')"
+                :text="currentResult.ai_reasoning || ''"
+              />
             </template>
             </template>
           </template>

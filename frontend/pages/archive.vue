@@ -118,6 +118,13 @@ const currentResult = ref<ArchiveReviewResult | null>(null)
 const batchAborted = ref(false)
 const currentInflightProcessId = ref<string | null>(null)
 
+const currentRuleDetails = computed(() => (currentResult.value?.rule_audit || []).map(rule => ({
+  id: rule.rule_id,
+  name: rule.rule_name,
+  passed: rule.passed,
+  reason: rule.reasoning,
+})))
+
 const auditInProgress = computed(
   () =>
     batchAuditing.value
@@ -1451,29 +1458,12 @@ onUnmounted(() => {
               </div>
 
               <!--规则检查-->
-              <div class="section-block">
-                <h4 class="section-title"><SafetyCertificateOutlined /> {{ t('archive.ruleAudit') }}</h4>
-                <div class="audit-checks">
-                  <div
-                    v-for="ra in currentResult.rule_audit"
-                    :key="ra.rule_id"
-                    class="audit-check-item"
-                    :class="ra.passed ? 'audit-check-item--pass' : 'audit-check-item--fail'"
-                  >
-                    <div class="audit-check-status">
-                      <CheckCircleOutlined v-if="ra.passed" style="color: var(--color-success);" />
-                      <CloseCircleOutlined v-else style="color: var(--color-danger);" />
-                    </div>
-                    <div class="audit-check-content">
-                      <div class="audit-check-name">{{ ra.rule_name }}</div>
-                      <div class="audit-check-reasoning">{{ ra.reasoning }}</div>
-                    </div>
-                  </div>
-                  <div v-if="!currentResult.rule_audit?.length" class="audit-check-empty">
-                    {{ t('archive.noRules') }}
-                  </div>
-                </div>
-              </div>
+              <ResultRuleDetails
+                :key="`rules-${currentResult.id || currentResult.process_id}`"
+                :title="t('archive.ruleAudit')"
+                :rules="currentRuleDetails"
+                :empty-text="t('archive.noRules')"
+              />
 
               <!--风险点及建议-->
               <div v-if="currentResult.overall_compliance !== 'compliant'" class="risk-suggestions-row">
@@ -1525,20 +1515,20 @@ onUnmounted(() => {
               </div>
 
               <!-- 深度思考过程 -->
-              <div v-if="currentResult.deep_thinking" class="section-block">
-                <h4 class="section-title">{{ t('archive.deepThinking', '深度思考过程') }}</h4>
-                <div class="ai-summary markdown-body">
-                  <div v-html="renderMarkdown(currentResult.deep_thinking)" />
-                </div>
-              </div>
+              <ResultReasoningPanel
+                v-if="currentResult.deep_thinking"
+                :key="`thinking-${currentResult.id || currentResult.process_id}`"
+                :title="t('archive.deepThinking', '深度思考过程')"
+                :text="currentResult.deep_thinking"
+              />
 
               <!--人工智能总结-->
-              <div class="section-block">
-                <h4 class="section-title">{{ t('archive.aiSummary') }}</h4>
-                <div class="ai-summary markdown-body">
-                  <div v-html="renderMarkdown(currentResult.ai_summary || currentResult.ai_reasoning)" />
-                </div>
-              </div>
+              <ResultReasoningPanel
+                v-if="currentResult.ai_summary || currentResult.ai_reasoning"
+                :key="`reasoning-${currentResult.id || currentResult.process_id}`"
+                :title="t('archive.aiSummary')"
+                :text="currentResult.ai_summary || currentResult.ai_reasoning || ''"
+              />
             </template>
 
             <!--未形成合规结论（含从未复盘、失败、解析失败）：与「开始合规复盘」态同一布局 -->
