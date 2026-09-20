@@ -482,9 +482,10 @@ func (r *AuditProcessSnapshotRepo) CountByDepartment(c *gin.Context, since time.
 	}
 	base := r.buildAdminAggregatedBaseQuery(c, filter)
 	deptExpr := resolvedDepartmentByNameSQL("agg.tenant_id", "NULL", "agg.department")
-	err := r.DB.Table("(?) AS agg", base).
-		Select(deptExpr + " AS department, COUNT(*)::bigint AS count").
-		Group("department").
+	resolvedQuery := r.DB.Table("(?) AS agg", base).Select(deptExpr + " AS resolved_dept")
+	err := r.DB.Table("(?) AS t", resolvedQuery).
+		Select("resolved_dept AS department, COUNT(*)::bigint AS count").
+		Group("resolved_dept").
 		Order("count DESC").
 		Scan(&rows).Error
 	return rows, err
