@@ -15,7 +15,7 @@
 3. **字段中文名**：通过 `workflow_billfield.fieldlabel → htmllabelinfo.indexid`，优先使用 `languageid=7` 的中文标签。
 4. **浏览按钮通用解析**：优先按 `workflow_billfield.type = workflow_browserurl.id` 查询定义。若 `TABLENAME`、`COLUMNAME`、`KEYCOLUMNAME` 都不为空，则通过 `KEYCOLUMNAME` 查值并展示 `COLUMNAME`。
 5. **内置浏览按钮兜底**：若 `workflow_browserurl` 元数据不完整，再使用人员、部门、分部、相关流程等少量兜底映射；`TYPE` 映射以当前客户环境为准，例如本环境中 `TYPE=2` 是日期，不是部门。
-6. **自定义 / 集成浏览框**：对 `TYPE=161/162/226/256/257` 或 `FIELDDBTYPE=browser.xx` 的字段，先按 `showname` 查 `mode_browser` 的 `sqltext` / `searchbyid`；没有可用 SQL 再查集成中心 `datashowset`（`keyfield`、回显 SQL、`datashowparam` 标题列）。**161/162 不能当作建模来源**，现场数据展现浏览框也经常是这两个 TYPE。两张登记表都解析失败时保留原始 ID，不再按 `uf_xxx` 猜表。
+6. **自定义 / 集成浏览框**：对 `TYPE=161/162/226/256/257` 或 `FIELDDBTYPE=browser.xx` 的字段，按 `showname` **同时**查 `mode_browser` 与 `datashowset`。两张都有时用 `datashowset.browserfrom/customid` 判断来源：`browserfrom=1` 或 `customid>0` 走 `mode_browser`；`browserfrom=2`（E8 自定义 / 数据展现）等非建模来源走 `datashowset`。**161/162 不能当作建模来源**。解析失败保留原始 ID，不再按 `uf_xxx` 猜表。
 7. **选择框 / 下拉框**：对 `fieldhtmltype = 5` 的字段，通过 `workflow_billfield.id = workflow_selectitem.fieldid` 和 `selectvalue` 匹配选项；`selectname` 若为泛微多语言串，优先取语言 `7`。
 8. **AI 审核**：prompt 中会尽量只展示中文字段名和业务显示值，例如 `"报销人": "张三"`、`"酒店级别": "四星级"`，不暴露 `value/display` 结构。
 

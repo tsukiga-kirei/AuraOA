@@ -948,15 +948,17 @@ type e9ModeBrowserDef struct {
 }
 
 type e9DataShowSetDef struct {
-	ID         int
-	ShowName   string
-	Name       string
-	DataFrom   string
-	SQLText    string
-	SearchByID string
-	SQLText1   string
-	KeyField   string
-	ShowField  string
+	ID          int
+	ShowName    string
+	Name        string
+	DataFrom    string
+	SQLText     string
+	SearchByID  string
+	SQLText1    string
+	KeyField    string
+	ShowField   string
+	BrowserFrom string
+	CustomID    int
 }
 
 // ResolveBrowseDisplayValues 仅解析字段选择集会发送给 AI 的浏览按钮字段。
@@ -1346,15 +1348,8 @@ func (a *Ecology9Adapter) resolveBrowseTarget(ctx context.Context, field e9Brows
 				return target, true
 			}
 		}
-		if target, ok := a.resolveModeBrowserTarget(ctx, browserName); ok {
+		if target, ok := a.resolveNamedCustomBrowseTarget(ctx, browserName); ok {
 			target.Multiple = isMultipleBrowseField(field)
-			target.Source = "mode_browser"
-			return target, true
-		}
-		// 161/162 在现场也可能是集成中心浏览框，mode_browser 无可用 SQL 时再查 datashowset。
-		if target, ok := a.resolveDataShowSetTarget(ctx, browserName); ok {
-			target.Multiple = isMultipleBrowseField(field)
-			target.Source = "datashowset"
 			return target, true
 		}
 		pkglogger.Global().Warn("浏览按钮解析：未找到可用显示值配置，保留原始值",
@@ -1461,11 +1456,44 @@ func (a *Ecology9Adapter) fetchCustomBrowserURLDef(ctx context.Context, field e9
 	return e9BrowserURLDef{}, false
 }
 
-func (a *Ecology9Adapter) resolveModeBrowserTarget(ctx context.Context, browserName string) (e9BrowseTarget, bool) {
-	def, ok := a.fetchModeBrowserDef(ctx, browserName)
-	if !ok {
+// resolveNamedCustomBrowseTarget 按 showname 同时看建模表与数据展现表。
+// 两张都有记录时，用 datashowset.browserfrom / customid 判断真正创建来源，避免建模表里的同步行盖住集成中心配置。
+func (a *Ecology9Adapter) resolveNamedCustomBrowseTarget(ctx context.Context, browserName string) (e9BrowseTarget, bool) {
+	modeDef, modeOK := a.fetchModeBrowserDef(ctx, browserName)
+	modeTarget, modeParsed := e9BrowseTarget{}, false
+	if modeOK {
+		modeTarget, modeParsed = modeBrowserTargetFromDef(modeDef)
+	}
+
+	dsDef, dsOK := a.fetchDataShowSetDef(ctx, browserName)
+	dsTarget, dsParsed := e9BrowseTarget{}, false
+	if dsOK {
+		dsTarget, dsParsed = browseTargetFromDataShowSet(dsDef, a.fetchDataShowTitleField(ctx, dsDef.ID))
+	}
+
+	if preferDataShowSet(modeParsed, dsOK, dsDef) {
+		if dsParsed {
+			dsTarget.Source = "datashowset"
+			return dsTarget, true
+		}
+		if modeParsed {
+			modeTarget.Source = "mode_browser"
+			return modeTarget, true
+		}
 		return e9BrowseTarget{}, false
 	}
+	if modeParsed {
+		modeTarget.Source = "mode_browser"
+		return modeTarget, true
+	}
+	if dsParsed {
+		dsTarget.Source = "datashowset"
+		return dsTarget, true
+	}
+	return e9BrowseTarget{}, false
+}
+
+func modeBrowserTargetFromDef(def e9ModeBrowserDef) (e9BrowseTarget, bool) {
 	if target, ok := parseModeBrowserSQLTextTarget(def.SQLText); ok {
 		return target, true
 	}
@@ -1475,6 +1503,27 @@ func (a *Ecology9Adapter) resolveModeBrowserTarget(ctx context.Context, browserN
 		}
 	}
 	return e9BrowseTarget{}, false
+}
+
+// preferDataShowSet 两边都有可用配置时：建模来源仍用 mode_browser；
+// 否则视为集成中心 / E8 自定义浏览框（建模表只是同名入口），优先 datashowset。
+func preferDataShowSet(modeParsed, dsOK bool, ds e9DataShowSetDef) bool {
+	if !dsOK {
+		return false
+	}
+	if !modeParsed {
+		return true
+	}
+	return !isModelingOriginDataShowSet(ds)
+}
+
+// isModelingOriginDataShowSet 对应 datashowset 字典：
+// browserfrom=1 为建模浏览框；customid 仅建模创建时才指向 mode_custombrowser。
+func isModelingOriginDataShowSet(ds e9DataShowSetDef) bool {
+	if strings.TrimSpace(ds.BrowserFrom) == "1" {
+		return true
+	}
+	return ds.CustomID > 0
 }
 
 func (a *Ecology9Adapter) fetchModeBrowserDef(ctx context.Context, browserName string) (e9ModeBrowserDef, bool) {
@@ -1515,39 +1564,46 @@ func (a *Ecology9Adapter) fetchModeBrowserDef(ctx context.Context, browserName s
 	}, true
 }
 
-// resolveDataShowSetTarget 按集成中心「数据展现集成」配置解析浏览框显示值。
-// 161/162 在现场也可能指向 datashowset，不能仅凭 TYPE 判断来源。
-func (a *Ecology9Adapter) resolveDataShowSetTarget(ctx context.Context, browserName string) (e9BrowseTarget, bool) {
-	def, ok := a.fetchDataShowSetDef(ctx, browserName)
-	if !ok {
-		return e9BrowseTarget{}, false
-	}
-	titleField := a.fetchDataShowTitleField(ctx, def.ID)
-	return browseTargetFromDataShowSet(def, titleField)
-}
-
 func (a *Ecology9Adapter) fetchDataShowSetDef(ctx context.Context, browserName string) (e9DataShowSetDef, bool) {
 	browserName = strings.TrimSpace(browserName)
 	if browserName == "" {
 		return e9DataShowSetDef{}, false
 	}
+	def, ok := a.queryDataShowSetDef(ctx, browserName, true)
+	if ok {
+		return def, true
+	}
+	return a.queryDataShowSetDef(ctx, browserName, false)
+}
+
+func (a *Ecology9Adapter) queryDataShowSetDef(ctx context.Context, browserName string, includeOrigin bool) (e9DataShowSetDef, bool) {
+	selectParts := []string{
+		a.col("id") + " AS id",
+		a.col("showname") + " AS showname",
+		a.col("name") + " AS name",
+		a.col("datafrom") + " AS datafrom",
+		a.col("sqltext") + " AS sqltext",
+		a.col("searchbyid") + " AS searchbyid",
+		a.col("sqltext1") + " AS sqltext1",
+		a.col("keyfield") + " AS keyfield",
+		a.col("showfield") + " AS showfield",
+	}
+	if includeOrigin {
+		selectParts = append(selectParts,
+			a.col("browserfrom")+" AS browserfrom",
+			a.col("customid")+" AS customid",
+		)
+	}
 	var rows []map[string]interface{}
 	err := a.db.WithContext(ctx).
 		Table(a.tableName("datashowset")).
-		Select(strings.Join([]string{
-			a.col("id") + " AS id",
-			a.col("showname") + " AS showname",
-			a.col("name") + " AS name",
-			a.col("datafrom") + " AS datafrom",
-			a.col("sqltext") + " AS sqltext",
-			a.col("searchbyid") + " AS searchbyid",
-			a.col("sqltext1") + " AS sqltext1",
-			a.col("keyfield") + " AS keyfield",
-			a.col("showfield") + " AS showfield",
-		}, ", ")).
+		Select(strings.Join(selectParts, ", ")).
 		Where(a.col("showname")+" = ? OR "+a.col("name")+" = ?", browserName, browserName).
 		Find(&rows).Error
 	if err != nil {
+		if includeOrigin {
+			return e9DataShowSetDef{}, false
+		}
 		pkglogger.Global().Debug("浏览按钮解析：查询数据展现浏览框失败，保留原始值",
 			zap.String("browserName", browserName),
 			zap.Error(err))
@@ -1558,15 +1614,17 @@ func (a *Ecology9Adapter) fetchDataShowSetDef(ctx context.Context, browserName s
 	}
 	row := rows[0]
 	return e9DataShowSetDef{
-		ID:         mapGetInt(row, "id"),
-		ShowName:   mapGet(row, "showname"),
-		Name:       mapGet(row, "name"),
-		DataFrom:   mapGet(row, "datafrom"),
-		SQLText:    mapGet(row, "sqltext"),
-		SearchByID: mapGet(row, "searchbyid"),
-		SQLText1:   mapGet(row, "sqltext1"),
-		KeyField:   mapGet(row, "keyfield"),
-		ShowField:  mapGet(row, "showfield"),
+		ID:          mapGetInt(row, "id"),
+		ShowName:    mapGet(row, "showname"),
+		Name:        mapGet(row, "name"),
+		DataFrom:    mapGet(row, "datafrom"),
+		SQLText:     mapGet(row, "sqltext"),
+		SearchByID:  mapGet(row, "searchbyid"),
+		SQLText1:    mapGet(row, "sqltext1"),
+		KeyField:    mapGet(row, "keyfield"),
+		ShowField:   mapGet(row, "showfield"),
+		BrowserFrom: mapGet(row, "browserfrom"),
+		CustomID:    mapGetInt(row, "customid"),
 	}, true
 }
 

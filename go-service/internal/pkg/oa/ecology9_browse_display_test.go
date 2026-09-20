@@ -88,3 +88,25 @@ func TestBrowseTargetFromDataShowSetOverridesListSQLKey(t *testing.T) {
 		t.Fatalf("got %+v", target)
 	}
 }
+
+func TestPreferDataShowSetWhenBothExist(t *testing.T) {
+	modeParsed := true
+	if !preferDataShowSet(modeParsed, true, e9DataShowSetDef{BrowserFrom: "2"}) {
+		t.Fatal("E8 custom / integration-center origin should prefer datashowset even if mode_browser has SQL")
+	}
+	if !preferDataShowSet(modeParsed, true, e9DataShowSetDef{BrowserFrom: "0"}) {
+		t.Fatal("pre-E8 datashowset should prefer datashowset when both tables have the same showname")
+	}
+	if preferDataShowSet(modeParsed, true, e9DataShowSetDef{BrowserFrom: "1"}) {
+		t.Fatal("datashowset synced from modeling should still use mode_browser")
+	}
+	if preferDataShowSet(modeParsed, true, e9DataShowSetDef{CustomID: 88}) {
+		t.Fatal("datashowset.customid should be treated as modeling origin")
+	}
+	if preferDataShowSet(modeParsed, false, e9DataShowSetDef{}) {
+		t.Fatal("missing datashowset should not prefer datashowset")
+	}
+	if !preferDataShowSet(false, true, e9DataShowSetDef{BrowserFrom: "1"}) {
+		t.Fatal("when mode_browser SQL cannot be parsed, still try datashowset")
+	}
+}
