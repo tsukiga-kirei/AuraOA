@@ -945,20 +945,17 @@ type e9ModeBrowserDef struct {
 	SQLText    string
 	SearchByID string
 	SQLText1   string
+	KeyField   string
+	ShowField  string
 }
 
 type e9DataShowSetDef struct {
-	ID          int
-	ShowName    string
-	Name        string
-	DataFrom    string
-	SQLText     string
-	SearchByID  string
-	SQLText1    string
-	KeyField    string
-	ShowField   string
-	BrowserFrom string
-	CustomID    int
+	ID       int
+	ShowName string
+	Name     string
+	DataFrom string
+	SQLText  string
+	KeyField string
 }
 
 // ResolveBrowseDisplayValues 仅解析字段选择集会发送给 AI 的浏览按钮字段。
@@ -1456,74 +1453,69 @@ func (a *Ecology9Adapter) fetchCustomBrowserURLDef(ctx context.Context, field e9
 	return e9BrowserURLDef{}, false
 }
 
-// resolveNamedCustomBrowseTarget 按 showname 同时看建模表与数据展现表。
-// 两张都有记录时，用 datashowset.browserfrom / customid 判断真正创建来源，避免建模表里的同步行盖住集成中心配置。
+// resolveNamedCustomBrowseTarget 按 browserName 解析自定义浏览框目标。
+// 顺序：
+// 1. 数据展现中心（datashowset + datashowparam）
+// 2. 建模浏览按钮基础表（mode_browser，明确配置的 keyfield + showfield）
+// 3. 表单建模自定义浏览框（mode_custombrowser + mode_custombrowserdspfield）
+// 严格要求：Table、IDColumn、DisplayColumn 三要素全部由元数据明确给出，
+// 若任一环节缺少必要元数据，绝不进行主观猜测，直接回退并保留数据库原始值。
 func (a *Ecology9Adapter) resolveNamedCustomBrowseTarget(ctx context.Context, browserName string) (e9BrowseTarget, bool) {
-	modeDef, modeOK := a.fetchModeBrowserDef(ctx, browserName)
-	modeTarget, modeParsed := e9BrowseTarget{}, false
-	if modeOK {
-		modeTarget, modeParsed = modeBrowserTargetFromDef(modeDef)
-	}
-
-	dsDef, dsOK := a.fetchDataShowSetDef(ctx, browserName)
-	dsTarget, dsParsed := e9BrowseTarget{}, false
-	if dsOK {
-		dsTarget, dsParsed = browseTargetFromDataShowSet(dsDef, a.fetchDataShowTitleField(ctx, dsDef.ID))
-	}
-
-	if preferDataShowSet(modeParsed, dsOK, dsDef) {
-		if dsParsed {
+	// 1. 数据展现中心 (datashowset + datashowparam)
+	if dsDef, ok := a.fetchDataShowSetDef(ctx, browserName); ok {
+		titleField := a.fetchDataShowTitleField(ctx, dsDef.ID)
+		if dsTarget, ok := browseTargetFromDataShowSet(dsDef, titleField); ok {
 			dsTarget.Source = "datashowset"
 			return dsTarget, true
 		}
-		if modeParsed {
+	}
+
+	// 2. 建模浏览按钮基础表 (mode_browser)
+	if modeDef, ok := a.fetchModeBrowserDef(ctx, browserName); ok {
+		if modeTarget, ok := modeBrowserTargetFromDef(modeDef); ok {
 			modeTarget.Source = "mode_browser"
 			return modeTarget, true
 		}
-		return e9BrowseTarget{}, false
 	}
-	if modeParsed {
-		modeTarget.Source = "mode_browser"
-		return modeTarget, true
+
+	// 3. 表单建模自定义浏览框 (mode_custombrowser + mode_custombrowserdspfield)
+	if cbTarget, ok := a.fetchModeCustomBrowserTarget(ctx, browserName); ok {
+		cbTarget.Source = "mode_custombrowser"
+		return cbTarget, true
 	}
-	if dsParsed {
-		dsTarget.Source = "datashowset"
-		return dsTarget, true
-	}
+
 	return e9BrowseTarget{}, false
 }
 
 func modeBrowserTargetFromDef(def e9ModeBrowserDef) (e9BrowseTarget, bool) {
-	if target, ok := parseModeBrowserSQLTextTarget(def.SQLText); ok {
-		return target, true
+	table := parseSQLFromTable(def.SQLText)
+	idColumn := strings.TrimSpace(def.KeyField)
+	displayColumn := strings.TrimSpace(def.ShowField)
+
+	// 1. 若元数据明确配置了 keyfield 和 showfield（优先使用）
+	if isSafeIdentifier(table) && isSafeIdentifier(idColumn) && isSafeIdentifier(displayColumn) {
+		return e9BrowseTarget{
+			Table:         table,
+			IDColumn:      idColumn,
+			DisplayColumn: displayColumn,
+			NumericID:     isLikelyNumericBrowseKey(idColumn),
+		}, true
 	}
+
+	// 2. 现场库常见情况：mode_browser 中 keyfield 与 showfield 均为空
+	// 按照泛微官方标准 searchbyid 回显语句解析 (select display_col from table where id_col=?)
 	for _, sqlText := range []string{def.SearchByID, def.SQLText1} {
 		if target, ok := parseModeBrowserSearchByIDTarget(sqlText); ok {
 			return target, true
 		}
 	}
+
+	// 3. 按照泛微官方标准 sqltext 列表语句解析 (select id_col, display_col from table)
+	if target, ok := parseModeBrowserSQLTextTarget(def.SQLText); ok {
+		return target, true
+	}
+
 	return e9BrowseTarget{}, false
-}
-
-// preferDataShowSet 两边都有可用配置时：建模来源仍用 mode_browser；
-// 否则视为集成中心 / E8 自定义浏览框（建模表只是同名入口），优先 datashowset。
-func preferDataShowSet(modeParsed, dsOK bool, ds e9DataShowSetDef) bool {
-	if !dsOK {
-		return false
-	}
-	if !modeParsed {
-		return true
-	}
-	return !isModelingOriginDataShowSet(ds)
-}
-
-// isModelingOriginDataShowSet 对应 datashowset 字典：
-// browserfrom=1 为建模浏览框；customid 仅建模创建时才指向 mode_custombrowser。
-func isModelingOriginDataShowSet(ds e9DataShowSetDef) bool {
-	if strings.TrimSpace(ds.BrowserFrom) == "1" {
-		return true
-	}
-	return ds.CustomID > 0
 }
 
 func (a *Ecology9Adapter) fetchModeBrowserDef(ctx context.Context, browserName string) (e9ModeBrowserDef, bool) {
@@ -1541,6 +1533,8 @@ func (a *Ecology9Adapter) fetchModeBrowserDef(ctx context.Context, browserName s
 			a.col("sqltext") + " AS sqltext",
 			a.col("searchbyid") + " AS searchbyid",
 			a.col("sqltext1") + " AS sqltext1",
+			a.col("keyfield") + " AS keyfield",
+			a.col("showfield") + " AS showfield",
 		}, ", ")).
 		Where(a.col("showname")+" = ? OR "+a.col("name")+" = ?", browserName, browserName).
 		Find(&rows).Error
@@ -1561,6 +1555,8 @@ func (a *Ecology9Adapter) fetchModeBrowserDef(ctx context.Context, browserName s
 		SQLText:    mapGet(row, "sqltext"),
 		SearchByID: mapGet(row, "searchbyid"),
 		SQLText1:   mapGet(row, "sqltext1"),
+		KeyField:   mapGet(row, "keyfield"),
+		ShowField:  mapGet(row, "showfield"),
 	}, true
 }
 
@@ -1569,41 +1565,20 @@ func (a *Ecology9Adapter) fetchDataShowSetDef(ctx context.Context, browserName s
 	if browserName == "" {
 		return e9DataShowSetDef{}, false
 	}
-	def, ok := a.queryDataShowSetDef(ctx, browserName, true)
-	if ok {
-		return def, true
-	}
-	return a.queryDataShowSetDef(ctx, browserName, false)
-}
-
-func (a *Ecology9Adapter) queryDataShowSetDef(ctx context.Context, browserName string, includeOrigin bool) (e9DataShowSetDef, bool) {
-	selectParts := []string{
-		a.col("id") + " AS id",
-		a.col("showname") + " AS showname",
-		a.col("name") + " AS name",
-		a.col("datafrom") + " AS datafrom",
-		a.col("sqltext") + " AS sqltext",
-		a.col("searchbyid") + " AS searchbyid",
-		a.col("sqltext1") + " AS sqltext1",
-		a.col("keyfield") + " AS keyfield",
-		a.col("showfield") + " AS showfield",
-	}
-	if includeOrigin {
-		selectParts = append(selectParts,
-			a.col("browserfrom")+" AS browserfrom",
-			a.col("customid")+" AS customid",
-		)
-	}
 	var rows []map[string]interface{}
 	err := a.db.WithContext(ctx).
 		Table(a.tableName("datashowset")).
-		Select(strings.Join(selectParts, ", ")).
+		Select(strings.Join([]string{
+			a.col("id") + " AS id",
+			a.col("showname") + " AS showname",
+			a.col("name") + " AS name",
+			a.col("datafrom") + " AS datafrom",
+			a.col("sqltext") + " AS sqltext",
+			a.col("keyfield") + " AS keyfield",
+		}, ", ")).
 		Where(a.col("showname")+" = ? OR "+a.col("name")+" = ?", browserName, browserName).
 		Find(&rows).Error
 	if err != nil {
-		if includeOrigin {
-			return e9DataShowSetDef{}, false
-		}
 		pkglogger.Global().Debug("浏览按钮解析：查询数据展现浏览框失败，保留原始值",
 			zap.String("browserName", browserName),
 			zap.Error(err))
@@ -1614,17 +1589,12 @@ func (a *Ecology9Adapter) queryDataShowSetDef(ctx context.Context, browserName s
 	}
 	row := rows[0]
 	return e9DataShowSetDef{
-		ID:          mapGetInt(row, "id"),
-		ShowName:    mapGet(row, "showname"),
-		Name:        mapGet(row, "name"),
-		DataFrom:    mapGet(row, "datafrom"),
-		SQLText:     mapGet(row, "sqltext"),
-		SearchByID:  mapGet(row, "searchbyid"),
-		SQLText1:    mapGet(row, "sqltext1"),
-		KeyField:    mapGet(row, "keyfield"),
-		ShowField:   mapGet(row, "showfield"),
-		BrowserFrom: mapGet(row, "browserfrom"),
-		CustomID:    mapGetInt(row, "customid"),
+		ID:       mapGetInt(row, "id"),
+		ShowName: mapGet(row, "showname"),
+		Name:     mapGet(row, "name"),
+		DataFrom: mapGet(row, "datafrom"),
+		SQLText:  mapGet(row, "sqltext"),
+		KeyField: mapGet(row, "keyfield"),
 	}, true
 }
 
@@ -1635,55 +1605,134 @@ func (a *Ecology9Adapter) fetchDataShowTitleField(ctx context.Context, mainID in
 	var rows []map[string]interface{}
 	err := a.db.WithContext(ctx).
 		Table(a.tableName("datashowparam")).
-		Select(a.col("fieldname")+" AS fieldname").
+		Select(a.col("searchname") + " AS searchname").
 		Where(a.col("mainid")+" = ? AND "+a.col("isshowname")+" = ?", mainID, 1).
 		Order(a.col("id") + " ASC").
 		Find(&rows).Error
 	if err != nil || len(rows) == 0 {
 		return ""
 	}
-	return strings.TrimSpace(mapGet(rows[0], "fieldname"))
+	searchName := strings.TrimSpace(mapGet(rows[0], "searchname"))
+	if isSafeIdentifier(searchName) {
+		return searchName
+	}
+	return ""
 }
 
-// browseTargetFromDataShowSet 从数据展现配置抽出「物理表 + 主键列 + 显示列」。
-// WebService / 自定义页面无法用 OA 库反查，直接放弃以免选错显示值。
+// fetchModeCustomBrowserTarget 从建模自定义浏览框 (mode_custombrowser + mode_custombrowserdspfield) 解析目标。
+// 物理底表：优先 detailtable，若无则通过 formid 关联 workflow_bill.tablename；
+// 主键与显示列：从 mode_custombrowserdspfield 关联 workflow_billfield 获取，
+// ispk=1 为主键列，istitle='1' 或 isshow='1' 为显示列。
+func (a *Ecology9Adapter) fetchModeCustomBrowserTarget(ctx context.Context, browserName string) (e9BrowseTarget, bool) {
+	browserName = strings.TrimSpace(browserName)
+	if browserName == "" {
+		return e9BrowseTarget{}, false
+	}
+	var cbRows []map[string]interface{}
+	query := a.db.WithContext(ctx).
+		Table(a.tableName("mode_custombrowser")).
+		Select(strings.Join([]string{
+			a.col("id") + " AS id",
+			a.col("formid") + " AS formid",
+			a.col("detailtable") + " AS detailtable",
+		}, ", "))
+	if idVal, err := strconv.Atoi(browserName); err == nil && idVal > 0 {
+		query = query.Where(a.col("customname")+" = ? OR "+a.col("id")+" = ?", browserName, idVal)
+	} else {
+		query = query.Where(a.col("customname")+" = ?", browserName)
+	}
+	err := query.Find(&cbRows).Error
+	if err != nil || len(cbRows) == 0 {
+		return e9BrowseTarget{}, false
+	}
+	cbID := mapGetInt(cbRows[0], "id")
+	formID := mapGetInt(cbRows[0], "formid")
+	detailTable := strings.TrimSpace(mapGet(cbRows[0], "detailtable"))
+
+	var tableName string
+	if isSafeIdentifier(detailTable) {
+		tableName = detailTable
+	} else if formID > 0 {
+		var billRows []map[string]interface{}
+		_ = a.db.WithContext(ctx).
+			Table(a.tableName("workflow_bill")).
+			Select(a.col("tablename") + " AS tablename").
+			Where(a.col("id")+" = ?", formID).
+			Find(&billRows).Error
+		if len(billRows) > 0 {
+			tableName = strings.TrimSpace(mapGet(billRows[0], "tablename"))
+		}
+	}
+	if !isSafeIdentifier(tableName) {
+		return e9BrowseTarget{}, false
+	}
+
+	var dspRows []map[string]interface{}
+	err = a.db.WithContext(ctx).
+		Table(a.tableName("mode_custombrowserdspfield")+" "+a.col("d")).
+		Select(strings.Join([]string{
+			a.col("f.fieldname") + " AS fieldname",
+			a.col("d.ispk") + " AS ispk",
+			a.col("d.istitle") + " AS istitle",
+			a.col("d.isshow") + " AS isshow",
+		}, ", ")).
+		Joins("INNER JOIN "+a.tableName("workflow_billfield")+" "+a.col("f")+" ON "+a.col("d.fieldid")+" = "+a.col("f.id")).
+		Where(a.col("d.customid")+" = ?", cbID).
+		Order(a.col("d.showorder") + " ASC, " + a.col("d.id") + " ASC").
+		Find(&dspRows).Error
+	if err != nil || len(dspRows) == 0 {
+		return e9BrowseTarget{}, false
+	}
+
+	var idColumn, displayColumn string
+	for _, row := range dspRows {
+		fn := strings.TrimSpace(mapGet(row, "fieldname"))
+		if !isSafeIdentifier(fn) {
+			continue
+		}
+		if idColumn == "" && mapGetInt(row, "ispk") == 1 {
+			idColumn = fn
+		}
+		if displayColumn == "" && (strings.TrimSpace(mapGet(row, "istitle")) == "1" || strings.TrimSpace(mapGet(row, "isshow")) == "1") {
+			displayColumn = fn
+		}
+	}
+
+	if !isSafeIdentifier(idColumn) || !isSafeIdentifier(displayColumn) {
+		return e9BrowseTarget{}, false
+	}
+
+	return e9BrowseTarget{
+		Table:         tableName,
+		IDColumn:      idColumn,
+		DisplayColumn: displayColumn,
+		NumericID:     isLikelyNumericBrowseKey(idColumn),
+	}, true
+}
+
+// browseTargetFromDataShowSet 从数据展现配置确定「物理底表 + 主键列 + 显示列」。
+// 严格按元数据匹配，不进行任何推测：
+// 1. Table: 来自 sqltext 中的 FROM <table>；
+// 2. IDColumn: 必须来自 datashowset.keyfield；
+// 3. DisplayColumn: 必须来自 datashowparam (isshowname=1) 的 searchname。
+// 任一要素缺失或非法，直接判定失败，放弃反查保留数据库原始值。
 func browseTargetFromDataShowSet(def e9DataShowSetDef, titleField string) (e9BrowseTarget, bool) {
 	if !isDatabaseDataShowSource(def.DataFrom) {
 		return e9BrowseTarget{}, false
 	}
-	displayOverride := firstSafeIdent(def.ShowField, titleField)
+	table := parseSQLFromTable(def.SQLText)
+	idColumn := strings.TrimSpace(def.KeyField)
+	displayColumn := strings.TrimSpace(titleField)
 
-	for _, sqlText := range []string{def.SearchByID, def.SQLText1} {
-		if target, ok := parseModeBrowserSearchByIDTarget(sqlText); ok {
-			if displayOverride != "" {
-				target.DisplayColumn = displayOverride
-			}
-			return target, true
-		}
+	if !isSafeIdentifier(table) || !isSafeIdentifier(idColumn) || !isSafeIdentifier(displayColumn) {
+		return e9BrowseTarget{}, false
 	}
-
-	table := firstSafeIdent(parseSQLFromTable(def.SQLText), parseSQLFromTable(def.SearchByID), parseSQLFromTable(def.SQLText1))
-	idColumn := firstSafeIdent(def.KeyField)
-	if table != "" && idColumn != "" && displayOverride != "" {
-		return e9BrowseTarget{
-			Table:         table,
-			IDColumn:      idColumn,
-			DisplayColumn: displayOverride,
-			NumericID:     isLikelyNumericBrowseKey(idColumn),
-		}, true
-	}
-
-	if target, ok := parseModeBrowserSQLTextTarget(def.SQLText); ok {
-		if idColumn != "" {
-			target.IDColumn = idColumn
-			target.NumericID = isLikelyNumericBrowseKey(idColumn)
-		}
-		if displayOverride != "" {
-			target.DisplayColumn = displayOverride
-		}
-		return target, true
-	}
-	return e9BrowseTarget{}, false
+	return e9BrowseTarget{
+		Table:         table,
+		IDColumn:      idColumn,
+		DisplayColumn: displayColumn,
+		NumericID:     isLikelyNumericBrowseKey(idColumn),
+	}, true
 }
 
 func isDatabaseDataShowSource(dataFrom string) bool {
@@ -2072,35 +2121,6 @@ func isASCIISpace(b byte) bool {
 	return b == ' ' || b == '\t' || b == '\r' || b == '\n'
 }
 
-func parseModeBrowserSQLTextTarget(sqlText string) (e9BrowseTarget, bool) {
-	sqlText = strings.TrimSpace(sqlText)
-	if sqlText == "" {
-		return e9BrowseTarget{}, false
-	}
-	re := regexp.MustCompile(`(?is)\bselect\s+(.+?)\s+\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)\b`)
-	matches := re.FindStringSubmatch(sqlText)
-	if len(matches) < 3 {
-		return e9BrowseTarget{}, false
-	}
-	columns := splitSelectColumns(matches[1])
-	if len(columns) < 2 {
-		return e9BrowseTarget{}, false
-	}
-	idColumn, ok := cleanSelectColumn(columns[0])
-	if !ok {
-		return e9BrowseTarget{}, false
-	}
-	displayColumn, ok := cleanSelectColumn(columns[1])
-	if !ok {
-		return e9BrowseTarget{}, false
-	}
-	table := strings.TrimSpace(matches[2])
-	if !isSafeIdentifier(table) || !isSafeIdentifier(idColumn) || !isSafeIdentifier(displayColumn) {
-		return e9BrowseTarget{}, false
-	}
-	return e9BrowseTarget{Table: table, IDColumn: idColumn, DisplayColumn: displayColumn}, true
-}
-
 func parseModeBrowserSearchByIDTarget(sqlText string) (e9BrowseTarget, bool) {
 	sqlText = strings.TrimSpace(sqlText)
 	if sqlText == "" {
@@ -2120,6 +2140,35 @@ func parseModeBrowserSearchByIDTarget(sqlText string) (e9BrowseTarget, bool) {
 		return e9BrowseTarget{}, false
 	}
 	idColumn, ok := cleanSelectColumn(matches[3])
+	if !ok {
+		return e9BrowseTarget{}, false
+	}
+	table := strings.TrimSpace(matches[2])
+	if !isSafeIdentifier(table) || !isSafeIdentifier(idColumn) || !isSafeIdentifier(displayColumn) {
+		return e9BrowseTarget{}, false
+	}
+	return e9BrowseTarget{Table: table, IDColumn: idColumn, DisplayColumn: displayColumn, NumericID: isLikelyNumericBrowseKey(idColumn)}, true
+}
+
+func parseModeBrowserSQLTextTarget(sqlText string) (e9BrowseTarget, bool) {
+	sqlText = strings.TrimSpace(sqlText)
+	if sqlText == "" {
+		return e9BrowseTarget{}, false
+	}
+	re := regexp.MustCompile(`(?is)\bselect\s+(.+?)\s+\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)\b`)
+	matches := re.FindStringSubmatch(sqlText)
+	if len(matches) < 3 {
+		return e9BrowseTarget{}, false
+	}
+	columns := splitSelectColumns(matches[1])
+	if len(columns) < 2 {
+		return e9BrowseTarget{}, false
+	}
+	idColumn, ok := cleanSelectColumn(columns[0])
+	if !ok {
+		return e9BrowseTarget{}, false
+	}
+	displayColumn, ok := cleanSelectColumn(columns[1])
 	if !ok {
 		return e9BrowseTarget{}, false
 	}
@@ -2178,6 +2227,7 @@ func cleanSelectColumn(expr string) (string, bool) {
 	}
 	return s, true
 }
+
 
 func isSafeIdentifier(s string) bool {
 	if s == "" {

@@ -15,7 +15,11 @@
 3. **字段中文名**：通过 `workflow_billfield.fieldlabel → htmllabelinfo.indexid`，优先使用 `languageid=7` 的中文标签。
 4. **浏览按钮通用解析**：优先按 `workflow_billfield.type = workflow_browserurl.id` 查询定义。若 `TABLENAME`、`COLUMNAME`、`KEYCOLUMNAME` 都不为空，则通过 `KEYCOLUMNAME` 查值并展示 `COLUMNAME`。
 5. **内置浏览按钮兜底**：若 `workflow_browserurl` 元数据不完整，再使用人员、部门、分部、相关流程等少量兜底映射；`TYPE` 映射以当前客户环境为准，例如本环境中 `TYPE=2` 是日期，不是部门。
-6. **自定义 / 集成浏览框**：对 `TYPE=161/162/226/256/257` 或 `FIELDDBTYPE=browser.xx` 的字段，按 `showname` **同时**查 `mode_browser` 与 `datashowset`。两张都有时用 `datashowset.browserfrom/customid` 判断来源：`browserfrom=1` 或 `customid>0` 走 `mode_browser`；`browserfrom=2`（E8 自定义 / 数据展现）等非建模来源走 `datashowset`。**161/162 不能当作建模来源**。解析失败保留原始 ID，不再按 `uf_xxx` 猜表。
+6. **自定义 / 集成浏览框**：对 `TYPE=161/162/226/256/257` 或 `FIELDDBTYPE=browser.xx` 的字段，按 `showname` 依次对接：
+    - **数据展现中心（`datashowset` + `datashowparam`）**：严格依规取值，底表由 `sqltext` 的 `FROM` 提取，主键由 `keyfield` 决定，显示列由 `datashowparam`（`isshowname=1`）的 `searchname`（物理列名）决定；
+    - **建模基础浏览按钮（`mode_browser`）**：若配置了 `keyfield` 和 `showfield` 则直接使用；若为空（现场普遍情况）则按泛微官方标准回显规范解析 `searchbyid`（`SELECT display_col FROM table WHERE id_col=?`），若无则解析 `sqltext`；
+    - **表单建模自定义浏览框（`mode_custombrowser` + `mode_custombrowserdspfield`）**：支持通过中文名称 `customname`（如“印章名称”）或数字 ID 匹配，底表由 `detailtable` 或 `formid -> workflow_bill.tablename` 确定，主键由 `ispk=1` 确定，显示列由 `istitle=1` 确定；
+    - 任一要素缺失直接回退并保留 OA 数据库原始值。
 7. **选择框 / 下拉框**：对 `fieldhtmltype = 5` 的字段，通过 `workflow_billfield.id = workflow_selectitem.fieldid` 和 `selectvalue` 匹配选项；`selectname` 若为泛微多语言串，优先取语言 `7`。
 8. **AI 审核**：prompt 中会尽量只展示中文字段名和业务显示值，例如 `"报销人": "张三"`、`"酒店级别": "四星级"`，不暴露 `value/display` 结构。
 
