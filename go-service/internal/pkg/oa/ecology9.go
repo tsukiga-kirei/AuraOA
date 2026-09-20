@@ -947,6 +947,18 @@ type e9ModeBrowserDef struct {
 	SQLText1   string
 }
 
+type e9DataShowSetDef struct {
+	ID         int
+	ShowName   string
+	Name       string
+	DataFrom   string
+	SQLText    string
+	SearchByID string
+	SQLText1   string
+	KeyField   string
+	ShowField  string
+}
+
 // ResolveBrowseDisplayValues 仅解析字段选择集会发送给 AI 的浏览按钮字段。
 func (a *Ecology9Adapter) ResolveBrowseDisplayValues(ctx context.Context, processID string, pd *ProcessData, fieldSet map[string]map[string]bool) error {
 	if pd == nil {
@@ -1339,10 +1351,10 @@ func (a *Ecology9Adapter) resolveBrowseTarget(ctx context.Context, field e9Brows
 			target.Source = "mode_browser"
 			return target, true
 		}
-		// 建模物理表直接嗅探兜底（如 browser.fplx -> uf_fplx 自动识别显示列）
-		if target, ok := a.resolveModelingTableTarget(ctx, browserName); ok {
+		// 161/162 在现场也可能是集成中心浏览框，mode_browser 无可用 SQL 时再查 datashowset。
+		if target, ok := a.resolveDataShowSetTarget(ctx, browserName); ok {
 			target.Multiple = isMultipleBrowseField(field)
-			target.Source = "mode_table_probe"
+			target.Source = "datashowset"
 			return target, true
 		}
 		pkglogger.Global().Warn("浏览按钮解析：未找到可用显示值配置，保留原始值",
@@ -1503,120 +1515,149 @@ func (a *Ecology9Adapter) fetchModeBrowserDef(ctx context.Context, browserName s
 	}, true
 }
 
-// resolveModelingTableTarget 自动探测泛微建模表（形如 uf_xxx 或 xxx）并推导最佳显示列。
-// 泛微表单建模中，任何模块（如发票类型 fplx）在 workflow_bill 中均有物理表 uf_fplx，其主键永远为 id。
-func (a *Ecology9Adapter) resolveModelingTableTarget(ctx context.Context, browserName string) (e9BrowseTarget, bool) {
+// resolveDataShowSetTarget 按集成中心「数据展现集成」配置解析浏览框显示值。
+// 161/162 在现场也可能指向 datashowset，不能仅凭 TYPE 判断来源。
+func (a *Ecology9Adapter) resolveDataShowSetTarget(ctx context.Context, browserName string) (e9BrowseTarget, bool) {
+	def, ok := a.fetchDataShowSetDef(ctx, browserName)
+	if !ok {
+		return e9BrowseTarget{}, false
+	}
+	titleField := a.fetchDataShowTitleField(ctx, def.ID)
+	return browseTargetFromDataShowSet(def, titleField)
+}
+
+func (a *Ecology9Adapter) fetchDataShowSetDef(ctx context.Context, browserName string) (e9DataShowSetDef, bool) {
 	browserName = strings.TrimSpace(browserName)
 	if browserName == "" {
-		return e9BrowseTarget{}, false
+		return e9DataShowSetDef{}, false
 	}
-	rawName := strings.ToLower(browserName)
-	candidateTableNames := []string{rawName}
-	if !strings.HasPrefix(rawName, "uf_") {
-		candidateTableNames = append(candidateTableNames, "uf_"+rawName)
-	}
-
 	var rows []map[string]interface{}
 	err := a.db.WithContext(ctx).
-		Table(a.tableName("workflow_bill")).
+		Table(a.tableName("datashowset")).
 		Select(strings.Join([]string{
-			a.col("id") + " AS billid",
-			a.col("tablename") + " AS tablename",
+			a.col("id") + " AS id",
+			a.col("showname") + " AS showname",
+			a.col("name") + " AS name",
+			a.col("datafrom") + " AS datafrom",
+			a.col("sqltext") + " AS sqltext",
+			a.col("searchbyid") + " AS searchbyid",
+			a.col("sqltext1") + " AS sqltext1",
+			a.col("keyfield") + " AS keyfield",
+			a.col("showfield") + " AS showfield",
 		}, ", ")).
-		Where("LOWER("+a.col("tablename")+") IN ?", candidateTableNames).
+		Where(a.col("showname")+" = ? OR "+a.col("name")+" = ?", browserName, browserName).
 		Find(&rows).Error
-	if err != nil || len(rows) == 0 {
-		return e9BrowseTarget{}, false
+	if err != nil {
+		pkglogger.Global().Debug("浏览按钮解析：查询数据展现浏览框失败，保留原始值",
+			zap.String("browserName", browserName),
+			zap.Error(err))
+		return e9DataShowSetDef{}, false
 	}
-
-	billID := mapGetInt(rows[0], "billid")
-	actualTableName := strings.TrimSpace(mapGet(rows[0], "tablename"))
-	if billID == 0 || actualTableName == "" || !isSafeIdentifier(actualTableName) {
-		return e9BrowseTarget{}, false
+	if len(rows) == 0 {
+		return e9DataShowSetDef{}, false
 	}
-
-	// 查该建模表的所有字段定义，智能评选最佳显示列
-	var fieldRows []map[string]interface{}
-	err = a.db.WithContext(ctx).
-		Table(a.tableName("workflow_billfield")+" "+a.col("t1")).
-		Select(strings.Join([]string{
-			a.col("t1.fieldname") + " AS fieldname",
-			a.col("t2.labelname") + " AS labelname",
-			a.col("t1.fieldhtmltype") + " AS fieldhtmltype",
-		}, ", ")).
-		Joins("LEFT JOIN "+a.tableName("htmllabelinfo")+" "+a.col("t2")+" ON "+a.col("t1.fieldlabel")+" = "+a.col("t2.indexid")+" AND "+a.col("t2.languageid")+" = 7").
-		Where(a.col("t1.billid")+" = ?", billID).
-		Order(a.col("t1.id") + " ASC").
-		Find(&fieldRows).Error
-	if err != nil || len(fieldRows) == 0 {
-		return e9BrowseTarget{}, false
-	}
-
-	displayColumn := pickBestModelingDisplayColumn(fieldRows)
-	if displayColumn == "" || !isSafeIdentifier(displayColumn) {
-		return e9BrowseTarget{}, false
-	}
-
-	pkglogger.Global().Info("浏览按钮解析：成功探测到泛微建模物理表",
-		zap.String("browserName", browserName),
-		zap.String("table", actualTableName),
-		zap.String("displayColumn", displayColumn))
-
-	return e9BrowseTarget{
-		Table:         actualTableName,
-		IDColumn:      "id",
-		DisplayColumn: displayColumn,
-		NumericID:     true,
-		Source:        "mode_table_probe",
+	row := rows[0]
+	return e9DataShowSetDef{
+		ID:         mapGetInt(row, "id"),
+		ShowName:   mapGet(row, "showname"),
+		Name:       mapGet(row, "name"),
+		DataFrom:   mapGet(row, "datafrom"),
+		SQLText:    mapGet(row, "sqltext"),
+		SearchByID: mapGet(row, "searchbyid"),
+		SQLText1:   mapGet(row, "sqltext1"),
+		KeyField:   mapGet(row, "keyfield"),
+		ShowField:  mapGet(row, "showfield"),
 	}, true
 }
 
-func pickBestModelingDisplayColumn(fields []map[string]interface{}) string {
-	type candidate struct {
-		column   string
-		priority int
-	}
-	var cands []candidate
-
-	for _, f := range fields {
-		col := strings.TrimSpace(mapGet(f, "fieldname"))
-		if col == "" || strings.EqualFold(col, "id") || strings.EqualFold(col, "requestid") || strings.EqualFold(col, "mainid") {
-			continue
-		}
-		label := strings.TrimSpace(mapGet(f, "labelname"))
-		htmlType := strings.TrimSpace(mapGet(f, "fieldhtmltype"))
-		lowerCol := strings.ToLower(col)
-		lowerLabel := strings.ToLower(label)
-
-		// 优先级 1：包含 wb（文本）、mc（名称）、name、title、subject 的单行文本字段（如 fplxwb）
-		if htmlType == "1" && (strings.Contains(lowerCol, "wb") || strings.Contains(lowerCol, "mc") || strings.Contains(lowerCol, "name") || strings.Contains(lowerCol, "title") || strings.Contains(lowerLabel, "文本") || strings.Contains(lowerLabel, "名称")) {
-			cands = append(cands, candidate{column: col, priority: 1})
-			continue
-		}
-
-		// 优先级 2：其他包含 name/mc/title/wb 的列（即使不是单行文本）
-		if strings.Contains(lowerCol, "name") || strings.Contains(lowerCol, "mc") || strings.Contains(lowerCol, "wb") || strings.Contains(lowerLabel, "名称") {
-			cands = append(cands, candidate{column: col, priority: 2})
-			continue
-		}
-
-		// 优先级 3：单行文本列（排除纯主键类如 zj）
-		if htmlType == "1" && !strings.EqualFold(lowerCol, "zj") {
-			cands = append(cands, candidate{column: col, priority: 3})
-			continue
-		}
-
-		// 优先级 4：普通字段
-		cands = append(cands, candidate{column: col, priority: 4})
-	}
-
-	if len(cands) == 0 {
+func (a *Ecology9Adapter) fetchDataShowTitleField(ctx context.Context, mainID int) string {
+	if mainID <= 0 {
 		return ""
 	}
-	sort.SliceStable(cands, func(i, j int) bool {
-		return cands[i].priority < cands[j].priority
-	})
-	return cands[0].column
+	var rows []map[string]interface{}
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("datashowparam")).
+		Select(a.col("fieldname")+" AS fieldname").
+		Where(a.col("mainid")+" = ? AND "+a.col("isshowname")+" = ?", mainID, 1).
+		Order(a.col("id") + " ASC").
+		Find(&rows).Error
+	if err != nil || len(rows) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(mapGet(rows[0], "fieldname"))
+}
+
+// browseTargetFromDataShowSet 从数据展现配置抽出「物理表 + 主键列 + 显示列」。
+// WebService / 自定义页面无法用 OA 库反查，直接放弃以免选错显示值。
+func browseTargetFromDataShowSet(def e9DataShowSetDef, titleField string) (e9BrowseTarget, bool) {
+	if !isDatabaseDataShowSource(def.DataFrom) {
+		return e9BrowseTarget{}, false
+	}
+	displayOverride := firstSafeIdent(def.ShowField, titleField)
+
+	for _, sqlText := range []string{def.SearchByID, def.SQLText1} {
+		if target, ok := parseModeBrowserSearchByIDTarget(sqlText); ok {
+			if displayOverride != "" {
+				target.DisplayColumn = displayOverride
+			}
+			return target, true
+		}
+	}
+
+	table := firstSafeIdent(parseSQLFromTable(def.SQLText), parseSQLFromTable(def.SearchByID), parseSQLFromTable(def.SQLText1))
+	idColumn := firstSafeIdent(def.KeyField)
+	if table != "" && idColumn != "" && displayOverride != "" {
+		return e9BrowseTarget{
+			Table:         table,
+			IDColumn:      idColumn,
+			DisplayColumn: displayOverride,
+			NumericID:     isLikelyNumericBrowseKey(idColumn),
+		}, true
+	}
+
+	if target, ok := parseModeBrowserSQLTextTarget(def.SQLText); ok {
+		if idColumn != "" {
+			target.IDColumn = idColumn
+			target.NumericID = isLikelyNumericBrowseKey(idColumn)
+		}
+		if displayOverride != "" {
+			target.DisplayColumn = displayOverride
+		}
+		return target, true
+	}
+	return e9BrowseTarget{}, false
+}
+
+func isDatabaseDataShowSource(dataFrom string) bool {
+	switch strings.TrimSpace(dataFrom) {
+	case "", "1":
+		return true
+	default:
+		return false
+	}
+}
+
+func firstSafeIdent(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if isSafeIdentifier(value) {
+			return value
+		}
+	}
+	return ""
+}
+
+func parseSQLFromTable(sqlText string) string {
+	sqlText = strings.TrimSpace(sqlText)
+	if sqlText == "" {
+		return ""
+	}
+	re := regexp.MustCompile(`(?is)\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)\b`)
+	matches := re.FindStringSubmatch(sqlText)
+	if len(matches) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(matches[1])
 }
 
 func (a *Ecology9Adapter) queryBrowserURLDefs(ctx context.Context, where string, arg interface{}, includeFieldDBType bool) ([]map[string]interface{}, error) {
