@@ -7,7 +7,7 @@
  * 1. 在 AuraOA「系统管理 → 租户管理 → OA 嵌入」为租户生成嵌入密钥并导出移动端脚本
  * 2. 将本文件上传至 OA 静态目录（如 /oa-front/workflow/AuraOA/aura-embed-mobile-notify.js）
  * 3. 流程 → 基础设置 → 自定义页面（或移动端页面设置）填入 js 路径并启用
- * 4. 表单设计中可添加自定义 HTML 块 <div id="getMyBt"></div> 作为按钮挂载位（如无则自动以左下角浮动方式挂载）
+ * 4. 表单设计中可添加自定义 HTML 块 <div id="getMyBt"></div> 作为按钮挂载位（如无则按 FLOAT_POSITION 浮动挂载，默认左下角）
  */
 (function () {
   console.log('[aura-embed-mobile] 移动端脚本已加载');
@@ -18,6 +18,7 @@
   var SHOW_ON_DESKTOP = false; // 是否在电脑端启用本脚本的按钮和弹窗；移动端不受影响
   var AUTO_RUN_BEFORE_OPEN = false; // true=进入表单即自动审/总结（仍受「打开即审」等配置约束）；false=点开详情才审（默认）
   var BUTTON_CONTAINER_ID = 'getMyBt'; // 表单设计器中预留的挂载容器 ID（与 oa-front 习惯一致）
+  var FLOAT_POSITION = 'bottom-left'; // 无 getMyBt 时的浮动位置：'bottom-left'（默认左下角）或 'top-right'（右上角，提交/保存下方）
   var EMBED_TYPE = 'audit'; // 嵌入类型：'all'（全部功能双按钮）、'audit'（AI 审核）或 'summary'（流程总结）
   // ==============================
 
@@ -57,6 +58,7 @@
         '@keyframes auraTextEnter{0%{opacity:0;transform:translate3d(-5px,0,0)}100%{opacity:1;transform:none}}' +
         '@keyframes auraBtnShine{0%,100%{opacity:0;transform:translateX(-120%)}18%{opacity:.48}42%{opacity:0;transform:translateX(120%)}}' +
         '@keyframes auraStatusBreath{0%,100%{opacity:.22;transform:scale(.985)}50%{opacity:.48;transform:scale(1.01)}}' +
+        '@keyframes auraBorderBreath{0%,100%{box-shadow:0 0 8px var(--aura-status-color),var(--aura-status-shadow,0 4px 16px rgba(15,23,42,.08))}50%{box-shadow:0 0 22px 2px var(--aura-status-color),0 0 10px var(--aura-status-color),var(--aura-status-shadow,0 4px 16px rgba(15,23,42,.08))}}' +
         '@keyframes auraStarSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}' +
         '@keyframes auraIconSwapOut{to{opacity:0;transform:scale(.62) rotate(-12deg)}}' +
         '@keyframes auraIconSwapIn{0%{opacity:0;transform:scale(.62) rotate(12deg)}70%{opacity:1;transform:scale(1.08) rotate(-2deg)}100%{opacity:1;transform:none}}' +
@@ -64,7 +66,7 @@
         '@keyframes auraCopySwapIn{from{opacity:0;transform:translateY(-7px);filter:blur(2px)}to{opacity:1;transform:none;filter:none}}' +
         '@keyframes auraArrowIn{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:none}}' +
         '@keyframes auraArrowOut{to{opacity:0;transform:translateX(4px)}}' +
-        '.aura-status-button{box-sizing:border-box;appearance:none;-webkit-appearance:none;position:relative;isolation:isolate;overflow:hidden;display:inline-flex;align-items:center;gap:9px;min-height:40px;max-width:100%;padding:6px 11px 6px 7px;margin:0;border:1px solid var(--aura-status-border,rgba(148,163,184,.22));border-radius:14px;background:var(--aura-status-surface,#fff);color:#263247;box-shadow:var(--aura-status-shadow,0 4px 16px rgba(15,23,42,.08),0 1px 3px rgba(15,23,42,.04));font:600 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.1px;text-align:left;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background-color .45s ease,border-color .45s ease,box-shadow .45s ease,color .22s ease,width .52s cubic-bezier(.22,.7,.2,1),transform .18s ease;}' +
+        '.aura-status-button{box-sizing:border-box;appearance:none;-webkit-appearance:none;position:relative;isolation:isolate;overflow:hidden;display:inline-flex;align-items:center;gap:9px;min-height:40px;max-width:100%;padding:6px 11px 6px 7px;margin:0;border:1px solid var(--aura-status-border,rgba(148,163,184,.22));border-radius:14px;background:var(--aura-status-surface,#fff);color:#263247;box-shadow:var(--aura-status-shadow,0 4px 16px rgba(15,23,42,.08),0 1px 3px rgba(15,23,42,.04));font:600 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.1px;text-align:left;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background-color .45s ease,color .22s ease,width .52s cubic-bezier(.22,.7,.2,1),transform .18s ease;animation:auraBorderBreath 2.2s ease-in-out infinite;}' +
         '.aura-status-button::before{content:"";position:absolute;inset:1px;border-radius:13px;background:radial-gradient(circle at 8% 50%,var(--aura-status-tint),transparent 62%);opacity:.22;pointer-events:none;z-index:0;transform-origin:8% 50%;animation:auraStatusBreath 4.2s ease-in-out infinite;transition:opacity .45s ease;}' +
         '.aura-status-button::after{content:"";position:absolute;top:0;bottom:0;left:0;width:36%;background:linear-gradient(105deg,transparent,rgba(255,255,255,.66),transparent);pointer-events:none;z-index:0;opacity:0;transform:translateX(-120%);}' +
         '.aura-status-button--enter::after,.aura-status-button--shine::after{animation:auraBtnShine 3.2s ease-out .18s both;}' +
@@ -90,14 +92,14 @@
         '.aura-status-button:active{transform:scale(.98);}' +
         '.aura-status-button--morph{pointer-events:none;}' +
         '.aura-status-button[aria-disabled="true"]{cursor:default;}' +
-        '.aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading){color:#64748b;box-shadow:0 1px 4px rgba(15,23,42,.05);}' +
+        '.aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading){color:var(--aura-status-color);}' +
         '.aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading)::before{animation:none;opacity:.12;}' +
-        '.aura-status-button--enter{animation:auraButtonEnter .62s cubic-bezier(.22,.7,.2,1) both;}' +
+        '.aura-status-button--enter{animation:auraButtonEnter .62s cubic-bezier(.22,.7,.2,1) both,auraBorderBreath 2.2s ease-in-out infinite;}' +
         '.aura-status-button--enter .aura-status-icon{opacity:0;transform:scale(.76);animation:auraIconEnter .38s cubic-bezier(.22,.7,.2,1) .36s both;}' +
         '.aura-status-button--enter .aura-status-copy,.aura-status-button--enter .aura-status-text{opacity:0;transform:translate3d(-5px,0,0);animation:auraTextEnter .34s ease-out .53s both;}' +
         '.aura-status-button--enter .aura-status-score{opacity:0;transform:translate3d(-4px,0,0);animation:auraTextEnter .34s ease-out .6s both;}' +
         '.aura-status-button--enter .aura-status-arrow{opacity:0;transform:translate3d(-3px,0,0);animation:auraTextEnter .34s ease-out .66s both;}' +
-        '.aura-status-button--enter.aura-status-button--loading,.aura-status-button--enter.aura-status-button--running{animation:auraButtonEnterSoft .4s cubic-bezier(.22,.7,.2,1) both;}' +
+        '.aura-status-button--enter.aura-status-button--loading,.aura-status-button--enter.aura-status-button--running{animation:auraButtonEnterSoft .4s cubic-bezier(.22,.7,.2,1) both,auraBorderBreath 2.2s ease-in-out infinite;}' +
         '.aura-status-button--enter.aura-status-button--loading .aura-status-icon,.aura-status-button--enter.aura-status-button--running .aura-status-icon,.aura-status-button--enter.aura-status-button--loading .aura-status-copy,.aura-status-button--enter.aura-status-button--running .aura-status-copy,.aura-status-button--enter.aura-status-button--loading .aura-status-text,.aura-status-button--enter.aura-status-button--running .aura-status-text{opacity:1;transform:none;animation:none;}' +
         '.aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg>*,.aura-status-button--enter.aura-status-button--enter-pop .aura-status-icon svg>*,.aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg>*,.aura-status-button--enter.aura-status-button--enter-rise .aura-status-icon svg>*,.aura-status-button--enter.aura-status-button--enter-fade .aura-status-icon svg>*,.aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg>*,.aura-status-button--morph.aura-status-button--enter-pop .aura-status-icon-layer--in svg>*,.aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg>*,.aura-status-button--morph.aura-status-button--enter-rise .aura-status-icon-layer--in svg>*,.aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg>*{stroke-dasharray:1;stroke-dashoffset:1}' +
         '.aura-status-button--loading .aura-status-icon>svg,.aura-status-button--loading .aura-status-icon-layer--in svg{animation:auraBtnSpin .9s linear infinite}' +
@@ -115,7 +117,9 @@
         '.aura-status-button--enter.aura-status-button--enter-fade .aura-status-icon svg>:nth-child(2),.aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg>:nth-child(2){animation-delay:.2s}' +
         '.aura-status-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}' +
         '.aura-status-group{display:inline-flex;max-width:100%;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;}' +
-        '#auraMobileEmbedFloatContainer{position:fixed;bottom:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:16px;left:calc(16px + env(safe-area-inset-left,0px));max-width:calc(100vw - 32px);z-index:9999;}' +
+        '#auraMobileEmbedFloatContainer{position:fixed;max-width:calc(100vw - 32px);z-index:9999;}' +
+        '#auraMobileEmbedFloatContainer.aura-float--bottom-left{bottom:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:16px;left:calc(16px + env(safe-area-inset-left,0px));}' +
+        '#auraMobileEmbedFloatContainer.aura-float--top-right{top:64px;top:calc(64px + env(safe-area-inset-top,0px));right:24px;right:calc(24px + env(safe-area-inset-right,0px));}' +
         '@media(hover:hover){.aura-status-button:not([aria-disabled="true"]):not(.aura-status-button--morph):hover{transform:translateY(-2px);border-color:var(--aura-status-color);box-shadow:0 7px 22px rgba(15,23,42,.12);}}' +
         '@media(pointer:coarse){.aura-status-button{min-height:44px;}}' +
         '@media(prefers-reduced-motion:reduce){.aura-status-button{transition:none;animation:none!important;}.aura-status-button::before,.aura-status-button::after,.aura-status-icon,.aura-status-copy,.aura-status-text,.aura-status-score,.aura-status-arrow,.aura-status-icon-layer,.aura-status-copy-inner{animation:none!important;opacity:1!important;transform:none!important;filter:none!important;}.aura-status-icon svg,.aura-status-icon svg>*{animation:none!important;stroke-dashoffset:0!important;}}';
@@ -128,7 +132,7 @@
     green: { color: '#15803d', text: '审核通过', bg: '#e5f7ed', surface: '#f1fbf5', border: '#86efac', dot: '#16a36a', shadow: '0 3px 12px rgba(22,163,106,.13)' },
     yellow: { color: '#a15c00', text: '建议关注', bg: '#fff0d2', surface: '#fff9ee', border: '#f2c078', dot: '#d98200', shadow: '0 3px 12px rgba(217,130,0,.14)' },
     red: { color: '#c62828', text: '建议退回', bg: '#ffe8e6', surface: '#fff3f2', border: '#ef8a84', dot: '#d92d20', shadow: '0 4px 14px rgba(198,40,40,.16)' },
-    disabled: { color: '#94a3b8', text: '暂不可用', bg: '#f1f4f8', surface: '#f8fafc', border: '#e2e8f0', dot: '#cbd5e1', shadow: '0 1px 4px rgba(15,23,42,.05)' },
+    disabled: { color: '#2563eb', text: '暂不可用', bg: '#dbeafe', surface: '#f5f9ff', border: '#93c5fd', dot: '#3b82f6', shadow: '0 2px 10px rgba(37,99,235,.14)' },
     error: { color: '#b42318', text: '加载失败', bg: '#ffe1df', surface: '#fff1f0', border: '#e97870', dot: '#d92d20', shadow: '0 4px 16px rgba(180,35,24,.2)' },
     loading: { color: '#1d4ed8', text: '加载中...', bg: '#dbeafe', surface: '#eef5ff', border: '#60a5fa', dot: '#2563eb', shadow: '0 3px 12px rgba(37,99,235,.15)' }
   };
@@ -269,11 +273,15 @@
     };
   }
 
+  function floatAnchorClass() {
+    return FLOAT_POSITION === 'top-right' ? 'aura-float--top-right' : 'aura-float--bottom-left';
+  }
+
   function ensureStatusGroup() {
     var $container = jQuery('#' + BUTTON_CONTAINER_ID);
     if (!$container.length) {
       if (!jQuery('#auraMobileEmbedFloatContainer').length) {
-        jQuery('body').append('<div id="auraMobileEmbedFloatContainer"></div>');
+        jQuery('body').append('<div id="auraMobileEmbedFloatContainer" class="' + floatAnchorClass() + '"></div>');
       }
       $container = jQuery('#auraMobileEmbedFloatContainer');
     }
@@ -869,7 +877,7 @@
       var userId = getCurrentUserId();
 
       if (!requestId) {
-        renderStatusButton('disabled', '待保存流程', '流程保存并生成编号后即可查看 AI ' + featureName(), false);
+        renderStatusButton('disabled', EMBED_TYPE === 'summary' ? '保存流程查看AI总结' : '保存流程查看AI智审', '流程保存并生成编号后即可查看 AI ' + featureName(), false);
         registerOAEvents();
         return;
       }
@@ -1208,8 +1216,8 @@
     bindDualStatusRefreshListeners();
     var reqId = getRequestId();
     if (!reqId) {
-      setDualFeatureState('audit', 'disabled', '待保存流程', '流程保存并生成编号后即可查看 AI 审核', false);
-      setDualFeatureState('summary', 'disabled', '待保存流程', '流程保存并生成编号后即可查看 AI 总结', false);
+      setDualFeatureState('audit', 'disabled', '保存流程查看AI智审', '流程保存并生成编号后即可查看 AI 审核', false);
+      setDualFeatureState('summary', 'disabled', '保存流程查看AI总结', '流程保存并生成编号后即可查看 AI 总结', false);
       registerDualOAEvents();
       return;
     }
