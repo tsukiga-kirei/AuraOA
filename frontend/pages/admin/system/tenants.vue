@@ -752,7 +752,7 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
  * 使用步骤：
  * 1. 将本文件上传到 OA 静态目录（如 /oa-front/workflow/AuraOA/${cfg.filename}）
  * 2. 流程 → 基础设置 → 自定义页面（或移动端页面设置）填入 js 路径并启用
- * 3. 表单设计中可添加自定义 HTML 块 <div id="getMyBt"></div> 作为按钮挂载位（如无则按 FLOAT_POSITION 浮动挂载，默认左下角）
+ * 3. 表单设计中可添加自定义 HTML 块 <div id="getMyBt"></div> 作为按钮挂载位（如无则按 FLOAT_POSITION_MOBILE / FLOAT_POSITION_DESKTOP 浮动挂载，默认左下角）
  */
 (function () {
   console.log('[aura-embed-mobile] 移动端脚本已加载');
@@ -763,7 +763,8 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
   var SHOW_ON_DESKTOP = false; // 是否在电脑端启用本脚本的按钮和弹窗；移动端不受影响
   var AUTO_RUN_BEFORE_OPEN = false; // true=进入表单即自动审/总结（仍受「打开即审」等配置约束）；false=点开详情才审（默认）
   var BUTTON_CONTAINER_ID = 'getMyBt';
-  var FLOAT_POSITION = 'bottom-left'; // 无 getMyBt 时的浮动位置：'bottom-left'（默认左下角）或 'top-right'（右上角，提交/保存下方）
+  var FLOAT_POSITION_MOBILE = 'bottom-left'; // 移动端浮动位置：'bottom-left'（左下角）或 'top-right'（右上角）
+  var FLOAT_POSITION_DESKTOP = 'bottom-left'; // 电脑端浮动位置：'bottom-left'（左下角）或 'top-right'（右上角，提交/保存下方）；需 SHOW_ON_DESKTOP = true
   var EMBED_TYPE = ${JSON.stringify(defaultEmbedType)};
   // ====================================
 
@@ -878,7 +879,7 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     green: { color: '#15803d', text: '审核通过', bg: '#e5f7ed', surface: '#f1fbf5', border: '#86efac', dot: '#16a36a', shadow: '0 3px 12px rgba(22,163,106,.13)' },
     yellow: { color: '#a15c00', text: '建议关注', bg: '#fff0d2', surface: '#fff9ee', border: '#f2c078', dot: '#d98200', shadow: '0 3px 12px rgba(217,130,0,.14)' },
     red: { color: '#c62828', text: '建议退回', bg: '#ffe8e6', surface: '#fff3f2', border: '#ef8a84', dot: '#d92d20', shadow: '0 4px 14px rgba(198,40,40,.16)' },
-    disabled: { color: '#6d28d9', text: '暂不可用', bg: '#f3e8ff', surface: '#faf5ff', border: '#d8b4fe', dot: '#8b5cf6', shadow: '0 2px 10px rgba(109,40,217,.16)' },
+    disabled: { color: '#2dd4bf', text: '暂不可用', bg: '#ccfbf1', surface: '#f4fffc', border: '#99f6e4', dot: '#5eead4', shadow: '0 2px 10px rgba(45,212,191,.16)' },
     error: { color: '#b42318', text: '加载失败', bg: '#ffe1df', surface: '#fff1f0', border: '#e97870', dot: '#d92d20', shadow: '0 4px 16px rgba(180,35,24,.2)' },
     loading: { color: '#1d4ed8', text: '加载中...', bg: '#dbeafe', surface: '#eef5ff', border: '#60a5fa', dot: '#2563eb', shadow: '0 3px 12px rgba(37,99,235,.15)' }
   };
@@ -1020,7 +1021,8 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
   }
 
   function floatAnchorClass() {
-    return FLOAT_POSITION === 'top-right' ? 'aura-float--top-right' : 'aura-float--bottom-left';
+    var pos = mobileClient ? FLOAT_POSITION_MOBILE : FLOAT_POSITION_DESKTOP;
+    return pos === 'top-right' ? 'aura-float--top-right' : 'aura-float--bottom-left';
   }
 
   function ensureStatusGroup() {
