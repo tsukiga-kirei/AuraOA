@@ -3,8 +3,6 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   ReloadOutlined,
-  DownOutlined,
-  UpOutlined,
   InfoCircleOutlined,
   LoadingOutlined,
   WarningOutlined,
@@ -36,8 +34,6 @@ const pageLoading = ref(true)
 const auditing = ref(false)
 const context = ref<EmbedContextResponse | null>(null)
 const currentResult = ref<AuditResult | null>(null)
-const showReasoning = ref(false)
-const showDeepThinking = ref(false)
 const pageError = ref('')
 const waitingParent = ref(true)
 const eventSourceStream = ref<EventSource | null>(null)
@@ -48,6 +44,13 @@ const activePerspective = ref<'standard' | 'personal'>('standard')
 const userManuallySwitchedPerspective = ref(false)
 
 const processInfo = computed<EmbedProcessSummary | null>(() => context.value?.process ?? null)
+
+const currentRuleDetails = computed(() => (currentResult.value?.rule_results || []).map((rule, index) => ({
+  id: index,
+  name: rule.rule_content,
+  passed: rule.passed,
+  reason: rule.reason,
+})))
 
 
 const recommendationConfig = computed(() => ({
@@ -632,26 +635,12 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div v-if="currentResult.rule_results?.length" class="result-section">
-              <h4 class="result-section-title">{{ t('dashboard.ruleCheckDetail') }}</h4>
-              <div class="rule-checks">
-                <div
-                  v-for="(rule, idx) in currentResult.rule_results"
-                  :key="idx"
-                  class="rule-check-item"
-                  :class="{ 'rule-check-item--pass': rule.passed, 'rule-check-item--fail': !rule.passed }"
-                >
-                  <div class="rule-check-status">
-                    <CheckCircleOutlined v-if="rule.passed" style="color: var(--color-success);" />
-                    <CloseCircleOutlined v-else style="color: var(--color-danger);" />
-                  </div>
-                  <div class="rule-check-content">
-                    <div class="rule-check-name">{{ rule.rule_content }}</div>
-                    <div class="rule-check-reasoning">{{ rule.reason }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ResultRuleDetails
+              v-if="currentRuleDetails.length"
+              :key="`rules-${currentResult.id || currentResult.process_id}-${activePerspective}`"
+              :title="t('dashboard.ruleCheckDetail')"
+              :rules="currentRuleDetails"
+            />
 
             <div v-if="currentResult.risk_points?.length || currentResult.suggestions?.length" class="risk-suggest-row">
               <div v-if="currentResult.risk_points?.length" class="insight-card insight-card--risk">
@@ -674,31 +663,21 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div v-if="currentResult.deep_thinking" class="result-section">
-              <button type="button" class="reasoning-toggle" @click="showDeepThinking = !showDeepThinking">
-                <span>{{ t('dashboard.deepThinking', '深度思考过程') }}</span>
-                <DownOutlined v-if="!showDeepThinking" />
-                <UpOutlined v-else />
-              </button>
-              <AiMarkdownStream
-                v-show="showDeepThinking"
-                :text="currentResult.deep_thinking || ''"
-                max-height="320px"
-              />
-            </div>
+            <ResultReasoningPanel
+              v-if="currentResult.deep_thinking"
+              :key="`thinking-${currentResult.id || currentResult.process_id}-${activePerspective}`"
+              :title="t('dashboard.deepThinking', '深度思考过程')"
+              :text="currentResult.deep_thinking || ''"
+              max-height="320px"
+            />
 
-            <div v-if="currentResult.ai_reasoning" class="result-section">
-              <button type="button" class="reasoning-toggle" @click="showReasoning = !showReasoning">
-                <span>{{ t('dashboard.aiReasoning') }}</span>
-                <DownOutlined v-if="!showReasoning" />
-                <UpOutlined v-else />
-              </button>
-              <AiMarkdownStream
-                v-show="showReasoning"
-                :text="currentResult.ai_reasoning || ''"
-                max-height="320px"
-              />
-            </div>
+            <ResultReasoningPanel
+              v-if="currentResult.ai_reasoning"
+              :key="`reasoning-${currentResult.id || currentResult.process_id}-${activePerspective}`"
+              :title="t('dashboard.aiReasoning')"
+              :text="currentResult.ai_reasoning || ''"
+              max-height="320px"
+            />
           </template>
         </template>
 
@@ -1006,13 +985,6 @@ onBeforeUnmount(() => {
 .insight-card-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .insight-card-list li { font-size: 13px; line-height: 1.6; color: var(--color-text-secondary); }
 
-.reasoning-toggle {
-  width: 100%; display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px; border: 1px solid var(--color-border-light); border-radius: var(--radius-md);
-  background: var(--color-bg-card); cursor: pointer; font-size: 14px; font-weight: 600;
-  color: var(--color-text-primary); margin-bottom: 8px;
-}
-.reasoning-toggle:hover { background: var(--color-bg-hover); }
 .result-empty { text-align: center; padding: 40px 20px; }
 .result-empty-icon {
   width: 64px; height: 64px; border-radius: 50%; background: var(--color-primary-bg);
