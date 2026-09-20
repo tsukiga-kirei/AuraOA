@@ -85,6 +85,8 @@ MySQL 驱动可在当前支持的平台运行；达梦上游 Go 驱动仅支持 
 | `workflow_billfield` + `htmllabelinfo` | 字段定义（字段名、字段类型、所属表） |
 | `workflow_selectitem` | 选择框 / 下拉框选项定义 |
 | `workflow_browserurl` | 浏览按钮定义，含内置 / 系统 / 自定义浏览按钮的关联表与显示列 |
+| `mode_browser` | 建模 / 自定义浏览框登记（`showname`、列表 SQL、回显 SQL） |
+| `datashowset` + `datashowparam` | 集成中心数据展现浏览框；`keyfield` 为存储主键，`isshowname=1` 为显示列 |
 | `workflow_requestbase` | 流程实例（请求 ID、创建人、状态） |
 | `workflow_currentoperator` | 当前审批人（待办列表数据源） |
 | `workflow_nodebase` | 审批节点定义 |
@@ -158,7 +160,7 @@ AuraOA 从 OA 物理表读取到的值通常是数据库存储值，例如人员
 2. 若 `workflow_browserurl.TABLENAME`、`COLUMNAME`、`KEYCOLUMNAME` 都不为空，则按通用方式查询显示值：`WHERE KEYCOLUMNAME IN (...)`，展示 `COLUMNAME`。
 3. `COLUMNAME` 是最终展示内容，可以是普通列名（如 `lastname`、`departmentname`、`requestname`），也可能是表达式（如成本中心编码 + 名称）。
 4. 多选字段通常在表单物理列中用英文逗号拼接多个值，AuraOA 会拆分后批量查询，再用 `, ` 拼接显示名。
-5. 若通用元数据不完整，再走少量内置兜底映射；自定义 `browser.xxx` 会继续按建模浏览框规则解析。
+5. 若通用元数据不完整，再走少量内置人员/部门/流程映射；自定义 `browser.xxx` 按 `mode_browser`，没有可用 SQL 再查 `datashowset`。解析失败保留原始 ID，不再按 `uf_xxx` 猜表。
 
 常用内置兜底映射：
 
@@ -183,16 +185,16 @@ AuraOA 从 OA 物理表读取到的值通常是数据库存储值，例如人员
 
 | TYPE / FIELDDBTYPE | 处理方式 |
 |--------------------|----------|
-| `TYPE=161` | 自定义单选，通常 `workflow_browserurl` 只是通用入口；优先用 `FIELDDBTYPE=browser.xxx` 到 `mode_browser.SHOWNAME=xxx` 找建模浏览框 |
-| `TYPE=162` | 自定义多选，同上，表单值按逗号拆分多个 ID |
-| `TYPE=226` | 系统集成单选浏览按钮，按 `workflow_browserurl` 动态解析 |
-| `TYPE=256` | 自定义树形单选，按 `workflow_browserurl` 动态解析 |
-| `TYPE=257` | 自定义树形多选，按 `workflow_browserurl` 动态解析并按多选处理 |
-| `FIELDDBTYPE=browser.xxx` | 即使 `TYPE` 不在上述列表，也会按自定义浏览框尝试解析 |
+| `TYPE=161` / `162` | 自定义单选 / 多选控件。现场集成中心浏览框也常写成 161/162，**不能**用 TYPE 区分建模还是数据展现 |
+| `TYPE=226` | 系统集成浏览按钮入口，实际勾稽仍按 `browser.xxx` 查 `datashowset` |
+| `TYPE=256` / `257` | 自定义树形，按 `workflow_browserurl` 动态解析；257 按多选处理 |
+| `FIELDDBTYPE=browser.xxx` | 用 `xxx` 依次查 `mode_browser`、`datashowset` |
 
-建模浏览框 `mode_browser` 处理：
+自定义浏览框解析顺序（`browser.xxx`）：
 
-`FIELDDBTYPE=browser.keshangfenlei` 会去掉前缀得到 `keshangfenlei`，再查询 `mode_browser.SHOWNAME='keshangfenlei'`。优先解析 `SQLTEXT`，例如 `select id,dabm,dabm from uf_keshangfenlei`，取第一列作为存储值列、第二列作为显示列；若只有 `SEARCHBYID` / `SQLTEXT1`，则从 `where id=?` 中识别存储值列，从 `select` 第一列识别显示列。
+1. `mode_browser.showname/name = xxx`：能解析 `sqltext` / `searchbyid` 则用之（建模手写 SQL，或数据展现同步进建模表的简单 SQL）。
+2. 否则查 `datashowset.showname/name = xxx`。仅 `datafrom` 为空或 `1`（数据库）时反查；WebService / 自定义页面保留原始 ID。优先解析回显 SQL `searchbyid`；否则用 `keyfield` + `showfield` / `datashowparam.isshowname=1` + SQL 中的表名。
+3. 两张登记表都没有可用勾稽时，**保留原始 ID**，不再探测 `uf_xxx`。
 
 选择框 / 下拉框处理：
 

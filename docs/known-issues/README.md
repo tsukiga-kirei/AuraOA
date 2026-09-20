@@ -8,7 +8,7 @@
 |------|------|------|------|
 | [#002](./002-audit-data-retention-cleanup.md) | 审核数据保留天数未实现自动清理 | 未修复 | 系统/租户「审核数据保留天数」意图为删除库表中的审核/归档业务数据，当前仅保存配置，无定时删库任务 |
 | [#003](./003-embed-single-tenant-config.md) | OA 嵌入审核仅支持单租户部署配置 | 已解决 | 已改为租户级嵌入密钥，单实例可服务多租户 |
-| [#004](./004-ecology9-browse-button-raw-db-value.md) | 泛微 E9 表单字段显示值解析覆盖范围 | 部分修复 | 常见浏览按钮、自定义浏览框、选择框已做显示值解析；复杂自定义 SQL / 特殊二开字段仍可能保留原始值 |
+| [#004](./004-ecology9-browse-button-raw-db-value.md) | 泛微 E9 表单字段显示值解析覆盖范围 | 部分修复 | 常见浏览按钮、`mode_browser`、集成中心 `datashowset`、选择框已做显示值解析；复杂 SQL / WebService 仍保留原始 ID |
 | [#005](./005-flow-graph-placeholder-incomplete.md) | `{{flow_graph}}` 未输出完整流程定义图 | 未修复 | 当前可能退化为当前节点或已发生路径，尚不能稳定输出全部节点、连接和分支条件 |
 
 ## 缺陷详情索引

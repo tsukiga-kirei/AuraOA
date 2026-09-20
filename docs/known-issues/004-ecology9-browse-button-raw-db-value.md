@@ -15,7 +15,7 @@
 3. **字段中文名**：通过 `workflow_billfield.fieldlabel → htmllabelinfo.indexid`，优先使用 `languageid=7` 的中文标签。
 4. **浏览按钮通用解析**：优先按 `workflow_billfield.type = workflow_browserurl.id` 查询定义。若 `TABLENAME`、`COLUMNAME`、`KEYCOLUMNAME` 都不为空，则通过 `KEYCOLUMNAME` 查值并展示 `COLUMNAME`。
 5. **内置浏览按钮兜底**：若 `workflow_browserurl` 元数据不完整，再使用人员、部门、分部、相关流程等少量兜底映射；`TYPE` 映射以当前客户环境为准，例如本环境中 `TYPE=2` 是日期，不是部门。
-6. **自定义 / 集成浏览框**：对 `TYPE=161/162/226/256/257` 或 `FIELDDBTYPE=browser.xx` 的字段，优先查询 `workflow_browserurl` 或 `mode_browser`（支持 `showname/name` 模糊匹配）；若上述配置表均未登记，启用**建模物理表直接探测引擎**（通过 `workflow_bill` 自动匹配 `uf_` + 模块代号，如 `browser.fplx` 探测 `uf_fplx`，并从 `workflow_billfield` 智能选取包含 `wb`、`mc`、`name` 等文本特征的最佳显示列，如 `fplxwb`），主表与明细表均全面生效。
+6. **自定义 / 集成浏览框**：对 `TYPE=161/162/226/256/257` 或 `FIELDDBTYPE=browser.xx` 的字段，先按 `showname` 查 `mode_browser` 的 `sqltext` / `searchbyid`；没有可用 SQL 再查集成中心 `datashowset`（`keyfield`、回显 SQL、`datashowparam` 标题列）。**161/162 不能当作建模来源**，现场数据展现浏览框也经常是这两个 TYPE。两张登记表都解析失败时保留原始 ID，不再按 `uf_xxx` 猜表。
 7. **选择框 / 下拉框**：对 `fieldhtmltype = 5` 的字段，通过 `workflow_billfield.id = workflow_selectitem.fieldid` 和 `selectvalue` 匹配选项；`selectname` 若为泛微多语言串，优先取语言 `7`。
 8. **AI 审核**：prompt 中会尽量只展示中文字段名和业务显示值，例如 `"报销人": "张三"`、`"酒店级别": "四星级"`，不暴露 `value/display` 结构。
 
@@ -26,7 +26,7 @@
 | 场景 | 是否受影响 |
 |------|------------|
 | 人员、部门、分部、相关流程浏览按钮字段参与 AI 审核 | ✅ 会增补显示名 |
-| 自定义 / 集成浏览框字段参与 AI 审核 | ✅ `workflow_browserurl` 通用元数据或 `mode_browser` 建模配置可解析时会增补显示名 |
+| 自定义 / 集成浏览框字段参与 AI 审核 | ✅ `mode_browser` 或 `datashowset` 能解析出表/主键/显示列时会增补显示名；否则保留原始 ID |
 | 选择框 / 下拉框字段参与 AI 审核 | ✅ 通过 `workflow_selectitem` 解析枚举显示名 |
 | 规则中要求核对「申请人姓名」「所属部门名称」等显示信息 | ✅ 已覆盖常见浏览按钮；特殊自定义 SQL 仍需校验 |
 | 纯文本、多行文本（`fieldhtmltype` 1/2） | ✅ 不受影响 |
@@ -48,7 +48,7 @@
 
 ## 仍需注意
 
-1. 自定义浏览框只解析常见的 `select id, display_col from uf_xxx ...` 形态；若显示字段来自函数、拼接表达式、复杂视图逻辑，可能无法自动识别。
+1. 自定义浏览框只解析常见的 `select id, display_col from uf_xxx ...` 形态；若显示字段来自函数、拼接表达式、复杂视图逻辑，或数据来源是 WebService / 外部数据源，会保留原始 ID。
 2. 解析失败不会阻断审核流程，字段会保持 OA 原始值。
 3. 当前不读取物理表中可能存在的 `fieldname + span` 显示列。
 4. 不同 E9 版本或客户二开环境的 `workflow_billfield.type` 含义可能存在差异，新增内置映射前必须以现场配置核验。
