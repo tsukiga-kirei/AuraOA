@@ -36,27 +36,93 @@ function addListener(map, type, fn) {
 }
 
 // 执行实际导出的完整脚本，模拟 OA 容器并记录按钮文案、请求和点击去向。
+function captureButtonText(state, html) {
+  const label = String(html).match(/class="aura-status-text"[^>]*>([^<]*)/)
+  if (!label) return
+  const score = String(html).match(/<b>([^<]+)<\/b><small>([^<]*)<\/small>/)
+  state.text = score ? `${label[1]} (${score[1]}${score[2]})` : label[1]
+}
+
+function createButtonStub(state, id = '') {
+  const btn = {
+    id,
+    style: { width: '', transition: '', setProperty() {} },
+    classList: { add() {}, remove() {}, contains: name => name === 'aura-status-button' },
+    attributes: {},
+    parentNode: null,
+    offsetWidth: 120,
+    innerHTML: '',
+    setAttribute(k, v) { this.attributes[k] = v; if (k === 'id') this.id = v },
+    getAttribute(k) { return this.attributes[k] },
+    querySelector() { return null },
+    getBoundingClientRect() { return { width: 120 } },
+    addEventListener() {},
+    insertBefore() {},
+  }
+  Object.defineProperty(btn, 'innerHTML', {
+    get() { return this._html || '' },
+    set(value) {
+      this._html = value
+      captureButtonText(state, value)
+    },
+  })
+  return btn
+}
+
 async function run(source, payload, httpOK = true, device = {}) {
   const state = {
     requests: [], requestInits: [], dialogs: [], dialogOpts: [], messages: [], text: '', click: null, elements: [], styles: [], queries: [], appended: [],
     windowListeners: {}, docListeners: {}, timeouts: [], intervals: [], timerId: 0,
   }
+  const nodesById = {}
+  const groupEl = {
+    firstChild: null,
+    attributes: {},
+    getAttribute(k) { return this.attributes[k] },
+    setAttribute(k, v) { this.attributes[k] = v },
+    addEventListener(type, fn) {
+      if (type === 'click') {
+        state.click = () => fn({ target: groupEl.firstChild || createButtonStub(state, 'auraMobileEmbedBtn') })
+      }
+    },
+    insertBefore(node) { node.parentNode = this; this.firstChild = node },
+    appendChild(node) { node.parentNode = this; this.firstChild = this.firstChild || node },
+  }
   const element = {
     length: 1, ready: fn => fn(), html: () => element, append: html => { state.appended.push(html); return element },
     find: () => element, text: value => { state.text = value; return element },
     off: () => element, on: (event, fn) => { state.click = fn; return element },
+    children: () => [groupEl],
   }
   const document = {
     visibilityState: 'visible',
-    activeElement: null, getElementById: () => null,
+    activeElement: null,
+    getElementById: id => nodesById[id] || null,
     head: { appendChild: node => state.styles.push(node) },
     body: { appendChild: node => state.elements.push(node) },
     addEventListener: (type, fn) => addListener(state.docListeners, type, fn),
     removeEventListener() {},
-    createElement: tag => ({ tag, style: {}, children: [], attributes: {},
-      setAttribute(k, v) { this.attributes[k] = v },
-      appendChild(node) { this.children.push(node) }, focus() {}, remove() { this.removed = true },
-    }),
+    createElement: tag => {
+      const node = {
+        tag, style: {}, children: [], attributes: {},
+        setAttribute(k, v) { this.attributes[k] = v },
+        appendChild(child) { this.children.push(child) },
+        focus() {}, remove() { this.removed = true },
+      }
+      Object.defineProperty(node, 'firstChild', { get() { return this.children[0] || null } })
+      Object.defineProperty(node, 'innerHTML', {
+        get() { return this._html || '' },
+        set(value) {
+          this._html = value
+          captureButtonText(state, value)
+          const idMatch = String(value).match(/\sid="([^"]+)"/)
+          const btn = createButtonStub(state, idMatch ? idMatch[1] : '')
+          if (btn.id) nodesById[btn.id] = btn
+          this.children = [btn]
+        },
+      })
+      return node
+    },
   }
   const win = {
     weaJs: {
@@ -106,6 +172,11 @@ async function run(source, payload, httpOK = true, device = {}) {
     },
   })
   await new Promise(resolve => setImmediate(resolve))
+  await new Promise(resolve => setImmediate(resolve))
+  const due = state.timeouts.filter(item => item.ms < 1000)
+  state.timeouts = state.timeouts.filter(item => item.ms >= 1000)
+  due.forEach(item => item.fn())
+  await new Promise(resolve => setImmediate(resolve))
   return state
 }
 
@@ -144,12 +215,20 @@ for (const origin of ['export', 'template']) {
       const floating = await run(script, { supported: true }, true, { noContainer: true })
       assert.match(floating.appended[0], /id="auraMobileEmbedFloatContainer"/)
       const styles = floating.styles.map(node => node.textContent).join('')
-      assert.match(styles, /#auraMobileEmbedFloatContainer\{position:fixed;bottom:16px/)
+      assert.match(floating.appended[0], /aura-float--bottom-left/)
+      assert.match(styles, /#auraMobileEmbedFloatContainer\{position:fixed/)
+      assert.match(styles, /aura-float--bottom-left/)
+      assert.match(styles, /aura-float--top-right/)
       assert.match(styles, /safe-area-inset-bottom/)
+      assert.match(styles, /safe-area-inset-top/)
+      assert.match(script, /var FLOAT_POSITION = 'bottom-left'/)
+      const topRight = await run(script.replace("var FLOAT_POSITION = 'bottom-left'", "var FLOAT_POSITION = 'top-right'"), { supported: true }, true, { noContainer: true })
+      assert.match(topRight.appended[0], /aura-float--top-right/)
       assert.match(styles, /auraButtonEnter/)
       assert.match(styles, /auraIconEnter/)
       assert.match(styles, /auraTextEnter/)
       assert.match(styles, /auraStatusBreath/)
+      assert.match(styles, /auraBorderBreath/)
       assert.match(styles, /--aura-status-surface/)
       assert.match(script, /aura-running-star/)
       assert.match(script, /auraStarSpin/)

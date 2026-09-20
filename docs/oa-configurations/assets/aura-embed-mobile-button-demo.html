@@ -109,11 +109,11 @@
 
     .aura-status-float {
       position: fixed;
-      bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-      left: 16px;
+      top: calc(64px + env(safe-area-inset-top, 0px));
+      right: 24px;
       z-index: 10;
       display: flex;
-      justify-content: flex-start;
+      justify-content: flex-end;
       pointer-events: none;
     }
 
@@ -147,7 +147,8 @@
       text-align: left;
       cursor: pointer;
       touch-action: manipulation;
-      transition: background-color .45s ease, border-color .45s ease, box-shadow .45s ease, color .22s ease, width .52s cubic-bezier(.22, .7, .2, 1), transform .18s ease;
+      transition: background-color .45s ease, color .22s ease, width .52s cubic-bezier(.22, .7, .2, 1), transform .18s ease;
+      animation: auraBorderBreath 2.2s ease-in-out infinite;
     }
 
     .aura-status-button::before {
@@ -230,17 +231,17 @@
     .aura-status-arrow--out { animation: auraArrowOut .24s ease both; }
     .aura-status-button--morph { pointer-events: none; }
     .aura-status-button[aria-disabled="true"] { cursor: default; }
-    .aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading) { color: #64748b; box-shadow: 0 1px 4px rgba(15, 23, 42, .05); }
+    .aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading) { color: var(--aura-status-color); }
     .aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading)::before { animation: none; opacity: .12; }
 
-    .aura-status-button--enter { animation: auraButtonEnter .62s cubic-bezier(.22, .7, .2, 1) both; }
+    .aura-status-button--enter { animation: auraButtonEnter .62s cubic-bezier(.22, .7, .2, 1) both, auraBorderBreath 2.2s ease-in-out infinite; }
     .aura-status-button--enter .aura-status-icon { opacity: 0; transform: scale(.76); animation: auraIconEnter .38s cubic-bezier(.22, .7, .2, 1) .36s both; }
     .aura-status-button--enter .aura-status-copy,
     .aura-status-button--enter .aura-status-text { opacity: 0; transform: translate3d(-5px, 0, 0); animation: auraTextEnter .34s ease-out .53s both; }
     .aura-status-button--enter .aura-status-score { opacity: 0; transform: translate3d(-4px, 0, 0); animation: auraTextEnter .34s ease-out .6s both; }
     .aura-status-button--enter .aura-status-arrow { opacity: 0; transform: translate3d(-3px, 0, 0); animation: auraTextEnter .34s ease-out .66s both; }
     .aura-status-button--enter.aura-status-button--loading,
-    .aura-status-button--enter.aura-status-button--running { animation: auraButtonEnterSoft .4s cubic-bezier(.22, .7, .2, 1) both; }
+    .aura-status-button--enter.aura-status-button--running { animation: auraButtonEnterSoft .4s cubic-bezier(.22, .7, .2, 1) both, auraBorderBreath 2.2s ease-in-out infinite; }
     .aura-status-button--enter.aura-status-button--loading .aura-status-icon,
     .aura-status-button--enter.aura-status-button--running .aura-status-icon,
     .aura-status-button--enter.aura-status-button--loading .aura-status-copy,
@@ -305,6 +306,10 @@
     @keyframes auraStatusBreath {
       0%, 100% { opacity: .22; transform: scale(.985); }
       50% { opacity: .48; transform: scale(1.01); }
+    }
+    @keyframes auraBorderBreath {
+      0%, 100% { box-shadow: 0 0 8px var(--aura-status-color), var(--aura-status-shadow, 0 4px 16px rgba(15, 23, 42, .08)); }
+      50% { box-shadow: 0 0 22px 2px var(--aura-status-color), 0 0 10px var(--aura-status-color), var(--aura-status-shadow, 0 4px 16px rgba(15, 23, 42, .08)); }
     }
     @keyframes auraIconSwapOut { to { opacity: 0; transform: scale(.62) rotate(-12deg); } }
     @keyframes auraIconSwapIn {
@@ -393,7 +398,7 @@
       green: { color: '#15803d', text: '审核通过', bg: '#e5f7ed', surface: '#f1fbf5', border: '#86efac', shadow: '0 3px 12px rgba(22,163,106,.13)' },
       yellow: { color: '#a15c00', text: '建议关注', bg: '#fff0d2', surface: '#fff9ee', border: '#f2c078', shadow: '0 3px 12px rgba(217,130,0,.14)' },
       red: { color: '#c62828', text: '建议退回', bg: '#ffe8e6', surface: '#fff3f2', border: '#ef8a84', shadow: '0 4px 14px rgba(198,40,40,.16)' },
-      disabled: { color: '#94a3b8', text: '待保存流程', bg: '#f1f4f8', surface: '#f8fafc', border: '#e2e8f0', shadow: '0 1px 4px rgba(15,23,42,.05)' },
+      disabled: { color: '#2563eb', text: '保存流程查看AI智审', bg: '#dbeafe', surface: '#f5f9ff', border: '#93c5fd', shadow: '0 2px 10px rgba(37,99,235,.14)' },
       loading: { color: '#1d4ed8', text: '加载中...', bg: '#dbeafe', surface: '#eef5ff', border: '#60a5fa', shadow: '0 3px 12px rgba(37,99,235,.15)' }
     }
 
@@ -599,7 +604,7 @@
       { id: 'g-return', feature: 'audit', status: 'red', text: '建议退回 (45分)', loading: false, motion: 'aura-status-button--enter-shake' },
       { id: 'g-run', feature: 'audit', status: 'loading', text: '审核分析中', loading: false, motion: 'aura-status-button--running' },
       { id: 'g-load', feature: 'audit', status: 'gray', text: '加载中...', loading: true, motion: 'aura-status-button--loading' },
-      { id: 'g-lock', feature: 'audit', status: 'disabled', text: '待保存流程', loading: false, motion: 'aura-status-button--enter-fade' }
+      { id: 'g-lock', feature: 'audit', status: 'disabled', text: '保存流程查看AI智审', loading: false, motion: 'aura-status-button--enter-fade' }
     ]
     var gallery = document.getElementById('gallery')
     galleryItems.forEach(function (item) {
