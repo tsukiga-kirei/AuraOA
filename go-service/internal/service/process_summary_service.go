@@ -223,7 +223,12 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 	if len(currentBlocks) == 0 {
 		currentBlocks = defaultSummaryBlocks()
 	}
-	currentConfigSnapshot := SummaryExecutionConfigSnapshot{Blocks: currentBlocks}
+	baseVersion, _ := s.executionVersions.GetActiveBaseVersion(c.Request.Context(), tenantID, model.ExecutionConfigModuleSummary, config.ID)
+	baseVersionNo := 0
+	if baseVersion != nil {
+		baseVersionNo = baseVersion.VersionNo
+	}
+	currentConfigSnapshot := SummaryExecutionConfigSnapshot{Blocks: currentBlocks, BaseConfigVersionNo: baseVersionNo}
 	currentConfigFingerprint := stableJSONFingerprint(currentConfigSnapshot)
 	blocks := currentBlocks
 	bindingVersion, bindingErr := s.executionVersions.GetBindingVersion(
@@ -516,7 +521,6 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 		if len(blocks) == 0 {
 			blocks = defaultSummaryBlocks()
 		}
-		configSnapshot := SummaryExecutionConfigSnapshot{Blocks: blocks}
 		baseVersion, baseErr := s.executionVersions.GetActiveBaseVersion(
 			c.Request.Context(), tenantID, model.ExecutionConfigModuleSummary, config.ID,
 		)
@@ -525,6 +529,10 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 				return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrNoProcessConfig, "流程总结配置尚处于草稿状态，请先发布首个版本")
 			}
 			return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrDatabase, "读取总结基础配置版本失败")
+		}
+		configSnapshot := SummaryExecutionConfigSnapshot{
+			Blocks:              blocks,
+			BaseConfigVersionNo: baseVersion.VersionNo,
 		}
 		configVersion, err = s.executionVersions.BindSnapshot(
 			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleSummary,

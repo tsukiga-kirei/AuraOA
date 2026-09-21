@@ -25,6 +25,7 @@ type ExecutionConfigVersion struct {
 	ConfigSnapshot      datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"config_snapshot"`
 	CreatedBy           *uuid.UUID     `gorm:"type:uuid" json:"created_by,omitempty"`
 	CreatedAt           time.Time      `json:"created_at"`
+	BaseVersionNo       *int           `gorm:"->;column:base_version_no" json:"base_version_no,omitempty"`
 }
 
 func (ExecutionConfigVersion) TableName() string { return "execution_config_versions" }
