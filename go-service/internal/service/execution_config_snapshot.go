@@ -33,12 +33,28 @@ type ArchiveExecutionConfigSnapshot struct {
 
 // SummaryExecutionConfigSnapshot 是流程总结实际使用的启用块配置。
 type SummaryExecutionConfigSnapshot struct {
-	Blocks []model.SummaryBlockConfig `json:"blocks"`
+	Blocks              []model.SummaryBlockConfig `json:"blocks"`
+	BaseConfigVersionNo int                        `json:"base_config_version_no,omitempty"`
 }
 
+// executionVersionNumber 返回用于界面展示和业务绑定的配置版本号。
+// 优先返回对应租户规则配置的基础版本号（BaseConfigVersionNo），保持前后端心智模型一致；
+// 若无法解析基础版本号（如极早期未分层的历史老数据），回退使用执行快照自身的 VersionNo。
 func executionVersionNumber(version *model.ExecutionConfigVersion) *int {
 	if version == nil {
 		return nil
+	}
+	if version.BaseVersionNo != nil && *version.BaseVersionNo > 0 {
+		return version.BaseVersionNo
+	}
+	if len(version.ConfigSnapshot) > 0 {
+		var meta struct {
+			BaseConfigVersionNo int `json:"base_config_version_no"`
+		}
+		if err := json.Unmarshal(version.ConfigSnapshot, &meta); err == nil && meta.BaseConfigVersionNo > 0 {
+			v := meta.BaseConfigVersionNo
+			return &v
+		}
 	}
 	value := version.VersionNo
 	return &value

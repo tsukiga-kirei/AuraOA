@@ -33,8 +33,9 @@ func (r *ExecutionConfigVersionRepo) GetBindingVersion(
 	var version model.ExecutionConfigVersion
 	err := r.db.WithContext(ctx).
 		Table("execution_config_versions AS v").
-		Select("v.*").
+		Select("v.*, t.version_no AS base_version_no").
 		Joins("JOIN process_execution_config_bindings AS b ON b.config_version_id = v.id").
+		Joins("LEFT JOIN tenant_config_versions AS t ON t.id = v.base_config_version_id").
 		Where("b.tenant_id = ? AND b.module = ? AND b.process_id = ? AND b.scope = ?", tenantID, module, processID, bindingScope(scopes)).
 		First(&version).Error
 	return bindingVersionResult(version, err)
@@ -56,7 +57,10 @@ func (r *ExecutionConfigVersionRepo) GetVersionByID(
 ) (*model.ExecutionConfigVersion, error) {
 	var version model.ExecutionConfigVersion
 	err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND id = ?", tenantID, versionID).
+		Table("execution_config_versions AS v").
+		Select("v.*, t.version_no AS base_version_no").
+		Joins("LEFT JOIN tenant_config_versions AS t ON t.id = v.base_config_version_id").
+		Where("v.tenant_id = ? AND v.id = ?", tenantID, versionID).
 		First(&version).Error
 	return &version, err
 }
@@ -422,8 +426,9 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 		// 普通重审必须先复用流程已有绑定，不能因为当前租户配置已变化而创建一个实际未使用的新版本。
 		if !force {
 			err := tx.Table("execution_config_versions AS v").
-				Select("v.*").
+				Select("v.*, t.version_no AS base_version_no").
 				Joins("JOIN process_execution_config_bindings AS b ON b.config_version_id = v.id").
+				Joins("LEFT JOIN tenant_config_versions AS t ON t.id = v.base_config_version_id").
 				Where("b.tenant_id = ? AND b.module = ? AND b.process_id = ? AND b.scope = ?", tenantID, module, processID, bindingScope(scopes)).
 				First(&result).Error
 			if err == nil {
@@ -481,8 +486,11 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 			}).Create(&binding).Error; err != nil {
 				return err
 			}
-			result = version
-			return nil
+			return tx.Table("execution_config_versions AS v").
+				Select("v.*, t.version_no AS base_version_no").
+				Joins("LEFT JOIN tenant_config_versions AS t ON t.id = v.base_config_version_id").
+				Where("v.id = ?", version.ID).
+				First(&result).Error
 		}
 
 		if err := tx.Clauses(clause.OnConflict{
@@ -492,8 +500,9 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 			return err
 		}
 		return tx.Table("execution_config_versions AS v").
-			Select("v.*").
+			Select("v.*, t.version_no AS base_version_no").
 			Joins("JOIN process_execution_config_bindings AS b ON b.config_version_id = v.id").
+			Joins("LEFT JOIN tenant_config_versions AS t ON t.id = v.base_config_version_id").
 			Where("b.tenant_id = ? AND b.module = ? AND b.process_id = ? AND b.scope = ?", tenantID, module, processID, bindingScope(scopes)).
 			First(&result).Error
 	})
