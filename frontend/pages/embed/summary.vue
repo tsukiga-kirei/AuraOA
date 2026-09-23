@@ -404,7 +404,7 @@ onBeforeUnmount(() => disconnectStream())
               <template v-if="canUpgradeConfig">
                 <a-dropdown :trigger="['click']" placement="bottomRight" :disabled="summarizing">
                   <a-button
-                    class="process-action process-action--split"
+                    class="process-action"
                     type="text"
                     size="small"
                     :disabled="summarizing"
@@ -412,29 +412,21 @@ onBeforeUnmount(() => disconnectStream())
                     <LoadingOutlined v-if="summarizing" spin />
                     <ReloadOutlined v-else />
                     <span>{{ t('embed.summary.retry') }}</span>
-                    <DownOutlined class="process-action-arrow" />
                   </a-button>
                   <template #overlay>
                     <a-menu class="embed-action-dropdown-menu">
                       <a-menu-item key="latest" @click="runSummary('summary_embed_manual', true)">
-                        <div class="embed-menu-item-row">
-                          <ThunderboltOutlined class="embed-menu-icon embed-menu-icon--primary" />
-                          <div class="embed-menu-text">
-                            <span class="embed-menu-title">{{ t('executionConfig.useLatestSummary') }}</span>
-                            <span class="embed-menu-desc">{{ t('executionConfig.upgradeToLatestSummaryDesc') }}</span>
-                          </div>
+                        <div class="embed-menu-simple-item">
+                          <ThunderboltOutlined class="embed-menu-simple-icon embed-menu-simple-icon--primary" />
+                          <span class="embed-menu-simple-text">{{ t('executionConfig.ruleLatestSummary') }}</span>
                         </div>
                       </a-menu-item>
-                      <a-menu-divider />
                       <a-menu-item key="current" @click="runSummary('summary_embed_manual')">
-                        <div class="embed-menu-item-row">
-                          <ReloadOutlined class="embed-menu-icon" />
-                          <div class="embed-menu-text">
-                            <span class="embed-menu-title">{{ t('executionConfig.useCurrentSummary') }}</span>
-                            <span class="embed-menu-desc">
-                              {{ context?.config_version_no ? t('executionConfig.reuseVersionDesc', ['v' + context.config_version_no]) : t('executionConfig.useCurrentSummary') }}
-                            </span>
-                          </div>
+                        <div class="embed-menu-simple-item">
+                          <ReloadOutlined class="embed-menu-simple-icon" />
+                          <span class="embed-menu-simple-text">
+                            {{ context?.config_version_no ? t('executionConfig.ruleCurrentSummaryWithVer', ['v' + context.config_version_no]) : t('executionConfig.ruleCurrentSummary') }}
+                          </span>
                         </div>
                       </a-menu-item>
                     </a-menu>
@@ -720,47 +712,30 @@ onBeforeUnmount(() => disconnectStream())
   width: 14px;
   font-size: 13px;
 }
-.process-action--split {
-  gap: 2px !important;
-}
-.process-action-arrow {
-  font-size: 10px !important;
-  margin-left: 2px;
-  opacity: 0.85;
-}
 :global(.embed-action-dropdown-menu) {
-  min-width: 220px;
-  padding: 6px;
-  border-radius: var(--radius-lg);
-  box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12);
+  min-width: 148px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 14px 0 rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.06);
 }
-:global(.embed-menu-item-row) {
+:global(.embed-menu-simple-item) {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
-  padding: 4px 2px;
+  padding: 4px 4px;
 }
-:global(.embed-menu-icon) {
+:global(.embed-menu-simple-icon) {
   font-size: 14px;
-  margin-top: 2px;
+  flex-shrink: 0;
 }
-:global(.embed-menu-icon--primary) {
+:global(.embed-menu-simple-icon--primary) {
   color: var(--color-primary);
 }
-:global(.embed-menu-text) {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-:global(.embed-menu-title) {
+:global(.embed-menu-simple-text) {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text-primary);
-}
-:global(.embed-menu-desc) {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  line-height: 1.3;
+  white-space: nowrap;
 }
 @media (max-width: 420px) {
   .process-actions {
