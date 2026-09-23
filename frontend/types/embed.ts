@@ -39,6 +39,7 @@ export interface EmbedContextResponse {
   audit_result?: AuditResult | null
   config_version_no?: number
   config_upgrade_available?: boolean
+  allow_latest_config_rerun?: boolean
   personal_view?: EmbedPersonalView | null
   default_perspective?: 'personal' | 'standard'
 }

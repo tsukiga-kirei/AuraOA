@@ -2,6 +2,7 @@
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
+  DownOutlined,
   ReloadOutlined,
   InfoCircleOutlined,
   LoadingOutlined,
@@ -261,6 +262,13 @@ const activeViewStale = computed(() => {
   return !!context.value?.stale
 })
 
+const canUpgradeConfig = computed(() => {
+  if (activePerspective.value === 'personal') {
+    return false
+  }
+  return !!(context.value?.allow_latest_config_rerun && context.value?.config_upgrade_available)
+})
+
 function publishStatusToParent() {
   if (!process.client || !processId.value) return
   const r = currentResult.value
@@ -429,6 +437,9 @@ onBeforeUnmount(() => {
 		<a-tag v-if="context?.config_version_no" color="blue" style="margin-left: 8px;">
 		  {{ t('executionConfig.version', [context.config_version_no]) }}
 		</a-tag>
+		<a-tag v-if="canUpgradeConfig" color="cyan" style="margin-left: 6px;">
+		  <ThunderboltOutlined /> {{ t('executionConfig.upgradeAvailable') }}
+		</a-tag>
       </div>
       <p v-else-if="isAuditingActive" class="embed-last-audit embed-last-audit--active">
         {{ t('dashboard.aiAnalyzingSub') }}
@@ -520,7 +531,48 @@ onBeforeUnmount(() => {
                 >
                   {{ processStat.text }}
                 </div>
+                <template v-if="canUpgradeConfig">
+                  <a-dropdown :trigger="['click']" placement="bottomRight" :disabled="auditing || (!!context.running_job_id && !auditing)">
+                    <a-button
+                      class="embed-process-card__action embed-process-card__action--split"
+                      type="text"
+                      size="small"
+                      :disabled="auditing || (!!context.running_job_id && !auditing)"
+                    >
+                      <LoadingOutlined v-if="auditing" spin />
+                      <ReloadOutlined v-else />
+                      <span>{{ t('dashboard.reAudit') }}</span>
+                      <DownOutlined class="embed-process-card__action-arrow" />
+                    </a-button>
+                    <template #overlay>
+                      <a-menu class="embed-action-dropdown-menu">
+                        <a-menu-item key="latest" @click="handleReAuditWithLatestConfig">
+                          <div class="embed-menu-item-row">
+                            <ThunderboltOutlined class="embed-menu-icon embed-menu-icon--primary" />
+                            <div class="embed-menu-text">
+                              <span class="embed-menu-title">{{ t('executionConfig.useLatestAudit') }}</span>
+                              <span class="embed-menu-desc">{{ t('executionConfig.upgradeToLatestDesc') }}</span>
+                            </div>
+                          </div>
+                        </a-menu-item>
+                        <a-menu-divider />
+                        <a-menu-item key="current" @click="handleReAudit">
+                          <div class="embed-menu-item-row">
+                            <ReloadOutlined class="embed-menu-icon" />
+                            <div class="embed-menu-text">
+                              <span class="embed-menu-title">{{ t('executionConfig.useCurrentAudit') }}</span>
+                              <span class="embed-menu-desc">
+                                {{ context?.config_version_no ? t('executionConfig.reuseVersionDesc', ['v' + context.config_version_no]) : t('executionConfig.useCurrentAudit') }}
+                              </span>
+                            </div>
+                          </div>
+                        </a-menu-item>
+                      </a-menu>
+                    </template>
+                  </a-dropdown>
+                </template>
                 <a-button
+                  v-else
                   class="embed-process-card__action"
                   type="text"
                   size="small"
@@ -531,21 +583,6 @@ onBeforeUnmount(() => {
                   <ReloadOutlined v-else />
                   <span>{{ t('dashboard.reAudit') }}</span>
                 </a-button>
-				<!--
-				  OA 嵌入块暂不开放“使用最新配置重新执行”。
-				  仅注释入口，保留完整执行逻辑，后续需要时可直接恢复。
-				<a-button
-				  v-if="context.config_upgrade_available"
-				  class="embed-process-card__action"
-				  type="text"
-				  size="small"
-				  :disabled="auditing"
-				  @click="handleReAuditWithLatestConfig"
-				>
-				  <ThunderboltOutlined />
-				  <span>{{ t('executionConfig.useLatest') }}</span>
-				</a-button>
-				-->
               </div>
             </div>
           </div>
@@ -856,6 +893,48 @@ onBeforeUnmount(() => {
 }
 .embed-process-card__action :deep(.anticon) {
   width: 14px; font-size: 13px;
+}
+.embed-process-card__action--split {
+  gap: 2px !important;
+}
+.embed-process-card__action-arrow {
+  font-size: 10px !important;
+  margin-left: 2px;
+  opacity: 0.85;
+}
+:global(.embed-action-dropdown-menu) {
+  min-width: 220px;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12);
+}
+:global(.embed-menu-item-row) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 2px;
+}
+:global(.embed-menu-icon) {
+  font-size: 14px;
+  margin-top: 2px;
+}
+:global(.embed-menu-icon--primary) {
+  color: var(--color-primary);
+}
+:global(.embed-menu-text) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+:global(.embed-menu-title) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+:global(.embed-menu-desc) {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  line-height: 1.3;
 }
 @media (max-width: 420px) {
   .embed-process-card__actions {

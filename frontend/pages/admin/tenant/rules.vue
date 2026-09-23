@@ -823,6 +823,7 @@ const handleAddProcess = async () => {
         scheduled_refresh_enabled: false,
         scheduled_refresh_lookback_days: 3,
         scheduled_refresh_interval_minutes: 5,
+        allow_latest_config_rerun: false,
       },
     })
     processConfigs.value.push(normalizeAuditConfigForUI(created))
@@ -1403,6 +1404,7 @@ const normalizeAuditConfigForUI = (cfg: ProcessAuditConfig): ProcessAuditConfig 
     scheduled_refresh_enabled: cfg.embed_config?.scheduled_refresh_enabled ?? false,
     scheduled_refresh_lookback_days: cfg.embed_config?.scheduled_refresh_lookback_days ?? 3,
     scheduled_refresh_interval_minutes: cfg.embed_config?.scheduled_refresh_interval_minutes ?? 5,
+    allow_latest_config_rerun: cfg.embed_config?.allow_latest_config_rerun ?? false,
   },
 })
 
@@ -1782,6 +1784,7 @@ const normalizeSummaryConfigForUI = (cfg: ProcessSummaryConfig): ProcessSummaryC
     scheduled_refresh_enabled: cfg.embed_config?.scheduled_refresh_enabled ?? false,
     scheduled_refresh_lookback_days: cfg.embed_config?.scheduled_refresh_lookback_days ?? 3,
     scheduled_refresh_interval_minutes: cfg.embed_config?.scheduled_refresh_interval_minutes ?? 5,
+    allow_latest_config_rerun: cfg.embed_config?.allow_latest_config_rerun ?? false,
   },
   status: cfg.status || 'active',
 })
@@ -2148,6 +2151,7 @@ const handleAddSummaryProcess = async () => {
         scheduled_refresh_enabled: false,
         scheduled_refresh_lookback_days: 3,
         scheduled_refresh_interval_minutes: 5,
+        allow_latest_config_rerun: false,
       },
       summary_blocks: [createSummaryBlock()],
     })
@@ -3793,6 +3797,17 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             </div>
             <div class="permission-item">
               <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.embedAuditAllowLatestRerun') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.embedAuditAllowLatestRerunDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedConfig.embed_config!.allow_latest_config_rerun"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
+              />
+            </div>
+            <div class="permission-item">
+              <div class="permission-info">
                 <div class="permission-label">{{ t('admin.ruleConfig.scheduledRefreshEnabled') }}</div>
                 <div class="permission-desc">{{ t('admin.ruleConfig.scheduledRefreshEnabledDesc') }}</div>
               </div>
@@ -4441,6 +4456,17 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
               </div>
               <a-switch
                 v-model:checked="selectedSummaryConfig.embed_config!.auto_summary_on_flow_change"
+                :checked-children="t('common.enabled')"
+                :un-checked-children="t('common.disabled')"
+              />
+            </div>
+            <div class="permission-item">
+              <div class="permission-info">
+                <div class="permission-label">{{ t('admin.ruleConfig.embedSummaryAllowLatestRerun') }}</div>
+                <div class="permission-desc">{{ t('admin.ruleConfig.embedSummaryAllowLatestRerunDesc') }}</div>
+              </div>
+              <a-switch
+                v-model:checked="selectedSummaryConfig.embed_config!.allow_latest_config_rerun"
                 :checked-children="t('common.enabled')"
                 :un-checked-children="t('common.disabled')"
               />

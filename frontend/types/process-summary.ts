@@ -36,6 +36,7 @@ export interface ProcessSummaryConfig {
     scheduled_refresh_enabled?: boolean
     scheduled_refresh_lookback_days?: number
     scheduled_refresh_interval_minutes?: number
+    allow_latest_config_rerun?: boolean
   }
   status: string
   created_at?: string

@@ -51,6 +51,7 @@ type SummaryEmbedConfigData struct {
 	ScheduledRefreshEnabled     bool `json:"scheduled_refresh_enabled"`
 	ScheduledLookbackDays       int  `json:"scheduled_refresh_lookback_days"`
 	ScheduledIntervalMinutes    int  `json:"scheduled_refresh_interval_minutes"`
+	AllowLatestConfigRerun      bool `json:"allow_latest_config_rerun"`
 }
 
 // ProcessSummaryLog 总结执行日志。

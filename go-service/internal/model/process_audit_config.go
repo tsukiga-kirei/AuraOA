@@ -50,6 +50,7 @@ type EmbedConfigData struct {
 	ScheduledRefreshEnabled   bool `json:"scheduled_refresh_enabled"`
 	ScheduledLookbackDays     int  `json:"scheduled_refresh_lookback_days"`
 	ScheduledIntervalMinutes  int  `json:"scheduled_refresh_interval_minutes"`
+	AllowLatestConfigRerun    bool `json:"allow_latest_config_rerun"`
 }
 
 // UserPermissionsData 用户权限配置的结构化表示
