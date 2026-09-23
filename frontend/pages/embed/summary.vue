@@ -120,6 +120,13 @@ const processStat = computed(() => {
 
 const visibleStreamingBlocks = computed(() => streamingBlocks.value.filter(block => block.content || block.deep_thinking))
 
+const canUpgradeConfig = computed(() => {
+  if (perspective.value === 'personal') {
+    return false
+  }
+  return !!(context.value?.allow_latest_config_rerun && context.value?.config_upgrade_available)
+})
+
 function createPendingResult(): SummaryResult {
   return {
     process_id: processId.value,
@@ -340,6 +347,9 @@ onBeforeUnmount(() => disconnectStream())
         <a-tag v-if="context.config_version_no" color="blue" style="margin-left: 8px;">
           {{ t('executionConfig.version', [context.config_version_no]) }}
         </a-tag>
+        <a-tag v-if="canUpgradeConfig" color="cyan" style="margin-left: 6px;">
+          <ThunderboltOutlined /> {{ t('executionConfig.upgradeAvailable') }}
+        </a-tag>
       </div>
       <p v-else-if="isRunning" class="embed-subline embed-subline--active">{{ t('embed.summary.aiOrganizing') }}</p>
     </div>
@@ -391,7 +401,48 @@ onBeforeUnmount(() => disconnectStream())
               >
                 {{ processStat.text }}
               </div>
+              <template v-if="canUpgradeConfig">
+                <a-dropdown :trigger="['click']" placement="bottomRight" :disabled="summarizing">
+                  <a-button
+                    class="process-action process-action--split"
+                    type="text"
+                    size="small"
+                    :disabled="summarizing"
+                  >
+                    <LoadingOutlined v-if="summarizing" spin />
+                    <ReloadOutlined v-else />
+                    <span>{{ t('embed.summary.retry') }}</span>
+                    <DownOutlined class="process-action-arrow" />
+                  </a-button>
+                  <template #overlay>
+                    <a-menu class="embed-action-dropdown-menu">
+                      <a-menu-item key="latest" @click="runSummary('summary_embed_manual', true)">
+                        <div class="embed-menu-item-row">
+                          <ThunderboltOutlined class="embed-menu-icon embed-menu-icon--primary" />
+                          <div class="embed-menu-text">
+                            <span class="embed-menu-title">{{ t('executionConfig.useLatestSummary') }}</span>
+                            <span class="embed-menu-desc">{{ t('executionConfig.upgradeToLatestSummaryDesc') }}</span>
+                          </div>
+                        </div>
+                      </a-menu-item>
+                      <a-menu-divider />
+                      <a-menu-item key="current" @click="runSummary('summary_embed_manual')">
+                        <div class="embed-menu-item-row">
+                          <ReloadOutlined class="embed-menu-icon" />
+                          <div class="embed-menu-text">
+                            <span class="embed-menu-title">{{ t('executionConfig.useCurrentSummary') }}</span>
+                            <span class="embed-menu-desc">
+                              {{ context?.config_version_no ? t('executionConfig.reuseVersionDesc', ['v' + context.config_version_no]) : t('executionConfig.useCurrentSummary') }}
+                            </span>
+                          </div>
+                        </div>
+                      </a-menu-item>
+                    </a-menu>
+                  </template>
+                </a-dropdown>
+              </template>
               <a-button
+                v-else
                 class="process-action"
                 type="text"
                 size="small"
@@ -402,21 +453,6 @@ onBeforeUnmount(() => disconnectStream())
                 <ReloadOutlined v-else />
                 <span>{{ t('embed.summary.retry') }}</span>
               </a-button>
-			  <!--
-				OA 嵌入块暂不开放“使用最新配置重新执行”。
-				仅注释入口，保留完整执行逻辑，后续需要时可直接恢复。
-			  <a-button
-				v-if="context?.config_upgrade_available"
-				class="process-action"
-				type="text"
-				size="small"
-				:disabled="summarizing"
-				@click="runSummary('summary_embed_manual', true)"
-			  >
-				<ThunderboltOutlined />
-				<span>{{ t('executionConfig.useLatest') }}</span>
-			  </a-button>
-			  -->
             </div>
           </div>
         </div>
@@ -683,6 +719,48 @@ onBeforeUnmount(() => disconnectStream())
 .process-action :deep(.anticon) {
   width: 14px;
   font-size: 13px;
+}
+.process-action--split {
+  gap: 2px !important;
+}
+.process-action-arrow {
+  font-size: 10px !important;
+  margin-left: 2px;
+  opacity: 0.85;
+}
+:global(.embed-action-dropdown-menu) {
+  min-width: 220px;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12);
+}
+:global(.embed-menu-item-row) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 2px;
+}
+:global(.embed-menu-icon) {
+  font-size: 14px;
+  margin-top: 2px;
+}
+:global(.embed-menu-icon--primary) {
+  color: var(--color-primary);
+}
+:global(.embed-menu-text) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+:global(.embed-menu-title) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+:global(.embed-menu-desc) {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  line-height: 1.3;
 }
 @media (max-width: 420px) {
   .process-actions {

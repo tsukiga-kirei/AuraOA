@@ -19,6 +19,7 @@ export interface EmbedSummaryContextResponse {
   auto_retry_blocked?: boolean
 	config_version_no?: number
 	config_upgrade_available?: boolean
+	allow_latest_config_rerun?: boolean
 }
 
 export interface EmbedSummaryExecuteRequest {

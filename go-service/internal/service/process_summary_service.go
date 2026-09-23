@@ -147,6 +147,7 @@ type SummaryEmbedContextResponse struct {
 	AutoRetryBlocked       bool                      `json:"auto_retry_blocked"`
 	ConfigVersionNo        *int                      `json:"config_version_no,omitempty"`
 	ConfigUpgradeAvailable bool                      `json:"config_upgrade_available"`
+	AllowLatestConfigRerun bool                      `json:"allow_latest_config_rerun"`
 	CurrentFingerprint     string                    `json:"-"`
 }
 
@@ -249,6 +250,7 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 		EmbedEnabled:           true,
 		ConfigVersionNo:        executionVersionNumber(bindingVersion),
 		ConfigUpgradeAvailable: bindingVersion != nil && bindingVersion.Fingerprint != currentConfigFingerprint,
+		AllowLatestConfigRerun: embedCfg.AllowLatestConfigRerun,
 	}
 	defer s.fillSummaryPersonalView(c, tenantID, adapter, processID, summary.ProcessType, resp)
 	if running, _ := s.logRepo.GetRunningByProcessID(c, processID); running != nil {
@@ -432,6 +434,9 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	}
 	if processType == "" {
 		return nil, newServiceError(errcode.ErrParamValidation, "无法识别流程类型")
+	}
+	if req.UseLatestConfig && !ctxResp.AllowLatestConfigRerun {
+		return nil, newServiceError(errcode.ErrPermissionDenied, "当前流程配置未开启允许最新版重新总结")
 	}
 	logID, tenantID, userID, createdAt, err := s.createPendingSummaryLog(
 		c,

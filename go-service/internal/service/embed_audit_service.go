@@ -59,6 +59,7 @@ type EmbedContextResponse struct {
 	AuditResult            map[string]interface{}    `json:"audit_result,omitempty"`
 	ConfigVersionNo        *int                      `json:"config_version_no,omitempty"`
 	ConfigUpgradeAvailable bool                      `json:"config_upgrade_available"`
+	AllowLatestConfigRerun bool                      `json:"allow_latest_config_rerun"`
 	CurrentFingerprint     string                    `json:"-"`
 	PersonalView           *EmbedPersonalView        `json:"personal_view,omitempty"`
 	DefaultPerspective     string                    `json:"default_perspective,omitempty"` // "personal" | "standard"
@@ -173,6 +174,7 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		EmbedEnabled:           true,
 		ConfigVersionNo:        executionVersionNumber(bindingVersion),
 		ConfigUpgradeAvailable: bindingVersion != nil && bindingVersion.Fingerprint != currentConfigFingerprint,
+		AllowLatestConfigRerun: embedCfg.AllowLatestConfigRerun,
 	}
 
 	// 检查当前 OA 访问人员在 AuraOA 中是否有个人定制规则与专属审核记录
@@ -509,6 +511,8 @@ func (s *AuditExecuteService) ExecuteEmbed(c *gin.Context, req *EmbedExecuteRequ
 	if isPersonalPerspective {
 		// 个人视角执行时，必须拉取并绑定该用户的最新个性化规则
 		useLatest = true
+	} else if useLatest && !ctxResp.AllowLatestConfigRerun {
+		return nil, newServiceError(errcode.ErrPermissionDenied, "当前流程配置未开启允许最新版重新审核")
 	}
 
 	execReq := &AuditExecuteRequest{

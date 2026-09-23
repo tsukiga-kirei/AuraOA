@@ -63,7 +63,7 @@ const columns = computed(() => [
   { title: t(tab.value === 'audit' ? 'experience.process' : 'experience.conversation'), key: 'subject' },
   { title: t('experience.interaction'), key: 'interaction', width: 250 },
   { title: t('experience.updatedAt'), key: 'updated_at', width: 170 },
-  { title: t('experience.actions'), key: 'actions', width: 110, fixed: 'right' },
+  { title: t('experience.actions'), key: 'actions', width: 110, fixed: 'right' as const },
 ])
 async function load() {
   const seq = ++listRequest

@@ -61,6 +61,7 @@ PUT /api/tenant/rules/configs/:id
 | `scheduled_refresh_enabled` | `false` | 是否定时拉取该流程类型的近期实例并检查变化 |
 | `scheduled_refresh_lookback_days` | `3` | 拉取近几天创建的流程，范围 1–30 |
 | `scheduled_refresh_interval_minutes` | `5` | 检查频率，支持 5、10、15、30、60 分钟 |
+| `allow_latest_config_rerun` | `false` | 当流程配置落后于最新版本时，允许在 OA 嵌入页以最新配置重新审核 |
 
 保存配置后，系统会立即同步对应的 `embed_refresh_schedules` 持久化调度记录；关闭定时检查
 会停用并移除内存 Cron，不需要等待配置轮询。定时任务执行前还会重新核验审核配置的状态、

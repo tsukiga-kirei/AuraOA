@@ -8895,6 +8895,37 @@ components:
           enum:
           - active
           - inactive
+    EmbedAuditContext:
+      type: object
+      properties:
+        supported:
+          type: boolean
+        reason:
+          type: string
+        message:
+          type: string
+        embed_enabled:
+          type: boolean
+        has_audit:
+          type: boolean
+        stale:
+          type: boolean
+        should_auto_audit:
+          type: boolean
+        last_audit_at:
+          type: string
+        running_job_id:
+          type: string
+        audit_result:
+          type: object
+        auto_retry_blocked:
+          type: boolean
+        config_version_no:
+          type: integer
+        config_upgrade_available:
+          type: boolean
+        allow_latest_config_rerun:
+          type: boolean
     AuditEmbedConfig:
       type: object
       properties:
@@ -8927,6 +8958,9 @@ components:
           - 30
           - 60
           default: 5
+        allow_latest_config_rerun:
+          type: boolean
+          default: false
     SummaryEmbedConfig:
       type: object
       properties:
@@ -8959,6 +8993,9 @@ components:
           - 30
           - 60
           default: 5
+        allow_latest_config_rerun:
+          type: boolean
+          default: false
     EmbedRefreshEventRequest:
       type: object
       required:
