@@ -418,6 +418,13 @@ function handleLoadVersionToEdit(item: any) {
 async function handleExitHistoryEditing(module: ExecutionConfigModule) {
   editingVersionNo[module] = null
   await reloadCurrentModuleData(module)
+  let configId: string | undefined
+  if (module === 'audit') configId = selectedConfig.value?.id
+  else if (module === 'archive') configId = selectedArchiveConfig.value?.id
+  else if (module === 'summary') configId = selectedSummaryConfig.value?.id
+  if (configId) {
+    await refreshVersionStatus(module, configId)
+  }
 }
 
 // 将历史版本内容保存到工作草稿，不修改历史发布版本。
@@ -427,7 +434,13 @@ async function handleSaveHistoricalVersion(module: ExecutionConfigModule) {
   savingHistoricalVersion.value = true
   try {
     const saved = await saveModuleDraft(module, true)
-    if (saved) message.success(t('admin.ruleConfig.loadedVersionSavedAsDraft', [`${versionNo}`]))
+    if (saved) {
+      const activeNo = versionStatusRefs[module].value?.active_version_no || versionStatusRefs[module].value?.current_version_no
+      if (versionStatusRefs[module].value?.status === 'current' || versionNo === activeNo) {
+        editingVersionNo[module] = null
+      }
+      message.success(t('admin.ruleConfig.loadedVersionSavedAsDraft', [`${versionNo}`]))
+    }
   } finally {
     savingHistoricalVersion.value = false
   }
