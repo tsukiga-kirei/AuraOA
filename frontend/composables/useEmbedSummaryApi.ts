@@ -29,6 +29,7 @@ export interface EmbedSummaryExecuteRequest {
   trigger_source?: 'summary_embed_auto' | 'summary_embed_manual'
   trigger_detail?: 'visible_open' | 'manual' | 'form_open'
 	use_latest_config?: boolean
+  perspective?: 'personal' | 'standard'
 }
 
 export const useEmbedSummaryApi = () => {
