@@ -32,7 +32,11 @@ const standardResult = ref<SummaryResult | null>(null)
 const perspective = ref<'personal' | 'standard'>('standard')
 const userManuallySwitchedPerspective = ref(false)
 const currentResult = computed({
-  get: () => perspective.value === 'personal' && context.value?.personal_result ? context.value.personal_result : standardResult.value,
+  get: () => {
+    if (summarizing.value) return standardResult.value
+    if (perspective.value === 'personal' && context.value?.personal_result) return context.value.personal_result
+    return standardResult.value
+  },
   set: (value: SummaryResult | null) => { standardResult.value = value },
 })
 const visibleResultBlocks = computed(() => {
@@ -46,7 +50,11 @@ const streamJobId = ref('')
 const collapsedBlockIds = ref<Set<string>>(new Set())
 
 const processInfo = computed<EmbedProcessSummary | null>(() => context.value?.process ?? null)
-const isRunning = computed(() => (perspective.value === 'standard' || !context.value?.personal_result) && (summarizing.value || ['pending', 'assembling', 'reasoning', 'extracting'].includes(currentResult.value?.status || '')))
+const isRunning = computed(() => {
+  const active = summarizing.value || ['pending', 'assembling', 'reasoning', 'extracting'].includes(currentResult.value?.status || '')
+  if (perspective.value === 'personal' && context.value?.personal_result) return summarizing.value
+  return active
+})
 
 const progressStatusOrder: Record<string, number> = {
   pending: 0,
@@ -256,6 +264,7 @@ async function runSummary(trigger: 'summary_embed_auto' | 'summary_embed_manual'
         title: processInfo.value?.title,
         trigger_source: trigger,
         trigger_detail: trigger === 'summary_embed_manual' ? 'manual' : 'visible_open',
+        perspective: perspective.value === 'personal' && context.value?.personal_result ? 'personal' : 'standard',
 		use_latest_config: useLatestConfig,
       },
       (st) => {

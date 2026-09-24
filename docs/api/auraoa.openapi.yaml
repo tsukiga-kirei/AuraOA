@@ -5322,6 +5322,7 @@ paths:
                 use_latest_config:
                   type: boolean
                   default: false
+                  description: 保留字段。个人工作台总结始终使用当前已发布配置，不升级流程公共绑定
       responses:
         '200':
           description: 已存在可直接返回的任务
@@ -6532,7 +6533,13 @@ paths:
                 use_latest_config:
                   type: boolean
                   default: false
-                  description: 手动明确升级流程绑定到当前最新总结配置
+                  description: 标准总结时才升级流程公共绑定。perspective=personal 时忽略，只重写个人总结
+                perspective:
+                  type: string
+                  enum:
+                  - personal
+                  - standard
+                  description: personal 表示重写当前用户的个人总结，不改公共结果和公共绑定
   /api/embed/summary/jobs/{id}:
     get:
       summary: 查询嵌入总结任务状态

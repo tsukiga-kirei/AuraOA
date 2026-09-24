@@ -512,6 +512,63 @@ func (r *ExecutionConfigVersionRepo) BindSnapshot(
 	return &result, nil
 }
 
+// SaveSnapshot 按内容保存不可变执行配置版本，不改流程绑定。
+// 个人总结使用当前已发布配置生成时调用，避免抬升公共绑定版本。
+func (r *ExecutionConfigVersionRepo) SaveSnapshot(
+	ctx context.Context,
+	tenantID, userID uuid.UUID,
+	module string,
+	sourceConfigID uuid.UUID,
+	baseConfigVersionID uuid.UUID,
+	fingerprint string,
+	snapshot interface{},
+) (*model.ExecutionConfigVersion, error) {
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("序列化执行配置快照失败: %w", err)
+	}
+	var result model.ExecutionConfigVersion
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		lockKey := tenantID.String() + ":" + module + ":" + sourceConfigID.String()
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", lockKey).Error; err != nil {
+			return err
+		}
+		var version model.ExecutionConfigVersion
+		err := tx.Where(
+			"tenant_id = ? AND module = ? AND source_config_id = ? AND fingerprint = ?",
+			tenantID, module, sourceConfigID, fingerprint,
+		).First(&version).Error
+		if err != nil && err != gorm.ErrRecordNotFound {
+			return err
+		}
+		if err == gorm.ErrRecordNotFound {
+			var maxVersion int
+			if err := tx.Model(&model.ExecutionConfigVersion{}).
+				Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).
+				Select("COALESCE(MAX(version_no), 0)").Scan(&maxVersion).Error; err != nil {
+				return err
+			}
+			version = model.ExecutionConfigVersion{
+				ID: uuid.New(), TenantID: tenantID, Module: module, SourceConfigID: sourceConfigID,
+				BaseConfigVersionID: &baseConfigVersionID, VersionNo: maxVersion + 1,
+				Fingerprint: fingerprint, ConfigSnapshot: datatypes.JSON(raw), CreatedBy: &userID,
+			}
+			if err := tx.Create(&version).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Table("execution_config_versions AS v").
+			Select("v.*, t.version_no AS base_version_no").
+			Joins("LEFT JOIN tenant_config_versions AS t ON t.id = v.base_config_version_id").
+			Where("v.id = ?", version.ID).
+			First(&result).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func bindingScope(scopes []string) string {
 	if len(scopes) > 0 {
 		return scopes[0]

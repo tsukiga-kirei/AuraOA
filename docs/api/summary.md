@@ -56,7 +56,7 @@ POST /api/summary/execute
 | `process_id` | string | 是 | OA 流程 ID |
 | `process_type` | string | 否 | 前端提示值；服务端以 OA 实际流程类型为准 |
 | `title` | string | 否 | 列表标题；为空时使用 OA 标题 |
-| `use_latest_config` | boolean | 否 | 是否升级到租户当前最新总结配置，默认沿用已绑定版本 |
+| `use_latest_config` | boolean | 否 | 保留字段。个人工作台总结始终按当前已发布配置生成，不升级流程的公共绑定 |
 
 任务使用统一 AI 调用入口，日志 `request_type=summary`、`trigger_source=summary_workbench`。
 返回 HTTP `202` 时，前端通过任务接口轮询。
@@ -135,8 +135,10 @@ PUT /api/tenant/summary/configs/:id
 仍会执行全部启用块。
 首次总结会把启用块及其提示词、字段和外部关联配置保存为不可变执行配置版本并绑定流程。
 租户流程配置在首次发布前仅为草稿，不会进入流程总结工作台或 OA 嵌入执行入口；首次发布生成基础配置 v1。
-修改总结块不会借用“业务数据变化”开关自动刷新老流程；普通重新总结沿用已绑定版本，只有请求
-明确传 `use_latest_config=true` 时才升级到当前配置。响应中的 `config_version_no` 为实际使用版本。
+修改总结块不会借用“业务数据变化”开关自动刷新老流程。OA 嵌入的标准总结沿用流程已绑定版本，只有请求
+明确传 `use_latest_config=true` 时才把公共绑定升到当前已发布配置。个人工作台总结，以及嵌入页个人定制里的重新总结，
+每次都按当前已发布配置生成，只更新该用户的个人结果，不修改公共总结正文，也不抬升流程的公共绑定版本。
+响应中的 `config_version_no` 为实际使用版本。
 流程级定时检查只发现候选流程，所有总结块均未变化时不会创建总结或 LLM 日志。
 任务日志通过 `trigger_detail` 区分 `visible_open`、`form_open`、`manual`、`save_requested`、`submit_requested` 和
 `scheduled_scan`；自动任务失败后会保存 `attempt_fingerprint`，相同指纹不会被自动来源反复执行。

@@ -111,6 +111,7 @@ type SummaryExecuteRequest struct {
 	OAOperatorDept   string     `json:"-"`
 	ScheduleConfigID *uuid.UUID `json:"-"`
 	UseLatestConfig  bool       `json:"use_latest_config,omitempty"`
+	Perspective      string     `json:"perspective,omitempty"`
 }
 
 type SummaryExecuteResponse struct {
@@ -345,6 +346,9 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	if err != nil {
 		return nil, err
 	}
+	if req.Perspective == "personal" {
+		return s.executeEmbedPersonalSummary(c, req, tenantID)
+	}
 	oaOperatorID := embedOAOperatorID(c, req.OAUserID)
 	oaOperatorName, oaOperatorDept := "", ""
 	if oaOperatorID != "" {
@@ -474,6 +478,83 @@ func (s *ProcessSummaryService) ExecuteEmbed(c *gin.Context, req *SummaryExecute
 	}, nil
 }
 
+// executeEmbedPersonalSummary 重写当前用户的个人总结，使用已发布的最新配置，不改公共结果和公共绑定。
+func (s *ProcessSummaryService) executeEmbedPersonalSummary(c *gin.Context, req *SummaryExecuteRequest, tenantID uuid.UUID) (*SummaryExecuteResponse, error) {
+	oaUserID := strings.TrimSpace(req.OAUserID)
+	if oaUserID == "" {
+		oaUserID = strings.TrimSpace(c.GetHeader("X-Embed-OA-User-ID"))
+	}
+	if oaUserID == "" {
+		oaUserID = strings.TrimSpace(c.Query("oa_user_id"))
+	}
+	if oaUserID == "" {
+		oaUserID = strings.TrimSpace(c.Query("oa_current_user_id"))
+	}
+	if oaUserID == "" {
+		return nil, newServiceError(errcode.ErrParamValidation, "无法识别当前 OA 操作人，无法重新生成个人总结")
+	}
+	adapter, err := s.getOAAdapter(c.Request.Context(), tenantID, false)
+	if err != nil {
+		return nil, err
+	}
+	username, err := adapter.ResolveUsernameByOAUserID(c.Request.Context(), oaUserID)
+	if err != nil || username == "" {
+		return nil, newServiceError(errcode.ErrResourceNotFound, "当前 OA 操作人尚未绑定或未加入系统，无法重新生成个人总结")
+	}
+	var personalUser model.User
+	if err := s.db.WithContext(c.Request.Context()).Table("users").Select("users.*").
+		Joins("JOIN org_members ON org_members.user_id = users.id").
+		Where("org_members.tenant_id = ? AND org_members.status = 'active' AND users.username = ? AND users.status = 'active'", tenantID, username).
+		First(&personalUser).Error; err != nil {
+		return nil, newServiceError(errcode.ErrResourceNotFound, "当前 OA 操作人尚未绑定或未加入系统，无法重新生成个人总结")
+	}
+	c.Set("embed_user_id", personalUser.ID)
+	if running, rErr := s.logRepo.GetRunningWorkbenchByProcessID(c, req.ProcessID, personalUser.ID); rErr != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询个人进行中的总结任务失败")
+	} else if running != nil {
+		return s.summaryLogToResponse(running), nil
+	}
+	ctxResp, err := s.GetEmbedContext(c, req.ProcessID)
+	if err != nil {
+		return nil, err
+	}
+	if !ctxResp.Supported || !ctxResp.EmbedEnabled {
+		return nil, newServiceError(errcode.ErrNoProcessConfig, ctxResp.Message)
+	}
+	processType := req.ProcessType
+	title := req.Title
+	if ctxResp.Process != nil {
+		if processType == "" {
+			processType = ctxResp.Process.ProcessType
+		}
+		if title == "" {
+			title = ctxResp.Process.Title
+		}
+	}
+	if processType == "" {
+		return nil, newServiceError(errcode.ErrParamValidation, "无法识别流程类型")
+	}
+	logID, _, _, createdAt, err := s.createPendingSummaryLog(
+		c, req.ProcessID, processType, title,
+		model.SummaryTriggerWorkbench, model.SummaryTriggerDetailManual,
+		"", "", "", model.JobQueueKindInteractive,
+		"", nil, true, true,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := EnqueueSummaryJob(c.Request.Context(), s.rdb, logID, tenantID, personalUser.ID, model.JobQueueKindInteractive); err != nil {
+		_ = s.logRepo.UpdateFields(c, logID, map[string]interface{}{
+			"status": model.JobStatusFailed, "error_message": "任务入队失败: " + err.Error(), "updated_at": apptime.Now(),
+		})
+		return nil, newServiceError(errcode.ErrRedisConn, "总结任务入队失败: "+err.Error())
+	}
+	return &SummaryExecuteResponse{
+		Status: model.JobStatusPending, ID: logID.String(), TraceID: fmt.Sprintf("SM-%s", logID.String()[:8]),
+		ProcessID: req.ProcessID, CreatedAt: apptime.FormatRFC3339(createdAt),
+	}, nil
+}
+
 func (s *ProcessSummaryService) createPendingSummaryLog(
 	c *gin.Context,
 	processID, processType, title, trigger, detail string,
@@ -513,7 +594,9 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrPermissionDenied, fmt.Sprintf("流程 '%s' 未启用 OA 嵌入总结", processType))
 	}
 	var configVersion *model.ExecutionConfigVersion
-	if !useLatestConfig {
+	// 个人总结每次使用当前已发布配置，只记到任务上，不改这条流程的公共绑定。
+	personalOnly := trigger == model.SummaryTriggerWorkbench
+	if !personalOnly && !useLatestConfig {
 		configVersion, err = s.executionVersions.GetBindingVersion(
 			c.Request.Context(), tenantID, model.ExecutionConfigModuleSummary, processID,
 		)
@@ -539,11 +622,19 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 			Blocks:              blocks,
 			BaseConfigVersionNo: baseVersion.VersionNo,
 		}
-		configVersion, err = s.executionVersions.BindSnapshot(
-			c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleSummary,
-			processID, processType, config.ID, baseVersion.ID,
-			stableJSONFingerprint(configSnapshot), configSnapshot, useLatestConfig,
-		)
+		fingerprint := stableJSONFingerprint(configSnapshot)
+		if personalOnly {
+			configVersion, err = s.executionVersions.SaveSnapshot(
+				c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleSummary,
+				config.ID, baseVersion.ID, fingerprint, configSnapshot,
+			)
+		} else {
+			configVersion, err = s.executionVersions.BindSnapshot(
+				c.Request.Context(), tenantID, userID, model.ExecutionConfigModuleSummary,
+				processID, processType, config.ID, baseVersion.ID,
+				fingerprint, configSnapshot, useLatestConfig,
+			)
+		}
 		if err != nil {
 			return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrDatabase, "绑定总结配置版本失败")
 		}
