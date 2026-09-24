@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -99,7 +100,7 @@ func (s *ExecutionConfigSourceService) GetStatus(
 	}
 
 	activeVersionNo := active.VersionNo
-	if active.Fingerprint == sourceFingerprint {
+	if active.Fingerprint == sourceFingerprint || s.matchesActiveSnapshot(module, active.ConfigSnapshot, sourceFingerprint) {
 		return &ExecutionConfigVersionStatus{
 			Status: "current", ActiveVersionNo: &activeVersionNo, CurrentVersionNo: &activeVersionNo, LatestVersionNo: &latestVersionNo, HasPendingChanges: false,
 		}, nil
@@ -617,16 +618,147 @@ func archiveConfigSourceFingerprint(config *model.ProcessArchiveConfig, rules []
 	return stableJSONFingerprint(archiveConfigSourceSnapshot(config, rules))
 }
 
+type summaryBlockSource struct {
+	ID                   string      `json:"id"`
+	Title                string      `json:"title"`
+	UserPrompt           string      `json:"user_prompt"`
+	EnableThinking       bool        `json:"enable_thinking"`
+	IncludeMeta          bool        `json:"include_meta"`
+	EnabledDataVariables []string    `json:"enabled_data_variables"`
+	FieldMode            string      `json:"field_mode"`
+	SelectedFields       []string    `json:"selected_fields"`
+	ContextMounts        interface{} `json:"context_mounts"`
+	Enabled              bool        `json:"enabled"`
+	SortOrder            int         `json:"sort_order"`
+}
+
+func normalizedSummaryBlockSources(raw datatypes.JSON) []summaryBlockSource {
+	if len(raw) == 0 || string(raw) == "null" {
+		return []summaryBlockSource{}
+	}
+	var blocks []model.SummaryBlockConfig
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return []summaryBlockSource{}
+	}
+	result := make([]summaryBlockSource, 0, len(blocks))
+	for i, b := range blocks {
+		enabledVars := b.EnabledDataVariables
+		if enabledVars == nil {
+			enabledVars = []string{}
+		} else {
+			enabledVars = append([]string{}, enabledVars...)
+			sort.Strings(enabledVars)
+		}
+
+		selectedFields := b.SelectedFields
+		if selectedFields == nil {
+			selectedFields = []string{}
+		} else {
+			selectedFields = append([]string{}, selectedFields...)
+			sort.Strings(selectedFields)
+		}
+
+		var mounts interface{} = []interface{}{}
+		if b.ContextMounts != nil {
+			mounts = b.ContextMounts
+		}
+
+		includeMeta := true
+		if b.IncludeMeta != nil {
+			includeMeta = *b.IncludeMeta
+		}
+
+		fieldMode := strings.TrimSpace(b.FieldMode)
+		if fieldMode == "" {
+			fieldMode = "all"
+		}
+
+		sortOrder := b.SortOrder
+		if sortOrder == 0 {
+			sortOrder = i + 1
+		}
+
+		result = append(result, summaryBlockSource{
+			ID:                   strings.TrimSpace(b.ID),
+			Title:                strings.TrimSpace(b.Title),
+			UserPrompt:           strings.TrimSpace(b.UserPrompt),
+			EnableThinking:       b.EnableThinking,
+			IncludeMeta:          includeMeta,
+			EnabledDataVariables: enabledVars,
+			FieldMode:            fieldMode,
+			SelectedFields:       selectedFields,
+			ContextMounts:        mounts,
+			Enabled:              b.Enabled,
+			SortOrder:            sortOrder,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].SortOrder != result[j].SortOrder {
+			return result[i].SortOrder < result[j].SortOrder
+		}
+		return result[i].ID < result[j].ID
+	})
+	return result
+}
+
+func normalizeFieldArrayJSON(raw datatypes.JSON) []interface{} {
+	if len(raw) == 0 || string(raw) == "null" {
+		return []interface{}{}
+	}
+	var arr []interface{}
+	if err := json.Unmarshal(raw, &arr); err != nil || arr == nil {
+		return []interface{}{}
+	}
+	return arr
+}
+
 func summaryConfigSourceSnapshot(config *model.ProcessSummaryConfig) map[string]interface{} {
 	return map[string]interface{}{
-		"process_type": config.ProcessType, "main_table_name": config.MainTableName,
-		"main_fields": config.MainFields, "detail_tables": config.DetailTables,
-		"summary_blocks": config.SummaryBlocks, "status": config.Status,
+		"process_type":    config.ProcessType,
+		"main_table_name": config.MainTableName,
+		"main_fields":     normalizeFieldArrayJSON(config.MainFields),
+		"detail_tables":   normalizeFieldArrayJSON(config.DetailTables),
+		"summary_blocks":  normalizedSummaryBlockSources(config.SummaryBlocks),
+		"status":          config.Status,
 	}
 }
 
 func summaryConfigSourceFingerprint(config *model.ProcessSummaryConfig) string {
 	return stableJSONFingerprint(summaryConfigSourceSnapshot(config))
+}
+
+func (s *ExecutionConfigSourceService) matchesActiveSnapshot(
+	module string,
+	snapshotRaw datatypes.JSON,
+	sourceFingerprint string,
+) bool {
+	if len(snapshotRaw) == 0 || string(snapshotRaw) == "null" {
+		return false
+	}
+	switch module {
+	case model.ExecutionConfigModuleSummary:
+		var snapshot struct {
+			ProcessType   string         `json:"process_type"`
+			MainTableName string         `json:"main_table_name"`
+			MainFields    datatypes.JSON `json:"main_fields"`
+			DetailTables  datatypes.JSON `json:"detail_tables"`
+			SummaryBlocks datatypes.JSON `json:"summary_blocks"`
+			Status        string         `json:"status"`
+		}
+		if err := json.Unmarshal(snapshotRaw, &snapshot); err != nil {
+			return false
+		}
+		cfg := model.ProcessSummaryConfig{
+			ProcessType:   snapshot.ProcessType,
+			MainTableName: snapshot.MainTableName,
+			MainFields:    snapshot.MainFields,
+			DetailTables:  snapshot.DetailTables,
+			SummaryBlocks: snapshot.SummaryBlocks,
+			Status:        snapshot.Status,
+		}
+		return summaryConfigSourceFingerprint(&cfg) == sourceFingerprint
+	}
+	return false
 }
 
 // SetInvalidator 接入共享配置缓存失效器。

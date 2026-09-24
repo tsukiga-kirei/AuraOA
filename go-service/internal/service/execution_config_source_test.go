@@ -70,6 +70,90 @@ func TestSummaryConfigSourceFingerprintTracksBlockChanges(t *testing.T) {
 	}
 }
 
+func TestSummaryFingerprintRoundTripConsistency(t *testing.T) {
+	// 1. 模拟初始通过后端规范化保存的配置（未配置字段序列化为 null）
+	initBlocks := datatypes.JSON(`[{"id":"overview","title":"流程摘要","user_prompt":"总结流程","enable_thinking":false,"include_meta":true,"enabled_data_variables":null,"field_mode":"all","selected_fields":null,"enabled":true,"sort_order":1}]`)
+	configA := &model.ProcessSummaryConfig{
+		ProcessType:   "采购审批",
+		MainTableName: "formtable_main_1",
+		MainFields:    datatypes.JSON(`[]`),
+		DetailTables:  datatypes.JSON(`[]`),
+		SummaryBlocks: initBlocks,
+		Status:        "active",
+	}
+	base := summaryConfigSourceFingerprint(configA)
+
+	// 2. 模拟前端加载后补全了空数组（[]），并调换了 summary block 字段顺序提交
+	frontendBlocks := datatypes.JSON(`[{"title":"流程摘要","user_prompt":"总结流程","sort_order":1,"selected_fields":[],"id":"overview","enabled":true,"include_meta":true,"context_mounts":[],"enabled_data_variables":[],"enable_thinking":false,"field_mode":"all"}]`)
+	configB := &model.ProcessSummaryConfig{
+		ProcessType:   "采购审批",
+		MainTableName: "formtable_main_1",
+		MainFields:    datatypes.JSON(`[]`),
+		DetailTables:  datatypes.JSON(`[]`),
+		SummaryBlocks: frontendBlocks,
+		Status:        "active",
+	}
+	got := summaryConfigSourceFingerprint(configB)
+
+	if got != base {
+		t.Fatalf("前端补全空数组并重新提交后，指纹应当完全一致！base=%s, got=%s", base, got)
+	}
+
+	// 3. 验证真实变更仍会触发指纹变化
+	modifiedBlocks := datatypes.JSON(`[{"id":"overview","title":"流程摘要","user_prompt":"总结流程（修改了提示词）","enable_thinking":false,"include_meta":true,"enabled_data_variables":[],"field_mode":"all","selected_fields":[],"enabled":true,"sort_order":1}]`)
+	configC := &model.ProcessSummaryConfig{
+		ProcessType:   "采购审批",
+		MainTableName: "formtable_main_1",
+		MainFields:    datatypes.JSON(`[]`),
+		DetailTables:  datatypes.JSON(`[]`),
+		SummaryBlocks: modifiedBlocks,
+		Status:        "active",
+	}
+	if summaryConfigSourceFingerprint(configC) == base {
+		t.Fatal("总结块内容实质改变时，指纹必须改变")
+	}
+}
+
+func TestSummaryMatchesActiveSnapshotBackwardCompatibility(t *testing.T) {
+	svc := &ExecutionConfigSourceService{}
+	legacySnapshot := datatypes.JSON(`{
+		"process_type": "采购审批",
+		"main_table_name": "formtable_main_1",
+		"main_fields": [],
+		"detail_tables": [],
+		"status": "active",
+		"summary_blocks": [{"id":"b1","title":"块1","user_prompt":"总结","field_mode":"all","include_meta":true,"enable_thinking":false,"enabled":true,"sort_order":1}]
+	}`)
+
+	currentBlocks := datatypes.JSON(`[{"id":"b1","title":"块1","user_prompt":"总结","field_mode":"all","include_meta":true,"enable_thinking":false,"enabled":true,"sort_order":1,"enabled_data_variables":[],"selected_fields":[],"context_mounts":[]}]`)
+	currentConfig := &model.ProcessSummaryConfig{
+		ProcessType:   "采购审批",
+		MainTableName: "formtable_main_1",
+		MainFields:    datatypes.JSON(`[]`),
+		DetailTables:  datatypes.JSON(`[]`),
+		SummaryBlocks: currentBlocks,
+		Status:        "active",
+	}
+	currentFingerprint := summaryConfigSourceFingerprint(currentConfig)
+
+	if !svc.matchesActiveSnapshot(model.ExecutionConfigModuleSummary, legacySnapshot, currentFingerprint) {
+		t.Fatal("历史快照语义一致时 matchesActiveSnapshot 应当返回 true")
+	}
+
+	modifiedConfig := &model.ProcessSummaryConfig{
+		ProcessType:   "采购审批",
+		MainTableName: "formtable_main_1",
+		MainFields:    datatypes.JSON(`[]`),
+		DetailTables:  datatypes.JSON(`[]`),
+		SummaryBlocks: datatypes.JSON(`[{"id":"b1","title":"块1","user_prompt":"不同提示词","field_mode":"all","include_meta":true,"enable_thinking":false,"enabled":true,"sort_order":1,"enabled_data_variables":[],"selected_fields":[],"context_mounts":[]}]`),
+		Status:        "active",
+	}
+	modifiedFingerprint := summaryConfigSourceFingerprint(modifiedConfig)
+	if svc.matchesActiveSnapshot(model.ExecutionConfigModuleSummary, legacySnapshot, modifiedFingerprint) {
+		t.Fatal("实质修改后 matchesActiveSnapshot 必须返回 false")
+	}
+}
+
 func TestResolveEffectiveAuditRulesUsesTenantRulesAsBase(t *testing.T) {
 	mandatoryID := uuid.New()
 	optionalID := uuid.New()
