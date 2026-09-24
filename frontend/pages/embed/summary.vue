@@ -29,7 +29,8 @@ const summarizing = ref(false)
 const pageError = ref('')
 const context = ref<EmbedSummaryContextResponse | null>(null)
 const standardResult = ref<SummaryResult | null>(null)
-const perspective = ref<'personal' | 'standard'>('personal')
+const perspective = ref<'personal' | 'standard'>('standard')
+const userManuallySwitchedPerspective = ref(false)
 const currentResult = computed({
   get: () => perspective.value === 'personal' && context.value?.personal_result ? context.value.personal_result : standardResult.value,
   set: (value: SummaryResult | null) => { standardResult.value = value },
@@ -121,11 +122,22 @@ const processStat = computed(() => {
 const visibleStreamingBlocks = computed(() => streamingBlocks.value.filter(block => block.content || block.deep_thinking))
 
 const canUpgradeConfig = computed(() => {
-  if (perspective.value === 'personal') {
+  if (perspective.value === 'personal' && context.value?.personal_result) {
     return false
   }
   return !!(context.value?.allow_latest_config_rerun && context.value?.config_upgrade_available)
 })
+
+function applyDefaultPerspective(resp: EmbedSummaryContextResponse) {
+  if (userManuallySwitchedPerspective.value) return
+  perspective.value = resp.personal_result ? 'personal' : 'standard'
+}
+
+function switchPerspective(next: 'personal' | 'standard') {
+  if (next !== 'personal' && next !== 'standard') return
+  userManuallySwitchedPerspective.value = true
+  perspective.value = next
+}
 
 function createPendingResult(): SummaryResult {
   return {
@@ -270,6 +282,7 @@ async function refreshContext(autoRun = true, preferCached = false) {
   try {
     const resp = await getSummaryContext(processId.value, preferCached)
     context.value = resp
+    applyDefaultPerspective(resp)
     if (resp.summary_result && (!summarizing.value || !autoRun)) {
       currentResult.value = resp.summary_result
     }
@@ -333,7 +346,7 @@ onBeforeUnmount(() => disconnectStream())
   <div class="embed-summary">
     <div class="embed-header">
       <div v-if="context?.personal_result" class="result-perspective">
-        <a-radio-group v-model:value="perspective" size="small" option-type="button" :options="[{ value: 'personal', label: t('embed.perspective.personalSummary', '个人定制') }, { value: 'standard', label: t('embed.perspective.standardSummary', '标准总结') }]" />
+        <a-radio-group :value="perspective" size="small" option-type="button" :options="[{ value: 'personal', label: t('embed.perspective.personalSummary', '个人定制') }, { value: 'standard', label: t('embed.perspective.standardSummary', '标准总结') }]" @change="(e) => switchPerspective(e.target.value)" />
       </div>
       <h2 class="embed-title" :style="{ color: headerStatus.color }">
         <span class="embed-title-badge" :style="{ background: headerStatus.bg, color: headerStatus.color }">
