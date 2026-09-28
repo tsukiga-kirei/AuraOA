@@ -45,15 +45,20 @@ func (r *UserRepo) FindByID(id uuid.UUID) (*model.User, error) {
 	return &user, nil
 }
 
-// UpdateLoginFail 登录失败时将 login_fail_count 加 1；
+// UpdateLoginFail 登录失败时更新次数；锁定期已过则从第 1 次重新计数。
 // 若累计失败次数达到 5 次，则将 locked_until 设置为当前时间 + 15 分钟。
 func (r *UserRepo) UpdateLoginFail(user *model.User) error {
-	user.LoginFailCount++
-	updates := map[string]interface{}{
-		"login_fail_count": user.LoginFailCount,
+	now := apptime.Now()
+	updates := map[string]interface{}{}
+	if user.LockedUntil != nil && !user.LockedUntil.After(now) {
+		user.LoginFailCount = 0
+		user.LockedUntil = nil
+		updates["locked_until"] = nil
 	}
+	user.LoginFailCount++
+	updates["login_fail_count"] = user.LoginFailCount
 	if user.LoginFailCount >= 5 {
-		lockedUntil := apptime.Now().Add(15 * time.Minute)
+		lockedUntil := now.Add(15 * time.Minute)
 		user.LockedUntil = &lockedUntil
 		updates["locked_until"] = lockedUntil
 	}

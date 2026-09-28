@@ -62,6 +62,8 @@ POST /api/auth/login
 | `active_role` | object | 当前激活的角色 |
 | `permissions` | array | 当前角色的权限列表 |
 
+密码连续输错 5 次会锁定 15 分钟。锁定到期后，下一次输错从第 1 次重新计数；成功登录会清零失败次数。
+
 ---
 
 ### 刷新 Token
