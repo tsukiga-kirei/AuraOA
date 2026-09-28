@@ -1926,19 +1926,8 @@ func (t e9BrowseTarget) hasSafeDisplaySelector() bool {
 }
 
 func (t e9BrowseTarget) validID(id string) bool {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return false
-	}
-	if !t.NumericID {
-		return true
-	}
-	for _, r := range id {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
+	// 主键可能是数字、编码或 UUID（如职级 zjid），一律作为绑定参数查询，不做数字形态过滤。
+	return strings.TrimSpace(id) != ""
 }
 
 func splitBrowseIDs(raw string) []string {
@@ -2376,6 +2365,14 @@ func (a *Ecology9Adapter) recognizeProcessAttachments(
 					zap.Error(fetchErr))
 				continue
 			}
+			if tableKey == "main" {
+				applyAttachmentFileNamesToRow(pd.MainData, fieldKey, tgt.docIDs, files)
+			} else if tgt.rowIndex > 0 {
+				detailRows := pd.DetailTables[tableKey]
+				if idx := tgt.rowIndex - 1; idx >= 0 && idx < len(detailRows) {
+					applyAttachmentFileNamesToRow(detailRows[idx], fieldKey, tgt.docIDs, files)
+				}
+			}
 
 			infos, recogErr := a.attachmentRecognitionSvc.RecognizeAttachments(ctx, files, fieldKey, fieldName)
 			if recogErr != nil {
@@ -2513,6 +2510,59 @@ func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
 		zap.Int("fileCount", len(result.Data)),
 		zap.Strings("fileNames", fileNames))
 	return files, nil
+}
+
+// applyAttachmentFileNamesToRow 把附件字段的 docId 列表换成文件名，供主表/明细 JSON 展示。
+// 原始 docId 仍放在 value 中；prompt 优先输出 display。
+func applyAttachmentFileNamesToRow(row map[string]interface{}, fieldKey, rawDocIDs string, files []AttachmentFilePayload) {
+	if row == nil || strings.TrimSpace(fieldKey) == "" || strings.TrimSpace(rawDocIDs) == "" || len(files) == 0 {
+		return
+	}
+	nameByID := make(map[string]string, len(files))
+	for _, f := range files {
+		id := strings.TrimSpace(f.DocID)
+		name := strings.TrimSpace(f.FileName)
+		if id == "" || name == "" {
+			continue
+		}
+		nameByID[id] = name
+	}
+	if len(nameByID) == 0 {
+		return
+	}
+	ids := splitBrowseIDs(rawDocIDs)
+	if len(ids) == 0 {
+		return
+	}
+	names := make([]string, 0, len(ids))
+	replaced := false
+	for _, id := range ids {
+		if name := nameByID[id]; name != "" {
+			names = append(names, name)
+			replaced = true
+			continue
+		}
+		names = append(names, id)
+	}
+	if !replaced {
+		names = names[:0]
+		for _, f := range files {
+			if name := strings.TrimSpace(f.FileName); name != "" {
+				names = append(names, name)
+			}
+		}
+		if len(names) == 0 {
+			return
+		}
+	}
+	actualKey, ok := mapFindKey(row, fieldKey)
+	if !ok {
+		actualKey = fieldKey
+	}
+	row[actualKey] = map[string]interface{}{
+		"value":   rawDocIDs,
+		"display": strings.Join(names, ", "),
+	}
 }
 
 // ResolveUsernameByOAUserID 根据泛微 E9 人员数值 ID 反查登录账号（loginid）。

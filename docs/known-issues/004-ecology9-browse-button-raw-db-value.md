@@ -11,7 +11,7 @@
 当前实现要点：
 
 1. **字段定义**（`FetchFields`）：`fieldhtmltype = 3/5` 都映射为通用类型 `select`，用于前端展示与字段勾选。
-2. **流程数据**（`FetchProcessData`）：先读取主表 / 明细表原始值，再按字段选择集只解析会发送给 AI 的字段。
+2. **流程数据**（`FetchProcessData`）：先读取主表 / 明细表原始值，再按字段选择集只解析会发送给 AI 的字段。附件字段在拉取到文件后，主表/明细 JSON 展示文件名（docId 保留在内部 value）。浏览框主键不按列名猜测是否为数字，UUID 等业务主键可直接反查。
 3. **字段中文名**：通过 `workflow_billfield.fieldlabel → htmllabelinfo.indexid`，优先使用 `languageid=7` 的中文标签。
 4. **浏览按钮通用解析**：优先按 `workflow_billfield.type = workflow_browserurl.id` 查询定义。若 `TABLENAME`、`COLUMNAME`、`KEYCOLUMNAME` 都不为空，则通过 `KEYCOLUMNAME` 查值并展示 `COLUMNAME`。
 5. **内置浏览按钮兜底**：若 `workflow_browserurl` 元数据不完整，再使用人员、部门、分部、相关流程等少量兜底映射；`TYPE` 映射以当前客户环境为准，例如本环境中 `TYPE=2` 是日期，不是部门。
@@ -34,14 +34,14 @@
 | 选择框 / 下拉框字段参与 AI 审核 | ✅ 通过 `workflow_selectitem` 解析枚举显示名 |
 | 规则中要求核对「申请人姓名」「所属部门名称」等显示信息 | ✅ 已覆盖常见浏览按钮；特殊自定义 SQL 仍需校验 |
 | 纯文本、多行文本（`fieldhtmltype` 1/2） | ✅ 不受影响 |
-| 附件识别（`fieldhtmltype = 6`） | ✅ 有独立解析，与本条无关 |
+| 附件识别（`fieldhtmltype = 6`） | ✅ 拉取到文件后，主表/明细展示文件名；正文仍在附件识别块 |
 | 待办/归档列表、审批流快照 | ✅ 人员姓名等来自 `hrmresource` 等表，非浏览按钮字段解析 |
 
 ## 泛微 E9 侧常见存储方式（参考）
 
 | 存储内容 | AuraOA 当前行为 |
 |----------|-----------------|
-| 浏览对象主键（如 `123`） | ✅ 尝试查关联表显示名 |
+| 浏览对象主键（如 `123` 或 UUID） | ✅ 按配置主键列原样反查显示名，不因列名以 `id` 结尾而只接受数字 |
 | 多选浏览对象主键（如 `1,3,5`） | ✅ 逗号拆分后批量查询显示名 |
 | `workflow_browserurl` 存在 `TABLENAME/COLUMNAME/KEYCOLUMNAME` | ✅ 通过 `KEYCOLUMNAME` 查询并展示 `COLUMNAME` |
 | 选择框枚举值（如 `0` / `1`） | ✅ 通过 `workflow_selectitem.fieldid + selectvalue` 查显示名 |
