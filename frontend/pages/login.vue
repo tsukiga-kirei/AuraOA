@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   UserOutlined,
@@ -34,6 +34,10 @@ onMounted(async () => {
     )
     if (res.code === 0 && res.data) {
       tenants.value = res.data
+      // 若尚未指定租户且租户列表仅有 1 个，默认展示并选中该租户
+      if (!form.value.tenant_id && tenants.value.length === 1) {
+        form.value.tenant_id = tenants.value[0].id
+      }
     }
   } catch (e) {
     console.error('[login] 获取租户列表失败:', e)
@@ -52,6 +56,14 @@ const portals = computed(() => [
 
 // 当前选中的登录入口
 const activePortal = ref<PortalType>('business')
+
+// 监听入口切换：如果切到非系统管理员入口且当前未选租户，若系统仅有 1 个租户则自动默认选中
+watch(activePortal, (val) => {
+  if (val !== 'system_admin' && !form.value.tenant_id && tenants.value.length === 1) {
+    form.value.tenant_id = tenants.value[0].id
+  }
+})
+
 // 登录表单数据
 const form = ref<{ username: string; password: string; tenant_id: string | undefined }>({ username: '', password: '', tenant_id: undefined })
 // 登录请求加载状态
@@ -95,11 +107,17 @@ const handleLogin = async () => {
     message.warning(t('login.emptyWarning'))
     return
   }
+  // 非系统管理员入口必须选择租户
+  if (activePortal.value !== 'system_admin' && !form.value.tenant_id) {
+    message.warning(t('login.tenantRequired'))
+    return
+  }
   loading.value = true
   try {
+    const tenantId = activePortal.value === 'system_admin' ? '' : (form.value.tenant_id || '')
     const result = await login({
       ...form.value,
-      tenant_id: form.value.tenant_id || '',
+      tenant_id: tenantId,
       preferred_role: activePortal.value
     })
     if (result.ok) {
@@ -109,7 +127,7 @@ const handleLogin = async () => {
           username: form.value.username,
           password: form.value.password,
           portal: activePortal.value,
-          tenant_id: form.value.tenant_id || '',
+          tenant_id: tenantId,
         }))
       } else {
         localStorage.removeItem(REMEMBER_ME_KEY)
@@ -187,7 +205,7 @@ const handleLogin = async () => {
 
           <a-form layout="vertical" class="login-form">
             <a-form-item v-if="activePortal !== 'system_admin'">
-              <a-select v-model:value="form.tenant_id" :placeholder="t('login.tenantRequired')" size="large" class="login-select">
+              <a-select v-model:value="form.tenant_id" :placeholder="t('login.tenantPlaceholder')" size="large" class="login-select">
                 <a-select-option v-for="tenant in tenants" :key="tenant.id" :value="tenant.id">
                   {{ tenant.name }}（{{ tenant.code }}）
                 </a-select-option>
