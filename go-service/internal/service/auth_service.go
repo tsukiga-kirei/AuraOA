@@ -16,6 +16,7 @@ import (
 
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	"auraoa/go-service/internal/pkg/errcode"
 	"auraoa/go-service/internal/pkg/hash"
 	jwtpkg "auraoa/go-service/internal/pkg/jwt"
@@ -190,7 +191,7 @@ func (s *AuthService) Login(req *dto.LoginRequest, clientIP string, userAgent st
 	}
 
 	// 3. 检查账户锁定：连续失败 5 次且锁定期未过
-	if user.LoginFailCount >= 5 && user.LockedUntil != nil && user.LockedUntil.After(time.Now()) {
+	if user.LoginFailCount >= 5 && user.LockedUntil != nil && user.LockedUntil.After(apptime.Now()) {
 		pkglogger.Global().Warn("登录失败：账户被锁定", zap.String("username", req.Username))
 		return nil, newServiceError(errcode.ErrAccountLocked, "账户被锁定")
 	}
