@@ -101,3 +101,34 @@ func TestModeBrowserTargetFromDef(t *testing.T) {
 		t.Fatal("empty mode_browser should fail and retain raw value")
 	}
 }
+
+func TestBrowseValidIDAcceptsUUID(t *testing.T) {
+	target := e9BrowseTarget{NumericID: true, IDColumn: "zjid"}
+	id := "a4c9be26-6217-43cf-99db-ad3664865ac6"
+	if !target.validID(id) {
+		t.Fatal("UUID browse keys must not be rejected")
+	}
+	if target.validID("") || target.validID("   ") {
+		t.Fatal("empty id should still be rejected")
+	}
+}
+
+func TestApplyAttachmentFileNamesToRow(t *testing.T) {
+	row := map[string]interface{}{
+		"T006": "1370389,1370390",
+	}
+	applyAttachmentFileNamesToRow(row, "T006", "1370389,1370390", []AttachmentFilePayload{
+		{DocID: "1370389", FileName: "返程导航记录.jpg"},
+		{DocID: "1370390", FileName: "返程高速费.jpg"},
+	})
+	got, _ := row["T006"].(map[string]interface{})
+	if got == nil {
+		t.Fatalf("expected display map, got %#v", row["T006"])
+	}
+	if got["display"] != "返程导航记录.jpg, 返程高速费.jpg" {
+		t.Fatalf("display=%v", got["display"])
+	}
+	if got["value"] != "1370389,1370390" {
+		t.Fatalf("value=%v", got["value"])
+	}
+}
