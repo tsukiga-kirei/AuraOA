@@ -1020,7 +1020,8 @@ const renderWorkflowLabels = (workflowIds: string[] | undefined): string => {
     >
       <template #extra>
         <a-button size="small" @click="reloadLogs" :loading="logsLoading">
-          <ReloadOutlined /> {{ t('cron.run') }}
+          <template #icon><ReloadOutlined /></template>
+          {{ t('cron.run') }}
         </a-button>
       </template>
       <a-spin :spinning="logsLoading">

@@ -212,7 +212,7 @@ onMounted(() => {
         <h1 class="page-title"><FileTextOutlined /> {{ t('summary.title') }}</h1>
         <p class="page-subtitle">{{ t('summary.subtitle') }}</p>
       </div>
-      <a-button :loading="loading" @click="loadData"><ReloadOutlined /> {{ t('common.refresh') }}</a-button>
+      <a-button :loading="loading" @click="loadData"><template #icon><ReloadOutlined /></template>{{ t('common.refresh') }}</a-button>
     </div>
 
     <div class="stats-grid">
@@ -264,7 +264,8 @@ onMounted(() => {
             <div class="process-actions">
               <a-button v-if="item.has_summary || item.running_job_id" @click="openResult(item)"><EyeOutlined /> {{ t('summary.view') }}</a-button>
               <a-button type="primary" :loading="executing[item.process_id]" @click="runSummary(item)">
-                <ThunderboltOutlined /> {{ item.has_summary ? t('summary.regenerate') : t('summary.generate') }}
+                <template #icon><ThunderboltOutlined /></template>
+                {{ item.has_summary ? t('summary.regenerate') : t('summary.generate') }}
               </a-button>
             </div>
           </div>
@@ -302,7 +303,8 @@ onMounted(() => {
       </div>
       <template #extra>
         <a-button v-if="selected" :loading="executing[selected.process_id]" @click="runSummary(selected, true)">
-          <ExclamationCircleOutlined /> {{ t('summary.useLatestConfig') }}
+          <template #icon><ExclamationCircleOutlined /></template>
+          {{ t('summary.useLatestConfig') }}
         </a-button>
       </template>
     </a-drawer>
