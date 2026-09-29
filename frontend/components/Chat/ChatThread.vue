@@ -257,7 +257,7 @@ function formatMsgTime(isoString?: string): string {
                 {{ t('chat.cancelDislike', '取消点踩') }}
               </a-button>
               <a-button type="primary" size="small" :loading="submittingFeedback" @click="handleSubmitFeedback(msg)">
-                <SendOutlined />
+                <template #icon><SendOutlined /></template>
                 {{ t('chat.submitFeedback', '提交意见') }}
               </a-button>
             </div>

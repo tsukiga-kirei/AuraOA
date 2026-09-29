@@ -181,7 +181,8 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
         <p class="page-subtitle">{{ t('admin.userConfigs.subtitle') }}</p>
       </div>
       <a-button :loading="loading" @click="loadConfigs">
-        <ReloadOutlined /> {{ t('common.refresh') }}
+        <template #icon><ReloadOutlined /></template>
+        {{ t('common.refresh') }}
       </a-button>
     </div>
 
@@ -232,7 +233,7 @@ const cronTaskEmails = (task: AdminCronTaskDetail): string[] =>
         </a-select>
       </div>
       <div class="toolbar-right">
-        <a-button :loading="exportLoading" @click="handleExportExcel"><ExportOutlined /> {{ t('userConfig.export.button') }}</a-button>
+        <a-button :loading="exportLoading" @click="handleExportExcel"><template #icon><ExportOutlined /></template>{{ t('userConfig.export.button') }}</a-button>
       </div>
     </div>
 

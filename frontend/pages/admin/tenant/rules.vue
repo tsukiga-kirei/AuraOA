@@ -3378,7 +3378,8 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                   @confirm="batchDeleteRules"
                 >
                   <a-button danger :loading="batchDeletingRules">
-                    <DeleteOutlined /> {{ t('admin.ruleConfig.batchDelete') }}
+                    <template #icon><DeleteOutlined /></template>
+                    {{ t('admin.ruleConfig.batchDelete') }}
                   </a-button>
                 </a-popconfirm>
               </template>
@@ -3398,7 +3399,8 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                   :title="ruleImportCapability?.reason || ''"
                   @click="handleImportRules('audit')"
                 >
-                  <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
+                  <template #icon><UploadOutlined /></template>
+                  {{ t('admin.ruleConfig.fileImport') }}
                 </a-button>
                 <a-button type="primary" @click="openRuleEditor()">
                   <PlusOutlined /> {{ t('admin.ruleConfig.manualAddBtn') }}
@@ -3456,7 +3458,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             <a-space size="middle">
               <template v-if="editingVersionNo.audit !== null">
                 <a-button type="primary" size="large" :loading="savingHistoricalVersion" @click="handleSaveHistoricalVersion('audit')">
-                  <SaveOutlined />
+                  <template #icon><SaveOutlined /></template>
                   {{ t('executionConfig.saveLoadedAsDraft') }}
                 </a-button>
                 <a-button size="large" :disabled="auditRulesDirty || publishingVersion.audit || savingHistoricalVersion" @click="handlePublishVersion('audit')">
@@ -3470,7 +3472,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
               </template>
               <template v-else>
                 <a-button type="primary" size="large" :loading="savingAuditRules" :disabled="!auditRulesDirty" @click="persistAuditRuleDrafts()">
-                  <SaveOutlined />
+                  <template #icon><SaveOutlined /></template>
                   {{ t('admin.ruleConfig.saveConfig') }}
                 </a-button>
                 <a-button size="large" :disabled="auditRulesDirty || publishingVersion.audit || savingAuditRules" @click="handlePublishVersion('audit')">
@@ -5547,7 +5549,8 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                   @confirm="batchDeleteArchiveRules"
                 >
                   <a-button danger :loading="batchDeletingArchiveRules">
-                    <DeleteOutlined /> {{ t('admin.ruleConfig.batchDelete') }}
+                    <template #icon><DeleteOutlined /></template>
+                    {{ t('admin.ruleConfig.batchDelete') }}
                   </a-button>
                 </a-popconfirm>
               </template>
@@ -5567,7 +5570,8 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                   :title="ruleImportCapability?.reason || ''"
                   @click="handleImportRules('archive')"
                 >
-                  <UploadOutlined /> {{ t('admin.ruleConfig.fileImport') }}
+                  <template #icon><UploadOutlined /></template>
+                  {{ t('admin.ruleConfig.fileImport') }}
                 </a-button>
                 <a-button type="primary" @click="openArchiveRuleEditor()">
                   <PlusOutlined /> {{ t('admin.ruleConfig.manualAdd') }}
@@ -5627,7 +5631,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             <a-space size="middle">
               <template v-if="editingVersionNo.archive !== null">
                 <a-button type="primary" size="large" :loading="savingHistoricalVersion" @click="handleSaveHistoricalVersion('archive')">
-                  <SaveOutlined />
+                  <template #icon><SaveOutlined /></template>
                   {{ t('executionConfig.saveLoadedAsDraft') }}
                 </a-button>
                 <a-button size="large" :disabled="archiveRulesDirty || publishingVersion.archive || savingHistoricalVersion" @click="handlePublishVersion('archive')">
@@ -5641,7 +5645,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
               </template>
               <template v-else>
                 <a-button type="primary" size="large" :loading="savingArchiveRules" :disabled="!archiveRulesDirty" @click="persistArchiveRuleDrafts()">
-                  <SaveOutlined />
+                  <template #icon><SaveOutlined /></template>
                   {{ t('admin.ruleConfig.saveConfig') }}
                 </a-button>
                 <a-button size="large" :disabled="archiveRulesDirty || publishingVersion.archive || savingArchiveRules" @click="handlePublishVersion('archive')">
