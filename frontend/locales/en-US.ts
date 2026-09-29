@@ -2982,6 +2982,8 @@ export default {
   "admin.data.userFeedbackAdvice": "User Feedback & Suggestions",
   "embed.perspective.personalSummary": "Personal View",
   "embed.perspective.standardSummary": "Standard Summary",
+  "embed.perspective.personalSummaryReady": "Personal summary ready",
+  "embed.perspective.standardSummaryReady": "Standard summary ready",
   "chat.you": "You",
   "chat.interrupted": "Generation stopped",
   "chat.toolKind.skill": "Skill",

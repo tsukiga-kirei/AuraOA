@@ -3012,6 +3012,8 @@ export default {
   "admin.data.userFeedbackAdvice": "用户改进建议/意见",
   "embed.perspective.personalSummary": "个人定制",
   "embed.perspective.standardSummary": "标准总结",
+  "embed.perspective.personalSummaryReady": "个人定制总结已就绪",
+  "embed.perspective.standardSummaryReady": "标准总结已就绪",
   "chat.you": "你",
   "chat.interrupted": "已停止生成",
   "chat.toolKind.skill": "技能",

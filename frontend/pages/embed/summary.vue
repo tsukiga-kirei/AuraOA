@@ -114,6 +114,13 @@ const processMetaRows = computed(() => {
 
 const formatLastSummaryAt = (iso?: string) => iso ? formatDateTimeInAppZone(iso) : '-'
 const getDurationSec = (ms?: number) => ((ms || 0) / 1000).toFixed(1)
+const activeViewLastSummaryAt = computed(() => perspective.value === 'personal'
+  ? context.value?.personal_result?.created_at
+  : context.value?.last_summary_at)
+const activeViewStale = computed(() => perspective.value === 'standard' && !!context.value?.stale)
+const activeViewConfigVersionNo = computed(() => perspective.value === 'personal'
+  ? context.value?.personal_result?.config_version_no
+  : context.value?.config_version_no)
 
 const processStat = computed(() => {
   if (currentResult.value?.duration_ms) {
@@ -354,20 +361,17 @@ onBeforeUnmount(() => disconnectStream())
 <template>
   <div class="embed-summary">
     <div class="embed-header">
-      <div v-if="context?.personal_result" class="result-perspective">
-        <a-radio-group :value="perspective" size="small" option-type="button" :options="[{ value: 'personal', label: t('embed.perspective.personalSummary', '个人定制') }, { value: 'standard', label: t('embed.perspective.standardSummary', '标准总结') }]" @change="(e) => switchPerspective(e.target.value)" />
-      </div>
       <h2 class="embed-title" :style="{ color: headerStatus.color }">
         <span class="embed-title-badge" :style="{ background: headerStatus.bg, color: headerStatus.color }">
           <component :is="headerStatus.icon" :spin="headerStatus.spin" />
         </span>
         {{ headerStatus.label }}
       </h2>
-      <div v-if="!isRunning && context?.last_summary_at" class="embed-subline">
-        {{ t('embed.summary.lastSummary') }}：{{ formatLastSummaryAt(context.last_summary_at) }}
-        <a-tag v-if="context.stale" color="warning" style="margin-left: 8px;">{{ t('embed.summary.changed') }}</a-tag>
-        <a-tag v-if="context.config_version_no" color="blue" style="margin-left: 8px;">
-          {{ t('executionConfig.version', [context.config_version_no]) }}
+      <div v-if="!isRunning && activeViewLastSummaryAt" class="embed-subline">
+        {{ t('embed.summary.lastSummary') }}：{{ formatLastSummaryAt(activeViewLastSummaryAt) }}
+        <a-tag v-if="activeViewStale" color="warning" style="margin-left: 8px;">{{ t('embed.summary.changed') }}</a-tag>
+        <a-tag v-if="activeViewConfigVersionNo" color="blue" style="margin-left: 8px;">
+          {{ t('executionConfig.version', [activeViewConfigVersionNo]) }}
         </a-tag>
         <a-tag v-if="canUpgradeConfig" color="cyan" style="margin-left: 6px;">
           <ThunderboltOutlined /> {{ t('executionConfig.upgradeAvailable') }}
@@ -398,6 +402,31 @@ onBeforeUnmount(() => disconnectStream())
       </a-result>
 
       <template v-else-if="context?.supported">
+        <div v-if="context.personal_result" class="perspective-nav-wrap">
+          <div class="perspective-nav">
+            <button
+              type="button"
+              class="perspective-nav-item"
+              :class="{ 'perspective-nav-item--active': perspective === 'standard' }"
+              :aria-pressed="perspective === 'standard'"
+              @click="switchPerspective('standard')"
+            >
+              <span>{{ t('embed.perspective.standardSummary') }}</span>
+              <span v-if="context.has_summary" class="perspective-dot" :title="t('embed.perspective.standardSummaryReady')" />
+            </button>
+            <button
+              type="button"
+              class="perspective-nav-item"
+              :class="{ 'perspective-nav-item--active': perspective === 'personal' }"
+              :aria-pressed="perspective === 'personal'"
+              @click="switchPerspective('personal')"
+            >
+              <span>{{ t('embed.perspective.personalSummary') }}</span>
+              <span class="perspective-dot perspective-dot--personal" :title="t('embed.perspective.personalSummaryReady')" />
+            </button>
+          </div>
+        </div>
+
         <div v-if="processInfo" class="process-card">
           <h3 class="process-title" :title="processInfo.title">{{ processInfo.title }}</h3>
           <div class="process-card-main">
@@ -570,7 +599,45 @@ onBeforeUnmount(() => disconnectStream())
   padding-bottom: 12px;
   border-bottom: 1px solid var(--color-border-light);
 }
-.result-perspective { margin-left: auto; margin-bottom: 8px; }
+.perspective-nav-wrap { margin-bottom: 12px; }
+.perspective-nav {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-bg-hover, #f1f5f9);
+}
+.perspective-nav-item {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast, 0.2s);
+}
+.perspective-nav-item:hover { color: var(--color-text-primary); }
+.perspective-nav-item--active {
+  background: var(--color-bg-card, #ffffff);
+  color: var(--color-primary, #1890ff);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.perspective-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-success, #52c41a);
+}
+.perspective-dot--personal { background: var(--color-primary, #1890ff); }
 .embed-title {
   display: flex;
   align-items: center;
