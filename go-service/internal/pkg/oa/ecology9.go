@@ -4386,21 +4386,34 @@ func (a *Ecology9Adapter) FetchWorkflowCodes(ctx context.Context, processIDs []s
 		return result, nil
 	}
 
+	numericIDs := make([]int64, 0, len(uniqueIDs))
+	for _, pid := range uniqueIDs {
+		if n, err := strconv.ParseInt(pid, 10, 64); err == nil {
+			numericIDs = append(numericIDs, n)
+		}
+	}
+	var inParam interface{} = uniqueIDs
+	if len(numericIDs) == len(uniqueIDs) {
+		inParam = numericIDs
+	}
+
 	// 1. 优先查 workflow_codeSeqRecord
 	rows, err := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_codeSeqRecord")).
 		Select(a.col("requestid"), a.col("workflowcode")).
-		Where(a.col("requestid")+" IN ?", uniqueIDs).
+		Where(a.col("requestid")+" IN ?", inParam).
 		Rows()
-	if err == nil && rows != nil {
+	if err != nil {
+		pkglogger.Global().Warn("FetchWorkflowCodes 查询 workflow_codeSeqRecord 失败", zap.Error(err))
+	} else if rows != nil {
 		defer rows.Close()
 		for rows.Next() {
 			var reqID int64
-			var code string
+			var code sql.NullString
 			if scanErr := rows.Scan(&reqID, &code); scanErr == nil {
-				code = strings.TrimSpace(code)
-				if code != "" {
-					result[strconv.FormatInt(reqID, 10)] = code
+				trimmed := strings.TrimSpace(code.String)
+				if code.Valid && trimmed != "" {
+					result[strconv.FormatInt(reqID, 10)] = trimmed
 				}
 			}
 		}
@@ -4415,20 +4428,33 @@ func (a *Ecology9Adapter) FetchWorkflowCodes(ctx context.Context, processIDs []s
 	}
 
 	if len(missingIDs) > 0 {
+		missingNumeric := make([]int64, 0, len(missingIDs))
+		for _, mid := range missingIDs {
+			if n, err := strconv.ParseInt(mid, 10, 64); err == nil {
+				missingNumeric = append(missingNumeric, n)
+			}
+		}
+		var missingParam interface{} = missingIDs
+		if len(missingNumeric) == len(missingIDs) {
+			missingParam = missingNumeric
+		}
+
 		rbRows, rbErr := a.db.WithContext(ctx).
 			Table(a.tableName("workflow_requestbase")).
 			Select(a.col("requestid"), a.col("requestmark")).
-			Where(a.col("requestid")+" IN ?", missingIDs).
+			Where(a.col("requestid")+" IN ?", missingParam).
 			Rows()
-		if rbErr == nil && rbRows != nil {
+		if rbErr != nil {
+			pkglogger.Global().Warn("FetchWorkflowCodes 查询 workflow_requestbase 失败", zap.Error(rbErr))
+		} else if rbRows != nil {
 			defer rbRows.Close()
 			for rbRows.Next() {
 				var reqID int64
-				var mark string
+				var mark sql.NullString
 				if scanErr := rbRows.Scan(&reqID, &mark); scanErr == nil {
-					mark = strings.TrimSpace(mark)
-					if mark != "" {
-						result[strconv.FormatInt(reqID, 10)] = mark
+					trimmed := strings.TrimSpace(mark.String)
+					if mark.Valid && trimmed != "" {
+						result[strconv.FormatInt(reqID, 10)] = trimmed
 					}
 				}
 			}

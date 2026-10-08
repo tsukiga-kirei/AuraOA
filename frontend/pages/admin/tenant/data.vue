@@ -22,7 +22,6 @@ import {
   RobotOutlined,
   MessageOutlined,
   ApiOutlined,
-  BookOutlined,
   LikeOutlined,
   DislikeOutlined,
   UserOutlined,

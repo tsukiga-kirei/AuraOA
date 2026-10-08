@@ -434,10 +434,8 @@ func (h *ArchiveReviewHandler) ListSnapshots(c *gin.Context) {
 		pids[i] = row.ProcessID
 	}
 	var wfCodes map[string]string
-	if tidVal, ok := c.Get("tenant_id"); ok {
-		if tenantID, ok := tidVal.(uuid.UUID); ok {
-			wfCodes = h.archiveService.FetchWorkflowCodes(c.Request.Context(), tenantID, pids)
-		}
+	if tenantID, err := getTenantID(c); err == nil {
+		wfCodes = h.archiveService.FetchWorkflowCodes(c.Request.Context(), tenantID, pids)
 	}
 
 	type itemDTO struct {
@@ -491,10 +489,7 @@ func (h *ArchiveReviewHandler) ExportSnapshots(c *gin.Context) {
 	}
 
 	locale := excelpkg.ResolveLocale(c)
-	var tenantID uuid.UUID
-	if tidVal, ok := c.Get("tenant_id"); ok {
-		tenantID, _ = tidVal.(uuid.UUID)
-	}
+	tenantID, _ := getTenantID(c)
 
 	columnsParam := strings.TrimSpace(c.Query("columns"))
 	var selectedCols []string

@@ -376,10 +376,8 @@ func (h *AuditHandler) ListSnapshots(c *gin.Context) {
 		pids[i] = row.ProcessID
 	}
 	var wfCodes map[string]string
-	if tidVal, ok := c.Get("tenant_id"); ok {
-		if tenantID, ok := tidVal.(uuid.UUID); ok {
-			wfCodes = h.auditService.FetchWorkflowCodes(c.Request.Context(), tenantID, pids)
-		}
+	if tenantID, err := getTenantID(c); err == nil {
+		wfCodes = h.auditService.FetchWorkflowCodes(c.Request.Context(), tenantID, pids)
 	}
 
 	// 附加格式化时间字段与流程编号，方便前端直接展示
@@ -435,10 +433,7 @@ func (h *AuditHandler) ExportSnapshots(c *gin.Context) {
 	}
 
 	locale := excelpkg.ResolveLocale(c)
-	var tenantID uuid.UUID
-	if tidVal, ok := c.Get("tenant_id"); ok {
-		tenantID, _ = tidVal.(uuid.UUID)
-	}
+	tenantID, _ := getTenantID(c)
 
 	// 解析前端传入的展示列
 	columnsParam := strings.TrimSpace(c.Query("columns"))

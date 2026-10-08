@@ -247,10 +247,8 @@ func (h *ProcessSummaryHandler) ExportSnapshots(c *gin.Context) {
 		pids[i] = item.ProcessID
 	}
 	var wfCodes map[string]string
-	if tidVal, ok := c.Get("tenant_id"); ok {
-		if tenantID, ok := tidVal.(uuid.UUID); ok {
-			wfCodes = h.summaryService.FetchWorkflowCodes(c.Request.Context(), tenantID, pids)
-		}
+	if tenantID, err := getTenantID(c); err == nil {
+		wfCodes = h.summaryService.FetchWorkflowCodes(c.Request.Context(), tenantID, pids)
 	}
 
 	rows := make([][]string, 0, len(items))

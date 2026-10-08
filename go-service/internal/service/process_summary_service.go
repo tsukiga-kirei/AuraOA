@@ -1866,10 +1866,16 @@ func (s *ProcessSummaryService) FetchWorkflowCodes(ctx context.Context, tenantID
 	}
 	adapter, err := s.getOAAdapter(ctx, tenantID, false)
 	if err != nil || adapter == nil {
+		pkglogger.Global().Warn("ProcessSummaryService.FetchWorkflowCodes 获取 OA 适配器失败",
+			zap.String("tenant_id", tenantID.String()),
+			zap.Error(err))
 		return map[string]string{}
 	}
 	codes, err := adapter.FetchWorkflowCodes(ctx, processIDs)
 	if err != nil || codes == nil {
+		pkglogger.Global().Warn("ProcessSummaryService.FetchWorkflowCodes 查询流程编号失败",
+			zap.String("tenant_id", tenantID.String()),
+			zap.Error(err))
 		return map[string]string{}
 	}
 	return codes
