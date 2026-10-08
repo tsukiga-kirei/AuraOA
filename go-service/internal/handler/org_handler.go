@@ -26,16 +26,30 @@ func NewOrgHandler(orgService *service.OrgService) *OrgHandler {
 }
 
 // getTenantID 从 gin.Context（由租户中间件注入）中提取并解析 tenant_id。
+// 支持 uuid.UUID 原生类型与 string 类型的解析。
 func getTenantID(c *gin.Context) (uuid.UUID, error) {
 	tidVal, exists := c.Get("tenant_id")
-	if !exists {
+	if !exists || tidVal == nil {
 		return uuid.Nil, errTenantIDMissing
 	}
-	tidStr, ok := tidVal.(string)
-	if !ok {
-		return uuid.Nil, errTenantIDMissing
+	switch v := tidVal.(type) {
+	case uuid.UUID:
+		if v == uuid.Nil {
+			return uuid.Nil, errTenantIDMissing
+		}
+		return v, nil
+	case string:
+		if v == "" {
+			return uuid.Nil, errTenantIDMissing
+		}
+		return uuid.Parse(v)
+	default:
+		s := fmt.Sprintf("%v", v)
+		if s == "" {
+			return uuid.Nil, errTenantIDMissing
+		}
+		return uuid.Parse(s)
 	}
-	return uuid.Parse(tidStr)
 }
 
 // errTenantIDMissing 表示请求上下文中缺少租户 ID 的错误。
