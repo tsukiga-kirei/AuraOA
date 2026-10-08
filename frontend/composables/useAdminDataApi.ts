@@ -124,6 +124,13 @@ export function useAdminDataApi() {
     return await authFetch<{ chain: ArchiveLogItem[] }>(`/api/archive/snapshots/${processId}/chain`)
   }
 
+  /** 导出归档快照为 Excel，筛选条件与列表一致 */
+  async function exportArchiveSnapshots(filter: ArchiveSnapshotFilter = {}) {
+    const params = buildParams(filter)
+    const url = buildExportUrl('/api/archive/snapshots/export', params)
+    await triggerDownload(url, 'archive_snapshots.xlsx')
+  }
+
   // ── 归档复盘日志（保留用于导出） ──────────────────────────────────────────
 
   /** 分页查询归档复盘日志列表（主要用于导出场景） */
@@ -310,6 +317,7 @@ export function useAdminDataApi() {
     listArchiveSnapshots,
     getArchiveSnapshotStats,
     getArchiveSnapshotChain,
+    exportArchiveSnapshots,
     // 归档日志（保留）
     listArchiveLogs,
     getArchiveLogStats,

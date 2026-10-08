@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -368,16 +369,35 @@ func (h *AuditHandler) ListSnapshots(c *gin.Context) {
 		handleServiceError(c, err)
 		return
 	}
-	// 附加格式化时间字段，方便前端直接展示
+
+	// 批量查询流程编号
+	pids := make([]string, len(items))
+	for i, row := range items {
+		pids[i] = row.ProcessID
+	}
+	var wfCodes map[string]string
+	if tidVal, ok := c.Get("tenant_id"); ok {
+		if tenantID, ok := tidVal.(uuid.UUID); ok {
+			wfCodes = h.auditService.FetchWorkflowCodes(c.Request.Context(), tenantID, pids)
+		}
+	}
+
+	// 附加格式化时间字段与流程编号，方便前端直接展示
 	type itemDTO struct {
 		repository.AuditSnapshotListRow
+		WorkflowCode string `json:"workflow_code"`
 		UpdatedAtFmt string `json:"updated_at_fmt"`
 		CreatedAtFmt string `json:"created_at_fmt"`
 	}
 	out := make([]itemDTO, len(items))
 	for i, row := range items {
+		wfCode := ""
+		if wfCodes != nil {
+			wfCode = wfCodes[row.ProcessID]
+		}
 		out[i] = itemDTO{
 			AuditSnapshotListRow: row,
+			WorkflowCode:         wfCode,
 			UpdatedAtFmt:         row.UpdatedAt.Local().Format("2006/1/2 15:04"),
 			CreatedAtFmt:         row.CreatedAt.Local().Format("2006/1/2 15:04"),
 		}
@@ -405,6 +425,7 @@ func (h *AuditHandler) GetSnapshotStats(c *gin.Context) {
 
 // ExportSnapshots 导出审核快照为 Excel（最多 5000 条，筛选条件同列表）。
 // GET /api/audit/snapshots/export
+// 支持 columns 指定导出展示列，支持 include_history=true 导出审核历史。
 func (h *AuditHandler) ExportSnapshots(c *gin.Context) {
 	filter, _, _ := parseAuditSnapshotQuery(c)
 	items, _, err := h.snapshotRepo.ListPagedWithUser(c, filter, 1, 5000)
@@ -412,36 +433,232 @@ func (h *AuditHandler) ExportSnapshots(c *gin.Context) {
 		handleServiceError(c, err)
 		return
 	}
+
 	locale := excelpkg.ResolveLocale(c)
+	var tenantID uuid.UUID
+	if tidVal, ok := c.Get("tenant_id"); ok {
+		tenantID, _ = tidVal.(uuid.UUID)
+	}
+
+	// 解析前端传入的展示列
+	columnsParam := strings.TrimSpace(c.Query("columns"))
+	var selectedCols []string
+	if columnsParam != "" {
+		for _, col := range strings.Split(columnsParam, ",") {
+			col = strings.TrimSpace(col)
+			if col != "" {
+				selectedCols = append(selectedCols, col)
+			}
+		}
+	}
+	if len(selectedCols) == 0 {
+		selectedCols = []string{"process_id", "title", "operator", "department", "process_type", "channel", "ai_result", "audit_count", "time"}
+	}
+
+	needWorkflowCode := false
+	for _, col := range selectedCols {
+		if col == "workflow_code" {
+			needWorkflowCode = true
+			break
+		}
+	}
+
+	pids := make([]string, len(items))
+	for i, item := range items {
+		pids[i] = item.ProcessID
+	}
+
+	var wfCodes map[string]string
+	if needWorkflowCode && tenantID != uuid.Nil {
+		wfCodes = h.auditService.FetchWorkflowCodes(c.Request.Context(), tenantID, pids)
+	}
+
+	includeHistory := c.Query("include_history") == "true" || c.Query("include_history") == "1"
+	historyMap := make(map[string]string)
+	if includeHistory && len(pids) > 0 {
+		historyMap = h.buildAuditHistoryMap(c, pids, locale)
+	}
+
+	headers := make([]string, 0)
+	for _, col := range selectedCols {
+		switch col {
+		case "process_id":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Process Request ID")
+			} else {
+				headers = append(headers, "流程请求 ID")
+			}
+		case "workflow_code":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Process Number")
+			} else {
+				headers = append(headers, "流程编号")
+			}
+		case "title":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Title")
+			} else {
+				headers = append(headers, "流程标题")
+			}
+		case "operator":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Operator")
+			} else {
+				headers = append(headers, "操作人")
+			}
+		case "department":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Department")
+			} else {
+				headers = append(headers, "部门")
+			}
+		case "process_type":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Process Type")
+			} else {
+				headers = append(headers, "流程分类")
+			}
+		case "channel":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Source")
+			} else {
+				headers = append(headers, "发起方式")
+			}
+		case "ai_result":
+			// AI 审核结果关联 3 个字段：审核建议、评分、置信度
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Recommendation", "Score", "Confidence")
+			} else {
+				headers = append(headers, "审核建议", "评分", "置信度")
+			}
+		case "audit_count":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Audit Count")
+			} else {
+				headers = append(headers, "审核次数")
+			}
+		case "time":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Time")
+			} else {
+				headers = append(headers, "时间")
+			}
+		}
+	}
+	if includeHistory {
+		if locale == excelpkg.LocaleEN {
+			headers = append(headers, "Audit History")
+		} else {
+			headers = append(headers, "审核历史")
+		}
+	}
+
 	rows := make([][]string, 0, len(items))
 	for _, item := range items {
-		channel := item.Channel
-		if channel == "" {
-			channel = model.AuditSnapshotChannelWorkbench
+		row := make([]string, 0, len(headers))
+		for _, col := range selectedCols {
+			switch col {
+			case "process_id":
+				row = append(row, item.ProcessID)
+			case "workflow_code":
+				wf := ""
+				if wfCodes != nil {
+					wf = wfCodes[item.ProcessID]
+				}
+				row = append(row, wf)
+			case "title":
+				row = append(row, item.Title)
+			case "operator":
+				row = append(row, item.Operator)
+			case "department":
+				row = append(row, item.Department)
+			case "process_type":
+				row = append(row, item.ProcessType)
+			case "channel":
+				channelText := excelpkg.FormatSourceAction(item.Channel, item.TriggerDetail, locale)
+				row = append(row, channelText)
+			case "ai_result":
+				recText := excelpkg.TranslateEnum(excelpkg.EnumAuditRecommendation, item.Recommendation, locale)
+				scoreText := fmt.Sprintf("%d", item.Score)
+				confText := fmt.Sprintf("%d%%", item.Confidence)
+				row = append(row, recText, scoreText, confText)
+			case "audit_count":
+				row = append(row, fmt.Sprintf("%d", countSnapshotLogIDs(item.ValidLogIDs)))
+			case "time":
+				row = append(row, item.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
+			}
 		}
-		rows = append(rows, []string{
-			item.ProcessID,
-			item.Title,
-			item.Operator,
-			item.Department,
-			item.ProcessType,
-			excelpkg.TranslateEnum(excelpkg.EnumSourceChannel, channel, locale),
-			excelpkg.TranslateEnum(excelpkg.EnumAuditRecommendation, item.Recommendation, locale),
-			fmt.Sprintf("%d", item.Score),
-			fmt.Sprintf("%d%%", item.Confidence),
-			fmt.Sprintf("%d", countSnapshotLogIDs(item.ValidLogIDs)),
-			item.UpdatedAt.Local().Format("2006-01-02 15:04:05"),
-		})
+		if includeHistory {
+			row = append(row, historyMap[item.ProcessID])
+		}
+		rows = append(rows, row)
 	}
+
 	filename := fmt.Sprintf("audit_snapshots_%s", apptime.Now().Format("20060102_150405"))
 	config := excelpkg.ExportConfig{
-		ExportType: excelpkg.ExportTypeAuditSnapshot,
-		Locale:     locale,
-		Filename:   filename,
+		CustomHeaders: headers,
+		Locale:        locale,
+		Filename:      filename,
 	}
 	if err := excelpkg.WriteExcel(c, config, rows); err != nil {
 		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "导出失败: "+err.Error())
 	}
+}
+
+// buildAuditHistoryMap 查询并格式化流程的历次审核历史记录为清晰中文文本。
+func (h *AuditHandler) buildAuditHistoryMap(c *gin.Context, processIDs []string, locale excelpkg.Locale) map[string]string {
+	result := make(map[string]string)
+	if len(processIDs) == 0 {
+		return result
+	}
+
+	type auditLogSimple struct {
+		ProcessID      string    `gorm:"column:process_id"`
+		CreatedAt      time.Time `gorm:"column:created_at"`
+		UserName       string    `gorm:"column:user_name"`
+		Recommendation string    `gorm:"column:recommendation"`
+		Score          int       `gorm:"column:score"`
+		Confidence     int       `gorm:"column:confidence"`
+		TriggerSource  string    `gorm:"column:trigger_source"`
+		TriggerDetail  string    `gorm:"column:trigger_detail"`
+	}
+
+	var logs []auditLogSimple
+	err := h.auditLogRepo.WithTenant(c).
+		Table("audit_logs").
+		Select("process_id, created_at, user_name, recommendation, score, confidence, trigger_source, trigger_detail").
+		Where("process_id IN ? AND status = ?", processIDs, model.JobStatusCompleted).
+		Where("COALESCE(parse_error, '') = '' AND recommendation IN ('approve', 'return', 'review')").
+		Order("created_at desc").
+		Find(&logs).Error
+
+	if err != nil || len(logs) == 0 {
+		return result
+	}
+
+	grouped := make(map[string][]auditLogSimple)
+	for _, l := range logs {
+		grouped[l.ProcessID] = append(grouped[l.ProcessID], l)
+	}
+
+	for pid, list := range grouped {
+		var lines []string
+		for idx, item := range list {
+			timeStr := item.CreatedAt.Local().Format("2006-01-02 15:04:05")
+			opName := item.UserName
+			if opName == "" {
+				opName = "系统"
+			}
+			rec := excelpkg.TranslateEnum(excelpkg.EnumAuditRecommendation, item.Recommendation, locale)
+			source := excelpkg.FormatSourceAction(item.TriggerSource, item.TriggerDetail, locale)
+			line := fmt.Sprintf("[%d] %s | 操作人: %s | 审核建议: %s | 评分: %d分 | 置信度: %d%% | 发起方式: %s",
+				idx+1, timeStr, opName, rec, item.Score, item.Confidence, source)
+			lines = append(lines, line)
+		}
+		result[pid] = strings.Join(lines, "\n")
+	}
+
+	return result
 }
 
 // GetSnapshotChain 获取指定流程的审核链详情（所有有效审核记录按时间排序）。

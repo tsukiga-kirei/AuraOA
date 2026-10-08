@@ -2847,3 +2847,20 @@ func (s *AuditExecuteService) visibleWorkbenchQuery(c *gin.Context) *gorm.DB {
 	}
 	return s.auditSnapshotRepo.VisibleWorkbenchQueryScoped(c, userID, false)
 }
+
+// FetchWorkflowCodes 批量获取指定流程的流程编号映射（requestid -> workflowcode）。
+func (s *AuditExecuteService) FetchWorkflowCodes(ctx context.Context, tenantID uuid.UUID, processIDs []string) map[string]string {
+	if len(processIDs) == 0 {
+		return map[string]string{}
+	}
+	adapter, err := s.getOAAdapter(ctx, tenantID)
+	if err != nil || adapter == nil {
+		return map[string]string{}
+	}
+	codes, err := adapter.FetchWorkflowCodes(ctx, processIDs)
+	if err != nil || codes == nil {
+		return map[string]string{}
+	}
+	return codes
+}
+

@@ -60,6 +60,7 @@ export interface AuditSnapshotItem {
   id: string
   tenant_id: string
   process_id: string
+  workflow_code?: string     // OA 真实流程编号（可能为空）
   channel: string            // workbench / embed
   title: string
   process_type: string
@@ -95,6 +96,8 @@ export interface AuditSnapshotFilter {
   end_date?: string
   page?: number
   page_size?: number
+  columns?: string
+  include_history?: boolean
 }
 
 // ─── 归档复盘日志（原始日志） ──────────────────────────────────────────────
@@ -146,6 +149,7 @@ export interface ArchiveSnapshotItem {
   id: string
   tenant_id: string
   process_id: string
+  workflow_code?: string     // OA 真实流程编号（可能为空）
   title: string
   process_type: string
   compliance: string          // compliant / partially_compliant / non_compliant
@@ -178,6 +182,8 @@ export interface ArchiveSnapshotFilter {
   end_date?: string
   page?: number
   page_size?: number
+  columns?: string
+  include_history?: boolean
 }
 
 // ─── 流程总结日志 / 快照 ─────────────────────────────────────────────────

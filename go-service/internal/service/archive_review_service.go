@@ -2307,3 +2307,20 @@ func (s *ArchiveReviewService) getArchiveSnapshotMapCached(c *gin.Context, tenan
 
 	return snapshotMap, nil
 }
+
+// FetchWorkflowCodes 批量获取指定流程的流程编号映射（requestid -> workflowcode）。
+func (s *ArchiveReviewService) FetchWorkflowCodes(ctx context.Context, tenantID uuid.UUID, processIDs []string) map[string]string {
+	if len(processIDs) == 0 {
+		return map[string]string{}
+	}
+	adapter, err := s.getOAAdapter(ctx, tenantID)
+	if err != nil || adapter == nil {
+		return map[string]string{}
+	}
+	codes, err := adapter.FetchWorkflowCodes(ctx, processIDs)
+	if err != nil || codes == nil {
+		return map[string]string{}
+	}
+	return codes
+}
+
