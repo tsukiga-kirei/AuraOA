@@ -27,6 +27,7 @@ import {
   DislikeOutlined,
   UserOutlined,
   CopyOutlined,
+  SettingOutlined,
 } from '@ant-design/icons-vue'
 import dayjs, { type Dayjs } from 'dayjs'
 import 'dayjs/locale/zh-cn'
@@ -77,6 +78,7 @@ const {
   listArchiveSnapshots,
   getArchiveSnapshotStats,
   getArchiveSnapshotChain,
+  exportArchiveSnapshots,
   exportArchiveLogs,
   listSummarySnapshots,
   getSummarySnapshotStats,
@@ -1088,37 +1090,154 @@ async function loadLLMProcesses() {
   }
 }
 
-async function handleExport(type: MainTab) {
-  const hide = message.loading(
-      type === 'audit'
-          ? t('admin.data.exportingAudit')
-          : type === 'summary'
-              ? t('admin.data.exportingSummary')
-              : type === 'cron'
-                  ? t('admin.data.exportingCron')
-                  : t('admin.data.exportingArchive'),
-      0,
-  )
+// ─── 展示列配置 ────────────────────────────────────────────────────────
+const AUDIT_DEFAULT_COLUMNS = ['process_id', 'title', 'operator', 'department', 'process_type', 'channel', 'ai_result', 'audit_count', 'time']
+const ARCHIVE_DEFAULT_COLUMNS = ['process_id', 'title', 'operator', 'department', 'process_type', 'compliance', 'audit_count', 'time']
 
+const auditAvailableColumns = computed(() => [
+  { key: 'process_id', label: t('admin.data.thProcessId') },
+  { key: 'workflow_code', label: t('admin.data.thWorkflowCode') },
+  { key: 'title', label: t('admin.data.thProcessTitle') },
+  { key: 'operator', label: t('admin.data.thOperator') },
+  { key: 'department', label: t('admin.data.thDepartment') },
+  { key: 'process_type', label: t('admin.data.thProcessType') },
+  { key: 'channel', label: t('admin.data.thSourceChannel') },
+  { key: 'ai_result', label: t('admin.data.thResult') },
+  { key: 'audit_count', label: t('admin.data.thAuditCount') },
+  { key: 'time', label: t('admin.data.thTime') },
+])
+
+const archiveAvailableColumns = computed(() => [
+  { key: 'process_id', label: t('admin.data.thProcessId') },
+  { key: 'workflow_code', label: t('admin.data.thWorkflowCode') },
+  { key: 'title', label: t('admin.data.thProcessTitle') },
+  { key: 'operator', label: t('admin.data.thOperator') },
+  { key: 'department', label: t('admin.data.thDepartment') },
+  { key: 'process_type', label: t('admin.data.thProcessType') },
+  { key: 'compliance', label: t('admin.data.thCompliance') },
+  { key: 'audit_count', label: t('admin.data.thAuditCount') },
+  { key: 'time', label: t('admin.data.thTime') },
+])
+
+const auditVisibleColumns = ref<string[]>([...AUDIT_DEFAULT_COLUMNS])
+const archiveVisibleColumns = ref<string[]>([...ARCHIVE_DEFAULT_COLUMNS])
+
+onMounted(() => {
+  if (process.client) {
+    try {
+      const savedAuditCols = localStorage.getItem('aura_audit_visible_columns')
+      if (savedAuditCols) {
+        const parsed = JSON.parse(savedAuditCols)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          auditVisibleColumns.value = parsed
+        }
+      }
+      const savedArchiveCols = localStorage.getItem('aura_archive_visible_columns')
+      if (savedArchiveCols) {
+        const parsed = JSON.parse(savedArchiveCols)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          archiveVisibleColumns.value = parsed
+        }
+      }
+    } catch {}
+  }
+})
+
+watch(auditVisibleColumns, (val) => {
+  if (process.client) {
+    localStorage.setItem('aura_audit_visible_columns', JSON.stringify(val))
+  }
+}, { deep: true })
+
+watch(archiveVisibleColumns, (val) => {
+  if (process.client) {
+    localStorage.setItem('aura_archive_visible_columns', JSON.stringify(val))
+  }
+}, { deep: true })
+
+function resetAuditColumns() {
+  auditVisibleColumns.value = [...AUDIT_DEFAULT_COLUMNS]
+}
+
+function resetArchiveColumns() {
+  archiveVisibleColumns.value = [...ARCHIVE_DEFAULT_COLUMNS]
+}
+
+// ─── 导出确认对话框 ──────────────────────────────────────────────────────
+const exportModalVisible = ref(false)
+const exportModalType = ref<MainTab>('audit')
+const exportModalLoading = ref(false)
+const exportIncludeHistory = ref(false)
+
+const exportModalTotal = computed(() => {
+  if (exportModalType.value === 'audit') return auditTotal.value
+  if (exportModalType.value === 'archive') return archiveTotal.value
+  if (exportModalType.value === 'summary') return summaryTotal.value
+  if (exportModalType.value === 'cron') return cronTotal.value
+  return 0
+})
+
+const exportModalColumns = computed(() => {
+  if (exportModalType.value === 'audit') {
+    return auditVisibleColumns.value.map(key => {
+      const col = auditAvailableColumns.value.find(c => c.key === key)
+      const label = col?.label || key
+      if (key === 'ai_result') {
+        return label + t('admin.data.aiResultFieldsHint')
+      }
+      return label
+    })
+  }
+  if (exportModalType.value === 'archive') {
+    return archiveVisibleColumns.value.map(key => {
+      const col = archiveAvailableColumns.value.find(c => c.key === key)
+      const label = col?.label || key
+      if (key === 'compliance') {
+        return label + t('admin.data.aiReviewFieldsHint')
+      }
+      return label
+    })
+  }
+  return []
+})
+
+function openExportConfirmModal(type: MainTab) {
+  exportModalType.value = type
+  exportIncludeHistory.value = false
+  exportModalVisible.value = true
+}
+
+async function confirmExport() {
+  exportModalLoading.value = true
+  const type = exportModalType.value
   try {
     if (type === 'audit') {
       const { page, page_size, ...filters } = auditQuery.value
-      await exportAuditSnapshots(filters)
+      await exportAuditSnapshots({
+        ...filters,
+        columns: auditVisibleColumns.value.join(','),
+        include_history: exportIncludeHistory.value ? true : undefined,
+      })
+    } else if (type === 'archive') {
+      const { page, page_size, ...filters } = archiveQuery.value
+      await exportArchiveSnapshots({
+        ...filters,
+        columns: archiveVisibleColumns.value.join(','),
+        include_history: exportIncludeHistory.value ? true : undefined,
+      })
     } else if (type === 'summary') {
       const { page, page_size, ...filters } = summaryQuery.value
       await exportSummarySnapshots(filters)
     } else if (type === 'cron') {
       const { page, page_size, ...filters } = cronQuery.value
       await exportCronLogs(filters)
-    } else {
-      const { page, page_size, ...filters } = archiveQuery.value
-      await exportArchiveLogs(filters)
     }
-    hide()
+    exportModalVisible.value = false
     message.success(t('admin.data.exportSuccess'))
   } catch (e: any) {
-    hide()
     message.error(e?.message || t('admin.data.exportFailed'))
+  } finally {
+    exportModalLoading.value = false
   }
 }
 
@@ -1221,9 +1340,41 @@ onMounted(async () => {
             <FilterOutlined /> {{ t('admin.data.filter') }}
             <span v-if="auditHasActiveFilters" class="filter-active-dot" />
           </a-button>
+
+          <a-popover trigger="click" placement="bottomLeft">
+            <template #content>
+              <div class="column-setting-popover">
+                <div class="column-setting-header">
+                  <span class="column-setting-title">{{ t('admin.data.columnsSetting') }}</span>
+                  <a-button type="link" size="small" class="column-setting-reset" @click="resetAuditColumns">
+                    {{ t('admin.data.resetColumns') }}
+                  </a-button>
+                </div>
+                <div class="column-checkbox-list">
+                  <div v-for="col in auditAvailableColumns" :key="col.key" class="column-checkbox-item">
+                    <a-checkbox
+                      :checked="auditVisibleColumns.includes(col.key)"
+                      @change="(e: any) => {
+                        if (e.target.checked) {
+                          if (!auditVisibleColumns.includes(col.key)) auditVisibleColumns.push(col.key)
+                        } else {
+                          auditVisibleColumns = auditVisibleColumns.filter(k => k !== col.key)
+                        }
+                      }"
+                    >
+                      {{ col.label }}
+                    </a-checkbox>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <a-button size="small">
+              <SettingOutlined /> {{ t('admin.data.columnsSetting') }}
+            </a-button>
+          </a-popover>
         </div>
         <div class="toolbar-right">
-          <a-button @click="handleExport('audit')">
+          <a-button @click="openExportConfirmModal('audit')">
             <ExportOutlined /> {{ t('export.excel') }}
           </a-button>
         </div>
@@ -1304,57 +1455,49 @@ onMounted(async () => {
 
       <div class="data-table-card">
         <table class="data-table data-table--audit data-table--with-actions">
-          <colgroup>
-            <col style="width: 90px;" />
-            <col style="width: 220px;" />
-            <col style="width: 170px;" />
-            <col style="width: 100px;" />
-            <col style="width: 150px;" />
-            <col style="width: 170px;" />
-            <col style="width: 248px;" />
-            <col style="width: 75px;" />
-            <col style="width: 130px;" />
-            <col style="width: 56px;" />
-          </colgroup>
           <thead>
           <tr>
-            <th>{{ t('admin.data.thProcessId') }}</th>
-            <th>{{ t('admin.data.thProcessTitle') }}</th>
-            <th>{{ t('admin.data.thOperator') }}</th>
-            <th>{{ t('admin.data.thDepartment') }}</th>
-            <th>{{ t('admin.data.thProcessType') }}</th>
-            <th>{{ t('admin.data.thSourceChannel') }}</th>
-            <th>{{ t('admin.data.thResult') }}</th>
-            <th>{{ t('admin.data.thAuditCount') }}</th>
-            <th>{{ t('admin.data.thTime') }}</th>
-            <th>{{ t('admin.data.thAction') }}</th>
+            <th v-if="auditVisibleColumns.includes('process_id')" style="min-width: 90px;">{{ t('admin.data.thProcessId') }}</th>
+            <th v-if="auditVisibleColumns.includes('workflow_code')" style="min-width: 120px;">{{ t('admin.data.thWorkflowCode') }}</th>
+            <th v-if="auditVisibleColumns.includes('title')" style="min-width: 200px;">{{ t('admin.data.thProcessTitle') }}</th>
+            <th v-if="auditVisibleColumns.includes('operator')" style="min-width: 150px;">{{ t('admin.data.thOperator') }}</th>
+            <th v-if="auditVisibleColumns.includes('department')" style="min-width: 100px;">{{ t('admin.data.thDepartment') }}</th>
+            <th v-if="auditVisibleColumns.includes('process_type')" style="min-width: 130px;">{{ t('admin.data.thProcessType') }}</th>
+            <th v-if="auditVisibleColumns.includes('channel')" style="min-width: 160px;">{{ t('admin.data.thSourceChannel') }}</th>
+            <th v-if="auditVisibleColumns.includes('ai_result')" style="min-width: 220px;">{{ t('admin.data.thResult') }}</th>
+            <th v-if="auditVisibleColumns.includes('audit_count')" style="min-width: 75px;">{{ t('admin.data.thAuditCount') }}</th>
+            <th v-if="auditVisibleColumns.includes('time')" style="min-width: 130px;">{{ t('admin.data.thTime') }}</th>
+            <th style="width: 56px;">{{ t('admin.data.thAction') }}</th>
           </tr>
           </thead>
           <tbody>
           <tr v-if="auditLoading">
-            <td colspan="10" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td :colspan="auditVisibleColumns.length + 1" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in auditSnapshots" :key="item.id">
-            <td class="text-mono">
+            <td v-if="auditVisibleColumns.includes('process_id')" class="text-mono">
               <OverflowTooltip :text="item.process_id" block>{{ item.process_id }}</OverflowTooltip>
             </td>
-            <td class="table-title-cell">
+            <td v-if="auditVisibleColumns.includes('workflow_code')" class="text-mono">
+              <OverflowTooltip :text="item.workflow_code || '-'" block>{{ item.workflow_code || '-' }}</OverflowTooltip>
+            </td>
+            <td v-if="auditVisibleColumns.includes('title')" class="table-title-cell">
               <OverflowTooltip :text="item.title" block>
                 <span class="table-clamp" data-overflow-check>{{ item.title }}</span>
               </OverflowTooltip>
             </td>
-            <td class="operator-cell">
+            <td v-if="auditVisibleColumns.includes('operator')" class="operator-cell">
               <OverflowTooltip :text="item.operator || '-'" block>{{ item.operator || '-' }}</OverflowTooltip>
             </td>
-            <td>
+            <td v-if="auditVisibleColumns.includes('department')">
               <OverflowTooltip :text="item.department || '-'" block>{{ item.department || '-' }}</OverflowTooltip>
             </td>
-            <td class="text-secondary table-type-cell">
+            <td v-if="auditVisibleColumns.includes('process_type')" class="text-secondary table-type-cell">
               <OverflowTooltip :text="item.process_type" block>
                 <span class="table-clamp" data-overflow-check>{{ item.process_type }}</span>
               </OverflowTooltip>
             </td>
-            <td class="source-action-cell">
+            <td v-if="auditVisibleColumns.includes('channel')" class="source-action-cell">
               <OverflowTooltip :text="getSourceActionTitle(item.channel, item.trigger_detail)" block>
                 <div class="source-action-stack">
                   <span
@@ -1373,7 +1516,7 @@ onMounted(async () => {
                 </div>
               </OverflowTooltip>
             </td>
-            <td class="result-cell">
+            <td v-if="auditVisibleColumns.includes('ai_result')" class="result-cell">
               <OverflowTooltip
                   v-if="item.recommendation"
                   :text="getResultTitle(getRecLabel(item.recommendation), item.score, item.confidence)"
@@ -1394,10 +1537,10 @@ onMounted(async () => {
                 </span>
               </OverflowTooltip>
             </td>
-            <td>
+            <td v-if="auditVisibleColumns.includes('audit_count')">
               <OverflowTooltip :text="String(getAuditCount(item.valid_log_ids))" block>{{ getAuditCount(item.valid_log_ids) }}</OverflowTooltip>
             </td>
-            <td class="text-secondary table-time-cell">
+            <td v-if="auditVisibleColumns.includes('time')" class="text-secondary table-time-cell">
               <OverflowTooltip :text="item.updated_at_fmt" block>{{ item.updated_at_fmt }}</OverflowTooltip>
             </td>
             <td>
@@ -1413,7 +1556,7 @@ onMounted(async () => {
             </td>
           </tr>
           <tr v-if="!auditLoading && auditSnapshots.length === 0">
-            <td colspan="10" class="empty-cell">{{ t('admin.data.noData') }}</td>
+            <td :colspan="auditVisibleColumns.length + 1" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>
@@ -1468,7 +1611,7 @@ onMounted(async () => {
           </a-button>
         </div>
         <div class="toolbar-right">
-          <a-button @click="handleExport('cron')">
+          <a-button @click="openExportConfirmModal('cron')">
             <ExportOutlined /> {{ t('export.excel') }}
           </a-button>
         </div>
@@ -1641,9 +1784,41 @@ onMounted(async () => {
             <FilterOutlined /> {{ t('admin.data.filter') }}
             <span v-if="archiveHasActiveFilters" class="filter-active-dot" />
           </a-button>
+
+          <a-popover trigger="click" placement="bottomLeft">
+            <template #content>
+              <div class="column-setting-popover">
+                <div class="column-setting-header">
+                  <span class="column-setting-title">{{ t('admin.data.columnsSetting') }}</span>
+                  <a-button type="link" size="small" class="column-setting-reset" @click="resetArchiveColumns">
+                    {{ t('admin.data.resetColumns') }}
+                  </a-button>
+                </div>
+                <div class="column-checkbox-list">
+                  <div v-for="col in archiveAvailableColumns" :key="col.key" class="column-checkbox-item">
+                    <a-checkbox
+                      :checked="archiveVisibleColumns.includes(col.key)"
+                      @change="(e: any) => {
+                        if (e.target.checked) {
+                          if (!archiveVisibleColumns.includes(col.key)) archiveVisibleColumns.push(col.key)
+                        } else {
+                          archiveVisibleColumns = archiveVisibleColumns.filter(k => k !== col.key)
+                        }
+                      }"
+                    >
+                      {{ col.label }}
+                    </a-checkbox>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <a-button size="small">
+              <SettingOutlined /> {{ t('admin.data.columnsSetting') }}
+            </a-button>
+          </a-popover>
         </div>
         <div class="toolbar-right">
-          <a-button @click="handleExport('archive')">
+          <a-button @click="openExportConfirmModal('archive')">
             <ExportOutlined /> {{ t('export.excel') }}
           </a-button>
         </div>
@@ -1714,42 +1889,46 @@ onMounted(async () => {
         <table class="data-table data-table--with-actions">
           <thead>
           <tr>
-            <th>{{ t('admin.data.thProcessId') }}</th>
-            <th>{{ t('admin.data.thProcessTitle') }}</th>
-            <th>{{ t('admin.data.thOperator') }}</th>
-            <th>{{ t('admin.data.thDepartment') }}</th>
-            <th>{{ t('admin.data.thProcessType') }}</th>
-            <th>{{ t('admin.data.thCompliance') }}</th>
-            <th>{{ t('admin.data.thAuditCount') }}</th>
-            <th>{{ t('admin.data.thTime') }}</th>
-            <th>{{ t('admin.data.thAction') }}</th>
+            <th v-if="archiveVisibleColumns.includes('process_id')" style="min-width: 90px;">{{ t('admin.data.thProcessId') }}</th>
+            <th v-if="archiveVisibleColumns.includes('workflow_code')" style="min-width: 120px;">{{ t('admin.data.thWorkflowCode') }}</th>
+            <th v-if="archiveVisibleColumns.includes('title')" style="min-width: 200px;">{{ t('admin.data.thProcessTitle') }}</th>
+            <th v-if="archiveVisibleColumns.includes('operator')" style="min-width: 150px;">{{ t('admin.data.thOperator') }}</th>
+            <th v-if="archiveVisibleColumns.includes('department')" style="min-width: 100px;">{{ t('admin.data.thDepartment') }}</th>
+            <th v-if="archiveVisibleColumns.includes('process_type')" style="min-width: 130px;">{{ t('admin.data.thProcessType') }}</th>
+            <th v-if="archiveVisibleColumns.includes('compliance')" style="min-width: 220px;">{{ t('admin.data.thCompliance') }}</th>
+            <th v-if="archiveVisibleColumns.includes('audit_count')" style="min-width: 75px;">{{ t('admin.data.thAuditCount') }}</th>
+            <th v-if="archiveVisibleColumns.includes('time')" style="min-width: 130px;">{{ t('admin.data.thTime') }}</th>
+            <th style="width: 56px;">{{ t('admin.data.thAction') }}</th>
           </tr>
           </thead>
           <tbody>
           <tr v-if="archiveLoading">
-            <td colspan="9" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td :colspan="archiveVisibleColumns.length + 1" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in archiveSnapshots" :key="item.id">
-            <td class="text-mono">
+            <td v-if="archiveVisibleColumns.includes('process_id')" class="text-mono">
               <OverflowTooltip :text="item.process_id" block>{{ item.process_id }}</OverflowTooltip>
             </td>
-            <td class="table-title-cell">
+            <td v-if="archiveVisibleColumns.includes('workflow_code')" class="text-mono">
+              <OverflowTooltip :text="item.workflow_code || '-'" block>{{ item.workflow_code || '-' }}</OverflowTooltip>
+            </td>
+            <td v-if="archiveVisibleColumns.includes('title')" class="table-title-cell">
               <OverflowTooltip :text="item.title" block>
                 <span class="table-clamp" data-overflow-check>{{ item.title }}</span>
               </OverflowTooltip>
             </td>
-            <td class="operator-cell">
+            <td v-if="archiveVisibleColumns.includes('operator')" class="operator-cell">
               <OverflowTooltip :text="item.operator || '-'" block>{{ item.operator || '-' }}</OverflowTooltip>
             </td>
-            <td>
+            <td v-if="archiveVisibleColumns.includes('department')">
               <OverflowTooltip :text="item.department || '-'" block>{{ item.department || '-' }}</OverflowTooltip>
             </td>
-            <td class="text-secondary table-type-cell">
+            <td v-if="archiveVisibleColumns.includes('process_type')" class="text-secondary table-type-cell">
               <OverflowTooltip :text="item.process_type" block>
                 <span class="table-clamp" data-overflow-check>{{ item.process_type }}</span>
               </OverflowTooltip>
             </td>
-            <td class="result-cell">
+            <td v-if="archiveVisibleColumns.includes('compliance')" class="result-cell">
               <OverflowTooltip
                   v-if="item.compliance"
                   :text="getResultTitle(getComplianceLabel(item.compliance), item.compliance_score, item.confidence)"
@@ -1771,10 +1950,10 @@ onMounted(async () => {
               </OverflowTooltip>
               <span v-else class="text-secondary">-</span>
             </td>
-            <td>
+            <td v-if="archiveVisibleColumns.includes('audit_count')">
               <OverflowTooltip :text="String(getAuditCount(item.valid_archive_log_ids))" block>{{ getAuditCount(item.valid_archive_log_ids) }}</OverflowTooltip>
             </td>
-            <td class="text-secondary">
+            <td v-if="archiveVisibleColumns.includes('time')" class="text-secondary">
               <OverflowTooltip :text="item.updated_at_fmt" block>{{ item.updated_at_fmt }}</OverflowTooltip>
             </td>
             <td>
@@ -1790,7 +1969,7 @@ onMounted(async () => {
             </td>
           </tr>
           <tr v-if="!archiveLoading && archiveSnapshots.length === 0">
-            <td colspan="9" class="empty-cell">{{ t('admin.data.noData') }}</td>
+            <td :colspan="archiveVisibleColumns.length + 1" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>
@@ -1841,7 +2020,7 @@ onMounted(async () => {
           </a-button>
         </div>
         <div class="toolbar-right">
-          <a-button @click="handleExport('summary')">
+          <a-button @click="openExportConfirmModal('summary')">
             <ExportOutlined /> {{ t('export.excel') }}
           </a-button>
         </div>
@@ -3295,6 +3474,44 @@ onMounted(async () => {
         </div>
       </transition>
     </Teleport>
+
+    <!-- 导出确认对话框 -->
+    <a-modal
+      v-model:open="exportModalVisible"
+      :title="t('admin.data.confirmExportTitle')"
+      :confirm-loading="exportModalLoading"
+      :ok-text="t('admin.data.confirmExportBtn')"
+      :cancel-text="t('admin.data.cancelBtn')"
+      width="520px"
+      @ok="confirmExport"
+    >
+      <div class="export-confirm-modal-content">
+        <div class="export-modal-prompt">
+          <InfoCircleOutlined style="color: var(--color-primary); font-size: 18px; flex-shrink: 0; margin-top: 2px;" />
+          <span>{{ t('admin.data.confirmExportPrompt', { count: exportModalTotal }) }}</span>
+        </div>
+
+        <div v-if="exportModalColumns.length > 0" class="export-modal-section">
+          <div class="export-modal-section-title">{{ t('admin.data.exportColumnsSummary') }}</div>
+          <div class="export-modal-tags">
+            <span v-for="colLabel in exportModalColumns" :key="colLabel" class="export-column-pill">
+              {{ colLabel }}
+            </span>
+          </div>
+        </div>
+
+        <div v-if="exportModalType === 'audit' || exportModalType === 'archive'" class="export-history-option">
+          <a-checkbox v-model:checked="exportIncludeHistory">
+            <span class="export-history-title">
+              {{ exportModalType === 'audit' ? t('admin.data.exportHistory') : t('admin.data.exportReviewHistory') }}
+            </span>
+          </a-checkbox>
+          <div class="export-history-desc">
+            {{ exportModalType === 'audit' ? t('admin.data.exportHistoryDesc') : t('admin.data.exportReviewHistoryDesc') }}
+          </div>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -4491,6 +4708,107 @@ details[open] > summary .chat-section-chevron {
 .detail-meta-value {
   font-size: 14px;
   color: var(--color-text-primary);
+}
+
+/* 列展示设置 Popover */
+.column-setting-popover {
+  width: 220px;
+  padding: 4px 0;
+}
+.column-setting-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.column-setting-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.column-setting-reset {
+  padding: 0 !important;
+  font-size: 12px;
+  height: auto;
+}
+.column-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.column-checkbox-item {
+  display: flex;
+  align-items: center;
+}
+
+/* 导出确认弹窗 */
+.export-confirm-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0;
+}
+.export-modal-prompt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  line-height: 1.6;
+}
+.export-modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--color-bg-secondary, #f8fafc);
+  padding: 12px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--color-border-light, #e2e8f0);
+}
+.export-modal-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.export-modal-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.export-column-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #ffffff;
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--color-text-primary);
+}
+.export-history-option {
+  padding: 12px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  background: #ffffff;
+  transition: border-color 0.2s;
+}
+.export-history-option:hover {
+  border-color: var(--color-primary, #1890ff);
+}
+.export-history-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.export-history-desc {
+  margin-top: 4px;
+  margin-left: 24px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
 }
 
 @media (max-width: 768px) {

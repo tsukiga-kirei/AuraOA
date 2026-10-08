@@ -163,6 +163,18 @@ GET /api/archive/snapshots/stats
 
 ---
 
+### 导出快照
+
+```
+GET /api/archive/snapshots/export
+```
+
+按筛选条件导出 Excel（最多 5000 条）。查询参数与列表接口一致，支持：
+- `columns`：自定义展示列（逗号分隔，如 `process_id,workflow_code,title,operator,department,process_type,compliance,audit_count,time`）
+- `include_history`：布尔值（`true`/`false`），是否追加复核历史列展示历次复核记录
+
+---
+
 ### 获取快照复盘链
 
 ```

@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
@@ -426,15 +428,33 @@ func (h *ArchiveReviewHandler) ListSnapshots(c *gin.Context) {
 		handleServiceError(c, err)
 		return
 	}
+
+	pids := make([]string, len(items))
+	for i, row := range items {
+		pids[i] = row.ProcessID
+	}
+	var wfCodes map[string]string
+	if tidVal, ok := c.Get("tenant_id"); ok {
+		if tenantID, ok := tidVal.(uuid.UUID); ok {
+			wfCodes = h.archiveService.FetchWorkflowCodes(c.Request.Context(), tenantID, pids)
+		}
+	}
+
 	type itemDTO struct {
 		repository.ArchiveSnapshotListRow
+		WorkflowCode string `json:"workflow_code"`
 		UpdatedAtFmt string `json:"updated_at_fmt"`
 		CreatedAtFmt string `json:"created_at_fmt"`
 	}
 	out := make([]itemDTO, len(items))
 	for i, row := range items {
+		wfCode := ""
+		if wfCodes != nil {
+			wfCode = wfCodes[row.ProcessID]
+		}
 		out[i] = itemDTO{
 			ArchiveSnapshotListRow: row,
+			WorkflowCode:           wfCode,
 			UpdatedAtFmt:           row.UpdatedAt.Local().Format("2006/1/2 15:04"),
 			CreatedAtFmt:           row.CreatedAt.Local().Format("2006/1/2 15:04"),
 		}
@@ -457,6 +477,240 @@ func (h *ArchiveReviewHandler) GetSnapshotStats(c *gin.Context) {
 		return
 	}
 	response.Success(c, stats)
+}
+
+// ExportSnapshots 导出归档快照为 Excel（最多 5000 条，筛选条件同列表）。
+// GET /api/archive/snapshots/export
+// 支持 columns 指定导出展示列，支持 include_history=true 导出复核历史。
+func (h *ArchiveReviewHandler) ExportSnapshots(c *gin.Context) {
+	filter, _, _ := parseArchiveSnapshotQuery(c)
+	items, _, err := h.snapshotRepo.ListPagedWithUser(c, filter, 1, 5000)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	locale := excelpkg.ResolveLocale(c)
+	var tenantID uuid.UUID
+	if tidVal, ok := c.Get("tenant_id"); ok {
+		tenantID, _ = tidVal.(uuid.UUID)
+	}
+
+	columnsParam := strings.TrimSpace(c.Query("columns"))
+	var selectedCols []string
+	if columnsParam != "" {
+		for _, col := range strings.Split(columnsParam, ",") {
+			col = strings.TrimSpace(col)
+			if col != "" {
+				selectedCols = append(selectedCols, col)
+			}
+		}
+	}
+	if len(selectedCols) == 0 {
+		selectedCols = []string{"process_id", "title", "operator", "department", "process_type", "compliance", "audit_count", "time"}
+	}
+
+	needWorkflowCode := false
+	for _, col := range selectedCols {
+		if col == "workflow_code" {
+			needWorkflowCode = true
+			break
+		}
+	}
+
+	pids := make([]string, len(items))
+	for i, item := range items {
+		pids[i] = item.ProcessID
+	}
+
+	var wfCodes map[string]string
+	if needWorkflowCode && tenantID != uuid.Nil {
+		wfCodes = h.archiveService.FetchWorkflowCodes(c.Request.Context(), tenantID, pids)
+	}
+
+	includeHistory := c.Query("include_history") == "true" || c.Query("include_history") == "1"
+	historyMap := make(map[string]string)
+	if includeHistory && len(pids) > 0 {
+		historyMap = h.buildArchiveHistoryMap(c, pids, locale)
+	}
+
+	headers := make([]string, 0)
+	for _, col := range selectedCols {
+		switch col {
+		case "process_id":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Process Request ID")
+			} else {
+				headers = append(headers, "流程请求 ID")
+			}
+		case "workflow_code":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Process Number")
+			} else {
+				headers = append(headers, "流程编号")
+			}
+		case "title":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Title")
+			} else {
+				headers = append(headers, "流程标题")
+			}
+		case "operator":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Operator")
+			} else {
+				headers = append(headers, "操作人")
+			}
+		case "department":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Department")
+			} else {
+				headers = append(headers, "部门")
+			}
+		case "process_type":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Process Type")
+			} else {
+				headers = append(headers, "流程分类")
+			}
+		case "compliance", "ai_result":
+			// AI 复核结果关联 3 个字段：合规性、合规评分、置信度
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Compliance", "Score", "Confidence")
+			} else {
+				headers = append(headers, "合规性", "合规评分", "置信度")
+			}
+		case "audit_count":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Review Count")
+			} else {
+				headers = append(headers, "复核次数")
+			}
+		case "time":
+			if locale == excelpkg.LocaleEN {
+				headers = append(headers, "Time")
+			} else {
+				headers = append(headers, "时间")
+			}
+		}
+	}
+	if includeHistory {
+		if locale == excelpkg.LocaleEN {
+			headers = append(headers, "Review History")
+		} else {
+			headers = append(headers, "复核历史")
+		}
+	}
+
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		row := make([]string, 0, len(headers))
+		for _, col := range selectedCols {
+			switch col {
+			case "process_id":
+				row = append(row, item.ProcessID)
+			case "workflow_code":
+				wf := ""
+				if wfCodes != nil {
+					wf = wfCodes[item.ProcessID]
+				}
+				row = append(row, wf)
+			case "title":
+				row = append(row, item.Title)
+			case "operator":
+				row = append(row, item.Operator)
+			case "department":
+				row = append(row, item.Department)
+			case "process_type":
+				row = append(row, item.ProcessType)
+			case "compliance", "ai_result":
+				compText := excelpkg.TranslateEnum(excelpkg.EnumCompliance, item.Compliance, locale)
+				scoreText := fmt.Sprintf("%d", item.ComplianceScore)
+				confText := fmt.Sprintf("%d%%", item.Confidence)
+				row = append(row, compText, scoreText, confText)
+			case "audit_count":
+				row = append(row, fmt.Sprintf("%d", countArchiveSnapshotLogIDs(item.ValidArchiveLogIDs)))
+			case "time":
+				row = append(row, item.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
+			}
+		}
+		if includeHistory {
+			row = append(row, historyMap[item.ProcessID])
+		}
+		rows = append(rows, row)
+	}
+
+	filename := fmt.Sprintf("archive_snapshots_%s", apptime.Now().Format("20060102_150405"))
+	config := excelpkg.ExportConfig{
+		CustomHeaders: headers,
+		Locale:        locale,
+		Filename:      filename,
+	}
+	if err := excelpkg.WriteExcel(c, config, rows); err != nil {
+		response.Error(c, http.StatusInternalServerError, errcode.ErrInternalServer, "导出失败: "+err.Error())
+	}
+}
+
+// buildArchiveHistoryMap 查询并格式化流程的历次归档复盘历史记录为清晰中文文本。
+func (h *ArchiveReviewHandler) buildArchiveHistoryMap(c *gin.Context, processIDs []string, locale excelpkg.Locale) map[string]string {
+	result := make(map[string]string)
+	if len(processIDs) == 0 {
+		return result
+	}
+
+	type archiveLogSimple struct {
+		ProcessID       string    `gorm:"column:process_id"`
+		CreatedAt       time.Time `gorm:"column:created_at"`
+		UserName        string    `gorm:"column:user_name"`
+		OverallDecision string    `gorm:"column:overall_decision"`
+		Score           int       `gorm:"column:score"`
+		Confidence      int       `gorm:"column:confidence"`
+	}
+
+	var logs []archiveLogSimple
+	err := h.archiveLogRepo.WithTenant(c).
+		Table("archive_logs").
+		Select("process_id, created_at, user_name, overall_decision, score, confidence").
+		Where("process_id IN ? AND status = ?", processIDs, model.JobStatusCompleted).
+		Where("COALESCE(parse_error, '') = '' AND overall_decision IN ('compliant', 'partially_compliant', 'non_compliant')").
+		Order("created_at desc").
+		Find(&logs).Error
+
+	if err != nil || len(logs) == 0 {
+		return result
+	}
+
+	grouped := make(map[string][]archiveLogSimple)
+	for _, l := range logs {
+		grouped[l.ProcessID] = append(grouped[l.ProcessID], l)
+	}
+
+	for pid, list := range grouped {
+		var lines []string
+		for idx, item := range list {
+			timeStr := item.CreatedAt.Local().Format("2006-01-02 15:04:05")
+			opName := item.UserName
+			if opName == "" {
+				opName = "系统"
+			}
+			comp := excelpkg.TranslateEnum(excelpkg.EnumCompliance, item.OverallDecision, locale)
+			line := fmt.Sprintf("[%d] %s | 操作人: %s | 合规性: %s | 评分: %d分 | 置信度: %d%%",
+				idx+1, timeStr, opName, comp, item.Score, item.Confidence)
+			lines = append(lines, line)
+		}
+		result[pid] = strings.Join(lines, "\n")
+	}
+
+	return result
+}
+
+// countArchiveSnapshotLogIDs 解析 valid_archive_log_ids JSON 数组并返回其元素数量。
+func countArchiveSnapshotLogIDs(data datatypes.JSON) int {
+	var ids []string
+	if err := json.Unmarshal(data, &ids); err != nil {
+		return 0
+	}
+	return len(ids)
 }
 
 // GetSnapshotChain 获取指定流程的归档复盘链详情（所有有效复盘记录按时间排序）。

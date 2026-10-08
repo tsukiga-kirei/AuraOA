@@ -241,19 +241,36 @@ func (h *ProcessSummaryHandler) ExportSnapshots(c *gin.Context) {
 		return
 	}
 	locale := excelpkg.ResolveLocale(c)
+
+	pids := make([]string, len(items))
+	for i, item := range items {
+		pids[i] = item.ProcessID
+	}
+	var wfCodes map[string]string
+	if tidVal, ok := c.Get("tenant_id"); ok {
+		if tenantID, ok := tidVal.(uuid.UUID); ok {
+			wfCodes = h.summaryService.FetchWorkflowCodes(c.Request.Context(), tenantID, pids)
+		}
+	}
+
 	rows := make([][]string, 0, len(items))
 	for _, item := range items {
 		channel := item.Channel
 		if channel == "" {
 			channel = model.AuditSnapshotChannelWorkbench
 		}
+		wfCode := ""
+		if wfCodes != nil {
+			wfCode = wfCodes[item.ProcessID]
+		}
 		rows = append(rows, []string{
 			item.ProcessID,
+			wfCode,
 			item.Title,
 			item.Operator,
 			item.Department,
 			item.ProcessType,
-			excelpkg.TranslateEnum(excelpkg.EnumSourceChannel, channel, locale),
+			excelpkg.FormatSourceAction(channel, "", locale),
 			fmt.Sprintf("%d", item.BlockCount),
 			fmt.Sprintf("%d", countSummarySnapshotLogIDs(item.ValidLogIDs)),
 			item.UpdatedAt.Local().Format("2006-01-02 15:04:05"),

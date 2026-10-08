@@ -33,8 +33,10 @@ const (
 	ExportTypeArchiveReviewed
 	// ExportTypeUserConfig 用户偏好导出（9 列）。
 	ExportTypeUserConfig
-	// ExportTypeAuditSnapshot 数据管理 — 审核快照（11 列）。
+	// ExportTypeAuditSnapshot 数据管理 — 审核快照（12 列）。
 	ExportTypeAuditSnapshot
+	// ExportTypeArchiveSnapshot 数据管理 — 归档快照（12 列）。
+	ExportTypeArchiveSnapshot
 	// ExportTypeSummarySnapshot 数据管理 — 流程总结快照（10 列）。
 	ExportTypeSummarySnapshot
 )
@@ -43,7 +45,7 @@ const (
 type EnumType int
 
 const (
-	// EnumAuditRecommendation 审核建议枚举（approve / reject / review）。
+	// EnumAuditRecommendation 审核建议枚举（approve / return / review）。
 	EnumAuditRecommendation EnumType = iota
 	// EnumAuditStatus 审核状态枚举（pending_ai / completed / failed）。
 	EnumAuditStatus
@@ -51,7 +53,7 @@ const (
 	EnumCompliance
 	// EnumMemberStatus 成员状态枚举（active / inactive）。
 	EnumMemberStatus
-	// EnumSourceChannel 发起方式（workbench / embed）。
+	// EnumSourceChannel 发起方式（workbench / embed / embed_standard / embed_personal）。
 	EnumSourceChannel
 )
 
@@ -59,32 +61,36 @@ const (
 // 外层 key 为 ExportType，内层 key 为 Locale。
 var colHeadersMap = map[ExportType]map[Locale][]string{
 	ExportTypeAuditUnaudited: {
-		LocaleZH: {"流程编号", "流程标题", "申请人", "部门", "流程类型", "提交时间", "当前节点"},
-		LocaleEN: {"Process ID", "Title", "Applicant", "Department", "Process Type", "Submit Time", "Current Node"},
+		LocaleZH: {"流程请求 ID", "流程标题", "申请人", "部门", "流程类型", "提交时间", "当前节点"},
+		LocaleEN: {"Process Request ID", "Title", "Applicant", "Department", "Process Type", "Submit Time", "Current Node"},
 	},
 	ExportTypeAuditCompleted: {
-		LocaleZH: {"流程编号", "流程标题", "申请人", "部门", "流程类型", "提交时间", "当前节点", "审核建议", "评分", "审核状态", "审核时间"},
-		LocaleEN: {"Process ID", "Title", "Applicant", "Department", "Process Type", "Submit Time", "Current Node", "Recommendation", "Score", "Audit Status", "Audit Time"},
+		LocaleZH: {"流程请求 ID", "流程标题", "申请人", "部门", "流程类型", "提交时间", "当前节点", "审核建议", "评分", "审核状态", "审核时间"},
+		LocaleEN: {"Process Request ID", "Title", "Applicant", "Department", "Process Type", "Submit Time", "Current Node", "Recommendation", "Score", "Audit Status", "Audit Time"},
 	},
 	ExportTypeArchiveUnaudited: {
-		LocaleZH: {"流程编号", "流程标题", "申请人", "部门", "流程类型", "归档时间"},
-		LocaleEN: {"Process ID", "Title", "Applicant", "Department", "Process Type", "Archive Time"},
+		LocaleZH: {"流程请求 ID", "流程标题", "申请人", "部门", "流程类型", "归档时间"},
+		LocaleEN: {"Process Request ID", "Title", "Applicant", "Department", "Process Type", "Archive Time"},
 	},
 	ExportTypeArchiveReviewed: {
-		LocaleZH: {"流程编号", "流程标题", "申请人", "部门", "流程类型", "归档时间", "合规性", "合规评分", "置信度", "复核时间"},
-		LocaleEN: {"Process ID", "Title", "Applicant", "Department", "Process Type", "Archive Time", "Compliance", "Score", "Confidence", "Review Time"},
+		LocaleZH: {"流程请求 ID", "流程标题", "申请人", "部门", "流程类型", "归档时间", "合规性", "合规评分", "置信度", "复核时间"},
+		LocaleEN: {"Process Request ID", "Title", "Applicant", "Department", "Process Type", "Archive Time", "Compliance", "Score", "Confidence", "Review Time"},
 	},
 	ExportTypeUserConfig: {
 		LocaleZH: {"用户名", "显示名", "部门", "角色", "审核流程数", "归档流程数", "总结偏好流程数", "定时任务数", "最近修改时间"},
 		LocaleEN: {"Username", "Display Name", "Department", "Roles", "Audit Processes", "Archive Processes", "Summary Preferences", "Cron Tasks", "Last Modified"},
 	},
 	ExportTypeAuditSnapshot: {
-		LocaleZH: {"流程编号", "流程标题", "操作人", "部门", "流程类型", "发起方式", "审核建议", "评分", "置信度", "审核次数", "时间"},
-		LocaleEN: {"Process ID", "Title", "Operator", "Department", "Process Type", "Source", "Recommendation", "Score", "Confidence", "Audit Count", "Time"},
+		LocaleZH: {"流程请求 ID", "流程编号", "流程标题", "操作人", "部门", "流程分类", "发起方式", "审核建议", "评分", "置信度", "审核次数", "时间"},
+		LocaleEN: {"Process Request ID", "Process Number", "Title", "Operator", "Department", "Process Type", "Source", "Recommendation", "Score", "Confidence", "Audit Count", "Time"},
+	},
+	ExportTypeArchiveSnapshot: {
+		LocaleZH: {"流程请求 ID", "流程编号", "流程标题", "操作人", "部门", "流程分类", "发起方式", "合规性", "合规评分", "置信度", "复核次数", "时间"},
+		LocaleEN: {"Process Request ID", "Process Number", "Title", "Operator", "Department", "Process Type", "Source", "Compliance", "Score", "Confidence", "Review Count", "Time"},
 	},
 	ExportTypeSummarySnapshot: {
-		LocaleZH: {"流程编号", "流程标题", "操作人", "部门", "流程类型", "发起方式", "总结块数", "总结次数", "时间"},
-		LocaleEN: {"Process ID", "Title", "Operator", "Department", "Process Type", "Source", "Block Count", "Summary Count", "Time"},
+		LocaleZH: {"流程请求 ID", "流程编号", "流程标题", "操作人", "部门", "流程分类", "发起方式", "总结块数", "总结次数", "时间"},
+		LocaleEN: {"Process Request ID", "Process Number", "Title", "Operator", "Department", "Process Type", "Source", "Block Count", "Summary Count", "Time"},
 	},
 }
 
@@ -92,9 +98,10 @@ var colHeadersMap = map[ExportType]map[Locale][]string{
 // 结构：enumType -> rawValue -> locale -> translatedText
 var enumTranslationsMap = map[EnumType]map[string]map[Locale]string{
 	EnumAuditRecommendation: {
-		"approve": {LocaleZH: "通过", LocaleEN: "Approve"},
-		"reject":  {LocaleZH: "拒绝", LocaleEN: "Reject"},
-		"review":  {LocaleZH: "复核", LocaleEN: "Review"},
+		"approve": {LocaleZH: "建议通过", LocaleEN: "Approve"},
+		"return":  {LocaleZH: "建议退回", LocaleEN: "Return"},
+		"review":  {LocaleZH: "建议复核", LocaleEN: "Review"},
+		"reject":  {LocaleZH: "建议退回", LocaleEN: "Return"},
 	},
 	EnumAuditStatus: {
 		"pending_ai": {LocaleZH: "待审核", LocaleEN: "Pending"},
@@ -102,17 +109,19 @@ var enumTranslationsMap = map[EnumType]map[string]map[Locale]string{
 		"failed":     {LocaleZH: "失败", LocaleEN: "Failed"},
 	},
 	EnumCompliance: {
-		"compliant":           {LocaleZH: "合规", LocaleEN: "Compliant"},
+		"compliant":           {LocaleZH: "建议合规", LocaleEN: "Compliant"},
 		"partially_compliant": {LocaleZH: "部分合规", LocaleEN: "Partially Compliant"},
-		"non_compliant":       {LocaleZH: "不合规", LocaleEN: "Non-Compliant"},
+		"non_compliant":       {LocaleZH: "建议不合规", LocaleEN: "Non-Compliant"},
 	},
 	EnumMemberStatus: {
 		"active":   {LocaleZH: "启用", LocaleEN: "Active"},
 		"inactive": {LocaleZH: "禁用", LocaleEN: "Inactive"},
 	},
 	EnumSourceChannel: {
-		"workbench": {LocaleZH: "系统内", LocaleEN: "In-App"},
-		"embed":     {LocaleZH: "OA 嵌入", LocaleEN: "OA Embed"},
+		"workbench":      {LocaleZH: "审核工作台", LocaleEN: "Workbench"},
+		"embed":          {LocaleZH: "嵌入通用", LocaleEN: "Embed"},
+		"embed_standard": {LocaleZH: "嵌入通用", LocaleEN: "Embed"},
+		"embed_personal": {LocaleZH: "嵌入个人", LocaleEN: "Embed (Personal)"},
 	},
 }
 
@@ -192,4 +201,39 @@ func TranslateEnum(enumType EnumType, value string, locale Locale) string {
 	}
 
 	return value
+}
+
+// FormatSourceAction 将渠道与触发细节格式化为与前台界面一致的可读文本（如：嵌入通用 · 提交触发）。
+func FormatSourceAction(channel, triggerDetail string, locale Locale) string {
+	if channel == "" {
+		channel = "workbench"
+	}
+	channelText := TranslateEnum(EnumSourceChannel, channel, locale)
+
+	triggerActionMap := map[string]map[Locale]string{
+		"save_requested":        {LocaleZH: "保存触发", LocaleEN: "Save Trigger"},
+		"submit_requested":      {LocaleZH: "提交触发", LocaleEN: "Submit Trigger"},
+		"visible_open":          {LocaleZH: "打开触发", LocaleEN: "Open Trigger"},
+		"form_open":             {LocaleZH: "表单打开", LocaleEN: "Form Open"},
+		"manual":                {LocaleZH: "手动触发", LocaleEN: "Manual Trigger"},
+		"scheduled_scan":        {LocaleZH: "定时扫描", LocaleEN: "Scheduled Scan"},
+		"personal_embed_manual": {LocaleZH: "手动触发", LocaleEN: "Manual Trigger"},
+	}
+
+	if triggerDetail != "" {
+		if actionMap, ok := triggerActionMap[triggerDetail]; ok {
+			actionText := actionMap[locale]
+			if actionText == "" {
+				actionText = actionMap[LocaleZH]
+			}
+			if actionText != "" {
+				if channel == "workbench" {
+					return actionText
+				}
+				return channelText + " · " + actionText
+			}
+		}
+	}
+
+	return channelText
 }

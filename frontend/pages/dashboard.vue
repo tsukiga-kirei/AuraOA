@@ -19,7 +19,7 @@ import {
   WarningOutlined,
   StopOutlined,
 } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import type { Dayjs } from 'dayjs'
 import { marked } from 'marked'
 import { useI18n } from '~/composables/useI18n'
@@ -960,6 +960,16 @@ const handleExportExcel = async () => {
   }
 }
 
+const confirmExportExcel = () => {
+  Modal.confirm({
+    title: t('admin.data.confirmExportTitle'),
+    content: t('admin.data.confirmExportWorkbenchPrompt', { count: listTotal.value }),
+    okText: t('admin.data.confirmExportBtn'),
+    cancelText: t('admin.data.cancelBtn'),
+    onOk: handleExportExcel,
+  })
+}
+
 // ─── 初始化 ───
 const resultSourceLabel = (result: { result_source?: string }) => t(result.result_source === 'embed' ? 'resultSource.embed' : 'resultSource.personal')
 const chainItemSourceTag = (item: { trigger_source?: string; trigger_detail?: string }) => {
@@ -1071,7 +1081,7 @@ onMounted(async () => {
                 {{ t('dashboard.filter') }}
                 <span v-if="hasActiveFilters" class="filter-active-dot" />
               </a-button>
-              <a-button size="small" type="default" :loading="exportLoading" @click="handleExportExcel">
+              <a-button size="small" type="default" :loading="exportLoading" @click="confirmExportExcel">
                 <ExportOutlined v-if="!exportLoading" />
                 {{ t('export.excel') }}
               </a-button>

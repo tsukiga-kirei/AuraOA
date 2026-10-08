@@ -198,7 +198,9 @@ GET /api/audit/snapshots/stats
 GET /api/audit/snapshots/export
 ```
 
-按筛选条件导出 Excel（最多 5000 条）。查询参数与列表接口一致。
+按筛选条件导出 Excel（最多 5000 条）。查询参数与列表接口一致，支持：
+- `columns`：自定义展示列（逗号分隔，如 `process_id,workflow_code,title,operator,department,process_type,channel,ai_result,audit_count,time`）
+- `include_history`：布尔值（`true`/`false`），是否追加审核历史列展示历次审核记录
 
 ---
 

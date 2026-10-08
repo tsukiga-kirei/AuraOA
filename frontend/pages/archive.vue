@@ -25,7 +25,7 @@ import {
   InfoCircleOutlined,
   WarningOutlined,
 } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import type { Dayjs } from 'dayjs'
 import { useI18n } from '~/composables/useI18n'
 import type {
@@ -74,6 +74,16 @@ const handleExportExcel = async () => {
   } finally {
     exportLoading.value = false
   }
+}
+
+const confirmExportExcel = () => {
+  Modal.confirm({
+    title: t('admin.data.confirmExportTitle'),
+    content: t('admin.data.confirmExportWorkbenchPrompt', { count: listTotal.value }),
+    okText: t('admin.data.confirmExportBtn'),
+    cancelText: t('admin.data.cancelBtn'),
+    onOk: handleExportExcel,
+  })
 }
 
 const { listTasks } = useCronApi()
@@ -1137,7 +1147,7 @@ onUnmounted(() => {
                 {{ t('archive.filter') }}
                 <span v-if="hasActiveFilters" class="filter-active-dot" />
               </a-button>
-              <a-button size="small" type="default" :loading="exportLoading" @click="handleExportExcel">
+              <a-button size="small" type="default" :loading="exportLoading" @click="confirmExportExcel">
                 <ExportOutlined v-if="!exportLoading" />
                 {{ t('export.excel') }}
               </a-button>

@@ -460,6 +460,7 @@ func SetupRouter(
 	{
 		archiveSnapshotAdmin.GET("", archiveReviewHandler.ListSnapshots)
 		archiveSnapshotAdmin.GET("/stats", archiveReviewHandler.GetSnapshotStats)
+		archiveSnapshotAdmin.GET("/export", archiveReviewHandler.ExportSnapshots)
 		archiveSnapshotAdmin.GET("/:processId/chain", archiveReviewHandler.GetSnapshotChain)
 	}
 
