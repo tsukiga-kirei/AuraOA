@@ -200,6 +200,23 @@ type AuditLogWithUser struct {
 	UserName string `json:"user_name"`
 }
 
+// ListValidByProcessIDsWithUser 查询租户内指定流程的全部有效历史，操作人来自用户关联及 OA 快照。
+func (r *AuditLogRepo) ListValidByProcessIDsWithUser(c *gin.Context, processIDs []string) ([]AuditLogWithUser, error) {
+	if len(processIDs) == 0 {
+		return nil, nil
+	}
+	var logs []AuditLogWithUser
+	err := r.WithTenant(c).
+		Table("audit_logs").
+		Select("audit_logs.process_id, audit_logs.created_at, audit_logs.recommendation, audit_logs.score, audit_logs.confidence, audit_logs.trigger_source, audit_logs.trigger_detail, "+auditOperatorDisplaySQL("audit_logs", "users")+" AS user_name").
+		Joins("LEFT JOIN users ON audit_logs.user_id = users.id").
+		Where("audit_logs.process_id IN ? AND audit_logs.status = ?", processIDs, model.JobStatusCompleted).
+		Where("COALESCE(audit_logs.parse_error, '') = '' AND audit_logs.recommendation IN ('approve', 'return', 'review')").
+		Order("audit_logs.created_at DESC, audit_logs.id DESC").
+		Find(&logs).Error
+	return logs, err
+}
+
 // ListByIDsWithUserOrdered 按给定 id 顺序返回审核记录（用于有效审核链）；缺失 id 跳过。
 func (r *AuditLogRepo) ListByIDsWithUserOrdered(c *gin.Context, ids []uuid.UUID) ([]AuditLogWithUser, error) {
 	if len(ids) == 0 {

@@ -216,7 +216,7 @@ GET /api/summary/snapshots/stats
 GET /api/summary/snapshots/export
 ```
 
-按筛选条件导出 Excel。
+按筛选条件导出全部匹配数据为 Excel，不受当前页、`page` / `page_size` 或 5000 条上限限制。
 
 ---
 

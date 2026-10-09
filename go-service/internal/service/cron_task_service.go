@@ -501,6 +501,19 @@ func (s *CronTaskService) ListAllLogs(c *gin.Context, filter repository.CronLogF
 	return items, total, nil
 }
 
+// ListLogsForExport 按筛选条件查询当前租户的全部任务日志。
+func (s *CronTaskService) ListLogsForExport(c *gin.Context, filter repository.CronLogFilter) ([]repository.CronLogListRow, error) {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+	items, err := s.logRepo.ListAllByTenant(tenantID, filter)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "查询日志失败")
+	}
+	return items, nil
+}
+
 // GetCronLogStats 数据管理页：获取当前租户任务日志统计。
 func (s *CronTaskService) GetCronLogStats(c *gin.Context) (*repository.CronLogStats, error) {
 	tenantID, err := getTenantUUID(c)

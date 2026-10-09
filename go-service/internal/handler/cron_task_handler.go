@@ -183,13 +183,13 @@ func (h *CronTaskHandler) GetAllLogsStats(c *gin.Context) {
 	response.Success(c, stats)
 }
 
-// ExportAllLogs 导出定时任务执行日志为 CSV 文件（最多 5000 条）。
+// ExportAllLogs 按筛选条件导出全部定时任务执行日志为 CSV 文件。
 // GET /api/tenant/cron/logs/export
 // 查询参数：同 ListAllLogs（不分页）
 // 返回：text/csv 格式文件下载，含 UTF-8 BOM 以兼容 Excel。
 func (h *CronTaskHandler) ExportAllLogs(c *gin.Context) {
 	filter, _, _ := parseCronLogQuery(c)
-	items, _, err := h.svc.ListAllLogs(c, filter, 1, 5000)
+	items, err := h.svc.ListLogsForExport(c, filter)
 	if err != nil {
 		handleServiceError(c, err)
 		return

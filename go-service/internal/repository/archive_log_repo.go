@@ -128,6 +128,23 @@ func (r *ArchiveLogRepo) ListCompletedByProcessIDWithUser(c *gin.Context, proces
 	return logs, err
 }
 
+// ListValidByProcessIDsWithUser 查询租户内指定流程的全部有效复盘历史，并关联操作人。
+func (r *ArchiveLogRepo) ListValidByProcessIDsWithUser(c *gin.Context, processIDs []string) ([]ArchiveLogWithUser, error) {
+	if len(processIDs) == 0 {
+		return nil, nil
+	}
+	var logs []ArchiveLogWithUser
+	err := r.WithTenant(c).
+		Table("archive_logs").
+		Select("archive_logs.process_id, archive_logs.created_at, archive_logs.compliance, archive_logs.compliance_score, archive_logs.confidence, COALESCE(NULLIF(users.display_name, ''), users.username, '') AS user_name").
+		Joins("LEFT JOIN users ON archive_logs.user_id = users.id").
+		Where("archive_logs.process_id IN ? AND archive_logs.status = ?", processIDs, model.JobStatusCompleted).
+		Where("COALESCE(archive_logs.parse_error, '') = '' AND archive_logs.compliance IN ('compliant', 'partially_compliant', 'non_compliant')").
+		Order("archive_logs.created_at DESC, archive_logs.id DESC").
+		Find(&logs).Error
+	return logs, err
+}
+
 // ListByIDsWithUserOrdered 按给定 id 顺序返回归档日志（有效复盘链）。
 func (r *ArchiveLogRepo) ListByIDsWithUserOrdered(c *gin.Context, ids []uuid.UUID) ([]ArchiveLogWithUser, error) {
 	if len(ids) == 0 {

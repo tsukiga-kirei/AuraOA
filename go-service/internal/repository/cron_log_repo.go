@@ -133,6 +133,29 @@ func (r *CronLogRepo) ListPagedByTenant(tenantID uuid.UUID, filter CronLogFilter
 		pageSize = 20
 	}
 
+	base := r.buildAdminBaseQuery(tenantID, filter)
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var items []CronLogListRow
+	err := base.Order("cron_logs.started_at DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&items).Error
+	return items, total, err
+}
+
+// ListAllByTenant 按筛选条件导出当前租户的全部任务日志，不受分页上限限制。
+func (r *CronLogRepo) ListAllByTenant(tenantID uuid.UUID, filter CronLogFilter) ([]CronLogListRow, error) {
+	var items []CronLogListRow
+	err := r.buildAdminBaseQuery(tenantID, filter).Order("cron_logs.started_at DESC").Find(&items).Error
+	return items, err
+}
+
+func (r *CronLogRepo) buildAdminBaseQuery(tenantID uuid.UUID, filter CronLogFilter) *gorm.DB {
 	base := r.db.Table("cron_logs").
 		Select("cron_logs.*, "+
 			"COALESCE(u.display_name, u.username, '') AS task_owner_display_name, "+
@@ -147,19 +170,7 @@ func (r *CronLogRepo) ListPagedByTenant(tenantID uuid.UUID, filter CronLogFilter
 		Joins("LEFT JOIN cron_task_type_presets p ON p.task_type = cron_logs.task_type").
 		Joins("LEFT JOIN cron_tasks ct ON ct.id = cron_logs.task_id").
 		Where("cron_logs.tenant_id = ?", tenantID)
-	base = applyCronLogFilterJoined(base, filter)
-
-	var total int64
-	if err := base.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	var items []CronLogListRow
-	err := base.Order("cron_logs.started_at DESC").
-		Offset((page - 1) * pageSize).
-		Limit(pageSize).
-		Find(&items).Error
-	return items, total, err
+	return applyCronLogFilterJoined(base, filter)
 }
 
 // CountStatsByTenant 统计租户所有任务日志各状态数量。

@@ -139,6 +139,29 @@ func (r *ArchiveProcessSnapshotRepo) ListPagedWithUser(c *gin.Context, filter Ar
 		pageSize = 20
 	}
 
+	base := r.buildAdminBaseQuery(c, filter)
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var items []ArchiveSnapshotListRow
+	err := base.Order("archive_process_snapshots.updated_at DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&items).Error
+	return items, total, err
+}
+
+// ListAllWithUser 按列表筛选条件导出全部归档快照，不受分页上限限制。
+func (r *ArchiveProcessSnapshotRepo) ListAllWithUser(c *gin.Context, filter ArchiveSnapshotFilter) ([]ArchiveSnapshotListRow, error) {
+	var items []ArchiveSnapshotListRow
+	err := r.buildAdminBaseQuery(c, filter).Order("archive_process_snapshots.updated_at DESC").Find(&items).Error
+	return items, err
+}
+
+func (r *ArchiveProcessSnapshotRepo) buildAdminBaseQuery(c *gin.Context, filter ArchiveSnapshotFilter) *gorm.DB {
 	const t = "archive_process_snapshots"
 	tenantID, _ := c.Get("tenant_id")
 	base := r.DB.
@@ -152,19 +175,7 @@ func (r *ArchiveProcessSnapshotRepo) ListPagedWithUser(c *gin.Context, filter Ar
 		Joins("LEFT JOIN org_members om ON om.user_id = arl.user_id AND om.tenant_id = " + t + ".tenant_id AND om.status = 'active'").
 		Joins("LEFT JOIN departments d ON d.id = om.department_id AND d.tenant_id = " + t + ".tenant_id")
 
-	base = applyArchiveSnapshotFilter(base, filter)
-
-	var total int64
-	if err := base.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	var items []ArchiveSnapshotListRow
-	err := base.Order(t + ".updated_at DESC").
-		Offset((page - 1) * pageSize).
-		Limit(pageSize).
-		Find(&items).Error
-	return items, total, err
+	return applyArchiveSnapshotFilter(base, filter)
 }
 
 // CountStatsByCompliance 归档快照分组统计。
