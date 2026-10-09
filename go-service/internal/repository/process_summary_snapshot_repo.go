@@ -167,6 +167,14 @@ func (r *ProcessSummarySnapshotRepo) ListPagedWithUser(c *gin.Context, filter Pr
 	return items, total, err
 }
 
+// ListAllWithUser 按列表筛选条件导出全部流程总结快照，不受分页上限限制。
+func (r *ProcessSummarySnapshotRepo) ListAllWithUser(c *gin.Context, filter ProcessSummarySnapshotFilter) ([]ProcessSummarySnapshotListRow, error) {
+	var items []ProcessSummarySnapshotListRow
+	err := applyProcessSummarySnapshotFilter(r.adminSummaryGroups(c), filter).
+		Order("created_at DESC, id DESC").Find(&items).Error
+	return items, err
+}
+
 func (r *ProcessSummarySnapshotRepo) CountStats(c *gin.Context, channel string) (*ProcessSummarySnapshotStats, error) {
 	base := applyProcessSummarySnapshotFilter(r.adminSummaryGroups(c), ProcessSummarySnapshotFilter{Channel: channel})
 	var stats ProcessSummarySnapshotStats

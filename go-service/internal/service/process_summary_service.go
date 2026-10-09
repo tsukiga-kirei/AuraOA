@@ -1355,8 +1355,7 @@ func (s *ProcessSummaryService) ListSnapshots(c *gin.Context, filter repository.
 }
 
 func (s *ProcessSummaryService) ListSnapshotsForExport(c *gin.Context, filter repository.ProcessSummarySnapshotFilter) ([]repository.ProcessSummarySnapshotListRow, error) {
-	items, _, err := s.snapshotRepo.ListPagedWithUser(c, filter, 1, 5000)
-	return items, err
+	return s.snapshotRepo.ListAllWithUser(c, filter)
 }
 
 func (s *ProcessSummaryService) GetSnapshotStats(c *gin.Context, channel string) (*repository.ProcessSummarySnapshotStats, error) {
@@ -1880,4 +1879,3 @@ func (s *ProcessSummaryService) FetchWorkflowCodes(ctx context.Context, tenantID
 	}
 	return codes
 }
-

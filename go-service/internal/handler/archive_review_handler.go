@@ -477,12 +477,12 @@ func (h *ArchiveReviewHandler) GetSnapshotStats(c *gin.Context) {
 	response.Success(c, stats)
 }
 
-// ExportSnapshots 导出归档快照为 Excel（最多 5000 条，筛选条件同列表）。
+// ExportSnapshots 按列表筛选条件导出全部归档快照为 Excel，不受分页限制。
 // GET /api/archive/snapshots/export
 // 支持 columns 指定导出展示列，支持 include_history=true 导出复核历史。
 func (h *ArchiveReviewHandler) ExportSnapshots(c *gin.Context) {
 	filter, _, _ := parseArchiveSnapshotQuery(c)
-	items, _, err := h.snapshotRepo.ListPagedWithUser(c, filter, 1, 5000)
+	items, err := h.snapshotRepo.ListAllWithUser(c, filter)
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -526,7 +526,11 @@ func (h *ArchiveReviewHandler) ExportSnapshots(c *gin.Context) {
 	includeHistory := c.Query("include_history") == "true" || c.Query("include_history") == "1"
 	historyMap := make(map[string]string)
 	if includeHistory && len(pids) > 0 {
-		historyMap = h.buildArchiveHistoryMap(c, pids, locale)
+		historyMap, err = h.buildArchiveHistoryMap(c, pids, locale)
+		if err != nil {
+			handleServiceError(c, err)
+			return
+		}
 	}
 
 	headers := make([]string, 0)
@@ -626,7 +630,7 @@ func (h *ArchiveReviewHandler) ExportSnapshots(c *gin.Context) {
 			case "audit_count":
 				row = append(row, fmt.Sprintf("%d", countArchiveSnapshotLogIDs(item.ValidArchiveLogIDs)))
 			case "time":
-				row = append(row, item.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
+				row = append(row, item.UpdatedAt.In(apptime.Location()).Format("2006-01-02 15:04:05"))
 			}
 		}
 		if includeHistory {
@@ -647,35 +651,18 @@ func (h *ArchiveReviewHandler) ExportSnapshots(c *gin.Context) {
 }
 
 // buildArchiveHistoryMap 查询并格式化流程的历次归档复盘历史记录为清晰中文文本。
-func (h *ArchiveReviewHandler) buildArchiveHistoryMap(c *gin.Context, processIDs []string, locale excelpkg.Locale) map[string]string {
+func (h *ArchiveReviewHandler) buildArchiveHistoryMap(c *gin.Context, processIDs []string, locale excelpkg.Locale) (map[string]string, error) {
 	result := make(map[string]string)
 	if len(processIDs) == 0 {
-		return result
+		return result, nil
 	}
 
-	type archiveLogSimple struct {
-		ProcessID       string    `gorm:"column:process_id"`
-		CreatedAt       time.Time `gorm:"column:created_at"`
-		UserName        string    `gorm:"column:user_name"`
-		OverallDecision string    `gorm:"column:overall_decision"`
-		Score           int       `gorm:"column:score"`
-		Confidence      int       `gorm:"column:confidence"`
+	logs, err := h.archiveLogRepo.ListValidByProcessIDsWithUser(c, processIDs)
+	if err != nil {
+		return nil, err
 	}
 
-	var logs []archiveLogSimple
-	err := h.archiveLogRepo.WithTenant(c).
-		Table("archive_logs").
-		Select("process_id, created_at, user_name, overall_decision, score, confidence").
-		Where("process_id IN ? AND status = ?", processIDs, model.JobStatusCompleted).
-		Where("COALESCE(parse_error, '') = '' AND overall_decision IN ('compliant', 'partially_compliant', 'non_compliant')").
-		Order("created_at desc").
-		Find(&logs).Error
-
-	if err != nil || len(logs) == 0 {
-		return result
-	}
-
-	grouped := make(map[string][]archiveLogSimple)
+	grouped := make(map[string][]repository.ArchiveLogWithUser)
 	for _, l := range logs {
 		grouped[l.ProcessID] = append(grouped[l.ProcessID], l)
 	}
@@ -683,20 +670,27 @@ func (h *ArchiveReviewHandler) buildArchiveHistoryMap(c *gin.Context, processIDs
 	for pid, list := range grouped {
 		var lines []string
 		for idx, item := range list {
-			timeStr := item.CreatedAt.Local().Format("2006-01-02 15:04:05")
+			timeStr := item.CreatedAt.In(apptime.Location()).Format("2006-01-02 15:04:05")
 			opName := item.UserName
 			if opName == "" {
 				opName = "系统"
+				if locale == excelpkg.LocaleEN {
+					opName = "System"
+				}
 			}
-			comp := excelpkg.TranslateEnum(excelpkg.EnumCompliance, item.OverallDecision, locale)
+			comp := excelpkg.TranslateEnum(excelpkg.EnumCompliance, item.Compliance, locale)
 			line := fmt.Sprintf("[%d] %s | 操作人: %s | 合规性: %s | 评分: %d分 | 置信度: %d%%",
-				idx+1, timeStr, opName, comp, item.Score, item.Confidence)
+				idx+1, timeStr, opName, comp, item.ComplianceScore, item.Confidence)
+			if locale == excelpkg.LocaleEN {
+				line = fmt.Sprintf("[%d] %s | Operator: %s | Compliance: %s | Score: %d | Confidence: %d%%",
+					idx+1, timeStr, opName, comp, item.ComplianceScore, item.Confidence)
+			}
 			lines = append(lines, line)
 		}
 		result[pid] = strings.Join(lines, "\n")
 	}
 
-	return result
+	return result, nil
 }
 
 // countArchiveSnapshotLogIDs 解析 valid_archive_log_ids JSON 数组并返回其元素数量。

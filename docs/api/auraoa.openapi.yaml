@@ -3666,6 +3666,7 @@ paths:
   /api/tenant/cron/logs/export:
     get:
       summary: 导出全量定时任务日志
+      description: 按筛选条件导出当前租户全部匹配数据，不受 page、page_size 或 5000 条上限限制。
       tags:
       - Cron
       security:
@@ -5097,6 +5098,7 @@ paths:
   /api/audit/snapshots/export:
     get:
       summary: 导出审核快照
+      description: 按筛选条件导出当前租户全部匹配数据，不受 page、page_size 或 5000 条上限限制。
       tags:
       - Audit
       security:
@@ -5150,12 +5152,12 @@ paths:
         in: query
         schema:
           type: string
-        description: 自定义导出列，逗号分隔
+        description: 自定义导出列，逗号分隔，按参数顺序导出；前端按表格显示顺序传入
       - name: include_history
         in: query
         schema:
           type: boolean
-        description: 是否追加审核历史列
+        description: 是否追加当前租户该流程的全部有效审核历史，按时间倒序；查询失败返回错误
   /api/audit/snapshots/{processId}/chain:
     get:
       summary: 获取快照审核链
@@ -5551,6 +5553,7 @@ paths:
   /api/summary/snapshots/export:
     get:
       summary: 导出流程总结快照
+      description: 按筛选条件导出当前租户全部匹配数据，不受 page、page_size 或 5000 条上限限制。
       tags:
       - Summary
       security:
@@ -6247,6 +6250,7 @@ paths:
   /api/archive/snapshots/export:
     get:
       summary: 导出归档快照
+      description: 按筛选条件导出当前租户全部匹配数据，不受 page、page_size 或 5000 条上限限制。
       tags:
       - Archive
       security:
@@ -6296,12 +6300,12 @@ paths:
         in: query
         schema:
           type: string
-        description: 自定义导出列，逗号分隔
+        description: 自定义导出列，逗号分隔，按参数顺序导出；前端按表格显示顺序传入
       - name: include_history
         in: query
         schema:
           type: boolean
-        description: 是否追加复核历史列
+        description: 是否追加当前租户该流程的全部有效复核历史，按时间倒序；查询失败返回错误
   /api/archive/snapshots/{processId}/chain:
     get:
       summary: 获取快照复盘链

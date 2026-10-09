@@ -1162,6 +1162,12 @@ function resetArchiveColumns() {
   archiveVisibleColumns.value = [...ARCHIVE_DEFAULT_COLUMNS]
 }
 
+// 按表格固定顺序取当前可见列，避免勾选顺序影响导出列的位置。
+const auditExportColumns = computed(() => auditAvailableColumns.value
+  .filter(col => auditVisibleColumns.value.includes(col.key)))
+const archiveExportColumns = computed(() => archiveAvailableColumns.value
+  .filter(col => archiveVisibleColumns.value.includes(col.key)))
+
 // ─── 导出确认对话框 ──────────────────────────────────────────────────────
 const exportModalVisible = ref(false)
 const exportModalType = ref<MainTab>('audit')
@@ -1178,9 +1184,7 @@ const exportModalTotal = computed(() => {
 
 const exportModalColumns = computed(() => {
   if (exportModalType.value === 'audit') {
-    return auditVisibleColumns.value.map(key => {
-      const col = auditAvailableColumns.value.find(c => c.key === key)
-      const label = col?.label || key
+    return auditExportColumns.value.map(({ key, label }) => {
       if (key === 'ai_result') {
         return label + t('admin.data.aiResultFieldsHint')
       }
@@ -1188,9 +1192,7 @@ const exportModalColumns = computed(() => {
     })
   }
   if (exportModalType.value === 'archive') {
-    return archiveVisibleColumns.value.map(key => {
-      const col = archiveAvailableColumns.value.find(c => c.key === key)
-      const label = col?.label || key
+    return archiveExportColumns.value.map(({ key, label }) => {
       if (key === 'compliance') {
         return label + t('admin.data.aiReviewFieldsHint')
       }
@@ -1214,14 +1216,14 @@ async function confirmExport() {
       const { page, page_size, ...filters } = auditQuery.value
       await exportAuditSnapshots({
         ...filters,
-        columns: auditVisibleColumns.value.join(','),
+        columns: auditExportColumns.value.map(col => col.key).join(','),
         include_history: exportIncludeHistory.value ? true : undefined,
       })
     } else if (type === 'archive') {
       const { page, page_size, ...filters } = archiveQuery.value
       await exportArchiveSnapshots({
         ...filters,
-        columns: archiveVisibleColumns.value.join(','),
+        columns: archiveExportColumns.value.map(col => col.key).join(','),
         include_history: exportIncludeHistory.value ? true : undefined,
       })
     } else if (type === 'summary') {

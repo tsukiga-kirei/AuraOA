@@ -169,9 +169,10 @@ GET /api/archive/snapshots/stats
 GET /api/archive/snapshots/export
 ```
 
-按筛选条件导出 Excel（最多 5000 条）。查询参数与列表接口一致，支持：
-- `columns`：自定义展示列（逗号分隔，如 `process_id,workflow_code,title,operator,department,process_type,compliance,audit_count,time`）
-- `include_history`：布尔值（`true`/`false`），是否追加复核历史列展示历次复核记录
+按筛选条件导出全部匹配数据为 Excel，不受当前页、`page` / `page_size` 或 5000 条上限限制。筛选条件与列表接口一致，支持：
+
+- `columns`：自定义展示列（按参数顺序导出，前端按表格显示顺序传入；逗号分隔，如 `process_id,workflow_code,title,operator,department,process_type,compliance,audit_count,time`）
+- `include_history`：布尔值（`true`/`false`），是否追加复核历史列展示当前租户内该流程的历次有效复核记录（按时间倒序），查询失败时返回错误，不生成空白历史文件
 
 ---
 

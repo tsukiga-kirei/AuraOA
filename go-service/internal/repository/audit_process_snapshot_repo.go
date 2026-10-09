@@ -299,6 +299,13 @@ func (r *AuditProcessSnapshotRepo) ListPagedWithUser(c *gin.Context, filter Audi
 	return items, total, err
 }
 
+// ListAllWithUser 按列表筛选条件导出全部审核快照，不受分页上限限制。
+func (r *AuditProcessSnapshotRepo) ListAllWithUser(c *gin.Context, filter AuditSnapshotFilter) ([]AuditSnapshotListRow, error) {
+	var items []AuditSnapshotListRow
+	err := r.buildAdminAggregatedBaseQuery(c, filter).Order("updated_at DESC").Find(&items).Error
+	return items, err
+}
+
 // CountStatsByRecommendation 快照分组统计（与 ListPagedWithUser 复用相同汇聚逻辑，数值 100% 对齐）。
 func (r *AuditProcessSnapshotRepo) CountStatsByRecommendation(c *gin.Context, channel string) (*AuditSnapshotStats, error) {
 	base := r.buildAdminAggregatedBaseQuery(c, AuditSnapshotFilter{Channel: channel})

@@ -148,6 +148,8 @@ GET /api/tenant/cron/logs/stats
 GET /api/tenant/cron/logs/export
 ```
 
+按筛选条件导出当前租户全部匹配日志为 CSV（可用 Excel 打开），不受当前页、`page` / `page_size` 或 5000 条上限限制。
+
 ### 日期筛选边界
 
 日志/快照列表及其导出接口的 `start_date`、`end_date` 按应用配置时区解释，结束日期包含当天全部记录。
