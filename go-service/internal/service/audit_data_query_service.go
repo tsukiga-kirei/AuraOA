@@ -204,6 +204,11 @@ func queryCheck(def model.AuditDataQueryDefinition) oa.QuerySQLCheck {
 		if p.Type != "string" && p.Type != "number" && p.Type != "date" && p.Type != "string_list" {
 			issue("parameter", "参数类型无效："+p.Name)
 		}
+		if p.DefaultBinding != nil {
+			if err := validateQueryBinding(p, *p.DefaultBinding, false); err != nil {
+				issue("parameter", err.Error())
+			}
+		}
 	}
 	used := map[string]bool{}
 	for _, p := range check.Parameters {
@@ -425,31 +430,46 @@ func (s *AuditDataQueryService) ValidateReferences(c *gin.Context, raw []byte) e
 			return err
 		}
 		for _, p := range def.Parameters {
-			b, ok := ref.Bindings[p.Name]
+			b, ok := queryParameterBinding(p, ref.Bindings)
 			if !ok {
-				return newServiceError(errcode.ErrParamValidation, "缺少参数绑定："+p.Name)
+				return newServiceError(errcode.ErrParamValidation, "缺少参数绑定："+p.Label)
 			}
-			if b.Source != "field" && b.Source != "system" && b.Source != "constant" {
-				return newServiceError(errcode.ErrParamValidation, "参数来源无效："+p.Name)
-			}
-			if b.Source == "system" && b.Value != "process_id" && b.Value != "current_date" && b.Value != "year_start" && b.Value != "month_start" {
-				return newServiceError(errcode.ErrParamValidation, "未知系统变量："+p.Name)
-			}
-			if b.Source == "constant" {
-				if _, err := normalizeQueryParameter(p, b.Value, b.DaysOffset); err != nil {
-					return newServiceError(errcode.ErrParamValidation, err.Error())
-				}
-			}
-			if p.Type != "date" && b.DaysOffset != 0 {
-				return newServiceError(errcode.ErrParamValidation, "仅日期参数可设置偏移")
-			}
-			if b.Source == "field" && b.Field == "" {
-				return newServiceError(errcode.ErrParamValidation, "请选择流程字段："+p.Name)
-			}
-			if b.DaysOffset < -3660 || b.DaysOffset > 3660 {
-				return newServiceError(errcode.ErrParamValidation, "日期偏移超出范围")
+			if err := validateQueryBinding(p, b, true); err != nil {
+				return newServiceError(errcode.ErrParamValidation, err.Error())
 			}
 		}
+	}
+	return nil
+}
+
+// queryParameterBinding 优先采用规则显式绑定，未覆盖时沿用发布版本的默认取值。
+func queryParameterBinding(p model.AuditDataQueryParameter, bindings map[string]model.AuditDataQueryBinding) (model.AuditDataQueryBinding, bool) {
+	if b, ok := bindings[p.Name]; ok {
+		return b, true
+	}
+	if p.DefaultBinding != nil {
+		return *p.DefaultBinding, true
+	}
+	return model.AuditDataQueryBinding{}, false
+}
+
+// validateQueryBinding 允许记忆库暂不选择流程字段，规则保存时则要求完成绑定。
+func validateQueryBinding(p model.AuditDataQueryParameter, b model.AuditDataQueryBinding, requireField bool) error {
+	if b.Source != "field" && b.Source != "system" && b.Source != "constant" {
+		return fmt.Errorf("参数来源无效：%s", p.Label)
+	}
+	if b.DaysOffset < -3660 || b.DaysOffset > 3660 || p.Type != "date" && b.DaysOffset != 0 {
+		return fmt.Errorf("参数 %s 的日期偏移无效", p.Label)
+	}
+	if b.Source == "field" && requireField && b.Field == "" {
+		return fmt.Errorf("请选择流程字段：%s", p.Label)
+	}
+	if b.Source == "system" && b.Value != "process_id" && b.Value != "current_date" && b.Value != "year_start" && b.Value != "month_start" {
+		return fmt.Errorf("未知系统变量：%s", p.Label)
+	}
+	if b.Source == "constant" {
+		_, err := normalizeQueryParameter(p, b.Value, b.DaysOffset)
+		return err
 	}
 	return nil
 }
@@ -457,39 +477,46 @@ func (s *AuditDataQueryService) ValidateReferences(c *gin.Context, raw []byte) e
 func resolveQueryBindings(def model.AuditDataQueryDefinition, bindings map[string]model.AuditDataQueryBinding, pd *oa.ProcessData, processID string) (map[string]interface{}, error) {
 	values := map[string]interface{}{}
 	for _, p := range def.Parameters {
-		b, ok := bindings[p.Name]
+		b, ok := queryParameterBinding(p, bindings)
 		if !ok {
 			return nil, fmt.Errorf("参数 %s 未绑定", p.Label)
 		}
-		var value interface{}
-		switch b.Source {
-		case "field":
-			value = extractContextSourceValue(pd, b.Field)
-		case "constant":
-			value = b.Value
-		case "system":
-			switch b.Value {
-			case "process_id":
-				value = processID
-			case "current_date":
-				value = apptime.Now().Format("2006-01-02")
-			case "year_start":
-				value = fmt.Sprintf("%d-01-01", apptime.Now().Year())
-			case "month_start":
-				value = apptime.Now().Format("2006-01") + "-01"
-			default:
-				return nil, fmt.Errorf("未知系统参数：%s", b.Value)
-			}
-		default:
-			return nil, fmt.Errorf("参数来源无效：%s", p.Label)
-		}
-		normalized, err := normalizeQueryParameter(p, value, b.DaysOffset)
+		value, err := resolveQueryBinding(p, b, pd, processID)
 		if err != nil {
 			return nil, err
 		}
-		values[p.Name] = normalized
+		values[p.Name] = value
 	}
 	return values, nil
+}
+
+// resolveQueryBinding 统一解析默认值与规则绑定，系统日期遵循应用时区。
+func resolveQueryBinding(p model.AuditDataQueryParameter, b model.AuditDataQueryBinding, pd *oa.ProcessData, processID string) (interface{}, error) {
+	if err := validateQueryBinding(p, b, true); err != nil {
+		return nil, err
+	}
+	var value interface{}
+	switch b.Source {
+	case "field":
+		if pd == nil {
+			return nil, fmt.Errorf("请填写参数 %s 的测试值，流程字段在规则引用时绑定", p.Label)
+		}
+		value = extractContextSourceValue(pd, b.Field)
+	case "constant":
+		value = b.Value
+	case "system":
+		switch b.Value {
+		case "process_id":
+			value = processID
+		case "current_date":
+			value = apptime.Now().Format("2006-01-02")
+		case "year_start":
+			value = fmt.Sprintf("%d-01-01", apptime.Now().Year())
+		case "month_start":
+			value = apptime.Now().Format("2006-01") + "-01"
+		}
+	}
+	return normalizeQueryParameter(p, value, b.DaysOffset)
 }
 
 func normalizeQueryParameter(p model.AuditDataQueryParameter, value interface{}, offset int) (interface{}, error) {
@@ -588,7 +615,14 @@ func (s *AuditDataQueryService) Preview(c *gin.Context, req QueryPreviewRequest)
 		values, err = resolveQueryBindings(def, req.Bindings, pd, req.ProcessID)
 	} else {
 		for _, p := range def.Parameters {
-			values[p.Name], err = normalizeQueryParameter(p, req.Parameters[p.Name], 0)
+			if value, supplied := req.Parameters[p.Name]; supplied {
+				// 手工测试值覆盖默认取值，已经是最终值，不再重复应用日期偏移。
+				values[p.Name], err = normalizeQueryParameter(p, value, 0)
+			} else if p.DefaultBinding != nil && p.DefaultBinding.Source != "field" {
+				values[p.Name], err = resolveQueryBinding(p, *p.DefaultBinding, nil, "")
+			} else {
+				values[p.Name], err = normalizeQueryParameter(p, nil, 0)
+			}
 			if err != nil {
 				break
 			}

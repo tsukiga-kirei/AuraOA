@@ -2,8 +2,14 @@
 import { message } from 'ant-design-vue'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { useAuditDataQueryApi } from '~/composables/useAuditDataQueryApi'
+import QueryValueSourceEditor from './QueryValueSourceEditor.vue'
 import { compileQueryBuilder } from '~/utils/queryBuilder'
-import type { QueryBuilder, QueryColumn, QueryDefinition } from '~/types/audit-data-query'
+import type {
+  QueryBuilder,
+  QueryColumn,
+  QueryDefinition,
+  QueryBinding,
+} from '~/types/audit-data-query'
 const props = defineProps<{
   definition: QueryDefinition
   disabled?: boolean
@@ -19,6 +25,7 @@ const builder = ref<QueryBuilder>(
   clone(
     props.definition.builder || {
       source_type: 'table',
+      archived_only: false,
       table: props.definition.tables[0] || '',
       columns: [],
       filters: [],
@@ -27,6 +34,13 @@ const builder = ref<QueryBuilder>(
     },
   ),
 )
+// 旧配置保留归档口径，新建配置默认不附加状态条件。
+builder.value.archived_only ??= builder.value.source_type === 'workflow'
+for (const filter of builder.value.filters) {
+  const parameter = props.definition.parameters.find((item) => item.name === filter.parameter)
+  filter.binding ??= clone(parameter?.default_binding || { source: 'field' })
+  filter.parameter ||= nextParameterName()
+}
 const columns = ref<QueryColumn[]>([])
 const loading = ref(false)
 const expandedSections = ref(['columns', 'filters', 'order'])
@@ -87,18 +101,54 @@ function selectField(index: number, value: string) {
   if (!builder.value.columns[index].alias && column && /[\u3400-\u9fff]/.test(column.label))
     builder.value.columns[index].alias = column.label
 }
+function nextParameterName() {
+  let index = 1
+  const used = new Set(builder.value.filters.map((filter) => filter.parameter))
+  while (used.has(`filter_${index}`)) index++
+  return `filter_${index}`
+}
+function changeFilterOperator(index: number) {
+  const filter = builder.value.filters[index]
+  filter.type = filter.operator === 'IN' ? 'string_list' : 'string'
+  if (filter.binding) delete filter.binding.days_offset
+}
+function changeFilterType(index: number) {
+  const filter = builder.value.filters[index]
+  if (filter.type !== 'date' && filter.binding) delete filter.binding.days_offset
+}
+function setFilterBinding(index: number, value: QueryBinding) {
+  const filter = builder.value.filters[index]
+  filter.binding = value
+  if (filter.operator !== 'IN' && value.source === 'system') {
+    filter.type = value.value && value.value !== 'process_id' ? 'date' : 'string'
+  }
+  if (filter.type !== 'date') delete filter.binding.days_offset
+}
+function prepareFilterLabels() {
+  builder.value.filters.forEach((filter, index) => {
+    if (!filter.label.trim()) {
+      const column = columns.value.find((item) => item.key === filter.field)
+      filter.label =
+        column && /[\u3400-\u9fff]/.test(column.label)
+          ? column.label
+          : t('query.builder.filterValue', index + 1)
+    }
+  })
+}
 function addFilter() {
   if (!expandedSections.value.includes('filters')) expandedSections.value.push('filters')
   builder.value.filters.push({
     field: '',
     operator: '=',
-    parameter: '',
+    parameter: nextParameterName(),
+    binding: { source: 'constant', value: '' },
     label: '',
     type: 'string',
   })
 }
 function apply() {
   try {
+    prepareFilterLabels()
     const compiled = compileQueryBuilder(builder.value, props.definition.dialect, columns.value)
     emit('apply', {
       ...clone(props.definition),
@@ -135,10 +185,14 @@ onMounted(() => {
           t('query.builder.load')
         }}</a-button>
       </div>
-      <small v-if="builder.source_type === 'workflow'" class="muted">{{
-        t('query.builder.archived')
-      }}</small>
     </a-form-item>
+    <div v-if="builder.source_type === 'workflow'" class="workflow-scope">
+      <div class="workflow-scope-heading">
+        <strong>{{ t('query.builder.archivedOnly') }}</strong>
+        <a-switch v-model:checked="builder.archived_only" :disabled="disabled" />
+      </div>
+      <p class="memory-help">{{ t('query.builder.archived') }}</p>
+    </div>
     <a-collapse v-model:active-key="expandedSections" class="builder-sections" :bordered="false">
       <a-collapse-panel key="columns">
         <template #header
@@ -213,7 +267,7 @@ onMounted(() => {
             v-model:value="filter.operator"
             :options="operatorOptions"
             :disabled="disabled"
-            @change="filter.type = filter.operator === 'IN' ? 'string_list' : 'string'"
+            @change="changeFilterOperator(index)"
           />
           <a-button
             type="text"
@@ -224,16 +278,23 @@ onMounted(() => {
           /></a-button>
           <template v-if="!filter.operator.startsWith('IS ')">
             <a-input
-              v-model:value="filter.parameter"
-              :disabled="disabled"
-              :placeholder="t('query.parameterName')"
-            />
-            <a-input
               v-model:value="filter.label"
               :disabled="disabled"
-              :placeholder="t('query.parameterLabel')"
+              :placeholder="t('query.builder.valuePurpose')"
+              class="filter-purpose"
             />
-            <a-select v-model:value="filter.type" :disabled="disabled || filter.operator === 'IN'"
+            <QueryValueSourceEditor
+              :model-value="filter.binding"
+              :type="filter.type"
+              @update:model-value="(value) => setFilterBinding(index, value)"
+              :disabled="disabled"
+              class="filter-value-source"
+            />
+            <a-select
+              v-model:value="filter.type"
+              class="filter-type"
+              @change="changeFilterType(index)"
+              :disabled="disabled || filter.operator === 'IN'"
               ><a-select-option
                 v-for="value in ['string', 'number', 'date', 'string_list']"
                 :key="value"
@@ -321,11 +382,23 @@ onMounted(() => {
   border: 1px solid var(--color-border);
   border-radius: 8px;
 }
-.filter-row > :nth-child(4) {
-  grid-column: 1;
+.filter-purpose,
+.filter-value-source {
+  grid-column: 1 / -1;
 }
-.filter-row > :nth-child(6) {
+.filter-type {
   grid-column: 1 / 3;
+}
+.workflow-scope {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.workflow-scope-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
 }
 .muted {
   color: var(--color-text-tertiary);
