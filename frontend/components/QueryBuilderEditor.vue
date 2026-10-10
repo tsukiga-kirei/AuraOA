@@ -329,17 +329,29 @@ onMounted(() => {
         </div>
       </a-collapse-panel>
     </a-collapse>
-    <a-button type="primary" :disabled="disabled || loading || !columns.length" @click="apply">{{
-      t('query.builder.apply')
-    }}</a-button>
+    <a-button
+      class="generate-query-btn"
+      type="primary"
+      :disabled="disabled || loading || !columns.length"
+      @click="apply"
+      >{{ t('query.builder.apply') }}</a-button
+    >
   </div>
 </template>
 <style scoped>
 .query-builder {
+  max-width: 960px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   margin-top: 12px;
+}
+.generate-query-btn {
+  align-self: flex-start;
+  min-width: 160px;
+  max-width: 100%;
+  padding-inline: 24px;
+  margin-top: 8px;
 }
 .query-builder :deep(.ant-form-item) {
   margin-bottom: 0;
@@ -365,7 +377,7 @@ onMounted(() => {
 }
 .query-order {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 110px;
+  grid-template-columns: minmax(0, 360px) 120px;
   gap: 12px;
 }
 .query-order :deep(.ant-select) {
@@ -373,7 +385,7 @@ onMounted(() => {
 }
 .config-row {
   display: grid;
-  grid-template-columns: minmax(100px, 1fr) 100px minmax(100px, 1fr) 32px;
+  grid-template-columns: minmax(140px, 1fr) 140px minmax(180px, 1.2fr) 32px;
   gap: 8px;
 }
 .filter-row {
