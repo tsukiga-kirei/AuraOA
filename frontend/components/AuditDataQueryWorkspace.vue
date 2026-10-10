@@ -2,6 +2,7 @@
 import { useAuditDataQueryApi } from '~/composables/useAuditDataQueryApi'
 import { message, Modal } from 'ant-design-vue'
 import { appDayjs } from '~/utils/appTime'
+import { previewQuerySql } from '~/utils/querySqlEditor'
 import {
   DatabaseOutlined,
   PlusOutlined,
@@ -65,7 +66,7 @@ const appliedKeyword = ref('')
 const loading = ref(false)
 const loadError = ref('')
 const busy = ref('')
-const activePanel = ref('test')
+const activePanel = ref('check')
 const versions = ref<QueryVersion[]>([])
 const references = ref<
   { id: string; process_type: string; rule_content: string; module: string }[]
@@ -91,6 +92,7 @@ const currentState = computed(() =>
 )
 const dirty = computed(() => currentState.value !== baseline.value)
 const resultColumns = computed(() => check.value?.columns || [])
+const executionSQL = computed(() => previewQuerySql(definition.value))
 let listSequence = 0
 let selectSequence = 0
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
@@ -159,10 +161,10 @@ async function selectQuery(item: AuditDataQuery, force = false) {
     selected.value = query
     definition.value = clone(query.draft)
     if (source.value) definition.value.dialect = source.value.dialect
-    editorMode.value = query.draft.builder ? 'config' : 'sql'
+    editorMode.value = query.draft.builder && !query.draft.builder.sql_mode ? 'config' : 'sql'
     builderKey.value++
     category.value = query.category
-    baseline.value = JSON.stringify({ definition: query.draft, category: query.category })
+    baseline.value = currentState.value
     versions.value = related.history
     references.value = related.refs
     schema.value = {}
@@ -175,23 +177,48 @@ async function selectQuery(item: AuditDataQuery, force = false) {
     if (sequence === selectSequence) busy.value = ''
   }
 }
-async function newQuery(copy = false) {
-  if (!(await canLeave())) return
+function setNewDraft(next: QueryDefinition, nextCategory = '', copied = false) {
   ++selectSequence
-  const next = copy ? clone(definition.value) : makeDefinition()
-  if (copy) next.name = t('query.copyName', next.name)
   selected.value = undefined
   if (source.value) next.dialect = source.value.dialect
   definition.value = next
-  editorMode.value = next.builder ? 'config' : 'sql'
+  editorMode.value = next.builder && !next.builder.sql_mode ? 'config' : 'sql'
   builderKey.value++
   for (const key of Object.keys(testValues)) delete testValues[key]
-  category.value = copy ? category.value : ''
+  category.value = nextCategory
   versions.value = []
   references.value = []
   schema.value = {}
-  baseline.value = copy ? '' : currentState.value
+  baseline.value = copied ? '' : currentState.value
+  activePanel.value = 'check'
   invalidate()
+}
+async function newQuery() {
+  if (!(await canLeave())) return
+  setNewDraft(makeDefinition())
+}
+async function requestCopy(item: AuditDataQuery) {
+  if (!(await canLeave())) return
+  Modal.confirm({
+    title: t('query.copyConfirm'),
+    content: t('query.copyConfirmHint', item.name),
+    okText: t('query.copy'),
+    cancelText: t('common.cancel'),
+    async onOk() {
+      busy.value = 'copy'
+      try {
+        const original = await api.get(item.id)
+        const next = clone(original.draft)
+        next.name = t('query.copyName', original.name)
+        setNewDraft(next, original.category, true)
+      } catch (error) {
+        message.error(errorText(error))
+        throw error
+      } finally {
+        busy.value = ''
+      }
+    },
+  })
 }
 async function save() {
   if (!definition.value.name.trim()) {
@@ -353,20 +380,22 @@ async function assist() {
   }
 }
 function updateBuilder(value: QueryBuilder) {
-  definition.value.builder = value
+  definition.value.builder = { ...value, sql_mode: false }
   definition.value.sql = ''
 }
 function applyBuilder(value: QueryDefinition) {
   definition.value = value
 }
 function updateSQL(value: string) {
+  if (definition.value.sql === value) return
   definition.value.sql = value
-  delete definition.value.builder
+  // 手工 SQL 和配置分别保留，切回配置时由用户明确生成，避免丢失已选字段。
+  if (definition.value.builder) definition.value.builder.sql_mode = true
 }
 function adoptAI() {
-  delete definition.value.builder
-  editorMode.value = 'sql'
   if (!aiResult.value) return
+  if (definition.value.builder) definition.value.builder.sql_mode = true
+  editorMode.value = 'sql'
   const result = clone(aiResult.value)
   definition.value.sql = result.sql
   definition.value.parameters = result.parameters
@@ -397,11 +426,12 @@ async function restoreVersion(version: QueryVersion) {
   if (!(await canLeave())) return
   definition.value = clone(version.definition)
   if (source.value) definition.value.dialect = source.value.dialect
-  editorMode.value = definition.value.builder ? 'config' : 'sql'
+  editorMode.value =
+    definition.value.builder && !definition.value.builder.sql_mode ? 'config' : 'sql'
   builderKey.value++
   schema.value = {}
   for (const key of Object.keys(testValues)) delete testValues[key]
-  activePanel.value = 'test'
+  activePanel.value = 'check'
 }
 function search() {
   appliedKeyword.value = keyword.value.trim()
@@ -491,23 +521,39 @@ defineExpose({ canLeave, editPrompts, busy })
         </a-button>
         <a-spin :spinning="loading">
           <div class="library-list">
-            <button
+            <div
               v-for="item in items"
               :key="item.id"
               class="library-item"
-              :disabled="!!busy"
               :class="{ selected: selected?.id === item.id }"
-              :aria-pressed="selected?.id === item.id"
-              @click="selectQuery(item)"
             >
-              <span class="item-name">{{ item.name }}</span>
-              <span class="item-meta">
-                {{ item.category || t('query.uncategorized') }} ·
-                {{
-                  item.latest_version ? t('query.version', item.latest_version) : t('query.draft')
-                }}
-              </span>
-            </button>
+              <button
+                type="button"
+                class="library-select"
+                :disabled="!!busy"
+                :aria-pressed="selected?.id === item.id"
+                @click="selectQuery(item)"
+              >
+                <span class="item-name">{{ item.name }}</span>
+                <span class="item-meta">
+                  {{ item.category || t('query.uncategorized') }} ·
+                  {{
+                    item.latest_version ? t('query.version', item.latest_version) : t('query.draft')
+                  }}
+                </span>
+              </button>
+              <a-button
+                type="text"
+                size="small"
+                class="library-copy memory-icon-button"
+                :disabled="!!busy"
+                :title="t('query.copy')"
+                :aria-label="t('query.copyItem', item.name)"
+                @click="requestCopy(item)"
+              >
+                <template #icon><CopyOutlined /></template>
+              </a-button>
+            </div>
             <p v-if="!items.length && !loading" class="library-empty">{{ t('query.empty') }}</p>
           </div>
         </a-spin>
@@ -524,6 +570,10 @@ defineExpose({ canLeave, editPrompts, busy })
             </a-tag>
             <span v-if="dirty" class="muted">{{ t('query.unsaved') }}</span>
           </a-space>
+          <a-button type="primary" :loading="busy === 'save'" :disabled="!!busy" @click="save">
+            <template #icon><SaveOutlined /></template>
+            {{ t('query.save') }}
+          </a-button>
         </div>
         <a-form layout="vertical" class="definition-form">
           <a-row :gutter="16">
@@ -568,7 +618,7 @@ defineExpose({ canLeave, editPrompts, busy })
               <a-form-item :label="t('query.maxRows')">
                 <a-input-number
                   :value="definition.max_rows || undefined"
-                  :min="1"
+                  :min="0"
                   :precision="0"
                   :placeholder="t('query.unlimited')"
                   @update:value="
@@ -584,21 +634,19 @@ defineExpose({ canLeave, editPrompts, busy })
             <a-radio-button value="sql">{{ t('query.builder.sqlMode') }}</a-radio-button>
           </a-radio-group>
           <template v-if="editorMode === 'config'">
-            <p v-if="!definition.builder && definition.sql" class="memory-help builder-notice">
+            <p
+              v-if="definition.sql && (!definition.builder || definition.builder.sql_mode)"
+              class="memory-help builder-notice"
+            >
               {{ t('query.builder.convertHint') }}
             </p>
             <QueryBuilderEditor
-              :key="builderKey"
+              :key="`query-builder-${builderKey}`"
               :definition="definition"
               :disabled="!!busy || !source"
               @apply="applyBuilder"
               @update:builder="updateBuilder"
             />
-            <a-collapse v-if="definition.sql" class="builder-notice"
-              ><a-collapse-panel key="sql" :header="t('query.builder.generatedSQL')">
-                <pre class="ai-sql">{{ definition.sql }}</pre>
-              </a-collapse-panel></a-collapse
-            >
           </template>
           <QuerySqlEditor
             v-else
@@ -608,6 +656,18 @@ defineExpose({ canLeave, editPrompts, busy })
             @update:model-value="updateSQL"
             @run="preview"
           />
+          <a-collapse v-if="definition.sql" class="builder-notice">
+            <a-collapse-panel key="execution-sql" :header="t('query.executionSQL')">
+              <p class="memory-help">
+                {{
+                  definition.max_rows > 0
+                    ? t('query.rowLimitPreview', definition.max_rows)
+                    : t('query.unlimitedPreview')
+                }}
+              </p>
+              <pre class="ai-sql">{{ executionSQL }}</pre>
+            </a-collapse-panel>
+          </a-collapse>
           <div class="parameter-heading">
             <strong>{{ t('query.parameterDefinition') }}</strong>
             <a-button v-if="editorMode === 'sql'" size="small" @click="addParameter">
@@ -663,46 +723,8 @@ defineExpose({ canLeave, editPrompts, busy })
               {{ t('query.remove') }}
             </a-button>
           </div>
-          <div class="editor-actions">
-            <a-button :disabled="!!busy" @click="newQuery(true)">
-              <template #icon><CopyOutlined /></template>
-              {{ t('query.copy') }}
-            </a-button>
-            <a-button type="primary" :loading="busy === 'save'" :disabled="!!busy" @click="save">
-              <template #icon><SaveOutlined /></template>
-              {{ t('query.save') }}
-            </a-button>
-          </div>
         </a-form>
         <a-tabs v-model:active-key="activePanel" class="result-panels">
-          <a-tab-pane key="test" :tab="t('query.test')">
-            <p class="memory-help">{{ t('query.manualTestHint') }}</p>
-            <div class="test-parameters">
-              <a-form-item
-                v-for="parameter in definition.parameters"
-                :key="parameter.name"
-                :label="parameter.label || parameter.name"
-              >
-                <a-input
-                  v-model:value="testValues[parameter.name]"
-                  :placeholder="t('query.testValueHint')"
-                />
-              </a-form-item>
-            </div>
-            <div class="panel-actions">
-              <a-button
-                type="primary"
-                :loading="busy === 'preview'"
-                :disabled="!!busy || !source"
-                @click="preview"
-              >
-                <template #icon><PlayCircleOutlined /></template>
-                {{ t('query.preview') }}
-              </a-button>
-            </div>
-            <QueryEvidencePreview v-if="evidence" :evidence="evidence" />
-            <a-empty v-else :description="t('query.previewEmpty')" />
-          </a-tab-pane>
           <a-tab-pane key="check" :tab="t('query.checkResult')">
             <div class="panel-actions">
               <a-button
@@ -730,6 +752,34 @@ defineExpose({ canLeave, editPrompts, busy })
               <p class="muted">{{ t('query.checkScope') }}</p>
             </template>
             <a-empty v-else :description="t('query.checkEmpty')" />
+          </a-tab-pane>
+          <a-tab-pane key="test" :tab="t('query.test')">
+            <p class="memory-help">{{ t('query.manualTestHint') }}</p>
+            <div class="test-parameters">
+              <a-form-item
+                v-for="parameter in definition.parameters"
+                :key="parameter.name"
+                :label="parameter.label || parameter.name"
+              >
+                <a-input
+                  v-model:value="testValues[parameter.name]"
+                  :placeholder="t('query.testValueHint')"
+                />
+              </a-form-item>
+            </div>
+            <div class="panel-actions">
+              <a-button
+                type="primary"
+                :loading="busy === 'preview'"
+                :disabled="!!busy || !source"
+                @click="preview"
+              >
+                <template #icon><PlayCircleOutlined /></template>
+                {{ t('query.preview') }}
+              </a-button>
+            </div>
+            <QueryEvidencePreview v-if="evidence" :evidence="evidence" />
+            <a-empty v-else :description="t('query.previewEmpty')" />
           </a-tab-pane>
           <a-tab-pane key="versions" :tab="t('query.versions')">
             <div class="panel-actions">
@@ -1000,17 +1050,36 @@ h1 {
 }
 .library-item {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
   text-align: left;
   width: 100%;
   border: 0;
   border-bottom: 1px solid var(--color-border-light);
   background: transparent;
   color: var(--color-text-primary);
-  padding: 12px 16px;
-  cursor: pointer;
+  padding: 0 12px 0 0;
   transition: all var(--transition-fast);
+}
+.library-select {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 16px;
+  border: 0;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.library-select:disabled {
+  cursor: not-allowed;
+}
+.library-copy {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
 }
 .library-item:last-child {
   border-bottom: 0;
@@ -1022,7 +1091,7 @@ h1 {
   background: var(--color-primary-bg);
   border-left: 3px solid var(--color-primary);
 }
-.library-item:focus-visible,
+.library-select:focus-visible,
 .add-library-btn:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;
@@ -1042,18 +1111,11 @@ h1 {
   padding: 16px 16px 0;
   flex-wrap: wrap;
 }
-.editor-actions,
 .panel-actions {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-}
-.editor-actions {
-  justify-content: flex-end;
-  padding-top: 16px;
-  margin-top: 16px;
-  border-top: 1px solid var(--color-border-light);
 }
 .panel-actions {
   margin: 16px 0;

@@ -3,6 +3,12 @@
  */
 export default {
     // 记忆库与数据记忆
+    "query.copyConfirm": "复制数据记忆条目",
+    "query.copyConfirmHint": "确认复制“{0}”的已保存草稿？副本包含 SQL、字段和筛选配置，保存后成为独立条目。",
+    "query.copyItem": "复制“{0}”",
+    "query.executionSQL": "执行 SQL 预览",
+    "query.rowLimitPreview": "最多返回 {0} 行；执行时额外读取 1 行以判断是否截断，不计入返回结果。",
+    "query.unlimitedPreview": "不限制返回行数，SQL 不添加行数限制。",
     "query.unlimited": "不限制",
     "query.schemaLoaded": "已读取 {0} 的 {1} 个字段",
     "query.previewSucceeded": "预览执行成功",
@@ -41,7 +47,7 @@ export default {
     "query.builder.apply": "生成查询 SQL",
     "query.builder.applied": "SQL 已生成，请检查并执行预览",
     "query.builder.parameterHint": "筛选值可在预览时填写，或在规则中绑定流程字段、日期和固定值。",
-    "query.builder.convertHint": "当前 SQL 无对应配置，重新生成将替换现有 SQL 和参数。",
+    "query.builder.convertHint": "自定义 SQL 将保留。重新生成查询时，会用当前配置替换 SQL 和参数。",
     "query.builder.generatedSQL": "查看生成的 SQL",
     "query.builder.dialectHint": "当前方言与数据源不一致，请在上方修改数据库方言。",
     "query.builder.error.identifier": "表名、字段名仅支持英文字母、数字和下划线。",

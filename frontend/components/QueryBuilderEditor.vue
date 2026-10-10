@@ -29,6 +29,7 @@ const builder = ref<QueryBuilder>(
 )
 const columns = ref<QueryColumn[]>([])
 const loading = ref(false)
+const expandedSections = ref(['columns', 'filters', 'order'])
 let sequence = 0
 const fieldOptions = computed(() =>
   columns.value.map((column) => ({
@@ -48,12 +49,14 @@ const operatorOptions = [
   'IS NULL',
   'IS NOT NULL',
 ].map((value) => ({ value, label: value }))
-watch(builder, (value) => emit('update:builder', clone(value)), { deep: true })
+// 配置变更同步写回草稿，避免紧接着保存或切换模式时遗漏最新字段。
+watch(builder, (value) => emit('update:builder', clone(value)), { deep: true, flush: 'sync' })
 watch(
   () => builder.value.table,
   () => {
     ++sequence
     columns.value = []
+    loading.value = false
   },
 )
 async function loadSchema(notify = true) {
@@ -76,6 +79,7 @@ async function loadSchema(notify = true) {
   }
 }
 function addColumn() {
+  if (!expandedSections.value.includes('columns')) expandedSections.value.push('columns')
   builder.value.columns.push({ field: '', alias: '', aggregate: '' })
 }
 function selectField(index: number, value: string) {
@@ -84,6 +88,7 @@ function selectField(index: number, value: string) {
     builder.value.columns[index].alias = column.label
 }
 function addFilter() {
+  if (!expandedSections.value.includes('filters')) expandedSections.value.push('filters')
   builder.value.filters.push({
     field: '',
     operator: '=',
@@ -98,7 +103,7 @@ function apply() {
     emit('apply', {
       ...clone(props.definition),
       ...compiled,
-      builder: clone(builder.value),
+      builder: { ...clone(builder.value), sql_mode: false },
     })
     message.success(t('query.builder.applied'))
   } catch (cause) {
@@ -134,119 +139,132 @@ onMounted(() => {
         t('query.builder.archived')
       }}</small>
     </a-form-item>
-    <div class="section-title">
-      <strong>{{ t('query.builder.columns') }}</strong
-      ><a-button
-        size="small"
-        :disabled="disabled || !columns.length || builder.columns.length >= 40"
-        @click="addColumn"
-        ><template #icon><PlusOutlined /></template>{{ t('query.add') }}</a-button
-      >
-    </div>
-    <div v-for="(column, index) in builder.columns" :key="index" class="config-row">
-      <a-select
-        v-model:value="column.field"
-        show-search
-        :options="
-          column.aggregate === 'COUNT'
-            ? [{ value: '*', label: '*' }, ...fieldOptions]
-            : fieldOptions
-        "
-        :placeholder="t('query.builder.field')"
-        :disabled="disabled"
-        @change="(value) => selectField(index, String(value ?? ''))"
-      />
-      <a-select v-model:value="column.aggregate" :disabled="disabled"
-        ><a-select-option value="">{{ t('query.builder.detail') }}</a-select-option
-        ><a-select-option
-          v-for="value in ['SUM', 'COUNT', 'MIN', 'MAX', 'AVG']"
-          :key="value"
-          :value="value"
-          >{{ t('query.builder.' + value) }}</a-select-option
-        ></a-select
-      >
-      <a-input
-        v-model:value="column.alias"
-        :disabled="disabled"
-        :maxlength="100"
-        :placeholder="t('query.builder.alias')"
-      />
-      <a-button
-        type="text"
-        :aria-label="t('query.remove')"
-        :disabled="disabled"
-        @click="builder.columns.splice(index, 1)"
-        ><DeleteOutlined
-      /></a-button>
-    </div>
-    <div class="section-title">
-      <strong>{{ t('query.builder.filters') }}</strong
-      ><a-button
-        size="small"
-        :disabled="disabled || !columns.length || builder.filters.length >= 20"
-        @click="addFilter"
-        ><template #icon><PlusOutlined /></template>{{ t('query.add') }}</a-button
-      >
-    </div>
-    <div v-for="(filter, index) in builder.filters" :key="index" class="filter-row">
-      <a-select
-        v-model:value="filter.field"
-        show-search
-        :options="fieldOptions"
-        :placeholder="t('query.builder.field')"
-        :disabled="disabled"
-      />
-      <a-select
-        v-model:value="filter.operator"
-        :options="operatorOptions"
-        :disabled="disabled"
-        @change="filter.type = filter.operator === 'IN' ? 'string_list' : 'string'"
-      />
-      <a-button
-        type="text"
-        :aria-label="t('query.remove')"
-        :disabled="disabled"
-        @click="builder.filters.splice(index, 1)"
-        ><DeleteOutlined
-      /></a-button>
-      <template v-if="!filter.operator.startsWith('IS ')">
-        <a-input
-          v-model:value="filter.parameter"
-          :disabled="disabled"
-          :placeholder="t('query.parameterName')"
-        />
-        <a-input
-          v-model:value="filter.label"
-          :disabled="disabled"
-          :placeholder="t('query.parameterLabel')"
-        />
-        <a-select v-model:value="filter.type" :disabled="disabled || filter.operator === 'IN'"
-          ><a-select-option
-            v-for="value in ['string', 'number', 'date', 'string_list']"
-            :key="value"
-            :value="value"
-            >{{ t('query.type.' + value) }}</a-select-option
-          ></a-select
+    <a-collapse v-model:active-key="expandedSections" class="builder-sections" :bordered="false">
+      <a-collapse-panel key="columns">
+        <template #header
+          ><strong>{{ t('query.builder.columns') }}</strong></template
         >
-      </template>
-    </div>
-    <a-form-item :label="t('query.builder.order')">
-      <div class="query-order">
-        <a-select v-model:value="builder.order_alias" :disabled="disabled"
-          ><a-select-option value="">{{ t('query.builder.noOrder') }}</a-select-option
-          ><a-select-option
-            v-for="column in builder.columns.filter((item) => item.alias)"
-            :key="column.alias"
-            :value="column.alias"
-            >{{ column.alias }}</a-select-option
-          ></a-select
+        <template #extra>
+          <a-button
+            size="small"
+            :disabled="disabled || !columns.length || builder.columns.length >= 40"
+            @click.stop="addColumn"
+            ><template #icon><PlusOutlined /></template>{{ t('query.add') }}</a-button
+          >
+        </template>
+        <div v-for="(column, index) in builder.columns" :key="index" class="config-row">
+          <a-select
+            v-model:value="column.field"
+            show-search
+            :options="
+              column.aggregate === 'COUNT'
+                ? [{ value: '*', label: '*' }, ...fieldOptions]
+                : fieldOptions
+            "
+            :placeholder="t('query.builder.field')"
+            :disabled="disabled"
+            @change="(value) => selectField(index, String(value ?? ''))"
+          />
+          <a-select v-model:value="column.aggregate" :disabled="disabled"
+            ><a-select-option value="">{{ t('query.builder.detail') }}</a-select-option
+            ><a-select-option
+              v-for="value in ['SUM', 'COUNT', 'MIN', 'MAX', 'AVG']"
+              :key="value"
+              :value="value"
+              >{{ t('query.builder.' + value) }}</a-select-option
+            ></a-select
+          >
+          <a-input
+            v-model:value="column.alias"
+            :disabled="disabled"
+            :maxlength="100"
+            :placeholder="t('query.builder.alias')"
+          />
+          <a-button
+            type="text"
+            :aria-label="t('query.remove')"
+            :disabled="disabled"
+            @click="builder.columns.splice(index, 1)"
+            ><DeleteOutlined
+          /></a-button>
+        </div>
+      </a-collapse-panel>
+      <a-collapse-panel key="filters">
+        <template #header
+          ><strong>{{ t('query.builder.filters') }}</strong></template
         >
-        <a-select v-model:value="builder.order_dir" :disabled="disabled || !builder.order_alias"
-          ><a-select-option value="DESC">{{ t('query.builder.desc') }}</a-select-option
-          ><a-select-option value="ASC">{{ t('query.builder.asc') }}</a-select-option></a-select
+        <template #extra>
+          <a-button
+            size="small"
+            :disabled="disabled || !columns.length || builder.filters.length >= 20"
+            @click.stop="addFilter"
+            ><template #icon><PlusOutlined /></template>{{ t('query.add') }}</a-button
+          >
+        </template>
+        <div v-for="(filter, index) in builder.filters" :key="index" class="filter-row">
+          <a-select
+            v-model:value="filter.field"
+            show-search
+            :options="fieldOptions"
+            :placeholder="t('query.builder.field')"
+            :disabled="disabled"
+          />
+          <a-select
+            v-model:value="filter.operator"
+            :options="operatorOptions"
+            :disabled="disabled"
+            @change="filter.type = filter.operator === 'IN' ? 'string_list' : 'string'"
+          />
+          <a-button
+            type="text"
+            :aria-label="t('query.remove')"
+            :disabled="disabled"
+            @click="builder.filters.splice(index, 1)"
+            ><DeleteOutlined
+          /></a-button>
+          <template v-if="!filter.operator.startsWith('IS ')">
+            <a-input
+              v-model:value="filter.parameter"
+              :disabled="disabled"
+              :placeholder="t('query.parameterName')"
+            />
+            <a-input
+              v-model:value="filter.label"
+              :disabled="disabled"
+              :placeholder="t('query.parameterLabel')"
+            />
+            <a-select v-model:value="filter.type" :disabled="disabled || filter.operator === 'IN'"
+              ><a-select-option
+                v-for="value in ['string', 'number', 'date', 'string_list']"
+                :key="value"
+                :value="value"
+                >{{ t('query.type.' + value) }}</a-select-option
+              ></a-select
+            >
+          </template>
+        </div>
+      </a-collapse-panel>
+      <a-collapse-panel key="order">
+        <template #header
+          ><strong>{{ t('query.builder.order') }}</strong></template
         >
-      </div>
-    </a-form-item>
+        <div class="query-order">
+          <a-select v-model:value="builder.order_alias" :disabled="disabled"
+            ><a-select-option value="">{{ t('query.builder.noOrder') }}</a-select-option
+            ><a-select-option
+              v-for="column in builder.columns.filter((item) => item.alias)"
+              :key="column.alias"
+              :value="column.alias"
+              >{{ column.alias }}</a-select-option
+            ></a-select
+          >
+          <a-select v-model:value="builder.order_dir" :disabled="disabled || !builder.order_alias"
+            ><a-select-option value="DESC">{{ t('query.builder.desc') }}</a-select-option
+            ><a-select-option value="ASC">{{ t('query.builder.asc') }}</a-select-option></a-select
+          >
+        </div>
+      </a-collapse-panel>
+    </a-collapse>
     <a-button type="primary" :disabled="disabled || loading || !columns.length" @click="apply">{{
       t('query.builder.apply')
     }}</a-button>
@@ -266,10 +284,21 @@ onMounted(() => {
 .builder-help {
   margin: 0;
 }
-.section-title {
-  display: flex;
+.builder-sections {
+  background: transparent;
+}
+.builder-sections :deep(.ant-collapse-header) {
   align-items: center;
-  justify-content: space-between;
+  padding: 12px 0;
+}
+.builder-sections :deep(.ant-collapse-content-box) {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 0 12px;
+}
+.builder-sections :deep(.ant-collapse-item) {
+  border-bottom-color: var(--color-border-light);
 }
 .query-order {
   display: grid;
