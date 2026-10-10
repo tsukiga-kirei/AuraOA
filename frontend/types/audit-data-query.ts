@@ -89,6 +89,8 @@ export interface QueryAssist {
 
 /** 可视化配置只负责生成 SQL，实际执行和安全校验统一以 SQL 为准。 */
 export interface QueryBuilder {
+  /** 手工 SQL 优先使用；保留此前配置以便切回编辑，不反向解析 SQL。 */
+  sql_mode?: boolean
   source_type: 'table' | 'workflow'
   table: string
   columns: {

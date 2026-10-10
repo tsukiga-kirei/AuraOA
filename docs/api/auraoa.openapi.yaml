@@ -8710,7 +8710,7 @@ components:
         builder:
           type: object
           additionalProperties: true
-          description: 可选可视化配置元数据，最多30000字节；保存 source_type、table、columns、filters、order_alias、order_dir。实际执行与校验始终以 sql 为准。
+          description: 可选可视化配置元数据，最多30000字节；保存 source_type、table、columns、filters、order_alias、order_dir；可选 sql_mode=true 表示自定义 SQL 优先，同时保留已有配置供再次编辑。实际执行与校验始终以 sql 为准。
     AuditQueryBinding:
       type: object
       required:

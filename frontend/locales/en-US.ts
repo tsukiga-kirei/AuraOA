@@ -2,6 +2,12 @@
  * 英文翻译*/
 export default {
     // 审核数据查询库
+    "query.copyConfirm": "Copy data memory entry",
+    "query.copyConfirmHint": "Copy the saved draft of “{0}”? The copy includes SQL, fields and filters and becomes a separate entry when saved.",
+    "query.copyItem": "Copy “{0}”",
+    "query.executionSQL": "Execution SQL preview",
+    "query.rowLimitPreview": "Return up to {0} rows. One extra row is read to detect truncation and is excluded from the result.",
+    "query.unlimitedPreview": "Unlimited rows. No row limit is added to the SQL.",
     "query.unlimited": "Unlimited",
     "query.schemaLoaded": "Loaded {1} fields from {0}",
     "query.previewSucceeded": "Preview completed",
@@ -40,7 +46,7 @@ export default {
     "query.builder.apply": "Generate query SQL",
     "query.builder.applied": "SQL generated. Check and preview before publishing.",
     "query.builder.parameterHint": "Enter filter values during preview, or bind them to workflow fields, dates or constants in a rule.",
-    "query.builder.convertHint": "This SQL has no matching configuration. Generating a query will replace the current SQL and parameters.",
+    "query.builder.convertHint": "Your custom SQL is retained. Generating a query will replace the SQL and parameters with the current configuration.",
     "query.builder.generatedSQL": "View generated SQL",
     "query.builder.dialectHint": "Select the database dialect matching this data source above.",
     "query.builder.error.identifier": "Table and field names support letters, numbers and underscores.",

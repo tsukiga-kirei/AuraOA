@@ -1,3 +1,5 @@
+import type { QueryDefinition } from '~/types/audit-data-query'
+
 /** SQL 展示辅助仅负责格式化与高亮，发布和执行校验始终由后端负责。 */
 const sqlTokens =
   /'(?:''|[^'])*'|"(?:""|[^"])*"|`(?:``|[^`])*`|:[A-Za-z_][A-Za-z0-9_]*|\b(?:SELECT|FROM|WHERE|AS|JOIN|LEFT|RIGHT|INNER|OUTER|ON|AND|OR|GROUP|BY|ORDER|HAVING|WITH|UNION|ALL|DISTINCT|IN|NOT|NULL|IS|CASE|WHEN|THEN|ELSE|END|SUM|COUNT|AVG|MAX|MIN|COALESCE|NVL|TO_DATE|TO_CHAR|LIMIT|FETCH)\b/gi
@@ -39,4 +41,19 @@ export function formatQuerySql(sql: string): string {
     .replace(/\b(AND|OR)\b/gi, '\n  $1')
     .trim()
     .replace(/\u0000(\d+)\u0000/g, (_, index) => protectedParts[Number(index)] || '')
+}
+
+/** 展示与执行端一致的行数包装；额外一行仅用于判定截断，不写回原始 SQL。 */
+export function previewQuerySql(
+  definition: Pick<QueryDefinition, 'sql' | 'dialect' | 'max_rows'>,
+): string {
+  const sql = definition.sql.trim()
+  if (!sql || !Number.isInteger(definition.max_rows) || definition.max_rows <= 0) return sql
+  const limit = String(BigInt(definition.max_rows) + BigInt(1))
+  const indented = sql
+    .split('\n')
+    .map((line) => `  ${line}`)
+    .join('\n')
+  const clause = definition.dialect === 'mysql' ? `LIMIT ${limit}` : `WHERE ROWNUM <= ${limit}`
+  return `SELECT *\nFROM (\n${indented}\n) auraoa_query\n${clause}`
 }
