@@ -57,3 +57,16 @@ export function previewQuerySql(
   const clause = definition.dialect === 'mysql' ? `LIMIT ${limit}` : `WHERE ROWNUM <= ${limit}`
   return `SELECT *\nFROM (\n${indented}\n) auraoa_query\n${clause}`
 }
+
+/** 从 SQL 识别值占位符，忽略注释、字符串、带引号列名和双冒号转换。 */
+export function querySqlParameterNames(sql: string): string[] {
+  const tokens =
+    /--[^\r\n]*|#[^\r\n]*|\/\*[\s\S]*?\*\/|'(?:''|\\.|[^'\\])*'|"(?:""|[^"])*"|`(?:``|[^`])*`|:[A-Za-z_][A-Za-z0-9_]*/g
+  const names = new Set<string>()
+  for (const match of sql.matchAll(tokens)) {
+    if (match[0].startsWith(':') && sql[(match.index ?? 0) - 1] !== ':') {
+      names.add(match[0].slice(1))
+    }
+  }
+  return [...names]
+}

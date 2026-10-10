@@ -233,8 +233,8 @@ paths:
                 definition:
                   $ref: '#/components/schemas/AuditQueryDefinition'
     delete:
-      summary: 停用查询库条目，保留发布版本
-      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      summary: 校验无当前引用后删除条目，保留历史发布版本
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。仍有当前审核或归档规则引用时返回参数错误，须先取消引用。
       tags:
       - AuditDataQueries
       security:
@@ -256,7 +256,7 @@ paths:
                   data:
                     type: object
                     properties:
-                      archived:
+                      deleted:
                         type: boolean
         default:
           $ref: '#/components/responses/ErrorResponse'
@@ -379,6 +379,56 @@ paths:
         schema:
           type: string
           format: uuid
+    delete:
+      summary: 取消指定流程的当前规则引用
+      description: JWT + 当前租户 tenant_admin，同时需要 /admin/tenant/memory 和 /admin/tenant/rules 页面权限。取消对应模块该流程全部当前规则对条目的引用，保留其他记忆及历史配置快照；使用发布配置的流程需发布修改后生效。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [module, process_type]
+              properties:
+                module:
+                  type: string
+                  enum: [audit_rules, archive_rules]
+                process_type:
+                  type: string
+                  minLength: 1
+      responses:
+        '200':
+          description: 已取消当前流程引用
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      removed_count:
+                        type: integer
+                        description: 受影响的当前规则数量
+        default:
+          $ref: '#/components/responses/ErrorResponse'
   /api/tenant/audit-data-queries/check:
     post:
       summary: 静态检查 SQL 只读结构、表、参数与中文别名

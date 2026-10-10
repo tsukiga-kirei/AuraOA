@@ -103,13 +103,13 @@ func (h *AuditDataQueryHandler) Versions(c *gin.Context) {
 	queryReply(c, data, err)
 }
 
-// Archive DELETE /:id，隐藏库条目并保留历史版本。
-func (h *AuditDataQueryHandler) Archive(c *gin.Context) {
+// Delete DELETE /:id，校验无当前引用后删除库条目，保留历史发布版本。
+func (h *AuditDataQueryHandler) Delete(c *gin.Context) {
 	id, ok := queryID(c)
 	if !ok {
 		return
 	}
-	queryReply(c, map[string]bool{"archived": true}, h.service.Archive(c, id))
+	queryReply(c, map[string]bool{"deleted": true}, h.service.Delete(c, id))
 }
 
 // References GET /:id/references，读取当前规则引用。
@@ -120,6 +120,23 @@ func (h *AuditDataQueryHandler) References(c *gin.Context) {
 	}
 	data, err := h.service.References(c, id)
 	queryReply(c, data, err)
+}
+
+// RemoveReferences DELETE /:id/references，按模块和流程取消全部当前规则引用。
+func (h *AuditDataQueryHandler) RemoveReferences(c *gin.Context) {
+	id, ok := queryID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Module      string `json:"module"`
+		ProcessType string `json:"process_type"`
+	}
+	if !queryBody(c, &req) {
+		return
+	}
+	count, err := h.service.RemoveReferences(c, id, req.Module, req.ProcessType)
+	queryReply(c, map[string]int64{"removed_count": count}, err)
 }
 
 // Check POST /check，检查只读结构、参数、中文列名和表范围。

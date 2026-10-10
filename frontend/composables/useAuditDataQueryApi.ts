@@ -8,6 +8,7 @@ import type {
   QueryPrompts,
   QueryAssist,
   QueryColumn,
+  QueryUsageReference,
 } from '~/types/audit-data-query'
 
 /**
@@ -43,11 +44,13 @@ export const useAuditDataQueryApi = () => {
       }),
     versions: (id: string) => authFetch<QueryVersion[]>(`${root}/${id}/versions`),
     publish: (id: string) => authFetch<QueryVersion>(`${root}/${id}/publish`, { method: 'POST' }),
-    archive: (id: string) => authFetch(`${root}/${id}`, { method: 'DELETE' }),
-    references: (id: string) =>
-      authFetch<{ id: string; process_type: string; rule_content: string; module: string }[]>(
-        `${root}/${id}/references`,
-      ),
+    remove: (id: string) => authFetch<{ deleted: boolean }>(`${root}/${id}`, { method: 'DELETE' }),
+    references: (id: string) => authFetch<QueryUsageReference[]>(`${root}/${id}/references`),
+    removeReferences: (id: string, module: QueryUsageReference['module'], process_type: string) =>
+      authFetch<{ removed_count: number }>(`${root}/${id}/references`, {
+        method: 'DELETE',
+        body: { module, process_type },
+      }),
     check: (definition: QueryDefinition) =>
       authFetch<QueryCheck>(`${root}/check`, { method: 'POST', body: definition }),
     preview: (body: {
