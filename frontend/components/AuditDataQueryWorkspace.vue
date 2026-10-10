@@ -1207,7 +1207,6 @@ defineExpose({ canLeave, editPrompts, busy })
                     <p v-if="resultColumns.length" class="output-columns">
                       {{ t('query.outputColumns') }}：{{ resultColumns.join('、') }}
                     </p>
-                    <p class="muted">{{ t('query.checkScope') }}</p>
                   </template>
                   <a-empty v-else :description="t('query.checkEmpty')" /></section
               ></a-tab-pane>
@@ -1216,7 +1215,6 @@ defineExpose({ canLeave, editPrompts, busy })
                   ><PlayCircleOutlined /><span>{{ t('query.test') }}</span></template
                 >
                 <section class="tab-section">
-                  <p class="memory-help">{{ t('query.manualTestHint') }}</p>
                   <div class="test-parameters">
                     <a-form-item
                       v-for="parameter in definition.parameters"
@@ -1263,7 +1261,6 @@ defineExpose({ canLeave, editPrompts, busy })
                     >
                       {{ t('query.publish') }}
                     </a-button>
-                    <span class="muted">{{ t('query.publishHint') }}</span>
                   </div>
                   <a-empty v-if="!versions.length" :description="t('query.noVersions')" />
                   <div v-for="version in versions" :key="version.id" class="version-row">
@@ -1358,8 +1355,8 @@ defineExpose({ canLeave, editPrompts, busy })
 
 <style scoped>
 .result-tabs > :deep(.ant-tabs-nav) {
-  margin: 0;
-  padding: 0 20px;
+  margin: 0 0 24px;
+  padding: 0;
   background: transparent;
   border-radius: 0;
 }
@@ -1550,7 +1547,7 @@ h1 {
   line-height: 1.7;
 }
 .draft-meta {
-  padding: 16px 16px 0;
+  padding: 20px 20px 0;
   flex-wrap: wrap;
 }
 .panel-actions {
@@ -1572,7 +1569,7 @@ h1 {
   min-height: 360px;
 }
 .definition-form {
-  padding: 20px 20px 0;
+  padding: 0;
 }
 .sql-parameter-source {
   display: flex;
@@ -1597,21 +1594,28 @@ h1 {
   min-width: 0;
 }
 .workspace-tabs {
-  padding: 20px 0 0;
+  padding: 20px 20px 32px;
 }
+/* 导航沿用规则配置页的内容宽度与边框，不将灰色背景拉满编辑区。 */
 .workspace-tabs > :deep(.ant-tabs-nav) {
-  margin: 0 20px 20px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 24px;
   background: var(--color-bg-hover);
   padding: 4px;
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
+}
+.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-nav-wrap) {
+  flex: 0 1 auto;
 }
 .workspace-tabs > :deep(.ant-tabs-nav::before) {
   border-bottom: 0;
 }
 .workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-tab) {
-  padding: 8px 12px;
+  padding: 7px 14px;
   border-radius: var(--radius-md);
-  font-size: 13px;
+  font-size: 13.5px;
 }
 .workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-tab-active) {
   background: var(--color-bg-card);
@@ -1633,12 +1637,19 @@ h1 {
 }
 .tab-section,
 .ai-workspace {
-  padding: 0 20px 20px;
+  padding: 0;
+}
+.tab-section {
+  min-height: 240px;
+}
+.tab-section > :deep(.ant-empty) {
+  margin: 32px 0;
 }
 .tab-footer {
   display: flex;
   justify-content: flex-end;
-  padding: 0 20px 20px;
+  padding: 0;
+  margin-top: 24px;
 }
 .ai-heading {
   display: flex;
@@ -1845,15 +1856,8 @@ h1 {
   .query-assistant {
     order: 1;
   }
-  .definition-form {
-    padding: 16px;
-  }
-  .tab-section,
-  .ai-workspace {
-    padding: 0 16px 16px;
-  }
-  .workspace-tabs > :deep(.ant-tabs-nav) {
-    margin-inline: 12px;
+  .workspace-tabs {
+    padding: 16px 16px 32px;
   }
   .ai-context-summary,
   .ai-context-form {
