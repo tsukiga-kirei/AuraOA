@@ -17,6 +17,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   apply: [value: QueryDefinition]
   'update:builder': [value: QueryBuilder]
+  schema: [table: string, columns: QueryColumn[]]
 }>()
 const { t } = useI18n()
 const api = useAuditDataQueryApi()
@@ -80,6 +81,7 @@ async function loadSchema(notify = true) {
     const result = await api.schema(builder.value.table.trim())
     if (seq !== sequence) return
     columns.value = result.columns
+    emit('schema', builder.value.table.trim(), result.columns)
     if (result.dialect !== props.definition.dialect) {
       message.error(t('query.sourceChanged'))
       return
@@ -153,7 +155,8 @@ function apply() {
     emit('apply', {
       ...clone(props.definition),
       ...compiled,
-      builder: { ...clone(builder.value), sql_mode: false },
+      mode: 'config',
+      builder: clone(builder.value),
     })
     message.success(t('query.builder.applied'))
   } catch (cause) {

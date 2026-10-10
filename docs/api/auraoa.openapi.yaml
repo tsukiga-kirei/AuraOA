@@ -496,7 +496,7 @@ paths:
   /api/tenant/audit-data-queries/source:
     get:
       tags: [AuditDataQueries]
-      summary: 获取记忆库已配置的数据源名称和方言
+      summary: 获取记忆库已配置的 OA 数据源和业务环境
       operationId: getAuditQuerySource
       security:
       - bearerAuth: []
@@ -515,6 +515,10 @@ paths:
                     properties:
                       name: {type: string}
                       dialect: {type: string, enum: [mysql, oracle, dm]}
+                      oa_type: {type: string}
+                      oa_name: {type: string}
+                      timezone: {type: string, description: 应用配置的业务时区}
+                      business_date: {type: string, format: date}
   /api/tenant/audit-data-queries/schema:
     get:
       summary: 读取指定 OA 表的零行物理元数据
@@ -8731,6 +8735,12 @@ components:
       - tables
       - parameters
       properties:
+        mode:
+          type: string
+          enum: [config, sql]
+          description: 编辑方式互斥；旧数据未指定时根据 builder 及旧 sql_mode 推断，自定义 SQL 模式清除 builder。
+        ai_context:
+          $ref: '#/components/schemas/AuditQueryAIContext'
         name:
           type: string
           maxLength: 200
@@ -8764,7 +8774,25 @@ components:
         builder:
           type: object
           additionalProperties: true
-          description: 可选可视化配置元数据，最多30000字节；保存 source_type、archived_only、table、columns、filters（含 binding）、order_alias、order_dir；可选 sql_mode=true 表示自定义 SQL 优先，同时保留已有配置供再次编辑。实际执行与校验始终以 sql 为准。
+          description: 仅配置模式保存的可视化元数据，最多30000字节；含 source_type、archived_only、table、columns、filters（含 binding）、order_alias、order_dir。旧 sql_mode 仅用于兼容推断。实际执行与校验以 sql 为准。
+    AuditQueryAIContext:
+      type: object
+      required: [oa_module]
+      description: SQL 助手的业务上下文，随草稿和版本保存，总量最多30000字节。
+      properties:
+        oa_module:
+          type: string
+          enum: [general, workflow, model]
+        notes:
+          type: string
+          description: 关联、统计和特殊业务口径，最多8000字节。
+        field_notes:
+          type: object
+          maxProperties: 200
+          description: 键为固定表名.字段名，值为业务说明。
+          additionalProperties:
+            type: string
+            maxLength: 200
     AuditQueryBinding:
       type: object
       required:
@@ -8989,6 +9017,11 @@ components:
           - generate
           - explain
           - repair
+        category:
+          type: string
+          description: 当前条目的分类，最多100字节。
+        preview:
+          $ref: '#/components/schemas/AuditQueryAssistPreviewSummary'
         instruction:
           type: string
           description: 最多8000字节
@@ -9000,6 +9033,13 @@ components:
     AuditQueryAssistResult:
       type: object
       properties:
+        mode:
+          type: string
+          enum: [sql]
+        tables:
+          type: array
+          maxItems: 20
+          items: {type: string}
         sql:
           type: string
         explanation:
@@ -9014,6 +9054,23 @@ components:
             type: string
         check:
           $ref: '#/components/schemas/AuditQueryCheck'
+    AuditQueryAssistPreviewSummary:
+      type: object
+      description: 最近预览的诊断摘要，不包含业务数据行或手工测试值，最多12000字节。
+      properties:
+        status: {type: string}
+        error: {type: string, description: 最多4000字节}
+        row_count: {type: integer, minimum: 0}
+        truncated: {type: boolean}
+        columns:
+          type: array
+          maxItems: 40
+          items:
+            type: object
+            properties:
+              key: {type: string}
+              label: {type: string}
+              data_type: {type: string}
     AuditInteractionComment:
       type: object
       properties:

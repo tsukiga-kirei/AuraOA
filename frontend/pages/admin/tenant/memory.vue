@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { DatabaseOutlined, CommentOutlined, SettingOutlined } from '@ant-design/icons-vue'
+import { DatabaseOutlined, CommentOutlined } from '@ant-design/icons-vue'
 definePageMeta({ middleware: 'auth', layout: 'default' })
 const { t } = useI18n()
 const activeTab = ref('data')
-const workspace = ref<{ editPrompts: () => Promise<void>; busy: string }>()
 const tabs = computed(() => [
   { key: 'data', label: t('query.title'), icon: DatabaseOutlined },
   { key: 'review', label: t('memory.review'), icon: CommentOutlined },
@@ -16,14 +15,6 @@ const tabs = computed(() => [
         <h1 class="page-title">{{ t('memory.title') }}</h1>
         <p class="page-subtitle">{{ t('memory.subtitle') }}</p>
       </div>
-      <a-button
-        v-show="activeTab === 'data'"
-        :disabled="!!workspace?.busy"
-        @click="workspace?.editPrompts()"
-      >
-        <template #icon><SettingOutlined /></template>
-        {{ t('query.aiPrompts') }}
-      </a-button>
     </div>
     <!-- 沿用规则配置页的顶级胶囊导航；切换页签保留未保存的查询草稿。 -->
     <div class="top-tab-nav" role="tablist" :aria-label="t('memory.title')">
@@ -49,7 +40,7 @@ const tabs = computed(() => [
       role="tabpanel"
       aria-labelledby="memory-tab-data"
     >
-      <AuditDataQueryWorkspace ref="workspace" embedded />
+      <AuditDataQueryWorkspace embedded />
     </div>
     <div
       id="memory-panel-review"

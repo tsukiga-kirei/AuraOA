@@ -2,6 +2,7 @@
 import { useAuditDataQueryApi } from '~/composables/useAuditDataQueryApi'
 import { message, Modal } from 'ant-design-vue'
 import QueryValueSourceEditor from './QueryValueSourceEditor.vue'
+import QuerySchemaBrowser from './QuerySchemaBrowser.vue'
 import { appDayjs } from '~/utils/appTime'
 import { previewQuerySql, querySqlParameterNames } from '~/utils/querySqlEditor'
 import {
@@ -16,6 +17,10 @@ import {
   SearchOutlined,
   BookOutlined,
   DeleteOutlined,
+  InfoCircleOutlined,
+  CodeOutlined,
+  HistoryOutlined,
+  LinkOutlined,
 } from '@ant-design/icons-vue'
 import type {
   AuditDataQuery,
@@ -29,6 +34,7 @@ import type {
   QueryBuilder,
   QueryParameter,
   QueryUsageReference,
+  QuerySource,
 } from '~/types/audit-data-query'
 const props = defineProps<{
   allowUse?: boolean
@@ -43,6 +49,8 @@ const { menus } = useAuth()
 const canEditRules = computed(() => menus.value.some((menu) => menu.path === '/admin/tenant/rules'))
 const api = useAuditDataQueryApi()
 const makeDefinition = (): QueryDefinition => ({
+  mode: 'config',
+  ai_context: { oa_module: 'general', notes: '', field_notes: {} },
   name: '',
   description: '',
   sql: '',
@@ -63,7 +71,7 @@ const makeDefinition = (): QueryDefinition => ({
 const items = ref<AuditDataQuery[]>([])
 const selected = ref<AuditDataQuery>()
 const definition = ref<QueryDefinition>(makeDefinition())
-const source = ref<{ name: string; dialect: QueryDefinition['dialect'] }>()
+const source = ref<QuerySource>()
 const category = ref('')
 const editorMode = ref('config')
 const builderKey = ref(0)
@@ -74,7 +82,12 @@ const loading = ref(false)
 const initializing = ref(true)
 const loadError = ref('')
 const busy = ref('')
-const activePanel = ref('check')
+const activePanel = ref('basic')
+const activeResultPanel = ref('check')
+function openResultPanel(panel: string) {
+  activeResultPanel.value = panel
+  activePanel.value = 'results'
+}
 const versions = ref<QueryVersion[]>([])
 const references = ref<QueryUsageReference[]>([])
 const workflowReferences = computed(() => {
@@ -100,9 +113,8 @@ const editor = ref<{
   insert: (value: string) => void
   focusPosition: (position: number) => void
 }>()
-const tableInput = ref('')
 const schema = ref<Record<string, QueryColumn[]>>({})
-const schemaBusy = ref(false)
+const loadingTables = ref<string[]>([])
 const instruction = ref('')
 const aiResult = ref<QueryAssist>()
 const aiAction = ref<'generate' | 'explain' | 'repair'>('generate')
@@ -115,6 +127,65 @@ const currentState = computed(() =>
 const dirty = computed(() => currentState.value !== baseline.value)
 const resultColumns = computed(() => check.value?.columns || [])
 const executionSQL = computed(() => previewQuerySql(definition.value))
+const contextTables = computed(() => {
+  const tables = [...definition.value.tables]
+  const builder = editorMode.value === 'config' ? definition.value.builder : undefined
+  if (builder?.table.trim()) tables.push(builder.table.trim())
+  if (builder?.source_type === 'workflow' && builder.archived_only !== false)
+    tables.push('workflow_requestbase')
+  return [...new Map(tables.map((table) => [table.toLowerCase(), table])).values()]
+})
+const lockedTables = computed(() =>
+  editorMode.value === 'config'
+    ? contextTables.value.filter(
+        (table) =>
+          !definition.value.tables.includes(table) || table === definition.value.builder?.table,
+      )
+    : [],
+)
+const aiContext = computed(() => definition.value.ai_context!)
+const previewSummary = computed(() =>
+  evidence.value
+    ? {
+        status: evidence.value.status,
+        error: evidence.value.error,
+        row_count: evidence.value.result?.rows.length || 0,
+        truncated: evidence.value.result?.truncated || false,
+        columns: evidence.value.result?.columns || [],
+      }
+    : undefined,
+)
+const contextPreview = computed(() =>
+  JSON.stringify(
+    {
+      environment: source.value,
+      category: category.value,
+      target_mode: 'sql',
+      definition: { ...definition.value, tables: contextTables.value },
+      schema: Object.fromEntries(
+        contextTables.value.map((table) => [table, schema.value[table] || []]),
+      ),
+      instruction: instruction.value,
+      database_error: lastError.value,
+      check: check.value,
+      preview_summary: previewSummary.value,
+    },
+    null,
+    2,
+  ),
+)
+function normalizeDefinition(value: QueryDefinition) {
+  value.mode ||= value.builder && !value.builder.sql_mode ? 'config' : 'sql'
+  if (value.mode === 'sql') delete value.builder
+  else if (value.builder) delete value.builder.sql_mode
+  value.ai_context ||= {
+    oa_module: value.builder?.source_type === 'workflow' ? 'workflow' : 'general',
+    notes: '',
+    field_notes: {},
+  }
+  value.ai_context.field_notes ||= {}
+  return value
+}
 let listSequence = 0
 let selectSequence = 0
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
@@ -125,7 +196,7 @@ function invalidate() {
   aiResult.value = undefined
 }
 watch(currentState, invalidate)
-watch(aiAction, () => {
+watch([aiAction, instruction], () => {
   aiResult.value = undefined
 })
 watch(
@@ -181,9 +252,11 @@ async function selectQuery(item: AuditDataQuery, force = false) {
     ])
     if (sequence !== selectSequence) return
     selected.value = query
-    definition.value = clone(query.draft)
+    definition.value = normalizeDefinition(clone(query.draft))
     if (source.value) definition.value.dialect = source.value.dialect
-    editorMode.value = query.draft.builder && !query.draft.builder.sql_mode ? 'config' : 'sql'
+    editorMode.value = definition.value.mode!
+    activePanel.value = 'basic'
+    instruction.value = ''
     category.value = query.category
     baseline.value = currentState.value
     parameterSettings.clear()
@@ -192,6 +265,7 @@ async function selectQuery(item: AuditDataQuery, force = false) {
     versions.value = related.history
     references.value = related.refs
     schema.value = {}
+    loadingTables.value = []
     lastError.value = ''
     invalidate()
     for (const key of Object.keys(testValues)) delete testValues[key]
@@ -205,8 +279,9 @@ function setNewDraft(next: QueryDefinition, nextCategory = '', copied = false) {
   ++selectSequence
   selected.value = undefined
   if (source.value) next.dialect = source.value.dialect
-  definition.value = next
-  editorMode.value = next.builder && !next.builder.sql_mode ? 'config' : 'sql'
+  definition.value = normalizeDefinition(next)
+  editorMode.value = definition.value.mode!
+  instruction.value = ''
   parameterSettings.clear()
   if (editorMode.value === 'sql') syncSQLParameters()
   builderKey.value++
@@ -215,8 +290,9 @@ function setNewDraft(next: QueryDefinition, nextCategory = '', copied = false) {
   versions.value = []
   references.value = []
   schema.value = {}
+  loadingTables.value = []
   baseline.value = copied ? '' : currentState.value
-  activePanel.value = 'check'
+  activePanel.value = 'basic'
   invalidate()
 }
 async function newQuery() {
@@ -272,7 +348,7 @@ async function save() {
 async function checkSQL() {
   const state = currentState.value
   busy.value = 'check'
-  activePanel.value = 'check'
+  openResultPanel('check')
   try {
     const result = await api.check(clone(definition.value))
     if (state !== currentState.value) return
@@ -307,7 +383,7 @@ async function preview() {
       delete parameters[parameter.name]
   }
   busy.value = 'preview'
-  activePanel.value = 'test'
+  openResultPanel('test')
   lastError.value = ''
   try {
     const result = await api.preview({
@@ -337,7 +413,7 @@ async function publish() {
     message.success(t('query.published', version.version_no))
     await selectQuery(selected.value, true)
     await load()
-    activePanel.value = 'versions'
+    openResultPanel('versions')
   } catch (error) {
     message.error(errorText(error))
   } finally {
@@ -351,7 +427,7 @@ async function requestDelete() {
   try {
     references.value = await api.references(item.id)
     if (references.value.length) {
-      activePanel.value = 'references'
+      openResultPanel('references')
       message.warning(t('query.deleteReferenced'))
       return
     }
@@ -379,7 +455,7 @@ async function requestDelete() {
         // 后端也会校验引用；确认框打开期间新增的引用需展示给管理员。
         try {
           references.value = await api.references(item.id)
-          if (references.value.length) activePanel.value = 'references'
+          if (references.value.length) openResultPanel('references')
         } catch {
           /* 操作失败保留原条目及草稿。 */
         }
@@ -408,35 +484,98 @@ async function removeWorkflowReference(reference: (typeof workflowReferences.val
     busy.value = ''
   }
 }
-function addTable() {
-  const table = tableInput.value.trim()
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) {
+function addTable(table: string) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table) || contextTables.value.length >= 20) {
     message.warning(t('query.tableNameHint'))
     return
   }
-  if (!definition.value.tables.includes(table)) definition.value.tables.push(table)
-  tableInput.value = ''
+  if (!contextTables.value.some((item) => item.toLowerCase() === table.toLowerCase()))
+    definition.value.tables.push(table)
   void loadSchema(table)
 }
-async function loadSchema(table: string) {
+async function loadSchema(table: string, notify = true) {
+  if (loadingTables.value.includes(table)) return
   const sequence = selectSequence
-  schemaBusy.value = true
+  loadingTables.value.push(table)
   try {
     const result = await api.schema(table)
-    if (sequence !== selectSequence || !definition.value.tables.includes(table)) return
+    if (sequence !== selectSequence || !contextTables.value.includes(table)) return
     schema.value[table] = result.columns
-    message.success(t('query.schemaLoaded', [table, result.columns.length]))
-    if (!selected.value && !definition.value.sql)
-      definition.value.dialect = result.dialect as QueryDefinition['dialect']
+    if (notify) message.success(t('query.schemaLoaded', [table, result.columns.length]))
   } catch (error) {
-    message.error(errorText(error))
+    if (sequence === selectSequence) message.error(errorText(error))
   } finally {
-    schemaBusy.value = false
+    if (sequence === selectSequence)
+      loadingTables.value = loadingTables.value.filter((item) => item !== table)
   }
+}
+function rememberSchema(table: string, columns: QueryColumn[]) {
+  schema.value[table] = columns
+}
+function setFieldNote(key: string, value: string) {
+  aiContext.value.field_notes ||= {}
+  if (value.trim()) aiContext.value.field_notes[key] = value
+  else delete aiContext.value.field_notes[key]
 }
 function removeTable(table: string) {
   definition.value.tables = definition.value.tables.filter((item) => item !== table)
   delete schema.value[table]
+  for (const key of Object.keys(aiContext.value.field_notes || {})) {
+    if (key.startsWith(table + '.')) delete aiContext.value.field_notes![key]
+  }
+}
+watch(activePanel, (panel) => {
+  if (panel === 'ai') {
+    for (const table of contextTables.value) if (!schema.value[table]) void loadSchema(table, false)
+  }
+})
+async function focusSQL(position: number) {
+  activePanel.value = 'sql'
+  await nextTick()
+  editor.value?.focusPosition(position)
+}
+async function confirmModeChange(mode: string) {
+  const hasContent =
+    !!definition.value.sql.trim() ||
+    !!definition.value.builder?.columns.length ||
+    !!definition.value.builder?.filters.length
+  if (!hasContent || editorMode.value === mode) return true
+  return await new Promise<boolean>((resolve) =>
+    Modal.confirm({
+      title: t('query.modeChangeTitle'),
+      content: t(mode === 'sql' ? 'query.modeChangeSQL' : 'query.modeChangeConfig'),
+      okText: t('query.modeChangeConfirm'),
+      cancelText: t('common.cancel'),
+      onOk: () => resolve(true),
+      onCancel: () => resolve(false),
+    }),
+  )
+}
+async function changeMode(mode: 'config' | 'sql') {
+  if (busy.value || mode === editorMode.value || !(await confirmModeChange(mode))) return
+  const tables = [...contextTables.value]
+  editorMode.value = mode
+  definition.value.mode = mode
+  if (mode === 'sql') {
+    delete definition.value.builder
+    definition.value.tables = tables
+    syncSQLParameters()
+  } else {
+    definition.value.sql = ''
+    definition.value.parameters = []
+    definition.value.tables = []
+    definition.value.builder = {
+      source_type: 'table',
+      archived_only: false,
+      table: tables[0] || '',
+      columns: [],
+      filters: [],
+      order_alias: '',
+      order_dir: 'DESC',
+    }
+    parameterSettings.clear()
+  }
+  builderKey.value++
 }
 function syncSQLParameters() {
   for (const parameter of definition.value.parameters) {
@@ -456,15 +595,23 @@ function syncSQLParameters() {
 async function assist() {
   const state = currentState.value
   const action = aiAction.value
+  const requestInstruction = instruction.value
   busy.value = 'assist'
   try {
-    const result = await api.assist(
+    const result = await api.assist({
       action,
-      clone(definition.value),
-      instruction.value,
-      lastError.value,
+      category: category.value,
+      definition: { ...clone(definition.value), tables: [...contextTables.value] },
+      instruction: instruction.value,
+      error: lastError.value.slice(0, 4000),
+      preview: previewSummary.value,
+    })
+    if (
+      state !== currentState.value ||
+      action !== aiAction.value ||
+      requestInstruction !== instruction.value
     )
-    if (state !== currentState.value) return
+      return
     aiResult.value = result
     if (result.warnings.length) message.warning(result.warnings.join('；'), 8)
   } catch (error) {
@@ -474,31 +621,58 @@ async function assist() {
   }
 }
 function updateBuilder(value: QueryBuilder) {
-  definition.value.builder = { ...value, sql_mode: false }
+  const previous = definition.value.builder
+  if (
+    previous &&
+    (previous.table !== value.table ||
+      previous.source_type !== value.source_type ||
+      previous.archived_only !== value.archived_only)
+  ) {
+    const previousTables = [previous.table]
+    if (previous.source_type === 'workflow' && previous.archived_only !== false)
+      previousTables.push('workflow_requestbase')
+    definition.value.tables = definition.value.tables.filter(
+      (table) => !previousTables.includes(table),
+    )
+  }
+  definition.value.parameters = []
+  definition.value.builder = value
+  if (value.source_type === 'workflow' && aiContext.value.oa_module === 'general')
+    aiContext.value.oa_module = 'workflow'
+  definition.value.mode = 'config'
   definition.value.sql = ''
 }
 function applyBuilder(value: QueryDefinition) {
-  definition.value = value
+  definition.value = normalizeDefinition(value)
 }
 function markSQLMode() {
-  if (definition.value.builder) definition.value.builder.sql_mode = true
+  definition.value.mode = 'sql'
+  delete definition.value.builder
 }
 function updateSQL(value: string) {
   if (definition.value.sql === value) return
   definition.value.sql = value
   syncSQLParameters()
-  // 手工 SQL 和配置分别保留，切回配置时由用户明确生成，避免丢失已选字段。
-  if (definition.value.builder) definition.value.builder.sql_mode = true
+  // 自定义 SQL 只有一个编辑来源，不保留另一份可视化配置。
+  definition.value.mode = 'sql'
+  delete definition.value.builder
 }
-function adoptAI() {
-  if (!aiResult.value) return
-  if (definition.value.builder) definition.value.builder.sql_mode = true
-  editorMode.value = 'sql'
+async function adoptAI() {
+  if (!aiResult.value || busy.value) return
   const result = clone(aiResult.value)
-  definition.value.sql = result.sql
-  definition.value.parameters = result.parameters
+  if (!(await confirmModeChange('sql'))) return
+  definition.value = {
+    ...clone(definition.value),
+    mode: 'sql',
+    builder: undefined,
+    sql: result.sql,
+    parameters: result.parameters,
+    tables: result.tables,
+  }
+  editorMode.value = 'sql'
   syncSQLParameters()
   aiResult.value = undefined
+  activePanel.value = 'sql'
   message.success(t('query.aiAdopted'))
 }
 async function editPrompts() {
@@ -523,16 +697,15 @@ async function savePrompts() {
 }
 async function restoreVersion(version: QueryVersion) {
   if (!(await canLeave())) return
-  definition.value = clone(version.definition)
+  definition.value = normalizeDefinition(clone(version.definition))
   if (source.value) definition.value.dialect = source.value.dialect
-  editorMode.value =
-    definition.value.builder && !definition.value.builder.sql_mode ? 'config' : 'sql'
+  editorMode.value = definition.value.mode!
   parameterSettings.clear()
   if (editorMode.value === 'sql') syncSQLParameters()
   builderKey.value++
   schema.value = {}
   for (const key of Object.keys(testValues)) delete testValues[key]
-  activePanel.value = 'check'
+  activePanel.value = 'basic'
 }
 function search() {
   appliedKeyword.value = keyword.value.trim()
@@ -590,10 +763,6 @@ defineExpose({ canLeave, editPrompts, busy })
           <p>{{ t('query.subtitle') }}</p>
         </div>
       </div>
-      <a-button :disabled="!!busy" @click="editPrompts">
-        <template #icon><SettingOutlined /></template>
-        {{ t('query.aiPrompts') }}
-      </a-button>
     </div>
     <div class="workspace-layout">
       <aside class="query-library panel">
@@ -698,350 +867,471 @@ defineExpose({ canLeave, editPrompts, busy })
             </a-button>
           </a-space>
         </div>
-        <a-form layout="vertical" class="definition-form">
-          <a-row :gutter="16">
-            <a-col :span="14">
-              <a-form-item :label="t('query.name')" required>
-                <a-input
-                  v-model:value="definition.name"
-                  :maxlength="200"
-                  :placeholder="t('query.namePlaceholder')"
-                />
-              </a-form-item>
-            </a-col>
-            <a-col :span="10">
-              <a-form-item :label="t('query.category')">
-                <a-input v-model:value="category" :maxlength="100" />
-              </a-form-item>
-            </a-col>
-          </a-row>
-          <a-form-item :label="t('query.description')" required>
-            <a-textarea
-              v-model:value="definition.description"
-              :rows="2"
-              :maxlength="8000"
-              :placeholder="t('query.descriptionHint')"
-            />
-          </a-form-item>
-          <a-row :gutter="16">
-            <a-col :span="12">
-              <a-form-item :label="t('query.dialect')">
-                <a-input
-                  :value="
-                    source
-                      ? `${source.name} · ${source.dialect === 'dm' ? t('query.dm') : source.dialect === 'mysql' ? 'MySQL' : 'Oracle'}`
-                      : t('query.sourceMissing')
-                  "
-                  readonly
-                />
-                <small class="muted">{{ t('query.sourceAutomatic') }}</small>
-              </a-form-item>
-            </a-col>
-            <a-col :span="12">
-              <a-form-item :label="t('query.maxRows')">
-                <a-input-number
-                  :value="definition.max_rows || undefined"
-                  :min="0"
-                  :precision="0"
-                  :placeholder="t('query.unlimited')"
-                  @update:value="
-                    (value) => (definition.max_rows = value == null ? 0 : Number(value))
-                  "
-                  style="width: 100%"
-                />
-              </a-form-item>
-            </a-col>
-          </a-row>
-          <a-radio-group v-model:value="editorMode" button-style="solid">
-            <a-radio-button value="config">{{ t('query.builder.mode') }}</a-radio-button>
-            <a-radio-button value="sql">{{ t('query.builder.sqlMode') }}</a-radio-button>
-          </a-radio-group>
-          <template v-if="editorMode === 'config'">
-            <p
-              v-if="definition.sql && (!definition.builder || definition.builder.sql_mode)"
-              class="memory-help builder-notice"
+        <a-tabs v-model:active-key="activePanel" class="workspace-tabs" :tab-bar-gutter="4">
+          <a-tab-pane key="basic"
+            ><template #tab
+              ><InfoCircleOutlined /><span>{{ t('query.tab.basic') }}</span></template
             >
-              {{ t('query.builder.convertHint') }}
-            </p>
-            <QueryBuilderEditor
-              :key="`query-builder-${builderKey}`"
-              :definition="definition"
-              :disabled="!!busy || !source"
-              @apply="applyBuilder"
-              @update:builder="updateBuilder"
-            />
-          </template>
-          <QuerySqlEditor
-            v-else
-            ref="editor"
-            class="sql-template"
-            :model-value="definition.sql"
-            @update:model-value="updateSQL"
-            @run="preview"
-          />
-          <a-collapse
-            v-if="definition.sql"
-            :default-active-key="['execution-sql']"
-            class="builder-notice"
-          >
-            <a-collapse-panel key="execution-sql" :header="t('query.executionSQL')">
-              <p class="memory-help">
-                {{
-                  definition.max_rows > 0
-                    ? t('query.rowLimitPreview', definition.max_rows)
-                    : t('query.unlimitedPreview')
-                }}
-              </p>
-              <pre class="ai-sql">{{ executionSQL }}</pre>
-            </a-collapse-panel>
-          </a-collapse>
-          <template v-if="editorMode === 'sql' && definition.parameters.length">
-            <div class="parameter-heading">
-              <strong>{{ t('query.sqlVariableValues') }}</strong>
+            <a-form layout="vertical" class="definition-form">
+              <a-row :gutter="16">
+                <a-col :span="14">
+                  <a-form-item :label="t('query.name')" required>
+                    <a-input
+                      v-model:value="definition.name"
+                      :maxlength="200"
+                      :placeholder="t('query.namePlaceholder')"
+                    />
+                  </a-form-item>
+                </a-col>
+                <a-col :span="10">
+                  <a-form-item :label="t('query.category')">
+                    <a-input v-model:value="category" :maxlength="100" />
+                  </a-form-item>
+                </a-col>
+              </a-row>
+              <a-form-item :label="t('query.description')" required>
+                <a-textarea
+                  v-model:value="definition.description"
+                  :rows="2"
+                  :maxlength="8000"
+                  :placeholder="t('query.descriptionHint')"
+                />
+              </a-form-item>
+              <a-row :gutter="16">
+                <a-col :span="12">
+                  <a-form-item :label="t('query.dialect')">
+                    <a-input
+                      :value="
+                        source
+                          ? `${source.name} · ${source.dialect === 'dm' ? t('query.dm') : source.dialect === 'mysql' ? 'MySQL' : 'Oracle'}`
+                          : t('query.sourceMissing')
+                      "
+                      readonly
+                    />
+                    <small class="muted">{{ t('query.sourceAutomatic') }}</small>
+                  </a-form-item>
+                </a-col>
+                <a-col :span="12">
+                  <a-form-item :label="t('query.maxRows')">
+                    <a-input-number
+                      :value="definition.max_rows || undefined"
+                      :min="0"
+                      :precision="0"
+                      :placeholder="t('query.unlimited')"
+                      @update:value="
+                        (value) => (definition.max_rows = value == null ? 0 : Number(value))
+                      "
+                      style="width: 100%"
+                    />
+                  </a-form-item>
+                </a-col>
+              </a-row>
+            </a-form>
+            <div class="tab-footer">
+              <a-button type="primary" @click="activePanel = 'sql'">{{
+                t('query.nextSQL')
+              }}</a-button>
             </div>
-            <div
-              v-for="parameter in definition.parameters"
-              :key="parameter.name"
-              class="sql-parameter-source"
+          </a-tab-pane>
+          <a-tab-pane key="sql"
+            ><template #tab
+              ><CodeOutlined /><span>{{ t('query.tab.sql') }}</span></template
             >
-              <div class="sql-variable-meta">
-                <code>:{{ parameter.name }}</code>
-                <a-input
-                  v-model:value="parameter.label"
-                  @update:value="markSQLMode"
-                  :disabled="!!busy"
-                  :aria-label="t('query.parameterLabel')"
-                  :placeholder="t('query.parameterLabel')"
-                />
-                <a-select
-                  v-model:value="parameter.type"
-                  @update:value="markSQLMode"
-                  :disabled="!!busy"
-                  :aria-label="t('query.parameterType')"
-                >
-                  <a-select-option
-                    v-for="type in ['string', 'number', 'date', 'string_list']"
-                    :key="type"
-                    :value="type"
-                  >
-                    {{ t('query.type.' + type) }}
-                  </a-select-option>
-                </a-select>
-              </div>
-              <QueryValueSourceEditor
-                v-model="parameter.default_binding"
-                @update:model-value="markSQLMode"
-                :type="parameter.type"
+            <a-form layout="vertical" class="definition-form">
+              <a-radio-group
+                :value="editorMode"
                 :disabled="!!busy"
+                button-style="solid"
+                @change="changeMode($event.target.value)"
+              >
+                <a-radio-button value="config">{{ t('query.builder.mode') }}</a-radio-button>
+                <a-radio-button value="sql">{{ t('query.builder.sqlMode') }}</a-radio-button>
+              </a-radio-group>
+              <p class="memory-help">{{ t('query.exclusiveModeHint') }}</p>
+              <QueryBuilderEditor
+                v-if="editorMode === 'config'"
+                :key="`query-builder-${builderKey}`"
+                :definition="definition"
+                :disabled="!!busy || !source"
+                @apply="applyBuilder"
+                @update:builder="updateBuilder"
+                @schema="rememberSchema"
               />
-            </div>
-          </template>
-        </a-form>
-        <a-tabs v-model:active-key="activePanel" class="result-panels">
-          <a-tab-pane key="check" :tab="t('query.checkResult')">
-            <div class="panel-actions">
-              <a-button
-                type="primary"
-                :loading="busy === 'check'"
-                :disabled="!!busy || !source"
-                @click="checkSQL"
+              <QuerySqlEditor
+                v-if="editorMode === 'sql'"
+                ref="editor"
+                class="sql-template"
+                :model-value="definition.sql"
+                @update:model-value="updateSQL"
+                @run="preview"
+              />
+              <a-collapse
+                v-if="definition.sql"
+                :default-active-key="['execution-sql']"
+                class="builder-notice"
               >
-                <template #icon><CheckCircleOutlined /></template>
-                {{ t('query.check') }}
-              </a-button>
-            </div>
-            <template v-if="check">
-              <button
-                v-for="(issue, index) in check.issues"
-                :key="index"
-                class="check-issue"
-                @click="editor?.focusPosition(issue.position)"
-              >
-                {{ issue.message }}
-              </button>
-              <p v-if="resultColumns.length" class="output-columns">
-                {{ t('query.outputColumns') }}：{{ resultColumns.join('、') }}
-              </p>
-              <p class="muted">{{ t('query.checkScope') }}</p>
-            </template>
-            <a-empty v-else :description="t('query.checkEmpty')" />
-          </a-tab-pane>
-          <a-tab-pane key="test" :tab="t('query.test')">
-            <p class="memory-help">{{ t('query.manualTestHint') }}</p>
-            <div class="test-parameters">
-              <a-form-item
-                v-for="parameter in definition.parameters"
-                :key="parameter.name"
-                :label="parameter.label || parameter.name"
-              >
-                <a-input
-                  v-model:value="testValues[parameter.name]"
-                  :placeholder="
-                    parameter.default_binding &&
-                    parameter.default_binding.source !== 'field' &&
-                    parameter.default_binding.value !== 'process_id'
-                      ? t('query.defaultTestValueHint')
-                      : t('query.testValueHint')
-                  "
-                />
-              </a-form-item>
-            </div>
-            <div class="panel-actions">
-              <a-button
-                type="primary"
-                :loading="busy === 'preview'"
-                :disabled="!!busy || !source"
-                @click="preview"
-              >
-                <template #icon><PlayCircleOutlined /></template>
-                {{ t('query.preview') }}
-              </a-button>
-            </div>
-            <QueryEvidencePreview v-if="evidence" :evidence="evidence" />
-            <a-empty v-else :description="t('query.previewEmpty')" />
-          </a-tab-pane>
-          <a-tab-pane key="versions" :tab="t('query.versions')">
-            <div class="panel-actions">
-              <a-button
-                type="primary"
-                :loading="busy === 'publish'"
-                :disabled="!!busy || !selected || dirty || !selected.tested_hash"
-                @click="publish"
-              >
-                {{ t('query.publish') }}
-              </a-button>
-              <span class="muted">{{ t('query.publishHint') }}</span>
-            </div>
-            <a-empty v-if="!versions.length" :description="t('query.noVersions')" />
-            <div v-for="version in versions" :key="version.id" class="version-row">
-              <div>
-                <strong>{{ t('query.version', version.version_no) }}</strong>
-                <span class="muted">· {{ formatTime(version.created_at) }}</span>
-              </div>
-              <a-space>
-                <a-button size="small" @click="restoreVersion(version)">
-                  {{ t('query.loadDraft') }}
-                </a-button>
-                <a-button
-                  v-if="allowUse && selected"
-                  size="small"
-                  type="primary"
-                  @click="emit('use-version', selected!, version)"
+                <a-collapse-panel key="execution-sql" :header="t('query.executionSQL')">
+                  <p class="memory-help">
+                    {{
+                      definition.max_rows > 0
+                        ? t('query.rowLimitPreview', definition.max_rows)
+                        : t('query.unlimitedPreview')
+                    }}
+                  </p>
+                  <pre class="ai-sql">{{ executionSQL }}</pre>
+                </a-collapse-panel>
+              </a-collapse>
+              <template v-if="editorMode === 'sql' && definition.parameters.length">
+                <div class="parameter-heading">
+                  <strong>{{ t('query.sqlVariableValues') }}</strong>
+                </div>
+                <div
+                  v-for="parameter in definition.parameters"
+                  :key="parameter.name"
+                  class="sql-parameter-source"
                 >
-                  {{ t('query.useVersion') }}
-                </a-button>
-              </a-space>
-            </div>
+                  <div class="sql-variable-meta">
+                    <code>:{{ parameter.name }}</code>
+                    <a-input
+                      v-model:value="parameter.label"
+                      @update:value="markSQLMode"
+                      :disabled="!!busy"
+                      :aria-label="t('query.parameterLabel')"
+                      :placeholder="t('query.parameterLabel')"
+                    />
+                    <a-select
+                      v-model:value="parameter.type"
+                      @update:value="markSQLMode"
+                      :disabled="!!busy"
+                      :aria-label="t('query.parameterType')"
+                    >
+                      <a-select-option
+                        v-for="type in ['string', 'number', 'date', 'string_list']"
+                        :key="type"
+                        :value="type"
+                      >
+                        {{ t('query.type.' + type) }}
+                      </a-select-option>
+                    </a-select>
+                  </div>
+                  <QueryValueSourceEditor
+                    v-model="parameter.default_binding"
+                    @update:model-value="markSQLMode"
+                    :type="parameter.type"
+                    :disabled="!!busy"
+                  />
+                </div>
+              </template>
+
+              <a-collapse v-if="editorMode === 'sql'" class="builder-notice">
+                <a-collapse-panel key="schema" :header="t('query.schema')">
+                  <QuerySchemaBrowser
+                    :tables="contextTables"
+                    :schema="schema"
+                    :loading-tables="loadingTables"
+                    :field-notes="aiContext.field_notes || {}"
+                    :disabled="!!busy"
+                    @add="addTable"
+                    @remove="removeTable"
+                    @load="loadSchema"
+                    @note="setFieldNote"
+                  />
+                </a-collapse-panel>
+              </a-collapse>
+            </a-form>
           </a-tab-pane>
-          <a-tab-pane key="references" :tab="t('query.references')">
-            <a-empty v-if="!workflowReferences.length" :description="t('query.noReferences')" />
-            <div
-              v-for="reference in workflowReferences"
-              :key="JSON.stringify([reference.module, reference.process_type])"
-              class="reference-row"
+          <a-tab-pane key="ai">
+            <template #tab
+              ><RobotOutlined /><span>{{ t('query.assistant') }}</span></template
             >
-              <div>
-                <strong>{{ reference.process_type }}</strong>
-                <p>
-                  {{
-                    t(
-                      reference.module === 'audit_rules'
-                        ? 'query.auditUsage'
-                        : 'query.archiveUsage',
-                    )
-                  }}
-                </p>
+            <section class="ai-workspace">
+              <div class="ai-heading">
+                <div>
+                  <strong>{{ t('query.assistant') }}</strong>
+                  <p class="memory-help">{{ t('query.aiWorkspaceHint') }}</p>
+                </div>
+                <a-button :disabled="!!busy" @click="editPrompts"
+                  ><template #icon><SettingOutlined /></template
+                  >{{ t('query.aiPrompts') }}</a-button
+                >
               </div>
-              <a-popconfirm
-                v-if="canEditRules"
-                :title="t('query.removeReferenceConfirm', reference.process_type)"
-                :ok-text="t('query.removeReference')"
-                :cancel-text="t('common.cancel')"
+              <div class="ai-context-summary">
+                <div>
+                  <small>{{ t('query.oaEnvironment') }}</small
+                  ><strong>{{ source?.oa_name || t('query.sourceMissing') }}</strong
+                  ><span>{{ source?.dialect }} · {{ source?.timezone }}</span>
+                </div>
+                <div>
+                  <small>{{ t('query.contextBasic') }}</small
+                  ><strong>{{ definition.name || t('query.notFilled') }}</strong
+                  ><span>{{ category || t('query.uncategorized') }}</span>
+                </div>
+                <div>
+                  <small>{{ t('query.contextQuery') }}</small
+                  ><strong>{{
+                    t(editorMode === 'config' ? 'query.builder.mode' : 'query.builder.sqlMode')
+                  }}</strong
+                  ><span
+                    >{{ t('query.contextTableCount', contextTables.length) }} ·
+                    {{
+                      t(
+                        'query.contextVariableCount',
+                        definition.parameters.length || definition.builder?.filters.length || 0,
+                      )
+                    }}</span
+                  >
+                </div>
+              </div>
+              <a-form layout="vertical" class="ai-context-form">
+                <a-form-item :label="t('query.oaModule')">
+                  <a-select v-model:value="aiContext.oa_module" :disabled="!!busy"
+                    ><a-select-option
+                      v-for="module in ['general', 'workflow', 'model']"
+                      :key="module"
+                      :value="module"
+                      >{{ t('query.module.' + module) }}</a-select-option
+                    ></a-select
+                  >
+                </a-form-item>
+                <a-form-item :label="t('query.contextNotes')"
+                  ><a-textarea
+                    v-model:value="aiContext.notes"
+                    :disabled="!!busy"
+                    :rows="2"
+                    :maxlength="8000"
+                    :placeholder="t('query.contextNotesHint')"
+                /></a-form-item>
+              </a-form>
+              <h3 class="ai-section-title">{{ t('query.schema') }}</h3>
+              <QuerySchemaBrowser
+                :tables="contextTables"
+                :schema="schema"
+                :loading-tables="loadingTables"
+                :field-notes="aiContext.field_notes || {}"
+                :locked-tables="lockedTables"
                 :disabled="!!busy"
-                @confirm="removeWorkflowReference(reference)"
+                @add="addTable"
+                @remove="removeTable"
+                @load="loadSchema"
+                @note="setFieldNote"
+              />
+              <div class="ai-request">
+                <div class="ai-action-row">
+                  <a-select v-model:value="aiAction" :disabled="!!busy"
+                    ><a-select-option
+                      v-for="action in ['generate', 'explain', 'repair']"
+                      :key="action"
+                      :value="action"
+                      >{{ t('query.action.' + action) }}</a-select-option
+                    ></a-select
+                  >
+                  <span class="memory-help">{{ t('query.aiCustomOnly') }}</span>
+                </div>
+                <a-textarea
+                  v-model:value="instruction"
+                  :disabled="!!busy"
+                  :rows="4"
+                  :maxlength="8000"
+                  :placeholder="t('query.aiInstruction')"
+                  class="ai-instruction"
+                />
+                <div class="panel-actions">
+                  <a-button
+                    type="primary"
+                    :loading="busy === 'assist'"
+                    :disabled="
+                      !!busy ||
+                      !source ||
+                      (aiAction === 'generate' ? !contextTables.length : !definition.sql.trim())
+                    "
+                    @click="assist"
+                    ><template #icon><RobotOutlined v-if="busy !== 'assist'" /></template
+                    >{{ t('query.runAI') }}</a-button
+                  >
+                </div>
+              </div>
+              <a-collapse class="context-preview"
+                ><a-collapse-panel key="context" :header="t('query.contextPreview')"
+                  ><p class="memory-help">{{ t('query.contextPreviewHint') }}</p>
+                  <pre class="ai-sql">{{ contextPreview }}</pre>
+                </a-collapse-panel></a-collapse
               >
-                <a-button danger :disabled="!!busy">{{ t('query.removeReference') }}</a-button>
-              </a-popconfirm>
-            </div>
+              <section v-if="aiResult" class="ai-candidate">
+                <h3 class="ai-section-title">{{ t('query.aiCandidate') }}</h3>
+                <div class="ai-explanation">{{ aiResult.explanation }}</div>
+                <ul v-if="aiResult.warnings.length" class="ai-warnings">
+                  <li v-for="(warning, index) in aiResult.warnings" :key="index">{{ warning }}</li>
+                </ul>
+                <pre v-if="aiResult.sql" class="ai-sql">{{ aiResult.sql }}</pre>
+                <p class="memory-help">{{ t('query.aiCandidateHint') }}</p>
+                <a-button
+                  v-if="aiAction !== 'explain' && aiResult.sql"
+                  type="primary"
+                  :disabled="!!busy"
+                  @click="adoptAI"
+                  >{{ t('query.adoptAI') }}</a-button
+                >
+              </section>
+            </section>
+          </a-tab-pane>
+          <a-tab-pane key="results">
+            <template #tab
+              ><CheckCircleOutlined /><span>{{ t('query.tab.results') }}</span></template
+            >
+            <a-tabs v-model:active-key="activeResultPanel" class="result-tabs" :tab-bar-gutter="28">
+              <a-tab-pane key="check"
+                ><template #tab
+                  ><CheckCircleOutlined /><span>{{ t('query.checkResult') }}</span></template
+                >
+                <section class="tab-section">
+                  <div class="panel-actions">
+                    <a-button
+                      type="primary"
+                      :loading="busy === 'check'"
+                      :disabled="!!busy || !source"
+                      @click="checkSQL"
+                    >
+                      <template #icon><CheckCircleOutlined /></template>
+                      {{ t('query.check') }}
+                    </a-button>
+                  </div>
+                  <template v-if="check">
+                    <button
+                      v-for="(issue, index) in check.issues"
+                      :key="index"
+                      class="check-issue"
+                      @click="focusSQL(issue.position)"
+                    >
+                      {{ issue.message }}
+                    </button>
+                    <p v-if="resultColumns.length" class="output-columns">
+                      {{ t('query.outputColumns') }}：{{ resultColumns.join('、') }}
+                    </p>
+                    <p class="muted">{{ t('query.checkScope') }}</p>
+                  </template>
+                  <a-empty v-else :description="t('query.checkEmpty')" /></section
+              ></a-tab-pane>
+              <a-tab-pane key="test"
+                ><template #tab
+                  ><PlayCircleOutlined /><span>{{ t('query.test') }}</span></template
+                >
+                <section class="tab-section">
+                  <p class="memory-help">{{ t('query.manualTestHint') }}</p>
+                  <div class="test-parameters">
+                    <a-form-item
+                      v-for="parameter in definition.parameters"
+                      :key="parameter.name"
+                      :label="parameter.label || parameter.name"
+                    >
+                      <a-input
+                        v-model:value="testValues[parameter.name]"
+                        :placeholder="
+                          parameter.default_binding &&
+                          parameter.default_binding.source !== 'field' &&
+                          parameter.default_binding.value !== 'process_id'
+                            ? t('query.defaultTestValueHint')
+                            : t('query.testValueHint')
+                        "
+                      />
+                    </a-form-item>
+                  </div>
+                  <div class="panel-actions">
+                    <a-button
+                      type="primary"
+                      :loading="busy === 'preview'"
+                      :disabled="!!busy || !source"
+                      @click="preview"
+                    >
+                      <template #icon><PlayCircleOutlined /></template>
+                      {{ t('query.preview') }}
+                    </a-button>
+                  </div>
+                  <QueryEvidencePreview v-if="evidence" :evidence="evidence" />
+                  <a-empty v-else :description="t('query.previewEmpty')" /></section
+              ></a-tab-pane>
+              <a-tab-pane key="versions"
+                ><template #tab
+                  ><HistoryOutlined /><span>{{ t('query.versions') }}</span></template
+                >
+                <section class="tab-section">
+                  <div class="panel-actions">
+                    <a-button
+                      type="primary"
+                      :loading="busy === 'publish'"
+                      :disabled="!!busy || !selected || dirty || !selected.tested_hash"
+                      @click="publish"
+                    >
+                      {{ t('query.publish') }}
+                    </a-button>
+                    <span class="muted">{{ t('query.publishHint') }}</span>
+                  </div>
+                  <a-empty v-if="!versions.length" :description="t('query.noVersions')" />
+                  <div v-for="version in versions" :key="version.id" class="version-row">
+                    <div>
+                      <strong>{{ t('query.version', version.version_no) }}</strong>
+                      <span class="muted">· {{ formatTime(version.created_at) }}</span>
+                    </div>
+                    <a-space>
+                      <a-button size="small" @click="restoreVersion(version)">
+                        {{ t('query.loadDraft') }}
+                      </a-button>
+                      <a-button
+                        v-if="allowUse && selected"
+                        size="small"
+                        type="primary"
+                        @click="emit('use-version', selected!, version)"
+                      >
+                        {{ t('query.useVersion') }}
+                      </a-button>
+                    </a-space>
+                  </div>
+                </section></a-tab-pane
+              >
+              <a-tab-pane key="references"
+                ><template #tab
+                  ><LinkOutlined /><span>{{ t('query.references') }}</span></template
+                >
+                <section class="tab-section">
+                  <a-empty
+                    v-if="!workflowReferences.length"
+                    :description="t('query.noReferences')"
+                  />
+                  <div
+                    v-for="reference in workflowReferences"
+                    :key="JSON.stringify([reference.module, reference.process_type])"
+                    class="reference-row"
+                  >
+                    <div>
+                      <strong>{{ reference.process_type }}</strong>
+                      <p>
+                        {{
+                          t(
+                            reference.module === 'audit_rules'
+                              ? 'query.auditUsage'
+                              : 'query.archiveUsage',
+                          )
+                        }}
+                      </p>
+                    </div>
+                    <a-popconfirm
+                      v-if="canEditRules"
+                      :title="t('query.removeReferenceConfirm', reference.process_type)"
+                      :ok-text="t('query.removeReference')"
+                      :cancel-text="t('common.cancel')"
+                      :disabled="!!busy"
+                      @confirm="removeWorkflowReference(reference)"
+                    >
+                      <a-button danger :disabled="!!busy">{{
+                        t('query.removeReference')
+                      }}</a-button>
+                    </a-popconfirm>
+                  </div>
+                </section></a-tab-pane
+              >
+            </a-tabs>
           </a-tab-pane>
         </a-tabs>
       </main>
-      <aside v-if="!initializing" class="query-assistant panel">
-        <div class="section-heading">
-          <RobotOutlined v-if="busy !== 'assist'" />
-          <strong>{{ t('query.assistant') }}</strong>
-        </div>
-        <a-tabs>
-          <a-tab-pane key="schema" :tab="t('query.schema')">
-            <div class="memory-input-action">
-              <a-input
-                v-model:value="tableInput"
-                :placeholder="t('query.tableName')"
-                @press-enter="addTable"
-              />
-              <a-button type="primary" @click="addTable">{{ t('query.add') }}</a-button>
-            </div>
-            <p class="muted">{{ t('query.tableScopeHint') }}</p>
-            <a-spin :spinning="schemaBusy">
-              <div v-for="table in definition.tables" :key="table" class="schema-table">
-                <div class="schema-heading">
-                  <a-button type="link" size="small" @click="loadSchema(table)">
-                    {{ table }}
-                  </a-button>
-                  <a-button type="text" size="small" danger @click="removeTable(table)">
-                    {{ t('query.remove') }}
-                  </a-button>
-                </div>
-                <button
-                  v-for="column in schema[table] || []"
-                  :key="column.key"
-                  class="schema-column"
-                  @click="editor?.insert(column.label)"
-                >
-                  <span>{{ column.label }}</span>
-                  <small>{{ column.data_type }}</small>
-                </button>
-              </div>
-            </a-spin>
-          </a-tab-pane>
-          <a-tab-pane key="ai" :tab="t('query.ai')">
-            <a-select v-model:value="aiAction" :disabled="!!busy" style="width: 100%">
-              <a-select-option
-                v-for="action in ['generate', 'explain', 'repair']"
-                :key="action"
-                :value="action"
-              >
-                {{ t('query.action.' + action) }}
-              </a-select-option>
-            </a-select>
-            <a-textarea
-              v-model:value="instruction"
-              :rows="5"
-              :maxlength="8000"
-              :placeholder="t('query.aiInstruction')"
-              class="ai-instruction"
-            />
-            <a-button
-              type="primary"
-              block
-              :loading="busy === 'assist'"
-              :disabled="!!busy || !source"
-              @click="assist"
-            >
-              <template #icon><RobotOutlined /></template>
-              {{ t('query.runAI') }}
-            </a-button>
-            <p class="muted">{{ t('query.aiHint') }}</p>
-            <template v-if="aiResult">
-              <div class="ai-explanation">{{ aiResult.explanation }}</div>
-              <pre v-if="aiResult.sql" class="ai-sql">{{ aiResult.sql }}</pre>
-              <a-button v-if="aiAction !== 'explain' && aiResult.sql" block @click="adoptAI">
-                {{ t('query.adoptAI') }}
-              </a-button>
-            </template>
-          </a-tab-pane>
-        </a-tabs>
-      </aside>
     </div>
     <a-modal
       v-model:open="promptsOpen"
@@ -1067,6 +1357,22 @@ defineExpose({ canLeave, editPrompts, busy })
 </template>
 
 <style scoped>
+.result-tabs > :deep(.ant-tabs-nav) {
+  margin: 0;
+  padding: 0 20px;
+  background: transparent;
+  border-radius: 0;
+}
+.result-tabs > :deep(.ant-tabs-nav .ant-tabs-tab) {
+  padding: 16px 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.result-tabs > :deep(.ant-tabs-nav .ant-tabs-ink-bar) {
+  display: block;
+}
+
 .query-workspace {
   color: var(--color-text-primary);
 }
@@ -1104,7 +1410,7 @@ h1 {
 }
 .workspace-layout {
   display: grid;
-  grid-template-columns: 240px minmax(380px, 1fr) 280px;
+  grid-template-columns: 240px minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
@@ -1287,8 +1593,121 @@ h1 {
   overflow-wrap: anywhere;
   color: var(--color-text-secondary);
 }
-.result-panels {
-  padding: 4px 20px 16px;
+.query-main {
+  min-width: 0;
+}
+.workspace-tabs {
+  padding: 20px 0 0;
+}
+.workspace-tabs > :deep(.ant-tabs-nav) {
+  margin: 0 20px 20px;
+  background: var(--color-bg-hover);
+  padding: 4px;
+  border-radius: var(--radius-lg);
+}
+.workspace-tabs > :deep(.ant-tabs-nav::before) {
+  border-bottom: 0;
+}
+.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-tab) {
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-tab-active) {
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-xs);
+}
+.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn) {
+  font-weight: 600;
+}
+.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-tab-btn) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-tab-btn .anticon) {
+  margin-right: 0;
+}
+.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-ink-bar) {
+  display: none;
+}
+.tab-section,
+.ai-workspace {
+  padding: 0 20px 20px;
+}
+.tab-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 20px 20px;
+}
+.ai-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.ai-heading > div {
+  min-width: 0;
+}
+.ai-heading > .ant-btn {
+  flex-shrink: 0;
+}
+.ai-context-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.ai-context-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+.ai-context-summary small,
+.ai-context-summary span {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+.ai-context-summary strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.ai-context-form {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 16px;
+}
+.ai-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 20px 0 12px;
+}
+.ai-request {
+  margin-top: 24px;
+}
+.ai-action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ai-action-row .ant-select {
+  width: 160px;
+  flex-shrink: 0;
+}
+.ai-candidate {
+  padding: 0 0 4px;
+}
+.ai-warnings {
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--color-text-secondary);
 }
 .test-parameters {
   display: grid;
@@ -1388,7 +1807,7 @@ h1 {
 }
 @media (min-width: 1700px) {
   .workspace-layout {
-    grid-template-columns: 260px minmax(480px, 1fr) 320px;
+    grid-template-columns: 260px minmax(0, 1fr);
   }
 }
 @media (max-width: 1380px) {
@@ -1429,8 +1848,19 @@ h1 {
   .definition-form {
     padding: 16px;
   }
-  .result-panels {
+  .tab-section,
+  .ai-workspace {
     padding: 0 16px 16px;
+  }
+  .workspace-tabs > :deep(.ant-tabs-nav) {
+    margin-inline: 12px;
+  }
+  .ai-context-summary,
+  .ai-context-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ai-heading {
+    flex-wrap: wrap;
   }
   .test-parameters {
     grid-template-columns: 1fr 1fr;
