@@ -17,6 +17,7 @@ import (
 type ArchiveRuleService struct {
 	ruleRepo    *repository.ArchiveRuleRepo
 	invalidator *cache.InvalidationManager
+	dataQueries *AuditDataQueryService
 }
 
 // NewArchiveRuleService 初始化归档规则服务。
@@ -38,6 +39,11 @@ func (s *ArchiveRuleService) Create(c *gin.Context, req *dto.CreateArchiveRuleRe
 		enabled = *req.Enabled
 	}
 
+	if s.dataQueries != nil {
+		if err := s.dataQueries.ValidateReferenceChange(c, nil, req.DataQueries); err != nil {
+			return nil, err
+		}
+	}
 	contextMounts := defaultJSON(req.ContextMounts, "[]")
 	rule := &model.ArchiveRule{
 		ID:             uuid.New(),
@@ -50,6 +56,7 @@ func (s *ArchiveRuleService) Create(c *gin.Context, req *dto.CreateArchiveRuleRe
 		RelatedFlow:    req.RelatedFlow,
 		ContextEnabled: req.ContextEnabled && hasEnabledContextMounts(contextMounts),
 		ContextMounts:  contextMounts,
+		DataQueries:    defaultJSON(req.DataQueries, "[]"),
 	}
 
 	if req.ConfigID != "" {
@@ -80,7 +87,15 @@ func (s *ArchiveRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.Updat
 		return nil, newServiceError(errcode.ErrRuleNotFound, "归档规则不存在")
 	}
 
+	if req.DataQueries != nil && s.dataQueries != nil {
+		if err := s.dataQueries.ValidateReferenceChange(c, existing.DataQueries, req.DataQueries); err != nil {
+			return nil, err
+		}
+	}
 	fields := make(map[string]interface{})
+	if req.DataQueries != nil {
+		fields["data_queries"] = req.DataQueries
+	}
 	if req.RuleContent != "" {
 		fields["rule_content"] = req.RuleContent
 	}

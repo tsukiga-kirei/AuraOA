@@ -19,6 +19,7 @@ type ArchiveRule struct {
 	Source         string         `gorm:"size:20;not null;default:manual" json:"source"`            // 规则来源：manual/file_import/paste_import
 	RelatedFlow    bool           `gorm:"not null;default:false" json:"related_flow"`               // 是否关联审批流
 	ContextEnabled bool           `gorm:"not null;default:false" json:"context_enabled"`            // 是否启用规则级外部关联数据
+	DataQueries    datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"data_queries"`     // 独立审核数据查询引用
 	ContextMounts  datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"context_mounts"`   // 规则级外部关联数据配置
 	CreatedAt      time.Time      `json:"created_at"`                                               // 创建时间
 	UpdatedAt      time.Time      `json:"updated_at"`                                               // 最后更新时间

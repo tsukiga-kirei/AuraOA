@@ -58,7 +58,544 @@ tags:
   description: AI 助理与会话流式对话
 - name: AgentAdmin
   description: 智能体、MCP 服务与 Skills 扩展管理
+- name: AuditDataQueries
+  description: 租户通用审核数据查询库
 paths:
+  /api/tenant/audit-data-queries:
+    get:
+      summary: 分页搜索审核数据查询库
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AuditQueryLibraryItem'
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      page_size:
+                        type: integer
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      parameters:
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+    post:
+      summary: 创建审核查询草稿
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/AuditQueryLibraryItem'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - definition
+              properties:
+                category:
+                  type: string
+                definition:
+                  $ref: '#/components/schemas/AuditQueryDefinition'
+  /api/tenant/audit-data-queries/{id}:
+    get:
+      summary: 获取查询草稿
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/AuditQueryLibraryItem'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      summary: 更新查询草稿并重置预览标记
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/AuditQueryLibraryItem'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - definition
+              properties:
+                category:
+                  type: string
+                definition:
+                  $ref: '#/components/schemas/AuditQueryDefinition'
+    delete:
+      summary: 停用查询库条目，保留发布版本
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      archived:
+                        type: boolean
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/tenant/audit-data-queries/{id}/publish:
+    post:
+      summary: 将已验证草稿发布为不可变版本
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/AuditQueryVersion'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/tenant/audit-data-queries/{id}/versions:
+    get:
+      summary: 按倒序获取全部发布版本
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditQueryVersion'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/tenant/audit-data-queries/{id}/references:
+    get:
+      summary: 查看当前审核和归档规则引用
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        process_type:
+                          type: string
+                        rule_content:
+                          type: string
+                        module:
+                          type: string
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/tenant/audit-data-queries/check:
+    post:
+      summary: 静态检查 SQL 只读结构、表、参数与中文别名
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/AuditQueryCheck'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditQueryDefinition'
+  /api/tenant/audit-data-queries/preview:
+    post:
+      summary: 受限只读预览并生成模型上下文
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/AuditQueryEvidence'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditQueryPreviewRequest'
+  /api/tenant/audit-data-queries/source:
+    get:
+      tags: [AuditDataQueries]
+      summary: 获取记忆库已配置的数据源名称和方言
+      operationId: getAuditQuerySource
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 不含连接凭据；类型来自租户已配置的 OA 连接
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: {type: integer}
+                  message: {type: string}
+                  data:
+                    type: object
+                    properties:
+                      name: {type: string}
+                      dialect: {type: string, enum: [mysql, oracle, dm]}
+  /api/tenant/audit-data-queries/schema:
+    get:
+      summary: 读取指定 OA 表的零行物理元数据
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      table:
+                        type: string
+                      dialect:
+                        type: string
+                      columns:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AuditQueryColumn'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      parameters:
+      - name: table
+        in: query
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+  /api/tenant/audit-data-queries/assist:
+    post:
+      summary: AI 生成、解释或修复 SQL 草稿
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/AuditQueryAssistResult'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditQueryAssistRequest'
+  /api/tenant/audit-data-queries/prompts:
+    get:
+      summary: 获取租户 SQL 辅助提示词
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/AuditQueryPrompts'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    put:
+      summary: 更新租户 SQL 辅助提示词
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      tags:
+      - AuditDataQueries
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/AuditQueryPrompts'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditQueryPrompts'
   /api/health:
     get:
       summary: 服务健康检查
@@ -4394,7 +4931,7 @@ paths:
           description: 成功，chat_count 为对话链数量
           content:
             application/json:
-              schema: {"type":"object","properties":{"code":{"type":"integer"},"message":{"type":"string"},"data":{"type":"object","properties":{"total":{"type":"integer"},"audit_count":{"type":"integer"},"archive_count":{"type":"integer"},"summary_count":{"type":"integer"},"chat_count":{"type":"integer"}}}}}
+              schema: {"type":"object","properties":{"code":{"type":"integer"},"message":{"type":"string"},"data":{"type":"object","properties":{"total":{"type":"integer"},"audit_count":{"type":"integer"},"archive_count":{"type":"integer"},"summary_count":{"type":"integer"},"chat_count":{"type":"integer"},"sql_assist_count":{"type":"integer"}}}}}
   /api/tenant/llm-logs/{processId}/chain:
     get:
       summary: 获取流程或对话全部 AI 调用链（对话键为 chat:UUID）
@@ -8110,6 +8647,319 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    AuditQueryParameter:
+      type: object
+      required:
+      - name
+      - label
+      - type
+      properties:
+        name:
+          type: string
+          pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+        label:
+          type: string
+          description: 包含中文的业务说明，最多100字
+        type:
+          type: string
+          enum:
+          - string
+          - number
+          - date
+          - string_list
+    AuditQueryDefinition:
+      type: object
+      required:
+      - name
+      - description
+      - sql
+      - dialect
+      - tables
+      - parameters
+      - max_rows
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          description: 用途和统计口径，最多8000字节
+        sql:
+          type: string
+          description: 单条只读 SELECT/WITH，最大30000字节；命名参数与显式 AS 中文输出列
+        dialect:
+          type: string
+          enum:
+          - mysql
+          - oracle
+          - dm
+        tables:
+          type: array
+          items:
+            type: string
+          maxItems: 20
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditQueryParameter'
+          maxItems: 20
+        max_rows:
+          type: integer
+          minimum: 1
+          maximum: 100
+        builder:
+          type: object
+          additionalProperties: true
+          description: 可选可视化配置元数据，最多30000字节；保存 source_type、table、columns、filters、order_alias、order_dir。实际执行与校验始终以 sql 为准。
+    AuditQueryBinding:
+      type: object
+      required:
+      - source
+      properties:
+        source:
+          type: string
+          enum:
+          - field
+          - system
+          - constant
+        field:
+          type: string
+          description: main:field / detail_table:field
+        value:
+          type: string
+          description: 系统变量 process_id/current_date/year_start/month_start 或常量
+        days_offset:
+          type: integer
+          minimum: -3660
+          maximum: 3660
+          description: 仅日期参数允许偏移
+    AuditQueryReference:
+      type: object
+      required:
+      - query_id
+      - version_no
+      - enabled
+      - bindings
+      properties:
+        query_id:
+          type: string
+          format: uuid
+        version_no:
+          type: integer
+          minimum: 1
+        enabled:
+          type: boolean
+        bindings:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/AuditQueryBinding'
+    AuditQueryCheck:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+              message:
+                type: string
+              position:
+                type: integer
+                minimum: 1
+                description: 编辑器 UTF-16 字符位置，从1开始
+        parameters:
+          type: array
+          items:
+            type: string
+        columns:
+          type: array
+          items:
+            type: string
+    AuditQueryColumn:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        data_type:
+          type: string
+    AuditQueryResult:
+      type: object
+      properties:
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditQueryColumn'
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        truncated:
+          type: boolean
+        duration_ms:
+          type: integer
+          format: int64
+    AuditQueryEvidence:
+      type: object
+      properties:
+        rule_id:
+          type: string
+        rule_content:
+          type: string
+        query_id:
+          type: string
+        version_no:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        parameters:
+          type: object
+          additionalProperties: true
+        queried_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum:
+          - success
+          - failed
+        error:
+          type: string
+        result:
+          $ref: '#/components/schemas/AuditQueryResult'
+        model_text:
+          type: string
+    AuditQueryLibraryItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        category:
+          type: string
+        draft:
+          $ref: '#/components/schemas/AuditQueryDefinition'
+        tested_hash:
+          type: string
+        tested_at:
+          type: string
+          format: date-time
+          nullable: true
+        latest_version:
+          type: integer
+        archived:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AuditQueryVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        query_id:
+          type: string
+          format: uuid
+        version_no:
+          type: integer
+        definition:
+          $ref: '#/components/schemas/AuditQueryDefinition'
+        created_at:
+          type: string
+          format: date-time
+    AuditQueryPrompts:
+      type: object
+      required:
+      - generate
+      - explain
+      - repair
+      properties:
+        generate:
+          type: string
+          description: 必填，最多12000字节
+        explain:
+          type: string
+          description: 必填，最多12000字节
+        repair:
+          type: string
+          description: 必填，最多12000字节
+    AuditQueryPreviewRequest:
+      type: object
+      properties:
+        query_id:
+          type: string
+          format: uuid
+        version_no:
+          type: integer
+          description: 大于零时只使用已发布定义
+        definition:
+          $ref: '#/components/schemas/AuditQueryDefinition'
+        parameters:
+          type: object
+          additionalProperties: true
+        process_id:
+          type: string
+        bindings:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/AuditQueryBinding'
+    AuditQueryAssistRequest:
+      type: object
+      required:
+      - action
+      - definition
+      properties:
+        action:
+          type: string
+          enum:
+          - generate
+          - explain
+          - repair
+        instruction:
+          type: string
+          description: 最多8000字节
+        error:
+          type: string
+          description: 最多4000字节
+        definition:
+          $ref: '#/components/schemas/AuditQueryDefinition'
+    AuditQueryAssistResult:
+      type: object
+      properties:
+        sql:
+          type: string
+        explanation:
+          type: string
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditQueryParameter'
+        warnings:
+          type: array
+          items:
+            type: string
+        check:
+          $ref: '#/components/schemas/AuditQueryCheck'
     AuditInteractionComment:
       type: object
       properties:
@@ -8768,6 +9618,10 @@ components:
     JobStatus:
       type: object
       properties:
+        query_evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditQueryEvidence'
         id:
           type: string
           format: uuid

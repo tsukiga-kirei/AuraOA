@@ -54,6 +54,7 @@ type JobStreamEvent struct {
 
 // AuditExecuteService 审核执行业务逻辑：串联 OA 数据 → 提示词构建 → AI 调用 → 结果解析 → 写入日志。
 type AuditExecuteService struct {
+	dataQueries       *AuditDataQueryService
 	auditLogRepo      *repository.AuditLogRepo
 	auditSnapshotRepo *repository.AuditProcessSnapshotRepo
 	configRepo        *repository.ProcessAuditConfigRepo
@@ -620,6 +621,15 @@ func (s *AuditExecuteService) processAuditJob(
 	// 拉取审批流快照（历史 + 路由图），失败时不阻塞主流程
 	flowSnapshot := s.fetchFlowSnapshot(c, tenant, req.ProcessID)
 	externalContextText := s.resolveAuditRulesExternalContext(c, tenant, req.ProcessID, processData, rules)
+	queryText, queryEvidence := s.dataQueries.ResolveRules(c, req.ProcessID, processData, rules)
+	externalContextText += "\n" + queryText
+	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+		SanitizeQueryEvidence(queryEvidence)
+	}
+	evidenceJSON, _ := json.Marshal(queryEvidence)
+	if _, err := s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{"query_evidence": datatypes.JSON(evidenceJSON)}); err != nil {
+		return err
+	}
 
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
 		sanitize.SanitizeProcessData(processData)
@@ -719,6 +729,7 @@ func (s *AuditExecuteService) processAuditJob(
 
 	totalDuration := int(time.Since(startTime).Milliseconds())
 	parsed, parseErr := ParseAuditResult(extractionResp.Content)
+	GuardQueryEvidence(parsed, queryEvidence)
 
 	rawStored := extractionResp.Content
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
@@ -2237,6 +2248,7 @@ func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenant
 func buildAuditResultFromLog(log *model.AuditLog) (result map[string]interface{}) {
 	defer func() {
 		if result != nil {
+			result["query_evidence"] = log.QueryEvidence
 			result["trigger_source"] = log.TriggerSource
 			result["user_id"] = log.UserID.String()
 			if model.IsEmbedTrigger(log.TriggerSource) {
@@ -2869,4 +2881,3 @@ func (s *AuditExecuteService) FetchWorkflowCodes(ctx context.Context, tenantID u
 	}
 	return codes
 }
-

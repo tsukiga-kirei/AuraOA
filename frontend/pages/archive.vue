@@ -387,6 +387,7 @@ const normalizeArchiveResult = (input?: Partial<ArchiveReviewResult> | null): Ar
     deep_thinking: input.deep_thinking || '',
     ai_reasoning: input.ai_reasoning || '',
     ai_summary: input.ai_summary || '',
+    query_evidence: input.query_evidence ?? [],
     flow_audit: {
       is_complete: input.flow_audit?.is_complete ?? true,
       missing_nodes: input.flow_audit?.missing_nodes ?? [],
@@ -1415,6 +1416,7 @@ onUnmounted(() => {
 
             <!--审核结果：仅已形成合规结论时展示完整报告（与审核工作台「已完成」一致）-->
             <template v-else-if="currentResult && !loading && archiveDetailShowsComplianceReport">
+              <QueryEvidenceList :items="currentResult.query_evidence || []" />
               <!--与 dashboard 一致的操作栏 -->
               <div class="result-action-bar">
                 <a-button @click="openAuditChain(selectedProcess.process_id)">

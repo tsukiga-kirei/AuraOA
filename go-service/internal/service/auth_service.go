@@ -729,6 +729,7 @@ func (s *AuthService) getMenuFromOrgRoles(userID string, tenantID string, active
 		"/archive":                   {key: "archive", label: "归档复盘"},
 		"/summary":                   {key: "summary", label: "流程总结"},
 		"/settings":                  {key: "settings", label: "个人设置"},
+		"/admin/tenant/memory":       {key: "memory", label: "记忆库"},
 		"/admin/tenant/rules":        {key: "rules-management", label: "规则管理"},
 		"/admin/tenant/org":          {key: "org-management", label: "组织管理"},
 		"/admin/tenant/data":         {key: "data-management", label: "数据管理"},

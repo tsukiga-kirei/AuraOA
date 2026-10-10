@@ -23,6 +23,7 @@ type AuditLog struct {
 	DeepThinking       string         `gorm:"type:text;default:''" json:"deep_thinking"`
 	AIReasoning        string         `gorm:"type:text;default:''" json:"ai_reasoning"`
 	Confidence         int            `gorm:"not null;default:0" json:"confidence"`
+	QueryEvidence      datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"query_evidence"` // 当次查询证据快照
 	RawContent         string         `gorm:"type:text;default:''" json:"raw_content"`
 	ParseError         string         `gorm:"type:text;default:''" json:"parse_error"`
 	ErrorMessage       string         `gorm:"type:text;default:''" json:"error_message"`
@@ -114,6 +115,7 @@ type ArchiveLog struct {
 	DeepThinking    string         `gorm:"type:text;default:''" json:"deep_thinking"`
 	AIReasoning     string         `gorm:"type:text;default:''" json:"ai_reasoning"`
 	Confidence      int            `gorm:"not null;default:0" json:"confidence"`
+	QueryEvidence   datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"query_evidence"` // 当次查询证据快照
 	RawContent      string         `gorm:"type:text;default:''" json:"raw_content"`
 	ParseError      string         `gorm:"type:text;default:''" json:"parse_error"`
 	ErrorMessage    string         `gorm:"type:text;default:''" json:"error_message"`

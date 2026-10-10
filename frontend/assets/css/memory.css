@@ -1,0 +1,73 @@
+/* 记忆库工作区及规则证据共用主题样式，沿用项目浅色、深色、暖色变量。 */
+/* 输入框与操作按钮分别保留圆角和间距，避免全局圆角样式导致组合边框挤压。 */
+.memory-surface .memory-input-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.memory-surface .memory-input-action > .ant-input,
+.memory-surface .memory-input-action > .ant-input-affix-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+.memory-surface .ant-btn {
+  justify-content: center;
+  flex-shrink: 0;
+}
+.memory-surface .ant-btn > .anticon {
+  flex-shrink: 0;
+}
+/* 项目按钮已使用 flex gap，不叠加组件默认的图文外边距。 */
+.memory-surface .ant-btn > .anticon + span {
+  margin-inline-start: 0;
+}
+.memory-surface .ant-btn .ant-btn-loading-icon > .anticon {
+  margin-inline-end: 0;
+}
+.memory-surface .memory-icon-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+.memory-surface .ant-alert {
+  border-color: var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+.memory-surface .ant-alert-info {
+  background: var(--color-info-bg);
+}
+.memory-surface .ant-alert-success {
+  background: var(--color-success-bg);
+}
+.memory-surface .ant-alert-warning {
+  background: var(--color-warning-bg);
+}
+.memory-surface .ant-alert-error {
+  background: var(--color-error-bg);
+}
+.memory-surface .ant-alert-message {
+  color: var(--color-text-primary);
+}
+.memory-surface .ant-alert-description {
+  color: var(--color-text-secondary);
+}
+.memory-surface .ant-alert-info .ant-alert-icon {
+  color: var(--color-info);
+}
+.memory-surface .ant-alert-success .ant-alert-icon {
+  color: var(--color-success);
+}
+.memory-surface .ant-alert-warning .ant-alert-icon {
+  color: var(--color-warning);
+}
+.memory-surface .ant-alert-error .ant-alert-icon {
+  color: var(--color-error);
+}
+.memory-surface .query-version-tag {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+}
+.memory-surface .ant-tag-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}

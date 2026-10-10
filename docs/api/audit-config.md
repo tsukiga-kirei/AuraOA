@@ -269,3 +269,9 @@ POST /api/tenant/rules/context/test
 **响应**：`data.context_text` 为注入 AI 的文本预览。
 
 建模表挂载会在 `context_text` 中显示“建模表：中文名（英文表名）”；`mode=rows` 时，`return_fields` 必须填写英文物理列名，服务端会基于泛微字段元数据将返回结果的列名转换为中文显示名。`max_rows=-1` 表示返回全部匹配行，正整数表示行数上限。
+
+## 数据记忆引用
+
+规则读写和执行配置快照新增 `data_queries` 数组，引用当前租户查询库的不可变发布版本，最多8项。与 `related_flow` / `context_mounts` 独立；支持流程字段、系统变量和固定值参数绑定。详情见 [记忆库 / 数据记忆](./audit-data-queries.md)。
+
+修改引用需要查询库页面权限；无权限者可原样保留已有引用。引用的版本不会随查询草稿变化，变更引用后按既有执行配置发布/激活机制生效。

@@ -30,6 +30,7 @@ type ExecutionConfigVersionStatus struct {
 
 // ExecutionConfigSourceService 为配置页提供可靠的租户基础版本状态。
 type ExecutionConfigSourceService struct {
+	dataQueries    *AuditDataQueryService
 	invalidator    *cache.InvalidationManager
 	versions       *repository.ExecutionConfigVersionRepo
 	auditConfigs   *repository.ProcessAuditConfigRepo
@@ -356,12 +357,27 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 		}
 		existingMap := make(map[string]uuid.UUID)
 		existingSources := make(map[string]string)
+		existingQueries := make(map[string]datatypes.JSON)
 		for _, r := range existingRules {
 			existingMap[r.ID.String()] = r.ID
 			existingSources[r.ID.String()] = r.Source
+			existingQueries[r.ID.String()] = r.DataQueries
 		}
 		snapshotRuleIDs := make(map[string]bool)
 		for _, rs := range snapshot.Rules {
+			queryJSON := datatypes.JSON([]byte("[]"))
+			if rs.DataQueries != nil {
+				raw, marshalErr := json.Marshal(rs.DataQueries)
+				if marshalErr != nil {
+					return marshalErr
+				}
+				queryJSON = datatypes.JSON(raw)
+			}
+			if s.dataQueries != nil {
+				if err := s.dataQueries.ValidateReferenceChange(c, existingQueries[rs.ID], queryJSON); err != nil {
+					return err
+				}
+			}
 			ruleID, parseErr := uuid.Parse(rs.ID)
 			if parseErr != nil {
 				ruleID = uuid.New()
@@ -380,6 +396,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				Source:         source,
 				RelatedFlow:    rs.RelatedFlow,
 				ContextEnabled: rs.ContextEnabled,
+				DataQueries:    queryJSON,
 			}
 			if rs.ContextMounts != nil {
 				if mountJSON, err := json.Marshal(rs.ContextMounts); err == nil {
@@ -387,7 +404,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				}
 			}
 			if _, exists := existingMap[ruleID.String()]; exists {
-				if err := s.auditRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "rule_scope", "enabled", "source", "related_flow", "context_enabled", "context_mounts").Updates(ruleModel).Error; err != nil {
+				if err := s.auditRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "rule_scope", "enabled", "source", "related_flow", "context_enabled", "context_mounts", "data_queries").Updates(ruleModel).Error; err != nil {
 					return err
 				}
 			} else {
@@ -440,12 +457,27 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 		}
 		existingMap := make(map[string]uuid.UUID)
 		existingSources := make(map[string]string)
+		existingQueries := make(map[string]datatypes.JSON)
 		for _, r := range existingRules {
 			existingMap[r.ID.String()] = r.ID
 			existingSources[r.ID.String()] = r.Source
+			existingQueries[r.ID.String()] = r.DataQueries
 		}
 		snapshotRuleIDs := make(map[string]bool)
 		for _, rs := range snapshot.Rules {
+			queryJSON := datatypes.JSON([]byte("[]"))
+			if rs.DataQueries != nil {
+				raw, marshalErr := json.Marshal(rs.DataQueries)
+				if marshalErr != nil {
+					return marshalErr
+				}
+				queryJSON = datatypes.JSON(raw)
+			}
+			if s.dataQueries != nil {
+				if err := s.dataQueries.ValidateReferenceChange(c, existingQueries[rs.ID], queryJSON); err != nil {
+					return err
+				}
+			}
 			ruleID, parseErr := uuid.Parse(rs.ID)
 			if parseErr != nil {
 				ruleID = uuid.New()
@@ -464,6 +496,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				Source:         source,
 				RelatedFlow:    rs.RelatedFlow,
 				ContextEnabled: rs.ContextEnabled,
+				DataQueries:    queryJSON,
 			}
 			if rs.ContextMounts != nil {
 				if mountJSON, err := json.Marshal(rs.ContextMounts); err == nil {
@@ -471,7 +504,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				}
 			}
 			if _, exists := existingMap[ruleID.String()]; exists {
-				if err := s.archiveRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "rule_scope", "enabled", "source", "related_flow", "context_enabled", "context_mounts").Updates(ruleModel).Error; err != nil {
+				if err := s.archiveRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "rule_scope", "enabled", "source", "related_flow", "context_enabled", "context_mounts", "data_queries").Updates(ruleModel).Error; err != nil {
 					return err
 				}
 			} else {
@@ -561,6 +594,7 @@ type ruleSource struct {
 	Source         string      `json:"source,omitempty"`
 	RelatedFlow    bool        `json:"related_flow"`
 	ContextEnabled bool        `json:"context_enabled"`
+	DataQueries    interface{} `json:"data_queries"`
 	ContextMounts  interface{} `json:"context_mounts"`
 }
 
@@ -570,7 +604,7 @@ func normalizedAuditRuleSources(rules []model.AuditRule) []ruleSource {
 		result = append(result, ruleSource{
 			ID: rule.ID.String(), RuleContent: rule.RuleContent, RuleScope: rule.RuleScope,
 			Enabled: rule.Enabled == nil || *rule.Enabled, RelatedFlow: rule.RelatedFlow,
-			ContextEnabled: rule.ContextEnabled, ContextMounts: rule.ContextMounts,
+			ContextEnabled: rule.ContextEnabled, ContextMounts: rule.ContextMounts, DataQueries: rule.DataQueries,
 		})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
@@ -583,7 +617,7 @@ func normalizedArchiveRuleSources(rules []model.ArchiveRule) []ruleSource {
 		result = append(result, ruleSource{
 			ID: rule.ID.String(), RuleContent: rule.RuleContent, RuleScope: rule.RuleScope,
 			Enabled: rule.Enabled == nil || *rule.Enabled, RelatedFlow: rule.RelatedFlow,
-			ContextEnabled: rule.ContextEnabled, ContextMounts: rule.ContextMounts,
+			ContextEnabled: rule.ContextEnabled, ContextMounts: rule.ContextMounts, DataQueries: rule.DataQueries,
 		})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
@@ -773,6 +807,11 @@ func (s *ExecutionConfigSourceService) invalidate(c *gin.Context, tenantID uuid.
 func (s *ExecutionConfigSourceService) inTransaction(c *gin.Context, operation func(*ExecutionConfigSourceService) error) error {
 	return s.auditConfigs.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
 		scoped := NewExecutionConfigSourceService(repository.NewExecutionConfigVersionRepo(tx), repository.NewProcessAuditConfigRepo(tx), repository.NewAuditRuleRepo(tx), repository.NewProcessArchiveConfigRepo(tx), repository.NewArchiveRuleRepo(tx), repository.NewProcessSummaryConfigRepo(tx))
+		if s.dataQueries != nil {
+			queries := *s.dataQueries
+			queries.repo = repository.NewAuditDataQueryRepo(tx)
+			scoped.dataQueries = &queries
+		}
 		return operation(scoped)
 	})
 }

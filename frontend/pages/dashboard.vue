@@ -1393,6 +1393,7 @@ onMounted(async () => {
             </div>
 
             <!--解析失败降级展示-->
+            <QueryEvidenceList :items="currentResult.query_evidence || []" />
             <template v-if="currentResult.parse_error">
               <div class="result-banner result-banner--error">
                 <WarningOutlined class="result-banner-icon" style="color: var(--color-danger);" />

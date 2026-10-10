@@ -94,3 +94,7 @@ GET /api/admin/stats/token-usage
 
 日志/快照列表及其导出接口的 `start_date`、`end_date` 按应用配置时区解释，结束日期包含当天全部记录。
 实现使用 `时间 >= 开始日期零点 AND 时间 < 结束日期次日零点`，包含当天最后一秒内的微秒记录，次日边界按自然日计算以兼容夏令时。
+
+## SQL 辅助场景
+
+`request_type` 新增 `sql_assist`，`call_type=structured`。统计响应新增 `sql_assist_count`（每次独立辅助业务计数），总调用与 Token/费用包含此场景；数据管理页提供对应筛选。

@@ -260,11 +260,12 @@ type LLMLogListRow struct {
 
 // LLMLogStats AI 调用记录统计（按流程维度）。
 type LLMLogStats struct {
-	ChatCount    int64 `json:"chat_count"`
-	Total        int64 `json:"total"`
-	AuditCount   int64 `json:"audit_count"`
-	ArchiveCount int64 `json:"archive_count"`
-	SummaryCount int64 `json:"summary_count"`
+	ChatCount      int64 `json:"chat_count"`
+	Total          int64 `json:"total"`
+	AuditCount     int64 `json:"audit_count"`
+	ArchiveCount   int64 `json:"archive_count"`
+	SummaryCount   int64 `json:"summary_count"`
+	SQLAssistCount int64 `json:"sql_assist_count"`
 }
 
 // LLMLogDetailWithPayload 详情含输入输出提示词与思考过程。
@@ -361,11 +362,12 @@ func (r *LLMMessageLogRepo) ListCallsByProcessID(c *gin.Context, processID strin
 // CountStats 统计租户 AI 调用流程数量（按场景分布）。
 func (r *LLMMessageLogRepo) CountStats(c *gin.Context) (*LLMLogStats, error) {
 	type row struct {
-		ChatCount    int64 `gorm:"column:chat_count"`
-		Total        int64 `gorm:"column:total"`
-		AuditCount   int64 `gorm:"column:audit_count"`
-		ArchiveCount int64 `gorm:"column:archive_count"`
-		SummaryCount int64 `gorm:"column:summary_count"`
+		ChatCount      int64 `gorm:"column:chat_count"`
+		Total          int64 `gorm:"column:total"`
+		AuditCount     int64 `gorm:"column:audit_count"`
+		ArchiveCount   int64 `gorm:"column:archive_count"`
+		SummaryCount   int64 `gorm:"column:summary_count"`
+		SQLAssistCount int64 `gorm:"column:sql_assist_count"`
 	}
 	var out row
 	err := r.WithTenant(c).
@@ -375,17 +377,19 @@ func (r *LLMMessageLogRepo) CountStats(c *gin.Context) (*LLMLogStats, error) {
 			COUNT(DISTINCT COALESCE(business_log_id, id)) FILTER (WHERE request_type = 'chat')::bigint AS chat_count,
 			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'audit')::bigint AS audit_count,
 			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'archive')::bigint AS archive_count,
-			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'summary')::bigint AS summary_count`).
+			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'summary')::bigint AS summary_count,
+ COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'sql_assist')::bigint AS sql_assist_count`).
 		Scan(&out).Error
 	if err != nil {
 		return nil, err
 	}
 	return &LLMLogStats{
-		ChatCount:    out.ChatCount,
-		Total:        out.Total,
-		AuditCount:   out.AuditCount,
-		ArchiveCount: out.ArchiveCount,
-		SummaryCount: out.SummaryCount,
+		ChatCount:      out.ChatCount,
+		Total:          out.Total,
+		AuditCount:     out.AuditCount,
+		ArchiveCount:   out.ArchiveCount,
+		SummaryCount:   out.SummaryCount,
+		SQLAssistCount: out.SQLAssistCount,
 	}, nil
 }
 

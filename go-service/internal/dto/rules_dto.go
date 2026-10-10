@@ -57,6 +57,7 @@ type CreateAuditRuleRequest struct {
 	Source         string         `json:"source"`
 	RelatedFlow    bool           `json:"related_flow"`
 	ContextEnabled bool           `json:"context_enabled"`
+	DataQueries    datatypes.JSON `json:"data_queries"`
 	ContextMounts  datatypes.JSON `json:"context_mounts"`
 }
 
@@ -67,6 +68,7 @@ type UpdateAuditRuleRequest struct {
 	Enabled        *bool          `json:"enabled"`
 	RelatedFlow    *bool          `json:"related_flow"`
 	ContextEnabled *bool          `json:"context_enabled"`
+	DataQueries    datatypes.JSON `json:"data_queries"`
 	ContextMounts  datatypes.JSON `json:"context_mounts"`
 }
 

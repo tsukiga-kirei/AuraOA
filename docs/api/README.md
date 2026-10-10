@@ -78,6 +78,7 @@ Authorization: Bearer <access_token>
 | [认证接口](./auth.md) | `/api/auth` | 登录、OA Basic 单点登录、登出、Token 刷新、角色切换、个人信息 |
 | [系统管理接口](./system-admin.md) | `/api/admin` | 租户管理、OA 连接、AI 模型、系统配置 |
 | [组织架构接口](./org.md) | `/api/tenant/org` | 部门、角色、成员管理 |
+| [记忆库 / 数据记忆](./audit-data-queries.md) | `/api/tenant/audit-data-queries` | 配置查询与可复用 SQL、参数绑定、检查预览、AI 辅助与提示词 |
 | [流程审核配置接口](./audit-config.md) | `/api/tenant/rules` | 流程审核配置、审核规则、提示词模板 |
 | [执行配置版本状态接口](./execution-config.md) | `/api/tenant/execution-config-versions` | 当前租户配置与真实执行版本的对应状态 |
 | [归档复盘配置接口](./archive-config.md) | `/api/tenant/archive` | 归档数据源配置、归档规则 |

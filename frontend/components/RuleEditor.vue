@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { message } from 'ant-design-vue'
 import type { ExternalContextMount } from '~/types/external-context'
+import type { QueryReference } from '~/types/audit-data-query'
 
 const { t } = useI18n()
 const { authFetch } = useAuth()
@@ -28,6 +29,7 @@ const props = withDefaults(defineProps<{
     related_flow?: boolean
     context_enabled?: boolean
     context_mounts?: ExternalContextMount[]
+    data_queries?: QueryReference[]
   } | null
   fieldOptions?: FieldOption[]
   contextTestEndpoint?: string
@@ -50,6 +52,7 @@ const form = ref({
   related_flow: false,
   context_enabled: false,
   context_mounts: [] as ExternalContextMount[],
+  data_queries: [] as QueryReference[],
 })
 
 const testingWorkflowContext = ref(false)
@@ -76,6 +79,7 @@ watch(() => props.open, (isOpen) => {
         related_flow: (props.rule as any).related_flow ?? false,
         context_enabled: (props.rule as any).context_enabled ?? false,
         context_mounts: normalizeMounts((props.rule as any).context_mounts || []),
+        data_queries: JSON.parse(JSON.stringify(props.rule.data_queries || [])),
       }
     } else {
       form.value = {
@@ -84,6 +88,7 @@ watch(() => props.open, (isOpen) => {
         related_flow: false,
         context_enabled: false,
         context_mounts: [],
+        data_queries: [],
       }
     }
     contextPreview.value = {}
@@ -567,6 +572,7 @@ const handleSave = () => {
         </div>
         <pre v-if="contextPreview.model" class="context-preview">{{ contextPreview.model }}</pre>
       </div>
+      <RuleDataQueryEditor v-model="form.data_queries" :field-options="fieldOptions" />
     </a-form>
   </a-modal>
 

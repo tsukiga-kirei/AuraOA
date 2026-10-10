@@ -1,3 +1,4 @@
+import type { QueryEvidence } from './audit-data-query'
 // types/audit.ts — 审核工作台相关类型定义
 
 /** 异步审核阶段（与后端 audit_logs.status / JobStatus 一致） */
@@ -22,6 +23,7 @@ export interface OAProcessItem {
 
 /** AI 审核结构化结果（对应提取阶段 JSON Schema） */
 export interface AuditResult {
+  query_evidence?: QueryEvidence[]
   result_source?: 'personal' | 'embed'
   trigger_source?: string
   user_id?: string

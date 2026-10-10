@@ -333,6 +333,7 @@ export function applyRuleConflictStrategy<T extends { id?: string; rule_content:
           related_flow: imp.related_flow !== undefined ? imp.related_flow : result[existingIdx].related_flow,
           context_enabled: imp.context_enabled !== undefined ? imp.context_enabled : result[existingIdx].context_enabled,
           context_mounts: imp.context_mounts || result[existingIdx].context_mounts || [],
+          data_queries: imp.data_queries || result[existingIdx].data_queries || [],
         }
         return
       }
@@ -348,6 +349,7 @@ export function applyRuleConflictStrategy<T extends { id?: string; rule_content:
       related_flow: !!imp.related_flow,
       context_enabled: !!imp.context_enabled,
       context_mounts: imp.context_mounts || [],
+      data_queries: imp.data_queries || [],
     }
     result.push(newRule)
     existingMap.set(content, result.length - 1)

@@ -2,6 +2,7 @@
 
 import type { ProcessField, DetailTableDef } from '~/types/common'
 import type { ExternalContextMount } from '~/types/external-context'
+import type { QueryReference } from '~/types/audit-data-query'
 
 /** 审核工作台与归档复盘共用的访问控制配置 */
 export interface AccessControl {
@@ -50,6 +51,7 @@ export interface ArchiveRule {
   related_flow: boolean
   context_enabled?: boolean
   context_mounts?: ExternalContextMount[]
+  data_queries?: QueryReference[]
   created_at?: string
   updated_at?: string
 }

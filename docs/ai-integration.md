@@ -257,3 +257,9 @@ AI 审核采用两阶段架构，将推理和结构化提取分离，提高审�
 | `token_quota` | — | 租户 Token 总配额 |
 
 对话场景（尚未落地）使用同一调用层，`request_type=chat`，并走智能体有效工具集。需求见 [`docs/agents/README.md`](./agents/README.md)；配额由系统管理员授予租户，与「关联租户主备模型」同一层级。
+
+## 审核数据 SQL 辅助
+
+查询库新增 `sql_assist` 场景，`call_type=structured`，经统一 `AIModelCallerService.ChatWithFallback` 使用租户主/备用模型、配额及完整调用日志。每次辅助使用唯一业务标识，数据管理页单独筛选和计数；仪表盘总体 Token/费用包含此场景，不增加审核业务次数。
+
+租户可编辑生成、解释、修复三种业务提示词，固定系统约束保留。AI 仅返回待采用的 SQL 草稿和说明；不执行、不发布。查询取数本身不调用 LLM。审核和归档在推理阶段将查询证据按规则组织，附中文列名 JSON、查询版本、用途和完整性提示，失败或截断需人工复核。参见 [查询库 API](./api/audit-data-queries.md)。

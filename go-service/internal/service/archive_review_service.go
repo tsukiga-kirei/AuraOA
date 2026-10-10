@@ -80,6 +80,7 @@ func archiveItemComplianceClass(item map[string]interface{}, want string) bool {
 
 // ArchiveReviewService 处理归档复盘运行时业务。
 type ArchiveReviewService struct {
+	dataQueries         *AuditDataQueryService
 	archiveLogRepo      *repository.ArchiveLogRepo
 	archiveSnapshotRepo *repository.ArchiveProcessSnapshotRepo
 	archiveConfigRepo   *repository.ProcessArchiveConfigRepo
@@ -1457,6 +1458,19 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		processSnapshot["main_table_name"] = archivedItem.MainTableName
 	}
 	externalContextText := s.resolveArchiveRulesExternalContext(c, tenant, logEntry.ProcessID, processData, rules)
+	queryRules := make([]model.AuditRule, 0, len(rules))
+	for _, rule := range rules {
+		queryRules = append(queryRules, model.AuditRule{ID: rule.ID, RuleContent: rule.RuleContent, Enabled: rule.Enabled, DataQueries: rule.DataQueries})
+	}
+	queryText, queryEvidence := s.dataQueries.ResolveRules(c, logEntry.ProcessID, processData, queryRules)
+	externalContextText += "\n" + queryText
+	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+		SanitizeQueryEvidence(queryEvidence)
+	}
+	evidenceJSON, _ := json.Marshal(queryEvidence)
+	if err := s.archiveLogRepo.UpdateFields(c, archiveLogID, map[string]interface{}{"query_evidence": datatypes.JSON(evidenceJSON)}); err != nil {
+		return err
+	}
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
 		for _, k := range []string{"title", "process_type_label", "applicant", "department", "current_node", "submit_time", "archive_time", "main_table_name"} {
 			if v, ok := processSnapshot[k].(string); ok {
@@ -1532,6 +1546,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 
 	totalDuration := int(time.Since(startTime).Milliseconds())
 	parsed, parseErr := ParseArchiveReviewResult(extractionResp.Content)
+	GuardArchiveQueryEvidence(parsed, queryEvidence)
 
 	rawStored := extractionResp.Content
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
@@ -2044,16 +2059,17 @@ func (s *ArchiveReviewService) fetchArchivedItem(ctx context.Context, adapter oa
 
 func buildArchiveResultFromLog(logEntry *model.ArchiveLog) map[string]interface{} {
 	base := map[string]interface{}{
-		"id":            logEntry.ID.String(),
-		"trace_id":      fmt.Sprintf("AR-%s", logEntry.ID.String()[:8]),
-		"process_id":    logEntry.ProcessID,
-		"title":         logEntry.Title,
-		"process_type":  logEntry.ProcessType,
-		"status":        logEntry.Status,
-		"deep_thinking": logEntry.DeepThinking,
-		"ai_reasoning":  logEntry.AIReasoning,
-		"created_at":    apptime.FormatRFC3339(logEntry.CreatedAt),
-		"duration_ms":   logEntry.DurationMs,
+		"id":             logEntry.ID.String(),
+		"trace_id":       fmt.Sprintf("AR-%s", logEntry.ID.String()[:8]),
+		"process_id":     logEntry.ProcessID,
+		"title":          logEntry.Title,
+		"process_type":   logEntry.ProcessType,
+		"status":         logEntry.Status,
+		"deep_thinking":  logEntry.DeepThinking,
+		"query_evidence": logEntry.QueryEvidence,
+		"ai_reasoning":   logEntry.AIReasoning,
+		"created_at":     apptime.FormatRFC3339(logEntry.CreatedAt),
+		"duration_ms":    logEntry.DurationMs,
 	}
 	addExecutionConfigVersionMeta(base, logEntry.ConfigVersionID, logEntry.ConfigVersionNo)
 	if logEntry.ErrorMessage != "" {
@@ -2329,4 +2345,3 @@ func (s *ArchiveReviewService) FetchWorkflowCodes(ctx context.Context, tenantID 
 	}
 	return codes
 }
-

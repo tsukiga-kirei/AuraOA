@@ -1,3 +1,4 @@
+import type { QueryEvidence } from './audit-data-query'
 export type ArchiveCompliance = 'compliant' | 'partially_compliant' | 'non_compliant'
 
 export type ArchiveRunStatus =
@@ -59,6 +60,7 @@ export interface ArchiveProcessSnapshot {
 }
 
 export interface ArchiveReviewResult {
+  query_evidence?: QueryEvidence[]
   id?: string
   trace_id: string
   process_id: string
