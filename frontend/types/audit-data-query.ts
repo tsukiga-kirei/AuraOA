@@ -45,6 +45,13 @@ export interface QueryReference {
   enabled: boolean
   bindings: Record<string, QueryBinding>
 }
+/** 当前流程配置对数据记忆的引用；同一流程可能有多条规则。 */
+export interface QueryUsageReference {
+  id: string
+  process_type: string
+  rule_content: string
+  module: 'audit_rules' | 'archive_rules'
+}
 export interface QueryCheck {
   valid: boolean
   issues: { code: string; message: string; position: number }[]

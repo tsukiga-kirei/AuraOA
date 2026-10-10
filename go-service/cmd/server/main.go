@@ -331,7 +331,7 @@ func main() {
 	archiveConfigHandler := handler.NewArchiveConfigHandler(archiveConfigService)
 	archiveRuleHandler := handler.NewArchiveRuleHandler(archiveRuleService, ruleImportService)
 	externalContextHandler := handler.NewExternalContextHandler(externalContextService, tenantRepo)
-	dataQueryService := service.NewAuditDataQueryService(repository.NewAuditDataQueryRepo(db), externalContextService, tenantRepo, aiModelRepo, aiCallerService)
+	dataQueryService := service.NewAuditDataQueryService(repository.NewAuditDataQueryRepo(db), externalContextService, tenantRepo, aiModelRepo, aiCallerService, invalidationManager)
 	service.AttachDataQueryServices(dataQueryService, auditExecuteService, archiveReviewService, auditRuleService, archiveRuleService, executionConfigSourceService)
 	dataQueryHandler := handler.NewAuditDataQueryHandler(dataQueryService)
 	auditHandler := handler.NewAuditHandler(auditExecuteService, auditSnapshotRepo, auditLogRepo)

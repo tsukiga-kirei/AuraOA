@@ -1,6 +1,7 @@
 package service
 
 import (
+	"auraoa/go-service/internal/cache"
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/ai"
 	"auraoa/go-service/internal/pkg/apptime"
@@ -27,11 +28,12 @@ import (
 
 // AuditDataQueryService 编排查询库、字段绑定、预览及 AI SQL 辅助。
 type AuditDataQueryService struct {
-	repo     *repository.AuditDataQueryRepo
-	external *ExternalContextService
-	tenants  *repository.TenantRepo
-	models   *repository.AIModelRepo
-	caller   *AIModelCallerService
+	repo        *repository.AuditDataQueryRepo
+	external    *ExternalContextService
+	tenants     *repository.TenantRepo
+	models      *repository.AIModelRepo
+	caller      *AIModelCallerService
+	invalidator *cache.InvalidationManager
 }
 
 // NewAuditDataQueryService 创建租户共享的取数与 SQL 辅助服务。
@@ -41,8 +43,9 @@ func NewAuditDataQueryService(
 	tenants *repository.TenantRepo,
 	models *repository.AIModelRepo,
 	caller *AIModelCallerService,
+	invalidator *cache.InvalidationManager,
 ) *AuditDataQueryService {
-	return &AuditDataQueryService{repo, external, tenants, models, caller}
+	return &AuditDataQueryService{repo: repo, external: external, tenants: tenants, models: models, caller: caller, invalidator: invalidator}
 }
 
 // QueryPreviewRequest 支持查询库手工参数及规则内真实流程字段绑定两种预览。
@@ -160,8 +163,8 @@ func (s *AuditDataQueryService) Get(c *gin.Context, id uuid.UUID) (*model.AuditD
 		return nil, err
 	}
 	item, err := s.repo.Get(c, id)
-	if err != nil {
-		return nil, newServiceError(errcode.ErrResourceNotFound, "查询不存在")
+	if err != nil || item.Archived {
+		return nil, newServiceError(errcode.ErrResourceNotFound, "查询不存在或已删除")
 	}
 	return item, nil
 }
@@ -268,12 +271,8 @@ func (s *AuditDataQueryService) Save(c *gin.Context, id uuid.UUID, category stri
 	if create {
 		item.ID = uuid.New()
 	} else {
-		old, e := s.Get(c, id)
-		if e != nil {
-			return nil, e
-		}
-		if old.Archived {
-			return nil, newServiceError(errcode.ErrPermissionDenied, "已归档查询不能修改")
+		if _, err := s.Get(c, id); err != nil {
+			return nil, err
 		}
 	}
 	if err = s.repo.Save(c, item, create); err != nil {
@@ -347,11 +346,42 @@ func (s *AuditDataQueryService) Versions(c *gin.Context, id uuid.UUID) ([]model.
 	return s.repo.Versions(c, id)
 }
 
-func (s *AuditDataQueryService) Archive(c *gin.Context, id uuid.UUID) error {
+// Delete 校验当前引用后删除库条目，历史发布版本继续用于执行追溯。
+func (s *AuditDataQueryService) Delete(c *gin.Context, id uuid.UUID) error {
 	if _, err := s.Get(c, id); err != nil {
 		return err
 	}
-	return s.repo.Archive(c, id)
+	if err := s.repo.Delete(c, id); err != nil {
+		if errors.Is(err, repository.ErrDataQueryReferenced) {
+			return newServiceError(errcode.ErrParamValidation, err.Error())
+		}
+		return newServiceError(errcode.ErrDatabase, "删除数据记忆条目失败")
+	}
+	return nil
+}
+
+// RemoveReferences 取消指定流程的当前引用，按规则编辑约定刷新审核或归档配置缓存。
+func (s *AuditDataQueryService) RemoveReferences(c *gin.Context, id uuid.UUID, module, processType string) (int64, error) {
+	if module != "audit_rules" && module != "archive_rules" || strings.TrimSpace(processType) == "" {
+		return 0, newServiceError(errcode.ErrParamValidation, "请选择有效的引用流程")
+	}
+	if _, err := s.Get(c, id); err != nil {
+		return 0, err
+	}
+	count, err := s.repo.RemoveReferences(c, id, module, processType)
+	if err != nil {
+		return 0, newServiceError(errcode.ErrDatabase, "取消流程引用失败")
+	}
+	if count > 0 && s.invalidator != nil {
+		tenantID, _ := getTenantUUID(c)
+		cacheModule := "audit"
+		if module == "archive_rules" {
+			cacheModule = "archive"
+		}
+		// 与规则编辑保持一致：缓存失败不回滚已提交的配置，管理器负责记录错误。
+		_ = s.invalidator.InvalidateConfigCache(context.Background(), tenantID, cacheModule)
+	}
+	return count, nil
 }
 
 func (s *AuditDataQueryService) References(c *gin.Context, id uuid.UUID) ([]map[string]interface{}, error) {
@@ -425,6 +455,14 @@ func (s *AuditDataQueryService) ValidateReferences(c *gin.Context, raw []byte) e
 		return newServiceError(errcode.ErrParamValidation, "每条规则最多引用8项查询")
 	}
 	for _, ref := range refs {
+		id, err := uuid.Parse(ref.QueryID)
+		if err != nil {
+			return newServiceError(errcode.ErrParamValidation, "查询版本引用无效")
+		}
+		// 当前配置不能重新引入已删除条目；历史执行仍可读取不可变版本。
+		if _, err := s.Get(c, id); err != nil {
+			return err
+		}
 		def, err := s.Definition(c, ref.QueryID, ref.VersionNo)
 		if err != nil {
 			return err

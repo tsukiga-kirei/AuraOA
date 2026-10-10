@@ -227,7 +227,8 @@ func SetupRouter(
 		queries.POST("/:id/publish", dataQueryHandler.Publish)
 		queries.GET("/:id/versions", dataQueryHandler.Versions)
 		queries.GET("/:id/references", dataQueryHandler.References)
-		queries.DELETE("/:id", dataQueryHandler.Archive)
+		queries.DELETE("/:id/references", middleware.RequirePagePermission(orgRepo, "/admin/tenant/rules"), dataQueryHandler.RemoveReferences)
+		queries.DELETE("/:id", dataQueryHandler.Delete)
 	}
 
 	// 租户管理员 — 当前配置与不可变执行版本的对应状态。

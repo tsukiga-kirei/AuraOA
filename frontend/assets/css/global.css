@@ -158,6 +158,32 @@ body {
   color: rgba(255, 255, 255, 0.65) !important;
 }
 
+/* 危险操作使用主题红色，避免普通按钮的强制样式覆盖删除语义。 */
+.ant-btn.ant-btn-dangerous:not(:disabled) {
+  color: var(--color-danger) !important;
+}
+
+.ant-btn.ant-btn-default.ant-btn-dangerous:not(:disabled) {
+  border-color: var(--color-danger) !important;
+}
+
+.ant-btn.ant-btn-dangerous:not(:disabled):hover,
+.ant-btn.ant-btn-dangerous:not(:disabled):active {
+  background: var(--color-danger-bg) !important;
+}
+
+/* 确认弹窗等实心危险按钮保留白色文字及图标。 */
+.ant-btn.ant-btn-primary.ant-btn-dangerous:not(:disabled) {
+  background: var(--color-danger) !important;
+  border-color: var(--color-danger) !important;
+  color: #ffffff !important;
+  box-shadow: var(--shadow-xs) !important;
+}
+
+.ant-btn.ant-btn-dangerous:not(:disabled):focus-visible {
+  box-shadow: 0 0 0 2px var(--color-bg-card), 0 0 0 4px var(--color-danger) !important;
+}
+
 /* Inputs */
 .ant-input,
 .ant-input-affix-wrapper,

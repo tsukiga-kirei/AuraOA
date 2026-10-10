@@ -3,7 +3,7 @@ import { useAuditDataQueryApi } from '~/composables/useAuditDataQueryApi'
 import { message, Modal } from 'ant-design-vue'
 import QueryValueSourceEditor from './QueryValueSourceEditor.vue'
 import { appDayjs } from '~/utils/appTime'
-import { previewQuerySql } from '~/utils/querySqlEditor'
+import { previewQuerySql, querySqlParameterNames } from '~/utils/querySqlEditor'
 import {
   DatabaseOutlined,
   PlusOutlined,
@@ -15,6 +15,7 @@ import {
   SettingOutlined,
   SearchOutlined,
   BookOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons-vue'
 import type {
   AuditDataQuery,
@@ -26,6 +27,8 @@ import type {
   QueryAssist,
   QueryColumn,
   QueryBuilder,
+  QueryParameter,
+  QueryUsageReference,
 } from '~/types/audit-data-query'
 const props = defineProps<{
   allowUse?: boolean
@@ -36,6 +39,8 @@ const emit = defineEmits<{
   'use-version': [query: AuditDataQuery, version: QueryVersion]
 }>()
 const { t } = useI18n()
+const { menus } = useAuth()
+const canEditRules = computed(() => menus.value.some((menu) => menu.path === '/admin/tenant/rules'))
 const api = useAuditDataQueryApi()
 const makeDefinition = (): QueryDefinition => ({
   name: '',
@@ -66,13 +71,28 @@ const baseline = ref('')
 const keyword = ref('')
 const appliedKeyword = ref('')
 const loading = ref(false)
+const initializing = ref(true)
 const loadError = ref('')
 const busy = ref('')
 const activePanel = ref('check')
 const versions = ref<QueryVersion[]>([])
-const references = ref<
-  { id: string; process_type: string; rule_content: string; module: string }[]
->([])
+const references = ref<QueryUsageReference[]>([])
+const workflowReferences = computed(() => {
+  const groups = new Map<
+    string,
+    { module: QueryUsageReference['module']; process_type: string; count: number }
+  >()
+  for (const reference of references.value) {
+    const key = JSON.stringify([reference.module, reference.process_type])
+    const group = groups.get(key)
+    if (group) group.count++
+    else
+      groups.set(key, { module: reference.module, process_type: reference.process_type, count: 1 })
+  }
+  return [...groups.values()]
+})
+// 暂存同一条目的变量设置，输入 SQL 的过程中短暂删除占位符也不丢失取值配置。
+const parameterSettings = new Map<string, QueryParameter>()
 const check = ref<QueryCheck>()
 const evidence = ref<QueryEvidence>()
 const testValues = reactive<Record<string, string>>({})
@@ -164,9 +184,11 @@ async function selectQuery(item: AuditDataQuery, force = false) {
     definition.value = clone(query.draft)
     if (source.value) definition.value.dialect = source.value.dialect
     editorMode.value = query.draft.builder && !query.draft.builder.sql_mode ? 'config' : 'sql'
-    builderKey.value++
     category.value = query.category
     baseline.value = currentState.value
+    parameterSettings.clear()
+    if (editorMode.value === 'sql') syncSQLParameters()
+    builderKey.value++
     versions.value = related.history
     references.value = related.refs
     schema.value = {}
@@ -185,6 +207,8 @@ function setNewDraft(next: QueryDefinition, nextCategory = '', copied = false) {
   if (source.value) next.dialect = source.value.dialect
   definition.value = next
   editorMode.value = next.builder && !next.builder.sql_mode ? 'config' : 'sql'
+  parameterSettings.clear()
+  if (editorMode.value === 'sql') syncSQLParameters()
   builderKey.value++
   for (const key of Object.keys(testValues)) delete testValues[key]
   category.value = nextCategory
@@ -196,7 +220,7 @@ function setNewDraft(next: QueryDefinition, nextCategory = '', copied = false) {
   invalidate()
 }
 async function newQuery() {
-  if (!(await canLeave())) return
+  if (initializing.value || !(await canLeave())) return
   setNewDraft(makeDefinition())
 }
 async function requestCopy(item: AuditDataQuery) {
@@ -320,16 +344,64 @@ async function publish() {
     busy.value = ''
   }
 }
-async function archive() {
-  if (!selected.value || !(await canLeave())) return
-  busy.value = 'archive'
+async function requestDelete() {
+  if (!selected.value || busy.value) return
+  const item = selected.value
+  busy.value = 'delete-check'
   try {
-    await api.archive(selected.value.id)
-    baseline.value = currentState.value
+    references.value = await api.references(item.id)
+    if (references.value.length) {
+      activePanel.value = 'references'
+      message.warning(t('query.deleteReferenced'))
+      return
+    }
+  } catch (error) {
+    message.error(errorText(error))
+    return
+  } finally {
     busy.value = ''
-    await newQuery()
-    await load()
-    message.success(t('query.archived'))
+  }
+  Modal.confirm({
+    title: t('query.deleteConfirm'),
+    content: t('query.deleteConfirmHint', item.name),
+    okText: t('query.delete'),
+    okType: 'danger',
+    cancelText: t('common.cancel'),
+    async onOk() {
+      busy.value = 'delete'
+      try {
+        await api.remove(item.id)
+        setNewDraft(makeDefinition())
+        await load()
+        if (items.value[0]) await selectQuery(items.value[0], true)
+        message.success(t('query.deleted'))
+      } catch (error) {
+        // 后端也会校验引用；确认框打开期间新增的引用需展示给管理员。
+        try {
+          references.value = await api.references(item.id)
+          if (references.value.length) activePanel.value = 'references'
+        } catch {
+          /* 操作失败保留原条目及草稿。 */
+        }
+        message.error(errorText(error))
+        throw error
+      } finally {
+        busy.value = ''
+      }
+    },
+  })
+}
+async function removeWorkflowReference(reference: (typeof workflowReferences.value)[number]) {
+  if (!selected.value || busy.value || !canEditRules.value) return
+  const id = selected.value.id
+  busy.value = 'remove-reference'
+  try {
+    await api.removeReferences(id, reference.module, reference.process_type)
+    references.value = references.value.filter(
+      (item) => item.module !== reference.module || item.process_type !== reference.process_type,
+    )
+    references.value = await api.references(id)
+    message.success(t('query.referenceRemoved'), 6)
   } catch (error) {
     message.error(errorText(error))
   } finally {
@@ -366,8 +438,20 @@ function removeTable(table: string) {
   definition.value.tables = definition.value.tables.filter((item) => item !== table)
   delete schema.value[table]
 }
-function addParameter() {
-  definition.value.parameters.push({ name: '', label: '', type: 'string' })
+function syncSQLParameters() {
+  for (const parameter of definition.value.parameters) {
+    parameterSettings.set(parameter.name, clone(parameter))
+  }
+  definition.value.parameters = querySqlParameterNames(definition.value.sql).map((name, index) => {
+    return clone(
+      parameterSettings.get(name) || {
+        name,
+        label: t('query.sqlVariableLabel', index + 1),
+        type: 'string' as const,
+        default_binding: { source: 'field' as const },
+      },
+    )
+  })
 }
 async function assist() {
   const state = currentState.value
@@ -402,6 +486,7 @@ function markSQLMode() {
 function updateSQL(value: string) {
   if (definition.value.sql === value) return
   definition.value.sql = value
+  syncSQLParameters()
   // 手工 SQL 和配置分别保留，切回配置时由用户明确生成，避免丢失已选字段。
   if (definition.value.builder) definition.value.builder.sql_mode = true
 }
@@ -412,6 +497,7 @@ function adoptAI() {
   const result = clone(aiResult.value)
   definition.value.sql = result.sql
   definition.value.parameters = result.parameters
+  syncSQLParameters()
   aiResult.value = undefined
   message.success(t('query.aiAdopted'))
 }
@@ -441,6 +527,8 @@ async function restoreVersion(version: QueryVersion) {
   if (source.value) definition.value.dialect = source.value.dialect
   editorMode.value =
     definition.value.builder && !definition.value.builder.sql_mode ? 'config' : 'sql'
+  parameterSettings.clear()
+  if (editorMode.value === 'sql') syncSQLParameters()
   builderKey.value++
   schema.value = {}
   for (const key of Object.keys(testValues)) delete testValues[key]
@@ -456,20 +544,27 @@ function formatTime(value: string) {
 }
 onMounted(async () => {
   try {
-    source.value = await api.source()
-    definition.value.dialect = source.value.dialect
-  } catch (error) {
-    message.error(errorText(error))
-  }
-  baseline.value = currentState.value
-  await load()
-  if (props.initialQueryId) {
     try {
-      const query = await api.get(props.initialQueryId)
-      await selectQuery(query, true)
+      source.value = await api.source()
+      definition.value.dialect = source.value.dialect
     } catch (error) {
       message.error(errorText(error))
     }
+    baseline.value = currentState.value
+    await load()
+    if (props.initialQueryId) {
+      try {
+        const query = await api.get(props.initialQueryId)
+        await selectQuery(query, true)
+      } catch (error) {
+        message.error(errorText(error))
+        if (items.value[0]) await selectQuery(items.value[0], true)
+      }
+    } else if (items.value[0]) {
+      await selectQuery(items.value[0], true)
+    }
+  } finally {
+    initializing.value = false
   }
 })
 // 页面离开与工作区切换均保护未保存的 SQL 草稿。
@@ -571,7 +666,10 @@ defineExpose({ canLeave, editPrompts, busy })
           </div>
         </a-spin>
       </aside>
-      <main class="query-main panel">
+      <main v-if="initializing" class="query-main panel initial-query-loading">
+        <a-spin />
+      </main>
+      <main v-else class="query-main panel">
         <div class="draft-meta">
           <a-space wrap>
             <a-tag class="query-version-tag">
@@ -583,10 +681,22 @@ defineExpose({ canLeave, editPrompts, busy })
             </a-tag>
             <span v-if="dirty" class="muted">{{ t('query.unsaved') }}</span>
           </a-space>
-          <a-button type="primary" :loading="busy === 'save'" :disabled="!!busy" @click="save">
-            <template #icon><SaveOutlined /></template>
-            {{ t('query.save') }}
-          </a-button>
+          <a-space wrap>
+            <a-button
+              v-if="selected"
+              danger
+              :loading="busy === 'delete' || busy === 'delete-check'"
+              :disabled="!!busy"
+              @click="requestDelete"
+            >
+              <template #icon><DeleteOutlined /></template>
+              {{ t('query.delete') }}
+            </a-button>
+            <a-button type="primary" :loading="busy === 'save'" :disabled="!!busy" @click="save">
+              <template #icon><SaveOutlined /></template>
+              {{ t('query.save') }}
+            </a-button>
+          </a-space>
         </div>
         <a-form layout="vertical" class="definition-form">
           <a-row :gutter="16">
@@ -685,71 +795,39 @@ defineExpose({ canLeave, editPrompts, busy })
               <pre class="ai-sql">{{ executionSQL }}</pre>
             </a-collapse-panel>
           </a-collapse>
-          <div v-if="editorMode === 'sql'" class="parameter-heading">
-            <strong>{{ t('query.parameterDefinition') }}</strong>
-            <a-button v-if="editorMode === 'sql'" size="small" @click="addParameter">
-              <template #icon><PlusOutlined /></template>
-              {{ t('query.addParameter') }}
-            </a-button>
-          </div>
-          <div
-            v-for="(parameter, index) in editorMode === 'sql' ? definition.parameters : []"
-            :key="index"
-            class="parameter-row"
-            :class="{ 'parameter-row--generated': editorMode === 'config' }"
-          >
-            <a-input
-              v-model:value="parameter.name"
-              @update:value="markSQLMode"
-              :readonly="editorMode === 'config'"
-              :aria-label="t('query.parameterName')"
-              :placeholder="t('query.parameterName')"
-            />
-            <a-input
-              v-model:value="parameter.label"
-              @update:value="markSQLMode"
-              :readonly="editorMode === 'config'"
-              :aria-label="t('query.parameterLabel')"
-              :placeholder="t('query.parameterLabel')"
-            />
-            <a-select
-              v-model:value="parameter.type"
-              @update:value="markSQLMode"
-              :disabled="editorMode === 'config'"
-              :aria-label="t('query.parameterType')"
-            >
-              <a-select-option
-                v-for="type in ['string', 'number', 'date', 'string_list']"
-                :key="type"
-                :value="type"
-              >
-                {{ t('query.type.' + type) }}
-              </a-select-option>
-            </a-select>
-            <a-button
-              size="small"
-              v-if="editorMode === 'sql'"
-              :disabled="!parameter.name"
-              @click="editor?.insert(':' + parameter.name)"
-            >
-              {{ t('query.insert') }}
-            </a-button>
-            <a-button
-              v-if="editorMode === 'sql'"
-              size="small"
-              danger
-              @click="definition.parameters.splice(index, 1)"
-            >
-              {{ t('query.remove') }}
-            </a-button>
-          </div>
-          <template v-if="editorMode === 'sql'">
+          <template v-if="editorMode === 'sql' && definition.parameters.length">
+            <div class="parameter-heading">
+              <strong>{{ t('query.sqlVariableValues') }}</strong>
+            </div>
             <div
               v-for="parameter in definition.parameters"
-              :key="`source-${parameter.name}`"
+              :key="parameter.name"
               class="sql-parameter-source"
             >
-              <strong>{{ parameter.label || parameter.name }}</strong>
+              <div class="sql-variable-meta">
+                <code>:{{ parameter.name }}</code>
+                <a-input
+                  v-model:value="parameter.label"
+                  @update:value="markSQLMode"
+                  :disabled="!!busy"
+                  :aria-label="t('query.parameterLabel')"
+                  :placeholder="t('query.parameterLabel')"
+                />
+                <a-select
+                  v-model:value="parameter.type"
+                  @update:value="markSQLMode"
+                  :disabled="!!busy"
+                  :aria-label="t('query.parameterType')"
+                >
+                  <a-select-option
+                    v-for="type in ['string', 'number', 'date', 'string_list']"
+                    :key="type"
+                    :value="type"
+                  >
+                    {{ t('query.type.' + type) }}
+                  </a-select-option>
+                </a-select>
+              </div>
               <QueryValueSourceEditor
                 v-model="parameter.default_binding"
                 @update:model-value="markSQLMode"
@@ -856,22 +934,39 @@ defineExpose({ canLeave, editPrompts, busy })
             </div>
           </a-tab-pane>
           <a-tab-pane key="references" :tab="t('query.references')">
-            <a-empty v-if="!references.length" :description="t('query.noReferences')" />
+            <a-empty v-if="!workflowReferences.length" :description="t('query.noReferences')" />
             <div
-              v-for="reference in references"
-              :key="reference.module + reference.id"
+              v-for="reference in workflowReferences"
+              :key="JSON.stringify([reference.module, reference.process_type])"
               class="reference-row"
             >
-              <strong>{{ reference.process_type }}</strong>
-              <p>{{ reference.rule_content }}</p>
+              <div>
+                <strong>{{ reference.process_type }}</strong>
+                <p>
+                  {{
+                    t(
+                      reference.module === 'audit_rules'
+                        ? 'query.auditUsage'
+                        : 'query.archiveUsage',
+                    )
+                  }}
+                </p>
+              </div>
+              <a-popconfirm
+                v-if="canEditRules"
+                :title="t('query.removeReferenceConfirm', reference.process_type)"
+                :ok-text="t('query.removeReference')"
+                :cancel-text="t('common.cancel')"
+                :disabled="!!busy"
+                @confirm="removeWorkflowReference(reference)"
+              >
+                <a-button danger :disabled="!!busy">{{ t('query.removeReference') }}</a-button>
+              </a-popconfirm>
             </div>
-            <a-popconfirm v-if="selected" :title="t('query.archiveConfirm')" @confirm="archive">
-              <a-button danger :disabled="!!busy">{{ t('query.archive') }}</a-button>
-            </a-popconfirm>
           </a-tab-pane>
         </a-tabs>
       </main>
-      <aside class="query-assistant panel">
+      <aside v-if="!initializing" class="query-assistant panel">
         <div class="section-heading">
           <RobotOutlined v-if="busy !== 'assist'" />
           <strong>{{ t('query.assistant') }}</strong>
@@ -1164,6 +1259,12 @@ h1 {
 .sql-template {
   margin-top: 16px;
 }
+.initial-query-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 360px;
+}
 .definition-form {
   padding: 20px 20px 0;
 }
@@ -1176,14 +1277,15 @@ h1 {
 .parameter-heading {
   margin: 20px 0 12px;
 }
-.parameter-row {
+.sql-variable-meta {
   display: grid;
-  grid-template-columns: minmax(75px, 1fr) minmax(75px, 1fr) 100px auto auto;
-  gap: 8px;
-  margin-bottom: 10px;
+  grid-template-columns: minmax(100px, 1fr) minmax(120px, 2fr) 110px;
+  gap: 12px;
+  align-items: center;
 }
-.parameter-row--generated {
-  grid-template-columns: minmax(75px, 1fr) minmax(75px, 1fr) 100px;
+.sql-variable-meta code {
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary);
 }
 .result-panels {
   padding: 4px 20px 16px;
@@ -1214,6 +1316,19 @@ h1 {
 .reference-row {
   padding: 12px 0;
   border-bottom: 1px solid var(--color-border-light);
+}
+.reference-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.reference-row > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.reference-row .ant-btn {
+  flex-shrink: 0;
 }
 .reference-row p {
   font-size: 13px;
@@ -1283,12 +1398,6 @@ h1 {
   .query-assistant {
     grid-column: 2;
   }
-  .parameter-row {
-    grid-template-columns: 1fr 1fr 100px;
-  }
-  .parameter-row .ant-btn {
-    justify-self: start;
-  }
 }
 @media (max-width: 760px) {
   .query-library {
@@ -1323,9 +1432,14 @@ h1 {
   .result-panels {
     padding: 0 16px 16px;
   }
-  .parameter-row,
   .test-parameters {
     grid-template-columns: 1fr 1fr;
+  }
+  .sql-variable-meta {
+    grid-template-columns: minmax(0, 1fr) 110px;
+  }
+  .sql-variable-meta code {
+    grid-column: 1 / -1;
   }
   .draft-meta {
     padding: 12px;

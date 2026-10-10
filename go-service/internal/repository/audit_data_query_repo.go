@@ -3,6 +3,7 @@ package repository
 import (
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -65,10 +66,54 @@ func (r *AuditDataQueryRepo) MarkTested(c *gin.Context, id uuid.UUID, draft data
 		Updates(map[string]interface{}{"tested_hash": hash, "tested_at": apptime.Now()}).Error
 }
 
-func (r *AuditDataQueryRepo) Archive(c *gin.Context, id uuid.UUID) error {
-	return r.WithTenant(c).WithContext(c.Request.Context()).
-		Model(&model.AuditDataQuery{}).Where("id = ?", id).
-		Updates(map[string]interface{}{"archived": true, "updated_at": apptime.Now()}).Error
+// ErrDataQueryReferenced 表示仍有当前流程配置引用该条目，不能删除。
+var ErrDataQueryReferenced = errors.New("请先取消所有流程引用，再删除数据记忆条目")
+
+// Delete 从库中删除条目；保留不可变版本供历史执行快照追溯。
+func (r *AuditDataQueryRepo) Delete(c *gin.Context, id uuid.UUID) error {
+	return r.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		scoped := NewAuditDataQueryRepo(tx)
+		var item model.AuditDataQuery
+		if err := scoped.WithTenant(c).Clauses(clause.Locking{Strength: "UPDATE"}).First(&item, "id = ? AND archived = false", id).Error; err != nil {
+			return err
+		}
+		refs, err := scoped.References(c, id)
+		if err != nil {
+			return err
+		}
+		// 关闭的规则和关闭的引用同样保留关联，必须明确取消后才能删除。
+		if len(refs) > 0 {
+			return ErrDataQueryReferenced
+		}
+		return scoped.WithTenant(c).Model(&item).
+			Updates(map[string]interface{}{"archived": true, "updated_at": apptime.Now()}).Error
+	})
+}
+
+// RemoveReferences 取消某流程全部当前规则对指定条目的引用，保留其他数据记忆。
+func (r *AuditDataQueryRepo) RemoveReferences(c *gin.Context, id uuid.UUID, module, processType string) (int64, error) {
+	if module != "audit_rules" && module != "archive_rules" {
+		return 0, fmt.Errorf("引用模块无效")
+	}
+	var count int64
+	err := r.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		scoped := NewAuditDataQueryRepo(tx)
+		var item model.AuditDataQuery
+		if err := scoped.WithTenant(c).Clauses(clause.Locking{Strength: "UPDATE"}).First(&item, "id = ? AND archived = false", id).Error; err != nil {
+			return err
+		}
+		// 使用数据库内的当前 JSON 原子移除，避免覆盖并行修改的其他引用。
+		result := scoped.WithTenant(c).Table(module).
+			Where("process_type = ?", processType).
+			Where("data_queries @> ?::jsonb", fmt.Sprintf(`[{"query_id":%q}]`, id.String())).
+			Updates(map[string]interface{}{
+				"data_queries": gorm.Expr(`COALESCE((SELECT jsonb_agg(entry) FROM jsonb_array_elements(data_queries) AS entry WHERE entry->>'query_id' IS DISTINCT FROM ?), '[]'::jsonb)`, id.String()),
+				"updated_at":   apptime.Now(),
+			})
+		count = result.RowsAffected
+		return result.Error
+	})
+	return count, err
 }
 
 func (r *AuditDataQueryRepo) Versions(c *gin.Context, id uuid.UUID) ([]model.AuditDataQueryVersion, error) {
@@ -120,7 +165,7 @@ func (r *AuditDataQueryRepo) SavePrompts(c *gin.Context, p *model.AuditDataQuery
 	}).Create(p).Error
 }
 
-// References 返回当前配置中的引用，发布版本永久保留，归档不破坏历史执行。
+// References 返回当前配置中的引用；历史执行快照及发布版本不在此列表中。
 func (r *AuditDataQueryRepo) References(c *gin.Context, id uuid.UUID) ([]map[string]interface{}, error) {
 	out := []map[string]interface{}{}
 	for _, table := range []string{"audit_rules", "archive_rules"} {
