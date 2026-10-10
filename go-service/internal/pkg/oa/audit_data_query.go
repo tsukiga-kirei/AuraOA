@@ -369,17 +369,17 @@ func (a *Ecology9Adapter) QueryAuditData(ctx context.Context, input string, valu
 	if err != nil {
 		return nil, err
 	}
-	if maxRows < 1 {
-		maxRows = 20
+	if maxRows < 0 {
+		return nil, fmt.Errorf("最大返回行数不能为负数")
 	}
-	if maxRows > 100 {
-		maxRows = 100
-	}
-	// 在外层限量，不改变内部聚合、集合运算或排序的含义。
-	if a.driver == "mysql" {
-		query = "SELECT * FROM (" + query + ") auraoa_query LIMIT " + fmt.Sprint(maxRows+1)
-	} else {
-		query = "SELECT * FROM (" + query + ") auraoa_query WHERE ROWNUM <= " + fmt.Sprint(maxRows+1)
+	// 0 表示不限制行数；指定上限时在外层多读取一行判定截断，不改变内部聚合或排序。
+	if maxRows > 0 {
+		limit := fmt.Sprint(uint64(maxRows) + 1)
+		if a.driver == "mysql" {
+			query = "SELECT * FROM (" + query + ") auraoa_query LIMIT " + limit
+		} else {
+			query = "SELECT * FROM (" + query + ") auraoa_query WHERE ROWNUM <= " + limit
+		}
 	}
 	return a.runAuditReadOnly(ctx, query, args, maxRows)
 }
@@ -424,7 +424,7 @@ func (a *Ecology9Adapter) runAuditReadOnly(ctx context.Context, query string, ar
 	}
 	size := 0
 	for rows.Next() {
-		if len(out.Rows) >= maxRows {
+		if maxRows > 0 && len(out.Rows) >= maxRows {
 			out.Truncated = true
 			break
 		}

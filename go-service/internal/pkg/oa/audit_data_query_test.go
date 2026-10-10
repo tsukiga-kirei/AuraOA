@@ -104,6 +104,7 @@ type auditQueryTestConn struct {
 	rejectReadOnly bool
 	rejectNative   bool
 	queries        int
+	lastQuery      string
 	rolledBack     bool
 	committed      bool
 	values         []driver.Value
@@ -130,8 +131,9 @@ func (c *auditQueryTestConn) ExecContext(_ context.Context, query string, _ []dr
 	c.nativeReadOnly = true
 	return driver.RowsAffected(0), nil
 }
-func (c *auditQueryTestConn) QueryContext(ctx context.Context, _ string, _ []driver.NamedValue) (driver.Rows, error) {
+func (c *auditQueryTestConn) QueryContext(ctx context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
 	c.queries++
+	c.lastQuery = query
 	if !c.options.ReadOnly && !c.nativeReadOnly {
 		return nil, errors.New("在只读声明之前执行了查询")
 	}
@@ -139,6 +141,59 @@ func (c *auditQueryTestConn) QueryContext(ctx context.Context, _ string, _ []dri
 		return nil, errors.New("查询缺少超时")
 	}
 	return &auditQueryTestRows{values: c.values}, nil
+}
+
+// 不限制行数时不应隐式截为20/100行；自定义上限仍须准确报告截断。
+func TestAuditQueryOptionalRowLimit(t *testing.T) {
+	for _, dialect := range []string{"mysql", "oracle", "dm"} {
+		for _, limit := range []int{0, 101, 200, -1} {
+			conn := &auditQueryTestConn{}
+			for i := 0; i < 125; i++ {
+				conn.values = append(conn.values, int64(i))
+			}
+			db := sql.OpenDB(auditQueryTestConnector{conn})
+			gdb, err := gorm.Open(mysql.New(mysql.Config{Conn: db, SkipInitializeWithVersion: true}), &gorm.Config{DisableAutomaticPing: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			adapter := &Ecology9Adapter{db: gdb, driver: dialect}
+			result, err := adapter.QueryAuditData(context.Background(), "SELECT amount AS 金额 FROM expenses", nil, limit)
+			db.Close()
+			if limit < 0 {
+				if err == nil || conn.queries != 0 {
+					t.Fatalf("负数行数上限被接受：%v", err)
+				}
+				continue
+			}
+			wantRows, wantTruncated := 125, false
+			if limit == 101 {
+				wantRows, wantTruncated = 101, true
+			}
+			if err != nil || len(result.Rows) != wantRows || result.Truncated != wantTruncated {
+				t.Fatalf("%s limit=%d result=%+v err=%v", dialect, limit, result, err)
+			}
+			wrapped := strings.Contains(conn.lastQuery, "auraoa_query")
+			if wrapped != (limit > 0) {
+				t.Fatalf("未按配置应用行数限制：%s", conn.lastQuery)
+			}
+		}
+	}
+}
+
+// 取消行数限制不能让超大明细绕过证据体积保护。
+func TestAuditQueryUnlimitedRetainsPayloadLimit(t *testing.T) {
+	conn := &auditQueryTestConn{values: []driver.Value{strings.Repeat("x", 33000), strings.Repeat("x", 33000)}}
+	db := sql.OpenDB(auditQueryTestConnector{conn})
+	defer db.Close()
+	gdb, err := gorm.Open(mysql.New(mysql.Config{Conn: db, SkipInitializeWithVersion: true}), &gorm.Config{DisableAutomaticPing: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := &Ecology9Adapter{db: gdb, driver: "mysql"}
+	result, err := adapter.QueryAuditData(context.Background(), "SELECT amount AS 金额 FROM expenses", nil, 0)
+	if err != nil || !result.Truncated || len(result.Rows) != 1 {
+		t.Fatalf("超大证据未截断：%+v %v", result, err)
+	}
 }
 
 type auditQueryTestTx struct{ conn *auditQueryTestConn }

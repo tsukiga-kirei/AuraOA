@@ -20,6 +20,13 @@ func TestQueryDefinitionScope(t *testing.T) {
 	if result := queryCheck(def); !result.Valid {
 		t.Fatalf("unexpected issues: %+v", result.Issues)
 	}
+	for _, limit := range []int{0, 101, 1000, -1} {
+		def.MaxRows = limit
+		if result := queryCheck(def); result.Valid != (limit >= 0) {
+			t.Fatalf("行数限制%d的检查结果不正确：%+v", limit, result.Issues)
+		}
+	}
+	def.MaxRows = 20
 	def.Tables = []string{"budgets"}
 	if queryCheck(def).Valid {
 		t.Fatal("undeclared table accepted")

@@ -1,4 +1,10 @@
 /* 记忆库工作区及规则证据共用主题样式，沿用项目浅色、深色、暖色变量。 */
+.memory-help {
+  margin: 8px 0;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  line-height: 1.7;
+}
 /* 输入框与操作按钮分别保留圆角和间距，避免全局圆角样式导致组合边框挤压。 */
 .memory-surface .memory-input-action {
   display: flex;

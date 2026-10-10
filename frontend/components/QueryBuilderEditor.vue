@@ -29,7 +29,6 @@ const builder = ref<QueryBuilder>(
 )
 const columns = ref<QueryColumn[]>([])
 const loading = ref(false)
-const error = ref('')
 let sequence = 0
 const fieldOptions = computed(() =>
   columns.value.map((column) => ({
@@ -55,20 +54,23 @@ watch(
   () => {
     ++sequence
     columns.value = []
-    error.value = ''
   },
 )
-async function loadSchema() {
+async function loadSchema(notify = true) {
   const seq = ++sequence
   loading.value = true
-  error.value = ''
   try {
     const result = await api.schema(builder.value.table.trim())
     if (seq !== sequence) return
     columns.value = result.columns
-    if (result.dialect !== props.definition.dialect) error.value = t('query.sourceChanged')
+    if (result.dialect !== props.definition.dialect) {
+      message.error(t('query.sourceChanged'))
+      return
+    }
+    if (notify)
+      message.success(t('query.schemaLoaded', [builder.value.table, result.columns.length]))
   } catch (cause) {
-    if (seq === sequence) error.value = cause instanceof Error ? cause.message : String(cause)
+    if (seq === sequence) message.error(cause instanceof Error ? cause.message : String(cause))
   } finally {
     if (seq === sequence) loading.value = false
   }
@@ -101,16 +103,16 @@ function apply() {
     message.success(t('query.builder.applied'))
   } catch (cause) {
     const code = cause instanceof Error ? cause.message : 'schema'
-    error.value = t(`query.builder.error.${code}`)
+    message.error(t(`query.builder.error.${code}`))
   }
 }
 onMounted(() => {
-  if (builder.value.table) loadSchema()
+  if (builder.value.table) loadSchema(false)
 })
 </script>
 <template>
   <div class="query-builder">
-    <a-alert type="info" show-icon :message="t('query.builder.hint')" />
+    <p class="memory-help builder-help">{{ t('query.builder.hint') }}</p>
     <a-form-item :label="t('query.builder.source')">
       <a-select v-model:value="builder.source_type" :disabled="disabled">
         <a-select-option value="table">{{ t('query.builder.table') }}</a-select-option>
@@ -124,7 +126,7 @@ onMounted(() => {
           :disabled="disabled"
           :placeholder="t('query.tableName')"
         />
-        <a-button :loading="loading" :disabled="disabled" @click="loadSchema">{{
+        <a-button :loading="loading" :disabled="disabled" @click="loadSchema()">{{
           t('query.builder.load')
         }}</a-button>
       </div>
@@ -229,8 +231,8 @@ onMounted(() => {
       </template>
     </div>
     <a-form-item :label="t('query.builder.order')">
-      <a-space-compact block>
-        <a-select v-model:value="builder.order_alias" :disabled="disabled" style="flex: 1"
+      <div class="query-order">
+        <a-select v-model:value="builder.order_alias" :disabled="disabled"
           ><a-select-option value="">{{ t('query.builder.noOrder') }}</a-select-option
           ><a-select-option
             v-for="column in builder.columns.filter((item) => item.alias)"
@@ -239,13 +241,12 @@ onMounted(() => {
             >{{ column.alias }}</a-select-option
           ></a-select
         >
-        <a-select v-model:value="builder.order_dir" :disabled="disabled" style="width: 100px"
+        <a-select v-model:value="builder.order_dir" :disabled="disabled || !builder.order_alias"
           ><a-select-option value="DESC">{{ t('query.builder.desc') }}</a-select-option
           ><a-select-option value="ASC">{{ t('query.builder.asc') }}</a-select-option></a-select
         >
-      </a-space-compact>
+      </div>
     </a-form-item>
-    <a-alert v-if="error" type="error" show-icon :message="error" />
     <a-button type="primary" :disabled="disabled || loading || !columns.length" @click="apply">{{
       t('query.builder.apply')
     }}</a-button>
@@ -262,10 +263,21 @@ onMounted(() => {
 .query-builder :deep(.ant-form-item) {
   margin-bottom: 0;
 }
+.builder-help {
+  margin: 0;
+}
 .section-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+.query-order {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: 12px;
+}
+.query-order :deep(.ant-select) {
+  min-width: 0;
 }
 .config-row {
   display: grid;
