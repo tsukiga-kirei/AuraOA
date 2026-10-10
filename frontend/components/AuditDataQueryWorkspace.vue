@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAuditDataQueryApi } from '~/composables/useAuditDataQueryApi'
 import { message, Modal } from 'ant-design-vue'
+import { appDayjs } from '~/utils/appTime'
 import {
   DatabaseOutlined,
   PlusOutlined,
@@ -11,6 +12,7 @@ import {
   CopyOutlined,
   SettingOutlined,
   SearchOutlined,
+  BookOutlined,
 } from '@ant-design/icons-vue'
 import type {
   AuditDataQuery,
@@ -40,7 +42,7 @@ const makeDefinition = (): QueryDefinition => ({
   dialect: 'mysql',
   tables: [],
   parameters: [],
-  max_rows: 20,
+  max_rows: 0,
   builder: {
     source_type: 'table',
     table: '',
@@ -54,16 +56,12 @@ const items = ref<AuditDataQuery[]>([])
 const selected = ref<AuditDataQuery>()
 const definition = ref<QueryDefinition>(makeDefinition())
 const source = ref<{ name: string; dialect: QueryDefinition['dialect'] }>()
-const sourceError = ref('')
 const category = ref('')
 const editorMode = ref('config')
 const builderKey = ref(0)
 const baseline = ref('')
 const keyword = ref('')
 const appliedKeyword = ref('')
-const page = ref(1)
-const pageSize = ref(20)
-const total = ref(0)
 const loading = ref(false)
 const loadError = ref('')
 const busy = ref('')
@@ -132,13 +130,14 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const result = await api.list(appliedKeyword.value, page.value, pageSize.value)
+    const result = await api.listAll(appliedKeyword.value)
     if (sequence !== listSequence) return
-    items.value = result.items
-    total.value = result.total
-    page.value = result.page
+    items.value = result
   } catch (error) {
-    if (sequence === listSequence) loadError.value = errorText(error)
+    if (sequence === listSequence) {
+      loadError.value = errorText(error)
+      message.error(loadError.value)
+    }
   } finally {
     if (sequence === listSequence) loading.value = false
   }
@@ -223,7 +222,14 @@ async function checkSQL() {
   activePanel.value = 'check'
   try {
     const result = await api.check(clone(definition.value))
-    if (state === currentState.value) check.value = result
+    if (state !== currentState.value) return
+    check.value = result
+    if (result.valid) message.success(t('query.checkPassed'))
+    else
+      message.error(
+        result.issues.map((issue) => issue.message).join('；') || t('query.checkFailed'),
+        8,
+      )
   } catch (error) {
     message.error(errorText(error))
   } finally {
@@ -250,6 +256,7 @@ async function preview() {
     if (state !== currentState.value || JSON.stringify(parameters) !== JSON.stringify(testValues))
       return
     evidence.value = result
+    if (!result.error && !result.result?.truncated) message.success(t('query.previewSucceeded'))
     selected.value = await api.get(selected.value!.id)
   } catch (error) {
     lastError.value = errorText(error)
@@ -309,6 +316,7 @@ async function loadSchema(table: string) {
     const result = await api.schema(table)
     if (sequence !== selectSequence || !definition.value.tables.includes(table)) return
     schema.value[table] = result.columns
+    message.success(t('query.schemaLoaded', [table, result.columns.length]))
     if (!selected.value && !definition.value.sql)
       definition.value.dialect = result.dialect as QueryDefinition['dialect']
   } catch (error) {
@@ -335,7 +343,9 @@ async function assist() {
       instruction.value,
       lastError.value,
     )
-    if (state === currentState.value) aiResult.value = result
+    if (state !== currentState.value) return
+    aiResult.value = result
+    if (result.warnings.length) message.warning(result.warnings.join('；'), 8)
   } catch (error) {
     message.error(errorText(error))
   } finally {
@@ -395,20 +405,18 @@ async function restoreVersion(version: QueryVersion) {
 }
 function search() {
   appliedKeyword.value = keyword.value.trim()
-  page.value = 1
   void load()
 }
-function changePage(next: number, size: number) {
-  page.value = size === pageSize.value ? next : 1
-  pageSize.value = size
-  void load()
+function formatTime(value: string) {
+  const date = appDayjs(value)
+  return date.isValid() ? date.format(t('query.dateTimeFormat')) : '-'
 }
 onMounted(async () => {
   try {
     source.value = await api.source()
     definition.value.dialect = source.value.dialect
   } catch (error) {
-    sourceError.value = errorText(error)
+    message.error(errorText(error))
   }
   baseline.value = currentState.value
   await load()
@@ -449,23 +457,23 @@ defineExpose({ canLeave, editPrompts, busy })
         {{ t('query.aiPrompts') }}
       </a-button>
     </div>
-    <a-alert
-      v-if="sourceError"
-      type="error"
-      :message="sourceError"
-      show-icon
-      class="source-error"
-    />
     <div class="workspace-layout">
       <aside class="query-library panel">
         <div class="library-top">
-          <strong>{{ t('query.library') }}</strong>
-          <a-button size="small" type="primary" :disabled="!!busy" @click="newQuery()">
-            <template #icon><PlusOutlined /></template>
-            {{ t('query.new') }}
-          </a-button>
+          <BookOutlined />
+          <span>{{ t('query.library') }}</span>
+          <button
+            type="button"
+            class="add-library-btn"
+            :disabled="!!busy"
+            :title="t('query.new')"
+            :aria-label="t('query.new')"
+            @click="newQuery()"
+          >
+            <PlusOutlined />
+          </button>
         </div>
-        <div class="memory-input-action">
+        <div class="library-search memory-input-action">
           <a-input
             v-model:value="keyword"
             :placeholder="t('query.search')"
@@ -478,11 +486,9 @@ defineExpose({ canLeave, editPrompts, busy })
             <template #icon><SearchOutlined /></template>
           </a-button>
         </div>
-        <a-alert v-if="loadError" type="error" :message="loadError" show-icon>
-          <template #action>
-            <a-button size="small" @click="load">{{ t('query.retry') }}</a-button>
-          </template>
-        </a-alert>
+        <a-button v-if="loadError" size="small" class="library-retry" @click="load">
+          {{ t('query.retry') }}
+        </a-button>
         <a-spin :spinning="loading">
           <div class="library-list">
             <button
@@ -491,6 +497,7 @@ defineExpose({ canLeave, editPrompts, busy })
               class="library-item"
               :disabled="!!busy"
               :class="{ selected: selected?.id === item.id }"
+              :aria-pressed="selected?.id === item.id"
               @click="selectQuery(item)"
             >
               <span class="item-name">{{ item.name }}</span>
@@ -501,23 +508,12 @@ defineExpose({ canLeave, editPrompts, busy })
                 }}
               </span>
             </button>
-            <a-empty v-if="!items.length && !loading" :description="t('query.empty')" />
+            <p v-if="!items.length && !loading" class="library-empty">{{ t('query.empty') }}</p>
           </div>
         </a-spin>
-        <div class="pagination-wrapper">
-          <a-pagination
-            size="small"
-            :current="page"
-            :page-size="pageSize"
-            :total="total"
-            :page-size-options="['10', '20', '50']"
-            show-size-changer
-            @change="changePage"
-          />
-        </div>
       </aside>
       <main class="query-main panel">
-        <div class="main-toolbar">
+        <div class="draft-meta">
           <a-space wrap>
             <a-tag class="query-version-tag">
               {{
@@ -526,33 +522,7 @@ defineExpose({ canLeave, editPrompts, busy })
                   : t('query.draft')
               }}
             </a-tag>
-            <a-tag v-if="dirty" color="warning">{{ t('query.unsaved') }}</a-tag>
-          </a-space>
-          <a-space wrap>
-            <a-button :disabled="!!busy" @click="newQuery(true)">
-              <template #icon><CopyOutlined /></template>
-              {{ t('query.copy') }}
-            </a-button>
-            <a-button :loading="busy === 'check'" :disabled="!!busy || !source" @click="checkSQL">
-              <template #icon><CheckCircleOutlined /></template>
-              {{ t('query.check') }}
-            </a-button>
-            <a-button :loading="busy === 'preview'" :disabled="!!busy || !source" @click="preview">
-              <template #icon><PlayCircleOutlined /></template>
-              {{ t('query.preview') }}
-            </a-button>
-            <a-button :loading="busy === 'save'" :disabled="!!busy" @click="save">
-              <template #icon><SaveOutlined /></template>
-              {{ t('query.save') }}
-            </a-button>
-            <a-button
-              type="primary"
-              :loading="busy === 'publish'"
-              :disabled="!!busy || !selected || dirty || !selected.tested_hash"
-              @click="publish"
-            >
-              {{ t('query.publish') }}
-            </a-button>
+            <span v-if="dirty" class="muted">{{ t('query.unsaved') }}</span>
           </a-space>
         </div>
         <a-form layout="vertical" class="definition-form">
@@ -597,9 +567,13 @@ defineExpose({ canLeave, editPrompts, busy })
             <a-col :span="12">
               <a-form-item :label="t('query.maxRows')">
                 <a-input-number
-                  v-model:value="definition.max_rows"
+                  :value="definition.max_rows || undefined"
                   :min="1"
-                  :max="100"
+                  :precision="0"
+                  :placeholder="t('query.unlimited')"
+                  @update:value="
+                    (value) => (definition.max_rows = value == null ? 0 : Number(value))
+                  "
                   style="width: 100%"
                 />
               </a-form-item>
@@ -610,13 +584,9 @@ defineExpose({ canLeave, editPrompts, busy })
             <a-radio-button value="sql">{{ t('query.builder.sqlMode') }}</a-radio-button>
           </a-radio-group>
           <template v-if="editorMode === 'config'">
-            <a-alert
-              v-if="!definition.builder && definition.sql"
-              type="warning"
-              :message="t('query.builder.convertHint')"
-              show-icon
-              class="builder-notice"
-            />
+            <p v-if="!definition.builder && definition.sql" class="memory-help builder-notice">
+              {{ t('query.builder.convertHint') }}
+            </p>
             <QueryBuilderEditor
               :key="builderKey"
               :definition="definition"
@@ -633,6 +603,7 @@ defineExpose({ canLeave, editPrompts, busy })
           <QuerySqlEditor
             v-else
             ref="editor"
+            class="sql-template"
             :model-value="definition.sql"
             @update:model-value="updateSQL"
             @run="preview"
@@ -692,10 +663,20 @@ defineExpose({ canLeave, editPrompts, busy })
               {{ t('query.remove') }}
             </a-button>
           </div>
+          <div class="editor-actions">
+            <a-button :disabled="!!busy" @click="newQuery(true)">
+              <template #icon><CopyOutlined /></template>
+              {{ t('query.copy') }}
+            </a-button>
+            <a-button type="primary" :loading="busy === 'save'" :disabled="!!busy" @click="save">
+              <template #icon><SaveOutlined /></template>
+              {{ t('query.save') }}
+            </a-button>
+          </div>
         </a-form>
         <a-tabs v-model:active-key="activePanel" class="result-panels">
           <a-tab-pane key="test" :tab="t('query.test')">
-            <a-alert type="info" :message="t('query.manualTestHint')" show-icon />
+            <p class="memory-help">{{ t('query.manualTestHint') }}</p>
             <div class="test-parameters">
               <a-form-item
                 v-for="parameter in definition.parameters"
@@ -708,17 +689,33 @@ defineExpose({ canLeave, editPrompts, busy })
                 />
               </a-form-item>
             </div>
-            <a-alert v-if="lastError" type="error" :message="lastError" show-icon />
+            <div class="panel-actions">
+              <a-button
+                type="primary"
+                :loading="busy === 'preview'"
+                :disabled="!!busy || !source"
+                @click="preview"
+              >
+                <template #icon><PlayCircleOutlined /></template>
+                {{ t('query.preview') }}
+              </a-button>
+            </div>
             <QueryEvidencePreview v-if="evidence" :evidence="evidence" />
-            <a-empty v-else-if="!lastError" :description="t('query.previewEmpty')" />
+            <a-empty v-else :description="t('query.previewEmpty')" />
           </a-tab-pane>
           <a-tab-pane key="check" :tab="t('query.checkResult')">
+            <div class="panel-actions">
+              <a-button
+                type="primary"
+                :loading="busy === 'check'"
+                :disabled="!!busy || !source"
+                @click="checkSQL"
+              >
+                <template #icon><CheckCircleOutlined /></template>
+                {{ t('query.check') }}
+              </a-button>
+            </div>
             <template v-if="check">
-              <a-alert
-                :type="check.valid ? 'success' : 'error'"
-                :message="t(check.valid ? 'query.checkPassed' : 'query.checkFailed')"
-                show-icon
-              />
               <button
                 v-for="(issue, index) in check.issues"
                 :key="index"
@@ -735,11 +732,22 @@ defineExpose({ canLeave, editPrompts, busy })
             <a-empty v-else :description="t('query.checkEmpty')" />
           </a-tab-pane>
           <a-tab-pane key="versions" :tab="t('query.versions')">
+            <div class="panel-actions">
+              <a-button
+                type="primary"
+                :loading="busy === 'publish'"
+                :disabled="!!busy || !selected || dirty || !selected.tested_hash"
+                @click="publish"
+              >
+                {{ t('query.publish') }}
+              </a-button>
+              <span class="muted">{{ t('query.publishHint') }}</span>
+            </div>
             <a-empty v-if="!versions.length" :description="t('query.noVersions')" />
             <div v-for="version in versions" :key="version.id" class="version-row">
               <div>
                 <strong>{{ t('query.version', version.version_no) }}</strong>
-                <span class="muted">· {{ version.created_at }}</span>
+                <span class="muted">· {{ formatTime(version.created_at) }}</span>
               </div>
               <a-space>
                 <a-button size="small" @click="restoreVersion(version)">
@@ -840,13 +848,6 @@ defineExpose({ canLeave, editPrompts, busy })
             <p class="muted">{{ t('query.aiHint') }}</p>
             <template v-if="aiResult">
               <div class="ai-explanation">{{ aiResult.explanation }}</div>
-              <a-alert
-                v-for="(warning, index) in aiResult.warnings"
-                :key="index"
-                type="warning"
-                :message="warning"
-                class="ai-warning"
-              />
               <pre v-if="aiResult.sql" class="ai-sql">{{ aiResult.sql }}</pre>
               <a-button v-if="aiAction !== 'explain' && aiResult.sql" block @click="adoptAI">
                 {{ t('query.adoptAI') }}
@@ -865,7 +866,7 @@ defineExpose({ canLeave, editPrompts, busy })
       :confirm-loading="busy === 'prompts'"
       @ok="savePrompts"
     >
-      <a-alert type="info" :message="t('query.promptHint')" show-icon />
+      <p class="memory-help">{{ t('query.promptHint') }}</p>
       <a-tabs>
         <a-tab-pane
           v-for="action in ['generate', 'explain', 'repair'] as const"
@@ -880,9 +881,6 @@ defineExpose({ canLeave, editPrompts, busy })
 </template>
 
 <style scoped>
-.source-error {
-  margin-bottom: 16px;
-}
 .query-workspace {
   color: var(--color-text-primary);
 }
@@ -929,48 +927,105 @@ h1 {
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
 }
-.query-library,
 .query-assistant {
   padding: 16px;
+}
+.query-library {
+  overflow: hidden;
+  position: sticky;
+  top: 20px;
 }
 .library-top,
 .schema-heading,
 .parameter-heading,
 .version-row,
-.main-toolbar {
+.draft-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
 .library-top {
-  margin-bottom: 16px;
-  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border-light);
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.add-library-btn {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.add-library-btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+.add-library-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.library-search {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-light);
 }
 .library-list {
-  min-height: 260px;
-  margin: 12px -8px;
+  margin: 0;
+  max-height: calc(100vh - 340px);
+  overflow-y: auto;
+}
+.library-retry {
+  margin: 12px 16px;
+}
+.library-empty {
+  padding: 20px 16px;
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  line-height: 1.7;
 }
 .library-item {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
   text-align: left;
   width: 100%;
-  border: 1px solid transparent;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-light);
   background: transparent;
   color: var(--color-text-primary);
-  padding: 12px;
-  border-radius: 8px;
+  padding: 12px 16px;
   cursor: pointer;
-  margin-bottom: 4px;
+  transition: all var(--transition-fast);
+}
+.library-item:last-child {
+  border-bottom: 0;
 }
 .library-item:hover {
   background: var(--color-bg-hover);
 }
 .library-item.selected {
   background: var(--color-primary-bg);
-  border-color: var(--color-primary-ring);
+  border-left: 3px solid var(--color-primary);
+}
+.library-item:focus-visible,
+.add-library-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 .item-name {
   font-size: 14px;
@@ -983,10 +1038,28 @@ h1 {
   color: var(--color-text-tertiary);
   line-height: 1.7;
 }
-.main-toolbar {
-  padding: 16px;
-  border-bottom: 1px solid var(--color-border-light);
+.draft-meta {
+  padding: 16px 16px 0;
   flex-wrap: wrap;
+}
+.editor-actions,
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.editor-actions {
+  justify-content: flex-end;
+  padding-top: 16px;
+  margin-top: 16px;
+  border-top: 1px solid var(--color-border-light);
+}
+.panel-actions {
+  margin: 16px 0;
+}
+.sql-template {
+  margin-top: 16px;
 }
 .definition-form {
   padding: 20px 20px 0;
@@ -1016,8 +1089,8 @@ h1 {
   display: block;
   width: 100%;
   text-align: left;
-  background: var(--color-error-bg);
-  color: var(--color-error);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
   border: 1px solid var(--color-border);
   padding: 10px 12px;
   border-radius: 6px;
@@ -1078,9 +1151,6 @@ h1 {
   line-height: 1.8;
   white-space: pre-wrap;
 }
-.ai-warning {
-  margin-top: 10px;
-}
 .ai-sql {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1092,14 +1162,6 @@ h1 {
   max-height: 260px;
   overflow: auto;
 }
-.pagination-wrapper {
-  margin-top: 12px;
-}
-.query-library :deep(.ant-pagination) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
 @media (min-width: 1700px) {
   .workspace-layout {
     grid-template-columns: 260px minmax(480px, 1fr) 320px;
@@ -1107,7 +1169,7 @@ h1 {
 }
 @media (max-width: 1380px) {
   .workspace-layout {
-    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-columns: 240px minmax(0, 1fr);
   }
   .query-assistant {
     grid-column: 2;
@@ -1120,6 +1182,9 @@ h1 {
   }
 }
 @media (max-width: 760px) {
+  .query-library {
+    position: static;
+  }
   .workspace-heading {
     align-items: flex-start;
     flex-direction: column;
@@ -1153,7 +1218,7 @@ h1 {
   .test-parameters {
     grid-template-columns: 1fr 1fr;
   }
-  .main-toolbar {
+  .draft-meta {
     padding: 12px;
   }
   h1 {

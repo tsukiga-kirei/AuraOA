@@ -20,6 +20,7 @@ import {
   FileTextOutlined,
   MessageOutlined,
   RobotOutlined,
+  BookOutlined,
 } from '@ant-design/icons-vue'
 import type { Component } from 'vue'
 
@@ -55,12 +56,12 @@ const BUSINESS_ITEMS: SidebarMenuItem[] = [
 /** 租户管理员菜单项（需要 tenant_admin 权限组） */
 const TENANT_ITEMS: SidebarMenuItem[] = [
   { key: '/admin/tenant/rules', icon: AppstoreOutlined, labelKey: 'menu.tenant.rules' },
+  { key: '/admin/tenant/memory', icon: BookOutlined, labelKey: 'memory.title' },
   { key: '/admin/tenant/agents', icon: RobotOutlined, labelKey: 'menu.tenant.agents' },
   { key: '/admin/tenant/org', icon: ApartmentOutlined, labelKey: 'menu.tenant.org' },
   { key: '/admin/tenant/experience', icon: MessageOutlined, labelKey: 'experience.title' },
   { key: '/admin/tenant/data', icon: DatabaseOutlined, labelKey: 'menu.tenant.data' },
   { key: '/admin/tenant/user-configs', icon: SettingOutlined, labelKey: 'menu.tenant.userConfigs' },
-  { key: '/admin/tenant/memory', icon: DatabaseOutlined, labelKey: 'memory.title' },
 ]
 
 /** 系统管理员菜单项（需要 system_admin 权限组） */

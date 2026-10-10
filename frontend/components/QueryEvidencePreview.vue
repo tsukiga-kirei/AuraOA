@@ -1,7 +1,23 @@
 <script setup lang="ts">
 import type { QueryEvidence } from '~/types/audit-data-query'
+import { message } from 'ant-design-vue'
+import { appDayjs } from '~/utils/appTime'
 const props = defineProps<{ evidence: QueryEvidence }>()
 const { t } = useI18n()
+function formatTime(value: string, dateOnly = false) {
+  const date = appDayjs(value)
+  return date.isValid()
+    ? date.format(t(dateOnly ? 'query.dateFormat' : 'query.dateTimeFormat'))
+    : '-'
+}
+watch(
+  () => props.evidence,
+  (value) => {
+    if (value.error) message.error(value.error, 8)
+    else if (value.result?.truncated) message.warning(t('query.truncated'), 8)
+  },
+  { immediate: true },
+)
 const columns = computed(() =>
   (props.evidence.result?.columns || []).map((column) => ({
     title: column.label,
@@ -11,27 +27,38 @@ const columns = computed(() =>
     width: 180,
   })),
 )
+const displayRows = computed(() =>
+  (props.evidence.result?.rows || []).map((row, i) => {
+    const display: Record<string, unknown> = { ...row, _row: i }
+    for (const column of props.evidence.result?.columns || []) {
+      const value = row[column.key]
+      if (
+        typeof value === 'string' &&
+        /DATE|TIME/i.test(column.data_type) &&
+        appDayjs(value).isValid()
+      )
+        display[column.key] = formatTime(value, /^\d{4}-\d{2}-\d{2}$/.test(value))
+    }
+    return display
+  }),
+)
 </script>
 <template>
   <a-tabs class="memory-surface">
     <a-tab-pane key="data" :tab="t('query.result')">
-      <a-alert v-if="evidence.error" type="error" :message="evidence.error" show-icon />
+      <a-tag v-if="evidence.error" color="error">{{ t('query.resultFailed') }}</a-tag>
       <template v-if="evidence.result">
-        <a-alert
-          v-if="evidence.result.truncated"
-          type="warning"
-          :message="t('query.truncated')"
-          show-icon
-          class="query-notice"
-        />
         <div class="query-metrics">
+          <a-tag v-if="evidence.result.truncated" color="warning">{{
+            t('query.resultIncomplete')
+          }}</a-tag>
           {{ t('query.resultSummary', [evidence.result.rows.length, evidence.result.duration_ms]) }}
-          · {{ evidence.queried_at }}
+          · {{ formatTime(evidence.queried_at) }}
         </div>
         <a-table
           size="small"
           :columns="columns"
-          :data-source="evidence.result.rows.map((row, i) => ({ ...row, _row: i }))"
+          :data-source="displayRows"
           row-key="_row"
           :pagination="false"
           :scroll="{ x: 'max-content', y: 280 }"
@@ -48,9 +75,6 @@ const columns = computed(() =>
   </a-tabs>
 </template>
 <style scoped>
-.query-notice {
-  margin-bottom: 12px;
-}
 .query-metrics {
   color: var(--color-text-secondary);
   font-size: 12px;

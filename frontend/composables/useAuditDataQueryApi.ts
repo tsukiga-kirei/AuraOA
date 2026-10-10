@@ -17,13 +17,24 @@ import type {
 export const useAuditDataQueryApi = () => {
   const { authFetch } = useAuth()
   const root = '/api/tenant/audit-data-queries'
+  const list = (keyword = '', page = 1, page_size = 20) =>
+    authFetch<{ items: AuditDataQuery[]; total: number; page: number; page_size: number }>(root, {
+      query: { keyword, page, page_size },
+    })
+  // 左侧配置目录不展示分页，分批读取全部匹配条目，避免只显示首批数据。
+  const listAll = async (keyword = '') => {
+    const items: AuditDataQuery[] = []
+    for (let page = 1; ; page++) {
+      const result = await list(keyword, page, 100)
+      items.push(...result.items)
+      if (!result.items.length || items.length >= result.total) return items
+    }
+  }
   return {
     source: () =>
       authFetch<{ name: string; dialect: QueryDefinition['dialect'] }>(`${root}/source`),
-    list: (keyword = '', page = 1, page_size = 20) =>
-      authFetch<{ items: AuditDataQuery[]; total: number; page: number; page_size: number }>(root, {
-        query: { keyword, page, page_size },
-      }),
+    list,
+    listAll,
     get: (id: string) => authFetch<AuditDataQuery>(`${root}/${id}`),
     save: (id: string | undefined, category: string, definition: QueryDefinition) =>
       authFetch<AuditDataQuery>(id ? `${root}/${id}` : root, {

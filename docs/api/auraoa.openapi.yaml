@@ -8676,7 +8676,6 @@ components:
       - dialect
       - tables
       - parameters
-      - max_rows
       properties:
         name:
           type: string
@@ -8705,8 +8704,9 @@ components:
           maxItems: 20
         max_rows:
           type: integer
-          minimum: 1
-          maximum: 100
+          minimum: 0
+          default: 0
+          description: 可选；省略或0表示不限制返回行数，正整数为自定义上限；仍受只读查询超时和证据体积限制。
         builder:
           type: object
           additionalProperties: true

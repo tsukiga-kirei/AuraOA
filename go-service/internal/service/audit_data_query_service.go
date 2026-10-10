@@ -189,8 +189,8 @@ func queryCheck(def model.AuditDataQueryDefinition) oa.QuerySQLCheck {
 	if strings.TrimSpace(def.Description) == "" || len(def.Description) > 8000 {
 		issue("description", "请填写数据用途及统计口径，最多8000字节")
 	}
-	if def.MaxRows < 1 || def.MaxRows > 100 {
-		issue("max_rows", "结果上限为1至100行")
+	if def.MaxRows < 0 {
+		issue("max_rows", "最大返回行数须为非负整数，0表示不限制行数")
 	}
 	defined := map[string]bool{}
 	for _, p := range def.Parameters {

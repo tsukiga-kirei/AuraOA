@@ -41,7 +41,7 @@ type AuditDataQueryDefinition struct {
 	Dialect     string                    `json:"dialect"`
 	Tables      []string                  `json:"tables"`
 	Parameters  []AuditDataQueryParameter `json:"parameters"`
-	MaxRows     int                       `json:"max_rows"`
+	MaxRows     int                       `json:"max_rows"` // 0 表示不限制返回行数，仍受超时和证据体积限制。
 	// Builder 仅保存可视化配置以便再次编辑；执行始终使用经过检查的 SQL。
 	Builder json.RawMessage `json:"builder,omitempty"`
 }
