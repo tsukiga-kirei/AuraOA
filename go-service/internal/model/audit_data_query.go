@@ -35,6 +35,8 @@ type AuditDataQueryVersion struct {
 
 // AuditDataQueryDefinition 定义查询输出、参数默认取值和允许使用的表，不保存具体流程实例值。
 type AuditDataQueryDefinition struct {
+	Mode        string                    `json:"mode,omitempty"` // config / sql；旧版本按 builder 推断。
+	AIContext   *AuditDataQueryAIContext  `json:"ai_context,omitempty"`
 	Name        string                    `json:"name"`
 	Description string                    `json:"description"`
 	SQL         string                    `json:"sql"`
@@ -42,8 +44,15 @@ type AuditDataQueryDefinition struct {
 	Tables      []string                  `json:"tables"`
 	Parameters  []AuditDataQueryParameter `json:"parameters"`
 	MaxRows     int                       `json:"max_rows"` // 0 表示不限制返回行数，仍受超时和证据体积限制。
-	// Builder 仅保存可视化配置以便再次编辑；执行始终使用经过检查的 SQL。
+	// Builder 仅在配置模式保存；自定义 SQL 模式清除配置，执行始终使用经过检查的 SQL。
 	Builder json.RawMessage `json:"builder,omitempty"`
+}
+
+// AuditDataQueryAIContext 保存业务模块、补充口径及字段说明，不保存连接凭据和预览业务行。
+type AuditDataQueryAIContext struct {
+	OAModule   string            `json:"oa_module"` // general / workflow / model
+	Notes      string            `json:"notes"`
+	FieldNotes map[string]string `json:"field_notes,omitempty"` // 表名.字段名 → 业务含义
 }
 
 // AuditDataQueryParameter 定义命名参数的类型和中文含义。

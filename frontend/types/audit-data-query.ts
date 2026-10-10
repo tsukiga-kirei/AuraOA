@@ -4,7 +4,37 @@ export interface QueryParameter {
   type: 'string' | 'number' | 'date' | 'string_list'
   default_binding?: QueryBinding
 }
+export interface QueryAIContext {
+  oa_module: 'general' | 'workflow' | 'model'
+  notes: string
+  field_notes?: Record<string, string>
+}
+export interface QuerySource {
+  name: string
+  dialect: QueryDefinition['dialect']
+  oa_type: string
+  oa_name: string
+  timezone: string
+  business_date: string
+}
+export interface QueryAssistPreviewSummary {
+  status: string
+  error?: string
+  row_count: number
+  truncated: boolean
+  columns: QueryColumn[]
+}
+export interface QueryAssistRequest {
+  action: 'generate' | 'explain' | 'repair'
+  definition: QueryDefinition
+  category: string
+  instruction: string
+  error: string
+  preview?: QueryAssistPreviewSummary
+}
 export interface QueryDefinition {
+  mode?: 'config' | 'sql'
+  ai_context?: QueryAIContext
   name: string
   description: string
   sql: string
@@ -88,6 +118,8 @@ export interface QueryPrompts {
   repair: string
 }
 export interface QueryAssist {
+  mode: 'sql'
+  tables: string[]
   sql: string
   explanation: string
   parameters: QueryParameter[]
@@ -97,7 +129,7 @@ export interface QueryAssist {
 
 /** 可视化配置只负责生成 SQL，实际执行和安全校验统一以 SQL 为准。 */
 export interface QueryBuilder {
-  /** 手工 SQL 优先使用；保留此前配置以便切回编辑，不反向解析 SQL。 */
+  /** 兼容旧草稿；新草稿以 definition.mode 为准，自定义 SQL 不保存 builder。 */
   sql_mode?: boolean
   source_type: 'table' | 'workflow'
   /** 旧流程表配置未设置时沿用仅归档，新配置由独立开关决定。 */

@@ -189,7 +189,7 @@ func (h *AuditDataQueryHandler) Prompts(c *gin.Context) {
 	}
 }
 
-// Source GET /api/tenant/audit-data-queries/source，返回租户数据源名称和方言。
+// Source GET /api/tenant/audit-data-queries/source，返回租户数据源、OA 类型及应用业务日期，不返回连接凭据。
 func (h *AuditDataQueryHandler) Source(c *gin.Context) {
 	data, err := h.service.Source(c)
 	queryReply(c, data, err)

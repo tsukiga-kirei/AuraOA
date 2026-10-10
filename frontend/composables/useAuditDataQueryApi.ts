@@ -9,6 +9,8 @@ import type {
   QueryAssist,
   QueryColumn,
   QueryUsageReference,
+  QuerySource,
+  QueryAssistRequest,
 } from '~/types/audit-data-query'
 
 /**
@@ -32,8 +34,7 @@ export const useAuditDataQueryApi = () => {
     }
   }
   return {
-    source: () =>
-      authFetch<{ name: string; dialect: QueryDefinition['dialect'] }>(`${root}/source`),
+    source: () => authFetch<QuerySource>(`${root}/source`),
     list,
     listAll,
     get: (id: string) => authFetch<AuditDataQuery>(`${root}/${id}`),
@@ -65,16 +66,8 @@ export const useAuditDataQueryApi = () => {
       authFetch<{ table: string; dialect: string; columns: QueryColumn[] }>(`${root}/schema`, {
         query: { table },
       }),
-    assist: (
-      action: 'generate' | 'explain' | 'repair',
-      definition: QueryDefinition,
-      instruction: string,
-      error: string,
-    ) =>
-      authFetch<QueryAssist>(`${root}/assist`, {
-        method: 'POST',
-        body: { action, definition, instruction, error },
-      }),
+    assist: (body: QueryAssistRequest) =>
+      authFetch<QueryAssist>(`${root}/assist`, { method: 'POST', body }),
     prompts: () => authFetch<QueryPrompts>(`${root}/prompts`),
     savePrompts: (body: QueryPrompts) =>
       authFetch<QueryPrompts>(`${root}/prompts`, { method: 'PUT', body }),
