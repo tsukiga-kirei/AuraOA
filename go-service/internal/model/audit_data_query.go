@@ -33,7 +33,7 @@ type AuditDataQueryVersion struct {
 	CreatedAt  time.Time      `json:"created_at"`
 }
 
-// AuditDataQueryDefinition 定义查询输出、参数和允许使用的表，不保存流程特定值。
+// AuditDataQueryDefinition 定义查询输出、参数默认取值和允许使用的表，不保存具体流程实例值。
 type AuditDataQueryDefinition struct {
 	Name        string                    `json:"name"`
 	Description string                    `json:"description"`
@@ -51,6 +51,8 @@ type AuditDataQueryParameter struct {
 	Name  string `json:"name"`
 	Label string `json:"label"`
 	Type  string `json:"type"` // string / number / date / string_list
+	// DefaultBinding 保存固定值或系统值；流程字段允许留待规则引用时选择。
+	DefaultBinding *AuditDataQueryBinding `json:"default_binding,omitempty"`
 }
 
 // AuditDataQueryReference 将发布版本参数绑定到当前流程字段或系统变量。

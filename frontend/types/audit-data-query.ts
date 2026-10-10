@@ -2,6 +2,7 @@ export interface QueryParameter {
   name: string
   label: string
   type: 'string' | 'number' | 'date' | 'string_list'
+  default_binding?: QueryBinding
 }
 export interface QueryDefinition {
   name: string
@@ -92,6 +93,8 @@ export interface QueryBuilder {
   /** 手工 SQL 优先使用；保留此前配置以便切回编辑，不反向解析 SQL。 */
   sql_mode?: boolean
   source_type: 'table' | 'workflow'
+  /** 旧流程表配置未设置时沿用仅归档，新配置由独立开关决定。 */
+  archived_only?: boolean
   table: string
   columns: {
     field: string
@@ -102,6 +105,7 @@ export interface QueryBuilder {
     field: string
     operator: '=' | '<>' | '>' | '>=' | '<' | '<=' | 'LIKE' | 'IN' | 'IS NULL' | 'IS NOT NULL'
     parameter: string
+    binding?: QueryBinding
     label: string
     type: QueryParameter['type']
   }[]

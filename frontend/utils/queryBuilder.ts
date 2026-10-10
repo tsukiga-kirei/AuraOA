@@ -55,10 +55,19 @@ export function compileQueryBuilder(
       fail('parameter')
     if (!['string', 'number', 'date', 'string_list'].includes(filter.type)) fail('parameter')
     if ((filter.operator === 'IN') !== (filter.type === 'string_list')) fail('list')
+    if (filter.binding?.source === 'constant' && !filter.binding.value?.trim()) fail('value')
+    if (
+      filter.binding?.source === 'system' &&
+      !['process_id', 'current_date', 'year_start', 'month_start'].includes(
+        filter.binding.value || '',
+      )
+    )
+      fail('system')
     const parameter = {
       name: filter.parameter,
       label: filter.label,
       type: filter.type,
+      ...(filter.binding ? { default_binding: { ...filter.binding } } : {}),
     }
     const previous = parameters.find((item) => item.name === parameter.name)
     if (previous && JSON.stringify(previous) !== JSON.stringify(parameter)) fail('parameter')
@@ -70,8 +79,8 @@ export function compileQueryBuilder(
     return `${expression} ${filter.operator} ${placeholder}`
   })
   const tables = [builder.table.trim()]
-  // 泛微流程仅纳入已归档实例，EXISTS 避免连接产生重复记录。
-  if (builder.source_type === 'workflow') {
+  // 按开关用流程状态判定归档，requestid 只用于关联；EXISTS 避免重复计数。
+  if (builder.source_type === 'workflow' && builder.archived_only !== false) {
     const request = field('requestid')
     tables.push('workflow_requestbase')
     conditions.push(

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useAuditDataQueryApi } from '~/composables/useAuditDataQueryApi'
 import { message } from 'ant-design-vue'
+import QueryValueSourceEditor from './QueryValueSourceEditor.vue'
+import { appDayjs } from '~/utils/appTime'
 import { DatabaseOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import type {
   QueryReference,
@@ -21,8 +23,27 @@ const api = useAuditDataQueryApi()
 const canManage = computed(() => menus.value.some((menu) => menu.path === '/admin/tenant/memory'))
 const definitions = ref<Record<string, QueryDefinition>>({})
 const libraryOpen = ref(false)
-const initialQueryId = ref<string>()
-const workspace = ref<{ canLeave: () => Promise<boolean> }>()
+const libraryItems = ref<AuditDataQuery[]>([])
+const libraryLoading = ref(false)
+const libraryKeyword = ref('')
+const selectedLibraryId = ref('')
+const pickerVersions = ref<QueryVersion[]>([])
+const pickerVersionNo = ref<number>()
+const versionsLoading = ref(false)
+const pickerError = ref('')
+let pickerSequence = 0
+const filteredLibrary = computed(() => {
+  const keyword = libraryKeyword.value.trim().toLowerCase()
+  return libraryItems.value.filter(
+    (item) => !keyword || `${item.name} ${item.category}`.toLowerCase().includes(keyword),
+  )
+})
+const pickerQuery = computed(() =>
+  libraryItems.value.find((item) => item.id === selectedLibraryId.value),
+)
+const pickerVersion = computed(() =>
+  pickerVersions.value.find((item) => item.version_no === pickerVersionNo.value),
+)
 const processId = ref('')
 const evidence = ref<QueryEvidence>()
 const previewBusy = ref('')
@@ -69,7 +90,11 @@ function changeReference(index: number, patch: Partial<QueryReference>) {
   emit('update:modelValue', items)
 }
 function binding(reference: QueryReference, name: string): QueryBinding {
-  return reference.bindings[name] || { source: 'field', field: '' }
+  return (
+    reference.bindings[name] ||
+    definitions.value[keyOf(reference)]?.parameters.find((parameter) => parameter.name === name)
+      ?.default_binding || { source: 'field', field: '' }
+  )
 }
 function changeBinding(index: number, name: string, patch: Partial<QueryBinding>) {
   const reference = props.modelValue[index]
@@ -82,15 +107,68 @@ function remove(index: number) {
   items.splice(index, 1)
   emit('update:modelValue', items)
 }
-function openLibrary(id?: string) {
-  initialQueryId.value = id
+async function openLibrary(id?: string) {
+  const seq = ++pickerSequence
   libraryOpen.value = true
+  libraryLoading.value = true
+  libraryKeyword.value = ''
+  libraryItems.value = []
+  selectedLibraryId.value = ''
+  pickerVersions.value = []
+  pickerVersionNo.value = undefined
+  versionsLoading.value = false
+  pickerError.value = ''
+  try {
+    const items = await api.listAll()
+    if (seq !== pickerSequence) return
+    libraryItems.value = items.filter((item) => !item.archived && item.latest_version > 0)
+    libraryLoading.value = false
+    if (id && libraryItems.value.some((item) => item.id === id)) await selectLibraryEntry(id)
+  } catch (error) {
+    if (seq === pickerSequence) {
+      pickerError.value = errorText(error)
+      message.error(pickerError.value)
+    }
+  } finally {
+    if (seq === pickerSequence) libraryLoading.value = false
+  }
 }
-async function closeLibrary() {
-  if (!workspace.value || (await workspace.value.canLeave())) libraryOpen.value = false
+function closeLibrary() {
+  ++pickerSequence
+  libraryOpen.value = false
+}
+async function selectLibraryEntry(id: string) {
+  const seq = ++pickerSequence
+  selectedLibraryId.value = id
+  pickerVersions.value = []
+  pickerVersionNo.value = undefined
+  pickerError.value = ''
+  versionsLoading.value = true
+  try {
+    const versions = await api.versions(id)
+    if (seq !== pickerSequence) return
+    pickerVersions.value = [...versions].sort((a, b) => b.version_no - a.version_no)
+    pickerVersionNo.value = pickerVersions.value[0]?.version_no
+  } catch (error) {
+    if (seq === pickerSequence) {
+      pickerError.value = errorText(error)
+      message.error(pickerError.value)
+    }
+  } finally {
+    if (seq === pickerSequence) {
+      versionsLoading.value = false
+      libraryLoading.value = false
+    }
+  }
+}
+function selectPublishedVersion() {
+  if (pickerQuery.value && pickerVersion.value) useVersion(pickerQuery.value, pickerVersion.value)
+}
+function formatTime(value: string) {
+  const date = appDayjs(value)
+  return date.isValid() ? date.format(t('query.dateTimeFormat')) : '-'
 }
 async function useVersion(query: AuditDataQuery, version: QueryVersion) {
-  if (workspace.value && !(await workspace.value.canLeave())) return
   const existingIndex = props.modelValue.findIndex((reference) => reference.query_id === query.id)
   const previous = props.modelValue[existingIndex]
   if (previous?.version_no === version.version_no) {
@@ -103,9 +181,11 @@ async function useVersion(query: AuditDataQuery, version: QueryVersion) {
   }
   const bindings: Record<string, QueryBinding> = {}
   for (const parameter of version.definition.parameters) {
-    bindings[parameter.name] = clone(
-      previous?.bindings[parameter.name] || { source: 'field', field: '' },
-    )
+    const explicit = previous?.bindings[parameter.name]
+    if (explicit) bindings[parameter.name] = clone(explicit)
+    else if (!parameter.default_binding || parameter.default_binding.source === 'field')
+      bindings[parameter.name] = clone(parameter.default_binding || { source: 'field', field: '' })
+    // 固定值和系统值直接沿用发布版本，只有用户覆盖时才写入规则绑定。
   }
   const reference: QueryReference = {
     query_id: query.id,
@@ -183,7 +263,7 @@ async function preview(reference: QueryReference) {
             size="small"
             @click="openLibrary(reference.query_id)"
           >
-            {{ t('query.openWorkspace') }}
+            {{ t('query.changeVersion') }}
           </a-button>
           <a-button v-if="canManage" type="text" danger size="small" @click="remove(index)">
             {{ t('query.remove') }}
@@ -196,63 +276,13 @@ async function preview(reference: QueryReference) {
         :key="parameter.name"
         class="query-binding"
       >
-        <span class="binding-label">
-          {{ parameter.label }}
-          <small>:{{ parameter.name }}</small>
-        </span>
-        <a-select
-          :value="binding(reference, parameter.name).source"
+        <span class="binding-label">{{ parameter.label }}</span>
+        <QueryValueSourceEditor
+          :model-value="binding(reference, parameter.name)"
+          :type="parameter.type"
+          :field-options="fieldOptions"
           :disabled="!canManage"
-          :aria-label="t('query.parameterSource')"
-          @change="
-            (value) =>
-              changeBinding(index, parameter.name, { source: value as QueryBinding['source'] })
-          "
-        >
-          <a-select-option value="field">{{ t('query.source.field') }}</a-select-option>
-          <a-select-option value="system">{{ t('query.source.system') }}</a-select-option>
-          <a-select-option value="constant">{{ t('query.source.constant') }}</a-select-option>
-        </a-select>
-        <a-select
-          v-if="binding(reference, parameter.name).source === 'field'"
-          :value="binding(reference, parameter.name).field"
-          :disabled="!canManage"
-          :options="fieldOptions"
-          show-search
-          :placeholder="t('query.selectField')"
-          @change="(value) => changeBinding(index, parameter.name, { field: String(value) })"
-        />
-        <a-select
-          v-else-if="binding(reference, parameter.name).source === 'system'"
-          :value="binding(reference, parameter.name).value"
-          :disabled="!canManage"
-          @change="(value) => changeBinding(index, parameter.name, { value: String(value) })"
-        >
-          <a-select-option
-            v-for="value in ['process_id', 'current_date', 'year_start', 'month_start']"
-            :key="value"
-            :value="value"
-          >
-            {{ t('query.system.' + value) }}
-          </a-select-option>
-        </a-select>
-        <a-input
-          v-else
-          :value="binding(reference, parameter.name).value"
-          :disabled="!canManage"
-          :placeholder="t('query.constant')"
-          @update:value="(value) => changeBinding(index, parameter.name, { value: String(value) })"
-        />
-        <a-input-number
-          v-if="parameter.type === 'date'"
-          :value="binding(reference, parameter.name).days_offset || 0"
-          :min="-3660"
-          :max="3660"
-          :disabled="!canManage"
-          :addon-before="t('query.daysOffset')"
-          @update:value="
-            (value) => changeBinding(index, parameter.name, { days_offset: Number(value) })
-          "
+          @update:model-value="(value) => changeBinding(index, parameter.name, value)"
         />
       </div>
       <a-button
@@ -272,22 +302,86 @@ async function preview(reference: QueryReference) {
       class="test-process"
     />
     <QueryEvidencePreview v-if="evidence" :evidence="evidence" />
-    <a-drawer
+    <a-modal
       :open="libraryOpen"
-      :title="t('query.title')"
-      width="95vw"
-      :mask-closable="false"
-      :keyboard="false"
-      destroy-on-close
-      @close="closeLibrary"
+      :title="t('query.selectLibrary')"
+      :width="880"
+      :ok-text="t('query.confirmSelection')"
+      :cancel-text="t('common.cancel')"
+      :ok-button-props="{ disabled: !pickerVersion || libraryLoading || versionsLoading }"
+      @cancel="closeLibrary"
+      @ok="selectPublishedVersion"
     >
-      <AuditDataQueryWorkspace
-        ref="workspace"
-        allow-use
-        :initial-query-id="initialQueryId"
-        @use-version="useVersion"
+      <p class="query-section-description">{{ t('query.pickerHint') }}</p>
+      <a-input
+        v-model:value="libraryKeyword"
+        :placeholder="t('query.search')"
+        :aria-label="t('query.search')"
+        allow-clear
       />
-    </a-drawer>
+      <a-spin :spinning="libraryLoading">
+        <div class="published-picker">
+          <div class="published-list">
+            <button
+              v-for="item in filteredLibrary"
+              :key="item.id"
+              type="button"
+              class="published-item"
+              :class="{ selected: item.id === selectedLibraryId }"
+              :aria-pressed="item.id === selectedLibraryId"
+              @click="selectLibraryEntry(item.id)"
+            >
+              <strong>{{ item.name }}</strong>
+              <span
+                >{{ item.category || t('query.uncategorized') }} ·
+                {{ t('query.version', item.latest_version) }}</span
+              >
+            </button>
+            <p v-if="!filteredLibrary.length && !libraryLoading" class="query-section-description">
+              {{ pickerError ? t('query.pickerFailed') : t('query.noPublishedEntries') }}
+            </p>
+            <a-button v-if="pickerError" size="small" @click="openLibrary()">{{
+              t('query.retry')
+            }}</a-button>
+          </div>
+          <a-spin :spinning="versionsLoading">
+            <div v-if="pickerVersion" class="published-detail">
+              <strong>{{ pickerVersion.definition.name }}</strong>
+              <a-select v-model:value="pickerVersionNo" :aria-label="t('query.selectVersion')">
+                <a-select-option
+                  v-for="version in pickerVersions"
+                  :key="version.version_no"
+                  :value="version.version_no"
+                >
+                  {{ t('query.version', version.version_no) }} ·
+                  {{ formatTime(version.created_at) }}
+                </a-select-option>
+              </a-select>
+              <p class="query-section-description">{{ pickerVersion.definition.description }}</p>
+              <strong v-if="pickerVersion.definition.parameters.length">{{
+                t('query.valueBindings')
+              }}</strong>
+              <div
+                v-for="parameter in pickerVersion.definition.parameters"
+                :key="parameter.name"
+                class="published-parameter"
+              >
+                <span>{{ parameter.label }}</span>
+                <span>{{
+                  t('query.source.' + (parameter.default_binding?.source || 'field'))
+                }}</span>
+              </div>
+              <a-collapse>
+                <a-collapse-panel key="sql" :header="t('query.sql')">
+                  <pre class="published-sql">{{ pickerVersion.definition.sql }}</pre>
+                </a-collapse-panel>
+              </a-collapse>
+            </div>
+            <a-empty v-else :description="t('query.pickEntryHint')" />
+          </a-spin>
+        </div>
+      </a-spin>
+    </a-modal>
   </section>
 </template>
 <style scoped>
@@ -322,7 +416,7 @@ async function preview(reference: QueryReference) {
 }
 .query-binding {
   display: grid;
-  grid-template-columns: 140px 120px minmax(160px, 1fr);
+  grid-template-columns: 140px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
   margin-bottom: 10px;
@@ -331,26 +425,79 @@ async function preview(reference: QueryReference) {
   font-size: 13px;
   color: var(--color-text-secondary);
 }
-.binding-label small {
-  display: block;
-  color: var(--color-text-tertiary);
-  overflow-wrap: anywhere;
-}
 .test-process {
   margin: 8px 0;
 }
-.query-binding :deep(.ant-input-number-group-wrapper) {
-  grid-column: 3;
+/* 选择器只读展示发布版本，不嵌入维护工作区。 */
+.published-picker {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 20px;
+  margin-top: 16px;
+  min-height: 300px;
+}
+.published-list {
+  max-height: 460px;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border-light);
+}
+.published-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 14px 12px;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-light);
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+.published-item span {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+.published-item:hover {
+  background: var(--color-bg-hover);
+}
+.published-item.selected {
+  background: var(--color-primary-bg);
+  border-left-color: var(--color-primary);
+}
+.published-item:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.published-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 460px;
+  overflow-y: auto;
+}
+.published-parameter {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+.published-sql {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary);
 }
 @media (max-width: 760px) {
-  .query-binding {
-    grid-template-columns: 1fr 1fr;
+  .query-binding,
+  .published-picker {
+    grid-template-columns: 1fr;
   }
-  .binding-label {
-    grid-column: 1/-1;
-  }
-  .query-binding :deep(.ant-input-number-group-wrapper) {
-    grid-column: 1/-1;
+  .published-list {
+    max-height: 220px;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border-light);
   }
 }
 </style>

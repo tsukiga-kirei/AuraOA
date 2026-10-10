@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAuditDataQueryApi } from '~/composables/useAuditDataQueryApi'
 import { message, Modal } from 'ant-design-vue'
+import QueryValueSourceEditor from './QueryValueSourceEditor.vue'
 import { appDayjs } from '~/utils/appTime'
 import { previewQuerySql } from '~/utils/querySqlEditor'
 import {
@@ -46,6 +47,7 @@ const makeDefinition = (): QueryDefinition => ({
   max_rows: 0,
   builder: {
     source_type: 'table',
+    archived_only: false,
     table: '',
     columns: [],
     filters: [],
@@ -270,7 +272,16 @@ async function preview() {
     if (!(await save())) return
   }
   const state = currentState.value
+  const testState = JSON.stringify(testValues)
   const parameters = clone(testValues)
+  for (const parameter of definition.value.parameters) {
+    if (
+      parameter.default_binding &&
+      parameter.default_binding.source !== 'field' &&
+      parameters[parameter.name] === ''
+    )
+      delete parameters[parameter.name]
+  }
   busy.value = 'preview'
   activePanel.value = 'test'
   lastError.value = ''
@@ -280,8 +291,7 @@ async function preview() {
       definition: clone(definition.value),
       parameters,
     })
-    if (state !== currentState.value || JSON.stringify(parameters) !== JSON.stringify(testValues))
-      return
+    if (state !== currentState.value || testState !== JSON.stringify(testValues)) return
     evidence.value = result
     if (!result.error && !result.result?.truncated) message.success(t('query.previewSucceeded'))
     selected.value = await api.get(selected.value!.id)
@@ -385,6 +395,9 @@ function updateBuilder(value: QueryBuilder) {
 }
 function applyBuilder(value: QueryDefinition) {
   definition.value = value
+}
+function markSQLMode() {
+  if (definition.value.builder) definition.value.builder.sql_mode = true
 }
 function updateSQL(value: string) {
   if (definition.value.sql === value) return
@@ -656,7 +669,11 @@ defineExpose({ canLeave, editPrompts, busy })
             @update:model-value="updateSQL"
             @run="preview"
           />
-          <a-collapse v-if="definition.sql" class="builder-notice">
+          <a-collapse
+            v-if="definition.sql"
+            :default-active-key="['execution-sql']"
+            class="builder-notice"
+          >
             <a-collapse-panel key="execution-sql" :header="t('query.executionSQL')">
               <p class="memory-help">
                 {{
@@ -668,7 +685,7 @@ defineExpose({ canLeave, editPrompts, busy })
               <pre class="ai-sql">{{ executionSQL }}</pre>
             </a-collapse-panel>
           </a-collapse>
-          <div class="parameter-heading">
+          <div v-if="editorMode === 'sql'" class="parameter-heading">
             <strong>{{ t('query.parameterDefinition') }}</strong>
             <a-button v-if="editorMode === 'sql'" size="small" @click="addParameter">
               <template #icon><PlusOutlined /></template>
@@ -676,25 +693,28 @@ defineExpose({ canLeave, editPrompts, busy })
             </a-button>
           </div>
           <div
-            v-for="(parameter, index) in definition.parameters"
+            v-for="(parameter, index) in editorMode === 'sql' ? definition.parameters : []"
             :key="index"
             class="parameter-row"
             :class="{ 'parameter-row--generated': editorMode === 'config' }"
           >
             <a-input
               v-model:value="parameter.name"
+              @update:value="markSQLMode"
               :readonly="editorMode === 'config'"
               :aria-label="t('query.parameterName')"
               :placeholder="t('query.parameterName')"
             />
             <a-input
               v-model:value="parameter.label"
+              @update:value="markSQLMode"
               :readonly="editorMode === 'config'"
               :aria-label="t('query.parameterLabel')"
               :placeholder="t('query.parameterLabel')"
             />
             <a-select
               v-model:value="parameter.type"
+              @update:value="markSQLMode"
               :disabled="editorMode === 'config'"
               :aria-label="t('query.parameterType')"
             >
@@ -723,6 +743,21 @@ defineExpose({ canLeave, editPrompts, busy })
               {{ t('query.remove') }}
             </a-button>
           </div>
+          <template v-if="editorMode === 'sql'">
+            <div
+              v-for="parameter in definition.parameters"
+              :key="`source-${parameter.name}`"
+              class="sql-parameter-source"
+            >
+              <strong>{{ parameter.label || parameter.name }}</strong>
+              <QueryValueSourceEditor
+                v-model="parameter.default_binding"
+                @update:model-value="markSQLMode"
+                :type="parameter.type"
+                :disabled="!!busy"
+              />
+            </div>
+          </template>
         </a-form>
         <a-tabs v-model:active-key="activePanel" class="result-panels">
           <a-tab-pane key="check" :tab="t('query.checkResult')">
@@ -763,7 +798,13 @@ defineExpose({ canLeave, editPrompts, busy })
               >
                 <a-input
                   v-model:value="testValues[parameter.name]"
-                  :placeholder="t('query.testValueHint')"
+                  :placeholder="
+                    parameter.default_binding &&
+                    parameter.default_binding.source !== 'field' &&
+                    parameter.default_binding.value !== 'process_id'
+                      ? t('query.defaultTestValueHint')
+                      : t('query.testValueHint')
+                  "
                 />
               </a-form-item>
             </div>
@@ -1125,6 +1166,12 @@ h1 {
 }
 .definition-form {
   padding: 20px 20px 0;
+}
+.sql-parameter-source {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 .parameter-heading {
   margin: 20px 0 12px;
