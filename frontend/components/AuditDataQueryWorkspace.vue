@@ -83,6 +83,28 @@ const initializing = ref(true)
 const loadError = ref('')
 const busy = ref('')
 const activePanel = ref('basic')
+const panelTabs = computed(() => [
+  { key: 'basic', label: t('query.tab.basic'), icon: InfoCircleOutlined },
+  { key: 'sql', label: t('query.tab.sql'), icon: CodeOutlined },
+  { key: 'ai', label: t('query.assistant'), icon: RobotOutlined },
+  { key: 'results', label: t('query.tab.results'), icon: CheckCircleOutlined },
+])
+function navigatePanel(event: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const buttons = [
+    ...(event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+  ]
+  const current = buttons.indexOf(document.activeElement as HTMLButtonElement)
+  const next =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? buttons.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length
+  activePanel.value = panelTabs.value[next].key
+  buttons[next]?.focus()
+}
 const activeResultPanel = ref('check')
 function openResultPanel(panel: string) {
   activeResultPanel.value = panel
@@ -867,65 +889,79 @@ defineExpose({ canLeave, editPrompts, busy })
             </a-button>
           </a-space>
         </div>
-        <a-tabs v-model:active-key="activePanel" class="workspace-tabs" :tab-bar-gutter="4">
+        <a-tabs v-model:active-key="activePanel" class="workspace-tabs">
+          <!-- 沿用规则配置页的滚动导航，不使用自动折叠的更多菜单。 -->
+          <template #renderTabBar="{ id }">
+            <div class="workspace-tab-nav" role="tablist" @keydown="navigatePanel">
+              <button
+                v-for="tab in panelTabs"
+                :id="`${id}-tab-${tab.key}`"
+                :key="tab.key"
+                type="button"
+                role="tab"
+                :aria-controls="`${id}-panel-${tab.key}`"
+                :aria-selected="activePanel === tab.key"
+                :tabindex="activePanel === tab.key ? 0 : -1"
+                class="workspace-tab-btn"
+                :class="{ selected: activePanel === tab.key }"
+                @click="activePanel = tab.key"
+              >
+                <component :is="tab.icon" />{{ tab.label }}
+              </button>
+            </div>
+          </template>
           <a-tab-pane key="basic"
             ><template #tab
               ><InfoCircleOutlined /><span>{{ t('query.tab.basic') }}</span></template
             >
-            <a-form layout="vertical" class="definition-form">
-              <a-row :gutter="16">
-                <a-col :span="14">
-                  <a-form-item :label="t('query.name')" required>
-                    <a-input
-                      v-model:value="definition.name"
-                      :maxlength="200"
-                      :placeholder="t('query.namePlaceholder')"
-                    />
-                  </a-form-item>
-                </a-col>
-                <a-col :span="10">
-                  <a-form-item :label="t('query.category')">
-                    <a-input v-model:value="category" :maxlength="100" />
-                  </a-form-item>
-                </a-col>
-              </a-row>
+            <a-form layout="vertical" class="definition-form basic-information-form">
+              <div class="basic-info-row">
+                <a-form-item :label="t('query.name')" required>
+                  <a-input
+                    v-model:value="definition.name"
+                    :maxlength="200"
+                    :placeholder="t('query.namePlaceholder')"
+                  />
+                </a-form-item>
+
+                <a-form-item :label="t('query.category')">
+                  <a-input v-model:value="category" :maxlength="100" />
+                </a-form-item>
+              </div>
               <a-form-item :label="t('query.description')" required>
                 <a-textarea
                   v-model:value="definition.description"
-                  :rows="2"
+                  :auto-size="{ minRows: 4, maxRows: 8 }"
                   :maxlength="8000"
                   :placeholder="t('query.descriptionHint')"
                 />
               </a-form-item>
-              <a-row :gutter="16">
-                <a-col :span="12">
-                  <a-form-item :label="t('query.dialect')">
-                    <a-input
-                      :value="
-                        source
-                          ? `${source.name} · ${source.dialect === 'dm' ? t('query.dm') : source.dialect === 'mysql' ? 'MySQL' : 'Oracle'}`
-                          : t('query.sourceMissing')
-                      "
-                      readonly
-                    />
-                    <small class="muted">{{ t('query.sourceAutomatic') }}</small>
-                  </a-form-item>
-                </a-col>
-                <a-col :span="12">
-                  <a-form-item :label="t('query.maxRows')">
-                    <a-input-number
-                      :value="definition.max_rows || undefined"
-                      :min="0"
-                      :precision="0"
-                      :placeholder="t('query.unlimited')"
-                      @update:value="
-                        (value) => (definition.max_rows = value == null ? 0 : Number(value))
-                      "
-                      style="width: 100%"
-                    />
-                  </a-form-item>
-                </a-col>
-              </a-row>
+              <div class="basic-info-row">
+                <a-form-item :label="t('query.dialect')">
+                  <a-input
+                    :value="
+                      source
+                        ? `${source.name} · ${source.dialect === 'dm' ? t('query.dm') : source.dialect === 'mysql' ? 'MySQL' : 'Oracle'}`
+                        : t('query.sourceMissing')
+                    "
+                    readonly
+                  />
+                  <small class="muted">{{ t('query.sourceAutomatic') }}</small>
+                </a-form-item>
+
+                <a-form-item :label="t('query.maxRows')">
+                  <a-input-number
+                    :value="definition.max_rows || undefined"
+                    :min="0"
+                    :precision="0"
+                    :placeholder="t('query.unlimited')"
+                    @update:value="
+                      (value) => (definition.max_rows = value == null ? 0 : Number(value))
+                    "
+                    class="row-limit-input"
+                  />
+                </a-form-item>
+              </div>
             </a-form>
             <div class="tab-footer">
               <a-button type="primary" @click="activePanel = 'sql'">{{
@@ -968,7 +1004,7 @@ defineExpose({ canLeave, editPrompts, busy })
               <a-collapse
                 v-if="definition.sql"
                 :default-active-key="['execution-sql']"
-                class="builder-notice"
+                class="builder-notice preview-disclosure"
               >
                 <a-collapse-panel key="execution-sql" :header="t('query.executionSQL')">
                   <p class="memory-help">
@@ -1023,7 +1059,7 @@ defineExpose({ canLeave, editPrompts, busy })
                 </div>
               </template>
 
-              <a-collapse v-if="editorMode === 'sql'" class="builder-notice">
+              <a-collapse v-if="editorMode === 'sql'" class="builder-notice preview-disclosure">
                 <a-collapse-panel key="schema" :header="t('query.schema')">
                   <QuerySchemaBrowser
                     :tables="contextTables"
@@ -1097,7 +1133,7 @@ defineExpose({ canLeave, editPrompts, busy })
                   ><a-textarea
                     v-model:value="aiContext.notes"
                     :disabled="!!busy"
-                    :rows="2"
+                    :auto-size="{ minRows: 3, maxRows: 8 }"
                     :maxlength="8000"
                     :placeholder="t('query.contextNotesHint')"
                 /></a-form-item>
@@ -1130,7 +1166,7 @@ defineExpose({ canLeave, editPrompts, busy })
                 <a-textarea
                   v-model:value="instruction"
                   :disabled="!!busy"
-                  :rows="4"
+                  :auto-size="{ minRows: 5, maxRows: 10 }"
                   :maxlength="8000"
                   :placeholder="t('query.aiInstruction')"
                   class="ai-instruction"
@@ -1150,7 +1186,7 @@ defineExpose({ canLeave, editPrompts, busy })
                   >
                 </div>
               </div>
-              <a-collapse class="context-preview"
+              <a-collapse class="context-preview preview-disclosure"
                 ><a-collapse-panel key="context" :header="t('query.contextPreview')"
                   ><p class="memory-help">{{ t('query.contextPreviewHint') }}</p>
                   <pre class="ai-sql">{{ contextPreview }}</pre>
@@ -1572,6 +1608,7 @@ h1 {
   padding: 0;
 }
 .sql-parameter-source {
+  max-width: 800px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1596,44 +1633,87 @@ h1 {
 .workspace-tabs {
   padding: 20px 20px 32px;
 }
-/* 导航沿用规则配置页的内容宽度与边框，不将灰色背景拉满编辑区。 */
-.workspace-tabs > :deep(.ant-tabs-nav) {
+/* 使用与规则配置相同的内容宽度导航；窄屏横向滚动，避免多余的省略按钮。 */
+.workspace-tab-nav {
+  display: flex;
+  align-self: flex-start;
   width: fit-content;
   max-width: 100%;
-  margin: 0 0 24px;
-  background: var(--color-bg-hover);
+  box-sizing: border-box;
+  gap: 4px;
+  margin-bottom: 24px;
   padding: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--color-bg-hover);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
 }
-.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-nav-wrap) {
-  flex: 0 1 auto;
+.workspace-tab-nav::-webkit-scrollbar {
+  display: none;
 }
-.workspace-tabs > :deep(.ant-tabs-nav::before) {
-  border-bottom: 0;
-}
-.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-tab) {
-  padding: 7px 14px;
-  border-radius: var(--radius-md);
-  font-size: 13.5px;
-}
-.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-tab-active) {
-  background: var(--color-bg-card);
-  box-shadow: var(--shadow-xs);
-}
-.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn) {
-  font-weight: 600;
-}
-.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-tab-btn) {
+.workspace-tab-btn {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-tab-btn .anticon) {
-  margin-right: 0;
+.workspace-tab-btn:hover {
+  color: var(--color-text-primary);
 }
-.workspace-tabs > :deep(.ant-tabs-nav .ant-tabs-ink-bar) {
-  display: none;
+.workspace-tab-btn.selected {
+  color: var(--color-primary);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-xs);
+  font-weight: 600;
+}
+.workspace-tab-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.basic-information-form {
+  max-width: 860px;
+}
+.basic-info-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 0 20px;
+}
+.basic-info-row :deep(.ant-form-item) {
+  min-width: 0;
+}
+.basic-info-row :deep(.row-limit-input) {
+  width: 180px;
+  max-width: 100%;
+}
+.preview-disclosure {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+.preview-disclosure :deep(.ant-collapse-header),
+.preview-disclosure :deep(.ant-collapse-content),
+.preview-disclosure :deep(.ant-collapse-item) {
+  background: var(--color-bg-card);
+  border-color: var(--color-border-light);
+}
+.preview-disclosure :deep(.ant-collapse-header) {
+  color: var(--color-text-primary);
+}
+.preview-disclosure :deep(.ant-collapse-expand-icon) {
+  color: var(--color-primary);
+}
+.sql-template :deep(.editor-toolbar) {
+  background: var(--color-bg-card);
 }
 .tab-section,
 .ai-workspace {
@@ -1646,6 +1726,7 @@ h1 {
   margin: 32px 0;
 }
 .tab-footer {
+  max-width: 860px;
   display: flex;
   justify-content: flex-end;
   padding: 0;
@@ -1690,6 +1771,7 @@ h1 {
   font-weight: 500;
 }
 .ai-context-form {
+  max-width: 960px;
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
   gap: 16px;
@@ -1721,6 +1803,7 @@ h1 {
   color: var(--color-text-secondary);
 }
 .test-parameters {
+  max-width: 800px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 16px;
@@ -1798,6 +1881,7 @@ h1 {
   color: var(--color-text-tertiary);
 }
 .ai-instruction {
+  max-width: 960px;
   margin: 12px 0;
 }
 .ai-explanation {
@@ -1808,7 +1892,8 @@ h1 {
 .ai-sql {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background: var(--color-bg-secondary);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
   color: var(--color-text-primary);
   border-radius: 6px;
   padding: 12px;
@@ -1858,6 +1943,9 @@ h1 {
   }
   .workspace-tabs {
     padding: 16px 16px 32px;
+  }
+  .basic-info-row {
+    grid-template-columns: minmax(0, 1fr);
   }
   .ai-context-summary,
   .ai-context-form {
