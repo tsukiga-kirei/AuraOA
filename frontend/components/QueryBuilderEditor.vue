@@ -332,7 +332,6 @@ onMounted(() => {
     <a-button type="primary" :disabled="disabled || loading || !columns.length" @click="apply">{{
       t('query.builder.apply')
     }}</a-button>
-    <p class="muted">{{ t('query.builder.parameterHint') }}</p>
   </div>
 </template>
 <style scoped>

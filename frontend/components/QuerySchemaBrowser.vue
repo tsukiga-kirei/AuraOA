@@ -47,11 +47,6 @@ const columns = computed(() => {
     ].some((value) => (value || '').toLowerCase().includes(query)),
   )
 })
-const headings = computed(() => [
-  { title: t('query.fieldPhysical'), dataIndex: 'key', key: 'key', width: 180 },
-  { title: t('query.fieldDescription'), key: 'description', width: 230 },
-  { title: t('query.fieldType'), dataIndex: 'data_type', key: 'data_type', width: 110 },
-])
 function addTable() {
   const table = tableName.value.trim()
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) {
@@ -139,41 +134,65 @@ async function copyField(field: string) {
           :aria-label="t('query.searchFields')"
           class="field-search"
         />
-        <a-table
-          v-if="schema[activeTable]"
-          size="small"
-          :data-source="columns"
-          :columns="headings"
-          :pagination="false"
-          row-key="key"
-          :scroll="{ x: 520, y: 320 }"
-          :loading="loadingTables.includes(activeTable)"
-        >
-          <template #bodyCell="{ column, record }">
-            <div v-if="column.key === 'key'" class="field-key">
-              <code>{{ record.key }}</code>
-              <a-button
-                type="text"
-                size="small"
-                :aria-label="t('query.copyField')"
-                :title="t('query.copyField')"
-                @click="copyField(record.key)"
-                ><template #icon><CopyOutlined /></template
-              ></a-button>
-            </div>
-            <div v-else-if="column.key === 'description'">
-              <span v-if="record.label !== record.key" class="field-label">{{ record.label }}</span>
-              <a-input
-                :value="fieldNotes[`${activeTable}.${record.key}`] || ''"
-                :disabled="disabled"
-                :maxlength="200"
-                :placeholder="t('query.fieldNotePlaceholder')"
-                :aria-label="t('query.fieldDescription')"
-                @update:value="emit('note', `${activeTable}.${record.key}`, $event)"
-              />
-            </div>
-          </template>
-        </a-table>
+        <!-- 表头与内容共用列宽，只滚动同一张表，避免输入框撑宽后表头错位。 -->
+        <a-spin v-if="schema[activeTable]" :spinning="loadingTables.includes(activeTable)">
+          <div
+            class="field-table-scroll"
+            role="region"
+            :aria-label="t('query.schema')"
+            tabindex="0"
+          >
+            <table class="field-table">
+              <colgroup>
+                <col class="physical-column" />
+                <col />
+                <col class="type-column" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col">{{ t('query.fieldPhysical') }}</th>
+                  <th scope="col">{{ t('query.fieldDescription') }}</th>
+                  <th scope="col">{{ t('query.fieldType') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="record in columns" :key="record.key">
+                  <td>
+                    <div class="field-key">
+                      <code>{{ record.key }}</code>
+                      <a-button
+                        type="text"
+                        size="small"
+                        :aria-label="t('query.copyField')"
+                        :title="t('query.copyField')"
+                        @click="copyField(record.key)"
+                      >
+                        <template #icon><CopyOutlined /></template>
+                      </a-button>
+                    </div>
+                  </td>
+                  <td>
+                    <span v-if="record.label !== record.key" class="field-label">{{
+                      record.label
+                    }}</span>
+                    <a-input
+                      :value="fieldNotes[`${activeTable}.${record.key}`] || ''"
+                      :disabled="disabled"
+                      :maxlength="200"
+                      :placeholder="t('query.fieldNotePlaceholder')"
+                      :aria-label="t('query.fieldDescription')"
+                      @update:value="emit('note', `${activeTable}.${record.key}`, $event || '')"
+                    />
+                  </td>
+                  <td class="field-data-type">{{ record.data_type || '-' }}</td>
+                </tr>
+                <tr v-if="!columns.length">
+                  <td colspan="3" class="field-empty">{{ t('query.noRows') }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </a-spin>
         <div v-else class="schema-empty">
           <a-spin v-if="loadingTables.includes(activeTable)" />
           <a-empty v-else :description="t('query.readFieldsHint')" />
@@ -187,7 +206,7 @@ async function copyField(field: string) {
   min-width: 0;
 }
 .schema-toolbar {
-  max-width: 680px;
+  width: 100%;
 }
 .schema-layout {
   display: grid;
@@ -199,7 +218,8 @@ async function copyField(field: string) {
 .schema-table-list {
   background: var(--color-bg-secondary);
   border-right: 1px solid var(--color-border-light);
-  max-height: 420px;
+  min-height: 0;
+  max-height: 460px;
   overflow: auto;
 }
 .schema-table-item {
@@ -260,6 +280,68 @@ async function copyField(field: string) {
 .field-search {
   margin-bottom: 12px;
 }
+.field-table-scroll {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+.field-table-scroll:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.field-table {
+  width: 100%;
+  min-width: 520px;
+  table-layout: fixed;
+  border-spacing: 0;
+  border-collapse: separate;
+  text-align: left;
+}
+.physical-column {
+  width: 34%;
+}
+.type-column {
+  width: 22%;
+}
+.field-table th,
+.field-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border-light);
+  vertical-align: middle;
+}
+.field-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-bg-page);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.field-table td {
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+  font-size: 13px;
+}
+.field-table tr:last-child td {
+  border-bottom: 0;
+}
+.field-table tbody tr:hover td {
+  background: var(--color-bg-hover);
+}
+.field-table :deep(.ant-input) {
+  width: 100%;
+  min-width: 0;
+}
+.field-data-type {
+  overflow-wrap: anywhere;
+}
+.field-table .field-empty {
+  padding: 32px 12px;
+  text-align: center;
+  color: var(--color-text-tertiary);
+}
 .field-key {
   display: flex;
   align-items: center;
@@ -286,6 +368,7 @@ async function copyField(field: string) {
     grid-template-columns: minmax(0, 1fr);
   }
   .schema-table-list {
+    min-height: 0;
     display: flex;
     border-right: 0;
     max-height: 160px;
