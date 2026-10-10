@@ -305,6 +305,9 @@ export default {
     'sidebar.section.overview': '仪表盘',
     'sidebar.section.business': '工作台',
     'sidebar.section.assistant': 'AI 助理',
+    'sidebar.section.tenantConfig': '业务配置',
+    'sidebar.section.tenantUsers': '用户管理',
+    'sidebar.section.tenantOperations': '运营管理',
     'sidebar.section.tenant': '租户管理',
     'sidebar.section.system': '系统管理',
 

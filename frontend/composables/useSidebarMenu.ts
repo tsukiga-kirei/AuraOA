@@ -53,15 +53,33 @@ const BUSINESS_ITEMS: SidebarMenuItem[] = [
   { key: '/summary', icon: FileTextOutlined, labelKey: 'menu.summary' },
 ]
 
-/** 租户管理员菜单项（需要 tenant_admin 权限组） */
-const TENANT_ITEMS: SidebarMenuItem[] = [
-  { key: '/admin/tenant/rules', icon: AppstoreOutlined, labelKey: 'menu.tenant.rules' },
-  { key: '/admin/tenant/memory', icon: BookOutlined, labelKey: 'memory.title' },
-  { key: '/admin/tenant/agents', icon: RobotOutlined, labelKey: 'menu.tenant.agents' },
-  { key: '/admin/tenant/org', icon: ApartmentOutlined, labelKey: 'menu.tenant.org' },
-  { key: '/admin/tenant/experience', icon: MessageOutlined, labelKey: 'experience.title' },
-  { key: '/admin/tenant/data', icon: DatabaseOutlined, labelKey: 'menu.tenant.data' },
-  { key: '/admin/tenant/user-configs', icon: SettingOutlined, labelKey: 'menu.tenant.userConfigs' },
+/** 租户管理员按业务用途分区；各入口仍按后端页面权限过滤。 */
+const TENANT_SECTIONS: SidebarSection[] = [
+  {
+    id: 'tenant-config',
+    titleKey: 'sidebar.section.tenantConfig',
+    items: [
+      { key: '/admin/tenant/rules', icon: AppstoreOutlined, labelKey: 'menu.tenant.rules' },
+      { key: '/admin/tenant/memory', icon: BookOutlined, labelKey: 'memory.title' },
+      { key: '/admin/tenant/agents', icon: RobotOutlined, labelKey: 'menu.tenant.agents' },
+    ],
+  },
+  {
+    id: 'tenant-users',
+    titleKey: 'sidebar.section.tenantUsers',
+    items: [
+      { key: '/admin/tenant/org', icon: ApartmentOutlined, labelKey: 'menu.tenant.org' },
+      { key: '/admin/tenant/user-configs', icon: SettingOutlined, labelKey: 'menu.tenant.userConfigs' },
+    ],
+  },
+  {
+    id: 'tenant-operations',
+    titleKey: 'sidebar.section.tenantOperations',
+    items: [
+      { key: '/admin/tenant/experience', icon: MessageOutlined, labelKey: 'experience.title' },
+      { key: '/admin/tenant/data', icon: DatabaseOutlined, labelKey: 'menu.tenant.data' },
+    ],
+  },
 ]
 
 /** 系统管理员菜单项（需要 system_admin 权限组） */
@@ -149,12 +167,10 @@ export const useSidebarMenu = () => {
 
     if (activeRole === 'tenant_admin') {
       const pagePerms = menuPagePerms.value
-      // 从后端 menus 过滤，菜单未加载时不显示
-      const filtered = pagePerms.size > 0
-        ? TENANT_ITEMS.filter(item => pagePerms.has(item.key))
-        : []
-      if (filtered.length) {
-        result.push({ id: 'tenant', titleKey: 'sidebar.section.tenant', items: filtered })
+      // 只展示有权限的入口及非空分区，不改变原有页面授权。
+      for (const section of TENANT_SECTIONS) {
+        const items = section.items.filter(item => pagePerms.has(item.key))
+        if (items.length) result.push({ ...section, items })
       }
     }
 

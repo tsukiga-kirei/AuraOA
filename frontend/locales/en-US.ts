@@ -304,6 +304,9 @@ export default {
     'sidebar.section.overview': 'Dashboard',
     'sidebar.section.business': 'Workbench',
     'sidebar.section.assistant': 'AI Assistant',
+    'sidebar.section.tenantConfig': 'Business configuration',
+    'sidebar.section.tenantUsers': 'User management',
+    'sidebar.section.tenantOperations': 'Operations',
     'sidebar.section.tenant': 'Tenant Admin',
     'sidebar.section.system': 'System Admin',
 

@@ -1251,7 +1251,7 @@ defineExpose({ canLeave, editPrompts, busy })
                   ><PlayCircleOutlined /><span>{{ t('query.test') }}</span></template
                 >
                 <section class="tab-section">
-                  <div class="test-parameters">
+                  <div v-if="definition.parameters.length" class="test-parameters">
                     <a-form-item
                       v-for="parameter in definition.parameters"
                       :key="parameter.name"
@@ -1719,11 +1719,29 @@ h1 {
 .ai-workspace {
   padding: 0;
 }
+/* 四个管理页签共用高度与内容起点，空状态填充剩余区域。 */
 .tab-section {
-  min-height: 240px;
+  min-height: 400px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tab-section > .panel-actions {
+  margin: 0;
+  min-height: 32px;
+}
+.tab-section > .test-parameters {
+  margin-top: 0;
 }
 .tab-section > :deep(.ant-empty) {
-  margin: 32px 0;
+  flex: 1;
+  margin: 0;
+  padding: 24px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 .tab-footer {
   max-width: 860px;

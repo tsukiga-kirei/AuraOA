@@ -3137,7 +3137,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             <h2 class="config-panel-title">{{ selectedConfig.process_type }}</h2>
             <p v-if="selectedConfig.process_type_label" class="config-panel-subtitle">{{ selectedConfig.process_type_label }}</p>
           </div>
-          <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="config-panel-header-actions">
             <a-button @click="openExportModal('audit', 'all')">
               <ExportOutlined /> {{ t('admin.ruleConfig.exportConfig') }}
             </a-button>
@@ -3939,7 +3939,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             <h2 class="config-panel-title">{{ selectedSummaryConfig.process_type }}</h2>
             <p v-if="selectedSummaryConfig.process_type_label" class="config-panel-subtitle">{{ selectedSummaryConfig.process_type_label }}</p>
           </div>
-          <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="config-panel-header-actions">
             <a-button @click="openExportModal('summary', 'all')">
               <ExportOutlined /> {{ t('admin.ruleConfig.exportConfig') }}
             </a-button>
@@ -5308,7 +5308,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             <h2 class="config-panel-title">{{ selectedArchiveConfig.process_type }}</h2>
             <p v-if="selectedArchiveConfig.process_type_label" class="config-panel-subtitle">{{ selectedArchiveConfig.process_type_label }}</p>
           </div>
-          <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="config-panel-header-actions">
             <a-button @click="openExportModal('archive', 'all')">
               <ExportOutlined /> {{ t('admin.ruleConfig.exportConfig') }}
             </a-button>
@@ -6478,6 +6478,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
   transform: translateY(-1px);
 }
 .config-version-status__content {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -6644,7 +6645,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
 .top-tab-nav {
   display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
   border-radius: var(--radius-lg); margin-bottom: 24px; width: fit-content;
-  max-width: 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  max-width: 100%; box-sizing: border-box; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
 }
 .top-tab-nav::-webkit-scrollbar { display: none; }
 .top-tab-btn {
@@ -6658,7 +6659,9 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
 .top-tab-btn--active { background: var(--color-bg-card); color: var(--color-primary); font-weight: 600; box-shadow: var(--shadow-xs); }
 
 /*主要布局*/
-.main-layout { display: grid; grid-template-columns: 240px 1fr; gap: 20px; align-items: start; }
+/* 右侧允许在可用宽度内收缩，避免按钮或展开内容反向撑宽整页。 */
+.main-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; align-items: start; }
+.main-layout > * { min-width: 0; }
 
 /*流程导航*/
 .process-nav {
@@ -6693,8 +6696,11 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
   background: var(--color-bg-card); border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light); padding: 24px;
 }
-.config-panel-header { margin-bottom: 20px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.config-panel-title { font-size: 18px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 4px; }
+.config-panel-header { margin-bottom: 20px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.config-panel-header > div { min-width: 0; max-width: 100%; }
+.config-panel-header > div:first-child { flex: 1 1 180px; }
+.config-panel-header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.config-panel-title { font-size: 18px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 4px; overflow-wrap: anywhere; }
 .config-panel-subtitle { font-size: 13px; color: var(--color-text-tertiary); margin: 0; }
 .config-version-status {
   width: fit-content; max-width: 100%; padding: 6px 12px; border: 1px solid var(--color-border-light);
@@ -6702,7 +6708,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
   display: inline-flex; align-items: center; gap: 8px; color: var(--color-text-secondary);
 }
 .config-version-status__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-text-tertiary); flex-shrink: 0; }
-.config-version-status strong { display: inline-block; font-size: 13px; line-height: 1.4; color: var(--color-text-primary); white-space: nowrap; }
+.config-version-status strong { display: inline-block; font-size: 13px; line-height: 1.4; color: var(--color-text-primary); overflow-wrap: anywhere; }
 .config-version-status--current { border-color: rgba(16, 185, 129, 0.28); background: var(--color-success-bg); }
 .config-version-status--current .config-version-status__dot { background: var(--color-success); }
 .config-version-status--updated { border-color: rgba(245, 158, 11, 0.32); background: var(--color-warning-bg); }
@@ -6721,7 +6727,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
 .tab-nav {
   display: flex; gap: 4px; background: var(--color-bg-hover); padding: 4px;
   border-radius: var(--radius-lg); margin-bottom: 24px; width: fit-content;
-  max-width: 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  max-width: 100%; box-sizing: border-box; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
   border: 1px solid var(--color-border-light);
 }
 .tab-nav::-webkit-scrollbar { display: none; }
@@ -6771,15 +6777,19 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
 
 /*规则*/
 .rules-toolbar {
-  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: nowrap; margin-bottom: 14px;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
 }
-.rules-toolbar-summary { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; white-space: nowrap; }
+.rules-toolbar-summary { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
 .rules-count { font-size: 13px; color: var(--color-text-tertiary); }
 .rules-selected-count {
   padding: 2px 8px; border-radius: var(--radius-full);
   background: var(--color-primary-bg); color: var(--color-primary); font-size: 12px; font-weight: 600;
 }
-.rules-toolbar-actions { display: flex; gap: 8px; flex-wrap: nowrap; flex-shrink: 0; }
+.rules-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; min-width: 0; max-width: 100%; }
+.rules-toolbar-actions .ant-btn,
+.config-panel-header-actions .ant-btn { max-width: 100%; min-height: 32px; height: auto; white-space: normal; }
+.rules-toolbar-actions .ant-btn :deep(span),
+.config-panel-header-actions .ant-btn :deep(span) { overflow-wrap: anywhere; }
 
 .rules-list { display: flex; flex-direction: column; gap: 10px; }
 .rule-card {
@@ -6794,8 +6804,9 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
   display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600;
   padding: 4px 10px; border-radius: var(--radius-full); white-space: nowrap; flex-shrink: 0;
 }
+.rule-card-body { min-width: 0; overflow-wrap: anywhere; }
 .rule-card-content { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
-.rule-card-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-tertiary); }
+.rule-card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--color-text-tertiary); }
 .rule-source-tag {
   font-size: 10px; font-weight: 500; padding: 1px 6px; border-radius: var(--radius-sm);
   background: var(--color-info-bg); color: var(--color-info);
@@ -6854,8 +6865,9 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
 .icon-btn--sm { width: 24px; height: 24px; font-size: 12px; }
 
 /*知识库模式*/
-.kb-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+.kb-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
 .kb-mode-card {
+  min-width: 0;
   display: flex; align-items: center; gap: 12px; padding: 14px;
   background: var(--color-bg-page); border-radius: var(--radius-md);
   border: 2px solid var(--color-border-light); cursor: pointer;
@@ -6869,6 +6881,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
   display: flex; align-items: center; justify-content: center; font-size: 16px;
   color: var(--color-primary); flex-shrink: 0;
 }
+.kb-mode-info { min-width: 0; overflow-wrap: anywhere; }
 .kb-mode-title { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
 .kb-mode-desc { font-size: 11px; color: var(--color-text-tertiary); margin-top: 1px; }
 .kb-mode-check {
@@ -6915,6 +6928,9 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
 .permission-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
 
 .config-actions { margin-top: 24px; display: flex; justify-content: flex-end; }
+.config-actions :deep(.ant-space) { flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
+.config-actions :deep(.ant-space-item) { min-width: 0; max-width: 100%; }
+.config-actions :deep(.ant-btn) { max-width: 100%; height: auto; min-height: 40px; white-space: normal; }
 
 @media (max-width: 768px) {
   .main-layout { grid-template-columns: 1fr; }
