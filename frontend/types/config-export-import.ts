@@ -13,6 +13,7 @@ export interface ExportedRuleItem {
   related_flow?: boolean
   context_enabled?: boolean
   context_mounts?: any[]
+  data_queries?: import('./audit-data-query').QueryReference[]
 }
 
 /** 导出的 AI 配置项 */

@@ -271,6 +271,7 @@ const ALL_PAGES_CONFIG: PageConfig[] = [
   { path: '/archive', label: t('admin.org.page.archive'), group: 'business' },
   { path: '/summary', label: t('admin.org.page.summary'), group: 'business' },
   { path: '/settings', label: t('admin.org.page.settings'), group: 'common', alwaysOn: true },
+  { path: '/admin/tenant/memory', label: t('memory.title'), group: 'admin' },
   { path: '/admin/tenant/rules', label: t('admin.org.page.tenantConfig'), group: 'admin' },
   { path: '/admin/tenant/agents', label: t('menu.tenant.agents'), group: 'admin' },
   { path: '/admin/tenant/org', label: t('admin.org.page.tenantOrg'), group: 'admin' },

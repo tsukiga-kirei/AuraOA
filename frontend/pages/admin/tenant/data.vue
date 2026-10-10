@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   SearchOutlined,
+  DatabaseOutlined,
   ClockCircleOutlined,
   FolderOpenOutlined,
   FileTextOutlined,
@@ -65,7 +66,7 @@ type MainTab = 'audit' | 'cron' | 'archive' | 'summary' | 'agents' | 'llm'
 type AuditSubTab = 'all' | 'approve' | 'return' | 'review'
 type CronSubTab = 'all' | 'success' | 'failed' | 'running'
 type ArchiveSubTab = 'all' | 'compliant' | 'partially_compliant' | 'non_compliant'
-type LLMSubTab = 'all' | 'audit' | 'archive' | 'summary' | 'chat'
+type LLMSubTab = 'all' | 'audit' | 'archive' | 'summary' | 'chat' | 'sql_assist'
 
 
 const { t } = useI18n()
@@ -114,7 +115,7 @@ const cronStats = ref<CronLogStats>({
 })
 const archiveStats = ref<ArchiveSnapshotStats>({ total: 0, compliant: 0, partial: 0, non_compliant: 0 })
 const summaryStats = ref<SummarySnapshotStats>({ total: 0, block_count: 0 })
-const llmStats = ref<LLMLogStats>({ total: 0, audit_count: 0, archive_count: 0, summary_count: 0, chat_count: 0 })
+const llmStats = ref<LLMLogStats>({ total: 0, audit_count: 0, archive_count: 0, summary_count: 0, chat_count: 0, sql_assist_count: 0 })
 const agentStats = ref<AgentUsageStats>({
   session_count: 0, message_count: 0, tool_call_count: 0, mcp_call_count: 0, skill_call_count: 0, agents: [],
 })
@@ -345,6 +346,7 @@ const llmSubTabs = computed(() => [
     label: t('admin.data.llmTab.summary'),
     cssClass: 'stat-card--warning',
   },
+  { key: 'sql_assist' as LLMSubTab, icon: DatabaseOutlined, count: llmStats.value.sql_assist_count || 0, label: t('admin.data.llmTab.sql_assist'), cssClass: 'stat-card--info' },
   { key: 'chat' as LLMSubTab, icon: MessageOutlined, count: llmStats.value.chat_count || 0, label: t('admin.data.llmTab.chat'), cssClass: 'stat-card--info' },
 ])
 
@@ -567,6 +569,7 @@ function getLLMRequestTypeLabel(value: string) {
     audit: t('admin.data.llmTab.audit'),
     archive: t('admin.data.llmTab.archive'),
     summary: t('admin.data.llmTab.summary'),
+    sql_assist: t('admin.data.llmTab.sql_assist'),
     chat: t('admin.data.llmTab.chat'),
   }
   return map[value] || value || '-'

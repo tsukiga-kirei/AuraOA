@@ -333,6 +333,7 @@ export interface LLMLogStats {
   audit_count: number
   archive_count: number
   summary_count: number
+  sql_assist_count: number
 }
 
 export interface AgentUsageItem {

@@ -36,6 +36,7 @@ func SetupRouter(
 	summaryConfigHandler *handler.ProcessSummaryConfigHandler,
 	executionConfigSourceHandler *handler.ExecutionConfigSourceHandler,
 	externalContextHandler *handler.ExternalContextHandler,
+	dataQueryHandler *handler.AuditDataQueryHandler,
 	auditHandler *handler.AuditHandler,
 	archiveReviewHandler *handler.ArchiveReviewHandler,
 	summaryHandler *handler.ProcessSummaryHandler,
@@ -206,6 +207,27 @@ func SetupRouter(
 
 		// 系统提示词模板（只读）
 		tenantRules.GET("/prompt-templates", configHandler.ListPromptTemplates)
+	}
+
+	// 审核数据查询库同时校验系统角色和组织页面权限，禁止业务用户直接执行 SQL。
+	queries := r.Group("/api/tenant/audit-data-queries")
+	queries.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"), middleware.RequirePagePermission(orgRepo, "/admin/tenant/memory"))
+	{
+		queries.GET("", dataQueryHandler.List)
+		queries.POST("", dataQueryHandler.Save)
+		queries.POST("/check", dataQueryHandler.Check)
+		queries.POST("/preview", dataQueryHandler.Preview)
+		queries.GET("/source", dataQueryHandler.Source)
+		queries.GET("/schema", dataQueryHandler.Schema)
+		queries.POST("/assist", dataQueryHandler.Assist)
+		queries.GET("/prompts", dataQueryHandler.Prompts)
+		queries.PUT("/prompts", dataQueryHandler.Prompts)
+		queries.GET("/:id", dataQueryHandler.Get)
+		queries.PUT("/:id", dataQueryHandler.Save)
+		queries.POST("/:id/publish", dataQueryHandler.Publish)
+		queries.GET("/:id/versions", dataQueryHandler.Versions)
+		queries.GET("/:id/references", dataQueryHandler.References)
+		queries.DELETE("/:id", dataQueryHandler.Archive)
 	}
 
 	// 租户管理员 — 当前配置与不可变执行版本的对应状态。

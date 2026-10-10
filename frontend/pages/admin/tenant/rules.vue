@@ -1113,6 +1113,7 @@ const handleSaveRule = async (rule: any) => {
       related_flow: !!rule.related_flow,
       context_enabled: !!rule.context_enabled,
       context_mounts: cloneSerializable(rule.context_mounts || []),
+      data_queries: cloneSerializable(rule.data_queries || []),
     })
   }
   showRuleEditor.value = false
@@ -1157,6 +1158,7 @@ function buildAuditDraftSnapshot(): Record<string, any> | null {
       related_flow: !!rule.related_flow,
       context_enabled: !!rule.context_enabled,
       context_mounts: rule.context_mounts || [],
+      data_queries: rule.data_queries || [],
     })),
   }
 }
@@ -2644,6 +2646,7 @@ const handleSaveArchiveRule = async (rule: any) => {
       related_flow: !!rule.related_flow,
       context_enabled: !!rule.context_enabled,
       context_mounts: cloneSerializable(rule.context_mounts || []),
+      data_queries: cloneSerializable(rule.data_queries || []),
     })
   }
   showArchiveRuleEditor.value = false
@@ -2688,6 +2691,7 @@ function buildArchiveDraftSnapshot(): Record<string, any> | null {
       related_flow: !!rule.related_flow,
       context_enabled: !!rule.context_enabled,
       context_mounts: rule.context_mounts || [],
+      data_queries: rule.data_queries || [],
     })),
   }
 }
@@ -3433,6 +3437,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                     <span v-if="rule.related_flow" class="rule-flow-tag">
                       <NodeIndexOutlined /> {{ t('admin.ruleConfig.relatedFlow') }}
                     </span>
+                    <span v-if="rule.data_queries?.some(query => query.enabled)" class="rule-flow-tag"><DatabaseOutlined /> {{ t('query.ruleTitle') }}</span>
                     <span v-if="hasActualExternalContext(rule)" class="rule-flow-tag">
                       <NodeIndexOutlined /> 外部关联
                     </span>
@@ -5603,6 +5608,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                     <span v-if="rule.related_flow" class="rule-flow-tag">
                       <NodeIndexOutlined /> {{ t('admin.ruleConfig.relatedFlow') }}
                     </span>
+                    <span v-if="rule.data_queries?.some(query => query.enabled)" class="rule-flow-tag"><DatabaseOutlined /> {{ t('query.ruleTitle') }}</span>
                     <span v-if="hasActualExternalContext(rule)" class="rule-flow-tag">
                       <NodeIndexOutlined /> 外部关联
                     </span>

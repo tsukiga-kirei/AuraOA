@@ -121,6 +121,7 @@ function handleExport() {
         related_flow: r.related_flow,
         context_enabled: r.context_enabled,
         context_mounts: r.context_mounts || [],
+ data_queries: r.data_queries || [],
       }))
     }
     if (exportAi.value && props.aiConfig) {

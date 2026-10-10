@@ -18,6 +18,7 @@ import (
 type AuditRuleService struct {
 	ruleRepo    *repository.AuditRuleRepo
 	invalidator *cache.InvalidationManager
+	dataQueries *AuditDataQueryService
 }
 
 // NewAuditRuleService 初始化审核规则服务。
@@ -39,6 +40,11 @@ func (s *AuditRuleService) Create(c *gin.Context, req *dto.CreateAuditRuleReques
 		enabled = *req.Enabled
 	}
 
+	if s.dataQueries != nil {
+		if err := s.dataQueries.ValidateReferenceChange(c, nil, req.DataQueries); err != nil {
+			return nil, err
+		}
+	}
 	contextMounts := defaultJSON(req.ContextMounts, "[]")
 	rule := &model.AuditRule{
 		ID:             uuid.New(),
@@ -51,6 +57,7 @@ func (s *AuditRuleService) Create(c *gin.Context, req *dto.CreateAuditRuleReques
 		RelatedFlow:    req.RelatedFlow,
 		ContextEnabled: req.ContextEnabled && hasEnabledContextMounts(contextMounts),
 		ContextMounts:  contextMounts,
+		DataQueries:    defaultJSON(req.DataQueries, "[]"),
 	}
 
 	if req.ConfigID != "" {
@@ -82,7 +89,15 @@ func (s *AuditRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.UpdateA
 		return nil, newServiceError(errcode.ErrRuleNotFound, "审核规则不存在")
 	}
 
+	if req.DataQueries != nil && s.dataQueries != nil {
+		if err := s.dataQueries.ValidateReferenceChange(c, existing.DataQueries, req.DataQueries); err != nil {
+			return nil, err
+		}
+	}
 	fields := make(map[string]interface{})
+	if req.DataQueries != nil {
+		fields["data_queries"] = req.DataQueries
+	}
 	if req.RuleContent != "" {
 		fields["rule_content"] = req.RuleContent
 	}

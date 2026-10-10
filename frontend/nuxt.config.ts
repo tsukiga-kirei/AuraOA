@@ -30,6 +30,7 @@ export default defineNuxtConfig({
   css: [
     '~/assets/css/variables.css',
     '~/assets/css/global.css',
+    '~/assets/css/memory.css',
   ],
 
   runtimeConfig: {

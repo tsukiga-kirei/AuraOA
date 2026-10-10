@@ -60,6 +60,7 @@ const TENANT_ITEMS: SidebarMenuItem[] = [
   { key: '/admin/tenant/experience', icon: MessageOutlined, labelKey: 'experience.title' },
   { key: '/admin/tenant/data', icon: DatabaseOutlined, labelKey: 'menu.tenant.data' },
   { key: '/admin/tenant/user-configs', icon: SettingOutlined, labelKey: 'menu.tenant.userConfigs' },
+  { key: '/admin/tenant/memory', icon: DatabaseOutlined, labelKey: 'memory.title' },
 ]
 
 /** 系统管理员菜单项（需要 system_admin 权限组） */
