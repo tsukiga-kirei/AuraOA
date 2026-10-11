@@ -58,7 +58,7 @@ export function compileQueryBuilder(
     if (filter.binding?.source === 'constant' && !filter.binding.value?.trim()) fail('value')
     if (
       filter.binding?.source === 'system' &&
-      !['process_id', 'current_date', 'year_start', 'month_start'].includes(
+      !['process_id', 'current_date', 'year_start', 'month_start', 'current_year'].includes(
         filter.binding.value || '',
       )
     )
@@ -73,7 +73,9 @@ export function compileQueryBuilder(
     if (previous && JSON.stringify(previous) !== JSON.stringify(parameter)) fail('parameter')
     if (!previous) parameters.push(parameter)
     let placeholder = `:${filter.parameter}`
-    if (filter.type === 'date' && dialect !== 'mysql')
+    const targetColumn = schema.find((c) => c.key.toLowerCase() === filter.field.toLowerCase())
+    const isNativeDate = targetColumn && /^(date|timestamp)/i.test(targetColumn.data_type || '')
+    if (filter.type === 'date' && dialect !== 'mysql' && isNativeDate)
       placeholder = `TO_DATE(${placeholder}, 'YYYY-MM-DD')`
     if (filter.operator === 'IN') placeholder = `(${placeholder})`
     return `${expression} ${filter.operator} ${placeholder}`

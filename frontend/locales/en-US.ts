@@ -235,6 +235,7 @@ export default {
     "query.system.current_date": "Current business date",
     "query.system.year_start": "Start of this year",
     "query.system.month_start": "Start of this month",
+    "query.system.current_year": "Current year",
     "query.processRequired": "Enter a workflow ID for preview",
     "query.processPlaceholder": "Test workflow ID: read actual fields and verify bindings",
     "query.previewWithProcess": "Preview with workflow",

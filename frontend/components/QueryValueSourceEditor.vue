@@ -49,7 +49,7 @@ function update(patch: Partial<QueryBinding>) {
       @change="(value) => update({ value: String(value) })"
     >
       <a-select-option
-        v-for="value in ['process_id', 'current_date', 'year_start', 'month_start']"
+        v-for="value in ['process_id', 'current_date', 'year_start', 'month_start', 'current_year']"
         :key="value"
         :value="value"
         >{{ t('query.system.' + value) }}</a-select-option

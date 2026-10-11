@@ -274,3 +274,22 @@ func TestAuditQuerySchemaUsesPhysicalColumnKeys(t *testing.T) {
 		t.Fatalf("表结构字段键不正确：%+v", columns)
 	}
 }
+
+func TestAuditQuerySchemaEnrichesSystemTableLabels(t *testing.T) {
+	adapter := &Ecology9Adapter{}
+	cols := []QueryColumn{
+		{Key: "REQUESTID", Label: "REQUESTID", DataType: "NUMBER"},
+		{Key: "requestname", Label: "requestname", DataType: "VARCHAR2"},
+		{Key: "unknown_col", Label: "unknown_col", DataType: "VARCHAR2"},
+	}
+	adapter.enrichQueryColumnLabels(context.Background(), "workflow_requestbase", cols)
+	if cols[0].Key != "REQUESTID" || cols[0].Label != "请求ID" {
+		t.Fatalf("REQUESTID 未正确补全中文标签：%+v", cols[0])
+	}
+	if cols[1].Key != "requestname" || cols[1].Label != "请求标题" {
+		t.Fatalf("requestname 未正确补全中文标签：%+v", cols[1])
+	}
+	if cols[2].Key != "unknown_col" || cols[2].Label != "unknown_col" {
+		t.Fatalf("未匹配字段应保持原值：%+v", cols[2])
+	}
+}

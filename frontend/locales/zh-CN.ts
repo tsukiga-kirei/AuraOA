@@ -236,6 +236,7 @@ export default {
     "query.system.current_date": "当前业务日期",
     "query.system.year_start": "本年第一天",
     "query.system.month_start": "本月第一天",
+    "query.system.current_year": "当前年份",
     "query.processRequired": "请填写用于预览的流程 ID",
     "query.processPlaceholder": "测试流程 ID：用于读取真实字段并验证绑定",
     "query.previewWithProcess": "按测试流程预览",

@@ -52,6 +52,12 @@ func TestQueryBindingsTypedAndOffset(t *testing.T) {
 	if err != nil || got["person"] != "42" || got["date"] != "2024-02-29" || got["current"] != "request-7" || len(got["ids"].([]string)) != 2 {
 		t.Fatalf("%#v %v", got, err)
 	}
+	yearParam := model.AuditDataQueryParameter{Name: "year", Label: "年份", Type: "number"}
+	yearBinding := model.AuditDataQueryBinding{Source: "system", Value: "current_year"}
+	resolvedYear, err := resolveQueryBinding(yearParam, yearBinding, nil, "")
+	if err != nil || resolvedYear.(float64) < 2020 {
+		t.Fatalf("current_year resolution failed: %v, %v", resolvedYear, err)
+	}
 	delete(bindings, "person")
 	if _, err = resolveQueryBindings(def, bindings, pd, "request-7"); err == nil {
 		t.Fatal("missing field binding accepted")

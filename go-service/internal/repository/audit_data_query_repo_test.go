@@ -32,7 +32,7 @@ func TestAuditDataQueryTenantSQL(t *testing.T) {
 	_, _ = repo.Version(c, id, 1)
 	_, _ = repo.Versions(c, id)
 	_ = repo.MarkTested(c, id, datatypes.JSON(`{"name":"草稿"}`), "hash")
-	_ = repo.Archive(c, id)
+	_ = repo.Delete(c, id)
 	_, _ = repo.References(c, id)
 	_, _, _ = repo.List(c, "预算", -1, 5000)
 	if len(recorder.statements) < 7 {
