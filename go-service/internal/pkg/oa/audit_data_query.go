@@ -480,7 +480,98 @@ func (a *Ecology9Adapter) AuditQuerySchema(ctx context.Context, table string) ([
 	for i := range result.Columns {
 		result.Columns[i].Key = result.Columns[i].Label
 	}
+	a.enrichQueryColumnLabels(ctx, table, result.Columns)
 	return result.Columns, nil
+}
+
+// enrichQueryColumnLabels 为物理列补充泛微流程表单、明细表、建模表或系统表的中文业务标签。
+func (a *Ecology9Adapter) enrichQueryColumnLabels(ctx context.Context, table string, columns []QueryColumn) {
+	if a == nil || len(columns) == 0 {
+		return
+	}
+	labels := make(map[string]string)
+
+	// 1. 系统核心表常用字段静态兜底（无论数据库驱动，命中即生效）
+	switch strings.ToLower(table) {
+	case "workflow_requestbase":
+		labels["requestid"] = "请求ID"
+		labels["requestname"] = "请求标题"
+		labels["workflowid"] = "工作流ID"
+		labels["lastnodeid"] = "上一节点ID"
+		labels["currentnodeid"] = "当前节点ID"
+		labels["currentnodetype"] = "当前节点类型"
+		labels["status"] = "流程状态"
+		labels["creater"] = "创建人"
+		labels["createdate"] = "创建日期"
+		labels["createtime"] = "创建时间"
+		labels["lastoperator"] = "最后操作人"
+		labels["lastoperatedate"] = "最后操作日期"
+		labels["lastoperatetime"] = "最后操作时间"
+		labels["requestlevel"] = "紧急程度"
+		labels["requestmark"] = "流程编号"
+	case "hrmresource":
+		labels["id"] = "人员ID"
+		labels["workcode"] = "工号"
+		labels["lastname"] = "姓名"
+		labels["loginid"] = "登录账号"
+		labels["departmentid"] = "部门ID"
+		labels["subcompanyid1"] = "分部ID"
+		labels["jobtitle"] = "岗位ID"
+		labels["managerid"] = "直接上级ID"
+		labels["status"] = "状态"
+		labels["mobile"] = "手机号"
+		labels["email"] = "邮箱"
+		labels["telephone"] = "办公电话"
+	case "hrmdepartment":
+		labels["id"] = "部门ID"
+		labels["departmentname"] = "部门名称"
+		labels["departmentmark"] = "部门编号"
+		labels["subcompanyid1"] = "分部ID"
+		labels["supdepid"] = "上级部门ID"
+	case "workflow_currentoperator":
+		labels["requestid"] = "请求ID"
+		labels["userid"] = "操作人ID"
+		labels["groupdetailid"] = "节点操作组ID"
+		labels["nodeid"] = "节点ID"
+		labels["isremark"] = "操作类型"
+		labels["usertype"] = "用户类型"
+		labels["operatedate"] = "操作日期"
+		labels["operatetime"] = "操作时间"
+		labels["viewtype"] = "查看状态"
+	}
+
+	// 2. 泛微流程表单、明细表与建模表元数据字典查询
+	// 兼容 Oracle、达梦和 MySQL 大小写匹配：LOWER(b.tablename) = LOWER(?) OR LOWER(t1.detailtable) = LOWER(?)
+	if a.db != nil {
+		var rows []struct {
+			FieldKey  string `gorm:"column:fieldkey"`
+			FieldName string `gorm:"column:fieldname"`
+		}
+		err := a.db.WithContext(ctx).
+			Table(a.tableName("workflow_billfield")+" "+a.col("t1")).
+			Select(a.col("t1.fieldname")+" AS fieldkey, "+a.col("t2.labelname")+" AS fieldname").
+			Joins("JOIN "+a.tableName("htmllabelinfo")+" "+a.col("t2")+" ON "+a.col("t1.fieldlabel")+" = "+a.col("t2.indexid")+" AND "+a.col("t2.languageid")+" = 7").
+			Joins("LEFT JOIN "+a.tableName("workflow_bill")+" "+a.col("b")+" ON "+a.col("t1.billid")+" = "+a.col("b.id")).
+			Where("LOWER("+a.col("b.tablename")+") = LOWER(?) OR LOWER("+a.col("t1.detailtable")+") = LOWER(?)", table, table).
+			Find(&rows).Error
+
+		if err == nil {
+			for _, r := range rows {
+				k := strings.ToLower(strings.TrimSpace(r.FieldKey))
+				v := strings.TrimSpace(r.FieldName)
+				if k != "" && v != "" {
+					labels[k] = v
+				}
+			}
+		}
+	}
+
+	for i := range columns {
+		k := strings.ToLower(columns[i].Key)
+		if label, ok := labels[k]; ok && label != "" {
+			columns[i].Label = label
+		}
+	}
 }
 
 // ReferencedQueryTables 提取各层 FROM/JOIN 表；限制同一连接下的未限定表名，避免跨库绕过表范围。

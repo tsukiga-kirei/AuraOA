@@ -568,7 +568,7 @@ func validateQueryBinding(p model.AuditDataQueryParameter, b model.AuditDataQuer
 	if b.Source == "field" && requireField && b.Field == "" {
 		return fmt.Errorf("请选择流程字段：%s", p.Label)
 	}
-	if b.Source == "system" && b.Value != "process_id" && b.Value != "current_date" && b.Value != "year_start" && b.Value != "month_start" {
+	if b.Source == "system" && b.Value != "process_id" && b.Value != "current_date" && b.Value != "year_start" && b.Value != "month_start" && b.Value != "current_year" {
 		return fmt.Errorf("未知系统变量：%s", p.Label)
 	}
 	if b.Source == "constant" {
@@ -618,6 +618,8 @@ func resolveQueryBinding(p model.AuditDataQueryParameter, b model.AuditDataQuery
 			value = fmt.Sprintf("%d-01-01", apptime.Now().Year())
 		case "month_start":
 			value = apptime.Now().Format("2006-01") + "-01"
+		case "current_year":
+			value = fmt.Sprintf("%d", apptime.Now().Year())
 		}
 	}
 	return normalizeQueryParameter(p, value, b.DaysOffset)

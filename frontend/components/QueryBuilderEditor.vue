@@ -122,9 +122,32 @@ function setFilterBinding(index: number, value: QueryBinding) {
   const filter = builder.value.filters[index]
   filter.binding = value
   if (filter.operator !== 'IN' && value.source === 'system') {
-    filter.type = value.value && value.value !== 'process_id' ? 'date' : 'string'
+    filter.type =
+      value.value && value.value !== 'process_id' && value.value !== 'current_year'
+        ? 'date'
+        : 'string'
   }
   if (filter.type !== 'date') delete filter.binding.days_offset
+}
+function selectFilterField(index: number, value: string) {
+  const column = columns.value.find((item) => item.key === value)
+  const filter = builder.value.filters[index]
+  if (!filter.label && column && /[\u3400-\u9fff]/.test(column.label)) {
+    filter.label = column.label
+  }
+  if (column && filter.operator !== 'IN' && filter.binding?.source !== 'system') {
+    const isDate =
+      /^(date|timestamp)/i.test(column.data_type || '') ||
+      /(日期|时间|rq|date|time)/i.test(column.key + column.label)
+    const isNumber =
+      /^(number|int|decimal|float)/i.test(column.data_type || '') ||
+      /(金额|数量|比例|je|sl|money|amount)/i.test(column.key + column.label)
+    if (isDate) {
+      filter.type = 'date'
+    } else if (isNumber) {
+      filter.type = 'number'
+    }
+  }
 }
 function prepareFilterLabels() {
   builder.value.filters.forEach((filter, index) => {
@@ -265,6 +288,7 @@ onMounted(() => {
             :options="fieldOptions"
             :placeholder="t('query.builder.field')"
             :disabled="disabled"
+            @change="(value) => selectFilterField(index, String(value ?? ''))"
           />
           <a-select
             v-model:value="filter.operator"

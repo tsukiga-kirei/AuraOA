@@ -49,3 +49,59 @@ test('unpaged library reports later-page failure instead of displaying a partial
     delete globalThis.useAuth
   }
 })
+
+const builderSource = fs.readFileSync(
+  new URL('../utils/queryBuilder.ts', import.meta.url),
+  'utf8',
+)
+const builderJs = ts.transpileModule(builderSource, {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+}).outputText
+const { compileQueryBuilder } = await import(
+  `data:text/javascript;base64,${Buffer.from(builderJs).toString('base64')}`
+)
+
+test('compileQueryBuilder handles varchar date without TO_DATE and native date with TO_DATE in oracle/dm', () => {
+  const schema = [
+    { key: 'sqrq', label: '申请日期', data_type: 'VARCHAR2' },
+    { key: 'created_time', label: '创建时间', data_type: 'TIMESTAMP' },
+    { key: 'nf', label: '年份', data_type: 'VARCHAR2' },
+  ]
+  const builder = {
+    table: 'formtable_main_1',
+    columns: [{ field: 'sqrq', alias: '申请日期', aggregate: '' }],
+    filters: [
+      {
+        field: 'sqrq',
+        operator: '>=',
+        parameter: 'filter_1',
+        label: '起始日期',
+        type: 'date',
+        binding: { source: 'system', value: 'year_start' },
+      },
+      {
+        field: 'created_time',
+        operator: '>=',
+        parameter: 'filter_2',
+        label: '创建时间',
+        type: 'date',
+        binding: { source: 'system', value: 'year_start' },
+      },
+      {
+        field: 'nf',
+        operator: '=',
+        parameter: 'filter_3',
+        label: '年份',
+        type: 'string',
+        binding: { source: 'system', value: 'current_year' },
+      },
+    ],
+    order_alias: '',
+    order_dir: 'DESC',
+  }
+  const result = compileQueryBuilder(builder, 'oracle', schema)
+  assert.ok(result.sql.includes('d."SQRQ" >= :filter_1'), 'VARCHAR2 date column should not wrap TO_DATE')
+  assert.ok(result.sql.includes('d."CREATED_TIME" >= TO_DATE(:filter_2, \'YYYY-MM-DD\')'), 'TIMESTAMP column should wrap TO_DATE')
+  assert.ok(result.sql.includes('d."NF" = :filter_3'), 'current_year string column should match parameter')
+  assert.equal(result.parameters.find(p => p.name === 'filter_3')?.default_binding?.value, 'current_year')
+})
