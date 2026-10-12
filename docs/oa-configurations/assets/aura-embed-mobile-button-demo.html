@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>AuraOA 移动端嵌入按钮示例</title>
+  <title>AuraOA 移动端嵌入按钮最新交互预览</title>
   <style>
     :root {
       color-scheme: light;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
       --page-bg: #f8fafc;
       --ink: #1e293b;
-      --muted: #94a3b8;
+      --muted: #64748b;
+      --primary: #2563eb;
     }
 
     * { box-sizing: border-box; }
@@ -20,167 +21,350 @@
       min-height: 100vh;
       color: var(--ink);
       background: linear-gradient(180deg, #ffffff 0%, var(--page-bg) 100%);
+      -webkit-font-smoothing: antialiased;
     }
 
-    .mock-form {
-      min-height: 100vh;
-      padding: 28px 20px 180px;
+    .demo-wrapper {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 32px 20px 220px;
     }
 
-    .mock-form h1 { margin: 0 0 8px; font-size: 22px; }
-    .mock-form > p { margin: 0; color: var(--muted); font-size: 14px; }
-
-    .demo-panel {
-      max-width: 720px;
-      margin: 28px auto 0;
-      padding: 22px;
-      border: 1px solid #e8edf3;
-      border-radius: 18px;
-      background: rgba(255, 255, 255, .78);
+    .header {
+      margin-bottom: 24px;
     }
 
-    .demo-panel h2 { margin: 0 0 8px; font-size: 17px; }
-    .demo-panel p { margin: 0 0 16px; line-height: 1.7; color: #64748b; font-size: 14px; }
+    .header h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      font-weight: 700;
+      color: #0f172a;
+    }
 
-    .demo-row {
+    .header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .tip-banner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+      padding: 12px 16px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      font-size: 13px;
+      color: #1e40af;
+    }
+
+    .tip-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: #dbeafe;
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    .control-card {
+      margin-bottom: 20px;
+      padding: 20px;
+      background: rgba(255, 255, 255, .88);
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(15, 23, 42, .04);
+    }
+
+    .control-card h2 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    .btn-row {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       margin-bottom: 14px;
     }
 
-    .demo-row button,
-    .demo-panel > button {
+    .btn-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .btn-row button {
       appearance: none;
-      border: 1px solid #dbe4ee;
-      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 9px;
       background: #fff;
       color: #334155;
-      padding: 8px 12px;
-      font: 600 13px/1.2 inherit;
+      padding: 7px 14px;
+      font: 500 13px/1.4 inherit;
       cursor: pointer;
+      transition: all .2s ease;
+      touch-action: manipulation;
     }
 
-    .demo-row button.is-on {
-      border-color: #93c5fd;
+    .btn-row button:hover {
+      border-color: #94a3b8;
+      background: #f8fafc;
+    }
+
+    .btn-row button.is-active {
+      border-color: #3b82f6;
       background: #eff6ff;
       color: #1d4ed8;
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(37, 99, 235, .12);
     }
 
-    .stage-grid {
-      display: grid;
-      gap: 14px;
-      grid-template-columns: 1fr;
-    }
-
-    @media (min-width: 720px) {
-      .stage-grid { grid-template-columns: 1fr 1fr; }
-    }
-
-    .stage-card {
-      min-height: 92px;
-      padding: 14px;
+    .stage-section {
+      margin-bottom: 24px;
+      padding: 20px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
       border-radius: 16px;
+      box-shadow: 0 4px 16px rgba(15, 23, 42, .03);
+    }
+
+    .stage-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .stage-header h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      color: #1e293b;
+    }
+
+    .stage-canvas {
+      min-height: 100px;
+      padding: 24px;
       background: #f8fafc;
-      border: 1px dashed #dbe4ee;
+      border: 1px dashed #cbd5e1;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
     }
 
-    .stage-card strong {
-      display: block;
-      margin-bottom: 10px;
-      font-size: 12px;
-      color: #64748b;
-      letter-spacing: .04em;
-    }
-
-    .stage-card .aura-status-group { padding: 0; }
-
-    .hint {
-      margin-top: 10px;
-      font-size: 12px;
-      color: #94a3b8;
-    }
-
-    .gallery-title {
-      margin: 22px 0 10px;
+    .stage-hint {
+      margin-top: 12px;
       font-size: 13px;
       color: #64748b;
+      line-height: 1.5;
     }
 
-    .aura-status-float {
-      position: fixed;
-      top: calc(88px + env(safe-area-inset-top, 0px));
-      right: 24px;
-      z-index: 10;
+    .gallery-grid {
       display: flex;
-      justify-content: flex-end;
-      pointer-events: none;
-    }
-
-    .aura-status-group {
-      display: flex;
-      flex-direction: column;
-      max-width: 100%;
-      align-items: stretch;
-      justify-content: flex-start;
-      gap: 8px;
-      pointer-events: auto;
-    }
-
-    .aura-status-group .aura-status-button { width: 100%; }
-
-    #gallery.aura-status-group {
-      flex-direction: row;
       flex-wrap: wrap;
+      gap: 12px;
       align-items: center;
     }
 
-    #gallery.aura-status-group .aura-status-button { width: auto; }
+    /* 悬浮容器基础样式 */
+    #auraMobileEmbedFloatContainer {
+      position: fixed;
+      max-width: calc(100vw - 32px);
+      z-index: 9999;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      cursor: grab;
+    }
+
+    #auraMobileEmbedFloatContainer.aura-float--bottom-left {
+      bottom: 24px;
+      bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+      left: 20px;
+      left: calc(20px + env(safe-area-inset-left, 0px));
+    }
+
+    #auraMobileEmbedFloatContainer.aura-float--top-right {
+      top: 88px;
+      top: calc(88px + env(safe-area-inset-top, 0px));
+      right: 24px;
+      right: calc(24px + env(safe-area-inset-right, 0px));
+    }
+
+    #auraMobileEmbedFloatContainer.aura-is-dragging {
+      cursor: grabbing !important;
+      opacity: .92;
+      transition: none !important;
+    }
+
+    #auraMobileEmbedFloatContainer.aura-is-dragging .aura-status-button {
+      transform: scale(.96) !important;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, .24) !important;
+    }
+
+    /* 极简紧凑形态（全局生效：PC 与移动端均不显示长条文字与箭头，详细内容由 Tooltip 承载） */
+    .aura-status-button .aura-status-text,
+    .aura-status-button .aura-status-arrow,
+    .aura-is-compact .aura-status-text,
+    .aura-is-compact .aura-status-arrow {
+      display: none !important;
+    }
+    .aura-status-button,
+    .aura-is-compact.aura-status-button {
+      min-height: 38px !important;
+      padding: 5px 8px 5px 5px !important;
+      gap: 6px !important;
+      border-radius: 12px !important;
+    }
+    .aura-status-score,
+    .aura-is-compact .aura-status-score {
+      padding-left: 6px !important;
+      border-left-width: 1px !important;
+    }
+    .aura-status-score b,
+    .aura-is-compact .aura-status-score b {
+      font-size: 15px !important;
+    }
+    .aura-status-score small,
+    .aura-is-compact .aura-status-score small {
+      font-size: 9px !important;
+    }
+    .aura-status-button--icon-only,
+    .aura-is-compact.aura-status-button--icon-only {
+      padding: 5px !important;
+      gap: 0 !important;
+      min-width: 38px !important;
+      width: 38px !important;
+      justify-content: center !important;
+    }
+    .aura-status-button--icon-only .aura-status-copy,
+    .aura-is-compact.aura-status-button--icon-only .aura-status-copy {
+      display: none !important;
+    }
+
+    /* 移动端/小屏幕响应式安全边距 */
+    @media screen and (max-width: 768px) {
+      #auraMobileEmbedFloatContainer.aura-float--top-right {
+        top: 116px;
+        top: calc(116px + env(safe-area-inset-top, 0px));
+        right: 14px;
+        right: calc(14px + env(safe-area-inset-right, 0px));
+      }
+      #auraMobileEmbedFloatContainer.aura-float--bottom-left {
+        bottom: 20px;
+        bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+        left: 14px;
+        left: calc(14px + env(safe-area-inset-left, 0px));
+      }
+    }
+
+    /* 提示气泡 Tooltip（与胶囊状态主题色完全一致） */
+    .aura-embed-tooltip {
+      position: fixed;
+      z-index: 10001;
+      pointer-events: none;
+      max-width: 280px;
+      padding: 6px 12px;
+      border-radius: 10px;
+      background: var(--aura-status-surface, #fff);
+      color: var(--aura-status-color, #1e293b);
+      border: 1px solid var(--aura-status-border, rgba(148, 163, 184, .3));
+      font: 600 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      letter-spacing: .2px;
+      white-space: nowrap;
+      box-shadow: var(--aura-status-shadow, 0 4px 16px rgba(15, 23, 42, .08)), 0 0 12px var(--aura-status-tint, transparent);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      opacity: 0;
+      transform: scale(.92);
+      transition: opacity .18s ease, transform .18s cubic-bezier(.22, .7, .2, 1);
+    }
+    .aura-embed-tooltip::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 9px;
+      background: radial-gradient(circle at 10% 50%, var(--aura-status-tint, transparent), transparent 75%);
+      opacity: .35;
+      pointer-events: none;
+    }
+    .aura-embed-tooltip--visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* 胶囊状态动画与核心样式 */
+    .aura-status-group {
+      display: inline-flex;
+      flex-direction: column;
+      max-width: 100%;
+      align-items: stretch;
+      gap: 8px;
+      padding: 0;
+    }
+    .aura-status-group .aura-status-button { width: 100%; }
 
     .aura-status-button {
+      box-sizing: border-box;
+      appearance: none;
+      -webkit-appearance: none;
       position: relative;
       isolation: isolate;
       overflow: hidden;
       display: inline-flex;
-      min-height: 44px;
-      max-width: 100%;
       align-items: center;
       gap: 9px;
+      min-height: 40px;
+      max-width: 100%;
       padding: 6px 11px 6px 7px;
-      border: 1px solid var(--aura-status-border);
+      margin: 0;
+      border: 1px solid var(--aura-status-border, rgba(148, 163, 184, .22));
       border-radius: 14px;
+      background: var(--aura-status-surface, #fff);
       color: #263247;
-      background: var(--aura-status-surface);
-      box-shadow: var(--aura-status-shadow);
+      box-shadow: var(--aura-status-shadow, 0 4px 16px rgba(15, 23, 42, .08), 0 1px 3px rgba(15, 23, 42, .04));
       font: 600 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
       letter-spacing: .1px;
       text-align: left;
       cursor: pointer;
       touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
       transition: background-color .45s ease, color .22s ease, width .52s cubic-bezier(.22, .7, .2, 1), transform .18s ease;
       animation: auraBorderBreath 2.2s ease-in-out infinite;
     }
 
     .aura-status-button::before {
+      content: "";
       position: absolute;
       inset: 1px;
-      z-index: 0;
-      content: "";
       border-radius: 13px;
       background: radial-gradient(circle at 8% 50%, var(--aura-status-tint), transparent 62%);
+      opacity: .22;
       pointer-events: none;
+      z-index: 0;
+      transform-origin: 8% 50%;
       animation: auraStatusBreath 4.2s ease-in-out infinite;
       transition: opacity .45s ease;
     }
 
     .aura-status-button::after {
-      position: absolute;
-      inset: 0 auto 0 0;
-      z-index: 0;
-      width: 36%;
       content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 36%;
       background: linear-gradient(105deg, transparent, rgba(255, 255, 255, .66), transparent);
       pointer-events: none;
+      z-index: 0;
       opacity: 0;
       transform: translateX(-120%);
     }
@@ -190,29 +374,28 @@
       animation: auraBtnShine 3.2s ease-out .18s both;
     }
 
-    .aura-status-icon,
-    .aura-status-copy,
-    .aura-status-text,
-    .aura-status-score,
-    .aura-status-arrow { position: relative; z-index: 1; }
+    .aura-status-icon, .aura-status-copy, .aura-status-text, .aura-status-score, .aura-status-arrow {
+      position: relative;
+      z-index: 1;
+    }
 
     .aura-status-icon {
       display: flex;
+      align-items: center;
+      justify-content: center;
       width: 28px;
       height: 28px;
       flex: 0 0 28px;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
       border-radius: 9px;
-      color: var(--aura-status-color);
       background: var(--aura-status-tint);
+      color: var(--aura-status-color);
+      overflow: hidden;
       transition: background-color .45s ease, color .45s ease;
     }
 
-    .aura-status-icon svg,
+    .aura-status-icon svg { display: block; width: 18px; height: 18px; transform-origin: center; }
+    .aura-status-icon-layer { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; }
     .aura-status-icon-layer svg { display: block; width: 18px; height: 18px; transform-origin: center; }
-    .aura-status-icon-layer { display: flex; width: 28px; height: 28px; align-items: center; justify-content: center; }
     .aura-status-icon-layer--out { position: absolute; inset: 0; animation: auraIconSwapOut .3s ease both; }
     .aura-status-icon-layer--in { animation: auraIconSwapIn .42s cubic-bezier(.22, .7, .2, 1) both; }
 
@@ -220,25 +403,29 @@
     .aura-status-copy-inner { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; }
     .aura-status-copy-inner--out { position: absolute; left: 0; top: 0; bottom: 0; animation: auraCopySwapOut .32s ease both; pointer-events: none; }
     .aura-status-copy-inner--in { animation: auraCopySwapIn .4s cubic-bezier(.22, .7, .2, 1) .04s both; }
-    .aura-status-text { overflow: hidden; min-width: 0; white-space: nowrap; text-overflow: ellipsis; }
+
+    .aura-status-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     .aura-status-score {
       display: inline-flex;
-      flex: none;
       align-items: baseline;
       gap: 2px;
+      flex: none;
       padding-left: 10px;
       border-left: 1px solid #e8edf3;
       color: var(--aura-status-color);
       font-variant-numeric: tabular-nums;
       transition: color .45s ease;
     }
-
-    .aura-status-score b { font-size: 17px; line-height: 1; }
+    .aura-status-score b { font-size: 17px; font-weight: 700; line-height: 1; }
     .aura-status-score small { font-size: 10px; font-weight: 500; }
-    .aura-status-arrow { width: 14px; height: 14px; flex: 0 0 14px; color: #94a3b8; }
+
+    .aura-status-arrow { display: block; width: 14px; height: 14px; flex: 0 0 14px; color: #94a3b8; }
     .aura-status-arrow--in { animation: auraArrowIn .32s ease .08s both; }
     .aura-status-arrow--out { animation: auraArrowOut .24s ease both; }
+
+    .aura-status-button:focus-visible { outline: 2px solid var(--aura-status-color); outline-offset: 3px; }
+    .aura-status-button:active { transform: scale(.98); }
     .aura-status-button--morph { pointer-events: none; }
     .aura-status-button[aria-disabled="true"] { cursor: default; }
     .aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading) { color: var(--aura-status-color); }
@@ -246,10 +433,10 @@
 
     .aura-status-button--enter { animation: auraButtonEnter .62s cubic-bezier(.22, .7, .2, 1) both, auraBorderBreath 2.2s ease-in-out infinite; }
     .aura-status-button--enter .aura-status-icon { opacity: 0; transform: scale(.76); animation: auraIconEnter .38s cubic-bezier(.22, .7, .2, 1) .36s both; }
-    .aura-status-button--enter .aura-status-copy,
-    .aura-status-button--enter .aura-status-text { opacity: 0; transform: translate3d(-5px, 0, 0); animation: auraTextEnter .34s ease-out .53s both; }
+    .aura-status-button--enter .aura-status-copy, .aura-status-button--enter .aura-status-text { opacity: 0; transform: translate3d(-5px, 0, 0); animation: auraTextEnter .34s ease-out .53s both; }
     .aura-status-button--enter .aura-status-score { opacity: 0; transform: translate3d(-4px, 0, 0); animation: auraTextEnter .34s ease-out .6s both; }
     .aura-status-button--enter .aura-status-arrow { opacity: 0; transform: translate3d(-3px, 0, 0); animation: auraTextEnter .34s ease-out .66s both; }
+
     .aura-status-button--enter.aura-status-button--loading,
     .aura-status-button--enter.aura-status-button--running { animation: auraButtonEnterSoft .4s cubic-bezier(.22, .7, .2, 1) both, auraBorderBreath 2.2s ease-in-out infinite; }
     .aura-status-button--enter.aura-status-button--loading .aura-status-icon,
@@ -259,36 +446,27 @@
     .aura-status-button--enter.aura-status-button--loading .aura-status-text,
     .aura-status-button--enter.aura-status-button--running .aura-status-text { opacity: 1; transform: none; animation: none; }
 
-    .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg > *,
-    .aura-status-button--enter.aura-status-button--enter-pop .aura-status-icon svg > *,
-    .aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg > *,
-    .aura-status-button--enter.aura-status-button--enter-rise .aura-status-icon svg > *,
-    .aura-status-button--enter.aura-status-button--enter-fade .aura-status-icon svg > *,
-    .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg > *,
-    .aura-status-button--morph.aura-status-button--enter-pop .aura-status-icon-layer--in svg > *,
-    .aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg > *,
-    .aura-status-button--morph.aura-status-button--enter-rise .aura-status-icon-layer--in svg > *,
-    .aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg > * { stroke-dasharray: 1; stroke-dashoffset: 1; }
+    .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg>*,
+    .aura-status-button--enter.aura-status-button--enter-pop .aura-status-icon svg>*,
+    .aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg>*,
+    .aura-status-button--enter.aura-status-button--enter-rise .aura-status-icon svg>*,
+    .aura-status-button--enter.aura-status-button--enter-fade .aura-status-icon svg>*,
+    .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg>*,
+    .aura-status-button--morph.aura-status-button--enter-pop .aura-status-icon-layer--in svg>*,
+    .aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg>*,
+    .aura-status-button--morph.aura-status-button--enter-rise .aura-status-icon-layer--in svg>*,
+    .aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg>* { stroke-dasharray: 1; stroke-dashoffset: 1; }
 
-    .aura-status-button--loading .aura-status-icon > svg,
-    .aura-status-button--loading .aura-status-icon-layer--in svg { animation: auraBtnSpin .9s linear infinite; }
-    .aura-status-button--running .aura-status-icon > svg .aura-running-star,
-    .aura-status-button--running .aura-status-icon-layer--in .aura-running-star { transform-box: fill-box; transform-origin: center; animation: auraStarSpin 1.6s linear infinite; }
+    .aura-status-button--loading .aura-status-icon>svg, .aura-status-button--loading .aura-status-icon-layer--in svg { animation: auraBtnSpin .9s linear infinite; }
+    .aura-status-button--running .aura-status-icon>svg .aura-running-star, .aura-status-button--running .aura-status-icon-layer--in .aura-running-star { transform-box: fill-box; transform-origin: center; animation: auraStarSpin 1.6s linear infinite; }
 
-    .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg > *,
-    .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg > * { animation: auraDraw .34s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
-    .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg > :nth-child(2),
-    .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg > :nth-child(2) { animation-delay: .22s; }
-    .aura-status-button--enter.aura-status-button--enter-pop .aura-status-icon svg > *,
-    .aura-status-button--morph.aura-status-button--enter-pop .aura-status-icon-layer--in svg > * { animation: auraDraw .48s cubic-bezier(.22, .72, .2, 1) .08s forwards; }
-    .aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg > *,
-    .aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg > * { animation: auraDraw .36s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
-    .aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg > :nth-child(2),
-    .aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg > :nth-child(2) { animation-delay: .22s; }
-    .aura-status-button--enter.aura-status-button--enter-rise .aura-status-icon svg > *,
-    .aura-status-button--morph.aura-status-button--enter-rise .aura-status-icon-layer--in svg > * { animation: auraDraw .32s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
-    .aura-status-button--enter.aura-status-button--enter-fade .aura-status-icon svg > *,
-    .aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg > * { animation: auraDraw .4s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
+    .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg>*, .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg>* { animation: auraDraw .34s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
+    .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg>:nth-child(2), .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg>:nth-child(2) { animation-delay: .22s; }
+    .aura-status-button--enter.aura-status-button--enter-pop .aura-status-icon svg>*, .aura-status-button--morph.aura-status-button--enter-pop .aura-status-icon-layer--in svg>* { animation: auraDraw .48s cubic-bezier(.22, .72, .2, 1) .08s forwards; }
+    .aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg>*, .aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg>* { animation: auraDraw .36s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
+    .aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg>:nth-child(2), .aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg>:nth-child(2) { animation-delay: .22s; }
+    .aura-status-button--enter.aura-status-button--enter-rise .aura-status-icon svg>*, .aura-status-button--morph.aura-status-button--enter-rise .aura-status-icon-layer--in svg>* { animation: auraDraw .32s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
+    .aura-status-button--enter.aura-status-button--enter-fade .aura-status-icon svg>*, .aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg>* { animation: auraDraw .4s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
 
     @keyframes auraBtnSpin { to { transform: rotate(360deg); } }
     @keyframes auraDraw { to { stroke-dashoffset: 0; } }
@@ -299,15 +477,15 @@
       100% { opacity: 1; transform: none; filter: none; }
     }
     @keyframes auraButtonEnterSoft {
-      from { opacity: 0; transform: translate3d(-8px, 5px, 0) scale(.9); filter: blur(1px); }
-      to { opacity: 1; transform: none; filter: none; }
+      0% { opacity: 0; transform: translate3d(-8px, 5px, 0) scale(.9); filter: blur(1px); }
+      100% { opacity: 1; transform: none; filter: none; }
     }
     @keyframes auraIconEnter {
       0% { opacity: 0; transform: scale(.64) rotate(-10deg); }
       72% { opacity: 1; transform: scale(1.08) rotate(3deg); }
       100% { opacity: 1; transform: scale(1) rotate(0); }
     }
-    @keyframes auraTextEnter { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: none; } }
+    @keyframes auraTextEnter { 0% { opacity: 0; transform: translate3d(-5px, 0, 0); } 100% { opacity: 1; transform: none; } }
     @keyframes auraBtnShine {
       0%, 100% { opacity: 0; transform: translateX(-120%); }
       18% { opacity: .48; }
@@ -339,70 +517,76 @@
       .aura-status-button:not([aria-disabled="true"]):not(.aura-status-button--morph):hover {
         transform: translateY(-2px);
         border-color: var(--aura-status-color);
+        box-shadow: 0 7px 22px rgba(15, 23, 42, .12);
       }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .aura-status-button,
-      .aura-status-button::before,
-      .aura-status-button::after,
-      .aura-status-icon,
-      .aura-status-copy,
-      .aura-status-text,
-      .aura-status-score,
-      .aura-status-arrow,
-      .aura-status-icon-layer,
-      .aura-status-copy-inner,
-      .aura-status-icon svg,
-      .aura-status-icon svg > * { animation: none !important; opacity: 1 !important; transform: none !important; filter: none !important; stroke-dashoffset: 0 !important; }
     }
   </style>
 </head>
 <body>
-  <main class="mock-form">
-    <h1>项目审批表单</h1>
-    <p>白色表单背景下的移动端嵌入入口示例</p>
-
-    <section class="demo-panel">
-      <h2>状态切换</h2>
-      <p>同一颗胶囊原地变形：颜色、宽度、图标和文案交叉过渡。忙碌态会至少停留约 0.5 秒，所以即接口很快，「加载中」也能看清，再滑到结果。</p>
-      <div class="demo-row" id="sceneRow">
-        <button type="button" data-scene="fast-pass" class="is-on">快速通过（120ms）</button>
-        <button type="button" data-scene="fast-watch">快速关注</button>
-        <button type="button" data-scene="fast-return">快速退回</button>
-        <button type="button" data-scene="running-pass">分析中 → 通过</button>
-        <button type="button" data-scene="dual">双按钮各自切换</button>
+  <div class="demo-wrapper">
+    <div class="header">
+      <h1>AuraOA 嵌入胶囊按钮最新效果预览</h1>
+      <p>统一极简形态：图标+分值胶囊 / 纯图标微球 · PC 鼠标悬停 / 移动端长按聚焦同主题气泡 Tooltip · 全局自由拖拽与原地平滑变形</p>
+      <div class="tip-banner">
+        <span class="tip-tag">交互说明</span>
+        <span>👉 全局统一步调：不再展示冗长的文字与箭头，悬浮胶囊可<strong>自由拖拽</strong>；PC 端<strong>鼠标悬停触碰</strong>或移动端<strong>长按 450ms</strong> 显示同主题<strong>详情气泡</strong>；轻触<strong>打开弹窗</strong>。</span>
       </div>
-      <div class="stage-grid">
-        <div class="stage-card">
-          <strong>新效果 · 原地变形</strong>
-          <div id="smoothGroup" class="aura-status-group"></div>
-          <div class="hint" id="smoothHint">接口 120ms 返回，按钮仍会把「加载中」停够再滑过去。</div>
-        </div>
-        <div class="stage-card">
-          <strong>旧效果 · 整钮重绘</strong>
-          <div id="jumpGroup" class="aura-status-group"></div>
-          <div class="hint">加载文案还没入场，就换成另一颗按钮，看起来像两个框在跳。</div>
-        </div>
+    </div>
+
+    <!-- 控制面板 -->
+    <div class="control-card">
+      <h2>1. 悬浮胶囊初始位置复位</h2>
+      <div class="btn-row" id="positionResetRow">
+        <button type="button" data-pos="top-right">复位到右上角（默认）</button>
+        <button type="button" data-pos="bottom-left">复位到左下角</button>
       </div>
-    </section>
 
-    <section class="demo-panel">
-      <h2>各状态静帧</h2>
-      <p>入场仍是先出胶囊，再画图标，最后让文字和分数进来。点击「重新播放入场」只影响下面这一组。</p>
-      <button id="replay" type="button">重新播放入场</button>
-      <div class="gallery-title">审核结果</div>
-      <div id="gallery" class="aura-status-group"></div>
-    </section>
-  </main>
+      <h2>2. 状态变形场景演示</h2>
+      <div class="btn-row" id="sceneSwitchRow">
+        <button type="button" class="is-active" data-scene="fast-pass">审核快速通过 (95分)</button>
+        <button type="button" data-scene="fast-watch">建议关注 (78分)</button>
+        <button type="button" data-scene="fast-return">建议退回 (45分)</button>
+        <button type="button" data-scene="running-pass">分析中 → 自动通过</button>
+        <button type="button" data-scene="dual">双按钮独立变形 (审核+总结)</button>
+      </div>
+    </div>
 
-  <div class="aura-status-float">
-    <div id="statusGroup" class="aura-status-group"></div>
+    <!-- 舞台实时变形演示 -->
+    <div class="stage-section">
+      <div class="stage-header">
+        <h3>最新效果 · 胶囊原地平滑变形</h3>
+        <span style="font-size: 12px; color: #94a3b8;">无需重绘整个按钮</span>
+      </div>
+      <div class="stage-canvas">
+        <div id="stageGroup" class="aura-status-group"></div>
+      </div>
+      <div class="stage-hint" id="stageHint">接口快速返回，胶囊自动交叉过渡颜色、图标与分值。</div>
+    </div>
+
+    <!-- 全状态静帧画廊 -->
+    <div class="stage-section">
+      <div class="stage-header">
+        <h3>各业务状态效果一览</h3>
+        <button type="button" id="replayGalleryBtn" style="padding: 4px 10px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; cursor: pointer;">重新播放入场动画</button>
+      </div>
+      <div class="gallery-grid" id="galleryGroup"></div>
+    </div>
+  </div>
+
+  <!-- 实际浮动在页面上的可拖动容器 -->
+  <div id="auraMobileEmbedFloatContainer" class="aura-float--top-right">
+    <div id="floatGroup" class="aura-status-group"></div>
   </div>
 
   <script>
-    var BUTTON_BUSY_MIN_MS = 480
-    var STATUS_MOTION_CLASSES = ['aura-status-button--enter', 'aura-status-button--loading', 'aura-status-button--running', 'aura-status-button--enter-shake', 'aura-status-button--enter-pop', 'aura-status-button--enter-bounce', 'aura-status-button--enter-rise', 'aura-status-button--enter-fade', 'aura-status-button--morph', 'aura-status-button--shine']
+    var BUTTON_BUSY_MIN_MS = 480;
+    var STATUS_MOTION_CLASSES = [
+      'aura-status-button--enter', 'aura-status-button--loading', 'aura-status-button--running',
+      'aura-status-button--enter-shake', 'aura-status-button--enter-pop', 'aura-status-button--enter-bounce',
+      'aura-status-button--enter-rise', 'aura-status-button--enter-fade', 'aura-status-button--morph',
+      'aura-status-button--shine'
+    ];
+
     var statusConfig = {
       gray: { color: '#475569', text: 'AI审核详情', bg: '#eef2f7', surface: '#f8fafc', border: '#cbd5e1', shadow: '0 2px 8px rgba(15,23,42,.06)' },
       green: { color: '#15803d', text: '审核通过', bg: '#e5f7ed', surface: '#f1fbf5', border: '#86efac', shadow: '0 3px 12px rgba(22,163,106,.13)' },
@@ -410,311 +594,601 @@
       red: { color: '#c62828', text: '建议退回', bg: '#ffe8e6', surface: '#fff3f2', border: '#ef8a84', shadow: '0 4px 14px rgba(198,40,40,.16)' },
       disabled: { color: '#2dd4bf', text: '保存查看AI智审', bg: '#ccfbf1', surface: '#f4fffc', border: '#99f6e4', shadow: '0 2px 10px rgba(45,212,191,.16)' },
       loading: { color: '#1d4ed8', text: '加载中...', bg: '#dbeafe', surface: '#eef5ff', border: '#60a5fa', shadow: '0 3px 12px rgba(37,99,235,.15)' }
-    }
+    };
+
+    var isCompactMode = true; // 默认展示移动端紧凑模式
 
     function escapeButtonText(value) {
-      return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+      return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
     function prefersReducedMotion() {
-      return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+      return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     }
-    function isBusyStatus(status, isLoading) { return !!isLoading || status === 'loading' }
+    function isBusyStatus(status, isLoading) {
+      return !!isLoading || status === 'loading';
+    }
     function parseButtonLabel(displayText) {
-      var text = String(displayText || '')
-      var scoreMatch = text.match(/ [(]([0-9]+)([^()]*)[)]$/)
-      return { label: scoreMatch ? text.slice(0, scoreMatch.index) : text, scoreMatch: scoreMatch }
+      var text = String(displayText || '');
+      var scoreMatch = text.match(/ [(]([0-9]+)([^()]*)[)]$/);
+      return { label: scoreMatch ? text.slice(0, scoreMatch.index) : text, scoreMatch: scoreMatch };
     }
     function buttonTheme(status, isLoading) {
-      return (isLoading || status === 'loading') ? statusConfig.loading : (statusConfig[status] || statusConfig.gray)
+      return (isLoading || status === 'loading') ? statusConfig.loading : (statusConfig[status] || statusConfig.gray);
     }
     function iconMarkup(feature, status, isLoading) {
-      var fetching = !!isLoading
-      var running = !fetching && status === 'loading'
-      var iconPath = '<path pathLength="1" d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z"/>'
-      if (feature === 'summary') iconPath = '<path pathLength="1" d="M14 3H6v18h12V7Z" stroke-width="2.4"/><path pathLength="1" d="M14 3v5h4" stroke-width="2.4"/><path pathLength="1" d="M9 12h6" stroke-width="2.4"/><path pathLength="1" d="M9 16h4" stroke-width="2.4"/>'
-      if (status === 'green' && feature === 'audit') iconPath = '<path pathLength="1" d="m6 12 4 4 8-8" stroke-width="2.8"/>'
-      if (status === 'red' || status === 'error') iconPath = '<path pathLength="1" d="M8 8l8 8" stroke-width="2.7"/><path pathLength="1" d="M16 8l-8 8" stroke-width="2.7"/>'
-      if (status === 'yellow') iconPath = '<path pathLength="1" d="M12 4.1v9.4" stroke-width="3.6"/><path pathLength="1" d="M12 18.25v.02" stroke-width="4.4"/>'
-      if (status === 'disabled') iconPath = '<path pathLength="1" d="M8 10V7a4 4 0 0 1 8 0v3" stroke-width="2.4"/><rect pathLength="1" x="5" y="10" width="14" height="11" rx="3" stroke-width="2.4"/>'
-      if (running) iconPath = '<path class="aura-running-star" d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z"/>'
-      if (fetching) iconPath = '<circle cx="12" cy="12" r="8.1" fill="none" stroke="currentColor" stroke-width="2.7" opacity="0.22"/><path d="M12 3.9a8.1 8.1 0 0 1 0 16.2" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>'
-      return iconPath
+      var fetching = !!isLoading;
+      var running = !fetching && status === 'loading';
+      var iconPath = '<path pathLength="1" d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z"/>';
+      if (feature === 'summary') iconPath = '<path pathLength="1" d="M14 3H6v18h12V7Z" stroke-width="2.4"/><path pathLength="1" d="M14 3v5h4" stroke-width="2.4"/><path pathLength="1" d="M9 12h6" stroke-width="2.4"/><path pathLength="1" d="M9 16h4" stroke-width="2.4"/>';
+      if (status === 'green' && feature === 'audit') iconPath = '<path pathLength="1" d="m6 12 4 4 8-8" stroke-width="2.8"/>';
+      if (status === 'red' || status === 'error') iconPath = '<path pathLength="1" d="M8 8l8 8" stroke-width="2.7"/><path pathLength="1" d="M16 8l-8 8" stroke-width="2.7"/>';
+      if (status === 'yellow') iconPath = '<path pathLength="1" d="M12 4.1v9.4" stroke-width="3.6"/><path pathLength="1" d="M12 18.25v.02" stroke-width="4.4"/>';
+      if (status === 'disabled') iconPath = '<path pathLength="1" d="M8 10V7a4 4 0 0 1 8 0v3" stroke-width="2.4"/><rect pathLength="1" x="5" y="10" width="14" height="11" rx="3" stroke-width="2.4"/>';
+      if (running) iconPath = '<path class="aura-running-star" d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z"/>';
+      if (fetching) iconPath = '<circle cx="12" cy="12" r="8.1" fill="none" stroke="currentColor" stroke-width="2.7" opacity="0.22"/><path d="M12 3.9a8.1 8.1 0 0 1 0 16.2" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>';
+      return iconPath;
     }
     function iconSvgMarkup(feature, status, isLoading) {
-      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + iconMarkup(feature, status, isLoading) + '</svg>'
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + iconMarkup(feature, status, isLoading) + '</svg>';
     }
     function copyInnerMarkup(label, scoreMatch) {
       return '<span class="aura-status-text">' + escapeButtonText(label) + '</span>' +
-        (scoreMatch ? '<span class="aura-status-score"><b>' + escapeButtonText(scoreMatch[1]) + '</b><small>' + escapeButtonText(scoreMatch[2]) + '</small></span>' : '')
+        (scoreMatch ? '<span class="aura-status-score"><b>' + escapeButtonText(scoreMatch[1]) + '</b><small>' + escapeButtonText(scoreMatch[2]) + '</small></span>' : '');
     }
     function arrowMarkup() {
-      return '<svg class="aura-status-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>'
+      return '<svg class="aura-status-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>';
     }
     function statusMotionClass(status, isLoading, isEnter) {
-      var prefix = isEnter ? ' aura-status-button--enter' : ''
-      if (isLoading) return prefix + ' aura-status-button--loading'
-      if (status === 'loading') return prefix + ' aura-status-button--running'
-      if (status === 'red' || status === 'error') return prefix + ' aura-status-button--enter-shake'
-      if (status === 'green') return prefix + ' aura-status-button--enter-pop'
-      if (status === 'yellow') return prefix + ' aura-status-button--enter-bounce'
-      if (status === 'disabled') return prefix + ' aura-status-button--enter-fade'
-      return prefix + ' aura-status-button--enter-rise'
+      var prefix = isEnter ? ' aura-status-button--enter' : '';
+      if (isLoading) return prefix + ' aura-status-button--loading';
+      if (status === 'loading') return prefix + ' aura-status-button--running';
+      if (status === 'red' || status === 'error') return prefix + ' aura-status-button--enter-shake';
+      if (status === 'green') return prefix + ' aura-status-button--enter-pop';
+      if (status === 'yellow') return prefix + ' aura-status-button--enter-bounce';
+      if (status === 'disabled') return prefix + ' aura-status-button--enter-fade';
+      return prefix + ' aura-status-button--enter-rise';
     }
     function applyButtonTheme(btn, theme) {
-      btn.style.setProperty('--aura-status-color', theme.color)
-      btn.style.setProperty('--aura-status-tint', theme.bg)
-      btn.style.setProperty('--aura-status-surface', theme.surface)
-      btn.style.setProperty('--aura-status-border', theme.border)
-      btn.style.setProperty('--aura-status-shadow', theme.shadow)
+      btn.style.setProperty('--aura-status-color', theme.color);
+      btn.style.setProperty('--aura-status-tint', theme.bg);
+      btn.style.setProperty('--aura-status-surface', theme.surface);
+      btn.style.setProperty('--aura-status-border', theme.border);
+      btn.style.setProperty('--aura-status-shadow', theme.shadow);
     }
     function syncMotionClass(btn, status, isLoading, isEnter) {
-      STATUS_MOTION_CLASSES.forEach(function (name) { btn.classList.remove(name) })
+      STATUS_MOTION_CLASSES.forEach(function (name) { btn.classList.remove(name); });
       statusMotionClass(status, isLoading, isEnter).trim().split(/\s+/).forEach(function (name) {
-        if (name) btn.classList.add(name)
-      })
+        if (name) btn.classList.add(name);
+      });
     }
     function buttonInnerHtml(feature, status, displayText, isLoading) {
-      var parsed = parseButtonLabel(displayText)
-      var unavailable = status === 'disabled' || status === 'error'
+      var parsed = parseButtonLabel(displayText);
+      var unavailable = status === 'disabled' || status === 'error';
       return '<span class="aura-status-icon" aria-hidden="true">' + iconSvgMarkup(feature, status, isLoading) + '</span>' +
         '<span class="aura-status-copy" aria-hidden="true"><span class="aura-status-copy-inner">' + copyInnerMarkup(parsed.label, parsed.scoreMatch) + '</span></span>' +
-        (!unavailable && !isLoading ? arrowMarkup() : '')
+        (!unavailable && !isLoading ? arrowMarkup() : '');
     }
     function buildStatusButton(btnId, feature, status, displayText, isLoading, isEnter) {
-      var theme = buttonTheme(status, isLoading)
-      var unavailable = status === 'disabled' || status === 'error'
-      return '<button id="' + btnId + '" type="button" class="aura-status-button' + statusMotionClass(status, isLoading, isEnter !== false) + '" aria-disabled="' + (unavailable || isLoading ? 'true' : 'false') + '" style="--aura-status-color:' + theme.color + ';--aura-status-tint:' + theme.bg + ';--aura-status-surface:' + theme.surface + ';--aura-status-border:' + theme.border + ';--aura-status-shadow:' + theme.shadow + ';">' +
+      var theme = buttonTheme(status, isLoading);
+      var unavailable = status === 'disabled' || status === 'error';
+      var parsed = parseButtonLabel(displayText);
+      var compactClass = ' aura-is-compact';
+      var iconOnlyClass = !parsed.scoreMatch ? ' aura-status-button--icon-only' : '';
+      return '<button id="' + btnId + '" type="button" class="aura-status-button' + compactClass + iconOnlyClass + statusMotionClass(status, isLoading, isEnter !== false) + '" aria-disabled="' + (unavailable || isLoading ? 'true' : 'false') + '" style="--aura-status-color:' + theme.color + ';--aura-status-tint:' + theme.bg + ';--aura-status-surface:' + theme.surface + ';--aura-status-border:' + theme.border + ';--aura-status-shadow:' + theme.shadow + ';">' +
         buttonInnerHtml(feature, status, displayText, isLoading) +
-      '</button>'
+      '</button>';
     }
+
     function createButtonPainter(paint) {
-      var timer = null, next = null, shownAt = 0, busy = false
+      var timer = null, next = null, shownAt = 0, busy = false;
       function flush() {
-        timer = null
-        var payload = next
-        next = null
-        if (!payload) return
-        paint(payload)
-        busy = isBusyStatus(payload.status, payload.isLoading)
-        if (busy) shownAt = Date.now()
+        timer = null;
+        var payload = next;
+        next = null;
+        if (!payload) return;
+        paint(payload);
+        busy = isBusyStatus(payload.status, payload.isLoading);
+        if (busy) shownAt = Date.now();
       }
       return function (payload) {
-        next = payload
-        if (timer) return
-        var wait = busy && !prefersReducedMotion() ? Math.max(0, BUTTON_BUSY_MIN_MS - (Date.now() - shownAt)) : 0
-        if (!wait) { flush(); return }
-        timer = setTimeout(flush, wait)
-      }
+        next = payload;
+        if (timer) return;
+        var wait = busy && !prefersReducedMotion() ? Math.max(0, BUTTON_BUSY_MIN_MS - (Date.now() - shownAt)) : 0;
+        if (!wait) { flush(); return; }
+        timer = setTimeout(flush, wait);
+      };
     }
+
     function finishButtonMorph(btn) {
-      var icon = btn.querySelector('.aura-status-icon')
-      var copy = btn.querySelector('.aura-status-copy')
-      var inIcon = icon && icon.querySelector('.aura-status-icon-layer--in')
-      var inCopy = copy && copy.querySelector('.aura-status-copy-inner--in')
-      if (inIcon) icon.innerHTML = inIcon.innerHTML
-      if (inCopy) copy.innerHTML = '<span class="aura-status-copy-inner">' + inCopy.innerHTML + '</span>'
-      var outArrow = btn.querySelector('.aura-status-arrow--out')
-      if (outArrow) outArrow.remove()
-      var inArrow = btn.querySelector('.aura-status-arrow--in')
-      if (inArrow) inArrow.classList.remove('aura-status-arrow--in')
-      btn.classList.remove('aura-status-button--morph')
-      btn.style.width = ''
-      btn.style.transition = ''
-      btn._auraMorphTimer = null
+      var icon = btn.querySelector('.aura-status-icon');
+      var copy = btn.querySelector('.aura-status-copy');
+      var inIcon = icon && icon.querySelector('.aura-status-icon-layer--in');
+      var inCopy = copy && copy.querySelector('.aura-status-copy-inner--in');
+      if (inIcon) icon.innerHTML = inIcon.innerHTML;
+      if (inCopy) copy.innerHTML = '<span class="aura-status-copy-inner">' + inCopy.innerHTML + '</span>';
+      var outArrow = btn.querySelector('.aura-status-arrow--out');
+      if (outArrow) outArrow.remove();
+      var inArrow = btn.querySelector('.aura-status-arrow--in');
+      if (inArrow) inArrow.classList.remove('aura-status-arrow--in');
+      btn.classList.remove('aura-status-button--morph');
+      btn.style.width = '';
+      btn.style.transition = '';
+      btn._auraMorphTimer = null;
     }
+
     function morphStatusButton(btn, feature, status, displayText, isLoading) {
-      var theme = buttonTheme(status, isLoading)
-      var unavailable = status === 'disabled' || status === 'error'
-      var parsed = parseButtonLabel(displayText)
-      var nextIcon = iconSvgMarkup(feature, status, isLoading)
-      var nextCopyInner = copyInnerMarkup(parsed.label, parsed.scoreMatch)
-      var showArrow = !unavailable && !isLoading
-      var iconKey = feature + '|' + status + '|' + (isLoading ? '1' : '0')
-      var fromWidth = btn.getBoundingClientRect().width
+      var theme = buttonTheme(status, isLoading);
+      var unavailable = status === 'disabled' || status === 'error';
+      var parsed = parseButtonLabel(displayText);
+      var nextIcon = iconSvgMarkup(feature, status, isLoading);
+      var nextCopyInner = copyInnerMarkup(parsed.label, parsed.scoreMatch);
+      var showArrow = !unavailable && !isLoading;
+      var iconKey = feature + '|' + status + '|' + (isLoading ? '1' : '0');
+      var fromWidth = btn.getBoundingClientRect().width;
+
       if (btn._auraMorphTimer) {
-        clearTimeout(btn._auraMorphTimer)
-        finishButtonMorph(btn)
-        fromWidth = btn.getBoundingClientRect().width
+        clearTimeout(btn._auraMorphTimer);
+        finishButtonMorph(btn);
+        fromWidth = btn.getBoundingClientRect().width;
       }
-      applyButtonTheme(btn, theme)
-      btn.setAttribute('aria-disabled', (unavailable || isLoading) ? 'true' : 'false')
+      applyButtonTheme(btn, theme);
+      btn.setAttribute('aria-disabled', (unavailable || isLoading) ? 'true' : 'false');
+      btn.classList.add('aura-is-compact');
+      btn.classList.toggle('aura-status-button--icon-only', !parsed.scoreMatch);
+
       if (prefersReducedMotion()) {
-        syncMotionClass(btn, status, isLoading, false)
-        btn.innerHTML = buttonInnerHtml(feature, status, displayText, isLoading)
-        btn.setAttribute('data-aura-icon', iconKey)
-        btn.setAttribute('data-aura-copy', displayText)
-        return
+        syncMotionClass(btn, status, isLoading, false);
+        btn.innerHTML = buttonInnerHtml(feature, status, displayText, isLoading);
+        btn.setAttribute('data-aura-icon', iconKey);
+        btn.setAttribute('data-aura-copy', displayText);
+        return;
       }
-      var icon = btn.querySelector('.aura-status-icon')
-      var copy = btn.querySelector('.aura-status-copy')
-      var iconChanged = btn.getAttribute('data-aura-icon') !== iconKey
-      var copyChanged = btn.getAttribute('data-aura-copy') !== displayText
-      btn.setAttribute('data-aura-icon', iconKey)
-      btn.setAttribute('data-aura-copy', displayText)
+      var icon = btn.querySelector('.aura-status-icon');
+      var copy = btn.querySelector('.aura-status-copy');
+      var iconChanged = btn.getAttribute('data-aura-icon') !== iconKey;
+      var copyChanged = btn.getAttribute('data-aura-copy') !== displayText;
+      btn.setAttribute('data-aura-icon', iconKey);
+      btn.setAttribute('data-aura-copy', displayText);
+
       if (iconChanged) {
-        icon.innerHTML = '<span class="aura-status-icon-layer aura-status-icon-layer--out">' + icon.innerHTML + '</span><span class="aura-status-icon-layer aura-status-icon-layer--in">' + nextIcon + '</span>'
+        icon.innerHTML = '<span class="aura-status-icon-layer aura-status-icon-layer--out">' + icon.innerHTML + '</span><span class="aura-status-icon-layer aura-status-icon-layer--in">' + nextIcon + '</span>';
       }
       if (copyChanged) {
-        var oldCopy = copy.querySelector('.aura-status-copy-inner')
-        copy.innerHTML = '<span class="aura-status-copy-inner aura-status-copy-inner--out">' + (oldCopy ? oldCopy.innerHTML : '') + '</span><span class="aura-status-copy-inner aura-status-copy-inner--in">' + nextCopyInner + '</span>'
+        var oldCopy = copy.querySelector('.aura-status-copy-inner');
+        copy.innerHTML = '<span class="aura-status-copy-inner aura-status-copy-inner--out">' + (oldCopy ? oldCopy.innerHTML : '') + '</span><span class="aura-status-copy-inner aura-status-copy-inner--in">' + nextCopyInner + '</span>';
       }
-      var arrow = btn.querySelector('.aura-status-arrow:not(.aura-status-arrow--out)')
+      var arrow = btn.querySelector('.aura-status-arrow:not(.aura-status-arrow--out)');
       if (showArrow && !arrow) {
-        var holder = document.createElement('div')
-        holder.innerHTML = arrowMarkup()
-        holder.firstChild.classList.add('aura-status-arrow--in')
-        btn.appendChild(holder.firstChild)
+        var holder = document.createElement('div');
+        holder.innerHTML = arrowMarkup();
+        holder.firstChild.classList.add('aura-status-arrow--in');
+        btn.appendChild(holder.firstChild);
       } else if (!showArrow && arrow) {
-        arrow.classList.add('aura-status-arrow--out')
+        arrow.classList.add('aura-status-arrow--out');
       }
-      syncMotionClass(btn, status, isLoading, false)
-      btn.classList.add('aura-status-button--morph')
-      btn.classList.remove('aura-status-button--shine')
-      void btn.offsetWidth
-      btn.classList.add('aura-status-button--shine')
-      btn.style.transition = 'background-color .45s ease,border-color .45s ease,box-shadow .45s ease,color .22s ease'
-      btn.style.width = fromWidth + 'px'
-      void btn.offsetWidth
-      btn.style.width = 'auto'
-      var toWidth = btn.getBoundingClientRect().width
-      btn.style.width = fromWidth + 'px'
-      void btn.offsetWidth
-      btn.style.transition = ''
-      btn.style.width = Math.abs(toWidth - fromWidth) >= 0.5 ? toWidth + 'px' : ''
-      btn._auraMorphTimer = setTimeout(function () { finishButtonMorph(btn) }, 520)
+
+      syncMotionClass(btn, status, isLoading, false);
+      btn.classList.add('aura-status-button--morph');
+      btn.classList.remove('aura-status-button--shine');
+      void btn.offsetWidth;
+      btn.classList.add('aura-status-button--shine');
+      btn.style.transition = 'background-color .45s ease,border-color .45s ease,box-shadow .45s ease,color .22s ease';
+      btn.style.width = fromWidth + 'px';
+      void btn.offsetWidth;
+      btn.style.width = 'auto';
+      var toWidth = btn.getBoundingClientRect().width;
+      btn.style.width = fromWidth + 'px';
+      void btn.offsetWidth;
+      btn.style.transition = '';
+      btn.style.width = Math.abs(toWidth - fromWidth) >= 0.5 ? toWidth + 'px' : '';
+      btn._auraMorphTimer = setTimeout(function () { finishButtonMorph(btn); }, 520);
     }
+
     function upsertStatusButton(group, btnId, feature, status, displayText, isLoading) {
-      var btn = document.getElementById(btnId)
+      var btn = document.getElementById(btnId);
       if (!btn || btn.parentNode !== group) {
-        var wrap = document.createElement('div')
-        wrap.innerHTML = buildStatusButton(btnId, feature, status, displayText, isLoading, true)
-        btn = wrap.firstChild
-        btn.setAttribute('data-aura-icon', feature + '|' + status + '|' + (isLoading ? '1' : '0'))
-        btn.setAttribute('data-aura-copy', displayText)
-        if (btnId.indexOf('Audit') !== -1 && group.firstChild) group.insertBefore(btn, group.firstChild)
-        else group.appendChild(btn)
-        return btn
+        var wrap = document.createElement('div');
+        wrap.innerHTML = buildStatusButton(btnId, feature, status, displayText, isLoading, true);
+        btn = wrap.firstChild;
+        btn.setAttribute('data-aura-icon', feature + '|' + status + '|' + (isLoading ? '1' : '0'));
+        btn.setAttribute('data-aura-copy', displayText);
+        if (btnId.indexOf('Audit') !== -1 && group.firstChild) group.insertBefore(btn, group.firstChild);
+        else group.appendChild(btn);
+        return btn;
       }
-      morphStatusButton(btn, feature, status, displayText, isLoading)
-      return btn
-    }
-    function jumpStatusButton(group, btnId, feature, status, displayText, isLoading) {
-      var html = buildStatusButton(btnId, feature, status, displayText, isLoading, true)
-      var existing = document.getElementById(btnId)
-      if (!existing) {
-        group.insertAdjacentHTML('beforeend', html)
-        return
-      }
-      existing.outerHTML = html
+      morphStatusButton(btn, feature, status, displayText, isLoading);
+      return btn;
     }
 
-    var galleryItems = [
-      { id: 'g-pass', feature: 'audit', status: 'green', text: '审核通过 (95分)', loading: false, motion: 'aura-status-button--enter-bounce' },
-      { id: 'g-watch', feature: 'audit', status: 'yellow', text: '建议关注 (78分)', loading: false, motion: 'aura-status-button--enter-bounce' },
-      { id: 'g-return', feature: 'audit', status: 'red', text: '建议退回 (45分)', loading: false, motion: 'aura-status-button--enter-shake' },
-      { id: 'g-run', feature: 'audit', status: 'loading', text: '审核分析中', loading: false, motion: 'aura-status-button--running' },
-      { id: 'g-load', feature: 'audit', status: 'gray', text: '加载中...', loading: true, motion: 'aura-status-button--loading' },
-      { id: 'g-lock', feature: 'audit', status: 'disabled', text: '保存查看AI智审', loading: false, motion: 'aura-status-button--enter-fade' }
-    ]
-    var gallery = document.getElementById('gallery')
-    galleryItems.forEach(function (item) {
-      gallery.insertAdjacentHTML('beforeend', buildStatusButton(item.id, item.feature, item.status, item.text, item.loading, true))
-    })
+    /* 拖拽与长按 Tooltip 系统 */
+    var dragSession = {
+      isDown: false,
+      hasMoved: false,
+      startX: 0,
+      startY: 0,
+      initialLeft: 0,
+      initialTop: 0,
+      longPressTimer: null,
+      longPressTriggered: false,
+      targetBtn: null,
+      ignoreNextClick: false
+    };
 
-    document.getElementById('replay').addEventListener('click', function () {
-      gallery.querySelectorAll('.aura-status-button').forEach(function (button) {
-        button.classList.remove('aura-status-button--enter')
-        void button.offsetWidth
-        button.classList.add('aura-status-button--enter')
-      })
-    })
+    var activeTooltipEl = null;
+    function hideTooltip() {
+      if (activeTooltipEl && activeTooltipEl.parentNode) {
+        activeTooltipEl.classList.remove('aura-embed-tooltip--visible');
+        var el = activeTooltipEl;
+        activeTooltipEl = null;
+        setTimeout(function () {
+          if (el.parentNode) el.parentNode.removeChild(el);
+        }, 200);
+      }
+    }
 
-    var smoothGroup = document.getElementById('smoothGroup')
-    var jumpGroup = document.getElementById('jumpGroup')
-    var floatGroup = document.getElementById('statusGroup')
-    var hint = document.getElementById('smoothHint')
+    function showTooltipForButton(btn, text) {
+      hideTooltip();
+      if (!btn || !text) return;
+      var tip = document.createElement('div');
+      tip.className = 'aura-embed-tooltip';
+      tip.textContent = text;
+
+      try {
+        if (btn.style && btn.style.getPropertyValue) {
+          var c = btn.style.getPropertyValue('--aura-status-color');
+          var tint = btn.style.getPropertyValue('--aura-status-tint');
+          var surface = btn.style.getPropertyValue('--aura-status-surface');
+          var border = btn.style.getPropertyValue('--aura-status-border');
+          var shadow = btn.style.getPropertyValue('--aura-status-shadow');
+          if (c) tip.style.setProperty('--aura-status-color', c);
+          if (tint) tip.style.setProperty('--aura-status-tint', tint);
+          if (surface) tip.style.setProperty('--aura-status-surface', surface);
+          if (border) tip.style.setProperty('--aura-status-border', border);
+          if (shadow) tip.style.setProperty('--aura-status-shadow', shadow);
+        }
+      } catch (e) {}
+
+      document.body.appendChild(tip);
+      activeTooltipEl = tip;
+
+      try {
+        var rect = btn.getBoundingClientRect();
+        var tipRect = tip.getBoundingClientRect();
+        var top = rect.top - (tipRect.height || 32) - 8;
+        if (top < 12) {
+          top = rect.bottom + 8;
+        }
+        var winWidth = window.innerWidth || 360;
+        var tipWidth = tipRect.width || 140;
+        var left = rect.left + (rect.width - tipWidth) / 2;
+        var maxLeft = winWidth - tipWidth - 12;
+        if (left < 12) left = 12;
+        if (left > maxLeft) left = maxLeft;
+
+        tip.style.top = top + 'px';
+        tip.style.left = left + 'px';
+        void tip.offsetWidth;
+        tip.classList.add('aura-embed-tooltip--visible');
+      } catch (e) {}
+    }
+
+    function setupDraggableFloatContainer(containerEl) {
+      if (!containerEl || containerEl.getAttribute('data-aura-drag-bound') === '1') return;
+      containerEl.setAttribute('data-aura-drag-bound', '1');
+
+      function onMouseEnter(e) {
+        if (dragSession.hasMoved || dragSession.isDown) return;
+        var target = e.target;
+        while (target && target !== containerEl && !(target.classList && target.classList.contains('aura-status-button'))) {
+          target = target.parentNode;
+        }
+        var btn = (target && target.classList && target.classList.contains('aura-status-button')) ? target : null;
+        if (!btn) return;
+        var tipText = (btn.getAttribute && btn.getAttribute('data-aura-copy'))
+          || (btn.querySelector && btn.querySelector('.aura-status-text') && btn.querySelector('.aura-status-text').textContent)
+          || 'AI 详情';
+        var isSummary = btn.id && btn.id.indexOf('Summary') !== -1;
+        showTooltipForButton(btn, (isSummary ? 'AI 流程总结 · ' : 'AI 流程审核 · ') + tipText);
+      }
+
+      function onMouseLeave() {
+        if (!dragSession.isDown) {
+          hideTooltip();
+        }
+      }
+
+      function onPointerDown(e) {
+        if (e.type === 'mousedown' && e.button !== 0) return;
+        var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        var target = e.target;
+        while (target && target !== containerEl && !(target.classList && target.classList.contains('aura-status-button'))) {
+          target = target.parentNode;
+        }
+        var btn = (target && target.classList && target.classList.contains('aura-status-button')) ? target : null;
+
+        var rect = containerEl.getBoundingClientRect();
+        dragSession.isDown = true;
+        dragSession.hasMoved = false;
+        dragSession.longPressTriggered = false;
+        dragSession.startX = clientX;
+        dragSession.startY = clientY;
+        dragSession.initialLeft = rect.left;
+        dragSession.initialTop = rect.top;
+        dragSession.targetBtn = btn;
+
+        if (dragSession.longPressTimer) {
+          clearTimeout(dragSession.longPressTimer);
+          dragSession.longPressTimer = null;
+        }
+        dragSession.longPressTimer = setTimeout(function () {
+          if (dragSession.isDown && !dragSession.hasMoved && dragSession.targetBtn) {
+            dragSession.longPressTriggered = true;
+            dragSession.ignoreNextClick = true;
+            var tipText = dragSession.targetBtn.getAttribute('data-aura-copy')
+              || (dragSession.targetBtn.querySelector('.aura-status-text') && dragSession.targetBtn.querySelector('.aura-status-text').textContent)
+              || 'AI 详情';
+            var isSummary = dragSession.targetBtn.id && dragSession.targetBtn.id.indexOf('Summary') !== -1;
+            showTooltipForButton(dragSession.targetBtn, (isSummary ? 'AI 流程总结 · ' : 'AI 流程审核 · ') + tipText);
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+              try { navigator.vibrate(20); } catch (err) {}
+            }
+          }
+        }, 450);
+      }
+
+      function onPointerMove(e) {
+        if (!dragSession.isDown) return;
+        var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        var dx = clientX - dragSession.startX;
+        var dy = clientY - dragSession.startY;
+
+        if (!dragSession.hasMoved && Math.hypot(dx, dy) > 5) {
+          dragSession.hasMoved = true;
+          dragSession.ignoreNextClick = true;
+          if (dragSession.longPressTimer) {
+            clearTimeout(dragSession.longPressTimer);
+            dragSession.longPressTimer = null;
+          }
+          hideTooltip();
+          containerEl.classList.add('aura-is-dragging');
+          containerEl.classList.remove('aura-float--bottom-left');
+          containerEl.classList.remove('aura-float--top-right');
+          containerEl.style.bottom = 'auto';
+          containerEl.style.right = 'auto';
+        }
+
+        if (dragSession.hasMoved) {
+          if (e.cancelable) e.preventDefault();
+          var winWidth = window.innerWidth || 360;
+          var winHeight = window.innerHeight || 640;
+          var cWidth = containerEl.offsetWidth || 120;
+          var cHeight = containerEl.offsetHeight || 44;
+
+          var minLeft = 8;
+          var maxLeft = Math.max(minLeft, winWidth - cWidth - 8);
+          var minTop = 8;
+          var maxTop = Math.max(minTop, winHeight - cHeight - 8);
+
+          var newLeft = dragSession.initialLeft + dx;
+          var newTop = dragSession.initialTop + dy;
+
+          newLeft = Math.max(minLeft, Math.min(maxLeft, newLeft));
+          newTop = Math.max(minTop, Math.min(maxTop, newTop));
+
+          containerEl.style.left = newLeft + 'px';
+          containerEl.style.top = newTop + 'px';
+        }
+      }
+
+      function onPointerUp() {
+        if (!dragSession.isDown) return;
+        dragSession.isDown = false;
+        if (dragSession.longPressTimer) {
+          clearTimeout(dragSession.longPressTimer);
+          dragSession.longPressTimer = null;
+        }
+        if (dragSession.hasMoved) {
+          containerEl.classList.remove('aura-is-dragging');
+          setTimeout(function () {
+            dragSession.hasMoved = false;
+            dragSession.ignoreNextClick = false;
+          }, 120);
+        } else if (dragSession.longPressTriggered) {
+          setTimeout(function () {
+            hideTooltip();
+            dragSession.longPressTriggered = false;
+            dragSession.ignoreNextClick = false;
+          }, 1200);
+        }
+      }
+
+      containerEl.addEventListener('touchstart', onPointerDown, { passive: true });
+      containerEl.addEventListener('mousedown', onPointerDown);
+      containerEl.addEventListener('mouseover', onMouseEnter);
+      containerEl.addEventListener('mouseleave', onMouseLeave);
+      window.addEventListener('touchmove', onPointerMove, { passive: false });
+      window.addEventListener('touchend', onPointerUp, { passive: true });
+      window.addEventListener('touchcancel', onPointerUp, { passive: true });
+      window.addEventListener('mousemove', onPointerMove);
+      window.addEventListener('mouseup', onPointerUp);
+    }
+
+    var floatContainer = document.getElementById('auraMobileEmbedFloatContainer');
+    setupDraggableFloatContainer(floatContainer);
+
+    function bindHoverTooltip(container) {
+      if (!container) return;
+      container.addEventListener('mouseover', function (e) {
+        var target = e.target;
+        while (target && target !== container && !(target.classList && target.classList.contains('aura-status-button'))) {
+          target = target.parentNode;
+        }
+        var btn = (target && target.classList && target.classList.contains('aura-status-button')) ? target : null;
+        if (!btn) return;
+        var tipText = (btn.getAttribute && btn.getAttribute('data-aura-copy'))
+          || (btn.querySelector && btn.querySelector('.aura-status-text') && btn.querySelector('.aura-status-text').textContent)
+          || 'AI 详情';
+        var isSummary = btn.id && btn.id.indexOf('Summary') !== -1;
+        showTooltipForButton(btn, (isSummary ? 'AI 流程总结 · ' : 'AI 流程审核 · ') + tipText);
+      });
+      container.addEventListener('mouseleave', function () {
+        hideTooltip();
+      });
+    }
+
+    bindHoverTooltip(document.getElementById('stageGroup'));
+    bindHoverTooltip(document.getElementById('galleryGroup'));
+
+    /* 业务场景数据定义 */
+    var stageGroup = document.getElementById('stageGroup');
+    var floatGroup = document.getElementById('floatGroup');
+    var stageHint = document.getElementById('stageHint');
+
     var scenes = {
-      'fast-pass': { delay: 120, hint: '接口 120ms 返回，按钮仍会把「加载中」停够再滑到通过。', steps: [
-        { id: 'demoSmooth', feature: 'audit', status: 'gray', text: '加载中...', loading: true },
-        { id: 'demoSmooth', feature: 'audit', status: 'green', text: '审核通过 (95分)', loading: false }
-      ]},
-      'fast-watch': { delay: 120, hint: '同样是快速返回，胶囊从蓝滑到琥珀，而不是换成另一颗按钮。', steps: [
-        { id: 'demoSmooth', feature: 'audit', status: 'gray', text: '加载中...', loading: true },
-        { id: 'demoSmooth', feature: 'audit', status: 'yellow', text: '建议关注 (78分)', loading: false }
-      ]},
-      'fast-return': { delay: 160, hint: '退回时宽度会略变，图标交叉淡出，对号换成叉号。', steps: [
-        { id: 'demoSmooth', feature: 'audit', status: 'gray', text: '加载中...', loading: true },
-        { id: 'demoSmooth', feature: 'audit', status: 'red', text: '建议退回 (45分)', loading: false }
-      ]},
-      'running-pass': { delay: 900, hint: '先看到「审核分析中」，再变形到通过，适合真实审完回写。', steps: [
-        { id: 'demoSmooth', feature: 'audit', status: 'loading', text: '审核分析中', loading: false },
-        { id: 'demoSmooth', feature: 'audit', status: 'green', text: '审核通过 (95分)', loading: false }
-      ]},
-      'dual': { delay: 180, hint: '两个胶囊互不影响：审核先出结果，总结仍转圈，随后再滑过去。', steps: [
-        { id: 'demoAudit', feature: 'audit', status: 'gray', text: '审核加载中...', loading: true },
-        { id: 'demoSummary', feature: 'summary', status: 'gray', text: '总结加载中...', loading: true, wait: 0 },
-        { id: 'demoAudit', feature: 'audit', status: 'green', text: '审核通过 (95分)', loading: false },
-        { id: 'demoSummary', feature: 'summary', status: 'green', text: '查看流程总结', loading: false, wait: 700 }
-      ]}
-    }
+      'fast-pass': {
+        delay: 120,
+        hint: '接口 120ms 快速返回：忙碌态停留后平滑滑向【审核通过 (95分)】，微型胶囊只显示图标与数字。',
+        steps: [
+          { id: 'btnAudit', feature: 'audit', status: 'gray', text: '加载中...', loading: true },
+          { id: 'btnAudit', feature: 'audit', status: 'green', text: '审核通过 (95分)', loading: false }
+        ]
+      },
+      'fast-watch': {
+        delay: 120,
+        hint: '快速返回关注状态：琥珀色高亮，分数 78 分，原地变形。',
+        steps: [
+          { id: 'btnAudit', feature: 'audit', status: 'gray', text: '加载中...', loading: true },
+          { id: 'btnAudit', feature: 'audit', status: 'yellow', text: '建议关注 (78分)', loading: false }
+        ]
+      },
+      'fast-return': {
+        delay: 160,
+        hint: '快速返回退回建议：警示红，图标交叉淡出切换为叉号，分数 45 分。',
+        steps: [
+          { id: 'btnAudit', feature: 'audit', status: 'gray', text: '加载中...', loading: true },
+          { id: 'btnAudit', feature: 'audit', status: 'red', text: '建议退回 (45分)', loading: false }
+        ]
+      },
+      'running-pass': {
+        delay: 900,
+        hint: '分析中状态（带流转动效）→ 分析完成通过。长按可随时弹出完整进度说明。',
+        steps: [
+          { id: 'btnAudit', feature: 'audit', status: 'loading', text: '审核分析中', loading: false },
+          { id: 'btnAudit', feature: 'audit', status: 'green', text: '审核通过 (95分)', loading: false }
+        ]
+      },
+      'dual': {
+        delay: 200,
+        hint: '双按钮模式：审核与流程总结独立运行，各自根据分析状态进行优雅变形。',
+        steps: [
+          { id: 'btnAudit', feature: 'audit', status: 'gray', text: '审核加载中...', loading: true },
+          { id: 'btnSummary', feature: 'summary', status: 'gray', text: '总结加载中...', loading: true, wait: 0 },
+          { id: 'btnAudit', feature: 'audit', status: 'green', text: '审核通过 (95分)', loading: false, wait: 200 },
+          { id: 'btnSummary', feature: 'summary', status: 'green', text: '查看流程总结', loading: false, wait: 600 }
+        ]
+      }
+    };
 
-    var painters = {}
+    var painters = {};
     function painterFor(id) {
       if (!painters[id]) {
         painters[id] = createButtonPainter(function (payload) {
-          upsertStatusButton(payload.group, payload.id, payload.feature, payload.status, payload.text, payload.loading)
-        })
+          upsertStatusButton(payload.group, payload.id, payload.feature, payload.status, payload.text, payload.loading);
+        });
       }
-      return painters[id]
+      return painters[id];
     }
 
-    function resetGroups() {
-      smoothGroup.innerHTML = ''
-      jumpGroup.innerHTML = ''
-      floatGroup.innerHTML = ''
-      painters = {}
-    }
-
+    var currentScene = 'fast-pass';
     function playScene(name) {
-      var scene = scenes[name]
-      resetGroups()
-      hint.textContent = scene.hint
-      document.querySelectorAll('#sceneRow button').forEach(function (btn) {
-        btn.classList.toggle('is-on', btn.getAttribute('data-scene') === name)
-      })
+      currentScene = name;
+      var scene = scenes[name];
+      stageGroup.innerHTML = '';
+      floatGroup.innerHTML = '';
+      painters = {};
+      stageHint.textContent = scene.hint;
 
-      var elapsed = 0
+      document.querySelectorAll('#sceneSwitchRow button').forEach(function (btn) {
+        btn.classList.toggle('is-active', btn.getAttribute('data-scene') === name);
+      });
+
+      var elapsed = 0;
       scene.steps.forEach(function (step, index) {
-        elapsed += index === 0 ? 0 : (step.wait || scene.delay)
+        elapsed += index === 0 ? 0 : (step.wait || scene.delay);
         setTimeout(function () {
-          if (name === 'dual') {
-            painterFor(step.id)({ group: smoothGroup, id: step.id, feature: step.feature, status: step.status, text: step.text, isLoading: step.loading, loading: step.loading })
-            jumpStatusButton(jumpGroup, step.id + 'Jump', step.feature, step.status, step.text, step.loading)
-            painterFor(step.id + 'Float')({ group: floatGroup, id: step.id + 'Float', feature: step.feature, status: step.status, text: step.text, isLoading: step.loading, loading: step.loading })
-            return
-          }
-          painterFor('demoSmooth')({ group: smoothGroup, id: 'demoSmooth', feature: step.feature, status: step.status, text: step.text, isLoading: step.loading, loading: step.loading })
-          jumpStatusButton(jumpGroup, 'demoJump', step.feature, step.status, step.text, step.loading)
-          painterFor('demoFloat')({ group: floatGroup, id: 'demoFloat', feature: step.feature, status: step.status, text: step.text, isLoading: step.loading, loading: step.loading })
-        }, elapsed)
-      })
+          painterFor(step.id + '_stage')({
+            group: stageGroup, id: step.id + '_stage', feature: step.feature, status: step.status, text: step.text, loading: step.loading
+          });
+          painterFor(step.id + '_float')({
+            group: floatGroup, id: step.id + '_float', feature: step.feature, status: step.status, text: step.text, loading: step.loading
+          });
+        }, elapsed);
+      });
     }
 
-    document.getElementById('sceneRow').addEventListener('click', function (event) {
-      var scene = event.target.getAttribute('data-scene')
-      if (scene) playScene(scene)
-    })
+    /* 画廊展示 */
+    var galleryItems = [
+      { id: 'g-pass', feature: 'audit', status: 'green', text: '审核通过 (95分)', loading: false },
+      { id: 'g-watch', feature: 'audit', status: 'yellow', text: '建议关注 (78分)', loading: false },
+      { id: 'g-return', feature: 'audit', status: 'red', text: '建议退回 (45分)', loading: false },
+      { id: 'g-run', feature: 'audit', status: 'loading', text: '审核分析中', loading: false },
+      { id: 'g-load', feature: 'audit', status: 'gray', text: '加载中...', loading: true },
+      { id: 'g-lock', feature: 'audit', status: 'disabled', text: '保存查看AI智审', loading: false }
+    ];
 
-    document.querySelectorAll('.aura-status-group').forEach(function (group) {
-      group.addEventListener('click', function (event) {
-        var button = event.target.closest('.aura-status-button')
-        if (!button) return
-        var label = button.querySelector('.aura-status-text')
-        alert('点击：' + ((label && label.textContent) || '状态按钮'))
-      })
-    })
+    function renderGallery() {
+      var gallery = document.getElementById('galleryGroup');
+      gallery.innerHTML = '';
+      galleryItems.forEach(function (item) {
+        gallery.insertAdjacentHTML('beforeend', buildStatusButton(item.id, item.feature, item.status, item.text, item.loading, true));
+      });
+    }
 
-    playScene('fast-pass')
+    /* 交互绑定 */
+    document.getElementById('sceneSwitchRow').addEventListener('click', function (e) {
+      var scene = e.target.getAttribute('data-scene');
+      if (scene) playScene(scene);
+    });
+
+
+    document.getElementById('positionResetRow').addEventListener('click', function (e) {
+      var pos = e.target.getAttribute('data-pos');
+      if (!pos) return;
+      floatContainer.classList.remove('aura-float--top-right', 'aura-float--bottom-left');
+      floatContainer.style.left = '';
+      floatContainer.style.top = '';
+      floatContainer.style.bottom = '';
+      floatContainer.style.right = '';
+      floatContainer.classList.add('aura-float--' + pos);
+    });
+
+    document.getElementById('replayGalleryBtn').addEventListener('click', function () {
+      renderGallery();
+    });
+
+    // 按钮点击处理（区分拖动和点击）
+    function handleButtonClick(e) {
+      if (dragSession.ignoreNextClick || dragSession.hasMoved || dragSession.longPressTriggered) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      var btn = e.target.closest('.aura-status-button');
+      if (!btn) return;
+      var text = btn.getAttribute('data-aura-copy') || 'AI 状态详情';
+      alert('【模拟点击】已触发调起详情弹窗：\n' + text);
+    }
+
+    stageGroup.addEventListener('click', handleButtonClick);
+    floatGroup.addEventListener('click', handleButtonClick);
+    document.getElementById('galleryGroup').addEventListener('click', handleButtonClick);
+
+    // 启动初始场景
+    playScene('fast-pass');
+    renderGallery();
   </script>
 </body>
 </html>
