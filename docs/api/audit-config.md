@@ -120,6 +120,16 @@ GET /api/tenant/rules/audit-rules
 
 ---
 
+规则新增可选字段 `applicability_condition`（适用前提，字符串，最多 5000 字符），列表与创建/更新响应均返回该字段。
+
+- 留空或未设置：沿用原有逻辑，直接校验规则正文。
+- 满足前提：校验 `rule_content`，按实际结果判定通过或不通过。
+- 前提明确不满足：直接通过（`passed=true`），原因说明前提不满足，不扣分、不增加风险；强制执行规则也遵循此逻辑。
+- 判断前提的证据缺失不等于前提不满足，按既有审核尺度处理。
+
+创建时省略默认为空；更新时省略保持原值，传 `""` 可清空。结果仍只有通过/不通过，不增加状态。
+字段同步保留在配置导入导出、草稿、发布版本和执行快照中；旧配置没有此字段时视为空。
+
 ### 创建规则
 
 ```
@@ -185,7 +195,7 @@ Content-Type: multipart/form-data
 | `config_id` | uuid | 必填，当前流程审核配置 ID |
 | `file` | file | 必填，类型与大小受系统附件识别配置限制 |
 
-服务端先按文件类型和管理员选择路由到内置解析、代码文档解析服务或 MinerU，再通过 `AIModelCallerService` 生成结构化规则草稿。此接口**不写入规则库**。每条草稿包含 `rule_content`、`rule_scope`、`related_flow`、`context_recommended`、`confidence`、`reasoning`。
+服务端先按文件类型和管理员选择路由到内置解析、代码文档解析服务或 MinerU，再通过 `AIModelCallerService` 生成结构化规则草稿。此接口**不写入规则库**。每条草稿包含 `rule_content`、`applicability_condition`、`rule_scope`、`related_flow`、`context_recommended`、`confidence`、`reasoning`。
 
 AI 对规则级别、审批流依赖与外部数据依赖的判断均为建议值。判断外部数据依赖时会同时参考当前流程已配置的主表与明细字段；`context_recommended=true` 只表示规则可能需要当前表单和审批历史之外的数据，不会直接设置 `context_enabled`，也不会虚构 `context_mounts`。只有管理员在规则编辑器中配置至少一个启用的挂载后，规则才会显示并启用“外部关联”。
 
@@ -225,6 +235,7 @@ POST /api/tenant/rules/audit-rules/import-confirm
   "rules": [
     {
       "rule_content": "合同金额不得超过已批准预算",
+      "applicability_condition": "本合同属于预算内采购",
       "rule_scope": "mandatory",
       "related_flow": false,
       "context_recommended": true,
@@ -235,7 +246,7 @@ POST /api/tenant/rules/audit-rules/import-confirm
 }
 ```
 
-每次最多 100 条。`source` 可为 `file_import` 或 `paste_import`；文件导入会重新校验 MinerU 开关，粘贴导入不受该开关限制。`mandatory`、`default_on` 默认启用，`default_off` 默认关闭。与当前配置下既有规则内容完全重复的项会被跳过；若全部重复则返回冲突错误。
+每次最多 100 条。`source` 可为 `file_import` 或 `paste_import`；文件导入会重新校验 MinerU 开关，粘贴导入不受该开关限制。`mandatory`、`default_on` 默认启用，`default_off` 默认关闭。与当前配置下既有规则的正文和适用前提均相同的项会被跳过；若全部重复则返回冲突错误。
 
 ---
 
@@ -275,3 +286,8 @@ POST /api/tenant/rules/context/test
 规则读写和执行配置快照新增 `data_queries` 数组，引用当前租户查询库的不可变发布版本，最多8项。与 `related_flow` / `context_mounts` 独立；支持流程字段、系统变量和固定值参数绑定。详情见 [记忆库 / 数据记忆](./audit-data-queries.md)。
 
 修改引用需要查询库页面权限；无权限者可原样保留已有引用。引用的版本不会随查询草稿变化，变更引用后按既有执行配置发布/激活机制生效。
+
+## 适用前提与 AI 提示词
+
+规则文本按正文与前提成组注入。推理、结构化提取两个阶段均补充统一前提语义，兼容租户已有自定义提示词；系统默认模板的严格、标准、宽松尺度同步更新。
+文件识别和粘贴生成草稿从原文提取 `applicability_condition`，无明确前提时返回空字符串，不得臆造；审批流、外部数据依赖同时考虑判断前提和校验正文所需的数据。预览时可编辑或清空前提。

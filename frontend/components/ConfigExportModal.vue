@@ -115,6 +115,7 @@ function handleExport() {
     if (exportRules.value && effectiveRules.value.length > 0) {
       contents.rules = effectiveRules.value.map((r): ExportedRuleItem => ({
         rule_content: r.rule_content,
+        applicability_condition: r.applicability_condition || '',
         rule_scope: r.rule_scope,
         enabled: r.enabled,
         source: r.source,

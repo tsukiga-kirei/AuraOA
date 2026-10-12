@@ -327,3 +327,7 @@ GET /api/tenant/stats/token-usage
 ```
 
 查询当前租户的 Token 消耗统计数据。
+
+### 规则适用前提
+
+审核/归档流程详情的 `tenant_rules`、基准版本差异的规则条目包含 `applicability_condition`（可选文本；旧配置为空）。仅修改前提也会计入规则变更。个人规则开关不修改此前提，执行语义与租户规则一致。

@@ -25,6 +25,7 @@ const props = withDefaults(defineProps<{
   rule?: {
     id?: string
     rule_content: string
+    applicability_condition?: string
     rule_scope: string
     related_flow?: boolean
     context_enabled?: boolean
@@ -48,6 +49,7 @@ const emit = defineEmits<{
 
 const form = ref({
   rule_content: '',
+  applicability_condition: '',
   rule_scope: 'default_on',
   related_flow: false,
   context_enabled: false,
@@ -75,6 +77,7 @@ watch(() => props.open, (isOpen) => {
     if (props.rule) {
       form.value = {
         rule_content: props.rule.rule_content,
+        applicability_condition: props.rule.applicability_condition || '',
         rule_scope: props.rule.rule_scope,
         related_flow: (props.rule as any).related_flow ?? false,
         context_enabled: (props.rule as any).context_enabled ?? false,
@@ -84,6 +87,7 @@ watch(() => props.open, (isOpen) => {
     } else {
       form.value = {
         rule_content: '',
+        applicability_condition: '',
         rule_scope: 'default_on',
         related_flow: false,
         context_enabled: false,
@@ -408,6 +412,14 @@ const handleSave = () => {
           :rows="3"
           :placeholder="t('ruleEditor.ruleContentPlaceholder')"
           size="large"
+        />
+      </a-form-item>
+      <a-form-item :label="t('ruleEditor.applicabilityCondition')" :extra="t('ruleEditor.applicabilityConditionHelp')">
+        <a-textarea
+          v-model:value="form.applicability_condition"
+          :placeholder="t('ruleEditor.applicabilityConditionPlaceholder')"
+          :rows="3"
+          :maxlength="5000"
         />
       </a-form-item>
       <a-form-item :label="t('ruleEditor.ruleLevel')">

@@ -2960,6 +2960,10 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RuleRecord'
       parameters:
       - name: config_id
         in: query
@@ -2995,6 +2999,8 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    $ref: '#/components/schemas/RuleRecord'
       requestBody:
         required: true
         content:
@@ -3022,6 +3028,8 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    $ref: '#/components/schemas/RuleRecord'
       parameters:
       - name: id
         in: path
@@ -3415,6 +3423,10 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RuleRecord'
       parameters:
       - name: config_id
         in: query
@@ -3450,6 +3462,8 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    $ref: '#/components/schemas/RuleRecord'
       requestBody:
         required: true
         content:
@@ -3477,6 +3491,8 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    $ref: '#/components/schemas/RuleRecord'
       parameters:
       - name: id
         in: path
@@ -8894,6 +8910,9 @@ components:
           type: string
         rule_content:
           type: string
+        applicability_condition:
+          type: string
+          description: 当次规则的适用前提
         query_id:
           type: string
         version_no:
@@ -10139,6 +10158,56 @@ components:
           description: 最近一次相同依赖指纹的自动总结已失败，本次不会自动重试
     AuditRuleRequest:
       type: object
+      description: 审核/归档规则创建与更新字段；更新时省略适用前提保留原值，传空字符串清空。
+      properties:
+        config_id:
+          type: string
+          format: uuid
+        process_type:
+          type: string
+        rule_content:
+          type: string
+        applicability_condition:
+          type: string
+          maxLength: 5000
+          description: 适用前提。为空按原规则校验；满足才校验正文；明确不满足直接通过且不扣分。
+        rule_scope:
+          type: string
+          enum: [mandatory, default_on, default_off]
+        enabled:
+          type: boolean
+        source:
+          type: string
+        related_flow:
+          type: boolean
+        context_enabled:
+          type: boolean
+        context_mounts:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        data_queries:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditQueryReference'
+    RuleRecord:
+      allOf:
+      - $ref: '#/components/schemas/AuditRuleRequest'
+      - type: object
+        properties:
+          id:
+            type: string
+            format: uuid
+          tenant_id:
+            type: string
+            format: uuid
+          created_at:
+            type: string
+            format: date-time
+          updated_at:
+            type: string
+            format: date-time
     BatchDeleteRulesRequest:
       type: object
       required:
@@ -10201,6 +10270,10 @@ components:
       properties:
         rule_content:
           type: string
+        applicability_condition:
+          type: string
+          maxLength: 5000
+          description: 从原文明示条件提取的适用前提，无明确前提时为空，可编辑或清空。
         rule_scope:
           type: string
           enum:

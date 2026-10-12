@@ -96,6 +96,7 @@ export interface QueryColumn {
 export interface QueryEvidence {
   rule_id?: string
   rule_content?: string
+  applicability_condition?: string
   query_id?: string
   version_no: number
   name: string

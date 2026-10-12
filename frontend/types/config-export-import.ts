@@ -7,6 +7,7 @@ export type ConfigExportModule = 'audit' | 'archive' | 'summary'
 /** 单条导出的规则数据结构（解耦数据库特定主键与租户ID） */
 export interface ExportedRuleItem {
   rule_content: string
+  applicability_condition?: string
   rule_scope: 'mandatory' | 'default_on' | 'default_off'
   enabled?: boolean
   source?: string

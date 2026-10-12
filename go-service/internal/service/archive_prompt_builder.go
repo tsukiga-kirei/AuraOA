@@ -37,6 +37,7 @@ func BuildArchiveReasoningPrompt(
 	}
 
 	userPrompt := aiConfig.UserReasoningPrompt
+	hasRulesPlaceholder := strings.Contains(userPrompt, "{{rules}}")
 	hasAttachmentsPlaceholder := strings.Contains(userPrompt, "{{attachments}}")
 	hasExternalContextPlaceholder := strings.Contains(userPrompt, "{{external_context}}")
 	userPrompt = strings.ReplaceAll(userPrompt, "{{process_type}}", processType)
@@ -55,10 +56,13 @@ func BuildArchiveReasoningPrompt(
 	if !hasExternalContextPlaceholder && strings.TrimSpace(externalContext) != "" {
 		userPrompt += "\n\n" + externalContext
 	}
+	if !hasRulesPlaceholder {
+		userPrompt += "\n\n规则列表：\n" + rules
+	}
 	userPrompt = replaceSystemPromptVariables(userPrompt)
 
 	return &ai.ChatRequest{
-		SystemPrompt: aiConfig.SystemReasoningPrompt,
+		SystemPrompt: withRuleApplicabilityInstructions(aiConfig.SystemReasoningPrompt),
 		UserPrompt:   userPrompt,
 		RequestType:  "archive",
 		CallType:     "reasoning",
@@ -69,12 +73,16 @@ func BuildArchiveReasoningPrompt(
 // 将推理阶段的输出结果和规则文本注入提取提示词模板，引导模型输出结构化 JSON。
 func BuildArchiveExtractionPrompt(aiConfig *model.ArchiveAIConfigData, reasoningResult string, rules string) *ai.ChatRequest {
 	userPrompt := aiConfig.UserExtractionPrompt
+	hasRulesPlaceholder := strings.Contains(userPrompt, "{{rules}}")
 	userPrompt = strings.ReplaceAll(userPrompt, "{{reasoning_result}}", reasoningResult)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{rules}}", rules)
+	if !hasRulesPlaceholder {
+		userPrompt += "\n\n规则列表：\n" + rules
+	}
 	userPrompt = replaceSystemPromptVariables(userPrompt)
 
 	return &ai.ChatRequest{
-		SystemPrompt: aiConfig.SystemExtractionPrompt,
+		SystemPrompt: withRuleApplicabilityInstructions(aiConfig.SystemExtractionPrompt),
 		UserPrompt:   userPrompt,
 		RequestType:  "archive",
 		CallType:     "structured",

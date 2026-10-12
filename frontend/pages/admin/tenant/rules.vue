@@ -1106,6 +1106,7 @@ const handleSaveRule = async (rule: any) => {
       config_id: selectedConfig.value.id,
       process_type: selectedConfig.value.process_type,
       rule_content: rule.rule_content,
+      applicability_condition: (rule.applicability_condition || '').trim(),
       rule_scope: rule.rule_scope,
       priority: 0,
       enabled,
@@ -1152,6 +1153,7 @@ function buildAuditDraftSnapshot(): Record<string, any> | null {
     rules: cloneSerializable(currentRules.value).map(rule => ({
       id: rule.id,
       rule_content: rule.rule_content,
+      applicability_condition: (rule.applicability_condition || '').trim(),
       rule_scope: rule.rule_scope,
       enabled: rule.rule_scope === 'mandatory' ? true : rule.enabled,
       source: rule.source || 'manual',
@@ -1298,6 +1300,7 @@ const confirmRuleImport = async () => {
     config_id: config.id,
     process_type: config.process_type,
     rule_content: rule.rule_content,
+    applicability_condition: (rule.applicability_condition || '').trim(),
     rule_scope: rule.rule_scope,
     priority: 0,
     enabled: rule.rule_scope !== 'default_off',
@@ -2640,6 +2643,7 @@ const handleSaveArchiveRule = async (rule: any) => {
       config_id: selectedArchiveConfig.value.id,
       process_type: selectedArchiveConfig.value.process_type,
       rule_content: rule.rule_content,
+      applicability_condition: (rule.applicability_condition || '').trim(),
       rule_scope: rule.rule_scope,
       enabled,
       source: 'manual',
@@ -2685,6 +2689,7 @@ function buildArchiveDraftSnapshot(): Record<string, any> | null {
     rules: cloneSerializable(currentArchiveRules.value).map(rule => ({
       id: rule.id,
       rule_content: rule.rule_content,
+      applicability_condition: (rule.applicability_condition || '').trim(),
       rule_scope: rule.rule_scope,
       enabled: rule.rule_scope === 'mandatory' ? true : rule.enabled,
       source: rule.source || 'manual',
@@ -3430,6 +3435,9 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                 </div>
                 <div class="rule-card-body">
                   <div class="rule-card-content">{{ rule.rule_content }}</div>
+                  <div v-if="rule.applicability_condition" class="rule-card-condition">
+                    {{ t('ruleEditor.applicabilityCondition') }}：{{ rule.applicability_condition }}
+                  </div>
                   <div class="rule-card-meta">
                     <span v-if="rule.source === 'file_import'" class="rule-source-tag">{{ t('admin.ruleConfig.fileImportTag') }}</span>
                     <span v-else-if="rule.source === 'paste_import'" class="rule-source-tag">{{ t('admin.ruleConfig.pasteImportTag') }}</span>
@@ -5604,6 +5612,9 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                 </div>
                 <div class="rule-card-body">
                   <div class="rule-card-content">{{ rule.rule_content }}</div>
+                  <div v-if="rule.applicability_condition" class="rule-card-condition">
+                    {{ t('ruleEditor.applicabilityCondition') }}：{{ rule.applicability_condition }}
+                  </div>
                   <div class="rule-card-meta">
                     <span v-if="rule.related_flow" class="rule-flow-tag">
                       <NodeIndexOutlined /> {{ t('admin.ruleConfig.relatedFlow') }}
@@ -6132,6 +6143,15 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             <span class="rule-import-confidence">{{ t('admin.ruleConfig.fileImportConfidence', `${Math.round(rule.confidence * 100)}`) }}</span>
           </div>
           <a-textarea v-model:value="rule.rule_content" :rows="3" :disabled="!rule.selected" />
+          <a-form-item :label="t('ruleEditor.applicabilityCondition')" :extra="t('ruleEditor.applicabilityConditionHelp')">
+            <a-textarea
+              v-model:value="rule.applicability_condition"
+              :placeholder="t('ruleEditor.applicabilityConditionPlaceholder')"
+              :rows="2"
+              :maxlength="5000"
+              :disabled="!rule.selected"
+            />
+          </a-form-item>
           <div class="rule-import-options">
             <label>
               <span>{{ t('admin.ruleConfig.ruleLevel') }}</span>
@@ -6377,7 +6397,12 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
               <div class="version-rules-list">
                 <div v-for="r in selectedHistoryItem.config_snapshot.rules" :key="r.id" class="version-rule-item">
                   <span class="version-rule-scope" :class="`version-rule-scope--${r.rule_scope}`">{{ r.rule_scope }}</span>
-                  <span class="version-rule-text">{{ r.rule_content }}</span>
+                  <span class="version-rule-text">
+                    {{ r.rule_content }}
+                    <span v-if="r.applicability_condition" class="rule-card-condition">
+                      {{ t('ruleEditor.applicabilityCondition') }}：{{ r.applicability_condition }}
+                    </span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -6463,6 +6488,15 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
 </template>
 
 <style scoped>
+.rule-card-condition {
+  display: block;
+  margin-top: 6px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .page-header { margin-bottom: 24px; }
 .page-title { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin: 0; }
 .page-subtitle { font-size: 14px; color: var(--color-text-tertiary); margin: 4px 0 0; }

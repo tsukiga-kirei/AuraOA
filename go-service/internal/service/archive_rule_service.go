@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -46,17 +47,18 @@ func (s *ArchiveRuleService) Create(c *gin.Context, req *dto.CreateArchiveRuleRe
 	}
 	contextMounts := defaultJSON(req.ContextMounts, "[]")
 	rule := &model.ArchiveRule{
-		ID:             uuid.New(),
-		TenantID:       tenantID,
-		ProcessType:    req.ProcessType,
-		RuleContent:    req.RuleContent,
-		RuleScope:      defaultStr(req.RuleScope, "default_on"),
-		Enabled:        &enabled,
-		Source:         defaultStr(req.Source, "manual"),
-		RelatedFlow:    req.RelatedFlow,
-		ContextEnabled: req.ContextEnabled && hasEnabledContextMounts(contextMounts),
-		ContextMounts:  contextMounts,
-		DataQueries:    defaultJSON(req.DataQueries, "[]"),
+		ID:                     uuid.New(),
+		TenantID:               tenantID,
+		ProcessType:            req.ProcessType,
+		RuleContent:            req.RuleContent,
+		ApplicabilityCondition: strings.TrimSpace(req.ApplicabilityCondition),
+		RuleScope:              defaultStr(req.RuleScope, "default_on"),
+		Enabled:                &enabled,
+		Source:                 defaultStr(req.Source, "manual"),
+		RelatedFlow:            req.RelatedFlow,
+		ContextEnabled:         req.ContextEnabled && hasEnabledContextMounts(contextMounts),
+		ContextMounts:          contextMounts,
+		DataQueries:            defaultJSON(req.DataQueries, "[]"),
 	}
 
 	if req.ConfigID != "" {
@@ -93,6 +95,9 @@ func (s *ArchiveRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.Updat
 		}
 	}
 	fields := make(map[string]interface{})
+	if req.ApplicabilityCondition != nil {
+		fields["applicability_condition"] = strings.TrimSpace(*req.ApplicabilityCondition)
+	}
 	if req.DataQueries != nil {
 		fields["data_queries"] = req.DataQueries
 	}

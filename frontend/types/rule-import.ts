@@ -11,6 +11,7 @@ export type RuleImportSource = 'file_import' | 'paste_import'
 /** AI 从制度文件中提取、等待管理员确认的规则草稿。 */
 export interface RuleImportDraft {
   rule_content: string
+  applicability_condition?: string
   rule_scope: 'mandatory' | 'default_on' | 'default_off'
   related_flow: boolean
   context_recommended: boolean

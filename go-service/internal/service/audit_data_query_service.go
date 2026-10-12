@@ -61,18 +61,19 @@ type QueryPreviewRequest struct {
 
 // QueryEvidence 保存当次查询上下文，作为可追溯的业务证据。
 type QueryEvidence struct {
-	RuleID      string                 `json:"rule_id,omitempty"`
-	RuleContent string                 `json:"rule_content,omitempty"`
-	QueryID     string                 `json:"query_id,omitempty"`
-	VersionNo   int                    `json:"version_no"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters"`
-	QueriedAt   string                 `json:"queried_at"`
-	Status      string                 `json:"status"`
-	Error       string                 `json:"error,omitempty"`
-	Result      *oa.AuditQueryResult   `json:"result,omitempty"`
-	ModelText   string                 `json:"model_text"`
+	ApplicabilityCondition string                 `json:"applicability_condition,omitempty"`
+	RuleID                 string                 `json:"rule_id,omitempty"`
+	RuleContent            string                 `json:"rule_content,omitempty"`
+	QueryID                string                 `json:"query_id,omitempty"`
+	VersionNo              int                    `json:"version_no"`
+	Name                   string                 `json:"name"`
+	Description            string                 `json:"description"`
+	Parameters             map[string]interface{} `json:"parameters"`
+	QueriedAt              string                 `json:"queried_at"`
+	Status                 string                 `json:"status"`
+	Error                  string                 `json:"error,omitempty"`
+	Result                 *oa.AuditQueryResult   `json:"result,omitempty"`
+	ModelText              string                 `json:"model_text"`
 }
 
 // QueryAssistPreviewSummary 只传递最近预览的诊断摘要，不向 SQL 助手发送业务数据行。
@@ -764,7 +765,7 @@ func formatQueryEvidence(e QueryEvidence) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "【数据记忆：%s】\n查询版本：v%d\n数据说明：%s\n查询时点：%s\n状态：%s\n", e.Name, e.VersionNo, e.Description, e.QueriedAt, e.Status)
 	if e.Status != "success" {
-		b.WriteString("数据不可用：" + e.Error + "\n不得将查询失败解释为没有记录或规则通过。\n")
+		b.WriteString("数据不可用：" + e.Error + "\n不得将查询失败解释为没有记录或规则通过。若其他已知证据明确表明适用前提不满足，则仍按适用前提说明直接通过。\n")
 		return b.String()
 	}
 	if e.Result == nil {
@@ -1046,7 +1047,8 @@ func (s *AuditDataQueryService) ResolveRules(c *gin.Context, processID string, p
 			executed++
 			ev := QueryEvidence{
 				RuleID: rule.ID.String(), RuleContent: rule.RuleContent, QueryID: ref.QueryID,
-				VersionNo: ref.VersionNo, Name: "审核数据查询",
+				ApplicabilityCondition: rule.ApplicabilityCondition,
+				VersionNo:              ref.VersionNo, Name: "审核数据查询",
 				QueriedAt: apptime.FormatRFC3339(apptime.Now()), Status: "failed",
 			}
 			if executed > 20 {
@@ -1107,7 +1109,7 @@ func (s *AuditDataQueryService) ResolveRules(c *gin.Context, processID string, p
 			}
 			totalBytes += len(ev.ModelText)
 			evidence = append(evidence, ev)
-			sections = append(sections, "规则ID："+ev.RuleID+"\n规则内容："+rule.RuleContent+"\n"+ev.ModelText)
+			sections = append(sections, "规则ID："+ev.RuleID+"\n规则内容："+rule.RuleContent+"\n适用前提："+rule.ApplicabilityCondition+"\n"+ev.ModelText)
 		}
 	}
 	if len(sections) == 0 {
@@ -1123,6 +1125,7 @@ func SanitizeQueryEvidence(items []QueryEvidence) {
 		item.Name = sanitize.SanitizeText(item.Name)
 		item.Description = sanitize.SanitizeText(item.Description)
 		item.RuleContent = sanitize.SanitizeText(item.RuleContent)
+		item.ApplicabilityCondition = sanitize.SanitizeText(item.ApplicabilityCondition)
 		item.Error = sanitize.SanitizeText(item.Error)
 		for key, value := range item.Parameters {
 			switch text := value.(type) {
@@ -1154,6 +1157,9 @@ func GuardQueryEvidence(result *model.AuditResultJSON, evidence []QueryEvidence)
 	}
 	for _, e := range evidence {
 		if e.Status != "success" || e.Result == nil || e.Result.Truncated {
+			if auditRulePassedForUnmetCondition(result, e) {
+				continue
+			}
 			if result.Recommendation == "approve" {
 				result.Recommendation = "review"
 			}
@@ -1175,6 +1181,9 @@ func GuardArchiveQueryEvidence(result *model.ArchiveResultJSON, evidence []Query
 	}
 	for _, e := range evidence {
 		if e.Status != "success" || e.Result == nil || e.Result.Truncated {
+			if archiveRulePassedForUnmetCondition(result, e) {
+				continue
+			}
 			if result.OverallCompliance == "compliant" {
 				result.OverallCompliance = "partially_compliant"
 			}

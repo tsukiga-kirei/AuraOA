@@ -74,11 +74,12 @@ type DetailTableDTO struct {
 
 // TenantRuleDTO 租户规则（含用户开关状态）
 type TenantRuleDTO struct {
-	ID          string `json:"id"`
-	RuleContent string `json:"rule_content"`
-	RuleScope   string `json:"rule_scope"`
-	RelatedFlow bool   `json:"related_flow"`
-	Enabled     bool   `json:"enabled"` // 已应用用户开关覆盖后的有效状态
+	ApplicabilityCondition string `json:"applicability_condition"`
+	ID                     string `json:"id"`
+	RuleContent            string `json:"rule_content"`
+	RuleScope              string `json:"rule_scope"`
+	RelatedFlow            bool   `json:"related_flow"`
+	Enabled                bool   `json:"enabled"` // 已应用用户开关覆盖后的有效状态
 }
 
 // UserPermissionsDTO 用户权限配置
@@ -206,27 +207,28 @@ type UpdateDashboardPrefRequest struct {
 
 // BaselineVersionDiffResponse 描述租户基线配置在两个版本之间的差异
 type BaselineVersionDiffResponse struct {
-	ProcessType      string          `json:"process_type"`
-	FromVersionNo    int             `json:"from_version_no"`
-	ToVersionNo      int             `json:"to_version_no"`
-	AddedRules       []RuleDiffItem  `json:"added_rules"`
-	RemovedRules     []RuleDiffItem  `json:"removed_rules"`
-	ModifiedRules    []RuleDiffItem  `json:"modified_rules"`
-	AddedFields      []FieldDiffItem `json:"added_fields"`
-	RemovedFields    []FieldDiffItem `json:"removed_fields"`
-	StrictnessFrom   string          `json:"strictness_from,omitempty"`
-	StrictnessTo     string          `json:"strictness_to,omitempty"`
-	FieldModeFrom    string          `json:"field_mode_from,omitempty"`
-	FieldModeTo      string          `json:"field_mode_to,omitempty"`
-	TotalChanges     int             `json:"total_changes"`
+	ProcessType    string          `json:"process_type"`
+	FromVersionNo  int             `json:"from_version_no"`
+	ToVersionNo    int             `json:"to_version_no"`
+	AddedRules     []RuleDiffItem  `json:"added_rules"`
+	RemovedRules   []RuleDiffItem  `json:"removed_rules"`
+	ModifiedRules  []RuleDiffItem  `json:"modified_rules"`
+	AddedFields    []FieldDiffItem `json:"added_fields"`
+	RemovedFields  []FieldDiffItem `json:"removed_fields"`
+	StrictnessFrom string          `json:"strictness_from,omitempty"`
+	StrictnessTo   string          `json:"strictness_to,omitempty"`
+	FieldModeFrom  string          `json:"field_mode_from,omitempty"`
+	FieldModeTo    string          `json:"field_mode_to,omitempty"`
+	TotalChanges   int             `json:"total_changes"`
 }
 
 // RuleDiffItem 规则变动项
 type RuleDiffItem struct {
-	ID          string `json:"id"`
-	RuleContent string `json:"rule_content"`
-	RuleScope   string `json:"rule_scope"`
-	ChangeDesc  string `json:"change_desc,omitempty"`
+	ApplicabilityCondition string `json:"applicability_condition"`
+	ID                     string `json:"id"`
+	RuleContent            string `json:"rule_content"`
+	RuleScope              string `json:"rule_scope"`
+	ChangeDesc             string `json:"change_desc,omitempty"`
 }
 
 // FieldDiffItem 字段变动项

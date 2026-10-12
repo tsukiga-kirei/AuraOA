@@ -106,7 +106,7 @@ export function extractPlaceholderVariables(text?: string): string[] {
 export function validateImportBundle(
   rawContent: string,
   targetModule: ConfigExportModule,
-  existingRules: Array<{ rule_content: string }> = [],
+  existingRules: Array<{ rule_content: string; applicability_condition?: string }> = [],
   existingSummaryBlocks: Array<{ title: string }> = []
 ): ImportValidationReport {
   const report: ImportValidationReport = {
@@ -184,7 +184,7 @@ export function validateImportBundle(
 
     // 建立现有规则的文本指纹集合（忽略两端空格）
     const existingRuleSet = new Set(
-      existingRules.map(r => (r.rule_content || '').trim()).filter(Boolean)
+      existingRules.filter(r => (r.rule_content || '').trim()).map(ruleImportKey)
     )
 
     const validScopes = new Set(['mandatory', 'default_on', 'default_off'])
@@ -197,13 +197,20 @@ export function validateImportBundle(
         return
       }
 
+      if (r.applicability_condition != null &&
+        (typeof r.applicability_condition !== 'string' || [...r.applicability_condition.trim()].length > 5000)) {
+        invalidCount++
+        report.errors.push('ruleEditor.invalidApplicabilityCondition')
+        return
+      }
+
       if (r.rule_scope && !validScopes.has(r.rule_scope)) {
         report.warnings.push(`第 ${idx + 1} 条规则 "${content.slice(0, 15)}..." 的作用域 "${r.rule_scope}" 不合规，将默认修正为 default_on。`)
         r.rule_scope = 'default_on'
       }
 
       validCount++
-      if (existingRuleSet.has(content)) {
+      if (existingRuleSet.has(ruleImportKey(r))) {
         duplicateCount++
       }
     })
@@ -299,6 +306,11 @@ export function validateImportBundle(
   return report
 }
 
+/** 正文与适用前提共同确定重复规则，兼容未提供前提的旧导出包。 */
+function ruleImportKey(rule: { rule_content: string; applicability_condition?: string }): string {
+  return JSON.stringify([(rule.rule_content || '').trim(), (rule.applicability_condition || '').trim()])
+}
+
 /** 应用规则冲突策略并返回合并后的规则数组 */
 export function applyRuleConflictStrategy<T extends { id?: string; rule_content: string; [key: string]: any }>(
   existingRules: T[],
@@ -309,15 +321,14 @@ export function applyRuleConflictStrategy<T extends { id?: string; rule_content:
   const result: T[] = existingRules.map(r => ({ ...r }))
   const existingMap = new Map<string, number>()
   result.forEach((r, idx) => {
-    const key = (r.rule_content || '').trim()
-    if (key) existingMap.set(key, idx)
+    if ((r.rule_content || '').trim()) existingMap.set(ruleImportKey(r), idx)
   })
 
   importedRules.forEach(imp => {
     const content = (imp.rule_content || '').trim()
     if (!content) return
 
-    const existingIdx = existingMap.get(content)
+    const existingIdx = existingMap.get(ruleImportKey(imp))
     if (existingIdx !== undefined) {
       // 存在重复项
       if (strategy === 'skip') {
@@ -328,6 +339,7 @@ export function applyRuleConflictStrategy<T extends { id?: string; rule_content:
         // 覆盖已有项属性
         result[existingIdx] = {
           ...result[existingIdx],
+          applicability_condition: (imp.applicability_condition || '').trim(),
           rule_scope: imp.rule_scope || result[existingIdx].rule_scope,
           enabled: imp.enabled !== undefined ? imp.enabled : result[existingIdx].enabled,
           related_flow: imp.related_flow !== undefined ? imp.related_flow : result[existingIdx].related_flow,
@@ -343,6 +355,7 @@ export function applyRuleConflictStrategy<T extends { id?: string; rule_content:
     const newRule: any = {
       id: createDraftIdFn(),
       rule_content: content,
+      applicability_condition: (imp.applicability_condition || '').trim(),
       rule_scope: imp.rule_scope || 'default_on',
       enabled: imp.enabled !== undefined ? imp.enabled : true,
       source: imp.source || 'file_import',
@@ -352,7 +365,7 @@ export function applyRuleConflictStrategy<T extends { id?: string; rule_content:
       data_queries: imp.data_queries || [],
     }
     result.push(newRule)
-    existingMap.set(content, result.length - 1)
+    existingMap.set(ruleImportKey(imp), result.length - 1)
   })
 
   return result

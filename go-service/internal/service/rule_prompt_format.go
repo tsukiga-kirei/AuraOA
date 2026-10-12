@@ -30,9 +30,12 @@ func ruleScopeLabel(scope string) string {
 }
 
 // formatRuleLineForPrompt 将单条规则格式化为送入 AI 的文本行。
-// 仅输出序号与规则正文；scope 是管理配置元数据，对 AI 审核无语义价值，不再拼入 prompt。
-func formatRuleLineForPrompt(index int, _, content string) string {
+// 前提为空时保持原格式；有前提时与正文成组展示。scope 只用于管理，不送入模型。
+func formatRuleLineForPrompt(index int, _, content string, conditions ...string) string {
 	content = strings.TrimSpace(content)
+	if len(conditions) > 0 && strings.TrimSpace(conditions[0]) != "" {
+		return fmt.Sprintf("%d. 规则内容：%s\n   适用前提：%s", index, content, strings.TrimSpace(conditions[0]))
+	}
 	return fmt.Sprintf("%d. %s", index, content)
 }
 

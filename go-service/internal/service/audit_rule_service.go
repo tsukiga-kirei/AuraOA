@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -47,17 +48,18 @@ func (s *AuditRuleService) Create(c *gin.Context, req *dto.CreateAuditRuleReques
 	}
 	contextMounts := defaultJSON(req.ContextMounts, "[]")
 	rule := &model.AuditRule{
-		ID:             uuid.New(),
-		TenantID:       tenantID,
-		ProcessType:    req.ProcessType,
-		RuleContent:    req.RuleContent,
-		RuleScope:      defaultStr(req.RuleScope, "default_on"),
-		Enabled:        &enabled,
-		Source:         defaultStr(req.Source, "manual"),
-		RelatedFlow:    req.RelatedFlow,
-		ContextEnabled: req.ContextEnabled && hasEnabledContextMounts(contextMounts),
-		ContextMounts:  contextMounts,
-		DataQueries:    defaultJSON(req.DataQueries, "[]"),
+		ID:                     uuid.New(),
+		TenantID:               tenantID,
+		ProcessType:            req.ProcessType,
+		RuleContent:            req.RuleContent,
+		ApplicabilityCondition: strings.TrimSpace(req.ApplicabilityCondition),
+		RuleScope:              defaultStr(req.RuleScope, "default_on"),
+		Enabled:                &enabled,
+		Source:                 defaultStr(req.Source, "manual"),
+		RelatedFlow:            req.RelatedFlow,
+		ContextEnabled:         req.ContextEnabled && hasEnabledContextMounts(contextMounts),
+		ContextMounts:          contextMounts,
+		DataQueries:            defaultJSON(req.DataQueries, "[]"),
 	}
 
 	if req.ConfigID != "" {
@@ -95,6 +97,9 @@ func (s *AuditRuleService) Update(c *gin.Context, id uuid.UUID, req *dto.UpdateA
 		}
 	}
 	fields := make(map[string]interface{})
+	if req.ApplicabilityCondition != nil {
+		fields["applicability_condition"] = strings.TrimSpace(*req.ApplicabilityCondition)
+	}
 	if req.DataQueries != nil {
 		fields["data_queries"] = req.DataQueries
 	}
