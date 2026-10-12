@@ -864,9 +864,25 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
         '.aura-status-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}' +
         '.aura-status-group{display:inline-flex;flex-direction:column;max-width:100%;align-items:stretch;gap:8px;padding:4px 0;}' +
         '.aura-status-group .aura-status-button{width:100%;}' +
-        '#auraMobileEmbedFloatContainer{position:fixed;max-width:calc(100vw - 32px);z-index:9999;}' +
+        '#auraMobileEmbedFloatContainer{position:fixed;max-width:calc(100vw - 32px);z-index:9999;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:grab;}' +
         '#auraMobileEmbedFloatContainer.aura-float--bottom-left{bottom:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:16px;left:calc(16px + env(safe-area-inset-left,0px));}' +
         '#auraMobileEmbedFloatContainer.aura-float--top-right{top:88px;top:calc(88px + env(safe-area-inset-top,0px));right:24px;right:calc(24px + env(safe-area-inset-right,0px));}' +
+        '#auraMobileEmbedFloatContainer.aura-is-dragging{cursor:grabbing!important;opacity:.92;transition:none!important;}' +
+        '#auraMobileEmbedFloatContainer.aura-is-dragging .aura-status-button{transform:scale(.96)!important;box-shadow:0 10px 28px rgba(15,23,42,.22)!important;}' +
+        '@media screen and (max-width:768px){' +
+        '#auraMobileEmbedFloatContainer.aura-float--top-right{top:116px;top:calc(116px + env(safe-area-inset-top,0px));right:14px;right:calc(14px + env(safe-area-inset-right,0px));}' +
+        '#auraMobileEmbedFloatContainer.aura-float--bottom-left{bottom:20px;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:14px;left:calc(14px + env(safe-area-inset-left,0px));}' +
+        '}' +
+        '.aura-status-button .aura-status-text,.aura-status-button .aura-status-arrow,.aura-is-compact .aura-status-text,.aura-is-compact .aura-status-arrow{display:none!important;}' +
+        '.aura-status-button,.aura-is-compact.aura-status-button{min-height:38px!important;padding:5px 8px 5px 5px!important;gap:6px!important;border-radius:12px!important;}' +
+        '.aura-status-score,.aura-is-compact .aura-status-score{padding-left:6px!important;border-left-width:1px!important;}' +
+        '.aura-status-score b,.aura-is-compact .aura-status-score b{font-size:15px!important;}' +
+        '.aura-status-score small,.aura-is-compact .aura-status-score small{font-size:9px!important;}' +
+        '.aura-status-button--icon-only,.aura-is-compact.aura-status-button--icon-only{padding:5px!important;gap:0!important;min-width:38px!important;width:38px!important;justify-content:center!important;}' +
+        '.aura-status-button--icon-only .aura-status-copy,.aura-is-compact.aura-status-button--icon-only .aura-status-copy{display:none!important;}' +
+        '.aura-embed-tooltip{position:fixed;z-index:10001;pointer-events:none;max-width:280px;padding:6px 12px;border-radius:10px;background:var(--aura-status-surface,#fff);color:var(--aura-status-color,#1e293b);border:1px solid var(--aura-status-border,rgba(148,163,184,.3));font:600 12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;letter-spacing:.2px;white-space:nowrap;box-shadow:var(--aura-status-shadow,0 4px 16px rgba(15,23,42,.08)),0 0 12px var(--aura-status-tint,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);opacity:0;transform:scale(.92);transition:opacity .18s ease,transform .18s cubic-bezier(.22,.7,.2,1);}' +
+        '.aura-embed-tooltip::before{content:"";position:absolute;inset:0;border-radius:9px;background:radial-gradient(circle at 10% 50%,var(--aura-status-tint,transparent),transparent 75%);opacity:.35;pointer-events:none;}' +
+        '.aura-embed-tooltip--visible{opacity:1;transform:scale(1);}' +
         '@media(hover:hover){.aura-status-button:not([aria-disabled="true"]):not(.aura-status-button--morph):hover{transform:translateY(-2px);border-color:var(--aura-status-color);box-shadow:0 7px 22px rgba(15,23,42,.12);}}' +
         '@media(pointer:coarse){.aura-status-button{min-height:44px;}}' +
         '@media(prefers-reduced-motion:reduce){.aura-status-button{transition:none;animation:none!important;}.aura-status-button::before,.aura-status-button::after,.aura-status-icon,.aura-status-copy,.aura-status-text,.aura-status-score,.aura-status-arrow,.aura-status-icon-layer,.aura-status-copy-inner{animation:none!important;opacity:1!important;transform:none!important;filter:none!important;}.aura-status-icon svg,.aura-status-icon svg>*{animation:none!important;stroke-dashoffset:0!important;}}';
@@ -986,9 +1002,237 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     var theme = buttonTheme(status, isLoading);
     var unavailable = status === 'disabled' || status === 'error';
     var enter = isEnter !== false;
-    return '<button id="' + btnId + '" type="button" class="aura-status-button' + statusMotionClass(status, isLoading, enter) + '" aria-disabled="' + (unavailable || isLoading ? 'true' : 'false') + '" style="--aura-status-color:' + theme.color + ';--aura-status-tint:' + theme.bg + ';--aura-status-surface:' + theme.surface + ';--aura-status-border:' + theme.border + ';--aura-status-shadow:' + theme.shadow + ';">' +
+    var parsed = parseButtonLabel(displayText);
+    var compactClass = ' aura-is-compact';
+    var iconOnlyClass = !parsed.scoreMatch ? ' aura-status-button--icon-only' : '';
+    return '<button id="' + btnId + '" type="button" class="aura-status-button' + compactClass + iconOnlyClass + statusMotionClass(status, isLoading, enter) + '" aria-disabled="' + (unavailable || isLoading ? 'true' : 'false') + '" style="--aura-status-color:' + theme.color + ';--aura-status-tint:' + theme.bg + ';--aura-status-surface:' + theme.surface + ';--aura-status-border:' + theme.border + ';--aura-status-shadow:' + theme.shadow + ';">' +
       buttonInnerHtml(feature, status, displayText, isLoading, labelClass) +
     '</button>';
+  }
+
+  var dragSession = {
+    isDown: false,
+    hasMoved: false,
+    startX: 0,
+    startY: 0,
+    initialLeft: 0,
+    initialTop: 0,
+    longPressTimer: null,
+    longPressTriggered: false,
+    targetBtn: null,
+    ignoreNextClick: false
+  };
+
+  var activeTooltipEl = null;
+  function hideTooltip() {
+    if (activeTooltipEl && activeTooltipEl.parentNode) {
+      activeTooltipEl.classList.remove('aura-embed-tooltip--visible');
+      var el = activeTooltipEl;
+      activeTooltipEl = null;
+      setTimeout(function () {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }, 200);
+    }
+  }
+
+  function showTooltipForButton(btn, text) {
+    hideTooltip();
+    if (!btn || !text || typeof document === 'undefined') return;
+    var tip = document.createElement('div');
+    tip.className = 'aura-embed-tooltip';
+    tip.textContent = text;
+
+    try {
+      if (btn.style && btn.style.getPropertyValue) {
+        var c = btn.style.getPropertyValue('--aura-status-color');
+        var tint = btn.style.getPropertyValue('--aura-status-tint');
+        var surface = btn.style.getPropertyValue('--aura-status-surface');
+        var border = btn.style.getPropertyValue('--aura-status-border');
+        var shadow = btn.style.getPropertyValue('--aura-status-shadow');
+        if (c) tip.style.setProperty('--aura-status-color', c);
+        if (tint) tip.style.setProperty('--aura-status-tint', tint);
+        if (surface) tip.style.setProperty('--aura-status-surface', surface);
+        if (border) tip.style.setProperty('--aura-status-border', border);
+        if (shadow) tip.style.setProperty('--aura-status-shadow', shadow);
+      }
+    } catch (e) {}
+
+    document.body.appendChild(tip);
+    activeTooltipEl = tip;
+
+    try {
+      var rect = btn.getBoundingClientRect ? btn.getBoundingClientRect() : { left: 0, top: 0, width: 44, height: 40 };
+      var tipRect = tip.getBoundingClientRect ? tip.getBoundingClientRect() : { width: 140, height: 32 };
+      var top = rect.top - (tipRect.height || 32) - 8;
+      if (top < 12) {
+        top = rect.bottom + 8;
+      }
+      var winWidth = (typeof window !== 'undefined' && window.innerWidth) || (document.documentElement && document.documentElement.clientWidth) || 360;
+      var tipWidth = tipRect.width || 140;
+      var left = rect.left + ((rect.width || 44) - tipWidth) / 2;
+      var maxLeft = winWidth - tipWidth - 12;
+      if (left < 12) left = 12;
+      if (left > maxLeft) left = maxLeft;
+
+      tip.style.top = top + 'px';
+      tip.style.left = left + 'px';
+      void tip.offsetWidth;
+      tip.classList.add('aura-embed-tooltip--visible');
+    } catch (e) {}
+  }
+
+  function setupDraggableFloatContainer(containerEl) {
+    if (!containerEl || typeof containerEl.getAttribute !== 'function' || containerEl.getAttribute('data-aura-drag-bound') === '1') return;
+    containerEl.setAttribute('data-aura-drag-bound', '1');
+
+    function onMouseEnter(e) {
+      if (dragSession.hasMoved || dragSession.isDown) return;
+      var target = e.target;
+      while (target && target !== containerEl && !(target.classList && target.classList.contains && target.classList.contains('aura-status-button'))) {
+        target = target.parentNode;
+      }
+      var btn = (target && target.classList && target.classList.contains && target.classList.contains('aura-status-button')) ? target : null;
+      if (!btn) return;
+      var tipText = (btn.getAttribute && btn.getAttribute('data-aura-copy'))
+        || (btn.querySelector && btn.querySelector('.aura-status-text') && btn.querySelector('.aura-status-text').textContent)
+        || 'AI 详情';
+      var isSummary = btn.id && btn.id.indexOf('Summary') !== -1;
+      showTooltipForButton(btn, (isSummary ? 'AI 流程总结 · ' : 'AI 流程审核 · ') + tipText);
+    }
+
+    function onMouseLeave() {
+      if (!dragSession.isDown) {
+        hideTooltip();
+      }
+    }
+
+    function onPointerDown(e) {
+      if (e.type === 'mousedown' && e.button !== 0) return;
+      var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      var target = e.target;
+      while (target && target !== containerEl && !(target.classList && target.classList.contains && target.classList.contains('aura-status-button'))) {
+        target = target.parentNode;
+      }
+      var btn = (target && target.classList && target.classList.contains && target.classList.contains('aura-status-button')) ? target : null;
+
+      var rect = containerEl.getBoundingClientRect ? containerEl.getBoundingClientRect() : { left: 0, top: 0 };
+      dragSession.isDown = true;
+      dragSession.hasMoved = false;
+      dragSession.longPressTriggered = false;
+      dragSession.startX = clientX;
+      dragSession.startY = clientY;
+      dragSession.initialLeft = rect.left;
+      dragSession.initialTop = rect.top;
+      dragSession.targetBtn = btn;
+
+      if (dragSession.longPressTimer) {
+        clearTimeout(dragSession.longPressTimer);
+        dragSession.longPressTimer = null;
+      }
+      dragSession.longPressTimer = setTimeout(function () {
+        if (dragSession.isDown && !dragSession.hasMoved && dragSession.targetBtn) {
+          dragSession.longPressTriggered = true;
+          dragSession.ignoreNextClick = true;
+          var tipText = (dragSession.targetBtn.getAttribute && dragSession.targetBtn.getAttribute('data-aura-copy'))
+            || (dragSession.targetBtn.querySelector && dragSession.targetBtn.querySelector('.aura-status-text') && dragSession.targetBtn.querySelector('.aura-status-text').textContent)
+            || 'AI 详情';
+          var isSummary = dragSession.targetBtn.id && dragSession.targetBtn.id.indexOf('Summary') !== -1;
+          showTooltipForButton(dragSession.targetBtn, (isSummary ? 'AI 流程总结 · ' : 'AI 流程审核 · ') + tipText);
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            try { navigator.vibrate(20); } catch (err) {}
+          }
+        }
+      }, 450);
+    }
+
+    function onPointerMove(e) {
+      if (!dragSession.isDown) return;
+      var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      var dx = clientX - dragSession.startX;
+      var dy = clientY - dragSession.startY;
+
+      if (!dragSession.hasMoved && Math.hypot(dx, dy) > 5) {
+        dragSession.hasMoved = true;
+        dragSession.ignoreNextClick = true;
+        if (dragSession.longPressTimer) {
+          clearTimeout(dragSession.longPressTimer);
+          dragSession.longPressTimer = null;
+        }
+        hideTooltip();
+        if (containerEl.classList && containerEl.classList.add) {
+          containerEl.classList.add('aura-is-dragging');
+          containerEl.classList.remove('aura-float--bottom-left');
+          containerEl.classList.remove('aura-float--top-right');
+        }
+        if (containerEl.style) {
+          containerEl.style.bottom = 'auto';
+          containerEl.style.right = 'auto';
+        }
+      }
+
+      if (dragSession.hasMoved) {
+        if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
+        var winWidth = (typeof window !== 'undefined' && window.innerWidth) || (document.documentElement && document.documentElement.clientWidth) || 360;
+        var winHeight = (typeof window !== 'undefined' && window.innerHeight) || (document.documentElement && document.documentElement.clientHeight) || 640;
+        var cWidth = containerEl.offsetWidth || 120;
+        var cHeight = containerEl.offsetHeight || 44;
+
+        var minLeft = 8;
+        var maxLeft = Math.max(minLeft, winWidth - cWidth - 8);
+        var minTop = 8;
+        var maxTop = Math.max(minTop, winHeight - cHeight - 8);
+
+        var newLeft = dragSession.initialLeft + dx;
+        var newTop = dragSession.initialTop + dy;
+
+        newLeft = Math.max(minLeft, Math.min(maxLeft, newLeft));
+        newTop = Math.max(minTop, Math.min(maxTop, newTop));
+
+        if (containerEl.style) {
+          containerEl.style.left = newLeft + 'px';
+          containerEl.style.top = newTop + 'px';
+        }
+      }
+    }
+
+    function onPointerUp() {
+      if (!dragSession.isDown) return;
+      dragSession.isDown = false;
+      if (dragSession.longPressTimer) {
+        clearTimeout(dragSession.longPressTimer);
+        dragSession.longPressTimer = null;
+      }
+      if (dragSession.hasMoved) {
+        if (containerEl.classList && containerEl.classList.remove) containerEl.classList.remove('aura-is-dragging');
+        setTimeout(function () {
+          dragSession.hasMoved = false;
+          dragSession.ignoreNextClick = false;
+        }, 120);
+      } else if (dragSession.longPressTriggered) {
+        setTimeout(function () {
+          hideTooltip();
+          dragSession.longPressTriggered = false;
+          dragSession.ignoreNextClick = false;
+        }, 1200);
+      }
+    }
+
+    if (containerEl.addEventListener) {
+      containerEl.addEventListener('touchstart', onPointerDown, { passive: true });
+      containerEl.addEventListener('mousedown', onPointerDown);
+      containerEl.addEventListener('mouseover', onMouseEnter);
+      containerEl.addEventListener('mouseleave', onMouseLeave);
+    }
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('touchmove', onPointerMove, { passive: false });
+      window.addEventListener('touchend', onPointerUp, { passive: true });
+      window.addEventListener('touchcancel', onPointerUp, { passive: true });
+      window.addEventListener('mousemove', onPointerMove);
+      window.addEventListener('mouseup', onPointerUp);
+    }
   }
 
   function createButtonPainter(paint) {
@@ -1027,16 +1271,21 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
 
   function ensureStatusGroup() {
     var $container = jQuery('#' + BUTTON_CONTAINER_ID);
+    var isFloat = false;
     if (!$container.length) {
       if (!jQuery('#auraMobileEmbedFloatContainer').length) {
         jQuery('body').append('<div id="auraMobileEmbedFloatContainer" class="' + floatAnchorClass() + '"></div>');
       }
       $container = jQuery('#auraMobileEmbedFloatContainer');
+      isFloat = true;
     }
     var group = $container.children('.aura-status-group')[0];
     if (!group) {
       $container.html('<div class="aura-status-group"></div>');
       group = $container.children('.aura-status-group')[0];
+    }
+    if (isFloat && $container[0]) {
+      setupDraggableFloatContainer($container[0]);
     }
     return group;
   }
@@ -1076,6 +1325,12 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
 
     applyButtonTheme(btn, theme);
     btn.setAttribute('aria-disabled', (unavailable || isLoading) ? 'true' : 'false');
+    btn.classList.add('aura-is-compact');
+    if (!parsed.scoreMatch) {
+      btn.classList.add('aura-status-button--icon-only');
+    } else {
+      btn.classList.remove('aura-status-button--icon-only');
+    }
     var sr = btn.querySelector('.aura-status-sr');
     if (sr) {
       sr.className = 'aura-status-sr ' + labelClass;
@@ -1366,6 +1621,11 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
       if (group.getAttribute('data-aura-bound') === '1') return;
       group.setAttribute('data-aura-bound', '1');
       group.addEventListener('click', function (event) {
+        if (dragSession.ignoreNextClick || dragSession.hasMoved || dragSession.longPressTriggered) {
+          if (event && event.preventDefault) event.preventDefault();
+          if (event && event.stopPropagation) event.stopPropagation();
+          return;
+        }
         var target = event.target;
         while (target && target !== group && !(target.classList && target.classList.contains('aura-status-button'))) {
           target = target.parentNode;
@@ -1728,6 +1988,11 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     if (group.getAttribute('data-aura-bound') === '1') return;
     group.setAttribute('data-aura-bound', '1');
     group.addEventListener('click', function (event) {
+      if (dragSession.ignoreNextClick || dragSession.hasMoved || dragSession.longPressTriggered) {
+        if (event && event.preventDefault) event.preventDefault();
+        if (event && event.stopPropagation) event.stopPropagation();
+        return;
+      }
       var target = event.target;
       while (target && target !== group && !(target.classList && target.classList.contains('aura-status-button'))) {
         target = target.parentNode;
