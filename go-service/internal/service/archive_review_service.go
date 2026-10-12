@@ -1460,7 +1460,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	externalContextText := s.resolveArchiveRulesExternalContext(c, tenant, logEntry.ProcessID, processData, rules)
 	queryRules := make([]model.AuditRule, 0, len(rules))
 	for _, rule := range rules {
-		queryRules = append(queryRules, model.AuditRule{ID: rule.ID, RuleContent: rule.RuleContent, Enabled: rule.Enabled, DataQueries: rule.DataQueries})
+		queryRules = append(queryRules, model.AuditRule{ID: rule.ID, RuleContent: rule.RuleContent, ApplicabilityCondition: rule.ApplicabilityCondition, Enabled: rule.Enabled, DataQueries: rule.DataQueries})
 	}
 	queryText, queryEvidence := s.dataQueries.ResolveRules(c, logEntry.ProcessID, processData, queryRules)
 	externalContextText += "\n" + queryText
@@ -1935,7 +1935,7 @@ func (s *ArchiveReviewService) resolveArchiveRulesText(
 		if !enabled {
 			continue
 		}
-		lines = append(lines, formatRuleLineForPrompt(len(lines)+1, rule.RuleScope, rule.RuleContent))
+		lines = append(lines, formatRuleLineForPrompt(len(lines)+1, rule.RuleScope, rule.RuleContent, rule.ApplicabilityCondition))
 	}
 
 	if perms.AllowCustomRules && userDetail != nil {

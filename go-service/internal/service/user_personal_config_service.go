@@ -468,7 +468,7 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 		}
 		tenantRuleDTOs[i] = dto.TenantRuleDTO{
 			ID:          r.ID.String(),
-			RuleContent: r.RuleContent,
+			RuleContent: r.RuleContent, ApplicabilityCondition: r.ApplicabilityCondition,
 			RuleScope:   r.RuleScope,
 			RelatedFlow: r.RelatedFlow,
 			Enabled:     effectiveEnabled,
@@ -726,7 +726,7 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 		}
 		ruleDTOs[i] = dto.TenantRuleDTO{
 			ID:          r.ID.String(),
-			RuleContent: r.RuleContent,
+			RuleContent: r.RuleContent, ApplicabilityCondition: r.ApplicabilityCondition,
 			RuleScope:   r.RuleScope,
 			RelatedFlow: r.RelatedFlow,
 			Enabled:     effectiveEnabled,
@@ -1142,9 +1142,10 @@ func (s *UserPersonalConfigService) GetBaselineVersionDiff(
 
 func computeBaselineDiff(processType string, fromVersion, toVersion *model.TenantConfigVersion) (*dto.BaselineVersionDiffResponse, error) {
 	type ruleItem struct {
-		ID          string `json:"id"`
-		RuleContent string `json:"rule_content"`
-		RuleScope   string `json:"rule_scope"`
+		ApplicabilityCondition string `json:"applicability_condition"`
+		ID                     string `json:"id"`
+		RuleContent            string `json:"rule_content"`
+		RuleScope              string `json:"rule_scope"`
 	}
 	type fieldItem struct {
 		FieldKey  string `json:"field_key"`
@@ -1189,22 +1190,25 @@ func computeBaselineDiff(processType string, fromVersion, toVersion *model.Tenan
 		toRulesMap[r.ID] = r
 		if old, exists := fromRulesMap[r.ID]; !exists {
 			resp.AddedRules = append(resp.AddedRules, dto.RuleDiffItem{
-				ID: r.ID, RuleContent: r.RuleContent, RuleScope: r.RuleScope,
+				ID: r.ID, RuleContent: r.RuleContent, ApplicabilityCondition: r.ApplicabilityCondition, RuleScope: r.RuleScope,
 			})
-		} else if old.RuleContent != r.RuleContent || old.RuleScope != r.RuleScope {
+		} else if old.RuleContent != r.RuleContent || old.RuleScope != r.RuleScope || old.ApplicabilityCondition != r.ApplicabilityCondition {
 			desc := "内容修改"
+			if old.ApplicabilityCondition != r.ApplicabilityCondition {
+				desc = "适用前提修改"
+			}
 			if old.RuleScope != r.RuleScope {
 				desc = fmt.Sprintf("范围变动: %s → %s", old.RuleScope, r.RuleScope)
 			}
 			resp.ModifiedRules = append(resp.ModifiedRules, dto.RuleDiffItem{
-				ID: r.ID, RuleContent: r.RuleContent, RuleScope: r.RuleScope, ChangeDesc: desc,
+				ID: r.ID, RuleContent: r.RuleContent, ApplicabilityCondition: r.ApplicabilityCondition, RuleScope: r.RuleScope, ChangeDesc: desc,
 			})
 		}
 	}
 	for _, r := range fromSnap.Rules {
 		if _, exists := toRulesMap[r.ID]; !exists {
 			resp.RemovedRules = append(resp.RemovedRules, dto.RuleDiffItem{
-				ID: r.ID, RuleContent: r.RuleContent, RuleScope: r.RuleScope,
+				ID: r.ID, RuleContent: r.RuleContent, ApplicabilityCondition: r.ApplicabilityCondition, RuleScope: r.RuleScope,
 			})
 		}
 	}

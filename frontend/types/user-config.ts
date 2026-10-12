@@ -79,6 +79,7 @@ export interface DetailTable {
 export interface TenantRule {
   id: string
   rule_content: string
+  applicability_condition?: string
   rule_scope: string // mandatory | default_on | default_off
   related_flow: boolean
   enabled: boolean
@@ -194,6 +195,7 @@ export interface AdminCustomRule {
 export interface AdminRuleToggleItem {
   rule_id: string
   rule_content: string
+  applicability_condition?: string
   rule_scope: string    // mandatory | default_on | default_off
   admin_enabled: boolean // 管理员当前设置的默认状态
   enabled: boolean       // 用户覆盖后的状态
@@ -260,6 +262,7 @@ export interface AdminUserConfigItem {
 export interface RuleDiffItem {
   id: string
   rule_content: string
+  applicability_condition?: string
   rule_scope: string
   change_desc?: string
 }

@@ -49,6 +49,7 @@ export interface AuditRule {
   config_id?: string | null
   process_type: string
   rule_content: string
+  applicability_condition?: string
   rule_scope: 'mandatory' | 'default_on' | 'default_off'
   priority: number
   enabled: boolean

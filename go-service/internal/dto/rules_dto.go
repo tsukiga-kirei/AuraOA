@@ -49,27 +49,29 @@ type TestConnectionRequest struct {
 
 // CreateAuditRuleRequest 创建审核规则请求。
 type CreateAuditRuleRequest struct {
-	ConfigID       string         `json:"config_id"`
-	ProcessType    string         `json:"process_type" binding:"required"`
-	RuleContent    string         `json:"rule_content" binding:"required"`
-	RuleScope      string         `json:"rule_scope"`
-	Enabled        *bool          `json:"enabled"`
-	Source         string         `json:"source"`
-	RelatedFlow    bool           `json:"related_flow"`
-	ContextEnabled bool           `json:"context_enabled"`
-	DataQueries    datatypes.JSON `json:"data_queries"`
-	ContextMounts  datatypes.JSON `json:"context_mounts"`
+	ApplicabilityCondition string         `json:"applicability_condition" binding:"max=5000"`
+	ConfigID               string         `json:"config_id"`
+	ProcessType            string         `json:"process_type" binding:"required"`
+	RuleContent            string         `json:"rule_content" binding:"required"`
+	RuleScope              string         `json:"rule_scope"`
+	Enabled                *bool          `json:"enabled"`
+	Source                 string         `json:"source"`
+	RelatedFlow            bool           `json:"related_flow"`
+	ContextEnabled         bool           `json:"context_enabled"`
+	DataQueries            datatypes.JSON `json:"data_queries"`
+	ContextMounts          datatypes.JSON `json:"context_mounts"`
 }
 
 // UpdateAuditRuleRequest 更新审核规则请求。
 type UpdateAuditRuleRequest struct {
-	RuleContent    string         `json:"rule_content"`
-	RuleScope      string         `json:"rule_scope"`
-	Enabled        *bool          `json:"enabled"`
-	RelatedFlow    *bool          `json:"related_flow"`
-	ContextEnabled *bool          `json:"context_enabled"`
-	DataQueries    datatypes.JSON `json:"data_queries"`
-	ContextMounts  datatypes.JSON `json:"context_mounts"`
+	ApplicabilityCondition *string        `json:"applicability_condition" binding:"omitempty,max=5000"`
+	RuleContent            string         `json:"rule_content"`
+	RuleScope              string         `json:"rule_scope"`
+	Enabled                *bool          `json:"enabled"`
+	RelatedFlow            *bool          `json:"related_flow"`
+	ContextEnabled         *bool          `json:"context_enabled"`
+	DataQueries            datatypes.JSON `json:"data_queries"`
+	ContextMounts          datatypes.JSON `json:"context_mounts"`
 }
 
 // BatchDeleteRulesRequest 批量删除规则请求。
@@ -94,12 +96,13 @@ type RuleImportCapabilityResponse struct {
 // RuleImportDraft AI 从制度文件中提取的单条规则草稿。
 // AI 仅给出建议值，最终由租户管理员确认后才会写入规则库。
 type RuleImportDraft struct {
-	RuleContent        string  `json:"rule_content" binding:"required"`
-	RuleScope          string  `json:"rule_scope"`
-	RelatedFlow        bool    `json:"related_flow"`
-	ContextRecommended bool    `json:"context_recommended"`
-	Confidence         float64 `json:"confidence"`
-	Reasoning          string  `json:"reasoning"`
+	ApplicabilityCondition string  `json:"applicability_condition" binding:"max=5000"`
+	RuleContent            string  `json:"rule_content" binding:"required"`
+	RuleScope              string  `json:"rule_scope"`
+	RelatedFlow            bool    `json:"related_flow"`
+	ContextRecommended     bool    `json:"context_recommended"`
+	Confidence             float64 `json:"confidence"`
+	Reasoning              string  `json:"reasoning"`
 }
 
 // RuleImportPreviewResponse 文件识别与 AI 结构化后的预览结果。

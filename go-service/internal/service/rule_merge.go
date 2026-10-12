@@ -8,6 +8,7 @@ import (
 type MergeableRule interface {
 	GetID() string
 	GetRuleContent() string
+	GetApplicabilityCondition() string
 	GetRuleScope() string
 	IsEnabled() bool
 }
@@ -33,11 +34,12 @@ type RuleToggleItem struct {
 
 // MergedRule 合并后的最终生效规则。
 type MergedRule struct {
-	RuleID  string `json:"rule_id"`
-	Content string `json:"content"`
-	Scope   string `json:"scope"`   // mandatory | default_on | default_off | custom
-	Enabled bool   `json:"enabled"`
-	Source  string `json:"source"`  // tenant | user
+	ApplicabilityCondition string `json:"applicability_condition,omitempty"`
+	RuleID                 string `json:"rule_id"`
+	Content                string `json:"content"`
+	Scope                  string `json:"scope"` // mandatory | default_on | default_off | custom
+	Enabled                bool   `json:"enabled"`
+	Source                 string `json:"source"` // tenant | user
 }
 
 // MergeRules 合并租户规则和用户个性化配置，返回最终生效的规则列表。
@@ -60,10 +62,11 @@ func MergeRules(tenantRules []MergeableRule, userOverride *UserRuleOverride) []M
 		}
 
 		merged := MergedRule{
-			RuleID:  rule.GetID(),
-			Content: rule.GetRuleContent(),
-			Scope:   rule.GetRuleScope(),
-			Source:  "tenant",
+			RuleID:                 rule.GetID(),
+			Content:                rule.GetRuleContent(),
+			ApplicabilityCondition: rule.GetApplicabilityCondition(),
+			Scope:                  rule.GetRuleScope(),
+			Source:                 "tenant",
 		}
 
 		switch rule.GetRuleScope() {

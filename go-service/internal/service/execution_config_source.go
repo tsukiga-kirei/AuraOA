@@ -386,17 +386,18 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 			enabled := rs.Enabled
 			source := defaultStr(rs.Source, defaultStr(existingSources[ruleID.String()], "manual"))
 			ruleModel := &model.AuditRule{
-				ID:             ruleID,
-				TenantID:       tenantID,
-				ConfigID:       &sourceConfigID,
-				ProcessType:    snapshot.ProcessType,
-				RuleContent:    rs.RuleContent,
-				RuleScope:      rs.RuleScope,
-				Enabled:        &enabled,
-				Source:         source,
-				RelatedFlow:    rs.RelatedFlow,
-				ContextEnabled: rs.ContextEnabled,
-				DataQueries:    queryJSON,
+				ID:                     ruleID,
+				TenantID:               tenantID,
+				ConfigID:               &sourceConfigID,
+				ProcessType:            snapshot.ProcessType,
+				RuleContent:            rs.RuleContent,
+				ApplicabilityCondition: strings.TrimSpace(rs.ApplicabilityCondition),
+				RuleScope:              rs.RuleScope,
+				Enabled:                &enabled,
+				Source:                 source,
+				RelatedFlow:            rs.RelatedFlow,
+				ContextEnabled:         rs.ContextEnabled,
+				DataQueries:            queryJSON,
 			}
 			if rs.ContextMounts != nil {
 				if mountJSON, err := json.Marshal(rs.ContextMounts); err == nil {
@@ -404,7 +405,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				}
 			}
 			if _, exists := existingMap[ruleID.String()]; exists {
-				if err := s.auditRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "rule_scope", "enabled", "source", "related_flow", "context_enabled", "context_mounts", "data_queries").Updates(ruleModel).Error; err != nil {
+				if err := s.auditRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "applicability_condition", "rule_scope", "enabled", "source", "related_flow", "context_enabled", "context_mounts", "data_queries").Updates(ruleModel).Error; err != nil {
 					return err
 				}
 			} else {
@@ -486,17 +487,18 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 			enabled := rs.Enabled
 			source := defaultStr(rs.Source, defaultStr(existingSources[ruleID.String()], "manual"))
 			ruleModel := &model.ArchiveRule{
-				ID:             ruleID,
-				TenantID:       tenantID,
-				ConfigID:       &sourceConfigID,
-				ProcessType:    snapshot.ProcessType,
-				RuleContent:    rs.RuleContent,
-				RuleScope:      rs.RuleScope,
-				Enabled:        &enabled,
-				Source:         source,
-				RelatedFlow:    rs.RelatedFlow,
-				ContextEnabled: rs.ContextEnabled,
-				DataQueries:    queryJSON,
+				ID:                     ruleID,
+				TenantID:               tenantID,
+				ConfigID:               &sourceConfigID,
+				ProcessType:            snapshot.ProcessType,
+				RuleContent:            rs.RuleContent,
+				ApplicabilityCondition: strings.TrimSpace(rs.ApplicabilityCondition),
+				RuleScope:              rs.RuleScope,
+				Enabled:                &enabled,
+				Source:                 source,
+				RelatedFlow:            rs.RelatedFlow,
+				ContextEnabled:         rs.ContextEnabled,
+				DataQueries:            queryJSON,
 			}
 			if rs.ContextMounts != nil {
 				if mountJSON, err := json.Marshal(rs.ContextMounts); err == nil {
@@ -504,7 +506,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				}
 			}
 			if _, exists := existingMap[ruleID.String()]; exists {
-				if err := s.archiveRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "rule_scope", "enabled", "source", "related_flow", "context_enabled", "context_mounts", "data_queries").Updates(ruleModel).Error; err != nil {
+				if err := s.archiveRules.WithTenant(c).Model(ruleModel).Where("id = ?", ruleModel.ID).Select("rule_content", "applicability_condition", "rule_scope", "enabled", "source", "related_flow", "context_enabled", "context_mounts", "data_queries").Updates(ruleModel).Error; err != nil {
 					return err
 				}
 			} else {
@@ -587,15 +589,16 @@ func (s *ExecutionConfigSourceService) currentSourceSnapshot(
 }
 
 type ruleSource struct {
-	ID             string      `json:"id"`
-	RuleContent    string      `json:"rule_content"`
-	RuleScope      string      `json:"rule_scope"`
-	Enabled        bool        `json:"enabled"`
-	Source         string      `json:"source,omitempty"`
-	RelatedFlow    bool        `json:"related_flow"`
-	ContextEnabled bool        `json:"context_enabled"`
-	DataQueries    interface{} `json:"data_queries"`
-	ContextMounts  interface{} `json:"context_mounts"`
+	ApplicabilityCondition string      `json:"applicability_condition,omitempty"`
+	ID                     string      `json:"id"`
+	RuleContent            string      `json:"rule_content"`
+	RuleScope              string      `json:"rule_scope"`
+	Enabled                bool        `json:"enabled"`
+	Source                 string      `json:"source,omitempty"`
+	RelatedFlow            bool        `json:"related_flow"`
+	ContextEnabled         bool        `json:"context_enabled"`
+	DataQueries            interface{} `json:"data_queries"`
+	ContextMounts          interface{} `json:"context_mounts"`
 }
 
 func normalizedAuditRuleSources(rules []model.AuditRule) []ruleSource {
@@ -603,7 +606,8 @@ func normalizedAuditRuleSources(rules []model.AuditRule) []ruleSource {
 	for _, rule := range rules {
 		result = append(result, ruleSource{
 			ID: rule.ID.String(), RuleContent: rule.RuleContent, RuleScope: rule.RuleScope,
-			Enabled: rule.Enabled == nil || *rule.Enabled, RelatedFlow: rule.RelatedFlow,
+			ApplicabilityCondition: strings.TrimSpace(rule.ApplicabilityCondition),
+			Enabled:                rule.Enabled == nil || *rule.Enabled, RelatedFlow: rule.RelatedFlow,
 			ContextEnabled: rule.ContextEnabled, ContextMounts: rule.ContextMounts, DataQueries: rule.DataQueries,
 		})
 	}
@@ -616,7 +620,8 @@ func normalizedArchiveRuleSources(rules []model.ArchiveRule) []ruleSource {
 	for _, rule := range rules {
 		result = append(result, ruleSource{
 			ID: rule.ID.String(), RuleContent: rule.RuleContent, RuleScope: rule.RuleScope,
-			Enabled: rule.Enabled == nil || *rule.Enabled, RelatedFlow: rule.RelatedFlow,
+			ApplicabilityCondition: strings.TrimSpace(rule.ApplicabilityCondition),
+			Enabled:                rule.Enabled == nil || *rule.Enabled, RelatedFlow: rule.RelatedFlow,
 			ContextEnabled: rule.ContextEnabled, ContextMounts: rule.ContextMounts, DataQueries: rule.DataQueries,
 		})
 	}
@@ -838,6 +843,17 @@ func validateSourceSnapshot(module string, raw []byte) error {
 			var values []json.RawMessage
 			if err := json.Unmarshal(raw, &values); err != nil {
 				return fmt.Errorf("配置字段 %s 必须为数组", key)
+			}
+		}
+	}
+	if rules, ok := fields["rules"]; ok {
+		var values []ruleSource
+		if err := json.Unmarshal(rules, &values); err != nil {
+			return fmt.Errorf("规则快照格式无效")
+		}
+		for _, rule := range values {
+			if len([]rune(strings.TrimSpace(rule.ApplicabilityCondition))) > maxImportedRuleSize {
+				return fmt.Errorf("单条规则的适用前提不能超过 5000 个字符")
 			}
 		}
 	}

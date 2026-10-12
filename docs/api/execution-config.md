@@ -150,3 +150,5 @@ POST /api/tenant/execution-config-versions/save-version
 在对外接口（如审核/复盘/总结链路与嵌入页面上下文）中，`config_version_no` 统一映射展示为对应的租户基础版本号（即管理端规则配置中展示的当前可用版本号，如 v10），保持业务人员心智模型一致；底层不可变执行快照的精确溯源与审计继续由 `config_version_id` UUID 严格保障。
 
 
+
+审核与归档快照的每条规则支持可选 `applicability_condition`。草稿保存、版本发布/激活、历史版本保存与执行配置恢复均保留此前提；省略或为空时沿用旧规则行为，单独修改前提会形成配置内容变更。

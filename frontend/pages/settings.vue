@@ -1239,7 +1239,12 @@ const handleSaveSummary = async () => {
             <div v-if="fullProcessConfig.tenant_rules.length" class="rule-config-list">
               <div v-for="rule in fullProcessConfig.tenant_rules" :key="rule.id" class="rule-config-item">
                 <div class="rule-config-content">
-                  <span class="rule-config-text">{{ rule.rule_content }}</span>
+                  <span class="rule-config-text">
+                    {{ rule.rule_content }}
+                    <span v-if="rule.applicability_condition" class="rule-config-condition">
+                      {{ t('ruleEditor.applicabilityCondition') }}：{{ rule.applicability_condition }}
+                    </span>
+                  </span>
                   <span v-if="rule.related_flow" class="rule-flow-tag">
                     <NodeIndexOutlined /> {{ t('settings.workbench.relatedFlow') }}
                   </span>
@@ -1662,7 +1667,12 @@ const handleSaveSummary = async () => {
             <div v-if="fullArchiveConfig.tenant_rules.length" class="rule-config-list">
               <div v-for="rule in fullArchiveConfig.tenant_rules" :key="rule.id" class="rule-config-item">
                 <div class="rule-config-content">
-                  <span class="rule-config-text">{{ rule.rule_content }}</span>
+                  <span class="rule-config-text">
+                    {{ rule.rule_content }}
+                    <span v-if="rule.applicability_condition" class="rule-config-condition">
+                      {{ t('ruleEditor.applicabilityCondition') }}：{{ rule.applicability_condition }}
+                    </span>
+                  </span>
                   <span v-if="rule.related_flow" class="rule-flow-tag">
                     <NodeIndexOutlined /> {{ t('settings.workbench.relatedFlow') }}
                   </span>
@@ -2192,6 +2202,7 @@ const handleSaveSummary = async () => {
   padding: 10px 14px; background: var(--color-bg-page); border-radius: var(--radius-md);
 }
 .rule-config-content { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.rule-config-condition { display: block; margin-top: 4px; color: var(--color-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .rule-config-text { font-size: 13px; color: var(--color-text-primary); }
 .rule-config-actions { display: flex; align-items: center; gap: 8px; }
 

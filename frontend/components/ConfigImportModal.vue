@@ -269,7 +269,7 @@ function handleCancel() {
           <template #message>{{ t('admin.ruleConfig.validationErrorTitle', '校验未通过') }}</template>
           <template #description>
             <ul class="alert-list">
-              <li v-for="(err, idx) in report.errors" :key="idx">{{ err }}</li>
+              <li v-for="(err, idx) in report.errors" :key="idx">{{ t(err) }}</li>
             </ul>
           </template>
         </a-alert>

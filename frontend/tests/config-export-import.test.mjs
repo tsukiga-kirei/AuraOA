@@ -170,3 +170,27 @@ test('rule import retains immutable query version and bindings', () => {
   const appended = applyRuleConflictStrategy([], [{ rule_content: '预算核验', data_queries: [reference] }], 'append', () => 'new')
   assert.deepEqual(appended[0].data_queries, [reference])
 })
+
+
+test('conditional rules keep distinct scopes during import and export', () => {
+  const existing = [{ id: 'one', rule_content: '上传审批文件', applicability_condition: '单一来源采购', rule_scope: 'mandatory' }]
+  const incoming = [
+    { rule_content: '上传审批文件', applicability_condition: '单一来源采购', rule_scope: 'mandatory' },
+    { rule_content: '上传审批文件', applicability_condition: '竞争性采购', rule_scope: 'mandatory' },
+    { rule_content: '上传审批文件', rule_scope: 'default_on' },
+  ]
+  const report = validateImportBundle(JSON.stringify(incoming), 'audit', existing)
+  assert.equal(report.rule_stats.duplicate, 1)
+  const merged = applyRuleConflictStrategy(existing, incoming, 'skip', () => 'draft')
+  assert.equal(merged.length, 3)
+  assert.deepEqual(merged.map(r => r.applicability_condition), ['单一来源采购', '竞争性采购', ''])
+  const bundle = buildExportBundle({module: 'audit', processType: '采购', contents: {rules: merged}})
+  assert.equal(bundle.contents.rules[1].applicability_condition, '竞争性采购')
+})
+
+test('import rejects invalid condition values before merging', () => {
+  for (const condition of [123, '前'.repeat(5001)]) {
+    const report = validateImportBundle(JSON.stringify([{rule_content: '规则', applicability_condition: condition}]), 'archive', [])
+    assert.equal(report.valid, false)
+  }
+})

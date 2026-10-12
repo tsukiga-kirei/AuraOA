@@ -2549,7 +2549,7 @@ func formatRules(rules []model.AuditRule) string {
 		if !isRuleEnabled(&r) {
 			continue
 		}
-		sb.WriteString(formatRuleLineForPrompt(i+1, r.RuleScope, r.RuleContent))
+		sb.WriteString(formatRuleLineForPrompt(i+1, r.RuleScope, r.RuleContent, r.ApplicabilityCondition))
 		sb.WriteString("\n")
 	}
 	if sb.Len() == 0 {
@@ -2759,7 +2759,7 @@ func (s *AuditExecuteService) resolveRulesText(
 	for _, r := range tenantRules {
 		// mandatory 规则始终强制启用
 		if r.RuleScope == "mandatory" {
-			sb.WriteString(formatRuleLineForPrompt(idx, r.RuleScope, r.RuleContent))
+			sb.WriteString(formatRuleLineForPrompt(idx, r.RuleScope, r.RuleContent, r.ApplicabilityCondition))
 			sb.WriteString("\n")
 			idx++
 			continue
@@ -2773,7 +2773,7 @@ func (s *AuditExecuteService) resolveRulesText(
 		if !enabled {
 			continue
 		}
-		sb.WriteString(formatRuleLineForPrompt(idx, r.RuleScope, r.RuleContent))
+		sb.WriteString(formatRuleLineForPrompt(idx, r.RuleScope, r.RuleContent, r.ApplicabilityCondition))
 		sb.WriteString("\n")
 		idx++
 	}

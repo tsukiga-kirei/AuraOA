@@ -28,6 +28,7 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
 	}
 
 	userPrompt := aiConfig.UserReasoningPrompt
+	hasRulesPlaceholder := strings.Contains(userPrompt, "{{rules}}")
 	hasAttachmentsPlaceholder := strings.Contains(userPrompt, "{{attachments}}")
 	hasExternalContextPlaceholder := strings.Contains(userPrompt, "{{external_context}}")
 	userPrompt = strings.ReplaceAll(userPrompt, "{{process_type}}", processType)
@@ -46,10 +47,13 @@ func BuildReasoningPrompt(aiConfig *model.AIConfigData, processType string, proc
 	if !hasExternalContextPlaceholder && strings.TrimSpace(externalContext) != "" {
 		userPrompt += "\n\n" + externalContext
 	}
+	if !hasRulesPlaceholder {
+		userPrompt += "\n\n规则列表：\n" + rules
+	}
 	userPrompt = replaceSystemPromptVariables(userPrompt)
 
 	return &ai.ChatRequest{
-		SystemPrompt: aiConfig.SystemReasoningPrompt,
+		SystemPrompt: withRuleApplicabilityInstructions(aiConfig.SystemReasoningPrompt),
 		UserPrompt:   userPrompt,
 		RequestType:  "audit",
 		CallType:     "reasoning",
@@ -67,12 +71,16 @@ func defaultExternalContextText(externalContext string) string {
 // 将推理阶段输出和规则文本注入提取提示词模板，引导模型输出结构化 JSON 审核结论。
 func BuildExtractionPrompt(aiConfig *model.AIConfigData, reasoningResult string, rules string) *ai.ChatRequest {
 	userPrompt := aiConfig.UserExtractionPrompt
+	hasRulesPlaceholder := strings.Contains(userPrompt, "{{rules}}")
 	userPrompt = strings.ReplaceAll(userPrompt, "{{reasoning_result}}", reasoningResult)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{rules}}", rules)
+	if !hasRulesPlaceholder {
+		userPrompt += "\n\n规则列表：\n" + rules
+	}
 	userPrompt = replaceSystemPromptVariables(userPrompt)
 
 	return &ai.ChatRequest{
-		SystemPrompt: aiConfig.SystemExtractionPrompt,
+		SystemPrompt: withRuleApplicabilityInstructions(aiConfig.SystemExtractionPrompt),
 		UserPrompt:   userPrompt,
 		RequestType:  "audit",
 		CallType:     "structured",
