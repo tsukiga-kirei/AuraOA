@@ -38,6 +38,31 @@ func TestQueryDefinitionScope(t *testing.T) {
 	}
 }
 
+func TestQueryAssistFieldContextDoesNotRepeatNotes(t *testing.T) {
+	def := model.AuditDataQueryDefinition{AIContext: &model.AuditDataQueryAIContext{
+		OAModule: "workflow", Notes: "统计业务口径",
+		FieldNotes: map[string]string{"FORMTABLE_MAIN_199.sqr": "申请人", "formtable_main_199.AMOUNT": "实付金额，单位元"},
+	}}
+	schemas := map[string][]oa.QueryColumn{"formtable_main_199": {
+		{Key: "SQR", Label: "申请人", DataType: "INT"},
+		{Key: "AMOUNT", Label: "金额", DataType: "NUMBER"},
+	}}
+	definition, schema := queryAssistFieldContext(def, schemas)
+	raw, err := json.Marshal(map[string]interface{}{"definition": definition, "schema": schema})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "field_notes") || strings.Count(string(raw), "申请人") != 1 {
+		t.Fatalf("AI 字段字典仍然重复: %s", raw)
+	}
+	if schema["formtable_main_199"][1].Description != "实付金额，单位元" || schema["formtable_main_199"][1].Label != "金额" {
+		t.Fatalf("补充业务说明或原始中文名丢失: %+v", schema)
+	}
+	if len(def.AIContext.FieldNotes) != 2 || definition.AIContext.Notes != def.AIContext.Notes {
+		t.Fatal("合并 AI 上下文不应修改原草稿或移除业务口径")
+	}
+}
+
 func TestQueryBindingsTypedAndOffset(t *testing.T) {
 	def := model.AuditDataQueryDefinition{Parameters: []model.AuditDataQueryParameter{
 		{Name: "person", Label: "人员", Type: "string"}, {Name: "ids", Label: "明细项目", Type: "string_list"},

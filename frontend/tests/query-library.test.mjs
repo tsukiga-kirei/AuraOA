@@ -65,7 +65,7 @@ const labelSource = fs.readFileSync(new URL('../utils/queryColumnLabels.ts', imp
 const labelJs = ts.transpileModule(labelSource, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 }).outputText
-const { fillQueryBuilderLabels, fillQueryFieldNotes } = await import(
+const { fillQueryBuilderLabels, fillQueryFieldNotes, selectQueryOutputField, queryAssistFieldContext } = await import(
   `data:text/javascript;base64,${Buffer.from(labelJs).toString('base64')}`
 )
 
@@ -95,6 +95,40 @@ test('schema notes use Chinese defaults and preserve manual descriptions with di
     'other.amount': '另一张表',
   })
   assert.equal(notes['FORMTABLE_MAIN_199.amount'], '实际支付金额', 'source notes must not be mutated')
+})
+
+test('choosing an output updates its Chinese alias and preserves a custom alias', () => {
+  const columns = [
+    { key: 'SQR', label: '申请人' },
+    { key: 'DZYWDJRKLC', label: '抵质押物登记入库流程' },
+  ]
+  const builder = { columns: [{ field: '', aggregate: '' }], filters: [] }
+  selectQueryOutputField(builder, 0, columns[1].key, columns)
+  assert.equal(builder.columns[0].alias, '抵质押物登记入库流程')
+  selectQueryOutputField(builder, 0, 'SQR', columns)
+  assert.equal(builder.columns[0].alias, '申请人')
+  builder.columns[0].alias = '经办申请人'
+  selectQueryOutputField(builder, 0, columns[1].key, columns)
+  assert.equal(builder.columns[0].alias, '经办申请人')
+})
+
+test('AI field context sends one schema and retains only distinct manual descriptions', () => {
+  const definition = {
+    ai_context: { oa_module: 'workflow', notes: '业务口径', field_notes: {
+      'FORMTABLE_MAIN_199.sqr': '申请人',
+      'formtable_main_199.AMOUNT': '实付金额，单位元',
+    } },
+  }
+  const schema = { formtable_main_199: [
+    { key: 'SQR', label: '申请人', data_type: 'INT' },
+    { key: 'AMOUNT', label: '金额', data_type: 'NUMBER' },
+  ] }
+  const result = queryAssistFieldContext(definition, schema)
+  assert.equal('field_notes' in result.definition.ai_context, false)
+  assert.equal(result.schema.formtable_main_199[0].description, undefined)
+  assert.equal(result.schema.formtable_main_199[1].description, '实付金额，单位元')
+  assert.equal(definition.ai_context.field_notes['FORMTABLE_MAIN_199.sqr'], '申请人')
+  assert.equal(schema.formtable_main_199[1].description, undefined)
 })
 
 test('compileQueryBuilder handles varchar date without TO_DATE and native date with TO_DATE in oracle/dm', () => {
